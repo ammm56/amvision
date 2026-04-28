@@ -25,12 +25,12 @@
 
 ### Dataset
 
-- 逻辑数据集容器，承载业务身份、用途、标签和长期归属关系
+- 逻辑数据集容器，记录业务身份、用途、标签和长期归属关系
 
 ### DatasetImport
 
 - 一次外部数据导入记录
-- 负责记录 source format、task family、image root、annotation root、manifest file、split 信息、class map、导入时间、校验结果和导入日志
+- 记录 source format、task family、image root、annotation root、manifest file、split 信息、class map、导入时间、校验结果和导入日志
 
 ### DatasetVersion
 
@@ -163,7 +163,7 @@ dataset-root/
 
 ### 设计目标
 
-- 统一平台内部对样本、类别和标注的治理方式
+- 统一平台内部对样本、类别和标注的管理方式
 - 支撑多种外部格式导入和多种训练视图导出
 - 把 detection、instance segmentation、semantic segmentation、pose 区分为不同任务族，但共享统一的样本与版本管理边界
 
@@ -245,7 +245,7 @@ dataset-root/
 
 ### 字段级 JSON Schema 草案
 
-以下草案用于把 canonical annotation schema 进一步收敛成字段级契约，便于后续拆到 shared-contracts 或独立 schema 文件中。当前目标是定义稳定字段，而不是穷尽所有扩展属性。
+以下草案继续把 canonical annotation schema 收成字段级规则，后续可以放到 contracts 或独立 schema 文件中。当前目标是先把稳定字段定清楚，而不是一次列完所有扩展属性。
 
 ```json
 {
@@ -818,7 +818,7 @@ dataset-root/
 
 - 该草案定义的是冻结后的 DatasetVersion canonical payload，而不是原始导入包结构
 - capture_metadata、attributes 和 attributes_schema 暂时保留开放扩展，避免过早把现场场景字段写死
-- semantic segmentation 允许 category_id 为空，因为单个 mask 可能承载多类像素映射
+- semantic segmentation 允许 category_id 为空，因为单个 mask 可能表示多类像素映射
 - 训练导出视图应从这个 canonical payload 派生，而不是反向把某个导出格式当成权威源
 
 ## 导入校验规则
@@ -900,18 +900,18 @@ dataset-root/
 
 更细的导出 profile 命名、目录结构和模型家族映射见 [docs/architecture/model-family-export-profiles.md](model-family-export-profiles.md)。
 
-## 推荐落位
+## 建议目录位置
 
-- shared-contracts/datasets/canonical：放 canonical annotation schema 定义
-- shared-contracts/datasets/imports：放外部格式 profile 与导入声明结构
-- shared-contracts/datasets/exports：放训练导出视图契约
+- contracts/datasets/canonical：放 canonical annotation schema 定义
+- contracts/datasets/imports：放外部格式 profile 与导入声明结构
+- contracts/datasets/exports：放训练导出视图规则
 - adapters/object-store/datasets/source：放原始导入包或原始目录归档
 - adapters/object-store/datasets/canonical：放冻结后的统一版本内容
 - adapters/object-store/datasets/exports：放按需生成的训练导出视图
 
 ## 推荐后续文档
 
-- [docs/architecture/data-and-artifacts.md](data-and-artifacts.md)
+- [docs/architecture/data-and-files.md](data-and-files.md)
 - [docs/architecture/model-family-export-profiles.md](model-family-export-profiles.md)
 - [docs/architecture/project-structure.md](project-structure.md)
 - [docs/architecture/backend-service.md](backend-service.md)

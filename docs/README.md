@@ -8,13 +8,13 @@
 
 ## 文档分层
 
-- 根目录 [AGENTS.md](../AGENTS.md) 负责项目级长期约束、技术基线、agent 路由和文档入口
-- [docs/documentation-remediation-roadmap.md](documentation-remediation-roadmap.md) 负责文档整改路线、优先级和维护规则
-- [docs/architecture/README.md](architecture/README.md) 负责架构与模块边界类长期参考文档
-- [docs/api/README.md](api/README.md) 负责 REST API、WebSocket、ZeroMQ 和公开契约文档
-- [docs/deployment/README.md](deployment/README.md) 负责开发环境、运行时、打包、安装和部署文档
-- [docs/plugins/README.md](plugins/README.md) 负责插件、流程节点和扩展机制文档
-- [docs/decisions/README.md](decisions/README.md) 负责架构决策记录和关键取舍沉淀
+- 根目录 [AGENTS.md](../AGENTS.md) 说明项目长期约束、技术基线、agent 路由和文档入口
+- [docs/documentation-remediation-roadmap.md](documentation-remediation-roadmap.md) 说明文档整改顺序和维护规则
+- [docs/architecture/README.md](architecture/README.md) 汇总架构和模块边界文档
+- [docs/api/README.md](api/README.md) 汇总 REST API、WebSocket、ZeroMQ 和公开接口文档
+- [docs/deployment/README.md](deployment/README.md) 汇总开发环境、运行时、打包、安装和部署文档
+- [docs/plugins/README.md](plugins/README.md) 汇总插件、流程节点和扩展机制文档
+- [docs/decisions/README.md](decisions/README.md) 汇总架构决策记录
 
 ## 保存原则
 
@@ -24,6 +24,15 @@
 - 文档按主题和边界组织，不按个人或临时任务组织
 - 对版本敏感的内容必须明确适用范围或迁移说明
 
+## 命名和写法规则
+
+- 模块名、目录名、对象名尽量用短词和常见词，例如 models、files、contracts、datasets
+- 少用偏抽象或偏绕的词，除非是在说明外部标准
+- 句子直接写“做什么”“不做什么”“放什么”，尽量不要写得像汇报材料
+- 中文说明尽量直白，英文命名也走同一规则，不为了显得正式去造复杂词
+- Python 代码默认写中文注释，名词保持英文不变；模块、类、方法、参数、字段和属性都要说明
+- Python 注释规则通过 [.github/instructions/python-comments.instructions.md](../.github/instructions/python-comments.instructions.md) 自动应用到 Python 文件
+
 ## 推荐阅读顺序
 
 1. [AGENTS.md](../AGENTS.md)
@@ -32,18 +41,19 @@
 4. [docs/architecture/system-overview.md](architecture/system-overview.md)
 5. [docs/architecture/project-structure.md](architecture/project-structure.md)
 6. [docs/architecture/backend-service.md](architecture/backend-service.md)
-7. [docs/architecture/frontend-web-ui.md](architecture/frontend-web-ui.md)
-8. [docs/architecture/data-and-artifacts.md](architecture/data-and-artifacts.md)
-9. [docs/architecture/dataset-import-spec.md](architecture/dataset-import-spec.md)
-10. [docs/architecture/model-family-export-profiles.md](architecture/model-family-export-profiles.md)
-11. [docs/architecture/plugin-system.md](architecture/plugin-system.md)
-12. 根据任务继续进入 API、部署、插件或决策文档
+7. [docs/architecture/yolox-module-design.md](architecture/yolox-module-design.md)
+8. [docs/architecture/frontend-web-ui.md](architecture/frontend-web-ui.md)
+9. [docs/architecture/data-and-files.md](architecture/data-and-files.md)
+10. [docs/architecture/dataset-import-spec.md](architecture/dataset-import-spec.md)
+11. [docs/architecture/model-family-export-profiles.md](architecture/model-family-export-profiles.md)
+12. [docs/architecture/plugin-system.md](architecture/plugin-system.md)
+13. 根据任务继续进入 API、部署、插件或决策文档
 
 ## 文档维护建议
 
-- 仓库级入口文档控制在“约束与导航”范围内，不承载详细方案展开
+- 仓库级入口文档控制在“约束与导航”范围内，不展开详细方案
 - 架构文档聚焦结构边界、依赖方向和模块职责，不混入实现教程
-- API 文档聚焦公开契约，不混入内部实现说明
+- API 文档只写公开接口规则，不混入内部实现说明
 - 部署文档聚焦运行环境、目录布局、启动方式和排障，不混入架构取舍背景
 - 决策文档专门记录为什么做出某个方案选择，以及被放弃的备选方案
 

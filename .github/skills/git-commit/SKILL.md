@@ -144,7 +144,7 @@ scope 建议：
 - 优先使用仓库中真实存在的模块、目录或主题名
 - 文档改动可用 `architecture`、`deployment`、`plugins`、`api` 等
 - 前端改动可用 `web-ui`、`frontend`
-- 后端改动可用 `backend-service`、`workers`、`model-registry` 等
+- 后端改动可用 `backend-service`、`workers`、`models` 等
 - 如果没有稳定 scope，可省略 scope
 
 生成规则：

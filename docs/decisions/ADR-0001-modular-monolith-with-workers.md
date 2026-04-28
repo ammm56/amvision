@@ -12,7 +12,7 @@
 
 - backend-service 作为统一服务入口承担元数据、任务编排和公开接口
 - 训练、推理、转换和流程执行通过独立 worker 或执行器承担
-- 模块边界优先通过 domain、application、shared-contracts 和稳定接口维持，而不是通过早期强制的网络微服务拆分维持
+- 模块边界优先通过 domain、application、contracts 和稳定接口维持，而不是通过早期强制的网络微服务拆分维持
 
 ## 备选方案
 

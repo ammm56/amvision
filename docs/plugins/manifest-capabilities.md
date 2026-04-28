@@ -1,14 +1,14 @@
-# 插件 Manifest 与 Capability 规范
+# 插件 Manifest 和 Capability 说明
 
 ## 文档目的
 
-本文档用于细化插件 manifest 的结构、字段含义、capability 模型和权限边界，作为插件注册、启用、兼容性检查和治理的统一依据。
+本文档用于细化插件 manifest 的结构、字段含义、capability 模型和权限边界，作为插件注册、启用、兼容性检查和管理的基本规则。
 
 ## 适用范围
 
 - 插件 manifest 必填字段与推荐字段
 - capability 分类、permission scope 与依赖声明
-- 版本兼容性、超时和启停治理要求
+- 版本兼容性、超时和启停管理要求
 - 与 backend-service、PluginLoader 和节点目录的关系
 
 ## 总体原则
@@ -81,7 +81,7 @@ enabledByDefault: false
 ### capability 的职责
 
 - 声明插件可参与的后端服务或 worker 能力
-- 提供前端展示、筛选和治理的基础标签
+- 提供前端展示、筛选和管理的基础标签
 - 为启用检查、权限检查和兼容性检查提供依据
 
 ### capability 建议前缀
@@ -99,8 +99,8 @@ enabledByDefault: false
 ### capability 粒度建议
 
 - 能力要足够细，避免出现一个大而泛的“all”能力
-- 同时避免过度碎片化到无法治理或无法理解
-- capability 应对齐 backend-service 能治理的资源和事件范围
+- 同时避免过度碎片化到无法管理或无法理解
+- capability 应对齐 backend-service 能管理的资源和事件范围
 
 ## permission scope 模型
 
@@ -132,11 +132,11 @@ enabledByDefault: false
 - pluginDependencies：对其他插件或节点能力的依赖
 - assetRequirements：所需模型、字典、配置模板或前端资源
 
-## timeout 与生命周期治理
+## timeout 和生命周期管理
 
 - manifest 必须提供默认超时策略
 - 对外回调、结果上报和硬件桥接能力应允许更严格的超时限制
-- 插件必须支持 enable、disable、upgrade、rollback 的基本治理动作
+- 插件必须支持 enable、disable、upgrade、rollback 这些基本管理动作
 - 对关键插件建议提供 healthCheck 入口
 
 ## backend-service 的校验职责

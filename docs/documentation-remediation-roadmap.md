@@ -20,7 +20,7 @@
 - [docs/architecture/backend-service.md](architecture/backend-service.md)：后端服务职责、任务状态、调度和状态回写
 - [docs/architecture/frontend-web-ui.md](architecture/frontend-web-ui.md)：浏览器前端 Web UI 的模块、路由、状态和交互边界
 - [docs/api/communication-contracts.md](api/communication-contracts.md)：REST、WebSocket、ZeroMQ 的职责划分
-- [docs/architecture/data-and-artifacts.md](architecture/data-and-artifacts.md)：关键对象关系和可追溯规则
+- [docs/architecture/data-and-files.md](architecture/data-and-files.md)：关键对象关系和可追溯规则
 - [docs/architecture/dataset-import-spec.md](architecture/dataset-import-spec.md)：数据集导入、canonical schema 与任务格式矩阵规范
 - [docs/architecture/runtime-packaging.md](architecture/runtime-packaging.md)：开发运行时、发布运行时和装配层结构
 - [docs/deployment/bundled-python-deployment.md](deployment/bundled-python-deployment.md)：同目录 Python 的部署与回滚流程
@@ -35,7 +35,7 @@
 - API 资源清单、事件类型清单和错误语义细表
 - 部署脚本、健康检查与运维排障模板
 - 插件示例模板与参考实现
-- 集成契约与可观测性专题文档
+- 集成规则与可观测性专题文档
 
 ## 冗余与收敛建议
 
@@ -59,7 +59,7 @@
 
 - backend-service
 - communication-contracts
-- data-and-artifacts
+- data-and-files
 - runtime-packaging
 - bundled-python-deployment
 
@@ -67,7 +67,7 @@
 
 - API 资源明细与事件清单
 - 插件示例模板
-- 集成契约与可观测性文档
+- 集成规则与可观测性文档
 
 ### P2：随实现推进补齐
 
@@ -79,15 +79,15 @@
 
 - 每个稳定主题只有一个主文档负责定义长期边界
 - 入口 README 能准确指向现有主题，不保留已经完成却仍标记为待补的条目
-- 对外公开契约、插件扩展契约和运行时边界都有明确文档归属
+- 对外公开接口规则、插件扩展规则和运行时边界都有明确文档归属
 - 关键对象、关键状态和关键通信边界能在对应文档中独立读懂
 
 ## 文档维护规则
 
 - 架构变化先更新对应主文档，再考虑补充实现说明
-- 已公开的 API、事件、插件能力和部署约束发生变化时，必须同步修改契约文档
+- 已公开的 API、事件、插件能力和部署约束发生变化时，必须同步修改对应文档
 - 发生重要取舍时优先写 ADR，再把稳定结果回写 AGENTS.md 或专题文档
-- 新增文档前先判断是否已有主文档可以承载，避免同主题分裂
+- 新增文档前先判断是否已有主文档可以覆盖，避免同主题分裂
 
 ## 推荐阅读路径
 
@@ -98,7 +98,7 @@
 5. [docs/architecture/backend-service.md](architecture/backend-service.md)
 6. [docs/architecture/frontend-web-ui.md](architecture/frontend-web-ui.md)
 7. [docs/api/communication-contracts.md](api/communication-contracts.md)
-8. [docs/architecture/data-and-artifacts.md](architecture/data-and-artifacts.md)
+8. [docs/architecture/data-and-files.md](architecture/data-and-files.md)
 9. [docs/architecture/dataset-import-spec.md](architecture/dataset-import-spec.md)
 10. [docs/architecture/plugin-system.md](architecture/plugin-system.md)
 11. [docs/plugins/manifest-capabilities.md](plugins/manifest-capabilities.md)

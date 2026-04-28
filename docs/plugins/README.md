@@ -14,7 +14,7 @@
 - 插件 manifest 规范
 - version、config schema、timeout 和禁用机制说明
 - capability scope、permission scope 和依赖约束说明
-- 流程节点输入输出契约
+- 流程节点输入输出规则
 - 硬件桥接插件和协议适配插件的边界说明
 - 模块连接插件和 custom nodes 扩展说明
 - 插件安装、加载、回滚和兼容性说明

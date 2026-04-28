@@ -28,8 +28,8 @@
 - 本项目采用前后端分离架构，前端界面与后端服务通过版本化 REST API 和 WebSocket 交互
 - 本项目是独立视觉处理后端服务，不承担相机、PLC、IO 传感器、机械臂等外部硬件的直接连接和驱动职责
 - 图像、视频流、任务触发、结果回传和联动信号通过界面或外部系统经协议交互完成
-- 上位机、采集系统、MES、PLC 网关、设备代理系统等属于外部系统，本项目只定义协议边界和集成契约
-- 上位机和其他外部系统原则上与前端共用同一套公开通信边界，即 REST API、WebSocket 和版本化契约
+- 上位机、采集系统、MES、PLC 网关、设备代理系统等属于外部系统，本项目只定义协议边界和集成接口规则
+- 上位机和其他外部系统原则上与前端共用同一套公开通信规则，即 REST API、WebSocket 和版本化接口规则
 - 设备集成在本文档中指“与外部系统的协议协作”，不指“项目直接接入硬件”
 - 在 standalone 或 workstation 的同机本地部署中，可按需要补充 ZeroMQ 作为本地进程间通信方式，但不替代公开接口边界
 - 如确有现场直连相机、PLC、传感器等需求，应通过独立插件在受控边界中实现，而不是进入核心平台主链路
@@ -40,11 +40,11 @@
 
 ## 最小框架视图
 
-- frontend/web-ui：浏览器前端界面，承载页面、工作流和可视化结果
-- backend/service：统一后端服务入口，承载 API、状态、任务编排和治理规则
-- backend/workers：后台 worker，承载训练、推理、转换和流程执行
-- plugins：扩展层，承载节点、回调、后处理和协议适配能力
-- runtimes + packaging：运行时与交付层，承载开发环境、发布运行时和发行结构
+- frontend/web-ui：浏览器前端，放页面、工作流和结果查看
+- backend/service：后端入口，处理 API、状态和任务安排
+- backend/workers：后台 worker，跑训练、推理、转换和流程
+- plugins：扩展层，放节点、回调、后处理和协议适配
+- runtimes + packaging：运行和发布相关内容
 
 ```text
 操作人员 / 工程人员 / 外部系统 / 模型产物 / 插件
@@ -58,7 +58,7 @@ frontend/web-ui    protocol integration boundary
                                                v
                                       backend/service
                                                |
-                                                                 任务提交 / 元数据 / 状态编排 / 契约校验
+                                                                 任务提交 / 元数据 / 状态编排 / 规则检查
                                   +------------+-------------+
                                   |                          |
                                   v                          v
@@ -80,74 +80,74 @@ frontend/web-ui    protocol integration boundary
 
 ### frontend/web-ui
 
-- 承载浏览器前端、工作站和现场操作界面
+- 放浏览器前端、工作站和现场操作界面
 - 提供数据集、任务、模型、部署、外部系统集成和流程编排等界面能力
 - 作为独立前端工程存在，不与后端内部模块混合部署逻辑
 - 通过版本化 REST API、WebSocket 和任务状态流与后端服务协作
 
 ### backend/service
 
-- 承载统一后端服务，是元数据、任务编排和外部接口的统一入口
+- 是统一后端入口，处理元数据、任务安排和对外接口
 - 管理项目、数据集、任务、模型、部署实例、集成端点、流程模板和插件记录
 - 为浏览器前端、上位机和其他外部系统提供统一的公开通信边界
-- 协调 workers、适配器和公开契约，避免前端或外部直接耦合内部执行逻辑
+- 协调 workers、适配器和公开接口规则，避免前端或外部直接耦合内部执行逻辑
 
 ### backend/workers
 
-- 承载训练、验证、推理、转换和流程执行等重任务
+- 跑训练、验证、推理、转换和流程这些重任务
 - 作为后台 worker 运行，接受后端服务调度并回写任务状态和结果
 - 依赖运行时和插件体系完成模型执行、OpenCV 流程和后处理扩展
 
-### backend/shared-contracts
+### backend/contracts
 
-- 承载 API、事件、artifact、插件和协议集成契约
-- 为后端服务、workers、插件和前端提供稳定的共享边界
-- 作为版本化演进的核心约束层
+- 放 API、事件、文件规则、插件规则和集成规则
+- 给后端服务、workers、插件和前端提供共用格式
+- 这里的内容一旦公开，就尽量保持稳定
 
 ### backend/adapters
 
-- 承载数据库、对象存储、队列、缓存和协议通信等基础设施接入
+- 接数据库、对象存储、队列、缓存和协议通信
 - 屏蔽具体 SQLite、文件系统、本地队列、ZeroMQ 和其他通信协议实现差异
 
 ### runtimes
 
-- 承载 conda 开发环境定义和发布时同目录 Python 运行时
+- 放 conda 开发环境定义和发布时同目录 Python 运行时
 - 管理服务、worker 和维护脚本的统一启动入口
 - 管理运行时依赖、兼容性和目标平台差异边界
 
 ### plugins
 
-- 承载流程节点、后处理插件、协议适配扩展、硬件桥接扩展和模块连接扩展
-- 通过 manifest 和契约接入平台，不直接侵入后端服务内部实现
+- 放流程节点、后处理插件、协议适配扩展、硬件桥接扩展和模块连接扩展
+- 通过 manifest 和接口规则接入平台，不直接侵入后端服务内部实现
 - 在节点编辑器中与核心节点统一注册和展示，方向上向 ComfyUI custom nodes 看齐
 - 大量自定义功能以插件形式独立实现、独立加载，可作为节点、hook 或连接器接入平台
 - 插件可连接外部系统、内部模块、任务对象和数据对象，承担触发、处理、回传和联动职责
 
 ### assets
 
-- 承载流程模板、模型配置、默认资源和运行时辅助资产
+- 放流程模板、模型配置、默认资源和运行时辅助资产
 - 为训练、转换、部署和流程编排提供可复用的静态资源基础
 
 ### packaging
 
-- 承载 standalone、workstation、edge 三类发行结构的组装逻辑
+- 放 standalone、workstation、edge 三类发行结构的组装逻辑
 - 将 backend、frontend、runtimes、assets 和必要配置收敛成可分发产物
 
 ## 目录结构与模块层级对应
 
-- 仓库目录结构、层级关系和模块依赖方向由 [docs/architecture/project-structure.md](project-structure.md) 负责详细定义
-- 本文档负责回答“为什么需要这些模块”和“这些模块如何协同完成完整业务链路”
-- project-structure 负责结构静态视图，system-overview 负责流程与能力动态视图
+- 仓库目录结构、层级关系和模块依赖方向见 [docs/architecture/project-structure.md](project-structure.md)
+- 本文档主要回答“为什么要这样分模块”和“这些模块怎么一起工作”
+- project-structure 讲静态结构，system-overview 讲流程和整体功能
 - 任务状态、执行调度与后端服务职责详见 [docs/architecture/backend-service.md](backend-service.md)
-- 对象关系与 artifact 追踪详见 [docs/architecture/data-and-artifacts.md](data-and-artifacts.md)
+- 对象关系与文件追踪详见 [docs/architecture/data-and-files.md](data-and-files.md)
 - 开发运行时与发布装配详见 [docs/architecture/runtime-packaging.md](runtime-packaging.md)
 
 ## 交互关系总则
 
 - 浏览器前端与后端服务之间是标准前后端分离关系，不共享内部模块实现
 - 上位机、MES、采集系统和其他外部系统通过与前端一致的公开边界接入后端
-- REST API 负责请求响应类交互，WebSocket 负责状态推送、日志流和任务事件订阅
-- ZeroMQ 仅用于同机本地部署中的进程间高频通信或低开销消息传递，不作为对外公开契约
+- REST API 用来做请求响应，WebSocket 用来推送状态、日志和任务事件
+- ZeroMQ 只用于同机本地部署中的进程间高频通信或低开销消息传递，不作为对外公开接口规则
 
 ## 整体流程
 
@@ -163,21 +163,21 @@ frontend/web-ui    protocol integration boundary
 1. 从数据集版本和训练配置创建训练任务
 2. 后端服务写入任务定义并提交到 worker
 3. worker 在运行时环境中启动训练、验证和指标采集
-4. 训练结果生成模型产物、指标记录和实验轨迹
+4. 训练结果生成模型文件、指标记录和实验轨迹
 5. 验证结论回写到后端服务，用于后续转换、发布和回滚判断
 
 ### 3. 模型转换与发布流程
 
-1. 基于模型产物选择目标运行时和目标部署平台
+1. 基于模型文件选择目标运行时和目标部署平台
 2. 发起 ONNX、OpenVINO、TensorRT、CoreML 或 ARM NPU 转换任务
 3. 记录转换结果、输入输出约束、精度与 benchmark 信息
-4. 将可部署产物注册为可发布版本，并关联兼容平台和回滚信息
+4. 将可部署文件注册为可发布版本，并关联兼容平台和回滚信息
 
 ### 4. 部署与推理流程
 
 1. 创建部署实例，绑定模型版本、运行时配置和目标运行环境
 2. 通过本地运行时和启动器启动服务或 worker 进程
-3. 前端或外部系统通过 REST API、WebSocket 或约定的协议边界提交图片、视频流或推理请求，worker 完成推理和后处理
+3. 前端或外部系统通过 REST API、WebSocket 或约定好的接口规则提交图片、视频流或推理请求，worker 完成推理和后处理
 4. 后端服务回传推理结果、状态、日志和告警信息
 5. 需要时执行灰度切换、回滚或重新部署
 
@@ -185,7 +185,7 @@ frontend/web-ui    protocol integration boundary
 
 1. 选择模型节点、传统视觉节点、后处理节点、协议集成节点和插件节点
 2. 通过流程模板或节点编辑器定义执行图
-3. 后端服务校验节点契约和资源依赖
+3. 后端服务检查节点输入输出规则和资源依赖
 4. worker 按流程图运行节点链路，并允许插件节点连接内部模块、外部端点和相关数据对象
 5. 模板与节点版本可被追踪、复用和回滚
 
@@ -193,7 +193,7 @@ frontend/web-ui    protocol integration boundary
 
 1. 注册外部系统、协议配置和回调规则
 2. 由上位机、采集系统或其他业务系统提交图片、视频流、批量任务或触发请求，也可由插件定义自定义触发入口
-3. 后端服务根据 REST API、WebSocket 或其他版本化协议契约完成任务创建、状态跟踪和结果分发
+3. 后端服务根据 REST API、WebSocket 或其他版本化接口规则完成任务创建、状态跟踪和结果分发
 4. 结果可经核心链路或插件上报链路回传到前端、上位机、MES、PLC 网关或其他外部系统
 5. 发生异常时支持禁用集成端点、切换回调策略、停用插件或回滚模型版本
 
@@ -202,7 +202,7 @@ frontend/web-ui    protocol integration boundary
 1. 安装或发现插件包，读取 manifest、capability 和节点定义
 2. 后端服务完成版本校验、依赖校验、权限校验和启用状态登记
 3. 前端节点编辑器读取插件节点目录、参数 schema 和分类信息
-4. worker 在运行时环境中按节点契约执行插件逻辑，并允许插件接入内部模块、外部系统和相关数据流
+4. worker 在运行时环境中按节点输入输出规则执行插件逻辑，并允许插件接入内部模块、外部系统和相关数据流
 5. 插件可实现外部触发、执行完成后的数据上报、结果后处理、回调分发和跨模块衔接逻辑
 6. 插件升级、禁用、回滚后，流程模板与部署引用关系同步更新
 
@@ -222,10 +222,10 @@ frontend/web-ui    protocol integration boundary
 - 训练配置版本化与基线比对
 - 训练产物和日志归档
 
-### 模型与产物能力
+### 模型与文件能力
 
 - 模型注册与版本管理
-- artifact 类型管理
+- 文件类型管理
 - 模型转换、量化和目标平台兼容性记录
 - benchmark、输入输出约束和回滚信息管理
 
@@ -261,7 +261,7 @@ frontend/web-ui    protocol integration boundary
 - 以独立插件形式实现相机、PLC、传感器、机械臂等硬件桥接能力
 - 以独立插件形式实现跨模块事件连接、任务衔接和结果转发能力
 - 对可选插件施加额外权限、隔离、超时和回滚约束
-- 允许插件在受控契约下连接内部模块、外部端点和数据对象，形成可编排的自定义链路
+- 允许插件按受控接口规则连接内部模块、外部端点和数据对象，形成可编排的自定义链路
 
 ### 浏览器前端能力
 
@@ -270,7 +270,7 @@ frontend/web-ui    protocol integration boundary
 - 图像结果查看、检测框叠加和图表可视化
 - 大图像浏览、工作站布局和触屏兼容交互
 
-### 系统治理能力
+### 系统管理功能
 
 - 任务状态流和事件审计
 - 插件和模型版本追踪
@@ -284,7 +284,7 @@ frontend/web-ui    protocol integration boundary
 - DatasetVersion
 - TrainingTask
 - ValidationTask
-- ModelArtifact
+- ModelFile
 - ConversionTask
 - DeploymentInstance
 - InferenceTask
@@ -301,7 +301,7 @@ frontend/web-ui    protocol integration boundary
 2. [docs/architecture/project-structure.md](project-structure.md)
 3. [docs/architecture/backend-service.md](backend-service.md)
 4. [docs/architecture/frontend-web-ui.md](frontend-web-ui.md)
-5. [docs/architecture/data-and-artifacts.md](data-and-artifacts.md)
+5. [docs/architecture/data-and-files.md](data-and-files.md)
 6. [docs/architecture/plugin-system.md](plugin-system.md)
 7. [docs/architecture/runtime-packaging.md](runtime-packaging.md)
 8. 根据任务继续进入 deployment 专题文档

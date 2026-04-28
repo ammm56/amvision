@@ -133,5 +133,5 @@
 ## 推荐后续文档
 
 - [docs/architecture/dataset-import-spec.md](dataset-import-spec.md)
-- [docs/architecture/data-and-artifacts.md](data-and-artifacts.md)
+- [docs/architecture/data-and-files.md](data-and-files.md)
 - [docs/architecture/project-structure.md](project-structure.md)
