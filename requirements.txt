@@ -1,5 +1,6 @@
 
 fastapi[standard]>=0.136
+pytest>=8.3
 
 
 
