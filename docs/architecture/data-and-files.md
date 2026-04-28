@@ -37,7 +37,7 @@
 ### 模型对象
 
 - Model：逻辑模型条目，用来放同一条模型线的身份、业务标签和管理边界
-- ModelVersion：模型的源版本，可来自预训练导入、训练产出或人工上传
+- ModelVersion：模型的源版本，可来自预置预训练模型登记或训练产出
 - ModelBuild：面向特定运行时、硬件平台、精度或部署形态的派生 build，通常由转换任务产生
 
 ### 任务对象
@@ -74,11 +74,11 @@
 - TrainingTask 和 ValidationTask 引用 DatasetVersion 作为输入
 - TrainingTask 产出新的 ModelVersion，并挂接一个或多个 ModelFile
 
-### 预训练导入到模型注册
+### 预置预训练模型登记到模型注册
 
-- 外部预训练模型导入后，应先落为 Project 下的一个 Model
-- 首次导入形成一个 ModelVersion，source kind 标记为 pretrained-import
-- 预训练模型原始权重、配置和来源说明通过 ModelFile 与 FileRef 挂接
+- 开发阶段已放到磁盘中的预训练模型，应先登记为 Project 下的一个 Model
+- 首次登记形成一个 ModelVersion，source kind 标记为 pretrained-reference
+- 预训练模型原始权重、配置和来源说明通过 ModelFile 与 FileRef 挂接，默认直接引用现成磁盘路径
 - 后续微调训练可选择引用该 ModelVersion 作为 warm start 来源
 
 ### 模型到转换
@@ -124,7 +124,7 @@
 ### application 层的典型用例分组
 
 - datasets：导入、切分、冻结、归档和清理 DatasetVersion
-- models：导入预训练模型、登记训练输出、创建版本、建立 lineage、打标签和归档
+- models：登记预置预训练模型、登记训练输出、创建版本、建立 lineage、打标签和归档
 - conversions：提交转换任务、登记 ModelBuild、写入兼容性与 benchmark
 - inference_results：写入 task staging、生成 ResultFile、执行保留或清理策略
 - deployments：把 ModelVersion 或 ModelBuild 绑定到 DeploymentInstance，并维护回滚候选
@@ -161,7 +161,7 @@
 - DatasetImport 负责记录 source format、task type、image root、annotation root、split 信息、class map 和导入日志
 - DatasetVersion 不直接等价于原始 YOLO、COCO、VOC 或其他文件夹结构，而应等价于平台冻结后的统一数据快照
 - 平台内部应维护 canonical annotation schema，用统一字段描述图片、样本、类别、bbox、polygon、mask、keypoints 和元信息
-- 不同模型训练前由 exporter 或 view builder 把 canonical schema 转换为对应训练后端所需的格式，而不是让每个训练后端直接面对各种原始目录结构
+- 不同模型训练前由 exporter 把 canonical schema 转换为对应训练后端所需的格式，而不是让每个训练后端直接面对各种原始目录结构
 
 ### 为什么不能直接靠原始目录结构统一
 
@@ -207,26 +207,26 @@
 
 - 不要求所有模型共享同一种原始文件结构
 - 只要求同一任务家族在平台内部共享同一组逻辑字段和版本管理方式
-- 训练前再按模型后端导出为 YOLO、COCO 或其他特定训练视图
+- 训练前再按模型后端导出为 YOLO、COCO 或其他特定数据集结构
 - 推理和评估结果也可回写到同一逻辑对象体系中，而不是变成新的孤立目录格式
 
-### 模型家族与数据任务的关系
+### 模型与数据任务的关系
 
 - YOLO 系列通常对应 detection、instance-segmentation、pose 等任务族
-- RT-DETR 主要对应 detection，也可沿 detection canonical schema 导出目标训练视图
+- RT-DETR 主要对应 detection，也可沿 detection canonical schema 导出目标数据集结构
 - SAM 更接近 segmentation 与 prompt-driven 交互能力，不应和检测模型简单视为同一训练格式，只能共享更高层的 segmentation 数据对象
 - 因此平台统一的不是“所有模型共用一套原始标注文本”，而是“所有模型先映射到 task family，再共享 canonical dataset schema”
 
 ### 当前手头已有数据时的操作流程
 
 1. 在 Project 下创建 Dataset
-2. 选择导入方式，提供 image root、annotation root 或 manifest file
+2. 通过 FastAPI 上传 zip 数据集压缩包，并提供或确认格式、任务类型、class map 和 split 信息
 3. 让系统自动识别 YOLO / COCO / VOC 等候选格式，并由用户确认 task type、class map 和 split 信息
-4. 系统生成一次 DatasetImport 记录，并把原始输入归档到 datasets/{dataset_id}/source 或导入批次路径
+4. 系统生成一次 DatasetImport 记录，把原始 zip 包和解压 staging 归档到 datasets/{dataset_id}/imports 路径
 5. 系统把原始标签转换为 canonical annotation schema，生成冻结后的 DatasetVersion
-6. 将已有预训练权重导入 models，形成 Model + ModelVersion
+6. 将开发阶段预置在磁盘中的预训练权重登记到 models，形成 Model + ModelVersion
 7. 创建训练任务时，选择 DatasetVersion、任务类型、训练 recipe 和 warm start 的 ModelVersion
-8. 对应训练后端从 canonical schema 导出适配自己的训练视图，再启动训练
+8. 对应训练后端从 canonical schema 导出适配自己的数据集结构，再启动训练
 9. 训练产出登记为新的 ModelVersion，后续如需部署再转换为一个或多个 ModelBuild
 
 ### 对目录结构的建议
@@ -239,7 +239,7 @@
 
 - Model 是逻辑模型容器，不直接等价于某个具体权重文件
 - ModelVersion 是源模型版本，表示一次明确可追踪的模型状态
-- 预训练模型导入后应先形成 ModelVersion，而不是作为游离文件直接给任务使用
+- 预置预训练模型登记后应先形成 ModelVersion，而不是作为游离文件直接给任务使用
 - 训练产出应登记为新的 ModelVersion，并保留训练来源、父版本和输入数据版本关系
 - ModelBuild 是源模型转出来的部署 build，通常对应 ONNX、OpenVINO、TensorRT、CoreML 或特定量化版本
 - ModelVersion 与 ModelBuild 都通过 ModelFile 挂接具体文件，但所在层级不同，不应混成一个对象
@@ -279,7 +279,7 @@
 
 - 每个任务都应能追到输入引用、执行配置、运行时环境、插件版本和结果引用
 - 每个部署都应能追到来源模型、运行时 profile、配置版本和回滚候选
-- 每个 ModelVersion 都应能追到来源类型：pretrained-import、training-output、manual-upload 或 conversion-promotion
+- 每个 ModelVersion 都应能追到来源类型：pretrained-reference 或 training-output；后续再扩展其他来源类型
 - 每个 ModelBuild 都应能追到来源 ModelVersion、目标运行时、目标硬件、精度策略和转换任务
 - 每个流程模板都应能追到节点定义来源和插件版本引用
 - 每个外部回调或上报结果都应能追到原始任务或部署实例
@@ -300,13 +300,18 @@ object-store/
 	└─ {project_id}/
 		├─ datasets/
 		│  └─ {dataset_id}/
-		│     ├─ source/
-		│     └─ versions/
-		│        └─ {dataset_version_id}/
-		│           ├─ manifests/
-		│           ├─ samples/
-		│           ├─ indexes/
-		│           └─ exports/
+		│     ├─ imports/
+		│     │  └─ {dataset_import_id}/
+		│     │     ├─ package.zip
+		│     │     ├─ staging/
+		│     │     └─ logs/
+		│     ├─ versions/
+		│     │  └─ {dataset_version_id}/
+		│     │     ├─ manifests/
+		│     │     ├─ samples/
+		│     │     └─ indexes/
+		│     └─ exports/
+		│        └─ {dataset_export_id}/
 		├─ models/
 		│  └─ {model_id}/
 		│     ├─ versions/
@@ -339,9 +344,9 @@ object-store/
 
 ### 预训练模型放哪里
 
-- 预训练模型不作为“系统公共裸文件夹”直接使用，而应先导入到某个 Project 的 models
-- 导入后形成 Model + ModelVersion，source kind 标记为 pretrained-import
-- 原始权重、配置和许可说明挂到 ModelFile 与 FileRef，物理内容放在 models/{model_id}/versions/{model_version_id}/source 下
+- 预训练模型默认在开发阶段按模型目录预置到磁盘，不通过上传接口进入平台
+- 平台只登记这些现成文件的引用关系，形成 Model + ModelVersion，source kind 标记为 pretrained-reference
+- 原始权重、配置和许可说明挂到 ModelFile 与 FileRef，物理内容默认保持在预置目录或本地运行时目录中
 
 ### 训练后模型放哪里
 
@@ -365,7 +370,7 @@ object-store/
 
 - 数据集、模型、部署、任务和结果都先按 Project 归属，再按对象 id 管理，避免直接按用户名或日期裸分目录
 - 逻辑对象用数据库做权威索引，路径只做存储组织，不做业务主键
-- 预训练导入、训练产出、转换产出和推理结果分别对应不同对象层级，避免都塞进 ModelFile 一个层里
+- 预置模型登记、训练产出、转换产出和推理结果分别对应不同对象层级，避免都塞进 ModelFile 一个层里
 - 清理策略分三类：dataset archive、task staging cleanup、file retention，不混用同一规则
 - UI 和 API 默认展示 Model -> ModelVersion -> ModelBuild 的三级结构，而不是直接暴露底层文件树
 

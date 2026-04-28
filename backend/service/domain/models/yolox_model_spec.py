@@ -29,14 +29,14 @@ class YoloXModelSpec:
     - model_name：平台中的模型名。
     - supported_tasks：支持的任务类型列表。
     - supported_scales：支持的模型 scale 列表。
-    - default_export_profile：默认训练导出 profile。
+    - default_dataset_format：默认数据集导出格式。
     - supported_build_formats：支持登记的 build 格式列表。
     """
 
     model_name: str = "yolox"
     supported_tasks: tuple[YoloXTaskFamily, ...] = ("detection",)
     supported_scales: tuple[YoloXModelScale, ...] = ("nano", "tiny", "s", "m", "l", "x")
-    default_export_profile: str = "coco-detection-v1"
+    default_dataset_format: str = "coco-detection-v1"
     supported_build_formats: tuple[YoloXBuildFormat, ...] = (
         "pytorch-checkpoint",
         "onnx",

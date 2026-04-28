@@ -18,7 +18,7 @@
 
 - 让 YOLOX 成为 amvision 中一个可管理的模型类型，而不是一个独立脚本仓库
 - 让训练、验证、转换和推理都通过统一任务模型接入 backend-service
-- 让数据输入统一建立在 DatasetVersion 和训练导出视图之上，而不是直接依赖本地目录布局
+- 让数据输入统一建立在 DatasetVersion 和数据集导出结果之上，而不是直接依赖本地目录布局
 - 让 checkpoint、ONNX、OpenVINO IR、TensorRT engine 等文件都进入 ModelVersion 与 ModelBuild 的版本链路
 - 让运行时与接口层解耦，避免把模型文件路径、设备选择和前后处理逻辑直接暴露到 API 层
 
@@ -50,9 +50,9 @@
 
 YOLOX 在 amvision 中不应作为 backend-service 的直接依赖实现，而应分散到以下三个层面：
 
-- domain 与 application：处理模型规则、训练导出视图、文件登记、转换规划和部署校验
+- domain 与 application：处理模型规则、数据集导出、文件登记、转换规划和部署校验
 - workers：跑训练、验证、转换和推理
-- contracts：放训练导出视图、文件命名、运行时输入输出规则
+- contracts：放数据集导出格式、文件命名、运行时输入输出规则
 
 backend-service 只处理任务、元数据和状态，不直接持有 YOLOX 的底层训练器或 OpenVINO 会话。
 
@@ -60,11 +60,11 @@ backend-service 只处理任务、元数据和状态，不直接持有 YOLOX 的
 
 ### 1. 先拆模型信息，再拆执行逻辑
 
-YOLOX 的模型规格、任务类型、推荐导出 profile、支持的 build 类型，应先成为稳定对象，再决定如何执行训练和推理。
+YOLOX 的模型规格、任务类型、默认数据集导出格式、支持的 build 类型，应先成为稳定对象，再决定如何执行训练和推理。
 
 ### 2. 先统一数据入口，再复用训练器
 
-YOLOX 训练不能再直接读取项目内 datasets 目录，而应由 DatasetVersion 先导出成 YOLOX 训练视图，再交给训练 worker。
+YOLOX 训练不能再直接读取项目内 datasets 目录，而应由 DatasetVersion 先导出成目标数据集格式，再交给训练 worker。
 
 ### 3. 先统一文件登记，再接转换链路
 
@@ -89,7 +89,7 @@ backend/
 ├─ service/
 │  ├─ application/
 │  │  ├─ datasets/
-│  │  │  └─ yolox_export_view_builder.py
+│  │  │  └─ dataset_export.py
 │  │  ├─ models/
 │  │  │  └─ yolox_model_service.py
 │  │  ├─ conversions/
@@ -115,7 +115,7 @@ backend/
 └─ contracts/
    ├─ datasets/
    │  └─ exports/
-   │     └─ yolox_detection_profile.py
+   │     └─ coco_detection_export.py
    └─ files/
       └─ yolox_model_files.py
 ```
@@ -127,7 +127,7 @@ backend/
 - 定义 YOLOX 作为一个模型类型的稳定规格
 - 定义支持的 model scale，例如 nano、tiny、s、m、l、x
 - 定义支持的任务族范围，第一阶段聚焦 detection
-- 定义默认 export profile 与支持的转换目标
+- 定义默认数据集导出格式与支持的转换目标
 
 ### backend/service/domain/files/yolox_file_types.py
 
@@ -140,15 +140,15 @@ backend/
 - 明确训练任务、转换任务、推理任务需要哪些平台对象引用
 - 避免 worker 直接接收零散 CLI 参数
 
-### backend/service/application/datasets/yolox_export_view_builder.py
+### backend/service/application/datasets/dataset_export.py
 
-- 把 detection 类型的 DatasetVersion 导出成 YOLOX 可消费的训练视图
-- 生成稳定的类别顺序、样本 split、标签格式和导出 manifest
+- 把 detection 类型的 DatasetVersion 导出成指定格式的数据集结果
+- 第一阶段先落 coco-detection-v1，生成稳定的类别顺序、样本 split、目录和 annotation payload
 - 不直接训练模型
 
 ### backend/service/application/models/yolox_model_service.py
 
-- 处理 YOLOX 预训练导入、训练输出登记和模型规格查询
+- 处理磁盘中预置的 YOLOX 预训练模型登记、训练输出登记和模型规格查询
 - 把训练输出转成 ModelVersion 和关联文件记录
 - 不直接执行训练
 
@@ -166,7 +166,7 @@ backend/
 ### backend/workers/training/yolox_trainer_runner.py
 
 - 执行训练任务
-- 内部可复用现有 trainer 逻辑，但输入必须来自结构化任务规格和导出视图目录
+- 内部可复用现有 trainer 逻辑，但输入必须来自结构化任务规格和数据集导出目录
 - 输出必须回写为文件记录和训练摘要，而不是只写本地目录
 
 ### backend/workers/inference/yolox_inference_runner.py
@@ -187,11 +187,11 @@ backend/
 - 定义统一的推理请求、推理结果和运行时会话抽象
 - 用于隔离 OpenVINO、ONNXRuntime、TensorRT 等具体实现差异
 
-### backend/contracts/datasets/exports/yolox_detection_profile.py
+### backend/contracts/datasets/exports/coco_detection_export.py
 
-- 定义 YOLOX detection 导出视图的稳定 profile
-- 约束类别顺序、目录布局、标签表达和 manifest 字段
-- 作为 DatasetVersion 到训练视图的共享规则
+- 定义 coco-detection-v1 的稳定格式
+- 约束类别顺序、目录布局、annotation 文件和最小 COCO payload 字段
+- 作为 DatasetVersion 到 COCO detection 数据集导出的共享规则
 
 ### backend/contracts/files/yolox_model_files.py
 
@@ -200,16 +200,16 @@ backend/
 
 ## 关键对象映射
 
-### DatasetVersion -> YOLOX 训练视图
+### DatasetVersion -> YOLOX 数据集导出
 
 - 平台权威输入始终是 DatasetVersion
-- YOLOX 训练只消费由 export view builder 派生出的 detection 训练视图
-- 导出 profile 第一阶段优先对齐 [model-family-export-profiles.md](model-family-export-profiles.md) 中的 coco-detection-v1
+- YOLOX 训练只消费由 dataset exporter 生成的 coco-detection-v1 数据集导出结果
+- 导出格式第一阶段优先对齐 [dataset-export-formats.md](dataset-export-formats.md) 中的 coco-detection-v1
 
 ### ModelVersion
 
 - 表示一个 YOLOX 源模型版本
-- 可来源于预训练导入或训练输出
+- 可来源于预置预训练模型登记或训练输出
 - 至少挂接 checkpoint 文件、训练摘要和类别映射信息
 
 ### ModelBuild
@@ -229,7 +229,7 @@ backend/
 ### 训练链路
 
 1. DatasetVersion 冻结完成
-2. 创建 YOLOX 训练导出视图
+2. 创建 YOLOX 数据集导出结果
 3. 创建 TrainingTask
 4. training worker 读取结构化任务规格并执行训练
 5. 训练输出登记为新的 ModelVersion 与关联文件记录
@@ -255,7 +255,7 @@ backend/
 
 - detection 任务族
 - YOLOX 模型基础信息
-- DatasetVersion 到 YOLOX detection 训练视图的规则骨架
+- DatasetVersion 到 coco-detection-v1 数据集导出的规则骨架
 - 训练、推理、转换三类 worker runner 的接口骨架
 - checkpoint、onnx、openvino-ir 三类文件与 build 骨架
 
@@ -295,4 +295,4 @@ backend/
 - [backend-service.md](backend-service.md)
 - [data-and-files.md](data-and-files.md)
 - [dataset-import-spec.md](dataset-import-spec.md)
-- [model-family-export-profiles.md](model-family-export-profiles.md)
+- [dataset-export-formats.md](dataset-export-formats.md)

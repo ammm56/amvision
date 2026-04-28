@@ -29,6 +29,8 @@
 - 本地部署优先，不强依赖云基础设施
 - 不在项目早期拆成大量微服务，优先模块化单体 + 独立执行器
 - FastAPI 处理后端服务和集成面，训练、推理、转换、流程执行通过任务系统或 worker 处理
+- 数据集导入默认通过 FastAPI 接收 zip 压缩包，服务端负责解压、格式校验、统一化并落到本地磁盘的通用结构
+- 预训练模型默认在开发阶段按模型目录预置到磁盘，平台只登记引用关系，不提供上传接口
 - 前端优先服务于浏览器界面、工作站和现场操作界面，不按营销站或通用内容站的思路设计
 - 项目不直接连接相机、PLC、IO 传感器或其他外部硬件；图像、视频流、触发信号和结果回传通过界面或外部系统经协议交互完成
 - 如确有直连硬件或特殊模块连接需求，应通过独立插件在受控边界中实现，而不是写入核心平台主链路
@@ -40,7 +42,7 @@
 - SQLite 作为默认开发数据库，必须兼容 MySQL/PostgreSQL 迁移
 - REST API、WebSocket、ZeroMQ
 - OpenCV、supervision、PyTorch 及相关视觉模型生态
-- YOLOX、YOLOv8/11/26、SAM2/3、QwenVL、RT-DETR 等模型家族
+- YOLOX、YOLOv8/11/26、SAM2/3、QwenVL、RT-DETR 等模型
 - ONNX Runtime、OpenVINO、TensorRT、CoreML、ARM NPU 相关转换与运行时适配
 - 前端界面默认使用 Vue 3 + TypeScript + Vite，状态管理与路由优先采用 Pinia、Vue Router，并按需接入 ECharts、VueUse、Vue Flow 或等价方案
 

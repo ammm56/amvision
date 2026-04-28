@@ -15,8 +15,8 @@
 - [docs/architecture/frontend-web-ui.md](frontend-web-ui.md)：浏览器前端 Web UI 的模块划分、路由结构、状态组织和交互边界
 - [docs/architecture/plugin-system.md](plugin-system.md)：插件体系、扩展边界、节点模型和 ComfyUI 对齐方向
 - [docs/architecture/data-and-files.md](data-and-files.md)：关键对象、文件引用和版本关系
-- [docs/architecture/dataset-import-spec.md](dataset-import-spec.md)：DatasetImport、canonical annotation schema、任务族格式矩阵和训练导出视图规范
-- [docs/architecture/model-family-export-profiles.md](model-family-export-profiles.md)：模型家族到 export profile 的映射、profile 命名和目录结构约定
+- [docs/architecture/dataset-import-spec.md](dataset-import-spec.md)：DatasetImport、canonical annotation schema、任务族格式矩阵和数据集导出规范
+- [docs/architecture/dataset-export-formats.md](dataset-export-formats.md)：数据集导出格式列表、格式命名和模型默认格式映射
 - [docs/architecture/runtime-packaging.md](runtime-packaging.md)：开发运行时、同目录 Python 发布运行时和发行装配结构
 
 ## 建议后续文档
@@ -41,7 +41,7 @@
 5. [docs/architecture/frontend-web-ui.md](frontend-web-ui.md)
 6. [docs/architecture/data-and-files.md](data-and-files.md)
 7. [docs/architecture/dataset-import-spec.md](dataset-import-spec.md)
-8. [docs/architecture/model-family-export-profiles.md](model-family-export-profiles.md)
+8. [docs/architecture/dataset-export-formats.md](dataset-export-formats.md)
 9. [docs/architecture/plugin-system.md](plugin-system.md)
 10. [docs/architecture/runtime-packaging.md](runtime-packaging.md)
 11. 按任务继续进入集成规则或日志专题文档

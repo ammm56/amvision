@@ -2,7 +2,7 @@
 
 ## 文档目的
 
-本文档用于正式定义平台中 DatasetImport、DatasetVersion、canonical annotation schema、训练导出视图和外部数据集格式兼容规则。
+本文档用于正式定义平台中 DatasetImport、DatasetVersion、canonical annotation schema、数据集导出和外部数据集格式兼容规则。
 
 本文档解决的问题是“外部数据集如何被导入、校验、归档、标准化并供不同模型训练后端复用”，而不是描述具体训练代码实现。
 
@@ -12,14 +12,14 @@
 - 外部数据集格式识别、显式声明和导入校验规则
 - canonical annotation schema 的统一字段与任务族拆分
 - detection、instance segmentation、semantic segmentation、pose 的导入格式与导出格式矩阵
-- DatasetVersion 与训练导出视图的关系
+- DatasetVersion 与数据集导出的关系
 
 ## 非目标
 
 - 不定义具体训练框架内部的数据加载代码
 - 不定义标注工具的交互流程
 - 不承诺当前仓库已经完整实现本文档列出的所有格式支持
-- 不把某个单一模型家族的文件结构上升为整个平台内部的唯一数据结构
+- 不把某个单一模型的文件结构上升为整个平台内部的唯一数据结构
 
 ## 核心术语
 
@@ -42,11 +42,11 @@
 - 平台内部统一的数据与标注逻辑表示
 - 用统一字段描述样本、类别、任务类型和任务特定标注载荷
 
-### 训练导出视图
+### DatasetExport
 
-- 从 DatasetVersion 按训练后端或模型家族派生出的格式化输出
+- 从 DatasetVersion 按 format id 派生出的格式化输出
 - 可以是临时生成，也可以缓存到 ObjectStore 的 exports 路径
-- 训练导出视图不替代 DatasetVersion 的权威地位
+- DatasetExport 不替代 DatasetVersion 的权威地位
 
 ## 总体原则
 
@@ -55,6 +55,8 @@
 - DatasetVersion 一旦冻结，应优先视为不可变快照
 - 原始导入内容、统一版本内容和训练导出内容分层存放，不混用目录
 - 不同模型共享的是 task family 和 canonical schema，不是完全相同的原始标注文件结构
+- 当前阶段默认通过 FastAPI 接收 zip 数据集压缩包，服务端负责解压、校验、canonical 化和本地磁盘落盘
+- 训练、验证和推理默认读取平台内部统一结构；只有在导出时才回到目标模型需要的目录和文件格式
 
 ## 对象链与生命周期
 
@@ -63,18 +65,28 @@ Project
   -> Dataset
     -> DatasetImport
       -> DatasetVersion
-        -> export views for training backends
+      -> DatasetExport
 ```
 
 ### 生命周期阶段
 
-1. discovered：接收导入源并形成待导入记录
+1. discovered：接收 zip 数据集压缩包并形成待导入记录
 2. detected：产生一个或多个候选格式判断
 3. confirmed：确认 format type、task family、class map、split strategy
 4. validated：完成结构与内容校验
 5. canonicalized：转成 canonical annotation schema
 6. frozen：形成可复用的 DatasetVersion
-7. exported：按需生成训练导出视图
+7. exported：按需生成数据集导出结果
+
+## 实现分层建议
+
+- FastAPI 接口只接收两类输入：导入时上传 zip 数据集压缩包并提供或确认格式；导出时提供 DatasetVersion 和 format id
+- application/datasets/imports 负责接上传、识别格式、解析内容、校验字段并转成 canonical annotation schema
+- 导入流程应先把 zip 包落到本地磁盘的 imports 路径，再解压到 staging，校验通过后写入 DatasetVersion 的统一目录
+- domain/datasets 只保留平台内部通用格式，不直接依赖 COCO、VOC、YOLO、SAM 的原始目录写法
+- application/datasets/exports 负责把 DatasetVersion 按 format id 导出成训练、验证或评估要用的目录和 manifest
+- workers/training 和 workers/validation 只消费数据集导出结果，不直接读取原始导入包
+- contracts/datasets/imports 和 contracts/datasets/exports 分别定义导入格式和导出格式规则，避免把格式细节散落在训练代码里
 
 ## 导入输入模型
 
@@ -97,11 +109,19 @@ Project
 
 ### 推荐支持的外部输入形态
 
+- zip 压缩包，内部包含 YOLO、COCO、VOC、mask 目录或其他标准数据集结构
 - 图像目录 + 标注目录
 - 图像目录 + 单一 manifest 文件
 - 图像目录 + mask 目录
 - 已包含 split 的目录树
 - 未包含 split，需要导入时切分的数据包
+
+## 本地存储分层
+
+- imports：保存原始 zip 包、导入日志和解压 staging
+- versions：保存 canonical 化后的统一数据结构、索引和统计信息
+- exports：保存按 format id 生成的数据集导出结果
+- 训练、验证和推理默认读取 versions，不直接读取 imports 下的原始压缩包或解压目录
 
 ## 推荐的外部导入目录模式
 
@@ -164,7 +184,7 @@ dataset-root/
 ### 设计目标
 
 - 统一平台内部对样本、类别和标注的管理方式
-- 支撑多种外部格式导入和多种训练视图导出
+- 支撑多种外部格式导入和多种数据集导出格式
 - 把 detection、instance segmentation、semantic segmentation、pose 区分为不同任务族，但共享统一的样本与版本管理边界
 
 ### 公共结构
@@ -819,7 +839,7 @@ dataset-root/
 - 该草案定义的是冻结后的 DatasetVersion canonical payload，而不是原始导入包结构
 - capture_metadata、attributes 和 attributes_schema 暂时保留开放扩展，避免过早把现场场景字段写死
 - semantic segmentation 允许 category_id 为空，因为单个 mask 可能表示多类像素映射
-- 训练导出视图应从这个 canonical payload 派生，而不是反向把某个导出格式当成权威源
+- 数据集导出应从这个 canonical payload 派生，而不是反向把某个导出格式当成权威源
 
 ## 导入校验规则
 
@@ -831,13 +851,13 @@ dataset-root/
 - 不同任务族的标签不得在同一 DatasetVersion 中无约束混放
 - 导入失败应产出结构化错误清单，而不是只给笼统异常提示
 
-## 训练导出视图规则
+## 数据集导出规则
 
-- 训练前应从 DatasetVersion 生成面向特定训练后端的导出视图
-- 导出视图可以写入 ObjectStore 的 exports 路径，也可以作为任务级临时产物
-- 导出视图应记录 source dataset version、target backend、target format、class map 和导出时间
+- 训练、验证或评估前应从 DatasetVersion 生成指定格式的数据集导出结果
+- 数据集导出可以写入 ObjectStore 的 exports 路径，也可以作为任务级临时产物
+- 数据集导出应记录 source dataset version、target format、class map 和导出时间
 - 导出失败不应影响既有 DatasetVersion 的稳定性
-- 导出视图默认不作为新的权威数据版本，除非显式发起新的导入或回写流程
+- 数据集导出默认不作为新的权威数据版本，除非显式发起新的导入或回写流程
 
 ## 任务族格式矩阵
 
@@ -853,7 +873,7 @@ dataset-root/
 | 首批导出格式 | YOLO detection, COCO detection |
 | 扩展导出格式 | Pascal VOC xml, backend-specific detection manifest |
 | 典型模型/后端 | YOLOX, YOLOv8 detection, YOLOv11 detection, RT-DETR |
-| 说明 | RT-DETR 与 YOLO 可以共享 detection canonical schema，但训练导出视图通常不同 |
+| 说明 | RT-DETR 与 YOLO 可以共享 detection canonical schema，但数据集导出格式通常不同 |
 
 ### instance segmentation
 
@@ -877,7 +897,7 @@ dataset-root/
 | 首批导出格式 | image+mask directory, semantic segmentation manifest |
 | 扩展导出格式 | backend-specific dataset manifest |
 | 典型模型/后端 | U-Net family, DeepLab family, MMSeg-style pipelines |
-| 说明 | semantic segmentation 的核心是样本级 mask_ref 与类值映射，不应与 instance segmentation 混成同一训练视图 |
+| 说明 | semantic segmentation 的核心是样本级 mask_ref 与类值映射，不应与 instance segmentation 混成同一导出格式 |
 
 ### pose
 
@@ -891,27 +911,27 @@ dataset-root/
 | 典型模型/后端 | YOLO pose, keypoint estimation pipelines |
 | 说明 | pose 除类别外还需要 keypoint schema 与 skeleton 定义，不能只靠 bbox 或类别表描述 |
 
-## 模型家族与导出视图的关系
+## 模型与数据集导出格式的关系
 
-- YOLO 系列通常直接消费 YOLO detection、YOLO segmentation、YOLO pose 导出视图
-- RT-DETR 更适合消费 COCO detection 风格导出视图
-- SAM 相关流程更适合消费 instance segmentation 或 semantic segmentation 的 canonical 数据，再按具体训练或微调工具导出为对应视图
-- 同一 DatasetVersion 可以对应多个训练导出视图，但这些视图都应追溯到同一个冻结版本
+- YOLO 系列通常直接消费 YOLO detection、YOLO segmentation、YOLO pose 数据集导出格式
+- RT-DETR 更适合消费 COCO detection 风格数据集导出格式
+- SAM 相关流程更适合消费 instance segmentation 或 semantic segmentation 的 canonical 数据，再按具体训练或微调工具导出成对应格式
+- 同一 DatasetVersion 可以对应多个数据集导出结果，但这些结果都应追溯到同一个冻结版本
 
-更细的导出 profile 命名、目录结构和模型家族映射见 [docs/architecture/model-family-export-profiles.md](model-family-export-profiles.md)。
+更细的格式命名、目录结构和模型默认格式映射见 [docs/architecture/dataset-export-formats.md](dataset-export-formats.md)。
 
 ## 建议目录位置
 
 - contracts/datasets/canonical：放 canonical annotation schema 定义
 - contracts/datasets/imports：放外部格式 profile 与导入声明结构
-- contracts/datasets/exports：放训练导出视图规则
+- contracts/datasets/exports：放数据集导出格式规则
 - adapters/object-store/datasets/source：放原始导入包或原始目录归档
 - adapters/object-store/datasets/canonical：放冻结后的统一版本内容
-- adapters/object-store/datasets/exports：放按需生成的训练导出视图
+- adapters/object-store/datasets/exports：放按需生成的数据集导出结果
 
 ## 推荐后续文档
 
 - [docs/architecture/data-and-files.md](data-and-files.md)
-- [docs/architecture/model-family-export-profiles.md](model-family-export-profiles.md)
+- [docs/architecture/dataset-export-formats.md](dataset-export-formats.md)
 - [docs/architecture/project-structure.md](project-structure.md)
 - [docs/architecture/backend-service.md](backend-service.md)

@@ -45,7 +45,7 @@
 8. [docs/architecture/frontend-web-ui.md](architecture/frontend-web-ui.md)
 9. [docs/architecture/data-and-files.md](architecture/data-and-files.md)
 10. [docs/architecture/dataset-import-spec.md](architecture/dataset-import-spec.md)
-11. [docs/architecture/model-family-export-profiles.md](architecture/model-family-export-profiles.md)
+11. [docs/architecture/dataset-export-formats.md](architecture/dataset-export-formats.md)
 12. [docs/architecture/plugin-system.md](architecture/plugin-system.md)
 13. 根据任务继续进入 API、部署、插件或决策文档
 
