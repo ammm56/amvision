@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import zipfile
 from collections import defaultdict
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -204,6 +205,11 @@ class SqlAlchemyDatasetImportService:
             import_layout=import_layout,
             package_file=package_file,
         )
+        try:
+            self._validate_persisted_package(import_layout=import_layout, package_size=package_size)
+        except ServiceError:
+            self.dataset_storage.delete_tree(import_layout.import_path)
+            raise
         self.dataset_storage.write_json(
             import_layout.upload_request_path,
             {
@@ -540,6 +546,38 @@ class SqlAlchemyDatasetImportService:
             raise InvalidRequestError("上传 zip 文件不能为空")
         self.dataset_storage.write_bytes(import_layout.package_path, request.package_bytes)
         return len(request.package_bytes)
+
+    def _validate_persisted_package(
+        self,
+        *,
+        import_layout: DatasetImportLayout,
+        package_size: int,
+    ) -> None:
+        """校验已经落盘的上传包是否为有效 zip。
+
+        参数：
+        - import_layout：导入目录布局。
+        - package_size：已经写入的文件大小。
+
+        异常：
+        - 当上传包为空或不是有效 zip 时抛出请求错误。
+        """
+
+        if package_size <= 0:
+            raise InvalidRequestError(
+                "上传 zip 文件不能为空",
+                details={"package_size": package_size},
+            )
+
+        package_path = self.dataset_storage.resolve(import_layout.package_path)
+        if not zipfile.is_zipfile(package_path):
+            raise InvalidRequestError(
+                "当前导入接口只接受有效的 zip 压缩包",
+                details={
+                    "package_path": import_layout.package_path,
+                    "reason": "not a valid zip archive",
+                },
+            )
 
     def _get_dataset_import(self, dataset_import_id: str) -> DatasetImport:
         """读取一个已经落库的 DatasetImport。

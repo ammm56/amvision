@@ -9,7 +9,9 @@
 - [docs/api/current-api.md](current-api.md)：当前已经公开的 REST API、WebSocket 入口、鉴权头和任务事件订阅规则
 - [docs/api/communication-contracts.md](communication-contracts.md)：REST API、WebSocket、ZeroMQ 的职责拆分与事件规则边界
 - [docs/api/datasets-imports.md](datasets-imports.md)：DatasetImport 导入、详情查询、列表查询、task_id 关联和错误语义
+- [docs/api/datasets-exports.md](datasets-exports.md)：DatasetExport 创建、详情查询、列表查询、导出格式和 training 输入边界
 - [docs/api/postman/datasets-imports.postman_collection.json](postman/datasets-imports.postman_collection.json)：当前公开的 system、DatasetImport、tasks 接口 Postman collection
+- [docs/api/postman/datasets-exports.postman_collection.json](postman/datasets-exports.postman_collection.json)：当前公开的 DatasetExport 接口 Postman collection
 - [docs/architecture/backend-service.md](../architecture/backend-service.md)：FastAPI 应用分层、路由拆分、数据库会话、权限和中间件骨架
 
 ## 建议内容

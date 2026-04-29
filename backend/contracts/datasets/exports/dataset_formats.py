@@ -11,6 +11,7 @@ DatasetExportFormatId = Literal[
     "yolo-instance-seg-v1",
     "yolo-pose-v1",
     "coco-detection-v1",
+    "voc-detection-v1",
     "coco-instance-seg-v1",
     "coco-keypoints-v1",
     "semantic-mask-dir-v1",
@@ -24,8 +25,16 @@ SUPPORTED_DATASET_EXPORT_FORMATS: Final[tuple[DatasetExportFormatId, ...]] = (
     "yolo-instance-seg-v1",
     "yolo-pose-v1",
     "coco-detection-v1",
+    "voc-detection-v1",
     "coco-instance-seg-v1",
     "coco-keypoints-v1",
     "semantic-mask-dir-v1",
     "sam-promptable-seg-v1",
+)
+
+
+# 当前已经正式实现并可对外开放的数据集导出格式。
+IMPLEMENTED_DATASET_EXPORT_FORMATS: Final[tuple[DatasetExportFormatId, ...]] = (
+    "coco-detection-v1",
+    "voc-detection-v1",
 )

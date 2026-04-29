@@ -110,6 +110,7 @@ def test_app_startup_initializes_missing_database_tables(tmp_path: Path) -> None
             connection.close()
 
         assert "dataset_imports" in table_names
+        assert "dataset_exports" in table_names
         assert "dataset_versions" in table_names
         assert "models" in table_names
         assert "model_files" in table_names

@@ -6,6 +6,7 @@ from typing import Protocol
 
 from sqlalchemy.sql import Executable
 
+from backend.service.domain.datasets.dataset_export_repository import DatasetExportRepository
 from backend.service.domain.datasets.dataset_import_repository import DatasetImportRepository
 from backend.service.domain.datasets.dataset_version_repository import DatasetVersionRepository
 from backend.service.domain.files.model_file_repository import ModelFileRepository
@@ -18,6 +19,7 @@ class UnitOfWork(Protocol):
     """描述请求级事务与聚合仓储边界。
 
     属性：
+    - dataset_exports：DatasetExport 仓储。
     - dataset_imports：DatasetImport 仓储。
     - datasets：DatasetVersion 聚合仓储。
     - models：Model 聚合仓储。
@@ -26,6 +28,7 @@ class UnitOfWork(Protocol):
     - resource_profiles：ResourceProfile 仓储。
     """
 
+    dataset_exports: DatasetExportRepository
     dataset_imports: DatasetImportRepository
     datasets: DatasetVersionRepository
     models: ModelRepository

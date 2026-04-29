@@ -7,17 +7,23 @@ from pathlib import Path
 
 import pytest
 
+from backend.queue import LocalFileQueueBackend, LocalFileQueueSettings
 from backend.contracts.datasets.exports.coco_detection_export import COCO_DETECTION_DATASET_FORMAT
+from backend.contracts.datasets.exports.voc_detection_export import VOC_DETECTION_DATASET_FORMAT
 from backend.service.application.datasets.dataset_export import (
+    DATASET_EXPORT_QUEUE_NAME,
     DatasetExportRequest,
     SqlAlchemyDatasetExporter,
+    SqlAlchemyDatasetExportTaskService,
 )
+from backend.service.application.tasks.task_service import SqlAlchemyTaskService
 from backend.service.domain.datasets.dataset_version import (
     DatasetCategory,
     DatasetSample,
     DatasetVersion,
     DetectionAnnotation,
 )
+from backend.service.domain.tasks.yolox_task_specs import YoloXTrainingTaskSpec
 from backend.service.infrastructure.db.session import DatabaseSettings, SessionFactory
 from backend.service.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
 from backend.service.infrastructure.object_store.local_dataset_storage import (
@@ -25,6 +31,7 @@ from backend.service.infrastructure.object_store.local_dataset_storage import (
     LocalDatasetStorage,
 )
 from backend.service.infrastructure.persistence.base import Base
+from backend.workers.datasets.dataset_export_queue_worker import DatasetExportQueueWorker
 
 
 def test_export_dataset_generates_minimal_coco_detection_payload(tmp_path: Path) -> None:
@@ -154,6 +161,74 @@ def test_export_dataset_supports_custom_prefix_and_test_split(tmp_path: Path) ->
     assert dataset_storage.resolve("task-runs/training/task-1/dataset-export/images/test/test-1.jpg").is_file()
 
 
+def test_export_dataset_generates_pascal_voc_layout_and_xml(tmp_path: Path) -> None:
+    """验证数据集导出支持 Pascal VOC detection 目录与 XML。"""
+
+    dataset_version = DatasetVersion(
+        dataset_version_id="dataset-version-voc-1",
+        dataset_id="dataset-voc-1",
+        project_id="project-1",
+        categories=(DatasetCategory(category_id=0, name="bolt"),),
+        samples=(
+            DatasetSample(
+                sample_id="sample-1",
+                image_id=1,
+                file_name="train-1.jpg",
+                width=320,
+                height=240,
+                split="train",
+                annotations=(
+                    DetectionAnnotation(
+                        annotation_id="ann-1",
+                        category_id=0,
+                        bbox_xywh=(10.0, 20.0, 30.0, 40.0),
+                    ),
+                ),
+            ),
+        ),
+    )
+    exporter, dataset_storage = _create_exporter_with_storage(tmp_path, dataset_version)
+
+    export_result = exporter.export_dataset(
+        DatasetExportRequest(
+            project_id="project-1",
+            dataset_id="dataset-voc-1",
+            dataset_version_id="dataset-version-voc-1",
+            format_id=VOC_DETECTION_DATASET_FORMAT,
+            include_test_split=False,
+        )
+    )
+
+    assert export_result.format_id == VOC_DETECTION_DATASET_FORMAT
+    assert export_result.split_names == ("train",)
+    assert export_result.sample_count == 1
+    assert export_result.export_path is not None
+    assert export_result.format_manifest is not None
+
+    train_payload = export_result.annotation_payloads_by_split["train"]
+    assert train_payload.documents[0].file_name == "sample-1.jpg"
+    assert train_payload.documents[0].annotation_relative_path == "Annotations/sample-1.xml"
+    assert train_payload.documents[0].objects[0].bbox_xyxy == (10, 20, 40, 60)
+
+    manifest_payload = json.loads(
+        dataset_storage.resolve(export_result.manifest_object_key).read_text(encoding="utf-8")
+    )
+    annotation_xml = dataset_storage.resolve(
+        f"{export_result.export_path}/Annotations/sample-1.xml"
+    ).read_text(encoding="utf-8")
+    image_set_file = dataset_storage.resolve(
+        f"{export_result.export_path}/ImageSets/Main/train.txt"
+    ).read_text(encoding="utf-8")
+
+    assert manifest_payload["format_id"] == VOC_DETECTION_DATASET_FORMAT
+    assert manifest_payload["splits"][0]["image_set_file"].endswith("/ImageSets/Main/train.txt")
+    assert "<name>bolt</name>" in annotation_xml
+    assert "<xmin>10</xmin>" in annotation_xml
+    assert "<ymax>60</ymax>" in annotation_xml
+    assert image_set_file == "sample-1\n"
+    assert dataset_storage.resolve(f"{export_result.export_path}/JPEGImages/sample-1.jpg").is_file()
+
+
 def test_export_dataset_rejects_supported_but_unimplemented_format() -> None:
     """验证导出器会明确拒绝当前未落地的支持格式。"""
 
@@ -177,6 +252,117 @@ def test_export_dataset_rejects_supported_but_unimplemented_format() -> None:
         )
 
     assert COCO_DETECTION_DATASET_FORMAT == "coco-detection-v1"
+
+
+def test_export_task_worker_persists_export_artifact_for_training_input_boundary(
+    tmp_path: Path,
+) -> None:
+    """验证 DatasetExport 任务会把 export artifact 写成 training 唯一输入边界。"""
+
+    dataset_version = DatasetVersion(
+        dataset_version_id="dataset-version-task-1",
+        dataset_id="dataset-9",
+        project_id="project-1",
+        categories=(DatasetCategory(category_id=0, name="bolt"),),
+        samples=(
+            DatasetSample(
+                sample_id="sample-1",
+                image_id=1,
+                file_name="train-1.jpg",
+                width=640,
+                height=480,
+                split="train",
+                annotations=(
+                    DetectionAnnotation(
+                        annotation_id="ann-1",
+                        category_id=0,
+                        bbox_xywh=(1.0, 2.0, 3.0, 4.0),
+                    ),
+                ),
+            ),
+        ),
+    )
+    export_task_service, session_factory, dataset_storage, queue_backend = (
+        _create_export_task_service_with_storage(tmp_path, dataset_version)
+    )
+    try:
+        submission = export_task_service.submit_export_task(
+            DatasetExportRequest(
+                project_id="project-1",
+                dataset_id="dataset-9",
+                dataset_version_id="dataset-version-task-1",
+                format_id=COCO_DETECTION_DATASET_FORMAT,
+            ),
+            created_by="user-1",
+        )
+
+        queued_task = SqlAlchemyTaskService(session_factory).get_task(
+            submission.task_id,
+            include_events=True,
+        )
+        unit_of_work = SqlAlchemyUnitOfWork(session_factory.create_session())
+        try:
+            queued_export = unit_of_work.dataset_exports.get_dataset_export(submission.dataset_export_id)
+        finally:
+            unit_of_work.close()
+
+        assert submission.queue_name == DATASET_EXPORT_QUEUE_NAME
+        assert submission.status == "queued"
+        assert queued_task.task.task_kind == "dataset-export"
+        assert queued_task.task.state == "queued"
+        assert queued_task.task.task_spec["dataset_export_id"] == submission.dataset_export_id
+        assert queued_task.task.task_spec["dataset_version_id"] == "dataset-version-task-1"
+        assert queued_task.task.task_spec["format_id"] == COCO_DETECTION_DATASET_FORMAT
+        assert queued_task.task.result == {}
+        assert queued_export is not None
+        assert queued_export.status == "queued"
+        assert queued_export.task_id == submission.task_id
+        assert queued_export.metadata["queue_task_id"] == submission.queue_task_id
+
+        assert _run_export_worker_once(
+            session_factory=session_factory,
+            dataset_storage=dataset_storage,
+            queue_backend=queue_backend,
+        ) is True
+
+        completed_task = SqlAlchemyTaskService(session_factory).get_task(
+            submission.task_id,
+            include_events=True,
+        )
+        unit_of_work = SqlAlchemyUnitOfWork(session_factory.create_session())
+        try:
+            completed_export = unit_of_work.dataset_exports.get_dataset_export(submission.dataset_export_id)
+        finally:
+            unit_of_work.close()
+
+        assert completed_task.task.state == "succeeded"
+        assert completed_task.task.result["dataset_id"] == "dataset-9"
+        assert completed_task.task.result["dataset_version_id"] == "dataset-version-task-1"
+        assert completed_task.task.result["format_id"] == COCO_DETECTION_DATASET_FORMAT
+        assert completed_task.task.result["manifest_object_key"].endswith("/manifest.json")
+        assert completed_task.task.result["export_path"]
+        assert dataset_storage.resolve(completed_task.task.result["manifest_object_key"]).is_file()
+        assert any(event.message == "dataset export completed" for event in completed_task.events)
+        assert completed_export is not None
+        assert completed_export.status == "completed"
+        assert completed_export.manifest_object_key == completed_task.task.result["manifest_object_key"]
+        assert completed_export.export_path == completed_task.task.result["export_path"]
+        assert completed_export.sample_count == 1
+        assert completed_export.category_names == ("bolt",)
+
+        training_task_spec = YoloXTrainingTaskSpec(
+            project_id="project-1",
+            dataset_export_manifest_key=completed_task.task.result["manifest_object_key"],
+            recipe_id="yolox-default",
+            model_scale="s",
+            output_model_name="yolox-s-bolt",
+        )
+        assert (
+            training_task_spec.dataset_export_manifest_key
+            == completed_task.task.result["manifest_object_key"]
+        )
+    finally:
+        session_factory.engine.dispose()
 
 
 def _create_exporter_with_dataset_versions(
@@ -241,6 +427,81 @@ def _create_exporter_with_storage(
         ),
         dataset_storage,
     )
+
+
+def _create_export_task_service_with_storage(
+    tmp_path: Path,
+    *dataset_versions: DatasetVersion,
+) -> tuple[
+    SqlAlchemyDatasetExportTaskService,
+    SessionFactory,
+    LocalDatasetStorage,
+    LocalFileQueueBackend,
+]:
+    """创建绑定队列后端的 DatasetExport 任务服务。
+
+    参数：
+    - tmp_path：当前测试使用的临时目录。
+    - dataset_versions：初始化要写入数据库的 DatasetVersion 列表。
+
+    返回：
+    - DatasetExport 任务服务、SessionFactory、本地文件存储与队列后端。
+    """
+
+    session_factory = SessionFactory(DatabaseSettings(url="sqlite+pysqlite:///:memory:"))
+    Base.metadata.create_all(session_factory.engine)
+    unit_of_work = SqlAlchemyUnitOfWork(session_factory.create_session())
+    try:
+        for dataset_version in dataset_versions:
+            unit_of_work.datasets.save_dataset_version(dataset_version)
+        unit_of_work.commit()
+    finally:
+        unit_of_work.close()
+
+    dataset_storage = LocalDatasetStorage(
+        DatasetStorageSettings(root_dir=str(tmp_path / "dataset-files"))
+    )
+    for dataset_version in dataset_versions:
+        _seed_dataset_version_files(dataset_storage=dataset_storage, dataset_version=dataset_version)
+
+    queue_backend = LocalFileQueueBackend(
+        LocalFileQueueSettings(root_dir=str(tmp_path / "queue-files"))
+    )
+    return (
+        SqlAlchemyDatasetExportTaskService(
+            session_factory=session_factory,
+            dataset_storage=dataset_storage,
+            queue_backend=queue_backend,
+        ),
+        session_factory,
+        dataset_storage,
+        queue_backend,
+    )
+
+
+def _run_export_worker_once(
+    *,
+    session_factory: SessionFactory,
+    dataset_storage: LocalDatasetStorage,
+    queue_backend: LocalFileQueueBackend,
+) -> bool:
+    """执行一次 DatasetExport 队列 worker。
+
+    参数：
+    - session_factory：数据库会话工厂。
+    - dataset_storage：本地数据集文件存储服务。
+    - queue_backend：本地任务队列后端。
+
+    返回：
+    - 当成功处理一条导出任务时返回 True；否则返回 False。
+    """
+
+    worker = DatasetExportQueueWorker(
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+        queue_backend=queue_backend,
+    )
+    return worker.run_once()
 
 
 def _seed_dataset_version_files(

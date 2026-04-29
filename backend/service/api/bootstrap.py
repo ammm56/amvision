@@ -15,6 +15,7 @@ from backend.service.infrastructure.object_store.local_dataset_storage import (
     LocalDatasetStorage,
 )
 from backend.service.settings import BackendServiceSettings, get_backend_service_settings
+from backend.workers.datasets.dataset_export_queue_worker import DatasetExportQueueWorker
 from backend.workers.datasets.dataset_import_queue_worker import DatasetImportQueueWorker
 from backend.workers.task_manager import (
     BackgroundTaskManager,
@@ -290,8 +291,14 @@ class BackendServiceBootstrap(RuntimeBootstrap[BackendServiceSettings, BackendSe
             queue_backend=queue_backend,
             worker_id=f"{settings.app.app_name}-dataset-import",
         )
+        dataset_export_worker = DatasetExportQueueWorker(
+            session_factory=session_factory,
+            dataset_storage=dataset_storage,
+            queue_backend=queue_backend,
+            worker_id=f"{settings.app.app_name}-dataset-export",
+        )
         task_manager = BackgroundTaskManager(
-            consumers=(dataset_import_worker,),
+            consumers=(dataset_import_worker, dataset_export_worker),
             config=BackgroundTaskManagerConfig(
                 max_concurrent_tasks=settings.task_manager.max_concurrent_tasks,
                 poll_interval_seconds=settings.task_manager.poll_interval_seconds,

@@ -33,6 +33,7 @@ def _import_orm_models() -> None:
     """导入所有当前已注册的 ORM 模块。"""
 
     from backend.service.infrastructure.persistence import (  # noqa: PLC0415
+        dataset_export_orm,
         dataset_import_orm,
         dataset_orm,
         model_file_orm,
@@ -40,4 +41,4 @@ def _import_orm_models() -> None:
         task_orm,
     )
 
-    _ = (dataset_import_orm, dataset_orm, model_file_orm, model_orm, task_orm)
+    _ = (dataset_export_orm, dataset_import_orm, dataset_orm, model_file_orm, model_orm, task_orm)

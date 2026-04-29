@@ -1,0 +1,188 @@
+{
+  "info": {
+    "_postman_id": "1c5deeba-80c9-40cd-a170-db18dbde5e15",
+    "name": "amvision dataset exports api",
+    "description": "当前公开的 DatasetExport 接口集合。",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Dataset Exports",
+      "item": [
+        {
+          "name": "Create Dataset Export",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 202) {",
+                  "  var payload = pm.response.json();",
+                  "  pm.collectionVariables.set('datasetExportId', payload.dataset_export_id);",
+                  "  pm.collectionVariables.set('taskId', payload.task_id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-principal-id",
+                "value": "{{principalId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-project-ids",
+                "value": "{{projectId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-scopes",
+                "value": "datasets:write",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"dataset_id\": \"{{datasetId}}\",\n  \"dataset_version_id\": \"{{datasetVersionId}}\",\n  \"format_id\": \"{{exportFormatId}}\",\n  \"include_test_split\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/datasets/exports",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "datasets",
+                "exports"
+              ]
+            },
+            "description": "为指定 DatasetVersion 创建 DatasetExport 资源和关联 TaskRecord，并提交到本地队列。"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Dataset Export Detail",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-amvision-principal-id",
+                "value": "{{principalId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-project-ids",
+                "value": "{{projectId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-scopes",
+                "value": "datasets:read",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/datasets/exports/{{datasetExportId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "datasets",
+                "exports",
+                "{{datasetExportId}}"
+              ]
+            },
+            "description": "按 DatasetExport id 查询导出记录详情。"
+          },
+          "response": []
+        },
+        {
+          "name": "List Dataset Exports By Version",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-amvision-principal-id",
+                "value": "{{principalId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-project-ids",
+                "value": "{{projectId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-scopes",
+                "value": "datasets:read",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/datasets/{{datasetId}}/versions/{{datasetVersionId}}/exports",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "datasets",
+                "{{datasetId}}",
+                "versions",
+                "{{datasetVersionId}}",
+                "exports"
+              ]
+            },
+            "description": "按 DatasetVersion 查询导出记录列表。"
+          },
+          "response": []
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://127.0.0.1:8000"
+    },
+    {
+      "key": "principalId",
+      "value": "user-1"
+    },
+    {
+      "key": "projectId",
+      "value": "project-1"
+    },
+    {
+      "key": "datasetId",
+      "value": "dataset-1"
+    },
+    {
+      "key": "datasetVersionId",
+      "value": "dataset-version-1"
+    },
+    {
+      "key": "datasetExportId",
+      "value": "dataset-export-placeholder"
+    },
+    {
+      "key": "taskId",
+      "value": "task-placeholder"
+    },
+    {
+      "key": "exportFormatId",
+      "value": "coco-detection-v1"
+    }
+  ]
+}

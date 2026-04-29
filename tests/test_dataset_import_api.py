@@ -390,6 +390,78 @@ def test_import_dataset_zip_rejects_invalid_split_strategy(tmp_path: Path) -> No
         session_factory.engine.dispose()
 
 
+def test_import_dataset_zip_rejects_empty_package_before_enqueue(tmp_path: Path) -> None:
+    """验证空 zip 包会在提交阶段直接被拒绝，不会创建导入记录。"""
+
+    client, session_factory, dataset_storage, _queue_backend = _create_test_client(tmp_path)
+    try:
+        with client:
+            response = client.post(
+                "/api/v1/datasets/imports",
+                headers=_build_dataset_write_headers(),
+                data={
+                    "project_id": "project-1",
+                    "dataset_id": "dataset-empty",
+                },
+                files={
+                    "package": ("dataset.zip", b"", "application/zip"),
+                },
+            )
+
+        assert response.status_code == 400
+        payload = response.json()
+        assert payload["error"]["code"] == "invalid_request"
+        assert payload["error"]["message"] == "上传 zip 文件不能为空"
+
+        unit_of_work = SqlAlchemyUnitOfWork(session_factory.create_session())
+        try:
+            assert unit_of_work.dataset_imports.list_dataset_imports("dataset-empty") == ()
+        finally:
+            unit_of_work.close()
+
+        imports_dir = dataset_storage.resolve("projects/project-1/datasets/dataset-empty/imports")
+        assert imports_dir.is_dir()
+        assert list(imports_dir.iterdir()) == []
+    finally:
+        session_factory.engine.dispose()
+
+
+def test_import_dataset_zip_rejects_non_zip_payload_before_enqueue(tmp_path: Path) -> None:
+    """验证伪造 zip 后缀但内容非法的文件会在提交阶段直接被拒绝。"""
+
+    client, session_factory, dataset_storage, _queue_backend = _create_test_client(tmp_path)
+    try:
+        with client:
+            response = client.post(
+                "/api/v1/datasets/imports",
+                headers=_build_dataset_write_headers(),
+                data={
+                    "project_id": "project-1",
+                    "dataset_id": "dataset-fake-zip",
+                },
+                files={
+                    "package": ("dataset.zip", b"not-a-zip", "application/zip"),
+                },
+            )
+
+        assert response.status_code == 400
+        payload = response.json()
+        assert payload["error"]["code"] == "invalid_request"
+        assert payload["error"]["message"] == "当前导入接口只接受有效的 zip 压缩包"
+
+        unit_of_work = SqlAlchemyUnitOfWork(session_factory.create_session())
+        try:
+            assert unit_of_work.dataset_imports.list_dataset_imports("dataset-fake-zip") == ()
+        finally:
+            unit_of_work.close()
+
+        imports_dir = dataset_storage.resolve("projects/project-1/datasets/dataset-fake-zip/imports")
+        assert imports_dir.is_dir()
+        assert list(imports_dir.iterdir()) == []
+    finally:
+        session_factory.engine.dispose()
+
+
 def test_import_dataset_zip_can_be_called_twice_for_same_dataset(tmp_path: Path) -> None:
     """验证同一 Dataset 连续导入两次不会触发样本或标注主键冲突。"""
 

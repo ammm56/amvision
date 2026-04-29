@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.sql import Executable
 
 from backend.service.application.errors import PersistenceOperationError
+from backend.service.infrastructure.persistence.dataset_export_repository import SqlAlchemyDatasetExportRepository
 from backend.service.infrastructure.persistence.dataset_import_repository import SqlAlchemyDatasetImportRepository
 from backend.service.infrastructure.persistence.model_file_repository import SqlAlchemyModelFileRepository
 from backend.service.infrastructure.persistence.dataset_repository import SqlAlchemyDatasetVersionRepository
@@ -22,6 +23,7 @@ class SqlAlchemyUnitOfWork:
 
     属性：
     - session：当前 Unit of Work 持有的 SQLAlchemy Session。
+    - dataset_exports：DatasetExport 仓储。
     - dataset_imports：DatasetImport 仓储。
     - datasets：DatasetVersion 聚合仓储。
     - models：Model 聚合仓储。
@@ -38,6 +40,7 @@ class SqlAlchemyUnitOfWork:
         """
 
         self.session = session
+        self.dataset_exports = SqlAlchemyDatasetExportRepository(session)
         self.dataset_imports = SqlAlchemyDatasetImportRepository(session)
         self.datasets = SqlAlchemyDatasetVersionRepository(session)
         self.models = SqlAlchemyModelRepository(session)

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from backend.workers.bootstrap import BackendWorkerBootstrap, BackendWorkerRuntime
+from backend.workers.datasets.dataset_export_queue_worker import DatasetExportQueueWorker
 from backend.workers.datasets.dataset_import_queue_worker import DatasetImportQueueWorker
 from backend.workers.task_manager import BackgroundTaskManager, BackgroundTaskManagerConfig
 
@@ -23,8 +24,14 @@ def build_background_task_manager(runtime: BackendWorkerRuntime) -> BackgroundTa
         queue_backend=runtime.queue_backend,
         worker_id=f"{runtime.settings.app.app_name}-dataset-import",
     )
+    dataset_export_worker = DatasetExportQueueWorker(
+        session_factory=runtime.session_factory,
+        dataset_storage=runtime.dataset_storage,
+        queue_backend=runtime.queue_backend,
+        worker_id=f"{runtime.settings.app.app_name}-dataset-export",
+    )
     return BackgroundTaskManager(
-        consumers=(dataset_import_worker,),
+        consumers=(dataset_import_worker, dataset_export_worker),
         config=BackgroundTaskManagerConfig(
             max_concurrent_tasks=runtime.settings.queue.max_concurrent_tasks,
             poll_interval_seconds=runtime.settings.queue.poll_interval_seconds,

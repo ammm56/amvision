@@ -2,7 +2,7 @@
 
 ## 文档目的
 
-本文档用于汇总当前仓库已经公开的 REST API、WebSocket 入口、最小鉴权头规则，以及 DatasetImport 与 TaskRecord 之间的公开关系。
+本文档用于汇总当前仓库已经公开的 REST API、WebSocket 入口、最小鉴权头规则，以及 DatasetImport、DatasetExport 与 TaskRecord 之间的公开关系。
 
 本文档只描述当前真实实现，不展开未来接口规划。
 
@@ -34,6 +34,9 @@
 | POST | /api/v1/datasets/imports | datasets:write | 上传 zip，创建 DatasetImport 和关联 TaskRecord，并提交到本地队列。 |
 | GET | /api/v1/datasets/imports/{dataset_import_id} | datasets:read | 查询单条导入记录详情、校验报告和关联 DatasetVersion。 |
 | GET | /api/v1/datasets/{dataset_id}/imports | datasets:read | 查询某个 Dataset 下的导入记录列表。 |
+| POST | /api/v1/datasets/exports | datasets:write | 为指定 DatasetVersion 创建 DatasetExport 资源和关联 TaskRecord，并提交到本地队列。 |
+| GET | /api/v1/datasets/exports/{dataset_export_id} | datasets:read | 查询单条导出记录详情，包括 manifest_object_key、export_path 和样本摘要。 |
+| GET | /api/v1/datasets/{dataset_id}/versions/{dataset_version_id}/exports | datasets:read | 查询某个 DatasetVersion 下的导出记录列表。 |
 | POST | /api/v1/tasks | tasks:write | 创建公开任务记录，立即返回任务详情。 |
 | GET | /api/v1/tasks | tasks:read | 按公开筛选字段查询任务列表。 |
 | GET | /api/v1/tasks/{task_id} | tasks:read | 查询单条任务详情；默认同时返回 events。 |
@@ -81,6 +84,52 @@
 
 - 返回当前 Dataset 下的导入记录摘要列表
 - 当前列表项也会公开 task_id
+
+## DatasetExport 资源组
+
+### POST /api/v1/datasets/exports
+
+- Content-Type：application/json
+- 成功状态码：202 Accepted
+- 当前请求体允许显式指定：
+  - project_id
+  - dataset_id
+  - dataset_version_id
+  - format_id
+  - display_name
+  - output_object_prefix
+  - category_names
+  - include_test_split
+- 当前已经正式实现并对外开放的 format_id：
+  - coco-detection-v1
+  - voc-detection-v1
+- 成功响应会同时返回：
+  - dataset_export_id
+  - task_id
+  - queue_name
+  - queue_task_id
+
+这里的 dataset_export_id 是正式导出资源 id，task_id 是正式 TaskRecord id。当前导出不是重量级下载 API，而是先把 export file 资源和 training 可消费边界稳定下来。
+
+### GET /api/v1/datasets/exports/{dataset_export_id}
+
+- 返回导出详情，包括：
+  - task_id
+  - status
+  - format_id
+  - manifest_object_key
+  - export_path
+  - split_names
+  - sample_count
+  - category_names
+  - error_message
+- 当前 status 取值为：queued、running、completed、failed
+- training 前置步骤应消费 manifest_object_key，而不是直接读取 DatasetVersion 内部结构
+
+### GET /api/v1/datasets/{dataset_id}/versions/{dataset_version_id}/exports
+
+- 返回当前 DatasetVersion 下的导出记录摘要列表
+- 列表按 created_at 倒序返回，便于前端优先展示最近一次导出
 
 ## tasks 资源组
 
@@ -152,7 +201,7 @@
 
 当前实现使用最小数据库轮询方式推送任务事件，目标是先稳定公开协议，而不是先引入复杂消息总线。
 
-## DatasetImport 与 TaskRecord 的公开关系
+## DatasetImport、DatasetExport 与 TaskRecord 的公开关系
 
 当前 DatasetImport 提交流程已经正式挂接 TaskRecord：
 
@@ -167,13 +216,27 @@
 - 资源视角：GET /api/v1/datasets/imports/{dataset_import_id}
 - 任务视角：GET /api/v1/tasks/{task_id}、GET /api/v1/tasks/{task_id}/events、/ws/tasks/events?task_id=...
 
+当前 DatasetExport 提交流程也已经正式挂接 TaskRecord：
+
+1. POST /api/v1/datasets/exports 为指定 DatasetVersion 创建正式 DatasetExport 资源
+2. 同时创建一条正式 TaskRecord
+3. 响应返回 dataset_export_id 和 task_id
+4. backend-service 生命周期托管的 DatasetExport worker 从本地持久化队列消费任务
+5. worker 在处理过程中更新 TaskRecord、追加 TaskEvent，并把 manifest_object_key、export_path、split_names、sample_count 等结果写回 DatasetExport
+
+因此，导出状态同样有两条公开观察路径：
+
+- 资源视角：GET /api/v1/datasets/exports/{dataset_export_id}、GET /api/v1/datasets/{dataset_id}/versions/{dataset_version_id}/exports
+- 任务视角：GET /api/v1/tasks/{task_id}、GET /api/v1/tasks/{task_id}/events、/ws/tasks/events?task_id=...
+
 ## 当前未公开的资源面
 
 - models 路由分组已预留，但当前没有正式公开 REST 资源
-- 更通用的训练、验证、转换、导出任务规格尚未公开为稳定 API
+- 更通用的训练、验证、转换任务规格尚未公开为稳定 API
 
 ## 相关文档
 
 - [docs/api/datasets-imports.md](datasets-imports.md)
+- [docs/api/datasets-exports.md](datasets-exports.md)
 - [docs/architecture/task-system.md](../architecture/task-system.md)
 - [docs/architecture/backend-service.md](../architecture/backend-service.md)

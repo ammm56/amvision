@@ -16,7 +16,7 @@ class YoloXTrainingTaskSpec:
 
     字段：
     - project_id：所属项目 id。
-    - dataset_version_id：训练使用的 DatasetVersion id。
+    - dataset_export_manifest_key：训练输入使用的数据集导出 manifest object key。
     - recipe_id：训练 recipe id。
     - model_scale：训练目标的模型 scale。
     - output_model_name：训练后登记的模型名。
@@ -28,7 +28,7 @@ class YoloXTrainingTaskSpec:
     """
 
     project_id: str
-    dataset_version_id: str
+    dataset_export_manifest_key: str
     recipe_id: str
     model_scale: str
     output_model_name: str
