@@ -10,6 +10,8 @@ from backend.service.domain.datasets.dataset_import_repository import DatasetImp
 from backend.service.domain.datasets.dataset_version_repository import DatasetVersionRepository
 from backend.service.domain.files.model_file_repository import ModelFileRepository
 from backend.service.domain.models.model_repository import ModelRepository
+from backend.service.domain.tasks.resource_profile_repository import ResourceProfileRepository
+from backend.service.domain.tasks.task_repository import TaskRepository
 
 
 class UnitOfWork(Protocol):
@@ -20,12 +22,16 @@ class UnitOfWork(Protocol):
     - datasets：DatasetVersion 聚合仓储。
     - models：Model 聚合仓储。
     - model_files：ModelFile 仓储。
+    - tasks：TaskRecord、TaskAttempt、TaskEvent 仓储。
+    - resource_profiles：ResourceProfile 仓储。
     """
 
     dataset_imports: DatasetImportRepository
     datasets: DatasetVersionRepository
     models: ModelRepository
     model_files: ModelFileRepository
+    tasks: TaskRepository
+    resource_profiles: ResourceProfileRepository
 
     def scalar(self, statement: Executable) -> object | None:
         """执行查询并返回标量结果。

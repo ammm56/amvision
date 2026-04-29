@@ -1,181 +1,564 @@
 {
   "info": {
     "_postman_id": "8c5b24d5-8c8d-4bc2-9415-0e9db7c0e901",
-    "name": "amvision datasets imports",
-    "description": "DatasetImport 导入、详情查询和列表查询接口集合。",
+    "name": "amvision current api",
+    "description": "当前公开的 system、DatasetImport、tasks 接口集合。",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "item": [
     {
-      "name": "Create Dataset Import",
-      "event": [
+      "name": "System",
+      "item": [
         {
-          "listen": "test",
-          "script": {
-            "type": "text/javascript",
-            "exec": [
-              "if (pm.response.code === 201) {",
-              "  var payload = pm.response.json();",
-              "  pm.collectionVariables.set('datasetImportId', payload.dataset_import_id);",
-              "  pm.collectionVariables.set('datasetVersionId', payload.dataset_version_id);",
-              "}"
-            ]
-          }
+          "name": "Get Service Health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/system/health",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "system",
+                "health"
+              ]
+            },
+            "description": "返回最小健康检查结果。"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Current Principal",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-amvision-principal-id",
+                "value": "{{principalId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-project-ids",
+                "value": "{{projectId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-scopes",
+                "value": "datasets:read,tasks:read,system:read",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/system/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "system",
+                "me"
+              ]
+            },
+            "description": "返回当前主体最小信息。"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Database Health",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-amvision-principal-id",
+                "value": "{{principalId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-project-ids",
+                "value": "{{projectId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-scopes",
+                "value": "system:read",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/system/database",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "system",
+                "database"
+              ]
+            },
+            "description": "返回数据库连通性检查结果。"
+          },
+          "response": []
         }
-      ],
-      "request": {
-        "method": "POST",
-        "header": [
-          {
-            "key": "x-amvision-principal-id",
-            "value": "{{principalId}}",
-            "type": "text"
-          },
-          {
-            "key": "x-amvision-project-ids",
-            "value": "{{projectId}}",
-            "type": "text"
-          },
-          {
-            "key": "x-amvision-scopes",
-            "value": "datasets:write",
-            "type": "text"
-          }
-        ],
-        "body": {
-          "mode": "formdata",
-          "formdata": [
+      ]
+    },
+    {
+      "name": "Dataset Imports",
+      "item": [
+        {
+          "name": "Create Dataset Import",
+          "event": [
             {
-              "key": "project_id",
-              "value": "{{projectId}}",
-              "type": "text"
-            },
-            {
-              "key": "dataset_id",
-              "value": "{{datasetId}}",
-              "type": "text"
-            },
-            {
-              "key": "format_type",
-              "value": "{{formatType}}",
-              "type": "text",
-              "disabled": true
-            },
-            {
-              "key": "task_type",
-              "value": "detection",
-              "type": "text"
-            },
-            {
-              "key": "split_strategy",
-              "value": "{{splitStrategy}}",
-              "type": "text",
-              "disabled": true
-            },
-            {
-              "key": "class_map_json",
-              "value": "{{classMapJson}}",
-              "type": "text",
-              "disabled": true
-            },
-            {
-              "key": "package",
-              "type": "file",
-              "src": "{{datasetZipPath}}"
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 202) {",
+                  "  var payload = pm.response.json();",
+                  "  pm.collectionVariables.set('datasetImportId', payload.dataset_import_id);",
+                  "  pm.collectionVariables.set('sourceImportId', payload.dataset_import_id);",
+                  "  if (payload.task_id) {",
+                  "    pm.collectionVariables.set('taskId', payload.task_id);",
+                  "  }",
+                  "}"
+                ]
+              }
             }
-          ]
-        },
-        "url": {
-          "raw": "{{baseUrl}}/api/v1/datasets/imports",
-          "host": [
-            "{{baseUrl}}"
           ],
-          "path": [
-            "api",
-            "v1",
-            "datasets",
-            "imports"
-          ]
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-amvision-principal-id",
+                "value": "{{principalId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-project-ids",
+                "value": "{{projectId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-scopes",
+                "value": "datasets:write",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "project_id",
+                  "value": "{{projectId}}",
+                  "type": "text"
+                },
+                {
+                  "key": "dataset_id",
+                  "value": "{{datasetId}}",
+                  "type": "text"
+                },
+                {
+                  "key": "format_type",
+                  "value": "{{formatType}}",
+                  "type": "text",
+                  "disabled": true
+                },
+                {
+                  "key": "task_type",
+                  "value": "detection",
+                  "type": "text"
+                },
+                {
+                  "key": "split_strategy",
+                  "value": "{{splitStrategy}}",
+                  "type": "text",
+                  "disabled": true
+                },
+                {
+                  "key": "class_map_json",
+                  "value": "{{classMapJson}}",
+                  "type": "text",
+                  "disabled": true
+                },
+                {
+                  "key": "package",
+                  "type": "file",
+                  "src": "{{datasetZipPath}}"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/datasets/imports",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "datasets",
+                "imports"
+              ]
+            },
+            "description": "上传 zip 数据集压缩包，创建 DatasetImport 和关联 TaskRecord，并提交到本地队列。"
+          },
+          "response": []
         },
-        "description": "上传 zip 数据集压缩包并生成 DatasetImport 与 DatasetVersion。"
-      },
-      "response": []
+        {
+          "name": "Get Dataset Import Detail",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-amvision-principal-id",
+                "value": "{{principalId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-project-ids",
+                "value": "{{projectId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-scopes",
+                "value": "datasets:read",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/datasets/imports/{{datasetImportId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "datasets",
+                "imports",
+                "{{datasetImportId}}"
+              ]
+            },
+            "description": "按 DatasetImport id 查询导入记录详情、校验报告和关联 DatasetVersion 摘要。"
+          },
+          "response": []
+        },
+        {
+          "name": "List Dataset Imports",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-amvision-principal-id",
+                "value": "{{principalId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-project-ids",
+                "value": "{{projectId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-scopes",
+                "value": "datasets:read",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/datasets/{{datasetId}}/imports",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "datasets",
+                "{{datasetId}}",
+                "imports"
+              ]
+            },
+            "description": "按 Dataset id 列出当前数据集下的导入记录摘要。"
+          },
+          "response": []
+        }
+      ]
     },
     {
-      "name": "Get Dataset Import Detail",
-      "request": {
-        "method": "GET",
-        "header": [
-          {
-            "key": "x-amvision-principal-id",
-            "value": "{{principalId}}",
-            "type": "text"
-          },
-          {
-            "key": "x-amvision-project-ids",
-            "value": "{{projectId}}",
-            "type": "text"
-          },
-          {
-            "key": "x-amvision-scopes",
-            "value": "datasets:read",
-            "type": "text"
-          }
-        ],
-        "url": {
-          "raw": "{{baseUrl}}/api/v1/datasets/imports/{{datasetImportId}}",
-          "host": [
-            "{{baseUrl}}"
+      "name": "Tasks",
+      "item": [
+        {
+          "name": "Create Task",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  var payload = pm.response.json();",
+                  "  pm.collectionVariables.set('taskId', payload.task_id);",
+                  "}"
+                ]
+              }
+            }
           ],
-          "path": [
-            "api",
-            "v1",
-            "datasets",
-            "imports",
-            "{{datasetImportId}}"
-          ]
-        },
-        "description": "按 DatasetImport id 查询导入记录详情、校验报告和关联版本摘要。"
-      },
-      "response": []
-    },
-    {
-      "name": "List Dataset Imports",
-      "request": {
-        "method": "GET",
-        "header": [
-          {
-            "key": "x-amvision-principal-id",
-            "value": "{{principalId}}",
-            "type": "text"
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-amvision-principal-id",
+                "value": "{{principalId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-project-ids",
+                "value": "{{projectId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-scopes",
+                "value": "tasks:write",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"task_kind\": \"{{taskKind}}\",\n  \"display_name\": \"manual task from postman\",\n  \"parent_task_id\": null,\n  \"task_spec\": {\n    \"dataset_id\": \"{{datasetId}}\"\n  },\n  \"resource_profile_id\": null,\n  \"worker_pool\": \"{{workerPool}}\",\n  \"metadata\": {\n    \"source_import_id\": \"{{sourceImportId}}\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/tasks",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "tasks"
+              ]
+            },
+            "description": "创建一条公开任务记录，用于验证 tasks API。"
           },
-          {
-            "key": "x-amvision-project-ids",
-            "value": "{{projectId}}",
-            "type": "text"
-          },
-          {
-            "key": "x-amvision-scopes",
-            "value": "datasets:read",
-            "type": "text"
-          }
-        ],
-        "url": {
-          "raw": "{{baseUrl}}/api/v1/datasets/{{datasetId}}/imports",
-          "host": [
-            "{{baseUrl}}"
-          ],
-          "path": [
-            "api",
-            "v1",
-            "datasets",
-            "{{datasetId}}",
-            "imports"
-          ]
+          "response": []
         },
-        "description": "按 Dataset id 列出当前数据集下的导入记录摘要。"
-      },
-      "response": []
+        {
+          "name": "List Tasks",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-amvision-principal-id",
+                "value": "{{principalId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-project-ids",
+                "value": "{{projectId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-scopes",
+                "value": "tasks:read",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/tasks?project_id={{projectId}}&limit=100",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "tasks"
+              ],
+              "query": [
+                {
+                  "key": "project_id",
+                  "value": "{{projectId}}"
+                },
+                {
+                  "key": "limit",
+                  "value": "100"
+                },
+                {
+                  "key": "task_kind",
+                  "value": "{{taskKind}}",
+                  "disabled": true
+                },
+                {
+                  "key": "state",
+                  "value": "{{taskState}}",
+                  "disabled": true
+                },
+                {
+                  "key": "worker_pool",
+                  "value": "{{workerPool}}",
+                  "disabled": true
+                },
+                {
+                  "key": "dataset_id",
+                  "value": "{{datasetId}}",
+                  "disabled": true
+                },
+                {
+                  "key": "source_import_id",
+                  "value": "{{sourceImportId}}",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "按当前公开筛选字段查询任务列表。"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Task Detail",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-amvision-principal-id",
+                "value": "{{principalId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-project-ids",
+                "value": "{{projectId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-scopes",
+                "value": "tasks:read",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/tasks/{{taskId}}?include_events=true",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "tasks",
+                "{{taskId}}"
+              ],
+              "query": [
+                {
+                  "key": "include_events",
+                  "value": "true"
+                }
+              ]
+            },
+            "description": "按 task_id 查询任务详情，默认同时返回事件列表。"
+          },
+          "response": []
+        },
+        {
+          "name": "List Task Events",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-amvision-principal-id",
+                "value": "{{principalId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-project-ids",
+                "value": "{{projectId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-scopes",
+                "value": "tasks:read",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/tasks/{{taskId}}/events?limit=100",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "tasks",
+                "{{taskId}}",
+                "events"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "100"
+                },
+                {
+                  "key": "event_type",
+                  "value": "{{eventType}}",
+                  "disabled": true
+                },
+                {
+                  "key": "after_created_at",
+                  "value": "{{afterCreatedAt}}",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "按 task_id 查询事件列表，可选按 event_type 和 after_created_at 过滤。"
+          },
+          "response": []
+        },
+        {
+          "name": "Cancel Task",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-amvision-principal-id",
+                "value": "{{principalId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-project-ids",
+                "value": "{{projectId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-scopes",
+                "value": "tasks:write",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/tasks/{{taskId}}/cancel",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "tasks",
+                "{{taskId}}",
+                "cancel"
+              ]
+            },
+            "description": "取消一条尚未结束的任务。"
+          },
+          "response": []
+        }
+      ]
     }
   ],
   "variable": [
@@ -200,8 +583,12 @@
       "value": "dataset-import-placeholder"
     },
     {
-      "key": "datasetVersionId",
-      "value": "dataset-version-placeholder"
+      "key": "taskId",
+      "value": "task-placeholder"
+    },
+    {
+      "key": "sourceImportId",
+      "value": "dataset-import-placeholder"
     },
     {
       "key": "datasetZipPath",
@@ -213,11 +600,31 @@
     },
     {
       "key": "splitStrategy",
-      "value": "manifest-name"
+      "value": "auto"
     },
     {
       "key": "classMapJson",
       "value": "{\"7\":\"bolt\"}"
+    },
+    {
+      "key": "taskKind",
+      "value": "dataset.import"
+    },
+    {
+      "key": "taskState",
+      "value": "queued"
+    },
+    {
+      "key": "workerPool",
+      "value": "dataset-imports"
+    },
+    {
+      "key": "eventType",
+      "value": "task.cancelled"
+    },
+    {
+      "key": "afterCreatedAt",
+      "value": "2026-01-01T00:00:00+00:00"
     }
   ]
 }

@@ -4,7 +4,7 @@
 
 本文档用于说明当前仓库里的 FastAPI backend-service 怎么启动、启动后能看到什么、默认会使用哪些本地目录，以及当前还没有自动完成的初始化步骤。
 
-本文档只覆盖 backend-service 本身，不展开 worker、打包发布和前端分发。
+本文档只覆盖 backend-service 本身，不展开独立 worker、打包发布和前端分发。
 
 ## 适用范围
 
@@ -19,21 +19,25 @@
 - ASGI 应用入口：backend.service.api.app:app
 - FastAPI app factory：backend.service.api.app.create_app
 - 健康检查：/api/v1/system/health
+- 当前公开任务接口：/api/v1/tasks
+- 当前公开任务事件订阅：/ws/tasks/events
 - OpenAPI JSON：/openapi.json
 - Swagger UI：/docs
 
 ## 当前默认本地目录
 
-当前服务未传自定义配置时会使用下面两个默认路径：
+当前服务未传自定义配置时会使用下面三个默认路径：
 
 - SQLite 数据库目标路径：./data/amvision.db
 - 数据集本地文件目录：./data/files
+- 本地持久化队列目录：./data/queue
 
 当前实现的行为是：
 
-- 服务启动时会创建 ./data 和 ./data/files 目录
+- 服务启动时会创建 ./data、./data/files 和 ./data/queue 目录
 - SQLite 文件路径默认指向 ./data/amvision.db
 - SQLite 数据库文件会在第一次真正建立数据库连接时创建
+- 本地队列目录用于保存 DatasetImport 异步处理使用的 pending、claimed、completed、failed 任务文件
 
 ## 当前配置来源
 
@@ -45,6 +49,7 @@
 - 嵌套字段分隔符：__
 - 默认主配置文件：./config/backend-service.json
 - 可选本地覆盖文件：./config/backend-service.local.json
+- 默认 task manager 配置：enabled=true、max_concurrent_tasks=2、poll_interval_seconds=1.0
 
 常见示例：
 
@@ -62,6 +67,14 @@
   },
   "dataset_storage": {
     "root_dir": "./data/files"
+  },
+  "queue": {
+    "root_dir": "./data/queue"
+  },
+  "task_manager": {
+    "enabled": true,
+    "max_concurrent_tasks": 2,
+    "poll_interval_seconds": 1.0
   }
 }
 ```
@@ -71,6 +84,10 @@
 - AMVISION_DATABASE__URL=sqlite:///./data/amvision.db
 - AMVISION_DATABASE__ECHO=false
 - AMVISION_DATASET_STORAGE__ROOT_DIR=./data/files
+- AMVISION_QUEUE__ROOT_DIR=./data/queue
+- AMVISION_TASK_MANAGER__ENABLED=true
+- AMVISION_TASK_MANAGER__MAX_CONCURRENT_TASKS=2
+- AMVISION_TASK_MANAGER__POLL_INTERVAL_SECONDS=1.0
 
 说明：
 
@@ -85,6 +102,8 @@
 - FastAPI 服务可直接通过 uvicorn 启动
 - REST 路由、WebSocket 路由、中间件和异常映射已装配完成
 - /api/v1/system/health 可以直接返回最小健康状态
+- /api/v1/tasks 和 /ws/tasks/events 已经公开
+- 在 task_manager.enabled=true 时，backend-service 生命周期会自动托管 DatasetImport 队列 worker
 
 ### 当前仓库还没有自动完成的事
 
@@ -96,6 +115,26 @@
 
 - 新环境下直接启动服务即可拿到当前代码对应的基础表结构
 - 旧数据库如果缺列、列类型不同，当前不会在启动时自动修正
+
+## 当前启动流
+
+当前 backend-service 的启动链路如下：
+
+1. `create_app` 创建 `BackendServiceBootstrap`
+2. bootstrap 读取 `BackendServiceSettings`
+3. bootstrap 构建 `BackendServiceRuntime`，其中包含：
+  - `SessionFactory`
+  - `LocalDatasetStorage`
+  - `LocalFileQueueBackend`
+  - 可选的 `HostedBackgroundTaskManager`
+4. `create_app` 把这些运行时对象绑定到 `application.state`
+5. FastAPI lifespan 启动时执行：
+  - 初始化数据库缺失表
+  - 运行显式传入的 seeders
+  - 执行插件目录元数据预留步骤
+  - 启动当前进程托管的后台任务宿主
+6. 当前后台任务宿主只注册 DatasetImport queue worker
+7. 应用关闭时停止后台任务宿主并释放数据库 engine
 
 ## 开发环境启动
 
@@ -199,13 +238,16 @@ python -c "from backend.service.infrastructure.db.session import DatabaseSetting
 2. 执行 uvicorn 启动命令
 3. 访问 /api/v1/system/health
 4. 打开 /docs
+5. 确认 /api/v1/tasks 已出现在 OpenAPI 列表中
 
 ### 验证服务能处理持久化接口
 
 1. 启动 backend-service
 2. 访问 /api/v1/system/health
-3. 调用 datasets import 或查询接口
-4. 如果使用的是旧数据库文件，再检查是否存在 schema 不兼容问题
+3. 调用 /api/v1/datasets/imports 提交导入任务
+4. 用返回的 task_id 调用 /api/v1/tasks/{task_id}
+5. 如需实时观察任务事件，再建立 /ws/tasks/events?task_id=... 订阅
+6. 如果使用的是旧数据库文件，再检查是否存在 schema 不兼容问题
 
 ## 当前已验证的命令
 
@@ -242,4 +284,5 @@ python -m uvicorn backend.service.api.app:app --host 127.0.0.1 --port 8010
 - [docs/architecture/backend-service.md](../architecture/backend-service.md)
 - [docs/deployment/bundled-python-deployment.md](bundled-python-deployment.md)
 - [docs/architecture/runtime-packaging.md](../architecture/runtime-packaging.md)
+- [docs/api/current-api.md](../api/current-api.md)
 - [docs/api/datasets-imports.md](../api/datasets-imports.md)

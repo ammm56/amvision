@@ -12,6 +12,7 @@ from fastapi.testclient import TestClient
 
 from backend.queue import LocalFileQueueBackend, LocalFileQueueSettings
 from backend.service.api.app import create_app
+from backend.service.application.tasks.task_service import SqlAlchemyTaskService
 from backend.service.infrastructure.db.session import DatabaseSettings, SessionFactory
 from backend.service.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
 from backend.service.infrastructure.object_store.local_dataset_storage import (
@@ -54,6 +55,7 @@ def test_import_dataset_zip_creates_coco_dataset_version(tmp_path: Path) -> None
         assert payload["upload_state"] == "uploaded"
         assert payload["processing_state"] == "queued"
         assert payload["package_size"] > 0
+        assert payload["task_id"]
         assert payload["queue_task_id"]
 
         dataset_import, dataset_version = _load_dataset_objects(
@@ -64,8 +66,13 @@ def test_import_dataset_zip_creates_coco_dataset_version(tmp_path: Path) -> None
         assert dataset_import is not None
         assert dataset_import.status == "received"
         assert dataset_version is None
+        assert dataset_import.metadata["task_id"] == payload["task_id"]
         assert dataset_import.metadata["upload_state"] == "uploaded"
         assert dataset_import.metadata["queue_task_id"] == payload["queue_task_id"]
+
+        task_detail = SqlAlchemyTaskService(session_factory).get_task(payload["task_id"], include_events=True)
+        assert task_detail.task.task_spec["dataset_import_id"] == payload["dataset_import_id"]
+        assert task_detail.task.state == "queued"
 
         assert dataset_storage.resolve(payload["package_path"]).is_file()
         assert dataset_storage.resolve(payload["staging_path"]).is_dir()
@@ -90,6 +97,11 @@ def test_import_dataset_zip_creates_coco_dataset_version(tmp_path: Path) -> None
         assert dataset_version.categories[0].category_id == 0
         assert dataset_import.version_path is not None
         assert dataset_storage.resolve(dataset_import.version_path).is_dir()
+
+        task_detail = SqlAlchemyTaskService(session_factory).get_task(payload["task_id"], include_events=True)
+        assert task_detail.task.state == "succeeded"
+        assert task_detail.task.result["dataset_version_id"] == dataset_import.dataset_version_id
+        assert any(event.event_type == "result" for event in task_detail.events)
 
         extracted_dir = dataset_storage.resolve(payload["staging_path"])
         assert extracted_dir.is_dir()
@@ -228,6 +240,7 @@ def test_get_dataset_import_detail_returns_validation_report_and_version_relatio
                 headers=_build_dataset_read_headers(),
             )
             assert queued_detail_response.status_code == 200
+            assert queued_detail_response.json()["task_id"] is not None
             assert queued_detail_response.json()["status"] == "received"
             assert queued_detail_response.json()["processing_state"] == "queued"
 
@@ -245,6 +258,7 @@ def test_get_dataset_import_detail_returns_validation_report_and_version_relatio
         assert detail_response.status_code == 200
         payload = detail_response.json()
         assert payload["dataset_import_id"] == dataset_import_id
+        assert payload["task_id"] is not None
         assert payload["validation_report"]["status"] == "ok"
         assert payload["validation_report"]["warnings"] == []
         assert payload["validation_report"]["errors"] == []
@@ -284,6 +298,7 @@ def test_list_dataset_imports_returns_dataset_import_summaries(tmp_path: Path) -
                 headers=_build_dataset_read_headers(),
             )
             assert queued_list_response.status_code == 200
+            assert queued_list_response.json()[0]["task_id"] is not None
             assert queued_list_response.json()[0]["status"] == "received"
             assert queued_list_response.json()[0]["processing_state"] == "queued"
 

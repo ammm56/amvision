@@ -41,13 +41,14 @@
 4. [docs/architecture/system-overview.md](architecture/system-overview.md)
 5. [docs/architecture/project-structure.md](architecture/project-structure.md)
 6. [docs/architecture/backend-service.md](architecture/backend-service.md)
-7. [docs/architecture/yolox-module-design.md](architecture/yolox-module-design.md)
-8. [docs/architecture/frontend-web-ui.md](architecture/frontend-web-ui.md)
-9. [docs/architecture/data-and-files.md](architecture/data-and-files.md)
-10. [docs/architecture/dataset-import-spec.md](architecture/dataset-import-spec.md)
-11. [docs/architecture/dataset-export-formats.md](architecture/dataset-export-formats.md)
-12. [docs/architecture/plugin-system.md](architecture/plugin-system.md)
-13. 根据任务继续进入 API、部署、插件或决策文档
+7. [docs/architecture/task-system.md](architecture/task-system.md)
+8. [docs/architecture/yolox-module-design.md](architecture/yolox-module-design.md)
+9. [docs/architecture/frontend-web-ui.md](architecture/frontend-web-ui.md)
+10. [docs/architecture/data-and-files.md](architecture/data-and-files.md)
+11. [docs/architecture/dataset-import-spec.md](architecture/dataset-import-spec.md)
+12. [docs/architecture/dataset-export-formats.md](architecture/dataset-export-formats.md)
+13. [docs/architecture/plugin-system.md](architecture/plugin-system.md)
+14. 根据任务继续进入 API、部署、插件或决策文档
 
 ## 文档维护建议
 

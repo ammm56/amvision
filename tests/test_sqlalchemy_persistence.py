@@ -12,6 +12,7 @@ from backend.service.domain.datasets.dataset_version import (
     DetectionAnnotation,
 )
 from backend.service.domain.models.model_records import Model, ModelBuild, ModelVersion
+from backend.service.domain.tasks.task_records import ResourceProfile, TaskAttempt, TaskEvent, TaskRecord
 from backend.service.infrastructure.db.session import DatabaseSettings, SessionFactory
 from backend.service.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
 from backend.service.infrastructure.persistence.base import Base
@@ -153,6 +154,86 @@ def test_model_repository_round_trip_persists_model_lineage() -> None:
     assert loaded_model_build == model_build
     assert listed_model_versions == (model_version,)
     assert listed_model_builds == (model_build,)
+
+
+def test_task_repository_round_trip_persists_task_runtime_records() -> None:
+    """验证 TaskRecord、TaskAttempt、TaskEvent 与 ResourceProfile 可以完整落库并读回。"""
+
+    session_factory = _create_session_factory()
+    resource_profile = ResourceProfile(
+        resource_profile_id="profile-training-default",
+        profile_name="training-default",
+        worker_pool="training",
+        executor_mode="process",
+        max_concurrency=2,
+        metadata={"lane": "gpu"},
+    )
+    task_record = TaskRecord(
+        task_id="task-1",
+        task_kind="training",
+        project_id="project-1",
+        display_name="train yolox-s",
+        created_by="user-1",
+        created_at=datetime.now(timezone.utc).isoformat(),
+        task_spec={"gpu_count": 1, "model_type": "yolox"},
+        resource_profile_id="profile-training-default",
+        worker_pool="training",
+        metadata={"source": "manual"},
+        state="running",
+        current_attempt_no=1,
+        started_at=datetime.now(timezone.utc).isoformat(),
+        progress={"percent": 32},
+    )
+    task_attempt = TaskAttempt(
+        attempt_id="attempt-1",
+        task_id="task-1",
+        attempt_no=1,
+        worker_id="worker-training-1",
+        host_id="host-a",
+        process_id=1234,
+        state="running",
+        started_at=datetime.now(timezone.utc).isoformat(),
+        heartbeat_at=datetime.now(timezone.utc).isoformat(),
+        result={"epoch": 3},
+        metadata={"launcher": "local"},
+    )
+    task_event = TaskEvent(
+        event_id="event-1",
+        task_id="task-1",
+        attempt_id="attempt-1",
+        event_type="progress",
+        created_at=datetime.now(timezone.utc).isoformat(),
+        message="epoch 3 finished",
+        payload={"epoch": 3, "mAP": 0.72},
+    )
+
+    with _create_unit_of_work(session_factory) as unit_of_work:
+        unit_of_work.resource_profiles.save_resource_profile(resource_profile)
+        unit_of_work.tasks.save_task(task_record)
+        unit_of_work.tasks.save_task_attempt(task_attempt)
+        unit_of_work.tasks.save_task_event(task_event)
+        unit_of_work.commit()
+
+    with _create_unit_of_work(session_factory) as unit_of_work:
+        loaded_resource_profile = unit_of_work.resource_profiles.get_resource_profile(
+            "profile-training-default"
+        )
+        listed_resource_profiles = unit_of_work.resource_profiles.list_resource_profiles("training")
+        loaded_task = unit_of_work.tasks.get_task("task-1")
+        listed_tasks = unit_of_work.tasks.list_tasks("project-1")
+        loaded_task_attempt = unit_of_work.tasks.get_task_attempt("attempt-1")
+        listed_task_attempts = unit_of_work.tasks.list_task_attempts("task-1")
+        loaded_task_event = unit_of_work.tasks.get_task_event("event-1")
+        listed_task_events = unit_of_work.tasks.list_task_events("task-1")
+
+    assert loaded_resource_profile == resource_profile
+    assert listed_resource_profiles == (resource_profile,)
+    assert loaded_task == task_record
+    assert listed_tasks == (task_record,)
+    assert loaded_task_attempt == task_attempt
+    assert listed_task_attempts == (task_attempt,)
+    assert loaded_task_event == task_event
+    assert listed_task_events == (task_event,)
 
 
 def test_unit_of_work_rollback_discards_uncommitted_aggregate() -> None:

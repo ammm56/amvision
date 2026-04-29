@@ -19,6 +19,10 @@ from backend.service.application.errors import (
     ServiceError,
     UnsupportedDatasetFormatError,
 )
+from backend.service.application.tasks.task_service import (
+    AppendTaskEventRequest,
+    SqlAlchemyTaskService,
+)
 from backend.service.domain.datasets.dataset_import import (
     DatasetFormatType,
     DatasetImport,
@@ -32,6 +36,7 @@ from backend.service.domain.datasets.dataset_version import (
     DatasetVersion,
     DetectionAnnotation,
 )
+from backend.service.domain.tasks.task_records import TaskEvent, TaskRecord
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
 from backend.service.infrastructure.object_store.local_dataset_storage import (
@@ -150,6 +155,7 @@ class SqlAlchemyDatasetImportService:
 
         self.session_factory = session_factory
         self.dataset_storage = dataset_storage
+        self.task_service = SqlAlchemyTaskService(session_factory)
 
     def import_dataset(
         self,
@@ -186,6 +192,7 @@ class SqlAlchemyDatasetImportService:
 
         self._validate_request(request, package_file=package_file)
         dataset_import_id = self._next_id("dataset-import")
+        task_id = self._next_id("task")
         created_at = datetime.now(timezone.utc).isoformat()
         import_layout = self.dataset_storage.prepare_import_layout(
             project_id=request.project_id,
@@ -227,10 +234,19 @@ class SqlAlchemyDatasetImportService:
                 "uploaded_bytes": package_size,
                 "upload_state": "uploaded",
                 "uploaded_at": created_at,
+                "task_id": task_id,
                 **request.metadata,
             },
         )
-        self._save_dataset_import(initial_import)
+        self._save_dataset_import_and_task(
+            initial_import,
+            self._build_dataset_import_task(
+                task_id=task_id,
+                created_at=created_at,
+                request=request,
+                dataset_import=initial_import,
+            ),
+        )
 
         return initial_import
 
@@ -263,6 +279,18 @@ class SqlAlchemyDatasetImportService:
             },
         )
         self._save_dataset_import(queued_import)
+        self._append_dataset_import_task_event(
+            queued_import,
+            event_type="status",
+            message="dataset import queued",
+            payload={
+                "state": "queued",
+                "metadata": {
+                    "queue_name": queue_name,
+                    "queue_task_id": queue_task_id,
+                },
+            },
+        )
         return queued_import
 
     def process_dataset_import(self, dataset_import_id: str) -> DatasetImportResult:
@@ -288,6 +316,17 @@ class SqlAlchemyDatasetImportService:
                 split_names=self._collect_dataset_version_split_names(dataset_version),
             )
 
+        self._append_dataset_import_task_event(
+            current_import,
+            event_type="status",
+            message="dataset import started",
+            payload={
+                "state": "running",
+                "started_at": datetime.now(timezone.utc).isoformat(),
+                "progress": {"stage": "extracting", "percent": 5},
+            },
+        )
+
         request = self._load_staged_request(current_import, import_layout)
         dataset_version_id = self._next_id("dataset-version")
         version_layout: DatasetVersionLayout | None = None
@@ -295,6 +334,12 @@ class SqlAlchemyDatasetImportService:
             self.dataset_storage.extract_zip(import_layout.package_path, import_layout.extracted_path)
             current_import = replace(current_import, status="extracted")
             self._save_dataset_import(current_import)
+            self._append_dataset_import_task_event(
+                current_import,
+                event_type="progress",
+                message="dataset import extracted",
+                payload={"progress": {"stage": "extracted", "percent": 25}},
+            )
 
             parsed_content = self._parse_dataset_content(
                 request=request,
@@ -317,6 +362,19 @@ class SqlAlchemyDatasetImportService:
                 validation_report=parsed_content.validation_report,
             )
             self._save_dataset_import(current_import)
+            self._append_dataset_import_task_event(
+                current_import,
+                event_type="progress",
+                message="dataset import validated",
+                payload={
+                    "progress": {
+                        "stage": "validated",
+                        "percent": 60,
+                        "sample_count": len(parsed_content.samples),
+                        "category_count": len(parsed_content.categories),
+                    }
+                },
+            )
 
             version_layout = self.dataset_storage.prepare_version_layout(
                 project_id=request.project_id,
@@ -378,6 +436,22 @@ class SqlAlchemyDatasetImportService:
                 },
             )
             self._save_dataset_version_and_import(dataset_version, completed_import)
+            self._append_dataset_import_task_event(
+                completed_import,
+                event_type="result",
+                message="dataset import completed",
+                payload={
+                    "state": "succeeded",
+                    "finished_at": datetime.now(timezone.utc).isoformat(),
+                    "progress": {"stage": "completed", "percent": 100},
+                    "result": {
+                        "dataset_version_id": dataset_version_id,
+                        "sample_count": len(parsed_content.samples),
+                        "category_count": len(parsed_content.categories),
+                        "split_names": list(self._collect_split_names(parsed_content.samples)),
+                    },
+                },
+            )
 
             return DatasetImportResult(
                 dataset_import=completed_import,
@@ -1318,6 +1392,21 @@ class SqlAlchemyDatasetImportService:
             },
         )
         self._save_dataset_import(failed_import)
+        self._append_dataset_import_task_event(
+            failed_import,
+            event_type="result",
+            message="dataset import failed",
+            payload={
+                "state": "failed",
+                "finished_at": datetime.now(timezone.utc).isoformat(),
+                "error_message": error.message,
+                "result": {
+                    "failure_code": error.code,
+                    "dataset_import_id": initial_import.dataset_import_id,
+                },
+                "progress": {"stage": "failed"},
+            },
+        )
 
     def _resolve_coco_image_path(
         self,
@@ -1654,6 +1743,33 @@ class SqlAlchemyDatasetImportService:
             unit_of_work.dataset_imports.save_dataset_import(dataset_import)
             unit_of_work.commit()
 
+    def _save_dataset_import_and_task(
+        self,
+        dataset_import: DatasetImport,
+        task_record: TaskRecord,
+    ) -> None:
+        """在同一事务里保存 DatasetImport 和 TaskRecord。
+
+        参数：
+        - dataset_import：要保存的导入记录。
+        - task_record：要保存的任务记录。
+        """
+
+        with self._open_unit_of_work() as unit_of_work:
+            unit_of_work.dataset_imports.save_dataset_import(dataset_import)
+            unit_of_work.tasks.save_task(task_record)
+            unit_of_work.tasks.save_task_event(
+                TaskEvent(
+                    event_id=self._next_id("task-event"),
+                    task_id=task_record.task_id,
+                    event_type="status",
+                    created_at=task_record.created_at,
+                    message="dataset import task created",
+                    payload={"state": task_record.state},
+                )
+            )
+            unit_of_work.commit()
+
     def _save_dataset_version_and_import(
         self,
         dataset_version: DatasetVersion,
@@ -1682,6 +1798,63 @@ class SqlAlchemyDatasetImportService:
         """
 
         return f"{prefix}-{uuid4().hex[:12]}"
+
+    def _build_dataset_import_task(
+        self,
+        *,
+        task_id: str,
+        created_at: str,
+        request: DatasetImportRequest,
+        dataset_import: DatasetImport,
+    ) -> TaskRecord:
+        """根据 DatasetImport 请求构建对应的 TaskRecord。"""
+
+        created_by = request.metadata.get("principal_id")
+        return TaskRecord(
+            task_id=task_id,
+            task_kind="dataset-import",
+            project_id=request.project_id,
+            display_name=f"dataset import {request.dataset_id}",
+            created_by=created_by if isinstance(created_by, str) else None,
+            created_at=created_at,
+            task_spec={
+                "dataset_import_id": dataset_import.dataset_import_id,
+                "dataset_id": request.dataset_id,
+                "package_file_name": request.package_file_name,
+                "format_type": request.format_type,
+                "task_type": request.task_type,
+            },
+            worker_pool="dataset-import",
+            metadata={
+                "source_import_id": dataset_import.dataset_import_id,
+                "dataset_id": request.dataset_id,
+                "source_file_name": request.package_file_name,
+            },
+            state="queued",
+        )
+
+    def _append_dataset_import_task_event(
+        self,
+        dataset_import: DatasetImport,
+        *,
+        event_type: str,
+        message: str,
+        payload: dict[str, object],
+    ) -> None:
+        """为 DatasetImport 关联的任务追加一条事件。"""
+
+        task_id = dataset_import.metadata.get("task_id")
+        if not isinstance(task_id, str) or not task_id.strip():
+            return
+
+        self.task_service.append_task_event(
+            AppendTaskEventRequest(
+                task_id=task_id,
+                event_type=event_type,
+                message=message,
+                payload=payload,
+            )
+        )
 
     @contextmanager
     def _open_unit_of_work(self) -> Iterator[SqlAlchemyUnitOfWork]:

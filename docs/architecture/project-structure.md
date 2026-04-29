@@ -56,6 +56,7 @@ repo/
 │  │  ├─ application/
 │  │  │  ├─ datasets/
 │  │  │  ├─ models/
+│  │  │  ├─ tasks/
 │  │  │  ├─ conversions/
 │  │  │  ├─ inference_results/
 │  │  │  └─ deployments/
@@ -173,7 +174,7 @@ repo/
 
 ### backend 内部分层
 
-- service：系统主入口，处理 REST API、WebSocket、本地 ZeroMQ、任务安排和元数据
+- service：系统主入口，处理 REST API、WebSocket、任务状态 API、元数据和当前进程托管的最小后台任务宿主
 - workers：重任务执行层，跑训练、推理、转换和流程
 - contracts：放共用的 schema、事件、数据集格式、文件规则、插件和集成规则
 - adapters：接数据库、对象存储、队列、缓存和协议通信
@@ -209,9 +210,10 @@ repo/
 - domain/datasets：放 Dataset、DatasetImport、DatasetVersion 和版本规则
 - domain/models：放 Model、ModelVersion、ModelBuild、lineage 和发布规则
 - domain/files：放模型文件、结果文件、FileRef、checksum 和保留规则
-- domain/tasks：放 TrainingTask、ConversionTask、InferenceTask 与 PipelineExecutionTask 的输入输出关系
+- domain/tasks：放 TaskRecord、TaskAttempt、TaskEvent、ResourceProfile、task repository 协议和具体任务规格对象
 - application/datasets：处理格式识别、导入检查、格式转换、切分、生成版本、归档和清理
 - application/models：处理预置预训练模型登记、训练输出登记、标签管理和版本维护
+- application/tasks：处理任务创建、列表筛选、事件追加、取消和任务状态快照更新
 - application/conversions：处理转换任务提交、导出版本登记、兼容性和 benchmark 写回
 - application/inference_results：处理 task staging、结果提升、TTL 和清理
 - contracts/datasets：放通用数据格式、导入格式规则和数据集导出格式规则

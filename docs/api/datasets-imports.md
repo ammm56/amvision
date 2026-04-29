@@ -4,6 +4,8 @@
 
 本文档用于说明当前已经公开的 DatasetImport REST 接口，包括 zip 上传导入、导入详情查询和导入列表查询三组能力。
 
+当前导入提交已经正式关联 TaskRecord。提交响应、详情响应和列表响应都会公开 task_id，后续可以配合 tasks API 或 /ws/tasks/events 观察后台处理状态。
+
 本文档聚焦对外接口规则、字段定义、错误语义和当前实现边界，不展开内部 repository 或持久化实现细节。
 
 ## 适用范围
@@ -78,6 +80,7 @@ curl -X POST "http://127.0.0.1:8000/api/v1/datasets/imports" \
 ```json
 {
   "dataset_import_id": "dataset-import-fbd01147194e",
+  "task_id": "task-22c631b92aef",
   "status": "received",
   "upload_state": "uploaded",
   "processing_state": "queued",
@@ -94,6 +97,7 @@ curl -X POST "http://127.0.0.1:8000/api/v1/datasets/imports" \
 | 字段 | 类型 | 说明 |
 | --- | --- | --- |
 | dataset_import_id | string | 新创建的导入记录 id。后续详情查询和轮询都使用这个值。 |
+| task_id | string \\| null | 关联的正式 TaskRecord id。后续任务详情、事件查询和 WebSocket 订阅都使用这个值。 |
 | status | string | 导入记录当前状态。提交成功后立即返回 received。 |
 | upload_state | string | 上传状态。当前成功接收并落盘后返回 uploaded。 |
 | processing_state | string | 后台处理状态。当前 accepted 响应固定返回 queued。 |
@@ -108,6 +112,7 @@ curl -X POST "http://127.0.0.1:8000/api/v1/datasets/imports" \
 - 当 POST /imports 返回 202 Accepted，且响应中的 upload_state 为 uploaded 时，可以判定 zip 文件已经完整落到 package.zip，上传本身已成功。
 - 返回 202 只表示“包已收到并已入队”，不表示解析、校验和版本生成已经完成。
 - 后续处理进度通过轮询 GET /api/v1/datasets/imports/{dataset_import_id} 或 GET /api/v1/datasets/{dataset_id}/imports 获得。
+- 如果响应中返回了 task_id，也可以调用 GET /api/v1/tasks/{task_id}、GET /api/v1/tasks/{task_id}/events，或订阅 /ws/tasks/events?task_id=... 观察任务状态和事件流。
 - 当前 processing_state 与 status 的对应关系为：received -> queued，extracted 或 validated -> running，completed -> completed，failed -> failed。
 - 如果需要在 HTTP 请求尚未结束前观察上传字节进度，当前单次 multipart 上传接口本身不提供服务端查询接口，进度应由浏览器或客户端 SDK 的 upload progress 事件自行统计。服务端只有在 POST 返回 202 之后，才会暴露 uploaded 状态。
 
@@ -146,6 +151,7 @@ curl -X POST "http://127.0.0.1:8000/api/v1/datasets/imports" \
 ```json
 {
   "dataset_import_id": "dataset-import-fbd01147194e",
+  "task_id": "task-22c631b92aef",
   "dataset_id": "dataset-1",
   "project_id": "project-1",
   "format_type": "voc",
@@ -244,6 +250,7 @@ curl -X POST "http://127.0.0.1:8000/api/v1/datasets/imports" \
 | 字段 | 类型 | 说明 |
 | --- | --- | --- |
 | dataset_import_id | string | 导入记录 id。 |
+| task_id | string \| null | 关联的正式 TaskRecord id。 |
 | dataset_id | string | 逻辑 Dataset id。 |
 | project_id | string | 所属 Project id。 |
 | format_type | string \| null | 导入识别出的格式类型。失败或未识别完成时可能为 null。 |
@@ -305,6 +312,7 @@ curl -X POST "http://127.0.0.1:8000/api/v1/datasets/imports" \
 | uploaded_bytes | integer | 当前已保存的上传字节数。单次 multipart 上传完成后与 package_size 相同。 |
 | upload_state | string | 上传状态。当前已落盘时为 uploaded。 |
 | uploaded_at | string | 上传完成时间，ISO 8601 格式。 |
+| task_id | string | 关联的正式 TaskRecord id。 |
 | queue_name | string | 当前导入提交到的队列名称。 |
 | queue_task_id | string | 当前导入关联的队列任务 id。 |
 | principal_id | string | 发起本次导入的主体 id。 |
@@ -350,6 +358,7 @@ curl -X POST "http://127.0.0.1:8000/api/v1/datasets/imports" \
 [
   {
     "dataset_import_id": "dataset-import-fbd01147194e",
+    "task_id": "task-22c631b92aef",
     "dataset_id": "dataset-1",
     "project_id": "project-1",
     "format_type": "voc",
@@ -375,6 +384,7 @@ curl -X POST "http://127.0.0.1:8000/api/v1/datasets/imports" \
 | 字段 | 类型 | 说明 |
 | --- | --- | --- |
 | dataset_import_id | string | 导入记录 id。 |
+| task_id | string \| null | 关联的正式 TaskRecord id。 |
 | dataset_id | string | 所属 Dataset id。 |
 | project_id | string | 所属 Project id。 |
 | format_type | string \| null | 当前记录的格式类型。 |
@@ -429,7 +439,8 @@ curl -X POST "http://127.0.0.1:8000/api/v1/datasets/imports" \
 - 当前导入接口只支持 zip 压缩包。
 - 当前任务类型只支持 detection。
 - 当前自动识别只覆盖 COCO detection 和 Pascal VOC detection。
-- 当前上传流程会先把 zip 流式写入 package.zip，再只提交一条 received 状态的 DatasetImport 并入队；解析、校验和版本生成由独立 worker 从本地持久化队列异步执行。
+- 当前上传流程会先把 zip 流式写入 package.zip，再提交一条 received 状态的 DatasetImport、创建关联 TaskRecord 并入队；解析、校验和版本生成由独立 worker 从本地持久化队列异步执行。
+- task_id 是正式任务主记录 id，queue_task_id 只是队列里的调度消息 id；两者用途不同。
 - 当前导入成功后会清空 staging/extracted 中的临时解压内容；如需重做解析或人工复查，应以 package.zip 为准重新执行处理。
 - package_path、staging_path、version_path 都是 data/files 根目录下的相对路径，不是可直接下载的 HTTP URL。
 - detected_profile 和 validation_report 已经收敛为显式响应模型；metadata 仍保留为通用 object，并以本文档字段说明为准。

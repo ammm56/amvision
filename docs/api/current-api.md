@@ -1,0 +1,179 @@
+# 当前公开 API 总览
+
+## 文档目的
+
+本文档用于汇总当前仓库已经公开的 REST API、WebSocket 入口、最小鉴权头规则，以及 DatasetImport 与 TaskRecord 之间的公开关系。
+
+本文档只描述当前真实实现，不展开未来接口规划。
+
+## 统一请求头
+
+当前公开接口通过请求头传入主体和 scope 信息。
+
+### 最小请求头
+
+- x-amvision-principal-id：调用主体 id
+- x-amvision-project-ids：当前主体可访问的 Project id 列表，多个值用逗号分隔；为空时表示不按 Project 做可见性裁剪
+- x-amvision-scopes：当前主体持有的 scope 列表，多个值用逗号分隔
+
+### 当前公开 scope
+
+- datasets:read
+- datasets:write
+- tasks:read
+- tasks:write
+- system:read
+
+## 当前公开 REST API
+
+| 方法 | 路径 | scope | 说明 |
+| --- | --- | --- | --- |
+| GET | /api/v1/system/health | 无 | 返回最小健康状态和 request_id。 |
+| GET | /api/v1/system/me | 仅需主体 | 返回当前主体、project_ids 和 scopes。 |
+| GET | /api/v1/system/database | system:read | 返回数据库连通性检查结果。 |
+| POST | /api/v1/datasets/imports | datasets:write | 上传 zip，创建 DatasetImport 和关联 TaskRecord，并提交到本地队列。 |
+| GET | /api/v1/datasets/imports/{dataset_import_id} | datasets:read | 查询单条导入记录详情、校验报告和关联 DatasetVersion。 |
+| GET | /api/v1/datasets/{dataset_id}/imports | datasets:read | 查询某个 Dataset 下的导入记录列表。 |
+| POST | /api/v1/tasks | tasks:write | 创建公开任务记录，立即返回任务详情。 |
+| GET | /api/v1/tasks | tasks:read | 按公开筛选字段查询任务列表。 |
+| GET | /api/v1/tasks/{task_id} | tasks:read | 查询单条任务详情；默认同时返回 events。 |
+| GET | /api/v1/tasks/{task_id}/events | tasks:read | 按任务查询事件流快照。 |
+| POST | /api/v1/tasks/{task_id}/cancel | tasks:write | 取消一条尚未结束的任务。 |
+
+## system 资源组
+
+### GET /api/v1/system/health
+
+- 无需鉴权 scope
+- 返回字段：status、request_id
+
+### GET /api/v1/system/me
+
+- 需要主体请求头
+- 返回字段：principal_id、principal_type、project_ids、scopes
+
+### GET /api/v1/system/database
+
+- 需要 system:read
+- 返回字段：status、database、scalar、principal_id、request_id
+
+## DatasetImport 资源组
+
+### POST /api/v1/datasets/imports
+
+- Content-Type：multipart/form-data
+- 当前只接受 zip 压缩包
+- 成功状态码：202 Accepted
+- 当前响应会同时返回：
+  - dataset_import_id
+  - task_id
+  - queue_name
+  - queue_task_id
+
+这里的 task_id 是正式 TaskRecord id，用于后续任务查询与事件订阅；queue_task_id 只是本地持久化队列里的调度消息 id。
+
+### GET /api/v1/datasets/imports/{dataset_import_id}
+
+- 返回导入详情、识别结果、校验报告、metadata 和关联 DatasetVersion
+- 当前详情响应会公开 task_id，便于从导入记录跳转到 tasks API
+
+### GET /api/v1/datasets/{dataset_id}/imports
+
+- 返回当前 Dataset 下的导入记录摘要列表
+- 当前列表项也会公开 task_id
+
+## tasks 资源组
+
+### POST /api/v1/tasks
+
+- Content-Type：application/json
+- 成功状态码：201 Created
+- 请求体字段：
+  - project_id
+  - task_kind
+  - display_name
+  - parent_task_id
+  - task_spec
+  - resource_profile_id
+  - worker_pool
+  - metadata
+- 返回完整任务详情，包括 task_spec 和 events
+
+### GET /api/v1/tasks
+
+- 当前支持的公开筛选字段：
+  - project_id
+  - task_kind
+  - state
+  - worker_pool
+  - created_by
+  - parent_task_id
+  - dataset_id
+  - source_import_id
+  - limit
+- 当请求头没有 project_ids 时，必须显式传 project_id
+
+### GET /api/v1/tasks/{task_id}
+
+- 默认 include_events=true
+- 返回任务摘要字段、task_spec 和 events
+
+### GET /api/v1/tasks/{task_id}/events
+
+- 当前支持的查询参数：
+  - event_type
+  - after_created_at
+  - limit
+
+### POST /api/v1/tasks/{task_id}/cancel
+
+- 取消尚未结束的任务
+- 成功后返回更新后的任务详情和事件列表
+
+## 当前公开 WebSocket
+
+| 路径 | scope | 说明 |
+| --- | --- | --- |
+| /ws/events | 无 | 最小系统连接探针，返回 system.connected 后关闭。 |
+| /ws/tasks/events | tasks:read | 按 task_id 订阅任务事件。 |
+
+### /ws/tasks/events
+
+请求头沿用 REST 的主体和 scope 规则。
+
+当前支持的 query 参数：
+
+- task_id：必填
+- event_type：可选
+- after_created_at：可选
+- limit：可选，默认 100，最大 500
+
+连接成功后会先收到一条 tasks.connected 事件，随后按当前筛选条件持续推送任务事件。
+
+当前实现使用最小数据库轮询方式推送任务事件，目标是先稳定公开协议，而不是先引入复杂消息总线。
+
+## DatasetImport 与 TaskRecord 的公开关系
+
+当前 DatasetImport 提交流程已经正式挂接 TaskRecord：
+
+1. POST /api/v1/datasets/imports 接收 zip 并保存 package.zip
+2. 同时创建一条正式 TaskRecord
+3. 响应返回 dataset_import_id 和 task_id
+4. backend-service 生命周期托管的 DatasetImport worker 从本地持久化队列消费任务
+5. worker 在处理过程中更新 TaskRecord、追加 TaskEvent，并把结果写回 DatasetImport 和 DatasetVersion
+
+因此，导入状态有两条公开观察路径：
+
+- 资源视角：GET /api/v1/datasets/imports/{dataset_import_id}
+- 任务视角：GET /api/v1/tasks/{task_id}、GET /api/v1/tasks/{task_id}/events、/ws/tasks/events?task_id=...
+
+## 当前未公开的资源面
+
+- models 路由分组已预留，但当前没有正式公开 REST 资源
+- 更通用的训练、验证、转换、导出任务规格尚未公开为稳定 API
+
+## 相关文档
+
+- [docs/api/datasets-imports.md](datasets-imports.md)
+- [docs/architecture/task-system.md](../architecture/task-system.md)
+- [docs/architecture/backend-service.md](../architecture/backend-service.md)

@@ -11,6 +11,7 @@
 - [docs/architecture/system-overview.md](system-overview.md)：平台整体框架、一级模块、端到端流程和所需功能总览
 - [docs/architecture/project-structure.md](project-structure.md)：项目目录结构、层级关系、模块关系和禁止直接耦合关系总览
 - [docs/architecture/backend-service.md](backend-service.md)：后端服务职责、任务状态、执行调度、QueueBackend 和状态回写边界
+- [docs/architecture/task-system.md](task-system.md)：统一任务实体、资源调度模型、任务 schema 和 worker pool 划分
 - [docs/architecture/yolox-module-design.md](yolox-module-design.md)：YOLOX 在 amvision 里的模块拆分、目录位置和第一阶段范围
 - [docs/architecture/frontend-web-ui.md](frontend-web-ui.md)：浏览器前端 Web UI 的模块划分、路由结构、状态组织和交互边界
 - [docs/architecture/plugin-system.md](plugin-system.md)：插件体系、扩展边界、节点模型和 ComfyUI 对齐方向
@@ -37,11 +38,12 @@
 1. [docs/architecture/system-overview.md](system-overview.md)
 2. [docs/architecture/project-structure.md](project-structure.md)
 3. [docs/architecture/backend-service.md](backend-service.md)
-4. [docs/architecture/yolox-module-design.md](yolox-module-design.md)
-5. [docs/architecture/frontend-web-ui.md](frontend-web-ui.md)
-6. [docs/architecture/data-and-files.md](data-and-files.md)
-7. [docs/architecture/dataset-import-spec.md](dataset-import-spec.md)
-8. [docs/architecture/dataset-export-formats.md](dataset-export-formats.md)
-9. [docs/architecture/plugin-system.md](plugin-system.md)
-10. [docs/architecture/runtime-packaging.md](runtime-packaging.md)
-11. 按任务继续进入集成规则或日志专题文档
+4. [docs/architecture/task-system.md](task-system.md)
+5. [docs/architecture/yolox-module-design.md](yolox-module-design.md)
+6. [docs/architecture/frontend-web-ui.md](frontend-web-ui.md)
+7. [docs/architecture/data-and-files.md](data-and-files.md)
+8. [docs/architecture/dataset-import-spec.md](dataset-import-spec.md)
+9. [docs/architecture/dataset-export-formats.md](dataset-export-formats.md)
+10. [docs/architecture/plugin-system.md](plugin-system.md)
+11. [docs/architecture/runtime-packaging.md](runtime-packaging.md)
+12. 按任务继续进入集成规则或日志专题文档

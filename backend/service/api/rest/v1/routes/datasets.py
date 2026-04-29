@@ -42,6 +42,7 @@ class DatasetImportSubmissionResponse(BaseModel):
 	"""描述数据集导入提交接口响应。"""
 
 	dataset_import_id: str = Field(description="导入记录 id")
+	task_id: str | None = Field(default=None, description="关联的任务 id")
 	status: str = Field(description="导入状态")
 	upload_state: str = Field(description="上传状态")
 	processing_state: str = Field(description="处理状态")
@@ -104,6 +105,7 @@ class DatasetImportSummaryResponse(BaseModel):
 	"""描述 DatasetImport 列表中的单条记录摘要。"""
 
 	dataset_import_id: str = Field(description="导入记录 id")
+	task_id: str | None = Field(default=None, description="关联的任务 id")
 	dataset_id: str = Field(description="所属 Dataset id")
 	project_id: str = Field(description="所属 Project id")
 	format_type: str | None = Field(description="导入格式类型")
@@ -126,6 +128,7 @@ class DatasetImportDetailResponse(BaseModel):
 	"""描述 DatasetImport 查询接口返回的完整记录。"""
 
 	dataset_import_id: str = Field(description="导入记录 id")
+	task_id: str | None = Field(default=None, description="关联的任务 id")
 	dataset_id: str = Field(description="所属 Dataset id")
 	project_id: str = Field(description="所属 Project id")
 	format_type: str | None = Field(description="导入格式类型")
@@ -227,6 +230,7 @@ async def import_dataset_zip(
 
 	return DatasetImportSubmissionResponse(
 		dataset_import_id=queued_import.dataset_import_id,
+		task_id=_read_optional_str(queued_import.metadata, "task_id"),
 		status=queued_import.status,
 		upload_state=_read_optional_str(queued_import.metadata, "upload_state") or "uploaded",
 		processing_state=_derive_processing_state(queued_import),
@@ -351,6 +355,7 @@ def _build_dataset_import_summary(dataset_import: DatasetImport) -> DatasetImpor
 
 	return DatasetImportSummaryResponse(
 		dataset_import_id=dataset_import.dataset_import_id,
+		task_id=_read_optional_str(dataset_import.metadata, "task_id"),
 		dataset_id=dataset_import.dataset_id,
 		project_id=dataset_import.project_id,
 		format_type=dataset_import.format_type,
@@ -379,6 +384,7 @@ def _build_dataset_import_detail(
 
 	return DatasetImportDetailResponse(
 		dataset_import_id=dataset_import.dataset_import_id,
+		task_id=_read_optional_str(dataset_import.metadata, "task_id"),
 		dataset_id=dataset_import.dataset_id,
 		project_id=dataset_import.project_id,
 		format_type=dataset_import.format_type,

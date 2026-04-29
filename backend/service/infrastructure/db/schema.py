@@ -37,6 +37,7 @@ def _import_orm_models() -> None:
         dataset_orm,
         model_file_orm,
         model_orm,
+        task_orm,
     )
 
-    _ = (dataset_import_orm, dataset_orm, model_file_orm, model_orm)
+    _ = (dataset_import_orm, dataset_orm, model_file_orm, model_orm, task_orm)

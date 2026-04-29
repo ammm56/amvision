@@ -11,6 +11,10 @@ from backend.service.infrastructure.persistence.dataset_import_repository import
 from backend.service.infrastructure.persistence.model_file_repository import SqlAlchemyModelFileRepository
 from backend.service.infrastructure.persistence.dataset_repository import SqlAlchemyDatasetVersionRepository
 from backend.service.infrastructure.persistence.model_repository import SqlAlchemyModelRepository
+from backend.service.infrastructure.persistence.resource_profile_repository import (
+    SqlAlchemyResourceProfileRepository,
+)
+from backend.service.infrastructure.persistence.task_repository import SqlAlchemyTaskRepository
 
 
 class SqlAlchemyUnitOfWork:
@@ -22,6 +26,8 @@ class SqlAlchemyUnitOfWork:
     - datasets：DatasetVersion 聚合仓储。
     - models：Model 聚合仓储。
     - model_files：ModelFile 仓储。
+    - tasks：TaskRecord、TaskAttempt、TaskEvent 仓储。
+    - resource_profiles：ResourceProfile 仓储。
     """
 
     def __init__(self, session: Session) -> None:
@@ -36,6 +42,8 @@ class SqlAlchemyUnitOfWork:
         self.datasets = SqlAlchemyDatasetVersionRepository(session)
         self.models = SqlAlchemyModelRepository(session)
         self.model_files = SqlAlchemyModelFileRepository(session)
+        self.tasks = SqlAlchemyTaskRepository(session)
+        self.resource_profiles = SqlAlchemyResourceProfileRepository(session)
 
     def scalar(self, statement: Executable) -> object | None:
         """执行查询并返回第一列的标量结果。

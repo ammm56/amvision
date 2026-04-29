@@ -113,6 +113,10 @@ def test_app_startup_initializes_missing_database_tables(tmp_path: Path) -> None
         assert "dataset_versions" in table_names
         assert "models" in table_names
         assert "model_files" in table_names
+        assert "tasks" in table_names
+        assert "task_attempts" in table_names
+        assert "task_events" in table_names
+        assert "resource_profiles" in table_names
     finally:
         session_factory.engine.dispose()
 
