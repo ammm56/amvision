@@ -15,6 +15,9 @@ from backend.maintenance.settings import (
 from backend.workers.bootstrap import BackendWorkerBootstrap
 from backend.workers.settings import (
     BackendWorkerAppSettings,
+    BackendWorkerDatasetStorageConfig,
+    BackendWorkerDatabaseConfig,
+    BackendWorkerQueueConfig,
     BackendWorkerSettings,
     BackendWorkerWorkspaceConfig,
     get_backend_worker_settings,
@@ -39,6 +42,11 @@ def test_get_backend_worker_settings_reads_json_files_and_environment_overrides(
                 "workspace": {
                     "root_dir": "./data/from-worker-config",
                 },
+                "queue": {
+                    "root_dir": "./data/from-worker-queue-config",
+                    "max_concurrent_tasks": 3,
+                    "poll_interval_seconds": 2.5,
+                },
             }
         ),
         encoding="utf-8",
@@ -58,12 +66,17 @@ def test_get_backend_worker_settings_reads_json_files_and_environment_overrides(
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("AMVISION_WORKER_APP__APP_NAME", "amvision env-worker")
     monkeypatch.setenv("AMVISION_WORKER_WORKSPACE__ROOT_DIR", "./data/from-worker-env")
+    monkeypatch.setenv("AMVISION_WORKER_QUEUE__ROOT_DIR", "./data/from-worker-queue-env")
+    monkeypatch.setenv("AMVISION_WORKER_QUEUE__MAX_CONCURRENT_TASKS", "4")
 
     settings = get_backend_worker_settings()
 
     assert settings.app.app_name == "amvision env-worker"
     assert settings.app.app_version == "0.2.1-local"
     assert settings.workspace.root_dir == "./data/from-worker-env"
+    assert settings.queue.root_dir == "./data/from-worker-queue-env"
+    assert settings.queue.max_concurrent_tasks == 4
+    assert settings.queue.poll_interval_seconds == 2.5
 
     get_backend_worker_settings.cache_clear()
 
@@ -74,18 +87,30 @@ def test_worker_bootstrap_initializes_workspace_directory(tmp_path: Path) -> Non
     settings = BackendWorkerSettings(
         app=BackendWorkerAppSettings(app_name="amvision explicit-worker"),
         workspace=BackendWorkerWorkspaceConfig(root_dir=str(tmp_path / "worker-root")),
+        database=BackendWorkerDatabaseConfig(
+            url=f"sqlite:///{(tmp_path / 'worker.db').as_posix()}"
+        ),
+        dataset_storage=BackendWorkerDatasetStorageConfig(
+            root_dir=str(tmp_path / "dataset-files")
+        ),
+        queue=BackendWorkerQueueConfig(root_dir=str(tmp_path / "queue-root")),
     )
     bootstrap = BackendWorkerBootstrap(settings=settings)
     runtime = bootstrap.build_runtime(bootstrap.load_settings())
 
-    bootstrap.initialize(runtime)
+    try:
+        bootstrap.initialize(runtime)
 
-    assert runtime.workspace_dir == (tmp_path / "worker-root").resolve()
-    assert runtime.workspace_dir.is_dir()
-    assert bootstrap.get_step_names() == (
-        "prepare-worker-workspace",
-        "load-worker-plugin-catalog",
-    )
+        assert runtime.workspace_dir == (tmp_path / "worker-root").resolve()
+        assert runtime.workspace_dir.is_dir()
+        assert runtime.dataset_storage.root_dir == (tmp_path / "dataset-files").resolve()
+        assert runtime.queue_backend.root_dir == (tmp_path / "queue-root").resolve()
+        assert bootstrap.get_step_names() == (
+            "prepare-worker-workspace",
+            "load-worker-plugin-catalog",
+        )
+    finally:
+        runtime.session_factory.engine.dispose()
 
 
 def test_get_backend_maintenance_settings_reads_json_files_and_environment_overrides(

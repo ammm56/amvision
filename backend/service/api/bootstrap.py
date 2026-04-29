@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from fastapi import FastAPI
 
 from backend.bootstrap.core import BootstrapStep, RuntimeBootstrap
+from backend.queue import LocalFileQueueBackend
 from backend.service.api.seeders import BackendServiceSeeder, BackendServiceSeederRunner
 from backend.service.infrastructure.db.schema import initialize_database_schema
 from backend.service.infrastructure.db.session import SessionFactory
@@ -14,6 +15,12 @@ from backend.service.infrastructure.object_store.local_dataset_storage import (
     LocalDatasetStorage,
 )
 from backend.service.settings import BackendServiceSettings, get_backend_service_settings
+from backend.workers.datasets.dataset_import_queue_worker import DatasetImportQueueWorker
+from backend.workers.task_manager import (
+    BackgroundTaskManager,
+    BackgroundTaskManagerConfig,
+    HostedBackgroundTaskManager,
+)
 
 
 @dataclass(frozen=True)
@@ -24,11 +31,15 @@ class BackendServiceRuntime:
     - settings：当前 backend-service 进程使用的统一配置。
     - session_factory：数据库会话工厂。
     - dataset_storage：本地数据集文件存储服务。
+    - queue_backend：本地任务队列后端。
+    - background_task_manager_host：当前进程托管的后台任务管理器宿主。
     """
 
     settings: BackendServiceSettings
     session_factory: SessionFactory
     dataset_storage: LocalDatasetStorage
+    queue_backend: LocalFileQueueBackend
+    background_task_manager_host: HostedBackgroundTaskManager | None
 
 
 class InitializeDatabaseSchemaStep:
@@ -123,6 +134,7 @@ class BackendServiceBootstrap(RuntimeBootstrap[BackendServiceSettings, BackendSe
         settings: BackendServiceSettings | None = None,
         session_factory: SessionFactory | None = None,
         dataset_storage: LocalDatasetStorage | None = None,
+        queue_backend: LocalFileQueueBackend | None = None,
         seeders: tuple[BackendServiceSeeder, ...] | None = None,
     ) -> None:
         """初始化启动编排器。
@@ -131,12 +143,14 @@ class BackendServiceBootstrap(RuntimeBootstrap[BackendServiceSettings, BackendSe
         - settings：可选的统一配置对象。
         - session_factory：可选的数据库会话工厂。
         - dataset_storage：可选的数据集本地文件存储服务。
+        - queue_backend：可选的本地任务队列后端。
         - seeders：可选的启动期 seeder 列表。
         """
 
         self._provided_settings = settings
         self._provided_session_factory = session_factory
         self._provided_dataset_storage = dataset_storage
+        self._provided_queue_backend = queue_backend
         self._provided_seeders = seeders
 
     def load_settings(self) -> BackendServiceSettings:
@@ -158,12 +172,27 @@ class BackendServiceBootstrap(RuntimeBootstrap[BackendServiceSettings, BackendSe
         - 当前应用实例要绑定的运行时资源。
         """
 
+        session_factory = self._provided_session_factory or SessionFactory(
+            settings.to_database_settings()
+        )
+        dataset_storage = self._provided_dataset_storage or LocalDatasetStorage(
+            settings.to_dataset_storage_settings()
+        )
+        queue_backend = self._provided_queue_backend or LocalFileQueueBackend(
+            settings.to_queue_settings()
+        )
+        background_task_manager_host = self._build_background_task_manager_host(
+            settings=settings,
+            session_factory=session_factory,
+            dataset_storage=dataset_storage,
+            queue_backend=queue_backend,
+        )
         return BackendServiceRuntime(
             settings=settings,
-            session_factory=self._provided_session_factory
-            or SessionFactory(settings.to_database_settings()),
-            dataset_storage=self._provided_dataset_storage
-            or LocalDatasetStorage(settings.to_dataset_storage_settings()),
+            session_factory=session_factory,
+            dataset_storage=dataset_storage,
+            queue_backend=queue_backend,
+            background_task_manager_host=background_task_manager_host,
         )
 
     def bind_application_state(
@@ -181,6 +210,29 @@ class BackendServiceBootstrap(RuntimeBootstrap[BackendServiceSettings, BackendSe
         application.state.backend_service_settings = runtime.settings
         application.state.session_factory = runtime.session_factory
         application.state.dataset_storage = runtime.dataset_storage
+        application.state.queue_backend = runtime.queue_backend
+        application.state.background_task_manager_host = runtime.background_task_manager_host
+
+    def start_runtime(self, runtime: BackendServiceRuntime) -> None:
+        """启动 backend-service 托管的长生命周期资源。
+
+        参数：
+        - runtime：当前应用实例使用的运行时资源。
+        """
+
+        if runtime.background_task_manager_host is not None:
+            runtime.background_task_manager_host.start()
+
+    def stop_runtime(self, runtime: BackendServiceRuntime) -> None:
+        """停止 backend-service 托管的长生命周期资源。
+
+        参数：
+        - runtime：当前应用实例使用的运行时资源。
+        """
+
+        if runtime.background_task_manager_host is not None:
+            runtime.background_task_manager_host.stop()
+        runtime.session_factory.engine.dispose()
 
     def _build_steps(self) -> tuple[BootstrapStep[BackendServiceRuntime], ...]:
         """返回当前 backend-service 启动链要执行的步骤元组。
@@ -208,3 +260,44 @@ class BackendServiceBootstrap(RuntimeBootstrap[BackendServiceSettings, BackendSe
         """
 
         return self._provided_seeders or ()
+
+    def _build_background_task_manager_host(
+        self,
+        *,
+        settings: BackendServiceSettings,
+        session_factory: SessionFactory,
+        dataset_storage: LocalDatasetStorage,
+        queue_backend: LocalFileQueueBackend,
+    ) -> HostedBackgroundTaskManager | None:
+        """按 backend-service 配置创建后台任务管理器宿主。
+
+        参数：
+        - settings：当前 backend-service 统一配置。
+        - session_factory：数据库会话工厂。
+        - dataset_storage：本地数据集文件存储服务。
+        - queue_backend：本地任务队列后端。
+
+        返回：
+        - 已配置完成的后台任务管理器宿主；未启用时返回 None。
+        """
+
+        if not settings.task_manager.enabled:
+            return None
+
+        dataset_import_worker = DatasetImportQueueWorker(
+            session_factory=session_factory,
+            dataset_storage=dataset_storage,
+            queue_backend=queue_backend,
+            worker_id=f"{settings.app.app_name}-dataset-import",
+        )
+        task_manager = BackgroundTaskManager(
+            consumers=(dataset_import_worker,),
+            config=BackgroundTaskManagerConfig(
+                max_concurrent_tasks=settings.task_manager.max_concurrent_tasks,
+                poll_interval_seconds=settings.task_manager.poll_interval_seconds,
+            ),
+        )
+        return HostedBackgroundTaskManager(
+            task_manager=task_manager,
+            thread_name=f"{settings.app.app_name}-task-manager",
+        )

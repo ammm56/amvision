@@ -40,7 +40,7 @@
 
 ### POST /api/v1/datasets/imports
 
-上传 zip 数据集压缩包，识别并导入 COCO detection 或 Pascal VOC detection，生成一条 DatasetImport 记录和一个 DatasetVersion。
+上传 zip 数据集压缩包，登记一条 received 状态的 DatasetImport 并提交到本地队列；worker 后续再解析并生成 DatasetVersion。
 
 #### Content-Type
 
@@ -73,24 +73,19 @@ curl -X POST "http://127.0.0.1:8000/api/v1/datasets/imports" \
 
 #### 成功响应
 
-- 状态码：201 Created
+- 状态码：202 Accepted
 
 ```json
 {
   "dataset_import_id": "dataset-import-fbd01147194e",
-  "dataset_version_id": "dataset-version-664536df286f",
-  "format_type": "voc",
-  "task_type": "detection",
-  "status": "completed",
-  "sample_count": 10,
-  "category_count": 2,
-  "split_names": [
-    "train",
-    "test"
-  ],
+  "status": "received",
+  "upload_state": "uploaded",
+  "processing_state": "queued",
+  "package_size": 7538487,
   "package_path": "projects/project-1/datasets/dataset-1/imports/dataset-import-fbd01147194e/package.zip",
   "staging_path": "projects/project-1/datasets/dataset-1/imports/dataset-import-fbd01147194e/staging/extracted",
-  "version_path": "projects/project-1/datasets/dataset-1/versions/dataset-version-664536df286f"
+  "queue_name": "dataset-imports",
+  "queue_task_id": "queue-task-0fce7c3131df"
 }
 ```
 
@@ -98,17 +93,23 @@ curl -X POST "http://127.0.0.1:8000/api/v1/datasets/imports" \
 
 | 字段 | 类型 | 说明 |
 | --- | --- | --- |
-| dataset_import_id | string | 新创建的导入记录 id。后续详情查询使用这个值。 |
-| dataset_version_id | string | 导入成功后生成的 DatasetVersion id。失败时不会返回空字符串以外的有效版本值。 |
-| format_type | string | 最终识别并确认的格式类型。 |
-| task_type | string | 最终任务类型。当前固定为 detection。 |
-| status | string | 导入状态。当前成功值为 completed。 |
-| sample_count | integer | 导入成功后写入 DatasetVersion 的样本总数。 |
-| category_count | integer | 导入成功后归一化类别表中的类别数量。 |
-| split_names | array of string | 当前版本包含的 split 名称列表，按 train、val、test 顺序返回。 |
+| dataset_import_id | string | 新创建的导入记录 id。后续详情查询和轮询都使用这个值。 |
+| status | string | 导入记录当前状态。提交成功后立即返回 received。 |
+| upload_state | string | 上传状态。当前成功接收并落盘后返回 uploaded。 |
+| processing_state | string | 后台处理状态。当前 accepted 响应固定返回 queued。 |
+| package_size | integer | 已保存的原始 zip 文件字节大小。 |
 | package_path | string | 原始 zip 包在 data/files 下的相对路径。 |
 | staging_path | string | staging/extracted 工作目录在 data/files 下的相对路径。当前实现会在导入成功后清空其中的临时解压内容，并保留空目录作为审计锚点。 |
-| version_path | string | 正式 DatasetVersion 目录在 data/files 下的相对路径。 |
+| queue_name | string | 提交到的队列名称。当前固定为 dataset-imports。 |
+| queue_task_id | string | 当前导入对应的队列任务 id。 |
+
+#### 上传成功与处理进度判断
+
+- 当 POST /imports 返回 202 Accepted，且响应中的 upload_state 为 uploaded 时，可以判定 zip 文件已经完整落到 package.zip，上传本身已成功。
+- 返回 202 只表示“包已收到并已入队”，不表示解析、校验和版本生成已经完成。
+- 后续处理进度通过轮询 GET /api/v1/datasets/imports/{dataset_import_id} 或 GET /api/v1/datasets/{dataset_id}/imports 获得。
+- 当前 processing_state 与 status 的对应关系为：received -> queued，extracted 或 validated -> running，completed -> completed，failed -> failed。
+- 如果需要在 HTTP 请求尚未结束前观察上传字节进度，当前单次 multipart 上传接口本身不提供服务端查询接口，进度应由浏览器或客户端 SDK 的 upload progress 事件自行统计。服务端只有在 POST 返回 202 之后，才会暴露 uploaded 状态。
 
 #### split_strategy 请求与响应语义
 
@@ -155,6 +156,10 @@ curl -X POST "http://127.0.0.1:8000/api/v1/datasets/imports" \
   "package_path": "projects/project-1/datasets/dataset-1/imports/dataset-import-fbd01147194e/package.zip",
   "staging_path": "projects/project-1/datasets/dataset-1/imports/dataset-import-fbd01147194e/staging/extracted",
   "version_path": "projects/project-1/datasets/dataset-1/versions/dataset-version-664536df286f",
+  "package_size": 7538487,
+  "upload_state": "uploaded",
+  "processing_state": "completed",
+  "queue_task_id": "queue-task-0fce7c3131df",
   "image_root": "JPEGImages",
   "annotation_root": "Annotations",
   "manifest_file": "Annotations/barcode1.xml",
@@ -249,6 +254,10 @@ curl -X POST "http://127.0.0.1:8000/api/v1/datasets/imports" \
 | package_path | string | 原始 zip 包在 data/files 下的相对路径。 |
 | staging_path | string | staging/extracted 目录在 data/files 下的相对路径。 |
 | version_path | string \| null | 正式 DatasetVersion 目录在 data/files 下的相对路径。 |
+| package_size | integer \| null | 原始 zip 包大小。 |
+| upload_state | string \| null | 上传状态。当前成功落盘后为 uploaded。 |
+| processing_state | string | 当前后台处理状态。 |
+| queue_task_id | string \| null | 当前导入关联的队列任务 id。 |
 | image_root | string \| null | 从原始压缩包中识别出的图片根目录。 |
 | annotation_root | string \| null | 从原始压缩包中识别出的标注根目录。 |
 | manifest_file | string \| null | 用于识别和导入的代表性 manifest 文件路径。COCO 通常是 json，VOC 通常是首个 xml。 |
@@ -293,6 +302,11 @@ curl -X POST "http://127.0.0.1:8000/api/v1/datasets/imports" \
 | --- | --- | --- |
 | source_file_name | string | 上传 zip 文件名。 |
 | package_size | integer | 原始 zip 文件字节大小。 |
+| uploaded_bytes | integer | 当前已保存的上传字节数。单次 multipart 上传完成后与 package_size 相同。 |
+| upload_state | string | 上传状态。当前已落盘时为 uploaded。 |
+| uploaded_at | string | 上传完成时间，ISO 8601 格式。 |
+| queue_name | string | 当前导入提交到的队列名称。 |
+| queue_task_id | string | 当前导入关联的队列任务 id。 |
 | principal_id | string | 发起本次导入的主体 id。 |
 | sample_count | integer | 导入成功后的样本总数。 |
 | category_count | integer | 导入成功后的类别总数。 |
@@ -346,6 +360,10 @@ curl -X POST "http://127.0.0.1:8000/api/v1/datasets/imports" \
     "package_path": "projects/project-1/datasets/dataset-1/imports/dataset-import-fbd01147194e/package.zip",
     "staging_path": "projects/project-1/datasets/dataset-1/imports/dataset-import-fbd01147194e/staging/extracted",
     "version_path": "projects/project-1/datasets/dataset-1/versions/dataset-version-664536df286f",
+    "package_size": 7538487,
+    "upload_state": "uploaded",
+    "processing_state": "completed",
+    "queue_task_id": "queue-task-0fce7c3131df",
     "validation_status": "ok",
     "error_message": null
   }
@@ -367,6 +385,10 @@ curl -X POST "http://127.0.0.1:8000/api/v1/datasets/imports" \
 | package_path | string | 原始 zip 包相对路径。 |
 | staging_path | string | 解压目录相对路径。 |
 | version_path | string \| null | 版本目录相对路径。 |
+| package_size | integer \| null | 原始 zip 包大小。 |
+| upload_state | string \| null | 上传状态。 |
+| processing_state | string | 当前后台处理状态。 |
+| queue_task_id | string \| null | 关联的队列任务 id。 |
 | validation_status | string \| null | 从 validation_report 中抽取的状态字段。 |
 | error_message | string \| null | 导入失败时的错误消息。 |
 
@@ -407,10 +429,11 @@ curl -X POST "http://127.0.0.1:8000/api/v1/datasets/imports" \
 - 当前导入接口只支持 zip 压缩包。
 - 当前任务类型只支持 detection。
 - 当前自动识别只覆盖 COCO detection 和 Pascal VOC detection。
-- 当前上传流程会先把 zip 流式写入 package.zip，再在同一个请求里内联执行处理链；内部已经拆成 submit 和 process 两段，但对外接口暂未切到真正异步 worker。
+- 当前上传流程会先把 zip 流式写入 package.zip，再只提交一条 received 状态的 DatasetImport 并入队；解析、校验和版本生成由独立 worker 从本地持久化队列异步执行。
 - 当前导入成功后会清空 staging/extracted 中的临时解压内容；如需重做解析或人工复查，应以 package.zip 为准重新执行处理。
 - package_path、staging_path、version_path 都是 data/files 根目录下的相对路径，不是可直接下载的 HTTP URL。
 - detected_profile 和 validation_report 已经收敛为显式响应模型；metadata 仍保留为通用 object，并以本文档字段说明为准。
+- 当前单次 multipart 上传接口不提供“请求未完成时的服务端上传百分比查询”。如果需要真正的大文件分片上传和可恢复进度，应新增 upload session 或对象存储 multipart 直传接口。
 
 ## 调试建议
 

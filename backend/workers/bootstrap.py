@@ -6,6 +6,9 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from backend.bootstrap.core import BootstrapStep, RuntimeBootstrap
+from backend.queue import LocalFileQueueBackend
+from backend.service.infrastructure.db.session import SessionFactory
+from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 from backend.workers.settings import BackendWorkerSettings, get_backend_worker_settings
 
 
@@ -16,10 +19,16 @@ class BackendWorkerRuntime:
     字段：
     - settings：当前 worker 进程使用的统一配置。
     - workspace_dir：worker 运行态工作目录。
+    - session_factory：数据库会话工厂。
+    - dataset_storage：本地数据集文件存储服务。
+    - queue_backend：本地任务队列后端。
     """
 
     settings: BackendWorkerSettings
     workspace_dir: Path
+    session_factory: SessionFactory
+    dataset_storage: LocalDatasetStorage
+    queue_backend: LocalFileQueueBackend
 
 
 class PrepareBackendWorkerWorkspaceStep:
@@ -116,6 +125,9 @@ class BackendWorkerBootstrap(RuntimeBootstrap[BackendWorkerSettings, BackendWork
         return BackendWorkerRuntime(
             settings=settings,
             workspace_dir=workspace_dir,
+            session_factory=SessionFactory(settings.to_database_settings()),
+            dataset_storage=LocalDatasetStorage(settings.to_dataset_storage_settings()),
+            queue_backend=LocalFileQueueBackend(settings.to_queue_settings()),
         )
 
     def _build_steps(self) -> tuple[BootstrapStep[BackendWorkerRuntime], ...]:

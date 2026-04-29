@@ -9,5 +9,13 @@
   },
   "dataset_storage": {
     "root_dir": "./data/files"
+  },
+  "queue": {
+    "root_dir": "./data/queue"
+  },
+  "task_manager": {
+    "enabled": true,
+    "max_concurrent_tasks": 2,
+    "poll_interval_seconds": 1.0
   }
 }

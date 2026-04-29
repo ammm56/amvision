@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import io
 import json
+import time
 import zipfile
 from pathlib import Path
 
 from fastapi.testclient import TestClient
 
+from backend.queue import LocalFileQueueBackend, LocalFileQueueSettings
 from backend.service.api.app import create_app
 from backend.service.infrastructure.db.session import DatabaseSettings, SessionFactory
 from backend.service.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
@@ -17,12 +19,21 @@ from backend.service.infrastructure.object_store.local_dataset_storage import (
     LocalDatasetStorage,
 )
 from backend.service.infrastructure.persistence.base import Base
+from backend.service.settings import (
+    BackendServiceSettings,
+    BackendServiceTaskManagerConfig,
+)
+from backend.workers.datasets.dataset_import_queue_worker import DatasetImportQueueWorker
+from backend.workers.task_manager import (
+    BackgroundTaskManager,
+    BackgroundTaskManagerConfig,
+)
 
 
 def test_import_dataset_zip_creates_coco_dataset_version(tmp_path: Path) -> None:
     """验证导入 COCO zip 会创建 DatasetImport、DatasetVersion 和本地目录。"""
 
-    client, session_factory, dataset_storage = _create_test_client(tmp_path)
+    client, session_factory, dataset_storage, queue_backend = _create_test_client(tmp_path)
     try:
         with client:
             response = client.post(
@@ -37,18 +48,36 @@ def test_import_dataset_zip_creates_coco_dataset_version(tmp_path: Path) -> None
                 },
             )
 
-        assert response.status_code == 201
+        assert response.status_code == 202
         payload = response.json()
-        assert payload["format_type"] == "coco"
-        assert payload["status"] == "completed"
-        assert payload["sample_count"] == 1
-        assert payload["category_count"] == 1
-        assert payload["split_names"] == ["train"]
+        assert payload["status"] == "received"
+        assert payload["upload_state"] == "uploaded"
+        assert payload["processing_state"] == "queued"
+        assert payload["package_size"] > 0
+        assert payload["queue_task_id"]
 
         dataset_import, dataset_version = _load_dataset_objects(
             session_factory=session_factory,
             dataset_import_id=payload["dataset_import_id"],
-            dataset_version_id=payload["dataset_version_id"],
+        )
+
+        assert dataset_import is not None
+        assert dataset_import.status == "received"
+        assert dataset_version is None
+        assert dataset_import.metadata["upload_state"] == "uploaded"
+        assert dataset_import.metadata["queue_task_id"] == payload["queue_task_id"]
+
+        assert dataset_storage.resolve(payload["package_path"]).is_file()
+        assert dataset_storage.resolve(payload["staging_path"]).is_dir()
+        assert _run_import_worker_once(
+            session_factory=session_factory,
+            dataset_storage=dataset_storage,
+            queue_backend=queue_backend,
+        ) is True
+
+        dataset_import, dataset_version = _load_dataset_objects(
+            session_factory=session_factory,
+            dataset_import_id=payload["dataset_import_id"],
         )
 
         assert dataset_import is not None
@@ -59,17 +88,16 @@ def test_import_dataset_zip_creates_coco_dataset_version(tmp_path: Path) -> None
         assert dataset_version.metadata["source_import_id"] == payload["dataset_import_id"]
         assert dataset_version.samples[0].annotations[0].bbox_xywh == (1.0, 2.0, 3.0, 4.0)
         assert dataset_version.categories[0].category_id == 0
+        assert dataset_import.version_path is not None
+        assert dataset_storage.resolve(dataset_import.version_path).is_dir()
 
-        assert dataset_storage.resolve(payload["package_path"]).is_file()
-        assert dataset_storage.resolve(payload["staging_path"]).is_dir()
-        assert dataset_storage.resolve(payload["version_path"]).is_dir()
         extracted_dir = dataset_storage.resolve(payload["staging_path"])
         assert extracted_dir.is_dir()
         assert list(extracted_dir.iterdir()) == []
 
         sample = dataset_version.samples[0]
         sample_manifest_path = dataset_storage.resolve(
-            f"{payload['version_path']}/samples/train/{sample.sample_id}.json"
+            f"{dataset_import.version_path}/samples/train/{sample.sample_id}.json"
         )
         sample_manifest = json.loads(sample_manifest_path.read_text(encoding="utf-8"))
         assert sample_manifest["image_object_key"].endswith("images/train/train-1.jpg")
@@ -81,7 +109,7 @@ def test_import_dataset_zip_creates_coco_dataset_version(tmp_path: Path) -> None
 def test_import_dataset_zip_creates_voc_dataset_version(tmp_path: Path) -> None:
     """验证导入 Pascal VOC zip 会完成 bbox 转换并写入版本目录。"""
 
-    client, session_factory, dataset_storage = _create_test_client(tmp_path)
+    client, session_factory, dataset_storage, queue_backend = _create_test_client(tmp_path)
     try:
         with client:
             response = client.post(
@@ -97,17 +125,19 @@ def test_import_dataset_zip_creates_voc_dataset_version(tmp_path: Path) -> None:
                 },
             )
 
-        assert response.status_code == 201
+        assert response.status_code == 202
         payload = response.json()
-        assert payload["format_type"] == "voc"
-        assert payload["status"] == "completed"
-        assert payload["sample_count"] == 1
-        assert payload["split_names"] == ["train"]
+        assert payload["status"] == "received"
+
+        assert _run_import_worker_once(
+            session_factory=session_factory,
+            dataset_storage=dataset_storage,
+            queue_backend=queue_backend,
+        ) is True
 
         dataset_import, dataset_version = _load_dataset_objects(
             session_factory=session_factory,
             dataset_import_id=payload["dataset_import_id"],
-            dataset_version_id=payload["dataset_version_id"],
         )
 
         assert dataset_import is not None
@@ -129,7 +159,7 @@ def test_import_dataset_zip_creates_voc_dataset_version(tmp_path: Path) -> None:
 def test_import_dataset_zip_accepts_nested_voc_wrapper_dirs(tmp_path: Path) -> None:
     """验证导入器可以识别带多层包裹目录和非整数标记的 Pascal VOC zip。"""
 
-    client, session_factory, _dataset_storage = _create_test_client(tmp_path)
+    client, session_factory, dataset_storage, queue_backend = _create_test_client(tmp_path)
     try:
         with client:
             response = client.post(
@@ -152,11 +182,21 @@ def test_import_dataset_zip_accepts_nested_voc_wrapper_dirs(tmp_path: Path) -> N
                 },
             )
 
-        assert response.status_code == 201
+        assert response.status_code == 202
+        assert _run_import_worker_once(
+            session_factory=session_factory,
+            dataset_storage=dataset_storage,
+            queue_backend=queue_backend,
+        ) is True
         payload = response.json()
-        assert payload["format_type"] == "voc"
-        assert payload["status"] == "completed"
-        assert payload["sample_count"] == 1
+        dataset_import, dataset_version = _load_dataset_objects(
+            session_factory=session_factory,
+            dataset_import_id=payload["dataset_import_id"],
+        )
+        assert dataset_import is not None
+        assert dataset_version is not None
+        assert dataset_import.format_type == "voc"
+        assert dataset_import.status == "completed"
     finally:
         session_factory.engine.dispose()
 
@@ -166,7 +206,7 @@ def test_get_dataset_import_detail_returns_validation_report_and_version_relatio
 ) -> None:
     """验证可以按导入记录 id 读取校验报告和关联版本摘要。"""
 
-    client, session_factory, _dataset_storage = _create_test_client(tmp_path)
+    client, session_factory, dataset_storage, queue_backend = _create_test_client(tmp_path)
     try:
         with client:
             create_response = client.post(
@@ -180,8 +220,22 @@ def test_get_dataset_import_detail_returns_validation_report_and_version_relatio
                     "package": ("coco-dataset.zip", _build_coco_zip_bytes(), "application/zip"),
                 },
             )
-            assert create_response.status_code == 201
+            assert create_response.status_code == 202
             dataset_import_id = create_response.json()["dataset_import_id"]
+
+            queued_detail_response = client.get(
+                f"/api/v1/datasets/imports/{dataset_import_id}",
+                headers=_build_dataset_read_headers(),
+            )
+            assert queued_detail_response.status_code == 200
+            assert queued_detail_response.json()["status"] == "received"
+            assert queued_detail_response.json()["processing_state"] == "queued"
+
+            assert _run_import_worker_once(
+                session_factory=session_factory,
+                dataset_storage=dataset_storage,
+                queue_backend=queue_backend,
+            ) is True
 
             detail_response = client.get(
                 f"/api/v1/datasets/imports/{dataset_import_id}",
@@ -209,7 +263,7 @@ def test_get_dataset_import_detail_returns_validation_report_and_version_relatio
 def test_list_dataset_imports_returns_dataset_import_summaries(tmp_path: Path) -> None:
     """验证可以按 Dataset id 列出导入记录摘要。"""
 
-    client, session_factory, _dataset_storage = _create_test_client(tmp_path)
+    client, session_factory, dataset_storage, queue_backend = _create_test_client(tmp_path)
     try:
         with client:
             create_response = client.post(
@@ -223,7 +277,21 @@ def test_list_dataset_imports_returns_dataset_import_summaries(tmp_path: Path) -
                     "package": ("coco-dataset.zip", _build_coco_zip_bytes(), "application/zip"),
                 },
             )
-            assert create_response.status_code == 201
+            assert create_response.status_code == 202
+
+            queued_list_response = client.get(
+                "/api/v1/datasets/dataset-1/imports",
+                headers=_build_dataset_read_headers(),
+            )
+            assert queued_list_response.status_code == 200
+            assert queued_list_response.json()[0]["status"] == "received"
+            assert queued_list_response.json()[0]["processing_state"] == "queued"
+
+            assert _run_import_worker_once(
+                session_factory=session_factory,
+                dataset_storage=dataset_storage,
+                queue_backend=queue_backend,
+            ) is True
 
             list_response = client.get(
                 "/api/v1/datasets/dataset-1/imports",
@@ -244,7 +312,7 @@ def test_list_dataset_imports_returns_dataset_import_summaries(tmp_path: Path) -
 def test_import_dataset_zip_forced_split_strategy_overrides_detected_split(tmp_path: Path) -> None:
     """验证显式 split_strategy 会覆盖导入器自动识别出的 split。"""
 
-    client, session_factory, _dataset_storage = _create_test_client(tmp_path)
+    client, session_factory, dataset_storage, queue_backend = _create_test_client(tmp_path)
     try:
         with client:
             response = client.post(
@@ -260,9 +328,13 @@ def test_import_dataset_zip_forced_split_strategy_overrides_detected_split(tmp_p
                 },
             )
 
-            assert response.status_code == 201
+            assert response.status_code == 202
+            assert _run_import_worker_once(
+                session_factory=session_factory,
+                dataset_storage=dataset_storage,
+                queue_backend=queue_backend,
+            ) is True
             payload = response.json()
-            assert payload["split_names"] == ["val"]
 
             detail_response = client.get(
                 f"/api/v1/datasets/imports/{payload['dataset_import_id']}",
@@ -282,7 +354,7 @@ def test_import_dataset_zip_forced_split_strategy_overrides_detected_split(tmp_p
 def test_import_dataset_zip_rejects_invalid_split_strategy(tmp_path: Path) -> None:
     """验证非法 split_strategy 会在路由层被拒绝。"""
 
-    client, session_factory, _dataset_storage = _create_test_client(tmp_path)
+    client, session_factory, _dataset_storage, _queue_backend = _create_test_client(tmp_path)
     try:
         with client:
             response = client.post(
@@ -306,7 +378,7 @@ def test_import_dataset_zip_rejects_invalid_split_strategy(tmp_path: Path) -> No
 def test_import_dataset_zip_can_be_called_twice_for_same_dataset(tmp_path: Path) -> None:
     """验证同一 Dataset 连续导入两次不会触发样本或标注主键冲突。"""
 
-    client, session_factory, _dataset_storage = _create_test_client(tmp_path)
+    client, session_factory, dataset_storage, queue_backend = _create_test_client(tmp_path)
     try:
         with client:
             first_response = client.post(
@@ -332,23 +404,31 @@ def test_import_dataset_zip_can_be_called_twice_for_same_dataset(tmp_path: Path)
                 },
             )
 
-        assert first_response.status_code == 201
-        assert second_response.status_code == 201
+        assert first_response.status_code == 202
+        assert second_response.status_code == 202
+
+        assert _run_import_worker_once(
+            session_factory=session_factory,
+            dataset_storage=dataset_storage,
+            queue_backend=queue_backend,
+        ) is True
+        assert _run_import_worker_once(
+            session_factory=session_factory,
+            dataset_storage=dataset_storage,
+            queue_backend=queue_backend,
+        ) is True
 
         first_payload = first_response.json()
         second_payload = second_response.json()
         assert first_payload["dataset_import_id"] != second_payload["dataset_import_id"]
-        assert first_payload["dataset_version_id"] != second_payload["dataset_version_id"]
 
         first_import, first_version = _load_dataset_objects(
             session_factory=session_factory,
             dataset_import_id=first_payload["dataset_import_id"],
-            dataset_version_id=first_payload["dataset_version_id"],
         )
         second_import, second_version = _load_dataset_objects(
             session_factory=session_factory,
             dataset_import_id=second_payload["dataset_import_id"],
-            dataset_version_id=second_payload["dataset_version_id"],
         )
 
         assert first_import is not None
@@ -361,14 +441,142 @@ def test_import_dataset_zip_can_be_called_twice_for_same_dataset(tmp_path: Path)
         session_factory.engine.dispose()
 
 
-def _create_test_client(tmp_path: Path) -> tuple[TestClient, SessionFactory, LocalDatasetStorage]:
+def test_background_task_manager_processes_multiple_dataset_import_tasks(
+    tmp_path: Path,
+) -> None:
+    """验证后台任务管理器可以批量消费多个 DatasetImport 队列任务。"""
+
+    client, session_factory, dataset_storage, queue_backend = _create_test_client(tmp_path)
+    try:
+        with client:
+            first_response = client.post(
+                "/api/v1/datasets/imports",
+                headers=_build_dataset_write_headers(),
+                data={
+                    "project_id": "project-1",
+                    "dataset_id": "dataset-batch-1",
+                },
+                files={
+                    "package": ("coco-dataset.zip", _build_coco_zip_bytes(), "application/zip"),
+                },
+            )
+            second_response = client.post(
+                "/api/v1/datasets/imports",
+                headers=_build_dataset_write_headers(),
+                data={
+                    "project_id": "project-1",
+                    "dataset_id": "dataset-batch-2",
+                },
+                files={
+                    "package": ("coco-dataset.zip", _build_coco_zip_bytes(), "application/zip"),
+                },
+            )
+
+        assert first_response.status_code == 202
+        assert second_response.status_code == 202
+
+        task_manager = BackgroundTaskManager(
+            consumers=(
+                DatasetImportQueueWorker(
+                    session_factory=session_factory,
+                    dataset_storage=dataset_storage,
+                    queue_backend=queue_backend,
+                    worker_id="test-import-worker-batch",
+                ),
+            ),
+            config=BackgroundTaskManagerConfig(
+                max_concurrent_tasks=2,
+                poll_interval_seconds=0.1,
+            ),
+        )
+
+        assert task_manager.run_available_tasks() == 2
+
+        first_import, first_version = _load_dataset_objects(
+            session_factory=session_factory,
+            dataset_import_id=first_response.json()["dataset_import_id"],
+        )
+        second_import, second_version = _load_dataset_objects(
+            session_factory=session_factory,
+            dataset_import_id=second_response.json()["dataset_import_id"],
+        )
+
+        assert first_import is not None
+        assert second_import is not None
+        assert first_import.status == "completed"
+        assert second_import.status == "completed"
+        assert first_version is not None
+        assert second_version is not None
+    finally:
+        session_factory.engine.dispose()
+
+
+def test_import_dataset_zip_is_processed_by_service_managed_task_manager(
+    tmp_path: Path,
+) -> None:
+    """验证 backend-service 单入口启动后会自动消费 DatasetImport 队列。"""
+
+    client, session_factory, dataset_storage, _queue_backend = _create_test_client(
+        tmp_path,
+        enable_task_manager=True,
+    )
+    try:
+        with client:
+            response = client.post(
+                "/api/v1/datasets/imports",
+                headers=_build_dataset_write_headers(),
+                data={
+                    "project_id": "project-1",
+                    "dataset_id": "dataset-auto-1",
+                },
+                files={
+                    "package": ("coco-dataset.zip", _build_coco_zip_bytes(), "application/zip"),
+                },
+            )
+
+            assert response.status_code == 202
+            dataset_import_id = response.json()["dataset_import_id"]
+
+            detail_payload: dict[str, object] | None = None
+            for _ in range(40):
+                detail_response = client.get(
+                    f"/api/v1/datasets/imports/{dataset_import_id}",
+                    headers=_build_dataset_read_headers(),
+                )
+                assert detail_response.status_code == 200
+                detail_payload = detail_response.json()
+                if detail_payload["status"] == "completed":
+                    break
+                time.sleep(0.05)
+
+        assert detail_payload is not None
+        assert detail_payload["status"] == "completed"
+        assert detail_payload["dataset_version_id"] is not None
+
+        dataset_import, dataset_version = _load_dataset_objects(
+            session_factory=session_factory,
+            dataset_import_id=dataset_import_id,
+        )
+        assert dataset_import is not None
+        assert dataset_import.status == "completed"
+        assert dataset_version is not None
+        assert dataset_storage.resolve(dataset_import.version_path).is_dir()
+    finally:
+        session_factory.engine.dispose()
+
+
+def _create_test_client(
+    tmp_path: Path,
+    *,
+    enable_task_manager: bool = False,
+) -> tuple[TestClient, SessionFactory, LocalDatasetStorage, LocalFileQueueBackend]:
     """创建绑定内存 SQLite 和临时本地文件存储的测试客户端。
 
     参数：
     - tmp_path：当前测试使用的临时目录。
 
     返回：
-    - TestClient、SessionFactory 和 LocalDatasetStorage。
+    - TestClient、SessionFactory、LocalDatasetStorage 和 LocalFileQueueBackend。
     """
 
     database_path = tmp_path / "amvision-test.db"
@@ -377,25 +585,40 @@ def _create_test_client(tmp_path: Path) -> tuple[TestClient, SessionFactory, Loc
     dataset_storage = LocalDatasetStorage(
         DatasetStorageSettings(root_dir=str(tmp_path / "dataset-files"))
     )
+    queue_backend = LocalFileQueueBackend(
+        LocalFileQueueSettings(root_dir=str(tmp_path / "queue-files"))
+    )
+    settings = BackendServiceSettings(
+        task_manager=BackendServiceTaskManagerConfig(
+            enabled=enable_task_manager,
+            max_concurrent_tasks=2,
+            poll_interval_seconds=0.05,
+        )
+    )
     client = TestClient(
-        create_app(session_factory=session_factory, dataset_storage=dataset_storage)
+        create_app(
+            settings=settings,
+            session_factory=session_factory,
+            dataset_storage=dataset_storage,
+            queue_backend=queue_backend,
+        )
     )
 
-    return client, session_factory, dataset_storage
+    return client, session_factory, dataset_storage, queue_backend
 
 
 def _load_dataset_objects(
     *,
     session_factory: SessionFactory,
     dataset_import_id: str,
-    dataset_version_id: str,
+    dataset_version_id: str | None = None,
 ) -> tuple[object | None, object | None]:
     """读取导入结果在数据库中的持久化对象。
 
     参数：
     - session_factory：数据库会话工厂。
     - dataset_import_id：导入记录 id。
-    - dataset_version_id：版本 id。
+    - dataset_version_id：可选的版本 id；为空时自动从导入记录读取。
 
     返回：
     - DatasetImport 和 DatasetVersion。
@@ -404,10 +627,41 @@ def _load_dataset_objects(
     unit_of_work = SqlAlchemyUnitOfWork(session_factory.create_session())
     try:
         dataset_import = unit_of_work.dataset_imports.get_dataset_import(dataset_import_id)
-        dataset_version = unit_of_work.datasets.get_dataset_version(dataset_version_id)
+        resolved_dataset_version_id = dataset_version_id
+        if resolved_dataset_version_id is None and dataset_import is not None:
+            resolved_dataset_version_id = dataset_import.dataset_version_id
+        dataset_version = None
+        if resolved_dataset_version_id is not None:
+            dataset_version = unit_of_work.datasets.get_dataset_version(resolved_dataset_version_id)
         return dataset_import, dataset_version
     finally:
         unit_of_work.close()
+
+
+def _run_import_worker_once(
+    *,
+    session_factory: SessionFactory,
+    dataset_storage: LocalDatasetStorage,
+    queue_backend: LocalFileQueueBackend,
+) -> bool:
+    """执行一次 DatasetImport 队列 worker。
+
+    参数：
+    - session_factory：数据库会话工厂。
+    - dataset_storage：本地数据集文件存储服务。
+    - queue_backend：本地任务队列后端。
+
+    返回：
+    - 当成功消费到一条任务时返回 True；否则返回 False。
+    """
+
+    worker = DatasetImportQueueWorker(
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+        queue_backend=queue_backend,
+        worker_id="test-import-worker",
+    )
+    return worker.run_once()
 
 
 def _build_dataset_write_headers() -> dict[str, str]:

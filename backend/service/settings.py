@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
 
 from backend.bootstrap.settings import build_json_config_sources
+from backend.queue import LocalFileQueueSettings
 from backend.service.infrastructure.db.session import DatabaseSettings
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     DatasetStorageSettings,
@@ -54,6 +55,30 @@ class BackendServiceDatasetStorageConfig(BaseModel):
     root_dir: str = "./data/files"
 
 
+class BackendServiceQueueConfig(BaseModel):
+    """描述 backend-service 使用的本地队列配置。
+
+    字段：
+    - root_dir：队列根目录。
+    """
+
+    root_dir: str = "./data/queue"
+
+
+class BackendServiceTaskManagerConfig(BaseModel):
+    """描述 backend-service 托管后台任务管理器的配置。
+
+    字段：
+    - enabled：是否在 backend-service 进程内自动启动 task manager。
+    - max_concurrent_tasks：后台任务最大并发数。
+    - poll_interval_seconds：空闲轮询间隔秒数。
+    """
+
+    enabled: bool = True
+    max_concurrent_tasks: int = 2
+    poll_interval_seconds: float = 1.0
+
+
 class BackendServiceSettings(BaseSettings):
     """描述 backend-service 启动阶段使用的统一配置。
 
@@ -61,6 +86,8 @@ class BackendServiceSettings(BaseSettings):
     - app：FastAPI 应用基础配置。
     - database：数据库连接配置。
     - dataset_storage：本地数据集文件存储配置。
+    - queue：本地任务队列配置。
+    - task_manager：内嵌后台任务管理器配置。
     """
 
     model_config = SettingsConfigDict(
@@ -73,6 +100,10 @@ class BackendServiceSettings(BaseSettings):
     database: BackendServiceDatabaseConfig = Field(default_factory=BackendServiceDatabaseConfig)
     dataset_storage: BackendServiceDatasetStorageConfig = Field(
         default_factory=BackendServiceDatasetStorageConfig
+    )
+    queue: BackendServiceQueueConfig = Field(default_factory=BackendServiceQueueConfig)
+    task_manager: BackendServiceTaskManagerConfig = Field(
+        default_factory=BackendServiceTaskManagerConfig
     )
 
     @classmethod
@@ -133,6 +164,15 @@ class BackendServiceSettings(BaseSettings):
         """
 
         return DatasetStorageSettings(root_dir=self.dataset_storage.root_dir)
+
+    def to_queue_settings(self) -> LocalFileQueueSettings:
+        """把统一配置转换为本地队列配置。
+
+        返回：
+        - 供 LocalFileQueueBackend 使用的 LocalFileQueueSettings。
+        """
+
+        return LocalFileQueueSettings(root_dir=self.queue.root_dir)
 
 
 @lru_cache

@@ -15,7 +15,9 @@ from backend.service.settings import (
     BackendServiceAppSettings,
     BackendServiceDatabaseConfig,
     BackendServiceDatasetStorageConfig,
+    BackendServiceQueueConfig,
     BackendServiceSettings,
+    BackendServiceTaskManagerConfig,
     get_backend_service_settings,
 )
 
@@ -128,6 +130,8 @@ def test_create_app_uses_explicit_backend_service_settings(tmp_path: Path) -> No
             url=f"sqlite:///{(tmp_path / 'explicit.db').as_posix()}"
         ),
         dataset_storage=BackendServiceDatasetStorageConfig(root_dir=str(storage_root)),
+        queue=BackendServiceQueueConfig(root_dir=str(tmp_path / "queue-root")),
+        task_manager=BackendServiceTaskManagerConfig(enabled=False),
     )
 
     application = create_app(settings=settings)
@@ -136,6 +140,8 @@ def test_create_app_uses_explicit_backend_service_settings(tmp_path: Path) -> No
         assert application.version == "0.2.0"
         assert application.state.backend_service_settings == settings
         assert application.state.dataset_storage.root_dir == storage_root.resolve()
+        assert application.state.queue_backend.root_dir == (tmp_path / "queue-root").resolve()
+        assert application.state.background_task_manager_host is None
     finally:
         application.state.session_factory.engine.dispose()
 
@@ -162,6 +168,14 @@ def test_get_backend_service_settings_reads_json_files_and_environment_overrides
                 "dataset_storage": {
                     "root_dir": "./data/from-config-files",
                 },
+                "queue": {
+                    "root_dir": "./data/from-config-queue",
+                },
+                "task_manager": {
+                    "enabled": False,
+                    "max_concurrent_tasks": 3,
+                    "poll_interval_seconds": 2.0,
+                },
             }
         ),
         encoding="utf-8",
@@ -175,6 +189,12 @@ def test_get_backend_service_settings_reads_json_files_and_environment_overrides
                 "dataset_storage": {
                     "root_dir": "./data/from-local-config-files",
                 },
+                "queue": {
+                    "root_dir": "./data/from-local-config-queue",
+                },
+                "task_manager": {
+                    "max_concurrent_tasks": 4,
+                },
             }
         ),
         encoding="utf-8",
@@ -184,6 +204,7 @@ def test_get_backend_service_settings_reads_json_files_and_environment_overrides
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("AMVISION_APP__APP_NAME", "amvision env-service")
     monkeypatch.setenv("AMVISION_DATABASE__ECHO", "true")
+    monkeypatch.setenv("AMVISION_TASK_MANAGER__ENABLED", "true")
 
     settings = get_backend_service_settings()
 
@@ -192,6 +213,10 @@ def test_get_backend_service_settings_reads_json_files_and_environment_overrides
     assert settings.database.echo is True
     assert settings.database.url == "sqlite:///./data/from-config.db"
     assert settings.dataset_storage.root_dir == "./data/from-local-config-files"
+    assert settings.queue.root_dir == "./data/from-local-config-queue"
+    assert settings.task_manager.enabled is True
+    assert settings.task_manager.max_concurrent_tasks == 4
+    assert settings.task_manager.poll_interval_seconds == 2.0
 
     get_backend_service_settings.cache_clear()
 
@@ -242,6 +267,35 @@ def test_bootstrap_runs_explicit_seeders_in_initialize(tmp_path: Path) -> None:
         )
     finally:
         runtime.session_factory.engine.dispose()
+
+
+def test_app_lifespan_starts_and_stops_background_task_manager(tmp_path: Path) -> None:
+    """验证 backend-service 生命周期会统一启动和停止内嵌 task manager。"""
+
+    settings = BackendServiceSettings(
+        database=BackendServiceDatabaseConfig(
+            url=f"sqlite:///{(tmp_path / 'hosted.db').as_posix()}"
+        ),
+        dataset_storage=BackendServiceDatasetStorageConfig(
+            root_dir=str(tmp_path / "hosted-files")
+        ),
+        queue=BackendServiceQueueConfig(root_dir=str(tmp_path / "hosted-queue")),
+        task_manager=BackendServiceTaskManagerConfig(
+            enabled=True,
+            max_concurrent_tasks=1,
+            poll_interval_seconds=0.1,
+        ),
+    )
+    application = create_app(settings=settings)
+    background_task_manager_host = application.state.background_task_manager_host
+
+    assert background_task_manager_host is not None
+    assert background_task_manager_host.is_running is False
+
+    with TestClient(application):
+        assert background_task_manager_host.is_running is True
+
+    assert background_task_manager_host.is_running is False
 
 
 def _create_test_client() -> TestClient:

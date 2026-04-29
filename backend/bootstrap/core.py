@@ -91,6 +91,32 @@ class RuntimeBootstrap(ABC, Generic[SettingsT, RuntimeT]):
 
         BootstrapStepRunner(self._build_steps()).run(runtime)
 
+    def start_runtime(self, runtime: RuntimeT) -> None:
+        """启动当前运行时中的长生命周期资源。
+
+        参数：
+        - runtime：当前启动链使用的运行时资源。
+
+        说明：
+        - 默认实现不执行任何动作。
+        - 如需启动后台线程、任务管理器或其他托管资源，可在子类中覆盖。
+        """
+
+        _ = runtime
+
+    def stop_runtime(self, runtime: RuntimeT) -> None:
+        """停止当前运行时中的长生命周期资源。
+
+        参数：
+        - runtime：当前启动链使用的运行时资源。
+
+        说明：
+        - 默认实现不执行任何动作。
+        - 如需停止后台线程、释放连接或回收资源，可在子类中覆盖。
+        """
+
+        _ = runtime
+
     def get_step_names(self) -> tuple[str, ...]:
         """返回当前 bootstrap 链的步骤名称。"""
 

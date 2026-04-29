@@ -5,5 +5,17 @@
   },
   "workspace": {
     "root_dir": "./data/worker"
+  },
+  "database": {
+    "url": "sqlite:///./data/amvision.db",
+    "echo": false
+  },
+  "dataset_storage": {
+    "root_dir": "./data/files"
+  },
+  "queue": {
+    "root_dir": "./data/queue",
+    "max_concurrent_tasks": 2,
+    "poll_interval_seconds": 1.0
   }
 }

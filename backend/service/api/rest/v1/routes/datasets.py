@@ -8,8 +8,10 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, File, Form, UploadFile
 from pydantic import BaseModel, Field
 
+from backend.queue import LocalFileQueueBackend
 from backend.service.api.deps.auth import AuthenticatedPrincipal, require_scopes
 from backend.service.api.deps.db import get_session_factory, get_unit_of_work
+from backend.service.api.deps.queue import get_queue_backend
 from backend.service.api.deps.storage import get_dataset_storage
 from backend.service.application.datasets.dataset_import import (
 	DatasetImportRequest,
@@ -33,21 +35,21 @@ from backend.service.infrastructure.object_store.local_dataset_storage import Lo
 
 datasets_router = APIRouter(prefix="/datasets", tags=["datasets"])
 
+DATASET_IMPORT_QUEUE_NAME = "dataset-imports"
 
-class DatasetImportResponse(BaseModel):
-	"""描述数据集导入接口响应。"""
+
+class DatasetImportSubmissionResponse(BaseModel):
+	"""描述数据集导入提交接口响应。"""
 
 	dataset_import_id: str = Field(description="导入记录 id")
-	dataset_version_id: str = Field(description="生成的 DatasetVersion id")
-	format_type: str = Field(description="最终识别的格式类型")
-	task_type: str = Field(description="最终任务类型")
 	status: str = Field(description="导入状态")
-	sample_count: int = Field(description="样本总数")
-	category_count: int = Field(description="类别总数")
-	split_names: tuple[str, ...] = Field(description="导入后包含的 split 列表")
+	upload_state: str = Field(description="上传状态")
+	processing_state: str = Field(description="处理状态")
+	package_size: int = Field(description="已保存的 zip 包大小")
 	package_path: str = Field(description="原始 zip 包相对路径")
 	staging_path: str = Field(description="解压目录相对路径")
-	version_path: str = Field(description="版本目录相对路径")
+	queue_name: str = Field(description="提交到的队列名称")
+	queue_task_id: str = Field(description="队列任务 id")
 
 
 class DatasetVersionRelationResponse(BaseModel):
@@ -112,6 +114,10 @@ class DatasetImportSummaryResponse(BaseModel):
 	package_path: str = Field(description="原始 zip 包相对路径")
 	staging_path: str = Field(description="解压目录相对路径")
 	version_path: str | None = Field(description="版本目录相对路径")
+	package_size: int | None = Field(description="原始 zip 包大小")
+	upload_state: str | None = Field(description="上传状态")
+	processing_state: str = Field(description="处理状态")
+	queue_task_id: str | None = Field(description="关联的队列任务 id")
 	validation_status: str | None = Field(description="校验报告中的状态")
 	error_message: str | None = Field(description="失败时的错误消息")
 
@@ -130,6 +136,10 @@ class DatasetImportDetailResponse(BaseModel):
 	package_path: str = Field(description="原始 zip 包相对路径")
 	staging_path: str = Field(description="解压目录相对路径")
 	version_path: str | None = Field(description="版本目录相对路径")
+	package_size: int | None = Field(description="原始 zip 包大小")
+	upload_state: str | None = Field(description="上传状态")
+	processing_state: str = Field(description="处理状态")
+	queue_task_id: str | None = Field(description="关联的队列任务 id")
 	image_root: str | None = Field(description="识别出的图片根路径")
 	annotation_root: str | None = Field(description="识别出的标注根路径")
 	manifest_file: str | None = Field(description="识别出的 manifest 文件路径")
@@ -145,11 +155,12 @@ class DatasetImportDetailResponse(BaseModel):
 	)
 
 
-@datasets_router.post("/imports", response_model=DatasetImportResponse, status_code=201)
+@datasets_router.post("/imports", response_model=DatasetImportSubmissionResponse, status_code=202)
 async def import_dataset_zip(
 	principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("datasets:write"))],
 	session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
 	dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
+	queue_backend: Annotated[LocalFileQueueBackend, Depends(get_queue_backend)],
 	project_id: Annotated[str, Form()],
 	dataset_id: Annotated[str, Form()],
 	package: Annotated[UploadFile, File()],
@@ -157,7 +168,7 @@ async def import_dataset_zip(
 	task_type: Annotated[DatasetTaskType, Form()] = "detection",
 	split_strategy: Annotated[DatasetImportRequestedSplitStrategy | None, Form()] = None,
 	class_map_json: Annotated[str | None, Form()] = None,
-) -> DatasetImportResponse:
+) -> DatasetImportSubmissionResponse:
 	"""接收 zip 数据集压缩包并生成 DatasetImport 与 DatasetVersion。
 
 	参数：
@@ -187,7 +198,7 @@ async def import_dataset_zip(
 		session_factory=session_factory,
 		dataset_storage=dataset_storage,
 	)
-	import_result = service.import_dataset(
+	submitted_import = service.submit_dataset_import(
 		DatasetImportRequest(
 			project_id=project_id,
 			dataset_id=dataset_id,
@@ -200,20 +211,30 @@ async def import_dataset_zip(
 		),
 		package_file=package.file,
 	)
+	queue_task = queue_backend.enqueue(
+		queue_name=DATASET_IMPORT_QUEUE_NAME,
+		payload={"dataset_import_id": submitted_import.dataset_import_id},
+		metadata={
+			"project_id": project_id,
+			"dataset_id": dataset_id,
+		},
+	)
+	queued_import = service.mark_dataset_import_queued(
+		submitted_import.dataset_import_id,
+		queue_name=queue_task.queue_name,
+		queue_task_id=queue_task.task_id,
+	)
 
-	dataset_import = import_result.dataset_import
-	return DatasetImportResponse(
-		dataset_import_id=dataset_import.dataset_import_id,
-		dataset_version_id=dataset_import.dataset_version_id or "",
-		format_type=dataset_import.format_type or "",
-		task_type=dataset_import.task_type,
-		status=dataset_import.status,
-		sample_count=import_result.sample_count,
-		category_count=import_result.category_count,
-		split_names=import_result.split_names,
-		package_path=dataset_import.package_path,
-		staging_path=dataset_import.staging_path,
-		version_path=dataset_import.version_path or "",
+	return DatasetImportSubmissionResponse(
+		dataset_import_id=queued_import.dataset_import_id,
+		status=queued_import.status,
+		upload_state=_read_optional_str(queued_import.metadata, "upload_state") or "uploaded",
+		processing_state=_derive_processing_state(queued_import),
+		package_size=_read_optional_int(queued_import.metadata, "package_size") or 0,
+		package_path=queued_import.package_path,
+		staging_path=queued_import.staging_path,
+		queue_name=queue_task.queue_name,
+		queue_task_id=queue_task.task_id,
 	)
 
 
@@ -340,6 +361,10 @@ def _build_dataset_import_summary(dataset_import: DatasetImport) -> DatasetImpor
 		package_path=dataset_import.package_path,
 		staging_path=dataset_import.staging_path,
 		version_path=dataset_import.version_path,
+		package_size=_read_optional_int(dataset_import.metadata, "package_size"),
+		upload_state=_read_optional_str(dataset_import.metadata, "upload_state"),
+		processing_state=_derive_processing_state(dataset_import),
+		queue_task_id=_read_optional_str(dataset_import.metadata, "queue_task_id"),
 		validation_status=_read_validation_status(dataset_import.validation_report),
 		error_message=dataset_import.error_message,
 	)
@@ -364,6 +389,10 @@ def _build_dataset_import_detail(
 		package_path=dataset_import.package_path,
 		staging_path=dataset_import.staging_path,
 		version_path=dataset_import.version_path,
+		package_size=_read_optional_int(dataset_import.metadata, "package_size"),
+		upload_state=_read_optional_str(dataset_import.metadata, "upload_state"),
+		processing_state=_derive_processing_state(dataset_import),
+		queue_task_id=_read_optional_str(dataset_import.metadata, "queue_task_id"),
 		image_root=dataset_import.image_root,
 		annotation_root=dataset_import.annotation_root,
 		manifest_file=dataset_import.manifest_file,
@@ -412,6 +441,21 @@ def _read_validation_status(validation_report: dict[str, object]) -> str | None:
 		return status
 
 	return None
+
+
+def _derive_processing_state(dataset_import: DatasetImport) -> str:
+	"""根据 DatasetImport 当前状态推导处理状态。"""
+
+	if dataset_import.status == "received":
+		return "queued"
+	if dataset_import.status in {"extracted", "validated"}:
+		return "running"
+	if dataset_import.status == "completed":
+		return "completed"
+	if dataset_import.status == "failed":
+		return "failed"
+
+	return dataset_import.status
 
 
 def _build_detected_profile_response(

@@ -224,12 +224,46 @@ class SqlAlchemyDatasetImportService:
             metadata={
                 "source_file_name": request.package_file_name,
                 "package_size": package_size,
+                "uploaded_bytes": package_size,
+                "upload_state": "uploaded",
+                "uploaded_at": created_at,
                 **request.metadata,
             },
         )
         self._save_dataset_import(initial_import)
 
         return initial_import
+
+    def mark_dataset_import_queued(
+        self,
+        dataset_import_id: str,
+        *,
+        queue_name: str,
+        queue_task_id: str,
+    ) -> DatasetImport:
+        """为已提交的 DatasetImport 记录队列任务信息。
+
+        参数：
+        - dataset_import_id：已提交的导入记录 id。
+        - queue_name：入队后的队列名称。
+        - queue_task_id：入队后的任务 id。
+
+        返回：
+        - 已更新队列元数据的 DatasetImport 记录。
+        """
+
+        current_import = self._get_dataset_import(dataset_import_id)
+        queued_import = replace(
+            current_import,
+            metadata={
+                **current_import.metadata,
+                "queue_name": queue_name,
+                "queue_task_id": queue_task_id,
+                "processing_state": "queued",
+            },
+        )
+        self._save_dataset_import(queued_import)
+        return queued_import
 
     def process_dataset_import(self, dataset_import_id: str) -> DatasetImportResult:
         """处理一条已登记的 DatasetImport。

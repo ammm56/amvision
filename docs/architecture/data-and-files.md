@@ -355,6 +355,7 @@ object-store/
 ```text
 data/
 ├─ amvision.db
+├─ queue/
 ├─ files/
 │  └─ projects/
 │     └─ {project_id}/
@@ -369,6 +370,7 @@ data/
 | 路径 | 当前用途 |
 | --- | --- |
 | data/amvision.db | 默认开发数据库文件，保存 DatasetImport、DatasetVersion、Model、ModelVersion、ModelBuild 等正式元数据。 |
+| data/queue | backend-service 与 backend-worker 共用的本地持久化队列根目录。当前 DatasetImport 提交后会先在这里登记一条待消费任务。 |
 | data/files | backend-service 默认 ObjectStore 根目录。当前数据集导入的原始包、版本文件和后续导出结果都放在这里。 |
 | data/worker | worker 进程的默认本地工作目录。当前只是 bootstrap 级目录约定，还没有落正式任务内容。 |
 | data/maintenance | maintenance 进程的默认本地工作目录。当前只是 bootstrap 级目录约定，还没有落正式运维产物。 |
@@ -442,10 +444,18 @@ data/files/projects/{project_id}/datasets/{dataset_id}/versions/{dataset_version
 ### 数据集导入阶段
 
 - 上传接口先把原始 zip 落到 imports/{dataset_import_id}/package.zip。
-- 当前服务内部先登记 DatasetImport 和 package.zip，再进入处理阶段；后续可直接把同一段处理链切给独立 worker。
+- 当 POST /imports 返回 202 时，表示 package.zip 已经持久化完成，同时一条导入任务已经写入 data/queue；此时上传成功，但解析与版本生成尚未完成。
+- 当前服务内部只负责登记 DatasetImport、写 package.zip 和入队；真正的解析、校验和版本生成由 worker 异步执行。
 - 解析器在 staging/extracted 中识别格式、读取原始标注和图片。
 - 导入成功后再把正式结果写入 versions/{dataset_version_id}，并把结构化元数据写入数据库中的 DatasetVersion 聚合。
 - 导入成功后会清空 staging/extracted 中的临时解压内容，只保留 package.zip、识别结果和校验报告作为审计与重跑锚点。
+
+### 上传进度与处理进度边界
+
+- 当前单次 multipart 上传接口只在请求结束后才生成 uploaded 状态，因此服务端只能回答“上传是否已经成功落盘”，不能在请求尚未结束前返回实时上传百分比。
+- 浏览器或桌面客户端如果需要显示上传进度，应使用 HTTP 客户端自己的 upload progress 事件统计已发送字节数。
+- 服务端能提供的是“上传完成后的处理进度”：客户端可通过 DatasetImport.status 轮询当前状态，received 表示已入队，extracted 或 validated 表示 worker 正在运行，completed 表示版本已生成，failed 表示处理失败。
+- 如果后续需要真正的断点续传、分片重试和服务端可查询上传进度，应新增 upload session + chunk API，或改为对象存储 multipart 直传方案。
 
 ### 训练阶段
 
