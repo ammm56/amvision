@@ -18,8 +18,8 @@ class Model:
     - model_id：Model id。
     - project_id：所属项目 id。
     - model_name：模型名。
-    - model_family：模型族名称。
-    - task_family：任务类型。
+    - model_type：模型类型名称。
+    - task_type：任务类型。
     - model_scale：模型 scale。
     - labels_file_id：标签文件 id。
     - metadata：附加元数据。
@@ -28,8 +28,8 @@ class Model:
     model_id: str
     project_id: str
     model_name: str
-    model_family: str
-    task_family: str
+    model_type: str
+    task_type: str
     model_scale: str
     labels_file_id: str | None = None
     metadata: dict[str, object] = field(default_factory=dict)

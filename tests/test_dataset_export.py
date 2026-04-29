@@ -7,8 +7,7 @@ import pytest
 from backend.contracts.datasets.exports.coco_detection_export import COCO_DETECTION_DATASET_FORMAT
 from backend.service.application.datasets.dataset_export import (
     DatasetExportRequest,
-    InMemoryDatasetExporter,
-    InMemoryDatasetVersionStore,
+    SqlAlchemyDatasetExporter,
 )
 from backend.service.domain.datasets.dataset_version import (
     DatasetCategory,
@@ -16,6 +15,9 @@ from backend.service.domain.datasets.dataset_version import (
     DatasetVersion,
     DetectionAnnotation,
 )
+from backend.service.infrastructure.db.session import DatabaseSettings, SessionFactory
+from backend.service.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
+from backend.service.infrastructure.persistence.base import Base
 
 
 def test_export_dataset_generates_minimal_coco_detection_payload() -> None:
@@ -63,9 +65,7 @@ def test_export_dataset_generates_minimal_coco_detection_payload() -> None:
             ),
         ),
     )
-    exporter = InMemoryDatasetExporter(
-        dataset_store=InMemoryDatasetVersionStore((dataset_version,))
-    )
+    exporter = _create_exporter_with_dataset_versions(dataset_version)
 
     export_result = exporter.export_dataset(
         DatasetExportRequest(
@@ -109,9 +109,7 @@ def test_export_dataset_supports_custom_prefix_and_test_split() -> None:
             ),
         ),
     )
-    exporter = InMemoryDatasetExporter(
-        dataset_store=InMemoryDatasetVersionStore((dataset_version,))
-    )
+    exporter = _create_exporter_with_dataset_versions(dataset_version)
 
     export_result = exporter.export_dataset(
         DatasetExportRequest(
@@ -140,9 +138,7 @@ def test_export_dataset_rejects_supported_but_unimplemented_format() -> None:
         categories=(DatasetCategory(category_id=0, name="gear"),),
         samples=(),
     )
-    exporter = InMemoryDatasetExporter(
-        dataset_store=InMemoryDatasetVersionStore((dataset_version,))
-    )
+    exporter = _create_exporter_with_dataset_versions(dataset_version)
 
     with pytest.raises(NotImplementedError):
         exporter.export_dataset(
@@ -155,3 +151,28 @@ def test_export_dataset_rejects_supported_but_unimplemented_format() -> None:
         )
 
     assert COCO_DETECTION_DATASET_FORMAT == "coco-detection-v1"
+
+
+def _create_exporter_with_dataset_versions(
+    *dataset_versions: DatasetVersion,
+) -> SqlAlchemyDatasetExporter:
+    """创建写入测试数据后的 SQLAlchemy 数据集导出器。
+
+    参数：
+    - dataset_versions：初始化要写入数据库的 DatasetVersion 列表。
+
+    返回：
+    - 已写入测试数据的 SqlAlchemyDatasetExporter。
+    """
+
+    session_factory = SessionFactory(DatabaseSettings(url="sqlite+pysqlite:///:memory:"))
+    Base.metadata.create_all(session_factory.engine)
+    unit_of_work = SqlAlchemyUnitOfWork(session_factory.create_session())
+    try:
+        for dataset_version in dataset_versions:
+            unit_of_work.datasets.save_dataset_version(dataset_version)
+        unit_of_work.commit()
+    finally:
+        unit_of_work.close()
+
+    return SqlAlchemyDatasetExporter(session_factory=session_factory)

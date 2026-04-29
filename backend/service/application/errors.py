@@ -107,3 +107,41 @@ class PersistenceOperationError(ServiceError):
         """
 
         super().__init__(message, code="persistence_operation_error", status_code=503, details=details)
+
+
+class InvalidRequestError(ServiceError):
+    """表示当前请求内容不合法。"""
+
+    def __init__(
+        self,
+        message: str = "请求内容不合法",
+        *,
+        details: Mapping[str, object] | None = None,
+    ) -> None:
+        """初始化请求内容错误。
+
+        参数：
+        - message：错误消息。
+        - details：附加错误细节。
+        """
+
+        super().__init__(message, code="invalid_request", status_code=400, details=details)
+
+
+class UnsupportedDatasetFormatError(ServiceError):
+    """表示当前数据集格式暂不支持。"""
+
+    def __init__(
+        self,
+        message: str = "当前数据集格式暂不支持",
+        *,
+        details: Mapping[str, object] | None = None,
+    ) -> None:
+        """初始化不支持的数据集格式错误。
+
+        参数：
+        - message：错误消息。
+        - details：附加错误细节。
+        """
+
+        super().__init__(message, code="unsupported_dataset_format", status_code=422, details=details)

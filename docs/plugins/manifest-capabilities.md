@@ -13,7 +13,7 @@
 
 ## 总体原则
 
-- 每个插件必须有唯一 manifest，且 manifest 是插件身份和能力的权威描述
+- 每个插件必须有唯一 manifest，且 manifest 是插件身份和能力的正式描述
 - capability 用于声明“插件能做什么”，permission scope 用于声明“插件能接触什么”
 - backend-service 根据 manifest 决定能否注册、启用、升级或回滚插件
 - 未在 manifest 中声明的能力、触发点和外部端点访问，不应被视为可用能力

@@ -52,7 +52,7 @@ class YoloXInferenceRunResult:
 
     字段：
     - inference_task_id：推理任务 id。
-    - task_family：任务类型。
+    - task_type：任务类型。
     - detections：检测结果列表。
     - preview_image_uri：预览图 URI。
     - raw_result_uri：原始结果 URI。
@@ -61,7 +61,7 @@ class YoloXInferenceRunResult:
     """
 
     inference_task_id: str
-    task_family: str
+    task_type: str
     detections: tuple[YoloXDetectionRecord, ...]
     preview_image_uri: str | None = None
     raw_result_uri: str | None = None

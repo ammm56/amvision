@@ -21,6 +21,8 @@ from backend.contracts.datasets.exports.dataset_formats import (
     SUPPORTED_DATASET_EXPORT_FORMATS,
 )
 from backend.service.domain.datasets.dataset_version import DatasetCategory, DatasetSample, DatasetVersion
+from backend.service.infrastructure.db.session import SessionFactory
+from backend.service.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
 
 
 @dataclass(frozen=True)
@@ -89,61 +91,17 @@ class DatasetExporter(Protocol):
         ...
 
 
-class InMemoryDatasetVersionStore:
-    """提供 DatasetVersion 内存读取能力的最小存储。
+class SqlAlchemyDatasetExporter:
+    """使用 SQLAlchemy Repository 与 Unit of Work 实现数据集导出。"""
 
-    字段：
-    - 无公开字段；所有数据都保存在内部索引中。
-    """
-
-    def __init__(self, dataset_versions: tuple[DatasetVersion, ...] = ()) -> None:
-        """初始化内存 DatasetVersion 存储。
+    def __init__(self, session_factory: SessionFactory) -> None:
+        """初始化基于 SQLAlchemy 的数据集导出器。
 
         参数：
-        - dataset_versions：初始化时写入的 DatasetVersion 列表。
+        - session_factory：用于创建请求级数据库会话的工厂。
         """
 
-        self._dataset_versions: dict[str, DatasetVersion] = {
-            dataset_version.dataset_version_id: dataset_version for dataset_version in dataset_versions
-        }
-
-    def add_dataset_version(self, dataset_version: DatasetVersion) -> None:
-        """写入一个 DatasetVersion。
-
-        参数：
-        - dataset_version：要保存的 DatasetVersion。
-        """
-
-        self._dataset_versions[dataset_version.dataset_version_id] = dataset_version
-
-    def get_dataset_version(self, dataset_version_id: str) -> DatasetVersion | None:
-        """按 id 读取 DatasetVersion。
-
-        参数：
-        - dataset_version_id：DatasetVersion id。
-
-        返回：
-        - 对应的 DatasetVersion；不存在时返回 None。
-        """
-
-        return self._dataset_versions.get(dataset_version_id)
-
-
-class InMemoryDatasetExporter:
-    """使用内存 DatasetVersion 实现最小数据集导出。
-
-    字段：
-    - dataset_store：提供 DatasetVersion 读取能力的内存存储。
-    """
-
-    def __init__(self, dataset_store: InMemoryDatasetVersionStore | None = None) -> None:
-        """初始化内存数据集导出器。
-
-        参数：
-        - dataset_store：可选的 DatasetVersion 内存存储。
-        """
-
-        self.dataset_store = dataset_store or InMemoryDatasetVersionStore()
+        self.session_factory = session_factory
 
     def export_dataset(self, request: DatasetExportRequest) -> DatasetExportResult:
         """执行数据集导出。
@@ -155,7 +113,30 @@ class InMemoryDatasetExporter:
         - 数据集导出结果。
         """
 
-        dataset_version = self.dataset_store.get_dataset_version(request.dataset_version_id)
+        unit_of_work = SqlAlchemyUnitOfWork(self.session_factory.create_session())
+        try:
+            dataset_version = unit_of_work.datasets.get_dataset_version(request.dataset_version_id)
+        finally:
+            unit_of_work.close()
+
+        return self._export_loaded_dataset(request=request, dataset_version=dataset_version)
+
+    def _export_loaded_dataset(
+        self,
+        *,
+        request: DatasetExportRequest,
+        dataset_version: DatasetVersion | None,
+    ) -> DatasetExportResult:
+        """基于已读取的 DatasetVersion 构建导出结果。
+
+        参数：
+        - request：数据集导出请求。
+        - dataset_version：已读取的 DatasetVersion。
+
+        返回：
+        - 数据集导出结果。
+        """
+
         if dataset_version is None:
             raise ValueError(f"未知的 DatasetVersion: {request.dataset_version_id}")
         if dataset_version.project_id != request.project_id:
@@ -168,7 +149,7 @@ class InMemoryDatasetExporter:
             raise NotImplementedError(
                 f"当前最小实现只落了 {COCO_DETECTION_DATASET_FORMAT}，其他格式已在支持列表中预留"
             )
-        if dataset_version.task_family != "detection":
+        if dataset_version.task_type != "detection":
             raise ValueError("当前最小实现只支持 detection 类型的 DatasetVersion")
 
         category_names = self._resolve_category_names(
@@ -360,7 +341,7 @@ class InMemoryDatasetExporter:
                 info={
                     "dataset_version_id": dataset_version.dataset_version_id,
                     "dataset_id": dataset_version.dataset_id,
-                    "task_family": dataset_version.task_family,
+                    "task_type": dataset_version.task_type,
                 },
             )
 

@@ -10,7 +10,7 @@ from typing import Literal
 YoloXModelScale = Literal["nano", "tiny", "s", "m", "l", "x"]
 
 # 当前骨架支持的 YOLOX 任务类型。
-YoloXTaskFamily = Literal["detection"]
+YoloXTaskType = Literal["detection"]
 
 # 当前骨架支持登记的 YOLOX build 格式。
 YoloXBuildFormat = Literal[
@@ -34,7 +34,7 @@ class YoloXModelSpec:
     """
 
     model_name: str = "yolox"
-    supported_tasks: tuple[YoloXTaskFamily, ...] = ("detection",)
+    supported_tasks: tuple[YoloXTaskType, ...] = ("detection",)
     supported_scales: tuple[YoloXModelScale, ...] = ("nano", "tiny", "s", "m", "l", "x")
     default_dataset_format: str = "coco-detection-v1"
     supported_build_formats: tuple[YoloXBuildFormat, ...] = (

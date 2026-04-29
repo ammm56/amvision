@@ -21,7 +21,7 @@
 - [docs/architecture/frontend-web-ui.md](architecture/frontend-web-ui.md)：浏览器前端 Web UI 的模块、路由、状态和交互边界
 - [docs/api/communication-contracts.md](api/communication-contracts.md)：REST、WebSocket、ZeroMQ 的职责划分
 - [docs/architecture/data-and-files.md](architecture/data-and-files.md)：关键对象关系和可追溯规则
-- [docs/architecture/dataset-import-spec.md](architecture/dataset-import-spec.md)：数据集导入、canonical schema 与任务格式矩阵规范
+- [docs/architecture/dataset-import-spec.md](architecture/dataset-import-spec.md)：数据集导入、通用数据格式与任务格式矩阵规范
 - [docs/architecture/runtime-packaging.md](architecture/runtime-packaging.md)：开发运行时、发布运行时和装配层结构
 - [docs/deployment/bundled-python-deployment.md](deployment/bundled-python-deployment.md)：同目录 Python 的部署与回滚流程
 - [docs/plugins/manifest-capabilities.md](plugins/manifest-capabilities.md)：插件 manifest、capability 和 permission scope 规范

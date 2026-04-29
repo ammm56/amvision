@@ -43,7 +43,7 @@
 
 - exp 文件同时放模型规格、类别定义、数据路径、增强策略、评估器和训练入口
 - tools 脚本默认围绕本地路径、checkpoint 文件和输出目录运行
-- 数据输入直接依赖 VOC 或 COCO 风格目录，而不是平台冻结后的 DatasetVersion
+- 数据输入直接依赖 VOC 或 COCO 风格目录，而不是平台生成后的 DatasetVersion
 - OpenVINO FastAPI 入口仍然依赖本地 JSON 配置和进程内对象工厂，不适合作为平台正式部署入口
 
 ## 在 amvision 中的位置
@@ -126,7 +126,7 @@ backend/
 
 - 定义 YOLOX 作为一个模型类型的稳定规格
 - 定义支持的 model scale，例如 nano、tiny、s、m、l、x
-- 定义支持的任务族范围，第一阶段聚焦 detection
+- 定义支持的任务类型范围，第一阶段聚焦 detection
 - 定义默认数据集导出格式与支持的转换目标
 
 ### backend/service/domain/files/yolox_file_types.py
@@ -202,7 +202,7 @@ backend/
 
 ### DatasetVersion -> YOLOX 数据集导出
 
-- 平台权威输入始终是 DatasetVersion
+- 平台正式输入始终是 DatasetVersion
 - YOLOX 训练只消费由 dataset exporter 生成的 coco-detection-v1 数据集导出结果
 - 导出格式第一阶段优先对齐 [dataset-export-formats.md](dataset-export-formats.md) 中的 coco-detection-v1
 
@@ -228,7 +228,7 @@ backend/
 
 ### 训练链路
 
-1. DatasetVersion 冻结完成
+1. DatasetVersion 已生成
 2. 创建 YOLOX 数据集导出结果
 3. 创建 TrainingTask
 4. training worker 读取结构化任务规格并执行训练
@@ -253,7 +253,7 @@ backend/
 
 第一阶段建议只落以下内容：
 
-- detection 任务族
+- detection 任务类型
 - YOLOX 模型基础信息
 - DatasetVersion 到 coco-detection-v1 数据集导出的规则骨架
 - 训练、推理、转换三类 worker runner 的接口骨架
@@ -261,7 +261,7 @@ backend/
 
 第一阶段不强制完成以下内容：
 
-- segmentation 或 pose 任务族
+- segmentation 或 pose 任务类型
 - 完整的 TensorRT 运行时接入
 - WebSocket 状态推送细节
 - 前端页面或工作流界面

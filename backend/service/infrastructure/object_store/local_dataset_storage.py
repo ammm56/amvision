@@ -1,0 +1,310 @@
+"""本地数据集文件存储服务。"""
+
+from __future__ import annotations
+
+import json
+import shutil
+import stat
+import zipfile
+from dataclasses import dataclass
+from pathlib import Path, PurePosixPath
+
+from backend.service.application.errors import InvalidRequestError
+
+
+@dataclass(frozen=True)
+class DatasetStorageSettings:
+    """描述本地数据集文件存储配置。
+
+    字段：
+    - root_dir：本地文件存储根目录。
+    """
+
+    root_dir: str = "./data/files"
+
+
+@dataclass(frozen=True)
+class DatasetImportLayout:
+    """描述一次数据集导入在本地文件存储中的目录布局。
+
+    字段：
+    - import_path：导入根目录相对路径。
+    - package_path：原始 zip 包相对路径。
+    - manifests_dir：导入 manifest 目录相对路径。
+    - upload_request_path：上传请求 manifest 相对路径。
+    - detected_profile_path：识别结果 manifest 相对路径。
+    - staging_dir：staging 目录相对路径。
+    - extracted_path：解压目录相对路径。
+    - logs_dir：日志目录相对路径。
+    - validation_report_path：校验报告相对路径。
+    - import_log_path：导入日志相对路径。
+    """
+
+    import_path: str
+    package_path: str
+    manifests_dir: str
+    upload_request_path: str
+    detected_profile_path: str
+    staging_dir: str
+    extracted_path: str
+    logs_dir: str
+    validation_report_path: str
+    import_log_path: str
+
+
+@dataclass(frozen=True)
+class DatasetVersionLayout:
+    """描述一个 DatasetVersion 在本地文件存储中的目录布局。
+
+    字段：
+    - version_path：版本根目录相对路径。
+    - manifests_dir：版本 manifest 目录相对路径。
+    - dataset_version_path：dataset-version manifest 相对路径。
+    - categories_path：categories manifest 相对路径。
+    - images_dir：图片目录相对路径。
+    - samples_dir：样本目录相对路径。
+    - indexes_dir：索引目录相对路径。
+    """
+
+    version_path: str
+    manifests_dir: str
+    dataset_version_path: str
+    categories_path: str
+    images_dir: str
+    samples_dir: str
+    indexes_dir: str
+
+
+class LocalDatasetStorage:
+    """在本地磁盘上管理数据集导入和版本目录。"""
+
+    def __init__(self, settings: DatasetStorageSettings) -> None:
+        """初始化本地数据集文件存储服务。
+
+        参数：
+        - settings：文件存储配置。
+        """
+
+        self.settings = settings
+        self.root_dir = Path(settings.root_dir).resolve()
+        self.root_dir.mkdir(parents=True, exist_ok=True)
+
+    def prepare_import_layout(
+        self,
+        *,
+        project_id: str,
+        dataset_id: str,
+        dataset_import_id: str,
+    ) -> DatasetImportLayout:
+        """创建一次导入所需的目录布局。
+
+        参数：
+        - project_id：所属 Project id。
+        - dataset_id：所属 Dataset id。
+        - dataset_import_id：导入记录 id。
+
+        返回：
+        - 该导入对应的目录布局。
+        """
+
+        import_root = self._dataset_root(project_id, dataset_id) / "imports" / dataset_import_id
+        manifests_dir = import_root / "manifests"
+        staging_dir = import_root / "staging"
+        logs_dir = import_root / "logs"
+        extracted_dir = staging_dir / "extracted"
+
+        for directory in (manifests_dir, staging_dir, logs_dir, extracted_dir):
+            self.resolve(str(directory)).mkdir(parents=True, exist_ok=True)
+
+        return DatasetImportLayout(
+            import_path=str(import_root),
+            package_path=str(import_root / "package.zip"),
+            manifests_dir=str(manifests_dir),
+            upload_request_path=str(manifests_dir / "upload-request.json"),
+            detected_profile_path=str(manifests_dir / "detected-profile.json"),
+            staging_dir=str(staging_dir),
+            extracted_path=str(extracted_dir),
+            logs_dir=str(logs_dir),
+            validation_report_path=str(logs_dir / "validation-report.json"),
+            import_log_path=str(logs_dir / "import.log"),
+        )
+
+    def prepare_version_layout(
+        self,
+        *,
+        project_id: str,
+        dataset_id: str,
+        dataset_version_id: str,
+    ) -> DatasetVersionLayout:
+        """创建一个 DatasetVersion 所需的目录布局。
+
+        参数：
+        - project_id：所属 Project id。
+        - dataset_id：所属 Dataset id。
+        - dataset_version_id：DatasetVersion id。
+
+        返回：
+        - 该版本对应的目录布局。
+        """
+
+        version_root = self._dataset_root(project_id, dataset_id) / "versions" / dataset_version_id
+        manifests_dir = version_root / "manifests"
+        images_dir = version_root / "images"
+        samples_dir = version_root / "samples"
+        indexes_dir = version_root / "indexes"
+
+        for directory in (manifests_dir, images_dir, samples_dir, indexes_dir):
+            self.resolve(str(directory)).mkdir(parents=True, exist_ok=True)
+
+        return DatasetVersionLayout(
+            version_path=str(version_root),
+            manifests_dir=str(manifests_dir),
+            dataset_version_path=str(manifests_dir / "dataset-version.json"),
+            categories_path=str(manifests_dir / "categories.json"),
+            images_dir=str(images_dir),
+            samples_dir=str(samples_dir),
+            indexes_dir=str(indexes_dir),
+        )
+
+    def resolve(self, relative_path: str) -> Path:
+        """把相对路径解析为当前本地存储根目录下的绝对路径。
+
+        参数：
+        - relative_path：相对路径。
+
+        返回：
+        - 对应的绝对路径对象。
+        """
+
+        normalized_path = PurePosixPath(relative_path)
+        return self.root_dir.joinpath(*normalized_path.parts)
+
+    def write_bytes(self, relative_path: str, content: bytes) -> None:
+        """把二进制内容写入本地文件。
+
+        参数：
+        - relative_path：目标文件相对路径。
+        - content：要写入的二进制内容。
+        """
+
+        target_path = self.resolve(relative_path)
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+        target_path.write_bytes(content)
+
+    def write_json(self, relative_path: str, payload: object) -> None:
+        """把 JSON 内容写入本地文件。
+
+        参数：
+        - relative_path：目标文件相对路径。
+        - payload：要写入的 JSON 对象。
+        """
+
+        target_path = self.resolve(relative_path)
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+        target_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    def write_text(self, relative_path: str, content: str) -> None:
+        """把文本内容写入本地文件。
+
+        参数：
+        - relative_path：目标文件相对路径。
+        - content：要写入的文本内容。
+        """
+
+        target_path = self.resolve(relative_path)
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+        target_path.write_text(content, encoding="utf-8")
+
+    def copy_file(self, source_path: Path, destination_path: str) -> None:
+        """把一个已存在文件复制到本地文件存储目录。
+
+        参数：
+        - source_path：源文件绝对路径。
+        - destination_path：目标文件相对路径。
+        """
+
+        target_path = self.resolve(destination_path)
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source_path, target_path)
+
+    def extract_zip(self, archive_path: str, destination_path: str) -> None:
+        """把 zip 包安全解压到目标目录。
+
+        参数：
+        - archive_path：zip 包相对路径。
+        - destination_path：解压目录相对路径。
+
+        异常：
+        - 当 zip 中存在路径穿越或符号链接时抛出请求错误。
+        """
+
+        source_archive = self.resolve(archive_path)
+        destination_dir = self.resolve(destination_path)
+        if destination_dir.exists():
+            shutil.rmtree(destination_dir)
+        destination_dir.mkdir(parents=True, exist_ok=True)
+
+        with zipfile.ZipFile(source_archive) as zip_file:
+            for member in zip_file.infolist():
+                member_path = PurePosixPath(member.filename)
+                self._validate_zip_member(member_path=member_path, member=member)
+                target_path = destination_dir.joinpath(*member_path.parts)
+                if member.is_dir():
+                    target_path.mkdir(parents=True, exist_ok=True)
+                    continue
+
+                target_path.parent.mkdir(parents=True, exist_ok=True)
+                with zip_file.open(member) as source_stream, target_path.open("wb") as target_stream:
+                    shutil.copyfileobj(source_stream, target_stream)
+
+    def delete_tree(self, relative_path: str) -> None:
+        """删除一个相对目录或文件。
+
+        参数：
+        - relative_path：要删除的目录或文件相对路径。
+        """
+
+        target_path = self.resolve(relative_path)
+        if target_path.is_dir():
+            shutil.rmtree(target_path, ignore_errors=True)
+            return
+        if target_path.exists():
+            target_path.unlink(missing_ok=True)
+
+    def _dataset_root(self, project_id: str, dataset_id: str) -> PurePosixPath:
+        """构建 Dataset 的相对根目录。
+
+        参数：
+        - project_id：所属 Project id。
+        - dataset_id：所属 Dataset id。
+
+        返回：
+        - Dataset 根目录相对路径。
+        """
+
+        return PurePosixPath("projects") / project_id / "datasets" / dataset_id
+
+    def _validate_zip_member(self, member_path: PurePosixPath, member: zipfile.ZipInfo) -> None:
+        """校验 zip 成员路径是否合法。
+
+        参数：
+        - member_path：zip 成员的相对路径。
+        - member：zip 成员对象。
+
+        异常：
+        - 当路径非法或成员是符号链接时抛出请求错误。
+        """
+
+        if not member.filename:
+            raise InvalidRequestError("zip 包中存在空文件路径")
+        if member_path.is_absolute() or ".." in member_path.parts:
+            raise InvalidRequestError(
+                "zip 包中存在非法路径",
+                details={"member": member.filename},
+            )
+        member_mode = member.external_attr >> 16
+        if stat.S_ISLNK(member_mode):
+            raise InvalidRequestError(
+                "zip 包中存在不支持的符号链接",
+                details={"member": member.filename},
+            )

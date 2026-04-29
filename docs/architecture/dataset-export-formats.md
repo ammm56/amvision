@@ -8,9 +8,9 @@
 
 ## 核心原则
 
-- DatasetVersion 是平台里的权威输入，数据集导出是为训练、验证和评估生成的派生结果
+- DatasetVersion 是平台里的正式输入，数据集导出是为训练、验证和评估生成的派生结果
 - 数据集导出按 format id 管理，不按某个模型内部脚本命名
-- 同一个 DatasetVersion 可以导出成多种格式，但每个导出结果都必须追到同一个冻结版本
+- 同一个 DatasetVersion 可以导出成多种格式，但每个导出结果都必须追到同一个固定版本
 - 导出格式要先把目录、annotation 文件、类别顺序和最小字段定清楚，再接具体训练代码
 
 ## 格式命名规则
@@ -23,56 +23,56 @@
 
 ### yolo-detection-v1
 
-- task family：detection
+- task type：detection
 - 目录布局：images/{split}/、labels/{split}/、data.yaml
 - 主要内容：YOLO detection 标签文件
 - 适用模型：YOLOv8/11 detection
 
 ### yolo-instance-seg-v1
 
-- task family：instance-segmentation
+- task type：instance-segmentation
 - 目录布局：images/{split}/、labels/{split}/、data.yaml
 - 主要内容：YOLO segmentation 标签文件
 - 适用模型：YOLOv8/11 segmentation
 
 ### yolo-pose-v1
 
-- task family：pose
+- task type：pose
 - 目录布局：images/{split}/、labels/{split}/、data.yaml
 - 主要内容：YOLO pose 标签文件
 - 适用模型：YOLOv8/11 pose
 
 ### coco-detection-v1
 
-- task family：detection
+- task type：detection
 - 目录布局：images/{split}/、annotations/instances_{split}.json
 - 主要内容：COCO detection json
 - 适用模型：YOLOX、RT-DETR
 
 ### coco-instance-seg-v1
 
-- task family：instance-segmentation
+- task type：instance-segmentation
 - 目录布局：images/{split}/、annotations/instances_{split}.json
 - 主要内容：COCO instance segmentation json
 - 适用模型：实例分割训练后端
 
 ### coco-keypoints-v1
 
-- task family：pose
+- task type：pose
 - 目录布局：images/{split}/、annotations/person_keypoints_{split}.json
 - 主要内容：COCO keypoints json
 - 适用模型：keypoint 训练后端
 
 ### semantic-mask-dir-v1
 
-- task family：semantic-segmentation
+- task type：semantic-segmentation
 - 目录布局：images/{split}/、masks/{split}/、classes.json
 - 主要内容：图像和 mask 目录
 - 适用模型：U-Net、DeepLab、MMSeg 风格训练后端
 
 ### sam-promptable-seg-v1
 
-- task family：instance-segmentation 或 prompt-driven segmentation
+- task type：instance-segmentation 或 prompt-driven segmentation
 - 目录布局：images/{split}/、masks/{split}/、prompts/{split}.jsonl、classes.json
 - 主要内容：mask 加 prompt sidecar
 - 适用模型：SAM 相关微调和提示驱动分割流程
@@ -98,7 +98,7 @@
 ## 当前实现状态
 
 - 架构层面已经把 detection、instance-segmentation、semantic-segmentation、pose 这几类格式都纳入支持范围
-- 当前代码层最小实现只先落了 coco-detection-v1
+- 当前代码层第一阶段只实现了 coco-detection-v1
 - 后续新增格式时，应继续沿用“DatasetVersion -> format id -> 导出目录和 annotation payload”这条主线扩展
 
 ## 推荐后续文档

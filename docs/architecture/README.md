@@ -15,7 +15,7 @@
 - [docs/architecture/frontend-web-ui.md](frontend-web-ui.md)：浏览器前端 Web UI 的模块划分、路由结构、状态组织和交互边界
 - [docs/architecture/plugin-system.md](plugin-system.md)：插件体系、扩展边界、节点模型和 ComfyUI 对齐方向
 - [docs/architecture/data-and-files.md](data-and-files.md)：关键对象、文件引用和版本关系
-- [docs/architecture/dataset-import-spec.md](dataset-import-spec.md)：DatasetImport、canonical annotation schema、任务族格式矩阵和数据集导出规范
+- [docs/architecture/dataset-import-spec.md](dataset-import-spec.md)：DatasetImport、通用数据格式、任务类型格式矩阵和数据集导出规范
 - [docs/architecture/dataset-export-formats.md](dataset-export-formats.md)：数据集导出格式列表、格式命名和模型默认格式映射
 - [docs/architecture/runtime-packaging.md](runtime-packaging.md)：开发运行时、同目录 Python 发布运行时和发行装配结构
 

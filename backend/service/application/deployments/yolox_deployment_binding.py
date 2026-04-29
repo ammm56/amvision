@@ -14,7 +14,7 @@ class YoloXDeploymentBindingRequest:
     - deployment_instance_id：目标 DeploymentInstance id。
     - model_build_id：待绑定的 ModelBuild id。
     - runtime_profile_id：目标 RuntimeProfile id。
-    - task_family：任务类型。
+    - task_type：任务类型。
     - required_input_size：要求的输入尺寸。
     - required_device：要求的 device 名称。
     - metadata：附加元数据。
@@ -23,7 +23,7 @@ class YoloXDeploymentBindingRequest:
     deployment_instance_id: str
     model_build_id: str
     runtime_profile_id: str
-    task_family: str = "detection"
+    task_type: str = "detection"
     required_input_size: tuple[int, int] | None = None
     required_device: str | None = None
     metadata: dict[str, object] = field(default_factory=dict)

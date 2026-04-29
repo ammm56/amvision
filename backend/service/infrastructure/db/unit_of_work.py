@@ -7,6 +7,10 @@ from sqlalchemy.orm import Session
 from sqlalchemy.sql import Executable
 
 from backend.service.application.errors import PersistenceOperationError
+from backend.service.infrastructure.persistence.dataset_import_repository import SqlAlchemyDatasetImportRepository
+from backend.service.infrastructure.persistence.model_file_repository import SqlAlchemyModelFileRepository
+from backend.service.infrastructure.persistence.dataset_repository import SqlAlchemyDatasetVersionRepository
+from backend.service.infrastructure.persistence.model_repository import SqlAlchemyModelRepository
 
 
 class SqlAlchemyUnitOfWork:
@@ -14,6 +18,10 @@ class SqlAlchemyUnitOfWork:
 
     属性：
     - session：当前 Unit of Work 持有的 SQLAlchemy Session。
+    - dataset_imports：DatasetImport 仓储。
+    - datasets：DatasetVersion 聚合仓储。
+    - models：Model 聚合仓储。
+    - model_files：ModelFile 仓储。
     """
 
     def __init__(self, session: Session) -> None:
@@ -24,6 +32,10 @@ class SqlAlchemyUnitOfWork:
         """
 
         self.session = session
+        self.dataset_imports = SqlAlchemyDatasetImportRepository(session)
+        self.datasets = SqlAlchemyDatasetVersionRepository(session)
+        self.models = SqlAlchemyModelRepository(session)
+        self.model_files = SqlAlchemyModelFileRepository(session)
 
     def scalar(self, statement: Executable) -> object | None:
         """执行查询并返回第一列的标量结果。

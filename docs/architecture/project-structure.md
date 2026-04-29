@@ -77,7 +77,7 @@ repo/
 │  │  ├─ api/
 │  │  ├─ events/
 │  │  ├─ datasets/
-│  │  │  ├─ canonical/
+│  │  │  ├─ schema/
 │  │  │  ├─ imports/
 │  │  │  └─ exports/
 │  │  ├─ files/
@@ -88,7 +88,7 @@ repo/
 │     ├─ object_store/
 │     │  ├─ datasets/
 │     │  │  ├─ source/
-│     │  │  ├─ canonical/
+│     │  │  ├─ versions/
 │     │  │  └─ exports/
 │     │  ├─ models/
 │     │  └─ task_runs/
@@ -197,8 +197,8 @@ repo/
 
 ### backend/service/infrastructure 建议子层级
 
-- db：SQLAlchemy engine、session、Unit of Work 和迁移相关装配
-- persistence：ORM 实体与 Repository 实现
+- db：SQLAlchemy engine、session、Unit of Work 和迁移相关装配，例如 session.py、unit_of_work.py
+- persistence：ORM 实体与 Repository 实现，例如 dataset_orm.py、model_orm.py、dataset_repository.py、model_repository.py
 - object_store：本地文件系统或其他 ObjectStore 的适配实现
 - queue：QueueBackend 的具体实现与调度接线
 - cache：可选缓存实现
@@ -206,15 +206,15 @@ repo/
 
 ### backend/service 的数据与模型主干
 
-- domain/datasets：放 Dataset、DatasetImport、DatasetVersion 和冻结规则
+- domain/datasets：放 Dataset、DatasetImport、DatasetVersion 和版本规则
 - domain/models：放 Model、ModelVersion、ModelBuild、lineage 和发布规则
 - domain/files：放模型文件、结果文件、FileRef、checksum 和保留规则
 - domain/tasks：放 TrainingTask、ConversionTask、InferenceTask 与 PipelineExecutionTask 的输入输出关系
-- application/datasets：处理格式识别、导入检查、canonical 化、切分、冻结、归档和清理
+- application/datasets：处理格式识别、导入检查、格式转换、切分、生成版本、归档和清理
 - application/models：处理预置预训练模型登记、训练输出登记、标签管理和版本维护
 - application/conversions：处理转换任务提交、导出版本登记、兼容性和 benchmark 写回
 - application/inference_results：处理 task staging、结果提升、TTL 和清理
-- contracts/datasets：放 canonical annotation schema、导入格式规则和数据集导出格式规则
+- contracts/datasets：放通用数据格式、导入格式规则和数据集导出格式规则
 - adapters/object_store/datasets、models、task_runs：分别放原始导入、统一数据版本、训练导出、模型文件和任务暂存内容
 
 ### frontend 内部分层

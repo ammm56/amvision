@@ -7,9 +7,9 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy import text
 
+from backend.service.application.unit_of_work import UnitOfWork
 from backend.service.api.deps.auth import AuthenticatedPrincipal, require_principal, require_scopes
 from backend.service.api.deps.db import get_unit_of_work
-from backend.service.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
 
 
 system_router = APIRouter(prefix="/system", tags=["system"])
@@ -54,7 +54,7 @@ def get_current_principal(
 def get_database_health(
     request: Request,
     principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("system:read"))],
-    unit_of_work: Annotated[SqlAlchemyUnitOfWork, Depends(get_unit_of_work)],
+    unit_of_work: Annotated[UnitOfWork, Depends(get_unit_of_work)],
 ) -> dict[str, object]:
     """返回数据库连通性检查结果。
 

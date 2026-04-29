@@ -3,18 +3,20 @@
 from __future__ import annotations
 
 from backend.service.application.models.yolox_model_service import (
-    InMemoryYoloXModelService,
+    SqlAlchemyYoloXModelService,
     YoloXBuildRegistration,
     YoloXPretrainedRegistrationRequest,
     YoloXTrainingOutputRegistration,
 )
 from backend.service.domain.files.yolox_file_types import YOLOX_CHECKPOINT_FILE, YOLOX_ONNX_FILE
+from backend.service.infrastructure.db.session import DatabaseSettings, SessionFactory
+from backend.service.infrastructure.persistence.base import Base
 
 
 def test_register_pretrained_registers_model_version_and_checkpoint_file() -> None:
     """验证预置预训练模型登记会生成 Model、ModelVersion 和 checkpoint 文件。"""
 
-    service = InMemoryYoloXModelService()
+    service = _create_model_service()
 
     model_version_id = service.register_pretrained(
         YoloXPretrainedRegistrationRequest(
@@ -44,7 +46,7 @@ def test_register_pretrained_registers_model_version_and_checkpoint_file() -> No
 def test_register_training_output_and_build_creates_linked_records() -> None:
     """验证训练输出和 build 登记会产生可追踪的对象链。"""
 
-    service = InMemoryYoloXModelService()
+    service = _create_model_service()
 
     model_version_id = service.register_training_output(
         YoloXTrainingOutputRegistration(
@@ -83,3 +85,16 @@ def test_register_training_output_and_build_creates_linked_records() -> None:
     assert build_file is not None
     assert build_file.file_type == YOLOX_ONNX_FILE
     assert build_file.model_build_id == model_build_id
+
+
+def _create_model_service() -> SqlAlchemyYoloXModelService:
+    """创建绑定测试数据库的模型登记服务。
+
+    返回：
+    - 已完成测试 schema 初始化的 SqlAlchemyYoloXModelService。
+    """
+
+    session_factory = SessionFactory(DatabaseSettings(url="sqlite+pysqlite:///:memory:"))
+    Base.metadata.create_all(session_factory.engine)
+
+    return SqlAlchemyYoloXModelService(session_factory=session_factory)

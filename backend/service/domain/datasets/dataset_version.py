@@ -7,7 +7,7 @@ from typing import Literal
 
 
 # 最小支持的数据集任务类型。
-DatasetTaskFamily = Literal["detection", "instance-segmentation", "semantic-segmentation", "pose"]
+DatasetTaskType = Literal["detection", "instance-segmentation", "semantic-segmentation", "pose"]
 
 
 # 最小支持的数据集 split 名称。
@@ -83,7 +83,7 @@ class DatasetVersion:
     - project_id：所属项目 id。
     - categories：类别列表。
     - samples：样本列表。
-    - task_family：数据集任务类型。
+    - task_type：数据集任务类型。
     - metadata：附加元数据。
     """
 
@@ -92,5 +92,5 @@ class DatasetVersion:
     project_id: str
     categories: tuple[DatasetCategory, ...]
     samples: tuple[DatasetSample, ...]
-    task_family: DatasetTaskFamily = "detection"
+    task_type: DatasetTaskType = "detection"
     metadata: dict[str, object] = field(default_factory=dict)

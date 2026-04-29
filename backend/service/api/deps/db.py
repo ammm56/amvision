@@ -9,6 +9,7 @@ from fastapi import Depends, Request
 from sqlalchemy.orm import Session
 
 from backend.service.application.errors import ServiceConfigurationError
+from backend.service.application.unit_of_work import UnitOfWork
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
 
@@ -57,7 +58,7 @@ def get_db_session(
 
 def get_unit_of_work(
     session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
-) -> Iterator[SqlAlchemyUnitOfWork]:
+) -> Iterator[UnitOfWork]:
     """为当前请求提供请求级 Unit of Work。
 
     参数：

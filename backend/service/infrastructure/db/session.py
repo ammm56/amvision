@@ -8,6 +8,7 @@ from pathlib import Path
 from sqlalchemy import Engine, create_engine
 from sqlalchemy.engine import URL, make_url
 from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.pool import StaticPool
 
 
 @dataclass(frozen=True)
@@ -82,6 +83,9 @@ class SessionFactory:
 
         parsed_url: URL = make_url(database_url)
         if parsed_url.drivername == "sqlite":
-            return {"connect_args": {"check_same_thread": False}}
+            options: dict[str, object] = {"connect_args": {"check_same_thread": False}}
+            if parsed_url.database in (None, ":memory:"):
+                options["poolclass"] = StaticPool
+            return options
 
         return {}

@@ -2,7 +2,7 @@
 
 ## 文档目的
 
-本文档用于说明平台里的关键对象、对象关系、版本链路和追踪方式，明确哪些内容放在权威元数据里，哪些内容放在对象存储里的大文件里。
+本文档用于说明平台里的关键对象、对象关系、版本链路和追踪方式，明确哪些内容放在正式元数据里，哪些内容放在对象存储里的大文件里。
 
 本文档主要回答三个问题：平台里有哪些关键对象、这些对象怎么连起来、训练/转换/部署/推理/流程执行的结果怎么追踪。
 
@@ -16,7 +16,7 @@
 
 ## 总体原则
 
-- 元数据以数据库中的权威对象为主，文件内容以 ObjectStore 中的大对象为主
+- 元数据以数据库中的正式对象为主，文件内容以 ObjectStore 中的大对象为主
 - 文件一旦对外可见，尽量当成不可变内容处理，用新版本替代原地覆盖
 - 任务产生的结果应通过结果引用与版本链路挂接，而不是写成孤立文件
 - 训练、转换、部署、推理和流程执行之间应通过对象关系而不是临时路径字符串衔接
@@ -123,7 +123,7 @@
 
 ### application 层的典型用例分组
 
-- datasets：导入、切分、冻结、归档和清理 DatasetVersion
+- datasets：导入、切分、生成版本、归档和清理 DatasetVersion
 - models：登记预置预训练模型、登记训练输出、创建版本、建立 lineage、打标签和归档
 - conversions：提交转换任务、登记 ModelBuild、写入兼容性与 benchmark
 - inference_results：写入 task staging、生成 ResultFile、执行保留或清理策略
@@ -155,20 +155,22 @@
 - DatasetVersion 表示一次固定输入快照，供训练、验证、流程和推理任务复用
 - 任务应尽量绑定 DatasetVersion，而不是直接绑定临时文件目录
 
-### DatasetImport 与 Canonical Annotation Schema
+### DatasetImport 与通用数据格式
 
 - 外部数据集在进入平台前可保留原始目录结构，但进入平台后应先形成一次 DatasetImport，再固化为 DatasetVersion
 - DatasetImport 负责记录 source format、task type、image root、annotation root、split 信息、class map 和导入日志
-- DatasetVersion 不直接等价于原始 YOLO、COCO、VOC 或其他文件夹结构，而应等价于平台冻结后的统一数据快照
-- 平台内部应维护 canonical annotation schema，用统一字段描述图片、样本、类别、bbox、polygon、mask、keypoints 和元信息
-- 不同模型训练前由 exporter 把 canonical schema 转换为对应训练后端所需的格式，而不是让每个训练后端直接面对各种原始目录结构
+- DatasetVersion 不直接等价于原始 YOLO、COCO、VOC 或其他文件夹结构，而是平台整理后的统一数据版本
+- 平台内部应维护通用数据格式，用统一字段描述图片、样本、类别、bbox、polygon、mask、keypoints 和元信息
+- 不同模型训练前由 exporter 把通用数据格式转换为对应训练后端所需的格式，而不是让每个训练后端直接面对各种原始目录结构
+- 当前第一阶段导入实现只支持 COCO detection json 和 Pascal VOC detection xml，并统一生成 detection 类型的 DatasetVersion
+- 第一阶段生成版本时统一把类别表重排为连续 0-based category_id，把 VOC 的 xyxy 框转换为 xywh absolute bbox
 
 ### 为什么不能直接靠原始目录结构统一
 
 - YOLO、RT-DETR、SAM、传统 OpenCV 流程对输入要求并不一致，直接把原始目录结构当成系统内部主模型会导致后续扩展困难
 - 同样是检测任务，不同训练后端也可能分别偏好 YOLO txt、COCO json 或自定义 manifest
 - 分割任务除了 bbox 外还可能需要 polygon、mask bitmap、RLE 或 prompt 相关信息，不能假设所有“标注文本”都能直接互用
-- 因此需要把“外部格式兼容”与“内部统一表示”分开：前者解决导入，后者解决平台内部管理与多模型复用
+- 因此需要把“外部格式兼容”与“内部通用格式”分开：前者解决导入，后者解决平台内部管理与多模型复用
 
 ### 建议的内部统一粒度
 
@@ -179,16 +181,16 @@
 
 ### 推荐支持的外部数据集格式
 
-- YOLO detection / segmentation / pose 目录
-- COCO detection / segmentation / keypoints json
-- Pascal VOC xml
+- 第一阶段导入：COCO detection json、Pascal VOC detection xml
+- 扩展导入：YOLO detection / segmentation / pose 目录
+- 扩展导入：COCO segmentation / keypoints json
 - 图像目录 + 独立标注文本目录
 - 图像目录 + mask 目录
 - 后续可扩展 LabelMe、CVAT、Supervisely、自定义 json 或 csv
 
 ### 自动识别与显式声明策略
 
-- 平台可以像 Roboflow 一样做格式自动识别，但自动识别只能作为导入便利能力，不能作为唯一权威判断
+- 平台可以像 Roboflow 一样做格式自动识别，但自动识别只能作为导入便利能力，不能作为最终判断
 - 推荐导入时允许先自动识别候选格式，再由用户确认或覆盖 format type、task type 和 class map
 - 若文件结构存在歧义，例如多个 json/xml/txt 混放、图片与标注目录不对齐、同目录存在多种任务标签，则必须要求显式声明
 - 数据管理层最终记录的应是 DatasetImport.format_type 与 DatasetImport.task_type，而不是某次猜测结果
@@ -196,43 +198,43 @@
 ### 建议的导入最小声明
 
 - format type：如 yolo, coco, voc, masks, custom-json
-- task type：如 classification, detection, instance-segmentation, semantic-segmentation, keypoints
+- task type：如 detection, instance-segmentation, semantic-segmentation, pose
 - image root
 - annotation root or manifest file
 - split strategy：显式 train/val/test 或导入后切分
 - class map：类别 id 与名称映射
 - optional attributes：难例标记、采集来源、场景标签、传感器信息等
 
-### Canonical Annotation Schema 的目标
+### 通用数据格式的目标
 
 - 不要求所有模型共享同一种原始文件结构
-- 只要求同一任务家族在平台内部共享同一组逻辑字段和版本管理方式
+- 只要求同一任务类型在平台内部共享同一组逻辑字段和版本管理方式
 - 训练前再按模型后端导出为 YOLO、COCO 或其他特定数据集结构
 - 推理和评估结果也可回写到同一逻辑对象体系中，而不是变成新的孤立目录格式
 
 ### 模型与数据任务的关系
 
-- YOLO 系列通常对应 detection、instance-segmentation、pose 等任务族
-- RT-DETR 主要对应 detection，也可沿 detection canonical schema 导出目标数据集结构
+- YOLO 系列通常对应 detection、instance-segmentation、pose 等任务类型
+- RT-DETR 主要对应 detection，也可沿 detection 通用数据格式导出目标数据集结构
 - SAM 更接近 segmentation 与 prompt-driven 交互能力，不应和检测模型简单视为同一训练格式，只能共享更高层的 segmentation 数据对象
-- 因此平台统一的不是“所有模型共用一套原始标注文本”，而是“所有模型先映射到 task family，再共享 canonical dataset schema”
+- 因此平台统一的不是“所有模型共用一套原始标注文本”，而是“所有模型先映射到 task type，再共享通用数据格式”
 
 ### 当前手头已有数据时的操作流程
 
 1. 在 Project 下创建 Dataset
 2. 通过 FastAPI 上传 zip 数据集压缩包，并提供或确认格式、任务类型、class map 和 split 信息
-3. 让系统自动识别 YOLO / COCO / VOC 等候选格式，并由用户确认 task type、class map 和 split 信息
+3. 第一阶段让系统自动识别 COCO detection / Pascal VOC detection 候选格式，并由用户确认 task type、class map 和 split 信息
 4. 系统生成一次 DatasetImport 记录，把原始 zip 包和解压 staging 归档到 datasets/{dataset_id}/imports 路径
-5. 系统把原始标签转换为 canonical annotation schema，生成冻结后的 DatasetVersion
+5. 系统把原始标签转换为通用数据格式，生成 DatasetVersion
 6. 将开发阶段预置在磁盘中的预训练权重登记到 models，形成 Model + ModelVersion
 7. 创建训练任务时，选择 DatasetVersion、任务类型、训练 recipe 和 warm start 的 ModelVersion
-8. 对应训练后端从 canonical schema 导出适配自己的数据集结构，再启动训练
+8. 对应训练后端从通用数据格式导出适配自己的数据集结构，再启动训练
 9. 训练产出登记为新的 ModelVersion，后续如需部署再转换为一个或多个 ModelBuild
 
 ### 对目录结构的建议
 
 - 平台外部导入时需要识别图片目录和标注目录，但不要求所有用户先手工整理成唯一固定树
-- 平台内部需要定义标准化的导入声明和 canonical schema，否则后端无法长期统一管理多模型训练
+- 平台内部需要定义标准化的导入声明和通用数据格式，否则后端无法长期统一管理多模型训练
 - 外部目录结构可以多样，内部 DatasetVersion 结构必须统一
 
 ### Model、ModelVersion 与 ModelBuild
@@ -253,7 +255,7 @@
 ### ResultFile 和 task staging
 
 - ResultFile 用于保存需要复查、下载、复现、上报或再次进入流程的结果对象
-- task staging 只用于短期暂存推理中间结果、上传回包、预览图和临时日志，不作为长期权威存储
+- task staging 只用于短期暂存推理中间结果、上传回包、预览图和临时日志，不作为长期正式存储
 - task staging 必须绑定 task id、retention policy 和清理时间，避免与正式文件混用
 - 从 staging 提升为 ResultFile 时，应生成新的 FileRef，而不是重写既有路径
 
@@ -303,11 +305,18 @@ object-store/
 		│     ├─ imports/
 		│     │  └─ {dataset_import_id}/
 		│     │     ├─ package.zip
+		│     │     ├─ manifests/
+		│     │     │  ├─ upload-request.json
+		│     │     │  └─ detected-profile.json
 		│     │     ├─ staging/
+		│     │     │  └─ extracted/
 		│     │     └─ logs/
+		│     │        ├─ validation-report.json
+		│     │        └─ import.log
 		│     ├─ versions/
 		│     │  └─ {dataset_version_id}/
 		│     │     ├─ manifests/
+		│     │     ├─ images/
 		│     │     ├─ samples/
 		│     │     └─ indexes/
 		│     └─ exports/
@@ -334,13 +343,18 @@ object-store/
 			└─ pipeline/{task_id}/
 ```
 
+- imports/{dataset_import_id}/package.zip 保存原始上传包，后续审计与复查都以此为准
+- imports/{dataset_import_id}/staging/extracted 只保存安全解压后的短期工作目录，不作为训练或导出的长期输入
+- versions/{dataset_version_id} 保存生成后的统一版本内容，是平台内部的正式输入版本
+- 第一阶段 versions 目录应至少包含 manifests、images、samples、indexes 四层，以支撑 COCO/VOC detection 导入后的统一读取
+
 ## 放置与管理规则
 
 ### 数据集放哪里
 
 - 逻辑上放在 Project 下的 Dataset 与 DatasetVersion 中管理
 - 文件内容放在 ObjectStore 的 datasets 路径下，按 dataset id 和 dataset version id 分层
-- 管理动作由后端服务的 datasets 用例处理，包括导入、冻结、标记、归档和清理
+- 管理动作由后端服务的 datasets 用例处理，包括导入、生成版本、标记、归档和清理
 
 ### 预训练模型放哪里
 
@@ -369,7 +383,7 @@ object-store/
 ## 管理组织建议
 
 - 数据集、模型、部署、任务和结果都先按 Project 归属，再按对象 id 管理，避免直接按用户名或日期裸分目录
-- 逻辑对象用数据库做权威索引，路径只做存储组织，不做业务主键
+- 逻辑对象用数据库做主索引，路径只做存储组织，不做业务主键
 - 预置模型登记、训练产出、转换产出和推理结果分别对应不同对象层级，避免都塞进 ModelFile 一个层里
 - 清理策略分三类：dataset archive、task staging cleanup、file retention，不混用同一规则
 - UI 和 API 默认展示 Model -> ModelVersion -> ModelBuild 的三级结构，而不是直接暴露底层文件树
