@@ -35,6 +35,49 @@
 - SQLite 文件路径默认指向 ./data/amvision.db
 - SQLite 数据库文件会在第一次真正建立数据库连接时创建
 
+## 当前配置来源
+
+当前服务通过统一 settings 模块读取启动配置。
+
+- 配置入口：backend.service.settings.BackendServiceSettings
+- 默认读取方式：config 目录 JSON + 环境变量覆盖 + 代码内默认值
+- 环境变量前缀：AMVISION_
+- 嵌套字段分隔符：__
+- 默认主配置文件：./config/backend-service.json
+- 可选本地覆盖文件：./config/backend-service.local.json
+
+常见示例：
+
+- config/backend-service.json
+
+```json
+{
+  "app": {
+    "app_name": "amvision backend-service",
+    "app_version": "0.1.0"
+  },
+  "database": {
+    "url": "sqlite:///./data/amvision.db",
+    "echo": false
+  },
+  "dataset_storage": {
+    "root_dir": "./data/files"
+  }
+}
+```
+
+- AMVISION_APP__APP_NAME=amvision backend-service
+- AMVISION_APP__APP_VERSION=0.1.0
+- AMVISION_DATABASE__URL=sqlite:///./data/amvision.db
+- AMVISION_DATABASE__ECHO=false
+- AMVISION_DATASET_STORAGE__ROOT_DIR=./data/files
+
+说明：
+
+- 本地部署优先修改 config 目录 JSON 文件，而不是直接改代码
+- 环境变量主要用于测试、调试、launcher 注入和临时覆盖
+- 如果 config 文件和环境变量都未提供，当前服务会回退到仓库默认值
+
 ## 启动前要知道的事
 
 ### 当前仓库已经具备的能力

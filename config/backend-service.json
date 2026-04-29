@@ -1,0 +1,13 @@
+{
+  "app": {
+    "app_name": "amvision backend-service",
+    "app_version": "0.1.0"
+  },
+  "database": {
+    "url": "sqlite:///./data/amvision.db",
+    "echo": false
+  },
+  "dataset_storage": {
+    "root_dir": "./data/files"
+  }
+}

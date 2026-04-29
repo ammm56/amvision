@@ -1,6 +1,7 @@
 
 fastapi[standard]>=0.136
 SQLAlchemy>=2.0
+pydantic-settings>=2.0
 pytest>=8.3
 
 

@@ -7,33 +7,42 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from backend.service.api.bootstrap import BackendServiceBootstrap
+from backend.service.api.seeders import BackendServiceSeeder
 from backend.service.api.error_handlers import register_exception_handlers
 from backend.service.api.middleware.request_context import RequestContextMiddleware
 from backend.service.api.rest.router import rest_router
 from backend.service.api.ws.router import ws_router
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
+from backend.service.settings import BackendServiceSettings
 
 
 def create_app(
+    settings: BackendServiceSettings | None = None,
     session_factory: SessionFactory | None = None,
     dataset_storage: LocalDatasetStorage | None = None,
+    seeders: tuple[BackendServiceSeeder, ...] | None = None,
 ) -> FastAPI:
     """创建 backend-service 的 FastAPI 应用。
 
     参数：
+    - settings：可选的统一配置对象；未传入时按 config JSON 和环境变量读取。
     - session_factory：可选的数据库会话工厂；未传入时使用默认配置创建。
     - dataset_storage：可选的数据集本地文件存储服务；未传入时使用默认配置创建。
+    - seeders：可选的启动期 seeder 列表。
 
     返回：
     - 已完成路由和基础中间件装配的 FastAPI 应用。
     """
 
     bootstrap = BackendServiceBootstrap(
+        settings=settings,
         session_factory=session_factory,
         dataset_storage=dataset_storage,
+        seeders=seeders,
     )
-    runtime = bootstrap.build_runtime()
+    resolved_settings = bootstrap.load_settings()
+    runtime = bootstrap.build_runtime(resolved_settings)
 
     @asynccontextmanager
     async def application_lifespan(_application: FastAPI):
@@ -43,8 +52,8 @@ def create_app(
         yield
 
     application = FastAPI(
-        title="amvision backend-service",
-        version="0.1.0",
+        title=resolved_settings.app.app_name,
+        version=resolved_settings.app.app_version,
         lifespan=application_lifespan,
     )
     bootstrap.bind_application_state(application, runtime)

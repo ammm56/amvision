@@ -2,13 +2,22 @@
 
 from __future__ import annotations
 
+import json
 import sqlite3
 from pathlib import Path
 
 from fastapi.testclient import TestClient
 
 from backend.service.api.app import create_app
+from backend.service.api.bootstrap import BackendServiceBootstrap
 from backend.service.infrastructure.db.session import DatabaseSettings, SessionFactory
+from backend.service.settings import (
+    BackendServiceAppSettings,
+    BackendServiceDatabaseConfig,
+    BackendServiceDatasetStorageConfig,
+    BackendServiceSettings,
+    get_backend_service_settings,
+)
 
 
 def test_health_route_returns_request_id_header() -> None:
@@ -104,6 +113,135 @@ def test_app_startup_initializes_missing_database_tables(tmp_path: Path) -> None
         assert "model_files" in table_names
     finally:
         session_factory.engine.dispose()
+
+
+def test_create_app_uses_explicit_backend_service_settings(tmp_path: Path) -> None:
+    """验证 create_app 会使用显式传入的统一配置。"""
+
+    storage_root = tmp_path / "files"
+    settings = BackendServiceSettings(
+        app=BackendServiceAppSettings(
+            app_name="amvision test-service",
+            app_version="0.2.0",
+        ),
+        database=BackendServiceDatabaseConfig(
+            url=f"sqlite:///{(tmp_path / 'explicit.db').as_posix()}"
+        ),
+        dataset_storage=BackendServiceDatasetStorageConfig(root_dir=str(storage_root)),
+    )
+
+    application = create_app(settings=settings)
+    try:
+        assert application.title == "amvision test-service"
+        assert application.version == "0.2.0"
+        assert application.state.backend_service_settings == settings
+        assert application.state.dataset_storage.root_dir == storage_root.resolve()
+    finally:
+        application.state.session_factory.engine.dispose()
+
+
+def test_get_backend_service_settings_reads_json_files_and_environment_overrides(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """验证统一配置模块会先读 config JSON，再接受环境变量覆盖。"""
+
+    config_dir = tmp_path / "config"
+    config_dir.mkdir(parents=True, exist_ok=True)
+    (config_dir / "backend-service.json").write_text(
+        json.dumps(
+            {
+                "app": {
+                    "app_name": "amvision config-service",
+                    "app_version": "0.3.0",
+                },
+                "database": {
+                    "url": "sqlite:///./data/from-config.db",
+                    "echo": False,
+                },
+                "dataset_storage": {
+                    "root_dir": "./data/from-config-files",
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    (config_dir / "backend-service.local.json").write_text(
+        json.dumps(
+            {
+                "app": {
+                    "app_version": "0.3.1-local",
+                },
+                "dataset_storage": {
+                    "root_dir": "./data/from-local-config-files",
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    get_backend_service_settings.cache_clear()
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("AMVISION_APP__APP_NAME", "amvision env-service")
+    monkeypatch.setenv("AMVISION_DATABASE__ECHO", "true")
+
+    settings = get_backend_service_settings()
+
+    assert settings.app.app_name == "amvision env-service"
+    assert settings.app.app_version == "0.3.1-local"
+    assert settings.database.echo is True
+    assert settings.database.url == "sqlite:///./data/from-config.db"
+    assert settings.dataset_storage.root_dir == "./data/from-local-config-files"
+
+    get_backend_service_settings.cache_clear()
+
+
+def test_bootstrap_runs_explicit_seeders_in_initialize(tmp_path: Path) -> None:
+    """验证 bootstrap.initialize 会按顺序执行显式传入的 seeders。"""
+
+    settings = BackendServiceSettings(
+        app=BackendServiceAppSettings(app_name="amvision seeded-service"),
+        database=BackendServiceDatabaseConfig(
+            url=f"sqlite:///{(tmp_path / 'seeded.db').as_posix()}"
+        ),
+        dataset_storage=BackendServiceDatasetStorageConfig(
+            root_dir=str(tmp_path / "seeded-files")
+        ),
+    )
+    recorded_steps: list[str] = []
+
+    class RecordingSeeder:
+        """记录执行顺序的测试 seeder。"""
+
+        def get_step_name(self) -> str:
+            """返回当前测试 seeder 的步骤名。"""
+
+            return "recording-seeder"
+
+        def seed(self, runtime) -> None:
+            """记录 bootstrap 传入的运行时信息。
+
+            参数：
+            - runtime：当前 backend-service 进程使用的运行时资源。
+            """
+
+            recorded_steps.append(runtime.settings.app.app_name)
+
+    bootstrap = BackendServiceBootstrap(
+        settings=settings,
+        seeders=(RecordingSeeder(),),
+    )
+    runtime = bootstrap.build_runtime(bootstrap.load_settings())
+    try:
+        bootstrap.initialize(runtime)
+        assert recorded_steps == ["amvision seeded-service"]
+        assert bootstrap.get_step_names() == (
+            "initialize-database-schema",
+            "run-service-seeders",
+            "load-service-plugin-catalog",
+        )
+    finally:
+        runtime.session_factory.engine.dispose()
 
 
 def _create_test_client() -> TestClient:

@@ -9,8 +9,12 @@ import pytest
 
 # 需要验证可导入性的 backend 模块列表。
 BACKEND_MODULES: tuple[str, ...] = (
+    "backend.bootstrap.core",
+    "backend.bootstrap.settings",
     "backend.contracts.datasets.exports.coco_detection_export",
     "backend.contracts.datasets.exports.dataset_formats",
+    "backend.maintenance.bootstrap",
+    "backend.maintenance.settings",
     "backend.service.api.app",
     "backend.service.api.deps.auth",
     "backend.service.api.deps.db",
@@ -49,8 +53,10 @@ BACKEND_MODULES: tuple[str, ...] = (
     "backend.service.infrastructure.persistence.model_file_repository",
     "backend.service.infrastructure.persistence.model_orm",
     "backend.service.infrastructure.persistence.model_repository",
+    "backend.workers.bootstrap",
     "backend.workers.conversion.yolox_conversion_runner",
     "backend.workers.inference.yolox_inference_runner",
+    "backend.workers.settings",
     "backend.workers.shared.yolox_runtime_contracts",
     "backend.workers.training.yolox_trainer_runner",
 )
