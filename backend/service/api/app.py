@@ -4,13 +4,18 @@ from __future__ import annotations
 
 from fastapi import FastAPI
 
+from backend.service.api.error_handlers import register_exception_handlers
 from backend.service.api.middleware.request_context import RequestContextMiddleware
 from backend.service.api.rest.router import rest_router
 from backend.service.api.ws.router import ws_router
+from backend.service.infrastructure.db.session import DatabaseSettings, SessionFactory
 
 
-def create_app() -> FastAPI:
+def create_app(session_factory: SessionFactory | None = None) -> FastAPI:
     """创建 backend-service 的 FastAPI 应用。
+
+    参数：
+    - session_factory：可选的数据库会话工厂；未传入时使用默认配置创建。
 
     返回：
     - 已完成路由和基础中间件装配的 FastAPI 应用。
@@ -20,7 +25,9 @@ def create_app() -> FastAPI:
         title="amvision backend-service",
         version="0.1.0",
     )
+    application.state.session_factory = session_factory or SessionFactory(DatabaseSettings())
     application.add_middleware(RequestContextMiddleware)
+    register_exception_handlers(application)
     application.include_router(rest_router)
     application.include_router(ws_router)
 
