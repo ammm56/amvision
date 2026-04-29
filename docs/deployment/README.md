@@ -6,12 +6,14 @@
 
 ## 当前文档
 
+- [docs/deployment/backend-service-startup.md](backend-service-startup.md)：backend-service 的开发态启动、健康检查、schema 初始化和当前限制
 - [docs/deployment/bundled-python-deployment.md](bundled-python-deployment.md)：同目录 Python 运行时的安装、升级、回滚和验收方案
 
 ## 建议内容
 
 - conda 开发环境定义与复现方式
 - 同目录 Python 运行时结构与启动方式
+- backend-service、worker 和 maintenance 的启动步骤
 - standalone、workstation、edge 三类发布结构
 - 安装检查、升级、回滚和排障说明
 

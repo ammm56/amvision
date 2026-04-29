@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import sqlite3
+from pathlib import Path
+
 from fastapi.testclient import TestClient
 
 from backend.service.api.app import create_app
@@ -73,6 +76,34 @@ def test_database_route_checks_scope_and_uses_unit_of_work() -> None:
     assert allowed_response.status_code == 200
     assert allowed_response.json()["database"] == "reachable"
     assert allowed_response.json()["scalar"] == 1
+
+
+def test_app_startup_initializes_missing_database_tables(tmp_path: Path) -> None:
+    """验证 FastAPI 应用启动时会初始化缺失的数据表。"""
+
+    database_path = tmp_path / "startup.db"
+    session_factory = SessionFactory(DatabaseSettings(url=f"sqlite:///{database_path.as_posix()}"))
+    try:
+        with TestClient(create_app(session_factory=session_factory)):
+            pass
+
+        connection = sqlite3.connect(database_path)
+        try:
+            table_names = {
+                row[0]
+                for row in connection.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table'"
+                ).fetchall()
+            }
+        finally:
+            connection.close()
+
+        assert "dataset_imports" in table_names
+        assert "dataset_versions" in table_names
+        assert "models" in table_names
+        assert "model_files" in table_names
+    finally:
+        session_factory.engine.dispose()
 
 
 def _create_test_client() -> TestClient:

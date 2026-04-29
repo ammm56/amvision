@@ -695,8 +695,8 @@ class SqlAlchemyDatasetImportService:
                     {
                         "class_name": mapped_class_name,
                         "bbox_xywh": bbox_xywh,
-                        "difficult": int((object_node.findtext("difficult") or "0").strip() or 0),
-                        "truncated": int((object_node.findtext("truncated") or "0").strip() or 0),
+                        "difficult": self._read_voc_optional_flag(object_node, "difficult"),
+                        "truncated": self._read_voc_optional_flag(object_node, "truncated"),
                     }
                 )
             sample_rows.append(
@@ -958,19 +958,21 @@ class SqlAlchemyDatasetImportService:
         )
 
     def _unwrap_single_directory(self, extracted_root: Path) -> Path:
-        """消除 zip 中最多一层包裹目录。
+        """连续消除 zip 中的单目录包裹层级。
 
         参数：
         - extracted_root：zip 解压根目录。
 
         返回：
-        - 去掉单层包裹目录后的数据集根目录。
+        - 去掉连续单目录包裹后的数据集根目录。
         """
 
-        children = list(extracted_root.iterdir())
-        if len(children) == 1 and children[0].is_dir():
-            return children[0]
-        return extracted_root
+        current_root = extracted_root
+        while True:
+            children = list(current_root.iterdir())
+            if len(children) != 1 or not children[0].is_dir():
+                return current_root
+            current_root = children[0]
 
     def _load_voc_split_membership(self, dataset_root: Path) -> dict[str, DatasetSplitName]:
         """读取 Pascal VOC ImageSets/Main 下的 split 列表。
@@ -1175,6 +1177,29 @@ class SqlAlchemyDatasetImportService:
         if not raw_text:
             raise InvalidRequestError(error_message)
         return int(raw_text)
+
+    def _read_voc_optional_flag(
+        self,
+        xml_node: ElementTree.Element,
+        key: str,
+    ) -> int:
+        """读取 Pascal VOC 可选整数标记，非整数值按 0 处理。
+
+        参数：
+        - xml_node：源 XML 节点。
+        - key：子节点名称。
+
+        返回：
+        - 解析得到的整数值；为空或非整数时返回 0。
+        """
+
+        raw_text = (xml_node.findtext(key) or "").strip()
+        if not raw_text:
+            return 0
+        try:
+            return int(raw_text)
+        except ValueError:
+            return 0
 
     def _category_sort_key(self, category_id: str) -> tuple[int, object]:
         """为类别 id 提供稳定排序键。

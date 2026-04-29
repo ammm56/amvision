@@ -1,0 +1,223 @@
+{
+  "info": {
+    "_postman_id": "8c5b24d5-8c8d-4bc2-9415-0e9db7c0e901",
+    "name": "amvision datasets imports",
+    "description": "DatasetImport 导入、详情查询和列表查询接口集合。",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Create Dataset Import",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "if (pm.response.code === 201) {",
+              "  var payload = pm.response.json();",
+              "  pm.collectionVariables.set('datasetImportId', payload.dataset_import_id);",
+              "  pm.collectionVariables.set('datasetVersionId', payload.dataset_version_id);",
+              "}"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "x-amvision-principal-id",
+            "value": "{{principalId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-project-ids",
+            "value": "{{projectId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-scopes",
+            "value": "datasets:write",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            {
+              "key": "project_id",
+              "value": "{{projectId}}",
+              "type": "text"
+            },
+            {
+              "key": "dataset_id",
+              "value": "{{datasetId}}",
+              "type": "text"
+            },
+            {
+              "key": "format_type",
+              "value": "{{formatType}}",
+              "type": "text",
+              "disabled": true
+            },
+            {
+              "key": "task_type",
+              "value": "detection",
+              "type": "text"
+            },
+            {
+              "key": "split_strategy",
+              "value": "{{splitStrategy}}",
+              "type": "text",
+              "disabled": true
+            },
+            {
+              "key": "class_map_json",
+              "value": "{{classMapJson}}",
+              "type": "text",
+              "disabled": true
+            },
+            {
+              "key": "package",
+              "type": "file",
+              "src": "{{datasetZipPath}}"
+            }
+          ]
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/datasets/imports",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "datasets",
+            "imports"
+          ]
+        },
+        "description": "上传 zip 数据集压缩包并生成 DatasetImport 与 DatasetVersion。"
+      },
+      "response": []
+    },
+    {
+      "name": "Get Dataset Import Detail",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "x-amvision-principal-id",
+            "value": "{{principalId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-project-ids",
+            "value": "{{projectId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-scopes",
+            "value": "datasets:read",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/datasets/imports/{{datasetImportId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "datasets",
+            "imports",
+            "{{datasetImportId}}"
+          ]
+        },
+        "description": "按 DatasetImport id 查询导入记录详情、校验报告和关联版本摘要。"
+      },
+      "response": []
+    },
+    {
+      "name": "List Dataset Imports",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "x-amvision-principal-id",
+            "value": "{{principalId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-project-ids",
+            "value": "{{projectId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-scopes",
+            "value": "datasets:read",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/datasets/{{datasetId}}/imports",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "datasets",
+            "{{datasetId}}",
+            "imports"
+          ]
+        },
+        "description": "按 Dataset id 列出当前数据集下的导入记录摘要。"
+      },
+      "response": []
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://127.0.0.1:8000"
+    },
+    {
+      "key": "principalId",
+      "value": "user-1"
+    },
+    {
+      "key": "projectId",
+      "value": "project-1"
+    },
+    {
+      "key": "datasetId",
+      "value": "dataset-1"
+    },
+    {
+      "key": "datasetImportId",
+      "value": "dataset-import-placeholder"
+    },
+    {
+      "key": "datasetVersionId",
+      "value": "dataset-version-placeholder"
+    },
+    {
+      "key": "datasetZipPath",
+      "value": ""
+    },
+    {
+      "key": "formatType",
+      "value": "coco"
+    },
+    {
+      "key": "splitStrategy",
+      "value": "manifest-name"
+    },
+    {
+      "key": "classMapJson",
+      "value": "{\"7\":\"bolt\"}"
+    }
+  ]
+}

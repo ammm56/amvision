@@ -123,6 +123,117 @@ def test_import_dataset_zip_creates_voc_dataset_version(tmp_path: Path) -> None:
         session_factory.engine.dispose()
 
 
+def test_import_dataset_zip_accepts_nested_voc_wrapper_dirs(tmp_path: Path) -> None:
+    """验证导入器可以识别带多层包裹目录和非整数标记的 Pascal VOC zip。"""
+
+    client, session_factory, _dataset_storage = _create_test_client(tmp_path)
+    try:
+        with client:
+            response = client.post(
+                "/api/v1/datasets/imports",
+                headers=_build_dataset_write_headers(),
+                data={
+                    "project_id": "project-1",
+                    "dataset_id": "dataset-3",
+                    "format_type": "voc",
+                },
+                files={
+                    "package": (
+                        "voc-nested.zip",
+                        _build_voc_zip_bytes(
+                            with_nested_wrappers=True,
+                            use_unspecified_flags=True,
+                        ),
+                        "application/zip",
+                    ),
+                },
+            )
+
+        assert response.status_code == 201
+        payload = response.json()
+        assert payload["format_type"] == "voc"
+        assert payload["status"] == "completed"
+        assert payload["sample_count"] == 1
+    finally:
+        session_factory.engine.dispose()
+
+
+def test_get_dataset_import_detail_returns_validation_report_and_version_relation(
+    tmp_path: Path,
+) -> None:
+    """验证可以按导入记录 id 读取校验报告和关联版本摘要。"""
+
+    client, session_factory, _dataset_storage = _create_test_client(tmp_path)
+    try:
+        with client:
+            create_response = client.post(
+                "/api/v1/datasets/imports",
+                headers=_build_dataset_write_headers(),
+                data={
+                    "project_id": "project-1",
+                    "dataset_id": "dataset-1",
+                },
+                files={
+                    "package": ("coco-dataset.zip", _build_coco_zip_bytes(), "application/zip"),
+                },
+            )
+            assert create_response.status_code == 201
+            dataset_import_id = create_response.json()["dataset_import_id"]
+
+            detail_response = client.get(
+                f"/api/v1/datasets/imports/{dataset_import_id}",
+                headers=_build_dataset_read_headers(),
+            )
+
+        assert detail_response.status_code == 200
+        payload = detail_response.json()
+        assert payload["dataset_import_id"] == dataset_import_id
+        assert payload["validation_report"]["status"] == "ok"
+        assert payload["detected_profile"]["format_type"] == "coco"
+        assert payload["dataset_version"]["dataset_version_id"] == payload["dataset_version_id"]
+        assert payload["dataset_version"]["sample_count"] == 1
+        assert payload["dataset_version"]["category_count"] == 1
+        assert payload["dataset_version"]["split_names"] == ["train"]
+        assert payload["dataset_version"]["metadata"]["source_import_id"] == dataset_import_id
+    finally:
+        session_factory.engine.dispose()
+
+
+def test_list_dataset_imports_returns_dataset_import_summaries(tmp_path: Path) -> None:
+    """验证可以按 Dataset id 列出导入记录摘要。"""
+
+    client, session_factory, _dataset_storage = _create_test_client(tmp_path)
+    try:
+        with client:
+            create_response = client.post(
+                "/api/v1/datasets/imports",
+                headers=_build_dataset_write_headers(),
+                data={
+                    "project_id": "project-1",
+                    "dataset_id": "dataset-1",
+                },
+                files={
+                    "package": ("coco-dataset.zip", _build_coco_zip_bytes(), "application/zip"),
+                },
+            )
+            assert create_response.status_code == 201
+
+            list_response = client.get(
+                "/api/v1/datasets/dataset-1/imports",
+                headers=_build_dataset_read_headers(),
+            )
+
+        assert list_response.status_code == 200
+        payload = list_response.json()
+        assert len(payload) == 1
+        assert payload[0]["dataset_id"] == "dataset-1"
+        assert payload[0]["status"] == "completed"
+        assert payload[0]["validation_status"] == "ok"
+        assert payload[0]["dataset_version_id"] is not None
+    finally:
+        session_factory.engine.dispose()
+
+
 def _create_test_client(tmp_path: Path) -> tuple[TestClient, SessionFactory, LocalDatasetStorage]:
     """创建绑定内存 SQLite 和临时本地文件存储的测试客户端。
 
@@ -186,6 +297,20 @@ def _build_dataset_write_headers() -> dict[str, str]:
     }
 
 
+def _build_dataset_read_headers() -> dict[str, str]:
+    """构建具备 datasets:read scope 的测试请求头。
+
+    返回：
+    - 测试请求头字典。
+    """
+
+    return {
+        "x-amvision-principal-id": "user-1",
+        "x-amvision-project-ids": "project-1",
+        "x-amvision-scopes": "datasets:read",
+    }
+
+
 def _build_coco_zip_bytes() -> bytes:
     """构建一个最小 COCO detection zip 数据集。"""
 
@@ -220,30 +345,40 @@ def _build_coco_zip_bytes() -> bytes:
     return buffer.getvalue()
 
 
-def _build_voc_zip_bytes() -> bytes:
-    """构建一个最小 Pascal VOC detection zip 数据集。"""
+def _build_voc_zip_bytes(
+        *,
+        with_nested_wrappers: bool = False,
+        use_unspecified_flags: bool = False,
+) -> bytes:
+        """构建一个最小 Pascal VOC detection zip 数据集。"""
 
-    buffer = io.BytesIO()
-    xml_payload = """<annotation>
+        buffer = io.BytesIO()
+        truncated_value = "Unspecified" if use_unspecified_flags else "0"
+        difficult_value = "Unspecified" if use_unspecified_flags else "0"
+        xml_payload = """<annotation>
 <folder>JPEGImages</folder>
 <filename>voc-1.jpg</filename>
 <size><width>120</width><height>90</height><depth>3</depth></size>
 <object>
-  <name>bolt</name>
-  <pose>Unspecified</pose>
-  <truncated>0</truncated>
-  <difficult>0</difficult>
-  <bndbox>
-    <xmin>10</xmin>
-    <ymin>20</ymin>
-    <xmax>30</xmax>
-    <ymax>50</ymax>
-  </bndbox>
+    <name>bolt</name>
+    <pose>Unspecified</pose>
+    <truncated>{truncated_value}</truncated>
+    <difficult>{difficult_value}</difficult>
+    <bndbox>
+        <xmin>10</xmin>
+        <ymin>20</ymin>
+        <xmax>30</xmax>
+        <ymax>50</ymax>
+    </bndbox>
 </object>
-</annotation>"""
-    with zipfile.ZipFile(buffer, mode="w") as zip_file:
-        zip_file.writestr("JPEGImages/voc-1.jpg", b"fake-image")
-        zip_file.writestr("Annotations/voc-1.xml", xml_payload)
-        zip_file.writestr("ImageSets/Main/train.txt", "voc-1\n")
+</annotation>""".format(
+                truncated_value=truncated_value,
+                difficult_value=difficult_value,
+        )
+        with zipfile.ZipFile(buffer, mode="w") as zip_file:
+                prefix = "dataset-root/VOC2007/" if with_nested_wrappers else ""
+                zip_file.writestr(f"{prefix}JPEGImages/voc-1.jpg", b"fake-image")
+                zip_file.writestr(f"{prefix}Annotations/voc-1.xml", xml_payload)
+                zip_file.writestr(f"{prefix}ImageSets/Main/train.txt", "voc-1\n")
 
-    return buffer.getvalue()
+        return buffer.getvalue()

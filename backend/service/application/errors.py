@@ -145,3 +145,22 @@ class UnsupportedDatasetFormatError(ServiceError):
         """
 
         super().__init__(message, code="unsupported_dataset_format", status_code=422, details=details)
+
+
+class ResourceNotFoundError(ServiceError):
+    """表示请求的资源不存在。"""
+
+    def __init__(
+        self,
+        message: str = "请求的资源不存在",
+        *,
+        details: Mapping[str, object] | None = None,
+    ) -> None:
+        """初始化资源不存在错误。
+
+        参数：
+        - message：错误消息。
+        - details：附加错误细节。
+        """
+
+        super().__init__(message, code="resource_not_found", status_code=404, details=details)

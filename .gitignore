@@ -219,3 +219,6 @@ __marimo__/
 
 # project source code
 projectsrc/
+
+# disk data
+data/

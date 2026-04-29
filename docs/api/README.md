@@ -7,6 +7,8 @@
 ## 当前文档
 
 - [docs/api/communication-contracts.md](communication-contracts.md)：REST API、WebSocket、ZeroMQ 的职责拆分与事件规则边界
+- [docs/api/datasets-imports.md](datasets-imports.md)：DatasetImport 导入、详情查询、列表查询和错误语义
+- [docs/api/postman/datasets-imports.postman_collection.json](postman/datasets-imports.postman_collection.json)：DatasetImport 接口的 Postman collection
 - [docs/architecture/backend-service.md](../architecture/backend-service.md)：FastAPI 应用分层、路由拆分、数据库会话、权限和中间件骨架
 
 ## 建议内容
@@ -15,6 +17,7 @@
 - WebSocket 事件类型与订阅主题清单
 - ZeroMQ 本地 IPC 主题与消息约束
 - 错误码、分页、鉴权和兼容性说明
+- Postman collection 与最小调试示例
 
 ## 存放规则
 
