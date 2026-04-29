@@ -266,6 +266,10 @@ class SqlAlchemyDatasetImportService:
                 request=request,
                 import_layout=import_layout,
             )
+            version_scoped_content = self._assign_version_scoped_sample_ids(
+                parsed_content,
+                dataset_version_id=dataset_version_id,
+            )
             current_import = replace(
                 current_import,
                 format_type=parsed_content.format_type,
@@ -290,7 +294,7 @@ class SqlAlchemyDatasetImportService:
                 dataset_id=request.dataset_id,
                 project_id=request.project_id,
                 categories=parsed_content.categories,
-                samples=tuple(parsed_sample.sample for parsed_sample in parsed_content.samples),
+                samples=tuple(parsed_sample.sample for parsed_sample in version_scoped_content.samples),
                 task_type=parsed_content.task_type,
                 metadata={
                     "source_import_id": dataset_import_id,
@@ -305,7 +309,7 @@ class SqlAlchemyDatasetImportService:
             self._write_version_files(
                 dataset_import_id=dataset_import_id,
                 dataset_version=dataset_version,
-                parsed_content=parsed_content,
+                parsed_content=version_scoped_content,
                 version_layout=version_layout,
             )
             self.dataset_storage.write_json(
@@ -1165,6 +1169,77 @@ class SqlAlchemyDatasetImportService:
                     "samples": split_indexes[split_name],
                 },
             )
+
+    def _assign_version_scoped_sample_ids(
+        self,
+        parsed_content: ParsedDatasetContent,
+        *,
+        dataset_version_id: str,
+    ) -> ParsedDatasetContent:
+        """为写入 DatasetVersion 的样本和标注分配 version-scoped id。
+
+        参数：
+        - parsed_content：解析后的统一结果。
+        - dataset_version_id：即将写入的 DatasetVersion id。
+
+        返回：
+        - 样本和标注 id 已被重写的新 ParsedDatasetContent。
+        """
+
+        scoped_samples: list[ParsedDatasetSample] = []
+        next_annotation_index = 1
+        for sample_index, parsed_sample in enumerate(parsed_content.samples, start=1):
+            source_sample = parsed_sample.sample
+            scoped_annotations: list[DetectionAnnotation] = []
+            for annotation in source_sample.annotations:
+                scoped_annotations.append(
+                    DetectionAnnotation(
+                        annotation_id=f"ann-{dataset_version_id}-{next_annotation_index}",
+                        category_id=annotation.category_id,
+                        bbox_xywh=annotation.bbox_xywh,
+                        iscrowd=annotation.iscrowd,
+                        area=annotation.area,
+                        metadata={
+                            **annotation.metadata,
+                            "source_annotation_id": annotation.annotation_id,
+                        },
+                    )
+                )
+                next_annotation_index += 1
+
+            scoped_samples.append(
+                ParsedDatasetSample(
+                    sample=DatasetSample(
+                        sample_id=f"sample-{dataset_version_id}-{sample_index}",
+                        image_id=source_sample.image_id,
+                        file_name=source_sample.file_name,
+                        width=source_sample.width,
+                        height=source_sample.height,
+                        split=source_sample.split,
+                        annotations=tuple(scoped_annotations),
+                        metadata={
+                            **source_sample.metadata,
+                            "source_sample_id": source_sample.sample_id,
+                        },
+                    ),
+                    source_image_path=parsed_sample.source_image_path,
+                    source_image_ref=parsed_sample.source_image_ref,
+                )
+            )
+
+        return ParsedDatasetContent(
+            format_type=parsed_content.format_type,
+            task_type=parsed_content.task_type,
+            image_root=parsed_content.image_root,
+            annotation_root=parsed_content.annotation_root,
+            manifest_file=parsed_content.manifest_file,
+            split_strategy=parsed_content.split_strategy,
+            class_map=dict(parsed_content.class_map),
+            categories=parsed_content.categories,
+            samples=tuple(scoped_samples),
+            detected_profile=dict(parsed_content.detected_profile),
+            validation_report=dict(parsed_content.validation_report),
+        )
 
     def _record_failed_import(
         self,

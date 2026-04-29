@@ -303,6 +303,64 @@ def test_import_dataset_zip_rejects_invalid_split_strategy(tmp_path: Path) -> No
         session_factory.engine.dispose()
 
 
+def test_import_dataset_zip_can_be_called_twice_for_same_dataset(tmp_path: Path) -> None:
+    """验证同一 Dataset 连续导入两次不会触发样本或标注主键冲突。"""
+
+    client, session_factory, _dataset_storage = _create_test_client(tmp_path)
+    try:
+        with client:
+            first_response = client.post(
+                "/api/v1/datasets/imports",
+                headers=_build_dataset_write_headers(),
+                data={
+                    "project_id": "project-1",
+                    "dataset_id": "dataset-repeat",
+                },
+                files={
+                    "package": ("coco-dataset.zip", _build_coco_zip_bytes(), "application/zip"),
+                },
+            )
+            second_response = client.post(
+                "/api/v1/datasets/imports",
+                headers=_build_dataset_write_headers(),
+                data={
+                    "project_id": "project-1",
+                    "dataset_id": "dataset-repeat",
+                },
+                files={
+                    "package": ("coco-dataset.zip", _build_coco_zip_bytes(), "application/zip"),
+                },
+            )
+
+        assert first_response.status_code == 201
+        assert second_response.status_code == 201
+
+        first_payload = first_response.json()
+        second_payload = second_response.json()
+        assert first_payload["dataset_import_id"] != second_payload["dataset_import_id"]
+        assert first_payload["dataset_version_id"] != second_payload["dataset_version_id"]
+
+        first_import, first_version = _load_dataset_objects(
+            session_factory=session_factory,
+            dataset_import_id=first_payload["dataset_import_id"],
+            dataset_version_id=first_payload["dataset_version_id"],
+        )
+        second_import, second_version = _load_dataset_objects(
+            session_factory=session_factory,
+            dataset_import_id=second_payload["dataset_import_id"],
+            dataset_version_id=second_payload["dataset_version_id"],
+        )
+
+        assert first_import is not None
+        assert second_import is not None
+        assert first_version is not None
+        assert second_version is not None
+        assert first_version.samples[0].sample_id != second_version.samples[0].sample_id
+        assert first_version.samples[0].annotations[0].annotation_id != second_version.samples[0].annotations[0].annotation_id
+    finally:
+        session_factory.engine.dispose()
+
+
 def _create_test_client(tmp_path: Path) -> tuple[TestClient, SessionFactory, LocalDatasetStorage]:
     """创建绑定内存 SQLite 和临时本地文件存储的测试客户端。
 
