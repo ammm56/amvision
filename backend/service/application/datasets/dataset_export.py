@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
+from uuid import uuid4
 from typing import Protocol
 
 from backend.contracts.datasets.exports.coco_detection_export import (
@@ -23,6 +24,7 @@ from backend.contracts.datasets.exports.dataset_formats import (
 from backend.service.domain.datasets.dataset_version import DatasetCategory, DatasetSample, DatasetVersion
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
+from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 
 
 @dataclass(frozen=True)
@@ -59,6 +61,8 @@ class DatasetExportResult:
     - split_names：导出的 split 名称列表。
     - sample_count：导出的样本总数。
     - category_names：导出时使用的类别名列表。
+    - dataset_export_id：导出记录 id；只有正式落盘时才会生成。
+    - export_path：导出根目录 object key。
     - format_manifest：格式级 manifest。
     - annotation_payloads_by_split：按 split 保存的 annotation payload。
     - metadata：附加元数据。
@@ -70,6 +74,8 @@ class DatasetExportResult:
     split_names: tuple[str, ...]
     sample_count: int
     category_names: tuple[str, ...] = ()
+    dataset_export_id: str | None = None
+    export_path: str | None = None
     format_manifest: CocoDetectionExportManifest | None = None
     annotation_payloads_by_split: dict[str, CocoDetectionAnnotationPayload] = field(default_factory=dict)
     metadata: dict[str, object] = field(default_factory=dict)
@@ -94,14 +100,20 @@ class DatasetExporter(Protocol):
 class SqlAlchemyDatasetExporter:
     """使用 SQLAlchemy Repository 与 Unit of Work 实现数据集导出。"""
 
-    def __init__(self, session_factory: SessionFactory) -> None:
+    def __init__(
+        self,
+        session_factory: SessionFactory,
+        dataset_storage: LocalDatasetStorage | None = None,
+    ) -> None:
         """初始化基于 SQLAlchemy 的数据集导出器。
 
         参数：
         - session_factory：用于创建请求级数据库会话的工厂。
+        - dataset_storage：可选的本地数据集文件存储服务；提供时会把导出结果正式写盘。
         """
 
         self.session_factory = session_factory
+        self.dataset_storage = dataset_storage
 
     def export_dataset(self, request: DatasetExportRequest) -> DatasetExportResult:
         """执行数据集导出。
@@ -156,7 +168,14 @@ class SqlAlchemyDatasetExporter:
             categories=dataset_version.categories,
             category_names=request.category_names,
         )
-        export_prefix = self._resolve_export_prefix(request=request)
+        dataset_export_id = None
+        if self.dataset_storage is not None and not request.output_object_prefix:
+            dataset_export_id = self._next_id("dataset-export")
+
+        export_prefix = self._resolve_export_prefix(
+            request=request,
+            dataset_export_id=dataset_export_id,
+        )
         split_samples = self._collect_split_samples(
             dataset_version=dataset_version,
             include_test_split=request.include_test_split,
@@ -186,16 +205,19 @@ class SqlAlchemyDatasetExporter:
                 "target_format": request.format_id,
                 "class_map": class_map,
                 "exported_at": exported_at,
+                "export_path": export_prefix,
             },
         )
 
-        return DatasetExportResult(
+        export_result = DatasetExportResult(
             dataset_version_id=request.dataset_version_id,
             format_id=request.format_id,
             manifest_object_key=f"{export_prefix}/manifest.json",
             split_names=tuple(split_name for split_name, _ in split_samples),
             sample_count=sum(len(samples) for _, samples in split_samples),
             category_names=category_names,
+            dataset_export_id=dataset_export_id,
+            export_path=export_prefix,
             format_manifest=format_manifest,
             annotation_payloads_by_split=annotation_payloads_by_split,
             metadata={
@@ -203,9 +225,19 @@ class SqlAlchemyDatasetExporter:
                 "target_format": request.format_id,
                 "class_map": class_map,
                 "exported_at": exported_at,
+                "export_path": export_prefix,
                 "supported_formats": SUPPORTED_DATASET_EXPORT_FORMATS,
             },
         )
+
+        if self.dataset_storage is not None:
+            self._write_export_files(
+                dataset_version=dataset_version,
+                split_samples=split_samples,
+                export_result=export_result,
+            )
+
+        return export_result
 
     def _resolve_category_names(
         self,
@@ -228,11 +260,17 @@ class SqlAlchemyDatasetExporter:
 
         return tuple(category.name for category in sorted(categories, key=lambda item: item.category_id))
 
-    def _resolve_export_prefix(self, request: DatasetExportRequest) -> str:
+    def _resolve_export_prefix(
+        self,
+        *,
+        request: DatasetExportRequest,
+        dataset_export_id: str | None,
+    ) -> str:
         """确定数据集导出的输出路径前缀。
 
         参数：
         - request：数据集导出请求。
+        - dataset_export_id：导出记录 id；未正式落盘时为空。
 
         返回：
         - 导出路径前缀。
@@ -240,6 +278,12 @@ class SqlAlchemyDatasetExporter:
 
         if request.output_object_prefix:
             return request.output_object_prefix.rstrip("/")
+
+        if dataset_export_id is not None:
+            return (
+                f"projects/{request.project_id}/datasets/{request.dataset_id}/exports/"
+                f"{dataset_export_id}"
+            )
 
         return f"exports/{request.dataset_version_id}/{request.format_id}"
 
@@ -346,3 +390,104 @@ class SqlAlchemyDatasetExporter:
             )
 
         return payloads
+
+    def _write_export_files(
+        self,
+        *,
+        dataset_version: DatasetVersion,
+        split_samples: tuple[tuple[str, tuple[DatasetSample, ...]], ...],
+        export_result: DatasetExportResult,
+    ) -> None:
+        """把导出结果正式写入本地文件存储。
+
+        参数：
+        - dataset_version：导出来源的 DatasetVersion。
+        - split_samples：按 split 分组的样本列表。
+        - export_result：导出结果。
+        """
+
+        if self.dataset_storage is None or export_result.export_path is None:
+            return
+
+        export_layout = self.dataset_storage.prepare_export_layout(export_result.export_path)
+        if export_result.format_manifest is not None:
+            self.dataset_storage.write_json(
+                export_layout.manifest_path,
+                asdict(export_result.format_manifest),
+            )
+
+        for split_name, payload in export_result.annotation_payloads_by_split.items():
+            self.dataset_storage.write_json(
+                f"{export_layout.annotations_dir}/instances_{split_name}.json",
+                self._serialize_coco_annotation_payload(payload),
+            )
+
+        for split_name, samples in split_samples:
+            for sample in samples:
+                source_relative_path = self._build_version_image_relative_path(
+                    dataset_version=dataset_version,
+                    sample=sample,
+                )
+                self.dataset_storage.copy_relative_file(
+                    source_relative_path,
+                    f"{export_layout.images_dir}/{split_name}/{sample.file_name}",
+                )
+
+    def _serialize_coco_annotation_payload(
+        self,
+        payload: CocoDetectionAnnotationPayload,
+    ) -> dict[str, object]:
+        """把 COCO detection payload 序列化为标准 annotation JSON。"""
+
+        return {
+            "info": dict(payload.info),
+            "images": [
+                {
+                    "id": image.image_id,
+                    "file_name": image.file_name,
+                    "width": image.width,
+                    "height": image.height,
+                }
+                for image in payload.images
+            ],
+            "annotations": [
+                {
+                    "id": annotation.annotation_id,
+                    "image_id": annotation.image_id,
+                    "category_id": annotation.category_id,
+                    "bbox": list(annotation.bbox_xywh),
+                    "area": annotation.area,
+                    "iscrowd": annotation.iscrowd,
+                }
+                for annotation in payload.annotations
+            ],
+            "categories": [
+                {
+                    "id": category.category_id,
+                    "name": category.name,
+                    "supercategory": category.supercategory,
+                }
+                for category in payload.categories
+            ],
+        }
+
+    def _build_version_image_relative_path(
+        self,
+        *,
+        dataset_version: DatasetVersion,
+        sample: DatasetSample,
+    ) -> str:
+        """计算 DatasetVersion 中某张图片的相对路径。"""
+
+        image_object_key = str(
+            sample.metadata.get("image_object_key") or f"images/{sample.split}/{sample.file_name}"
+        ).lstrip("/")
+        return (
+            f"projects/{dataset_version.project_id}/datasets/{dataset_version.dataset_id}/versions/"
+            f"{dataset_version.dataset_version_id}/{image_object_key}"
+        )
+
+    def _next_id(self, prefix: str) -> str:
+        """生成一个带前缀的新对象 id。"""
+
+        return f"{prefix}-{uuid4().hex[:12]}"

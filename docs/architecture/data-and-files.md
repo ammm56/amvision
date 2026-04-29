@@ -344,9 +344,140 @@ object-store/
 ```
 
 - imports/{dataset_import_id}/package.zip 保存原始上传包，后续审计与复查都以此为准
-- imports/{dataset_import_id}/staging/extracted 只保存安全解压后的短期工作目录，不作为训练或导出的长期输入
+- imports/{dataset_import_id}/staging/extracted 只保存安全解压后的短期工作目录，不作为训练或导出的长期输入；当前导入成功后会清空并重建为空目录
 - versions/{dataset_version_id} 保存生成后的统一版本内容，是平台内部的正式输入版本
 - 第一阶段 versions 目录应至少包含 manifests、images、samples、indexes 四层，以支撑 COCO/VOC detection 导入后的统一读取
+
+## 当前本地 data 目录
+
+当前开发态默认使用本地 data 目录保存 SQLite 元数据和 ObjectStore 文件内容。当前路径约定如下。
+
+```text
+data/
+├─ amvision.db
+├─ files/
+│  └─ projects/
+│     └─ {project_id}/
+│        └─ datasets/
+│           └─ {dataset_id}/
+│              ├─ imports/
+│              └─ versions/
+├─ worker/
+└─ maintenance/
+```
+
+| 路径 | 当前用途 |
+| --- | --- |
+| data/amvision.db | 默认开发数据库文件，保存 DatasetImport、DatasetVersion、Model、ModelVersion、ModelBuild 等正式元数据。 |
+| data/files | backend-service 默认 ObjectStore 根目录。当前数据集导入的原始包、版本文件和后续导出结果都放在这里。 |
+| data/worker | worker 进程的默认本地工作目录。当前只是 bootstrap 级目录约定，还没有落正式任务内容。 |
+| data/maintenance | maintenance 进程的默认本地工作目录。当前只是 bootstrap 级目录约定，还没有落正式运维产物。 |
+
+### DatasetImport 目录用途
+
+当前测试样例落盘后，对应目录结构如下。
+
+```text
+data/files/projects/{project_id}/datasets/{dataset_id}/imports/{dataset_import_id}/
+├─ package.zip
+├─ manifests/
+│  ├─ upload-request.json
+│  └─ detected-profile.json
+├─ staging/
+│  └─ extracted/
+└─ logs/
+	├─ validation-report.json
+	└─ import.log
+```
+
+| 路径 | 当前用途 |
+| --- | --- |
+| package.zip | 保存原始上传 zip 包，是导入审计、问题复查和重新解析的原始输入。 |
+| manifests/upload-request.json | 保存接口收到的显式请求参数，例如 project_id、dataset_id、package_file_name、format_type、task_type、split_strategy、class_map、metadata。 |
+| manifests/detected-profile.json | 保存导入器识别出来的格式签名、目录根路径、split 名称和 split 数量。 |
+| staging/extracted | 保存安全解压后的短期工作目录。解析器从这里读取原始图片和标注。这个目录不应作为训练和导出的长期输入；当前导入成功后会被清空并重建为空目录。 |
+| logs/validation-report.json | 保存结构化校验结果。成功时包含 sample_count、category_count、split_counts；失败时包含 error code 和 message。 |
+| logs/import.log | 保存一次导入的简短处理日志，便于人工排查。 |
+
+### DatasetVersion 目录用途
+
+导入成功后，平台会把原始数据固化成一个正式版本目录。
+
+```text
+data/files/projects/{project_id}/datasets/{dataset_id}/versions/{dataset_version_id}/
+├─ manifests/
+│  ├─ dataset-version.json
+│  └─ categories.json
+├─ images/
+│  ├─ train/
+│  ├─ val/
+│  └─ test/
+├─ samples/
+│  ├─ train/
+│  ├─ val/
+│  └─ test/
+└─ indexes/
+	├─ train.json
+	├─ val.json
+	└─ test.json
+```
+
+| 路径 | 当前用途 |
+| --- | --- |
+| manifests/dataset-version.json | 保存版本级摘要，包括 dataset_version_id、dataset_id、project_id、task_type、source_import_id、format_type、sample_count、category_count、split_counts。 |
+| manifests/categories.json | 保存归一化后的类别表。当前导入器会把类别重排为连续 0-based category_id。 |
+| images/{split}/ | 保存当前 DatasetVersion 的正式图片副本。训练、验证或导出时如果需要真实图像文件，应从这里读取。 |
+| samples/{split}/{sample_id}.json | 保存单样本的结构化记录，包括图片尺寸、split、image_object_key、source_image_ref 和 annotations。 |
+| indexes/{split}.json | 保存 split 级索引，便于快速枚举当前 split 的样本和文件路径，不必逐个扫描 samples 目录。 |
+
+### 当前版本目录里的正式输入边界
+
+- imports 目录保存“原始输入”和“导入过程信息”。
+- versions 目录保存“平台内部正式版本”。
+- 训练、验证、导出和后续离线批处理不应直接依赖 imports/staging/extracted。
+- 如果后续需要重做解析或审计，可以重新使用 package.zip，但正式任务应绑定 DatasetVersion id。
+
+## 训练、验证、推理、发布如何使用 data 目录
+
+### 数据集导入阶段
+
+- 上传接口先把原始 zip 落到 imports/{dataset_import_id}/package.zip。
+- 当前服务内部先登记 DatasetImport 和 package.zip，再进入处理阶段；后续可直接把同一段处理链切给独立 worker。
+- 解析器在 staging/extracted 中识别格式、读取原始标注和图片。
+- 导入成功后再把正式结果写入 versions/{dataset_version_id}，并把结构化元数据写入数据库中的 DatasetVersion 聚合。
+- 导入成功后会清空 staging/extracted 中的临时解压内容，只保留 package.zip、识别结果和校验报告作为审计与重跑锚点。
+
+### 训练阶段
+
+- 训练任务应绑定 DatasetVersion id，而不是绑定 imports 目录路径。
+- 当前最小实现里，DatasetVersion 的正式内容同时存在两处：数据库中的结构化聚合，以及 data/files 下的版本目录。
+- 当前 exporter 直接从数据库读取 DatasetVersion 聚合生成导出结果，并把 manifest、annotations、images 正式写到 datasets/{dataset_id}/exports/{dataset_export_id}；如果调用方显式提供 output_object_prefix，也可以把导出结果写到 task-runs/training/{task_id}/dataset-export 一类的任务目录。
+- 如果训练后端需要真实图片文件，应优先使用 versions/{dataset_version_id}/images 和 indexes/{split}.json 组合出的样本清单。
+
+### 验证阶段
+
+- 验证任务应与训练一样绑定 DatasetVersion id。
+- val/test 的筛选应优先依据数据库中的 sample.split 或版本目录中的 indexes/val.json、indexes/test.json。
+- 当前仓库还没有单独的 ValidationTask 实现，因此验证阶段如何把 DatasetVersion 转成具体验证输入仍需继续落地。
+
+### 推理阶段
+
+- 在线推理当前不直接读取 DatasetVersion。
+- 当前 InferenceTask 规格使用的是 deployment_instance_id、input_file_id 或 input_uri，说明在线推理更接近“单输入或批输入文件”模式，而不是直接消费整个数据集版本。
+- 如果后续要做离线批量评估、回归测试或基准测试，应新增显式的评估任务，让它绑定 DatasetVersion 或导出后的评估数据包。
+
+### 发布阶段
+
+- 发布和部署直接绑定的是 ModelVersion 或 ModelBuild，而不是 data/files 下的数据集目录。
+- 数据集在发布阶段的主要作用是保留 lineage：训练输出模型应记录 dataset_version_id，便于追溯模型来自哪个数据版本。
+- 如果部署前需要做回归验证，应该由验证或 benchmark 任务读取 DatasetVersion，而不是让 DeploymentInstance 直接读取数据集目录。
+
+### 导出阶段
+
+- 当前最小导出器已经能把 DatasetVersion 转成 COCO detection 结构化结果。
+- 当导出器绑定 LocalDatasetStorage 时，会把 manifest.json、annotations/instances_{split}.json 和 images/{split}/ 正式写回 data/files/projects/{project_id}/datasets/{dataset_id}/exports/{dataset_export_id}。
+- 如果训练或评估任务需要把导出结果落到任务作用域目录，可以通过 output_object_prefix 把导出目标切到 task-runs/training/{task_id}/dataset-export 等自定义路径。
+- worker 侧后续只需要消费 manifest_object_key 或 export_path，就可以直接复用同一份正式导出结果。
 
 ## 放置与管理规则
 

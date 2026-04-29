@@ -63,6 +63,9 @@ def test_import_dataset_zip_creates_coco_dataset_version(tmp_path: Path) -> None
         assert dataset_storage.resolve(payload["package_path"]).is_file()
         assert dataset_storage.resolve(payload["staging_path"]).is_dir()
         assert dataset_storage.resolve(payload["version_path"]).is_dir()
+        extracted_dir = dataset_storage.resolve(payload["staging_path"])
+        assert extracted_dir.is_dir()
+        assert list(extracted_dir.iterdir()) == []
 
         sample = dataset_version.samples[0]
         sample_manifest_path = dataset_storage.resolve(
@@ -189,7 +192,11 @@ def test_get_dataset_import_detail_returns_validation_report_and_version_relatio
         payload = detail_response.json()
         assert payload["dataset_import_id"] == dataset_import_id
         assert payload["validation_report"]["status"] == "ok"
+        assert payload["validation_report"]["warnings"] == []
+        assert payload["validation_report"]["errors"] == []
+        assert payload["validation_report"]["error"] is None
         assert payload["detected_profile"]["format_type"] == "coco"
+        assert payload["detected_profile"]["split_counts"] == {"train": 1}
         assert payload["dataset_version"]["dataset_version_id"] == payload["dataset_version_id"]
         assert payload["dataset_version"]["sample_count"] == 1
         assert payload["dataset_version"]["category_count"] == 1
@@ -230,6 +237,68 @@ def test_list_dataset_imports_returns_dataset_import_summaries(tmp_path: Path) -
         assert payload[0]["status"] == "completed"
         assert payload[0]["validation_status"] == "ok"
         assert payload[0]["dataset_version_id"] is not None
+    finally:
+        session_factory.engine.dispose()
+
+
+def test_import_dataset_zip_forced_split_strategy_overrides_detected_split(tmp_path: Path) -> None:
+    """验证显式 split_strategy 会覆盖导入器自动识别出的 split。"""
+
+    client, session_factory, _dataset_storage = _create_test_client(tmp_path)
+    try:
+        with client:
+            response = client.post(
+                "/api/v1/datasets/imports",
+                headers=_build_dataset_write_headers(),
+                data={
+                    "project_id": "project-1",
+                    "dataset_id": "dataset-4",
+                    "split_strategy": "val",
+                },
+                files={
+                    "package": ("coco-dataset.zip", _build_coco_zip_bytes(), "application/zip"),
+                },
+            )
+
+            assert response.status_code == 201
+            payload = response.json()
+            assert payload["split_names"] == ["val"]
+
+            detail_response = client.get(
+                f"/api/v1/datasets/imports/{payload['dataset_import_id']}",
+                headers=_build_dataset_read_headers(),
+            )
+
+        assert detail_response.status_code == 200
+        detail_payload = detail_response.json()
+        assert detail_payload["split_strategy"] == "forced-val"
+        assert detail_payload["detected_profile"]["split_names"] == ["val"]
+        assert detail_payload["validation_report"]["split_counts"] == {"val": 1}
+        assert detail_payload["dataset_version"]["split_names"] == ["val"]
+    finally:
+        session_factory.engine.dispose()
+
+
+def test_import_dataset_zip_rejects_invalid_split_strategy(tmp_path: Path) -> None:
+    """验证非法 split_strategy 会在路由层被拒绝。"""
+
+    client, session_factory, _dataset_storage = _create_test_client(tmp_path)
+    try:
+        with client:
+            response = client.post(
+                "/api/v1/datasets/imports",
+                headers=_build_dataset_write_headers(),
+                data={
+                    "project_id": "project-1",
+                    "dataset_id": "dataset-5",
+                    "split_strategy": "shadow",
+                },
+                files={
+                    "package": ("coco-dataset.zip", _build_coco_zip_bytes(), "application/zip"),
+                },
+            )
+
+        assert response.status_code == 422
     finally:
         session_factory.engine.dispose()
 

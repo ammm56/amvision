@@ -16,6 +16,21 @@ DatasetFormatType = Literal["coco", "voc"]
 DatasetImportStatus = Literal["received", "extracted", "validated", "completed", "failed"]
 
 
+# 导入请求允许的 split 策略。
+DatasetImportRequestedSplitStrategy = Literal["auto", "train", "val", "test"]
+
+
+# 导入完成后记录的实际 split 策略。
+DatasetImportResolvedSplitStrategy = Literal[
+    "manifest-name",
+    "image_sets",
+    "default-train",
+    "forced-train",
+    "forced-val",
+    "forced-test",
+]
+
+
 @dataclass(frozen=True)
 class DatasetImport:
     """描述一次数据集 zip 导入记录。
@@ -57,7 +72,7 @@ class DatasetImport:
     image_root: str | None = None
     annotation_root: str | None = None
     manifest_file: str | None = None
-    split_strategy: str | None = None
+    split_strategy: DatasetImportResolvedSplitStrategy | None = None
     class_map: dict[str, str] = field(default_factory=dict)
     detected_profile: dict[str, object] = field(default_factory=dict)
     validation_report: dict[str, object] = field(default_factory=dict)

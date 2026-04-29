@@ -21,8 +21,12 @@ from backend.service.application.errors import (
 	ResourceNotFoundError,
 )
 from backend.service.application.unit_of_work import UnitOfWork
-from backend.service.domain.datasets.dataset_import import DatasetImport
-from backend.service.domain.datasets.dataset_version import DatasetVersion
+from backend.service.domain.datasets.dataset_import import (
+	DatasetFormatType,
+	DatasetImport,
+	DatasetImportRequestedSplitStrategy,
+)
+from backend.service.domain.datasets.dataset_version import DatasetTaskType, DatasetVersion
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 
@@ -57,6 +61,41 @@ class DatasetVersionRelationResponse(BaseModel):
 	category_count: int = Field(description="类别总数")
 	split_names: tuple[str, ...] = Field(description="版本包含的 split 列表")
 	metadata: dict[str, object] = Field(description="版本元数据")
+
+
+class DatasetImportFailureResponse(BaseModel):
+	"""描述导入失败时的结构化错误对象。"""
+
+	code: str | None = Field(default=None, description="稳定错误码")
+	message: str | None = Field(default=None, description="错误消息")
+	details: dict[str, object] = Field(default_factory=dict, description="附加错误细节")
+
+
+class DatasetImportDetectedProfileResponse(BaseModel):
+	"""描述导入阶段识别出的格式签名。"""
+
+	detected_candidates: tuple[str, ...] = Field(default_factory=tuple, description="识别到的候选格式列表")
+	format_type: str | None = Field(default=None, description="最终识别出的格式类型")
+	task_type: str | None = Field(default=None, description="最终识别出的任务类型")
+	manifest_files: tuple[str, ...] = Field(default_factory=tuple, description="识别到的 manifest 文件列表")
+	annotation_root: str | None = Field(default=None, description="识别出的标注根目录")
+	image_root: str | None = Field(default=None, description="识别出的图片根目录")
+	split_names: tuple[str, ...] = Field(default_factory=tuple, description="识别出的 split 列表")
+	split_counts: dict[str, int] = Field(default_factory=dict, description="各 split 的样本数量")
+
+
+class DatasetImportValidationReportResponse(BaseModel):
+	"""描述导入阶段输出的结构化校验报告。"""
+
+	status: str | None = Field(default=None, description="校验状态")
+	format_type: str | None = Field(default=None, description="校验对应的数据集格式")
+	task_type: str | None = Field(default=None, description="校验对应的任务类型")
+	category_count: int | None = Field(default=None, description="校验得到的类别总数")
+	sample_count: int | None = Field(default=None, description="校验得到的样本总数")
+	split_counts: dict[str, int] = Field(default_factory=dict, description="各 split 的样本数量")
+	warnings: list[dict[str, object]] = Field(default_factory=list, description="校验警告列表")
+	errors: list[dict[str, object]] = Field(default_factory=list, description="校验错误列表")
+	error: DatasetImportFailureResponse | None = Field(default=None, description="失败时的错误信息")
 
 
 class DatasetImportSummaryResponse(BaseModel):
@@ -96,8 +135,8 @@ class DatasetImportDetailResponse(BaseModel):
 	manifest_file: str | None = Field(description="识别出的 manifest 文件路径")
 	split_strategy: str | None = Field(description="导入使用的 split 策略")
 	class_map: dict[str, str] = Field(description="类别映射")
-	detected_profile: dict[str, object] = Field(description="格式识别结果")
-	validation_report: dict[str, object] = Field(description="结构化校验报告")
+	detected_profile: DatasetImportDetectedProfileResponse = Field(description="格式识别结果")
+	validation_report: DatasetImportValidationReportResponse = Field(description="结构化校验报告")
 	error_message: str | None = Field(description="失败时的错误消息")
 	metadata: dict[str, object] = Field(description="附加元数据")
 	dataset_version: DatasetVersionRelationResponse | None = Field(
@@ -114,9 +153,9 @@ async def import_dataset_zip(
 	project_id: Annotated[str, Form()],
 	dataset_id: Annotated[str, Form()],
 	package: Annotated[UploadFile, File()],
-	format_type: Annotated[str | None, Form()] = None,
-	task_type: Annotated[str, Form()] = "detection",
-	split_strategy: Annotated[str | None, Form()] = None,
+	format_type: Annotated[DatasetFormatType | None, Form()] = None,
+	task_type: Annotated[DatasetTaskType, Form()] = "detection",
+	split_strategy: Annotated[DatasetImportRequestedSplitStrategy | None, Form()] = None,
 	class_map_json: Annotated[str | None, Form()] = None,
 ) -> DatasetImportResponse:
 	"""接收 zip 数据集压缩包并生成 DatasetImport 与 DatasetVersion。
@@ -144,7 +183,6 @@ async def import_dataset_zip(
 		)
 
 	class_map = _parse_class_map_json(class_map_json)
-	package_bytes = await package.read()
 	service = SqlAlchemyDatasetImportService(
 		session_factory=session_factory,
 		dataset_storage=dataset_storage,
@@ -154,13 +192,13 @@ async def import_dataset_zip(
 			project_id=project_id,
 			dataset_id=dataset_id,
 			package_file_name=package.filename or "dataset.zip",
-			package_bytes=package_bytes,
 			format_type=format_type,
 			task_type=task_type,
 			split_strategy=split_strategy,
 			class_map=class_map,
 			metadata={"principal_id": principal.principal_id},
-		)
+		),
+		package_file=package.file,
 	)
 
 	dataset_import = import_result.dataset_import
@@ -331,8 +369,8 @@ def _build_dataset_import_detail(
 		manifest_file=dataset_import.manifest_file,
 		split_strategy=dataset_import.split_strategy,
 		class_map=dict(dataset_import.class_map),
-		detected_profile=dict(dataset_import.detected_profile),
-		validation_report=dict(dataset_import.validation_report),
+		detected_profile=_build_detected_profile_response(dataset_import.detected_profile),
+		validation_report=_build_validation_report_response(dataset_import.validation_report),
 		error_message=dataset_import.error_message,
 		metadata=dict(dataset_import.metadata),
 		dataset_version=_build_dataset_version_relation(dataset_version),
@@ -372,5 +410,103 @@ def _read_validation_status(validation_report: dict[str, object]) -> str | None:
 	status = validation_report.get("status")
 	if isinstance(status, str):
 		return status
+
+	return None
+
+
+def _build_detected_profile_response(
+	profile: dict[str, object],
+) -> DatasetImportDetectedProfileResponse:
+	"""把导入记录中的 profile 字典转换为显式响应模型。"""
+
+	manifest_files = profile.get("manifest_files", ())
+	split_names = profile.get("split_names", ())
+	split_counts = profile.get("split_counts", {})
+	detected_candidates = profile.get("detected_candidates", ())
+
+	return DatasetImportDetectedProfileResponse(
+		detected_candidates=tuple(
+			str(candidate) for candidate in detected_candidates if isinstance(candidate, str)
+		),
+		format_type=_read_optional_str(profile, "format_type"),
+		task_type=_read_optional_str(profile, "task_type"),
+		manifest_files=tuple(
+			str(manifest_file) for manifest_file in manifest_files if isinstance(manifest_file, str)
+		),
+		annotation_root=_read_optional_str(profile, "annotation_root"),
+		image_root=_read_optional_str(profile, "image_root"),
+		split_names=tuple(
+			str(split_name) for split_name in split_names if isinstance(split_name, str)
+		),
+		split_counts={
+			str(split_name): int(sample_count)
+			for split_name, sample_count in split_counts.items()
+			if isinstance(split_name, str)
+		},
+	)
+
+
+def _build_validation_report_response(
+	report: dict[str, object],
+) -> DatasetImportValidationReportResponse:
+	"""把导入记录中的校验报告字典转换为显式响应模型。"""
+
+	error_payload = report.get("error")
+	split_counts = report.get("split_counts", {})
+	warnings = report.get("warnings", [])
+	errors = report.get("errors", [])
+
+	return DatasetImportValidationReportResponse(
+		status=_read_optional_str(report, "status"),
+		format_type=_read_optional_str(report, "format_type"),
+		task_type=_read_optional_str(report, "task_type"),
+		category_count=_read_optional_int(report, "category_count"),
+		sample_count=_read_optional_int(report, "sample_count"),
+		split_counts={
+			str(split_name): int(sample_count)
+			for split_name, sample_count in split_counts.items()
+			if isinstance(split_name, str)
+		},
+		warnings=[warning for warning in warnings if isinstance(warning, dict)],
+		errors=[error for error in errors if isinstance(error, dict)],
+		error=_build_failure_response(error_payload),
+	)
+
+
+def _build_failure_response(payload: object) -> DatasetImportFailureResponse | None:
+	"""把失败信息字典转换为显式错误模型。"""
+
+	if not isinstance(payload, dict):
+		return None
+
+	return DatasetImportFailureResponse(
+		code=_read_optional_str(payload, "code"),
+		message=_read_optional_str(payload, "message"),
+		details={
+			str(key): value
+			for key, value in payload.items()
+			if key not in {"code", "message"}
+		},
+	)
+
+
+def _read_optional_str(payload: dict[str, object], key: str) -> str | None:
+	"""从字典中读取可选字符串字段。"""
+
+	value = payload.get(key)
+	if isinstance(value, str):
+		return value
+
+	return None
+
+
+def _read_optional_int(payload: dict[str, object], key: str) -> int | None:
+	"""从字典中读取可选整数字段。"""
+
+	value = payload.get(key)
+	if isinstance(value, int):
+		return value
+	if isinstance(value, float):
+		return int(value)
 
 	return None

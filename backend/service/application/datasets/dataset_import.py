@@ -9,15 +9,21 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
+from typing import BinaryIO
 from uuid import uuid4
 from xml.etree import ElementTree
 
 from backend.service.application.errors import (
     InvalidRequestError,
+    ResourceNotFoundError,
     ServiceError,
     UnsupportedDatasetFormatError,
 )
-from backend.service.domain.datasets.dataset_import import DatasetFormatType, DatasetImport
+from backend.service.domain.datasets.dataset_import import (
+    DatasetFormatType,
+    DatasetImport,
+    DatasetImportRequestedSplitStrategy,
+)
 from backend.service.domain.datasets.dataset_version import (
     DatasetCategory,
     DatasetSample,
@@ -43,7 +49,7 @@ class DatasetImportRequest:
     - project_id：所属 Project id。
     - dataset_id：所属 Dataset id。
     - package_file_name：上传 zip 文件名。
-    - package_bytes：上传 zip 文件内容。
+    - package_bytes：上传 zip 文件内容；直接走 service 调用时可传入。
     - format_type：显式指定的数据集格式；为空时自动识别。
     - task_type：任务类型。
     - split_strategy：显式指定的 split 策略。
@@ -54,10 +60,10 @@ class DatasetImportRequest:
     project_id: str
     dataset_id: str
     package_file_name: str
-    package_bytes: bytes
+    package_bytes: bytes | None = None
     format_type: DatasetFormatType | None = None
     task_type: DatasetTaskType = "detection"
-    split_strategy: str | None = None
+    split_strategy: DatasetImportRequestedSplitStrategy | None = None
     class_map: dict[str, str] = field(default_factory=dict)
     metadata: dict[str, object] = field(default_factory=dict)
 
@@ -145,26 +151,52 @@ class SqlAlchemyDatasetImportService:
         self.session_factory = session_factory
         self.dataset_storage = dataset_storage
 
-    def import_dataset(self, request: DatasetImportRequest) -> DatasetImportResult:
+    def import_dataset(
+        self,
+        request: DatasetImportRequest,
+        package_file: BinaryIO | None = None,
+    ) -> DatasetImportResult:
         """导入一个 COCO 或 Pascal VOC zip 数据集。
 
         参数：
         - request：导入请求。
+        - package_file：可选的上传文件流；提供时优先使用流式写入。
 
         返回：
         - 导入结果。
         """
 
-        self._validate_request(request)
+        staged_import = self.submit_dataset_import(request, package_file=package_file)
+        return self.process_dataset_import(staged_import.dataset_import_id)
+
+    def submit_dataset_import(
+        self,
+        request: DatasetImportRequest,
+        package_file: BinaryIO | None = None,
+    ) -> DatasetImport:
+        """只落包并登记一条待处理的 DatasetImport。
+
+        参数：
+        - request：导入请求。
+        - package_file：可选的上传文件流；提供时按流式写盘。
+
+        返回：
+        - 已落库但尚未完成解析的 DatasetImport 记录。
+        """
+
+        self._validate_request(request, package_file=package_file)
         dataset_import_id = self._next_id("dataset-import")
-        dataset_version_id = self._next_id("dataset-version")
         created_at = datetime.now(timezone.utc).isoformat()
         import_layout = self.dataset_storage.prepare_import_layout(
             project_id=request.project_id,
             dataset_id=request.dataset_id,
             dataset_import_id=dataset_import_id,
         )
-        self.dataset_storage.write_bytes(import_layout.package_path, request.package_bytes)
+        package_size = self._persist_package(
+            request=request,
+            import_layout=import_layout,
+            package_file=package_file,
+        )
         self.dataset_storage.write_json(
             import_layout.upload_request_path,
             {
@@ -191,19 +223,63 @@ class SqlAlchemyDatasetImportService:
             staging_path=import_layout.extracted_path,
             metadata={
                 "source_file_name": request.package_file_name,
-                "package_size": len(request.package_bytes),
+                "package_size": package_size,
                 **request.metadata,
             },
         )
         self._save_dataset_import(initial_import)
 
+        return initial_import
+
+    def process_dataset_import(self, dataset_import_id: str) -> DatasetImportResult:
+        """处理一条已登记的 DatasetImport。
+
+        参数：
+        - dataset_import_id：待处理的导入记录 id。
+
+        返回：
+        - 导入结果。
+        """
+
+        current_import = self._get_dataset_import(dataset_import_id)
+        import_layout = self._build_import_layout(current_import)
+
+        if current_import.status == "completed" and current_import.dataset_version_id is not None:
+            dataset_version = self._get_dataset_version(current_import.dataset_version_id)
+            return DatasetImportResult(
+                dataset_import=current_import,
+                dataset_version=dataset_version,
+                sample_count=len(dataset_version.samples),
+                category_count=len(dataset_version.categories),
+                split_names=self._collect_dataset_version_split_names(dataset_version),
+            )
+
+        request = self._load_staged_request(current_import, import_layout)
+        dataset_version_id = self._next_id("dataset-version")
         version_layout: DatasetVersionLayout | None = None
         try:
             self.dataset_storage.extract_zip(import_layout.package_path, import_layout.extracted_path)
+            current_import = replace(current_import, status="extracted")
+            self._save_dataset_import(current_import)
+
             parsed_content = self._parse_dataset_content(
                 request=request,
                 import_layout=import_layout,
             )
+            current_import = replace(
+                current_import,
+                format_type=parsed_content.format_type,
+                status="validated",
+                image_root=parsed_content.image_root,
+                annotation_root=parsed_content.annotation_root,
+                manifest_file=parsed_content.manifest_file,
+                split_strategy=parsed_content.split_strategy,
+                class_map=parsed_content.class_map,
+                detected_profile=parsed_content.detected_profile,
+                validation_report=parsed_content.validation_report,
+            )
+            self._save_dataset_import(current_import)
+
             version_layout = self.dataset_storage.prepare_version_layout(
                 project_id=request.project_id,
                 dataset_id=request.dataset_id,
@@ -248,24 +324,19 @@ class SqlAlchemyDatasetImportService:
                     parsed_content=parsed_content,
                 ),
             )
+
+            cleanup_status = self._cleanup_completed_staging(import_layout)
             completed_import = replace(
-                initial_import,
-                format_type=parsed_content.format_type,
+                current_import,
                 status="completed",
                 dataset_version_id=dataset_version_id,
                 version_path=version_layout.version_path,
-                image_root=parsed_content.image_root,
-                annotation_root=parsed_content.annotation_root,
-                manifest_file=parsed_content.manifest_file,
-                split_strategy=parsed_content.split_strategy,
-                class_map=parsed_content.class_map,
-                detected_profile=parsed_content.detected_profile,
-                validation_report=parsed_content.validation_report,
                 metadata={
-                    **initial_import.metadata,
+                    **current_import.metadata,
                     "sample_count": len(parsed_content.samples),
                     "category_count": len(parsed_content.categories),
                     "split_counts": self._collect_split_counts(parsed_content.samples),
+                    "staging_cleanup_status": cleanup_status,
                 },
             )
             self._save_dataset_version_and_import(dataset_version, completed_import)
@@ -279,7 +350,7 @@ class SqlAlchemyDatasetImportService:
             )
         except ServiceError as error:
             self._record_failed_import(
-                initial_import=initial_import,
+                initial_import=current_import,
                 import_layout=import_layout,
                 error=error,
                 version_layout=version_layout,
@@ -291,18 +362,24 @@ class SqlAlchemyDatasetImportService:
                 details={"error_type": error.__class__.__name__, "reason": str(error)},
             )
             self._record_failed_import(
-                initial_import=initial_import,
+                initial_import=current_import,
                 import_layout=import_layout,
                 error=wrapped_error,
                 version_layout=version_layout,
             )
             raise wrapped_error from error
 
-    def _validate_request(self, request: DatasetImportRequest) -> None:
+    def _validate_request(
+        self,
+        request: DatasetImportRequest,
+        *,
+        package_file: BinaryIO | None = None,
+    ) -> None:
         """校验导入请求的最小字段。
 
         参数：
         - request：导入请求。
+        - package_file：可选的上传文件流。
 
         异常：
         - 当请求字段不完整或当前任务类型不支持时抛出请求错误。
@@ -314,13 +391,195 @@ class SqlAlchemyDatasetImportService:
             raise InvalidRequestError("dataset_id 不能为空")
         if not request.package_file_name.lower().endswith(".zip"):
             raise InvalidRequestError("当前导入接口只接受 zip 压缩包")
-        if not request.package_bytes:
+        if package_file is None and not request.package_bytes:
             raise InvalidRequestError("上传 zip 文件不能为空")
         if request.task_type != "detection":
             raise UnsupportedDatasetFormatError(
                 "当前导入接口只支持 detection task type",
                 details={"task_type": request.task_type},
             )
+        if request.split_strategy not in (None, "auto", "train", "val", "test"):
+            raise InvalidRequestError(
+                "split_strategy 只支持 auto、train、val、test",
+                details={"split_strategy": request.split_strategy},
+            )
+
+    def _persist_package(
+        self,
+        *,
+        request: DatasetImportRequest,
+        import_layout: DatasetImportLayout,
+        package_file: BinaryIO | None,
+    ) -> int:
+        """把导入请求中的 zip 包持久化到本地文件存储。
+
+        参数：
+        - request：导入请求。
+        - import_layout：导入目录布局。
+        - package_file：可选的上传文件流。
+
+        返回：
+        - 实际保存的 zip 字节大小。
+        """
+
+        if package_file is not None:
+            return self.dataset_storage.write_stream(import_layout.package_path, package_file)
+        if request.package_bytes is None:
+            raise InvalidRequestError("上传 zip 文件不能为空")
+        self.dataset_storage.write_bytes(import_layout.package_path, request.package_bytes)
+        return len(request.package_bytes)
+
+    def _get_dataset_import(self, dataset_import_id: str) -> DatasetImport:
+        """读取一个已经落库的 DatasetImport。
+
+        参数：
+        - dataset_import_id：导入记录 id。
+
+        返回：
+        - 已读取的导入记录。
+        """
+
+        with self._open_unit_of_work() as unit_of_work:
+            dataset_import = unit_of_work.dataset_imports.get_dataset_import(dataset_import_id)
+
+        if dataset_import is None:
+            raise ResourceNotFoundError(
+                "找不到指定的 DatasetImport",
+                details={"dataset_import_id": dataset_import_id},
+            )
+
+        return dataset_import
+
+    def _get_dataset_version(self, dataset_version_id: str) -> DatasetVersion:
+        """读取一个已经落库的 DatasetVersion。
+
+        参数：
+        - dataset_version_id：数据版本 id。
+
+        返回：
+        - 已读取的 DatasetVersion。
+        """
+
+        with self._open_unit_of_work() as unit_of_work:
+            dataset_version = unit_of_work.datasets.get_dataset_version(dataset_version_id)
+
+        if dataset_version is None:
+            raise ResourceNotFoundError(
+                "找不到指定的 DatasetVersion",
+                details={"dataset_version_id": dataset_version_id},
+            )
+
+        return dataset_version
+
+    def _build_import_layout(self, dataset_import: DatasetImport) -> DatasetImportLayout:
+        """根据已保存的 DatasetImport 还原导入目录布局。
+
+        参数：
+        - dataset_import：已落库的导入记录。
+
+        返回：
+        - 对应的导入目录布局。
+        """
+
+        import_root = PurePosixPath(dataset_import.package_path).parent
+        manifests_dir = import_root / "manifests"
+        staging_dir = import_root / "staging"
+        logs_dir = import_root / "logs"
+        extracted_dir = staging_dir / "extracted"
+
+        return DatasetImportLayout(
+            import_path=str(import_root),
+            package_path=dataset_import.package_path,
+            manifests_dir=str(manifests_dir),
+            upload_request_path=str(manifests_dir / "upload-request.json"),
+            detected_profile_path=str(manifests_dir / "detected-profile.json"),
+            staging_dir=str(staging_dir),
+            extracted_path=str(extracted_dir),
+            logs_dir=str(logs_dir),
+            validation_report_path=str(logs_dir / "validation-report.json"),
+            import_log_path=str(logs_dir / "import.log"),
+        )
+
+    def _load_staged_request(
+        self,
+        dataset_import: DatasetImport,
+        import_layout: DatasetImportLayout,
+    ) -> DatasetImportRequest:
+        """从 upload-request.json 还原导入请求。
+
+        参数：
+        - dataset_import：当前导入记录。
+        - import_layout：导入目录布局。
+
+        返回：
+        - 还原后的导入请求。
+        """
+
+        payload = self.dataset_storage.read_json(import_layout.upload_request_path)
+        if not isinstance(payload, dict):
+            raise InvalidRequestError("upload-request.json 必须是 JSON 对象")
+
+        class_map_payload = payload.get("class_map", {})
+        metadata_payload = payload.get("metadata", {})
+        if not isinstance(class_map_payload, dict):
+            raise InvalidRequestError("upload-request.json 中的 class_map 必须是 JSON 对象")
+        if not isinstance(metadata_payload, dict):
+            raise InvalidRequestError("upload-request.json 中的 metadata 必须是 JSON 对象")
+
+        format_type = payload.get("format_type")
+        if format_type is not None:
+            format_type = str(format_type)
+        split_strategy = payload.get("split_strategy")
+        if split_strategy is not None:
+            split_strategy = str(split_strategy)
+
+        return DatasetImportRequest(
+            project_id=str(payload.get("project_id") or dataset_import.project_id),
+            dataset_id=str(payload.get("dataset_id") or dataset_import.dataset_id),
+            package_file_name=str(
+                payload.get("package_file_name")
+                or dataset_import.metadata.get("source_file_name")
+                or "dataset.zip"
+            ),
+            format_type=format_type,
+            task_type=str(payload.get("task_type") or dataset_import.task_type),
+            split_strategy=split_strategy,
+            class_map={str(key): str(value) for key, value in class_map_payload.items()},
+            metadata={str(key): value for key, value in metadata_payload.items()},
+        )
+
+    def _cleanup_completed_staging(self, import_layout: DatasetImportLayout) -> str:
+        """在导入成功后清理 staging/extracted 目录。
+
+        参数：
+        - import_layout：导入目录布局。
+
+        返回：
+        - 清理状态。
+        """
+
+        try:
+            self.dataset_storage.reset_directory(import_layout.extracted_path)
+        except OSError:
+            return "cleanup-failed"
+
+        return "cleaned"
+
+    def _collect_dataset_version_split_names(
+        self,
+        dataset_version: DatasetVersion,
+    ) -> tuple[str, ...]:
+        """按固定顺序收集 DatasetVersion 中出现的 split 名称。
+
+        参数：
+        - dataset_version：要统计的 DatasetVersion。
+
+        返回：
+        - 已出现的 split 名称元组。
+        """
+
+        present_splits = {sample.split for sample in dataset_version.samples}
+        return tuple(split_name for split_name in ("train", "val", "test") if split_name in present_splits)
 
     def _parse_dataset_content(
         self,
@@ -433,6 +692,7 @@ class SqlAlchemyDatasetImportService:
         if not manifest_paths:
             raise InvalidRequestError("COCO 数据集缺少 annotations/*.json")
 
+        forced_split = self._resolve_requested_split(split_strategy)
         manifest_payloads: list[tuple[Path, dict[str, object], DatasetSplitName]] = []
         source_categories: dict[str, str] = {}
         for manifest_path in manifest_paths:
@@ -444,7 +704,7 @@ class SqlAlchemyDatasetImportService:
                 )
             if not {"images", "annotations", "categories"}.issubset(payload):
                 continue
-            current_split = self._normalize_split_name(manifest_path.stem, default="train")
+            current_split = forced_split or self._normalize_split_name(manifest_path.stem, default="train")
             manifest_payloads.append((manifest_path, payload, current_split))
             categories_payload = payload.get("categories", [])
             if not isinstance(categories_payload, list):
@@ -584,7 +844,10 @@ class SqlAlchemyDatasetImportService:
             image_root=self._common_path_prefix(image_refs),
             annotation_root=self._common_path_prefix(annotation_refs),
             manifest_file=manifest_files[0] if manifest_files else None,
-            split_strategy=split_strategy or "manifest-name",
+            split_strategy=self._resolve_effective_split_strategy(
+                forced_split,
+                auto_strategy="manifest-name",
+            ),
             class_map={str(category.category_id): category.name for category in categories},
             categories=categories,
             samples=tuple(parsed_samples),
@@ -635,11 +898,15 @@ class SqlAlchemyDatasetImportService:
             raise InvalidRequestError("Pascal VOC 数据集必须包含 JPEGImages 和 Annotations")
 
         split_membership = self._load_voc_split_membership(dataset_root)
+        forced_split = self._resolve_requested_split(split_strategy)
         sample_rows: list[dict[str, object]] = []
         category_names_in_order: list[str] = []
         image_refs: list[str] = []
         annotation_refs: list[str] = []
-        effective_split_strategy = "image_sets" if split_membership else (split_strategy or "default-train")
+        effective_split_strategy = self._resolve_effective_split_strategy(
+            forced_split,
+            auto_strategy="image_sets" if split_membership else "default-train",
+        )
         for xml_path in xml_paths:
             annotation_refs.append(self._relative_path(dataset_root, xml_path))
             xml_root = ElementTree.parse(xml_path).getroot()
@@ -666,7 +933,7 @@ class SqlAlchemyDatasetImportService:
             width = self._read_xml_int(size_node, "width", "VOC width 不能为空")
             height = self._read_xml_int(size_node, "height", "VOC height 不能为空")
             stem_name = xml_path.stem
-            sample_split = split_membership.get(stem_name)
+            sample_split = forced_split or split_membership.get(stem_name)
             if sample_split is None:
                 sample_split = self._normalize_split_name(split_strategy, default="train")
 
@@ -783,6 +1050,30 @@ class SqlAlchemyDatasetImportService:
                 "errors": [],
             },
         )
+
+    def _resolve_requested_split(
+        self,
+        split_strategy: DatasetImportRequestedSplitStrategy | None,
+    ) -> DatasetSplitName | None:
+        """把请求中的 split_strategy 转换为强制 split。"""
+
+        if split_strategy in (None, "auto"):
+            return None
+
+        return split_strategy
+
+    def _resolve_effective_split_strategy(
+        self,
+        forced_split: DatasetSplitName | None,
+        *,
+        auto_strategy: str,
+    ) -> str:
+        """计算最终写回 DatasetImport 的 split 策略标记。"""
+
+        if forced_split is None:
+            return auto_strategy
+
+        return f"forced-{forced_split}"
 
     def _write_version_files(
         self,

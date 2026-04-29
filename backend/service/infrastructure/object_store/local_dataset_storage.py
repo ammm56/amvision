@@ -8,6 +8,7 @@ import stat
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
+from typing import BinaryIO
 
 from backend.service.application.errors import InvalidRequestError
 
@@ -73,6 +74,23 @@ class DatasetVersionLayout:
     images_dir: str
     samples_dir: str
     indexes_dir: str
+
+
+@dataclass(frozen=True)
+class DatasetExportLayout:
+    """描述一次 DatasetExport 在本地文件存储中的目录布局。
+
+    字段：
+    - export_path：导出根目录相对路径。
+    - annotations_dir：annotation 目录相对路径。
+    - images_dir：图片目录相对路径。
+    - manifest_path：导出 manifest 相对路径。
+    """
+
+    export_path: str
+    annotations_dir: str
+    images_dir: str
+    manifest_path: str
 
 
 class LocalDatasetStorage:
@@ -166,6 +184,30 @@ class LocalDatasetStorage:
             indexes_dir=str(indexes_dir),
         )
 
+    def prepare_export_layout(self, export_path: str) -> DatasetExportLayout:
+        """为一次数据集导出创建目录布局。
+
+        参数：
+        - export_path：导出根目录相对路径。
+
+        返回：
+        - 对应的导出目录布局。
+        """
+
+        export_root = PurePosixPath(export_path)
+        annotations_dir = export_root / "annotations"
+        images_dir = export_root / "images"
+
+        for directory in (annotations_dir, images_dir):
+            self.resolve(str(directory)).mkdir(parents=True, exist_ok=True)
+
+        return DatasetExportLayout(
+            export_path=str(export_root),
+            annotations_dir=str(annotations_dir),
+            images_dir=str(images_dir),
+            manifest_path=str(export_root / "manifest.json"),
+        )
+
     def resolve(self, relative_path: str) -> Path:
         """把相对路径解析为当前本地存储根目录下的绝对路径。
 
@@ -191,6 +233,40 @@ class LocalDatasetStorage:
         target_path.parent.mkdir(parents=True, exist_ok=True)
         target_path.write_bytes(content)
 
+    def write_stream(
+        self,
+        relative_path: str,
+        source_stream: BinaryIO,
+        *,
+        chunk_size: int = 1024 * 1024,
+    ) -> int:
+        """把输入流按块写入本地文件。
+
+        参数：
+        - relative_path：目标文件相对路径。
+        - source_stream：源二进制流。
+        - chunk_size：每次读取的块大小。
+
+        返回：
+        - 实际写入的字节数。
+        """
+
+        target_path = self.resolve(relative_path)
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+        if hasattr(source_stream, "seek"):
+            source_stream.seek(0)
+
+        written_size = 0
+        with target_path.open("wb") as target_stream:
+            while True:
+                chunk = source_stream.read(chunk_size)
+                if not chunk:
+                    break
+                target_stream.write(chunk)
+                written_size += len(chunk)
+
+        return written_size
+
     def write_json(self, relative_path: str, payload: object) -> None:
         """把 JSON 内容写入本地文件。
 
@@ -202,6 +278,19 @@ class LocalDatasetStorage:
         target_path = self.resolve(relative_path)
         target_path.parent.mkdir(parents=True, exist_ok=True)
         target_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    def read_json(self, relative_path: str) -> object:
+        """读取本地文件中的 JSON 内容。
+
+        参数：
+        - relative_path：目标文件相对路径。
+
+        返回：
+        - 解析后的 JSON 对象。
+        """
+
+        target_path = self.resolve(relative_path)
+        return json.loads(target_path.read_text(encoding="utf-8"))
 
     def write_text(self, relative_path: str, content: str) -> None:
         """把文本内容写入本地文件。
@@ -226,6 +315,16 @@ class LocalDatasetStorage:
         target_path = self.resolve(destination_path)
         target_path.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source_path, target_path)
+
+    def copy_relative_file(self, source_relative_path: str, destination_path: str) -> None:
+        """把一个本地文件存储中的相对路径复制到另一相对路径。
+
+        参数：
+        - source_relative_path：源文件相对路径。
+        - destination_path：目标文件相对路径。
+        """
+
+        self.copy_file(self.resolve(source_relative_path), destination_path)
 
     def extract_zip(self, archive_path: str, destination_path: str) -> None:
         """把 zip 包安全解压到目标目录。
@@ -270,6 +369,16 @@ class LocalDatasetStorage:
             return
         if target_path.exists():
             target_path.unlink(missing_ok=True)
+
+    def reset_directory(self, relative_path: str) -> None:
+        """清空一个目录并重新创建空目录。
+
+        参数：
+        - relative_path：要清空的目录相对路径。
+        """
+
+        self.delete_tree(relative_path)
+        self.resolve(relative_path).mkdir(parents=True, exist_ok=True)
 
     def _dataset_root(self, project_id: str, dataset_id: str) -> PurePosixPath:
         """构建 Dataset 的相对根目录。

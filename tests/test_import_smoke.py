@@ -55,6 +55,7 @@ BACKEND_MODULES: tuple[str, ...] = (
     "backend.service.infrastructure.persistence.model_repository",
     "backend.workers.bootstrap",
     "backend.workers.conversion.yolox_conversion_runner",
+    "backend.workers.datasets.dataset_import_runner",
     "backend.workers.inference.yolox_inference_runner",
     "backend.workers.settings",
     "backend.workers.shared.yolox_runtime_contracts",
