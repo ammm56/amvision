@@ -31,6 +31,21 @@ class DatasetExportRepository(Protocol):
 
         ...
 
+    def get_dataset_export_by_manifest_object_key(
+        self,
+        manifest_object_key: str,
+    ) -> DatasetExport | None:
+        """按 manifest object key 读取一个 DatasetExport。
+
+        参数：
+        - manifest_object_key：导出 manifest object key。
+
+        返回：
+        - 读取到的 DatasetExport；不存在时返回 None。
+        """
+
+        ...
+
     def list_dataset_exports(self, dataset_version_id: str) -> tuple[DatasetExport, ...]:
         """按 DatasetVersion id 列出导出记录。
 

@@ -147,6 +147,77 @@ def test_create_dataset_export_supports_voc_format(tmp_path: Path) -> None:
         session_factory.engine.dispose()
 
 
+def test_package_and_download_dataset_export_archive(tmp_path: Path) -> None:
+    """验证可以为已完成的 DatasetExport 生成并下载 zip 包。"""
+
+    client, session_factory, dataset_storage, queue_backend = _create_test_client(tmp_path)
+    dataset_version = _build_dataset_version(dataset_version_id="dataset-version-api-download")
+    _seed_dataset_version(
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+        dataset_version=dataset_version,
+    )
+    try:
+        with client:
+            create_response = client.post(
+                "/api/v1/datasets/exports",
+                headers=_build_dataset_write_headers(),
+                json={
+                    "project_id": "project-1",
+                    "dataset_id": "dataset-1",
+                    "dataset_version_id": "dataset-version-api-download",
+                    "format_id": COCO_DETECTION_DATASET_FORMAT,
+                },
+            )
+
+            assert create_response.status_code == 202
+            create_payload = create_response.json()
+            assert _run_export_worker_once(
+                session_factory=session_factory,
+                dataset_storage=dataset_storage,
+                queue_backend=queue_backend,
+            ) is True
+
+            package_response = client.post(
+                f"/api/v1/datasets/exports/{create_payload['dataset_export_id']}/package",
+                headers=_build_dataset_write_headers(),
+            )
+            manifest_response = client.get(
+                f"/api/v1/datasets/exports/{create_payload['dataset_export_id']}/manifest",
+                headers=_build_dataset_read_headers(),
+            )
+            download_response = client.get(
+                f"/api/v1/datasets/exports/{create_payload['dataset_export_id']}/download",
+                headers=_build_dataset_read_headers(),
+            )
+            detail_response = client.get(
+                f"/api/v1/datasets/exports/{create_payload['dataset_export_id']}",
+                headers=_build_dataset_read_headers(),
+            )
+
+        assert package_response.status_code == 200
+        package_payload = package_response.json()
+        assert package_payload["package_object_key"].endswith(".zip")
+        assert package_payload["package_size"] > 0
+        assert dataset_storage.resolve(package_payload["package_object_key"]).is_file()
+
+        assert manifest_response.status_code == 200
+        assert manifest_response.json()["dataset_version_id"] == "dataset-version-api-download"
+
+        assert download_response.status_code == 200
+        assert download_response.content[:2] == b"PK"
+        assert ".zip" in download_response.headers["content-disposition"]
+
+        assert detail_response.status_code == 200
+        detail_payload = detail_response.json()
+        assert detail_payload["package_object_key"] == package_payload["package_object_key"]
+        assert detail_payload["package_file_name"] == package_payload["package_file_name"]
+        assert detail_payload["package_size"] == package_payload["package_size"]
+        assert detail_payload["packaged_at"] == package_payload["packaged_at"]
+    finally:
+        session_factory.engine.dispose()
+
+
 def _create_test_client(
     tmp_path: Path,
 ) -> tuple[TestClient, SessionFactory, LocalDatasetStorage, LocalFileQueueBackend]:

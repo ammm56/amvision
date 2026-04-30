@@ -37,6 +37,10 @@
 | POST | /api/v1/datasets/exports | datasets:write | 为指定 DatasetVersion 创建 DatasetExport 资源和关联 TaskRecord，并提交到本地队列。 |
 | GET | /api/v1/datasets/exports/{dataset_export_id} | datasets:read | 查询单条导出记录详情，包括 manifest_object_key、export_path 和样本摘要。 |
 | GET | /api/v1/datasets/{dataset_id}/versions/{dataset_version_id}/exports | datasets:read | 查询某个 DatasetVersion 下的导出记录列表。 |
+| POST | /api/v1/datasets/exports/{dataset_export_id}/package | datasets:write | 为已完成的 DatasetExport 生成可下载 zip 包。 |
+| GET | /api/v1/datasets/exports/{dataset_export_id}/download | datasets:read | 下载 DatasetExport 的 zip 包；当下载包不存在时会同步生成。 |
+| GET | /api/v1/datasets/exports/{dataset_export_id}/manifest | datasets:read | 下载 DatasetExport 的 manifest 文件。 |
+| POST | /api/v1/models/yolox/training-tasks | datasets:read + tasks:write | 以 DatasetExport 为唯一输入边界创建 YOLOX 训练任务。 |
 | POST | /api/v1/tasks | tasks:write | 创建公开任务记录，立即返回任务详情。 |
 | GET | /api/v1/tasks | tasks:read | 按公开筛选字段查询任务列表。 |
 | GET | /api/v1/tasks/{task_id} | tasks:read | 查询单条任务详情；默认同时返回 events。 |
@@ -109,7 +113,7 @@
   - queue_name
   - queue_task_id
 
-这里的 dataset_export_id 是正式导出资源 id，task_id 是正式 TaskRecord id。当前导出不是重量级下载 API，而是先把 export file 资源和 training 可消费边界稳定下来。
+这里的 dataset_export_id 是正式导出资源 id，task_id 是正式 TaskRecord id。当前导出已经公开 package、download 和 manifest 下载能力，training 创建链路也已经开始以 DatasetExport 为唯一输入边界。
 
 ### GET /api/v1/datasets/exports/{dataset_export_id}
 
@@ -126,10 +130,71 @@
 - 当前 status 取值为：queued、running、completed、failed
 - training 前置步骤应消费 manifest_object_key，而不是直接读取 DatasetVersion 内部结构
 
+### POST /api/v1/datasets/exports/{dataset_export_id}/package
+
+- 需要 datasets:write
+- 为已完成的 DatasetExport 生成 zip 包
+- 当前响应返回：
+  - dataset_export_id
+  - export_path
+  - manifest_object_key
+  - package_object_key
+  - package_file_name
+  - package_size
+  - packaged_at
+- 默认下载包路径：projects/{project_id}/datasets/{dataset_id}/downloads/dataset-exports/{dataset_export_id}.zip
+
+### GET /api/v1/datasets/exports/{dataset_export_id}/download
+
+- 需要 datasets:read
+- 返回打包后的 zip 文件
+- 当下载包不存在时，当前实现会先同步打包，再直接返回文件响应
+
+### GET /api/v1/datasets/exports/{dataset_export_id}/manifest
+
+- 需要 datasets:read
+- 返回当前 DatasetExport 对应的 manifest.json 文件
+
 ### GET /api/v1/datasets/{dataset_id}/versions/{dataset_version_id}/exports
 
 - 返回当前 DatasetVersion 下的导出记录摘要列表
 - 列表按 created_at 倒序返回，便于前端优先展示最近一次导出
+
+### dataset_export_id 与 manifest_object_key 的关系
+
+- dataset_export_id：平台资源主键。适合用于前端选择、详情查询、列表展示、权限校验、打包下载、审计追踪和训练任务创建。
+- manifest_object_key：导出文件边界。适合用于训练 worker、离线脚本或任何直接消费导出文件的执行侧逻辑。
+- 一条完成态 DatasetExport 必须稳定对应一个 manifest_object_key。
+- 当前训练创建接口允许传 dataset_export_id 或 manifest_object_key；如果两者同时提供，必须指向同一个 DatasetExport。
+
+## models 资源组
+
+### POST /api/v1/models/yolox/training-tasks
+
+- 需要同时具备 datasets:read 和 tasks:write
+- 当前请求体允许显式指定：
+  - project_id
+  - dataset_export_id
+  - dataset_export_manifest_key
+  - recipe_id
+  - model_scale
+  - output_model_name
+  - warm_start_model_version_id
+  - max_epochs
+  - batch_size
+  - input_size
+  - extra_options
+  - display_name
+- 当前实现会先解析并校验 DatasetExport，再创建 TaskRecord，并提交到 yolox-trainings 队列
+- 当前响应会返回：
+  - task_id
+  - status
+  - queue_name
+  - queue_task_id
+  - dataset_export_id
+  - dataset_export_manifest_key
+  - dataset_version_id
+  - format_id
 
 ## tasks 资源组
 
@@ -229,14 +294,24 @@
 - 资源视角：GET /api/v1/datasets/exports/{dataset_export_id}、GET /api/v1/datasets/{dataset_id}/versions/{dataset_version_id}/exports
 - 任务视角：GET /api/v1/tasks/{task_id}、GET /api/v1/tasks/{task_id}/events、/ws/tasks/events?task_id=...
 
+当前 YOLOX training 创建流程也已经开始正式挂接 DatasetExport：
+
+1. POST /api/v1/models/yolox/training-tasks 接收 dataset_export_id 或 dataset_export_manifest_key
+2. 服务先把它们解析到同一个完成态 DatasetExport
+3. 再把 manifest_object_key 写入训练任务的 task_spec
+4. 最终创建 TaskRecord 并入队到 yolox-trainings
+
+因此，当前训练创建链路的唯一输入边界不再是 DatasetVersion id，而是 DatasetExport 资源及其 manifest 文件。
+
 ## 当前未公开的资源面
 
-- models 路由分组已预留，但当前没有正式公开 REST 资源
 - 更通用的训练、验证、转换任务规格尚未公开为稳定 API
+- 训练任务执行 worker 还没有作为完整公开能力落地；当前这一版先稳定创建链路和输入边界
 
 ## 相关文档
 
 - [docs/api/datasets-imports.md](datasets-imports.md)
 - [docs/api/datasets-exports.md](datasets-exports.md)
+- [docs/api/yolox-training.md](yolox-training.md)
 - [docs/architecture/task-system.md](../architecture/task-system.md)
 - [docs/architecture/backend-service.md](../architecture/backend-service.md)

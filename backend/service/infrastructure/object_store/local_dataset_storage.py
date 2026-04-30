@@ -326,6 +326,44 @@ class LocalDatasetStorage:
 
         self.copy_file(self.resolve(source_relative_path), destination_path)
 
+    def create_zip_from_directory(
+        self,
+        source_relative_path: str,
+        destination_path: str,
+    ) -> int:
+        """把一个相对目录打包为 zip 文件。
+
+        参数：
+        - source_relative_path：要打包的源目录相对路径。
+        - destination_path：目标 zip 文件相对路径。
+
+        返回：
+        - 生成的 zip 文件字节大小。
+
+        异常：
+        - 当源目录不存在时抛出请求错误。
+        """
+
+        source_dir = self.resolve(source_relative_path)
+        if not source_dir.is_dir():
+            raise InvalidRequestError(
+                "找不到要打包的导出目录",
+                details={"source_relative_path": source_relative_path},
+            )
+
+        target_path = self.resolve(destination_path)
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+        with zipfile.ZipFile(target_path, mode="w", compression=zipfile.ZIP_DEFLATED) as archive:
+            for file_path in sorted(source_dir.rglob("*")):
+                if not file_path.is_file():
+                    continue
+                archive.write(
+                    file_path,
+                    arcname=file_path.relative_to(source_dir).as_posix(),
+                )
+
+        return target_path.stat().st_size
+
     def extract_zip(self, archive_path: str, destination_path: str) -> None:
         """把 zip 包安全解压到目标目录。
 

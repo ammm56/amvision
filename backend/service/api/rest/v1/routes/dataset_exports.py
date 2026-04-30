@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, status
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from backend.queue import LocalFileQueueBackend
@@ -12,6 +13,10 @@ from backend.service.api.deps.auth import AuthenticatedPrincipal, require_scopes
 from backend.service.api.deps.db import get_session_factory, get_unit_of_work
 from backend.service.api.deps.queue import get_queue_backend
 from backend.service.api.deps.storage import get_dataset_storage
+from backend.service.application.datasets.dataset_export_delivery import (
+	DatasetExportPackage,
+	SqlAlchemyDatasetExportDeliveryService,
+)
 from backend.service.application.datasets.dataset_export import (
 	DatasetExportRequest,
 	SqlAlchemyDatasetExportTaskService,
@@ -70,12 +75,28 @@ class DatasetExportSummaryResponse(BaseModel):
 	sample_count: int = Field(description="导出样本总数")
 	category_names: tuple[str, ...] = Field(default_factory=tuple, description="导出类别名列表")
 	queue_task_id: str | None = Field(default=None, description="关联的队列任务 id")
+	package_object_key: str | None = Field(default=None, description="导出下载包 object key")
+	package_file_name: str | None = Field(default=None, description="导出下载包文件名")
+	package_size: int | None = Field(default=None, description="导出下载包大小")
+	packaged_at: str | None = Field(default=None, description="最近一次打包时间")
 	error_message: str | None = Field(default=None, description="失败时的错误消息")
 	metadata: dict[str, object] = Field(default_factory=dict, description="附加元数据")
 
 
 class DatasetExportDetailResponse(DatasetExportSummaryResponse):
 	"""描述 DatasetExport 查询接口返回的完整记录。"""
+
+
+class DatasetExportPackageResponse(BaseModel):
+	"""描述 DatasetExport 下载包接口响应。"""
+
+	dataset_export_id: str = Field(description="导出记录 id")
+	export_path: str = Field(description="导出根目录 object key")
+	manifest_object_key: str = Field(description="导出 manifest object key")
+	package_object_key: str = Field(description="导出下载包 object key")
+	package_file_name: str = Field(description="导出下载包文件名")
+	package_size: int = Field(description="导出下载包大小")
+	packaged_at: str = Field(description="最近一次打包时间")
 
 
 @dataset_exports_router.post("/exports", response_model=DatasetExportSubmissionResponse, status_code=status.HTTP_202_ACCEPTED)
@@ -176,6 +197,86 @@ def list_dataset_exports(
 	return [_build_dataset_export_response(dataset_export) for dataset_export in visible_exports]
 
 
+@dataset_exports_router.post(
+	"/exports/{dataset_export_id}/package",
+	response_model=DatasetExportPackageResponse,
+)
+def package_dataset_export(
+	dataset_export_id: str,
+	principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("datasets:write"))],
+	unit_of_work: Annotated[UnitOfWork, Depends(get_unit_of_work)],
+	session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
+	dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
+) -> DatasetExportPackageResponse:
+	"""为指定 DatasetExport 生成可下载 zip 包。"""
+
+	visible_export = _require_visible_dataset_export(
+		unit_of_work=unit_of_work,
+		principal=principal,
+		dataset_export_id=dataset_export_id,
+	)
+	delivery_service = SqlAlchemyDatasetExportDeliveryService(
+		session_factory=session_factory,
+		dataset_storage=dataset_storage,
+	)
+	package = delivery_service.package_export(visible_export.dataset_export_id)
+	return _build_dataset_export_package_response(package)
+
+
+@dataset_exports_router.get("/exports/{dataset_export_id}/download")
+def download_dataset_export(
+	dataset_export_id: str,
+	principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("datasets:read"))],
+	unit_of_work: Annotated[UnitOfWork, Depends(get_unit_of_work)],
+	session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
+	dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
+) -> FileResponse:
+	"""下载指定 DatasetExport 的 zip 包。"""
+
+	visible_export = _require_visible_dataset_export(
+		unit_of_work=unit_of_work,
+		principal=principal,
+		dataset_export_id=dataset_export_id,
+	)
+	delivery_service = SqlAlchemyDatasetExportDeliveryService(
+		session_factory=session_factory,
+		dataset_storage=dataset_storage,
+	)
+	package, package_path = delivery_service.resolve_package_file(visible_export.dataset_export_id)
+	return FileResponse(
+		path=package_path,
+		media_type="application/zip",
+		filename=package.package_file_name,
+	)
+
+
+@dataset_exports_router.get("/exports/{dataset_export_id}/manifest")
+def download_dataset_export_manifest(
+	dataset_export_id: str,
+	principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("datasets:read"))],
+	unit_of_work: Annotated[UnitOfWork, Depends(get_unit_of_work)],
+	session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
+	dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
+) -> FileResponse:
+	"""下载指定 DatasetExport 的 manifest 文件。"""
+
+	visible_export = _require_visible_dataset_export(
+		unit_of_work=unit_of_work,
+		principal=principal,
+		dataset_export_id=dataset_export_id,
+	)
+	delivery_service = SqlAlchemyDatasetExportDeliveryService(
+		session_factory=session_factory,
+		dataset_storage=dataset_storage,
+	)
+	_, manifest_path = delivery_service.resolve_manifest_file(visible_export.dataset_export_id)
+	return FileResponse(
+		path=manifest_path,
+		media_type="application/json",
+		filename=f"{visible_export.dataset_export_id}-manifest.json",
+	)
+
+
 def _project_visible(*, principal: AuthenticatedPrincipal, project_id: str) -> bool:
 	"""判断当前主体是否可见指定 Project。"""
 
@@ -183,6 +284,29 @@ def _project_visible(*, principal: AuthenticatedPrincipal, project_id: str) -> b
 		return True
 
 	return project_id in principal.project_ids
+
+
+def _require_visible_dataset_export(
+	*,
+	unit_of_work: UnitOfWork,
+	principal: AuthenticatedPrincipal,
+	dataset_export_id: str,
+) -> DatasetExport:
+	"""读取并校验当前主体可见的 DatasetExport。"""
+
+	dataset_export = unit_of_work.dataset_exports.get_dataset_export(dataset_export_id)
+	if dataset_export is None:
+		raise ResourceNotFoundError(
+			"找不到指定的 DatasetExport",
+			details={"dataset_export_id": dataset_export_id},
+		)
+	if not _project_visible(principal=principal, project_id=dataset_export.project_id):
+		raise ResourceNotFoundError(
+			"找不到指定的 DatasetExport",
+			details={"dataset_export_id": dataset_export_id},
+		)
+
+	return dataset_export
 
 
 def _build_dataset_export_response(dataset_export: DatasetExport) -> DatasetExportDetailResponse:
@@ -205,8 +329,28 @@ def _build_dataset_export_response(dataset_export: DatasetExport) -> DatasetExpo
 		sample_count=dataset_export.sample_count,
 		category_names=dataset_export.category_names,
 		queue_task_id=_read_optional_str(dataset_export.metadata, "queue_task_id"),
+		package_object_key=_read_optional_str(dataset_export.metadata, "package_object_key"),
+		package_file_name=_read_optional_str(dataset_export.metadata, "package_file_name"),
+		package_size=_read_optional_int(dataset_export.metadata, "package_size"),
+		packaged_at=_read_optional_str(dataset_export.metadata, "packaged_at"),
 		error_message=dataset_export.error_message,
 		metadata=dict(dataset_export.metadata),
+	)
+
+
+def _build_dataset_export_package_response(
+	package: DatasetExportPackage,
+) -> DatasetExportPackageResponse:
+	"""把 DatasetExportPackage 转成显式响应模型。"""
+
+	return DatasetExportPackageResponse(
+		dataset_export_id=package.dataset_export_id,
+		export_path=package.export_path,
+		manifest_object_key=package.manifest_object_key,
+		package_object_key=package.package_object_key,
+		package_file_name=package.package_file_name,
+		package_size=package.package_size,
+		packaged_at=package.packaged_at,
 	)
 
 
@@ -216,5 +360,17 @@ def _read_optional_str(payload: dict[str, object], key: str) -> str | None:
 	value = payload.get(key)
 	if isinstance(value, str):
 		return value
+
+	return None
+
+
+def _read_optional_int(payload: dict[str, object], key: str) -> int | None:
+	"""从字典中读取可选整数值。"""
+
+	value = payload.get(key)
+	if isinstance(value, int):
+		return value
+	if isinstance(value, float):
+		return int(value)
 
 	return None

@@ -1,0 +1,109 @@
+{
+  "info": {
+    "_postman_id": "b0db9a90-95bc-4a01-b247-1ddb33e1a2a8",
+    "name": "amvision yolox training api",
+    "description": "当前公开的 YOLOX training 创建接口。",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "YOLOX Training",
+      "item": [
+        {
+          "name": "Create YOLOX Training Task",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 202) {",
+                  "  var payload = pm.response.json();",
+                  "  pm.collectionVariables.set('taskId', payload.task_id);",
+                  "  pm.collectionVariables.set('datasetExportId', payload.dataset_export_id);",
+                  "  pm.collectionVariables.set('datasetExportManifestKey', payload.dataset_export_manifest_key);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-principal-id",
+                "value": "{{principalId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-project-ids",
+                "value": "{{projectId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-scopes",
+                "value": "datasets:read,tasks:write",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"dataset_export_id\": \"{{datasetExportId}}\",\n  \"dataset_export_manifest_key\": null,\n  \"recipe_id\": \"yolox-default\",\n  \"model_scale\": \"s\",\n  \"output_model_name\": \"yolox-s-bolt\",\n  \"warm_start_model_version_id\": null,\n  \"max_epochs\": null,\n  \"batch_size\": null,\n  \"input_size\": null,\n  \"extra_options\": {},\n  \"display_name\": \"\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/models/yolox/training-tasks",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "models",
+                "yolox",
+                "training-tasks"
+              ]
+            },
+            "description": "以 DatasetExport 为唯一输入边界创建 YOLOX 训练任务。"
+          },
+          "response": []
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://127.0.0.1:8000"
+    },
+    {
+      "key": "principalId",
+      "value": "user-1"
+    },
+    {
+      "key": "projectId",
+      "value": "project-1"
+    },
+    {
+      "key": "datasetExportId",
+      "value": "dataset-export-1"
+    },
+    {
+      "key": "datasetExportManifestKey",
+      "value": "projects/project-1/datasets/dataset-1/exports/dataset-export-1/manifest.json"
+    },
+    {
+      "key": "taskId",
+      "value": "task-1"
+    }
+  ]
+}

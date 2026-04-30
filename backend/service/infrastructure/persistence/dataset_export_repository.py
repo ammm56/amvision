@@ -80,6 +80,27 @@ class SqlAlchemyDatasetExportRepository:
 
         return self._to_domain(record)
 
+    def get_dataset_export_by_manifest_object_key(
+        self,
+        manifest_object_key: str,
+    ) -> DatasetExport | None:
+        """按 manifest object key 读取一个 DatasetExport。"""
+
+        statement = select(DatasetExportRecord).where(
+            DatasetExportRecord.manifest_object_key == manifest_object_key
+        )
+        try:
+            record = self.session.execute(statement).scalar_one_or_none()
+        except SQLAlchemyError as error:
+            raise PersistenceOperationError(
+                "按 manifest object key 读取 DatasetExport 失败",
+                details={"error_type": error.__class__.__name__},
+            ) from error
+        if record is None:
+            return None
+
+        return self._to_domain(record)
+
     def list_dataset_exports(self, dataset_version_id: str) -> tuple[DatasetExport, ...]:
         """按 DatasetVersion id 列出导出记录。
 

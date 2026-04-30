@@ -4,7 +4,7 @@
 
 本文档用于说明当前已经公开的 DatasetExport REST 接口，包括导出创建、导出详情查询和按 DatasetVersion 列表查询三组能力。
 
-当前导出提交已经正式关联 TaskRecord。提交响应、详情响应和列表响应都会公开 task_id，后续可以配合 tasks API 或 /ws/tasks/events 观察后台处理状态。
+当前导出提交已经正式关联 TaskRecord。提交响应、详情响应和列表响应都会公开 task_id，后续可以配合 tasks API 或 /ws/tasks/events 观察后台处理状态。当前导出也已经公开打包和下载接口，export file 不再只是内部 worker 使用的中间结果。
 
 本文档聚焦对外接口规则、字段定义、错误语义和当前实现边界，不展开内部 repository 或持久化实现细节。
 
@@ -13,6 +13,7 @@
 - DatasetExport 创建接口
 - DatasetExport 详情查询接口
 - DatasetVersion 下的导出记录列表接口
+- DatasetExport 打包与下载接口
 - 请求头鉴权规则
 - 当前已实现导出格式与 training 输入边界
 
@@ -36,7 +37,8 @@
 ### scope 要求
 
 - 创建接口需要 datasets:write
-- 查询接口需要 datasets:read
+- 查询和下载接口需要 datasets:read
+- 打包接口需要 datasets:write
 
 ## 当前实现边界
 
@@ -44,7 +46,6 @@
 - 当前已经正式实现并对外开放的 format_id：
   - coco-detection-v1
   - voc-detection-v1
-- 当前还没有单独的下载 API；这一版先稳定 export file 资源、manifest_object_key 和 training 输入边界
 - training 前置步骤应消费 manifest_object_key，而不是直接读取 DatasetVersion 内部目录结构
 
 ## 接口清单
@@ -181,6 +182,60 @@ curl -X POST "http://127.0.0.1:8000/api/v1/datasets/exports" \
 - 返回当前 DatasetVersion 下可见的导出记录摘要列表
 - 列表按 created_at 倒序返回
 
+### POST /api/v1/datasets/exports/{dataset_export_id}/package
+
+为指定 DatasetExport 生成 zip 下载包。当前接口会把下载包信息写回 DatasetExport.metadata，并在详情接口中同步公开。
+
+#### 路径参数
+
+| 参数 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| dataset_export_id | string | 是 | 要打包的 DatasetExport id。 |
+
+#### 成功响应要点
+
+- 状态码：200 OK
+- 返回字段包括：
+  - dataset_export_id
+  - export_path
+  - manifest_object_key
+  - package_object_key
+  - package_file_name
+  - package_size
+  - packaged_at
+
+#### 默认打包位置
+
+- projects/{project_id}/datasets/{dataset_id}/downloads/dataset-exports/{dataset_export_id}.zip
+
+### GET /api/v1/datasets/exports/{dataset_export_id}/download
+
+下载指定 DatasetExport 的 zip 包。
+
+#### 返回规则
+
+- 状态码：200 OK
+- 返回 application/zip 文件响应
+- 当下载包不存在时，当前实现会先同步打包，再直接返回下载结果
+
+### GET /api/v1/datasets/exports/{dataset_export_id}/manifest
+
+下载指定 DatasetExport 的 manifest 文件。
+
+#### 返回规则
+
+- 状态码：200 OK
+- 返回 application/json 文件响应
+- 返回内容就是 manifest_object_key 对应的 manifest.json
+
+## dataset_export_id 与 manifest_object_key 的关系
+
+- dataset_export_id：平台资源主键。用于详情查询、列表展示、前端选择、打包下载、权限控制、审计和训练任务创建。
+- manifest_object_key：导出文件边界。用于训练 worker、脚本、离线执行器或其他直接消费导出文件的逻辑。
+- 一个完成态 DatasetExport 必须稳定对应一个 manifest_object_key。
+- 当前训练创建接口允许传 dataset_export_id 或 manifest_object_key；如果同时传两者，服务会验证它们是否属于同一个 DatasetExport。
+- 实践上：面向用户和平台资源管理时优先传 dataset_export_id，面向执行器和文件消费侧时优先用 manifest_object_key。
+
 ## 导出目录语义
 
 当请求不显式提供 output_object_prefix 时，导出文件默认写到：
@@ -193,8 +248,11 @@ curl -X POST "http://127.0.0.1:8000/api/v1/datasets/exports" \
 - COCO detection：annotations/instances_{split}.json、images/{split}/...
 - VOC detection：Annotations/*.xml、JPEGImages/*、ImageSets/Main/{split}.txt
 
+打包接口不会把 zip 文件写到 export_path 目录内部，而是写到 Dataset 级下载目录，避免导出目录与下载包互相递归嵌套。
+
 ## 调试建议
 
 - 资源视角：GET /api/v1/datasets/exports/{dataset_export_id}
+- 下载视角：POST /api/v1/datasets/exports/{dataset_export_id}/package、GET /api/v1/datasets/exports/{dataset_export_id}/download、GET /api/v1/datasets/exports/{dataset_export_id}/manifest
 - 任务视角：GET /api/v1/tasks/{task_id}、GET /api/v1/tasks/{task_id}/events、/ws/tasks/events?task_id=...
 - 当状态为 completed 时，优先检查 manifest_object_key 和 export_path 是否符合预期，再进入 training 前置步骤

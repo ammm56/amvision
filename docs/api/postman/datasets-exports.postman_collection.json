@@ -147,6 +147,123 @@
             "description": "按 DatasetVersion 查询导出记录列表。"
           },
           "response": []
+        },
+        {
+          "name": "Package Dataset Export",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-amvision-principal-id",
+                "value": "{{principalId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-project-ids",
+                "value": "{{projectId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-scopes",
+                "value": "datasets:write",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/datasets/exports/{{datasetExportId}}/package",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "datasets",
+                "exports",
+                "{{datasetExportId}}",
+                "package"
+              ]
+            },
+            "description": "为指定 DatasetExport 生成下载 zip 包。"
+          },
+          "response": []
+        },
+        {
+          "name": "Download Dataset Export",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-amvision-principal-id",
+                "value": "{{principalId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-project-ids",
+                "value": "{{projectId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-scopes",
+                "value": "datasets:read",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/datasets/exports/{{datasetExportId}}/download",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "datasets",
+                "exports",
+                "{{datasetExportId}}",
+                "download"
+              ]
+            },
+            "description": "下载指定 DatasetExport 的 zip 包。"
+          },
+          "response": []
+        },
+        {
+          "name": "Download Dataset Export Manifest",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-amvision-principal-id",
+                "value": "{{principalId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-project-ids",
+                "value": "{{projectId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-scopes",
+                "value": "datasets:read",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/datasets/exports/{{datasetExportId}}/manifest",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "datasets",
+                "exports",
+                "{{datasetExportId}}",
+                "manifest"
+              ]
+            },
+            "description": "下载指定 DatasetExport 的 manifest 文件。"
+          },
+          "response": []
         }
       ]
     }
