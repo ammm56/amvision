@@ -60,8 +60,11 @@ class YoloXTrainingOutputRegistration:
     - model_scale：模型 scale。
     - dataset_version_id：训练使用的 DatasetVersion id。
     - checkpoint_file_id：checkpoint 文件 id。
+    - checkpoint_file_uri：checkpoint 文件存储 URI。
     - labels_file_id：标签文件 id。
+    - labels_file_uri：标签文件存储 URI。
     - metrics_file_id：指标文件 id。
+    - metrics_file_uri：指标文件存储 URI。
     - metadata：附加元数据。
     """
 
@@ -71,8 +74,11 @@ class YoloXTrainingOutputRegistration:
     model_scale: str
     dataset_version_id: str
     checkpoint_file_id: str
+    checkpoint_file_uri: str | None = None
     labels_file_id: str | None = None
+    labels_file_uri: str | None = None
     metrics_file_id: str | None = None
+    metrics_file_uri: str | None = None
     metadata: dict[str, object] = field(default_factory=dict)
 
 
@@ -241,8 +247,11 @@ class SqlAlchemyYoloXModelService:
                 project_id=request.project_id,
                 model_version_id=model_version_id,
                 checkpoint_file_id=request.checkpoint_file_id,
+                checkpoint_file_uri=request.checkpoint_file_uri,
                 labels_file_id=request.labels_file_id,
+                labels_file_uri=request.labels_file_uri,
                 metrics_file_id=request.metrics_file_id,
+                metrics_file_uri=request.metrics_file_uri,
             )
             model_version = ModelVersion(
                 model_version_id=model_version_id,
@@ -446,8 +455,11 @@ class SqlAlchemyYoloXModelService:
         project_id: str,
         model_version_id: str,
         checkpoint_file_id: str,
+        checkpoint_file_uri: str | None,
         labels_file_id: str | None,
+        labels_file_uri: str | None,
         metrics_file_id: str | None,
+        metrics_file_uri: str | None,
     ) -> tuple[str, ...]:
         """为训练输出创建最小 ModelFile 记录。
 
@@ -458,8 +470,11 @@ class SqlAlchemyYoloXModelService:
         - project_id：所属项目 id。
         - model_version_id：目标 ModelVersion id。
         - checkpoint_file_id：checkpoint 文件 id。
+        - checkpoint_file_uri：checkpoint 文件存储 URI。
         - labels_file_id：标签文件 id。
+        - labels_file_uri：标签文件存储 URI。
         - metrics_file_id：指标文件 id。
+        - metrics_file_uri：指标文件存储 URI。
 
         返回：
         - 生成或登记的文件 id 列表。
@@ -469,7 +484,7 @@ class SqlAlchemyYoloXModelService:
             (
                 checkpoint_file_id,
                 YOLOX_CHECKPOINT_FILE,
-                f"registered://{checkpoint_file_id}",
+                checkpoint_file_uri or f"registered://{checkpoint_file_id}",
                 build_default_file_name(
                     YoloXFileNamingContext(
                         project_id=project_id,
@@ -484,13 +499,21 @@ class SqlAlchemyYoloXModelService:
             (
                 labels_file_id,
                 YOLOX_LABEL_MAP_FILE,
-                f"registered://{labels_file_id}" if labels_file_id is not None else None,
+                (
+                    labels_file_uri or f"registered://{labels_file_id}"
+                    if labels_file_id is not None
+                    else None
+                ),
                 "labels.json",
             ),
             (
                 metrics_file_id,
                 YOLOX_TRAINING_METRICS_FILE,
-                f"registered://{metrics_file_id}" if metrics_file_id is not None else None,
+                (
+                    metrics_file_uri or f"registered://{metrics_file_id}"
+                    if metrics_file_id is not None
+                    else None
+                ),
                 "metrics.json",
             ),
         )

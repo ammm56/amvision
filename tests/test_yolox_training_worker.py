@@ -7,6 +7,7 @@ from pathlib import Path
 
 from backend.contracts.datasets.exports.coco_detection_export import COCO_DETECTION_DATASET_FORMAT
 from backend.queue import LocalFileQueueBackend, LocalFileQueueSettings
+from backend.service.application.models.yolox_model_service import SqlAlchemyYoloXModelService
 from backend.service.application.models.yolox_training_service import SqlAlchemyYoloXTrainingTaskService, YoloXTrainingTaskRequest
 from backend.service.application.tasks.task_service import SqlAlchemyTaskService
 from backend.service.domain.datasets.dataset_export import DatasetExport
@@ -70,12 +71,25 @@ def test_yolox_training_worker_advances_task_from_queued_to_succeeded(tmp_path: 
         assert completed_task.task.result["checkpoint_object_key"].endswith("/best_ckpt.pth")
         assert completed_task.task.result["summary_object_key"].endswith("/training-summary.json")
         assert completed_task.task.result["summary"]["implementation_mode"] == "placeholder"
+        assert completed_task.task.result["summary"]["model_version_id"]
         assert any(event.message == "yolox training started" for event in completed_task.events)
         assert any(event.message == "yolox training completed" for event in completed_task.events)
 
         assert dataset_storage.resolve(completed_task.task.result["checkpoint_object_key"]).is_file()
         assert dataset_storage.resolve(completed_task.task.result["metrics_object_key"]).is_file()
         assert dataset_storage.resolve(completed_task.task.result["summary_object_key"]).is_file()
+
+        model_service = SqlAlchemyYoloXModelService(session_factory=session_factory)
+        model_version = model_service.get_model_version(
+            completed_task.task.result["summary"]["model_version_id"]
+        )
+        assert model_version is not None
+        assert model_version.training_task_id == submission.task_id
+        assert model_version.metadata["dataset_export_id"] == "dataset-export-worker-1"
+        assert (
+            model_version.metadata["manifest_object_key"]
+            == "projects/project-1/datasets/dataset-1/exports/dataset-export-worker-1/manifest.json"
+        )
 
         assert worker.run_once() is False
     finally:

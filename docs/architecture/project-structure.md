@@ -292,5 +292,5 @@ repo/
 
 - docs/architecture/frontend-web-ui.md
 - docs/architecture/plugin-system.md
-- docs/architecture/integration-contracts.md
+- docs/architecture/integration-rules.md
 - docs/architecture/execution-observability.md

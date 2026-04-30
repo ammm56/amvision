@@ -139,6 +139,7 @@ frontend/web-ui    protocol integration boundary
 - 本文档主要回答“为什么要这样分模块”和“这些模块怎么一起工作”
 - project-structure 讲静态结构，system-overview 讲流程和整体功能
 - 任务状态、执行调度与后端服务职责详见 [docs/architecture/backend-service.md](backend-service.md)
+- 检测类模型的最小共享对象与 metadata 边界详见 [docs/architecture/detection-model-rules.md](detection-model-rules.md)
 - 对象关系与文件追踪详见 [docs/architecture/data-and-files.md](data-and-files.md)
 - 开发运行时与发布装配详见 [docs/architecture/runtime-packaging.md](runtime-packaging.md)
 
@@ -300,13 +301,14 @@ frontend/web-ui    protocol integration boundary
 1. [docs/architecture/system-overview.md](system-overview.md)
 2. [docs/architecture/project-structure.md](project-structure.md)
 3. [docs/architecture/backend-service.md](backend-service.md)
-4. [docs/architecture/frontend-web-ui.md](frontend-web-ui.md)
-5. [docs/architecture/data-and-files.md](data-and-files.md)
-6. [docs/architecture/plugin-system.md](plugin-system.md)
-7. [docs/architecture/runtime-packaging.md](runtime-packaging.md)
-8. 根据任务继续进入 deployment 专题文档
+4. [docs/architecture/detection-model-rules.md](detection-model-rules.md)
+5. [docs/architecture/frontend-web-ui.md](frontend-web-ui.md)
+6. [docs/architecture/data-and-files.md](data-and-files.md)
+7. [docs/architecture/plugin-system.md](plugin-system.md)
+8. [docs/architecture/runtime-packaging.md](runtime-packaging.md)
+9. 根据任务继续进入 deployment 专题文档
 
 ## 后续建议拆分文档
 
-- integration-contracts.md：外部协议、回调和集成端点边界
+- integration-rules.md：外部协议、回调和集成端点边界
 - execution-observability.md：任务执行日志、指标、告警和审计模型

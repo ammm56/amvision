@@ -217,6 +217,7 @@
   - recipe_id
   - model_scale
   - output_model_name
+  - model_version_id
   - checkpoint_object_key
   - metrics_object_key
   - summary_object_key
@@ -225,7 +226,7 @@
 
 - 需要 tasks:read
 - 默认 include_events=true
-- 返回单条 YOLOX 训练任务详情，包括 task_spec、events、训练结果文件 object key 和 training_summary
+- 返回单条 YOLOX 训练任务详情，包括 task_spec、events、训练结果文件 object key、顶层 model_version_id 和 training_summary
 - 如果 task_id 不属于 YOLOX 训练任务，当前接口返回 404
 
 ## tasks 资源组

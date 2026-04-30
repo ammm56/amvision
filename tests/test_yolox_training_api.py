@@ -58,6 +58,7 @@ def test_create_yolox_training_task_accepts_dataset_export_id(tmp_path: Path) ->
         assert task_detail.task.task_kind == "yolox-training"
         assert task_detail.task.task_spec["dataset_export_id"] == dataset_export.dataset_export_id
         assert task_detail.task.task_spec["dataset_export_manifest_key"] == dataset_export.manifest_object_key
+        assert task_detail.task.task_spec["manifest_object_key"] == dataset_export.manifest_object_key
         assert task_detail.task.state == "queued"
         assert any(event.message == "yolox training queued" for event in task_detail.events)
 
@@ -213,6 +214,64 @@ def test_list_yolox_training_tasks_filters_by_dataset_export_id(tmp_path: Path) 
         assert payload[0]["recipe_id"] == "yolox-default"
         assert payload[0]["model_scale"] == "s"
         assert payload[0]["state"] == "queued"
+        assert payload[0]["model_version_id"] is None
+    finally:
+        session_factory.engine.dispose()
+
+
+def test_list_yolox_training_tasks_returns_top_level_model_version_id_when_completed(
+    tmp_path: Path,
+) -> None:
+    """验证训练任务列表会把已完成任务的 model_version_id 提升到顶层字段。"""
+
+    client, session_factory, dataset_storage, queue_backend = _create_test_client(tmp_path)
+    dataset_export = _seed_completed_dataset_export(
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+        dataset_export_id="dataset-export-list-model-version-1",
+        manifest_object_key=(
+            "projects/project-1/datasets/dataset-1/exports/"
+            "dataset-export-list-model-version-1/manifest.json"
+        ),
+    )
+    try:
+        with client:
+            create_response = client.post(
+                "/api/v1/models/yolox/training-tasks",
+                headers=_build_training_headers(),
+                json={
+                    "project_id": "project-1",
+                    "dataset_export_id": dataset_export.dataset_export_id,
+                    "recipe_id": "yolox-default",
+                    "model_scale": "s",
+                    "output_model_name": "yolox-s-list-model-version",
+                },
+            )
+
+        assert create_response.status_code == 202
+        assert _run_yolox_training_worker_once(
+            session_factory=session_factory,
+            dataset_storage=dataset_storage,
+            queue_backend=queue_backend,
+        ) is True
+
+        with client:
+            list_response = client.get(
+                "/api/v1/models/yolox/training-tasks",
+                headers=_build_training_headers(),
+                params={
+                    "project_id": "project-1",
+                    "dataset_export_id": dataset_export.dataset_export_id,
+                },
+            )
+
+        assert list_response.status_code == 200
+        payload = list_response.json()
+        assert len(payload) == 1
+        assert payload[0]["dataset_export_id"] == dataset_export.dataset_export_id
+        assert payload[0]["state"] == "succeeded"
+        assert payload[0]["model_version_id"]
+        assert payload[0]["model_version_id"] == payload[0]["training_summary"]["model_version_id"]
     finally:
         session_factory.engine.dispose()
 
@@ -265,6 +324,9 @@ def test_get_yolox_training_task_detail_returns_completed_result(tmp_path: Path)
         assert payload["checkpoint_object_key"].endswith("/best_ckpt.pth")
         assert payload["summary_object_key"].endswith("/training-summary.json")
         assert payload["training_summary"]["implementation_mode"] == "placeholder"
+        assert payload["task_spec"]["manifest_object_key"] == dataset_export.manifest_object_key
+        assert payload["training_summary"]["model_version_id"]
+        assert payload["model_version_id"] == payload["training_summary"]["model_version_id"]
         assert "reference_code_root" not in payload["metadata"]
         assert "reference_code_root" not in payload["training_summary"]
         assert "reference_code_root" not in payload["result"].get("summary", {})

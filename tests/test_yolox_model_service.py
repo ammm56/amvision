@@ -56,8 +56,15 @@ def test_register_training_output_and_build_creates_linked_records() -> None:
             model_scale="s",
             dataset_version_id="dataset-version-1",
             checkpoint_file_id="checkpoint-file-1",
+            checkpoint_file_uri="memory://runs/training-1/best_ckpt.pth",
             labels_file_id="labels-file-1",
+            labels_file_uri="memory://runs/training-1/labels.txt",
             metrics_file_id="metrics-file-1",
+            metrics_file_uri="memory://runs/training-1/metrics.json",
+            metadata={
+                "dataset_export_id": "dataset-export-1",
+                "manifest_object_key": "memory://exports/dataset-export-1/manifest.json",
+            },
         )
     )
     model_build_id = service.register_build(
@@ -77,7 +84,13 @@ def test_register_training_output_and_build_creates_linked_records() -> None:
 
     assert model_version is not None
     assert model_version.source_kind == "training-output"
+    assert model_version.metadata["dataset_export_id"] == "dataset-export-1"
+    assert model_version.metadata["manifest_object_key"] == "memory://exports/dataset-export-1/manifest.json"
     assert len(service.list_model_files(model_version_id=model_version_id)) == 3
+
+    model_files = service.list_model_files(model_version_id=model_version_id)
+    checkpoint_file = next(file for file in model_files if file.file_type == YOLOX_CHECKPOINT_FILE)
+    assert checkpoint_file.storage_uri == "memory://runs/training-1/best_ckpt.pth"
 
     assert model_build is not None
     assert model_build.source_model_version_id == model_version_id

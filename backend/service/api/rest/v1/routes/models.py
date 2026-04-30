@@ -90,6 +90,7 @@ class YoloXTrainingTaskSummaryResponse(BaseModel):
 	recipe_id: str | None = Field(default=None, description="训练 recipe id")
 	model_scale: str | None = Field(default=None, description="训练目标的模型 scale")
 	output_model_name: str | None = Field(default=None, description="训练输出模型名")
+	model_version_id: str | None = Field(default=None, description="训练输出登记后的 ModelVersion id")
 	checkpoint_object_key: str | None = Field(default=None, description="checkpoint 文件 object key")
 	labels_object_key: str | None = Field(default=None, description="标签文件 object key")
 	metrics_object_key: str | None = Field(default=None, description="训练指标文件 object key")
@@ -280,11 +281,13 @@ def _matches_yolox_training_filters(
 	"""判断 YOLOX 训练任务是否满足额外筛选条件。"""
 
 	task_spec = dict(task.task_spec)
+	manifest_object_key = task_spec.get("manifest_object_key")
 	if dataset_export_id is not None and task_spec.get("dataset_export_id") != dataset_export_id:
 		return False
 	if (
 		dataset_export_manifest_key is not None
 		and task_spec.get("dataset_export_manifest_key") != dataset_export_manifest_key
+		and manifest_object_key != dataset_export_manifest_key
 	):
 		return False
 
@@ -298,6 +301,7 @@ def _build_yolox_training_task_summary_response(task: object) -> YoloXTrainingTa
 	result = dict(task.result)
 	metadata = dict(task.metadata)
 	training_summary = result.get("summary")
+	training_summary_payload = dict(training_summary) if isinstance(training_summary, dict) else {}
 	best_metric_value = result.get("best_metric_value")
 	return YoloXTrainingTaskSummaryResponse(
 		task_id=task.task_id,
@@ -315,7 +319,10 @@ def _build_yolox_training_task_summary_response(task: object) -> YoloXTrainingTa
 		error_message=task.error_message,
 		metadata=metadata,
 		dataset_export_id=_read_optional_str(task_spec, "dataset_export_id"),
-		dataset_export_manifest_key=_read_optional_str(task_spec, "dataset_export_manifest_key"),
+		dataset_export_manifest_key=(
+			_read_optional_str(task_spec, "dataset_export_manifest_key")
+			or _read_optional_str(task_spec, "manifest_object_key")
+		),
 		dataset_version_id=_read_optional_str(result, "dataset_version_id")
 		or _read_optional_str(metadata, "dataset_version_id"),
 		format_id=_read_optional_str(result, "format_id")
@@ -323,6 +330,8 @@ def _build_yolox_training_task_summary_response(task: object) -> YoloXTrainingTa
 		recipe_id=_read_optional_str(task_spec, "recipe_id"),
 		model_scale=_read_optional_str(task_spec, "model_scale"),
 		output_model_name=_read_optional_str(task_spec, "output_model_name"),
+		model_version_id=_read_optional_str(result, "model_version_id")
+		or _read_optional_str(training_summary_payload, "model_version_id"),
 		checkpoint_object_key=_read_optional_str(result, "checkpoint_object_key"),
 		labels_object_key=_read_optional_str(result, "labels_object_key"),
 		metrics_object_key=_read_optional_str(result, "metrics_object_key"),
@@ -333,7 +342,7 @@ def _build_yolox_training_task_summary_response(task: object) -> YoloXTrainingTa
 			if isinstance(best_metric_value, int | float)
 			else None
 		),
-		training_summary=dict(training_summary) if isinstance(training_summary, dict) else {},
+		training_summary=training_summary_payload,
 	)
 
 

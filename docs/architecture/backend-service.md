@@ -207,7 +207,7 @@ backend/service/
 
 ### 三层对象必须分开
 
-- API schema：Pydantic 请求和响应模型，只服务公开接口契约
+- API schema：Pydantic 请求和响应模型，只服务公开接口规则
 - 领域对象：domain 层的规则对象，例如 DatasetVersion、ModelVersion、Task
 - 持久化实体：SQLAlchemy ORM 模型，只服务数据库映射和查询
 

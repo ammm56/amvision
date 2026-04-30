@@ -7,6 +7,10 @@ from datetime import datetime, timezone
 
 from backend.queue import QueueBackend
 from backend.service.application.errors import InvalidRequestError, ResourceNotFoundError, ServiceConfigurationError
+from backend.service.application.models.yolox_model_service import (
+    SqlAlchemyYoloXModelService,
+    YoloXTrainingOutputRegistration,
+)
 from backend.service.application.tasks.task_service import AppendTaskEventRequest, CreateTaskRequest, SqlAlchemyTaskService
 from backend.service.domain.datasets.dataset_export import DatasetExport
 from backend.service.domain.tasks.task_records import TaskRecord
@@ -274,6 +278,13 @@ class SqlAlchemyYoloXTrainingTaskService:
                 manifest_payload=manifest_payload,
                 output_object_prefix=output_object_prefix,
             )
+            model_version_id = self._register_training_output_model_version(
+                task_record=task_record,
+                request=request,
+                dataset_export=dataset_export,
+                task_result=training_result,
+            )
+            training_result.summary["model_version_id"] = model_version_id
         except Exception as error:
             self.task_service.append_task_event(
                 AppendTaskEventRequest(
@@ -455,6 +466,7 @@ class SqlAlchemyYoloXTrainingTaskService:
             project_id=request.project_id,
             dataset_export_id=dataset_export.dataset_export_id,
             dataset_export_manifest_key=dataset_export.manifest_object_key or "",
+            manifest_object_key=dataset_export.manifest_object_key or "",
             recipe_id=request.recipe_id,
             model_scale=request.model_scale,
             output_model_name=request.output_model_name,
@@ -468,6 +480,7 @@ class SqlAlchemyYoloXTrainingTaskService:
             "project_id": task_spec.project_id,
             "dataset_export_id": task_spec.dataset_export_id,
             "dataset_export_manifest_key": task_spec.dataset_export_manifest_key,
+            "manifest_object_key": task_spec.manifest_object_key,
             "recipe_id": task_spec.recipe_id,
             "model_scale": task_spec.model_scale,
             "output_model_name": task_spec.output_model_name,
@@ -504,12 +517,13 @@ class SqlAlchemyYoloXTrainingTaskService:
             input_size = (input_size_value[0], input_size_value[1])
 
         extra_options = task_spec.get("extra_options")
+        manifest_object_key = self._read_optional_str(task_spec, "manifest_object_key")
         return YoloXTrainingTaskRequest(
             project_id=self._require_str(task_spec, "project_id"),
             dataset_export_id=self._read_optional_str(task_spec, "dataset_export_id"),
-            dataset_export_manifest_key=self._read_optional_str(
-                task_spec,
-                "dataset_export_manifest_key",
+            dataset_export_manifest_key=(
+                manifest_object_key
+                or self._read_optional_str(task_spec, "dataset_export_manifest_key")
             ),
             recipe_id=self._require_str(task_spec, "recipe_id"),
             model_scale=self._require_str(task_spec, "model_scale"),
@@ -611,6 +625,7 @@ class SqlAlchemyYoloXTrainingTaskService:
             "task_id": task_record.task_id,
             "dataset_export_id": dataset_export.dataset_export_id,
             "dataset_export_manifest_key": dataset_export.manifest_object_key,
+            "manifest_object_key": dataset_export.manifest_object_key,
             "dataset_version_id": dataset_version_id or dataset_export.dataset_version_id,
             "format_id": format_id or dataset_export.format_id,
             "recipe_id": request.recipe_id,
@@ -659,6 +674,109 @@ class SqlAlchemyYoloXTrainingTaskService:
             best_metric_value=best_metric_value,
             summary=summary,
         )
+
+    def _register_training_output_model_version(
+        self,
+        *,
+        task_record: TaskRecord,
+        request: YoloXTrainingTaskRequest,
+        dataset_export: DatasetExport,
+        task_result: YoloXTrainingTaskResult,
+    ) -> str:
+        """把训练输出登记为 ModelVersion。
+
+        参数：
+        - task_record：当前训练任务主记录。
+        - request：训练任务请求。
+        - dataset_export：训练输入使用的 DatasetExport。
+        - task_result：训练执行结果。
+
+        返回：
+        - 新登记的 ModelVersion id。
+        """
+
+        model_service = SqlAlchemyYoloXModelService(session_factory=self.session_factory)
+        return model_service.register_training_output(
+            YoloXTrainingOutputRegistration(
+                project_id=request.project_id,
+                training_task_id=task_record.task_id,
+                model_name=request.output_model_name,
+                model_scale=request.model_scale,
+                dataset_version_id=task_result.dataset_version_id,
+                checkpoint_file_id=self._build_training_output_file_id(task_record.task_id, "checkpoint"),
+                checkpoint_file_uri=task_result.checkpoint_object_key,
+                labels_file_id=(
+                    self._build_training_output_file_id(task_record.task_id, "labels")
+                    if task_result.labels_object_key is not None
+                    else None
+                ),
+                labels_file_uri=task_result.labels_object_key,
+                metrics_file_id=(
+                    self._build_training_output_file_id(task_record.task_id, "metrics")
+                    if task_result.metrics_object_key is not None
+                    else None
+                ),
+                metrics_file_uri=task_result.metrics_object_key,
+                metadata=self._build_model_version_metadata(
+                    request=request,
+                    dataset_export=dataset_export,
+                    task_result=task_result,
+                ),
+            )
+        )
+
+    def _build_model_version_metadata(
+        self,
+        *,
+        request: YoloXTrainingTaskRequest,
+        dataset_export: DatasetExport,
+        task_result: YoloXTrainingTaskResult,
+    ) -> dict[str, object]:
+        """构建训练输出登记到 ModelVersion 的 metadata。
+
+        参数：
+        - request：训练任务请求。
+        - dataset_export：训练输入使用的 DatasetExport。
+        - task_result：训练执行结果。
+
+        返回：
+        - 可直接保存到 ModelVersion.metadata 的字典。
+        """
+
+        training_config: dict[str, object] = {
+            "recipe_id": request.recipe_id,
+            "model_scale": request.model_scale,
+            "output_model_name": request.output_model_name,
+            "warm_start_model_version_id": request.warm_start_model_version_id,
+            "max_epochs": request.max_epochs,
+            "batch_size": request.batch_size,
+            "input_size": list(request.input_size) if request.input_size is not None else None,
+            "extra_options": dict(request.extra_options),
+        }
+        return {
+            "dataset_export_id": dataset_export.dataset_export_id,
+            "manifest_object_key": dataset_export.manifest_object_key,
+            "category_names": list(self._read_str_tuple(task_result.summary.get("category_names"))),
+            "input_size": training_config["input_size"],
+            "training_config": training_config,
+            "metrics_summary": {
+                "best_metric_name": task_result.best_metric_name,
+                "best_metric_value": task_result.best_metric_value,
+            },
+        }
+
+    def _build_training_output_file_id(self, task_id: str, artifact_name: str) -> str:
+        """基于训练任务 id 生成输出文件记录 id。
+
+        参数：
+        - task_id：训练任务 id。
+        - artifact_name：输出产物名称。
+
+        返回：
+        - 对应的 ModelFile id。
+        """
+
+        return f"{task_id}-{artifact_name}"
 
     def _build_output_object_prefix(self, task_id: str) -> str:
         """构建训练任务输出目录前缀。"""

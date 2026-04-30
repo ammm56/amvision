@@ -104,6 +104,7 @@
 
 - DatasetExport 详情页拿到 dataset_export_id 后，可以直接调用这个接口查询关联训练任务。
 - 前端任务面板可以按 state 或 created_by 继续做局部过滤。
+- 已完成任务会在顶层直接返回 model_version_id，前端可以据此跳转模型详情或转换链路。
 
 ### GET /api/v1/models/yolox/training-tasks/{task_id}
 
@@ -120,6 +121,7 @@
 - task_spec：训练请求规格快照
 - dataset_export_id：平台资源边界
 - dataset_export_manifest_key：执行文件边界
+- model_version_id：训练输出登记后的顶层 ModelVersion id
 - checkpoint_object_key：当前训练产物 checkpoint
 - metrics_object_key：当前训练指标文件
 - summary_object_key：当前训练摘要文件
