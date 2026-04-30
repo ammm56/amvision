@@ -10,7 +10,6 @@ class YoloXFileNamingContext:
     """描述默认文件名生成所需的上下文。
 
     字段：
-    - project_id：所属项目 id。
     - model_name：模型名称。
     - model_scale：模型 scale。
     - source_version：来源 ModelVersion 标识。
@@ -18,7 +17,6 @@ class YoloXFileNamingContext:
     - suffix：文件后缀名。
     """
 
-    project_id: str
     model_name: str
     model_scale: str
     source_version: str

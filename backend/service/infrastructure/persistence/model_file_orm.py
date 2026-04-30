@@ -16,7 +16,8 @@ class ModelFileRecord(Base):
     __tablename__ = "model_files"
 
     file_id: Mapped[str] = mapped_column(String(128), primary_key=True)
-    project_id: Mapped[str] = mapped_column(String(128), index=True)
+    project_id: Mapped[str | None] = mapped_column(String(128), index=True, nullable=True)
+    scope_kind: Mapped[str] = mapped_column(String(32), nullable=False)
     model_id: Mapped[str] = mapped_column(String(128), index=True)
     file_type: Mapped[str] = mapped_column(String(128))
     logical_name: Mapped[str] = mapped_column(String(512))

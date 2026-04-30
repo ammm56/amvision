@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import json
+from collections.abc import Callable
 from contextlib import nullcontext
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
@@ -40,8 +41,11 @@ class YoloXDetectionTrainingExecutionRequest:
     - batch_size：训练 batch size；为空时使用最小默认值。
     - gpu_count：请求参与训练的 GPU 数量；为空时按本机可用资源回退。
     - precision：请求使用的训练 precision。
+    - warm_start_checkpoint_path：warm start checkpoint 的绝对路径。
+    - warm_start_source_summary：warm start 来源摘要。
     - input_size：训练输入尺寸；为空时使用最小默认值。
     - extra_options：附加训练选项。
+    - epoch_callback：每轮训练结束后的进度回写回调。
     """
 
     dataset_storage: LocalDatasetStorage
@@ -51,8 +55,11 @@ class YoloXDetectionTrainingExecutionRequest:
     batch_size: int | None = None
     gpu_count: int | None = None
     precision: str | None = None
+    warm_start_checkpoint_path: Path | None = None
+    warm_start_source_summary: dict[str, object] | None = None
     input_size: tuple[int, int] | None = None
     extra_options: dict[str, object] | None = None
+    epoch_callback: Callable[["YoloXTrainingEpochProgress"], None] | None = None
 
 
 @dataclass(frozen=True)
@@ -64,6 +71,7 @@ class YoloXDetectionTrainingExecutionResult:
     - latest_checkpoint_bytes：训练结束时的最新 checkpoint 二进制内容。
     - metrics_payload：训练指标摘要。
     - validation_metrics_payload：验证指标摘要。
+    - warm_start_summary：warm start 加载摘要。
     - implementation_mode：当前训练执行模式标识。
     - best_metric_name：最佳指标名称。
     - best_metric_value：最佳指标值。
@@ -88,6 +96,7 @@ class YoloXDetectionTrainingExecutionResult:
     latest_checkpoint_bytes: bytes
     metrics_payload: dict[str, object]
     validation_metrics_payload: dict[str, object]
+    warm_start_summary: dict[str, object]
     implementation_mode: str
     best_metric_name: str
     best_metric_value: float
@@ -106,6 +115,31 @@ class YoloXDetectionTrainingExecutionResult:
     validation_split_name: str | None
     validation_sample_count: int
     parameter_count: int
+
+
+@dataclass(frozen=True)
+class YoloXTrainingEpochProgress:
+    """描述单轮训练结束后的进度快照。
+
+    字段：
+    - epoch：当前完成的 epoch 序号。
+    - max_epochs：本次训练总 epoch 数。
+    - train_metrics：当前轮训练指标摘要。
+    - validation_metrics：当前轮验证指标摘要。
+    - current_metric_name：当前用于比较的指标名。
+    - current_metric_value：当前轮该指标值。
+    - best_metric_name：当前最佳指标名。
+    - best_metric_value：截至当前轮的最佳指标值。
+    """
+
+    epoch: int
+    max_epochs: int
+    train_metrics: dict[str, float]
+    validation_metrics: dict[str, float]
+    current_metric_name: str
+    current_metric_value: float
+    best_metric_name: str
+    best_metric_value: float
 
 
 @dataclass(frozen=True)
@@ -443,6 +477,7 @@ def run_yolox_detection_training(
     )
     validation_dataset: _CocoDetectionExportDataset | None = None
     validation_loader = None
+    warm_start_summary: dict[str, object] = {"enabled": False}
     if validation_split is not None:
         validation_dataset = _CocoDetectionExportDataset(
             annotation_file=validation_split.annotation_file,
@@ -467,6 +502,13 @@ def run_yolox_detection_training(
         model_scale=request.model_scale,
         num_classes=len(train_dataset.category_names),
     )
+    if request.warm_start_checkpoint_path is not None:
+        warm_start_summary = _load_warm_start_checkpoint(
+            imports=imports,
+            model=base_model,
+            checkpoint_path=request.warm_start_checkpoint_path,
+            source_summary=dict(request.warm_start_source_summary or {}),
+        )
     base_model.to(runtime.device)
     optimizer = _build_optimizer(imports=imports, model=base_model, batch_size=batch_size)
     training_model = base_model
@@ -571,6 +613,20 @@ def run_yolox_detection_training(
                 checkpoint_kind="best",
             )
 
+        if request.epoch_callback is not None:
+            request.epoch_callback(
+                YoloXTrainingEpochProgress(
+                    epoch=epoch_index + 1,
+                    max_epochs=max_epochs,
+                    train_metrics=_extract_train_progress_metrics(epoch_metrics),
+                    validation_metrics=_extract_prefixed_metrics(epoch_metrics, prefix="val_"),
+                    current_metric_name=best_metric_name,
+                    current_metric_value=current_metric_value,
+                    best_metric_name=best_metric_name,
+                    best_metric_value=best_metric_value,
+                )
+            )
+
     if best_checkpoint_state is None:
         raise ServiceConfigurationError("YOLOX 训练没有生成有效 checkpoint")
 
@@ -630,12 +686,14 @@ def run_yolox_detection_training(
         "final_metrics": final_metrics,
         "epoch_history": epoch_history,
         "parameter_count": parameter_count,
+        "warm_start": warm_start_summary,
     }
     return YoloXDetectionTrainingExecutionResult(
         checkpoint_bytes=checkpoint_bytes,
         latest_checkpoint_bytes=latest_checkpoint_bytes,
         metrics_payload=metrics_payload,
         validation_metrics_payload=validation_metrics_payload,
+        warm_start_summary=warm_start_summary,
         implementation_mode=YOLOX_MINIMAL_IMPLEMENTATION_MODE,
         best_metric_name=best_metric_name,
         best_metric_value=best_metric_value,
@@ -933,6 +991,118 @@ def _build_yolox_model(
     model.apply(init_yolo)
     model.head.initialize_biases(1e-2)
     return model
+
+
+def _load_warm_start_checkpoint(
+    *,
+    imports: _YoloXTrainingImports,
+    model: Any,
+    checkpoint_path: Path,
+    source_summary: dict[str, object],
+) -> dict[str, object]:
+    """把 warm start checkpoint 加载到当前模型中。"""
+
+    if not checkpoint_path.is_file():
+        raise InvalidRequestError(
+            "warm start checkpoint 不存在",
+            details={"checkpoint_path": checkpoint_path.as_posix()},
+        )
+
+    try:
+        checkpoint_payload = imports.torch.load(str(checkpoint_path), map_location="cpu")
+    except Exception as error:
+        raise ServiceConfigurationError(
+            "warm start checkpoint 读取失败",
+            details={"checkpoint_path": checkpoint_path.as_posix()},
+        ) from error
+
+    raw_state_dict = _extract_checkpoint_state_dict(checkpoint_payload)
+    model_state_dict = model.state_dict()
+    compatible_state_dict: dict[str, object] = {}
+    skipped_shape_keys: list[str] = []
+    for key, value in raw_state_dict.items():
+        normalized_key = key.removeprefix("module.")
+        target_value = model_state_dict.get(normalized_key)
+        if target_value is None:
+            continue
+        if not hasattr(value, "shape"):
+            continue
+        if tuple(value.shape) != tuple(target_value.shape):
+            skipped_shape_keys.append(normalized_key)
+            continue
+        compatible_state_dict[normalized_key] = value
+
+    if not compatible_state_dict:
+        raise InvalidRequestError(
+            "warm start checkpoint 与当前模型结构不兼容",
+            details={"checkpoint_path": checkpoint_path.as_posix()},
+        )
+
+    incompatible_keys = model.load_state_dict(compatible_state_dict, strict=False)
+    loaded_parameter_count = sum(
+        int(parameter.numel())
+        for parameter in compatible_state_dict.values()
+        if hasattr(parameter, "numel")
+    )
+    warm_start_summary = dict(source_summary)
+    warm_start_summary.update(
+        {
+            "enabled": True,
+            "checkpoint_path": checkpoint_path.as_posix(),
+            "loaded_tensor_count": len(compatible_state_dict),
+            "loaded_parameter_count": loaded_parameter_count,
+            "missing_key_count": len(incompatible_keys.missing_keys),
+            "unexpected_key_count": len(incompatible_keys.unexpected_keys),
+            "skipped_shape_key_count": len(skipped_shape_keys),
+            "missing_keys_preview": list(incompatible_keys.missing_keys[:10]),
+            "unexpected_keys_preview": list(incompatible_keys.unexpected_keys[:10]),
+            "skipped_shape_keys_preview": skipped_shape_keys[:10],
+        }
+    )
+    return warm_start_summary
+
+
+def _extract_checkpoint_state_dict(checkpoint_payload: object) -> dict[str, object]:
+    """从不同 checkpoint 结构中提取可加载的模型参数字典。"""
+
+    if not isinstance(checkpoint_payload, dict):
+        raise InvalidRequestError("warm start checkpoint 内容不合法")
+
+    for candidate_key in ("model", "ema_model", "state_dict"):
+        candidate_value = checkpoint_payload.get(candidate_key)
+        if isinstance(candidate_value, dict):
+            return {str(key): value for key, value in candidate_value.items()}
+
+    if all(isinstance(key, str) for key in checkpoint_payload.keys()):
+        return {str(key): value for key, value in checkpoint_payload.items()}
+
+    raise InvalidRequestError("warm start checkpoint 缺少可识别的模型参数字典")
+
+
+def _extract_train_progress_metrics(epoch_metrics: dict[str, object]) -> dict[str, float]:
+    """从单轮指标中提取训练阶段进度展示指标。"""
+
+    train_metrics = _extract_prefixed_metrics(epoch_metrics, prefix="train_")
+    learning_rate = epoch_metrics.get("lr")
+    if isinstance(learning_rate, int | float):
+        train_metrics["lr"] = float(learning_rate)
+    return train_metrics
+
+
+def _extract_prefixed_metrics(
+    epoch_metrics: dict[str, object],
+    *,
+    prefix: str,
+) -> dict[str, float]:
+    """从单轮指标中提取指定前缀的浮点指标。"""
+
+    extracted_metrics: dict[str, float] = {}
+    for key, value in epoch_metrics.items():
+        if not key.startswith(prefix):
+            continue
+        if isinstance(value, int | float):
+            extracted_metrics[key.removeprefix(prefix)] = float(value)
+    return extracted_metrics
 
 
 def _evaluate_validation_losses(

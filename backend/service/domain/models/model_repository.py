@@ -4,16 +4,41 @@ from __future__ import annotations
 
 from typing import Protocol
 
-from backend.service.domain.models.model_records import Model, ModelBuild, ModelVersion
+from backend.service.domain.models.model_records import Model, ModelBuild, ModelScopeKind, ModelVersion
 
 
 class ModelRepository(Protocol):
     """描述 Model、ModelVersion、ModelBuild 的持久化边界。"""
 
+    def list_models(
+        self,
+        *,
+        scope_kind: ModelScopeKind | None = None,
+        model_name: str | None = None,
+        model_scale: str | None = None,
+        task_type: str | None = None,
+        limit: int | None = None,
+    ) -> tuple[Model, ...]:
+        """按公开筛选条件列出 Model。
+
+        参数：
+        - scope_kind：模型作用域类型；为空时不过滤。
+        - model_name：模型名；为空时不过滤。
+        - model_scale：模型 scale；为空时不过滤。
+        - task_type：任务类型；为空时不过滤。
+        - limit：最大返回数量；为空时不限制。
+
+        返回：
+        - 满足条件的 Model 列表。
+        """
+
+        ...
+
     def find_model(
         self,
         *,
-        project_id: str,
+        project_id: str | None,
+        scope_kind: ModelScopeKind,
         model_name: str,
         model_scale: str,
         task_type: str,
@@ -21,7 +46,8 @@ class ModelRepository(Protocol):
         """按自然键查找一个 Model。
 
         参数：
-        - project_id：所属项目 id。
+    - project_id：所属项目 id；平台基础模型时为空。
+        - scope_kind：模型作用域类型。
         - model_name：模型名。
         - model_scale：模型 scale。
         - task_type：任务类型。

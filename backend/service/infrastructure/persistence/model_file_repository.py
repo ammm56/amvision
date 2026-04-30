@@ -37,6 +37,7 @@ class SqlAlchemyModelFileRepository:
                 return
 
             existing_record.project_id = model_file.project_id
+            existing_record.scope_kind = model_file.scope_kind
             existing_record.model_id = model_file.model_id
             existing_record.file_type = model_file.file_type
             existing_record.logical_name = model_file.logical_name
@@ -95,6 +96,7 @@ class SqlAlchemyModelFileRepository:
         return ModelFileRecord(
             file_id=model_file.file_id,
             project_id=model_file.project_id,
+            scope_kind=model_file.scope_kind,
             model_id=model_file.model_id,
             file_type=model_file.file_type,
             logical_name=model_file.logical_name,
@@ -110,6 +112,7 @@ class SqlAlchemyModelFileRepository:
         return ModelFile(
             file_id=record.file_id,
             project_id=record.project_id,
+            scope_kind=record.scope_kind,
             model_id=record.model_id,
             file_type=record.file_type,
             logical_name=record.logical_name,

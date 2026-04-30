@@ -9,6 +9,7 @@ from backend.service.application.models.yolox_model_service import (
     YoloXTrainingOutputRegistration,
 )
 from backend.service.domain.files.yolox_file_types import YOLOX_CHECKPOINT_FILE, YOLOX_ONNX_FILE
+from backend.service.domain.models.model_records import PLATFORM_BASE_MODEL_SCOPE, PROJECT_MODEL_SCOPE
 from backend.service.infrastructure.db.session import DatabaseSettings, SessionFactory
 from backend.service.infrastructure.persistence.base import Base
 
@@ -20,9 +21,10 @@ def test_register_pretrained_registers_model_version_and_checkpoint_file() -> No
 
     model_version_id = service.register_pretrained(
         YoloXPretrainedRegistrationRequest(
-            project_id="project-1",
             model_name="yolox",
             storage_uri="memory://weights/yolox_s.pth",
+            model_version_id="model-version-pretrained-1",
+            checkpoint_file_id="model-file-pretrained-checkpoint-1",
             model_scale="s",
         )
     )
@@ -30,16 +32,21 @@ def test_register_pretrained_registers_model_version_and_checkpoint_file() -> No
     model_version = service.get_model_version(model_version_id)
 
     assert model_version is not None
+    assert model_version.model_version_id == "model-version-pretrained-1"
     assert model_version.source_kind == "pretrained-reference"
     assert len(model_version.file_ids) == 1
 
     model = service.get_model(model_version.model_id)
-    checkpoint_file = service.get_model_file(model_version.file_ids[0])
+    model_files = service.list_model_files(model_version_id=model_version_id)
+    checkpoint_file = next(file for file in model_files if file.file_type == YOLOX_CHECKPOINT_FILE)
 
     assert model is not None
+    assert model.scope_kind == PLATFORM_BASE_MODEL_SCOPE
+    assert model.project_id is None
     assert model.model_name == "yolox"
     assert checkpoint_file is not None
     assert checkpoint_file.file_type == YOLOX_CHECKPOINT_FILE
+    assert checkpoint_file.project_id is None
     assert checkpoint_file.storage_uri == "memory://weights/yolox_s.pth"
 
 
@@ -55,6 +62,7 @@ def test_register_training_output_and_build_creates_linked_records() -> None:
             model_name="yolox",
             model_scale="s",
             dataset_version_id="dataset-version-1",
+            parent_version_id="model-version-parent-1",
             checkpoint_file_id="checkpoint-file-1",
             checkpoint_file_uri="memory://runs/training-1/best_ckpt.pth",
             labels_file_id="labels-file-1",
@@ -84,6 +92,7 @@ def test_register_training_output_and_build_creates_linked_records() -> None:
 
     assert model_version is not None
     assert model_version.source_kind == "training-output"
+    assert model_version.parent_version_id == "model-version-parent-1"
     assert model_version.metadata["dataset_export_id"] == "dataset-export-1"
     assert model_version.metadata["manifest_object_key"] == "memory://exports/dataset-export-1/manifest.json"
     assert len(service.list_model_files(model_version_id=model_version_id)) == 3
@@ -96,6 +105,8 @@ def test_register_training_output_and_build_creates_linked_records() -> None:
     assert model_build.source_model_version_id == model_version_id
     assert model_build.conversion_task_id == "conversion-1"
     assert build_file is not None
+    assert service.get_model(model_version.model_id).scope_kind == PROJECT_MODEL_SCOPE
+    assert service.get_model(model_version.model_id).project_id == "project-1"
     assert build_file.file_type == YOLOX_ONNX_FILE
     assert build_file.model_build_id == model_build_id
 

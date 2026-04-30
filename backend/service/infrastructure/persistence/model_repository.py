@@ -7,7 +7,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from backend.service.application.errors import PersistenceOperationError
-from backend.service.domain.models.model_records import Model, ModelBuild, ModelVersion
+from backend.service.domain.models.model_records import Model, ModelBuild, ModelScopeKind, ModelVersion
 from backend.service.infrastructure.persistence.model_orm import (
     ModelBuildRecord,
     ModelRecord,
@@ -27,10 +27,50 @@ class SqlAlchemyModelRepository:
 
         self.session = session
 
+    def list_models(
+        self,
+        *,
+        scope_kind: ModelScopeKind | None = None,
+        model_name: str | None = None,
+        model_scale: str | None = None,
+        task_type: str | None = None,
+        limit: int | None = None,
+    ) -> tuple[Model, ...]:
+        """按公开筛选条件列出 Model。"""
+
+        statement = select(ModelRecord)
+        if scope_kind is not None:
+            statement = statement.where(ModelRecord.scope_kind == scope_kind)
+        if model_name is not None:
+            statement = statement.where(ModelRecord.model_name == model_name)
+        if model_scale is not None:
+            statement = statement.where(ModelRecord.model_scale == model_scale)
+        if task_type is not None:
+            statement = statement.where(ModelRecord.task_type == task_type)
+
+        statement = statement.order_by(
+            ModelRecord.model_name,
+            ModelRecord.model_scale,
+            ModelRecord.model_id,
+        )
+        if limit is not None:
+            statement = statement.limit(limit)
+
+        try:
+            records = self.session.execute(statement).scalars().all()
+        except SQLAlchemyError as error:
+            raise PersistenceOperationError(
+                "列出 Model 失败",
+                details={"error_type": error.__class__.__name__},
+            ) from error
+
+        return tuple(self._to_model_domain(record) for record in records)
+
     def find_model(
         self,
         *,
-        project_id: str,
+        project_id: str | None,
+        scope_kind: ModelScopeKind,
         model_name: str,
         model_scale: str,
         task_type: str,
@@ -38,7 +78,8 @@ class SqlAlchemyModelRepository:
         """按自然键查找一个 Model。
 
         参数：
-        - project_id：所属项目 id。
+    - project_id：所属项目 id；平台基础模型时为空。
+        - scope_kind：模型作用域类型。
         - model_name：模型名。
         - model_scale：模型 scale。
         - task_type：任务类型。
@@ -49,6 +90,7 @@ class SqlAlchemyModelRepository:
 
         statement = select(ModelRecord).where(
             ModelRecord.project_id == project_id,
+            ModelRecord.scope_kind == scope_kind,
             ModelRecord.model_name == model_name,
             ModelRecord.model_scale == model_scale,
             ModelRecord.task_type == task_type,
@@ -79,6 +121,7 @@ class SqlAlchemyModelRepository:
                 return
 
             existing_record.project_id = model.project_id
+            existing_record.scope_kind = model.scope_kind
             existing_record.model_name = model.model_name
             existing_record.model_type = model.model_type
             existing_record.task_type = model.task_type
@@ -222,6 +265,7 @@ class SqlAlchemyModelRepository:
         return ModelRecord(
             model_id=model.model_id,
             project_id=model.project_id,
+            scope_kind=model.scope_kind,
             model_name=model.model_name,
             model_type=model.model_type,
             task_type=model.task_type,
@@ -264,6 +308,7 @@ class SqlAlchemyModelRepository:
         return Model(
             model_id=record.model_id,
             project_id=record.project_id,
+            scope_kind=record.scope_kind,
             model_name=record.model_name,
             model_type=record.model_type,
             task_type=record.task_type,

@@ -13,7 +13,7 @@ from backend.queue import LocalFileQueueBackend, LocalFileQueueSettings
 from backend.contracts.datasets.exports.coco_detection_export import COCO_DETECTION_DATASET_FORMAT
 from backend.service.api.app import create_app
 from backend.service.application.models.yolox_training_service import YOLOX_TRAINING_QUEUE_NAME
-from backend.service.application.tasks.task_service import SqlAlchemyTaskService
+from backend.service.application.tasks.task_service import AppendTaskEventRequest, SqlAlchemyTaskService
 from backend.service.domain.datasets.dataset_export import DatasetExport
 from backend.service.infrastructure.db.session import DatabaseSettings, SessionFactory
 from backend.service.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
@@ -356,6 +356,76 @@ def test_get_yolox_training_task_detail_returns_completed_result(tmp_path: Path)
         assert "reference_code_root" not in payload["result"].get("summary", {})
         assert any(event["message"] == "yolox training started" for event in payload["events"])
         assert any(event["message"] == "yolox training completed" for event in payload["events"])
+    finally:
+        session_factory.engine.dispose()
+
+
+def test_get_yolox_training_task_detail_exposes_output_prefix_while_running(tmp_path: Path) -> None:
+    """验证 running 阶段也会把 output_object_prefix 提升到顶层响应。"""
+
+    client, session_factory, dataset_storage, _queue_backend = _create_test_client(tmp_path)
+    dataset_export = _seed_completed_dataset_export(
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+        dataset_export_id="dataset-export-running-output-prefix-1",
+        manifest_object_key=(
+            "projects/project-1/datasets/dataset-1/exports/"
+            "dataset-export-running-output-prefix-1/manifest.json"
+        ),
+    )
+    try:
+        with client:
+            create_response = client.post(
+                "/api/v1/models/yolox/training-tasks",
+                headers=_build_training_headers(),
+                json={
+                    "project_id": "project-1",
+                    "dataset_export_id": dataset_export.dataset_export_id,
+                    "recipe_id": "yolox-default",
+                    "model_scale": "nano",
+                    "output_model_name": "yolox-s-running-prefix",
+                    "gpu_count": 1,
+                    "precision": "fp16",
+                },
+            )
+
+        assert create_response.status_code == 202
+        task_id = create_response.json()["task_id"]
+        output_object_prefix = f"task-runs/training/{task_id}"
+        SqlAlchemyTaskService(session_factory).append_task_event(
+            AppendTaskEventRequest(
+                task_id=task_id,
+                event_type="status",
+                message="yolox training started",
+                payload={
+                    "state": "running",
+                    "started_at": datetime.now(timezone.utc).isoformat(),
+                    "attempt_no": 1,
+                    "progress": {"stage": "training", "percent": 10},
+                    "metadata": {
+                        "runner_mode": "yolox-detection-minimal",
+                        "output_object_prefix": output_object_prefix,
+                        "requested_precision": "fp16",
+                        "requested_gpu_count": 1,
+                    },
+                    "result": {
+                        "output_object_prefix": output_object_prefix,
+                    },
+                },
+            )
+        )
+
+        with client:
+            detail_response = client.get(
+                f"/api/v1/models/yolox/training-tasks/{task_id}",
+                headers=_build_training_headers(),
+            )
+
+        assert detail_response.status_code == 200
+        payload = detail_response.json()
+        assert payload["state"] == "running"
+        assert payload["output_object_prefix"] == output_object_prefix
+        assert payload["checkpoint_object_key"] is None
     finally:
         session_factory.engine.dispose()
 

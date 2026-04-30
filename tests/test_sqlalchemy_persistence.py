@@ -11,7 +11,7 @@ from backend.service.domain.datasets.dataset_version import (
     DatasetVersion,
     DetectionAnnotation,
 )
-from backend.service.domain.models.model_records import Model, ModelBuild, ModelVersion
+from backend.service.domain.models.model_records import Model, ModelBuild, ModelVersion, PROJECT_MODEL_SCOPE
 from backend.service.domain.tasks.task_records import ResourceProfile, TaskAttempt, TaskEvent, TaskRecord
 from backend.service.infrastructure.db.session import DatabaseSettings, SessionFactory
 from backend.service.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
@@ -115,6 +115,7 @@ def test_model_repository_round_trip_persists_model_lineage() -> None:
         model_type="yolox",
         task_type="detection",
         model_scale="s",
+        scope_kind=PROJECT_MODEL_SCOPE,
         labels_file_id="labels-1",
         metadata={"source": "pretrained"},
     )

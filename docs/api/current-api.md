@@ -20,6 +20,7 @@
 
 - datasets:read
 - datasets:write
+- models:read
 - tasks:read
 - tasks:write
 - system:read
@@ -41,6 +42,8 @@
 | GET | /api/v1/datasets/exports/{dataset_export_id}/download | datasets:read | 下载 DatasetExport 的 zip 包；当下载包不存在时会同步生成。 |
 | GET | /api/v1/datasets/exports/{dataset_export_id}/manifest | datasets:read | 下载 DatasetExport 的 manifest 文件。 |
 | POST | /api/v1/models/yolox/training-tasks | datasets:read + tasks:write | 以 DatasetExport 为唯一输入边界创建 YOLOX 训练任务。 |
+| GET | /api/v1/models/platform-base | models:read | 列出平台基础模型及其可用 ModelVersion 摘要。 |
+| GET | /api/v1/models/platform-base/{model_id} | models:read | 查询单个平台基础模型详情、版本文件和构建文件。 |
 | GET | /api/v1/models/yolox/training-tasks | tasks:read | 按 Project、DatasetExport 边界和状态列出 YOLOX 训练任务。 |
 | GET | /api/v1/models/yolox/training-tasks/{task_id} | tasks:read | 查询单条 YOLOX 训练任务详情和事件流。 |
 | POST | /api/v1/tasks | tasks:write | 创建公开任务记录，立即返回任务详情。 |
@@ -175,6 +178,39 @@
 
 ## models 资源组
 
+### GET /api/v1/models/platform-base
+
+- 需要 models:read
+- 当前支持的查询参数：
+  - model_name
+  - model_scale
+  - task_type
+  - limit
+- 当前列表只返回 scope_kind=platform-base 的 Model，不混入任何 Project 内模型
+- 当前列表项会同时公开：
+  - model_id
+  - project_id
+  - scope_kind
+  - model_name
+  - model_type
+  - task_type
+  - model_scale
+  - version_count
+  - build_count
+  - available_versions
+- available_versions 当前会直接公开 warm_start 选择最需要的字段：model_version_id、checkpoint_file_id、checkpoint_storage_uri、catalog_manifest_object_key
+
+### GET /api/v1/models/platform-base/{model_id}
+
+- 需要 models:read
+- 返回单个平台基础模型详情，包括：
+  - 顶层模型身份字段和 metadata
+  - available_versions 摘要
+  - versions 完整列表
+  - builds 完整列表
+- versions 当前会继续展开 files，便于前端直接显示 checkpoint、manifest 和其他附属文件来源
+- 如果 model_id 对应的是 Project 内模型或不存在，当前接口返回 404
+
 ### POST /api/v1/models/yolox/training-tasks
 
 - 需要同时具备 datasets:read 和 tasks:write
@@ -195,6 +231,8 @@
   - display_name
 - 当前实现会先解析并校验 DatasetExport，再创建 TaskRecord，并提交到 yolox-trainings 队列
 - 当前最小真实训练执行器实际支持 fp16、fp32；precision 字段中的 fp8 当前仍保留为接口层枚举值，但执行阶段会拒绝。
+- warm_start_model_version_id 表示“本次训练要从哪个已有 ModelVersion 对应的 checkpoint 开始训练”，而不是从随机初始化开始；当前服务会真实沿 ModelVersion -> ModelFile -> checkpoint 链路加载来源权重。
+- 当前 warm start 来源既可以是当前 Project 自己已有的历史训练产出，也可以是平台基础模型目录中登记的 pretrained-reference ModelVersion；如需选择平台基础模型来源，可先查询 /api/v1/models/platform-base 或 /api/v1/models/platform-base/{model_id}，再把 available_versions[].model_version_id 传给 warm_start_model_version_id。
 - 当前响应会返回：
   - task_id
   - status
@@ -233,13 +271,15 @@
   - metrics_object_key
   - validation_metrics_object_key
   - summary_object_key
+- running 阶段的 output_object_prefix 会直接出现在顶层响应，任务推进期间还会逐 epoch 回写 progress。
 
 ### GET /api/v1/models/yolox/training-tasks/{task_id}
 
 - 需要 tasks:read
 - 默认 include_events=true
 - 返回单条 YOLOX 训练任务详情，包括 task_spec、events、训练结果文件 object key、顶层 model_version_id 和 training_summary
-- training_summary 当前会同时公开训练运行设备、precision、GPU 数量、artifact_locations 和 validation 摘要
+- training_summary 当前会同时公开训练运行设备、precision、GPU 数量、artifact_locations、validation 摘要和 warm_start 摘要
+- 当前 events 会包含逐 epoch 的 progress 事件，task.progress 会同步维护 epoch、max_epochs、最佳指标和当前轮指标快照
 - 如果 task_id 不属于 YOLOX 训练任务，当前接口返回 404
 
 ## tasks 资源组

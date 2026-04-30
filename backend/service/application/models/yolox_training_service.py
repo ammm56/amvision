@@ -4,18 +4,29 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from pathlib import Path
+from urllib.parse import urlparse
 
 from backend.queue import QueueBackend
 from backend.contracts.datasets.exports.coco_detection_export import COCO_DETECTION_DATASET_FORMAT
 from backend.service.application.errors import InvalidRequestError, ResourceNotFoundError, ServiceConfigurationError
 from backend.service.application.models.yolox_detection_training import (
     run_yolox_detection_training,
+    YoloXTrainingEpochProgress,
     YOLOX_SUPPORTED_MODEL_SCALES,
     YoloXDetectionTrainingExecutionRequest,
 )
 from backend.service.application.models.yolox_model_service import (
     SqlAlchemyYoloXModelService,
     YoloXTrainingOutputRegistration,
+)
+from backend.service.domain.files.model_file import ModelFile
+from backend.service.domain.files.yolox_file_types import YOLOX_CHECKPOINT_FILE
+from backend.service.domain.models.model_records import (
+    PLATFORM_BASE_MODEL_SCOPE,
+    PROJECT_MODEL_SCOPE,
+    Model,
+    ModelVersion,
 )
 from backend.service.application.tasks.task_service import AppendTaskEventRequest, CreateTaskRequest, SqlAlchemyTaskService
 from backend.service.domain.datasets.dataset_export import DatasetExport
@@ -118,6 +129,31 @@ class YoloXTrainingTaskResult:
     best_metric_name: str | None = None
     best_metric_value: float | None = None
     summary: dict[str, object] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class _ResolvedWarmStartReference:
+    """描述一次 warm start 请求解析出的源模型版本信息。
+
+    字段：
+    - source_model_version_id：来源 ModelVersion id。
+    - source_kind：来源版本类型。
+    - source_model_name：来源模型名。
+    - source_model_scale：来源模型 scale。
+    - checkpoint_file_id：来源 checkpoint 文件 id。
+    - checkpoint_storage_uri：来源 checkpoint 存储 URI。
+    - checkpoint_path：来源 checkpoint 的本地绝对路径。
+    - catalog_manifest_object_key：可选的预训练目录 manifest object key。
+    """
+
+    source_model_version_id: str
+    source_kind: str
+    source_model_name: str
+    source_model_scale: str
+    checkpoint_file_id: str
+    checkpoint_storage_uri: str
+    checkpoint_path: Path
+    catalog_manifest_object_key: str | None = None
 
 
 class SqlAlchemyYoloXTrainingTaskService:
@@ -282,6 +318,9 @@ class SqlAlchemyYoloXTrainingTaskService:
                         "requested_precision": request.precision,
                         "requested_gpu_count": request.gpu_count,
                     },
+                    "result": {
+                        "output_object_prefix": output_object_prefix,
+                    },
                 },
             )
         )
@@ -292,6 +331,7 @@ class SqlAlchemyYoloXTrainingTaskService:
                 request=request,
                 dataset_export=dataset_export,
                 manifest_payload=manifest_payload,
+                attempt_no=attempt_no,
                 output_object_prefix=output_object_prefix,
             )
             model_version_id = self._register_training_output_model_version(
@@ -318,6 +358,7 @@ class SqlAlchemyYoloXTrainingTaskService:
                             "dataset_export_manifest_key": dataset_export.manifest_object_key,
                             "dataset_version_id": dataset_export.dataset_version_id,
                             "format_id": dataset_export.format_id,
+                            "output_object_prefix": output_object_prefix,
                         },
                     },
                 )
@@ -644,6 +685,7 @@ class SqlAlchemyYoloXTrainingTaskService:
         request: YoloXTrainingTaskRequest,
         dataset_export: DatasetExport,
         manifest_payload: dict[str, object],
+        attempt_no: int,
         output_object_prefix: str,
     ) -> YoloXTrainingTaskResult:
         """执行当前阶段的最小真实 YOLOX detection 训练流程。"""
@@ -660,6 +702,7 @@ class SqlAlchemyYoloXTrainingTaskService:
         sample_count = self._read_manifest_sample_count(manifest_payload)
         dataset_version_id = self._read_optional_str(manifest_payload, "dataset_version_id")
         format_id = self._read_optional_str(manifest_payload, "format_id")
+        warm_start_reference = self._resolve_warm_start_reference(request)
 
         artifact_root = f"{output_object_prefix}/artifacts"
         checkpoint_object_key = f"{artifact_root}/checkpoints/best_ckpt.pth"
@@ -668,6 +711,47 @@ class SqlAlchemyYoloXTrainingTaskService:
         metrics_object_key = f"{artifact_root}/reports/train-metrics.json"
         validation_metrics_object_key = f"{artifact_root}/reports/validation-metrics.json"
         summary_object_key = f"{artifact_root}/training-summary.json"
+
+        def on_epoch_completed(progress: YoloXTrainingEpochProgress) -> None:
+            progress_percent = min(
+                95,
+                10 + int((80 * progress.epoch) / max(1, progress.max_epochs)),
+            )
+            progress_payload: dict[str, object] = {
+                "stage": "training",
+                "percent": progress_percent,
+                "epoch": progress.epoch,
+                "max_epochs": progress.max_epochs,
+                "current_metric_name": progress.current_metric_name,
+                "current_metric_value": progress.current_metric_value,
+                "best_metric_name": progress.best_metric_name,
+                "best_metric_value": progress.best_metric_value,
+                "train_metrics": dict(progress.train_metrics),
+                "validation_metrics": dict(progress.validation_metrics),
+            }
+            self.task_service.append_task_event(
+                AppendTaskEventRequest(
+                    task_id=task_record.task_id,
+                    event_type="progress",
+                    message=(
+                        f"yolox training epoch {progress.epoch}/{progress.max_epochs} completed"
+                    ),
+                    payload={
+                        "state": "running",
+                        "attempt_no": attempt_no,
+                        "progress": progress_payload,
+                        "metadata": {
+                            "output_object_prefix": output_object_prefix,
+                            "requested_precision": request.precision,
+                            "requested_gpu_count": request.gpu_count,
+                        },
+                        "result": {
+                            "output_object_prefix": output_object_prefix,
+                        },
+                    },
+                )
+            )
+
         execution_result = run_yolox_detection_training(
             YoloXDetectionTrainingExecutionRequest(
                 dataset_storage=dataset_storage,
@@ -677,8 +761,19 @@ class SqlAlchemyYoloXTrainingTaskService:
                 batch_size=request.batch_size,
                 gpu_count=request.gpu_count,
                 precision=request.precision,
+                warm_start_checkpoint_path=(
+                    warm_start_reference.checkpoint_path
+                    if warm_start_reference is not None
+                    else None
+                ),
+                warm_start_source_summary=(
+                    self._build_warm_start_source_summary(warm_start_reference)
+                    if warm_start_reference is not None
+                    else None
+                ),
                 input_size=request.input_size,
                 extra_options=dict(request.extra_options),
+                epoch_callback=on_epoch_completed,
             )
         )
 
@@ -752,6 +847,7 @@ class SqlAlchemyYoloXTrainingTaskService:
                 "best_metric_value": execution_result.validation_metrics_payload.get("best_metric_value"),
                 "metrics_object_key": validation_metrics_object_key,
             },
+            "warm_start": dict(execution_result.warm_start_summary),
         }
 
         return YoloXTrainingTaskResult(
@@ -801,6 +897,7 @@ class SqlAlchemyYoloXTrainingTaskService:
                 model_name=request.output_model_name,
                 model_scale=request.model_scale,
                 dataset_version_id=task_result.dataset_version_id,
+                parent_version_id=request.warm_start_model_version_id,
                 checkpoint_file_id=self._build_training_output_file_id(task_record.task_id, "checkpoint"),
                 checkpoint_file_uri=task_result.checkpoint_object_key,
                 labels_file_id=(
@@ -872,6 +969,7 @@ class SqlAlchemyYoloXTrainingTaskService:
                 "precision": task_result.summary.get("precision"),
                 "distributed_mode": task_result.summary.get("distributed_mode"),
             },
+            "warm_start": dict(task_result.summary.get("warm_start") or {}),
             "artifact_locations": {
                 "output_object_prefix": task_result.output_object_prefix,
                 "checkpoint_object_key": task_result.checkpoint_object_key,
@@ -903,6 +1001,153 @@ class SqlAlchemyYoloXTrainingTaskService:
         """构建训练任务输出目录前缀。"""
 
         return f"task-runs/training/{task_id}"
+
+    def _resolve_warm_start_reference(
+        self,
+        request: YoloXTrainingTaskRequest,
+    ) -> _ResolvedWarmStartReference | None:
+        """按 warm_start_model_version_id 解析可加载的 checkpoint。"""
+
+        if request.warm_start_model_version_id is None:
+            return None
+
+        dataset_storage = self._require_dataset_storage()
+        model_service = SqlAlchemyYoloXModelService(session_factory=self.session_factory)
+        model_version = model_service.get_model_version(request.warm_start_model_version_id)
+        if model_version is None:
+            raise ResourceNotFoundError(
+                "找不到 warm start 指定的 ModelVersion",
+                details={"model_version_id": request.warm_start_model_version_id},
+            )
+
+        model = model_service.get_model(model_version.model_id)
+        if model is None:
+            raise ServiceConfigurationError(
+                "warm start 对应的 Model 不存在",
+                details={"model_id": model_version.model_id},
+            )
+        if not self._is_project_visible_warm_start_model(
+            model=model,
+            model_version=model_version,
+            project_id=request.project_id,
+        ):
+            raise InvalidRequestError(
+                "warm start ModelVersion 不属于当前 Project",
+                details={"model_version_id": model_version.model_version_id},
+            )
+
+        checkpoint_file = self._select_checkpoint_model_file(
+            model_service.list_model_files(model_version_id=model_version.model_version_id)
+        )
+        checkpoint_path = self._resolve_storage_uri_to_local_path(
+            dataset_storage=dataset_storage,
+            storage_uri=checkpoint_file.storage_uri,
+        )
+        if not checkpoint_path.is_file():
+            raise InvalidRequestError(
+                "warm start checkpoint 文件不存在",
+                details={
+                    "model_version_id": model_version.model_version_id,
+                    "storage_uri": checkpoint_file.storage_uri,
+                },
+            )
+
+        catalog_manifest_object_key = model_version.metadata.get("catalog_manifest_object_key")
+        return _ResolvedWarmStartReference(
+            source_model_version_id=model_version.model_version_id,
+            source_kind=model_version.source_kind,
+            source_model_name=model.model_name,
+            source_model_scale=model.model_scale,
+            checkpoint_file_id=checkpoint_file.file_id,
+            checkpoint_storage_uri=checkpoint_file.storage_uri,
+            checkpoint_path=checkpoint_path,
+            catalog_manifest_object_key=(
+                catalog_manifest_object_key
+                if isinstance(catalog_manifest_object_key, str)
+                else None
+            ),
+        )
+
+    def _select_checkpoint_model_file(
+        self,
+        model_files: tuple[ModelFile, ...],
+    ) -> ModelFile:
+        """从 ModelVersion 关联文件中选择可用于 warm start 的 checkpoint。"""
+
+        for model_file in model_files:
+            if model_file.file_type == YOLOX_CHECKPOINT_FILE:
+                return model_file
+
+        raise InvalidRequestError("warm start ModelVersion 缺少 checkpoint 文件")
+
+    def _resolve_storage_uri_to_local_path(
+        self,
+        *,
+        dataset_storage: LocalDatasetStorage,
+        storage_uri: str,
+    ) -> Path:
+        """把 ModelFile.storage_uri 解析为本地 checkpoint 路径。"""
+
+        parsed_uri = urlparse(storage_uri)
+        if parsed_uri.scheme == "file":
+            raw_path = parsed_uri.path or ""
+            if raw_path.startswith("/") and len(raw_path) > 2 and raw_path[2] == ":":
+                raw_path = raw_path.lstrip("/")
+            return Path(raw_path).resolve()
+        if parsed_uri.scheme:
+            raise InvalidRequestError(
+                "当前 warm start 只支持本地磁盘 checkpoint",
+                details={"storage_uri": storage_uri},
+            )
+
+        candidate_path = Path(storage_uri)
+        if candidate_path.is_absolute():
+            return candidate_path.resolve()
+
+        return dataset_storage.resolve(storage_uri)
+
+    def _build_warm_start_source_summary(
+        self,
+        warm_start_reference: _ResolvedWarmStartReference,
+    ) -> dict[str, object]:
+        """构建 warm start 来源摘要。"""
+
+        return {
+            "enabled": True,
+            "source_model_version_id": warm_start_reference.source_model_version_id,
+            "source_kind": warm_start_reference.source_kind,
+            "source_model_name": warm_start_reference.source_model_name,
+            "source_model_scale": warm_start_reference.source_model_scale,
+            "checkpoint_file_id": warm_start_reference.checkpoint_file_id,
+            "checkpoint_storage_uri": warm_start_reference.checkpoint_storage_uri,
+            "catalog_manifest_object_key": warm_start_reference.catalog_manifest_object_key,
+        }
+
+    def _is_project_visible_warm_start_model(
+        self,
+        *,
+        model: Model,
+        model_version: ModelVersion,
+        project_id: str,
+    ) -> bool:
+        """判断 warm start 来源模型是否可被当前 Project 使用。
+
+        参数：
+        - model：warm start 来源的 Model。
+        - model_version：warm start 来源的 ModelVersion。
+        - project_id：当前训练任务所属 Project id。
+
+        返回：
+        - 当前 Project 可以使用该 warm start 模型时返回 True。
+        """
+
+        if model.scope_kind == PLATFORM_BASE_MODEL_SCOPE:
+            return model_version.source_kind == "pretrained-reference"
+
+        if model.scope_kind != PROJECT_MODEL_SCOPE:
+            return False
+
+        return model.project_id == project_id
 
     def _serialize_task_result(self, task_result: YoloXTrainingTaskResult) -> dict[str, object]:
         """把训练任务处理结果序列化为 TaskRecord.result。"""

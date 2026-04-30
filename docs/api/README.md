@@ -10,9 +10,11 @@
 - [docs/api/communication-contracts.md](communication-contracts.md)：REST API、WebSocket、ZeroMQ 的职责拆分与事件规则边界
 - [docs/api/datasets-imports.md](datasets-imports.md)：DatasetImport 导入、详情查询、列表查询、task_id 关联和错误语义
 - [docs/api/datasets-exports.md](datasets-exports.md)：DatasetExport 创建、详情查询、列表查询、package/download/manifest 和 training 输入边界
+- [docs/api/platform-base-models.md](platform-base-models.md)：平台基础模型列表、详情接口，以及 warm_start_model_version_id 的公开发现方式
 - [docs/api/yolox-training.md](yolox-training.md)：YOLOX training 创建、列表、详情接口，DatasetExport 输入解析规则和当前 placeholder worker 边界
 - [docs/api/postman/datasets-imports.postman_collection.json](postman/datasets-imports.postman_collection.json)：当前公开的 system、DatasetImport、tasks 接口 Postman collection
 - [docs/api/postman/datasets-exports.postman_collection.json](postman/datasets-exports.postman_collection.json)：当前公开的 DatasetExport 接口 Postman collection
+- [docs/api/postman/platform-base-models.postman_collection.json](postman/platform-base-models.postman_collection.json)：当前公开的平台基础模型 list/detail 接口 Postman collection
 - [docs/api/postman/yolox-training.postman_collection.json](postman/yolox-training.postman_collection.json)：当前公开的 YOLOX training create/list/detail 接口 Postman collection
 - [docs/architecture/backend-service.md](../architecture/backend-service.md)：FastAPI 应用分层、路由拆分、数据库会话、权限和中间件骨架
 

@@ -1,0 +1,188 @@
+{
+  "info": {
+    "_postman_id": "6dd3e7df-c30b-41a2-9d9d-7e3f95d09a31",
+    "name": "amvision platform base models api",
+    "description": "当前公开的平台基础模型 list/detail 接口。本集合用于查询 platform-base Model、可用 ModelVersion 摘要，以及 warm_start_model_version_id 的稳定来源。",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Platform Base Models",
+      "item": [
+        {
+          "name": "List Platform Base Models",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  var payload = pm.response.json();",
+                  "  if (Array.isArray(payload) && payload.length > 0) {",
+                  "    var first = payload[0];",
+                  "    pm.collectionVariables.set('modelId', first.model_id);",
+                  "    pm.collectionVariables.set('modelName', first.model_name);",
+                  "    pm.collectionVariables.set('modelScale', first.model_scale);",
+                  "    if (Array.isArray(first.available_versions) && first.available_versions.length > 0) {",
+                  "      var version = first.available_versions[0];",
+                  "      pm.collectionVariables.set('modelVersionId', version.model_version_id);",
+                  "      if (version.checkpoint_storage_uri) pm.collectionVariables.set('checkpointStorageUri', version.checkpoint_storage_uri);",
+                  "      if (version.catalog_manifest_object_key) pm.collectionVariables.set('catalogManifestObjectKey', version.catalog_manifest_object_key);",
+                  "    }",
+                  "  }",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-amvision-principal-id",
+                "value": "{{principalId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-scopes",
+                "value": "models:read",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/models/platform-base?model_name={{modelName}}&model_scale={{modelScale}}&task_type={{taskType}}&limit={{listLimit}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "models",
+                "platform-base"
+              ],
+              "query": [
+                {
+                  "key": "model_name",
+                  "value": "{{modelName}}",
+                  "disabled": true
+                },
+                {
+                  "key": "model_scale",
+                  "value": "{{modelScale}}",
+                  "disabled": true
+                },
+                {
+                  "key": "task_type",
+                  "value": "{{taskType}}",
+                  "disabled": true
+                },
+                {
+                  "key": "limit",
+                  "value": "{{listLimit}}"
+                }
+              ]
+            },
+            "description": "列出当前可见的平台基础模型。列表响应会直接公开 available_versions，可用于选择 warm_start_model_version_id。"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Platform Base Model Detail",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  var payload = pm.response.json();",
+                  "  pm.collectionVariables.set('modelId', payload.model_id);",
+                  "  if (Array.isArray(payload.versions) && payload.versions.length > 0) {",
+                  "    var version = payload.versions[0];",
+                  "    pm.collectionVariables.set('modelVersionId', version.model_version_id);",
+                  "    if (version.checkpoint_storage_uri) pm.collectionVariables.set('checkpointStorageUri', version.checkpoint_storage_uri);",
+                  "    if (version.catalog_manifest_object_key) pm.collectionVariables.set('catalogManifestObjectKey', version.catalog_manifest_object_key);",
+                  "  }",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-amvision-principal-id",
+                "value": "{{principalId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-scopes",
+                "value": "models:read",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/models/platform-base/{{modelId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "models",
+                "platform-base",
+                "{{modelId}}"
+              ]
+            },
+            "description": "查询单个平台基础模型详情。详情响应会继续展开 versions.files 和 builds.files，便于直接查看 checkpoint 与其他附属文件。"
+          },
+          "response": []
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://127.0.0.1:8000"
+    },
+    {
+      "key": "principalId",
+      "value": "user-1"
+    },
+    {
+      "key": "modelId",
+      "value": "model-1"
+    },
+    {
+      "key": "modelName",
+      "value": "yolox"
+    },
+    {
+      "key": "modelScale",
+      "value": "nano"
+    },
+    {
+      "key": "taskType",
+      "value": "detection"
+    },
+    {
+      "key": "listLimit",
+      "value": "20"
+    },
+    {
+      "key": "modelVersionId",
+      "value": "model-version-pretrained-yolox-nano"
+    },
+    {
+      "key": "checkpointStorageUri",
+      "value": "models/pretrained/yolox/nano/default/checkpoints/yolox_nano.pth"
+    },
+    {
+      "key": "catalogManifestObjectKey",
+      "value": "models/pretrained/yolox/nano/default/manifest.json"
+    }
+  ]
+}

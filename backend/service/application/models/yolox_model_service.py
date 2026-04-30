@@ -20,7 +20,14 @@ from backend.service.domain.files.yolox_file_types import (
     YOLOX_TENSORRT_ENGINE_FILE,
     YOLOX_TRAINING_METRICS_FILE,
 )
-from backend.service.domain.models.model_records import Model, ModelBuild, ModelVersion
+from backend.service.domain.models.model_records import (
+    PLATFORM_BASE_MODEL_SCOPE,
+    PROJECT_MODEL_SCOPE,
+    Model,
+    ModelBuild,
+    ModelScopeKind,
+    ModelVersion,
+)
 from backend.service.domain.models.yolox_model_spec import DEFAULT_YOLOX_MODEL_SPEC, YoloXModelSpec
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
@@ -31,21 +38,21 @@ class YoloXPretrainedRegistrationRequest:
     """描述一次预置预训练模型登记请求。
 
     字段：
-    - project_id：所属项目 id。
     - model_name：登记到平台的模型名。
     - storage_uri：预训练模型在磁盘或对象存储中的现成位置。
+    - model_version_id：可选的稳定 ModelVersion id。
+    - checkpoint_file_id：可选的稳定 checkpoint 文件 id。
     - model_scale：模型 scale。
     - task_type：任务类型。
-    - labels_file_id：类别映射文件 id。
     - metadata：附加元数据。
     """
 
-    project_id: str
     model_name: str
     storage_uri: str
     model_scale: str
+    model_version_id: str | None = None
+    checkpoint_file_id: str | None = None
     task_type: str = "detection"
-    labels_file_id: str | None = None
     metadata: dict[str, object] = field(default_factory=dict)
 
 
@@ -59,6 +66,7 @@ class YoloXTrainingOutputRegistration:
     - model_name：登记到平台的模型名。
     - model_scale：模型 scale。
     - dataset_version_id：训练使用的 DatasetVersion id。
+    - parent_version_id：warm start 或 lineage 对应的父 ModelVersion id。
     - checkpoint_file_id：checkpoint 文件 id。
     - checkpoint_file_uri：checkpoint 文件存储 URI。
     - labels_file_id：标签文件 id。
@@ -74,6 +82,7 @@ class YoloXTrainingOutputRegistration:
     model_scale: str
     dataset_version_id: str
     checkpoint_file_id: str
+    parent_version_id: str | None = None
     checkpoint_file_uri: str | None = None
     labels_file_id: str | None = None
     labels_file_uri: str | None = None
@@ -105,6 +114,190 @@ class YoloXBuildRegistration:
     runtime_profile_id: str | None = None
     conversion_task_id: str | None = None
     metadata: dict[str, object] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class PlatformBaseModelFileView:
+    """描述平台基础模型查询结果中的文件条目。
+
+    字段：
+    - file_id：文件记录 id。
+    - project_id：所属 Project id；平台基础模型文件时为空。
+    - scope_kind：文件所属模型作用域类型。
+    - model_id：所属 Model id。
+    - model_version_id：所属 ModelVersion id。
+    - model_build_id：所属 ModelBuild id。
+    - file_type：文件类型。
+    - logical_name：文件逻辑名。
+    - storage_uri：文件存储 URI。
+    - metadata：附加元数据。
+    """
+
+    file_id: str
+    project_id: str | None
+    scope_kind: ModelScopeKind
+    model_id: str
+    model_version_id: str | None
+    model_build_id: str | None
+    file_type: str
+    logical_name: str
+    storage_uri: str
+    metadata: dict[str, object] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class PlatformBaseModelVersionSummaryView:
+    """描述平台基础模型列表中的版本摘要。
+
+    字段：
+    - model_version_id：ModelVersion id。
+    - source_kind：版本来源类型。
+    - dataset_version_id：关联 DatasetVersion id。
+    - training_task_id：关联训练任务 id。
+    - parent_version_id：父 ModelVersion id。
+    - file_ids：关联文件 id 列表。
+    - metadata：附加元数据。
+    - checkpoint_file_id：checkpoint 文件 id。
+    - checkpoint_storage_uri：checkpoint 存储 URI。
+    - catalog_manifest_object_key：预训练目录 manifest object key。
+    """
+
+    model_version_id: str
+    source_kind: str
+    dataset_version_id: str | None
+    training_task_id: str | None
+    parent_version_id: str | None
+    file_ids: tuple[str, ...]
+    metadata: dict[str, object] = field(default_factory=dict)
+    checkpoint_file_id: str | None = None
+    checkpoint_storage_uri: str | None = None
+    catalog_manifest_object_key: str | None = None
+
+
+@dataclass(frozen=True)
+class PlatformBaseModelVersionDetailView:
+    """描述平台基础模型详情中的版本条目。
+
+    字段：
+    - model_version_id：ModelVersion id。
+    - source_kind：版本来源类型。
+    - dataset_version_id：关联 DatasetVersion id。
+    - training_task_id：关联训练任务 id。
+    - parent_version_id：父 ModelVersion id。
+    - file_ids：关联文件 id 列表。
+    - metadata：附加元数据。
+    - checkpoint_file_id：checkpoint 文件 id。
+    - checkpoint_storage_uri：checkpoint 存储 URI。
+    - catalog_manifest_object_key：预训练目录 manifest object key。
+    - files：当前版本关联的文件明细。
+    """
+
+    model_version_id: str
+    source_kind: str
+    dataset_version_id: str | None
+    training_task_id: str | None
+    parent_version_id: str | None
+    file_ids: tuple[str, ...]
+    metadata: dict[str, object] = field(default_factory=dict)
+    checkpoint_file_id: str | None = None
+    checkpoint_storage_uri: str | None = None
+    catalog_manifest_object_key: str | None = None
+    files: tuple[PlatformBaseModelFileView, ...] = ()
+
+
+@dataclass(frozen=True)
+class PlatformBaseModelBuildView:
+    """描述平台基础模型详情中的构建条目。
+
+    字段：
+    - model_build_id：ModelBuild id。
+    - source_model_version_id：来源 ModelVersion id。
+    - build_format：构建格式。
+    - runtime_profile_id：目标 RuntimeProfile id。
+    - conversion_task_id：来源转换任务 id。
+    - file_ids：关联文件 id 列表。
+    - metadata：附加元数据。
+    - files：当前构建关联的文件明细。
+    """
+
+    model_build_id: str
+    source_model_version_id: str
+    build_format: str
+    runtime_profile_id: str | None
+    conversion_task_id: str | None
+    file_ids: tuple[str, ...]
+    metadata: dict[str, object] = field(default_factory=dict)
+    files: tuple[PlatformBaseModelFileView, ...] = ()
+
+
+@dataclass(frozen=True)
+class PlatformBaseModelSummaryView:
+    """描述平台基础模型列表项。
+
+    字段：
+    - model_id：Model id。
+    - project_id：所属 Project id；平台基础模型时为空。
+    - scope_kind：模型作用域类型。
+    - model_name：模型名。
+    - model_type：模型类型名称。
+    - task_type：任务类型。
+    - model_scale：模型 scale。
+    - labels_file_id：标签文件 id。
+    - metadata：附加元数据。
+    - version_count：关联 ModelVersion 数量。
+    - build_count：关联 ModelBuild 数量。
+    - available_versions：可用于 warm start 的版本摘要列表。
+    """
+
+    model_id: str
+    project_id: str | None
+    scope_kind: ModelScopeKind
+    model_name: str
+    model_type: str
+    task_type: str
+    model_scale: str
+    labels_file_id: str | None
+    metadata: dict[str, object] = field(default_factory=dict)
+    version_count: int = 0
+    build_count: int = 0
+    available_versions: tuple[PlatformBaseModelVersionSummaryView, ...] = ()
+
+
+@dataclass(frozen=True)
+class PlatformBaseModelDetailView:
+    """描述平台基础模型详情。
+
+    字段：
+    - model_id：Model id。
+    - project_id：所属 Project id；平台基础模型时为空。
+    - scope_kind：模型作用域类型。
+    - model_name：模型名。
+    - model_type：模型类型名称。
+    - task_type：任务类型。
+    - model_scale：模型 scale。
+    - labels_file_id：标签文件 id。
+    - metadata：附加元数据。
+    - version_count：关联 ModelVersion 数量。
+    - build_count：关联 ModelBuild 数量。
+    - available_versions：可用于 warm start 的版本摘要列表。
+    - versions：完整版本明细。
+    - builds：完整构建明细。
+    """
+
+    model_id: str
+    project_id: str | None
+    scope_kind: ModelScopeKind
+    model_name: str
+    model_type: str
+    task_type: str
+    model_scale: str
+    labels_file_id: str | None
+    metadata: dict[str, object] = field(default_factory=dict)
+    version_count: int = 0
+    build_count: int = 0
+    available_versions: tuple[PlatformBaseModelVersionSummaryView, ...] = ()
+    versions: tuple[PlatformBaseModelVersionDetailView, ...] = ()
+    builds: tuple[PlatformBaseModelBuildView, ...] = ()
 
 
 class YoloXModelService(Protocol):
@@ -176,26 +369,29 @@ class SqlAlchemyYoloXModelService:
         """
 
         with self._open_unit_of_work() as unit_of_work:
+            model_version_id = request.model_version_id or self._next_id("model-version")
+            checkpoint_file_id = request.checkpoint_file_id or self._next_id("model-file")
+            pretrained_metadata = self._build_pretrained_metadata(request.metadata)
             model = self._ensure_model(
                 unit_of_work=unit_of_work,
-                project_id=request.project_id,
+                project_id=None,
+                scope_kind=PLATFORM_BASE_MODEL_SCOPE,
                 model_name=request.model_name,
                 model_scale=request.model_scale,
                 task_type=request.task_type,
-                labels_file_id=request.labels_file_id,
-                metadata=request.metadata,
+                labels_file_id=None,
+                metadata=pretrained_metadata,
             )
-            model_version_id = self._next_id("model-version")
             checkpoint_file = self._create_model_file(
                 unit_of_work=unit_of_work,
-                file_id=self._next_id("model-file"),
-                project_id=request.project_id,
+                file_id=checkpoint_file_id,
+                project_id=None,
+                scope_kind=PLATFORM_BASE_MODEL_SCOPE,
                 model_id=model.model_id,
                 model_version_id=model_version_id,
                 file_type=YOLOX_CHECKPOINT_FILE,
                 logical_name=build_default_file_name(
                     YoloXFileNamingContext(
-                        project_id=request.project_id,
                         model_name=request.model_name,
                         model_scale=request.model_scale,
                         source_version=model_version_id,
@@ -211,7 +407,7 @@ class SqlAlchemyYoloXModelService:
                 model_id=model.model_id,
                 source_kind="pretrained-reference",
                 file_ids=(checkpoint_file.file_id,),
-                metadata=request.metadata,
+                metadata=pretrained_metadata,
             )
             unit_of_work.models.save_model_version(model_version)
             unit_of_work.commit()
@@ -232,6 +428,7 @@ class SqlAlchemyYoloXModelService:
             model = self._ensure_model(
                 unit_of_work=unit_of_work,
                 project_id=request.project_id,
+                scope_kind=PROJECT_MODEL_SCOPE,
                 model_name=request.model_name,
                 model_scale=request.model_scale,
                 task_type="detection",
@@ -245,6 +442,7 @@ class SqlAlchemyYoloXModelService:
                 model_name=request.model_name,
                 model_scale=request.model_scale,
                 project_id=request.project_id,
+                scope_kind=PROJECT_MODEL_SCOPE,
                 model_version_id=model_version_id,
                 checkpoint_file_id=request.checkpoint_file_id,
                 checkpoint_file_uri=request.checkpoint_file_uri,
@@ -259,6 +457,7 @@ class SqlAlchemyYoloXModelService:
                 source_kind="training-output",
                 dataset_version_id=request.dataset_version_id,
                 training_task_id=request.training_task_id,
+                parent_version_id=request.parent_version_id,
                 file_ids=file_ids,
                 metadata=request.metadata,
             )
@@ -290,13 +489,13 @@ class SqlAlchemyYoloXModelService:
             build_file = self._create_model_file(
                 unit_of_work=unit_of_work,
                 file_id=request.build_file_id,
-                project_id=request.project_id,
+                project_id=model.project_id,
+                scope_kind=model.scope_kind,
                 model_id=model.model_id,
                 model_build_id=model_build_id,
                 file_type=self._resolve_build_file_type(request.build_format),
                 logical_name=build_default_file_name(
                     YoloXFileNamingContext(
-                        project_id=request.project_id,
                         model_name=model.model_name,
                         model_scale=model.model_scale,
                         source_version=source_version.model_version_id,
@@ -396,11 +595,103 @@ class SqlAlchemyYoloXModelService:
                 model_build_id=model_build_id,
             )
 
+    def list_platform_base_models(
+        self,
+        *,
+        model_name: str | None = None,
+        model_scale: str | None = None,
+        task_type: str | None = None,
+        limit: int = 100,
+    ) -> tuple[PlatformBaseModelSummaryView, ...]:
+        """列出平台基础模型摘要。
+
+        参数：
+        - model_name：模型名筛选；为空时不过滤。
+        - model_scale：模型 scale 筛选；为空时不过滤。
+        - task_type：任务类型筛选；为空时不过滤。
+        - limit：最大返回数量。
+
+        返回：
+        - 平台基础模型摘要列表。
+        """
+
+        with self._open_unit_of_work() as unit_of_work:
+            models = unit_of_work.models.list_models(
+                scope_kind=PLATFORM_BASE_MODEL_SCOPE,
+                model_name=model_name,
+                model_scale=model_scale,
+                task_type=task_type,
+                limit=limit,
+            )
+            return tuple(
+                self._build_platform_base_model_summary(
+                    unit_of_work=unit_of_work,
+                    model=model,
+                )
+                for model in models
+            )
+
+    def get_platform_base_model_detail(self, model_id: str) -> PlatformBaseModelDetailView | None:
+        """按 id 读取单个平台基础模型详情。
+
+        参数：
+        - model_id：目标 Model id。
+
+        返回：
+        - 平台基础模型详情；不存在或不是平台基础模型时返回 None。
+        """
+
+        with self._open_unit_of_work() as unit_of_work:
+            model = unit_of_work.models.get_model(model_id)
+            if model is None or model.scope_kind != PLATFORM_BASE_MODEL_SCOPE:
+                return None
+
+            versions = unit_of_work.models.list_model_versions(model.model_id)
+            builds = unit_of_work.models.list_model_builds(model.model_id)
+            available_versions = tuple(
+                self._build_platform_base_model_version_summary(
+                    unit_of_work=unit_of_work,
+                    model_version=model_version,
+                )
+                for model_version in versions
+            )
+            version_details = tuple(
+                self._build_platform_base_model_version_detail(
+                    unit_of_work=unit_of_work,
+                    model_version=model_version,
+                )
+                for model_version in versions
+            )
+            build_details = tuple(
+                self._build_platform_base_model_build_view(
+                    unit_of_work=unit_of_work,
+                    model_build=model_build,
+                )
+                for model_build in builds
+            )
+            return PlatformBaseModelDetailView(
+                model_id=model.model_id,
+                project_id=model.project_id,
+                scope_kind=model.scope_kind,
+                model_name=model.model_name,
+                model_type=model.model_type,
+                task_type=model.task_type,
+                model_scale=model.model_scale,
+                labels_file_id=model.labels_file_id,
+                metadata=dict(model.metadata),
+                version_count=len(versions),
+                build_count=len(builds),
+                available_versions=available_versions,
+                versions=version_details,
+                builds=build_details,
+            )
+
     def _ensure_model(
         self,
         *,
         unit_of_work: SqlAlchemyUnitOfWork,
-        project_id: str,
+        project_id: str | None,
+        scope_kind: ModelScopeKind,
         model_name: str,
         model_scale: str,
         task_type: str,
@@ -411,7 +702,8 @@ class SqlAlchemyYoloXModelService:
 
         参数：
         - unit_of_work：当前请求级 Unit of Work。
-        - project_id：所属项目 id。
+    - project_id：所属项目 id；平台基础模型时为空。
+        - scope_kind：模型作用域类型。
         - model_name：模型名。
         - model_scale：模型 scale。
         - task_type：任务类型。
@@ -424,6 +716,7 @@ class SqlAlchemyYoloXModelService:
 
         model = unit_of_work.models.find_model(
             project_id=project_id,
+            scope_kind=scope_kind,
             model_name=model_name,
             model_scale=model_scale,
             task_type=task_type,
@@ -434,6 +727,7 @@ class SqlAlchemyYoloXModelService:
         model = Model(
             model_id=self._next_id("model"),
             project_id=project_id,
+            scope_kind=scope_kind,
             model_name=model_name,
             model_type=self.spec.model_name,
             task_type=task_type,
@@ -445,6 +739,170 @@ class SqlAlchemyYoloXModelService:
 
         return model
 
+    def _build_pretrained_metadata(self, metadata: dict[str, object]) -> dict[str, object]:
+        """构建平台级预训练模型登记元数据。
+
+        参数：
+        - metadata：调用方传入的附加元数据。
+
+        返回：
+        - 已补齐平台级预训练标记的元数据。
+        """
+
+        pretrained_metadata = dict(metadata)
+        pretrained_metadata.setdefault("source_kind", "pretrained-reference")
+        return pretrained_metadata
+
+    def _build_platform_base_model_summary(
+        self,
+        *,
+        unit_of_work: SqlAlchemyUnitOfWork,
+        model: Model,
+    ) -> PlatformBaseModelSummaryView:
+        """构建平台基础模型摘要视图。"""
+
+        versions = unit_of_work.models.list_model_versions(model.model_id)
+        builds = unit_of_work.models.list_model_builds(model.model_id)
+        available_versions = tuple(
+            self._build_platform_base_model_version_summary(
+                unit_of_work=unit_of_work,
+                model_version=model_version,
+            )
+            for model_version in versions
+        )
+        return PlatformBaseModelSummaryView(
+            model_id=model.model_id,
+            project_id=model.project_id,
+            scope_kind=model.scope_kind,
+            model_name=model.model_name,
+            model_type=model.model_type,
+            task_type=model.task_type,
+            model_scale=model.model_scale,
+            labels_file_id=model.labels_file_id,
+            metadata=dict(model.metadata),
+            version_count=len(versions),
+            build_count=len(builds),
+            available_versions=available_versions,
+        )
+
+    def _build_platform_base_model_version_summary(
+        self,
+        *,
+        unit_of_work: SqlAlchemyUnitOfWork,
+        model_version: ModelVersion,
+    ) -> PlatformBaseModelVersionSummaryView:
+        """构建平台基础模型版本摘要视图。"""
+
+        model_files = unit_of_work.model_files.list_model_files(
+            model_version_id=model_version.model_version_id,
+        )
+        checkpoint_file = self._find_checkpoint_file(model_files)
+        catalog_manifest_object_key = model_version.metadata.get("catalog_manifest_object_key")
+        return PlatformBaseModelVersionSummaryView(
+            model_version_id=model_version.model_version_id,
+            source_kind=model_version.source_kind,
+            dataset_version_id=model_version.dataset_version_id,
+            training_task_id=model_version.training_task_id,
+            parent_version_id=model_version.parent_version_id,
+            file_ids=model_version.file_ids,
+            metadata=dict(model_version.metadata),
+            checkpoint_file_id=(checkpoint_file.file_id if checkpoint_file is not None else None),
+            checkpoint_storage_uri=(
+                checkpoint_file.storage_uri if checkpoint_file is not None else None
+            ),
+            catalog_manifest_object_key=(
+                catalog_manifest_object_key
+                if isinstance(catalog_manifest_object_key, str)
+                else None
+            ),
+        )
+
+    def _build_platform_base_model_version_detail(
+        self,
+        *,
+        unit_of_work: SqlAlchemyUnitOfWork,
+        model_version: ModelVersion,
+    ) -> PlatformBaseModelVersionDetailView:
+        """构建平台基础模型版本详情视图。"""
+
+        model_files = unit_of_work.model_files.list_model_files(
+            model_version_id=model_version.model_version_id,
+        )
+        checkpoint_file = self._find_checkpoint_file(model_files)
+        catalog_manifest_object_key = model_version.metadata.get("catalog_manifest_object_key")
+        return PlatformBaseModelVersionDetailView(
+            model_version_id=model_version.model_version_id,
+            source_kind=model_version.source_kind,
+            dataset_version_id=model_version.dataset_version_id,
+            training_task_id=model_version.training_task_id,
+            parent_version_id=model_version.parent_version_id,
+            file_ids=model_version.file_ids,
+            metadata=dict(model_version.metadata),
+            checkpoint_file_id=(checkpoint_file.file_id if checkpoint_file is not None else None),
+            checkpoint_storage_uri=(
+                checkpoint_file.storage_uri if checkpoint_file is not None else None
+            ),
+            catalog_manifest_object_key=(
+                catalog_manifest_object_key
+                if isinstance(catalog_manifest_object_key, str)
+                else None
+            ),
+            files=tuple(self._build_platform_base_model_file_view(model_file) for model_file in model_files),
+        )
+
+    def _build_platform_base_model_build_view(
+        self,
+        *,
+        unit_of_work: SqlAlchemyUnitOfWork,
+        model_build: ModelBuild,
+    ) -> PlatformBaseModelBuildView:
+        """构建平台基础模型构建详情视图。"""
+
+        model_files = unit_of_work.model_files.list_model_files(
+            model_build_id=model_build.model_build_id,
+        )
+        return PlatformBaseModelBuildView(
+            model_build_id=model_build.model_build_id,
+            source_model_version_id=model_build.source_model_version_id,
+            build_format=model_build.build_format,
+            runtime_profile_id=model_build.runtime_profile_id,
+            conversion_task_id=model_build.conversion_task_id,
+            file_ids=model_build.file_ids,
+            metadata=dict(model_build.metadata),
+            files=tuple(self._build_platform_base_model_file_view(model_file) for model_file in model_files),
+        )
+
+    def _build_platform_base_model_file_view(
+        self,
+        model_file: ModelFile,
+    ) -> PlatformBaseModelFileView:
+        """构建平台基础模型文件视图。"""
+
+        return PlatformBaseModelFileView(
+            file_id=model_file.file_id,
+            project_id=model_file.project_id,
+            scope_kind=model_file.scope_kind,
+            model_id=model_file.model_id,
+            model_version_id=model_file.model_version_id,
+            model_build_id=model_file.model_build_id,
+            file_type=model_file.file_type,
+            logical_name=model_file.logical_name,
+            storage_uri=model_file.storage_uri,
+            metadata=dict(model_file.metadata),
+        )
+
+    def _find_checkpoint_file(
+        self,
+        model_files: tuple[ModelFile, ...],
+    ) -> ModelFile | None:
+        """在文件列表中查找 checkpoint 文件。"""
+
+        for model_file in model_files:
+            if model_file.file_type == YOLOX_CHECKPOINT_FILE:
+                return model_file
+
+        return None
+
     def _register_training_files(
         self,
         *,
@@ -453,6 +911,7 @@ class SqlAlchemyYoloXModelService:
         model_name: str,
         model_scale: str,
         project_id: str,
+        scope_kind: ModelScopeKind,
         model_version_id: str,
         checkpoint_file_id: str,
         checkpoint_file_uri: str | None,
@@ -468,6 +927,7 @@ class SqlAlchemyYoloXModelService:
         - model_name：模型名。
         - model_scale：模型 scale。
         - project_id：所属项目 id。
+        - scope_kind：文件所属模型作用域类型。
         - model_version_id：目标 ModelVersion id。
         - checkpoint_file_id：checkpoint 文件 id。
         - checkpoint_file_uri：checkpoint 文件存储 URI。
@@ -487,7 +947,6 @@ class SqlAlchemyYoloXModelService:
                 checkpoint_file_uri or f"registered://{checkpoint_file_id}",
                 build_default_file_name(
                     YoloXFileNamingContext(
-                        project_id=project_id,
                         model_name=model_name,
                         model_scale=model_scale,
                         source_version=model_version_id,
@@ -525,6 +984,7 @@ class SqlAlchemyYoloXModelService:
                 unit_of_work=unit_of_work,
                 file_id=file_id,
                 project_id=project_id,
+                scope_kind=scope_kind,
                 model_id=model_id,
                 model_version_id=model_version_id,
                 file_type=file_type,
@@ -540,7 +1000,8 @@ class SqlAlchemyYoloXModelService:
         *,
         unit_of_work: SqlAlchemyUnitOfWork,
         file_id: str,
-        project_id: str,
+        project_id: str | None,
+        scope_kind: ModelScopeKind,
         model_id: str,
         file_type: str,
         logical_name: str,
@@ -553,7 +1014,8 @@ class SqlAlchemyYoloXModelService:
 
         参数：
         - file_id：文件 id。
-        - project_id：所属项目 id。
+    - project_id：所属项目 id；平台基础模型文件时为空。
+        - scope_kind：文件所属模型作用域类型。
         - model_id：所属 Model id。
         - file_type：文件类型。
         - logical_name：文件逻辑名。
@@ -573,6 +1035,7 @@ class SqlAlchemyYoloXModelService:
         model_file = ModelFile(
             file_id=file_id,
             project_id=project_id,
+            scope_kind=scope_kind,
             model_id=model_id,
             model_version_id=model_version_id,
             model_build_id=model_build_id,

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from backend.service.domain.models.model_records import ModelScopeKind, PROJECT_MODEL_SCOPE
+
 
 @dataclass(frozen=True)
 class ModelFile:
@@ -11,7 +13,8 @@ class ModelFile:
 
     字段：
     - file_id：文件记录 id。
-    - project_id：所属项目 id。
+    - project_id：所属项目 id；平台基础模型文件时为空。
+    - scope_kind：文件所属模型作用域类型。
     - model_id：所属 Model id。
     - model_version_id：所属 ModelVersion id。
     - model_build_id：所属 ModelBuild id。
@@ -22,11 +25,12 @@ class ModelFile:
     """
 
     file_id: str
-    project_id: str
+    project_id: str | None
     model_id: str
     file_type: str
     logical_name: str
     storage_uri: str
+    scope_kind: ModelScopeKind = PROJECT_MODEL_SCOPE
     model_version_id: str | None = None
     model_build_id: str | None = None
     metadata: dict[str, object] = field(default_factory=dict)

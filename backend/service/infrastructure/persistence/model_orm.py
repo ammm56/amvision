@@ -16,7 +16,8 @@ class ModelRecord(Base):
     __tablename__ = "models"
 
     model_id: Mapped[str] = mapped_column(String(128), primary_key=True)
-    project_id: Mapped[str] = mapped_column(String(128), index=True)
+    project_id: Mapped[str | None] = mapped_column(String(128), index=True, nullable=True)
+    scope_kind: Mapped[str] = mapped_column(String(32), nullable=False)
     model_name: Mapped[str] = mapped_column(String(128), index=True)
     model_type: Mapped[str] = mapped_column(String(128))
     task_type: Mapped[str] = mapped_column(String(64))

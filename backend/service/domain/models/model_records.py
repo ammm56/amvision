@@ -8,6 +8,10 @@ from typing import Literal
 
 # 最小支持的模型版本来源类型。
 ModelVersionSourceKind = Literal["pretrained-reference", "training-output"]
+ModelScopeKind = Literal["project", "platform-base"]
+
+PROJECT_MODEL_SCOPE: ModelScopeKind = "project"
+PLATFORM_BASE_MODEL_SCOPE: ModelScopeKind = "platform-base"
 
 
 @dataclass(frozen=True)
@@ -16,7 +20,8 @@ class Model:
 
     字段：
     - model_id：Model id。
-    - project_id：所属项目 id。
+    - project_id：所属项目 id；平台基础模型时为空。
+    - scope_kind：模型作用域类型，显式区分 Project 内 Model 与平台基础模型。
     - model_name：模型名。
     - model_type：模型类型名称。
     - task_type：任务类型。
@@ -26,11 +31,12 @@ class Model:
     """
 
     model_id: str
-    project_id: str
+    project_id: str | None
     model_name: str
     model_type: str
     task_type: str
     model_scale: str
+    scope_kind: ModelScopeKind = PROJECT_MODEL_SCOPE
     labels_file_id: str | None = None
     metadata: dict[str, object] = field(default_factory=dict)
 

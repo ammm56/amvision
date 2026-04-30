@@ -75,7 +75,7 @@
                 "training-tasks"
               ]
             },
-            "description": "以 DatasetExport 为唯一输入边界创建 YOLOX 训练任务。当前请求体已经同步 model_scale、gpu_count、precision、batch_size、max_epochs 和 input_size；precision 字段可写 fp8、fp16、fp32，但当前最小真实训练执行器实际只支持 fp16、fp32。"
+            "description": "以 DatasetExport 为唯一输入边界创建 YOLOX 训练任务。当前请求体已经同步 model_scale、gpu_count、precision、batch_size、max_epochs、input_size 和 warm_start_model_version_id；precision 字段可写 fp8、fp16、fp32，但当前最小真实训练执行器实际只支持 fp16、fp32。warm_start_model_version_id 表示本次训练要从哪个已有 ModelVersion 对应的 checkpoint 开始训练，而不是从随机初始化开始；来源既可以是当前 Project 自己已有的历史训练产出，也可以是平台基础模型目录中登记的 pretrained-reference ModelVersion。若需要选择平台基础模型来源，可先查询 /api/v1/models/platform-base 或 /api/v1/models/platform-base/{model_id}，再把 available_versions[].model_version_id 填入 warm_start_model_version_id。"
           },
           "response": []
         },

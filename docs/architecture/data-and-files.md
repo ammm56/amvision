@@ -36,7 +36,7 @@
 
 ### 模型对象
 
-- Model：逻辑模型条目，用来放同一条模型线的身份、业务标签和管理边界
+- Model：逻辑模型条目，用来放同一条模型线的身份、业务标签和管理边界；当前显式区分 Project 内 Model 与平台基础模型
 - ModelVersion：模型的源版本，可来自预置预训练模型登记或训练产出
 - ModelBuild：面向特定运行时、硬件平台、精度或部署形态的派生 build，通常由转换任务产生
 
@@ -76,10 +76,10 @@
 
 ### 预置预训练模型登记到模型注册
 
-- 开发阶段已放到磁盘中的预训练模型，应先登记为 Project 下的一个 Model
+- 开发阶段已放到磁盘中的预训练模型，应先登记为平台基础模型，而不是任何单个 Project 下的业务模型
 - 首次登记形成一个 ModelVersion，source kind 标记为 pretrained-reference
 - 预训练模型原始权重、配置和来源说明通过 ModelFile 与 FileRef 挂接，默认直接引用现成磁盘路径
-- 后续微调训练可选择引用该 ModelVersion 作为 warm start 来源
+- 后续任意 Project 的微调训练都可选择引用该 ModelVersion 作为 warm start 来源
 
 ### 模型到转换
 
@@ -242,6 +242,7 @@
 ### Model、ModelVersion 与 ModelBuild
 
 - Model 是逻辑模型容器，不直接等价于某个具体权重文件
+- Model 当前显式分为两类：Project 内 Model 和平台基础模型；前者服务于某个具体项目训练线，后者承载跨项目共享的预训练底座
 - ModelVersion 是源模型版本，表示一次明确可追踪的模型状态
 - 预置预训练模型登记后应先形成 ModelVersion，而不是作为游离文件直接给任务使用
 - 训练产出应登记为新的 ModelVersion，并保留训练来源、父版本和输入数据版本关系
@@ -501,15 +502,48 @@ data/files/projects/{project_id}/datasets/{dataset_id}/versions/{dataset_version
 
 ### 预训练模型放哪里
 
-- 预训练模型默认在开发阶段按模型目录预置到磁盘，不通过上传接口进入平台
-- 平台只登记这些现成文件的引用关系，形成 Model + ModelVersion，source kind 标记为 pretrained-reference
-- 原始权重、配置和许可说明挂到 ModelFile 与 FileRef，物理内容默认保持在预置目录或本地运行时目录中
+- 当前默认物理根目录是 data/files/models/pretrained/yolox
+- 推荐按 models/pretrained/yolox/{model_scale}/{entry_name} 分层，每个条目目录至少包含 manifest.json 和 checkpoints/{checkpoint_file}.pth
+- 开发阶段当前直接以这套规范目录作为唯一物理落盘位置，不再保留根目录平铺权重副本
+- 可选附带 README.md、LICENSE、来源说明和下载说明等辅助文件，但这些文件不参与训练标签语义
+- manifest.json 当前至少应声明 model_name、model_scale、model_version_id、checkpoint_path；checkpoint_file_id、task_type、metadata 可选
+- backend-service 启动时会自动扫描上述目录下的 manifest.json，并把每条记录登记为一个平台级基础 Model + ModelVersion，source kind 标记为 pretrained-reference
+- 预训练目录不绑定具体 Project；登记后的平台基础模型 project_id 为空，只用 scope_kind=platform-base 表达作用域
+- warm_start_model_version_id 直接使用 manifest.json 中声明的 model_version_id；训练阶段会沿 ModelVersion -> ModelFile -> checkpoint 链路加载权重
+
+#### 推荐目录示例
+
+```text
+data/files/models/pretrained/yolox/
+	nano/
+		default/
+			manifest.json
+			checkpoints/
+				yolox_nano.pth
+			README.md
+```
+
+#### manifest.json 最小示例
+
+```json
+{
+	"model_name": "yolox",
+	"model_scale": "nano",
+	"model_version_id": "model-version-pretrained-yolox-nano",
+	"checkpoint_path": "checkpoints/yolox_nano.pth",
+	"metadata": {
+		"catalog_name": "default",
+		"source": "local-pretrained"
+	}
+}
+```
 
 ### 训练后模型放哪里
 
 - 训练完成后先登记为新的 ModelVersion，不直接覆盖预训练版本
-- checkpoint、最佳权重、训练配置、指标报告等以 ModelFile 形式挂接
-- 物理内容放在 models/{model_id}/versions/{model_version_id}/checkpoints、configs、reports 下
+- 当前真实训练产物先写到 data/files/task-runs/training/{task_id}/artifacts
+- 当前最小实现会产出 checkpoints/best_ckpt.pth、checkpoints/latest_ckpt.pth、reports/train-metrics.json、reports/validation-metrics.json、training-summary.json 和 labels.txt
+- ModelVersion 侧当前登记 checkpoint 和 labels 的 ModelFile，并通过 training-summary.json 继续引用完整 artifact 目录
 
 ### 转换后的模型放哪里
 

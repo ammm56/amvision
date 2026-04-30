@@ -9,7 +9,10 @@ import numpy as np
 
 from backend.contracts.datasets.exports.coco_detection_export import COCO_DETECTION_DATASET_FORMAT
 from backend.queue import LocalFileQueueBackend, LocalFileQueueSettings
-from backend.service.application.models.yolox_model_service import SqlAlchemyYoloXModelService
+from backend.service.application.models.yolox_model_service import (
+    SqlAlchemyYoloXModelService,
+    YoloXPretrainedRegistrationRequest,
+)
 from backend.service.application.models.yolox_training_service import SqlAlchemyYoloXTrainingTaskService, YoloXTrainingTaskRequest
 from backend.service.application.tasks.task_service import SqlAlchemyTaskService
 from backend.service.domain.datasets.dataset_export import DatasetExport
@@ -81,9 +84,11 @@ def test_yolox_training_worker_advances_task_from_queued_to_succeeded(tmp_path: 
         assert completed_task.task.result["summary"]["implementation_mode"] == "yolox-detection-minimal"
         assert completed_task.task.result["summary"]["precision"] == "fp32"
         assert completed_task.task.result["summary"]["validation"]["enabled"] is True
+        assert completed_task.task.result["summary"]["warm_start"]["enabled"] is False
         assert completed_task.task.result["summary"]["model_version_id"]
         assert any(event.message == "yolox training started" for event in completed_task.events)
         assert any(event.message == "yolox training completed" for event in completed_task.events)
+        assert any(event.event_type == "progress" for event in completed_task.events)
 
         assert dataset_storage.resolve(completed_task.task.result["checkpoint_object_key"]).is_file()
         assert dataset_storage.resolve(completed_task.task.result["latest_checkpoint_object_key"]).is_file()
@@ -104,6 +109,97 @@ def test_yolox_training_worker_advances_task_from_queued_to_succeeded(tmp_path: 
         )
 
         assert worker.run_once() is False
+    finally:
+        session_factory.engine.dispose()
+
+
+def test_yolox_training_worker_can_warm_start_from_existing_model_version(tmp_path: Path) -> None:
+    """验证训练 worker 可以使用平台级预训练 ModelVersion 做 warm start。"""
+
+    session_factory, dataset_storage, queue_backend = _create_worker_runtime(tmp_path)
+    _seed_completed_dataset_export(
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+        dataset_export_id="dataset-export-worker-warm-start-1",
+        manifest_object_key=(
+            "projects/project-1/datasets/dataset-1/exports/"
+            "dataset-export-worker-warm-start-1/manifest.json"
+        ),
+    )
+    service = SqlAlchemyYoloXTrainingTaskService(
+        session_factory=session_factory,
+        queue_backend=queue_backend,
+    )
+    worker = YoloXTrainingQueueWorker(
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+        queue_backend=queue_backend,
+        worker_id="test-yolox-training-worker",
+    )
+    try:
+        first_submission = service.submit_training_task(
+            YoloXTrainingTaskRequest(
+                project_id="project-1",
+                dataset_export_id="dataset-export-worker-warm-start-1",
+                recipe_id="yolox-default",
+                model_scale="nano",
+                output_model_name="yolox-s-bolt-base",
+                max_epochs=1,
+                batch_size=1,
+                precision="fp32",
+                input_size=(64, 64),
+            ),
+            created_by="user-1",
+        )
+        assert worker.run_once() is True
+        first_completed_task = SqlAlchemyTaskService(session_factory).get_task(
+            first_submission.task_id,
+            include_events=True,
+        )
+        model_service = SqlAlchemyYoloXModelService(session_factory=session_factory)
+        warm_start_model_version_id = model_service.register_pretrained(
+            YoloXPretrainedRegistrationRequest(
+                model_name="yolox",
+                storage_uri=first_completed_task.task.result["checkpoint_object_key"],
+                model_scale="nano",
+                model_version_id="model-version-platform-pretrained-nano",
+                checkpoint_file_id="model-file-platform-pretrained-nano-checkpoint",
+                metadata={"catalog_name": "generated-from-training"},
+            )
+        )
+
+        second_submission = service.submit_training_task(
+            YoloXTrainingTaskRequest(
+                project_id="project-1",
+                dataset_export_id="dataset-export-worker-warm-start-1",
+                recipe_id="yolox-default",
+                model_scale="nano",
+                output_model_name="yolox-s-bolt-finetuned",
+                warm_start_model_version_id=warm_start_model_version_id,
+                max_epochs=1,
+                batch_size=1,
+                precision="fp32",
+                input_size=(64, 64),
+            ),
+            created_by="user-1",
+        )
+
+        assert worker.run_once() is True
+
+        second_completed_task = SqlAlchemyTaskService(session_factory).get_task(
+            second_submission.task_id,
+            include_events=True,
+        )
+        warm_start_summary = second_completed_task.task.result["summary"]["warm_start"]
+        assert warm_start_summary["enabled"] is True
+        assert warm_start_summary["source_model_version_id"] == warm_start_model_version_id
+        assert warm_start_summary["source_kind"] == "pretrained-reference"
+        assert warm_start_summary["loaded_parameter_count"] > 0
+
+        second_model_version_id = second_completed_task.task.result["summary"]["model_version_id"]
+        second_model_version = model_service.get_model_version(second_model_version_id)
+        assert second_model_version is not None
+        assert second_model_version.parent_version_id == warm_start_model_version_id
     finally:
         session_factory.engine.dispose()
 

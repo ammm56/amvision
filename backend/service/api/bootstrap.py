@@ -9,6 +9,7 @@ from fastapi import FastAPI
 from backend.bootstrap.core import BootstrapStep, RuntimeBootstrap
 from backend.queue import LocalFileQueueBackend
 from backend.service.api.seeders import BackendServiceSeeder, BackendServiceSeederRunner
+from backend.service.application.models.pretrained_catalog import YoloXPretrainedModelCatalogSeeder
 from backend.service.infrastructure.db.schema import initialize_database_schema
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import (
@@ -261,7 +262,11 @@ class BackendServiceBootstrap(RuntimeBootstrap[BackendServiceSettings, BackendSe
         - 当前启动流程使用的 seeder 元组。
         """
 
-        return self._provided_seeders or ()
+        default_seeders: tuple[BackendServiceSeeder, ...] = (YoloXPretrainedModelCatalogSeeder(),)
+        if self._provided_seeders is None:
+            return default_seeders
+
+        return default_seeders + self._provided_seeders
 
     def _build_background_task_manager_host(
         self,
