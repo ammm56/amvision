@@ -213,6 +213,59 @@ def test_import_dataset_zip_accepts_nested_voc_wrapper_dirs(tmp_path: Path) -> N
         session_factory.engine.dispose()
 
 
+def test_import_dataset_zip_accepts_roboflow_coco_split_layout(tmp_path: Path) -> None:
+    """验证导入器可以识别 train/valid/test 目录内各自携带 manifest 的 COCO zip。"""
+
+    client, session_factory, dataset_storage, queue_backend = _create_test_client(tmp_path)
+    try:
+        with client:
+            response = client.post(
+                "/api/v1/datasets/imports",
+                headers=_build_dataset_write_headers(),
+                data={
+                    "project_id": "project-1",
+                    "dataset_id": "dataset-roboflow-coco",
+                },
+                files={
+                    "package": (
+                        "roboflow-coco-dataset.zip",
+                        _build_roboflow_coco_zip_bytes(),
+                        "application/zip",
+                    ),
+                },
+            )
+
+        assert response.status_code == 202
+        assert _run_import_worker_once(
+            session_factory=session_factory,
+            dataset_storage=dataset_storage,
+            queue_backend=queue_backend,
+        ) is True
+
+        payload = response.json()
+        dataset_import, dataset_version = _load_dataset_objects(
+            session_factory=session_factory,
+            dataset_import_id=payload["dataset_import_id"],
+        )
+
+        assert dataset_import is not None
+        assert dataset_import.status == "completed"
+        assert dataset_import.format_type == "coco"
+        assert dataset_import.detected_profile["format_type"] == "coco"
+        assert dataset_import.detected_profile["split_names"] == ["train", "val", "test"]
+        assert dataset_import.detected_profile["split_counts"] == {
+            "train": 1,
+            "val": 1,
+            "test": 1,
+        }
+        assert dataset_import.validation_report["status"] == "ok"
+        assert dataset_version is not None
+        assert len(dataset_version.samples) == 3
+        assert {sample.split for sample in dataset_version.samples} == {"train", "val", "test"}
+    finally:
+        session_factory.engine.dispose()
+
+
 def test_get_dataset_import_detail_returns_validation_report_and_version_relation(
     tmp_path: Path,
 ) -> None:
@@ -809,6 +862,85 @@ def _build_coco_zip_bytes() -> bytes:
             json.dumps(coco_payload),
         )
         zip_file.writestr("dataset-root/train/train-1.jpg", b"fake-image")
+
+    return buffer.getvalue()
+
+
+def _build_roboflow_coco_zip_bytes() -> bytes:
+    """构建一个最小 Roboflow 风格 COCO detection zip 数据集。"""
+
+    buffer = io.BytesIO()
+    split_payloads = {
+        "train": {
+            "images": [
+                {
+                    "id": 1,
+                    "file_name": "train-1.jpg",
+                    "width": 100,
+                    "height": 80,
+                }
+            ],
+            "annotations": [
+                {
+                    "id": 11,
+                    "image_id": 1,
+                    "category_id": 7,
+                    "bbox": [1, 2, 3, 4],
+                    "area": 12,
+                }
+            ],
+            "categories": [{"id": 7, "name": "bolt"}],
+        },
+        "valid": {
+            "images": [
+                {
+                    "id": 2,
+                    "file_name": "valid-1.jpg",
+                    "width": 120,
+                    "height": 90,
+                }
+            ],
+            "annotations": [
+                {
+                    "id": 22,
+                    "image_id": 2,
+                    "category_id": 7,
+                    "bbox": [5, 6, 7, 8],
+                    "area": 56,
+                }
+            ],
+            "categories": [{"id": 7, "name": "bolt"}],
+        },
+        "test": {
+            "images": [
+                {
+                    "id": 3,
+                    "file_name": "test-1.jpg",
+                    "width": 140,
+                    "height": 100,
+                }
+            ],
+            "annotations": [
+                {
+                    "id": 33,
+                    "image_id": 3,
+                    "category_id": 7,
+                    "bbox": [9, 10, 11, 12],
+                    "area": 132,
+                }
+            ],
+            "categories": [{"id": 7, "name": "bolt"}],
+        },
+    }
+
+    with zipfile.ZipFile(buffer, mode="w") as zip_file:
+        for split_name, payload in split_payloads.items():
+            zip_file.writestr(
+                f"dataset-root/{split_name}/_annotations.coco.json",
+                json.dumps(payload),
+            )
+            image_file_name = str(payload["images"][0]["file_name"])
+            zip_file.writestr(f"dataset-root/{split_name}/{image_file_name}", b"fake-image")
 
     return buffer.getvalue()
 

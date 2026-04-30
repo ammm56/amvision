@@ -786,8 +786,7 @@ class SqlAlchemyDatasetImportService:
         """
 
         candidates: list[DatasetFormatType] = []
-        annotations_dir = dataset_root / "annotations"
-        if annotations_dir.is_dir() and any(annotations_dir.glob("*.json")):
+        if self._collect_coco_manifest_paths(dataset_root):
             candidates.append("coco")
 
         voc_annotations_dir = dataset_root / "Annotations"
@@ -837,10 +836,9 @@ class SqlAlchemyDatasetImportService:
         - 解析后的统一结果。
         """
 
-        annotations_dir = dataset_root / "annotations"
-        manifest_paths = sorted(annotations_dir.glob("*.json"))
+        manifest_paths = self._collect_coco_manifest_paths(dataset_root)
         if not manifest_paths:
-            raise InvalidRequestError("COCO 数据集缺少 annotations/*.json")
+            raise InvalidRequestError("COCO 数据集缺少可用的 manifest JSON")
 
         forced_split = self._resolve_requested_split(split_strategy)
         manifest_payloads: list[tuple[Path, dict[str, object], DatasetSplitName]] = []
@@ -854,7 +852,10 @@ class SqlAlchemyDatasetImportService:
                 )
             if not {"images", "annotations", "categories"}.issubset(payload):
                 continue
-            current_split = forced_split or self._normalize_split_name(manifest_path.stem, default="train")
+            current_split = forced_split or self._resolve_coco_manifest_split_name(
+                dataset_root=dataset_root,
+                manifest_path=manifest_path,
+            )
             manifest_payloads.append((manifest_path, payload, current_split))
             categories_payload = payload.get("categories", [])
             if not isinstance(categories_payload, list):
@@ -1022,6 +1023,67 @@ class SqlAlchemyDatasetImportService:
                 "errors": [],
             },
         )
+
+    def _collect_coco_manifest_paths(self, dataset_root: Path) -> tuple[Path, ...]:
+        """收集当前数据集根目录下可疑的 COCO manifest 文件。
+
+        参数：
+        - dataset_root：解压后的数据集根目录。
+
+        返回：
+        - 可能的 COCO manifest 路径元组。
+        """
+
+        manifest_candidates: list[Path] = []
+        annotations_dir = dataset_root / "annotations"
+        if annotations_dir.is_dir():
+            manifest_candidates.extend(sorted(annotations_dir.glob("*.json")))
+
+        for split_dir_name in ("train", "val", "valid", "test"):
+            split_dir = dataset_root / split_dir_name
+            if not split_dir.is_dir():
+                continue
+            manifest_candidates.extend(sorted(split_dir.glob("*.json")))
+
+        unique_manifest_paths: list[Path] = []
+        seen_paths: set[Path] = set()
+        for manifest_path in manifest_candidates:
+            if manifest_path in seen_paths or not manifest_path.is_file():
+                continue
+            seen_paths.add(manifest_path)
+            unique_manifest_paths.append(manifest_path)
+
+        return tuple(unique_manifest_paths)
+
+    def _resolve_coco_manifest_split_name(
+        self,
+        *,
+        dataset_root: Path,
+        manifest_path: Path,
+    ) -> DatasetSplitName:
+        """根据 COCO manifest 所在位置推断 split 名称。
+
+        参数：
+        - dataset_root：解压后的数据集根目录。
+        - manifest_path：当前 manifest 绝对路径。
+
+        返回：
+        - 归一化后的 split 名称。
+        """
+
+        relative_parent = manifest_path.parent.relative_to(dataset_root).as_posix()
+        if relative_parent != ".":
+            parent_name = manifest_path.parent.name
+            normalized_parent_name = parent_name.lower()
+            if (
+                "train" in normalized_parent_name
+                or "val" in normalized_parent_name
+                or "valid" in normalized_parent_name
+                or "test" in normalized_parent_name
+            ):
+                return self._normalize_split_name(parent_name, default="train")
+
+        return self._normalize_split_name(manifest_path.stem, default="train")
 
     def _parse_voc_detection(
         self,

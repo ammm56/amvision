@@ -163,6 +163,7 @@
 - 平台内部应维护通用数据格式，用统一字段描述图片、样本、类别、bbox、polygon、mask、keypoints 和元信息
 - 不同模型训练前由 exporter 把通用数据格式转换为对应训练后端所需的格式，而不是让每个训练后端直接面对各种原始目录结构
 - 当前第一阶段导入实现只支持 COCO detection json 和 Pascal VOC detection xml，并统一生成 detection 类型的 DatasetVersion
+- COCO detection 第一阶段同时兼容传统 annotations/*.json 布局，以及 Roboflow 风格 train、val、valid、test 目录内各自携带 _annotations.coco.json 的 split-local manifest 布局
 - 第一阶段生成版本时统一把类别表重排为连续 0-based category_id，把 VOC 的 xyxy 框转换为 xywh absolute bbox
 
 ### 为什么不能直接靠原始目录结构统一
@@ -192,6 +193,7 @@
 
 - 平台可以像 Roboflow 一样做格式自动识别，但自动识别只能作为导入便利能力，不能作为最终判断
 - 推荐导入时允许先自动识别候选格式，再由用户确认或覆盖 format type、task type 和 class map
+- COCO detection 的 split 推断应先看 manifest 父目录，再看 manifest 文件名；valid 统一归一化为 val
 - 若文件结构存在歧义，例如多个 json/xml/txt 混放、图片与标注目录不对齐、同目录存在多种任务标签，则必须要求显式声明
 - 数据管理层最终记录的应是 DatasetImport.format_type 与 DatasetImport.task_type，而不是某次猜测结果
 

@@ -46,6 +46,8 @@
 - 当前已经正式实现并对外开放的 format_id：
   - coco-detection-v1
   - voc-detection-v1
+- DatasetImport 可以兼容多种外部目录结构与命名方式，但 DatasetExport 不保留原始导入包的目录结构；导出阶段始终按 format_id 收口为单一标准格式
+- 当前如果 format_id=coco-detection-v1，则目录结构固定为 images/{split}/ 和 annotations/instances_{split}.json，不再区分传统 annotations 目录、年份后缀命名或 Roboflow split-local manifest 这类导入变体
 - training 前置步骤应消费 manifest_object_key，而不是直接读取 DatasetVersion 内部目录结构
 
 ## 接口清单
@@ -70,6 +72,13 @@
 | output_object_prefix | string | 否 | 可选的导出目录前缀。为空时默认落到 projects/{project_id}/datasets/{dataset_id}/exports/{dataset_export_id}。 |
 | category_names | array[string] | 否 | 可选的导出类别名列表。为空时使用 DatasetVersion 中的类别定义。 |
 | include_test_split | boolean | 否 | 是否包含 test split。默认 true。 |
+
+#### format_id 语义
+
+- format_id 控制的是导出目标标准格式，不是导入阶段识别到的原始目录变体
+- 当前若请求 coco-detection-v1，服务会统一生成 COCO 标准导出目录：images/{split}/、annotations/instances_{split}.json、manifest.json
+- 当前若请求 voc-detection-v1，服务会统一生成 Pascal VOC 标准导出目录：Annotations/、JPEGImages/、ImageSets/Main/、manifest.json
+- 当前接口没有再提供“导出成哪一种 COCO 原始目录变体”的额外参数；如果后续需要新的 COCO 导出布局，应新增独立 format_id，而不是复用 coco-detection-v1
 
 #### curl 示例
 
@@ -186,6 +195,8 @@ curl -X POST "http://127.0.0.1:8000/api/v1/datasets/exports" \
 
 为指定 DatasetExport 生成 zip 下载包。当前接口会把下载包信息写回 DatasetExport.metadata，并在详情接口中同步公开。
 
+这个步骤不会重新渲染另一套导出目录结构，只会把当前 DatasetExport 已经生成好的 export_path 原样打包为 zip。
+
 #### 路径参数
 
 | 参数 | 类型 | 必填 | 说明 |
@@ -217,6 +228,7 @@ curl -X POST "http://127.0.0.1:8000/api/v1/datasets/exports" \
 - 状态码：200 OK
 - 返回 application/zip 文件响应
 - 当下载包不存在时，当前实现会先同步打包，再直接返回下载结果
+- 下载内容与对应 DatasetExport 的 export_path 保持一致，不会在下载阶段再切换为另一种 COCO 目录结构
 
 ### GET /api/v1/datasets/exports/{dataset_export_id}/manifest
 
@@ -247,6 +259,8 @@ curl -X POST "http://127.0.0.1:8000/api/v1/datasets/exports" \
 - manifest.json：统一导出 manifest，training 应消费它的 object key
 - COCO detection：annotations/instances_{split}.json、images/{split}/...
 - VOC detection：Annotations/*.xml、JPEGImages/*、ImageSets/Main/{split}.txt
+
+这里的“统一导出”含义是：无论原始导入包是传统 annotations 目录、年份后缀 COCO，还是 Roboflow 风格 split-local manifest，只要导出目标 format_id 相同，最后写出的目录结构就相同。
 
 打包接口不会把 zip 文件写到 export_path 目录内部，而是写到 Dataset 级下载目录，避免导出目录与下载包互相递归嵌套。
 

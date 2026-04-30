@@ -109,6 +109,8 @@
 - 当前已经正式实现并对外开放的 format_id：
   - coco-detection-v1
   - voc-detection-v1
+- 导入阶段可以兼容多种外部目录结构，但导出阶段始终按 format_id 收口为单一标准格式，不沿用原始导入包目录布局
+- 当前若 format_id=coco-detection-v1，则固定导出为 images/{split}/ 和 annotations/instances_{split}.json
 - 成功响应会同时返回：
   - dataset_export_id
   - task_id
@@ -136,6 +138,7 @@
 
 - 需要 datasets:write
 - 为已完成的 DatasetExport 生成 zip 包
+- 只会打包当前 export_path，对外下载不会再切换另一种目录结构
 - 当前响应返回：
   - dataset_export_id
   - export_path
@@ -151,6 +154,7 @@
 - 需要 datasets:read
 - 返回打包后的 zip 文件
 - 当下载包不存在时，当前实现会先同步打包，再直接返回文件响应
+- zip 内容与对应 DatasetExport 的 export_path 保持一致
 
 ### GET /api/v1/datasets/exports/{dataset_export_id}/manifest
 

@@ -257,9 +257,27 @@ dataset-root/
 └─ val2017/
 ```
 
+或：
+
+```text
+dataset-root/
+├─ train/
+│  ├─ train-1.jpg
+│  └─ _annotations.coco.json
+├─ valid/
+│  ├─ valid-1.jpg
+│  └─ _annotations.coco.json
+└─ test/
+   ├─ test-1.jpg
+   └─ _annotations.coco.json
+```
+
+上面这类 split 目录内各自携带 manifest 的布局常见于 Roboflow 导出的 COCO detection zip。
+
 #### 图片与标注位置
 
 - 标注文件默认位于 annotations 目录下，文件名优先识别 instances_train.json、instances_val.json、instances_test.json，以及带年份后缀的 instances_train2017.json、instances_val2017.json
+- 也接受 train、val、valid、test 目录内各自携带的 COCO manifest，例如 _annotations.coco.json 这类 split-local manifest
 - 图片目录默认位于 train、val、test、train2017、val2017、test2017，或 images/{split} 这类与 split 对应的目录中
 - images[*].file_name 可以是纯文件名，也可以是相对路径；导入时应优先按 file_name 自带相对路径解析，其次按 manifest 对应 split 的图片目录解析
 
@@ -275,7 +293,8 @@ dataset-root/
 
 #### split 推断规则
 
-- 若 manifest 文件名包含 train、val、test 语义，则优先用文件名推断 split
+- 若 manifest 位于 train、val、valid、test 这类 split 目录下，则优先用父目录名推断 split；valid 应归一化为 val
+- 若父目录不携带 split 语义，且 manifest 文件名包含 train、val、test 语义，则再用文件名推断 split
 - 若只有一个 manifest 且文件名不带 split 语义，则优先使用显式导入参数中的 split strategy；未显式提供时默认整包视为 train
 - 同一图片不得同时出现在多个 split manifest 中
 
