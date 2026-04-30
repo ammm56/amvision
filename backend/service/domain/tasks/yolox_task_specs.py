@@ -25,6 +25,8 @@ class YoloXTrainingTaskSpec:
     - warm_start_model_version_id：warm start 使用的 ModelVersion id。
     - max_epochs：最大训练轮数。
     - batch_size：batch size。
+    - gpu_count：请求参与训练的 GPU 数量。
+    - precision：请求使用的训练 precision。
     - input_size：训练输入尺寸。
     - extra_options：附加训练选项。
     """
@@ -39,6 +41,8 @@ class YoloXTrainingTaskSpec:
     warm_start_model_version_id: str | None = None
     max_epochs: int | None = None
     batch_size: int | None = None
+    gpu_count: int | None = None
+    precision: str | None = None
     input_size: tuple[int, int] | None = None
     extra_options: dict[str, object] = field(default_factory=dict)
 

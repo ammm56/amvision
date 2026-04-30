@@ -1,8 +1,31 @@
+# 推荐 Python 版本：3.12
 
+# 基础依赖
 fastapi[standard]>=0.136
 SQLAlchemy>=2.0
 pydantic-settings>=2.0
 pytest>=8.3
+numpy>=2.2,<3
+opencv-python>=4.11,<5
+tensorboard>=2.19,<3
+torch==2.8.0
+torchvision==0.23.0
+
+# COCO 数据集与评估
+pycocotools>=2.0.8,<3
+
+# ONNX 导出与简化
+onnx>=1.18,<2
+onnxsim>=0.4.36,<1
+
+# ONNXRuntime 推理
+onnxruntime>=1.22,<2
+
+# openvino 推理
+openvino>=2026.1.0 
+
+# 如需通过 PyTorch 官方 CUDA 12.8 源安装：
+# pip install torch==2.8.0 torchvision==0.23.0 torchaudio==2.8.0 --index-url https://download.pytorch.org/whl/cu128
 
 
 

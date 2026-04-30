@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from pathlib import Path
+import cv2
+import numpy as np
 
 from fastapi.testclient import TestClient
 
@@ -44,6 +46,8 @@ def test_create_yolox_training_task_accepts_dataset_export_id(tmp_path: Path) ->
                     "recipe_id": "yolox-default",
                     "model_scale": "s",
                     "output_model_name": "yolox-s-bolt",
+                    "gpu_count": 2,
+                    "precision": "fp16",
                 },
             )
 
@@ -59,6 +63,8 @@ def test_create_yolox_training_task_accepts_dataset_export_id(tmp_path: Path) ->
         assert task_detail.task.task_spec["dataset_export_id"] == dataset_export.dataset_export_id
         assert task_detail.task.task_spec["dataset_export_manifest_key"] == dataset_export.manifest_object_key
         assert task_detail.task.task_spec["manifest_object_key"] == dataset_export.manifest_object_key
+        assert task_detail.task.task_spec["gpu_count"] == 2
+        assert task_detail.task.task_spec["precision"] == "fp16"
         assert task_detail.task.state == "queued"
         assert any(event.message == "yolox training queued" for event in task_detail.events)
 
@@ -183,6 +189,8 @@ def test_list_yolox_training_tasks_filters_by_dataset_export_id(tmp_path: Path) 
                     "recipe_id": "yolox-default",
                     "model_scale": "s",
                     "output_model_name": "yolox-s-a",
+                    "gpu_count": 2,
+                    "precision": "fp16",
                 },
             )
             create_b = client.post(
@@ -213,6 +221,8 @@ def test_list_yolox_training_tasks_filters_by_dataset_export_id(tmp_path: Path) 
         assert payload[0]["dataset_export_id"] == dataset_export_a.dataset_export_id
         assert payload[0]["recipe_id"] == "yolox-default"
         assert payload[0]["model_scale"] == "s"
+        assert payload[0]["gpu_count"] == 2
+        assert payload[0]["precision"] == "fp16"
         assert payload[0]["state"] == "queued"
         assert payload[0]["model_version_id"] is None
     finally:
@@ -243,8 +253,12 @@ def test_list_yolox_training_tasks_returns_top_level_model_version_id_when_compl
                     "project_id": "project-1",
                     "dataset_export_id": dataset_export.dataset_export_id,
                     "recipe_id": "yolox-default",
-                    "model_scale": "s",
+                    "model_scale": "nano",
                     "output_model_name": "yolox-s-list-model-version",
+                    "max_epochs": 1,
+                    "batch_size": 1,
+                    "precision": "fp32",
+                    "input_size": [64, 64],
                 },
             )
 
@@ -271,6 +285,7 @@ def test_list_yolox_training_tasks_returns_top_level_model_version_id_when_compl
         assert payload[0]["dataset_export_id"] == dataset_export.dataset_export_id
         assert payload[0]["state"] == "succeeded"
         assert payload[0]["model_version_id"]
+        assert payload[0]["precision"] == "fp32"
         assert payload[0]["model_version_id"] == payload[0]["training_summary"]["model_version_id"]
     finally:
         session_factory.engine.dispose()
@@ -297,8 +312,12 @@ def test_get_yolox_training_task_detail_returns_completed_result(tmp_path: Path)
                     "project_id": "project-1",
                     "dataset_export_id": dataset_export.dataset_export_id,
                     "recipe_id": "yolox-default",
-                    "model_scale": "s",
+                    "model_scale": "nano",
                     "output_model_name": "yolox-s-detail",
+                    "max_epochs": 1,
+                    "batch_size": 1,
+                    "precision": "fp32",
+                    "input_size": [64, 64],
                 },
             )
 
@@ -322,8 +341,13 @@ def test_get_yolox_training_task_detail_returns_completed_result(tmp_path: Path)
         assert payload["state"] == "succeeded"
         assert payload["dataset_export_id"] == dataset_export.dataset_export_id
         assert payload["checkpoint_object_key"].endswith("/best_ckpt.pth")
+        assert payload["latest_checkpoint_object_key"].endswith("/latest_ckpt.pth")
+        assert payload["validation_metrics_object_key"].endswith("/validation-metrics.json")
         assert payload["summary_object_key"].endswith("/training-summary.json")
-        assert payload["training_summary"]["implementation_mode"] == "placeholder"
+        assert payload["precision"] == "fp32"
+        assert payload["training_summary"]["implementation_mode"] == "yolox-detection-minimal"
+        assert payload["training_summary"]["precision"] == "fp32"
+        assert payload["training_summary"]["validation"]["enabled"] is True
         assert payload["task_spec"]["manifest_object_key"] == dataset_export.manifest_object_key
         assert payload["training_summary"]["model_version_id"]
         assert payload["model_version_id"] == payload["training_summary"]["model_version_id"]
@@ -413,6 +437,12 @@ def _seed_completed_dataset_export(
                     "image_root": f"{export_path}/images/train",
                     "annotation_file": f"{export_path}/annotations/instances_train.json",
                     "sample_count": 1,
+                },
+                {
+                    "name": "val",
+                    "image_root": f"{export_path}/images/val",
+                    "annotation_file": f"{export_path}/annotations/instances_val.json",
+                    "sample_count": 1,
                 }
             ],
             "metadata": {"source_dataset_id": "dataset-1"},
@@ -420,10 +450,70 @@ def _seed_completed_dataset_export(
     )
     dataset_storage.write_json(
         f"{export_path}/annotations/instances_train.json",
-        {"images": [], "annotations": [], "categories": []},
+        {
+            "images": [
+                {
+                    "id": 1,
+                    "file_name": "train-1.jpg",
+                    "width": 64,
+                    "height": 64,
+                }
+            ],
+            "annotations": [
+                {
+                    "id": 1,
+                    "image_id": 1,
+                    "category_id": 0,
+                    "bbox": [8, 8, 24, 24],
+                    "area": 576,
+                    "iscrowd": 0,
+                }
+            ],
+            "categories": [{"id": 0, "name": "bolt"}],
+        },
     )
-    dataset_storage.write_bytes(f"{export_path}/images/train/train-1.jpg", b"fake-image")
+    dataset_storage.write_json(
+        f"{export_path}/annotations/instances_val.json",
+        {
+            "images": [
+                {
+                    "id": 2,
+                    "file_name": "val-1.jpg",
+                    "width": 64,
+                    "height": 64,
+                }
+            ],
+            "annotations": [
+                {
+                    "id": 2,
+                    "image_id": 2,
+                    "category_id": 0,
+                    "bbox": [12, 12, 20, 20],
+                    "area": 400,
+                    "iscrowd": 0,
+                }
+            ],
+            "categories": [{"id": 0, "name": "bolt"}],
+        },
+    )
+    dataset_storage.write_bytes(
+        f"{export_path}/images/train/train-1.jpg",
+        _build_test_jpeg_bytes(),
+    )
+    dataset_storage.write_bytes(
+        f"{export_path}/images/val/val-1.jpg",
+        _build_test_jpeg_bytes(),
+    )
     return dataset_export
+
+
+def _build_test_jpeg_bytes() -> bytes:
+    """构建一个可被 cv2 正常读取的最小 JPEG 图片。"""
+
+    image = np.full((64, 64, 3), 255, dtype=np.uint8)
+    success, encoded = cv2.imencode(".jpg", image)
+    assert success is True
+    return encoded.tobytes()
 
 
 def _build_training_headers() -> dict[str, str]:

@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "b0db9a90-95bc-4a01-b247-1ddb33e1a2a8",
     "name": "amvision yolox training api",
-    "description": "当前公开的 YOLOX training create/list/detail 接口。",
+    "description": "当前公开的 YOLOX training create/list/detail 接口。本集合已经同步 gpu_count、precision、latest checkpoint、validation metrics 和 training_summary 查询字段，可直接用于本机调试。",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "item": [
@@ -22,6 +22,8 @@
                   "  pm.collectionVariables.set('taskId', payload.task_id);",
                   "  pm.collectionVariables.set('datasetExportId', payload.dataset_export_id);",
                   "  pm.collectionVariables.set('datasetExportManifestKey', payload.dataset_export_manifest_key);",
+                  "  pm.collectionVariables.set('datasetVersionId', payload.dataset_version_id);",
+                  "  pm.collectionVariables.set('formatId', payload.format_id);",
                   "}"
                 ]
               }
@@ -53,7 +55,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"dataset_export_id\": \"{{datasetExportId}}\",\n  \"dataset_export_manifest_key\": null,\n  \"recipe_id\": \"yolox-default\",\n  \"model_scale\": \"s\",\n  \"output_model_name\": \"yolox-s-bolt\",\n  \"warm_start_model_version_id\": null,\n  \"max_epochs\": null,\n  \"batch_size\": null,\n  \"input_size\": null,\n  \"extra_options\": {},\n  \"display_name\": \"\"\n}",
+              "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"dataset_export_id\": \"{{datasetExportId}}\",\n  \"dataset_export_manifest_key\": null,\n  \"recipe_id\": \"{{recipeId}}\",\n  \"model_scale\": \"{{modelScale}}\",\n  \"output_model_name\": \"{{outputModelName}}\",\n  \"warm_start_model_version_id\": null,\n  \"max_epochs\": {{maxEpochs}},\n  \"batch_size\": {{batchSize}},\n  \"gpu_count\": {{gpuCount}},\n  \"precision\": \"{{precision}}\",\n  \"input_size\": [{{inputWidth}}, {{inputHeight}}],\n  \"extra_options\": {\n    \"seed\": 42\n  },\n  \"display_name\": \"{{displayName}}\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -73,12 +75,36 @@
                 "training-tasks"
               ]
             },
-            "description": "以 DatasetExport 为唯一输入边界创建 YOLOX 训练任务。"
+            "description": "以 DatasetExport 为唯一输入边界创建 YOLOX 训练任务。当前请求体已经同步 model_scale、gpu_count、precision、batch_size、max_epochs 和 input_size；precision 字段可写 fp8、fp16、fp32，但当前最小真实训练执行器实际只支持 fp16、fp32。"
           },
           "response": []
         },
         {
           "name": "List YOLOX Training Tasks",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  var payload = pm.response.json();",
+                  "  if (Array.isArray(payload) && payload.length > 0) {",
+                  "    var first = payload[0];",
+                  "    pm.collectionVariables.set('taskId', first.task_id);",
+                  "    if (first.model_version_id) pm.collectionVariables.set('modelVersionId', first.model_version_id);",
+                  "    if (first.output_object_prefix) pm.collectionVariables.set('outputObjectPrefix', first.output_object_prefix);",
+                  "    if (first.checkpoint_object_key) pm.collectionVariables.set('checkpointObjectKey', first.checkpoint_object_key);",
+                  "    if (first.latest_checkpoint_object_key) pm.collectionVariables.set('latestCheckpointObjectKey', first.latest_checkpoint_object_key);",
+                  "    if (first.metrics_object_key) pm.collectionVariables.set('metricsObjectKey', first.metrics_object_key);",
+                  "    if (first.validation_metrics_object_key) pm.collectionVariables.set('validationMetricsObjectKey', first.validation_metrics_object_key);",
+                  "    if (first.summary_object_key) pm.collectionVariables.set('summaryObjectKey', first.summary_object_key);",
+                  "  }",
+                  "}"
+                ]
+              }
+            }
+          ],
           "request": {
             "method": "GET",
             "header": [
@@ -99,7 +125,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/v1/models/yolox/training-tasks?project_id={{projectId}}&dataset_export_id={{datasetExportId}}",
+              "raw": "{{baseUrl}}/api/v1/models/yolox/training-tasks?project_id={{projectId}}&dataset_export_id={{datasetExportId}}&limit={{trainingLimit}}",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -118,15 +144,55 @@
                 {
                   "key": "dataset_export_id",
                   "value": "{{datasetExportId}}"
+                },
+                {
+                  "key": "dataset_export_manifest_key",
+                  "value": "{{datasetExportManifestKey}}",
+                  "disabled": true
+                },
+                {
+                  "key": "state",
+                  "value": "{{trainingState}}",
+                  "disabled": true
+                },
+                {
+                  "key": "created_by",
+                  "value": "{{createdBy}}",
+                  "disabled": true
+                },
+                {
+                  "key": "limit",
+                  "value": "{{trainingLimit}}"
                 }
               ]
             },
-            "description": "按 DatasetExport 边界列出 YOLOX 训练任务。"
+            "description": "按 DatasetExport 边界列出 YOLOX 训练任务。当前 collection 已预留 state、created_by、dataset_export_manifest_key 和 limit 查询参数，并会自动回填 model_version_id、artifact 路径等常用变量。"
           },
           "response": []
         },
         {
           "name": "Get YOLOX Training Task Detail",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  var payload = pm.response.json();",
+                  "  if (payload.model_version_id) pm.collectionVariables.set('modelVersionId', payload.model_version_id);",
+                  "  if (payload.output_object_prefix) pm.collectionVariables.set('outputObjectPrefix', payload.output_object_prefix);",
+                  "  if (payload.checkpoint_object_key) pm.collectionVariables.set('checkpointObjectKey', payload.checkpoint_object_key);",
+                  "  if (payload.latest_checkpoint_object_key) pm.collectionVariables.set('latestCheckpointObjectKey', payload.latest_checkpoint_object_key);",
+                  "  if (payload.metrics_object_key) pm.collectionVariables.set('metricsObjectKey', payload.metrics_object_key);",
+                  "  if (payload.validation_metrics_object_key) pm.collectionVariables.set('validationMetricsObjectKey', payload.validation_metrics_object_key);",
+                  "  if (payload.summary_object_key) pm.collectionVariables.set('summaryObjectKey', payload.summary_object_key);",
+                  "}",
+                  ""
+                ]
+              }
+            }
+          ],
           "request": {
             "method": "GET",
             "header": [
@@ -147,7 +213,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/v1/models/yolox/training-tasks/{{taskId}}",
+              "raw": "{{baseUrl}}/api/v1/models/yolox/training-tasks/{{taskId}}?include_events={{includeEvents}}",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -158,9 +224,15 @@
                 "yolox",
                 "training-tasks",
                 "{{taskId}}"
+              ],
+              "query": [
+                {
+                  "key": "include_events",
+                  "value": "{{includeEvents}}"
+                }
               ]
             },
-            "description": "查询单条 YOLOX 训练任务详情和事件流。"
+            "description": "查询单条 YOLOX 训练任务详情和事件流。详情响应已经同步 output_object_prefix、latest_checkpoint_object_key、validation_metrics_object_key，以及 training_summary.artifact_locations 和 validation 摘要。"
           },
           "response": []
         }
@@ -181,6 +253,10 @@
       "value": "project-1"
     },
     {
+      "key": "recipeId",
+      "value": "yolox-default"
+    },
+    {
       "key": "datasetExportId",
       "value": "dataset-export-1"
     },
@@ -189,8 +265,96 @@
       "value": "projects/project-1/datasets/dataset-1/exports/dataset-export-1/manifest.json"
     },
     {
+      "key": "datasetVersionId",
+      "value": "dataset-version-1"
+    },
+    {
+      "key": "formatId",
+      "value": "coco-detection-v1"
+    },
+    {
+      "key": "modelScale",
+      "value": "nano"
+    },
+    {
+      "key": "outputModelName",
+      "value": "yolox-local-smoke"
+    },
+    {
+      "key": "maxEpochs",
+      "value": "1"
+    },
+    {
+      "key": "batchSize",
+      "value": "1"
+    },
+    {
+      "key": "gpuCount",
+      "value": "1"
+    },
+    {
+      "key": "precision",
+      "value": "fp32"
+    },
+    {
+      "key": "inputWidth",
+      "value": "640"
+    },
+    {
+      "key": "inputHeight",
+      "value": "640"
+    },
+    {
+      "key": "displayName",
+      "value": "local yolox smoke"
+    },
+    {
       "key": "taskId",
       "value": "task-1"
+    },
+    {
+      "key": "trainingState",
+      "value": "succeeded"
+    },
+    {
+      "key": "trainingLimit",
+      "value": "20"
+    },
+    {
+      "key": "createdBy",
+      "value": "user-1"
+    },
+    {
+      "key": "includeEvents",
+      "value": "true"
+    },
+    {
+      "key": "modelVersionId",
+      "value": "model-version-1"
+    },
+    {
+      "key": "outputObjectPrefix",
+      "value": "task-runs/training/task-1"
+    },
+    {
+      "key": "checkpointObjectKey",
+      "value": "task-runs/training/task-1/artifacts/checkpoints/best_ckpt.pth"
+    },
+    {
+      "key": "latestCheckpointObjectKey",
+      "value": "task-runs/training/task-1/artifacts/checkpoints/latest_ckpt.pth"
+    },
+    {
+      "key": "metricsObjectKey",
+      "value": "task-runs/training/task-1/artifacts/reports/train-metrics.json"
+    },
+    {
+      "key": "validationMetricsObjectKey",
+      "value": "task-runs/training/task-1/artifacts/reports/validation-metrics.json"
+    },
+    {
+      "key": "summaryObjectKey",
+      "value": "task-runs/training/task-1/artifacts/training-summary.json"
     }
   ]
 }

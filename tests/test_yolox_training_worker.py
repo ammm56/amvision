@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from pathlib import Path
+import cv2
+import numpy as np
 
 from backend.contracts.datasets.exports.coco_detection_export import COCO_DETECTION_DATASET_FORMAT
 from backend.queue import LocalFileQueueBackend, LocalFileQueueSettings
@@ -46,8 +48,12 @@ def test_yolox_training_worker_advances_task_from_queued_to_succeeded(tmp_path: 
                 project_id="project-1",
                 dataset_export_id="dataset-export-worker-1",
                 recipe_id="yolox-default",
-                model_scale="s",
+                model_scale="nano",
                 output_model_name="yolox-s-bolt",
+                max_epochs=1,
+                batch_size=1,
+                precision="fp32",
+                input_size=(64, 64),
             ),
             created_by="user-1",
         )
@@ -69,14 +75,20 @@ def test_yolox_training_worker_advances_task_from_queued_to_succeeded(tmp_path: 
         assert completed_task.task.finished_at is not None
         assert completed_task.task.result["dataset_export_id"] == "dataset-export-worker-1"
         assert completed_task.task.result["checkpoint_object_key"].endswith("/best_ckpt.pth")
+        assert completed_task.task.result["latest_checkpoint_object_key"].endswith("/latest_ckpt.pth")
+        assert completed_task.task.result["validation_metrics_object_key"].endswith("/validation-metrics.json")
         assert completed_task.task.result["summary_object_key"].endswith("/training-summary.json")
-        assert completed_task.task.result["summary"]["implementation_mode"] == "placeholder"
+        assert completed_task.task.result["summary"]["implementation_mode"] == "yolox-detection-minimal"
+        assert completed_task.task.result["summary"]["precision"] == "fp32"
+        assert completed_task.task.result["summary"]["validation"]["enabled"] is True
         assert completed_task.task.result["summary"]["model_version_id"]
         assert any(event.message == "yolox training started" for event in completed_task.events)
         assert any(event.message == "yolox training completed" for event in completed_task.events)
 
         assert dataset_storage.resolve(completed_task.task.result["checkpoint_object_key"]).is_file()
+        assert dataset_storage.resolve(completed_task.task.result["latest_checkpoint_object_key"]).is_file()
         assert dataset_storage.resolve(completed_task.task.result["metrics_object_key"]).is_file()
+        assert dataset_storage.resolve(completed_task.task.result["validation_metrics_object_key"]).is_file()
         assert dataset_storage.resolve(completed_task.task.result["summary_object_key"]).is_file()
 
         model_service = SqlAlchemyYoloXModelService(session_factory=session_factory)
@@ -157,7 +169,7 @@ def _seed_completed_dataset_export(
                     "name": "train",
                     "image_root": f"{export_path}/images/train",
                     "annotation_file": f"{export_path}/annotations/instances_train.json",
-                    "sample_count": 2,
+                    "sample_count": 1,
                 },
                 {
                     "name": "val",
@@ -169,4 +181,75 @@ def _seed_completed_dataset_export(
             "metadata": {"source_dataset_id": "dataset-1"},
         },
     )
+    dataset_storage.write_json(
+        f"{export_path}/annotations/instances_train.json",
+        {
+            "images": [
+                {
+                    "id": 1,
+                    "file_name": "train-1.jpg",
+                    "width": 64,
+                    "height": 64,
+                }
+            ],
+            "annotations": [
+                {
+                    "id": 1,
+                    "image_id": 1,
+                    "category_id": 0,
+                    "bbox": [8, 8, 24, 24],
+                    "area": 576,
+                    "iscrowd": 0,
+                }
+            ],
+            "categories": [
+                {"id": 0, "name": "bolt"},
+                {"id": 1, "name": "nut"},
+            ],
+        },
+    )
+    dataset_storage.write_json(
+        f"{export_path}/annotations/instances_val.json",
+        {
+            "images": [
+                {
+                    "id": 2,
+                    "file_name": "val-1.jpg",
+                    "width": 64,
+                    "height": 64,
+                }
+            ],
+            "annotations": [
+                {
+                    "id": 2,
+                    "image_id": 2,
+                    "category_id": 1,
+                    "bbox": [10, 10, 16, 16],
+                    "area": 256,
+                    "iscrowd": 0,
+                }
+            ],
+            "categories": [
+                {"id": 0, "name": "bolt"},
+                {"id": 1, "name": "nut"},
+            ],
+        },
+    )
+    dataset_storage.write_bytes(
+        f"{export_path}/images/train/train-1.jpg",
+        _build_test_jpeg_bytes(),
+    )
+    dataset_storage.write_bytes(
+        f"{export_path}/images/val/val-1.jpg",
+        _build_test_jpeg_bytes(),
+    )
     return dataset_export
+
+
+def _build_test_jpeg_bytes() -> bytes:
+    """构建一个可被 cv2 正常读取的最小 JPEG 图片。"""
+
+    image = np.full((64, 64, 3), 255, dtype=np.uint8)
+    success, encoded = cv2.imencode(".jpg", image)
+    assert success is True
+    return encoded.tobytes()

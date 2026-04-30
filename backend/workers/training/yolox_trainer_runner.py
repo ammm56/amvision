@@ -38,8 +38,10 @@ class YoloXTrainingRunResult:
     - format_id：训练输入导出格式 id。
     - output_object_prefix：训练输出目录前缀。
     - checkpoint_object_key：checkpoint 的 object key。
+    - latest_checkpoint_object_key：最新 checkpoint 的 object key。
     - labels_object_key：标签文件的 object key。
     - metrics_object_key：指标文件的 object key。
+    - validation_metrics_object_key：验证指标文件的 object key。
     - summary_object_key：训练摘要文件 object key。
     - best_metric_name：最佳指标名称。
     - best_metric_value：最佳指标值。
@@ -54,8 +56,10 @@ class YoloXTrainingRunResult:
     format_id: str
     output_object_prefix: str
     checkpoint_object_key: str
+    latest_checkpoint_object_key: str | None = None
     labels_object_key: str | None = None
     metrics_object_key: str | None = None
+    validation_metrics_object_key: str | None = None
     summary_object_key: str | None = None
     best_metric_name: str | None = None
     best_metric_value: float | None = None
@@ -121,8 +125,10 @@ class SqlAlchemyYoloXTrainerRunner:
             format_id=task_result.format_id,
             output_object_prefix=task_result.output_object_prefix,
             checkpoint_object_key=task_result.checkpoint_object_key,
+            latest_checkpoint_object_key=task_result.latest_checkpoint_object_key,
             labels_object_key=task_result.labels_object_key,
             metrics_object_key=task_result.metrics_object_key,
+            validation_metrics_object_key=task_result.validation_metrics_object_key,
             summary_object_key=task_result.summary_object_key,
             best_metric_name=task_result.best_metric_name,
             best_metric_value=task_result.best_metric_value,

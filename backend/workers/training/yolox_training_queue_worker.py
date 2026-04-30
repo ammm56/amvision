@@ -99,8 +99,10 @@ class YoloXTrainingQueueWorker:
                 "format_id": run_result.format_id,
                 "output_object_prefix": run_result.output_object_prefix,
                 "checkpoint_object_key": run_result.checkpoint_object_key,
+                "latest_checkpoint_object_key": run_result.latest_checkpoint_object_key,
                 "labels_object_key": run_result.labels_object_key,
                 "metrics_object_key": run_result.metrics_object_key,
+                "validation_metrics_object_key": run_result.validation_metrics_object_key,
                 "summary_object_key": run_result.summary_object_key,
             },
         )

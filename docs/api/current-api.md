@@ -188,10 +188,13 @@
   - warm_start_model_version_id
   - max_epochs
   - batch_size
+  - gpu_count
+  - precision
   - input_size
   - extra_options
   - display_name
 - 当前实现会先解析并校验 DatasetExport，再创建 TaskRecord，并提交到 yolox-trainings 队列
+- 当前最小真实训练执行器实际支持 fp16、fp32；precision 字段中的 fp8 当前仍保留为接口层枚举值，但执行阶段会拒绝。
 - 当前响应会返回：
   - task_id
   - status
@@ -220,10 +223,15 @@
   - dataset_export_manifest_key
   - recipe_id
   - model_scale
+  - gpu_count
+  - precision
   - output_model_name
   - model_version_id
+  - output_object_prefix
   - checkpoint_object_key
+  - latest_checkpoint_object_key
   - metrics_object_key
+  - validation_metrics_object_key
   - summary_object_key
 
 ### GET /api/v1/models/yolox/training-tasks/{task_id}
@@ -231,6 +239,7 @@
 - 需要 tasks:read
 - 默认 include_events=true
 - 返回单条 YOLOX 训练任务详情，包括 task_spec、events、训练结果文件 object key、顶层 model_version_id 和 training_summary
+- training_summary 当前会同时公开训练运行设备、precision、GPU 数量、artifact_locations 和 validation 摘要
 - 如果 task_id 不属于 YOLOX 训练任务，当前接口返回 404
 
 ## tasks 资源组

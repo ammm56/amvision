@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, Query, status
 from pydantic import BaseModel, Field
@@ -31,11 +31,16 @@ class YoloXTrainingTaskCreateRequestBody(BaseModel):
 	dataset_export_id: str | None = Field(default=None, description="训练输入使用的 DatasetExport id")
 	dataset_export_manifest_key: str | None = Field(default=None, description="训练输入使用的导出 manifest object key")
 	recipe_id: str = Field(description="训练 recipe id")
-	model_scale: str = Field(description="训练目标的模型 scale")
+	model_scale: Literal["nano", "tiny", "s", "m", "l", "x"] = Field(description="训练目标的模型 scale")
 	output_model_name: str = Field(description="训练后登记的模型名")
 	warm_start_model_version_id: str | None = Field(default=None, description="warm start 使用的 ModelVersion id")
 	max_epochs: int | None = Field(default=None, description="最大训练轮数")
 	batch_size: int | None = Field(default=None, description="batch size")
+	gpu_count: int | None = Field(default=None, ge=1, le=3, description="请求参与训练的 GPU 数量")
+	precision: Literal["fp8", "fp16", "fp32"] | None = Field(
+		default=None,
+		description="请求使用的训练 precision",
+	)
 	input_size: tuple[int, int] | None = Field(default=None, description="训练输入尺寸")
 	extra_options: dict[str, object] = Field(default_factory=dict, description="附加训练选项")
 	display_name: str = Field(default="", description="可选的任务展示名称")
@@ -89,11 +94,16 @@ class YoloXTrainingTaskSummaryResponse(BaseModel):
 	format_id: str | None = Field(default=None, description="训练输入导出格式 id")
 	recipe_id: str | None = Field(default=None, description="训练 recipe id")
 	model_scale: str | None = Field(default=None, description="训练目标的模型 scale")
+	gpu_count: int | None = Field(default=None, description="请求参与训练的 GPU 数量")
+	precision: str | None = Field(default=None, description="请求使用的训练 precision")
 	output_model_name: str | None = Field(default=None, description="训练输出模型名")
 	model_version_id: str | None = Field(default=None, description="训练输出登记后的 ModelVersion id")
+	output_object_prefix: str | None = Field(default=None, description="训练输出目录前缀")
 	checkpoint_object_key: str | None = Field(default=None, description="checkpoint 文件 object key")
+	latest_checkpoint_object_key: str | None = Field(default=None, description="最新 checkpoint 文件 object key")
 	labels_object_key: str | None = Field(default=None, description="标签文件 object key")
 	metrics_object_key: str | None = Field(default=None, description="训练指标文件 object key")
+	validation_metrics_object_key: str | None = Field(default=None, description="验证指标文件 object key")
 	summary_object_key: str | None = Field(default=None, description="训练摘要文件 object key")
 	best_metric_name: str | None = Field(default=None, description="最佳指标名称")
 	best_metric_value: float | None = Field(default=None, description="最佳指标值")
@@ -141,6 +151,8 @@ def create_yolox_training_task(
 			warm_start_model_version_id=body.warm_start_model_version_id,
 			max_epochs=body.max_epochs,
 			batch_size=body.batch_size,
+			gpu_count=body.gpu_count,
+			precision=body.precision,
 			input_size=body.input_size,
 			extra_options=dict(body.extra_options),
 		),
@@ -329,12 +341,17 @@ def _build_yolox_training_task_summary_response(task: object) -> YoloXTrainingTa
 		or _read_optional_str(metadata, "format_id"),
 		recipe_id=_read_optional_str(task_spec, "recipe_id"),
 		model_scale=_read_optional_str(task_spec, "model_scale"),
+		gpu_count=_read_optional_int(task_spec, "gpu_count"),
+		precision=_read_optional_str(task_spec, "precision"),
 		output_model_name=_read_optional_str(task_spec, "output_model_name"),
 		model_version_id=_read_optional_str(result, "model_version_id")
 		or _read_optional_str(training_summary_payload, "model_version_id"),
+		output_object_prefix=_read_optional_str(result, "output_object_prefix"),
 		checkpoint_object_key=_read_optional_str(result, "checkpoint_object_key"),
+		latest_checkpoint_object_key=_read_optional_str(result, "latest_checkpoint_object_key"),
 		labels_object_key=_read_optional_str(result, "labels_object_key"),
 		metrics_object_key=_read_optional_str(result, "metrics_object_key"),
+		validation_metrics_object_key=_read_optional_str(result, "validation_metrics_object_key"),
 		summary_object_key=_read_optional_str(result, "summary_object_key"),
 		best_metric_name=_read_optional_str(result, "best_metric_name"),
 		best_metric_value=(
@@ -378,5 +395,14 @@ def _read_optional_str(payload: dict[str, object], key: str) -> str | None:
 
 	value = payload.get(key)
 	if isinstance(value, str) and value.strip():
+		return value
+	return None
+
+
+def _read_optional_int(payload: dict[str, object], key: str) -> int | None:
+	"""从字典中读取可选整数字段。"""
+
+	value = payload.get(key)
+	if isinstance(value, int):
 		return value
 	return None
