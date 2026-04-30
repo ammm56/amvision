@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "b0db9a90-95bc-4a01-b247-1ddb33e1a2a8",
     "name": "amvision yolox training api",
-    "description": "当前公开的 YOLOX training create/list/detail 接口。本集合已经同步 gpu_count、precision、latest checkpoint、validation metrics 和 training_summary 查询字段，可直接用于本机调试。",
+    "description": "当前公开的 YOLOX training create/list/detail/validation-metrics/train-metrics/output-files 接口。本集合已经同步 evaluation_interval、gpu_count、precision、latest checkpoint、validation metrics、output-files 和 training_summary 查询字段，可直接用于本机调试。",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "item": [
@@ -55,7 +55,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"dataset_export_id\": \"{{datasetExportId}}\",\n  \"dataset_export_manifest_key\": null,\n  \"recipe_id\": \"{{recipeId}}\",\n  \"model_scale\": \"{{modelScale}}\",\n  \"output_model_name\": \"{{outputModelName}}\",\n  \"warm_start_model_version_id\": null,\n  \"max_epochs\": {{maxEpochs}},\n  \"batch_size\": {{batchSize}},\n  \"gpu_count\": {{gpuCount}},\n  \"precision\": \"{{precision}}\",\n  \"input_size\": [{{inputWidth}}, {{inputHeight}}],\n  \"extra_options\": {\n    \"seed\": 42\n  },\n  \"display_name\": \"{{displayName}}\"\n}",
+              "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"dataset_export_id\": \"{{datasetExportId}}\",\n  \"dataset_export_manifest_key\": null,\n  \"recipe_id\": \"{{recipeId}}\",\n  \"model_scale\": \"{{modelScale}}\",\n  \"output_model_name\": \"{{outputModelName}}\",\n  \"warm_start_model_version_id\": null,\n  \"evaluation_interval\": {{evaluationInterval}},\n  \"max_epochs\": {{maxEpochs}},\n  \"batch_size\": {{batchSize}},\n  \"gpu_count\": {{gpuCount}},\n  \"precision\": \"{{precision}}\",\n  \"input_size\": [{{inputWidth}}, {{inputHeight}}],\n  \"extra_options\": {\n    \"seed\": 42\n  },\n  \"display_name\": \"{{displayName}}\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -75,7 +75,7 @@
                 "training-tasks"
               ]
             },
-            "description": "以 DatasetExport 为唯一输入边界创建 YOLOX 训练任务。当前请求体已经同步 model_scale、gpu_count、precision、batch_size、max_epochs、input_size 和 warm_start_model_version_id；precision 字段可写 fp8、fp16、fp32，但当前最小真实训练执行器实际只支持 fp16、fp32。warm_start_model_version_id 表示本次训练要从哪个已有 ModelVersion 对应的 checkpoint 开始训练，而不是从随机初始化开始；来源既可以是当前 Project 自己已有的历史训练产出，也可以是平台基础模型目录中登记的 pretrained-reference ModelVersion。若需要选择平台基础模型来源，可先查询 /api/v1/models/platform-base 或 /api/v1/models/platform-base/{model_id}，再把 available_versions[].model_version_id 填入 warm_start_model_version_id。"
+            "description": "以 DatasetExport 为唯一输入边界创建 YOLOX 训练任务。当前请求体已经同步 model_scale、evaluation_interval、gpu_count、precision、batch_size、max_epochs、input_size 和 warm_start_model_version_id；precision 字段可写 fp8、fp16、fp32，但当前最小真实训练执行器实际只支持 fp16、fp32。evaluation_interval 表示每隔多少轮执行一次真实验证评估，默认 5，最后一轮会强制补做一次评估，并回写 map50、map50_95。warm_start_model_version_id 表示本次训练要从哪个已有 ModelVersion 对应的 checkpoint 开始训练，而不是从随机初始化开始；来源既可以是当前 Project 自己已有的历史训练产出，也可以是平台基础模型目录中登记的 pretrained-reference ModelVersion。若需要选择平台基础模型来源，可先查询 /api/v1/models/platform-base 或 /api/v1/models/platform-base/{model_id}，再把 available_versions[].model_version_id 填入 warm_start_model_version_id。"
           },
           "response": []
         },
@@ -166,7 +166,7 @@
                 }
               ]
             },
-            "description": "按 DatasetExport 边界列出 YOLOX 训练任务。当前 collection 已预留 state、created_by、dataset_export_manifest_key 和 limit 查询参数，并会自动回填 model_version_id、artifact 路径等常用变量。"
+            "description": "按 DatasetExport 边界列出 YOLOX 训练任务。当前 collection 已预留 state、created_by、dataset_export_manifest_key 和 limit 查询参数，并会自动回填 model_version_id、训练输出文件路径等常用变量。running 阶段如果任务已经开始，还会直接返回 validation_metrics_object_key，便于定位中间验证快照。"
           },
           "response": []
         },
@@ -232,7 +232,168 @@
                 }
               ]
             },
-            "description": "查询单条 YOLOX 训练任务详情和事件流。详情响应已经同步 output_object_prefix、latest_checkpoint_object_key、validation_metrics_object_key，以及 training_summary.artifact_locations 和 validation 摘要。"
+            "description": "查询单条 YOLOX 训练任务详情和事件流。详情响应已经同步 output_object_prefix、latest_checkpoint_object_key、validation_metrics_object_key，以及 training_summary.output_files 和 validation 摘要。running 阶段的 task.progress 当前会带 validation_ran、evaluated_epochs，以及评估轮的 map50、map50_95。"
+          },
+          "response": []
+        },
+        {
+          "name": "Get YOLOX Training Validation Metrics",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-amvision-principal-id",
+                "value": "{{principalId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-project-ids",
+                "value": "{{projectId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-scopes",
+                "value": "tasks:read",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/models/yolox/training-tasks/{{taskId}}/validation-metrics",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "models",
+                "yolox",
+                "training-tasks",
+                "{{taskId}}",
+                "validation-metrics"
+              ]
+            },
+            "description": "直接通过 HTTP 返回当前训练任务最新的 validation-metrics.json 内容。当前响应统一为 file_status、task_state、object_key 和 payload；running 阶段只要已经执行过真实评估轮，这个接口就会返回 ready 和完整 payload；尚未生成验证文件时返回 pending 和空 payload。"
+          },
+          "response": []
+        },
+        {
+          "name": "Get YOLOX Training Train Metrics",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-amvision-principal-id",
+                "value": "{{principalId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-project-ids",
+                "value": "{{projectId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-scopes",
+                "value": "tasks:read",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/models/yolox/training-tasks/{{taskId}}/train-metrics",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "models",
+                "yolox",
+                "training-tasks",
+                "{{taskId}}",
+                "train-metrics"
+              ]
+            },
+            "description": "直接通过 HTTP 返回当前训练任务最新的 train-metrics.json 内容。当前响应统一为 file_status、task_state、object_key 和 payload；若训练指标文件尚未生成，接口会返回 pending 和空 payload；训练完成且文件已写出后，接口会返回 ready 和完整 payload。"
+          },
+          "response": []
+        },
+        {
+          "name": "List YOLOX Training Output Files",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-amvision-principal-id",
+                "value": "{{principalId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-project-ids",
+                "value": "{{projectId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-scopes",
+                "value": "tasks:read",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/models/yolox/training-tasks/{{taskId}}/output-files",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "models",
+                "yolox",
+                "training-tasks",
+                "{{taskId}}",
+                "output-files"
+              ]
+            },
+            "description": "统一列出 train-metrics、validation-metrics、summary、labels、best-checkpoint、latest-checkpoint 这 6 个训练输出文件的读取状态。前端可以只轮询这个资源组，根据 file_status 判断每个文件是否已经 ready。"
+          },
+          "response": []
+        },
+        {
+          "name": "Get YOLOX Training Output File Detail",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-amvision-principal-id",
+                "value": "{{principalId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-project-ids",
+                "value": "{{projectId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-scopes",
+                "value": "tasks:read",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/models/yolox/training-tasks/{{taskId}}/output-files/{{outputFileName}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "models",
+                "yolox",
+                "training-tasks",
+                "{{taskId}}",
+                "output-files",
+                "{{outputFileName}}"
+              ]
+            },
+            "description": "统一读取单个训练输出文件。summary、train-metrics、validation-metrics 会在 payload 中返回 JSON；labels 会在 text_content 和 lines 中返回文本；best-checkpoint、latest-checkpoint 当前只返回文件状态和元数据。"
           },
           "response": []
         }
@@ -279,6 +440,10 @@
     {
       "key": "outputModelName",
       "value": "yolox-local-smoke"
+    },
+    {
+      "key": "evaluationInterval",
+      "value": "5"
     },
     {
       "key": "maxEpochs",
@@ -355,6 +520,10 @@
     {
       "key": "summaryObjectKey",
       "value": "task-runs/training/task-1/artifacts/training-summary.json"
+    },
+    {
+      "key": "outputFileName",
+      "value": "summary"
     }
   ]
 }

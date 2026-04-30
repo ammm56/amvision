@@ -541,9 +541,9 @@ data/files/models/pretrained/yolox/
 ### 训练后模型放哪里
 
 - 训练完成后先登记为新的 ModelVersion，不直接覆盖预训练版本
-- 当前真实训练产物先写到 data/files/task-runs/training/{task_id}/artifacts
-- 当前最小实现会产出 checkpoints/best_ckpt.pth、checkpoints/latest_ckpt.pth、reports/train-metrics.json、reports/validation-metrics.json、training-summary.json 和 labels.txt
-- ModelVersion 侧当前登记 checkpoint 和 labels 的 ModelFile，并通过 training-summary.json 继续引用完整 artifact 目录
+- 当前真实训练输出文件先写到 data/files/task-runs/training/{task_id}/artifacts
+- 当前最小实现会写出 checkpoints/best_ckpt.pth、checkpoints/latest_ckpt.pth、reports/train-metrics.json、reports/validation-metrics.json、training-summary.json 和 labels.txt
+- ModelVersion 侧当前登记 checkpoint 和 labels 的 ModelFile，并通过 training-summary.json 继续引用完整输出文件目录
 
 ### 转换后的模型放哪里
 

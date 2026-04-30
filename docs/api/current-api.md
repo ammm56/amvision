@@ -222,6 +222,7 @@
   - model_scale
   - output_model_name
   - warm_start_model_version_id
+  - evaluation_interval
   - max_epochs
   - batch_size
   - gpu_count
@@ -233,6 +234,7 @@
 - 当前最小真实训练执行器实际支持 fp16、fp32；precision 字段中的 fp8 当前仍保留为接口层枚举值，但执行阶段会拒绝。
 - warm_start_model_version_id 表示“本次训练要从哪个已有 ModelVersion 对应的 checkpoint 开始训练”，而不是从随机初始化开始；当前服务会真实沿 ModelVersion -> ModelFile -> checkpoint 链路加载来源权重。
 - 当前 warm start 来源既可以是当前 Project 自己已有的历史训练产出，也可以是平台基础模型目录中登记的 pretrained-reference ModelVersion；如需选择平台基础模型来源，可先查询 /api/v1/models/platform-base 或 /api/v1/models/platform-base/{model_id}，再把 available_versions[].model_version_id 传给 warm_start_model_version_id。
+- evaluation_interval 表示每隔多少轮执行一次真实验证评估，默认 5；最后一轮会强制补做一次评估，并回写 map50、map50_95。
 - 当前响应会返回：
   - task_id
   - status
@@ -261,6 +263,7 @@
   - dataset_export_manifest_key
   - recipe_id
   - model_scale
+  - evaluation_interval
   - gpu_count
   - precision
   - output_model_name
@@ -271,16 +274,44 @@
   - metrics_object_key
   - validation_metrics_object_key
   - summary_object_key
-- running 阶段的 output_object_prefix 会直接出现在顶层响应，任务推进期间还会逐 epoch 回写 progress。
+- running 阶段的 output_object_prefix 和 validation_metrics_object_key 都会直接出现在顶层响应，任务推进期间还会逐 epoch 回写 progress。
 
 ### GET /api/v1/models/yolox/training-tasks/{task_id}
 
 - 需要 tasks:read
 - 默认 include_events=true
 - 返回单条 YOLOX 训练任务详情，包括 task_spec、events、训练结果文件 object key、顶层 model_version_id 和 training_summary
-- training_summary 当前会同时公开训练运行设备、precision、GPU 数量、artifact_locations、validation 摘要和 warm_start 摘要
-- 当前 events 会包含逐 epoch 的 progress 事件，task.progress 会同步维护 epoch、max_epochs、最佳指标和当前轮指标快照
+- training_summary 当前会同时公开训练运行设备、precision、GPU 数量、evaluation_interval、output_files、validation 摘要和 warm_start 摘要
+- 当前 events 会包含逐 epoch 的 progress 事件，task.progress 会同步维护 epoch、max_epochs、evaluation_interval、validation_ran、evaluated_epochs、最佳指标和当前轮指标快照
 - 如果 task_id 不属于 YOLOX 训练任务，当前接口返回 404
+
+### GET /api/v1/models/yolox/training-tasks/{task_id}/validation-metrics
+
+- 需要 tasks:read
+- 返回当前训练任务最新的 validation-metrics.json 内容
+- 当前响应统一为 `file_status`、`task_state`、`object_key` 和 `payload`
+- 当验证文件尚未生成时，接口返回 `file_status=pending` 和空 `payload`；任务已经结束但文件缺失时返回 404
+
+### GET /api/v1/models/yolox/training-tasks/{task_id}/train-metrics
+
+- 需要 tasks:read
+- 返回当前训练任务最新的 train-metrics.json 内容
+- 当前响应统一为 `file_status`、`task_state`、`object_key` 和 `payload`
+- 当训练指标文件尚未生成时，当前接口不会返回 404，而是返回 `file_status=pending` 和空 `payload`
+
+### GET /api/v1/models/yolox/training-tasks/{task_id}/output-files
+
+- 需要 tasks:read
+- 统一列出 `train-metrics`、`validation-metrics`、`summary`、`labels`、`best-checkpoint`、`latest-checkpoint` 这 6 个训练输出文件
+- 每个条目都会返回 `file_name`、`file_kind`、`file_status`、`task_state`、`object_key`、`size_bytes` 和 `updated_at`
+
+### GET /api/v1/models/yolox/training-tasks/{task_id}/output-files/{file_name}
+
+- 需要 tasks:read
+- 统一读取单个训练输出文件
+- `summary`、`train-metrics`、`validation-metrics` 通过 `payload` 返回 JSON 内容
+- `labels` 通过 `text_content` 和 `lines` 返回文本内容
+- `best-checkpoint`、`latest-checkpoint` 当前只返回文件元数据，不直接返回二进制内容
 
 ## tasks 资源组
 
@@ -393,8 +424,8 @@
 ## 当前未公开的资源面
 
 - 更通用的训练、验证、转换任务规格尚未公开为稳定 API
-- 训练任务当前已经具备最小 worker 执行链，但执行器仍是 placeholder runner，只负责验证 manifest 边界、写出最小产物和推进任务状态
-- 真实 YOLOX 训练执行仍需按本项目的长期目标和分层边界重写实现；开发阶段参考代码不作为平台运行时依赖
+- 更通用的训练、验证、转换任务规格尚未公开为稳定 API
+- 当前公开的是最小真实 YOLOX detection 训练闭环；平台级多模型训练、统一验证任务和更通用的训练编排仍未展开
 
 ## 相关文档
 

@@ -37,8 +37,8 @@
 | TaskRecord / TaskAttempt / TaskEvent / ResourceProfile | task_kind、task_spec、worker_pool、progress、result、event payload、attempt result | detection 训练、转换、推理都继续走统一任务系统，不为单个模型单独发明任务主表 |
 | DatasetExport | dataset_export_id、dataset_id、project_id、dataset_version_id、format_id、task_type、task_id、manifest_object_key、split_names、sample_count、category_names | 这是 detection 训练执行时的正式输入资源边界 |
 | Model | model_id、project_id、model_name、model_type、task_type、model_scale、labels_file_id | model_type 保存具体模型类型，例如 yolox、yolov8、rtdetr；“检测类模型”不是这个字段的取值 |
-| ModelVersion | model_version_id、model_id、source_kind、training_task_id、parent_version_id、file_ids | 训练产物或预置预训练模型都应登记为 ModelVersion |
-| ModelBuild | model_build_id、model_id、source_model_version_id、build_format、runtime_profile_id、conversion_task_id、file_ids | 转换产物统一登记为 ModelBuild，用于部署和推理绑定 |
+| ModelVersion | model_version_id、model_id、source_kind、training_task_id、parent_version_id、file_ids | 训练输出文件或预置预训练模型都应登记为 ModelVersion |
+| ModelBuild | model_build_id、model_id、source_model_version_id、build_format、runtime_profile_id、conversion_task_id、file_ids | 转换输出统一登记为 ModelBuild，用于部署和推理绑定 |
 | ModelFile | file_id、project_id、model_id、model_version_id、model_build_id、file_type、logical_name、storage_uri | checkpoint、onnx、openvino-ir、labels、metrics 等文件统一进入文件记录链路 |
 
 ## 先放 metadata 的内容

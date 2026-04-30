@@ -46,6 +46,7 @@ def test_create_yolox_training_task_accepts_dataset_export_id(tmp_path: Path) ->
                     "recipe_id": "yolox-default",
                     "model_scale": "s",
                     "output_model_name": "yolox-s-bolt",
+                    "evaluation_interval": 3,
                     "gpu_count": 2,
                     "precision": "fp16",
                 },
@@ -65,6 +66,7 @@ def test_create_yolox_training_task_accepts_dataset_export_id(tmp_path: Path) ->
         assert task_detail.task.task_spec["manifest_object_key"] == dataset_export.manifest_object_key
         assert task_detail.task.task_spec["gpu_count"] == 2
         assert task_detail.task.task_spec["precision"] == "fp16"
+        assert task_detail.task.task_spec["evaluation_interval"] == 3
         assert task_detail.task.state == "queued"
         assert any(event.message == "yolox training queued" for event in task_detail.events)
 
@@ -109,6 +111,9 @@ def test_create_yolox_training_task_accepts_manifest_key(tmp_path: Path) -> None
         assert payload["dataset_export_id"] == dataset_export.dataset_export_id
         assert payload["dataset_export_manifest_key"] == dataset_export.manifest_object_key
         assert payload["dataset_version_id"] == dataset_export.dataset_version_id
+
+        task_detail = SqlAlchemyTaskService(session_factory).get_task(payload["task_id"], include_events=True)
+        assert task_detail.task.task_spec["evaluation_interval"] == 5
     finally:
         session_factory.engine.dispose()
 
@@ -285,6 +290,7 @@ def test_list_yolox_training_tasks_returns_top_level_model_version_id_when_compl
         assert payload[0]["dataset_export_id"] == dataset_export.dataset_export_id
         assert payload[0]["state"] == "succeeded"
         assert payload[0]["model_version_id"]
+        assert payload[0]["evaluation_interval"] == 5
         assert payload[0]["precision"] == "fp32"
         assert payload[0]["model_version_id"] == payload[0]["training_summary"]["model_version_id"]
     finally:
@@ -344,10 +350,14 @@ def test_get_yolox_training_task_detail_returns_completed_result(tmp_path: Path)
         assert payload["latest_checkpoint_object_key"].endswith("/latest_ckpt.pth")
         assert payload["validation_metrics_object_key"].endswith("/validation-metrics.json")
         assert payload["summary_object_key"].endswith("/training-summary.json")
+        assert payload["evaluation_interval"] == 5
         assert payload["precision"] == "fp32"
         assert payload["training_summary"]["implementation_mode"] == "yolox-detection-minimal"
         assert payload["training_summary"]["precision"] == "fp32"
         assert payload["training_summary"]["validation"]["enabled"] is True
+        assert payload["training_summary"]["validation"]["evaluation_interval"] == 5
+        assert "map50" in payload["training_summary"]["validation"]["final_metrics"]
+        assert "map50_95" in payload["training_summary"]["validation"]["final_metrics"]
         assert payload["task_spec"]["manifest_object_key"] == dataset_export.manifest_object_key
         assert payload["training_summary"]["model_version_id"]
         assert payload["model_version_id"] == payload["training_summary"]["model_version_id"]
@@ -356,6 +366,172 @@ def test_get_yolox_training_task_detail_returns_completed_result(tmp_path: Path)
         assert "reference_code_root" not in payload["result"].get("summary", {})
         assert any(event["message"] == "yolox training started" for event in payload["events"])
         assert any(event["message"] == "yolox training completed" for event in payload["events"])
+    finally:
+        session_factory.engine.dispose()
+
+
+def test_get_yolox_training_validation_metrics_returns_completed_snapshot(tmp_path: Path) -> None:
+    """验证可通过 HTTP 直接读取完成态训练的 validation snapshot。"""
+
+    client, session_factory, dataset_storage, queue_backend = _create_test_client(tmp_path)
+    dataset_export = _seed_completed_dataset_export(
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+        dataset_export_id="dataset-export-validation-metrics-detail-1",
+        manifest_object_key=(
+            "projects/project-1/datasets/dataset-1/exports/"
+            "dataset-export-validation-metrics-detail-1/manifest.json"
+        ),
+    )
+    try:
+        with client:
+            create_response = client.post(
+                "/api/v1/models/yolox/training-tasks",
+                headers=_build_training_headers(),
+                json={
+                    "project_id": "project-1",
+                    "dataset_export_id": dataset_export.dataset_export_id,
+                    "recipe_id": "yolox-default",
+                    "model_scale": "nano",
+                    "output_model_name": "yolox-s-validation-metrics",
+                    "max_epochs": 1,
+                    "batch_size": 1,
+                    "precision": "fp32",
+                    "input_size": [64, 64],
+                },
+            )
+
+        assert create_response.status_code == 202
+        task_id = create_response.json()["task_id"]
+        assert _run_yolox_training_worker_once(
+            session_factory=session_factory,
+            dataset_storage=dataset_storage,
+            queue_backend=queue_backend,
+        ) is True
+
+        with client:
+            validation_metrics_response = client.get(
+                f"/api/v1/models/yolox/training-tasks/{task_id}/validation-metrics",
+                headers=_build_training_headers(),
+            )
+
+        assert validation_metrics_response.status_code == 200
+        payload = validation_metrics_response.json()
+        assert payload["file_status"] == "ready"
+        assert payload["task_state"] == "succeeded"
+        assert payload["object_key"].endswith("/validation-metrics.json")
+        assert payload["payload"]["enabled"] is True
+        assert payload["payload"]["split_name"] == "val"
+        assert payload["payload"]["evaluation_interval"] == 5
+        assert payload["payload"]["evaluated_epochs"] == [1]
+        assert "map50" in payload["payload"]["final_metrics"]
+        assert "map50_95" in payload["payload"]["final_metrics"]
+        assert payload["payload"]["epoch_history"][0]["epoch"] == 1
+    finally:
+        session_factory.engine.dispose()
+
+
+def test_get_yolox_training_train_metrics_returns_completed_snapshot(tmp_path: Path) -> None:
+    """验证可通过 HTTP 直接读取完成态训练的 train metrics 快照。"""
+
+    client, session_factory, dataset_storage, queue_backend = _create_test_client(tmp_path)
+    dataset_export = _seed_completed_dataset_export(
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+        dataset_export_id="dataset-export-train-metrics-detail-1",
+        manifest_object_key=(
+            "projects/project-1/datasets/dataset-1/exports/"
+            "dataset-export-train-metrics-detail-1/manifest.json"
+        ),
+    )
+    try:
+        with client:
+            create_response = client.post(
+                "/api/v1/models/yolox/training-tasks",
+                headers=_build_training_headers(),
+                json={
+                    "project_id": "project-1",
+                    "dataset_export_id": dataset_export.dataset_export_id,
+                    "recipe_id": "yolox-default",
+                    "model_scale": "nano",
+                    "output_model_name": "yolox-s-train-metrics",
+                    "max_epochs": 1,
+                    "batch_size": 1,
+                    "precision": "fp32",
+                    "input_size": [64, 64],
+                },
+            )
+
+        assert create_response.status_code == 202
+        task_id = create_response.json()["task_id"]
+        assert _run_yolox_training_worker_once(
+            session_factory=session_factory,
+            dataset_storage=dataset_storage,
+            queue_backend=queue_backend,
+        ) is True
+
+        with client:
+            train_metrics_response = client.get(
+                f"/api/v1/models/yolox/training-tasks/{task_id}/train-metrics",
+                headers=_build_training_headers(),
+            )
+
+        assert train_metrics_response.status_code == 200
+        payload = train_metrics_response.json()
+        assert payload["file_status"] == "ready"
+        assert payload["task_state"] == "succeeded"
+        assert payload["object_key"].endswith("/train-metrics.json")
+        assert payload["payload"]["implementation_mode"] == "yolox-detection-minimal"
+        assert payload["payload"]["evaluation_interval"] == 5
+        assert isinstance(payload["payload"]["epoch_history"], list)
+    finally:
+        session_factory.engine.dispose()
+
+
+def test_get_yolox_training_validation_metrics_returns_pending_before_snapshot_exists(
+    tmp_path: Path,
+) -> None:
+    """验证 validation-metrics 在快照尚未生成时也返回 pending。"""
+
+    client, session_factory, dataset_storage, _queue_backend = _create_test_client(tmp_path)
+    dataset_export = _seed_completed_dataset_export(
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+        dataset_export_id="dataset-export-validation-metrics-pending-1",
+        manifest_object_key=(
+            "projects/project-1/datasets/dataset-1/exports/"
+            "dataset-export-validation-metrics-pending-1/manifest.json"
+        ),
+    )
+    try:
+        with client:
+            create_response = client.post(
+                "/api/v1/models/yolox/training-tasks",
+                headers=_build_training_headers(),
+                json={
+                    "project_id": "project-1",
+                    "dataset_export_id": dataset_export.dataset_export_id,
+                    "recipe_id": "yolox-default",
+                    "model_scale": "nano",
+                    "output_model_name": "yolox-s-validation-metrics-pending",
+                },
+            )
+
+        assert create_response.status_code == 202
+        task_id = create_response.json()["task_id"]
+
+        with client:
+            validation_metrics_response = client.get(
+                f"/api/v1/models/yolox/training-tasks/{task_id}/validation-metrics",
+                headers=_build_training_headers(),
+            )
+
+        assert validation_metrics_response.status_code == 200
+        payload = validation_metrics_response.json()
+        assert payload["file_status"] == "pending"
+        assert payload["task_state"] == "queued"
+        assert payload["object_key"] is None
+        assert payload["payload"] == {}
     finally:
         session_factory.engine.dispose()
 
@@ -392,6 +568,27 @@ def test_get_yolox_training_task_detail_exposes_output_prefix_while_running(tmp_
         assert create_response.status_code == 202
         task_id = create_response.json()["task_id"]
         output_object_prefix = f"task-runs/training/{task_id}"
+        validation_metrics_object_key = (
+            f"{output_object_prefix}/artifacts/reports/validation-metrics.json"
+        )
+        dataset_storage.write_json(
+            validation_metrics_object_key,
+            {
+                "enabled": True,
+                "split_name": "val",
+                "sample_count": 1,
+                "evaluation_interval": 5,
+                "confidence_threshold": 0.01,
+                "nms_threshold": 0.65,
+                "best_metric_name": "map50_95",
+                "best_metric_value": 0.41,
+                "final_metrics": {"epoch": 5, "map50": 0.62, "map50_95": 0.41},
+                "evaluated_epochs": [5],
+                "epoch_history": [
+                    {"epoch": 5, "map50": 0.62, "map50_95": 0.41}
+                ],
+            },
+        )
         SqlAlchemyTaskService(session_factory).append_task_event(
             AppendTaskEventRequest(
                 task_id=task_id,
@@ -401,15 +598,31 @@ def test_get_yolox_training_task_detail_exposes_output_prefix_while_running(tmp_
                     "state": "running",
                     "started_at": datetime.now(timezone.utc).isoformat(),
                     "attempt_no": 1,
-                    "progress": {"stage": "training", "percent": 10},
+                    "progress": {
+                        "stage": "training",
+                        "percent": 50,
+                        "epoch": 5,
+                        "max_epochs": 10,
+                        "evaluation_interval": 5,
+                        "validation_ran": True,
+                        "evaluated_epochs": [5],
+                        "current_metric_name": "val_map50_95",
+                        "current_metric_value": 0.41,
+                        "best_metric_name": "val_map50_95",
+                        "best_metric_value": 0.41,
+                        "train_metrics": {"total_loss": 0.8, "lr": 0.001},
+                        "validation_metrics": {"map50": 0.62, "map50_95": 0.41},
+                    },
                     "metadata": {
                         "runner_mode": "yolox-detection-minimal",
                         "output_object_prefix": output_object_prefix,
+                        "validation_metrics_object_key": validation_metrics_object_key,
                         "requested_precision": "fp16",
                         "requested_gpu_count": 1,
                     },
                     "result": {
                         "output_object_prefix": output_object_prefix,
+                        "validation_metrics_object_key": validation_metrics_object_key,
                     },
                 },
             )
@@ -425,7 +638,132 @@ def test_get_yolox_training_task_detail_exposes_output_prefix_while_running(tmp_
         payload = detail_response.json()
         assert payload["state"] == "running"
         assert payload["output_object_prefix"] == output_object_prefix
+        assert payload["validation_metrics_object_key"] == validation_metrics_object_key
+        assert payload["progress"]["validation_ran"] is True
+        assert payload["progress"]["evaluated_epochs"] == [5]
+        assert payload["progress"]["validation_metrics"]["map50"] == 0.62
+        assert payload["progress"]["validation_metrics"]["map50_95"] == 0.41
         assert payload["checkpoint_object_key"] is None
+
+        with client:
+            validation_metrics_response = client.get(
+                f"/api/v1/models/yolox/training-tasks/{task_id}/validation-metrics",
+                headers=_build_training_headers(),
+            )
+
+        assert validation_metrics_response.status_code == 200
+        validation_metrics_payload = validation_metrics_response.json()
+        assert validation_metrics_payload["file_status"] == "ready"
+        assert validation_metrics_payload["task_state"] == "running"
+        assert validation_metrics_payload["object_key"] == validation_metrics_object_key
+        assert validation_metrics_payload["payload"]["evaluated_epochs"] == [5]
+        assert validation_metrics_payload["payload"]["final_metrics"]["map50"] == 0.62
+        assert validation_metrics_payload["payload"]["final_metrics"]["map50_95"] == 0.41
+
+        with client:
+            train_metrics_response = client.get(
+                f"/api/v1/models/yolox/training-tasks/{task_id}/train-metrics",
+                headers=_build_training_headers(),
+            )
+
+        assert train_metrics_response.status_code == 200
+        train_metrics_payload = train_metrics_response.json()
+        assert train_metrics_payload["file_status"] == "pending"
+        assert train_metrics_payload["task_state"] == "running"
+        assert train_metrics_payload["object_key"].endswith("/train-metrics.json")
+        assert train_metrics_payload["payload"] == {}
+    finally:
+        session_factory.engine.dispose()
+
+
+def test_get_yolox_training_output_files_returns_completed_entries(tmp_path: Path) -> None:
+    """验证 output-files 资源组会统一公开训练输出文件状态和可读内容。"""
+
+    client, session_factory, dataset_storage, queue_backend = _create_test_client(tmp_path)
+    dataset_export = _seed_completed_dataset_export(
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+        dataset_export_id="dataset-export-output-files-1",
+        manifest_object_key=(
+            "projects/project-1/datasets/dataset-1/exports/"
+            "dataset-export-output-files-1/manifest.json"
+        ),
+    )
+    try:
+        with client:
+            create_response = client.post(
+                "/api/v1/models/yolox/training-tasks",
+                headers=_build_training_headers(),
+                json={
+                    "project_id": "project-1",
+                    "dataset_export_id": dataset_export.dataset_export_id,
+                    "recipe_id": "yolox-default",
+                    "model_scale": "nano",
+                    "output_model_name": "yolox-s-output-files",
+                    "max_epochs": 1,
+                    "batch_size": 1,
+                    "precision": "fp32",
+                    "input_size": [64, 64],
+                },
+            )
+
+        assert create_response.status_code == 202
+        task_id = create_response.json()["task_id"]
+        assert _run_yolox_training_worker_once(
+            session_factory=session_factory,
+            dataset_storage=dataset_storage,
+            queue_backend=queue_backend,
+        ) is True
+
+        with client:
+            output_files_response = client.get(
+                f"/api/v1/models/yolox/training-tasks/{task_id}/output-files",
+                headers=_build_training_headers(),
+            )
+
+        assert output_files_response.status_code == 200
+        output_files_payload = output_files_response.json()
+        assert len(output_files_payload) == 6
+        output_files_by_name = {
+            item["file_name"]: item
+            for item in output_files_payload
+        }
+        assert output_files_by_name["summary"]["file_status"] == "ready"
+        assert output_files_by_name["labels"]["file_kind"] == "text"
+        assert output_files_by_name["best-checkpoint"]["file_kind"] == "checkpoint"
+        assert output_files_by_name["latest-checkpoint"]["file_status"] == "ready"
+
+        with client:
+            summary_response = client.get(
+                f"/api/v1/models/yolox/training-tasks/{task_id}/output-files/summary",
+                headers=_build_training_headers(),
+            )
+            labels_response = client.get(
+                f"/api/v1/models/yolox/training-tasks/{task_id}/output-files/labels",
+                headers=_build_training_headers(),
+            )
+            checkpoint_response = client.get(
+                f"/api/v1/models/yolox/training-tasks/{task_id}/output-files/best-checkpoint",
+                headers=_build_training_headers(),
+            )
+
+        assert summary_response.status_code == 200
+        summary_payload = summary_response.json()
+        assert summary_payload["file_status"] == "ready"
+        assert summary_payload["payload"]["implementation_mode"] == "yolox-detection-minimal"
+
+        assert labels_response.status_code == 200
+        labels_payload = labels_response.json()
+        assert labels_payload["file_status"] == "ready"
+        assert labels_payload["text_content"] == "bolt\n"
+        assert labels_payload["lines"] == ["bolt"]
+
+        assert checkpoint_response.status_code == 200
+        checkpoint_payload = checkpoint_response.json()
+        assert checkpoint_payload["file_status"] == "ready"
+        assert checkpoint_payload["size_bytes"] > 0
+        assert checkpoint_payload["payload"] == {}
+        assert checkpoint_payload["text_content"] is None
     finally:
         session_factory.engine.dispose()
 

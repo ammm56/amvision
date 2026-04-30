@@ -26,10 +26,11 @@
 
 ## 命名和写法规则
 
-- 模块名、目录名、对象名尽量用短词和常见词，例如 models、files、contracts、datasets
+- 模块名、目录名、对象名尽量用短词和常见词，例如 models、files、datasets、tasks
 - 少用偏抽象或偏绕的词，除非是在说明外部标准
 - 句子直接写“做什么”“不做什么”“放什么”，尽量不要写得像汇报材料
 - 中文说明尽量直白，英文命名也走同一规则，不为了显得正式去造复杂词
+- 公开 API、文档标题、字段名和接口说明统一使用规则、训练输出文件、文件列表、摘要这类直白词，避免使用套话、空话和官话词
 - Python 代码默认写中文注释，名词保持英文不变；模块、类、方法、参数、字段和属性都要说明
 - Python 注释规则通过 [.github/instructions/python-comments.instructions.md](../.github/instructions/python-comments.instructions.md) 自动应用到 Python 文件
 

@@ -9,6 +9,11 @@ import numpy as np
 
 from backend.contracts.datasets.exports.coco_detection_export import COCO_DETECTION_DATASET_FORMAT
 from backend.queue import LocalFileQueueBackend, LocalFileQueueSettings
+from backend.service.application.models.yolox_detection_training import (
+    YoloXDetectionTrainingExecutionResult,
+    YoloXTrainingEpochProgress,
+)
+import backend.service.application.models.yolox_training_service as yolox_training_service_module
 from backend.service.application.models.yolox_model_service import (
     SqlAlchemyYoloXModelService,
     YoloXPretrainedRegistrationRequest,
@@ -83,18 +88,36 @@ def test_yolox_training_worker_advances_task_from_queued_to_succeeded(tmp_path: 
         assert completed_task.task.result["summary_object_key"].endswith("/training-summary.json")
         assert completed_task.task.result["summary"]["implementation_mode"] == "yolox-detection-minimal"
         assert completed_task.task.result["summary"]["precision"] == "fp32"
+        assert completed_task.task.result["summary"]["evaluation_interval"] == 5
         assert completed_task.task.result["summary"]["validation"]["enabled"] is True
+        assert completed_task.task.result["summary"]["validation"]["evaluation_interval"] == 5
+        assert "map50" in completed_task.task.result["summary"]["validation"]["final_metrics"]
+        assert "map50_95" in completed_task.task.result["summary"]["validation"]["final_metrics"]
         assert completed_task.task.result["summary"]["warm_start"]["enabled"] is False
         assert completed_task.task.result["summary"]["model_version_id"]
         assert any(event.message == "yolox training started" for event in completed_task.events)
         assert any(event.message == "yolox training completed" for event in completed_task.events)
         assert any(event.event_type == "progress" for event in completed_task.events)
 
+        progress_event = next(event for event in completed_task.events if event.event_type == "progress")
+        assert progress_event.payload["progress"]["validation_ran"] is True
+        assert progress_event.payload["progress"]["evaluation_interval"] == 5
+        assert progress_event.payload["progress"]["evaluated_epochs"] == [1]
+        assert "map50" in progress_event.payload["progress"]["validation_metrics"]
+        assert "map50_95" in progress_event.payload["progress"]["validation_metrics"]
+
         assert dataset_storage.resolve(completed_task.task.result["checkpoint_object_key"]).is_file()
         assert dataset_storage.resolve(completed_task.task.result["latest_checkpoint_object_key"]).is_file()
         assert dataset_storage.resolve(completed_task.task.result["metrics_object_key"]).is_file()
         assert dataset_storage.resolve(completed_task.task.result["validation_metrics_object_key"]).is_file()
         assert dataset_storage.resolve(completed_task.task.result["summary_object_key"]).is_file()
+
+        validation_metrics_payload = dataset_storage.read_json(
+            completed_task.task.result["validation_metrics_object_key"]
+        )
+        assert validation_metrics_payload["evaluation_interval"] == 5
+        assert "map50" in validation_metrics_payload["final_metrics"]
+        assert "map50_95" in validation_metrics_payload["final_metrics"]
 
         model_service = SqlAlchemyYoloXModelService(session_factory=session_factory)
         model_version = model_service.get_model_version(
@@ -200,6 +223,166 @@ def test_yolox_training_worker_can_warm_start_from_existing_model_version(tmp_pa
         second_model_version = model_service.get_model_version(second_model_version_id)
         assert second_model_version is not None
         assert second_model_version.parent_version_id == warm_start_model_version_id
+    finally:
+        session_factory.engine.dispose()
+
+
+def test_training_service_writes_intermediate_validation_snapshot_on_evaluation_epoch(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """验证评估轮完成后会立即把 validation snapshot 增量写入磁盘。"""
+
+    session_factory, dataset_storage, queue_backend = _create_worker_runtime(tmp_path)
+    _seed_completed_dataset_export(
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+        dataset_export_id="dataset-export-worker-incremental-validation-1",
+        manifest_object_key=(
+            "projects/project-1/datasets/dataset-1/exports/"
+            "dataset-export-worker-incremental-validation-1/manifest.json"
+        ),
+    )
+    service = SqlAlchemyYoloXTrainingTaskService(
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+        queue_backend=queue_backend,
+    )
+    submission = service.submit_training_task(
+        YoloXTrainingTaskRequest(
+            project_id="project-1",
+            dataset_export_id="dataset-export-worker-incremental-validation-1",
+            recipe_id="yolox-default",
+            model_scale="nano",
+            output_model_name="yolox-s-incremental-validation",
+            max_epochs=6,
+            batch_size=1,
+            precision="fp32",
+            input_size=(64, 64),
+        ),
+        created_by="user-1",
+    )
+    expected_validation_metrics_object_key = (
+        f"task-runs/training/{submission.task_id}/artifacts/reports/validation-metrics.json"
+    )
+
+    def fake_run_training(request):
+        validation_snapshot = {
+            "enabled": True,
+            "split_name": "val",
+            "sample_count": 1,
+            "evaluation_interval": 5,
+            "confidence_threshold": 0.01,
+            "nms_threshold": 0.65,
+            "best_metric_name": "map50_95",
+            "best_metric_value": 0.41,
+            "final_metrics": {
+                "epoch": 5,
+                "total_loss": 1.2,
+                "map50": 0.62,
+                "map50_95": 0.41,
+            },
+            "evaluated_epochs": [5],
+            "epoch_history": [
+                {
+                    "epoch": 5,
+                    "total_loss": 1.2,
+                    "map50": 0.62,
+                    "map50_95": 0.41,
+                }
+            ],
+        }
+        if request.epoch_callback is not None:
+            request.epoch_callback(
+                YoloXTrainingEpochProgress(
+                    epoch=5,
+                    max_epochs=6,
+                    evaluation_interval=5,
+                    validation_ran=True,
+                    evaluated_epochs=(5,),
+                    train_metrics={"total_loss": 0.8, "lr": 0.001},
+                    validation_metrics={
+                        "total_loss": 1.2,
+                        "map50": 0.62,
+                        "map50_95": 0.41,
+                    },
+                    validation_snapshot=validation_snapshot,
+                    current_metric_name="val_map50_95",
+                    current_metric_value=0.41,
+                    best_metric_name="val_map50_95",
+                    best_metric_value=0.41,
+                )
+            )
+            snapshot_path = request.dataset_storage.resolve(expected_validation_metrics_object_key)
+            assert snapshot_path.is_file() is True
+            snapshot_payload = request.dataset_storage.read_json(expected_validation_metrics_object_key)
+            assert snapshot_payload["evaluated_epochs"] == [5]
+            assert snapshot_payload["final_metrics"]["map50"] == 0.62
+            assert snapshot_payload["final_metrics"]["map50_95"] == 0.41
+
+        return YoloXDetectionTrainingExecutionResult(
+            checkpoint_bytes=b"best-checkpoint",
+            latest_checkpoint_bytes=b"latest-checkpoint",
+            metrics_payload={
+                "implementation_mode": "fake-yolox-detection-minimal",
+                "device": "cpu",
+                "gpu_count": 0,
+                "device_ids": [],
+                "distributed_mode": "single-device",
+                "precision": "fp32",
+                "batch_size": 1,
+                "max_epochs": 6,
+                "evaluation_interval": 5,
+                "input_size": [64, 64],
+                "train_split_name": "train",
+                "validation_split_name": "val",
+                "sample_count": 2,
+                "train_sample_count": 1,
+                "validation_sample_count": 1,
+                "category_names": ["bolt", "nut"],
+                "best_metric_name": "val_map50_95",
+                "best_metric_value": 0.41,
+                "final_metrics": {"epoch": 6, "train_total_loss": 0.7},
+                "epoch_history": [],
+                "parameter_count": 1,
+                "warm_start": {"enabled": False},
+            },
+            validation_metrics_payload=validation_snapshot,
+            warm_start_summary={"enabled": False},
+            implementation_mode="fake-yolox-detection-minimal",
+            best_metric_name="val_map50_95",
+            best_metric_value=0.41,
+            evaluation_interval=5,
+            category_names=("bolt", "nut"),
+            split_names=("train", "val"),
+            sample_count=2,
+            train_sample_count=1,
+            input_size=(64, 64),
+            batch_size=1,
+            max_epochs=6,
+            device="cpu",
+            gpu_count=0,
+            device_ids=(),
+            distributed_mode="single-device",
+            precision="fp32",
+            validation_split_name="val",
+            validation_sample_count=1,
+            parameter_count=1,
+        )
+
+    monkeypatch.setattr(
+        yolox_training_service_module,
+        "run_yolox_detection_training",
+        fake_run_training,
+    )
+
+    try:
+        result = service.process_training_task(submission.task_id)
+        assert result.validation_metrics_object_key == expected_validation_metrics_object_key
+        validation_metrics_payload = dataset_storage.read_json(expected_validation_metrics_object_key)
+        assert validation_metrics_payload["evaluated_epochs"] == [5]
+        assert validation_metrics_payload["final_metrics"]["map50"] == 0.62
+        assert validation_metrics_payload["final_metrics"]["map50_95"] == 0.41
     finally:
         session_factory.engine.dispose()
 

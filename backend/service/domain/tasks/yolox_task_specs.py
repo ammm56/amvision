@@ -23,6 +23,7 @@ class YoloXTrainingTaskSpec:
     - model_scale：训练目标的模型 scale。
     - output_model_name：训练后登记的模型名。
     - warm_start_model_version_id：warm start 使用的 ModelVersion id。
+    - evaluation_interval：每隔多少个 epoch 执行一次真实验证评估。
     - max_epochs：最大训练轮数。
     - batch_size：batch size。
     - gpu_count：请求参与训练的 GPU 数量。
@@ -39,6 +40,7 @@ class YoloXTrainingTaskSpec:
     manifest_object_key: str | None = None
     dataset_export_id: str | None = None
     warm_start_model_version_id: str | None = None
+    evaluation_interval: int | None = None
     max_epochs: int | None = None
     batch_size: int | None = None
     gpu_count: int | None = None

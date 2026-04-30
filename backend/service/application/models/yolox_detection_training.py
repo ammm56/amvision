@@ -5,7 +5,7 @@ from __future__ import annotations
 import io
 import json
 from collections.abc import Callable
-from contextlib import nullcontext
+from contextlib import nullcontext, redirect_stdout
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any
@@ -37,6 +37,7 @@ class YoloXDetectionTrainingExecutionRequest:
     - dataset_storage：本地文件存储服务。
     - manifest_payload：DatasetExport manifest 内容。
     - model_scale：当前训练使用的 model scale。
+    - evaluation_interval：每隔多少个 epoch 执行一次真实验证评估；为空时使用默认值。
     - max_epochs：最大训练 epoch 数；为空时使用最小默认值。
     - batch_size：训练 batch size；为空时使用最小默认值。
     - gpu_count：请求参与训练的 GPU 数量；为空时按本机可用资源回退。
@@ -51,6 +52,7 @@ class YoloXDetectionTrainingExecutionRequest:
     dataset_storage: LocalDatasetStorage
     manifest_payload: dict[str, object]
     model_scale: str
+    evaluation_interval: int | None = None
     max_epochs: int | None = None
     batch_size: int | None = None
     gpu_count: int | None = None
@@ -75,6 +77,7 @@ class YoloXDetectionTrainingExecutionResult:
     - implementation_mode：当前训练执行模式标识。
     - best_metric_name：最佳指标名称。
     - best_metric_value：最佳指标值。
+    - evaluation_interval：真实验证评估周期。
     - category_names：训练使用的类别名列表。
     - split_names：manifest 中可见的 split 列表。
     - sample_count：manifest 中记录的总样本数。
@@ -100,6 +103,7 @@ class YoloXDetectionTrainingExecutionResult:
     implementation_mode: str
     best_metric_name: str
     best_metric_value: float
+    evaluation_interval: int
     category_names: tuple[str, ...]
     split_names: tuple[str, ...]
     sample_count: int
@@ -124,22 +128,30 @@ class YoloXTrainingEpochProgress:
     字段：
     - epoch：当前完成的 epoch 序号。
     - max_epochs：本次训练总 epoch 数。
+    - evaluation_interval：真实验证评估周期。
+    - validation_ran：当前轮是否执行了真实验证评估。
+    - evaluated_epochs：截至当前轮已执行真实验证评估的 epoch 列表。
     - train_metrics：当前轮训练指标摘要。
     - validation_metrics：当前轮验证指标摘要。
+    - validation_snapshot：当前轮评估完成后形成的完整验证快照；未执行评估时为空。
     - current_metric_name：当前用于比较的指标名。
-    - current_metric_value：当前轮该指标值。
+    - current_metric_value：当前轮该指标值；当前轮未执行评估时为空。
     - best_metric_name：当前最佳指标名。
-    - best_metric_value：截至当前轮的最佳指标值。
+    - best_metric_value：截至当前轮的最佳指标值；首次评估前为空。
     """
 
     epoch: int
     max_epochs: int
+    evaluation_interval: int
+    validation_ran: bool
+    evaluated_epochs: tuple[int, ...]
     train_metrics: dict[str, float]
     validation_metrics: dict[str, float]
+    validation_snapshot: dict[str, object] | None
     current_metric_name: str
-    current_metric_value: float
+    current_metric_value: float | None
     best_metric_name: str
-    best_metric_value: float
+    best_metric_value: float | None
 
 
 @dataclass(frozen=True)
@@ -154,6 +166,9 @@ class _YoloXTrainingImports:
     YOLOX: Any
     YOLOXHead: Any
     LRScheduler: Any
+    postprocess: Any
+    COCO: Any
+    COCOeval: Any
 
 
 @dataclass(frozen=True)
@@ -198,6 +213,9 @@ YOLOX_MINIMAL_IMPLEMENTATION_MODE = "yolox-detection-minimal"
 YOLOX_MINIMAL_DEFAULT_INPUT_SIZE = (64, 64)
 YOLOX_MINIMAL_DEFAULT_BATCH_SIZE = 1
 YOLOX_MINIMAL_DEFAULT_MAX_EPOCHS = 1
+YOLOX_MINIMAL_DEFAULT_EVALUATION_INTERVAL = 5
+YOLOX_MINIMAL_DEFAULT_EVAL_CONFIDENCE_THRESHOLD = 0.01
+YOLOX_MINIMAL_DEFAULT_EVAL_NMS_THRESHOLD = 0.65
 
 YOLOX_SCALE_PROFILES: dict[str, YoloXScaleProfile] = {
     "nano": YoloXScaleProfile(depth=0.33, width=0.25, depthwise=True),
@@ -267,6 +285,11 @@ class _CocoDetectionExportDataset:
             str(category_item.get("name", "")).strip()
             for category_item in categories_payload
             if isinstance(category_item, dict) and str(category_item.get("name", "")).strip()
+        )
+        self.category_ids = tuple(
+            int(category_item.get("id"))
+            for category_item in categories_payload
+            if isinstance(category_item, dict) and isinstance(category_item.get("id"), int)
         )
         category_id_to_index = self._build_category_id_to_index(categories_payload)
         annotations_by_image_id = self._build_annotations_by_image_id(
@@ -431,6 +454,15 @@ def run_yolox_detection_training(
     batch_size = max(1, request.batch_size or YOLOX_MINIMAL_DEFAULT_BATCH_SIZE)
     max_epochs = max(1, request.max_epochs or YOLOX_MINIMAL_DEFAULT_MAX_EPOCHS)
     extra_options = dict(request.extra_options or {})
+    evaluation_interval = max(
+        1,
+        request.evaluation_interval
+        or _read_int_option(
+            extra_options,
+            "evaluation_interval",
+            default=YOLOX_MINIMAL_DEFAULT_EVALUATION_INTERVAL,
+        ),
+    )
     runtime = _resolve_training_runtime(
         imports=imports,
         requested_gpu_count=request.gpu_count,
@@ -447,6 +479,16 @@ def run_yolox_detection_training(
     max_labels = _read_int_option(extra_options, "max_labels", default=50)
     num_workers = _read_int_option(extra_options, "num_workers", default=0)
     random_seed = _read_int_option(extra_options, "seed", default=0)
+    evaluation_confidence_threshold = _read_float_option(
+        extra_options,
+        "evaluation_confidence_threshold",
+        default=YOLOX_MINIMAL_DEFAULT_EVAL_CONFIDENCE_THRESHOLD,
+    )
+    evaluation_nms_threshold = _read_float_option(
+        extra_options,
+        "evaluation_nms_threshold",
+        default=YOLOX_MINIMAL_DEFAULT_EVAL_NMS_THRESHOLD,
+    )
     imports.torch.manual_seed(random_seed)
     if runtime.device.startswith("cuda"):
         imports.torch.cuda.manual_seed_all(random_seed)
@@ -533,8 +575,9 @@ def run_yolox_detection_training(
     grad_scaler = imports.torch.amp.GradScaler(grad_scaler_device, enabled=use_fp16)
 
     epoch_history: list[dict[str, object]] = []
-    best_metric_name = "val_total_loss" if validation_loader is not None else "train_total_loss"
-    best_metric_value = float("inf")
+    validation_epoch_history: list[dict[str, object]] = []
+    best_metric_name = "val_map50_95" if validation_loader is not None else "train_total_loss"
+    best_metric_value: float | None = None if validation_loader is not None else float("inf")
     best_checkpoint_state: dict[str, object] | None = None
     global_iter = 0
     for epoch_index in range(max_epochs):
@@ -582,28 +625,63 @@ def run_yolox_detection_training(
             metric_name: metric_total / epoch_iterations
             for metric_name, metric_total in epoch_totals.items()
         }
+        validation_metrics: dict[str, float] = {}
+        validation_ran = False
+        validation_snapshot: dict[str, object] | None = None
         if validation_loader is not None:
-            validation_metrics = _evaluate_validation_losses(
-                imports=imports,
-                model=training_model,
-                loader=validation_loader,
-                device=runtime.device,
-                precision=precision,
+            validation_ran = _should_run_validation_evaluation(
+                epoch=epoch_index + 1,
+                max_epochs=max_epochs,
+                evaluation_interval=evaluation_interval,
             )
+            if validation_ran:
+                validation_metrics = _evaluate_validation_losses(
+                    imports=imports,
+                    model=training_model,
+                    loader=validation_loader,
+                    device=runtime.device,
+                    precision=precision,
+                )
+                validation_metrics.update(
+                    _evaluate_validation_map(
+                        imports=imports,
+                        model=training_model,
+                        loader=validation_loader,
+                        device=runtime.device,
+                        precision=precision,
+                        input_size=input_size,
+                        num_classes=len(train_dataset.category_names),
+                        category_ids=validation_dataset.category_ids if validation_dataset is not None else (),
+                        annotation_file=(
+                            validation_split.annotation_file
+                            if validation_split is not None
+                            else train_split.annotation_file
+                        ),
+                        conf_threshold=evaluation_confidence_threshold,
+                        nms_threshold=evaluation_nms_threshold,
+                    )
+                )
             for metric_name, metric_value in validation_metrics.items():
                 epoch_metrics[f"val_{metric_name}"] = metric_value
         epoch_metrics["epoch"] = epoch_index + 1
         epoch_history.append(epoch_metrics)
 
-        current_metric_value = float(epoch_metrics.get(best_metric_name, 0.0))
-        if current_metric_value <= best_metric_value:
+        current_metric_value: float | None = None
+        raw_current_metric_value = epoch_metrics.get(best_metric_name)
+        if isinstance(raw_current_metric_value, int | float):
+            current_metric_value = float(raw_current_metric_value)
+        if current_metric_value is not None and _is_metric_improved(
+            current_metric_value=current_metric_value,
+            best_metric_value=best_metric_value,
+            higher_is_better=validation_loader is not None,
+        ):
             best_metric_value = current_metric_value
             best_checkpoint_state = _build_checkpoint_state(
                 model=base_model,
                 optimizer=optimizer,
                 epoch=epoch_index + 1,
                 metric_name=best_metric_name,
-                metric_value=best_metric_value,
+                metric_value=current_metric_value,
                 category_names=train_dataset.category_names,
                 model_scale=request.model_scale,
                 input_size=input_size,
@@ -613,13 +691,42 @@ def run_yolox_detection_training(
                 checkpoint_kind="best",
             )
 
+        if validation_ran:
+            validation_epoch_history.append(
+                {
+                    "epoch": epoch_index + 1,
+                    **dict(validation_metrics),
+                }
+            )
+            validation_snapshot = _build_validation_metrics_payload(
+                enabled=True,
+                split_name=validation_split.name if validation_split is not None else None,
+                sample_count=len(validation_dataset) if validation_dataset is not None else 0,
+                evaluation_interval=evaluation_interval,
+                confidence_threshold=evaluation_confidence_threshold,
+                nms_threshold=evaluation_nms_threshold,
+                best_metric_name="map50_95",
+                best_metric_value=best_metric_value,
+                validation_history=validation_epoch_history,
+            )
+
         if request.epoch_callback is not None:
             request.epoch_callback(
                 YoloXTrainingEpochProgress(
                     epoch=epoch_index + 1,
                     max_epochs=max_epochs,
+                    evaluation_interval=evaluation_interval,
+                    validation_ran=validation_ran,
+                    evaluated_epochs=tuple(
+                        current_epoch_metrics["epoch"]
+                        for current_epoch_metrics in validation_epoch_history
+                        if isinstance(current_epoch_metrics.get("epoch"), int)
+                    ),
                     train_metrics=_extract_train_progress_metrics(epoch_metrics),
-                    validation_metrics=_extract_prefixed_metrics(epoch_metrics, prefix="val_"),
+                    validation_metrics=dict(validation_metrics),
+                    validation_snapshot=(
+                        dict(validation_snapshot) if validation_snapshot is not None else None
+                    ),
                     current_metric_name=best_metric_name,
                     current_metric_value=current_metric_value,
                     best_metric_name=best_metric_name,
@@ -627,11 +734,15 @@ def run_yolox_detection_training(
                 )
             )
 
-    if best_checkpoint_state is None:
+    if best_checkpoint_state is None or best_metric_value is None:
         raise ServiceConfigurationError("YOLOX 训练没有生成有效 checkpoint")
 
     final_metrics = dict(epoch_history[-1]) if epoch_history else {}
-    final_metric_value = float(final_metrics.get(best_metric_name, 0.0))
+    raw_final_metric_value = final_metrics.get(best_metric_name)
+    if isinstance(raw_final_metric_value, int | float):
+        final_metric_value = float(raw_final_metric_value)
+    else:
+        final_metric_value = float(best_metric_value)
     latest_checkpoint_state = _build_checkpoint_state(
         model=base_model,
         optimizer=optimizer,
@@ -653,17 +764,19 @@ def run_yolox_detection_training(
     latest_checkpoint_buffer = io.BytesIO()
     imports.torch.save(latest_checkpoint_state, latest_checkpoint_buffer)
     latest_checkpoint_bytes = latest_checkpoint_buffer.getvalue()
-    validation_history = _extract_prefixed_history(epoch_history, prefix="val_")
-    validation_final_metrics = validation_history[-1] if validation_history else {}
-    validation_metrics_payload = {
-        "enabled": validation_loader is not None,
-        "split_name": validation_split.name if validation_split is not None else None,
-        "sample_count": len(validation_dataset) if validation_dataset is not None else 0,
-        "best_metric_name": "total_loss" if validation_loader is not None else None,
-        "best_metric_value": best_metric_value if validation_loader is not None else None,
-        "final_metrics": validation_final_metrics,
-        "epoch_history": validation_history,
-    }
+    validation_metrics_payload = _build_validation_metrics_payload(
+        enabled=validation_loader is not None,
+        split_name=validation_split.name if validation_split is not None else None,
+        sample_count=len(validation_dataset) if validation_dataset is not None else 0,
+        evaluation_interval=evaluation_interval if validation_loader is not None else None,
+        confidence_threshold=(
+            evaluation_confidence_threshold if validation_loader is not None else None
+        ),
+        nms_threshold=evaluation_nms_threshold if validation_loader is not None else None,
+        best_metric_name="map50_95" if validation_loader is not None else None,
+        best_metric_value=best_metric_value if validation_loader is not None else None,
+        validation_history=validation_epoch_history,
+    )
     parameter_count = sum(parameter.numel() for parameter in base_model.parameters())
     metrics_payload = {
         "implementation_mode": YOLOX_MINIMAL_IMPLEMENTATION_MODE,
@@ -674,6 +787,7 @@ def run_yolox_detection_training(
         "precision": precision,
         "batch_size": batch_size,
         "max_epochs": max_epochs,
+        "evaluation_interval": evaluation_interval,
         "input_size": list(input_size),
         "train_split_name": train_split.name,
         "validation_split_name": validation_split.name if validation_split is not None else None,
@@ -697,6 +811,7 @@ def run_yolox_detection_training(
         implementation_mode=YOLOX_MINIMAL_IMPLEMENTATION_MODE,
         best_metric_name=best_metric_name,
         best_metric_value=best_metric_value,
+        evaluation_interval=evaluation_interval,
         category_names=train_dataset.category_names,
         split_names=tuple(split.name for split in resolved_splits),
         sample_count=sum(split.sample_count for split in resolved_splits),
@@ -722,12 +837,14 @@ def _require_training_imports() -> _YoloXTrainingImports:
         import cv2  # type: ignore[import-not-found]
         import numpy as np  # type: ignore[import-not-found]
         import torch  # type: ignore[import-not-found]
+        from pycocotools.coco import COCO  # type: ignore[import-not-found]
+        from pycocotools.cocoeval import COCOeval  # type: ignore[import-not-found]
         from yolox.data import TrainTransform  # type: ignore[import-not-found]
         from yolox.models import YOLOPAFPN, YOLOX, YOLOXHead  # type: ignore[import-not-found]
-        from yolox.utils import LRScheduler  # type: ignore[import-not-found]
+        from yolox.utils import LRScheduler, postprocess  # type: ignore[import-not-found]
     except ImportError as error:
         raise ServiceConfigurationError(
-            "YOLOX 训练依赖缺失，至少需要 torch、opencv-python、numpy 和 yolox"
+            "YOLOX 训练依赖缺失，至少需要 torch、opencv-python、numpy、pycocotools 和 yolox"
         ) from error
 
     return _YoloXTrainingImports(
@@ -739,6 +856,9 @@ def _require_training_imports() -> _YoloXTrainingImports:
         YOLOX=YOLOX,
         YOLOXHead=YOLOXHead,
         LRScheduler=LRScheduler,
+        postprocess=postprocess,
+        COCO=COCO,
+        COCOeval=COCOeval,
     )
 
 
@@ -1105,6 +1225,69 @@ def _extract_prefixed_metrics(
     return extracted_metrics
 
 
+def _build_validation_metrics_payload(
+    *,
+    enabled: bool,
+    split_name: str | None,
+    sample_count: int,
+    evaluation_interval: int | None,
+    confidence_threshold: float | None,
+    nms_threshold: float | None,
+    best_metric_name: str | None,
+    best_metric_value: float | None,
+    validation_history: list[dict[str, object]],
+) -> dict[str, object]:
+    """构建验证指标摘要与中间快照负载。"""
+
+    validation_final_metrics = dict(validation_history[-1]) if validation_history else {}
+    evaluated_epochs = [
+        epoch_metrics["epoch"]
+        for epoch_metrics in validation_history
+        if isinstance(epoch_metrics.get("epoch"), int)
+    ]
+    return {
+        "enabled": enabled,
+        "split_name": split_name,
+        "sample_count": sample_count,
+        "evaluation_interval": evaluation_interval,
+        "confidence_threshold": confidence_threshold,
+        "nms_threshold": nms_threshold,
+        "best_metric_name": best_metric_name,
+        "best_metric_value": best_metric_value,
+        "final_metrics": validation_final_metrics,
+        "evaluated_epochs": evaluated_epochs,
+        "epoch_history": [dict(item) for item in validation_history],
+    }
+
+
+def _should_run_validation_evaluation(
+    *,
+    epoch: int,
+    max_epochs: int,
+    evaluation_interval: int,
+) -> bool:
+    """判断当前轮是否需要执行真实验证评估。"""
+
+    if epoch >= max_epochs:
+        return True
+    return epoch % max(1, evaluation_interval) == 0
+
+
+def _is_metric_improved(
+    *,
+    current_metric_value: float,
+    best_metric_value: float | None,
+    higher_is_better: bool,
+) -> bool:
+    """按指标方向判断当前轮是否刷新最佳结果。"""
+
+    if best_metric_value is None:
+        return True
+    if higher_is_better:
+        return current_metric_value >= best_metric_value
+    return current_metric_value <= best_metric_value
+
+
 def _evaluate_validation_losses(
     *,
     imports: _YoloXTrainingImports,
@@ -1141,6 +1324,151 @@ def _evaluate_validation_losses(
         metric_name: metric_total / epoch_iterations
         for metric_name, metric_total in epoch_totals.items()
     }
+
+
+def _evaluate_validation_map(
+    *,
+    imports: _YoloXTrainingImports,
+    model: Any,
+    loader: Any,
+    device: str,
+    precision: str,
+    input_size: tuple[int, int],
+    num_classes: int,
+    category_ids: tuple[int, ...],
+    annotation_file: Path,
+    conf_threshold: float,
+    nms_threshold: float,
+) -> dict[str, float]:
+    """执行一次真实 COCO mAP 评估。"""
+
+    if len(loader) == 0:
+        return {"map50": 0.0, "map50_95": 0.0}
+
+    was_training = bool(model.training)
+    model.eval()
+    detections: list[dict[str, object]] = []
+    try:
+        with imports.torch.no_grad():
+            for images, _targets, image_infos, image_ids in loader:
+                images = images.to(device=device, dtype=imports.torch.float32)
+                with _build_autocast_context(
+                    imports=imports,
+                    device=device,
+                    precision=precision,
+                ):
+                    raw_outputs = model(images)
+                processed_outputs = imports.postprocess(
+                    raw_outputs,
+                    num_classes,
+                    conf_thre=conf_threshold,
+                    nms_thre=nms_threshold,
+                    class_agnostic=False,
+                )
+                detections.extend(
+                    _convert_predictions_to_coco_detections(
+                        predictions=processed_outputs,
+                        image_infos=image_infos,
+                        image_ids=image_ids,
+                        input_size=input_size,
+                        category_ids=category_ids,
+                    )
+                )
+    finally:
+        model.train(was_training)
+
+    if not detections:
+        return {"map50": 0.0, "map50_95": 0.0}
+
+    ground_truth = imports.COCO(str(annotation_file))
+    with redirect_stdout(io.StringIO()):
+        coco_detections = ground_truth.loadRes(detections)
+        coco_evaluator = imports.COCOeval(ground_truth, coco_detections, "bbox")
+        coco_evaluator.evaluate()
+        coco_evaluator.accumulate()
+        coco_evaluator.summarize()
+
+    return {
+        "map50_95": float(coco_evaluator.stats[0]),
+        "map50": float(coco_evaluator.stats[1]),
+    }
+
+
+def _convert_predictions_to_coco_detections(
+    *,
+    predictions: list[object],
+    image_infos: object,
+    image_ids: object,
+    input_size: tuple[int, int],
+    category_ids: tuple[int, ...],
+) -> list[dict[str, object]]:
+    """把 YOLOX 后处理输出转换为 COCO detection 结果。"""
+
+    detections: list[dict[str, object]] = []
+    for batch_index, prediction in enumerate(predictions):
+        if prediction is None:
+            continue
+        image_height, image_width = _extract_batch_image_info(image_infos, batch_index)
+        image_id = _extract_batch_image_id(image_ids, batch_index)
+        resize_ratio = min(
+            input_size[0] / max(1.0, float(image_height)),
+            input_size[1] / max(1.0, float(image_width)),
+        )
+        if resize_ratio <= 0:
+            continue
+
+        prediction_tensor = prediction.detach().cpu()
+        boxes = prediction_tensor[:, 0:4] / resize_ratio
+        scores = prediction_tensor[:, 4] * prediction_tensor[:, 5]
+        classes = prediction_tensor[:, 6]
+        for row_index in range(prediction_tensor.shape[0]):
+            class_index = int(classes[row_index].item())
+            if class_index < 0 or class_index >= len(category_ids):
+                continue
+
+            x1, y1, x2, y2 = boxes[row_index].tolist()
+            x1 = max(0.0, min(float(x1), float(image_width)))
+            y1 = max(0.0, min(float(y1), float(image_height)))
+            x2 = max(0.0, min(float(x2), float(image_width)))
+            y2 = max(0.0, min(float(y2), float(image_height)))
+            box_width = max(0.0, x2 - x1)
+            box_height = max(0.0, y2 - y1)
+            if box_width <= 0 or box_height <= 0:
+                continue
+
+            detections.append(
+                {
+                    "image_id": image_id,
+                    "category_id": category_ids[class_index],
+                    "bbox": [x1, y1, box_width, box_height],
+                    "score": float(scores[row_index].item()),
+                }
+            )
+    return detections
+
+
+def _extract_batch_image_info(image_infos: object, batch_index: int) -> tuple[int, int]:
+    """从 DataLoader 合并结果中读取单张图片的原图尺寸。"""
+
+    if (
+        isinstance(image_infos, list | tuple)
+        and len(image_infos) == 2
+        and all(hasattr(item, "__getitem__") for item in image_infos)
+    ):
+        return int(image_infos[0][batch_index]), int(image_infos[1][batch_index])
+    if isinstance(image_infos, list | tuple) and len(image_infos) > batch_index:
+        image_info = image_infos[batch_index]
+        if isinstance(image_info, list | tuple) and len(image_info) == 2:
+            return int(image_info[0]), int(image_info[1])
+    raise ServiceConfigurationError("验证批次中的 image_infos 结构不合法")
+
+
+def _extract_batch_image_id(image_ids: object, batch_index: int) -> int:
+    """从 DataLoader 合并结果中读取单张图片的 image_id。"""
+
+    if hasattr(image_ids, "__getitem__"):
+        return int(image_ids[batch_index])
+    raise ServiceConfigurationError("验证批次中的 image_ids 结构不合法")
 
 
 def _freeze_batch_norm_modules(

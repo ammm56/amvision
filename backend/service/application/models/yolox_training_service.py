@@ -13,6 +13,7 @@ from backend.service.application.errors import InvalidRequestError, ResourceNotF
 from backend.service.application.models.yolox_detection_training import (
     run_yolox_detection_training,
     YoloXTrainingEpochProgress,
+    YOLOX_MINIMAL_DEFAULT_EVALUATION_INTERVAL,
     YOLOX_SUPPORTED_MODEL_SCALES,
     YoloXDetectionTrainingExecutionRequest,
 )
@@ -53,6 +54,7 @@ class YoloXTrainingTaskRequest:
     - model_scale：训练目标的模型 scale。
     - output_model_name：训练后登记的模型名。
     - warm_start_model_version_id：warm start 使用的 ModelVersion id。
+    - evaluation_interval：每隔多少个 epoch 执行一次真实验证评估。
     - max_epochs：最大训练轮数。
     - batch_size：batch size。
     - gpu_count：请求参与训练的 GPU 数量。
@@ -68,6 +70,7 @@ class YoloXTrainingTaskRequest:
     dataset_export_id: str | None = None
     dataset_export_manifest_key: str | None = None
     warm_start_model_version_id: str | None = None
+    evaluation_interval: int | None = None
     max_epochs: int | None = None
     batch_size: int | None = None
     gpu_count: int | None = None
@@ -297,6 +300,9 @@ class SqlAlchemyYoloXTrainingTaskService:
         manifest_payload = self._read_manifest_payload(dataset_export.manifest_object_key or "")
         attempt_no = max(1, task_record.current_attempt_no + 1)
         output_object_prefix = self._build_output_object_prefix(task_id)
+        output_files_root = f"{output_object_prefix}/artifacts"
+        validation_metrics_object_key = f"{output_files_root}/reports/validation-metrics.json"
+        resolved_evaluation_interval = self._resolve_requested_evaluation_interval(request)
         started_at = self._now_iso()
 
         self.task_service.append_task_event(
@@ -311,15 +317,21 @@ class SqlAlchemyYoloXTrainingTaskService:
                     "progress": {
                         "stage": "training",
                         "percent": 10,
+                        "evaluation_interval": resolved_evaluation_interval,
+                        "validation_ran": False,
+                        "evaluated_epochs": [],
                     },
                     "metadata": {
                         "runner_mode": "yolox-detection-minimal",
                         "output_object_prefix": output_object_prefix,
+                        "validation_metrics_object_key": validation_metrics_object_key,
                         "requested_precision": request.precision,
                         "requested_gpu_count": request.gpu_count,
+                        "requested_evaluation_interval": resolved_evaluation_interval,
                     },
                     "result": {
                         "output_object_prefix": output_object_prefix,
+                        "validation_metrics_object_key": validation_metrics_object_key,
                     },
                 },
             )
@@ -359,6 +371,7 @@ class SqlAlchemyYoloXTrainingTaskService:
                             "dataset_version_id": dataset_export.dataset_version_id,
                             "format_id": dataset_export.format_id,
                             "output_object_prefix": output_object_prefix,
+                            "validation_metrics_object_key": validation_metrics_object_key,
                         },
                     },
                 )
@@ -410,6 +423,8 @@ class SqlAlchemyYoloXTrainingTaskService:
             raise InvalidRequestError("output_model_name 不能为空")
         if request.max_epochs is not None and request.max_epochs < 1:
             raise InvalidRequestError("max_epochs 必须大于 0")
+        if request.evaluation_interval is not None and request.evaluation_interval < 1:
+            raise InvalidRequestError("evaluation_interval 必须大于 0")
         if request.batch_size is not None and request.batch_size < 1:
             raise InvalidRequestError("batch_size 必须大于 0")
         if request.gpu_count is not None and request.gpu_count not in {1, 2, 3}:
@@ -541,6 +556,7 @@ class SqlAlchemyYoloXTrainingTaskService:
             model_scale=request.model_scale,
             output_model_name=request.output_model_name,
             warm_start_model_version_id=request.warm_start_model_version_id,
+            evaluation_interval=request.evaluation_interval,
             max_epochs=request.max_epochs,
             batch_size=request.batch_size,
             gpu_count=request.gpu_count,
@@ -557,6 +573,7 @@ class SqlAlchemyYoloXTrainingTaskService:
             "model_scale": task_spec.model_scale,
             "output_model_name": task_spec.output_model_name,
             "warm_start_model_version_id": task_spec.warm_start_model_version_id,
+            "evaluation_interval": task_spec.evaluation_interval,
             "max_epochs": task_spec.max_epochs,
             "batch_size": task_spec.batch_size,
             "gpu_count": task_spec.gpu_count,
@@ -606,6 +623,7 @@ class SqlAlchemyYoloXTrainingTaskService:
                 task_spec,
                 "warm_start_model_version_id",
             ),
+            evaluation_interval=self._read_optional_int(task_spec, "evaluation_interval"),
             max_epochs=self._read_optional_int(task_spec, "max_epochs"),
             batch_size=self._read_optional_int(task_spec, "batch_size"),
             gpu_count=self._read_optional_int(task_spec, "gpu_count"),
@@ -704,13 +722,14 @@ class SqlAlchemyYoloXTrainingTaskService:
         format_id = self._read_optional_str(manifest_payload, "format_id")
         warm_start_reference = self._resolve_warm_start_reference(request)
 
-        artifact_root = f"{output_object_prefix}/artifacts"
-        checkpoint_object_key = f"{artifact_root}/checkpoints/best_ckpt.pth"
-        latest_checkpoint_object_key = f"{artifact_root}/checkpoints/latest_ckpt.pth"
-        labels_object_key = f"{artifact_root}/labels.txt"
-        metrics_object_key = f"{artifact_root}/reports/train-metrics.json"
-        validation_metrics_object_key = f"{artifact_root}/reports/validation-metrics.json"
-        summary_object_key = f"{artifact_root}/training-summary.json"
+        output_files_root = f"{output_object_prefix}/artifacts"
+        checkpoint_object_key = f"{output_files_root}/checkpoints/best_ckpt.pth"
+        latest_checkpoint_object_key = f"{output_files_root}/checkpoints/latest_ckpt.pth"
+        labels_object_key = f"{output_files_root}/labels.txt"
+        metrics_object_key = f"{output_files_root}/reports/train-metrics.json"
+        validation_metrics_object_key = f"{output_files_root}/reports/validation-metrics.json"
+        summary_object_key = f"{output_files_root}/training-summary.json"
+        resolved_evaluation_interval = self._resolve_requested_evaluation_interval(request)
 
         def on_epoch_completed(progress: YoloXTrainingEpochProgress) -> None:
             progress_percent = min(
@@ -726,9 +745,17 @@ class SqlAlchemyYoloXTrainingTaskService:
                 "current_metric_value": progress.current_metric_value,
                 "best_metric_name": progress.best_metric_name,
                 "best_metric_value": progress.best_metric_value,
+                "evaluation_interval": progress.evaluation_interval,
+                "validation_ran": progress.validation_ran,
+                "evaluated_epochs": list(progress.evaluated_epochs),
                 "train_metrics": dict(progress.train_metrics),
                 "validation_metrics": dict(progress.validation_metrics),
             }
+            if progress.validation_snapshot is not None:
+                dataset_storage.write_json(
+                    validation_metrics_object_key,
+                    progress.validation_snapshot,
+                )
             self.task_service.append_task_event(
                 AppendTaskEventRequest(
                     task_id=task_record.task_id,
@@ -742,11 +769,14 @@ class SqlAlchemyYoloXTrainingTaskService:
                         "progress": progress_payload,
                         "metadata": {
                             "output_object_prefix": output_object_prefix,
+                            "validation_metrics_object_key": validation_metrics_object_key,
                             "requested_precision": request.precision,
                             "requested_gpu_count": request.gpu_count,
+                            "requested_evaluation_interval": resolved_evaluation_interval,
                         },
                         "result": {
                             "output_object_prefix": output_object_prefix,
+                            "validation_metrics_object_key": validation_metrics_object_key,
                         },
                     },
                 )
@@ -757,6 +787,7 @@ class SqlAlchemyYoloXTrainingTaskService:
                 dataset_storage=dataset_storage,
                 manifest_payload=manifest_payload,
                 model_scale=request.model_scale,
+                evaluation_interval=request.evaluation_interval,
                 max_epochs=request.max_epochs,
                 batch_size=request.batch_size,
                 gpu_count=request.gpu_count,
@@ -820,6 +851,7 @@ class SqlAlchemyYoloXTrainingTaskService:
             "input_size": list(execution_result.input_size),
             "batch_size": execution_result.batch_size,
             "max_epochs": execution_result.max_epochs,
+            "evaluation_interval": execution_result.evaluation_interval,
             "parameter_count": execution_result.parameter_count,
             "best_metric_name": execution_result.best_metric_name,
             "best_metric_value": execution_result.best_metric_value,
@@ -830,7 +862,7 @@ class SqlAlchemyYoloXTrainingTaskService:
             "validation_metrics_object_key": validation_metrics_object_key,
             "labels_object_key": labels_object_key,
             "summary_object_key": summary_object_key,
-            "artifact_locations": {
+            "output_files": {
                 "output_object_prefix": output_object_prefix,
                 "checkpoint_object_key": checkpoint_object_key,
                 "latest_checkpoint_object_key": latest_checkpoint_object_key,
@@ -843,8 +875,11 @@ class SqlAlchemyYoloXTrainingTaskService:
                 "enabled": execution_result.validation_sample_count > 0,
                 "split_name": execution_result.validation_split_name,
                 "sample_count": execution_result.validation_sample_count,
+                "evaluation_interval": execution_result.evaluation_interval,
                 "best_metric_name": execution_result.validation_metrics_payload.get("best_metric_name"),
                 "best_metric_value": execution_result.validation_metrics_payload.get("best_metric_value"),
+                "final_metrics": execution_result.validation_metrics_payload.get("final_metrics"),
+                "evaluated_epochs": execution_result.validation_metrics_payload.get("evaluated_epochs"),
                 "metrics_object_key": validation_metrics_object_key,
             },
             "warm_start": dict(execution_result.warm_start_summary),
@@ -868,6 +903,16 @@ class SqlAlchemyYoloXTrainingTaskService:
             best_metric_value=execution_result.best_metric_value,
             summary=summary,
         )
+
+    def _resolve_requested_evaluation_interval(self, request: YoloXTrainingTaskRequest) -> int:
+        """解析当前任务请求的真实验证评估周期。"""
+
+        if request.evaluation_interval is not None:
+            return request.evaluation_interval
+        extra_option_value = request.extra_options.get("evaluation_interval")
+        if isinstance(extra_option_value, int) and extra_option_value > 0:
+            return extra_option_value
+        return YOLOX_MINIMAL_DEFAULT_EVALUATION_INTERVAL
 
     def _register_training_output_model_version(
         self,
@@ -970,7 +1015,7 @@ class SqlAlchemyYoloXTrainingTaskService:
                 "distributed_mode": task_result.summary.get("distributed_mode"),
             },
             "warm_start": dict(task_result.summary.get("warm_start") or {}),
-            "artifact_locations": {
+            "output_files": {
                 "output_object_prefix": task_result.output_object_prefix,
                 "checkpoint_object_key": task_result.checkpoint_object_key,
                 "latest_checkpoint_object_key": task_result.latest_checkpoint_object_key,
@@ -984,18 +1029,18 @@ class SqlAlchemyYoloXTrainingTaskService:
             },
         }
 
-    def _build_training_output_file_id(self, task_id: str, artifact_name: str) -> str:
+    def _build_training_output_file_id(self, task_id: str, output_name: str) -> str:
         """基于训练任务 id 生成输出文件记录 id。
 
         参数：
         - task_id：训练任务 id。
-        - artifact_name：输出产物名称。
+        - output_name：输出文件名称。
 
         返回：
         - 对应的 ModelFile id。
         """
 
-        return f"{task_id}-{artifact_name}"
+        return f"{task_id}-{output_name}"
 
     def _build_output_object_prefix(self, task_id: str) -> str:
         """构建训练任务输出目录前缀。"""
