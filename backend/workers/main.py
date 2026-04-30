@@ -6,6 +6,7 @@ from backend.workers.bootstrap import BackendWorkerBootstrap, BackendWorkerRunti
 from backend.workers.datasets.dataset_export_queue_worker import DatasetExportQueueWorker
 from backend.workers.datasets.dataset_import_queue_worker import DatasetImportQueueWorker
 from backend.workers.task_manager import BackgroundTaskManager, BackgroundTaskManagerConfig
+from backend.workers.training.yolox_training_queue_worker import YoloXTrainingQueueWorker
 
 
 def build_background_task_manager(runtime: BackendWorkerRuntime) -> BackgroundTaskManager:
@@ -30,8 +31,14 @@ def build_background_task_manager(runtime: BackendWorkerRuntime) -> BackgroundTa
         queue_backend=runtime.queue_backend,
         worker_id=f"{runtime.settings.app.app_name}-dataset-export",
     )
+    yolox_training_worker = YoloXTrainingQueueWorker(
+        session_factory=runtime.session_factory,
+        dataset_storage=runtime.dataset_storage,
+        queue_backend=runtime.queue_backend,
+        worker_id=f"{runtime.settings.app.app_name}-yolox-training",
+    )
     return BackgroundTaskManager(
-        consumers=(dataset_import_worker, dataset_export_worker),
+        consumers=(dataset_import_worker, dataset_export_worker, yolox_training_worker),
         config=BackgroundTaskManagerConfig(
             max_concurrent_tasks=runtime.settings.queue.max_concurrent_tasks,
             poll_interval_seconds=runtime.settings.queue.poll_interval_seconds,

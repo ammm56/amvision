@@ -18,6 +18,7 @@ from backend.service.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
 from backend.service.infrastructure.object_store.local_dataset_storage import DatasetStorageSettings, LocalDatasetStorage
 from backend.service.infrastructure.persistence.base import Base
 from backend.service.settings import BackendServiceSettings, BackendServiceTaskManagerConfig
+from backend.workers.training.yolox_training_queue_worker import YoloXTrainingQueueWorker
 
 
 def test_create_yolox_training_task_accepts_dataset_export_id(tmp_path: Path) -> None:
@@ -58,7 +59,7 @@ def test_create_yolox_training_task_accepts_dataset_export_id(tmp_path: Path) ->
         assert task_detail.task.task_spec["dataset_export_id"] == dataset_export.dataset_export_id
         assert task_detail.task.task_spec["dataset_export_manifest_key"] == dataset_export.manifest_object_key
         assert task_detail.task.state == "queued"
-        assert task_detail.events[-1].message == "yolox training queued"
+        assert any(event.message == "yolox training queued" for event in task_detail.events)
 
         queue_task = queue_backend.get_task(
             queue_name=YOLOX_TRAINING_QUEUE_NAME,
@@ -146,6 +147,129 @@ def test_create_yolox_training_task_rejects_mismatched_export_id_and_manifest_ke
         payload = response.json()
         assert payload["error"]["code"] == "invalid_request"
         assert payload["error"]["message"] == "dataset_export_id 与 dataset_export_manifest_key 不属于同一个 DatasetExport"
+    finally:
+        session_factory.engine.dispose()
+
+
+def test_list_yolox_training_tasks_filters_by_dataset_export_id(tmp_path: Path) -> None:
+    """验证训练任务列表接口可以按 DatasetExport 边界筛选。"""
+
+    client, session_factory, dataset_storage, queue_backend = _create_test_client(tmp_path)
+    dataset_export_a = _seed_completed_dataset_export(
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+        dataset_export_id="dataset-export-list-a",
+        manifest_object_key=(
+            "projects/project-1/datasets/dataset-1/exports/dataset-export-list-a/manifest.json"
+        ),
+    )
+    dataset_export_b = _seed_completed_dataset_export(
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+        dataset_export_id="dataset-export-list-b",
+        manifest_object_key=(
+            "projects/project-1/datasets/dataset-1/exports/dataset-export-list-b/manifest.json"
+        ),
+    )
+    try:
+        with client:
+            create_a = client.post(
+                "/api/v1/models/yolox/training-tasks",
+                headers=_build_training_headers(),
+                json={
+                    "project_id": "project-1",
+                    "dataset_export_id": dataset_export_a.dataset_export_id,
+                    "recipe_id": "yolox-default",
+                    "model_scale": "s",
+                    "output_model_name": "yolox-s-a",
+                },
+            )
+            create_b = client.post(
+                "/api/v1/models/yolox/training-tasks",
+                headers=_build_training_headers(),
+                json={
+                    "project_id": "project-1",
+                    "dataset_export_id": dataset_export_b.dataset_export_id,
+                    "recipe_id": "yolox-default",
+                    "model_scale": "m",
+                    "output_model_name": "yolox-m-b",
+                },
+            )
+            response = client.get(
+                "/api/v1/models/yolox/training-tasks",
+                headers=_build_training_headers(),
+                params={
+                    "project_id": "project-1",
+                    "dataset_export_id": dataset_export_a.dataset_export_id,
+                },
+            )
+
+        assert create_a.status_code == 202
+        assert create_b.status_code == 202
+        assert response.status_code == 200
+        payload = response.json()
+        assert len(payload) == 1
+        assert payload[0]["dataset_export_id"] == dataset_export_a.dataset_export_id
+        assert payload[0]["recipe_id"] == "yolox-default"
+        assert payload[0]["model_scale"] == "s"
+        assert payload[0]["state"] == "queued"
+    finally:
+        session_factory.engine.dispose()
+
+
+def test_get_yolox_training_task_detail_returns_completed_result(tmp_path: Path) -> None:
+    """验证训练任务详情接口会返回完成态结果和事件流。"""
+
+    client, session_factory, dataset_storage, queue_backend = _create_test_client(tmp_path)
+    dataset_export = _seed_completed_dataset_export(
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+        dataset_export_id="dataset-export-detail-1",
+        manifest_object_key=(
+            "projects/project-1/datasets/dataset-1/exports/dataset-export-detail-1/manifest.json"
+        ),
+    )
+    try:
+        with client:
+            create_response = client.post(
+                "/api/v1/models/yolox/training-tasks",
+                headers=_build_training_headers(),
+                json={
+                    "project_id": "project-1",
+                    "dataset_export_id": dataset_export.dataset_export_id,
+                    "recipe_id": "yolox-default",
+                    "model_scale": "s",
+                    "output_model_name": "yolox-s-detail",
+                },
+            )
+
+        assert create_response.status_code == 202
+        task_id = create_response.json()["task_id"]
+        assert _run_yolox_training_worker_once(
+            session_factory=session_factory,
+            dataset_storage=dataset_storage,
+            queue_backend=queue_backend,
+        ) is True
+
+        with client:
+            detail_response = client.get(
+                f"/api/v1/models/yolox/training-tasks/{task_id}",
+                headers=_build_training_headers(),
+            )
+
+        assert detail_response.status_code == 200
+        payload = detail_response.json()
+        assert payload["task_id"] == task_id
+        assert payload["state"] == "succeeded"
+        assert payload["dataset_export_id"] == dataset_export.dataset_export_id
+        assert payload["checkpoint_object_key"].endswith("/best_ckpt.pth")
+        assert payload["summary_object_key"].endswith("/training-summary.json")
+        assert payload["training_summary"]["implementation_mode"] == "placeholder"
+        assert "reference_code_root" not in payload["metadata"]
+        assert "reference_code_root" not in payload["training_summary"]
+        assert "reference_code_root" not in payload["result"].get("summary", {})
+        assert any(event["message"] == "yolox training started" for event in payload["events"])
+        assert any(event["message"] == "yolox training completed" for event in payload["events"])
     finally:
         session_factory.engine.dispose()
 
@@ -246,5 +370,22 @@ def _build_training_headers() -> dict[str, str]:
     return {
         "x-amvision-principal-id": "user-1",
         "x-amvision-project-ids": "project-1",
-        "x-amvision-scopes": "datasets:read,tasks:write",
+        "x-amvision-scopes": "datasets:read,tasks:read,tasks:write",
     }
+
+
+def _run_yolox_training_worker_once(
+    *,
+    session_factory: SessionFactory,
+    dataset_storage: LocalDatasetStorage,
+    queue_backend: LocalFileQueueBackend,
+) -> bool:
+    """执行一次 YOLOX 训练队列 worker。"""
+
+    worker = YoloXTrainingQueueWorker(
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+        queue_backend=queue_backend,
+        worker_id="test-yolox-training-worker",
+    )
+    return worker.run_once()

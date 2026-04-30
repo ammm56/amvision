@@ -82,6 +82,7 @@ BACKEND_MODULES: tuple[str, ...] = (
     "backend.workers.shared.yolox_runtime_contracts",
     "backend.workers.task_manager",
     "backend.workers.training.yolox_trainer_runner",
+    "backend.workers.training.yolox_training_queue_worker",
 )
 
 

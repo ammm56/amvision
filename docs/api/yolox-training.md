@@ -2,13 +2,14 @@
 
 ## 文档目的
 
-本文档用于说明当前已经公开的 YOLOX training 创建接口，以及 DatasetExport 在训练创建链路中的输入边界语义。
+本文档用于说明当前已经公开的 YOLOX training 创建、列表和详情接口，以及 DatasetExport 在训练创建链路中的输入边界语义。
 
-当前这一版只公开训练任务创建，不把完整训练执行 worker 和训练输出登记作为稳定外部接口承诺。
+当前这一版已经公开最小训练执行链，但还没有把真实 YOLOX 训练器和训练输出登记作为稳定外部接口承诺。
 
 ## 适用范围
 
 - YOLOX training 任务创建接口
+- YOLOX training 列表与详情接口
 - dataset_export_id 与 manifest_object_key 的解析规则
 - 当前 scope 要求
 - 当前能力边界
@@ -31,6 +32,7 @@
 ### scope 要求
 
 - datasets:read
+- tasks:read
 - tasks:write
 
 ## 接口清单
@@ -83,6 +85,47 @@
 }
 ```
 
+### GET /api/v1/models/yolox/training-tasks
+
+按 Project 和 DatasetExport 边界列出当前可见的 YOLOX 训练任务。
+
+#### 查询参数
+
+| 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| project_id | string \| null | 条件必填 | 当请求头没有 project_ids 时必须显式提供。 |
+| state | string \| null | 否 | 训练任务状态。 |
+| created_by | string \| null | 否 | 提交主体 id。 |
+| dataset_export_id | string \| null | 否 | 按 DatasetExport id 过滤。 |
+| dataset_export_manifest_key | string \| null | 否 | 按 manifest object key 过滤。 |
+| limit | integer | 否 | 最大返回数量，默认 100。 |
+
+#### 列表场景
+
+- DatasetExport 详情页拿到 dataset_export_id 后，可以直接调用这个接口查询关联训练任务。
+- 前端任务面板可以按 state 或 created_by 继续做局部过滤。
+
+### GET /api/v1/models/yolox/training-tasks/{task_id}
+
+返回一条 YOLOX 训练任务详情。
+
+#### 查询参数
+
+| 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| include_events | boolean | 否 | 是否返回任务事件列表，默认 true。 |
+
+#### 当前详情重点字段
+
+- task_spec：训练请求规格快照
+- dataset_export_id：平台资源边界
+- dataset_export_manifest_key：执行文件边界
+- checkpoint_object_key：当前训练产物 checkpoint
+- metrics_object_key：当前训练指标文件
+- summary_object_key：当前训练摘要文件
+- training_summary：当前训练摘要
+- events：任务事件流
+
 ## dataset_export_id 与 manifest_object_key 的作用划分
 
 - dataset_export_id：平台资源层标识。
@@ -108,6 +151,7 @@
 
 ## 当前能力边界
 
-- 当前只公开训练任务创建。
-- 当前训练创建只做输入边界解析、TaskRecord 创建和队列提交。
-- 当前训练执行 worker 还没有作为完整公开能力落地，因此创建后任务会进入 queued，后续执行链路单独推进。
+- 当前已经公开训练任务创建、列表和详情。
+- 当前训练 worker 会把任务从 queued 推进到 running 和 succeeded，并写出最小 checkpoint、metrics、summary 文件。
+- 当前 worker 仍是 placeholder runner，目的是先稳定任务状态流、DatasetExport 输入边界和产物目录约定。
+- 后续真实 YOLOX 训练代码应按本项目的架构边界在 backend/workers/training 与相关 application/service 层中重写实现；开发阶段参考代码只能作为行为参考，不能作为平台运行时依赖。

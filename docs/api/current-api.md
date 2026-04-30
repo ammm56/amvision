@@ -41,6 +41,8 @@
 | GET | /api/v1/datasets/exports/{dataset_export_id}/download | datasets:read | 下载 DatasetExport 的 zip 包；当下载包不存在时会同步生成。 |
 | GET | /api/v1/datasets/exports/{dataset_export_id}/manifest | datasets:read | 下载 DatasetExport 的 manifest 文件。 |
 | POST | /api/v1/models/yolox/training-tasks | datasets:read + tasks:write | 以 DatasetExport 为唯一输入边界创建 YOLOX 训练任务。 |
+| GET | /api/v1/models/yolox/training-tasks | tasks:read | 按 Project、DatasetExport 边界和状态列出 YOLOX 训练任务。 |
+| GET | /api/v1/models/yolox/training-tasks/{task_id} | tasks:read | 查询单条 YOLOX 训练任务详情和事件流。 |
 | POST | /api/v1/tasks | tasks:write | 创建公开任务记录，立即返回任务详情。 |
 | GET | /api/v1/tasks | tasks:read | 按公开筛选字段查询任务列表。 |
 | GET | /api/v1/tasks/{task_id} | tasks:read | 查询单条任务详情；默认同时返回 events。 |
@@ -196,6 +198,36 @@
   - dataset_version_id
   - format_id
 
+### GET /api/v1/models/yolox/training-tasks
+
+- 需要 tasks:read
+- 当前支持的查询参数：
+  - project_id
+  - state
+  - created_by
+  - dataset_export_id
+  - dataset_export_manifest_key
+  - limit
+- 当请求头没有 project_ids 时，必须显式传 project_id
+- 当前列表响应会同时公开：
+  - task_id
+  - state
+  - dataset_export_id
+  - dataset_export_manifest_key
+  - recipe_id
+  - model_scale
+  - output_model_name
+  - checkpoint_object_key
+  - metrics_object_key
+  - summary_object_key
+
+### GET /api/v1/models/yolox/training-tasks/{task_id}
+
+- 需要 tasks:read
+- 默认 include_events=true
+- 返回单条 YOLOX 训练任务详情，包括 task_spec、events、训练结果文件 object key 和 training_summary
+- 如果 task_id 不属于 YOLOX 训练任务，当前接口返回 404
+
 ## tasks 资源组
 
 ### POST /api/v1/tasks
@@ -300,13 +332,15 @@
 2. 服务先把它们解析到同一个完成态 DatasetExport
 3. 再把 manifest_object_key 写入训练任务的 task_spec
 4. 最终创建 TaskRecord 并入队到 yolox-trainings
+5. backend-service 生命周期托管的 training worker 或独立 backend-worker 会消费该任务，并把状态推进到 running 和 succeeded
 
 因此，当前训练创建链路的唯一输入边界不再是 DatasetVersion id，而是 DatasetExport 资源及其 manifest 文件。
 
 ## 当前未公开的资源面
 
 - 更通用的训练、验证、转换任务规格尚未公开为稳定 API
-- 训练任务执行 worker 还没有作为完整公开能力落地；当前这一版先稳定创建链路和输入边界
+- 训练任务当前已经具备最小 worker 执行链，但执行器仍是 placeholder runner，只负责验证 manifest 边界、写出最小产物和推进任务状态
+- 真实 YOLOX 训练执行仍需按本项目的长期目标和分层边界重写实现；开发阶段参考代码不作为平台运行时依赖
 
 ## 相关文档
 

@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "b0db9a90-95bc-4a01-b247-1ddb33e1a2a8",
     "name": "amvision yolox training api",
-    "description": "当前公开的 YOLOX training 创建接口。",
+    "description": "当前公开的 YOLOX training create/list/detail 接口。",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "item": [
@@ -74,6 +74,93 @@
               ]
             },
             "description": "以 DatasetExport 为唯一输入边界创建 YOLOX 训练任务。"
+          },
+          "response": []
+        },
+        {
+          "name": "List YOLOX Training Tasks",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-amvision-principal-id",
+                "value": "{{principalId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-project-ids",
+                "value": "{{projectId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-scopes",
+                "value": "tasks:read",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/models/yolox/training-tasks?project_id={{projectId}}&dataset_export_id={{datasetExportId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "models",
+                "yolox",
+                "training-tasks"
+              ],
+              "query": [
+                {
+                  "key": "project_id",
+                  "value": "{{projectId}}"
+                },
+                {
+                  "key": "dataset_export_id",
+                  "value": "{{datasetExportId}}"
+                }
+              ]
+            },
+            "description": "按 DatasetExport 边界列出 YOLOX 训练任务。"
+          },
+          "response": []
+        },
+        {
+          "name": "Get YOLOX Training Task Detail",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-amvision-principal-id",
+                "value": "{{principalId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-project-ids",
+                "value": "{{projectId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-scopes",
+                "value": "tasks:read",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/models/yolox/training-tasks/{{taskId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "models",
+                "yolox",
+                "training-tasks",
+                "{{taskId}}"
+              ]
+            },
+            "description": "查询单条 YOLOX 训练任务详情和事件流。"
           },
           "response": []
         }

@@ -22,6 +22,7 @@ from backend.workers.task_manager import (
     BackgroundTaskManagerConfig,
     HostedBackgroundTaskManager,
 )
+from backend.workers.training.yolox_training_queue_worker import YoloXTrainingQueueWorker
 
 
 @dataclass(frozen=True)
@@ -297,8 +298,14 @@ class BackendServiceBootstrap(RuntimeBootstrap[BackendServiceSettings, BackendSe
             queue_backend=queue_backend,
             worker_id=f"{settings.app.app_name}-dataset-export",
         )
+        yolox_training_worker = YoloXTrainingQueueWorker(
+            session_factory=session_factory,
+            dataset_storage=dataset_storage,
+            queue_backend=queue_backend,
+            worker_id=f"{settings.app.app_name}-yolox-training",
+        )
         task_manager = BackgroundTaskManager(
-            consumers=(dataset_import_worker, dataset_export_worker),
+            consumers=(dataset_import_worker, dataset_export_worker, yolox_training_worker),
             config=BackgroundTaskManagerConfig(
                 max_concurrent_tasks=settings.task_manager.max_concurrent_tasks,
                 poll_interval_seconds=settings.task_manager.poll_interval_seconds,
