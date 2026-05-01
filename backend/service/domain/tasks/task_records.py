@@ -7,7 +7,7 @@ from typing import Literal
 
 
 # TaskRecord 允许的正式状态集合。
-TaskRecordState = Literal["queued", "running", "succeeded", "failed", "cancelled"]
+TaskRecordState = Literal["queued", "running", "paused", "succeeded", "failed", "cancelled"]
 
 
 # TaskAttempt 允许的执行尝试状态集合。

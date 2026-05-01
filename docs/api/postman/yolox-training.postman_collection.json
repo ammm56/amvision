@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "b0db9a90-95bc-4a01-b247-1ddb33e1a2a8",
     "name": "amvision yolox training api",
-    "description": "当前公开的 YOLOX training create/list/detail/validation-metrics/train-metrics/output-files 接口。本集合已经同步 evaluation_interval、gpu_count、precision、latest checkpoint、validation metrics、output-files 和 training_summary 查询字段，可直接用于本机调试。",
+    "description": "当前公开的 YOLOX training create/list/detail/save/pause/resume/validation-metrics/train-metrics/output-files 接口。本集合已经同步 evaluation_interval、gpu_count、precision、latest checkpoint、validation metrics、output-files、training_summary 和训练控制端点，可直接用于本机调试。",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "item": [
@@ -232,7 +232,127 @@
                 }
               ]
             },
-            "description": "查询单条 YOLOX 训练任务详情和事件流。详情响应已经同步 output_object_prefix、latest_checkpoint_object_key、validation_metrics_object_key，以及 training_summary.output_files 和 validation 摘要。running 阶段的 task.progress 当前会带 validation_ran、evaluated_epochs，以及评估轮的 map50、map50_95。"
+            "description": "查询单条 YOLOX 训练任务详情和事件流。详情响应已经同步 output_object_prefix、latest_checkpoint_object_key、validation_metrics_object_key，以及 training_summary.output_files 和 validation 摘要。running 阶段的 task.progress 当前会带 validation_ran、evaluated_epochs，以及评估轮的 map50、map50_95；手动保存和暂停后的训练控制状态会放在 metadata.training_control。"
+          },
+          "response": []
+        },
+        {
+          "name": "Request YOLOX Training Save",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-amvision-principal-id",
+                "value": "{{principalId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-project-ids",
+                "value": "{{projectId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-scopes",
+                "value": "tasks:write",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/models/yolox/training-tasks/{{taskId}}/save",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "models",
+                "yolox",
+                "training-tasks",
+                "{{taskId}}",
+                "save"
+              ]
+            },
+            "description": "为 running 状态的 YOLOX 训练任务登记一次手动保存请求。服务会在下一个 epoch 边界把 latest checkpoint 落盘，并追加 checkpoint saved 事件。"
+          },
+          "response": []
+        },
+        {
+          "name": "Request YOLOX Training Pause",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-amvision-principal-id",
+                "value": "{{principalId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-project-ids",
+                "value": "{{projectId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-scopes",
+                "value": "tasks:write",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/models/yolox/training-tasks/{{taskId}}/pause",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "models",
+                "yolox",
+                "training-tasks",
+                "{{taskId}}",
+                "pause"
+              ]
+            },
+            "description": "为 running 状态的 YOLOX 训练任务请求暂停。服务会在下一个 epoch 边界先保存 latest checkpoint，再把任务状态切到 paused。"
+          },
+          "response": []
+        },
+        {
+          "name": "Resume YOLOX Training Task",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-amvision-principal-id",
+                "value": "{{principalId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-project-ids",
+                "value": "{{projectId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-scopes",
+                "value": "tasks:write",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/models/yolox/training-tasks/{{taskId}}/resume",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "models",
+                "yolox",
+                "training-tasks",
+                "{{taskId}}",
+                "resume"
+              ]
+            },
+            "description": "把 paused 的 YOLOX 训练任务重新入队。服务会基于暂停时落盘的 latest checkpoint 恢复 optimizer、已完成 epoch 和最佳指标状态。"
           },
           "response": []
         },
@@ -272,7 +392,7 @@
                 "validation-metrics"
               ]
             },
-            "description": "直接通过 HTTP 返回当前训练任务最新的 validation-metrics.json 内容。当前响应统一为 file_status、task_state、object_key 和 payload；running 阶段只要已经执行过真实评估轮，这个接口就会返回 ready 和完整 payload；尚未生成验证文件时返回 pending 和空 payload。"
+            "description": "直接通过 HTTP 返回当前训练任务最新的 validation-metrics.json 内容。当前响应统一为 file_status、task_state、object_key 和 payload；只要训练已经跑到真实评估轮，这个接口就会返回最新一次增量写出的验证结果。"
           },
           "response": []
         },
@@ -312,7 +432,7 @@
                 "train-metrics"
               ]
             },
-            "description": "直接通过 HTTP 返回当前训练任务最新的 train-metrics.json 内容。当前响应统一为 file_status、task_state、object_key 和 payload；若训练指标文件尚未生成，接口会返回 pending 和空 payload；训练完成且文件已写出后，接口会返回 ready 和完整 payload。"
+            "description": "直接通过 HTTP 返回当前训练任务最新的 train-metrics.json 内容。当前响应统一为 file_status、task_state、object_key 和 payload；train-metrics.json 会按 epoch 增量写出，因此 running 或 paused 阶段也可以直接读取最近一轮训练快照。"
           },
           "response": []
         },
@@ -352,7 +472,7 @@
                 "output-files"
               ]
             },
-            "description": "统一列出 train-metrics、validation-metrics、summary、labels、best-checkpoint、latest-checkpoint 这 6 个训练输出文件的读取状态。前端可以只轮询这个资源组，根据 file_status 判断每个文件是否已经 ready。"
+            "description": "统一列出 train-metrics、validation-metrics、summary、labels、best-checkpoint、latest-checkpoint 这 6 个训练输出文件的读取状态。前端可以只轮询这个资源组，根据 file_status 判断每个文件是否已经 ready；running 或 paused 阶段通常会先看到 train-metrics ready，真实评估轮之后 validation-metrics 也会 ready，而 latest-checkpoint 仍主要在 save/pause/完成后才 ready。"
           },
           "response": []
         },

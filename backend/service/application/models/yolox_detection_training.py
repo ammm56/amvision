@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import json
+import math
 from collections.abc import Callable
 from contextlib import nullcontext, redirect_stdout
 from dataclasses import dataclass
@@ -43,10 +44,12 @@ class YoloXDetectionTrainingExecutionRequest:
     - gpu_count：请求参与训练的 GPU 数量；为空时按本机可用资源回退。
     - precision：请求使用的训练 precision。
     - warm_start_checkpoint_path：warm start checkpoint 的绝对路径。
+    - resume_checkpoint_path：恢复训练使用的 latest checkpoint 绝对路径。
     - warm_start_source_summary：warm start 来源摘要。
     - input_size：训练输入尺寸；为空时使用最小默认值。
     - extra_options：附加训练选项。
-    - epoch_callback：每轮训练结束后的进度回写回调。
+    - epoch_callback：每轮训练结束后的进度回写回调；返回值可携带 save/pause 控制命令。
+    - savepoint_callback：当训练收到手动保存或暂停请求时回传当前 savepoint。
     """
 
     dataset_storage: LocalDatasetStorage
@@ -58,10 +61,12 @@ class YoloXDetectionTrainingExecutionRequest:
     gpu_count: int | None = None
     precision: str | None = None
     warm_start_checkpoint_path: Path | None = None
+    resume_checkpoint_path: Path | None = None
     warm_start_source_summary: dict[str, object] | None = None
     input_size: tuple[int, int] | None = None
     extra_options: dict[str, object] | None = None
-    epoch_callback: Callable[["YoloXTrainingEpochProgress"], None] | None = None
+    epoch_callback: Callable[["YoloXTrainingEpochProgress"], "YoloXTrainingControlCommand | None"] | None = None
+    savepoint_callback: Callable[["YoloXTrainingSavePoint"], None] | None = None
 
 
 @dataclass(frozen=True)
@@ -133,6 +138,7 @@ class YoloXTrainingEpochProgress:
     - evaluated_epochs：截至当前轮已执行真实验证评估的 epoch 列表。
     - train_metrics：当前轮训练指标摘要。
     - validation_metrics：当前轮验证指标摘要。
+    - train_metrics_snapshot：当前轮结束后形成的完整训练指标快照。
     - validation_snapshot：当前轮评估完成后形成的完整验证快照；未执行评估时为空。
     - current_metric_name：当前用于比较的指标名。
     - current_metric_value：当前轮该指标值；当前轮未执行评估时为空。
@@ -147,11 +153,44 @@ class YoloXTrainingEpochProgress:
     evaluated_epochs: tuple[int, ...]
     train_metrics: dict[str, float]
     validation_metrics: dict[str, float]
+    train_metrics_snapshot: dict[str, object]
     validation_snapshot: dict[str, object] | None
     current_metric_name: str
     current_metric_value: float | None
     best_metric_name: str
     best_metric_value: float | None
+
+
+@dataclass(frozen=True)
+class YoloXTrainingControlCommand:
+    """描述单轮训练结束后由上层返回给训练循环的控制命令。
+
+    字段：
+    - save_checkpoint：是否在当前 epoch 边界生成并交付 savepoint。
+    - pause_training：是否在交付 savepoint 后暂停训练。
+    """
+
+    save_checkpoint: bool = False
+    pause_training: bool = False
+
+
+@dataclass(frozen=True)
+class YoloXTrainingSavePoint:
+    """描述训练在某个 epoch 边界导出的可恢复 savepoint。
+
+    字段：
+    - epoch：当前 savepoint 对应的已完成 epoch。
+    - latest_checkpoint_bytes：用于继续训练的 latest checkpoint 二进制内容。
+    - best_checkpoint_bytes：当前 best checkpoint 二进制内容；在尚未产生 best checkpoint 时为空。
+    - best_metric_name：当前最佳指标名称。
+    - best_metric_value：当前最佳指标值；尚未产生时为空。
+    """
+
+    epoch: int
+    latest_checkpoint_bytes: bytes
+    best_checkpoint_bytes: bytes | None = None
+    best_metric_name: str = ""
+    best_metric_value: float | None = None
 
 
 @dataclass(frozen=True)
@@ -209,8 +248,45 @@ class _ResolvedTrainingRuntime:
     distributed_mode: str
 
 
+@dataclass(frozen=True)
+class _LoadedResumeState:
+    """描述从 latest checkpoint 解析出的恢复训练状态。
+
+    字段：
+    - resume_epoch：恢复前已经完成的 epoch 数。
+    - epoch_history：恢复前累计的训练指标轨迹。
+    - validation_history：恢复前累计的验证指标轨迹。
+    - best_metric_name：恢复前记录的最佳指标名称。
+    - best_metric_value：恢复前记录的最佳指标值。
+    - best_checkpoint_state：恢复前缓存的 best checkpoint 状态；为空时表示尚未产生。
+    - warm_start_summary：恢复后继续沿用的 warm start 摘要。
+    """
+
+    resume_epoch: int
+    epoch_history: list[dict[str, object]]
+    validation_history: list[dict[str, object]]
+    best_metric_name: str
+    best_metric_value: float | None
+    best_checkpoint_state: dict[str, object] | None
+    warm_start_summary: dict[str, object]
+
+
+class YoloXTrainingPausedError(Exception):
+    """表示训练在 epoch 边界按请求完成保存后进入 paused 状态。"""
+
+    def __init__(self, savepoint: YoloXTrainingSavePoint) -> None:
+        """初始化暂停异常。
+
+        参数：
+        - savepoint：暂停前最后一次导出的 savepoint。
+        """
+
+        super().__init__("yolox training paused")
+        self.savepoint = savepoint
+
+
 YOLOX_MINIMAL_IMPLEMENTATION_MODE = "yolox-detection-minimal"
-YOLOX_MINIMAL_DEFAULT_INPUT_SIZE = (64, 64)
+YOLOX_MINIMAL_DEFAULT_INPUT_SIZE = (640, 640)
 YOLOX_MINIMAL_DEFAULT_BATCH_SIZE = 1
 YOLOX_MINIMAL_DEFAULT_MAX_EPOCHS = 1
 YOLOX_MINIMAL_DEFAULT_EVALUATION_INTERVAL = 5
@@ -520,6 +596,7 @@ def run_yolox_detection_training(
     validation_dataset: _CocoDetectionExportDataset | None = None
     validation_loader = None
     warm_start_summary: dict[str, object] = {"enabled": False}
+    resume_state: _LoadedResumeState | None = None
     if validation_split is not None:
         validation_dataset = _CocoDetectionExportDataset(
             annotation_file=validation_split.annotation_file,
@@ -544,7 +621,7 @@ def run_yolox_detection_training(
         model_scale=request.model_scale,
         num_classes=len(train_dataset.category_names),
     )
-    if request.warm_start_checkpoint_path is not None:
+    if request.resume_checkpoint_path is None and request.warm_start_checkpoint_path is not None:
         warm_start_summary = _load_warm_start_checkpoint(
             imports=imports,
             model=base_model,
@@ -553,6 +630,34 @@ def run_yolox_detection_training(
         )
     base_model.to(runtime.device)
     optimizer = _build_optimizer(imports=imports, model=base_model, batch_size=batch_size)
+    if request.resume_checkpoint_path is not None:
+        resume_state = _load_resume_checkpoint(
+            imports=imports,
+            model=base_model,
+            optimizer=optimizer,
+            checkpoint_path=request.resume_checkpoint_path,
+            expected_category_names=train_dataset.category_names,
+            expected_model_scale=request.model_scale,
+            expected_input_size=input_size,
+            expected_precision=precision,
+            expected_validation_split_name=validation_split_name,
+            expected_evaluation_interval=evaluation_interval,
+            expected_evaluation_confidence_threshold=(
+                evaluation_confidence_threshold if validation_loader is not None else None
+            ),
+            expected_evaluation_nms_threshold=(
+                evaluation_nms_threshold if validation_loader is not None else None
+            ),
+        )
+        warm_start_summary = dict(resume_state.warm_start_summary)
+        if resume_state.resume_epoch >= max_epochs:
+            raise InvalidRequestError(
+                "resume checkpoint 已经达到当前任务的最大 epoch，不能继续训练",
+                details={
+                    "resume_epoch": resume_state.resume_epoch,
+                    "max_epochs": max_epochs,
+                },
+            )
     training_model = base_model
     if runtime.distributed_mode == "data-parallel":
         training_model = imports.torch.nn.DataParallel(
@@ -560,6 +665,7 @@ def run_yolox_detection_training(
             device_ids=list(runtime.device_ids),
         )
     training_model.train()
+    parameter_count = sum(parameter.numel() for parameter in base_model.parameters())
     scheduler = imports.LRScheduler(
         "yoloxwarmcos",
         (0.01 / 64.0) * batch_size,
@@ -574,13 +680,29 @@ def run_yolox_detection_training(
     grad_scaler_device = "cuda" if runtime.device.startswith("cuda") else "cpu"
     grad_scaler = imports.torch.amp.GradScaler(grad_scaler_device, enabled=use_fp16)
 
+    total_sample_count = sum(split.sample_count for split in resolved_splits)
+    train_sample_count = len(train_dataset)
+    validation_sample_count = len(validation_dataset) if validation_dataset is not None else 0
+    validation_split_name = validation_split.name if validation_split is not None else None
     epoch_history: list[dict[str, object]] = []
     validation_epoch_history: list[dict[str, object]] = []
     best_metric_name = "val_map50_95" if validation_loader is not None else "train_total_loss"
     best_metric_value: float | None = None if validation_loader is not None else float("inf")
     best_checkpoint_state: dict[str, object] | None = None
-    global_iter = 0
-    for epoch_index in range(max_epochs):
+    start_epoch = 0
+    if resume_state is not None:
+        epoch_history = [dict(item) for item in resume_state.epoch_history]
+        validation_epoch_history = [dict(item) for item in resume_state.validation_history]
+        best_metric_name = resume_state.best_metric_name or best_metric_name
+        best_metric_value = resume_state.best_metric_value
+        best_checkpoint_state = (
+            dict(resume_state.best_checkpoint_state)
+            if resume_state.best_checkpoint_state is not None
+            else None
+        )
+        start_epoch = max(0, resume_state.resume_epoch)
+    global_iter = start_epoch * len(train_loader)
+    for epoch_index in range(start_epoch, max_epochs):
         epoch_totals: dict[str, float] = {}
         epoch_iterations = 0
         for images, targets, _image_infos, _image_ids in train_loader:
@@ -689,6 +811,16 @@ def run_yolox_detection_training(
                 gpu_count=runtime.gpu_count,
                 device_ids=runtime.device_ids,
                 checkpoint_kind="best",
+                validation_split_name=validation_split_name,
+                evaluation_interval=(
+                    evaluation_interval if validation_loader is not None else None
+                ),
+                evaluation_confidence_threshold=(
+                    evaluation_confidence_threshold if validation_loader is not None else None
+                ),
+                evaluation_nms_threshold=(
+                    evaluation_nms_threshold if validation_loader is not None else None
+                ),
             )
 
         if validation_ran:
@@ -710,8 +842,33 @@ def run_yolox_detection_training(
                 validation_history=validation_epoch_history,
             )
 
+        train_metrics_snapshot = _build_train_metrics_payload(
+            device=runtime.device,
+            gpu_count=runtime.gpu_count,
+            device_ids=runtime.device_ids,
+            distributed_mode=runtime.distributed_mode,
+            precision=precision,
+            batch_size=batch_size,
+            max_epochs=max_epochs,
+            evaluation_interval=evaluation_interval,
+            input_size=input_size,
+            train_split_name=train_split.name,
+            validation_split_name=validation_split_name,
+            sample_count=total_sample_count,
+            train_sample_count=train_sample_count,
+            validation_sample_count=validation_sample_count,
+            category_names=train_dataset.category_names,
+            best_metric_name=best_metric_name,
+            best_metric_value=best_metric_value,
+            final_metrics=epoch_metrics,
+            epoch_history=epoch_history,
+            parameter_count=int(parameter_count),
+            warm_start_summary=warm_start_summary,
+        )
+
+        control_command = None
         if request.epoch_callback is not None:
-            request.epoch_callback(
+            control_command = request.epoch_callback(
                 YoloXTrainingEpochProgress(
                     epoch=epoch_index + 1,
                     max_epochs=max_epochs,
@@ -724,6 +881,7 @@ def run_yolox_detection_training(
                     ),
                     train_metrics=_extract_train_progress_metrics(epoch_metrics),
                     validation_metrics=dict(validation_metrics),
+                    train_metrics_snapshot=dict(train_metrics_snapshot),
                     validation_snapshot=(
                         dict(validation_snapshot) if validation_snapshot is not None else None
                     ),
@@ -733,6 +891,65 @@ def run_yolox_detection_training(
                     best_metric_value=best_metric_value,
                 )
             )
+
+        if control_command is not None and (
+            control_command.save_checkpoint or control_command.pause_training
+        ):
+            latest_checkpoint_state = _build_checkpoint_state(
+                model=base_model,
+                optimizer=optimizer,
+                epoch=epoch_index + 1,
+                metric_name=best_metric_name,
+                metric_value=(
+                    float(current_metric_value)
+                    if current_metric_value is not None
+                    else float(best_metric_value or 0.0)
+                ),
+                category_names=train_dataset.category_names,
+                model_scale=request.model_scale,
+                input_size=input_size,
+                precision=precision,
+                gpu_count=runtime.gpu_count,
+                device_ids=runtime.device_ids,
+                checkpoint_kind="latest",
+                validation_split_name=validation_split_name,
+                evaluation_interval=(
+                    evaluation_interval if validation_loader is not None else None
+                ),
+                evaluation_confidence_threshold=(
+                    evaluation_confidence_threshold if validation_loader is not None else None
+                ),
+                evaluation_nms_threshold=(
+                    evaluation_nms_threshold if validation_loader is not None else None
+                ),
+                epoch_history=epoch_history,
+                validation_history=validation_epoch_history,
+                best_metric_name=best_metric_name,
+                best_metric_value=best_metric_value,
+                warm_start_summary=warm_start_summary,
+                best_checkpoint_state=best_checkpoint_state,
+            )
+            savepoint = YoloXTrainingSavePoint(
+                epoch=epoch_index + 1,
+                latest_checkpoint_bytes=_serialize_checkpoint_bytes(
+                    imports=imports,
+                    checkpoint_state=latest_checkpoint_state,
+                ),
+                best_checkpoint_bytes=(
+                    _serialize_checkpoint_bytes(
+                        imports=imports,
+                        checkpoint_state=best_checkpoint_state,
+                    )
+                    if best_checkpoint_state is not None
+                    else None
+                ),
+                best_metric_name=best_metric_name,
+                best_metric_value=best_metric_value,
+            )
+            if request.savepoint_callback is not None:
+                request.savepoint_callback(savepoint)
+            if control_command.pause_training:
+                raise YoloXTrainingPausedError(savepoint)
 
     if best_checkpoint_state is None or best_metric_value is None:
         raise ServiceConfigurationError("YOLOX 训练没有生成有效 checkpoint")
@@ -756,6 +973,14 @@ def run_yolox_detection_training(
         gpu_count=runtime.gpu_count,
         device_ids=runtime.device_ids,
         checkpoint_kind="latest",
+        validation_split_name=validation_split_name,
+        evaluation_interval=(evaluation_interval if validation_loader is not None else None),
+        evaluation_confidence_threshold=(
+            evaluation_confidence_threshold if validation_loader is not None else None
+        ),
+        evaluation_nms_threshold=(
+            evaluation_nms_threshold if validation_loader is not None else None
+        ),
     )
 
     checkpoint_buffer = io.BytesIO()
@@ -777,31 +1002,29 @@ def run_yolox_detection_training(
         best_metric_value=best_metric_value if validation_loader is not None else None,
         validation_history=validation_epoch_history,
     )
-    parameter_count = sum(parameter.numel() for parameter in base_model.parameters())
-    metrics_payload = {
-        "implementation_mode": YOLOX_MINIMAL_IMPLEMENTATION_MODE,
-        "device": runtime.device,
-        "gpu_count": runtime.gpu_count,
-        "device_ids": list(runtime.device_ids),
-        "distributed_mode": runtime.distributed_mode,
-        "precision": precision,
-        "batch_size": batch_size,
-        "max_epochs": max_epochs,
-        "evaluation_interval": evaluation_interval,
-        "input_size": list(input_size),
-        "train_split_name": train_split.name,
-        "validation_split_name": validation_split.name if validation_split is not None else None,
-        "sample_count": sum(split.sample_count for split in resolved_splits),
-        "train_sample_count": len(train_dataset),
-        "validation_sample_count": len(validation_dataset) if validation_dataset is not None else 0,
-        "category_names": list(train_dataset.category_names),
-        "best_metric_name": best_metric_name,
-        "best_metric_value": best_metric_value,
-        "final_metrics": final_metrics,
-        "epoch_history": epoch_history,
-        "parameter_count": parameter_count,
-        "warm_start": warm_start_summary,
-    }
+    metrics_payload = _build_train_metrics_payload(
+        device=runtime.device,
+        gpu_count=runtime.gpu_count,
+        device_ids=runtime.device_ids,
+        distributed_mode=runtime.distributed_mode,
+        precision=precision,
+        batch_size=batch_size,
+        max_epochs=max_epochs,
+        evaluation_interval=evaluation_interval,
+        input_size=input_size,
+        train_split_name=train_split.name,
+        validation_split_name=validation_split_name,
+        sample_count=total_sample_count,
+        train_sample_count=train_sample_count,
+        validation_sample_count=validation_sample_count,
+        category_names=train_dataset.category_names,
+        best_metric_name=best_metric_name,
+        best_metric_value=best_metric_value,
+        final_metrics=final_metrics,
+        epoch_history=epoch_history,
+        parameter_count=int(parameter_count),
+        warm_start_summary=warm_start_summary,
+    )
     return YoloXDetectionTrainingExecutionResult(
         checkpoint_bytes=checkpoint_bytes,
         latest_checkpoint_bytes=latest_checkpoint_bytes,
@@ -1182,6 +1405,253 @@ def _load_warm_start_checkpoint(
     return warm_start_summary
 
 
+def _load_resume_checkpoint(
+    *,
+    imports: _YoloXTrainingImports,
+    model: Any,
+    optimizer: Any,
+    checkpoint_path: Path,
+    expected_category_names: tuple[str, ...],
+    expected_model_scale: str,
+    expected_input_size: tuple[int, int],
+    expected_precision: str,
+    expected_validation_split_name: str | None,
+    expected_evaluation_interval: int,
+    expected_evaluation_confidence_threshold: float | None,
+    expected_evaluation_nms_threshold: float | None,
+) -> _LoadedResumeState:
+    """从 latest checkpoint 中恢复模型、优化器和训练历史。
+
+    参数：
+    - imports：训练依赖对象集合，当前只依赖其中的 torch。
+    - model：待恢复参数的模型对象。
+    - optimizer：待恢复状态的优化器对象。
+    - checkpoint_path：latest checkpoint 的绝对路径。
+    - expected_category_names：当前任务期望的类别列表。
+    - expected_model_scale：当前任务期望的 model_scale。
+    - expected_input_size：当前任务期望的输入尺寸。
+    - expected_precision：当前任务期望的 precision。
+    - expected_validation_split_name：当前任务期望的 validation split 名称。
+    - expected_evaluation_interval：当前任务期望的验证评估周期。
+    - expected_evaluation_confidence_threshold：当前任务期望的验证 confidence threshold。
+    - expected_evaluation_nms_threshold：当前任务期望的验证 nms threshold。
+
+    返回：
+    - 已经完成一致性校验并可继续训练的恢复状态。
+    """
+
+    if not checkpoint_path.is_file():
+        raise InvalidRequestError(
+            "resume checkpoint 不存在",
+            details={"checkpoint_path": checkpoint_path.as_posix()},
+        )
+
+    try:
+        checkpoint_payload = imports.torch.load(str(checkpoint_path), map_location="cpu")
+    except Exception as error:
+        raise ServiceConfigurationError(
+            "resume checkpoint 读取失败",
+            details={"checkpoint_path": checkpoint_path.as_posix()},
+        ) from error
+
+    if not isinstance(checkpoint_payload, dict):
+        raise InvalidRequestError("resume checkpoint 内容不合法")
+
+    model_state = checkpoint_payload.get("model")
+    optimizer_state = checkpoint_payload.get("optimizer")
+    if not isinstance(model_state, dict) or not isinstance(optimizer_state, dict):
+        raise InvalidRequestError("resume checkpoint 缺少模型或优化器状态")
+
+    checkpoint_category_names = checkpoint_payload.get("category_names")
+    if isinstance(checkpoint_category_names, list):
+        normalized_category_names = tuple(
+            item
+            for item in checkpoint_category_names
+            if isinstance(item, str) and item.strip()
+        )
+        if normalized_category_names and normalized_category_names != expected_category_names:
+            raise InvalidRequestError("resume checkpoint 的类别列表与当前任务不一致")
+
+    checkpoint_model_scale = checkpoint_payload.get("model_scale")
+    if isinstance(checkpoint_model_scale, str) and checkpoint_model_scale != expected_model_scale:
+        raise InvalidRequestError("resume checkpoint 的 model_scale 与当前任务不一致")
+
+    checkpoint_input_size = checkpoint_payload.get("input_size")
+    if (
+        isinstance(checkpoint_input_size, list)
+        and len(checkpoint_input_size) == 2
+        and all(isinstance(item, int) for item in checkpoint_input_size)
+        and tuple(checkpoint_input_size) != expected_input_size
+    ):
+        raise InvalidRequestError("resume checkpoint 的 input_size 与当前任务不一致")
+
+    checkpoint_precision = checkpoint_payload.get("precision")
+    if isinstance(checkpoint_precision, str) and checkpoint_precision != expected_precision:
+        raise InvalidRequestError("resume checkpoint 的 precision 与当前任务不一致")
+
+    _validate_resume_validation_configuration(
+        checkpoint_payload=checkpoint_payload,
+        expected_validation_split_name=expected_validation_split_name,
+        expected_evaluation_interval=expected_evaluation_interval,
+        expected_evaluation_confidence_threshold=expected_evaluation_confidence_threshold,
+        expected_evaluation_nms_threshold=expected_evaluation_nms_threshold,
+    )
+
+    model.load_state_dict({str(key): value for key, value in model_state.items()}, strict=True)
+    optimizer.load_state_dict(optimizer_state)
+    _move_optimizer_state_to_device(
+        optimizer=optimizer,
+        device=str(next(model.parameters()).device),
+    )
+
+    resume_epoch = checkpoint_payload.get("epoch")
+    if not isinstance(resume_epoch, int) or resume_epoch < 0:
+        raise InvalidRequestError("resume checkpoint 缺少有效的 epoch")
+
+    epoch_history = _normalize_history_items(checkpoint_payload.get("epoch_history"))
+    validation_history = _normalize_history_items(checkpoint_payload.get("validation_history"))
+    best_metric_name = checkpoint_payload.get("best_metric_name")
+    if not isinstance(best_metric_name, str) or not best_metric_name.strip():
+        metric_name = checkpoint_payload.get("metric_name")
+        best_metric_name = metric_name if isinstance(metric_name, str) and metric_name.strip() else ""
+
+    raw_best_metric_value = checkpoint_payload.get("best_metric_value")
+    if isinstance(raw_best_metric_value, int | float):
+        best_metric_value: float | None = float(raw_best_metric_value)
+    else:
+        raw_metric_value = checkpoint_payload.get("metric_value")
+        best_metric_value = float(raw_metric_value) if isinstance(raw_metric_value, int | float) else None
+
+    raw_best_checkpoint_state = checkpoint_payload.get("best_checkpoint_state")
+    best_checkpoint_state = (
+        {str(key): value for key, value in raw_best_checkpoint_state.items()}
+        if isinstance(raw_best_checkpoint_state, dict)
+        else None
+    )
+    warm_start_summary = checkpoint_payload.get("warm_start_summary")
+    return _LoadedResumeState(
+        resume_epoch=resume_epoch,
+        epoch_history=epoch_history,
+        validation_history=validation_history,
+        best_metric_name=best_metric_name,
+        best_metric_value=best_metric_value,
+        best_checkpoint_state=best_checkpoint_state,
+        warm_start_summary=(
+            dict(warm_start_summary)
+            if isinstance(warm_start_summary, dict)
+            else {"enabled": False}
+        ),
+    )
+
+
+def _normalize_history_items(history_payload: object) -> list[dict[str, object]]:
+    """把 checkpoint 中的历史轨迹载荷规范化为字典列表。"""
+
+    if not isinstance(history_payload, list):
+        return []
+
+    normalized_history: list[dict[str, object]] = []
+    for item in history_payload:
+        if isinstance(item, dict):
+            normalized_history.append({str(key): value for key, value in item.items()})
+    return normalized_history
+
+
+def _validate_resume_validation_configuration(
+    *,
+    checkpoint_payload: dict[str, object],
+    expected_validation_split_name: str | None,
+    expected_evaluation_interval: int,
+    expected_evaluation_confidence_threshold: float | None,
+    expected_evaluation_nms_threshold: float | None,
+) -> None:
+    """校验 resume checkpoint 中记录的 validation 配置是否与当前任务一致。
+
+    参数：
+    - checkpoint_payload：已经成功读取的 checkpoint 字典。
+    - expected_validation_split_name：当前任务期望的 validation split 名称。
+    - expected_evaluation_interval：当前任务期望的验证评估周期。
+    - expected_evaluation_confidence_threshold：当前任务期望的验证 confidence threshold。
+    - expected_evaluation_nms_threshold：当前任务期望的验证 nms threshold。
+    """
+
+    checkpoint_validation_split_name = checkpoint_payload.get("validation_split_name")
+    if checkpoint_validation_split_name != expected_validation_split_name:
+        raise InvalidRequestError("resume checkpoint 的 validation_split_name 与当前任务不一致")
+
+    if expected_validation_split_name is None:
+        return
+
+    checkpoint_evaluation_interval = checkpoint_payload.get("evaluation_interval")
+    if (
+        not isinstance(checkpoint_evaluation_interval, int)
+        or checkpoint_evaluation_interval != expected_evaluation_interval
+    ):
+        raise InvalidRequestError("resume checkpoint 的 evaluation_interval 与当前任务不一致")
+
+    _assert_resume_optional_float_matches(
+        checkpoint_value=checkpoint_payload.get("evaluation_confidence_threshold"),
+        expected_value=expected_evaluation_confidence_threshold,
+        field_name="evaluation_confidence_threshold",
+    )
+    _assert_resume_optional_float_matches(
+        checkpoint_value=checkpoint_payload.get("evaluation_nms_threshold"),
+        expected_value=expected_evaluation_nms_threshold,
+        field_name="evaluation_nms_threshold",
+    )
+
+
+def _assert_resume_optional_float_matches(
+    *,
+    checkpoint_value: object,
+    expected_value: float | None,
+    field_name: str,
+) -> None:
+    """断言 resume checkpoint 中的可选浮点配置与当前任务一致。
+
+    参数：
+    - checkpoint_value：checkpoint 中记录的字段值。
+    - expected_value：当前任务期望的字段值。
+    - field_name：用于报错的字段名称。
+    """
+
+    if expected_value is None:
+        if checkpoint_value is not None:
+            raise InvalidRequestError(f"resume checkpoint 的 {field_name} 与当前任务不一致")
+        return
+
+    if not isinstance(checkpoint_value, int | float) or not math.isclose(
+        float(checkpoint_value),
+        float(expected_value),
+        rel_tol=0.0,
+        abs_tol=1e-12,
+    ):
+        raise InvalidRequestError(f"resume checkpoint 的 {field_name} 与当前任务不一致")
+
+
+def _move_optimizer_state_to_device(*, optimizer: Any, device: str) -> None:
+    """把恢复后的 optimizer state 张量迁移到当前训练 device。"""
+
+    for state in optimizer.state.values():
+        if not isinstance(state, dict):
+            continue
+        for key, value in list(state.items()):
+            if hasattr(value, "to"):
+                state[key] = value.to(device=device)
+
+
+def _serialize_checkpoint_bytes(
+    *,
+    imports: _YoloXTrainingImports,
+    checkpoint_state: dict[str, object],
+) -> bytes:
+    """把 checkpoint 状态序列化为二进制内容。"""
+
+    checkpoint_buffer = io.BytesIO()
+    imports.torch.save(checkpoint_state, checkpoint_buffer)
+    return checkpoint_buffer.getvalue()
+
+
 def _extract_checkpoint_state_dict(checkpoint_payload: object) -> dict[str, object]:
     """从不同 checkpoint 结构中提取可加载的模型参数字典。"""
 
@@ -1507,10 +1977,48 @@ def _build_checkpoint_state(
     gpu_count: int,
     device_ids: tuple[int, ...],
     checkpoint_kind: str,
+    validation_split_name: str | None = None,
+    evaluation_interval: int | None = None,
+    evaluation_confidence_threshold: float | None = None,
+    evaluation_nms_threshold: float | None = None,
+    epoch_history: list[dict[str, object]] | None = None,
+    validation_history: list[dict[str, object]] | None = None,
+    best_metric_name: str | None = None,
+    best_metric_value: float | None = None,
+    warm_start_summary: dict[str, object] | None = None,
+    best_checkpoint_state: dict[str, object] | None = None,
 ) -> dict[str, object]:
-    """构建一个可直接序列化保存的 checkpoint 状态。"""
+    """构建一个可直接序列化保存的 checkpoint 状态。
 
-    return {
+    参数：
+    - model：需要保存参数的模型对象。
+    - optimizer：需要保存状态的优化器对象。
+    - epoch：当前 checkpoint 对应的已完成 epoch。
+    - metric_name：当前 checkpoint 使用的指标名称。
+    - metric_value：当前 checkpoint 使用的指标值。
+    - category_names：当前训练任务的类别列表。
+    - model_scale：当前训练任务的 model_scale。
+    - input_size：当前训练任务的输入尺寸。
+    - precision：当前训练任务的 precision。
+    - gpu_count：当前训练任务使用的 GPU 数量。
+    - device_ids：当前训练任务使用的 GPU 编号列表。
+    - checkpoint_kind：checkpoint 类型，通常为 best 或 latest。
+    - validation_split_name：当前训练任务使用的 validation split 名称。
+    - evaluation_interval：当前训练任务的验证评估周期。
+    - evaluation_confidence_threshold：当前训练任务的验证 confidence threshold。
+    - evaluation_nms_threshold：当前训练任务的验证 nms threshold。
+    - epoch_history：可选的训练指标轨迹。
+    - validation_history：可选的验证指标轨迹。
+    - best_metric_name：可选的最佳指标名称。
+    - best_metric_value：可选的最佳指标值。
+    - warm_start_summary：可选的 warm start 摘要。
+    - best_checkpoint_state：可选的最佳 checkpoint 状态。
+
+    返回：
+    - 可直接使用 torch.save 序列化的 checkpoint 字典。
+    """
+
+    checkpoint_state = {
         "epoch": epoch,
         "model": {
             key: value.detach().cpu()
@@ -1526,6 +2034,75 @@ def _build_checkpoint_state(
         "precision": precision,
         "gpu_count": gpu_count,
         "device_ids": list(device_ids),
+        "validation_split_name": validation_split_name,
+        "evaluation_interval": evaluation_interval,
+        "evaluation_confidence_threshold": evaluation_confidence_threshold,
+        "evaluation_nms_threshold": evaluation_nms_threshold,
+    }
+    if epoch_history is not None:
+        checkpoint_state["epoch_history"] = [dict(item) for item in epoch_history]
+    if validation_history is not None:
+        checkpoint_state["validation_history"] = [dict(item) for item in validation_history]
+    if best_metric_name is not None:
+        checkpoint_state["best_metric_name"] = best_metric_name
+    if best_metric_value is not None:
+        checkpoint_state["best_metric_value"] = best_metric_value
+    if warm_start_summary is not None:
+        checkpoint_state["warm_start_summary"] = dict(warm_start_summary)
+    if best_checkpoint_state is not None:
+        checkpoint_state["best_checkpoint_state"] = best_checkpoint_state
+    return checkpoint_state
+
+
+def _build_train_metrics_payload(
+    *,
+    device: str,
+    gpu_count: int,
+    device_ids: tuple[int, ...],
+    distributed_mode: str,
+    precision: str,
+    batch_size: int,
+    max_epochs: int,
+    evaluation_interval: int,
+    input_size: tuple[int, int],
+    train_split_name: str,
+    validation_split_name: str | None,
+    sample_count: int,
+    train_sample_count: int,
+    validation_sample_count: int,
+    category_names: tuple[str, ...],
+    best_metric_name: str,
+    best_metric_value: float | None,
+    final_metrics: dict[str, object],
+    epoch_history: list[dict[str, object]],
+    parameter_count: int,
+    warm_start_summary: dict[str, object],
+) -> dict[str, object]:
+    """构建 train-metrics.json 对应的完整 JSON 载荷。"""
+
+    return {
+        "implementation_mode": YOLOX_MINIMAL_IMPLEMENTATION_MODE,
+        "device": device,
+        "gpu_count": gpu_count,
+        "device_ids": list(device_ids),
+        "distributed_mode": distributed_mode,
+        "precision": precision,
+        "batch_size": batch_size,
+        "max_epochs": max_epochs,
+        "evaluation_interval": evaluation_interval,
+        "input_size": list(input_size),
+        "train_split_name": train_split_name,
+        "validation_split_name": validation_split_name,
+        "sample_count": sample_count,
+        "train_sample_count": train_sample_count,
+        "validation_sample_count": validation_sample_count,
+        "category_names": list(category_names),
+        "best_metric_name": best_metric_name,
+        "best_metric_value": best_metric_value,
+        "final_metrics": dict(final_metrics),
+        "epoch_history": [dict(item) for item in epoch_history],
+        "parameter_count": parameter_count,
+        "warm_start": dict(warm_start_summary),
     }
 
 

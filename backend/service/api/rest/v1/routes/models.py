@@ -107,8 +107,8 @@ class YoloXTrainingTaskCreateRequestBody(BaseModel):
 	evaluation_interval: int | None = Field(default=5, ge=1, description="每隔多少轮执行一次真实验证评估")
 	max_epochs: int | None = Field(default=None, description="最大训练轮数")
 	batch_size: int | None = Field(default=None, description="batch size")
-	gpu_count: int | None = Field(default=None, ge=1, le=3, description="请求参与训练的 GPU 数量")
-	precision: Literal["fp8", "fp16", "fp32"] | None = Field(
+	gpu_count: int | None = Field(default=None, ge=1, description="请求参与训练的 GPU 数量")
+	precision: Literal["fp16", "fp32"] | None = Field(
 		default=None,
 		description="请求使用的训练 precision",
 	)
@@ -466,6 +466,87 @@ def get_yolox_training_task_detail(
 	)
 
 	return _build_yolox_training_task_detail_response(task_detail.task, tuple(task_detail.events))
+
+
+@models_router.post(
+	"/yolox/training-tasks/{task_id}/save",
+	response_model=YoloXTrainingTaskDetailResponse,
+)
+def request_yolox_training_save(
+	task_id: str,
+	principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("tasks:write"))],
+	session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
+) -> YoloXTrainingTaskDetailResponse:
+	"""为运行中的 YOLOX 训练任务请求一次手动保存。"""
+
+	_require_visible_yolox_training_task(
+		principal=principal,
+		task_id=task_id,
+		session_factory=session_factory,
+		include_events=False,
+	)
+	service = SqlAlchemyYoloXTrainingTaskService(session_factory=session_factory)
+	task_detail = service.request_training_save(task_id, requested_by=principal.principal_id)
+	return _build_yolox_training_task_detail_response(task_detail.task, tuple(task_detail.events))
+
+
+@models_router.post(
+	"/yolox/training-tasks/{task_id}/pause",
+	response_model=YoloXTrainingTaskDetailResponse,
+)
+def request_yolox_training_pause(
+	task_id: str,
+	principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("tasks:write"))],
+	session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
+) -> YoloXTrainingTaskDetailResponse:
+	"""为运行中的 YOLOX 训练任务请求暂停。"""
+
+	_require_visible_yolox_training_task(
+		principal=principal,
+		task_id=task_id,
+		session_factory=session_factory,
+		include_events=False,
+	)
+	service = SqlAlchemyYoloXTrainingTaskService(session_factory=session_factory)
+	task_detail = service.request_training_pause(task_id, requested_by=principal.principal_id)
+	return _build_yolox_training_task_detail_response(task_detail.task, tuple(task_detail.events))
+
+
+@models_router.post(
+	"/yolox/training-tasks/{task_id}/resume",
+	response_model=YoloXTrainingTaskSubmissionResponse,
+)
+def resume_yolox_training_task(
+	task_id: str,
+	principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("tasks:write"))],
+	session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
+	dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
+	queue_backend: Annotated[LocalFileQueueBackend, Depends(get_queue_backend)],
+) -> YoloXTrainingTaskSubmissionResponse:
+	"""把一个 paused 的 YOLOX 训练任务重新入队执行。"""
+
+	_require_visible_yolox_training_task(
+		principal=principal,
+		task_id=task_id,
+		session_factory=session_factory,
+		include_events=False,
+	)
+	service = SqlAlchemyYoloXTrainingTaskService(
+		session_factory=session_factory,
+		dataset_storage=dataset_storage,
+		queue_backend=queue_backend,
+	)
+	submission = service.resume_training_task(task_id, resumed_by=principal.principal_id)
+	return YoloXTrainingTaskSubmissionResponse(
+		task_id=submission.task_id,
+		status=submission.status,
+		queue_name=submission.queue_name,
+		queue_task_id=submission.queue_task_id,
+		dataset_export_id=submission.dataset_export_id,
+		dataset_export_manifest_key=submission.dataset_export_manifest_key,
+		dataset_version_id=submission.dataset_version_id,
+		format_id=submission.format_id,
+	)
 
 
 @models_router.get(

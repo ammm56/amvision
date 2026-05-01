@@ -4,14 +4,21 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from pathlib import Path
+from types import SimpleNamespace
 import cv2
 import numpy as np
+import pytest
+import torch
 
 from backend.contracts.datasets.exports.coco_detection_export import COCO_DETECTION_DATASET_FORMAT
 from backend.queue import LocalFileQueueBackend, LocalFileQueueSettings
+from backend.service.application.errors import InvalidRequestError
 from backend.service.application.models.yolox_detection_training import (
     YoloXDetectionTrainingExecutionResult,
     YoloXTrainingEpochProgress,
+    _build_checkpoint_state,
+    _load_resume_checkpoint,
+    _resolve_input_size,
 )
 import backend.service.application.models.yolox_training_service as yolox_training_service_module
 from backend.service.application.models.yolox_model_service import (
@@ -258,7 +265,7 @@ def test_training_service_writes_intermediate_validation_snapshot_on_evaluation_
             max_epochs=6,
             batch_size=1,
             precision="fp32",
-            input_size=(64, 64),
+            input_size=(640, 640),
         ),
         created_by="user-1",
     )
@@ -267,6 +274,10 @@ def test_training_service_writes_intermediate_validation_snapshot_on_evaluation_
     )
 
     def fake_run_training(request):
+        assert request.gpu_count is None
+        assert request.precision == "fp32"
+        assert request.input_size == (640, 640)
+
         validation_snapshot = {
             "enabled": True,
             "split_name": "val",
@@ -301,6 +312,32 @@ def test_training_service_writes_intermediate_validation_snapshot_on_evaluation_
                     validation_ran=True,
                     evaluated_epochs=(5,),
                     train_metrics={"total_loss": 0.8, "lr": 0.001},
+                    train_metrics_snapshot={
+                        "implementation_mode": "fake-yolox-detection-minimal",
+                        "device": "cpu",
+                        "gpu_count": 0,
+                        "device_ids": [],
+                        "distributed_mode": "single-device",
+                        "precision": "fp32",
+                        "batch_size": 1,
+                        "max_epochs": 6,
+                        "evaluation_interval": 5,
+                        "input_size": [640, 640],
+                        "train_split_name": "train",
+                        "validation_split_name": "val",
+                        "sample_count": 2,
+                        "train_sample_count": 1,
+                        "validation_sample_count": 1,
+                        "category_names": ["bolt", "nut"],
+                        "best_metric_name": "val_map50_95",
+                        "best_metric_value": 0.41,
+                        "final_metrics": {"epoch": 5, "train_total_loss": 0.8},
+                        "epoch_history": [
+                            {"epoch": 5, "train_total_loss": 0.8}
+                        ],
+                        "parameter_count": 1,
+                        "warm_start": {"enabled": False},
+                    },
                     validation_metrics={
                         "total_loss": 1.2,
                         "map50": 0.62,
@@ -333,7 +370,7 @@ def test_training_service_writes_intermediate_validation_snapshot_on_evaluation_
                 "batch_size": 1,
                 "max_epochs": 6,
                 "evaluation_interval": 5,
-                "input_size": [64, 64],
+                "input_size": [640, 640],
                 "train_split_name": "train",
                 "validation_split_name": "val",
                 "sample_count": 2,
@@ -357,7 +394,7 @@ def test_training_service_writes_intermediate_validation_snapshot_on_evaluation_
             split_names=("train", "val"),
             sample_count=2,
             train_sample_count=1,
-            input_size=(64, 64),
+            input_size=(640, 640),
             batch_size=1,
             max_epochs=6,
             device="cpu",
@@ -385,6 +422,68 @@ def test_training_service_writes_intermediate_validation_snapshot_on_evaluation_
         assert validation_metrics_payload["final_metrics"]["map50_95"] == 0.41
     finally:
         session_factory.engine.dispose()
+
+
+def test_real_training_default_input_size_is_640_square() -> None:
+    """验证真实训练默认输入尺寸已经提升到 640x640。"""
+
+    assert _resolve_input_size(None) == (640, 640)
+
+
+def test_load_resume_checkpoint_rejects_mismatched_validation_configuration(
+    tmp_path: Path,
+) -> None:
+    """验证 resume 会拒绝 validation 配置与当前任务不一致的 latest checkpoint。"""
+
+    checkpoint_path = tmp_path / "resume-validation-mismatch.pth"
+    model = torch.nn.Linear(4, 2)
+    optimizer = torch.optim.SGD(model.parameters(), lr=0.01)
+    checkpoint_state = _build_checkpoint_state(
+        model=model,
+        optimizer=optimizer,
+        epoch=2,
+        metric_name="val_map50_95",
+        metric_value=0.31,
+        category_names=("bolt", "nut"),
+        model_scale="nano",
+        input_size=(640, 640),
+        precision="fp32",
+        gpu_count=0,
+        device_ids=(),
+        checkpoint_kind="latest",
+        validation_split_name="val",
+        evaluation_interval=5,
+        evaluation_confidence_threshold=0.01,
+        evaluation_nms_threshold=0.65,
+        epoch_history=[{"epoch": 1, "train_total_loss": 0.8}],
+        validation_history=[{"epoch": 1, "map50": 0.52, "map50_95": 0.31}],
+        best_metric_name="val_map50_95",
+        best_metric_value=0.31,
+        warm_start_summary={"enabled": False},
+    )
+    torch.save(checkpoint_state, checkpoint_path)
+
+    resumed_model = torch.nn.Linear(4, 2)
+    resumed_optimizer = torch.optim.SGD(resumed_model.parameters(), lr=0.01)
+
+    with pytest.raises(
+        InvalidRequestError,
+        match="resume checkpoint 的 evaluation_interval 与当前任务不一致",
+    ):
+        _load_resume_checkpoint(
+            imports=SimpleNamespace(torch=torch),
+            model=resumed_model,
+            optimizer=resumed_optimizer,
+            checkpoint_path=checkpoint_path,
+            expected_category_names=("bolt", "nut"),
+            expected_model_scale="nano",
+            expected_input_size=(640, 640),
+            expected_precision="fp32",
+            expected_validation_split_name="val",
+            expected_evaluation_interval=1,
+            expected_evaluation_confidence_threshold=0.01,
+            expected_evaluation_nms_threshold=0.65,
+        )
 
 
 def _create_worker_runtime(

@@ -3,15 +3,27 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import io
 from pathlib import Path
+from types import SimpleNamespace
 import cv2
 import numpy as np
+import torch
 
 from fastapi.testclient import TestClient
 
+import backend.service.application.models.yolox_training_service as yolox_training_service_module
 from backend.queue import LocalFileQueueBackend, LocalFileQueueSettings
 from backend.contracts.datasets.exports.coco_detection_export import COCO_DETECTION_DATASET_FORMAT
 from backend.service.api.app import create_app
+from backend.service.application.models.yolox_detection_training import (
+    YoloXDetectionTrainingExecutionResult,
+    YoloXTrainingEpochProgress,
+    YoloXTrainingPausedError,
+    YoloXTrainingSavePoint,
+    _build_checkpoint_state,
+    _load_resume_checkpoint,
+)
 from backend.service.application.models.yolox_training_service import YOLOX_TRAINING_QUEUE_NAME
 from backend.service.application.tasks.task_service import AppendTaskEventRequest, SqlAlchemyTaskService
 from backend.service.domain.datasets.dataset_export import DatasetExport
@@ -114,6 +126,114 @@ def test_create_yolox_training_task_accepts_manifest_key(tmp_path: Path) -> None
 
         task_detail = SqlAlchemyTaskService(session_factory).get_task(payload["task_id"], include_events=True)
         assert task_detail.task.task_spec["evaluation_interval"] == 5
+    finally:
+        session_factory.engine.dispose()
+
+
+def test_create_yolox_training_task_accepts_gpu_count_above_three(tmp_path: Path) -> None:
+    """验证训练创建接口不会在提交阶段人为限制超过 3 卡的请求。"""
+
+    client, session_factory, dataset_storage, _queue_backend = _create_test_client(tmp_path)
+    dataset_export = _seed_completed_dataset_export(
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+        dataset_export_id="dataset-export-training-gpu-4",
+        manifest_object_key=(
+            "projects/project-1/datasets/dataset-1/exports/dataset-export-training-gpu-4/manifest.json"
+        ),
+    )
+    try:
+        with client:
+            response = client.post(
+                "/api/v1/models/yolox/training-tasks",
+                headers=_build_training_headers(),
+                json={
+                    "project_id": "project-1",
+                    "dataset_export_id": dataset_export.dataset_export_id,
+                    "recipe_id": "yolox-default",
+                    "model_scale": "s",
+                    "output_model_name": "yolox-s-gpu4",
+                    "gpu_count": 4,
+                    "precision": "fp16",
+                },
+            )
+
+        assert response.status_code == 202
+        payload = response.json()
+        task_detail = SqlAlchemyTaskService(session_factory).get_task(payload["task_id"], include_events=True)
+        assert task_detail.task.task_spec["gpu_count"] == 4
+        assert task_detail.task.task_spec["precision"] == "fp16"
+    finally:
+        session_factory.engine.dispose()
+
+
+def test_create_yolox_training_task_rejects_fp8_precision(tmp_path: Path) -> None:
+    """验证训练创建接口会在提交阶段拒绝当前未支持的 fp8 precision。"""
+
+    client, session_factory, dataset_storage, _queue_backend = _create_test_client(tmp_path)
+    dataset_export = _seed_completed_dataset_export(
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+        dataset_export_id="dataset-export-training-fp8",
+        manifest_object_key=(
+            "projects/project-1/datasets/dataset-1/exports/dataset-export-training-fp8/manifest.json"
+        ),
+    )
+    try:
+        with client:
+            response = client.post(
+                "/api/v1/models/yolox/training-tasks",
+                headers=_build_training_headers(),
+                json={
+                    "project_id": "project-1",
+                    "dataset_export_id": dataset_export.dataset_export_id,
+                    "recipe_id": "yolox-default",
+                    "model_scale": "s",
+                    "output_model_name": "yolox-s-fp8",
+                    "precision": "fp8",
+                },
+            )
+
+        assert response.status_code == 422
+        payload = response.json()
+        assert payload["error"]["code"] == "request_validation_failed"
+        assert payload["error"]["details"]["errors"]
+    finally:
+        session_factory.engine.dispose()
+
+
+def test_create_yolox_training_task_rejects_non_positive_input_size(tmp_path: Path) -> None:
+    """验证训练创建接口会拒绝非正数 input_size。"""
+
+    client, session_factory, dataset_storage, _queue_backend = _create_test_client(tmp_path)
+    dataset_export = _seed_completed_dataset_export(
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+        dataset_export_id="dataset-export-training-bad-input-size",
+        manifest_object_key=(
+            "projects/project-1/datasets/dataset-1/exports/"
+            "dataset-export-training-bad-input-size/manifest.json"
+        ),
+    )
+    try:
+        with client:
+            response = client.post(
+                "/api/v1/models/yolox/training-tasks",
+                headers=_build_training_headers(),
+                json={
+                    "project_id": "project-1",
+                    "dataset_export_id": dataset_export.dataset_export_id,
+                    "recipe_id": "yolox-default",
+                    "model_scale": "s",
+                    "output_model_name": "yolox-s-bad-input-size",
+                    "input_size": [0, 640],
+                },
+            )
+
+        assert response.status_code == 400
+        payload = response.json()
+        assert payload["error"]["code"] == "invalid_request"
+        assert payload["error"]["message"] == "input_size 必须大于 0"
     finally:
         session_factory.engine.dispose()
 
@@ -766,6 +886,632 @@ def test_get_yolox_training_output_files_returns_completed_entries(tmp_path: Pat
         assert checkpoint_payload["text_content"] is None
     finally:
         session_factory.engine.dispose()
+
+
+def test_pause_and_resume_yolox_training_task_reuses_latest_checkpoint(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """验证 pause 会先保存 latest checkpoint，resume 会基于该 checkpoint 继续训练。"""
+
+    client, session_factory, dataset_storage, queue_backend = _create_test_client(tmp_path)
+    dataset_export = _seed_completed_dataset_export(
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+        dataset_export_id="dataset-export-pause-resume-1",
+        manifest_object_key=(
+            "projects/project-1/datasets/dataset-1/exports/"
+            "dataset-export-pause-resume-1/manifest.json"
+        ),
+    )
+    run_count = 0
+    task_id = ""
+
+    def fake_run(request):
+        nonlocal run_count
+        run_count += 1
+        if run_count == 1:
+            first_control = request.epoch_callback(
+                _build_fake_epoch_progress(epoch=1, max_epochs=4, best_metric_value=0.21)
+            )
+            assert first_control is not None
+            assert first_control.save_checkpoint is False
+            running_train_metrics_response = client.get(
+                f"/api/v1/models/yolox/training-tasks/{task_id}/train-metrics",
+                headers=_build_training_headers(),
+            )
+            assert running_train_metrics_response.status_code == 200
+            running_train_metrics_payload = running_train_metrics_response.json()
+            assert running_train_metrics_payload["file_status"] == "ready"
+            assert running_train_metrics_payload["task_state"] == "running"
+            assert running_train_metrics_payload["payload"]["final_metrics"]["epoch"] == 1
+            running_validation_metrics_response = client.get(
+                f"/api/v1/models/yolox/training-tasks/{task_id}/validation-metrics",
+                headers=_build_training_headers(),
+            )
+            assert running_validation_metrics_response.status_code == 200
+            running_validation_metrics_payload = running_validation_metrics_response.json()
+            assert running_validation_metrics_payload["file_status"] == "ready"
+            assert running_validation_metrics_payload["task_state"] == "running"
+            assert running_validation_metrics_payload["payload"]["final_metrics"]["epoch"] == 1
+            pause_response = client.post(
+                f"/api/v1/models/yolox/training-tasks/{task_id}/pause",
+                headers=_build_training_headers(),
+            )
+            assert pause_response.status_code == 200
+            second_control = request.epoch_callback(
+                _build_fake_epoch_progress(epoch=2, max_epochs=4, best_metric_value=0.34)
+            )
+            assert second_control is not None
+            assert second_control.save_checkpoint is True
+            assert second_control.pause_training is True
+            savepoint = _build_fake_savepoint(epoch=2, best_metric_value=0.34)
+            assert request.savepoint_callback is not None
+            request.savepoint_callback(savepoint)
+            raise YoloXTrainingPausedError(savepoint)
+
+        assert request.resume_checkpoint_path is not None
+        assert request.resume_checkpoint_path.is_file()
+        return _build_fake_execution_result(max_epochs=4, best_metric_value=0.48)
+
+    monkeypatch.setattr(yolox_training_service_module, "run_yolox_detection_training", fake_run)
+
+    try:
+        with client:
+            create_response = client.post(
+                "/api/v1/models/yolox/training-tasks",
+                headers=_build_training_headers(),
+                json={
+                    "project_id": "project-1",
+                    "dataset_export_id": dataset_export.dataset_export_id,
+                    "recipe_id": "yolox-default",
+                    "model_scale": "nano",
+                    "output_model_name": "yolox-s-pause-resume",
+                    "max_epochs": 4,
+                    "batch_size": 1,
+                    "precision": "fp32",
+                    "input_size": [64, 64],
+                },
+            )
+            assert create_response.status_code == 202
+            task_id = create_response.json()["task_id"]
+
+            assert _run_yolox_training_worker_once(
+                session_factory=session_factory,
+                dataset_storage=dataset_storage,
+                queue_backend=queue_backend,
+            ) is True
+
+            paused_detail_response = client.get(
+                f"/api/v1/models/yolox/training-tasks/{task_id}",
+                headers=_build_training_headers(),
+            )
+            assert paused_detail_response.status_code == 200
+            paused_payload = paused_detail_response.json()
+            assert paused_payload["state"] == "paused"
+            assert paused_payload["metadata"]["training_control"]["last_save_epoch"] == 2
+            assert paused_payload["latest_checkpoint_object_key"].endswith("/latest_ckpt.pth")
+            assert dataset_storage.resolve(paused_payload["latest_checkpoint_object_key"]).is_file()
+            paused_train_metrics_response = client.get(
+                f"/api/v1/models/yolox/training-tasks/{task_id}/train-metrics",
+                headers=_build_training_headers(),
+            )
+            assert paused_train_metrics_response.status_code == 200
+            paused_train_metrics_payload = paused_train_metrics_response.json()
+            assert paused_train_metrics_payload["file_status"] == "ready"
+            assert paused_train_metrics_payload["task_state"] == "paused"
+            assert paused_train_metrics_payload["payload"]["final_metrics"]["epoch"] == 2
+            paused_validation_metrics_response = client.get(
+                f"/api/v1/models/yolox/training-tasks/{task_id}/validation-metrics",
+                headers=_build_training_headers(),
+            )
+            assert paused_validation_metrics_response.status_code == 200
+            paused_validation_metrics_payload = paused_validation_metrics_response.json()
+            assert paused_validation_metrics_payload["file_status"] == "ready"
+            assert paused_validation_metrics_payload["task_state"] == "paused"
+            assert paused_validation_metrics_payload["payload"]["final_metrics"]["epoch"] == 2
+            assert any(
+                event["message"] == "yolox training checkpoint saved"
+                for event in paused_payload["events"]
+            )
+            assert any(event["message"] == "yolox training paused" for event in paused_payload["events"])
+
+            resume_response = client.post(
+                f"/api/v1/models/yolox/training-tasks/{task_id}/resume",
+                headers=_build_training_headers(),
+            )
+            assert resume_response.status_code == 200
+            assert resume_response.json()["status"] == "queued"
+
+            assert _run_yolox_training_worker_once(
+                session_factory=session_factory,
+                dataset_storage=dataset_storage,
+                queue_backend=queue_backend,
+            ) is True
+
+            final_detail_response = client.get(
+                f"/api/v1/models/yolox/training-tasks/{task_id}",
+                headers=_build_training_headers(),
+            )
+
+        assert final_detail_response.status_code == 200
+        final_payload = final_detail_response.json()
+        assert final_payload["state"] == "succeeded"
+        assert run_count == 2
+        assert any(event["message"] == "yolox training resumed" for event in final_payload["events"])
+    finally:
+        session_factory.engine.dispose()
+
+
+def test_resume_yolox_training_task_fails_when_validation_configuration_mismatches(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """验证 resume 后如果 latest checkpoint 的 validation 配置不一致，任务会进入 failed。"""
+
+    client, session_factory, dataset_storage, queue_backend = _create_test_client(tmp_path)
+    dataset_export = _seed_completed_dataset_export(
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+        dataset_export_id="dataset-export-resume-validation-mismatch-1",
+        manifest_object_key=(
+            "projects/project-1/datasets/dataset-1/exports/"
+            "dataset-export-resume-validation-mismatch-1/manifest.json"
+        ),
+    )
+    run_count = 0
+    task_id = ""
+
+    def fake_run(request):
+        nonlocal run_count
+        run_count += 1
+        if run_count == 1:
+            first_control = request.epoch_callback(
+                _build_fake_epoch_progress(epoch=1, max_epochs=4, best_metric_value=0.21)
+            )
+            assert first_control is not None
+            assert first_control.save_checkpoint is False
+
+            pause_response = client.post(
+                f"/api/v1/models/yolox/training-tasks/{task_id}/pause",
+                headers=_build_training_headers(),
+            )
+            assert pause_response.status_code == 200
+
+            second_control = request.epoch_callback(
+                _build_fake_epoch_progress(epoch=2, max_epochs=4, best_metric_value=0.34)
+            )
+            assert second_control is not None
+            assert second_control.save_checkpoint is True
+            assert second_control.pause_training is True
+            savepoint = _build_fake_resume_checkpoint_savepoint(
+                epoch=2,
+                best_metric_value=0.34,
+                input_size=(64, 64),
+                evaluation_interval=5,
+                validation_split_name="val",
+                evaluation_confidence_threshold=0.01,
+                evaluation_nms_threshold=0.65,
+            )
+            assert request.savepoint_callback is not None
+            request.savepoint_callback(savepoint)
+            raise YoloXTrainingPausedError(savepoint)
+
+        assert request.resume_checkpoint_path is not None
+        assert request.resume_checkpoint_path.is_file()
+        resumed_model = torch.nn.Linear(4, 2)
+        resumed_optimizer = torch.optim.SGD(resumed_model.parameters(), lr=0.01)
+        _load_resume_checkpoint(
+            imports=SimpleNamespace(torch=torch),
+            model=resumed_model,
+            optimizer=resumed_optimizer,
+            checkpoint_path=request.resume_checkpoint_path,
+            expected_category_names=("bolt",),
+            expected_model_scale="nano",
+            expected_input_size=(64, 64),
+            expected_precision="fp32",
+            expected_validation_split_name="val",
+            expected_evaluation_interval=1,
+            expected_evaluation_confidence_threshold=0.01,
+            expected_evaluation_nms_threshold=0.65,
+        )
+        raise AssertionError("resume checkpoint 应当先因 validation 配置不一致而失败")
+
+    monkeypatch.setattr(yolox_training_service_module, "run_yolox_detection_training", fake_run)
+
+    try:
+        with client:
+            create_response = client.post(
+                "/api/v1/models/yolox/training-tasks",
+                headers=_build_training_headers(),
+                json={
+                    "project_id": "project-1",
+                    "dataset_export_id": dataset_export.dataset_export_id,
+                    "recipe_id": "yolox-default",
+                    "model_scale": "nano",
+                    "output_model_name": "yolox-s-resume-validation-mismatch",
+                    "max_epochs": 4,
+                    "batch_size": 1,
+                    "evaluation_interval": 1,
+                    "precision": "fp32",
+                    "input_size": [64, 64],
+                },
+            )
+            assert create_response.status_code == 202
+            task_id = create_response.json()["task_id"]
+
+            assert _run_yolox_training_worker_once(
+                session_factory=session_factory,
+                dataset_storage=dataset_storage,
+                queue_backend=queue_backend,
+            ) is True
+
+            resume_response = client.post(
+                f"/api/v1/models/yolox/training-tasks/{task_id}/resume",
+                headers=_build_training_headers(),
+            )
+            assert resume_response.status_code == 200
+            assert resume_response.json()["status"] == "queued"
+
+            assert _run_yolox_training_worker_once(
+                session_factory=session_factory,
+                dataset_storage=dataset_storage,
+                queue_backend=queue_backend,
+            ) is True
+
+            detail_response = client.get(
+                f"/api/v1/models/yolox/training-tasks/{task_id}",
+                headers=_build_training_headers(),
+            )
+
+        assert detail_response.status_code == 200
+        payload = detail_response.json()
+        assert payload["state"] == "failed"
+        assert payload["error_message"] == "resume checkpoint 的 evaluation_interval 与当前任务不一致"
+        assert run_count == 2
+        assert any(event["message"] == "yolox training resumed" for event in payload["events"])
+        assert any(event["message"] == "yolox training failed" for event in payload["events"])
+    finally:
+        session_factory.engine.dispose()
+
+
+def test_request_yolox_training_save_creates_manual_checkpoint_event(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """验证手动保存接口会在训练继续执行前生成一次 checkpoint saved 事件。"""
+
+    client, session_factory, dataset_storage, queue_backend = _create_test_client(tmp_path)
+    dataset_export = _seed_completed_dataset_export(
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+        dataset_export_id="dataset-export-manual-save-1",
+        manifest_object_key=(
+            "projects/project-1/datasets/dataset-1/exports/"
+            "dataset-export-manual-save-1/manifest.json"
+        ),
+    )
+    task_id = ""
+
+    def fake_run(request):
+        first_control = request.epoch_callback(
+            _build_fake_epoch_progress(epoch=1, max_epochs=3, best_metric_value=0.16)
+        )
+        assert first_control is not None
+        assert first_control.save_checkpoint is False
+
+        save_response = client.post(
+            f"/api/v1/models/yolox/training-tasks/{task_id}/save",
+            headers=_build_training_headers(),
+        )
+        assert save_response.status_code == 200
+
+        second_control = request.epoch_callback(
+            _build_fake_epoch_progress(epoch=2, max_epochs=3, best_metric_value=0.28)
+        )
+        assert second_control is not None
+        assert second_control.save_checkpoint is True
+        assert second_control.pause_training is False
+        assert request.savepoint_callback is not None
+        request.savepoint_callback(_build_fake_savepoint(epoch=2, best_metric_value=0.28))
+
+        third_control = request.epoch_callback(
+            _build_fake_epoch_progress(epoch=3, max_epochs=3, best_metric_value=0.42)
+        )
+        assert third_control is not None
+        assert third_control.save_checkpoint is False
+        return _build_fake_execution_result(max_epochs=3, best_metric_value=0.42)
+
+    monkeypatch.setattr(yolox_training_service_module, "run_yolox_detection_training", fake_run)
+
+    try:
+        with client:
+            create_response = client.post(
+                "/api/v1/models/yolox/training-tasks",
+                headers=_build_training_headers(),
+                json={
+                    "project_id": "project-1",
+                    "dataset_export_id": dataset_export.dataset_export_id,
+                    "recipe_id": "yolox-default",
+                    "model_scale": "nano",
+                    "output_model_name": "yolox-s-manual-save",
+                    "max_epochs": 3,
+                    "batch_size": 1,
+                    "precision": "fp32",
+                    "input_size": [64, 64],
+                },
+            )
+            assert create_response.status_code == 202
+            task_id = create_response.json()["task_id"]
+
+            assert _run_yolox_training_worker_once(
+                session_factory=session_factory,
+                dataset_storage=dataset_storage,
+                queue_backend=queue_backend,
+            ) is True
+
+            detail_response = client.get(
+                f"/api/v1/models/yolox/training-tasks/{task_id}",
+                headers=_build_training_headers(),
+            )
+
+        assert detail_response.status_code == 200
+        payload = detail_response.json()
+        assert payload["state"] == "succeeded"
+        assert payload["metadata"]["training_control"]["last_save_epoch"] == 2
+        assert any(event["message"] == "yolox training save requested" for event in payload["events"])
+        assert any(event["message"] == "yolox training checkpoint saved" for event in payload["events"])
+    finally:
+        session_factory.engine.dispose()
+
+
+def _build_fake_epoch_progress(
+    *,
+    epoch: int,
+    max_epochs: int,
+    best_metric_value: float,
+) -> YoloXTrainingEpochProgress:
+    """构建用于训练控制测试的最小 epoch 进度对象。"""
+
+    return YoloXTrainingEpochProgress(
+        epoch=epoch,
+        max_epochs=max_epochs,
+        evaluation_interval=1,
+        validation_ran=True,
+        evaluated_epochs=tuple(range(1, epoch + 1)),
+        train_metrics={"total_loss": max(0.05, 0.8 - (0.1 * epoch)), "lr": 0.001},
+        validation_metrics={"map50": best_metric_value + 0.1, "map50_95": best_metric_value},
+        train_metrics_snapshot={
+            "implementation_mode": "yolox-detection-minimal",
+            "device": "cpu",
+            "gpu_count": 0,
+            "device_ids": [],
+            "distributed_mode": "single-process",
+            "precision": "fp32",
+            "batch_size": 1,
+            "max_epochs": max_epochs,
+            "evaluation_interval": 1,
+            "input_size": [64, 64],
+            "train_split_name": "train",
+            "validation_split_name": "val",
+            "sample_count": 2,
+            "train_sample_count": 1,
+            "validation_sample_count": 1,
+            "category_names": ["bolt"],
+            "best_metric_name": "val_map50_95",
+            "best_metric_value": best_metric_value,
+            "final_metrics": {
+                "epoch": epoch,
+                "train_total_loss": max(0.05, 0.8 - (0.1 * epoch)),
+                "val_map50": best_metric_value + 0.1,
+                "val_map50_95": best_metric_value,
+            },
+            "epoch_history": [
+                {
+                    "epoch": current_epoch,
+                    "train_total_loss": max(0.05, 0.8 - (0.1 * current_epoch)),
+                    "val_map50": best_metric_value + 0.1,
+                    "val_map50_95": best_metric_value,
+                }
+                for current_epoch in range(1, epoch + 1)
+            ],
+            "parameter_count": 123,
+            "warm_start": {"enabled": False},
+        },
+        validation_snapshot={
+            "enabled": True,
+            "split_name": "val",
+            "sample_count": 1,
+            "evaluation_interval": 1,
+            "confidence_threshold": 0.01,
+            "nms_threshold": 0.65,
+            "best_metric_name": "map50_95",
+            "best_metric_value": best_metric_value,
+            "final_metrics": {
+                "epoch": epoch,
+                "map50": best_metric_value + 0.1,
+                "map50_95": best_metric_value,
+            },
+            "evaluated_epochs": list(range(1, epoch + 1)),
+            "epoch_history": [
+                {
+                    "epoch": current_epoch,
+                    "map50": best_metric_value + 0.1,
+                    "map50_95": best_metric_value,
+                }
+                for current_epoch in range(1, epoch + 1)
+            ],
+        },
+        current_metric_name="val_map50_95",
+        current_metric_value=best_metric_value,
+        best_metric_name="val_map50_95",
+        best_metric_value=best_metric_value,
+    )
+
+
+def _build_fake_savepoint(*, epoch: int, best_metric_value: float) -> YoloXTrainingSavePoint:
+    """构建用于训练控制测试的最小 savepoint。"""
+
+    return YoloXTrainingSavePoint(
+        epoch=epoch,
+        latest_checkpoint_bytes=f"latest-{epoch}".encode("utf-8"),
+        best_checkpoint_bytes=f"best-{epoch}".encode("utf-8"),
+        best_metric_name="val_map50_95",
+        best_metric_value=best_metric_value,
+    )
+
+
+def _build_fake_resume_checkpoint_savepoint(
+    *,
+    epoch: int,
+    best_metric_value: float,
+    input_size: tuple[int, int],
+    evaluation_interval: int,
+    validation_split_name: str | None,
+    evaluation_confidence_threshold: float | None,
+    evaluation_nms_threshold: float | None,
+) -> YoloXTrainingSavePoint:
+    """构建带 latest checkpoint 配置快照的 savepoint。"""
+
+    model = torch.nn.Linear(4, 2)
+    optimizer = torch.optim.SGD(model.parameters(), lr=0.01)
+    checkpoint_state = _build_checkpoint_state(
+        model=model,
+        optimizer=optimizer,
+        epoch=epoch,
+        metric_name="val_map50_95",
+        metric_value=best_metric_value,
+        category_names=("bolt",),
+        model_scale="nano",
+        input_size=input_size,
+        precision="fp32",
+        gpu_count=0,
+        device_ids=(),
+        checkpoint_kind="latest",
+        validation_split_name=validation_split_name,
+        evaluation_interval=evaluation_interval,
+        evaluation_confidence_threshold=evaluation_confidence_threshold,
+        evaluation_nms_threshold=evaluation_nms_threshold,
+        epoch_history=[
+            {
+                "epoch": epoch,
+                "train_total_loss": max(0.05, 0.8 - (0.1 * epoch)),
+                "val_map50": best_metric_value + 0.1,
+                "val_map50_95": best_metric_value,
+            }
+        ],
+        validation_history=[
+            {
+                "epoch": epoch,
+                "map50": best_metric_value + 0.1,
+                "map50_95": best_metric_value,
+            }
+        ],
+        best_metric_name="val_map50_95",
+        best_metric_value=best_metric_value,
+        warm_start_summary={"enabled": False},
+    )
+    latest_checkpoint_buffer = io.BytesIO()
+    torch.save(checkpoint_state, latest_checkpoint_buffer)
+    return YoloXTrainingSavePoint(
+        epoch=epoch,
+        latest_checkpoint_bytes=latest_checkpoint_buffer.getvalue(),
+        best_checkpoint_bytes=f"best-{epoch}".encode("utf-8"),
+        best_metric_name="val_map50_95",
+        best_metric_value=best_metric_value,
+    )
+
+
+def _build_fake_execution_result(
+    *,
+    max_epochs: int,
+    best_metric_value: float,
+) -> YoloXDetectionTrainingExecutionResult:
+    """构建用于训练控制测试的最小完成态训练结果。"""
+
+    return YoloXDetectionTrainingExecutionResult(
+        checkpoint_bytes=b"best-final",
+        latest_checkpoint_bytes=b"latest-final",
+        metrics_payload={
+            "implementation_mode": "yolox-detection-minimal",
+            "device": "cpu",
+            "gpu_count": 0,
+            "device_ids": [],
+            "distributed_mode": "single-process",
+            "precision": "fp32",
+            "batch_size": 1,
+            "max_epochs": max_epochs,
+            "evaluation_interval": 1,
+            "input_size": [64, 64],
+            "train_split_name": "train",
+            "validation_split_name": "val",
+            "sample_count": 2,
+            "train_sample_count": 1,
+            "validation_sample_count": 1,
+            "category_names": ["bolt"],
+            "best_metric_name": "val_map50_95",
+            "best_metric_value": best_metric_value,
+            "final_metrics": {
+                "epoch": max_epochs,
+                "train_total_loss": 0.2,
+                "val_map50": best_metric_value + 0.1,
+                "val_map50_95": best_metric_value,
+            },
+            "epoch_history": [
+                {
+                    "epoch": max_epochs,
+                    "train_total_loss": 0.2,
+                    "val_map50": best_metric_value + 0.1,
+                    "val_map50_95": best_metric_value,
+                }
+            ],
+            "parameter_count": 123,
+            "warm_start": {"enabled": False},
+        },
+        validation_metrics_payload={
+            "enabled": True,
+            "split_name": "val",
+            "sample_count": 1,
+            "evaluation_interval": 1,
+            "confidence_threshold": 0.01,
+            "nms_threshold": 0.65,
+            "best_metric_name": "map50_95",
+            "best_metric_value": best_metric_value,
+            "final_metrics": {
+                "epoch": max_epochs,
+                "map50": best_metric_value + 0.1,
+                "map50_95": best_metric_value,
+            },
+            "evaluated_epochs": list(range(1, max_epochs + 1)),
+            "epoch_history": [
+                {
+                    "epoch": max_epochs,
+                    "map50": best_metric_value + 0.1,
+                    "map50_95": best_metric_value,
+                }
+            ],
+        },
+        warm_start_summary={"enabled": False},
+        implementation_mode="yolox-detection-minimal",
+        best_metric_name="val_map50_95",
+        best_metric_value=best_metric_value,
+        evaluation_interval=1,
+        category_names=("bolt",),
+        split_names=("train", "val"),
+        sample_count=2,
+        train_sample_count=1,
+        input_size=(64, 64),
+        batch_size=1,
+        max_epochs=max_epochs,
+        device="cpu",
+        gpu_count=0,
+        device_ids=(),
+        distributed_mode="single-process",
+        precision="fp32",
+        validation_split_name="val",
+        validation_sample_count=1,
+        parameter_count=123,
+    )
 
 
 def _create_test_client(
