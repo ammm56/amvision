@@ -1,0 +1,432 @@
+"""YOLOX 单图预测接口与 PyTorch 实现。"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from time import perf_counter
+from typing import Any, Protocol
+
+from backend.service.application.errors import InvalidRequestError
+from backend.service.application.models.yolox_detection_training import (
+    _build_yolox_model,
+    _load_warm_start_checkpoint,
+    _require_training_imports,
+)
+from backend.service.application.runtime.yolox_runtime_target import RuntimeTargetSnapshot, resolve_local_file_path
+from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
+from backend.workers.shared.yolox_runtime_contracts import RuntimeTensorSpec, YoloXRuntimeSessionInfo
+
+
+_DEFAULT_NMS_THRESHOLD = 0.65
+
+
+@dataclass(frozen=True)
+class YoloXPredictionRequest:
+    """描述一次 YOLOX 单图预测请求。
+
+    字段：
+    - input_uri：输入图片 URI 或 object key。
+    - score_threshold：预测阈值。
+    - save_result_image：是否生成预览图。
+    - extra_options：附加运行时选项。
+    """
+
+    input_uri: str
+    score_threshold: float
+    save_result_image: bool
+    extra_options: dict[str, object] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class YoloXPredictionDetection:
+    """描述单条 YOLOX detection 结果。
+
+    字段：
+    - bbox_xyxy：边界框坐标。
+    - score：置信度。
+    - class_id：类别 id。
+    - class_name：类别名。
+    """
+
+    bbox_xyxy: tuple[float, float, float, float]
+    score: float
+    class_id: int
+    class_name: str | None = None
+
+
+@dataclass(frozen=True)
+class YoloXPredictionExecutionResult:
+    """描述一次 YOLOX 单图预测执行结果。
+
+    字段：
+    - detections：检测框列表。
+    - latency_ms：推理耗时。
+    - image_width：原图宽度。
+    - image_height：原图高度。
+    - preview_image_bytes：可选预览图字节内容。
+    - runtime_session_info：运行时摘要。
+    """
+
+    detections: tuple[YoloXPredictionDetection, ...]
+    latency_ms: float | None
+    image_width: int
+    image_height: int
+    preview_image_bytes: bytes | None
+    runtime_session_info: YoloXRuntimeSessionInfo
+
+
+class YoloXPredictor(Protocol):
+    """定义 YOLOX 单图 predictor 接口。"""
+
+    def predict(
+        self,
+        runtime_target: RuntimeTargetSnapshot,
+        request: YoloXPredictionRequest,
+    ) -> YoloXPredictionExecutionResult:
+        """执行一次单图预测。
+
+        参数：
+        - runtime_target：运行时快照。
+        - request：预测请求。
+
+        返回：
+        - YoloXPredictionExecutionResult：预测执行结果。
+        """
+
+
+class PyTorchYoloXPredictor:
+    """基于 PyTorch runtime artifact 的 YOLOX 单图 predictor。"""
+
+    def __init__(self, *, dataset_storage: LocalDatasetStorage) -> None:
+        """初始化 predictor。
+
+        参数：
+        - dataset_storage：本地文件存储服务。
+        """
+
+        self.dataset_storage = dataset_storage
+
+    def predict(
+        self,
+        runtime_target: RuntimeTargetSnapshot,
+        request: YoloXPredictionRequest,
+    ) -> YoloXPredictionExecutionResult:
+        """执行一次基于 RuntimeTargetSnapshot 的单图预测。
+
+        参数：
+        - runtime_target：运行时快照。
+        - request：预测请求。
+
+        返回：
+        - YoloXPredictionExecutionResult：预测执行结果。
+        """
+
+        if runtime_target.runtime_backend != "pytorch":
+            raise InvalidRequestError(
+                "当前 predictor 仅支持 pytorch runtime_backend",
+                details={
+                    "runtime_backend": runtime_target.runtime_backend,
+                    "model_build_id": runtime_target.model_build_id,
+                },
+            )
+
+        imports = _require_training_imports()
+        image_path = resolve_local_file_path(
+            dataset_storage=self.dataset_storage,
+            storage_uri=request.input_uri,
+            field_name="input_uri",
+        )
+        image = imports.cv2.imread(str(image_path))
+        if image is None:
+            raise InvalidRequestError(
+                "input_uri 指向的图片无法读取",
+                details={"input_uri": request.input_uri},
+            )
+
+        model = _build_yolox_model(
+            imports=imports,
+            model_scale=runtime_target.model_scale,
+            num_classes=len(runtime_target.labels),
+        )
+        _load_warm_start_checkpoint(
+            imports=imports,
+            model=model,
+            checkpoint_path=runtime_target.runtime_artifact_path,
+            source_summary={
+                "source_model_version_id": runtime_target.model_version_id,
+                "runtime_artifact_file_id": runtime_target.runtime_artifact_file_id,
+                "runtime_artifact_file_type": runtime_target.runtime_artifact_file_type,
+                "source_model_build_id": runtime_target.model_build_id,
+            },
+        )
+        device_name = _resolve_execution_device_name(
+            torch_module=imports.torch,
+            requested_device_name=runtime_target.device_name,
+        )
+        model.to(device_name)
+        model.eval()
+
+        input_tensor, resize_ratio = _preprocess_image(
+            cv2_module=imports.cv2,
+            np_module=imports.np,
+            image=image,
+            input_size=runtime_target.input_size,
+        )
+        input_tensor = imports.torch.from_numpy(input_tensor).unsqueeze(0).to(device_name)
+        input_tensor = input_tensor.float()
+
+        nms_threshold = _resolve_probability(
+            value=request.extra_options.get("nms_threshold"),
+            field_name="nms_threshold",
+            default=_DEFAULT_NMS_THRESHOLD,
+        )
+        started_at = perf_counter()
+        with imports.torch.no_grad():
+            outputs = model(input_tensor)
+            predictions = imports.postprocess(
+                outputs,
+                len(runtime_target.labels),
+                conf_thre=request.score_threshold,
+                nms_thre=nms_threshold,
+            )
+        latency_ms = (perf_counter() - started_at) * 1000
+
+        image_height = int(image.shape[0])
+        image_width = int(image.shape[1])
+        detections = _build_detection_records(
+            np_module=imports.np,
+            predictions=predictions,
+            resize_ratio=resize_ratio,
+            labels=runtime_target.labels,
+            image_width=image_width,
+            image_height=image_height,
+        )
+        preview_image_bytes = None
+        if request.save_result_image:
+            preview_image_bytes = _render_preview_image(
+                cv2_module=imports.cv2,
+                image=image,
+                detections=detections,
+            )
+
+        return YoloXPredictionExecutionResult(
+            detections=detections,
+            latency_ms=round(latency_ms, 3),
+            image_width=image_width,
+            image_height=image_height,
+            preview_image_bytes=preview_image_bytes,
+            runtime_session_info=YoloXRuntimeSessionInfo(
+                backend_name=runtime_target.runtime_backend,
+                model_uri=runtime_target.runtime_artifact_storage_uri,
+                device_name=device_name,
+                input_spec=RuntimeTensorSpec(
+                    name="images",
+                    shape=(1, 3, runtime_target.input_size[0], runtime_target.input_size[1]),
+                    dtype="float32",
+                ),
+                output_spec=RuntimeTensorSpec(
+                    name="detections",
+                    shape=(-1, 7),
+                    dtype="float32",
+                ),
+                metadata={
+                    "model_version_id": runtime_target.model_version_id,
+                    "model_build_id": runtime_target.model_build_id,
+                    "score_threshold": request.score_threshold,
+                    "nms_threshold": nms_threshold,
+                    "class_count": len(runtime_target.labels),
+                },
+            ),
+        )
+
+
+def serialize_detection(detection: YoloXPredictionDetection) -> dict[str, object]:
+    """把 detection 记录转换为 JSON 字典。"""
+
+    return {
+        "bbox_xyxy": list(detection.bbox_xyxy),
+        "score": detection.score,
+        "class_id": detection.class_id,
+        "class_name": detection.class_name,
+    }
+
+
+def serialize_runtime_session_info(session_info: YoloXRuntimeSessionInfo) -> dict[str, object]:
+    """把 runtime session info 转换为 JSON 字典。"""
+
+    return {
+        "backend_name": session_info.backend_name,
+        "model_uri": session_info.model_uri,
+        "device_name": session_info.device_name,
+        "input_spec": {
+            "name": session_info.input_spec.name,
+            "shape": list(session_info.input_spec.shape),
+            "dtype": session_info.input_spec.dtype,
+        },
+        "output_spec": {
+            "name": session_info.output_spec.name,
+            "shape": list(session_info.output_spec.shape),
+            "dtype": session_info.output_spec.dtype,
+        },
+        "metadata": dict(session_info.metadata),
+    }
+
+
+def _build_detection_records(
+    *,
+    np_module: Any,
+    predictions: Any,
+    resize_ratio: float,
+    labels: tuple[str, ...],
+    image_width: int,
+    image_height: int,
+) -> tuple[YoloXPredictionDetection, ...]:
+    """把 YOLOX postprocess 输出归一成 detection 记录。"""
+
+    if not isinstance(predictions, list) or not predictions:
+        return ()
+    prediction_tensor = predictions[0]
+    if prediction_tensor is None:
+        return ()
+
+    prediction_array = prediction_tensor.detach().cpu().numpy()
+    detections: list[YoloXPredictionDetection] = []
+    for prediction in prediction_array:
+        if len(prediction) < 7:
+            continue
+        bbox = prediction[:4] / max(resize_ratio, 1e-8)
+        x1 = float(max(0.0, min(float(bbox[0]), float(image_width))))
+        y1 = float(max(0.0, min(float(bbox[1]), float(image_height))))
+        x2 = float(max(0.0, min(float(bbox[2]), float(image_width))))
+        y2 = float(max(0.0, min(float(bbox[3]), float(image_height))))
+        class_id = int(prediction[6])
+        class_name = labels[class_id] if 0 <= class_id < len(labels) else None
+        score = float(prediction[4] * prediction[5])
+        detections.append(
+            YoloXPredictionDetection(
+                bbox_xyxy=(round(x1, 4), round(y1, 4), round(x2, 4), round(y2, 4)),
+                score=round(score, 6),
+                class_id=class_id,
+                class_name=class_name,
+            )
+        )
+
+    detections.sort(key=lambda item: item.score, reverse=True)
+    return tuple(detections)
+
+
+def _preprocess_image(
+    *,
+    cv2_module: Any,
+    np_module: Any,
+    image: Any,
+    input_size: tuple[int, int],
+) -> tuple[Any, float]:
+    """按 YOLOX 预处理规则构造输入张量。"""
+
+    target_height, target_width = input_size
+    source_height, source_width = int(image.shape[0]), int(image.shape[1])
+    resize_ratio = min(target_height / source_height, target_width / source_width)
+    resized_width = max(1, int(round(source_width * resize_ratio)))
+    resized_height = max(1, int(round(source_height * resize_ratio)))
+    resized_image = cv2_module.resize(image, (resized_width, resized_height), interpolation=cv2_module.INTER_LINEAR)
+    padded_image = np_module.full((target_height, target_width, 3), 114, dtype=np_module.uint8)
+    padded_image[:resized_height, :resized_width] = resized_image
+    tensor = padded_image[:, :, ::-1].transpose(2, 0, 1)
+    return np_module.ascontiguousarray(tensor, dtype=np_module.float32), float(resize_ratio)
+
+
+def _render_preview_image(
+    *,
+    cv2_module: Any,
+    image: Any,
+    detections: tuple[YoloXPredictionDetection, ...],
+) -> bytes:
+    """把 detection 结果叠加到原图并编码为 JPEG。"""
+
+    preview = image.copy()
+    for detection in detections:
+        x1, y1, x2, y2 = (int(round(value)) for value in detection.bbox_xyxy)
+        color = _select_detection_color(detection.class_id)
+        cv2_module.rectangle(preview, (x1, y1), (x2, y2), color, 2)
+        label_text = (
+            f"{detection.class_name}:{detection.score:.2f}"
+            if detection.class_name is not None
+            else f"{detection.class_id}:{detection.score:.2f}"
+        )
+        text_origin_y = y1 - 6 if y1 > 18 else y1 + 18
+        cv2_module.putText(
+            preview,
+            label_text,
+            (x1, text_origin_y),
+            cv2_module.FONT_HERSHEY_SIMPLEX,
+            0.5,
+            color,
+            1,
+            cv2_module.LINE_AA,
+        )
+
+    success, encoded = cv2_module.imencode(".jpg", preview)
+    if success is not True:
+        raise InvalidRequestError("预测预览图编码失败")
+    return bytes(encoded.tobytes())
+
+
+def _select_detection_color(class_id: int) -> tuple[int, int, int]:
+    """根据类别 id 返回稳定的框颜色。"""
+
+    palette = (
+        (40, 110, 240),
+        (40, 180, 120),
+        (240, 170, 40),
+        (210, 80, 80),
+    )
+    return palette[class_id % len(palette)]
+
+
+def _resolve_execution_device_name(*, torch_module: Any, requested_device_name: str) -> str:
+    """校验并返回本次预测实际使用的 device。"""
+
+    if requested_device_name == "cpu":
+        return "cpu"
+    if requested_device_name == "cuda":
+        requested_device_name = "cuda:0"
+    if requested_device_name.startswith("cuda:"):
+        if not torch_module.cuda.is_available():
+            raise InvalidRequestError(
+                "当前运行环境没有可用 GPU，不能使用 CUDA 预测",
+                details={"device_name": requested_device_name},
+            )
+        raw_index = requested_device_name.split(":", 1)[1]
+        if not raw_index.isdigit():
+            raise InvalidRequestError(
+                "device_name 必须是 cpu、cuda 或 cuda:<index>",
+                details={"device_name": requested_device_name},
+            )
+        device_index = int(raw_index)
+        available_count = int(torch_module.cuda.device_count())
+        if device_index >= available_count:
+            raise InvalidRequestError(
+                "指定的 CUDA device 超出了本机可用 GPU 范围",
+                details={
+                    "device_name": requested_device_name,
+                    "available_gpu_count": available_count,
+                },
+            )
+        return requested_device_name
+    raise InvalidRequestError(
+        "device_name 必须是 cpu、cuda 或 cuda:<index>",
+        details={"device_name": requested_device_name},
+    )
+
+
+def _resolve_probability(*, value: object, field_name: str, default: float) -> float:
+    """解析并校验概率型浮点值。"""
+
+    resolved_value = float(value) if isinstance(value, int | float) else default
+    if resolved_value < 0 or resolved_value > 1:
+        raise InvalidRequestError(
+            f"{field_name} 必须位于 0 到 1 之间",
+            details={field_name: resolved_value},
+        )
+    return resolved_value

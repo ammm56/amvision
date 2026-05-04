@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.sql import Executable
 
 from backend.service.application.errors import PersistenceOperationError
+from backend.service.infrastructure.persistence.deployment_repository import SqlAlchemyDeploymentInstanceRepository
 from backend.service.infrastructure.persistence.dataset_export_repository import SqlAlchemyDatasetExportRepository
 from backend.service.infrastructure.persistence.dataset_import_repository import SqlAlchemyDatasetImportRepository
 from backend.service.infrastructure.persistence.model_file_repository import SqlAlchemyModelFileRepository
@@ -26,6 +27,7 @@ class SqlAlchemyUnitOfWork:
     - dataset_exports：DatasetExport 仓储。
     - dataset_imports：DatasetImport 仓储。
     - datasets：DatasetVersion 聚合仓储。
+    - deployments：DeploymentInstance 仓储。
     - models：Model 聚合仓储。
     - model_files：ModelFile 仓储。
     - tasks：TaskRecord、TaskAttempt、TaskEvent 仓储。
@@ -43,6 +45,7 @@ class SqlAlchemyUnitOfWork:
         self.dataset_exports = SqlAlchemyDatasetExportRepository(session)
         self.dataset_imports = SqlAlchemyDatasetImportRepository(session)
         self.datasets = SqlAlchemyDatasetVersionRepository(session)
+        self.deployments = SqlAlchemyDeploymentInstanceRepository(session)
         self.models = SqlAlchemyModelRepository(session)
         self.model_files = SqlAlchemyModelFileRepository(session)
         self.tasks = SqlAlchemyTaskRepository(session)

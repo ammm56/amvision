@@ -49,6 +49,7 @@
 | POST | /api/v1/models/yolox/training-tasks/{task_id}/save | tasks:write | 为 running 的 YOLOX 训练任务登记一次手动保存请求。 |
 | POST | /api/v1/models/yolox/training-tasks/{task_id}/pause | tasks:write | 为 running 的 YOLOX 训练任务请求暂停，并在下一轮边界先保存 latest checkpoint。 |
 | POST | /api/v1/models/yolox/training-tasks/{task_id}/resume | tasks:write | 把 paused 的 YOLOX 训练任务重新入队，并基于 latest checkpoint 恢复训练。 |
+| POST | /api/v1/models/yolox/training-tasks/{task_id}/register-model-version | tasks:write + models:write | 调试时手动重登记当前 latest checkpoint 对应的固定 latest ModelVersion，并回写到训练详情。 |
 | POST | /api/v1/tasks | tasks:write | 创建公开任务记录，立即返回任务详情。 |
 | GET | /api/v1/tasks | tasks:read | 按公开筛选字段查询任务列表。 |
 | GET | /api/v1/tasks/{task_id} | tasks:read | 查询单条任务详情；默认同时返回 events。 |
@@ -214,6 +215,259 @@
 - versions 当前会继续展开 files，便于前端直接显示 checkpoint、manifest 和其他附属文件来源
 - 如果 model_id 对应的是 Project 内模型或不存在，当前接口返回 404
 
+### POST /api/v1/models/yolox/evaluation-tasks
+
+- 需要同时具备 datasets:read、models:read 和 tasks:write
+- 当前请求体允许显式指定：
+  - project_id
+  - model_version_id
+  - dataset_export_id
+  - dataset_export_manifest_key
+  - score_threshold
+  - nms_threshold
+  - save_result_package
+  - extra_options
+  - display_name
+- 当前实现会先解析 DatasetExport，再校验 ModelVersion 到 checkpoint、labels 的本地可读性，然后把任务放入 `yolox-evaluations` 队列
+- 当前最小评估链只支持 `coco-detection-v1` 导出输入
+- 当前响应会返回：
+  - task_id
+  - status
+  - queue_name
+  - queue_task_id
+  - dataset_export_id
+  - dataset_export_manifest_key
+  - dataset_version_id
+  - format_id
+  - model_version_id
+
+### GET /api/v1/models/yolox/evaluation-tasks
+
+- 需要 tasks:read
+- 当前支持的查询参数：
+  - project_id
+  - state
+  - created_by
+  - dataset_export_id
+  - dataset_export_manifest_key
+  - model_version_id
+  - limit
+- 当前列表响应会同时公开：
+  - task_id
+  - state
+  - dataset_export_id
+  - dataset_export_manifest_key
+  - dataset_version_id
+  - format_id
+  - model_version_id
+  - score_threshold
+  - nms_threshold
+  - save_result_package
+  - output_object_prefix
+  - report_object_key
+  - detections_object_key
+  - result_package_object_key
+  - map50
+  - map50_95
+  - report_summary
+
+### GET /api/v1/models/yolox/evaluation-tasks/{task_id}
+
+- 需要 tasks:read
+- 默认 include_events=true
+- 返回单条 YOLOX 评估任务详情，包括 task_spec、events、report_summary 和结果文件 object key
+- 当前 progress 会在执行期回写 `stage` 和 `percent`
+
+### GET /api/v1/models/yolox/evaluation-tasks/{task_id}/report
+
+- 需要 tasks:read
+- 返回当前评估任务最新的 evaluation-report.json 内容
+- 当前响应统一为 `file_status`、`task_state`、`object_key` 和 `payload`
+- 当评估文件尚未生成时，接口返回 `file_status=pending` 和空 `payload`
+- 当任务已经结束但 report 文件缺失时，接口返回 404
+
+### GET /api/v1/models/yolox/evaluation-tasks/{task_id}/output-files
+
+- 需要 tasks:read
+- 当前统一列出 `report`、`detections` 和 `result-package` 这 3 个评估输出文件
+- `save_result_package=false` 且任务完成时，`result-package` 会以 `file_status=skipped` 返回
+- 每个条目都会返回 `file_name`、`file_kind`、`file_status`、`task_state`、`object_key`、`size_bytes` 和 `updated_at`
+
+### POST /api/v1/models/yolox/deployment-instances
+
+- 需要 models:read 和 models:write
+- 当前请求体允许显式指定：
+  - project_id
+  - model_version_id
+  - model_build_id
+  - runtime_profile_id
+  - runtime_backend
+  - device_name
+  - display_name
+  - metadata
+- 当前最小实现允许直接绑定训练产出的 `ModelVersion`，也允许绑定 `ModelBuild`；如果同时提供 `model_build_id` 和 `model_version_id`，两者必须指向同一来源版本
+- 当前 create 会在提交阶段校验 checkpoint 和 labels 的本地可读性，确保 `deployment_instance_id` 后续可直接进入 inference-tasks
+- 当前 `runtime_backend` 只支持 `pytorch`
+- 当前响应会返回：
+  - deployment_instance_id
+  - project_id
+  - model_id
+  - model_version_id
+  - model_build_id
+  - model_name
+  - model_scale
+  - task_type
+  - runtime_profile_id
+  - runtime_backend
+  - device_name
+  - input_size
+  - labels
+  - status
+
+### GET /api/v1/models/yolox/deployment-instances
+
+- 需要 models:read
+- 当前支持的查询参数：
+  - project_id
+  - model_version_id
+  - model_build_id
+  - deployment_status
+  - limit
+- 当前列表返回最小 DeploymentInstance 摘要，不暴露 checkpoint 路径
+
+### GET /api/v1/models/yolox/deployment-instances/{deployment_instance_id}
+
+- 需要 models:read
+- 返回单条 DeploymentInstance 详情，包括绑定的模型、运行时、输入尺寸和 labels
+
+### POST /api/v1/models/yolox/inference-tasks
+
+- 需要 models:read 和 tasks:write
+- 当前请求体允许显式指定：
+  - project_id
+  - deployment_instance_id
+  - input_file_id
+  - input_uri
+  - score_threshold
+  - save_result_image
+  - extra_options
+  - display_name
+- 当前实现会先校验 `deployment_instance_id` 属于请求 Project，再把任务放入 `yolox-inferences` 队列
+- 当前正式推理链只支持通过 `input_uri` 或 object key 读取本地输入；`input_file_id` 当前仍是保留字段，会返回 `invalid_request`
+- 当前响应会返回：
+  - task_id
+  - status
+  - queue_name
+  - queue_task_id
+  - deployment_instance_id
+  - input_uri
+
+### GET /api/v1/models/yolox/inference-tasks
+
+- 需要 tasks:read
+- 当前支持的查询参数：
+  - project_id
+  - state
+  - created_by
+  - deployment_instance_id
+  - limit
+- 当前列表响应会同时公开：
+  - task_id
+  - state
+  - deployment_instance_id
+  - model_version_id
+  - model_build_id
+  - input_uri
+  - score_threshold
+  - save_result_image
+  - output_object_prefix
+  - result_object_key
+  - preview_image_object_key
+  - detection_count
+  - latency_ms
+  - result_summary
+
+### GET /api/v1/models/yolox/inference-tasks/{task_id}
+
+- 需要 tasks:read
+- 默认 include_events=true
+- 返回单条 YOLOX 推理任务详情，包括 task_spec、events、result_summary 和结果文件 object key
+
+### GET /api/v1/models/yolox/inference-tasks/{task_id}/result
+
+- 需要 tasks:read
+- 返回当前推理任务最新的 raw-result.json 内容
+- 当前响应统一为 `file_status`、`task_state`、`object_key` 和 `payload`
+- 当结果文件尚未生成时，接口返回 `file_status=pending` 和空 `payload`
+- 当任务已经结束但结果文件缺失时，接口返回 404
+
+### POST /api/v1/models/yolox/validation-sessions
+
+- 需要 models:read
+- 当前请求体允许显式指定：
+  - project_id
+  - model_version_id
+  - runtime_profile_id
+  - runtime_backend
+  - device_name
+  - score_threshold
+  - save_result_image
+  - extra_options
+- 当前实现会沿 ModelVersion -> ModelFile -> checkpoint 链路校验模型文件是否可被本地文件存储解析，并返回已解析的 labels、input_size、checkpoint_storage_uri 和默认 runtime 配置
+- 当前 runtime_backend 只支持 `pytorch`
+- 当前 detail/create 响应会返回：
+  - session_id
+  - project_id
+  - model_id
+  - model_version_id
+  - model_name
+  - model_scale
+  - source_kind
+  - status
+  - runtime_profile_id
+  - runtime_backend
+  - device_name
+  - score_threshold
+  - save_result_image
+  - input_size
+  - labels
+  - checkpoint_file_id
+  - checkpoint_storage_uri
+  - labels_storage_uri
+  - last_prediction
+
+### GET /api/v1/models/yolox/validation-sessions/{session_id}
+
+- 需要 models:read
+- 返回单条 validation session 当前详情
+- 当前 session 状态持久化在本地文件中，服务重启后仍可读取
+- last_prediction 会在至少执行过一次 predict 后回填 prediction_id、raw_result_uri、preview_image_uri、latency_ms 和 detection_count
+
+### POST /api/v1/models/yolox/validation-sessions/{session_id}/predict
+
+- 需要 models:read
+- 当前请求体允许显式指定：
+  - input_uri
+  - input_file_id
+  - score_threshold
+  - save_result_image
+  - extra_options
+- 当前最小实现只支持本地 `input_uri` 或 object key；`input_file_id` 当前会返回 invalid_request
+- 当前预测会把 raw-result.json 固定写到 `runtime/validation-sessions/{session_id}/predictions/{prediction_id}/`，在 `save_result_image=true` 时额外写出 preview.jpg
+- 当前响应会返回：
+  - prediction_id
+  - session_id
+  - input_uri
+  - score_threshold
+  - detections
+  - preview_image_uri
+  - raw_result_uri
+  - latency_ms
+  - labels
+  - runtime_session_info
+  - image_width
+  - image_height
+
 ### POST /api/v1/models/yolox/training-tasks
 
 - 需要同时具备 datasets:read 和 tasks:write
@@ -237,6 +491,10 @@
 - 当前公开 precision 字段只接受 fp16、fp32；未指定时默认 fp32。
 - 当前 input_size 未指定时，真实训练默认使用 [640, 640]。
 - 当前没有可用 GPU 时会回退到 CPU 训练，用于最小硬件支持和开发环境验证；只是速度会明显变慢。
+- 当前 `save`、`pause` 都是“请求登记后等待下一个 epoch 边界生效”，不是同步完成动作。
+- 当前 `resume` 会先把任务切回 `queued` 并重新入队；checkpoint 读取失败或配置不一致这类问题可能在后续 worker 执行阶段才把任务切成 `failed`。
+- 当前训练详情响应已经正式公开 `available_actions` 和 `control_status`；前端可以直接按这两个字段收口按钮与控制态判断。
+- 前端如果轮询训练详情，建议显式传 `include_events=false`；日志流优先使用 `/ws/tasks/events?task_id=...`。
 - warm_start_model_version_id 表示“本次训练要从哪个已有 ModelVersion 对应的 checkpoint 开始训练”，而不是从随机初始化开始；当前服务会真实沿 ModelVersion -> ModelFile -> checkpoint 链路加载来源权重。
 - 当前 warm start 来源既可以是当前 Project 自己已有的历史训练产出，也可以是平台基础模型目录中登记的 pretrained-reference ModelVersion；如需选择平台基础模型来源，可先查询 /api/v1/models/platform-base 或 /api/v1/models/platform-base/{model_id}，再把 available_versions[].model_version_id 传给 warm_start_model_version_id。
 - evaluation_interval 表示每隔多少轮执行一次真实验证评估，默认 5；最后一轮会强制补做一次评估，并回写 map50、map50_95。
@@ -285,8 +543,11 @@
 
 - 需要 tasks:read
 - 默认 include_events=true
-- 返回单条 YOLOX 训练任务详情，包括 task_spec、events、训练结果文件 object key、顶层 model_version_id 和 training_summary
+- 返回单条 YOLOX 训练任务详情，包括 task_spec、events、训练结果文件 object key、顶层 `model_version_id`、`latest_checkpoint_model_version_id`、training_summary，以及正式训练控制字段 `available_actions` 与 `control_status`
+- 如果训练尚未完成，并且已经在 `save` 或 `pause` 的 epoch 边界成功落盘 latest checkpoint，顶层 `model_version_id` 和 `training_summary.model_version_id` 会自动指向当前 latest checkpoint 的固定版本 id
+- 如果训练已经完成，顶层 `model_version_id` 继续表示自动登记的 best checkpoint 版本，`latest_checkpoint_model_version_id` 表示 save/pause 自动登记或调试接口手动重登记的 latest checkpoint 版本；两者语义不同，不会互相覆盖
 - training_summary 当前会同时公开训练运行设备、precision、GPU 数量、evaluation_interval、output_files、validation 摘要和 warm_start 摘要
+- 前端或 Postman 如果只需要收口按钮与控制态，优先读取 `available_actions` 与 `control_status`，不必再直接依赖 `metadata.training_control`
 - 当前 events 会包含逐 epoch 的 progress 事件，task.progress 会同步维护 epoch、max_epochs、evaluation_interval、validation_ran、evaluated_epochs、最佳指标和当前轮指标快照
 - 当前 running 阶段会继续按 epoch 增量写 train-metrics.json；如果当前轮执行了真实验证评估，也会同步刷新 validation-metrics.json
 - checkpoint 仍然只会在 save、pause 或训练完成时写到磁盘
@@ -296,19 +557,28 @@
 
 - 需要 tasks:write
 - 只允许 running 状态调用
-- 服务会在下一个 epoch 边界把 latest checkpoint 落盘，并追加 checkpoint saved 事件
+- 服务会在下一个 epoch 边界把 latest checkpoint 落盘，补齐 labels.txt，并追加 checkpoint saved 事件
 
 ### POST /api/v1/models/yolox/training-tasks/{task_id}/pause
 
 - 需要 tasks:write
 - 只允许 running 状态调用
-- 服务会在下一个 epoch 边界先保存 latest checkpoint，再把任务状态切到 paused
+- 服务会在下一个 epoch 边界先保存 latest checkpoint、补齐 labels.txt，再把任务状态切到 paused
 
 ### POST /api/v1/models/yolox/training-tasks/{task_id}/resume
 
 - 需要 tasks:write
 - 只允许 paused 状态调用
 - 接口会复用同一个 task_id，把任务重新放回队列，并基于 latest checkpoint 恢复 optimizer、epoch 和最佳指标状态
+
+### POST /api/v1/models/yolox/training-tasks/{task_id}/register-model-version
+
+- 需要 tasks:write 和 models:write
+- 当前要求任务已经产生 latest checkpoint；正常链路里，`save` 或 `pause` 会在下一个 epoch 边界自动完成这次版本登记
+- 当前接口主要用于调试或验证：服务会基于当前 latest checkpoint 手动重登记同一个固定 latest ModelVersion，首次调用创建，后续再次调用会更新已有版本，而不是新增多个版本
+- 任务未完成时，接口会把 `model_version_id` 回写到训练详情顶层和 `training_summary`；任务完成后，自动 best checkpoint 版本仍保留在 `model_version_id`，latest checkpoint 版本通过 `latest_checkpoint_model_version_id` 暴露
+- 当前接口返回训练任务详情，而不是单独的登记回执对象
+- 当前训练任务原本的 `checkpoint_object_key` 仍保持“训练最佳 checkpoint”的语义，不会因为手动登记 latest checkpoint 而被覆盖
 
 ### GET /api/v1/models/yolox/training-tasks/{task_id}/validation-metrics
 

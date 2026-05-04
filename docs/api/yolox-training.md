@@ -2,15 +2,17 @@
 
 ## 文档目的
 
-本文档用于说明当前已经公开的 YOLOX training 创建、列表和详情接口，以及 DatasetExport 在训练创建链路中的输入边界语义。
+本文档用于说明当前已经公开的 YOLOX training 创建、列表、详情、训练控制和训练输出读取接口，以及 DatasetExport 在训练创建链路中的输入边界语义。
 
 当前这一版已经公开最小真实训练执行链，并把训练输出文件目录、训练摘要和验证结果文件作为当前阶段的正式查询面。
 
 ## 适用范围
 
 - YOLOX training 任务创建接口
-- YOLOX training 列表与详情接口
+- YOLOX training 列表、详情与训练控制接口
+- 训练指标、验证指标和统一输出文件读取接口
 - dataset_export_id 与 manifest_object_key 的解析规则
+- 训练完成后的下一步推理验证规划
 - 当前 scope 要求
 - 当前能力边界
 
@@ -134,7 +136,8 @@
 
 - DatasetExport 详情页拿到 dataset_export_id 后，可以直接调用这个接口查询关联训练任务。
 - 前端任务面板可以按 state 或 created_by 继续做局部过滤。
-- 已完成任务会在顶层直接返回 model_version_id，前端可以据此跳转模型详情或转换链路。
+- 已完成任务，或已经在 `save` / `pause` 的 epoch 边界成功落盘 latest checkpoint 的任务，会在顶层直接返回 model_version_id，前端可以据此跳转模型详情、人工验证或转换链路。
+- 如果任务已经完成且同时存在 latest checkpoint 版本，顶层 `model_version_id` 表示自动登记的 best checkpoint 版本，`latest_checkpoint_model_version_id` 表示 latest checkpoint 的固定版本；validation-sessions 应优先使用后者。
 - 列表响应当前还会直接公开 gpu_count、precision、output_object_prefix、checkpoint_object_key、latest_checkpoint_object_key、metrics_object_key、validation_metrics_object_key、summary_object_key，便于训练卡片直接显示配置和输出文件入口。
 - output_object_prefix 在 running 阶段就会进入顶层响应，不再只存在于 metadata。
 
@@ -154,6 +157,7 @@
 - dataset_export_id：平台资源边界
 - dataset_export_manifest_key：执行文件边界
 - model_version_id：训练输出登记后的顶层 ModelVersion id
+- latest_checkpoint_model_version_id：latest checkpoint 自动或手动登记得到的固定 ModelVersion id
 - output_object_prefix：当前训练输出目录前缀
 - checkpoint_object_key：当前训练最佳 checkpoint 文件
 - latest_checkpoint_object_key：当前训练结束时的最新 checkpoint
@@ -169,6 +173,8 @@
 - running 阶段会提前公开 output_object_prefix、checkpoint_object_key、latest_checkpoint_object_key、metrics_object_key、validation_metrics_object_key 和 summary_object_key。
 - 训练过程会继续按 epoch 增量写 train-metrics.json；当当前轮执行了真实验证评估时，也会同步刷新 validation-metrics.json。
 - 当前运行期的实时指标仍会同步回写到 task.progress；如果需要把 checkpoint 落盘用于人工验证，应调用手动保存或暂停接口。
+- 当 save 或 pause 在 epoch 边界真正生效时，服务会和 latest checkpoint 一起写出 labels.txt，这样自动生成的 latest checkpoint 版本可以直接进入 validation-sessions。
+- 如果需要在训练尚未完成时直接拿 latest checkpoint 进入后续验证链路，可以按 `pause 或 save -> 等待 latest_checkpoint_model_version_id 可用 -> create validation session` 的顺序调用；用于 validation-sessions 的 id 优先取 `latest_checkpoint_model_version_id`。
 - 每个 epoch 完成后都会追加一条 progress 事件，并同步更新 task.progress。
 - 当前 progress 负载会带 stage、percent、epoch、max_epochs、evaluation_interval、validation_ran、evaluated_epochs、current_metric_name、current_metric_value、best_metric_name、best_metric_value、train_metrics、validation_metrics。
 - 当 validation_ran=true 时，validation_metrics 当前会同时携带 total_loss、iou_loss、conf_loss、cls_loss、map50、map50_95；当本轮未执行评估时，validation_metrics 会为空对象。
@@ -180,7 +186,17 @@
 #### 当前用途
 
 - 训练继续执行，但会在下一个 epoch 边界把 latest checkpoint 写到磁盘。
+- 同一个保存边界还会补齐 labels.txt，并自动更新 latest checkpoint 的固定 ModelVersion。
 - 当前接口只负责登记 save 请求；真正的落盘发生在 worker 处理到下一轮完成时。
+
+#### 当前返回语义
+
+- 当前接口返回训练任务详情，而不是单独的动作回执对象。
+- 调用成功后，任务通常仍处于 `running`，因为真正的保存动作要等到下一个 epoch 边界。
+- 前端不应把 200 直接解释为“latest checkpoint 已经写盘完成”，而应继续观察：
+  - detail 响应中的 `metadata.training_control.save_requested=true`
+  - 后续 `yolox training checkpoint saved` 事件
+  - `latest-checkpoint` 输出文件进入 `ready`
 
 ### POST /api/v1/models/yolox/training-tasks/{task_id}/pause
 
@@ -189,7 +205,18 @@
 #### 当前用途
 
 - 服务会在下一个 epoch 边界先保存 latest checkpoint，再把任务状态切到 `paused`。
+- 同一个暂停边界也会补齐 labels.txt，并自动更新 latest checkpoint 的固定 ModelVersion。
 - `paused` 后可以基于 latest checkpoint 做人工验证或外部推理，再决定是否继续训练。
+
+#### 当前返回语义
+
+- 当前接口返回训练任务详情，而不是单独的动作回执对象。
+- 调用成功后，任务通常仍处于 `running`，因为 pause 也是在下一个 epoch 边界才真正生效。
+- 前端不应把 200 直接解释为“任务已经暂停”，而应继续观察：
+  - detail 响应中的 `metadata.training_control.pause_requested=true`
+  - 后续 `yolox training checkpoint saved` 事件
+  - 后续 `yolox training paused` 事件
+  - detail 顶层 `state` 最终切到 `paused`
 
 ### POST /api/v1/models/yolox/training-tasks/{task_id}/resume
 
@@ -199,6 +226,165 @@
 
 - 当前接口会复用同一个 task_id，并基于暂停时保存的 latest checkpoint 恢复 optimizer、已完成 epoch 和最佳指标状态。
 - 成功返回后任务状态会回到 `queued`，等待 worker 继续执行剩余 epoch。
+
+#### 当前返回语义
+
+- 当前接口返回的是重新入队提交结果，不是训练任务详情。
+- 调用成功后，前端应立即重新获取训练任务详情或列表，不能只依赖 resume 接口返回体更新页面。
+- 当前 resume 的失败存在两层：
+  - 接口层失败：例如任务不处于 `paused`、latest checkpoint 缺失、latest checkpoint 文件不存在。这类错误会直接返回 400。
+  - worker 执行层失败：例如 latest checkpoint 损坏、resume checkpoint 内容与当前任务配置不一致。这类错误会先返回 200 并进入 `queued`，随后任务会在 worker 执行阶段进入 `failed`，并在 detail 的 `error_message` 中给出失败原因。
+
+### POST /api/v1/models/yolox/training-tasks/{task_id}/register-model-version
+
+把当前训练任务已经落盘的 latest checkpoint 手动重登记为可复用的 ModelVersion。
+
+#### 当前用途
+
+- 当前接口主要用于调试或验证，不再是 save/pause 后进入 validation-sessions 的必经步骤。
+- 正常调用顺序是：先 `save` 或 `pause`，等待 latest checkpoint 写盘并自动生成 `latest_checkpoint_model_version_id`，然后直接创建 validation-sessions。
+- 同一个训练任务只维护一个固定 latest checkpoint 版本：首次自动或手动登记创建，后续再次登记会更新已有版本，而不是新增多个版本。
+- 当前自动完成态登记仍然使用训练最佳 checkpoint；latest checkpoint 则维护成另一条独立版本线。训练完成后，best checkpoint 仍通过顶层 `model_version_id` 表示，latest checkpoint 通过 `latest_checkpoint_model_version_id` 表示。
+
+#### 当前返回语义
+
+- 当前接口返回训练任务详情，而不是单独的动作回执对象。
+- 调用成功后，未完成任务会把详情顶层 `model_version_id` 和 `training_summary.model_version_id` 回填成 latest checkpoint 的固定版本 id。
+- 如果任务已经完成，顶层 `model_version_id` 会继续保持自动 best checkpoint 版本；latest checkpoint 的版本 id 通过 `latest_checkpoint_model_version_id` 和 `training_summary.latest_checkpoint_model_version_id` 暴露。
+- 当前训练任务顶层 `checkpoint_object_key` 仍然保持“最佳 checkpoint”语义，不会被 latest checkpoint 覆盖；真正被登记到新 ModelVersion 的 checkpoint 来源是 `latest_checkpoint_object_key`。
+
+## 前端交互定义
+
+本节用于约束后续浏览器前端接入当前训练控制接口时的状态判断、轮询策略和按钮行为，避免把 save、pause、resume 误解成同步完成动作。
+
+### 任务状态机
+
+- `queued`：任务已创建或 resume 后已重新入队，尚未被 worker 执行。
+- `running`：worker 已经开始训练。
+- `paused`：任务已经在 epoch 边界完成一次保存并停止继续训练。
+- `succeeded`：训练完成并已登记输出模型版本。
+- `failed`：训练执行失败，失败原因写在 detail 的 `error_message`。
+
+#### 当前控制动作对应的真实阶段
+
+- `save`：只登记一次保存请求，真正写盘要等到下一个 epoch 边界。
+- `pause`：先登记暂停请求，真正暂停也要等到下一个 epoch 边界，并且会先写 latest checkpoint。
+- `resume`：把 paused 任务重新放回队列；真正恢复执行要等 worker 再次开始处理。
+
+### 前端应读取的关键字段
+
+- detail 顶层字段：
+  - `available_actions`
+  - `control_status.status`
+  - `control_status.pending_action`
+  - `control_status.requested_at`
+  - `control_status.requested_by`
+  - `control_status.last_save_at`
+  - `control_status.last_save_epoch`
+  - `control_status.last_save_reason`
+  - `control_status.last_save_by`
+  - `control_status.last_resume_at`
+  - `control_status.last_resume_by`
+  - `control_status.resume_count`
+  - `control_status.resume_checkpoint_object_key`
+  - `state`
+  - `progress.stage`
+  - `progress.percent`
+  - `error_message`
+  - `output_object_prefix`
+  - `latest_checkpoint_object_key`
+  - `metrics_object_key`
+  - `validation_metrics_object_key`
+- `metadata.training_control` 继续保留，当前更适合作为排障和事件对照字段，而不是前端主分支判断来源。
+
+#### `available_actions` 当前取值
+
+- `[]`：当前不建议展示训练控制按钮。
+- `['save', 'pause']`：任务处于正常 `running`。
+- `['pause']`：任务已经登记过一次 save，请求仍未在 epoch 边界生效，此时仍允许升级为 pause。
+- `['resume']`：任务处于 `paused` 且已解析到可用的 resume checkpoint object key。
+
+#### `control_status` 当前取值
+
+- `status=idle`：当前没有待生效的控制请求。
+- `status=save_requested`：已经登记 save，请等待下一个 epoch 边界。
+- `status=pause_requested`：已经登记 pause，请等待下一个 epoch 边界。
+- `status=resume_pending`：已经登记 resume，请等待 worker 重新开始执行。
+
+### 按钮启用规则
+
+| 场景 | Save | Pause | Resume | 说明 |
+| --- | --- | --- | --- | --- |
+| `queued` | 禁用 | 禁用 | 禁用 | 任务尚未进入训练执行。 |
+| `running` 且无控制请求 | 启用 | 启用 | 禁用 | 正常训练中。 |
+| `running` 且 `control_status.status=save_requested` | 禁用 | 启用 | 禁用 | 已经登记过一次保存请求，但仍允许升级为 pause。 |
+| `running` 且 `control_status.status=pause_requested` | 禁用 | 禁用 | 禁用 | 已经登记过一次暂停请求，等待 epoch 边界处理。 |
+| `paused` | 禁用 | 禁用 | 启用 | latest checkpoint 已经自动落盘并登记固定版本。 |
+| `succeeded` | 禁用 | 禁用 | 禁用 | 训练已完成。 |
+| `failed` | 禁用 | 禁用 | 禁用 | 当前没有失败后直接 resume 的正式接口语义。 |
+
+### 页面轮询与事件订阅建议
+
+#### 推荐最小接入方案
+
+- 列表页：轮询 `GET /api/v1/models/yolox/training-tasks?project_id=...`
+- 详情页：轮询 `GET /api/v1/models/yolox/training-tasks/{task_id}?include_events=false`
+- 指标面板：
+  - 只需要训练和验证 JSON 时，优先读 `train-metrics`、`validation-metrics`
+  - 需要统一判断文件 readiness 时，优先读 `GET /output-files`
+
+#### 推荐实时方案
+
+- 详情页或日志面板可以额外建立 `GET /ws/tasks/events?task_id=...` 对应的 WebSocket 订阅。
+- 当前推荐策略：
+  - 详情基础状态仍然走 HTTP 轮询
+  - 日志流和动作完成提示走 `/ws/tasks/events`
+- 当前 WebSocket 支持的查询参数：
+  - `task_id`：必填
+  - `event_type`：可选
+  - `after_created_at`：可选
+  - `limit`：可选，默认 100，最大 500
+
+#### 当前轮询注意点
+
+- 详情接口的 `include_events` 默认值是 `true`。
+- 前端如果把 detail 接口直接当成高频轮询接口，必须显式传 `include_events=false`，否则返回体会随着事件累积不断变大。
+- 如果页面需要展示事件流，应优先使用 `/ws/tasks/events` 或通用任务事件接口，而不是在高频轮询里反复拉完整 `events` 数组。
+
+### 前端交互建议流程
+
+#### Save
+
+1. 点击 Save。
+2. 调用 `POST /save`。
+3. 若返回 200，页面保持 `running`，按钮切到“保存已请求”。
+4. 等待 `latest-checkpoint` 进入 `ready` 或出现 `yolox training checkpoint saved` 事件。
+
+#### Pause
+
+1. 点击 Pause。
+2. 调用 `POST /pause`。
+3. 若返回 200，页面保持 `running`，按钮切到“暂停中”。
+4. 等待 `yolox training checkpoint saved`。
+5. 等待 `state=paused` 或 `yolox training paused` 事件。
+
+#### Resume
+
+1. 在 `paused` 状态点击 Resume。
+2. 调用 `POST /resume`。
+3. 若返回 200，立即刷新 detail 或列表，页面应切回 `queued`。
+4. 等待 `yolox training resumed` 事件后再切到 `running`。
+5. 如果任务后续进入 `failed`，应直接显示 detail 中的 `error_message`。
+
+## 当前前端接入缺口与后续优化建议
+
+当前接口已经够前端实现训练控制，但仍有几项值得后续补齐的地方。
+
+- 当前 detail 响应已经正式公开 `available_actions` 和 `control_status`，前端不必再直接依赖 `metadata.training_control` 做主分支判断。
+- `metadata.training_control` 仍然保留；后续如果要进一步收口，可以只在 detail 中保留 `control_status`，把原始 metadata 控制字段降级为调试信息。
+- `resume` 当前返回 submission，而不是 detail；这并不错误，但会让前端必须补一次 detail/list 刷新。后续如要减少页面跳变，可以考虑给 resume 返回更完整的 queued 态摘要。
+- 当前还没有专门面向 latest checkpoint 的“人工验证”接口；暂停后的人工验证仍需外部系统直接消费输出文件或后续新增验证接口。
+- 当前也没有“停止训练 / 终止任务”接口；如果后续产品需要硬停止语义，应单独定义停止后的 checkpoint 与状态流转规则。
 
 ### GET /api/v1/models/yolox/training-tasks/{task_id}/validation-metrics
 
@@ -328,12 +514,243 @@
 - worker、训练执行器或文件级脚本：优先消费 manifest_object_key。
 - 当外部系统已经只持有 manifest_object_key 时，可以直接用 manifest_object_key 创建训练任务；服务会反查回对应的 DatasetExport。
 
+## 训练完成后的下一步：推理验证与 API 规划
+
+当前训练链已经完成最小真实闭环。训练完成后，详情和输出文件接口已经能稳定公开 `model_version_id`、`best/latest checkpoint`、`labels.txt`、`training-summary.json`、`train-metrics.json` 和 `validation-metrics.json`，这意味着下一步不该再围绕“训练是否完成”打转，而应该收口到“如何验证训练结果是否真的可用”。
+
+### 当前已具备的前置条件
+
+- 训练详情已经公开 `model_version_id`，可以把训练输出正式衔接到后续模型发布、部署或验证链路。
+- 训练输出资源组已经公开 `best-checkpoint`、`latest-checkpoint`、`summary`、`labels`、`train-metrics` 和 `validation-metrics` 的统一读取状态。
+- backend 已经存在推理任务规格、runtime predict contract 和 inference runner contract；当前已经公开最小可用的 validation-sessions REST API，用于训练完成后，或 save/pause 自动登记 latest checkpoint 后的单图人工验证。
+- 当前在线推理设计更偏向 `deployment_instance_id + input_file_id/input_uri` 模式，而不是让推理接口直接读取 DatasetVersion。
+
+### 下一步不建议混成一个接口
+
+- 单图或少量样本的人工验证，不应强行塞进面向正式 deployment 的在线推理任务。
+- 数据集级别的回归验证、benchmark 或评估，不应复用在线推理任务；它应当是单独的评估任务，并显式绑定 `DatasetVersion`、`DatasetExport` 或专门的评估输入包。
+- 正式在线推理继续保持和 `DeploymentInstance` 绑定，不直接暴露裸 checkpoint 路径。
+
+### 第一步：已落地人工推理验证接口
+
+这一步的目标不是上线正式部署，而是让训练完成后的模型能被快速抽样验证，优先解决“这版模型看起来对不对”。当前已经公开以下资源组：
+
+- 资源组：`/api/v1/models/yolox/validation-sessions`
+- 创建接口：`POST /api/v1/models/yolox/validation-sessions`
+- 详情接口：`GET /api/v1/models/yolox/validation-sessions/{session_id}`
+- 预测接口：`POST /api/v1/models/yolox/validation-sessions/{session_id}/predict`
+
+#### 当前最短联调顺序
+
+- 训练尚未完成时：先 `pause` 或 `save`
+- 轮询训练详情，确认 `latest_checkpoint_object_key` 和 `latest_checkpoint_model_version_id` 已可用
+- 读取详情里的 `latest_checkpoint_model_version_id`；如果当前任务尚未完成，这个值会与顶层 `model_version_id` 相同
+- 调用 `POST /api/v1/models/yolox/validation-sessions` 创建人工验证 session
+
+#### 当前创建请求字段
+
+- `project_id`
+- `model_version_id`
+- `runtime_profile_id`
+- `runtime_backend`
+- `device_name`
+- `score_threshold`
+- `save_result_image`
+- `extra_options`
+
+#### 当前详情响应重点
+
+- `session_id`
+- `status`
+- `model_version_id`
+- `model_name`
+- `model_scale`
+- `input_size`
+- `labels`
+- `checkpoint_storage_uri`
+- `last_prediction`
+
+#### 当前预测请求字段
+
+- `input_uri`
+- `input_file_id`
+- `score_threshold`
+- `save_result_image`
+- `extra_options`
+
+#### 当前预测响应重点
+
+- `detections`
+- `preview_image_uri`
+- `raw_result_uri`
+- `latency_ms`
+- `runtime_session_info`
+- `labels`
+
+#### 当前实现边界
+
+- 当前 runtime_backend 只支持 `pytorch`
+- 当前只支持本地 `input_uri` 或本地 object key，不支持远程 URL
+- `input_file_id` 当前只是保留字段，调用时会返回 `invalid_request`
+- `runtime_profile_id` 当前仅作为创建参数和详情回传字段，不参与实际模型加载
+- session 状态和预测结果默认写到 `runtime/validation-sessions/{session_id}/...` 下，便于先把人工验证闭环跑通
+
+这组接口更接近现有 runtime predict contract，适合先把人工验证闭环跑通，也避免为了验证刚训练出来的模型，先被 `DeploymentInstance` 的正式发布流程卡住。
+
+### 第二步：已落地离线批量评估接口
+
+这一步的目标是解决“这版模型相对上一版到底提升还是退化了”，它和在线推理解耦，当前已经公开以下资源组：
+
+- 资源组：`/api/v1/models/yolox/evaluation-tasks`
+- 创建接口：`POST /api/v1/models/yolox/evaluation-tasks`
+- 列表接口：`GET /api/v1/models/yolox/evaluation-tasks`
+- 详情接口：`GET /api/v1/models/yolox/evaluation-tasks/{task_id}`
+- 报告接口：`GET /api/v1/models/yolox/evaluation-tasks/{task_id}/report`
+- 输出文件接口：`GET /api/v1/models/yolox/evaluation-tasks/{task_id}/output-files`
+
+#### 当前创建请求字段
+
+- `project_id`
+- `model_version_id`
+- `dataset_export_id`
+- `dataset_export_manifest_key`
+- `score_threshold`
+- `nms_threshold`
+- `save_result_package`
+- `extra_options`
+
+#### 当前列表 / 详情响应重点
+
+- `map50`
+- `map50_95`
+- `per_class_metrics`
+- `report_object_key`
+- `detections_object_key`
+- `result_package_object_key`
+
+#### 当前 report 响应重点
+
+- `file_status`
+- `task_state`
+- `object_key`
+- `payload.map50`
+- `payload.map50_95`
+- `payload.per_class_metrics`
+
+#### 当前 output-files 资源组
+
+- `report`
+- `detections`
+- `result-package`
+
+#### 当前实现边界
+
+- 当前最小评估链只支持 `coco-detection-v1` 导出输入
+- 当前评估执行复用本地 PyTorch checkpoint 和 YOLOX 最小 COCO mAP 评估逻辑
+- 当前 `per_class_metrics` 提供 `category_id`、`class_index`、`class_name`、`ground_truth_count`、`detection_count`、`ap50` 和 `ap50_95`
+- 当前 `result-package` 为 zip 文件，包含 `report.json` 和 `detections.json`
+- 当前 `save_result_package=false` 时仍会生成 report 和 detections，但不会写 zip 结果包
+- 当前设备、precision、split_name 等高级运行选项仍通过 `extra_options` 传入，尚未提升为正式顶层字段
+
+这一层应该显式绑定 `DatasetVersion` 或导出的评估输入，而不是复用在线 inference task 去跑整套回归测试。
+
+### 第三步：已落地 DeploymentInstance 与正式 inference task 接口
+
+当前已经公开 DeploymentInstance 资源和正式 inference-tasks 资源，推理请求继续绑定 `DeploymentInstance`，不直接读取 `DatasetVersion`，也不直接暴露 checkpoint 路径。
+
+#### 当前 deployment 资源组
+
+- 资源组：`/api/v1/models/yolox/deployment-instances`
+- 创建接口：`POST /api/v1/models/yolox/deployment-instances`
+- 列表接口：`GET /api/v1/models/yolox/deployment-instances`
+- 详情接口：`GET /api/v1/models/yolox/deployment-instances/{deployment_instance_id}`
+
+#### 当前 deployment 创建请求字段
+
+- `project_id`
+- `model_version_id`
+- `model_build_id`
+- `runtime_profile_id`
+- `runtime_backend`
+- `device_name`
+- `display_name`
+- `metadata`
+
+#### 当前 deployment 响应重点
+
+- `deployment_instance_id`
+- `model_version_id`
+- `model_build_id`
+- `runtime_backend`
+- `device_name`
+- `input_size`
+- `labels`
+- `status`
+
+#### 当前 inference 资源组
+
+- 资源组：`/api/v1/models/yolox/inference-tasks`
+- 创建接口：`POST /api/v1/models/yolox/inference-tasks`
+- 列表接口：`GET /api/v1/models/yolox/inference-tasks`
+- 详情接口：`GET /api/v1/models/yolox/inference-tasks/{task_id}`
+- 结果接口：`GET /api/v1/models/yolox/inference-tasks/{task_id}/result`
+
+#### 当前 inference 创建请求字段
+
+- `project_id`
+- `deployment_instance_id`
+- `input_file_id`
+- `input_uri`
+- `score_threshold`
+- `save_result_image`
+- `extra_options`
+
+#### 当前 inference 列表 / 详情响应重点
+
+- `deployment_instance_id`
+- `model_version_id`
+- `model_build_id`
+- `input_uri`
+- `score_threshold`
+- `save_result_image`
+- `result_object_key`
+- `preview_image_object_key`
+- `detection_count`
+- `latency_ms`
+- `result_summary`
+
+#### 当前 inference result 响应重点
+
+- `file_status`
+- `task_state`
+- `object_key`
+- `payload.detections`
+- `payload.runtime_session_info`
+- `payload.preview_image_uri`
+
+#### 当前实现边界
+
+- 当前 deployment create 允许绑定 `ModelVersion` 或 `ModelBuild`，但实际运行时只支持 `pytorch`
+- 当前 inference 执行仍复用本地 PyTorch checkpoint 单图推理链，内部通过 DeploymentInstance 解析回模型版本和运行配置
+- 当前 `input_file_id` 仍是保留字段，正式推理链当前只支持本地 `input_uri` 或 object key
+- 当前 `preview_image_object_key` 仅在 `save_result_image=true` 时生成
+- 当前 formal inference 已经对外隐藏 checkpoint 路径，但尚未接入 ONNX、OpenVINO 或 TensorRT 的真实运行时实现
+
+### 推荐推进顺序
+
+1. 先基于当前 `validation-sessions` 接口补前端人工验证页和结果回看能力。
+2. 再做 `evaluation-tasks`，解决数据集级别的回归验证和 benchmark。
+3. 最后做 converted build 对应的真实 ONNX/OpenVINO/TensorRT 运行时接入，把 DeploymentInstance 从最小 PyTorch 路径扩展为多 backend 运行时实体。
+
 ## 当前能力边界
 
 - 当前已经公开训练任务创建、列表和详情。
 - 当前训练 worker 会把任务从 queued 推进到 running 和 succeeded，并写出 best/latest checkpoint、训练指标、验证指标、summary 和 labels 文件。
 - 当前 running 阶段已经会回写 output_object_prefix 和逐 epoch progress 事件，前端可以直接显示真实训练进度。
 - 当前 warm_start_model_version_id 已经接通真实 checkpoint 加载；可使用已有训练产出的 ModelVersion，也可使用预训练目录 manifest 中声明的 model_version_id。
+- 当前已经公开最小 validation-sessions create/detail/predict 接口，可直接用训练产出的 ModelVersion 做单图人工验证。
+- 当前已经公开最小 evaluation-tasks create/list/detail/report/output-files 接口，可直接用训练产出的 ModelVersion 对 DatasetExport 做数据集级回归验证。
+- 当前已经公开最小 deployment-instances create/list/detail 与 inference-tasks create/list/detail/result 接口，可通过 deployment_instance_id 承接正式推理请求。
 - 当前最小真实训练执行链只支持 coco-detection-v1 输入、单条 detection 训练链路；有验证 split 时默认每 5 轮执行一次真实评估，并以验证集 val_map50_95 作为 best metric，没有验证 split 时退回 train_total_loss。
 - 当前 GPU 数量控制采用单机单进程模式；gpu_count 大于 1 时使用 DataParallel，不引入 exp 文件体系或分布式脚本。
 - 当前 precision 字段已经纳入公开接口；当前公开值为 fp16、fp32，未指定时默认 fp32。

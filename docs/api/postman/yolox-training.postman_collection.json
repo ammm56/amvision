@@ -1,8 +1,8 @@
 {
   "info": {
     "_postman_id": "b0db9a90-95bc-4a01-b247-1ddb33e1a2a8",
-    "name": "amvision yolox training api",
-    "description": "当前公开的 YOLOX training create/list/detail/save/pause/resume/validation-metrics/train-metrics/output-files 接口。本集合已经同步 evaluation_interval、gpu_count、precision、latest checkpoint、validation metrics、output-files、training_summary 和训练控制端点，可直接用于本机调试。",
+    "name": "amvision yolox training validation evaluation inference api",
+    "description": "当前公开的 YOLOX training create/list/detail/save/pause/resume/register-model-version/validation-metrics/train-metrics/output-files、validation-sessions create/detail/predict、evaluation-tasks create/list/detail/report/output-files，以及 deployment-instances create/list/detail 和 inference-tasks create/list/detail/result 接口。本集合已经同步 fp16/fp32、CPU fallback 调试方式、latest checkpoint、validation metrics、output-files、training_summary、detail 响应里的 available_actions 与 control_status、save/pause 后自动登记 latest checkpoint 版本、latest checkpoint 与 completed best 的版本区分、训练完成后的单图人工验证闭环、数据集级回归评估和结果包输出，以及 deployment_instance_id 驱动的正式推理链；默认建议把 includeEvents 设为 false，用于高频轮询调试。",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "item": [
@@ -75,7 +75,7 @@
                 "training-tasks"
               ]
             },
-            "description": "以 DatasetExport 为唯一输入边界创建 YOLOX 训练任务。当前请求体已经同步 model_scale、evaluation_interval、gpu_count、precision、batch_size、max_epochs、input_size 和 warm_start_model_version_id；precision 字段可写 fp8、fp16、fp32，但当前最小真实训练执行器实际只支持 fp16、fp32。evaluation_interval 表示每隔多少轮执行一次真实验证评估，默认 5，最后一轮会强制补做一次评估，并回写 map50、map50_95。warm_start_model_version_id 表示本次训练要从哪个已有 ModelVersion 对应的 checkpoint 开始训练，而不是从随机初始化开始；来源既可以是当前 Project 自己已有的历史训练产出，也可以是平台基础模型目录中登记的 pretrained-reference ModelVersion。若需要选择平台基础模型来源，可先查询 /api/v1/models/platform-base 或 /api/v1/models/platform-base/{model_id}，再把 available_versions[].model_version_id 填入 warm_start_model_version_id。"
+            "description": "以 DatasetExport 为唯一输入边界创建 YOLOX 训练任务。当前请求体已经同步 model_scale、evaluation_interval、gpu_count、precision、batch_size、max_epochs、input_size 和 warm_start_model_version_id；precision 当前只接受 fp16、fp32。若本机没有可用 GPU，可把 gpuCount 变量保留为 null，并按 CPU + fp32 跑最小调试。evaluation_interval 表示每隔多少轮执行一次真实验证评估，默认 5，最后一轮会强制补做一次评估，并回写 map50、map50_95。warm_start_model_version_id 表示本次训练要从哪个已有 ModelVersion 对应的 checkpoint 开始训练，而不是从随机初始化开始；来源既可以是当前 Project 自己已有的历史训练产出，也可以是平台基础模型目录中登记的 pretrained-reference ModelVersion。若需要选择平台基础模型来源，可先查询 /api/v1/models/platform-base 或 /api/v1/models/platform-base/{model_id}，再把 available_versions[].model_version_id 填入 warm_start_model_version_id。"
           },
           "response": []
         },
@@ -93,6 +93,16 @@
                   "    var first = payload[0];",
                   "    pm.collectionVariables.set('taskId', first.task_id);",
                   "    if (first.model_version_id) pm.collectionVariables.set('modelVersionId', first.model_version_id);",
+                  "    if (first.latest_checkpoint_model_version_id) {",
+                  "      pm.collectionVariables.set('latestCheckpointModelVersionId', first.latest_checkpoint_model_version_id);",
+                  "      pm.collectionVariables.set('validationModelVersionId', first.latest_checkpoint_model_version_id);",
+                  "    } else if (first.model_version_id) {",
+                  "      pm.collectionVariables.unset('latestCheckpointModelVersionId');",
+                  "      pm.collectionVariables.set('validationModelVersionId', first.model_version_id);",
+                  "    } else {",
+                  "      pm.collectionVariables.unset('latestCheckpointModelVersionId');",
+                  "      pm.collectionVariables.unset('validationModelVersionId');",
+                  "    }",
                   "    if (first.output_object_prefix) pm.collectionVariables.set('outputObjectPrefix', first.output_object_prefix);",
                   "    if (first.checkpoint_object_key) pm.collectionVariables.set('checkpointObjectKey', first.checkpoint_object_key);",
                   "    if (first.latest_checkpoint_object_key) pm.collectionVariables.set('latestCheckpointObjectKey', first.latest_checkpoint_object_key);",
@@ -181,14 +191,33 @@
                   "if (pm.response.code === 200) {",
                   "  var payload = pm.response.json();",
                   "  if (payload.model_version_id) pm.collectionVariables.set('modelVersionId', payload.model_version_id);",
+                  "  if (payload.latest_checkpoint_model_version_id) {",
+                  "    pm.collectionVariables.set('latestCheckpointModelVersionId', payload.latest_checkpoint_model_version_id);",
+                  "    pm.collectionVariables.set('validationModelVersionId', payload.latest_checkpoint_model_version_id);",
+                  "  } else {",
+                  "    pm.collectionVariables.unset('latestCheckpointModelVersionId');",
+                  "    if (payload.model_version_id) {",
+                  "      pm.collectionVariables.set('validationModelVersionId', payload.model_version_id);",
+                  "    } else {",
+                  "      pm.collectionVariables.unset('validationModelVersionId');",
+                  "    }",
+                  "  }",
                   "  if (payload.output_object_prefix) pm.collectionVariables.set('outputObjectPrefix', payload.output_object_prefix);",
                   "  if (payload.checkpoint_object_key) pm.collectionVariables.set('checkpointObjectKey', payload.checkpoint_object_key);",
                   "  if (payload.latest_checkpoint_object_key) pm.collectionVariables.set('latestCheckpointObjectKey', payload.latest_checkpoint_object_key);",
                   "  if (payload.metrics_object_key) pm.collectionVariables.set('metricsObjectKey', payload.metrics_object_key);",
                   "  if (payload.validation_metrics_object_key) pm.collectionVariables.set('validationMetricsObjectKey', payload.validation_metrics_object_key);",
                   "  if (payload.summary_object_key) pm.collectionVariables.set('summaryObjectKey', payload.summary_object_key);",
-                  "}",
-                  ""
+                  "  pm.collectionVariables.set('availableActions', Array.isArray(payload.available_actions) ? payload.available_actions.join(',') : '');",
+                  "  if (payload.control_status && payload.control_status.status) pm.collectionVariables.set('controlStatus', payload.control_status.status);",
+                  "  if (payload.control_status && payload.control_status.pending_action) {",
+                  "    pm.collectionVariables.set('controlPendingAction', payload.control_status.pending_action);",
+                  "  } else {",
+                  "    pm.collectionVariables.unset('controlPendingAction');",
+                  "  }",
+                  "  if (payload.control_status && payload.control_status.last_save_epoch !== undefined && payload.control_status.last_save_epoch !== null) pm.collectionVariables.set('lastSaveEpoch', String(payload.control_status.last_save_epoch));",
+                  "  if (payload.control_status && payload.control_status.resume_checkpoint_object_key) pm.collectionVariables.set('resumeCheckpointObjectKey', payload.control_status.resume_checkpoint_object_key);",
+                  "}"
                 ]
               }
             }
@@ -232,7 +261,7 @@
                 }
               ]
             },
-            "description": "查询单条 YOLOX 训练任务详情和事件流。详情响应已经同步 output_object_prefix、latest_checkpoint_object_key、validation_metrics_object_key，以及 training_summary.output_files 和 validation 摘要。running 阶段的 task.progress 当前会带 validation_ran、evaluated_epochs，以及评估轮的 map50、map50_95；手动保存和暂停后的训练控制状态会放在 metadata.training_control。"
+            "description": "查询单条 YOLOX 训练任务详情和事件流。详情响应已经同步 output_object_prefix、latest_checkpoint_object_key、validation_metrics_object_key、training_summary.output_files，以及正式训练控制字段 available_actions 和 control_status。高频轮询时建议把 includeEvents 设为 false；只有在确实需要完整事件流时再打开。running 阶段的 task.progress 当前会带 validation_ran、evaluated_epochs，以及评估轮的 map50、map50_95。"
           },
           "response": []
         },
@@ -272,7 +301,7 @@
                 "save"
               ]
             },
-            "description": "为 running 状态的 YOLOX 训练任务登记一次手动保存请求。服务会在下一个 epoch 边界把 latest checkpoint 落盘，并追加 checkpoint saved 事件。"
+            "description": "为 running 状态的 YOLOX 训练任务登记一次手动保存请求。当前接口返回训练详情，而不是单独动作回执；调用成功后任务通常仍然保持 running，并通过 control_status.status=save_requested 表示请求已经登记。服务会在下一个 epoch 边界把 latest checkpoint 落盘，并自动创建或更新该训练任务固定的 latest checkpoint ModelVersion。"
           },
           "response": []
         },
@@ -312,7 +341,7 @@
                 "pause"
               ]
             },
-            "description": "为 running 状态的 YOLOX 训练任务请求暂停。服务会在下一个 epoch 边界先保存 latest checkpoint，再把任务状态切到 paused。"
+            "description": "为 running 状态的 YOLOX 训练任务请求暂停。当前接口返回训练详情，而不是立即进入 paused；调用成功后通常先看到 control_status.status=pause_requested，真正暂停要等到下一个 epoch 边界。服务会先保存 latest checkpoint 并自动创建或更新固定的 latest checkpoint ModelVersion，再把任务状态切到 paused。"
           },
           "response": []
         },
@@ -352,7 +381,69 @@
                 "resume"
               ]
             },
-            "description": "把 paused 的 YOLOX 训练任务重新入队。服务会基于暂停时落盘的 latest checkpoint 恢复 optimizer、已完成 epoch 和最佳指标状态。"
+            "description": "把 paused 的 YOLOX 训练任务重新入队。当前接口返回 submission，而不是 detail；调用成功后应立刻重新请求 Get YOLOX Training Task Detail。服务会基于暂停时落盘的 latest checkpoint 恢复 optimizer、已完成 epoch 和最佳指标状态；如果 checkpoint 损坏或恢复配置不一致，任务可能会在后续 worker 执行阶段进入 failed。"
+          },
+          "response": []
+        },
+        {
+          "name": "Register YOLOX Latest Checkpoint Model Version",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  var payload = pm.response.json();",
+                  "  if (payload.model_version_id) pm.collectionVariables.set('modelVersionId', payload.model_version_id);",
+                  "  if (payload.latest_checkpoint_model_version_id) {",
+                  "    pm.collectionVariables.set('latestCheckpointModelVersionId', payload.latest_checkpoint_model_version_id);",
+                  "    pm.collectionVariables.set('validationModelVersionId', payload.latest_checkpoint_model_version_id);",
+                  "  } else if (payload.model_version_id) {",
+                  "    pm.collectionVariables.unset('latestCheckpointModelVersionId');",
+                  "    pm.collectionVariables.set('validationModelVersionId', payload.model_version_id);",
+                  "  }",
+                  "  if (payload.latest_checkpoint_object_key) pm.collectionVariables.set('latestCheckpointObjectKey', payload.latest_checkpoint_object_key);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-amvision-principal-id",
+                "value": "{{principalId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-project-ids",
+                "value": "{{projectId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-scopes",
+                "value": "tasks:write,models:write",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/models/yolox/training-tasks/{{taskId}}/register-model-version",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "models",
+                "yolox",
+                "training-tasks",
+                "{{taskId}}",
+                "register-model-version"
+              ]
+            },
+            "description": "把当前已经落盘的 latest checkpoint 手动重登记为可复用的 ModelVersion。正常链路里，save 或 pause 会在下一个 epoch 边界自动完成这次版本登记；当前请求主要用于调试验证。每个训练任务只维护一个固定 latest checkpoint 版本，首次调用创建，后续再次调用会更新同一个版本。任务未完成时，响应顶层 model_version_id 会与 latest_checkpoint_model_version_id 相同；任务完成后，model_version_id 继续表示自动登记的 best checkpoint，latest_checkpoint_model_version_id 表示 latest checkpoint 版本。"
           },
           "response": []
         },
@@ -518,6 +609,874 @@
           "response": []
         }
       ]
+    },
+    {
+      "name": "YOLOX Validation Sessions",
+      "item": [
+        {
+          "name": "Create YOLOX Validation Session",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  var payload = pm.response.json();",
+                  "  pm.collectionVariables.set('validationSessionId', payload.session_id);",
+                  "  if (payload.checkpoint_storage_uri) pm.collectionVariables.set('validationCheckpointStorageUri', payload.checkpoint_storage_uri);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-principal-id",
+                "value": "{{principalId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-project-ids",
+                "value": "{{projectId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-scopes",
+                "value": "models:read",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"model_version_id\": \"{{validationModelVersionId}}\",\n  \"runtime_profile_id\": null,\n  \"runtime_backend\": \"pytorch\",\n  \"device_name\": \"cpu\",\n  \"score_threshold\": {{validationScoreThreshold}},\n  \"save_result_image\": {{validationSaveResultImage}},\n  \"extra_options\": {}\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/models/yolox/validation-sessions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "models",
+                "yolox",
+                "validation-sessions"
+              ]
+            },
+            "description": "创建单图人工验证 session。当前最短联调顺序是 pause 或 save -> 轮询 detail 直到 latest_checkpoint_model_version_id 可用 -> create validation session；本请求默认读取 validationModelVersionId，因此会优先使用 latest checkpoint 的固定版本。runtime_backend 当前只支持 pytorch；runtime_profile_id 当前只回传，不参与实际模型加载。"
+          },
+          "response": []
+        },
+        {
+          "name": "Get YOLOX Validation Session Detail",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  var payload = pm.response.json();",
+                  "  if (payload.last_prediction && payload.last_prediction.raw_result_uri) pm.collectionVariables.set('validationRawResultUri', payload.last_prediction.raw_result_uri);",
+                  "  if (payload.last_prediction && payload.last_prediction.preview_image_uri) pm.collectionVariables.set('validationPreviewImageUri', payload.last_prediction.preview_image_uri);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-amvision-principal-id",
+                "value": "{{principalId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-project-ids",
+                "value": "{{projectId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-scopes",
+                "value": "models:read",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/models/yolox/validation-sessions/{{validationSessionId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "models",
+                "yolox",
+                "validation-sessions",
+                "{{validationSessionId}}"
+              ]
+            },
+            "description": "读取单条 validation session 当前详情。执行过 predict 之后，last_prediction 会回填 raw_result_uri、preview_image_uri、latency_ms 和 detection_count。"
+          },
+          "response": []
+        },
+        {
+          "name": "Predict YOLOX Validation Session",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  var payload = pm.response.json();",
+                  "  if (payload.raw_result_uri) pm.collectionVariables.set('validationRawResultUri', payload.raw_result_uri);",
+                  "  if (payload.preview_image_uri) pm.collectionVariables.set('validationPreviewImageUri', payload.preview_image_uri);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-principal-id",
+                "value": "{{principalId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-project-ids",
+                "value": "{{projectId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-scopes",
+                "value": "models:read",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"input_uri\": \"{{validationImageUri}}\",\n  \"input_file_id\": null,\n  \"score_threshold\": {{validationScoreThreshold}},\n  \"save_result_image\": {{validationSaveResultImage}},\n  \"extra_options\": {}\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/models/yolox/validation-sessions/{{validationSessionId}}/predict",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "models",
+                "yolox",
+                "validation-sessions",
+                "{{validationSessionId}}",
+                "predict"
+              ]
+            },
+            "description": "对指定 validation session 执行一次单图预测。当前最小实现只支持本地 input_uri 或 object key；input_file_id 仍是保留字段，传入时会返回 invalid_request。成功后会写出 raw-result.json，并在 save_result_image=true 时额外写出 preview.jpg。"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "YOLOX Evaluation Tasks",
+      "item": [
+        {
+          "name": "Create YOLOX Evaluation Task",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 202) {",
+                  "  var payload = pm.response.json();",
+                  "  pm.collectionVariables.set('evaluationTaskId', payload.task_id);",
+                  "  pm.collectionVariables.set('datasetExportId', payload.dataset_export_id);",
+                  "  pm.collectionVariables.set('datasetExportManifestKey', payload.dataset_export_manifest_key);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-principal-id",
+                "value": "{{principalId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-project-ids",
+                "value": "{{projectId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-scopes",
+                "value": "datasets:read,models:read,tasks:write",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"model_version_id\": \"{{modelVersionId}}\",\n  \"dataset_export_id\": \"{{datasetExportId}}\",\n  \"dataset_export_manifest_key\": null,\n  \"score_threshold\": {{evaluationScoreThreshold}},\n  \"nms_threshold\": {{evaluationNmsThreshold}},\n  \"save_result_package\": {{evaluationSaveResultPackage}},\n  \"extra_options\": {\n    \"split_name\": \"val\"\n  },\n  \"display_name\": \"{{evaluationDisplayName}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/models/yolox/evaluation-tasks",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "models",
+                "yolox",
+                "evaluation-tasks"
+              ]
+            },
+            "description": "创建一个用于数据集级回归验证的 YOLOX evaluation task。当前请求需要 datasets:read、models:read 和 tasks:write；最小实现沿 ModelVersion -> checkpoint 链路加载本地权重，并对 DatasetExport 指向的 COCO 导出执行离线 mAP 评估。"
+          },
+          "response": []
+        },
+        {
+          "name": "List YOLOX Evaluation Tasks",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-amvision-principal-id",
+                "value": "{{principalId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-project-ids",
+                "value": "{{projectId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-scopes",
+                "value": "tasks:read",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/models/yolox/evaluation-tasks?project_id={{projectId}}&model_version_id={{modelVersionId}}&limit={{evaluationLimit}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "models",
+                "yolox",
+                "evaluation-tasks"
+              ],
+              "query": [
+                {
+                  "key": "project_id",
+                  "value": "{{projectId}}"
+                },
+                {
+                  "key": "model_version_id",
+                  "value": "{{modelVersionId}}"
+                },
+                {
+                  "key": "dataset_export_id",
+                  "value": "{{datasetExportId}}",
+                  "disabled": true
+                },
+                {
+                  "key": "state",
+                  "value": "{{evaluationState}}",
+                  "disabled": true
+                },
+                {
+                  "key": "limit",
+                  "value": "{{evaluationLimit}}"
+                }
+              ]
+            },
+            "description": "按 Project、ModelVersion 和可选 DatasetExport 边界列出评估任务。成功任务会直接返回 map50、map50_95、report_summary 和结果文件路径。"
+          },
+          "response": []
+        },
+        {
+          "name": "Get YOLOX Evaluation Task Detail",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  var payload = pm.response.json();",
+                  "  if (payload.report_object_key) pm.collectionVariables.set('evaluationReportObjectKey', payload.report_object_key);",
+                  "  if (payload.detections_object_key) pm.collectionVariables.set('evaluationDetectionsObjectKey', payload.detections_object_key);",
+                  "  if (payload.result_package_object_key) pm.collectionVariables.set('evaluationResultPackageObjectKey', payload.result_package_object_key);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-amvision-principal-id",
+                "value": "{{principalId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-project-ids",
+                "value": "{{projectId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-scopes",
+                "value": "tasks:read",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/models/yolox/evaluation-tasks/{{evaluationTaskId}}?include_events={{includeEvents}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "models",
+                "yolox",
+                "evaluation-tasks",
+                "{{evaluationTaskId}}"
+              ],
+              "query": [
+                {
+                  "key": "include_events",
+                  "value": "{{includeEvents}}"
+                }
+              ]
+            },
+            "description": "读取单条 evaluation task 当前详情。任务完成后，detail 会直接返回 map50、map50_95、per_class_metrics 摘要，以及 report、detections、result-package 的 object key。"
+          },
+          "response": []
+        },
+        {
+          "name": "Get YOLOX Evaluation Report",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-amvision-principal-id",
+                "value": "{{principalId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-project-ids",
+                "value": "{{projectId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-scopes",
+                "value": "tasks:read",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/models/yolox/evaluation-tasks/{{evaluationTaskId}}/report",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "models",
+                "yolox",
+                "evaluation-tasks",
+                "{{evaluationTaskId}}",
+                "report"
+              ]
+            },
+            "description": "读取当前评估任务的 evaluation-report.json。任务执行中会返回 pending；完成后 payload 中可直接读取 map50、map50_95 和 per_class_metrics。"
+          },
+          "response": []
+        },
+        {
+          "name": "List YOLOX Evaluation Output Files",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-amvision-principal-id",
+                "value": "{{principalId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-project-ids",
+                "value": "{{projectId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-scopes",
+                "value": "tasks:read",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/models/yolox/evaluation-tasks/{{evaluationTaskId}}/output-files",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "models",
+                "yolox",
+                "evaluation-tasks",
+                "{{evaluationTaskId}}",
+                "output-files"
+              ]
+            },
+            "description": "统一列出 report、detections 和 result-package 这 3 个评估输出文件的状态。save_result_package=false 时，result-package 会返回 skipped。"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "YOLOX Deployment Instances",
+      "item": [
+        {
+          "name": "Create YOLOX Deployment Instance",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  var payload = pm.response.json();",
+                  "  pm.collectionVariables.set('deploymentInstanceId', payload.deployment_instance_id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-principal-id",
+                "value": "{{principalId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-project-ids",
+                "value": "{{projectId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-scopes",
+                "value": "models:read,models:write",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"model_version_id\": \"{{modelVersionId}}\",\n  \"model_build_id\": null,\n  \"runtime_profile_id\": null,\n  \"runtime_backend\": \"pytorch\",\n  \"device_name\": \"cpu\",\n  \"display_name\": \"{{deploymentDisplayName}}\",\n  \"metadata\": {}\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/models/yolox/deployment-instances",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "models",
+                "yolox",
+                "deployment-instances"
+              ]
+            },
+            "description": "创建一个最小 DeploymentInstance。当前实现允许直接绑定 ModelVersion 或 ModelBuild，但正式运行时仍只支持 pytorch；create 阶段会先校验 checkpoint 和 labels 的本地可读性。"
+          },
+          "response": []
+        },
+        {
+          "name": "List YOLOX Deployment Instances",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-amvision-principal-id",
+                "value": "{{principalId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-project-ids",
+                "value": "{{projectId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-scopes",
+                "value": "models:read",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/models/yolox/deployment-instances?project_id={{projectId}}&limit={{deploymentLimit}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "models",
+                "yolox",
+                "deployment-instances"
+              ],
+              "query": [
+                {
+                  "key": "project_id",
+                  "value": "{{projectId}}"
+                },
+                {
+                  "key": "model_version_id",
+                  "value": "{{modelVersionId}}",
+                  "disabled": true
+                },
+                {
+                  "key": "deployment_status",
+                  "value": "{{deploymentStatus}}",
+                  "disabled": true
+                },
+                {
+                  "key": "limit",
+                  "value": "{{deploymentLimit}}"
+                }
+              ]
+            },
+            "description": "按 Project 边界列出 DeploymentInstance。当前列表返回绑定的模型、运行时、input_size 和 labels，不暴露 checkpoint 路径。"
+          },
+          "response": []
+        },
+        {
+          "name": "Get YOLOX Deployment Instance Detail",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-amvision-principal-id",
+                "value": "{{principalId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-project-ids",
+                "value": "{{projectId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-scopes",
+                "value": "models:read",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/models/yolox/deployment-instances/{{deploymentInstanceId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "models",
+                "yolox",
+                "deployment-instances",
+                "{{deploymentInstanceId}}"
+              ]
+            },
+            "description": "读取单条 DeploymentInstance 当前详情，作为 inference-tasks 创建前的正式选择对象。"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "YOLOX Inference Tasks",
+      "item": [
+        {
+          "name": "Create YOLOX Inference Task",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 202) {",
+                  "  var payload = pm.response.json();",
+                  "  pm.collectionVariables.set('inferenceTaskId', payload.task_id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-principal-id",
+                "value": "{{principalId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-project-ids",
+                "value": "{{projectId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-scopes",
+                "value": "models:read,tasks:write",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"deployment_instance_id\": \"{{deploymentInstanceId}}\",\n  \"input_file_id\": null,\n  \"input_uri\": \"{{inferenceImageUri}}\",\n  \"score_threshold\": {{inferenceScoreThreshold}},\n  \"save_result_image\": {{inferenceSaveResultImage}},\n  \"extra_options\": {},\n  \"display_name\": \"{{inferenceDisplayName}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/models/yolox/inference-tasks",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "models",
+                "yolox",
+                "inference-tasks"
+              ]
+            },
+            "description": "创建一个正式 YOLOX inference task。当前最小实现通过 deployment_instance_id 解析模型与运行配置，并通过本地 input_uri 或 object key 读取输入图片。"
+          },
+          "response": []
+        },
+        {
+          "name": "List YOLOX Inference Tasks",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-amvision-principal-id",
+                "value": "{{principalId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-project-ids",
+                "value": "{{projectId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-scopes",
+                "value": "tasks:read",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/models/yolox/inference-tasks?project_id={{projectId}}&limit={{inferenceLimit}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "models",
+                "yolox",
+                "inference-tasks"
+              ],
+              "query": [
+                {
+                  "key": "project_id",
+                  "value": "{{projectId}}"
+                },
+                {
+                  "key": "deployment_instance_id",
+                  "value": "{{deploymentInstanceId}}",
+                  "disabled": true
+                },
+                {
+                  "key": "state",
+                  "value": "{{inferenceState}}",
+                  "disabled": true
+                },
+                {
+                  "key": "limit",
+                  "value": "{{inferenceLimit}}"
+                }
+              ]
+            },
+            "description": "按 Project 和可选 DeploymentInstance 边界列出推理任务。成功任务会直接返回结果文件路径、检测框数量和 latency。"
+          },
+          "response": []
+        },
+        {
+          "name": "Get YOLOX Inference Task Detail",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  var payload = pm.response.json();",
+                  "  if (payload.result_object_key) pm.collectionVariables.set('inferenceResultObjectKey', payload.result_object_key);",
+                  "  if (payload.preview_image_object_key) pm.collectionVariables.set('inferencePreviewImageObjectKey', payload.preview_image_object_key);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-amvision-principal-id",
+                "value": "{{principalId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-project-ids",
+                "value": "{{projectId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-scopes",
+                "value": "tasks:read",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/models/yolox/inference-tasks/{{inferenceTaskId}}?include_events={{includeEvents}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "models",
+                "yolox",
+                "inference-tasks",
+                "{{inferenceTaskId}}"
+              ],
+              "query": [
+                {
+                  "key": "include_events",
+                  "value": "{{includeEvents}}"
+                }
+              ]
+            },
+            "description": "读取单条 inference task 当前详情。任务完成后，detail 会直接返回 result_object_key、preview_image_object_key、detection_count 和 latency。"
+          },
+          "response": []
+        },
+        {
+          "name": "Get YOLOX Inference Result",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-amvision-principal-id",
+                "value": "{{principalId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-project-ids",
+                "value": "{{projectId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-scopes",
+                "value": "tasks:read",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/models/yolox/inference-tasks/{{inferenceTaskId}}/result",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "models",
+                "yolox",
+                "inference-tasks",
+                "{{inferenceTaskId}}",
+                "result"
+              ]
+            },
+            "description": "读取当前推理任务的 raw-result.json。任务执行中会返回 pending；完成后 payload 中可直接读取 detections、runtime_session_info 和 preview_image_uri。"
+          },
+          "response": []
+        }
+      ]
     }
   ],
   "variable": [
@@ -575,7 +1534,7 @@
     },
     {
       "key": "gpuCount",
-      "value": "1"
+      "value": "null"
     },
     {
       "key": "precision",
@@ -611,11 +1570,159 @@
     },
     {
       "key": "includeEvents",
-      "value": "true"
+      "value": "false"
+    },
+    {
+      "key": "availableActions",
+      "value": ""
+    },
+    {
+      "key": "controlStatus",
+      "value": "idle"
+    },
+    {
+      "key": "controlPendingAction",
+      "value": ""
+    },
+    {
+      "key": "lastSaveEpoch",
+      "value": ""
+    },
+    {
+      "key": "resumeCheckpointObjectKey",
+      "value": ""
     },
     {
       "key": "modelVersionId",
       "value": "model-version-1"
+    },
+    {
+      "key": "latestCheckpointModelVersionId",
+      "value": ""
+    },
+    {
+      "key": "validationModelVersionId",
+      "value": "model-version-1"
+    },
+    {
+      "key": "validationSessionId",
+      "value": "validation-session-1"
+    },
+    {
+      "key": "validationImageUri",
+      "value": "validation-inputs/image-1.jpg"
+    },
+    {
+      "key": "validationScoreThreshold",
+      "value": "0.3"
+    },
+    {
+      "key": "validationSaveResultImage",
+      "value": "true"
+    },
+    {
+      "key": "validationCheckpointStorageUri",
+      "value": ""
+    },
+    {
+      "key": "validationRawResultUri",
+      "value": ""
+    },
+    {
+      "key": "validationPreviewImageUri",
+      "value": ""
+    },
+    {
+      "key": "evaluationTaskId",
+      "value": "task-evaluation-1"
+    },
+    {
+      "key": "evaluationScoreThreshold",
+      "value": "0.2"
+    },
+    {
+      "key": "evaluationNmsThreshold",
+      "value": "0.65"
+    },
+    {
+      "key": "evaluationSaveResultPackage",
+      "value": "true"
+    },
+    {
+      "key": "evaluationDisplayName",
+      "value": "local yolox evaluation"
+    },
+    {
+      "key": "evaluationState",
+      "value": "succeeded"
+    },
+    {
+      "key": "evaluationLimit",
+      "value": "20"
+    },
+    {
+      "key": "evaluationReportObjectKey",
+      "value": ""
+    },
+    {
+      "key": "evaluationDetectionsObjectKey",
+      "value": ""
+    },
+    {
+      "key": "evaluationResultPackageObjectKey",
+      "value": ""
+    },
+    {
+      "key": "deploymentInstanceId",
+      "value": "deployment-instance-1"
+    },
+    {
+      "key": "deploymentDisplayName",
+      "value": "local yolox deployment"
+    },
+    {
+      "key": "deploymentStatus",
+      "value": "active"
+    },
+    {
+      "key": "deploymentLimit",
+      "value": "20"
+    },
+    {
+      "key": "inferenceTaskId",
+      "value": "task-inference-1"
+    },
+    {
+      "key": "inferenceImageUri",
+      "value": "runtime-inputs/image-1.jpg"
+    },
+    {
+      "key": "inferenceScoreThreshold",
+      "value": "0.3"
+    },
+    {
+      "key": "inferenceSaveResultImage",
+      "value": "true"
+    },
+    {
+      "key": "inferenceDisplayName",
+      "value": "local yolox inference"
+    },
+    {
+      "key": "inferenceState",
+      "value": "succeeded"
+    },
+    {
+      "key": "inferenceLimit",
+      "value": "20"
+    },
+    {
+      "key": "inferenceResultObjectKey",
+      "value": ""
+    },
+    {
+      "key": "inferencePreviewImageObjectKey",
+      "value": ""
     },
     {
       "key": "outputObjectPrefix",

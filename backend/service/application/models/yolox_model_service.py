@@ -63,6 +63,7 @@ class YoloXTrainingOutputRegistration:
     字段：
     - project_id：所属项目 id。
     - training_task_id：训练任务 id。
+    - model_version_id：可选的目标 ModelVersion id；用于把训练输出更新到现有版本。
     - model_name：登记到平台的模型名。
     - model_scale：模型 scale。
     - dataset_version_id：训练使用的 DatasetVersion id。
@@ -82,6 +83,7 @@ class YoloXTrainingOutputRegistration:
     model_scale: str
     dataset_version_id: str
     checkpoint_file_id: str
+    model_version_id: str | None = None
     parent_version_id: str | None = None
     checkpoint_file_uri: str | None = None
     labels_file_id: str | None = None
@@ -435,7 +437,7 @@ class SqlAlchemyYoloXModelService:
                 labels_file_id=request.labels_file_id,
                 metadata=request.metadata,
             )
-            model_version_id = self._next_id("model-version")
+            model_version_id = request.model_version_id or self._next_id("model-version")
             file_ids = self._register_training_files(
                 unit_of_work=unit_of_work,
                 model_id=model.model_id,

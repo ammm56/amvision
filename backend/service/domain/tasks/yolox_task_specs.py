@@ -79,6 +79,7 @@ class YoloXInferenceTaskSpec:
     - input_uri：外部输入 URI。
     - score_threshold：推理阈值。
     - save_result_image：是否保存结果图。
+    - runtime_target_snapshot：提交时固化的运行时快照。
     - extra_options：附加推理选项。
     """
 
@@ -88,4 +89,32 @@ class YoloXInferenceTaskSpec:
     input_uri: str | None = None
     score_threshold: float | None = None
     save_result_image: bool = False
+    runtime_target_snapshot: dict[str, object] = field(default_factory=dict)
+    extra_options: dict[str, object] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class YoloXEvaluationTaskSpec:
+    """描述 YOLOX 评估任务的规格。
+
+    字段：
+    - project_id：所属项目 id。
+    - model_version_id：待评估 ModelVersion id。
+    - dataset_export_id：评估输入使用的 DatasetExport id。
+    - dataset_export_manifest_key：评估输入使用的数据集导出 manifest object key。
+    - manifest_object_key：评估任务内部统一使用的 manifest object key。
+    - score_threshold：评估阈值。
+    - nms_threshold：评估 NMS 阈值。
+    - save_result_package：是否输出结果包。
+    - extra_options：附加评估选项。
+    """
+
+    project_id: str
+    model_version_id: str
+    dataset_export_id: str | None = None
+    dataset_export_manifest_key: str | None = None
+    manifest_object_key: str | None = None
+    score_threshold: float | None = None
+    nms_threshold: float | None = None
+    save_result_package: bool = True
     extra_options: dict[str, object] = field(default_factory=dict)

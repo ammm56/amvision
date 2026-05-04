@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlparse
@@ -49,6 +49,8 @@ from backend.service.infrastructure.object_store.local_dataset_storage import Lo
 YOLOX_TRAINING_TASK_KIND = "yolox-training"
 YOLOX_TRAINING_QUEUE_NAME = "yolox-trainings"
 YOLOX_TRAINING_CONTROL_METADATA_KEY = "training_control"
+YOLOX_MANUAL_LATEST_REGISTRATION_METADATA_KEY = "manual_model_version_registration"
+YOLOX_MANUAL_LATEST_OUTPUT_FILE_TOKEN = "manual-latest"
 
 
 @dataclass(frozen=True)
@@ -498,6 +500,88 @@ class SqlAlchemyYoloXTrainingTaskService:
             format_id=dataset_export.format_id,
         )
 
+    def register_latest_checkpoint_model_version(
+        self,
+        task_id: str,
+        *,
+        registered_by: str | None = None,
+    ) -> TaskDetail:
+        """把当前训练任务的 latest checkpoint 手动登记为 ModelVersion。
+
+        参数：
+        - task_id：训练任务 id。
+        - registered_by：执行手动登记的主体 id。
+
+        返回：
+        - TaskDetail：写回登记结果后的任务详情。
+        """
+
+        dataset_storage = self._require_dataset_storage()
+        task_record = self._require_training_task(task_id)
+        if task_record.state == "queued":
+            raise InvalidRequestError(
+                "当前训练任务尚未产生可登记的 latest checkpoint",
+                details={"task_id": task_id, "state": task_record.state},
+            )
+
+        request = self._build_request_from_task_record(task_record)
+        dataset_export = self._resolve_dataset_export(request)
+        existing_result = self._build_existing_result(task_record)
+        if existing_result is None:
+            raise InvalidRequestError(
+                "当前训练任务缺少可登记的训练输出结果",
+                details={"task_id": task_id, "state": task_record.state},
+            )
+
+        latest_checkpoint_object_key = self._resolve_resume_checkpoint_object_key(task_record)
+        if latest_checkpoint_object_key is None:
+            raise InvalidRequestError(
+                "当前训练任务缺少可登记的 latest checkpoint",
+                details={"task_id": task_id, "state": task_record.state},
+            )
+        if not dataset_storage.resolve(latest_checkpoint_object_key).is_file():
+            raise InvalidRequestError(
+                "当前训练任务的 latest checkpoint 文件不存在，不能登记 ModelVersion",
+                details={
+                    "task_id": task_id,
+                    "latest_checkpoint_object_key": latest_checkpoint_object_key,
+                },
+            )
+        if existing_result.labels_object_key is not None:
+            labels_path = dataset_storage.resolve(existing_result.labels_object_key)
+            if not labels_path.is_file():
+                manifest_object_key = (
+                    dataset_export.manifest_object_key
+                    or existing_result.dataset_export_manifest_key
+                )
+                manifest_payload = self._read_manifest_payload(manifest_object_key or "")
+                self._write_training_labels_file(
+                    labels_object_key=existing_result.labels_object_key,
+                    category_names=self._read_str_tuple(manifest_payload.get("category_names")),
+                )
+
+        persisted_result, registration_metadata, _ = self._register_latest_checkpoint_model_version_result(
+            task_record=task_record,
+            request=request,
+            dataset_export=dataset_export,
+            task_result=existing_result,
+            latest_checkpoint_object_key=latest_checkpoint_object_key,
+            registered_by=registered_by,
+            registration_kind="latest-checkpoint",
+        )
+        self.task_service.append_task_event(
+            AppendTaskEventRequest(
+                task_id=task_id,
+                event_type="status",
+                message="yolox training latest checkpoint registered as model version",
+                payload={
+                    "result": self._serialize_task_result(persisted_result),
+                    "metadata": registration_metadata,
+                },
+            )
+        )
+        return self.task_service.get_task(task_id, include_events=True)
+
     def process_training_task(self, task_id: str) -> YoloXTrainingTaskResult:
         """执行一条已入队的 YOLOX 训练任务。
 
@@ -633,8 +717,16 @@ class SqlAlchemyYoloXTrainingTaskService:
                 request=request,
                 dataset_export=dataset_export,
                 task_result=training_result,
+                registration_kind="best-checkpoint",
+            )
+            latest_checkpoint_model_version_id = self._resolve_manual_latest_model_version_id(
+                self._require_training_task(task_id)
             )
             training_result.summary["model_version_id"] = model_version_id
+            if latest_checkpoint_model_version_id is not None:
+                training_result.summary["latest_checkpoint_model_version_id"] = (
+                    latest_checkpoint_model_version_id
+                )
         except Exception as error:
             self.task_service.append_task_event(
                 AppendTaskEventRequest(
@@ -928,15 +1020,33 @@ class SqlAlchemyYoloXTrainingTaskService:
         )
 
     def _build_existing_result(self, task_record: TaskRecord) -> YoloXTrainingTaskResult | None:
-        """当任务已成功完成时，从 TaskRecord.result 重建输出结果。"""
+        """当任务快照已包含足够输出信息时，从 TaskRecord.result 重建输出结果。"""
 
         result = dict(task_record.result)
+        task_spec = dict(task_record.task_spec)
+        metadata = dict(task_record.metadata)
         checkpoint_object_key = self._read_optional_str(result, "checkpoint_object_key")
-        dataset_export_id = self._read_optional_str(result, "dataset_export_id")
-        dataset_export_manifest_key = self._read_optional_str(result, "dataset_export_manifest_key")
-        dataset_version_id = self._read_optional_str(result, "dataset_version_id")
-        format_id = self._read_optional_str(result, "format_id")
-        output_object_prefix = self._read_optional_str(result, "output_object_prefix")
+        dataset_export_id = self._read_optional_str(result, "dataset_export_id") or self._read_optional_str(
+            task_spec,
+            "dataset_export_id",
+        )
+        dataset_export_manifest_key = (
+            self._read_optional_str(result, "dataset_export_manifest_key")
+            or self._read_optional_str(task_spec, "dataset_export_manifest_key")
+            or self._read_optional_str(task_spec, "manifest_object_key")
+        )
+        dataset_version_id = self._read_optional_str(result, "dataset_version_id") or self._read_optional_str(
+            metadata,
+            "dataset_version_id",
+        )
+        format_id = self._read_optional_str(result, "format_id") or self._read_optional_str(
+            metadata,
+            "format_id",
+        )
+        output_object_prefix = self._read_optional_str(result, "output_object_prefix") or self._read_optional_str(
+            metadata,
+            "output_object_prefix",
+        )
         if not checkpoint_object_key:
             return None
         if not dataset_export_id:
@@ -1111,6 +1221,10 @@ class SqlAlchemyYoloXTrainingTaskService:
                     checkpoint_object_key,
                     savepoint.best_checkpoint_bytes,
                 )
+            self._write_training_labels_file(
+                labels_object_key=labels_object_key,
+                category_names=category_names,
+            )
             updated_control = self._mark_training_control_saved(
                 control=control,
                 saved_at=saved_at,
@@ -1121,6 +1235,56 @@ class SqlAlchemyYoloXTrainingTaskService:
                 updated_control["pause_requested_at"] = control.get("pause_requested_at")
                 updated_control["pause_requested_by"] = control.get("pause_requested_by")
                 updated_control["save_reason"] = "pause"
+            auto_registration_source = self._build_existing_result(current_task)
+            if auto_registration_source is None:
+                auto_registration_source = YoloXTrainingTaskResult(
+                    task_id=task_record.task_id,
+                    status="running",
+                    dataset_export_id=dataset_export.dataset_export_id,
+                    dataset_export_manifest_key=dataset_export.manifest_object_key or "",
+                    dataset_version_id=dataset_version_id or dataset_export.dataset_version_id,
+                    format_id=format_id or dataset_export.format_id,
+                    output_object_prefix=output_object_prefix,
+                    checkpoint_object_key=checkpoint_object_key,
+                    latest_checkpoint_object_key=latest_checkpoint_object_key,
+                    labels_object_key=labels_object_key,
+                    metrics_object_key=metrics_object_key,
+                    validation_metrics_object_key=validation_metrics_object_key,
+                    summary_object_key=summary_object_key,
+                    best_metric_name=savepoint.best_metric_name,
+                    best_metric_value=savepoint.best_metric_value,
+                    summary={
+                        "task_id": task_record.task_id,
+                        "status": "running",
+                        "dataset_export_id": dataset_export.dataset_export_id,
+                        "dataset_export_manifest_key": dataset_export.manifest_object_key,
+                        "dataset_version_id": dataset_version_id or dataset_export.dataset_version_id,
+                        "format_id": format_id or dataset_export.format_id,
+                        "output_object_prefix": output_object_prefix,
+                        "checkpoint_object_key": checkpoint_object_key,
+                        "latest_checkpoint_object_key": latest_checkpoint_object_key,
+                        "best_metric_name": savepoint.best_metric_name,
+                        "best_metric_value": savepoint.best_metric_value,
+                        "output_files": {
+                            "output_object_prefix": output_object_prefix,
+                            "checkpoint_object_key": checkpoint_object_key,
+                            "latest_checkpoint_object_key": latest_checkpoint_object_key,
+                            "labels_object_key": labels_object_key,
+                            "metrics_object_key": metrics_object_key,
+                            "validation_metrics_object_key": validation_metrics_object_key,
+                            "summary_object_key": summary_object_key,
+                        },
+                    },
+                )
+            persisted_result, registration_metadata, _ = self._register_latest_checkpoint_model_version_result(
+                task_record=current_task,
+                request=request,
+                dataset_export=dataset_export,
+                task_result=auto_registration_source,
+                latest_checkpoint_object_key=latest_checkpoint_object_key,
+                registered_by=self._resolve_latest_checkpoint_registered_by(control),
+                registration_kind="latest-checkpoint",
+            )
             self.task_service.append_task_event(
                 AppendTaskEventRequest(
                     task_id=task_record.task_id,
@@ -1135,18 +1299,9 @@ class SqlAlchemyYoloXTrainingTaskService:
                         },
                         "metadata": {
                             YOLOX_TRAINING_CONTROL_METADATA_KEY: updated_control,
+                            **registration_metadata,
                         },
-                        "result": {
-                            "output_object_prefix": output_object_prefix,
-                            "checkpoint_object_key": checkpoint_object_key,
-                            "latest_checkpoint_object_key": latest_checkpoint_object_key,
-                            "labels_object_key": labels_object_key,
-                            "metrics_object_key": metrics_object_key,
-                            "validation_metrics_object_key": validation_metrics_object_key,
-                            "summary_object_key": summary_object_key,
-                            "best_metric_name": savepoint.best_metric_name,
-                            "best_metric_value": savepoint.best_metric_value,
-                        },
+                        "result": self._serialize_task_result(persisted_result),
                     },
                 )
             )
@@ -1190,6 +1345,35 @@ class SqlAlchemyYoloXTrainingTaskService:
                 )
             )
         except YoloXTrainingPausedError as paused_error:
+            latest_checkpoint_model_version_id = self._resolve_manual_latest_model_version_id(
+                self._require_training_task(task_record.task_id)
+            )
+            paused_summary = {
+                "task_id": task_record.task_id,
+                "status": "paused",
+                "paused_epoch": paused_error.savepoint.epoch,
+                "dataset_export_id": dataset_export.dataset_export_id,
+                "dataset_export_manifest_key": dataset_export.manifest_object_key,
+                "dataset_version_id": dataset_version_id or dataset_export.dataset_version_id,
+                "format_id": format_id or dataset_export.format_id,
+                "output_object_prefix": output_object_prefix,
+                "checkpoint_object_key": checkpoint_object_key,
+                "latest_checkpoint_object_key": latest_checkpoint_object_key,
+                "best_metric_name": paused_error.savepoint.best_metric_name,
+                "best_metric_value": paused_error.savepoint.best_metric_value,
+                "output_files": {
+                    "output_object_prefix": output_object_prefix,
+                    "checkpoint_object_key": checkpoint_object_key,
+                    "latest_checkpoint_object_key": latest_checkpoint_object_key,
+                    "labels_object_key": labels_object_key,
+                    "metrics_object_key": metrics_object_key,
+                    "validation_metrics_object_key": validation_metrics_object_key,
+                    "summary_object_key": summary_object_key,
+                },
+            }
+            if latest_checkpoint_model_version_id is not None:
+                paused_summary["model_version_id"] = latest_checkpoint_model_version_id
+                paused_summary["latest_checkpoint_model_version_id"] = latest_checkpoint_model_version_id
             return YoloXTrainingTaskResult(
                 task_id=task_record.task_id,
                 status="paused",
@@ -1206,29 +1390,7 @@ class SqlAlchemyYoloXTrainingTaskService:
                 summary_object_key=summary_object_key,
                 best_metric_name=paused_error.savepoint.best_metric_name,
                 best_metric_value=paused_error.savepoint.best_metric_value,
-                summary={
-                    "task_id": task_record.task_id,
-                    "status": "paused",
-                    "paused_epoch": paused_error.savepoint.epoch,
-                    "dataset_export_id": dataset_export.dataset_export_id,
-                    "dataset_export_manifest_key": dataset_export.manifest_object_key,
-                    "dataset_version_id": dataset_version_id or dataset_export.dataset_version_id,
-                    "format_id": format_id or dataset_export.format_id,
-                    "output_object_prefix": output_object_prefix,
-                    "checkpoint_object_key": checkpoint_object_key,
-                    "latest_checkpoint_object_key": latest_checkpoint_object_key,
-                    "best_metric_name": paused_error.savepoint.best_metric_name,
-                    "best_metric_value": paused_error.savepoint.best_metric_value,
-                    "output_files": {
-                        "output_object_prefix": output_object_prefix,
-                        "checkpoint_object_key": checkpoint_object_key,
-                        "latest_checkpoint_object_key": latest_checkpoint_object_key,
-                        "labels_object_key": labels_object_key,
-                        "metrics_object_key": metrics_object_key,
-                        "validation_metrics_object_key": validation_metrics_object_key,
-                        "summary_object_key": summary_object_key,
-                    },
-                },
+                summary=paused_summary,
             )
 
         dataset_storage.write_bytes(
@@ -1239,10 +1401,10 @@ class SqlAlchemyYoloXTrainingTaskService:
             latest_checkpoint_object_key,
             execution_result.latest_checkpoint_bytes,
         )
-        labels_content = "\n".join(category_names)
-        if labels_content:
-            labels_content = f"{labels_content}\n"
-        dataset_storage.write_text(labels_object_key, labels_content)
+        self._write_training_labels_file(
+            labels_object_key=labels_object_key,
+            category_names=category_names,
+        )
         dataset_storage.write_json(metrics_object_key, execution_result.metrics_payload)
         dataset_storage.write_json(
             validation_metrics_object_key,
@@ -1434,6 +1596,81 @@ class SqlAlchemyYoloXTrainingTaskService:
             return resume_checkpoint_object_key
         return self._read_optional_str(dict(task_record.result), "latest_checkpoint_object_key")
 
+    def _read_manual_model_version_registration(self, task_record: TaskRecord) -> dict[str, object]:
+        """读取任务 metadata 中的手动 latest checkpoint 登记信息。"""
+
+        metadata = dict(task_record.metadata)
+        registration = metadata.get(YOLOX_MANUAL_LATEST_REGISTRATION_METADATA_KEY)
+        if isinstance(registration, dict):
+            return {str(key): value for key, value in registration.items()}
+        return {}
+
+    def _resolve_manual_latest_model_version_id(self, task_record: TaskRecord) -> str | None:
+        """解析当前任务已登记的 manual latest ModelVersion id。"""
+
+        registration = self._read_manual_model_version_registration(task_record)
+        return self._read_optional_str(registration, "model_version_id")
+
+    def _resolve_latest_checkpoint_registered_by(self, control: dict[str, object]) -> str | None:
+        """解析当前 latest checkpoint 自动登记应记录的主体 id。"""
+
+        registered_by = control.get("save_requested_by")
+        if isinstance(registered_by, str) and registered_by.strip():
+            return registered_by
+        registered_by = control.get("pause_requested_by")
+        if isinstance(registered_by, str) and registered_by.strip():
+            return registered_by
+        return None
+
+    def _register_latest_checkpoint_model_version_result(
+        self,
+        *,
+        task_record: TaskRecord,
+        request: YoloXTrainingTaskRequest,
+        dataset_export: DatasetExport,
+        task_result: YoloXTrainingTaskResult,
+        latest_checkpoint_object_key: str,
+        registered_by: str | None,
+        registration_kind: str = "latest-checkpoint",
+    ) -> tuple[YoloXTrainingTaskResult, dict[str, object], str]:
+        """把 latest checkpoint 创建或更新为当前训练任务固定的 ModelVersion。"""
+
+        registration_result = replace(
+            task_result,
+            checkpoint_object_key=latest_checkpoint_object_key,
+        )
+        existing_manual_registration = self._read_manual_model_version_registration(task_record)
+        model_version_id = self._register_training_output_model_version(
+            task_record=task_record,
+            request=request,
+            dataset_export=dataset_export,
+            task_result=registration_result,
+            model_version_id=self._read_optional_str(
+                existing_manual_registration,
+                "model_version_id",
+            ),
+            output_file_token=YOLOX_MANUAL_LATEST_OUTPUT_FILE_TOKEN,
+            registration_kind=registration_kind,
+        )
+
+        updated_summary = dict(task_result.summary)
+        updated_summary["latest_checkpoint_model_version_id"] = model_version_id
+        if task_record.state != "succeeded":
+            updated_summary["model_version_id"] = model_version_id
+        persisted_result = replace(task_result, summary=updated_summary)
+        return (
+            persisted_result,
+            {
+                YOLOX_MANUAL_LATEST_REGISTRATION_METADATA_KEY: {
+                    "model_version_id": model_version_id,
+                    "checkpoint_object_key": latest_checkpoint_object_key,
+                    "registered_by": registered_by,
+                    "registered_at": self._now_iso(),
+                }
+            },
+            model_version_id,
+        )
+
     def _register_training_output_model_version(
         self,
         *,
@@ -1441,6 +1678,9 @@ class SqlAlchemyYoloXTrainingTaskService:
         request: YoloXTrainingTaskRequest,
         dataset_export: DatasetExport,
         task_result: YoloXTrainingTaskResult,
+        model_version_id: str | None = None,
+        output_file_token: str | None = None,
+        registration_kind: str = "best-checkpoint",
     ) -> str:
         """把训练输出登记为 ModelVersion。
 
@@ -1449,6 +1689,9 @@ class SqlAlchemyYoloXTrainingTaskService:
         - request：训练任务请求。
         - dataset_export：训练输入使用的 DatasetExport。
         - task_result：训练执行结果。
+        - model_version_id：可选的目标 ModelVersion id；用于更新已有版本。
+        - output_file_token：可选的输出文件登记 token；为空时使用默认固定 id。
+        - registration_kind：当前登记动作的来源类型说明。
 
         返回：
         - 新登记的 ModelVersion id。
@@ -1459,20 +1702,33 @@ class SqlAlchemyYoloXTrainingTaskService:
             YoloXTrainingOutputRegistration(
                 project_id=request.project_id,
                 training_task_id=task_record.task_id,
+                model_version_id=model_version_id,
                 model_name=request.output_model_name,
                 model_scale=request.model_scale,
                 dataset_version_id=task_result.dataset_version_id,
                 parent_version_id=request.warm_start_model_version_id,
-                checkpoint_file_id=self._build_training_output_file_id(task_record.task_id, "checkpoint"),
+                checkpoint_file_id=self._build_training_output_file_id(
+                    task_record.task_id,
+                    "checkpoint",
+                    output_file_token=output_file_token,
+                ),
                 checkpoint_file_uri=task_result.checkpoint_object_key,
                 labels_file_id=(
-                    self._build_training_output_file_id(task_record.task_id, "labels")
+                    self._build_training_output_file_id(
+                        task_record.task_id,
+                        "labels",
+                        output_file_token=output_file_token,
+                    )
                     if task_result.labels_object_key is not None
                     else None
                 ),
                 labels_file_uri=task_result.labels_object_key,
                 metrics_file_id=(
-                    self._build_training_output_file_id(task_record.task_id, "metrics")
+                    self._build_training_output_file_id(
+                        task_record.task_id,
+                        "metrics",
+                        output_file_token=output_file_token,
+                    )
                     if task_result.metrics_object_key is not None
                     else None
                 ),
@@ -1481,6 +1737,7 @@ class SqlAlchemyYoloXTrainingTaskService:
                     request=request,
                     dataset_export=dataset_export,
                     task_result=task_result,
+                    registration_kind=registration_kind,
                 ),
             )
         )
@@ -1491,6 +1748,7 @@ class SqlAlchemyYoloXTrainingTaskService:
         request: YoloXTrainingTaskRequest,
         dataset_export: DatasetExport,
         task_result: YoloXTrainingTaskResult,
+        registration_kind: str = "best-checkpoint",
     ) -> dict[str, object]:
         """构建训练输出登记到 ModelVersion 的 metadata。
 
@@ -1498,6 +1756,7 @@ class SqlAlchemyYoloXTrainingTaskService:
         - request：训练任务请求。
         - dataset_export：训练输入使用的 DatasetExport。
         - task_result：训练执行结果。
+        - registration_kind：当前登记动作的来源类型说明。
 
         返回：
         - 可直接保存到 ModelVersion.metadata 的字典。
@@ -1535,6 +1794,7 @@ class SqlAlchemyYoloXTrainingTaskService:
                 "distributed_mode": task_result.summary.get("distributed_mode"),
             },
             "warm_start": dict(task_result.summary.get("warm_start") or {}),
+            "registration_kind": registration_kind,
             "output_files": {
                 "output_object_prefix": task_result.output_object_prefix,
                 "checkpoint_object_key": task_result.checkpoint_object_key,
@@ -1549,18 +1809,27 @@ class SqlAlchemyYoloXTrainingTaskService:
             },
         }
 
-    def _build_training_output_file_id(self, task_id: str, output_name: str) -> str:
+    def _build_training_output_file_id(
+        self,
+        task_id: str,
+        output_name: str,
+        *,
+        output_file_token: str | None = None,
+    ) -> str:
         """基于训练任务 id 生成输出文件记录 id。
 
         参数：
         - task_id：训练任务 id。
         - output_name：输出文件名称。
+        - output_file_token：可选的输出文件登记 token；为空时使用默认固定 id。
 
         返回：
         - 对应的 ModelFile id。
         """
 
-        return f"{task_id}-{output_name}"
+        if output_file_token is None:
+            return f"{task_id}-{output_name}"
+        return f"{task_id}-{output_file_token}-{output_name}"
 
     def _build_output_object_prefix(self, task_id: str) -> str:
         """构建训练任务输出目录前缀。"""
@@ -1749,6 +2018,19 @@ class SqlAlchemyYoloXTrainingTaskService:
             if isinstance(split_name, str) and split_name.strip():
                 split_names.append(split_name)
         return tuple(split_names)
+
+    def _write_training_labels_file(
+        self,
+        *,
+        labels_object_key: str,
+        category_names: tuple[str, ...],
+    ) -> None:
+        """按训练 manifest 的 category_names 写出 labels.txt。"""
+
+        labels_content = "\n".join(category_names)
+        if labels_content:
+            labels_content = f"{labels_content}\n"
+        self._require_dataset_storage().write_text(labels_object_key, labels_content)
 
     def _read_manifest_sample_count(self, manifest_payload: dict[str, object]) -> int:
         """从 manifest 中累计样本总数。"""
