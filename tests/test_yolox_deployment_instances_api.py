@@ -68,6 +68,8 @@ def test_create_list_and_get_yolox_deployment_instance(tmp_path: Path) -> None:
             assert payload["model_build_id"] is None
             assert payload["runtime_backend"] == "pytorch"
             assert payload["device_name"] == "cpu"
+            assert payload["runtime_precision"] == "fp32"
+            assert payload["runtime_execution_mode"] == "pytorch:fp32:cpu"
             assert payload["instance_count"] == 3
             assert payload["input_size"] == [64, 64]
             assert payload["labels"] == ["bolt"]
@@ -144,6 +146,8 @@ def test_create_yolox_deployment_instance_uses_model_build_snapshot(tmp_path: Pa
             assert payload["model_version_id"] == model_version_id
             assert payload["model_build_id"] == model_build_id
             assert payload["runtime_backend"] == "onnxruntime"
+            assert payload["runtime_precision"] == "fp32"
+            assert payload["runtime_execution_mode"] == "onnxruntime:fp32:cpu"
 
         session = session_factory.create_session()
         try:
@@ -158,6 +162,7 @@ def test_create_yolox_deployment_instance_uses_model_build_snapshot(tmp_path: Pa
         assert isinstance(snapshot, dict)
         assert snapshot["model_build_id"] == model_build_id
         assert snapshot["runtime_backend"] == "onnxruntime"
+        assert snapshot["runtime_precision"] == "fp32"
         assert snapshot["runtime_artifact_file_type"] == YOLOX_ONNX_FILE
         assert snapshot["runtime_artifact_storage_uri"] == "projects/project-1/models/builds/build-1/yolox.onnx"
         assert snapshot["checkpoint_storage_uri"] == (

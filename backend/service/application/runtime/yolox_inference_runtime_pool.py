@@ -7,8 +7,10 @@ from threading import Lock
 
 from backend.service.application.errors import InvalidRequestError, ServiceConfigurationError
 from backend.service.application.runtime.yolox_predictor import (
+    OnnxRuntimeYoloXRuntimeSession,
     PyTorchYoloXRuntimeSession,
     YoloXPredictionExecutionResult,
+    YoloXPredictionSession,
     YoloXPredictionRequest,
 )
 from backend.service.application.runtime.yolox_runtime_target import RuntimeTargetSnapshot
@@ -105,7 +107,7 @@ class _InferenceInstanceState:
     """描述单个推理实例的内部运行时状态。"""
 
     instance_index: int
-    session: PyTorchYoloXRuntimeSession | None = None
+    session: YoloXPredictionSession | None = None
     healthy: bool = True
     busy: bool = False
     last_error: str | None = None
@@ -312,16 +314,30 @@ class YoloXDeploymentRuntimePool:
         *,
         config: YoloXDeploymentRuntimePoolConfig,
         instance: _InferenceInstanceState,
-    ) -> PyTorchYoloXRuntimeSession:
+    ) -> YoloXPredictionSession:
         """确保指定实例已经完成模型会话加载。"""
 
         with instance.lock:
             if instance.session is not None:
                 return instance.session
-            instance.session = PyTorchYoloXRuntimeSession.load(
-                dataset_storage=self.dataset_storage,
-                runtime_target=config.runtime_target,
-            )
+            if config.runtime_target.runtime_backend == "pytorch":
+                instance.session = PyTorchYoloXRuntimeSession.load(
+                    dataset_storage=self.dataset_storage,
+                    runtime_target=config.runtime_target,
+                )
+            elif config.runtime_target.runtime_backend == "onnxruntime":
+                instance.session = OnnxRuntimeYoloXRuntimeSession.load(
+                    dataset_storage=self.dataset_storage,
+                    runtime_target=config.runtime_target,
+                )
+            else:
+                raise InvalidRequestError(
+                    "当前 deployment runtime pool 仅支持 pytorch 或 onnxruntime backend",
+                    details={
+                        "runtime_backend": config.runtime_target.runtime_backend,
+                        "deployment_instance_id": config.deployment_instance_id,
+                    },
+                )
             instance.healthy = True
             instance.last_error = None
             return instance.session
@@ -362,6 +378,7 @@ def _build_config_signature(config: YoloXDeploymentRuntimePoolConfig) -> tuple[o
         runtime_target.model_version_id,
         runtime_target.model_build_id,
         runtime_target.device_name,
+        runtime_target.runtime_precision,
         runtime_target.input_size,
         runtime_target.labels,
     )

@@ -38,10 +38,11 @@ class YoloXDeploymentInstanceCreateRequestBody(BaseModel):
 
 	project_id: str = Field(description="所属 Project id")
 	model_version_id: str | None = Field(default=None, description="直接绑定的 ModelVersion id")
-	model_build_id: str | None = Field(default=None, description="直接绑定的 ModelBuild id")
+	model_build_id: str | None = Field(default=None, description="直接绑定的 ModelBuild id；用于 ONNX / openvino / tensorrt 等转换产物发布")
 	runtime_profile_id: str | None = Field(default=None, description="可选 RuntimeProfile id")
-	runtime_backend: str | None = Field(default=None, description="运行时 backend；当前仅支持 pytorch")
-	device_name: str | None = Field(default=None, description="默认 device 名称")
+	runtime_backend: str | None = Field(default=None, description="运行时 backend；ModelVersion 默认 pytorch，ModelBuild 默认按 build_format 推导")
+	runtime_precision: str | None = Field(default=None, description="运行时 precision；当前 pytorch 支持 fp32/fp16，其余 backend 默认 fp32")
+	device_name: str | None = Field(default=None, description="默认 device 名称；当前 pytorch 支持 cpu/cuda，onnxruntime 支持 cpu，openvino 预留 auto/cpu/gpu/npu，tensorrt 预留 cuda")
 	instance_count: int = Field(default=1, ge=1, description="实例化数量；每个实例对应一个独立推理线程")
 	display_name: str = Field(default="", description="展示名称")
 	metadata: dict[str, object] = Field(default_factory=dict, description="附加元数据")
@@ -64,6 +65,8 @@ class YoloXDeploymentInstanceResponse(BaseModel):
 	runtime_profile_id: str | None = Field(default=None, description="RuntimeProfile id")
 	runtime_backend: str = Field(description="运行时 backend")
 	device_name: str = Field(description="默认 device 名称")
+	runtime_precision: str = Field(description="运行时 precision")
+	runtime_execution_mode: str = Field(description="公开展示的 backend:precision:device 运行模式")
 	instance_count: int = Field(description="实例化数量")
 	input_size: tuple[int, int] = Field(description="默认输入尺寸")
 	labels: tuple[str, ...] = Field(description="类别列表")
@@ -136,6 +139,7 @@ def create_yolox_deployment_instance(
 			model_build_id=body.model_build_id,
 			runtime_profile_id=body.runtime_profile_id,
 			runtime_backend=body.runtime_backend,
+			runtime_precision=body.runtime_precision,
 			device_name=body.device_name,
 			instance_count=body.instance_count,
 			display_name=body.display_name,
@@ -544,6 +548,8 @@ def _build_deployment_instance_response(view: YoloXDeploymentInstanceView) -> Yo
 		runtime_profile_id=view.runtime_profile_id,
 		runtime_backend=view.runtime_backend,
 		device_name=view.device_name,
+		runtime_precision=view.runtime_precision,
+		runtime_execution_mode=view.runtime_execution_mode,
 		instance_count=view.instance_count,
 		input_size=view.input_size,
 		labels=view.labels,

@@ -44,6 +44,10 @@
 | POST | /api/v1/models/yolox/training-tasks | datasets:read + tasks:write | 以 DatasetExport 为唯一输入边界创建 YOLOX 训练任务。 |
 | GET | /api/v1/models/platform-base | models:read | 列出平台基础模型及其可用 ModelVersion 摘要。 |
 | GET | /api/v1/models/platform-base/{model_id} | models:read | 查询单个平台基础模型详情、版本文件和构建文件。 |
+| POST | /api/v1/models/yolox/conversion-tasks | models:read + tasks:write | 以训练产出的 source ModelVersion 创建 YOLOX conversion 任务。 |
+| GET | /api/v1/models/yolox/conversion-tasks | tasks:read | 按 Project、来源版本和状态列出 YOLOX conversion 任务。 |
+| GET | /api/v1/models/yolox/conversion-tasks/{task_id} | tasks:read | 查询单条 YOLOX conversion 任务详情和事件流。 |
+| GET | /api/v1/models/yolox/conversion-tasks/{task_id}/result | tasks:read | 查询 YOLOX conversion 结果文件状态与当前转换摘要。 |
 | GET | /api/v1/models/yolox/training-tasks | tasks:read | 按 Project、DatasetExport 边界和状态列出 YOLOX 训练任务。 |
 | GET | /api/v1/models/yolox/training-tasks/{task_id} | tasks:read | 查询单条 YOLOX 训练任务详情和事件流。 |
 | POST | /api/v1/models/yolox/training-tasks/{task_id}/save | tasks:write | 为 running 的 YOLOX 训练任务登记一次手动保存请求。 |
@@ -215,6 +219,68 @@
 - versions 当前会继续展开 files，便于前端直接显示 checkpoint、manifest 和其他附属文件来源
 - 如果 model_id 对应的是 Project 内模型或不存在，当前接口返回 404
 
+### POST /api/v1/models/yolox/conversion-tasks
+
+- 需要同时具备 models:read 和 tasks:write
+- 当前请求体允许显式指定：
+  - project_id
+  - source_model_version_id
+  - target_formats
+  - runtime_profile_id
+  - extra_options
+  - display_name
+- 当前实现会先解析来源 ModelVersion 的 checkpoint、labels 和 input_size，再按 conversion planner 固化步骤图谱并提交到 `yolox-conversions` 队列
+- 当前 phase-1 真实可执行目标只支持：
+  - onnx
+  - onnx-optimized
+- 当前 planner 已经预留 openvino-ir、tensorrt-engine、rknn 的 build 图谱，但 service 会在 phase-2 之前拒绝这些目标
+- 当前响应会返回：
+  - task_id
+  - status
+  - queue_name
+  - queue_task_id
+  - source_model_version_id
+  - target_formats
+
+### GET /api/v1/models/yolox/conversion-tasks
+
+- 需要 tasks:read
+- 当前支持的查询参数：
+  - project_id
+  - state
+  - created_by
+  - source_model_version_id
+  - target_format
+  - limit
+- 当前列表响应会同时公开：
+  - task_id
+  - state
+  - source_model_version_id
+  - target_formats
+  - runtime_profile_id
+  - output_object_prefix
+  - plan_object_key
+  - report_object_key
+  - requested_target_formats
+  - produced_formats
+  - builds
+  - report_summary
+
+### GET /api/v1/models/yolox/conversion-tasks/{task_id}
+
+- 需要 tasks:read
+- 默认 include_events=true
+- 返回单条 YOLOX conversion 任务详情，包括 task_spec、events、builds 和 report_summary
+- 当前 progress 会在执行期回写 `stage` 和 `percent`
+
+### GET /api/v1/models/yolox/conversion-tasks/{task_id}/result
+
+- 需要 tasks:read
+- 返回当前转换任务最新的 conversion-report.json 内容
+- 当前响应统一为 `file_status`、`task_state`、`object_key` 和 `payload`
+- 当结果文件尚未生成时，接口返回 `file_status=pending` 和空 `payload`
+- 当任务已经结束但结果文件缺失时，接口返回 404
+
 ### POST /api/v1/models/yolox/evaluation-tasks
 
 - 需要同时具备 datasets:read、models:read 和 tasks:write
@@ -302,13 +368,15 @@
   - model_build_id
   - runtime_profile_id
   - runtime_backend
+  - runtime_precision
   - device_name
   - instance_count
   - display_name
   - metadata
 - 当前最小实现允许直接绑定训练产出的 `ModelVersion`，也允许绑定 `ModelBuild`；如果同时提供 `model_build_id` 和 `model_version_id`，两者必须指向同一来源版本
+- 当前 `ModelVersion` 默认走 `pytorch`；当前 `ModelBuild` 已支持 `onnx` / `onnx-optimized` 绑定并自动解析为 `onnxruntime`
 - 当前 create 会在提交阶段校验 checkpoint 和 labels 的本地可读性
-- 当前 `runtime_backend` 只支持 `pytorch`
+- 当前运行方式矩阵已经显式公开：`pytorch fp32/fp16 cpu/cuda`、`onnxruntime fp32 cpu`；`openvino auto/cpu/gpu/npu` 与 `tensorrt cuda` 已进入 create 校验语义，但真实 runtime 仍待接入
 - 当前 `instance_count` 默认为 1；每个 instance 对应一个独立推理线程和模型会话
 - 当前响应会返回：
   - deployment_instance_id
@@ -322,6 +390,8 @@
   - runtime_profile_id
   - runtime_backend
   - device_name
+  - runtime_precision
+  - runtime_execution_mode
   - instance_count
   - input_size
   - labels

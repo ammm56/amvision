@@ -7,7 +7,13 @@ from typing import Literal
 
 
 # 支持的 YOLOX 转换目标类型。
-YoloXConversionTarget = Literal["onnx", "openvino-ir", "tensorrt-engine"]
+YoloXConversionTarget = Literal[
+    "onnx",
+    "onnx-optimized",
+    "openvino-ir",
+    "tensorrt-engine",
+    "rknn",
+]
 
 
 @dataclass(frozen=True)
@@ -58,6 +64,7 @@ class YoloXConversionTaskSpec:
     - source_model_version_id：来源 ModelVersion id。
     - target_formats：目标格式列表。
     - runtime_profile_id：目标 RuntimeProfile id。
+    - planned_steps：提交时固化的转换步骤图谱。
     - extra_options：附加转换选项。
     """
 
@@ -65,6 +72,7 @@ class YoloXConversionTaskSpec:
     source_model_version_id: str
     target_formats: tuple[YoloXConversionTarget, ...]
     runtime_profile_id: str | None = None
+    planned_steps: tuple[dict[str, object], ...] = ()
     extra_options: dict[str, object] = field(default_factory=dict)
 
 

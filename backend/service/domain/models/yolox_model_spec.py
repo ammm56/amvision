@@ -16,8 +16,10 @@ YoloXTaskType = Literal["detection"]
 YoloXBuildFormat = Literal[
     "pytorch-checkpoint",
     "onnx",
+    "onnx-optimized",
     "openvino-ir",
     "tensorrt-engine",
+    "rknn",
 ]
 
 
@@ -40,8 +42,10 @@ class YoloXModelSpec:
     supported_build_formats: tuple[YoloXBuildFormat, ...] = (
         "pytorch-checkpoint",
         "onnx",
+        "onnx-optimized",
         "openvino-ir",
         "tensorrt-engine",
+        "rknn",
     )
 
 

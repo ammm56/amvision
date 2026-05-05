@@ -13,7 +13,9 @@ from backend.service.domain.files.yolox_file_types import (
     YOLOX_CHECKPOINT_FILE,
     YOLOX_LABEL_MAP_FILE,
     YOLOX_ONNX_FILE,
+    YOLOX_ONNX_OPTIMIZED_FILE,
     YOLOX_OPENVINO_IR_FILE,
+    YOLOX_RKNN_FILE,
     YOLOX_TENSORRT_ENGINE_FILE,
 )
 from backend.service.infrastructure.db.session import SessionFactory
@@ -22,17 +24,30 @@ from backend.service.infrastructure.object_store.local_dataset_storage import Lo
 
 _DEFAULT_RUNTIME_BACKEND = "pytorch"
 _DEFAULT_DEVICE_NAME = "cpu"
+_DEFAULT_RUNTIME_PRECISION = "fp32"
 _DEFAULT_INPUT_SIZE = (640, 640)
-_SUPPORTED_RUNTIME_BACKENDS = frozenset({"pytorch", "onnxruntime", "openvino", "tensorrt"})
+_SUPPORTED_RUNTIME_BACKENDS = frozenset({"pytorch", "onnxruntime", "openvino", "tensorrt", "rknn"})
+_SUPPORTED_RUNTIME_PRECISIONS = frozenset({"fp16", "fp32"})
+_DEFAULT_DEVICE_NAME_BY_BACKEND = {
+    "pytorch": "cpu",
+    "onnxruntime": "cpu",
+    "openvino": "auto",
+    "tensorrt": "cuda:0",
+    "rknn": "npu",
+}
 _MODEL_BUILD_FILE_TYPE_MAP = {
     "onnx": YOLOX_ONNX_FILE,
+    "onnx-optimized": YOLOX_ONNX_OPTIMIZED_FILE,
     "openvino-ir": YOLOX_OPENVINO_IR_FILE,
     "tensorrt-engine": YOLOX_TENSORRT_ENGINE_FILE,
+    "rknn": YOLOX_RKNN_FILE,
 }
 _MODEL_BUILD_RUNTIME_BACKEND_MAP = {
     "onnx": "onnxruntime",
+    "onnx-optimized": "onnxruntime",
     "openvino-ir": "openvino",
     "tensorrt-engine": "tensorrt",
+    "rknn": "rknn",
 }
 
 
@@ -47,6 +62,7 @@ class RuntimeTargetResolveRequest:
     - runtime_profile_id：可选 RuntimeProfile id。
     - runtime_backend：运行时 backend；直接绑定 ModelVersion 时默认 pytorch，绑定 ModelBuild 时默认按 build_format 推导。
     - device_name：默认 device 名称。
+    - runtime_precision：运行时 precision；当前 pytorch 支持 fp32/fp16，其余 backend 默认 fp32。
     """
 
     project_id: str
@@ -55,6 +71,7 @@ class RuntimeTargetResolveRequest:
     runtime_profile_id: str | None = None
     runtime_backend: str | None = None
     device_name: str | None = None
+    runtime_precision: str | None = None
 
 
 @dataclass(frozen=True)
@@ -73,6 +90,7 @@ class RuntimeTargetSnapshot:
     - runtime_profile_id：RuntimeProfile id。
     - runtime_backend：运行时 backend。
     - device_name：默认 device 名称。
+    - runtime_precision：运行时 precision。
     - input_size：输入尺寸。
     - labels：类别列表。
     - runtime_artifact_file_id：当前执行实际消费的文件 id。
@@ -96,6 +114,7 @@ class RuntimeTargetSnapshot:
     runtime_profile_id: str | None
     runtime_backend: str
     device_name: str
+    runtime_precision: str
     input_size: tuple[int, int]
     labels: tuple[str, ...]
     runtime_artifact_file_id: str
@@ -130,6 +149,7 @@ def serialize_runtime_target_snapshot(snapshot: RuntimeTargetSnapshot) -> dict[s
         "runtime_profile_id": snapshot.runtime_profile_id,
         "runtime_backend": snapshot.runtime_backend,
         "device_name": snapshot.device_name,
+        "runtime_precision": snapshot.runtime_precision,
         "input_size": [snapshot.input_size[0], snapshot.input_size[1]],
         "labels": list(snapshot.labels),
         "runtime_artifact_file_id": snapshot.runtime_artifact_file_id,
@@ -192,7 +212,15 @@ def deserialize_runtime_target_snapshot(
         source_kind=_require_payload_str(payload, "source_kind"),
         runtime_profile_id=_read_payload_optional_str(payload, "runtime_profile_id"),
         runtime_backend=normalize_runtime_backend(_require_payload_str(payload, "runtime_backend")),
-        device_name=normalize_device_name(_require_payload_str(payload, "device_name")),
+        device_name=normalize_device_name(
+            _require_payload_str(payload, "device_name"),
+            runtime_backend=_require_payload_str(payload, "runtime_backend"),
+        ),
+        runtime_precision=resolve_runtime_precision(
+            runtime_precision=_read_payload_optional_str(payload, "runtime_precision"),
+            runtime_backend=_require_payload_str(payload, "runtime_backend"),
+            device_name=_require_payload_str(payload, "device_name"),
+        ),
         input_size=_require_payload_input_size(payload),
         labels=_require_payload_labels(payload),
         runtime_artifact_file_id=_require_payload_str(payload, "runtime_artifact_file_id"),
@@ -336,6 +364,20 @@ class SqlAlchemyYoloXRuntimeTargetResolver:
                 field_name="labels_storage_uri",
             )
 
+        resolved_runtime_backend = resolve_runtime_backend(
+            runtime_backend=request.runtime_backend,
+            model_build_format=model_build.build_format if model_build is not None else None,
+        )
+        resolved_device_name = normalize_device_name(
+            request.device_name,
+            runtime_backend=resolved_runtime_backend,
+        )
+        resolved_runtime_precision = resolve_runtime_precision(
+            runtime_precision=request.runtime_precision,
+            runtime_backend=resolved_runtime_backend,
+            device_name=resolved_device_name,
+        )
+
         return RuntimeTargetSnapshot(
             project_id=request.project_id,
             model_id=model.model_id,
@@ -347,11 +389,9 @@ class SqlAlchemyYoloXRuntimeTargetResolver:
             source_kind=model_version.source_kind,
             runtime_profile_id=_normalize_optional_str(request.runtime_profile_id)
             or (model_build.runtime_profile_id if model_build is not None else None),
-            runtime_backend=resolve_runtime_backend(
-                runtime_backend=request.runtime_backend,
-                model_build_format=model_build.build_format if model_build is not None else None,
-            ),
-            device_name=normalize_device_name(request.device_name),
+            runtime_backend=resolved_runtime_backend,
+            device_name=resolved_device_name,
+            runtime_precision=resolved_runtime_precision,
             input_size=resolve_input_size(model_version.metadata),
             labels=resolve_labels(
                 dataset_storage=self.dataset_storage,
@@ -590,24 +630,117 @@ def resolve_model_build_runtime_backend(build_format: str) -> str:
     return _MODEL_BUILD_RUNTIME_BACKEND_MAP[build_format]
 
 
-def normalize_device_name(device_name: str | None) -> str:
-    """归一化默认 device 名称。
+def normalize_device_name(device_name: str | None, *, runtime_backend: str | None = None) -> str:
+    """按 runtime backend 归一化默认 device 名称。
 
     参数：
     - device_name：原始 device 值。
+    - runtime_backend：运行时 backend；为空时沿用 pytorch 默认约束。
 
     返回：
     - str：归一后的 device 名称。
     """
 
-    normalized_device = _normalize_optional_str(device_name) or _DEFAULT_DEVICE_NAME
+    normalized_backend = normalize_runtime_backend(runtime_backend) if runtime_backend is not None else None
+    default_device_name = _DEFAULT_DEVICE_NAME_BY_BACKEND.get(
+        normalized_backend or _DEFAULT_RUNTIME_BACKEND,
+        _DEFAULT_DEVICE_NAME,
+    )
+    normalized_device = _normalize_optional_str(device_name) or default_device_name
     if normalized_device == "cuda":
-        return "cuda:0"
-    if normalized_device == "cpu" or normalized_device.startswith("cuda:"):
-        return normalized_device
+        normalized_device = "cuda:0"
+
+    if normalized_backend in {None, "pytorch"}:
+        if normalized_device == "cpu" or normalized_device.startswith("cuda:"):
+            return normalized_device
+        raise InvalidRequestError(
+            "pytorch device_name 必须是 cpu、cuda 或 cuda:<index>",
+            details={"runtime_backend": normalized_backend or "pytorch", "device_name": normalized_device},
+        )
+    if normalized_backend == "onnxruntime":
+        if normalized_device == "cpu":
+            return normalized_device
+        raise InvalidRequestError(
+            "onnxruntime 当前仅支持 cpu device_name",
+            details={"runtime_backend": normalized_backend, "device_name": normalized_device},
+        )
+    if normalized_backend == "openvino":
+        if normalized_device in {"auto", "cpu", "gpu", "npu"}:
+            return normalized_device
+        raise InvalidRequestError(
+            "openvino device_name 必须是 auto、cpu、gpu 或 npu",
+            details={"runtime_backend": normalized_backend, "device_name": normalized_device},
+        )
+    if normalized_backend == "tensorrt":
+        if normalized_device.startswith("cuda:"):
+            return normalized_device
+        raise InvalidRequestError(
+            "tensorrt device_name 必须是 cuda 或 cuda:<index>",
+            details={"runtime_backend": normalized_backend, "device_name": normalized_device},
+        )
+    if normalized_backend == "rknn":
+        if normalized_device == "npu":
+            return normalized_device
+        raise InvalidRequestError(
+            "rknn device_name 必须是 npu",
+            details={"runtime_backend": normalized_backend, "device_name": normalized_device},
+        )
     raise InvalidRequestError(
-        "device_name 必须是 cpu、cuda 或 cuda:<index>",
-        details={"device_name": normalized_device},
+        "device_name 不受支持",
+        details={"runtime_backend": normalized_backend, "device_name": normalized_device},
+    )
+
+
+def normalize_runtime_precision(runtime_precision: str | None) -> str:
+    """归一化运行时 precision。"""
+
+    normalized_precision = _normalize_optional_str(runtime_precision) or _DEFAULT_RUNTIME_PRECISION
+    if normalized_precision not in _SUPPORTED_RUNTIME_PRECISIONS:
+        raise InvalidRequestError(
+            "runtime_precision 必须是 fp16 或 fp32",
+            details={"runtime_precision": normalized_precision},
+        )
+    return normalized_precision
+
+
+def resolve_runtime_precision(*, runtime_precision: str | None, runtime_backend: str, device_name: str) -> str:
+    """按 runtime backend 与 device 解析最终 precision。"""
+
+    normalized_backend = normalize_runtime_backend(runtime_backend)
+    normalized_device_name = normalize_device_name(device_name, runtime_backend=normalized_backend)
+    normalized_precision = normalize_runtime_precision(runtime_precision)
+    if normalized_backend == "pytorch":
+        if normalized_precision == "fp16" and not normalized_device_name.startswith("cuda"):
+            raise InvalidRequestError(
+                "pytorch fp16 仅支持 CUDA device",
+                details={
+                    "runtime_backend": normalized_backend,
+                    "runtime_precision": normalized_precision,
+                    "device_name": normalized_device_name,
+                },
+            )
+        return normalized_precision
+    if normalized_precision != "fp32":
+        raise InvalidRequestError(
+            "当前 runtime_backend 仅支持 fp32 precision",
+            details={
+                "runtime_backend": normalized_backend,
+                "runtime_precision": normalized_precision,
+                "device_name": normalized_device_name,
+            },
+        )
+    return normalized_precision
+
+
+def describe_runtime_execution_mode(*, runtime_backend: str, runtime_precision: str, device_name: str) -> str:
+    """返回用于公开展示的运行时执行模式字符串。"""
+
+    return ":".join(
+        (
+            normalize_runtime_backend(runtime_backend),
+            normalize_runtime_precision(runtime_precision),
+            normalize_device_name(device_name, runtime_backend=runtime_backend),
+        )
     )
 
 

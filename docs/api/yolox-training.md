@@ -654,7 +654,59 @@
 
 这一层应该显式绑定 `DatasetVersion` 或导出的评估输入，而不是复用在线 inference task 去跑整套回归测试。
 
-### 第三步：已落地 DeploymentInstance 与正式 inference task 接口
+### 第三步：已落地 conversion task 接口
+
+当前已经公开 conversion-tasks 资源，转换链路固定为 `ModelVersion -> ConversionTask -> ModelBuild`，当前先以 ONNX 主链打通最小可执行闭环，不把转换逻辑混进 training 或 deployment。
+
+#### 当前 conversion 资源组
+
+- 资源组：`/api/v1/models/yolox/conversion-tasks`
+- 创建接口：`POST /api/v1/models/yolox/conversion-tasks`
+- 列表接口：`GET /api/v1/models/yolox/conversion-tasks`
+- 详情接口：`GET /api/v1/models/yolox/conversion-tasks/{task_id}`
+- 结果接口：`GET /api/v1/models/yolox/conversion-tasks/{task_id}/result`
+
+#### 当前 conversion 创建请求字段
+
+- `project_id`
+- `source_model_version_id`
+- `target_formats`
+- `runtime_profile_id`
+- `extra_options`
+
+#### 当前 conversion 列表 / 详情响应重点
+
+- `source_model_version_id`
+- `target_formats`
+- `requested_target_formats`
+- `produced_formats`
+- `plan_object_key`
+- `report_object_key`
+- `builds`
+- `report_summary`
+
+#### 当前 conversion result 响应重点
+
+- `file_status`
+- `task_state`
+- `object_key`
+- `payload.phase`
+- `payload.planned_target_formats`
+- `payload.executed_step_kinds`
+- `payload.validation_summary`
+- `payload.outputs`
+- `payload.builds`
+
+#### 当前实现边界
+
+- 当前 phase-1 真实可执行步骤是 `export-onnx -> validate-onnx -> optimize-onnx`
+- 当前 phase-1 真实可执行目标只支持 `onnx` 与 `onnx-optimized`
+- 当前 planner 已经预留 `openvino-ir`、`tensorrt-engine`、`rknn` 的 build 图谱，但 service 会在 phase-2 前拒绝这些目标
+- 当前 ONNX 校验包含两层：`onnx.checker` 合法性校验，以及 PyTorch 与 ONNXRuntime 的最小数值对齐校验
+- 当前 ONNX 优化使用 `onnxsim`，并把 optimized 产物登记为独立 `ModelBuild`
+- 当前转换 runner 默认使用 CPU 和本地文件存储，适合先把离线 build 链闭环跑通
+
+### 第四步：已落地 DeploymentInstance 与正式 inference task 接口
 
 当前已经公开 DeploymentInstance 资源和正式 inference-tasks 资源，推理请求继续绑定 `DeploymentInstance`，不直接读取 `DatasetVersion`，也不直接暴露 checkpoint 路径。
 
@@ -672,10 +724,18 @@
 - `model_build_id`
 - `runtime_profile_id`
 - `runtime_backend`
+- `runtime_precision`
 - `device_name`
 - `instance_count`
 - `display_name`
 - `metadata`
+
+#### 当前 deployment 运行方式矩阵
+
+- `ModelVersion` 默认走 `pytorch`
+- `ModelBuild` 当前已经支持绑定 `onnx` 与 `onnx-optimized`，并自动解析到 `onnxruntime`
+- 当前已真实接通：`pytorch fp32/fp16 cpu/cuda`、`onnxruntime fp32 cpu`
+- 当前已进入 create 校验语义但尚未接通真实 runtime：`openvino auto/cpu/gpu/npu`、`tensorrt cuda`
 
 #### 当前 deployment 响应重点
 
@@ -684,6 +744,8 @@
 - `model_build_id`
 - `runtime_backend`
 - `device_name`
+- `runtime_precision`
+- `runtime_execution_mode`
 - `instance_count`
 - `input_size`
 - `labels`
@@ -802,13 +864,14 @@
 - 当前 `preview_image_base64` 仅在 `return_preview_image_base64=true` 时生成
 - 当前 `preview_image_object_key` 仅在 `save_result_image=true` 时生成
 - 当前 sync 和 async 已经提升为独立 deployment 进程监督单元；如果启动多个 backend-service 或 worker 进程，每个父进程仍只负责自己装配出来的监督器与子进程
-- 当前 formal inference 已经对外隐藏 checkpoint 路径，但尚未接入 ONNX、OpenVINO 或 TensorRT 的真实运行时实现
+- 当前 formal inference 已经对外隐藏 checkpoint 路径，并已接通 `onnxruntime` 对 `onnx-optimized` ModelBuild 的真实消费；`openvino` 与 `tensorrt` 仍停留在发布矩阵与 create 校验层
 
 ### 推荐推进顺序
 
 1. 先基于当前 `validation-sessions` 接口补前端人工验证页和结果回看能力。
 2. 再做 `evaluation-tasks`，解决数据集级别的回归验证和 benchmark。
-3. 最后做 converted build 对应的真实 ONNX/OpenVINO/TensorRT 运行时接入，把 DeploymentInstance 从最小 PyTorch 路径扩展为多 backend 运行时实体。
+3. 再做 `conversion-tasks`，把训练输出固化成可追溯的 `ModelBuild`，先打通 ONNX 和 optimized ONNX。
+4. 最后做 converted build 对应的真实 ONNX/OpenVINO/TensorRT 运行时接入，把 DeploymentInstance 从最小 PyTorch 路径扩展为多 backend 运行时实体。
 
 ## 当前能力边界
 
@@ -817,6 +880,7 @@
 - 当前 running 阶段已经会回写 output_object_prefix 和逐 epoch progress 事件，前端可以直接显示真实训练进度。
 - 当前 warm_start_model_version_id 已经接通真实 checkpoint 加载；可使用已有训练产出的 ModelVersion，也可使用预训练目录 manifest 中声明的 model_version_id。
 - 当前已经公开最小 validation-sessions create/detail/predict 接口，可直接用训练产出的 ModelVersion 做单图人工验证。
+- 当前已经公开最小 conversion-tasks create/list/detail/result 接口，可直接把训练产出的 source ModelVersion 转成 ONNX 与 optimized ONNX，并登记为独立 ModelBuild。
 - 当前已经公开最小 evaluation-tasks create/list/detail/report/output-files 接口，可直接用训练产出的 ModelVersion 对 DatasetExport 做数据集级回归验证。
 - 当前已经公开最小 deployment-instances create/list/detail 与 inference-tasks create/list/detail/result 接口，可通过 deployment_instance_id 承接正式推理请求。
 - 当前最小真实训练执行链只支持 coco-detection-v1 输入、单条 detection 训练链路；验证 split 选择顺序是 val、valid、validation，缺失时回退 test，再缺失时才退回无验证模式。只要存在非训练验证 split，就默认每 5 轮执行一次真实评估，并以验证集 val_map50_95 作为 best metric；没有任何可用验证 split 时退回 train_total_loss。

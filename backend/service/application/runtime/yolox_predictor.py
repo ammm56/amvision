@@ -1,4 +1,4 @@
-"""YOLOX 单图预测接口与 PyTorch 实现。"""
+"""YOLOX 单图预测接口与多 runtime 实现。"""
 
 from __future__ import annotations
 
@@ -6,13 +6,17 @@ from dataclasses import dataclass, field
 from time import perf_counter
 from typing import Any, Protocol
 
-from backend.service.application.errors import InvalidRequestError
+from backend.service.application.errors import InvalidRequestError, ServiceConfigurationError
 from backend.service.application.models.yolox_detection_training import (
     _build_yolox_model,
     _load_warm_start_checkpoint,
     _require_training_imports,
 )
-from backend.service.application.runtime.yolox_runtime_target import RuntimeTargetSnapshot, resolve_local_file_path
+from backend.service.application.runtime.yolox_runtime_target import (
+    RuntimeTargetSnapshot,
+    describe_runtime_execution_mode,
+    resolve_local_file_path,
+)
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 from backend.workers.shared.yolox_runtime_contracts import RuntimeTensorSpec, YoloXRuntimeSessionInfo
 
@@ -119,6 +123,7 @@ class PyTorchYoloXRuntimeSession:
     - imports：YOLOX 推理依赖集合。
     - model：已经加载 checkpoint 的模型对象。
     - device_name：当前执行 device 名称。
+    - runtime_precision：当前执行 precision。
     """
 
     def __init__(
@@ -129,6 +134,7 @@ class PyTorchYoloXRuntimeSession:
         imports: Any,
         model: Any,
         device_name: str,
+        runtime_precision: str,
     ) -> None:
         """初始化一个已加载完成的 PyTorch runtime session。
 
@@ -138,6 +144,7 @@ class PyTorchYoloXRuntimeSession:
         - imports：YOLOX 推理依赖集合。
         - model：已经加载 checkpoint 的模型对象。
         - device_name：当前执行 device 名称。
+        - runtime_precision：当前执行 precision。
         """
 
         self.dataset_storage = dataset_storage
@@ -145,6 +152,7 @@ class PyTorchYoloXRuntimeSession:
         self.imports = imports
         self.model = model
         self.device_name = device_name
+        self.runtime_precision = runtime_precision
 
     @classmethod
     def load(
@@ -194,6 +202,8 @@ class PyTorchYoloXRuntimeSession:
             requested_device_name=runtime_target.device_name,
         )
         model.to(device_name)
+        if runtime_target.runtime_precision == "fp16":
+            model.half()
         model.eval()
         return cls(
             dataset_storage=dataset_storage,
@@ -201,6 +211,7 @@ class PyTorchYoloXRuntimeSession:
             imports=imports,
             model=model,
             device_name=device_name,
+            runtime_precision=runtime_target.runtime_precision,
         )
 
     def predict(self, request: YoloXPredictionRequest) -> YoloXPredictionExecutionResult:
@@ -235,6 +246,8 @@ class PyTorchYoloXRuntimeSession:
         )
         input_tensor = self.imports.torch.from_numpy(input_tensor).unsqueeze(0).to(self.device_name)
         input_tensor = input_tensor.float()
+        if self.runtime_precision == "fp16":
+            input_tensor = input_tensor.half()
         preprocess_ms = _measure_stage_elapsed_ms(
             imports=self.imports,
             device_name=self.device_name,
@@ -302,16 +315,22 @@ class PyTorchYoloXRuntimeSession:
                 input_spec=RuntimeTensorSpec(
                     name="images",
                     shape=(1, 3, self.runtime_target.input_size[0], self.runtime_target.input_size[1]),
-                    dtype="float32",
+                    dtype="float16" if self.runtime_precision == "fp16" else "float32",
                 ),
                 output_spec=RuntimeTensorSpec(
                     name="detections",
                     shape=(-1, 7),
-                    dtype="float32",
+                    dtype="float16" if self.runtime_precision == "fp16" else "float32",
                 ),
                 metadata={
                     "model_version_id": self.runtime_target.model_version_id,
                     "model_build_id": self.runtime_target.model_build_id,
+                    "runtime_precision": self.runtime_precision,
+                    "runtime_execution_mode": describe_runtime_execution_mode(
+                        runtime_backend=self.runtime_target.runtime_backend,
+                        runtime_precision=self.runtime_precision,
+                        device_name=self.device_name,
+                    ),
                     "score_threshold": request.score_threshold,
                     "nms_threshold": nms_threshold,
                     "class_count": len(self.runtime_target.labels),
@@ -355,6 +374,218 @@ class PyTorchYoloXPredictor:
             dataset_storage=self.dataset_storage,
             runtime_target=runtime_target,
         ).predict(request)
+
+
+class OnnxRuntimeYoloXRuntimeSession:
+    """描述一个已经加载完成并可重复推理的 ONNXRuntime YOLOX 会话。
+
+    属性：
+    - dataset_storage：本地文件存储服务。
+    - runtime_target：当前会话绑定的运行时快照。
+    - imports：YOLOX 推理依赖集合。
+    - session：已经加载完成的 ONNXRuntime InferenceSession。
+    - device_name：当前执行 device 名称。
+    - input_name：模型输入张量名称。
+    - output_name：模型输出张量名称。
+    """
+
+    def __init__(
+        self,
+        *,
+        dataset_storage: LocalDatasetStorage,
+        runtime_target: RuntimeTargetSnapshot,
+        imports: Any,
+        session: Any,
+        device_name: str,
+        input_name: str,
+        output_name: str,
+    ) -> None:
+        """初始化一个已加载完成的 ONNXRuntime runtime session。
+
+        参数：
+        - dataset_storage：本地文件存储服务。
+        - runtime_target：当前会话绑定的运行时快照。
+        - imports：YOLOX 推理依赖集合。
+        - session：已经加载完成的 ONNXRuntime InferenceSession。
+        - device_name：当前执行 device 名称。
+        - input_name：模型输入张量名称。
+        - output_name：模型输出张量名称。
+        """
+
+        self.dataset_storage = dataset_storage
+        self.runtime_target = runtime_target
+        self.imports = imports
+        self.session = session
+        self.device_name = device_name
+        self.input_name = input_name
+        self.output_name = output_name
+
+    @classmethod
+    def load(
+        cls,
+        *,
+        dataset_storage: LocalDatasetStorage,
+        runtime_target: RuntimeTargetSnapshot,
+    ) -> OnnxRuntimeYoloXRuntimeSession:
+        """加载一次 ONNXRuntime runtime session。
+
+        参数：
+        - dataset_storage：本地文件存储服务。
+        - runtime_target：待加载的运行时快照。
+
+        返回：
+        - OnnxRuntimeYoloXRuntimeSession：已完成模型加载的会话对象。
+        """
+
+        if runtime_target.runtime_backend != "onnxruntime":
+            raise InvalidRequestError(
+                "当前 predictor 仅支持 onnxruntime runtime_backend",
+                details={
+                    "runtime_backend": runtime_target.runtime_backend,
+                    "model_build_id": runtime_target.model_build_id,
+                },
+            )
+        if runtime_target.runtime_precision != "fp32":
+            raise InvalidRequestError(
+                "当前 onnxruntime runtime session 仅支持 fp32 precision",
+                details={
+                    "runtime_backend": runtime_target.runtime_backend,
+                    "runtime_precision": runtime_target.runtime_precision,
+                    "model_build_id": runtime_target.model_build_id,
+                },
+            )
+
+        imports = _require_training_imports()
+        onnxruntime_module = _import_onnxruntime_module()
+        providers = _resolve_onnxruntime_providers(
+            onnxruntime_module=onnxruntime_module,
+            requested_device_name=runtime_target.device_name,
+        )
+        session = onnxruntime_module.InferenceSession(
+            str(runtime_target.runtime_artifact_path),
+            providers=providers,
+        )
+        return cls(
+            dataset_storage=dataset_storage,
+            runtime_target=runtime_target,
+            imports=imports,
+            session=session,
+            device_name=runtime_target.device_name,
+            input_name=session.get_inputs()[0].name,
+            output_name=session.get_outputs()[0].name,
+        )
+
+    def predict(self, request: YoloXPredictionRequest) -> YoloXPredictionExecutionResult:
+        """使用当前常驻会话执行一次单图预测。
+
+        参数：
+        - request：预测请求。
+
+        返回：
+        - YoloXPredictionExecutionResult：预测执行结果。
+        """
+
+        decode_started_at = perf_counter()
+        image = _load_prediction_image(
+            cv2_module=self.imports.cv2,
+            np_module=self.imports.np,
+            dataset_storage=self.dataset_storage,
+            request=request,
+        )
+        decode_ms = round((perf_counter() - decode_started_at) * 1000, 3)
+
+        preprocess_started_at = perf_counter()
+        input_tensor, resize_ratio = _preprocess_image(
+            cv2_module=self.imports.cv2,
+            np_module=self.imports.np,
+            image=image,
+            input_size=self.runtime_target.input_size,
+        )
+        input_tensor = self.imports.np.expand_dims(input_tensor, axis=0).astype(self.imports.np.float32, copy=False)
+        preprocess_ms = round((perf_counter() - preprocess_started_at) * 1000, 3)
+
+        nms_threshold = _resolve_probability(
+            value=request.extra_options.get("nms_threshold"),
+            field_name="nms_threshold",
+            default=_DEFAULT_NMS_THRESHOLD,
+        )
+
+        infer_started_at = perf_counter()
+        outputs = self.session.run(
+            [self.output_name],
+            {self.input_name: input_tensor},
+        )
+        infer_ms = round((perf_counter() - infer_started_at) * 1000, 3)
+
+        image_height = int(image.shape[0])
+        image_width = int(image.shape[1])
+
+        postprocess_started_at = perf_counter()
+        predictions = self.imports.postprocess(
+            _normalize_onnxruntime_outputs(outputs=outputs, imports=self.imports),
+            len(self.runtime_target.labels),
+            conf_thre=request.score_threshold,
+            nms_thre=nms_threshold,
+        )
+        detections = _build_detection_records(
+            np_module=self.imports.np,
+            predictions=predictions,
+            resize_ratio=resize_ratio,
+            labels=self.runtime_target.labels,
+            image_width=image_width,
+            image_height=image_height,
+        )
+        postprocess_ms = round((perf_counter() - postprocess_started_at) * 1000, 3)
+        latency_ms = decode_ms + preprocess_ms + infer_ms + postprocess_ms
+
+        preview_image_bytes = None
+        if request.save_result_image:
+            preview_image_bytes = _render_preview_image(
+                cv2_module=self.imports.cv2,
+                image=image,
+                detections=detections,
+            )
+
+        return YoloXPredictionExecutionResult(
+            detections=detections,
+            latency_ms=round(latency_ms, 3),
+            image_width=image_width,
+            image_height=image_height,
+            preview_image_bytes=preview_image_bytes,
+            runtime_session_info=YoloXRuntimeSessionInfo(
+                backend_name=self.runtime_target.runtime_backend,
+                model_uri=self.runtime_target.runtime_artifact_storage_uri,
+                device_name=self.device_name,
+                input_spec=RuntimeTensorSpec(
+                    name=self.input_name,
+                    shape=(1, 3, self.runtime_target.input_size[0], self.runtime_target.input_size[1]),
+                    dtype="float32",
+                ),
+                output_spec=RuntimeTensorSpec(
+                    name=self.output_name,
+                    shape=(-1, 7),
+                    dtype="float32",
+                ),
+                metadata={
+                    "model_version_id": self.runtime_target.model_version_id,
+                    "model_build_id": self.runtime_target.model_build_id,
+                    "runtime_precision": self.runtime_target.runtime_precision,
+                    "runtime_execution_mode": describe_runtime_execution_mode(
+                        runtime_backend=self.runtime_target.runtime_backend,
+                        runtime_precision=self.runtime_target.runtime_precision,
+                        device_name=self.device_name,
+                    ),
+                    "score_threshold": request.score_threshold,
+                    "nms_threshold": nms_threshold,
+                    "class_count": len(self.runtime_target.labels),
+                    "decode_ms": decode_ms,
+                    "preprocess_ms": preprocess_ms,
+                    "infer_ms": infer_ms,
+                    "postprocess_ms": postprocess_ms,
+                    "provider_names": list(self.session.get_providers()),
+                },
+            ),
+        )
 
 
 def _load_prediction_image(
@@ -456,6 +687,47 @@ def _measure_stage_elapsed_ms(*, imports: Any, device_name: str, started_at: flo
 
     _synchronize_device_for_timing(imports=imports, device_name=device_name)
     return round((perf_counter() - started_at) * 1000, 3)
+
+
+def _import_onnxruntime_module() -> Any:
+    """导入 ONNXRuntime 模块并在缺失时抛出明确错误。"""
+
+    try:
+        import onnxruntime
+    except ImportError as error:  # pragma: no cover - 依赖存在时不会进入该分支
+        raise ServiceConfigurationError("当前运行环境缺少 onnxruntime 依赖") from error
+    return onnxruntime
+
+
+def _resolve_onnxruntime_providers(*, onnxruntime_module: Any, requested_device_name: str) -> list[object]:
+    """按 device_name 解析 ONNXRuntime provider 列表。"""
+
+    if requested_device_name != "cpu":
+        raise InvalidRequestError(
+            "当前 onnxruntime runtime session 仅支持 cpu device_name",
+            details={"device_name": requested_device_name},
+        )
+    available_providers = set(onnxruntime_module.get_available_providers())
+    if "CPUExecutionProvider" not in available_providers:
+        raise ServiceConfigurationError(
+            "当前运行环境缺少 CPUExecutionProvider，无法执行 onnxruntime 推理",
+            details={"available_providers": sorted(available_providers)},
+        )
+    return ["CPUExecutionProvider"]
+
+
+def _normalize_onnxruntime_outputs(*, outputs: Any, imports: Any) -> Any:
+    """把 ONNXRuntime 输出转换为 YOLOX postprocess 可消费的 Tensor。"""
+
+    if not isinstance(outputs, list) or not outputs:
+        raise InvalidRequestError("onnxruntime 推理输出为空")
+    prediction_array = imports.np.asarray(outputs[0], dtype=imports.np.float32)
+    if prediction_array.ndim < 3:
+        raise InvalidRequestError(
+            "onnxruntime 推理输出维度不合法",
+            details={"shape": list(prediction_array.shape)},
+        )
+    return imports.torch.from_numpy(prediction_array)
 
 
 def _synchronize_device_for_timing(*, imports: Any, device_name: str) -> None:

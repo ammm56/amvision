@@ -10,6 +10,7 @@ from backend.service.api.rest.v1.routes.models import models_router
 from backend.service.api.rest.v1.routes.system import system_router
 from backend.service.api.rest.v1.routes.tasks import tasks_router
 from backend.service.api.rest.v1.routes.yolox_deployments import yolox_deployments_router
+from backend.service.api.rest.v1.routes.yolox_conversion_tasks import yolox_conversion_tasks_router
 from backend.service.api.rest.v1.routes.yolox_evaluation_tasks import yolox_evaluation_tasks_router
 from backend.service.api.rest.v1.routes.yolox_inference_tasks import yolox_inference_tasks_router
 from backend.service.api.rest.v1.routes.yolox_training_tasks import yolox_training_tasks_router
@@ -23,6 +24,7 @@ api_v1_router.include_router(dataset_exports_router)
 api_v1_router.include_router(models_router)
 api_v1_router.include_router(yolox_training_tasks_router)
 api_v1_router.include_router(yolox_validation_sessions_router)
+api_v1_router.include_router(yolox_conversion_tasks_router)
 api_v1_router.include_router(yolox_evaluation_tasks_router)
 api_v1_router.include_router(yolox_deployments_router)
 api_v1_router.include_router(yolox_inference_tasks_router)

@@ -16,7 +16,9 @@ from backend.service.domain.files.yolox_file_types import (
     YOLOX_CHECKPOINT_FILE,
     YOLOX_LABEL_MAP_FILE,
     YOLOX_ONNX_FILE,
+    YOLOX_ONNX_OPTIMIZED_FILE,
     YOLOX_OPENVINO_IR_FILE,
+    YOLOX_RKNN_FILE,
     YOLOX_TENSORRT_ENGINE_FILE,
     YOLOX_TRAINING_METRICS_FILE,
 )
@@ -1089,8 +1091,10 @@ class SqlAlchemyYoloXModelService:
 
         build_file_type_map = {
             "onnx": YOLOX_ONNX_FILE,
+            "onnx-optimized": YOLOX_ONNX_OPTIMIZED_FILE,
             "openvino-ir": YOLOX_OPENVINO_IR_FILE,
             "tensorrt-engine": YOLOX_TENSORRT_ENGINE_FILE,
+            "rknn": YOLOX_RKNN_FILE,
         }
         if build_format not in build_file_type_map:
             raise ValueError(f"不支持的 build 格式: {build_format}")

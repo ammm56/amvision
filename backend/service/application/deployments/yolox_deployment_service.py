@@ -16,6 +16,7 @@ from backend.service.application.runtime.yolox_runtime_target import (
     RuntimeTargetResolveRequest,
     RuntimeTargetSnapshot,
     SqlAlchemyYoloXRuntimeTargetResolver,
+    describe_runtime_execution_mode,
     deserialize_runtime_target_snapshot,
     serialize_runtime_target_snapshot,
 )
@@ -38,8 +39,9 @@ class YoloXDeploymentInstanceCreateRequest:
     - model_version_id：直接绑定的 ModelVersion id。
     - model_build_id：直接绑定的 ModelBuild id。
     - runtime_profile_id：可选 RuntimeProfile id。
-    - runtime_backend：运行时 backend；当前仅支持 pytorch。
+    - runtime_backend：运行时 backend；绑定 ModelVersion 时默认 pytorch，绑定 ModelBuild 时按 build_format 推导。
     - device_name：默认 device 名称。
+    - runtime_precision：运行时 precision；当前 pytorch 支持 fp32/fp16，其余 backend 默认 fp32。
     - instance_count：实例化数量；每个实例对应一个独立推理线程和模型会话。
     - display_name：可选展示名称。
     - metadata：附加元数据。
@@ -51,6 +53,7 @@ class YoloXDeploymentInstanceCreateRequest:
     runtime_profile_id: str | None = None
     runtime_backend: str | None = None
     device_name: str | None = None
+    runtime_precision: str | None = None
     instance_count: int = 1
     display_name: str = ""
     metadata: dict[str, object] = field(default_factory=dict)
@@ -75,6 +78,8 @@ class YoloXDeploymentInstanceView:
     - runtime_profile_id：RuntimeProfile id。
     - runtime_backend：运行时 backend。
     - device_name：默认 device 名称。
+    - runtime_precision：运行时 precision。
+    - runtime_execution_mode：公开展示的 backend:precision:device 运行模式。
     - instance_count：实例化数量；每个实例对应一个独立推理线程和模型会话。
     - input_size：输入尺寸。
     - labels：类别列表。
@@ -98,6 +103,8 @@ class YoloXDeploymentInstanceView:
     runtime_profile_id: str | None
     runtime_backend: str
     device_name: str
+    runtime_precision: str
+    runtime_execution_mode: str
     instance_count: int
     input_size: tuple[int, int]
     labels: tuple[str, ...]
@@ -248,6 +255,7 @@ class SqlAlchemyYoloXDeploymentService:
                 runtime_profile_id=request.runtime_profile_id,
                 runtime_backend=request.runtime_backend,
                 device_name=request.device_name,
+                runtime_precision=request.runtime_precision,
             )
         )
 
@@ -323,6 +331,12 @@ class SqlAlchemyYoloXDeploymentService:
             runtime_profile_id=runtime_target.runtime_profile_id,
             runtime_backend=runtime_target.runtime_backend,
             device_name=runtime_target.device_name,
+            runtime_precision=runtime_target.runtime_precision,
+            runtime_execution_mode=describe_runtime_execution_mode(
+                runtime_backend=runtime_target.runtime_backend,
+                runtime_precision=runtime_target.runtime_precision,
+                device_name=runtime_target.device_name,
+            ),
             instance_count=deployment_instance.instance_count,
             input_size=runtime_target.input_size,
             labels=runtime_target.labels,

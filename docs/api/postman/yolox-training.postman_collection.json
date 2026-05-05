@@ -1,8 +1,8 @@
 {
   "info": {
     "_postman_id": "b0db9a90-95bc-4a01-b247-1ddb33e1a2a8",
-    "name": "amvision yolox training validation evaluation inference api",
-    "description": "当前公开的 YOLOX training create/list/detail/save/pause/resume/register-model-version/validation-metrics/train-metrics/output-files、validation-sessions create/detail/predict、evaluation-tasks create/list/detail/report/output-files，以及 deployment-instances create/list/detail、sync/async start/status/stop/warmup/health/reset、direct infer 和 inference-tasks create/list/detail/result 接口。本集合已经同步 fp16/fp32、CPU fallback 调试方式、latest checkpoint、validation metrics、output-files、training_summary、detail 响应里的 available_actions 与 control_status、save/pause 后自动登记 latest checkpoint 版本、latest checkpoint 与 completed best 的版本区分、训练完成后的单图人工验证闭环、数据集级回归评估和结果包输出，以及 deployment_instance_id 驱动的正式推理链；当前 deployment 推理链要求先显式调用 start 或 warmup，再执行 infer 或 inference-task create。Postman collection 已按 sync deployment、async deployment、sync inference、async inference task 分组，并把 input_uri、image_base64、multipart input_image 三种输入方式分别拆成独立调试请求。默认建议把 includeEvents 设为 false，用于高频轮询调试。",
+    "name": "amvision yolox training validation conversion evaluation inference api",
+    "description": "当前公开的 YOLOX training create/list/detail/save/pause/resume/register-model-version/validation-metrics/train-metrics/output-files、validation-sessions create/detail/predict、conversion-tasks create/list/detail/result、evaluation-tasks create/list/detail/report/output-files，以及 deployment-instances create/list/detail、sync/async start/status/stop/warmup/health/reset、direct infer 和 inference-tasks create/list/detail/result 接口。本集合已经同步 fp16/fp32、CPU fallback 调试方式、latest checkpoint、validation metrics、output-files、training_summary、detail 响应里的 available_actions 与 control_status、save/pause 后自动登记 latest checkpoint 版本、latest checkpoint 与 completed best 的版本区分、训练完成后的单图人工验证闭环、source ModelVersion 到 ONNX/optimized ONNX 的 phase-1 conversion 主链、数据集级回归评估和结果包输出，以及 deployment_instance_id 驱动的正式推理链；当前 deployment 推理链要求先显式调用 start 或 warmup，再执行 infer 或 inference-task create。Postman collection 已按 validation、conversion、evaluation、sync deployment、async deployment、sync inference、async inference task 分组，并把 input_uri、image_base64、multipart input_image 三种输入方式分别拆成独立调试请求。默认建议把 includeEvents 设为 false，用于高频轮询调试。",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "item": [
@@ -806,6 +806,278 @@
       ]
     },
     {
+      "name": "YOLOX Conversion Tasks",
+      "item": [
+        {
+          "name": "Create YOLOX Conversion Task",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 202) {",
+                  "  var payload = pm.response.json();",
+                  "  pm.collectionVariables.set('conversionTaskId', payload.task_id);",
+                  "  if (Array.isArray(payload.target_formats)) {",
+                  "    pm.collectionVariables.set('conversionTargetFormatsJson', JSON.stringify(payload.target_formats));",
+                  "  }",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-principal-id",
+                "value": "{{principalId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-project-ids",
+                "value": "{{projectId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-scopes",
+                "value": "models:read,tasks:write",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"source_model_version_id\": \"{{modelVersionId}}\",\n  \"target_formats\": {{conversionTargetFormatsJson}},\n  \"runtime_profile_id\": null,\n  \"extra_options\": {},\n  \"display_name\": \"{{conversionDisplayName}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/models/yolox/conversion-tasks",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "models",
+                "yolox",
+                "conversion-tasks"
+              ]
+            },
+            "description": "创建一个 YOLOX conversion task。当前 phase-1 最小可执行主链只支持 onnx 与 onnx-optimized 两个目标，内部步骤固定为 export-onnx、validate-onnx、optimize-onnx。请求默认使用 modelVersionId 作为来源 source ModelVersion。"
+          },
+          "response": []
+        },
+        {
+          "name": "List YOLOX Conversion Tasks",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  var payload = pm.response.json();",
+                  "  if (Array.isArray(payload) && payload.length > 0) {",
+                  "    var first = payload[0];",
+                  "    pm.collectionVariables.set('conversionTaskId', first.task_id);",
+                  "    if (first.plan_object_key) pm.collectionVariables.set('conversionPlanObjectKey', first.plan_object_key);",
+                  "    if (first.report_object_key) pm.collectionVariables.set('conversionReportObjectKey', first.report_object_key);",
+                  "    if (Array.isArray(first.builds)) {",
+                  "      first.builds.forEach(function (item) {",
+                  "        if (item.build_format === 'onnx' && item.model_build_id) pm.collectionVariables.set('onnxModelBuildId', item.model_build_id);",
+                  "        if (item.build_format === 'onnx-optimized' && item.model_build_id) pm.collectionVariables.set('onnxOptimizedModelBuildId', item.model_build_id);",
+                  "      });",
+                  "    }",
+                  "  }",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-amvision-principal-id",
+                "value": "{{principalId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-project-ids",
+                "value": "{{projectId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-scopes",
+                "value": "tasks:read",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/models/yolox/conversion-tasks?project_id={{projectId}}&source_model_version_id={{modelVersionId}}&limit={{conversionLimit}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "models",
+                "yolox",
+                "conversion-tasks"
+              ],
+              "query": [
+                {
+                  "key": "project_id",
+                  "value": "{{projectId}}"
+                },
+                {
+                  "key": "source_model_version_id",
+                  "value": "{{modelVersionId}}"
+                },
+                {
+                  "key": "target_format",
+                  "value": "{{conversionTargetFormat}}",
+                  "disabled": true
+                },
+                {
+                  "key": "state",
+                  "value": "{{conversionState}}",
+                  "disabled": true
+                },
+                {
+                  "key": "created_by",
+                  "value": "{{createdBy}}",
+                  "disabled": true
+                },
+                {
+                  "key": "limit",
+                  "value": "{{conversionLimit}}"
+                }
+              ]
+            },
+            "description": "按 Project、source ModelVersion 和可选 target_format 边界列出 conversion 任务。成功任务会直接返回 requested_target_formats、produced_formats、builds 和 report_summary。"
+          },
+          "response": []
+        },
+        {
+          "name": "Get YOLOX Conversion Task Detail",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  var payload = pm.response.json();",
+                  "  if (payload.plan_object_key) pm.collectionVariables.set('conversionPlanObjectKey', payload.plan_object_key);",
+                  "  if (payload.report_object_key) pm.collectionVariables.set('conversionReportObjectKey', payload.report_object_key);",
+                  "  if (Array.isArray(payload.builds)) {",
+                  "    payload.builds.forEach(function (item) {",
+                  "      if (item.build_format === 'onnx' && item.model_build_id) pm.collectionVariables.set('onnxModelBuildId', item.model_build_id);",
+                  "      if (item.build_format === 'onnx-optimized' && item.model_build_id) pm.collectionVariables.set('onnxOptimizedModelBuildId', item.model_build_id);",
+                  "    });",
+                  "  }",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-amvision-principal-id",
+                "value": "{{principalId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-project-ids",
+                "value": "{{projectId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-scopes",
+                "value": "tasks:read",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/models/yolox/conversion-tasks/{{conversionTaskId}}?include_events={{includeEvents}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "models",
+                "yolox",
+                "conversion-tasks",
+                "{{conversionTaskId}}"
+              ],
+              "query": [
+                {
+                  "key": "include_events",
+                  "value": "{{includeEvents}}"
+                }
+              ]
+            },
+            "description": "读取单条 conversion task 当前详情。任务完成后，detail 会直接返回 produced_formats、builds、plan_object_key、report_object_key 和 report_summary。"
+          },
+          "response": []
+        },
+        {
+          "name": "Get YOLOX Conversion Result",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-amvision-principal-id",
+                "value": "{{principalId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-project-ids",
+                "value": "{{projectId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-scopes",
+                "value": "tasks:read",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/models/yolox/conversion-tasks/{{conversionTaskId}}/result",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "models",
+                "yolox",
+                "conversion-tasks",
+                "{{conversionTaskId}}",
+                "result"
+              ]
+            },
+            "description": "读取当前转换任务的 conversion-report.json。任务执行中会返回 pending；完成后 payload 中可直接读取 planned_target_formats、executed_step_kinds、validation_summary、outputs 和 builds。"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
       "name": "YOLOX Evaluation Tasks",
       "item": [
         {
@@ -1126,7 +1398,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"model_version_id\": \"{{modelVersionId}}\",\n  \"model_build_id\": null,\n  \"runtime_profile_id\": null,\n  \"runtime_backend\": \"pytorch\",\n  \"device_name\": \"cpu\",\n  \"instance_count\": {{deploymentInstanceCount}},\n  \"display_name\": \"{{deploymentDisplayName}}\",\n  \"metadata\": {}\n}",
+              "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"model_version_id\": \"{{modelVersionId}}\",\n  \"model_build_id\": null,\n  \"runtime_profile_id\": null,\n  \"runtime_backend\": \"pytorch\",\n  \"runtime_precision\": \"fp32\",\n  \"device_name\": \"cpu\",\n  \"instance_count\": {{deploymentInstanceCount}},\n  \"display_name\": \"{{deploymentDisplayName}}\",\n  \"metadata\": {}\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1146,7 +1418,7 @@
                 "deployment-instances"
               ]
             },
-            "description": "创建一个最小 DeploymentInstance。当前实现允许直接绑定 ModelVersion 或 ModelBuild，但正式运行时仍只支持 pytorch；create 阶段会先校验 checkpoint 和 labels 的本地可读性。instance_count 表示 deployment 子进程内部要维护多少个独立推理线程与模型会话。"
+            "description": "创建一个最小 DeploymentInstance。当前请求已经显式公开 runtime_backend、runtime_precision 和 device_name；默认可直接发布训练产出的 ModelVersion（pytorch），也可把 model_build_id 改成 {{onnxOptimizedModelBuildId}} 或 {{onnxModelBuildId}} 来发布转换后的 ONNX ModelBuild。当前真实 runtime 已接通 pytorch 与 onnxruntime，instance_count 表示 deployment 子进程内部要维护多少个独立推理线程与模型会话。"
           },
           "response": []
         },
@@ -2652,6 +2924,46 @@
     },
     {
       "key": "validationPreviewImageUri",
+      "value": ""
+    },
+    {
+      "key": "conversionTaskId",
+      "value": "task-conversion-1"
+    },
+    {
+      "key": "conversionTargetFormatsJson",
+      "value": "[\"onnx-optimized\"]"
+    },
+    {
+      "key": "conversionDisplayName",
+      "value": "local yolox conversion"
+    },
+    {
+      "key": "conversionState",
+      "value": "succeeded"
+    },
+    {
+      "key": "conversionLimit",
+      "value": "20"
+    },
+    {
+      "key": "conversionTargetFormat",
+      "value": "onnx-optimized"
+    },
+    {
+      "key": "conversionPlanObjectKey",
+      "value": ""
+    },
+    {
+      "key": "conversionReportObjectKey",
+      "value": ""
+    },
+    {
+      "key": "onnxModelBuildId",
+      "value": ""
+    },
+    {
+      "key": "onnxOptimizedModelBuildId",
       "value": ""
     },
     {
