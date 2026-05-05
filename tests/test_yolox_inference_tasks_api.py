@@ -255,6 +255,13 @@ def test_direct_inference_accepts_base64_and_round_robins_instances(
         payload_3 = response_3.json()
         assert payload_1["input_source_kind"] == "image_base64"
         assert payload_1["preview_image_base64"] is not None
+        assert payload_1["decode_ms"] == 0.8
+        assert payload_1["preprocess_ms"] == 1.2
+        assert payload_1["infer_ms"] == 6.1
+        assert payload_1["postprocess_ms"] == 1.6
+        assert payload_1["latency_ms"] == 9.7
+        assert isinstance(payload_1["serialize_ms"], float)
+        assert payload_1["serialize_ms"] >= 0.0
         assert payload_1["instance_id"] != payload_2["instance_id"]
         assert payload_3["instance_id"] == payload_1["instance_id"]
         assert len(sync_supervisor.load_calls) == 2
@@ -752,6 +759,10 @@ class FakeDeploymentProcessSupervisor(YoloXDeploymentProcessSupervisor):
                         "model_version_id": config.runtime_target.model_version_id,
                         "input_uri": request.input_uri,
                         "has_input_image_bytes": request.input_image_bytes is not None,
+                        "decode_ms": 0.8,
+                        "preprocess_ms": 1.2,
+                        "infer_ms": 6.1,
+                        "postprocess_ms": 1.6,
                         "runtime_mode": self.runtime_mode,
                     },
                 ),

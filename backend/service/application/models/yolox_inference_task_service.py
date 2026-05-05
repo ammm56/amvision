@@ -4,11 +4,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from time import perf_counter
 
 from backend.queue import QueueBackend
 from backend.service.application.deployments.yolox_deployment_service import SqlAlchemyYoloXDeploymentService
 from backend.service.application.errors import InvalidRequestError, ResourceNotFoundError, ServiceConfigurationError
 from backend.service.application.models.yolox_inference_payloads import (
+    attach_yolox_inference_serialize_timing,
     YoloXNormalizedInferenceInput,
     build_yolox_inference_payload,
     serialize_yolox_inference_payload,
@@ -282,6 +284,7 @@ class SqlAlchemyYoloXInferenceTaskService:
             )
             if preview_image_object_key is not None and execution_result.preview_image_bytes is not None:
                 dataset_storage.write_bytes(preview_image_object_key, execution_result.preview_image_bytes)
+            serialize_started_at = perf_counter()
             raw_payload = serialize_yolox_inference_payload(
                 build_yolox_inference_payload(
                     request_id=task_id,
@@ -301,6 +304,10 @@ class SqlAlchemyYoloXInferenceTaskService:
                     preview_image_uri=preview_image_object_key,
                     result_object_key=result_object_key,
                 )
+            )
+            raw_payload = attach_yolox_inference_serialize_timing(
+                payload=raw_payload,
+                serialize_ms=(perf_counter() - serialize_started_at) * 1000,
             )
             dataset_storage.write_json(result_object_key, raw_payload)
         except Exception as error:

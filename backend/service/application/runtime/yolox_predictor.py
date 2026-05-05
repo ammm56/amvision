@@ -62,7 +62,7 @@ class YoloXPredictionExecutionResult:
 
     字段：
     - detections：检测框列表。
-    - latency_ms：推理耗时。
+    - latency_ms：decode、preprocess、infer、postprocess 四段总耗时。
     - image_width：原图宽度。
     - image_height：原图高度。
     - preview_image_bytes：可选预览图字节内容。
@@ -213,13 +213,20 @@ class PyTorchYoloXRuntimeSession:
         - YoloXPredictionExecutionResult：预测执行结果。
         """
 
+        decode_started_at = perf_counter()
         image = _load_prediction_image(
             cv2_module=self.imports.cv2,
             np_module=self.imports.np,
             dataset_storage=self.dataset_storage,
             request=request,
         )
+        decode_ms = _measure_stage_elapsed_ms(
+            imports=self.imports,
+            device_name=self.device_name,
+            started_at=decode_started_at,
+        )
 
+        preprocess_started_at = perf_counter()
         input_tensor, resize_ratio = _preprocess_image(
             cv2_module=self.imports.cv2,
             np_module=self.imports.np,
@@ -228,25 +235,37 @@ class PyTorchYoloXRuntimeSession:
         )
         input_tensor = self.imports.torch.from_numpy(input_tensor).unsqueeze(0).to(self.device_name)
         input_tensor = input_tensor.float()
+        preprocess_ms = _measure_stage_elapsed_ms(
+            imports=self.imports,
+            device_name=self.device_name,
+            started_at=preprocess_started_at,
+        )
 
         nms_threshold = _resolve_probability(
             value=request.extra_options.get("nms_threshold"),
             field_name="nms_threshold",
             default=_DEFAULT_NMS_THRESHOLD,
         )
-        started_at = perf_counter()
+
+        infer_started_at = perf_counter()
         with self.imports.torch.no_grad():
             outputs = self.model(input_tensor)
-            predictions = self.imports.postprocess(
-                outputs,
-                len(self.runtime_target.labels),
-                conf_thre=request.score_threshold,
-                nms_thre=nms_threshold,
-            )
-        latency_ms = (perf_counter() - started_at) * 1000
+        infer_ms = _measure_stage_elapsed_ms(
+            imports=self.imports,
+            device_name=self.device_name,
+            started_at=infer_started_at,
+        )
 
         image_height = int(image.shape[0])
         image_width = int(image.shape[1])
+
+        postprocess_started_at = perf_counter()
+        predictions = self.imports.postprocess(
+            outputs,
+            len(self.runtime_target.labels),
+            conf_thre=request.score_threshold,
+            nms_thre=nms_threshold,
+        )
         detections = _build_detection_records(
             np_module=self.imports.np,
             predictions=predictions,
@@ -255,6 +274,13 @@ class PyTorchYoloXRuntimeSession:
             image_width=image_width,
             image_height=image_height,
         )
+        postprocess_ms = _measure_stage_elapsed_ms(
+            imports=self.imports,
+            device_name=self.device_name,
+            started_at=postprocess_started_at,
+        )
+        latency_ms = decode_ms + preprocess_ms + infer_ms + postprocess_ms
+
         preview_image_bytes = None
         if request.save_result_image:
             preview_image_bytes = _render_preview_image(
@@ -289,6 +315,10 @@ class PyTorchYoloXRuntimeSession:
                     "score_threshold": request.score_threshold,
                     "nms_threshold": nms_threshold,
                     "class_count": len(self.runtime_target.labels),
+                    "decode_ms": decode_ms,
+                    "preprocess_ms": preprocess_ms,
+                    "infer_ms": infer_ms,
+                    "postprocess_ms": postprocess_ms,
                 },
             ),
         )
@@ -410,6 +440,41 @@ def serialize_runtime_session_info(session_info: YoloXRuntimeSessionInfo) -> dic
         },
         "metadata": dict(session_info.metadata),
     }
+
+
+def _measure_stage_elapsed_ms(*, imports: Any, device_name: str, started_at: float) -> float:
+    """测量单个推理阶段的耗时，并在 CUDA 设备上补齐同步边界。
+
+    参数：
+    - imports：YOLOX 运行时依赖集合。
+    - device_name：当前执行 device 名称。
+    - started_at：阶段开始时的 perf_counter 值。
+
+    返回：
+    - float：阶段耗时，单位毫秒。
+    """
+
+    _synchronize_device_for_timing(imports=imports, device_name=device_name)
+    return round((perf_counter() - started_at) * 1000, 3)
+
+
+def _synchronize_device_for_timing(*, imports: Any, device_name: str) -> None:
+    """在 CUDA 设备上执行同步，确保阶段耗时统计不会被异步 kernel 扰乱。
+
+    参数：
+    - imports：YOLOX 运行时依赖集合。
+    - device_name：当前执行 device 名称。
+    """
+
+    if not device_name.startswith("cuda"):
+        return
+    torch_module = getattr(imports, "torch", None)
+    if torch_module is None or not hasattr(torch_module, "cuda"):
+        return
+    try:
+        torch_module.cuda.synchronize(device_name)
+    except Exception:
+        return
 
 
 def _build_detection_records(

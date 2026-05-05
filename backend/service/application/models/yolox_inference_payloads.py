@@ -81,7 +81,12 @@ class YoloXInferencePayload:
     - image_width：输入图片宽度。
     - image_height：输入图片高度。
     - detection_count：检测框数量。
-    - latency_ms：推理耗时。
+    - latency_ms：decode、preprocess、infer、postprocess 四段总耗时。
+    - decode_ms：图片读取或解码耗时。
+    - preprocess_ms：预处理与张量准备耗时。
+    - infer_ms：模型前向推理耗时。
+    - postprocess_ms：NMS 与 detection 结果整理耗时。
+    - serialize_ms：构造响应 JSON 负载耗时。
     - labels：类别列表。
     - detections：检测结果。
     - runtime_session_info：运行时会话信息。
@@ -106,6 +111,11 @@ class YoloXInferencePayload:
     image_height: int
     detection_count: int
     latency_ms: float | None
+    decode_ms: float | None
+    preprocess_ms: float | None
+    infer_ms: float | None
+    postprocess_ms: float | None
+    serialize_ms: float | None
     labels: tuple[str, ...]
     detections: tuple[dict[str, object], ...]
     runtime_session_info: dict[str, object]
@@ -230,12 +240,17 @@ def build_yolox_inference_payload(
     execution_result: YoloXInferenceExecutionResult,
     preview_image_uri: str | None,
     result_object_key: str | None,
+    serialize_ms: float | None = None,
 ) -> YoloXInferencePayload:
     """构建同步直返与异步结果共用的标准载荷。"""
 
     preview_image_base64 = None
     if return_preview_image_base64 and execution_result.preview_image_bytes is not None:
         preview_image_base64 = base64.b64encode(execution_result.preview_image_bytes).decode("ascii")
+    decode_ms = _read_optional_timing_ms(execution_result.runtime_session_info, "decode_ms")
+    preprocess_ms = _read_optional_timing_ms(execution_result.runtime_session_info, "preprocess_ms")
+    infer_ms = _read_optional_timing_ms(execution_result.runtime_session_info, "infer_ms")
+    postprocess_ms = _read_optional_timing_ms(execution_result.runtime_session_info, "postprocess_ms")
     return YoloXInferencePayload(
         request_id=request_id,
         inference_task_id=inference_task_id,
@@ -253,6 +268,11 @@ def build_yolox_inference_payload(
         image_height=execution_result.image_height,
         detection_count=len(execution_result.detections),
         latency_ms=execution_result.latency_ms,
+        decode_ms=decode_ms,
+        preprocess_ms=preprocess_ms,
+        infer_ms=infer_ms,
+        postprocess_ms=postprocess_ms,
+        serialize_ms=serialize_ms,
         labels=runtime_target.labels,
         detections=execution_result.detections,
         runtime_session_info=execution_result.runtime_session_info,
@@ -282,6 +302,11 @@ def serialize_yolox_inference_payload(payload: YoloXInferencePayload) -> dict[st
         "image_height": payload.image_height,
         "detection_count": payload.detection_count,
         "latency_ms": payload.latency_ms,
+        "decode_ms": payload.decode_ms,
+        "preprocess_ms": payload.preprocess_ms,
+        "infer_ms": payload.infer_ms,
+        "postprocess_ms": payload.postprocess_ms,
+        "serialize_ms": payload.serialize_ms,
         "labels": list(payload.labels),
         "detections": [dict(item) for item in payload.detections],
         "runtime_session_info": dict(payload.runtime_session_info),
@@ -289,6 +314,50 @@ def serialize_yolox_inference_payload(payload: YoloXInferencePayload) -> dict[st
         "preview_image_base64": payload.preview_image_base64,
         "result_object_key": payload.result_object_key,
     }
+
+
+def attach_yolox_inference_serialize_timing(
+    *,
+    payload: dict[str, object],
+    serialize_ms: float,
+) -> dict[str, object]:
+    """把响应序列化阶段耗时写回统一推理载荷。
+
+    参数：
+    - payload：已经完成字典序列化的推理结果载荷。
+    - serialize_ms：构造 JSON 负载阶段耗时，单位毫秒。
+
+    返回：
+    - dict[str, object]：回写 serialize_ms 后的结果载荷。
+    """
+
+    payload["serialize_ms"] = round(float(serialize_ms), 3)
+    runtime_session_info = payload.get("runtime_session_info")
+    if isinstance(runtime_session_info, dict):
+        metadata = runtime_session_info.get("metadata")
+        if isinstance(metadata, dict):
+            metadata["serialize_ms"] = payload["serialize_ms"]
+    return payload
+
+
+def _read_optional_timing_ms(runtime_session_info: dict[str, object], key: str) -> float | None:
+    """从 runtime_session_info.metadata 中读取可选阶段耗时。
+
+    参数：
+    - runtime_session_info：运行时会话信息字典。
+    - key：阶段耗时字段名。
+
+    返回：
+    - float | None：解析出的阶段耗时；缺失时返回 None。
+    """
+
+    metadata = runtime_session_info.get("metadata")
+    if not isinstance(metadata, dict):
+        return None
+    value = metadata.get(key)
+    if isinstance(value, int | float):
+        return float(value)
+    return None
 
 
 def _decode_image_base64(value: str) -> tuple[bytes, str]:

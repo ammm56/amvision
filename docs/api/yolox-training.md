@@ -766,6 +766,11 @@
 - `preview_image_object_key`
 - `detection_count`
 - `latency_ms`
+- `decode_ms`
+- `preprocess_ms`
+- `infer_ms`
+- `postprocess_ms`
+- `serialize_ms`
 - `result_summary`
 
 #### 当前 inference result 响应重点
@@ -777,6 +782,12 @@
 - `payload.instance_id`
 - `payload.input_source_kind`
 - `payload.detections`
+- `payload.latency_ms`
+- `payload.decode_ms`
+- `payload.preprocess_ms`
+- `payload.infer_ms`
+- `payload.postprocess_ms`
+- `payload.serialize_ms`
 - `payload.runtime_session_info`
 - `payload.preview_image_uri`
 - `payload.preview_image_base64`
@@ -787,6 +798,7 @@
 - 当前 inference 执行通过 DeploymentInstance 解析运行时快照，并在 deployment 子进程内部复用常驻会话
 - 当前同步 `/infer` 与异步 `inference-tasks` 使用同一套结果载荷字段
 - 当前同步 `/infer` 已支持 `input_transport_mode=memory`，用于 Base64 与 multipart 上传图片的高速内存直通；异步 `inference-tasks` 仍保持 storage 模式
+- 当前 inference 响应已经拆出 `decode_ms`、`preprocess_ms`、`infer_ms`、`postprocess_ms`、`serialize_ms`；其中 `latency_ms` 表示前四段总耗时，不包含 `serialize_ms`
 - 当前 `preview_image_base64` 仅在 `return_preview_image_base64=true` 时生成
 - 当前 `preview_image_object_key` 仅在 `save_result_image=true` 时生成
 - 当前 sync 和 async 已经提升为独立 deployment 进程监督单元；如果启动多个 backend-service 或 worker 进程，每个父进程仍只负责自己装配出来的监督器与子进程

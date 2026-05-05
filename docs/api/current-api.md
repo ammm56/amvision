@@ -472,7 +472,12 @@
   - input_uri
   - input_source_kind
   - detections
-  - latency_ms
+  - latency_ms：decode、preprocess、infer、postprocess 四段总耗时
+  - decode_ms
+  - preprocess_ms
+  - infer_ms
+  - postprocess_ms
+  - serialize_ms
   - preview_image_uri
   - preview_image_base64
   - runtime_session_info

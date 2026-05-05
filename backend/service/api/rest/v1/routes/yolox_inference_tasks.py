@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from time import perf_counter
 from uuid import uuid4
 
 from typing import Annotated, Literal
@@ -25,6 +26,7 @@ from backend.service.application.models.yolox_inference_payloads import (
 	YOLOX_INFERENCE_INPUT_TRANSPORT_MEMORY,
 	YOLOX_INFERENCE_INPUT_TRANSPORT_STORAGE,
 	YoloXInferenceInputSource,
+	attach_yolox_inference_serialize_timing,
 	build_yolox_inference_payload,
 	normalize_yolox_inference_input,
 	serialize_yolox_inference_payload,
@@ -138,7 +140,12 @@ class YoloXInferencePayloadResponse(BaseModel):
 	image_width: int = Field(description="输入图片宽度")
 	image_height: int = Field(description="输入图片高度")
 	detection_count: int = Field(description="检测框数量")
-	latency_ms: float | None = Field(default=None, description="推理耗时，单位毫秒")
+	latency_ms: float | None = Field(default=None, description="decode、preprocess、infer、postprocess 四段总耗时，单位毫秒")
+	decode_ms: float | None = Field(default=None, description="图片读取或解码耗时，单位毫秒")
+	preprocess_ms: float | None = Field(default=None, description="预处理与张量准备耗时，单位毫秒")
+	infer_ms: float | None = Field(default=None, description="模型前向推理耗时，单位毫秒")
+	postprocess_ms: float | None = Field(default=None, description="后处理与 detection 整理耗时，单位毫秒")
+	serialize_ms: float | None = Field(default=None, description="构造响应 JSON 负载耗时，单位毫秒")
 	labels: list[str] = Field(default_factory=list, description="类别列表")
 	detections: list[YoloXInferenceDetectionResponse] = Field(default_factory=list, description="检测结果列表")
 	runtime_session_info: YoloXInferenceRuntimeSessionInfoResponse = Field(description="运行时会话信息")
@@ -333,6 +340,7 @@ async def infer_yolox_deployment_instance(
 	result_object_key = None
 	if normalized_input.input_transport_mode == YOLOX_INFERENCE_INPUT_TRANSPORT_STORAGE:
 		result_object_key = f"{output_prefix}/raw-result.json"
+	serialize_started_at = perf_counter()
 	payload = build_yolox_inference_payload(
 		request_id=request_id,
 		inference_task_id=None,
@@ -348,6 +356,10 @@ async def infer_yolox_deployment_instance(
 		result_object_key=result_object_key,
 	)
 	serialized_payload = serialize_yolox_inference_payload(payload)
+	serialized_payload = attach_yolox_inference_serialize_timing(
+		payload=serialized_payload,
+		serialize_ms=(perf_counter() - serialize_started_at) * 1000,
+	)
 	if result_object_key is not None:
 		dataset_storage.write_json(result_object_key, serialized_payload)
 	return YoloXInferencePayloadResponse.model_validate(serialized_payload)
