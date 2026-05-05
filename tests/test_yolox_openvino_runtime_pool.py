@@ -13,11 +13,36 @@ from pathlib import Path
 import pytest
 
 
-def test_runtime_pool_runs_openvino_ir_build_with_openvino(tmp_path: Path) -> None:
-    """验证 runtime pool 可以在隔离子进程中消费 openvino-ir ModelBuild 并完成一次真实推理。
+@pytest.mark.parametrize(
+    (
+        "requested_device_name",
+        "runtime_precision",
+        "required_available_device_prefix",
+        "expected_runtime_execution_mode",
+        "expected_compiled_runtime_precision",
+    ),
+    [
+        ("cpu", "fp32", None, "openvino:fp32:cpu", "fp32"),
+        ("gpu", "fp16", "GPU", "openvino:fp16:gpu", "fp16"),
+    ],
+)
+def test_runtime_pool_runs_openvino_ir_build_with_openvino(
+    tmp_path: Path,
+    requested_device_name: str,
+    runtime_precision: str,
+    required_available_device_prefix: str | None,
+    expected_runtime_execution_mode: str,
+    expected_compiled_runtime_precision: str,
+) -> None:
+    """验证 runtime pool 可以在隔离子进程中消费 openvino-ir ModelBuild 并完成真实推理。
 
     参数：
     - tmp_path：pytest 提供的临时目录。
+    - requested_device_name：探针使用的 OpenVINO device_name。
+    - runtime_precision：探针使用的运行时 precision。
+    - required_available_device_prefix：当前探针需要存在的 OpenVINO 设备前缀。
+    - expected_runtime_execution_mode：期望的公开运行模式。
+    - expected_compiled_runtime_precision：期望的实际编译 precision。
 
     返回：
     - 无。
@@ -27,6 +52,12 @@ def test_runtime_pool_runs_openvino_ir_build_with_openvino(tmp_path: Path) -> No
         pytest.skip("当前环境缺少 onnx，跳过 OpenVINO runtime pool 测试")
     if importlib.util.find_spec("openvino") is None:
         pytest.skip("当前环境缺少 openvino，跳过 OpenVINO runtime pool 测试")
+    if required_available_device_prefix is not None:
+        available_devices = _list_openvino_available_devices()
+        if not any(item.startswith(required_available_device_prefix) for item in available_devices):
+            pytest.skip(
+                f"当前环境缺少 {required_available_device_prefix} OpenVINO 设备，跳过 {requested_device_name}/{runtime_precision} runtime pool 测试"
+            )
 
     probe_root = tmp_path / "openvino-runtime-probe"
     probe_root.mkdir(parents=True, exist_ok=True)
@@ -34,7 +65,7 @@ def test_runtime_pool_runs_openvino_ir_build_with_openvino(tmp_path: Path) -> No
     probe_script_path.write_text(_build_openvino_runtime_probe_script(), encoding="utf-8")
 
     completed = subprocess.run(
-        [sys.executable, str(probe_script_path), str(probe_root)],
+        [sys.executable, str(probe_script_path), str(probe_root), requested_device_name, runtime_precision],
         cwd=str(_project_root()),
         capture_output=True,
         text=True,
@@ -51,13 +82,24 @@ def test_runtime_pool_runs_openvino_ir_build_with_openvino(tmp_path: Path) -> No
     payload = json.loads(completed.stdout.strip().splitlines()[-1])
 
     assert payload["runtime_backend"] == "openvino"
-    assert payload["runtime_precision"] == "fp32"
+    assert payload["runtime_precision"] == runtime_precision
     assert payload["healthy_instance_count"] == 1
     assert payload["warmed_instance_count"] == 1
     assert payload["session_backend_name"] == "openvino"
-    assert payload["session_device_name"] == "cpu"
-    assert payload["runtime_execution_mode"] == "openvino:fp32:cpu"
+    assert payload["session_device_name"] == requested_device_name
+    assert payload["runtime_execution_mode"] == expected_runtime_execution_mode
+    assert payload["compiled_runtime_precision"] == expected_compiled_runtime_precision
+    assert payload["input_dtype"] == "float32"
+    assert payload["output_dtype"] == "float32"
     assert payload["detection_count"] >= 1
+
+
+def _list_openvino_available_devices() -> tuple[str, ...]:
+    """返回当前环境可见的 OpenVINO 设备列表。"""
+
+    openvino_module = __import__("openvino")
+    available_devices = getattr(openvino_module.Core(), "available_devices", ())
+    return tuple(str(item) for item in available_devices)
 
 
 def _project_root() -> Path:
@@ -232,6 +274,8 @@ def _build_openvino_runtime_probe_script() -> str:
 
         def main() -> None:
             probe_root = Path(sys.argv[1]).resolve()
+            requested_device_name = str(sys.argv[2]).strip().lower()
+            runtime_precision = str(sys.argv[3]).strip().lower()
             session_factory, dataset_storage = _create_test_runtime(probe_root)
             source_model_version_id = _seed_source_model_version(
                 session_factory=session_factory,
@@ -259,7 +303,8 @@ def _build_openvino_runtime_probe_script() -> str:
                 RuntimeTargetResolveRequest(
                     project_id="project-1",
                     model_build_id=model_build_id,
-                    device_name="cpu",
+                    device_name=requested_device_name,
+                    runtime_precision=runtime_precision,
                 )
             )
 
@@ -293,6 +338,11 @@ def _build_openvino_runtime_probe_script() -> str:
                         "runtime_execution_mode": execution.execution_result.runtime_session_info.metadata[
                             "runtime_execution_mode"
                         ],
+                        "compiled_runtime_precision": execution.execution_result.runtime_session_info.metadata[
+                            "compiled_runtime_precision"
+                        ],
+                        "input_dtype": execution.execution_result.runtime_session_info.input_spec.dtype,
+                        "output_dtype": execution.execution_result.runtime_session_info.output_spec.dtype,
                         "detection_count": len(execution.execution_result.detections),
                     }
                 )

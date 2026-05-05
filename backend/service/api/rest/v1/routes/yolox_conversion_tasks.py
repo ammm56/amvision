@@ -24,6 +24,9 @@ from backend.service.infrastructure.object_store.local_dataset_storage import Lo
 
 yolox_conversion_tasks_router = APIRouter(prefix="/models", tags=["models"])
 
+OPENVINO_IR_PRECISION_OPTION_KEY = "openvino_ir_precision"
+OpenVINOIRBuildPrecisionLiteral = Literal["fp32", "fp16"]
+
 YoloXConversionTargetLiteral = Literal[
     "onnx",
     "onnx-optimized",
@@ -222,22 +225,54 @@ def create_yolox_optimized_onnx_conversion_task(
 
 
 @yolox_conversion_tasks_router.post(
-    "/yolox/conversion-tasks/openvino-ir",
+    "/yolox/conversion-tasks/openvino-ir-fp32",
     response_model=YoloXConversionTaskSubmissionResponse,
     status_code=status.HTTP_202_ACCEPTED,
 )
-def create_yolox_openvino_ir_conversion_task(
+def create_yolox_openvino_ir_fp32_conversion_task(
     body: YoloXConversionTaskCreateRequestBody,
     principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("models:read", "tasks:write"))],
     session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
     queue_backend: Annotated[LocalFileQueueBackend, Depends(get_queue_backend)],
     dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
 ) -> YoloXConversionTaskSubmissionResponse:
-    """创建一个输出 OpenVINO IR 的 YOLOX conversion task。"""
+    """创建一个输出 FP32 OpenVINO IR 的 YOLOX conversion task。"""
 
     return _submit_yolox_conversion_task(
         body=body,
         target_format="openvino-ir",
+        extra_options_override=_merge_fixed_conversion_extra_options(
+            body_extra_options=body.extra_options,
+            fixed_extra_options={OPENVINO_IR_PRECISION_OPTION_KEY: "fp32"},
+        ),
+        principal=principal,
+        session_factory=session_factory,
+        queue_backend=queue_backend,
+        dataset_storage=dataset_storage,
+    )
+
+
+@yolox_conversion_tasks_router.post(
+    "/yolox/conversion-tasks/openvino-ir-fp16",
+    response_model=YoloXConversionTaskSubmissionResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+def create_yolox_openvino_ir_fp16_conversion_task(
+    body: YoloXConversionTaskCreateRequestBody,
+    principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("models:read", "tasks:write"))],
+    session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
+    queue_backend: Annotated[LocalFileQueueBackend, Depends(get_queue_backend)],
+    dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
+) -> YoloXConversionTaskSubmissionResponse:
+    """创建一个输出 FP16 OpenVINO IR 的 YOLOX conversion task。"""
+
+    return _submit_yolox_conversion_task(
+        body=body,
+        target_format="openvino-ir",
+        extra_options_override=_merge_fixed_conversion_extra_options(
+            body_extra_options=body.extra_options,
+            fixed_extra_options={OPENVINO_IR_PRECISION_OPTION_KEY: "fp16"},
+        ),
         principal=principal,
         session_factory=session_factory,
         queue_backend=queue_backend,
@@ -249,6 +284,7 @@ def _submit_yolox_conversion_task(
     *,
     body: YoloXConversionTaskCreateRequestBody,
     target_format: YoloXConversionTargetLiteral,
+    extra_options_override: dict[str, object] | None = None,
     principal: AuthenticatedPrincipal,
     session_factory: SessionFactory,
     queue_backend: LocalFileQueueBackend,
@@ -259,6 +295,7 @@ def _submit_yolox_conversion_task(
     参数：
     - body：公共创建请求体。
     - target_format：当前接口固定输出格式。
+    - extra_options_override：由固定策略接口注入的附加转换选项。
     - principal：当前认证主体。
     - session_factory：数据库会话工厂。
     - queue_backend：本地队列后端。
@@ -284,7 +321,7 @@ def _submit_yolox_conversion_task(
             source_model_version_id=body.source_model_version_id,
             target_formats=(target_format,),
             runtime_profile_id=body.runtime_profile_id,
-            extra_options=dict(body.extra_options),
+            extra_options=dict(extra_options_override or body.extra_options),
         ),
         created_by=principal.principal_id,
         display_name=body.display_name,
@@ -297,6 +334,37 @@ def _submit_yolox_conversion_task(
         source_model_version_id=submission.source_model_version_id,
         target_formats=list(submission.target_formats),
     )
+
+
+def _merge_fixed_conversion_extra_options(
+    *,
+    body_extra_options: dict[str, object],
+    fixed_extra_options: dict[str, object],
+) -> dict[str, object]:
+    """把固定策略接口要求的 extra_options 合并到请求体中。
+
+    参数：
+    - body_extra_options：请求体里显式传入的附加选项。
+    - fixed_extra_options：当前固定策略接口强制注入的附加选项。
+
+    返回：
+    - dict[str, object]：合并后的附加选项。
+    """
+
+    merged_extra_options = dict(body_extra_options)
+    for option_key, option_value in fixed_extra_options.items():
+        existing_value = merged_extra_options.get(option_key)
+        if existing_value is not None and existing_value != option_value:
+            raise InvalidRequestError(
+                "固定策略转换接口不允许覆盖内建 extra_options",
+                details={
+                    "option_key": option_key,
+                    "existing_value": existing_value,
+                    "required_value": option_value,
+                },
+            )
+        merged_extra_options[option_key] = option_value
+    return merged_extra_options
 
 
 @yolox_conversion_tasks_router.get(

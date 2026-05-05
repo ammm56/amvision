@@ -36,20 +36,41 @@ pytest.importorskip("onnxsim")
 
 
 @pytest.mark.parametrize(
-    ("create_path", "expected_target_formats", "expected_produced_formats", "expected_phase"),
+    (
+        "create_path",
+        "expected_target_formats",
+        "expected_produced_formats",
+        "expected_phase",
+        "expected_openvino_ir_precision",
+    ),
     [
-        ("/api/v1/models/yolox/conversion-tasks/onnx", ["onnx"], ["onnx"], "phase-1-onnx"),
+        (
+            "/api/v1/models/yolox/conversion-tasks/onnx",
+            ["onnx"],
+            ["onnx"],
+            "phase-1-onnx",
+            None,
+        ),
         (
             "/api/v1/models/yolox/conversion-tasks/onnx-optimized",
             ["onnx-optimized"],
             ["onnx", "onnx-optimized"],
             "phase-1-onnx",
+            None,
         ),
         (
-            "/api/v1/models/yolox/conversion-tasks/openvino-ir",
+            "/api/v1/models/yolox/conversion-tasks/openvino-ir-fp32",
             ["openvino-ir"],
             ["onnx", "onnx-optimized", "openvino-ir"],
             "phase-2-openvino-ir",
+            "fp32",
+        ),
+        (
+            "/api/v1/models/yolox/conversion-tasks/openvino-ir-fp16",
+            ["openvino-ir"],
+            ["onnx", "onnx-optimized", "openvino-ir"],
+            "phase-2-openvino-ir",
+            "fp16",
         ),
     ],
 )
@@ -59,6 +80,7 @@ def test_create_yolox_conversion_task_and_read_result_after_worker(
     expected_target_formats: list[str],
     expected_produced_formats: list[str],
     expected_phase: str,
+    expected_openvino_ir_precision: str | None,
 ) -> None:
     """验证 conversion task 可以创建、执行，并返回 detail、list 和 result。"""
 
@@ -124,6 +146,18 @@ def test_create_yolox_conversion_task_and_read_result_after_worker(
             assert len(detail_payload["builds"]) == len(expected_produced_formats)
             assert detail_payload["report_summary"]["validation_summary"]["allclose"] is True
             assert detail_payload["report_summary"]["phase"] == expected_phase
+            if expected_openvino_ir_precision is not None:
+                assert detail_payload["report_summary"]["conversion_options"] == {
+                    "openvino_ir_precision": expected_openvino_ir_precision,
+                }
+                openvino_builds = [
+                    item for item in detail_payload["builds"] if item["build_format"] == "openvino-ir"
+                ]
+                assert len(openvino_builds) == 1
+                assert openvino_builds[0]["metadata"]["build_precision"] == expected_openvino_ir_precision
+                assert openvino_builds[0]["metadata"]["compress_to_fp16"] is (
+                    expected_openvino_ir_precision == "fp16"
+                )
 
             result_response = client.get(
                 f"/api/v1/models/yolox/conversion-tasks/{task_id}/result",
@@ -135,6 +169,10 @@ def test_create_yolox_conversion_task_and_read_result_after_worker(
             assert result_payload["payload"]["phase"] == expected_phase
             assert result_payload["payload"]["planned_target_formats"] == expected_target_formats
             assert result_payload["payload"]["validation_summary"]["allclose"] is True
+            if expected_openvino_ir_precision is not None:
+                assert result_payload["payload"]["conversion_options"] == {
+                    "openvino_ir_precision": expected_openvino_ir_precision,
+                }
 
             list_response = client.get(
                 f"/api/v1/models/yolox/conversion-tasks?project_id=project-1&source_model_version_id={source_model_version_id}",

@@ -20,6 +20,8 @@ from backend.service.domain.files.yolox_file_types import (
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 
 
+_OPENVINO_IR_PRECISION_OPTION_KEY = "openvino_ir_precision"
+_SUPPORTED_OPENVINO_IR_BUILD_PRECISIONS = frozenset({"fp32", "fp16"})
 _OPENVINO_IR_BUILD_SCRIPT = """
 from pathlib import Path
 import sys
@@ -28,9 +30,12 @@ from openvino import convert_model, save_model
 
 source_path = Path(sys.argv[1]).resolve()
 output_path = Path(sys.argv[2]).resolve()
+build_precision = sys.argv[3].strip().lower()
+if build_precision not in {"fp32", "fp16"}:
+    raise ValueError(f"unsupported openvino_ir_precision: {build_precision}")
 output_path.parent.mkdir(parents=True, exist_ok=True)
 openvino_model = convert_model(str(source_path))
-save_model(openvino_model, str(output_path), compress_to_fp16=False)
+save_model(openvino_model, str(output_path), compress_to_fp16=(build_precision == "fp16"))
 """.strip()
 
 
@@ -136,6 +141,7 @@ class LocalYoloXConversionRunner:
         onnx_object_key = f"{request.output_object_prefix}/artifacts/builds/{base_name}.onnx"
         optimized_object_key = f"{request.output_object_prefix}/artifacts/builds/{base_name}.optimized.onnx"
         openvino_object_key = f"{request.output_object_prefix}/artifacts/builds/{base_name}.openvino.xml"
+        openvino_ir_build_precision = _resolve_openvino_ir_build_precision(request.metadata)
         executed_step_kinds: list[str] = []
         validation_summary: dict[str, object] = {}
         onnx_output: YoloXConversionOutput | None = None
@@ -198,6 +204,7 @@ class LocalYoloXConversionRunner:
                 build_summary = self._build_openvino_ir(
                     source_object_key=optimized_object_key,
                     output_object_key=openvino_object_key,
+                    build_precision=openvino_ir_build_precision,
                 )
                 openvino_output = YoloXConversionOutput(
                     target_format="openvino-ir",
@@ -229,6 +236,10 @@ class LocalYoloXConversionRunner:
                 "phase": _resolve_conversion_phase(request.target_formats),
                 "executed_step_kinds": executed_step_kinds,
                 "validation_summary": validation_summary,
+                "conversion_options": _build_conversion_options_metadata(
+                    target_formats=request.target_formats,
+                    openvino_ir_build_precision=openvino_ir_build_precision,
+                ),
             },
         )
 
@@ -346,12 +357,14 @@ class LocalYoloXConversionRunner:
         *,
         source_object_key: str,
         output_object_key: str,
+        build_precision: str,
     ) -> dict[str, object]:
         """把 optimized ONNX 转换为 OpenVINO IR。
 
         参数：
         - source_object_key：来源 optimized ONNX object key。
         - output_object_key：目标 OpenVINO XML object key。
+	- build_precision：OpenVINO IR 权重压缩策略。
 
         返回：
         - dict[str, object]：OpenVINO IR 构建摘要。
@@ -360,6 +373,7 @@ class LocalYoloXConversionRunner:
         source_path = self.dataset_storage.resolve(source_object_key)
         output_path = self.dataset_storage.resolve(output_object_key)
         output_path.parent.mkdir(parents=True, exist_ok=True)
+        compress_to_fp16 = build_precision == "fp16"
         completed_process = subprocess.run(
             [
                 sys.executable,
@@ -367,6 +381,7 @@ class LocalYoloXConversionRunner:
                 _OPENVINO_IR_BUILD_SCRIPT,
                 str(source_path),
                 str(output_path),
+                build_precision,
             ],
             capture_output=True,
             text=True,
@@ -399,9 +414,53 @@ class LocalYoloXConversionRunner:
             "object_uri": output_object_key,
             "source_object_uri": source_object_key,
             "weights_object_uri": _resolve_openvino_weights_object_key(output_object_key),
-            "compress_to_fp16": False,
+            "build_precision": build_precision,
+            "compress_to_fp16": compress_to_fp16,
             "execution_mode": "subprocess-openvino-convert-model",
         }
+
+
+def _resolve_openvino_ir_build_precision(metadata: dict[str, object]) -> str:
+    """从 worker metadata 中解析 OpenVINO IR 构建精度策略。
+
+    参数：
+    - metadata：转换执行请求附加元数据。
+
+    返回：
+    - str：OpenVINO IR 构建精度；当前支持 fp32 或 fp16。
+    """
+
+    raw_precision = metadata.get(_OPENVINO_IR_PRECISION_OPTION_KEY)
+    if raw_precision is None:
+        return "fp32"
+    if isinstance(raw_precision, str):
+        normalized_precision = raw_precision.strip().lower()
+        if normalized_precision in _SUPPORTED_OPENVINO_IR_BUILD_PRECISIONS:
+            return normalized_precision
+    raise InvalidRequestError(
+        "openvino_ir_precision 必须是 fp32 或 fp16",
+        details={_OPENVINO_IR_PRECISION_OPTION_KEY: raw_precision},
+    )
+
+
+def _build_conversion_options_metadata(
+    *,
+    target_formats: tuple[str, ...],
+    openvino_ir_build_precision: str,
+) -> dict[str, object]:
+    """根据目标格式生成转换报告中的附加策略摘要。
+
+    参数：
+    - target_formats：当前转换目标格式列表。
+    - openvino_ir_build_precision：OpenVINO IR 构建精度策略。
+
+    返回：
+    - dict[str, object]：转换策略摘要。
+    """
+
+    if "openvino-ir" not in target_formats:
+        return {}
+    return {_OPENVINO_IR_PRECISION_OPTION_KEY: openvino_ir_build_precision}
 
 
 def _import_onnx_dependencies() -> tuple[object, object, object]:

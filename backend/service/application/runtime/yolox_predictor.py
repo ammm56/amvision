@@ -616,6 +616,7 @@ class OpenVINOYoloXRuntimeSession:
     - input_port：模型主输入端口对象。
     - output_port：模型主输出端口对象。
     - compiled_device_name：传给 OpenVINO 的实际 device 选择串。
+    - compiled_runtime_precision：当前编译后实际采用的 runtime precision。
     """
 
     def __init__(
@@ -631,6 +632,7 @@ class OpenVINOYoloXRuntimeSession:
         input_port: Any,
         output_port: Any,
         compiled_device_name: str,
+        compiled_runtime_precision: str,
     ) -> None:
         """初始化一个已加载完成的 OpenVINO runtime session。
 
@@ -645,6 +647,7 @@ class OpenVINOYoloXRuntimeSession:
         - input_port：模型主输入端口对象。
         - output_port：模型主输出端口对象。
         - compiled_device_name：传给 OpenVINO 的实际 device 选择串。
+        - compiled_runtime_precision：当前编译后实际采用的 runtime precision。
         """
 
         self.dataset_storage = dataset_storage
@@ -657,6 +660,7 @@ class OpenVINOYoloXRuntimeSession:
         self.input_port = input_port
         self.output_port = output_port
         self.compiled_device_name = compiled_device_name
+        self.compiled_runtime_precision = compiled_runtime_precision
 
     @classmethod
     def load(
@@ -683,24 +687,21 @@ class OpenVINOYoloXRuntimeSession:
                     "model_build_id": runtime_target.model_build_id,
                 },
             )
-        if runtime_target.runtime_precision != "fp32":
-            raise InvalidRequestError(
-                "当前 openvino runtime session 仅支持 fp32 precision",
-                details={
-                    "runtime_backend": runtime_target.runtime_backend,
-                    "runtime_precision": runtime_target.runtime_precision,
-                    "model_build_id": runtime_target.model_build_id,
-                },
-            )
 
         imports = _require_inference_imports()
         openvino_module = _import_openvino_module()
         compiled_device_name = _resolve_openvino_device_name(
             requested_device_name=runtime_target.device_name,
         )
+        compile_properties = _build_openvino_compile_properties(
+            openvino_module=openvino_module,
+            runtime_precision=runtime_target.runtime_precision,
+            requested_device_name=runtime_target.device_name,
+        )
         session = openvino_module.Core().compile_model(
             str(runtime_target.runtime_artifact_path),
-            device_name=compiled_device_name,
+            compiled_device_name,
+            compile_properties,
         )
         input_port = session.input(0)
         output_port = session.output(0)
@@ -715,6 +716,10 @@ class OpenVINOYoloXRuntimeSession:
             input_port=input_port,
             output_port=output_port,
             compiled_device_name=compiled_device_name,
+            compiled_runtime_precision=_resolve_openvino_compiled_runtime_precision(
+                session=session,
+                fallback_precision=runtime_target.runtime_precision,
+            ),
         )
 
     def predict(self, request: YoloXPredictionRequest) -> YoloXPredictionExecutionResult:
@@ -804,12 +809,12 @@ class OpenVINOYoloXRuntimeSession:
                 input_spec=RuntimeTensorSpec(
                     name=self.input_name,
                     shape=(1, 3, self.runtime_target.input_size[0], self.runtime_target.input_size[1]),
-                    dtype="float32",
+                    dtype=_resolve_openvino_port_dtype(self.input_port, fallback="float32"),
                 ),
                 output_spec=RuntimeTensorSpec(
                     name=self.output_name,
                     shape=(-1, 7),
-                    dtype="float32",
+                    dtype=_resolve_openvino_port_dtype(self.output_port, fallback="float32"),
                 ),
                 metadata={
                     "model_version_id": self.runtime_target.model_version_id,
@@ -828,6 +833,7 @@ class OpenVINOYoloXRuntimeSession:
                     "infer_ms": infer_ms,
                     "postprocess_ms": postprocess_ms,
                     "compiled_device_name": self.compiled_device_name,
+                    "compiled_runtime_precision": self.compiled_runtime_precision,
                 },
             ),
         )
@@ -1019,6 +1025,68 @@ def _resolve_openvino_device_name(*, requested_device_name: str) -> str:
             details={"device_name": requested_device_name},
         )
     return resolved
+
+
+def _build_openvino_compile_properties(
+    *,
+    openvino_module: Any,
+    runtime_precision: str,
+    requested_device_name: str,
+) -> dict[object, object]:
+    """按 runtime precision 构造 OpenVINO compile_model 属性。"""
+
+    if runtime_precision == "fp32":
+        return {}
+    if runtime_precision == "fp16" and requested_device_name in {"gpu", "npu"}:
+        return {openvino_module.properties.hint.inference_precision: openvino_module.Type.f16}
+    raise InvalidRequestError(
+        "openvino fp16 仅支持 gpu 或 npu device_name；auto/cpu 仍要求 fp32",
+        details={
+            "runtime_backend": "openvino",
+            "runtime_precision": runtime_precision,
+            "device_name": requested_device_name,
+        },
+    )
+
+
+def _resolve_openvino_compiled_runtime_precision(*, session: Any, fallback_precision: str) -> str:
+    """读取 OpenVINO 编译后实际采用的 runtime precision。"""
+
+    try:
+        resolved = session.get_property("INFERENCE_PRECISION_HINT")
+    except Exception:
+        return fallback_precision
+    normalized = _normalize_openvino_type_name(resolved)
+    precision_map = {
+        "float16": "fp16",
+        "float32": "fp32",
+    }
+    return precision_map.get(normalized, fallback_precision)
+
+
+def _resolve_openvino_port_dtype(port: Any, *, fallback: str) -> str:
+    """读取 OpenVINO 端口实际张量 dtype。"""
+
+    element_type_getter = getattr(port, "get_element_type", None)
+    if not callable(element_type_getter):
+        return fallback
+    try:
+        return _normalize_openvino_type_name(element_type_getter()) or fallback
+    except Exception:
+        return fallback
+
+
+def _normalize_openvino_type_name(value: object) -> str:
+    """把 OpenVINO 类型对象归一化为稳定字符串。"""
+
+    normalized = str(value).strip().lower()
+    if normalized.startswith("<type: '") and normalized.endswith("'>"):
+        normalized = normalized[len("<type: '") : -2]
+    type_name_map = {
+        "f16": "float16",
+        "f32": "float32",
+    }
+    return type_name_map.get(normalized, normalized)
 
 
 def _resolve_openvino_port_name(port: Any, *, fallback: str) -> str:

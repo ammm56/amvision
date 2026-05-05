@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from fastapi.testclient import TestClient
+import pytest
 
 from backend.queue import LocalFileQueueBackend, LocalFileQueueSettings
 from backend.service.api.app import create_app
@@ -28,7 +29,7 @@ from backend.service.application.runtime.yolox_predictor import (
     YoloXPredictionDetection,
     YoloXPredictionExecutionResult,
 )
-from backend.service.domain.files.yolox_file_types import YOLOX_ONNX_FILE
+from backend.service.domain.files.yolox_file_types import YOLOX_ONNX_FILE, YOLOX_OPENVINO_IR_FILE
 from backend.service.infrastructure.db.session import DatabaseSettings, SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import DatasetStorageSettings, LocalDatasetStorage
 from backend.service.infrastructure.persistence.base import Base
@@ -168,6 +169,112 @@ def test_create_yolox_deployment_instance_uses_model_build_snapshot(tmp_path: Pa
         assert snapshot["checkpoint_storage_uri"] == (
             "projects/project-1/models/deployment-source-1/artifacts/checkpoints/best_ckpt.pth"
         )
+    finally:
+        session_factory.engine.dispose()
+
+
+@pytest.mark.parametrize("device_name", ["gpu", "npu"])
+def test_create_openvino_deployment_instance_allows_fp16_on_gpu_or_npu(
+    tmp_path: Path,
+    device_name: str,
+) -> None:
+    """验证 OpenVINO Deployment 在 gpu 或 npu 上允许使用 fp16 runtime。"""
+
+    client, session_factory, dataset_storage = _create_test_client(tmp_path)
+    model_version_id = _seed_model_version(
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+    )
+    model_build_id = _seed_model_build(
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+        model_version_id=model_version_id,
+        build_format="openvino-ir",
+        build_uri="projects/project-1/models/builds/build-1/yolox.openvino.xml",
+    )
+    try:
+        with client:
+            create_response = client.post(
+                "/api/v1/models/yolox/deployment-instances",
+                headers=_build_headers(),
+                json={
+                    "project_id": "project-1",
+                    "model_build_id": model_build_id,
+                    "runtime_backend": "openvino",
+                    "runtime_precision": "fp16",
+                    "device_name": device_name,
+                    "display_name": f"yolox openvino {device_name} fp16 deployment",
+                },
+            )
+
+            assert create_response.status_code == 201
+            payload = create_response.json()
+            assert payload["runtime_backend"] == "openvino"
+            assert payload["runtime_precision"] == "fp16"
+            assert payload["runtime_execution_mode"] == f"openvino:fp16:{device_name}"
+            assert payload["model_build_id"] == model_build_id
+
+        session = session_factory.create_session()
+        try:
+            saved_instance = SqlAlchemyDeploymentInstanceRepository(session).get_deployment_instance(
+                payload["deployment_instance_id"]
+            )
+        finally:
+            session.close()
+
+        assert saved_instance is not None
+        snapshot = saved_instance.metadata.get("runtime_target_snapshot")
+        assert isinstance(snapshot, dict)
+        assert snapshot["runtime_backend"] == "openvino"
+        assert snapshot["runtime_precision"] == "fp16"
+        assert snapshot["runtime_artifact_file_type"] == YOLOX_OPENVINO_IR_FILE
+    finally:
+        session_factory.engine.dispose()
+
+
+@pytest.mark.parametrize("device_name", ["auto", "cpu"])
+def test_create_openvino_deployment_instance_rejects_fp16_on_auto_or_cpu(
+    tmp_path: Path,
+    device_name: str,
+) -> None:
+    """验证 OpenVINO Deployment 在 auto 或 cpu 上拒绝使用 fp16 runtime。"""
+
+    client, session_factory, dataset_storage = _create_test_client(tmp_path)
+    model_version_id = _seed_model_version(
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+    )
+    model_build_id = _seed_model_build(
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+        model_version_id=model_version_id,
+        build_format="openvino-ir",
+        build_uri="projects/project-1/models/builds/build-1/yolox.openvino.xml",
+    )
+    try:
+        with client:
+            create_response = client.post(
+                "/api/v1/models/yolox/deployment-instances",
+                headers=_build_headers(),
+                json={
+                    "project_id": "project-1",
+                    "model_build_id": model_build_id,
+                    "runtime_backend": "openvino",
+                    "runtime_precision": "fp16",
+                    "device_name": device_name,
+                    "display_name": f"yolox openvino {device_name} fp16 deployment",
+                },
+            )
+
+            assert create_response.status_code == 400
+            payload = create_response.json()["error"]
+            assert payload["code"] == "invalid_request"
+            assert payload["message"] == "openvino fp16 仅支持 gpu 或 npu device_name；auto/cpu 仍要求 fp32"
+            assert payload["details"] == {
+                "runtime_backend": "openvino",
+                "runtime_precision": "fp16",
+                "device_name": device_name,
+            }
     finally:
         session_factory.engine.dispose()
 
@@ -563,20 +670,26 @@ def _seed_model_build(
     session_factory: SessionFactory,
     dataset_storage: LocalDatasetStorage,
     model_version_id: str,
+    build_format: str = "onnx",
+    build_uri: str | None = None,
 ) -> str:
-    """写入一个与 ModelVersion 绑定的最小 ONNX ModelBuild。"""
+    """写入一个与 ModelVersion 绑定的最小 ModelBuild。"""
 
-    build_uri = "projects/project-1/models/builds/build-1/yolox.onnx"
-    dataset_storage.write_bytes(build_uri, b"fake-onnx-build")
+    resolved_build_uri = build_uri
+    if resolved_build_uri is None:
+        resolved_build_uri = "projects/project-1/models/builds/build-1/yolox.onnx"
+        if build_format == "openvino-ir":
+            resolved_build_uri = "projects/project-1/models/builds/build-1/yolox.openvino.xml"
+    dataset_storage.write_bytes(resolved_build_uri, b"fake-build")
 
     service = SqlAlchemyYoloXModelService(session_factory=session_factory)
     return service.register_build(
         YoloXBuildRegistration(
             project_id="project-1",
             source_model_version_id=model_version_id,
-            build_format="onnx",
-            build_file_id="build-file-onnx-1",
-            build_file_uri=build_uri,
+            build_format=build_format,
+            build_file_id=f"build-file-{build_format}-1",
+            build_file_uri=resolved_build_uri,
             conversion_task_id="conversion-task-1",
         )
     )

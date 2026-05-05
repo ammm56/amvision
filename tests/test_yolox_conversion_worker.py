@@ -38,18 +38,39 @@ pytest.importorskip("onnxsim")
 
 
 @pytest.mark.parametrize(
-    ("target_formats", "expected_produced_formats", "expected_phase"),
+    (
+        "target_formats",
+        "extra_options",
+        "expected_produced_formats",
+        "expected_phase",
+        "expected_openvino_ir_precision",
+    ),
     [
-        (("onnx",), ("onnx",), "phase-1-onnx"),
-        (("onnx-optimized",), ("onnx", "onnx-optimized"), "phase-1-onnx"),
-        (("openvino-ir",), ("onnx", "onnx-optimized", "openvino-ir"), "phase-2-openvino-ir"),
+        (("onnx",), {}, ("onnx",), "phase-1-onnx", None),
+        (("onnx-optimized",), {}, ("onnx", "onnx-optimized"), "phase-1-onnx", None),
+        (
+            ("openvino-ir",),
+            {"openvino_ir_precision": "fp32"},
+            ("onnx", "onnx-optimized", "openvino-ir"),
+            "phase-2-openvino-ir",
+            "fp32",
+        ),
+        (
+            ("openvino-ir",),
+            {"openvino_ir_precision": "fp16"},
+            ("onnx", "onnx-optimized", "openvino-ir"),
+            "phase-2-openvino-ir",
+            "fp16",
+        ),
     ],
 )
 def test_conversion_queue_worker_executes_supported_targets(
     tmp_path: Path,
     target_formats: tuple[str, ...],
+    extra_options: dict[str, object],
     expected_produced_formats: tuple[str, ...],
     expected_phase: str,
+    expected_openvino_ir_precision: str | None,
 ) -> None:
     """验证 conversion queue worker 可以跑通当前已接通的转换目标并完成登记链。"""
 
@@ -72,6 +93,7 @@ def test_conversion_queue_worker_executes_supported_targets(
             project_id="project-1",
             source_model_version_id=source_model_version_id,
             target_formats=target_formats,
+            extra_options=extra_options,
         )
     )
 
@@ -102,6 +124,10 @@ def test_conversion_queue_worker_executes_supported_targets(
     assert report_payload["validation_summary"]["allclose"] is True
     assert report_payload["planned_target_formats"] == list(target_formats)
     assert report_payload["phase"] == expected_phase
+    if expected_openvino_ir_precision is not None:
+        assert report_payload["conversion_options"] == {
+            "openvino_ir_precision": expected_openvino_ir_precision,
+        }
 
     model_service = SqlAlchemyYoloXModelService(session_factory=session_factory)
     for build_summary in result.builds:
@@ -113,6 +139,10 @@ def test_conversion_queue_worker_executes_supported_targets(
         if build_summary.build_format == "openvino-ir":
             assert build_path.suffix == ".xml"
             assert build_path.with_suffix(".bin").is_file() is True
+            assert build_summary.metadata["build_precision"] == expected_openvino_ir_precision
+            assert build_summary.metadata["compress_to_fp16"] is (expected_openvino_ir_precision == "fp16")
+            assert model_build.metadata["build_precision"] == expected_openvino_ir_precision
+            assert model_build.metadata["compress_to_fp16"] is (expected_openvino_ir_precision == "fp16")
 
 
 def _create_test_runtime(

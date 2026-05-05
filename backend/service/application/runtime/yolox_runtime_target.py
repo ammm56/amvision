@@ -62,7 +62,7 @@ class RuntimeTargetResolveRequest:
     - runtime_profile_id：可选 RuntimeProfile id。
     - runtime_backend：运行时 backend；直接绑定 ModelVersion 时默认 pytorch，绑定 ModelBuild 时默认按 build_format 推导。
     - device_name：默认 device 名称。
-    - runtime_precision：运行时 precision；当前 pytorch 支持 fp32/fp16，其余 backend 默认 fp32。
+    - runtime_precision：运行时 precision；当前 pytorch 支持 fp32/fp16，openvino 仅在 gpu/npu 上支持 fp16，其余 backend 默认 fp32。
     """
 
     project_id: str
@@ -713,6 +713,17 @@ def resolve_runtime_precision(*, runtime_precision: str | None, runtime_backend:
         if normalized_precision == "fp16" and not normalized_device_name.startswith("cuda"):
             raise InvalidRequestError(
                 "pytorch fp16 仅支持 CUDA device",
+                details={
+                    "runtime_backend": normalized_backend,
+                    "runtime_precision": normalized_precision,
+                    "device_name": normalized_device_name,
+                },
+            )
+        return normalized_precision
+    if normalized_backend == "openvino":
+        if normalized_precision == "fp16" and normalized_device_name not in {"gpu", "npu"}:
+            raise InvalidRequestError(
+                "openvino fp16 仅支持 gpu 或 npu device_name；auto/cpu 仍要求 fp32",
                 details={
                     "runtime_backend": normalized_backend,
                     "runtime_precision": normalized_precision,

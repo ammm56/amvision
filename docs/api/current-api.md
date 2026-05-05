@@ -250,11 +250,19 @@
 - 当前请求体字段与 `onnx` 创建接口一致
 - 当前接口固定创建 `onnx-optimized` 目标的 conversion task，内部仍会先产出中间 `onnx`
 
-### POST /api/v1/models/yolox/conversion-tasks/openvino-ir
+### POST /api/v1/models/yolox/conversion-tasks/openvino-ir-fp32
 
 - 需要同时具备 models:read 和 tasks:write
 - 当前请求体字段与 `onnx` 创建接口一致
-- 当前接口固定创建 `openvino-ir` 目标的 conversion task；内部会先产出 `onnx` 与 `onnx-optimized`，再生成 xml/bin 形式的 OpenVINO IR
+- 当前接口固定创建 `openvino-ir` 目标的 conversion task，并把 OpenVINO IR 构建策略固化为 `fp32`
+- 当前接口会先产出 `onnx` 与 `onnx-optimized`，再生成未压缩权重的 xml/bin 形式 OpenVINO IR
+
+### POST /api/v1/models/yolox/conversion-tasks/openvino-ir-fp16
+
+- 需要同时具备 models:read 和 tasks:write
+- 当前请求体字段与 `onnx` 创建接口一致
+- 当前接口固定创建 `openvino-ir` 目标的 conversion task，并把 OpenVINO IR 构建策略固化为 `fp16`
+- 当前接口会先产出 `onnx` 与 `onnx-optimized`，再生成压缩为 fp16 权重的 xml/bin 形式 OpenVINO IR
 
 ### GET /api/v1/models/yolox/conversion-tasks
 
@@ -390,7 +398,7 @@
 - 当前最小实现允许直接绑定训练产出的 `ModelVersion`，也允许绑定 `ModelBuild`；如果同时提供 `model_build_id` 和 `model_version_id`，两者必须指向同一来源版本
 - 当前 `ModelVersion` 默认走 `pytorch`；当前 `ModelBuild` 已支持 `onnx` / `onnx-optimized` 绑定并自动解析为 `onnxruntime`
 - 当前 create 会在提交阶段校验 checkpoint 和 labels 的本地可读性
-- 当前运行方式矩阵已经显式公开：`pytorch fp32/fp16 cpu/cuda`、`onnxruntime fp32 cpu`、`openvino fp32 auto/cpu/gpu/npu`；其中 pytorch、onnxruntime、openvino 已接通真实 runtime，`tensorrt cuda` 仍停留在 create 校验语义
+- 当前运行方式矩阵已经显式公开：`pytorch fp32/fp16 cpu/cuda`、`onnxruntime fp32 cpu`、`openvino fp32 auto/cpu/gpu/npu + fp16 gpu/npu`；其中 pytorch、onnxruntime、openvino 已接通真实 runtime，`tensorrt cuda` 仍停留在 create 校验语义
 - 当前 `instance_count` 默认为 1；每个 instance 对应一个独立推理线程和模型会话
 - 当前响应会返回：
   - deployment_instance_id

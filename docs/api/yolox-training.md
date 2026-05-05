@@ -663,7 +663,8 @@
 - 资源组：`/api/v1/models/yolox/conversion-tasks`
 - 创建 ONNX 接口：`POST /api/v1/models/yolox/conversion-tasks/onnx`
 - 创建 optimized ONNX 接口：`POST /api/v1/models/yolox/conversion-tasks/onnx-optimized`
-- 创建 OpenVINO IR 接口：`POST /api/v1/models/yolox/conversion-tasks/openvino-ir`
+- 创建 OpenVINO IR FP32 接口：`POST /api/v1/models/yolox/conversion-tasks/openvino-ir-fp32`
+- 创建 OpenVINO IR FP16 接口：`POST /api/v1/models/yolox/conversion-tasks/openvino-ir-fp16`
 - 列表接口：`GET /api/v1/models/yolox/conversion-tasks`
 - 详情接口：`GET /api/v1/models/yolox/conversion-tasks/{task_id}`
 - 结果接口：`GET /api/v1/models/yolox/conversion-tasks/{task_id}/result`
@@ -695,6 +696,7 @@
 - `object_key`
 - `payload.phase`
 - `payload.planned_target_formats`
+- `payload.conversion_options`
 - `payload.executed_step_kinds`
 - `payload.validation_summary`
 - `payload.outputs`
@@ -705,7 +707,8 @@
 - 当前 ONNX 主链继续使用旧版 `torch.onnx.export`
 - 当前已真实可执行步骤是 `export-onnx -> validate-onnx -> optimize-onnx`，以及面向 `openvino-ir` 的追加步骤 `build-openvino-ir`
 - 当前已真实可执行目标支持 `onnx`、`onnx-optimized` 与 `openvino-ir`
-- 当前 `openvino-ir` 构建会把 optimized ONNX 交给隔离子进程执行 OpenVINO `convert_model/save_model`，避免当前 Windows/conda 环境里的 torch/OpenVINO 同进程冲突
+- 当前 `openvino-ir` 创建接口已拆成 `fp32` 与 `fp16` 两种构建策略；两者都会把 optimized ONNX 交给隔离子进程执行 OpenVINO `convert_model/save_model`，避免当前 Windows/conda 环境里的 torch/OpenVINO 同进程冲突
+- 当前 `openvino-ir` 构建元数据会回写 `build_precision` 与 `compress_to_fp16`，结果报告会额外公开 `conversion_options.openvino_ir_precision`
 - 当前 planner 已经预留 `tensorrt-engine`、`rknn` 的 build 图谱，但 service 仍会拒绝这些目标
 - 当前 ONNX 校验包含两层：`onnx.checker` 合法性校验，以及 PyTorch 与 ONNXRuntime 的最小数值对齐校验
 - 当前 ONNX 优化使用 `onnxsim`，并把 optimized 产物登记为独立 `ModelBuild`
@@ -739,13 +742,14 @@
 
 - PyTorch ModelVersion 发布模板：`model_version_id + runtime_backend=pytorch + device_name=cpu|cuda`
 - ONNX ModelBuild 发布模板：`model_build_id={{onnxModelBuildId}}|{{onnxOptimizedModelBuildId}} + runtime_backend=onnxruntime + device_name=cpu`
-- OpenVINO ModelBuild 发布模板：`model_build_id={{openvinoIrModelBuildId}} + runtime_backend=openvino + device_name=cpu|auto|gpu|npu`
+- OpenVINO ModelBuild 发布模板：`model_build_id={{openvinoIrModelBuildId}} + runtime_backend=openvino + device_name=cpu|auto|gpu|npu + runtime_precision=fp32|fp16`
 
 #### 当前 deployment 运行方式矩阵
 
 - `ModelVersion` 默认走 `pytorch`
 - `ModelBuild` 当前已经支持绑定 `onnx`、`onnx-optimized`、`openvino-ir`，并自动解析到 `onnxruntime` 或 `openvino`
-- 当前已真实接通：`pytorch fp32/fp16 cpu/cuda`、`onnxruntime fp32 cpu`、`openvino fp32 auto/cpu/gpu/npu`
+- 当前已真实接通：`pytorch fp32/fp16 cpu/cuda`、`onnxruntime fp32 cpu`、`openvino fp32 auto/cpu/gpu/npu + fp16 gpu/npu`
+- 当前 openvino fp16 只对显式 `device_name=gpu|npu` 开放；`device_name=auto|cpu` 仍要求 `runtime_precision=fp32`
 - 当前已进入 create 校验语义但尚未接通真实 runtime：`tensorrt cuda`
 
 #### 当前 deployment 响应重点

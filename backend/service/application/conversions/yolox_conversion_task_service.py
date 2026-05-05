@@ -48,6 +48,8 @@ from backend.workers.conversion.yolox_conversion_runner import (
 YOLOX_CONVERSION_TASK_KIND = "yolox-conversion"
 YOLOX_CONVERSION_QUEUE_NAME = "yolox-conversions"
 _EXECUTABLE_TARGET_FORMATS = frozenset({"onnx", "onnx-optimized", "openvino-ir"})
+_OPENVINO_IR_PRECISION_OPTION_KEY = "openvino_ir_precision"
+_SUPPORTED_OPENVINO_IR_BUILD_PRECISIONS = frozenset({"fp32", "fp16"})
 
 
 @dataclass(frozen=True)
@@ -682,6 +684,7 @@ class SqlAlchemyYoloXConversionTaskService:
             "requested_target_formats": list(requested_target_formats),
             "planned_target_formats": list(plan.target_formats),
             "executed_step_kinds": list(run_result.metadata.get("executed_step_kinds", [])),
+            "conversion_options": dict(run_result.metadata.get("conversion_options", {})),
             "validation_summary": dict(run_result.metadata.get("validation_summary", {})),
             "outputs": [
                 {
@@ -715,6 +718,8 @@ class SqlAlchemyYoloXConversionTaskService:
             raise InvalidRequestError("source_model_version_id 不能为空")
         if not request.target_formats:
             raise InvalidRequestError("target_formats 不能为空")
+        if "openvino-ir" in request.target_formats:
+            _resolve_openvino_ir_build_precision(request.extra_options)
 
     def _validate_executable_targets(self, target_formats: tuple[str, ...]) -> None:
         """限制当前只执行已经真实接通的 conversion 目标。"""
@@ -841,3 +846,26 @@ def _read_optional_payload_str(payload: dict[str, object], key: str) -> str | No
     if isinstance(value, str) and value.strip():
         return value.strip()
     return None
+
+
+def _resolve_openvino_ir_build_precision(extra_options: dict[str, object]) -> str:
+    """从 extra_options 中解析 OpenVINO IR 构建精度策略。
+
+    参数：
+    - extra_options：转换任务附加选项。
+
+    返回：
+    - str：OpenVINO IR 构建精度；当前支持 fp32 或 fp16。
+    """
+
+    raw_precision = extra_options.get(_OPENVINO_IR_PRECISION_OPTION_KEY)
+    if raw_precision is None:
+        return "fp32"
+    if isinstance(raw_precision, str):
+        normalized_precision = raw_precision.strip().lower()
+        if normalized_precision in _SUPPORTED_OPENVINO_IR_BUILD_PRECISIONS:
+            return normalized_precision
+    raise InvalidRequestError(
+        "openvino_ir_precision 必须是 fp32 或 fp16",
+        details={_OPENVINO_IR_PRECISION_OPTION_KEY: raw_precision},
+    )
