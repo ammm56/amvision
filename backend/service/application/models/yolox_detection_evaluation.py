@@ -19,6 +19,7 @@ from backend.service.application.models.yolox_detection_training import (
     _convert_predictions_to_coco_detections,
     _extract_batch_image_id,
     _extract_batch_image_info,
+    _load_coco_ground_truth_silently,
     _load_warm_start_checkpoint,
     _require_training_imports,
     _resolve_coco_splits,
@@ -334,7 +335,10 @@ def _evaluate_coco_metrics(
 ) -> dict[str, object]:
     """基于 COCOeval 生成全局 mAP 和 per-class metrics。"""
 
-    ground_truth = imports.COCO(str(annotation_file))
+    ground_truth = _load_coco_ground_truth_silently(
+        imports=imports,
+        annotation_file=annotation_file,
+    )
     per_class_metrics = _build_zero_per_class_metrics(
         ground_truth=ground_truth,
         category_ids=category_ids,

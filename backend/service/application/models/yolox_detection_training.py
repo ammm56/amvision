@@ -1804,6 +1804,21 @@ def _evaluate_validation_losses(
     }
 
 
+def _load_coco_ground_truth_silently(*, imports: Any, annotation_file: Path) -> Any:
+    """静默加载 COCO ground truth，避免 pycocotools 默认把索引日志打印到 stdout。
+
+    参数：
+    - imports：当前训练依赖对象集合，要求提供 COCO 构造器。
+    - annotation_file：COCO annotation JSON 绝对路径。
+
+    返回：
+    - Any：pycocotools.COCO 实例。
+    """
+
+    with redirect_stdout(io.StringIO()):
+        return imports.COCO(str(annotation_file))
+
+
 def _evaluate_validation_map(
     *,
     imports: _YoloXTrainingImports,
@@ -1858,7 +1873,10 @@ def _evaluate_validation_map(
     if not detections:
         return {"map50": 0.0, "map50_95": 0.0}
 
-    ground_truth = imports.COCO(str(annotation_file))
+    ground_truth = _load_coco_ground_truth_silently(
+        imports=imports,
+        annotation_file=annotation_file,
+    )
     with redirect_stdout(io.StringIO()):
         coco_detections = ground_truth.loadRes(detections)
         coco_evaluator = imports.COCOeval(ground_truth, coco_detections, "bbox")

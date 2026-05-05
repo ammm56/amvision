@@ -20,6 +20,7 @@ from backend.service.application.models.yolox_detection_training import (
     YoloXTrainingEpochProgress,
     _LoadedResumeState,
     _build_checkpoint_state,
+    _load_coco_ground_truth_silently,
     _load_resume_checkpoint,
     _resolve_input_size,
     run_yolox_detection_training,
@@ -205,6 +206,32 @@ def test_yolox_training_worker_uses_test_split_as_validation_when_val_is_missing
         assert progress_event.payload["progress"]["validation_ran"] is True
     finally:
         session_factory.engine.dispose()
+
+
+def test_load_coco_ground_truth_silently_suppresses_stdout(tmp_path: Path, capsys) -> None:
+    """验证静默加载 COCO ground truth 不会把第三方索引日志写到 stdout。"""
+
+    annotation_file = tmp_path / "annotations.json"
+    annotation_file.write_text("{}", encoding="utf-8")
+
+    class _FakeCOCOFactory:
+        """模拟会向 stdout 打印索引日志的 COCO 构造器。"""
+
+        def __call__(self, annotation_path: str) -> dict[str, str]:
+            print("loading annotations into memory...")
+            print("Done (t=0.00s)")
+            print("creating index...")
+            print("index created!")
+            return {"annotation_path": annotation_path}
+
+    result = _load_coco_ground_truth_silently(
+        imports=SimpleNamespace(COCO=_FakeCOCOFactory()),
+        annotation_file=annotation_file,
+    )
+
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert result["annotation_path"] == str(annotation_file)
 
 
 def test_yolox_training_worker_can_warm_start_from_existing_model_version(tmp_path: Path) -> None:
