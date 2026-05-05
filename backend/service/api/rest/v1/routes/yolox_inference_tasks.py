@@ -22,6 +22,8 @@ from backend.service.api.deps.yolox_deployment_process_supervisor import (
 from backend.service.application.deployments.yolox_deployment_service import SqlAlchemyYoloXDeploymentService
 from backend.service.application.errors import InvalidRequestError, PermissionDeniedError, ResourceNotFoundError
 from backend.service.application.models.yolox_inference_payloads import (
+	YOLOX_INFERENCE_INPUT_TRANSPORT_MEMORY,
+	YOLOX_INFERENCE_INPUT_TRANSPORT_STORAGE,
 	YoloXInferenceInputSource,
 	build_yolox_inference_payload,
 	normalize_yolox_inference_input,
@@ -68,6 +70,10 @@ class YoloXDirectInferenceRequestBody(BaseModel):
 	input_file_id: str | None = Field(default=None, description="平台内输入文件 id；当前为保留字段")
 	input_uri: str | None = Field(default=None, description="输入图片 URI 或 object key")
 	image_base64: str | None = Field(default=None, description="直接提交的 base64 图片内容")
+	input_transport_mode: Literal["storage", "memory"] = Field(
+		default="storage",
+		description="同步输入传输模式；memory 仅支持 image_base64 或 multipart input_image，并绕过输入临时文件写盘",
+	)
 	score_threshold: float | None = Field(default=None, ge=0.0, le=1.0, description="推理阈值")
 	save_result_image: bool = Field(default=False, description="是否输出预览图")
 	return_preview_image_base64: bool = Field(default=False, description="是否在响应中直接返回预览图 base64")
@@ -305,11 +311,15 @@ async def infer_yolox_deployment_instance(
 		dataset_storage=dataset_storage,
 		request_id=request_id,
 		source=input_source,
+		input_transport_mode=body.input_transport_mode,
 	)
 	execution_result = run_yolox_inference_task(
 		deployment_process_supervisor=deployment_process_supervisor,
 		process_config=process_config,
-		input_uri=normalized_input.input_uri,
+		input_uri=normalized_input.input_uri
+		if normalized_input.input_transport_mode == YOLOX_INFERENCE_INPUT_TRANSPORT_STORAGE
+		else None,
+		input_image_bytes=normalized_input.input_image_bytes,
 		score_threshold=_resolve_requested_score_threshold(body.score_threshold),
 		save_result_image=body.save_result_image,
 		return_preview_image_base64=body.return_preview_image_base64,
@@ -320,7 +330,9 @@ async def infer_yolox_deployment_instance(
 	if body.save_result_image and execution_result.preview_image_bytes is not None:
 		preview_image_uri = f"{output_prefix}/preview.jpg"
 		dataset_storage.write_bytes(preview_image_uri, execution_result.preview_image_bytes)
-	result_object_key = f"{output_prefix}/raw-result.json"
+	result_object_key = None
+	if normalized_input.input_transport_mode == YOLOX_INFERENCE_INPUT_TRANSPORT_STORAGE:
+		result_object_key = f"{output_prefix}/raw-result.json"
 	payload = build_yolox_inference_payload(
 		request_id=request_id,
 		inference_task_id=None,
@@ -336,7 +348,8 @@ async def infer_yolox_deployment_instance(
 		result_object_key=result_object_key,
 	)
 	serialized_payload = serialize_yolox_inference_payload(payload)
-	dataset_storage.write_json(result_object_key, serialized_payload)
+	if result_object_key is not None:
+		dataset_storage.write_json(result_object_key, serialized_payload)
 	return YoloXInferencePayloadResponse.model_validate(serialized_payload)
 
 
@@ -585,6 +598,7 @@ async def _read_yolox_inference_request_payload(
 			"input_file_id": _read_optional_form_str(form, "input_file_id"),
 			"input_uri": _read_optional_form_str(form, "input_uri"),
 			"image_base64": _read_optional_form_str(form, "image_base64"),
+			"input_transport_mode": _read_optional_form_str(form, "input_transport_mode"),
 			"score_threshold": _parse_optional_form_float(form.get("score_threshold"), field_name="score_threshold"),
 			"save_result_image": _parse_optional_form_bool(form.get("save_result_image"), field_name="save_result_image", default=False),
 			"return_preview_image_base64": _parse_optional_form_bool(form.get("return_preview_image_base64"), field_name="return_preview_image_base64", default=False),

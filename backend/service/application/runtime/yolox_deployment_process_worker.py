@@ -173,7 +173,8 @@ def _run_inference_request(
         execution = runtime_pool.run_inference(
             config=runtime_pool_config,
             request=YoloXPredictionRequest(
-                input_uri=_require_payload_str(payload, "input_uri"),
+                input_uri=_read_payload_optional_str(payload, "input_uri"),
+                input_image_bytes=_read_payload_optional_bytes(payload, "input_image_bytes"),
                 score_threshold=_require_payload_float(payload, "score_threshold"),
                 save_result_image=bool(payload.get("save_result_image") is True),
                 extra_options=_read_payload_dict(payload, "extra_options"),
@@ -290,6 +291,24 @@ def _require_payload_str(payload: dict[str, object], key: str) -> str:
     if isinstance(value, str) and value.strip():
         return value.strip()
     raise InvalidRequestError("deployment 推理请求缺少必要字符串字段", details={"field": key})
+
+
+def _read_payload_optional_str(payload: dict[str, object], key: str) -> str | None:
+    """从跨进程请求负载中读取可选字符串字段。"""
+
+    value = payload.get(key)
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    return None
+
+
+def _read_payload_optional_bytes(payload: dict[str, object], key: str) -> bytes | None:
+    """从跨进程请求负载中读取可选二进制字段。"""
+
+    value = payload.get(key)
+    if isinstance(value, bytes) and value:
+        return value
+    return None
 
 
 def _require_payload_float(payload: dict[str, object], key: str) -> float:

@@ -727,6 +727,7 @@
 - `input_uri`
 - `image_base64`
 - `input_image`（仅 `multipart/form-data` 文件字段）
+- `input_transport_mode`（仅同步 `/infer` 使用；支持 `storage`、`memory`）
 - `score_threshold`
 - `save_result_image`
 - `return_preview_image_base64`
@@ -741,6 +742,13 @@
 - `input_file_id` 当前仍是保留字段，会返回 `invalid_request`
 - multipart 场景下，`extra_options` 以 JSON 字符串传入
 - 服务会在写入临时输入前校验 `image_base64` 与 `input_image` 是否为可读取图片；损坏图片会直接返回 `invalid_request`，不会继续下发到 deployment 推理进程
+- 同步 `/infer` 额外支持 `input_transport_mode`：
+  - `storage`：保持当前默认行为，Base64 或上传文件会先写入临时输入文件，再按 `input_uri` 进入 deployment 推理进程
+  - `memory`：只允许 `image_base64` 或 `input_image`，请求图片不会落到临时目录，会直接以原始字节送入 deployment 推理进程
+- 当同步 `/infer` 使用 `input_transport_mode=memory` 时：
+  - 响应里的 `input_uri` 会返回 `memory://...` 形式的虚拟 URI，用于标识这次调用没有输入落盘
+  - 响应里的 `result_object_key` 为 `null`，因为不会写 `raw-result.json`
+  - 如果同时设置 `save_result_image=true`，预览图仍会按现有语义写盘；如果只需要直接返回图像，应使用 `return_preview_image_base64=true`
 - 同步 `/infer` 真正执行前，需要先通过 `sync/start` 或 `sync/warmup` 拉起对应 deployment 的 sync 子进程
 - 异步 `inference-tasks` 创建前，需要先通过 `async/start` 或 `async/warmup` 拉起对应 deployment 的 async 子进程；未启动时 create 接口会直接返回 `invalid_request`
 
@@ -778,6 +786,7 @@
 - 当前 deployment create 允许绑定 `ModelVersion` 或 `ModelBuild`，但 runtime 仍只支持 `pytorch`
 - 当前 inference 执行通过 DeploymentInstance 解析运行时快照，并在 deployment 子进程内部复用常驻会话
 - 当前同步 `/infer` 与异步 `inference-tasks` 使用同一套结果载荷字段
+- 当前同步 `/infer` 已支持 `input_transport_mode=memory`，用于 Base64 与 multipart 上传图片的高速内存直通；异步 `inference-tasks` 仍保持 storage 模式
 - 当前 `preview_image_base64` 仅在 `return_preview_image_base64=true` 时生成
 - 当前 `preview_image_object_key` 仅在 `save_result_image=true` 时生成
 - 当前 sync 和 async 已经提升为独立 deployment 进程监督单元；如果启动多个 backend-service 或 worker 进程，每个父进程仍只负责自己装配出来的监督器与子进程

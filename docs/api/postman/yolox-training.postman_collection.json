@@ -1987,7 +1987,7 @@
                 ],
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"image_base64\": \"{{inferenceImageBase64}}\",\n  \"input_file_id\": null,\n  \"score_threshold\": {{inferenceScoreThreshold}},\n  \"save_result_image\": {{inferenceSaveResultImage}},\n  \"return_preview_image_base64\": {{inferenceReturnPreviewImageBase64}},\n  \"extra_options\": {}\n}",
+                  "raw": "{\n  \"image_base64\": \"{{inferenceImageBase64}}\",\n  \"input_file_id\": null,\n  \"input_transport_mode\": \"{{directInferenceInputTransportMode}}\",\n  \"score_threshold\": {{inferenceScoreThreshold}},\n  \"save_result_image\": {{inferenceSaveResultImage}},\n  \"return_preview_image_base64\": {{inferenceReturnPreviewImageBase64}},\n  \"extra_options\": {}\n}",
                   "options": {
                     "raw": {
                       "language": "json"
@@ -2009,7 +2009,7 @@
                     "infer"
                   ]
                 },
-                "description": "直接执行一次同步 YOLOX 推理并返回结果，输入来源为 image_base64。请求体只保留这一个输入字段，便于单独调试 base64 上传路径。image_base64 既可以填纯 base64 内容，也可以改成 data:image/png;base64,{{inferenceImageBase64}} 这类 data URI；但 application/json 请求体里的字符串必须保持单行。"
+                "description": "直接执行一次同步 YOLOX 推理并返回结果，输入来源为 image_base64。请求体只保留这一个输入字段，便于单独调试 base64 上传路径。image_base64 既可以填纯 base64 内容，也可以改成 data:image/png;base64,{{inferenceImageBase64}} 这类 data URI；但 application/json 请求体里的字符串必须保持单行。默认增加 input_transport_mode={{directInferenceInputTransportMode}}；当取值为 memory 时，请求图片不会写入临时输入目录，而是直接以内存字节进入 deployment 推理进程。"
               },
               "response": []
             },
@@ -2059,6 +2059,11 @@
                       "src": "{{inferenceUploadImagePath}}"
                     },
                     {
+                      "key": "input_transport_mode",
+                      "value": "{{directInferenceInputTransportMode}}",
+                      "type": "text"
+                    },
+                    {
                       "key": "score_threshold",
                       "value": "{{inferenceScoreThreshold}}",
                       "type": "text"
@@ -2095,7 +2100,7 @@
                     "infer"
                   ]
                 },
-                "description": "直接执行一次同步 YOLOX 推理并返回结果，输入来源为 multipart/form-data 的 input_image 文件字段。不要再同时提交 input_uri 或 image_base64。"
+                "description": "直接执行一次同步 YOLOX 推理并返回结果，输入来源为 multipart/form-data 的 input_image 文件字段。不要再同时提交 input_uri 或 image_base64。默认增加 input_transport_mode={{directInferenceInputTransportMode}}；当取值为 memory 时，请求图片不会写入临时输入目录，而是直接以内存字节进入 deployment 推理进程。"
               },
               "response": []
             }
@@ -2736,6 +2741,10 @@
     {
       "key": "inferenceImageUri",
       "value": "runtime-inputs/image-1.jpg"
+    },
+    {
+      "key": "directInferenceInputTransportMode",
+      "value": "memory"
     },
     {
       "key": "inferenceImageBase64",

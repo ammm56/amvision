@@ -262,6 +262,69 @@ def test_direct_inference_accepts_base64_and_round_robins_instances(
         session_factory.engine.dispose()
 
 
+def test_direct_inference_memory_transport_uses_in_memory_base64_bytes(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """验证同步推理的 memory 模式会直接把 base64 图片字节送入 deployment，而不会写输入文件或 raw-result。"""
+
+    client, session_factory, dataset_storage, _queue_backend = _create_test_client(tmp_path)
+    model_version_id = _seed_model_version(
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+    )
+    sync_supervisor = client.app.state.yolox_sync_deployment_process_supervisor
+
+    def fail_write_bytes(*_args, **_kwargs):
+        raise AssertionError("memory 模式不应写入输入或预览图片文件")
+
+    def fail_write_json(*_args, **_kwargs):
+        raise AssertionError("memory 模式不应写入同步 raw-result.json")
+
+    try:
+        with client:
+            deployment_response = client.post(
+                "/api/v1/models/yolox/deployment-instances",
+                headers=_build_model_headers(),
+                json={
+                    "project_id": "project-1",
+                    "model_version_id": model_version_id,
+                    "display_name": "direct inference memory base64 deployment",
+                },
+            )
+            assert deployment_response.status_code == 201
+            deployment_instance_id = deployment_response.json()["deployment_instance_id"]
+
+            start_response = client.post(
+                f"/api/v1/models/yolox/deployment-instances/{deployment_instance_id}/sync/start",
+                headers=_build_model_headers(),
+            )
+            assert start_response.status_code == 200
+
+            monkeypatch.setattr(dataset_storage, "write_bytes", fail_write_bytes)
+            monkeypatch.setattr(dataset_storage, "write_json", fail_write_json)
+
+            response = client.post(
+                f"/api/v1/models/yolox/deployment-instances/{deployment_instance_id}/infer",
+                headers=_build_model_read_headers(),
+                json={
+                    "image_base64": _VALID_TEST_IMAGE_BASE64,
+                    "input_transport_mode": "memory",
+                    "return_preview_image_base64": True,
+                },
+            )
+
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["input_uri"].startswith("memory://")
+        assert payload["result_object_key"] is None
+        assert payload["preview_image_base64"] is not None
+        assert sync_supervisor.inference_requests[-1].input_uri is None
+        assert sync_supervisor.inference_requests[-1].input_image_bytes == _build_valid_test_image_bytes()
+    finally:
+        session_factory.engine.dispose()
+
+
 def test_direct_inference_accepts_data_uri_and_rejects_invalid_image_without_breaking_runtime(
     tmp_path: Path,
 ) -> None:
@@ -318,6 +381,70 @@ def test_direct_inference_accepts_data_uri_and_rejects_invalid_image_without_bre
         valid_payload = valid_response.json()
         assert valid_payload["input_source_kind"] == "image_base64"
         assert valid_payload["preview_image_base64"] is not None
+    finally:
+        session_factory.engine.dispose()
+
+
+def test_direct_inference_memory_transport_accepts_multipart_without_input_disk_write(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """验证同步推理的 memory 模式可以直接处理 multipart 上传图片，而不会写输入文件或 raw-result。"""
+
+    client, session_factory, dataset_storage, _queue_backend = _create_test_client(tmp_path)
+    model_version_id = _seed_model_version(
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+    )
+    sync_supervisor = client.app.state.yolox_sync_deployment_process_supervisor
+
+    def fail_write_bytes(*_args, **_kwargs):
+        raise AssertionError("memory 模式不应写入输入或预览图片文件")
+
+    def fail_write_json(*_args, **_kwargs):
+        raise AssertionError("memory 模式不应写入同步 raw-result.json")
+
+    try:
+        with client:
+            deployment_response = client.post(
+                "/api/v1/models/yolox/deployment-instances",
+                headers=_build_model_headers(),
+                json={
+                    "project_id": "project-1",
+                    "model_version_id": model_version_id,
+                    "display_name": "direct inference memory multipart deployment",
+                },
+            )
+            assert deployment_response.status_code == 201
+            deployment_instance_id = deployment_response.json()["deployment_instance_id"]
+
+            start_response = client.post(
+                f"/api/v1/models/yolox/deployment-instances/{deployment_instance_id}/sync/start",
+                headers=_build_model_headers(),
+            )
+            assert start_response.status_code == 200
+
+            monkeypatch.setattr(dataset_storage, "write_bytes", fail_write_bytes)
+            monkeypatch.setattr(dataset_storage, "write_json", fail_write_json)
+
+            response = client.post(
+                f"/api/v1/models/yolox/deployment-instances/{deployment_instance_id}/infer",
+                headers=_build_model_read_headers(),
+                data={
+                    "input_transport_mode": "memory",
+                    "return_preview_image_base64": "true",
+                },
+                files={"input_image": ("upload.png", _build_valid_test_image_bytes(), "image/png")},
+            )
+
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["input_source_kind"] == "multipart"
+        assert payload["input_uri"].startswith("memory://")
+        assert payload["result_object_key"] is None
+        assert payload["preview_image_base64"] is not None
+        assert sync_supervisor.inference_requests[-1].input_uri is None
+        assert sync_supervisor.inference_requests[-1].input_image_bytes == _build_valid_test_image_bytes()
     finally:
         session_factory.engine.dispose()
 
@@ -549,6 +676,7 @@ class FakeDeploymentProcessSupervisor(YoloXDeploymentProcessSupervisor):
         self._states: dict[str, _FakeDeploymentProcessState] = {}
         self._next_process_id = 2000
         self.load_calls: list[str] = []
+        self.inference_requests: list[object] = []
 
     def ensure_deployment(self, config: YoloXDeploymentProcessConfig) -> YoloXDeploymentProcessStatus:
         state = self._ensure_state(config)
@@ -596,6 +724,7 @@ class FakeDeploymentProcessSupervisor(YoloXDeploymentProcessSupervisor):
         instance_index = state.next_instance_index % config.instance_count
         state.next_instance_index += 1
         self._warm_instance(state, instance_index)
+        self.inference_requests.append(request)
         instance_id = f"{config.deployment_instance_id}:instance-{instance_index}"
         return YoloXDeploymentProcessExecution(
             deployment_instance_id=config.deployment_instance_id,
@@ -622,6 +751,7 @@ class FakeDeploymentProcessSupervisor(YoloXDeploymentProcessSupervisor):
                     metadata={
                         "model_version_id": config.runtime_target.model_version_id,
                         "input_uri": request.input_uri,
+                        "has_input_image_bytes": request.input_image_bytes is not None,
                         "runtime_mode": self.runtime_mode,
                     },
                 ),

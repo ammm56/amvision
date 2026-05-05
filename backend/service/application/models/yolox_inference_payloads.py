@@ -19,6 +19,8 @@ if TYPE_CHECKING:
 YOLOX_INFERENCE_INPUT_SOURCE_URI = "input_uri"
 YOLOX_INFERENCE_INPUT_SOURCE_BASE64 = "image_base64"
 YOLOX_INFERENCE_INPUT_SOURCE_MULTIPART = "multipart"
+YOLOX_INFERENCE_INPUT_TRANSPORT_STORAGE = "storage"
+YOLOX_INFERENCE_INPUT_TRANSPORT_MEMORY = "memory"
 
 
 @dataclass(frozen=True)
@@ -48,11 +50,15 @@ class YoloXNormalizedInferenceInput:
     - input_uri：归一化后可直接读取的输入 URI。
     - input_source_kind：输入来源类型。
     - input_file_id：平台文件 id；当前固定为空。
+    - input_image_bytes：memory 模式下直接送入推理链路的原始图片字节。
+    - input_transport_mode：输入传输模式；storage 表示经本地文件，memory 表示内存直通。
     """
 
     input_uri: str
     input_source_kind: str
     input_file_id: str | None = None
+    input_image_bytes: bytes | None = None
+    input_transport_mode: str = YOLOX_INFERENCE_INPUT_TRANSPORT_STORAGE
 
 
 @dataclass(frozen=True)
@@ -113,6 +119,7 @@ def normalize_yolox_inference_input(
     dataset_storage: LocalDatasetStorage,
     request_id: str,
     source: YoloXInferenceInputSource,
+    input_transport_mode: str = YOLOX_INFERENCE_INPUT_TRANSPORT_STORAGE,
 ) -> YoloXNormalizedInferenceInput:
     """按 one-of 规则把推理输入归一化为可直接读取的 input_uri。
 
@@ -120,10 +127,20 @@ def normalize_yolox_inference_input(
     - dataset_storage：本地文件存储服务。
     - request_id：当前请求 id。
     - source：原始输入源。
+    - input_transport_mode：输入传输模式；storage 会写入本地文件，memory 会直接保留图片字节。
 
     返回：
     - YoloXNormalizedInferenceInput：归一化后的输入信息。
     """
+
+    if input_transport_mode not in {
+        YOLOX_INFERENCE_INPUT_TRANSPORT_STORAGE,
+        YOLOX_INFERENCE_INPUT_TRANSPORT_MEMORY,
+    }:
+        raise InvalidRequestError(
+            "input_transport_mode 仅支持 storage 或 memory",
+            details={"input_transport_mode": input_transport_mode},
+        )
 
     normalized_input_uri = source.input_uri.strip() if isinstance(source.input_uri, str) and source.input_uri.strip() else None
     normalized_base64 = source.image_base64.strip() if isinstance(source.image_base64, str) and source.image_base64.strip() else None
@@ -144,6 +161,11 @@ def normalize_yolox_inference_input(
         )
 
     if normalized_input_uri is not None:
+        if input_transport_mode == YOLOX_INFERENCE_INPUT_TRANSPORT_MEMORY:
+            raise InvalidRequestError(
+                "input_transport_mode=memory 仅支持 image_base64 或 multipart input_image",
+                details={"input_source_kind": YOLOX_INFERENCE_INPUT_SOURCE_URI},
+            )
         resolved_path = dataset_storage.resolve(normalized_input_uri)
         if not resolved_path.is_file():
             raise InvalidRequestError(
@@ -157,11 +179,19 @@ def normalize_yolox_inference_input(
 
     if normalized_base64 is not None:
         image_bytes, suffix = _decode_image_base64(normalized_base64)
+        if input_transport_mode == YOLOX_INFERENCE_INPUT_TRANSPORT_MEMORY:
+            return YoloXNormalizedInferenceInput(
+                input_uri=_build_memory_input_uri(request_id=request_id, suffix=suffix),
+                input_source_kind=YOLOX_INFERENCE_INPUT_SOURCE_BASE64,
+                input_image_bytes=image_bytes,
+                input_transport_mode=input_transport_mode,
+            )
         input_uri = f"runtime/inference-inputs/{request_id}/input{suffix}"
         dataset_storage.write_bytes(input_uri, image_bytes)
         return YoloXNormalizedInferenceInput(
             input_uri=input_uri,
             input_source_kind=YOLOX_INFERENCE_INPUT_SOURCE_BASE64,
+            input_transport_mode=input_transport_mode,
         )
 
     suffix = _infer_suffix_from_upload(
@@ -170,11 +200,19 @@ def normalize_yolox_inference_input(
     )
     normalized_upload_bytes = upload_bytes or b""
     _validate_image_bytes(image_bytes=normalized_upload_bytes, field_name="input_image")
+    if input_transport_mode == YOLOX_INFERENCE_INPUT_TRANSPORT_MEMORY:
+        return YoloXNormalizedInferenceInput(
+            input_uri=_build_memory_input_uri(request_id=request_id, suffix=suffix),
+            input_source_kind=YOLOX_INFERENCE_INPUT_SOURCE_MULTIPART,
+            input_image_bytes=normalized_upload_bytes,
+            input_transport_mode=input_transport_mode,
+        )
     input_uri = f"runtime/inference-inputs/{request_id}/input{suffix}"
     dataset_storage.write_bytes(input_uri, normalized_upload_bytes)
     return YoloXNormalizedInferenceInput(
         input_uri=input_uri,
         input_source_kind=YOLOX_INFERENCE_INPUT_SOURCE_MULTIPART,
+        input_transport_mode=input_transport_mode,
     )
 
 
@@ -280,6 +318,20 @@ def _decode_image_base64(value: str) -> tuple[bytes, str]:
         raise InvalidRequestError("image_base64 不是合法的 base64 图片内容") from error
     _validate_image_bytes(image_bytes=image_bytes, field_name="image_base64")
     return image_bytes, suffix
+
+
+def _build_memory_input_uri(*, request_id: str, suffix: str) -> str:
+    """构建 memory 模式下用于响应回显的虚拟输入 URI。
+
+    参数：
+    - request_id：当前请求 id。
+    - suffix：推断出的图片后缀。
+
+    返回：
+    - str：不落磁盘的 memory URI。
+    """
+
+    return f"memory://runtime/inference-inputs/{request_id}/input{suffix}"
 
 
 def _validate_image_bytes(*, image_bytes: bytes, field_name: str) -> None:

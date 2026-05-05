@@ -286,6 +286,7 @@ class YoloXDeploymentProcessSupervisor:
             action="infer",
             payload={
                 "input_uri": request.input_uri,
+                "input_image_bytes": request.input_image_bytes,
                 "score_threshold": request.score_threshold,
                 "save_result_image": request.save_result_image,
                 "extra_options": dict(request.extra_options),

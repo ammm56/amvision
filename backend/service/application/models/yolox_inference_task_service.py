@@ -621,18 +621,34 @@ def run_yolox_inference_task(
     *,
     deployment_process_supervisor: YoloXDeploymentProcessSupervisor,
     process_config: YoloXDeploymentProcessConfig,
-    input_uri: str,
+    input_uri: str | None,
+    input_image_bytes: bytes | None = None,
     score_threshold: float,
     save_result_image: bool,
     return_preview_image_base64: bool,
     extra_options: dict[str, object],
 ) -> YoloXInferenceExecutionResult:
-    """执行一次最小 YOLOX 正式推理。"""
+    """执行一次最小 YOLOX 正式推理。
+
+    参数：
+    - deployment_process_supervisor：deployment 进程监督器。
+    - process_config：本次推理命中的 deployment 配置。
+    - input_uri：storage 模式下的输入文件 URI。
+    - input_image_bytes：memory 模式下直接传递给运行时的原始图片字节。
+    - score_threshold：置信度阈值。
+    - save_result_image：是否生成预览图。
+    - return_preview_image_base64：是否直接返回预览图 base64。
+    - extra_options：附加推理参数。
+
+    返回：
+    - YoloXInferenceExecutionResult：标准化后的推理结果。
+    """
 
     execution = deployment_process_supervisor.run_inference(
         config=process_config,
         request=YoloXPredictionRequest(
             input_uri=input_uri,
+            input_image_bytes=input_image_bytes,
             score_threshold=score_threshold,
             save_result_image=save_result_image or return_preview_image_base64,
             extra_options=dict(extra_options),

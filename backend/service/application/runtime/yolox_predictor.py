@@ -25,15 +25,17 @@ class YoloXPredictionRequest:
     """描述一次 YOLOX 单图预测请求。
 
     字段：
-    - input_uri：输入图片 URI 或 object key。
+    - input_uri：storage 模式下的输入图片 URI 或 object key。
+    - input_image_bytes：memory 模式下直接提供的原始图片字节。
     - score_threshold：预测阈值。
     - save_result_image：是否生成预览图。
     - extra_options：附加运行时选项。
     """
 
-    input_uri: str
     score_threshold: float
     save_result_image: bool
+    input_uri: str | None = None
+    input_image_bytes: bytes | None = None
     extra_options: dict[str, object] = field(default_factory=dict)
 
 
@@ -211,17 +213,12 @@ class PyTorchYoloXRuntimeSession:
         - YoloXPredictionExecutionResult：预测执行结果。
         """
 
-        image_path = resolve_local_file_path(
+        image = _load_prediction_image(
+            cv2_module=self.imports.cv2,
+            np_module=self.imports.np,
             dataset_storage=self.dataset_storage,
-            storage_uri=request.input_uri,
-            field_name="input_uri",
+            request=request,
         )
-        image = self.imports.cv2.imread(str(image_path))
-        if image is None:
-            raise InvalidRequestError(
-                "input_uri 指向的图片无法读取",
-                details={"input_uri": request.input_uri},
-            )
 
         input_tensor, resize_ratio = _preprocess_image(
             cv2_module=self.imports.cv2,
@@ -328,6 +325,59 @@ class PyTorchYoloXPredictor:
             dataset_storage=self.dataset_storage,
             runtime_target=runtime_target,
         ).predict(request)
+
+
+def _load_prediction_image(
+    *,
+    cv2_module: Any,
+    np_module: Any,
+    dataset_storage: LocalDatasetStorage,
+    request: YoloXPredictionRequest,
+) -> Any:
+    """按 storage 或 memory 模式加载本次推理输入图片。
+
+    参数：
+    - cv2_module：OpenCV 模块。
+    - np_module：NumPy 模块。
+    - dataset_storage：本地文件存储服务。
+    - request：推理请求。
+
+    返回：
+    - Any：OpenCV 读取后的图片矩阵。
+    """
+
+    has_input_uri = isinstance(request.input_uri, str) and request.input_uri.strip()
+    has_input_image_bytes = isinstance(request.input_image_bytes, bytes) and bool(request.input_image_bytes)
+    if has_input_uri == has_input_image_bytes:
+        raise InvalidRequestError(
+            "推理请求必须且只能提供 input_uri 或 input_image_bytes 其中一个",
+            details={
+                "provided_input_uri": bool(has_input_uri),
+                "provided_input_image_bytes": bool(has_input_image_bytes),
+            },
+        )
+    if has_input_uri:
+        image_path = resolve_local_file_path(
+            dataset_storage=dataset_storage,
+            storage_uri=request.input_uri or "",
+            field_name="input_uri",
+        )
+        image = cv2_module.imread(str(image_path))
+        if image is None:
+            raise InvalidRequestError(
+                "input_uri 指向的图片无法读取",
+                details={"input_uri": request.input_uri},
+            )
+        return image
+
+    buffer = np_module.frombuffer(request.input_image_bytes or b"", dtype=np_module.uint8)
+    image = cv2_module.imdecode(buffer, cv2_module.IMREAD_COLOR)
+    if image is None:
+        raise InvalidRequestError(
+            "input_image_bytes 不是可读取的图片内容",
+            details={"field": "input_image_bytes"},
+        )
+    return image
 
 
 def serialize_detection(detection: YoloXPredictionDetection) -> dict[str, object]:

@@ -447,6 +447,7 @@
   - input_uri
   - image_base64
   - input_file_id
+  - input_transport_mode：仅同步 `/infer` 使用，支持 `storage`、`memory`
   - score_threshold
   - save_result_image
   - return_preview_image_base64
@@ -456,11 +457,14 @@
   - input_uri
   - image_base64
   - input_file_id
+  - input_transport_mode：仅同步 `/infer` 使用，支持 `storage`、`memory`
   - score_threshold
   - save_result_image
   - return_preview_image_base64
   - extra_options：JSON 字符串
 - 当前 `input_file_id` 仍是保留字段，会返回 `invalid_request`
+- 当前同步 `/infer` 支持 `input_transport_mode=memory`：仅允许 `image_base64` 或 `input_image`，请求图片不会写入临时输入文件，而是直接以内存字节送入 deployment 子进程
+- 当同步 `/infer` 使用 `input_transport_mode=memory` 时，响应 `input_uri` 会返回 `memory://...` 虚拟 URI，`result_object_key` 为 `null`
 - 当前响应会直接返回统一推理载荷，重点字段包括：
   - request_id
   - deployment_instance_id
