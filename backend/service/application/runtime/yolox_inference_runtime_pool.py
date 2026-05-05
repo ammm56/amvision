@@ -7,6 +7,7 @@ from threading import Lock
 
 from backend.service.application.errors import InvalidRequestError, ServiceConfigurationError
 from backend.service.application.runtime.yolox_predictor import (
+    OpenVINOYoloXRuntimeSession,
     OnnxRuntimeYoloXRuntimeSession,
     PyTorchYoloXRuntimeSession,
     YoloXPredictionExecutionResult,
@@ -330,9 +331,14 @@ class YoloXDeploymentRuntimePool:
                     dataset_storage=self.dataset_storage,
                     runtime_target=config.runtime_target,
                 )
+            elif config.runtime_target.runtime_backend == "openvino":
+                instance.session = OpenVINOYoloXRuntimeSession.load(
+                    dataset_storage=self.dataset_storage,
+                    runtime_target=config.runtime_target,
+                )
             else:
                 raise InvalidRequestError(
-                    "当前 deployment runtime pool 仅支持 pytorch 或 onnxruntime backend",
+                    "当前 deployment runtime pool 仅支持 pytorch、onnxruntime 或 openvino backend",
                     details={
                         "runtime_backend": config.runtime_target.runtime_backend,
                         "deployment_instance_id": config.deployment_instance_id,

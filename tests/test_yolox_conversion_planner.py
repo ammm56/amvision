@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from backend.service.application.conversions.yolox_conversion_planner import (
     DefaultYoloXConversionPlanner,
     YoloXConversionPlanningRequest,
@@ -34,3 +36,27 @@ def test_conversion_planner_builds_stable_graph_for_future_targets() -> None:
     assert plan.steps[2].target_format == "onnx-optimized"
     assert plan.steps[3].source_format == "onnx-optimized"
     assert plan.steps[3].target_format == "rknn"
+
+
+def test_conversion_planner_builds_openvino_ir_chain() -> None:
+    """验证 planner 会把 openvino-ir 规划为基于 optimized ONNX 的稳定链路。"""
+
+    planner = DefaultYoloXConversionPlanner()
+
+    plan = planner.build_plan(
+        YoloXConversionPlanningRequest(
+            project_id="project-1",
+            source_model_version_id="model-version-1",
+            target_formats=("openvino-ir",),
+        )
+    )
+
+    assert plan.target_formats == ("openvino-ir",)
+    assert [step.kind for step in plan.steps] == [
+        "export-onnx",
+        "validate-onnx",
+        "optimize-onnx",
+        "build-openvino-ir",
+    ]
+    assert plan.steps[-1].source_format == "onnx-optimized"
+    assert plan.steps[-1].target_format == "openvino-ir"

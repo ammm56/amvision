@@ -219,21 +219,23 @@
 - versions 当前会继续展开 files，便于前端直接显示 checkpoint、manifest 和其他附属文件来源
 - 如果 model_id 对应的是 Project 内模型或不存在，当前接口返回 404
 
-### POST /api/v1/models/yolox/conversion-tasks
+### POST /api/v1/models/yolox/conversion-tasks/onnx
 
 - 需要同时具备 models:read 和 tasks:write
 - 当前请求体允许显式指定：
   - project_id
   - source_model_version_id
-  - target_formats
   - runtime_profile_id
   - extra_options
   - display_name
+- 当前接口固定创建 `onnx` 目标的 conversion task，不再通过同一个创建接口混合多种输出格式
 - 当前实现会先解析来源 ModelVersion 的 checkpoint、labels 和 input_size，再按 conversion planner 固化步骤图谱并提交到 `yolox-conversions` 队列
-- 当前 phase-1 真实可执行目标只支持：
+- 当前已真实可执行目标支持：
   - onnx
   - onnx-optimized
-- 当前 planner 已经预留 openvino-ir、tensorrt-engine、rknn 的 build 图谱，但 service 会在 phase-2 之前拒绝这些目标
+  - openvino-ir
+- 当前 `openvino-ir` 构建链会先产出 optimized ONNX，再通过隔离子进程执行 OpenVINO `convert_model/save_model` 写出 xml/bin 产物
+- 当前 planner 已经预留 tensorrt-engine、rknn 的 build 图谱，但 service 仍会拒绝这些目标
 - 当前响应会返回：
   - task_id
   - status
@@ -241,6 +243,18 @@
   - queue_task_id
   - source_model_version_id
   - target_formats
+
+### POST /api/v1/models/yolox/conversion-tasks/onnx-optimized
+
+- 需要同时具备 models:read 和 tasks:write
+- 当前请求体字段与 `onnx` 创建接口一致
+- 当前接口固定创建 `onnx-optimized` 目标的 conversion task，内部仍会先产出中间 `onnx`
+
+### POST /api/v1/models/yolox/conversion-tasks/openvino-ir
+
+- 需要同时具备 models:read 和 tasks:write
+- 当前请求体字段与 `onnx` 创建接口一致
+- 当前接口固定创建 `openvino-ir` 目标的 conversion task；内部会先产出 `onnx` 与 `onnx-optimized`，再生成 xml/bin 形式的 OpenVINO IR
 
 ### GET /api/v1/models/yolox/conversion-tasks
 
@@ -376,7 +390,7 @@
 - 当前最小实现允许直接绑定训练产出的 `ModelVersion`，也允许绑定 `ModelBuild`；如果同时提供 `model_build_id` 和 `model_version_id`，两者必须指向同一来源版本
 - 当前 `ModelVersion` 默认走 `pytorch`；当前 `ModelBuild` 已支持 `onnx` / `onnx-optimized` 绑定并自动解析为 `onnxruntime`
 - 当前 create 会在提交阶段校验 checkpoint 和 labels 的本地可读性
-- 当前运行方式矩阵已经显式公开：`pytorch fp32/fp16 cpu/cuda`、`onnxruntime fp32 cpu`；`openvino auto/cpu/gpu/npu` 与 `tensorrt cuda` 已进入 create 校验语义，但真实 runtime 仍待接入
+- 当前运行方式矩阵已经显式公开：`pytorch fp32/fp16 cpu/cuda`、`onnxruntime fp32 cpu`、`openvino fp32 auto/cpu/gpu/npu`；其中 pytorch、onnxruntime、openvino 已接通真实 runtime，`tensorrt cuda` 仍停留在 create 校验语义
 - 当前 `instance_count` 默认为 1；每个 instance 对应一个独立推理线程和模型会话
 - 当前响应会返回：
   - deployment_instance_id

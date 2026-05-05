@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib.util
 import io
 from pathlib import Path
 
@@ -34,8 +35,35 @@ pytest.importorskip("onnxruntime")
 pytest.importorskip("onnxsim")
 
 
-def test_create_yolox_conversion_task_and_read_result_after_worker(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    ("create_path", "expected_target_formats", "expected_produced_formats", "expected_phase"),
+    [
+        ("/api/v1/models/yolox/conversion-tasks/onnx", ["onnx"], ["onnx"], "phase-1-onnx"),
+        (
+            "/api/v1/models/yolox/conversion-tasks/onnx-optimized",
+            ["onnx-optimized"],
+            ["onnx", "onnx-optimized"],
+            "phase-1-onnx",
+        ),
+        (
+            "/api/v1/models/yolox/conversion-tasks/openvino-ir",
+            ["openvino-ir"],
+            ["onnx", "onnx-optimized", "openvino-ir"],
+            "phase-2-openvino-ir",
+        ),
+    ],
+)
+def test_create_yolox_conversion_task_and_read_result_after_worker(
+    tmp_path: Path,
+    create_path: str,
+    expected_target_formats: list[str],
+    expected_produced_formats: list[str],
+    expected_phase: str,
+) -> None:
     """验证 conversion task 可以创建、执行，并返回 detail、list 和 result。"""
+
+    if "openvino-ir" in expected_target_formats and importlib.util.find_spec("openvino") is None:
+        pytest.skip("当前环境缺少 openvino，跳过 openvino-ir conversion API 测试")
 
     client, session_factory, dataset_storage, queue_backend = _create_test_client(tmp_path)
     source_model_version_id = _seed_real_model_version(
@@ -52,17 +80,20 @@ def test_create_yolox_conversion_task_and_read_result_after_worker(tmp_path: Pat
     try:
         with client:
             create_response = client.post(
-                "/api/v1/models/yolox/conversion-tasks",
+                create_path,
                 headers=_build_headers(),
                 json={
                     "project_id": "project-1",
                     "source_model_version_id": source_model_version_id,
-                    "target_formats": ["onnx-optimized"],
+                    "runtime_profile_id": None,
+                    "extra_options": {},
+                    "display_name": "conversion api test",
                 },
             )
             assert create_response.status_code == 202
             submission = create_response.json()
             task_id = submission["task_id"]
+            assert submission["target_formats"] == expected_target_formats
 
             pending_result_response = client.get(
                 f"/api/v1/models/yolox/conversion-tasks/{task_id}/result",
@@ -88,10 +119,11 @@ def test_create_yolox_conversion_task_and_read_result_after_worker(tmp_path: Pat
             detail_payload = detail_response.json()
             assert detail_payload["state"] == "succeeded"
             assert detail_payload["source_model_version_id"] == source_model_version_id
-            assert detail_payload["requested_target_formats"] == ["onnx-optimized"]
-            assert detail_payload["produced_formats"] == ["onnx", "onnx-optimized"]
-            assert len(detail_payload["builds"]) == 2
+            assert detail_payload["requested_target_formats"] == expected_target_formats
+            assert detail_payload["produced_formats"] == expected_produced_formats
+            assert len(detail_payload["builds"]) == len(expected_produced_formats)
             assert detail_payload["report_summary"]["validation_summary"]["allclose"] is True
+            assert detail_payload["report_summary"]["phase"] == expected_phase
 
             result_response = client.get(
                 f"/api/v1/models/yolox/conversion-tasks/{task_id}/result",
@@ -100,8 +132,8 @@ def test_create_yolox_conversion_task_and_read_result_after_worker(tmp_path: Pat
             assert result_response.status_code == 200
             result_payload = result_response.json()
             assert result_payload["file_status"] == "ready"
-            assert result_payload["payload"]["phase"] == "phase-1-onnx"
-            assert result_payload["payload"]["planned_target_formats"] == ["onnx-optimized"]
+            assert result_payload["payload"]["phase"] == expected_phase
+            assert result_payload["payload"]["planned_target_formats"] == expected_target_formats
             assert result_payload["payload"]["validation_summary"]["allclose"] is True
 
             list_response = client.get(
@@ -111,14 +143,18 @@ def test_create_yolox_conversion_task_and_read_result_after_worker(tmp_path: Pat
             assert list_response.status_code == 200
             list_payload = list_response.json()
             assert len(list_payload) == 1
-            assert list_payload[0]["produced_formats"] == ["onnx", "onnx-optimized"]
+            assert list_payload[0]["produced_formats"] == expected_produced_formats
 
         task_detail = SqlAlchemyTaskService(session_factory).get_task(task_id, include_events=True)
         assert any(event.message == "yolox conversion started" for event in task_detail.events)
         assert any(event.message == "yolox conversion succeeded" for event in task_detail.events)
         assert dataset_storage.resolve(detail_payload["report_object_key"]).is_file() is True
         for build_item in detail_payload["builds"]:
-            assert dataset_storage.resolve(build_item["build_file_uri"]).is_file() is True
+            build_path = dataset_storage.resolve(build_item["build_file_uri"])
+            assert build_path.is_file() is True
+            if build_item["build_format"] == "openvino-ir":
+                assert build_path.suffix == ".xml"
+                assert build_path.with_suffix(".bin").is_file() is True
     finally:
         session_factory.engine.dispose()
 

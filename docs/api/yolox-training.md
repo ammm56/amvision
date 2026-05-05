@@ -661,18 +661,21 @@
 #### 当前 conversion 资源组
 
 - 资源组：`/api/v1/models/yolox/conversion-tasks`
-- 创建接口：`POST /api/v1/models/yolox/conversion-tasks`
+- 创建 ONNX 接口：`POST /api/v1/models/yolox/conversion-tasks/onnx`
+- 创建 optimized ONNX 接口：`POST /api/v1/models/yolox/conversion-tasks/onnx-optimized`
+- 创建 OpenVINO IR 接口：`POST /api/v1/models/yolox/conversion-tasks/openvino-ir`
 - 列表接口：`GET /api/v1/models/yolox/conversion-tasks`
 - 详情接口：`GET /api/v1/models/yolox/conversion-tasks/{task_id}`
 - 结果接口：`GET /api/v1/models/yolox/conversion-tasks/{task_id}/result`
 
 #### 当前 conversion 创建请求字段
 
+- 每个创建接口都固定一种目标格式，不再通过单个接口混合 `target_formats`
 - `project_id`
 - `source_model_version_id`
-- `target_formats`
 - `runtime_profile_id`
 - `extra_options`
+- `display_name`
 
 #### 当前 conversion 列表 / 详情响应重点
 
@@ -699,9 +702,11 @@
 
 #### 当前实现边界
 
-- 当前 phase-1 真实可执行步骤是 `export-onnx -> validate-onnx -> optimize-onnx`
-- 当前 phase-1 真实可执行目标只支持 `onnx` 与 `onnx-optimized`
-- 当前 planner 已经预留 `openvino-ir`、`tensorrt-engine`、`rknn` 的 build 图谱，但 service 会在 phase-2 前拒绝这些目标
+- 当前 ONNX 主链继续使用旧版 `torch.onnx.export`
+- 当前已真实可执行步骤是 `export-onnx -> validate-onnx -> optimize-onnx`，以及面向 `openvino-ir` 的追加步骤 `build-openvino-ir`
+- 当前已真实可执行目标支持 `onnx`、`onnx-optimized` 与 `openvino-ir`
+- 当前 `openvino-ir` 构建会把 optimized ONNX 交给隔离子进程执行 OpenVINO `convert_model/save_model`，避免当前 Windows/conda 环境里的 torch/OpenVINO 同进程冲突
+- 当前 planner 已经预留 `tensorrt-engine`、`rknn` 的 build 图谱，但 service 仍会拒绝这些目标
 - 当前 ONNX 校验包含两层：`onnx.checker` 合法性校验，以及 PyTorch 与 ONNXRuntime 的最小数值对齐校验
 - 当前 ONNX 优化使用 `onnxsim`，并把 optimized 产物登记为独立 `ModelBuild`
 - 当前转换 runner 默认使用 CPU 和本地文件存储，适合先把离线 build 链闭环跑通
@@ -730,12 +735,18 @@
 - `display_name`
 - `metadata`
 
+#### 当前 deployment 发布模板
+
+- PyTorch ModelVersion 发布模板：`model_version_id + runtime_backend=pytorch + device_name=cpu|cuda`
+- ONNX ModelBuild 发布模板：`model_build_id={{onnxModelBuildId}}|{{onnxOptimizedModelBuildId}} + runtime_backend=onnxruntime + device_name=cpu`
+- OpenVINO ModelBuild 发布模板：`model_build_id={{openvinoIrModelBuildId}} + runtime_backend=openvino + device_name=cpu|auto|gpu|npu`
+
 #### 当前 deployment 运行方式矩阵
 
 - `ModelVersion` 默认走 `pytorch`
-- `ModelBuild` 当前已经支持绑定 `onnx` 与 `onnx-optimized`，并自动解析到 `onnxruntime`
-- 当前已真实接通：`pytorch fp32/fp16 cpu/cuda`、`onnxruntime fp32 cpu`
-- 当前已进入 create 校验语义但尚未接通真实 runtime：`openvino auto/cpu/gpu/npu`、`tensorrt cuda`
+- `ModelBuild` 当前已经支持绑定 `onnx`、`onnx-optimized`、`openvino-ir`，并自动解析到 `onnxruntime` 或 `openvino`
+- 当前已真实接通：`pytorch fp32/fp16 cpu/cuda`、`onnxruntime fp32 cpu`、`openvino fp32 auto/cpu/gpu/npu`
+- 当前已进入 create 校验语义但尚未接通真实 runtime：`tensorrt cuda`
 
 #### 当前 deployment 响应重点
 
@@ -856,7 +867,7 @@
 
 #### 当前实现边界
 
-- 当前 deployment create 允许绑定 `ModelVersion` 或 `ModelBuild`，但 runtime 仍只支持 `pytorch`
+- 当前 deployment create 允许绑定 `ModelVersion` 或 `ModelBuild`；其中 `pytorch`、`onnxruntime`、`openvino` 已接通真实 runtime
 - 当前 inference 执行通过 DeploymentInstance 解析运行时快照，并在 deployment 子进程内部复用常驻会话
 - 当前同步 `/infer` 与异步 `inference-tasks` 使用同一套结果载荷字段
 - 当前同步 `/infer` 已支持 `input_transport_mode=memory`，用于 Base64 与 multipart 上传图片的高速内存直通；异步 `inference-tasks` 仍保持 storage 模式
@@ -864,14 +875,14 @@
 - 当前 `preview_image_base64` 仅在 `return_preview_image_base64=true` 时生成
 - 当前 `preview_image_object_key` 仅在 `save_result_image=true` 时生成
 - 当前 sync 和 async 已经提升为独立 deployment 进程监督单元；如果启动多个 backend-service 或 worker 进程，每个父进程仍只负责自己装配出来的监督器与子进程
-- 当前 formal inference 已经对外隐藏 checkpoint 路径，并已接通 `onnxruntime` 对 `onnx-optimized` ModelBuild 的真实消费；`openvino` 与 `tensorrt` 仍停留在发布矩阵与 create 校验层
+- 当前 formal inference 已经对外隐藏 checkpoint 路径，并已接通 `onnxruntime` 对 `onnx-optimized` ModelBuild、`openvino` 对 `openvino-ir` ModelBuild 的真实消费；`tensorrt` 仍停留在发布矩阵与 create 校验层
 
 ### 推荐推进顺序
 
 1. 先基于当前 `validation-sessions` 接口补前端人工验证页和结果回看能力。
 2. 再做 `evaluation-tasks`，解决数据集级别的回归验证和 benchmark。
-3. 再做 `conversion-tasks`，把训练输出固化成可追溯的 `ModelBuild`，先打通 ONNX 和 optimized ONNX。
-4. 最后做 converted build 对应的真实 ONNX/OpenVINO/TensorRT 运行时接入，把 DeploymentInstance 从最小 PyTorch 路径扩展为多 backend 运行时实体。
+3. 再继续扩 `conversion-tasks`，把训练输出固化成可追溯的 `ModelBuild`；当前已打通 ONNX、optimized ONNX 和 OpenVINO IR，下一步补 TensorRT、RKNN 等剩余目标。
+4. 再继续扩 DeploymentInstance 的多 backend 运行时矩阵，补齐 TensorRT 等剩余 runtime，并完善不同部署形态的调度与观测能力。
 
 ## 当前能力边界
 
@@ -880,7 +891,7 @@
 - 当前 running 阶段已经会回写 output_object_prefix 和逐 epoch progress 事件，前端可以直接显示真实训练进度。
 - 当前 warm_start_model_version_id 已经接通真实 checkpoint 加载；可使用已有训练产出的 ModelVersion，也可使用预训练目录 manifest 中声明的 model_version_id。
 - 当前已经公开最小 validation-sessions create/detail/predict 接口，可直接用训练产出的 ModelVersion 做单图人工验证。
-- 当前已经公开最小 conversion-tasks create/list/detail/result 接口，可直接把训练产出的 source ModelVersion 转成 ONNX 与 optimized ONNX，并登记为独立 ModelBuild。
+- 当前已经公开按目标格式拆分的 conversion-tasks create/list/detail/result 接口，可直接把训练产出的 source ModelVersion 转成 ONNX、optimized ONNX 或 OpenVINO IR，并登记为独立 ModelBuild。
 - 当前已经公开最小 evaluation-tasks create/list/detail/report/output-files 接口，可直接用训练产出的 ModelVersion 对 DatasetExport 做数据集级回归验证。
 - 当前已经公开最小 deployment-instances create/list/detail 与 inference-tasks create/list/detail/result 接口，可通过 deployment_instance_id 承接正式推理请求。
 - 当前最小真实训练执行链只支持 coco-detection-v1 输入、单条 detection 训练链路；验证 split 选择顺序是 val、valid、validation，缺失时回退 test，再缺失时才退回无验证模式。只要存在非训练验证 split，就默认每 5 轮执行一次真实评估，并以验证集 val_map50_95 作为 best metric；没有任何可用验证 split 时退回 train_total_loss。

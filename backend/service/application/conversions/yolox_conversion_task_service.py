@@ -47,7 +47,7 @@ from backend.workers.conversion.yolox_conversion_runner import (
 
 YOLOX_CONVERSION_TASK_KIND = "yolox-conversion"
 YOLOX_CONVERSION_QUEUE_NAME = "yolox-conversions"
-_PHASE_ONE_EXECUTABLE_TARGET_FORMATS = frozenset({"onnx", "onnx-optimized"})
+_EXECUTABLE_TARGET_FORMATS = frozenset({"onnx", "onnx-optimized", "openvino-ir"})
 
 
 @dataclass(frozen=True)
@@ -220,7 +220,7 @@ class SqlAlchemyYoloXConversionTaskService:
                 metadata=dict(request.extra_options),
             )
         )
-        self._validate_phase_one_targets(plan.target_formats)
+        self._validate_executable_targets(plan.target_formats)
         self._resolve_source_runtime_target(request.project_id, request.source_model_version_id)
         task_spec = self._build_task_spec(request=request, plan=plan)
         created_task = self.task_service.create_task(
@@ -313,7 +313,7 @@ class SqlAlchemyYoloXConversionTaskService:
 
         request = self._build_request_from_task_record(task_record)
         plan = self._read_plan_from_task_record(task_record)
-        self._validate_phase_one_targets(plan.target_formats)
+        self._validate_executable_targets(plan.target_formats)
         source_runtime_target = self._resolve_source_runtime_target(
             request.project_id,
             request.source_model_version_id,
@@ -672,7 +672,7 @@ class SqlAlchemyYoloXConversionTaskService:
         """组装转换报告摘要。"""
 
         return {
-            "phase": "phase-1-onnx",
+            "phase": str(run_result.metadata.get("phase") or "phase-1-onnx"),
             "source_model_version_id": source_runtime_target.model_version_id,
             "source_checkpoint_uri": source_runtime_target.checkpoint_storage_uri,
             "model_name": source_runtime_target.model_name,
@@ -716,15 +716,15 @@ class SqlAlchemyYoloXConversionTaskService:
         if not request.target_formats:
             raise InvalidRequestError("target_formats 不能为空")
 
-    def _validate_phase_one_targets(self, target_formats: tuple[str, ...]) -> None:
-        """限制当前 phase-1 只执行 ONNX 主链。"""
+    def _validate_executable_targets(self, target_formats: tuple[str, ...]) -> None:
+        """限制当前只执行已经真实接通的 conversion 目标。"""
 
         unsupported_formats = [
-            item for item in target_formats if item not in _PHASE_ONE_EXECUTABLE_TARGET_FORMATS
+            item for item in target_formats if item not in _EXECUTABLE_TARGET_FORMATS
         ]
         if unsupported_formats:
             raise InvalidRequestError(
-                "当前 conversion runner 仅支持 onnx 与 onnx-optimized",
+                "当前 conversion runner 仅支持 onnx、onnx-optimized 与 openvino-ir",
                 details={"unsupported_target_formats": unsupported_formats},
             )
 

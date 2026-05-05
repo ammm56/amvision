@@ -39,7 +39,6 @@ class YoloXConversionTaskCreateRequestBody(BaseModel):
     字段：
     - project_id：所属 Project id。
     - source_model_version_id：来源 ModelVersion id。
-    - target_formats：目标 build 格式列表。
     - runtime_profile_id：可选 RuntimeProfile id。
     - extra_options：附加转换选项。
     - display_name：可选任务展示名称。
@@ -47,7 +46,6 @@ class YoloXConversionTaskCreateRequestBody(BaseModel):
 
     project_id: str = Field(description="所属 Project id")
     source_model_version_id: str = Field(description="来源 ModelVersion id")
-    target_formats: list[YoloXConversionTargetLiteral] = Field(description="目标 build 格式列表")
     runtime_profile_id: str | None = Field(default=None, description="可选 RuntimeProfile id")
     extra_options: dict[str, object] = Field(default_factory=dict, description="附加转换选项")
     display_name: str = Field(default="", description="可选任务展示名称")
@@ -176,18 +174,99 @@ class YoloXConversionResultResponse(BaseModel):
 
 
 @yolox_conversion_tasks_router.post(
-    "/yolox/conversion-tasks",
+    "/yolox/conversion-tasks/onnx",
     response_model=YoloXConversionTaskSubmissionResponse,
     status_code=status.HTTP_202_ACCEPTED,
 )
-def create_yolox_conversion_task(
+def create_yolox_onnx_conversion_task(
     body: YoloXConversionTaskCreateRequestBody,
     principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("models:read", "tasks:write"))],
     session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
     queue_backend: Annotated[LocalFileQueueBackend, Depends(get_queue_backend)],
     dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
 ) -> YoloXConversionTaskSubmissionResponse:
-    """创建一个 YOLOX conversion task。"""
+    """创建一个只输出 ONNX 的 YOLOX conversion task。"""
+
+    return _submit_yolox_conversion_task(
+        body=body,
+        target_format="onnx",
+        principal=principal,
+        session_factory=session_factory,
+        queue_backend=queue_backend,
+        dataset_storage=dataset_storage,
+    )
+
+
+@yolox_conversion_tasks_router.post(
+    "/yolox/conversion-tasks/onnx-optimized",
+    response_model=YoloXConversionTaskSubmissionResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+def create_yolox_optimized_onnx_conversion_task(
+    body: YoloXConversionTaskCreateRequestBody,
+    principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("models:read", "tasks:write"))],
+    session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
+    queue_backend: Annotated[LocalFileQueueBackend, Depends(get_queue_backend)],
+    dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
+) -> YoloXConversionTaskSubmissionResponse:
+    """创建一个输出 optimized ONNX 的 YOLOX conversion task。"""
+
+    return _submit_yolox_conversion_task(
+        body=body,
+        target_format="onnx-optimized",
+        principal=principal,
+        session_factory=session_factory,
+        queue_backend=queue_backend,
+        dataset_storage=dataset_storage,
+    )
+
+
+@yolox_conversion_tasks_router.post(
+    "/yolox/conversion-tasks/openvino-ir",
+    response_model=YoloXConversionTaskSubmissionResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+def create_yolox_openvino_ir_conversion_task(
+    body: YoloXConversionTaskCreateRequestBody,
+    principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("models:read", "tasks:write"))],
+    session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
+    queue_backend: Annotated[LocalFileQueueBackend, Depends(get_queue_backend)],
+    dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
+) -> YoloXConversionTaskSubmissionResponse:
+    """创建一个输出 OpenVINO IR 的 YOLOX conversion task。"""
+
+    return _submit_yolox_conversion_task(
+        body=body,
+        target_format="openvino-ir",
+        principal=principal,
+        session_factory=session_factory,
+        queue_backend=queue_backend,
+        dataset_storage=dataset_storage,
+    )
+
+
+def _submit_yolox_conversion_task(
+    *,
+    body: YoloXConversionTaskCreateRequestBody,
+    target_format: YoloXConversionTargetLiteral,
+    principal: AuthenticatedPrincipal,
+    session_factory: SessionFactory,
+    queue_backend: LocalFileQueueBackend,
+    dataset_storage: LocalDatasetStorage,
+) -> YoloXConversionTaskSubmissionResponse:
+    """按固定 target_format 提交一条 conversion task。
+
+    参数：
+    - body：公共创建请求体。
+    - target_format：当前接口固定输出格式。
+    - principal：当前认证主体。
+    - session_factory：数据库会话工厂。
+    - queue_backend：本地队列后端。
+    - dataset_storage：本地文件存储服务。
+
+    返回：
+    - YoloXConversionTaskSubmissionResponse：任务提交响应。
+    """
 
     if principal.project_ids and body.project_id not in principal.project_ids:
         raise PermissionDeniedError(
@@ -203,7 +282,7 @@ def create_yolox_conversion_task(
         YoloXConversionTaskRequest(
             project_id=body.project_id,
             source_model_version_id=body.source_model_version_id,
-            target_formats=tuple(body.target_formats),
+            target_formats=(target_format,),
             runtime_profile_id=body.runtime_profile_id,
             extra_options=dict(body.extra_options),
         ),

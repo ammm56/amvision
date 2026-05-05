@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib.util
 import io
 import json
 from pathlib import Path
@@ -36,8 +37,24 @@ pytest.importorskip("onnxruntime")
 pytest.importorskip("onnxsim")
 
 
-def test_conversion_queue_worker_exports_validates_and_optimizes_onnx(tmp_path: Path) -> None:
-    """验证 conversion queue worker 可以跑通 ONNX export、validate、optimize 和登记链。"""
+@pytest.mark.parametrize(
+    ("target_formats", "expected_produced_formats", "expected_phase"),
+    [
+        (("onnx",), ("onnx",), "phase-1-onnx"),
+        (("onnx-optimized",), ("onnx", "onnx-optimized"), "phase-1-onnx"),
+        (("openvino-ir",), ("onnx", "onnx-optimized", "openvino-ir"), "phase-2-openvino-ir"),
+    ],
+)
+def test_conversion_queue_worker_executes_supported_targets(
+    tmp_path: Path,
+    target_formats: tuple[str, ...],
+    expected_produced_formats: tuple[str, ...],
+    expected_phase: str,
+) -> None:
+    """验证 conversion queue worker 可以跑通当前已接通的转换目标并完成登记链。"""
+
+    if "openvino-ir" in target_formats and importlib.util.find_spec("openvino") is None:
+        pytest.skip("当前环境缺少 openvino，跳过 openvino-ir conversion 测试")
 
     session_factory, dataset_storage, queue_backend = _create_test_runtime(tmp_path)
     source_model_version_id = _seed_real_model_version(
@@ -54,7 +71,7 @@ def test_conversion_queue_worker_exports_validates_and_optimizes_onnx(tmp_path: 
         YoloXConversionTaskRequest(
             project_id="project-1",
             source_model_version_id=source_model_version_id,
-            target_formats=("onnx-optimized",),
+            target_formats=target_formats,
         )
     )
 
@@ -76,21 +93,26 @@ def test_conversion_queue_worker_exports_validates_and_optimizes_onnx(tmp_path: 
     assert submission.status == "queued"
     assert task_detail.task.state == "succeeded"
     assert result.status == "succeeded"
-    assert result.requested_target_formats == ("onnx-optimized",)
-    assert result.produced_formats == ("onnx", "onnx-optimized")
-    assert len(result.builds) == 2
-    assert {item.build_format for item in result.builds} == {"onnx", "onnx-optimized"}
+    assert result.requested_target_formats == target_formats
+    assert result.produced_formats == expected_produced_formats
+    assert len(result.builds) == len(expected_produced_formats)
+    assert {item.build_format for item in result.builds} == set(expected_produced_formats)
     assert dataset_storage.resolve(result.plan_object_key).is_file() is True
     assert dataset_storage.resolve(result.report_object_key).is_file() is True
     assert report_payload["validation_summary"]["allclose"] is True
-    assert report_payload["planned_target_formats"] == ["onnx-optimized"]
+    assert report_payload["planned_target_formats"] == list(target_formats)
+    assert report_payload["phase"] == expected_phase
 
     model_service = SqlAlchemyYoloXModelService(session_factory=session_factory)
     for build_summary in result.builds:
         model_build = model_service.get_model_build(build_summary.model_build_id)
         assert model_build is not None
         assert model_build.conversion_task_id == submission.task_id
-        assert dataset_storage.resolve(build_summary.build_file_uri).is_file() is True
+        build_path = dataset_storage.resolve(build_summary.build_file_uri)
+        assert build_path.is_file() is True
+        if build_summary.build_format == "openvino-ir":
+            assert build_path.suffix == ".xml"
+            assert build_path.with_suffix(".bin").is_file() is True
 
 
 def _create_test_runtime(

@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "b0db9a90-95bc-4a01-b247-1ddb33e1a2a8",
     "name": "amvision yolox training validation conversion evaluation inference api",
-    "description": "当前公开的 YOLOX training create/list/detail/save/pause/resume/register-model-version/validation-metrics/train-metrics/output-files、validation-sessions create/detail/predict、conversion-tasks create/list/detail/result、evaluation-tasks create/list/detail/report/output-files，以及 deployment-instances create/list/detail、sync/async start/status/stop/warmup/health/reset、direct infer 和 inference-tasks create/list/detail/result 接口。本集合已经同步 fp16/fp32、CPU fallback 调试方式、latest checkpoint、validation metrics、output-files、training_summary、detail 响应里的 available_actions 与 control_status、save/pause 后自动登记 latest checkpoint 版本、latest checkpoint 与 completed best 的版本区分、训练完成后的单图人工验证闭环、source ModelVersion 到 ONNX/optimized ONNX 的 phase-1 conversion 主链、数据集级回归评估和结果包输出，以及 deployment_instance_id 驱动的正式推理链；当前 deployment 推理链要求先显式调用 start 或 warmup，再执行 infer 或 inference-task create。Postman collection 已按 validation、conversion、evaluation、sync deployment、async deployment、sync inference、async inference task 分组，并把 input_uri、image_base64、multipart input_image 三种输入方式分别拆成独立调试请求。默认建议把 includeEvents 设为 false，用于高频轮询调试。",
+    "description": "当前公开的 YOLOX training create/list/detail/save/pause/resume/register-model-version/validation-metrics/train-metrics/output-files、validation-sessions create/detail/predict、conversion-tasks create/list/detail/result、evaluation-tasks create/list/detail/report/output-files，以及 deployment-instances create/list/detail、sync/async start/status/stop/warmup/health/reset、direct infer 和 inference-tasks create/list/detail/result 接口。本集合已经同步 fp16/fp32、CPU fallback 调试方式、latest checkpoint、validation metrics、output-files、training_summary、detail 响应里的 available_actions 与 control_status、save/pause 后自动登记 latest checkpoint 版本、latest checkpoint 与 completed best 的版本区分、训练完成后的单图人工验证闭环、source ModelVersion 到 ONNX/optimized ONNX/OpenVINO IR 的 conversion 主链、数据集级回归评估和结果包输出，以及 deployment_instance_id 驱动的正式推理链；当前 conversion 创建请求已按目标格式拆分，deployment 发布模板也已按 PyTorch、ONNXRuntime、OpenVINO 拆分。当前 deployment 推理链要求先显式调用 start 或 warmup，再执行 infer 或 inference-task create。Postman collection 已按 validation、conversion、evaluation、sync deployment、async deployment、sync inference、async inference task 分组，并把 input_uri、image_base64、multipart input_image 三种输入方式分别拆成独立调试请求。默认建议把 includeEvents 设为 false，用于高频轮询调试。",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "item": [
@@ -809,7 +809,7 @@
       "name": "YOLOX Conversion Tasks",
       "item": [
         {
-          "name": "Create YOLOX Conversion Task",
+          "name": "Create YOLOX ONNX Conversion Task",
           "event": [
             {
               "listen": "test",
@@ -819,9 +819,7 @@
                   "if (pm.response.code === 202) {",
                   "  var payload = pm.response.json();",
                   "  pm.collectionVariables.set('conversionTaskId', payload.task_id);",
-                  "  if (Array.isArray(payload.target_formats)) {",
-                  "    pm.collectionVariables.set('conversionTargetFormatsJson', JSON.stringify(payload.target_formats));",
-                  "  }",
+                  "  pm.collectionVariables.set('conversionTargetFormat', 'onnx');",
                   "}"
                 ]
               }
@@ -853,7 +851,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"source_model_version_id\": \"{{modelVersionId}}\",\n  \"target_formats\": {{conversionTargetFormatsJson}},\n  \"runtime_profile_id\": null,\n  \"extra_options\": {},\n  \"display_name\": \"{{conversionDisplayName}}\"\n}",
+              "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"source_model_version_id\": \"{{modelVersionId}}\",\n  \"runtime_profile_id\": null,\n  \"extra_options\": {},\n  \"display_name\": \"{{conversionDisplayName}} onnx\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -861,7 +859,7 @@
               }
             },
             "url": {
-              "raw": "{{baseUrl}}/api/v1/models/yolox/conversion-tasks",
+              "raw": "{{baseUrl}}/api/v1/models/yolox/conversion-tasks/onnx",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -870,10 +868,147 @@
                 "v1",
                 "models",
                 "yolox",
-                "conversion-tasks"
+                "conversion-tasks",
+                "onnx"
               ]
             },
-            "description": "创建一个 YOLOX conversion task。当前 phase-1 最小可执行主链只支持 onnx 与 onnx-optimized 两个目标，内部步骤固定为 export-onnx、validate-onnx、optimize-onnx。请求默认使用 modelVersionId 作为来源 source ModelVersion。"
+            "description": "创建一个固定输出 ONNX 的 conversion task。请求默认使用 modelVersionId 作为来源 source ModelVersion，结果只登记 onnx ModelBuild。"
+          },
+          "response": []
+        },
+        {
+          "name": "Create YOLOX Optimized ONNX Conversion Task",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 202) {",
+                  "  var payload = pm.response.json();",
+                  "  pm.collectionVariables.set('conversionTaskId', payload.task_id);",
+                  "  pm.collectionVariables.set('conversionTargetFormat', 'onnx-optimized');",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-principal-id",
+                "value": "{{principalId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-project-ids",
+                "value": "{{projectId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-scopes",
+                "value": "models:read,tasks:write",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"source_model_version_id\": \"{{modelVersionId}}\",\n  \"runtime_profile_id\": null,\n  \"extra_options\": {},\n  \"display_name\": \"{{conversionDisplayName}} optimized-onnx\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/models/yolox/conversion-tasks/onnx-optimized",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "models",
+                "yolox",
+                "conversion-tasks",
+                "onnx-optimized"
+              ]
+            },
+            "description": "创建一个固定输出 optimized ONNX 的 conversion task。内部会先产出中间 onnx，再登记 onnx 与 onnx-optimized 两个 ModelBuild。"
+          },
+          "response": []
+        },
+        {
+          "name": "Create YOLOX OpenVINO IR Conversion Task",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 202) {",
+                  "  var payload = pm.response.json();",
+                  "  pm.collectionVariables.set('conversionTaskId', payload.task_id);",
+                  "  pm.collectionVariables.set('conversionTargetFormat', 'openvino-ir');",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-principal-id",
+                "value": "{{principalId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-project-ids",
+                "value": "{{projectId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-scopes",
+                "value": "models:read,tasks:write",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"source_model_version_id\": \"{{modelVersionId}}\",\n  \"runtime_profile_id\": null,\n  \"extra_options\": {},\n  \"display_name\": \"{{conversionDisplayName}} openvino\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/models/yolox/conversion-tasks/openvino-ir",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "models",
+                "yolox",
+                "conversion-tasks",
+                "openvino-ir"
+              ]
+            },
+            "description": "创建一个固定输出 OpenVINO IR 的 conversion task。内部会依次产出 onnx、onnx-optimized 和 openvino-ir 三种构建产物。"
           },
           "response": []
         },
@@ -896,6 +1031,7 @@
                   "      first.builds.forEach(function (item) {",
                   "        if (item.build_format === 'onnx' && item.model_build_id) pm.collectionVariables.set('onnxModelBuildId', item.model_build_id);",
                   "        if (item.build_format === 'onnx-optimized' && item.model_build_id) pm.collectionVariables.set('onnxOptimizedModelBuildId', item.model_build_id);",
+                  "        if (item.build_format === 'openvino-ir' && item.model_build_id) pm.collectionVariables.set('openvinoIrModelBuildId', item.model_build_id);",
                   "      });",
                   "    }",
                   "  }",
@@ -985,6 +1121,7 @@
                   "    payload.builds.forEach(function (item) {",
                   "      if (item.build_format === 'onnx' && item.model_build_id) pm.collectionVariables.set('onnxModelBuildId', item.model_build_id);",
                   "      if (item.build_format === 'onnx-optimized' && item.model_build_id) pm.collectionVariables.set('onnxOptimizedModelBuildId', item.model_build_id);",
+                  "      if (item.build_format === 'openvino-ir' && item.model_build_id) pm.collectionVariables.set('openvinoIrModelBuildId', item.model_build_id);",
                   "    });",
                   "  }",
                   "}"
@@ -1357,7 +1494,7 @@
       "name": "YOLOX Deployment Instances",
       "item": [
         {
-          "name": "Create YOLOX Deployment Instance",
+          "name": "Create YOLOX PyTorch Deployment Instance",
           "event": [
             {
               "listen": "test",
@@ -1398,7 +1535,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"model_version_id\": \"{{modelVersionId}}\",\n  \"model_build_id\": null,\n  \"runtime_profile_id\": null,\n  \"runtime_backend\": \"pytorch\",\n  \"runtime_precision\": \"fp32\",\n  \"device_name\": \"cpu\",\n  \"instance_count\": {{deploymentInstanceCount}},\n  \"display_name\": \"{{deploymentDisplayName}}\",\n  \"metadata\": {}\n}",
+              "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"model_version_id\": \"{{modelVersionId}}\",\n  \"model_build_id\": null,\n  \"runtime_profile_id\": null,\n  \"runtime_backend\": \"pytorch\",\n  \"runtime_precision\": \"fp32\",\n  \"device_name\": \"cpu\",\n  \"instance_count\": {{deploymentInstanceCount}},\n  \"display_name\": \"{{deploymentDisplayName}} pytorch\",\n  \"metadata\": {}\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1418,7 +1555,139 @@
                 "deployment-instances"
               ]
             },
-            "description": "创建一个最小 DeploymentInstance。当前请求已经显式公开 runtime_backend、runtime_precision 和 device_name；默认可直接发布训练产出的 ModelVersion（pytorch），也可把 model_build_id 改成 {{onnxOptimizedModelBuildId}} 或 {{onnxModelBuildId}} 来发布转换后的 ONNX ModelBuild。当前真实 runtime 已接通 pytorch 与 onnxruntime，instance_count 表示 deployment 子进程内部要维护多少个独立推理线程与模型会话。"
+            "description": "使用训练产出的 ModelVersion 创建一个 PyTorch DeploymentInstance。本地调试默认建议 runtime_backend=pytorch、runtime_precision=fp32、device_name=cpu。"
+          },
+          "response": []
+        },
+        {
+          "name": "Create YOLOX ONNXRuntime Deployment Instance",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  var payload = pm.response.json();",
+                  "  pm.collectionVariables.set('deploymentInstanceId', payload.deployment_instance_id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-principal-id",
+                "value": "{{principalId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-project-ids",
+                "value": "{{projectId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-scopes",
+                "value": "models:read,models:write",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"model_version_id\": null,\n  \"model_build_id\": \"{{onnxOptimizedModelBuildId}}\",\n  \"runtime_profile_id\": null,\n  \"runtime_backend\": \"onnxruntime\",\n  \"runtime_precision\": \"fp32\",\n  \"device_name\": \"cpu\",\n  \"instance_count\": {{deploymentInstanceCount}},\n  \"display_name\": \"{{deploymentDisplayName}} onnxruntime\",\n  \"metadata\": {}\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/models/yolox/deployment-instances",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "models",
+                "yolox",
+                "deployment-instances"
+              ]
+            },
+            "description": "使用转换后的 ONNX 或 optimized ONNX ModelBuild 创建一个 ONNXRuntime DeploymentInstance。当前本地调试模板固定为 runtime_backend=onnxruntime、runtime_precision=fp32、device_name=cpu。"
+          },
+          "response": []
+        },
+        {
+          "name": "Create YOLOX OpenVINO Deployment Instance",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  var payload = pm.response.json();",
+                  "  pm.collectionVariables.set('deploymentInstanceId', payload.deployment_instance_id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-principal-id",
+                "value": "{{principalId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-project-ids",
+                "value": "{{projectId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-scopes",
+                "value": "models:read,models:write",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"model_version_id\": null,\n  \"model_build_id\": \"{{openvinoIrModelBuildId}}\",\n  \"runtime_profile_id\": null,\n  \"runtime_backend\": \"openvino\",\n  \"runtime_precision\": \"fp32\",\n  \"device_name\": \"cpu\",\n  \"instance_count\": {{deploymentInstanceCount}},\n  \"display_name\": \"{{deploymentDisplayName}} openvino\",\n  \"metadata\": {}\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/models/yolox/deployment-instances",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "models",
+                "yolox",
+                "deployment-instances"
+              ]
+            },
+            "description": "使用 openvino-ir ModelBuild 创建一个 OpenVINO DeploymentInstance。本地调试模板默认使用 device_name=cpu；如果现场设备支持，也可以手工改成 auto、gpu 或 npu。"
           },
           "response": []
         },
@@ -2931,10 +3200,6 @@
       "value": "task-conversion-1"
     },
     {
-      "key": "conversionTargetFormatsJson",
-      "value": "[\"onnx-optimized\"]"
-    },
-    {
       "key": "conversionDisplayName",
       "value": "local yolox conversion"
     },
@@ -2964,6 +3229,10 @@
     },
     {
       "key": "onnxOptimizedModelBuildId",
+      "value": ""
+    },
+    {
+      "key": "openvinoIrModelBuildId",
       "value": ""
     },
     {
