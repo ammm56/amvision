@@ -23,6 +23,7 @@ class DeploymentInstanceRecord(Base):
     runtime_profile_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
     runtime_backend: Mapped[str] = mapped_column(String(64))
     device_name: Mapped[str] = mapped_column(String(64))
+    instance_count: Mapped[int] = mapped_column(default=1)
     status: Mapped[str] = mapped_column(String(64), index=True)
     display_name: Mapped[str] = mapped_column(String(256), default="")
     created_at: Mapped[str] = mapped_column(String(64), index=True)

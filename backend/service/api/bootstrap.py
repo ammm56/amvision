@@ -10,6 +10,9 @@ from backend.bootstrap.core import BootstrapStep, RuntimeBootstrap
 from backend.queue import LocalFileQueueBackend
 from backend.service.api.seeders import BackendServiceSeeder, BackendServiceSeederRunner
 from backend.service.application.models.pretrained_catalog import YoloXPretrainedModelCatalogSeeder
+from backend.service.application.runtime.yolox_deployment_process_supervisor import (
+    YoloXDeploymentProcessSupervisor,
+)
 from backend.service.infrastructure.db.schema import initialize_database_schema
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import (
@@ -37,6 +40,8 @@ class BackendServiceRuntime:
     - session_factory：数据库会话工厂。
     - dataset_storage：本地数据集文件存储服务。
     - queue_backend：本地任务队列后端。
+    - yolox_sync_deployment_process_supervisor：同步 YOLOX deployment 进程监督器。
+    - yolox_async_deployment_process_supervisor：异步 YOLOX deployment 进程监督器。
     - background_task_manager_host：当前进程托管的后台任务管理器宿主。
     """
 
@@ -44,6 +49,8 @@ class BackendServiceRuntime:
     session_factory: SessionFactory
     dataset_storage: LocalDatasetStorage
     queue_backend: LocalFileQueueBackend
+    yolox_sync_deployment_process_supervisor: YoloXDeploymentProcessSupervisor
+    yolox_async_deployment_process_supervisor: YoloXDeploymentProcessSupervisor
     background_task_manager_host: HostedBackgroundTaskManager | None
 
 
@@ -186,17 +193,30 @@ class BackendServiceBootstrap(RuntimeBootstrap[BackendServiceSettings, BackendSe
         queue_backend = self._provided_queue_backend or LocalFileQueueBackend(
             settings.to_queue_settings()
         )
+        yolox_sync_deployment_process_supervisor = YoloXDeploymentProcessSupervisor(
+            dataset_storage_root_dir=str(dataset_storage.root_dir),
+            runtime_mode="sync",
+            settings=settings.deployment_process_supervisor,
+        )
+        yolox_async_deployment_process_supervisor = YoloXDeploymentProcessSupervisor(
+            dataset_storage_root_dir=str(dataset_storage.root_dir),
+            runtime_mode="async",
+            settings=settings.deployment_process_supervisor,
+        )
         background_task_manager_host = self._build_background_task_manager_host(
             settings=settings,
             session_factory=session_factory,
             dataset_storage=dataset_storage,
             queue_backend=queue_backend,
+            yolox_async_deployment_process_supervisor=yolox_async_deployment_process_supervisor,
         )
         return BackendServiceRuntime(
             settings=settings,
             session_factory=session_factory,
             dataset_storage=dataset_storage,
             queue_backend=queue_backend,
+            yolox_sync_deployment_process_supervisor=yolox_sync_deployment_process_supervisor,
+            yolox_async_deployment_process_supervisor=yolox_async_deployment_process_supervisor,
             background_task_manager_host=background_task_manager_host,
         )
 
@@ -216,6 +236,8 @@ class BackendServiceBootstrap(RuntimeBootstrap[BackendServiceSettings, BackendSe
         application.state.session_factory = runtime.session_factory
         application.state.dataset_storage = runtime.dataset_storage
         application.state.queue_backend = runtime.queue_backend
+        application.state.yolox_sync_deployment_process_supervisor = runtime.yolox_sync_deployment_process_supervisor
+        application.state.yolox_async_deployment_process_supervisor = runtime.yolox_async_deployment_process_supervisor
         application.state.background_task_manager_host = runtime.background_task_manager_host
 
     def start_runtime(self, runtime: BackendServiceRuntime) -> None:
@@ -225,6 +247,8 @@ class BackendServiceBootstrap(RuntimeBootstrap[BackendServiceSettings, BackendSe
         - runtime：当前应用实例使用的运行时资源。
         """
 
+        runtime.yolox_sync_deployment_process_supervisor.start()
+        runtime.yolox_async_deployment_process_supervisor.start()
         if runtime.background_task_manager_host is not None:
             runtime.background_task_manager_host.start()
 
@@ -237,6 +261,8 @@ class BackendServiceBootstrap(RuntimeBootstrap[BackendServiceSettings, BackendSe
 
         if runtime.background_task_manager_host is not None:
             runtime.background_task_manager_host.stop()
+        runtime.yolox_sync_deployment_process_supervisor.stop()
+        runtime.yolox_async_deployment_process_supervisor.stop()
         runtime.session_factory.engine.dispose()
 
     def _build_steps(self) -> tuple[BootstrapStep[BackendServiceRuntime], ...]:
@@ -277,6 +303,7 @@ class BackendServiceBootstrap(RuntimeBootstrap[BackendServiceSettings, BackendSe
         session_factory: SessionFactory,
         dataset_storage: LocalDatasetStorage,
         queue_backend: LocalFileQueueBackend,
+        yolox_async_deployment_process_supervisor: YoloXDeploymentProcessSupervisor,
     ) -> HostedBackgroundTaskManager | None:
         """按 backend-service 配置创建后台任务管理器宿主。
 
@@ -321,6 +348,7 @@ class BackendServiceBootstrap(RuntimeBootstrap[BackendServiceSettings, BackendSe
             session_factory=session_factory,
             dataset_storage=dataset_storage,
             queue_backend=queue_backend,
+            deployment_process_supervisor=yolox_async_deployment_process_supervisor,
             worker_id=f"{settings.app.app_name}-yolox-inference",
         )
         task_manager = BackgroundTaskManager(

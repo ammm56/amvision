@@ -8,8 +8,16 @@ from datetime import datetime, timezone
 from backend.queue import QueueBackend
 from backend.service.application.deployments.yolox_deployment_service import SqlAlchemyYoloXDeploymentService
 from backend.service.application.errors import InvalidRequestError, ResourceNotFoundError, ServiceConfigurationError
+from backend.service.application.models.yolox_inference_payloads import (
+    YoloXNormalizedInferenceInput,
+    build_yolox_inference_payload,
+    serialize_yolox_inference_payload,
+)
+from backend.service.application.runtime.yolox_deployment_process_supervisor import (
+    YoloXDeploymentProcessConfig,
+    YoloXDeploymentProcessSupervisor,
+)
 from backend.service.application.runtime.yolox_predictor import (
-    PyTorchYoloXPredictor,
     YoloXPredictionRequest,
     serialize_detection,
     serialize_runtime_session_info,
@@ -43,8 +51,10 @@ class YoloXInferenceTaskRequest:
     deployment_instance_id: str
     input_file_id: str | None = None
     input_uri: str | None = None
+    input_source_kind: str = "input_uri"
     score_threshold: float | None = None
     save_result_image: bool = False
+    return_preview_image_base64: bool = False
     extra_options: dict[str, object] = field(default_factory=dict)
 
 
@@ -64,6 +74,7 @@ class YoloXInferenceTaskSubmission:
 class YoloXInferenceExecutionResult:
     """描述一次底层 YOLOX 推理执行结果。"""
 
+    instance_id: str | None
     detections: tuple[dict[str, object], ...]
     latency_ms: float | None
     image_width: int
@@ -79,12 +90,14 @@ class YoloXInferenceTaskResult:
     task_id: str
     status: str
     deployment_instance_id: str
+    instance_id: str | None
     model_version_id: str
     model_build_id: str | None
     output_object_prefix: str
     result_object_key: str
     preview_image_object_key: str | None
     input_uri: str
+    input_source_kind: str
     input_file_id: str | None
     detection_count: int
     latency_ms: float | None
@@ -100,12 +113,14 @@ class SqlAlchemyYoloXInferenceTaskService:
         session_factory: SessionFactory,
         dataset_storage: LocalDatasetStorage | None = None,
         queue_backend: QueueBackend | None = None,
+        deployment_process_supervisor: YoloXDeploymentProcessSupervisor | None = None,
     ) -> None:
         """初始化推理任务服务。"""
 
         self.session_factory = session_factory
         self.dataset_storage = dataset_storage
         self.queue_backend = queue_backend
+        self.deployment_process_supervisor = deployment_process_supervisor
         self.task_service = SqlAlchemyTaskService(session_factory)
 
     def submit_inference_task(
@@ -120,7 +135,7 @@ class SqlAlchemyYoloXInferenceTaskService:
         self._validate_request(request)
         queue_backend = self._require_queue_backend()
         deployment_service = self._build_deployment_service()
-        runtime_target = deployment_service.resolve_inference_target(request.deployment_instance_id)
+        process_config = deployment_service.resolve_process_config(request.deployment_instance_id)
         input_uri = self._resolve_input_uri(request)
 
         task_spec = YoloXInferenceTaskSpec(
@@ -128,9 +143,12 @@ class SqlAlchemyYoloXInferenceTaskService:
             deployment_instance_id=request.deployment_instance_id,
             input_file_id=request.input_file_id,
             input_uri=input_uri,
+            input_source_kind=request.input_source_kind,
             score_threshold=request.score_threshold,
             save_result_image=request.save_result_image,
-            runtime_target_snapshot=serialize_runtime_target_snapshot(runtime_target),
+            return_preview_image_base64=request.return_preview_image_base64,
+            runtime_target_snapshot=serialize_runtime_target_snapshot(process_config.runtime_target),
+            instance_count=process_config.instance_count,
             extra_options=dict(request.extra_options),
         )
         created_task = self.task_service.create_task(
@@ -145,16 +163,19 @@ class SqlAlchemyYoloXInferenceTaskService:
                     "deployment_instance_id": task_spec.deployment_instance_id,
                     "input_file_id": task_spec.input_file_id,
                     "input_uri": task_spec.input_uri,
+                    "input_source_kind": task_spec.input_source_kind,
                     "score_threshold": task_spec.score_threshold,
                     "save_result_image": task_spec.save_result_image,
+                    "return_preview_image_base64": task_spec.return_preview_image_base64,
                     "runtime_target_snapshot": dict(task_spec.runtime_target_snapshot),
+                    "instance_count": task_spec.instance_count,
                     "extra_options": dict(task_spec.extra_options),
                 },
                 worker_pool=YOLOX_INFERENCE_TASK_KIND,
                 metadata={
                     "deployment_instance_id": request.deployment_instance_id,
-                    "model_version_id": runtime_target.model_version_id,
-                    "model_build_id": runtime_target.model_build_id,
+                    "model_version_id": process_config.runtime_target.model_version_id,
+                    "model_build_id": process_config.runtime_target.model_build_id,
                 },
             )
         )
@@ -164,8 +185,8 @@ class SqlAlchemyYoloXInferenceTaskService:
             metadata={
                 "project_id": request.project_id,
                 "deployment_instance_id": request.deployment_instance_id,
-                "model_version_id": runtime_target.model_version_id,
-                "model_build_id": runtime_target.model_build_id,
+                "model_version_id": process_config.runtime_target.model_version_id,
+                "model_build_id": process_config.runtime_target.model_build_id,
             },
         )
         self.task_service.append_task_event(
@@ -215,6 +236,10 @@ class SqlAlchemyYoloXInferenceTaskService:
             task_record=task_record,
             dataset_storage=dataset_storage,
         )
+        process_config = self._build_process_config_from_task_record(
+            task_record=task_record,
+            dataset_storage=dataset_storage,
+        )
         input_uri = self._resolve_input_uri(request)
         attempt_no = max(1, task_record.current_attempt_no + 1)
         output_object_prefix = self._build_output_object_prefix(task_id)
@@ -247,22 +272,35 @@ class SqlAlchemyYoloXInferenceTaskService:
         )
         try:
             execution_result = run_yolox_inference_task(
-                dataset_storage=dataset_storage,
-                runtime_target=runtime_target,
+                deployment_process_supervisor=self._require_deployment_process_supervisor(),
+                process_config=process_config,
                 input_uri=input_uri,
                 score_threshold=self._resolve_score_threshold(request),
                 save_result_image=request.save_result_image,
+                return_preview_image_base64=request.return_preview_image_base64,
                 extra_options=dict(request.extra_options),
             )
             if preview_image_object_key is not None and execution_result.preview_image_bytes is not None:
                 dataset_storage.write_bytes(preview_image_object_key, execution_result.preview_image_bytes)
-            raw_payload = self._build_result_payload(
-                task_id=task_id,
-                request=request,
-                runtime_target=runtime_target,
-                execution_result=execution_result,
-                result_object_key=result_object_key,
-                preview_image_object_key=preview_image_object_key,
+            raw_payload = serialize_yolox_inference_payload(
+                build_yolox_inference_payload(
+                    request_id=task_id,
+                    inference_task_id=task_id,
+                    deployment_instance_id=request.deployment_instance_id,
+                    instance_id=execution_result.instance_id,
+                    runtime_target=runtime_target,
+                    normalized_input=YoloXNormalizedInferenceInput(
+                        input_uri=input_uri,
+                        input_source_kind=request.input_source_kind,
+                        input_file_id=request.input_file_id,
+                    ),
+                    score_threshold=self._resolve_score_threshold(request),
+                    save_result_image=request.save_result_image,
+                    return_preview_image_base64=request.return_preview_image_base64,
+                    execution_result=execution_result,
+                    preview_image_uri=preview_image_object_key,
+                    result_object_key=result_object_key,
+                )
             )
             dataset_storage.write_json(result_object_key, raw_payload)
         except Exception as error:
@@ -294,22 +332,27 @@ class SqlAlchemyYoloXInferenceTaskService:
             task_id=task_id,
             status="succeeded",
             deployment_instance_id=request.deployment_instance_id,
+            instance_id=execution_result.instance_id,
             model_version_id=runtime_target.model_version_id,
             model_build_id=runtime_target.model_build_id,
             output_object_prefix=output_object_prefix,
             result_object_key=result_object_key,
             preview_image_object_key=preview_image_object_key,
             input_uri=input_uri,
+            input_source_kind=request.input_source_kind,
             input_file_id=request.input_file_id,
             detection_count=len(execution_result.detections),
             latency_ms=execution_result.latency_ms,
             result_summary={
                 "deployment_instance_id": request.deployment_instance_id,
+                "instance_id": execution_result.instance_id,
                 "model_version_id": runtime_target.model_version_id,
                 "model_build_id": runtime_target.model_build_id,
                 "input_uri": input_uri,
+                "input_source_kind": request.input_source_kind,
                 "score_threshold": self._resolve_score_threshold(request),
                 "save_result_image": request.save_result_image,
+                "return_preview_image_base64": request.return_preview_image_base64,
                 "detection_count": len(execution_result.detections),
                 "latency_ms": execution_result.latency_ms,
                 "result_object_key": result_object_key,
@@ -371,6 +414,13 @@ class SqlAlchemyYoloXInferenceTaskService:
             raise ServiceConfigurationError("提交推理任务时缺少 queue backend")
         return self.queue_backend
 
+    def _require_deployment_process_supervisor(self) -> YoloXDeploymentProcessSupervisor:
+        """返回处理推理任务必需的 deployment 进程监督器。"""
+
+        if self.deployment_process_supervisor is None:
+            raise ServiceConfigurationError("处理推理任务时缺少 deployment 进程监督器")
+        return self.deployment_process_supervisor
+
     def _resolve_input_uri(self, request: YoloXInferenceTaskRequest) -> str:
         """解析并校验推理输入 URI。"""
 
@@ -378,7 +428,11 @@ class SqlAlchemyYoloXInferenceTaskService:
         if value is None or not value.strip():
             raise InvalidRequestError("input_uri 不能为空")
         resolved_input_uri = value.strip()
-        self._require_dataset_storage().resolve(resolved_input_uri)
+        if not self._require_dataset_storage().resolve(resolved_input_uri).is_file():
+            raise InvalidRequestError(
+                "input_uri 对应的本地文件不存在",
+                details={"input_uri": resolved_input_uri},
+            )
         return resolved_input_uri
 
     def _require_inference_task(self, task_id: str) -> TaskRecord:
@@ -401,9 +455,31 @@ class SqlAlchemyYoloXInferenceTaskService:
             deployment_instance_id=self._require_str(task_spec, "deployment_instance_id"),
             input_file_id=self._read_optional_str(task_spec, "input_file_id"),
             input_uri=self._require_str(task_spec, "input_uri"),
+            input_source_kind=self._read_optional_str(task_spec, "input_source_kind") or "input_uri",
             score_threshold=self._read_optional_float(task_spec, "score_threshold"),
             save_result_image=bool(task_spec.get("save_result_image") is True),
+            return_preview_image_base64=bool(task_spec.get("return_preview_image_base64") is True),
             extra_options=self._read_dict(task_spec, "extra_options"),
+        )
+
+    def _build_process_config_from_task_record(
+        self,
+        *,
+        task_record: TaskRecord,
+        dataset_storage: LocalDatasetStorage,
+    ) -> YoloXDeploymentProcessConfig:
+        """从 TaskRecord 的 task_spec 反解析 deployment 进程配置。"""
+
+        task_spec = dict(task_record.task_spec)
+        runtime_target = self._build_runtime_target_from_task_record(
+            task_record=task_record,
+            dataset_storage=dataset_storage,
+        )
+        instance_count = self._read_optional_int(task_spec, "instance_count") or 1
+        return YoloXDeploymentProcessConfig(
+            deployment_instance_id=self._require_str(task_spec, "deployment_instance_id"),
+            runtime_target=runtime_target,
+            instance_count=instance_count,
         )
 
     def _build_runtime_target_from_task_record(
@@ -440,60 +516,33 @@ class SqlAlchemyYoloXInferenceTaskService:
             task_id=task_record.task_id,
             status=task_record.state,
             deployment_instance_id=self._require_str(result, "deployment_instance_id"),
+            instance_id=self._read_optional_str(result, "instance_id"),
             model_version_id=self._require_str(result, "model_version_id"),
             model_build_id=self._read_optional_str(result, "model_build_id"),
             output_object_prefix=self._require_str(result, "output_object_prefix"),
             result_object_key=result_object_key,
             preview_image_object_key=self._read_optional_str(result, "preview_image_object_key"),
             input_uri=self._require_str(result, "input_uri"),
+            input_source_kind=self._read_optional_str(result, "input_source_kind") or "input_uri",
             input_file_id=self._read_optional_str(result, "input_file_id"),
             detection_count=detection_count,
             latency_ms=latency_ms,
             result_summary=self._read_dict(result, "result_summary"),
         )
 
-    def _build_result_payload(
-        self,
-        *,
-        task_id: str,
-        request: YoloXInferenceTaskRequest,
-        runtime_target: RuntimeTargetSnapshot,
-        execution_result: YoloXInferenceExecutionResult,
-        result_object_key: str,
-        preview_image_object_key: str | None,
-    ) -> dict[str, object]:
-        """构建推理结果 JSON 载荷。"""
-
-        return {
-            "inference_task_id": task_id,
-            "deployment_instance_id": request.deployment_instance_id,
-            "model_version_id": runtime_target.model_version_id,
-            "model_build_id": runtime_target.model_build_id,
-            "input_uri": request.input_uri,
-            "input_file_id": request.input_file_id,
-            "score_threshold": self._resolve_score_threshold(request),
-            "save_result_image": request.save_result_image,
-            "image_width": execution_result.image_width,
-            "image_height": execution_result.image_height,
-            "latency_ms": execution_result.latency_ms,
-            "labels": list(runtime_target.labels),
-            "detections": [dict(item) for item in execution_result.detections],
-            "runtime_session_info": dict(execution_result.runtime_session_info),
-            "preview_image_uri": preview_image_object_key,
-            "result_object_key": result_object_key,
-        }
-
     def _serialize_task_result(self, task_result: YoloXInferenceTaskResult) -> dict[str, object]:
         """把推理任务处理结果序列化为结果快照。"""
 
         return {
             "deployment_instance_id": task_result.deployment_instance_id,
+            "instance_id": task_result.instance_id,
             "model_version_id": task_result.model_version_id,
             "model_build_id": task_result.model_build_id,
             "output_object_prefix": task_result.output_object_prefix,
             "result_object_key": task_result.result_object_key,
             "preview_image_object_key": task_result.preview_image_object_key,
             "input_uri": task_result.input_uri,
+            "input_source_kind": task_result.input_source_kind,
             "input_file_id": task_result.input_file_id,
             "detection_count": task_result.detection_count,
             "latency_ms": task_result.latency_ms,
@@ -570,31 +619,33 @@ class SqlAlchemyYoloXInferenceTaskService:
 
 def run_yolox_inference_task(
     *,
-    dataset_storage: LocalDatasetStorage,
-    runtime_target: RuntimeTargetSnapshot,
+    deployment_process_supervisor: YoloXDeploymentProcessSupervisor,
+    process_config: YoloXDeploymentProcessConfig,
     input_uri: str,
     score_threshold: float,
     save_result_image: bool,
+    return_preview_image_base64: bool,
     extra_options: dict[str, object],
 ) -> YoloXInferenceExecutionResult:
     """执行一次最小 YOLOX 正式推理。"""
 
-    execution = PyTorchYoloXPredictor(dataset_storage=dataset_storage).predict(
-        runtime_target=runtime_target,
+    execution = deployment_process_supervisor.run_inference(
+        config=process_config,
         request=YoloXPredictionRequest(
             input_uri=input_uri,
             score_threshold=score_threshold,
-            save_result_image=save_result_image,
+            save_result_image=save_result_image or return_preview_image_base64,
             extra_options=dict(extra_options),
         ),
     )
     return YoloXInferenceExecutionResult(
-        detections=tuple(serialize_detection(detection) for detection in execution.detections),
-        latency_ms=execution.latency_ms,
-        image_width=execution.image_width,
-        image_height=execution.image_height,
-        preview_image_bytes=execution.preview_image_bytes,
-        runtime_session_info=serialize_runtime_session_info(execution.runtime_session_info),
+        instance_id=execution.instance_id,
+        detections=tuple(serialize_detection(item) for item in execution.execution_result.detections),
+        latency_ms=execution.execution_result.latency_ms,
+        image_width=execution.execution_result.image_width,
+        image_height=execution.execution_result.image_height,
+        preview_image_bytes=execution.execution_result.preview_image_bytes,
+        runtime_session_info=serialize_runtime_session_info(execution.execution_result.runtime_session_info),
     )
 
 

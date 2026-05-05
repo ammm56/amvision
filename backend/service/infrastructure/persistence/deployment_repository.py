@@ -42,6 +42,7 @@ class SqlAlchemyDeploymentInstanceRepository:
             existing_record.runtime_profile_id = deployment_instance.runtime_profile_id
             existing_record.runtime_backend = deployment_instance.runtime_backend
             existing_record.device_name = deployment_instance.device_name
+            existing_record.instance_count = deployment_instance.instance_count
             existing_record.status = deployment_instance.status
             existing_record.display_name = deployment_instance.display_name
             existing_record.created_at = deployment_instance.created_at
@@ -101,6 +102,7 @@ class SqlAlchemyDeploymentInstanceRepository:
             runtime_profile_id=deployment_instance.runtime_profile_id,
             runtime_backend=deployment_instance.runtime_backend,
             device_name=deployment_instance.device_name,
+            instance_count=deployment_instance.instance_count,
             status=deployment_instance.status,
             display_name=deployment_instance.display_name,
             created_at=deployment_instance.created_at,
@@ -122,6 +124,7 @@ class SqlAlchemyDeploymentInstanceRepository:
             runtime_profile_id=record.runtime_profile_id,
             runtime_backend=record.runtime_backend,
             device_name=record.device_name,
+            instance_count=record.instance_count,
             status=record.status,
             display_name=record.display_name,
             created_at=record.created_at,

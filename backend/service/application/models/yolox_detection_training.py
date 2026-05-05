@@ -615,6 +615,7 @@ def run_yolox_detection_training(
             pin_memory=runtime.device.startswith("cuda"),
             drop_last=False,
         )
+    validation_split_name = validation_split.name if validation_split is not None else None
 
     base_model = _build_yolox_model(
         imports=imports,
@@ -683,7 +684,6 @@ def run_yolox_detection_training(
     total_sample_count = sum(split.sample_count for split in resolved_splits)
     train_sample_count = len(train_dataset)
     validation_sample_count = len(validation_dataset) if validation_dataset is not None else 0
-    validation_split_name = validation_split.name if validation_split is not None else None
     epoch_history: list[dict[str, object]] = []
     validation_epoch_history: list[dict[str, object]] = []
     best_metric_name = "val_map50_95" if validation_loader is not None else "train_total_loss"
@@ -1133,7 +1133,15 @@ def _resolve_validation_split(
     *,
     train_split_name: str,
 ) -> _ResolvedCocoSplit | None:
-    """优先解析训练链路要使用的验证 split。"""
+    """优先解析训练链路要使用的验证 split。
+
+    参数：
+    - resolved_splits：当前 manifest 中可用的全部 split。
+    - train_split_name：已经选定的训练 split 名称。
+
+    返回：
+    - _ResolvedCocoSplit | None：优先返回 val、valid、validation；缺失时回退 test；再缺失时回退第一个非训练 split。
+    """
 
     preferred_validation_names = ("val", "valid", "validation", "test")
     for preferred_name in preferred_validation_names:

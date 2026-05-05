@@ -13,12 +13,16 @@ import torch
 from backend.contracts.datasets.exports.coco_detection_export import COCO_DETECTION_DATASET_FORMAT
 from backend.queue import LocalFileQueueBackend, LocalFileQueueSettings
 from backend.service.application.errors import InvalidRequestError
+import backend.service.application.models.yolox_detection_training as yolox_detection_training_module
 from backend.service.application.models.yolox_detection_training import (
+    YoloXDetectionTrainingExecutionRequest,
     YoloXDetectionTrainingExecutionResult,
     YoloXTrainingEpochProgress,
+    _LoadedResumeState,
     _build_checkpoint_state,
     _load_resume_checkpoint,
     _resolve_input_size,
+    run_yolox_detection_training,
 )
 import backend.service.application.models.yolox_training_service as yolox_training_service_module
 from backend.service.application.models.yolox_model_service import (
@@ -139,6 +143,66 @@ def test_yolox_training_worker_advances_task_from_queued_to_succeeded(tmp_path: 
         )
 
         assert worker.run_once() is False
+    finally:
+        session_factory.engine.dispose()
+
+
+def test_yolox_training_worker_uses_test_split_as_validation_when_val_is_missing(tmp_path: Path) -> None:
+    """验证当 manifest 只有 train 和 test 时，会使用 test 作为验证 split。"""
+
+    session_factory, dataset_storage, queue_backend = _create_worker_runtime(tmp_path)
+    _seed_completed_dataset_export(
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+        dataset_export_id="dataset-export-worker-train-test-1",
+        manifest_object_key=(
+            "projects/project-1/datasets/dataset-1/exports/dataset-export-worker-train-test-1/manifest.json"
+        ),
+        validation_split_name="test",
+    )
+    service = SqlAlchemyYoloXTrainingTaskService(
+        session_factory=session_factory,
+        queue_backend=queue_backend,
+    )
+    worker = YoloXTrainingQueueWorker(
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+        queue_backend=queue_backend,
+        worker_id="test-yolox-training-worker-train-test",
+    )
+    try:
+        submission = service.submit_training_task(
+            YoloXTrainingTaskRequest(
+                project_id="project-1",
+                dataset_export_id="dataset-export-worker-train-test-1",
+                recipe_id="yolox-default",
+                model_scale="nano",
+                output_model_name="yolox-s-train-test",
+                max_epochs=1,
+                batch_size=1,
+                precision="fp32",
+                input_size=(64, 64),
+            ),
+            created_by="user-1",
+        )
+
+        assert worker.run_once() is True
+
+        completed_task = SqlAlchemyTaskService(session_factory).get_task(
+            submission.task_id,
+            include_events=True,
+        )
+        assert completed_task.task.state == "succeeded"
+        assert completed_task.task.result["summary"]["validation"]["enabled"] is True
+        assert completed_task.task.result["summary"]["validation"]["split_name"] == "test"
+
+        validation_metrics_payload = dataset_storage.read_json(
+            completed_task.task.result["validation_metrics_object_key"]
+        )
+        assert validation_metrics_payload["split_name"] == "test"
+
+        progress_event = next(event for event in completed_task.events if event.event_type == "progress")
+        assert progress_event.payload["progress"]["validation_ran"] is True
     finally:
         session_factory.engine.dispose()
 
@@ -486,6 +550,67 @@ def test_load_resume_checkpoint_rejects_mismatched_validation_configuration(
         )
 
 
+def test_run_training_resume_path_passes_validation_split_name_to_resume_loader(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """验证真实 resume 入口会在调用恢复加载器前先解析 validation split 名称。"""
+
+    session_factory, dataset_storage, _queue_backend = _create_worker_runtime(tmp_path)
+    dataset_export = _seed_completed_dataset_export(
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+        dataset_export_id="dataset-export-resume-validation-split-1",
+        manifest_object_key=(
+            "projects/project-1/datasets/dataset-1/exports/"
+            "dataset-export-resume-validation-split-1/manifest.json"
+        ),
+    )
+    manifest_payload = dataset_storage.read_json(dataset_export.manifest_object_key)
+    resume_checkpoint_path = tmp_path / "resume-checkpoint.pth"
+    resume_checkpoint_path.write_bytes(b"fake-resume-checkpoint")
+    captured: dict[str, object] = {}
+
+    def fake_load_resume_checkpoint(**kwargs):
+        captured["expected_validation_split_name"] = kwargs.get("expected_validation_split_name")
+        return _LoadedResumeState(
+            resume_epoch=1,
+            epoch_history=[],
+            validation_history=[],
+            best_metric_name="val_map50_95",
+            best_metric_value=0.4,
+            best_checkpoint_state=None,
+            warm_start_summary={"enabled": False},
+        )
+
+    monkeypatch.setattr(
+        yolox_detection_training_module,
+        "_load_resume_checkpoint",
+        fake_load_resume_checkpoint,
+    )
+
+    with pytest.raises(
+        InvalidRequestError,
+        match="resume checkpoint 已经达到当前任务的最大 epoch，不能继续训练",
+    ):
+        run_yolox_detection_training(
+            YoloXDetectionTrainingExecutionRequest(
+                dataset_storage=dataset_storage,
+                manifest_payload=manifest_payload,
+                model_scale="nano",
+                max_epochs=1,
+                batch_size=1,
+                precision="fp32",
+                resume_checkpoint_path=resume_checkpoint_path,
+                input_size=(64, 64),
+                extra_options={"num_workers": 0, "seed": 0},
+            )
+        )
+
+    assert captured["expected_validation_split_name"] == "val"
+    session_factory.engine.dispose()
+
+
 def _create_worker_runtime(
     tmp_path: Path,
 ) -> tuple[SessionFactory, LocalDatasetStorage, LocalFileQueueBackend]:
@@ -509,10 +634,24 @@ def _seed_completed_dataset_export(
     dataset_storage: LocalDatasetStorage,
     dataset_export_id: str,
     manifest_object_key: str,
+    validation_split_name: str = "val",
 ) -> DatasetExport:
-    """写入一个已完成的 DatasetExport 和最小 manifest 文件。"""
+    """写入一个已完成的 DatasetExport 和最小 manifest 文件。
+
+    参数：
+    - session_factory：测试数据库会话工厂。
+    - dataset_storage：测试文件存储。
+    - dataset_export_id：目标 DatasetExport id。
+    - manifest_object_key：manifest 存储路径。
+    - validation_split_name：测试数据 split 名称；默认使用 val，可改成 test 验证回退逻辑。
+
+    返回：
+    - DatasetExport：已写入持久化层的最小 DatasetExport。
+    """
 
     export_path = manifest_object_key.rsplit("/manifest.json", 1)[0]
+    validation_annotation_file = f"{export_path}/annotations/instances_{validation_split_name}.json"
+    validation_image_root = f"{export_path}/images/{validation_split_name}"
     dataset_export = DatasetExport(
         dataset_export_id=dataset_export_id,
         dataset_id="dataset-1",
@@ -524,7 +663,7 @@ def _seed_completed_dataset_export(
         task_id=f"task-{dataset_export_id}",
         export_path=export_path,
         manifest_object_key=manifest_object_key,
-        split_names=("train", "val"),
+        split_names=("train", validation_split_name),
         sample_count=3,
         category_names=("bolt", "nut"),
     )
@@ -550,9 +689,9 @@ def _seed_completed_dataset_export(
                     "sample_count": 1,
                 },
                 {
-                    "name": "val",
-                    "image_root": f"{export_path}/images/val",
-                    "annotation_file": f"{export_path}/annotations/instances_val.json",
+                    "name": validation_split_name,
+                    "image_root": validation_image_root,
+                    "annotation_file": validation_annotation_file,
                     "sample_count": 1,
                 },
             ],
@@ -587,12 +726,12 @@ def _seed_completed_dataset_export(
         },
     )
     dataset_storage.write_json(
-        f"{export_path}/annotations/instances_val.json",
+        validation_annotation_file,
         {
             "images": [
                 {
                     "id": 2,
-                    "file_name": "val-1.jpg",
+                    "file_name": f"{validation_split_name}-1.jpg",
                     "width": 64,
                     "height": 64,
                 }
@@ -618,7 +757,7 @@ def _seed_completed_dataset_export(
         _build_test_jpeg_bytes(),
     )
     dataset_storage.write_bytes(
-        f"{export_path}/images/val/val-1.jpg",
+        f"{validation_image_root}/{validation_split_name}-1.jpg",
         _build_test_jpeg_bytes(),
     )
     return dataset_export

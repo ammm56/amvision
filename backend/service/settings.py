@@ -79,6 +79,24 @@ class BackendServiceTaskManagerConfig(BaseModel):
     poll_interval_seconds: float = 1.0
 
 
+class BackendServiceDeploymentProcessSupervisorConfig(BaseModel):
+    """描述 deployment 进程监督器配置。
+
+    字段：
+    - auto_restart：deployment 进程异常退出后是否自动拉起。
+    - monitor_interval_seconds：监督线程巡检 deployment 进程状态的间隔秒数。
+    - request_timeout_seconds：父进程等待子进程返回控制面或推理结果的最长秒数。
+    - shutdown_timeout_seconds：停止 deployment 进程时等待优雅退出的最长秒数。
+    - operator_thread_count：deployment 子进程内部推理库允许使用的算子线程数。
+    """
+
+    auto_restart: bool = True
+    monitor_interval_seconds: float = 0.5
+    request_timeout_seconds: float = 30.0
+    shutdown_timeout_seconds: float = 5.0
+    operator_thread_count: int = 1
+
+
 class BackendServiceSettings(BaseSettings):
     """描述 backend-service 启动阶段使用的统一配置。
 
@@ -88,6 +106,7 @@ class BackendServiceSettings(BaseSettings):
     - dataset_storage：本地数据集文件存储配置。
     - queue：本地任务队列配置。
     - task_manager：内嵌后台任务管理器配置。
+    - deployment_process_supervisor：deployment 进程监督器配置。
     """
 
     model_config = SettingsConfigDict(
@@ -104,6 +123,9 @@ class BackendServiceSettings(BaseSettings):
     queue: BackendServiceQueueConfig = Field(default_factory=BackendServiceQueueConfig)
     task_manager: BackendServiceTaskManagerConfig = Field(
         default_factory=BackendServiceTaskManagerConfig
+    )
+    deployment_process_supervisor: BackendServiceDeploymentProcessSupervisorConfig = Field(
+        default_factory=BackendServiceDeploymentProcessSupervisorConfig
     )
 
     @classmethod

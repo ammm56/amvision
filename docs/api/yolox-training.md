@@ -673,6 +673,7 @@
 - `runtime_profile_id`
 - `runtime_backend`
 - `device_name`
+- `instance_count`
 - `display_name`
 - `metadata`
 
@@ -683,9 +684,19 @@
 - `model_build_id`
 - `runtime_backend`
 - `device_name`
+- `instance_count`
 - `input_size`
 - `labels`
 - `status`
+
+#### 当前 deployment 进程监督单元语义
+
+- 每个 DeploymentInstance 在 sync 和 async 两个通道上各自对应一个独立的 deployment 进程监督单元
+- 每个监督单元管理一个独立子进程；子进程内部再按 `instance_count` 管理多个独立推理线程和模型会话
+- 每个 instance 对应一个独立推理线程和模型会话；同一 instance 一次只处理一个请求
+- 同步 `/infer` 和异步 `inference-tasks` 已经拆成两个独立 deployment 子进程，不再共用实例会话
+- 当前已经公开 sync/async 两组 `start`、`status`、`stop`、`warmup`、`health` 和 `reset` 接口，用于显式启动、停止、预热、查看状态和清空实例池
+- `warmup` 会在预热前自动拉起目标子进程；`reset` 只对已经启动的子进程生效
 
 #### 当前 inference 资源组
 
@@ -694,6 +705,19 @@
 - 列表接口：`GET /api/v1/models/yolox/inference-tasks`
 - 详情接口：`GET /api/v1/models/yolox/inference-tasks/{task_id}`
 - 结果接口：`GET /api/v1/models/yolox/inference-tasks/{task_id}/result`
+- 同步直返接口：`POST /api/v1/models/yolox/deployment-instances/{deployment_instance_id}/infer`
+- 同步启动接口：`POST /api/v1/models/yolox/deployment-instances/{deployment_instance_id}/sync/start`
+- 同步状态接口：`GET /api/v1/models/yolox/deployment-instances/{deployment_instance_id}/sync/status`
+- 同步停止接口：`POST /api/v1/models/yolox/deployment-instances/{deployment_instance_id}/sync/stop`
+- 同步预热接口：`POST /api/v1/models/yolox/deployment-instances/{deployment_instance_id}/sync/warmup`
+- 同步健康接口：`GET /api/v1/models/yolox/deployment-instances/{deployment_instance_id}/sync/health`
+- 同步重置接口：`POST /api/v1/models/yolox/deployment-instances/{deployment_instance_id}/sync/reset`
+- 异步启动接口：`POST /api/v1/models/yolox/deployment-instances/{deployment_instance_id}/async/start`
+- 异步状态接口：`GET /api/v1/models/yolox/deployment-instances/{deployment_instance_id}/async/status`
+- 异步停止接口：`POST /api/v1/models/yolox/deployment-instances/{deployment_instance_id}/async/stop`
+- 异步预热接口：`POST /api/v1/models/yolox/deployment-instances/{deployment_instance_id}/async/warmup`
+- 异步健康接口：`GET /api/v1/models/yolox/deployment-instances/{deployment_instance_id}/async/health`
+- 异步重置接口：`POST /api/v1/models/yolox/deployment-instances/{deployment_instance_id}/async/reset`
 
 #### 当前 inference 创建请求字段
 
@@ -701,16 +725,33 @@
 - `deployment_instance_id`
 - `input_file_id`
 - `input_uri`
+- `image_base64`
+- `input_image`（仅 `multipart/form-data` 文件字段）
 - `score_threshold`
 - `save_result_image`
+- `return_preview_image_base64`
 - `extra_options`
+
+#### 当前 inference 输入规则
+
+- 当前正式推理支持 `application/json` 和 `multipart/form-data`
+- `input_uri`、`image_base64`、`input_image` 三者必须且只能提供一个
+- `image_base64` 同时支持纯 base64 内容和 `data:image/...;base64,...` 形式
+- `application/json` 场景下，`image_base64` 必须是单行 JSON 字符串；如果把带原始换行的 base64 直接贴进 JSON，请求会在 JSON 解析阶段返回 `请求体不是合法的 JSON`
+- `input_file_id` 当前仍是保留字段，会返回 `invalid_request`
+- multipart 场景下，`extra_options` 以 JSON 字符串传入
+- 服务会在写入临时输入前校验 `image_base64` 与 `input_image` 是否为可读取图片；损坏图片会直接返回 `invalid_request`，不会继续下发到 deployment 推理进程
+- 同步 `/infer` 真正执行前，需要先通过 `sync/start` 或 `sync/warmup` 拉起对应 deployment 的 sync 子进程
+- 异步 `inference-tasks` 创建前，需要先通过 `async/start` 或 `async/warmup` 拉起对应 deployment 的 async 子进程；未启动时 create 接口会直接返回 `invalid_request`
 
 #### 当前 inference 列表 / 详情响应重点
 
 - `deployment_instance_id`
+- `instance_id`
 - `model_version_id`
 - `model_build_id`
 - `input_uri`
+- `input_source_kind`
 - `score_threshold`
 - `save_result_image`
 - `result_object_key`
@@ -724,16 +765,22 @@
 - `file_status`
 - `task_state`
 - `object_key`
+- `payload.request_id`
+- `payload.instance_id`
+- `payload.input_source_kind`
 - `payload.detections`
 - `payload.runtime_session_info`
 - `payload.preview_image_uri`
+- `payload.preview_image_base64`
 
 #### 当前实现边界
 
-- 当前 deployment create 允许绑定 `ModelVersion` 或 `ModelBuild`，但实际运行时只支持 `pytorch`
-- 当前 inference 执行仍复用本地 PyTorch checkpoint 单图推理链，内部通过 DeploymentInstance 解析回模型版本和运行配置
-- 当前 `input_file_id` 仍是保留字段，正式推理链当前只支持本地 `input_uri` 或 object key
+- 当前 deployment create 允许绑定 `ModelVersion` 或 `ModelBuild`，但 runtime 仍只支持 `pytorch`
+- 当前 inference 执行通过 DeploymentInstance 解析运行时快照，并在 deployment 子进程内部复用常驻会话
+- 当前同步 `/infer` 与异步 `inference-tasks` 使用同一套结果载荷字段
+- 当前 `preview_image_base64` 仅在 `return_preview_image_base64=true` 时生成
 - 当前 `preview_image_object_key` 仅在 `save_result_image=true` 时生成
+- 当前 sync 和 async 已经提升为独立 deployment 进程监督单元；如果启动多个 backend-service 或 worker 进程，每个父进程仍只负责自己装配出来的监督器与子进程
 - 当前 formal inference 已经对外隐藏 checkpoint 路径，但尚未接入 ONNX、OpenVINO 或 TensorRT 的真实运行时实现
 
 ### 推荐推进顺序
@@ -751,7 +798,7 @@
 - 当前已经公开最小 validation-sessions create/detail/predict 接口，可直接用训练产出的 ModelVersion 做单图人工验证。
 - 当前已经公开最小 evaluation-tasks create/list/detail/report/output-files 接口，可直接用训练产出的 ModelVersion 对 DatasetExport 做数据集级回归验证。
 - 当前已经公开最小 deployment-instances create/list/detail 与 inference-tasks create/list/detail/result 接口，可通过 deployment_instance_id 承接正式推理请求。
-- 当前最小真实训练执行链只支持 coco-detection-v1 输入、单条 detection 训练链路；有验证 split 时默认每 5 轮执行一次真实评估，并以验证集 val_map50_95 作为 best metric，没有验证 split 时退回 train_total_loss。
+- 当前最小真实训练执行链只支持 coco-detection-v1 输入、单条 detection 训练链路；验证 split 选择顺序是 val、valid、validation，缺失时回退 test，再缺失时才退回无验证模式。只要存在非训练验证 split，就默认每 5 轮执行一次真实评估，并以验证集 val_map50_95 作为 best metric；没有任何可用验证 split 时退回 train_total_loss。
 - 当前 GPU 数量控制采用单机单进程模式；gpu_count 大于 1 时使用 DataParallel，不引入 exp 文件体系或分布式脚本。
 - 当前 precision 字段已经纳入公开接口；当前公开值为 fp16、fp32，未指定时默认 fp32。
 - 当前 input_size 未显式指定时，真实训练默认使用 [640, 640]。

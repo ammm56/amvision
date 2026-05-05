@@ -94,6 +94,209 @@ class YoloXPredictor(Protocol):
         """
 
 
+class YoloXPredictionSession(Protocol):
+    """定义可重复执行的 YOLOX runtime session 接口。"""
+
+    def predict(self, request: YoloXPredictionRequest) -> YoloXPredictionExecutionResult:
+        """使用已加载的模型会话执行一次预测。
+
+        参数：
+        - request：预测请求。
+
+        返回：
+        - YoloXPredictionExecutionResult：预测执行结果。
+        """
+
+
+class PyTorchYoloXRuntimeSession:
+    """描述一个已经加载完成并可重复推理的 PyTorch YOLOX 会话。
+
+    属性：
+    - dataset_storage：本地文件存储服务。
+    - runtime_target：当前会话绑定的运行时快照。
+    - imports：YOLOX 推理依赖集合。
+    - model：已经加载 checkpoint 的模型对象。
+    - device_name：当前执行 device 名称。
+    """
+
+    def __init__(
+        self,
+        *,
+        dataset_storage: LocalDatasetStorage,
+        runtime_target: RuntimeTargetSnapshot,
+        imports: Any,
+        model: Any,
+        device_name: str,
+    ) -> None:
+        """初始化一个已加载完成的 PyTorch runtime session。
+
+        参数：
+        - dataset_storage：本地文件存储服务。
+        - runtime_target：当前会话绑定的运行时快照。
+        - imports：YOLOX 推理依赖集合。
+        - model：已经加载 checkpoint 的模型对象。
+        - device_name：当前执行 device 名称。
+        """
+
+        self.dataset_storage = dataset_storage
+        self.runtime_target = runtime_target
+        self.imports = imports
+        self.model = model
+        self.device_name = device_name
+
+    @classmethod
+    def load(
+        cls,
+        *,
+        dataset_storage: LocalDatasetStorage,
+        runtime_target: RuntimeTargetSnapshot,
+    ) -> PyTorchYoloXRuntimeSession:
+        """加载一次 PyTorch runtime session。
+
+        参数：
+        - dataset_storage：本地文件存储服务。
+        - runtime_target：待加载的运行时快照。
+
+        返回：
+        - PyTorchYoloXRuntimeSession：已完成模型加载的会话对象。
+        """
+
+        if runtime_target.runtime_backend != "pytorch":
+            raise InvalidRequestError(
+                "当前 predictor 仅支持 pytorch runtime_backend",
+                details={
+                    "runtime_backend": runtime_target.runtime_backend,
+                    "model_build_id": runtime_target.model_build_id,
+                },
+            )
+
+        imports = _require_training_imports()
+        model = _build_yolox_model(
+            imports=imports,
+            model_scale=runtime_target.model_scale,
+            num_classes=len(runtime_target.labels),
+        )
+        _load_warm_start_checkpoint(
+            imports=imports,
+            model=model,
+            checkpoint_path=runtime_target.runtime_artifact_path,
+            source_summary={
+                "source_model_version_id": runtime_target.model_version_id,
+                "runtime_artifact_file_id": runtime_target.runtime_artifact_file_id,
+                "runtime_artifact_file_type": runtime_target.runtime_artifact_file_type,
+                "source_model_build_id": runtime_target.model_build_id,
+            },
+        )
+        device_name = _resolve_execution_device_name(
+            torch_module=imports.torch,
+            requested_device_name=runtime_target.device_name,
+        )
+        model.to(device_name)
+        model.eval()
+        return cls(
+            dataset_storage=dataset_storage,
+            runtime_target=runtime_target,
+            imports=imports,
+            model=model,
+            device_name=device_name,
+        )
+
+    def predict(self, request: YoloXPredictionRequest) -> YoloXPredictionExecutionResult:
+        """使用当前常驻会话执行一次单图预测。
+
+        参数：
+        - request：预测请求。
+
+        返回：
+        - YoloXPredictionExecutionResult：预测执行结果。
+        """
+
+        image_path = resolve_local_file_path(
+            dataset_storage=self.dataset_storage,
+            storage_uri=request.input_uri,
+            field_name="input_uri",
+        )
+        image = self.imports.cv2.imread(str(image_path))
+        if image is None:
+            raise InvalidRequestError(
+                "input_uri 指向的图片无法读取",
+                details={"input_uri": request.input_uri},
+            )
+
+        input_tensor, resize_ratio = _preprocess_image(
+            cv2_module=self.imports.cv2,
+            np_module=self.imports.np,
+            image=image,
+            input_size=self.runtime_target.input_size,
+        )
+        input_tensor = self.imports.torch.from_numpy(input_tensor).unsqueeze(0).to(self.device_name)
+        input_tensor = input_tensor.float()
+
+        nms_threshold = _resolve_probability(
+            value=request.extra_options.get("nms_threshold"),
+            field_name="nms_threshold",
+            default=_DEFAULT_NMS_THRESHOLD,
+        )
+        started_at = perf_counter()
+        with self.imports.torch.no_grad():
+            outputs = self.model(input_tensor)
+            predictions = self.imports.postprocess(
+                outputs,
+                len(self.runtime_target.labels),
+                conf_thre=request.score_threshold,
+                nms_thre=nms_threshold,
+            )
+        latency_ms = (perf_counter() - started_at) * 1000
+
+        image_height = int(image.shape[0])
+        image_width = int(image.shape[1])
+        detections = _build_detection_records(
+            np_module=self.imports.np,
+            predictions=predictions,
+            resize_ratio=resize_ratio,
+            labels=self.runtime_target.labels,
+            image_width=image_width,
+            image_height=image_height,
+        )
+        preview_image_bytes = None
+        if request.save_result_image:
+            preview_image_bytes = _render_preview_image(
+                cv2_module=self.imports.cv2,
+                image=image,
+                detections=detections,
+            )
+
+        return YoloXPredictionExecutionResult(
+            detections=detections,
+            latency_ms=round(latency_ms, 3),
+            image_width=image_width,
+            image_height=image_height,
+            preview_image_bytes=preview_image_bytes,
+            runtime_session_info=YoloXRuntimeSessionInfo(
+                backend_name=self.runtime_target.runtime_backend,
+                model_uri=self.runtime_target.runtime_artifact_storage_uri,
+                device_name=self.device_name,
+                input_spec=RuntimeTensorSpec(
+                    name="images",
+                    shape=(1, 3, self.runtime_target.input_size[0], self.runtime_target.input_size[1]),
+                    dtype="float32",
+                ),
+                output_spec=RuntimeTensorSpec(
+                    name="detections",
+                    shape=(-1, 7),
+                    dtype="float32",
+                ),
+                metadata={
+                    "model_version_id": self.runtime_target.model_version_id,
+                    "model_build_id": self.runtime_target.model_build_id,
+                    "score_threshold": request.score_threshold,
+                    "nms_threshold": nms_threshold,
+                    "class_count": len(self.runtime_target.labels),
+                },
+            ),
+        )
+
+
 class PyTorchYoloXPredictor:
     """基于 PyTorch runtime artifact 的 YOLOX 单图 predictor。"""
 
@@ -121,123 +324,10 @@ class PyTorchYoloXPredictor:
         - YoloXPredictionExecutionResult：预测执行结果。
         """
 
-        if runtime_target.runtime_backend != "pytorch":
-            raise InvalidRequestError(
-                "当前 predictor 仅支持 pytorch runtime_backend",
-                details={
-                    "runtime_backend": runtime_target.runtime_backend,
-                    "model_build_id": runtime_target.model_build_id,
-                },
-            )
-
-        imports = _require_training_imports()
-        image_path = resolve_local_file_path(
+        return PyTorchYoloXRuntimeSession.load(
             dataset_storage=self.dataset_storage,
-            storage_uri=request.input_uri,
-            field_name="input_uri",
-        )
-        image = imports.cv2.imread(str(image_path))
-        if image is None:
-            raise InvalidRequestError(
-                "input_uri 指向的图片无法读取",
-                details={"input_uri": request.input_uri},
-            )
-
-        model = _build_yolox_model(
-            imports=imports,
-            model_scale=runtime_target.model_scale,
-            num_classes=len(runtime_target.labels),
-        )
-        _load_warm_start_checkpoint(
-            imports=imports,
-            model=model,
-            checkpoint_path=runtime_target.runtime_artifact_path,
-            source_summary={
-                "source_model_version_id": runtime_target.model_version_id,
-                "runtime_artifact_file_id": runtime_target.runtime_artifact_file_id,
-                "runtime_artifact_file_type": runtime_target.runtime_artifact_file_type,
-                "source_model_build_id": runtime_target.model_build_id,
-            },
-        )
-        device_name = _resolve_execution_device_name(
-            torch_module=imports.torch,
-            requested_device_name=runtime_target.device_name,
-        )
-        model.to(device_name)
-        model.eval()
-
-        input_tensor, resize_ratio = _preprocess_image(
-            cv2_module=imports.cv2,
-            np_module=imports.np,
-            image=image,
-            input_size=runtime_target.input_size,
-        )
-        input_tensor = imports.torch.from_numpy(input_tensor).unsqueeze(0).to(device_name)
-        input_tensor = input_tensor.float()
-
-        nms_threshold = _resolve_probability(
-            value=request.extra_options.get("nms_threshold"),
-            field_name="nms_threshold",
-            default=_DEFAULT_NMS_THRESHOLD,
-        )
-        started_at = perf_counter()
-        with imports.torch.no_grad():
-            outputs = model(input_tensor)
-            predictions = imports.postprocess(
-                outputs,
-                len(runtime_target.labels),
-                conf_thre=request.score_threshold,
-                nms_thre=nms_threshold,
-            )
-        latency_ms = (perf_counter() - started_at) * 1000
-
-        image_height = int(image.shape[0])
-        image_width = int(image.shape[1])
-        detections = _build_detection_records(
-            np_module=imports.np,
-            predictions=predictions,
-            resize_ratio=resize_ratio,
-            labels=runtime_target.labels,
-            image_width=image_width,
-            image_height=image_height,
-        )
-        preview_image_bytes = None
-        if request.save_result_image:
-            preview_image_bytes = _render_preview_image(
-                cv2_module=imports.cv2,
-                image=image,
-                detections=detections,
-            )
-
-        return YoloXPredictionExecutionResult(
-            detections=detections,
-            latency_ms=round(latency_ms, 3),
-            image_width=image_width,
-            image_height=image_height,
-            preview_image_bytes=preview_image_bytes,
-            runtime_session_info=YoloXRuntimeSessionInfo(
-                backend_name=runtime_target.runtime_backend,
-                model_uri=runtime_target.runtime_artifact_storage_uri,
-                device_name=device_name,
-                input_spec=RuntimeTensorSpec(
-                    name="images",
-                    shape=(1, 3, runtime_target.input_size[0], runtime_target.input_size[1]),
-                    dtype="float32",
-                ),
-                output_spec=RuntimeTensorSpec(
-                    name="detections",
-                    shape=(-1, 7),
-                    dtype="float32",
-                ),
-                metadata={
-                    "model_version_id": runtime_target.model_version_id,
-                    "model_build_id": runtime_target.model_build_id,
-                    "score_threshold": request.score_threshold,
-                    "nms_threshold": nms_threshold,
-                    "class_count": len(runtime_target.labels),
-                },
-            ),
-        )
+            runtime_target=runtime_target,
+        ).predict(request)
 
 
 def serialize_detection(detection: YoloXPredictionDetection) -> dict[str, object]:

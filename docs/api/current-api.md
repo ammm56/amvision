@@ -303,11 +303,13 @@
   - runtime_profile_id
   - runtime_backend
   - device_name
+  - instance_count
   - display_name
   - metadata
 - 当前最小实现允许直接绑定训练产出的 `ModelVersion`，也允许绑定 `ModelBuild`；如果同时提供 `model_build_id` 和 `model_version_id`，两者必须指向同一来源版本
-- 当前 create 会在提交阶段校验 checkpoint 和 labels 的本地可读性，确保 `deployment_instance_id` 后续可直接进入 inference-tasks
+- 当前 create 会在提交阶段校验 checkpoint 和 labels 的本地可读性
 - 当前 `runtime_backend` 只支持 `pytorch`
+- 当前 `instance_count` 默认为 1；每个 instance 对应一个独立推理线程和模型会话
 - 当前响应会返回：
   - deployment_instance_id
   - project_id
@@ -320,6 +322,7 @@
   - runtime_profile_id
   - runtime_backend
   - device_name
+  - instance_count
   - input_size
   - labels
   - status
@@ -340,6 +343,136 @@
 - 需要 models:read
 - 返回单条 DeploymentInstance 详情，包括绑定的模型、运行时、输入尺寸和 labels
 
+### POST /api/v1/models/yolox/deployment-instances/{deployment_instance_id}/sync/start
+
+- 需要 models:read 和 models:write
+- 显式启动指定 deployment 的同步推理子进程
+- 当前响应会返回：
+  - deployment_instance_id
+  - display_name
+  - runtime_mode
+  - desired_state
+  - process_state
+  - process_id
+  - auto_restart
+  - restart_count
+  - last_exit_code
+  - last_error
+  - instance_count
+
+### GET /api/v1/models/yolox/deployment-instances/{deployment_instance_id}/sync/status
+
+- 需要 models:read
+- 返回指定 deployment 当前同步推理子进程的监督状态
+
+### POST /api/v1/models/yolox/deployment-instances/{deployment_instance_id}/sync/stop
+
+- 需要 models:read 和 models:write
+- 显式停止指定 deployment 的同步推理子进程
+
+### POST /api/v1/models/yolox/deployment-instances/{deployment_instance_id}/sync/warmup
+
+- 需要 models:read 和 models:write
+- 显式启动并预热指定 deployment 的所有同步推理实例
+- 当前响应会返回：
+  - deployment_instance_id
+  - display_name
+  - runtime_mode
+  - desired_state
+  - process_state
+  - process_id
+  - auto_restart
+  - restart_count
+  - last_exit_code
+  - last_error
+  - instance_count
+  - healthy_instance_count
+  - warmed_instance_count
+  - instances[].instance_id
+  - instances[].healthy
+  - instances[].warmed
+  - instances[].busy
+  - instances[].last_error
+
+### GET /api/v1/models/yolox/deployment-instances/{deployment_instance_id}/sync/health
+
+- 需要 models:read
+- 返回指定 deployment 当前同步推理子进程及实例池的详细健康视图
+
+### POST /api/v1/models/yolox/deployment-instances/{deployment_instance_id}/sync/reset
+
+- 需要 models:read 和 models:write
+- 重置指定 deployment 的同步推理实例池
+- 如果同步推理子进程尚未启动，接口返回 `invalid_request`
+
+### POST /api/v1/models/yolox/deployment-instances/{deployment_instance_id}/async/start
+
+- 需要 models:read 和 models:write
+- 显式启动指定 deployment 的异步推理子进程
+
+### GET /api/v1/models/yolox/deployment-instances/{deployment_instance_id}/async/status
+
+- 需要 models:read
+- 返回指定 deployment 当前异步推理子进程的监督状态
+
+### POST /api/v1/models/yolox/deployment-instances/{deployment_instance_id}/async/stop
+
+- 需要 models:read 和 models:write
+- 显式停止指定 deployment 的异步推理子进程
+
+### POST /api/v1/models/yolox/deployment-instances/{deployment_instance_id}/async/warmup
+
+- 需要 models:read 和 models:write
+- 显式启动并预热指定 deployment 的所有异步推理实例
+
+### GET /api/v1/models/yolox/deployment-instances/{deployment_instance_id}/async/health
+
+- 需要 models:read
+- 返回指定 deployment 当前异步推理子进程及实例池的详细健康视图
+
+### POST /api/v1/models/yolox/deployment-instances/{deployment_instance_id}/async/reset
+
+- 需要 models:read 和 models:write
+- 重置指定 deployment 的异步推理实例池
+- 如果异步推理子进程尚未启动，接口返回 `invalid_request`
+
+### POST /api/v1/models/yolox/deployment-instances/{deployment_instance_id}/infer
+
+- 需要 models:read
+- 这是同步直返推理接口；当前只使用 deployment 的同步推理子进程，并按 instance 简单轮转执行
+- 当前要求 deployment 的 sync 进程已经通过 `sync/start` 或 `sync/warmup` 启动；未启动时返回 `invalid_request`
+- 当前支持 `application/json` 和 `multipart/form-data`
+- 输入 one-of 规则：`input_uri`、`image_base64`、`input_image` 三者必须且只能提供一个
+- JSON 请求可显式指定：
+  - input_uri
+  - image_base64
+  - input_file_id
+  - score_threshold
+  - save_result_image
+  - return_preview_image_base64
+  - extra_options
+- multipart 请求可显式指定：
+  - input_image
+  - input_uri
+  - image_base64
+  - input_file_id
+  - score_threshold
+  - save_result_image
+  - return_preview_image_base64
+  - extra_options：JSON 字符串
+- 当前 `input_file_id` 仍是保留字段，会返回 `invalid_request`
+- 当前响应会直接返回统一推理载荷，重点字段包括：
+  - request_id
+  - deployment_instance_id
+  - instance_id
+  - input_uri
+  - input_source_kind
+  - detections
+  - latency_ms
+  - preview_image_uri
+  - preview_image_base64
+  - runtime_session_info
+
 ### POST /api/v1/models/yolox/inference-tasks
 
 - 需要 models:read 和 tasks:write
@@ -348,12 +481,18 @@
   - deployment_instance_id
   - input_file_id
   - input_uri
+  - image_base64
   - score_threshold
   - save_result_image
+  - return_preview_image_base64
   - extra_options
   - display_name
-- 当前实现会先校验 `deployment_instance_id` 属于请求 Project，再把任务放入 `yolox-inferences` 队列
-- 当前正式推理链只支持通过 `input_uri` 或 object key 读取本地输入；`input_file_id` 当前仍是保留字段，会返回 `invalid_request`
+- 当前实现会先校验 `deployment_instance_id` 属于请求 Project，再按 one-of 规则把输入归一化后放入 `yolox-inferences` 队列
+- 当前支持 `application/json` 和 `multipart/form-data`
+- 输入 one-of 规则：`input_uri`、`image_base64`、`input_image` 三者必须且只能提供一个
+- 当前 `input_file_id` 仍是保留字段，会返回 `invalid_request`
+- 当前异步推理只使用 deployment 的 async 推理子进程；如果同步 `/infer` 已经加载过模型，异步侧仍会在自己的独立子进程中维护实例会话
+- inference task 创建接口不会自动启动 async 推理子进程；如果当前 async 进程尚未通过 `async/start` 或 `async/warmup` 启动，接口会直接返回 `invalid_request`
 - 当前响应会返回：
   - task_id
   - status
@@ -361,6 +500,7 @@
   - queue_task_id
   - deployment_instance_id
   - input_uri
+  - input_source_kind
 
 ### GET /api/v1/models/yolox/inference-tasks
 
@@ -375,9 +515,11 @@
   - task_id
   - state
   - deployment_instance_id
+  - instance_id
   - model_version_id
   - model_build_id
   - input_uri
+  - input_source_kind
   - score_threshold
   - save_result_image
   - output_object_prefix
@@ -398,6 +540,7 @@
 - 需要 tasks:read
 - 返回当前推理任务最新的 raw-result.json 内容
 - 当前响应统一为 `file_status`、`task_state`、`object_key` 和 `payload`
+- `payload` 与同步 `/infer` 使用同一套结果载荷字段；异步场景额外通过 `inference_task_id=request_id=task_id` 标识请求
 - 当结果文件尚未生成时，接口返回 `file_status=pending` 和空 `payload`
 - 当任务已经结束但结果文件缺失时，接口返回 404
 

@@ -9,6 +9,9 @@ from datetime import datetime, timezone
 from uuid import uuid4
 
 from backend.service.application.errors import InvalidRequestError, ResourceNotFoundError, ServiceConfigurationError
+from backend.service.application.runtime.yolox_deployment_process_supervisor import (
+    YoloXDeploymentProcessConfig,
+)
 from backend.service.application.runtime.yolox_runtime_target import (
     RuntimeTargetResolveRequest,
     RuntimeTargetSnapshot,
@@ -37,6 +40,7 @@ class YoloXDeploymentInstanceCreateRequest:
     - runtime_profile_id：可选 RuntimeProfile id。
     - runtime_backend：运行时 backend；当前仅支持 pytorch。
     - device_name：默认 device 名称。
+    - instance_count：实例化数量；每个实例对应一个独立推理线程和模型会话。
     - display_name：可选展示名称。
     - metadata：附加元数据。
     """
@@ -47,6 +51,7 @@ class YoloXDeploymentInstanceCreateRequest:
     runtime_profile_id: str | None = None
     runtime_backend: str | None = None
     device_name: str | None = None
+    instance_count: int = 1
     display_name: str = ""
     metadata: dict[str, object] = field(default_factory=dict)
 
@@ -70,6 +75,7 @@ class YoloXDeploymentInstanceView:
     - runtime_profile_id：RuntimeProfile id。
     - runtime_backend：运行时 backend。
     - device_name：默认 device 名称。
+    - instance_count：实例化数量；每个实例对应一个独立推理线程和模型会话。
     - input_size：输入尺寸。
     - labels：类别列表。
     - created_at：创建时间。
@@ -92,6 +98,7 @@ class YoloXDeploymentInstanceView:
     runtime_profile_id: str | None
     runtime_backend: str
     device_name: str
+    instance_count: int
     input_size: tuple[int, int]
     labels: tuple[str, ...]
     created_at: str
@@ -134,6 +141,7 @@ class SqlAlchemyYoloXDeploymentService:
             runtime_profile_id=runtime_target.runtime_profile_id,
             runtime_backend=runtime_target.runtime_backend,
             device_name=runtime_target.device_name,
+            instance_count=request.instance_count,
             status=_ACTIVE_DEPLOYMENT_STATUS,
             display_name=request.display_name.strip() or runtime_target.model_name,
             created_at=now,
@@ -200,6 +208,16 @@ class SqlAlchemyYoloXDeploymentService:
         deployment_instance = self._require_deployment_instance(deployment_instance_id)
         return self._resolve_target_from_instance(deployment_instance)
 
+    def resolve_process_config(self, deployment_instance_id: str) -> YoloXDeploymentProcessConfig:
+        """把 DeploymentInstance 解析为 deployment 进程配置。"""
+
+        deployment_instance = self._require_deployment_instance(deployment_instance_id)
+        return YoloXDeploymentProcessConfig(
+            deployment_instance_id=deployment_instance.deployment_instance_id,
+            runtime_target=self._resolve_target_from_instance(deployment_instance),
+            instance_count=deployment_instance.instance_count,
+        )
+
     def _validate_create_request(self, request: YoloXDeploymentInstanceCreateRequest) -> None:
         """校验 DeploymentInstance 创建请求。"""
 
@@ -207,6 +225,11 @@ class SqlAlchemyYoloXDeploymentService:
             raise InvalidRequestError("project_id 不能为空")
         if not _normalize_optional_str(request.model_version_id) and not _normalize_optional_str(request.model_build_id):
             raise InvalidRequestError("model_version_id 和 model_build_id 至少需要提供一个")
+        if request.instance_count <= 0:
+            raise InvalidRequestError(
+                "instance_count 必须大于 0",
+                details={"instance_count": request.instance_count},
+            )
 
     def _resolve_create_target(
         self,
@@ -300,6 +323,7 @@ class SqlAlchemyYoloXDeploymentService:
             runtime_profile_id=runtime_target.runtime_profile_id,
             runtime_backend=runtime_target.runtime_backend,
             device_name=runtime_target.device_name,
+            instance_count=deployment_instance.instance_count,
             input_size=runtime_target.input_size,
             labels=runtime_target.labels,
             created_at=deployment_instance.created_at,

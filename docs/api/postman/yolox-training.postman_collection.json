@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "b0db9a90-95bc-4a01-b247-1ddb33e1a2a8",
     "name": "amvision yolox training validation evaluation inference api",
-    "description": "当前公开的 YOLOX training create/list/detail/save/pause/resume/register-model-version/validation-metrics/train-metrics/output-files、validation-sessions create/detail/predict、evaluation-tasks create/list/detail/report/output-files，以及 deployment-instances create/list/detail 和 inference-tasks create/list/detail/result 接口。本集合已经同步 fp16/fp32、CPU fallback 调试方式、latest checkpoint、validation metrics、output-files、training_summary、detail 响应里的 available_actions 与 control_status、save/pause 后自动登记 latest checkpoint 版本、latest checkpoint 与 completed best 的版本区分、训练完成后的单图人工验证闭环、数据集级回归评估和结果包输出，以及 deployment_instance_id 驱动的正式推理链；默认建议把 includeEvents 设为 false，用于高频轮询调试。",
+    "description": "当前公开的 YOLOX training create/list/detail/save/pause/resume/register-model-version/validation-metrics/train-metrics/output-files、validation-sessions create/detail/predict、evaluation-tasks create/list/detail/report/output-files，以及 deployment-instances create/list/detail、sync/async start/status/stop/warmup/health/reset、direct infer 和 inference-tasks create/list/detail/result 接口。本集合已经同步 fp16/fp32、CPU fallback 调试方式、latest checkpoint、validation metrics、output-files、training_summary、detail 响应里的 available_actions 与 control_status、save/pause 后自动登记 latest checkpoint 版本、latest checkpoint 与 completed best 的版本区分、训练完成后的单图人工验证闭环、数据集级回归评估和结果包输出，以及 deployment_instance_id 驱动的正式推理链；当前 deployment 推理链要求先显式调用 start 或 warmup，再执行 infer 或 inference-task create。Postman collection 已按 sync deployment、async deployment、sync inference、async inference task 分组，并把 input_uri、image_base64、multipart input_image 三种输入方式分别拆成独立调试请求。默认建议把 includeEvents 设为 false，用于高频轮询调试。",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "item": [
@@ -1126,7 +1126,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"model_version_id\": \"{{modelVersionId}}\",\n  \"model_build_id\": null,\n  \"runtime_profile_id\": null,\n  \"runtime_backend\": \"pytorch\",\n  \"device_name\": \"cpu\",\n  \"display_name\": \"{{deploymentDisplayName}}\",\n  \"metadata\": {}\n}",
+              "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"model_version_id\": \"{{modelVersionId}}\",\n  \"model_build_id\": null,\n  \"runtime_profile_id\": null,\n  \"runtime_backend\": \"pytorch\",\n  \"device_name\": \"cpu\",\n  \"instance_count\": {{deploymentInstanceCount}},\n  \"display_name\": \"{{deploymentDisplayName}}\",\n  \"metadata\": {}\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1146,7 +1146,7 @@
                 "deployment-instances"
               ]
             },
-            "description": "创建一个最小 DeploymentInstance。当前实现允许直接绑定 ModelVersion 或 ModelBuild，但正式运行时仍只支持 pytorch；create 阶段会先校验 checkpoint 和 labels 的本地可读性。"
+            "description": "创建一个最小 DeploymentInstance。当前实现允许直接绑定 ModelVersion 或 ModelBuild，但正式运行时仍只支持 pytorch；create 阶段会先校验 checkpoint 和 labels 的本地可读性。instance_count 表示 deployment 子进程内部要维护多少个独立推理线程与模型会话。"
           },
           "response": []
         },
@@ -1210,6 +1210,20 @@
         },
         {
           "name": "Get YOLOX Deployment Instance Detail",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  var payload = pm.response.json();",
+                  "  if (payload.instance_count !== undefined) pm.collectionVariables.set('deploymentInstanceCount', String(payload.instance_count));",
+                  "}"
+                ]
+              }
+            }
+          ],
           "request": {
             "method": "GET",
             "header": [
@@ -1246,6 +1260,610 @@
             "description": "读取单条 DeploymentInstance 当前详情，作为 inference-tasks 创建前的正式选择对象。"
           },
           "response": []
+        },
+        {
+          "name": "YOLOX Sync Deployment Process",
+          "item": [
+            {
+              "name": "Start YOLOX Sync Deployment Process",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "if (pm.response.code === 200) {",
+                      "  var payload = pm.response.json();",
+                      "  if (payload.desired_state) pm.collectionVariables.set('deploymentDesiredState', payload.desired_state);",
+                      "  if (payload.process_state) pm.collectionVariables.set('deploymentProcessState', payload.process_state);",
+                      "  if (payload.process_id !== undefined && payload.process_id !== null) pm.collectionVariables.set('deploymentProcessId', String(payload.process_id));",
+                      "  if (payload.restart_count !== undefined) pm.collectionVariables.set('deploymentRestartCount', String(payload.restart_count));",
+                      "}"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "x-amvision-principal-id",
+                    "value": "{{principalId}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "x-amvision-project-ids",
+                    "value": "{{projectId}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "x-amvision-scopes",
+                    "value": "models:read,models:write",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/models/yolox/deployment-instances/{{deploymentInstanceId}}/sync/start",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "models",
+                    "yolox",
+                    "deployment-instances",
+                    "{{deploymentInstanceId}}",
+                    "sync",
+                    "start"
+                  ]
+                },
+                "description": "显式启动 deployment 的 sync 推理子进程。同步 infer 和 sync warmup、health、reset 都依赖这条通道已经运行，或者由 warmup 自动拉起。"
+              },
+              "response": []
+            },
+            {
+              "name": "Get YOLOX Sync Deployment Status",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "if (pm.response.code === 200) {",
+                      "  var payload = pm.response.json();",
+                      "  if (payload.desired_state) pm.collectionVariables.set('deploymentDesiredState', payload.desired_state);",
+                      "  if (payload.process_state) pm.collectionVariables.set('deploymentProcessState', payload.process_state);",
+                      "  if (payload.process_id !== undefined && payload.process_id !== null) pm.collectionVariables.set('deploymentProcessId', String(payload.process_id));",
+                      "  if (payload.restart_count !== undefined) pm.collectionVariables.set('deploymentRestartCount', String(payload.restart_count));",
+                      "}"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "x-amvision-principal-id",
+                    "value": "{{principalId}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "x-amvision-project-ids",
+                    "value": "{{projectId}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "x-amvision-scopes",
+                    "value": "models:read",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/models/yolox/deployment-instances/{{deploymentInstanceId}}/sync/status",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "models",
+                    "yolox",
+                    "deployment-instances",
+                    "{{deploymentInstanceId}}",
+                    "sync",
+                    "status"
+                  ]
+                },
+                "description": "读取 deployment 的 sync 推理子进程监督状态。重点字段包括 process_state、desired_state、process_id、restart_count。"
+              },
+              "response": []
+            },
+            {
+              "name": "Warmup YOLOX Sync Deployment Process",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "if (pm.response.code === 200) {",
+                      "  var payload = pm.response.json();",
+                      "  if (payload.desired_state) pm.collectionVariables.set('deploymentDesiredState', payload.desired_state);",
+                      "  if (payload.process_state) pm.collectionVariables.set('deploymentProcessState', payload.process_state);",
+                      "  if (payload.process_id !== undefined && payload.process_id !== null) pm.collectionVariables.set('deploymentProcessId', String(payload.process_id));",
+                      "  if (payload.restart_count !== undefined) pm.collectionVariables.set('deploymentRestartCount', String(payload.restart_count));",
+                      "}"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "x-amvision-principal-id",
+                    "value": "{{principalId}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "x-amvision-project-ids",
+                    "value": "{{projectId}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "x-amvision-scopes",
+                    "value": "models:read,models:write",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/models/yolox/deployment-instances/{{deploymentInstanceId}}/sync/warmup",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "models",
+                    "yolox",
+                    "deployment-instances",
+                    "{{deploymentInstanceId}}",
+                    "sync",
+                    "warmup"
+                  ]
+                },
+                "description": "显式启动并预热 deployment 的 sync 推理子进程及内部实例池。推荐在第一次同步 infer 前先调用一次。"
+              },
+              "response": []
+            },
+            {
+              "name": "Get YOLOX Sync Deployment Health",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "x-amvision-principal-id",
+                    "value": "{{principalId}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "x-amvision-project-ids",
+                    "value": "{{projectId}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "x-amvision-scopes",
+                    "value": "models:read",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/models/yolox/deployment-instances/{{deploymentInstanceId}}/sync/health",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "models",
+                    "yolox",
+                    "deployment-instances",
+                    "{{deploymentInstanceId}}",
+                    "sync",
+                    "health"
+                  ]
+                },
+                "description": "读取 deployment 的 sync 推理子进程健康视图，包括 healthy_instance_count、warmed_instance_count 和 instances[]。"
+              },
+              "response": []
+            },
+            {
+              "name": "Reset YOLOX Sync Deployment Process",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "x-amvision-principal-id",
+                    "value": "{{principalId}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "x-amvision-project-ids",
+                    "value": "{{projectId}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "x-amvision-scopes",
+                    "value": "models:read,models:write",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/models/yolox/deployment-instances/{{deploymentInstanceId}}/sync/reset",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "models",
+                    "yolox",
+                    "deployment-instances",
+                    "{{deploymentInstanceId}}",
+                    "sync",
+                    "reset"
+                  ]
+                },
+                "description": "重置 deployment 的 sync 子进程内部实例池。要求 sync 子进程已经启动，否则接口会返回 invalid_request。"
+              },
+              "response": []
+            },
+            {
+              "name": "Stop YOLOX Sync Deployment Process",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "x-amvision-principal-id",
+                    "value": "{{principalId}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "x-amvision-project-ids",
+                    "value": "{{projectId}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "x-amvision-scopes",
+                    "value": "models:read,models:write",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/models/yolox/deployment-instances/{{deploymentInstanceId}}/sync/stop",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "models",
+                    "yolox",
+                    "deployment-instances",
+                    "{{deploymentInstanceId}}",
+                    "sync",
+                    "stop"
+                  ]
+                },
+                "description": "显式停止 deployment 的 sync 推理子进程。"
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "YOLOX Async Deployment Process",
+          "item": [
+            {
+              "name": "Start YOLOX Async Deployment Process",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "if (pm.response.code === 200) {",
+                      "  var payload = pm.response.json();",
+                      "  if (payload.desired_state) pm.collectionVariables.set('deploymentDesiredState', payload.desired_state);",
+                      "  if (payload.process_state) pm.collectionVariables.set('deploymentProcessState', payload.process_state);",
+                      "  if (payload.process_id !== undefined && payload.process_id !== null) pm.collectionVariables.set('deploymentProcessId', String(payload.process_id));",
+                      "  if (payload.restart_count !== undefined) pm.collectionVariables.set('deploymentRestartCount', String(payload.restart_count));",
+                      "}"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "x-amvision-principal-id",
+                    "value": "{{principalId}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "x-amvision-project-ids",
+                    "value": "{{projectId}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "x-amvision-scopes",
+                    "value": "models:read,models:write",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/models/yolox/deployment-instances/{{deploymentInstanceId}}/async/start",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "models",
+                    "yolox",
+                    "deployment-instances",
+                    "{{deploymentInstanceId}}",
+                    "async",
+                    "start"
+                  ]
+                },
+                "description": "显式启动 deployment 的 async 推理子进程。创建 inference-task 前需要先保证这条通道已经 running。"
+              },
+              "response": []
+            },
+            {
+              "name": "Get YOLOX Async Deployment Status",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "if (pm.response.code === 200) {",
+                      "  var payload = pm.response.json();",
+                      "  if (payload.desired_state) pm.collectionVariables.set('deploymentDesiredState', payload.desired_state);",
+                      "  if (payload.process_state) pm.collectionVariables.set('deploymentProcessState', payload.process_state);",
+                      "  if (payload.process_id !== undefined && payload.process_id !== null) pm.collectionVariables.set('deploymentProcessId', String(payload.process_id));",
+                      "  if (payload.restart_count !== undefined) pm.collectionVariables.set('deploymentRestartCount', String(payload.restart_count));",
+                      "}"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "x-amvision-principal-id",
+                    "value": "{{principalId}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "x-amvision-project-ids",
+                    "value": "{{projectId}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "x-amvision-scopes",
+                    "value": "models:read",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/models/yolox/deployment-instances/{{deploymentInstanceId}}/async/status",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "models",
+                    "yolox",
+                    "deployment-instances",
+                    "{{deploymentInstanceId}}",
+                    "async",
+                    "status"
+                  ]
+                },
+                "description": "读取 deployment 的 async 推理子进程监督状态。重点字段包括 process_state、desired_state、process_id、restart_count。"
+              },
+              "response": []
+            },
+            {
+              "name": "Warmup YOLOX Async Deployment Process",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "if (pm.response.code === 200) {",
+                      "  var payload = pm.response.json();",
+                      "  if (payload.desired_state) pm.collectionVariables.set('deploymentDesiredState', payload.desired_state);",
+                      "  if (payload.process_state) pm.collectionVariables.set('deploymentProcessState', payload.process_state);",
+                      "  if (payload.process_id !== undefined && payload.process_id !== null) pm.collectionVariables.set('deploymentProcessId', String(payload.process_id));",
+                      "  if (payload.restart_count !== undefined) pm.collectionVariables.set('deploymentRestartCount', String(payload.restart_count));",
+                      "}"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "x-amvision-principal-id",
+                    "value": "{{principalId}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "x-amvision-project-ids",
+                    "value": "{{projectId}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "x-amvision-scopes",
+                    "value": "models:read,models:write",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/models/yolox/deployment-instances/{{deploymentInstanceId}}/async/warmup",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "models",
+                    "yolox",
+                    "deployment-instances",
+                    "{{deploymentInstanceId}}",
+                    "async",
+                    "warmup"
+                  ]
+                },
+                "description": "显式启动并预热 deployment 的 async 推理子进程及内部实例池。推荐在第一次创建 async inference task 前先调用一次。"
+              },
+              "response": []
+            },
+            {
+              "name": "Get YOLOX Async Deployment Health",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "x-amvision-principal-id",
+                    "value": "{{principalId}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "x-amvision-project-ids",
+                    "value": "{{projectId}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "x-amvision-scopes",
+                    "value": "models:read",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/models/yolox/deployment-instances/{{deploymentInstanceId}}/async/health",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "models",
+                    "yolox",
+                    "deployment-instances",
+                    "{{deploymentInstanceId}}",
+                    "async",
+                    "health"
+                  ]
+                },
+                "description": "读取 deployment 的 async 推理子进程健康视图。"
+              },
+              "response": []
+            },
+            {
+              "name": "Reset YOLOX Async Deployment Process",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "x-amvision-principal-id",
+                    "value": "{{principalId}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "x-amvision-project-ids",
+                    "value": "{{projectId}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "x-amvision-scopes",
+                    "value": "models:read,models:write",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/models/yolox/deployment-instances/{{deploymentInstanceId}}/async/reset",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "models",
+                    "yolox",
+                    "deployment-instances",
+                    "{{deploymentInstanceId}}",
+                    "async",
+                    "reset"
+                  ]
+                },
+                "description": "重置 deployment 的 async 子进程内部实例池。要求 async 子进程已经启动，否则接口会返回 invalid_request。"
+              },
+              "response": []
+            },
+            {
+              "name": "Stop YOLOX Async Deployment Process",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "x-amvision-principal-id",
+                    "value": "{{principalId}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "x-amvision-project-ids",
+                    "value": "{{projectId}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "x-amvision-scopes",
+                    "value": "models:read,models:write",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/models/yolox/deployment-instances/{{deploymentInstanceId}}/async/stop",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "models",
+                    "yolox",
+                    "deployment-instances",
+                    "{{deploymentInstanceId}}",
+                    "async",
+                    "stop"
+                  ]
+                },
+                "description": "显式停止 deployment 的 async 推理子进程。"
+              },
+              "response": []
+            }
+          ]
         }
       ]
     },
@@ -1253,228 +1871,627 @@
       "name": "YOLOX Inference Tasks",
       "item": [
         {
-          "name": "Create YOLOX Inference Task",
-          "event": [
+          "name": "YOLOX Sync Direct Inference",
+          "item": [
             {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "if (pm.response.code === 202) {",
-                  "  var payload = pm.response.json();",
-                  "  pm.collectionVariables.set('inferenceTaskId', payload.task_id);",
-                  "}"
-                ]
-              }
-            }
-          ],
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json",
-                "type": "text"
-              },
-              {
-                "key": "x-amvision-principal-id",
-                "value": "{{principalId}}",
-                "type": "text"
-              },
-              {
-                "key": "x-amvision-project-ids",
-                "value": "{{projectId}}",
-                "type": "text"
-              },
-              {
-                "key": "x-amvision-scopes",
-                "value": "models:read,tasks:write",
-                "type": "text"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"deployment_instance_id\": \"{{deploymentInstanceId}}\",\n  \"input_file_id\": null,\n  \"input_uri\": \"{{inferenceImageUri}}\",\n  \"score_threshold\": {{inferenceScoreThreshold}},\n  \"save_result_image\": {{inferenceSaveResultImage}},\n  \"extra_options\": {},\n  \"display_name\": \"{{inferenceDisplayName}}\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
+              "name": "Direct YOLOX Inference By URI",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "if (pm.response.code === 200) {",
+                      "  var payload = pm.response.json();",
+                      "  if (payload.request_id) pm.collectionVariables.set('directInferenceRequestId', payload.request_id);",
+                      "  if (payload.result_object_key) pm.collectionVariables.set('inferenceResultObjectKey', payload.result_object_key);",
+                      "  if (payload.preview_image_uri) pm.collectionVariables.set('inferencePreviewImageUri', payload.preview_image_uri);",
+                      "}"
+                    ]
+                  }
                 }
-              }
-            },
-            "url": {
-              "raw": "{{baseUrl}}/api/v1/models/yolox/inference-tasks",
-              "host": [
-                "{{baseUrl}}"
               ],
-              "path": [
-                "api",
-                "v1",
-                "models",
-                "yolox",
-                "inference-tasks"
-              ]
-            },
-            "description": "创建一个正式 YOLOX inference task。当前最小实现通过 deployment_instance_id 解析模型与运行配置，并通过本地 input_uri 或 object key 读取输入图片。"
-          },
-          "response": []
-        },
-        {
-          "name": "List YOLOX Inference Tasks",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "x-amvision-principal-id",
-                "value": "{{principalId}}",
-                "type": "text"
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  },
+                  {
+                    "key": "x-amvision-principal-id",
+                    "value": "{{principalId}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "x-amvision-project-ids",
+                    "value": "{{projectId}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "x-amvision-scopes",
+                    "value": "models:read",
+                    "type": "text"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"input_uri\": \"{{inferenceImageUri}}\",\n  \"input_file_id\": null,\n  \"score_threshold\": {{inferenceScoreThreshold}},\n  \"save_result_image\": {{inferenceSaveResultImage}},\n  \"return_preview_image_base64\": {{inferenceReturnPreviewImageBase64}},\n  \"extra_options\": {}\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/models/yolox/deployment-instances/{{deploymentInstanceId}}/infer",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "models",
+                    "yolox",
+                    "deployment-instances",
+                    "{{deploymentInstanceId}}",
+                    "infer"
+                  ]
+                },
+                "description": "直接执行一次同步 YOLOX 推理并返回结果，输入来源为 input_uri。调用前需要先让 sync deployment 子进程通过 sync/start 或 sync/warmup 进入 running。"
               },
-              {
-                "key": "x-amvision-project-ids",
-                "value": "{{projectId}}",
-                "type": "text"
-              },
-              {
-                "key": "x-amvision-scopes",
-                "value": "tasks:read",
-                "type": "text"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/api/v1/models/yolox/inference-tasks?project_id={{projectId}}&limit={{inferenceLimit}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "models",
-                "yolox",
-                "inference-tasks"
-              ],
-              "query": [
-                {
-                  "key": "project_id",
-                  "value": "{{projectId}}"
-                },
-                {
-                  "key": "deployment_instance_id",
-                  "value": "{{deploymentInstanceId}}",
-                  "disabled": true
-                },
-                {
-                  "key": "state",
-                  "value": "{{inferenceState}}",
-                  "disabled": true
-                },
-                {
-                  "key": "limit",
-                  "value": "{{inferenceLimit}}"
-                }
-              ]
+              "response": []
             },
-            "description": "按 Project 和可选 DeploymentInstance 边界列出推理任务。成功任务会直接返回结果文件路径、检测框数量和 latency。"
-          },
-          "response": []
-        },
-        {
-          "name": "Get YOLOX Inference Task Detail",
-          "event": [
             {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "if (pm.response.code === 200) {",
-                  "  var payload = pm.response.json();",
-                  "  if (payload.result_object_key) pm.collectionVariables.set('inferenceResultObjectKey', payload.result_object_key);",
-                  "  if (payload.preview_image_object_key) pm.collectionVariables.set('inferencePreviewImageObjectKey', payload.preview_image_object_key);",
-                  "}"
-                ]
-              }
-            }
-          ],
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "x-amvision-principal-id",
-                "value": "{{principalId}}",
-                "type": "text"
-              },
-              {
-                "key": "x-amvision-project-ids",
-                "value": "{{projectId}}",
-                "type": "text"
-              },
-              {
-                "key": "x-amvision-scopes",
-                "value": "tasks:read",
-                "type": "text"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/api/v1/models/yolox/inference-tasks/{{inferenceTaskId}}?include_events={{includeEvents}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "models",
-                "yolox",
-                "inference-tasks",
-                "{{inferenceTaskId}}"
-              ],
-              "query": [
+              "name": "Direct YOLOX Inference By Base64",
+              "event": [
                 {
-                  "key": "include_events",
-                  "value": "{{includeEvents}}"
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "if (pm.response.code === 200) {",
+                      "  var payload = pm.response.json();",
+                      "  if (payload.request_id) pm.collectionVariables.set('directInferenceRequestId', payload.request_id);",
+                      "  if (payload.result_object_key) pm.collectionVariables.set('inferenceResultObjectKey', payload.result_object_key);",
+                      "  if (payload.preview_image_uri) pm.collectionVariables.set('inferencePreviewImageUri', payload.preview_image_uri);",
+                      "}"
+                    ]
+                  }
                 }
-              ]
+              ],
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  },
+                  {
+                    "key": "x-amvision-principal-id",
+                    "value": "{{principalId}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "x-amvision-project-ids",
+                    "value": "{{projectId}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "x-amvision-scopes",
+                    "value": "models:read",
+                    "type": "text"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"image_base64\": \"{{inferenceImageBase64}}\",\n  \"input_file_id\": null,\n  \"score_threshold\": {{inferenceScoreThreshold}},\n  \"save_result_image\": {{inferenceSaveResultImage}},\n  \"return_preview_image_base64\": {{inferenceReturnPreviewImageBase64}},\n  \"extra_options\": {}\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/models/yolox/deployment-instances/{{deploymentInstanceId}}/infer",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "models",
+                    "yolox",
+                    "deployment-instances",
+                    "{{deploymentInstanceId}}",
+                    "infer"
+                  ]
+                },
+                "description": "直接执行一次同步 YOLOX 推理并返回结果，输入来源为 image_base64。请求体只保留这一个输入字段，便于单独调试 base64 上传路径。image_base64 既可以填纯 base64 内容，也可以改成 data:image/png;base64,{{inferenceImageBase64}} 这类 data URI；但 application/json 请求体里的字符串必须保持单行。"
+              },
+              "response": []
             },
-            "description": "读取单条 inference task 当前详情。任务完成后，detail 会直接返回 result_object_key、preview_image_object_key、detection_count 和 latency。"
-          },
-          "response": []
+            {
+              "name": "Direct YOLOX Inference By Upload",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "if (pm.response.code === 200) {",
+                      "  var payload = pm.response.json();",
+                      "  if (payload.request_id) pm.collectionVariables.set('directInferenceRequestId', payload.request_id);",
+                      "  if (payload.result_object_key) pm.collectionVariables.set('inferenceResultObjectKey', payload.result_object_key);",
+                      "  if (payload.preview_image_uri) pm.collectionVariables.set('inferencePreviewImageUri', payload.preview_image_uri);",
+                      "}"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "x-amvision-principal-id",
+                    "value": "{{principalId}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "x-amvision-project-ids",
+                    "value": "{{projectId}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "x-amvision-scopes",
+                    "value": "models:read",
+                    "type": "text"
+                  }
+                ],
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "input_image",
+                      "type": "file",
+                      "src": "{{inferenceUploadImagePath}}"
+                    },
+                    {
+                      "key": "score_threshold",
+                      "value": "{{inferenceScoreThreshold}}",
+                      "type": "text"
+                    },
+                    {
+                      "key": "save_result_image",
+                      "value": "{{inferenceSaveResultImage}}",
+                      "type": "text"
+                    },
+                    {
+                      "key": "return_preview_image_base64",
+                      "value": "{{inferenceReturnPreviewImageBase64}}",
+                      "type": "text"
+                    },
+                    {
+                      "key": "extra_options",
+                      "value": "{}",
+                      "type": "text"
+                    }
+                  ]
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/models/yolox/deployment-instances/{{deploymentInstanceId}}/infer",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "models",
+                    "yolox",
+                    "deployment-instances",
+                    "{{deploymentInstanceId}}",
+                    "infer"
+                  ]
+                },
+                "description": "直接执行一次同步 YOLOX 推理并返回结果，输入来源为 multipart/form-data 的 input_image 文件字段。不要再同时提交 input_uri 或 image_base64。"
+              },
+              "response": []
+            }
+          ]
         },
         {
-          "name": "Get YOLOX Inference Result",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "x-amvision-principal-id",
-                "value": "{{principalId}}",
-                "type": "text"
-              },
-              {
-                "key": "x-amvision-project-ids",
-                "value": "{{projectId}}",
-                "type": "text"
-              },
-              {
-                "key": "x-amvision-scopes",
-                "value": "tasks:read",
-                "type": "text"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/api/v1/models/yolox/inference-tasks/{{inferenceTaskId}}/result",
-              "host": [
-                "{{baseUrl}}"
+          "name": "YOLOX Async Inference Tasks",
+          "item": [
+            {
+              "name": "Create YOLOX Inference Task By URI",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "if (pm.response.code === 202) {",
+                      "  var payload = pm.response.json();",
+                      "  pm.collectionVariables.set('inferenceTaskId', payload.task_id);",
+                      "}"
+                    ]
+                  }
+                }
               ],
-              "path": [
-                "api",
-                "v1",
-                "models",
-                "yolox",
-                "inference-tasks",
-                "{{inferenceTaskId}}",
-                "result"
-              ]
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  },
+                  {
+                    "key": "x-amvision-principal-id",
+                    "value": "{{principalId}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "x-amvision-project-ids",
+                    "value": "{{projectId}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "x-amvision-scopes",
+                    "value": "models:read,tasks:write",
+                    "type": "text"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"deployment_instance_id\": \"{{deploymentInstanceId}}\",\n  \"input_file_id\": null,\n  \"input_uri\": \"{{inferenceImageUri}}\",\n  \"score_threshold\": {{inferenceScoreThreshold}},\n  \"save_result_image\": {{inferenceSaveResultImage}},\n  \"return_preview_image_base64\": {{inferenceReturnPreviewImageBase64}},\n  \"extra_options\": {},\n  \"display_name\": \"{{inferenceDisplayName}}\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/models/yolox/inference-tasks",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "models",
+                    "yolox",
+                    "inference-tasks"
+                  ]
+                },
+                "description": "创建一个正式 YOLOX inference task，输入来源为 input_uri。调用前需要先让 async deployment 子进程通过 async/start 或 async/warmup 进入 running，否则 create 会直接返回 invalid_request。"
+              },
+              "response": []
             },
-            "description": "读取当前推理任务的 raw-result.json。任务执行中会返回 pending；完成后 payload 中可直接读取 detections、runtime_session_info 和 preview_image_uri。"
-          },
-          "response": []
+            {
+              "name": "Create YOLOX Inference Task By Base64",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "if (pm.response.code === 202) {",
+                      "  var payload = pm.response.json();",
+                      "  pm.collectionVariables.set('inferenceTaskId', payload.task_id);",
+                      "}"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  },
+                  {
+                    "key": "x-amvision-principal-id",
+                    "value": "{{principalId}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "x-amvision-project-ids",
+                    "value": "{{projectId}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "x-amvision-scopes",
+                    "value": "models:read,tasks:write",
+                    "type": "text"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"deployment_instance_id\": \"{{deploymentInstanceId}}\",\n  \"input_file_id\": null,\n  \"image_base64\": \"{{inferenceImageBase64}}\",\n  \"score_threshold\": {{inferenceScoreThreshold}},\n  \"save_result_image\": {{inferenceSaveResultImage}},\n  \"return_preview_image_base64\": {{inferenceReturnPreviewImageBase64}},\n  \"extra_options\": {},\n  \"display_name\": \"{{inferenceDisplayName}}\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/models/yolox/inference-tasks",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "models",
+                    "yolox",
+                    "inference-tasks"
+                  ]
+                },
+                "description": "创建一个正式 YOLOX inference task，输入来源为 image_base64。请求体只保留这一种输入方式，便于单独调试 base64 入队路径。image_base64 既可以填纯 base64 内容，也可以改成 data:image/png;base64,{{inferenceImageBase64}} 这类 data URI；但 application/json 请求体里的字符串必须保持单行。"
+              },
+              "response": []
+            },
+            {
+              "name": "Create YOLOX Inference Task By Upload",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "if (pm.response.code === 202) {",
+                      "  var payload = pm.response.json();",
+                      "  pm.collectionVariables.set('inferenceTaskId', payload.task_id);",
+                      "}"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "x-amvision-principal-id",
+                    "value": "{{principalId}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "x-amvision-project-ids",
+                    "value": "{{projectId}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "x-amvision-scopes",
+                    "value": "models:read,tasks:write",
+                    "type": "text"
+                  }
+                ],
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "project_id",
+                      "value": "{{projectId}}",
+                      "type": "text"
+                    },
+                    {
+                      "key": "deployment_instance_id",
+                      "value": "{{deploymentInstanceId}}",
+                      "type": "text"
+                    },
+                    {
+                      "key": "input_image",
+                      "type": "file",
+                      "src": "{{inferenceUploadImagePath}}"
+                    },
+                    {
+                      "key": "score_threshold",
+                      "value": "{{inferenceScoreThreshold}}",
+                      "type": "text"
+                    },
+                    {
+                      "key": "save_result_image",
+                      "value": "{{inferenceSaveResultImage}}",
+                      "type": "text"
+                    },
+                    {
+                      "key": "return_preview_image_base64",
+                      "value": "{{inferenceReturnPreviewImageBase64}}",
+                      "type": "text"
+                    },
+                    {
+                      "key": "extra_options",
+                      "value": "{}",
+                      "type": "text"
+                    },
+                    {
+                      "key": "display_name",
+                      "value": "{{inferenceDisplayName}}",
+                      "type": "text"
+                    }
+                  ]
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/models/yolox/inference-tasks",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "models",
+                    "yolox",
+                    "inference-tasks"
+                  ]
+                },
+                "description": "创建一个正式 YOLOX inference task，输入来源为 multipart/form-data 的 input_image 文件字段。不要再同时提交 input_uri 或 image_base64。"
+              },
+              "response": []
+            },
+            {
+              "name": "List YOLOX Inference Tasks",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "x-amvision-principal-id",
+                    "value": "{{principalId}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "x-amvision-project-ids",
+                    "value": "{{projectId}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "x-amvision-scopes",
+                    "value": "tasks:read",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/models/yolox/inference-tasks?project_id={{projectId}}&limit={{inferenceLimit}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "models",
+                    "yolox",
+                    "inference-tasks"
+                  ],
+                  "query": [
+                    {
+                      "key": "project_id",
+                      "value": "{{projectId}}"
+                    },
+                    {
+                      "key": "deployment_instance_id",
+                      "value": "{{deploymentInstanceId}}",
+                      "disabled": true
+                    },
+                    {
+                      "key": "state",
+                      "value": "{{inferenceState}}",
+                      "disabled": true
+                    },
+                    {
+                      "key": "limit",
+                      "value": "{{inferenceLimit}}"
+                    }
+                  ]
+                },
+                "description": "按 Project 和可选 DeploymentInstance 边界列出 async 推理任务。成功任务会直接返回结果文件路径、检测框数量和 latency。"
+              },
+              "response": []
+            },
+            {
+              "name": "Get YOLOX Inference Task Detail",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "if (pm.response.code === 200) {",
+                      "  var payload = pm.response.json();",
+                      "  if (payload.result_object_key) pm.collectionVariables.set('inferenceResultObjectKey', payload.result_object_key);",
+                      "  if (payload.preview_image_object_key) pm.collectionVariables.set('inferencePreviewImageObjectKey', payload.preview_image_object_key);",
+                      "}"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "x-amvision-principal-id",
+                    "value": "{{principalId}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "x-amvision-project-ids",
+                    "value": "{{projectId}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "x-amvision-scopes",
+                    "value": "tasks:read",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/models/yolox/inference-tasks/{{inferenceTaskId}}?include_events={{includeEvents}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "models",
+                    "yolox",
+                    "inference-tasks",
+                    "{{inferenceTaskId}}"
+                  ],
+                  "query": [
+                    {
+                      "key": "include_events",
+                      "value": "{{includeEvents}}"
+                    }
+                  ]
+                },
+                "description": "读取单条 async inference task 当前详情。任务完成后，detail 会直接返回 result_object_key、preview_image_object_key、detection_count 和 latency。"
+              },
+              "response": []
+            },
+            {
+              "name": "Get YOLOX Inference Result",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "x-amvision-principal-id",
+                    "value": "{{principalId}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "x-amvision-project-ids",
+                    "value": "{{projectId}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "x-amvision-scopes",
+                    "value": "tasks:read",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/models/yolox/inference-tasks/{{inferenceTaskId}}/result",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "models",
+                    "yolox",
+                    "inference-tasks",
+                    "{{inferenceTaskId}}",
+                    "result"
+                  ]
+                },
+                "description": "读取当前 async 推理任务的 raw-result.json。任务执行中会返回 pending；完成后 payload 中可直接读取 detections、runtime_session_info 和 preview_image_uri。"
+              },
+              "response": []
+            }
+          ]
         }
       ]
     }
@@ -1677,6 +2694,10 @@
       "value": "deployment-instance-1"
     },
     {
+      "key": "deploymentInstanceCount",
+      "value": "1"
+    },
+    {
       "key": "deploymentDisplayName",
       "value": "local yolox deployment"
     },
@@ -1689,12 +2710,40 @@
       "value": "20"
     },
     {
+      "key": "deploymentDesiredState",
+      "value": "stopped"
+    },
+    {
+      "key": "deploymentProcessState",
+      "value": "stopped"
+    },
+    {
+      "key": "deploymentProcessId",
+      "value": ""
+    },
+    {
+      "key": "deploymentRestartCount",
+      "value": "0"
+    },
+    {
       "key": "inferenceTaskId",
       "value": "task-inference-1"
     },
     {
+      "key": "directInferenceRequestId",
+      "value": ""
+    },
+    {
       "key": "inferenceImageUri",
       "value": "runtime-inputs/image-1.jpg"
+    },
+    {
+      "key": "inferenceImageBase64",
+      "value": "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAE0lEQVQIHWNk+M8ABIwM/xmAAAAREgIB9FemLQAAAABJRU5ErkJggg=="
+    },
+    {
+      "key": "inferenceUploadImagePath",
+      "value": "C:/path/to/local/image.jpg"
     },
     {
       "key": "inferenceScoreThreshold",
@@ -1702,6 +2751,10 @@
     },
     {
       "key": "inferenceSaveResultImage",
+      "value": "true"
+    },
+    {
+      "key": "inferenceReturnPreviewImageBase64",
       "value": "true"
     },
     {
@@ -1722,6 +2775,10 @@
     },
     {
       "key": "inferencePreviewImageObjectKey",
+      "value": ""
+    },
+    {
+      "key": "inferencePreviewImageUri",
       "value": ""
     },
     {
