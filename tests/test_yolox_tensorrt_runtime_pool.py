@@ -24,6 +24,31 @@ from tests.runtime_pool_test_support import (
 )
 
 
+class _MemoryReportingPredictionSession(FakePredictionSession):
+    """提供 pinned output buffer 占用快照的 fake prediction session。"""
+
+    def __init__(
+        self,
+        *,
+        execution_result,
+        output_host_memory_kind: str,
+        output_host_pinned_bytes: int,
+    ) -> None:
+        """初始化带 memory snapshot 的 fake session。"""
+
+        super().__init__(execution_result=execution_result)
+        self.output_host_memory_kind = output_host_memory_kind
+        self.output_host_pinned_bytes = output_host_pinned_bytes
+
+    def describe_memory_usage(self) -> dict[str, object]:
+        """返回测试使用的输出 host buffer 占用快照。"""
+
+        return {
+            "output_host_memory_kind": self.output_host_memory_kind,
+            "output_host_pinned_bytes": self.output_host_pinned_bytes,
+        }
+
+
 def test_runtime_pool_loads_tensorrt_session_once_and_reuses_warmed_instance(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -80,3 +105,45 @@ def test_runtime_pool_loads_tensorrt_session_once_and_reuses_warmed_instance(
         "tensorrt:fp16:cuda:0"
     )
     assert execution.execution_result.runtime_session_info.metadata["compiled_runtime_precision"] == "fp16"
+
+
+def test_runtime_pool_health_reports_total_pinned_output_bytes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """验证 runtime pool health 会汇总所有已加载 session 的 pinned output 总量。"""
+
+    dataset_storage = create_test_dataset_storage(tmp_path)
+    runtime_target = build_test_runtime_target(
+        dataset_storage=dataset_storage,
+        runtime_backend="tensorrt",
+        device_name="cuda:0",
+        runtime_precision="fp32",
+        runtime_artifact_file_name="fake-model.engine",
+        runtime_artifact_file_type=YOLOX_TENSORRT_ENGINE_FILE,
+    )
+    config = YoloXDeploymentRuntimePoolConfig(
+        deployment_instance_id="deployment-instance-tensorrt-runtime-pool-health-1",
+        runtime_target=runtime_target,
+        instance_count=2,
+    )
+    fake_session = _MemoryReportingPredictionSession(
+        execution_result=build_test_execution_result(runtime_target=runtime_target, output_dtype="float32"),
+        output_host_memory_kind="pinned",
+        output_host_pinned_bytes=524288,
+    )
+    load_requests: list[tuple[object, object]] = []
+
+    monkeypatch.setattr(
+        runtime_pool_module,
+        "TensorRTYoloXRuntimeSession",
+        build_recording_session_loader(load_requests=load_requests, session=fake_session),
+    )
+
+    pool = YoloXDeploymentRuntimePool(dataset_storage=dataset_storage)
+    pool.warmup_deployment(config)
+    health = pool.get_health(config)
+
+    assert len(load_requests) == 2
+    assert health.warmed_instance_count == 2
+    assert health.pinned_output_total_bytes == 1048576

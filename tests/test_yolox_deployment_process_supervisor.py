@@ -15,6 +15,7 @@ from backend.service.application.runtime.yolox_deployment_process_supervisor imp
     YoloXDeploymentProcessSupervisor,
 )
 from backend.service.application.runtime.yolox_predictor import YoloXPredictionRequest
+from backend.service.application.runtime.safe_counter import JSON_SAFE_INTEGER_MAX
 from backend.service.application.runtime.yolox_runtime_target import RuntimeTargetSnapshot
 from backend.service.settings import BackendServiceDeploymentProcessSupervisorConfig
 
@@ -56,10 +57,12 @@ def test_deployment_process_supervisor_supports_lifecycle_and_auto_restart(tmp_p
         initial_health = supervisor.get_health(config)
         assert initial_health.healthy_instance_count == 2
         assert initial_health.warmed_instance_count == 0
+        assert initial_health.pinned_output_total_bytes == 0
 
         warmup_health = supervisor.warmup_deployment(config)
         assert warmup_health.healthy_instance_count == 2
         assert warmup_health.warmed_instance_count == 2
+        assert warmup_health.pinned_output_total_bytes == 1048576
         assert all(item.warmed is True for item in warmup_health.instances)
 
         execution_1 = supervisor.run_inference(
@@ -87,16 +90,20 @@ def test_deployment_process_supervisor_supports_lifecycle_and_auto_restart(tmp_p
         state = supervisor._deployments[config.deployment_instance_id]
         assert state.process is not None
         previous_process_id = state.process.pid
+        state.restart_counter.value = JSON_SAFE_INTEGER_MAX
+        state.restart_counter.rollover_count = 0
         state.process.terminate()
         state.process.join(timeout=1.0)
 
         restarted_status = _wait_for_running_restart(supervisor, config, previous_process_id)
-        assert restarted_status.restart_count >= 1
+        assert restarted_status.restart_count == 1
+        assert restarted_status.restart_count_rollover_count == 1
         assert restarted_status.process_id is not None
         assert restarted_status.process_id != previous_process_id
 
         reset_health = supervisor.reset_deployment(config)
         assert reset_health.warmed_instance_count == 0
+        assert reset_health.pinned_output_total_bytes == 0
 
         stopped_status = supervisor.stop_deployment(config)
         assert stopped_status.process_state == "stopped"
@@ -124,11 +131,13 @@ def fake_yolox_deployment_process_worker(
     request_queue,
     response_queue,
     operator_thread_count: int,
+    supervisor_settings: dict[str, object] | None = None,
 ) -> None:
     """提供可预测响应的 fake deployment 子进程。"""
 
     del dataset_storage_root_dir
     del operator_thread_count
+    del supervisor_settings
 
     warmed_instance_indexes: set[int] = set()
     next_instance_index = 0
@@ -250,6 +259,7 @@ def _build_health_payload(
         "process_id": os.getpid(),
         "healthy_instance_count": config.instance_count,
         "warmed_instance_count": len(warmed_instance_indexes),
+        "pinned_output_total_bytes": len(warmed_instance_indexes) * 524288,
         "instances": instances,
     }
 
@@ -269,6 +279,7 @@ def _build_runtime_target(runtime_artifact_path: Path) -> RuntimeTargetSnapshot:
         runtime_profile_id=None,
         runtime_backend="onnxruntime",
         device_name="cpu",
+        runtime_precision="fp32",
         input_size=(64, 64),
         labels=("bolt",),
         runtime_artifact_file_id="artifact-1",

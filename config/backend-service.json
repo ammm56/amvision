@@ -17,5 +17,19 @@
     "enabled": true,
     "max_concurrent_tasks": 2,
     "poll_interval_seconds": 1.0
+  },
+  "deployment_process_supervisor": {
+    "auto_restart": true,
+    "monitor_interval_seconds": 0.5,
+    "request_timeout_seconds": 30.0,
+    "shutdown_timeout_seconds": 5.0,
+    "operator_thread_count": 1,
+    "warmup_dummy_inference_count": 6,
+    "warmup_dummy_image_size": [64, 64],
+    "keep_warm_enabled": false,
+    "keep_warm_interval_seconds": 0.1,
+    "keep_warm_yield_timeout_seconds": 1.0,
+    "tensorrt_pinned_output_buffer_enabled": true,
+    "tensorrt_pinned_output_buffer_max_bytes": 8388608
   }
 }

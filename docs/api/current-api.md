@@ -410,6 +410,13 @@
   - instance_count
   - display_name
   - metadata
+- 当前 `metadata.deployment_process` 支持下面这些可选覆盖字段：
+  - warmup_dummy_inference_count：覆盖默认 warmup 的 dummy infer 次数
+  - warmup_dummy_image_size：覆盖 dummy infer 使用的最小输入图片尺寸，格式为 `[width, height]`
+  - keep_warm_enabled：启用 deployment 子进程内的 keep-warm 后台线程
+  - keep_warm_interval_seconds：覆盖 keep-warm 连续 dummy infer 的最小间隔秒数
+  - tensorrt_pinned_output_buffer_enabled：覆盖 TensorRT 输出 host buffer 是否启用 pinned memory
+  - tensorrt_pinned_output_buffer_max_bytes：覆盖 TensorRT 输出 host buffer 允许使用 pinned memory 的最大字节数
 - 当前最小实现允许直接绑定训练产出的 `ModelVersion`，也允许绑定 `ModelBuild`；如果同时提供 `model_build_id` 和 `model_version_id`，两者必须指向同一来源版本
 - 当前 `ModelVersion` 默认走 `pytorch`；当前 `ModelBuild` 已支持 `onnx` / `onnx-optimized` / `openvino-ir` / `tensorrt-engine` 绑定，并自动解析为 `onnxruntime`、`openvino` 或 `tensorrt`
 - 当前 create 会在提交阶段校验 checkpoint 和 labels 的本地可读性
@@ -464,6 +471,7 @@
   - process_id
   - auto_restart
   - restart_count
+  - restart_count_rollover_count
   - last_exit_code
   - last_error
   - instance_count
@@ -482,6 +490,8 @@
 
 - 需要 models:read 和 models:write
 - 显式启动并预热指定 deployment 的所有同步推理实例
+- 当前 warmup 会先加载全部实例会话，再按默认配置或 `metadata.deployment_process` 覆盖值执行 N 次真实 dummy infer
+- 当 `metadata.deployment_process.keep_warm_enabled=true` 时，warmup 完成后会激活 keep-warm 后台线程；首次真实推理成功后也会激活同一机制
 - 当前响应会返回：
   - deployment_instance_id
   - display_name
@@ -491,27 +501,80 @@
   - process_id
   - auto_restart
   - restart_count
+  - restart_count_rollover_count
   - last_exit_code
   - last_error
   - instance_count
   - healthy_instance_count
   - warmed_instance_count
+  - pinned_output_total_bytes
   - instances[].instance_id
   - instances[].healthy
   - instances[].warmed
   - instances[].busy
   - instances[].last_error
+  - keep_warm.enabled
+  - keep_warm.activated
+  - keep_warm.paused
+  - keep_warm.idle
+  - keep_warm.interval_seconds
+  - keep_warm.yield_timeout_seconds
+  - keep_warm.success_count
+  - keep_warm.success_count_rollover_count
+  - keep_warm.error_count
+  - keep_warm.error_count_rollover_count
+  - keep_warm.last_error
 
 ### GET /api/v1/models/yolox/deployment-instances/{deployment_instance_id}/sync/health
 
 - 需要 models:read
 - 返回指定 deployment 当前同步推理子进程及实例池的详细健康视图
+- 当前响应会额外返回 keep-warm 状态：
+  - pinned_output_total_bytes：当前所有已加载 session 的 pinned output host buffer 总字节数
+  - restart_count：当前 restart 计数的安全整数窗口值
+  - restart_count_rollover_count：restart_count 已发生的 rollover 次数；当 restart_count 达到 JavaScript 安全整数上限后，下一次自增会把 restart_count 置为 1，并把这个字段加 1
+  - keep_warm.enabled：当前 deployment 是否启用 keep-warm
+  - keep_warm.activated：keep-warm 是否已经被 warmup 或真实推理激活
+  - keep_warm.paused：keep-warm 当前是否因为控制面动作或真实请求而暂停
+  - keep_warm.idle：当前是否没有 keep-warm dummy infer 正在执行
+  - keep_warm.interval_seconds：当前生效的 keep-warm 间隔秒数
+  - keep_warm.yield_timeout_seconds：真实请求等待 keep-warm 让出的最长秒数
+  - keep_warm.success_count：keep-warm 成功完成的 dummy infer 当前安全整数窗口值
+  - keep_warm.success_count_rollover_count：success_count 已发生的 rollover 次数；当 success_count 达到 JavaScript 安全整数上限后，下一次成功会把 success_count 置为 1，并把这个字段加 1
+  - keep_warm.error_count：keep-warm 失败次数当前安全整数窗口值
+  - keep_warm.error_count_rollover_count：error_count 已发生的 rollover 次数；当 error_count 达到 JavaScript 安全整数上限后，下一次失败会把 error_count 置为 1，并把这个字段加 1
+  - keep_warm.last_error：最近一次 keep-warm 失败错误
 
 ### POST /api/v1/models/yolox/deployment-instances/{deployment_instance_id}/sync/reset
 
 - 需要 models:read 和 models:write
 - 重置指定 deployment 的同步推理实例池
 - 如果同步推理子进程尚未启动，接口返回 `invalid_request`
+- 当前响应会返回与 `sync/health` 相同的详细健康字段，重点包括：
+  - desired_state
+  - process_state
+  - process_id
+  - restart_count
+  - restart_count_rollover_count
+  - healthy_instance_count
+  - warmed_instance_count
+  - pinned_output_total_bytes
+  - instances[].instance_id
+  - instances[].healthy
+  - instances[].warmed
+  - instances[].busy
+  - instances[].last_error
+  - keep_warm.enabled
+  - keep_warm.activated
+  - keep_warm.paused
+  - keep_warm.idle
+  - keep_warm.interval_seconds
+  - keep_warm.yield_timeout_seconds
+  - keep_warm.success_count
+  - keep_warm.success_count_rollover_count
+  - keep_warm.error_count
+  - keep_warm.error_count_rollover_count
+  - keep_warm.last_error
 
 ### POST /api/v1/models/yolox/deployment-instances/{deployment_instance_id}/async/start
 
@@ -532,17 +595,46 @@
 
 - 需要 models:read 和 models:write
 - 显式启动并预热指定 deployment 的所有异步推理实例
+- 当前 warmup 会先加载全部实例会话，再按默认配置或 `metadata.deployment_process` 覆盖值执行 N 次真实 dummy infer
+- 当 `metadata.deployment_process.keep_warm_enabled=true` 时，warmup 完成后会激活 keep-warm 后台线程；首次真实推理成功后也会激活同一机制
+- 当前响应会返回与 sync/warmup 相同的 keep_warm 状态字段，以及 `pinned_output_total_bytes`，可直接判断 keep-warm 是否启用、是否激活，以及当前已加载 session 持有的 pinned output 总量
 
 ### GET /api/v1/models/yolox/deployment-instances/{deployment_instance_id}/async/health
 
 - 需要 models:read
 - 返回指定 deployment 当前异步推理子进程及实例池的详细健康视图
+- 当前响应会额外返回与 sync/health 相同的 keep_warm 状态字段和 `pinned_output_total_bytes`，可直接判断 keep-warm 是否启用、是否激活，以及当前已加载 session 持有的 pinned output 总量
 
 ### POST /api/v1/models/yolox/deployment-instances/{deployment_instance_id}/async/reset
 
 - 需要 models:read 和 models:write
 - 重置指定 deployment 的异步推理实例池
 - 如果异步推理子进程尚未启动，接口返回 `invalid_request`
+- 当前响应会返回与 `async/health` 相同的详细健康字段，重点包括：
+  - desired_state
+  - process_state
+  - process_id
+  - restart_count
+  - restart_count_rollover_count
+  - healthy_instance_count
+  - warmed_instance_count
+  - pinned_output_total_bytes
+  - instances[].instance_id
+  - instances[].healthy
+  - instances[].warmed
+  - instances[].busy
+  - instances[].last_error
+  - keep_warm.enabled
+  - keep_warm.activated
+  - keep_warm.paused
+  - keep_warm.idle
+  - keep_warm.interval_seconds
+  - keep_warm.yield_timeout_seconds
+  - keep_warm.success_count
+  - keep_warm.success_count_rollover_count
+  - keep_warm.error_count
+  - keep_warm.error_count_rollover_count
+  - keep_warm.last_error
 
 ### POST /api/v1/models/yolox/deployment-instances/{deployment_instance_id}/infer
 

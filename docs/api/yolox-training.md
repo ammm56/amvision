@@ -740,6 +740,32 @@
 - `display_name`
 - `metadata`
 
+#### 当前 deployment metadata 覆盖字段
+
+- `metadata.deployment_process.warmup_dummy_inference_count`：覆盖默认 warmup 的 dummy infer 次数
+- `metadata.deployment_process.warmup_dummy_image_size`：覆盖 dummy infer 使用的最小输入图片尺寸，格式为 `[width, height]`
+- `metadata.deployment_process.keep_warm_enabled`：启用 deployment 子进程内的 keep-warm 后台线程
+- `metadata.deployment_process.keep_warm_interval_seconds`：覆盖 keep-warm 连续 dummy infer 的最小间隔秒数
+- `metadata.deployment_process.tensorrt_pinned_output_buffer_enabled`：覆盖 TensorRT 输出 host buffer 是否启用 pinned memory
+- `metadata.deployment_process.tensorrt_pinned_output_buffer_max_bytes`：覆盖 TensorRT 输出 host buffer 允许使用 pinned memory 的最大字节数
+
+#### 当前 keep-warm 观测字段
+
+- `pinned_output_total_bytes`：当前所有已加载 session 的 pinned output host buffer 总字节数
+- `keep_warm.enabled`：当前 deployment 是否启用 keep-warm
+- `keep_warm.activated`：keep-warm 是否已经被 warmup 或真实推理激活
+- `keep_warm.paused`：keep-warm 当前是否因为控制面动作或真实请求而暂停
+- `keep_warm.idle`：当前是否没有 keep-warm dummy infer 正在执行
+- `keep_warm.interval_seconds`：当前生效的 keep-warm 间隔秒数
+- `keep_warm.yield_timeout_seconds`：真实请求等待 keep-warm 让出的最长秒数
+- `keep_warm.success_count`：keep-warm 成功完成的 dummy infer 当前安全整数窗口值
+- `keep_warm.success_count_rollover_count`：`success_count` 已发生的 rollover 次数；当 `success_count` 达到 JavaScript 安全整数上限后，下一次成功会把 `success_count` 置为 1，并把这个字段加 1
+- `keep_warm.error_count`：keep-warm 失败次数当前安全整数窗口值
+- `keep_warm.error_count_rollover_count`：`error_count` 已发生的 rollover 次数；当 `error_count` 达到 JavaScript 安全整数上限后，下一次失败会把 `error_count` 置为 1，并把这个字段加 1
+- `keep_warm.last_error`：最近一次 keep-warm 失败错误
+- `restart_count`：deployment 子进程自动拉起次数当前安全整数窗口值
+- `restart_count_rollover_count`：`restart_count` 已发生的 rollover 次数；当 `restart_count` 达到 JavaScript 安全整数上限后，下一次自动拉起会把 `restart_count` 置为 1，并把这个字段加 1
+
 #### 当前 deployment 发布模板
 
 - PyTorch ModelVersion 发布模板：`model_version_id + runtime_backend=pytorch + device_name=cpu|cuda`
@@ -776,7 +802,9 @@
 - 每个 instance 对应一个独立推理线程和模型会话；同一 instance 一次只处理一个请求
 - 同步 `/infer` 和异步 `inference-tasks` 已经拆成两个独立 deployment 子进程，不再共用实例会话
 - 当前已经公开 sync/async 两组 `start`、`status`、`stop`、`warmup`、`health` 和 `reset` 接口，用于显式启动、停止、预热、查看状态和清空实例池
-- `warmup` 会在预热前自动拉起目标子进程；`reset` 只对已经启动的子进程生效
+- `warmup` 会在预热前自动拉起目标子进程，并在模型会话加载后按默认配置或 `metadata.deployment_process` 覆盖值执行 N 次真实 dummy infer
+- 当 `metadata.deployment_process.keep_warm_enabled=true` 时，warmup 完成后会激活 keep-warm 后台线程；首次真实推理成功后也会激活同一机制
+- `reset` 只对已经启动的子进程生效；reset 后 keep-warm 会回到未激活状态，直到下一次 warmup 或下一次真实推理成功
 
 #### 当前 inference 资源组
 
@@ -791,13 +819,17 @@
 - 同步停止接口：`POST /api/v1/models/yolox/deployment-instances/{deployment_instance_id}/sync/stop`
 - 同步预热接口：`POST /api/v1/models/yolox/deployment-instances/{deployment_instance_id}/sync/warmup`
 - 同步健康接口：`GET /api/v1/models/yolox/deployment-instances/{deployment_instance_id}/sync/health`
+- 同步健康响应会额外返回 `pinned_output_total_bytes`、`restart_count_rollover_count` 和 `keep_warm.*`，用于确认当前已加载 session 的 pinned output 总量、长期累计计数是否发生 rollover，以及 keep-warm 是否启用、是否已激活、是否在后台静默失败
 - 同步重置接口：`POST /api/v1/models/yolox/deployment-instances/{deployment_instance_id}/sync/reset`
+- 同步重置响应与同步健康接口使用同一组详细 health 字段；可直接观察 `restart_count_rollover_count`、`pinned_output_total_bytes` 和 `keep_warm.*`，并确认 reset 后 `keep_warm.activated=false`
 - 异步启动接口：`POST /api/v1/models/yolox/deployment-instances/{deployment_instance_id}/async/start`
 - 异步状态接口：`GET /api/v1/models/yolox/deployment-instances/{deployment_instance_id}/async/status`
 - 异步停止接口：`POST /api/v1/models/yolox/deployment-instances/{deployment_instance_id}/async/stop`
 - 异步预热接口：`POST /api/v1/models/yolox/deployment-instances/{deployment_instance_id}/async/warmup`
 - 异步健康接口：`GET /api/v1/models/yolox/deployment-instances/{deployment_instance_id}/async/health`
+- 异步健康响应会额外返回 `pinned_output_total_bytes`、`restart_count_rollover_count` 和 `keep_warm.*`，语义与同步健康接口一致
 - 异步重置接口：`POST /api/v1/models/yolox/deployment-instances/{deployment_instance_id}/async/reset`
+- 异步重置响应与异步健康接口使用同一组详细 health 字段；可直接观察 `restart_count_rollover_count`、`pinned_output_total_bytes` 和 `keep_warm.*`，并确认 reset 后 `keep_warm.activated=false`
 
 #### 当前 inference 创建请求字段
 

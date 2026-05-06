@@ -10,6 +10,11 @@ from typing import Any, Callable
 from uuid import uuid4
 
 from backend.service.application.errors import InvalidRequestError, ServiceConfigurationError
+from backend.service.application.runtime.safe_counter import (
+    SafeCounterState,
+    increment_safe_counter,
+    normalize_safe_counter_value,
+)
 from backend.service.application.runtime.yolox_deployment_process_worker import (
     run_yolox_deployment_process_worker,
 )
@@ -23,6 +28,27 @@ from backend.workers.shared.yolox_runtime_contracts import RuntimeTensorSpec, Yo
 
 
 @dataclass(frozen=True)
+class YoloXDeploymentProcessRuntimeBehavior:
+    """描述 deployment 预热与 keep-warm 的覆盖配置。
+
+    字段：
+    - warmup_dummy_inference_count：显式 warmup 时追加执行的 dummy infer 次数；None 表示使用 supervisor 默认值。
+    - warmup_dummy_image_size：dummy infer 使用的最小图片尺寸；None 表示使用 supervisor 默认值。
+    - keep_warm_enabled：是否启用 keep-warm 后台线程；None 表示使用 supervisor 默认值。
+    - keep_warm_interval_seconds：keep-warm dummy infer 的最小间隔秒数；None 表示使用 supervisor 默认值。
+    - tensorrt_pinned_output_buffer_enabled：TensorRT 输出 host buffer 是否启用 pinned memory；None 表示使用 supervisor 默认值。
+    - tensorrt_pinned_output_buffer_max_bytes：TensorRT 输出 host buffer 允许使用 pinned memory 的最大字节数；None 表示使用 supervisor 默认值。
+    """
+
+    warmup_dummy_inference_count: int | None = None
+    warmup_dummy_image_size: tuple[int, int] | None = None
+    keep_warm_enabled: bool | None = None
+    keep_warm_interval_seconds: float | None = None
+    tensorrt_pinned_output_buffer_enabled: bool | None = None
+    tensorrt_pinned_output_buffer_max_bytes: int | None = None
+
+
+@dataclass(frozen=True)
 class YoloXDeploymentProcessConfig:
     """描述一个 deployment 进程的稳定配置。
 
@@ -30,11 +56,15 @@ class YoloXDeploymentProcessConfig:
     - deployment_instance_id：DeploymentInstance id。
     - runtime_target：当前 deployment 绑定的运行时快照。
     - instance_count：实例化数量；每个实例对应一个独立推理线程和模型会话。
+    - runtime_behavior：当前 deployment 的预热与 keep-warm 覆盖配置。
     """
 
     deployment_instance_id: str
     runtime_target: RuntimeTargetSnapshot
     instance_count: int = 1
+    runtime_behavior: YoloXDeploymentProcessRuntimeBehavior = field(
+        default_factory=YoloXDeploymentProcessRuntimeBehavior
+    )
 
 
 @dataclass(frozen=True)
@@ -50,6 +80,7 @@ class YoloXDeploymentProcessStatus:
     - process_id：当前子进程 pid。
     - auto_restart：是否启用崩溃自动拉起。
     - restart_count：已发生的自动拉起次数。
+    - restart_count_rollover_count：restart_count 已发生的 rollover 次数。
     - last_exit_code：最近一次退出码。
     - last_error：最近一次监督错误。
     """
@@ -62,6 +93,7 @@ class YoloXDeploymentProcessStatus:
     process_id: int | None
     auto_restart: bool
     restart_count: int
+    restart_count_rollover_count: int = 0
     last_exit_code: int | None = None
     last_error: str | None = None
 
@@ -78,6 +110,37 @@ class YoloXDeploymentProcessInstanceHealth:
 
 
 @dataclass(frozen=True)
+class YoloXDeploymentProcessKeepWarmStatus:
+    """描述 deployment 子进程内 keep-warm 的当前状态。
+
+    字段：
+    - enabled：当前 deployment 是否启用了 keep-warm。
+    - activated：keep-warm 是否已经被 warmup 或真实推理激活。
+    - paused：当前是否因为控制面动作或真实请求而暂停。
+    - idle：当前是否没有 keep-warm dummy infer 正在执行。
+    - interval_seconds：keep-warm 连续 dummy infer 的最小间隔秒数。
+    - yield_timeout_seconds：真实请求等待 keep-warm 让出的最长秒数。
+    - success_count：keep-warm 成功完成的 dummy infer 次数。
+    - success_count_rollover_count：success_count 已发生的 rollover 次数。
+    - error_count：keep-warm 执行失败次数。
+    - error_count_rollover_count：error_count 已发生的 rollover 次数。
+    - last_error：最近一次 keep-warm 失败错误。
+    """
+
+    enabled: bool
+    activated: bool
+    paused: bool
+    idle: bool
+    interval_seconds: float
+    yield_timeout_seconds: float
+    success_count: int = 0
+    success_count_rollover_count: int = 0
+    error_count: int = 0
+    error_count_rollover_count: int = 0
+    last_error: str | None = None
+
+
+@dataclass(frozen=True)
 class YoloXDeploymentProcessHealth:
     """描述 deployment 进程与实例池的详细健康视图。
 
@@ -90,11 +153,14 @@ class YoloXDeploymentProcessHealth:
     - process_id：当前子进程 pid。
     - auto_restart：是否启用崩溃自动拉起。
     - restart_count：已发生的自动拉起次数。
+    - restart_count_rollover_count：restart_count 已发生的 rollover 次数。
     - last_exit_code：最近一次退出码。
     - last_error：最近一次监督错误。
     - healthy_instance_count：健康实例数量。
     - warmed_instance_count：已预热实例数量。
+    - pinned_output_total_bytes：当前所有已加载 session 的 pinned output host buffer 总字节数。
     - instances：实例级健康状态列表。
+    - keep_warm：当前 keep-warm 运行状态。
     """
 
     deployment_instance_id: str
@@ -105,11 +171,14 @@ class YoloXDeploymentProcessHealth:
     process_id: int | None
     auto_restart: bool
     restart_count: int
+    restart_count_rollover_count: int = 0
     last_exit_code: int | None = None
     last_error: str | None = None
     healthy_instance_count: int = 0
     warmed_instance_count: int = 0
+    pinned_output_total_bytes: int = 0
     instances: tuple[YoloXDeploymentProcessInstanceHealth, ...] = ()
+    keep_warm: YoloXDeploymentProcessKeepWarmStatus | None = None
 
 
 @dataclass(frozen=True)
@@ -142,7 +211,7 @@ class _DeploymentProcessState:
     response_thread: Thread | None = None
     response_stop_event: Event = field(default_factory=Event, repr=False)
     pending_responses: dict[str, _PendingResponse] = field(default_factory=dict)
-    restart_count: int = 0
+    restart_counter: SafeCounterState = field(default_factory=SafeCounterState)
     last_exit_code: int | None = None
     last_error: str | None = None
     started_at_monotonic: float | None = None
@@ -410,6 +479,7 @@ class YoloXDeploymentProcessSupervisor:
                 "request_queue": request_queue,
                 "response_queue": response_queue,
                 "operator_thread_count": self.settings.operator_thread_count,
+                "supervisor_settings": self.settings.model_dump(mode="python"),
             },
             name=f"{self.runtime_mode}-{state.config.deployment_instance_id}",
             daemon=True,
@@ -507,7 +577,7 @@ class YoloXDeploymentProcessSupervisor:
                     state.last_exit_code = process.exitcode
                     self._cleanup_process_locked(state)
                     if state.desired_running and self.settings.auto_restart:
-                        state.restart_count += 1
+                        increment_safe_counter(state.restart_counter)
                         self._start_process_locked(state)
             self._monitor_stop_event.wait(max(0.1, self.settings.monitor_interval_seconds))
 
@@ -539,7 +609,10 @@ class YoloXDeploymentProcessSupervisor:
                 process_state=process_state,
                 process_id=process_id,
                 auto_restart=self.settings.auto_restart,
-                restart_count=state.restart_count,
+                restart_count=normalize_safe_counter_value(state.restart_counter.value),
+                restart_count_rollover_count=normalize_safe_counter_value(
+                    state.restart_counter.rollover_count
+                ),
                 last_exit_code=state.last_exit_code,
                 last_error=state.last_error,
             )
@@ -562,9 +635,11 @@ class YoloXDeploymentProcessSupervisor:
                 process_id=status.process_id,
                 auto_restart=status.auto_restart,
                 restart_count=status.restart_count,
+                restart_count_rollover_count=status.restart_count_rollover_count,
                 last_exit_code=status.last_exit_code,
                 last_error=status.last_error,
             )
+        keep_warm_payload = payload.get("keep_warm") if isinstance(payload.get("keep_warm"), dict) else None
         instances_payload = payload.get("instances") if isinstance(payload.get("instances"), list) else []
         instances = tuple(
             YoloXDeploymentProcessInstanceHealth(
@@ -587,11 +662,14 @@ class YoloXDeploymentProcessSupervisor:
             process_id=process_id,
             auto_restart=status.auto_restart,
             restart_count=status.restart_count,
+            restart_count_rollover_count=status.restart_count_rollover_count,
             last_exit_code=status.last_exit_code,
             last_error=status.last_error,
             healthy_instance_count=_read_response_optional_int(payload, "healthy_instance_count") or 0,
             warmed_instance_count=_read_response_optional_int(payload, "warmed_instance_count") or 0,
+            pinned_output_total_bytes=_read_response_optional_int(payload, "pinned_output_total_bytes") or 0,
             instances=instances,
+            keep_warm=_deserialize_keep_warm_status(keep_warm_payload),
         )
 
     @staticmethod
@@ -611,6 +689,7 @@ def _build_config_signature(config: YoloXDeploymentProcessConfig) -> tuple[objec
     """把 deployment 进程配置转换为稳定比较签名。"""
 
     runtime_target = config.runtime_target
+    runtime_behavior = config.runtime_behavior
     return (
         config.deployment_instance_id,
         config.instance_count,
@@ -622,6 +701,12 @@ def _build_config_signature(config: YoloXDeploymentProcessConfig) -> tuple[objec
         runtime_target.device_name,
         runtime_target.input_size,
         runtime_target.labels,
+        runtime_behavior.warmup_dummy_inference_count,
+        runtime_behavior.warmup_dummy_image_size,
+        runtime_behavior.keep_warm_enabled,
+        runtime_behavior.keep_warm_interval_seconds,
+        runtime_behavior.tensorrt_pinned_output_buffer_enabled,
+        runtime_behavior.tensorrt_pinned_output_buffer_max_bytes,
     )
 
 
@@ -647,6 +732,28 @@ def _deserialize_detections(payload: dict[str, object]) -> list[object]:
             )
         )
     return detections
+
+
+def _deserialize_keep_warm_status(
+    payload: dict[str, object] | None,
+) -> YoloXDeploymentProcessKeepWarmStatus | None:
+    """从子进程返回中反序列化 keep-warm 状态。"""
+
+    if payload is None:
+        return None
+    return YoloXDeploymentProcessKeepWarmStatus(
+        enabled=bool(payload.get("enabled") is True),
+        activated=bool(payload.get("activated") is True),
+        paused=bool(payload.get("paused") is True),
+        idle=bool(payload.get("idle") is True),
+        interval_seconds=float(payload.get("interval_seconds") or 0.0),
+        yield_timeout_seconds=float(payload.get("yield_timeout_seconds") or 0.0),
+        success_count=int(payload.get("success_count") or 0),
+        success_count_rollover_count=int(payload.get("success_count_rollover_count") or 0),
+        error_count=int(payload.get("error_count") or 0),
+        error_count_rollover_count=int(payload.get("error_count_rollover_count") or 0),
+        last_error=str(payload.get("last_error")) if payload.get("last_error") is not None else None,
+    )
 
 
 def _deserialize_runtime_session_info(payload: dict[str, object]) -> YoloXRuntimeSessionInfo:

@@ -136,6 +136,8 @@ class FakePredictionSession:
 
         self.execution_result = execution_result
         self.requests: list[YoloXPredictionRequest] = []
+        self.pinned_output_buffer_enabled: bool | None = None
+        self.pinned_output_buffer_max_bytes: int | None = None
 
     def predict(self, request: YoloXPredictionRequest) -> YoloXPredictionExecutionResult:
         """记录请求并返回固定执行结果。
@@ -162,6 +164,8 @@ class FailingPredictionSession:
         """
 
         self.error_message = error_message
+        self.pinned_output_buffer_enabled: bool | None = None
+        self.pinned_output_buffer_max_bytes: int | None = None
 
     def predict(self, request: YoloXPredictionRequest) -> YoloXPredictionExecutionResult:
         """抛出固定错误，验证 runtime pool 的失败处理路径。
@@ -196,7 +200,11 @@ def build_recording_session_loader(
         *,
         dataset_storage: LocalDatasetStorage,
         runtime_target: RuntimeTargetSnapshot,
+        pinned_output_buffer_enabled: bool | None = None,
+        pinned_output_buffer_max_bytes: int | None = None,
     ) -> FakePredictionSession:
+        del pinned_output_buffer_enabled
+        del pinned_output_buffer_max_bytes
         load_requests.append((dataset_storage, runtime_target))
         return session
 
@@ -217,9 +225,13 @@ def build_failing_session_loader(*, error_message: str) -> SimpleNamespace:
         *,
         dataset_storage: LocalDatasetStorage,
         runtime_target: RuntimeTargetSnapshot,
+        pinned_output_buffer_enabled: bool | None = None,
+        pinned_output_buffer_max_bytes: int | None = None,
     ) -> FailingPredictionSession:
         del dataset_storage
         del runtime_target
+        del pinned_output_buffer_enabled
+        del pinned_output_buffer_max_bytes
         return FailingPredictionSession(error_message=error_message)
 
     return SimpleNamespace(load=load)

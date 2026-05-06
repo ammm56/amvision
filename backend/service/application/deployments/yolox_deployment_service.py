@@ -11,6 +11,7 @@ from uuid import uuid4
 from backend.service.application.errors import InvalidRequestError, ResourceNotFoundError, ServiceConfigurationError
 from backend.service.application.runtime.yolox_deployment_process_supervisor import (
     YoloXDeploymentProcessConfig,
+    YoloXDeploymentProcessRuntimeBehavior,
 )
 from backend.service.application.runtime.yolox_runtime_target import (
     RuntimeTargetResolveRequest,
@@ -28,6 +29,7 @@ from backend.service.infrastructure.object_store.local_dataset_storage import Lo
 
 _ACTIVE_DEPLOYMENT_STATUS = "active"
 _RUNTIME_TARGET_SNAPSHOT_METADATA_KEY = "runtime_target_snapshot"
+_DEPLOYMENT_PROCESS_METADATA_KEY = "deployment_process"
 
 
 @dataclass(frozen=True)
@@ -223,6 +225,7 @@ class SqlAlchemyYoloXDeploymentService:
             deployment_instance_id=deployment_instance.deployment_instance_id,
             runtime_target=self._resolve_target_from_instance(deployment_instance),
             instance_count=deployment_instance.instance_count,
+            runtime_behavior=_resolve_process_runtime_behavior(deployment_instance.metadata),
         )
 
     def _validate_create_request(self, request: YoloXDeploymentInstanceCreateRequest) -> None:
@@ -237,6 +240,7 @@ class SqlAlchemyYoloXDeploymentService:
                 "instance_count 必须大于 0",
                 details={"instance_count": request.instance_count},
             )
+        _validate_deployment_process_metadata(request.metadata)
 
     def _resolve_create_target(
         self,
@@ -371,6 +375,161 @@ def _normalize_metadata(metadata: object) -> dict[str, object]:
     if not isinstance(metadata, dict):
         return {}
     return {str(key): value for key, value in metadata.items()}
+
+
+def _validate_deployment_process_metadata(metadata: object) -> None:
+    """校验 deployment_process metadata 中当前公开的控制字段。
+
+    参数：
+    - metadata：DeploymentInstance 创建请求里的 metadata 原始值。
+    """
+
+    _resolve_process_runtime_behavior(metadata)
+
+
+def _resolve_process_runtime_behavior(metadata: object) -> YoloXDeploymentProcessRuntimeBehavior:
+    """从 DeploymentInstance metadata 中提取预热与 keep-warm 覆盖配置。
+
+    参数：
+    - metadata：DeploymentInstance 保存的 metadata。
+
+    返回：
+    - 供 deployment 子进程使用的预热与 keep-warm 覆盖配置。
+    """
+
+    normalized_metadata = _normalize_metadata(metadata)
+    process_metadata = normalized_metadata.get(_DEPLOYMENT_PROCESS_METADATA_KEY)
+    if process_metadata is None:
+        return YoloXDeploymentProcessRuntimeBehavior()
+    if not isinstance(process_metadata, dict):
+        raise InvalidRequestError(
+            "metadata.deployment_process 必须是对象",
+            details={"field": _DEPLOYMENT_PROCESS_METADATA_KEY},
+        )
+    return YoloXDeploymentProcessRuntimeBehavior(
+        warmup_dummy_inference_count=_read_optional_non_negative_int(
+            process_metadata,
+            "warmup_dummy_inference_count",
+        ),
+        warmup_dummy_image_size=_read_optional_image_size(
+            process_metadata,
+            "warmup_dummy_image_size",
+        ),
+        keep_warm_enabled=_read_optional_bool(process_metadata, "keep_warm_enabled"),
+        keep_warm_interval_seconds=_read_optional_positive_float(
+            process_metadata,
+            "keep_warm_interval_seconds",
+        ),
+        tensorrt_pinned_output_buffer_enabled=_read_optional_bool(
+            process_metadata,
+            "tensorrt_pinned_output_buffer_enabled",
+        ),
+        tensorrt_pinned_output_buffer_max_bytes=_read_optional_non_negative_int(
+            process_metadata,
+            "tensorrt_pinned_output_buffer_max_bytes",
+        ),
+    )
+
+
+def _read_optional_non_negative_int(metadata: dict[str, object], key: str) -> int | None:
+    """读取 metadata 中可选的非负整数值。
+
+    参数：
+    - metadata：待解析的 metadata 对象。
+    - key：当前字段名。
+
+    返回：
+    - 解析后的整数；字段不存在时返回 None。
+    """
+
+    value = metadata.get(key)
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise InvalidRequestError(
+            f"metadata.{_DEPLOYMENT_PROCESS_METADATA_KEY}.{key} 必须是非负整数",
+            details={"field": key, "value": value},
+        )
+    return int(value)
+
+
+def _read_optional_positive_float(metadata: dict[str, object], key: str) -> float | None:
+    """读取 metadata 中可选的正浮点数值。
+
+    参数：
+    - metadata：待解析的 metadata 对象。
+    - key：当前字段名。
+
+    返回：
+    - 解析后的浮点数；字段不存在时返回 None。
+    """
+
+    value = metadata.get(key)
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int | float) or float(value) <= 0.0:
+        raise InvalidRequestError(
+            f"metadata.{_DEPLOYMENT_PROCESS_METADATA_KEY}.{key} 必须是大于 0 的数值",
+            details={"field": key, "value": value},
+        )
+    return float(value)
+
+
+def _read_optional_bool(metadata: dict[str, object], key: str) -> bool | None:
+    """读取 metadata 中可选的布尔值。
+
+    参数：
+    - metadata：待解析的 metadata 对象。
+    - key：当前字段名。
+
+    返回：
+    - 解析后的布尔值；字段不存在时返回 None。
+    """
+
+    value = metadata.get(key)
+    if value is None:
+        return None
+    if not isinstance(value, bool):
+        raise InvalidRequestError(
+            f"metadata.{_DEPLOYMENT_PROCESS_METADATA_KEY}.{key} 必须是布尔值",
+            details={"field": key, "value": value},
+        )
+    return value
+
+
+def _read_optional_image_size(metadata: dict[str, object], key: str) -> tuple[int, int] | None:
+    """读取 metadata 中可选的图片尺寸。
+
+    参数：
+    - metadata：待解析的 metadata 对象。
+    - key：当前字段名。
+
+    返回：
+    - 解析后的 width、height 二元组；字段不存在时返回 None。
+    """
+
+    value = metadata.get(key)
+    if value is None:
+        return None
+    if not isinstance(value, list | tuple) or len(value) != 2:
+        raise InvalidRequestError(
+            f"metadata.{_DEPLOYMENT_PROCESS_METADATA_KEY}.{key} 必须是长度为 2 的数组",
+            details={"field": key, "value": value},
+        )
+    width, height = value[0], value[1]
+    if (
+        isinstance(width, bool)
+        or not isinstance(width, int)
+        or width <= 0
+        or isinstance(height, bool)
+        or not isinstance(height, int)
+        or height <= 0
+    ):
+        raise InvalidRequestError(
+            f"metadata.{_DEPLOYMENT_PROCESS_METADATA_KEY}.{key} 必须由两个正整数组成",
+            details={"field": key, "value": value},
+        )
+    return (int(width), int(height))
 
 
 def _now_isoformat() -> str:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ctypes
 from dataclasses import dataclass, field
 import sys
 from time import perf_counter
@@ -18,6 +19,7 @@ from backend.service.application.runtime.yolox_runtime_target import (
     describe_runtime_execution_mode,
     resolve_local_file_path,
 )
+from backend.service.settings import get_backend_service_settings
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 from backend.workers.shared.yolox_runtime_contracts import RuntimeTensorSpec, YoloXRuntimeSessionInfo
 
@@ -888,7 +890,12 @@ class TensorRTYoloXRuntimeSession:
     - output_device_ptr：复用的输出显存指针。
     - input_capacity_bytes：当前输入显存缓冲可容纳的字节数。
     - output_capacity_bytes：当前输出显存缓冲可容纳的字节数。
-    - output_host_array：复用的主存输出缓冲数组。
+    - pinned_output_buffer_enabled：是否允许为输出 host buffer 启用 pinned memory。
+    - pinned_output_buffer_max_bytes：允许使用 pinned output host buffer 的最大字节数。
+    - output_host_ptr：当前 pinned 输出主存指针；pageable 模式下为 None。
+    - output_host_capacity_bytes：当前 pinned 输出主存缓冲可容纳的字节数。
+    - output_host_memory_kind：当前输出 host buffer 类型，只会是 pinned 或 pageable。
+    - output_host_array：复用的输出主存 NumPy 视图。
     - execute_start_event：用于统计 TensorRT 纯 GPU 执行时间的 CUDA event。
     - execute_end_event：用于统计 TensorRT 纯 GPU 执行时间的 CUDA event。
     """
@@ -912,6 +919,8 @@ class TensorRTYoloXRuntimeSession:
         stream: Any,
         execute_start_event: Any,
         execute_end_event: Any,
+        pinned_output_buffer_enabled: bool | None = None,
+        pinned_output_buffer_max_bytes: int | None = None,
     ) -> None:
         """初始化一个已加载完成的 TensorRT runtime session。
 
@@ -932,7 +941,19 @@ class TensorRTYoloXRuntimeSession:
         - stream：当前 session 复用的 CUDA stream。
         - execute_start_event：用于统计 TensorRT 纯 GPU 执行时间的 CUDA event。
         - execute_end_event：用于统计 TensorRT 纯 GPU 执行时间的 CUDA event。
+        - pinned_output_buffer_enabled：是否允许为输出 host buffer 启用 pinned memory；None 表示读取统一配置默认值。
+        - pinned_output_buffer_max_bytes：允许使用 pinned output host buffer 的最大字节数；None 表示读取统一配置默认值。
         """
+
+        deployment_settings = get_backend_service_settings().deployment_process_supervisor
+        if pinned_output_buffer_enabled is None:
+            pinned_output_buffer_enabled = bool(
+                deployment_settings.tensorrt_pinned_output_buffer_enabled
+            )
+        if pinned_output_buffer_max_bytes is None:
+            pinned_output_buffer_max_bytes = int(
+                deployment_settings.tensorrt_pinned_output_buffer_max_bytes
+            )
 
         self.dataset_storage = dataset_storage
         self.runtime_target = runtime_target
@@ -950,10 +971,15 @@ class TensorRTYoloXRuntimeSession:
         self.stream = stream
         self.execute_start_event = execute_start_event
         self.execute_end_event = execute_end_event
+        self.pinned_output_buffer_enabled = bool(pinned_output_buffer_enabled)
+        self.pinned_output_buffer_max_bytes = max(0, int(pinned_output_buffer_max_bytes))
         self.input_device_ptr: int | None = None
         self.output_device_ptr: int | None = None
         self.input_capacity_bytes = 0
         self.output_capacity_bytes = 0
+        self.output_host_ptr: int | None = None
+        self.output_host_capacity_bytes = 0
+        self.output_host_memory_kind = "pageable"
         self.output_host_array: Any | None = None
 
     @classmethod
@@ -962,12 +988,16 @@ class TensorRTYoloXRuntimeSession:
         *,
         dataset_storage: LocalDatasetStorage,
         runtime_target: RuntimeTargetSnapshot,
+        pinned_output_buffer_enabled: bool | None = None,
+        pinned_output_buffer_max_bytes: int | None = None,
     ) -> TensorRTYoloXRuntimeSession:
         """加载一次 TensorRT runtime session。
 
         参数：
         - dataset_storage：本地文件存储服务。
         - runtime_target：待加载的运行时快照。
+        - pinned_output_buffer_enabled：是否允许为输出 host buffer 启用 pinned memory；None 表示读取统一配置默认值。
+        - pinned_output_buffer_max_bytes：允许使用 pinned output host buffer 的最大字节数；None 表示读取统一配置默认值。
 
         返回：
         - TensorRTYoloXRuntimeSession：已完成 engine 加载的会话对象。
@@ -1065,6 +1095,8 @@ class TensorRTYoloXRuntimeSession:
             stream=stream,
             execute_start_event=execute_start_event,
             execute_end_event=execute_end_event,
+            pinned_output_buffer_enabled=pinned_output_buffer_enabled,
+            pinned_output_buffer_max_bytes=pinned_output_buffer_max_bytes,
         )
 
     def close(self) -> None:
@@ -1084,6 +1116,12 @@ class TensorRTYoloXRuntimeSession:
             _release_cuda_resource(self.imports.cudart.cudaFree(self.output_device_ptr))
             self.output_device_ptr = None
             self.output_capacity_bytes = 0
+        if self.output_host_ptr is not None:
+            _release_cuda_resource(self.imports.cudart.cudaFreeHost(self.output_host_ptr))
+            self.output_host_ptr = None
+            self.output_host_capacity_bytes = 0
+            self.output_host_array = None
+        self.output_host_memory_kind = "pageable"
         if self.stream is not None:
             _release_cuda_resource(self.imports.cudart.cudaStreamDestroy(self.stream))
             self.stream = None
@@ -1094,6 +1132,27 @@ class TensorRTYoloXRuntimeSession:
             _release_cuda_resource(self.imports.cudart.cudaEventDestroy(self.execute_end_event))
             self.execute_end_event = None
         self.output_host_array = None
+
+    def describe_memory_usage(self) -> dict[str, object]:
+        """返回当前 TensorRT session 的输出 host buffer 占用快照。
+
+        返回：
+        - dict[str, object]：包含输出 host buffer 类型、总字节数和 pinned 字节数的快照。
+        """
+
+        output_host_buffer_bytes = 0
+        if self.output_host_array is not None:
+            output_host_buffer_bytes = int(self.output_host_array.nbytes)
+        output_host_pinned_bytes = 0
+        if self.output_host_memory_kind == "pinned" and self.output_host_ptr is not None:
+            output_host_pinned_bytes = int(self.output_host_capacity_bytes)
+        return {
+            "output_host_memory_kind": self.output_host_memory_kind,
+            "output_host_buffer_bytes": output_host_buffer_bytes,
+            "output_host_pinned_bytes": output_host_pinned_bytes,
+            "output_host_pinned_enabled": self.pinned_output_buffer_enabled,
+            "output_host_pinned_max_bytes": self.pinned_output_buffer_max_bytes,
+        }
 
     def predict(self, request: YoloXPredictionRequest) -> YoloXPredictionExecutionResult:
         """使用当前常驻会话执行一次 TensorRT 单图预测。
@@ -1248,15 +1307,15 @@ class TensorRTYoloXRuntimeSession:
             operation_name="TensorRT runtime 拷贝输出到主存",
             details={"output_name": self.output_name, "byte_size": int(output_array.nbytes)},
         )
-        infer_enqueue_d2h_ms = _measure_elapsed_ms(enqueue_d2h_started_at)
+        infer_enqueue_d2h_host_ms = _measure_elapsed_ms(enqueue_d2h_started_at)
 
-        stream_sync_started_at = perf_counter()
+        output_ready_wait_started_at = perf_counter()
         _ensure_cuda_success(
             self.imports.cudart.cudaStreamSynchronize(self.stream),
             operation_name="TensorRT runtime 同步 CUDA stream",
             details={"device_name": self.device_name},
         )
-        infer_stream_sync_ms = _measure_elapsed_ms(stream_sync_started_at)
+        infer_output_ready_wait_ms = _measure_elapsed_ms(output_ready_wait_started_at)
         infer_execute_gpu_ms = _measure_cuda_event_elapsed_ms(
             cudart_module=self.imports.cudart,
             start_event=self.execute_start_event,
@@ -1340,8 +1399,12 @@ class TensorRTYoloXRuntimeSession:
                     "infer_bind_tensor_ms": infer_bind_tensor_ms,
                     "infer_execute_enqueue_ms": infer_execute_enqueue_ms,
                     "infer_execute_gpu_ms": infer_execute_gpu_ms,
-                    "infer_enqueue_d2h_ms": infer_enqueue_d2h_ms,
-                    "infer_stream_sync_ms": infer_stream_sync_ms,
+                    "infer_enqueue_d2h_host_ms": infer_enqueue_d2h_host_ms,
+                    "infer_output_ready_wait_ms": infer_output_ready_wait_ms,
+                    "output_host_memory_kind": self.output_host_memory_kind,
+                    "output_host_buffer_bytes": int(output_array.nbytes),
+                    "output_host_pinned_enabled": self.pinned_output_buffer_enabled,
+                    "output_host_pinned_max_bytes": self.pinned_output_buffer_max_bytes,
                     "tensorrt_version": str(self.tensorrt_module.__version__),
                     "compiled_runtime_precision": self.runtime_target.runtime_precision,
                     "engine_file_bytes": self.runtime_target.runtime_artifact_path.stat().st_size,
@@ -1362,15 +1425,12 @@ class TensorRTYoloXRuntimeSession:
             np_module=self.imports.np,
             dtype_name=self.output_dtype_name,
         )
-        if (
-            self.output_host_array is None
-            or tuple(int(dim) for dim in self.output_host_array.shape) != resolved_output_shape
-            or self.output_host_array.dtype != output_dtype
-        ):
-            self.output_host_array = self.imports.np.empty(resolved_output_shape, dtype=output_dtype)
-
         input_nbytes = int(input_array.nbytes)
-        output_nbytes = int(self.output_host_array.nbytes)
+        output_nbytes = _resolve_tensor_byte_size(
+            np_module=self.imports.np,
+            shape=resolved_output_shape,
+            dtype=output_dtype,
+        )
         if self.input_device_ptr is None or input_nbytes > self.input_capacity_bytes:
             if self.input_device_ptr is not None:
                 _release_cuda_resource(self.imports.cudart.cudaFree(self.input_device_ptr))
@@ -1389,7 +1449,61 @@ class TensorRTYoloXRuntimeSession:
                 details={"byte_size": output_nbytes},
             )[0]
             self.output_capacity_bytes = output_nbytes
+        if self._should_use_pinned_output_buffer(output_nbytes):
+            if self.output_host_ptr is None or output_nbytes > self.output_host_capacity_bytes:
+                if self.output_host_ptr is not None:
+                    _release_cuda_resource(self.imports.cudart.cudaFreeHost(self.output_host_ptr))
+                self.output_host_ptr = _ensure_cuda_success(
+                    self.imports.cudart.cudaMallocHost(output_nbytes),
+                    operation_name="TensorRT runtime 分配 pinned 输出主存",
+                    details={"byte_size": output_nbytes},
+                )[0]
+                self.output_host_capacity_bytes = output_nbytes
+                self.output_host_array = None
+            if (
+                self.output_host_array is None
+                or self.output_host_memory_kind != "pinned"
+                or tuple(int(dim) for dim in self.output_host_array.shape) != resolved_output_shape
+                or self.output_host_array.dtype != output_dtype
+            ):
+                self.output_host_array = _build_numpy_array_from_host_pointer(
+                    np_module=self.imports.np,
+                    host_ptr=int(self.output_host_ptr),
+                    byte_size=output_nbytes,
+                    dtype=output_dtype,
+                    shape=resolved_output_shape,
+                )
+            self.output_host_memory_kind = "pinned"
+            return self.output_host_array
+
+        if self.output_host_ptr is not None:
+            _release_cuda_resource(self.imports.cudart.cudaFreeHost(self.output_host_ptr))
+            self.output_host_ptr = None
+            self.output_host_capacity_bytes = 0
+            self.output_host_array = None
+        if (
+            self.output_host_array is None
+            or self.output_host_memory_kind != "pageable"
+            or tuple(int(dim) for dim in self.output_host_array.shape) != resolved_output_shape
+            or self.output_host_array.dtype != output_dtype
+        ):
+            self.output_host_array = self.imports.np.empty(resolved_output_shape, dtype=output_dtype)
+        self.output_host_memory_kind = "pageable"
         return self.output_host_array
+
+    def _should_use_pinned_output_buffer(self, output_nbytes: int) -> bool:
+        """判断当前输出 host buffer 是否应该使用 pinned memory。
+
+        参数：
+        - output_nbytes：当前输出张量需要的总字节数。
+
+        返回：
+        - bool：True 表示允许使用 pinned output host buffer；False 表示回退到 pageable memory。
+        """
+
+        if not self.pinned_output_buffer_enabled:
+            return False
+        return int(output_nbytes) <= int(self.pinned_output_buffer_max_bytes)
 
 
 def _load_prediction_image(
@@ -1779,6 +1893,56 @@ def _resolve_numpy_dtype(*, np_module: Any, dtype_name: str) -> Any:
             details={"dtype_name": dtype_name},
         )
     return resolved_dtype
+
+
+def _resolve_tensor_byte_size(*, np_module: Any, shape: tuple[int, ...], dtype: Any) -> int:
+    """根据张量 shape 和 dtype 计算连续缓冲需要的字节数。
+
+    参数：
+    - np_module：NumPy 模块。
+    - shape：张量 shape。
+    - dtype：NumPy dtype。
+
+    返回：
+    - int：当前张量连续存储所需字节数。
+    """
+
+    element_count = 1
+    for dim in shape:
+        element_count *= int(dim)
+    return element_count * int(np_module.dtype(dtype).itemsize)
+
+
+def _build_numpy_array_from_host_pointer(
+    *,
+    np_module: Any,
+    host_ptr: int,
+    byte_size: int,
+    dtype: Any,
+    shape: tuple[int, ...],
+) -> Any:
+    """把 host pointer 包装成指定 dtype 和 shape 的 NumPy 视图。
+
+    参数：
+    - np_module：NumPy 模块。
+    - host_ptr：host pointer 整数地址。
+    - byte_size：缓冲总字节数。
+    - dtype：目标 NumPy dtype。
+    - shape：目标数组 shape。
+
+    返回：
+    - Any：直接映射到既有 host memory 的 NumPy 数组视图。
+    """
+
+    if int(host_ptr) <= 0 or int(byte_size) <= 0:
+        raise ServiceConfigurationError(
+            "TensorRT pinned host buffer 参数不合法",
+            details={"host_ptr": int(host_ptr), "byte_size": int(byte_size)},
+        )
+    raw_bytes = np_module.ctypeslib.as_array(
+        (ctypes.c_ubyte * int(byte_size)).from_address(int(host_ptr))
+    )
+    return raw_bytes.view(dtype=dtype).reshape(shape)
 
 
 def _resolve_cuda_device_index(device_name: str) -> int:

@@ -50,6 +50,7 @@
 - 默认主配置文件：./config/backend-service.json
 - 可选本地覆盖文件：./config/backend-service.local.json
 - 默认 task manager 配置：enabled=true、max_concurrent_tasks=2、poll_interval_seconds=1.0
+- 默认 deployment supervisor 配置：warmup_dummy_inference_count=6、warmup_dummy_image_size=[64,64]、keep_warm_enabled=false、keep_warm_interval_seconds=0.1、tensorrt_pinned_output_buffer_enabled=true、tensorrt_pinned_output_buffer_max_bytes=8388608
 
 常见示例：
 
@@ -75,6 +76,20 @@
     "enabled": true,
     "max_concurrent_tasks": 2,
     "poll_interval_seconds": 1.0
+  },
+  "deployment_process_supervisor": {
+    "auto_restart": true,
+    "monitor_interval_seconds": 0.5,
+    "request_timeout_seconds": 30.0,
+    "shutdown_timeout_seconds": 5.0,
+    "operator_thread_count": 1,
+    "warmup_dummy_inference_count": 6,
+    "warmup_dummy_image_size": [64, 64],
+    "keep_warm_enabled": false,
+    "keep_warm_interval_seconds": 0.1,
+    "keep_warm_yield_timeout_seconds": 1.0,
+    "tensorrt_pinned_output_buffer_enabled": true,
+    "tensorrt_pinned_output_buffer_max_bytes": 8388608
   }
 }
 ```
@@ -88,12 +103,26 @@
 - AMVISION_TASK_MANAGER__ENABLED=true
 - AMVISION_TASK_MANAGER__MAX_CONCURRENT_TASKS=2
 - AMVISION_TASK_MANAGER__POLL_INTERVAL_SECONDS=1.0
+- AMVISION_DEPLOYMENT_PROCESS_SUPERVISOR__AUTO_RESTART=true
+- AMVISION_DEPLOYMENT_PROCESS_SUPERVISOR__MONITOR_INTERVAL_SECONDS=0.5
+- AMVISION_DEPLOYMENT_PROCESS_SUPERVISOR__REQUEST_TIMEOUT_SECONDS=30.0
+- AMVISION_DEPLOYMENT_PROCESS_SUPERVISOR__SHUTDOWN_TIMEOUT_SECONDS=5.0
+- AMVISION_DEPLOYMENT_PROCESS_SUPERVISOR__OPERATOR_THREAD_COUNT=1
+- AMVISION_DEPLOYMENT_PROCESS_SUPERVISOR__WARMUP_DUMMY_INFERENCE_COUNT=6
+- AMVISION_DEPLOYMENT_PROCESS_SUPERVISOR__WARMUP_DUMMY_IMAGE_SIZE=[64,64]
+- AMVISION_DEPLOYMENT_PROCESS_SUPERVISOR__KEEP_WARM_ENABLED=false
+- AMVISION_DEPLOYMENT_PROCESS_SUPERVISOR__KEEP_WARM_INTERVAL_SECONDS=0.1
+- AMVISION_DEPLOYMENT_PROCESS_SUPERVISOR__KEEP_WARM_YIELD_TIMEOUT_SECONDS=1.0
+- AMVISION_DEPLOYMENT_PROCESS_SUPERVISOR__TENSORRT_PINNED_OUTPUT_BUFFER_ENABLED=true
+- AMVISION_DEPLOYMENT_PROCESS_SUPERVISOR__TENSORRT_PINNED_OUTPUT_BUFFER_MAX_BYTES=8388608
 
 说明：
 
 - 本地部署优先修改 config 目录 JSON 文件，而不是直接改代码
 - 环境变量主要用于测试、调试、launcher 注入和临时覆盖
 - 如果 config 文件和环境变量都未提供，当前服务会回退到仓库默认值
+- `deployment_process_supervisor` 提供 deployment 子进程的默认 warmup、keep-warm 和 TensorRT 输出 host buffer 行为；DeploymentInstance 还可以通过 `metadata.deployment_process` 覆盖 `warmup_dummy_inference_count`、`warmup_dummy_image_size`、`keep_warm_enabled`、`keep_warm_interval_seconds`、`tensorrt_pinned_output_buffer_enabled` 和 `tensorrt_pinned_output_buffer_max_bytes`
+- `tensorrt_pinned_output_buffer_max_bytes` 用于限制单实例允许长期驻留的 pinned output host buffer 上限；当前超过阈值后会自动回退到 pageable memory，避免多 deployment、多实例场景下 pinned memory 累积过大
 
 ## 启动前要知道的事
 

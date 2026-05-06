@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "b0db9a90-95bc-4a01-b247-1ddb33e1a2a8",
     "name": "amvision yolox training validation conversion evaluation inference api",
-    "description": "当前公开的 YOLOX training create/list/detail/save/pause/resume/register-model-version/validation-metrics/train-metrics/output-files、validation-sessions create/detail/predict、conversion-tasks create/list/detail/result、evaluation-tasks create/list/detail/report/output-files，以及 deployment-instances create/list/detail、sync/async start/status/stop/warmup/health/reset、direct infer 和 inference-tasks create/list/detail/result 接口。本集合已经同步 fp16/fp32、CPU fallback 调试方式、latest checkpoint、validation metrics、output-files、training_summary、detail 响应里的 available_actions 与 control_status、save/pause 后自动登记 latest checkpoint 版本、latest checkpoint 与 completed best 的版本区分、训练完成后的单图人工验证闭环、source ModelVersion 到 ONNX/optimized ONNX/OpenVINO IR/TensorRT engine 的 conversion 主链、数据集级回归评估和结果包输出，以及 deployment_instance_id 驱动的正式推理链；当前 conversion 创建请求已按目标格式拆分，其中 OpenVINO IR 与 TensorRT engine 都已继续拆成 fp32 与 fp16 两种构建策略，deployment 发布模板也已按 PyTorch、ONNXRuntime、OpenVINO、TensorRT 拆分。当前 deployment 推理链要求先显式调用 start 或 warmup，再执行 infer 或 inference-task create。Postman collection 已按 validation、conversion、evaluation、sync deployment、async deployment、sync inference、async inference task 分组，并把 input_uri、image_base64、multipart input_image 三种输入方式分别拆成独立调试请求。默认建议把 includeEvents 设为 false，用于高频轮询调试。",
+    "description": "当前公开的 YOLOX training create/list/detail/save/pause/resume/register-model-version/validation-metrics/train-metrics/output-files、validation-sessions create/detail/predict、conversion-tasks create/list/detail/result、evaluation-tasks create/list/detail/report/output-files，以及 deployment-instances create/list/detail、sync/async start/status/stop/warmup/health/reset、direct infer 和 inference-tasks create/list/detail/result 接口。本集合已经同步 fp16/fp32、CPU fallback 调试方式、latest checkpoint、validation metrics、output-files、training_summary、detail 响应里的 available_actions 与 control_status、save/pause 后自动登记 latest checkpoint 版本、latest checkpoint 与 completed best 的版本区分、训练完成后的单图人工验证闭环、source ModelVersion 到 ONNX/optimized ONNX/OpenVINO IR/TensorRT engine 的 conversion 主链、数据集级回归评估和结果包输出，以及 deployment_instance_id 驱动的正式推理链；当前 conversion 创建请求已按目标格式拆分，其中 OpenVINO IR 与 TensorRT engine 都已继续拆成 fp32 与 fp16 两种构建策略，deployment 发布模板也已按 PyTorch、ONNXRuntime、OpenVINO、TensorRT 拆分。当前 deployment 推理链要求先显式调用 start 或 warmup，再执行 infer 或 inference-task create。Postman collection 已按 validation、conversion、evaluation、sync deployment、async deployment、sync inference、async inference task 分组，并把 input_uri、image_base64、multipart input_image 三种输入方式分别拆成独立调试请求；TensorRT deployment 模板已额外暴露 metadata.deployment_process 下的 warmup_dummy_inference_count、warmup_dummy_image_size、keep_warm_enabled、keep_warm_interval_seconds 变量，sync/async warmup 和 health 也会自动回填 keep_warm 的 enabled、activated、success_count、error_count、last_error，便于确认是否真的生效。默认建议把 includeEvents 设为 false，用于高频轮询调试。",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "item": [
@@ -1730,7 +1730,6 @@
                   "if (pm.response.code === 201) {",
                   "  var payload = pm.response.json();",
                   "  pm.collectionVariables.set('deploymentInstanceId', payload.deployment_instance_id);",
-                  "  pm.collectionVariables.set('tensorrtDirectInferenceDeploymentInstanceId', payload.deployment_instance_id);",
                   "}"
                 ]
               }
@@ -2092,7 +2091,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"model_version_id\": null,\n  \"model_build_id\": \"{{tensorrtEngineFp32ModelBuildId}}\",\n  \"runtime_profile_id\": null,\n  \"runtime_backend\": \"tensorrt\",\n  \"runtime_precision\": \"fp32\",\n  \"device_name\": \"cuda\",\n  \"instance_count\": {{deploymentInstanceCount}},\n  \"display_name\": \"{{deploymentDisplayName}} tensorrt-fp32\",\n  \"metadata\": {}\n}",
+              "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"model_version_id\": null,\n  \"model_build_id\": \"{{tensorrtEngineFp32ModelBuildId}}\",\n  \"runtime_profile_id\": null,\n  \"runtime_backend\": \"tensorrt\",\n  \"runtime_precision\": \"fp32\",\n  \"device_name\": \"cuda\",\n  \"instance_count\": {{deploymentInstanceCount}},\n  \"display_name\": \"{{deploymentDisplayName}} tensorrt-fp32\",\n  \"metadata\": {\n    \"deployment_process\": {\n      \"warmup_dummy_inference_count\": {{deploymentWarmupDummyInferenceCount}},\n      \"warmup_dummy_image_size\": [{{deploymentWarmupDummyImageWidth}}, {{deploymentWarmupDummyImageHeight}}],\n      \"keep_warm_enabled\": {{deploymentKeepWarmEnabled}},\n      \"keep_warm_interval_seconds\": {{deploymentKeepWarmIntervalSeconds}},\n      \"tensorrt_pinned_output_buffer_enabled\": {{deploymentTensorrtFp32PinnedOutputBufferEnabled}},\n      \"tensorrt_pinned_output_buffer_max_bytes\": {{deploymentTensorrtFp32PinnedOutputBufferMaxBytes}}\n    }\n  }\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -2112,7 +2111,7 @@
                 "deployment-instances"
               ]
             },
-            "description": "使用 fp32 TensorRT engine ModelBuild 创建一个 TensorRT DeploymentInstance，模板固定为 runtime_backend=tensorrt、runtime_precision=fp32、device_name=cuda。当前建议优先配合 {{tensorrtEngineFp32ModelBuildId}} 使用；返回结果里的 device_name 会归一化为 cuda:0，并额外回填 {{tensorrtDirectInferenceDeploymentInstanceId}} 供 TensorRT direct infer 专用模板使用。"
+            "description": "使用 fp32 TensorRT engine ModelBuild 创建一个 TensorRT DeploymentInstance，模板固定为 runtime_backend=tensorrt、runtime_precision=fp32、device_name=cuda。当前建议优先配合 {{tensorrtEngineFp32ModelBuildId}} 使用；metadata.deployment_process 会透传 keep-warm 和 TensorRT pinned output buffer 相关参数，其中 fp32 模板单独使用 deploymentTensorrtFp32PinnedOutputBufferEnabled 和 deploymentTensorrtFp32PinnedOutputBufferMaxBytes。collection variables 里已经补了两套明确 preset：小输出 deployment 预设使用 deploymentTensorrtSmallOutputPresetPinnedOutputBufferEnabled=true、deploymentTensorrtSmallOutputPresetPinnedOutputBufferMaxBytes=8388608；大输出 deployment 预设使用 deploymentTensorrtLargeOutputPresetPinnedOutputBufferEnabled=false、deploymentTensorrtLargeOutputPresetPinnedOutputBufferMaxBytes=0。需要直接按 preset 创建时，优先使用 Create YOLOX TensorRT Small Output Deployment Instance 或 Create YOLOX TensorRT Large Output Deployment Instance；当前 fp32 模板仍保留给固定精度场景。返回结果里的 device_name 会归一化为 cuda:0。"
           },
           "response": []
         },
@@ -2127,7 +2126,6 @@
                   "if (pm.response.code === 201) {",
                   "  var payload = pm.response.json();",
                   "  pm.collectionVariables.set('deploymentInstanceId', payload.deployment_instance_id);",
-                  "  pm.collectionVariables.set('tensorrtDirectInferenceDeploymentInstanceId', payload.deployment_instance_id);",
                   "}"
                 ]
               }
@@ -2159,7 +2157,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"model_version_id\": null,\n  \"model_build_id\": \"{{tensorrtEngineFp16ModelBuildId}}\",\n  \"runtime_profile_id\": null,\n  \"runtime_backend\": \"tensorrt\",\n  \"runtime_precision\": \"fp16\",\n  \"device_name\": \"cuda\",\n  \"instance_count\": {{deploymentInstanceCount}},\n  \"display_name\": \"{{deploymentDisplayName}} tensorrt-fp16\",\n  \"metadata\": {}\n}",
+              "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"model_version_id\": null,\n  \"model_build_id\": \"{{tensorrtEngineFp16ModelBuildId}}\",\n  \"runtime_profile_id\": null,\n  \"runtime_backend\": \"tensorrt\",\n  \"runtime_precision\": \"fp16\",\n  \"device_name\": \"cuda\",\n  \"instance_count\": {{deploymentInstanceCount}},\n  \"display_name\": \"{{deploymentDisplayName}} tensorrt-fp16\",\n  \"metadata\": {\n    \"deployment_process\": {\n      \"warmup_dummy_inference_count\": {{deploymentWarmupDummyInferenceCount}},\n      \"warmup_dummy_image_size\": [{{deploymentWarmupDummyImageWidth}}, {{deploymentWarmupDummyImageHeight}}],\n      \"keep_warm_enabled\": {{deploymentKeepWarmEnabled}},\n      \"keep_warm_interval_seconds\": {{deploymentKeepWarmIntervalSeconds}},\n      \"tensorrt_pinned_output_buffer_enabled\": {{deploymentTensorrtFp16PinnedOutputBufferEnabled}},\n      \"tensorrt_pinned_output_buffer_max_bytes\": {{deploymentTensorrtFp16PinnedOutputBufferMaxBytes}}\n    }\n  }\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -2179,7 +2177,139 @@
                 "deployment-instances"
               ]
             },
-            "description": "使用 fp16 TensorRT engine ModelBuild 创建一个 TensorRT DeploymentInstance，模板固定为 runtime_backend=tensorrt、runtime_precision=fp16、device_name=cuda。当前建议优先配合 {{tensorrtEngineFp16ModelBuildId}} 使用；请求里的 runtime_precision 必须与 engine build_precision 一致，并额外回填 {{tensorrtDirectInferenceDeploymentInstanceId}} 供 TensorRT direct infer 专用模板使用。"
+            "description": "使用 fp16 TensorRT engine ModelBuild 创建一个 TensorRT DeploymentInstance，模板固定为 runtime_backend=tensorrt、runtime_precision=fp16、device_name=cuda。当前建议优先配合 {{tensorrtEngineFp16ModelBuildId}} 使用；请求里的 runtime_precision 必须与 engine build_precision 一致，metadata.deployment_process 会透传 keep-warm 和 TensorRT pinned output buffer 相关参数，其中 fp16 模板单独使用 deploymentTensorrtFp16PinnedOutputBufferEnabled 和 deploymentTensorrtFp16PinnedOutputBufferMaxBytes。collection variables 里已经补了两套明确 preset：小输出 deployment 预设使用 deploymentTensorrtSmallOutputPresetPinnedOutputBufferEnabled=true、deploymentTensorrtSmallOutputPresetPinnedOutputBufferMaxBytes=8388608；大输出 deployment 预设使用 deploymentTensorrtLargeOutputPresetPinnedOutputBufferEnabled=false、deploymentTensorrtLargeOutputPresetPinnedOutputBufferMaxBytes=0。需要直接按 preset 创建时，优先使用 Create YOLOX TensorRT Small Output Deployment Instance 或 Create YOLOX TensorRT Large Output Deployment Instance；当前 fp16 模板仍保留给固定精度场景。"
+          },
+          "response": []
+        },
+        {
+          "name": "Create YOLOX TensorRT Small Output Deployment Instance",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  var payload = pm.response.json();",
+                  "  pm.collectionVariables.set('deploymentInstanceId', payload.deployment_instance_id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-principal-id",
+                "value": "{{principalId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-project-ids",
+                "value": "{{projectId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-scopes",
+                "value": "models:read,models:write",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"model_version_id\": null,\n  \"model_build_id\": \"{{tensorrtEngineModelBuildId}}\",\n  \"runtime_profile_id\": null,\n  \"runtime_backend\": \"tensorrt\",\n  \"runtime_precision\": \"{{deploymentTensorrtPresetRuntimePrecision}}\",\n  \"device_name\": \"cuda\",\n  \"instance_count\": {{deploymentInstanceCount}},\n  \"display_name\": \"{{deploymentDisplayName}} tensorrt-{{deploymentTensorrtPresetRuntimePrecision}}-small-output\",\n  \"metadata\": {\n    \"deployment_process\": {\n      \"warmup_dummy_inference_count\": {{deploymentWarmupDummyInferenceCount}},\n      \"warmup_dummy_image_size\": [{{deploymentWarmupDummyImageWidth}}, {{deploymentWarmupDummyImageHeight}}],\n      \"keep_warm_enabled\": {{deploymentKeepWarmEnabled}},\n      \"keep_warm_interval_seconds\": {{deploymentKeepWarmIntervalSeconds}},\n      \"tensorrt_pinned_output_buffer_enabled\": {{deploymentTensorrtSmallOutputPresetPinnedOutputBufferEnabled}},\n      \"tensorrt_pinned_output_buffer_max_bytes\": {{deploymentTensorrtSmallOutputPresetPinnedOutputBufferMaxBytes}}\n    }\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/models/yolox/deployment-instances",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "models",
+                "yolox",
+                "deployment-instances"
+              ]
+            },
+            "description": "使用小输出 preset 直接创建一个 TensorRT DeploymentInstance，不再手动抄 pinned output 参数。这个模板固定接入 deploymentTensorrtSmallOutputPresetPinnedOutputBufferEnabled 和 deploymentTensorrtSmallOutputPresetPinnedOutputBufferMaxBytes，适合输出张量较小、希望保留 pinned output host buffer 的 deployment。请求前需要确保 tensorrtEngineModelBuildId 指向目标 TensorRT engine build，deploymentTensorrtPresetRuntimePrecision 与该 build 的 precision 一致；创建成功后会回填 {{deploymentInstanceId}}。"
+          },
+          "response": []
+        },
+        {
+          "name": "Create YOLOX TensorRT Large Output Deployment Instance",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  var payload = pm.response.json();",
+                  "  pm.collectionVariables.set('deploymentInstanceId', payload.deployment_instance_id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-principal-id",
+                "value": "{{principalId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-project-ids",
+                "value": "{{projectId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-scopes",
+                "value": "models:read,models:write",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"model_version_id\": null,\n  \"model_build_id\": \"{{tensorrtEngineModelBuildId}}\",\n  \"runtime_profile_id\": null,\n  \"runtime_backend\": \"tensorrt\",\n  \"runtime_precision\": \"{{deploymentTensorrtPresetRuntimePrecision}}\",\n  \"device_name\": \"cuda\",\n  \"instance_count\": {{deploymentInstanceCount}},\n  \"display_name\": \"{{deploymentDisplayName}} tensorrt-{{deploymentTensorrtPresetRuntimePrecision}}-large-output\",\n  \"metadata\": {\n    \"deployment_process\": {\n      \"warmup_dummy_inference_count\": {{deploymentWarmupDummyInferenceCount}},\n      \"warmup_dummy_image_size\": [{{deploymentWarmupDummyImageWidth}}, {{deploymentWarmupDummyImageHeight}}],\n      \"keep_warm_enabled\": {{deploymentKeepWarmEnabled}},\n      \"keep_warm_interval_seconds\": {{deploymentKeepWarmIntervalSeconds}},\n      \"tensorrt_pinned_output_buffer_enabled\": {{deploymentTensorrtLargeOutputPresetPinnedOutputBufferEnabled}},\n      \"tensorrt_pinned_output_buffer_max_bytes\": {{deploymentTensorrtLargeOutputPresetPinnedOutputBufferMaxBytes}}\n    }\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/models/yolox/deployment-instances",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "models",
+                "yolox",
+                "deployment-instances"
+              ]
+            },
+            "description": "使用大输出 preset 直接创建一个 TensorRT DeploymentInstance，不再手动抄 pinned output 参数。这个模板固定接入 deploymentTensorrtLargeOutputPresetPinnedOutputBufferEnabled 和 deploymentTensorrtLargeOutputPresetPinnedOutputBufferMaxBytes，适合输出张量较大、希望关闭 pinned output 或把上限压到更保守值的 deployment。请求前需要确保 tensorrtEngineModelBuildId 指向目标 TensorRT engine build，deploymentTensorrtPresetRuntimePrecision 与该 build 的 precision 一致；创建成功后会回填 {{deploymentInstanceId}}。"
           },
           "response": []
         },
@@ -2309,8 +2439,9 @@
                       "  var payload = pm.response.json();",
                       "  if (payload.desired_state) pm.collectionVariables.set('deploymentDesiredState', payload.desired_state);",
                       "  if (payload.process_state) pm.collectionVariables.set('deploymentProcessState', payload.process_state);",
-                      "  if (payload.process_id !== undefined && payload.process_id !== null) pm.collectionVariables.set('deploymentProcessId', String(payload.process_id));",
+                      "  if (payload.process_id !== undefined) pm.collectionVariables.set('deploymentProcessId', payload.process_id === null ? '' : String(payload.process_id));",
                       "  if (payload.restart_count !== undefined) pm.collectionVariables.set('deploymentRestartCount', String(payload.restart_count));",
+                      "  if (payload.restart_count_rollover_count !== undefined) pm.collectionVariables.set('deploymentRestartCountRolloverCount', String(payload.restart_count_rollover_count));",
                       "}"
                     ]
                   }
@@ -2367,8 +2498,9 @@
                       "  var payload = pm.response.json();",
                       "  if (payload.desired_state) pm.collectionVariables.set('deploymentDesiredState', payload.desired_state);",
                       "  if (payload.process_state) pm.collectionVariables.set('deploymentProcessState', payload.process_state);",
-                      "  if (payload.process_id !== undefined && payload.process_id !== null) pm.collectionVariables.set('deploymentProcessId', String(payload.process_id));",
+                      "  if (payload.process_id !== undefined) pm.collectionVariables.set('deploymentProcessId', payload.process_id === null ? '' : String(payload.process_id));",
                       "  if (payload.restart_count !== undefined) pm.collectionVariables.set('deploymentRestartCount', String(payload.restart_count));",
+                      "  if (payload.restart_count_rollover_count !== undefined) pm.collectionVariables.set('deploymentRestartCountRolloverCount', String(payload.restart_count_rollover_count));",
                       "}"
                     ]
                   }
@@ -2409,7 +2541,7 @@
                     "status"
                   ]
                 },
-                "description": "读取 deployment 的 sync 推理子进程监督状态。重点字段包括 process_state、desired_state、process_id、restart_count。"
+                "description": "读取 deployment 的 sync 推理子进程监督状态。重点字段包括 process_state、desired_state、process_id、restart_count 和 restart_count_rollover_count。"
               },
               "response": []
             },
@@ -2425,8 +2557,22 @@
                       "  var payload = pm.response.json();",
                       "  if (payload.desired_state) pm.collectionVariables.set('deploymentDesiredState', payload.desired_state);",
                       "  if (payload.process_state) pm.collectionVariables.set('deploymentProcessState', payload.process_state);",
-                      "  if (payload.process_id !== undefined && payload.process_id !== null) pm.collectionVariables.set('deploymentProcessId', String(payload.process_id));",
+                      "  if (payload.process_id !== undefined) pm.collectionVariables.set('deploymentProcessId', payload.process_id === null ? '' : String(payload.process_id));",
                       "  if (payload.restart_count !== undefined) pm.collectionVariables.set('deploymentRestartCount', String(payload.restart_count));",
+                      "  if (payload.restart_count_rollover_count !== undefined) pm.collectionVariables.set('deploymentRestartCountRolloverCount', String(payload.restart_count_rollover_count));",
+                      "  if (payload.pinned_output_total_bytes !== undefined) pm.collectionVariables.set('deploymentPinnedOutputTotalBytes', String(payload.pinned_output_total_bytes));",
+                      "  if (payload.keep_warm) {",
+                      "    pm.collectionVariables.set('deploymentKeepWarmEnabledObserved', String(payload.keep_warm.enabled === true));",
+                      "    pm.collectionVariables.set('deploymentKeepWarmActivated', String(payload.keep_warm.activated === true));",
+                      "    pm.collectionVariables.set('deploymentKeepWarmPaused', String(payload.keep_warm.paused === true));",
+                      "    pm.collectionVariables.set('deploymentKeepWarmIdle', String(payload.keep_warm.idle === true));",
+                      "    if (payload.keep_warm.interval_seconds !== undefined && payload.keep_warm.interval_seconds !== null) pm.collectionVariables.set('deploymentKeepWarmObservedIntervalSeconds', String(payload.keep_warm.interval_seconds));",
+                      "    if (payload.keep_warm.success_count !== undefined) pm.collectionVariables.set('deploymentKeepWarmSuccessCount', String(payload.keep_warm.success_count));",
+                      "    if (payload.keep_warm.success_count_rollover_count !== undefined) pm.collectionVariables.set('deploymentKeepWarmSuccessCountRolloverCount', String(payload.keep_warm.success_count_rollover_count));",
+                      "    if (payload.keep_warm.error_count !== undefined) pm.collectionVariables.set('deploymentKeepWarmErrorCount', String(payload.keep_warm.error_count));",
+                      "    if (payload.keep_warm.error_count_rollover_count !== undefined) pm.collectionVariables.set('deploymentKeepWarmErrorCountRolloverCount', String(payload.keep_warm.error_count_rollover_count));",
+                      "    pm.collectionVariables.set('deploymentKeepWarmLastError', payload.keep_warm.last_error ? payload.keep_warm.last_error : '');",
+                      "  }",
                       "}"
                     ]
                   }
@@ -2467,12 +2613,43 @@
                     "warmup"
                   ]
                 },
-                "description": "显式启动并预热 deployment 的 sync 推理子进程及内部实例池。推荐在第一次同步 infer 前先调用一次。"
+                "description": "显式启动并预热 deployment 的 sync 推理子进程及内部实例池。推荐在第一次同步 infer 前先调用一次。返回体里的 keep_warm、restart_count_rollover_count 和 pinned_output_total_bytes 会回填到 collection 变量 deploymentRestartCountRolloverCount、deploymentKeepWarmEnabledObserved、deploymentKeepWarmActivated、deploymentKeepWarmSuccessCount、deploymentKeepWarmSuccessCountRolloverCount、deploymentKeepWarmErrorCount、deploymentKeepWarmErrorCountRolloverCount、deploymentKeepWarmLastError、deploymentPinnedOutputTotalBytes。"
               },
               "response": []
             },
             {
               "name": "Get YOLOX Sync Deployment Health",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "if (pm.response.code === 200) {",
+                      "  var payload = pm.response.json();",
+                      "  if (payload.desired_state) pm.collectionVariables.set('deploymentDesiredState', payload.desired_state);",
+                      "  if (payload.process_state) pm.collectionVariables.set('deploymentProcessState', payload.process_state);",
+                      "  if (payload.process_id !== undefined && payload.process_id !== null) pm.collectionVariables.set('deploymentProcessId', String(payload.process_id));",
+                      "  if (payload.restart_count !== undefined) pm.collectionVariables.set('deploymentRestartCount', String(payload.restart_count));",
+                      "  if (payload.restart_count_rollover_count !== undefined) pm.collectionVariables.set('deploymentRestartCountRolloverCount', String(payload.restart_count_rollover_count));",
+                      "  if (payload.pinned_output_total_bytes !== undefined) pm.collectionVariables.set('deploymentPinnedOutputTotalBytes', String(payload.pinned_output_total_bytes));",
+                      "  if (payload.keep_warm) {",
+                      "    pm.collectionVariables.set('deploymentKeepWarmEnabledObserved', String(payload.keep_warm.enabled === true));",
+                      "    pm.collectionVariables.set('deploymentKeepWarmActivated', String(payload.keep_warm.activated === true));",
+                      "    pm.collectionVariables.set('deploymentKeepWarmPaused', String(payload.keep_warm.paused === true));",
+                      "    pm.collectionVariables.set('deploymentKeepWarmIdle', String(payload.keep_warm.idle === true));",
+                      "    if (payload.keep_warm.interval_seconds !== undefined && payload.keep_warm.interval_seconds !== null) pm.collectionVariables.set('deploymentKeepWarmObservedIntervalSeconds', String(payload.keep_warm.interval_seconds));",
+                      "    if (payload.keep_warm.success_count !== undefined) pm.collectionVariables.set('deploymentKeepWarmSuccessCount', String(payload.keep_warm.success_count));",
+                      "    if (payload.keep_warm.success_count_rollover_count !== undefined) pm.collectionVariables.set('deploymentKeepWarmSuccessCountRolloverCount', String(payload.keep_warm.success_count_rollover_count));",
+                      "    if (payload.keep_warm.error_count !== undefined) pm.collectionVariables.set('deploymentKeepWarmErrorCount', String(payload.keep_warm.error_count));",
+                      "    if (payload.keep_warm.error_count_rollover_count !== undefined) pm.collectionVariables.set('deploymentKeepWarmErrorCountRolloverCount', String(payload.keep_warm.error_count_rollover_count));",
+                      "    pm.collectionVariables.set('deploymentKeepWarmLastError', payload.keep_warm.last_error ? payload.keep_warm.last_error : '');",
+                      "  }",
+                      "}"
+                    ]
+                  }
+                }
+              ],
               "request": {
                 "method": "GET",
                 "header": [
@@ -2508,12 +2685,43 @@
                     "health"
                   ]
                 },
-                "description": "读取 deployment 的 sync 推理子进程健康视图，包括 healthy_instance_count、warmed_instance_count 和 instances[]。"
+                "description": "读取 deployment 的 sync 推理子进程健康视图，包括 healthy_instance_count、warmed_instance_count、instances[]、pinned_output_total_bytes、restart_count_rollover_count 和 keep_warm。重点看 pinned_output_total_bytes、restart_count_rollover_count、keep_warm.enabled、activated、success_count、success_count_rollover_count、error_count、error_count_rollover_count、last_error。"
               },
               "response": []
             },
             {
               "name": "Reset YOLOX Sync Deployment Process",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "if (pm.response.code === 200) {",
+                      "  var payload = pm.response.json();",
+                      "  if (payload.desired_state) pm.collectionVariables.set('deploymentDesiredState', payload.desired_state);",
+                      "  if (payload.process_state) pm.collectionVariables.set('deploymentProcessState', payload.process_state);",
+                      "  if (payload.process_id !== undefined) pm.collectionVariables.set('deploymentProcessId', payload.process_id === null ? '' : String(payload.process_id));",
+                      "  if (payload.restart_count !== undefined) pm.collectionVariables.set('deploymentRestartCount', String(payload.restart_count));",
+                      "  if (payload.restart_count_rollover_count !== undefined) pm.collectionVariables.set('deploymentRestartCountRolloverCount', String(payload.restart_count_rollover_count));",
+                      "  if (payload.pinned_output_total_bytes !== undefined) pm.collectionVariables.set('deploymentPinnedOutputTotalBytes', String(payload.pinned_output_total_bytes));",
+                      "  if (payload.keep_warm) {",
+                      "    pm.collectionVariables.set('deploymentKeepWarmEnabledObserved', String(payload.keep_warm.enabled === true));",
+                      "    pm.collectionVariables.set('deploymentKeepWarmActivated', String(payload.keep_warm.activated === true));",
+                      "    pm.collectionVariables.set('deploymentKeepWarmPaused', String(payload.keep_warm.paused === true));",
+                      "    pm.collectionVariables.set('deploymentKeepWarmIdle', String(payload.keep_warm.idle === true));",
+                      "    if (payload.keep_warm.interval_seconds !== undefined && payload.keep_warm.interval_seconds !== null) pm.collectionVariables.set('deploymentKeepWarmObservedIntervalSeconds', String(payload.keep_warm.interval_seconds));",
+                      "    if (payload.keep_warm.success_count !== undefined) pm.collectionVariables.set('deploymentKeepWarmSuccessCount', String(payload.keep_warm.success_count));",
+                      "    if (payload.keep_warm.success_count_rollover_count !== undefined) pm.collectionVariables.set('deploymentKeepWarmSuccessCountRolloverCount', String(payload.keep_warm.success_count_rollover_count));",
+                      "    if (payload.keep_warm.error_count !== undefined) pm.collectionVariables.set('deploymentKeepWarmErrorCount', String(payload.keep_warm.error_count));",
+                      "    if (payload.keep_warm.error_count_rollover_count !== undefined) pm.collectionVariables.set('deploymentKeepWarmErrorCountRolloverCount', String(payload.keep_warm.error_count_rollover_count));",
+                      "    pm.collectionVariables.set('deploymentKeepWarmLastError', payload.keep_warm.last_error ? payload.keep_warm.last_error : '');",
+                      "  }",
+                      "}"
+                    ]
+                  }
+                }
+              ],
               "request": {
                 "method": "POST",
                 "header": [
@@ -2555,6 +2763,34 @@
             },
             {
               "name": "Stop YOLOX Sync Deployment Process",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "if (pm.response.code === 200) {",
+                      "  var payload = pm.response.json();",
+                      "  if (payload.desired_state) pm.collectionVariables.set('deploymentDesiredState', payload.desired_state);",
+                      "  if (payload.process_state) pm.collectionVariables.set('deploymentProcessState', payload.process_state);",
+                      "  if (payload.process_id !== undefined) pm.collectionVariables.set('deploymentProcessId', payload.process_id === null ? '' : String(payload.process_id));",
+                      "  if (payload.restart_count !== undefined) pm.collectionVariables.set('deploymentRestartCount', String(payload.restart_count));",
+                      "  if (payload.restart_count_rollover_count !== undefined) pm.collectionVariables.set('deploymentRestartCountRolloverCount', String(payload.restart_count_rollover_count));",
+                      "  pm.collectionVariables.set('deploymentPinnedOutputTotalBytes', '0');",
+                      "  pm.collectionVariables.set('deploymentKeepWarmEnabledObserved', 'false');",
+                      "  pm.collectionVariables.set('deploymentKeepWarmActivated', 'false');",
+                      "  pm.collectionVariables.set('deploymentKeepWarmPaused', 'false');",
+                      "  pm.collectionVariables.set('deploymentKeepWarmIdle', 'true');",
+                      "  pm.collectionVariables.set('deploymentKeepWarmSuccessCount', '0');",
+                      "  pm.collectionVariables.set('deploymentKeepWarmSuccessCountRolloverCount', '0');",
+                      "  pm.collectionVariables.set('deploymentKeepWarmErrorCount', '0');",
+                      "  pm.collectionVariables.set('deploymentKeepWarmErrorCountRolloverCount', '0');",
+                      "  pm.collectionVariables.set('deploymentKeepWarmLastError', '');",
+                      "}"
+                    ]
+                  }
+                }
+              ],
               "request": {
                 "method": "POST",
                 "header": [
@@ -2613,6 +2849,7 @@
                       "  if (payload.process_state) pm.collectionVariables.set('deploymentProcessState', payload.process_state);",
                       "  if (payload.process_id !== undefined && payload.process_id !== null) pm.collectionVariables.set('deploymentProcessId', String(payload.process_id));",
                       "  if (payload.restart_count !== undefined) pm.collectionVariables.set('deploymentRestartCount', String(payload.restart_count));",
+                      "  if (payload.restart_count_rollover_count !== undefined) pm.collectionVariables.set('deploymentRestartCountRolloverCount', String(payload.restart_count_rollover_count));",
                       "}"
                     ]
                   }
@@ -2669,8 +2906,9 @@
                       "  var payload = pm.response.json();",
                       "  if (payload.desired_state) pm.collectionVariables.set('deploymentDesiredState', payload.desired_state);",
                       "  if (payload.process_state) pm.collectionVariables.set('deploymentProcessState', payload.process_state);",
-                      "  if (payload.process_id !== undefined && payload.process_id !== null) pm.collectionVariables.set('deploymentProcessId', String(payload.process_id));",
+                      "  if (payload.process_id !== undefined) pm.collectionVariables.set('deploymentProcessId', payload.process_id === null ? '' : String(payload.process_id));",
                       "  if (payload.restart_count !== undefined) pm.collectionVariables.set('deploymentRestartCount', String(payload.restart_count));",
+                      "  if (payload.restart_count_rollover_count !== undefined) pm.collectionVariables.set('deploymentRestartCountRolloverCount', String(payload.restart_count_rollover_count));",
                       "}"
                     ]
                   }
@@ -2711,7 +2949,7 @@
                     "status"
                   ]
                 },
-                "description": "读取 deployment 的 async 推理子进程监督状态。重点字段包括 process_state、desired_state、process_id、restart_count。"
+                "description": "读取 deployment 的 async 推理子进程监督状态。重点字段包括 process_state、desired_state、process_id、restart_count 和 restart_count_rollover_count。"
               },
               "response": []
             },
@@ -2729,6 +2967,20 @@
                       "  if (payload.process_state) pm.collectionVariables.set('deploymentProcessState', payload.process_state);",
                       "  if (payload.process_id !== undefined && payload.process_id !== null) pm.collectionVariables.set('deploymentProcessId', String(payload.process_id));",
                       "  if (payload.restart_count !== undefined) pm.collectionVariables.set('deploymentRestartCount', String(payload.restart_count));",
+                      "  if (payload.restart_count_rollover_count !== undefined) pm.collectionVariables.set('deploymentRestartCountRolloverCount', String(payload.restart_count_rollover_count));",
+                      "  if (payload.pinned_output_total_bytes !== undefined) pm.collectionVariables.set('deploymentPinnedOutputTotalBytes', String(payload.pinned_output_total_bytes));",
+                      "  if (payload.keep_warm) {",
+                      "    pm.collectionVariables.set('deploymentKeepWarmEnabledObserved', String(payload.keep_warm.enabled === true));",
+                      "    pm.collectionVariables.set('deploymentKeepWarmActivated', String(payload.keep_warm.activated === true));",
+                      "    pm.collectionVariables.set('deploymentKeepWarmPaused', String(payload.keep_warm.paused === true));",
+                      "    pm.collectionVariables.set('deploymentKeepWarmIdle', String(payload.keep_warm.idle === true));",
+                      "    if (payload.keep_warm.interval_seconds !== undefined && payload.keep_warm.interval_seconds !== null) pm.collectionVariables.set('deploymentKeepWarmObservedIntervalSeconds', String(payload.keep_warm.interval_seconds));",
+                      "    if (payload.keep_warm.success_count !== undefined) pm.collectionVariables.set('deploymentKeepWarmSuccessCount', String(payload.keep_warm.success_count));",
+                      "    if (payload.keep_warm.success_count_rollover_count !== undefined) pm.collectionVariables.set('deploymentKeepWarmSuccessCountRolloverCount', String(payload.keep_warm.success_count_rollover_count));",
+                      "    if (payload.keep_warm.error_count !== undefined) pm.collectionVariables.set('deploymentKeepWarmErrorCount', String(payload.keep_warm.error_count));",
+                      "    if (payload.keep_warm.error_count_rollover_count !== undefined) pm.collectionVariables.set('deploymentKeepWarmErrorCountRolloverCount', String(payload.keep_warm.error_count_rollover_count));",
+                      "    pm.collectionVariables.set('deploymentKeepWarmLastError', payload.keep_warm.last_error ? payload.keep_warm.last_error : '');",
+                      "  }",
                       "}"
                     ]
                   }
@@ -2769,12 +3021,43 @@
                     "warmup"
                   ]
                 },
-                "description": "显式启动并预热 deployment 的 async 推理子进程及内部实例池。推荐在第一次创建 async inference task 前先调用一次。"
+                "description": "显式启动并预热 deployment 的 async 推理子进程及内部实例池。推荐在第一次创建 async inference task 前先调用一次。返回体里的 keep_warm、restart_count_rollover_count 和 pinned_output_total_bytes 会回填到 collection 变量 deploymentRestartCountRolloverCount、deploymentKeepWarmEnabledObserved、deploymentKeepWarmActivated、deploymentKeepWarmSuccessCount、deploymentKeepWarmSuccessCountRolloverCount、deploymentKeepWarmErrorCount、deploymentKeepWarmErrorCountRolloverCount、deploymentKeepWarmLastError、deploymentPinnedOutputTotalBytes。"
               },
               "response": []
             },
             {
               "name": "Get YOLOX Async Deployment Health",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "if (pm.response.code === 200) {",
+                      "  var payload = pm.response.json();",
+                      "  if (payload.desired_state) pm.collectionVariables.set('deploymentDesiredState', payload.desired_state);",
+                      "  if (payload.process_state) pm.collectionVariables.set('deploymentProcessState', payload.process_state);",
+                      "  if (payload.process_id !== undefined && payload.process_id !== null) pm.collectionVariables.set('deploymentProcessId', String(payload.process_id));",
+                      "  if (payload.restart_count !== undefined) pm.collectionVariables.set('deploymentRestartCount', String(payload.restart_count));",
+                      "  if (payload.restart_count_rollover_count !== undefined) pm.collectionVariables.set('deploymentRestartCountRolloverCount', String(payload.restart_count_rollover_count));",
+                      "  if (payload.pinned_output_total_bytes !== undefined) pm.collectionVariables.set('deploymentPinnedOutputTotalBytes', String(payload.pinned_output_total_bytes));",
+                      "  if (payload.keep_warm) {",
+                      "    pm.collectionVariables.set('deploymentKeepWarmEnabledObserved', String(payload.keep_warm.enabled === true));",
+                      "    pm.collectionVariables.set('deploymentKeepWarmActivated', String(payload.keep_warm.activated === true));",
+                      "    pm.collectionVariables.set('deploymentKeepWarmPaused', String(payload.keep_warm.paused === true));",
+                      "    pm.collectionVariables.set('deploymentKeepWarmIdle', String(payload.keep_warm.idle === true));",
+                      "    if (payload.keep_warm.interval_seconds !== undefined && payload.keep_warm.interval_seconds !== null) pm.collectionVariables.set('deploymentKeepWarmObservedIntervalSeconds', String(payload.keep_warm.interval_seconds));",
+                      "    if (payload.keep_warm.success_count !== undefined) pm.collectionVariables.set('deploymentKeepWarmSuccessCount', String(payload.keep_warm.success_count));",
+                      "    if (payload.keep_warm.success_count_rollover_count !== undefined) pm.collectionVariables.set('deploymentKeepWarmSuccessCountRolloverCount', String(payload.keep_warm.success_count_rollover_count));",
+                      "    if (payload.keep_warm.error_count !== undefined) pm.collectionVariables.set('deploymentKeepWarmErrorCount', String(payload.keep_warm.error_count));",
+                      "    if (payload.keep_warm.error_count_rollover_count !== undefined) pm.collectionVariables.set('deploymentKeepWarmErrorCountRolloverCount', String(payload.keep_warm.error_count_rollover_count));",
+                      "    pm.collectionVariables.set('deploymentKeepWarmLastError', payload.keep_warm.last_error ? payload.keep_warm.last_error : '');",
+                      "  }",
+                      "}"
+                    ]
+                  }
+                }
+              ],
               "request": {
                 "method": "GET",
                 "header": [
@@ -2810,12 +3093,43 @@
                     "health"
                   ]
                 },
-                "description": "读取 deployment 的 async 推理子进程健康视图。"
+                "description": "读取 deployment 的 async 推理子进程健康视图。重点看 pinned_output_total_bytes、restart_count_rollover_count、keep_warm.enabled、activated、success_count、success_count_rollover_count、error_count、error_count_rollover_count、last_error。"
               },
               "response": []
             },
             {
               "name": "Reset YOLOX Async Deployment Process",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "if (pm.response.code === 200) {",
+                      "  var payload = pm.response.json();",
+                      "  if (payload.desired_state) pm.collectionVariables.set('deploymentDesiredState', payload.desired_state);",
+                      "  if (payload.process_state) pm.collectionVariables.set('deploymentProcessState', payload.process_state);",
+                      "  if (payload.process_id !== undefined) pm.collectionVariables.set('deploymentProcessId', payload.process_id === null ? '' : String(payload.process_id));",
+                      "  if (payload.restart_count !== undefined) pm.collectionVariables.set('deploymentRestartCount', String(payload.restart_count));",
+                      "  if (payload.restart_count_rollover_count !== undefined) pm.collectionVariables.set('deploymentRestartCountRolloverCount', String(payload.restart_count_rollover_count));",
+                      "  if (payload.pinned_output_total_bytes !== undefined) pm.collectionVariables.set('deploymentPinnedOutputTotalBytes', String(payload.pinned_output_total_bytes));",
+                      "  if (payload.keep_warm) {",
+                      "    pm.collectionVariables.set('deploymentKeepWarmEnabledObserved', String(payload.keep_warm.enabled === true));",
+                      "    pm.collectionVariables.set('deploymentKeepWarmActivated', String(payload.keep_warm.activated === true));",
+                      "    pm.collectionVariables.set('deploymentKeepWarmPaused', String(payload.keep_warm.paused === true));",
+                      "    pm.collectionVariables.set('deploymentKeepWarmIdle', String(payload.keep_warm.idle === true));",
+                      "    if (payload.keep_warm.interval_seconds !== undefined && payload.keep_warm.interval_seconds !== null) pm.collectionVariables.set('deploymentKeepWarmObservedIntervalSeconds', String(payload.keep_warm.interval_seconds));",
+                      "    if (payload.keep_warm.success_count !== undefined) pm.collectionVariables.set('deploymentKeepWarmSuccessCount', String(payload.keep_warm.success_count));",
+                      "    if (payload.keep_warm.success_count_rollover_count !== undefined) pm.collectionVariables.set('deploymentKeepWarmSuccessCountRolloverCount', String(payload.keep_warm.success_count_rollover_count));",
+                      "    if (payload.keep_warm.error_count !== undefined) pm.collectionVariables.set('deploymentKeepWarmErrorCount', String(payload.keep_warm.error_count));",
+                      "    if (payload.keep_warm.error_count_rollover_count !== undefined) pm.collectionVariables.set('deploymentKeepWarmErrorCountRolloverCount', String(payload.keep_warm.error_count_rollover_count));",
+                      "    pm.collectionVariables.set('deploymentKeepWarmLastError', payload.keep_warm.last_error ? payload.keep_warm.last_error : '');",
+                      "  }",
+                      "}"
+                    ]
+                  }
+                }
+              ],
               "request": {
                 "method": "POST",
                 "header": [
@@ -2857,6 +3171,34 @@
             },
             {
               "name": "Stop YOLOX Async Deployment Process",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "if (pm.response.code === 200) {",
+                      "  var payload = pm.response.json();",
+                      "  if (payload.desired_state) pm.collectionVariables.set('deploymentDesiredState', payload.desired_state);",
+                      "  if (payload.process_state) pm.collectionVariables.set('deploymentProcessState', payload.process_state);",
+                      "  if (payload.process_id !== undefined) pm.collectionVariables.set('deploymentProcessId', payload.process_id === null ? '' : String(payload.process_id));",
+                      "  if (payload.restart_count !== undefined) pm.collectionVariables.set('deploymentRestartCount', String(payload.restart_count));",
+                      "  if (payload.restart_count_rollover_count !== undefined) pm.collectionVariables.set('deploymentRestartCountRolloverCount', String(payload.restart_count_rollover_count));",
+                      "  pm.collectionVariables.set('deploymentPinnedOutputTotalBytes', '0');",
+                      "  pm.collectionVariables.set('deploymentKeepWarmEnabledObserved', 'false');",
+                      "  pm.collectionVariables.set('deploymentKeepWarmActivated', 'false');",
+                      "  pm.collectionVariables.set('deploymentKeepWarmPaused', 'false');",
+                      "  pm.collectionVariables.set('deploymentKeepWarmIdle', 'true');",
+                      "  pm.collectionVariables.set('deploymentKeepWarmSuccessCount', '0');",
+                      "  pm.collectionVariables.set('deploymentKeepWarmSuccessCountRolloverCount', '0');",
+                      "  pm.collectionVariables.set('deploymentKeepWarmErrorCount', '0');",
+                      "  pm.collectionVariables.set('deploymentKeepWarmErrorCountRolloverCount', '0');",
+                      "  pm.collectionVariables.set('deploymentKeepWarmLastError', '');",
+                      "}"
+                    ]
+                  }
+                }
+              ],
               "request": {
                 "method": "POST",
                 "header": [
@@ -3136,242 +3478,6 @@
                 "description": "直接执行一次同步 YOLOX 推理并返回结果，输入来源为 multipart/form-data 的 input_image 文件字段。不要再同时提交 input_uri 或 image_base64。默认增加 input_transport_mode={{directInferenceInputTransportMode}}；当取值为 memory 时，请求图片不会写入临时输入目录，而是直接以内存字节进入 deployment 推理进程。"
               },
               "response": []
-            },
-            {
-              "name": "TensorRT Sync Direct Inference",
-              "item": [
-                {
-                  "name": "Direct TensorRT Inference By URI",
-                  "event": [
-                    {
-                      "listen": "test",
-                      "script": {
-                        "type": "text/javascript",
-                        "exec": [
-                          "if (pm.response.code === 200) {",
-                          "  var payload = pm.response.json();",
-                          "  if (payload.request_id) pm.collectionVariables.set('directInferenceRequestId', payload.request_id);",
-                          "  if (payload.result_object_key) pm.collectionVariables.set('inferenceResultObjectKey', payload.result_object_key);",
-                          "  if (payload.preview_image_uri) pm.collectionVariables.set('inferencePreviewImageUri', payload.preview_image_uri);",
-                          "}"
-                        ]
-                      }
-                    }
-                  ],
-                  "request": {
-                    "method": "POST",
-                    "header": [
-                      {
-                        "key": "Content-Type",
-                        "value": "application/json",
-                        "type": "text"
-                      },
-                      {
-                        "key": "x-amvision-principal-id",
-                        "value": "{{principalId}}",
-                        "type": "text"
-                      },
-                      {
-                        "key": "x-amvision-project-ids",
-                        "value": "{{projectId}}",
-                        "type": "text"
-                      },
-                      {
-                        "key": "x-amvision-scopes",
-                        "value": "models:read",
-                        "type": "text"
-                      }
-                    ],
-                    "body": {
-                      "mode": "raw",
-                      "raw": "{\n  \"input_uri\": \"{{inferenceImageUri}}\",\n  \"input_file_id\": null,\n  \"score_threshold\": {{inferenceScoreThreshold}},\n  \"save_result_image\": {{inferenceSaveResultImage}},\n  \"return_preview_image_base64\": {{inferenceReturnPreviewImageBase64}},\n  \"extra_options\": {}\n}",
-                      "options": {
-                        "raw": {
-                          "language": "json"
-                        }
-                      }
-                    },
-                    "url": {
-                      "raw": "{{baseUrl}}/api/v1/models/yolox/deployment-instances/{{tensorrtDirectInferenceDeploymentInstanceId}}/infer",
-                      "host": [
-                        "{{baseUrl}}"
-                      ],
-                      "path": [
-                        "api",
-                        "v1",
-                        "models",
-                        "yolox",
-                        "deployment-instances",
-                        "{{tensorrtDirectInferenceDeploymentInstanceId}}",
-                        "infer"
-                      ]
-                    },
-                    "description": "直接执行一次 TensorRT 同步推理并返回结果，输入来源为 input_uri。该模板固定使用 {{tensorrtDirectInferenceDeploymentInstanceId}}，避免和通用 {{deploymentInstanceId}} 混用；调用前需要先让对应 TensorRT deployment 的 sync 子进程进入 running。"
-                  },
-                  "response": []
-                },
-                {
-                  "name": "Direct TensorRT Inference By Base64",
-                  "event": [
-                    {
-                      "listen": "test",
-                      "script": {
-                        "type": "text/javascript",
-                        "exec": [
-                          "if (pm.response.code === 200) {",
-                          "  var payload = pm.response.json();",
-                          "  if (payload.request_id) pm.collectionVariables.set('directInferenceRequestId', payload.request_id);",
-                          "  if (payload.result_object_key) pm.collectionVariables.set('inferenceResultObjectKey', payload.result_object_key);",
-                          "  if (payload.preview_image_uri) pm.collectionVariables.set('inferencePreviewImageUri', payload.preview_image_uri);",
-                          "}"
-                        ]
-                      }
-                    }
-                  ],
-                  "request": {
-                    "method": "POST",
-                    "header": [
-                      {
-                        "key": "Content-Type",
-                        "value": "application/json",
-                        "type": "text"
-                      },
-                      {
-                        "key": "x-amvision-principal-id",
-                        "value": "{{principalId}}",
-                        "type": "text"
-                      },
-                      {
-                        "key": "x-amvision-project-ids",
-                        "value": "{{projectId}}",
-                        "type": "text"
-                      },
-                      {
-                        "key": "x-amvision-scopes",
-                        "value": "models:read",
-                        "type": "text"
-                      }
-                    ],
-                    "body": {
-                      "mode": "raw",
-                      "raw": "{\n  \"image_base64\": \"{{inferenceImageBase64}}\",\n  \"input_file_id\": null,\n  \"input_transport_mode\": \"{{directInferenceInputTransportMode}}\",\n  \"score_threshold\": {{inferenceScoreThreshold}},\n  \"save_result_image\": {{inferenceSaveResultImage}},\n  \"return_preview_image_base64\": {{inferenceReturnPreviewImageBase64}},\n  \"extra_options\": {}\n}",
-                      "options": {
-                        "raw": {
-                          "language": "json"
-                        }
-                      }
-                    },
-                    "url": {
-                      "raw": "{{baseUrl}}/api/v1/models/yolox/deployment-instances/{{tensorrtDirectInferenceDeploymentInstanceId}}/infer",
-                      "host": [
-                        "{{baseUrl}}"
-                      ],
-                      "path": [
-                        "api",
-                        "v1",
-                        "models",
-                        "yolox",
-                        "deployment-instances",
-                        "{{tensorrtDirectInferenceDeploymentInstanceId}}",
-                        "infer"
-                      ]
-                    },
-                    "description": "直接执行一次 TensorRT 同步推理并返回结果，输入来源为 image_base64。该模板固定使用 {{tensorrtDirectInferenceDeploymentInstanceId}}，避免和通用 {{deploymentInstanceId}} 混用；默认增加 input_transport_mode={{directInferenceInputTransportMode}}。"
-                  },
-                  "response": []
-                },
-                {
-                  "name": "Direct TensorRT Inference By Upload",
-                  "event": [
-                    {
-                      "listen": "test",
-                      "script": {
-                        "type": "text/javascript",
-                        "exec": [
-                          "if (pm.response.code === 200) {",
-                          "  var payload = pm.response.json();",
-                          "  if (payload.request_id) pm.collectionVariables.set('directInferenceRequestId', payload.request_id);",
-                          "  if (payload.result_object_key) pm.collectionVariables.set('inferenceResultObjectKey', payload.result_object_key);",
-                          "  if (payload.preview_image_uri) pm.collectionVariables.set('inferencePreviewImageUri', payload.preview_image_uri);",
-                          "}"
-                        ]
-                      }
-                    }
-                  ],
-                  "request": {
-                    "method": "POST",
-                    "header": [
-                      {
-                        "key": "x-amvision-principal-id",
-                        "value": "{{principalId}}",
-                        "type": "text"
-                      },
-                      {
-                        "key": "x-amvision-project-ids",
-                        "value": "{{projectId}}",
-                        "type": "text"
-                      },
-                      {
-                        "key": "x-amvision-scopes",
-                        "value": "models:read",
-                        "type": "text"
-                      }
-                    ],
-                    "body": {
-                      "mode": "formdata",
-                      "formdata": [
-                        {
-                          "key": "input_image",
-                          "type": "file",
-                          "src": "{{inferenceUploadImagePath}}"
-                        },
-                        {
-                          "key": "input_transport_mode",
-                          "value": "{{directInferenceInputTransportMode}}",
-                          "type": "text"
-                        },
-                        {
-                          "key": "score_threshold",
-                          "value": "{{inferenceScoreThreshold}}",
-                          "type": "text"
-                        },
-                        {
-                          "key": "save_result_image",
-                          "value": "{{inferenceSaveResultImage}}",
-                          "type": "text"
-                        },
-                        {
-                          "key": "return_preview_image_base64",
-                          "value": "{{inferenceReturnPreviewImageBase64}}",
-                          "type": "text"
-                        },
-                        {
-                          "key": "extra_options",
-                          "value": "{}",
-                          "type": "text"
-                        }
-                      ]
-                    },
-                    "url": {
-                      "raw": "{{baseUrl}}/api/v1/models/yolox/deployment-instances/{{tensorrtDirectInferenceDeploymentInstanceId}}/infer",
-                      "host": [
-                        "{{baseUrl}}"
-                      ],
-                      "path": [
-                        "api",
-                        "v1",
-                        "models",
-                        "yolox",
-                        "deployment-instances",
-                        "{{tensorrtDirectInferenceDeploymentInstanceId}}",
-                        "infer"
-                      ]
-                    },
-                    "description": "直接执行一次 TensorRT 同步推理并返回结果，输入来源为 multipart/form-data 的 input_image 文件字段。该模板固定使用 {{tensorrtDirectInferenceDeploymentInstanceId}}，避免和通用 {{deploymentInstanceId}} 混用。"
-                  },
-                  "response": []
-                }
-              ]
             }
           ]
         },
@@ -4028,10 +4134,6 @@
       "value": "deployment-instance-1"
     },
     {
-      "key": "tensorrtDirectInferenceDeploymentInstanceId",
-      "value": "deployment-instance-tensorrt-direct-1"
-    },
-    {
       "key": "deploymentInstanceCount",
       "value": "1"
     },
@@ -4061,6 +4163,110 @@
     },
     {
       "key": "deploymentRestartCount",
+      "value": "0"
+    },
+    {
+      "key": "deploymentRestartCountRolloverCount",
+      "value": "0"
+    },
+    {
+      "key": "deploymentWarmupDummyInferenceCount",
+      "value": "6"
+    },
+    {
+      "key": "deploymentWarmupDummyImageWidth",
+      "value": "64"
+    },
+    {
+      "key": "deploymentWarmupDummyImageHeight",
+      "value": "64"
+    },
+    {
+      "key": "deploymentKeepWarmEnabled",
+      "value": "false"
+    },
+    {
+      "key": "deploymentKeepWarmIntervalSeconds",
+      "value": "0.1"
+    },
+    {
+      "key": "deploymentTensorrtPresetRuntimePrecision",
+      "value": "fp16"
+    },
+    {
+      "key": "deploymentTensorrtFp32PinnedOutputBufferEnabled",
+      "value": "true"
+    },
+    {
+      "key": "deploymentTensorrtFp32PinnedOutputBufferMaxBytes",
+      "value": "8388608"
+    },
+    {
+      "key": "deploymentTensorrtFp16PinnedOutputBufferEnabled",
+      "value": "true"
+    },
+    {
+      "key": "deploymentTensorrtFp16PinnedOutputBufferMaxBytes",
+      "value": "8388608"
+    },
+    {
+      "key": "deploymentTensorrtSmallOutputPresetPinnedOutputBufferEnabled",
+      "value": "true"
+    },
+    {
+      "key": "deploymentTensorrtSmallOutputPresetPinnedOutputBufferMaxBytes",
+      "value": "8388608"
+    },
+    {
+      "key": "deploymentTensorrtLargeOutputPresetPinnedOutputBufferEnabled",
+      "value": "false"
+    },
+    {
+      "key": "deploymentTensorrtLargeOutputPresetPinnedOutputBufferMaxBytes",
+      "value": "0"
+    },
+    {
+      "key": "deploymentKeepWarmEnabledObserved",
+      "value": "false"
+    },
+    {
+      "key": "deploymentKeepWarmActivated",
+      "value": "false"
+    },
+    {
+      "key": "deploymentKeepWarmPaused",
+      "value": "false"
+    },
+    {
+      "key": "deploymentKeepWarmIdle",
+      "value": "true"
+    },
+    {
+      "key": "deploymentKeepWarmObservedIntervalSeconds",
+      "value": "0.1"
+    },
+    {
+      "key": "deploymentKeepWarmSuccessCount",
+      "value": "0"
+    },
+    {
+      "key": "deploymentKeepWarmSuccessCountRolloverCount",
+      "value": "0"
+    },
+    {
+      "key": "deploymentKeepWarmErrorCount",
+      "value": "0"
+    },
+    {
+      "key": "deploymentKeepWarmErrorCountRolloverCount",
+      "value": "0"
+    },
+    {
+      "key": "deploymentKeepWarmLastError",
+      "value": ""
+    },
+    {
+      "key": "deploymentPinnedOutputTotalBytes",
       "value": "0"
     },
     {

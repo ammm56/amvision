@@ -27,11 +27,15 @@ class YoloXDeploymentRuntimePoolConfig:
     - deployment_instance_id：DeploymentInstance id。
     - runtime_target：当前 deployment 绑定的运行时快照。
     - instance_count：实例化数量；每个实例对应一个独立推理线程和模型会话。
+    - tensorrt_pinned_output_buffer_enabled：TensorRT 输出 host buffer 是否启用 pinned memory；None 表示使用全局默认值。
+    - tensorrt_pinned_output_buffer_max_bytes：TensorRT 输出 host buffer 允许使用 pinned memory 的最大字节数；None 表示使用全局默认值。
     """
 
     deployment_instance_id: str
     runtime_target: RuntimeTargetSnapshot
     instance_count: int = 1
+    tensorrt_pinned_output_buffer_enabled: bool | None = None
+    tensorrt_pinned_output_buffer_max_bytes: int | None = None
 
 
 @dataclass(frozen=True)
@@ -79,6 +83,7 @@ class YoloXDeploymentRuntimePoolHealth:
     - instance_count：实例数量。
     - healthy_instance_count：健康实例数量。
     - warmed_instance_count：已完成模型加载的实例数量。
+    - pinned_output_total_bytes：当前所有已加载 session 的 pinned output host buffer 总字节数。
     - instances：实例级健康状态列表。
     """
 
@@ -86,6 +91,7 @@ class YoloXDeploymentRuntimePoolHealth:
     instance_count: int
     healthy_instance_count: int
     warmed_instance_count: int
+    pinned_output_total_bytes: int
     instances: tuple[YoloXDeploymentRuntimeInstanceHealth, ...]
 
 
@@ -259,8 +265,12 @@ class YoloXDeploymentRuntimePool:
         with state.lock:
             instance_states = tuple(state.instances)
         instance_health: list[YoloXDeploymentRuntimeInstanceHealth] = []
+        pinned_output_total_bytes = 0
         for instance in instance_states:
             with instance.lock:
+                pinned_output_total_bytes += YoloXDeploymentRuntimePool._read_session_pinned_output_bytes(
+                    instance.session
+                )
                 instance_health.append(
                     YoloXDeploymentRuntimeInstanceHealth(
                         instance_id=_build_instance_id(state.config.deployment_instance_id, instance.instance_index),
@@ -276,6 +286,7 @@ class YoloXDeploymentRuntimePool:
             instance_count=state.config.instance_count,
             healthy_instance_count=sum(1 for instance in health_items if instance.healthy),
             warmed_instance_count=sum(1 for instance in health_items if instance.warmed),
+            pinned_output_total_bytes=pinned_output_total_bytes,
             instances=health_items,
         )
 
@@ -344,6 +355,8 @@ class YoloXDeploymentRuntimePool:
                 instance.session = TensorRTYoloXRuntimeSession.load(
                     dataset_storage=self.dataset_storage,
                     runtime_target=config.runtime_target,
+                    pinned_output_buffer_enabled=config.tensorrt_pinned_output_buffer_enabled,
+                    pinned_output_buffer_max_bytes=config.tensorrt_pinned_output_buffer_max_bytes,
                 )
             else:
                 raise InvalidRequestError(
@@ -386,6 +399,28 @@ class YoloXDeploymentRuntimePool:
             return
 
     @staticmethod
+    def _read_session_pinned_output_bytes(session: YoloXPredictionSession | None) -> int:
+        """读取单个 session 当前持有的 pinned output host buffer 字节数。"""
+
+        if session is None:
+            return 0
+        describe_memory_usage = getattr(session, "describe_memory_usage", None)
+        if not callable(describe_memory_usage):
+            return 0
+        try:
+            snapshot = describe_memory_usage()
+        except Exception:
+            return 0
+        if not isinstance(snapshot, dict):
+            return 0
+        if snapshot.get("output_host_memory_kind") != "pinned":
+            return 0
+        pinned_bytes = snapshot.get("output_host_pinned_bytes")
+        if isinstance(pinned_bytes, bool) or not isinstance(pinned_bytes, int | float):
+            return 0
+        return max(0, int(pinned_bytes))
+
+    @staticmethod
     def _validate_config(config: YoloXDeploymentRuntimePoolConfig) -> None:
         """校验 runtime pool 配置。"""
 
@@ -414,6 +449,8 @@ def _build_config_signature(config: YoloXDeploymentRuntimePoolConfig) -> tuple[o
         runtime_target.runtime_precision,
         runtime_target.input_size,
         runtime_target.labels,
+        config.tensorrt_pinned_output_buffer_enabled,
+        config.tensorrt_pinned_output_buffer_max_bytes,
     )
 
 

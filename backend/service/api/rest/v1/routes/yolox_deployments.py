@@ -22,6 +22,7 @@ from backend.service.application.deployments.yolox_deployment_service import (
 from backend.service.application.errors import InvalidRequestError, PermissionDeniedError, ResourceNotFoundError
 from backend.service.application.runtime.yolox_deployment_process_supervisor import (
 	YoloXDeploymentProcessHealth,
+	YoloXDeploymentProcessKeepWarmStatus,
 	YoloXDeploymentProcessInstanceHealth,
 	YoloXDeploymentProcessStatus,
 	YoloXDeploymentProcessSupervisor,
@@ -86,8 +87,65 @@ class YoloXDeploymentRuntimeInstanceHealthResponse(BaseModel):
 	last_error: str | None = Field(default=None, description="最近一次失败错误")
 
 
+class YoloXDeploymentProcessKeepWarmResponse(BaseModel):
+	"""描述 deployment 子进程内 keep-warm 的当前状态。
+
+	字段：
+	- enabled：当前 deployment 是否启用 keep-warm。
+	- activated：keep-warm 是否已经被 warmup 或真实推理激活。
+	- paused：当前是否因为控制面动作或真实请求而暂停。
+	- idle：当前是否没有 keep-warm dummy infer 正在执行。
+	- interval_seconds：keep-warm 连续 dummy infer 的最小间隔秒数。
+	- yield_timeout_seconds：真实请求等待 keep-warm 让出的最长秒数。
+	- success_count：keep-warm 成功完成的 dummy infer 当前安全整数窗口值。
+	- success_count_rollover_count：success_count 已发生的 rollover 次数。
+	- error_count：keep-warm 失败次数当前安全整数窗口值。
+	- error_count_rollover_count：error_count 已发生的 rollover 次数。
+	- last_error：最近一次 keep-warm 失败错误。
+	"""
+
+	enabled: bool = Field(default=False, description="当前 deployment 是否启用 keep-warm")
+	activated: bool = Field(default=False, description="keep-warm 是否已经被 warmup 或真实推理激活")
+	paused: bool = Field(default=False, description="当前是否因为控制面动作或真实请求而暂停")
+	idle: bool = Field(default=True, description="当前是否没有 keep-warm dummy infer 正在执行")
+	interval_seconds: float = Field(default=0.0, description="keep-warm 连续 dummy infer 的最小间隔秒数")
+	yield_timeout_seconds: float = Field(default=0.0, description="真实请求等待 keep-warm 让出的最长秒数")
+	success_count: int = Field(
+		default=0,
+		description="keep-warm 成功完成的 dummy infer 当前安全整数窗口值；当该值达到 JavaScript 安全整数上限后的下一次成功会回到 1",
+	)
+	success_count_rollover_count: int = Field(
+		default=0,
+		description="success_count 已发生的 rollover 次数；当 success_count 达到 JavaScript 安全整数上限后，下一次成功会把 success_count 置为 1，并把这个字段加 1",
+	)
+	error_count: int = Field(
+		default=0,
+		description="keep-warm 失败次数当前安全整数窗口值；当该值达到 JavaScript 安全整数上限后的下一次失败会回到 1",
+	)
+	error_count_rollover_count: int = Field(
+		default=0,
+		description="error_count 已发生的 rollover 次数；当 error_count 达到 JavaScript 安全整数上限后，下一次失败会把 error_count 置为 1，并把这个字段加 1",
+	)
+	last_error: str | None = Field(default=None, description="最近一次 keep-warm 失败错误")
+
+
 class YoloXDeploymentProcessStatusResponse(BaseModel):
-	"""描述 deployment 子进程监督状态。"""
+	"""描述 deployment 子进程监督状态。
+
+	字段：
+	- deployment_instance_id：DeploymentInstance id。
+	- display_name：展示名称。
+	- runtime_mode：运行时通道；sync 或 async。
+	- desired_state：监督器期望状态；running 或 stopped。
+	- process_state：当前进程状态；running、stopped 或 crashed。
+	- process_id：当前子进程 pid。
+	- auto_restart：是否启用崩溃自动拉起。
+	- restart_count：当前自动拉起次数安全整数窗口值。
+	- restart_count_rollover_count：restart_count 已发生的 rollover 次数。
+	- last_exit_code：最近一次退出码。
+	- last_error：最近一次监督错误。
+	- instance_count：实例数量。
+	"""
 
 	deployment_instance_id: str = Field(description="DeploymentInstance id")
 	display_name: str = Field(description="展示名称")
@@ -96,18 +154,34 @@ class YoloXDeploymentProcessStatusResponse(BaseModel):
 	process_state: str = Field(description="当前进程状态；running、stopped 或 crashed")
 	process_id: int | None = Field(default=None, description="当前子进程 pid")
 	auto_restart: bool = Field(description="是否启用崩溃自动拉起")
-	restart_count: int = Field(description="已经发生的自动拉起次数")
+	restart_count: int = Field(
+		description="已经发生的自动拉起次数当前安全整数窗口值；当该值达到 JavaScript 安全整数上限后的下一次自动拉起会回到 1",
+	)
+	restart_count_rollover_count: int = Field(
+		default=0,
+		description="restart_count 已发生的 rollover 次数；当 restart_count 达到 JavaScript 安全整数上限后，下一次自动拉起会把 restart_count 置为 1，并把这个字段加 1",
+	)
 	last_exit_code: int | None = Field(default=None, description="最近一次退出码")
 	last_error: str | None = Field(default=None, description="最近一次监督错误")
 	instance_count: int = Field(description="实例数量")
 
 
 class YoloXDeploymentRuntimeHealthResponse(YoloXDeploymentProcessStatusResponse):
-	"""描述 deployment 子进程与实例池的详细健康视图。"""
+	"""描述 deployment 子进程与实例池的详细健康视图。
+
+	字段：
+	- healthy_instance_count：健康实例数量。
+	- warmed_instance_count：已预热实例数量。
+	- pinned_output_total_bytes：当前所有已加载 session 的 pinned output host buffer 总字节数。
+	- instances：实例级健康状态列表。
+	- keep_warm：当前 keep-warm 运行状态。
+	"""
 
 	healthy_instance_count: int = Field(description="健康实例数量")
 	warmed_instance_count: int = Field(description="已预热实例数量")
+	pinned_output_total_bytes: int = Field(default=0, description="当前所有已加载 session 的 pinned output host buffer 总字节数")
 	instances: list[YoloXDeploymentRuntimeInstanceHealthResponse] = Field(default_factory=list, description="实例级健康状态列表")
+	keep_warm: YoloXDeploymentProcessKeepWarmResponse = Field(default_factory=YoloXDeploymentProcessKeepWarmResponse, description="keep-warm 运行状态")
 
 
 @yolox_deployments_router.post(
@@ -632,6 +706,7 @@ def _build_process_status_response(
 		process_id=process_status.process_id,
 		auto_restart=process_status.auto_restart,
 		restart_count=process_status.restart_count,
+		restart_count_rollover_count=process_status.restart_count_rollover_count,
 		last_exit_code=process_status.last_exit_code,
 		last_error=process_status.last_error,
 		instance_count=process_status.instance_count,
@@ -654,12 +729,15 @@ def _build_runtime_health_response(
 		process_id=process_health.process_id,
 		auto_restart=process_health.auto_restart,
 		restart_count=process_health.restart_count,
+		restart_count_rollover_count=process_health.restart_count_rollover_count,
 		last_exit_code=process_health.last_exit_code,
 		last_error=process_health.last_error,
 		instance_count=process_health.instance_count,
 		healthy_instance_count=process_health.healthy_instance_count,
 		warmed_instance_count=process_health.warmed_instance_count,
+		pinned_output_total_bytes=process_health.pinned_output_total_bytes,
 		instances=[_build_runtime_instance_health_response(item) for item in process_health.instances],
+		keep_warm=_build_keep_warm_response(process_health.keep_warm),
 	)
 
 
@@ -673,5 +751,27 @@ def _build_runtime_instance_health_response(
 		healthy=item.healthy,
 		warmed=item.warmed,
 		busy=item.busy,
+		last_error=item.last_error,
+	)
+
+
+def _build_keep_warm_response(
+	item: YoloXDeploymentProcessKeepWarmStatus | None,
+) -> YoloXDeploymentProcessKeepWarmResponse:
+	"""把 keep-warm 状态转换为 REST 响应。"""
+
+	if item is None:
+		return YoloXDeploymentProcessKeepWarmResponse()
+	return YoloXDeploymentProcessKeepWarmResponse(
+		enabled=item.enabled,
+		activated=item.activated,
+		paused=item.paused,
+		idle=item.idle,
+		interval_seconds=item.interval_seconds,
+		yield_timeout_seconds=item.yield_timeout_seconds,
+		success_count=item.success_count,
+		success_count_rollover_count=item.success_count_rollover_count,
+		error_count=item.error_count,
+		error_count_rollover_count=item.error_count_rollover_count,
 		last_error=item.last_error,
 	)
