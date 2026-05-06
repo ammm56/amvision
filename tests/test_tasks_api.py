@@ -6,15 +6,13 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from backend.service.api.app import create_app
 from backend.service.application.tasks.task_service import (
     AppendTaskEventRequest,
     CreateTaskRequest,
     SqlAlchemyTaskService,
 )
-from backend.service.infrastructure.db.session import DatabaseSettings, SessionFactory
-from backend.service.infrastructure.persistence.base import Base
-from backend.service.settings import BackendServiceSettings, BackendServiceTaskManagerConfig
+from backend.service.infrastructure.db.session import SessionFactory
+from tests.api_test_support import build_test_headers, create_api_test_context
 
 
 def test_create_task_and_list_with_public_filters(tmp_path: Path) -> None:
@@ -145,31 +143,20 @@ def test_task_events_websocket_streams_appended_events(tmp_path: Path) -> None:
 def _create_test_client(tmp_path: Path) -> tuple[TestClient, SessionFactory]:
     """创建绑定临时 SQLite 的 tasks API 测试客户端。"""
 
-    database_path = tmp_path / "tasks-api.db"
-    session_factory = SessionFactory(DatabaseSettings(url=f"sqlite:///{database_path.as_posix()}"))
-    Base.metadata.create_all(session_factory.engine)
-    settings = BackendServiceSettings(
-        task_manager=BackendServiceTaskManagerConfig(enabled=False),
+    context = create_api_test_context(
+        tmp_path,
+        database_name="tasks-api.db",
     )
-    client = TestClient(create_app(settings=settings, session_factory=session_factory))
-    return client, session_factory
+    return context.client, context.session_factory
 
 
 def _build_task_write_headers() -> dict[str, str]:
     """构建具备 tasks:write scope 的测试请求头。"""
 
-    return {
-        "x-amvision-principal-id": "user-1",
-        "x-amvision-project-ids": "project-1",
-        "x-amvision-scopes": "tasks:write,tasks:read",
-    }
+    return build_test_headers(scopes="tasks:write,tasks:read")
 
 
 def _build_task_read_headers() -> dict[str, str]:
     """构建具备 tasks:read scope 的测试请求头。"""
 
-    return {
-        "x-amvision-principal-id": "user-1",
-        "x-amvision-project-ids": "project-1",
-        "x-amvision-scopes": "tasks:read",
-    }
+    return build_test_headers(scopes="tasks:read")

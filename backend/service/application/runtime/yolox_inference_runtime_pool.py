@@ -10,6 +10,7 @@ from backend.service.application.runtime.yolox_predictor import (
     OpenVINOYoloXRuntimeSession,
     OnnxRuntimeYoloXRuntimeSession,
     PyTorchYoloXRuntimeSession,
+    TensorRTYoloXRuntimeSession,
     YoloXPredictionExecutionResult,
     YoloXPredictionSession,
     YoloXPredictionRequest,
@@ -181,11 +182,14 @@ class YoloXDeploymentRuntimePool:
             state.next_instance_index = 0
             instances = tuple(state.instances)
         for instance in instances:
+            session_to_close = None
             with instance.lock:
+                session_to_close = instance.session
                 instance.session = None
                 instance.healthy = True
                 instance.busy = False
                 instance.last_error = None
+            self._close_session_if_supported(session_to_close)
         return self._build_health(state)
 
     def run_inference(
@@ -336,9 +340,14 @@ class YoloXDeploymentRuntimePool:
                     dataset_storage=self.dataset_storage,
                     runtime_target=config.runtime_target,
                 )
+            elif config.runtime_target.runtime_backend == "tensorrt":
+                instance.session = TensorRTYoloXRuntimeSession.load(
+                    dataset_storage=self.dataset_storage,
+                    runtime_target=config.runtime_target,
+                )
             else:
                 raise InvalidRequestError(
-                    "当前 deployment runtime pool 仅支持 pytorch、onnxruntime 或 openvino backend",
+                    "当前 deployment runtime pool 仅支持 pytorch、onnxruntime、openvino 或 tensorrt backend",
                     details={
                         "runtime_backend": config.runtime_target.runtime_backend,
                         "deployment_instance_id": config.deployment_instance_id,
@@ -352,11 +361,29 @@ class YoloXDeploymentRuntimePool:
     def _mark_instance_unhealthy(*, instance: _InferenceInstanceState, error: Exception) -> None:
         """在实例执行失败后把其标记为不健康。"""
 
+        session_to_close = None
         with instance.lock:
             instance.healthy = False
+            session_to_close = instance.session
             instance.session = None
             instance.last_error = str(error)
             instance.busy = False
+
+        YoloXDeploymentRuntimePool._close_session_if_supported(session_to_close)
+
+    @staticmethod
+    def _close_session_if_supported(session: YoloXPredictionSession | None) -> None:
+        """在 session 暴露 close 方法时执行资源释放。"""
+
+        if session is None:
+            return
+        close_method = getattr(session, "close", None)
+        if not callable(close_method):
+            return
+        try:
+            close_method()
+        except Exception:
+            return
 
     @staticmethod
     def _validate_config(config: YoloXDeploymentRuntimePoolConfig) -> None:

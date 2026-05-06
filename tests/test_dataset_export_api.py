@@ -6,25 +6,20 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from backend.queue import LocalFileQueueBackend, LocalFileQueueSettings
+from backend.queue import LocalFileQueueBackend
 from backend.contracts.datasets.exports.coco_detection_export import COCO_DETECTION_DATASET_FORMAT
 from backend.contracts.datasets.exports.voc_detection_export import VOC_DETECTION_DATASET_FORMAT
-from backend.service.api.app import create_app
 from backend.service.domain.datasets.dataset_version import (
     DatasetCategory,
     DatasetSample,
     DatasetVersion,
     DetectionAnnotation,
 )
-from backend.service.infrastructure.db.session import DatabaseSettings, SessionFactory
+from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
-from backend.service.infrastructure.object_store.local_dataset_storage import (
-    DatasetStorageSettings,
-    LocalDatasetStorage,
-)
-from backend.service.infrastructure.persistence.base import Base
-from backend.service.settings import BackendServiceSettings, BackendServiceTaskManagerConfig
+from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 from backend.workers.datasets.dataset_export_queue_worker import DatasetExportQueueWorker
+from tests.api_test_support import build_test_headers, create_api_test_context
 
 
 def test_create_dataset_export_and_get_completed_detail(tmp_path: Path) -> None:
@@ -223,31 +218,11 @@ def _create_test_client(
 ) -> tuple[TestClient, SessionFactory, LocalDatasetStorage, LocalFileQueueBackend]:
     """创建绑定临时 SQLite、本地文件存储和队列的测试客户端。"""
 
-    database_path = tmp_path / "amvision-export-api.db"
-    session_factory = SessionFactory(DatabaseSettings(url=f"sqlite:///{database_path.as_posix()}"))
-    Base.metadata.create_all(session_factory.engine)
-    dataset_storage = LocalDatasetStorage(
-        DatasetStorageSettings(root_dir=str(tmp_path / "dataset-files"))
+    context = create_api_test_context(
+        tmp_path,
+        database_name="amvision-export-api.db",
     )
-    queue_backend = LocalFileQueueBackend(
-        LocalFileQueueSettings(root_dir=str(tmp_path / "queue-files"))
-    )
-    settings = BackendServiceSettings(
-        task_manager=BackendServiceTaskManagerConfig(
-            enabled=False,
-            max_concurrent_tasks=2,
-            poll_interval_seconds=0.05,
-        )
-    )
-    client = TestClient(
-        create_app(
-            settings=settings,
-            session_factory=session_factory,
-            dataset_storage=dataset_storage,
-            queue_backend=queue_backend,
-        )
-    )
-    return client, session_factory, dataset_storage, queue_backend
+    return context.client, context.session_factory, context.dataset_storage, context.queue_backend
 
 
 def _build_dataset_version(*, dataset_version_id: str) -> DatasetVersion:
@@ -326,18 +301,10 @@ def _run_export_worker_once(
 def _build_dataset_write_headers() -> dict[str, str]:
     """构建具备 datasets:write scope 的测试请求头。"""
 
-    return {
-        "x-amvision-principal-id": "user-1",
-        "x-amvision-project-ids": "project-1",
-        "x-amvision-scopes": "datasets:write",
-    }
+    return build_test_headers(scopes="datasets:write")
 
 
 def _build_dataset_read_headers() -> dict[str, str]:
     """构建具备 datasets:read scope 的测试请求头。"""
 
-    return {
-        "x-amvision-principal-id": "user-1",
-        "x-amvision-project-ids": "project-1",
-        "x-amvision-scopes": "datasets:read",
-    }
+    return build_test_headers(scopes="datasets:read")

@@ -1,8 +1,9 @@
-"""YOLOX 转换 worker 接口与 ONNX/OpenVINO 实现。"""
+"""YOLOX 转换 worker 接口与 ONNX/OpenVINO/TensorRT 实现。"""
 
 from __future__ import annotations
 
 import subprocess
+import json
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 import sys
@@ -16,27 +17,17 @@ from backend.service.domain.files.yolox_file_types import (
     YOLOX_ONNX_FILE,
     YOLOX_ONNX_OPTIMIZED_FILE,
     YOLOX_OPENVINO_IR_FILE,
+    YOLOX_TENSORRT_ENGINE_FILE,
 )
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 
 
 _OPENVINO_IR_PRECISION_OPTION_KEY = "openvino_ir_precision"
 _SUPPORTED_OPENVINO_IR_BUILD_PRECISIONS = frozenset({"fp32", "fp16"})
-_OPENVINO_IR_BUILD_SCRIPT = """
-from pathlib import Path
-import sys
-
-from openvino import convert_model, save_model
-
-source_path = Path(sys.argv[1]).resolve()
-output_path = Path(sys.argv[2]).resolve()
-build_precision = sys.argv[3].strip().lower()
-if build_precision not in {"fp32", "fp16"}:
-    raise ValueError(f"unsupported openvino_ir_precision: {build_precision}")
-output_path.parent.mkdir(parents=True, exist_ok=True)
-openvino_model = convert_model(str(source_path))
-save_model(openvino_model, str(output_path), compress_to_fp16=(build_precision == "fp16"))
-""".strip()
+_TENSORRT_ENGINE_PRECISION_OPTION_KEY = "tensorrt_engine_precision"
+_SUPPORTED_TENSORRT_ENGINE_BUILD_PRECISIONS = frozenset({"fp32", "fp16"})
+_OPENVINO_IR_BUILD_SCRIPT_FILE = "build_openvino_ir.py"
+_TENSORRT_ENGINE_BUILD_SCRIPT_FILE = "build_tensorrt_engine.py"
 
 
 @dataclass(frozen=True)
@@ -141,12 +132,15 @@ class LocalYoloXConversionRunner:
         onnx_object_key = f"{request.output_object_prefix}/artifacts/builds/{base_name}.onnx"
         optimized_object_key = f"{request.output_object_prefix}/artifacts/builds/{base_name}.optimized.onnx"
         openvino_object_key = f"{request.output_object_prefix}/artifacts/builds/{base_name}.openvino.xml"
+        tensorrt_object_key = f"{request.output_object_prefix}/artifacts/builds/{base_name}.tensorrt.engine"
         openvino_ir_build_precision = _resolve_openvino_ir_build_precision(request.metadata)
+        tensorrt_engine_build_precision = _resolve_tensorrt_engine_build_precision(request.metadata)
         executed_step_kinds: list[str] = []
         validation_summary: dict[str, object] = {}
         onnx_output: YoloXConversionOutput | None = None
         optimized_output: YoloXConversionOutput | None = None
         openvino_output: YoloXConversionOutput | None = None
+        tensorrt_output: YoloXConversionOutput | None = None
 
         for step in request.plan_steps:
             executed_step_kinds.append(step.kind)
@@ -217,6 +211,25 @@ class LocalYoloXConversionRunner:
                     },
                 )
                 continue
+            if step.kind == "build-tensorrt-engine":
+                if optimized_output is None:
+                    raise ServiceConfigurationError("build-tensorrt-engine 缺少 optimize-onnx 输出")
+                build_summary = self._build_tensorrt_engine(
+                    source_object_key=optimized_object_key,
+                    output_object_key=tensorrt_object_key,
+                    build_precision=tensorrt_engine_build_precision,
+                )
+                tensorrt_output = YoloXConversionOutput(
+                    target_format="tensorrt-engine",
+                    object_uri=tensorrt_object_key,
+                    file_type=YOLOX_TENSORRT_ENGINE_FILE,
+                    metadata={
+                        **build_summary,
+                        "validation_summary": validation_summary,
+                        "source_object_uri": optimized_object_key,
+                    },
+                )
+                continue
             raise InvalidRequestError(
                 "当前 conversion runner 不支持指定步骤",
                 details={"step_kind": step.kind},
@@ -229,6 +242,8 @@ class LocalYoloXConversionRunner:
             outputs.append(optimized_output)
         if openvino_output is not None:
             outputs.append(openvino_output)
+        if tensorrt_output is not None:
+            outputs.append(tensorrt_output)
         return YoloXConversionRunResult(
             conversion_task_id=request.conversion_task_id,
             outputs=tuple(outputs),
@@ -239,6 +254,7 @@ class LocalYoloXConversionRunner:
                 "conversion_options": _build_conversion_options_metadata(
                     target_formats=request.target_formats,
                     openvino_ir_build_precision=openvino_ir_build_precision,
+                    tensorrt_engine_build_precision=tensorrt_engine_build_precision,
                 ),
             },
         )
@@ -364,7 +380,7 @@ class LocalYoloXConversionRunner:
         参数：
         - source_object_key：来源 optimized ONNX object key。
         - output_object_key：目标 OpenVINO XML object key。
-	- build_precision：OpenVINO IR 权重压缩策略。
+        - build_precision：OpenVINO IR 权重压缩策略。
 
         返回：
         - dict[str, object]：OpenVINO IR 构建摘要。
@@ -374,20 +390,13 @@ class LocalYoloXConversionRunner:
         output_path = self.dataset_storage.resolve(output_object_key)
         output_path.parent.mkdir(parents=True, exist_ok=True)
         compress_to_fp16 = build_precision == "fp16"
-        completed_process = subprocess.run(
-            [
-                sys.executable,
-                "-c",
-                _OPENVINO_IR_BUILD_SCRIPT,
+        completed_process = _run_conversion_script(
+            script_file_name=_OPENVINO_IR_BUILD_SCRIPT_FILE,
+            args=[
                 str(source_path),
                 str(output_path),
                 build_precision,
             ],
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            check=False,
         )
         if completed_process.returncode != 0:
             raise ServiceConfigurationError(
@@ -419,6 +428,63 @@ class LocalYoloXConversionRunner:
             "execution_mode": "subprocess-openvino-convert-model",
         }
 
+    def _build_tensorrt_engine(
+        self,
+        *,
+        source_object_key: str,
+        output_object_key: str,
+        build_precision: str,
+    ) -> dict[str, object]:
+        """把 optimized ONNX 转换为 TensorRT engine。
+
+        参数：
+        - source_object_key：来源 optimized ONNX object key。
+        - output_object_key：目标 TensorRT engine object key。
+        - build_precision：TensorRT engine 构建精度策略。
+
+        返回：
+        - dict[str, object]：TensorRT engine 构建摘要。
+        """
+
+        source_path = self.dataset_storage.resolve(source_object_key)
+        output_path = self.dataset_storage.resolve(output_object_key)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        completed_process = _run_conversion_script(
+            script_file_name=_TENSORRT_ENGINE_BUILD_SCRIPT_FILE,
+            args=[
+                str(source_path),
+                str(output_path),
+                build_precision,
+            ],
+        )
+        if completed_process.returncode != 0:
+            raise ServiceConfigurationError(
+                "TensorRT engine 构建失败",
+                details={
+                    "source_object_uri": source_object_key,
+                    "output_object_uri": output_object_key,
+                    "stdout": completed_process.stdout.strip(),
+                    "stderr": completed_process.stderr.strip(),
+                },
+            )
+        if not output_path.is_file():
+            raise ServiceConfigurationError(
+                "TensorRT engine 构建未生成 engine 产物",
+                details={"output_object_uri": output_object_key},
+            )
+        build_summary = {
+            "stage": "build-tensorrt-engine",
+            "object_uri": output_object_key,
+            "source_object_uri": source_object_key,
+            "build_precision": build_precision,
+            "execution_mode": "subprocess-tensorrt-build-engine",
+            "engine_file_bytes": output_path.stat().st_size,
+        }
+        stdout_payload = _parse_last_json_line(completed_process.stdout)
+        if stdout_payload is not None:
+            build_summary.update(dict(stdout_payload))
+        return build_summary
+
 
 def _resolve_openvino_ir_build_precision(metadata: dict[str, object]) -> str:
     """从 worker metadata 中解析 OpenVINO IR 构建精度策略。
@@ -447,6 +513,7 @@ def _build_conversion_options_metadata(
     *,
     target_formats: tuple[str, ...],
     openvino_ir_build_precision: str,
+    tensorrt_engine_build_precision: str,
 ) -> dict[str, object]:
     """根据目标格式生成转换报告中的附加策略摘要。
 
@@ -458,9 +525,12 @@ def _build_conversion_options_metadata(
     - dict[str, object]：转换策略摘要。
     """
 
-    if "openvino-ir" not in target_formats:
-        return {}
-    return {_OPENVINO_IR_PRECISION_OPTION_KEY: openvino_ir_build_precision}
+    metadata: dict[str, object] = {}
+    if "openvino-ir" in target_formats:
+        metadata[_OPENVINO_IR_PRECISION_OPTION_KEY] = openvino_ir_build_precision
+    if "tensorrt-engine" in target_formats:
+        metadata[_TENSORRT_ENGINE_PRECISION_OPTION_KEY] = tensorrt_engine_build_precision
+    return metadata
 
 
 def _import_onnx_dependencies() -> tuple[object, object, object]:
@@ -486,6 +556,8 @@ def _build_output_base_name(runtime_target: RuntimeTargetSnapshot) -> str:
 def _resolve_conversion_phase(target_formats: tuple[str, ...]) -> str:
     """根据目标格式集合返回当前转换阶段标识。"""
 
+    if "tensorrt-engine" in target_formats:
+        return "phase-2-tensorrt-engine"
     if "openvino-ir" in target_formats:
         return "phase-2-openvino-ir"
     return "phase-1-onnx"
@@ -495,6 +567,82 @@ def _resolve_openvino_weights_object_key(output_object_key: str) -> str:
     """根据 OpenVINO XML object key 推导同名 bin object key。"""
 
     return PurePosixPath(output_object_key).with_suffix(".bin").as_posix()
+
+
+def _resolve_tensorrt_engine_build_precision(metadata: dict[str, object]) -> str:
+    """从 worker metadata 中解析 TensorRT engine 构建精度策略。
+
+    参数：
+    - metadata：转换执行请求附加元数据。
+
+    返回：
+    - str：TensorRT engine 构建精度；当前支持 fp32 或 fp16。
+    """
+
+    raw_precision = metadata.get(_TENSORRT_ENGINE_PRECISION_OPTION_KEY)
+    if raw_precision is None:
+        return "fp32"
+    if isinstance(raw_precision, str):
+        normalized_precision = raw_precision.strip().lower()
+        if normalized_precision in _SUPPORTED_TENSORRT_ENGINE_BUILD_PRECISIONS:
+            return normalized_precision
+    raise InvalidRequestError(
+        "tensorrt_engine_precision 必须是 fp32 或 fp16",
+        details={_TENSORRT_ENGINE_PRECISION_OPTION_KEY: raw_precision},
+    )
+
+
+def _run_conversion_script(
+    *,
+    script_file_name: str,
+    args: list[str],
+) -> subprocess.CompletedProcess[str]:
+    """执行 conversion 隔离子进程脚本。
+
+    参数：
+    - script_file_name：脚本文件名。
+    - args：传给脚本的参数列表。
+
+    返回：
+    - subprocess.CompletedProcess[str]：子进程执行结果。
+    """
+
+    script_path = _resolve_conversion_script_path(script_file_name)
+    return subprocess.run(
+        [sys.executable, str(script_path), *args],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        check=False,
+    )
+
+
+def _resolve_conversion_script_path(script_file_name: str) -> Path:
+    """返回 conversion 子进程脚本文件路径。"""
+
+    script_path = Path(__file__).resolve().parent / "scripts" / script_file_name
+    if script_path.is_file():
+        return script_path
+    raise ServiceConfigurationError(
+        "conversion 子进程脚本不存在",
+        details={"script_path": str(script_path)},
+    )
+
+
+def _parse_last_json_line(stdout: str) -> dict[str, object] | None:
+    """从标准输出最后一个非空行解析 JSON 对象。"""
+
+    stdout_lines = [line.strip() for line in stdout.splitlines() if line.strip()]
+    if not stdout_lines:
+        return None
+    try:
+        payload = json.loads(stdout_lines[-1])
+    except json.JSONDecodeError:
+        return None
+    if isinstance(payload, dict):
+        return {str(key): value for key, value in payload.items()}
+    return None
 
 
 def _normalize_model_outputs(model_outputs: object, imports: object) -> list[object]:

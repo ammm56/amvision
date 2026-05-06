@@ -6,16 +6,13 @@ from datetime import datetime, timezone
 import io
 from pathlib import Path
 from types import SimpleNamespace
-import cv2
-import numpy as np
 import torch
 
 from fastapi.testclient import TestClient
 
 import backend.service.application.models.yolox_training_service as yolox_training_service_module
-from backend.queue import LocalFileQueueBackend, LocalFileQueueSettings
+from backend.queue import LocalFileQueueBackend
 from backend.contracts.datasets.exports.coco_detection_export import COCO_DETECTION_DATASET_FORMAT
-from backend.service.api.app import create_app
 from backend.service.application.models.yolox_detection_training import (
     YoloXDetectionTrainingExecutionResult,
     YoloXTrainingEpochProgress,
@@ -29,12 +26,15 @@ from backend.service.application.models.yolox_training_service import YOLOX_TRAI
 from backend.service.application.tasks.task_service import AppendTaskEventRequest, SqlAlchemyTaskService
 from backend.service.domain.datasets.dataset_export import DatasetExport
 from backend.service.domain.files.yolox_file_types import YOLOX_CHECKPOINT_FILE
-from backend.service.infrastructure.db.session import DatabaseSettings, SessionFactory
+from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
-from backend.service.infrastructure.object_store.local_dataset_storage import DatasetStorageSettings, LocalDatasetStorage
-from backend.service.infrastructure.persistence.base import Base
-from backend.service.settings import BackendServiceSettings, BackendServiceTaskManagerConfig
+from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 from backend.workers.training.yolox_training_queue_worker import YoloXTrainingQueueWorker
+from tests.api_test_support import (
+    build_test_headers,
+    build_test_jpeg_bytes,
+    create_api_test_context,
+)
 
 
 def test_create_yolox_training_task_accepts_dataset_export_id(tmp_path: Path) -> None:
@@ -2272,31 +2272,11 @@ def _create_test_client(
 ) -> tuple[TestClient, SessionFactory, LocalDatasetStorage, LocalFileQueueBackend]:
     """创建绑定测试数据库、本地文件存储和队列的训练 API 测试客户端。"""
 
-    database_path = tmp_path / "amvision-training-api.db"
-    session_factory = SessionFactory(DatabaseSettings(url=f"sqlite:///{database_path.as_posix()}"))
-    Base.metadata.create_all(session_factory.engine)
-    dataset_storage = LocalDatasetStorage(
-        DatasetStorageSettings(root_dir=str(tmp_path / "dataset-files"))
+    context = create_api_test_context(
+        tmp_path,
+        database_name="amvision-training-api.db",
     )
-    queue_backend = LocalFileQueueBackend(
-        LocalFileQueueSettings(root_dir=str(tmp_path / "queue-files"))
-    )
-    settings = BackendServiceSettings(
-        task_manager=BackendServiceTaskManagerConfig(
-            enabled=False,
-            max_concurrent_tasks=2,
-            poll_interval_seconds=0.05,
-        )
-    )
-    client = TestClient(
-        create_app(
-            settings=settings,
-            session_factory=session_factory,
-            dataset_storage=dataset_storage,
-            queue_backend=queue_backend,
-        )
-    )
-    return client, session_factory, dataset_storage, queue_backend
+    return context.client, context.session_factory, context.dataset_storage, context.queue_backend
 
 
 def _seed_completed_dataset_export(
@@ -2417,28 +2397,19 @@ def _seed_completed_dataset_export(
 def _build_test_jpeg_bytes() -> bytes:
     """构建一个可被 cv2 正常读取的最小 JPEG 图片。"""
 
-    image = np.full((64, 64, 3), 255, dtype=np.uint8)
-    success, encoded = cv2.imencode(".jpg", image)
-    assert success is True
-    return encoded.tobytes()
+    return build_test_jpeg_bytes()
 
 
 def _build_training_headers() -> dict[str, str]:
     """构建具备训练创建所需 scope 的测试请求头。"""
 
-    return {
-        "x-amvision-principal-id": "user-1",
-        "x-amvision-project-ids": "project-1",
-        "x-amvision-scopes": "datasets:read,tasks:read,tasks:write",
-    }
+    return build_test_headers(scopes="datasets:read,tasks:read,tasks:write")
 
 
 def _build_training_model_write_headers() -> dict[str, str]:
     """构建具备训练控制和模型写入 scope 的测试请求头。"""
 
-    headers = dict(_build_training_headers())
-    headers["x-amvision-scopes"] = f"{headers['x-amvision-scopes']},models:write"
-    return headers
+    return build_test_headers(scopes="datasets:read,tasks:read,tasks:write,models:write")
 
 
 def _run_yolox_training_worker_once(

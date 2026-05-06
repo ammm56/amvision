@@ -2,37 +2,34 @@
 
 from __future__ import annotations
 
-import importlib.util
-import io
 from pathlib import Path
 
 from fastapi.testclient import TestClient
-import pytest
 
-from backend.queue import LocalFileQueueBackend, LocalFileQueueSettings
-from backend.service.api.app import create_app
-from backend.service.application.models.yolox_detection_training import (
-    _build_yolox_model,
-    _require_training_imports,
-)
-from backend.service.application.models.yolox_model_service import (
-    SqlAlchemyYoloXModelService,
-    YoloXTrainingOutputRegistration,
-)
 from backend.service.application.tasks.task_service import SqlAlchemyTaskService
-from backend.service.infrastructure.db.session import DatabaseSettings, SessionFactory
+from backend.service.domain.files.yolox_file_types import (
+    YOLOX_ONNX_FILE,
+    YOLOX_ONNX_OPTIMIZED_FILE,
+    YOLOX_OPENVINO_IR_FILE,
+    YOLOX_TENSORRT_ENGINE_FILE,
+)
+from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import (
-    DatasetStorageSettings,
     LocalDatasetStorage,
 )
-from backend.service.infrastructure.persistence.base import Base
-from backend.service.settings import BackendServiceSettings, BackendServiceTaskManagerConfig
 from backend.workers.conversion.yolox_conversion_queue_worker import YoloXConversionQueueWorker
+from backend.workers.conversion.yolox_conversion_runner import (
+    YoloXConversionOutput,
+    YoloXConversionRunRequest,
+    YoloXConversionRunResult,
+)
+from tests.api_test_support import build_test_headers
+from tests.yolox_test_support import (
+    create_yolox_api_test_context,
+    seed_yolox_model_version,
+)
 
-
-pytest.importorskip("onnx")
-pytest.importorskip("onnxruntime")
-pytest.importorskip("onnxsim")
+import pytest
 
 
 @pytest.mark.parametrize(
@@ -41,7 +38,7 @@ pytest.importorskip("onnxsim")
         "expected_target_formats",
         "expected_produced_formats",
         "expected_phase",
-        "expected_openvino_ir_precision",
+        "expected_conversion_options",
     ),
     [
         (
@@ -49,28 +46,42 @@ pytest.importorskip("onnxsim")
             ["onnx"],
             ["onnx"],
             "phase-1-onnx",
-            None,
+            {},
         ),
         (
             "/api/v1/models/yolox/conversion-tasks/onnx-optimized",
             ["onnx-optimized"],
             ["onnx", "onnx-optimized"],
             "phase-1-onnx",
-            None,
+            {},
         ),
         (
             "/api/v1/models/yolox/conversion-tasks/openvino-ir-fp32",
             ["openvino-ir"],
             ["onnx", "onnx-optimized", "openvino-ir"],
             "phase-2-openvino-ir",
-            "fp32",
+            {"openvino_ir_precision": "fp32"},
         ),
         (
             "/api/v1/models/yolox/conversion-tasks/openvino-ir-fp16",
             ["openvino-ir"],
             ["onnx", "onnx-optimized", "openvino-ir"],
             "phase-2-openvino-ir",
-            "fp16",
+            {"openvino_ir_precision": "fp16"},
+        ),
+        (
+            "/api/v1/models/yolox/conversion-tasks/tensorrt-engine-fp32",
+            ["tensorrt-engine"],
+            ["onnx", "onnx-optimized", "tensorrt-engine"],
+            "phase-2-tensorrt-engine",
+            {"tensorrt_engine_precision": "fp32"},
+        ),
+        (
+            "/api/v1/models/yolox/conversion-tasks/tensorrt-engine-fp16",
+            ["tensorrt-engine"],
+            ["onnx", "onnx-optimized", "tensorrt-engine"],
+            "phase-2-tensorrt-engine",
+            {"tensorrt_engine_precision": "fp16"},
         ),
     ],
 )
@@ -80,15 +91,12 @@ def test_create_yolox_conversion_task_and_read_result_after_worker(
     expected_target_formats: list[str],
     expected_produced_formats: list[str],
     expected_phase: str,
-    expected_openvino_ir_precision: str | None,
+    expected_conversion_options: dict[str, object],
 ) -> None:
     """验证 conversion task 可以创建、执行，并返回 detail、list 和 result。"""
 
-    if "openvino-ir" in expected_target_formats and importlib.util.find_spec("openvino") is None:
-        pytest.skip("当前环境缺少 openvino，跳过 openvino-ir conversion API 测试")
-
     client, session_factory, dataset_storage, queue_backend = _create_test_client(tmp_path)
-    source_model_version_id = _seed_real_model_version(
+    source_model_version_id = _seed_placeholder_model_version(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
     )
@@ -96,6 +104,7 @@ def test_create_yolox_conversion_task_and_read_result_after_worker(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
         queue_backend=queue_backend,
+        conversion_runner=_FakeYoloXConversionRunner(dataset_storage=dataset_storage),
         worker_id="test-yolox-conversion-worker",
     )
 
@@ -146,18 +155,26 @@ def test_create_yolox_conversion_task_and_read_result_after_worker(
             assert len(detail_payload["builds"]) == len(expected_produced_formats)
             assert detail_payload["report_summary"]["validation_summary"]["allclose"] is True
             assert detail_payload["report_summary"]["phase"] == expected_phase
-            if expected_openvino_ir_precision is not None:
-                assert detail_payload["report_summary"]["conversion_options"] == {
-                    "openvino_ir_precision": expected_openvino_ir_precision,
-                }
+            assert detail_payload["report_summary"]["conversion_options"] == expected_conversion_options
+            if "openvino_ir_precision" in expected_conversion_options:
                 openvino_builds = [
                     item for item in detail_payload["builds"] if item["build_format"] == "openvino-ir"
                 ]
                 assert len(openvino_builds) == 1
-                assert openvino_builds[0]["metadata"]["build_precision"] == expected_openvino_ir_precision
+                assert openvino_builds[0]["metadata"]["build_precision"] == expected_conversion_options[
+                    "openvino_ir_precision"
+                ]
                 assert openvino_builds[0]["metadata"]["compress_to_fp16"] is (
-                    expected_openvino_ir_precision == "fp16"
+                    expected_conversion_options["openvino_ir_precision"] == "fp16"
                 )
+            if "tensorrt_engine_precision" in expected_conversion_options:
+                tensorrt_builds = [
+                    item for item in detail_payload["builds"] if item["build_format"] == "tensorrt-engine"
+                ]
+                assert len(tensorrt_builds) == 1
+                assert tensorrt_builds[0]["metadata"]["build_precision"] == expected_conversion_options[
+                    "tensorrt_engine_precision"
+                ]
 
             result_response = client.get(
                 f"/api/v1/models/yolox/conversion-tasks/{task_id}/result",
@@ -169,10 +186,7 @@ def test_create_yolox_conversion_task_and_read_result_after_worker(
             assert result_payload["payload"]["phase"] == expected_phase
             assert result_payload["payload"]["planned_target_formats"] == expected_target_formats
             assert result_payload["payload"]["validation_summary"]["allclose"] is True
-            if expected_openvino_ir_precision is not None:
-                assert result_payload["payload"]["conversion_options"] == {
-                    "openvino_ir_precision": expected_openvino_ir_precision,
-                }
+            assert result_payload["payload"]["conversion_options"] == expected_conversion_options
 
             list_response = client.get(
                 f"/api/v1/models/yolox/conversion-tasks?project_id=project-1&source_model_version_id={source_model_version_id}",
@@ -193,6 +207,8 @@ def test_create_yolox_conversion_task_and_read_result_after_worker(
             if build_item["build_format"] == "openvino-ir":
                 assert build_path.suffix == ".xml"
                 assert build_path.with_suffix(".bin").is_file() is True
+            if build_item["build_format"] == "tensorrt-engine":
+                assert build_path.suffix == ".engine"
     finally:
         session_factory.engine.dispose()
 
@@ -202,80 +218,197 @@ def _create_test_client(
 ) -> tuple[TestClient, SessionFactory, LocalDatasetStorage, LocalFileQueueBackend]:
     """创建绑定测试数据库、本地文件存储和队列的 conversion API 测试客户端。"""
 
-    database_path = tmp_path / "amvision-conversion-api.db"
-    session_factory = SessionFactory(DatabaseSettings(url=f"sqlite:///{database_path.as_posix()}"))
-    Base.metadata.create_all(session_factory.engine)
-    dataset_storage = LocalDatasetStorage(
-        DatasetStorageSettings(root_dir=str(tmp_path / "dataset-files"))
+    context = create_yolox_api_test_context(
+        tmp_path,
+        database_name="amvision-conversion-api.db",
     )
-    queue_backend = LocalFileQueueBackend(
-        LocalFileQueueSettings(root_dir=str(tmp_path / "queue-files"))
-    )
-    settings = BackendServiceSettings(
-        task_manager=BackendServiceTaskManagerConfig(
-            enabled=False,
-            max_concurrent_tasks=2,
-            poll_interval_seconds=0.05,
-        )
-    )
-    client = TestClient(
-        create_app(
-            settings=settings,
-            session_factory=session_factory,
-            dataset_storage=dataset_storage,
-            queue_backend=queue_backend,
-        )
-    )
-    return client, session_factory, dataset_storage, queue_backend
+    return context.client, context.session_factory, context.dataset_storage, context.queue_backend
 
 
-def _seed_real_model_version(
+def _seed_placeholder_model_version(
     *,
     session_factory: SessionFactory,
     dataset_storage: LocalDatasetStorage,
 ) -> str:
-    """写入一个带真实 checkpoint 和 labels 的最小训练输出 ModelVersion。"""
+    """写入一个仅用于逻辑测试的最小训练输出 ModelVersion。"""
 
-    imports = _require_training_imports()
-    model = _build_yolox_model(
-        imports=imports,
-        model_scale="nano",
-        num_classes=1,
-    )
-    checkpoint_buffer = io.BytesIO()
-    imports.torch.save({"model": model.state_dict()}, checkpoint_buffer)
-
-    checkpoint_uri = "projects/project-1/models/conversion-api-source-1/artifacts/checkpoints/best_ckpt.pth"
-    labels_uri = "projects/project-1/models/conversion-api-source-1/artifacts/labels.txt"
-    dataset_storage.write_bytes(checkpoint_uri, checkpoint_buffer.getvalue())
-    dataset_storage.write_text(labels_uri, "bolt\n")
-
-    service = SqlAlchemyYoloXModelService(session_factory=session_factory)
-    return service.register_training_output(
-        YoloXTrainingOutputRegistration(
-            project_id="project-1",
-            training_task_id="training-conversion-api-source-1",
-            model_name="yolox-nano-conversion-api",
-            model_scale="nano",
-            dataset_version_id="dataset-version-conversion-api-source-1",
-            checkpoint_file_id="checkpoint-file-conversion-api-1",
-            checkpoint_file_uri=checkpoint_uri,
-            labels_file_id="labels-file-conversion-api-1",
-            labels_file_uri=labels_uri,
-            metadata={
-                "category_names": ["bolt"],
-                "input_size": [64, 64],
-                "training_config": {"input_size": [64, 64]},
-            },
-        )
+    return seed_yolox_model_version(
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+        source_prefix="conversion-api-source-1",
+        training_task_id="training-conversion-api-source-1",
+        model_name="yolox-nano-conversion-api",
+        dataset_version_id="dataset-version-conversion-api-source-1",
+        checkpoint_file_id="checkpoint-file-conversion-api-1",
+        labels_file_id="labels-file-conversion-api-1",
     )
 
 
 def _build_headers() -> dict[str, str]:
     """构建 conversion API 所需请求头。"""
 
-    return {
-        "x-amvision-principal-id": "user-1",
-        "x-amvision-project-ids": "project-1",
-        "x-amvision-scopes": "models:read,tasks:read,tasks:write",
-    }
+    return build_test_headers(scopes="models:read,tasks:read,tasks:write")
+
+
+class _FakeYoloXConversionRunner:
+    """为 conversion API 与 worker 测试提供轻量输出的 stub runner。
+
+    属性：
+    - dataset_storage：测试使用的本地文件存储。
+    """
+
+    def __init__(self, *, dataset_storage: LocalDatasetStorage) -> None:
+        """初始化轻量 conversion runner。
+
+        参数：
+        - dataset_storage：测试使用的本地文件存储。
+        """
+
+        self.dataset_storage = dataset_storage
+
+    def run_conversion(self, request: YoloXConversionRunRequest) -> YoloXConversionRunResult:
+        """按目标格式写入最小占位产物并返回转换结果。
+
+        参数：
+        - request：转换执行请求。
+
+        返回：
+        - YoloXConversionRunResult：轻量转换结果。
+        """
+
+        base_name = _build_test_output_base_name(request)
+        outputs: list[YoloXConversionOutput] = []
+        validation_summary = {
+            "allclose": True,
+            "max_abs_diff": 0.0,
+            "mean_abs_diff": 0.0,
+            "output_count": 1,
+        }
+
+        onnx_object_key = f"{request.output_object_prefix}/artifacts/builds/{base_name}.onnx"
+        optimized_object_key = f"{request.output_object_prefix}/artifacts/builds/{base_name}.optimized.onnx"
+        openvino_object_key = f"{request.output_object_prefix}/artifacts/builds/{base_name}.openvino.xml"
+        tensorrt_object_key = f"{request.output_object_prefix}/artifacts/builds/{base_name}.tensorrt.engine"
+
+        self._write_file(onnx_object_key, b"fake-onnx")
+        outputs.append(
+            YoloXConversionOutput(
+                target_format="onnx",
+                object_uri=onnx_object_key,
+                file_type=YOLOX_ONNX_FILE,
+                metadata={
+                    "stage": "export-onnx",
+                    "object_uri": onnx_object_key,
+                },
+            )
+        )
+
+        if any(item in request.target_formats for item in ("onnx-optimized", "openvino-ir", "tensorrt-engine")):
+            self._write_file(optimized_object_key, b"fake-optimized-onnx")
+            outputs.append(
+                YoloXConversionOutput(
+                    target_format="onnx-optimized",
+                    object_uri=optimized_object_key,
+                    file_type=YOLOX_ONNX_OPTIMIZED_FILE,
+                    metadata={
+                        "stage": "optimize-onnx",
+                        "object_uri": optimized_object_key,
+                        "source_object_uri": onnx_object_key,
+                        "validation_summary": validation_summary,
+                    },
+                )
+            )
+
+        if "openvino-ir" in request.target_formats:
+            build_precision = str(request.metadata.get("openvino_ir_precision") or "fp32")
+            self._write_file(openvino_object_key, b"<xml />")
+            self._write_file(openvino_object_key.replace(".xml", ".bin"), b"fake-openvino-bin")
+            outputs.append(
+                YoloXConversionOutput(
+                    target_format="openvino-ir",
+                    object_uri=openvino_object_key,
+                    file_type=YOLOX_OPENVINO_IR_FILE,
+                    metadata={
+                        "stage": "build-openvino-ir",
+                        "object_uri": openvino_object_key,
+                        "source_object_uri": optimized_object_key,
+                        "weights_object_uri": openvino_object_key.replace(".xml", ".bin"),
+                        "build_precision": build_precision,
+                        "compress_to_fp16": build_precision == "fp16",
+                        "execution_mode": "stub-openvino-build",
+                    },
+                )
+            )
+
+        if "tensorrt-engine" in request.target_formats:
+            build_precision = str(request.metadata.get("tensorrt_engine_precision") or "fp32")
+            self._write_file(tensorrt_object_key, b"fake-tensorrt-engine")
+            outputs.append(
+                YoloXConversionOutput(
+                    target_format="tensorrt-engine",
+                    object_uri=tensorrt_object_key,
+                    file_type=YOLOX_TENSORRT_ENGINE_FILE,
+                    metadata={
+                        "stage": "build-tensorrt-engine",
+                        "object_uri": tensorrt_object_key,
+                        "source_object_uri": optimized_object_key,
+                        "build_precision": build_precision,
+                        "execution_mode": "stub-tensorrt-build",
+                        "engine_file_bytes": self.dataset_storage.resolve(tensorrt_object_key).stat().st_size,
+                    },
+                )
+            )
+
+        return YoloXConversionRunResult(
+            conversion_task_id=request.conversion_task_id,
+            outputs=tuple(outputs),
+            metadata={
+                "phase": _resolve_expected_phase(request.target_formats),
+                "executed_step_kinds": [step.kind for step in request.plan_steps],
+                "validation_summary": validation_summary,
+                "conversion_options": _build_expected_conversion_options(request),
+            },
+        )
+
+    def _write_file(self, object_key: str, content: bytes) -> None:
+        """写入测试所需的最小占位文件。
+
+        参数：
+        - object_key：目标文件 object key。
+        - content：文件内容。
+        """
+
+        resolved_path = self.dataset_storage.resolve(object_key)
+        resolved_path.parent.mkdir(parents=True, exist_ok=True)
+        resolved_path.write_bytes(content)
+
+
+def _build_test_output_base_name(request: YoloXConversionRunRequest) -> str:
+    """根据来源模型信息构建测试输出前缀。"""
+
+    model_name = request.source_runtime_target.model_name.replace(" ", "-").lower() or "yolox"
+    model_scale = request.source_runtime_target.model_scale.strip().lower() or "unknown"
+    return f"{model_name}-{model_scale}"
+
+
+def _resolve_expected_phase(target_formats: tuple[str, ...]) -> str:
+    """根据目标格式集合返回测试期望阶段。"""
+
+    if "tensorrt-engine" in target_formats:
+        return "phase-2-tensorrt-engine"
+    if "openvino-ir" in target_formats:
+        return "phase-2-openvino-ir"
+    return "phase-1-onnx"
+
+
+def _build_expected_conversion_options(request: YoloXConversionRunRequest) -> dict[str, object]:
+    """根据请求元数据构建测试用转换策略摘要。"""
+
+    options: dict[str, object] = {}
+    if "openvino-ir" in request.target_formats:
+        options["openvino_ir_precision"] = str(request.metadata.get("openvino_ir_precision") or "fp32")
+    if "tensorrt-engine" in request.target_formats:
+        options["tensorrt_engine_precision"] = str(
+            request.metadata.get("tensorrt_engine_precision") or "fp32"
+        )
+    return options

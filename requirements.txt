@@ -25,6 +25,11 @@ onnxruntime>=1.22,<2
 # openvino 推理
 openvino>=2026.1.0 
 
+# TensorRT 转换与推理
+# 统一固定为 CUDA 12 发行包，目标最低支持 CUDA 12.8；当前不跟随最新 TensorRT 版本。
+tensorrt-cu12==10.13.2.6
+cuda-python==12.8.0
+
 # 如需通过 PyTorch 官方 CUDA 12.8 源安装：
 # pip install torch==2.8.0 torchvision==0.23.0 torchaudio==2.8.0 --index-url https://download.pytorch.org/whl/cu128
 

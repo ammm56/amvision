@@ -26,6 +26,8 @@ yolox_conversion_tasks_router = APIRouter(prefix="/models", tags=["models"])
 
 OPENVINO_IR_PRECISION_OPTION_KEY = "openvino_ir_precision"
 OpenVINOIRBuildPrecisionLiteral = Literal["fp32", "fp16"]
+TENSORRT_ENGINE_PRECISION_OPTION_KEY = "tensorrt_engine_precision"
+TensorRTEngineBuildPrecisionLiteral = Literal["fp32", "fp16"]
 
 YoloXConversionTargetLiteral = Literal[
     "onnx",
@@ -272,6 +274,62 @@ def create_yolox_openvino_ir_fp16_conversion_task(
         extra_options_override=_merge_fixed_conversion_extra_options(
             body_extra_options=body.extra_options,
             fixed_extra_options={OPENVINO_IR_PRECISION_OPTION_KEY: "fp16"},
+        ),
+        principal=principal,
+        session_factory=session_factory,
+        queue_backend=queue_backend,
+        dataset_storage=dataset_storage,
+    )
+
+
+@yolox_conversion_tasks_router.post(
+    "/yolox/conversion-tasks/tensorrt-engine-fp32",
+    response_model=YoloXConversionTaskSubmissionResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+def create_yolox_tensorrt_engine_fp32_conversion_task(
+    body: YoloXConversionTaskCreateRequestBody,
+    principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("models:read", "tasks:write"))],
+    session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
+    queue_backend: Annotated[LocalFileQueueBackend, Depends(get_queue_backend)],
+    dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
+) -> YoloXConversionTaskSubmissionResponse:
+    """创建一个输出 FP32 TensorRT engine 的 YOLOX conversion task。"""
+
+    return _submit_yolox_conversion_task(
+        body=body,
+        target_format="tensorrt-engine",
+        extra_options_override=_merge_fixed_conversion_extra_options(
+            body_extra_options=body.extra_options,
+            fixed_extra_options={TENSORRT_ENGINE_PRECISION_OPTION_KEY: "fp32"},
+        ),
+        principal=principal,
+        session_factory=session_factory,
+        queue_backend=queue_backend,
+        dataset_storage=dataset_storage,
+    )
+
+
+@yolox_conversion_tasks_router.post(
+    "/yolox/conversion-tasks/tensorrt-engine-fp16",
+    response_model=YoloXConversionTaskSubmissionResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+def create_yolox_tensorrt_engine_fp16_conversion_task(
+    body: YoloXConversionTaskCreateRequestBody,
+    principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("models:read", "tasks:write"))],
+    session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
+    queue_backend: Annotated[LocalFileQueueBackend, Depends(get_queue_backend)],
+    dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
+) -> YoloXConversionTaskSubmissionResponse:
+    """创建一个输出 FP16 TensorRT engine 的 YOLOX conversion task。"""
+
+    return _submit_yolox_conversion_task(
+        body=body,
+        target_format="tensorrt-engine",
+        extra_options_override=_merge_fixed_conversion_extra_options(
+            body_extra_options=body.extra_options,
+            fixed_extra_options={TENSORRT_ENGINE_PRECISION_OPTION_KEY: "fp16"},
         ),
         principal=principal,
         session_factory=session_factory,

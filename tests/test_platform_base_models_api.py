@@ -6,17 +6,13 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from backend.queue import LocalFileQueueBackend, LocalFileQueueSettings
-from backend.service.api.app import create_app
 from backend.service.application.models.yolox_model_service import (
     SqlAlchemyYoloXModelService,
     YoloXPretrainedRegistrationRequest,
     YoloXTrainingOutputRegistration,
 )
-from backend.service.infrastructure.db.session import DatabaseSettings, SessionFactory
-from backend.service.infrastructure.object_store.local_dataset_storage import DatasetStorageSettings, LocalDatasetStorage
-from backend.service.infrastructure.persistence.base import Base
-from backend.service.settings import BackendServiceSettings, BackendServiceTaskManagerConfig
+from backend.service.infrastructure.db.session import SessionFactory
+from tests.api_test_support import build_test_headers, create_api_test_context
 
 
 def test_list_platform_base_models_returns_only_platform_models(tmp_path: Path) -> None:
@@ -180,34 +176,14 @@ def _seed_platform_and_project_models(
 def _create_test_client(tmp_path: Path) -> tuple[TestClient, SessionFactory]:
     """创建平台基础模型 API 测试客户端。"""
 
-    database_path = tmp_path / "amvision-platform-base-models.db"
-    session_factory = SessionFactory(DatabaseSettings(url=f"sqlite:///{database_path.as_posix()}"))
-    Base.metadata.create_all(session_factory.engine)
-    dataset_storage = LocalDatasetStorage(
-        DatasetStorageSettings(root_dir=str(tmp_path / "dataset-files"))
+    context = create_api_test_context(
+        tmp_path,
+        database_name="amvision-platform-base-models.db",
     )
-    queue_backend = LocalFileQueueBackend(
-        LocalFileQueueSettings(root_dir=str(tmp_path / "queue-files"))
-    )
-    settings = BackendServiceSettings(
-        task_manager=BackendServiceTaskManagerConfig(enabled=False),
-    )
-    client = TestClient(
-        create_app(
-            settings=settings,
-            session_factory=session_factory,
-            dataset_storage=dataset_storage,
-            queue_backend=queue_backend,
-        )
-    )
-    return client, session_factory
+    return context.client, context.session_factory
 
 
 def _build_model_headers(*, scopes: str = "models:read") -> dict[str, str]:
     """构建平台基础模型 API 测试请求头。"""
 
-    return {
-        "x-amvision-principal-id": "user-1",
-        "x-amvision-project-ids": "project-1",
-        "x-amvision-scopes": scopes,
-    }
+    return build_test_headers(scopes=scopes)

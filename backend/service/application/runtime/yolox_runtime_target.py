@@ -62,7 +62,7 @@ class RuntimeTargetResolveRequest:
     - runtime_profile_id：可选 RuntimeProfile id。
     - runtime_backend：运行时 backend；直接绑定 ModelVersion 时默认 pytorch，绑定 ModelBuild 时默认按 build_format 推导。
     - device_name：默认 device 名称。
-    - runtime_precision：运行时 precision；当前 pytorch 支持 fp32/fp16，openvino 仅在 gpu/npu 上支持 fp16，其余 backend 默认 fp32。
+    - runtime_precision：运行时 precision；当前 pytorch 支持 fp32/fp16，openvino 仅在 gpu/npu 上支持 fp16，tensorrt 支持 fp32/fp16 且必须与 engine build_precision 一致，其余 backend 默认 fp32。
     """
 
     project_id: str
@@ -372,11 +372,30 @@ class SqlAlchemyYoloXRuntimeTargetResolver:
             request.device_name,
             runtime_backend=resolved_runtime_backend,
         )
+        tensorrt_engine_build_precision = None
+        resolved_runtime_precision_request = request.runtime_precision
+        if model_build is not None and model_build.build_format == "tensorrt-engine":
+            tensorrt_engine_build_precision = _resolve_tensorrt_engine_build_precision(model_build.metadata)
+            if _normalize_optional_str(request.runtime_precision) is None:
+                resolved_runtime_precision_request = tensorrt_engine_build_precision
+
         resolved_runtime_precision = resolve_runtime_precision(
-            runtime_precision=request.runtime_precision,
+            runtime_precision=resolved_runtime_precision_request,
             runtime_backend=resolved_runtime_backend,
             device_name=resolved_device_name,
         )
+        if (
+            tensorrt_engine_build_precision is not None
+            and resolved_runtime_precision != tensorrt_engine_build_precision
+        ):
+            raise InvalidRequestError(
+                "tensorrt runtime_precision 必须与 engine build_precision 一致",
+                details={
+                    "model_build_id": model_build.model_build_id,
+                    "runtime_precision": resolved_runtime_precision,
+                    "build_precision": tensorrt_engine_build_precision,
+                },
+            )
 
         return RuntimeTargetSnapshot(
             project_id=request.project_id,
@@ -731,6 +750,8 @@ def resolve_runtime_precision(*, runtime_precision: str | None, runtime_backend:
                 },
             )
         return normalized_precision
+    if normalized_backend == "tensorrt":
+        return normalized_precision
     if normalized_precision != "fp32":
         raise InvalidRequestError(
             "当前 runtime_backend 仅支持 fp32 precision",
@@ -752,6 +773,31 @@ def describe_runtime_execution_mode(*, runtime_backend: str, runtime_precision: 
             normalize_runtime_precision(runtime_precision),
             normalize_device_name(device_name, runtime_backend=runtime_backend),
         )
+    )
+
+
+def _resolve_tensorrt_engine_build_precision(metadata: object) -> str:
+    """从 TensorRT ModelBuild metadata 中解析 engine 构建精度。
+
+    参数：
+    - metadata：ModelBuild.metadata 原始值。
+
+    返回：
+    - str：TensorRT engine 构建精度；缺省按 fp32 处理。
+    """
+
+    if not isinstance(metadata, dict):
+        return "fp32"
+    raw_precision = metadata.get("build_precision")
+    if raw_precision is None:
+        return "fp32"
+    if isinstance(raw_precision, str):
+        normalized_precision = raw_precision.strip().lower()
+        if normalized_precision in _SUPPORTED_RUNTIME_PRECISIONS:
+            return normalized_precision
+    raise InvalidRequestError(
+        "TensorRT ModelBuild metadata.build_precision 必须是 fp32 或 fp16",
+        details={"build_precision": raw_precision},
     )
 
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import sys
 from time import perf_counter
 from typing import Any, Protocol
 
@@ -22,6 +23,8 @@ from backend.workers.shared.yolox_runtime_contracts import RuntimeTensorSpec, Yo
 
 
 _DEFAULT_NMS_THRESHOLD = 0.65
+_TENSORRT_LOGGER: Any | None = None
+_TENSORRT_LOGGER_SEVERITY: int | None = None
 
 
 @dataclass(frozen=True)
@@ -92,6 +95,21 @@ class _YoloXInferenceImports:
 
     cv2: Any
     np: Any
+
+
+@dataclass(frozen=True)
+class _YoloXCudaInferenceImports:
+    """描述 TensorRT/CUDA 推理路径所需的第三方依赖对象。
+
+    字段：
+    - cv2：OpenCV 模块。
+    - np：NumPy 模块。
+    - cudart：cuda-python 运行时 API 模块。
+    """
+
+    cv2: Any
+    np: Any
+    cudart: Any
 
 
 class YoloXPredictor(Protocol):
@@ -214,6 +232,10 @@ class PyTorchYoloXRuntimeSession:
             torch_module=imports.torch,
             requested_device_name=runtime_target.device_name,
         )
+        _enable_pytorch_cuda_inference_fast_path(
+            torch_module=imports.torch,
+            device_name=device_name,
+        )
         model.to(device_name)
         if runtime_target.runtime_precision == "fp16":
             model.half()
@@ -274,8 +296,13 @@ class PyTorchYoloXRuntimeSession:
         )
 
         infer_started_at = perf_counter()
-        with self.imports.torch.no_grad():
-            outputs = self.model(input_tensor)
+        inference_mode = getattr(self.imports.torch, "inference_mode", None)
+        if callable(inference_mode):
+            with inference_mode():
+                outputs = self.model(input_tensor)
+        else:
+            with self.imports.torch.no_grad():
+                outputs = self.model(input_tensor)
         infer_ms = _measure_stage_elapsed_ms(
             imports=self.imports,
             device_name=self.device_name,
@@ -839,6 +866,532 @@ class OpenVINOYoloXRuntimeSession:
         )
 
 
+class TensorRTYoloXRuntimeSession:
+    """描述一个已经加载完成并可重复推理的 TensorRT YOLOX 会话。
+
+    属性：
+    - dataset_storage：本地文件存储服务。
+    - runtime_target：当前会话绑定的运行时快照。
+    - imports：TensorRT 推理所需的依赖集合。
+    - tensorrt_module：TensorRT 顶层模块。
+    - logger：TensorRT logger。
+    - runtime：TensorRT runtime 对象。
+    - engine：已经反序列化的 TensorRT engine。
+    - context：当前 engine 对应的 execution context。
+    - device_name：当前执行 device 名称。
+    - input_name：模型主输入张量名称。
+    - output_name：模型主输出张量名称。
+    - input_dtype_name：模型主输入张量 dtype 名称。
+    - output_dtype_name：模型主输出张量 dtype 名称。
+    - stream：当前 session 复用的 CUDA stream。
+    - input_device_ptr：复用的输入显存指针。
+    - output_device_ptr：复用的输出显存指针。
+    - input_capacity_bytes：当前输入显存缓冲可容纳的字节数。
+    - output_capacity_bytes：当前输出显存缓冲可容纳的字节数。
+    - output_host_array：复用的主存输出缓冲数组。
+    - execute_start_event：用于统计 TensorRT 纯 GPU 执行时间的 CUDA event。
+    - execute_end_event：用于统计 TensorRT 纯 GPU 执行时间的 CUDA event。
+    """
+
+    def __init__(
+        self,
+        *,
+        dataset_storage: LocalDatasetStorage,
+        runtime_target: RuntimeTargetSnapshot,
+        imports: _YoloXCudaInferenceImports,
+        tensorrt_module: Any,
+        logger: Any,
+        runtime: Any,
+        engine: Any,
+        context: Any,
+        device_name: str,
+        input_name: str,
+        output_name: str,
+        input_dtype_name: str,
+        output_dtype_name: str,
+        stream: Any,
+        execute_start_event: Any,
+        execute_end_event: Any,
+    ) -> None:
+        """初始化一个已加载完成的 TensorRT runtime session。
+
+        参数：
+        - dataset_storage：本地文件存储服务。
+        - runtime_target：当前会话绑定的运行时快照。
+        - imports：TensorRT 推理依赖集合。
+        - tensorrt_module：TensorRT 顶层模块。
+        - logger：TensorRT logger。
+        - runtime：TensorRT runtime 对象。
+        - engine：已经反序列化的 TensorRT engine。
+        - context：当前 engine 对应的 execution context。
+        - device_name：当前执行 device 名称。
+        - input_name：模型主输入张量名称。
+        - output_name：模型主输出张量名称。
+        - input_dtype_name：模型主输入张量 dtype 名称。
+        - output_dtype_name：模型主输出张量 dtype 名称。
+        - stream：当前 session 复用的 CUDA stream。
+        - execute_start_event：用于统计 TensorRT 纯 GPU 执行时间的 CUDA event。
+        - execute_end_event：用于统计 TensorRT 纯 GPU 执行时间的 CUDA event。
+        """
+
+        self.dataset_storage = dataset_storage
+        self.runtime_target = runtime_target
+        self.imports = imports
+        self.tensorrt_module = tensorrt_module
+        self.logger = logger
+        self.runtime = runtime
+        self.engine = engine
+        self.context = context
+        self.device_name = device_name
+        self.input_name = input_name
+        self.output_name = output_name
+        self.input_dtype_name = input_dtype_name
+        self.output_dtype_name = output_dtype_name
+        self.stream = stream
+        self.execute_start_event = execute_start_event
+        self.execute_end_event = execute_end_event
+        self.input_device_ptr: int | None = None
+        self.output_device_ptr: int | None = None
+        self.input_capacity_bytes = 0
+        self.output_capacity_bytes = 0
+        self.output_host_array: Any | None = None
+
+    @classmethod
+    def load(
+        cls,
+        *,
+        dataset_storage: LocalDatasetStorage,
+        runtime_target: RuntimeTargetSnapshot,
+    ) -> TensorRTYoloXRuntimeSession:
+        """加载一次 TensorRT runtime session。
+
+        参数：
+        - dataset_storage：本地文件存储服务。
+        - runtime_target：待加载的运行时快照。
+
+        返回：
+        - TensorRTYoloXRuntimeSession：已完成 engine 加载的会话对象。
+        """
+
+        if runtime_target.runtime_backend != "tensorrt":
+            raise InvalidRequestError(
+                "当前 predictor 仅支持 tensorrt runtime_backend",
+                details={
+                    "runtime_backend": runtime_target.runtime_backend,
+                    "model_build_id": runtime_target.model_build_id,
+                },
+            )
+
+        imports = _require_cuda_inference_imports()
+        tensorrt_module = _import_tensorrt_module()
+        device_name = _resolve_cuda_runtime_device_name(
+            cudart_module=imports.cudart,
+            requested_device_name=runtime_target.device_name,
+        )
+        _ensure_cuda_success(
+            imports.cudart.cudaSetDevice(_resolve_cuda_device_index(device_name)),
+            operation_name="TensorRT runtime 切换 CUDA device",
+            details={"device_name": device_name},
+        )
+        logger = _get_tensorrt_logger(
+            tensorrt_module=tensorrt_module,
+            severity=tensorrt_module.Logger.WARNING,
+        )
+        runtime = tensorrt_module.Runtime(logger)
+        engine = runtime.deserialize_cuda_engine(runtime_target.runtime_artifact_path.read_bytes())
+        if engine is None:
+            raise ServiceConfigurationError(
+                "TensorRT engine 反序列化失败",
+                details={
+                    "runtime_artifact_path": str(runtime_target.runtime_artifact_path),
+                    "model_build_id": runtime_target.model_build_id,
+                },
+            )
+        context = engine.create_execution_context()
+        if context is None:
+            raise ServiceConfigurationError(
+                "TensorRT engine 无法创建 execution context",
+                details={"model_build_id": runtime_target.model_build_id},
+            )
+        stream = _ensure_cuda_success(
+            imports.cudart.cudaStreamCreate(),
+            operation_name="TensorRT runtime 创建复用 CUDA stream",
+            details={"device_name": device_name},
+        )[0]
+        execute_start_event = _ensure_cuda_success(
+            imports.cudart.cudaEventCreate(),
+            operation_name="TensorRT runtime 创建执行起点 event",
+            details={"device_name": device_name},
+        )[0]
+        execute_end_event = _ensure_cuda_success(
+            imports.cudart.cudaEventCreate(),
+            operation_name="TensorRT runtime 创建执行终点 event",
+            details={"device_name": device_name},
+        )[0]
+        input_name = _resolve_tensorrt_io_tensor_name(
+            engine=engine,
+            tensorrt_module=tensorrt_module,
+            io_mode=tensorrt_module.TensorIOMode.INPUT,
+            fallback="images",
+        )
+        output_name = _resolve_tensorrt_io_tensor_name(
+            engine=engine,
+            tensorrt_module=tensorrt_module,
+            io_mode=tensorrt_module.TensorIOMode.OUTPUT,
+            fallback="predictions",
+        )
+        return cls(
+            dataset_storage=dataset_storage,
+            runtime_target=runtime_target,
+            imports=imports,
+            tensorrt_module=tensorrt_module,
+            logger=logger,
+            runtime=runtime,
+            engine=engine,
+            context=context,
+            device_name=device_name,
+            input_name=input_name,
+            output_name=output_name,
+            input_dtype_name=_resolve_tensorrt_dtype_name(
+                tensorrt_module=tensorrt_module,
+                tensor_dtype=engine.get_tensor_dtype(input_name),
+                fallback="float32",
+            ),
+            output_dtype_name=_resolve_tensorrt_dtype_name(
+                tensorrt_module=tensorrt_module,
+                tensor_dtype=engine.get_tensor_dtype(output_name),
+                fallback="float32",
+            ),
+            stream=stream,
+            execute_start_event=execute_start_event,
+            execute_end_event=execute_end_event,
+        )
+
+    def close(self) -> None:
+        """释放 TensorRT session 持有的 CUDA 资源。"""
+
+        try:
+            _release_cuda_resource(
+                self.imports.cudart.cudaSetDevice(_resolve_cuda_device_index(self.device_name))
+            )
+        except Exception:
+            return
+        if self.input_device_ptr is not None:
+            _release_cuda_resource(self.imports.cudart.cudaFree(self.input_device_ptr))
+            self.input_device_ptr = None
+            self.input_capacity_bytes = 0
+        if self.output_device_ptr is not None:
+            _release_cuda_resource(self.imports.cudart.cudaFree(self.output_device_ptr))
+            self.output_device_ptr = None
+            self.output_capacity_bytes = 0
+        if self.stream is not None:
+            _release_cuda_resource(self.imports.cudart.cudaStreamDestroy(self.stream))
+            self.stream = None
+        if self.execute_start_event is not None:
+            _release_cuda_resource(self.imports.cudart.cudaEventDestroy(self.execute_start_event))
+            self.execute_start_event = None
+        if self.execute_end_event is not None:
+            _release_cuda_resource(self.imports.cudart.cudaEventDestroy(self.execute_end_event))
+            self.execute_end_event = None
+        self.output_host_array = None
+
+    def predict(self, request: YoloXPredictionRequest) -> YoloXPredictionExecutionResult:
+        """使用当前常驻会话执行一次 TensorRT 单图预测。
+
+        参数：
+        - request：预测请求。
+
+        返回：
+        - YoloXPredictionExecutionResult：预测执行结果。
+        """
+
+        decode_started_at = perf_counter()
+        image = _load_prediction_image(
+            cv2_module=self.imports.cv2,
+            np_module=self.imports.np,
+            dataset_storage=self.dataset_storage,
+            request=request,
+        )
+        decode_ms = _measure_stage_elapsed_ms(
+            imports=self.imports,
+            device_name=self.device_name,
+            started_at=decode_started_at,
+        )
+
+        preprocess_started_at = perf_counter()
+        input_tensor, resize_ratio = _preprocess_image(
+            cv2_module=self.imports.cv2,
+            np_module=self.imports.np,
+            image=image,
+            input_size=self.runtime_target.input_size,
+        )
+        input_array = self.imports.np.expand_dims(input_tensor, axis=0).astype(
+            _resolve_numpy_dtype(
+                np_module=self.imports.np,
+                dtype_name=self.input_dtype_name,
+            ),
+            copy=False,
+        )
+        requested_input_shape = tuple(int(dim) for dim in input_array.shape)
+        preprocess_ms = round((perf_counter() - preprocess_started_at) * 1000, 3)
+
+        nms_threshold = _resolve_probability(
+            value=request.extra_options.get("nms_threshold"),
+            field_name="nms_threshold",
+            default=_DEFAULT_NMS_THRESHOLD,
+        )
+
+        infer_started_at = perf_counter()
+        device_index = _resolve_cuda_device_index(self.device_name)
+        set_device_started_at = perf_counter()
+        _ensure_cuda_success(
+            self.imports.cudart.cudaSetDevice(device_index),
+            operation_name="TensorRT runtime 绑定 CUDA device",
+            details={"device_name": self.device_name},
+        )
+        infer_set_device_ms = _measure_elapsed_ms(set_device_started_at)
+
+        prepare_io_started_at = perf_counter()
+        engine_input_shape = _normalize_tensor_shape(self.engine.get_tensor_shape(self.input_name))
+        if any(dim < 0 for dim in engine_input_shape):
+            shape_set_result = self.context.set_input_shape(self.input_name, requested_input_shape)
+            if shape_set_result is not True:
+                raise ServiceConfigurationError(
+                    "TensorRT execution context 设置输入 shape 失败",
+                    details={
+                        "input_name": self.input_name,
+                        "requested_input_shape": list(requested_input_shape),
+                    },
+                )
+        elif engine_input_shape != requested_input_shape:
+            raise InvalidRequestError(
+                "TensorRT engine 输入尺寸与 deployment input_size 不一致",
+                details={
+                    "engine_input_shape": list(engine_input_shape),
+                    "requested_input_shape": list(requested_input_shape),
+                    "model_build_id": self.runtime_target.model_build_id,
+                },
+            )
+
+        resolved_output_shape = _normalize_tensor_shape(self.context.get_tensor_shape(self.output_name))
+        if not resolved_output_shape or any(dim <= 0 for dim in resolved_output_shape):
+            raise ServiceConfigurationError(
+                "TensorRT execution context 返回了无效输出 shape",
+                details={
+                    "output_name": self.output_name,
+                    "output_shape": list(resolved_output_shape),
+                    "model_build_id": self.runtime_target.model_build_id,
+                },
+            )
+
+        output_array = self._ensure_io_buffers(
+            input_array=input_array,
+            resolved_output_shape=resolved_output_shape,
+        )
+        infer_prepare_io_ms = _measure_elapsed_ms(prepare_io_started_at)
+
+        enqueue_h2d_started_at = perf_counter()
+        _ensure_cuda_success(
+            self.imports.cudart.cudaMemcpyAsync(
+                self.input_device_ptr,
+                int(input_array.ctypes.data),
+                int(input_array.nbytes),
+                self.imports.cudart.cudaMemcpyKind.cudaMemcpyHostToDevice,
+                self.stream,
+            ),
+            operation_name="TensorRT runtime 拷贝输入到显存",
+            details={"input_name": self.input_name, "byte_size": int(input_array.nbytes)},
+        )
+        infer_enqueue_h2d_ms = _measure_elapsed_ms(enqueue_h2d_started_at)
+
+        bind_tensor_started_at = perf_counter()
+        if self.context.set_tensor_address(self.input_name, int(self.input_device_ptr)) is not True:
+            raise ServiceConfigurationError(
+                "TensorRT execution context 绑定输入张量失败",
+                details={"input_name": self.input_name},
+            )
+        if self.context.set_tensor_address(self.output_name, int(self.output_device_ptr)) is not True:
+            raise ServiceConfigurationError(
+                "TensorRT execution context 绑定输出张量失败",
+                details={"output_name": self.output_name},
+            )
+        infer_bind_tensor_ms = _measure_elapsed_ms(bind_tensor_started_at)
+
+        execute_enqueue_started_at = perf_counter()
+        _ensure_cuda_success(
+            self.imports.cudart.cudaEventRecord(self.execute_start_event, self.stream),
+            operation_name="TensorRT runtime 记录执行起点 event",
+            details={"device_name": self.device_name},
+        )
+        execute_result = self.context.execute_async_v3(stream_handle=self.stream)
+        if execute_result is not True:
+            raise ServiceConfigurationError(
+                "TensorRT execution context 执行推理失败",
+                details={"model_build_id": self.runtime_target.model_build_id},
+            )
+        _ensure_cuda_success(
+            self.imports.cudart.cudaEventRecord(self.execute_end_event, self.stream),
+            operation_name="TensorRT runtime 记录执行终点 event",
+            details={"device_name": self.device_name},
+        )
+        infer_execute_enqueue_ms = _measure_elapsed_ms(execute_enqueue_started_at)
+
+        enqueue_d2h_started_at = perf_counter()
+        _ensure_cuda_success(
+            self.imports.cudart.cudaMemcpyAsync(
+                int(output_array.ctypes.data),
+                self.output_device_ptr,
+                int(output_array.nbytes),
+                self.imports.cudart.cudaMemcpyKind.cudaMemcpyDeviceToHost,
+                self.stream,
+            ),
+            operation_name="TensorRT runtime 拷贝输出到主存",
+            details={"output_name": self.output_name, "byte_size": int(output_array.nbytes)},
+        )
+        infer_enqueue_d2h_ms = _measure_elapsed_ms(enqueue_d2h_started_at)
+
+        stream_sync_started_at = perf_counter()
+        _ensure_cuda_success(
+            self.imports.cudart.cudaStreamSynchronize(self.stream),
+            operation_name="TensorRT runtime 同步 CUDA stream",
+            details={"device_name": self.device_name},
+        )
+        infer_stream_sync_ms = _measure_elapsed_ms(stream_sync_started_at)
+        infer_execute_gpu_ms = _measure_cuda_event_elapsed_ms(
+            cudart_module=self.imports.cudart,
+            start_event=self.execute_start_event,
+            end_event=self.execute_end_event,
+            device_name=self.device_name,
+        )
+        infer_ms = round((perf_counter() - infer_started_at) * 1000, 3)
+
+        image_height = int(image.shape[0])
+        image_width = int(image.shape[1])
+
+        postprocess_started_at = perf_counter()
+        predictions = _postprocess_prediction_array(
+            prediction_array=_normalize_tensorrt_outputs(
+                output_array=output_array,
+                imports=self.imports,
+            ),
+            np_module=self.imports.np,
+            num_classes=len(self.runtime_target.labels),
+            conf_thre=request.score_threshold,
+            nms_thre=nms_threshold,
+        )
+        detections = _build_detection_records(
+            np_module=self.imports.np,
+            predictions=predictions,
+            resize_ratio=resize_ratio,
+            labels=self.runtime_target.labels,
+            image_width=image_width,
+            image_height=image_height,
+        )
+        postprocess_ms = round((perf_counter() - postprocess_started_at) * 1000, 3)
+        latency_ms = decode_ms + preprocess_ms + infer_ms + postprocess_ms
+
+        preview_image_bytes = None
+        if request.save_result_image:
+            preview_image_bytes = _render_preview_image(
+                cv2_module=self.imports.cv2,
+                image=image,
+                detections=detections,
+            )
+
+        return YoloXPredictionExecutionResult(
+            detections=detections,
+            latency_ms=round(latency_ms, 3),
+            image_width=image_width,
+            image_height=image_height,
+            preview_image_bytes=preview_image_bytes,
+            runtime_session_info=YoloXRuntimeSessionInfo(
+                backend_name=self.runtime_target.runtime_backend,
+                model_uri=self.runtime_target.runtime_artifact_storage_uri,
+                device_name=self.device_name,
+                input_spec=RuntimeTensorSpec(
+                    name=self.input_name,
+                    shape=requested_input_shape,
+                    dtype=self.input_dtype_name,
+                ),
+                output_spec=RuntimeTensorSpec(
+                    name=self.output_name,
+                    shape=resolved_output_shape,
+                    dtype=self.output_dtype_name,
+                ),
+                metadata={
+                    "model_version_id": self.runtime_target.model_version_id,
+                    "model_build_id": self.runtime_target.model_build_id,
+                    "runtime_precision": self.runtime_target.runtime_precision,
+                    "runtime_execution_mode": describe_runtime_execution_mode(
+                        runtime_backend=self.runtime_target.runtime_backend,
+                        runtime_precision=self.runtime_target.runtime_precision,
+                        device_name=self.device_name,
+                    ),
+                    "score_threshold": request.score_threshold,
+                    "nms_threshold": nms_threshold,
+                    "class_count": len(self.runtime_target.labels),
+                    "decode_ms": decode_ms,
+                    "preprocess_ms": preprocess_ms,
+                    "infer_ms": infer_ms,
+                    "postprocess_ms": postprocess_ms,
+                    "infer_set_device_ms": infer_set_device_ms,
+                    "infer_prepare_io_ms": infer_prepare_io_ms,
+                    "infer_enqueue_h2d_ms": infer_enqueue_h2d_ms,
+                    "infer_bind_tensor_ms": infer_bind_tensor_ms,
+                    "infer_execute_enqueue_ms": infer_execute_enqueue_ms,
+                    "infer_execute_gpu_ms": infer_execute_gpu_ms,
+                    "infer_enqueue_d2h_ms": infer_enqueue_d2h_ms,
+                    "infer_stream_sync_ms": infer_stream_sync_ms,
+                    "tensorrt_version": str(self.tensorrt_module.__version__),
+                    "compiled_runtime_precision": self.runtime_target.runtime_precision,
+                    "engine_file_bytes": self.runtime_target.runtime_artifact_path.stat().st_size,
+                    "debugger_attached": _is_debugger_attached(),
+                },
+            ),
+        )
+
+    def _ensure_io_buffers(
+        self,
+        *,
+        input_array: Any,
+        resolved_output_shape: tuple[int, ...],
+    ) -> Any:
+        """按当前输入输出尺寸复用或扩容 TensorRT I/O 缓冲。"""
+
+        output_dtype = _resolve_numpy_dtype(
+            np_module=self.imports.np,
+            dtype_name=self.output_dtype_name,
+        )
+        if (
+            self.output_host_array is None
+            or tuple(int(dim) for dim in self.output_host_array.shape) != resolved_output_shape
+            or self.output_host_array.dtype != output_dtype
+        ):
+            self.output_host_array = self.imports.np.empty(resolved_output_shape, dtype=output_dtype)
+
+        input_nbytes = int(input_array.nbytes)
+        output_nbytes = int(self.output_host_array.nbytes)
+        if self.input_device_ptr is None or input_nbytes > self.input_capacity_bytes:
+            if self.input_device_ptr is not None:
+                _release_cuda_resource(self.imports.cudart.cudaFree(self.input_device_ptr))
+            self.input_device_ptr = _ensure_cuda_success(
+                self.imports.cudart.cudaMalloc(input_nbytes),
+                operation_name="TensorRT runtime 分配复用输入显存",
+                details={"byte_size": input_nbytes},
+            )[0]
+            self.input_capacity_bytes = input_nbytes
+        if self.output_device_ptr is None or output_nbytes > self.output_capacity_bytes:
+            if self.output_device_ptr is not None:
+                _release_cuda_resource(self.imports.cudart.cudaFree(self.output_device_ptr))
+            self.output_device_ptr = _ensure_cuda_success(
+                self.imports.cudart.cudaMalloc(output_nbytes),
+                operation_name="TensorRT runtime 分配复用输出显存",
+                details={"byte_size": output_nbytes},
+            )[0]
+            self.output_capacity_bytes = output_nbytes
+        return self.output_host_array
+
+
 def _load_prediction_image(
     *,
     cv2_module: Any,
@@ -958,6 +1511,34 @@ def _require_inference_imports() -> _YoloXInferenceImports:
     return _YoloXInferenceImports(cv2=cv2, np=np)
 
 
+def _require_cuda_inference_imports() -> _YoloXCudaInferenceImports:
+    """按需导入 TensorRT/CUDA 推理路径所需依赖。
+
+    参数：
+    - 无。
+
+    返回：
+    - _YoloXCudaInferenceImports：包含 OpenCV、NumPy 与 cuda-python 的依赖集合。
+    """
+
+    inference_imports = _require_inference_imports()
+    return _YoloXCudaInferenceImports(
+        cv2=inference_imports.cv2,
+        np=inference_imports.np,
+        cudart=_import_cuda_runtime_module(),
+    )
+
+
+def _import_cuda_runtime_module() -> Any:
+    """导入 cuda-python 的 cudart 模块并在缺失时抛出明确错误。"""
+
+    try:
+        from cuda import cudart
+    except ImportError as error:  # pragma: no cover - 依赖存在时不会进入该分支
+        raise ServiceConfigurationError("当前运行环境缺少 cuda-python 依赖") from error
+    return cudart
+
+
 def _import_onnxruntime_module() -> Any:
     """导入 ONNXRuntime 模块并在缺失时抛出明确错误。"""
 
@@ -983,6 +1564,28 @@ def _import_openvino_module() -> Any:
     except ImportError as error:  # pragma: no cover - 依赖存在时不会进入该分支
         raise ServiceConfigurationError("当前运行环境缺少 openvino 依赖") from error
     return openvino
+
+
+def _import_tensorrt_module() -> Any:
+    """导入 TensorRT 模块并在缺失时抛出明确错误。"""
+
+    try:
+        import tensorrt
+    except ImportError as error:  # pragma: no cover - 依赖存在时不会进入该分支
+        raise ServiceConfigurationError("当前运行环境缺少 tensorrt 依赖") from error
+    return tensorrt
+
+
+def _get_tensorrt_logger(*, tensorrt_module: Any, severity: Any) -> Any:
+    """返回进程级复用的 TensorRT logger，避免重复注册 warning。"""
+
+    global _TENSORRT_LOGGER
+    global _TENSORRT_LOGGER_SEVERITY
+    resolved_severity = int(severity)
+    if _TENSORRT_LOGGER is None or _TENSORRT_LOGGER_SEVERITY != resolved_severity:
+        _TENSORRT_LOGGER = tensorrt_module.Logger(severity)
+        _TENSORRT_LOGGER_SEVERITY = resolved_severity
+    return _TENSORRT_LOGGER
 
 
 def _resolve_onnxruntime_providers(*, onnxruntime_module: Any, requested_device_name: str) -> list[object]:
@@ -1124,6 +1727,142 @@ def _resolve_openvino_port_name(port: Any, *, fallback: str) -> str:
     return fallback
 
 
+def _resolve_tensorrt_io_tensor_name(*, engine: Any, tensorrt_module: Any, io_mode: Any, fallback: str) -> str:
+    """返回 TensorRT engine 中首个匹配 I/O 类型的张量名称。"""
+
+    for tensor_index in range(int(engine.num_io_tensors)):
+        tensor_name = str(engine.get_tensor_name(tensor_index))
+        if engine.get_tensor_mode(tensor_name) == io_mode:
+            return tensor_name
+    raise ServiceConfigurationError(
+        "TensorRT engine 缺少期望的 I/O 张量",
+        details={
+            "io_mode": "input" if io_mode == tensorrt_module.TensorIOMode.INPUT else "output",
+            "fallback": fallback,
+        },
+    )
+
+
+def _normalize_tensor_shape(shape: object) -> tuple[int, ...]:
+    """把后端返回的 shape 对象归一化为整数元组。"""
+
+    try:
+        return tuple(int(dim) for dim in shape)
+    except TypeError:
+        return ()
+
+
+def _resolve_tensorrt_dtype_name(*, tensorrt_module: Any, tensor_dtype: Any, fallback: str) -> str:
+    """把 TensorRT dtype 对象归一化为稳定字符串。"""
+
+    normalized_name_map = {
+        str(tensorrt_module.float32).strip().lower(): "float32",
+        str(tensorrt_module.float16).strip().lower(): "float16",
+        str(tensorrt_module.int32).strip().lower(): "int32",
+    }
+    normalized = str(tensor_dtype).strip().lower()
+    return normalized_name_map.get(normalized, fallback)
+
+
+def _resolve_numpy_dtype(*, np_module: Any, dtype_name: str) -> Any:
+    """把稳定字符串 dtype 映射为 NumPy dtype。"""
+
+    dtype_map = {
+        "float32": np_module.float32,
+        "float16": np_module.float16,
+        "int32": np_module.int32,
+    }
+    resolved_dtype = dtype_map.get(dtype_name)
+    if resolved_dtype is None:
+        raise ServiceConfigurationError(
+            "当前 TensorRT session 发现了不支持的张量 dtype",
+            details={"dtype_name": dtype_name},
+        )
+    return resolved_dtype
+
+
+def _resolve_cuda_device_index(device_name: str) -> int:
+    """把 cuda:<index> 设备名解析为整数索引。"""
+
+    if device_name == "cuda":
+        return 0
+    if device_name.startswith("cuda:"):
+        raw_index = device_name.split(":", 1)[1]
+        if raw_index.isdigit():
+            return int(raw_index)
+    raise InvalidRequestError(
+        "device_name 必须是 cuda 或 cuda:<index>",
+        details={"device_name": device_name},
+    )
+
+
+def _resolve_cuda_runtime_device_name(*, cudart_module: Any, requested_device_name: str) -> str:
+    """在不依赖 torch 的前提下校验并返回 CUDA device 名称。"""
+
+    device_name = requested_device_name.strip().lower() if requested_device_name.strip() else "cuda:0"
+    if device_name == "cuda":
+        device_name = "cuda:0"
+    if not device_name.startswith("cuda:"):
+        raise InvalidRequestError(
+            "device_name 必须是 cuda 或 cuda:<index>",
+            details={"device_name": requested_device_name},
+        )
+    device_index = _resolve_cuda_device_index(device_name)
+    cuda_status, available_device_count = cudart_module.cudaGetDeviceCount()
+    if int(cuda_status) != 0:
+        raise ServiceConfigurationError(
+            "当前运行环境无法读取 CUDA device 列表",
+            details={"device_name": device_name, "status_code": int(cuda_status), "status_name": cuda_status.name},
+        )
+    if int(available_device_count) <= 0:
+        raise InvalidRequestError(
+            "当前运行环境没有可用 GPU，不能使用 CUDA 预测",
+            details={"device_name": device_name},
+        )
+    if device_index >= int(available_device_count):
+        raise InvalidRequestError(
+            "指定的 CUDA device 超出了本机可用 GPU 范围",
+            details={"device_name": device_name, "available_gpu_count": int(available_device_count)},
+        )
+    return device_name
+
+
+def _ensure_cuda_success(
+    result: object,
+    *,
+    operation_name: str,
+    details: dict[str, object] | None = None,
+) -> tuple[object, ...]:
+    """校验 cuda-python API 返回值，并在失败时抛出明确错误。"""
+
+    if not isinstance(result, tuple) or not result:
+        raise ServiceConfigurationError(
+            f"{operation_name} 返回值格式不合法",
+            details={"result_repr": repr(result), **dict(details or {})},
+        )
+    status = result[0]
+    if int(status) != 0:
+        raise ServiceConfigurationError(
+            f"{operation_name} 失败",
+            details={
+                "status_code": int(status),
+                "status_name": getattr(status, "name", str(status)),
+                **dict(details or {}),
+            },
+        )
+    return tuple(result[1:])
+
+
+def _release_cuda_resource(result: object) -> None:
+    """释放 CUDA 资源时吞掉次级清理错误，避免覆盖主错误。"""
+
+    if not isinstance(result, tuple) or not result:
+        return
+    status = result[0]
+    if int(status) != 0:
+        return
+
+
 def _normalize_onnxruntime_outputs(*, outputs: Any, imports: Any) -> Any:
     """把 ONNXRuntime 输出转换为统一的预测数组。
 
@@ -1180,6 +1919,19 @@ def _normalize_openvino_outputs(
         prediction_value=raw_output,
         np_module=imports.np,
         backend_name="openvino",
+    )
+
+
+def _normalize_tensorrt_outputs(*, output_array: Any, imports: _YoloXCudaInferenceImports) -> Any:
+    """把 TensorRT 输出张量转换为统一的预测数组。"""
+
+    return _ensure_prediction_array(
+        prediction_value=_prediction_to_numpy_array(
+            prediction_tensor=output_array,
+            np_module=imports.np,
+        ),
+        np_module=imports.np,
+        backend_name="tensorrt",
     )
 
 
@@ -1564,6 +2316,51 @@ def _resolve_execution_device_name(*, torch_module: Any, requested_device_name: 
         "device_name 必须是 cpu、cuda 或 cuda:<index>",
         details={"device_name": requested_device_name},
     )
+
+
+def _enable_pytorch_cuda_inference_fast_path(*, torch_module: Any, device_name: str) -> None:
+    """为固定尺寸 CUDA 推理打开 PyTorch 常用快路径。"""
+
+    if not device_name.startswith("cuda"):
+        return
+    cudnn_backend = getattr(getattr(torch_module, "backends", None), "cudnn", None)
+    if cudnn_backend is not None and hasattr(cudnn_backend, "benchmark"):
+        cudnn_backend.benchmark = True
+
+
+def _measure_elapsed_ms(started_at: float) -> float:
+    """返回从 started_at 到当前时刻的毫秒耗时。"""
+
+    return round((perf_counter() - started_at) * 1000, 3)
+
+
+def _measure_cuda_event_elapsed_ms(
+    *,
+    cudart_module: Any,
+    start_event: Any,
+    end_event: Any,
+    device_name: str,
+) -> float | None:
+    """返回两个 CUDA event 之间的纯 GPU 执行时间。"""
+
+    try:
+        elapsed_ms = _ensure_cuda_success(
+            cudart_module.cudaEventElapsedTime(start_event, end_event),
+            operation_name="TensorRT runtime 读取执行 event 耗时",
+            details={"device_name": device_name},
+        )[0]
+    except Exception:
+        return None
+    return round(float(elapsed_ms), 3)
+
+
+def _is_debugger_attached() -> bool:
+    """返回当前 Python 进程是否挂着调试跟踪器。"""
+
+    try:
+        return sys.gettrace() is not None
+    except Exception:
+        return False
 
 
 def _resolve_probability(*, value: object, field_name: str, default: float) -> float:

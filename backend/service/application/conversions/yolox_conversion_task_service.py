@@ -47,9 +47,11 @@ from backend.workers.conversion.yolox_conversion_runner import (
 
 YOLOX_CONVERSION_TASK_KIND = "yolox-conversion"
 YOLOX_CONVERSION_QUEUE_NAME = "yolox-conversions"
-_EXECUTABLE_TARGET_FORMATS = frozenset({"onnx", "onnx-optimized", "openvino-ir"})
+_EXECUTABLE_TARGET_FORMATS = frozenset({"onnx", "onnx-optimized", "openvino-ir", "tensorrt-engine"})
 _OPENVINO_IR_PRECISION_OPTION_KEY = "openvino_ir_precision"
 _SUPPORTED_OPENVINO_IR_BUILD_PRECISIONS = frozenset({"fp32", "fp16"})
+_TENSORRT_ENGINE_PRECISION_OPTION_KEY = "tensorrt_engine_precision"
+_SUPPORTED_TENSORRT_ENGINE_BUILD_PRECISIONS = frozenset({"fp32", "fp16"})
 
 
 @dataclass(frozen=True)
@@ -720,6 +722,8 @@ class SqlAlchemyYoloXConversionTaskService:
             raise InvalidRequestError("target_formats 不能为空")
         if "openvino-ir" in request.target_formats:
             _resolve_openvino_ir_build_precision(request.extra_options)
+        if "tensorrt-engine" in request.target_formats:
+            _resolve_tensorrt_engine_build_precision(request.extra_options)
 
     def _validate_executable_targets(self, target_formats: tuple[str, ...]) -> None:
         """限制当前只执行已经真实接通的 conversion 目标。"""
@@ -729,7 +733,7 @@ class SqlAlchemyYoloXConversionTaskService:
         ]
         if unsupported_formats:
             raise InvalidRequestError(
-                "当前 conversion runner 仅支持 onnx、onnx-optimized 与 openvino-ir",
+                "当前 conversion runner 仅支持 onnx、onnx-optimized、openvino-ir 与 tensorrt-engine",
                 details={"unsupported_target_formats": unsupported_formats},
             )
 
@@ -868,4 +872,27 @@ def _resolve_openvino_ir_build_precision(extra_options: dict[str, object]) -> st
     raise InvalidRequestError(
         "openvino_ir_precision 必须是 fp32 或 fp16",
         details={_OPENVINO_IR_PRECISION_OPTION_KEY: raw_precision},
+    )
+
+
+def _resolve_tensorrt_engine_build_precision(extra_options: dict[str, object]) -> str:
+    """从 extra_options 中解析 TensorRT engine 构建精度策略。
+
+    参数：
+    - extra_options：转换任务附加选项。
+
+    返回：
+    - str：TensorRT engine 构建精度；当前支持 fp32 或 fp16。
+    """
+
+    raw_precision = extra_options.get(_TENSORRT_ENGINE_PRECISION_OPTION_KEY)
+    if raw_precision is None:
+        return "fp32"
+    if isinstance(raw_precision, str):
+        normalized_precision = raw_precision.strip().lower()
+        if normalized_precision in _SUPPORTED_TENSORRT_ENGINE_BUILD_PRECISIONS:
+            return normalized_precision
+    raise InvalidRequestError(
+        "tensorrt_engine_precision 必须是 fp32 或 fp16",
+        details={_TENSORRT_ENGINE_PRECISION_OPTION_KEY: raw_precision},
     )

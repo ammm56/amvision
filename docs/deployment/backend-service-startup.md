@@ -148,13 +148,22 @@ conda activate amvision
 
 ### 2. 启动 backend-service
 
+开发调试使用：
+
 ```powershell
 python -m uvicorn backend.service.api.app:app --host 127.0.0.1 --port 8000 --reload
+```
+
+性能测量或稳定性压测使用：
+
+```powershell
+python -m uvicorn backend.service.api.app:app --host 127.0.0.1 --port 8000
 ```
 
 说明：
 
 - --reload 只用于开发阶段
+- 需要观察 TensorRT、PyTorch、OpenVINO 等 runtime 的真实延迟时，不应使用 --reload
 - 如果 8000 端口被占用，可改为其他端口，例如 8010
 - 服务日志当前默认输出到控制台
 

@@ -234,8 +234,9 @@
   - onnx
   - onnx-optimized
   - openvino-ir
+  - tensorrt-engine
 - 当前 `openvino-ir` 构建链会先产出 optimized ONNX，再通过隔离子进程执行 OpenVINO `convert_model/save_model` 写出 xml/bin 产物
-- 当前 planner 已经预留 tensorrt-engine、rknn 的 build 图谱，但 service 仍会拒绝这些目标
+- 当前 `tensorrt-engine` 构建链会先产出 `onnx` 与 `onnx-optimized`，再通过 TensorRT Python API 构建 engine，并在 `ModelBuild.metadata` 中回写 `build_precision` 与 `tensorrt_version`
 - 当前响应会返回：
   - task_id
   - status
@@ -263,6 +264,20 @@
 - 当前请求体字段与 `onnx` 创建接口一致
 - 当前接口固定创建 `openvino-ir` 目标的 conversion task，并把 OpenVINO IR 构建策略固化为 `fp16`
 - 当前接口会先产出 `onnx` 与 `onnx-optimized`，再生成压缩为 fp16 权重的 xml/bin 形式 OpenVINO IR
+
+### POST /api/v1/models/yolox/conversion-tasks/tensorrt-engine-fp32
+
+- 需要同时具备 models:read 和 tasks:write
+- 当前请求体字段与 `onnx` 创建接口一致
+- 当前接口固定创建 `tensorrt-engine` 目标的 conversion task，并把 TensorRT engine 构建策略固化为 `fp32`
+- 当前接口会先产出 `onnx` 与 `onnx-optimized`，再通过 TensorRT Python API 生成 fp32 engine
+
+### POST /api/v1/models/yolox/conversion-tasks/tensorrt-engine-fp16
+
+- 需要同时具备 models:read 和 tasks:write
+- 当前请求体字段与 `onnx` 创建接口一致
+- 当前接口固定创建 `tensorrt-engine` 目标的 conversion task，并把 TensorRT engine 构建策略固化为 `fp16`
+- 当前接口会先产出 `onnx` 与 `onnx-optimized`，再在 TensorRT builder 上打开 fp16 flag 生成 engine
 
 ### GET /api/v1/models/yolox/conversion-tasks
 
@@ -396,9 +411,10 @@
   - display_name
   - metadata
 - 当前最小实现允许直接绑定训练产出的 `ModelVersion`，也允许绑定 `ModelBuild`；如果同时提供 `model_build_id` 和 `model_version_id`，两者必须指向同一来源版本
-- 当前 `ModelVersion` 默认走 `pytorch`；当前 `ModelBuild` 已支持 `onnx` / `onnx-optimized` 绑定并自动解析为 `onnxruntime`
+- 当前 `ModelVersion` 默认走 `pytorch`；当前 `ModelBuild` 已支持 `onnx` / `onnx-optimized` / `openvino-ir` / `tensorrt-engine` 绑定，并自动解析为 `onnxruntime`、`openvino` 或 `tensorrt`
 - 当前 create 会在提交阶段校验 checkpoint 和 labels 的本地可读性
-- 当前运行方式矩阵已经显式公开：`pytorch fp32/fp16 cpu/cuda`、`onnxruntime fp32 cpu`、`openvino fp32 auto/cpu/gpu/npu + fp16 gpu/npu`；其中 pytorch、onnxruntime、openvino 已接通真实 runtime，`tensorrt cuda` 仍停留在 create 校验语义
+- 当前运行方式矩阵已经显式公开：`pytorch fp32/fp16 cpu/cuda`、`onnxruntime fp32 cpu`、`openvino fp32 auto/cpu/gpu/npu + fp16 gpu/npu`、`tensorrt fp32/fp16 cuda`
+- 当前 `tensorrt` deployment 只接受 `device_name=cuda|cuda:0`，create 响应会统一归一化为 `cuda:0`；`runtime_precision` 必须与 engine `build_precision` 一致
 - 当前 `instance_count` 默认为 1；每个 instance 对应一个独立推理线程和模型会话
 - 当前响应会返回：
   - deployment_instance_id
@@ -593,6 +609,7 @@
 - 输入 one-of 规则：`input_uri`、`image_base64`、`input_image` 三者必须且只能提供一个
 - 当前 `input_file_id` 仍是保留字段，会返回 `invalid_request`
 - 当前异步推理只使用 deployment 的 async 推理子进程；如果同步 `/infer` 已经加载过模型，异步侧仍会在自己的独立子进程中维护实例会话
+- 当前当 deployment 绑定 `tensorrt-engine` ModelBuild 时，worker 会通过 async deployment 子进程真实加载 TensorRT engine，并在结果 `runtime_session_info` 中回写 `runtime_execution_mode` 与 `compiled_runtime_precision`
 - inference task 创建接口不会自动启动 async 推理子进程；如果当前 async 进程尚未通过 `async/start` 或 `async/warmup` 启动，接口会直接返回 `invalid_request`
 - 当前响应会返回：
   - task_id

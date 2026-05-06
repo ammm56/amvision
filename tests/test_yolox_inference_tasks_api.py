@@ -3,41 +3,23 @@
 from __future__ import annotations
 
 import base64
-from dataclasses import dataclass, field
 from pathlib import Path
 
 from fastapi.testclient import TestClient
 
 import backend.service.application.models.yolox_inference_task_service as yolox_inference_task_service_module
-from backend.queue import LocalFileQueueBackend, LocalFileQueueSettings
-from backend.service.api.app import create_app
-from backend.service.application.errors import InvalidRequestError
-from backend.service.application.models.yolox_model_service import (
-    SqlAlchemyYoloXModelService,
-    YoloXTrainingOutputRegistration,
-)
-from backend.service.application.runtime.yolox_deployment_process_supervisor import (
-    YoloXDeploymentProcessConfig,
-    YoloXDeploymentProcessExecution,
-    YoloXDeploymentProcessHealth,
-    YoloXDeploymentProcessInstanceHealth,
-    YoloXDeploymentProcessStatus,
-    YoloXDeploymentProcessSupervisor,
-)
-from backend.service.application.runtime.yolox_predictor import (
-    YoloXPredictionDetection,
-    YoloXPredictionExecutionResult,
-)
 from backend.service.application.tasks.task_service import SqlAlchemyTaskService
-from backend.service.infrastructure.db.session import DatabaseSettings, SessionFactory
-from backend.service.infrastructure.object_store.local_dataset_storage import DatasetStorageSettings, LocalDatasetStorage
-from backend.service.infrastructure.persistence.base import Base
-from backend.service.settings import BackendServiceSettings, BackendServiceTaskManagerConfig
+from backend.service.infrastructure.db.session import SessionFactory
+from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 from backend.workers.inference.yolox_inference_queue_worker import YoloXInferenceQueueWorker
-from backend.workers.shared.yolox_runtime_contracts import RuntimeTensorSpec, YoloXRuntimeSessionInfo
+from tests.api_test_support import build_test_headers, build_valid_test_png_bytes
+from tests.yolox_test_support import (
+    create_yolox_api_test_context,
+    seed_yolox_model_version,
+)
 
 
-_VALID_TEST_IMAGE_BASE64 = "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAE0lEQVQIHWNk+M8ABIwM/xmAAAAREgIB9FemLQAAAABJRU5ErkJggg=="
+_VALID_TEST_IMAGE_BASE64 = base64.b64encode(build_valid_test_png_bytes()).decode("ascii")
 
 
 def test_create_yolox_inference_task_and_read_result_after_worker(
@@ -626,219 +608,18 @@ def _create_test_client(
 ) -> tuple[TestClient, SessionFactory, LocalDatasetStorage, LocalFileQueueBackend]:
     """创建绑定测试数据库、本地文件存储和队列的 API 客户端。"""
 
-    database_path = tmp_path / "amvision-inference-api.db"
-    session_factory = SessionFactory(DatabaseSettings(url=f"sqlite:///{database_path.as_posix()}"))
-    Base.metadata.create_all(session_factory.engine)
-    dataset_storage = LocalDatasetStorage(
-        DatasetStorageSettings(root_dir=str(tmp_path / "dataset-files"))
+    context = create_yolox_api_test_context(
+        tmp_path,
+        database_name="amvision-inference-api.db",
+        attach_fake_deployment_supervisors=True,
     )
-    queue_backend = LocalFileQueueBackend(
-        LocalFileQueueSettings(root_dir=str(tmp_path / "queue-files"))
-    )
-    settings = BackendServiceSettings(
-        task_manager=BackendServiceTaskManagerConfig(
-            enabled=False,
-            max_concurrent_tasks=2,
-            poll_interval_seconds=0.05,
-        )
-    )
-    application = create_app(
-        settings=settings,
-        session_factory=session_factory,
-        dataset_storage=dataset_storage,
-        queue_backend=queue_backend,
-    )
-    application.state.yolox_sync_deployment_process_supervisor = FakeDeploymentProcessSupervisor(runtime_mode="sync")
-    application.state.yolox_async_deployment_process_supervisor = FakeDeploymentProcessSupervisor(runtime_mode="async")
-    client = TestClient(application)
-    return client, session_factory, dataset_storage, queue_backend
+    return context.client, context.session_factory, context.dataset_storage, context.queue_backend
 
 
 def _build_valid_test_image_bytes() -> bytes:
     """返回可被 OpenCV 正常读取的最小 PNG 图片字节。"""
 
-    return base64.b64decode(_VALID_TEST_IMAGE_BASE64)
-
-
-@dataclass
-class _FakeDeploymentProcessState:
-    """描述 fake deployment 进程监督状态。"""
-
-    config: YoloXDeploymentProcessConfig
-    desired_running: bool = False
-    process_state: str = "stopped"
-    process_id: int | None = None
-    restart_count: int = 0
-    last_exit_code: int | None = None
-    last_error: str | None = None
-    warmed_instance_indexes: set[int] = field(default_factory=set)
-    next_instance_index: int = 0
-
-
-class FakeDeploymentProcessSupervisor(YoloXDeploymentProcessSupervisor):
-    """用于 API 测试的最小 fake deployment 进程监督器。"""
-
-    def __init__(self, *, runtime_mode: str) -> None:
-        self.runtime_mode = runtime_mode
-        self._states: dict[str, _FakeDeploymentProcessState] = {}
-        self._next_process_id = 2000
-        self.load_calls: list[str] = []
-        self.inference_requests: list[object] = []
-
-    def ensure_deployment(self, config: YoloXDeploymentProcessConfig) -> YoloXDeploymentProcessStatus:
-        state = self._ensure_state(config)
-        return self._build_status(state)
-
-    def start_deployment(self, config: YoloXDeploymentProcessConfig) -> YoloXDeploymentProcessStatus:
-        state = self._ensure_state(config)
-        state.desired_running = True
-        state.process_state = "running"
-        if state.process_id is None:
-            state.process_id = self._allocate_process_id()
-        return self._build_status(state)
-
-    def stop_deployment(self, config: YoloXDeploymentProcessConfig) -> YoloXDeploymentProcessStatus:
-        state = self._ensure_state(config)
-        state.desired_running = False
-        state.process_state = "stopped"
-        state.process_id = None
-        return self._build_status(state)
-
-    def warmup_deployment(self, config: YoloXDeploymentProcessConfig) -> YoloXDeploymentProcessHealth:
-        state = self._ensure_state(config)
-        self.start_deployment(config)
-        for instance_index in range(config.instance_count):
-            self._warm_instance(state, instance_index)
-        return self._build_health(state)
-
-    def get_status(self, config: YoloXDeploymentProcessConfig) -> YoloXDeploymentProcessStatus:
-        return self._build_status(self._ensure_state(config))
-
-    def get_health(self, config: YoloXDeploymentProcessConfig) -> YoloXDeploymentProcessHealth:
-        return self._build_health(self._ensure_state(config))
-
-    def reset_deployment(self, config: YoloXDeploymentProcessConfig) -> YoloXDeploymentProcessHealth:
-        state = self._ensure_state(config)
-        if state.process_state != "running":
-            raise InvalidRequestError("当前 deployment 进程尚未启动")
-        state.warmed_instance_indexes.clear()
-        return self._build_health(state)
-
-    def run_inference(self, *, config: YoloXDeploymentProcessConfig, request) -> YoloXDeploymentProcessExecution:
-        state = self._ensure_state(config)
-        if state.process_state != "running":
-            raise InvalidRequestError("当前 deployment 进程尚未启动")
-        instance_index = state.next_instance_index % config.instance_count
-        state.next_instance_index += 1
-        self._warm_instance(state, instance_index)
-        self.inference_requests.append(request)
-        instance_id = f"{config.deployment_instance_id}:instance-{instance_index}"
-        return YoloXDeploymentProcessExecution(
-            deployment_instance_id=config.deployment_instance_id,
-            instance_id=instance_id,
-            execution_result=YoloXPredictionExecutionResult(
-                detections=(
-                    YoloXPredictionDetection(
-                        bbox_xyxy=(6.0, 6.0, 24.0, 24.0),
-                        score=0.88,
-                        class_id=0,
-                        class_name="bolt",
-                    ),
-                ),
-                latency_ms=9.7,
-                image_width=64,
-                image_height=64,
-                preview_image_bytes=b"preview-jpg" if request.save_result_image else None,
-                runtime_session_info=YoloXRuntimeSessionInfo(
-                    backend_name=config.runtime_target.runtime_backend,
-                    model_uri=config.runtime_target.runtime_artifact_storage_uri,
-                    device_name=config.runtime_target.device_name,
-                    input_spec=RuntimeTensorSpec(name="images", shape=(1, 3, 64, 64), dtype="float32"),
-                    output_spec=RuntimeTensorSpec(name="detections", shape=(-1, 7), dtype="float32"),
-                    metadata={
-                        "model_version_id": config.runtime_target.model_version_id,
-                        "input_uri": request.input_uri,
-                        "has_input_image_bytes": request.input_image_bytes is not None,
-                        "decode_ms": 0.8,
-                        "preprocess_ms": 1.2,
-                        "infer_ms": 6.1,
-                        "postprocess_ms": 1.6,
-                        "runtime_mode": self.runtime_mode,
-                    },
-                ),
-            ),
-        )
-
-    def _ensure_state(self, config: YoloXDeploymentProcessConfig) -> _FakeDeploymentProcessState:
-        state = self._states.get(config.deployment_instance_id)
-        if state is None:
-            state = _FakeDeploymentProcessState(config=config)
-            self._states[config.deployment_instance_id] = state
-        elif state.config != config:
-            state.config = config
-        return state
-
-    def _build_status(self, state: _FakeDeploymentProcessState) -> YoloXDeploymentProcessStatus:
-        return YoloXDeploymentProcessStatus(
-            deployment_instance_id=state.config.deployment_instance_id,
-            runtime_mode=self.runtime_mode,
-            instance_count=state.config.instance_count,
-            desired_state="running" if state.desired_running else "stopped",
-            process_state=state.process_state,
-            process_id=state.process_id,
-            auto_restart=True,
-            restart_count=state.restart_count,
-            last_exit_code=state.last_exit_code,
-            last_error=state.last_error,
-        )
-
-    def _build_health(self, state: _FakeDeploymentProcessState) -> YoloXDeploymentProcessHealth:
-        instances = []
-        healthy_instance_count = 0
-        warmed_instance_count = 0
-        for instance_index in range(state.config.instance_count):
-            warmed = instance_index in state.warmed_instance_indexes
-            healthy = state.process_state == "running"
-            if healthy:
-                healthy_instance_count += 1
-            if warmed:
-                warmed_instance_count += 1
-            instances.append(
-                YoloXDeploymentProcessInstanceHealth(
-                    instance_id=f"{state.config.deployment_instance_id}:instance-{instance_index}",
-                    healthy=healthy,
-                    warmed=warmed,
-                    busy=False,
-                    last_error=None,
-                )
-            )
-        status = self._build_status(state)
-        return YoloXDeploymentProcessHealth(
-            deployment_instance_id=status.deployment_instance_id,
-            runtime_mode=status.runtime_mode,
-            instance_count=status.instance_count,
-            desired_state=status.desired_state,
-            process_state=status.process_state,
-            process_id=status.process_id,
-            auto_restart=status.auto_restart,
-            restart_count=status.restart_count,
-            last_exit_code=status.last_exit_code,
-            last_error=status.last_error,
-            healthy_instance_count=healthy_instance_count,
-            warmed_instance_count=warmed_instance_count,
-            instances=tuple(instances),
-        )
-
-    def _warm_instance(self, state: _FakeDeploymentProcessState, instance_index: int) -> None:
-        if instance_index in state.warmed_instance_indexes:
-            return
-        state.warmed_instance_indexes.add(instance_index)
-        self.load_calls.append(state.config.runtime_target.runtime_artifact_storage_uri)
-
-    def _allocate_process_id(self) -> int:
-        process_id = self._next_process_id
-        self._next_process_id += 1
-        return process_id
+    return build_valid_test_png_bytes()
 
 
 def _seed_model_version(
@@ -848,67 +629,37 @@ def _seed_model_version(
 ) -> str:
     """写入一个带 checkpoint 和 labels 的最小训练输出 ModelVersion。"""
 
-    checkpoint_uri = "projects/project-1/models/deployment-source-1/artifacts/checkpoints/best_ckpt.pth"
-    labels_uri = "projects/project-1/models/deployment-source-1/artifacts/labels.txt"
-    dataset_storage.write_bytes(checkpoint_uri, b"fake-checkpoint")
-    dataset_storage.write_text(labels_uri, "bolt\n")
-
-    service = SqlAlchemyYoloXModelService(session_factory=session_factory)
-    return service.register_training_output(
-        YoloXTrainingOutputRegistration(
-            project_id="project-1",
-            training_task_id="training-inference-source-1",
-            model_name="yolox-nano-inference",
-            model_scale="nano",
-            dataset_version_id="dataset-version-inference-source-1",
-            checkpoint_file_id="checkpoint-file-inference-1",
-            checkpoint_file_uri=checkpoint_uri,
-            labels_file_id="labels-file-inference-1",
-            labels_file_uri=labels_uri,
-            metadata={
-                "category_names": ["bolt"],
-                "input_size": [64, 64],
-                "training_config": {"input_size": [64, 64]},
-            },
-        )
+    return seed_yolox_model_version(
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+        source_prefix="deployment-source-1",
+        training_task_id="training-inference-source-1",
+        model_name="yolox-nano-inference",
+        dataset_version_id="dataset-version-inference-source-1",
+        checkpoint_file_id="checkpoint-file-inference-1",
+        labels_file_id="labels-file-inference-1",
     )
 
 
 def _build_model_headers() -> dict[str, str]:
     """构建 deployment API 所需请求头。"""
 
-    return {
-        "x-amvision-principal-id": "user-1",
-        "x-amvision-project-ids": "project-1",
-        "x-amvision-scopes": "models:read,models:write",
-    }
+    return build_test_headers(scopes="models:read,models:write")
 
 
 def _build_task_headers() -> dict[str, str]:
     """构建 task 读取接口请求头。"""
 
-    return {
-        "x-amvision-principal-id": "user-1",
-        "x-amvision-project-ids": "project-1",
-        "x-amvision-scopes": "tasks:read",
-    }
+    return build_test_headers(scopes="tasks:read")
 
 
 def _build_inference_headers() -> dict[str, str]:
     """构建 inference create 接口请求头。"""
 
-    return {
-        "x-amvision-principal-id": "user-1",
-        "x-amvision-project-ids": "project-1",
-        "x-amvision-scopes": "models:read,tasks:write",
-    }
+    return build_test_headers(scopes="models:read,tasks:write")
 
 
 def _build_model_read_headers() -> dict[str, str]:
     """构建具备 models:read 的测试请求头。"""
 
-    return {
-        "x-amvision-principal-id": "user-1",
-        "x-amvision-project-ids": "project-1",
-        "x-amvision-scopes": "models:read",
-    }
+    return build_test_headers(scopes="models:read")

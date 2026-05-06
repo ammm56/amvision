@@ -10,7 +10,10 @@ from backend.service.application.conversions.yolox_conversion_task_service impor
 from backend.service.application.errors import InvalidRequestError, ServiceError
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
-from backend.workers.conversion.yolox_conversion_runner import LocalYoloXConversionRunner
+from backend.workers.conversion.yolox_conversion_runner import (
+    LocalYoloXConversionRunner,
+    YoloXConversionRunner,
+)
 
 
 class YoloXConversionQueueWorker:
@@ -22,6 +25,7 @@ class YoloXConversionQueueWorker:
         session_factory: SessionFactory,
         dataset_storage: LocalDatasetStorage,
         queue_backend: QueueBackend,
+        conversion_runner: YoloXConversionRunner | None = None,
         worker_id: str = "yolox-conversion-worker",
     ) -> None:
         """初始化 YOLOX 转换队列 worker。
@@ -30,12 +34,14 @@ class YoloXConversionQueueWorker:
         - session_factory：数据库会话工厂。
         - dataset_storage：本地文件存储服务。
         - queue_backend：队列后端。
+        - conversion_runner：可选转换执行器；测试场景可注入轻量 stub。
         - worker_id：worker 标识。
         """
 
         self.session_factory = session_factory
         self.dataset_storage = dataset_storage
         self.queue_backend = queue_backend
+        self.conversion_runner = conversion_runner
         self.worker_id = worker_id
 
     def run_once(self) -> bool:
@@ -53,7 +59,8 @@ class YoloXConversionQueueWorker:
             service = SqlAlchemyYoloXConversionTaskService(
                 session_factory=self.session_factory,
                 dataset_storage=self.dataset_storage,
-                conversion_runner=LocalYoloXConversionRunner(dataset_storage=self.dataset_storage),
+                conversion_runner=self.conversion_runner
+                or LocalYoloXConversionRunner(dataset_storage=self.dataset_storage),
             )
             run_result = service.process_conversion_task(task_id)
         except ServiceError as error:
