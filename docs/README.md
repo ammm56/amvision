@@ -11,6 +11,7 @@
 - 根目录 [AGENTS.md](../AGENTS.md) 说明项目长期约束、技术基线、agent 路由和文档入口
 - [docs/documentation-remediation-roadmap.md](documentation-remediation-roadmap.md) 说明文档整改顺序和维护规则
 - [docs/architecture/README.md](architecture/README.md) 汇总架构和模块边界文档
+- [docs/architecture/current-implementation-status.md](architecture/current-implementation-status.md) 汇总当前主干已经落地的整体框架、代码落点和下一步收敛重点
 - [docs/api/README.md](api/README.md) 汇总 REST API、WebSocket、ZeroMQ 和公开接口文档
 - [docs/deployment/README.md](deployment/README.md) 汇总开发环境、运行时、打包、安装和部署文档
 - [docs/plugins/README.md](plugins/README.md) 汇总插件、流程节点和扩展机制文档
@@ -40,16 +41,17 @@
 2. [docs/architecture/README.md](architecture/README.md)
 3. [docs/documentation-remediation-roadmap.md](documentation-remediation-roadmap.md)
 4. [docs/architecture/system-overview.md](architecture/system-overview.md)
-5. [docs/architecture/project-structure.md](architecture/project-structure.md)
-6. [docs/architecture/backend-service.md](architecture/backend-service.md)
-7. [docs/architecture/task-system.md](architecture/task-system.md)
-8. [docs/architecture/yolox-module-design.md](architecture/yolox-module-design.md)
-9. [docs/architecture/frontend-web-ui.md](architecture/frontend-web-ui.md)
-10. [docs/architecture/data-and-files.md](architecture/data-and-files.md)
-11. [docs/architecture/dataset-import-spec.md](architecture/dataset-import-spec.md)
-12. [docs/architecture/dataset-export-formats.md](architecture/dataset-export-formats.md)
-13. [docs/architecture/plugin-system.md](architecture/plugin-system.md)
-14. 根据任务继续进入 API、部署、插件或决策文档
+5. [docs/architecture/current-implementation-status.md](architecture/current-implementation-status.md)
+6. [docs/architecture/project-structure.md](architecture/project-structure.md)
+7. [docs/architecture/backend-service.md](architecture/backend-service.md)
+8. [docs/architecture/task-system.md](architecture/task-system.md)
+9. [docs/architecture/yolox-module-design.md](architecture/yolox-module-design.md)
+10. [docs/architecture/frontend-web-ui.md](architecture/frontend-web-ui.md)
+11. [docs/architecture/data-and-files.md](architecture/data-and-files.md)
+12. [docs/architecture/dataset-import-spec.md](architecture/dataset-import-spec.md)
+13. [docs/architecture/dataset-export-formats.md](architecture/dataset-export-formats.md)
+14. [docs/architecture/plugin-system.md](architecture/plugin-system.md)
+15. 根据任务继续进入 API、部署、插件或决策文档
 
 ## 文档维护建议
 

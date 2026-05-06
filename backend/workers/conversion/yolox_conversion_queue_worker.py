@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from backend.queue import QueueBackend, QueueMessage
+from backend.service.application.backends import ConversionBackend
 from backend.service.application.conversions.yolox_conversion_task_service import (
     YOLOX_CONVERSION_QUEUE_NAME,
     SqlAlchemyYoloXConversionTaskService,
@@ -12,7 +13,6 @@ from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 from backend.workers.conversion.yolox_conversion_runner import (
     LocalYoloXConversionRunner,
-    YoloXConversionRunner,
 )
 
 
@@ -25,7 +25,7 @@ class YoloXConversionQueueWorker:
         session_factory: SessionFactory,
         dataset_storage: LocalDatasetStorage,
         queue_backend: QueueBackend,
-        conversion_runner: YoloXConversionRunner | None = None,
+        conversion_runner: ConversionBackend | None = None,
         worker_id: str = "yolox-conversion-worker",
     ) -> None:
         """初始化 YOLOX 转换队列 worker。

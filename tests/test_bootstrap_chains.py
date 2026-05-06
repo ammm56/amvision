@@ -13,13 +13,17 @@ from backend.maintenance.settings import (
     get_backend_maintenance_settings,
 )
 from backend.workers.bootstrap import BackendWorkerBootstrap
+from backend.workers.main import build_background_task_manager
 from backend.workers.settings import (
     BackendWorkerAppSettings,
     BackendWorkerDatasetStorageConfig,
     BackendWorkerDatabaseConfig,
     BackendWorkerQueueConfig,
+    BackendWorkerTaskManagerConfig,
     BackendWorkerSettings,
     BackendWorkerWorkspaceConfig,
+    BACKEND_WORKER_CONSUMER_YOLOX_EVALUATION,
+    BACKEND_WORKER_CONSUMER_YOLOX_INFERENCE,
     get_backend_worker_settings,
 )
 
@@ -43,9 +47,16 @@ def test_get_backend_worker_settings_reads_json_files_and_environment_overrides(
                     "root_dir": "./data/from-worker-config",
                 },
                 "queue": {
-                    "root_dir": "./data/from-worker-queue-config",
+                    "root_dir": "./data/from-worker-queue-config"
+                },
+                "task_manager": {
+                    "enabled_consumer_kinds": [
+                        "dataset-import",
+                        "yolox-evaluation",
+                        "yolox-inference"
+                    ],
                     "max_concurrent_tasks": 3,
-                    "poll_interval_seconds": 2.5,
+                    "poll_interval_seconds": 2.5
                 },
             }
         ),
@@ -67,7 +78,7 @@ def test_get_backend_worker_settings_reads_json_files_and_environment_overrides(
     monkeypatch.setenv("AMVISION_WORKER_APP__APP_NAME", "amvision env-worker")
     monkeypatch.setenv("AMVISION_WORKER_WORKSPACE__ROOT_DIR", "./data/from-worker-env")
     monkeypatch.setenv("AMVISION_WORKER_QUEUE__ROOT_DIR", "./data/from-worker-queue-env")
-    monkeypatch.setenv("AMVISION_WORKER_QUEUE__MAX_CONCURRENT_TASKS", "4")
+    monkeypatch.setenv("AMVISION_WORKER_TASK_MANAGER__MAX_CONCURRENT_TASKS", "4")
 
     settings = get_backend_worker_settings()
 
@@ -75,8 +86,13 @@ def test_get_backend_worker_settings_reads_json_files_and_environment_overrides(
     assert settings.app.app_version == "0.2.1-local"
     assert settings.workspace.root_dir == "./data/from-worker-env"
     assert settings.queue.root_dir == "./data/from-worker-queue-env"
-    assert settings.queue.max_concurrent_tasks == 4
-    assert settings.queue.poll_interval_seconds == 2.5
+    assert settings.task_manager.enabled_consumer_kinds == (
+        "dataset-import",
+        "yolox-evaluation",
+        "yolox-inference",
+    )
+    assert settings.task_manager.max_concurrent_tasks == 4
+    assert settings.task_manager.poll_interval_seconds == 2.5
 
     get_backend_worker_settings.cache_clear()
 
@@ -105,11 +121,49 @@ def test_worker_bootstrap_initializes_workspace_directory(tmp_path: Path) -> Non
         assert runtime.workspace_dir.is_dir()
         assert runtime.dataset_storage.root_dir == (tmp_path / "dataset-files").resolve()
         assert runtime.queue_backend.root_dir == (tmp_path / "queue-root").resolve()
+        assert runtime.yolox_async_deployment_process_supervisor.runtime_mode == "async"
         assert bootstrap.get_step_names() == (
             "prepare-worker-workspace",
             "load-worker-plugin-catalog",
         )
     finally:
+        runtime.yolox_async_deployment_process_supervisor.stop()
+        runtime.session_factory.engine.dispose()
+
+
+def test_build_background_task_manager_respects_enabled_consumer_kinds(
+    tmp_path: Path,
+) -> None:
+    """验证独立 worker 会按配置装配 evaluation 和 inference 消费者。"""
+
+    settings = BackendWorkerSettings(
+        workspace=BackendWorkerWorkspaceConfig(root_dir=str(tmp_path / "worker-root")),
+        database=BackendWorkerDatabaseConfig(
+            url=f"sqlite:///{(tmp_path / 'worker.db').as_posix()}"
+        ),
+        dataset_storage=BackendWorkerDatasetStorageConfig(
+            root_dir=str(tmp_path / "dataset-files")
+        ),
+        queue=BackendWorkerQueueConfig(root_dir=str(tmp_path / "queue-root")),
+        task_manager=BackendWorkerTaskManagerConfig(
+            enabled_consumer_kinds=(
+                BACKEND_WORKER_CONSUMER_YOLOX_EVALUATION,
+                BACKEND_WORKER_CONSUMER_YOLOX_INFERENCE,
+            )
+        ),
+    )
+    bootstrap = BackendWorkerBootstrap(settings=settings)
+    runtime = bootstrap.build_runtime(bootstrap.load_settings())
+
+    try:
+        manager = build_background_task_manager(runtime)
+
+        assert [type(consumer).__name__ for consumer in manager.consumers] == [
+            "YoloXEvaluationQueueWorker",
+            "YoloXInferenceQueueWorker",
+        ]
+    finally:
+        runtime.yolox_async_deployment_process_supervisor.stop()
         runtime.session_factory.engine.dispose()
 
 

@@ -1,0 +1,10 @@
+{
+  "profile_id": "dataset-import",
+  "display_name": "amvision dataset import worker",
+  "description": "独立消费 DatasetImport 队列，负责 zip 解压、格式规范化和版本落盘。",
+  "enabled_consumer_kinds": [
+    "dataset-import"
+  ],
+  "max_concurrent_tasks": 1,
+  "poll_interval_seconds": 1.0
+}

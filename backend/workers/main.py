@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 from backend.workers.bootstrap import BackendWorkerBootstrap, BackendWorkerRuntime
-from backend.workers.conversion.yolox_conversion_queue_worker import YoloXConversionQueueWorker
-from backend.workers.datasets.dataset_export_queue_worker import DatasetExportQueueWorker
-from backend.workers.datasets.dataset_import_queue_worker import DatasetImportQueueWorker
+from backend.workers.consumer_registry import (
+    BackgroundTaskConsumerResources,
+    build_background_task_consumers,
+)
+from backend.workers.settings import BACKEND_WORKER_CONSUMER_YOLOX_INFERENCE
 from backend.workers.task_manager import BackgroundTaskManager, BackgroundTaskManagerConfig
-from backend.workers.training.yolox_training_queue_worker import YoloXTrainingQueueWorker
 
 
 def build_background_task_manager(runtime: BackendWorkerRuntime) -> BackgroundTaskManager:
@@ -20,40 +21,20 @@ def build_background_task_manager(runtime: BackendWorkerRuntime) -> BackgroundTa
     - 已绑定当前 worker 消费者的后台任务管理器。
     """
 
-    dataset_import_worker = DatasetImportQueueWorker(
-        session_factory=runtime.session_factory,
-        dataset_storage=runtime.dataset_storage,
-        queue_backend=runtime.queue_backend,
-        worker_id=f"{runtime.settings.app.app_name}-dataset-import",
-    )
-    dataset_export_worker = DatasetExportQueueWorker(
-        session_factory=runtime.session_factory,
-        dataset_storage=runtime.dataset_storage,
-        queue_backend=runtime.queue_backend,
-        worker_id=f"{runtime.settings.app.app_name}-dataset-export",
-    )
-    yolox_training_worker = YoloXTrainingQueueWorker(
-        session_factory=runtime.session_factory,
-        dataset_storage=runtime.dataset_storage,
-        queue_backend=runtime.queue_backend,
-        worker_id=f"{runtime.settings.app.app_name}-yolox-training",
-    )
-    yolox_conversion_worker = YoloXConversionQueueWorker(
-        session_factory=runtime.session_factory,
-        dataset_storage=runtime.dataset_storage,
-        queue_backend=runtime.queue_backend,
-        worker_id=f"{runtime.settings.app.app_name}-yolox-conversion",
-    )
     return BackgroundTaskManager(
-        consumers=(
-            dataset_import_worker,
-            dataset_export_worker,
-            yolox_training_worker,
-            yolox_conversion_worker,
+        consumers=build_background_task_consumers(
+            resources=BackgroundTaskConsumerResources(
+                session_factory=runtime.session_factory,
+                dataset_storage=runtime.dataset_storage,
+                queue_backend=runtime.queue_backend,
+                worker_id_prefix=runtime.settings.app.app_name,
+                yolox_async_deployment_process_supervisor=runtime.yolox_async_deployment_process_supervisor,
+            ),
+            enabled_consumer_kinds=runtime.settings.task_manager.enabled_consumer_kinds,
         ),
         config=BackgroundTaskManagerConfig(
-            max_concurrent_tasks=runtime.settings.queue.max_concurrent_tasks,
-            poll_interval_seconds=runtime.settings.queue.poll_interval_seconds,
+            max_concurrent_tasks=runtime.settings.task_manager.max_concurrent_tasks,
+            poll_interval_seconds=runtime.settings.task_manager.poll_interval_seconds,
         ),
     )
 
@@ -65,8 +46,11 @@ def run_worker_forever() -> None:
     runtime = bootstrap.build_runtime(bootstrap.load_settings())
     bootstrap.initialize(runtime)
     try:
+        if BACKEND_WORKER_CONSUMER_YOLOX_INFERENCE in runtime.settings.task_manager.enabled_consumer_kinds:
+            runtime.yolox_async_deployment_process_supervisor.start()
         build_background_task_manager(runtime).run_forever()
     finally:
+        runtime.yolox_async_deployment_process_supervisor.stop()
         runtime.session_factory.engine.dispose()
 
 

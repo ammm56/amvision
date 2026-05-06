@@ -4,7 +4,7 @@
 
 本文档用于说明当前仓库里的 FastAPI backend-service 怎么启动、启动后能看到什么、默认会使用哪些本地目录，以及当前还没有自动完成的初始化步骤。
 
-本文档只覆盖 backend-service 本身，不展开独立 worker、打包发布和前端分发。
+本文档只覆盖 backend-service 本身；独立 worker、maintenance 和发布 profile 见本目录其他专题文档。
 
 ## 适用范围
 
@@ -49,7 +49,7 @@
 - 嵌套字段分隔符：__
 - 默认主配置文件：./config/backend-service.json
 - 可选本地覆盖文件：./config/backend-service.local.json
-- 默认 task manager 配置：enabled=true、max_concurrent_tasks=2、poll_interval_seconds=1.0
+- 默认 task manager 配置：enabled=false、max_concurrent_tasks=2、poll_interval_seconds=1.0
 - 默认 deployment supervisor 配置：warmup_dummy_inference_count=6、warmup_dummy_image_size=[64,64]、keep_warm_enabled=false、keep_warm_interval_seconds=0.1、tensorrt_pinned_output_buffer_enabled=true、tensorrt_pinned_output_buffer_max_bytes=8388608
 
 常见示例：
@@ -73,7 +73,7 @@
     "root_dir": "./data/queue"
   },
   "task_manager": {
-    "enabled": true,
+    "enabled": false,
     "max_concurrent_tasks": 2,
     "poll_interval_seconds": 1.0
   },
@@ -100,7 +100,7 @@
 - AMVISION_DATABASE__ECHO=false
 - AMVISION_DATASET_STORAGE__ROOT_DIR=./data/files
 - AMVISION_QUEUE__ROOT_DIR=./data/queue
-- AMVISION_TASK_MANAGER__ENABLED=true
+- AMVISION_TASK_MANAGER__ENABLED=false
 - AMVISION_TASK_MANAGER__MAX_CONCURRENT_TASKS=2
 - AMVISION_TASK_MANAGER__POLL_INTERVAL_SECONDS=1.0
 - AMVISION_DEPLOYMENT_PROCESS_SUPERVISOR__AUTO_RESTART=true
@@ -132,7 +132,8 @@
 - REST 路由、WebSocket 路由、中间件和异常映射已装配完成
 - /api/v1/system/health 可以直接返回最小健康状态
 - /api/v1/tasks 和 /ws/tasks/events 已经公开
-- 在 task_manager.enabled=true 时，backend-service 生命周期会自动托管 DatasetImport 队列 worker
+- 当前默认配置下，backend-service 不再自动托管任何队列消费者；dataset import、dataset export、training、conversion、evaluation 和 inference 全部迁到独立 worker profile
+- `task_manager` 字段当前仅保留兼容配置形态，service 启动链不会再创建进程内 BackgroundTaskManager
 
 ### 当前仓库还没有自动完成的事
 
@@ -155,15 +156,15 @@
   - `SessionFactory`
   - `LocalDatasetStorage`
   - `LocalFileQueueBackend`
-  - 可选的 `HostedBackgroundTaskManager`
+  - sync / async deployment supervisor
+  - `background_task_manager_host=None`
 4. `create_app` 把这些运行时对象绑定到 `application.state`
 5. FastAPI lifespan 启动时执行：
   - 初始化数据库缺失表
   - 运行显式传入的 seeders
   - 执行插件目录元数据预留步骤
-  - 启动当前进程托管的后台任务宿主
-6. 当前后台任务宿主只注册 DatasetImport queue worker
-7. 应用关闭时停止后台任务宿主并释放数据库 engine
+  - 启动 sync / async deployment supervisor
+6. 应用关闭时停止 deployment supervisor，并释放数据库 engine
 
 ## 开发环境启动
 
@@ -230,6 +231,9 @@ Invoke-RestMethod http://127.0.0.1:8000/api/v1/system/health
 
 发布阶段应优先由项目同目录 Python 解释器启动 backend-service，而不是依赖系统 PATH。
 
+当前 `full` 发布目录的默认入口已经切到根目录一键启动脚本：`start-amvision-full.bat`、`start-amvision-full.sh`。
+本页保留 `launchers/service/` 的调用方式，主要用于只拉起 service 或拆分排障。
+
 如果发布目录结构类似下面这样：
 
 ```text
@@ -241,17 +245,17 @@ release/
 └─ launchers/
 ```
 
-则当前等价启动方式应类似：
+则当前等价启动方式应优先通过 Python launcher 完成：
 
 ```powershell
-.\python\python.exe -m uvicorn backend.service.api.app:app --host 0.0.0.0 --port 8000
+.\launchers\service\start-backend-service.bat --host 0.0.0.0 --port 8000
 ```
 
 说明：
 
-- 当前仓库还没有正式提交 service launcher 脚本
-- 在 launcher 落地前，发布包可以先用 bundled Python 直调 uvicorn
-- 等后续补齐 launchers 后，应以 launchers/service 下的启动入口为准
+- 当前仓库中的 launcher 模板位于 `runtimes/launchers/service/`；`assemble-release` 会把它们复制到发布目录里的 `launchers/service/`
+- 发布阶段应优先以 launcher 启动，并配合独立 `backend-worker` 一起运行
+- release 目录里如果直接执行 `python -m backend.service.api.app`，需要自行处理 `PYTHONPATH`；launcher 已经封装了这部分路径补齐逻辑
 
 ## 数据库 schema 初始化
 
@@ -315,7 +319,7 @@ python -m uvicorn backend.service.api.app:app --host 127.0.0.1 --port 8010
 
 ### 4. 为什么文档里没有 launcher 命令
 
-因为当前仓库只有 launcher 设计文档，还没有正式提交 service launcher 脚本。这里先写当前已经能运行的真实命令，不把未实现能力写成现成入口。
+当前仓库已经提交 service launcher，但在开发环境里直接执行 uvicorn 仍然是最短调试路径；发布形态应优先切到 launcher 调用。
 
 ## 推荐后续文档
 

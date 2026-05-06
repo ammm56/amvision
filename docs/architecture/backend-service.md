@@ -149,6 +149,7 @@ backend/service/
 	- `SessionFactory`
 	- `LocalDatasetStorage`
 	- `LocalFileQueueBackend`
+	- sync / async deployment supervisor
 	- 可选的 `HostedBackgroundTaskManager`
 4. `create_app` 把这些运行时对象绑定到 `FastAPI.application.state`
 5. FastAPI lifespan 启动时执行：
@@ -162,9 +163,10 @@ backend/service/
 8. 关闭应用时执行：
 	- `bootstrap.stop_runtime(runtime)`
 	- 停止后台任务宿主
+	- 停止 sync / async deployment supervisor
 	- `dispose` 数据库 engine
 
-当前进程内托管的后台任务宿主只注册了 DatasetImport 队列 worker，用于本地开发和最小 standalone 模式。
+当前进程内托管的后台任务宿主目前只注册 dataset-import、dataset-export、yolox-training 和 yolox-conversion 四类轻量消费者；evaluation 和 inference 已迁到独立 worker 配置，用于降低 backend-service 同时承担控制面和执行面的耦合。
 
 ## REST API 与 WebSocket 的拆分方式
 

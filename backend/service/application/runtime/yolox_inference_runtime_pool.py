@@ -6,13 +6,13 @@ from dataclasses import dataclass, field
 from threading import Lock
 
 from backend.service.application.errors import InvalidRequestError, ServiceConfigurationError
+from backend.service.application.runtime.model_runtime import (
+    DefaultYoloXModelRuntime,
+    ModelRuntime,
+    ModelRuntimeSession,
+)
 from backend.service.application.runtime.yolox_predictor import (
-    OpenVINOYoloXRuntimeSession,
-    OnnxRuntimeYoloXRuntimeSession,
-    PyTorchYoloXRuntimeSession,
-    TensorRTYoloXRuntimeSession,
     YoloXPredictionExecutionResult,
-    YoloXPredictionSession,
     YoloXPredictionRequest,
 )
 from backend.service.application.runtime.yolox_runtime_target import RuntimeTargetSnapshot
@@ -115,7 +115,7 @@ class _InferenceInstanceState:
     """描述单个推理实例的内部运行时状态。"""
 
     instance_index: int
-    session: YoloXPredictionSession | None = None
+    session: ModelRuntimeSession | None = None
     healthy: bool = True
     busy: bool = False
     last_error: str | None = None
@@ -135,14 +135,21 @@ class _DeploymentRuntimeState:
 class YoloXDeploymentRuntimePool:
     """管理 DeploymentInstance 常驻推理实例的最小 runtime pool。"""
 
-    def __init__(self, *, dataset_storage: LocalDatasetStorage) -> None:
+    def __init__(
+        self,
+        *,
+        dataset_storage: LocalDatasetStorage,
+        model_runtime: ModelRuntime | None = None,
+    ) -> None:
         """初始化 runtime pool。
 
         参数：
         - dataset_storage：本地文件存储服务。
+        - model_runtime：可选模型运行时加载器；未提供时使用当前 YOLOX 默认实现。
         """
 
         self.dataset_storage = dataset_storage
+        self.model_runtime = model_runtime or DefaultYoloXModelRuntime()
         self._deployments: dict[str, _DeploymentRuntimeState] = {}
         self._lock = Lock()
 
@@ -330,42 +337,27 @@ class YoloXDeploymentRuntimePool:
         *,
         config: YoloXDeploymentRuntimePoolConfig,
         instance: _InferenceInstanceState,
-    ) -> YoloXPredictionSession:
+    ) -> ModelRuntimeSession:
         """确保指定实例已经完成模型会话加载。"""
 
         with instance.lock:
             if instance.session is not None:
                 return instance.session
-            if config.runtime_target.runtime_backend == "pytorch":
-                instance.session = PyTorchYoloXRuntimeSession.load(
-                    dataset_storage=self.dataset_storage,
-                    runtime_target=config.runtime_target,
-                )
-            elif config.runtime_target.runtime_backend == "onnxruntime":
-                instance.session = OnnxRuntimeYoloXRuntimeSession.load(
-                    dataset_storage=self.dataset_storage,
-                    runtime_target=config.runtime_target,
-                )
-            elif config.runtime_target.runtime_backend == "openvino":
-                instance.session = OpenVINOYoloXRuntimeSession.load(
-                    dataset_storage=self.dataset_storage,
-                    runtime_target=config.runtime_target,
-                )
-            elif config.runtime_target.runtime_backend == "tensorrt":
-                instance.session = TensorRTYoloXRuntimeSession.load(
+            try:
+                instance.session = self.model_runtime.load_session(
                     dataset_storage=self.dataset_storage,
                     runtime_target=config.runtime_target,
                     pinned_output_buffer_enabled=config.tensorrt_pinned_output_buffer_enabled,
                     pinned_output_buffer_max_bytes=config.tensorrt_pinned_output_buffer_max_bytes,
                 )
-            else:
+            except ValueError as error:
                 raise InvalidRequestError(
                     "当前 deployment runtime pool 仅支持 pytorch、onnxruntime、openvino 或 tensorrt backend",
                     details={
                         "runtime_backend": config.runtime_target.runtime_backend,
                         "deployment_instance_id": config.deployment_instance_id,
                     },
-                )
+                ) from error
             instance.healthy = True
             instance.last_error = None
             return instance.session
@@ -385,7 +377,7 @@ class YoloXDeploymentRuntimePool:
         YoloXDeploymentRuntimePool._close_session_if_supported(session_to_close)
 
     @staticmethod
-    def _close_session_if_supported(session: YoloXPredictionSession | None) -> None:
+    def _close_session_if_supported(session: object | None) -> None:
         """在 session 暴露 close 方法时执行资源释放。"""
 
         if session is None:
@@ -399,7 +391,7 @@ class YoloXDeploymentRuntimePool:
             return
 
     @staticmethod
-    def _read_session_pinned_output_bytes(session: YoloXPredictionSession | None) -> int:
+    def _read_session_pinned_output_bytes(session: object | None) -> int:
         """读取单个 session 当前持有的 pinned output host buffer 字节数。"""
 
         if session is None:

@@ -4,7 +4,7 @@
 
 本文档用于说明当前已经公开的 YOLOX training 创建、列表、详情、训练控制和训练输出读取接口，以及 DatasetExport 在训练创建链路中的输入边界语义。
 
-当前这一版已经公开最小真实训练执行链，并把训练输出文件目录、训练摘要和验证结果文件作为当前阶段的正式查询面。
+当前这一版已经公开训练后全链路，并把训练输出文件目录、训练摘要、验证结果、评估结果、转换结果和部署推理接口作为正式查询面。
 
 ## 适用范围
 
@@ -12,7 +12,7 @@
 - YOLOX training 列表、详情与训练控制接口
 - 训练指标、验证指标和统一输出文件读取接口
 - dataset_export_id 与 manifest_object_key 的解析规则
-- 训练完成后的下一步推理验证规划
+- 训练后验证、评估、转换、部署与推理链路
 - 当前 scope 要求
 - 当前能力边界
 
@@ -514,24 +514,24 @@
 - worker、训练执行器或文件级脚本：优先消费 manifest_object_key。
 - 当外部系统已经只持有 manifest_object_key 时，可以直接用 manifest_object_key 创建训练任务；服务会反查回对应的 DatasetExport。
 
-## 训练完成后的下一步：推理验证与 API 规划
+## 训练后全链路：验证、评估、转换、部署与推理
 
-当前训练链已经完成最小真实闭环。训练完成后，详情和输出文件接口已经能稳定公开 `model_version_id`、`best/latest checkpoint`、`labels.txt`、`training-summary.json`、`train-metrics.json` 和 `validation-metrics.json`，这意味着下一步不该再围绕“训练是否完成”打转，而应该收口到“如何验证训练结果是否真的可用”。
+当前训练链已经不只是“最小真实闭环”，而是已经打通训练后验证、评估、转换、DeploymentInstance 发布和同步 / 异步推理接口。训练详情和输出文件接口已经能稳定公开 `model_version_id`、`best/latest checkpoint`、`labels.txt`、`training-summary.json`、`train-metrics.json` 和 `validation-metrics.json`，后续链路不再依赖临时脚本或裸模型路径拼接。
 
-### 当前已具备的前置条件
+### 当前已完成的基础衔接
 
 - 训练详情已经公开 `model_version_id`，可以把训练输出正式衔接到后续模型发布、部署或验证链路。
 - 训练输出资源组已经公开 `best-checkpoint`、`latest-checkpoint`、`summary`、`labels`、`train-metrics` 和 `validation-metrics` 的统一读取状态。
 - backend 已经存在推理任务规格、runtime predict contract 和 inference runner contract；当前已经公开最小可用的 validation-sessions REST API，用于训练完成后，或 save/pause 自动登记 latest checkpoint 后的单图人工验证。
 - 当前在线推理设计更偏向 `deployment_instance_id + input_file_id/input_uri` 模式，而不是让推理接口直接读取 DatasetVersion。
 
-### 下一步不建议混成一个接口
+### 当前接口边界保持拆分
 
-- 单图或少量样本的人工验证，不应强行塞进面向正式 deployment 的在线推理任务。
-- 数据集级别的回归验证、benchmark 或评估，不应复用在线推理任务；它应当是单独的评估任务，并显式绑定 `DatasetVersion`、`DatasetExport` 或专门的评估输入包。
+- 单图或少量样本的人工验证继续独立于面向正式 deployment 的在线推理任务。
+- 数据集级别的回归验证、benchmark 或评估继续独立为评估任务，并显式绑定 `DatasetVersion`、`DatasetExport` 或专门的评估输入包。
 - 正式在线推理继续保持和 `DeploymentInstance` 绑定，不直接暴露裸 checkpoint 路径。
 
-### 第一步：已落地人工推理验证接口
+### 当前人工验证接口
 
 这一步的目标不是上线正式部署，而是让训练完成后的模型能被快速抽样验证，优先解决“这版模型看起来对不对”。当前已经公开以下资源组：
 
@@ -597,7 +597,7 @@
 
 这组接口更接近现有 runtime predict contract，适合先把人工验证闭环跑通，也避免为了验证刚训练出来的模型，先被 `DeploymentInstance` 的正式发布流程卡住。
 
-### 第二步：已落地离线批量评估接口
+### 当前离线批量评估接口
 
 这一步的目标是解决“这版模型相对上一版到底提升还是退化了”，它和在线推理解耦，当前已经公开以下资源组：
 
@@ -654,7 +654,7 @@
 
 这一层应该显式绑定 `DatasetVersion` 或导出的评估输入，而不是复用在线 inference task 去跑整套回归测试。
 
-### 第三步：已落地 conversion task 接口
+### 当前 conversion task 接口
 
 当前已经公开 conversion-tasks 资源，转换链路固定为 `ModelVersion -> ConversionTask -> ModelBuild`，当前先以 ONNX 主链打通最小可执行闭环，不把转换逻辑混进 training 或 deployment。
 
@@ -716,7 +716,7 @@
 - 当前 ONNX 优化使用 `onnxsim`，并把 optimized 产物登记为独立 `ModelBuild`
 - 当前转换 runner 默认使用 CPU 和本地文件存储，适合先把离线 build 链闭环跑通
 
-### 第四步：已落地 DeploymentInstance 与正式 inference task 接口
+### 当前 DeploymentInstance 与正式 inference task 接口
 
 当前已经公开 DeploymentInstance 资源和正式 inference-tasks 资源，推理请求继续绑定 `DeploymentInstance`，不直接读取 `DatasetVersion`，也不直接暴露 checkpoint 路径。
 
@@ -916,12 +916,12 @@
 - 当前 sync 和 async 已经提升为独立 deployment 进程监督单元；如果启动多个 backend-service 或 worker 进程，每个父进程仍只负责自己装配出来的监督器与子进程
 - 当前 formal inference 已经对外隐藏 checkpoint 路径，并已接通 `onnxruntime` 对 `onnx-optimized` ModelBuild、`openvino` 对 `openvino-ir` ModelBuild、`tensorrt` 对 `tensorrt-engine` ModelBuild 的真实消费
 
-### 推荐推进顺序
+### 当前下一步建议
 
-1. 先基于当前 `validation-sessions` 接口补前端人工验证页和结果回看能力。
-2. 再做 `evaluation-tasks`，解决数据集级别的回归验证和 benchmark。
-3. 再继续扩 `conversion-tasks`，把训练输出固化成可追溯的 `ModelBuild`；当前已打通 ONNX、optimized ONNX、OpenVINO IR 和 TensorRT engine，下一步补 RKNN 等剩余目标。
-4. 再继续扩 DeploymentInstance 的多 backend 运行时矩阵，补齐 RKNN 等剩余 runtime，并完善不同部署形态的调度与观测能力。
+1. 基于现有 `validation-sessions`、`evaluation-tasks` 和 deployment health 接口补齐前端 / 工作站的验证、评估和运维视图。
+2. 为当前已支持的 pytorch、onnxruntime、openvino、tensorrt 组合补齐 smoke test、精度回归和 benchmark 基线。
+3. 把独立 worker profile、release 组装流程和 bundled Python 目录一起打磨到交付级，避免训练/评估/推理链路虽然可用但发布方式仍依赖人工拼装。
+4. 在现有闭环稳定后，再继续扩展 RKNN 等新增目标格式或非 YOLOX 模型类型。
 
 ## 当前能力边界
 

@@ -8,6 +8,9 @@ from threading import BoundedSemaphore, Event, Lock, Thread
 from typing import Any
 
 from backend.service.application.errors import InvalidRequestError, ServiceError, ServiceConfigurationError
+from backend.service.application.runtime.deployment_process_settings import (
+    DeploymentProcessSupervisorConfig,
+)
 from backend.service.application.runtime.yolox_inference_runtime_pool import (
     YoloXDeploymentRuntimePool,
     YoloXDeploymentRuntimePoolConfig,
@@ -22,7 +25,6 @@ from backend.service.application.runtime.yolox_predictor import (
     serialize_detection,
     serialize_runtime_session_info,
 )
-from backend.service.settings import BackendServiceDeploymentProcessSupervisorConfig
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     DatasetStorageSettings,
     LocalDatasetStorage,
@@ -370,7 +372,7 @@ def _resolve_warmup_behavior(
     - 当前子进程实际生效的 warmup 与 keep-warm 配置。
     """
 
-    settings = BackendServiceDeploymentProcessSupervisorConfig.model_validate(supervisor_settings or {})
+    settings = DeploymentProcessSupervisorConfig.model_validate(supervisor_settings or {})
     runtime_behavior = getattr(config, "runtime_behavior", None)
     warmup_dummy_inference_count = settings.warmup_dummy_inference_count
     warmup_dummy_image_size = settings.warmup_dummy_image_size

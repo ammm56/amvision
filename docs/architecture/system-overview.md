@@ -38,6 +38,12 @@
 
 平台由浏览器前端、后端服务、后台 workers、运行时、插件体系、协议集成边界、基础设施适配层和打包发布层共同组成。
 
+## 当前实现状态入口
+
+- 当前主干已经打通以 YOLOX 为中心的训练、人工验证、数据集级评估、转换、DeploymentInstance 发布和同步 / 异步推理接口闭环。
+- 当前 backend-service 除了提供 REST / WebSocket 控制面，也会按配置托管 BackgroundTaskManager 和 deployment process supervisor。
+- 当前已经落地的代码模块、运行时矩阵和下一步收敛重点见 [docs/architecture/current-implementation-status.md](current-implementation-status.md)。
+
 ## 最小框架视图
 
 - frontend/web-ui：浏览器前端，放页面、工作流和结果查看

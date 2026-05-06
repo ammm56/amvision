@@ -1,0 +1,10 @@
+{
+  "profile_id": "inference",
+  "display_name": "amvision inference worker",
+  "description": "独立消费 YOLOX inference 队列，并在需要时托管 async deployment supervisor。",
+  "enabled_consumer_kinds": [
+    "yolox-inference"
+  ],
+  "max_concurrent_tasks": 1,
+  "poll_interval_seconds": 0.5
+}

@@ -10,6 +10,9 @@ from typing import Any, Callable
 from uuid import uuid4
 
 from backend.service.application.errors import InvalidRequestError, ServiceConfigurationError
+from backend.service.application.runtime.deployment_process_settings import (
+    DeploymentProcessSupervisorConfig,
+)
 from backend.service.application.runtime.safe_counter import (
     SafeCounterState,
     increment_safe_counter,
@@ -23,7 +26,6 @@ from backend.service.application.runtime.yolox_predictor import (
     YoloXPredictionRequest,
 )
 from backend.service.application.runtime.yolox_runtime_target import RuntimeTargetSnapshot
-from backend.service.settings import BackendServiceDeploymentProcessSupervisorConfig
 from backend.workers.shared.yolox_runtime_contracts import RuntimeTensorSpec, YoloXRuntimeSessionInfo
 
 
@@ -226,7 +228,7 @@ class YoloXDeploymentProcessSupervisor:
         *,
         dataset_storage_root_dir: str,
         runtime_mode: str,
-        settings: BackendServiceDeploymentProcessSupervisorConfig,
+        settings: DeploymentProcessSupervisorConfig,
         worker_target: Callable[..., None] = run_yolox_deployment_process_worker,
     ) -> None:
         """初始化 deployment 进程监督器。

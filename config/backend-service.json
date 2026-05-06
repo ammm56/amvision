@@ -14,7 +14,7 @@
     "root_dir": "./data/queue"
   },
   "task_manager": {
-    "enabled": true,
+    "enabled": false,
     "max_concurrent_tasks": 2,
     "poll_interval_seconds": 1.0
   },

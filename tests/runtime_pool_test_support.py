@@ -235,3 +235,66 @@ def build_failing_session_loader(*, error_message: str) -> SimpleNamespace:
         return FailingPredictionSession(error_message=error_message)
 
     return SimpleNamespace(load=load)
+
+
+def build_recording_model_runtime(
+    *,
+    load_requests: list[tuple[LocalDatasetStorage, RuntimeTargetSnapshot, bool | None, int | None]],
+    session: FakePredictionSession,
+) -> SimpleNamespace:
+    """构造会记录 load_session 请求并返回固定 session 的 ModelRuntime stub。
+
+    参数：
+    - load_requests：用于记录 load_session 入参的列表。
+    - session：load_session 返回的 fake session。
+
+    返回：
+    - SimpleNamespace：带有 load_session 方法的 stub 对象。
+    """
+
+    def load_session(
+        *,
+        dataset_storage: LocalDatasetStorage,
+        runtime_target: RuntimeTargetSnapshot,
+        pinned_output_buffer_enabled: bool | None = None,
+        pinned_output_buffer_max_bytes: int | None = None,
+    ) -> FakePredictionSession:
+        session.pinned_output_buffer_enabled = pinned_output_buffer_enabled
+        session.pinned_output_buffer_max_bytes = pinned_output_buffer_max_bytes
+        load_requests.append(
+            (
+                dataset_storage,
+                runtime_target,
+                pinned_output_buffer_enabled,
+                pinned_output_buffer_max_bytes,
+            )
+        )
+        return session
+
+    return SimpleNamespace(load_session=load_session)
+
+
+def build_failing_model_runtime(*, error_message: str) -> SimpleNamespace:
+    """构造会返回 predict 失败 session 的 ModelRuntime stub。
+
+    参数：
+    - error_message：predict 抛出的错误消息。
+
+    返回：
+    - SimpleNamespace：带有 load_session 方法的 stub 对象。
+    """
+
+    def load_session(
+        *,
+        dataset_storage: LocalDatasetStorage,
+        runtime_target: RuntimeTargetSnapshot,
+        pinned_output_buffer_enabled: bool | None = None,
+        pinned_output_buffer_max_bytes: int | None = None,
+    ) -> FailingPredictionSession:
+        del dataset_storage
+        del runtime_target
+        del pinned_output_buffer_enabled
+        del pinned_output_buffer_max_bytes
+        return FailingPredictionSession(error_message=error_message)
+
+    return SimpleNamespace(load_session=load_session)

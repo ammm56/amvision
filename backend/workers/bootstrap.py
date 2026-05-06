@@ -7,6 +7,9 @@ from pathlib import Path
 
 from backend.bootstrap.core import BootstrapStep, RuntimeBootstrap
 from backend.queue import LocalFileQueueBackend
+from backend.service.application.runtime.yolox_deployment_process_supervisor import (
+    YoloXDeploymentProcessSupervisor,
+)
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 from backend.workers.settings import BackendWorkerSettings, get_backend_worker_settings
@@ -22,6 +25,7 @@ class BackendWorkerRuntime:
     - session_factory：数据库会话工厂。
     - dataset_storage：本地数据集文件存储服务。
     - queue_backend：本地任务队列后端。
+    - yolox_async_deployment_process_supervisor：YOLOX async deployment 进程监督器。
     """
 
     settings: BackendWorkerSettings
@@ -29,6 +33,7 @@ class BackendWorkerRuntime:
     session_factory: SessionFactory
     dataset_storage: LocalDatasetStorage
     queue_backend: LocalFileQueueBackend
+    yolox_async_deployment_process_supervisor: YoloXDeploymentProcessSupervisor
 
 
 class PrepareBackendWorkerWorkspaceStep:
@@ -122,12 +127,20 @@ class BackendWorkerBootstrap(RuntimeBootstrap[BackendWorkerSettings, BackendWork
             if self._provided_workspace_dir is not None
             else settings.resolve_workspace_dir()
         )
+        session_factory = SessionFactory(settings.to_database_settings())
+        dataset_storage = LocalDatasetStorage(settings.to_dataset_storage_settings())
+        queue_backend = LocalFileQueueBackend(settings.to_queue_settings())
         return BackendWorkerRuntime(
             settings=settings,
             workspace_dir=workspace_dir,
-            session_factory=SessionFactory(settings.to_database_settings()),
-            dataset_storage=LocalDatasetStorage(settings.to_dataset_storage_settings()),
-            queue_backend=LocalFileQueueBackend(settings.to_queue_settings()),
+            session_factory=session_factory,
+            dataset_storage=dataset_storage,
+            queue_backend=queue_backend,
+            yolox_async_deployment_process_supervisor=YoloXDeploymentProcessSupervisor(
+                dataset_storage_root_dir=str(dataset_storage.root_dir),
+                runtime_mode="async",
+                settings=settings.deployment_process_supervisor,
+            ),
         )
 
     def _build_steps(self) -> tuple[BootstrapStep[BackendWorkerRuntime], ...]:

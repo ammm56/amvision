@@ -19,17 +19,7 @@ from backend.service.infrastructure.object_store.local_dataset_storage import (
     LocalDatasetStorage,
 )
 from backend.service.settings import BackendServiceSettings, get_backend_service_settings
-from backend.workers.datasets.dataset_export_queue_worker import DatasetExportQueueWorker
-from backend.workers.datasets.dataset_import_queue_worker import DatasetImportQueueWorker
-from backend.workers.conversion.yolox_conversion_queue_worker import YoloXConversionQueueWorker
-from backend.workers.evaluation.yolox_evaluation_queue_worker import YoloXEvaluationQueueWorker
-from backend.workers.inference.yolox_inference_queue_worker import YoloXInferenceQueueWorker
-from backend.workers.task_manager import (
-    BackgroundTaskManager,
-    BackgroundTaskManagerConfig,
-    HostedBackgroundTaskManager,
-)
-from backend.workers.training.yolox_training_queue_worker import YoloXTrainingQueueWorker
+from backend.workers.task_manager import HostedBackgroundTaskManager
 
 
 @dataclass(frozen=True)
@@ -318,61 +308,11 @@ class BackendServiceBootstrap(RuntimeBootstrap[BackendServiceSettings, BackendSe
         - 已配置完成的后台任务管理器宿主；未启用时返回 None。
         """
 
-        if not settings.task_manager.enabled:
-            return None
-
-        dataset_import_worker = DatasetImportQueueWorker(
-            session_factory=session_factory,
-            dataset_storage=dataset_storage,
-            queue_backend=queue_backend,
-            worker_id=f"{settings.app.app_name}-dataset-import",
+        _ = (
+            settings,
+            session_factory,
+            dataset_storage,
+            queue_backend,
+            yolox_async_deployment_process_supervisor,
         )
-        dataset_export_worker = DatasetExportQueueWorker(
-            session_factory=session_factory,
-            dataset_storage=dataset_storage,
-            queue_backend=queue_backend,
-            worker_id=f"{settings.app.app_name}-dataset-export",
-        )
-        yolox_training_worker = YoloXTrainingQueueWorker(
-            session_factory=session_factory,
-            dataset_storage=dataset_storage,
-            queue_backend=queue_backend,
-            worker_id=f"{settings.app.app_name}-yolox-training",
-        )
-        yolox_conversion_worker = YoloXConversionQueueWorker(
-            session_factory=session_factory,
-            dataset_storage=dataset_storage,
-            queue_backend=queue_backend,
-            worker_id=f"{settings.app.app_name}-yolox-conversion",
-        )
-        yolox_evaluation_worker = YoloXEvaluationQueueWorker(
-            session_factory=session_factory,
-            dataset_storage=dataset_storage,
-            queue_backend=queue_backend,
-            worker_id=f"{settings.app.app_name}-yolox-evaluation",
-        )
-        yolox_inference_worker = YoloXInferenceQueueWorker(
-            session_factory=session_factory,
-            dataset_storage=dataset_storage,
-            queue_backend=queue_backend,
-            deployment_process_supervisor=yolox_async_deployment_process_supervisor,
-            worker_id=f"{settings.app.app_name}-yolox-inference",
-        )
-        task_manager = BackgroundTaskManager(
-            consumers=(
-                dataset_import_worker,
-                dataset_export_worker,
-                yolox_training_worker,
-                yolox_conversion_worker,
-                yolox_evaluation_worker,
-                yolox_inference_worker,
-            ),
-            config=BackgroundTaskManagerConfig(
-                max_concurrent_tasks=settings.task_manager.max_concurrent_tasks,
-                poll_interval_seconds=settings.task_manager.poll_interval_seconds,
-            ),
-        )
-        return HostedBackgroundTaskManager(
-            task_manager=task_manager,
-            thread_name=f"{settings.app.app_name}-task-manager",
-        )
+        return None

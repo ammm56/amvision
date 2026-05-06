@@ -1,0 +1,10 @@
+{
+  "profile_id": "conversion",
+  "display_name": "amvision conversion worker",
+  "description": "独立消费 YOLOX conversion 队列，负责 ONNX、OpenVINO、TensorRT 等构建输出。",
+  "enabled_consumer_kinds": [
+    "yolox-conversion"
+  ],
+  "max_concurrent_tasks": 1,
+  "poll_interval_seconds": 1.0
+}

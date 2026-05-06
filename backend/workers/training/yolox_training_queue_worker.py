@@ -3,14 +3,12 @@
 from __future__ import annotations
 
 from backend.queue import QueueBackend, QueueMessage
+from backend.service.application.backends import TrainingBackend, TrainingBackendRunRequest
 from backend.service.application.errors import InvalidRequestError, ServiceError
 from backend.service.application.models.yolox_training_service import YOLOX_TRAINING_QUEUE_NAME
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
-from backend.workers.training.yolox_trainer_runner import (
-    SqlAlchemyYoloXTrainerRunner,
-    YoloXTrainingRunRequest,
-)
+from backend.workers.training.yolox_trainer_runner import SqlAlchemyYoloXTrainerRunner
 
 
 class YoloXTrainingQueueWorker:
@@ -22,6 +20,7 @@ class YoloXTrainingQueueWorker:
         session_factory: SessionFactory,
         dataset_storage: LocalDatasetStorage,
         queue_backend: QueueBackend,
+        training_backend: TrainingBackend | None = None,
         worker_id: str = "yolox-training-worker",
     ) -> None:
         """初始化 YOLOX 训练队列 worker。
@@ -36,6 +35,7 @@ class YoloXTrainingQueueWorker:
         self.session_factory = session_factory
         self.dataset_storage = dataset_storage
         self.queue_backend = queue_backend
+        self.training_backend = training_backend
         self.worker_id = worker_id
 
     def run_once(self) -> bool:
@@ -54,12 +54,12 @@ class YoloXTrainingQueueWorker:
 
         try:
             task_id = self._read_task_id(queue_task)
-            runner = SqlAlchemyYoloXTrainerRunner(
+            training_backend = self.training_backend or SqlAlchemyYoloXTrainerRunner(
                 session_factory=self.session_factory,
                 dataset_storage=self.dataset_storage,
             )
-            run_result = runner.run_training(
-                YoloXTrainingRunRequest(
+            run_result = training_backend.run_training(
+                TrainingBackendRunRequest(
                     training_task_id=task_id,
                     metadata={
                         "queue_task_id": queue_task.task_id,

@@ -275,7 +275,7 @@ def test_bootstrap_runs_explicit_seeders_in_initialize(tmp_path: Path) -> None:
 
 
 def test_app_lifespan_starts_and_stops_background_task_manager(tmp_path: Path) -> None:
-    """验证 backend-service 生命周期会统一启动和停止内嵌 task manager。"""
+    """验证 backend-service 生命周期不再创建进程内 task manager。"""
 
     settings = BackendServiceSettings(
         database=BackendServiceDatabaseConfig(
@@ -294,13 +294,39 @@ def test_app_lifespan_starts_and_stops_background_task_manager(tmp_path: Path) -
     application = create_app(settings=settings)
     background_task_manager_host = application.state.background_task_manager_host
 
-    assert background_task_manager_host is not None
-    assert background_task_manager_host.is_running is False
+    assert background_task_manager_host is None
 
     with TestClient(application):
-        assert background_task_manager_host.is_running is True
+        assert application.state.background_task_manager_host is None
 
-    assert background_task_manager_host.is_running is False
+    assert application.state.background_task_manager_host is None
+
+
+def test_service_does_not_host_background_task_consumers(
+    tmp_path: Path,
+) -> None:
+    """验证 backend-service 不再托管任何队列消费者。"""
+
+    settings = BackendServiceSettings(
+        database=BackendServiceDatabaseConfig(
+            url=f"sqlite:///{(tmp_path / 'hosted-lite.db').as_posix()}"
+        ),
+        dataset_storage=BackendServiceDatasetStorageConfig(
+            root_dir=str(tmp_path / "hosted-files")
+        ),
+        queue=BackendServiceQueueConfig(root_dir=str(tmp_path / "hosted-queue")),
+        task_manager=BackendServiceTaskManagerConfig(
+            enabled=True,
+            max_concurrent_tasks=1,
+            poll_interval_seconds=0.1,
+        ),
+    )
+    application = create_app(settings=settings)
+    background_task_manager_host = application.state.background_task_manager_host
+
+    assert background_task_manager_host is None
+
+    application.state.session_factory.engine.dispose()
 
 
 def _create_test_client() -> TestClient:

@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Protocol
 from uuid import uuid4
 
 from backend.queue import QueueBackend
+from backend.service.application.backends import ConversionBackend
 from backend.service.application.conversions.yolox_conversion_planner import (
     DefaultYoloXConversionPlanner,
     YoloXConversionPlan,
@@ -159,22 +159,6 @@ class YoloXConversionResultSnapshot:
     payload: dict[str, object] = field(default_factory=dict)
 
 
-class YoloXConversionExecutor(Protocol):
-    """定义转换执行器需要满足的最小协议。"""
-
-    def run_conversion(self, request: YoloXConversionRunRequest) -> YoloXConversionRunResult:
-        """执行转换并返回结果。
-
-        参数：
-        - request：转换执行请求。
-
-        返回：
-        - YoloXConversionRunResult：转换执行结果。
-        """
-
-        ...
-
-
 class SqlAlchemyYoloXConversionTaskService:
     """基于 SQLAlchemy、本地队列和本地文件存储实现 YOLOX 转换任务。"""
 
@@ -185,7 +169,7 @@ class SqlAlchemyYoloXConversionTaskService:
         dataset_storage: LocalDatasetStorage | None = None,
         queue_backend: QueueBackend | None = None,
         planner: YoloXConversionPlanner | None = None,
-        conversion_runner: YoloXConversionExecutor | None = None,
+        conversion_runner: ConversionBackend | None = None,
     ) -> None:
         """初始化转换任务服务。
 

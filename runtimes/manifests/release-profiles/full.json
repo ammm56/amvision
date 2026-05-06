@@ -1,0 +1,35 @@
+{
+  "profile_id": "full",
+  "display_name": "amvision full",
+  "description": "完整发布目录，复制完整项目代码、全部 worker profile、requirements.txt，并创建待手工放入的 python 目录。",
+  "service": {
+    "python_launcher": "runtimes/launchers/service/start_backend_service.py",
+    "windows_launcher": "runtimes/launchers/service/start-backend-service.bat",
+    "linux_launcher": "runtimes/launchers/service/start-backend-service.sh",
+    "hosted_task_manager_enabled": false
+  },
+  "worker": {
+    "python_launcher": "runtimes/launchers/worker/start_backend_worker.py",
+    "windows_launcher": "runtimes/launchers/worker/start-backend-worker.bat",
+    "linux_launcher": "runtimes/launchers/worker/start-backend-worker.sh",
+    "worker_profile_ids": [
+      "dataset-import",
+      "dataset-export",
+      "training",
+      "conversion",
+      "evaluation",
+      "inference"
+    ]
+  },
+  "maintenance": {
+    "python_launcher": "runtimes/launchers/maintenance/invoke_backend_maintenance.py",
+    "windows_launcher": "runtimes/launchers/maintenance/invoke-backend-maintenance.bat",
+    "linux_launcher": "runtimes/launchers/maintenance/invoke-backend-maintenance.sh",
+    "default_command": "validate-layout"
+  },
+  "artifacts": {
+    "include_frontend": true,
+    "include_plugins": true,
+    "include_zero_mq": true
+  }
+}

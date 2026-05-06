@@ -643,15 +643,12 @@ def test_background_task_manager_processes_multiple_dataset_import_tasks(
         session_factory.engine.dispose()
 
 
-def test_import_dataset_zip_is_processed_by_service_managed_task_manager(
+def test_import_dataset_zip_is_processed_by_independent_background_task_manager(
     tmp_path: Path,
 ) -> None:
-    """验证 backend-service 单入口启动后会自动消费 DatasetImport 队列。"""
+    """验证独立后台任务管理器可以消费 DatasetImport 队列。"""
 
-    client, session_factory, dataset_storage, _queue_backend = _create_test_client(
-        tmp_path,
-        enable_task_manager=True,
-    )
+    client, session_factory, dataset_storage, queue_backend = _create_test_client(tmp_path)
     try:
         with client:
             response = client.post(
@@ -669,17 +666,29 @@ def test_import_dataset_zip_is_processed_by_service_managed_task_manager(
             assert response.status_code == 202
             dataset_import_id = response.json()["dataset_import_id"]
 
-            detail_payload: dict[str, object] | None = None
-            for _ in range(40):
-                detail_response = client.get(
-                    f"/api/v1/datasets/imports/{dataset_import_id}",
-                    headers=_build_dataset_read_headers(),
-                )
-                assert detail_response.status_code == 200
-                detail_payload = detail_response.json()
-                if detail_payload["status"] == "completed":
-                    break
-                time.sleep(0.05)
+        task_manager = BackgroundTaskManager(
+            consumers=(
+                DatasetImportQueueWorker(
+                    session_factory=session_factory,
+                    dataset_storage=dataset_storage,
+                    queue_backend=queue_backend,
+                    worker_id="test-import-worker-auto",
+                ),
+            ),
+            config=BackgroundTaskManagerConfig(
+                max_concurrent_tasks=1,
+                poll_interval_seconds=0.05,
+            ),
+        )
+        assert task_manager.run_available_tasks() == 1
+
+        with client:
+            detail_response = client.get(
+                f"/api/v1/datasets/imports/{dataset_import_id}",
+                headers=_build_dataset_read_headers(),
+            )
+            assert detail_response.status_code == 200
+            detail_payload = detail_response.json()
 
         assert detail_payload is not None
         assert detail_payload["status"] == "completed"

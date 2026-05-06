@@ -4,9 +4,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
-
-from backend.service.application.runtime import yolox_inference_runtime_pool as runtime_pool_module
 from backend.service.application.runtime.yolox_inference_runtime_pool import (
     YoloXDeploymentRuntimePool,
     YoloXDeploymentRuntimePoolConfig,
@@ -17,7 +14,7 @@ from backend.service.application.runtime.yolox_predictor import (
 from backend.service.domain.files.yolox_file_types import YOLOX_OPENVINO_IR_FILE
 from tests.runtime_pool_test_support import (
     FakePredictionSession,
-    build_recording_session_loader,
+    build_recording_model_runtime,
     build_test_execution_result,
     build_test_runtime_target,
     create_test_dataset_storage,
@@ -26,7 +23,6 @@ from tests.runtime_pool_test_support import (
 
 def test_runtime_pool_loads_openvino_session_once_and_reuses_warmed_instance(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """验证 runtime pool 会选择 OpenVINO session，并在 warmup 后复用已加载实例。"""
 
@@ -52,21 +48,20 @@ def test_runtime_pool_loads_openvino_session_once_and_reuses_warmed_instance(
     fake_session = FakePredictionSession(
         execution_result=build_test_execution_result(runtime_target=runtime_target)
     )
-    load_requests: list[tuple[object, object]] = []
-
-    monkeypatch.setattr(
-        runtime_pool_module,
-        "OpenVINOYoloXRuntimeSession",
-        build_recording_session_loader(load_requests=load_requests, session=fake_session),
+    load_requests: list[tuple[object, object, object, object]] = []
+    pool = YoloXDeploymentRuntimePool(
+        dataset_storage=dataset_storage,
+        model_runtime=build_recording_model_runtime(
+            load_requests=load_requests,
+            session=fake_session,
+        ),
     )
-
-    pool = YoloXDeploymentRuntimePool(dataset_storage=dataset_storage)
     warmup_status = pool.warmup_deployment(config)
     execution = pool.run_inference(config=config, request=request)
     health = pool.get_health(config)
 
     assert len(load_requests) == 1
-    assert load_requests[0] == (dataset_storage, runtime_target)
+    assert load_requests[0] == (dataset_storage, runtime_target, None, None)
     assert warmup_status.healthy_instance_count == 1
     assert warmup_status.warmed_instance_count == 1
     assert health.healthy_instance_count == 1
