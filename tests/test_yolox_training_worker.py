@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import json
 from pathlib import Path
 from types import SimpleNamespace
 import cv2
@@ -38,6 +39,85 @@ from backend.service.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
 from backend.service.infrastructure.object_store.local_dataset_storage import DatasetStorageSettings, LocalDatasetStorage
 from backend.service.infrastructure.persistence.base import Base
 from backend.workers.training.yolox_training_queue_worker import YoloXTrainingQueueWorker
+
+
+def test_local_pretrained_yolox_checkpoints_match_internal_model_structure() -> None:
+    """验证本地预训练 YOLOX checkpoint 与项目内模型结构逐 scale 严格兼容。"""
+
+    imports = yolox_detection_training_module._require_training_imports()
+    pretrained_root = (
+        Path(__file__).resolve().parents[1] / "data" / "files" / "models" / "pretrained" / "yolox"
+    )
+    failures: list[str] = []
+
+    for model_scale in yolox_detection_training_module.YOLOX_SUPPORTED_MODEL_SCALES:
+        manifest_path = pretrained_root / model_scale / "default" / "manifest.json"
+        if not manifest_path.is_file():
+            failures.append(f"{model_scale}: manifest 不存在")
+            continue
+
+        manifest_payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+        checkpoint_path_value = manifest_payload.get("checkpoint_path")
+        if not isinstance(checkpoint_path_value, str) or not checkpoint_path_value.strip():
+            failures.append(f"{model_scale}: manifest 缺少 checkpoint_path")
+            continue
+
+        checkpoint_path = manifest_path.parent / checkpoint_path_value
+        checkpoint_payload = imports.torch.load(str(checkpoint_path), map_location="cpu")
+        raw_state_dict = yolox_detection_training_module._extract_checkpoint_state_dict(
+            checkpoint_payload
+        )
+        normalized_state_dict = {
+            key.removeprefix("module."): value
+            for key, value in raw_state_dict.items()
+            if hasattr(value, "shape")
+        }
+        cls_pred_weight = next(
+            (
+                value
+                for key, value in normalized_state_dict.items()
+                if key.startswith("head.cls_preds.") and key.endswith(".weight")
+            ),
+            None,
+        )
+        if cls_pred_weight is None:
+            failures.append(f"{model_scale}: checkpoint 缺少分类头权重")
+            continue
+
+        num_classes = int(cls_pred_weight.shape[0])
+        model = yolox_detection_training_module._build_yolox_model(
+            imports=imports,
+            model_scale=model_scale,
+            num_classes=num_classes,
+        )
+        model_state_dict = model.state_dict()
+
+        missing_keys = sorted(set(model_state_dict) - set(normalized_state_dict))
+        unexpected_keys = sorted(set(normalized_state_dict) - set(model_state_dict))
+        shape_mismatch_keys = sorted(
+            key
+            for key in set(model_state_dict) & set(normalized_state_dict)
+            if tuple(model_state_dict[key].shape) != tuple(normalized_state_dict[key].shape)
+        )
+        if missing_keys or unexpected_keys or shape_mismatch_keys:
+            failures.append(
+                (
+                    f"{model_scale}: missing={missing_keys[:5]}, "
+                    f"unexpected={unexpected_keys[:5]}, "
+                    f"shape_mismatch={shape_mismatch_keys[:5]}"
+                )
+            )
+            continue
+
+        try:
+            model.load_state_dict(
+                {key: normalized_state_dict[key] for key in model_state_dict},
+                strict=True,
+            )
+        except RuntimeError as error:
+            failures.append(f"{model_scale}: strict load 失败: {error}")
+
+    assert not failures, "；".join(failures)
 
 
 def test_yolox_training_worker_advances_task_from_queued_to_succeeded(tmp_path: Path) -> None:

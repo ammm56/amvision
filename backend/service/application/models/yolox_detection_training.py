@@ -292,6 +292,12 @@ YOLOX_MINIMAL_DEFAULT_MAX_EPOCHS = 1
 YOLOX_MINIMAL_DEFAULT_EVALUATION_INTERVAL = 5
 YOLOX_MINIMAL_DEFAULT_EVAL_CONFIDENCE_THRESHOLD = 0.01
 YOLOX_MINIMAL_DEFAULT_EVAL_NMS_THRESHOLD = 0.65
+YOLOX_REFERENCE_DEFAULT_FLIP_PROB = 0.5
+YOLOX_REFERENCE_DEFAULT_HSV_PROB = 1.0
+YOLOX_REFERENCE_DEFAULT_MAX_LABELS = 120
+YOLOX_REFERENCE_DEFAULT_WARMUP_EPOCHS = 5
+YOLOX_REFERENCE_DEFAULT_NO_AUG_EPOCHS = 15
+YOLOX_REFERENCE_DEFAULT_MIN_LR_RATIO = 0.05
 
 YOLOX_SCALE_PROFILES: dict[str, YoloXScaleProfile] = {
     "nano": YoloXScaleProfile(depth=0.33, width=0.25, depthwise=True),
@@ -550,11 +556,27 @@ def run_yolox_detection_training(
         device=runtime.device,
         extra_options=extra_options,
     )
-    flip_prob = _read_float_option(extra_options, "flip_prob", default=0.0)
-    hsv_prob = _read_float_option(extra_options, "hsv_prob", default=0.0)
-    max_labels = _read_int_option(extra_options, "max_labels", default=50)
+    flip_prob = _read_float_option(
+        extra_options,
+        "flip_prob",
+        default=YOLOX_REFERENCE_DEFAULT_FLIP_PROB,
+    )
+    hsv_prob = _read_float_option(
+        extra_options,
+        "hsv_prob",
+        default=YOLOX_REFERENCE_DEFAULT_HSV_PROB,
+    )
+    max_labels = _read_int_option(
+        extra_options,
+        "max_labels",
+        default=YOLOX_REFERENCE_DEFAULT_MAX_LABELS,
+    )
     num_workers = _read_int_option(extra_options, "num_workers", default=0)
     random_seed = _read_int_option(extra_options, "seed", default=0)
+    warmup_epochs, no_aug_epochs, min_lr_ratio = _resolve_training_schedule_options(
+        extra_options=extra_options,
+        max_epochs=max_epochs,
+    )
     evaluation_confidence_threshold = _read_float_option(
         extra_options,
         "evaluation_confidence_threshold",
@@ -672,10 +694,10 @@ def run_yolox_detection_training(
         (0.01 / 64.0) * batch_size,
         len(train_loader),
         max_epochs,
-        warmup_epochs=0,
+        warmup_epochs=warmup_epochs,
         warmup_lr_start=0,
-        no_aug_epochs=0,
-        min_lr_ratio=0.1,
+        no_aug_epochs=no_aug_epochs,
+        min_lr_ratio=min_lr_ratio,
     )
     use_fp16 = precision == "fp16" and runtime.device.startswith("cuda")
     grad_scaler_device = "cuda" if runtime.device.startswith("cuda") else "cpu"
@@ -703,6 +725,16 @@ def run_yolox_detection_training(
         start_epoch = max(0, resume_state.resume_epoch)
     global_iter = start_epoch * len(train_loader)
     for epoch_index in range(start_epoch, max_epochs):
+        current_epoch = epoch_index + 1
+        _set_yolox_head_use_l1(
+            model=training_model,
+            enabled=_is_no_aug_epoch(
+                epoch=current_epoch,
+                max_epochs=max_epochs,
+                no_aug_epochs=no_aug_epochs,
+            ),
+        )
+        training_model.train()
         epoch_totals: dict[str, float] = {}
         epoch_iterations = 0
         for images, targets, _image_infos, _image_ids in train_loader:
@@ -752,7 +784,7 @@ def run_yolox_detection_training(
         validation_snapshot: dict[str, object] | None = None
         if validation_loader is not None:
             validation_ran = _should_run_validation_evaluation(
-                epoch=epoch_index + 1,
+                epoch=current_epoch,
                 max_epochs=max_epochs,
                 evaluation_interval=evaluation_interval,
             )
@@ -785,7 +817,7 @@ def run_yolox_detection_training(
                 )
             for metric_name, metric_value in validation_metrics.items():
                 epoch_metrics[f"val_{metric_name}"] = metric_value
-        epoch_metrics["epoch"] = epoch_index + 1
+        epoch_metrics["epoch"] = current_epoch
         epoch_history.append(epoch_metrics)
 
         current_metric_value: float | None = None
@@ -801,7 +833,7 @@ def run_yolox_detection_training(
             best_checkpoint_state = _build_checkpoint_state(
                 model=base_model,
                 optimizer=optimizer,
-                epoch=epoch_index + 1,
+                epoch=current_epoch,
                 metric_name=best_metric_name,
                 metric_value=current_metric_value,
                 category_names=train_dataset.category_names,
@@ -826,7 +858,7 @@ def run_yolox_detection_training(
         if validation_ran:
             validation_epoch_history.append(
                 {
-                    "epoch": epoch_index + 1,
+                    "epoch": current_epoch,
                     **dict(validation_metrics),
                 }
             )
@@ -870,7 +902,7 @@ def run_yolox_detection_training(
         if request.epoch_callback is not None:
             control_command = request.epoch_callback(
                 YoloXTrainingEpochProgress(
-                    epoch=epoch_index + 1,
+                    epoch=current_epoch,
                     max_epochs=max_epochs,
                     evaluation_interval=evaluation_interval,
                     validation_ran=validation_ran,
@@ -898,7 +930,7 @@ def run_yolox_detection_training(
             latest_checkpoint_state = _build_checkpoint_state(
                 model=base_model,
                 optimizer=optimizer,
-                epoch=epoch_index + 1,
+                epoch=current_epoch,
                 metric_name=best_metric_name,
                 metric_value=(
                     float(current_metric_value)
@@ -930,7 +962,7 @@ def run_yolox_detection_training(
                 best_checkpoint_state=best_checkpoint_state,
             )
             savepoint = YoloXTrainingSavePoint(
-                epoch=epoch_index + 1,
+                epoch=current_epoch,
                 latest_checkpoint_bytes=_serialize_checkpoint_bytes(
                     imports=imports,
                     checkpoint_state=latest_checkpoint_state,
@@ -1062,12 +1094,12 @@ def _require_training_imports() -> _YoloXTrainingImports:
         import torch  # type: ignore[import-not-found]
         from pycocotools.coco import COCO  # type: ignore[import-not-found]
         from pycocotools.cocoeval import COCOeval  # type: ignore[import-not-found]
-        from yolox.data import TrainTransform  # type: ignore[import-not-found]
-        from yolox.models import YOLOPAFPN, YOLOX, YOLOXHead  # type: ignore[import-not-found]
-        from yolox.utils import LRScheduler, postprocess  # type: ignore[import-not-found]
+        from backend.service.application.runtime.yolox_core.data import TrainTransform
+        from backend.service.application.runtime.yolox_core.models import YOLOPAFPN, YOLOX, YOLOXHead
+        from backend.service.application.runtime.yolox_core.utils import LRScheduler, postprocess
     except ImportError as error:
         raise ServiceConfigurationError(
-            "YOLOX 训练依赖缺失，至少需要 torch、opencv-python、numpy、pycocotools 和 yolox"
+            "YOLOX 训练依赖缺失，至少需要 torch、torchvision、opencv-python、numpy 和 pycocotools"
         ) from error
 
     return _YoloXTrainingImports(
@@ -1272,6 +1304,65 @@ def _build_autocast_context(
         return nullcontext()
 
     return imports.torch.autocast(device_type="cuda", dtype=imports.torch.float16)
+
+
+def _resolve_training_schedule_options(
+    *,
+    extra_options: dict[str, object],
+    max_epochs: int,
+) -> tuple[int, int, float]:
+    """解析并约束 warmup/no_aug 调度配置。"""
+
+    warmup_epochs = max(
+        0,
+        _read_int_option(
+            extra_options,
+            "warmup_epochs",
+            default=YOLOX_REFERENCE_DEFAULT_WARMUP_EPOCHS,
+        ),
+    )
+    no_aug_epochs = max(
+        0,
+        _read_int_option(
+            extra_options,
+            "no_aug_epochs",
+            default=YOLOX_REFERENCE_DEFAULT_NO_AUG_EPOCHS,
+        ),
+    )
+    min_lr_ratio = min(
+        1.0,
+        max(
+            0.0,
+            _read_float_option(
+                extra_options,
+                "min_lr_ratio",
+                default=YOLOX_REFERENCE_DEFAULT_MIN_LR_RATIO,
+            ),
+        ),
+    )
+    if max_epochs <= 1:
+        return 0, 0, min_lr_ratio
+
+    warmup_epochs = min(warmup_epochs, max_epochs - 1)
+    max_no_aug_epochs = max(0, max_epochs - warmup_epochs - 1)
+    no_aug_epochs = min(no_aug_epochs, max_no_aug_epochs)
+    return warmup_epochs, no_aug_epochs, min_lr_ratio
+
+
+def _is_no_aug_epoch(*, epoch: int, max_epochs: int, no_aug_epochs: int) -> bool:
+    """判断当前 epoch 是否位于 no_aug 尾段。"""
+
+    return no_aug_epochs > 0 and epoch > max_epochs - no_aug_epochs
+
+
+def _set_yolox_head_use_l1(*, model: Any, enabled: bool) -> None:
+    """在 no_aug 阶段切换 YOLOXHead.use_l1。"""
+
+    resolved_model = getattr(model, "module", model)
+    head = getattr(resolved_model, "head", None)
+    if head is None or not hasattr(head, "use_l1"):
+        return
+    head.use_l1 = bool(enabled)
 
 
 def _read_float_option(extra_options: dict[str, object], key: str, *, default: float) -> float:
