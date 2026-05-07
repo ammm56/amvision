@@ -14,7 +14,7 @@ WORKFLOW_GRAPH_TEMPLATE_FORMAT = "amvision.workflow-graph-template.v1"
 FLOW_APPLICATION_FORMAT = "amvision.flow-application.v1"
 
 NODE_IMPLEMENTATION_CORE = "core-node"
-NODE_IMPLEMENTATION_PLUGIN = "plugin-node"
+NODE_IMPLEMENTATION_CUSTOM = "custom-node"
 
 NODE_RUNTIME_PYTHON_CALLABLE = "python-callable"
 NODE_RUNTIME_WORKER_TASK = "worker-task"
@@ -152,15 +152,15 @@ class NodeDefinition(BaseModel):
     - display_name：节点显示名称。
     - category：节点分类，例如 io.input、model.inference、opencv.render。
     - description：节点职责说明。
-    - implementation_kind：实现来源，支持 core-node 或 plugin-node。
+    - implementation_kind：实现来源，支持 core-node 或 custom-node。
     - runtime_kind：运行方式，支持 python-callable、worker-task 或 service-call。
     - input_ports：输入端口列表。
     - output_ports：输出端口列表。
     - parameter_schema：参数 schema。
     - capability_tags：能力标签列表。
     - runtime_requirements：运行依赖，例如 opencv-python、numpy 或特定 worker profile。
-    - plugin_id：当节点来自插件时，对应插件 id。
-    - plugin_version：当节点来自插件时，对应插件版本。
+    - node_pack_id：当节点来自节点包时，对应节点包 id。
+    - node_pack_version：当节点来自节点包时，对应节点包版本。
     - metadata：附加元数据。
     """
 
@@ -171,7 +171,7 @@ class NodeDefinition(BaseModel):
     display_name: str
     category: str
     description: str = ""
-    implementation_kind: Literal[NODE_IMPLEMENTATION_CORE, NODE_IMPLEMENTATION_PLUGIN]
+    implementation_kind: Literal[NODE_IMPLEMENTATION_CORE, NODE_IMPLEMENTATION_CUSTOM]
     runtime_kind: Literal[
         NODE_RUNTIME_PYTHON_CALLABLE,
         NODE_RUNTIME_WORKER_TASK,
@@ -182,13 +182,13 @@ class NodeDefinition(BaseModel):
     parameter_schema: dict[str, object] = Field(default_factory=dict)
     capability_tags: tuple[str, ...] = ()
     runtime_requirements: dict[str, object] = Field(default_factory=dict)
-    plugin_id: str | None = None
-    plugin_version: str | None = None
+    node_pack_id: str | None = None
+    node_pack_version: str | None = None
     metadata: dict[str, object] = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def validate_definition(self) -> NodeDefinition:
-        """校验节点定义字段和插件边界。"""
+        """校验节点定义字段和节点包边界。"""
 
         _require_stripped_text(self.node_type_id, "node_type_id")
         _require_stripped_text(self.display_name, "display_name")
@@ -203,14 +203,14 @@ class NodeDefinition(BaseModel):
             direction="output",
             node_type_id=self.node_type_id,
         )
-        if self.implementation_kind == NODE_IMPLEMENTATION_PLUGIN:
-            if self.plugin_id is None or self.plugin_version is None:
-                raise ValueError("plugin-node 必须声明 plugin_id 和 plugin_version")
-            _require_stripped_text(self.plugin_id, "plugin_id")
-            _require_stripped_text(self.plugin_version, "plugin_version")
+        if self.implementation_kind == NODE_IMPLEMENTATION_CUSTOM:
+            if self.node_pack_id is None or self.node_pack_version is None:
+                raise ValueError("custom-node 必须声明 node_pack_id 和 node_pack_version")
+            _require_stripped_text(self.node_pack_id, "node_pack_id")
+            _require_stripped_text(self.node_pack_version, "node_pack_version")
         if self.implementation_kind == NODE_IMPLEMENTATION_CORE:
-            if self.plugin_id is not None or self.plugin_version is not None:
-                raise ValueError("core-node 不能声明 plugin_id 或 plugin_version")
+            if self.node_pack_id is not None or self.node_pack_version is not None:
+                raise ValueError("core-node 不能声明 node_pack_id 或 node_pack_version")
         return self
 
 

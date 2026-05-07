@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 import backend.service.application.models.yolox_validation_session_service as validation_session_service_module
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import (
+    DatasetStorageSettings,
     LocalDatasetStorage,
 )
 from backend.workers.shared.yolox_runtime_contracts import RuntimeTensorSpec, YoloXRuntimeSessionInfo
@@ -155,6 +156,54 @@ def test_predict_yolox_validation_session_rejects_input_file_id(tmp_path: Path) 
         assert payload["error"]["code"] == "invalid_request"
     finally:
         session_factory.engine.dispose()
+
+
+def test_legacy_validation_session_payload_defaults_runtime_precision(tmp_path: Path) -> None:
+    """验证旧 session JSON 缺少 runtime_precision 时仍可恢复运行时快照。"""
+
+    dataset_storage = LocalDatasetStorage(
+        DatasetStorageSettings(root_dir=str(tmp_path / "dataset-files"))
+    )
+    checkpoint_storage_uri = "runtime/validation-sessions/session-1/checkpoints/best_ckpt.pth"
+    checkpoint_path = dataset_storage.resolve(checkpoint_storage_uri)
+    checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
+    checkpoint_path.write_bytes(b"fake-checkpoint")
+
+    session = validation_session_service_module._build_session_from_payload(
+        {
+            "session_id": "validation-session-1",
+            "project_id": "project-1",
+            "model_id": "model-1",
+            "model_version_id": "model-version-1",
+            "model_name": "yolox-nano-bolt",
+            "model_scale": "nano",
+            "source_kind": "training-output",
+            "status": "ready",
+            "runtime_profile_id": None,
+            "runtime_backend": "pytorch",
+            "device_name": "cpu",
+            "score_threshold": 0.35,
+            "save_result_image": True,
+            "input_size": [64, 64],
+            "labels": ["bolt"],
+            "checkpoint_file_id": "checkpoint-file-1",
+            "checkpoint_storage_uri": checkpoint_storage_uri,
+            "labels_storage_uri": None,
+            "extra_options": {},
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+            "created_by": "tester",
+            "last_prediction": None,
+        }
+    )
+
+    runtime_target = validation_session_service_module._build_runtime_target_from_session(
+        session=session,
+        dataset_storage=dataset_storage,
+    )
+
+    assert session.runtime_precision == "fp32"
+    assert runtime_target.runtime_precision == "fp32"
 
 
 def _create_test_client(tmp_path: Path) -> tuple[TestClient, SessionFactory, LocalDatasetStorage]:

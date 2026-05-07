@@ -1,0 +1,42 @@
+{
+  "format_id": "amvision.node-definition.v1",
+  "node_type_id": "custom.opencv.gallery-preview",
+  "display_name": "Gallery Preview",
+  "category": "opencv.preview",
+  "description": "把图片集合转换成可直接进入 HTTP 响应的 gallery body。",
+  "implementation_kind": "custom-node",
+  "runtime_kind": "python-callable",
+  "input_ports": [
+    {
+      "name": "images",
+      "display_name": "Images",
+      "payload_type_id": "image-refs.v1"
+    }
+  ],
+  "output_ports": [
+    {
+      "name": "body",
+      "display_name": "Body",
+      "payload_type_id": "response-body.v1"
+    }
+  ],
+  "parameter_schema": {
+    "type": "object",
+    "properties": {
+      "title": {
+        "type": "string"
+      },
+      "max_items": {
+        "type": "integer",
+        "minimum": 1
+      }
+    }
+  },
+  "capability_tags": [
+    "ui.gallery",
+    "response.body"
+  ],
+  "runtime_requirements": {},
+  "node_pack_id": "opencv.basic-nodes",
+  "node_pack_version": "0.1.0"
+}

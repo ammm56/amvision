@@ -32,6 +32,8 @@ conda activate amvision
 python -m uvicorn backend.service.api.app:app --host 127.0.0.1 --port 8000 --reload
 ```
 
+VS Code 中当前推荐直接使用 Run and Debug 里的 `Python 调试程序: backend-service 热重载` 或 `Python 调试程序: backend-service 全量启动`。
+
 ### worker 开发调试启动
 
 全量默认 worker：
@@ -39,6 +41,11 @@ python -m uvicorn backend.service.api.app:app --host 127.0.0.1 --port 8000 --rel
 ```powershell
 python -m backend.workers.main
 ```
+
+VS Code 中当前推荐直接在终端或任务里执行 `python -m backend.workers.main`，不通过 Python debugpy 启动 worker。
+打开命令面板 ctrl + p
+执行 Tasks: Run Task
+选择 amvision: 启动 backend-worker 全量
 
 单一 profile worker：
 

@@ -1,0 +1,11 @@
+{
+  "input_bindings": {
+    "request_image": {
+      "object_key": "inputs/source.jpg"
+    }
+  },
+  "execution_metadata": {
+    "marker": "postman-workflow-manual-test",
+    "scenario": "deployment-control-detection-lifecycle-real-path"
+  }
+}

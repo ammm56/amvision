@@ -1,8 +1,8 @@
-# 插件 Trigger 和 Hook 说明
+# 节点扩展 Trigger 和 Hook 说明
 
 ## 文档目的
 
-本文档用于说明插件触发器、事件 hook、回调点和数据上报点的统一模型，明确插件在哪些时机被调用、接收什么载荷、允许做什么以及如何管理。
+本文档用于说明节点扩展 trigger、事件 hook、回调点和数据上报点的统一模型，明确 node pack 在哪些时机被调用、接收什么载荷、允许做什么以及如何管理。
 
 ## 适用范围
 
@@ -13,10 +13,10 @@
 
 ## 总体原则
 
-- trigger 与 hook 都属于受控插件能力，必须先在 manifest 中声明
+- trigger 与 hook 都属于受控节点扩展能力，必须先在 manifest 中声明
 - backend-service 处理注册、鉴权、启停和事件范围管理
-- 插件的触发或 hook 结果若影响公开状态，必须先回写 backend-service
-- 触发与 hook 不能绕开任务状态模型或插件超时管理
+- 节点扩展的触发或 hook 结果若影响公开状态，必须先回写 backend-service
+- 触发与 hook 不能绕开任务状态模型或节点扩展超时管理
 
 ## 术语区分
 
@@ -45,7 +45,7 @@
 - task.log.transform
 - task.result.report
 - deployment.health.observe
-- plugin.status.changed
+- node.status.changed
 - integration.callback.before-send
 - integration.callback.after-send
 
@@ -63,27 +63,27 @@
 ## 幂等性要求
 
 - 外部触发和结果上报必须设计为可幂等处理
-- 同一事件重复投递时，插件逻辑不应产生不可控副作用
+- 同一事件重复投递时，节点扩展逻辑不应产生不可控副作用
 - backend-service 应提供 correlation id 或等价去重线索
 
 ## 超时与失败处理
 
 - 所有 trigger 与 hook 执行都必须受 timeout 约束
-- 插件超时不能阻塞 backend-service 主链路长期悬挂
+- 节点扩展超时不能阻塞 backend-service 主链路长期悬挂
 - 失败时应按能力类型决定是记录错误、重试、降级还是隔离
 - 对外回调失败时应支持重试策略和失败审计
 
 ## 外部触发规则
 
 - 外部系统请求先进入 backend-service 公开边界
-- backend-service 依据 integration endpoint、manifest 和 permission scope 决定是否允许触发插件
-- 插件如需创建任务，应通过受控任务创建接口进入 QueueBackend，而不是自行绕开后端服务排队
+- backend-service 依据 integration endpoint、manifest 和 permission scope 决定是否允许触发 node pack
+- 节点扩展如需创建任务，应通过受控任务创建接口进入 QueueBackend，而不是自行绕开后端服务排队
 
 ## 完成回调与数据上报规则
 
-- 任务完成后可触发回调插件或结果上报插件
+- 任务完成后可触发回调节点扩展或结果上报节点扩展
 - 回调发送前应以 backend-service 中的最终状态和结果引用为准
-- 数据上报插件应声明目标端点、数据范围和失败重试策略
+- 数据上报节点扩展应声明目标端点、数据范围和失败重试策略
 - 回调结果或上报结果应保留审计记录与原始 task id 关联
 
 ## 后处理 hook 规则
@@ -94,18 +94,18 @@
 
 ## 顺序与并发建议
 
-- 同一 hookPoint 下的多个插件应允许声明优先级或阶段
-- 对外回调类插件默认建议串行，减少重复通知和竞争问题
-- 纯后处理或只读审计类插件可允许受控并行
+- 同一 hookPoint 下的多个节点扩展应允许声明优先级或阶段
+- 对外回调类节点扩展默认建议串行，减少重复通知和竞争问题
+- 纯后处理或只读审计类节点扩展可允许受控并行
 
 ## 与 WebSocket 和 ZeroMQ 的关系
 
-- WebSocket 只负责把已归一化事件推送给前端，不直接执行插件 hook
+- WebSocket 只负责把已归一化事件推送给前端，不直接执行节点扩展 hook
 - ZeroMQ 可作为同机本地的内部事件传递通道，但最终状态仍需回写 backend-service
-- 插件不能把 ZeroMQ 当作绕开公开接口与状态管理的捷径
+- 节点扩展不能把 ZeroMQ 当作绕开公开接口与状态管理的捷径
 
 ## 推荐后续文档
 
-- [docs/plugins/manifest-capabilities.md](manifest-capabilities.md)
+- [docs/nodes/node-pack-manifest.md](node-pack-manifest.md)
 - [docs/architecture/plugin-system.md](../architecture/plugin-system.md)
 - [docs/api/communication-contracts.md](../api/communication-contracts.md)

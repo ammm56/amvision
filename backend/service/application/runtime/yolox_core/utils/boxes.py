@@ -15,6 +15,7 @@ def postprocess(
 ):
     """按原 YOLOX 规则执行后处理与 NMS。"""
 
+    prediction = prediction.clone()
     box_corner = prediction.new(prediction.shape)
     box_corner[:, :, 0] = prediction[:, :, 0] - prediction[:, :, 2] / 2
     box_corner[:, :, 1] = prediction[:, :, 1] - prediction[:, :, 3] / 2

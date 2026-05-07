@@ -14,7 +14,8 @@
 - [docs/architecture/current-implementation-status.md](architecture/current-implementation-status.md) 汇总当前主干已经落地的整体框架、代码落点和下一步收敛重点
 - [docs/api/README.md](api/README.md) 汇总 REST API、WebSocket、ZeroMQ 和公开接口文档
 - [docs/deployment/README.md](deployment/README.md) 汇总开发环境、运行时、打包、安装和部署文档
-- [docs/plugins/README.md](plugins/README.md) 汇总插件、流程节点和扩展机制文档
+- [docs/nodes/README.md](nodes/README.md) 汇总 node pack、custom node 和 runtime hook 专题文档
+- [docs/architecture/plugin-system.md](architecture/plugin-system.md) 汇总 node pack、custom node 和扩展机制文档
 - [docs/decisions/README.md](decisions/README.md) 汇总架构决策记录
 
 ## 保存原则
@@ -53,7 +54,7 @@
 13. [docs/architecture/data-and-files.md](architecture/data-and-files.md)
 14. [docs/architecture/dataset-import-spec.md](architecture/dataset-import-spec.md)
 15. [docs/architecture/dataset-export-formats.md](architecture/dataset-export-formats.md)
-16. 根据任务继续进入 API、部署、插件或决策文档
+16. 根据任务继续进入 API、部署、节点扩展或决策文档
 
 ## 文档维护建议
 
@@ -67,5 +68,5 @@
 
 - API 资源与事件清单
 - 典型部署拓扑说明
-- 插件示例模板
+- 节点包示例模板
 - 运维排障手册

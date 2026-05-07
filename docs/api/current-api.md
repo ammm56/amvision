@@ -21,6 +21,8 @@
 - datasets:read
 - datasets:write
 - models:read
+- workflows:read
+- workflows:write
 - tasks:read
 - tasks:write
 - system:read
@@ -54,6 +56,13 @@
 | POST | /api/v1/models/yolox/training-tasks/{task_id}/pause | tasks:write | 为 running 的 YOLOX 训练任务请求暂停，并在下一轮边界先保存 latest checkpoint。 |
 | POST | /api/v1/models/yolox/training-tasks/{task_id}/resume | tasks:write | 把 paused 的 YOLOX 训练任务重新入队，并基于 latest checkpoint 恢复训练。 |
 | POST | /api/v1/models/yolox/training-tasks/{task_id}/register-model-version | tasks:write + models:write | 调试时手动重登记当前 latest checkpoint 对应的固定 latest ModelVersion，并回写到训练详情。 |
+| POST | /api/v1/workflows/templates/validate | workflows:read | 校验一份 workflow template。 |
+| PUT | /api/v1/workflows/projects/{project_id}/templates/{template_id}/versions/{template_version} | workflows:write | 保存一份 workflow template JSON。 |
+| GET | /api/v1/workflows/projects/{project_id}/templates/{template_id}/versions/{template_version} | workflows:read | 读取一份已保存的 workflow template JSON。 |
+| POST | /api/v1/workflows/applications/validate | workflows:read | 校验一份 FlowApplication 与 template 绑定关系。 |
+| PUT | /api/v1/workflows/projects/{project_id}/applications/{application_id} | workflows:write | 保存一份 FlowApplication JSON。 |
+| GET | /api/v1/workflows/projects/{project_id}/applications/{application_id} | workflows:read | 读取一份已保存的 FlowApplication JSON。 |
+| POST | /api/v1/workflows/projects/{project_id}/applications/{application_id}/execute | workflows:write | 在独立子进程中执行一份已保存的 FlowApplication。 |
 | POST | /api/v1/tasks | tasks:write | 创建公开任务记录，立即返回任务详情。 |
 | GET | /api/v1/tasks | tasks:read | 按公开筛选字段查询任务列表。 |
 | GET | /api/v1/tasks/{task_id} | tasks:read | 查询单条任务详情；默认同时返回 events。 |
@@ -966,6 +975,80 @@
 - `summary`、`train-metrics`、`validation-metrics` 通过 `payload` 返回 JSON 内容
 - `labels` 通过 `text_content` 和 `lines` 返回文本内容
 - `best-checkpoint`、`latest-checkpoint` 当前只返回文件元数据，不直接返回二进制内容
+
+## workflow 资源组
+
+### POST /api/v1/workflows/templates/validate
+
+- Content-Type：application/json
+- 需要 workflows:read
+- 请求体字段：
+  - template
+- 返回字段：
+  - valid
+  - template_id
+  - template_version
+  - node_count
+  - edge_count
+  - template_input_ids
+  - template_output_ids
+  - referenced_node_type_ids
+
+### PUT /api/v1/workflows/projects/{project_id}/templates/{template_id}/versions/{template_version}
+
+- Content-Type：application/json
+- 需要 workflows:write
+- 路径参数中的 template_id 与 template_version 必须和请求体中的 template 一致
+- 成功响应会同时返回：
+  - project_id
+  - object_key
+  - template
+  - 校验摘要字段
+
+### GET /api/v1/workflows/projects/{project_id}/templates/{template_id}/versions/{template_version}
+
+- 需要 workflows:read
+- 返回已保存 template 的 object_key 与完整 template JSON
+
+### POST /api/v1/workflows/applications/validate
+
+- Content-Type：application/json
+- 需要 workflows:read
+- 请求体字段：
+  - project_id
+  - application
+  - template，可选
+- 当 template 未提供时，当前实现会按 application.template_ref 读取已保存 template
+
+### PUT /api/v1/workflows/projects/{project_id}/applications/{application_id}
+
+- Content-Type：application/json
+- 需要 workflows:write
+- 路径参数中的 application_id 必须和请求体中的 application.application_id 一致
+- 保存时会把 application.template_ref.source_uri 规范化为真实 template object key
+- 成功响应会同时返回：
+  - project_id
+  - object_key
+  - application
+  - 校验摘要字段
+
+### GET /api/v1/workflows/projects/{project_id}/applications/{application_id}
+
+- 需要 workflows:read
+- 返回已保存 application 的 object_key 与完整 application JSON
+
+### POST /api/v1/workflows/projects/{project_id}/applications/{application_id}/execute
+
+- Content-Type：application/json
+- 需要 workflows:write
+- 请求体字段：
+  - input_bindings
+  - execution_metadata
+- 当前响应会同时返回：
+  - outputs：按 application output binding_id 组织的输出
+  - template_outputs：按 template output id 组织的底层输出
+  - node_records：节点执行记录
+- 真实 workflow 路径 JSON 示例与 Postman 手工调试步骤见 [docs/api/workflows.md](workflows.md)
 
 ## tasks 资源组
 

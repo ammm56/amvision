@@ -7,9 +7,19 @@ from dataclasses import dataclass
 from fastapi import FastAPI
 
 from backend.bootstrap.core import BootstrapStep, RuntimeBootstrap
+from backend.nodes.local_node_pack_loader import LocalNodePackLoader
+from backend.nodes.node_catalog_registry import NodeCatalogRegistry
+from backend.nodes.node_pack_loader import NodePackLoader
 from backend.queue import LocalFileQueueBackend
 from backend.service.api.seeders import BackendServiceSeeder, BackendServiceSeederRunner
 from backend.service.application.models.pretrained_catalog import YoloXPretrainedModelCatalogSeeder
+from backend.service.application.workflows.graph_executor import WorkflowNodeRuntimeRegistry
+from backend.service.application.workflows.service_node_runtime import (
+    WorkflowServiceNodeRuntimeContext,
+)
+from backend.service.application.workflows.runtime_registry_loader import (
+    WorkflowNodeRuntimeRegistryLoader,
+)
 from backend.service.application.runtime.yolox_deployment_process_supervisor import (
     YoloXDeploymentProcessSupervisor,
 )
@@ -31,6 +41,11 @@ class BackendServiceRuntime:
     - session_factory：数据库会话工厂。
     - dataset_storage：本地数据集文件存储服务。
     - queue_backend：本地任务队列后端。
+    - node_pack_loader：节点包目录加载器。
+    - node_catalog_registry：统一节点目录注册表。
+    - workflow_node_runtime_registry_loader：workflow 节点运行时注册表加载器。
+    - workflow_node_runtime_registry：workflow 节点运行时注册表。
+    - workflow_service_node_runtime_context：workflow service nodes 使用的进程级上下文。
     - yolox_sync_deployment_process_supervisor：同步 YOLOX deployment 进程监督器。
     - yolox_async_deployment_process_supervisor：异步 YOLOX deployment 进程监督器。
     - background_task_manager_host：当前进程托管的后台任务管理器宿主。
@@ -40,6 +55,11 @@ class BackendServiceRuntime:
     session_factory: SessionFactory
     dataset_storage: LocalDatasetStorage
     queue_backend: LocalFileQueueBackend
+    node_pack_loader: NodePackLoader
+    node_catalog_registry: NodeCatalogRegistry
+    workflow_node_runtime_registry_loader: WorkflowNodeRuntimeRegistryLoader
+    workflow_node_runtime_registry: WorkflowNodeRuntimeRegistry
+    workflow_service_node_runtime_context: WorkflowServiceNodeRuntimeContext
     yolox_sync_deployment_process_supervisor: YoloXDeploymentProcessSupervisor
     yolox_async_deployment_process_supervisor: YoloXDeploymentProcessSupervisor
     background_task_manager_host: HostedBackgroundTaskManager | None
@@ -102,8 +122,8 @@ class RunBackendServiceSeedersStep:
         BackendServiceSeederRunner(self._seeders).run(runtime)
 
 
-class LoadBackendServicePluginCatalogStep:
-    """加载 backend-service 插件目录元数据的步骤。"""
+class LoadBackendServiceNodeCatalogStep:
+    """加载 backend-service 节点目录元数据的步骤。"""
 
     def get_step_name(self) -> str:
         """返回当前步骤名称。
@@ -112,20 +132,22 @@ class LoadBackendServicePluginCatalogStep:
         - 当前步骤的稳定名称。
         """
 
-        return "load-service-plugin-catalog"
+        return "load-service-node-catalog"
 
     def run(self, runtime: BackendServiceRuntime) -> None:
-        """执行 backend-service 插件目录元数据准备步骤。
+        """执行 backend-service 节点目录元数据准备步骤。
 
         参数：
         - runtime：当前应用实例使用的运行时资源。
 
         说明：
-        - 当前仓库还没有正式接入 PluginLoader 和插件目录扫描。
-        - 后续插件 manifest、capability 索引和启用状态读取可放在这里。
+        - 当前阶段把自定义节点包发现和 workflow 节点目录扫描收敛到 NodePackLoader。
+        - 当前步骤同时执行 node pack entrypoint 到 runtime handler 的注册。
+        - 后续节点包 capability 索引、启停状态和版本管理继续在这里扩展。
         """
 
-        _ = runtime
+        runtime.node_pack_loader.refresh()
+        runtime.workflow_node_runtime_registry_loader.refresh()
 
 
 class BackendServiceBootstrap(RuntimeBootstrap[BackendServiceSettings, BackendServiceRuntime]):
@@ -184,6 +206,12 @@ class BackendServiceBootstrap(RuntimeBootstrap[BackendServiceSettings, BackendSe
         queue_backend = self._provided_queue_backend or LocalFileQueueBackend(
             settings.to_queue_settings()
         )
+        node_pack_loader = LocalNodePackLoader(settings.custom_nodes.root_dir)
+        node_catalog_registry = NodeCatalogRegistry(node_pack_loader=node_pack_loader)
+        workflow_node_runtime_registry_loader = WorkflowNodeRuntimeRegistryLoader(
+            node_catalog_registry=node_catalog_registry,
+            node_pack_loader=node_pack_loader,
+        )
         yolox_sync_deployment_process_supervisor = YoloXDeploymentProcessSupervisor(
             dataset_storage_root_dir=str(dataset_storage.root_dir),
             runtime_mode="sync",
@@ -201,11 +229,23 @@ class BackendServiceBootstrap(RuntimeBootstrap[BackendServiceSettings, BackendSe
             queue_backend=queue_backend,
             yolox_async_deployment_process_supervisor=yolox_async_deployment_process_supervisor,
         )
+        workflow_service_node_runtime_context = WorkflowServiceNodeRuntimeContext(
+            session_factory=session_factory,
+            dataset_storage=dataset_storage,
+            queue_backend=queue_backend,
+            yolox_sync_deployment_process_supervisor=yolox_sync_deployment_process_supervisor,
+            yolox_async_deployment_process_supervisor=yolox_async_deployment_process_supervisor,
+        )
         return BackendServiceRuntime(
             settings=settings,
             session_factory=session_factory,
             dataset_storage=dataset_storage,
             queue_backend=queue_backend,
+            node_pack_loader=node_pack_loader,
+            node_catalog_registry=node_catalog_registry,
+            workflow_node_runtime_registry_loader=workflow_node_runtime_registry_loader,
+            workflow_node_runtime_registry=workflow_node_runtime_registry_loader.get_runtime_registry(),
+            workflow_service_node_runtime_context=workflow_service_node_runtime_context,
             yolox_sync_deployment_process_supervisor=yolox_sync_deployment_process_supervisor,
             yolox_async_deployment_process_supervisor=yolox_async_deployment_process_supervisor,
             background_task_manager_host=background_task_manager_host,
@@ -227,6 +267,11 @@ class BackendServiceBootstrap(RuntimeBootstrap[BackendServiceSettings, BackendSe
         application.state.session_factory = runtime.session_factory
         application.state.dataset_storage = runtime.dataset_storage
         application.state.queue_backend = runtime.queue_backend
+        application.state.node_pack_loader = runtime.node_pack_loader
+        application.state.node_catalog_registry = runtime.node_catalog_registry
+        application.state.workflow_node_runtime_registry_loader = runtime.workflow_node_runtime_registry_loader
+        application.state.workflow_node_runtime_registry = runtime.workflow_node_runtime_registry
+        application.state.workflow_service_node_runtime_context = runtime.workflow_service_node_runtime_context
         application.state.yolox_sync_deployment_process_supervisor = runtime.yolox_sync_deployment_process_supervisor
         application.state.yolox_async_deployment_process_supervisor = runtime.yolox_async_deployment_process_supervisor
         application.state.background_task_manager_host = runtime.background_task_manager_host
@@ -265,13 +310,13 @@ class BackendServiceBootstrap(RuntimeBootstrap[BackendServiceSettings, BackendSe
         说明：
         - 配置加载是 bootstrap 的第一步，在 build_runtime 之前完成。
         - 当前服务进程只执行适合 backend-service 的轻量启动步骤。
-        - 当前启动顺序为：数据库 -> seeders -> 插件目录元数据。
+        - 当前启动顺序为：数据库 -> seeders -> 节点目录元数据。
         """
 
         return (
             InitializeDatabaseSchemaStep(),
             RunBackendServiceSeedersStep(self._build_seeders()),
-            LoadBackendServicePluginCatalogStep(),
+            LoadBackendServiceNodeCatalogStep(),
         )
 
     def _build_seeders(self) -> tuple[BackendServiceSeeder, ...]:

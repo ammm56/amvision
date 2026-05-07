@@ -82,6 +82,16 @@ class BackendServiceTaskManagerConfig(BaseModel):
     poll_interval_seconds: float = 1.0
 
 
+class BackendServiceCustomNodesConfig(BaseModel):
+    """描述 backend-service 使用的 custom_nodes 目录配置。
+
+    字段：
+    - root_dir：自定义节点根目录。
+    """
+
+    root_dir: str = "./custom_nodes"
+
+
 class BackendServiceSettings(BaseSettings):
     """描述 backend-service 启动阶段使用的统一配置。
 
@@ -91,6 +101,7 @@ class BackendServiceSettings(BaseSettings):
     - dataset_storage：本地数据集文件存储配置。
     - queue：本地任务队列配置。
     - task_manager：内嵌后台任务管理器配置。
+    - custom_nodes：自定义节点目录配置。
     - deployment_process_supervisor：deployment 进程监督器配置。
     """
 
@@ -109,6 +120,7 @@ class BackendServiceSettings(BaseSettings):
     task_manager: BackendServiceTaskManagerConfig = Field(
         default_factory=BackendServiceTaskManagerConfig
     )
+    custom_nodes: BackendServiceCustomNodesConfig = Field(default_factory=BackendServiceCustomNodesConfig)
     deployment_process_supervisor: DeploymentProcessSupervisorConfig = Field(
         default_factory=DeploymentProcessSupervisorConfig
     )

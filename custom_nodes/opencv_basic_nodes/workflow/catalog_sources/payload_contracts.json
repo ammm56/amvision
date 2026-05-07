@@ -1,0 +1,152 @@
+[
+  {
+    "format_id": "amvision.workflow-payload-contract.v1",
+    "payload_type_id": "contours.v1",
+    "display_name": "Contour Result",
+    "transport_kind": "inline-json",
+    "json_schema": {
+      "type": "object",
+      "properties": {
+        "source_object_key": {
+          "type": "string"
+        },
+        "count": {
+          "type": "integer"
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "contour_index": {
+                "type": "integer"
+              },
+              "point_count": {
+                "type": "integer"
+              },
+              "bbox_xyxy": {
+                "type": "array",
+                "items": {
+                  "type": "integer"
+                },
+                "minItems": 4,
+                "maxItems": 4
+              },
+              "points": {
+                "type": "array",
+                "items": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer"
+                  },
+                  "minItems": 2,
+                  "maxItems": 2
+                }
+              }
+            },
+            "required": [
+              "contour_index",
+              "bbox_xyxy",
+              "points"
+            ]
+          }
+        }
+      },
+      "required": [
+        "items"
+      ]
+    },
+    "artifact_kinds": [],
+    "metadata": {}
+  },
+  {
+    "format_id": "amvision.workflow-payload-contract.v1",
+    "payload_type_id": "measurements.v1",
+    "display_name": "Measurement Result",
+    "transport_kind": "inline-json",
+    "json_schema": {
+      "type": "object",
+      "properties": {
+        "source_object_key": {
+          "type": "string"
+        },
+        "count": {
+          "type": "integer"
+        },
+        "summary": {
+          "type": "object",
+          "properties": {
+            "total_area": {
+              "type": "number"
+            },
+            "mean_area": {
+              "type": "number"
+            },
+            "max_area": {
+              "type": "number"
+            },
+            "min_area": {
+              "type": "number"
+            }
+          }
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "contour_index": {
+                "type": "integer"
+              },
+              "point_count": {
+                "type": "integer"
+              },
+              "bbox_xyxy": {
+                "type": "array",
+                "items": {
+                  "type": "integer"
+                },
+                "minItems": 4,
+                "maxItems": 4
+              },
+              "width": {
+                "type": "integer"
+              },
+              "height": {
+                "type": "integer"
+              },
+              "area": {
+                "type": "number"
+              },
+              "perimeter": {
+                "type": "number"
+              },
+              "center_xy": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 2,
+                "maxItems": 2
+              },
+              "aspect_ratio": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "contour_index",
+              "bbox_xyxy",
+              "area",
+              "perimeter"
+            ]
+          }
+        }
+      },
+      "required": [
+        "items"
+      ]
+    },
+    "artifact_kinds": [],
+    "metadata": {}
+  }
+]

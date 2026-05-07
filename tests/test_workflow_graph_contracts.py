@@ -7,7 +7,7 @@ import pytest
 from backend.contracts.workflows.workflow_graph import (
     FLOW_APPLICATION_RUNTIME_PYTHON_JSON,
     NODE_IMPLEMENTATION_CORE,
-    NODE_IMPLEMENTATION_PLUGIN,
+    NODE_IMPLEMENTATION_CUSTOM,
     NODE_RUNTIME_PYTHON_CALLABLE,
     NODE_RUNTIME_WORKER_TASK,
     FlowApplication,
@@ -143,11 +143,11 @@ def _build_node_definitions() -> tuple[NodeDefinition, ...]:
             runtime_requirements={"worker_pool": "yolox-inference"},
         ),
         NodeDefinition(
-            node_type_id="plugin.opencv.draw-detections",
+            node_type_id="custom.opencv.draw-detections",
             display_name="Draw Detections",
             category="opencv.render",
             description="通过 OpenCV 把 detection 结果叠加到图片上，生成结构化 HTTP 回包。",
-            implementation_kind=NODE_IMPLEMENTATION_PLUGIN,
+            implementation_kind=NODE_IMPLEMENTATION_CUSTOM,
             runtime_kind=NODE_RUNTIME_PYTHON_CALLABLE,
             input_ports=(
                 NodePortDefinition(
@@ -177,8 +177,8 @@ def _build_node_definitions() -> tuple[NodeDefinition, ...]:
             },
             capability_tags=("opencv.draw", "vision.render", "result.aggregate"),
             runtime_requirements={"python_packages": ["opencv-python", "numpy"]},
-            plugin_id="opencv.basic-nodes",
-            plugin_version="0.1.0",
+            node_pack_id="opencv.basic-nodes",
+            node_pack_version="0.1.0",
         ),
     )
 
@@ -205,7 +205,7 @@ def _build_graph_template() -> WorkflowGraphTemplate:
             ),
             WorkflowGraphNode(
                 node_id="draw_response",
-                node_type_id="plugin.opencv.draw-detections",
+                node_type_id="custom.opencv.draw-detections",
                 parameters={"line_thickness": 2, "render_preview": True},
                 ui_state={"position": {"x": 560, "y": 60}},
             ),
@@ -309,7 +309,7 @@ def test_workflow_contracts_roundtrip_and_binding_validation() -> None:
     restored_application = FlowApplication.model_validate_json(flow_application.model_dump_json())
 
     assert restored_contract.payload_type_id == "image-ref.v1"
-    assert restored_definition.plugin_id == "opencv.basic-nodes"
+    assert restored_definition.node_pack_id == "opencv.basic-nodes"
     assert restored_definition.runtime_requirements["python_packages"] == ["opencv-python", "numpy"]
     assert restored_template.nodes[1].parameters["score_threshold"] == 0.3
     assert restored_application.bindings[0].binding_kind == "api-request"

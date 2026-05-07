@@ -7,14 +7,19 @@
 ## 当前文档
 
 - [docs/api/current-api.md](current-api.md)：当前已经公开的 REST API、WebSocket 入口、鉴权头和任务事件订阅规则
+- [docs/api/workflows.md](workflows.md)：workflow template/application validate、save、get、execute 接口，真实 workflow 路径 JSON 示例和 Postman 手工测试步骤
 - [docs/api/communication-contracts.md](communication-contracts.md)：REST API、WebSocket、ZeroMQ 的职责拆分与事件规则边界
 - [docs/api/datasets-imports.md](datasets-imports.md)：DatasetImport 导入、详情查询、列表查询、task_id 关联和错误语义
 - [docs/api/datasets-exports.md](datasets-exports.md)：DatasetExport 创建、详情查询、列表查询、package/download/manifest 和 training 输入边界
 - [docs/api/platform-base-models.md](platform-base-models.md)：平台基础模型列表、详情接口，以及 warm_start_model_version_id 的公开发现方式
 - [docs/api/yolox-training.md](yolox-training.md)：YOLOX training 创建、列表、详情、训练控制、指标与输出文件读取接口，以及 validation-sessions 人工验证、conversion-tasks 模型转换、evaluation-tasks 数据集级评估、deployment-instances 和 inference-tasks 正式推理接口
+- [docs/api/examples/workflows/yolox_deployment_detection_lifecycle_real_path.save-template.request.json](examples/workflows/yolox_deployment_detection_lifecycle_real_path.save-template.request.json)：workflow template save 接口的真实路径 JSON 请求体示例
+- [docs/api/examples/workflows/yolox_deployment_detection_lifecycle_real_path.save-application.request.json](examples/workflows/yolox_deployment_detection_lifecycle_real_path.save-application.request.json)：FlowApplication save 接口的真实路径 JSON 请求体示例
+- [docs/api/examples/workflows/yolox_deployment_detection_lifecycle_real_path.execute.request.json](examples/workflows/yolox_deployment_detection_lifecycle_real_path.execute.request.json)：workflow execute 接口的最小 JSON 请求体示例
 - [docs/api/postman/datasets-imports.postman_collection.json](postman/datasets-imports.postman_collection.json)：当前公开的 system、DatasetImport、tasks 接口 Postman collection
 - [docs/api/postman/datasets-exports.postman_collection.json](postman/datasets-exports.postman_collection.json)：当前公开的 DatasetExport 接口 Postman collection
 - [docs/api/postman/platform-base-models.postman_collection.json](postman/platform-base-models.postman_collection.json)：当前公开的平台基础模型 list/detail 接口 Postman collection
+- [docs/api/postman/workflows.postman_collection.json](postman/workflows.postman_collection.json)：workflow template/application validate、save、get、execute，以及 deployment list 联调的 Postman collection
 - [docs/api/postman/yolox-training.postman_collection.json](postman/yolox-training.postman_collection.json)：当前公开的 YOLOX training、validation-sessions、conversion-tasks、evaluation-tasks、deployment-instances 和 inference-tasks 接口 Postman collection
 - [docs/architecture/backend-service.md](../architecture/backend-service.md)：FastAPI 应用分层、路由拆分、数据库会话、权限和中间件骨架
 

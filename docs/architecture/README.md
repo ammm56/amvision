@@ -16,7 +16,7 @@
 - [docs/architecture/detection-model-rules.md](detection-model-rules.md)：检测类模型的最小平台规则，以及正式对象与 metadata 的边界
 - [docs/architecture/yolox-module-design.md](yolox-module-design.md)：YOLOX 在 amvision 里的模块拆分、目录位置、当前代码落点和后续收敛方向
 - [docs/architecture/frontend-web-ui.md](frontend-web-ui.md)：浏览器前端 Web UI 的模块划分、路由结构、状态组织和交互边界
-- [docs/architecture/plugin-system.md](plugin-system.md)：插件体系、扩展边界、节点模型和 ComfyUI 对齐方向
+- [docs/architecture/plugin-system.md](plugin-system.md)：节点扩展体系、node pack 边界、custom node 模型和 ComfyUI 对齐方向
 - [docs/architecture/workflow-json-contracts.md](workflow-json-contracts.md)：NodeDefinition、payload contract、图模板与流程应用 JSON 合同
 - [docs/architecture/data-and-files.md](data-and-files.md)：关键对象、文件引用和版本关系
 - [docs/architecture/dataset-import-spec.md](dataset-import-spec.md)：DatasetImport、通用数据格式、任务类型格式矩阵和数据集导出规范
@@ -27,7 +27,7 @@
 
 - integration-rules.md：集成端点、协议适配和回调规则
 - logs-and-metrics.md：任务日志、指标和告警
-- ui-schema-and-extension.md：前端插件 UI schema、节点面板和结果展示扩展规范
+- ui-schema-and-extension.md：前端节点 UI schema、节点面板和结果展示扩展规范
 
 ## 存放规则
 
