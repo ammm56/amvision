@@ -10,6 +10,7 @@
 
 - [docs/architecture/system-overview.md](system-overview.md)：平台整体框架、一级模块、端到端流程和所需功能总览
 - [docs/architecture/current-implementation-status.md](current-implementation-status.md)：当前主干已经落地的整体框架、主要代码落点、运行时矩阵和下一步收敛重点
+- [docs/architecture/execution-sequences.md](execution-sequences.md)：训练、转换、部署推理和 workflow execute 四条关键调用顺序图
 - [docs/architecture/project-structure.md](project-structure.md)：项目目录结构、层级关系、模块关系和禁止直接耦合关系总览
 - [docs/architecture/backend-service.md](backend-service.md)：后端服务职责、任务状态、执行调度、QueueBackend 和状态回写边界
 - [docs/architecture/task-system.md](task-system.md)：统一任务实体、资源调度模型、任务 schema 和 worker pool 划分
@@ -40,16 +41,17 @@
 
 1. [docs/architecture/system-overview.md](system-overview.md)
 2. [docs/architecture/current-implementation-status.md](current-implementation-status.md)
-3. [docs/architecture/project-structure.md](project-structure.md)
-4. [docs/architecture/backend-service.md](backend-service.md)
-5. [docs/architecture/task-system.md](task-system.md)
-6. [docs/architecture/detection-model-rules.md](detection-model-rules.md)
-7. [docs/architecture/yolox-module-design.md](yolox-module-design.md)
-8. [docs/architecture/frontend-web-ui.md](frontend-web-ui.md)
-9. [docs/architecture/plugin-system.md](plugin-system.md)
-10. [docs/architecture/workflow-json-contracts.md](workflow-json-contracts.md)
-11. [docs/architecture/data-and-files.md](data-and-files.md)
-12. [docs/architecture/dataset-import-spec.md](dataset-import-spec.md)
-13. [docs/architecture/dataset-export-formats.md](dataset-export-formats.md)
-14. [docs/architecture/runtime-packaging.md](runtime-packaging.md)
-15. 按任务继续进入集成规则或日志专题文档
+3. [docs/architecture/execution-sequences.md](execution-sequences.md)
+4. [docs/architecture/project-structure.md](project-structure.md)
+5. [docs/architecture/backend-service.md](backend-service.md)
+6. [docs/architecture/task-system.md](task-system.md)
+7. [docs/architecture/detection-model-rules.md](detection-model-rules.md)
+8. [docs/architecture/yolox-module-design.md](yolox-module-design.md)
+9. [docs/architecture/frontend-web-ui.md](frontend-web-ui.md)
+10. [docs/architecture/plugin-system.md](plugin-system.md)
+11. [docs/architecture/workflow-json-contracts.md](workflow-json-contracts.md)
+12. [docs/architecture/data-and-files.md](data-and-files.md)
+13. [docs/architecture/dataset-import-spec.md](dataset-import-spec.md)
+14. [docs/architecture/dataset-export-formats.md](dataset-export-formats.md)
+15. [docs/architecture/runtime-packaging.md](runtime-packaging.md)
+16. 按任务继续进入集成规则或日志专题文档

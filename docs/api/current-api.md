@@ -62,7 +62,7 @@
 | POST | /api/v1/workflows/applications/validate | workflows:read | 校验一份 FlowApplication 与 template 绑定关系。 |
 | PUT | /api/v1/workflows/projects/{project_id}/applications/{application_id} | workflows:write | 保存一份 FlowApplication JSON。 |
 | GET | /api/v1/workflows/projects/{project_id}/applications/{application_id} | workflows:read | 读取一份已保存的 FlowApplication JSON。 |
-| POST | /api/v1/workflows/projects/{project_id}/applications/{application_id}/execute | workflows:write | 在独立子进程中执行一份已保存的 FlowApplication。 |
+| POST | /api/v1/workflows/projects/{project_id}/applications/{application_id}/execute | workflows:write | 在 backend-service 当前进程运行时中执行一份已保存的 FlowApplication。 |
 | POST | /api/v1/tasks | tasks:write | 创建公开任务记录，立即返回任务详情。 |
 | GET | /api/v1/tasks | tasks:read | 按公开筛选字段查询任务列表。 |
 | GET | /api/v1/tasks/{task_id} | tasks:read | 查询单条任务详情；默认同时返回 events。 |
@@ -231,6 +231,7 @@
 ### POST /api/v1/models/yolox/conversion-tasks/onnx
 
 - 需要同时具备 models:read 和 tasks:write
+- 转换链顺序图与常见失败分支见 [docs/architecture/execution-sequences.md](../architecture/execution-sequences.md)。
 - 当前请求体允许显式指定：
   - project_id
   - source_model_version_id
@@ -649,6 +650,7 @@
 
 - 需要 models:read
 - 这是同步直返推理接口；当前只使用 deployment 的同步推理子进程，并按 instance 简单轮转执行
+- 部署推理链顺序图与常见失败分支见 [docs/architecture/execution-sequences.md](../architecture/execution-sequences.md)。
 - 当前要求 deployment 的 sync 进程已经通过 `sync/start` 或 `sync/warmup` 启动；未启动时返回 `invalid_request`
 - 当前支持 `application/json` 和 `multipart/form-data`
 - 输入 one-of 规则：`input_uri`、`image_base64`、`input_image` 三者必须且只能提供一个
@@ -833,6 +835,7 @@
 ### POST /api/v1/models/yolox/training-tasks
 
 - 需要同时具备 datasets:read 和 tasks:write
+- 训练链顺序图与常见失败分支见 [docs/architecture/execution-sequences.md](../architecture/execution-sequences.md)。
 - 当前请求体允许显式指定：
   - project_id
   - dataset_export_id
@@ -1041,6 +1044,7 @@
 
 - Content-Type：application/json
 - 需要 workflows:write
+- workflow execute 链顺序图与常见失败分支见 [docs/architecture/execution-sequences.md](../architecture/execution-sequences.md)。
 - 请求体字段：
   - input_bindings
   - execution_metadata

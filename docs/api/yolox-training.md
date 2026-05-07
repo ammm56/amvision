@@ -44,6 +44,8 @@
 
 创建一个以 DatasetExport 为唯一输入边界的 YOLOX 训练任务，并提交到 yolox-trainings 队列。
 
+训练链顺序图与常见失败分支见 [docs/architecture/execution-sequences.md](../architecture/execution-sequences.md)。
+
 #### Content-Type
 
 - application/json
@@ -726,6 +728,8 @@ reference 风格增强示例：按需显式开启 Mosaic、MixUp 和动态尺寸
 
 当前已经公开 conversion-tasks 资源，转换链路固定为 `ModelVersion -> ConversionTask -> ModelBuild`，当前先以 ONNX 主链打通最小可执行闭环，不把转换逻辑混进 training 或 deployment。
 
+转换链顺序图与常见失败分支见 [docs/architecture/execution-sequences.md](../architecture/execution-sequences.md)。
+
 #### 当前 conversion 资源组
 
 - 资源组：`/api/v1/models/yolox/conversion-tasks`
@@ -787,6 +791,8 @@ reference 风格增强示例：按需显式开启 Mosaic、MixUp 和动态尺寸
 ### 当前 DeploymentInstance 与正式 inference task 接口
 
 当前已经公开 DeploymentInstance 资源和正式 inference-tasks 资源，推理请求继续绑定 `DeploymentInstance`，不直接读取 `DatasetVersion`，也不直接暴露 checkpoint 路径。
+
+部署推理链顺序图与常见失败分支见 [docs/architecture/execution-sequences.md](../architecture/execution-sequences.md)。
 
 #### 当前 deployment 资源组
 

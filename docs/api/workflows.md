@@ -158,6 +158,7 @@
 - Content-Type：application/json
 - 需要 workflows:write
 - execute API 当前在 backend-service 的现有运行时中执行，service-backed nodes 会直接复用已装配的 queue backend、workflow runtime registry 和 deployment supervisors
+- workflow execute 链顺序图与常见失败分支见 [docs/architecture/execution-sequences.md](../architecture/execution-sequences.md)。
 - 请求体字段：
   - input_bindings：按 application input binding_id 组织的输入 payload
   - execution_metadata：整次执行附加元数据
