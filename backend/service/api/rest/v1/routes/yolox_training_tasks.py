@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, Query, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from backend.queue import LocalFileQueueBackend
 from backend.service.api.deps.auth import AuthenticatedPrincipal, require_scopes
@@ -65,6 +65,133 @@ class YoloXTrainingTaskCreateRequestBody(BaseModel):
     - display_name：可选的任务展示名称。
     """
 
+
+class YoloXTrainingExtraOptionsRequest(BaseModel):
+    """描述 YOLOX 训练任务 extra_options 的公开可选字段。
+
+    字段：
+    - seed：训练随机种子。
+    - num_workers：DataLoader worker 数量。
+    - device：强制指定训练 device。
+    - max_labels：单张图片保留的最大标签数。
+    - flip_prob：随机翻转概率。
+    - hsv_prob：HSV 增强概率。
+    - mosaic_prob：Mosaic 增强概率。
+    - mixup_prob：MixUp 增强概率。
+    - enable_mixup：是否允许在 Mosaic 链路内追加 MixUp。
+    - degrees：随机仿射旋转角度范围。
+    - translate：随机仿射平移比例。
+    - mosaic_scale：Mosaic 拼图缩放范围。
+    - mixup_scale：MixUp 缩放范围。
+    - shear：随机仿射错切角度范围。
+    - multiscale_range：多尺度训练范围。
+    - ema：是否启用 ModelEMA。
+    - warmup_epochs：warmup epoch 数。
+    - no_aug_epochs：训练尾段 no_aug epoch 数。
+    - min_lr_ratio：余弦退火最小学习率比例。
+    - evaluation_confidence_threshold：验证阶段 COCO mAP 的 confidence threshold。
+    - evaluation_nms_threshold：验证阶段 COCO mAP 的 NMS threshold。
+    """
+
+    model_config = ConfigDict(
+        extra="allow",
+        json_schema_extra={
+            "examples": [
+                {
+                    "seed": 42,
+                    "num_workers": 0,
+                    "flip_prob": 0.0,
+                    "hsv_prob": 0.0,
+                    "mosaic_prob": 0.0,
+                    "mixup_prob": 0.0,
+                    "enable_mixup": False,
+                    "multiscale_range": 0,
+                    "ema": True,
+                }
+            ]
+        },
+    )
+
+    seed: int | None = Field(default=None, description="训练随机种子；未指定时默认 0")
+    num_workers: int | None = Field(default=None, description="DataLoader worker 数量；未指定时默认 0")
+    device: str | None = Field(
+        default=None,
+        description="强制指定训练 device；当前支持 cpu、cuda 或 cuda:<index>；未指定时按运行环境自动解析",
+    )
+    max_labels: int | None = Field(default=None, description="单张图片保留的最大标签数；未指定时默认 120")
+    flip_prob: float | None = Field(
+        default=None,
+        description="随机翻转概率；未指定时默认 0.0，如需按 reference 风格启用可传 0.5",
+    )
+    hsv_prob: float | None = Field(
+        default=None,
+        description="HSV 增强概率；未指定时默认 0.0，如需按 reference 风格启用可传 1.0",
+    )
+    mosaic_prob: float | None = Field(
+        default=None,
+        description="Mosaic 增强概率；未指定时默认 0.0，如需按 reference 风格启用可传 1.0",
+    )
+    mixup_prob: float | None = Field(
+        default=None,
+        description="MixUp 增强概率；未指定时默认 0.0，如需按 reference 风格启用可传 1.0",
+    )
+    enable_mixup: bool | None = Field(
+        default=None,
+        description="是否允许在 Mosaic 链路内追加 MixUp；未指定时默认 false，reference 默认 true",
+    )
+    degrees: float | None = Field(default=None, description="随机仿射旋转角度范围；未指定时默认 10.0")
+    translate: float | None = Field(default=None, description="随机仿射平移比例；未指定时默认 0.1")
+    mosaic_scale: tuple[float, float] | None = Field(
+        default=None,
+        description="Mosaic 拼图缩放范围；未指定时默认 [0.1, 2.0]",
+    )
+    mixup_scale: tuple[float, float] | None = Field(
+        default=None,
+        description="MixUp 缩放范围；未指定时默认 [0.5, 1.5]",
+    )
+    shear: float | None = Field(default=None, description="随机仿射错切角度范围；未指定时默认 2.0")
+    multiscale_range: int | None = Field(
+        default=None,
+        description="多尺度训练范围；未指定时默认 0，即关闭动态尺寸；reference 默认 5",
+    )
+    ema: bool | None = Field(
+        default=None,
+        description="是否启用 ModelEMA；未指定时默认 true，内部 EMA decay 固定为 0.9998",
+    )
+    warmup_epochs: int | None = Field(default=None, description="warmup epoch 数；未指定时默认 5")
+    no_aug_epochs: int | None = Field(default=None, description="训练尾段 no_aug epoch 数；未指定时默认 15")
+    min_lr_ratio: float | None = Field(default=None, description="余弦退火最小学习率比例；未指定时默认 0.05")
+    evaluation_confidence_threshold: float | None = Field(
+        default=None,
+        description="验证阶段 COCO mAP 的 confidence threshold；未指定时默认 0.01",
+    )
+    evaluation_nms_threshold: float | None = Field(
+        default=None,
+        description="验证阶段 COCO mAP 的 NMS threshold；未指定时默认 0.65",
+    )
+
+
+class YoloXTrainingTaskCreateRequestBody(BaseModel):
+    """描述 YOLOX 训练任务创建请求体。
+
+    字段：
+    - project_id：所属 Project id。
+    - dataset_export_id：训练输入使用的 DatasetExport id。
+    - dataset_export_manifest_key：训练输入使用的导出 manifest object key。
+    - recipe_id：训练 recipe id。
+    - model_scale：训练目标的模型 scale。
+    - output_model_name：训练后登记的模型名。
+    - warm_start_model_version_id：warm start 使用的 ModelVersion id。
+    - evaluation_interval：每隔多少轮执行一次真实验证评估。
+    - max_epochs：最大训练轮数。
+    - batch_size：batch size。
+    - gpu_count：请求参与训练的 GPU 数量。
+    - precision：请求使用的训练 precision。
+    - input_size：训练输入尺寸。
+    - extra_options：附加训练选项。
+    - display_name：可选的任务展示名称。
+    """
+
     project_id: str = Field(description="所属 Project id")
     dataset_export_id: str | None = Field(default=None, description="训练输入使用的 DatasetExport id")
     dataset_export_manifest_key: str | None = Field(default=None, description="训练输入使用的导出 manifest object key")
@@ -72,13 +199,16 @@ class YoloXTrainingTaskCreateRequestBody(BaseModel):
     model_scale: Literal["nano", "tiny", "s", "m", "l", "x"] = Field(description="训练目标的模型 scale")
     output_model_name: str = Field(description="训练后登记的模型名")
     warm_start_model_version_id: str | None = Field(default=None, description="warm start 使用的 ModelVersion id")
-    evaluation_interval: int | None = Field(default=5, ge=1, description="每隔多少轮执行一次真实验证评估")
-    max_epochs: int | None = Field(default=None, description="最大训练轮数")
-    batch_size: int | None = Field(default=None, description="batch size")
+    evaluation_interval: int | None = Field(default=5, ge=1, description="每隔多少轮执行一次真实验证评估；未指定时默认 5")
+    max_epochs: int | None = Field(default=None, description="最大训练轮数；未指定时默认 1")
+    batch_size: int | None = Field(default=None, description="batch size；未指定时默认 1")
     gpu_count: int | None = Field(default=None, ge=1, description="请求参与训练的 GPU 数量")
-    precision: Literal["fp16", "fp32"] | None = Field(default=None, description="请求使用的训练 precision")
-    input_size: tuple[int, int] | None = Field(default=None, description="训练输入尺寸")
-    extra_options: dict[str, object] = Field(default_factory=dict, description="附加训练选项")
+    precision: Literal["fp16", "fp32"] | None = Field(default=None, description="请求使用的训练 precision；未指定时默认 fp32")
+    input_size: tuple[int, int] | None = Field(default=None, description="训练输入尺寸；未指定时默认 [640, 640]")
+    extra_options: YoloXTrainingExtraOptionsRequest = Field(
+        default_factory=YoloXTrainingExtraOptionsRequest,
+        description="附加训练选项；当前会在 OpenAPI 中展开可选字段说明",
+    )
     display_name: str = Field(default="", description="可选的任务展示名称")
 
 
@@ -297,7 +427,7 @@ def create_yolox_training_task(
             gpu_count=body.gpu_count,
             precision=body.precision,
             input_size=body.input_size,
-            extra_options=dict(body.extra_options),
+            extra_options=body.extra_options.model_dump(exclude_none=True),
         ),
         created_by=principal.principal_id,
         display_name=body.display_name,

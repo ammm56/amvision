@@ -843,6 +843,8 @@
 - 当前实现会先解析并校验 DatasetExport，再创建 TaskRecord，并提交到 yolox-trainings 队列
 - 当前公开 precision 字段只接受 fp16、fp32；未指定时默认 fp32。
 - 当前 input_size 未指定时，真实训练默认使用 [640, 640]。
+- 当前 Swagger/OpenAPI 已把 training create 的 extra_options 展开为具名字段，公开键包括 seed、num_workers、device、max_labels、flip_prob、hsv_prob、mosaic_prob、mixup_prob、enable_mixup、multiscale_range、ema、warmup_epochs、no_aug_epochs、min_lr_ratio、evaluation_confidence_threshold、evaluation_nms_threshold 等。
+- 当前 extra_options 默认关闭 flip、hsv、mosaic、mixup 和多尺度训练；EMA 默认保持启用。完整字段说明见 [docs/api/yolox-training.md](yolox-training.md)。
 - 当前没有可用 GPU 时会回退到 CPU 训练，用于最小硬件支持和开发环境验证；只是速度会明显变慢。
 - 当前 `save`、`pause` 都是“请求登记后等待下一个 epoch 边界生效”，不是同步完成动作。
 - 当前 `resume` 会先把任务切回 `queued` 并重新入队；checkpoint 读取失败或配置不一致这类问题可能在后续 worker 执行阶段才把任务切成 `failed`。

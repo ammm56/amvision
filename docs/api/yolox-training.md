@@ -65,8 +65,75 @@
 | gpu_count | integer \| null | 否 | 请求参与训练的 GPU 数量；需要是正整数。未指定时按运行环境自动解析，无可用 GPU 时会回退到 CPU 训练。 |
 | precision | string \| null | 否 | 请求使用的训练 precision；当前接口字段只接受 fp16、fp32。未指定时默认 fp32。 |
 | input_size | array[integer] \| null | 否 | 训练输入尺寸；未指定时默认使用 [640, 640]。 |
-| extra_options | object | 否 | 附加训练选项。 |
+| extra_options | object | 否 | 附加训练选项；当前 Swagger/OpenAPI 已展开公开可选字段。 |
 | display_name | string | 否 | 可选的任务展示名称。 |
+
+#### extra_options 当前公开字段
+
+以下字段当前已经在 Swagger/OpenAPI 中按具名字段展开，建议只使用这些公开键。训练接口已经把新增重增强改为默认关闭，只有显式传入时才会启用。
+
+| 字段 | 类型 | 当前默认值 | reference 值 | 说明 |
+| --- | --- | --- | --- | --- |
+| seed | integer | 0 | - | 训练随机种子。 |
+| num_workers | integer | 0 | - | DataLoader worker 数量。 |
+| device | string | 自动解析 | - | 强制指定 cpu、cuda 或 cuda:&lt;index&gt;。 |
+| max_labels | integer | 120 | 120 | 单张图片允许保留的最大标签数。 |
+| flip_prob | number | 0.0 | 0.5 | 随机翻转概率。 |
+| hsv_prob | number | 0.0 | 1.0 | HSV 增强概率。 |
+| mosaic_prob | number | 0.0 | 1.0 | Mosaic 增强概率。 |
+| mixup_prob | number | 0.0 | 1.0 | MixUp 增强概率；只有在 Mosaic 链路启用时才会实际生效。 |
+| enable_mixup | boolean | false | true | 是否允许在 Mosaic 链路内叠加 MixUp。 |
+| degrees | number | 10.0 | 10.0 | 随机仿射旋转角度范围。 |
+| translate | number | 0.1 | 0.1 | 随机仿射平移比例。 |
+| mosaic_scale | array[number, number] | [0.1, 2.0] | [0.1, 2.0] | Mosaic 拼图缩放范围。 |
+| mixup_scale | array[number, number] | [0.5, 1.5] | [0.5, 1.5] | MixUp 缩放范围。 |
+| shear | number | 2.0 | 2.0 | 随机仿射错切角度范围。 |
+| multiscale_range | integer | 0 | 5 | 多尺度训练范围；0 表示关闭动态尺寸。 |
+| ema | boolean | true | true | 是否启用 ModelEMA；内部 decay 固定为 0.9998。 |
+| warmup_epochs | integer | 5 | 5 | warmup epoch 数。 |
+| no_aug_epochs | integer | 15 | 15 | 训练尾段 no_aug epoch 数。 |
+| min_lr_ratio | number | 0.05 | 0.05 | 余弦退火最小学习率比例。 |
+| evaluation_confidence_threshold | number | 0.01 | 0.01 | 验证阶段 COCO mAP 的 confidence threshold。 |
+| evaluation_nms_threshold | number | 0.65 | 0.65 | 验证阶段 COCO mAP 的 NMS threshold。 |
+
+#### extra_options 示例
+
+默认轻量训练示例：保持固定尺寸，关闭新增重增强。
+
+```json
+{
+  "extra_options": {
+    "seed": 42,
+    "num_workers": 0,
+    "flip_prob": 0.0,
+    "hsv_prob": 0.0,
+    "mosaic_prob": 0.0,
+    "mixup_prob": 0.0,
+    "enable_mixup": false,
+    "multiscale_range": 0,
+    "ema": true
+  }
+}
+```
+
+reference 风格增强示例：按需显式开启 Mosaic、MixUp 和动态尺寸。
+
+```json
+{
+  "extra_options": {
+    "seed": 42,
+    "flip_prob": 0.5,
+    "hsv_prob": 1.0,
+    "mosaic_prob": 1.0,
+    "enable_mixup": true,
+    "mixup_prob": 1.0,
+    "multiscale_range": 5,
+    "ema": true
+  }
+}
+```
+
+当前公开接口里，gpu_count、precision、input_size、evaluation_interval 仍建议使用请求体顶层字段，不建议再通过 extra_options 重复传入同名控制项。
 
 #### warm_start_model_version_id 说明
 
@@ -92,6 +159,7 @@
 
 - input_size 未显式指定时，真实训练默认使用 [640, 640]。
 - precision 未显式指定时，默认使用 fp32。
+- extra_options 未显式指定时，当前默认关闭 flip、hsv、mosaic、mixup 和 multiscale_range，EMA 保持启用。
 - 当前训练支持 CPU 执行；当环境没有可用 GPU 或未分配 GPU 时，会回退到 CPU 训练。这个模式主要用于最小硬件支持和开发环境验证，训练速度会明显变慢。
 
 #### 输入边界规则

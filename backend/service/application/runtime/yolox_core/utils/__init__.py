@@ -3,10 +3,12 @@
 from .boxes import bboxes_iou, cxcywh2xyxy, postprocess, xyxy2cxcywh
 from .compat import meshgrid
 from .demo_utils import visualize_assign
+from .ema import ModelEMA
 from .lr_scheduler import LRScheduler
 
 __all__ = [
     "LRScheduler",
+    "ModelEMA",
     "bboxes_iou",
     "cxcywh2xyxy",
     "meshgrid",

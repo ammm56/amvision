@@ -10,7 +10,7 @@
       "name": "YOLOX Training",
       "item": [
         {
-          "name": "Create YOLOX Training Task",
+          "name": "Create YOLOX Training Task - Default Lightweight",
           "event": [
             {
               "listen": "test",
@@ -55,7 +55,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"dataset_export_id\": \"{{datasetExportId}}\",\n  \"dataset_export_manifest_key\": null,\n  \"recipe_id\": \"{{recipeId}}\",\n  \"model_scale\": \"{{modelScale}}\",\n  \"output_model_name\": \"{{outputModelName}}\",\n  \"warm_start_model_version_id\": null,\n  \"evaluation_interval\": {{evaluationInterval}},\n  \"max_epochs\": {{maxEpochs}},\n  \"batch_size\": {{batchSize}},\n  \"gpu_count\": {{gpuCount}},\n  \"precision\": \"{{precision}}\",\n  \"input_size\": [{{inputWidth}}, {{inputHeight}}],\n  \"extra_options\": {\n    \"seed\": 42\n  },\n  \"display_name\": \"{{displayName}}\"\n}",
+              "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"dataset_export_id\": \"{{datasetExportId}}\",\n  \"dataset_export_manifest_key\": null,\n  \"recipe_id\": \"{{recipeId}}\",\n  \"model_scale\": \"{{modelScale}}\",\n  \"output_model_name\": \"{{outputModelName}}\",\n  \"warm_start_model_version_id\": null,\n  \"evaluation_interval\": {{evaluationInterval}},\n  \"max_epochs\": {{maxEpochs}},\n  \"batch_size\": {{batchSize}},\n  \"gpu_count\": {{gpuCount}},\n  \"precision\": \"{{precision}}\",\n  \"input_size\": [{{inputWidth}}, {{inputHeight}}],\n  \"extra_options\": {\n    \"seed\": 42,\n    \"num_workers\": 0,\n    \"flip_prob\": 0.0,\n    \"hsv_prob\": 0.0,\n    \"mosaic_prob\": 0.0,\n    \"mixup_prob\": 0.0,\n    \"enable_mixup\": false,\n    \"multiscale_range\": 0,\n    \"ema\": true\n  },\n  \"display_name\": \"{{displayName}}\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -75,7 +75,77 @@
                 "training-tasks"
               ]
             },
-            "description": "以 DatasetExport 为唯一输入边界创建 YOLOX 训练任务。当前请求体已经同步 model_scale、evaluation_interval、gpu_count、precision、batch_size、max_epochs、input_size 和 warm_start_model_version_id；precision 当前只接受 fp16、fp32。若本机没有可用 GPU，可把 gpuCount 变量保留为 null，并按 CPU + fp32 跑最小调试。evaluation_interval 表示每隔多少轮执行一次真实验证评估，默认 5，最后一轮会强制补做一次评估，并回写 map50、map50_95。warm_start_model_version_id 表示本次训练要从哪个已有 ModelVersion 对应的 checkpoint 开始训练，而不是从随机初始化开始；来源既可以是当前 Project 自己已有的历史训练产出，也可以是平台基础模型目录中登记的 pretrained-reference ModelVersion。若需要选择平台基础模型来源，可先查询 /api/v1/models/platform-base 或 /api/v1/models/platform-base/{model_id}，再把 available_versions[].model_version_id 填入 warm_start_model_version_id。"
+            "description": "默认轻量训练示例。以 DatasetExport 为唯一输入边界创建 YOLOX 训练任务，并保持固定尺寸与轻量数据链：flip_prob=0、hsv_prob=0、mosaic_prob=0、mixup_prob=0、enable_mixup=false、multiscale_range=0、ema=true。当前请求体已经同步 model_scale、evaluation_interval、gpu_count、precision、batch_size、max_epochs、input_size 和 warm_start_model_version_id；precision 当前只接受 fp16、fp32。若本机没有可用 GPU，可把 gpuCount 变量保留为 null，并按 CPU + fp32 跑最小调试。若需要 reference 风格增强训练，请直接使用下方单独拆出的 Create YOLOX Training Task - Reference Augmentation 请求。"
+          },
+          "response": []
+        },
+        {
+          "name": "Create YOLOX Training Task - Reference Augmentation",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 202) {",
+                  "  var payload = pm.response.json();",
+                  "  pm.collectionVariables.set('taskId', payload.task_id);",
+                  "  pm.collectionVariables.set('datasetExportId', payload.dataset_export_id);",
+                  "  pm.collectionVariables.set('datasetExportManifestKey', payload.dataset_export_manifest_key);",
+                  "  pm.collectionVariables.set('datasetVersionId', payload.dataset_version_id);",
+                  "  pm.collectionVariables.set('formatId', payload.format_id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-principal-id",
+                "value": "{{principalId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-project-ids",
+                "value": "{{projectId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-scopes",
+                "value": "datasets:read,tasks:write",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"dataset_export_id\": \"{{datasetExportId}}\",\n  \"dataset_export_manifest_key\": null,\n  \"recipe_id\": \"{{recipeId}}\",\n  \"model_scale\": \"{{modelScale}}\",\n  \"output_model_name\": \"{{outputModelName}}\",\n  \"warm_start_model_version_id\": null,\n  \"evaluation_interval\": {{evaluationInterval}},\n  \"max_epochs\": {{maxEpochs}},\n  \"batch_size\": {{batchSize}},\n  \"gpu_count\": {{gpuCount}},\n  \"precision\": \"{{precision}}\",\n  \"input_size\": [{{inputWidth}}, {{inputHeight}}],\n  \"extra_options\": {\n    \"seed\": 42,\n    \"num_workers\": 0,\n    \"flip_prob\": 0.5,\n    \"hsv_prob\": 1.0,\n    \"mosaic_prob\": 1.0,\n    \"enable_mixup\": true,\n    \"mixup_prob\": 1.0,\n    \"multiscale_range\": 5,\n    \"ema\": true\n  },\n  \"display_name\": \"{{displayName}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/models/yolox/training-tasks",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "models",
+                "yolox",
+                "training-tasks"
+              ]
+            },
+            "description": "reference 风格增强训练示例。当前请求会显式启用 flip_prob=0.5、hsv_prob=1.0、mosaic_prob=1.0、enable_mixup=true、mixup_prob=1.0、multiscale_range=5，并保持 ema=true。这样会进入 Mosaic/MixUp 与动态尺寸训练链，训练速度会比默认轻量示例更慢，但更接近 reference trainer 的增强行为。顶层字段 gpu_count、precision、input_size、evaluation_interval 仍建议直接放在请求体顶层，不建议重复塞进 extra_options。若需要同时使用平台基础预训练权重，可把 warm_start_model_version_id 改成对应的 ModelVersion id，并让 model_scale 与来源 scale 保持一致。"
           },
           "response": []
         },

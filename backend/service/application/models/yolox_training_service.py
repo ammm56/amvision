@@ -12,6 +12,7 @@ from backend.contracts.datasets.exports.coco_detection_export import COCO_DETECT
 from backend.service.application.errors import InvalidRequestError, ResourceNotFoundError, ServiceConfigurationError
 from backend.service.application.models.yolox_detection_training import (
     run_yolox_detection_training,
+    YoloXTrainingBatchProgress,
     YoloXTrainingControlCommand,
     YoloXTrainingEpochProgress,
     YoloXTrainingPausedError,
@@ -1136,6 +1137,52 @@ class SqlAlchemyYoloXTrainingTaskService:
         summary_object_key = f"{output_files_root}/training-summary.json"
         resolved_evaluation_interval = self._resolve_requested_evaluation_interval(request)
 
+        def on_batch_completed(progress: YoloXTrainingBatchProgress) -> None:
+            current_task = self._require_training_task(task_record.task_id)
+            control = self._read_training_control(current_task)
+            progress_percent = self._build_progress_percent(
+                epoch=progress.epoch,
+                max_epochs=progress.max_epochs,
+                iteration=progress.iteration,
+                max_iterations=progress.max_iterations,
+            )
+            self.task_service.append_task_event(
+                AppendTaskEventRequest(
+                    task_id=task_record.task_id,
+                    event_type="progress",
+                    message=(
+                        "yolox training heartbeat "
+                        f"epoch {progress.epoch}/{progress.max_epochs} "
+                        f"iter {progress.iteration}/{progress.max_iterations}"
+                    ),
+                    payload={
+                        "state": "running",
+                        "attempt_no": attempt_no,
+                        "progress": {
+                            "stage": "training",
+                            "granularity": "batch",
+                            "percent": progress_percent,
+                            "epoch": progress.epoch,
+                            "max_epochs": progress.max_epochs,
+                            "iteration": progress.iteration,
+                            "max_iterations": progress.max_iterations,
+                            "global_iteration": progress.global_iteration,
+                            "total_iterations": progress.total_iterations,
+                            "input_size": list(progress.input_size),
+                            "learning_rate": progress.learning_rate,
+                            "train_metrics": dict(progress.train_metrics),
+                        },
+                        "metadata": {
+                            "output_object_prefix": output_object_prefix,
+                            "requested_precision": request.precision,
+                            "requested_gpu_count": request.gpu_count,
+                            "requested_evaluation_interval": resolved_evaluation_interval,
+                            YOLOX_TRAINING_CONTROL_METADATA_KEY: control,
+                        },
+                    },
+                )
+            )
+
         def on_epoch_completed(
             progress: YoloXTrainingEpochProgress,
         ) -> YoloXTrainingControlCommand | None:
@@ -1147,6 +1194,7 @@ class SqlAlchemyYoloXTrainingTaskService:
             )
             progress_payload: dict[str, object] = {
                 "stage": "training",
+                "granularity": "epoch",
                 "percent": progress_percent,
                 "epoch": progress.epoch,
                 "max_epochs": progress.max_epochs,
@@ -1340,6 +1388,7 @@ class SqlAlchemyYoloXTrainingTaskService:
                     ),
                     input_size=request.input_size,
                     extra_options=dict(request.extra_options),
+                    batch_callback=on_batch_completed,
                     epoch_callback=on_epoch_completed,
                     savepoint_callback=on_savepoint_created,
                 )
@@ -1499,8 +1548,26 @@ class SqlAlchemyYoloXTrainingTaskService:
             return extra_option_value
         return YOLOX_MINIMAL_DEFAULT_EVALUATION_INTERVAL
 
-    def _build_progress_percent(self, *, epoch: int, max_epochs: int) -> float:
-        """按当前 epoch 计算训练阶段进度百分比。"""
+    def _build_progress_percent(
+        self,
+        *,
+        epoch: int,
+        max_epochs: int,
+        iteration: int | None = None,
+        max_iterations: int | None = None,
+    ) -> float:
+        """按 epoch 或 batch 粒度计算训练阶段进度百分比。"""
+
+        if iteration is not None and max_iterations is not None and max_iterations > 0:
+            completed_iterations = ((max(1, epoch) - 1) * max_iterations) + min(
+                max_iterations,
+                max(0, iteration),
+            )
+            total_iterations = max(1, max_epochs * max_iterations)
+            return round(
+                min(95.0, 10.0 + (80.0 * completed_iterations) / total_iterations),
+                2,
+            )
 
         return round(
             min(95.0, 10.0 + (80.0 * max(0, epoch)) / max(1, max_epochs)),

@@ -5,6 +5,7 @@ from __future__ import annotations
 import io
 import json
 import math
+import random
 from collections.abc import Callable
 from contextlib import nullcontext, redirect_stdout
 from dataclasses import dataclass
@@ -48,6 +49,7 @@ class YoloXDetectionTrainingExecutionRequest:
     - warm_start_source_summary：warm start 来源摘要。
     - input_size：训练输入尺寸；为空时使用最小默认值。
     - extra_options：附加训练选项。
+    - batch_callback：每个 batch 完成后的 heartbeat 回调。
     - epoch_callback：每轮训练结束后的进度回写回调；返回值可携带 save/pause 控制命令。
     - savepoint_callback：当训练收到手动保存或暂停请求时回传当前 savepoint。
     """
@@ -65,6 +67,7 @@ class YoloXDetectionTrainingExecutionRequest:
     warm_start_source_summary: dict[str, object] | None = None
     input_size: tuple[int, int] | None = None
     extra_options: dict[str, object] | None = None
+    batch_callback: Callable[["YoloXTrainingBatchProgress"], None] | None = None
     epoch_callback: Callable[["YoloXTrainingEpochProgress"], "YoloXTrainingControlCommand | None"] | None = None
     savepoint_callback: Callable[["YoloXTrainingSavePoint"], None] | None = None
 
@@ -162,6 +165,33 @@ class YoloXTrainingEpochProgress:
 
 
 @dataclass(frozen=True)
+class YoloXTrainingBatchProgress:
+    """描述单个训练 batch 完成后的 heartbeat 快照。
+
+    字段：
+    - epoch：当前 epoch 序号。
+    - max_epochs：训练总 epoch 数。
+    - iteration：当前 epoch 内已完成的 batch 序号。
+    - max_iterations：当前 epoch 总 batch 数。
+    - global_iteration：全局已完成的 batch 数。
+    - total_iterations：整个训练任务的总 batch 数。
+    - input_size：当前 batch 使用的输入尺寸。
+    - learning_rate：当前 batch 更新后的学习率。
+    - train_metrics：当前 batch 的训练指标摘要。
+    """
+
+    epoch: int
+    max_epochs: int
+    iteration: int
+    max_iterations: int
+    global_iteration: int
+    total_iterations: int
+    input_size: tuple[int, int]
+    learning_rate: float
+    train_metrics: dict[str, float]
+
+
+@dataclass(frozen=True)
 class YoloXTrainingControlCommand:
     """描述单轮训练结束后由上层返回给训练循环的控制命令。
 
@@ -200,12 +230,17 @@ class _YoloXTrainingImports:
     cv2: Any
     np: Any
     torch: Any
+    MosaicDetection: Any
+    InfiniteSampler: Any
     TrainTransform: Any
+    YoloBatchSampler: Any
     YOLOPAFPN: Any
     YOLOX: Any
     YOLOXHead: Any
     LRScheduler: Any
+    ModelEMA: Any
     postprocess: Any
+    worker_init_reset_seed: Any
     COCO: Any
     COCOeval: Any
 
@@ -285,19 +320,48 @@ class YoloXTrainingPausedError(Exception):
         self.savepoint = savepoint
 
 
+# 训练结果与接口文档会公开这一实现模式标识，用于区分最小闭环训练链路。
 YOLOX_MINIMAL_IMPLEMENTATION_MODE = "yolox-detection-minimal"
+# 未显式指定 input_size 时，固定使用 640x640 作为最小训练默认尺寸。
 YOLOX_MINIMAL_DEFAULT_INPUT_SIZE = (640, 640)
+# 未显式指定 batch_size 时，最小训练默认按单 batch 执行。
 YOLOX_MINIMAL_DEFAULT_BATCH_SIZE = 1
+# 未显式指定 max_epochs 时，最小训练默认只跑 1 个 epoch。
 YOLOX_MINIMAL_DEFAULT_MAX_EPOCHS = 1
+# 未显式指定 evaluation_interval 时，默认每 5 个 epoch 做一次真实验证评估。
 YOLOX_MINIMAL_DEFAULT_EVALUATION_INTERVAL = 5
+# 验证阶段 COCO mAP 评估默认使用的 confidence threshold。
 YOLOX_MINIMAL_DEFAULT_EVAL_CONFIDENCE_THRESHOLD = 0.01
+# 验证阶段 COCO mAP 评估默认使用的 NMS threshold。
 YOLOX_MINIMAL_DEFAULT_EVAL_NMS_THRESHOLD = 0.65
+
+# 当前产品默认保持轻量训练路径：关闭新增数据增强，只在显式传参时启用。
+YOLOX_DEFAULT_TRAIN_FLIP_PROB = 0.0
+YOLOX_DEFAULT_TRAIN_HSV_PROB = 0.0
+YOLOX_DEFAULT_TRAIN_MOSAIC_PROB = 0.0
+YOLOX_DEFAULT_TRAIN_MIXUP_PROB = 0.0
+YOLOX_DEFAULT_TRAIN_ENABLE_MIXUP = False
+YOLOX_DEFAULT_TRAIN_MULTISCALE_RANGE = 0
+
+# 以下值保留 YOLOX reference 风格默认配置，供显式开启增强或调度时复用。
 YOLOX_REFERENCE_DEFAULT_FLIP_PROB = 0.5
 YOLOX_REFERENCE_DEFAULT_HSV_PROB = 1.0
 YOLOX_REFERENCE_DEFAULT_MAX_LABELS = 120
 YOLOX_REFERENCE_DEFAULT_WARMUP_EPOCHS = 5
 YOLOX_REFERENCE_DEFAULT_NO_AUG_EPOCHS = 15
 YOLOX_REFERENCE_DEFAULT_MIN_LR_RATIO = 0.05
+YOLOX_REFERENCE_DEFAULT_MOSAIC_PROB = 1.0
+YOLOX_REFERENCE_DEFAULT_MIXUP_PROB = 1.0
+YOLOX_REFERENCE_DEFAULT_DEGREES = 10.0
+YOLOX_REFERENCE_DEFAULT_TRANSLATE = 0.1
+YOLOX_REFERENCE_DEFAULT_MOSAIC_SCALE = (0.1, 2.0)
+YOLOX_REFERENCE_DEFAULT_MIXUP_SCALE = (0.5, 1.5)
+YOLOX_REFERENCE_DEFAULT_SHEAR = 2.0
+YOLOX_REFERENCE_DEFAULT_ENABLE_MIXUP = True
+YOLOX_REFERENCE_DEFAULT_MULTISCALE_RANGE = 5
+YOLOX_REFERENCE_DEFAULT_EMA_ENABLED = True
+# ModelEMA 当前固定使用 reference 对齐的 decay 值，不开放成独立公开参数。
+YOLOX_REFERENCE_DEFAULT_EMA_DECAY = 0.9998
 
 YOLOX_SCALE_PROFILES: dict[str, YoloXScaleProfile] = {
     "nano": YoloXScaleProfile(depth=0.33, width=0.25, depthwise=True),
@@ -311,7 +375,7 @@ YOLOX_SUPPORTED_MODEL_SCALES = tuple(YOLOX_SCALE_PROFILES.keys())
 
 
 class _CocoDetectionExportDataset:
-    """从 coco-detection-v1 导出目录读取最小训练样本。"""
+    """从 coco-detection-v1 导出目录读取训练样本，并提供原始样本访问能力。"""
 
     def __init__(
         self,
@@ -339,6 +403,7 @@ class _CocoDetectionExportDataset:
         self.annotation_file = annotation_file
         self.image_root = image_root
         self.input_size = input_size
+        self._input_dim = tuple(input_size)
         self.imports = imports
         self.preproc = imports.TrainTransform(
             max_labels=max_labels,
@@ -385,15 +450,27 @@ class _CocoDetectionExportDataset:
 
         return len(self.samples)
 
-    def __getitem__(self, index: int) -> tuple[object, object, tuple[int, int], int]:
-        """读取单条样本并执行最小 YOLOX 预处理。
+    @property
+    def input_dim(self) -> tuple[int, int]:
+        """返回当前样本预处理使用的输入尺寸。"""
 
-        参数：
-        - index：样本索引。
+        return tuple(self._input_dim)
 
-        返回：
-        - 预处理后的图片、标签、原图尺寸和 image_id。
-        """
+    def set_input_dim(self, input_dim: tuple[int, int]) -> None:
+        """更新后续样本预处理使用的输入尺寸。"""
+
+        self._input_dim = tuple(input_dim)
+
+    def load_anno(self, index: int) -> object:
+        """返回单条样本的原始 xyxy+class 标注数组。"""
+
+        sample = self.samples[index]
+        if not sample.boxes_xyxy_with_class:
+            return self.imports.np.zeros((0, 5), dtype=self.imports.np.float32)
+        return self.imports.np.array(sample.boxes_xyxy_with_class, dtype=self.imports.np.float32)
+
+    def pull_item(self, index: int) -> tuple[object, object, tuple[int, int], int]:
+        """读取未经 TrainTransform 处理的原始图片和标注。"""
 
         sample = self.samples[index]
         image = self.imports.cv2.imread(str(sample.image_path))
@@ -403,12 +480,30 @@ class _CocoDetectionExportDataset:
                 details={"image_path": sample.image_path.as_posix()},
             )
 
-        targets = self.imports.np.array(sample.boxes_xyxy_with_class, dtype=self.imports.np.float32)
-        if targets.size == 0:
-            targets = self.imports.np.zeros((0, 5), dtype=self.imports.np.float32)
+        targets = self.load_anno(index)
+        return image, targets, (sample.height, sample.width), sample.image_id
 
-        transformed_image, transformed_targets = self.preproc(image, targets, self.input_size)
-        return transformed_image, transformed_targets, (sample.height, sample.width), sample.image_id
+    def __getitem__(self, index: object) -> tuple[object, object, tuple[int, int], int]:
+        """读取单条样本并执行最小 YOLOX 预处理。
+
+        参数：
+        - index：样本索引。
+
+        返回：
+        - 预处理后的图片、标签、原图尺寸和 image_id。
+        """
+
+        if not isinstance(index, int):
+            if isinstance(index, list | tuple) and len(index) >= 2:
+                if len(index) > 2 and index[2] is not None:
+                    self.set_input_dim(tuple(index[2]))
+                index = int(index[1])
+            else:
+                raise TypeError("训练样本索引必须是 int 或携带输入尺寸的采样器元组")
+
+        image, targets, image_info, image_id = self.pull_item(index)
+        transformed_image, transformed_targets = self.preproc(image, targets, self.input_dim)
+        return transformed_image, transformed_targets, image_info, image_id
 
     def _build_category_id_to_index(
         self,
@@ -533,6 +628,7 @@ def run_yolox_detection_training(
     resolved_splits = _resolve_coco_splits(request.dataset_storage, manifest_payload)
     train_split = _resolve_train_split(resolved_splits)
     input_size = _resolve_input_size(request.input_size)
+    current_input_size = input_size
     batch_size = max(1, request.batch_size or YOLOX_MINIMAL_DEFAULT_BATCH_SIZE)
     max_epochs = max(1, request.max_epochs or YOLOX_MINIMAL_DEFAULT_MAX_EPOCHS)
     extra_options = dict(request.extra_options or {})
@@ -559,20 +655,73 @@ def run_yolox_detection_training(
     flip_prob = _read_float_option(
         extra_options,
         "flip_prob",
-        default=YOLOX_REFERENCE_DEFAULT_FLIP_PROB,
+        default=YOLOX_DEFAULT_TRAIN_FLIP_PROB,
     )
     hsv_prob = _read_float_option(
         extra_options,
         "hsv_prob",
-        default=YOLOX_REFERENCE_DEFAULT_HSV_PROB,
+        default=YOLOX_DEFAULT_TRAIN_HSV_PROB,
     )
     max_labels = _read_int_option(
         extra_options,
         "max_labels",
         default=YOLOX_REFERENCE_DEFAULT_MAX_LABELS,
     )
+    mosaic_prob = _read_float_option(
+        extra_options,
+        "mosaic_prob",
+        default=YOLOX_DEFAULT_TRAIN_MOSAIC_PROB,
+    )
+    mixup_prob = _read_float_option(
+        extra_options,
+        "mixup_prob",
+        default=YOLOX_DEFAULT_TRAIN_MIXUP_PROB,
+    )
+    degrees = _read_float_option(
+        extra_options,
+        "degrees",
+        default=YOLOX_REFERENCE_DEFAULT_DEGREES,
+    )
+    translate = _read_float_option(
+        extra_options,
+        "translate",
+        default=YOLOX_REFERENCE_DEFAULT_TRANSLATE,
+    )
+    mosaic_scale = _read_float_pair_option(
+        extra_options,
+        "mosaic_scale",
+        default=YOLOX_REFERENCE_DEFAULT_MOSAIC_SCALE,
+    )
+    mixup_scale = _read_float_pair_option(
+        extra_options,
+        "mixup_scale",
+        default=YOLOX_REFERENCE_DEFAULT_MIXUP_SCALE,
+    )
+    shear = _read_float_option(
+        extra_options,
+        "shear",
+        default=YOLOX_REFERENCE_DEFAULT_SHEAR,
+    )
+    enable_mixup = _read_bool_option(
+        extra_options,
+        "enable_mixup",
+        default=YOLOX_DEFAULT_TRAIN_ENABLE_MIXUP,
+    )
     num_workers = _read_int_option(extra_options, "num_workers", default=0)
     random_seed = _read_int_option(extra_options, "seed", default=0)
+    multiscale_range = max(
+        0,
+        _read_int_option(
+            extra_options,
+            "multiscale_range",
+            default=YOLOX_DEFAULT_TRAIN_MULTISCALE_RANGE,
+        ),
+    )
+    ema_enabled = _read_bool_option(
+        extra_options,
+        "ema",
+        default=YOLOX_REFERENCE_DEFAULT_EMA_ENABLED,
+    )
     warmup_epochs, no_aug_epochs, min_lr_ratio = _resolve_training_schedule_options(
         extra_options=extra_options,
         max_epochs=max_epochs,
@@ -591,7 +740,7 @@ def run_yolox_detection_training(
     if runtime.device.startswith("cuda"):
         imports.torch.cuda.manual_seed_all(random_seed)
 
-    train_dataset = _CocoDetectionExportDataset(
+    train_base_dataset = _CocoDetectionExportDataset(
         annotation_file=train_split.annotation_file,
         image_root=train_split.image_root,
         input_size=input_size,
@@ -600,14 +749,55 @@ def run_yolox_detection_training(
         hsv_prob=hsv_prob,
         max_labels=max_labels,
     )
-    train_loader = imports.torch.utils.data.DataLoader(
-        train_dataset,
-        batch_size=batch_size,
-        shuffle=True,
-        num_workers=num_workers,
-        pin_memory=runtime.device.startswith("cuda"),
-        drop_last=False,
-    )
+    mosaic_augmentation_enabled = mosaic_prob > 0.0
+    use_augmentation_data_pipeline = mosaic_augmentation_enabled or multiscale_range > 0
+    if mosaic_augmentation_enabled:
+        train_dataset = imports.MosaicDetection(
+            dataset=train_base_dataset,
+            img_size=input_size,
+            mosaic=True,
+            preproc=imports.TrainTransform(
+                max_labels=max_labels,
+                flip_prob=flip_prob,
+                hsv_prob=hsv_prob,
+            ),
+            degrees=degrees,
+            translate=translate,
+            mosaic_scale=mosaic_scale,
+            mixup_scale=mixup_scale,
+            shear=shear,
+            enable_mixup=enable_mixup,
+            mosaic_prob=mosaic_prob,
+            mixup_prob=mixup_prob,
+        )
+    else:
+        train_dataset = train_base_dataset
+
+    if use_augmentation_data_pipeline:
+        train_batch_sampler = imports.YoloBatchSampler(
+            imports.InfiniteSampler(len(train_dataset), seed=random_seed),
+            batch_size,
+            False,
+            mosaic=mosaic_augmentation_enabled,
+            input_dimension=input_size,
+        )
+        train_loader = imports.torch.utils.data.DataLoader(
+            train_dataset,
+            batch_sampler=train_batch_sampler,
+            num_workers=num_workers,
+            pin_memory=runtime.device.startswith("cuda"),
+            worker_init_fn=(imports.worker_init_reset_seed if num_workers > 0 else None),
+        )
+    else:
+        train_loader = imports.torch.utils.data.DataLoader(
+            train_dataset,
+            batch_size=batch_size,
+            shuffle=True,
+            num_workers=num_workers,
+            pin_memory=runtime.device.startswith("cuda"),
+            drop_last=False,
+            worker_init_fn=(imports.worker_init_reset_seed if num_workers > 0 else None),
+        )
     if len(train_loader) == 0:
         raise InvalidRequestError("训练输入中没有可消费的 batch")
 
@@ -638,11 +828,12 @@ def run_yolox_detection_training(
             drop_last=False,
         )
     validation_split_name = validation_split.name if validation_split is not None else None
+    train_category_names = train_base_dataset.category_names
 
     base_model = _build_yolox_model(
         imports=imports,
         model_scale=request.model_scale,
-        num_classes=len(train_dataset.category_names),
+        num_classes=len(train_category_names),
     )
     if request.resume_checkpoint_path is None and request.warm_start_checkpoint_path is not None:
         warm_start_summary = _load_warm_start_checkpoint(
@@ -659,7 +850,7 @@ def run_yolox_detection_training(
             model=base_model,
             optimizer=optimizer,
             checkpoint_path=request.resume_checkpoint_path,
-            expected_category_names=train_dataset.category_names,
+            expected_category_names=train_category_names,
             expected_model_scale=request.model_scale,
             expected_input_size=input_size,
             expected_precision=precision,
@@ -702,9 +893,18 @@ def run_yolox_detection_training(
     use_fp16 = precision == "fp16" and runtime.device.startswith("cuda")
     grad_scaler_device = "cuda" if runtime.device.startswith("cuda") else "cpu"
     grad_scaler = imports.torch.amp.GradScaler(grad_scaler_device, enabled=use_fp16)
+    model_ema = (
+        imports.ModelEMA(
+            training_model,
+            decay=YOLOX_REFERENCE_DEFAULT_EMA_DECAY,
+            updates=0,
+        )
+        if ema_enabled
+        else None
+    )
 
     total_sample_count = sum(split.sample_count for split in resolved_splits)
-    train_sample_count = len(train_dataset)
+    train_sample_count = len(train_base_dataset)
     validation_sample_count = len(validation_dataset) if validation_dataset is not None else 0
     epoch_history: list[dict[str, object]] = []
     validation_epoch_history: list[dict[str, object]] = []
@@ -723,24 +923,47 @@ def run_yolox_detection_training(
             else None
         )
         start_epoch = max(0, resume_state.resume_epoch)
-    global_iter = start_epoch * len(train_loader)
+    max_iterations = len(train_loader)
+    total_iterations = max_epochs * max_iterations
+    global_iter = start_epoch * max_iterations
+    if model_ema is not None:
+        model_ema.updates = global_iter
+    _set_training_loader_input_size(
+        train_dataset=train_dataset,
+        train_loader=train_loader,
+        input_size=current_input_size,
+    )
     for epoch_index in range(start_epoch, max_epochs):
         current_epoch = epoch_index + 1
+        no_aug_enabled = _is_no_aug_epoch(
+            epoch=current_epoch,
+            max_epochs=max_epochs,
+            no_aug_epochs=no_aug_epochs,
+        )
+        _set_training_loader_mosaic_enabled(
+            train_dataset=train_dataset,
+            train_loader=train_loader,
+            enabled=not no_aug_enabled,
+        )
         _set_yolox_head_use_l1(
             model=training_model,
-            enabled=_is_no_aug_epoch(
-                epoch=current_epoch,
-                max_epochs=max_epochs,
-                no_aug_epochs=no_aug_epochs,
-            ),
+            enabled=no_aug_enabled,
         )
         training_model.train()
         epoch_totals: dict[str, float] = {}
         epoch_iterations = 0
-        for images, targets, _image_infos, _image_ids in train_loader:
+        train_iterator = iter(train_loader)
+        for iteration_index in range(1, max_iterations + 1):
+            images, targets, _image_infos, _image_ids = next(train_iterator)
             optimizer.zero_grad(set_to_none=True)
             images = images.to(device=runtime.device, dtype=imports.torch.float32)
             targets = targets.to(device=runtime.device, dtype=imports.torch.float32)
+            images, targets = _preprocess_training_batch(
+                imports=imports,
+                images=images,
+                targets=targets,
+                target_size=current_input_size,
+            )
 
             with _build_autocast_context(
                 imports=imports,
@@ -761,6 +984,8 @@ def run_yolox_detection_training(
             learning_rate = scheduler.update_lr(global_iter + 1)
             for param_group in optimizer.param_groups:
                 param_group["lr"] = learning_rate
+            if model_ema is not None:
+                model_ema.update(training_model)
 
             global_iter += 1
             epoch_iterations += 1
@@ -774,6 +999,31 @@ def run_yolox_detection_training(
                 epoch_totals[target_metric_name] = (
                     epoch_totals.get(target_metric_name, 0.0) + metric_value
                 )
+            if request.batch_callback is not None:
+                request.batch_callback(
+                    YoloXTrainingBatchProgress(
+                        epoch=current_epoch,
+                        max_epochs=max_epochs,
+                        iteration=iteration_index,
+                        max_iterations=max_iterations,
+                        global_iteration=global_iter,
+                        total_iterations=total_iterations,
+                        input_size=current_input_size,
+                        learning_rate=float(learning_rate),
+                        train_metrics=_build_batch_progress_metrics(scalar_outputs),
+                    )
+                )
+            if multiscale_range > 0 and global_iter % 10 == 0:
+                current_input_size = _random_resize_input_size(
+                    base_input_size=input_size,
+                    multiscale_range=multiscale_range,
+                    random_seed=random_seed + global_iter,
+                )
+                _set_training_loader_input_size(
+                    train_dataset=train_dataset,
+                    train_loader=train_loader,
+                    input_size=current_input_size,
+                )
 
         epoch_metrics = {
             metric_name: metric_total / epoch_iterations
@@ -782,6 +1032,11 @@ def run_yolox_detection_training(
         validation_metrics: dict[str, float] = {}
         validation_ran = False
         validation_snapshot: dict[str, object] | None = None
+        evaluation_model = _resolve_evaluation_model(
+            training_model=training_model,
+            model_ema=model_ema,
+        )
+        checkpoint_model = model_ema.ema if model_ema is not None else base_model
         if validation_loader is not None:
             validation_ran = _should_run_validation_evaluation(
                 epoch=current_epoch,
@@ -791,7 +1046,7 @@ def run_yolox_detection_training(
             if validation_ran:
                 validation_metrics = _evaluate_validation_losses(
                     imports=imports,
-                    model=training_model,
+                    model=evaluation_model,
                     loader=validation_loader,
                     device=runtime.device,
                     precision=precision,
@@ -799,12 +1054,12 @@ def run_yolox_detection_training(
                 validation_metrics.update(
                     _evaluate_validation_map(
                         imports=imports,
-                        model=training_model,
+                        model=evaluation_model,
                         loader=validation_loader,
                         device=runtime.device,
                         precision=precision,
                         input_size=input_size,
-                        num_classes=len(train_dataset.category_names),
+                        num_classes=len(train_category_names),
                         category_ids=validation_dataset.category_ids if validation_dataset is not None else (),
                         annotation_file=(
                             validation_split.annotation_file
@@ -831,12 +1086,12 @@ def run_yolox_detection_training(
         ):
             best_metric_value = current_metric_value
             best_checkpoint_state = _build_checkpoint_state(
-                model=base_model,
+                model=checkpoint_model,
                 optimizer=optimizer,
                 epoch=current_epoch,
                 metric_name=best_metric_name,
                 metric_value=current_metric_value,
-                category_names=train_dataset.category_names,
+                category_names=train_category_names,
                 model_scale=request.model_scale,
                 input_size=input_size,
                 precision=precision,
@@ -889,7 +1144,7 @@ def run_yolox_detection_training(
             sample_count=total_sample_count,
             train_sample_count=train_sample_count,
             validation_sample_count=validation_sample_count,
-            category_names=train_dataset.category_names,
+            category_names=train_category_names,
             best_metric_name=best_metric_name,
             best_metric_value=best_metric_value,
             final_metrics=epoch_metrics,
@@ -928,7 +1183,7 @@ def run_yolox_detection_training(
             control_command.save_checkpoint or control_command.pause_training
         ):
             latest_checkpoint_state = _build_checkpoint_state(
-                model=base_model,
+                model=checkpoint_model,
                 optimizer=optimizer,
                 epoch=current_epoch,
                 metric_name=best_metric_name,
@@ -937,7 +1192,7 @@ def run_yolox_detection_training(
                     if current_metric_value is not None
                     else float(best_metric_value or 0.0)
                 ),
-                category_names=train_dataset.category_names,
+                category_names=train_category_names,
                 model_scale=request.model_scale,
                 input_size=input_size,
                 precision=precision,
@@ -992,13 +1247,14 @@ def run_yolox_detection_training(
         final_metric_value = float(raw_final_metric_value)
     else:
         final_metric_value = float(best_metric_value)
+    checkpoint_model = model_ema.ema if model_ema is not None else base_model
     latest_checkpoint_state = _build_checkpoint_state(
-        model=base_model,
+        model=checkpoint_model,
         optimizer=optimizer,
         epoch=max_epochs,
         metric_name=best_metric_name,
         metric_value=final_metric_value,
-        category_names=train_dataset.category_names,
+        category_names=train_category_names,
         model_scale=request.model_scale,
         input_size=input_size,
         precision=precision,
@@ -1049,7 +1305,7 @@ def run_yolox_detection_training(
         sample_count=total_sample_count,
         train_sample_count=train_sample_count,
         validation_sample_count=validation_sample_count,
-        category_names=train_dataset.category_names,
+        category_names=train_category_names,
         best_metric_name=best_metric_name,
         best_metric_value=best_metric_value,
         final_metrics=final_metrics,
@@ -1067,10 +1323,10 @@ def run_yolox_detection_training(
         best_metric_name=best_metric_name,
         best_metric_value=best_metric_value,
         evaluation_interval=evaluation_interval,
-        category_names=train_dataset.category_names,
+        category_names=train_category_names,
         split_names=tuple(split.name for split in resolved_splits),
         sample_count=sum(split.sample_count for split in resolved_splits),
-        train_sample_count=len(train_dataset),
+        train_sample_count=train_sample_count,
         input_size=input_size,
         batch_size=batch_size,
         max_epochs=max_epochs,
@@ -1094,9 +1350,19 @@ def _require_training_imports() -> _YoloXTrainingImports:
         import torch  # type: ignore[import-not-found]
         from pycocotools.coco import COCO  # type: ignore[import-not-found]
         from pycocotools.cocoeval import COCOeval  # type: ignore[import-not-found]
-        from backend.service.application.runtime.yolox_core.data import TrainTransform
+        from backend.service.application.runtime.yolox_core.data import (
+            InfiniteSampler,
+            MosaicDetection,
+            TrainTransform,
+            YoloBatchSampler,
+            worker_init_reset_seed,
+        )
         from backend.service.application.runtime.yolox_core.models import YOLOPAFPN, YOLOX, YOLOXHead
-        from backend.service.application.runtime.yolox_core.utils import LRScheduler, postprocess
+        from backend.service.application.runtime.yolox_core.utils import (
+            LRScheduler,
+            ModelEMA,
+            postprocess,
+        )
     except ImportError as error:
         raise ServiceConfigurationError(
             "YOLOX 训练依赖缺失，至少需要 torch、torchvision、opencv-python、numpy 和 pycocotools"
@@ -1106,12 +1372,17 @@ def _require_training_imports() -> _YoloXTrainingImports:
         cv2=cv2,
         np=np,
         torch=torch,
+        MosaicDetection=MosaicDetection,
+        InfiniteSampler=InfiniteSampler,
         TrainTransform=TrainTransform,
+        YoloBatchSampler=YoloBatchSampler,
         YOLOPAFPN=YOLOPAFPN,
         YOLOX=YOLOX,
         YOLOXHead=YOLOXHead,
         LRScheduler=LRScheduler,
+        ModelEMA=ModelEMA,
         postprocess=postprocess,
+        worker_init_reset_seed=worker_init_reset_seed,
         COCO=COCO,
         COCOeval=COCOeval,
     )
@@ -1363,6 +1634,125 @@ def _set_yolox_head_use_l1(*, model: Any, enabled: bool) -> None:
     if head is None or not hasattr(head, "use_l1"):
         return
     head.use_l1 = bool(enabled)
+
+
+def _resolve_evaluation_model(*, training_model: Any, model_ema: Any | None) -> Any:
+    """解析当前验证和导出 checkpoint 应使用的模型对象。"""
+
+    return model_ema.ema if model_ema is not None else training_model
+
+
+def _set_training_loader_input_size(*, train_dataset: Any, train_loader: Any, input_size: tuple[int, int]) -> None:
+    """同步更新训练数据集和 batch sampler 的输入尺寸。"""
+
+    if hasattr(train_dataset, "set_input_dim"):
+        train_dataset.set_input_dim(tuple(input_size))
+    batch_sampler = getattr(train_loader, "batch_sampler", None)
+    if batch_sampler is not None and hasattr(batch_sampler, "set_input_dimension"):
+        batch_sampler.set_input_dimension(tuple(input_size))
+
+
+def _set_training_loader_mosaic_enabled(*, train_dataset: Any, train_loader: Any, enabled: bool) -> None:
+    """同步切换训练数据集与 batch sampler 的 Mosaic 开关。"""
+
+    if hasattr(train_dataset, "enable_mosaic"):
+        train_dataset.enable_mosaic = bool(enabled)
+    if not enabled and hasattr(train_dataset, "close_mosaic"):
+        train_dataset.close_mosaic()
+    batch_sampler = getattr(train_loader, "batch_sampler", None)
+    if batch_sampler is not None and hasattr(batch_sampler, "mosaic"):
+        batch_sampler.mosaic = bool(enabled)
+
+
+def _random_resize_input_size(
+    *,
+    base_input_size: tuple[int, int],
+    multiscale_range: int,
+    random_seed: int,
+) -> tuple[int, int]:
+    """按 YOLOX 多尺度规则为后续 batch 生成新的输入尺寸。"""
+
+    if multiscale_range <= 0:
+        return tuple(base_input_size)
+
+    input_height, input_width = base_input_size
+    size_factor = input_width * 1.0 / input_height
+    rng = random.Random(random_seed)
+    min_size = max(1, int(input_height / 32) - multiscale_range)
+    max_size = max(min_size, int(input_height / 32) + multiscale_range)
+    size = rng.randint(min_size, max_size)
+    return 32 * size, 32 * int(size * size_factor)
+
+
+def _preprocess_training_batch(
+    *,
+    imports: _YoloXTrainingImports,
+    images: Any,
+    targets: Any,
+    target_size: tuple[int, int],
+):
+    """按当前多尺度目标尺寸对 batch 张量做插值和标签缩放。"""
+
+    current_height = int(images.shape[-2])
+    current_width = int(images.shape[-1])
+    scale_y = target_size[0] / current_height
+    scale_x = target_size[1] / current_width
+    if scale_x == 1.0 and scale_y == 1.0:
+        return images, targets
+
+    resized_images = imports.torch.nn.functional.interpolate(
+        images,
+        size=target_size,
+        mode="bilinear",
+        align_corners=False,
+    )
+    resized_targets = targets.clone()
+    resized_targets[..., 1::2] = resized_targets[..., 1::2] * scale_x
+    resized_targets[..., 2::2] = resized_targets[..., 2::2] * scale_y
+    return resized_images, resized_targets
+
+
+def _build_batch_progress_metrics(batch_metrics: dict[str, float]) -> dict[str, float]:
+    """把当前 batch 的标量输出转换为 heartbeat 可用的指标字典。"""
+
+    return {
+        key: float(value)
+        for key, value in batch_metrics.items()
+        if isinstance(value, int | float)
+    }
+
+
+def _read_bool_option(extra_options: dict[str, object], key: str, *, default: bool) -> bool:
+    """从 extra_options 中读取可选布尔值。"""
+
+    value = extra_options.get(key)
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, int):
+        return bool(value)
+    if isinstance(value, str):
+        normalized_value = value.strip().lower()
+        if normalized_value in {"1", "true", "yes", "on"}:
+            return True
+        if normalized_value in {"0", "false", "no", "off"}:
+            return False
+    return default
+
+
+def _read_float_pair_option(
+    extra_options: dict[str, object],
+    key: str,
+    *,
+    default: tuple[float, float],
+) -> tuple[float, float]:
+    """从 extra_options 中读取长度为 2 的浮点区间。"""
+
+    value = extra_options.get(key)
+    if isinstance(value, list | tuple) and len(value) == 2:
+        left, right = value
+        if isinstance(left, int | float) and isinstance(right, int | float):
+            return float(left), float(right)
+    return default
 
 
 def _read_float_option(extra_options: dict[str, object], key: str, *, default: float) -> float:
@@ -1870,25 +2260,30 @@ def _evaluate_validation_losses(
     if len(loader) == 0:
         return {}
 
+    was_training = bool(model.training)
+    model.train()
     batch_norm_states = _freeze_batch_norm_modules(imports=imports, model=model)
-    with imports.torch.no_grad():
-        epoch_totals: dict[str, float] = {}
-        epoch_iterations = 0
-        for images, targets, _image_infos, _image_ids in loader:
-            images = images.to(device=device, dtype=imports.torch.float32)
-            targets = targets.to(device=device, dtype=imports.torch.float32)
-            with _build_autocast_context(
-                imports=imports,
-                device=device,
-                precision=precision,
-            ):
-                outputs = model(images, targets)
-            scalar_outputs = _convert_training_outputs(outputs)
-            for metric_name, metric_value in scalar_outputs.items():
-                epoch_totals[metric_name] = epoch_totals.get(metric_name, 0.0) + metric_value
-            epoch_iterations += 1
+    try:
+        with imports.torch.no_grad():
+            epoch_totals: dict[str, float] = {}
+            epoch_iterations = 0
+            for images, targets, _image_infos, _image_ids in loader:
+                images = images.to(device=device, dtype=imports.torch.float32)
+                targets = targets.to(device=device, dtype=imports.torch.float32)
+                with _build_autocast_context(
+                    imports=imports,
+                    device=device,
+                    precision=precision,
+                ):
+                    outputs = model(images, targets)
+                scalar_outputs = _convert_training_outputs(outputs)
+                for metric_name, metric_value in scalar_outputs.items():
+                    epoch_totals[metric_name] = epoch_totals.get(metric_name, 0.0) + metric_value
+                epoch_iterations += 1
+    finally:
+        _restore_batch_norm_modules(batch_norm_states)
+        model.train(was_training)
 
-    _restore_batch_norm_modules(batch_norm_states)
     return {
         metric_name: metric_total / epoch_iterations
         for metric_name, metric_total in epoch_totals.items()

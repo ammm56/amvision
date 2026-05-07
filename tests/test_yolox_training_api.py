@@ -132,6 +132,37 @@ def test_create_yolox_training_task_accepts_manifest_key(tmp_path: Path) -> None
         session_factory.engine.dispose()
 
 
+def test_training_create_openapi_exposes_documented_extra_options(tmp_path: Path) -> None:
+    """验证训练创建接口的 OpenAPI schema 会展开公开 extra_options 字段。"""
+
+    client, session_factory, _dataset_storage, _queue_backend = _create_test_client(tmp_path)
+    try:
+        with client:
+            response = client.get("/openapi.json")
+
+        assert response.status_code == 200
+        payload = response.json()
+        components = payload.get("components", {})
+        schemas = components.get("schemas", {})
+        extra_options_schema = schemas.get("YoloXTrainingExtraOptionsRequest")
+        assert isinstance(extra_options_schema, dict)
+
+        properties = extra_options_schema.get("properties", {})
+        assert "seed" in properties
+        assert "flip_prob" in properties
+        assert "mosaic_prob" in properties
+        assert "enable_mixup" in properties
+        assert "multiscale_range" in properties
+        assert "ema" in properties
+        assert "warmup_epochs" in properties
+        assert "evaluation_confidence_threshold" in properties
+        assert "evaluation_nms_threshold" in properties
+        assert "默认 0.0" in properties["flip_prob"]["description"]
+        assert "默认 true" in properties["ema"]["description"]
+    finally:
+        session_factory.engine.dispose()
+
+
 def test_create_yolox_training_task_accepts_gpu_count_above_three(tmp_path: Path) -> None:
     """验证训练创建接口不会在提交阶段人为限制超过 3 卡的请求。"""
 

@@ -191,7 +191,23 @@ def test_yolox_training_worker_advances_task_from_queued_to_succeeded(tmp_path: 
         assert any(event.message == "yolox training completed" for event in completed_task.events)
         assert any(event.event_type == "progress" for event in completed_task.events)
 
-        progress_event = next(event for event in completed_task.events if event.event_type == "progress")
+        batch_progress_event = next(
+            event
+            for event in completed_task.events
+            if event.event_type == "progress"
+            and event.payload["progress"].get("granularity") == "batch"
+        )
+        assert batch_progress_event.payload["progress"]["iteration"] == 1
+        assert batch_progress_event.payload["progress"]["max_iterations"] >= 1
+        assert batch_progress_event.payload["progress"]["global_iteration"] >= 1
+        assert batch_progress_event.payload["progress"]["percent"] > 10.0
+
+        progress_event = next(
+            event
+            for event in completed_task.events
+            if event.event_type == "progress"
+            and event.payload["progress"].get("granularity") == "epoch"
+        )
         assert progress_event.payload["progress"]["validation_ran"] is True
         assert progress_event.payload["progress"]["evaluation_interval"] == 5
         assert progress_event.payload["progress"]["evaluated_epochs"] == [1]
@@ -282,7 +298,12 @@ def test_yolox_training_worker_uses_test_split_as_validation_when_val_is_missing
         )
         assert validation_metrics_payload["split_name"] == "test"
 
-        progress_event = next(event for event in completed_task.events if event.event_type == "progress")
+        progress_event = next(
+            event
+            for event in completed_task.events
+            if event.event_type == "progress"
+            and event.payload["progress"].get("granularity") == "epoch"
+        )
         assert progress_event.payload["progress"]["validation_ran"] is True
     finally:
         session_factory.engine.dispose()
