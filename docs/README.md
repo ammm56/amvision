@@ -47,11 +47,13 @@
 8. [docs/architecture/task-system.md](architecture/task-system.md)
 9. [docs/architecture/yolox-module-design.md](architecture/yolox-module-design.md)
 10. [docs/architecture/frontend-web-ui.md](architecture/frontend-web-ui.md)
-11. [docs/architecture/data-and-files.md](architecture/data-and-files.md)
-12. [docs/architecture/dataset-import-spec.md](architecture/dataset-import-spec.md)
-13. [docs/architecture/dataset-export-formats.md](architecture/dataset-export-formats.md)
-14. [docs/architecture/plugin-system.md](architecture/plugin-system.md)
-15. 根据任务继续进入 API、部署、插件或决策文档
+- [docs/architecture/workflow-json-contracts.md](architecture/workflow-json-contracts.md)
+11. [docs/architecture/plugin-system.md](architecture/plugin-system.md)
+12. [docs/architecture/workflow-json-contracts.md](architecture/workflow-json-contracts.md)
+13. [docs/architecture/data-and-files.md](architecture/data-and-files.md)
+14. [docs/architecture/dataset-import-spec.md](architecture/dataset-import-spec.md)
+15. [docs/architecture/dataset-export-formats.md](architecture/dataset-export-formats.md)
+16. 根据任务继续进入 API、部署、插件或决策文档
 
 ## 文档维护建议
 

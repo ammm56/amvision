@@ -17,6 +17,7 @@
 - [docs/architecture/yolox-module-design.md](yolox-module-design.md)：YOLOX 在 amvision 里的模块拆分、目录位置、当前代码落点和后续收敛方向
 - [docs/architecture/frontend-web-ui.md](frontend-web-ui.md)：浏览器前端 Web UI 的模块划分、路由结构、状态组织和交互边界
 - [docs/architecture/plugin-system.md](plugin-system.md)：插件体系、扩展边界、节点模型和 ComfyUI 对齐方向
+- [docs/architecture/workflow-json-contracts.md](workflow-json-contracts.md)：NodeDefinition、payload contract、图模板与流程应用 JSON 合同
 - [docs/architecture/data-and-files.md](data-and-files.md)：关键对象、文件引用和版本关系
 - [docs/architecture/dataset-import-spec.md](dataset-import-spec.md)：DatasetImport、通用数据格式、任务类型格式矩阵和数据集导出规范
 - [docs/architecture/dataset-export-formats.md](dataset-export-formats.md)：数据集导出格式列表、格式命名和模型默认格式映射
@@ -45,9 +46,10 @@
 6. [docs/architecture/detection-model-rules.md](detection-model-rules.md)
 7. [docs/architecture/yolox-module-design.md](yolox-module-design.md)
 8. [docs/architecture/frontend-web-ui.md](frontend-web-ui.md)
-9. [docs/architecture/data-and-files.md](data-and-files.md)
-10. [docs/architecture/dataset-import-spec.md](dataset-import-spec.md)
-11. [docs/architecture/dataset-export-formats.md](dataset-export-formats.md)
-12. [docs/architecture/plugin-system.md](plugin-system.md)
-13. [docs/architecture/runtime-packaging.md](runtime-packaging.md)
-14. 按任务继续进入集成规则或日志专题文档
+9. [docs/architecture/plugin-system.md](plugin-system.md)
+10. [docs/architecture/workflow-json-contracts.md](workflow-json-contracts.md)
+11. [docs/architecture/data-and-files.md](data-and-files.md)
+12. [docs/architecture/dataset-import-spec.md](dataset-import-spec.md)
+13. [docs/architecture/dataset-export-formats.md](dataset-export-formats.md)
+14. [docs/architecture/runtime-packaging.md](runtime-packaging.md)
+15. 按任务继续进入集成规则或日志专题文档
