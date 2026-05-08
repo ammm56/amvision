@@ -18,7 +18,7 @@
 
 ## 相关 runtime 文档
 
-workflow runtime 控制面在第一阶段已经公开 preview-runs、app-runtimes 和 runs 三类路径；后续扩展设计继续保留在独立草案文档中。
+workflow runtime 控制面当前已经公开 preview-runs、app-runtimes、runs 和 execution-policies 四类路径；其余扩展设计继续保留在独立草案文档中。
 
 当前公开接口与后续扩展的导航页见 [docs/api/workflow-runtime-drafts.md](workflow-runtime-drafts.md)。
 
@@ -200,6 +200,8 @@ workflow runtime 控制面在第一阶段已经公开 preview-runs、app-runtime
 
 - [docs/api/examples/workflows/yolox_deployment_detection_lifecycle_real_path.save-template.request.json](examples/workflows/yolox_deployment_detection_lifecycle_real_path.save-template.request.json)
 - [docs/api/examples/workflows/yolox_deployment_detection_lifecycle_real_path.save-application.request.json](examples/workflows/yolox_deployment_detection_lifecycle_real_path.save-application.request.json)
+- [docs/api/examples/workflows/yolox_deployment_detection_lifecycle_real_path.preview-execution-policy.create.request.json](examples/workflows/yolox_deployment_detection_lifecycle_real_path.preview-execution-policy.create.request.json)
+- [docs/api/examples/workflows/yolox_deployment_detection_lifecycle_real_path.runtime-execution-policy.create.request.json](examples/workflows/yolox_deployment_detection_lifecycle_real_path.runtime-execution-policy.create.request.json)
 - [docs/api/examples/workflows/yolox_deployment_detection_lifecycle_real_path.preview-run.request.json](examples/workflows/yolox_deployment_detection_lifecycle_real_path.preview-run.request.json)
 - [docs/api/examples/workflows/yolox_deployment_detection_lifecycle_real_path.app-runtime.create.request.json](examples/workflows/yolox_deployment_detection_lifecycle_real_path.app-runtime.create.request.json)
 - [docs/api/examples/workflows/yolox_deployment_detection_lifecycle_real_path.app-runtime.invoke.request.json](examples/workflows/yolox_deployment_detection_lifecycle_real_path.app-runtime.invoke.request.json)

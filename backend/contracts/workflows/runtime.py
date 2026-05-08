@@ -11,6 +11,7 @@ WORKFLOW_PREVIEW_RUN_FORMAT = "amvision.workflow-preview-run.v1"
 WORKFLOW_APP_RUNTIME_FORMAT = "amvision.workflow-app-runtime.v1"
 WORKFLOW_APP_RUNTIME_INSTANCE_FORMAT = "amvision.workflow-app-runtime-instance.v1"
 WORKFLOW_RUN_FORMAT = "amvision.workflow-run.v1"
+WORKFLOW_EXECUTION_POLICY_FORMAT = "amvision.workflow-execution-policy.v1"
 
 
 def _require_stripped_text(value: str, field_name: str) -> str:
@@ -82,6 +83,7 @@ class WorkflowAppRuntimeContract(BaseModel):
     display_name: str
     application_snapshot_object_key: str
     template_snapshot_object_key: str
+    execution_policy_snapshot_object_key: str | None = None
     desired_state: str
     observed_state: str
     request_timeout_seconds: int = 60
@@ -174,4 +176,38 @@ class WorkflowRunContract(BaseModel):
         _require_stripped_text(self.application_id, "application_id")
         _require_stripped_text(self.state, "state")
         _require_stripped_text(self.created_at, "created_at")
+        return self
+
+
+class WorkflowExecutionPolicyContract(BaseModel):
+    """描述 WorkflowExecutionPolicy 的稳定 JSON 合同。"""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    format_id: Literal[WORKFLOW_EXECUTION_POLICY_FORMAT] = WORKFLOW_EXECUTION_POLICY_FORMAT
+    execution_policy_id: str
+    project_id: str
+    display_name: str
+    policy_kind: str
+    default_timeout_seconds: int = 30
+    max_run_timeout_seconds: int = 30
+    trace_level: str = "node-summary"
+    retain_node_records_enabled: bool = True
+    retain_trace_enabled: bool = True
+    created_at: str
+    updated_at: str
+    created_by: str | None = None
+    metadata: dict[str, object] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def validate_contract(self) -> WorkflowExecutionPolicyContract:
+        """校验 WorkflowExecutionPolicy 合同的关键字段。"""
+
+        _require_stripped_text(self.execution_policy_id, "execution_policy_id")
+        _require_stripped_text(self.project_id, "project_id")
+        _require_stripped_text(self.display_name, "display_name")
+        _require_stripped_text(self.policy_kind, "policy_kind")
+        _require_stripped_text(self.trace_level, "trace_level")
+        _require_stripped_text(self.created_at, "created_at")
+        _require_stripped_text(self.updated_at, "updated_at")
         return self

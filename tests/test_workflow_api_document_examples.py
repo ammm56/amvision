@@ -33,6 +33,16 @@ def test_workflow_api_real_path_example_requests_are_valid() -> None:
             encoding="utf-8"
         )
     )
+    preview_execution_policy_request = json.loads(
+        (example_dir / "yolox_deployment_detection_lifecycle_real_path.preview-execution-policy.create.request.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    runtime_execution_policy_request = json.loads(
+        (example_dir / "yolox_deployment_detection_lifecycle_real_path.runtime-execution-policy.create.request.json").read_text(
+            encoding="utf-8"
+        )
+    )
     app_runtime_create_request = json.loads(
         (example_dir / "yolox_deployment_detection_lifecycle_real_path.app-runtime.create.request.json").read_text(
             encoding="utf-8"
@@ -69,10 +79,21 @@ def test_workflow_api_real_path_example_requests_are_valid() -> None:
         "yolox-deployment-detection-lifecycle-real-path-app/application.json"
     )
     assert application.metadata["example_kind"] == "deployment-control-detection-lifecycle-real-path"
+    assert preview_execution_policy_request["execution_policy_id"] == "preview-default-policy"
+    assert preview_execution_policy_request["policy_kind"] == "preview-default"
+    assert preview_execution_policy_request["metadata"]["target_surface"] == "preview-run"
+    assert runtime_execution_policy_request["execution_policy_id"] == "runtime-default-policy"
+    assert runtime_execution_policy_request["policy_kind"] == "runtime-default"
+    assert runtime_execution_policy_request["metadata"]["target_surface"] == "app-runtime"
+    assert preview_run_request["execution_policy_id"] == "preview-default-policy"
     assert preview_run_request["input_bindings"]["request_image"]["object_key"] == "inputs/source.jpg"
     assert preview_run_request["execution_metadata"]["scenario"] == "deployment-control-detection-lifecycle-real-path"
+    assert "timeout_seconds" not in preview_run_request
+    assert app_runtime_create_request["execution_policy_id"] == "runtime-default-policy"
     assert app_runtime_create_request["metadata"]["uses_existing_deployment_instance"] is True
+    assert "request_timeout_seconds" not in app_runtime_create_request
     assert app_runtime_invoke_request["execution_metadata"]["scenario"] == "deployment-control-detection-lifecycle-real-path"
+    assert "timeout_seconds" not in app_runtime_invoke_request
 
 
 def test_workflow_postman_collection_contains_manual_test_sequence() -> None:
@@ -91,8 +112,15 @@ def test_workflow_postman_collection_contains_manual_test_sequence() -> None:
     request_payloads = _collect_postman_request_payloads(collection_payload["item"])
 
     assert collection_payload["info"]["name"] == "amvision workflow runtime api"
+    assert "List YOLOX Deployment Instances" in request_names
     assert "Save Workflow Template" in request_names
+    assert "Get Workflow Template" in request_names
     assert "Save Flow Application" in request_names
+    assert "Get Flow Application" in request_names
+    assert "Create Preview Execution Policy" in request_names
+    assert "Create Runtime Execution Policy" in request_names
+    assert "List Execution Policies" in request_names
+    assert "Get Runtime Execution Policy" in request_names
     assert "Create Preview Run" in request_names
     assert "Create App Runtime" in request_names
     assert "Get App Runtime Health" in request_names
@@ -101,11 +129,16 @@ def test_workflow_postman_collection_contains_manual_test_sequence() -> None:
     assert "Restart App Runtime" in request_names
     assert "Invoke App Runtime" in request_names
     assert "Cancel Workflow Run" in request_names
+    assert variables["deploymentInstanceId"] == "replace-with-existing-deployment-instance-id"
     assert variables["templateId"] == "yolox-deployment-detection-lifecycle-real-path"
     assert variables["applicationId"] == "yolox-deployment-detection-lifecycle-real-path-app"
+    assert variables["previewExecutionPolicyId"] == "preview-default-policy"
+    assert variables["runtimeExecutionPolicyId"] == "runtime-default-policy"
 
     save_template_body = json.loads(request_payloads["Save Workflow Template"])
     save_application_body = json.loads(request_payloads["Save Flow Application"])
+    preview_execution_policy_body = json.loads(request_payloads["Create Preview Execution Policy"])
+    runtime_execution_policy_body = json.loads(request_payloads["Create Runtime Execution Policy"])
     preview_body = json.loads(request_payloads["Create Preview Run"])
     create_runtime_body = json.loads(request_payloads["Create App Runtime"])
     async_run_body = json.loads(request_payloads["Create Async Workflow Run"])
@@ -115,10 +148,20 @@ def test_workflow_postman_collection_contains_manual_test_sequence() -> None:
     assert save_template_body["template"]["metadata"]["deployment_runtime_owner"] == "backend-service"
     assert save_application_body["application"]["metadata"]["example_kind"] == "deployment-control-detection-lifecycle-real-path"
     assert save_application_body["application"]["metadata"]["uses_existing_deployment_instance"] is True
+    assert preview_execution_policy_body["execution_policy_id"] == "{{previewExecutionPolicyId}}"
+    assert preview_execution_policy_body["policy_kind"] == "preview-default"
+    assert runtime_execution_policy_body["execution_policy_id"] == "{{runtimeExecutionPolicyId}}"
+    assert runtime_execution_policy_body["policy_kind"] == "runtime-default"
+    assert preview_body["execution_policy_id"] == "{{previewExecutionPolicyId}}"
     assert preview_body["execution_metadata"]["scenario"] == "deployment-control-detection-lifecycle-real-path"
+    assert "timeout_seconds" not in preview_body
+    assert create_runtime_body["execution_policy_id"] == "{{runtimeExecutionPolicyId}}"
     assert create_runtime_body["metadata"]["uses_existing_deployment_instance"] is True
+    assert "request_timeout_seconds" not in create_runtime_body
     assert async_run_body["execution_metadata"]["scenario"] == "deployment-control-detection-lifecycle-real-path"
     assert invoke_body["execution_metadata"]["scenario"] == "deployment-control-detection-lifecycle-real-path"
+    assert "timeout_seconds" not in async_run_body
+    assert "timeout_seconds" not in invoke_body
 
 
 def _collect_postman_request_names(items: list[dict[str, object]]) -> set[str]:

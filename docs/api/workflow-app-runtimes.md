@@ -4,7 +4,7 @@
 
 本文档说明当前已经公开的 WorkflowAppRuntime REST API、状态语义和稳定返回字段。
 
-本文档描述当前已经公开的 WorkflowAppRuntime 行为，包括第一阶段最小运行面，以及第二阶段第一块已经落地的 restart 和 instances。
+本文档描述当前已经公开的 WorkflowAppRuntime 行为，包括第一阶段最小运行面，以及第二阶段已经落地的 restart、instances 和 execution policy 最小接入。
 
 ## 当前公开范围
 
@@ -20,9 +20,9 @@
 ## 资源定位
 
 - WorkflowAppRuntime 表示一份已发布应用的长期运行单元。
-- runtime 创建时会固定 application snapshot 和 template snapshot，后续 start、stop、health、invoke 都只依赖这组固定 snapshot。
+- runtime 创建时会固定 application snapshot 和 template snapshot；如果提供 execution_policy_id，还会额外固定 execution policy snapshot。
 - 当前仍采用单 runtime 单实例单进程模型，已经公开 restart 和 instances，但不公开 scale。
-- runtime worker 只负责 start、stop、health 和 sync invoke，不承接异步 WorkflowRun 队列。
+- runtime worker 提供 start、stop、health 和执行宿主能力；sync invoke 与 async WorkflowRun 都复用同一份固定 snapshot。
 
 ## 接口入口
 
@@ -65,6 +65,7 @@
 | display_name | 展示名称 |
 | application_snapshot_object_key | 固定 application snapshot 的 object key |
 | template_snapshot_object_key | 固定 template snapshot 的 object key |
+| execution_policy_snapshot_object_key | 固定 execution policy snapshot 的 object key，可为空 |
 | desired_state | 当前期望状态 |
 | observed_state | 当前观测状态 |
 | request_timeout_seconds | 默认同步调用超时秒数 |
@@ -78,7 +79,7 @@
 | loaded_snapshot_fingerprint | 当前 worker 已装载的 snapshot 指纹，可为空 |
 | last_error | 最近一次错误摘要，可为空 |
 | health_summary | 健康附加信息；当前至少包含 mode |
-| metadata | 创建时附加元数据 |
+| metadata | 创建时附加元数据；当绑定 execution policy 时还会补写 metadata.execution_policy 摘要 |
 
 ## POST /api/v1/workflows/app-runtimes
 
@@ -90,8 +91,9 @@
 
 - project_id：必填，所属 Project id
 - application_id：必填，已保存 FlowApplication id
+- execution_policy_id：可选，引用一条已保存 WorkflowExecutionPolicy
 - display_name：可选，展示名称
-- request_timeout_seconds：可选，默认 60，必须大于 0
+- request_timeout_seconds：可选；未提供且存在 execution policy 时取 policy.default_timeout_seconds，否则默认 60
 - metadata：可选，附加元数据
 
 ### 最小请求 JSON
@@ -100,8 +102,8 @@
 {
   "project_id": "project-1",
   "application_id": "inspection-app",
+  "execution_policy_id": "runtime-default-policy",
   "display_name": "Inspection Runtime",
-  "request_timeout_seconds": 60,
   "metadata": {
     "line_id": "line-1"
   }
@@ -119,6 +121,7 @@
   "display_name": "Inspection Runtime",
   "application_snapshot_object_key": "workflows/runtime/app-runtimes/workflow-runtime-1/application.snapshot.json",
   "template_snapshot_object_key": "workflows/runtime/app-runtimes/workflow-runtime-1/template.snapshot.json",
+  "execution_policy_snapshot_object_key": "workflows/runtime/app-runtimes/workflow-runtime-1/execution-policy.snapshot.json",
   "desired_state": "stopped",
   "observed_state": "stopped",
   "request_timeout_seconds": 60,
@@ -133,7 +136,15 @@
   "last_error": null,
   "health_summary": {},
   "metadata": {
-    "line_id": "line-1"
+    "line_id": "line-1",
+    "execution_policy": {
+      "execution_policy_id": "runtime-default-policy",
+      "policy_kind": "runtime-default",
+      "trace_level": "node-summary",
+      "retain_node_records_enabled": true,
+      "retain_trace_enabled": true,
+      "snapshot_object_key": "workflows/runtime/app-runtimes/workflow-runtime-1/execution-policy.snapshot.json"
+    }
   }
 }
 ```
@@ -200,12 +211,13 @@
 ## 当前不公开的扩展项
 
 - min/max instance 扩缩容控制
-- activation_mode、restart_policy、execution_policy 绑定
+- activation_mode、restart_policy
 
 ## 与其他资源的关系
 
 - WorkflowAppRuntime 是 [docs/api/workflow-runs.md](workflow-runs.md) 的宿主资源。
 - 当前同步调用入口仍挂在 runtime 下：POST /api/v1/workflows/app-runtimes/{workflow_runtime_id}/invoke。
+- WorkflowAppRuntime create 当前可以引用 [docs/api/workflow-execution-policies.md](workflow-execution-policies.md) 中的 execution_policy_id，并返回 execution_policy_snapshot_object_key。
 - 编辑态试跑见 [docs/api/workflow-preview-runs.md](workflow-preview-runs.md)。
 
 ## 相关文档

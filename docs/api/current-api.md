@@ -62,6 +62,9 @@
 | POST | /api/v1/workflows/applications/validate | workflows:read | 校验一份 FlowApplication 与 template 绑定关系。 |
 | PUT | /api/v1/workflows/projects/{project_id}/applications/{application_id} | workflows:write | 保存一份 FlowApplication JSON。 |
 | GET | /api/v1/workflows/projects/{project_id}/applications/{application_id} | workflows:read | 读取一份已保存的 FlowApplication JSON。 |
+| POST | /api/v1/workflows/execution-policies | workflows:write | 创建一条 WorkflowExecutionPolicy。 |
+| GET | /api/v1/workflows/execution-policies | workflows:read | 按 Project 列出 WorkflowExecutionPolicy。 |
+| GET | /api/v1/workflows/execution-policies/{execution_policy_id} | workflows:read | 读取一条 WorkflowExecutionPolicy。 |
 | POST | /api/v1/workflows/preview-runs | workflows:write | 创建并同步执行一次 WorkflowPreviewRun。 |
 | GET | /api/v1/workflows/preview-runs/{preview_run_id} | workflows:read | 读取一条 WorkflowPreviewRun。 |
 | POST | /api/v1/workflows/app-runtimes | workflows:write | 创建一条 WorkflowAppRuntime。 |
@@ -72,8 +75,10 @@
 | POST | /api/v1/workflows/app-runtimes/{workflow_runtime_id}/restart | workflows:write | 重启单实例 runtime worker，并重新加载固定 snapshot。 |
 | GET | /api/v1/workflows/app-runtimes/{workflow_runtime_id}/health | workflows:read | 查询 runtime 当前健康状态。 |
 | GET | /api/v1/workflows/app-runtimes/{workflow_runtime_id}/instances | workflows:read | 列出 runtime 当前可观测的 instance 摘要。 |
+| POST | /api/v1/workflows/app-runtimes/{workflow_runtime_id}/runs | workflows:write | 为已启动 runtime 创建一条异步 WorkflowRun。 |
 | POST | /api/v1/workflows/app-runtimes/{workflow_runtime_id}/invoke | workflows:write | 通过 runtime 发起一次同步调用。 |
 | GET | /api/v1/workflows/runs/{workflow_run_id} | workflows:read | 读取一条 WorkflowRun。 |
+| POST | /api/v1/workflows/runs/{workflow_run_id}/cancel | workflows:write | 取消一条 queued 或 running 的异步 WorkflowRun。 |
 | POST | /api/v1/tasks | tasks:write | 创建公开任务记录，立即返回任务详情。 |
 | GET | /api/v1/tasks | tasks:read | 按公开筛选字段查询任务列表。 |
 | GET | /api/v1/tasks/{task_id} | tasks:read | 查询单条任务详情；默认同时返回 events。 |

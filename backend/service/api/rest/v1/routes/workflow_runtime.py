@@ -11,6 +11,7 @@ from backend.contracts.workflows import (
     FlowApplication,
     WorkflowAppRuntimeInstanceContract,
     WorkflowAppRuntimeContract,
+    WorkflowExecutionPolicyContract,
     WorkflowGraphTemplate,
     WorkflowPreviewRunContract,
     WorkflowRunContract,
@@ -20,6 +21,7 @@ from backend.service.api.deps.auth import AuthenticatedPrincipal, require_scopes
 from backend.service.application.errors import PermissionDeniedError, ServiceConfigurationError
 from backend.service.application.workflows.runtime_service import (
     WorkflowAppRuntimeCreateRequest,
+    WorkflowExecutionPolicyCreateRequest,
     WorkflowPreviewRunCreateRequest,
     WorkflowRuntimeInvokeRequest,
     WorkflowRuntimeService,
@@ -27,6 +29,7 @@ from backend.service.application.workflows.runtime_service import (
 from backend.service.application.workflows.runtime_worker import WorkflowRuntimeWorkerManager
 from backend.service.domain.workflows.workflow_runtime_records import (
     WorkflowAppRuntime,
+    WorkflowExecutionPolicy,
     WorkflowPreviewRun,
     WorkflowRun,
 )
@@ -48,6 +51,7 @@ class WorkflowPreviewRunCreateRequestBody(BaseModel):
     """描述 preview run 创建请求体。"""
 
     project_id: str = Field(description="所属 Project id")
+    execution_policy_id: str | None = Field(default=None, description="可选的 WorkflowExecutionPolicy id")
     application_ref: WorkflowApplicationRefRequestBody | None = Field(
         default=None,
         description="可选的已保存 application 引用",
@@ -56,7 +60,22 @@ class WorkflowPreviewRunCreateRequestBody(BaseModel):
     template: WorkflowGraphTemplate | None = Field(default=None, description="可选 inline template snapshot")
     input_bindings: dict[str, object] = Field(default_factory=dict, description="输入绑定 payload")
     execution_metadata: dict[str, object] = Field(default_factory=dict, description="执行元数据")
-    timeout_seconds: int = Field(default=30, description="同步等待超时秒数")
+    timeout_seconds: int | None = Field(default=None, description="可选同步等待超时秒数")
+
+
+class WorkflowExecutionPolicyCreateRequestBody(BaseModel):
+    """描述 WorkflowExecutionPolicy 创建请求体。"""
+
+    project_id: str = Field(description="所属 Project id")
+    execution_policy_id: str = Field(description="策略 id")
+    display_name: str = Field(description="展示名称")
+    policy_kind: str = Field(description="策略类型")
+    default_timeout_seconds: int = Field(default=30, description="默认执行超时秒数")
+    max_run_timeout_seconds: int = Field(default=30, description="最大执行超时秒数")
+    trace_level: str = Field(default="node-summary", description="trace 保留级别")
+    retain_node_records_enabled: bool = Field(default=True, description="是否保留 node_records")
+    retain_trace_enabled: bool = Field(default=True, description="是否保留 trace 数据")
+    metadata: dict[str, object] = Field(default_factory=dict, description="附加元数据")
 
 
 class WorkflowAppRuntimeCreateRequestBody(BaseModel):
@@ -64,9 +83,73 @@ class WorkflowAppRuntimeCreateRequestBody(BaseModel):
 
     project_id: str = Field(description="所属 Project id")
     application_id: str = Field(description="已保存 FlowApplication id")
+    execution_policy_id: str | None = Field(default=None, description="可选的 WorkflowExecutionPolicy id")
     display_name: str = Field(default="", description="可选展示名称")
-    request_timeout_seconds: int = Field(default=60, description="默认同步调用超时秒数")
+    request_timeout_seconds: int | None = Field(default=None, description="可选默认同步调用超时秒数")
     metadata: dict[str, object] = Field(default_factory=dict, description="附加元数据")
+
+
+@workflow_runtime_router.post(
+    "/execution-policies",
+    response_model=WorkflowExecutionPolicyContract,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_workflow_execution_policy(
+    body: WorkflowExecutionPolicyCreateRequestBody,
+    request: Request,
+    principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("workflows:write"))],
+) -> WorkflowExecutionPolicyContract:
+    """创建一条 WorkflowExecutionPolicy。"""
+
+    _ensure_project_visible(principal=principal, project_id=body.project_id)
+    execution_policy = _build_workflow_runtime_service(request).create_execution_policy(
+        WorkflowExecutionPolicyCreateRequest(
+            project_id=body.project_id,
+            execution_policy_id=body.execution_policy_id,
+            display_name=body.display_name,
+            policy_kind=body.policy_kind,
+            default_timeout_seconds=body.default_timeout_seconds,
+            max_run_timeout_seconds=body.max_run_timeout_seconds,
+            trace_level=body.trace_level,
+            retain_node_records_enabled=body.retain_node_records_enabled,
+            retain_trace_enabled=body.retain_trace_enabled,
+            metadata=dict(body.metadata),
+        ),
+        created_by=principal.principal_id,
+    )
+    return _build_execution_policy_contract(execution_policy)
+
+
+@workflow_runtime_router.get(
+    "/execution-policies",
+    response_model=list[WorkflowExecutionPolicyContract],
+)
+def list_workflow_execution_policies(
+    project_id: Annotated[str, Query(description="所属 Project id")],
+    request: Request,
+    principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("workflows:read"))],
+) -> list[WorkflowExecutionPolicyContract]:
+    """按 Project id 列出 WorkflowExecutionPolicy。"""
+
+    _ensure_project_visible(principal=principal, project_id=project_id)
+    execution_policies = _build_workflow_runtime_service(request).list_execution_policies(project_id=project_id)
+    return [_build_execution_policy_contract(item) for item in execution_policies]
+
+
+@workflow_runtime_router.get(
+    "/execution-policies/{execution_policy_id}",
+    response_model=WorkflowExecutionPolicyContract,
+)
+def get_workflow_execution_policy(
+    execution_policy_id: str,
+    request: Request,
+    principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("workflows:read"))],
+) -> WorkflowExecutionPolicyContract:
+    """读取一条 WorkflowExecutionPolicy。"""
+
+    execution_policy = _build_workflow_runtime_service(request).get_execution_policy(execution_policy_id)
+    _ensure_project_visible(principal=principal, project_id=execution_policy.project_id)
+    return _build_execution_policy_contract(execution_policy)
 
 
 class WorkflowRuntimeInvokeRequestBody(BaseModel):
@@ -94,6 +177,7 @@ def create_workflow_preview_run(
         WorkflowPreviewRunCreateRequest(
             project_id=body.project_id,
             application_ref_id=body.application_ref.application_id if body.application_ref is not None else None,
+            execution_policy_id=body.execution_policy_id,
             application=body.application,
             template=body.template,
             input_bindings=dict(body.input_bindings),
@@ -138,6 +222,7 @@ def create_workflow_app_runtime(
         WorkflowAppRuntimeCreateRequest(
             project_id=body.project_id,
             application_id=body.application_id,
+            execution_policy_id=body.execution_policy_id,
             display_name=body.display_name,
             request_timeout_seconds=body.request_timeout_seconds,
             metadata=dict(body.metadata),
@@ -463,6 +548,7 @@ def _build_workflow_app_runtime_contract(workflow_app_runtime: WorkflowAppRuntim
         display_name=workflow_app_runtime.display_name,
         application_snapshot_object_key=workflow_app_runtime.application_snapshot_object_key,
         template_snapshot_object_key=workflow_app_runtime.template_snapshot_object_key,
+        execution_policy_snapshot_object_key=workflow_app_runtime.execution_policy_snapshot_object_key,
         desired_state=workflow_app_runtime.desired_state,
         observed_state=workflow_app_runtime.observed_state,
         request_timeout_seconds=workflow_app_runtime.request_timeout_seconds,
@@ -477,6 +563,26 @@ def _build_workflow_app_runtime_contract(workflow_app_runtime: WorkflowAppRuntim
         last_error=workflow_app_runtime.last_error,
         health_summary=dict(workflow_app_runtime.health_summary),
         metadata=dict(workflow_app_runtime.metadata),
+    )
+
+
+def _build_execution_policy_contract(execution_policy: WorkflowExecutionPolicy) -> WorkflowExecutionPolicyContract:
+    """把 WorkflowExecutionPolicy 领域对象转换为公开合同。"""
+
+    return WorkflowExecutionPolicyContract(
+        execution_policy_id=execution_policy.execution_policy_id,
+        project_id=execution_policy.project_id,
+        display_name=execution_policy.display_name,
+        policy_kind=execution_policy.policy_kind,
+        default_timeout_seconds=execution_policy.default_timeout_seconds,
+        max_run_timeout_seconds=execution_policy.max_run_timeout_seconds,
+        trace_level=execution_policy.trace_level,
+        retain_node_records_enabled=execution_policy.retain_node_records_enabled,
+        retain_trace_enabled=execution_policy.retain_trace_enabled,
+        created_at=execution_policy.created_at,
+        updated_at=execution_policy.updated_at,
+        created_by=execution_policy.created_by,
+        metadata=dict(execution_policy.metadata),
     )
 
 

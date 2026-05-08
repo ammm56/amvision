@@ -6,6 +6,7 @@ from typing import Protocol
 
 from backend.service.domain.workflows.workflow_runtime_records import (
     WorkflowAppRuntime,
+    WorkflowExecutionPolicy,
     WorkflowPreviewRun,
     WorkflowRun,
 )
@@ -13,6 +14,21 @@ from backend.service.domain.workflows.workflow_runtime_records import (
 
 class WorkflowRuntimeRepository(Protocol):
     """定义 workflow runtime 三类资源的最小读写接口。"""
+
+    def save_execution_policy(self, execution_policy: WorkflowExecutionPolicy) -> None:
+        """保存一条 WorkflowExecutionPolicy。"""
+
+        ...
+
+    def get_execution_policy(self, execution_policy_id: str) -> WorkflowExecutionPolicy | None:
+        """按 id 读取一条 WorkflowExecutionPolicy。"""
+
+        ...
+
+    def list_execution_policies(self, project_id: str) -> tuple[WorkflowExecutionPolicy, ...]:
+        """按 Project id 列出 WorkflowExecutionPolicy。"""
+
+        ...
 
     def save_preview_run(self, preview_run: WorkflowPreviewRun) -> None:
         """保存一个 WorkflowPreviewRun。"""

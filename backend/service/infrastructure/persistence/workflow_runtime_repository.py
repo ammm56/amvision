@@ -9,11 +9,13 @@ from sqlalchemy.orm import Session
 from backend.service.application.errors import PersistenceOperationError
 from backend.service.domain.workflows.workflow_runtime_records import (
     WorkflowAppRuntime,
+    WorkflowExecutionPolicy,
     WorkflowPreviewRun,
     WorkflowRun,
 )
 from backend.service.infrastructure.persistence.workflow_runtime_orm import (
     WorkflowAppRuntimeRecord,
+    WorkflowExecutionPolicyRecord,
     WorkflowPreviewRunRecord,
     WorkflowRunRecord,
 )
@@ -30,6 +32,67 @@ class SqlAlchemyWorkflowRuntimeRepository:
         """
 
         self.session = session
+
+    def save_execution_policy(self, execution_policy: WorkflowExecutionPolicy) -> None:
+        """保存一条 WorkflowExecutionPolicy。"""
+
+        try:
+            existing_record = self.session.get(WorkflowExecutionPolicyRecord, execution_policy.execution_policy_id)
+            if existing_record is None:
+                self.session.add(self._execution_policy_to_record(execution_policy))
+                return
+
+            existing_record.project_id = execution_policy.project_id
+            existing_record.display_name = execution_policy.display_name
+            existing_record.policy_kind = execution_policy.policy_kind
+            existing_record.default_timeout_seconds = execution_policy.default_timeout_seconds
+            existing_record.max_run_timeout_seconds = execution_policy.max_run_timeout_seconds
+            existing_record.trace_level = execution_policy.trace_level
+            existing_record.retain_node_records_enabled = execution_policy.retain_node_records_enabled
+            existing_record.retain_trace_enabled = execution_policy.retain_trace_enabled
+            existing_record.created_at = execution_policy.created_at
+            existing_record.updated_at = execution_policy.updated_at
+            existing_record.created_by = execution_policy.created_by
+            existing_record.metadata_json = dict(execution_policy.metadata)
+        except SQLAlchemyError as error:
+            raise PersistenceOperationError(
+                "保存 WorkflowExecutionPolicy 失败",
+                details={"error_type": error.__class__.__name__},
+            ) from error
+
+    def get_execution_policy(self, execution_policy_id: str) -> WorkflowExecutionPolicy | None:
+        """按 id 读取一条 WorkflowExecutionPolicy。"""
+
+        try:
+            record = self.session.get(WorkflowExecutionPolicyRecord, execution_policy_id)
+        except SQLAlchemyError as error:
+            raise PersistenceOperationError(
+                "读取 WorkflowExecutionPolicy 失败",
+                details={"error_type": error.__class__.__name__},
+            ) from error
+        if record is None:
+            return None
+        return self._execution_policy_to_domain(record)
+
+    def list_execution_policies(self, project_id: str) -> tuple[WorkflowExecutionPolicy, ...]:
+        """按 Project id 列出 WorkflowExecutionPolicy。"""
+
+        statement = (
+            select(WorkflowExecutionPolicyRecord)
+            .where(WorkflowExecutionPolicyRecord.project_id == project_id)
+            .order_by(
+                WorkflowExecutionPolicyRecord.created_at.desc(),
+                WorkflowExecutionPolicyRecord.execution_policy_id.desc(),
+            )
+        )
+        try:
+            records = self.session.execute(statement).scalars().all()
+        except SQLAlchemyError as error:
+            raise PersistenceOperationError(
+                "列出 WorkflowExecutionPolicy 失败",
+                details={"error_type": error.__class__.__name__},
+            ) from error
+        return tuple(self._execution_policy_to_domain(record) for record in records)
 
     def save_preview_run(self, preview_run: WorkflowPreviewRun) -> None:
         """保存一个 WorkflowPreviewRun。"""
@@ -94,6 +157,7 @@ class SqlAlchemyWorkflowRuntimeRepository:
             existing_record.display_name = workflow_app_runtime.display_name
             existing_record.application_snapshot_object_key = workflow_app_runtime.application_snapshot_object_key
             existing_record.template_snapshot_object_key = workflow_app_runtime.template_snapshot_object_key
+            existing_record.execution_policy_snapshot_object_key = workflow_app_runtime.execution_policy_snapshot_object_key
             existing_record.desired_state = workflow_app_runtime.desired_state
             existing_record.observed_state = workflow_app_runtime.observed_state
             existing_record.request_timeout_seconds = workflow_app_runtime.request_timeout_seconds
@@ -244,6 +308,46 @@ class SqlAlchemyWorkflowRuntimeRepository:
         )
 
     @staticmethod
+    def _execution_policy_to_record(execution_policy: WorkflowExecutionPolicy) -> WorkflowExecutionPolicyRecord:
+        """把 WorkflowExecutionPolicy 转换为 ORM 实体。"""
+
+        return WorkflowExecutionPolicyRecord(
+            execution_policy_id=execution_policy.execution_policy_id,
+            project_id=execution_policy.project_id,
+            display_name=execution_policy.display_name,
+            policy_kind=execution_policy.policy_kind,
+            default_timeout_seconds=execution_policy.default_timeout_seconds,
+            max_run_timeout_seconds=execution_policy.max_run_timeout_seconds,
+            trace_level=execution_policy.trace_level,
+            retain_node_records_enabled=execution_policy.retain_node_records_enabled,
+            retain_trace_enabled=execution_policy.retain_trace_enabled,
+            created_at=execution_policy.created_at,
+            updated_at=execution_policy.updated_at,
+            created_by=execution_policy.created_by,
+            metadata_json=dict(execution_policy.metadata),
+        )
+
+    @staticmethod
+    def _execution_policy_to_domain(record: WorkflowExecutionPolicyRecord) -> WorkflowExecutionPolicy:
+        """把 WorkflowExecutionPolicy ORM 实体转换为领域对象。"""
+
+        return WorkflowExecutionPolicy(
+            execution_policy_id=record.execution_policy_id,
+            project_id=record.project_id,
+            display_name=record.display_name,
+            policy_kind=record.policy_kind,
+            default_timeout_seconds=record.default_timeout_seconds,
+            max_run_timeout_seconds=record.max_run_timeout_seconds,
+            trace_level=record.trace_level,
+            retain_node_records_enabled=record.retain_node_records_enabled,
+            retain_trace_enabled=record.retain_trace_enabled,
+            created_at=record.created_at,
+            updated_at=record.updated_at,
+            created_by=record.created_by,
+            metadata=dict(record.metadata_json or {}),
+        )
+
+    @staticmethod
     def _runtime_to_record(workflow_app_runtime: WorkflowAppRuntime) -> WorkflowAppRuntimeRecord:
         """把 WorkflowAppRuntime 转换为 ORM 实体。"""
 
@@ -254,6 +358,7 @@ class SqlAlchemyWorkflowRuntimeRepository:
             display_name=workflow_app_runtime.display_name,
             application_snapshot_object_key=workflow_app_runtime.application_snapshot_object_key,
             template_snapshot_object_key=workflow_app_runtime.template_snapshot_object_key,
+            execution_policy_snapshot_object_key=workflow_app_runtime.execution_policy_snapshot_object_key,
             desired_state=workflow_app_runtime.desired_state,
             observed_state=workflow_app_runtime.observed_state,
             request_timeout_seconds=workflow_app_runtime.request_timeout_seconds,
@@ -281,6 +386,7 @@ class SqlAlchemyWorkflowRuntimeRepository:
             display_name=record.display_name,
             application_snapshot_object_key=record.application_snapshot_object_key,
             template_snapshot_object_key=record.template_snapshot_object_key,
+            execution_policy_snapshot_object_key=record.execution_policy_snapshot_object_key,
             desired_state=record.desired_state,
             observed_state=record.observed_state,
             request_timeout_seconds=record.request_timeout_seconds,

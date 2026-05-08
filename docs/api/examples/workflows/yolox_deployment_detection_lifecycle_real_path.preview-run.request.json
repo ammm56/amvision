@@ -1,5 +1,6 @@
 {
   "project_id": "project-1",
+  "execution_policy_id": "preview-default-policy",
   "application_ref": {
     "application_id": "yolox-deployment-detection-lifecycle-real-path-app"
   },
@@ -12,6 +13,5 @@
     "marker": "postman-workflow-runtime-preview",
     "scenario": "deployment-control-detection-lifecycle-real-path",
     "trigger_source": "editor-preview"
-  },
-  "timeout_seconds": 30
+  }
 }

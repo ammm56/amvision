@@ -4,7 +4,7 @@
 
 本文档说明当前已经公开的 WorkflowPreviewRun REST API、状态语义和稳定返回字段。
 
-本文档只描述 workflow runtime 第一阶段已经实现的行为，不展开未落代码的扩展接口。
+本文档只描述当前真实实现的 preview run 行为，不展开未落代码的扩展接口。
 
 ## 当前公开范围
 
@@ -69,7 +69,7 @@
 | node_records | 节点执行记录列表 |
 | error_message | 失败或超时时的摘要信息，可为空 |
 | retention_until | 建议清理时间，可为空 |
-| metadata | 调用附加元数据；接口层会补写 created_by |
+| metadata | 调用附加元数据；接口层会补写 created_by；当绑定 execution policy 时还会补写 metadata.execution_policy 摘要 |
 
 ## POST /api/v1/workflows/preview-runs
 
@@ -81,23 +81,25 @@
 
 - project_id：必填，所属 Project id
 - application_ref：可选，引用已保存 FlowApplication；当前只支持 application_id
+- execution_policy_id：可选，引用一条已保存 WorkflowExecutionPolicy
 - application：可选，inline FlowApplication snapshot
 - template：可选，inline WorkflowGraphTemplate snapshot
 - input_bindings：可选，按 application input binding_id 组织的输入 payload
 - execution_metadata：可选，执行元数据；接口层会补写 created_by
-- timeout_seconds：可选，默认 30，必须大于 0
+- timeout_seconds：可选；未提供且存在 execution policy 时取 policy.default_timeout_seconds，否则默认 30
 
 ### 输入约束
 
 - application_ref 与 inline application/template 二选一。
 - 如果未提供 application_ref，则必须同时提供 application 和 template。
-- 当前不公开 execution_policy_id、wait_mode 或 async query_path。
+- 当前不公开 wait_mode 或 async query_path。
 
 ### 最小请求 JSON
 
 ```json
 {
   "project_id": "project-1",
+  "execution_policy_id": "preview-default-policy",
   "application_ref": {
     "application_id": "inspection-demo-app"
   },
@@ -108,8 +110,7 @@
   },
   "execution_metadata": {
     "trigger_source": "editor-preview"
-  },
-  "timeout_seconds": 30
+  }
 }
 ```
 
@@ -148,7 +149,15 @@
   "retention_until": "2026-05-09T12:00:00Z",
   "metadata": {
     "trigger_source": "editor-preview",
-    "created_by": "editor-user"
+    "created_by": "editor-user",
+    "execution_policy": {
+      "execution_policy_id": "preview-default-policy",
+      "policy_kind": "preview-default",
+      "trace_level": "summary",
+      "retain_node_records_enabled": true,
+      "retain_trace_enabled": true,
+      "snapshot_object_key": "workflows/runtime/preview-runs/preview-run-1/execution-policy.snapshot.json"
+    }
   }
 }
 ```
@@ -164,11 +173,11 @@
 - GET /api/v1/workflows/preview-runs/{preview_run_id}/events
 - POST /api/v1/workflows/preview-runs/{preview_run_id}/cancel
 - async preview create
-- execution policy 绑定
 
 ## 与其他资源的关系
 
 - WorkflowPreviewRun 与 WorkflowRun 分开建模：前者用于编辑器试跑，后者用于已发布 runtime 的正式调用。
+- WorkflowPreviewRun 当前可以引用 [docs/api/workflow-execution-policies.md](workflow-execution-policies.md) 中的 execution_policy_id；接口返回会把应用到本次执行的策略摘要写入 metadata.execution_policy。
 - preview run 不替代 [docs/api/workflows.md](workflows.md) 里的 template/application validate、save、get 接口。
 - 已发布应用的长期运行和同步调用见 [docs/api/workflow-app-runtimes.md](workflow-app-runtimes.md) 与 [docs/api/workflow-runs.md](workflow-runs.md)。
 

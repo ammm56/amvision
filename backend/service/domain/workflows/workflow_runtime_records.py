@@ -9,6 +9,7 @@ from typing import Literal
 WorkflowPreviewRunState = Literal["created", "running", "succeeded", "failed", "timed_out"]
 WorkflowAppRuntimeState = Literal["stopped", "starting", "running", "stopping", "failed"]
 WorkflowRunState = Literal["created", "queued", "dispatching", "running", "succeeded", "failed", "cancelled", "timed_out"]
+WorkflowExecutionPolicyKind = Literal["preview-default", "runtime-default"]
 
 
 @dataclass(frozen=True)
@@ -36,6 +37,41 @@ class WorkflowPreviewRun:
 
 
 @dataclass(frozen=True)
+class WorkflowExecutionPolicy:
+    """描述一条 WorkflowExecutionPolicy 配置。
+
+    字段：
+    - execution_policy_id：策略 id。
+    - project_id：所属 Project id。
+    - display_name：展示名称。
+    - policy_kind：策略类型。
+    - default_timeout_seconds：默认执行超时秒数。
+    - max_run_timeout_seconds：单次运行允许的最大超时秒数。
+    - trace_level：trace 保留级别。
+    - retain_node_records_enabled：是否保留 node_records。
+    - retain_trace_enabled：是否保留 trace 数据。
+    - created_at：创建时间。
+    - updated_at：更新时间。
+    - created_by：创建主体 id。
+    - metadata：附加元数据。
+    """
+
+    execution_policy_id: str
+    project_id: str
+    display_name: str
+    policy_kind: WorkflowExecutionPolicyKind
+    default_timeout_seconds: int = 30
+    max_run_timeout_seconds: int = 30
+    trace_level: str = "node-summary"
+    retain_node_records_enabled: bool = True
+    retain_trace_enabled: bool = True
+    created_at: str = ""
+    updated_at: str = ""
+    created_by: str | None = None
+    metadata: dict[str, object] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
 class WorkflowAppRuntime:
     """描述一份已发布应用的最小长期运行记录。"""
 
@@ -45,6 +81,7 @@ class WorkflowAppRuntime:
     display_name: str
     application_snapshot_object_key: str
     template_snapshot_object_key: str
+    execution_policy_snapshot_object_key: str | None = None
     desired_state: WorkflowAppRuntimeState = "stopped"
     observed_state: WorkflowAppRuntimeState = "stopped"
     request_timeout_seconds: int = 60

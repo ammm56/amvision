@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from sqlalchemy import JSON, Integer, String
+from sqlalchemy import JSON, Boolean, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from backend.service.infrastructure.persistence.base import Base
@@ -35,6 +35,26 @@ class WorkflowPreviewRunRecord(Base):
     metadata_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
 
 
+class WorkflowExecutionPolicyRecord(Base):
+    """映射 WorkflowExecutionPolicy 对象。"""
+
+    __tablename__ = "workflow_execution_policies"
+
+    execution_policy_id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    project_id: Mapped[str] = mapped_column(String(128), index=True)
+    display_name: Mapped[str] = mapped_column(String(256), default="")
+    policy_kind: Mapped[str] = mapped_column(String(64), index=True)
+    default_timeout_seconds: Mapped[int] = mapped_column(Integer, default=30)
+    max_run_timeout_seconds: Mapped[int] = mapped_column(Integer, default=30)
+    trace_level: Mapped[str] = mapped_column(String(64), default="node-summary")
+    retain_node_records_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    retain_trace_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[str] = mapped_column(String(64), index=True)
+    updated_at: Mapped[str] = mapped_column(String(64))
+    created_by: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    metadata_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+
+
 class WorkflowAppRuntimeRecord(Base):
     """映射 WorkflowAppRuntime 对象。"""
 
@@ -46,6 +66,7 @@ class WorkflowAppRuntimeRecord(Base):
     display_name: Mapped[str] = mapped_column(String(256), default="")
     application_snapshot_object_key: Mapped[str] = mapped_column(String(1024))
     template_snapshot_object_key: Mapped[str] = mapped_column(String(1024))
+    execution_policy_snapshot_object_key: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     desired_state: Mapped[str] = mapped_column(String(32), index=True)
     observed_state: Mapped[str] = mapped_column(String(32), index=True)
     request_timeout_seconds: Mapped[int] = mapped_column(Integer, default=60)

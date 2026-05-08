@@ -90,7 +90,7 @@
 | template_outputs | 按 template output id 组织的底层输出 |
 | node_records | 节点执行记录列表 |
 | error_message | 失败或超时时的摘要信息，可为空 |
-| metadata | 调用附加元数据；失败时会补充 error_details，取消时会补充 cancel_requested_at 和 cancelled_by |
+| metadata | 调用附加元数据；当 runtime 绑定 execution policy 时会补充 metadata.execution_policy；失败时会补充 error_details，取消时会补充 cancel_requested_at 和 cancelled_by |
 
 ## POST /api/v1/workflows/app-runtimes/{workflow_runtime_id}/runs
 
@@ -104,7 +104,7 @@
 
 - input_bindings：可选，按 application input binding_id 组织的输入 payload
 - execution_metadata：可选，执行元数据；接口层会补写 created_by，服务层会补写 trigger_source=async-invoke
-- timeout_seconds：可选，覆盖 runtime 默认 request_timeout_seconds，必须大于 0
+- timeout_seconds：可选，覆盖 runtime 默认 request_timeout_seconds；若省略且 runtime 已绑定 execution policy，则取 policy.default_timeout_seconds；显式值必须大于 0
 
 ### 最小请求 JSON
 
@@ -117,8 +117,7 @@
   },
   "execution_metadata": {
     "trigger_source": "schedule"
-  },
-  "timeout_seconds": 60
+  }
 }
 ```
 
@@ -149,7 +148,15 @@
   "error_message": null,
   "metadata": {
     "trigger_source": "async-invoke",
-    "created_by": "operator-1"
+    "created_by": "operator-1",
+    "execution_policy": {
+      "execution_policy_id": "runtime-default-policy",
+      "policy_kind": "runtime-default",
+      "trace_level": "node-summary",
+      "retain_node_records_enabled": true,
+      "retain_trace_enabled": true,
+      "snapshot_object_key": "workflows/runtime/app-runtimes/workflow-runtime-1/execution-policy.snapshot.json"
+    }
   }
 }
 ```
@@ -165,7 +172,7 @@
 
 - input_bindings：可选，按 application input binding_id 组织的输入 payload
 - execution_metadata：可选，执行元数据；接口层会补写 created_by
-- timeout_seconds：可选，覆盖 runtime 默认 request_timeout_seconds，必须大于 0
+- timeout_seconds：可选，覆盖 runtime 默认 request_timeout_seconds；若省略且 runtime 已绑定 execution policy，则取 policy.default_timeout_seconds；显式值必须大于 0
 
 ### 最小请求 JSON
 
@@ -178,8 +185,7 @@
   },
   "execution_metadata": {
     "trigger_source": "sync-api"
-  },
-  "timeout_seconds": 60
+  }
 }
 ```
 
@@ -221,7 +227,15 @@
   "error_message": null,
   "metadata": {
     "trigger_source": "sync-api",
-    "created_by": "operator-1"
+    "created_by": "operator-1",
+    "execution_policy": {
+      "execution_policy_id": "runtime-default-policy",
+      "policy_kind": "runtime-default",
+      "trace_level": "node-summary",
+      "retain_node_records_enabled": true,
+      "retain_trace_enabled": true,
+      "snapshot_object_key": "workflows/runtime/app-runtimes/workflow-runtime-1/execution-policy.snapshot.json"
+    }
   }
 }
 ```
@@ -260,6 +274,7 @@
 ## 与其他资源的关系
 
 - WorkflowRun 依附于 [docs/api/workflow-app-runtimes.md](workflow-app-runtimes.md) 创建和执行。
+- WorkflowRun 返回里的 metadata.execution_policy 摘要来自宿主 WorkflowAppRuntime 固定的 execution policy snapshot。
 - 编辑态试跑结果见 [docs/api/workflow-preview-runs.md](workflow-preview-runs.md)。
 - template/application 的保存和校验入口见 [docs/api/workflows.md](workflows.md)。
 
