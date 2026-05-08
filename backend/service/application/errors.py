@@ -147,6 +147,25 @@ class OperationTimeoutError(ServiceError):
         super().__init__(message, code="operation_timeout", status_code=504, details=details)
 
 
+class OperationCancelledError(ServiceError):
+    """表示一次可取消操作已被取消。"""
+
+    def __init__(
+        self,
+        message: str = "操作已取消",
+        *,
+        details: Mapping[str, object] | None = None,
+    ) -> None:
+        """初始化操作取消错误。
+
+        参数：
+        - message：错误消息。
+        - details：附加错误细节。
+        """
+
+        super().__init__(message, code="operation_cancelled", status_code=409, details=details)
+
+
 class UnsupportedDatasetFormatError(ServiceError):
     """表示当前数据集格式暂不支持。"""
 

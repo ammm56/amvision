@@ -570,4 +570,4 @@ data/files/models/pretrained/yolox/
 - [docs/architecture/dataset-import-spec.md](dataset-import-spec.md)
 - [docs/architecture/backend-service.md](backend-service.md)
 - [docs/architecture/system-overview.md](system-overview.md)
-- [docs/architecture/plugin-system.md](plugin-system.md)
+- [docs/architecture/node-system.md](node-system.md)

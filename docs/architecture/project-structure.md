@@ -287,12 +287,12 @@ repo/
 - [docs/README.md](../README.md) 作为整个仓库文档体系入口
 - 本文档放在 docs/architecture/ 下，作为项目结构与模块边界总览
 - 后续如需继续展开，可在 docs/architecture/ 下补充 backend-service、frontend-web-ui、runtime-packaging、plugin-system 等子文档
-- 节点扩展原则和节点体系详见 [docs/architecture/plugin-system.md](plugin-system.md)
+- 节点扩展原则和节点体系详见 [docs/architecture/node-system.md](node-system.md)
 - AGENTS.md 仅保留项目约束、Agent Routing、Agent Color Mapping 和架构文档入口，不继续展开详细目录层级
 
 ## 后续可扩展文档
 
 - docs/architecture/frontend-web-ui.md
-- docs/architecture/plugin-system.md
+- docs/architecture/node-system.md
 - docs/architecture/integration-rules.md
 - docs/architecture/execution-observability.md

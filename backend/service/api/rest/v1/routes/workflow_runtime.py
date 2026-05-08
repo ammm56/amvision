@@ -265,6 +265,33 @@ def list_workflow_app_runtime_instances(
 
 
 @workflow_runtime_router.post(
+    "/app-runtimes/{workflow_runtime_id}/runs",
+    response_model=WorkflowRunContract,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_workflow_run(
+    workflow_runtime_id: str,
+    body: WorkflowRuntimeInvokeRequestBody,
+    request: Request,
+    principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("workflows:write"))],
+) -> WorkflowRunContract:
+    """为已启动的 runtime 创建一条异步 WorkflowRun。"""
+
+    workflow_app_runtime = _build_workflow_runtime_service(request).get_workflow_app_runtime(workflow_runtime_id)
+    _ensure_project_visible(principal=principal, project_id=workflow_app_runtime.project_id)
+    workflow_run = _build_workflow_runtime_service(request).create_workflow_run(
+        workflow_runtime_id,
+        WorkflowRuntimeInvokeRequest(
+            input_bindings=dict(body.input_bindings),
+            execution_metadata=_with_created_by(body.execution_metadata, principal.principal_id),
+            timeout_seconds=body.timeout_seconds,
+        ),
+        created_by=principal.principal_id,
+    )
+    return _build_workflow_run_contract(workflow_run)
+
+
+@workflow_runtime_router.post(
     "/app-runtimes/{workflow_runtime_id}/invoke",
     response_model=WorkflowRunContract,
 )
@@ -304,6 +331,26 @@ def get_workflow_run(
     workflow_run = _build_workflow_runtime_service(request).get_workflow_run(workflow_run_id)
     _ensure_project_visible(principal=principal, project_id=workflow_run.project_id)
     return _build_workflow_run_contract(workflow_run)
+
+
+@workflow_runtime_router.post(
+    "/runs/{workflow_run_id}/cancel",
+    response_model=WorkflowRunContract,
+)
+def cancel_workflow_run(
+    workflow_run_id: str,
+    request: Request,
+    principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("workflows:write"))],
+) -> WorkflowRunContract:
+    """取消一条异步 WorkflowRun。"""
+
+    workflow_run = _build_workflow_runtime_service(request).get_workflow_run(workflow_run_id)
+    _ensure_project_visible(principal=principal, project_id=workflow_run.project_id)
+    updated_run = _build_workflow_runtime_service(request).cancel_workflow_run(
+        workflow_run_id,
+        cancelled_by=principal.principal_id,
+    )
+    return _build_workflow_run_contract(updated_run)
 
 
 def _build_workflow_runtime_service(request: Request) -> WorkflowRuntimeService:

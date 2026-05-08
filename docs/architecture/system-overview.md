@@ -309,7 +309,7 @@ frontend/web-ui    protocol integration boundary
 4. [docs/architecture/detection-model-rules.md](detection-model-rules.md)
 5. [docs/architecture/frontend-web-ui.md](frontend-web-ui.md)
 6. [docs/architecture/data-and-files.md](data-and-files.md)
-7. [docs/architecture/plugin-system.md](plugin-system.md)
+7. [docs/architecture/node-system.md](node-system.md)
 8. [docs/architecture/runtime-packaging.md](runtime-packaging.md)
 9. 根据任务继续进入 deployment 专题文档
 

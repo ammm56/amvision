@@ -85,6 +85,15 @@
 - 已发布应用运行时必须固定到不可变快照，而不是直接追随可变的 application 保存文件。
 - 同步调用和异步调用都落到 WorkflowRun 资源，再由 runtime instance 执行。
 
+## Trigger Source 与首节点轮询的分层原则
+
+- HTTP 只是当前最先落地的 workflow 控制面入口，不是长期唯一触发方式。
+- PLC 条件满足、MQTT 消息到达、gRPC 调用、IO 状态变化、传感器阈值命中和其他外部事件，都可以作为 WorkflowRun 的触发来源。
+- 当外部事件到达后需要启动整条 workflow 时，应优先通过 trigger source、集成边界或 node pack 桥接进程创建 WorkflowRun，再交给 runtime instance 执行。
+- 当某个 workflow run 在执行过程中需要再次读取 PLC、传感器或其他外部状态时，应通过节点表达该读取动作，而不是把长期监听职责塞进 workflow 首节点。
+- runtime instance 的职责是执行已创建的 WorkflowRun，不应在没有 run 的情况下长期空转轮询外部世界。
+- 这种分层可以把外部监听、执行隔离、快照固定、回滚和审计边界稳定下来，避免随着节点数量增加把“触发器”和“业务图”混成同一类控制逻辑。
+
 ## 资源模型
 
 ## 资源总览

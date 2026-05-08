@@ -20,7 +20,7 @@
 - [docs/architecture/detection-model-rules.md](detection-model-rules.md)：检测类模型的最小平台规则，以及正式对象与 metadata 的边界
 - [docs/architecture/yolox-module-design.md](yolox-module-design.md)：YOLOX 在 amvision 里的模块拆分、目录位置、当前代码落点和后续收敛方向
 - [docs/architecture/frontend-web-ui.md](frontend-web-ui.md)：浏览器前端 Web UI 的模块划分、路由结构、状态组织和交互边界
-- [docs/architecture/plugin-system.md](plugin-system.md)：节点扩展体系、node pack 边界、custom node 模型和 ComfyUI 对齐方向
+- [docs/architecture/node-system.md](node-system.md)：节点系统、node pack 边界、custom node 模型和 ComfyUI 对齐方向
 - [docs/architecture/workflow-json-contracts.md](workflow-json-contracts.md)：NodeDefinition、payload contract、图模板与流程应用 JSON 合同
 - [docs/architecture/data-and-files.md](data-and-files.md)：关键对象、文件引用和版本关系
 - [docs/architecture/dataset-import-spec.md](dataset-import-spec.md)：DatasetImport、通用数据格式、任务类型格式矩阵和数据集导出规范
@@ -54,7 +54,7 @@
 10. [docs/architecture/detection-model-rules.md](detection-model-rules.md)
 11. [docs/architecture/yolox-module-design.md](yolox-module-design.md)
 12. [docs/architecture/frontend-web-ui.md](frontend-web-ui.md)
-13. [docs/architecture/plugin-system.md](plugin-system.md)
+13. [docs/architecture/node-system.md](node-system.md)
 14. [docs/architecture/workflow-json-contracts.md](workflow-json-contracts.md)
 15. [docs/architecture/data-and-files.md](data-and-files.md)
 16. [docs/architecture/dataset-import-spec.md](dataset-import-spec.md)

@@ -107,5 +107,5 @@
 ## 推荐后续文档
 
 - [docs/nodes/node-pack-manifest.md](node-pack-manifest.md)
-- [docs/architecture/plugin-system.md](../architecture/plugin-system.md)
+- [docs/architecture/node-system.md](../architecture/node-system.md)
 - [docs/api/communication-contracts.md](../api/communication-contracts.md)

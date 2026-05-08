@@ -6,6 +6,7 @@ import json
 import multiprocessing
 import os
 from pathlib import Path
+import time
 
 from fastapi.testclient import TestClient
 
@@ -814,6 +815,224 @@ def test_workflow_app_runtime_api_lists_instances_and_clears_them_after_stop(
     assert stopped_instances_response.json() == []
 
 
+def test_workflow_app_runtime_async_run_api_persists_queued_then_succeeded(
+    tmp_path: Path,
+) -> None:
+    """验证异步 WorkflowRun 创建后会先落成 queued，再由后台线程推进到 succeeded。"""
+
+    session_factory, dataset_storage, queue_backend = create_test_runtime(
+        tmp_path,
+        database_name="workflow-runtime-async-run-api.db",
+    )
+    custom_nodes_root_dir = _create_process_test_node_pack_fixture(tmp_path)
+    node_pack_loader = LocalNodePackLoader(custom_nodes_root_dir)
+    node_pack_loader.refresh()
+    node_catalog_registry = NodeCatalogRegistry(node_pack_loader=node_pack_loader)
+    workflow_service = LocalWorkflowJsonService(
+        dataset_storage=dataset_storage,
+        node_catalog_registry=node_catalog_registry,
+    )
+    workflow_service.save_template(
+        project_id="project-1",
+        template=_build_process_echo_template(),
+    )
+    workflow_service.save_application(
+        project_id="project-1",
+        application=_build_process_echo_application(),
+    )
+    application = create_app(
+        settings=BackendServiceSettings(
+            database=BackendServiceDatabaseConfig(url=session_factory.settings.url),
+            dataset_storage=BackendServiceDatasetStorageConfig(root_dir=str(dataset_storage.root_dir)),
+            queue=BackendServiceQueueConfig(root_dir=str(queue_backend.root_dir)),
+            custom_nodes=BackendServiceCustomNodesConfig(root_dir=str(custom_nodes_root_dir)),
+            task_manager=BackendServiceTaskManagerConfig(enabled=False),
+        ),
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+        queue_backend=queue_backend,
+    )
+    client = TestClient(application)
+
+    try:
+        with client:
+            create_runtime_response = client.post(
+                "/api/v1/workflows/app-runtimes",
+                headers=build_test_headers(scopes="workflows:read,workflows:write"),
+                json={
+                    "project_id": "project-1",
+                    "application_id": "process-echo-app",
+                    "display_name": "Process Echo Async Runtime",
+                },
+            )
+            workflow_runtime_id = create_runtime_response.json()["workflow_runtime_id"]
+            start_response = client.post(
+                f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/start",
+                headers=build_test_headers(scopes="workflows:read,workflows:write"),
+            )
+            create_run_response = client.post(
+                f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/runs",
+                headers=build_test_headers(scopes="workflows:read,workflows:write"),
+                json={
+                    "input_bindings": {"request_text": {"value": "hello async runtime"}},
+                    "execution_metadata": {"marker": "async-runtime-api"},
+                },
+            )
+            workflow_run_id = create_run_response.json()["workflow_run_id"]
+            final_run_response = _wait_for_workflow_run_state(
+                client,
+                workflow_run_id,
+                expected_states={"succeeded"},
+            )
+            stop_response = client.post(
+                f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/stop",
+                headers=build_test_headers(scopes="workflows:read,workflows:write"),
+            )
+    finally:
+        session_factory.engine.dispose()
+
+    assert create_runtime_response.status_code == 201
+    assert start_response.status_code == 200
+    assert create_run_response.status_code == 201
+    assert final_run_response.status_code == 200
+    assert stop_response.status_code == 200
+    create_run_payload = create_run_response.json()
+    final_run_payload = final_run_response.json()
+    assert create_run_payload["state"] == "queued"
+    assert final_run_payload["state"] == "succeeded"
+    assert final_run_payload["metadata"]["trigger_source"] == "async-invoke"
+    assert final_run_payload["outputs"]["http_response"]["body"]["message"] == "hello async runtime"
+    assert stop_response.json()["observed_state"] == "stopped"
+
+
+def test_workflow_app_runtime_async_run_api_can_cancel_running_and_queued_runs(
+    tmp_path: Path,
+) -> None:
+    """验证异步 WorkflowRun 支持取消 running 和 queued 两种状态。"""
+
+    session_factory, dataset_storage, queue_backend = create_test_runtime(
+        tmp_path,
+        database_name="workflow-runtime-async-cancel-api.db",
+    )
+    custom_nodes_root_dir = _create_process_test_node_pack_fixture(tmp_path)
+    node_pack_loader = LocalNodePackLoader(custom_nodes_root_dir)
+    node_pack_loader.refresh()
+    node_catalog_registry = NodeCatalogRegistry(node_pack_loader=node_pack_loader)
+    workflow_service = LocalWorkflowJsonService(
+        dataset_storage=dataset_storage,
+        node_catalog_registry=node_catalog_registry,
+    )
+    workflow_service.save_template(
+        project_id="project-1",
+        template=_build_process_slow_template(),
+    )
+    workflow_service.save_application(
+        project_id="project-1",
+        application=_build_process_slow_application(),
+    )
+    application = create_app(
+        settings=BackendServiceSettings(
+            database=BackendServiceDatabaseConfig(url=session_factory.settings.url),
+            dataset_storage=BackendServiceDatasetStorageConfig(root_dir=str(dataset_storage.root_dir)),
+            queue=BackendServiceQueueConfig(root_dir=str(queue_backend.root_dir)),
+            custom_nodes=BackendServiceCustomNodesConfig(root_dir=str(custom_nodes_root_dir)),
+            task_manager=BackendServiceTaskManagerConfig(enabled=False),
+        ),
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+        queue_backend=queue_backend,
+    )
+    client = TestClient(application)
+
+    try:
+        with client:
+            create_runtime_response = client.post(
+                "/api/v1/workflows/app-runtimes",
+                headers=build_test_headers(scopes="workflows:read,workflows:write"),
+                json={
+                    "project_id": "project-1",
+                    "application_id": "process-slow-app",
+                    "display_name": "Process Slow Async Runtime",
+                    "request_timeout_seconds": 5,
+                },
+            )
+            workflow_runtime_id = create_runtime_response.json()["workflow_runtime_id"]
+            start_response = client.post(
+                f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/start",
+                headers=build_test_headers(scopes="workflows:read,workflows:write"),
+            )
+            running_run_response = client.post(
+                f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/runs",
+                headers=build_test_headers(scopes="workflows:read,workflows:write"),
+                json={
+                    "input_bindings": {"request_text": {"value": "cancel running"}},
+                    "execution_metadata": {"marker": "async-cancel-running"},
+                },
+            )
+            running_run_id = running_run_response.json()["workflow_run_id"]
+            _wait_for_workflow_run_state(
+                client,
+                running_run_id,
+                expected_states={"running"},
+            )
+            queued_run_response = client.post(
+                f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/runs",
+                headers=build_test_headers(scopes="workflows:read,workflows:write"),
+                json={
+                    "input_bindings": {"request_text": {"value": "cancel queued"}},
+                    "execution_metadata": {"marker": "async-cancel-queued"},
+                },
+            )
+            queued_run_id = queued_run_response.json()["workflow_run_id"]
+            cancel_queued_response = client.post(
+                f"/api/v1/workflows/runs/{queued_run_id}/cancel",
+                headers=build_test_headers(scopes="workflows:read,workflows:write"),
+            )
+            cancel_running_response = client.post(
+                f"/api/v1/workflows/runs/{running_run_id}/cancel",
+                headers=build_test_headers(scopes="workflows:read,workflows:write"),
+            )
+            queued_final_response = _wait_for_workflow_run_state(
+                client,
+                queued_run_id,
+                expected_states={"cancelled"},
+            )
+            running_final_response = _wait_for_workflow_run_state(
+                client,
+                running_run_id,
+                expected_states={"cancelled"},
+            )
+            health_response = client.get(
+                f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/health",
+                headers=build_test_headers(scopes="workflows:read,workflows:write"),
+            )
+            stop_response = client.post(
+                f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/stop",
+                headers=build_test_headers(scopes="workflows:read,workflows:write"),
+            )
+    finally:
+        session_factory.engine.dispose()
+
+    assert create_runtime_response.status_code == 201
+    assert start_response.status_code == 200
+    assert running_run_response.status_code == 201
+    assert queued_run_response.status_code == 201
+    assert cancel_queued_response.status_code == 200
+    assert cancel_running_response.status_code == 200
+    assert queued_final_response.status_code == 200
+    assert running_final_response.status_code == 200
+    assert health_response.status_code == 200
+    assert stop_response.status_code == 200
+    assert queued_run_response.json()["state"] == "queued"
+    assert queued_final_response.json()["state"] == "cancelled"
+    assert queued_final_response.json()["error_message"] == "workflow run 已取消"
+    assert running_final_response.json()["state"] == "cancelled"
+    assert running_final_response.json()["error_message"] == "workflow run 已取消"
+    assert running_final_response.json()["metadata"]["cancelled_by"] == "user-1"
+    assert health_response.json()["observed_state"] == "running"
+    assert stop_response.json()["observed_state"] == "stopped"
+
+
 def _build_process_echo_template():
     """构造进程隔离测试使用的最小 workflow 模板。"""
 
@@ -1250,3 +1469,28 @@ def register(context):
         encoding="utf-8",
     )
     return tmp_path / "custom_nodes"
+
+
+def _wait_for_workflow_run_state(
+    client: TestClient,
+    workflow_run_id: str,
+    *,
+    expected_states: set[str],
+    timeout_seconds: float = 10.0,
+):
+    """轮询 WorkflowRun，直到进入目标状态。"""
+
+    deadline = time.monotonic() + timeout_seconds
+    last_response = None
+    while time.monotonic() < deadline:
+        last_response = client.get(
+            f"/api/v1/workflows/runs/{workflow_run_id}",
+            headers=build_test_headers(scopes="workflows:read,workflows:write"),
+        )
+        if last_response.status_code == 200 and last_response.json().get("state") in expected_states:
+            return last_response
+        time.sleep(0.05)
+    raise AssertionError(
+        f"WorkflowRun {workflow_run_id} 未在 {timeout_seconds} 秒内进入目标状态 {sorted(expected_states)}；"
+        f"最后一次响应：{None if last_response is None else last_response.json()}"
+    )

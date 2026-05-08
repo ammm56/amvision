@@ -97,8 +97,10 @@ def test_workflow_postman_collection_contains_manual_test_sequence() -> None:
     assert "Create App Runtime" in request_names
     assert "Get App Runtime Health" in request_names
     assert "List App Runtime Instances" in request_names
+    assert "Create Async Workflow Run" in request_names
     assert "Restart App Runtime" in request_names
     assert "Invoke App Runtime" in request_names
+    assert "Cancel Workflow Run" in request_names
     assert variables["templateId"] == "yolox-deployment-detection-lifecycle-real-path"
     assert variables["applicationId"] == "yolox-deployment-detection-lifecycle-real-path-app"
 
@@ -106,6 +108,7 @@ def test_workflow_postman_collection_contains_manual_test_sequence() -> None:
     save_application_body = json.loads(request_payloads["Save Flow Application"])
     preview_body = json.loads(request_payloads["Create Preview Run"])
     create_runtime_body = json.loads(request_payloads["Create App Runtime"])
+    async_run_body = json.loads(request_payloads["Create Async Workflow Run"])
     invoke_body = json.loads(request_payloads["Invoke App Runtime"])
 
     assert save_template_body["template"]["metadata"]["example_kind"] == "deployment-control-detection-lifecycle-real-path"
@@ -114,6 +117,7 @@ def test_workflow_postman_collection_contains_manual_test_sequence() -> None:
     assert save_application_body["application"]["metadata"]["uses_existing_deployment_instance"] is True
     assert preview_body["execution_metadata"]["scenario"] == "deployment-control-detection-lifecycle-real-path"
     assert create_runtime_body["metadata"]["uses_existing_deployment_instance"] is True
+    assert async_run_body["execution_metadata"]["scenario"] == "deployment-control-detection-lifecycle-real-path"
     assert invoke_body["execution_metadata"]["scenario"] == "deployment-control-detection-lifecycle-real-path"
 
 

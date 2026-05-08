@@ -11,6 +11,7 @@ from uuid import uuid4
 from backend.contracts.workflows.workflow_graph import FlowApplication, WorkflowGraphTemplate
 from backend.service.application.errors import InvalidRequestError, OperationTimeoutError, ResourceNotFoundError, ServiceError
 from backend.service.application.workflows.runtime_worker import (
+    WorkflowRuntimeAsyncRunCallbacks,
     WorkflowRuntimeWorkerInstance,
     WorkflowRuntimeWorkerManager,
     WorkflowRuntimeWorkerRunResult,
@@ -67,7 +68,7 @@ class WorkflowRuntimeInvokeRequest:
 
 
 class WorkflowRuntimeService:
-    """封装 workflow runtime 第一阶段的资源创建与同步调用逻辑。"""
+    """封装 workflow runtime 当前阶段的资源创建、调用和状态收敛逻辑。"""
 
     def __init__(
         self,
@@ -374,6 +375,78 @@ class WorkflowRuntimeService:
         self.get_workflow_app_runtime(workflow_runtime_id)
         return self.worker_manager.list_runtime_instances(workflow_runtime_id)
 
+    def create_workflow_run(
+        self,
+        workflow_runtime_id: str,
+        request: WorkflowRuntimeInvokeRequest,
+        *,
+        created_by: str | None,
+    ) -> WorkflowRun:
+        """为已启动的 runtime 创建一条异步 WorkflowRun。
+
+        参数：
+        - workflow_runtime_id：目标 WorkflowAppRuntime id。
+        - request：异步运行请求。
+        - created_by：创建主体 id。
+
+        返回：
+        - WorkflowRun：已持久化的异步 WorkflowRun，创建返回时通常为 queued。
+        """
+
+        workflow_app_runtime = self.get_workflow_app_runtime(workflow_runtime_id)
+        if workflow_app_runtime.observed_state != "running" or not self.worker_manager.is_runtime_available(workflow_runtime_id):
+            raise InvalidRequestError(
+                "当前 WorkflowAppRuntime 未处于 running 状态",
+                details={
+                    "workflow_runtime_id": workflow_runtime_id,
+                    "observed_state": workflow_app_runtime.observed_state,
+                },
+            )
+
+        normalized_request = self._normalize_runtime_invoke_request(request)
+        metadata = dict(normalized_request.execution_metadata or {})
+        metadata.setdefault("trigger_source", "async-invoke")
+        now = _now_isoformat()
+        workflow_run = WorkflowRun(
+            workflow_run_id=f"workflow-run-{uuid4().hex}",
+            workflow_runtime_id=workflow_app_runtime.workflow_runtime_id,
+            project_id=workflow_app_runtime.project_id,
+            application_id=workflow_app_runtime.application_id,
+            state="queued",
+            created_at=now,
+            created_by=_normalize_optional_str(created_by),
+            requested_timeout_seconds=normalized_request.timeout_seconds or workflow_app_runtime.request_timeout_seconds,
+            input_payload=dict(normalized_request.input_bindings or {}),
+            metadata=metadata,
+        )
+        with self._open_unit_of_work() as unit_of_work:
+            unit_of_work.workflow_runtime.save_workflow_run(workflow_run)
+            unit_of_work.commit()
+
+        try:
+            self.worker_manager.submit_async_run(
+                workflow_app_runtime=workflow_app_runtime,
+                workflow_run_id=workflow_run.workflow_run_id,
+                input_bindings=dict(normalized_request.input_bindings or {}),
+                execution_metadata=metadata,
+                timeout_seconds=workflow_run.requested_timeout_seconds,
+                callbacks=self._build_async_run_callbacks(
+                    workflow_app_runtime.workflow_runtime_id,
+                    workflow_run.workflow_run_id,
+                ),
+            )
+        except ServiceError as error:
+            workflow_run = replace(
+                workflow_run,
+                state="failed",
+                finished_at=_now_isoformat(),
+                error_message=error.message,
+            )
+            with self._open_unit_of_work() as unit_of_work:
+                unit_of_work.workflow_runtime.save_workflow_run(workflow_run)
+                unit_of_work.commit()
+        return workflow_run
+
     def invoke_workflow_app_runtime(
         self,
         workflow_runtime_id: str,
@@ -462,6 +535,37 @@ class WorkflowRuntimeService:
             )
         return workflow_run
 
+    def cancel_workflow_run(self, workflow_run_id: str, *, cancelled_by: str | None) -> WorkflowRun:
+        """取消一条异步 WorkflowRun。
+
+        参数：
+        - workflow_run_id：目标 WorkflowRun id。
+        - cancelled_by：取消主体 id。
+
+        返回：
+        - WorkflowRun：取消后的最新 WorkflowRun。
+        """
+
+        workflow_run = self.get_workflow_run(workflow_run_id)
+        if workflow_run.state in {"succeeded", "failed", "timed_out", "cancelled"}:
+            return workflow_run
+
+        cancel_metadata = dict(workflow_run.metadata)
+        cancel_metadata["cancel_requested_at"] = _now_isoformat()
+        normalized_cancelled_by = _normalize_optional_str(cancelled_by)
+        if normalized_cancelled_by is not None:
+            cancel_metadata["cancelled_by"] = normalized_cancelled_by
+        workflow_run = replace(workflow_run, metadata=cancel_metadata)
+        with self._open_unit_of_work() as unit_of_work:
+            unit_of_work.workflow_runtime.save_workflow_run(workflow_run)
+            unit_of_work.commit()
+
+        self.worker_manager.cancel_async_run(
+            workflow_run_id,
+            timeout_seconds=min(max(float(workflow_run.requested_timeout_seconds), 1.0), 10.0),
+        )
+        return self.get_workflow_run(workflow_run_id)
+
     def _resolve_preview_source(
         self,
         request: WorkflowPreviewRunCreateRequest,
@@ -543,6 +647,181 @@ class WorkflowRuntimeService:
             error_message=worker_result.error_message,
             metadata=metadata,
         )
+
+    def _build_async_run_callbacks(
+        self,
+        workflow_runtime_id: str,
+        workflow_run_id: str,
+    ) -> WorkflowRuntimeAsyncRunCallbacks:
+        """构造异步 WorkflowRun 的后台线程回调。"""
+
+        return WorkflowRuntimeAsyncRunCallbacks(
+            on_started=lambda: self._mark_async_workflow_run_started(workflow_run_id),
+            on_completed=lambda worker_result: self._finish_async_workflow_run_with_result(
+                workflow_run_id,
+                workflow_runtime_id,
+                worker_result,
+            ),
+            on_cancelled=lambda runtime_state: self._finish_async_workflow_run_cancelled(
+                workflow_run_id,
+                workflow_runtime_id,
+                runtime_state,
+            ),
+            on_failed=lambda error: self._finish_async_workflow_run_failed(
+                workflow_run_id,
+                workflow_runtime_id,
+                error,
+            ),
+            on_timed_out=lambda error: self._finish_async_workflow_run_timed_out(
+                workflow_run_id,
+                workflow_runtime_id,
+                error,
+            ),
+        )
+
+    def _mark_async_workflow_run_started(self, workflow_run_id: str) -> None:
+        """把异步 WorkflowRun 从 queued 推进到 running。"""
+
+        with self._open_unit_of_work() as unit_of_work:
+            workflow_run = unit_of_work.workflow_runtime.get_workflow_run(workflow_run_id)
+            if workflow_run is None or workflow_run.state != "queued":
+                return
+            unit_of_work.workflow_runtime.save_workflow_run(
+                replace(
+                    workflow_run,
+                    state="running",
+                    started_at=workflow_run.started_at or _now_isoformat(),
+                )
+            )
+            unit_of_work.commit()
+
+    def _finish_async_workflow_run_with_result(
+        self,
+        workflow_run_id: str,
+        workflow_runtime_id: str,
+        worker_result: WorkflowRuntimeWorkerRunResult,
+    ) -> None:
+        """把异步 WorkflowRun 的完成结果回写到持久化层。"""
+
+        with self._open_unit_of_work() as unit_of_work:
+            workflow_run = unit_of_work.workflow_runtime.get_workflow_run(workflow_run_id)
+            workflow_app_runtime = unit_of_work.workflow_runtime.get_workflow_app_runtime(workflow_runtime_id)
+            if workflow_run is None or workflow_app_runtime is None:
+                return
+            updated_run = self._apply_run_result(workflow_run, worker_result)
+            updated_runtime = self._apply_worker_state(
+                replace(workflow_app_runtime, updated_at=_now_isoformat()),
+                worker_result.worker_state,
+            )
+            unit_of_work.workflow_runtime.save_workflow_run(updated_run)
+            unit_of_work.workflow_runtime.save_workflow_app_runtime(updated_runtime)
+            unit_of_work.commit()
+
+    def _finish_async_workflow_run_failed(
+        self,
+        workflow_run_id: str,
+        workflow_runtime_id: str,
+        error: ServiceError,
+    ) -> None:
+        """把异步 WorkflowRun 的失败结果回写到持久化层。"""
+
+        with self._open_unit_of_work() as unit_of_work:
+            workflow_run = unit_of_work.workflow_runtime.get_workflow_run(workflow_run_id)
+            workflow_app_runtime = unit_of_work.workflow_runtime.get_workflow_app_runtime(workflow_runtime_id)
+            if workflow_run is None:
+                return
+            metadata = dict(workflow_run.metadata)
+            if error.details:
+                metadata["error_details"] = dict(error.details)
+            updated_run = replace(
+                workflow_run,
+                state="failed",
+                finished_at=_now_isoformat(),
+                error_message=error.message,
+                metadata=metadata,
+            )
+            unit_of_work.workflow_runtime.save_workflow_run(updated_run)
+            if workflow_app_runtime is not None:
+                unit_of_work.workflow_runtime.save_workflow_app_runtime(
+                    replace(
+                        workflow_app_runtime,
+                        observed_state="failed",
+                        updated_at=_now_isoformat(),
+                        last_error=error.message,
+                        health_summary={
+                            "mode": "single-instance-sync",
+                            "worker_state": "failed",
+                            "last_error": error.message,
+                        },
+                    )
+                )
+            unit_of_work.commit()
+
+    def _finish_async_workflow_run_timed_out(
+        self,
+        workflow_run_id: str,
+        workflow_runtime_id: str,
+        error: OperationTimeoutError,
+    ) -> None:
+        """把异步 WorkflowRun 的超时结果回写到持久化层。"""
+
+        with self._open_unit_of_work() as unit_of_work:
+            workflow_run = unit_of_work.workflow_runtime.get_workflow_run(workflow_run_id)
+            workflow_app_runtime = unit_of_work.workflow_runtime.get_workflow_app_runtime(workflow_runtime_id)
+            if workflow_run is None:
+                return
+            updated_run = replace(
+                workflow_run,
+                state="timed_out",
+                started_at=workflow_run.started_at or _now_isoformat(),
+                finished_at=_now_isoformat(),
+                error_message=error.message,
+            )
+            unit_of_work.workflow_runtime.save_workflow_run(updated_run)
+            if workflow_app_runtime is not None:
+                unit_of_work.workflow_runtime.save_workflow_app_runtime(
+                    replace(
+                        workflow_app_runtime,
+                        observed_state="failed",
+                        updated_at=_now_isoformat(),
+                        last_error=error.message,
+                        health_summary={
+                            "mode": "single-instance-sync",
+                            "worker_state": "failed",
+                            "last_error": error.message,
+                        },
+                    )
+                )
+            unit_of_work.commit()
+
+    def _finish_async_workflow_run_cancelled(
+        self,
+        workflow_run_id: str,
+        workflow_runtime_id: str,
+        runtime_state: WorkflowRuntimeWorkerState | None,
+    ) -> None:
+        """把异步 WorkflowRun 的取消结果回写到持久化层。"""
+
+        with self._open_unit_of_work() as unit_of_work:
+            workflow_run = unit_of_work.workflow_runtime.get_workflow_run(workflow_run_id)
+            workflow_app_runtime = unit_of_work.workflow_runtime.get_workflow_app_runtime(workflow_runtime_id)
+            if workflow_run is None:
+                return
+            updated_run = replace(
+                workflow_run,
+                state="cancelled",
+                finished_at=_now_isoformat(),
+                error_message="workflow run 已取消",
+            )
+            unit_of_work.workflow_runtime.save_workflow_run(updated_run)
+            if workflow_app_runtime is not None and runtime_state is not None:
+                unit_of_work.workflow_runtime.save_workflow_app_runtime(
+                    self._apply_worker_state(
+                        replace(workflow_app_runtime, updated_at=_now_isoformat()),
+                        runtime_state,
+                    )
+                )
+            unit_of_work.commit()
 
     def _build_workflow_json_service(self) -> LocalWorkflowJsonService:
         """构建 workflow JSON 服务。"""

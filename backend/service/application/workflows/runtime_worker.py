@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from multiprocessing.queues import Queue
 from pathlib import Path
 from queue import Empty
-from threading import Lock
+from threading import Event, Lock, Thread
+from time import monotonic
 from typing import Any
 from uuid import uuid4
 import multiprocessing
@@ -16,7 +18,12 @@ from sqlalchemy.engine import URL, make_url
 from backend.nodes.local_node_pack_loader import LocalNodePackLoader
 from backend.nodes.node_catalog_registry import NodeCatalogRegistry
 from backend.queue import LocalFileQueueBackend
-from backend.service.application.errors import OperationTimeoutError, ServiceConfigurationError, ServiceError
+from backend.service.application.errors import (
+    OperationCancelledError,
+    OperationTimeoutError,
+    ServiceConfigurationError,
+    ServiceError,
+)
 from backend.service.application.runtime.yolox_deployment_process_supervisor import (
     YoloXDeploymentProcessSupervisor,
 )
@@ -79,6 +86,17 @@ class WorkflowRuntimeWorkerRunResult:
     )
 
 
+@dataclass(frozen=True)
+class WorkflowRuntimeAsyncRunCallbacks:
+    """描述异步 WorkflowRun 在线程中的状态回写回调。"""
+
+    on_started: Callable[[], None]
+    on_completed: Callable[[WorkflowRuntimeWorkerRunResult], None]
+    on_cancelled: Callable[[WorkflowRuntimeWorkerState | None], None]
+    on_failed: Callable[[ServiceError], None]
+    on_timed_out: Callable[[OperationTimeoutError], None]
+
+
 @dataclass
 class _WorkflowRuntimeProcessHandle:
     """描述父进程中维护的单个 runtime worker 句柄。"""
@@ -88,6 +106,22 @@ class _WorkflowRuntimeProcessHandle:
     request_queue: Any
     response_queue: Any
     lock: Lock = field(default_factory=Lock, repr=False)
+
+
+@dataclass
+class _WorkflowRuntimeAsyncRunHandle:
+    """描述父进程中维护的一条异步 WorkflowRun 句柄。"""
+
+    workflow_app_runtime: WorkflowAppRuntime
+    workflow_run_id: str
+    input_bindings: dict[str, object]
+    execution_metadata: dict[str, object]
+    timeout_seconds: int
+    callbacks: WorkflowRuntimeAsyncRunCallbacks = field(repr=False)
+    cancel_event: Event = field(default_factory=Event, repr=False)
+    completion_event: Event = field(default_factory=Event, repr=False)
+    dispatched_event: Event = field(default_factory=Event, repr=False)
+    thread: Thread | None = field(default=None, repr=False)
 
 
 class WorkflowRuntimeWorkerManager:
@@ -103,24 +137,48 @@ class WorkflowRuntimeWorkerManager:
         self.settings = _resolve_backend_service_settings(settings)
         self._context = multiprocessing.get_context("spawn")
         self._handles: dict[str, _WorkflowRuntimeProcessHandle] = {}
+        self._async_runs: dict[str, _WorkflowRuntimeAsyncRunHandle] = {}
         self._lock = Lock()
+        self._stopping = Event()
 
     def start(self) -> None:
         """启动管理器本身。
 
-        第一阶段不需要额外后台线程，因此这里保持空实现。
+        异步 WorkflowRun 线程按需创建，因此这里只负责清理停止标记。
         """
+
+        self._stopping.clear()
 
     def stop(self) -> None:
         """停止全部 runtime worker 进程。"""
 
         with self._lock:
+            async_handles = tuple(self._async_runs.values())
             runtime_ids = tuple(self._handles.keys())
+        self._stopping.set()
+        for async_handle in async_handles:
+            async_handle.cancel_event.set()
         for workflow_runtime_id in runtime_ids:
             try:
                 self.stop_runtime(workflow_runtime_id)
             except ServiceError:
                 continue
+        for async_handle in async_handles:
+            async_handle.completion_event.wait(timeout=1.0)
+
+    def is_runtime_available(self, workflow_runtime_id: str) -> bool:
+        """判断一个 runtime 当前是否仍有活动 worker 进程。
+
+        参数：
+        - workflow_runtime_id：目标 WorkflowAppRuntime id。
+
+        返回：
+        - bool：存在活动 worker 进程时返回 True。
+        """
+
+        with self._lock:
+            handle = self._handles.get(workflow_runtime_id)
+        return handle is not None and handle.process.is_alive()
 
     def start_runtime(self, workflow_app_runtime: WorkflowAppRuntime) -> WorkflowRuntimeWorkerState:
         """拉起一个 runtime 对应的单实例 worker 进程。"""
@@ -247,6 +305,72 @@ class WorkflowRuntimeWorkerManager:
             ),
         )
 
+    def submit_async_run(
+        self,
+        *,
+        workflow_app_runtime: WorkflowAppRuntime,
+        workflow_run_id: str,
+        input_bindings: dict[str, object],
+        execution_metadata: dict[str, object],
+        timeout_seconds: int,
+        callbacks: WorkflowRuntimeAsyncRunCallbacks,
+    ) -> None:
+        """提交一条异步 WorkflowRun，并在后台线程里串行进入单实例 worker。
+
+        参数：
+        - workflow_app_runtime：目标 runtime 的固定快照记录。
+        - workflow_run_id：要执行的 WorkflowRun id。
+        - input_bindings：本次运行输入。
+        - execution_metadata：本次运行元数据。
+        - timeout_seconds：本次运行超时秒数。
+        - callbacks：后台线程执行过程中的状态回写回调。
+        """
+
+        if self._stopping.is_set():
+            raise ServiceConfigurationError("workflow runtime worker manager 当前已停止")
+        if not self.is_runtime_available(workflow_app_runtime.workflow_runtime_id):
+            raise ServiceConfigurationError(
+                "workflow runtime worker 当前未运行",
+                details={"workflow_runtime_id": workflow_app_runtime.workflow_runtime_id},
+            )
+
+        async_handle = _WorkflowRuntimeAsyncRunHandle(
+            workflow_app_runtime=workflow_app_runtime,
+            workflow_run_id=workflow_run_id,
+            input_bindings=dict(input_bindings),
+            execution_metadata=dict(execution_metadata),
+            timeout_seconds=timeout_seconds,
+            callbacks=callbacks,
+        )
+        async_thread = Thread(
+            target=self._run_async_workflow,
+            args=(async_handle,),
+            name=f"workflow-async-run-{workflow_run_id}",
+            daemon=True,
+        )
+        async_handle.thread = async_thread
+        with self._lock:
+            self._async_runs[workflow_run_id] = async_handle
+        async_thread.start()
+
+    def cancel_async_run(self, workflow_run_id: str, *, timeout_seconds: float = 10.0) -> bool:
+        """取消一条已经提交的异步 WorkflowRun。
+
+        参数：
+        - workflow_run_id：目标 WorkflowRun id。
+        - timeout_seconds：等待取消完成的最大秒数。
+
+        返回：
+        - bool：找到异步句柄并在时限内完成取消时返回 True。
+        """
+
+        with self._lock:
+            async_handle = self._async_runs.get(workflow_run_id)
+        if async_handle is None:
+            return False
+        async_handle.cancel_event.set()
+        return async_handle.completion_event.wait(timeout=max(0.1, timeout_seconds))
+
     def invoke_runtime(
         self,
         *,
@@ -255,6 +379,8 @@ class WorkflowRuntimeWorkerManager:
         input_bindings: dict[str, object],
         execution_metadata: dict[str, object],
         timeout_seconds: int,
+        cancel_event: Event | None = None,
+        on_dispatched: Callable[[], None] | None = None,
     ) -> WorkflowRuntimeWorkerRunResult:
         """通过已运行的 worker 发起一次同步调用。"""
 
@@ -266,7 +392,36 @@ class WorkflowRuntimeWorkerManager:
                 details={"workflow_runtime_id": workflow_app_runtime.workflow_runtime_id},
             )
 
-        with handle.lock:
+        lock_acquired = False
+        while not lock_acquired:
+            if cancel_event is not None and cancel_event.is_set():
+                raise OperationCancelledError(
+                    "workflow run 已取消",
+                    details={
+                        "workflow_runtime_id": workflow_app_runtime.workflow_runtime_id,
+                        "workflow_run_id": workflow_run_id,
+                    },
+                )
+            if not handle.process.is_alive():
+                self._terminate_failed_handle(
+                    workflow_runtime_id=workflow_app_runtime.workflow_runtime_id,
+                    handle=handle,
+                )
+                raise ServiceConfigurationError(
+                    "workflow runtime worker 当前未运行",
+                    details={"workflow_runtime_id": workflow_app_runtime.workflow_runtime_id},
+                )
+            lock_acquired = handle.lock.acquire(timeout=0.1)
+
+        try:
+            if cancel_event is not None and cancel_event.is_set():
+                raise OperationCancelledError(
+                    "workflow run 已取消",
+                    details={
+                        "workflow_runtime_id": workflow_app_runtime.workflow_runtime_id,
+                        "workflow_run_id": workflow_run_id,
+                    },
+                )
             handle.request_queue.put(
                 {
                     "message_type": "invoke-run",
@@ -278,23 +433,110 @@ class WorkflowRuntimeWorkerManager:
                     "execution_metadata": dict(execution_metadata),
                 }
             )
-            try:
-                message = handle.response_queue.get(timeout=max(0.1, float(timeout_seconds)))
-            except Empty as exc:
-                self._terminate_failed_handle(
-                    workflow_runtime_id=workflow_app_runtime.workflow_runtime_id,
-                    handle=handle,
-                )
-                raise OperationTimeoutError(
-                    "等待 workflow runtime worker 同步调用结果超时",
-                    details={
-                        "workflow_runtime_id": workflow_app_runtime.workflow_runtime_id,
-                        "workflow_run_id": workflow_run_id,
-                        "timeout_seconds": timeout_seconds,
-                    },
-                ) from exc
+            if on_dispatched is not None:
+                on_dispatched()
+
+            deadline = monotonic() + float(timeout_seconds)
+            while True:
+                if cancel_event is not None and cancel_event.is_set():
+                    self._terminate_failed_handle(
+                        workflow_runtime_id=workflow_app_runtime.workflow_runtime_id,
+                        handle=handle,
+                    )
+                    raise OperationCancelledError(
+                        "workflow run 已取消",
+                        details={
+                            "workflow_runtime_id": workflow_app_runtime.workflow_runtime_id,
+                            "workflow_run_id": workflow_run_id,
+                        },
+                    )
+                remaining_seconds = deadline - monotonic()
+                if remaining_seconds <= 0:
+                    self._terminate_failed_handle(
+                        workflow_runtime_id=workflow_app_runtime.workflow_runtime_id,
+                        handle=handle,
+                    )
+                    raise OperationTimeoutError(
+                        "等待 workflow runtime worker 同步调用结果超时",
+                        details={
+                            "workflow_runtime_id": workflow_app_runtime.workflow_runtime_id,
+                            "workflow_run_id": workflow_run_id,
+                            "timeout_seconds": timeout_seconds,
+                        },
+                    )
+                try:
+                    message = handle.response_queue.get(timeout=max(0.1, min(0.2, remaining_seconds)))
+                    break
+                except Empty:
+                    if not handle.process.is_alive():
+                        self._terminate_failed_handle(
+                            workflow_runtime_id=workflow_app_runtime.workflow_runtime_id,
+                            handle=handle,
+                        )
+                        raise ServiceConfigurationError(
+                            "workflow runtime worker 进程已退出",
+                            details={
+                                "workflow_runtime_id": workflow_app_runtime.workflow_runtime_id,
+                                "workflow_run_id": workflow_run_id,
+                            },
+                        )
+                    continue
+        finally:
+            if lock_acquired:
+                try:
+                    handle.lock.release()
+                except RuntimeError:
+                    pass
 
         return _deserialize_run_result(message)
+
+    def _run_async_workflow(self, async_handle: _WorkflowRuntimeAsyncRunHandle) -> None:
+        """在后台线程里执行一条异步 WorkflowRun。"""
+
+        try:
+            worker_result = self.invoke_runtime(
+                workflow_app_runtime=async_handle.workflow_app_runtime,
+                workflow_run_id=async_handle.workflow_run_id,
+                input_bindings=async_handle.input_bindings,
+                execution_metadata=async_handle.execution_metadata,
+                timeout_seconds=async_handle.timeout_seconds,
+                cancel_event=async_handle.cancel_event,
+                on_dispatched=lambda: self._mark_async_run_dispatched(async_handle),
+            )
+            async_handle.callbacks.on_completed(worker_result)
+        except OperationCancelledError:
+            runtime_state: WorkflowRuntimeWorkerState | None = None
+            if async_handle.dispatched_event.is_set() and not self._stopping.is_set():
+                try:
+                    runtime_state = self.start_runtime(async_handle.workflow_app_runtime)
+                except ServiceError as error:
+                    runtime_state = WorkflowRuntimeWorkerState(
+                        observed_state="failed",
+                        last_error=error.message,
+                        health_summary={
+                            "mode": "single-instance-sync",
+                            "worker_state": "failed",
+                            "last_error": error.message,
+                        },
+                    )
+            async_handle.callbacks.on_cancelled(runtime_state)
+        except OperationTimeoutError as error:
+            async_handle.callbacks.on_timed_out(error)
+        except ServiceError as error:
+            async_handle.callbacks.on_failed(error)
+        finally:
+            async_handle.completion_event.set()
+            with self._lock:
+                self._async_runs.pop(async_handle.workflow_run_id, None)
+
+    @staticmethod
+    def _mark_async_run_dispatched(async_handle: _WorkflowRuntimeAsyncRunHandle) -> None:
+        """标记一条异步 WorkflowRun 已进入 worker 执行。"""
+
+        if async_handle.dispatched_event.is_set():
+            return
+        async_handle.dispatched_event.set()
+        async_handle.callbacks.on_started()
 
     def _request_runtime_state(self, handle: _WorkflowRuntimeProcessHandle) -> WorkflowRuntimeWorkerState:
         """向指定 worker 请求当前状态。"""
@@ -472,6 +714,10 @@ def run_workflow_runtime_worker_process(
                         error_message="workflow runtime worker 收到未支持的消息类型",
                         error_details={"message_type": message_type},
                         state="failed",
+                        instance_id=runtime_instance_id,
+                        current_run_id=current_run_id,
+                        started_at=worker_started_at,
+                        loaded_snapshot_fingerprint=snapshot_fingerprint,
                     )
                 )
                 continue

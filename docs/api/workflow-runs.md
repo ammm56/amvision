@@ -4,20 +4,31 @@
 
 本文档说明当前已经公开的 WorkflowRun REST API、状态语义和稳定返回字段。
 
-本文档只描述 workflow runtime 第一阶段已经实现的行为，不展开未落代码的扩展接口。
+本文档描述当前已经公开的 WorkflowRun 行为，包括同步 invoke、异步 run create、结果回查和取消。
 
 ## 当前公开范围
 
 - POST /api/v1/workflows/app-runtimes/{workflow_runtime_id}/invoke
+- POST /api/v1/workflows/app-runtimes/{workflow_runtime_id}/runs
 - GET /api/v1/workflows/runs/{workflow_run_id}
-- sync invoke 对应的 WorkflowRun 持久化记录
+- POST /api/v1/workflows/runs/{workflow_run_id}/cancel
+- sync invoke 和 async run 共用的 WorkflowRun 持久化记录
 
 ## 资源定位
 
 - WorkflowRun 表示已发布应用的一次正式调用。
-- 第一阶段只支持 sync invoke，不公开异步 runs 创建接口。
-- invoke 请求返回前，WorkflowRun 会先写入数据库，再落到 succeeded、failed 或 timed_out。
+- WorkflowRun 同时承接 sync invoke 和 async run 两种调用方式。
+- invoke 或 runs 请求都会先写入 WorkflowRun，再推进到终态。
 - WorkflowRun 与 WorkflowPreviewRun 分开建模：前者面向已发布 runtime 的正式调用，后者面向编辑器里的快速试跑。
+
+## Sync / Async 边界说明
+
+- WorkflowRun 表示一条已发布 WorkflowAppRuntime 的正式执行记录。当前正式执行支持 sync invoke 和 async runs 两种提交方式，两者共享同一套 snapshot 和节点图。
+- sync invoke 在当前请求内等待执行结束，适合低时延、短链路和高频交互。
+- async runs 在创建时先返回 workflow_run_id，调用方再通过 GET 查询结果，必要时可发起 cancel，适合长时间执行、后台提交、排队和后续回查。
+- WorkflowPreviewRun 只用于编辑态试跑。生产态正式执行统一落在 WorkflowRun，不再为不同触发方式引入另一类正式执行资源。
+- 当前公开入口是 HTTP API；后续如果通过 PLC、ZeroMQ、MQTT、gRPC、IO 变化或其他集成方式触发 workflow，仍应统一映射为 WorkflowRun。
+- 多 runtime 实例仍用于吞吐和隔离。async runs 解决的是长时间执行、排队、取消和回查，不承担扩容职责。
 
 ## 接口入口
 
@@ -25,30 +36,38 @@
 - 资源分组：/workflows
 - 资源路径：
   - /api/v1/workflows/app-runtimes/{workflow_runtime_id}/invoke
+  - /api/v1/workflows/app-runtimes/{workflow_runtime_id}/runs
   - /api/v1/workflows/runs/{workflow_run_id}
+  - /api/v1/workflows/runs/{workflow_run_id}/cancel
 - 稳定合同：amvision.workflow-run.v1
 
 ## 鉴权规则
 
 - POST /api/v1/workflows/app-runtimes/{workflow_runtime_id}/invoke 需要 workflows:write
+- POST /api/v1/workflows/app-runtimes/{workflow_runtime_id}/runs 需要 workflows:write
 - GET /api/v1/workflows/runs/{workflow_run_id} 需要 workflows:read
+- POST /api/v1/workflows/runs/{workflow_run_id}/cancel 需要 workflows:write
 
 ## 状态语义
 
 | 状态 | 说明 |
 | --- | --- |
 | created | 记录已创建 |
+| queued | 异步 run 已入队，尚未占用 worker |
 | dispatching | runtime 已收到请求，正在转给 worker |
 | running | worker 正在执行固定 snapshot |
 | succeeded | 同步调用成功结束 |
 | failed | 调用失败 |
+| cancelled | 调用已取消 |
 | timed_out | 调用超时 |
 
 补充说明：
 
 - invoke 是同步接口，调用方通常直接拿到 succeeded、failed 或 timed_out。
-- 在 invoke 请求执行期间，其他查询方可能会通过 GET 看到 dispatching 或 running。
+- runs 是异步接口，创建返回时通常处于 queued；worker 开始执行后会推进到 running，结束后进入 succeeded、failed、cancelled 或 timed_out。
+- 在执行期间，其他查询方可能会通过 GET 看到 queued、dispatching 或 running。
 - 当 invoke 结果为 failed 或 timed_out 时，HTTP 响应仍返回 200，并通过 WorkflowRun.state 表达执行结果。
+- 当异步 run 被取消时，GET 和 cancel 响应都会返回 state=cancelled。
 
 ## 稳定字段
 
@@ -64,14 +83,76 @@
 | started_at | worker 开始执行时间，可为空 |
 | finished_at | worker 结束执行时间，可为空 |
 | created_by | 调用主体 id，可为空 |
-| requested_timeout_seconds | 本次同步调用的超时秒数 |
+| requested_timeout_seconds | 本次调用的超时秒数 |
 | assigned_process_id | 执行该 run 的 worker 进程 id，可为空 |
-| input_payload | 本次 invoke 的输入 payload |
+| input_payload | 本次调用的输入 payload |
 | outputs | 按 application output binding_id 组织的输出 |
 | template_outputs | 按 template output id 组织的底层输出 |
 | node_records | 节点执行记录列表 |
 | error_message | 失败或超时时的摘要信息，可为空 |
-| metadata | 调用附加元数据；失败时会补充 error_details |
+| metadata | 调用附加元数据；失败时会补充 error_details，取消时会补充 cancel_requested_at 和 cancelled_by |
+
+## POST /api/v1/workflows/app-runtimes/{workflow_runtime_id}/runs
+
+- Content-Type：application/json
+- 成功状态码：201 Created
+- 仅支持已经处于 running 的 WorkflowAppRuntime
+- 当前仍采用单实例串行执行；如果前一条 run 仍在执行，新建 run 会先进入 queued
+- 返回完整 WorkflowRun 合同
+
+### 请求体字段
+
+- input_bindings：可选，按 application input binding_id 组织的输入 payload
+- execution_metadata：可选，执行元数据；接口层会补写 created_by，服务层会补写 trigger_source=async-invoke
+- timeout_seconds：可选，覆盖 runtime 默认 request_timeout_seconds，必须大于 0
+
+### 最小请求 JSON
+
+```json
+{
+  "input_bindings": {
+    "request_image": {
+      "object_key": "projects/project-1/files/demo/input/sample-1.jpg"
+    }
+  },
+  "execution_metadata": {
+    "trigger_source": "schedule"
+  },
+  "timeout_seconds": 60
+}
+```
+
+### 最小响应 JSON
+
+```json
+{
+  "format_id": "amvision.workflow-run.v1",
+  "workflow_run_id": "workflow-run-2",
+  "workflow_runtime_id": "workflow-runtime-1",
+  "project_id": "project-1",
+  "application_id": "inspection-app",
+  "state": "queued",
+  "created_at": "2026-05-08T12:05:00Z",
+  "started_at": null,
+  "finished_at": null,
+  "created_by": "operator-1",
+  "requested_timeout_seconds": 60,
+  "assigned_process_id": null,
+  "input_payload": {
+    "request_image": {
+      "object_key": "projects/project-1/files/demo/input/sample-1.jpg"
+    }
+  },
+  "outputs": {},
+  "template_outputs": {},
+  "node_records": [],
+  "error_message": null,
+  "metadata": {
+    "trigger_source": "async-invoke",
+    "created_by": "operator-1"
+  }
+}
+```
 
 ## POST /api/v1/workflows/app-runtimes/{workflow_runtime_id}/invoke
 
@@ -150,17 +231,30 @@
 - worker 执行失败时，state 返回 failed，error_message 返回摘要信息。
 - worker 返回的详细错误会写入 metadata.error_details，例如 node_id、node_type_id、runtime_kind、error_type 和 error_message。
 - worker 等待超时时，state 返回 timed_out，error_message 返回超时摘要。
+- async run 在 queued 或 running 期间被取消时，state 返回 cancelled，error_message 返回 workflow run 已取消。
 
 ## GET /api/v1/workflows/runs/{workflow_run_id}
 
 - 返回单条 WorkflowRun 的当前持久化结果
 - 适合回查输入、输出、node_records、assigned_process_id、error_message 和 metadata.error_details
 
+## POST /api/v1/workflows/runs/{workflow_run_id}/cancel
+
+- 成功状态码：200 OK
+- 需要 workflows:write
+- 当前只对异步 run 提供稳定语义；如果目标 run 已经处于 succeeded、failed、timed_out 或 cancelled，会直接返回当前结果
+- 当目标 run 仍处于 queued 或 running 时，服务会写入取消请求元数据，并把终态推进到 cancelled
+
+### 最小响应语义
+
+- state：cancelled
+- error_message：workflow run 已取消
+- metadata.cancel_requested_at：取消请求时间
+- metadata.cancelled_by：取消主体 id
+
 ## 当前不公开的扩展项
 
-- POST /api/v1/workflows/app-runtimes/{workflow_runtime_id}/runs
 - GET /api/v1/workflows/runs/{workflow_run_id}/events
-- POST /api/v1/workflows/runs/{workflow_run_id}/cancel
 - schedule、integration trigger_source 的对外创建接口
 
 ## 与其他资源的关系

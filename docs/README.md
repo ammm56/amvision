@@ -17,7 +17,7 @@
 - [docs/api/README.md](api/README.md) 汇总 REST API、WebSocket、ZeroMQ 和公开接口文档
 - [docs/deployment/README.md](deployment/README.md) 汇总开发环境、运行时、打包、安装和部署文档
 - [docs/nodes/README.md](nodes/README.md) 汇总 node pack、custom node 和 runtime hook 专题文档
-- [docs/architecture/plugin-system.md](architecture/plugin-system.md) 汇总 node pack、custom node 和扩展机制文档
+- [docs/architecture/node-system.md](architecture/node-system.md) 汇总 node pack、custom node 和扩展机制文档
 - [docs/decisions/README.md](decisions/README.md) 汇总架构决策记录
 
 ## 保存原则
@@ -52,7 +52,7 @@
 10. [docs/architecture/task-system.md](architecture/task-system.md)
 11. [docs/architecture/yolox-module-design.md](architecture/yolox-module-design.md)
 12. [docs/architecture/frontend-web-ui.md](architecture/frontend-web-ui.md)
-13. [docs/architecture/plugin-system.md](architecture/plugin-system.md)
+13. [docs/architecture/node-system.md](architecture/node-system.md)
 14. [docs/architecture/workflow-json-contracts.md](architecture/workflow-json-contracts.md)
 15. [docs/architecture/data-and-files.md](architecture/data-and-files.md)
 16. [docs/architecture/dataset-import-spec.md](architecture/dataset-import-spec.md)

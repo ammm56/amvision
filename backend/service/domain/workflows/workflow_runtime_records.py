@@ -8,7 +8,7 @@ from typing import Literal
 
 WorkflowPreviewRunState = Literal["created", "running", "succeeded", "failed", "timed_out"]
 WorkflowAppRuntimeState = Literal["stopped", "starting", "running", "stopping", "failed"]
-WorkflowRunState = Literal["created", "dispatching", "running", "succeeded", "failed", "timed_out"]
+WorkflowRunState = Literal["created", "queued", "dispatching", "running", "succeeded", "failed", "cancelled", "timed_out"]
 
 
 @dataclass(frozen=True)
@@ -63,7 +63,7 @@ class WorkflowAppRuntime:
 
 @dataclass(frozen=True)
 class WorkflowRun:
-    """描述一次正式同步调用记录。"""
+    """描述一次正式调用记录。"""
 
     workflow_run_id: str
     workflow_runtime_id: str

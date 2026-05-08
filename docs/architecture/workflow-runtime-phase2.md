@@ -13,6 +13,15 @@
 - 把 restart、instances、异步 runs、execution policies 收口到可执行的最小范围。
 - 避免把 AI 控制面、复杂调度和多实例伸缩一并混进第二阶段。
 
+## Workflow Sync / Async 使用约束
+
+- workflow 触发源不长期限制为 HTTP API。HTTP 只是当前最先落地的控制面入口。后续 PLC、ZeroMQ、MQTT、gRPC、IO 变化、传感器读取等触发方式，应优先通过 node pack 或集成边界接入，再创建 WorkflowRun，不直接写入核心 runtime 主链路。
+- 一次已发布应用的正式执行统一落到 WorkflowRun。触发源、执行模式和节点图是三个独立维度，不混成同一层控制面。
+- sync invoke 用于低时延、短链路、设备运行期间的高频正式调用，调用方在当前请求内直接拿到结果。
+- async runs 用于长时间执行、后台提交、排队、取消和后续回查，run 可以脱离当前 HTTP 请求继续存在。
+- sync invoke 与 async runs 共享同一套 workflow app、snapshot 和 node graph，不改变节点编排模型。多 WorkflowAppRuntime 实例负责吞吐、隔离和扩容；async runs 只补充脱离请求生命周期的执行能力。
+- workflow runtime 负责进程隔离、稳定性、超时、重启和观测。协议接入、硬件桥接、结果上报和外部触发逻辑优先通过 custom node、node pack 或集成边界实现。
+
 ## 第二阶段包含项
 
 ### WorkflowAppRuntime restart
@@ -85,6 +94,7 @@
 
 - PersonaProfile 全部公开接口
 - ToolPolicy 全部公开接口
+- WorkflowTriggerSource 资源、listener bridge 和各类外部触发协议接入；这一层当前只保留草案，不进入本轮 phase2 代码实现范围
 - 多实例伸缩控制接口
 - 高可用、跨机器调度、负载均衡
 - run 事件流、trace 下载、日志检索

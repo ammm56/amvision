@@ -153,5 +153,5 @@ customNodeCatalogPath: workflow/catalog.json
 ## 推荐后续文档
 
 - [docs/nodes/runtime-hooks-callbacks.md](runtime-hooks-callbacks.md)
-- [docs/architecture/plugin-system.md](../architecture/plugin-system.md)
+- [docs/architecture/node-system.md](../architecture/node-system.md)
 - [docs/architecture/backend-service.md](../architecture/backend-service.md)

@@ -1,8 +1,8 @@
-# 节点扩展系统说明
+# 节点系统说明
 
 ## 文档目的
 
-本文档用于说明平台节点扩展系统的位置、边界、类型、生命周期，以及它和节点编辑器的关系。
+本文档用于说明平台节点系统的位置、边界、类型、生命周期，以及它和节点编辑器的关系。
 
 本文档主要回答两个问题：哪些能力保留在核心平台，哪些能力通过 node pack 扩展；custom nodes 如何向 ComfyUI 的扩展体验靠拢，同时保持工业现场需要的版本、权限、超时、禁用和回滚约束。
 
@@ -23,7 +23,7 @@
 - core nodes、custom nodes 和流程模板在节点编辑器中应作为统一的一等公民展示和编排
 - 节点注册机制向 ComfyUI custom nodes 的灵活性看齐，但不能牺牲工业场景的稳定性和可追溯性
 
-## 节点扩展系统在整体架构中的位置
+## 节点系统在整体架构中的位置
 
 - backend-service：发现 node pack、读取 manifest、管理启停状态、构建统一 NodeCatalogRegistry
 - workers：在运行时环境中执行 custom node 逻辑，处理节点输入输出规则
@@ -57,6 +57,15 @@
 - 作为独立可选扩展实现相机、PLC、传感器、机械臂等硬件直连能力
 - 不属于核心平台默认能力，必须在节点扩展边界内独立实现和管理
 - 与核心平台只通过受控接口规则交互，不把硬件 SDK 和驱动逻辑渗透进 core
+
+### Trigger Source Bridge / Listener 节点包
+
+- 作为独立可选扩展实现 PLC 条件监听、MQTT 订阅、ZeroMQ 本地主题监听、gRPC 入口桥接、IO 变化监听和传感器阈值触发
+- 这类 node pack 的职责是把外部事件转换成 WorkflowRun 创建请求，而不是把业务图执行逻辑搬进监听器本身
+- trigger source 默认只创建 WorkflowRun，不直接执行图；图执行仍由 runtime instance 负责
+- listener 或 bridge 可以长期运行，但应停留在受控边界中，不把协议循环、驱动状态机和厂商 SDK 直接写进 backend-service 主链路
+- 当外部事件到达后，bridge 应优先创建 WorkflowRun 并交给 runtime instance 执行，而不是让 workflow 首节点长期空转轮询外部世界
+- 这类扩展应声明独立 capability、timeout、外部依赖、去抖策略、幂等键来源和启停方式，保证现场长期运行时的可控性和可审计性
 
 ## node pack 目录结构建议
 
@@ -168,6 +177,7 @@ custom_nodes/
 - 行业特定协议节点
 - 客户定制结果处理逻辑
 - 外部触发入口和完成后的数据上报逻辑
+- trigger source bridge、listener 和协议到 WorkflowRun 的映射逻辑
 - 硬件直连与厂商 SDK 封装
 - 特定视觉后处理逻辑
 - 模块之间的特殊衔接规则

@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "cb7a8a14-cd66-4c4a-b4a8-6382f87bf7f1",
     "name": "amvision workflow runtime api",
-    "description": "workflow runtime 第一阶段联调 collection，覆盖 template/application 保存前置步骤，以及 preview-runs、app-runtimes、runs 的最小公开接口。",
+    "description": "workflow runtime 当前联调 collection，覆盖 template/application 保存前置步骤，以及 preview-runs、app-runtimes、sync invoke、async runs 和 cancel 的最小公开接口。",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -567,6 +567,75 @@
           "response": []
         },
         {
+          "name": "Create Async Workflow Run",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  var payload = pm.response.json();",
+                  "  if (payload.workflow_run_id) {",
+                  "    pm.collectionVariables.set('workflowRunId', payload.workflow_run_id);",
+                  "  }",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-principal-id",
+                "value": "{{principalId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-project-ids",
+                "value": "{{projectId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-scopes",
+                "value": "workflows:read,workflows:write",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"input_bindings\": {\n    \"request_image\": {\n      \"object_key\": \"{{requestImageObjectKey}}\"\n    }\n  },\n  \"execution_metadata\": {\n    \"marker\": \"postman-workflow-runtime-async-run\",\n    \"scenario\": \"deployment-control-detection-lifecycle-real-path\",\n    \"trigger_source\": \"manual-async\"\n  },\n  \"timeout_seconds\": 60\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workflows/app-runtimes/{{workflowRuntimeId}}/runs",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workflows",
+                "app-runtimes",
+                "{{workflowRuntimeId}}",
+                "runs"
+              ]
+            },
+            "description": "创建一条异步 WorkflowRun。创建后可继续用 Get Workflow Run 轮询状态。"
+          },
+          "response": []
+        },
+        {
           "name": "Invoke App Runtime",
           "event": [
             {
@@ -670,6 +739,45 @@
               ]
             },
             "description": "回查同步 invoke 落下的 WorkflowRun。"
+          },
+          "response": []
+        },
+        {
+          "name": "Cancel Workflow Run",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-amvision-principal-id",
+                "value": "{{principalId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-project-ids",
+                "value": "{{projectId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-scopes",
+                "value": "workflows:read,workflows:write",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workflows/runs/{{workflowRunId}}/cancel",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workflows",
+                "runs",
+                "{{workflowRunId}}",
+                "cancel"
+              ]
+            },
+            "description": "取消当前 collection 变量 workflowRunId 指向的异步 WorkflowRun。"
           },
           "response": []
         },

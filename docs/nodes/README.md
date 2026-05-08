@@ -27,6 +27,6 @@
 
 ## 相关架构文档
 
-- [docs/architecture/plugin-system.md](../architecture/plugin-system.md)
+- [docs/architecture/node-system.md](../architecture/node-system.md)
 - [docs/architecture/system-overview.md](../architecture/system-overview.md)
 - [docs/architecture/backend-service.md](../architecture/backend-service.md)

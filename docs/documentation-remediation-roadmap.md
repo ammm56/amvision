@@ -6,7 +6,7 @@
 
 ## 当前结论摘要
 
-- 仓库已经具备项目约束、文档入口、系统总览、结构规划和节点扩展系统三层骨架
+- 仓库已经具备项目约束、文档入口、系统总览、结构规划和节点系统三层骨架
 - 主干方向已经清晰：前后端分离、本地优先、后端服务与 worker 分离、节点优先扩展、同目录 Python 发布运行时
 - 主要问题不是方向错误，而是专题文档不完整、部分摘要层内容重复、少量主题只有目录入口没有正式内容
 
@@ -16,7 +16,7 @@
 - [docs/README.md](README.md)：文档分层和阅读顺序
 - [docs/architecture/system-overview.md](architecture/system-overview.md)：平台目标、边界、流程和功能版图
 - [docs/architecture/project-structure.md](architecture/project-structure.md)：目录层级、模块边界和通信关系
-- [docs/architecture/plugin-system.md](architecture/plugin-system.md)：node pack 类型、生命周期和节点扩展边界
+- [docs/architecture/node-system.md](architecture/node-system.md)：node pack 类型、生命周期和节点扩展边界
 - [docs/architecture/backend-service.md](architecture/backend-service.md)：后端服务职责、任务状态、调度和状态回写
 - [docs/architecture/frontend-web-ui.md](architecture/frontend-web-ui.md)：浏览器前端 Web UI 的模块、路由、状态和交互边界
 - [docs/api/communication-contracts.md](api/communication-contracts.md)：REST、WebSocket、ZeroMQ 的职责划分
@@ -98,7 +98,7 @@
 7. [docs/api/communication-contracts.md](api/communication-contracts.md)
 8. [docs/architecture/data-and-files.md](architecture/data-and-files.md)
 9. [docs/architecture/dataset-import-spec.md](architecture/dataset-import-spec.md)
-10. [docs/architecture/plugin-system.md](architecture/plugin-system.md)
+10. [docs/architecture/node-system.md](architecture/node-system.md)
 11. [docs/architecture/runtime-packaging.md](architecture/runtime-packaging.md)
 12. [docs/deployment/bundled-python-deployment.md](deployment/bundled-python-deployment.md)
 13. [docs/decisions/ADR-0001-modular-monolith-with-workers.md](decisions/ADR-0001-modular-monolith-with-workers.md)

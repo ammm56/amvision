@@ -992,6 +992,8 @@
 
 ## workflow 资源组
 
+当前 workflow runtime 公开接口描述的是 HTTP 控制面下的正式执行路径；后续 PLC、MQTT、ZeroMQ、gRPC、IO 变化等触发方式仍统一映射到 WorkflowRun，触发入口草案见 [docs/api/workflow-trigger-sources.md](workflow-trigger-sources.md)。
+
 ### POST /api/v1/workflows/templates/validate
 
 - Content-Type：application/json
@@ -1165,6 +1167,32 @@
   - node_records
   - error_message
   - metadata
+
+### POST /api/v1/workflows/app-runtimes/{workflow_runtime_id}/runs
+
+- Content-Type：application/json
+- 需要 workflows:write
+- 仅支持已经处于 running 的 WorkflowAppRuntime
+- 请求体字段：
+  - input_bindings
+  - execution_metadata
+  - timeout_seconds，可选
+- 当前响应会同时返回：
+  - workflow_run_id
+  - state
+  - requested_timeout_seconds
+  - input_payload
+  - metadata
+
+### POST /api/v1/workflows/runs/{workflow_run_id}/cancel
+
+- 需要 workflows:write
+- 用于取消当前仍处于 queued 或 running 的异步 WorkflowRun
+- 当前响应会返回更新后的 WorkflowRun，包括：
+  - state
+  - error_message
+  - metadata.cancel_requested_at
+  - metadata.cancelled_by
 
 ### GET /api/v1/workflows/runs/{workflow_run_id}
 
