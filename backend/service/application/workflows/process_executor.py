@@ -12,11 +12,6 @@ import multiprocessing
 
 from sqlalchemy.engine import URL, make_url
 
-from backend.contracts.workflows.workflow_graph import (
-    FLOW_BINDING_DIRECTION_INPUT,
-    FLOW_BINDING_DIRECTION_OUTPUT,
-    FlowApplication,
-)
 from backend.nodes.local_node_pack_loader import LocalNodePackLoader
 from backend.nodes.node_catalog_registry import NodeCatalogRegistry
 from backend.queue import LocalFileQueueBackend
@@ -31,6 +26,11 @@ from backend.service.application.workflows.graph_executor import (
 )
 from backend.service.application.workflows.runtime_registry_loader import (
     WorkflowNodeRuntimeRegistryLoader,
+)
+from backend.service.application.workflows.snapshot_execution import (
+    SnapshotExecutionService,
+    WorkflowSnapshotExecutionRequest,
+    WorkflowSnapshotExecutionResult,
 )
 from backend.service.application.workflows.service_node_runtime import (
     WorkflowServiceNodeRuntimeContext,
@@ -81,6 +81,22 @@ class WorkflowApplicationExecutionResult:
     outputs: dict[str, object] = field(default_factory=dict)
     template_outputs: dict[str, object] = field(default_factory=dict)
     node_records: tuple[WorkflowNodeExecutionRecord, ...] = ()
+
+
+def _to_application_execution_result(
+    result: WorkflowSnapshotExecutionResult,
+) -> WorkflowApplicationExecutionResult:
+    """把 snapshot 执行结果转换为兼容的 application 执行结果。"""
+
+    return WorkflowApplicationExecutionResult(
+        project_id=result.project_id,
+        application_id=result.application_id,
+        template_id=result.template_id,
+        template_version=result.template_version,
+        outputs=dict(result.outputs),
+        template_outputs=dict(result.template_outputs),
+        node_records=tuple(result.node_records),
+    )
 
 
 class WorkflowApplicationProcessExecutor:
@@ -351,76 +367,22 @@ def _execute_workflow_application(
         template_id=application.template_ref.template_id,
         template_version=application.template_ref.template_version,
     )
-    template_input_values = _build_template_input_values(
-        application=application,
-        input_bindings=input_bindings,
-    )
-    execution_metadata_payload = dict(execution_metadata)
-    execution_metadata_payload.setdefault("workflow_run_id", uuid4().hex)
-    execution_metadata_payload["dataset_storage"] = dataset_storage
-    graph_execution_result = WorkflowGraphExecutor(registry=runtime_registry).execute(
-        template=template_document.template,
-        input_values=template_input_values,
-        execution_metadata=execution_metadata_payload,
+    snapshot_result = SnapshotExecutionService(
+        dataset_storage=dataset_storage,
+        node_catalog_registry=node_catalog_registry,
+        runtime_registry=runtime_registry,
         runtime_context=runtime_context,
-    )
-    return WorkflowApplicationExecutionResult(
-        project_id=project_id,
-        application_id=application_id,
-        template_id=graph_execution_result.template_id,
-        template_version=graph_execution_result.template_version,
-        outputs=_build_binding_outputs(
-            application=application,
-            template_outputs=graph_execution_result.outputs,
-        ),
-        template_outputs=dict(graph_execution_result.outputs),
-        node_records=graph_execution_result.node_records,
-    )
-
-
-def _build_template_input_values(
-    *,
-    application: FlowApplication,
-    input_bindings: dict[str, object],
-) -> dict[str, object]:
-    """把 application input binding 映射为模板输入值。"""
-
-    input_binding_index = {
-        binding.binding_id: binding
-        for binding in application.bindings
-        if binding.direction == FLOW_BINDING_DIRECTION_INPUT
-    }
-    missing_binding_ids = sorted(set(input_binding_index.keys()) - set(input_bindings.keys()))
-    if missing_binding_ids:
-        raise InvalidRequestError(
-            "workflow application 缺少必需输入绑定",
-            details={"missing_binding_ids": missing_binding_ids},
+    ).execute(
+        WorkflowSnapshotExecutionRequest(
+            project_id=project_id,
+            application_id=application_id,
+            application_snapshot_object_key=application_document.object_key,
+            template_snapshot_object_key=template_document.object_key,
+            input_bindings=dict(input_bindings),
+            execution_metadata=dict(execution_metadata),
         )
-    unexpected_binding_ids = sorted(set(input_bindings.keys()) - set(input_binding_index.keys()))
-    if unexpected_binding_ids:
-        raise InvalidRequestError(
-            "workflow application 收到未声明的输入绑定",
-            details={"unexpected_binding_ids": unexpected_binding_ids},
-        )
-
-    return {
-        binding.template_port_id: input_bindings[binding.binding_id]
-        for binding in input_binding_index.values()
-    }
-
-
-def _build_binding_outputs(
-    *,
-    application: FlowApplication,
-    template_outputs: dict[str, object],
-) -> dict[str, object]:
-    """把模板输出映射回 application output binding。"""
-
-    return {
-        binding.binding_id: template_outputs[binding.template_port_id]
-        for binding in application.bindings
-        if binding.direction == FLOW_BINDING_DIRECTION_OUTPUT
-    }
+    )
+    return _to_application_execution_result(snapshot_result)
 
 
 def _deserialize_execution_result(message: object) -> WorkflowApplicationExecutionResult:

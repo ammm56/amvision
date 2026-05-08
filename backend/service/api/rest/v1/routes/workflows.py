@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Request, status
+from fastapi import APIRouter, Depends, status
 from pydantic import BaseModel, Field
 
 from backend.nodes.node_catalog_registry import NodeCatalogRegistry
@@ -15,14 +15,7 @@ from backend.service.api.deps.storage import get_dataset_storage
 from backend.service.application.errors import (
     InvalidRequestError,
     PermissionDeniedError,
-    ServiceConfigurationError,
 )
-from backend.service.application.workflows.graph_executor import WorkflowNodeRuntimeRegistry
-from backend.service.application.workflows.process_executor import (
-    WorkflowApplicationExecutionRequest,
-    WorkflowApplicationRuntimeExecutor,
-)
-from backend.service.application.workflows.service_node_runtime import WorkflowServiceNodeRuntimeContext
 from backend.service.application.workflows.workflow_service import (
     LocalWorkflowJsonService,
     WorkflowApplicationDocument,
@@ -104,46 +97,6 @@ class WorkflowApplicationDocumentResponse(WorkflowApplicationValidationResponse)
     project_id: str = Field(description="所属 Project id")
     object_key: str = Field(description="流程应用 JSON 对象路径")
     application: FlowApplication = Field(description="流程应用内容")
-
-
-class WorkflowApplicationExecuteRequestBody(BaseModel):
-    """描述 workflow application 执行请求体。"""
-
-    input_bindings: dict[str, object] = Field(
-        default_factory=dict,
-        description="按 application input binding_id 组织的输入 payload",
-    )
-    execution_metadata: dict[str, object] = Field(
-        default_factory=dict,
-        description="整次执行附加元数据；建议保持 JSON 可序列化，便于后续持久化和长时运行器复用",
-    )
-
-
-class WorkflowNodeExecutionRecordResponse(BaseModel):
-    """描述单个节点执行记录。"""
-
-    node_id: str = Field(description="节点实例 id")
-    node_type_id: str = Field(description="节点类型 id")
-    runtime_kind: str = Field(description="节点运行方式")
-    outputs: dict[str, object] = Field(default_factory=dict, description="节点输出 payload")
-
-
-class WorkflowApplicationExecuteResponse(BaseModel):
-    """描述 workflow application 执行响应。"""
-
-    project_id: str = Field(description="所属 Project id")
-    application_id: str = Field(description="流程应用 id")
-    template_id: str = Field(description="实际执行的模板 id")
-    template_version: str = Field(description="实际执行的模板版本")
-    outputs: dict[str, object] = Field(default_factory=dict, description="按 output binding_id 组织的输出")
-    template_outputs: dict[str, object] = Field(
-        default_factory=dict,
-        description="按 template output id 组织的底层输出",
-    )
-    node_records: list[WorkflowNodeExecutionRecordResponse] = Field(
-        default_factory=list,
-        description="节点执行记录列表",
-    )
 
 
 @workflows_router.post("/templates/validate", response_model=WorkflowTemplateValidationResponse)
@@ -286,38 +239,6 @@ def get_flow_application(
     return _build_application_document_response(document)
 
 
-@workflows_router.post(
-    "/projects/{project_id}/applications/{application_id}/execute",
-    response_model=WorkflowApplicationExecuteResponse,
-)
-def execute_flow_application(
-    project_id: str,
-    application_id: str,
-    body: WorkflowApplicationExecuteRequestBody,
-    request: Request,
-    principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("workflows:write"))],
-) -> WorkflowApplicationExecuteResponse:
-    """在当前 backend-service 运行时中执行一份已保存的 workflow application。"""
-
-    _ensure_project_visible(principal=principal, project_id=project_id)
-    execution_metadata = dict(body.execution_metadata)
-    execution_metadata.setdefault("created_by", principal.principal_id)
-    execution_result = WorkflowApplicationRuntimeExecutor(
-        dataset_storage=_require_dataset_storage(request),
-        node_catalog_registry=_require_node_catalog_registry(request),
-        runtime_registry=_require_workflow_node_runtime_registry(request),
-        runtime_context=_require_workflow_service_node_runtime_context(request),
-    ).execute(
-        WorkflowApplicationExecutionRequest(
-            project_id=project_id,
-            application_id=application_id,
-            input_bindings=dict(body.input_bindings),
-            execution_metadata=execution_metadata,
-        )
-    )
-    return _build_application_execute_response(execution_result)
-
-
 def _build_workflow_json_service(
     *,
     dataset_storage: LocalDatasetStorage,
@@ -331,52 +252,6 @@ def _build_workflow_json_service(
     )
 
 
-def _require_dataset_storage(request: Request) -> LocalDatasetStorage:
-    """从 FastAPI application.state 中读取 dataset_storage。"""
-
-    dataset_storage = getattr(request.app.state, "dataset_storage", None)
-    if not isinstance(dataset_storage, LocalDatasetStorage):
-        raise ServiceConfigurationError(
-            "当前服务尚未完成 dataset_storage 装配",
-            details={"state_field": "dataset_storage"},
-        )
-    return dataset_storage
-
-
-def _require_node_catalog_registry(request: Request) -> NodeCatalogRegistry:
-    """从 FastAPI application.state 中读取 workflow node catalog registry。"""
-
-    node_catalog_registry = getattr(request.app.state, "node_catalog_registry", None)
-    if not isinstance(node_catalog_registry, NodeCatalogRegistry):
-        raise ServiceConfigurationError(
-            "当前服务尚未完成 node_catalog_registry 装配",
-            details={"state_field": "node_catalog_registry"},
-        )
-    return node_catalog_registry
-
-
-def _require_workflow_node_runtime_registry(request: Request) -> WorkflowNodeRuntimeRegistry:
-    """从 FastAPI application.state 中读取 workflow 节点运行时注册表。"""
-
-    runtime_registry = getattr(request.app.state, "workflow_node_runtime_registry", None)
-    if not isinstance(runtime_registry, WorkflowNodeRuntimeRegistry):
-        raise ServiceConfigurationError(
-            "当前服务尚未完成 workflow_node_runtime_registry 装配",
-            details={"state_field": "workflow_node_runtime_registry"},
-        )
-    return runtime_registry
-
-
-def _require_workflow_service_node_runtime_context(request: Request) -> WorkflowServiceNodeRuntimeContext:
-    """从 FastAPI application.state 中读取 workflow service node 运行时上下文。"""
-
-    runtime_context = getattr(request.app.state, "workflow_service_node_runtime_context", None)
-    if not isinstance(runtime_context, WorkflowServiceNodeRuntimeContext):
-        raise ServiceConfigurationError(
-            "当前服务尚未完成 workflow_service_node_runtime_context 装配",
-            details={"state_field": "workflow_service_node_runtime_context"},
-        )
-    return runtime_context
 
 
 def _ensure_project_visible(*, principal: AuthenticatedPrincipal, project_id: str) -> None:

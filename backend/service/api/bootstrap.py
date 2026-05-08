@@ -14,6 +14,7 @@ from backend.queue import LocalFileQueueBackend
 from backend.service.api.seeders import BackendServiceSeeder, BackendServiceSeederRunner
 from backend.service.application.models.pretrained_catalog import YoloXPretrainedModelCatalogSeeder
 from backend.service.application.workflows.graph_executor import WorkflowNodeRuntimeRegistry
+from backend.service.application.workflows.runtime_worker import WorkflowRuntimeWorkerManager
 from backend.service.application.workflows.service_node_runtime import (
     WorkflowServiceNodeRuntimeContext,
 )
@@ -48,6 +49,7 @@ class BackendServiceRuntime:
     - workflow_service_node_runtime_context：workflow service nodes 使用的进程级上下文。
     - yolox_sync_deployment_process_supervisor：同步 YOLOX deployment 进程监督器。
     - yolox_async_deployment_process_supervisor：异步 YOLOX deployment 进程监督器。
+    - workflow_runtime_worker_manager：workflow runtime worker 管理器。
     - background_task_manager_host：当前进程托管的后台任务管理器宿主。
     """
 
@@ -62,6 +64,7 @@ class BackendServiceRuntime:
     workflow_service_node_runtime_context: WorkflowServiceNodeRuntimeContext
     yolox_sync_deployment_process_supervisor: YoloXDeploymentProcessSupervisor
     yolox_async_deployment_process_supervisor: YoloXDeploymentProcessSupervisor
+    workflow_runtime_worker_manager: WorkflowRuntimeWorkerManager
     background_task_manager_host: HostedBackgroundTaskManager | None
 
 
@@ -236,6 +239,7 @@ class BackendServiceBootstrap(RuntimeBootstrap[BackendServiceSettings, BackendSe
             yolox_sync_deployment_process_supervisor=yolox_sync_deployment_process_supervisor,
             yolox_async_deployment_process_supervisor=yolox_async_deployment_process_supervisor,
         )
+        workflow_runtime_worker_manager = WorkflowRuntimeWorkerManager(settings=settings)
         return BackendServiceRuntime(
             settings=settings,
             session_factory=session_factory,
@@ -248,6 +252,7 @@ class BackendServiceBootstrap(RuntimeBootstrap[BackendServiceSettings, BackendSe
             workflow_service_node_runtime_context=workflow_service_node_runtime_context,
             yolox_sync_deployment_process_supervisor=yolox_sync_deployment_process_supervisor,
             yolox_async_deployment_process_supervisor=yolox_async_deployment_process_supervisor,
+            workflow_runtime_worker_manager=workflow_runtime_worker_manager,
             background_task_manager_host=background_task_manager_host,
         )
 
@@ -274,6 +279,7 @@ class BackendServiceBootstrap(RuntimeBootstrap[BackendServiceSettings, BackendSe
         application.state.workflow_service_node_runtime_context = runtime.workflow_service_node_runtime_context
         application.state.yolox_sync_deployment_process_supervisor = runtime.yolox_sync_deployment_process_supervisor
         application.state.yolox_async_deployment_process_supervisor = runtime.yolox_async_deployment_process_supervisor
+        application.state.workflow_runtime_worker_manager = runtime.workflow_runtime_worker_manager
         application.state.background_task_manager_host = runtime.background_task_manager_host
 
     def start_runtime(self, runtime: BackendServiceRuntime) -> None:
@@ -285,6 +291,7 @@ class BackendServiceBootstrap(RuntimeBootstrap[BackendServiceSettings, BackendSe
 
         runtime.yolox_sync_deployment_process_supervisor.start()
         runtime.yolox_async_deployment_process_supervisor.start()
+        runtime.workflow_runtime_worker_manager.start()
         if runtime.background_task_manager_host is not None:
             runtime.background_task_manager_host.start()
 
@@ -297,6 +304,7 @@ class BackendServiceBootstrap(RuntimeBootstrap[BackendServiceSettings, BackendSe
 
         if runtime.background_task_manager_host is not None:
             runtime.background_task_manager_host.stop()
+        runtime.workflow_runtime_worker_manager.stop()
         runtime.yolox_sync_deployment_process_supervisor.stop()
         runtime.yolox_async_deployment_process_supervisor.stop()
         runtime.session_factory.engine.dispose()

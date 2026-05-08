@@ -62,7 +62,18 @@
 | POST | /api/v1/workflows/applications/validate | workflows:read | 校验一份 FlowApplication 与 template 绑定关系。 |
 | PUT | /api/v1/workflows/projects/{project_id}/applications/{application_id} | workflows:write | 保存一份 FlowApplication JSON。 |
 | GET | /api/v1/workflows/projects/{project_id}/applications/{application_id} | workflows:read | 读取一份已保存的 FlowApplication JSON。 |
-| POST | /api/v1/workflows/projects/{project_id}/applications/{application_id}/execute | workflows:write | 在 backend-service 当前进程运行时中执行一份已保存的 FlowApplication。 |
+| POST | /api/v1/workflows/preview-runs | workflows:write | 创建并同步执行一次 WorkflowPreviewRun。 |
+| GET | /api/v1/workflows/preview-runs/{preview_run_id} | workflows:read | 读取一条 WorkflowPreviewRun。 |
+| POST | /api/v1/workflows/app-runtimes | workflows:write | 创建一条 WorkflowAppRuntime。 |
+| GET | /api/v1/workflows/app-runtimes | workflows:read | 按 Project 列出 WorkflowAppRuntime。 |
+| GET | /api/v1/workflows/app-runtimes/{workflow_runtime_id} | workflows:read | 读取一条 WorkflowAppRuntime。 |
+| POST | /api/v1/workflows/app-runtimes/{workflow_runtime_id}/start | workflows:write | 启动单实例 runtime worker。 |
+| POST | /api/v1/workflows/app-runtimes/{workflow_runtime_id}/stop | workflows:write | 停止单实例 runtime worker。 |
+| POST | /api/v1/workflows/app-runtimes/{workflow_runtime_id}/restart | workflows:write | 重启单实例 runtime worker，并重新加载固定 snapshot。 |
+| GET | /api/v1/workflows/app-runtimes/{workflow_runtime_id}/health | workflows:read | 查询 runtime 当前健康状态。 |
+| GET | /api/v1/workflows/app-runtimes/{workflow_runtime_id}/instances | workflows:read | 列出 runtime 当前可观测的 instance 摘要。 |
+| POST | /api/v1/workflows/app-runtimes/{workflow_runtime_id}/invoke | workflows:write | 通过 runtime 发起一次同步调用。 |
+| GET | /api/v1/workflows/runs/{workflow_run_id} | workflows:read | 读取一条 WorkflowRun。 |
 | POST | /api/v1/tasks | tasks:write | 创建公开任务记录，立即返回任务详情。 |
 | GET | /api/v1/tasks | tasks:read | 按公开筛选字段查询任务列表。 |
 | GET | /api/v1/tasks/{task_id} | tasks:read | 查询单条任务详情；默认同时返回 events。 |
@@ -1040,19 +1051,125 @@
 - 需要 workflows:read
 - 返回已保存 application 的 object_key 与完整 application JSON
 
-### POST /api/v1/workflows/projects/{project_id}/applications/{application_id}/execute
+### POST /api/v1/workflows/preview-runs
 
 - Content-Type：application/json
 - 需要 workflows:write
-- workflow execute 链顺序图与常见失败分支见 [docs/architecture/execution-sequences.md](../architecture/execution-sequences.md)。
+- 请求体字段：
+  - project_id
+  - application_ref，可选；当前至少需要 application_ref 或 inline application + template 其中一组
+  - application，可选
+  - template，可选
+  - input_bindings
+  - execution_metadata
+  - timeout_seconds
+- 成功状态码：201 Created
+- 当前响应会同时返回：
+  - preview_run_id
+  - state
+  - application_snapshot_object_key
+  - template_snapshot_object_key
+  - outputs
+  - template_outputs
+  - node_records
+  - error_message
+
+### GET /api/v1/workflows/preview-runs/{preview_run_id}
+
+- 需要 workflows:read
+- 返回单条 WorkflowPreviewRun 当前快照和执行结果
+
+### POST /api/v1/workflows/app-runtimes
+
+- Content-Type：application/json
+- 需要 workflows:write
+- 请求体字段：
+  - project_id
+  - application_id
+  - display_name，可选
+  - request_timeout_seconds，可选
+  - metadata，可选
+- 成功状态码：201 Created
+- 当前响应会同时返回：
+  - workflow_runtime_id
+  - desired_state
+  - observed_state
+  - application_snapshot_object_key
+  - template_snapshot_object_key
+  - request_timeout_seconds
+  - health_summary
+
+### GET /api/v1/workflows/app-runtimes
+
+- 需要 workflows:read
+- 当前必须显式提供查询参数：
+  - project_id
+
+### GET /api/v1/workflows/app-runtimes/{workflow_runtime_id}
+
+- 需要 workflows:read
+- 返回单条 WorkflowAppRuntime 的快照来源、期望状态、观察状态和健康摘要
+
+### POST /api/v1/workflows/app-runtimes/{workflow_runtime_id}/start
+
+- 需要 workflows:write
+- 成功后返回更新后的 WorkflowAppRuntime
+
+### POST /api/v1/workflows/app-runtimes/{workflow_runtime_id}/stop
+
+- 需要 workflows:write
+- 成功后返回更新后的 WorkflowAppRuntime
+
+### POST /api/v1/workflows/app-runtimes/{workflow_runtime_id}/restart
+
+- 需要 workflows:write
+- 成功后返回更新后的 WorkflowAppRuntime
+- 当前语义固定为 stop 当前单实例 worker，再重新加载同一组 application/template snapshot
+
+### GET /api/v1/workflows/app-runtimes/{workflow_runtime_id}/health
+
+- 需要 workflows:read
+- 返回当前 worker 观测到的 runtime 状态，包括 heartbeat_at、worker_process_id 和 loaded_snapshot_fingerprint
+
+### GET /api/v1/workflows/app-runtimes/{workflow_runtime_id}/instances
+
+- 需要 workflows:read
+- 返回当前 runtime 下面可观测的 instance 摘要列表
+- 当前单实例模型下，running 或 failed 且 worker 仍存活时通常返回 1 条；stopped 或已清理 worker 返回空列表
+- 当前列表项稳定字段包括：
+  - instance_id
+  - state
+  - process_id
+  - current_run_id
+  - started_at
+  - heartbeat_at
+  - loaded_snapshot_fingerprint
+  - last_error
+  - health_summary
+
+### POST /api/v1/workflows/app-runtimes/{workflow_runtime_id}/invoke
+
+- Content-Type：application/json
+- 需要 workflows:write
+- 仅支持已经处于 running 的 WorkflowAppRuntime
 - 请求体字段：
   - input_bindings
   - execution_metadata
+  - timeout_seconds，可选
 - 当前响应会同时返回：
-  - outputs：按 application output binding_id 组织的输出
-  - template_outputs：按 template output id 组织的底层输出
-  - node_records：节点执行记录
-- 真实 workflow 路径 JSON 示例与 Postman 手工调试步骤见 [docs/api/workflows.md](workflows.md)
+  - workflow_run_id
+  - state
+  - assigned_process_id
+  - outputs
+  - template_outputs
+  - node_records
+  - error_message
+  - metadata
+
+### GET /api/v1/workflows/runs/{workflow_run_id}
+
+- 需要 workflows:read
+- 返回单条 WorkflowRun 的当前持久化结果，包括输入、输出、错误信息和元数据
 
 ## tasks 资源组
 

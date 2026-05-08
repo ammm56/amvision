@@ -153,10 +153,10 @@ def test_workflow_application_runtime_executor_runs_application_in_current_proce
     assert isinstance(response_payload["body"]["workflow_run_id"], str)
 
 
-def test_workflow_execute_api_runs_saved_application_in_current_process(
+def test_workflow_preview_run_api_executes_saved_application_in_child_process(
     tmp_path: Path,
 ) -> None:
-    """验证 workflows execute API 会复用 backend-service 当前运行时执行已保存 application。"""
+    """验证 preview run API 会在独立子进程中执行已保存 application。"""
 
     session_factory, dataset_storage, queue_backend = create_test_runtime(
         tmp_path,
@@ -194,30 +194,324 @@ def test_workflow_execute_api_runs_saved_application_in_current_process(
 
     try:
         with client:
-            response = client.post(
-                "/api/v1/workflows/projects/project-1/applications/process-echo-app/execute",
+            create_response = client.post(
+                "/api/v1/workflows/preview-runs",
                 headers=build_test_headers(scopes="workflows:read,workflows:write"),
                 json={
+                    "project_id": "project-1",
+                    "application_ref": {"application_id": "process-echo-app"},
                     "input_bindings": {"request_text": {"value": "hello execute api"}},
                     "execution_metadata": {"marker": "api-execute"},
                 },
             )
+            preview_run_id = create_response.json()["preview_run_id"]
+            get_response = client.get(
+                f"/api/v1/workflows/preview-runs/{preview_run_id}",
+                headers=build_test_headers(scopes="workflows:read,workflows:write"),
+            )
     finally:
         session_factory.engine.dispose()
 
-    assert response.status_code == 200
-    body = response.json()["outputs"]["http_response"]["body"]
+    assert create_response.status_code == 201
+    assert get_response.status_code == 200
+    preview_payload = create_response.json()
+    body = preview_payload["outputs"]["http_response"]["body"]
+    assert preview_payload["state"] == "succeeded"
+    assert preview_payload["source_kind"] == "saved-application"
     assert body["message"] == "hello execute api"
     assert body["marker"] == "api-execute"
-    assert body["pid"] == os.getpid()
+    assert body["pid"] != os.getpid()
     assert body["is_daemon"] is False
     assert isinstance(body["workflow_run_id"], str)
+    assert get_response.json()["preview_run_id"] == preview_payload["preview_run_id"]
+    assert get_response.json()["state"] == "succeeded"
 
 
-def test_workflow_execute_api_reports_failed_node_details(
+def test_workflow_preview_run_api_marks_timed_out_when_child_process_exceeds_timeout(
     tmp_path: Path,
 ) -> None:
-    """验证 execute API 在节点失败时会返回失败节点定位信息。"""
+    """验证 preview run API 在子进程超时时会把记录落成 timed_out。"""
+
+    session_factory, dataset_storage, queue_backend = create_test_runtime(
+        tmp_path,
+        database_name="workflow-preview-timeout-api.db",
+    )
+    custom_nodes_root_dir = _create_process_test_node_pack_fixture(tmp_path)
+    node_pack_loader = LocalNodePackLoader(custom_nodes_root_dir)
+    node_pack_loader.refresh()
+    node_catalog_registry = NodeCatalogRegistry(node_pack_loader=node_pack_loader)
+    workflow_service = LocalWorkflowJsonService(
+        dataset_storage=dataset_storage,
+        node_catalog_registry=node_catalog_registry,
+    )
+    workflow_service.save_template(
+        project_id="project-1",
+        template=_build_process_slow_template(),
+    )
+    workflow_service.save_application(
+        project_id="project-1",
+        application=_build_process_slow_application(),
+    )
+    application = create_app(
+        settings=BackendServiceSettings(
+            database=BackendServiceDatabaseConfig(url=session_factory.settings.url),
+            dataset_storage=BackendServiceDatasetStorageConfig(root_dir=str(dataset_storage.root_dir)),
+            queue=BackendServiceQueueConfig(root_dir=str(queue_backend.root_dir)),
+            custom_nodes=BackendServiceCustomNodesConfig(root_dir=str(custom_nodes_root_dir)),
+            task_manager=BackendServiceTaskManagerConfig(enabled=False),
+        ),
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+        queue_backend=queue_backend,
+    )
+    client = TestClient(application)
+
+    try:
+        with client:
+            create_response = client.post(
+                "/api/v1/workflows/preview-runs",
+                headers=build_test_headers(scopes="workflows:read,workflows:write"),
+                json={
+                    "project_id": "project-1",
+                    "application_ref": {"application_id": "process-slow-app"},
+                    "input_bindings": {"request_text": {"value": "hello preview timeout"}},
+                    "execution_metadata": {"marker": "preview-timeout"},
+                    "timeout_seconds": 1,
+                },
+            )
+            preview_run_id = create_response.json()["preview_run_id"]
+            get_response = client.get(
+                f"/api/v1/workflows/preview-runs/{preview_run_id}",
+                headers=build_test_headers(scopes="workflows:read,workflows:write"),
+            )
+    finally:
+        session_factory.engine.dispose()
+
+    assert create_response.status_code == 201
+    assert get_response.status_code == 200
+    preview_payload = create_response.json()
+    assert preview_payload["state"] == "timed_out"
+    assert preview_payload["error_message"] == "等待 workflow snapshot 子进程响应超时"
+    assert preview_payload["outputs"] == {}
+    assert preview_payload["template_outputs"] == {}
+    assert get_response.json()["state"] == "timed_out"
+    assert get_response.json()["error_message"] == "等待 workflow snapshot 子进程响应超时"
+
+
+def test_workflow_app_runtime_api_invokes_saved_application_in_worker_process(
+    tmp_path: Path,
+) -> None:
+    """验证 app runtime API 会通过单实例 worker 执行同步 invoke。"""
+
+    session_factory, dataset_storage, queue_backend = create_test_runtime(
+        tmp_path,
+        database_name="workflow-runtime-api.db",
+    )
+    custom_nodes_root_dir = _create_process_test_node_pack_fixture(tmp_path)
+    node_pack_loader = LocalNodePackLoader(custom_nodes_root_dir)
+    node_pack_loader.refresh()
+    node_catalog_registry = NodeCatalogRegistry(node_pack_loader=node_pack_loader)
+    workflow_service = LocalWorkflowJsonService(
+        dataset_storage=dataset_storage,
+        node_catalog_registry=node_catalog_registry,
+    )
+    workflow_service.save_template(
+        project_id="project-1",
+        template=_build_process_echo_template(),
+    )
+    workflow_service.save_application(
+        project_id="project-1",
+        application=_build_process_echo_application(),
+    )
+    application = create_app(
+        settings=BackendServiceSettings(
+            database=BackendServiceDatabaseConfig(url=session_factory.settings.url),
+            dataset_storage=BackendServiceDatasetStorageConfig(root_dir=str(dataset_storage.root_dir)),
+            queue=BackendServiceQueueConfig(root_dir=str(queue_backend.root_dir)),
+            custom_nodes=BackendServiceCustomNodesConfig(root_dir=str(custom_nodes_root_dir)),
+            task_manager=BackendServiceTaskManagerConfig(enabled=False),
+        ),
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+        queue_backend=queue_backend,
+    )
+    client = TestClient(application)
+
+    try:
+        with client:
+            create_runtime_response = client.post(
+                "/api/v1/workflows/app-runtimes",
+                headers=build_test_headers(scopes="workflows:read,workflows:write"),
+                json={
+                    "project_id": "project-1",
+                    "application_id": "process-echo-app",
+                    "display_name": "Process Echo Runtime",
+                },
+            )
+            workflow_runtime_id = create_runtime_response.json()["workflow_runtime_id"]
+            start_response = client.post(
+                f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/start",
+                headers=build_test_headers(scopes="workflows:read,workflows:write"),
+            )
+            health_response = client.get(
+                f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/health",
+                headers=build_test_headers(scopes="workflows:read,workflows:write"),
+            )
+            invoke_response = client.post(
+                f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/invoke",
+                headers=build_test_headers(scopes="workflows:read,workflows:write"),
+                json={
+                    "input_bindings": {"request_text": {"value": "hello runtime api"}},
+                    "execution_metadata": {"marker": "runtime-api"},
+                },
+            )
+            workflow_run_id = invoke_response.json()["workflow_run_id"]
+            get_run_response = client.get(
+                f"/api/v1/workflows/runs/{workflow_run_id}",
+                headers=build_test_headers(scopes="workflows:read,workflows:write"),
+            )
+            stop_response = client.post(
+                f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/stop",
+                headers=build_test_headers(scopes="workflows:read,workflows:write"),
+            )
+    finally:
+        session_factory.engine.dispose()
+
+    assert create_runtime_response.status_code == 201
+    assert start_response.status_code == 200
+    assert health_response.status_code == 200
+    assert invoke_response.status_code == 200
+    assert get_run_response.status_code == 200
+    assert stop_response.status_code == 200
+    start_payload = start_response.json()
+    health_payload = health_response.json()
+    run_payload = invoke_response.json()
+    run_body = run_payload["outputs"]["http_response"]["body"]
+    assert start_payload["desired_state"] == "running"
+    assert start_payload["observed_state"] == "running"
+    assert isinstance(start_payload["worker_process_id"], int)
+    assert health_payload["observed_state"] == "running"
+    assert isinstance(health_payload["loaded_snapshot_fingerprint"], str)
+    assert run_payload["state"] == "succeeded"
+    assert run_payload["assigned_process_id"] == run_body["pid"]
+    assert run_body["message"] == "hello runtime api"
+    assert run_body["marker"] == "runtime-api"
+    assert run_body["pid"] != os.getpid()
+    assert run_body["is_daemon"] is False
+    assert get_run_response.json()["workflow_run_id"] == run_payload["workflow_run_id"]
+    assert get_run_response.json()["state"] == "succeeded"
+    assert stop_response.json()["observed_state"] == "stopped"
+    assert stop_response.json()["worker_process_id"] is None
+
+
+def test_workflow_app_runtime_api_marks_run_timed_out_when_worker_exceeds_timeout(
+    tmp_path: Path,
+) -> None:
+    """验证 runtime invoke 在 worker 超时后会把 WorkflowRun 落成 timed_out。"""
+
+    session_factory, dataset_storage, queue_backend = create_test_runtime(
+        tmp_path,
+        database_name="workflow-runtime-timeout-api.db",
+    )
+    custom_nodes_root_dir = _create_process_test_node_pack_fixture(tmp_path)
+    node_pack_loader = LocalNodePackLoader(custom_nodes_root_dir)
+    node_pack_loader.refresh()
+    node_catalog_registry = NodeCatalogRegistry(node_pack_loader=node_pack_loader)
+    workflow_service = LocalWorkflowJsonService(
+        dataset_storage=dataset_storage,
+        node_catalog_registry=node_catalog_registry,
+    )
+    workflow_service.save_template(
+        project_id="project-1",
+        template=_build_process_slow_template(),
+    )
+    workflow_service.save_application(
+        project_id="project-1",
+        application=_build_process_slow_application(),
+    )
+    application = create_app(
+        settings=BackendServiceSettings(
+            database=BackendServiceDatabaseConfig(url=session_factory.settings.url),
+            dataset_storage=BackendServiceDatasetStorageConfig(root_dir=str(dataset_storage.root_dir)),
+            queue=BackendServiceQueueConfig(root_dir=str(queue_backend.root_dir)),
+            custom_nodes=BackendServiceCustomNodesConfig(root_dir=str(custom_nodes_root_dir)),
+            task_manager=BackendServiceTaskManagerConfig(enabled=False),
+        ),
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+        queue_backend=queue_backend,
+    )
+    client = TestClient(application)
+
+    try:
+        with client:
+            create_runtime_response = client.post(
+                "/api/v1/workflows/app-runtimes",
+                headers=build_test_headers(scopes="workflows:read,workflows:write"),
+                json={
+                    "project_id": "project-1",
+                    "application_id": "process-slow-app",
+                    "display_name": "Process Slow Runtime",
+                    "request_timeout_seconds": 1,
+                },
+            )
+            workflow_runtime_id = create_runtime_response.json()["workflow_runtime_id"]
+            start_response = client.post(
+                f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/start",
+                headers=build_test_headers(scopes="workflows:read,workflows:write"),
+            )
+            invoke_response = client.post(
+                f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/invoke",
+                headers=build_test_headers(scopes="workflows:read,workflows:write"),
+                json={
+                    "input_bindings": {"request_text": {"value": "hello runtime timeout"}},
+                    "execution_metadata": {"marker": "runtime-timeout"},
+                    "timeout_seconds": 1,
+                },
+            )
+            workflow_run_id = invoke_response.json()["workflow_run_id"]
+            get_run_response = client.get(
+                f"/api/v1/workflows/runs/{workflow_run_id}",
+                headers=build_test_headers(scopes="workflows:read,workflows:write"),
+            )
+            get_runtime_response = client.get(
+                f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}",
+                headers=build_test_headers(scopes="workflows:read,workflows:write"),
+            )
+            restart_response = client.post(
+                f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/start",
+                headers=build_test_headers(scopes="workflows:read,workflows:write"),
+            )
+            stop_response = client.post(
+                f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/stop",
+                headers=build_test_headers(scopes="workflows:read,workflows:write"),
+            )
+    finally:
+        session_factory.engine.dispose()
+
+    assert create_runtime_response.status_code == 201
+    assert start_response.status_code == 200
+    assert invoke_response.status_code == 200
+    assert get_run_response.status_code == 200
+    assert get_runtime_response.status_code == 200
+    assert restart_response.status_code == 200
+    assert stop_response.status_code == 200
+    run_payload = invoke_response.json()
+    runtime_payload = get_runtime_response.json()
+    assert run_payload["state"] == "timed_out"
+    assert run_payload["error_message"] == "等待 workflow runtime worker 同步调用结果超时"
+    assert run_payload["outputs"] == {}
+    assert get_run_response.json()["state"] == "timed_out"
+    assert runtime_payload["observed_state"] == "failed"
+    assert runtime_payload["last_error"] == "等待 workflow runtime worker 同步调用结果超时"
+    assert restart_response.json()["observed_state"] == "running"
+    assert stop_response.json()["observed_state"] == "stopped"
+
+
+def test_workflow_app_runtime_api_persists_failed_invoke_details(
+    tmp_path: Path,
+) -> None:
+    """验证 app runtime invoke 失败时会持久化失败节点定位信息。"""
 
     session_factory, dataset_storage, queue_backend = create_test_runtime(
         tmp_path,
@@ -255,28 +549,269 @@ def test_workflow_execute_api_reports_failed_node_details(
 
     try:
         with client:
-            response = client.post(
-                "/api/v1/workflows/projects/project-1/applications/process-fail-app/execute",
+            create_runtime_response = client.post(
+                "/api/v1/workflows/app-runtimes",
                 headers=build_test_headers(scopes="workflows:read,workflows:write"),
                 json={
-                    "input_bindings": {"request_text": {"value": "hello execute api"}},
-                    "execution_metadata": {"marker": "api-execute-failure"},
+                    "project_id": "project-1",
+                    "application_id": "process-fail-app",
+                    "display_name": "Process Fail Runtime",
                 },
+            )
+            workflow_runtime_id = create_runtime_response.json()["workflow_runtime_id"]
+            start_response = client.post(
+                f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/start",
+                headers=build_test_headers(scopes="workflows:read,workflows:write"),
+            )
+            invoke_response = client.post(
+                f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/invoke",
+                headers=build_test_headers(scopes="workflows:read,workflows:write"),
+                json={
+                    "input_bindings": {"request_text": {"value": "hello runtime failure"}},
+                    "execution_metadata": {"marker": "api-runtime-failure"},
+                },
+            )
+            workflow_run_id = invoke_response.json()["workflow_run_id"]
+            get_run_response = client.get(
+                f"/api/v1/workflows/runs/{workflow_run_id}",
+                headers=build_test_headers(scopes="workflows:read,workflows:write"),
+            )
+            health_response = client.get(
+                f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/health",
+                headers=build_test_headers(scopes="workflows:read,workflows:write"),
+            )
+            stop_response = client.post(
+                f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/stop",
+                headers=build_test_headers(scopes="workflows:read,workflows:write"),
             )
     finally:
         session_factory.engine.dispose()
 
-    assert response.status_code == 500
-    error = response.json()["error"]
-    assert error["code"] == "service_configuration_error"
-    assert error["message"] == "workflow 节点执行失败"
-    assert error["details"]["node_id"] == "explode"
-    assert error["details"]["node_type_id"] == "custom.test.process-fail"
-    assert error["details"]["runtime_kind"] == "python-callable"
-    assert error["details"]["execution_index"] == 1
-    assert error["details"]["sequence_index"] == 1
-    assert error["details"]["error_type"] == "AssertionError"
-    assert error["details"]["error_message"] == "process fail"
+    assert create_runtime_response.status_code == 201
+    assert start_response.status_code == 200
+    assert invoke_response.status_code == 200
+    assert get_run_response.status_code == 200
+    assert health_response.status_code == 200
+    assert stop_response.status_code == 200
+    run_payload = invoke_response.json()
+    error_details = run_payload["metadata"]["error_details"]
+    assert run_payload["state"] == "failed"
+    assert run_payload["error_message"] == "workflow 节点执行失败"
+    assert error_details["node_id"] == "explode"
+    assert error_details["node_type_id"] == "custom.test.process-fail"
+    assert error_details["runtime_kind"] == "python-callable"
+    assert error_details["execution_index"] == 1
+    assert error_details["sequence_index"] == 1
+    assert error_details["error_type"] == "AssertionError"
+    assert error_details["error_message"] == "process fail"
+    assert get_run_response.json()["state"] == "failed"
+    assert get_run_response.json()["metadata"]["error_details"]["node_id"] == "explode"
+    assert health_response.json()["observed_state"] == "failed"
+    assert health_response.json()["last_error"] == "workflow 节点执行失败"
+    assert stop_response.json()["observed_state"] == "stopped"
+
+
+def test_workflow_app_runtime_api_can_restart_after_failed_worker_state(
+    tmp_path: Path,
+) -> None:
+    """验证 runtime worker 在 failed 后可以通过 restart 重新拉起。"""
+
+    session_factory, dataset_storage, queue_backend = create_test_runtime(
+        tmp_path,
+        database_name="workflow-runtime-restart-api.db",
+    )
+    custom_nodes_root_dir = _create_process_test_node_pack_fixture(tmp_path)
+    node_pack_loader = LocalNodePackLoader(custom_nodes_root_dir)
+    node_pack_loader.refresh()
+    node_catalog_registry = NodeCatalogRegistry(node_pack_loader=node_pack_loader)
+    workflow_service = LocalWorkflowJsonService(
+        dataset_storage=dataset_storage,
+        node_catalog_registry=node_catalog_registry,
+    )
+    workflow_service.save_template(
+        project_id="project-1",
+        template=_build_process_fail_template(),
+    )
+    workflow_service.save_application(
+        project_id="project-1",
+        application=_build_process_fail_application(),
+    )
+    application = create_app(
+        settings=BackendServiceSettings(
+            database=BackendServiceDatabaseConfig(url=session_factory.settings.url),
+            dataset_storage=BackendServiceDatasetStorageConfig(root_dir=str(dataset_storage.root_dir)),
+            queue=BackendServiceQueueConfig(root_dir=str(queue_backend.root_dir)),
+            custom_nodes=BackendServiceCustomNodesConfig(root_dir=str(custom_nodes_root_dir)),
+            task_manager=BackendServiceTaskManagerConfig(enabled=False),
+        ),
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+        queue_backend=queue_backend,
+    )
+    client = TestClient(application)
+
+    try:
+        with client:
+            create_runtime_response = client.post(
+                "/api/v1/workflows/app-runtimes",
+                headers=build_test_headers(scopes="workflows:read,workflows:write"),
+                json={
+                    "project_id": "project-1",
+                    "application_id": "process-fail-app",
+                    "display_name": "Process Fail Runtime",
+                },
+            )
+            workflow_runtime_id = create_runtime_response.json()["workflow_runtime_id"]
+            first_start_response = client.post(
+                f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/start",
+                headers=build_test_headers(scopes="workflows:read,workflows:write"),
+            )
+            invoke_response = client.post(
+                f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/invoke",
+                headers=build_test_headers(scopes="workflows:read,workflows:write"),
+                json={
+                    "input_bindings": {"request_text": {"value": "hello runtime failure"}},
+                    "execution_metadata": {"marker": "runtime-restart"},
+                },
+            )
+            failed_health_response = client.get(
+                f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/health",
+                headers=build_test_headers(scopes="workflows:read,workflows:write"),
+            )
+            second_start_response = client.post(
+                f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/restart",
+                headers=build_test_headers(scopes="workflows:read,workflows:write"),
+            )
+            recovered_health_response = client.get(
+                f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/health",
+                headers=build_test_headers(scopes="workflows:read,workflows:write"),
+            )
+            stop_response = client.post(
+                f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/stop",
+                headers=build_test_headers(scopes="workflows:read,workflows:write"),
+            )
+    finally:
+        session_factory.engine.dispose()
+
+    assert create_runtime_response.status_code == 201
+    assert first_start_response.status_code == 200
+    assert invoke_response.status_code == 200
+    assert failed_health_response.status_code == 200
+    assert second_start_response.status_code == 200
+    assert recovered_health_response.status_code == 200
+    assert stop_response.status_code == 200
+    first_process_id = first_start_response.json()["worker_process_id"]
+    failed_process_id = failed_health_response.json()["worker_process_id"]
+    recovered_process_id = second_start_response.json()["worker_process_id"]
+    assert invoke_response.json()["state"] == "failed"
+    assert failed_health_response.json()["observed_state"] == "failed"
+    assert failed_process_id == first_process_id
+    assert second_start_response.json()["observed_state"] == "running"
+    assert recovered_health_response.json()["observed_state"] == "running"
+    assert recovered_process_id != first_process_id
+    assert stop_response.json()["observed_state"] == "stopped"
+
+
+def test_workflow_app_runtime_api_lists_instances_and_clears_them_after_stop(
+    tmp_path: Path,
+) -> None:
+    """验证 app runtime instances 接口会返回当前单实例摘要，并在 stop 后清空。"""
+
+    session_factory, dataset_storage, queue_backend = create_test_runtime(
+        tmp_path,
+        database_name="workflow-runtime-instances-api.db",
+    )
+    custom_nodes_root_dir = _create_process_test_node_pack_fixture(tmp_path)
+    node_pack_loader = LocalNodePackLoader(custom_nodes_root_dir)
+    node_pack_loader.refresh()
+    node_catalog_registry = NodeCatalogRegistry(node_pack_loader=node_pack_loader)
+    workflow_service = LocalWorkflowJsonService(
+        dataset_storage=dataset_storage,
+        node_catalog_registry=node_catalog_registry,
+    )
+    workflow_service.save_template(
+        project_id="project-1",
+        template=_build_process_echo_template(),
+    )
+    workflow_service.save_application(
+        project_id="project-1",
+        application=_build_process_echo_application(),
+    )
+    application = create_app(
+        settings=BackendServiceSettings(
+            database=BackendServiceDatabaseConfig(url=session_factory.settings.url),
+            dataset_storage=BackendServiceDatasetStorageConfig(root_dir=str(dataset_storage.root_dir)),
+            queue=BackendServiceQueueConfig(root_dir=str(queue_backend.root_dir)),
+            custom_nodes=BackendServiceCustomNodesConfig(root_dir=str(custom_nodes_root_dir)),
+            task_manager=BackendServiceTaskManagerConfig(enabled=False),
+        ),
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+        queue_backend=queue_backend,
+    )
+    client = TestClient(application)
+
+    try:
+        with client:
+            create_runtime_response = client.post(
+                "/api/v1/workflows/app-runtimes",
+                headers=build_test_headers(scopes="workflows:read,workflows:write"),
+                json={
+                    "project_id": "project-1",
+                    "application_id": "process-echo-app",
+                    "display_name": "Process Echo Runtime",
+                },
+            )
+            workflow_runtime_id = create_runtime_response.json()["workflow_runtime_id"]
+            start_response = client.post(
+                f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/start",
+                headers=build_test_headers(scopes="workflows:read,workflows:write"),
+            )
+            instances_response = client.get(
+                f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/instances",
+                headers=build_test_headers(scopes="workflows:read,workflows:write"),
+            )
+            restart_response = client.post(
+                f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/restart",
+                headers=build_test_headers(scopes="workflows:read,workflows:write"),
+            )
+            restarted_instances_response = client.get(
+                f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/instances",
+                headers=build_test_headers(scopes="workflows:read,workflows:write"),
+            )
+            stop_response = client.post(
+                f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/stop",
+                headers=build_test_headers(scopes="workflows:read,workflows:write"),
+            )
+            stopped_instances_response = client.get(
+                f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/instances",
+                headers=build_test_headers(scopes="workflows:read,workflows:write"),
+            )
+    finally:
+        session_factory.engine.dispose()
+
+    assert create_runtime_response.status_code == 201
+    assert start_response.status_code == 200
+    assert instances_response.status_code == 200
+    assert restart_response.status_code == 200
+    assert restarted_instances_response.status_code == 200
+    assert stop_response.status_code == 200
+    assert stopped_instances_response.status_code == 200
+    first_instances_payload = instances_response.json()
+    restarted_instances_payload = restarted_instances_response.json()
+    assert len(first_instances_payload) == 1
+    assert first_instances_payload[0]["workflow_runtime_id"] == create_runtime_response.json()["workflow_runtime_id"]
+    assert first_instances_payload[0]["state"] == "running"
+    assert first_instances_payload[0]["instance_id"].endswith("-primary")
+    assert first_instances_payload[0]["process_id"] == start_response.json()["worker_process_id"]
+    assert first_instances_payload[0]["current_run_id"] is None
+    assert first_instances_payload[0]["started_at"] is not None
+    assert len(restarted_instances_payload) == 1
+    assert restarted_instances_payload[0]["state"] == "running"
+    assert restarted_instances_payload[0]["instance_id"] == first_instances_payload[0]["instance_id"]
+    assert restarted_instances_payload[0]["started_at"] != first_instances_payload[0]["started_at"]
+    assert stop_response.json()["observed_state"] == "stopped"
+    assert stopped_instances_response.json() == []
 
 
 def _build_process_echo_template():
@@ -450,6 +985,85 @@ def _build_process_fail_application():
     )
 
 
+def _build_process_slow_template():
+    """构造超时测试使用的最小 workflow 模板。"""
+
+    from backend.contracts.workflows.workflow_graph import (
+        WorkflowGraphInput,
+        WorkflowGraphNode,
+        WorkflowGraphOutput,
+        WorkflowGraphTemplate,
+    )
+
+    return WorkflowGraphTemplate(
+        template_id="process-slow-template",
+        template_version="1.0.0",
+        display_name="Process Slow Template",
+        nodes=(
+            WorkflowGraphNode(
+                node_id="sleep",
+                node_type_id="custom.test.process-slow",
+                metadata={"sequence_index": 1},
+            ),
+        ),
+        template_inputs=(
+            WorkflowGraphInput(
+                input_id="request_text",
+                display_name="Request Text",
+                payload_type_id="text.v1",
+                target_node_id="sleep",
+                target_port="text",
+            ),
+        ),
+        template_outputs=(
+            WorkflowGraphOutput(
+                output_id="body",
+                display_name="Body",
+                payload_type_id="response-body.v1",
+                source_node_id="sleep",
+                source_port="body",
+            ),
+        ),
+    )
+
+
+def _build_process_slow_application():
+    """构造超时测试使用的最小流程应用。"""
+
+    from backend.contracts.workflows.workflow_graph import (
+        FlowApplication,
+        FlowApplicationBinding,
+        FlowTemplateReference,
+    )
+
+    return FlowApplication(
+        application_id="process-slow-app",
+        display_name="Process Slow App",
+        template_ref=FlowTemplateReference(
+            template_id="process-slow-template",
+            template_version="1.0.0",
+            source_kind="json-file",
+            source_uri="placeholder",
+        ),
+        bindings=(
+            FlowApplicationBinding(
+                binding_id="request_text",
+                direction="input",
+                template_port_id="request_text",
+                binding_kind="api-request",
+                config={"route": "/execute/process-slow", "method": "POST"},
+            ),
+            FlowApplicationBinding(
+                binding_id="body",
+                direction="output",
+                template_port_id="body",
+                binding_kind="workflow-execute-output",
+                config={"status_code": 200},
+            ),
+        ),
+    )
+
+
 def _create_process_test_node_pack_fixture(tmp_path: Path) -> Path:
     """创建进程隔离测试使用的最小 custom node pack。"""
 
@@ -464,6 +1078,7 @@ def _create_process_test_node_pack_fixture(tmp_path: Path) -> Path:
         """
 import os
 import multiprocessing
+import time
 
 
 def _process_echo_handler(request):
@@ -487,9 +1102,23 @@ def _process_fail_handler(request):
     raise AssertionError("process fail")
 
 
+def _process_slow_handler(request):
+    time.sleep(2.0)
+    return {
+        "body": {
+            "message": "slow done",
+            "marker": request.execution_metadata.get("marker"),
+            "workflow_run_id": request.execution_metadata.get("workflow_run_id"),
+            "pid": os.getpid(),
+            "is_daemon": multiprocessing.current_process().daemon,
+        }
+    }
+
+
 def register(context):
     context.register_python_callable("custom.test.process-echo", _process_echo_handler)
     context.register_python_callable("custom.test.process-fail", _process_fail_handler)
+    context.register_python_callable("custom.test.process-slow", _process_slow_handler)
 """.strip()
         + "\n",
         encoding="utf-8",
@@ -560,6 +1189,34 @@ def register(context):
                 "display_name": "Process Fail",
                 "category": "test.process",
                 "description": "主动抛出 AssertionError，用于验证失败节点定位。",
+                "implementation_kind": "custom-node",
+                "runtime_kind": "python-callable",
+                "input_ports": [
+                    {
+                        "name": "text",
+                        "display_name": "Text",
+                        "payload_type_id": "text.v1",
+                    }
+                ],
+                "output_ports": [
+                    {
+                        "name": "body",
+                        "display_name": "Body",
+                        "payload_type_id": "response-body.v1",
+                    }
+                ],
+                "parameter_schema": {"type": "object", "properties": {}},
+                "capability_tags": ["test.process"],
+                "runtime_requirements": {},
+                "node_pack_id": "test.process-nodes",
+                "node_pack_version": "0.1.0",
+            },
+            {
+                "format_id": "amvision.node-definition.v1",
+                "node_type_id": "custom.test.process-slow",
+                "display_name": "Process Slow",
+                "category": "test.process",
+                "description": "延迟返回结果，用于验证超时分支。",
                 "implementation_kind": "custom-node",
                 "runtime_kind": "python-callable",
                 "input_ports": [

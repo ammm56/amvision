@@ -17,6 +17,9 @@ from backend.service.infrastructure.persistence.resource_profile_repository impo
     SqlAlchemyResourceProfileRepository,
 )
 from backend.service.infrastructure.persistence.task_repository import SqlAlchemyTaskRepository
+from backend.service.infrastructure.persistence.workflow_runtime_repository import (
+    SqlAlchemyWorkflowRuntimeRepository,
+)
 
 
 class SqlAlchemyUnitOfWork:
@@ -32,6 +35,7 @@ class SqlAlchemyUnitOfWork:
     - model_files：ModelFile 仓储。
     - tasks：TaskRecord、TaskAttempt、TaskEvent 仓储。
     - resource_profiles：ResourceProfile 仓储。
+    - workflow_runtime：WorkflowPreviewRun、WorkflowAppRuntime、WorkflowRun 仓储。
     """
 
     def __init__(self, session: Session) -> None:
@@ -50,6 +54,7 @@ class SqlAlchemyUnitOfWork:
         self.model_files = SqlAlchemyModelFileRepository(session)
         self.tasks = SqlAlchemyTaskRepository(session)
         self.resource_profiles = SqlAlchemyResourceProfileRepository(session)
+        self.workflow_runtime = SqlAlchemyWorkflowRuntimeRepository(session)
 
     def scalar(self, statement: Executable) -> object | None:
         """执行查询并返回第一列的标量结果。

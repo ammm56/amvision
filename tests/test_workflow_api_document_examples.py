@@ -28,8 +28,18 @@ def test_workflow_api_real_path_example_requests_are_valid() -> None:
             encoding="utf-8"
         )
     )
-    execute_request = json.loads(
-        (example_dir / "yolox_deployment_detection_lifecycle_real_path.execute.request.json").read_text(
+    preview_run_request = json.loads(
+        (example_dir / "yolox_deployment_detection_lifecycle_real_path.preview-run.request.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    app_runtime_create_request = json.loads(
+        (example_dir / "yolox_deployment_detection_lifecycle_real_path.app-runtime.create.request.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    app_runtime_invoke_request = json.loads(
+        (example_dir / "yolox_deployment_detection_lifecycle_real_path.app-runtime.invoke.request.json").read_text(
             encoding="utf-8"
         )
     )
@@ -59,8 +69,10 @@ def test_workflow_api_real_path_example_requests_are_valid() -> None:
         "yolox-deployment-detection-lifecycle-real-path-app/application.json"
     )
     assert application.metadata["example_kind"] == "deployment-control-detection-lifecycle-real-path"
-    assert execute_request["input_bindings"]["request_image"]["object_key"] == "inputs/source.jpg"
-    assert execute_request["execution_metadata"]["scenario"] == "deployment-control-detection-lifecycle-real-path"
+    assert preview_run_request["input_bindings"]["request_image"]["object_key"] == "inputs/source.jpg"
+    assert preview_run_request["execution_metadata"]["scenario"] == "deployment-control-detection-lifecycle-real-path"
+    assert app_runtime_create_request["metadata"]["uses_existing_deployment_instance"] is True
+    assert app_runtime_invoke_request["execution_metadata"]["scenario"] == "deployment-control-detection-lifecycle-real-path"
 
 
 def test_workflow_postman_collection_contains_manual_test_sequence() -> None:
@@ -71,30 +83,38 @@ def test_workflow_postman_collection_contains_manual_test_sequence() -> None:
         / "docs"
         / "api"
         / "postman"
-        / "workflows.postman_collection.json"
+        / "workflow-runtime.postman_collection.json"
     )
     collection_payload = json.loads(collection_path.read_text(encoding="utf-8"))
     request_names = _collect_postman_request_names(collection_payload["item"])
     variables = {item["key"]: item.get("value", "") for item in collection_payload.get("variable", [])}
     request_payloads = _collect_postman_request_payloads(collection_payload["item"])
 
-    assert collection_payload["info"]["name"] == "amvision workflows api"
-    assert "List YOLOX Deployment Instances" in request_names
+    assert collection_payload["info"]["name"] == "amvision workflow runtime api"
     assert "Save Workflow Template" in request_names
     assert "Save Flow Application" in request_names
-    assert "Execute Flow Application" in request_names
+    assert "Create Preview Run" in request_names
+    assert "Create App Runtime" in request_names
+    assert "Get App Runtime Health" in request_names
+    assert "List App Runtime Instances" in request_names
+    assert "Restart App Runtime" in request_names
+    assert "Invoke App Runtime" in request_names
     assert variables["templateId"] == "yolox-deployment-detection-lifecycle-real-path"
     assert variables["applicationId"] == "yolox-deployment-detection-lifecycle-real-path-app"
 
     save_template_body = json.loads(request_payloads["Save Workflow Template"])
     save_application_body = json.loads(request_payloads["Save Flow Application"])
-    execute_body = json.loads(request_payloads["Execute Flow Application"])
+    preview_body = json.loads(request_payloads["Create Preview Run"])
+    create_runtime_body = json.loads(request_payloads["Create App Runtime"])
+    invoke_body = json.loads(request_payloads["Invoke App Runtime"])
 
     assert save_template_body["template"]["metadata"]["example_kind"] == "deployment-control-detection-lifecycle-real-path"
     assert save_template_body["template"]["metadata"]["deployment_runtime_owner"] == "backend-service"
     assert save_application_body["application"]["metadata"]["example_kind"] == "deployment-control-detection-lifecycle-real-path"
     assert save_application_body["application"]["metadata"]["uses_existing_deployment_instance"] is True
-    assert execute_body["execution_metadata"]["scenario"] == "deployment-control-detection-lifecycle-real-path"
+    assert preview_body["execution_metadata"]["scenario"] == "deployment-control-detection-lifecycle-real-path"
+    assert create_runtime_body["metadata"]["uses_existing_deployment_instance"] is True
+    assert invoke_body["execution_metadata"]["scenario"] == "deployment-control-detection-lifecycle-real-path"
 
 
 def _collect_postman_request_names(items: list[dict[str, object]]) -> set[str]:

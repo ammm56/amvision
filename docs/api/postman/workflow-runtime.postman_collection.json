@@ -1,0 +1,757 @@
+{
+  "info": {
+    "_postman_id": "cb7a8a14-cd66-4c4a-b4a8-6382f87bf7f1",
+    "name": "amvision workflow runtime api",
+    "description": "workflow runtime 第一阶段联调 collection，覆盖 template/application 保存前置步骤，以及 preview-runs、app-runtimes、runs 的最小公开接口。",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://127.0.0.1:8000"
+    },
+    {
+      "key": "principalId",
+      "value": "user-1"
+    },
+    {
+      "key": "projectId",
+      "value": "project-1"
+    },
+    {
+      "key": "templateId",
+      "value": "yolox-deployment-detection-lifecycle-real-path"
+    },
+    {
+      "key": "templateVersion",
+      "value": "1.0.0"
+    },
+    {
+      "key": "applicationId",
+      "value": "yolox-deployment-detection-lifecycle-real-path-app"
+    },
+    {
+      "key": "deploymentInstanceId",
+      "value": "replace-with-existing-deployment-instance-id"
+    },
+    {
+      "key": "requestImageObjectKey",
+      "value": "inputs/source.jpg"
+    },
+    {
+      "key": "previewRunId",
+      "value": ""
+    },
+    {
+      "key": "workflowRuntimeId",
+      "value": ""
+    },
+    {
+      "key": "workflowRunId",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "System",
+      "item": [
+        {
+          "name": "Get Service Health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/system/health",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "system",
+                "health"
+              ]
+            },
+            "description": "返回最小健康状态。"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Workflow Prerequisites",
+      "item": [
+        {
+          "name": "Save Workflow Template",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-principal-id",
+                "value": "{{principalId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-project-ids",
+                "value": "{{projectId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-scopes",
+                "value": "workflows:read,workflows:write",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"template\": {\n    \"format_id\": \"amvision.workflow-graph-template.v1\",\n    \"template_id\": \"{{templateId}}\",\n    \"template_version\": \"{{templateVersion}}\",\n    \"display_name\": \"YOLOX Deployment Detection Lifecycle Real Path\",\n    \"description\": \"控制一个已有 sync deployment 资源，并在 backend-service 当前 deployment control plane 上按顺序执行 start、warmup、detection、health、stop。\",\n    \"nodes\": [\n      {\n        \"node_id\": \"start\",\n        \"node_type_id\": \"core.service.yolox-deployment.start\",\n        \"parameters\": {\n          \"deployment_instance_id\": \"{{deploymentInstanceId}}\",\n          \"runtime_mode\": \"sync\"\n        },\n        \"metadata\": {\n          \"sequence_index\": 1\n        }\n      },\n      {\n        \"node_id\": \"warmup\",\n        \"node_type_id\": \"core.service.yolox-deployment.warmup\",\n        \"parameters\": {\n          \"deployment_instance_id\": \"{{deploymentInstanceId}}\",\n          \"runtime_mode\": \"sync\"\n        },\n        \"metadata\": {\n          \"sequence_index\": 2\n        }\n      },\n      {\n        \"node_id\": \"detect\",\n        \"node_type_id\": \"core.model.yolox-detection\",\n        \"parameters\": {\n          \"deployment_instance_id\": \"{{deploymentInstanceId}}\",\n          \"auto_start_process\": false,\n          \"score_threshold\": 0.3,\n          \"save_result_image\": false,\n          \"return_preview_image_base64\": false\n        },\n        \"metadata\": {\n          \"sequence_index\": 3\n        }\n      },\n      {\n        \"node_id\": \"health\",\n        \"node_type_id\": \"core.service.yolox-deployment.health\",\n        \"parameters\": {\n          \"deployment_instance_id\": \"{{deploymentInstanceId}}\",\n          \"runtime_mode\": \"sync\"\n        },\n        \"metadata\": {\n          \"sequence_index\": 4\n        }\n      },\n      {\n        \"node_id\": \"stop\",\n        \"node_type_id\": \"core.service.yolox-deployment.stop\",\n        \"parameters\": {\n          \"deployment_instance_id\": \"{{deploymentInstanceId}}\",\n          \"runtime_mode\": \"sync\"\n        },\n        \"metadata\": {\n          \"sequence_index\": 5\n        }\n      }\n    ],\n    \"edges\": [],\n    \"template_inputs\": [\n      {\n        \"input_id\": \"request_image\",\n        \"display_name\": \"Request Image\",\n        \"payload_type_id\": \"image-ref.v1\",\n        \"target_node_id\": \"detect\",\n        \"target_port\": \"image\"\n      }\n    ],\n    \"template_outputs\": [\n      {\n        \"output_id\": \"start_body\",\n        \"display_name\": \"Start Body\",\n        \"payload_type_id\": \"response-body.v1\",\n        \"source_node_id\": \"start\",\n        \"source_port\": \"body\"\n      },\n      {\n        \"output_id\": \"warmup_body\",\n        \"display_name\": \"Warmup Body\",\n        \"payload_type_id\": \"response-body.v1\",\n        \"source_node_id\": \"warmup\",\n        \"source_port\": \"body\"\n      },\n      {\n        \"output_id\": \"detections\",\n        \"display_name\": \"Detections\",\n        \"payload_type_id\": \"detections.v1\",\n        \"source_node_id\": \"detect\",\n        \"source_port\": \"detections\"\n      },\n      {\n        \"output_id\": \"health_body\",\n        \"display_name\": \"Health Body\",\n        \"payload_type_id\": \"response-body.v1\",\n        \"source_node_id\": \"health\",\n        \"source_port\": \"body\"\n      },\n      {\n        \"output_id\": \"stop_body\",\n        \"display_name\": \"Stop Body\",\n        \"payload_type_id\": \"response-body.v1\",\n        \"source_node_id\": \"stop\",\n        \"source_port\": \"body\"\n      }\n    ],\n    \"metadata\": {\n      \"intended_saved_object_key\": \"workflows/projects/{{projectId}}/templates/{{templateId}}/versions/{{templateVersion}}/template.json\",\n      \"example_kind\": \"deployment-control-detection-lifecycle-real-path\",\n      \"deployment_instance_id_placeholder\": \"replace-with-existing-deployment-instance-id\",\n      \"uses_existing_deployment_instance\": true,\n      \"deployment_runtime_owner\": \"backend-service\",\n      \"node_groups\": {\n        \"deployment_control\": [\"start\", \"warmup\", \"health\", \"stop\"],\n        \"model_node\": [\"detect\"]\n      },\n      \"execution_order_note\": \"当前最小执行器会按 nodes 声明顺序稳定执行零入度节点，因此该示例通过节点声明顺序表达 start -> warmup -> detection -> health -> stop。\"\n    }\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workflows/projects/{{projectId}}/templates/{{templateId}}/versions/{{templateVersion}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workflows",
+                "projects",
+                "{{projectId}}",
+                "templates",
+                "{{templateId}}",
+                "versions",
+                "{{templateVersion}}"
+              ]
+            },
+            "description": "保存 workflow template。请求体与 docs/api/examples/workflows/yolox_deployment_detection_lifecycle_real_path.save-template.request.json 对齐。"
+          },
+          "response": []
+        },
+        {
+          "name": "Save Flow Application",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-principal-id",
+                "value": "{{principalId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-project-ids",
+                "value": "{{projectId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-scopes",
+                "value": "workflows:read,workflows:write",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"application\": {\n    \"format_id\": \"amvision.flow-application.v1\",\n    \"application_id\": \"{{applicationId}}\",\n    \"display_name\": \"YOLOX Deployment Detection Lifecycle Real Path App\",\n    \"template_ref\": {\n      \"template_id\": \"{{templateId}}\",\n      \"template_version\": \"{{templateVersion}}\",\n      \"source_kind\": \"json-file\",\n      \"source_uri\": \"workflows/projects/{{projectId}}/templates/{{templateId}}/versions/{{templateVersion}}/template.json\",\n      \"metadata\": {}\n    },\n    \"runtime_mode\": \"python-json-workflow\",\n    \"description\": \"面向 Postman 手工调试的最小 FlowApplication 示例，控制并使用一个已有 deployment 资源，使用真实 workflow object key 路径。\",\n    \"bindings\": [\n      {\n        \"binding_id\": \"request_image\",\n        \"direction\": \"input\",\n        \"template_port_id\": \"request_image\",\n        \"binding_kind\": \"workflow-execute-input\",\n        \"config\": {\n          \"payload_type_id\": \"image-ref.v1\",\n          \"content_type\": \"image/*\"\n        },\n        \"metadata\": {}\n      },\n      {\n        \"binding_id\": \"start_body\",\n        \"direction\": \"output\",\n        \"template_port_id\": \"start_body\",\n        \"binding_kind\": \"workflow-execute-output\",\n        \"config\": {\n          \"payload_type_id\": \"response-body.v1\"\n        },\n        \"metadata\": {}\n      },\n      {\n        \"binding_id\": \"warmup_body\",\n        \"direction\": \"output\",\n        \"template_port_id\": \"warmup_body\",\n        \"binding_kind\": \"workflow-execute-output\",\n        \"config\": {\n          \"payload_type_id\": \"response-body.v1\"\n        },\n        \"metadata\": {}\n      },\n      {\n        \"binding_id\": \"detections\",\n        \"direction\": \"output\",\n        \"template_port_id\": \"detections\",\n        \"binding_kind\": \"workflow-execute-output\",\n        \"config\": {\n          \"payload_type_id\": \"detections.v1\"\n        },\n        \"metadata\": {}\n      },\n      {\n        \"binding_id\": \"health_body\",\n        \"direction\": \"output\",\n        \"template_port_id\": \"health_body\",\n        \"binding_kind\": \"workflow-execute-output\",\n        \"config\": {\n          \"payload_type_id\": \"response-body.v1\"\n        },\n        \"metadata\": {}\n      },\n      {\n        \"binding_id\": \"stop_body\",\n        \"direction\": \"output\",\n        \"template_port_id\": \"stop_body\",\n        \"binding_kind\": \"workflow-execute-output\",\n        \"config\": {\n          \"payload_type_id\": \"response-body.v1\"\n        },\n        \"metadata\": {}\n      }\n    ],\n    \"metadata\": {\n      \"intended_saved_object_key\": \"workflows/projects/{{projectId}}/applications/{{applicationId}}/application.json\",\n      \"example_kind\": \"deployment-control-detection-lifecycle-real-path\",\n      \"uses_existing_deployment_instance\": true,\n      \"deployment_instance_id_placeholder\": \"replace-with-existing-deployment-instance-id\"\n    }\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workflows/projects/{{projectId}}/applications/{{applicationId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workflows",
+                "projects",
+                "{{projectId}}",
+                "applications",
+                "{{applicationId}}"
+              ]
+            },
+            "description": "保存 FlowApplication。请求体与 docs/api/examples/workflows/yolox_deployment_detection_lifecycle_real_path.save-application.request.json 对齐。"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Workflow Runtime",
+      "item": [
+        {
+          "name": "Create Preview Run",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  var payload = pm.response.json();",
+                  "  if (payload.preview_run_id) {",
+                  "    pm.collectionVariables.set('previewRunId', payload.preview_run_id);",
+                  "  }",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-principal-id",
+                "value": "{{principalId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-project-ids",
+                "value": "{{projectId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-scopes",
+                "value": "workflows:read,workflows:write",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"application_ref\": {\n    \"application_id\": \"{{applicationId}}\"\n  },\n  \"input_bindings\": {\n    \"request_image\": {\n      \"object_key\": \"{{requestImageObjectKey}}\"\n    }\n  },\n  \"execution_metadata\": {\n    \"marker\": \"postman-workflow-runtime-preview\",\n    \"scenario\": \"deployment-control-detection-lifecycle-real-path\",\n    \"trigger_source\": \"editor-preview\"\n  },\n  \"timeout_seconds\": 30\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workflows/preview-runs",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workflows",
+                "preview-runs"
+              ]
+            },
+            "description": "创建一次 preview run。请求体与 docs/api/examples/workflows/yolox_deployment_detection_lifecycle_real_path.preview-run.request.json 对齐。"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Preview Run",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-amvision-principal-id",
+                "value": "{{principalId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-project-ids",
+                "value": "{{projectId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-scopes",
+                "value": "workflows:read",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workflows/preview-runs/{{previewRunId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workflows",
+                "preview-runs",
+                "{{previewRunId}}"
+              ]
+            },
+            "description": "读取刚创建的 WorkflowPreviewRun。"
+          },
+          "response": []
+        },
+        {
+          "name": "Create App Runtime",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  var payload = pm.response.json();",
+                  "  if (payload.workflow_runtime_id) {",
+                  "    pm.collectionVariables.set('workflowRuntimeId', payload.workflow_runtime_id);",
+                  "  }",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-principal-id",
+                "value": "{{principalId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-project-ids",
+                "value": "{{projectId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-scopes",
+                "value": "workflows:read,workflows:write",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"application_id\": \"{{applicationId}}\",\n  \"display_name\": \"YOLOX Deployment Detection Lifecycle Runtime\",\n  \"request_timeout_seconds\": 60,\n  \"metadata\": {\n    \"example_kind\": \"deployment-control-detection-lifecycle-real-path\",\n    \"uses_existing_deployment_instance\": true\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workflows/app-runtimes",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workflows",
+                "app-runtimes"
+              ]
+            },
+            "description": "创建一条 WorkflowAppRuntime。请求体与 docs/api/examples/workflows/yolox_deployment_detection_lifecycle_real_path.app-runtime.create.request.json 对齐。"
+          },
+          "response": []
+        },
+        {
+          "name": "List App Runtimes",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-amvision-principal-id",
+                "value": "{{principalId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-project-ids",
+                "value": "{{projectId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-scopes",
+                "value": "workflows:read",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workflows/app-runtimes?project_id={{projectId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workflows",
+                "app-runtimes"
+              ],
+              "query": [
+                {
+                  "key": "project_id",
+                  "value": "{{projectId}}"
+                }
+              ]
+            },
+            "description": "列出当前 Project 下的 WorkflowAppRuntime。"
+          },
+          "response": []
+        },
+        {
+          "name": "Get App Runtime",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-amvision-principal-id",
+                "value": "{{principalId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-project-ids",
+                "value": "{{projectId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-scopes",
+                "value": "workflows:read",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workflows/app-runtimes/{{workflowRuntimeId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workflows",
+                "app-runtimes",
+                "{{workflowRuntimeId}}"
+              ]
+            },
+            "description": "读取当前 WorkflowAppRuntime 持久化记录。"
+          },
+          "response": []
+        },
+        {
+          "name": "Start App Runtime",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-amvision-principal-id",
+                "value": "{{principalId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-project-ids",
+                "value": "{{projectId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-scopes",
+                "value": "workflows:read,workflows:write",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workflows/app-runtimes/{{workflowRuntimeId}}/start",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workflows",
+                "app-runtimes",
+                "{{workflowRuntimeId}}",
+                "start"
+              ]
+            },
+            "description": "启动单实例 runtime worker。"
+          },
+          "response": []
+        },
+        {
+          "name": "Get App Runtime Health",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-amvision-principal-id",
+                "value": "{{principalId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-project-ids",
+                "value": "{{projectId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-scopes",
+                "value": "workflows:read",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workflows/app-runtimes/{{workflowRuntimeId}}/health",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workflows",
+                "app-runtimes",
+                "{{workflowRuntimeId}}",
+                "health"
+              ]
+            },
+            "description": "读取 runtime 当前 worker 健康状态。"
+          },
+          "response": []
+        },
+        {
+          "name": "List App Runtime Instances",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-amvision-principal-id",
+                "value": "{{principalId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-project-ids",
+                "value": "{{projectId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-scopes",
+                "value": "workflows:read",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workflows/app-runtimes/{{workflowRuntimeId}}/instances",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workflows",
+                "app-runtimes",
+                "{{workflowRuntimeId}}",
+                "instances"
+              ]
+            },
+            "description": "读取 runtime 当前可观测的单实例摘要列表。"
+          },
+          "response": []
+        },
+        {
+          "name": "Invoke App Runtime",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  var payload = pm.response.json();",
+                  "  if (payload.workflow_run_id) {",
+                  "    pm.collectionVariables.set('workflowRunId', payload.workflow_run_id);",
+                  "  }",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-principal-id",
+                "value": "{{principalId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-project-ids",
+                "value": "{{projectId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-scopes",
+                "value": "workflows:read,workflows:write",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"input_bindings\": {\n    \"request_image\": {\n      \"object_key\": \"{{requestImageObjectKey}}\"\n    }\n  },\n  \"execution_metadata\": {\n    \"marker\": \"postman-workflow-runtime-invoke\",\n    \"scenario\": \"deployment-control-detection-lifecycle-real-path\",\n    \"trigger_source\": \"sync-api\"\n  },\n  \"timeout_seconds\": 60\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workflows/app-runtimes/{{workflowRuntimeId}}/invoke",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workflows",
+                "app-runtimes",
+                "{{workflowRuntimeId}}",
+                "invoke"
+              ]
+            },
+            "description": "发起一次同步 invoke。请求体与 docs/api/examples/workflows/yolox_deployment_detection_lifecycle_real_path.app-runtime.invoke.request.json 对齐。"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Workflow Run",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-amvision-principal-id",
+                "value": "{{principalId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-project-ids",
+                "value": "{{projectId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-scopes",
+                "value": "workflows:read",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workflows/runs/{{workflowRunId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workflows",
+                "runs",
+                "{{workflowRunId}}"
+              ]
+            },
+            "description": "回查同步 invoke 落下的 WorkflowRun。"
+          },
+          "response": []
+        },
+        {
+          "name": "Restart App Runtime",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-amvision-principal-id",
+                "value": "{{principalId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-project-ids",
+                "value": "{{projectId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-scopes",
+                "value": "workflows:read,workflows:write",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workflows/app-runtimes/{{workflowRuntimeId}}/restart",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workflows",
+                "app-runtimes",
+                "{{workflowRuntimeId}}",
+                "restart"
+              ]
+            },
+            "description": "重启单实例 runtime worker，并重新加载固定 snapshot。"
+          },
+          "response": []
+        },
+        {
+          "name": "Stop App Runtime",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-amvision-principal-id",
+                "value": "{{principalId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-project-ids",
+                "value": "{{projectId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-scopes",
+                "value": "workflows:read,workflows:write",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workflows/app-runtimes/{{workflowRuntimeId}}/stop",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workflows",
+                "app-runtimes",
+                "{{workflowRuntimeId}}",
+                "stop"
+              ]
+            },
+            "description": "停止单实例 runtime worker。"
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}

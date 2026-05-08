@@ -1,0 +1,13 @@
+{
+  "input_bindings": {
+    "request_image": {
+      "object_key": "inputs/source.jpg"
+    }
+  },
+  "execution_metadata": {
+    "marker": "postman-workflow-runtime-invoke",
+    "scenario": "deployment-control-detection-lifecycle-real-path",
+    "trigger_source": "sync-api"
+  },
+  "timeout_seconds": 60
+}

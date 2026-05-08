@@ -40,6 +40,16 @@ def _import_orm_models() -> None:
         model_file_orm,
         model_orm,
         task_orm,
+        workflow_runtime_orm,
     )
 
-    _ = (dataset_export_orm, dataset_import_orm, dataset_orm, deployment_orm, model_file_orm, model_orm, task_orm)
+    _ = (
+        dataset_export_orm,
+        dataset_import_orm,
+        dataset_orm,
+        deployment_orm,
+        model_file_orm,
+        model_orm,
+        task_orm,
+        workflow_runtime_orm,
+    )

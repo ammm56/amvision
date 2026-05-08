@@ -128,6 +128,25 @@ class InvalidRequestError(ServiceError):
         super().__init__(message, code="invalid_request", status_code=400, details=details)
 
 
+class OperationTimeoutError(ServiceError):
+    """表示一次同步操作在给定时限内未完成。"""
+
+    def __init__(
+        self,
+        message: str = "操作执行超时",
+        *,
+        details: Mapping[str, object] | None = None,
+    ) -> None:
+        """初始化操作超时错误。
+
+        参数：
+        - message：错误消息。
+        - details：附加错误细节。
+        """
+
+        super().__init__(message, code="operation_timeout", status_code=504, details=details)
+
+
 class UnsupportedDatasetFormatError(ServiceError):
     """表示当前数据集格式暂不支持。"""
 

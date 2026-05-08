@@ -2,7 +2,7 @@
 
 ## 文档目的
 
-本文档收敛当前主干中训练、转换、部署推理和 workflow execute 四条常用执行链的调用顺序，方便定位入口、任务状态回写点、文件写入点和进程边界。
+本文档收敛当前主干中训练、转换、部署推理和 workflow runtime 四条常用执行链的调用顺序，方便定位入口、任务状态回写点、文件写入点和进程边界。
 
 本文档聚焦当前代码已经落地的顺序关系，不展开字段细节、部署步骤或历史方案。
 
@@ -11,14 +11,15 @@
 - YOLOX training task 提交与执行
 - YOLOX conversion task 提交与执行
 - DeploymentInstance 同步直返推理
-- workflow application execute
+- WorkflowPreviewRun 编辑态试跑
+- WorkflowAppRuntime 同步调用
 
 ## 当前边界
 
 - 训练和转换都先创建 TaskRecord，再写入 LocalFileQueueBackend，由独立 worker 消费。
 - 部署推理顺序图覆盖同步直返接口，不展开异步 inference task 链。
 - 同步 deployment 推理接口不会自动启动 sync 子进程；未启动时会要求先调用 start 或 warmup。
-- workflows execute 的 REST 入口当前复用 backend-service 当前进程运行时，不走 WorkflowApplicationProcessExecutor 子进程执行器。
+- workflow runtime 当前公开接口已经拆成两条路径：preview-runs 走隔离子进程；app-runtimes/{workflow_runtime_id}/invoke 走单实例 worker。
 
 ## 训练链
 
@@ -364,110 +365,102 @@ sequenceDiagram
 
 同步直返推理没有 TaskRecord 回写点，恢复动作主要依赖 deployment 的 `status`、`health`、`reset`、`stop` 和 `start` 接口，而不是任务事件流。
 
-## Workflow Execute 链
+## Workflow Runtime 链
 
-- REST 入口：[backend/service/api/rest/v1/routes/workflows.py](../../backend/service/api/rest/v1/routes/workflows.py)
-- 应用执行器：[backend/service/application/workflows/process_executor.py](../../backend/service/application/workflows/process_executor.py)
-- 图执行器：[backend/service/application/workflows/graph_executor.py](../../backend/service/application/workflows/graph_executor.py)
-- 文件服务：[backend/service/application/workflows/workflow_service.py](../../backend/service/application/workflows/workflow_service.py)
+- preview 控制面：[backend/service/api/rest/v1/routes/workflow_runtime.py](../../backend/service/api/rest/v1/routes/workflow_runtime.py)
+- runtime 服务：[backend/service/application/workflows/runtime_service.py](../../backend/service/application/workflows/runtime_service.py)
+- preview 子进程执行器：[backend/service/application/workflows/snapshot_execution.py](../../backend/service/application/workflows/snapshot_execution.py)
+- runtime worker 管理器：[backend/service/application/workflows/runtime_worker.py](../../backend/service/application/workflows/runtime_worker.py)
 
 ```mermaid
 sequenceDiagram
     autonumber
     actor Client as 调用方
-    participant API as workflows.execute_flow_application
-    participant RuntimeExec as WorkflowApplicationRuntimeExecutor
-    participant WFExec as _execute_workflow_application
-    participant WFJson as LocalWorkflowJsonService
+    participant API as workflow_runtime routes
+    participant RuntimeSvc as WorkflowRuntimeService
     participant Storage as LocalDatasetStorage
-    participant Catalog as NodeCatalogRegistry
-    participant RuntimeReg as WorkflowNodeRuntimeRegistry
-    participant GraphExec as WorkflowGraphExecutor
-    participant NodeHandler as Core / Custom Node Handler
-    participant RTCtx as WorkflowServiceNodeRuntimeContext
+    participant DB as WorkflowRuntimeRepository
+    participant PreviewProc as WorkflowSnapshotProcessExecutor
+    participant WorkerMgr as WorkflowRuntimeWorkerManager
+    participant RuntimeProc as workflow runtime worker process
+    participant SnapshotExec as SnapshotExecutionService
 
-    Client->>API: POST /api/v1/workflows/projects/{project_id}/applications/{application_id}/execute
-    API->>API: 校验 project scope\n补 execution_metadata.created_by
-    Note over API: 当前 REST execute 走当前进程执行器\n不是 WorkflowApplicationProcessExecutor
-    API->>RuntimeExec: execute(request)
-    RuntimeExec->>RuntimeExec: _normalize_execution_request()\n补 workflow_run_id
-    RuntimeExec->>WFExec: _execute_workflow_application(...)
-    WFExec->>WFJson: get_application(project_id, application_id)
-    WFJson->>Storage: read application.json
-    Storage-->>WFJson: FlowApplication
-    WFExec->>WFJson: get_template(project_id, template_id, template_version)
-    WFJson->>Storage: read template.json
-    Storage-->>WFJson: WorkflowGraphTemplate
-    WFExec->>WFExec: input binding_id -> template input_id 映射
-    WFExec->>GraphExec: execute(template, input_values, execution_metadata, runtime_context)
-    GraphExec->>Catalog: 已在启动期提供 node definitions
-    GraphExec->>RuntimeReg: resolve_handler(node_type_id)
-    loop 按拓扑顺序逐节点
-        GraphExec->>GraphExec: 解析模板输入与上游输出
-        GraphExec->>NodeHandler: handler(WorkflowNodeExecutionRequest)
-        opt service node
-            NodeHandler->>RTCtx: 取 queue/session/storage/supervisor
-            RTCtx-->>NodeHandler: service runtime
-        end
-        NodeHandler-->>GraphExec: declared outputs
-        GraphExec->>GraphExec: 记录 node_records / 缓存 node_output_values
+    alt 编辑态 preview run
+        Client->>API: POST /api/v1/workflows/preview-runs
+        API->>RuntimeSvc: create_preview_run(request)
+        RuntimeSvc->>Storage: write application/template snapshot
+        RuntimeSvc->>DB: save WorkflowPreviewRun(state=running)
+        RuntimeSvc->>PreviewProc: execute(snapshot request)
+        PreviewProc->>SnapshotExec: execute(snapshot)
+        SnapshotExec-->>PreviewProc: outputs + template_outputs + node_records
+        PreviewProc-->>RuntimeSvc: execution_result
+        RuntimeSvc->>DB: update WorkflowPreviewRun(state=succeeded|failed|timed_out)
+        RuntimeSvc-->>API: WorkflowPreviewRun
+        API-->>Client: 201 WorkflowPreviewRun
+    else 已发布 runtime sync invoke
+        Client->>API: POST /api/v1/workflows/app-runtimes/{id}/start
+        API->>RuntimeSvc: start_workflow_app_runtime(id)
+        RuntimeSvc->>WorkerMgr: start_runtime(runtime)
+        WorkerMgr->>RuntimeProc: spawn worker process
+        RuntimeProc-->>WorkerMgr: runtime-state(running)
+        RuntimeSvc->>DB: save WorkflowAppRuntime(observed_state=running)
+        Client->>API: POST /api/v1/workflows/app-runtimes/{id}/invoke
+        API->>RuntimeSvc: invoke_workflow_app_runtime(id, request)
+        RuntimeSvc->>DB: save WorkflowRun(state=dispatching)
+        RuntimeSvc->>WorkerMgr: invoke_runtime(...)
+        WorkerMgr->>RuntimeProc: invoke-run
+        RuntimeProc->>SnapshotExec: execute(snapshot)
+        SnapshotExec-->>RuntimeProc: outputs + template_outputs + node_records
+        RuntimeProc-->>WorkerMgr: run-result + worker_state
+        RuntimeSvc->>DB: update WorkflowRun / WorkflowAppRuntime
+        RuntimeSvc-->>API: WorkflowRun
+        API-->>Client: 200 WorkflowRun
     end
-    GraphExec-->>WFExec: template_outputs + node_records
-    WFExec->>WFExec: template output_id -> application output binding_id 映射
-    WFExec-->>RuntimeExec: WorkflowApplicationExecutionResult
-    RuntimeExec-->>API: execution_result
-    API-->>Client: 200 outputs + template_outputs + node_records
 ```
 
-workflow execute 链的关键点是 application 和 template 都从 LocalDatasetStorage 读取，真正的图执行按拓扑顺序在当前 backend-service 进程里完成，service node 再通过 WorkflowServiceNodeRuntimeContext 复用现有 queue、数据库会话、文件存储和 deployment supervisor。
+workflow runtime 链的关键点是编辑态试跑和已发布应用运行已经拆成两条公开路径。preview 通过固定 snapshot 在隔离子进程执行；已发布应用通过单实例 worker 进程执行 start、stop、restart、health、instances 和 sync invoke。
 
-### Workflow Execute 链异常分支
+### Workflow Runtime 链异常分支
 
 ```mermaid
 sequenceDiagram
     autonumber
     actor Client as 调用方
-    participant API as execute_flow_application
-    participant RuntimeExec as WorkflowApplicationRuntimeExecutor
-    participant WFExec as _execute_workflow_application
-    participant WFJson as LocalWorkflowJsonService
-    participant GraphExec as WorkflowGraphExecutor
-    participant RuntimeReg as WorkflowNodeRuntimeRegistry
-    participant NodeHandler as Core / Custom Node Handler
+    participant API as workflow_runtime routes
+    participant RuntimeSvc as WorkflowRuntimeService
+    participant WorkerMgr as WorkflowRuntimeWorkerManager
+    participant DB as WorkflowRuntimeRepository
 
-    Client->>API: POST /api/v1/workflows/projects/{project_id}/applications/{application_id}/execute
-    API->>RuntimeExec: execute(request)
-    RuntimeExec->>WFExec: _execute_workflow_application(...)
-    alt application 或 template 不存在
-        WFExec->>WFJson: get_application / get_template
-        WFJson-->>WFExec: ResourceNotFoundError
-        WFExec-->>API: 404
+    alt preview application 或 template 不存在
+        Client->>API: POST /api/v1/workflows/preview-runs
+        API->>RuntimeSvc: create_preview_run(request)
+        RuntimeSvc-->>API: ResourceNotFoundError
         API-->>Client: 404
-        Note over Client: 先保存或修正 application/template，再重新 execute
-    else input binding 或模板映射失败
-        WFExec->>WFExec: _build_template_input_values(...)
-        WFExec-->>API: InvalidRequestError
-        API-->>Client: 400 invalid_request
-        Note over Client: 修复 binding_id、template input_id 或节点连线后重新 save
-    else handler 缺失或节点执行失败
-        WFExec->>GraphExec: execute(...)
-        GraphExec->>RuntimeReg: resolve_handler(node_type_id)
-        alt handler 未注册
-            RuntimeReg-->>GraphExec: missing handler
-            GraphExec-->>API: ServiceConfigurationError
-            API-->>Client: 500 failed node_type_id
-            Note over Client: 安装或修复 custom node/runtime loader 后重试
-        else 节点执行报错
-            GraphExec->>NodeHandler: handler(request)
-            NodeHandler-->>GraphExec: exception
-            GraphExec-->>API: ServiceConfigurationError(node_id, execution_index)
-            API-->>Client: 500 failed node details
-            Note over Client: 根据 failed node details 修复节点参数、service 依赖或 deployment 状态后重试
-        end
+        Note over Client: 先保存或修正 application/template，再重新创建 preview run
+    else preview 输入映射或节点执行失败
+        API->>RuntimeSvc: create_preview_run(request)
+        RuntimeSvc->>DB: save WorkflowPreviewRun(state=running)
+        RuntimeSvc->>DB: update WorkflowPreviewRun(state=failed|timed_out)
+        API-->>Client: 201 failed/timed_out WorkflowPreviewRun
+        Note over Client: 根据 error_message 和 node_records 修复后重新创建 preview run
+    else runtime 未启动或 worker 已失效
+        Client->>API: POST /api/v1/workflows/app-runtimes/{id}/invoke
+        API->>RuntimeSvc: invoke_workflow_app_runtime(id, request)
+        RuntimeSvc-->>API: InvalidRequestError / ServiceConfigurationError
+        API-->>Client: 400 / 500
+        Note over Client: 先调用 start 或 restart，再重新 invoke
+    else runtime 节点执行失败或同步等待超时
+        API->>RuntimeSvc: invoke_workflow_app_runtime(id, request)
+        RuntimeSvc->>WorkerMgr: invoke_runtime(...)
+        WorkerMgr-->>RuntimeSvc: worker-error / timeout
+        RuntimeSvc->>DB: update WorkflowRun(state=failed|timed_out)
+        RuntimeSvc->>DB: update WorkflowAppRuntime(observed_state=failed)
+        API-->>Client: 200 WorkflowRun(state=failed|timed_out)
+        Note over Client: 读取 run/runtime 结果后，可调用 restart 恢复单实例 worker
     end
 ```
 
-workflow execute 当前没有独立 TaskRecord；失败信息直接通过同步响应返回，恢复动作依赖 template/application JSON 修正、runtime registry 修复或下游 service 状态恢复。
+workflow runtime 当前没有独立 TaskRecord；preview 和 sync invoke 的失败信息通过 WorkflowPreviewRun、WorkflowRun 和 WorkflowAppRuntime 这三类资源稳定表达。
 
 ## 相关文档
 

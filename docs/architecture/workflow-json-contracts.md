@@ -286,13 +286,15 @@ OpenCV 节点不应直接写死在推理 runtime 里，而应通过 custom-node 
 }
 ```
 
-上面两份文件保持 contract 示例角色，继续使用 docs/examples 下的演示路径。面向真实 workflow object key 路径、真实 save/execute 请求体和 Postman 手工测试的独立 JSON 示例，已另外放到下面这些文件：
+上面两份文件保持 contract 示例角色，继续使用 docs/examples 下的演示路径。面向真实 workflow object key 路径、真实 save、preview-run、app-runtime create 和 invoke 请求体，以及 Postman 手工测试的独立 JSON 示例，已另外放到下面这些文件：
 
 - [docs/api/examples/workflows/yolox_deployment_detection_lifecycle_real_path.save-template.request.json](../api/examples/workflows/yolox_deployment_detection_lifecycle_real_path.save-template.request.json)
 - [docs/api/examples/workflows/yolox_deployment_detection_lifecycle_real_path.save-application.request.json](../api/examples/workflows/yolox_deployment_detection_lifecycle_real_path.save-application.request.json)
-- [docs/api/examples/workflows/yolox_deployment_detection_lifecycle_real_path.execute.request.json](../api/examples/workflows/yolox_deployment_detection_lifecycle_real_path.execute.request.json)
+- [docs/api/examples/workflows/yolox_deployment_detection_lifecycle_real_path.preview-run.request.json](../api/examples/workflows/yolox_deployment_detection_lifecycle_real_path.preview-run.request.json)
+- [docs/api/examples/workflows/yolox_deployment_detection_lifecycle_real_path.app-runtime.create.request.json](../api/examples/workflows/yolox_deployment_detection_lifecycle_real_path.app-runtime.create.request.json)
+- [docs/api/examples/workflows/yolox_deployment_detection_lifecycle_real_path.app-runtime.invoke.request.json](../api/examples/workflows/yolox_deployment_detection_lifecycle_real_path.app-runtime.invoke.request.json)
 - [docs/api/workflows.md](../api/workflows.md)
-- [docs/api/postman/workflows.postman_collection.json](../api/postman/workflows.postman_collection.json)
+- [docs/api/postman/workflow-runtime.postman_collection.json](../api/postman/workflow-runtime.postman_collection.json)
 
 ## 当前落地范围
 
@@ -304,7 +306,7 @@ OpenCV 节点不应直接写死在推理 runtime 里，而应通过 custom-node 
 - LocalNodePackLoader、NodePackManifest、CustomNodeCatalogDocument
 - NodeCatalogRegistry 合并 core nodes 与 custom nodes
 - backend-service 的模板 / 应用 validate、save、get API
-- backend-service 的 execute API 当前复用主进程的 workflow runtime registry、queue backend 和 deployment supervisors
+- backend-service 当前已经公开 WorkflowPreviewRun、WorkflowAppRuntime、WorkflowRun 三类 runtime API；编辑态试跑走隔离子进程，已发布应用走单 runtime worker
 - 最小图执行器，当前支持 python-callable 和 worker-task 两类节点
 - node pack entrypoint 到实际 python-callable / worker-task handler 的自动注册
 

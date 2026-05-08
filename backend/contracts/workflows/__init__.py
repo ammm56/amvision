@@ -28,6 +28,16 @@ from backend.contracts.workflows.workflow_graph import (
     validate_node_definition_catalog,
     validate_workflow_graph_template,
 )
+from backend.contracts.workflows.runtime import (
+    WORKFLOW_APP_RUNTIME_INSTANCE_FORMAT,
+    WORKFLOW_APP_RUNTIME_FORMAT,
+    WORKFLOW_PREVIEW_RUN_FORMAT,
+    WORKFLOW_RUN_FORMAT,
+    WorkflowAppRuntimeInstanceContract,
+    WorkflowAppRuntimeContract,
+    WorkflowPreviewRunContract,
+    WorkflowRunContract,
+)
 
 __all__ = [
     "FLOW_APPLICATION_FORMAT",
@@ -41,7 +51,11 @@ __all__ = [
     "NODE_RUNTIME_SERVICE_CALL",
     "NODE_RUNTIME_WORKER_TASK",
     "WORKFLOW_GRAPH_TEMPLATE_FORMAT",
+    "WORKFLOW_APP_RUNTIME_INSTANCE_FORMAT",
+    "WORKFLOW_APP_RUNTIME_FORMAT",
+    "WORKFLOW_PREVIEW_RUN_FORMAT",
     "WORKFLOW_PAYLOAD_CONTRACT_FORMAT",
+    "WORKFLOW_RUN_FORMAT",
     "FlowApplication",
     "FlowApplicationBinding",
     "FlowTemplateReference",
@@ -52,7 +66,11 @@ __all__ = [
     "WorkflowGraphNode",
     "WorkflowGraphOutput",
     "WorkflowGraphTemplate",
+    "WorkflowAppRuntimeInstanceContract",
+    "WorkflowAppRuntimeContract",
+    "WorkflowPreviewRunContract",
     "WorkflowPayloadContract",
+    "WorkflowRunContract",
     "validate_flow_application_bindings",
     "validate_node_definition_catalog",
     "validate_workflow_graph_template",
