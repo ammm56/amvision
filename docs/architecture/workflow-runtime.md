@@ -10,7 +10,7 @@
 
 ## 当前问题
 
-- 当前 REST execute 路由仍在 backend-service 当前进程里执行已保存 FlowApplication。
+- 旧 execute 路由已经退出公开接口面，但部分设计文档仍残留旧口径，需要统一收口到 preview-runs、app-runtimes 和 runs。
 - 编辑态试跑是高频、短时、易出错的执行面，主要诉求是进程独立、快速失败和互不影响。
 - 已保存 FlowApplication 的正式调用更接近长期运行的 runtime 单元，主要诉求是稳定、隔离、健康检查、重启和多应用并存。
 - 训练、转换、验证、导出、异步推理已经通过 worker 和队列隔离，workflow 运行面还没有进入同一层级的独立运行时设计。
@@ -305,7 +305,7 @@ WorkflowRun 表示已发布应用的一次正式调用。
 - workflow runtime 队列与训练、转换、评估、导出、推理队列分开，避免长期 runtime 控制流和重任务执行流互相干扰。
 - 当前阶段不单独拆 PLC、运动控制、传感器或结果上报专用队列；这类副作用先通过 instance 隔离、simulate 节点和 node pack 自身约束控制风险。
 
-### preview execute
+### preview run
 
 - 默认不进入队列。
 - backend-service 直接创建 WorkflowPreviewRun，拉起子进程，同步等待结果或超时。
@@ -484,6 +484,15 @@ workflow runtime 不应把节点能力固定在单一视觉链路上，而应覆
 
 这三类对象都属于 workflow runtime 控制面资源，不进入 WorkflowGraphTemplate 或 FlowApplication 本身。
 
+对应的独立 API 草案文档见：
+
+- [docs/api/workflow-preview-runs.md](../api/workflow-preview-runs.md)
+- [docs/api/workflow-app-runtimes.md](../api/workflow-app-runtimes.md)
+- [docs/api/workflow-runs.md](../api/workflow-runs.md)
+- [docs/api/workflow-execution-policies.md](../api/workflow-execution-policies.md)
+- [docs/api/workflow-persona-profiles.md](../api/workflow-persona-profiles.md)
+- [docs/api/workflow-tool-policies.md](../api/workflow-tool-policies.md)
+
 ### WorkflowExecutionPolicy JSON 草案
 
 ```json
@@ -550,7 +559,9 @@ workflow runtime 不应把节点能力固定在单一视觉链路上，而应覆
 
 - 编辑态和正式运行态 API 分开。
 - runtime 管理 API 和 run 调用 API 分开。
-- 当前 execute 路由先保留兼容入口，不作为正式运行态长期接口。
+- 当前公开执行面已经拆成 WorkflowPreviewRun、WorkflowAppRuntime 和 WorkflowRun，不再保留 execute 兼容入口。
+
+WorkflowPreviewRun、WorkflowAppRuntime、WorkflowRun、WorkflowExecutionPolicy、PersonaProfile 和 ToolPolicy 已经拆成独立 API 草案页，不再和当前 [docs/api/workflows.md](../api/workflows.md) 混写。
 
 ### 执行策略 API
 
@@ -797,12 +808,12 @@ workflow runtime 不应把节点能力固定在单一视觉链路上，而应覆
 
 用途：取消尚未结束的 WorkflowRun，并通知对应 instance 停止当前执行。
 
-## 与现有 execute 路由的关系
+## 与旧 execute 路由的关系
 
-- 当前 POST /api/v1/workflows/projects/{project_id}/applications/{application_id}/execute 可以继续保留，作为过渡期兼容入口。
-- 过渡期建议把它收敛为编辑态试跑语义，而不是长期运行语义。
-- 正式运行态应迁移到 WorkflowAppRuntime 和 WorkflowRun 这组新资源，不继续复用旧 execute 路由。
-- 如果 execute 路由继续保留在编辑器调试场景，建议默认绑定 preview-default policy，并鼓励在联调时直接使用 simulate 节点或 mock 节点。
+- 旧 POST /api/v1/workflows/projects/{project_id}/applications/{application_id}/execute 已经删除，不再作为公开接口。
+- 编辑态试跑当前统一走 WorkflowPreviewRun 资源。
+- 已发布应用的正式调用当前统一走 WorkflowAppRuntime 和 WorkflowRun 资源。
+- 后续 restart、instances、async runs 和 execution policy 也继续挂在 runtime 资源下扩展，不再回到 execute 语义。
 
 ## 与现有任务系统的关系
 
@@ -819,5 +830,5 @@ workflow runtime 不应把节点能力固定在单一视觉链路上，而应覆
 2. 把编辑态试跑切到一请求一子进程。
 3. 新增 WorkflowAppRuntime、WorkflowRun 和 WorkflowAppInstance 三类资源。
 4. 新增独立进程入口 workflow-runtime-worker，先实现 start、stop、health 和单实例运行。
-5. 让已发布应用的正式调用先走 runtime 资源，不再直接复用当前 execute 路由。
+5. 让已发布应用的正式调用走 runtime 资源，并继续在这组资源上增量扩展 restart、instances、async runs 和 execution policy。
 6. 把 PLC 写入、运动控制、结果上报和未来的 LLM tool 调用统一纳入 trace 与审计。
