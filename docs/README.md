@@ -13,6 +13,7 @@
 - [docs/architecture/README.md](architecture/README.md) 汇总架构和模块边界文档
 - [docs/architecture/current-implementation-status.md](architecture/current-implementation-status.md) 汇总当前主干已经落地的整体框架、代码落点和下一步收敛重点
 - [docs/architecture/execution-sequences.md](architecture/execution-sequences.md) 汇总训练、转换、部署推理和 workflow execute 四条关键调用顺序图
+- [docs/architecture/workflow-runtime.md](architecture/workflow-runtime.md) 汇总 workflow 编辑态试跑、已发布应用运行、队列划分、worker 拓扑和 API 草案
 - [docs/api/README.md](api/README.md) 汇总 REST API、WebSocket、ZeroMQ 和公开接口文档
 - [docs/deployment/README.md](deployment/README.md) 汇总开发环境、运行时、打包、安装和部署文档
 - [docs/nodes/README.md](nodes/README.md) 汇总 node pack、custom node 和 runtime hook 专题文档
@@ -45,18 +46,18 @@
 4. [docs/architecture/system-overview.md](architecture/system-overview.md)
 5. [docs/architecture/current-implementation-status.md](architecture/current-implementation-status.md)
 6. [docs/architecture/execution-sequences.md](architecture/execution-sequences.md)
-7. [docs/architecture/project-structure.md](architecture/project-structure.md)
-8. [docs/architecture/backend-service.md](architecture/backend-service.md)
-9. [docs/architecture/task-system.md](architecture/task-system.md)
-10. [docs/architecture/yolox-module-design.md](architecture/yolox-module-design.md)
-11. [docs/architecture/frontend-web-ui.md](architecture/frontend-web-ui.md)
-- [docs/architecture/workflow-json-contracts.md](architecture/workflow-json-contracts.md)
-12. [docs/architecture/plugin-system.md](architecture/plugin-system.md)
-13. [docs/architecture/workflow-json-contracts.md](architecture/workflow-json-contracts.md)
-14. [docs/architecture/data-and-files.md](architecture/data-and-files.md)
-15. [docs/architecture/dataset-import-spec.md](architecture/dataset-import-spec.md)
-16. [docs/architecture/dataset-export-formats.md](architecture/dataset-export-formats.md)
-17. 根据任务继续进入 API、部署、节点扩展或决策文档
+7. [docs/architecture/workflow-runtime.md](architecture/workflow-runtime.md)
+8. [docs/architecture/project-structure.md](architecture/project-structure.md)
+9. [docs/architecture/backend-service.md](architecture/backend-service.md)
+10. [docs/architecture/task-system.md](architecture/task-system.md)
+11. [docs/architecture/yolox-module-design.md](architecture/yolox-module-design.md)
+12. [docs/architecture/frontend-web-ui.md](architecture/frontend-web-ui.md)
+13. [docs/architecture/plugin-system.md](architecture/plugin-system.md)
+14. [docs/architecture/workflow-json-contracts.md](architecture/workflow-json-contracts.md)
+15. [docs/architecture/data-and-files.md](architecture/data-and-files.md)
+16. [docs/architecture/dataset-import-spec.md](architecture/dataset-import-spec.md)
+17. [docs/architecture/dataset-export-formats.md](architecture/dataset-export-formats.md)
+18. 根据任务继续进入 API、部署、节点扩展或决策文档
 
 ## 文档维护建议
 
