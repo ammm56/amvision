@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import json
 from pathlib import Path
 from types import SimpleNamespace
@@ -17,6 +18,7 @@ from backend.contracts.workflows.workflow_graph import (
     WorkflowGraphOutput,
     WorkflowGraphTemplate,
 )
+from backend.nodes import ExecutionImageRegistry, build_memory_image_payload
 from backend.nodes.local_node_pack_loader import LocalNodePackLoader
 from backend.nodes.node_catalog_registry import NodeCatalogRegistry
 from backend.service.application.errors import ServiceConfigurationError
@@ -227,7 +229,9 @@ def test_runtime_registry_loader_registers_core_basic_nodes(
     assert response_payload["status_code"] == 201
     assert response_payload["body"]["type"] == "image-preview"
     assert response_payload["body"]["title"] == "Saved Preview"
-    assert response_payload["body"]["image"]["object_key"] == "workflow/previews/saved-source.png"
+    assert response_payload["body"]["image"]["transport_kind"] == "inline-base64"
+    assert response_payload["body"]["image"]["media_type"] == "image/png"
+    assert response_payload["body"]["image"]["image_base64"]
     assert dataset_storage.resolve("workflow/previews/saved-source.png").is_file()
 
 
@@ -649,6 +653,212 @@ def test_core_yolox_detection_node_auto_starts_sync_process(
 
     assert execution_result.outputs["detections"]["items"][0]["class_name"] == "defect"
     assert fake_supervisor_calls["start_config"].deployment_instance_id == "deployment-instance-1"
+
+
+def test_core_image_base64_decode_node_outputs_memory_image_ref(tmp_path: Path) -> None:
+    """验证 core.io.image-base64-decode 会输出 execution-scoped memory image-ref。"""
+
+    custom_nodes_root_dir = tmp_path / "custom_nodes"
+    node_pack_loader = LocalNodePackLoader(custom_nodes_root_dir)
+    node_pack_loader.refresh()
+    node_catalog_registry = NodeCatalogRegistry(node_pack_loader=node_pack_loader)
+    runtime_registry_loader = WorkflowNodeRuntimeRegistryLoader(
+        node_catalog_registry=node_catalog_registry,
+        node_pack_loader=node_pack_loader,
+    )
+    runtime_registry_loader.refresh()
+
+    registry = ExecutionImageRegistry()
+    source_bytes = build_valid_test_png_bytes()
+    executor = WorkflowGraphExecutor(registry=runtime_registry_loader.get_runtime_registry())
+    template = WorkflowGraphTemplate(
+        template_id="image-base64-decode-workflow",
+        template_version="1.0.0",
+        display_name="Image Base64 Decode Workflow",
+        nodes=(
+            WorkflowGraphNode(node_id="decode", node_type_id="core.io.image-base64-decode"),
+        ),
+        template_inputs=(
+            WorkflowGraphInput(
+                input_id="request_image",
+                display_name="Request Image",
+                payload_type_id="image-base64.v1",
+                target_node_id="decode",
+                target_port="payload",
+            ),
+        ),
+        template_outputs=(
+            WorkflowGraphOutput(
+                output_id="image",
+                display_name="Image",
+                payload_type_id="image-ref.v1",
+                source_node_id="decode",
+                source_port="image",
+            ),
+        ),
+    )
+
+    execution_result = executor.execute(
+        template=template,
+        input_values={
+            "request_image": {
+                "image_base64": base64.b64encode(source_bytes).decode("ascii"),
+            }
+        },
+        execution_metadata={"execution_image_registry": registry},
+    )
+
+    image_payload = execution_result.outputs["image"]
+    assert image_payload["transport_kind"] == "memory"
+    assert image_payload["media_type"] == "image/png"
+    assert isinstance(image_payload["image_handle"], str)
+    assert registry.read_bytes(str(image_payload["image_handle"])) == source_bytes
+
+
+def test_core_yolox_detection_node_accepts_memory_image_payload(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """验证 core.model.yolox-detection 在 memory image-ref 输入下会直接传递图片字节。"""
+
+    custom_nodes_root_dir = tmp_path / "custom_nodes"
+    node_pack_loader = LocalNodePackLoader(custom_nodes_root_dir)
+    node_pack_loader.refresh()
+    node_catalog_registry = NodeCatalogRegistry(node_pack_loader=node_pack_loader)
+    runtime_registry_loader = WorkflowNodeRuntimeRegistryLoader(
+        node_catalog_registry=node_catalog_registry,
+        node_pack_loader=node_pack_loader,
+    )
+    runtime_registry_loader.refresh()
+
+    image_registry = ExecutionImageRegistry()
+    source_bytes = build_test_jpeg_bytes()
+    registered_image = image_registry.register_image_bytes(
+        content=source_bytes,
+        media_type="image/jpeg",
+        width=64,
+        height=64,
+        created_by_node_id="fixture",
+    )
+    fake_supervisor_calls: dict[str, object] = {}
+
+    class _FakeDeploymentService:
+        """返回稳定 process_config 的假 deployment service。"""
+
+        def resolve_process_config(self, deployment_instance_id: str):
+            """返回最小 process_config。"""
+
+            return SimpleNamespace(deployment_instance_id=deployment_instance_id)
+
+    class _FakeSyncSupervisor:
+        """记录同步 deployment 调用的假 supervisor。"""
+
+        def ensure_deployment(self, config) -> None:
+            """记录 ensure 调用。"""
+
+            fake_supervisor_calls["ensure_config"] = config
+
+        def get_status(self, config):
+            """返回 running 状态。"""
+
+            fake_supervisor_calls["status_config"] = config
+            return SimpleNamespace(process_state="running")
+
+    def _fake_run_yolox_inference_task(**kwargs):
+        """返回固定 detection 结果并记录输入参数。"""
+
+        fake_supervisor_calls["inference_kwargs"] = kwargs
+        return YoloXInferenceExecutionResult(
+            instance_id="instance-1",
+            detections=(
+                {
+                    "bbox_xyxy": [4.0, 4.0, 24.0, 24.0],
+                    "score": 0.97,
+                    "class_id": 0,
+                    "class_name": "defect",
+                },
+            ),
+            latency_ms=8.5,
+            image_width=64,
+            image_height=64,
+            preview_image_bytes=None,
+            runtime_session_info={"backend_name": "fake"},
+        )
+
+    monkeypatch.setattr(
+        WorkflowServiceNodeRuntimeContext,
+        "build_deployment_service",
+        lambda self: _FakeDeploymentService(),
+    )
+    monkeypatch.setattr(yolox_detection_node, "run_yolox_inference_task", _fake_run_yolox_inference_task)
+
+    executor = WorkflowGraphExecutor(registry=runtime_registry_loader.get_runtime_registry())
+    runtime_context = WorkflowServiceNodeRuntimeContext(
+        session_factory=object(),
+        dataset_storage=_create_dataset_storage(tmp_path),
+        yolox_sync_deployment_process_supervisor=_FakeSyncSupervisor(),
+    )
+    template = WorkflowGraphTemplate(
+        template_id="yolox-detection-memory-workflow",
+        template_version="1.0.0",
+        display_name="YOLOX Detection Memory Workflow",
+        nodes=(
+            WorkflowGraphNode(node_id="input", node_type_id="core.io.template-input.image"),
+            WorkflowGraphNode(
+                node_id="detect",
+                node_type_id="core.model.yolox-detection",
+                parameters={
+                    "deployment_instance_id": "deployment-instance-1",
+                    "score_threshold": 0.42,
+                },
+            ),
+        ),
+        edges=(
+            WorkflowGraphEdge(
+                edge_id="edge-input-detect",
+                source_node_id="input",
+                source_port="image",
+                target_node_id="detect",
+                target_port="image",
+            ),
+        ),
+        template_inputs=(
+            WorkflowGraphInput(
+                input_id="request_image",
+                display_name="Request Image",
+                payload_type_id="image-ref.v1",
+                target_node_id="input",
+                target_port="payload",
+            ),
+        ),
+        template_outputs=(
+            WorkflowGraphOutput(
+                output_id="detections",
+                display_name="Detections",
+                payload_type_id="detections.v1",
+                source_node_id="detect",
+                source_port="detections",
+            ),
+        ),
+    )
+
+    execution_result = executor.execute(
+        template=template,
+        input_values={
+            "request_image": build_memory_image_payload(
+                image_handle=registered_image.image_handle,
+                media_type="image/jpeg",
+                width=64,
+                height=64,
+            )
+        },
+        execution_metadata={"execution_image_registry": image_registry},
+        runtime_context=runtime_context,
+    )
+
+    assert execution_result.outputs["detections"]["items"][0]["class_name"] == "defect"
+    assert fake_supervisor_calls["inference_kwargs"]["input_uri"] is None
+    assert fake_supervisor_calls["inference_kwargs"]["input_image_bytes"] == source_bytes
 
 
 def test_core_yolox_inference_submit_node_auto_starts_async_process(
@@ -1196,9 +1406,9 @@ def test_repository_opencv_node_pack_executes_filter_nodes(
     response_payload = execution_result.outputs["inspection_response"]
     assert response_payload["status_code"] == 200
     assert response_payload["body"]["type"] == "image-preview"
-    preview_object_key = response_payload["body"]["image"]["object_key"]
-    assert preview_object_key.endswith(".png")
-    assert dataset_storage.resolve(preview_object_key).is_file()
+    assert response_payload["body"]["image"]["transport_kind"] == "inline-base64"
+    assert response_payload["body"]["image"]["media_type"] == "image/png"
+    assert response_payload["body"]["image"]["image_base64"]
     assert [record.node_type_id for record in execution_result.node_records] == [
         "core.io.template-input.image",
         "custom.opencv.gaussian-blur",
@@ -1206,6 +1416,97 @@ def test_repository_opencv_node_pack_executes_filter_nodes(
         "core.io.image-preview",
         "core.output.http-response",
     ]
+
+
+def test_repository_opencv_filter_nodes_accept_memory_image_payload(
+    tmp_path: Path,
+) -> None:
+    """验证 blur 与 threshold 节点链可以直接处理 memory image-ref。"""
+
+    custom_nodes_root_dir = _get_repository_custom_nodes_root()
+    node_pack_loader = LocalNodePackLoader(custom_nodes_root_dir)
+    node_pack_loader.refresh()
+    node_catalog_registry = NodeCatalogRegistry(node_pack_loader=node_pack_loader)
+    runtime_registry_loader = WorkflowNodeRuntimeRegistryLoader(
+        node_catalog_registry=node_catalog_registry,
+        node_pack_loader=node_pack_loader,
+    )
+    image_registry = ExecutionImageRegistry()
+    source_image = image_registry.register_image_bytes(
+        content=build_test_jpeg_bytes(),
+        media_type="image/jpeg",
+        width=64,
+        height=64,
+        created_by_node_id="fixture",
+    )
+
+    runtime_registry_loader.refresh()
+    executor = WorkflowGraphExecutor(registry=runtime_registry_loader.get_runtime_registry())
+    template = WorkflowGraphTemplate(
+        template_id="opencv-filter-memory-pipeline",
+        template_version="1.0.0",
+        display_name="OpenCV Filter Memory Pipeline",
+        nodes=(
+            WorkflowGraphNode(
+                node_id="blur",
+                node_type_id="custom.opencv.gaussian-blur",
+                parameters={"kernel_size": 5, "sigma_x": 1.2},
+            ),
+            WorkflowGraphNode(
+                node_id="threshold",
+                node_type_id="custom.opencv.binary-threshold",
+                parameters={"threshold": 120, "max_value": 255},
+            ),
+        ),
+        edges=(
+            WorkflowGraphEdge(
+                edge_id="edge-blur-threshold",
+                source_node_id="blur",
+                source_port="image",
+                target_node_id="threshold",
+                target_port="image",
+            ),
+        ),
+        template_inputs=(
+            WorkflowGraphInput(
+                input_id="request_image",
+                display_name="Request Image",
+                payload_type_id="image-ref.v1",
+                target_node_id="blur",
+                target_port="image",
+            ),
+        ),
+        template_outputs=(
+            WorkflowGraphOutput(
+                output_id="result_image",
+                display_name="Result Image",
+                payload_type_id="image-ref.v1",
+                source_node_id="threshold",
+                source_port="image",
+            ),
+        ),
+    )
+
+    execution_result = executor.execute(
+        template=template,
+        input_values={
+            "request_image": build_memory_image_payload(
+                image_handle=source_image.image_handle,
+                media_type="image/jpeg",
+                width=64,
+                height=64,
+            )
+        },
+        execution_metadata={
+            "execution_image_registry": image_registry,
+            "workflow_run_id": "opencv-filter-memory",
+        },
+    )
+
+    image_payload = execution_result.outputs["result_image"]
+    assert image_payload["transport_kind"] == "memory"
+    assert image_payload["media_type"] == "image/png"
+    assert image_registry.read_bytes(str(image_payload["image_handle"])).startswith(b"\x89PNG\r\n\x1a\n")
 
 
 def test_repository_opencv_node_pack_executes_draw_detections_node(
@@ -1316,12 +1617,105 @@ def test_repository_opencv_node_pack_executes_draw_detections_node(
     )
 
     response_payload = execution_result.outputs["inspection_response"]
-    preview_object_key = response_payload["body"]["image"]["object_key"]
     assert response_payload["status_code"] == 200
     assert response_payload["body"]["type"] == "image-preview"
-    assert preview_object_key.endswith(".png")
-    assert dataset_storage.resolve(preview_object_key).is_file()
+    assert response_payload["body"]["image"]["transport_kind"] == "inline-base64"
+    assert response_payload["body"]["image"]["media_type"] == "image/png"
+    assert response_payload["body"]["image"]["image_base64"]
     assert any(record.node_type_id == "custom.opencv.draw-detections" for record in execution_result.node_records)
+
+
+def test_repository_opencv_draw_detections_node_defaults_to_memory_output_with_memory_input(
+    tmp_path: Path,
+) -> None:
+    """验证 draw-detections 在 memory 输入下默认返回 memory image-ref。"""
+
+    custom_nodes_root_dir = _get_repository_custom_nodes_root()
+    node_pack_loader = LocalNodePackLoader(custom_nodes_root_dir)
+    node_pack_loader.refresh()
+    node_catalog_registry = NodeCatalogRegistry(node_pack_loader=node_pack_loader)
+    runtime_registry_loader = WorkflowNodeRuntimeRegistryLoader(
+        node_catalog_registry=node_catalog_registry,
+        node_pack_loader=node_pack_loader,
+    )
+    image_registry = ExecutionImageRegistry()
+    source_image = image_registry.register_image_bytes(
+        content=build_test_jpeg_bytes(),
+        media_type="image/jpeg",
+        width=64,
+        height=64,
+        created_by_node_id="fixture",
+    )
+
+    runtime_registry_loader.refresh()
+    executor = WorkflowGraphExecutor(registry=runtime_registry_loader.get_runtime_registry())
+    template = WorkflowGraphTemplate(
+        template_id="opencv-draw-memory-pipeline",
+        template_version="1.0.0",
+        display_name="OpenCV Draw Memory Pipeline",
+        nodes=(
+            WorkflowGraphNode(
+                node_id="draw",
+                node_type_id="custom.opencv.draw-detections",
+                parameters={"line_thickness": 2, "font_scale": 0.5, "draw_scores": True},
+            ),
+        ),
+        template_inputs=(
+            WorkflowGraphInput(
+                input_id="request_image",
+                display_name="Request Image",
+                payload_type_id="image-ref.v1",
+                target_node_id="draw",
+                target_port="image",
+            ),
+            WorkflowGraphInput(
+                input_id="request_detections",
+                display_name="Request Detections",
+                payload_type_id="detections.v1",
+                target_node_id="draw",
+                target_port="detections",
+            ),
+        ),
+        template_outputs=(
+            WorkflowGraphOutput(
+                output_id="rendered_image",
+                display_name="Rendered Image",
+                payload_type_id="image-ref.v1",
+                source_node_id="draw",
+                source_port="image",
+            ),
+        ),
+    )
+
+    execution_result = executor.execute(
+        template=template,
+        input_values={
+            "request_image": build_memory_image_payload(
+                image_handle=source_image.image_handle,
+                media_type="image/jpeg",
+                width=64,
+                height=64,
+            ),
+            "request_detections": {
+                "items": [
+                    {
+                        "bbox_xyxy": [5, 5, 40, 40],
+                        "score": 0.95,
+                        "class_name": "defect",
+                    }
+                ]
+            },
+        },
+        execution_metadata={
+            "execution_image_registry": image_registry,
+            "workflow_run_id": "opencv-draw-memory",
+        },
+    )
+
+    image_payload = execution_result.outputs["rendered_image"]
+    assert image_payload["transport_kind"] == "memory"
+    assert image_payload["media_type"] == "image/png"
+    assert image_registry.read_bytes(str(image_payload["image_handle"])).startswith(b"\x89PNG\r\n\x1a\n")
 
 
 def test_repository_opencv_node_pack_executes_morphology_and_canny_nodes(
@@ -1428,11 +1822,11 @@ def test_repository_opencv_node_pack_executes_morphology_and_canny_nodes(
     )
 
     response_payload = execution_result.outputs["inspection_response"]
-    preview_object_key = response_payload["body"]["image"]["object_key"]
     assert response_payload["status_code"] == 200
     assert response_payload["body"]["type"] == "image-preview"
-    assert preview_object_key.endswith(".png")
-    assert dataset_storage.resolve(preview_object_key).is_file()
+    assert response_payload["body"]["image"]["transport_kind"] == "inline-base64"
+    assert response_payload["body"]["image"]["media_type"] == "image/png"
+    assert response_payload["body"]["image"]["image_base64"]
     assert [record.node_type_id for record in execution_result.node_records] == [
         "core.io.template-input.image",
         "custom.opencv.morphology",
@@ -1440,6 +1834,97 @@ def test_repository_opencv_node_pack_executes_morphology_and_canny_nodes(
         "core.io.image-preview",
         "core.output.http-response",
     ]
+
+
+def test_repository_opencv_morphology_and_canny_nodes_accept_memory_image_payload(
+    tmp_path: Path,
+) -> None:
+    """验证 morphology 与 canny 节点链可以直接处理 memory image-ref。"""
+
+    custom_nodes_root_dir = _get_repository_custom_nodes_root()
+    node_pack_loader = LocalNodePackLoader(custom_nodes_root_dir)
+    node_pack_loader.refresh()
+    node_catalog_registry = NodeCatalogRegistry(node_pack_loader=node_pack_loader)
+    runtime_registry_loader = WorkflowNodeRuntimeRegistryLoader(
+        node_catalog_registry=node_catalog_registry,
+        node_pack_loader=node_pack_loader,
+    )
+    image_registry = ExecutionImageRegistry()
+    source_image = image_registry.register_image_bytes(
+        content=build_test_jpeg_bytes(),
+        media_type="image/jpeg",
+        width=64,
+        height=64,
+        created_by_node_id="fixture",
+    )
+
+    runtime_registry_loader.refresh()
+    executor = WorkflowGraphExecutor(registry=runtime_registry_loader.get_runtime_registry())
+    template = WorkflowGraphTemplate(
+        template_id="opencv-edge-memory-pipeline",
+        template_version="1.0.0",
+        display_name="OpenCV Edge Memory Pipeline",
+        nodes=(
+            WorkflowGraphNode(
+                node_id="morphology",
+                node_type_id="custom.opencv.morphology",
+                parameters={"operation": "close", "shape": "rect", "kernel_size": 3, "iterations": 1},
+            ),
+            WorkflowGraphNode(
+                node_id="canny",
+                node_type_id="custom.opencv.canny",
+                parameters={"threshold1": 20, "threshold2": 80, "aperture_size": 3, "l2_gradient": False},
+            ),
+        ),
+        edges=(
+            WorkflowGraphEdge(
+                edge_id="edge-morphology-canny",
+                source_node_id="morphology",
+                source_port="image",
+                target_node_id="canny",
+                target_port="image",
+            ),
+        ),
+        template_inputs=(
+            WorkflowGraphInput(
+                input_id="request_image",
+                display_name="Request Image",
+                payload_type_id="image-ref.v1",
+                target_node_id="morphology",
+                target_port="image",
+            ),
+        ),
+        template_outputs=(
+            WorkflowGraphOutput(
+                output_id="result_image",
+                display_name="Result Image",
+                payload_type_id="image-ref.v1",
+                source_node_id="canny",
+                source_port="image",
+            ),
+        ),
+    )
+
+    execution_result = executor.execute(
+        template=template,
+        input_values={
+            "request_image": build_memory_image_payload(
+                image_handle=source_image.image_handle,
+                media_type="image/jpeg",
+                width=64,
+                height=64,
+            )
+        },
+        execution_metadata={
+            "execution_image_registry": image_registry,
+            "workflow_run_id": "opencv-edge-memory",
+        },
+    )
+
+    image_payload = execution_result.outputs["result_image"]
+    assert image_payload["transport_kind"] == "memory"
+    assert image_payload["media_type"] == "image/png"
+    assert image_registry.read_bytes(str(image_payload["image_handle"])).startswith(b"\x89PNG\r\n\x1a\n")
 
 
 def test_repository_opencv_node_pack_executes_crop_export_node(
@@ -1555,6 +2040,116 @@ def test_repository_opencv_node_pack_executes_crop_export_node(
         assert crop_item["crop_index"] >= 1
 
 
+def test_repository_opencv_crop_export_node_defaults_to_memory_crops_with_memory_input(
+    tmp_path: Path,
+) -> None:
+    """验证 crop-export 在 memory 输入且未显式 output_dir 时默认返回 memory crops。"""
+
+    custom_nodes_root_dir = _get_repository_custom_nodes_root()
+    node_pack_loader = LocalNodePackLoader(custom_nodes_root_dir)
+    node_pack_loader.refresh()
+    node_catalog_registry = NodeCatalogRegistry(node_pack_loader=node_pack_loader)
+    runtime_registry_loader = WorkflowNodeRuntimeRegistryLoader(
+        node_catalog_registry=node_catalog_registry,
+        node_pack_loader=node_pack_loader,
+    )
+    image_registry = ExecutionImageRegistry()
+    source_image = image_registry.register_image_bytes(
+        content=build_test_jpeg_bytes(),
+        media_type="image/jpeg",
+        width=64,
+        height=64,
+        created_by_node_id="fixture",
+    )
+
+    runtime_registry_loader.refresh()
+    executor = WorkflowGraphExecutor(registry=runtime_registry_loader.get_runtime_registry())
+    template = WorkflowGraphTemplate(
+        template_id="opencv-crop-memory-pipeline",
+        template_version="1.0.0",
+        display_name="OpenCV Crop Memory Pipeline",
+        nodes=(
+            WorkflowGraphNode(
+                node_id="crop",
+                node_type_id="custom.opencv.crop-export",
+                parameters={"box_padding": 2, "max_crops": 2},
+            ),
+        ),
+        template_inputs=(
+            WorkflowGraphInput(
+                input_id="request_image",
+                display_name="Request Image",
+                payload_type_id="image-ref.v1",
+                target_node_id="crop",
+                target_port="image",
+            ),
+            WorkflowGraphInput(
+                input_id="request_detections",
+                display_name="Request Detections",
+                payload_type_id="detections.v1",
+                target_node_id="crop",
+                target_port="detections",
+            ),
+        ),
+        template_outputs=(
+            WorkflowGraphOutput(
+                output_id="exported_crops",
+                display_name="Exported Crops",
+                payload_type_id="image-refs.v1",
+                source_node_id="crop",
+                source_port="crops",
+            ),
+        ),
+    )
+
+    execution_result = executor.execute(
+        template=template,
+        input_values={
+            "request_image": build_memory_image_payload(
+                image_handle=source_image.image_handle,
+                media_type="image/jpeg",
+                width=64,
+                height=64,
+            ),
+            "request_detections": {
+                "items": [
+                    {
+                        "bbox_xyxy": [4, 4, 28, 28],
+                        "score": 0.9,
+                        "class_name": "part-a",
+                    },
+                    {
+                        "bbox_xyxy": [20, 20, 52, 52],
+                        "score": 0.8,
+                        "class_name": "part-b",
+                    },
+                    {
+                        "bbox_xyxy": [30, 30, 40, 40],
+                        "score": 0.7,
+                        "class_name": "part-c",
+                    },
+                ]
+            },
+        },
+        execution_metadata={
+            "execution_image_registry": image_registry,
+            "workflow_run_id": "opencv-crop-memory",
+        },
+    )
+
+    crops_payload = execution_result.outputs["exported_crops"]
+    assert crops_payload["count"] == 2
+    assert crops_payload["source_image"]["transport_kind"] == "memory"
+    assert "source_object_key" not in crops_payload
+    assert len(crops_payload["items"]) == 2
+    for crop_item in crops_payload["items"]:
+        assert crop_item["transport_kind"] == "memory"
+        assert crop_item["media_type"] == "image/png"
+        assert isinstance(crop_item["bbox_xyxy"], list)
+        assert crop_item["crop_index"] >= 1
+        assert image_registry.read_bytes(str(crop_item["image_handle"])).startswith(b"\x89PNG\r\n\x1a\n")
+
+
 def test_repository_opencv_node_pack_executes_contour_and_measure_nodes(
     tmp_path: Path,
 ) -> None:
@@ -1652,6 +2247,99 @@ def test_repository_opencv_node_pack_executes_contour_and_measure_nodes(
         "custom.opencv.contour",
         "custom.opencv.measure",
     ]
+
+
+def test_repository_opencv_contour_and_measure_nodes_accept_memory_image_payload(
+    tmp_path: Path,
+) -> None:
+    """验证 contour 与 measure 节点链在 memory 输入下会保留 source_image。"""
+
+    custom_nodes_root_dir = _get_repository_custom_nodes_root()
+    node_pack_loader = LocalNodePackLoader(custom_nodes_root_dir)
+    node_pack_loader.refresh()
+    node_catalog_registry = NodeCatalogRegistry(node_pack_loader=node_pack_loader)
+    runtime_registry_loader = WorkflowNodeRuntimeRegistryLoader(
+        node_catalog_registry=node_catalog_registry,
+        node_pack_loader=node_pack_loader,
+    )
+    image_registry = ExecutionImageRegistry()
+    source_image = image_registry.register_image_bytes(
+        content=_build_contour_test_png_bytes(),
+        media_type="image/png",
+        width=96,
+        height=96,
+        created_by_node_id="fixture",
+    )
+
+    runtime_registry_loader.refresh()
+    executor = WorkflowGraphExecutor(registry=runtime_registry_loader.get_runtime_registry())
+    template = WorkflowGraphTemplate(
+        template_id="opencv-measure-memory-pipeline",
+        template_version="1.0.0",
+        display_name="OpenCV Measure Memory Pipeline",
+        nodes=(
+            WorkflowGraphNode(
+                node_id="contour",
+                node_type_id="custom.opencv.contour",
+                parameters={"threshold": 127, "min_area": 20, "retrieval_mode": "external"},
+            ),
+            WorkflowGraphNode(
+                node_id="measure",
+                node_type_id="custom.opencv.measure",
+                parameters={"sort_by": "area", "descending": True},
+            ),
+        ),
+        edges=(
+            WorkflowGraphEdge(
+                edge_id="edge-contour-measure",
+                source_node_id="contour",
+                source_port="contours",
+                target_node_id="measure",
+                target_port="contours",
+            ),
+        ),
+        template_inputs=(
+            WorkflowGraphInput(
+                input_id="request_image",
+                display_name="Request Image",
+                payload_type_id="image-ref.v1",
+                target_node_id="contour",
+                target_port="image",
+            ),
+        ),
+        template_outputs=(
+            WorkflowGraphOutput(
+                output_id="measurement_result",
+                display_name="Measurement Result",
+                payload_type_id="measurements.v1",
+                source_node_id="measure",
+                source_port="measurements",
+            ),
+        ),
+    )
+
+    execution_result = executor.execute(
+        template=template,
+        input_values={
+            "request_image": build_memory_image_payload(
+                image_handle=source_image.image_handle,
+                media_type="image/png",
+                width=96,
+                height=96,
+            )
+        },
+        execution_metadata={
+            "execution_image_registry": image_registry,
+            "workflow_run_id": "opencv-measure-memory",
+        },
+    )
+
+    measurements_payload = execution_result.outputs["measurement_result"]
+    assert measurements_payload["count"] == 2
+    assert measurements_payload["summary"]["total_area"] > 0
+    assert measurements_payload["source_image"]["transport_kind"] == "memory"
+    assert measurements_payload["source_image"]["image_handle"] == source_image.image_handle
+    assert "source_object_key" not in measurements_payload
 
 
 def test_repository_opencv_node_pack_executes_gallery_preview_node(
@@ -1776,8 +2464,9 @@ def test_repository_opencv_node_pack_executes_gallery_preview_node(
     assert response_payload["body"]["title"] == "Crop Gallery"
     assert response_payload["body"]["count"] == 2
     assert response_payload["body"]["total_count"] == 2
-    assert response_payload["body"]["items"][0]["image"]["object_key"].startswith("workflow/gallery/")
-    assert dataset_storage.resolve(response_payload["body"]["items"][0]["image"]["object_key"]).is_file()
+    assert response_payload["body"]["items"][0]["image"]["transport_kind"] == "inline-base64"
+    assert response_payload["body"]["items"][0]["image"]["media_type"] == "image/png"
+    assert response_payload["body"]["items"][0]["image"]["image_base64"]
 
 
 def _create_executable_node_pack_fixture(tmp_path: Path) -> Path:

@@ -24,6 +24,7 @@ from backend.service.application.workflows.graph_executor import (
     WorkflowNodeExecutionRecord,
     WorkflowNodeRuntimeRegistry,
 )
+from backend.service.application.workflows.runtime_payload_sanitizer import serialize_node_execution_record
 from backend.service.application.workflows.runtime_registry_loader import (
     WorkflowNodeRuntimeRegistryLoader,
 )
@@ -406,6 +407,7 @@ def _deserialize_execution_result(message: object) -> WorkflowApplicationExecuti
             node_id=_require_payload_str(item, "node_id"),
             node_type_id=_require_payload_str(item, "node_type_id"),
             runtime_kind=_require_payload_str(item, "runtime_kind"),
+            inputs=_require_payload_dict(item, "inputs"),
             outputs=_require_payload_dict(item, "outputs"),
         )
         for item in node_records_payload
@@ -425,12 +427,7 @@ def _deserialize_execution_result(message: object) -> WorkflowApplicationExecuti
 def _serialize_node_record(record: WorkflowNodeExecutionRecord) -> dict[str, object]:
     """把节点执行记录转换为可跨进程序列化的字典。"""
 
-    return {
-        "node_id": record.node_id,
-        "node_type_id": record.node_type_id,
-        "runtime_kind": record.runtime_kind,
-        "outputs": dict(record.outputs),
-    }
+    return serialize_node_execution_record(record)
 
 
 def _require_payload_str(payload: object, field_name: str) -> str:

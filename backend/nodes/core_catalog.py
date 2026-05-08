@@ -20,18 +20,55 @@ def get_core_workflow_payload_contracts() -> tuple[WorkflowPayloadContract, ...]
         WorkflowPayloadContract(
             payload_type_id="image-ref.v1",
             display_name="Image Reference",
-            transport_kind="artifact-ref",
+            transport_kind="hybrid",
             json_schema={
                 "type": "object",
                 "properties": {
+                    "transport_kind": {
+                        "type": "string",
+                        "enum": ["memory", "storage"],
+                    },
                     "object_key": {"type": "string"},
+                    "image_handle": {"type": "string"},
                     "width": {"type": "integer"},
                     "height": {"type": "integer"},
                     "media_type": {"type": "string"},
                 },
-                "required": ["object_key"],
+                "required": ["transport_kind", "media_type"],
+                "oneOf": [
+                    {
+                        "properties": {
+                            "transport_kind": {"const": "storage"},
+                        },
+                        "required": ["object_key"],
+                    },
+                    {
+                        "properties": {
+                            "transport_kind": {"const": "memory"},
+                        },
+                        "required": ["image_handle"],
+                    },
+                ],
             },
             artifact_kinds=("image",),
+        ),
+        WorkflowPayloadContract(
+            payload_type_id="image-base64.v1",
+            display_name="Image Base64 Input",
+            transport_kind="inline-json",
+            json_schema={
+                "type": "object",
+                "properties": {
+                    "image_base64": {
+                        "type": "string",
+                        "minLength": 1,
+                    },
+                    "media_type": {"type": "string"},
+                    "width": {"type": "integer"},
+                    "height": {"type": "integer"},
+                },
+                "required": ["image_base64"],
+            },
         ),
         WorkflowPayloadContract(
             payload_type_id="image-refs.v1",
@@ -45,17 +82,65 @@ def get_core_workflow_payload_contracts() -> tuple[WorkflowPayloadContract, ...]
                         "items": {
                             "type": "object",
                             "properties": {
+                                "transport_kind": {
+                                    "type": "string",
+                                    "enum": ["memory", "storage"],
+                                },
                                 "object_key": {"type": "string"},
+                                "image_handle": {"type": "string"},
                                 "width": {"type": "integer"},
                                 "height": {"type": "integer"},
                                 "media_type": {"type": "string"},
                                 "bbox_xyxy": {"type": "array"},
                                 "crop_index": {"type": "integer"},
                             },
-                            "required": ["object_key"],
+                            "required": ["transport_kind", "media_type"],
+                            "oneOf": [
+                                {
+                                    "properties": {
+                                        "transport_kind": {"const": "storage"},
+                                    },
+                                    "required": ["object_key"],
+                                },
+                                {
+                                    "properties": {
+                                        "transport_kind": {"const": "memory"},
+                                    },
+                                    "required": ["image_handle"],
+                                },
+                            ],
                         },
                     },
                     "count": {"type": "integer"},
+                    "source_image": {
+                        "type": "object",
+                        "properties": {
+                            "transport_kind": {
+                                "type": "string",
+                                "enum": ["memory", "storage"],
+                            },
+                            "object_key": {"type": "string"},
+                            "image_handle": {"type": "string"},
+                            "width": {"type": "integer"},
+                            "height": {"type": "integer"},
+                            "media_type": {"type": "string"},
+                        },
+                        "required": ["transport_kind", "media_type"],
+                        "oneOf": [
+                            {
+                                "properties": {
+                                    "transport_kind": {"const": "storage"},
+                                },
+                                "required": ["object_key"],
+                            },
+                            {
+                                "properties": {
+                                    "transport_kind": {"const": "memory"},
+                                },
+                                "required": ["image_handle"],
+                            },
+                        ],
+                    },
                     "source_object_key": {"type": "string"},
                 },
                 "required": ["items"],

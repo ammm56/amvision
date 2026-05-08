@@ -19,6 +19,7 @@
 - 每次 create 请求都会先固定 application snapshot 和 template snapshot，再在独立子进程里执行。
 - preview run 是短期调试资源，不进入长期 runtime worker 的实例管理。
 - 第一阶段只支持同步等待结果，不公开 async preview、events 和 cancel。
+- WorkflowPreviewRun 返回的是持久化记录视图；如果节点图里出现 inline base64 图片或 memory image-ref，资源返回会自动脱敏，不直接回显原始图片内容或 image_handle。
 
 ## 接口入口
 
@@ -64,12 +65,17 @@
 | finished_at | 子进程结束时间，可为空 |
 | created_by | 创建主体 id，可为空 |
 | timeout_seconds | 本次同步等待超时秒数 |
-| outputs | 按 application output binding_id 组织的输出 |
-| template_outputs | 按 template output id 组织的底层输出 |
-| node_records | 节点执行记录列表 |
+| outputs | 按 application output binding_id 组织的输出；inline base64 图片会改写为 redacted 标记 |
+| template_outputs | 按 template output id 组织的底层输出；inline base64 图片会改写为 redacted 标记 |
+| node_records | 节点执行记录列表；当前包含 inputs 和 outputs 的脱敏快照 |
 | error_message | 失败或超时时的摘要信息，可为空 |
 | retention_until | 建议清理时间，可为空 |
 | metadata | 调用附加元数据；接口层会补写 created_by；当绑定 execution policy 时还会补写 metadata.execution_policy 摘要 |
+
+补充说明：
+
+- 对 image_base64、preview_image_base64 一类大字段，记录资源会返回对应的 _redacted 标记，不保留原始 base64 文本。
+- 对 memory image-ref，记录资源会保留 transport_kind、media_type、width、height 等摘要字段，但不会返回 image_handle。
 
 ## POST /api/v1/workflows/preview-runs
 

@@ -2,18 +2,18 @@
 
 from __future__ import annotations
 
-from backend.nodes.runtime_support import resolve_image_input, write_image_bytes
 from backend.service.application.errors import ServiceConfigurationError
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 from custom_nodes.opencv_basic_nodes.backend.support import (
+    build_output_image_payload,
     build_detection_label,
     iter_detection_items,
+    load_image_matrix,
     normalize_bbox,
     normalize_optional_object_key,
     require_non_negative_float,
     require_opencv_imports,
     require_positive_int,
-    require_dataset_path,
 )
 
 
@@ -24,13 +24,7 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
     """把 detection 结果绘制到图片上，并输出新的图片引用。"""
 
     cv2_module, _ = require_opencv_imports()
-    _, image_payload, image_object_key = resolve_image_input(request)
-    image_matrix = cv2_module.imread(str(require_dataset_path(request, image_object_key)))
-    if image_matrix is None:
-        raise ServiceConfigurationError(
-            "OpenCV 无法读取输入图片",
-            details={"node_id": request.node_id, "object_key": image_object_key},
-        )
+    image_payload, _, image_matrix = load_image_matrix(request)
 
     line_thickness = require_positive_int(request.parameters.get("line_thickness", 2), field_name="line_thickness")
     font_scale = require_non_negative_float(request.parameters.get("font_scale", 0.5), field_name="font_scale")
@@ -57,7 +51,7 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
             "OpenCV 绘制 detection 后无法编码输出图片",
             details={"node_id": request.node_id},
         )
-    output_payload = write_image_bytes(
+    output_payload = build_output_image_payload(
         request,
         source_payload=image_payload,
         content=encoded_image.tobytes(),

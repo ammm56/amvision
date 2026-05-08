@@ -17,7 +17,7 @@ from backend.nodes.core_nodes._service_node_support import (
     require_str_parameter,
     require_workflow_service_node_runtime,
 )
-from backend.nodes.runtime_support import resolve_image_input
+from backend.nodes.runtime_support import IMAGE_TRANSPORT_STORAGE, load_image_bytes, resolve_image_reference
 from backend.service.application.models.yolox_inference_task_service import run_yolox_inference_task
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 
@@ -41,11 +41,16 @@ def _yolox_detection_handler(request: WorkflowNodeExecutionRequest) -> dict[str,
         runtime_mode="sync",
         auto_start_process=True if auto_start_process is None else auto_start_process,
     )
-    _, _, object_key = resolve_image_input(request)
+    resolved_image = resolve_image_reference(request)
+    input_uri = resolved_image.object_key if resolved_image.transport_kind == IMAGE_TRANSPORT_STORAGE else None
+    input_image_bytes = None
+    if resolved_image.transport_kind != IMAGE_TRANSPORT_STORAGE:
+        _, input_image_bytes = load_image_bytes(request)
     execution_result = run_yolox_inference_task(
         deployment_process_supervisor=deployment_process_supervisor,
         process_config=process_config,
-        input_uri=object_key,
+        input_uri=input_uri,
+        input_image_bytes=input_image_bytes,
         score_threshold=get_optional_float_parameter(request, "score_threshold")
         or _DEFAULT_INFERENCE_SCORE_THRESHOLD,
         save_result_image=get_optional_bool_parameter(request, "save_result_image")

@@ -20,6 +20,7 @@
 - WorkflowRun 同时承接 sync invoke 和 async run 两种调用方式。
 - invoke 或 runs 请求都会先写入 WorkflowRun，再推进到终态。
 - WorkflowRun 与 WorkflowPreviewRun 分开建模：前者面向已发布 runtime 的正式调用，后者面向编辑器里的快速试跑。
+- WorkflowRun 返回的是持久化记录视图；如果输入或输出里出现 inline base64 图片或 memory image-ref，资源返回会自动脱敏，不直接回显原始图片内容或 image_handle。
 
 ## Sync / Async 边界说明
 
@@ -85,12 +86,17 @@
 | created_by | 调用主体 id，可为空 |
 | requested_timeout_seconds | 本次调用的超时秒数 |
 | assigned_process_id | 执行该 run 的 worker 进程 id，可为空 |
-| input_payload | 本次调用的输入 payload |
-| outputs | 按 application output binding_id 组织的输出 |
-| template_outputs | 按 template output id 组织的底层输出 |
-| node_records | 节点执行记录列表 |
+| input_payload | 本次调用的输入 payload；inline base64 图片会改写为 redacted 标记 |
+| outputs | 按 application output binding_id 组织的输出；inline base64 图片会改写为 redacted 标记 |
+| template_outputs | 按 template output id 组织的底层输出；inline base64 图片会改写为 redacted 标记 |
+| node_records | 节点执行记录列表；当前包含 inputs 和 outputs 的脱敏快照 |
 | error_message | 失败或超时时的摘要信息，可为空 |
 | metadata | 调用附加元数据；当 runtime 绑定 execution policy 时会补充 metadata.execution_policy；失败时会补充 error_details，取消时会补充 cancel_requested_at 和 cancelled_by |
+
+补充说明：
+
+- 对 image_base64、preview_image_base64 一类大字段，记录资源会返回对应的 _redacted 标记，不保留原始 base64 文本。
+- 对 memory image-ref，记录资源会保留 transport_kind、media_type、width、height 等摘要字段，但不会返回 image_handle。
 
 ## POST /api/v1/workflows/app-runtimes/{workflow_runtime_id}/runs
 

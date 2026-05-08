@@ -29,6 +29,16 @@
       "max_items": {
         "type": "integer",
         "minimum": 1
+      },
+      "response_transport_mode": {
+        "type": "string",
+        "enum": [
+          "inline-base64",
+          "storage-ref"
+        ]
+      },
+      "output_dir": {
+        "type": "string"
       }
     }
   },

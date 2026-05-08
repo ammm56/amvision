@@ -13,6 +13,7 @@ from backend.contracts.workflows.workflow_graph import (
     validate_workflow_graph_template,
 )
 from backend.service.application.errors import InvalidRequestError, ServiceConfigurationError, ServiceError
+from backend.service.application.workflows.runtime_payload_sanitizer import sanitize_runtime_mapping
 
 
 @dataclass(frozen=True)
@@ -44,12 +45,14 @@ class WorkflowNodeExecutionRecord:
     - node_id：当前节点实例 id。
     - node_type_id：当前节点类型 id。
     - runtime_kind：节点运行方式。
+    - inputs：当前节点输入的脱敏快照。
     - outputs：当前节点输出。
     """
 
     node_id: str
     node_type_id: str
     runtime_kind: str
+    inputs: dict[str, object] = field(default_factory=dict)
     outputs: dict[str, object] = field(default_factory=dict)
 
 
@@ -269,7 +272,8 @@ class WorkflowGraphExecutor:
                     node_id=node_id,
                     node_type_id=node_definition.node_type_id,
                     runtime_kind=node_definition.runtime_kind,
-                    outputs=raw_outputs,
+                    inputs=sanitize_runtime_mapping(resolved_inputs),
+                    outputs=sanitize_runtime_mapping(raw_outputs),
                 )
             )
 

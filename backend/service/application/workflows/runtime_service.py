@@ -21,6 +21,10 @@ from backend.service.application.workflows.snapshot_execution import (
     WorkflowSnapshotExecutionRequest,
     WorkflowSnapshotProcessExecutor,
 )
+from backend.service.application.workflows.runtime_payload_sanitizer import (
+    sanitize_runtime_mapping,
+    serialize_node_execution_record,
+)
 from backend.service.application.workflows.workflow_service import LocalWorkflowJsonService
 from backend.service.domain.workflows.workflow_runtime_records import (
     WorkflowAppRuntime,
@@ -266,8 +270,8 @@ class WorkflowRuntimeService:
                 preview_run,
                 state="succeeded",
                 finished_at=_now_isoformat(),
-                outputs=dict(execution_result.outputs),
-                template_outputs=dict(execution_result.template_outputs),
+                outputs=sanitize_runtime_mapping(execution_result.outputs),
+                template_outputs=sanitize_runtime_mapping(execution_result.template_outputs),
                 node_records=_serialize_node_records(
                     execution_result.node_records,
                     retain_node_records_enabled=(
@@ -571,7 +575,7 @@ class WorkflowRuntimeService:
                 execution_policy=execution_policy,
                 field_name="timeout_seconds",
             ),
-            input_payload=dict(normalized_request.input_bindings or {}),
+            input_payload=sanitize_runtime_mapping(normalized_request.input_bindings or {}),
             metadata=metadata,
         )
         with self._open_unit_of_work() as unit_of_work:
@@ -643,7 +647,7 @@ class WorkflowRuntimeService:
                 execution_policy=execution_policy,
                 field_name="timeout_seconds",
             ),
-            input_payload=dict(normalized_request.input_bindings or {}),
+            input_payload=sanitize_runtime_mapping(normalized_request.input_bindings or {}),
             metadata=execution_metadata,
         )
         with self._open_unit_of_work() as unit_of_work:
@@ -813,11 +817,14 @@ class WorkflowRuntimeService:
             started_at=workflow_run.started_at or _now_isoformat(),
             finished_at=_now_isoformat(),
             assigned_process_id=worker_result.worker_state.process_id,
-            outputs=dict(worker_result.outputs),
-            template_outputs=dict(worker_result.template_outputs),
-            node_records=tuple(worker_result.node_records)
-            if execution_policy is None or execution_policy.retain_node_records_enabled
-            else (),
+            outputs=sanitize_runtime_mapping(worker_result.outputs),
+            template_outputs=sanitize_runtime_mapping(worker_result.template_outputs),
+            node_records=_serialize_node_records(
+                tuple(worker_result.node_records),
+                retain_node_records_enabled=(
+                    True if execution_policy is None else execution_policy.retain_node_records_enabled
+                ),
+            ),
             error_message=worker_result.error_message,
             metadata=metadata,
         )
@@ -1256,14 +1263,7 @@ def _serialize_node_records(
 
     serialized: list[dict[str, object]] = []
     for item in node_records:
-        serialized.append(
-            {
-                "node_id": getattr(item, "node_id", ""),
-                "node_type_id": getattr(item, "node_type_id", ""),
-                "runtime_kind": getattr(item, "runtime_kind", ""),
-                "outputs": dict(getattr(item, "outputs", {}) or {}),
-            }
-        )
+        serialized.append(serialize_node_execution_record(item))
     return tuple(serialized)
 
 

@@ -2,19 +2,19 @@
 
 from __future__ import annotations
 
-from backend.nodes.runtime_support import resolve_image_input, write_image_bytes
 from backend.service.application.errors import ServiceConfigurationError
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 from custom_nodes.opencv_basic_nodes.backend.support import (
+    build_output_image_payload,
     build_crop_object_key,
     clip_bbox,
     iter_detection_items,
+    load_image_matrix,
     normalize_bbox,
     normalize_optional_output_dir,
     require_non_negative_int,
     require_opencv_imports,
     require_positive_int,
-    require_dataset_path,
 )
 
 
@@ -25,13 +25,7 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
     """根据 detection bbox 导出裁剪图集合。"""
 
     cv2_module, _ = require_opencv_imports()
-    _, image_payload, image_object_key = resolve_image_input(request)
-    image_matrix = cv2_module.imread(str(require_dataset_path(request, image_object_key)))
-    if image_matrix is None:
-        raise ServiceConfigurationError(
-            "OpenCV 无法读取输入图片",
-            details={"node_id": request.node_id, "object_key": image_object_key},
-        )
+    image_payload, image_object_key, image_matrix = load_image_matrix(request)
 
     image_height, image_width = image_matrix.shape[:2]
     box_padding = require_non_negative_int(request.parameters.get("box_padding", 0), field_name="box_padding")
@@ -64,13 +58,17 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
                 "OpenCV crop export 后无法编码输出图片",
                 details={"node_id": request.node_id, "detection_index": detection_index},
             )
-        crop_object_key = build_crop_object_key(
-            request,
-            source_object_key=image_object_key,
-            output_dir=output_dir,
-            detection_index=detection_index,
+        crop_object_key = (
+            build_crop_object_key(
+                request,
+                source_object_key=image_object_key,
+                output_dir=output_dir,
+                detection_index=detection_index,
+            )
+            if output_dir is not None
+            else None
         )
-        crop_payload = write_image_bytes(
+        crop_payload = build_output_image_payload(
             request,
             source_payload=image_payload,
             content=encoded_image.tobytes(),
@@ -88,6 +86,7 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
         "crops": {
             "items": exported_crops,
             "count": len(exported_crops),
-            "source_object_key": image_object_key,
+            "source_image": dict(image_payload),
+            **({"source_object_key": image_object_key} if image_object_key is not None else {}),
         }
     }

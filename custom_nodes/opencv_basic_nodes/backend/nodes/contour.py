@@ -2,13 +2,11 @@
 
 from __future__ import annotations
 
-from backend.nodes.runtime_support import resolve_image_input
-from backend.service.application.errors import ServiceConfigurationError
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 from custom_nodes.opencv_basic_nodes.backend.support import (
+    load_image_matrix,
     normalize_contour_approximation,
     normalize_contour_retrieval_mode,
-    require_dataset_path,
     require_non_negative_float,
     require_opencv_imports,
     require_positive_int,
@@ -23,13 +21,10 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
     """对输入图片执行 contour 提取，并输出结构化 contour 集合。"""
 
     cv2_module, _ = require_opencv_imports()
-    _, _, image_object_key = resolve_image_input(request)
-    image_matrix = cv2_module.imread(str(require_dataset_path(request, image_object_key)), cv2_module.IMREAD_GRAYSCALE)
-    if image_matrix is None:
-        raise ServiceConfigurationError(
-            "OpenCV 无法读取输入图片",
-            details={"node_id": request.node_id, "object_key": image_object_key},
-        )
+    image_payload, image_object_key, image_matrix = load_image_matrix(
+        request,
+        imdecode_flags=cv2_module.IMREAD_GRAYSCALE,
+    )
 
     threshold_value = require_uint8_int(request.parameters.get("threshold", 127), field_name="threshold")
     min_area = require_non_negative_float(request.parameters.get("min_area", 0), field_name="min_area")
@@ -81,6 +76,7 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
         "contours": {
             "items": contour_items,
             "count": len(contour_items),
-            "source_object_key": image_object_key,
+            "source_image": dict(image_payload),
+            **({"source_object_key": image_object_key} if image_object_key is not None else {}),
         }
     }

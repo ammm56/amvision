@@ -9,6 +9,59 @@
       "json_schema": {
         "type": "object",
         "properties": {
+          "source_image": {
+            "type": "object",
+            "properties": {
+              "transport_kind": {
+                "type": "string",
+                "enum": [
+                  "memory",
+                  "storage"
+                ]
+              },
+              "object_key": {
+                "type": "string"
+              },
+              "image_handle": {
+                "type": "string"
+              },
+              "width": {
+                "type": "integer"
+              },
+              "height": {
+                "type": "integer"
+              },
+              "media_type": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "transport_kind",
+              "media_type"
+            ],
+            "oneOf": [
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "storage"
+                  }
+                },
+                "required": [
+                  "object_key"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "memory"
+                  }
+                },
+                "required": [
+                  "image_handle"
+                ]
+              }
+            ]
+          },
           "source_object_key": {
             "type": "string"
           },
@@ -69,6 +122,59 @@
       "json_schema": {
         "type": "object",
         "properties": {
+          "source_image": {
+            "type": "object",
+            "properties": {
+              "transport_kind": {
+                "type": "string",
+                "enum": [
+                  "memory",
+                  "storage"
+                ]
+              },
+              "object_key": {
+                "type": "string"
+              },
+              "image_handle": {
+                "type": "string"
+              },
+              "width": {
+                "type": "integer"
+              },
+              "height": {
+                "type": "integer"
+              },
+              "media_type": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "transport_kind",
+              "media_type"
+            ],
+            "oneOf": [
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "storage"
+                  }
+                },
+                "required": [
+                  "object_key"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "memory"
+                  }
+                },
+                "required": [
+                  "image_handle"
+                ]
+              }
+            ]
+          },
           "source_object_key": {
             "type": "string"
           },
@@ -545,6 +651,16 @@
           "max_items": {
             "type": "integer",
             "minimum": 1
+          },
+          "response_transport_mode": {
+            "type": "string",
+            "enum": [
+              "inline-base64",
+              "storage-ref"
+            ]
+          },
+          "output_dir": {
+            "type": "string"
           }
         }
       },

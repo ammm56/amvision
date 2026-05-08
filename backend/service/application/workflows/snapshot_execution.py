@@ -20,6 +20,7 @@ from backend.contracts.workflows.workflow_graph import (
     FlowApplication,
     WorkflowGraphTemplate,
 )
+from backend.nodes import ExecutionImageRegistry
 from backend.nodes.local_node_pack_loader import LocalNodePackLoader
 from backend.nodes.node_catalog_registry import NodeCatalogRegistry
 from backend.queue import LocalFileQueueBackend
@@ -29,6 +30,7 @@ from backend.service.application.workflows.graph_executor import (
     WorkflowNodeExecutionRecord,
     WorkflowNodeRuntimeRegistry,
 )
+from backend.service.application.workflows.runtime_payload_sanitizer import serialize_node_execution_record
 from backend.service.application.workflows.runtime_registry_loader import WorkflowNodeRuntimeRegistryLoader
 from backend.service.application.workflows.service_node_runtime import WorkflowServiceNodeRuntimeContext
 from backend.service.application.workflows.workflow_service import LocalWorkflowJsonService
@@ -145,6 +147,7 @@ class SnapshotExecutionService:
         execution_metadata_payload = dict(request.execution_metadata)
         execution_metadata_payload.setdefault("workflow_run_id", uuid4().hex)
         execution_metadata_payload["dataset_storage"] = self.dataset_storage
+        execution_metadata_payload.setdefault("execution_image_registry", ExecutionImageRegistry())
         graph_execution_result = WorkflowGraphExecutor(registry=self.runtime_registry).execute(
             template=template,
             input_values=template_input_values,
@@ -386,6 +389,7 @@ def deserialize_snapshot_execution_result(message: object) -> WorkflowSnapshotEx
             node_id=_require_payload_str(item, "node_id"),
             node_type_id=_require_payload_str(item, "node_type_id"),
             runtime_kind=_require_payload_str(item, "runtime_kind"),
+            inputs=_require_payload_dict(item, "inputs"),
             outputs=_require_payload_dict(item, "outputs"),
         )
         for item in node_records_payload
@@ -486,12 +490,7 @@ def _build_binding_outputs(
 def _serialize_node_record(record: WorkflowNodeExecutionRecord) -> dict[str, object]:
     """把节点执行记录转换为可跨进程序列化的字典。"""
 
-    return {
-        "node_id": record.node_id,
-        "node_type_id": record.node_type_id,
-        "runtime_kind": record.runtime_kind,
-        "outputs": dict(record.outputs),
-    }
+    return serialize_node_execution_record(record)
 
 
 def _require_payload_str(payload: object, field_name: str) -> str:

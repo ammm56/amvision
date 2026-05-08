@@ -9,17 +9,29 @@ from backend.contracts.workflows.workflow_graph import (
     NodePortDefinition,
 )
 from backend.nodes.core_nodes._base import CoreNodeSpec
-from backend.nodes.runtime_support import require_image_payload
+from backend.nodes.runtime_support import build_response_image_payload
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 
 
 def _image_preview_handler(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
     """把图片引用转换成可直接进入 HTTP 响应的结构化 body。"""
 
-    image_payload = require_image_payload(request.input_values.get("image"))
+    output_object_key = request.parameters.get("output_object_key")
+    normalized_output_object_key = (
+        output_object_key.strip()
+        if isinstance(output_object_key, str) and output_object_key.strip()
+        else None
+    )
+    response_image = build_response_image_payload(
+        request,
+        image_payload=request.input_values.get("image"),
+        response_transport_mode=str(request.parameters.get("response_transport_mode", "inline-base64")),
+        object_key=normalized_output_object_key,
+        variant_name="image-preview",
+    )
     preview_body: dict[str, object] = {
         "type": "image-preview",
-        "image": image_payload,
+        "image": response_image,
     }
     title = request.parameters.get("title")
     if isinstance(title, str) and title.strip():
@@ -53,6 +65,11 @@ CORE_NODE_SPEC = CoreNodeSpec(
             "type": "object",
             "properties": {
                 "title": {"type": "string"},
+                "response_transport_mode": {
+                    "type": "string",
+                    "enum": ["inline-base64", "storage-ref"],
+                },
+                "output_object_key": {"type": "string"},
             },
         },
         capability_tags=("ui.preview", "response.body"),

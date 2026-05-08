@@ -32,6 +32,7 @@ from backend.service.application.workflows.snapshot_execution import (
     WorkflowSnapshotExecutionRequest,
     build_snapshot_fingerprint,
 )
+from backend.service.application.workflows.runtime_payload_sanitizer import serialize_node_execution_record
 from backend.service.application.workflows.runtime_registry_loader import WorkflowNodeRuntimeRegistryLoader
 from backend.service.application.workflows.service_node_runtime import WorkflowServiceNodeRuntimeContext
 from backend.service.domain.workflows.workflow_runtime_records import WorkflowAppRuntime
@@ -940,17 +941,7 @@ def _serialize_node_records(node_records: tuple[dict[str, object], ...] | tuple[
 
     serialized: list[dict[str, object]] = []
     for item in node_records:
-        if isinstance(item, dict):
-            serialized.append(dict(item))
-            continue
-        serialized.append(
-            {
-                "node_id": getattr(item, "node_id", ""),
-                "node_type_id": getattr(item, "node_type_id", ""),
-                "runtime_kind": getattr(item, "runtime_kind", ""),
-                "outputs": dict(getattr(item, "outputs", {}) or {}),
-            }
-        )
+        serialized.append(serialize_node_execution_record(item))
     return tuple(serialized)
 
 

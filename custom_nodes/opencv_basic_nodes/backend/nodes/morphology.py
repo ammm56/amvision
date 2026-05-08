@@ -2,17 +2,17 @@
 
 from __future__ import annotations
 
-from backend.nodes.runtime_support import resolve_image_input, write_image_bytes
 from backend.service.application.errors import ServiceConfigurationError
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 from custom_nodes.opencv_basic_nodes.backend.support import (
+    build_output_image_payload,
+    load_image_matrix,
     normalize_kernel_shape,
     normalize_morphology_operation,
     normalize_odd_kernel_size,
     normalize_optional_object_key,
     require_opencv_imports,
     require_positive_int,
-    require_dataset_path,
     resolve_morphology_operation,
 )
 
@@ -24,13 +24,10 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
     """对输入图片执行 morphology 操作，并输出新的图片引用。"""
 
     cv2_module, _ = require_opencv_imports()
-    _, image_payload, image_object_key = resolve_image_input(request)
-    image_matrix = cv2_module.imread(str(require_dataset_path(request, image_object_key)), cv2_module.IMREAD_GRAYSCALE)
-    if image_matrix is None:
-        raise ServiceConfigurationError(
-            "OpenCV 无法读取输入图片",
-            details={"node_id": request.node_id, "object_key": image_object_key},
-        )
+    image_payload, _, image_matrix = load_image_matrix(
+        request,
+        imdecode_flags=cv2_module.IMREAD_GRAYSCALE,
+    )
 
     operation_name = normalize_morphology_operation(request.parameters.get("operation", "open"))
     kernel_shape = normalize_kernel_shape(request.parameters.get("shape", "rect"), cv2_module=cv2_module)
@@ -54,7 +51,7 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
             "OpenCV morphology 后无法编码输出图片",
             details={"node_id": request.node_id},
         )
-    output_payload = write_image_bytes(
+    output_payload = build_output_image_payload(
         request,
         source_payload=image_payload,
         content=encoded_image.tobytes(),

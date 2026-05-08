@@ -99,7 +99,17 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
         "measurements": {
             "items": measurement_items,
             "count": len(measurement_items),
-            "source_object_key": contours_payload.get("source_object_key"),
+            **(
+                {"source_image": dict(contours_payload["source_image"])}
+                if isinstance(contours_payload.get("source_image"), dict)
+                else {}
+            ),
+            **(
+                {"source_object_key": contours_payload.get("source_object_key")}
+                if isinstance(contours_payload.get("source_object_key"), str)
+                and str(contours_payload.get("source_object_key"))
+                else {}
+            ),
             "summary": summary,
         }
     }

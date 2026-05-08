@@ -86,6 +86,7 @@ def test_workflow_application_process_executor_runs_application_in_child_process
     assert response_payload["body"]["pid"] != os.getpid()
     assert response_payload["body"]["is_daemon"] is False
     assert isinstance(response_payload["body"]["workflow_run_id"], str)
+    assert response_payload["body"]["has_execution_image_registry"] is True
     assert execution_result.node_records[0].node_type_id == "custom.test.process-echo"
 
 
@@ -152,6 +153,7 @@ def test_workflow_application_runtime_executor_runs_application_in_current_proce
     assert response_payload["body"]["pid"] == os.getpid()
     assert response_payload["body"]["is_daemon"] is False
     assert isinstance(response_payload["body"]["workflow_run_id"], str)
+    assert response_payload["body"]["has_execution_image_registry"] is True
 
 
 def test_workflow_preview_run_api_executes_saved_application_in_child_process(
@@ -1783,6 +1785,7 @@ def _process_echo_handler(request):
             "message": message,
             "marker": request.execution_metadata.get("marker"),
             "workflow_run_id": request.execution_metadata.get("workflow_run_id"),
+            "has_execution_image_registry": request.execution_metadata.get("execution_image_registry") is not None,
             "pid": os.getpid(),
             "is_daemon": multiprocessing.current_process().daemon,
         }
@@ -1800,6 +1803,7 @@ def _process_slow_handler(request):
             "message": "slow done",
             "marker": request.execution_metadata.get("marker"),
             "workflow_run_id": request.execution_metadata.get("workflow_run_id"),
+            "has_execution_image_registry": request.execution_metadata.get("execution_image_registry") is not None,
             "pid": os.getpid(),
             "is_daemon": multiprocessing.current_process().daemon,
         }

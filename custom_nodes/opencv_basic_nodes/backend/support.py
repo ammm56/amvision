@@ -5,7 +5,13 @@ from __future__ import annotations
 from pathlib import PurePosixPath
 from typing import Any
 
-from backend.nodes.runtime_support import build_runtime_image_object_key, require_image_payload
+from backend.nodes.runtime_support import (
+    build_runtime_image_object_key,
+    load_image_bytes,
+    register_image_bytes,
+    require_image_payload,
+    write_image_bytes,
+)
 from backend.service.application.errors import InvalidRequestError, ServiceConfigurationError
 
 
@@ -22,6 +28,102 @@ def require_opencv_imports() -> tuple[Any, Any]:
     except ImportError as error:  # pragma: no cover - 仅在运行环境缺依赖时触发
         raise ServiceConfigurationError("当前运行环境缺少 opencv-python 或 numpy 依赖") from error
     return cv2, np
+
+
+def load_image_matrix(
+    request: object,
+    *,
+    input_name: str = "image",
+    imdecode_flags: int | None = None,
+) -> tuple[dict[str, object], str | None, Any]:
+    """按双模式规则读取图片输入，并解码为 OpenCV matrix。
+
+    参数：
+    - request：当前节点执行请求。
+    - input_name：输入端口名称。
+    - imdecode_flags：OpenCV 解码标志；未提供时使用 IMREAD_COLOR。
+
+    返回：
+    - tuple[dict[str, object], str | None, Any]：规范化图片 payload、可选 source_object_key 和解码后的图片矩阵。
+    """
+
+    cv2_module, np_module = require_opencv_imports()
+    image_payload, image_bytes = load_image_bytes(request, input_name=input_name)
+    image_buffer = np_module.frombuffer(image_bytes, dtype=np_module.uint8)
+    image_matrix = cv2_module.imdecode(
+        image_buffer,
+        cv2_module.IMREAD_COLOR if imdecode_flags is None else imdecode_flags,
+    )
+    if image_matrix is None:
+        error_details = {
+            "node_id": getattr(request, "node_id", ""),
+            "transport_kind": image_payload.get("transport_kind"),
+            "media_type": image_payload.get("media_type"),
+        }
+        source_object_key = image_payload.get("object_key")
+        if isinstance(source_object_key, str) and source_object_key:
+            error_details["object_key"] = source_object_key
+        raise ServiceConfigurationError(
+            "OpenCV 无法读取输入图片",
+            details=error_details,
+        )
+    resolved_source_object_key = image_payload.get("object_key")
+    return (
+        image_payload,
+        resolved_source_object_key if isinstance(resolved_source_object_key, str) and resolved_source_object_key else None,
+        image_matrix,
+    )
+
+
+def build_output_image_payload(
+    request: object,
+    *,
+    source_payload: dict[str, object],
+    content: bytes,
+    width: int,
+    height: int,
+    media_type: str,
+    variant_name: str,
+    output_extension: str,
+    object_key: str | None = None,
+) -> dict[str, object]:
+    """根据可选 object_key 选择 storage 或 memory 模式输出图片。
+
+    参数：
+    - request：当前节点执行请求。
+    - source_payload：源图片 payload。
+    - content：编码后的图片字节。
+    - width：输出图片宽度。
+    - height：输出图片高度。
+    - media_type：输出图片媒体类型。
+    - variant_name：默认输出变体名。
+    - output_extension：默认输出扩展名。
+    - object_key：显式输出 object key；未提供时返回 memory image-ref。
+
+    返回：
+    - dict[str, object]：输出图片 payload。
+    """
+
+    normalized_object_key = normalize_optional_object_key(object_key)
+    if normalized_object_key is not None:
+        return write_image_bytes(
+            request,
+            source_payload=source_payload,
+            content=content,
+            object_key=normalized_object_key,
+            variant_name=variant_name,
+            output_extension=output_extension,
+            width=width,
+            height=height,
+            media_type=media_type,
+        )
+    return register_image_bytes(
+        request,
+        content=content,
+        media_type=media_type,
+        width=width,
+        height=height,
+    )
 
 
 def require_dataset_path(request: object, object_key: str):
@@ -93,6 +195,16 @@ def require_image_refs_payload(payload: object) -> dict[str, object]:
     normalized_payload = dict(payload)
     normalized_payload["items"] = normalized_items
     normalized_payload["count"] = int(payload.get("count", len(normalized_items)))
+    source_image = payload.get("source_image")
+    if isinstance(source_image, dict):
+        normalized_payload["source_image"] = require_image_payload(source_image)
+    resolved_source_object_key = normalized_payload.get("source_object_key")
+    if not isinstance(resolved_source_object_key, str) or not resolved_source_object_key:
+        normalized_source_image = normalized_payload.get("source_image")
+        if isinstance(normalized_source_image, dict):
+            source_object_key = normalized_source_image.get("object_key")
+            if isinstance(source_object_key, str) and source_object_key:
+                normalized_payload["source_object_key"] = source_object_key
     return normalized_payload
 
 
@@ -135,6 +247,16 @@ def require_contours_payload(payload: object) -> dict[str, object]:
     normalized_payload = dict(payload)
     normalized_payload["items"] = normalized_items
     normalized_payload["count"] = int(payload.get("count", len(normalized_items)))
+    source_image = payload.get("source_image")
+    if isinstance(source_image, dict):
+        normalized_payload["source_image"] = require_image_payload(source_image)
+    resolved_source_object_key = normalized_payload.get("source_object_key")
+    if not isinstance(resolved_source_object_key, str) or not resolved_source_object_key:
+        normalized_source_image = normalized_payload.get("source_image")
+        if isinstance(normalized_source_image, dict):
+            source_object_key = normalized_source_image.get("object_key")
+            if isinstance(source_object_key, str) and source_object_key:
+                normalized_payload["source_object_key"] = source_object_key
     return normalized_payload
 
 
@@ -445,7 +567,7 @@ def clip_bbox(
 def build_crop_object_key(
     request: object,
     *,
-    source_object_key: str,
+    source_object_key: str | None,
     output_dir: str | None,
     detection_index: int,
 ) -> str:
@@ -461,12 +583,13 @@ def build_crop_object_key(
     - str：裁剪图 object key。
     """
 
+    normalized_source_object_key = source_object_key.strip() if isinstance(source_object_key, str) else ""
     if output_dir is not None:
-        source_stem = PurePosixPath(source_object_key).stem or "image"
+        source_stem = PurePosixPath(normalized_source_object_key).stem or "image"
         return f"{output_dir}/{source_stem}-crop-{detection_index:03d}.png"
     return build_runtime_image_object_key(
         request,
-        source_object_key=source_object_key,
+        source_object_key=normalized_source_object_key or "image.png",
         variant_name=f"crop-{detection_index:03d}",
         output_extension=".png",
     )
