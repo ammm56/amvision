@@ -21,12 +21,18 @@ from backend.contracts.workflows.workflow_graph import (
 from backend.nodes import ExecutionImageRegistry, build_memory_image_payload
 from backend.nodes.local_node_pack_loader import LocalNodePackLoader
 from backend.nodes.node_catalog_registry import NodeCatalogRegistry
+from backend.service.application.datasets.dataset_export_delivery import DatasetExportPackage
 from backend.service.application.errors import ServiceConfigurationError
+from backend.service.application.models.yolox_evaluation_task_service import YoloXEvaluationTaskPackage
 from backend.service.application.models.yolox_inference_task_service import (
     YoloXInferenceExecutionResult,
 )
 from backend.service.application.models.yolox_training_service import (
     YoloXTrainingTaskSubmission,
+)
+from backend.service.application.workflows.execution_cleanup import (
+    WORKFLOW_EXECUTION_CLEANUP_KIND_DATASET_STORAGE_OBJECT,
+    list_registered_execution_cleanups,
 )
 from backend.service.application.workflows.graph_executor import WorkflowGraphExecutor
 from backend.service.application.workflows.service_node_runtime import (
@@ -253,6 +259,7 @@ def test_runtime_registry_loader_registers_core_service_nodes(
     runtime_registry = runtime_registry_loader.get_runtime_registry()
 
     expected_node_type_ids = {
+        "core.service.dataset-export.package",
         "core.service.dataset-export.submit",
         "core.service.yolox-training.submit",
         "core.service.yolox-conversion.submit",
@@ -263,6 +270,7 @@ def test_runtime_registry_loader_registers_core_service_nodes(
         "core.service.yolox-deployment.stop",
         "core.service.yolox-deployment.warmup",
         "core.service.yolox-validation-session.create",
+        "core.service.yolox-evaluation.package",
         "core.service.yolox-evaluation.submit",
         "core.service.yolox-deployment.create",
         "core.service.yolox-inference.submit",
@@ -367,6 +375,206 @@ def test_core_training_service_node_uses_runtime_context(
     assert captured["request"].project_id == "project-1"
     assert captured["request"].recipe_id == "recipe-1"
     assert captured["request"].max_epochs == 3
+
+
+def test_core_dataset_export_package_service_node_uses_runtime_context_and_registers_cleanup(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """验证 core 数据集导出打包节点会调用 delivery service，并登记临时 zip cleanup。"""
+
+    custom_nodes_root_dir = tmp_path / "custom_nodes"
+    node_pack_loader = LocalNodePackLoader(custom_nodes_root_dir)
+    node_pack_loader.refresh()
+    node_catalog_registry = NodeCatalogRegistry(node_pack_loader=node_pack_loader)
+    runtime_registry_loader = WorkflowNodeRuntimeRegistryLoader(
+        node_catalog_registry=node_catalog_registry,
+        node_pack_loader=node_pack_loader,
+    )
+    runtime_registry_loader.refresh()
+
+    captured: dict[str, object] = {}
+
+    class _FakeDatasetExportDeliveryService:
+        """记录 package 调用参数并返回稳定打包结果的假 service。"""
+
+        def package_export(
+            self,
+            dataset_export_id: str,
+            *,
+            rebuild: bool = False,
+            package_object_key: str | None = None,
+            persist_package_metadata: bool = True,
+        ) -> DatasetExportPackage:
+            """记录打包调用参数。"""
+
+            captured["dataset_export_id"] = dataset_export_id
+            captured["rebuild"] = rebuild
+            captured["package_object_key"] = package_object_key
+            captured["persist_package_metadata"] = persist_package_metadata
+            return DatasetExportPackage(
+                dataset_export_id=dataset_export_id,
+                export_path="exports/dataset-export-1",
+                manifest_object_key="exports/dataset-export-1/manifest.json",
+                package_object_key=str(package_object_key),
+                package_file_name="dataset-1-coco-detection-dataset-export-1.zip",
+                package_size=256,
+                packaged_at="2026-05-09T00:00:00+00:00",
+            )
+
+    monkeypatch.setattr(
+        WorkflowServiceNodeRuntimeContext,
+        "build_dataset_export_delivery_service",
+        lambda self: _FakeDatasetExportDeliveryService(),
+    )
+
+    executor = WorkflowGraphExecutor(registry=runtime_registry_loader.get_runtime_registry())
+    runtime_context = WorkflowServiceNodeRuntimeContext(
+        session_factory=object(),
+        dataset_storage=_create_dataset_storage(tmp_path),
+    )
+    execution_metadata: dict[str, object] = {"workflow_run_id": "run-1"}
+    template = WorkflowGraphTemplate(
+        template_id="dataset-export-package-workflow",
+        template_version="1.0.0",
+        display_name="Dataset Export Package Workflow",
+        nodes=(
+            WorkflowGraphNode(
+                node_id="package",
+                node_type_id="core.service.dataset-export.package",
+                parameters={
+                    "dataset_export_id": "dataset-export-1",
+                    "cleanup_on_completion": True,
+                },
+            ),
+        ),
+        template_outputs=(
+            WorkflowGraphOutput(
+                output_id="package_body",
+                display_name="Package Body",
+                payload_type_id="response-body.v1",
+                source_node_id="package",
+                source_port="body",
+            ),
+        ),
+    )
+
+    execution_result = executor.execute(
+        template=template,
+        input_values={},
+        execution_metadata=execution_metadata,
+        runtime_context=runtime_context,
+    )
+
+    package_body = execution_result.outputs["package_body"]
+    assert package_body["dataset_export_id"] == "dataset-export-1"
+    assert captured["dataset_export_id"] == "dataset-export-1"
+    assert captured["rebuild"] is False
+    assert captured["persist_package_metadata"] is False
+    assert captured["package_object_key"] == "workflows/runtime/run-1/package/dataset-export-dataset-export-1.zip"
+    cleanup_items = list_registered_execution_cleanups(execution_metadata)
+    assert len(cleanup_items) == 1
+    assert cleanup_items[0].resource_kind == WORKFLOW_EXECUTION_CLEANUP_KIND_DATASET_STORAGE_OBJECT
+    assert cleanup_items[0].resource_id == captured["package_object_key"]
+
+
+def test_core_yolox_evaluation_package_service_node_uses_runtime_context_and_registers_cleanup(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """验证 core YOLOX evaluation package 节点会调用 task service，并登记临时 zip cleanup。"""
+
+    custom_nodes_root_dir = tmp_path / "custom_nodes"
+    node_pack_loader = LocalNodePackLoader(custom_nodes_root_dir)
+    node_pack_loader.refresh()
+    node_catalog_registry = NodeCatalogRegistry(node_pack_loader=node_pack_loader)
+    runtime_registry_loader = WorkflowNodeRuntimeRegistryLoader(
+        node_catalog_registry=node_catalog_registry,
+        node_pack_loader=node_pack_loader,
+    )
+    runtime_registry_loader.refresh()
+
+    captured: dict[str, object] = {}
+
+    class _FakeYoloXEvaluationTaskService:
+        """记录 evaluation package 调用参数并返回稳定结果的假 service。"""
+
+        def package_evaluation_result(
+            self,
+            task_id: str,
+            *,
+            rebuild: bool = False,
+            package_object_key: str | None = None,
+        ) -> YoloXEvaluationTaskPackage:
+            """记录打包调用参数。"""
+
+            captured["task_id"] = task_id
+            captured["rebuild"] = rebuild
+            captured["package_object_key"] = package_object_key
+            return YoloXEvaluationTaskPackage(
+                task_id=task_id,
+                package_object_key=str(package_object_key),
+                package_file_name="yolox-evaluation-task-evaluation-1-result-package.zip",
+                package_size=512,
+                packaged_at="2026-05-09T00:00:00+00:00",
+            )
+
+    monkeypatch.setattr(
+        WorkflowServiceNodeRuntimeContext,
+        "build_evaluation_task_service",
+        lambda self: _FakeYoloXEvaluationTaskService(),
+    )
+
+    executor = WorkflowGraphExecutor(registry=runtime_registry_loader.get_runtime_registry())
+    runtime_context = WorkflowServiceNodeRuntimeContext(
+        session_factory=object(),
+        dataset_storage=_create_dataset_storage(tmp_path),
+    )
+    execution_metadata: dict[str, object] = {"workflow_run_id": "run-1"}
+    template = WorkflowGraphTemplate(
+        template_id="yolox-evaluation-package-workflow",
+        template_version="1.0.0",
+        display_name="YOLOX Evaluation Package Workflow",
+        nodes=(
+            WorkflowGraphNode(
+                node_id="package",
+                node_type_id="core.service.yolox-evaluation.package",
+                parameters={
+                    "task_id": "task-evaluation-1",
+                    "cleanup_on_completion": True,
+                },
+            ),
+        ),
+        template_outputs=(
+            WorkflowGraphOutput(
+                output_id="package_body",
+                display_name="Package Body",
+                payload_type_id="response-body.v1",
+                source_node_id="package",
+                source_port="body",
+            ),
+        ),
+    )
+
+    execution_result = executor.execute(
+        template=template,
+        input_values={},
+        execution_metadata=execution_metadata,
+        runtime_context=runtime_context,
+    )
+
+    package_body = execution_result.outputs["package_body"]
+    assert package_body["task_id"] == "task-evaluation-1"
+    assert captured["task_id"] == "task-evaluation-1"
+    assert captured["rebuild"] is False
+    assert (
+        captured["package_object_key"]
+        == "workflows/runtime/run-1/package/yolox-evaluation-task-evaluation-1-result-package.zip"
+    )
+    cleanup_items = list_registered_execution_cleanups(execution_metadata)
+    assert len(cleanup_items) == 1
+    assert cleanup_items[0].resource_kind == WORKFLOW_EXECUTION_CLEANUP_KIND_DATASET_STORAGE_OBJECT
+    assert cleanup_items[0].resource_id == captured["package_object_key"]
 
 
 def test_core_yolox_detection_node_uses_sync_runtime_context(
@@ -508,6 +716,148 @@ def test_core_yolox_detection_node_uses_sync_runtime_context(
     assert fake_supervisor_calls["inference_kwargs"]["input_uri"] == "inputs/source.jpg"
     assert fake_supervisor_calls["inference_kwargs"]["score_threshold"] == 0.42
     assert fake_supervisor_calls["ensure_config"].deployment_instance_id == "deployment-instance-1"
+
+
+def test_core_yolox_detection_node_accepts_dynamic_request_payload(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """验证 core.model.yolox-detection 可以从 request 输入读取动态 deployment_instance_id。"""
+
+    custom_nodes_root_dir = tmp_path / "custom_nodes"
+    node_pack_loader = LocalNodePackLoader(custom_nodes_root_dir)
+    node_pack_loader.refresh()
+    node_catalog_registry = NodeCatalogRegistry(node_pack_loader=node_pack_loader)
+    runtime_registry_loader = WorkflowNodeRuntimeRegistryLoader(
+        node_catalog_registry=node_catalog_registry,
+        node_pack_loader=node_pack_loader,
+    )
+    dataset_storage = _create_dataset_storage(tmp_path)
+    dataset_storage.write_bytes("inputs/source-dynamic.jpg", build_test_jpeg_bytes())
+    runtime_registry_loader.refresh()
+
+    fake_supervisor_calls: dict[str, object] = {}
+
+    class _FakeDeploymentService:
+        """返回稳定 process_config 的假 deployment service。"""
+
+        def resolve_process_config(self, deployment_instance_id: str):
+            """返回最小 process_config。"""
+
+            fake_supervisor_calls["resolved_deployment_instance_id"] = deployment_instance_id
+            return SimpleNamespace(deployment_instance_id=deployment_instance_id)
+
+    class _FakeSyncSupervisor:
+        """记录同步 deployment 调用的假 supervisor。"""
+
+        def ensure_deployment(self, config) -> None:
+            """记录 ensure 调用。"""
+
+            fake_supervisor_calls["ensure_config"] = config
+
+        def get_status(self, config):
+            """返回 running 状态。"""
+
+            fake_supervisor_calls["status_config"] = config
+            return SimpleNamespace(process_state="running")
+
+    def _fake_run_yolox_inference_task(**kwargs):
+        """返回固定 detection 结果。"""
+
+        fake_supervisor_calls["inference_kwargs"] = kwargs
+        return YoloXInferenceExecutionResult(
+            instance_id="instance-dynamic-1",
+            detections=(
+                {
+                    "bbox_xyxy": [6.0, 8.0, 28.0, 32.0],
+                    "score": 0.91,
+                    "class_id": 0,
+                    "class_name": "qr-region",
+                },
+            ),
+            latency_ms=7.2,
+            image_width=64,
+            image_height=64,
+            preview_image_bytes=None,
+            runtime_session_info={"backend_name": "fake"},
+        )
+
+    monkeypatch.setattr(
+        WorkflowServiceNodeRuntimeContext,
+        "build_deployment_service",
+        lambda self: _FakeDeploymentService(),
+    )
+    monkeypatch.setattr(yolox_detection_node, "run_yolox_inference_task", _fake_run_yolox_inference_task)
+
+    executor = WorkflowGraphExecutor(registry=runtime_registry_loader.get_runtime_registry())
+    runtime_context = WorkflowServiceNodeRuntimeContext(
+        session_factory=object(),
+        dataset_storage=dataset_storage,
+        yolox_sync_deployment_process_supervisor=_FakeSyncSupervisor(),
+    )
+    template = WorkflowGraphTemplate(
+        template_id="yolox-detection-dynamic-workflow",
+        template_version="1.0.0",
+        display_name="YOLOX Detection Dynamic Workflow",
+        nodes=(
+            WorkflowGraphNode(
+                node_id="detect",
+                node_type_id="core.model.yolox-detection",
+                parameters={},
+            ),
+        ),
+        edges=(),
+        template_inputs=(
+            WorkflowGraphInput(
+                input_id="request_image",
+                display_name="Request Image",
+                payload_type_id="image-ref.v1",
+                target_node_id="detect",
+                target_port="image",
+            ),
+            WorkflowGraphInput(
+                input_id="request_payload",
+                display_name="Request Payload",
+                payload_type_id="value.v1",
+                target_node_id="detect",
+                target_port="request",
+            ),
+        ),
+        template_outputs=(
+            WorkflowGraphOutput(
+                output_id="detections",
+                display_name="Detections",
+                payload_type_id="detections.v1",
+                source_node_id="detect",
+                source_port="detections",
+            ),
+        ),
+    )
+
+    execution_result = executor.execute(
+        template=template,
+        input_values={
+            "request_image": {
+                "object_key": "inputs/source-dynamic.jpg",
+                "width": 64,
+                "height": 64,
+                "media_type": "image/jpeg",
+            },
+            "request_payload": {
+                "value": {
+                    "deployment_instance_id": "deployment-instance-dynamic-1",
+                    "score_threshold": 0.55,
+                }
+            },
+        },
+        execution_metadata={"dataset_storage": dataset_storage},
+        runtime_context=runtime_context,
+    )
+
+    detections = execution_result.outputs["detections"]
+    assert detections["items"][0]["class_name"] == "qr-region"
+    assert fake_supervisor_calls["resolved_deployment_instance_id"] == "deployment-instance-dynamic-1"
+    assert fake_supervisor_calls["inference_kwargs"]["score_threshold"] == 0.55
 
 
 def test_core_yolox_detection_node_auto_starts_sync_process(
@@ -1017,6 +1367,124 @@ def test_core_yolox_inference_submit_node_auto_starts_async_process(
     assert submission["task_id"] == "task-inference-1"
     assert fake_supervisor_calls["start_config"].deployment_instance_id == "deployment-instance-1"
     assert fake_supervisor_calls["request"].input_uri == "inputs/source.jpg"
+
+
+def test_core_yolox_deployment_create_node_accepts_dynamic_request_payload(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """验证 deployment.create 节点可以从 request 输入读取动态参数并显式写入 keep_warm。"""
+
+    custom_nodes_root_dir = tmp_path / "custom_nodes"
+    node_pack_loader = LocalNodePackLoader(custom_nodes_root_dir)
+    node_pack_loader.refresh()
+    node_catalog_registry = NodeCatalogRegistry(node_pack_loader=node_pack_loader)
+    runtime_registry_loader = WorkflowNodeRuntimeRegistryLoader(
+        node_catalog_registry=node_catalog_registry,
+        node_pack_loader=node_pack_loader,
+    )
+    runtime_registry_loader.refresh()
+
+    captured: dict[str, object] = {}
+
+    class _FakeDeploymentService:
+        """记录 create request 的假 deployment service。"""
+
+        def create_deployment_instance(self, request, *, created_by: str):
+            """返回固定 deployment view。"""
+
+            captured["request"] = request
+            captured["created_by"] = created_by
+            return {
+                "deployment_instance_id": "deployment-instance-created-1",
+                "project_id": request.project_id,
+                "model_build_id": request.model_build_id,
+                "display_name": request.display_name,
+            }
+
+    monkeypatch.setattr(
+        WorkflowServiceNodeRuntimeContext,
+        "build_deployment_service",
+        lambda self: _FakeDeploymentService(),
+    )
+
+    executor = WorkflowGraphExecutor(registry=runtime_registry_loader.get_runtime_registry())
+    runtime_context = WorkflowServiceNodeRuntimeContext(
+        session_factory=object(),
+        dataset_storage=_create_dataset_storage(tmp_path),
+    )
+    template = WorkflowGraphTemplate(
+        template_id="yolox-deployment-create-dynamic-workflow",
+        template_version="1.0.0",
+        display_name="YOLOX Deployment Create Dynamic Workflow",
+        nodes=(
+            WorkflowGraphNode(
+                node_id="create",
+                node_type_id="core.service.yolox-deployment.create",
+                parameters={},
+            ),
+        ),
+        edges=(),
+        template_inputs=(
+            WorkflowGraphInput(
+                input_id="request_payload",
+                display_name="Request Payload",
+                payload_type_id="value.v1",
+                target_node_id="create",
+                target_port="request",
+            ),
+        ),
+        template_outputs=(
+            WorkflowGraphOutput(
+                output_id="body",
+                display_name="Body",
+                payload_type_id="response-body.v1",
+                source_node_id="create",
+                source_port="body",
+            ),
+        ),
+    )
+
+    execution_result = executor.execute(
+        template=template,
+        input_values={
+            "request_payload": {
+                "value": {
+                    "project_id": "project-1",
+                    "model_build_id": "model-build-dynamic-1",
+                    "runtime_backend": "tensorrt",
+                    "runtime_precision": "fp16",
+                    "instance_count": 3,
+                    "keep_warm_enabled": True,
+                    "metadata": {
+                        "deployment_process": {
+                            "warmup_dummy_inference_count": 6,
+                        },
+                        "request_source": "workflow-runtime",
+                    },
+                    "display_name": "dynamic deployment",
+                    "created_by": "workflow-user",
+                }
+            }
+        },
+        runtime_context=runtime_context,
+    )
+
+    body = execution_result.outputs["body"]
+    assert body["deployment_instance_id"] == "deployment-instance-created-1"
+    assert captured["request"].project_id == "project-1"
+    assert captured["request"].model_build_id == "model-build-dynamic-1"
+    assert captured["request"].runtime_backend == "tensorrt"
+    assert captured["request"].runtime_precision == "fp16"
+    assert captured["request"].instance_count == 3
+    assert captured["request"].metadata == {
+        "deployment_process": {
+            "warmup_dummy_inference_count": 6,
+            "keep_warm_enabled": True,
+        },
+        "request_source": "workflow-runtime",
+    }
+    assert captured["created_by"] == "workflow-user"
 
 
 def test_core_yolox_deployment_lifecycle_nodes_drive_sync_supervisor(

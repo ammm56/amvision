@@ -15,6 +15,7 @@ from backend.nodes.core_nodes._service_node_support import (
     get_optional_int_pair_parameter,
     get_optional_int_parameter,
     get_optional_str_parameter,
+    overlay_parameters_from_object_input,
     require_str_parameter,
     require_workflow_service_node_runtime,
     resolve_created_by,
@@ -27,6 +28,7 @@ from backend.service.application.workflows.graph_executor import WorkflowNodeExe
 def _yolox_training_submit_handler(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
     """调用现有 YOLOX training 提交服务。"""
 
+    request = overlay_parameters_from_object_input(request)
     runtime_context = require_workflow_service_node_runtime(request)
     submission = runtime_context.build_training_task_service().submit_training_task(
         YoloXTrainingTaskRequest(
@@ -59,6 +61,14 @@ CORE_NODE_SPEC = CoreNodeSpec(
         description="按现有 training API 的公开参数直接提交一个训练任务。",
         implementation_kind=NODE_IMPLEMENTATION_CORE,
         runtime_kind=NODE_RUNTIME_PYTHON_CALLABLE,
+        input_ports=(
+            NodePortDefinition(
+                name="request",
+                display_name="Request",
+                payload_type_id="value.v1",
+                required=False,
+            ),
+        ),
         output_ports=(
             NodePortDefinition(
                 name="body",

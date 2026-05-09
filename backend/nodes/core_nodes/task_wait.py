@@ -16,6 +16,7 @@ from backend.nodes.core_nodes._service_node_support import (
     build_response_body_output,
     get_optional_bool_parameter,
     get_optional_float_parameter,
+    overlay_parameters_from_object_input,
     require_str_parameter,
     require_workflow_service_node_runtime,
 )
@@ -30,6 +31,7 @@ _DEFAULT_POLL_INTERVAL_SECONDS = 1.0
 def _task_wait_handler(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
     """轮询任务直到进入终态，并返回最终详情。"""
 
+    request = overlay_parameters_from_object_input(request)
     runtime_context = require_workflow_service_node_runtime(request)
     include_events = get_optional_bool_parameter(request, "include_events")
     timeout_seconds = get_optional_float_parameter(request, "timeout_seconds") or _DEFAULT_WAIT_TIMEOUT_SECONDS
@@ -74,6 +76,14 @@ CORE_NODE_SPEC = CoreNodeSpec(
         description="轮询指定任务，直到进入 succeeded、failed 或 cancelled 终态。",
         implementation_kind=NODE_IMPLEMENTATION_CORE,
         runtime_kind=NODE_RUNTIME_PYTHON_CALLABLE,
+        input_ports=(
+            NodePortDefinition(
+                name="request",
+                display_name="Request",
+                payload_type_id="value.v1",
+                required=False,
+            ),
+        ),
         output_ports=(
             NodePortDefinition(
                 name="body",

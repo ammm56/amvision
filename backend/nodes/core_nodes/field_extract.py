@@ -18,10 +18,14 @@ def _field_extract_handler(request: WorkflowNodeExecutionRequest) -> dict[str, o
     """从 response-body 输入中提取指定字段。"""
 
     body_payload = request.input_values.get("body")
-    extracted_value = extract_value_by_path(
-        root=body_payload,
-        path=require_str_parameter(request, "path"),
-    )
+    raw_path = request.parameters.get("path")
+    if raw_path == "":
+        extracted_value = body_payload
+    else:
+        extracted_value = extract_value_by_path(
+            root=body_payload,
+            path=require_str_parameter(request, "path"),
+        )
     return {"value": build_value_payload(extracted_value)}
 
 
@@ -30,7 +34,7 @@ CORE_NODE_SPEC = CoreNodeSpec(
         node_type_id="core.logic.field-extract",
         display_name="Extract Field",
         category="logic.transform",
-        description="按点分路径从 response-body 中提取字段，并输出 value payload。",
+        description="按点分路径从 response-body 中提取字段；path 为空字符串时直接透传整块 body。",
         implementation_kind=NODE_IMPLEMENTATION_CORE,
         runtime_kind=NODE_RUNTIME_PYTHON_CALLABLE,
         input_ports=(

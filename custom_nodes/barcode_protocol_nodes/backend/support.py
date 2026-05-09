@@ -255,6 +255,7 @@ def build_barcode_results_summary(results_payload: object) -> dict[str, object]:
 
     normalized_payload = require_barcode_results_payload(results_payload)
     items = normalized_payload["items"]
+    summary_items = [_build_summary_item(item) for item in items]
     format_counts: dict[str, int] = {}
     texts: list[str] = []
     indices: list[int] = []
@@ -279,6 +280,7 @@ def build_barcode_results_summary(results_payload: object) -> dict[str, object]:
         "count": len(items),
         "has_items": bool(items),
         "matched_formats": list(normalized_payload.get("matched_formats", [])),
+        "items": summary_items,
         "indices": indices,
         "texts": texts,
         "format_counts": format_counts,

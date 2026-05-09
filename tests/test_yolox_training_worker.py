@@ -187,6 +187,8 @@ def test_yolox_training_worker_advances_task_from_queued_to_succeeded(tmp_path: 
         assert "map50_95" in completed_task.task.result["summary"]["validation"]["final_metrics"]
         assert completed_task.task.result["summary"]["warm_start"]["enabled"] is False
         assert completed_task.task.result["summary"]["model_version_id"]
+        assert completed_task.task.result["model_version_id"] == completed_task.task.result["summary"]["model_version_id"]
+        assert completed_task.task.result["latest_checkpoint_model_version_id"] is None
         assert any(event.message == "yolox training started" for event in completed_task.events)
         assert any(event.message == "yolox training completed" for event in completed_task.events)
         assert any(event.event_type == "progress" for event in completed_task.events)

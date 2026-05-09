@@ -255,7 +255,7 @@ class WorkflowGraphExecutor:
             for plan in for_each_plans.values()
             for body_node_id in plan.body_node_ids
         }
-        execution_metadata_payload = dict(execution_metadata or {})
+        execution_metadata_payload = execution_metadata if execution_metadata is not None else {}
 
         for node_id in topological_order:
             if node_id in managed_loop_body_node_ids:

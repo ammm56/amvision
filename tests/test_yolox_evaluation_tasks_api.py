@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from pathlib import Path
 import io
+import zipfile
 
 from fastapi.testclient import TestClient
 
@@ -195,6 +196,139 @@ def test_create_yolox_evaluation_task_and_read_report_after_worker(
         assert dataset_storage.resolve(detail_payload["report_object_key"]).is_file()
         assert dataset_storage.resolve(detail_payload["detections_object_key"]).is_file()
         assert dataset_storage.resolve(detail_payload["result_package_object_key"]).is_file()
+    finally:
+        session_factory.engine.dispose()
+
+
+def test_package_yolox_evaluation_result_to_temporary_object_without_changing_task_result(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """验证评估结果包可以额外写到 workflow 临时路径，且不改变原任务结果中的 package 引用。"""
+
+    _client, session_factory, dataset_storage, queue_backend = _create_test_client(tmp_path)
+    dataset_export = _seed_completed_dataset_export(
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+        dataset_export_id="dataset-export-evaluation-2",
+        manifest_object_key=(
+            "projects/project-1/datasets/dataset-1/exports/dataset-export-evaluation-2/manifest.json"
+        ),
+    )
+    model_version_id = _seed_model_version(
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+    )
+    worker = YoloXEvaluationQueueWorker(
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+        queue_backend=queue_backend,
+        worker_id="test-yolox-evaluation-package-worker",
+    )
+
+    def fake_run(_request):
+        return yolox_evaluation_task_service_module.YoloXDetectionEvaluationResult(
+            split_name="val",
+            sample_count=1,
+            duration_seconds=0.123,
+            map50=0.88,
+            map50_95=0.71,
+            per_class_metrics=(
+                {
+                    "category_id": 0,
+                    "class_index": 0,
+                    "class_name": "bolt",
+                    "ground_truth_count": 1,
+                    "detection_count": 1,
+                    "ap50": 0.88,
+                    "ap50_95": 0.71,
+                },
+            ),
+            detections=(
+                {
+                    "image_id": 2,
+                    "category_id": 0,
+                    "bbox": [12.0, 12.0, 20.0, 20.0],
+                    "score": 0.91,
+                },
+            ),
+            report_payload={
+                "implementation_mode": "yolox-evaluation-minimal",
+                "model_version_id": model_version_id,
+                "dataset_export_id": dataset_export.dataset_export_id,
+                "dataset_version_id": dataset_export.dataset_version_id,
+                "dataset_export_manifest_key": dataset_export.manifest_object_key,
+                "split_name": "val",
+                "sample_count": 1,
+                "map50": 0.88,
+                "map50_95": 0.71,
+                "per_class_metrics": [
+                    {
+                        "category_id": 0,
+                        "class_index": 0,
+                        "class_name": "bolt",
+                        "ground_truth_count": 1,
+                        "detection_count": 1,
+                        "ap50": 0.88,
+                        "ap50_95": 0.71,
+                    }
+                ],
+            },
+            detections_payload={
+                "split_name": "val",
+                "sample_count": 1,
+                "detection_count": 1,
+                "detections": [
+                    {
+                        "image_id": 2,
+                        "category_id": 0,
+                        "bbox": [12.0, 12.0, 20.0, 20.0],
+                        "score": 0.91,
+                    }
+                ],
+            },
+        )
+
+    monkeypatch.setattr(
+        yolox_evaluation_task_service_module,
+        "run_yolox_detection_evaluation",
+        fake_run,
+    )
+
+    service = yolox_evaluation_task_service_module.SqlAlchemyYoloXEvaluationTaskService(
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+        queue_backend=queue_backend,
+    )
+
+    try:
+        submission = service.submit_evaluation_task(
+            yolox_evaluation_task_service_module.YoloXEvaluationTaskRequest(
+                project_id="project-1",
+                model_version_id=model_version_id,
+                dataset_export_id=dataset_export.dataset_export_id,
+                save_result_package=False,
+            ),
+            created_by="workflow-user",
+            display_name="evaluation package test",
+        )
+        assert worker.run_once() is True
+
+        package = service.package_evaluation_result(
+            submission.task_id,
+            package_object_key="workflows/runtime/run-1/package/yolox-evaluation-package.zip",
+        )
+
+        package_path = dataset_storage.resolve(package.package_object_key)
+        assert package_path.is_file()
+        with zipfile.ZipFile(package_path) as archive:
+            assert sorted(archive.namelist()) == ["detections.json", "report.json"]
+
+        task_detail = SqlAlchemyTaskService(session_factory).get_task(submission.task_id, include_events=False)
+        assert task_detail.task.result.get("result_package_object_key") is None
+        assert not dataset_storage.resolve(
+            f"task-runs/evaluation/{submission.task_id}/artifacts/packages/result-package.zip"
+        ).is_file()
     finally:
         session_factory.engine.dispose()
 

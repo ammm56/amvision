@@ -9,6 +9,7 @@ from pathlib import PurePosixPath
 from uuid import uuid4
 
 from backend.service.application.errors import InvalidRequestError, ServiceConfigurationError
+from backend.service.application.workflows.execution_cleanup import register_dataset_storage_object_cleanup
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 
@@ -667,6 +668,11 @@ def copy_image_payload(
         image_registry = require_execution_image_registry(request)
         image_handle = str(normalized_source_payload["image_handle"])
         dataset_storage.write_bytes(target_object_key, image_registry.read_bytes(image_handle))
+    _register_temporary_runtime_object_cleanup(
+        request,
+        object_key=target_object_key,
+        was_generated=object_key is None,
+    )
     return build_storage_image_payload(
         object_key=target_object_key,
         source_payload=normalized_source_payload,
@@ -711,6 +717,11 @@ def write_image_bytes(
         output_extension=output_extension,
     )
     dataset_storage.write_bytes(target_object_key, content)
+    _register_temporary_runtime_object_cleanup(
+        request,
+        object_key=target_object_key,
+        was_generated=object_key is None,
+    )
     return build_storage_image_payload(
         object_key=target_object_key,
         source_payload=normalized_source_payload,
@@ -818,6 +829,38 @@ def _build_default_target_object_key(
         str(normalized_source_payload.get("media_type") or "image/png")
     )
     return f"workflows/runtime/{workflow_run_id}/{request.node_id}/{normalized_variant_name}{target_extension}"
+
+
+def _register_temporary_runtime_object_cleanup(
+    request: WorkflowNodeExecutionRequest,
+    *,
+    object_key: str,
+    was_generated: bool,
+) -> None:
+    """为自动生成的 runtime object key 登记执行结束后的临时清理。"""
+
+    if not was_generated:
+        return
+    normalized_object_key = _normalize_optional_text(object_key)
+    if normalized_object_key is None:
+        return
+    if not _is_temporary_runtime_object_key(request, object_key=normalized_object_key):
+        return
+    register_dataset_storage_object_cleanup(
+        request.execution_metadata,
+        object_key=normalized_object_key,
+    )
+
+
+def _is_temporary_runtime_object_key(
+    request: WorkflowNodeExecutionRequest,
+    *,
+    object_key: str,
+) -> bool:
+    """判断 object key 是否位于当前 workflow run 的临时 runtime 目录下。"""
+
+    workflow_run_id = str(request.execution_metadata.get("workflow_run_id") or "default-run")
+    return object_key.startswith(f"workflows/runtime/{workflow_run_id}/")
 
 
 def _normalize_optional_dimension(value: object) -> int | None:

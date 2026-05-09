@@ -156,6 +156,72 @@ def test_workflow_application_runtime_executor_runs_application_in_current_proce
     assert response_payload["body"]["has_execution_image_registry"] is True
 
 
+def test_workflow_application_process_executor_cleans_up_runtime_temp_artifacts_across_process_boundary(
+    tmp_path: Path,
+) -> None:
+    """验证子进程执行会清理自动生成的临时图片对象和临时导出目录。"""
+
+    session_factory, dataset_storage, queue_backend = create_test_runtime(
+        tmp_path,
+        database_name="workflow-process-cleanup-executor.db",
+    )
+    custom_nodes_root_dir = _create_process_test_node_pack_fixture(tmp_path)
+    node_pack_loader = LocalNodePackLoader(custom_nodes_root_dir)
+    node_pack_loader.refresh()
+    node_catalog_registry = NodeCatalogRegistry(node_pack_loader=node_pack_loader)
+    workflow_service = LocalWorkflowJsonService(
+        dataset_storage=dataset_storage,
+        node_catalog_registry=node_catalog_registry,
+    )
+    workflow_service.save_template(
+        project_id="project-1",
+        template=_build_process_cleanup_template(),
+    )
+    workflow_service.save_application(
+        project_id="project-1",
+        application=_build_process_cleanup_application(),
+    )
+    executor = WorkflowApplicationProcessExecutor(
+        settings=BackendServiceSettings(
+            database=BackendServiceDatabaseConfig(url=session_factory.settings.url),
+            dataset_storage=BackendServiceDatasetStorageConfig(root_dir=str(dataset_storage.root_dir)),
+            queue=BackendServiceQueueConfig(root_dir=str(queue_backend.root_dir)),
+            custom_nodes=BackendServiceCustomNodesConfig(root_dir=str(custom_nodes_root_dir)),
+            task_manager=BackendServiceTaskManagerConfig(enabled=False),
+        )
+    )
+
+    try:
+        execution_result = executor.execute(
+            WorkflowApplicationExecutionRequest(
+                project_id="project-1",
+                application_id="process-cleanup-app",
+                input_bindings={"request_text": {"value": "cleanup across process boundary"}},
+                execution_metadata={"marker": "process-cleanup"},
+            )
+        )
+    finally:
+        session_factory.engine.dispose()
+
+    response_payload = execution_result.outputs["http_response"]
+    response_body = response_payload["body"]
+    temp_image_object_key = response_body["temp_image_object_key"]
+    temp_export_root = response_body["temp_export_root"]
+    temp_export_manifest_path = response_body["temp_export_manifest_path"]
+    temp_export_package_path = response_body["temp_export_package_path"]
+
+    assert response_payload["status_code"] == 200
+    assert response_body["marker"] == "process-cleanup"
+    assert response_body["pid"] != os.getpid()
+    assert isinstance(response_body["workflow_run_id"], str)
+    assert temp_image_object_key.startswith(f"workflows/runtime/{response_body['workflow_run_id']}/")
+    assert temp_export_root.startswith(f"workflows/runtime/{response_body['workflow_run_id']}/")
+    assert dataset_storage.resolve(temp_image_object_key).exists() is False
+    assert dataset_storage.resolve(temp_export_root).exists() is False
+    assert dataset_storage.resolve(temp_export_manifest_path).exists() is False
+    assert dataset_storage.resolve(temp_export_package_path).exists() is False
+
+
 def test_workflow_preview_run_api_executes_saved_application_in_child_process(
     tmp_path: Path,
 ) -> None:
@@ -1562,6 +1628,61 @@ def _build_process_echo_template():
     )
 
 
+def _build_process_cleanup_template():
+    """构造跨进程 cleanup 测试使用的 workflow 模板。"""
+
+    from backend.contracts.workflows.workflow_graph import (
+        WorkflowGraphEdge,
+        WorkflowGraphInput,
+        WorkflowGraphNode,
+        WorkflowGraphOutput,
+        WorkflowGraphTemplate,
+    )
+
+    return WorkflowGraphTemplate(
+        template_id="process-cleanup-template",
+        template_version="1.0.0",
+        display_name="Process Cleanup Template",
+        nodes=(
+            WorkflowGraphNode(
+                node_id="cleanup",
+                node_type_id="custom.test.process-temp-artifact",
+            ),
+            WorkflowGraphNode(
+                node_id="response",
+                node_type_id="core.output.http-response",
+            ),
+        ),
+        edges=(
+            WorkflowGraphEdge(
+                edge_id="edge-cleanup-response",
+                source_node_id="cleanup",
+                source_port="body",
+                target_node_id="response",
+                target_port="body",
+            ),
+        ),
+        template_inputs=(
+            WorkflowGraphInput(
+                input_id="request_text",
+                display_name="Request Text",
+                payload_type_id="text.v1",
+                target_node_id="cleanup",
+                target_port="text",
+            ),
+        ),
+        template_outputs=(
+            WorkflowGraphOutput(
+                output_id="http_response",
+                display_name="HTTP Response",
+                payload_type_id="http-response.v1",
+                source_node_id="response",
+                source_port="response",
+            ),
+        ),
+    )
+
+
 def _build_process_echo_application():
     """构造进程隔离测试使用的最小流程应用。"""
 
@@ -1587,6 +1708,43 @@ def _build_process_echo_application():
                 template_port_id="request_text",
                 binding_kind="api-request",
                 config={"route": "/execute/process-echo", "method": "POST"},
+            ),
+            FlowApplicationBinding(
+                binding_id="http_response",
+                direction="output",
+                template_port_id="http_response",
+                binding_kind="http-response",
+                config={"status_code": 200},
+            ),
+        ),
+    )
+
+
+def _build_process_cleanup_application():
+    """构造跨进程 cleanup 测试使用的流程应用。"""
+
+    from backend.contracts.workflows.workflow_graph import (
+        FlowApplication,
+        FlowApplicationBinding,
+        FlowTemplateReference,
+    )
+
+    return FlowApplication(
+        application_id="process-cleanup-app",
+        display_name="Process Cleanup App",
+        template_ref=FlowTemplateReference(
+            template_id="process-cleanup-template",
+            template_version="1.0.0",
+            source_kind="json-file",
+            source_uri="placeholder",
+        ),
+        bindings=(
+            FlowApplicationBinding(
+                binding_id="request_text",
+                direction="input",
+                template_port_id="request_text",
+                binding_kind="api-request",
+                config={"route": "/execute/process-cleanup", "method": "POST"},
             ),
             FlowApplicationBinding(
                 binding_id="http_response",
@@ -1773,6 +1931,9 @@ import os
 import multiprocessing
 import time
 
+from backend.nodes.runtime_support import register_image_bytes, write_image_bytes
+from backend.service.application.workflows.execution_cleanup import register_dataset_storage_tree_cleanup
+
 
 def _process_echo_handler(request):
     text_payload = request.input_values.get("text")
@@ -1810,10 +1971,60 @@ def _process_slow_handler(request):
     }
 
 
+def _process_temp_artifact_handler(request):
+    dataset_storage = request.execution_metadata["dataset_storage"]
+    workflow_run_id = str(request.execution_metadata.get("workflow_run_id") or "default-run")
+    export_root = f"workflows/runtime/{workflow_run_id}/{request.node_id}/temp-export"
+    export_manifest_path = f"{export_root}/manifest.json"
+    export_package_path = f"{export_root}/package.zip"
+    source_payload = register_image_bytes(
+        request,
+        content=b"process-temp-image-source",
+        media_type="image/png",
+        width=1,
+        height=1,
+    )
+    temp_image_payload = write_image_bytes(
+        request,
+        source_payload=source_payload,
+        content=b"process-temp-image-output",
+        object_key=None,
+        variant_name="temp-image",
+        output_extension=".png",
+        width=1,
+        height=1,
+        media_type="image/png",
+    )
+    dataset_storage.write_json(
+        export_manifest_path,
+        {
+            "workflow_run_id": workflow_run_id,
+            "marker": request.execution_metadata.get("marker"),
+        },
+    )
+    dataset_storage.write_bytes(export_package_path, b"fake-export-package")
+    register_dataset_storage_tree_cleanup(
+        request.execution_metadata,
+        relative_path=export_root,
+    )
+    return {
+        "body": {
+            "marker": request.execution_metadata.get("marker"),
+            "workflow_run_id": workflow_run_id,
+            "pid": os.getpid(),
+            "temp_image_object_key": temp_image_payload["object_key"],
+            "temp_export_root": export_root,
+            "temp_export_manifest_path": export_manifest_path,
+            "temp_export_package_path": export_package_path,
+        }
+    }
+
+
 def register(context):
     context.register_python_callable("custom.test.process-echo", _process_echo_handler)
     context.register_python_callable("custom.test.process-fail", _process_fail_handler)
     context.register_python_callable("custom.test.process-slow", _process_slow_handler)
+    context.register_python_callable("custom.test.process-temp-artifact", _process_temp_artifact_handler)
 """.strip()
         + "\n",
         encoding="utf-8",
@@ -1930,6 +2141,34 @@ def register(context):
                 ],
                 "parameter_schema": {"type": "object", "properties": {}},
                 "capability_tags": ["test.process"],
+                "runtime_requirements": {},
+                "node_pack_id": "test.process-nodes",
+                "node_pack_version": "0.1.0",
+            },
+            {
+                "format_id": "amvision.node-definition.v1",
+                "node_type_id": "custom.test.process-temp-artifact",
+                "display_name": "Process Temp Artifact",
+                "category": "test.process",
+                "description": "在子进程里写入临时图片和临时导出目录，用于验证 cleanup。",
+                "implementation_kind": "custom-node",
+                "runtime_kind": "python-callable",
+                "input_ports": [
+                    {
+                        "name": "text",
+                        "display_name": "Text",
+                        "payload_type_id": "text.v1",
+                    }
+                ],
+                "output_ports": [
+                    {
+                        "name": "body",
+                        "display_name": "Body",
+                        "payload_type_id": "response-body.v1",
+                    }
+                ],
+                "parameter_schema": {"type": "object", "properties": {}},
+                "capability_tags": ["test.process", "cleanup"],
                 "runtime_requirements": {},
                 "node_pack_id": "test.process-nodes",
                 "node_pack_version": "0.1.0",

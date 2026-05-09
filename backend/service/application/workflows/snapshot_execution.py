@@ -25,6 +25,13 @@ from backend.nodes.local_node_pack_loader import LocalNodePackLoader
 from backend.nodes.node_catalog_registry import NodeCatalogRegistry
 from backend.queue import LocalFileQueueBackend
 from backend.service.application.errors import OperationTimeoutError, ServiceConfigurationError, ServiceError
+from backend.service.application.workflows.execution_cleanup import (
+    WORKFLOW_EXECUTION_CLEANUP_KIND_DATASET_STORAGE_OBJECT,
+    WORKFLOW_EXECUTION_CLEANUP_KIND_DATASET_STORAGE_TREE,
+    WORKFLOW_EXECUTION_CLEANUP_KIND_DEPLOYMENT_INSTANCE,
+    WorkflowExecutionCleanupItem,
+    execute_registered_execution_cleanups,
+)
 from backend.service.application.workflows.graph_executor import (
     WorkflowGraphExecutor,
     WorkflowNodeExecutionRecord,
@@ -148,12 +155,29 @@ class SnapshotExecutionService:
         execution_metadata_payload.setdefault("workflow_run_id", uuid4().hex)
         execution_metadata_payload["dataset_storage"] = self.dataset_storage
         execution_metadata_payload.setdefault("execution_image_registry", ExecutionImageRegistry())
-        graph_execution_result = WorkflowGraphExecutor(registry=self.runtime_registry).execute(
-            template=template,
-            input_values=template_input_values,
-            execution_metadata=execution_metadata_payload,
-            runtime_context=self.runtime_context,
-        )
+        execution_error: Exception | None = None
+        try:
+            graph_execution_result = WorkflowGraphExecutor(registry=self.runtime_registry).execute(
+                template=template,
+                input_values=template_input_values,
+                execution_metadata=execution_metadata_payload,
+                runtime_context=self.runtime_context,
+            )
+        except Exception as exc:
+            execution_error = exc
+            raise
+        finally:
+            cleanup_error = execute_registered_execution_cleanups(
+                execution_metadata=execution_metadata_payload,
+                runtime_context=self.runtime_context,
+                handlers={
+                    WORKFLOW_EXECUTION_CLEANUP_KIND_DATASET_STORAGE_OBJECT: _cleanup_dataset_storage_object,
+                    WORKFLOW_EXECUTION_CLEANUP_KIND_DATASET_STORAGE_TREE: _cleanup_dataset_storage_tree,
+                    WORKFLOW_EXECUTION_CLEANUP_KIND_DEPLOYMENT_INSTANCE: _cleanup_registered_deployment,
+                },
+            )
+            if cleanup_error is not None and execution_error is None:
+                raise cleanup_error
         return WorkflowSnapshotExecutionResult(
             project_id=request.project_id,
             application_id=request.application_id,
@@ -166,6 +190,130 @@ class SnapshotExecutionService:
             template_outputs=dict(graph_execution_result.outputs),
             node_records=graph_execution_result.node_records,
         )
+
+
+def _cleanup_registered_deployment(
+    *,
+    cleanup: WorkflowExecutionCleanupItem,
+    runtime_context: WorkflowServiceNodeRuntimeContext,
+) -> list[dict[str, object]]:
+    """清理一条登记过的临时 DeploymentInstance。
+
+    参数：
+    - cleanup：待清理的临时 DeploymentInstance 描述。
+    - runtime_context：当前 workflow service node 运行时上下文。
+
+    返回：
+    - list[dict[str, object]]：stop 或 delete 阶段收集到的错误详情。
+    """
+
+    deployment_service = runtime_context.build_deployment_service()
+    deployment_instance_id = cleanup.resource_id
+    cleanup_errors = _stop_registered_deployment_processes(
+        runtime_context=runtime_context,
+        deployment_service=deployment_service,
+        deployment_instance_id=deployment_instance_id,
+    )
+    try:
+        deployment_service.delete_deployment_instance(deployment_instance_id)
+    except ServiceError as exc:
+        cleanup_errors.append(
+            {
+                "resource_kind": cleanup.resource_kind,
+                "resource_id": deployment_instance_id,
+                "action": "delete",
+                "error_code": exc.code,
+                "error_message": exc.message,
+            }
+        )
+    return cleanup_errors
+
+
+def _cleanup_dataset_storage_object(
+    *,
+    cleanup: WorkflowExecutionCleanupItem,
+    runtime_context: WorkflowServiceNodeRuntimeContext,
+) -> list[dict[str, object]]:
+    """清理一条登记过的 dataset storage 单文件对象。"""
+
+    return _cleanup_dataset_storage_path(
+        cleanup=cleanup,
+        runtime_context=runtime_context,
+        action="delete_object",
+    )
+
+
+def _cleanup_dataset_storage_tree(
+    *,
+    cleanup: WorkflowExecutionCleanupItem,
+    runtime_context: WorkflowServiceNodeRuntimeContext,
+) -> list[dict[str, object]]:
+    """清理一条登记过的 dataset storage 目录树。"""
+
+    return _cleanup_dataset_storage_path(
+        cleanup=cleanup,
+        runtime_context=runtime_context,
+        action="delete_tree",
+    )
+
+
+def _cleanup_dataset_storage_path(
+    *,
+    cleanup: WorkflowExecutionCleanupItem,
+    runtime_context: WorkflowServiceNodeRuntimeContext,
+    action: str,
+) -> list[dict[str, object]]:
+    """删除一条 dataset storage 相对路径，并把异常折叠为 cleanup 错误详情。"""
+
+    try:
+        runtime_context.dataset_storage.delete_tree(cleanup.resource_id)
+    except Exception as exc:  # pragma: no cover - 依赖底层 I/O 失败场景，优先由行为测试覆盖
+        return [
+            {
+                "resource_kind": cleanup.resource_kind,
+                "resource_id": cleanup.resource_id,
+                "action": action,
+                "error_code": "dataset_storage_cleanup_failed",
+                "error_message": str(exc) or exc.__class__.__name__,
+            }
+        ]
+    return []
+
+
+def _stop_registered_deployment_processes(
+    *,
+    runtime_context: WorkflowServiceNodeRuntimeContext,
+    deployment_service: object,
+    deployment_instance_id: str,
+) -> list[dict[str, object]]:
+    """在删除 DeploymentInstance 前尽量停止当前运行时里的 deployment 子进程。"""
+
+    try:
+        process_config = deployment_service.resolve_process_config(deployment_instance_id)
+    except ServiceError:
+        return []
+
+    cleanup_errors: list[dict[str, object]] = []
+    for runtime_mode, supervisor in (
+        ("sync", runtime_context.yolox_sync_deployment_process_supervisor),
+        ("async", runtime_context.yolox_async_deployment_process_supervisor),
+    ):
+        if supervisor is None:
+            continue
+        try:
+            supervisor.stop_deployment(process_config)
+        except ServiceError as exc:
+            cleanup_errors.append(
+                {
+                    "resource_kind": WORKFLOW_EXECUTION_CLEANUP_KIND_DEPLOYMENT_INSTANCE,
+                    "resource_id": deployment_instance_id,
+                    "runtime_mode": runtime_mode,
+                    "action": "stop",
+                    "error_code": exc.code,
+                    "error_message": exc.message,
+                }
+            )
+    return cleanup_errors
 
 
 class WorkflowSnapshotProcessExecutor:

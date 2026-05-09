@@ -1,0 +1,193 @@
+{
+  "info": {
+    "_postman_id": "04fbdd44-f581-4f2b-915d-ae60847a0101",
+    "name": "amvision workflow 01 yolox end to end qr crop remap",
+    "description": "第一类正式 workflow 联调 collection，覆盖完整导入、导出、训练、评估、转换、部署和 QR remap 链路。request_package 默认文件名为 barcodeqrcode.zip，导入 Postman 后需要指向真实 zip 文件路径。",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://127.0.0.1:8000"
+    },
+    {
+      "key": "principalId",
+      "value": "user-1"
+    },
+    {
+      "key": "projectId",
+      "value": "project-1"
+    },
+    {
+      "key": "workflowRuntimeId",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "Create App Runtime",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "if (pm.response.code === 200 || pm.response.code === 201) {",
+              "  var payload = pm.response.json();",
+              "  if (payload.workflow_runtime_id) {",
+              "    pm.collectionVariables.set('workflowRuntimeId', payload.workflow_runtime_id);",
+              "  }",
+              "}"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-principal-id",
+            "value": "{{principalId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-project-ids",
+            "value": "{{projectId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-scopes",
+            "value": "workflows:read,workflows:write",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"project_id\": \"project-1\",\n  \"application_id\": \"yolox-end-to-end-qr-crop-remap-app\",\n  \"execution_policy_id\": \"runtime-default-policy\",\n  \"display_name\": \"YOLOX End-to-End QR Crop Remap Runtime\",\n  \"metadata\": {\n    \"example_kind\": \"yolox-end-to-end-qr-crop-remap\",\n    \"transport_kind\": \"multipart-upload\"\n  }\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/app-runtimes",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "workflows",
+            "app-runtimes"
+          ]
+        },
+        "description": "对应 docs/api/examples/workflows/yolox_end_to_end_qr_crop_remap.app-runtime.create.request.json。"
+      },
+      "response": []
+    },
+    {
+      "name": "Get App Runtime Health",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "x-amvision-principal-id",
+            "value": "{{principalId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-project-ids",
+            "value": "{{projectId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-scopes",
+            "value": "workflows:read",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/app-runtimes/{{workflowRuntimeId}}/health",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "workflows",
+            "app-runtimes",
+            "{{workflowRuntimeId}}",
+            "health"
+          ]
+        },
+        "description": "读取当前 runtime 健康状态，确认 worker 已就绪。"
+      },
+      "response": []
+    },
+    {
+      "name": "Invoke App Runtime",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "x-amvision-principal-id",
+            "value": "{{principalId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-project-ids",
+            "value": "{{projectId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-scopes",
+            "value": "workflows:write",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            {
+              "key": "input_bindings_json",
+              "type": "text",
+              "value": "{\"import_request_payload\":{\"value\":{\"project_id\":\"project-1\",\"dataset_id\":\"barcodeqrcode-dataset\",\"format_type\":\"voc\",\"task_type\":\"detection\"}},\"export_request_payload\":{\"value\":{\"project_id\":\"project-1\",\"format_id\":\"coco-detection\"}},\"training_request_payload\":{\"value\":{\"project_id\":\"project-1\",\"recipe_id\":\"recipe-1\",\"model_scale\":\"m\",\"output_model_name\":\"barcodeqrcode-detector-m\",\"evaluation_interval\":5,\"max_epochs\":10,\"batch_size\":8,\"gpu_count\":1,\"precision\":\"fp16\"}},\"evaluation_request_payload\":{\"value\":{\"project_id\":\"project-1\",\"score_threshold\":0.25,\"extra_options\":{\"device\":\"cuda\"}}},\"conversion_request_payload\":{\"value\":{\"project_id\":\"project-1\",\"target_formats\":[\"tensorrt-engine\"],\"extra_options\":{\"tensorrt_engine_precision\":\"fp16\"}}},\"deployment_request_payload\":{\"value\":{\"project_id\":\"project-1\",\"runtime_backend\":\"tensorrt\",\"device_name\":\"cuda\",\"runtime_precision\":\"fp16\",\"instance_count\":3,\"keep_warm_enabled\":true,\"display_name\":\"barcodeqrcode-tensorrt-fp16-deployment\"}},\"inference_request_payload\":{\"value\":{\"score_threshold\":0.3}},\"request_image\":{\"image_base64\":\"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO5WZr8AAAAASUVORK5CYII=\",\"media_type\":\"image/png\"}}"
+            },
+            {
+              "key": "request_package",
+              "type": "file",
+              "src": "barcodeqrcode.zip"
+            },
+            {
+              "key": "execution_metadata_json",
+              "type": "text",
+              "value": "{\"scenario\":\"yolox-end-to-end-qr-crop-remap\",\"trigger_source\":\"multipart-api\"}"
+            }
+          ]
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/app-runtimes/{{workflowRuntimeId}}/invoke",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "workflows",
+            "app-runtimes",
+            "{{workflowRuntimeId}}",
+            "invoke"
+          ]
+        },
+        "description": "对应 docs/api/examples/workflows/yolox_end_to_end_qr_crop_remap.app-runtime.invoke.request.json。"
+      },
+      "response": []
+    }
+  ]
+}

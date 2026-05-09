@@ -13,6 +13,7 @@ from backend.nodes.core_nodes._service_node_support import (
     build_response_body_output,
     get_optional_dict_parameter,
     get_optional_str_parameter,
+    overlay_parameters_from_object_input,
     require_str_parameter,
     require_workflow_service_node_runtime,
     resolve_created_by,
@@ -26,6 +27,7 @@ from backend.workers.datasets.dataset_import_queue_worker import DATASET_IMPORT_
 def _dataset_import_submit_handler(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
     """调用现有 DatasetImport 提交服务并入队。"""
 
+    request = overlay_parameters_from_object_input(request)
     runtime_context = require_workflow_service_node_runtime(request)
     package_payload = _require_dataset_package_payload(request.input_values.get("package"))
     project_id = require_str_parameter(request, "project_id")
@@ -172,6 +174,12 @@ CORE_NODE_SPEC = CoreNodeSpec(
                 name="package",
                 display_name="Package",
                 payload_type_id="dataset-package.v1",
+            ),
+            NodePortDefinition(
+                name="request",
+                display_name="Request",
+                payload_type_id="value.v1",
+                required=False,
             ),
         ),
         output_ports=(

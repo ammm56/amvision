@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict, is_dataclass
+from dataclasses import asdict, is_dataclass, replace
 from typing import Sequence
 
+from backend.nodes.core_nodes._logic_node_support import require_value_payload
 from backend.nodes.runtime_support import resolve_image_input
 from backend.service.application.deployments.yolox_deployment_service import (
     YoloXDeploymentInstanceView,
@@ -142,6 +143,56 @@ def get_optional_dict_parameter(
             details={"node_id": request.node_id, "parameter": name},
         )
     return {str(key): item for key, item in value.items()}
+
+
+def get_optional_object_input(
+    request: WorkflowNodeExecutionRequest,
+    *,
+    input_name: str = "request",
+) -> dict[str, object] | None:
+    """读取可选对象 value 输入。
+
+    参数：
+    - request：当前节点执行请求。
+    - input_name：对象输入端口名称。
+
+    返回：
+    - dict[str, object] | None：输入对象值；未提供时返回 None。
+    """
+
+    raw_payload = request.input_values.get(input_name)
+    if raw_payload is None:
+        return None
+    object_value = require_value_payload(raw_payload, field_name=input_name)["value"]
+    if not isinstance(object_value, dict):
+        raise InvalidRequestError(
+            f"输入 {input_name} 必须是对象 value payload",
+            details={"node_id": request.node_id, "input_name": input_name},
+        )
+    return {str(key): item for key, item in object_value.items()}
+
+
+def overlay_parameters_from_object_input(
+    request: WorkflowNodeExecutionRequest,
+    *,
+    input_name: str = "request",
+) -> WorkflowNodeExecutionRequest:
+    """把对象输入中的字段覆盖到当前节点参数上。
+
+    参数：
+    - request：当前节点执行请求。
+    - input_name：对象输入端口名称。
+
+    返回：
+    - WorkflowNodeExecutionRequest：参数已合并的新执行请求。
+    """
+
+    input_object = get_optional_object_input(request, input_name=input_name)
+    if not input_object:
+        return request
+    merged_parameters = dict(request.parameters)
+    merged_parameters.update(input_object)
+    return replace(request, parameters=merged_parameters)
 
 
 def get_optional_str_tuple_parameter(

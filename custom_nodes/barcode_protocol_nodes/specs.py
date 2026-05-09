@@ -9,6 +9,7 @@ from typing import Literal
 NODE_PACK_ID = "barcode.protocol-nodes"
 NODE_PACK_VERSION = "0.1.0"
 DRAW_BARCODE_RESULTS_NODE_TYPE_ID = "custom.barcode.draw-results"
+QR_CROP_DECODE_REMAP_NODE_TYPE_ID = "custom.barcode.qr-crop-decode-remap"
 
 
 @dataclass(frozen=True)

@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "cb7a8a14-cd66-4c4a-b4a8-6382f87bf7f1",
     "name": "amvision workflow runtime api",
-    "description": "workflow runtime 当前联调 collection，覆盖 deployment_instance_id 选择、template/application save/get、execution-policies、preview-runs、app-runtimes、sync invoke、async runs 和 cancel 的最小公开接口。",
+    "description": "workflow runtime 当前联调 collection，覆盖 deployment_instance_id 选择、template/application save/get、execution-policies、preview-runs、app-runtimes、sync invoke、async runs 和 cancel 的最小公开接口。第一到第五类正式 workflow 的分拆调试 collection 已移动到 docs/api/postman/workflows/ 目录。",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -52,6 +52,34 @@
     },
     {
       "key": "workflowRuntimeId",
+      "value": ""
+    },
+    {
+      "key": "datasetImportWorkflowRuntimeId",
+      "value": ""
+    },
+    {
+      "key": "datasetExportWorkflowRuntimeId",
+      "value": ""
+    },
+    {
+      "key": "datasetExportPackageWorkflowRuntimeId",
+      "value": ""
+    },
+    {
+      "key": "yoloxTrainingWorkflowRuntimeId",
+      "value": ""
+    },
+    {
+      "key": "yoloxEvaluationWorkflowRuntimeId",
+      "value": ""
+    },
+    {
+      "key": "yoloxEvaluationPackageWorkflowRuntimeId",
+      "value": ""
+    },
+    {
+      "key": "yoloxConversionWorkflowRuntimeId",
       "value": ""
     },
     {
@@ -1070,6 +1098,858 @@
                   ]
                 },
                 "description": "发起一次同步 invoke。当前示例省略 timeout_seconds，默认沿用 runtime execution policy。请求体与 docs/api/examples/workflows/yolox_deployment_detection_lifecycle_real_path.app-runtime.invoke.request.json 对齐。"
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Standard App Examples",
+          "item": [
+            {
+              "name": "Create Dataset Import Upload App Runtime",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "if (pm.response.code === 201) {",
+                      "  var payload = pm.response.json();",
+                      "  if (payload.workflow_runtime_id) {",
+                      "    pm.collectionVariables.set('datasetImportWorkflowRuntimeId', payload.workflow_runtime_id);",
+                      "  }",
+                      "}"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  },
+                  {
+                    "key": "x-amvision-principal-id",
+                    "value": "{{principalId}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "x-amvision-project-ids",
+                    "value": "{{projectId}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "x-amvision-scopes",
+                    "value": "workflows:read,workflows:write",
+                    "type": "text"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"application_id\": \"dataset-import-upload-app\",\n  \"execution_policy_id\": \"{{runtimeExecutionPolicyId}}\",\n  \"display_name\": \"Dataset Import Upload Runtime\",\n  \"metadata\": {\n    \"example_kind\": \"dataset-import-upload\",\n    \"transport_kind\": \"multipart-upload\"\n  }\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/workflows/app-runtimes",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "workflows",
+                    "app-runtimes"
+                  ]
+                },
+                "description": "创建 DatasetImport upload 标准 app runtime。请求体与 docs/api/examples/workflows/dataset_import_upload.app-runtime.create.request.json 对齐。"
+              },
+              "response": []
+            },
+            {
+              "name": "Invoke Dataset Import Upload App Runtime",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "x-amvision-principal-id",
+                    "value": "{{principalId}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "x-amvision-project-ids",
+                    "value": "{{projectId}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "x-amvision-scopes",
+                    "value": "workflows:read,workflows:write",
+                    "type": "text"
+                  }
+                ],
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "request_package",
+                      "type": "file",
+                      "src": "replace-with-local-zip-path"
+                    },
+                    {
+                      "key": "input_bindings_json",
+                      "type": "text",
+                      "value": "{\n  \"request_payload\": {\n    \"value\": {\n      \"project_id\": \"{{projectId}}\",\n      \"dataset_id\": \"dataset-1\",\n      \"format_type\": \"coco-detection\",\n      \"task_type\": \"detection\"\n    }\n  }\n}"
+                    },
+                    {
+                      "key": "execution_metadata_json",
+                      "type": "text",
+                      "value": "{\n  \"scenario\": \"dataset-import-upload\",\n  \"trigger_source\": \"multipart-api\"\n}"
+                    }
+                  ]
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/workflows/app-runtimes/{{datasetImportWorkflowRuntimeId}}/invoke/upload",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "workflows",
+                    "app-runtimes",
+                    "{{datasetImportWorkflowRuntimeId}}",
+                    "invoke",
+                    "upload"
+                  ]
+                },
+                "description": "发起 DatasetImport upload runtime invoke。请求体与 docs/api/examples/workflows/dataset_import_upload.app-runtime.invoke.request.json 对齐。"
+              },
+              "response": []
+            },
+            {
+              "name": "Create Dataset Export Submit App Runtime",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "if (pm.response.code === 201) {",
+                      "  var payload = pm.response.json();",
+                      "  if (payload.workflow_runtime_id) {",
+                      "    pm.collectionVariables.set('datasetExportWorkflowRuntimeId', payload.workflow_runtime_id);",
+                      "  }",
+                      "}"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  },
+                  {
+                    "key": "x-amvision-principal-id",
+                    "value": "{{principalId}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "x-amvision-project-ids",
+                    "value": "{{projectId}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "x-amvision-scopes",
+                    "value": "workflows:read,workflows:write",
+                    "type": "text"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"application_id\": \"dataset-export-submit-app\",\n  \"execution_policy_id\": \"{{runtimeExecutionPolicyId}}\",\n  \"display_name\": \"Dataset Export Submit Runtime\",\n  \"metadata\": {\n    \"example_kind\": \"dataset-export-submit\"\n  }\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/workflows/app-runtimes",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "workflows",
+                    "app-runtimes"
+                  ]
+                },
+                "description": "创建 DatasetExport submit 标准 app runtime。请求体与 docs/api/examples/workflows/dataset_export_submit.app-runtime.create.request.json 对齐。"
+              },
+              "response": []
+            },
+            {
+              "name": "Invoke Dataset Export Submit App Runtime",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  },
+                  {
+                    "key": "x-amvision-principal-id",
+                    "value": "{{principalId}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "x-amvision-project-ids",
+                    "value": "{{projectId}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "x-amvision-scopes",
+                    "value": "workflows:read,workflows:write",
+                    "type": "text"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"input_bindings\": {\n    \"request_payload\": {\n      \"value\": {\n        \"project_id\": \"{{projectId}}\",\n        \"dataset_id\": \"dataset-1\",\n        \"dataset_version_id\": \"dataset-version-1\",\n        \"format_id\": \"coco-detection\"\n      }\n    }\n  },\n  \"execution_metadata\": {\n    \"scenario\": \"dataset-export-submit\",\n    \"trigger_source\": \"sync-api\"\n  }\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/workflows/app-runtimes/{{datasetExportWorkflowRuntimeId}}/invoke",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "workflows",
+                    "app-runtimes",
+                    "{{datasetExportWorkflowRuntimeId}}",
+                    "invoke"
+                  ]
+                },
+                "description": "发起 DatasetExport submit runtime invoke。请求体与 docs/api/examples/workflows/dataset_export_submit.app-runtime.invoke.request.json 对齐。"
+              },
+              "response": []
+            },
+            {
+              "name": "Create Dataset Export Package App Runtime",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "if (pm.response.code === 201) {",
+                      "  var payload = pm.response.json();",
+                      "  if (payload.workflow_runtime_id) {",
+                      "    pm.collectionVariables.set('datasetExportPackageWorkflowRuntimeId', payload.workflow_runtime_id);",
+                      "  }",
+                      "}"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  },
+                  {
+                    "key": "x-amvision-principal-id",
+                    "value": "{{principalId}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "x-amvision-project-ids",
+                    "value": "{{projectId}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "x-amvision-scopes",
+                    "value": "workflows:read,workflows:write",
+                    "type": "text"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"application_id\": \"dataset-export-package-app\",\n  \"execution_policy_id\": \"{{runtimeExecutionPolicyId}}\",\n  \"display_name\": \"Dataset Export Package Runtime\",\n  \"metadata\": {\n    \"example_kind\": \"dataset-export-package\"\n  }\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/workflows/app-runtimes",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "workflows",
+                    "app-runtimes"
+                  ]
+                },
+                "description": "创建 DatasetExport package 标准 app runtime。请求体与 docs/api/examples/workflows/dataset_export_package.app-runtime.create.request.json 对齐。"
+              },
+              "response": []
+            },
+            {
+              "name": "Invoke Dataset Export Package App Runtime",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  },
+                  {
+                    "key": "x-amvision-principal-id",
+                    "value": "{{principalId}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "x-amvision-project-ids",
+                    "value": "{{projectId}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "x-amvision-scopes",
+                    "value": "workflows:read,workflows:write",
+                    "type": "text"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"input_bindings\": {\n    \"request_payload\": {\n      \"value\": {\n        \"dataset_export_id\": \"dataset-export-1\",\n        \"rebuild\": false\n      }\n    }\n  },\n  \"execution_metadata\": {\n    \"scenario\": \"dataset-export-package\",\n    \"trigger_source\": \"sync-api\"\n  }\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/workflows/app-runtimes/{{datasetExportPackageWorkflowRuntimeId}}/invoke",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "workflows",
+                    "app-runtimes",
+                    "{{datasetExportPackageWorkflowRuntimeId}}",
+                    "invoke"
+                  ]
+                },
+                "description": "发起 DatasetExport package runtime invoke。请求体与 docs/api/examples/workflows/dataset_export_package.app-runtime.invoke.request.json 对齐。"
+              },
+              "response": []
+            },
+            {
+              "name": "Create YOLOX Training Submit App Runtime",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "if (pm.response.code === 201) {",
+                      "  var payload = pm.response.json();",
+                      "  if (payload.workflow_runtime_id) {",
+                      "    pm.collectionVariables.set('yoloxTrainingWorkflowRuntimeId', payload.workflow_runtime_id);",
+                      "  }",
+                      "}"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  },
+                  {
+                    "key": "x-amvision-principal-id",
+                    "value": "{{principalId}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "x-amvision-project-ids",
+                    "value": "{{projectId}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "x-amvision-scopes",
+                    "value": "workflows:read,workflows:write",
+                    "type": "text"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"application_id\": \"yolox-training-submit-app\",\n  \"execution_policy_id\": \"{{runtimeExecutionPolicyId}}\",\n  \"display_name\": \"YOLOX Training Submit Runtime\",\n  \"metadata\": {\n    \"example_kind\": \"yolox-training-submit\"\n  }\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/workflows/app-runtimes",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "workflows",
+                    "app-runtimes"
+                  ]
+                },
+                "description": "创建 YOLOX training submit 标准 app runtime。请求体与 docs/api/examples/workflows/yolox_training_submit.app-runtime.create.request.json 对齐。"
+              },
+              "response": []
+            },
+            {
+              "name": "Invoke YOLOX Training Submit App Runtime",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  },
+                  {
+                    "key": "x-amvision-principal-id",
+                    "value": "{{principalId}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "x-amvision-project-ids",
+                    "value": "{{projectId}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "x-amvision-scopes",
+                    "value": "workflows:read,workflows:write",
+                    "type": "text"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"input_bindings\": {\n    \"request_payload\": {\n      \"value\": {\n        \"project_id\": \"{{projectId}}\",\n        \"dataset_export_id\": \"dataset-export-1\",\n        \"recipe_id\": \"recipe-1\",\n        \"model_scale\": \"s\",\n        \"output_model_name\": \"demo-model\",\n        \"max_epochs\": 3\n      }\n    }\n  },\n  \"execution_metadata\": {\n    \"scenario\": \"yolox-training-submit\",\n    \"trigger_source\": \"sync-api\"\n  }\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/workflows/app-runtimes/{{yoloxTrainingWorkflowRuntimeId}}/invoke",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "workflows",
+                    "app-runtimes",
+                    "{{yoloxTrainingWorkflowRuntimeId}}",
+                    "invoke"
+                  ]
+                },
+                "description": "发起 YOLOX training submit runtime invoke。请求体与 docs/api/examples/workflows/yolox_training_submit.app-runtime.invoke.request.json 对齐。"
+              },
+              "response": []
+            },
+            {
+              "name": "Create YOLOX Evaluation Submit App Runtime",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "if (pm.response.code === 201) {",
+                      "  var payload = pm.response.json();",
+                      "  if (payload.workflow_runtime_id) {",
+                      "    pm.collectionVariables.set('yoloxEvaluationWorkflowRuntimeId', payload.workflow_runtime_id);",
+                      "  }",
+                      "}"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  },
+                  {
+                    "key": "x-amvision-principal-id",
+                    "value": "{{principalId}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "x-amvision-project-ids",
+                    "value": "{{projectId}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "x-amvision-scopes",
+                    "value": "workflows:read,workflows:write",
+                    "type": "text"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"application_id\": \"yolox-evaluation-submit-app\",\n  \"execution_policy_id\": \"{{runtimeExecutionPolicyId}}\",\n  \"display_name\": \"YOLOX Evaluation Submit Runtime\",\n  \"metadata\": {\n    \"example_kind\": \"yolox-evaluation-submit\"\n  }\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/workflows/app-runtimes",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "workflows",
+                    "app-runtimes"
+                  ]
+                },
+                "description": "创建 YOLOX evaluation submit 标准 app runtime。请求体与 docs/api/examples/workflows/yolox_evaluation_submit.app-runtime.create.request.json 对齐。"
+              },
+              "response": []
+            },
+            {
+              "name": "Invoke YOLOX Evaluation Submit App Runtime",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  },
+                  {
+                    "key": "x-amvision-principal-id",
+                    "value": "{{principalId}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "x-amvision-project-ids",
+                    "value": "{{projectId}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "x-amvision-scopes",
+                    "value": "workflows:read,workflows:write",
+                    "type": "text"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"input_bindings\": {\n    \"request_payload\": {\n      \"value\": {\n        \"project_id\": \"{{projectId}}\",\n        \"model_version_id\": \"model-version-1\",\n        \"dataset_export_id\": \"dataset-export-1\",\n        \"score_threshold\": 0.25,\n        \"nms_threshold\": 0.65\n      }\n    }\n  },\n  \"execution_metadata\": {\n    \"scenario\": \"yolox-evaluation-submit\",\n    \"trigger_source\": \"sync-api\"\n  }\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/workflows/app-runtimes/{{yoloxEvaluationWorkflowRuntimeId}}/invoke",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "workflows",
+                    "app-runtimes",
+                    "{{yoloxEvaluationWorkflowRuntimeId}}",
+                    "invoke"
+                  ]
+                },
+                "description": "发起 YOLOX evaluation submit runtime invoke。请求体与 docs/api/examples/workflows/yolox_evaluation_submit.app-runtime.invoke.request.json 对齐。"
+              },
+              "response": []
+            },
+            {
+              "name": "Create YOLOX Evaluation Package App Runtime",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "if (pm.response.code === 201) {",
+                      "  var payload = pm.response.json();",
+                      "  if (payload.workflow_runtime_id) {",
+                      "    pm.collectionVariables.set('yoloxEvaluationPackageWorkflowRuntimeId', payload.workflow_runtime_id);",
+                      "  }",
+                      "}"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  },
+                  {
+                    "key": "x-amvision-principal-id",
+                    "value": "{{principalId}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "x-amvision-project-ids",
+                    "value": "{{projectId}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "x-amvision-scopes",
+                    "value": "workflows:read,workflows:write",
+                    "type": "text"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"application_id\": \"yolox-evaluation-package-app\",\n  \"execution_policy_id\": \"{{runtimeExecutionPolicyId}}\",\n  \"display_name\": \"YOLOX Evaluation Package Runtime\",\n  \"metadata\": {\n    \"example_kind\": \"yolox-evaluation-package\"\n  }\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/workflows/app-runtimes",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "workflows",
+                    "app-runtimes"
+                  ]
+                },
+                "description": "创建 YOLOX evaluation package 标准 app runtime。请求体与 docs/api/examples/workflows/yolox_evaluation_package.app-runtime.create.request.json 对齐。"
+              },
+              "response": []
+            },
+            {
+              "name": "Invoke YOLOX Evaluation Package App Runtime",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  },
+                  {
+                    "key": "x-amvision-principal-id",
+                    "value": "{{principalId}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "x-amvision-project-ids",
+                    "value": "{{projectId}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "x-amvision-scopes",
+                    "value": "workflows:read,workflows:write",
+                    "type": "text"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"input_bindings\": {\n    \"request_payload\": {\n      \"value\": {\n        \"project_id\": \"{{projectId}}\",\n        \"model_version_id\": \"model-version-1\",\n        \"dataset_export_id\": \"dataset-export-1\",\n        \"score_threshold\": 0.25,\n        \"nms_threshold\": 0.65\n      }\n    }\n  },\n  \"execution_metadata\": {\n    \"scenario\": \"yolox-evaluation-package\",\n    \"trigger_source\": \"sync-api\"\n  }\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/workflows/app-runtimes/{{yoloxEvaluationPackageWorkflowRuntimeId}}/invoke",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "workflows",
+                    "app-runtimes",
+                    "{{yoloxEvaluationPackageWorkflowRuntimeId}}",
+                    "invoke"
+                  ]
+                },
+                "description": "发起 YOLOX evaluation package runtime invoke。请求体与 docs/api/examples/workflows/yolox_evaluation_package.app-runtime.invoke.request.json 对齐。"
+              },
+              "response": []
+            },
+            {
+              "name": "Create YOLOX Conversion Submit App Runtime",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "if (pm.response.code === 201) {",
+                      "  var payload = pm.response.json();",
+                      "  if (payload.workflow_runtime_id) {",
+                      "    pm.collectionVariables.set('yoloxConversionWorkflowRuntimeId', payload.workflow_runtime_id);",
+                      "  }",
+                      "}"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  },
+                  {
+                    "key": "x-amvision-principal-id",
+                    "value": "{{principalId}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "x-amvision-project-ids",
+                    "value": "{{projectId}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "x-amvision-scopes",
+                    "value": "workflows:read,workflows:write",
+                    "type": "text"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"application_id\": \"yolox-conversion-submit-app\",\n  \"execution_policy_id\": \"{{runtimeExecutionPolicyId}}\",\n  \"display_name\": \"YOLOX Conversion Submit Runtime\",\n  \"metadata\": {\n    \"example_kind\": \"yolox-conversion-submit\"\n  }\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/workflows/app-runtimes",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "workflows",
+                    "app-runtimes"
+                  ]
+                },
+                "description": "创建 YOLOX conversion submit 标准 app runtime。请求体与 docs/api/examples/workflows/yolox_conversion_submit.app-runtime.create.request.json 对齐。"
+              },
+              "response": []
+            },
+            {
+              "name": "Invoke YOLOX Conversion Submit App Runtime",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  },
+                  {
+                    "key": "x-amvision-principal-id",
+                    "value": "{{principalId}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "x-amvision-project-ids",
+                    "value": "{{projectId}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "x-amvision-scopes",
+                    "value": "workflows:read,workflows:write",
+                    "type": "text"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"input_bindings\": {\n    \"request_payload\": {\n      \"value\": {\n        \"project_id\": \"{{projectId}}\",\n        \"source_model_version_id\": \"model-version-1\",\n        \"target_formats\": [\n          \"onnx\",\n          \"openvino-ir\"\n        ]\n      }\n    }\n  },\n  \"execution_metadata\": {\n    \"scenario\": \"yolox-conversion-submit\",\n    \"trigger_source\": \"sync-api\"\n  }\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/workflows/app-runtimes/{{yoloxConversionWorkflowRuntimeId}}/invoke",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "workflows",
+                    "app-runtimes",
+                    "{{yoloxConversionWorkflowRuntimeId}}",
+                    "invoke"
+                  ]
+                },
+                "description": "发起 YOLOX conversion submit runtime invoke。请求体与 docs/api/examples/workflows/yolox_conversion_submit.app-runtime.invoke.request.json 对齐。"
               },
               "response": []
             }

@@ -26,6 +26,14 @@ CORE_NODE_SPEC = CoreNodeSpec(
         description="读取指定 sync 或 async 通道上的 deployment 健康状态。",
         implementation_kind=NODE_IMPLEMENTATION_CORE,
         runtime_kind=NODE_RUNTIME_PYTHON_CALLABLE,
+        input_ports=(
+            NodePortDefinition(
+                name="dependency",
+                display_name="Dependency",
+                payload_type_id="detections.v1",
+                required=False,
+            ),
+        ),
         output_ports=(
             NodePortDefinition(
                 name="body",

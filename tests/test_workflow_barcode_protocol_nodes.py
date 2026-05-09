@@ -24,7 +24,10 @@ from backend.service.infrastructure.object_store.local_dataset_storage import (
     DatasetStorageSettings,
     LocalDatasetStorage,
 )
-from custom_nodes.barcode_protocol_nodes.specs import DRAW_BARCODE_RESULTS_NODE_TYPE_ID
+from custom_nodes.barcode_protocol_nodes.specs import (
+    DRAW_BARCODE_RESULTS_NODE_TYPE_ID,
+    QR_CROP_DECODE_REMAP_NODE_TYPE_ID,
+)
 
 
 @pytest.mark.parametrize(
@@ -347,6 +350,7 @@ def test_barcode_node_modules_are_aggregated_bottom_up() -> None:
         "custom.barcode.match-exists",
         "custom.barcode.results-summary",
         DRAW_BARCODE_RESULTS_NODE_TYPE_ID,
+        QR_CROP_DECODE_REMAP_NODE_TYPE_ID,
     }.issubset(aggregated_node_type_ids)
 
 
@@ -512,6 +516,11 @@ def test_repository_barcode_results_summary_node_outputs_lightweight_summary(tmp
     assert summary_body["type"] == "barcode-results-summary.v1"
     assert summary_body["count"] == 3
     assert summary_body["has_items"] is True
+    assert summary_body["items"] == [
+        {"index": 1, "format": "QR Code", "text": "station-A", "valid": True, "bounds_xyxy": [12, 16, 72, 76]},
+        {"index": 2, "format": "Code 128", "text": "box-42", "valid": True, "bounds_xyxy": [120, 24, 260, 88]},
+        {"index": 3, "format": "EAN-13", "text": "5901234123457", "valid": True, "bounds_xyxy": [300, 30, 430, 92]},
+    ]
     assert summary_body["first_text"] == "station-A"
     assert summary_body["first_format"] == "QR Code"
     assert summary_body["format_counts"]["Code 128"] == 1
@@ -608,6 +617,92 @@ def test_repository_barcode_draw_results_node_renders_position_overlay(tmp_path:
     assert output_image_bytes.startswith(b"\x89PNG\r\n\x1a\n")
     assert output_image_bytes != source_image_bytes
     assert any(record.node_type_id == DRAW_BARCODE_RESULTS_NODE_TYPE_ID for record in execution_result.node_records)
+
+
+def test_repository_barcode_qr_crop_decode_remap_node_offsets_positions_to_source_image(
+    tmp_path: Path,
+) -> None:
+    """验证 QR crop decode remap 节点会把条码位置平移回 source_image 坐标系。"""
+
+    executor = _create_barcode_executor()
+    dataset_storage = _create_dataset_storage(tmp_path)
+    crop_image_bytes = _build_barcode_test_png_bytes(
+        payload_text="qr-crop-remap",
+        barcode_format_name="QRCode",
+    )
+    dataset_storage.write_bytes("inputs/crops/qr-crop-1.png", crop_image_bytes)
+
+    template = WorkflowGraphTemplate(
+        template_id="barcode-qr-crop-remap-pipeline",
+        template_version="1.0.0",
+        display_name="Barcode QR Crop Remap Pipeline",
+        nodes=(
+            WorkflowGraphNode(
+                node_id="remap",
+                node_type_id=QR_CROP_DECODE_REMAP_NODE_TYPE_ID,
+            ),
+        ),
+        template_inputs=(
+            WorkflowGraphInput(
+                input_id="crops",
+                display_name="Crops",
+                payload_type_id="image-refs.v1",
+                target_node_id="remap",
+                target_port="crops",
+            ),
+        ),
+        template_outputs=(
+            WorkflowGraphOutput(
+                output_id="results",
+                display_name="Results",
+                payload_type_id="barcode-results.v1",
+                source_node_id="remap",
+                source_port="results",
+            ),
+        ),
+    )
+
+    execution_result = executor.execute(
+        template=template,
+        input_values={
+            "crops": {
+                "items": [
+                    {
+                        "transport_kind": "storage",
+                        "object_key": "inputs/crops/qr-crop-1.png",
+                        "media_type": "image/png",
+                        "bbox_xyxy": [120, 80, 360, 320],
+                        "crop_index": 1,
+                    }
+                ],
+                "count": 1,
+                "source_image": {
+                    "transport_kind": "storage",
+                    "object_key": "inputs/source-frame.png",
+                    "media_type": "image/png",
+                },
+                "source_object_key": "inputs/source-frame.png",
+            }
+        },
+        execution_metadata={
+            "dataset_storage": dataset_storage,
+            "workflow_run_id": "barcode-qr-crop-remap",
+        },
+    )
+
+    results = execution_result.outputs["results"]
+    assert results["requested_format"] == "QR Code"
+    assert results["source_object_key"] == "inputs/source-frame.png"
+    assert results["source_image"]["object_key"] == "inputs/source-frame.png"
+    assert results["count"] == 1
+    assert results["items"][0]["text"] == "qr-crop-remap"
+    assert results["items"][0]["extra"]["crop_index"] == 1
+    assert results["items"][0]["extra"]["crop_bbox_xyxy"] == [120, 80, 360, 320]
+    remapped_position = results["items"][0]["position"]
+    assert remapped_position["bounds_xyxy"][0] >= 120
+    assert remapped_position["bounds_xyxy"][1] >= 80
+    assert all(point[0] >= 120 and point[1] >= 80 for point in remapped_position["polygon_xy"])
+    assert any(record.node_type_id == QR_CROP_DECODE_REMAP_NODE_TYPE_ID for record in execution_result.node_records)
 
 
 def _create_dataset_storage(tmp_path: Path) -> LocalDatasetStorage:

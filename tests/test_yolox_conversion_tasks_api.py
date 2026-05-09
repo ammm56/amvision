@@ -200,6 +200,7 @@ def test_create_yolox_conversion_task_and_read_result_after_worker(
         task_detail = SqlAlchemyTaskService(session_factory).get_task(task_id, include_events=True)
         assert any(event.message == "yolox conversion started" for event in task_detail.events)
         assert any(event.message == "yolox conversion succeeded" for event in task_detail.events)
+        assert task_detail.task.result["model_build_id"] == task_detail.task.result["builds"][0]["model_build_id"]
         assert dataset_storage.resolve(detail_payload["report_object_key"]).is_file() is True
         for build_item in detail_payload["builds"]:
             build_path = dataset_storage.resolve(build_item["build_file_uri"])

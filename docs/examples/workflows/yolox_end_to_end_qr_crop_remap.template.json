@@ -1,0 +1,1706 @@
+{
+  "format_id": "amvision.workflow-graph-template.v1",
+  "template_id": "yolox-end-to-end-qr-crop-remap-template",
+  "template_version": "1.0.0",
+  "display_name": "YOLOX End-to-End QR Crop Remap Template",
+  "description": "接收 zip 数据集包、各阶段动态 request 对象和 base64 图片，串起导入、导出、训练、评估、转换、部署与 QR crop remap 检测完整链路，并在执行结束后清理本次临时 deployment。",
+  "nodes": [
+    {
+      "node_id": "import_request_input",
+      "node_type_id": "core.io.template-input.object",
+      "parameters": {}
+    },
+    {
+      "node_id": "submit_import",
+      "node_type_id": "core.service.dataset-import.submit",
+      "parameters": {}
+    },
+    {
+      "node_id": "extract_import_task_id",
+      "node_type_id": "core.logic.field-extract",
+      "parameters": {
+        "path": "task_id"
+      }
+    },
+    {
+      "node_id": "build_import_wait_request",
+      "node_type_id": "core.logic.object-create",
+      "parameters": {
+        "keys": [
+          "task_id"
+        ],
+        "fields": {
+          "include_events": false,
+          "timeout_seconds": 1800,
+          "poll_interval_seconds": 1
+        }
+      }
+    },
+    {
+      "node_id": "wait_import",
+      "node_type_id": "core.service.task.wait",
+      "parameters": {}
+    },
+    {
+      "node_id": "extract_import_dataset_id",
+      "node_type_id": "core.logic.field-extract",
+      "parameters": {
+        "path": "result.dataset_id"
+      }
+    },
+    {
+      "node_id": "extract_import_dataset_version_id",
+      "node_type_id": "core.logic.field-extract",
+      "parameters": {
+        "path": "result.dataset_version_id"
+      }
+    },
+    {
+      "node_id": "extract_import_task_task_id",
+      "node_type_id": "core.logic.field-extract",
+      "parameters": {
+        "path": "task_id"
+      }
+    },
+    {
+      "node_id": "extract_import_task_state",
+      "node_type_id": "core.logic.field-extract",
+      "parameters": {
+        "path": "state"
+      }
+    },
+    {
+      "node_id": "extract_import_task_result",
+      "node_type_id": "core.logic.field-extract",
+      "parameters": {
+        "path": "result"
+      }
+    },
+    {
+      "node_id": "extract_import_task_error_message",
+      "node_type_id": "core.logic.field-extract",
+      "parameters": {
+        "path": "error_message"
+      }
+    },
+    {
+      "node_id": "extract_import_task_detail",
+      "node_type_id": "core.logic.object-create",
+      "parameters": {
+        "keys": [
+          "task_id",
+          "state",
+          "result",
+          "error_message"
+        ]
+      }
+    },
+    {
+      "node_id": "export_request_input",
+      "node_type_id": "core.io.template-input.object",
+      "parameters": {}
+    },
+    {
+      "node_id": "build_export_dynamic_request",
+      "node_type_id": "core.logic.object-create",
+      "parameters": {
+        "keys": [
+          "dataset_id",
+          "dataset_version_id"
+        ]
+      }
+    },
+    {
+      "node_id": "merge_export_request",
+      "node_type_id": "core.logic.object-merge",
+      "parameters": {}
+    },
+    {
+      "node_id": "submit_export",
+      "node_type_id": "core.service.dataset-export.submit",
+      "parameters": {}
+    },
+    {
+      "node_id": "extract_export_task_id",
+      "node_type_id": "core.logic.field-extract",
+      "parameters": {
+        "path": "task_id"
+      }
+    },
+    {
+      "node_id": "extract_export_id",
+      "node_type_id": "core.logic.field-extract",
+      "parameters": {
+        "path": "dataset_export_id"
+      }
+    },
+    {
+      "node_id": "build_export_wait_request",
+      "node_type_id": "core.logic.object-create",
+      "parameters": {
+        "keys": [
+          "task_id"
+        ],
+        "fields": {
+          "include_events": false,
+          "timeout_seconds": 1800,
+          "poll_interval_seconds": 1
+        }
+      }
+    },
+    {
+      "node_id": "wait_export",
+      "node_type_id": "core.service.task.wait",
+      "parameters": {}
+    },
+    {
+      "node_id": "extract_export_task_task_id",
+      "node_type_id": "core.logic.field-extract",
+      "parameters": {
+        "path": "task_id"
+      }
+    },
+    {
+      "node_id": "extract_export_task_state",
+      "node_type_id": "core.logic.field-extract",
+      "parameters": {
+        "path": "state"
+      }
+    },
+    {
+      "node_id": "extract_export_task_result",
+      "node_type_id": "core.logic.field-extract",
+      "parameters": {
+        "path": "result"
+      }
+    },
+    {
+      "node_id": "extract_export_task_error_message",
+      "node_type_id": "core.logic.field-extract",
+      "parameters": {
+        "path": "error_message"
+      }
+    },
+    {
+      "node_id": "extract_export_task_detail",
+      "node_type_id": "core.logic.object-create",
+      "parameters": {
+        "keys": [
+          "task_id",
+          "state",
+          "result",
+          "error_message"
+        ]
+      }
+    },
+    {
+      "node_id": "training_request_input",
+      "node_type_id": "core.io.template-input.object",
+      "parameters": {}
+    },
+    {
+      "node_id": "build_training_dynamic_request",
+      "node_type_id": "core.logic.object-create",
+      "parameters": {
+        "keys": [
+          "dataset_export_id"
+        ]
+      }
+    },
+    {
+      "node_id": "merge_training_request",
+      "node_type_id": "core.logic.object-merge",
+      "parameters": {}
+    },
+    {
+      "node_id": "submit_training",
+      "node_type_id": "core.service.yolox-training.submit",
+      "parameters": {}
+    },
+    {
+      "node_id": "extract_training_task_id",
+      "node_type_id": "core.logic.field-extract",
+      "parameters": {
+        "path": "task_id"
+      }
+    },
+    {
+      "node_id": "build_training_wait_request",
+      "node_type_id": "core.logic.object-create",
+      "parameters": {
+        "keys": [
+          "task_id"
+        ],
+        "fields": {
+          "include_events": false,
+          "timeout_seconds": 21600,
+          "poll_interval_seconds": 2
+        }
+      }
+    },
+    {
+      "node_id": "wait_training",
+      "node_type_id": "core.service.task.wait",
+      "parameters": {}
+    },
+    {
+      "node_id": "extract_training_task_task_id",
+      "node_type_id": "core.logic.field-extract",
+      "parameters": {
+        "path": "task_id"
+      }
+    },
+    {
+      "node_id": "extract_training_task_state",
+      "node_type_id": "core.logic.field-extract",
+      "parameters": {
+        "path": "state"
+      }
+    },
+    {
+      "node_id": "extract_training_task_result",
+      "node_type_id": "core.logic.field-extract",
+      "parameters": {
+        "path": "result"
+      }
+    },
+    {
+      "node_id": "extract_training_task_error_message",
+      "node_type_id": "core.logic.field-extract",
+      "parameters": {
+        "path": "error_message"
+      }
+    },
+    {
+      "node_id": "extract_training_task_detail",
+      "node_type_id": "core.logic.object-create",
+      "parameters": {
+        "keys": [
+          "task_id",
+          "state",
+          "result",
+          "error_message"
+        ]
+      }
+    },
+    {
+      "node_id": "extract_training_model_version_id",
+      "node_type_id": "core.logic.field-extract",
+      "parameters": {
+        "path": "result.model_version_id"
+      }
+    },
+    {
+      "node_id": "evaluation_request_input",
+      "node_type_id": "core.io.template-input.object",
+      "parameters": {}
+    },
+    {
+      "node_id": "build_evaluation_dynamic_request",
+      "node_type_id": "core.logic.object-create",
+      "parameters": {
+        "keys": [
+          "model_version_id",
+          "dataset_export_id"
+        ]
+      }
+    },
+    {
+      "node_id": "merge_evaluation_request",
+      "node_type_id": "core.logic.object-merge",
+      "parameters": {}
+    },
+    {
+      "node_id": "submit_evaluation",
+      "node_type_id": "core.service.yolox-evaluation.submit",
+      "parameters": {}
+    },
+    {
+      "node_id": "extract_evaluation_task_id",
+      "node_type_id": "core.logic.field-extract",
+      "parameters": {
+        "path": "task_id"
+      }
+    },
+    {
+      "node_id": "build_evaluation_wait_request",
+      "node_type_id": "core.logic.object-create",
+      "parameters": {
+        "keys": [
+          "task_id"
+        ],
+        "fields": {
+          "include_events": false,
+          "timeout_seconds": 7200,
+          "poll_interval_seconds": 2
+        }
+      }
+    },
+    {
+      "node_id": "wait_evaluation",
+      "node_type_id": "core.service.task.wait",
+      "parameters": {}
+    },
+    {
+      "node_id": "extract_evaluation_task_task_id",
+      "node_type_id": "core.logic.field-extract",
+      "parameters": {
+        "path": "task_id"
+      }
+    },
+    {
+      "node_id": "extract_evaluation_task_state",
+      "node_type_id": "core.logic.field-extract",
+      "parameters": {
+        "path": "state"
+      }
+    },
+    {
+      "node_id": "extract_evaluation_task_result",
+      "node_type_id": "core.logic.field-extract",
+      "parameters": {
+        "path": "result"
+      }
+    },
+    {
+      "node_id": "extract_evaluation_task_error_message",
+      "node_type_id": "core.logic.field-extract",
+      "parameters": {
+        "path": "error_message"
+      }
+    },
+    {
+      "node_id": "extract_evaluation_task_detail",
+      "node_type_id": "core.logic.object-create",
+      "parameters": {
+        "keys": [
+          "task_id",
+          "state",
+          "result",
+          "error_message"
+        ]
+      }
+    },
+    {
+      "node_id": "conversion_request_input",
+      "node_type_id": "core.io.template-input.object",
+      "parameters": {}
+    },
+    {
+      "node_id": "build_conversion_dynamic_request",
+      "node_type_id": "core.logic.object-create",
+      "parameters": {
+        "keys": [
+          "source_model_version_id"
+        ]
+      }
+    },
+    {
+      "node_id": "merge_conversion_request",
+      "node_type_id": "core.logic.object-merge",
+      "parameters": {}
+    },
+    {
+      "node_id": "submit_conversion",
+      "node_type_id": "core.service.yolox-conversion.submit",
+      "parameters": {}
+    },
+    {
+      "node_id": "extract_conversion_task_id",
+      "node_type_id": "core.logic.field-extract",
+      "parameters": {
+        "path": "task_id"
+      }
+    },
+    {
+      "node_id": "build_conversion_wait_request",
+      "node_type_id": "core.logic.object-create",
+      "parameters": {
+        "keys": [
+          "task_id"
+        ],
+        "fields": {
+          "include_events": false,
+          "timeout_seconds": 7200,
+          "poll_interval_seconds": 2
+        }
+      }
+    },
+    {
+      "node_id": "wait_conversion",
+      "node_type_id": "core.service.task.wait",
+      "parameters": {}
+    },
+    {
+      "node_id": "extract_conversion_task_task_id",
+      "node_type_id": "core.logic.field-extract",
+      "parameters": {
+        "path": "task_id"
+      }
+    },
+    {
+      "node_id": "extract_conversion_task_state",
+      "node_type_id": "core.logic.field-extract",
+      "parameters": {
+        "path": "state"
+      }
+    },
+    {
+      "node_id": "extract_conversion_task_result",
+      "node_type_id": "core.logic.field-extract",
+      "parameters": {
+        "path": "result"
+      }
+    },
+    {
+      "node_id": "extract_conversion_task_error_message",
+      "node_type_id": "core.logic.field-extract",
+      "parameters": {
+        "path": "error_message"
+      }
+    },
+    {
+      "node_id": "extract_conversion_task_detail",
+      "node_type_id": "core.logic.object-create",
+      "parameters": {
+        "keys": [
+          "task_id",
+          "state",
+          "result",
+          "error_message"
+        ]
+      }
+    },
+    {
+      "node_id": "extract_conversion_model_build_id",
+      "node_type_id": "core.logic.field-extract",
+      "parameters": {
+        "path": "result.model_build_id"
+      }
+    },
+    {
+      "node_id": "deployment_request_input",
+      "node_type_id": "core.io.template-input.object",
+      "parameters": {}
+    },
+    {
+      "node_id": "build_deployment_dynamic_request",
+      "node_type_id": "core.logic.object-create",
+      "parameters": {
+        "keys": [
+          "model_version_id",
+          "model_build_id"
+        ]
+      }
+    },
+    {
+      "node_id": "merge_deployment_request",
+      "node_type_id": "core.logic.object-merge",
+      "parameters": {}
+    },
+    {
+      "node_id": "create_deployment",
+      "node_type_id": "core.service.yolox-deployment.create",
+      "parameters": {
+        "cleanup_on_completion": true
+      }
+    },
+    {
+      "node_id": "extract_deployment_detail",
+      "node_type_id": "core.logic.object-create",
+      "parameters": {
+        "keys": [
+          "deployment_instance_id",
+          "model_version_id",
+          "model_build_id",
+          "runtime_backend"
+        ]
+      }
+    },
+    {
+      "node_id": "extract_deployment_instance_id",
+      "node_type_id": "core.logic.field-extract",
+      "parameters": {
+        "path": "deployment_instance_id"
+      }
+    },
+    {
+      "node_id": "extract_deployment_model_version_id",
+      "node_type_id": "core.logic.field-extract",
+      "parameters": {
+        "path": "model_version_id"
+      }
+    },
+    {
+      "node_id": "extract_deployment_model_build_id",
+      "node_type_id": "core.logic.field-extract",
+      "parameters": {
+        "path": "model_build_id"
+      }
+    },
+    {
+      "node_id": "extract_deployment_runtime_backend",
+      "node_type_id": "core.logic.field-extract",
+      "parameters": {
+        "path": "runtime_backend"
+      }
+    },
+    {
+      "node_id": "inference_request_input",
+      "node_type_id": "core.io.template-input.object",
+      "parameters": {}
+    },
+    {
+      "node_id": "build_inference_dynamic_request",
+      "node_type_id": "core.logic.object-create",
+      "parameters": {
+        "keys": [
+          "deployment_instance_id"
+        ],
+        "fields": {
+          "auto_start_process": true,
+          "save_result_image": false,
+          "return_preview_image_base64": false
+        }
+      }
+    },
+    {
+      "node_id": "merge_inference_request",
+      "node_type_id": "core.logic.object-merge",
+      "parameters": {}
+    },
+    {
+      "node_id": "decode_request_image",
+      "node_type_id": "core.io.image-base64-decode",
+      "parameters": {}
+    },
+    {
+      "node_id": "detect",
+      "node_type_id": "core.model.yolox-detection",
+      "parameters": {}
+    },
+    {
+      "node_id": "export_crops",
+      "node_type_id": "custom.opencv.crop-export",
+      "parameters": {
+        "box_padding": 8,
+        "max_crops": 12
+      }
+    },
+    {
+      "node_id": "decode_qr_crops",
+      "node_type_id": "custom.barcode.qr-crop-decode-remap",
+      "parameters": {
+        "try_rotate": true,
+        "try_downscale": true,
+        "try_invert": true
+      }
+    },
+    {
+      "node_id": "draw_results",
+      "node_type_id": "custom.barcode.draw-results",
+      "parameters": {
+        "draw_polygon": true,
+        "draw_text": true,
+        "draw_format": false,
+        "draw_index": true
+      }
+    },
+    {
+      "node_id": "preview_image",
+      "node_type_id": "core.io.image-preview",
+      "parameters": {
+        "title": "End-to-End QR Crop Remap Image",
+        "response_transport_mode": "inline-base64"
+      }
+    },
+    {
+      "node_id": "extract_annotated_image",
+      "node_type_id": "core.logic.field-extract",
+      "parameters": {
+        "path": "image"
+      }
+    },
+    {
+      "node_id": "summary",
+      "node_type_id": "custom.barcode.results-summary",
+      "parameters": {}
+    },
+    {
+      "node_id": "extract_barcode_summary",
+      "node_type_id": "core.logic.field-extract",
+      "parameters": {
+        "path": ""
+      }
+    },
+    {
+      "node_id": "build_artifact_ids",
+      "node_type_id": "core.logic.object-create",
+      "parameters": {
+        "keys": [
+          "dataset_id",
+          "dataset_version_id",
+          "dataset_export_id",
+          "model_version_id",
+          "model_build_id",
+          "deployment_instance_id"
+        ]
+      }
+    },
+    {
+      "node_id": "build_stage_data",
+      "node_type_id": "core.logic.object-create",
+      "parameters": {
+        "keys": [
+          "import_task",
+          "export_task",
+          "training_task",
+          "evaluation_task",
+          "conversion_task",
+          "deployment"
+        ]
+      }
+    },
+    {
+      "node_id": "build_response_data",
+      "node_type_id": "core.logic.object-create",
+      "parameters": {
+        "keys": [
+          "artifact_ids",
+          "stages",
+          "annotated_image",
+          "barcode_summary"
+        ],
+        "fields": {
+          "type": "yolox-end-to-end-qr-crop-remap"
+        }
+      }
+    },
+    {
+      "node_id": "envelope",
+      "node_type_id": "core.output.response-envelope",
+      "parameters": {
+        "code": 0,
+        "message": "completed"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "edge_id": "edge-import-request-submit",
+      "source_node_id": "import_request_input",
+      "source_port": "value",
+      "target_node_id": "submit_import",
+      "target_port": "request"
+    },
+    {
+      "edge_id": "edge-submit-import-task-id",
+      "source_node_id": "submit_import",
+      "source_port": "body",
+      "target_node_id": "extract_import_task_id",
+      "target_port": "body"
+    },
+    {
+      "edge_id": "edge-import-task-id-build-wait",
+      "source_node_id": "extract_import_task_id",
+      "source_port": "value",
+      "target_node_id": "build_import_wait_request",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-import-wait-request-wait-import",
+      "source_node_id": "build_import_wait_request",
+      "source_port": "value",
+      "target_node_id": "wait_import",
+      "target_port": "request"
+    },
+    {
+      "edge_id": "edge-wait-import-dataset-id",
+      "source_node_id": "wait_import",
+      "source_port": "body",
+      "target_node_id": "extract_import_dataset_id",
+      "target_port": "body"
+    },
+    {
+      "edge_id": "edge-wait-import-dataset-version-id",
+      "source_node_id": "wait_import",
+      "source_port": "body",
+      "target_node_id": "extract_import_dataset_version_id",
+      "target_port": "body"
+    },
+    {
+      "edge_id": "edge-wait-import-task-detail",
+      "source_node_id": "wait_import",
+      "source_port": "body",
+      "target_node_id": "extract_import_task_task_id",
+      "target_port": "body"
+    },
+    {
+      "edge_id": "edge-wait-import-task-state",
+      "source_node_id": "wait_import",
+      "source_port": "body",
+      "target_node_id": "extract_import_task_state",
+      "target_port": "body"
+    },
+    {
+      "edge_id": "edge-wait-import-task-result",
+      "source_node_id": "wait_import",
+      "source_port": "body",
+      "target_node_id": "extract_import_task_result",
+      "target_port": "body"
+    },
+    {
+      "edge_id": "edge-wait-import-task-error-message",
+      "source_node_id": "wait_import",
+      "source_port": "body",
+      "target_node_id": "extract_import_task_error_message",
+      "target_port": "body"
+    },
+    {
+      "edge_id": "edge-import-task-id-summary",
+      "source_node_id": "extract_import_task_task_id",
+      "source_port": "value",
+      "target_node_id": "extract_import_task_detail",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-import-task-state-summary",
+      "source_node_id": "extract_import_task_state",
+      "source_port": "value",
+      "target_node_id": "extract_import_task_detail",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-import-task-result-summary",
+      "source_node_id": "extract_import_task_result",
+      "source_port": "value",
+      "target_node_id": "extract_import_task_detail",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-import-task-error-summary",
+      "source_node_id": "extract_import_task_error_message",
+      "source_port": "value",
+      "target_node_id": "extract_import_task_detail",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-import-dataset-id-build-export-request",
+      "source_node_id": "extract_import_dataset_id",
+      "source_port": "value",
+      "target_node_id": "build_export_dynamic_request",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-import-dataset-version-id-build-export-request",
+      "source_node_id": "extract_import_dataset_version_id",
+      "source_port": "value",
+      "target_node_id": "build_export_dynamic_request",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-export-request-merge-base",
+      "source_node_id": "export_request_input",
+      "source_port": "value",
+      "target_node_id": "merge_export_request",
+      "target_port": "objects"
+    },
+    {
+      "edge_id": "edge-export-request-merge-dynamic",
+      "source_node_id": "build_export_dynamic_request",
+      "source_port": "value",
+      "target_node_id": "merge_export_request",
+      "target_port": "objects"
+    },
+    {
+      "edge_id": "edge-merge-export-submit",
+      "source_node_id": "merge_export_request",
+      "source_port": "value",
+      "target_node_id": "submit_export",
+      "target_port": "request"
+    },
+    {
+      "edge_id": "edge-submit-export-task-id",
+      "source_node_id": "submit_export",
+      "source_port": "body",
+      "target_node_id": "extract_export_task_id",
+      "target_port": "body"
+    },
+    {
+      "edge_id": "edge-submit-export-export-id",
+      "source_node_id": "submit_export",
+      "source_port": "body",
+      "target_node_id": "extract_export_id",
+      "target_port": "body"
+    },
+    {
+      "edge_id": "edge-export-task-id-build-wait",
+      "source_node_id": "extract_export_task_id",
+      "source_port": "value",
+      "target_node_id": "build_export_wait_request",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-export-wait-request-wait-export",
+      "source_node_id": "build_export_wait_request",
+      "source_port": "value",
+      "target_node_id": "wait_export",
+      "target_port": "request"
+    },
+    {
+      "edge_id": "edge-wait-export-task-detail",
+      "source_node_id": "wait_export",
+      "source_port": "body",
+      "target_node_id": "extract_export_task_task_id",
+      "target_port": "body"
+    },
+    {
+      "edge_id": "edge-wait-export-task-state",
+      "source_node_id": "wait_export",
+      "source_port": "body",
+      "target_node_id": "extract_export_task_state",
+      "target_port": "body"
+    },
+    {
+      "edge_id": "edge-wait-export-task-result",
+      "source_node_id": "wait_export",
+      "source_port": "body",
+      "target_node_id": "extract_export_task_result",
+      "target_port": "body"
+    },
+    {
+      "edge_id": "edge-wait-export-task-error-message",
+      "source_node_id": "wait_export",
+      "source_port": "body",
+      "target_node_id": "extract_export_task_error_message",
+      "target_port": "body"
+    },
+    {
+      "edge_id": "edge-export-task-id-summary",
+      "source_node_id": "extract_export_task_task_id",
+      "source_port": "value",
+      "target_node_id": "extract_export_task_detail",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-export-task-state-summary",
+      "source_node_id": "extract_export_task_state",
+      "source_port": "value",
+      "target_node_id": "extract_export_task_detail",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-export-task-result-summary",
+      "source_node_id": "extract_export_task_result",
+      "source_port": "value",
+      "target_node_id": "extract_export_task_detail",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-export-task-error-summary",
+      "source_node_id": "extract_export_task_error_message",
+      "source_port": "value",
+      "target_node_id": "extract_export_task_detail",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-export-id-build-training-request",
+      "source_node_id": "extract_export_id",
+      "source_port": "value",
+      "target_node_id": "build_training_dynamic_request",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-training-request-merge-base",
+      "source_node_id": "training_request_input",
+      "source_port": "value",
+      "target_node_id": "merge_training_request",
+      "target_port": "objects"
+    },
+    {
+      "edge_id": "edge-training-request-merge-dynamic",
+      "source_node_id": "build_training_dynamic_request",
+      "source_port": "value",
+      "target_node_id": "merge_training_request",
+      "target_port": "objects"
+    },
+    {
+      "edge_id": "edge-merge-training-submit",
+      "source_node_id": "merge_training_request",
+      "source_port": "value",
+      "target_node_id": "submit_training",
+      "target_port": "request"
+    },
+    {
+      "edge_id": "edge-submit-training-task-id",
+      "source_node_id": "submit_training",
+      "source_port": "body",
+      "target_node_id": "extract_training_task_id",
+      "target_port": "body"
+    },
+    {
+      "edge_id": "edge-training-task-id-build-wait",
+      "source_node_id": "extract_training_task_id",
+      "source_port": "value",
+      "target_node_id": "build_training_wait_request",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-training-wait-request-wait-training",
+      "source_node_id": "build_training_wait_request",
+      "source_port": "value",
+      "target_node_id": "wait_training",
+      "target_port": "request"
+    },
+    {
+      "edge_id": "edge-wait-training-task-detail",
+      "source_node_id": "wait_training",
+      "source_port": "body",
+      "target_node_id": "extract_training_task_task_id",
+      "target_port": "body"
+    },
+    {
+      "edge_id": "edge-wait-training-task-state",
+      "source_node_id": "wait_training",
+      "source_port": "body",
+      "target_node_id": "extract_training_task_state",
+      "target_port": "body"
+    },
+    {
+      "edge_id": "edge-wait-training-task-result",
+      "source_node_id": "wait_training",
+      "source_port": "body",
+      "target_node_id": "extract_training_task_result",
+      "target_port": "body"
+    },
+    {
+      "edge_id": "edge-wait-training-task-error-message",
+      "source_node_id": "wait_training",
+      "source_port": "body",
+      "target_node_id": "extract_training_task_error_message",
+      "target_port": "body"
+    },
+    {
+      "edge_id": "edge-training-task-id-summary",
+      "source_node_id": "extract_training_task_task_id",
+      "source_port": "value",
+      "target_node_id": "extract_training_task_detail",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-training-task-state-summary",
+      "source_node_id": "extract_training_task_state",
+      "source_port": "value",
+      "target_node_id": "extract_training_task_detail",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-training-task-result-summary",
+      "source_node_id": "extract_training_task_result",
+      "source_port": "value",
+      "target_node_id": "extract_training_task_detail",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-training-task-error-summary",
+      "source_node_id": "extract_training_task_error_message",
+      "source_port": "value",
+      "target_node_id": "extract_training_task_detail",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-wait-training-model-version-id",
+      "source_node_id": "wait_training",
+      "source_port": "body",
+      "target_node_id": "extract_training_model_version_id",
+      "target_port": "body"
+    },
+    {
+      "edge_id": "edge-training-model-version-id-build-evaluation-request",
+      "source_node_id": "extract_training_model_version_id",
+      "source_port": "value",
+      "target_node_id": "build_evaluation_dynamic_request",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-export-id-build-evaluation-request",
+      "source_node_id": "extract_export_id",
+      "source_port": "value",
+      "target_node_id": "build_evaluation_dynamic_request",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-evaluation-request-merge-base",
+      "source_node_id": "evaluation_request_input",
+      "source_port": "value",
+      "target_node_id": "merge_evaluation_request",
+      "target_port": "objects"
+    },
+    {
+      "edge_id": "edge-evaluation-request-merge-dynamic",
+      "source_node_id": "build_evaluation_dynamic_request",
+      "source_port": "value",
+      "target_node_id": "merge_evaluation_request",
+      "target_port": "objects"
+    },
+    {
+      "edge_id": "edge-merge-evaluation-submit",
+      "source_node_id": "merge_evaluation_request",
+      "source_port": "value",
+      "target_node_id": "submit_evaluation",
+      "target_port": "request"
+    },
+    {
+      "edge_id": "edge-submit-evaluation-task-id",
+      "source_node_id": "submit_evaluation",
+      "source_port": "body",
+      "target_node_id": "extract_evaluation_task_id",
+      "target_port": "body"
+    },
+    {
+      "edge_id": "edge-evaluation-task-id-build-wait",
+      "source_node_id": "extract_evaluation_task_id",
+      "source_port": "value",
+      "target_node_id": "build_evaluation_wait_request",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-evaluation-wait-request-wait-evaluation",
+      "source_node_id": "build_evaluation_wait_request",
+      "source_port": "value",
+      "target_node_id": "wait_evaluation",
+      "target_port": "request"
+    },
+    {
+      "edge_id": "edge-wait-evaluation-task-detail",
+      "source_node_id": "wait_evaluation",
+      "source_port": "body",
+      "target_node_id": "extract_evaluation_task_task_id",
+      "target_port": "body"
+    },
+    {
+      "edge_id": "edge-wait-evaluation-task-state",
+      "source_node_id": "wait_evaluation",
+      "source_port": "body",
+      "target_node_id": "extract_evaluation_task_state",
+      "target_port": "body"
+    },
+    {
+      "edge_id": "edge-wait-evaluation-task-result",
+      "source_node_id": "wait_evaluation",
+      "source_port": "body",
+      "target_node_id": "extract_evaluation_task_result",
+      "target_port": "body"
+    },
+    {
+      "edge_id": "edge-wait-evaluation-task-error-message",
+      "source_node_id": "wait_evaluation",
+      "source_port": "body",
+      "target_node_id": "extract_evaluation_task_error_message",
+      "target_port": "body"
+    },
+    {
+      "edge_id": "edge-evaluation-task-id-summary",
+      "source_node_id": "extract_evaluation_task_task_id",
+      "source_port": "value",
+      "target_node_id": "extract_evaluation_task_detail",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-evaluation-task-state-summary",
+      "source_node_id": "extract_evaluation_task_state",
+      "source_port": "value",
+      "target_node_id": "extract_evaluation_task_detail",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-evaluation-task-result-summary",
+      "source_node_id": "extract_evaluation_task_result",
+      "source_port": "value",
+      "target_node_id": "extract_evaluation_task_detail",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-evaluation-task-error-summary",
+      "source_node_id": "extract_evaluation_task_error_message",
+      "source_port": "value",
+      "target_node_id": "extract_evaluation_task_detail",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-training-model-version-id-build-conversion-request",
+      "source_node_id": "extract_training_model_version_id",
+      "source_port": "value",
+      "target_node_id": "build_conversion_dynamic_request",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-conversion-request-merge-base",
+      "source_node_id": "conversion_request_input",
+      "source_port": "value",
+      "target_node_id": "merge_conversion_request",
+      "target_port": "objects"
+    },
+    {
+      "edge_id": "edge-conversion-request-merge-dynamic",
+      "source_node_id": "build_conversion_dynamic_request",
+      "source_port": "value",
+      "target_node_id": "merge_conversion_request",
+      "target_port": "objects"
+    },
+    {
+      "edge_id": "edge-merge-conversion-submit",
+      "source_node_id": "merge_conversion_request",
+      "source_port": "value",
+      "target_node_id": "submit_conversion",
+      "target_port": "request"
+    },
+    {
+      "edge_id": "edge-submit-conversion-task-id",
+      "source_node_id": "submit_conversion",
+      "source_port": "body",
+      "target_node_id": "extract_conversion_task_id",
+      "target_port": "body"
+    },
+    {
+      "edge_id": "edge-conversion-task-id-build-wait",
+      "source_node_id": "extract_conversion_task_id",
+      "source_port": "value",
+      "target_node_id": "build_conversion_wait_request",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-conversion-wait-request-wait-conversion",
+      "source_node_id": "build_conversion_wait_request",
+      "source_port": "value",
+      "target_node_id": "wait_conversion",
+      "target_port": "request"
+    },
+    {
+      "edge_id": "edge-wait-conversion-task-detail",
+      "source_node_id": "wait_conversion",
+      "source_port": "body",
+      "target_node_id": "extract_conversion_task_task_id",
+      "target_port": "body"
+    },
+    {
+      "edge_id": "edge-wait-conversion-task-state",
+      "source_node_id": "wait_conversion",
+      "source_port": "body",
+      "target_node_id": "extract_conversion_task_state",
+      "target_port": "body"
+    },
+    {
+      "edge_id": "edge-wait-conversion-task-result",
+      "source_node_id": "wait_conversion",
+      "source_port": "body",
+      "target_node_id": "extract_conversion_task_result",
+      "target_port": "body"
+    },
+    {
+      "edge_id": "edge-wait-conversion-task-error-message",
+      "source_node_id": "wait_conversion",
+      "source_port": "body",
+      "target_node_id": "extract_conversion_task_error_message",
+      "target_port": "body"
+    },
+    {
+      "edge_id": "edge-conversion-task-id-summary",
+      "source_node_id": "extract_conversion_task_task_id",
+      "source_port": "value",
+      "target_node_id": "extract_conversion_task_detail",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-conversion-task-state-summary",
+      "source_node_id": "extract_conversion_task_state",
+      "source_port": "value",
+      "target_node_id": "extract_conversion_task_detail",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-conversion-task-result-summary",
+      "source_node_id": "extract_conversion_task_result",
+      "source_port": "value",
+      "target_node_id": "extract_conversion_task_detail",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-conversion-task-error-summary",
+      "source_node_id": "extract_conversion_task_error_message",
+      "source_port": "value",
+      "target_node_id": "extract_conversion_task_detail",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-wait-conversion-model-build-id",
+      "source_node_id": "wait_conversion",
+      "source_port": "body",
+      "target_node_id": "extract_conversion_model_build_id",
+      "target_port": "body"
+    },
+    {
+      "edge_id": "edge-training-model-version-id-build-deployment-request",
+      "source_node_id": "extract_training_model_version_id",
+      "source_port": "value",
+      "target_node_id": "build_deployment_dynamic_request",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-conversion-model-build-id-build-deployment-request",
+      "source_node_id": "extract_conversion_model_build_id",
+      "source_port": "value",
+      "target_node_id": "build_deployment_dynamic_request",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-deployment-request-merge-base",
+      "source_node_id": "deployment_request_input",
+      "source_port": "value",
+      "target_node_id": "merge_deployment_request",
+      "target_port": "objects"
+    },
+    {
+      "edge_id": "edge-deployment-request-merge-dynamic",
+      "source_node_id": "build_deployment_dynamic_request",
+      "source_port": "value",
+      "target_node_id": "merge_deployment_request",
+      "target_port": "objects"
+    },
+    {
+      "edge_id": "edge-merge-deployment-create",
+      "source_node_id": "merge_deployment_request",
+      "source_port": "value",
+      "target_node_id": "create_deployment",
+      "target_port": "request"
+    },
+    {
+      "edge_id": "edge-create-deployment-detail",
+      "source_node_id": "create_deployment",
+      "source_port": "body",
+      "target_node_id": "extract_deployment_model_version_id",
+      "target_port": "body"
+    },
+    {
+      "edge_id": "edge-create-deployment-instance-id",
+      "source_node_id": "create_deployment",
+      "source_port": "body",
+      "target_node_id": "extract_deployment_instance_id",
+      "target_port": "body"
+    },
+    {
+      "edge_id": "edge-create-deployment-model-build-id",
+      "source_node_id": "create_deployment",
+      "source_port": "body",
+      "target_node_id": "extract_deployment_model_build_id",
+      "target_port": "body"
+    },
+    {
+      "edge_id": "edge-create-deployment-runtime-backend",
+      "source_node_id": "create_deployment",
+      "source_port": "body",
+      "target_node_id": "extract_deployment_runtime_backend",
+      "target_port": "body"
+    },
+    {
+      "edge_id": "edge-deployment-summary-instance-id",
+      "source_node_id": "extract_deployment_instance_id",
+      "source_port": "value",
+      "target_node_id": "extract_deployment_detail",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-deployment-summary-model-version-id",
+      "source_node_id": "extract_deployment_model_version_id",
+      "source_port": "value",
+      "target_node_id": "extract_deployment_detail",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-deployment-summary-model-build-id",
+      "source_node_id": "extract_deployment_model_build_id",
+      "source_port": "value",
+      "target_node_id": "extract_deployment_detail",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-deployment-summary-runtime-backend",
+      "source_node_id": "extract_deployment_runtime_backend",
+      "source_port": "value",
+      "target_node_id": "extract_deployment_detail",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-deployment-instance-id-build-inference-request",
+      "source_node_id": "extract_deployment_instance_id",
+      "source_port": "value",
+      "target_node_id": "build_inference_dynamic_request",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-inference-request-merge-base",
+      "source_node_id": "inference_request_input",
+      "source_port": "value",
+      "target_node_id": "merge_inference_request",
+      "target_port": "objects"
+    },
+    {
+      "edge_id": "edge-inference-request-merge-dynamic",
+      "source_node_id": "build_inference_dynamic_request",
+      "source_port": "value",
+      "target_node_id": "merge_inference_request",
+      "target_port": "objects"
+    },
+    {
+      "edge_id": "edge-merge-inference-detect-request",
+      "source_node_id": "merge_inference_request",
+      "source_port": "value",
+      "target_node_id": "detect",
+      "target_port": "request"
+    },
+    {
+      "edge_id": "edge-decode-detect-image",
+      "source_node_id": "decode_request_image",
+      "source_port": "image",
+      "target_node_id": "detect",
+      "target_port": "image"
+    },
+    {
+      "edge_id": "edge-decode-export-crops-image",
+      "source_node_id": "decode_request_image",
+      "source_port": "image",
+      "target_node_id": "export_crops",
+      "target_port": "image"
+    },
+    {
+      "edge_id": "edge-detect-export-crops-detections",
+      "source_node_id": "detect",
+      "source_port": "detections",
+      "target_node_id": "export_crops",
+      "target_port": "detections"
+    },
+    {
+      "edge_id": "edge-export-crops-decode-qr-crops",
+      "source_node_id": "export_crops",
+      "source_port": "crops",
+      "target_node_id": "decode_qr_crops",
+      "target_port": "crops"
+    },
+    {
+      "edge_id": "edge-decode-draw-results-image",
+      "source_node_id": "decode_request_image",
+      "source_port": "image",
+      "target_node_id": "draw_results",
+      "target_port": "image"
+    },
+    {
+      "edge_id": "edge-decode-qr-crops-draw-results",
+      "source_node_id": "decode_qr_crops",
+      "source_port": "results",
+      "target_node_id": "draw_results",
+      "target_port": "results"
+    },
+    {
+      "edge_id": "edge-draw-results-preview-image",
+      "source_node_id": "draw_results",
+      "source_port": "image",
+      "target_node_id": "preview_image",
+      "target_port": "image"
+    },
+    {
+      "edge_id": "edge-preview-image-extract-annotated-image",
+      "source_node_id": "preview_image",
+      "source_port": "body",
+      "target_node_id": "extract_annotated_image",
+      "target_port": "body"
+    },
+    {
+      "edge_id": "edge-decode-qr-crops-summary",
+      "source_node_id": "decode_qr_crops",
+      "source_port": "results",
+      "target_node_id": "summary",
+      "target_port": "results"
+    },
+    {
+      "edge_id": "edge-summary-extract-barcode-summary",
+      "source_node_id": "summary",
+      "source_port": "body",
+      "target_node_id": "extract_barcode_summary",
+      "target_port": "body"
+    },
+    {
+      "edge_id": "edge-artifact-dataset-id",
+      "source_node_id": "extract_import_dataset_id",
+      "source_port": "value",
+      "target_node_id": "build_artifact_ids",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-artifact-dataset-version-id",
+      "source_node_id": "extract_import_dataset_version_id",
+      "source_port": "value",
+      "target_node_id": "build_artifact_ids",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-artifact-dataset-export-id",
+      "source_node_id": "extract_export_id",
+      "source_port": "value",
+      "target_node_id": "build_artifact_ids",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-artifact-model-version-id",
+      "source_node_id": "extract_training_model_version_id",
+      "source_port": "value",
+      "target_node_id": "build_artifact_ids",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-artifact-model-build-id",
+      "source_node_id": "extract_conversion_model_build_id",
+      "source_port": "value",
+      "target_node_id": "build_artifact_ids",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-artifact-deployment-instance-id",
+      "source_node_id": "extract_deployment_instance_id",
+      "source_port": "value",
+      "target_node_id": "build_artifact_ids",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-stage-import-task",
+      "source_node_id": "extract_import_task_detail",
+      "source_port": "value",
+      "target_node_id": "build_stage_data",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-stage-export-task",
+      "source_node_id": "extract_export_task_detail",
+      "source_port": "value",
+      "target_node_id": "build_stage_data",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-stage-training-task",
+      "source_node_id": "extract_training_task_detail",
+      "source_port": "value",
+      "target_node_id": "build_stage_data",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-stage-evaluation-task",
+      "source_node_id": "extract_evaluation_task_detail",
+      "source_port": "value",
+      "target_node_id": "build_stage_data",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-stage-conversion-task",
+      "source_node_id": "extract_conversion_task_detail",
+      "source_port": "value",
+      "target_node_id": "build_stage_data",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-stage-deployment",
+      "source_node_id": "extract_deployment_detail",
+      "source_port": "value",
+      "target_node_id": "build_stage_data",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-response-artifact-ids",
+      "source_node_id": "build_artifact_ids",
+      "source_port": "value",
+      "target_node_id": "build_response_data",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-response-stage-data",
+      "source_node_id": "build_stage_data",
+      "source_port": "value",
+      "target_node_id": "build_response_data",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-response-annotated-image",
+      "source_node_id": "extract_annotated_image",
+      "source_port": "value",
+      "target_node_id": "build_response_data",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-response-barcode-summary",
+      "source_node_id": "extract_barcode_summary",
+      "source_port": "value",
+      "target_node_id": "build_response_data",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-response-envelope",
+      "source_node_id": "build_response_data",
+      "source_port": "value",
+      "target_node_id": "envelope",
+      "target_port": "data"
+    }
+  ],
+  "template_inputs": [
+    {
+      "input_id": "import_request_payload",
+      "display_name": "Import Request Payload",
+      "payload_type_id": "value.v1",
+      "target_node_id": "import_request_input",
+      "target_port": "payload"
+    },
+    {
+      "input_id": "request_package",
+      "display_name": "Request Package",
+      "payload_type_id": "dataset-package.v1",
+      "target_node_id": "submit_import",
+      "target_port": "package"
+    },
+    {
+      "input_id": "export_request_payload",
+      "display_name": "Export Request Payload",
+      "payload_type_id": "value.v1",
+      "target_node_id": "export_request_input",
+      "target_port": "payload"
+    },
+    {
+      "input_id": "training_request_payload",
+      "display_name": "Training Request Payload",
+      "payload_type_id": "value.v1",
+      "target_node_id": "training_request_input",
+      "target_port": "payload"
+    },
+    {
+      "input_id": "evaluation_request_payload",
+      "display_name": "Evaluation Request Payload",
+      "payload_type_id": "value.v1",
+      "target_node_id": "evaluation_request_input",
+      "target_port": "payload"
+    },
+    {
+      "input_id": "conversion_request_payload",
+      "display_name": "Conversion Request Payload",
+      "payload_type_id": "value.v1",
+      "target_node_id": "conversion_request_input",
+      "target_port": "payload"
+    },
+    {
+      "input_id": "deployment_request_payload",
+      "display_name": "Deployment Request Payload",
+      "payload_type_id": "value.v1",
+      "target_node_id": "deployment_request_input",
+      "target_port": "payload"
+    },
+    {
+      "input_id": "inference_request_payload",
+      "display_name": "Inference Request Payload",
+      "payload_type_id": "value.v1",
+      "target_node_id": "inference_request_input",
+      "target_port": "payload"
+    },
+    {
+      "input_id": "request_image",
+      "display_name": "Request Image",
+      "payload_type_id": "image-base64.v1",
+      "target_node_id": "decode_request_image",
+      "target_port": "payload"
+    }
+  ],
+  "template_outputs": [
+    {
+      "output_id": "response_body",
+      "display_name": "Response Body",
+      "payload_type_id": "response-body.v1",
+      "source_node_id": "envelope",
+      "source_port": "body"
+    }
+  ],
+  "metadata": {
+    "example_kind": "yolox-end-to-end-qr-crop-remap",
+    "deployment_cleanup_policy": "delete_on_completion",
+    "supports_runtime_upload": true,
+    "dynamic_request_binding_ids": [
+      "import_request_payload",
+      "export_request_payload",
+      "training_request_payload",
+      "evaluation_request_payload",
+      "conversion_request_payload",
+      "deployment_request_payload",
+      "inference_request_payload"
+    ],
+    "intended_saved_object_key": "workflows/projects/{project_id}/templates/yolox-end-to-end-qr-crop-remap-template/versions/1.0.0/template.json",
+    "node_groups": {
+      "input": [
+        "import_request_input",
+        "export_request_input",
+        "training_request_input",
+        "evaluation_request_input",
+        "conversion_request_input",
+        "deployment_request_input",
+        "inference_request_input",
+        "decode_request_image"
+      ],
+      "dataset_import": [
+        "submit_import",
+        "build_import_wait_request",
+        "wait_import"
+      ],
+      "dataset_export": [
+        "build_export_dynamic_request",
+        "merge_export_request",
+        "submit_export",
+        "build_export_wait_request",
+        "wait_export"
+      ],
+      "training": [
+        "build_training_dynamic_request",
+        "merge_training_request",
+        "submit_training",
+        "build_training_wait_request",
+        "wait_training"
+      ],
+      "evaluation": [
+        "build_evaluation_dynamic_request",
+        "merge_evaluation_request",
+        "submit_evaluation",
+        "build_evaluation_wait_request",
+        "wait_evaluation"
+      ],
+      "conversion": [
+        "build_conversion_dynamic_request",
+        "merge_conversion_request",
+        "submit_conversion",
+        "build_conversion_wait_request",
+        "wait_conversion"
+      ],
+      "deployment": [
+        "build_deployment_dynamic_request",
+        "merge_deployment_request",
+        "create_deployment",
+        "build_inference_dynamic_request",
+        "merge_inference_request",
+        "detect",
+        "export_crops"
+      ],
+      "barcode": [
+        "decode_qr_crops",
+        "draw_results",
+        "summary"
+      ],
+      "response": [
+        "preview_image",
+        "build_artifact_ids",
+        "build_stage_data",
+        "build_response_data",
+        "envelope"
+      ]
+    }
+  }
+}

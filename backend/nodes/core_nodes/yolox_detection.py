@@ -14,6 +14,7 @@ from backend.nodes.core_nodes._service_node_support import (
     get_optional_bool_parameter,
     get_optional_dict_parameter,
     get_optional_float_parameter,
+    overlay_parameters_from_object_input,
     require_str_parameter,
     require_workflow_service_node_runtime,
 )
@@ -28,6 +29,7 @@ _DEFAULT_INFERENCE_SCORE_THRESHOLD = 0.3
 def _yolox_detection_handler(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
     """调用现有同步 YOLOX 推理链并输出 detections。"""
 
+    request = overlay_parameters_from_object_input(request)
     runtime_context = require_workflow_service_node_runtime(request)
     deployment_service = runtime_context.build_deployment_service()
     deployment_instance_id = require_str_parameter(request, "deployment_instance_id")
@@ -77,6 +79,18 @@ CORE_NODE_SPEC = CoreNodeSpec(
                 name="image",
                 display_name="Image",
                 payload_type_id="image-ref.v1",
+            ),
+            NodePortDefinition(
+                name="dependency",
+                display_name="Dependency",
+                payload_type_id="response-body.v1",
+                required=False,
+            ),
+            NodePortDefinition(
+                name="request",
+                display_name="Request",
+                payload_type_id="value.v1",
+                required=False,
             ),
         ),
         output_ports=(

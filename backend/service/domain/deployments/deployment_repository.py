@@ -42,3 +42,15 @@ class DeploymentInstanceRepository(Protocol):
         """
 
         ...
+
+    def delete_deployment_instance(self, deployment_instance_id: str) -> bool:
+        """按 id 删除一个 DeploymentInstance。
+
+        参数：
+        - deployment_instance_id：DeploymentInstance id。
+
+        返回：
+        - bool：存在并已删除时返回 True，不存在时返回 False。
+        """
+
+        ...

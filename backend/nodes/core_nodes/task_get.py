@@ -13,6 +13,7 @@ from backend.nodes.core_nodes._task_node_support import build_task_detail_body
 from backend.nodes.core_nodes._service_node_support import (
     build_response_body_output,
     get_optional_bool_parameter,
+    overlay_parameters_from_object_input,
     require_str_parameter,
     require_workflow_service_node_runtime,
 )
@@ -22,6 +23,7 @@ from backend.service.application.workflows.graph_executor import WorkflowNodeExe
 def _task_get_handler(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
     """读取指定 task_id 的任务详情。"""
 
+    request = overlay_parameters_from_object_input(request)
     runtime_context = require_workflow_service_node_runtime(request)
     include_events = get_optional_bool_parameter(request, "include_events")
     task_detail = runtime_context.build_task_service().get_task(
@@ -39,6 +41,14 @@ CORE_NODE_SPEC = CoreNodeSpec(
         description="读取指定任务的当前详情与可选事件列表。",
         implementation_kind=NODE_IMPLEMENTATION_CORE,
         runtime_kind=NODE_RUNTIME_PYTHON_CALLABLE,
+        input_ports=(
+            NodePortDefinition(
+                name="request",
+                display_name="Request",
+                payload_type_id="value.v1",
+                required=False,
+            ),
+        ),
         output_ports=(
             NodePortDefinition(
                 name="body",

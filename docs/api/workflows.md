@@ -205,6 +205,7 @@ workflow runtime 控制面当前已经公开 preview-runs、app-runtimes、runs 
 - [docs/api/examples/workflows/yolox_deployment_detection_lifecycle_real_path.preview-run.request.json](examples/workflows/yolox_deployment_detection_lifecycle_real_path.preview-run.request.json)
 - [docs/api/examples/workflows/yolox_deployment_detection_lifecycle_real_path.app-runtime.create.request.json](examples/workflows/yolox_deployment_detection_lifecycle_real_path.app-runtime.create.request.json)
 - [docs/api/examples/workflows/yolox_deployment_detection_lifecycle_real_path.app-runtime.invoke.request.json](examples/workflows/yolox_deployment_detection_lifecycle_real_path.app-runtime.invoke.request.json)
+- [docs/api/postman/workflows/README.md](postman/workflows/README.md)
 - [docs/api/postman/workflow-runtime.postman_collection.json](postman/workflow-runtime.postman_collection.json)
 - [docs/api/current-api.md](current-api.md)
 - [docs/architecture/workflow-json-contracts.md](../architecture/workflow-json-contracts.md)

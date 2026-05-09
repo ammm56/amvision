@@ -2,19 +2,12 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from backend.contracts.workflows.workflow_graph import (
-    FlowApplication,
-    FlowApplicationBinding,
-    FlowTemplateReference,
-    WorkflowGraphInput,
-    WorkflowGraphNode,
-    WorkflowGraphOutput,
-    WorkflowGraphTemplate,
-)
+from backend.contracts.workflows.workflow_graph import FlowApplication, WorkflowGraphTemplate
 from backend.service.api.app import create_app
 from backend.service.application.workflows.workflow_service import LocalWorkflowJsonService
 from backend.service.settings import (
@@ -51,13 +44,14 @@ def test_workflow_app_runtime_invoke_upload_submits_dataset_import_package(tmp_p
         dataset_storage=dataset_storage,
         node_catalog_registry=client.app.state.node_catalog_registry,
     )
+    template, flow_application = _load_dataset_import_example_documents()
     workflow_service.save_template(
         project_id="project-1",
-        template=_build_dataset_import_template(),
+        template=template,
     )
     workflow_service.save_application(
         project_id="project-1",
-        application=_build_dataset_import_application(),
+        application=flow_application,
     )
 
     headers = build_test_headers(scopes="workflows:read,workflows:write")
@@ -80,6 +74,20 @@ def test_workflow_app_runtime_invoke_upload_submits_dataset_import_package(tmp_p
             invoke_response = client.post(
                 f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/invoke/upload",
                 headers=headers,
+                data={
+                    "input_bindings_json": json.dumps(
+                        {
+                            "request_payload": {
+                                "value": {
+                                    "project_id": "project-1",
+                                    "dataset_id": "dataset-1",
+                                    "format_type": "coco-detection",
+                                    "task_type": "detection",
+                                }
+                            }
+                        }
+                    )
+                },
                 files={
                     "request_package": (
                         "coco-dataset.zip",
@@ -101,7 +109,8 @@ def test_workflow_app_runtime_invoke_upload_submits_dataset_import_package(tmp_p
     assert stop_response.status_code == 200
 
     run_payload = invoke_response.json()
-    import_body = run_payload["outputs"]["import_body"]
+    import_body = run_payload["outputs"]["submission_body"]
+    request_payload = run_payload["input_payload"]["request_payload"]["value"]
     request_package_payload = run_payload["input_payload"]["request_package"]
     assert run_payload["state"] == "succeeded"
     assert import_body["status"] == "received"
@@ -110,84 +119,22 @@ def test_workflow_app_runtime_invoke_upload_submits_dataset_import_package(tmp_p
     assert import_body["queue_task_id"]
     assert import_body["task_id"]
     assert import_body["package_path"].endswith("package.zip")
+    assert request_payload["project_id"] == "project-1"
+    assert request_payload["dataset_id"] == "dataset-1"
+    assert request_payload["format_type"] == "coco-detection"
     assert request_package_payload["package_file_name"] == "coco-dataset.zip"
     assert request_package_payload["package_bytes"]["binary_redacted"] is True
     assert request_package_payload["package_bytes"]["byte_length"] > 0
 
 
-def _build_dataset_import_template() -> WorkflowGraphTemplate:
-    """构造 DatasetImport 上传提交模板。"""
+def _load_dataset_import_example_documents() -> tuple[WorkflowGraphTemplate, FlowApplication]:
+    """加载 DatasetImport 上传正式示例 template 与 application。"""
 
-    return WorkflowGraphTemplate(
-        template_id="dataset-import-upload-template",
-        template_version="1.0.0",
-        display_name="Dataset Import Upload Template",
-        nodes=(
-            WorkflowGraphNode(
-                node_id="submit_import",
-                node_type_id="core.service.dataset-import.submit",
-                parameters={
-                    "project_id": "project-1",
-                    "dataset_id": "dataset-1",
-                },
-            ),
-        ),
-        edges=(),
-        template_inputs=(
-            WorkflowGraphInput(
-                input_id="request_package",
-                display_name="Request Package",
-                payload_type_id="dataset-package.v1",
-                target_node_id="submit_import",
-                target_port="package",
-            ),
-        ),
-        template_outputs=(
-            WorkflowGraphOutput(
-                output_id="import_body",
-                display_name="Import Body",
-                payload_type_id="response-body.v1",
-                source_node_id="submit_import",
-                source_port="body",
-            ),
-        ),
+    example_dir = Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
+    template = WorkflowGraphTemplate.model_validate(
+        json.loads((example_dir / "dataset_import_upload.template.json").read_text(encoding="utf-8"))
     )
-
-
-def _build_dataset_import_application() -> FlowApplication:
-    """构造 DatasetImport 上传提交流程应用。"""
-
-    return FlowApplication(
-        application_id="dataset-import-upload-app",
-        display_name="Dataset Import Upload App",
-        runtime_mode="python-json-workflow",
-        template_ref=FlowTemplateReference(
-            template_id="dataset-import-upload-template",
-            template_version="1.0.0",
-            source_kind="json-file",
-            source_uri="placeholder",
-            metadata={},
-        ),
-        bindings=(
-            FlowApplicationBinding(
-                binding_id="request_package",
-                direction="input",
-                template_port_id="request_package",
-                binding_kind="workflow-execute-input",
-                config={
-                    "payload_type_id": "dataset-package.v1",
-                    "content_type": "application/zip",
-                },
-                metadata={},
-            ),
-            FlowApplicationBinding(
-                binding_id="import_body",
-                direction="output",
-                template_port_id="import_body",
-                binding_kind="workflow-execute-output",
-                config={"payload_type_id": "response-body.v1"},
-                metadata={},
-            ),
-        ),
-        metadata={},
+    application = FlowApplication.model_validate(
+        json.loads((example_dir / "dataset_import_upload.application.json").read_text(encoding="utf-8"))
     )
+    return template, application

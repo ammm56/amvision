@@ -1,0 +1,338 @@
+{
+  "format_id": "amvision.workflow-graph-template.v1",
+  "template_id": "yolox-deployment-qr-crop-remap-template",
+  "template_version": "1.0.0",
+  "display_name": "YOLOX Deployment QR Crop Remap Template",
+  "description": "接收 base64 图片，使用已有 deployment 做检测，导出 crop 后识别其中的 QR Code，并把结果回映射到原图坐标系。",
+  "nodes": [
+    {
+      "node_id": "decode_request_image",
+      "node_type_id": "core.io.image-base64-decode",
+      "parameters": {}
+    },
+    {
+      "node_id": "detect",
+      "node_type_id": "core.model.yolox-detection",
+      "parameters": {
+        "deployment_instance_id": "replace-with-existing-deployment-instance-id",
+        "auto_start_process": false,
+        "score_threshold": 0.3,
+        "save_result_image": false,
+        "return_preview_image_base64": false
+      }
+    },
+    {
+      "node_id": "export_crops",
+      "node_type_id": "custom.opencv.crop-export",
+      "parameters": {
+        "box_padding": 8,
+        "max_crops": 12
+      }
+    },
+    {
+      "node_id": "decode_qr_crops",
+      "node_type_id": "custom.barcode.qr-crop-decode-remap",
+      "parameters": {
+        "try_rotate": true,
+        "try_downscale": true,
+        "try_invert": true
+      }
+    },
+    {
+      "node_id": "draw_results",
+      "node_type_id": "custom.barcode.draw-results",
+      "parameters": {
+        "draw_polygon": true,
+        "draw_text": true,
+        "draw_format": false,
+        "draw_index": true
+      }
+    },
+    {
+      "node_id": "preview_image",
+      "node_type_id": "core.io.image-preview",
+      "parameters": {
+        "title": "QR Crop Remap Image",
+        "response_transport_mode": "inline-base64"
+      }
+    },
+    {
+      "node_id": "extract_annotated_image",
+      "node_type_id": "core.logic.field-extract",
+      "parameters": {
+        "path": "image"
+      }
+    },
+    {
+      "node_id": "summary",
+      "node_type_id": "custom.barcode.results-summary",
+      "parameters": {}
+    },
+    {
+      "node_id": "extract_summary_count",
+      "node_type_id": "core.logic.field-extract",
+      "parameters": {
+        "path": "count"
+      }
+    },
+    {
+      "node_id": "extract_summary_items",
+      "node_type_id": "core.logic.field-extract",
+      "parameters": {
+        "path": "items"
+      }
+    },
+    {
+      "node_id": "extract_summary_texts",
+      "node_type_id": "core.logic.field-extract",
+      "parameters": {
+        "path": "texts"
+      }
+    },
+    {
+      "node_id": "extract_summary_format_counts",
+      "node_type_id": "core.logic.field-extract",
+      "parameters": {
+        "path": "format_counts"
+      }
+    },
+    {
+      "node_id": "build_summary_data",
+      "node_type_id": "core.logic.object-create",
+      "parameters": {
+        "keys": [
+          "count",
+          "items",
+          "texts",
+          "format_counts"
+        ]
+      }
+    },
+    {
+      "node_id": "build_response_data",
+      "node_type_id": "core.logic.object-create",
+      "parameters": {
+        "keys": [
+          "annotated_image",
+          "barcode_summary"
+        ],
+        "fields": {
+          "type": "deployment-qr-crop-remap"
+        }
+      }
+    },
+    {
+      "node_id": "envelope",
+      "node_type_id": "core.output.response-envelope",
+      "parameters": {
+        "code": 0,
+        "message": "decoded"
+      }
+    },
+    {
+      "node_id": "response",
+      "node_type_id": "core.output.http-response",
+      "parameters": {
+        "status_code": 200
+      }
+    }
+  ],
+  "edges": [
+    {
+      "edge_id": "edge-decode-detect",
+      "source_node_id": "decode_request_image",
+      "source_port": "image",
+      "target_node_id": "detect",
+      "target_port": "image"
+    },
+    {
+      "edge_id": "edge-decode-export-crops",
+      "source_node_id": "decode_request_image",
+      "source_port": "image",
+      "target_node_id": "export_crops",
+      "target_port": "image"
+    },
+    {
+      "edge_id": "edge-detect-export-crops",
+      "source_node_id": "detect",
+      "source_port": "detections",
+      "target_node_id": "export_crops",
+      "target_port": "detections"
+    },
+    {
+      "edge_id": "edge-export-crops-decode-qr-crops",
+      "source_node_id": "export_crops",
+      "source_port": "crops",
+      "target_node_id": "decode_qr_crops",
+      "target_port": "crops"
+    },
+    {
+      "edge_id": "edge-decode-draw-results-image",
+      "source_node_id": "decode_request_image",
+      "source_port": "image",
+      "target_node_id": "draw_results",
+      "target_port": "image"
+    },
+    {
+      "edge_id": "edge-decode-qr-crops-draw-results",
+      "source_node_id": "decode_qr_crops",
+      "source_port": "results",
+      "target_node_id": "draw_results",
+      "target_port": "results"
+    },
+    {
+      "edge_id": "edge-draw-results-preview-image",
+      "source_node_id": "draw_results",
+      "source_port": "image",
+      "target_node_id": "preview_image",
+      "target_port": "image"
+    },
+    {
+      "edge_id": "edge-preview-image-extract-annotated-image",
+      "source_node_id": "preview_image",
+      "source_port": "body",
+      "target_node_id": "extract_annotated_image",
+      "target_port": "body"
+    },
+    {
+      "edge_id": "edge-decode-qr-crops-summary",
+      "source_node_id": "decode_qr_crops",
+      "source_port": "results",
+      "target_node_id": "summary",
+      "target_port": "results"
+    },
+    {
+      "edge_id": "edge-summary-extract-count",
+      "source_node_id": "summary",
+      "source_port": "body",
+      "target_node_id": "extract_summary_count",
+      "target_port": "body"
+    },
+    {
+      "edge_id": "edge-summary-extract-items",
+      "source_node_id": "summary",
+      "source_port": "body",
+      "target_node_id": "extract_summary_items",
+      "target_port": "body"
+    },
+    {
+      "edge_id": "edge-summary-extract-texts",
+      "source_node_id": "summary",
+      "source_port": "body",
+      "target_node_id": "extract_summary_texts",
+      "target_port": "body"
+    },
+    {
+      "edge_id": "edge-summary-extract-format-counts",
+      "source_node_id": "summary",
+      "source_port": "body",
+      "target_node_id": "extract_summary_format_counts",
+      "target_port": "body"
+    },
+    {
+      "edge_id": "edge-summary-count-build-summary-data",
+      "source_node_id": "extract_summary_count",
+      "source_port": "value",
+      "target_node_id": "build_summary_data",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-summary-items-build-summary-data",
+      "source_node_id": "extract_summary_items",
+      "source_port": "value",
+      "target_node_id": "build_summary_data",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-summary-texts-build-summary-data",
+      "source_node_id": "extract_summary_texts",
+      "source_port": "value",
+      "target_node_id": "build_summary_data",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-summary-format-counts-build-summary-data",
+      "source_node_id": "extract_summary_format_counts",
+      "source_port": "value",
+      "target_node_id": "build_summary_data",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-annotated-image-build-response-data",
+      "source_node_id": "extract_annotated_image",
+      "source_port": "value",
+      "target_node_id": "build_response_data",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-summary-data-build-response-data",
+      "source_node_id": "build_summary_data",
+      "source_port": "value",
+      "target_node_id": "build_response_data",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-response-data-envelope",
+      "source_node_id": "build_response_data",
+      "source_port": "value",
+      "target_node_id": "envelope",
+      "target_port": "data"
+    },
+    {
+      "edge_id": "edge-envelope-response",
+      "source_node_id": "envelope",
+      "source_port": "body",
+      "target_node_id": "response",
+      "target_port": "body"
+    }
+  ],
+  "template_inputs": [
+    {
+      "input_id": "request_image",
+      "display_name": "Request Image",
+      "payload_type_id": "image-base64.v1",
+      "target_node_id": "decode_request_image",
+      "target_port": "payload"
+    }
+  ],
+  "template_outputs": [
+    {
+      "output_id": "http_response",
+      "display_name": "HTTP Response",
+      "payload_type_id": "http-response.v1",
+      "source_node_id": "response",
+      "source_port": "response"
+    }
+  ],
+  "metadata": {
+    "example_kind": "deployment-qr-crop-remap",
+    "deployment_instance_id_placeholder": "replace-with-existing-deployment-instance-id",
+    "uses_existing_deployment_instance": true,
+    "node_groups": {
+      "input": [
+        "decode_request_image"
+      ],
+      "deployment": [
+        "detect",
+        "export_crops"
+      ],
+      "barcode": [
+        "decode_qr_crops",
+        "draw_results",
+        "summary"
+      ],
+      "response": [
+        "preview_image",
+        "extract_annotated_image",
+        "extract_summary_count",
+        "extract_summary_items",
+        "extract_summary_texts",
+        "extract_summary_format_counts",
+        "build_summary_data",
+        "build_response_data",
+        "envelope",
+        "response"
+      ]
+    }
+  }
+}
