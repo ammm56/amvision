@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import json
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, Request, status
 from pydantic import BaseModel, Field
+from starlette.datastructures import UploadFile
 
 from backend.contracts.workflows import (
     FlowApplication,
@@ -18,7 +20,7 @@ from backend.contracts.workflows import (
 )
 from backend.nodes.node_catalog_registry import NodeCatalogRegistry
 from backend.service.api.deps.auth import AuthenticatedPrincipal, require_scopes
-from backend.service.application.errors import PermissionDeniedError, ServiceConfigurationError
+from backend.service.application.errors import InvalidRequestError, PermissionDeniedError, ServiceConfigurationError
 from backend.service.application.workflows.runtime_service import (
     WorkflowAppRuntimeCreateRequest,
     WorkflowExecutionPolicyCreateRequest,
@@ -27,6 +29,7 @@ from backend.service.application.workflows.runtime_service import (
     WorkflowRuntimeService,
 )
 from backend.service.application.workflows.runtime_worker import WorkflowRuntimeWorkerManager
+from backend.service.application.workflows.workflow_service import LocalWorkflowJsonService
 from backend.service.domain.workflows.workflow_runtime_records import (
     WorkflowAppRuntime,
     WorkflowExecutionPolicy,
@@ -39,6 +42,17 @@ from backend.service.settings import BackendServiceSettings
 
 
 workflow_runtime_router = APIRouter(prefix="/workflows", tags=["workflow-runtime"])
+
+
+_MULTIPART_RUNTIME_RESERVED_FIELDS = frozenset(
+    {
+        "input_bindings_json",
+        "input_bindings",
+        "execution_metadata_json",
+        "execution_metadata",
+        "timeout_seconds",
+    }
+)
 
 
 class WorkflowApplicationRefRequestBody(BaseModel):
@@ -377,6 +391,33 @@ def create_workflow_run(
 
 
 @workflow_runtime_router.post(
+    "/app-runtimes/{workflow_runtime_id}/runs/upload",
+    response_model=WorkflowRunContract,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_workflow_run_upload(
+    workflow_runtime_id: str,
+    request: Request,
+    principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("workflows:write"))],
+) -> WorkflowRunContract:
+    """为已启动的 runtime 创建一条支持 multipart 上传的异步 WorkflowRun。"""
+
+    workflow_app_runtime = _build_workflow_runtime_service(request).get_workflow_app_runtime(workflow_runtime_id)
+    _ensure_project_visible(principal=principal, project_id=workflow_app_runtime.project_id)
+    invoke_request = await _build_multipart_runtime_invoke_request(
+        request=request,
+        workflow_app_runtime=workflow_app_runtime,
+        created_by=principal.principal_id,
+    )
+    workflow_run = _build_workflow_runtime_service(request).create_workflow_run(
+        workflow_runtime_id,
+        invoke_request,
+        created_by=principal.principal_id,
+    )
+    return _build_workflow_run_contract(workflow_run)
+
+
+@workflow_runtime_router.post(
     "/app-runtimes/{workflow_runtime_id}/invoke",
     response_model=WorkflowRunContract,
 )
@@ -397,6 +438,32 @@ def invoke_workflow_app_runtime(
             execution_metadata=_with_created_by(body.execution_metadata, principal.principal_id),
             timeout_seconds=body.timeout_seconds,
         ),
+        created_by=principal.principal_id,
+    )
+    return _build_workflow_run_contract(workflow_run)
+
+
+@workflow_runtime_router.post(
+    "/app-runtimes/{workflow_runtime_id}/invoke/upload",
+    response_model=WorkflowRunContract,
+)
+async def invoke_workflow_app_runtime_upload(
+    workflow_runtime_id: str,
+    request: Request,
+    principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("workflows:write"))],
+) -> WorkflowRunContract:
+    """通过 multipart 上传方式发起一次同步 workflow 调用。"""
+
+    workflow_app_runtime = _build_workflow_runtime_service(request).get_workflow_app_runtime(workflow_runtime_id)
+    _ensure_project_visible(principal=principal, project_id=workflow_app_runtime.project_id)
+    invoke_request = await _build_multipart_runtime_invoke_request(
+        request=request,
+        workflow_app_runtime=workflow_app_runtime,
+        created_by=principal.principal_id,
+    )
+    workflow_run = _build_workflow_runtime_service(request).invoke_workflow_app_runtime(
+        workflow_runtime_id,
+        invoke_request,
         created_by=principal.principal_id,
     )
     return _build_workflow_run_contract(workflow_run)
@@ -511,6 +578,157 @@ def _with_created_by(metadata: dict[str, object], created_by: str) -> dict[str, 
     payload = dict(metadata)
     payload.setdefault("created_by", created_by)
     return payload
+
+
+async def _build_multipart_runtime_invoke_request(
+    *,
+    request: Request,
+    workflow_app_runtime: WorkflowAppRuntime,
+    created_by: str,
+) -> WorkflowRuntimeInvokeRequest:
+    """把 multipart/form-data 请求转换为 workflow runtime 调用请求。"""
+
+    form = await request.form()
+    input_bindings = _read_optional_json_object(
+        form.get("input_bindings_json") or form.get("input_bindings"),
+        field_name="input_bindings_json",
+    )
+    execution_metadata = _with_created_by(
+        _read_optional_json_object(
+            form.get("execution_metadata_json") or form.get("execution_metadata"),
+            field_name="execution_metadata_json",
+        ),
+        created_by,
+    )
+    timeout_seconds = _read_optional_int_text(
+        form.get("timeout_seconds"),
+        field_name="timeout_seconds",
+    )
+    application = _load_runtime_application(request=request, workflow_app_runtime=workflow_app_runtime)
+    input_binding_payload_types = {
+        binding.binding_id: str(binding.config.get("payload_type_id") or "")
+        for binding in application.bindings
+        if binding.direction == "input"
+    }
+    for field_name, field_value in form.multi_items():
+        if field_name in _MULTIPART_RUNTIME_RESERVED_FIELDS:
+            continue
+        if isinstance(field_value, UploadFile):
+            if field_name in input_bindings:
+                raise InvalidRequestError(
+                    "multipart 上传字段与 input_bindings_json 中的 binding_id 冲突",
+                    details={"binding_id": field_name},
+                )
+            payload_type_id = input_binding_payload_types.get(field_name)
+            if payload_type_id is None:
+                raise InvalidRequestError(
+                    "multipart 上传字段未声明为 workflow application 输入绑定",
+                    details={"binding_id": field_name},
+                )
+            if payload_type_id != "dataset-package.v1":
+                raise InvalidRequestError(
+                    "当前 multipart 上传入口仅支持 dataset-package.v1 输入绑定",
+                    details={"binding_id": field_name, "payload_type_id": payload_type_id},
+                )
+            input_bindings[field_name] = await _build_dataset_package_binding_payload(
+                upload=field_value,
+                binding_id=field_name,
+            )
+            continue
+        raise InvalidRequestError(
+            "multipart 非文件字段请放入 input_bindings_json 或 execution_metadata_json",
+            details={"field_name": field_name},
+        )
+    return WorkflowRuntimeInvokeRequest(
+        input_bindings=input_bindings,
+        execution_metadata=execution_metadata,
+        timeout_seconds=timeout_seconds,
+    )
+
+
+async def _build_dataset_package_binding_payload(
+    *,
+    upload: UploadFile,
+    binding_id: str,
+) -> dict[str, object]:
+    """把上传文件转换为 DatasetImport 节点消费的 payload。"""
+
+    package_bytes = await upload.read()
+    file_name = upload.filename.strip() if isinstance(upload.filename, str) and upload.filename.strip() else "dataset.zip"
+    if not package_bytes:
+        raise InvalidRequestError(
+            "上传数据集 zip 不能为空",
+            details={"binding_id": binding_id, "file_name": file_name},
+        )
+    payload: dict[str, object] = {
+        "package_file_name": file_name,
+        "package_bytes": package_bytes,
+    }
+    if isinstance(upload.content_type, str) and upload.content_type.strip():
+        payload["media_type"] = upload.content_type.strip()
+    return payload
+
+
+def _load_runtime_application(
+    *,
+    request: Request,
+    workflow_app_runtime: WorkflowAppRuntime,
+) -> FlowApplication:
+    """读取指定 runtime 绑定的 FlowApplication。"""
+
+    workflow_service = LocalWorkflowJsonService(
+        dataset_storage=_require_dataset_storage(request),
+        node_catalog_registry=_require_node_catalog_registry(request),
+    )
+    return workflow_service.get_application(
+        project_id=workflow_app_runtime.project_id,
+        application_id=workflow_app_runtime.application_id,
+    ).application
+
+
+def _read_optional_json_object(value: object, *, field_name: str) -> dict[str, object]:
+    """把可选的 JSON 文本字段解析为对象。"""
+
+    if value is None:
+        return {}
+    if not isinstance(value, str) or not value.strip():
+        raise InvalidRequestError(
+            "multipart JSON 字段必须是非空字符串",
+            details={"field_name": field_name},
+        )
+    try:
+        parsed_value = json.loads(value)
+    except json.JSONDecodeError as exc:
+        raise InvalidRequestError(
+            "multipart JSON 字段不是有效 JSON",
+            details={"field_name": field_name},
+        ) from exc
+    if not isinstance(parsed_value, dict):
+        raise InvalidRequestError(
+            "multipart JSON 字段必须是对象",
+            details={"field_name": field_name},
+        )
+    return {str(key): item for key, item in parsed_value.items()}
+
+
+def _read_optional_int_text(value: object, *, field_name: str) -> int | None:
+    """把可选字符串字段解析为整数。"""
+
+    if value is None:
+        return None
+    if not isinstance(value, str) or not value.strip():
+        raise InvalidRequestError(
+            "multipart 整数字段必须是非空字符串",
+            details={"field_name": field_name},
+        )
+    try:
+        normalized_value = int(value.strip())
+    except ValueError as exc:
+        raise InvalidRequestError(
+            "multipart 整数字段不是有效整数",
+            details={"field_name": field_name},
+        ) from exc
+    return normalized_value
 
 
 def _build_preview_run_contract(preview_run: WorkflowPreviewRun) -> WorkflowPreviewRunContract:

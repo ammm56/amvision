@@ -1,0 +1,4604 @@
+{
+  "format_id": "amvision.custom-node-catalog.v1",
+  "payload_contracts": [
+    {
+      "format_id": "amvision.workflow-payload-contract.v1",
+      "payload_type_id": "barcode-results.v1",
+      "display_name": "Barcode Results",
+      "transport_kind": "inline-json",
+      "json_schema": {
+        "type": "object",
+        "properties": {
+          "source_image": {
+            "type": "object",
+            "properties": {
+              "transport_kind": {
+                "type": "string",
+                "enum": [
+                  "memory",
+                  "storage"
+                ]
+              },
+              "object_key": {
+                "type": "string"
+              },
+              "image_handle": {
+                "type": "string"
+              },
+              "width": {
+                "type": "integer"
+              },
+              "height": {
+                "type": "integer"
+              },
+              "media_type": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "transport_kind",
+              "media_type"
+            ],
+            "oneOf": [
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "storage"
+                  }
+                },
+                "required": [
+                  "object_key"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "memory"
+                  }
+                },
+                "required": [
+                  "image_handle"
+                ]
+              }
+            ]
+          },
+          "source_object_key": {
+            "type": "string"
+          },
+          "requested_format": {
+            "type": "string"
+          },
+          "count": {
+            "type": "integer"
+          },
+          "matched_formats": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "index": {
+                  "type": "integer"
+                },
+                "format": {
+                  "type": "string"
+                },
+                "symbology": {
+                  "type": "string"
+                },
+                "symbology_identifier": {
+                  "type": "string"
+                },
+                "text": {
+                  "type": "string"
+                },
+                "raw_bytes_base64": {
+                  "type": "string"
+                },
+                "content_type": {
+                  "type": "string"
+                },
+                "orientation": {
+                  "type": "integer"
+                },
+                "ec_level": {
+                  "type": "string"
+                },
+                "valid": {
+                  "type": "boolean"
+                },
+                "error": {
+                  "type": "string"
+                },
+                "position": {
+                  "type": "object",
+                  "properties": {
+                    "top_left_xy": {
+                      "type": "array",
+                      "items": {
+                        "type": "integer"
+                      },
+                      "minItems": 2,
+                      "maxItems": 2
+                    },
+                    "top_right_xy": {
+                      "type": "array",
+                      "items": {
+                        "type": "integer"
+                      },
+                      "minItems": 2,
+                      "maxItems": 2
+                    },
+                    "bottom_right_xy": {
+                      "type": "array",
+                      "items": {
+                        "type": "integer"
+                      },
+                      "minItems": 2,
+                      "maxItems": 2
+                    },
+                    "bottom_left_xy": {
+                      "type": "array",
+                      "items": {
+                        "type": "integer"
+                      },
+                      "minItems": 2,
+                      "maxItems": 2
+                    },
+                    "polygon_xy": {
+                      "type": "array",
+                      "items": {
+                        "type": "array",
+                        "items": {
+                          "type": "integer"
+                        },
+                        "minItems": 2,
+                        "maxItems": 2
+                      },
+                      "minItems": 4,
+                      "maxItems": 4
+                    },
+                    "bounds_xyxy": {
+                      "type": "array",
+                      "items": {
+                        "type": "integer"
+                      },
+                      "minItems": 4,
+                      "maxItems": 4
+                    },
+                    "center_xy": {
+                      "type": "array",
+                      "items": {
+                        "type": "number"
+                      },
+                      "minItems": 2,
+                      "maxItems": 2
+                    },
+                    "size_wh": {
+                      "type": "array",
+                      "items": {
+                        "type": "integer"
+                      },
+                      "minItems": 2,
+                      "maxItems": 2
+                    }
+                  },
+                  "required": [
+                    "top_left_xy",
+                    "top_right_xy",
+                    "bottom_right_xy",
+                    "bottom_left_xy",
+                    "polygon_xy",
+                    "bounds_xyxy",
+                    "center_xy",
+                    "size_wh"
+                  ]
+                },
+                "extra": {
+                  "type": "object"
+                }
+              },
+              "required": [
+                "index",
+                "format",
+                "symbology",
+                "text",
+                "raw_bytes_base64",
+                "content_type",
+                "orientation",
+                "valid",
+                "position"
+              ]
+            }
+          }
+        },
+        "required": [
+          "source_image",
+          "requested_format",
+          "count",
+          "matched_formats",
+          "items"
+        ]
+      },
+      "artifact_kinds": [],
+      "metadata": {}
+    }
+  ],
+  "node_definitions": [
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.barcode.all-gs1-decode",
+      "display_name": "Decode All GS1 Barcodes",
+      "category": "barcode.decode",
+      "description": "扫描输入图片中的全部 GS1 相关条码制式，适合带 AI 编码的供应链与追溯场景。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "results",
+          "display_name": "Results",
+          "payload_type_id": "barcode-results.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "try_rotate": {
+            "type": "boolean"
+          },
+          "try_downscale": {
+            "type": "boolean"
+          },
+          "try_invert": {
+            "type": "boolean"
+          },
+          "is_pure": {
+            "type": "boolean"
+          },
+          "return_errors": {
+            "type": "boolean"
+          },
+          "text_mode": {
+            "type": "string",
+            "enum": [
+              "plain",
+              "hri",
+              "escaped",
+              "hex",
+              "eci",
+              "hex-eci"
+            ]
+          },
+          "binarizer": {
+            "type": "string",
+            "enum": [
+              "local-average",
+              "global-histogram",
+              "fixed-threshold",
+              "bool-cast"
+            ]
+          },
+          "ean_add_on_symbol": {
+            "type": "string",
+            "enum": [
+              "ignore",
+              "read",
+              "require"
+            ]
+          }
+        }
+      },
+      "capability_tags": [
+        "barcode.decode",
+        "barcode.all-gs1"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy",
+          "zxing-cpp"
+        ]
+      },
+      "node_pack_id": "barcode.protocol-nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {
+        "family": "gs1",
+        "variant": "all-gs1",
+        "scope_kind": "group",
+        "format_member_name": "AllGS1"
+      }
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.barcode.all-industrial-decode",
+      "display_name": "Decode All Industrial Barcodes",
+      "category": "barcode.decode",
+      "description": "扫描输入图片中的全部工业条码制式，适合物流、追踪、制造与医药标识场景。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "results",
+          "display_name": "Results",
+          "payload_type_id": "barcode-results.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "try_rotate": {
+            "type": "boolean"
+          },
+          "try_downscale": {
+            "type": "boolean"
+          },
+          "try_invert": {
+            "type": "boolean"
+          },
+          "is_pure": {
+            "type": "boolean"
+          },
+          "return_errors": {
+            "type": "boolean"
+          },
+          "text_mode": {
+            "type": "string",
+            "enum": [
+              "plain",
+              "hri",
+              "escaped",
+              "hex",
+              "eci",
+              "hex-eci"
+            ]
+          },
+          "binarizer": {
+            "type": "string",
+            "enum": [
+              "local-average",
+              "global-histogram",
+              "fixed-threshold",
+              "bool-cast"
+            ]
+          },
+          "ean_add_on_symbol": {
+            "type": "string",
+            "enum": [
+              "ignore",
+              "read",
+              "require"
+            ]
+          }
+        }
+      },
+      "capability_tags": [
+        "barcode.decode",
+        "barcode.all-industrial"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy",
+          "zxing-cpp"
+        ]
+      },
+      "node_pack_id": "barcode.protocol-nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {
+        "family": "industrial",
+        "variant": "all-industrial",
+        "scope_kind": "group",
+        "format_member_name": "AllIndustrial"
+      }
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.barcode.all-linear-decode",
+      "display_name": "Decode All Linear Barcodes",
+      "category": "barcode.decode",
+      "description": "扫描输入图片中的全部一维条码制式，适合物流、零售与工业通用线性码场景。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "results",
+          "display_name": "Results",
+          "payload_type_id": "barcode-results.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "try_rotate": {
+            "type": "boolean"
+          },
+          "try_downscale": {
+            "type": "boolean"
+          },
+          "try_invert": {
+            "type": "boolean"
+          },
+          "is_pure": {
+            "type": "boolean"
+          },
+          "return_errors": {
+            "type": "boolean"
+          },
+          "text_mode": {
+            "type": "string",
+            "enum": [
+              "plain",
+              "hri",
+              "escaped",
+              "hex",
+              "eci",
+              "hex-eci"
+            ]
+          },
+          "binarizer": {
+            "type": "string",
+            "enum": [
+              "local-average",
+              "global-histogram",
+              "fixed-threshold",
+              "bool-cast"
+            ]
+          },
+          "ean_add_on_symbol": {
+            "type": "string",
+            "enum": [
+              "ignore",
+              "read",
+              "require"
+            ]
+          }
+        }
+      },
+      "capability_tags": [
+        "barcode.decode",
+        "barcode.all-linear"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy",
+          "zxing-cpp"
+        ]
+      },
+      "node_pack_id": "barcode.protocol-nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {
+        "family": "linear",
+        "variant": "all-linear",
+        "scope_kind": "group",
+        "format_member_name": "AllLinear"
+      }
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.barcode.all-matrix-decode",
+      "display_name": "Decode All Matrix Barcodes",
+      "category": "barcode.decode",
+      "description": "扫描输入图片中的全部矩阵码制式，适合票据、证件、标签与文档二维码场景。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "results",
+          "display_name": "Results",
+          "payload_type_id": "barcode-results.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "try_rotate": {
+            "type": "boolean"
+          },
+          "try_downscale": {
+            "type": "boolean"
+          },
+          "try_invert": {
+            "type": "boolean"
+          },
+          "is_pure": {
+            "type": "boolean"
+          },
+          "return_errors": {
+            "type": "boolean"
+          },
+          "text_mode": {
+            "type": "string",
+            "enum": [
+              "plain",
+              "hri",
+              "escaped",
+              "hex",
+              "eci",
+              "hex-eci"
+            ]
+          },
+          "binarizer": {
+            "type": "string",
+            "enum": [
+              "local-average",
+              "global-histogram",
+              "fixed-threshold",
+              "bool-cast"
+            ]
+          },
+          "ean_add_on_symbol": {
+            "type": "string",
+            "enum": [
+              "ignore",
+              "read",
+              "require"
+            ]
+          }
+        }
+      },
+      "capability_tags": [
+        "barcode.decode",
+        "barcode.all-matrix"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy",
+          "zxing-cpp"
+        ]
+      },
+      "node_pack_id": "barcode.protocol-nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {
+        "family": "matrix",
+        "variant": "all-matrix",
+        "scope_kind": "group",
+        "format_member_name": "AllMatrix"
+      }
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.barcode.all-readable-decode",
+      "display_name": "Decode All Readable Barcodes",
+      "category": "barcode.decode",
+      "description": "扫描输入图片中 zxing 当前可读取的全部条码与二维码制式，适合未知制式混扫场景。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "results",
+          "display_name": "Results",
+          "payload_type_id": "barcode-results.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "try_rotate": {
+            "type": "boolean"
+          },
+          "try_downscale": {
+            "type": "boolean"
+          },
+          "try_invert": {
+            "type": "boolean"
+          },
+          "is_pure": {
+            "type": "boolean"
+          },
+          "return_errors": {
+            "type": "boolean"
+          },
+          "text_mode": {
+            "type": "string",
+            "enum": [
+              "plain",
+              "hri",
+              "escaped",
+              "hex",
+              "eci",
+              "hex-eci"
+            ]
+          },
+          "binarizer": {
+            "type": "string",
+            "enum": [
+              "local-average",
+              "global-histogram",
+              "fixed-threshold",
+              "bool-cast"
+            ]
+          },
+          "ean_add_on_symbol": {
+            "type": "string",
+            "enum": [
+              "ignore",
+              "read",
+              "require"
+            ]
+          }
+        }
+      },
+      "capability_tags": [
+        "barcode.decode",
+        "barcode.all-readable"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy",
+          "zxing-cpp"
+        ]
+      },
+      "node_pack_id": "barcode.protocol-nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {
+        "family": "mixed",
+        "variant": "all-readable",
+        "scope_kind": "group",
+        "format_member_name": "AllReadable"
+      }
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.barcode.all-retail-decode",
+      "display_name": "Decode All Retail Barcodes",
+      "category": "barcode.decode",
+      "description": "扫描输入图片中的全部零售条码制式，适合 EAN、UPC、DataBar 等零售识读场景。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "results",
+          "display_name": "Results",
+          "payload_type_id": "barcode-results.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "try_rotate": {
+            "type": "boolean"
+          },
+          "try_downscale": {
+            "type": "boolean"
+          },
+          "try_invert": {
+            "type": "boolean"
+          },
+          "is_pure": {
+            "type": "boolean"
+          },
+          "return_errors": {
+            "type": "boolean"
+          },
+          "text_mode": {
+            "type": "string",
+            "enum": [
+              "plain",
+              "hri",
+              "escaped",
+              "hex",
+              "eci",
+              "hex-eci"
+            ]
+          },
+          "binarizer": {
+            "type": "string",
+            "enum": [
+              "local-average",
+              "global-histogram",
+              "fixed-threshold",
+              "bool-cast"
+            ]
+          },
+          "ean_add_on_symbol": {
+            "type": "string",
+            "enum": [
+              "ignore",
+              "read",
+              "require"
+            ]
+          }
+        }
+      },
+      "capability_tags": [
+        "barcode.decode",
+        "barcode.all-retail"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy",
+          "zxing-cpp"
+        ]
+      },
+      "node_pack_id": "barcode.protocol-nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {
+        "family": "retail",
+        "variant": "all-retail",
+        "scope_kind": "group",
+        "format_member_name": "AllRetail"
+      }
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.barcode.aztec-code-decode",
+      "display_name": "Aztec Code Decode",
+      "category": "barcode.decode",
+      "description": "从输入图片中解码 Aztec Code。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "results",
+          "display_name": "Results",
+          "payload_type_id": "barcode-results.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "try_rotate": {
+            "type": "boolean"
+          },
+          "try_downscale": {
+            "type": "boolean"
+          },
+          "try_invert": {
+            "type": "boolean"
+          },
+          "is_pure": {
+            "type": "boolean"
+          },
+          "return_errors": {
+            "type": "boolean"
+          },
+          "text_mode": {
+            "type": "string",
+            "enum": [
+              "plain",
+              "hri",
+              "escaped",
+              "hex",
+              "eci",
+              "hex-eci"
+            ]
+          },
+          "binarizer": {
+            "type": "string",
+            "enum": [
+              "local-average",
+              "global-histogram",
+              "fixed-threshold",
+              "bool-cast"
+            ]
+          },
+          "ean_add_on_symbol": {
+            "type": "string",
+            "enum": [
+              "ignore",
+              "read",
+              "require"
+            ]
+          }
+        }
+      },
+      "capability_tags": [
+        "barcode.decode",
+        "barcode.aztec-code"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy",
+          "zxing-cpp"
+        ]
+      },
+      "node_pack_id": "barcode.protocol-nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {
+        "family": "matrix",
+        "variant": "aztec-code",
+        "scope_kind": "exact",
+        "format_member_name": "AztecCode"
+      }
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.barcode.aztec-rune-decode",
+      "display_name": "Aztec Rune Decode",
+      "category": "barcode.decode",
+      "description": "从输入图片中解码 Aztec Rune。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "results",
+          "display_name": "Results",
+          "payload_type_id": "barcode-results.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "try_rotate": {
+            "type": "boolean"
+          },
+          "try_downscale": {
+            "type": "boolean"
+          },
+          "try_invert": {
+            "type": "boolean"
+          },
+          "is_pure": {
+            "type": "boolean"
+          },
+          "return_errors": {
+            "type": "boolean"
+          },
+          "text_mode": {
+            "type": "string",
+            "enum": [
+              "plain",
+              "hri",
+              "escaped",
+              "hex",
+              "eci",
+              "hex-eci"
+            ]
+          },
+          "binarizer": {
+            "type": "string",
+            "enum": [
+              "local-average",
+              "global-histogram",
+              "fixed-threshold",
+              "bool-cast"
+            ]
+          },
+          "ean_add_on_symbol": {
+            "type": "string",
+            "enum": [
+              "ignore",
+              "read",
+              "require"
+            ]
+          }
+        }
+      },
+      "capability_tags": [
+        "barcode.decode",
+        "barcode.aztec-rune"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy",
+          "zxing-cpp"
+        ]
+      },
+      "node_pack_id": "barcode.protocol-nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {
+        "family": "matrix",
+        "variant": "aztec-rune",
+        "scope_kind": "exact",
+        "format_member_name": "AztecRune"
+      }
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.barcode.match-exists",
+      "display_name": "Barcode Match Exists",
+      "category": "barcode.logic",
+      "description": "按 format、text、index 和区域范围判断 barcode-results.v1 中是否存在匹配项，并输出匹配数量。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "input_ports": [
+        {
+          "name": "results",
+          "display_name": "Results",
+          "payload_type_id": "barcode-results.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "result",
+          "display_name": "Result",
+          "payload_type_id": "boolean.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "count",
+          "display_name": "Count",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "formats": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "text_equals": {
+            "type": "string"
+          },
+          "text_contains": {
+            "type": "string"
+          },
+          "text_regex": {
+            "type": "string"
+          },
+          "ignore_case": {
+            "type": "boolean"
+          },
+          "indices": {
+            "type": "array",
+            "items": {
+              "type": "integer"
+            }
+          },
+          "min_index": {
+            "type": "integer"
+          },
+          "max_index": {
+            "type": "integer"
+          },
+          "region_bounds_xyxy": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "minItems": 4,
+            "maxItems": 4
+          },
+          "region_match_mode": {
+            "type": "string",
+            "enum": [
+              "intersects",
+              "center-in",
+              "bounds-in"
+            ]
+          }
+        }
+      },
+      "capability_tags": [
+        "barcode.logic",
+        "barcode.match"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "zxing-cpp",
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "barcode.protocol-nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {
+        "input_kind": "barcode-results.v1",
+        "output_boolean": "boolean.v1",
+        "output_count": "value.v1"
+      }
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.barcode.codabar-decode",
+      "display_name": "Codabar Decode",
+      "category": "barcode.decode",
+      "description": "从输入图片中解码 Codabar 条码。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "results",
+          "display_name": "Results",
+          "payload_type_id": "barcode-results.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "try_rotate": {
+            "type": "boolean"
+          },
+          "try_downscale": {
+            "type": "boolean"
+          },
+          "try_invert": {
+            "type": "boolean"
+          },
+          "is_pure": {
+            "type": "boolean"
+          },
+          "return_errors": {
+            "type": "boolean"
+          },
+          "text_mode": {
+            "type": "string",
+            "enum": [
+              "plain",
+              "hri",
+              "escaped",
+              "hex",
+              "eci",
+              "hex-eci"
+            ]
+          },
+          "binarizer": {
+            "type": "string",
+            "enum": [
+              "local-average",
+              "global-histogram",
+              "fixed-threshold",
+              "bool-cast"
+            ]
+          },
+          "ean_add_on_symbol": {
+            "type": "string",
+            "enum": [
+              "ignore",
+              "read",
+              "require"
+            ]
+          }
+        }
+      },
+      "capability_tags": [
+        "barcode.decode",
+        "barcode.codabar"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy",
+          "zxing-cpp"
+        ]
+      },
+      "node_pack_id": "barcode.protocol-nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {
+        "family": "industrial",
+        "variant": "codabar",
+        "scope_kind": "exact",
+        "format_member_name": "Codabar"
+      }
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.barcode.code128-decode",
+      "display_name": "Code 128 Decode",
+      "category": "barcode.decode",
+      "description": "从输入图片中解码 Code 128 条码。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "results",
+          "display_name": "Results",
+          "payload_type_id": "barcode-results.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "try_rotate": {
+            "type": "boolean"
+          },
+          "try_downscale": {
+            "type": "boolean"
+          },
+          "try_invert": {
+            "type": "boolean"
+          },
+          "is_pure": {
+            "type": "boolean"
+          },
+          "return_errors": {
+            "type": "boolean"
+          },
+          "text_mode": {
+            "type": "string",
+            "enum": [
+              "plain",
+              "hri",
+              "escaped",
+              "hex",
+              "eci",
+              "hex-eci"
+            ]
+          },
+          "binarizer": {
+            "type": "string",
+            "enum": [
+              "local-average",
+              "global-histogram",
+              "fixed-threshold",
+              "bool-cast"
+            ]
+          },
+          "ean_add_on_symbol": {
+            "type": "string",
+            "enum": [
+              "ignore",
+              "read",
+              "require"
+            ]
+          }
+        }
+      },
+      "capability_tags": [
+        "barcode.decode",
+        "barcode.code128"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy",
+          "zxing-cpp"
+        ]
+      },
+      "node_pack_id": "barcode.protocol-nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {
+        "family": "industrial",
+        "variant": "code128",
+        "scope_kind": "exact",
+        "format_member_name": "Code128"
+      }
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.barcode.code32-decode",
+      "display_name": "Code 32 Decode",
+      "category": "barcode.decode",
+      "description": "从输入图片中解码 Code 32 条码。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "results",
+          "display_name": "Results",
+          "payload_type_id": "barcode-results.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "try_rotate": {
+            "type": "boolean"
+          },
+          "try_downscale": {
+            "type": "boolean"
+          },
+          "try_invert": {
+            "type": "boolean"
+          },
+          "is_pure": {
+            "type": "boolean"
+          },
+          "return_errors": {
+            "type": "boolean"
+          },
+          "text_mode": {
+            "type": "string",
+            "enum": [
+              "plain",
+              "hri",
+              "escaped",
+              "hex",
+              "eci",
+              "hex-eci"
+            ]
+          },
+          "binarizer": {
+            "type": "string",
+            "enum": [
+              "local-average",
+              "global-histogram",
+              "fixed-threshold",
+              "bool-cast"
+            ]
+          },
+          "ean_add_on_symbol": {
+            "type": "string",
+            "enum": [
+              "ignore",
+              "read",
+              "require"
+            ]
+          }
+        }
+      },
+      "capability_tags": [
+        "barcode.decode",
+        "barcode.code32"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy",
+          "zxing-cpp"
+        ]
+      },
+      "node_pack_id": "barcode.protocol-nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {
+        "family": "industrial",
+        "variant": "code32",
+        "scope_kind": "exact",
+        "format_member_name": "Code32"
+      }
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.barcode.code39-extended-decode",
+      "display_name": "Code 39 Extended Decode",
+      "category": "barcode.decode",
+      "description": "从输入图片中解码 Code 39 Extended 条码。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "results",
+          "display_name": "Results",
+          "payload_type_id": "barcode-results.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "try_rotate": {
+            "type": "boolean"
+          },
+          "try_downscale": {
+            "type": "boolean"
+          },
+          "try_invert": {
+            "type": "boolean"
+          },
+          "is_pure": {
+            "type": "boolean"
+          },
+          "return_errors": {
+            "type": "boolean"
+          },
+          "text_mode": {
+            "type": "string",
+            "enum": [
+              "plain",
+              "hri",
+              "escaped",
+              "hex",
+              "eci",
+              "hex-eci"
+            ]
+          },
+          "binarizer": {
+            "type": "string",
+            "enum": [
+              "local-average",
+              "global-histogram",
+              "fixed-threshold",
+              "bool-cast"
+            ]
+          },
+          "ean_add_on_symbol": {
+            "type": "string",
+            "enum": [
+              "ignore",
+              "read",
+              "require"
+            ]
+          }
+        }
+      },
+      "capability_tags": [
+        "barcode.decode",
+        "barcode.code39-extended"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy",
+          "zxing-cpp"
+        ]
+      },
+      "node_pack_id": "barcode.protocol-nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {
+        "family": "industrial",
+        "variant": "code39-extended",
+        "scope_kind": "exact",
+        "format_member_name": "Code39Ext"
+      }
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.barcode.code39-standard-decode",
+      "display_name": "Code 39 Standard Decode",
+      "category": "barcode.decode",
+      "description": "从输入图片中解码 Code 39 Standard 条码。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "results",
+          "display_name": "Results",
+          "payload_type_id": "barcode-results.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "try_rotate": {
+            "type": "boolean"
+          },
+          "try_downscale": {
+            "type": "boolean"
+          },
+          "try_invert": {
+            "type": "boolean"
+          },
+          "is_pure": {
+            "type": "boolean"
+          },
+          "return_errors": {
+            "type": "boolean"
+          },
+          "text_mode": {
+            "type": "string",
+            "enum": [
+              "plain",
+              "hri",
+              "escaped",
+              "hex",
+              "eci",
+              "hex-eci"
+            ]
+          },
+          "binarizer": {
+            "type": "string",
+            "enum": [
+              "local-average",
+              "global-histogram",
+              "fixed-threshold",
+              "bool-cast"
+            ]
+          },
+          "ean_add_on_symbol": {
+            "type": "string",
+            "enum": [
+              "ignore",
+              "read",
+              "require"
+            ]
+          }
+        }
+      },
+      "capability_tags": [
+        "barcode.decode",
+        "barcode.code39-standard"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy",
+          "zxing-cpp"
+        ]
+      },
+      "node_pack_id": "barcode.protocol-nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {
+        "family": "industrial",
+        "variant": "code39-standard",
+        "scope_kind": "exact",
+        "format_member_name": "Code39Std"
+      }
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.barcode.code93-decode",
+      "display_name": "Code 93 Decode",
+      "category": "barcode.decode",
+      "description": "从输入图片中解码 Code 93 条码。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "results",
+          "display_name": "Results",
+          "payload_type_id": "barcode-results.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "try_rotate": {
+            "type": "boolean"
+          },
+          "try_downscale": {
+            "type": "boolean"
+          },
+          "try_invert": {
+            "type": "boolean"
+          },
+          "is_pure": {
+            "type": "boolean"
+          },
+          "return_errors": {
+            "type": "boolean"
+          },
+          "text_mode": {
+            "type": "string",
+            "enum": [
+              "plain",
+              "hri",
+              "escaped",
+              "hex",
+              "eci",
+              "hex-eci"
+            ]
+          },
+          "binarizer": {
+            "type": "string",
+            "enum": [
+              "local-average",
+              "global-histogram",
+              "fixed-threshold",
+              "bool-cast"
+            ]
+          },
+          "ean_add_on_symbol": {
+            "type": "string",
+            "enum": [
+              "ignore",
+              "read",
+              "require"
+            ]
+          }
+        }
+      },
+      "capability_tags": [
+        "barcode.decode",
+        "barcode.code93"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy",
+          "zxing-cpp"
+        ]
+      },
+      "node_pack_id": "barcode.protocol-nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {
+        "family": "industrial",
+        "variant": "code93",
+        "scope_kind": "exact",
+        "format_member_name": "Code93"
+      }
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.barcode.compact-pdf417-decode",
+      "display_name": "Compact PDF417 Decode",
+      "category": "barcode.decode",
+      "description": "从输入图片中解码 Compact PDF417。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "results",
+          "display_name": "Results",
+          "payload_type_id": "barcode-results.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "try_rotate": {
+            "type": "boolean"
+          },
+          "try_downscale": {
+            "type": "boolean"
+          },
+          "try_invert": {
+            "type": "boolean"
+          },
+          "is_pure": {
+            "type": "boolean"
+          },
+          "return_errors": {
+            "type": "boolean"
+          },
+          "text_mode": {
+            "type": "string",
+            "enum": [
+              "plain",
+              "hri",
+              "escaped",
+              "hex",
+              "eci",
+              "hex-eci"
+            ]
+          },
+          "binarizer": {
+            "type": "string",
+            "enum": [
+              "local-average",
+              "global-histogram",
+              "fixed-threshold",
+              "bool-cast"
+            ]
+          },
+          "ean_add_on_symbol": {
+            "type": "string",
+            "enum": [
+              "ignore",
+              "read",
+              "require"
+            ]
+          }
+        }
+      },
+      "capability_tags": [
+        "barcode.decode",
+        "barcode.compact-pdf417"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy",
+          "zxing-cpp"
+        ]
+      },
+      "node_pack_id": "barcode.protocol-nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {
+        "family": "matrix",
+        "variant": "compact-pdf417",
+        "scope_kind": "exact",
+        "format_member_name": "CompactPDF417"
+      }
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.barcode.databar-decode",
+      "display_name": "Decode DataBar Family",
+      "category": "barcode.decode",
+      "description": "扫描输入图片中的 DataBar 家族条码，适合 GS1 零售与扩展属性识读场景。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "results",
+          "display_name": "Results",
+          "payload_type_id": "barcode-results.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "try_rotate": {
+            "type": "boolean"
+          },
+          "try_downscale": {
+            "type": "boolean"
+          },
+          "try_invert": {
+            "type": "boolean"
+          },
+          "is_pure": {
+            "type": "boolean"
+          },
+          "return_errors": {
+            "type": "boolean"
+          },
+          "text_mode": {
+            "type": "string",
+            "enum": [
+              "plain",
+              "hri",
+              "escaped",
+              "hex",
+              "eci",
+              "hex-eci"
+            ]
+          },
+          "binarizer": {
+            "type": "string",
+            "enum": [
+              "local-average",
+              "global-histogram",
+              "fixed-threshold",
+              "bool-cast"
+            ]
+          },
+          "ean_add_on_symbol": {
+            "type": "string",
+            "enum": [
+              "ignore",
+              "read",
+              "require"
+            ]
+          }
+        }
+      },
+      "capability_tags": [
+        "barcode.decode",
+        "barcode.databar-family"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy",
+          "zxing-cpp"
+        ]
+      },
+      "node_pack_id": "barcode.protocol-nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {
+        "family": "retail",
+        "variant": "databar-family",
+        "scope_kind": "group",
+        "format_member_name": "DataBar"
+      }
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.barcode.databar-expanded-decode",
+      "display_name": "DataBar Expanded Decode",
+      "category": "barcode.decode",
+      "description": "从输入图片中解码 DataBar Expanded 条码。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "results",
+          "display_name": "Results",
+          "payload_type_id": "barcode-results.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "try_rotate": {
+            "type": "boolean"
+          },
+          "try_downscale": {
+            "type": "boolean"
+          },
+          "try_invert": {
+            "type": "boolean"
+          },
+          "is_pure": {
+            "type": "boolean"
+          },
+          "return_errors": {
+            "type": "boolean"
+          },
+          "text_mode": {
+            "type": "string",
+            "enum": [
+              "plain",
+              "hri",
+              "escaped",
+              "hex",
+              "eci",
+              "hex-eci"
+            ]
+          },
+          "binarizer": {
+            "type": "string",
+            "enum": [
+              "local-average",
+              "global-histogram",
+              "fixed-threshold",
+              "bool-cast"
+            ]
+          },
+          "ean_add_on_symbol": {
+            "type": "string",
+            "enum": [
+              "ignore",
+              "read",
+              "require"
+            ]
+          }
+        }
+      },
+      "capability_tags": [
+        "barcode.decode",
+        "barcode.databar-expanded"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy",
+          "zxing-cpp"
+        ]
+      },
+      "node_pack_id": "barcode.protocol-nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {
+        "family": "retail",
+        "variant": "databar-expanded",
+        "scope_kind": "exact",
+        "format_member_name": "DataBarExpanded"
+      }
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.barcode.databar-expanded-stacked-decode",
+      "display_name": "DataBar Expanded Stacked Decode",
+      "category": "barcode.decode",
+      "description": "从输入图片中解码 DataBar Expanded Stacked 条码。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "results",
+          "display_name": "Results",
+          "payload_type_id": "barcode-results.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "try_rotate": {
+            "type": "boolean"
+          },
+          "try_downscale": {
+            "type": "boolean"
+          },
+          "try_invert": {
+            "type": "boolean"
+          },
+          "is_pure": {
+            "type": "boolean"
+          },
+          "return_errors": {
+            "type": "boolean"
+          },
+          "text_mode": {
+            "type": "string",
+            "enum": [
+              "plain",
+              "hri",
+              "escaped",
+              "hex",
+              "eci",
+              "hex-eci"
+            ]
+          },
+          "binarizer": {
+            "type": "string",
+            "enum": [
+              "local-average",
+              "global-histogram",
+              "fixed-threshold",
+              "bool-cast"
+            ]
+          },
+          "ean_add_on_symbol": {
+            "type": "string",
+            "enum": [
+              "ignore",
+              "read",
+              "require"
+            ]
+          }
+        }
+      },
+      "capability_tags": [
+        "barcode.decode",
+        "barcode.databar-expanded-stacked"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy",
+          "zxing-cpp"
+        ]
+      },
+      "node_pack_id": "barcode.protocol-nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {
+        "family": "retail",
+        "variant": "databar-expanded-stacked",
+        "scope_kind": "exact",
+        "format_member_name": "DataBarExpStk"
+      }
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.barcode.databar-limited-decode",
+      "display_name": "DataBar Limited Decode",
+      "category": "barcode.decode",
+      "description": "从输入图片中解码 DataBar Limited 条码。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "results",
+          "display_name": "Results",
+          "payload_type_id": "barcode-results.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "try_rotate": {
+            "type": "boolean"
+          },
+          "try_downscale": {
+            "type": "boolean"
+          },
+          "try_invert": {
+            "type": "boolean"
+          },
+          "is_pure": {
+            "type": "boolean"
+          },
+          "return_errors": {
+            "type": "boolean"
+          },
+          "text_mode": {
+            "type": "string",
+            "enum": [
+              "plain",
+              "hri",
+              "escaped",
+              "hex",
+              "eci",
+              "hex-eci"
+            ]
+          },
+          "binarizer": {
+            "type": "string",
+            "enum": [
+              "local-average",
+              "global-histogram",
+              "fixed-threshold",
+              "bool-cast"
+            ]
+          },
+          "ean_add_on_symbol": {
+            "type": "string",
+            "enum": [
+              "ignore",
+              "read",
+              "require"
+            ]
+          }
+        }
+      },
+      "capability_tags": [
+        "barcode.decode",
+        "barcode.databar-limited"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy",
+          "zxing-cpp"
+        ]
+      },
+      "node_pack_id": "barcode.protocol-nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {
+        "family": "retail",
+        "variant": "databar-limited",
+        "scope_kind": "exact",
+        "format_member_name": "DataBarLimited"
+      }
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.barcode.databar-omnidirectional-decode",
+      "display_name": "DataBar Omnidirectional Decode",
+      "category": "barcode.decode",
+      "description": "从输入图片中解码 DataBar Omnidirectional 条码。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "results",
+          "display_name": "Results",
+          "payload_type_id": "barcode-results.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "try_rotate": {
+            "type": "boolean"
+          },
+          "try_downscale": {
+            "type": "boolean"
+          },
+          "try_invert": {
+            "type": "boolean"
+          },
+          "is_pure": {
+            "type": "boolean"
+          },
+          "return_errors": {
+            "type": "boolean"
+          },
+          "text_mode": {
+            "type": "string",
+            "enum": [
+              "plain",
+              "hri",
+              "escaped",
+              "hex",
+              "eci",
+              "hex-eci"
+            ]
+          },
+          "binarizer": {
+            "type": "string",
+            "enum": [
+              "local-average",
+              "global-histogram",
+              "fixed-threshold",
+              "bool-cast"
+            ]
+          },
+          "ean_add_on_symbol": {
+            "type": "string",
+            "enum": [
+              "ignore",
+              "read",
+              "require"
+            ]
+          }
+        }
+      },
+      "capability_tags": [
+        "barcode.decode",
+        "barcode.databar-omnidirectional"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy",
+          "zxing-cpp"
+        ]
+      },
+      "node_pack_id": "barcode.protocol-nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {
+        "family": "retail",
+        "variant": "databar-omnidirectional",
+        "scope_kind": "exact",
+        "format_member_name": "DataBarOmni"
+      }
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.barcode.databar-stacked-decode",
+      "display_name": "DataBar Stacked Decode",
+      "category": "barcode.decode",
+      "description": "从输入图片中解码 DataBar Stacked 条码。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "results",
+          "display_name": "Results",
+          "payload_type_id": "barcode-results.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "try_rotate": {
+            "type": "boolean"
+          },
+          "try_downscale": {
+            "type": "boolean"
+          },
+          "try_invert": {
+            "type": "boolean"
+          },
+          "is_pure": {
+            "type": "boolean"
+          },
+          "return_errors": {
+            "type": "boolean"
+          },
+          "text_mode": {
+            "type": "string",
+            "enum": [
+              "plain",
+              "hri",
+              "escaped",
+              "hex",
+              "eci",
+              "hex-eci"
+            ]
+          },
+          "binarizer": {
+            "type": "string",
+            "enum": [
+              "local-average",
+              "global-histogram",
+              "fixed-threshold",
+              "bool-cast"
+            ]
+          },
+          "ean_add_on_symbol": {
+            "type": "string",
+            "enum": [
+              "ignore",
+              "read",
+              "require"
+            ]
+          }
+        }
+      },
+      "capability_tags": [
+        "barcode.decode",
+        "barcode.databar-stacked"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy",
+          "zxing-cpp"
+        ]
+      },
+      "node_pack_id": "barcode.protocol-nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {
+        "family": "retail",
+        "variant": "databar-stacked",
+        "scope_kind": "exact",
+        "format_member_name": "DataBarStk"
+      }
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.barcode.datamatrix-decode",
+      "display_name": "Data Matrix ECC200 Decode",
+      "category": "barcode.decode",
+      "description": "从输入图片中解码 Data Matrix ECC200。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "results",
+          "display_name": "Results",
+          "payload_type_id": "barcode-results.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "try_rotate": {
+            "type": "boolean"
+          },
+          "try_downscale": {
+            "type": "boolean"
+          },
+          "try_invert": {
+            "type": "boolean"
+          },
+          "is_pure": {
+            "type": "boolean"
+          },
+          "return_errors": {
+            "type": "boolean"
+          },
+          "text_mode": {
+            "type": "string",
+            "enum": [
+              "plain",
+              "hri",
+              "escaped",
+              "hex",
+              "eci",
+              "hex-eci"
+            ]
+          },
+          "binarizer": {
+            "type": "string",
+            "enum": [
+              "local-average",
+              "global-histogram",
+              "fixed-threshold",
+              "bool-cast"
+            ]
+          },
+          "ean_add_on_symbol": {
+            "type": "string",
+            "enum": [
+              "ignore",
+              "read",
+              "require"
+            ]
+          }
+        }
+      },
+      "capability_tags": [
+        "barcode.decode",
+        "barcode.datamatrix"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy",
+          "zxing-cpp"
+        ]
+      },
+      "node_pack_id": "barcode.protocol-nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {
+        "family": "matrix",
+        "variant": "datamatrix-ecc200",
+        "scope_kind": "exact",
+        "format_member_name": "DataMatrix"
+      }
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.barcode.draw-results",
+      "display_name": "Draw Barcode Results",
+      "category": "barcode.render",
+      "description": "把 barcode-results 中的 position 轮廓和文本叠加回原图，输出新的图片引用。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "results",
+          "display_name": "Results",
+          "payload_type_id": "barcode-results.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "line_thickness": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "font_scale": {
+            "type": "number",
+            "minimum": 0
+          },
+          "draw_polygon": {
+            "type": "boolean"
+          },
+          "draw_text": {
+            "type": "boolean"
+          },
+          "draw_format": {
+            "type": "boolean"
+          },
+          "draw_index": {
+            "type": "boolean"
+          },
+          "output_object_key": {
+            "type": "string"
+          }
+        }
+      },
+      "capability_tags": [
+        "barcode.render",
+        "barcode.draw"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "barcode.protocol-nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {
+        "input_kind": "barcode-results.v1",
+        "position_field": "position"
+      }
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.barcode.ean13-decode",
+      "display_name": "EAN-13 Decode",
+      "category": "barcode.decode",
+      "description": "从输入图片中解码 EAN-13 条码。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "results",
+          "display_name": "Results",
+          "payload_type_id": "barcode-results.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "try_rotate": {
+            "type": "boolean"
+          },
+          "try_downscale": {
+            "type": "boolean"
+          },
+          "try_invert": {
+            "type": "boolean"
+          },
+          "is_pure": {
+            "type": "boolean"
+          },
+          "return_errors": {
+            "type": "boolean"
+          },
+          "text_mode": {
+            "type": "string",
+            "enum": [
+              "plain",
+              "hri",
+              "escaped",
+              "hex",
+              "eci",
+              "hex-eci"
+            ]
+          },
+          "binarizer": {
+            "type": "string",
+            "enum": [
+              "local-average",
+              "global-histogram",
+              "fixed-threshold",
+              "bool-cast"
+            ]
+          },
+          "ean_add_on_symbol": {
+            "type": "string",
+            "enum": [
+              "ignore",
+              "read",
+              "require"
+            ]
+          }
+        }
+      },
+      "capability_tags": [
+        "barcode.decode",
+        "barcode.ean13"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy",
+          "zxing-cpp"
+        ]
+      },
+      "node_pack_id": "barcode.protocol-nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {
+        "family": "retail",
+        "variant": "ean13",
+        "scope_kind": "exact",
+        "format_member_name": "EAN13"
+      }
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.barcode.ean2-decode",
+      "display_name": "EAN-2 Decode",
+      "category": "barcode.decode",
+      "description": "从输入图片中解码 EAN-2 附加码。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "results",
+          "display_name": "Results",
+          "payload_type_id": "barcode-results.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "try_rotate": {
+            "type": "boolean"
+          },
+          "try_downscale": {
+            "type": "boolean"
+          },
+          "try_invert": {
+            "type": "boolean"
+          },
+          "is_pure": {
+            "type": "boolean"
+          },
+          "return_errors": {
+            "type": "boolean"
+          },
+          "text_mode": {
+            "type": "string",
+            "enum": [
+              "plain",
+              "hri",
+              "escaped",
+              "hex",
+              "eci",
+              "hex-eci"
+            ]
+          },
+          "binarizer": {
+            "type": "string",
+            "enum": [
+              "local-average",
+              "global-histogram",
+              "fixed-threshold",
+              "bool-cast"
+            ]
+          },
+          "ean_add_on_symbol": {
+            "type": "string",
+            "enum": [
+              "ignore",
+              "read",
+              "require"
+            ]
+          }
+        }
+      },
+      "capability_tags": [
+        "barcode.decode",
+        "barcode.ean2"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy",
+          "zxing-cpp"
+        ]
+      },
+      "node_pack_id": "barcode.protocol-nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {
+        "family": "retail",
+        "variant": "ean2",
+        "scope_kind": "exact",
+        "format_member_name": "EAN2"
+      }
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.barcode.ean5-decode",
+      "display_name": "EAN-5 Decode",
+      "category": "barcode.decode",
+      "description": "从输入图片中解码 EAN-5 附加码。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "results",
+          "display_name": "Results",
+          "payload_type_id": "barcode-results.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "try_rotate": {
+            "type": "boolean"
+          },
+          "try_downscale": {
+            "type": "boolean"
+          },
+          "try_invert": {
+            "type": "boolean"
+          },
+          "is_pure": {
+            "type": "boolean"
+          },
+          "return_errors": {
+            "type": "boolean"
+          },
+          "text_mode": {
+            "type": "string",
+            "enum": [
+              "plain",
+              "hri",
+              "escaped",
+              "hex",
+              "eci",
+              "hex-eci"
+            ]
+          },
+          "binarizer": {
+            "type": "string",
+            "enum": [
+              "local-average",
+              "global-histogram",
+              "fixed-threshold",
+              "bool-cast"
+            ]
+          },
+          "ean_add_on_symbol": {
+            "type": "string",
+            "enum": [
+              "ignore",
+              "read",
+              "require"
+            ]
+          }
+        }
+      },
+      "capability_tags": [
+        "barcode.decode",
+        "barcode.ean5"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy",
+          "zxing-cpp"
+        ]
+      },
+      "node_pack_id": "barcode.protocol-nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {
+        "family": "retail",
+        "variant": "ean5",
+        "scope_kind": "exact",
+        "format_member_name": "EAN5"
+      }
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.barcode.ean8-decode",
+      "display_name": "EAN-8 Decode",
+      "category": "barcode.decode",
+      "description": "从输入图片中解码 EAN-8 条码。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "results",
+          "display_name": "Results",
+          "payload_type_id": "barcode-results.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "try_rotate": {
+            "type": "boolean"
+          },
+          "try_downscale": {
+            "type": "boolean"
+          },
+          "try_invert": {
+            "type": "boolean"
+          },
+          "is_pure": {
+            "type": "boolean"
+          },
+          "return_errors": {
+            "type": "boolean"
+          },
+          "text_mode": {
+            "type": "string",
+            "enum": [
+              "plain",
+              "hri",
+              "escaped",
+              "hex",
+              "eci",
+              "hex-eci"
+            ]
+          },
+          "binarizer": {
+            "type": "string",
+            "enum": [
+              "local-average",
+              "global-histogram",
+              "fixed-threshold",
+              "bool-cast"
+            ]
+          },
+          "ean_add_on_symbol": {
+            "type": "string",
+            "enum": [
+              "ignore",
+              "read",
+              "require"
+            ]
+          }
+        }
+      },
+      "capability_tags": [
+        "barcode.decode",
+        "barcode.ean8"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy",
+          "zxing-cpp"
+        ]
+      },
+      "node_pack_id": "barcode.protocol-nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {
+        "family": "retail",
+        "variant": "ean8",
+        "scope_kind": "exact",
+        "format_member_name": "EAN8"
+      }
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.barcode.ean-upc-decode",
+      "display_name": "Decode EAN/UPC Family",
+      "category": "barcode.decode",
+      "description": "扫描输入图片中的 EAN/UPC 家族条码，适合标准零售主码与附加码识读场景。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "results",
+          "display_name": "Results",
+          "payload_type_id": "barcode-results.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "try_rotate": {
+            "type": "boolean"
+          },
+          "try_downscale": {
+            "type": "boolean"
+          },
+          "try_invert": {
+            "type": "boolean"
+          },
+          "is_pure": {
+            "type": "boolean"
+          },
+          "return_errors": {
+            "type": "boolean"
+          },
+          "text_mode": {
+            "type": "string",
+            "enum": [
+              "plain",
+              "hri",
+              "escaped",
+              "hex",
+              "eci",
+              "hex-eci"
+            ]
+          },
+          "binarizer": {
+            "type": "string",
+            "enum": [
+              "local-average",
+              "global-histogram",
+              "fixed-threshold",
+              "bool-cast"
+            ]
+          },
+          "ean_add_on_symbol": {
+            "type": "string",
+            "enum": [
+              "ignore",
+              "read",
+              "require"
+            ]
+          }
+        }
+      },
+      "capability_tags": [
+        "barcode.decode",
+        "barcode.ean-upc"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy",
+          "zxing-cpp"
+        ]
+      },
+      "node_pack_id": "barcode.protocol-nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {
+        "family": "retail",
+        "variant": "ean-upc-family",
+        "scope_kind": "group",
+        "format_member_name": "EANUPC"
+      }
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.barcode.filter-results",
+      "display_name": "Filter Barcode Results",
+      "category": "barcode.logic",
+      "description": "按 format、text、index 和区域范围筛选 barcode-results.v1，输出过滤后的结果集。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "input_ports": [
+        {
+          "name": "results",
+          "display_name": "Results",
+          "payload_type_id": "barcode-results.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "results",
+          "display_name": "Results",
+          "payload_type_id": "barcode-results.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "formats": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "text_equals": {
+            "type": "string"
+          },
+          "text_contains": {
+            "type": "string"
+          },
+          "text_regex": {
+            "type": "string"
+          },
+          "ignore_case": {
+            "type": "boolean"
+          },
+          "indices": {
+            "type": "array",
+            "items": {
+              "type": "integer"
+            }
+          },
+          "min_index": {
+            "type": "integer"
+          },
+          "max_index": {
+            "type": "integer"
+          },
+          "region_bounds_xyxy": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "minItems": 4,
+            "maxItems": 4
+          },
+          "region_match_mode": {
+            "type": "string",
+            "enum": [
+              "intersects",
+              "center-in",
+              "bounds-in"
+            ]
+          }
+        }
+      },
+      "capability_tags": [
+        "barcode.logic",
+        "barcode.filter"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "zxing-cpp",
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "barcode.protocol-nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {
+        "input_kind": "barcode-results.v1",
+        "output_kind": "barcode-results.v1"
+      }
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.barcode.isbn-decode",
+      "display_name": "ISBN Decode",
+      "category": "barcode.decode",
+      "description": "从输入图片中解码 ISBN 图书条码。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "results",
+          "display_name": "Results",
+          "payload_type_id": "barcode-results.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "try_rotate": {
+            "type": "boolean"
+          },
+          "try_downscale": {
+            "type": "boolean"
+          },
+          "try_invert": {
+            "type": "boolean"
+          },
+          "is_pure": {
+            "type": "boolean"
+          },
+          "return_errors": {
+            "type": "boolean"
+          },
+          "text_mode": {
+            "type": "string",
+            "enum": [
+              "plain",
+              "hri",
+              "escaped",
+              "hex",
+              "eci",
+              "hex-eci"
+            ]
+          },
+          "binarizer": {
+            "type": "string",
+            "enum": [
+              "local-average",
+              "global-histogram",
+              "fixed-threshold",
+              "bool-cast"
+            ]
+          },
+          "ean_add_on_symbol": {
+            "type": "string",
+            "enum": [
+              "ignore",
+              "read",
+              "require"
+            ]
+          }
+        }
+      },
+      "capability_tags": [
+        "barcode.decode",
+        "barcode.isbn"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy",
+          "zxing-cpp"
+        ]
+      },
+      "node_pack_id": "barcode.protocol-nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {
+        "family": "retail",
+        "variant": "isbn",
+        "scope_kind": "exact",
+        "format_member_name": "ISBN"
+      }
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.barcode.itf14-decode",
+      "display_name": "ITF-14 Decode",
+      "category": "barcode.decode",
+      "description": "从输入图片中解码 ITF-14 条码。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "results",
+          "display_name": "Results",
+          "payload_type_id": "barcode-results.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "try_rotate": {
+            "type": "boolean"
+          },
+          "try_downscale": {
+            "type": "boolean"
+          },
+          "try_invert": {
+            "type": "boolean"
+          },
+          "is_pure": {
+            "type": "boolean"
+          },
+          "return_errors": {
+            "type": "boolean"
+          },
+          "text_mode": {
+            "type": "string",
+            "enum": [
+              "plain",
+              "hri",
+              "escaped",
+              "hex",
+              "eci",
+              "hex-eci"
+            ]
+          },
+          "binarizer": {
+            "type": "string",
+            "enum": [
+              "local-average",
+              "global-histogram",
+              "fixed-threshold",
+              "bool-cast"
+            ]
+          },
+          "ean_add_on_symbol": {
+            "type": "string",
+            "enum": [
+              "ignore",
+              "read",
+              "require"
+            ]
+          }
+        }
+      },
+      "capability_tags": [
+        "barcode.decode",
+        "barcode.itf14"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy",
+          "zxing-cpp"
+        ]
+      },
+      "node_pack_id": "barcode.protocol-nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {
+        "family": "industrial",
+        "variant": "itf14",
+        "scope_kind": "exact",
+        "format_member_name": "ITF14"
+      }
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.barcode.itf-decode",
+      "display_name": "ITF Decode",
+      "category": "barcode.decode",
+      "description": "从输入图片中解码 ITF 条码。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "results",
+          "display_name": "Results",
+          "payload_type_id": "barcode-results.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "try_rotate": {
+            "type": "boolean"
+          },
+          "try_downscale": {
+            "type": "boolean"
+          },
+          "try_invert": {
+            "type": "boolean"
+          },
+          "is_pure": {
+            "type": "boolean"
+          },
+          "return_errors": {
+            "type": "boolean"
+          },
+          "text_mode": {
+            "type": "string",
+            "enum": [
+              "plain",
+              "hri",
+              "escaped",
+              "hex",
+              "eci",
+              "hex-eci"
+            ]
+          },
+          "binarizer": {
+            "type": "string",
+            "enum": [
+              "local-average",
+              "global-histogram",
+              "fixed-threshold",
+              "bool-cast"
+            ]
+          },
+          "ean_add_on_symbol": {
+            "type": "string",
+            "enum": [
+              "ignore",
+              "read",
+              "require"
+            ]
+          }
+        }
+      },
+      "capability_tags": [
+        "barcode.decode",
+        "barcode.itf"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy",
+          "zxing-cpp"
+        ]
+      },
+      "node_pack_id": "barcode.protocol-nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {
+        "family": "industrial",
+        "variant": "itf",
+        "scope_kind": "exact",
+        "format_member_name": "ITF"
+      }
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.barcode.maxicode-decode",
+      "display_name": "MaxiCode Decode",
+      "category": "barcode.decode",
+      "description": "从输入图片中解码 MaxiCode；当前运行时以 partial read support 为主。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "results",
+          "display_name": "Results",
+          "payload_type_id": "barcode-results.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "try_rotate": {
+            "type": "boolean"
+          },
+          "try_downscale": {
+            "type": "boolean"
+          },
+          "try_invert": {
+            "type": "boolean"
+          },
+          "is_pure": {
+            "type": "boolean"
+          },
+          "return_errors": {
+            "type": "boolean"
+          },
+          "text_mode": {
+            "type": "string",
+            "enum": [
+              "plain",
+              "hri",
+              "escaped",
+              "hex",
+              "eci",
+              "hex-eci"
+            ]
+          },
+          "binarizer": {
+            "type": "string",
+            "enum": [
+              "local-average",
+              "global-histogram",
+              "fixed-threshold",
+              "bool-cast"
+            ]
+          },
+          "ean_add_on_symbol": {
+            "type": "string",
+            "enum": [
+              "ignore",
+              "read",
+              "require"
+            ]
+          }
+        }
+      },
+      "capability_tags": [
+        "barcode.decode",
+        "barcode.maxicode"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy",
+          "zxing-cpp"
+        ]
+      },
+      "node_pack_id": "barcode.protocol-nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {
+        "family": "matrix",
+        "variant": "maxicode",
+        "scope_kind": "exact",
+        "format_member_name": "MaxiCode"
+      }
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.barcode.micro-pdf417-decode",
+      "display_name": "MicroPDF417 Decode",
+      "category": "barcode.decode",
+      "description": "从输入图片中解码 MicroPDF417。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "results",
+          "display_name": "Results",
+          "payload_type_id": "barcode-results.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "try_rotate": {
+            "type": "boolean"
+          },
+          "try_downscale": {
+            "type": "boolean"
+          },
+          "try_invert": {
+            "type": "boolean"
+          },
+          "is_pure": {
+            "type": "boolean"
+          },
+          "return_errors": {
+            "type": "boolean"
+          },
+          "text_mode": {
+            "type": "string",
+            "enum": [
+              "plain",
+              "hri",
+              "escaped",
+              "hex",
+              "eci",
+              "hex-eci"
+            ]
+          },
+          "binarizer": {
+            "type": "string",
+            "enum": [
+              "local-average",
+              "global-histogram",
+              "fixed-threshold",
+              "bool-cast"
+            ]
+          },
+          "ean_add_on_symbol": {
+            "type": "string",
+            "enum": [
+              "ignore",
+              "read",
+              "require"
+            ]
+          }
+        }
+      },
+      "capability_tags": [
+        "barcode.decode",
+        "barcode.micro-pdf417"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy",
+          "zxing-cpp"
+        ]
+      },
+      "node_pack_id": "barcode.protocol-nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {
+        "family": "matrix",
+        "variant": "micro-pdf417",
+        "scope_kind": "exact",
+        "format_member_name": "MicroPDF417"
+      }
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.barcode.micro-qr-code-decode",
+      "display_name": "Micro QR Code Decode",
+      "category": "barcode.decode",
+      "description": "从输入图片中解码 Micro QR Code。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "results",
+          "display_name": "Results",
+          "payload_type_id": "barcode-results.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "try_rotate": {
+            "type": "boolean"
+          },
+          "try_downscale": {
+            "type": "boolean"
+          },
+          "try_invert": {
+            "type": "boolean"
+          },
+          "is_pure": {
+            "type": "boolean"
+          },
+          "return_errors": {
+            "type": "boolean"
+          },
+          "text_mode": {
+            "type": "string",
+            "enum": [
+              "plain",
+              "hri",
+              "escaped",
+              "hex",
+              "eci",
+              "hex-eci"
+            ]
+          },
+          "binarizer": {
+            "type": "string",
+            "enum": [
+              "local-average",
+              "global-histogram",
+              "fixed-threshold",
+              "bool-cast"
+            ]
+          },
+          "ean_add_on_symbol": {
+            "type": "string",
+            "enum": [
+              "ignore",
+              "read",
+              "require"
+            ]
+          }
+        }
+      },
+      "capability_tags": [
+        "barcode.decode",
+        "barcode.micro-qr-code"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy",
+          "zxing-cpp"
+        ]
+      },
+      "node_pack_id": "barcode.protocol-nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {
+        "family": "matrix",
+        "variant": "micro-qr-code",
+        "scope_kind": "exact",
+        "format_member_name": "MicroQRCode"
+      }
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.barcode.pdf417-decode",
+      "display_name": "PDF417 Decode",
+      "category": "barcode.decode",
+      "description": "从输入图片中解码 PDF417。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "results",
+          "display_name": "Results",
+          "payload_type_id": "barcode-results.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "try_rotate": {
+            "type": "boolean"
+          },
+          "try_downscale": {
+            "type": "boolean"
+          },
+          "try_invert": {
+            "type": "boolean"
+          },
+          "is_pure": {
+            "type": "boolean"
+          },
+          "return_errors": {
+            "type": "boolean"
+          },
+          "text_mode": {
+            "type": "string",
+            "enum": [
+              "plain",
+              "hri",
+              "escaped",
+              "hex",
+              "eci",
+              "hex-eci"
+            ]
+          },
+          "binarizer": {
+            "type": "string",
+            "enum": [
+              "local-average",
+              "global-histogram",
+              "fixed-threshold",
+              "bool-cast"
+            ]
+          },
+          "ean_add_on_symbol": {
+            "type": "string",
+            "enum": [
+              "ignore",
+              "read",
+              "require"
+            ]
+          }
+        }
+      },
+      "capability_tags": [
+        "barcode.decode",
+        "barcode.pdf417"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy",
+          "zxing-cpp"
+        ]
+      },
+      "node_pack_id": "barcode.protocol-nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {
+        "family": "matrix",
+        "variant": "pdf417",
+        "scope_kind": "exact",
+        "format_member_name": "PDF417"
+      }
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.barcode.pzn-decode",
+      "display_name": "PZN Decode",
+      "category": "barcode.decode",
+      "description": "从输入图片中解码 PZN 医药条码。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "results",
+          "display_name": "Results",
+          "payload_type_id": "barcode-results.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "try_rotate": {
+            "type": "boolean"
+          },
+          "try_downscale": {
+            "type": "boolean"
+          },
+          "try_invert": {
+            "type": "boolean"
+          },
+          "is_pure": {
+            "type": "boolean"
+          },
+          "return_errors": {
+            "type": "boolean"
+          },
+          "text_mode": {
+            "type": "string",
+            "enum": [
+              "plain",
+              "hri",
+              "escaped",
+              "hex",
+              "eci",
+              "hex-eci"
+            ]
+          },
+          "binarizer": {
+            "type": "string",
+            "enum": [
+              "local-average",
+              "global-histogram",
+              "fixed-threshold",
+              "bool-cast"
+            ]
+          },
+          "ean_add_on_symbol": {
+            "type": "string",
+            "enum": [
+              "ignore",
+              "read",
+              "require"
+            ]
+          }
+        }
+      },
+      "capability_tags": [
+        "barcode.decode",
+        "barcode.pzn"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy",
+          "zxing-cpp"
+        ]
+      },
+      "node_pack_id": "barcode.protocol-nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {
+        "family": "industrial",
+        "variant": "pzn",
+        "scope_kind": "exact",
+        "format_member_name": "PZN"
+      }
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.barcode.qr-code-decode",
+      "display_name": "QR Code Decode",
+      "category": "barcode.decode",
+      "description": "从输入图片中解码 QR Code，覆盖常规 QR Code 识读场景。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "results",
+          "display_name": "Results",
+          "payload_type_id": "barcode-results.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "try_rotate": {
+            "type": "boolean"
+          },
+          "try_downscale": {
+            "type": "boolean"
+          },
+          "try_invert": {
+            "type": "boolean"
+          },
+          "is_pure": {
+            "type": "boolean"
+          },
+          "return_errors": {
+            "type": "boolean"
+          },
+          "text_mode": {
+            "type": "string",
+            "enum": [
+              "plain",
+              "hri",
+              "escaped",
+              "hex",
+              "eci",
+              "hex-eci"
+            ]
+          },
+          "binarizer": {
+            "type": "string",
+            "enum": [
+              "local-average",
+              "global-histogram",
+              "fixed-threshold",
+              "bool-cast"
+            ]
+          },
+          "ean_add_on_symbol": {
+            "type": "string",
+            "enum": [
+              "ignore",
+              "read",
+              "require"
+            ]
+          }
+        }
+      },
+      "capability_tags": [
+        "barcode.decode",
+        "barcode.qr-code"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy",
+          "zxing-cpp"
+        ]
+      },
+      "node_pack_id": "barcode.protocol-nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {
+        "family": "matrix",
+        "variant": "qr-code",
+        "scope_kind": "exact",
+        "format_member_name": "QRCode"
+      }
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.barcode.qr-code-model1-decode",
+      "display_name": "QR Code Model 1 Decode",
+      "category": "barcode.decode",
+      "description": "从输入图片中解码 QR Code Model 1。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "results",
+          "display_name": "Results",
+          "payload_type_id": "barcode-results.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "try_rotate": {
+            "type": "boolean"
+          },
+          "try_downscale": {
+            "type": "boolean"
+          },
+          "try_invert": {
+            "type": "boolean"
+          },
+          "is_pure": {
+            "type": "boolean"
+          },
+          "return_errors": {
+            "type": "boolean"
+          },
+          "text_mode": {
+            "type": "string",
+            "enum": [
+              "plain",
+              "hri",
+              "escaped",
+              "hex",
+              "eci",
+              "hex-eci"
+            ]
+          },
+          "binarizer": {
+            "type": "string",
+            "enum": [
+              "local-average",
+              "global-histogram",
+              "fixed-threshold",
+              "bool-cast"
+            ]
+          },
+          "ean_add_on_symbol": {
+            "type": "string",
+            "enum": [
+              "ignore",
+              "read",
+              "require"
+            ]
+          }
+        }
+      },
+      "capability_tags": [
+        "barcode.decode",
+        "barcode.qr-code-model1"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy",
+          "zxing-cpp"
+        ]
+      },
+      "node_pack_id": "barcode.protocol-nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {
+        "family": "matrix",
+        "variant": "qr-code-model1",
+        "scope_kind": "exact",
+        "format_member_name": "QRCodeModel1"
+      }
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.barcode.qr-code-model2-decode",
+      "display_name": "QR Code Model 2 Decode",
+      "category": "barcode.decode",
+      "description": "从输入图片中解码 QR Code Model 2。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "results",
+          "display_name": "Results",
+          "payload_type_id": "barcode-results.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "try_rotate": {
+            "type": "boolean"
+          },
+          "try_downscale": {
+            "type": "boolean"
+          },
+          "try_invert": {
+            "type": "boolean"
+          },
+          "is_pure": {
+            "type": "boolean"
+          },
+          "return_errors": {
+            "type": "boolean"
+          },
+          "text_mode": {
+            "type": "string",
+            "enum": [
+              "plain",
+              "hri",
+              "escaped",
+              "hex",
+              "eci",
+              "hex-eci"
+            ]
+          },
+          "binarizer": {
+            "type": "string",
+            "enum": [
+              "local-average",
+              "global-histogram",
+              "fixed-threshold",
+              "bool-cast"
+            ]
+          },
+          "ean_add_on_symbol": {
+            "type": "string",
+            "enum": [
+              "ignore",
+              "read",
+              "require"
+            ]
+          }
+        }
+      },
+      "capability_tags": [
+        "barcode.decode",
+        "barcode.qr-code-model2"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy",
+          "zxing-cpp"
+        ]
+      },
+      "node_pack_id": "barcode.protocol-nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {
+        "family": "matrix",
+        "variant": "qr-code-model2",
+        "scope_kind": "exact",
+        "format_member_name": "QRCodeModel2"
+      }
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.barcode.rmqr-code-decode",
+      "display_name": "rMQR Decode",
+      "category": "barcode.decode",
+      "description": "从输入图片中解码 rMQR。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "results",
+          "display_name": "Results",
+          "payload_type_id": "barcode-results.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "try_rotate": {
+            "type": "boolean"
+          },
+          "try_downscale": {
+            "type": "boolean"
+          },
+          "try_invert": {
+            "type": "boolean"
+          },
+          "is_pure": {
+            "type": "boolean"
+          },
+          "return_errors": {
+            "type": "boolean"
+          },
+          "text_mode": {
+            "type": "string",
+            "enum": [
+              "plain",
+              "hri",
+              "escaped",
+              "hex",
+              "eci",
+              "hex-eci"
+            ]
+          },
+          "binarizer": {
+            "type": "string",
+            "enum": [
+              "local-average",
+              "global-histogram",
+              "fixed-threshold",
+              "bool-cast"
+            ]
+          },
+          "ean_add_on_symbol": {
+            "type": "string",
+            "enum": [
+              "ignore",
+              "read",
+              "require"
+            ]
+          }
+        }
+      },
+      "capability_tags": [
+        "barcode.decode",
+        "barcode.rmqr"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy",
+          "zxing-cpp"
+        ]
+      },
+      "node_pack_id": "barcode.protocol-nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {
+        "family": "matrix",
+        "variant": "rmqr",
+        "scope_kind": "exact",
+        "format_member_name": "RMQRCode"
+      }
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.barcode.results-summary",
+      "display_name": "Summarize Barcode Results",
+      "category": "barcode.logic",
+      "description": "把 barcode-results.v1 转成更轻量的摘要对象，方便后续 workflow 条件分支直接读取。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "input_ports": [
+        {
+          "name": "results",
+          "display_name": "Results",
+          "payload_type_id": "barcode-results.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "body",
+          "display_name": "Body",
+          "payload_type_id": "response-body.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {}
+      },
+      "capability_tags": [
+        "barcode.logic",
+        "barcode.summary"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "zxing-cpp",
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "barcode.protocol-nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {
+        "input_kind": "barcode-results.v1",
+        "output_kind": "response-body.v1"
+      }
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.barcode.upca-decode",
+      "display_name": "UPC-A Decode",
+      "category": "barcode.decode",
+      "description": "从输入图片中解码 UPC-A 条码。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "results",
+          "display_name": "Results",
+          "payload_type_id": "barcode-results.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "try_rotate": {
+            "type": "boolean"
+          },
+          "try_downscale": {
+            "type": "boolean"
+          },
+          "try_invert": {
+            "type": "boolean"
+          },
+          "is_pure": {
+            "type": "boolean"
+          },
+          "return_errors": {
+            "type": "boolean"
+          },
+          "text_mode": {
+            "type": "string",
+            "enum": [
+              "plain",
+              "hri",
+              "escaped",
+              "hex",
+              "eci",
+              "hex-eci"
+            ]
+          },
+          "binarizer": {
+            "type": "string",
+            "enum": [
+              "local-average",
+              "global-histogram",
+              "fixed-threshold",
+              "bool-cast"
+            ]
+          },
+          "ean_add_on_symbol": {
+            "type": "string",
+            "enum": [
+              "ignore",
+              "read",
+              "require"
+            ]
+          }
+        }
+      },
+      "capability_tags": [
+        "barcode.decode",
+        "barcode.upca"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy",
+          "zxing-cpp"
+        ]
+      },
+      "node_pack_id": "barcode.protocol-nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {
+        "family": "retail",
+        "variant": "upca",
+        "scope_kind": "exact",
+        "format_member_name": "UPCA"
+      }
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.barcode.upce-decode",
+      "display_name": "UPC-E Decode",
+      "category": "barcode.decode",
+      "description": "从输入图片中解码 UPC-E 条码。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "results",
+          "display_name": "Results",
+          "payload_type_id": "barcode-results.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "try_rotate": {
+            "type": "boolean"
+          },
+          "try_downscale": {
+            "type": "boolean"
+          },
+          "try_invert": {
+            "type": "boolean"
+          },
+          "is_pure": {
+            "type": "boolean"
+          },
+          "return_errors": {
+            "type": "boolean"
+          },
+          "text_mode": {
+            "type": "string",
+            "enum": [
+              "plain",
+              "hri",
+              "escaped",
+              "hex",
+              "eci",
+              "hex-eci"
+            ]
+          },
+          "binarizer": {
+            "type": "string",
+            "enum": [
+              "local-average",
+              "global-histogram",
+              "fixed-threshold",
+              "bool-cast"
+            ]
+          },
+          "ean_add_on_symbol": {
+            "type": "string",
+            "enum": [
+              "ignore",
+              "read",
+              "require"
+            ]
+          }
+        }
+      },
+      "capability_tags": [
+        "barcode.decode",
+        "barcode.upce"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy",
+          "zxing-cpp"
+        ]
+      },
+      "node_pack_id": "barcode.protocol-nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {
+        "family": "retail",
+        "variant": "upce",
+        "scope_kind": "exact",
+        "format_member_name": "UPCE"
+      }
+    }
+  ],
+  "metadata": {
+    "phase": "first-batch",
+    "families": [
+      "qr-code",
+      "data-matrix",
+      "code-128"
+    ]
+  }
+}

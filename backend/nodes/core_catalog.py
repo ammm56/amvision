@@ -18,6 +18,30 @@ def get_core_workflow_payload_contracts() -> tuple[WorkflowPayloadContract, ...]
 
     return (
         WorkflowPayloadContract(
+            payload_type_id="value.v1",
+            display_name="Value Payload",
+            transport_kind="inline-json",
+            json_schema={
+                "type": "object",
+                "properties": {
+                    "value": {},
+                },
+                "required": ["value"],
+            },
+        ),
+        WorkflowPayloadContract(
+            payload_type_id="boolean.v1",
+            display_name="Boolean Payload",
+            transport_kind="inline-json",
+            json_schema={
+                "type": "object",
+                "properties": {
+                    "value": {"type": "boolean"},
+                },
+                "required": ["value"],
+            },
+        ),
+        WorkflowPayloadContract(
             payload_type_id="image-ref.v1",
             display_name="Image Reference",
             transport_kind="hybrid",
@@ -69,6 +93,27 @@ def get_core_workflow_payload_contracts() -> tuple[WorkflowPayloadContract, ...]
                 },
                 "required": ["image_base64"],
             },
+        ),
+        WorkflowPayloadContract(
+            payload_type_id="dataset-package.v1",
+            display_name="Dataset Package Upload",
+            transport_kind="multipart-upload",
+            json_schema={
+                "type": "object",
+                "properties": {
+                    "package_file_name": {
+                        "type": "string",
+                        "minLength": 1,
+                    },
+                    "package_bytes": {
+                        "type": "string",
+                        "format": "binary",
+                    },
+                    "media_type": {"type": "string"},
+                },
+                "required": ["package_file_name", "package_bytes"],
+            },
+            artifact_kinds=("dataset-package",),
         ),
         WorkflowPayloadContract(
             payload_type_id="image-refs.v1",

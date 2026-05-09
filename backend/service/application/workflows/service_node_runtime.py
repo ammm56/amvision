@@ -8,9 +8,11 @@ from backend.queue import QueueBackend
 from backend.service.application.conversions.yolox_conversion_task_service import (
     SqlAlchemyYoloXConversionTaskService,
 )
+from backend.service.application.datasets.dataset_import import SqlAlchemyDatasetImportService
 from backend.service.application.datasets.dataset_export import SqlAlchemyDatasetExportTaskService
 from backend.service.application.deployments.yolox_deployment_service import SqlAlchemyYoloXDeploymentService
 from backend.service.application.errors import ServiceConfigurationError
+from backend.service.application.tasks.task_service import SqlAlchemyTaskService
 from backend.service.application.models.yolox_evaluation_task_service import (
     SqlAlchemyYoloXEvaluationTaskService,
 )
@@ -80,6 +82,19 @@ class WorkflowServiceNodeRuntimeContext:
             dataset_storage=self.dataset_storage,
             queue_backend=self.require_queue_backend(),
         )
+
+    def build_dataset_import_service(self) -> SqlAlchemyDatasetImportService:
+        """构造数据集导入任务 service。"""
+
+        return SqlAlchemyDatasetImportService(
+            session_factory=self.session_factory,
+            dataset_storage=self.dataset_storage,
+        )
+
+    def build_task_service(self) -> SqlAlchemyTaskService:
+        """构造通用任务查询 service。"""
+
+        return SqlAlchemyTaskService(self.session_factory)
 
     def build_evaluation_task_service(self) -> SqlAlchemyYoloXEvaluationTaskService:
         """构造评估任务 service。"""

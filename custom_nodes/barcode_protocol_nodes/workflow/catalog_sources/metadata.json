@@ -1,0 +1,8 @@
+{
+  "phase": "first-batch",
+  "families": [
+    "qr-code",
+    "data-matrix",
+    "code-128"
+  ]
+}
