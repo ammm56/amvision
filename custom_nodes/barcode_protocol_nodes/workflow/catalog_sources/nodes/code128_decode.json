@@ -57,6 +57,14 @@
           "fixed-threshold",
           "bool-cast"
         ]
+      },
+      "ean_add_on_symbol": {
+        "type": "string",
+        "enum": [
+          "ignore",
+          "read",
+          "require"
+        ]
       }
     }
   },
@@ -72,5 +80,11 @@
     ]
   },
   "node_pack_id": "barcode.protocol-nodes",
-  "node_pack_version": "0.1.0"
+  "node_pack_version": "0.1.0",
+  "metadata": {
+    "family": "industrial",
+    "variant": "code128",
+    "scope_kind": "exact",
+    "format_member_name": "Code128"
+  }
 }

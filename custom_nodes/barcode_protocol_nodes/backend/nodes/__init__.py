@@ -50,27 +50,7 @@ def _read_node_type_id(module: ModuleType) -> str:
     return node_type_id
 
 
-def _read_node_definition_payload(module: ModuleType) -> dict[str, object]:
-    """读取节点模块中的显式 NodeDefinition payload。
-
-    参数：
-    - module：单个节点模块。
-
-    返回：
-    - dict[str, object]：节点定义 payload。
-    """
-
-    payload = getattr(module, "NODE_DEFINITION_PAYLOAD", None)
-    if not isinstance(payload, dict):
-        raise RuntimeError(f"节点模块缺少显式 NODE_DEFINITION_PAYLOAD: {module.__name__}")
-    return dict(payload)
-
-
 NODE_MODULES = _load_node_modules()
-
-NODE_DEFINITION_PAYLOADS: tuple[dict[str, object], ...] = tuple(
-    _read_node_definition_payload(module) for module in NODE_MODULES
-)
 
 NODE_HANDLERS: dict[str, object] = {}
 for module in NODE_MODULES:
@@ -82,4 +62,4 @@ for module in NODE_MODULES:
         NODE_HANDLERS[node_type_id] = handle_node
 
 
-__all__ = ["NODE_DEFINITION_PAYLOADS", "NODE_HANDLERS", "NODE_MODULES"]
+__all__ = ["NODE_HANDLERS", "NODE_MODULES"]

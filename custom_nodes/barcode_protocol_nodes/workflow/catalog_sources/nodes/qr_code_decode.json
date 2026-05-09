@@ -3,7 +3,7 @@
   "node_type_id": "custom.barcode.qr-code-decode",
   "display_name": "QR Code Decode",
   "category": "barcode.decode",
-  "description": "从输入图片中解码 QR Code。",
+  "description": "从输入图片中解码 QR Code，覆盖常规 QR Code 识读场景。",
   "implementation_kind": "custom-node",
   "runtime_kind": "python-callable",
   "input_ports": [
@@ -57,12 +57,20 @@
           "fixed-threshold",
           "bool-cast"
         ]
+      },
+      "ean_add_on_symbol": {
+        "type": "string",
+        "enum": [
+          "ignore",
+          "read",
+          "require"
+        ]
       }
     }
   },
   "capability_tags": [
     "barcode.decode",
-    "barcode.qrcode"
+    "barcode.qr-code"
   ],
   "runtime_requirements": {
     "python_packages": [
@@ -72,5 +80,11 @@
     ]
   },
   "node_pack_id": "barcode.protocol-nodes",
-  "node_pack_version": "0.1.0"
+  "node_pack_version": "0.1.0",
+  "metadata": {
+    "family": "matrix",
+    "variant": "qr-code",
+    "scope_kind": "exact",
+    "format_member_name": "QRCode"
+  }
 }

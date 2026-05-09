@@ -8,6 +8,7 @@
 
 - [docs/nodes/node-pack-manifest.md](node-pack-manifest.md)：node pack manifest、capability、permission scope 和兼容性规范
 - [docs/nodes/runtime-hooks-callbacks.md](runtime-hooks-callbacks.md)：节点扩展 trigger、hook、完成回调和数据上报规范
+- [docs/architecture/workflow-json-contracts.md](../architecture/workflow-json-contracts.md)：workflow 节点目录 JSON 合同，以及 barcode.protocol-nodes 的 catalog.json 手动生成流程
 
 ## 建议内容
 

@@ -24,7 +24,6 @@ from backend.service.infrastructure.object_store.local_dataset_storage import (
     DatasetStorageSettings,
     LocalDatasetStorage,
 )
-from custom_nodes.barcode_protocol_nodes.backend.nodes import NODE_DEFINITION_PAYLOADS
 from custom_nodes.barcode_protocol_nodes.specs import DRAW_BARCODE_RESULTS_NODE_TYPE_ID
 
 
@@ -314,21 +313,34 @@ def test_repository_barcode_protocol_node_pack_is_enabled_by_default() -> None:
 
 
 def test_barcode_node_modules_are_aggregated_bottom_up() -> None:
-    """验证 barcode node definitions 会从显式节点模块向上汇总。"""
+    """验证 barcode 节点模块与 node JSON 目录保持一一对应。"""
 
     nodes_dir = Path(__file__).resolve().parents[1] / "custom_nodes" / "barcode_protocol_nodes" / "backend" / "nodes"
+    node_sources_dir = (
+        Path(__file__).resolve().parents[1]
+        / "custom_nodes"
+        / "barcode_protocol_nodes"
+        / "workflow"
+        / "catalog_sources"
+        / "nodes"
+    )
     node_definition_module_names = {
         file_path.stem
         for file_path in nodes_dir.glob("*.py")
         if file_path.is_file() and file_path.stem != "__init__" and not file_path.stem.startswith("_")
     }
+    node_definition_source_names = {
+        file_path.stem
+        for file_path in node_sources_dir.glob("*.json")
+        if file_path.is_file() and not file_path.stem.startswith("_")
+    }
     aggregated_node_type_ids = {
         payload["node_type_id"]
-        for payload in NODE_DEFINITION_PAYLOADS
+        for payload in (json.loads(file_path.read_text(encoding="utf-8")) for file_path in node_sources_dir.glob("*.json"))
         if isinstance(payload.get("node_type_id"), str)
     }
 
-    assert len(NODE_DEFINITION_PAYLOADS) == len(node_definition_module_names)
+    assert node_definition_source_names == node_definition_module_names
     assert {
         "custom.barcode.qr-code-decode",
         "custom.barcode.filter-results",

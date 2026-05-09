@@ -42,6 +42,19 @@ enabledByDefault: false
 customNodeCatalogPath: workflow/catalog.json
 ```
 
+customNodeCatalogPath 指向 node pack 对外暴露的最终目录文件。对于采用碎片化维护的节点包，推荐把源文件放在 workflow/catalog_sources/ 下，再由生成步骤手动汇总成这个 catalog.json。当前 barcode.protocol-nodes 已采用这种方式，开发阶段通过以下命令手动回写目录文件：
+
+```powershell
+D:/software/anaconda3/envs/amvision/python.exe -m custom_nodes.barcode_protocol_nodes.workflow.generate_catalog
+```
+
+如果 barcode.protocol-nodes 的变更来自 specs.py 中的 decode 规格，还需要先生成 backend/nodes 下的 decode 模块和 workflow/catalog_sources/nodes 下的 decode JSON，再执行 catalog 生成：
+
+```powershell
+D:/software/anaconda3/envs/amvision/python.exe -m custom_nodes.barcode_protocol_nodes.backend.generate_decode_node_modules
+D:/software/anaconda3/envs/amvision/python.exe -m custom_nodes.barcode_protocol_nodes.workflow.generate_catalog
+```
+
 ## 必填字段
 
 - id：node pack 稳定唯一标识

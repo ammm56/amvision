@@ -4594,11 +4594,22 @@
     }
   ],
   "metadata": {
-    "phase": "first-batch",
+    "phase": "implemented",
+    "node_definition_source": "workflow.catalog_sources.nodes",
     "families": [
-      "qr-code",
-      "data-matrix",
-      "code-128"
+      "mixed",
+      "linear",
+      "matrix",
+      "retail",
+      "industrial",
+      "gs1"
+    ],
+    "features": [
+      "decode",
+      "filter",
+      "match",
+      "summary",
+      "draw"
     ]
   }
 }

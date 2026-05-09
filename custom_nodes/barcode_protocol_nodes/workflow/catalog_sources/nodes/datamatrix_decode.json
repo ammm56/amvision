@@ -1,9 +1,9 @@
 {
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.barcode.datamatrix-decode",
-  "display_name": "Data Matrix Decode",
+  "display_name": "Data Matrix ECC200 Decode",
   "category": "barcode.decode",
-  "description": "从输入图片中解码 Data Matrix。",
+  "description": "从输入图片中解码 Data Matrix ECC200。",
   "implementation_kind": "custom-node",
   "runtime_kind": "python-callable",
   "input_ports": [
@@ -57,6 +57,14 @@
           "fixed-threshold",
           "bool-cast"
         ]
+      },
+      "ean_add_on_symbol": {
+        "type": "string",
+        "enum": [
+          "ignore",
+          "read",
+          "require"
+        ]
       }
     }
   },
@@ -72,5 +80,11 @@
     ]
   },
   "node_pack_id": "barcode.protocol-nodes",
-  "node_pack_version": "0.1.0"
+  "node_pack_version": "0.1.0",
+  "metadata": {
+    "family": "matrix",
+    "variant": "datamatrix-ecc200",
+    "scope_kind": "exact",
+    "format_member_name": "DataMatrix"
+  }
 }

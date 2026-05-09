@@ -8,7 +8,6 @@ from pathlib import Path
 from backend.contracts.nodes.node_pack_manifest import CUSTOM_NODE_CATALOG_FORMAT, CustomNodeCatalogDocument
 from backend.contracts.workflows.workflow_graph import validate_node_definition_catalog
 from backend.nodes.core_catalog import get_core_workflow_payload_contracts
-from custom_nodes.barcode_protocol_nodes.backend.nodes import NODE_DEFINITION_PAYLOADS
 
 
 def get_workflow_dir() -> Path:
@@ -22,7 +21,7 @@ def get_workflow_dir() -> Path:
 
 
 def get_catalog_sources_dir(*, workflow_dir: Path | None = None) -> Path:
-    """返回 catalog 碎片目录。
+    """返回 catalog_sources 目录。
 
     参数：
     - workflow_dir：可选 workflow 目录；未提供时使用当前模块目录。
@@ -33,6 +32,19 @@ def get_catalog_sources_dir(*, workflow_dir: Path | None = None) -> Path:
 
     resolved_workflow_dir = workflow_dir or get_workflow_dir()
     return resolved_workflow_dir / "catalog_sources"
+
+
+def get_node_sources_dir(*, workflow_dir: Path | None = None) -> Path:
+    """返回节点定义 JSON 目录。
+
+    参数：
+    - workflow_dir：可选 workflow 目录；未提供时使用当前模块目录。
+
+    返回：
+    - Path：workflow/catalog_sources/nodes 目录绝对路径。
+    """
+
+    return get_catalog_sources_dir(workflow_dir=workflow_dir) / "nodes"
 
 
 def _load_json_document(file_path: Path) -> object:
@@ -48,8 +60,27 @@ def _load_json_document(file_path: Path) -> object:
     return json.loads(file_path.read_text(encoding="utf-8"))
 
 
+def _load_node_definitions_payload(*, node_sources_dir: Path) -> list[dict[str, object]]:
+    """读取节点定义 JSON 碎片。
+
+    参数：
+    - node_sources_dir：workflow/catalog_sources/nodes 目录。
+
+    返回：
+    - list[dict[str, object]]：按文件名排序后的节点定义 payload 列表。
+    """
+
+    node_definitions_payload: list[dict[str, object]] = []
+    for node_file_path in sorted(node_sources_dir.glob("*.json")):
+        node_payload = _load_json_document(node_file_path)
+        if not isinstance(node_payload, dict):
+            raise ValueError(f"节点目录碎片必须是对象: {node_file_path.name}")
+        node_definitions_payload.append(node_payload)
+    return node_definitions_payload
+
+
 def build_custom_node_catalog_document(*, workflow_dir: Path | None = None) -> CustomNodeCatalogDocument:
-    """从 catalog 碎片目录构造完整的自定义节点目录文档。
+    """从 workflow/catalog_sources 构造完整目录文档。
 
     参数：
     - workflow_dir：可选 workflow 目录；未提供时使用当前模块目录。
@@ -59,6 +90,7 @@ def build_custom_node_catalog_document(*, workflow_dir: Path | None = None) -> C
     """
 
     catalog_sources_dir = get_catalog_sources_dir(workflow_dir=workflow_dir)
+    node_sources_dir = get_node_sources_dir(workflow_dir=workflow_dir)
     payload_contracts_path = catalog_sources_dir / "payload_contracts.json"
     metadata_path = catalog_sources_dir / "metadata.json"
     payload_contracts_payload = _load_json_document(payload_contracts_path)
@@ -71,7 +103,7 @@ def build_custom_node_catalog_document(*, workflow_dir: Path | None = None) -> C
             raise ValueError("metadata.json 必须是对象")
         metadata_payload = raw_metadata_payload
 
-    node_definitions_payload = [dict(payload) for payload in NODE_DEFINITION_PAYLOADS]
+    node_definitions_payload = _load_node_definitions_payload(node_sources_dir=node_sources_dir)
 
     catalog_document = CustomNodeCatalogDocument.model_validate(
         {
@@ -104,7 +136,7 @@ def build_custom_node_catalog_payload(*, workflow_dir: Path | None = None) -> di
 
 
 def write_custom_node_catalog(*, workflow_dir: Path | None = None) -> Path:
-    """把 catalog 碎片汇总写回 catalog.json。
+    """把 workflow/catalog_sources 汇总写回 catalog.json。
 
     参数：
     - workflow_dir：可选 workflow 目录；未提供时使用当前模块目录。

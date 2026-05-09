@@ -6,7 +6,7 @@ from custom_nodes.barcode_protocol_nodes.workflow.catalog_builder import write_c
 
 
 def main() -> None:
-    """把 catalog_sources 汇总写入 catalog.json。"""
+    """把 workflow/catalog_sources 数据汇总写入 catalog.json。"""
 
     write_custom_node_catalog()
 
