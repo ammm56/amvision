@@ -1,0 +1,23 @@
+{
+  "content_type": "multipart/form-data",
+  "input_bindings_json": {
+    "request_payload": {
+      "value": {
+        "project_id": "project-1",
+        "dataset_id": "dataset-1",
+        "format_type": "coco-detection",
+        "task_type": "detection"
+      }
+    }
+  },
+  "files": {
+    "request_package": {
+      "file_name": "coco-dataset.zip",
+      "content_type": "application/zip"
+    }
+  },
+  "execution_metadata": {
+    "scenario": "dataset-import-upload",
+    "trigger_source": "async-api"
+  }
+}

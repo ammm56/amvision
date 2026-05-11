@@ -49,7 +49,7 @@ def test_yolox_deployment_sync_infer_health_app_runtime_smoke_executes_in_explic
 
     def _start_handler(request) -> dict[str, object]:
         call_order.append("start")
-        assert request.input_values == {}
+        assert request.input_values["request"] == _build_deployment_request_payload()
         return {
             "body": {
                 "deployment_instance_id": "deployment-instance-1",
@@ -59,6 +59,7 @@ def test_yolox_deployment_sync_infer_health_app_runtime_smoke_executes_in_explic
 
     def _warmup_handler(request) -> dict[str, object]:
         call_order.append("warmup")
+        assert request.input_values["request"] == _build_deployment_request_payload()
         assert request.input_values["dependency"]["deployment_instance_id"] == "deployment-instance-1"
         return {
             "body": {
@@ -70,6 +71,7 @@ def test_yolox_deployment_sync_infer_health_app_runtime_smoke_executes_in_explic
 
     def _detect_handler(request) -> dict[str, object]:
         call_order.append("detect")
+        assert request.input_values["request"] == _build_deployment_request_payload()
         assert request.input_values["dependency"]["warmed_instance_count"] == 1
         return {
             "detections": {
@@ -86,6 +88,7 @@ def test_yolox_deployment_sync_infer_health_app_runtime_smoke_executes_in_explic
 
     def _health_handler(request) -> dict[str, object]:
         call_order.append("health")
+        assert request.input_values["request"] == _build_deployment_request_payload()
         assert request.input_values["dependency"]["items"][0]["bbox_xyxy"] == [0.0, 0.0, 1.0, 1.0]
         return {
             "body": {
@@ -105,7 +108,10 @@ def test_yolox_deployment_sync_infer_health_app_runtime_smoke_executes_in_explic
         WorkflowApplicationExecutionRequest(
             project_id="project-1",
             application_id=application.application_id,
-            input_bindings={"request_image": _build_image_base64_payload(build_valid_test_png_bytes())},
+            input_bindings={
+                "request_image": _build_image_base64_payload(build_valid_test_png_bytes()),
+                "deployment_request": _build_deployment_request_payload(),
+            },
             execution_metadata={"scenario": "smoke-sync-infer-health"},
         )
     )
@@ -170,8 +176,10 @@ def test_yolox_deployment_infer_opencv_health_app_runtime_smoke_returns_health_s
     )
 
     def _health_handler(request) -> dict[str, object]:
+        assert request.input_values["request"] == _build_deployment_request_payload()
         return {
             "body": {
+                "deployment_instance_id": "deployment-instance-1",
                 "process_state": "running",
                 "healthy_instance_count": 1,
                 "warmed_instance_count": 1,
@@ -180,6 +188,7 @@ def test_yolox_deployment_infer_opencv_health_app_runtime_smoke_returns_health_s
         }
 
     def _detect_handler(request) -> dict[str, object]:
+        assert request.input_values["request"] == _build_deployment_request_payload()
         return {
             "detections": {
                 "items": [
@@ -200,7 +209,10 @@ def test_yolox_deployment_infer_opencv_health_app_runtime_smoke_returns_health_s
         WorkflowApplicationExecutionRequest(
             project_id="project-1",
             application_id=application.application_id,
-            input_bindings={"request_image": _build_image_base64_payload(build_valid_test_png_bytes())},
+            input_bindings={
+                "request_image": _build_image_base64_payload(build_valid_test_png_bytes()),
+                "deployment_request": _build_deployment_request_payload(),
+            },
             execution_metadata={"scenario": "smoke-infer-opencv-health"},
         )
     )
@@ -212,6 +224,7 @@ def test_yolox_deployment_infer_opencv_health_app_runtime_smoke_returns_health_s
     assert response_payload["status_code"] == 200
     assert response_body["code"] == 0
     assert response_body["message"] == "ok"
+    assert response_data["health"]["deployment_instance_id"] == "deployment-instance-1"
     assert response_data["health"]["process_state"] == "running"
     assert response_data["health"]["healthy_instance_count"] == 1
     assert response_data["annotated_image"]["transport_kind"] == "inline-base64"
@@ -233,6 +246,7 @@ def test_yolox_deployment_qr_crop_remap_app_runtime_smoke_decodes_qr_from_real_c
     )
 
     def _detect_handler(request) -> dict[str, object]:
+        assert request.input_values["request"] == _build_deployment_request_payload()
         return {
             "detections": {
                 "items": [
@@ -253,6 +267,7 @@ def test_yolox_deployment_qr_crop_remap_app_runtime_smoke_decodes_qr_from_real_c
             project_id="project-1",
             application_id=application.application_id,
             input_bindings={
+                "deployment_request": _build_deployment_request_payload(),
                 "request_image": _build_image_base64_payload(
                     _build_barcode_test_png_bytes(
                         payload_text="qr-app-smoke",
@@ -623,6 +638,12 @@ def _build_image_base64_payload(image_bytes: bytes) -> dict[str, object]:
         "image_base64": base64.b64encode(image_bytes).decode("ascii"),
         "media_type": "image/png",
     }
+
+
+def _build_deployment_request_payload() -> dict[str, object]:
+    """构造复用发布模型的 value.v1 输入 payload。"""
+
+    return {"value": {"deployment_instance_id": "deployment-instance-1"}}
 
 
 def _build_end_to_end_input_bindings() -> dict[str, object]:

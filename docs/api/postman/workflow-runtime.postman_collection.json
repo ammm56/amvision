@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "cb7a8a14-cd66-4c4a-b4a8-6382f87bf7f1",
     "name": "amvision workflow runtime api",
-    "description": "workflow runtime 当前联调 collection，覆盖 deployment_instance_id 选择、template/application save/get、execution-policies、preview-runs、app-runtimes、sync invoke、async runs 和 cancel 的最小公开接口。第一到第五类正式 workflow 的分拆调试 collection 已移动到 docs/api/postman/workflows/ 目录。",
+    "description": "workflow runtime 当前联调 collection，覆盖 deployment_instance_id 选择、template/application save/get、execution-policies、preview-runs、app-runtimes、sync invoke、async runs 和 cancel 的最小公开接口。当前 FastAPI 默认使用通用触发入口 /api/v1/workflows/app-runtimes/{workflow_runtime_id}/invoke，FlowApplication.bindings.config.route 在现阶段仅作为绑定声明，不自动生成专用 HTTP 路由。第一到第五类正式 workflow 的分拆调试 collection 已移动到 docs/api/postman/workflows/ 目录。",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -209,7 +209,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"template\": {\n    \"format_id\": \"amvision.workflow-graph-template.v1\",\n    \"template_id\": \"{{templateId}}\",\n    \"template_version\": \"{{templateVersion}}\",\n    \"display_name\": \"YOLOX Deployment Detection Lifecycle Real Path\",\n    \"description\": \"控制一个已有 sync deployment 资源，并在 backend-service 当前 deployment control plane 上按顺序执行 start、warmup、detection、health、stop。\",\n    \"nodes\": [\n      {\n        \"node_id\": \"start\",\n        \"node_type_id\": \"core.service.yolox-deployment.start\",\n        \"parameters\": {\n          \"deployment_instance_id\": \"{{deploymentInstanceId}}\",\n          \"runtime_mode\": \"sync\"\n        },\n        \"metadata\": {\n          \"sequence_index\": 1\n        }\n      },\n      {\n        \"node_id\": \"warmup\",\n        \"node_type_id\": \"core.service.yolox-deployment.warmup\",\n        \"parameters\": {\n          \"deployment_instance_id\": \"{{deploymentInstanceId}}\",\n          \"runtime_mode\": \"sync\"\n        },\n        \"metadata\": {\n          \"sequence_index\": 2\n        }\n      },\n      {\n        \"node_id\": \"detect\",\n        \"node_type_id\": \"core.model.yolox-detection\",\n        \"parameters\": {\n          \"deployment_instance_id\": \"{{deploymentInstanceId}}\",\n          \"auto_start_process\": false,\n          \"score_threshold\": 0.3,\n          \"save_result_image\": false,\n          \"return_preview_image_base64\": false\n        },\n        \"metadata\": {\n          \"sequence_index\": 3\n        }\n      },\n      {\n        \"node_id\": \"health\",\n        \"node_type_id\": \"core.service.yolox-deployment.health\",\n        \"parameters\": {\n          \"deployment_instance_id\": \"{{deploymentInstanceId}}\",\n          \"runtime_mode\": \"sync\"\n        },\n        \"metadata\": {\n          \"sequence_index\": 4\n        }\n      },\n      {\n        \"node_id\": \"stop\",\n        \"node_type_id\": \"core.service.yolox-deployment.stop\",\n        \"parameters\": {\n          \"deployment_instance_id\": \"{{deploymentInstanceId}}\",\n          \"runtime_mode\": \"sync\"\n        },\n        \"metadata\": {\n          \"sequence_index\": 5\n        }\n      }\n    ],\n    \"edges\": [],\n    \"template_inputs\": [\n      {\n        \"input_id\": \"request_image\",\n        \"display_name\": \"Request Image\",\n        \"payload_type_id\": \"image-ref.v1\",\n        \"target_node_id\": \"detect\",\n        \"target_port\": \"image\"\n      }\n    ],\n    \"template_outputs\": [\n      {\n        \"output_id\": \"start_body\",\n        \"display_name\": \"Start Body\",\n        \"payload_type_id\": \"response-body.v1\",\n        \"source_node_id\": \"start\",\n        \"source_port\": \"body\"\n      },\n      {\n        \"output_id\": \"warmup_body\",\n        \"display_name\": \"Warmup Body\",\n        \"payload_type_id\": \"response-body.v1\",\n        \"source_node_id\": \"warmup\",\n        \"source_port\": \"body\"\n      },\n      {\n        \"output_id\": \"detections\",\n        \"display_name\": \"Detections\",\n        \"payload_type_id\": \"detections.v1\",\n        \"source_node_id\": \"detect\",\n        \"source_port\": \"detections\"\n      },\n      {\n        \"output_id\": \"health_body\",\n        \"display_name\": \"Health Body\",\n        \"payload_type_id\": \"response-body.v1\",\n        \"source_node_id\": \"health\",\n        \"source_port\": \"body\"\n      },\n      {\n        \"output_id\": \"stop_body\",\n        \"display_name\": \"Stop Body\",\n        \"payload_type_id\": \"response-body.v1\",\n        \"source_node_id\": \"stop\",\n        \"source_port\": \"body\"\n      }\n    ],\n    \"metadata\": {\n      \"intended_saved_object_key\": \"workflows/projects/{{projectId}}/templates/{{templateId}}/versions/{{templateVersion}}/template.json\",\n      \"example_kind\": \"deployment-control-detection-lifecycle-real-path\",\n      \"deployment_instance_id_placeholder\": \"replace-with-existing-deployment-instance-id\",\n      \"uses_existing_deployment_instance\": true,\n      \"deployment_runtime_owner\": \"backend-service\",\n      \"node_groups\": {\n        \"deployment_control\": [\"start\", \"warmup\", \"health\", \"stop\"],\n        \"model_node\": [\"detect\"]\n      },\n      \"execution_order_note\": \"当前最小执行器会按 nodes 声明顺序稳定执行零入度节点，因此该示例通过节点声明顺序表达 start -> warmup -> detection -> health -> stop。\"\n    }\n  }\n}",
+              "raw": "{\r\n  \"template\": {\r\n    \"format_id\": \"amvision.workflow-graph-template.v1\",\r\n    \"template_id\": \"{{templateId}}\",\r\n    \"template_version\": \"{{templateVersion}}\",\r\n    \"display_name\": \"YOLOX Deployment Detection Lifecycle Real Path\",\r\n    \"description\": \"控制一个已有 sync deployment 资源，并在 backend-service 当前 deployment control plane 上按顺序执行 start、warmup、detection、health、stop。\",\r\n    \"nodes\": [\r\n      {\r\n        \"node_id\": \"start\",\r\n        \"node_type_id\": \"core.service.yolox-deployment.start\",\r\n        \"parameters\": {\r\n          \"deployment_instance_id\": \"{{deploymentInstanceId}}\",\r\n          \"runtime_mode\": \"sync\"\r\n        },\r\n        \"metadata\": {\r\n          \"sequence_index\": 1\r\n        }\r\n      },\r\n      {\r\n        \"node_id\": \"warmup\",\r\n        \"node_type_id\": \"core.service.yolox-deployment.warmup\",\r\n        \"parameters\": {\r\n          \"deployment_instance_id\": \"{{deploymentInstanceId}}\",\r\n          \"runtime_mode\": \"sync\"\r\n        },\r\n        \"metadata\": {\r\n          \"sequence_index\": 2\r\n        }\r\n      },\r\n      {\r\n        \"node_id\": \"detect\",\r\n        \"node_type_id\": \"core.model.yolox-detection\",\r\n        \"parameters\": {\r\n          \"deployment_instance_id\": \"{{deploymentInstanceId}}\",\r\n          \"auto_start_process\": false,\r\n          \"score_threshold\": 0.3,\r\n          \"save_result_image\": false,\r\n          \"return_preview_image_base64\": false\r\n        },\r\n        \"metadata\": {\r\n          \"sequence_index\": 3\r\n        }\r\n      },\r\n      {\r\n        \"node_id\": \"health\",\r\n        \"node_type_id\": \"core.service.yolox-deployment.health\",\r\n        \"parameters\": {\r\n          \"deployment_instance_id\": \"{{deploymentInstanceId}}\",\r\n          \"runtime_mode\": \"sync\"\r\n        },\r\n        \"metadata\": {\r\n          \"sequence_index\": 4\r\n        }\r\n      },\r\n      {\r\n        \"node_id\": \"stop\",\r\n        \"node_type_id\": \"core.service.yolox-deployment.stop\",\r\n        \"parameters\": {\r\n          \"deployment_instance_id\": \"{{deploymentInstanceId}}\",\r\n          \"runtime_mode\": \"sync\"\r\n        },\r\n        \"metadata\": {\r\n          \"sequence_index\": 5\r\n        }\r\n      }\r\n    ],\r\n    \"edges\": [\r\n      {\r\n        \"edge_id\": \"edge-start-warmup-dependency\",\r\n        \"source_node_id\": \"start\",\r\n        \"source_port\": \"body\",\r\n        \"target_node_id\": \"warmup\",\r\n        \"target_port\": \"dependency\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-warmup-detect-dependency\",\r\n        \"source_node_id\": \"warmup\",\r\n        \"source_port\": \"body\",\r\n        \"target_node_id\": \"detect\",\r\n        \"target_port\": \"dependency\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-detect-health-dependency\",\r\n        \"source_node_id\": \"detect\",\r\n        \"source_port\": \"detections\",\r\n        \"target_node_id\": \"health\",\r\n        \"target_port\": \"dependency\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-health-stop-dependency\",\r\n        \"source_node_id\": \"health\",\r\n        \"source_port\": \"body\",\r\n        \"target_node_id\": \"stop\",\r\n        \"target_port\": \"dependency\"\r\n      }\r\n    ],\r\n    \"template_inputs\": [\r\n      {\r\n        \"input_id\": \"request_image\",\r\n        \"display_name\": \"Request Image\",\r\n        \"payload_type_id\": \"image-ref.v1\",\r\n        \"target_node_id\": \"detect\",\r\n        \"target_port\": \"image\"\r\n      }\r\n    ],\r\n    \"template_outputs\": [\r\n      {\r\n        \"output_id\": \"start_body\",\r\n        \"display_name\": \"Start Body\",\r\n        \"payload_type_id\": \"response-body.v1\",\r\n        \"source_node_id\": \"start\",\r\n        \"source_port\": \"body\"\r\n      },\r\n      {\r\n        \"output_id\": \"warmup_body\",\r\n        \"display_name\": \"Warmup Body\",\r\n        \"payload_type_id\": \"response-body.v1\",\r\n        \"source_node_id\": \"warmup\",\r\n        \"source_port\": \"body\"\r\n      },\r\n      {\r\n        \"output_id\": \"detections\",\r\n        \"display_name\": \"Detections\",\r\n        \"payload_type_id\": \"detections.v1\",\r\n        \"source_node_id\": \"detect\",\r\n        \"source_port\": \"detections\"\r\n      },\r\n      {\r\n        \"output_id\": \"health_body\",\r\n        \"display_name\": \"Health Body\",\r\n        \"payload_type_id\": \"response-body.v1\",\r\n        \"source_node_id\": \"health\",\r\n        \"source_port\": \"body\"\r\n      },\r\n      {\r\n        \"output_id\": \"stop_body\",\r\n        \"display_name\": \"Stop Body\",\r\n        \"payload_type_id\": \"response-body.v1\",\r\n        \"source_node_id\": \"stop\",\r\n        \"source_port\": \"body\"\r\n      }\r\n    ],\r\n    \"metadata\": {\r\n      \"intended_saved_object_key\": \"workflows/projects/{{projectId}}/templates/{{templateId}}/versions/{{templateVersion}}/template.json\",\r\n      \"example_kind\": \"deployment-control-detection-lifecycle-real-path\",\r\n      \"deployment_instance_id_placeholder\": \"replace-with-existing-deployment-instance-id\",\r\n      \"uses_existing_deployment_instance\": true,\r\n      \"deployment_runtime_owner\": \"backend-service\",\r\n      \"node_groups\": {\r\n        \"deployment_control\": [\r\n          \"start\",\r\n          \"warmup\",\r\n          \"health\",\r\n          \"stop\"\r\n        ],\r\n        \"model_node\": [\r\n          \"detect\"\r\n        ]\r\n      },\r\n      \"execution_order_note\": \"当前最小执行器按图边做稳定拓扑排序；该示例通过显式 dependency 边表达 start -> warmup -> detection -> health -> stop。\"\r\n    }\r\n  }\r\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -233,7 +233,7 @@
                 "{{templateVersion}}"
               ]
             },
-            "description": "保存 workflow template。请求体与 docs/api/examples/workflows/yolox_deployment_detection_lifecycle_real_path.save-template.request.json 对齐。"
+            "description": "保存 workflow template。请求体与 docs/api/examples/workflows/00-short-dev-examples/yolox_deployment_detection_lifecycle_real_path/save-template.request.json 对齐。"
           },
           "response": []
         },
@@ -329,7 +329,7 @@
                 "{{applicationId}}"
               ]
             },
-            "description": "保存 FlowApplication。请求体与 docs/api/examples/workflows/yolox_deployment_detection_lifecycle_real_path.save-application.request.json 对齐。"
+            "description": "保存 FlowApplication。请求体与 docs/api/examples/workflows/00-short-dev-examples/yolox_deployment_detection_lifecycle_real_path/save-application.request.json 对齐。"
           },
           "response": []
         },
@@ -428,7 +428,7 @@
                     "execution-policies"
                   ]
                 },
-                "description": "创建 preview 默认 execution policy。请求体与 docs/api/examples/workflows/yolox_deployment_detection_lifecycle_real_path.preview-execution-policy.create.request.json 对齐。"
+                "description": "创建 preview 默认 execution policy。请求体与 docs/api/examples/workflows/00-short-dev-examples/yolox_deployment_detection_lifecycle_real_path/preview-execution-policy.create.request.json 对齐。"
               },
               "response": []
             },
@@ -479,7 +479,7 @@
                     "execution-policies"
                   ]
                 },
-                "description": "创建 runtime 默认 execution policy。请求体与 docs/api/examples/workflows/yolox_deployment_detection_lifecycle_real_path.runtime-execution-policy.create.request.json 对齐。"
+                "description": "创建 runtime 默认 execution policy。请求体与 docs/api/examples/workflows/00-short-dev-examples/yolox_deployment_detection_lifecycle_real_path/runtime-execution-policy.create.request.json 对齐。"
               },
               "response": []
             },
@@ -632,7 +632,7 @@
                     "preview-runs"
                   ]
                 },
-                "description": "创建一次 preview run。请求体与 docs/api/examples/workflows/yolox_deployment_detection_lifecycle_real_path.preview-run.request.json 对齐。"
+                "description": "创建一次 preview run。请求体与 docs/api/examples/workflows/00-short-dev-examples/yolox_deployment_detection_lifecycle_real_path/preview-run.request.json 对齐。"
               },
               "response": []
             },
@@ -742,7 +742,7 @@
                     "app-runtimes"
                   ]
                 },
-                "description": "创建一条 WorkflowAppRuntime。请求体与 docs/api/examples/workflows/yolox_deployment_detection_lifecycle_real_path.app-runtime.create.request.json 对齐。"
+                "description": "创建一条 WorkflowAppRuntime。请求体与 docs/api/examples/workflows/00-short-dev-examples/yolox_deployment_detection_lifecycle_real_path/app-runtime.create.request.json 对齐。"
               },
               "response": []
             },
@@ -1097,7 +1097,7 @@
                     "invoke"
                   ]
                 },
-                "description": "发起一次同步 invoke。当前示例省略 timeout_seconds，默认沿用 runtime execution policy。请求体与 docs/api/examples/workflows/yolox_deployment_detection_lifecycle_real_path.app-runtime.invoke.request.json 对齐。"
+                "description": "发起一次同步 invoke。当前示例省略 timeout_seconds，默认沿用 runtime execution policy。请求体与 docs/api/examples/workflows/00-short-dev-examples/yolox_deployment_detection_lifecycle_real_path/app-runtime.invoke.request.json 对齐。"
               },
               "response": []
             }
@@ -1169,7 +1169,7 @@
                     "app-runtimes"
                   ]
                 },
-                "description": "创建 DatasetImport upload 标准 app runtime。请求体与 docs/api/examples/workflows/dataset_import_upload.app-runtime.create.request.json 对齐。"
+                "description": "创建 DatasetImport upload 标准 app runtime。请求体与 docs/api/examples/workflows/00-short-dev-examples/dataset_import_upload/app-runtime.create.request.json 对齐。"
               },
               "response": []
             },
@@ -1229,7 +1229,7 @@
                     "upload"
                   ]
                 },
-                "description": "发起 DatasetImport upload runtime invoke。请求体与 docs/api/examples/workflows/dataset_import_upload.app-runtime.invoke.request.json 对齐。"
+                "description": "发起 DatasetImport upload runtime invoke。请求体与 docs/api/examples/workflows/00-short-dev-examples/dataset_import_upload/app-runtime.invoke.request.json 对齐。"
               },
               "response": []
             },
@@ -1296,7 +1296,7 @@
                     "app-runtimes"
                   ]
                 },
-                "description": "创建 DatasetExport submit 标准 app runtime。请求体与 docs/api/examples/workflows/dataset_export_submit.app-runtime.create.request.json 对齐。"
+                "description": "创建 DatasetExport submit 标准 app runtime。请求体与 docs/api/examples/workflows/00-short-dev-examples/dataset_export_submit/app-runtime.create.request.json 对齐。"
               },
               "response": []
             },
@@ -1349,7 +1349,7 @@
                     "invoke"
                   ]
                 },
-                "description": "发起 DatasetExport submit runtime invoke。请求体与 docs/api/examples/workflows/dataset_export_submit.app-runtime.invoke.request.json 对齐。"
+                "description": "发起 DatasetExport submit runtime invoke。请求体与 docs/api/examples/workflows/00-short-dev-examples/dataset_export_submit/app-runtime.invoke.request.json 对齐。"
               },
               "response": []
             },
@@ -1416,7 +1416,7 @@
                     "app-runtimes"
                   ]
                 },
-                "description": "创建 DatasetExport package 标准 app runtime。请求体与 docs/api/examples/workflows/dataset_export_package.app-runtime.create.request.json 对齐。"
+                "description": "创建 DatasetExport package 标准 app runtime。请求体与 docs/api/examples/workflows/00-short-dev-examples/dataset_export_package/app-runtime.create.request.json 对齐。"
               },
               "response": []
             },
@@ -1469,7 +1469,7 @@
                     "invoke"
                   ]
                 },
-                "description": "发起 DatasetExport package runtime invoke。请求体与 docs/api/examples/workflows/dataset_export_package.app-runtime.invoke.request.json 对齐。"
+                "description": "发起 DatasetExport package runtime invoke。请求体与 docs/api/examples/workflows/00-short-dev-examples/dataset_export_package/app-runtime.invoke.request.json 对齐。"
               },
               "response": []
             },
@@ -1536,7 +1536,7 @@
                     "app-runtimes"
                   ]
                 },
-                "description": "创建 YOLOX training submit 标准 app runtime。请求体与 docs/api/examples/workflows/yolox_training_submit.app-runtime.create.request.json 对齐。"
+                "description": "创建 YOLOX training submit 标准 app runtime。请求体与 docs/api/examples/workflows/00-short-dev-examples/yolox_training_submit/app-runtime.create.request.json 对齐。"
               },
               "response": []
             },
@@ -1589,7 +1589,7 @@
                     "invoke"
                   ]
                 },
-                "description": "发起 YOLOX training submit runtime invoke。请求体与 docs/api/examples/workflows/yolox_training_submit.app-runtime.invoke.request.json 对齐。"
+                "description": "发起 YOLOX training submit runtime invoke。请求体与 docs/api/examples/workflows/00-short-dev-examples/yolox_training_submit/app-runtime.invoke.request.json 对齐。"
               },
               "response": []
             },
@@ -1656,7 +1656,7 @@
                     "app-runtimes"
                   ]
                 },
-                "description": "创建 YOLOX evaluation submit 标准 app runtime。请求体与 docs/api/examples/workflows/yolox_evaluation_submit.app-runtime.create.request.json 对齐。"
+                "description": "创建 YOLOX evaluation submit 标准 app runtime。请求体与 docs/api/examples/workflows/00-short-dev-examples/yolox_evaluation_submit/app-runtime.create.request.json 对齐。"
               },
               "response": []
             },
@@ -1709,7 +1709,7 @@
                     "invoke"
                   ]
                 },
-                "description": "发起 YOLOX evaluation submit runtime invoke。请求体与 docs/api/examples/workflows/yolox_evaluation_submit.app-runtime.invoke.request.json 对齐。"
+                "description": "发起 YOLOX evaluation submit runtime invoke。请求体与 docs/api/examples/workflows/00-short-dev-examples/yolox_evaluation_submit/app-runtime.invoke.request.json 对齐。"
               },
               "response": []
             },
@@ -1776,7 +1776,7 @@
                     "app-runtimes"
                   ]
                 },
-                "description": "创建 YOLOX evaluation package 标准 app runtime。请求体与 docs/api/examples/workflows/yolox_evaluation_package.app-runtime.create.request.json 对齐。"
+                "description": "创建 YOLOX evaluation package 标准 app runtime。请求体与 docs/api/examples/workflows/00-short-dev-examples/yolox_evaluation_package/app-runtime.create.request.json 对齐。"
               },
               "response": []
             },
@@ -1829,7 +1829,7 @@
                     "invoke"
                   ]
                 },
-                "description": "发起 YOLOX evaluation package runtime invoke。请求体与 docs/api/examples/workflows/yolox_evaluation_package.app-runtime.invoke.request.json 对齐。"
+                "description": "发起 YOLOX evaluation package runtime invoke。请求体与 docs/api/examples/workflows/00-short-dev-examples/yolox_evaluation_package/app-runtime.invoke.request.json 对齐。"
               },
               "response": []
             },
@@ -1896,7 +1896,7 @@
                     "app-runtimes"
                   ]
                 },
-                "description": "创建 YOLOX conversion submit 标准 app runtime。请求体与 docs/api/examples/workflows/yolox_conversion_submit.app-runtime.create.request.json 对齐。"
+                "description": "创建 YOLOX conversion submit 标准 app runtime。请求体与 docs/api/examples/workflows/00-short-dev-examples/yolox_conversion_submit/app-runtime.create.request.json 对齐。"
               },
               "response": []
             },
@@ -1949,7 +1949,7 @@
                     "invoke"
                   ]
                 },
-                "description": "发起 YOLOX conversion submit runtime invoke。请求体与 docs/api/examples/workflows/yolox_conversion_submit.app-runtime.invoke.request.json 对齐。"
+                "description": "发起 YOLOX conversion submit runtime invoke。请求体与 docs/api/examples/workflows/00-short-dev-examples/yolox_conversion_submit/app-runtime.invoke.request.json 对齐。"
               },
               "response": []
             }

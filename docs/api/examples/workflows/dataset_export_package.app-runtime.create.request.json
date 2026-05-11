@@ -1,9 +1,0 @@
-{
-  "project_id": "project-1",
-  "application_id": "dataset-export-package-app",
-  "execution_policy_id": "runtime-default-policy",
-  "display_name": "Dataset Export Package Runtime",
-  "metadata": {
-    "example_kind": "dataset-export-package"
-  }
-}

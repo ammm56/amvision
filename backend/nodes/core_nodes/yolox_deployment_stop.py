@@ -26,6 +26,20 @@ CORE_NODE_SPEC = CoreNodeSpec(
         description="停止指定 sync 或 async 通道上的 deployment 进程。",
         implementation_kind=NODE_IMPLEMENTATION_CORE,
         runtime_kind=NODE_RUNTIME_PYTHON_CALLABLE,
+        input_ports=(
+            NodePortDefinition(
+                name="request",
+                display_name="Request",
+                payload_type_id="value.v1",
+                required=False,
+            ),
+            NodePortDefinition(
+                name="dependency",
+                display_name="Dependency",
+                payload_type_id="response-body.v1",
+                required=False,
+            ),
+        ),
         output_ports=(
             NodePortDefinition(
                 name="body",

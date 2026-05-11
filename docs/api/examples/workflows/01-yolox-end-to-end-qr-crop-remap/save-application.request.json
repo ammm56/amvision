@@ -1,0 +1,131 @@
+{
+  "application": {
+    "format_id": "amvision.flow-application.v1",
+    "application_id": "yolox-end-to-end-qr-crop-remap-app",
+    "display_name": "YOLOX End-to-End QR Crop Remap App",
+    "description": "接收 zip 数据集包、各阶段 request 对象和 base64 图片，串起导入、导出、训练、评估、转换、部署与 QR crop remap 检测完整链路。",
+    "template_ref": {
+      "template_id": "yolox-end-to-end-qr-crop-remap-template",
+      "template_version": "1.0.0",
+      "source_kind": "json-file",
+      "source_uri": "docs/examples/workflows/yolox_end_to_end_qr_crop_remap.template.json"
+    },
+    "runtime_mode": "python-json-workflow",
+    "bindings": [
+      {
+        "binding_id": "import_request_payload",
+        "direction": "input",
+        "template_port_id": "import_request_payload",
+        "binding_kind": "workflow-execute-input",
+        "config": {
+          "payload_type_id": "value.v1",
+          "content_type": "application/json"
+        },
+        "metadata": {}
+      },
+      {
+        "binding_id": "request_package",
+        "direction": "input",
+        "template_port_id": "request_package",
+        "binding_kind": "workflow-execute-input",
+        "config": {
+          "payload_type_id": "dataset-package.v1",
+          "content_type": "application/zip"
+        },
+        "metadata": {}
+      },
+      {
+        "binding_id": "export_request_payload",
+        "direction": "input",
+        "template_port_id": "export_request_payload",
+        "binding_kind": "workflow-execute-input",
+        "config": {
+          "payload_type_id": "value.v1",
+          "content_type": "application/json"
+        },
+        "metadata": {}
+      },
+      {
+        "binding_id": "training_request_payload",
+        "direction": "input",
+        "template_port_id": "training_request_payload",
+        "binding_kind": "workflow-execute-input",
+        "config": {
+          "payload_type_id": "value.v1",
+          "content_type": "application/json"
+        },
+        "metadata": {}
+      },
+      {
+        "binding_id": "evaluation_request_payload",
+        "direction": "input",
+        "template_port_id": "evaluation_request_payload",
+        "binding_kind": "workflow-execute-input",
+        "config": {
+          "payload_type_id": "value.v1",
+          "content_type": "application/json"
+        },
+        "metadata": {}
+      },
+      {
+        "binding_id": "conversion_request_payload",
+        "direction": "input",
+        "template_port_id": "conversion_request_payload",
+        "binding_kind": "workflow-execute-input",
+        "config": {
+          "payload_type_id": "value.v1",
+          "content_type": "application/json"
+        },
+        "metadata": {}
+      },
+      {
+        "binding_id": "deployment_request_payload",
+        "direction": "input",
+        "template_port_id": "deployment_request_payload",
+        "binding_kind": "workflow-execute-input",
+        "config": {
+          "payload_type_id": "value.v1",
+          "content_type": "application/json"
+        },
+        "metadata": {}
+      },
+      {
+        "binding_id": "inference_request_payload",
+        "direction": "input",
+        "template_port_id": "inference_request_payload",
+        "binding_kind": "workflow-execute-input",
+        "config": {
+          "payload_type_id": "value.v1",
+          "content_type": "application/json"
+        },
+        "metadata": {}
+      },
+      {
+        "binding_id": "request_image",
+        "direction": "input",
+        "template_port_id": "request_image",
+        "binding_kind": "workflow-execute-input",
+        "config": {
+          "payload_type_id": "image-base64.v1",
+          "content_type": "application/json"
+        },
+        "metadata": {}
+      },
+      {
+        "binding_id": "response_body",
+        "direction": "output",
+        "template_port_id": "response_body",
+        "binding_kind": "workflow-execute-output",
+        "config": {
+          "payload_type_id": "response-body.v1"
+        },
+        "metadata": {}
+      }
+    ],
+    "metadata": {
+      "example_kind": "yolox-end-to-end-qr-crop-remap",
+      "transport_kind": "multipart-upload",
+      "intended_saved_object_key": "workflows/projects/{project_id}/applications/yolox-end-to-end-qr-crop-remap-app/application.json"
+    }
+  }
+}

@@ -356,6 +356,7 @@ def run_deployment_process_status_action(
 ) -> dict[str, object]:
     """执行 deployment 进程状态动作，并返回对齐 API 的 body。"""
 
+    request = overlay_parameters_from_object_input(request)
     runtime_context = require_workflow_service_node_runtime(request)
     deployment_service = runtime_context.build_deployment_service()
     deployment_instance_id = require_str_parameter(request, "deployment_instance_id")
@@ -390,6 +391,7 @@ def run_deployment_process_health_action(
 ) -> dict[str, object]:
     """执行 deployment 进程健康动作，并返回对齐 API 的 body。"""
 
+    request = overlay_parameters_from_object_input(request)
     runtime_context = require_workflow_service_node_runtime(request)
     deployment_service = runtime_context.build_deployment_service()
     deployment_instance_id = require_str_parameter(request, "deployment_instance_id")

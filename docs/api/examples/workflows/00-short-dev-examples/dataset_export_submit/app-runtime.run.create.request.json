@@ -1,0 +1,16 @@
+{
+  "input_bindings": {
+    "request_payload": {
+      "value": {
+        "project_id": "project-1",
+        "dataset_id": "dataset-1",
+        "dataset_version_id": "dataset-version-1",
+        "format_id": "coco-detection"
+      }
+    }
+  },
+  "execution_metadata": {
+    "scenario": "dataset-export-submit",
+    "trigger_source": "async-api"
+  }
+}

@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import base64
+import binascii
+
 from backend.contracts.workflows.workflow_graph import (
     NODE_IMPLEMENTATION_CORE,
     NODE_RUNTIME_PYTHON_CALLABLE,
@@ -110,7 +113,14 @@ def _require_dataset_package_payload(payload: object) -> dict[str, object]:
 
 
 def _normalize_binary_payload(value: object) -> bytes:
-    """把上传 payload 中的二进制值规范化为 bytes。"""
+    """把上传 payload 中的二进制值规范化为 bytes。
+
+    参数：
+    - value：multipart 入口传入的 bytes，或 preview/run JSON 中传入的 base64 字符串。
+
+    返回：
+    - bytes：解析后的二进制内容；无法解析时返回空 bytes。
+    """
 
     if isinstance(value, bytes):
         return value
@@ -118,6 +128,14 @@ def _normalize_binary_payload(value: object) -> bytes:
         return bytes(value)
     if isinstance(value, memoryview):
         return value.tobytes()
+    if isinstance(value, str):
+        normalized_value = value.strip()
+        if normalized_value.startswith("data:") and "," in normalized_value:
+            normalized_value = normalized_value.split(",", 1)[1]
+        try:
+            return base64.b64decode(normalized_value, validate=True)
+        except (binascii.Error, ValueError):
+            return b""
     return b""
 
 

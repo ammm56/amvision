@@ -1,0 +1,46 @@
+{
+  "application": {
+    "format_id": "amvision.flow-application.v1",
+    "application_id": "barcode-result-display-app",
+    "display_name": "Barcode Result Display App",
+    "description": "接收 base64 图片并返回条码识别结果的预览图和表格。",
+    "template_ref": {
+      "template_id": "barcode-result-display-template",
+      "template_version": "1.0.0",
+      "source_kind": "json-file",
+      "source_uri": "docs/examples/workflows/barcode_result_display.template.json"
+    },
+    "bindings": [
+      {
+        "binding_id": "request_image",
+        "direction": "input",
+        "template_port_id": "request_image",
+        "binding_kind": "api-request",
+        "config": {
+          "route": "/api/v1/workflow-apps/barcode/result-display",
+          "method": "POST"
+        },
+        "metadata": {
+          "payload_type_id": "image-base64.v1"
+        }
+      },
+      {
+        "binding_id": "http_response",
+        "direction": "output",
+        "template_port_id": "http_response",
+        "binding_kind": "http-response",
+        "config": {
+          "status_code": 200
+        },
+        "metadata": {
+          "payload_type_id": "http-response.v1"
+        }
+      }
+    ],
+    "runtime_mode": "python-json-workflow",
+    "metadata": {
+      "example_kind": "barcode-result-display",
+      "intended_saved_object_key": "workflows/projects/{project_id}/applications/barcode-result-display-app/application.json"
+    }
+  }
+}

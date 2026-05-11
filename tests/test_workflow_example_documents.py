@@ -33,15 +33,35 @@ def test_yolox_deployment_detection_lifecycle_example_documents_are_valid() -> N
     )
     validate_flow_application_bindings(template=template, application=application)
 
-    assert [node.node_id for node in template.nodes] == ["start", "warmup", "detect", "health", "stop"]
-    assert template.nodes[2].parameters["auto_start_process"] is False
+    assert [node.node_id for node in template.nodes] == [
+        "decode_request_image",
+        "start",
+        "warmup",
+        "detect",
+        "health",
+        "stop",
+    ]
+    assert template.nodes[3].parameters["auto_start_process"] is False
     assert template.metadata["example_kind"] == "deployment-control-detection-lifecycle"
     assert template.metadata["uses_existing_deployment_instance"] is True
+    assert template.metadata["node_groups"]["input"] == ["decode_request_image"]
     assert template.metadata["node_groups"]["deployment_control"] == ["start", "warmup", "health", "stop"]
+    assert [edge.edge_id for edge in template.edges] == [
+        "edge-decode-detect-image",
+        "edge-start-warmup-dependency",
+        "edge-warmup-detect-dependency",
+        "edge-detect-health-dependency",
+        "edge-health-stop-dependency",
+    ]
+    assert template.metadata["execution_order_note"] == (
+        "当前最小执行器按图边做稳定拓扑排序；"
+        "该示例通过显式 dependency 边表达 start -> warmup -> detection -> health -> stop。"
+    )
     assert application.template_ref.source_uri == (
         "docs/examples/workflows/yolox_deployment_detection_lifecycle.template.json"
     )
     assert application.metadata["example_kind"] == "deployment-control-detection-lifecycle"
+    assert application.bindings[0].config["payload_type_id"] == "image-base64.v1"
     assert [binding.binding_id for binding in application.bindings] == [
         "request_image",
         "start_body",
@@ -70,14 +90,17 @@ def test_yolox_deployment_sync_infer_health_example_documents_are_valid() -> Non
 
     assert [node.node_id for node in template.nodes] == [
         "decode_request_image",
+        "deployment_request_input",
         "start",
         "warmup",
         "detect",
         "health",
     ]
-    assert template.nodes[3].parameters["auto_start_process"] is False
+    assert template.nodes[4].parameters["auto_start_process"] is False
     assert template.metadata["example_kind"] == "deployment-sync-infer-health"
+    assert template.metadata["deployment_instance_id_binding"] == "deployment_request"
     assert template.metadata["uses_existing_deployment_instance"] is True
+    assert template.metadata["node_groups"]["input"] == ["decode_request_image", "deployment_request_input"]
     assert template.metadata["node_groups"]["deployment_control"] == ["start", "warmup", "health"]
     assert application.template_ref.source_uri == (
         "docs/examples/workflows/yolox_deployment_sync_infer_health.template.json"
@@ -85,6 +108,7 @@ def test_yolox_deployment_sync_infer_health_example_documents_are_valid() -> Non
     assert application.metadata["example_kind"] == "deployment-sync-infer-health"
     assert [binding.binding_id for binding in application.bindings] == [
         "request_image",
+        "deployment_request",
         "start_body",
         "warmup_body",
         "detections",
@@ -112,7 +136,7 @@ def test_barcode_result_display_example_documents_are_valid() -> None:
     validate_flow_application_bindings(template=template, application=application)
 
     assert [node.node_id for node in template.nodes[:5]] == [
-        "request_image_input",
+        "decode_request_image",
         "decode",
         "draw_results",
         "image_preview",
@@ -128,6 +152,7 @@ def test_barcode_result_display_example_documents_are_valid() -> None:
     ]
     assert application.template_ref.source_uri == "docs/examples/workflows/barcode_result_display.template.json"
     assert application.runtime_mode == "python-json-workflow"
+    assert application.bindings[0].metadata["payload_type_id"] == "image-base64.v1"
     assert [binding.binding_id for binding in application.bindings] == ["request_image", "http_response"]
 
 
@@ -191,18 +216,24 @@ def test_yolox_deployment_infer_opencv_health_example_documents_are_valid() -> N
 
     assert [node.node_id for node in template.nodes[:5]] == [
         "decode_request_image",
+        "deployment_request_input",
         "health",
+        "extract_deployment_instance_id",
         "detect",
-        "draw_detections",
-        "preview_image",
     ]
     assert template.metadata["example_kind"] == "deployment-infer-opencv-health"
+    assert template.metadata["deployment_instance_id_binding"] == "deployment_request"
+    assert template.metadata["node_groups"]["input"] == ["decode_request_image", "deployment_request_input"]
     assert template.metadata["node_groups"]["deployment"] == ["health", "detect"]
     assert application.template_ref.source_uri == (
         "docs/examples/workflows/yolox_deployment_infer_opencv_health.template.json"
     )
     assert application.runtime_mode == "python-json-workflow"
-    assert [binding.binding_id for binding in application.bindings] == ["request_image", "http_response"]
+    assert [binding.binding_id for binding in application.bindings] == [
+        "request_image",
+        "deployment_request",
+        "http_response",
+    ]
 
 
 def test_yolox_deployment_qr_crop_remap_example_documents_are_valid() -> None:
@@ -226,12 +257,14 @@ def test_yolox_deployment_qr_crop_remap_example_documents_are_valid() -> None:
 
     assert [node.node_id for node in template.nodes[:5]] == [
         "decode_request_image",
+        "deployment_request_input",
         "detect",
         "export_crops",
         "decode_qr_crops",
-        "draw_results",
     ]
     assert template.metadata["example_kind"] == "deployment-qr-crop-remap"
+    assert template.metadata["deployment_instance_id_binding"] == "deployment_request"
+    assert template.metadata["node_groups"]["input"] == ["decode_request_image", "deployment_request_input"]
     assert template.metadata["node_groups"]["barcode"] == [
         "decode_qr_crops",
         "draw_results",
@@ -241,7 +274,11 @@ def test_yolox_deployment_qr_crop_remap_example_documents_are_valid() -> None:
         "docs/examples/workflows/yolox_deployment_qr_crop_remap.template.json"
     )
     assert application.runtime_mode == "python-json-workflow"
-    assert [binding.binding_id for binding in application.bindings] == ["request_image", "http_response"]
+    assert [binding.binding_id for binding in application.bindings] == [
+        "request_image",
+        "deployment_request",
+        "http_response",
+    ]
 
 
 def test_yolox_end_to_end_qr_crop_remap_example_documents_are_valid() -> None:

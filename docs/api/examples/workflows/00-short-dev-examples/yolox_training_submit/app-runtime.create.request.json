@@ -1,0 +1,8 @@
+{
+  "project_id": "project-1",
+  "application_id": "yolox-training-submit-app",
+  "display_name": "YOLOX Training Submit Runtime",
+  "metadata": {
+    "example_kind": "yolox-training-submit"
+  }
+}

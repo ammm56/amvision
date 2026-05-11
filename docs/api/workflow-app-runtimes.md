@@ -220,6 +220,15 @@
 - WorkflowAppRuntime create 当前可以引用 [docs/api/workflow-execution-policies.md](workflow-execution-policies.md) 中的 execution_policy_id，并返回 execution_policy_snapshot_object_key。
 - 编辑态试跑见 [docs/api/workflow-preview-runs.md](workflow-preview-runs.md)。
 
+## invoke 输入输出约定
+
+- invoke 请求体中的 `input_bindings` 按 application `binding_id` 组织，而不是按 template `input_id` 或节点 id 组织。
+- `image-ref.v1` 常见 JSON 形状是 `{"object_key": "inputs/source.jpg", "media_type": "image/png"}`；如果省略 `transport_kind`，当前实现会按 `object_key` 自动识别为 storage 引用。
+- `image-base64.v1` 常见 JSON 形状是 `{"image_base64": "<base64>", "media_type": "image/png"}`；也支持单行 data URL。
+- `value.v1` 常见 JSON 形状是 `{"value": {...}}`。
+- `dataset-package.v1` 通过 `POST /api/v1/workflows/app-runtimes/{workflow_runtime_id}/invoke/upload` 上传，文件字段名必须等于 binding_id。当前 multipart 上传入口只支持这类 zip 包输入，不支持把图片文件直接作为 `request_image` 上传。
+- invoke 返回体是 `WorkflowRunContract`。如果 application 输出绑定是 `workflow-execute-output`，结果会直接出现在 `outputs[binding_id]`；如果输出绑定是 `http-response`，结果会出现在 `outputs[binding_id] = {"status_code": ..., "body": ...}`。
+
 ## 相关文档
 
 - [docs/api/current-api.md](current-api.md)
@@ -227,7 +236,7 @@
 - [docs/api/workflow-runs.md](workflow-runs.md)
 - [docs/api/workflows.md](workflows.md)
 - [docs/api/postman/workflows/README.md](postman/workflows/README.md)
-- [docs/api/examples/workflows/yolox_deployment_detection_lifecycle_real_path.app-runtime.create.request.json](examples/workflows/yolox_deployment_detection_lifecycle_real_path.app-runtime.create.request.json)
+- [docs/api/examples/workflows/00-short-dev-examples/yolox_deployment_detection_lifecycle_real_path/app-runtime.create.request.json](examples/workflows/00-short-dev-examples/yolox_deployment_detection_lifecycle_real_path/app-runtime.create.request.json)
 - [docs/api/postman/workflow-runtime.postman_collection.json](postman/workflow-runtime.postman_collection.json)
 - [docs/architecture/workflow-runtime-phase1.md](../architecture/workflow-runtime-phase1.md)
 - [docs/architecture/workflow-runtime-phase2.md](../architecture/workflow-runtime-phase2.md)

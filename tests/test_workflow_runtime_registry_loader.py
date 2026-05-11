@@ -280,6 +280,9 @@ def test_runtime_registry_loader_registers_core_service_nodes(
         node_definition = runtime_registry.get_node_definition(node_type_id)
         assert runtime_registry.has_registered_handler(node_definition=node_definition)
 
+    stop_node_definition = runtime_registry.get_node_definition("core.service.yolox-deployment.stop")
+    assert [port.name for port in stop_node_definition.input_ports] == ["request", "dependency"]
+
 
 def test_core_training_service_node_uses_runtime_context(
     tmp_path: Path,

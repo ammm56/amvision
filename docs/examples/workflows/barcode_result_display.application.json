@@ -2,7 +2,7 @@
   "format_id": "amvision.flow-application.v1",
   "application_id": "barcode-result-display-app",
   "display_name": "Barcode Result Display App",
-  "description": "接收输入图片并返回条码识别结果的预览图和表格。",
+  "description": "接收 base64 图片并返回条码识别结果的预览图和表格。",
   "template_ref": {
     "template_id": "barcode-result-display-template",
     "template_version": "1.0.0",
@@ -20,7 +20,7 @@
         "method": "POST"
       },
       "metadata": {
-        "payload_type_id": "image-ref.v1"
+        "payload_type_id": "image-base64.v1"
       }
     },
     {

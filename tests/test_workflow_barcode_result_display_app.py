@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import json
 from pathlib import Path
 from types import SimpleNamespace
@@ -39,7 +40,9 @@ def test_barcode_result_display_example_preview_run_returns_annotated_image_and_
             template=template,
             input_bindings={
                 "request_image": {
-                    "object_key": "inputs/mixed-readable.png",
+                    "image_base64": base64.b64encode(
+                        _build_mixed_barcode_test_png_bytes()
+                    ).decode("ascii"),
                     "media_type": "image/png",
                 }
             },

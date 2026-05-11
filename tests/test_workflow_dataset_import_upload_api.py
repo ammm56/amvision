@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import json
 from pathlib import Path
 
@@ -125,6 +126,77 @@ def test_workflow_app_runtime_invoke_upload_submits_dataset_import_package(tmp_p
     assert request_package_payload["package_file_name"] == "coco-dataset.zip"
     assert request_package_payload["package_bytes"]["binary_redacted"] is True
     assert request_package_payload["package_bytes"]["byte_length"] > 0
+
+
+def test_workflow_preview_run_accepts_dataset_package_base64_payload(tmp_path: Path) -> None:
+    """验证 preview run 可以通过 JSON base64 字符串提交 dataset-package.v1 输入。"""
+
+    session_factory, dataset_storage, queue_backend = create_test_runtime(
+        tmp_path,
+        database_name="workflow-dataset-import-preview-upload.db",
+    )
+    application = create_app(
+        settings=BackendServiceSettings(
+            database=BackendServiceDatabaseConfig(url=session_factory.settings.url),
+            dataset_storage=BackendServiceDatasetStorageConfig(root_dir=str(dataset_storage.root_dir)),
+            queue=BackendServiceQueueConfig(root_dir=str(queue_backend.root_dir)),
+            task_manager=BackendServiceTaskManagerConfig(enabled=False),
+        ),
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+        queue_backend=queue_backend,
+    )
+    client = TestClient(application)
+    workflow_service = LocalWorkflowJsonService(
+        dataset_storage=dataset_storage,
+        node_catalog_registry=client.app.state.node_catalog_registry,
+    )
+    template, flow_application = _load_dataset_import_example_documents()
+    workflow_service.save_template(project_id="project-1", template=template)
+    workflow_service.save_application(project_id="project-1", application=flow_application)
+    headers = build_test_headers(scopes="workflows:read,workflows:write")
+
+    try:
+        with client:
+            preview_response = client.post(
+                "/api/v1/workflows/preview-runs",
+                headers=headers,
+                json={
+                    "project_id": "project-1",
+                    "application_ref": {"application_id": "dataset-import-upload-app"},
+                    "input_bindings": {
+                        "request_payload": {
+                            "value": {
+                                "project_id": "project-1",
+                                "dataset_id": "dataset-1",
+                                "format_type": "coco-detection",
+                                "task_type": "detection",
+                            }
+                        },
+                        "request_package": {
+                            "package_file_name": "coco-dataset.zip",
+                            "package_bytes": base64.b64encode(_build_coco_zip_bytes()).decode("ascii"),
+                            "media_type": "application/zip",
+                        },
+                    },
+                    "execution_metadata": {
+                        "scenario": "dataset-import-upload-preview",
+                        "trigger_source": "editor-preview",
+                    },
+                    "timeout_seconds": 30,
+                },
+            )
+    finally:
+        session_factory.engine.dispose()
+
+    assert preview_response.status_code == 201
+
+    preview_payload = preview_response.json()
+    import_body = preview_payload["outputs"]["submission_body"]
+    assert preview_payload["state"] == "succeeded"
+    assert import_body["status"] == "received"
+    assert import_body["processing_state"] == "queued"
+    assert import_body["package_size"] == len(_build_coco_zip_bytes())
 
 
 def _load_dataset_import_example_documents() -> tuple[WorkflowGraphTemplate, FlowApplication]:

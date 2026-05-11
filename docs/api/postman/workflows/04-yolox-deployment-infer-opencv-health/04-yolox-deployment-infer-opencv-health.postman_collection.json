@@ -1,0 +1,626 @@
+{
+  "info": {
+    "_postman_id": "amvision-workflow-04",
+    "name": "amvision workflow 04 yolox deployment infer opencv health",
+    "description": "第四类同步推理、health 和 OpenCV 处理 workflow app 调试 collection。",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://127.0.0.1:8000"
+    },
+    {
+      "key": "principalId",
+      "value": "user-1"
+    },
+    {
+      "key": "projectId",
+      "value": "project-1"
+    },
+    {
+      "key": "previewRunId",
+      "value": ""
+    },
+    {
+      "key": "workflowRuntimeId",
+      "value": ""
+    },
+    {
+      "key": "workflowRunId",
+      "value": ""
+    },
+    {
+      "key": "deploymentInstanceId",
+      "value": "replace-with-existing-deployment-instance-id"
+    },
+    {
+      "key": "datasetId",
+      "value": "dataset-1"
+    },
+    {
+      "key": "datasetVersionId",
+      "value": "dataset-version-1"
+    },
+    {
+      "key": "datasetExportId",
+      "value": "dataset-export-1"
+    },
+    {
+      "key": "modelVersionId",
+      "value": "model-version-1"
+    }
+  ],
+  "item": [
+    {
+      "name": "Save Template",
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-principal-id",
+            "value": "{{principalId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-project-ids",
+            "value": "{{projectId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-scopes",
+            "value": "workflows:read,workflows:write",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/projects/{{projectId}}/templates/yolox-deployment-infer-opencv-health-template/versions/1.0.0",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "workflows",
+            "projects",
+            "{{projectId}}",
+            "templates",
+            "yolox-deployment-infer-opencv-health-template",
+            "versions",
+            "1.0.0"
+          ]
+        },
+        "description": "保存 yolox_deployment_infer_opencv_health 的 workflow template。",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"template\": {\n    \"format_id\": \"amvision.workflow-graph-template.v1\",\n    \"template_id\": \"yolox-deployment-infer-opencv-health-template\",\n    \"template_version\": \"1.0.0\",\n    \"display_name\": \"YOLOX Deployment Infer OpenCV Health Template\",\n    \"description\": \"接收 base64 图片，执行已有 sync deployment 的同步推理和 health 查询，用 OpenCV 绘制检测框后返回 HTTP 响应。\",\n    \"nodes\": [\n      {\n        \"node_id\": \"decode_request_image\",\n        \"node_type_id\": \"core.io.image-base64-decode\",\n        \"parameters\": {}\n      },\n      {\n        \"node_id\": \"deployment_request_input\",\n        \"node_type_id\": \"core.io.template-input.object\",\n        \"parameters\": {}\n      },\n      {\n        \"node_id\": \"health\",\n        \"node_type_id\": \"core.service.yolox-deployment.health\",\n        \"parameters\": {\n          \"runtime_mode\": \"sync\"\n        },\n        \"metadata\": {\n          \"sequence_index\": 1\n        }\n      },\n      {\n        \"node_id\": \"extract_deployment_instance_id\",\n        \"node_type_id\": \"core.logic.field-extract\",\n        \"parameters\": {\n          \"path\": \"deployment_instance_id\"\n        }\n      },\n      {\n        \"node_id\": \"detect\",\n        \"node_type_id\": \"core.model.yolox-detection\",\n        \"parameters\": {\n          \"auto_start_process\": false,\n          \"score_threshold\": 0.3,\n          \"save_result_image\": false,\n          \"return_preview_image_base64\": false\n        },\n        \"metadata\": {\n          \"sequence_index\": 2\n        }\n      },\n      {\n        \"node_id\": \"draw_detections\",\n        \"node_type_id\": \"custom.opencv.draw-detections\",\n        \"parameters\": {\n          \"line_thickness\": 2,\n          \"font_scale\": 0.6,\n          \"draw_scores\": true\n        }\n      },\n      {\n        \"node_id\": \"preview_image\",\n        \"node_type_id\": \"core.io.image-preview\",\n        \"parameters\": {\n          \"title\": \"Annotated Detection Image\",\n          \"response_transport_mode\": \"inline-base64\"\n        }\n      },\n      {\n        \"node_id\": \"extract_preview_image\",\n        \"node_type_id\": \"core.logic.field-extract\",\n        \"parameters\": {\n          \"path\": \"image\"\n        }\n      },\n      {\n        \"node_id\": \"extract_process_state\",\n        \"node_type_id\": \"core.logic.field-extract\",\n        \"parameters\": {\n          \"path\": \"process_state\"\n        }\n      },\n      {\n        \"node_id\": \"extract_healthy_instance_count\",\n        \"node_type_id\": \"core.logic.field-extract\",\n        \"parameters\": {\n          \"path\": \"healthy_instance_count\"\n        }\n      },\n      {\n        \"node_id\": \"extract_warmed_instance_count\",\n        \"node_type_id\": \"core.logic.field-extract\",\n        \"parameters\": {\n          \"path\": \"warmed_instance_count\"\n        }\n      },\n      {\n        \"node_id\": \"extract_keep_warm\",\n        \"node_type_id\": \"core.logic.field-extract\",\n        \"parameters\": {\n          \"path\": \"keep_warm\"\n        }\n      },\n      {\n        \"node_id\": \"build_health_summary\",\n        \"node_type_id\": \"core.logic.object-create\",\n        \"parameters\": {\n          \"keys\": [\n            \"process_state\",\n            \"healthy_instance_count\",\n            \"warmed_instance_count\",\n            \"keep_warm\",\n            \"deployment_instance_id\"\n          ],\n          \"fields\": {\n            \"runtime_mode\": \"sync\"\n          }\n        }\n      },\n      {\n        \"node_id\": \"build_response_data\",\n        \"node_type_id\": \"core.logic.object-create\",\n        \"parameters\": {\n          \"keys\": [\n            \"annotated_image\",\n            \"health\"\n          ],\n          \"fields\": {\n            \"type\": \"deployment-infer-opencv-health\"\n          }\n        }\n      },\n      {\n        \"node_id\": \"envelope\",\n        \"node_type_id\": \"core.output.response-envelope\",\n        \"parameters\": {\n          \"code\": 0,\n          \"message\": \"ok\"\n        }\n      },\n      {\n        \"node_id\": \"response\",\n        \"node_type_id\": \"core.output.http-response\",\n        \"parameters\": {\n          \"status_code\": 200\n        }\n      }\n    ],\n    \"edges\": [\n      {\n        \"edge_id\": \"edge-decode-detect\",\n        \"source_node_id\": \"decode_request_image\",\n        \"source_port\": \"image\",\n        \"target_node_id\": \"detect\",\n        \"target_port\": \"image\"\n      },\n      {\n        \"edge_id\": \"edge-decode-draw\",\n        \"source_node_id\": \"decode_request_image\",\n        \"source_port\": \"image\",\n        \"target_node_id\": \"draw_detections\",\n        \"target_port\": \"image\"\n      },\n      {\n        \"edge_id\": \"edge-detect-draw\",\n        \"source_node_id\": \"detect\",\n        \"source_port\": \"detections\",\n        \"target_node_id\": \"draw_detections\",\n        \"target_port\": \"detections\"\n      },\n      {\n        \"edge_id\": \"edge-draw-preview\",\n        \"source_node_id\": \"draw_detections\",\n        \"source_port\": \"image\",\n        \"target_node_id\": \"preview_image\",\n        \"target_port\": \"image\"\n      },\n      {\n        \"edge_id\": \"edge-preview-extract-image\",\n        \"source_node_id\": \"preview_image\",\n        \"source_port\": \"body\",\n        \"target_node_id\": \"extract_preview_image\",\n        \"target_port\": \"body\"\n      },\n      {\n        \"edge_id\": \"edge-health-extract-process-state\",\n        \"source_node_id\": \"health\",\n        \"source_port\": \"body\",\n        \"target_node_id\": \"extract_process_state\",\n        \"target_port\": \"body\"\n      },\n      {\n        \"edge_id\": \"edge-health-extract-healthy-instance-count\",\n        \"source_node_id\": \"health\",\n        \"source_port\": \"body\",\n        \"target_node_id\": \"extract_healthy_instance_count\",\n        \"target_port\": \"body\"\n      },\n      {\n        \"edge_id\": \"edge-health-extract-warmed-instance-count\",\n        \"source_node_id\": \"health\",\n        \"source_port\": \"body\",\n        \"target_node_id\": \"extract_warmed_instance_count\",\n        \"target_port\": \"body\"\n      },\n      {\n        \"edge_id\": \"edge-health-extract-keep-warm\",\n        \"source_node_id\": \"health\",\n        \"source_port\": \"body\",\n        \"target_node_id\": \"extract_keep_warm\",\n        \"target_port\": \"body\"\n      },\n      {\n        \"edge_id\": \"edge-process-state-build-health-summary\",\n        \"source_node_id\": \"extract_process_state\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"build_health_summary\",\n        \"target_port\": \"values\"\n      },\n      {\n        \"edge_id\": \"edge-healthy-instance-count-build-health-summary\",\n        \"source_node_id\": \"extract_healthy_instance_count\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"build_health_summary\",\n        \"target_port\": \"values\"\n      },\n      {\n        \"edge_id\": \"edge-warmed-instance-count-build-health-summary\",\n        \"source_node_id\": \"extract_warmed_instance_count\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"build_health_summary\",\n        \"target_port\": \"values\"\n      },\n      {\n        \"edge_id\": \"edge-keep-warm-build-health-summary\",\n        \"source_node_id\": \"extract_keep_warm\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"build_health_summary\",\n        \"target_port\": \"values\"\n      },\n      {\n        \"edge_id\": \"edge-preview-image-build-response-data\",\n        \"source_node_id\": \"extract_preview_image\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"build_response_data\",\n        \"target_port\": \"values\"\n      },\n      {\n        \"edge_id\": \"edge-health-summary-build-response-data\",\n        \"source_node_id\": \"build_health_summary\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"build_response_data\",\n        \"target_port\": \"values\"\n      },\n      {\n        \"edge_id\": \"edge-response-data-envelope\",\n        \"source_node_id\": \"build_response_data\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"envelope\",\n        \"target_port\": \"data\"\n      },\n      {\n        \"edge_id\": \"edge-envelope-response\",\n        \"source_node_id\": \"envelope\",\n        \"source_port\": \"body\",\n        \"target_node_id\": \"response\",\n        \"target_port\": \"body\"\n      },\n      {\n        \"edge_id\": \"edge-deployment-request-health\",\n        \"source_node_id\": \"deployment_request_input\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"health\",\n        \"target_port\": \"request\"\n      },\n      {\n        \"edge_id\": \"edge-deployment-request-detect\",\n        \"source_node_id\": \"deployment_request_input\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"detect\",\n        \"target_port\": \"request\"\n      },\n      {\n        \"edge_id\": \"edge-health-extract-deployment-instance-id\",\n        \"source_node_id\": \"health\",\n        \"source_port\": \"body\",\n        \"target_node_id\": \"extract_deployment_instance_id\",\n        \"target_port\": \"body\"\n      },\n      {\n        \"edge_id\": \"edge-deployment-instance-id-build-health-summary\",\n        \"source_node_id\": \"extract_deployment_instance_id\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"build_health_summary\",\n        \"target_port\": \"values\"\n      }\n    ],\n    \"template_inputs\": [\n      {\n        \"input_id\": \"request_image\",\n        \"display_name\": \"Request Image\",\n        \"payload_type_id\": \"image-base64.v1\",\n        \"target_node_id\": \"decode_request_image\",\n        \"target_port\": \"payload\"\n      },\n      {\n        \"input_id\": \"deployment_request\",\n        \"display_name\": \"Deployment Request\",\n        \"payload_type_id\": \"value.v1\",\n        \"target_node_id\": \"deployment_request_input\",\n        \"target_port\": \"payload\"\n      }\n    ],\n    \"template_outputs\": [\n      {\n        \"output_id\": \"http_response\",\n        \"display_name\": \"HTTP Response\",\n        \"payload_type_id\": \"http-response.v1\",\n        \"source_node_id\": \"response\",\n        \"source_port\": \"response\"\n      }\n    ],\n    \"metadata\": {\n      \"example_kind\": \"deployment-infer-opencv-health\",\n      \"uses_existing_deployment_instance\": true,\n      \"deployment_runtime_owner\": \"backend-service\",\n      \"node_groups\": {\n        \"input\": [\n          \"decode_request_image\",\n          \"deployment_request_input\"\n        ],\n        \"deployment\": [\n          \"health\",\n          \"detect\"\n        ],\n        \"opencv_render\": [\n          \"draw_detections\",\n          \"preview_image\"\n        ],\n        \"response\": [\n          \"extract_deployment_instance_id\",\n          \"extract_preview_image\",\n          \"extract_process_state\",\n          \"extract_healthy_instance_count\",\n          \"extract_warmed_instance_count\",\n          \"extract_keep_warm\",\n          \"build_health_summary\",\n          \"build_response_data\",\n          \"envelope\",\n          \"response\"\n        ]\n      },\n      \"deployment_instance_id_binding\": \"deployment_request\"\n    }\n  }\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Save Application",
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-principal-id",
+            "value": "{{principalId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-project-ids",
+            "value": "{{projectId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-scopes",
+            "value": "workflows:read,workflows:write",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/projects/{{projectId}}/applications/yolox-deployment-infer-opencv-health-app",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "workflows",
+            "projects",
+            "{{projectId}}",
+            "applications",
+            "yolox-deployment-infer-opencv-health-app"
+          ]
+        },
+        "description": "保存 yolox_deployment_infer_opencv_health 的 FlowApplication。",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"application\": {\n    \"format_id\": \"amvision.flow-application.v1\",\n    \"application_id\": \"yolox-deployment-infer-opencv-health-app\",\n    \"display_name\": \"YOLOX Deployment Infer OpenCV Health App\",\n    \"description\": \"接收 base64 图片，调用已有 deployment 做同步推理，叠加检测框并返回 health 摘要。\",\n    \"template_ref\": {\n      \"template_id\": \"yolox-deployment-infer-opencv-health-template\",\n      \"template_version\": \"1.0.0\",\n      \"source_kind\": \"json-file\",\n      \"source_uri\": \"docs/examples/workflows/yolox_deployment_infer_opencv_health.template.json\"\n    },\n    \"bindings\": [\n      {\n        \"binding_id\": \"request_image\",\n        \"direction\": \"input\",\n        \"template_port_id\": \"request_image\",\n        \"binding_kind\": \"api-request\",\n        \"config\": {\n          \"route\": \"/api/v1/workflow-apps/yolox/deployment/infer-opencv-health\",\n          \"method\": \"POST\"\n        },\n        \"metadata\": {\n          \"payload_type_id\": \"image-base64.v1\"\n        }\n      },\n      {\n        \"binding_id\": \"deployment_request\",\n        \"direction\": \"input\",\n        \"template_port_id\": \"deployment_request\",\n        \"binding_kind\": \"workflow-execute-input\",\n        \"config\": {\n          \"payload_type_id\": \"value.v1\",\n          \"content_type\": \"application/json\"\n        },\n        \"metadata\": {}\n      },\n      {\n        \"binding_id\": \"http_response\",\n        \"direction\": \"output\",\n        \"template_port_id\": \"http_response\",\n        \"binding_kind\": \"http-response\",\n        \"config\": {\n          \"status_code\": 200\n        },\n        \"metadata\": {\n          \"payload_type_id\": \"http-response.v1\"\n        }\n      }\n    ],\n    \"runtime_mode\": \"python-json-workflow\",\n    \"metadata\": {\n      \"example_kind\": \"deployment-infer-opencv-health\",\n      \"uses_existing_deployment_instance\": true,\n      \"intended_saved_object_key\": \"workflows/projects/{project_id}/applications/yolox-deployment-infer-opencv-health-app/application.json\",\n      \"deployment_instance_id_binding\": \"deployment_request\"\n    }\n  }\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Create Preview Run",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-principal-id",
+            "value": "{{principalId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-project-ids",
+            "value": "{{projectId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-scopes",
+            "value": "workflows:read,workflows:write",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/preview-runs",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "workflows",
+            "preview-runs"
+          ]
+        },
+        "description": "创建 yolox_deployment_infer_opencv_health 的编辑态 preview run。",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"project_id\": \"project-1\",\n  \"application_ref\": {\n    \"application_id\": \"yolox-deployment-infer-opencv-health-app\"\n  },\n  \"input_bindings\": {\n    \"request_image\": {\n      \"image_base64\": \"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO5WZr8AAAAASUVORK5CYII=\",\n      \"media_type\": \"image/png\"\n    },\n    \"deployment_request\": {\n      \"value\": {\n        \"deployment_instance_id\": \"{{deploymentInstanceId}}\"\n      }\n    }\n  },\n  \"execution_metadata\": {\n    \"marker\": \"postman-workflow-example-documents-preview\",\n    \"example_name\": \"yolox_deployment_infer_opencv_health\",\n    \"scenario\": \"deployment-infer-opencv-health\",\n    \"trigger_source\": \"editor-preview\"\n  },\n  \"timeout_seconds\": 30\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "response": [],
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(201);",
+              "const body = pm.response.json();",
+              "if (body.preview_run_id) {",
+              "  pm.collectionVariables.set('previewRunId', body.preview_run_id);",
+              "}"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Get Preview Run",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "x-amvision-principal-id",
+            "value": "{{principalId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-project-ids",
+            "value": "{{projectId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-scopes",
+            "value": "workflows:read,workflows:write",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/preview-runs/{{previewRunId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "workflows",
+            "preview-runs",
+            "{{previewRunId}}"
+          ]
+        },
+        "description": "读取上一步 preview run 的 outputs 和 node_records。"
+      },
+      "response": []
+    },
+    {
+      "name": "Create App Runtime",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-principal-id",
+            "value": "{{principalId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-project-ids",
+            "value": "{{projectId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-scopes",
+            "value": "workflows:read,workflows:write",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/app-runtimes",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "workflows",
+            "app-runtimes"
+          ]
+        },
+        "description": "创建保存后 app 的正式 runtime。",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"project_id\": \"project-1\",\n  \"application_id\": \"yolox-deployment-infer-opencv-health-app\",\n  \"display_name\": \"YOLOX Deployment Infer OpenCV Health Runtime\",\n  \"metadata\": {\n    \"example_kind\": \"deployment-infer-opencv-health\",\n    \"uses_existing_deployment_instance\": true\n  }\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "response": [],
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(201);",
+              "const body = pm.response.json();",
+              "if (body.workflow_runtime_id) {",
+              "  pm.collectionVariables.set('workflowRuntimeId', body.workflow_runtime_id);",
+              "}"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Start App Runtime",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "x-amvision-principal-id",
+            "value": "{{principalId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-project-ids",
+            "value": "{{projectId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-scopes",
+            "value": "workflows:read,workflows:write",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/app-runtimes/{{workflowRuntimeId}}/start",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "workflows",
+            "app-runtimes",
+            "{{workflowRuntimeId}}",
+            "start"
+          ]
+        },
+        "description": "启动正式 app runtime。"
+      },
+      "response": []
+    },
+    {
+      "name": "Get App Runtime Health",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "x-amvision-principal-id",
+            "value": "{{principalId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-project-ids",
+            "value": "{{projectId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-scopes",
+            "value": "workflows:read,workflows:write",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/app-runtimes/{{workflowRuntimeId}}/health",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "workflows",
+            "app-runtimes",
+            "{{workflowRuntimeId}}",
+            "health"
+          ]
+        },
+        "description": "读取正式 app runtime health。"
+      },
+      "response": []
+    },
+    {
+      "name": "Invoke App Runtime",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-principal-id",
+            "value": "{{principalId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-project-ids",
+            "value": "{{projectId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-scopes",
+            "value": "workflows:read,workflows:write",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/app-runtimes/{{workflowRuntimeId}}/invoke",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "workflows",
+            "app-runtimes",
+            "{{workflowRuntimeId}}",
+            "invoke"
+          ]
+        },
+        "description": "同步调用正式 app runtime。",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"input_bindings\": {\n    \"request_image\": {\n      \"image_base64\": \"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO5WZr8AAAAASUVORK5CYII=\",\n      \"media_type\": \"image/png\"\n    },\n    \"deployment_request\": {\n      \"value\": {\n        \"deployment_instance_id\": \"{{deploymentInstanceId}}\"\n      }\n    }\n  },\n  \"execution_metadata\": {\n    \"scenario\": \"deployment-infer-opencv-health\",\n    \"trigger_source\": \"sync-api\"\n  }\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "response": [],
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const body = pm.response.json();",
+              "if (body.workflow_run_id) {",
+              "  pm.collectionVariables.set('workflowRunId', body.workflow_run_id);",
+              "}"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Create Workflow Run",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-principal-id",
+            "value": "{{principalId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-project-ids",
+            "value": "{{projectId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-scopes",
+            "value": "workflows:read,workflows:write",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/app-runtimes/{{workflowRuntimeId}}/runs",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "workflows",
+            "app-runtimes",
+            "{{workflowRuntimeId}}",
+            "runs"
+          ]
+        },
+        "description": "创建正式 async workflow run。",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"input_bindings\": {\n    \"request_image\": {\n      \"image_base64\": \"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO5WZr8AAAAASUVORK5CYII=\",\n      \"media_type\": \"image/png\"\n    },\n    \"deployment_request\": {\n      \"value\": {\n        \"deployment_instance_id\": \"{{deploymentInstanceId}}\"\n      }\n    }\n  },\n  \"execution_metadata\": {\n    \"scenario\": \"deployment-infer-opencv-health\",\n    \"trigger_source\": \"async-api\"\n  }\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "response": [],
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(201);",
+              "const body = pm.response.json();",
+              "if (body.workflow_run_id) {",
+              "  pm.collectionVariables.set('workflowRunId', body.workflow_run_id);",
+              "}"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Get Workflow Run",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "x-amvision-principal-id",
+            "value": "{{principalId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-project-ids",
+            "value": "{{projectId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-scopes",
+            "value": "workflows:read,workflows:write",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/runs/{{workflowRunId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "workflows",
+            "runs",
+            "{{workflowRunId}}"
+          ]
+        },
+        "description": "读取 invoke 或 async run 返回的 workflow_run_id。"
+      },
+      "response": []
+    },
+    {
+      "name": "Stop App Runtime",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "x-amvision-principal-id",
+            "value": "{{principalId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-project-ids",
+            "value": "{{projectId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-scopes",
+            "value": "workflows:read,workflows:write",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/app-runtimes/{{workflowRuntimeId}}/stop",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "workflows",
+            "app-runtimes",
+            "{{workflowRuntimeId}}",
+            "stop"
+          ]
+        },
+        "description": "停止正式 app runtime。"
+      },
+      "response": []
+    }
+  ]
+}

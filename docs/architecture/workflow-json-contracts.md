@@ -81,6 +81,13 @@ FlowApplication 定义“这份模板在现场怎么接入和输出”。
 
 FlowApplication 不是新的打包形式，也不是 exe。它只是另一份 JSON，用来把模板与现场端点装配起来。
 
+当前 backend-service 的 FastAPI 触发面默认是通用 runtime invoke：
+
+- `POST /api/v1/workflows/app-runtimes/{workflow_runtime_id}/invoke`
+- `POST /api/v1/workflows/app-runtimes/{workflow_runtime_id}/invoke/upload`
+
+FlowApplication 中 `bindings.config.route` 在现阶段主要用于描述绑定目标和后续适配方向，不等价于“保存 application 后自动生成同名专用 HTTP 路由”。
+
 ## service 节点语义分组
 
 当前直接对接后端服务的 workflow 节点按语义分成两组：
@@ -341,11 +348,11 @@ barcode.protocol-nodes 当前已经采用这套维护方式，并固定通过 cu
 
 上面两份文件保持 contract 示例角色，继续使用 docs/examples 下的演示路径。面向真实 workflow object key 路径、真实 save、preview-run、app-runtime create 和 invoke 请求体，以及 Postman 手工测试的独立 JSON 示例，已另外放到下面这些文件：
 
-- [docs/api/examples/workflows/yolox_deployment_detection_lifecycle_real_path.save-template.request.json](../api/examples/workflows/yolox_deployment_detection_lifecycle_real_path.save-template.request.json)
-- [docs/api/examples/workflows/yolox_deployment_detection_lifecycle_real_path.save-application.request.json](../api/examples/workflows/yolox_deployment_detection_lifecycle_real_path.save-application.request.json)
-- [docs/api/examples/workflows/yolox_deployment_detection_lifecycle_real_path.preview-run.request.json](../api/examples/workflows/yolox_deployment_detection_lifecycle_real_path.preview-run.request.json)
-- [docs/api/examples/workflows/yolox_deployment_detection_lifecycle_real_path.app-runtime.create.request.json](../api/examples/workflows/yolox_deployment_detection_lifecycle_real_path.app-runtime.create.request.json)
-- [docs/api/examples/workflows/yolox_deployment_detection_lifecycle_real_path.app-runtime.invoke.request.json](../api/examples/workflows/yolox_deployment_detection_lifecycle_real_path.app-runtime.invoke.request.json)
+- [docs/api/examples/workflows/00-short-dev-examples/yolox_deployment_detection_lifecycle_real_path/save-template.request.json](../api/examples/workflows/00-short-dev-examples/yolox_deployment_detection_lifecycle_real_path/save-template.request.json)
+- [docs/api/examples/workflows/00-short-dev-examples/yolox_deployment_detection_lifecycle_real_path/save-application.request.json](../api/examples/workflows/00-short-dev-examples/yolox_deployment_detection_lifecycle_real_path/save-application.request.json)
+- [docs/api/examples/workflows/00-short-dev-examples/yolox_deployment_detection_lifecycle_real_path/preview-run.request.json](../api/examples/workflows/00-short-dev-examples/yolox_deployment_detection_lifecycle_real_path/preview-run.request.json)
+- [docs/api/examples/workflows/00-short-dev-examples/yolox_deployment_detection_lifecycle_real_path/app-runtime.create.request.json](../api/examples/workflows/00-short-dev-examples/yolox_deployment_detection_lifecycle_real_path/app-runtime.create.request.json)
+- [docs/api/examples/workflows/00-short-dev-examples/yolox_deployment_detection_lifecycle_real_path/app-runtime.invoke.request.json](../api/examples/workflows/00-short-dev-examples/yolox_deployment_detection_lifecycle_real_path/app-runtime.invoke.request.json)
 - [docs/api/workflows.md](../api/workflows.md)
 - [docs/api/postman/workflow-runtime.postman_collection.json](../api/postman/workflow-runtime.postman_collection.json)
 

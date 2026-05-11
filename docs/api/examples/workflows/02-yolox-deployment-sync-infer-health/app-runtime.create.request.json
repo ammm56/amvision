@@ -1,0 +1,9 @@
+{
+  "project_id": "project-1",
+  "application_id": "yolox-deployment-sync-infer-health-app",
+  "display_name": "YOLOX Deployment Sync Infer Health Runtime",
+  "metadata": {
+    "example_kind": "deployment-sync-infer-health",
+    "uses_existing_deployment_instance": true
+  }
+}

@@ -606,7 +606,11 @@ async def _build_multipart_runtime_invoke_request(
     )
     application = _load_runtime_application(request=request, workflow_app_runtime=workflow_app_runtime)
     input_binding_payload_types = {
-        binding.binding_id: str(binding.config.get("payload_type_id") or "")
+        binding.binding_id: str(
+            binding.config.get("payload_type_id")
+            or binding.metadata.get("payload_type_id")
+            or ""
+        )
         for binding in application.bindings
         if binding.direction == "input"
     }

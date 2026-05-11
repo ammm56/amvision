@@ -3,8 +3,13 @@
   "template_id": "yolox-deployment-detection-lifecycle-demo",
   "template_version": "1.0.0",
   "display_name": "YOLOX Deployment Detection Lifecycle Demo",
-  "description": "控制一个已有 sync deployment 资源，并在 backend-service 当前 deployment control plane 上按顺序执行 start、warmup、detection、health、stop。",
+  "description": "接收 base64 图片，控制一个已有 sync deployment 资源，并在 backend-service 当前 deployment control plane 上按顺序执行 start、warmup、detection、health、stop。",
   "nodes": [
+    {
+      "node_id": "decode_request_image",
+      "node_type_id": "core.io.image-base64-decode",
+      "parameters": {}
+    },
     {
       "node_id": "start",
       "node_type_id": "core.service.yolox-deployment.start",
@@ -64,14 +69,50 @@
       }
     }
   ],
-  "edges": [],
+    "edges": [
+      {
+        "edge_id": "edge-decode-detect-image",
+        "source_node_id": "decode_request_image",
+        "source_port": "image",
+        "target_node_id": "detect",
+        "target_port": "image"
+      },
+      {
+        "edge_id": "edge-start-warmup-dependency",
+        "source_node_id": "start",
+        "source_port": "body",
+        "target_node_id": "warmup",
+        "target_port": "dependency"
+      },
+      {
+        "edge_id": "edge-warmup-detect-dependency",
+        "source_node_id": "warmup",
+        "source_port": "body",
+        "target_node_id": "detect",
+        "target_port": "dependency"
+      },
+      {
+        "edge_id": "edge-detect-health-dependency",
+        "source_node_id": "detect",
+        "source_port": "detections",
+        "target_node_id": "health",
+        "target_port": "dependency"
+      },
+      {
+        "edge_id": "edge-health-stop-dependency",
+        "source_node_id": "health",
+        "source_port": "body",
+        "target_node_id": "stop",
+        "target_port": "dependency"
+      }
+    ],
   "template_inputs": [
     {
       "input_id": "request_image",
       "display_name": "Request Image",
-      "payload_type_id": "image-ref.v1",
-      "target_node_id": "detect",
-      "target_port": "image"
+      "payload_type_id": "image-base64.v1",
+      "target_node_id": "decode_request_image",
+      "target_port": "payload"
     }
   ],
   "template_outputs": [
@@ -117,9 +158,10 @@
     "uses_existing_deployment_instance": true,
     "deployment_runtime_owner": "backend-service",
     "node_groups": {
+      "input": ["decode_request_image"],
       "deployment_control": ["start", "warmup", "health", "stop"],
       "model_node": ["detect"]
     },
-    "execution_order_note": "当前最小执行器会按 nodes 声明顺序稳定执行零入度节点，因此该示例通过节点声明顺序表达 start -> warmup -> detection -> health -> stop。"
+    "execution_order_note": "当前最小执行器按图边做稳定拓扑排序；该示例通过显式 dependency 边表达 start -> warmup -> detection -> health -> stop。"
   }
 }

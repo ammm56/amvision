@@ -1,0 +1,24 @@
+{
+  "project_id": "project-1",
+  "application_ref": {
+    "application_id": "yolox-evaluation-submit-app"
+  },
+  "input_bindings": {
+    "request_payload": {
+      "value": {
+        "project_id": "project-1",
+        "model_version_id": "model-version-1",
+        "dataset_export_id": "dataset-export-1",
+        "score_threshold": 0.25,
+        "nms_threshold": 0.65
+      }
+    }
+  },
+  "execution_metadata": {
+    "marker": "postman-workflow-example-documents-preview",
+    "example_name": "yolox_evaluation_submit",
+    "scenario": "yolox-evaluation-submit",
+    "trigger_source": "editor-preview"
+  },
+  "timeout_seconds": 30
+}

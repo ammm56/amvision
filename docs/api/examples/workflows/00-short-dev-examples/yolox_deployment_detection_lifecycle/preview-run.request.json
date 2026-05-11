@@ -1,0 +1,19 @@
+{
+  "project_id": "project-1",
+  "application_ref": {
+    "application_id": "yolox-deployment-detection-lifecycle-app"
+  },
+  "input_bindings": {
+    "request_image": {
+      "image_base64": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO5WZr8AAAAASUVORK5CYII=",
+      "media_type": "image/png"
+    }
+  },
+  "execution_metadata": {
+    "marker": "postman-workflow-example-documents-preview",
+    "example_name": "yolox_deployment_detection_lifecycle",
+    "scenario": "deployment-control-detection-lifecycle",
+    "trigger_source": "editor-preview"
+  },
+  "timeout_seconds": 30
+}

@@ -1,0 +1,626 @@
+{
+  "info": {
+    "_postman_id": "amvision-workflow-05",
+    "name": "amvision workflow 05 opencv process save image",
+    "description": "第五类纯 OpenCV 处理、保存图片和默认 HTTP 返回 workflow app 调试 collection。",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://127.0.0.1:8000"
+    },
+    {
+      "key": "principalId",
+      "value": "user-1"
+    },
+    {
+      "key": "projectId",
+      "value": "project-1"
+    },
+    {
+      "key": "previewRunId",
+      "value": ""
+    },
+    {
+      "key": "workflowRuntimeId",
+      "value": ""
+    },
+    {
+      "key": "workflowRunId",
+      "value": ""
+    },
+    {
+      "key": "deploymentInstanceId",
+      "value": "replace-with-existing-deployment-instance-id"
+    },
+    {
+      "key": "datasetId",
+      "value": "dataset-1"
+    },
+    {
+      "key": "datasetVersionId",
+      "value": "dataset-version-1"
+    },
+    {
+      "key": "datasetExportId",
+      "value": "dataset-export-1"
+    },
+    {
+      "key": "modelVersionId",
+      "value": "model-version-1"
+    }
+  ],
+  "item": [
+    {
+      "name": "Save Template",
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-principal-id",
+            "value": "{{principalId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-project-ids",
+            "value": "{{projectId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-scopes",
+            "value": "workflows:read,workflows:write",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/projects/{{projectId}}/templates/opencv-process-save-image-template/versions/1.0.0",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "workflows",
+            "projects",
+            "{{projectId}}",
+            "templates",
+            "opencv-process-save-image-template",
+            "versions",
+            "1.0.0"
+          ]
+        },
+        "description": "保存 opencv_process_save_image 的 workflow template。",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"template\": {\n    \"format_id\": \"amvision.workflow-graph-template.v1\",\n    \"template_id\": \"opencv-process-save-image-template\",\n    \"template_version\": \"1.0.0\",\n    \"display_name\": \"OpenCV Process Save Image Template\",\n    \"description\": \"接收 base64 图片，执行一组 OpenCV 处理步骤，把结果保存到本地磁盘并返回保存后的图片响应。\",\n    \"nodes\": [\n      {\n        \"node_id\": \"decode_request_image\",\n        \"node_type_id\": \"core.io.image-base64-decode\",\n        \"parameters\": {}\n      },\n      {\n        \"node_id\": \"blur_image\",\n        \"node_type_id\": \"custom.opencv.gaussian-blur\",\n        \"parameters\": {\n          \"kernel_size\": 5,\n          \"sigma_x\": 1.2\n        }\n      },\n      {\n        \"node_id\": \"threshold_image\",\n        \"node_type_id\": \"custom.opencv.binary-threshold\",\n        \"parameters\": {\n          \"threshold\": 96,\n          \"max_value\": 255\n        }\n      },\n      {\n        \"node_id\": \"edge_image\",\n        \"node_type_id\": \"custom.opencv.canny\",\n        \"parameters\": {\n          \"threshold1\": 60,\n          \"threshold2\": 160,\n          \"aperture_size\": 3,\n          \"l2_gradient\": false\n        }\n      },\n      {\n        \"node_id\": \"save_image\",\n        \"node_type_id\": \"core.io.image-save\",\n        \"parameters\": {\n          \"object_key\": \"workflow-apps/opencv-process-save-image/{workflow_run_id}/{timestamp}.png\",\n          \"overwrite\": false\n        }\n      },\n      {\n        \"node_id\": \"preview_image\",\n        \"node_type_id\": \"core.io.image-preview\",\n        \"parameters\": {\n          \"title\": \"Saved Edge Image\",\n          \"response_transport_mode\": \"storage-ref\"\n        }\n      },\n      {\n        \"node_id\": \"response\",\n        \"node_type_id\": \"core.output.http-response\",\n        \"parameters\": {\n          \"status_code\": 200\n        }\n      }\n    ],\n    \"edges\": [\n      {\n        \"edge_id\": \"edge-decode-blur\",\n        \"source_node_id\": \"decode_request_image\",\n        \"source_port\": \"image\",\n        \"target_node_id\": \"blur_image\",\n        \"target_port\": \"image\"\n      },\n      {\n        \"edge_id\": \"edge-blur-threshold\",\n        \"source_node_id\": \"blur_image\",\n        \"source_port\": \"image\",\n        \"target_node_id\": \"threshold_image\",\n        \"target_port\": \"image\"\n      },\n      {\n        \"edge_id\": \"edge-threshold-canny\",\n        \"source_node_id\": \"threshold_image\",\n        \"source_port\": \"image\",\n        \"target_node_id\": \"edge_image\",\n        \"target_port\": \"image\"\n      },\n      {\n        \"edge_id\": \"edge-canny-save\",\n        \"source_node_id\": \"edge_image\",\n        \"source_port\": \"image\",\n        \"target_node_id\": \"save_image\",\n        \"target_port\": \"image\"\n      },\n      {\n        \"edge_id\": \"edge-save-preview\",\n        \"source_node_id\": \"save_image\",\n        \"source_port\": \"image\",\n        \"target_node_id\": \"preview_image\",\n        \"target_port\": \"image\"\n      },\n      {\n        \"edge_id\": \"edge-preview-response\",\n        \"source_node_id\": \"preview_image\",\n        \"source_port\": \"body\",\n        \"target_node_id\": \"response\",\n        \"target_port\": \"body\"\n      }\n    ],\n    \"template_inputs\": [\n      {\n        \"input_id\": \"request_image\",\n        \"display_name\": \"Request Image\",\n        \"payload_type_id\": \"image-base64.v1\",\n        \"target_node_id\": \"decode_request_image\",\n        \"target_port\": \"payload\"\n      }\n    ],\n    \"template_outputs\": [\n      {\n        \"output_id\": \"http_response\",\n        \"display_name\": \"HTTP Response\",\n        \"payload_type_id\": \"http-response.v1\",\n        \"source_node_id\": \"response\",\n        \"source_port\": \"response\"\n      }\n    ],\n    \"metadata\": {\n      \"example_kind\": \"opencv-process-save-image\",\n      \"node_groups\": {\n        \"input\": [\n          \"decode_request_image\"\n        ],\n        \"opencv_process\": [\n          \"blur_image\",\n          \"threshold_image\",\n          \"edge_image\"\n        ],\n        \"output\": [\n          \"save_image\",\n          \"preview_image\",\n          \"response\"\n        ]\n      }\n    }\n  }\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Save Application",
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-principal-id",
+            "value": "{{principalId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-project-ids",
+            "value": "{{projectId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-scopes",
+            "value": "workflows:read,workflows:write",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/projects/{{projectId}}/applications/opencv-process-save-image-app",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "workflows",
+            "projects",
+            "{{projectId}}",
+            "applications",
+            "opencv-process-save-image-app"
+          ]
+        },
+        "description": "保存 opencv_process_save_image 的 FlowApplication。",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"application\": {\n    \"format_id\": \"amvision.flow-application.v1\",\n    \"application_id\": \"opencv-process-save-image-app\",\n    \"display_name\": \"OpenCV Process Save Image App\",\n    \"description\": \"接收 base64 图片，执行 OpenCV 处理并把结果保存到本地磁盘。\",\n    \"template_ref\": {\n      \"template_id\": \"opencv-process-save-image-template\",\n      \"template_version\": \"1.0.0\",\n      \"source_kind\": \"json-file\",\n      \"source_uri\": \"docs/examples/workflows/opencv_process_save_image.template.json\"\n    },\n    \"bindings\": [\n      {\n        \"binding_id\": \"request_image\",\n        \"direction\": \"input\",\n        \"template_port_id\": \"request_image\",\n        \"binding_kind\": \"api-request\",\n        \"config\": {\n          \"route\": \"/api/v1/workflow-apps/opencv/process-save-image\",\n          \"method\": \"POST\"\n        },\n        \"metadata\": {\n          \"payload_type_id\": \"image-base64.v1\"\n        }\n      },\n      {\n        \"binding_id\": \"http_response\",\n        \"direction\": \"output\",\n        \"template_port_id\": \"http_response\",\n        \"binding_kind\": \"http-response\",\n        \"config\": {\n          \"status_code\": 200\n        },\n        \"metadata\": {\n          \"payload_type_id\": \"http-response.v1\"\n        }\n      }\n    ],\n    \"runtime_mode\": \"python-json-workflow\",\n    \"metadata\": {\n      \"example_kind\": \"opencv-process-save-image\",\n      \"intended_saved_object_key\": \"workflows/projects/{project_id}/applications/opencv-process-save-image-app/application.json\"\n    }\n  }\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Create Preview Run",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-principal-id",
+            "value": "{{principalId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-project-ids",
+            "value": "{{projectId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-scopes",
+            "value": "workflows:read,workflows:write",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/preview-runs",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "workflows",
+            "preview-runs"
+          ]
+        },
+        "description": "创建 opencv_process_save_image 的编辑态 preview run。",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"project_id\": \"project-1\",\n  \"application_ref\": {\n    \"application_id\": \"opencv-process-save-image-app\"\n  },\n  \"input_bindings\": {\n    \"request_image\": {\n      \"image_base64\": \"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO5WZr8AAAAASUVORK5CYII=\",\n      \"media_type\": \"image/png\"\n    }\n  },\n  \"execution_metadata\": {\n    \"marker\": \"postman-workflow-example-documents-preview\",\n    \"example_name\": \"opencv_process_save_image\",\n    \"scenario\": \"opencv-process-save-image\",\n    \"trigger_source\": \"editor-preview\"\n  },\n  \"timeout_seconds\": 30\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "response": [],
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(201);",
+              "const body = pm.response.json();",
+              "if (body.preview_run_id) {",
+              "  pm.collectionVariables.set('previewRunId', body.preview_run_id);",
+              "}"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Get Preview Run",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "x-amvision-principal-id",
+            "value": "{{principalId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-project-ids",
+            "value": "{{projectId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-scopes",
+            "value": "workflows:read,workflows:write",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/preview-runs/{{previewRunId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "workflows",
+            "preview-runs",
+            "{{previewRunId}}"
+          ]
+        },
+        "description": "读取上一步 preview run 的 outputs 和 node_records。"
+      },
+      "response": []
+    },
+    {
+      "name": "Create App Runtime",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-principal-id",
+            "value": "{{principalId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-project-ids",
+            "value": "{{projectId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-scopes",
+            "value": "workflows:read,workflows:write",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/app-runtimes",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "workflows",
+            "app-runtimes"
+          ]
+        },
+        "description": "创建保存后 app 的正式 runtime。",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"project_id\": \"project-1\",\n  \"application_id\": \"opencv-process-save-image-app\",\n  \"display_name\": \"OpenCV Process Save Image Runtime\",\n  \"metadata\": {\n    \"example_kind\": \"opencv-process-save-image\"\n  }\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "response": [],
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(201);",
+              "const body = pm.response.json();",
+              "if (body.workflow_runtime_id) {",
+              "  pm.collectionVariables.set('workflowRuntimeId', body.workflow_runtime_id);",
+              "}"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Start App Runtime",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "x-amvision-principal-id",
+            "value": "{{principalId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-project-ids",
+            "value": "{{projectId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-scopes",
+            "value": "workflows:read,workflows:write",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/app-runtimes/{{workflowRuntimeId}}/start",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "workflows",
+            "app-runtimes",
+            "{{workflowRuntimeId}}",
+            "start"
+          ]
+        },
+        "description": "启动正式 app runtime。"
+      },
+      "response": []
+    },
+    {
+      "name": "Get App Runtime Health",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "x-amvision-principal-id",
+            "value": "{{principalId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-project-ids",
+            "value": "{{projectId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-scopes",
+            "value": "workflows:read,workflows:write",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/app-runtimes/{{workflowRuntimeId}}/health",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "workflows",
+            "app-runtimes",
+            "{{workflowRuntimeId}}",
+            "health"
+          ]
+        },
+        "description": "读取正式 app runtime health。"
+      },
+      "response": []
+    },
+    {
+      "name": "Invoke App Runtime",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-principal-id",
+            "value": "{{principalId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-project-ids",
+            "value": "{{projectId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-scopes",
+            "value": "workflows:read,workflows:write",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/app-runtimes/{{workflowRuntimeId}}/invoke",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "workflows",
+            "app-runtimes",
+            "{{workflowRuntimeId}}",
+            "invoke"
+          ]
+        },
+        "description": "同步调用正式 app runtime。",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"input_bindings\": {\n    \"request_image\": {\n      \"image_base64\": \"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO5WZr8AAAAASUVORK5CYII=\",\n      \"media_type\": \"image/png\"\n    }\n  },\n  \"execution_metadata\": {\n    \"scenario\": \"opencv-process-save-image\",\n    \"trigger_source\": \"sync-api\"\n  }\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "response": [],
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const body = pm.response.json();",
+              "if (body.workflow_run_id) {",
+              "  pm.collectionVariables.set('workflowRunId', body.workflow_run_id);",
+              "}"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Create Workflow Run",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-principal-id",
+            "value": "{{principalId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-project-ids",
+            "value": "{{projectId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-scopes",
+            "value": "workflows:read,workflows:write",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/app-runtimes/{{workflowRuntimeId}}/runs",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "workflows",
+            "app-runtimes",
+            "{{workflowRuntimeId}}",
+            "runs"
+          ]
+        },
+        "description": "创建正式 async workflow run。",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"input_bindings\": {\n    \"request_image\": {\n      \"image_base64\": \"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO5WZr8AAAAASUVORK5CYII=\",\n      \"media_type\": \"image/png\"\n    }\n  },\n  \"execution_metadata\": {\n    \"scenario\": \"opencv-process-save-image\",\n    \"trigger_source\": \"async-api\"\n  }\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "response": [],
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(201);",
+              "const body = pm.response.json();",
+              "if (body.workflow_run_id) {",
+              "  pm.collectionVariables.set('workflowRunId', body.workflow_run_id);",
+              "}"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Get Workflow Run",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "x-amvision-principal-id",
+            "value": "{{principalId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-project-ids",
+            "value": "{{projectId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-scopes",
+            "value": "workflows:read,workflows:write",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/runs/{{workflowRunId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "workflows",
+            "runs",
+            "{{workflowRunId}}"
+          ]
+        },
+        "description": "读取 invoke 或 async run 返回的 workflow_run_id。"
+      },
+      "response": []
+    },
+    {
+      "name": "Stop App Runtime",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "x-amvision-principal-id",
+            "value": "{{principalId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-project-ids",
+            "value": "{{projectId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-scopes",
+            "value": "workflows:read,workflows:write",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/app-runtimes/{{workflowRuntimeId}}/stop",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "workflows",
+            "app-runtimes",
+            "{{workflowRuntimeId}}",
+            "stop"
+          ]
+        },
+        "description": "停止正式 app runtime。"
+      },
+      "response": []
+    }
+  ]
+}

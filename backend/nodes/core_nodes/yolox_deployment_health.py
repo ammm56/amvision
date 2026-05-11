@@ -28,6 +28,12 @@ CORE_NODE_SPEC = CoreNodeSpec(
         runtime_kind=NODE_RUNTIME_PYTHON_CALLABLE,
         input_ports=(
             NodePortDefinition(
+                name="request",
+                display_name="Request",
+                payload_type_id="value.v1",
+                required=False,
+            ),
+            NodePortDefinition(
                 name="dependency",
                 display_name="Dependency",
                 payload_type_id="detections.v1",

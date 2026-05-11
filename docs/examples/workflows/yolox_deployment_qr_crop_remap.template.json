@@ -11,10 +11,14 @@
       "parameters": {}
     },
     {
+      "node_id": "deployment_request_input",
+      "node_type_id": "core.io.template-input.object",
+      "parameters": {}
+    },
+    {
       "node_id": "detect",
       "node_type_id": "core.model.yolox-detection",
       "parameters": {
-        "deployment_instance_id": "replace-with-existing-deployment-instance-id",
         "auto_start_process": false,
         "score_threshold": 0.3,
         "save_result_image": false,
@@ -284,6 +288,13 @@
       "source_port": "body",
       "target_node_id": "response",
       "target_port": "body"
+    },
+    {
+      "edge_id": "edge-deployment-request-detect",
+      "source_node_id": "deployment_request_input",
+      "source_port": "value",
+      "target_node_id": "detect",
+      "target_port": "request"
     }
   ],
   "template_inputs": [
@@ -292,6 +303,13 @@
       "display_name": "Request Image",
       "payload_type_id": "image-base64.v1",
       "target_node_id": "decode_request_image",
+      "target_port": "payload"
+    },
+    {
+      "input_id": "deployment_request",
+      "display_name": "Deployment Request",
+      "payload_type_id": "value.v1",
+      "target_node_id": "deployment_request_input",
       "target_port": "payload"
     }
   ],
@@ -306,11 +324,11 @@
   ],
   "metadata": {
     "example_kind": "deployment-qr-crop-remap",
-    "deployment_instance_id_placeholder": "replace-with-existing-deployment-instance-id",
     "uses_existing_deployment_instance": true,
     "node_groups": {
       "input": [
-        "decode_request_image"
+        "decode_request_image",
+        "deployment_request_input"
       ],
       "deployment": [
         "detect",
@@ -333,6 +351,7 @@
         "envelope",
         "response"
       ]
-    }
+    },
+    "deployment_instance_id_binding": "deployment_request"
   }
 }

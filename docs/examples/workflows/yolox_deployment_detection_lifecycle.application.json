@@ -10,7 +10,7 @@
     "metadata": {}
   },
   "runtime_mode": "python-json-workflow",
-  "description": "最小 FlowApplication 示例，控制并使用一个已有 deployment 资源，在 execute API 中返回 start、warmup、detections、health、stop 五类输出。",
+  "description": "最小 FlowApplication 示例，使用 base64 图片控制并使用一个已有 deployment 资源，在 execute API 中返回 start、warmup、detections、health、stop 五类输出。",
   "bindings": [
     {
       "binding_id": "request_image",
@@ -18,8 +18,8 @@
       "template_port_id": "request_image",
       "binding_kind": "workflow-execute-input",
       "config": {
-        "payload_type_id": "image-ref.v1",
-        "content_type": "image/*"
+        "payload_type_id": "image-base64.v1",
+        "content_type": "application/json"
       },
       "metadata": {}
     },

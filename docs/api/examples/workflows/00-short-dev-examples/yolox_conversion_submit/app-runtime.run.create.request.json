@@ -1,0 +1,18 @@
+{
+  "input_bindings": {
+    "request_payload": {
+      "value": {
+        "project_id": "project-1",
+        "source_model_version_id": "model-version-1",
+        "target_formats": [
+          "onnx",
+          "openvino-ir"
+        ]
+      }
+    }
+  },
+  "execution_metadata": {
+    "scenario": "yolox-conversion-submit",
+    "trigger_source": "async-api"
+  }
+}

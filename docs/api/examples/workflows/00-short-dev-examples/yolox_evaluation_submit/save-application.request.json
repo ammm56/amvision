@@ -1,0 +1,42 @@
+{
+  "application": {
+    "format_id": "amvision.flow-application.v1",
+    "application_id": "yolox-evaluation-submit-app",
+    "display_name": "YOLOX Evaluation Submit App",
+    "description": "标准 submit app 示例，只返回 YOLOX evaluation submission body。",
+    "template_ref": {
+      "template_id": "yolox-evaluation-submit-template",
+      "template_version": "1.0.0",
+      "source_kind": "json-file",
+      "source_uri": "docs/examples/workflows/yolox_evaluation_submit.template.json"
+    },
+    "runtime_mode": "python-json-workflow",
+    "bindings": [
+      {
+        "binding_id": "request_payload",
+        "direction": "input",
+        "template_port_id": "request_payload",
+        "binding_kind": "workflow-execute-input",
+        "config": {
+          "payload_type_id": "value.v1",
+          "content_type": "application/json"
+        },
+        "metadata": {}
+      },
+      {
+        "binding_id": "submission_body",
+        "direction": "output",
+        "template_port_id": "submission_body",
+        "binding_kind": "workflow-execute-output",
+        "config": {
+          "payload_type_id": "response-body.v1"
+        },
+        "metadata": {}
+      }
+    ],
+    "metadata": {
+      "example_kind": "yolox-evaluation-submit",
+      "intended_saved_object_key": "workflows/projects/{project_id}/applications/yolox-evaluation-submit-app/application.json"
+    }
+  }
+}

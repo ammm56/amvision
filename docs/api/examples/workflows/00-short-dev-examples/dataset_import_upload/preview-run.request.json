@@ -1,0 +1,28 @@
+{
+  "project_id": "project-1",
+  "application_ref": {
+    "application_id": "dataset-import-upload-app"
+  },
+  "input_bindings": {
+    "request_payload": {
+      "value": {
+        "project_id": "project-1",
+        "dataset_id": "dataset-1",
+        "format_type": "coco-detection",
+        "task_type": "detection"
+      }
+    },
+    "request_package": {
+      "package_file_name": "coco-dataset.zip",
+      "package_bytes": "UEsDBBQAAAAIAPBhq1x+auFxJwAAACUAAAAKAAAAUkVBRE1FLnR4dCsoSi3LTC1XKEhMzk5MT1VIyy9SKM8vyk7LyS9XSK1IzC3ISeUCAFBLAQIUABQAAAAIAPBhq1x+auFxJwAAACUAAAAKAAAAAAAAAAAAAACAAQAAAABSRUFETUUudHh0UEsFBgAAAAABAAEAOAAAAE8AAAAAAA==",
+      "media_type": "application/zip"
+    }
+  },
+  "execution_metadata": {
+    "marker": "postman-workflow-example-documents-preview",
+    "example_name": "dataset_import_upload",
+    "scenario": "dataset-import-upload",
+    "trigger_source": "editor-preview"
+  },
+  "timeout_seconds": 30
+}

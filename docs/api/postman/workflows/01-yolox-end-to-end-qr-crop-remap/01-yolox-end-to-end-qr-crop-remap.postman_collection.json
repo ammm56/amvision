@@ -1,0 +1,650 @@
+{
+  "info": {
+    "_postman_id": "amvision-workflow-01",
+    "name": "amvision workflow 01 yolox end to end qr crop remap",
+    "description": "第一类完整导入、导出、训练、评估、转换、部署和 QR remap workflow app 调试 collection。",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://127.0.0.1:8000"
+    },
+    {
+      "key": "principalId",
+      "value": "user-1"
+    },
+    {
+      "key": "projectId",
+      "value": "project-1"
+    },
+    {
+      "key": "previewRunId",
+      "value": ""
+    },
+    {
+      "key": "workflowRuntimeId",
+      "value": ""
+    },
+    {
+      "key": "workflowRunId",
+      "value": ""
+    },
+    {
+      "key": "deploymentInstanceId",
+      "value": "replace-with-existing-deployment-instance-id"
+    },
+    {
+      "key": "datasetId",
+      "value": "dataset-1"
+    },
+    {
+      "key": "datasetVersionId",
+      "value": "dataset-version-1"
+    },
+    {
+      "key": "datasetExportId",
+      "value": "dataset-export-1"
+    },
+    {
+      "key": "modelVersionId",
+      "value": "model-version-1"
+    }
+  ],
+  "item": [
+    {
+      "name": "Save Template",
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-principal-id",
+            "value": "{{principalId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-project-ids",
+            "value": "{{projectId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-scopes",
+            "value": "workflows:read,workflows:write",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/projects/{{projectId}}/templates/yolox-end-to-end-qr-crop-remap-template/versions/1.0.0",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "workflows",
+            "projects",
+            "{{projectId}}",
+            "templates",
+            "yolox-end-to-end-qr-crop-remap-template",
+            "versions",
+            "1.0.0"
+          ]
+        },
+        "description": "保存 yolox_end_to_end_qr_crop_remap 的 workflow template。",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"template\": {\n    \"format_id\": \"amvision.workflow-graph-template.v1\",\n    \"template_id\": \"yolox-end-to-end-qr-crop-remap-template\",\n    \"template_version\": \"1.0.0\",\n    \"display_name\": \"YOLOX End-to-End QR Crop Remap Template\",\n    \"description\": \"接收 zip 数据集包、各阶段动态 request 对象和 base64 图片，串起导入、导出、训练、评估、转换、部署与 QR crop remap 检测完整链路，并在执行结束后清理本次临时 deployment。\",\n    \"nodes\": [\n      {\n        \"node_id\": \"import_request_input\",\n        \"node_type_id\": \"core.io.template-input.object\",\n        \"parameters\": {}\n      },\n      {\n        \"node_id\": \"submit_import\",\n        \"node_type_id\": \"core.service.dataset-import.submit\",\n        \"parameters\": {}\n      },\n      {\n        \"node_id\": \"extract_import_task_id\",\n        \"node_type_id\": \"core.logic.field-extract\",\n        \"parameters\": {\n          \"path\": \"task_id\"\n        }\n      },\n      {\n        \"node_id\": \"build_import_wait_request\",\n        \"node_type_id\": \"core.logic.object-create\",\n        \"parameters\": {\n          \"keys\": [\n            \"task_id\"\n          ],\n          \"fields\": {\n            \"include_events\": false,\n            \"timeout_seconds\": 1800,\n            \"poll_interval_seconds\": 1\n          }\n        }\n      },\n      {\n        \"node_id\": \"wait_import\",\n        \"node_type_id\": \"core.service.task.wait\",\n        \"parameters\": {}\n      },\n      {\n        \"node_id\": \"extract_import_dataset_id\",\n        \"node_type_id\": \"core.logic.field-extract\",\n        \"parameters\": {\n          \"path\": \"result.dataset_id\"\n        }\n      },\n      {\n        \"node_id\": \"extract_import_dataset_version_id\",\n        \"node_type_id\": \"core.logic.field-extract\",\n        \"parameters\": {\n          \"path\": \"result.dataset_version_id\"\n        }\n      },\n      {\n        \"node_id\": \"extract_import_task_task_id\",\n        \"node_type_id\": \"core.logic.field-extract\",\n        \"parameters\": {\n          \"path\": \"task_id\"\n        }\n      },\n      {\n        \"node_id\": \"extract_import_task_state\",\n        \"node_type_id\": \"core.logic.field-extract\",\n        \"parameters\": {\n          \"path\": \"state\"\n        }\n      },\n      {\n        \"node_id\": \"extract_import_task_result\",\n        \"node_type_id\": \"core.logic.field-extract\",\n        \"parameters\": {\n          \"path\": \"result\"\n        }\n      },\n      {\n        \"node_id\": \"extract_import_task_error_message\",\n        \"node_type_id\": \"core.logic.field-extract\",\n        \"parameters\": {\n          \"path\": \"error_message\"\n        }\n      },\n      {\n        \"node_id\": \"extract_import_task_detail\",\n        \"node_type_id\": \"core.logic.object-create\",\n        \"parameters\": {\n          \"keys\": [\n            \"task_id\",\n            \"state\",\n            \"result\",\n            \"error_message\"\n          ]\n        }\n      },\n      {\n        \"node_id\": \"export_request_input\",\n        \"node_type_id\": \"core.io.template-input.object\",\n        \"parameters\": {}\n      },\n      {\n        \"node_id\": \"build_export_dynamic_request\",\n        \"node_type_id\": \"core.logic.object-create\",\n        \"parameters\": {\n          \"keys\": [\n            \"dataset_id\",\n            \"dataset_version_id\"\n          ]\n        }\n      },\n      {\n        \"node_id\": \"merge_export_request\",\n        \"node_type_id\": \"core.logic.object-merge\",\n        \"parameters\": {}\n      },\n      {\n        \"node_id\": \"submit_export\",\n        \"node_type_id\": \"core.service.dataset-export.submit\",\n        \"parameters\": {}\n      },\n      {\n        \"node_id\": \"extract_export_task_id\",\n        \"node_type_id\": \"core.logic.field-extract\",\n        \"parameters\": {\n          \"path\": \"task_id\"\n        }\n      },\n      {\n        \"node_id\": \"extract_export_id\",\n        \"node_type_id\": \"core.logic.field-extract\",\n        \"parameters\": {\n          \"path\": \"dataset_export_id\"\n        }\n      },\n      {\n        \"node_id\": \"build_export_wait_request\",\n        \"node_type_id\": \"core.logic.object-create\",\n        \"parameters\": {\n          \"keys\": [\n            \"task_id\"\n          ],\n          \"fields\": {\n            \"include_events\": false,\n            \"timeout_seconds\": 1800,\n            \"poll_interval_seconds\": 1\n          }\n        }\n      },\n      {\n        \"node_id\": \"wait_export\",\n        \"node_type_id\": \"core.service.task.wait\",\n        \"parameters\": {}\n      },\n      {\n        \"node_id\": \"extract_export_task_task_id\",\n        \"node_type_id\": \"core.logic.field-extract\",\n        \"parameters\": {\n          \"path\": \"task_id\"\n        }\n      },\n      {\n        \"node_id\": \"extract_export_task_state\",\n        \"node_type_id\": \"core.logic.field-extract\",\n        \"parameters\": {\n          \"path\": \"state\"\n        }\n      },\n      {\n        \"node_id\": \"extract_export_task_result\",\n        \"node_type_id\": \"core.logic.field-extract\",\n        \"parameters\": {\n          \"path\": \"result\"\n        }\n      },\n      {\n        \"node_id\": \"extract_export_task_error_message\",\n        \"node_type_id\": \"core.logic.field-extract\",\n        \"parameters\": {\n          \"path\": \"error_message\"\n        }\n      },\n      {\n        \"node_id\": \"extract_export_task_detail\",\n        \"node_type_id\": \"core.logic.object-create\",\n        \"parameters\": {\n          \"keys\": [\n            \"task_id\",\n            \"state\",\n            \"result\",\n            \"error_message\"\n          ]\n        }\n      },\n      {\n        \"node_id\": \"training_request_input\",\n        \"node_type_id\": \"core.io.template-input.object\",\n        \"parameters\": {}\n      },\n      {\n        \"node_id\": \"build_training_dynamic_request\",\n        \"node_type_id\": \"core.logic.object-create\",\n        \"parameters\": {\n          \"keys\": [\n            \"dataset_export_id\"\n          ]\n        }\n      },\n      {\n        \"node_id\": \"merge_training_request\",\n        \"node_type_id\": \"core.logic.object-merge\",\n        \"parameters\": {}\n      },\n      {\n        \"node_id\": \"submit_training\",\n        \"node_type_id\": \"core.service.yolox-training.submit\",\n        \"parameters\": {}\n      },\n      {\n        \"node_id\": \"extract_training_task_id\",\n        \"node_type_id\": \"core.logic.field-extract\",\n        \"parameters\": {\n          \"path\": \"task_id\"\n        }\n      },\n      {\n        \"node_id\": \"build_training_wait_request\",\n        \"node_type_id\": \"core.logic.object-create\",\n        \"parameters\": {\n          \"keys\": [\n            \"task_id\"\n          ],\n          \"fields\": {\n            \"include_events\": false,\n            \"timeout_seconds\": 21600,\n            \"poll_interval_seconds\": 2\n          }\n        }\n      },\n      {\n        \"node_id\": \"wait_training\",\n        \"node_type_id\": \"core.service.task.wait\",\n        \"parameters\": {}\n      },\n      {\n        \"node_id\": \"extract_training_task_task_id\",\n        \"node_type_id\": \"core.logic.field-extract\",\n        \"parameters\": {\n          \"path\": \"task_id\"\n        }\n      },\n      {\n        \"node_id\": \"extract_training_task_state\",\n        \"node_type_id\": \"core.logic.field-extract\",\n        \"parameters\": {\n          \"path\": \"state\"\n        }\n      },\n      {\n        \"node_id\": \"extract_training_task_result\",\n        \"node_type_id\": \"core.logic.field-extract\",\n        \"parameters\": {\n          \"path\": \"result\"\n        }\n      },\n      {\n        \"node_id\": \"extract_training_task_error_message\",\n        \"node_type_id\": \"core.logic.field-extract\",\n        \"parameters\": {\n          \"path\": \"error_message\"\n        }\n      },\n      {\n        \"node_id\": \"extract_training_task_detail\",\n        \"node_type_id\": \"core.logic.object-create\",\n        \"parameters\": {\n          \"keys\": [\n            \"task_id\",\n            \"state\",\n            \"result\",\n            \"error_message\"\n          ]\n        }\n      },\n      {\n        \"node_id\": \"extract_training_model_version_id\",\n        \"node_type_id\": \"core.logic.field-extract\",\n        \"parameters\": {\n          \"path\": \"result.model_version_id\"\n        }\n      },\n      {\n        \"node_id\": \"evaluation_request_input\",\n        \"node_type_id\": \"core.io.template-input.object\",\n        \"parameters\": {}\n      },\n      {\n        \"node_id\": \"build_evaluation_dynamic_request\",\n        \"node_type_id\": \"core.logic.object-create\",\n        \"parameters\": {\n          \"keys\": [\n            \"model_version_id\",\n            \"dataset_export_id\"\n          ]\n        }\n      },\n      {\n        \"node_id\": \"merge_evaluation_request\",\n        \"node_type_id\": \"core.logic.object-merge\",\n        \"parameters\": {}\n      },\n      {\n        \"node_id\": \"submit_evaluation\",\n        \"node_type_id\": \"core.service.yolox-evaluation.submit\",\n        \"parameters\": {}\n      },\n      {\n        \"node_id\": \"extract_evaluation_task_id\",\n        \"node_type_id\": \"core.logic.field-extract\",\n        \"parameters\": {\n          \"path\": \"task_id\"\n        }\n      },\n      {\n        \"node_id\": \"build_evaluation_wait_request\",\n        \"node_type_id\": \"core.logic.object-create\",\n        \"parameters\": {\n          \"keys\": [\n            \"task_id\"\n          ],\n          \"fields\": {\n            \"include_events\": false,\n            \"timeout_seconds\": 7200,\n            \"poll_interval_seconds\": 2\n          }\n        }\n      },\n      {\n        \"node_id\": \"wait_evaluation\",\n        \"node_type_id\": \"core.service.task.wait\",\n        \"parameters\": {}\n      },\n      {\n        \"node_id\": \"extract_evaluation_task_task_id\",\n        \"node_type_id\": \"core.logic.field-extract\",\n        \"parameters\": {\n          \"path\": \"task_id\"\n        }\n      },\n      {\n        \"node_id\": \"extract_evaluation_task_state\",\n        \"node_type_id\": \"core.logic.field-extract\",\n        \"parameters\": {\n          \"path\": \"state\"\n        }\n      },\n      {\n        \"node_id\": \"extract_evaluation_task_result\",\n        \"node_type_id\": \"core.logic.field-extract\",\n        \"parameters\": {\n          \"path\": \"result\"\n        }\n      },\n      {\n        \"node_id\": \"extract_evaluation_task_error_message\",\n        \"node_type_id\": \"core.logic.field-extract\",\n        \"parameters\": {\n          \"path\": \"error_message\"\n        }\n      },\n      {\n        \"node_id\": \"extract_evaluation_task_detail\",\n        \"node_type_id\": \"core.logic.object-create\",\n        \"parameters\": {\n          \"keys\": [\n            \"task_id\",\n            \"state\",\n            \"result\",\n            \"error_message\"\n          ]\n        }\n      },\n      {\n        \"node_id\": \"conversion_request_input\",\n        \"node_type_id\": \"core.io.template-input.object\",\n        \"parameters\": {}\n      },\n      {\n        \"node_id\": \"build_conversion_dynamic_request\",\n        \"node_type_id\": \"core.logic.object-create\",\n        \"parameters\": {\n          \"keys\": [\n            \"source_model_version_id\"\n          ]\n        }\n      },\n      {\n        \"node_id\": \"merge_conversion_request\",\n        \"node_type_id\": \"core.logic.object-merge\",\n        \"parameters\": {}\n      },\n      {\n        \"node_id\": \"submit_conversion\",\n        \"node_type_id\": \"core.service.yolox-conversion.submit\",\n        \"parameters\": {}\n      },\n      {\n        \"node_id\": \"extract_conversion_task_id\",\n        \"node_type_id\": \"core.logic.field-extract\",\n        \"parameters\": {\n          \"path\": \"task_id\"\n        }\n      },\n      {\n        \"node_id\": \"build_conversion_wait_request\",\n        \"node_type_id\": \"core.logic.object-create\",\n        \"parameters\": {\n          \"keys\": [\n            \"task_id\"\n          ],\n          \"fields\": {\n            \"include_events\": false,\n            \"timeout_seconds\": 7200,\n            \"poll_interval_seconds\": 2\n          }\n        }\n      },\n      {\n        \"node_id\": \"wait_conversion\",\n        \"node_type_id\": \"core.service.task.wait\",\n        \"parameters\": {}\n      },\n      {\n        \"node_id\": \"extract_conversion_task_task_id\",\n        \"node_type_id\": \"core.logic.field-extract\",\n        \"parameters\": {\n          \"path\": \"task_id\"\n        }\n      },\n      {\n        \"node_id\": \"extract_conversion_task_state\",\n        \"node_type_id\": \"core.logic.field-extract\",\n        \"parameters\": {\n          \"path\": \"state\"\n        }\n      },\n      {\n        \"node_id\": \"extract_conversion_task_result\",\n        \"node_type_id\": \"core.logic.field-extract\",\n        \"parameters\": {\n          \"path\": \"result\"\n        }\n      },\n      {\n        \"node_id\": \"extract_conversion_task_error_message\",\n        \"node_type_id\": \"core.logic.field-extract\",\n        \"parameters\": {\n          \"path\": \"error_message\"\n        }\n      },\n      {\n        \"node_id\": \"extract_conversion_task_detail\",\n        \"node_type_id\": \"core.logic.object-create\",\n        \"parameters\": {\n          \"keys\": [\n            \"task_id\",\n            \"state\",\n            \"result\",\n            \"error_message\"\n          ]\n        }\n      },\n      {\n        \"node_id\": \"extract_conversion_model_build_id\",\n        \"node_type_id\": \"core.logic.field-extract\",\n        \"parameters\": {\n          \"path\": \"result.model_build_id\"\n        }\n      },\n      {\n        \"node_id\": \"deployment_request_input\",\n        \"node_type_id\": \"core.io.template-input.object\",\n        \"parameters\": {}\n      },\n      {\n        \"node_id\": \"build_deployment_dynamic_request\",\n        \"node_type_id\": \"core.logic.object-create\",\n        \"parameters\": {\n          \"keys\": [\n            \"model_version_id\",\n            \"model_build_id\"\n          ]\n        }\n      },\n      {\n        \"node_id\": \"merge_deployment_request\",\n        \"node_type_id\": \"core.logic.object-merge\",\n        \"parameters\": {}\n      },\n      {\n        \"node_id\": \"create_deployment\",\n        \"node_type_id\": \"core.service.yolox-deployment.create\",\n        \"parameters\": {\n          \"cleanup_on_completion\": true\n        }\n      },\n      {\n        \"node_id\": \"extract_deployment_detail\",\n        \"node_type_id\": \"core.logic.object-create\",\n        \"parameters\": {\n          \"keys\": [\n            \"deployment_instance_id\",\n            \"model_version_id\",\n            \"model_build_id\",\n            \"runtime_backend\"\n          ]\n        }\n      },\n      {\n        \"node_id\": \"extract_deployment_instance_id\",\n        \"node_type_id\": \"core.logic.field-extract\",\n        \"parameters\": {\n          \"path\": \"deployment_instance_id\"\n        }\n      },\n      {\n        \"node_id\": \"extract_deployment_model_version_id\",\n        \"node_type_id\": \"core.logic.field-extract\",\n        \"parameters\": {\n          \"path\": \"model_version_id\"\n        }\n      },\n      {\n        \"node_id\": \"extract_deployment_model_build_id\",\n        \"node_type_id\": \"core.logic.field-extract\",\n        \"parameters\": {\n          \"path\": \"model_build_id\"\n        }\n      },\n      {\n        \"node_id\": \"extract_deployment_runtime_backend\",\n        \"node_type_id\": \"core.logic.field-extract\",\n        \"parameters\": {\n          \"path\": \"runtime_backend\"\n        }\n      },\n      {\n        \"node_id\": \"inference_request_input\",\n        \"node_type_id\": \"core.io.template-input.object\",\n        \"parameters\": {}\n      },\n      {\n        \"node_id\": \"build_inference_dynamic_request\",\n        \"node_type_id\": \"core.logic.object-create\",\n        \"parameters\": {\n          \"keys\": [\n            \"deployment_instance_id\"\n          ],\n          \"fields\": {\n            \"auto_start_process\": true,\n            \"save_result_image\": false,\n            \"return_preview_image_base64\": false\n          }\n        }\n      },\n      {\n        \"node_id\": \"merge_inference_request\",\n        \"node_type_id\": \"core.logic.object-merge\",\n        \"parameters\": {}\n      },\n      {\n        \"node_id\": \"decode_request_image\",\n        \"node_type_id\": \"core.io.image-base64-decode\",\n        \"parameters\": {}\n      },\n      {\n        \"node_id\": \"detect\",\n        \"node_type_id\": \"core.model.yolox-detection\",\n        \"parameters\": {}\n      },\n      {\n        \"node_id\": \"export_crops\",\n        \"node_type_id\": \"custom.opencv.crop-export\",\n        \"parameters\": {\n          \"box_padding\": 8,\n          \"max_crops\": 12\n        }\n      },\n      {\n        \"node_id\": \"decode_qr_crops\",\n        \"node_type_id\": \"custom.barcode.qr-crop-decode-remap\",\n        \"parameters\": {\n          \"try_rotate\": true,\n          \"try_downscale\": true,\n          \"try_invert\": true\n        }\n      },\n      {\n        \"node_id\": \"draw_results\",\n        \"node_type_id\": \"custom.barcode.draw-results\",\n        \"parameters\": {\n          \"draw_polygon\": true,\n          \"draw_text\": true,\n          \"draw_format\": false,\n          \"draw_index\": true\n        }\n      },\n      {\n        \"node_id\": \"preview_image\",\n        \"node_type_id\": \"core.io.image-preview\",\n        \"parameters\": {\n          \"title\": \"End-to-End QR Crop Remap Image\",\n          \"response_transport_mode\": \"inline-base64\"\n        }\n      },\n      {\n        \"node_id\": \"extract_annotated_image\",\n        \"node_type_id\": \"core.logic.field-extract\",\n        \"parameters\": {\n          \"path\": \"image\"\n        }\n      },\n      {\n        \"node_id\": \"summary\",\n        \"node_type_id\": \"custom.barcode.results-summary\",\n        \"parameters\": {}\n      },\n      {\n        \"node_id\": \"extract_barcode_summary\",\n        \"node_type_id\": \"core.logic.field-extract\",\n        \"parameters\": {\n          \"path\": \"\"\n        }\n      },\n      {\n        \"node_id\": \"build_artifact_ids\",\n        \"node_type_id\": \"core.logic.object-create\",\n        \"parameters\": {\n          \"keys\": [\n            \"dataset_id\",\n            \"dataset_version_id\",\n            \"dataset_export_id\",\n            \"model_version_id\",\n            \"model_build_id\",\n            \"deployment_instance_id\"\n          ]\n        }\n      },\n      {\n        \"node_id\": \"build_stage_data\",\n        \"node_type_id\": \"core.logic.object-create\",\n        \"parameters\": {\n          \"keys\": [\n            \"import_task\",\n            \"export_task\",\n            \"training_task\",\n            \"evaluation_task\",\n            \"conversion_task\",\n            \"deployment\"\n          ]\n        }\n      },\n      {\n        \"node_id\": \"build_response_data\",\n        \"node_type_id\": \"core.logic.object-create\",\n        \"parameters\": {\n          \"keys\": [\n            \"artifact_ids\",\n            \"stages\",\n            \"annotated_image\",\n            \"barcode_summary\"\n          ],\n          \"fields\": {\n            \"type\": \"yolox-end-to-end-qr-crop-remap\"\n          }\n        }\n      },\n      {\n        \"node_id\": \"envelope\",\n        \"node_type_id\": \"core.output.response-envelope\",\n        \"parameters\": {\n          \"code\": 0,\n          \"message\": \"completed\"\n        }\n      }\n    ],\n    \"edges\": [\n      {\n        \"edge_id\": \"edge-import-request-submit\",\n        \"source_node_id\": \"import_request_input\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"submit_import\",\n        \"target_port\": \"request\"\n      },\n      {\n        \"edge_id\": \"edge-submit-import-task-id\",\n        \"source_node_id\": \"submit_import\",\n        \"source_port\": \"body\",\n        \"target_node_id\": \"extract_import_task_id\",\n        \"target_port\": \"body\"\n      },\n      {\n        \"edge_id\": \"edge-import-task-id-build-wait\",\n        \"source_node_id\": \"extract_import_task_id\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"build_import_wait_request\",\n        \"target_port\": \"values\"\n      },\n      {\n        \"edge_id\": \"edge-import-wait-request-wait-import\",\n        \"source_node_id\": \"build_import_wait_request\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"wait_import\",\n        \"target_port\": \"request\"\n      },\n      {\n        \"edge_id\": \"edge-wait-import-dataset-id\",\n        \"source_node_id\": \"wait_import\",\n        \"source_port\": \"body\",\n        \"target_node_id\": \"extract_import_dataset_id\",\n        \"target_port\": \"body\"\n      },\n      {\n        \"edge_id\": \"edge-wait-import-dataset-version-id\",\n        \"source_node_id\": \"wait_import\",\n        \"source_port\": \"body\",\n        \"target_node_id\": \"extract_import_dataset_version_id\",\n        \"target_port\": \"body\"\n      },\n      {\n        \"edge_id\": \"edge-wait-import-task-detail\",\n        \"source_node_id\": \"wait_import\",\n        \"source_port\": \"body\",\n        \"target_node_id\": \"extract_import_task_task_id\",\n        \"target_port\": \"body\"\n      },\n      {\n        \"edge_id\": \"edge-wait-import-task-state\",\n        \"source_node_id\": \"wait_import\",\n        \"source_port\": \"body\",\n        \"target_node_id\": \"extract_import_task_state\",\n        \"target_port\": \"body\"\n      },\n      {\n        \"edge_id\": \"edge-wait-import-task-result\",\n        \"source_node_id\": \"wait_import\",\n        \"source_port\": \"body\",\n        \"target_node_id\": \"extract_import_task_result\",\n        \"target_port\": \"body\"\n      },\n      {\n        \"edge_id\": \"edge-wait-import-task-error-message\",\n        \"source_node_id\": \"wait_import\",\n        \"source_port\": \"body\",\n        \"target_node_id\": \"extract_import_task_error_message\",\n        \"target_port\": \"body\"\n      },\n      {\n        \"edge_id\": \"edge-import-task-id-summary\",\n        \"source_node_id\": \"extract_import_task_task_id\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"extract_import_task_detail\",\n        \"target_port\": \"values\"\n      },\n      {\n        \"edge_id\": \"edge-import-task-state-summary\",\n        \"source_node_id\": \"extract_import_task_state\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"extract_import_task_detail\",\n        \"target_port\": \"values\"\n      },\n      {\n        \"edge_id\": \"edge-import-task-result-summary\",\n        \"source_node_id\": \"extract_import_task_result\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"extract_import_task_detail\",\n        \"target_port\": \"values\"\n      },\n      {\n        \"edge_id\": \"edge-import-task-error-summary\",\n        \"source_node_id\": \"extract_import_task_error_message\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"extract_import_task_detail\",\n        \"target_port\": \"values\"\n      },\n      {\n        \"edge_id\": \"edge-import-dataset-id-build-export-request\",\n        \"source_node_id\": \"extract_import_dataset_id\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"build_export_dynamic_request\",\n        \"target_port\": \"values\"\n      },\n      {\n        \"edge_id\": \"edge-import-dataset-version-id-build-export-request\",\n        \"source_node_id\": \"extract_import_dataset_version_id\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"build_export_dynamic_request\",\n        \"target_port\": \"values\"\n      },\n      {\n        \"edge_id\": \"edge-export-request-merge-base\",\n        \"source_node_id\": \"export_request_input\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"merge_export_request\",\n        \"target_port\": \"objects\"\n      },\n      {\n        \"edge_id\": \"edge-export-request-merge-dynamic\",\n        \"source_node_id\": \"build_export_dynamic_request\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"merge_export_request\",\n        \"target_port\": \"objects\"\n      },\n      {\n        \"edge_id\": \"edge-merge-export-submit\",\n        \"source_node_id\": \"merge_export_request\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"submit_export\",\n        \"target_port\": \"request\"\n      },\n      {\n        \"edge_id\": \"edge-submit-export-task-id\",\n        \"source_node_id\": \"submit_export\",\n        \"source_port\": \"body\",\n        \"target_node_id\": \"extract_export_task_id\",\n        \"target_port\": \"body\"\n      },\n      {\n        \"edge_id\": \"edge-submit-export-export-id\",\n        \"source_node_id\": \"submit_export\",\n        \"source_port\": \"body\",\n        \"target_node_id\": \"extract_export_id\",\n        \"target_port\": \"body\"\n      },\n      {\n        \"edge_id\": \"edge-export-task-id-build-wait\",\n        \"source_node_id\": \"extract_export_task_id\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"build_export_wait_request\",\n        \"target_port\": \"values\"\n      },\n      {\n        \"edge_id\": \"edge-export-wait-request-wait-export\",\n        \"source_node_id\": \"build_export_wait_request\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"wait_export\",\n        \"target_port\": \"request\"\n      },\n      {\n        \"edge_id\": \"edge-wait-export-task-detail\",\n        \"source_node_id\": \"wait_export\",\n        \"source_port\": \"body\",\n        \"target_node_id\": \"extract_export_task_task_id\",\n        \"target_port\": \"body\"\n      },\n      {\n        \"edge_id\": \"edge-wait-export-task-state\",\n        \"source_node_id\": \"wait_export\",\n        \"source_port\": \"body\",\n        \"target_node_id\": \"extract_export_task_state\",\n        \"target_port\": \"body\"\n      },\n      {\n        \"edge_id\": \"edge-wait-export-task-result\",\n        \"source_node_id\": \"wait_export\",\n        \"source_port\": \"body\",\n        \"target_node_id\": \"extract_export_task_result\",\n        \"target_port\": \"body\"\n      },\n      {\n        \"edge_id\": \"edge-wait-export-task-error-message\",\n        \"source_node_id\": \"wait_export\",\n        \"source_port\": \"body\",\n        \"target_node_id\": \"extract_export_task_error_message\",\n        \"target_port\": \"body\"\n      },\n      {\n        \"edge_id\": \"edge-export-task-id-summary\",\n        \"source_node_id\": \"extract_export_task_task_id\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"extract_export_task_detail\",\n        \"target_port\": \"values\"\n      },\n      {\n        \"edge_id\": \"edge-export-task-state-summary\",\n        \"source_node_id\": \"extract_export_task_state\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"extract_export_task_detail\",\n        \"target_port\": \"values\"\n      },\n      {\n        \"edge_id\": \"edge-export-task-result-summary\",\n        \"source_node_id\": \"extract_export_task_result\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"extract_export_task_detail\",\n        \"target_port\": \"values\"\n      },\n      {\n        \"edge_id\": \"edge-export-task-error-summary\",\n        \"source_node_id\": \"extract_export_task_error_message\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"extract_export_task_detail\",\n        \"target_port\": \"values\"\n      },\n      {\n        \"edge_id\": \"edge-export-id-build-training-request\",\n        \"source_node_id\": \"extract_export_id\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"build_training_dynamic_request\",\n        \"target_port\": \"values\"\n      },\n      {\n        \"edge_id\": \"edge-training-request-merge-base\",\n        \"source_node_id\": \"training_request_input\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"merge_training_request\",\n        \"target_port\": \"objects\"\n      },\n      {\n        \"edge_id\": \"edge-training-request-merge-dynamic\",\n        \"source_node_id\": \"build_training_dynamic_request\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"merge_training_request\",\n        \"target_port\": \"objects\"\n      },\n      {\n        \"edge_id\": \"edge-merge-training-submit\",\n        \"source_node_id\": \"merge_training_request\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"submit_training\",\n        \"target_port\": \"request\"\n      },\n      {\n        \"edge_id\": \"edge-submit-training-task-id\",\n        \"source_node_id\": \"submit_training\",\n        \"source_port\": \"body\",\n        \"target_node_id\": \"extract_training_task_id\",\n        \"target_port\": \"body\"\n      },\n      {\n        \"edge_id\": \"edge-training-task-id-build-wait\",\n        \"source_node_id\": \"extract_training_task_id\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"build_training_wait_request\",\n        \"target_port\": \"values\"\n      },\n      {\n        \"edge_id\": \"edge-training-wait-request-wait-training\",\n        \"source_node_id\": \"build_training_wait_request\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"wait_training\",\n        \"target_port\": \"request\"\n      },\n      {\n        \"edge_id\": \"edge-wait-training-task-detail\",\n        \"source_node_id\": \"wait_training\",\n        \"source_port\": \"body\",\n        \"target_node_id\": \"extract_training_task_task_id\",\n        \"target_port\": \"body\"\n      },\n      {\n        \"edge_id\": \"edge-wait-training-task-state\",\n        \"source_node_id\": \"wait_training\",\n        \"source_port\": \"body\",\n        \"target_node_id\": \"extract_training_task_state\",\n        \"target_port\": \"body\"\n      },\n      {\n        \"edge_id\": \"edge-wait-training-task-result\",\n        \"source_node_id\": \"wait_training\",\n        \"source_port\": \"body\",\n        \"target_node_id\": \"extract_training_task_result\",\n        \"target_port\": \"body\"\n      },\n      {\n        \"edge_id\": \"edge-wait-training-task-error-message\",\n        \"source_node_id\": \"wait_training\",\n        \"source_port\": \"body\",\n        \"target_node_id\": \"extract_training_task_error_message\",\n        \"target_port\": \"body\"\n      },\n      {\n        \"edge_id\": \"edge-training-task-id-summary\",\n        \"source_node_id\": \"extract_training_task_task_id\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"extract_training_task_detail\",\n        \"target_port\": \"values\"\n      },\n      {\n        \"edge_id\": \"edge-training-task-state-summary\",\n        \"source_node_id\": \"extract_training_task_state\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"extract_training_task_detail\",\n        \"target_port\": \"values\"\n      },\n      {\n        \"edge_id\": \"edge-training-task-result-summary\",\n        \"source_node_id\": \"extract_training_task_result\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"extract_training_task_detail\",\n        \"target_port\": \"values\"\n      },\n      {\n        \"edge_id\": \"edge-training-task-error-summary\",\n        \"source_node_id\": \"extract_training_task_error_message\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"extract_training_task_detail\",\n        \"target_port\": \"values\"\n      },\n      {\n        \"edge_id\": \"edge-wait-training-model-version-id\",\n        \"source_node_id\": \"wait_training\",\n        \"source_port\": \"body\",\n        \"target_node_id\": \"extract_training_model_version_id\",\n        \"target_port\": \"body\"\n      },\n      {\n        \"edge_id\": \"edge-training-model-version-id-build-evaluation-request\",\n        \"source_node_id\": \"extract_training_model_version_id\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"build_evaluation_dynamic_request\",\n        \"target_port\": \"values\"\n      },\n      {\n        \"edge_id\": \"edge-export-id-build-evaluation-request\",\n        \"source_node_id\": \"extract_export_id\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"build_evaluation_dynamic_request\",\n        \"target_port\": \"values\"\n      },\n      {\n        \"edge_id\": \"edge-evaluation-request-merge-base\",\n        \"source_node_id\": \"evaluation_request_input\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"merge_evaluation_request\",\n        \"target_port\": \"objects\"\n      },\n      {\n        \"edge_id\": \"edge-evaluation-request-merge-dynamic\",\n        \"source_node_id\": \"build_evaluation_dynamic_request\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"merge_evaluation_request\",\n        \"target_port\": \"objects\"\n      },\n      {\n        \"edge_id\": \"edge-merge-evaluation-submit\",\n        \"source_node_id\": \"merge_evaluation_request\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"submit_evaluation\",\n        \"target_port\": \"request\"\n      },\n      {\n        \"edge_id\": \"edge-submit-evaluation-task-id\",\n        \"source_node_id\": \"submit_evaluation\",\n        \"source_port\": \"body\",\n        \"target_node_id\": \"extract_evaluation_task_id\",\n        \"target_port\": \"body\"\n      },\n      {\n        \"edge_id\": \"edge-evaluation-task-id-build-wait\",\n        \"source_node_id\": \"extract_evaluation_task_id\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"build_evaluation_wait_request\",\n        \"target_port\": \"values\"\n      },\n      {\n        \"edge_id\": \"edge-evaluation-wait-request-wait-evaluation\",\n        \"source_node_id\": \"build_evaluation_wait_request\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"wait_evaluation\",\n        \"target_port\": \"request\"\n      },\n      {\n        \"edge_id\": \"edge-wait-evaluation-task-detail\",\n        \"source_node_id\": \"wait_evaluation\",\n        \"source_port\": \"body\",\n        \"target_node_id\": \"extract_evaluation_task_task_id\",\n        \"target_port\": \"body\"\n      },\n      {\n        \"edge_id\": \"edge-wait-evaluation-task-state\",\n        \"source_node_id\": \"wait_evaluation\",\n        \"source_port\": \"body\",\n        \"target_node_id\": \"extract_evaluation_task_state\",\n        \"target_port\": \"body\"\n      },\n      {\n        \"edge_id\": \"edge-wait-evaluation-task-result\",\n        \"source_node_id\": \"wait_evaluation\",\n        \"source_port\": \"body\",\n        \"target_node_id\": \"extract_evaluation_task_result\",\n        \"target_port\": \"body\"\n      },\n      {\n        \"edge_id\": \"edge-wait-evaluation-task-error-message\",\n        \"source_node_id\": \"wait_evaluation\",\n        \"source_port\": \"body\",\n        \"target_node_id\": \"extract_evaluation_task_error_message\",\n        \"target_port\": \"body\"\n      },\n      {\n        \"edge_id\": \"edge-evaluation-task-id-summary\",\n        \"source_node_id\": \"extract_evaluation_task_task_id\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"extract_evaluation_task_detail\",\n        \"target_port\": \"values\"\n      },\n      {\n        \"edge_id\": \"edge-evaluation-task-state-summary\",\n        \"source_node_id\": \"extract_evaluation_task_state\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"extract_evaluation_task_detail\",\n        \"target_port\": \"values\"\n      },\n      {\n        \"edge_id\": \"edge-evaluation-task-result-summary\",\n        \"source_node_id\": \"extract_evaluation_task_result\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"extract_evaluation_task_detail\",\n        \"target_port\": \"values\"\n      },\n      {\n        \"edge_id\": \"edge-evaluation-task-error-summary\",\n        \"source_node_id\": \"extract_evaluation_task_error_message\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"extract_evaluation_task_detail\",\n        \"target_port\": \"values\"\n      },\n      {\n        \"edge_id\": \"edge-training-model-version-id-build-conversion-request\",\n        \"source_node_id\": \"extract_training_model_version_id\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"build_conversion_dynamic_request\",\n        \"target_port\": \"values\"\n      },\n      {\n        \"edge_id\": \"edge-conversion-request-merge-base\",\n        \"source_node_id\": \"conversion_request_input\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"merge_conversion_request\",\n        \"target_port\": \"objects\"\n      },\n      {\n        \"edge_id\": \"edge-conversion-request-merge-dynamic\",\n        \"source_node_id\": \"build_conversion_dynamic_request\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"merge_conversion_request\",\n        \"target_port\": \"objects\"\n      },\n      {\n        \"edge_id\": \"edge-merge-conversion-submit\",\n        \"source_node_id\": \"merge_conversion_request\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"submit_conversion\",\n        \"target_port\": \"request\"\n      },\n      {\n        \"edge_id\": \"edge-submit-conversion-task-id\",\n        \"source_node_id\": \"submit_conversion\",\n        \"source_port\": \"body\",\n        \"target_node_id\": \"extract_conversion_task_id\",\n        \"target_port\": \"body\"\n      },\n      {\n        \"edge_id\": \"edge-conversion-task-id-build-wait\",\n        \"source_node_id\": \"extract_conversion_task_id\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"build_conversion_wait_request\",\n        \"target_port\": \"values\"\n      },\n      {\n        \"edge_id\": \"edge-conversion-wait-request-wait-conversion\",\n        \"source_node_id\": \"build_conversion_wait_request\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"wait_conversion\",\n        \"target_port\": \"request\"\n      },\n      {\n        \"edge_id\": \"edge-wait-conversion-task-detail\",\n        \"source_node_id\": \"wait_conversion\",\n        \"source_port\": \"body\",\n        \"target_node_id\": \"extract_conversion_task_task_id\",\n        \"target_port\": \"body\"\n      },\n      {\n        \"edge_id\": \"edge-wait-conversion-task-state\",\n        \"source_node_id\": \"wait_conversion\",\n        \"source_port\": \"body\",\n        \"target_node_id\": \"extract_conversion_task_state\",\n        \"target_port\": \"body\"\n      },\n      {\n        \"edge_id\": \"edge-wait-conversion-task-result\",\n        \"source_node_id\": \"wait_conversion\",\n        \"source_port\": \"body\",\n        \"target_node_id\": \"extract_conversion_task_result\",\n        \"target_port\": \"body\"\n      },\n      {\n        \"edge_id\": \"edge-wait-conversion-task-error-message\",\n        \"source_node_id\": \"wait_conversion\",\n        \"source_port\": \"body\",\n        \"target_node_id\": \"extract_conversion_task_error_message\",\n        \"target_port\": \"body\"\n      },\n      {\n        \"edge_id\": \"edge-conversion-task-id-summary\",\n        \"source_node_id\": \"extract_conversion_task_task_id\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"extract_conversion_task_detail\",\n        \"target_port\": \"values\"\n      },\n      {\n        \"edge_id\": \"edge-conversion-task-state-summary\",\n        \"source_node_id\": \"extract_conversion_task_state\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"extract_conversion_task_detail\",\n        \"target_port\": \"values\"\n      },\n      {\n        \"edge_id\": \"edge-conversion-task-result-summary\",\n        \"source_node_id\": \"extract_conversion_task_result\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"extract_conversion_task_detail\",\n        \"target_port\": \"values\"\n      },\n      {\n        \"edge_id\": \"edge-conversion-task-error-summary\",\n        \"source_node_id\": \"extract_conversion_task_error_message\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"extract_conversion_task_detail\",\n        \"target_port\": \"values\"\n      },\n      {\n        \"edge_id\": \"edge-wait-conversion-model-build-id\",\n        \"source_node_id\": \"wait_conversion\",\n        \"source_port\": \"body\",\n        \"target_node_id\": \"extract_conversion_model_build_id\",\n        \"target_port\": \"body\"\n      },\n      {\n        \"edge_id\": \"edge-training-model-version-id-build-deployment-request\",\n        \"source_node_id\": \"extract_training_model_version_id\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"build_deployment_dynamic_request\",\n        \"target_port\": \"values\"\n      },\n      {\n        \"edge_id\": \"edge-conversion-model-build-id-build-deployment-request\",\n        \"source_node_id\": \"extract_conversion_model_build_id\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"build_deployment_dynamic_request\",\n        \"target_port\": \"values\"\n      },\n      {\n        \"edge_id\": \"edge-deployment-request-merge-base\",\n        \"source_node_id\": \"deployment_request_input\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"merge_deployment_request\",\n        \"target_port\": \"objects\"\n      },\n      {\n        \"edge_id\": \"edge-deployment-request-merge-dynamic\",\n        \"source_node_id\": \"build_deployment_dynamic_request\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"merge_deployment_request\",\n        \"target_port\": \"objects\"\n      },\n      {\n        \"edge_id\": \"edge-merge-deployment-create\",\n        \"source_node_id\": \"merge_deployment_request\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"create_deployment\",\n        \"target_port\": \"request\"\n      },\n      {\n        \"edge_id\": \"edge-create-deployment-detail\",\n        \"source_node_id\": \"create_deployment\",\n        \"source_port\": \"body\",\n        \"target_node_id\": \"extract_deployment_model_version_id\",\n        \"target_port\": \"body\"\n      },\n      {\n        \"edge_id\": \"edge-create-deployment-instance-id\",\n        \"source_node_id\": \"create_deployment\",\n        \"source_port\": \"body\",\n        \"target_node_id\": \"extract_deployment_instance_id\",\n        \"target_port\": \"body\"\n      },\n      {\n        \"edge_id\": \"edge-create-deployment-model-build-id\",\n        \"source_node_id\": \"create_deployment\",\n        \"source_port\": \"body\",\n        \"target_node_id\": \"extract_deployment_model_build_id\",\n        \"target_port\": \"body\"\n      },\n      {\n        \"edge_id\": \"edge-create-deployment-runtime-backend\",\n        \"source_node_id\": \"create_deployment\",\n        \"source_port\": \"body\",\n        \"target_node_id\": \"extract_deployment_runtime_backend\",\n        \"target_port\": \"body\"\n      },\n      {\n        \"edge_id\": \"edge-deployment-summary-instance-id\",\n        \"source_node_id\": \"extract_deployment_instance_id\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"extract_deployment_detail\",\n        \"target_port\": \"values\"\n      },\n      {\n        \"edge_id\": \"edge-deployment-summary-model-version-id\",\n        \"source_node_id\": \"extract_deployment_model_version_id\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"extract_deployment_detail\",\n        \"target_port\": \"values\"\n      },\n      {\n        \"edge_id\": \"edge-deployment-summary-model-build-id\",\n        \"source_node_id\": \"extract_deployment_model_build_id\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"extract_deployment_detail\",\n        \"target_port\": \"values\"\n      },\n      {\n        \"edge_id\": \"edge-deployment-summary-runtime-backend\",\n        \"source_node_id\": \"extract_deployment_runtime_backend\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"extract_deployment_detail\",\n        \"target_port\": \"values\"\n      },\n      {\n        \"edge_id\": \"edge-deployment-instance-id-build-inference-request\",\n        \"source_node_id\": \"extract_deployment_instance_id\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"build_inference_dynamic_request\",\n        \"target_port\": \"values\"\n      },\n      {\n        \"edge_id\": \"edge-inference-request-merge-base\",\n        \"source_node_id\": \"inference_request_input\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"merge_inference_request\",\n        \"target_port\": \"objects\"\n      },\n      {\n        \"edge_id\": \"edge-inference-request-merge-dynamic\",\n        \"source_node_id\": \"build_inference_dynamic_request\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"merge_inference_request\",\n        \"target_port\": \"objects\"\n      },\n      {\n        \"edge_id\": \"edge-merge-inference-detect-request\",\n        \"source_node_id\": \"merge_inference_request\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"detect\",\n        \"target_port\": \"request\"\n      },\n      {\n        \"edge_id\": \"edge-decode-detect-image\",\n        \"source_node_id\": \"decode_request_image\",\n        \"source_port\": \"image\",\n        \"target_node_id\": \"detect\",\n        \"target_port\": \"image\"\n      },\n      {\n        \"edge_id\": \"edge-decode-export-crops-image\",\n        \"source_node_id\": \"decode_request_image\",\n        \"source_port\": \"image\",\n        \"target_node_id\": \"export_crops\",\n        \"target_port\": \"image\"\n      },\n      {\n        \"edge_id\": \"edge-detect-export-crops-detections\",\n        \"source_node_id\": \"detect\",\n        \"source_port\": \"detections\",\n        \"target_node_id\": \"export_crops\",\n        \"target_port\": \"detections\"\n      },\n      {\n        \"edge_id\": \"edge-export-crops-decode-qr-crops\",\n        \"source_node_id\": \"export_crops\",\n        \"source_port\": \"crops\",\n        \"target_node_id\": \"decode_qr_crops\",\n        \"target_port\": \"crops\"\n      },\n      {\n        \"edge_id\": \"edge-decode-draw-results-image\",\n        \"source_node_id\": \"decode_request_image\",\n        \"source_port\": \"image\",\n        \"target_node_id\": \"draw_results\",\n        \"target_port\": \"image\"\n      },\n      {\n        \"edge_id\": \"edge-decode-qr-crops-draw-results\",\n        \"source_node_id\": \"decode_qr_crops\",\n        \"source_port\": \"results\",\n        \"target_node_id\": \"draw_results\",\n        \"target_port\": \"results\"\n      },\n      {\n        \"edge_id\": \"edge-draw-results-preview-image\",\n        \"source_node_id\": \"draw_results\",\n        \"source_port\": \"image\",\n        \"target_node_id\": \"preview_image\",\n        \"target_port\": \"image\"\n      },\n      {\n        \"edge_id\": \"edge-preview-image-extract-annotated-image\",\n        \"source_node_id\": \"preview_image\",\n        \"source_port\": \"body\",\n        \"target_node_id\": \"extract_annotated_image\",\n        \"target_port\": \"body\"\n      },\n      {\n        \"edge_id\": \"edge-decode-qr-crops-summary\",\n        \"source_node_id\": \"decode_qr_crops\",\n        \"source_port\": \"results\",\n        \"target_node_id\": \"summary\",\n        \"target_port\": \"results\"\n      },\n      {\n        \"edge_id\": \"edge-summary-extract-barcode-summary\",\n        \"source_node_id\": \"summary\",\n        \"source_port\": \"body\",\n        \"target_node_id\": \"extract_barcode_summary\",\n        \"target_port\": \"body\"\n      },\n      {\n        \"edge_id\": \"edge-artifact-dataset-id\",\n        \"source_node_id\": \"extract_import_dataset_id\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"build_artifact_ids\",\n        \"target_port\": \"values\"\n      },\n      {\n        \"edge_id\": \"edge-artifact-dataset-version-id\",\n        \"source_node_id\": \"extract_import_dataset_version_id\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"build_artifact_ids\",\n        \"target_port\": \"values\"\n      },\n      {\n        \"edge_id\": \"edge-artifact-dataset-export-id\",\n        \"source_node_id\": \"extract_export_id\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"build_artifact_ids\",\n        \"target_port\": \"values\"\n      },\n      {\n        \"edge_id\": \"edge-artifact-model-version-id\",\n        \"source_node_id\": \"extract_training_model_version_id\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"build_artifact_ids\",\n        \"target_port\": \"values\"\n      },\n      {\n        \"edge_id\": \"edge-artifact-model-build-id\",\n        \"source_node_id\": \"extract_conversion_model_build_id\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"build_artifact_ids\",\n        \"target_port\": \"values\"\n      },\n      {\n        \"edge_id\": \"edge-artifact-deployment-instance-id\",\n        \"source_node_id\": \"extract_deployment_instance_id\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"build_artifact_ids\",\n        \"target_port\": \"values\"\n      },\n      {\n        \"edge_id\": \"edge-stage-import-task\",\n        \"source_node_id\": \"extract_import_task_detail\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"build_stage_data\",\n        \"target_port\": \"values\"\n      },\n      {\n        \"edge_id\": \"edge-stage-export-task\",\n        \"source_node_id\": \"extract_export_task_detail\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"build_stage_data\",\n        \"target_port\": \"values\"\n      },\n      {\n        \"edge_id\": \"edge-stage-training-task\",\n        \"source_node_id\": \"extract_training_task_detail\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"build_stage_data\",\n        \"target_port\": \"values\"\n      },\n      {\n        \"edge_id\": \"edge-stage-evaluation-task\",\n        \"source_node_id\": \"extract_evaluation_task_detail\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"build_stage_data\",\n        \"target_port\": \"values\"\n      },\n      {\n        \"edge_id\": \"edge-stage-conversion-task\",\n        \"source_node_id\": \"extract_conversion_task_detail\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"build_stage_data\",\n        \"target_port\": \"values\"\n      },\n      {\n        \"edge_id\": \"edge-stage-deployment\",\n        \"source_node_id\": \"extract_deployment_detail\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"build_stage_data\",\n        \"target_port\": \"values\"\n      },\n      {\n        \"edge_id\": \"edge-response-artifact-ids\",\n        \"source_node_id\": \"build_artifact_ids\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"build_response_data\",\n        \"target_port\": \"values\"\n      },\n      {\n        \"edge_id\": \"edge-response-stage-data\",\n        \"source_node_id\": \"build_stage_data\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"build_response_data\",\n        \"target_port\": \"values\"\n      },\n      {\n        \"edge_id\": \"edge-response-annotated-image\",\n        \"source_node_id\": \"extract_annotated_image\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"build_response_data\",\n        \"target_port\": \"values\"\n      },\n      {\n        \"edge_id\": \"edge-response-barcode-summary\",\n        \"source_node_id\": \"extract_barcode_summary\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"build_response_data\",\n        \"target_port\": \"values\"\n      },\n      {\n        \"edge_id\": \"edge-response-envelope\",\n        \"source_node_id\": \"build_response_data\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"envelope\",\n        \"target_port\": \"data\"\n      }\n    ],\n    \"template_inputs\": [\n      {\n        \"input_id\": \"import_request_payload\",\n        \"display_name\": \"Import Request Payload\",\n        \"payload_type_id\": \"value.v1\",\n        \"target_node_id\": \"import_request_input\",\n        \"target_port\": \"payload\"\n      },\n      {\n        \"input_id\": \"request_package\",\n        \"display_name\": \"Request Package\",\n        \"payload_type_id\": \"dataset-package.v1\",\n        \"target_node_id\": \"submit_import\",\n        \"target_port\": \"package\"\n      },\n      {\n        \"input_id\": \"export_request_payload\",\n        \"display_name\": \"Export Request Payload\",\n        \"payload_type_id\": \"value.v1\",\n        \"target_node_id\": \"export_request_input\",\n        \"target_port\": \"payload\"\n      },\n      {\n        \"input_id\": \"training_request_payload\",\n        \"display_name\": \"Training Request Payload\",\n        \"payload_type_id\": \"value.v1\",\n        \"target_node_id\": \"training_request_input\",\n        \"target_port\": \"payload\"\n      },\n      {\n        \"input_id\": \"evaluation_request_payload\",\n        \"display_name\": \"Evaluation Request Payload\",\n        \"payload_type_id\": \"value.v1\",\n        \"target_node_id\": \"evaluation_request_input\",\n        \"target_port\": \"payload\"\n      },\n      {\n        \"input_id\": \"conversion_request_payload\",\n        \"display_name\": \"Conversion Request Payload\",\n        \"payload_type_id\": \"value.v1\",\n        \"target_node_id\": \"conversion_request_input\",\n        \"target_port\": \"payload\"\n      },\n      {\n        \"input_id\": \"deployment_request_payload\",\n        \"display_name\": \"Deployment Request Payload\",\n        \"payload_type_id\": \"value.v1\",\n        \"target_node_id\": \"deployment_request_input\",\n        \"target_port\": \"payload\"\n      },\n      {\n        \"input_id\": \"inference_request_payload\",\n        \"display_name\": \"Inference Request Payload\",\n        \"payload_type_id\": \"value.v1\",\n        \"target_node_id\": \"inference_request_input\",\n        \"target_port\": \"payload\"\n      },\n      {\n        \"input_id\": \"request_image\",\n        \"display_name\": \"Request Image\",\n        \"payload_type_id\": \"image-base64.v1\",\n        \"target_node_id\": \"decode_request_image\",\n        \"target_port\": \"payload\"\n      }\n    ],\n    \"template_outputs\": [\n      {\n        \"output_id\": \"response_body\",\n        \"display_name\": \"Response Body\",\n        \"payload_type_id\": \"response-body.v1\",\n        \"source_node_id\": \"envelope\",\n        \"source_port\": \"body\"\n      }\n    ],\n    \"metadata\": {\n      \"example_kind\": \"yolox-end-to-end-qr-crop-remap\",\n      \"deployment_cleanup_policy\": \"delete_on_completion\",\n      \"supports_runtime_upload\": true,\n      \"dynamic_request_binding_ids\": [\n        \"import_request_payload\",\n        \"export_request_payload\",\n        \"training_request_payload\",\n        \"evaluation_request_payload\",\n        \"conversion_request_payload\",\n        \"deployment_request_payload\",\n        \"inference_request_payload\"\n      ],\n      \"intended_saved_object_key\": \"workflows/projects/{project_id}/templates/yolox-end-to-end-qr-crop-remap-template/versions/1.0.0/template.json\",\n      \"node_groups\": {\n        \"input\": [\n          \"import_request_input\",\n          \"export_request_input\",\n          \"training_request_input\",\n          \"evaluation_request_input\",\n          \"conversion_request_input\",\n          \"deployment_request_input\",\n          \"inference_request_input\",\n          \"decode_request_image\"\n        ],\n        \"dataset_import\": [\n          \"submit_import\",\n          \"build_import_wait_request\",\n          \"wait_import\"\n        ],\n        \"dataset_export\": [\n          \"build_export_dynamic_request\",\n          \"merge_export_request\",\n          \"submit_export\",\n          \"build_export_wait_request\",\n          \"wait_export\"\n        ],\n        \"training\": [\n          \"build_training_dynamic_request\",\n          \"merge_training_request\",\n          \"submit_training\",\n          \"build_training_wait_request\",\n          \"wait_training\"\n        ],\n        \"evaluation\": [\n          \"build_evaluation_dynamic_request\",\n          \"merge_evaluation_request\",\n          \"submit_evaluation\",\n          \"build_evaluation_wait_request\",\n          \"wait_evaluation\"\n        ],\n        \"conversion\": [\n          \"build_conversion_dynamic_request\",\n          \"merge_conversion_request\",\n          \"submit_conversion\",\n          \"build_conversion_wait_request\",\n          \"wait_conversion\"\n        ],\n        \"deployment\": [\n          \"build_deployment_dynamic_request\",\n          \"merge_deployment_request\",\n          \"create_deployment\",\n          \"build_inference_dynamic_request\",\n          \"merge_inference_request\",\n          \"detect\",\n          \"export_crops\"\n        ],\n        \"barcode\": [\n          \"decode_qr_crops\",\n          \"draw_results\",\n          \"summary\"\n        ],\n        \"response\": [\n          \"preview_image\",\n          \"build_artifact_ids\",\n          \"build_stage_data\",\n          \"build_response_data\",\n          \"envelope\"\n        ]\n      }\n    }\n  }\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Save Application",
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-principal-id",
+            "value": "{{principalId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-project-ids",
+            "value": "{{projectId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-scopes",
+            "value": "workflows:read,workflows:write",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/projects/{{projectId}}/applications/yolox-end-to-end-qr-crop-remap-app",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "workflows",
+            "projects",
+            "{{projectId}}",
+            "applications",
+            "yolox-end-to-end-qr-crop-remap-app"
+          ]
+        },
+        "description": "保存 yolox_end_to_end_qr_crop_remap 的 FlowApplication。",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"application\": {\n    \"format_id\": \"amvision.flow-application.v1\",\n    \"application_id\": \"yolox-end-to-end-qr-crop-remap-app\",\n    \"display_name\": \"YOLOX End-to-End QR Crop Remap App\",\n    \"description\": \"接收 zip 数据集包、各阶段 request 对象和 base64 图片，串起导入、导出、训练、评估、转换、部署与 QR crop remap 检测完整链路。\",\n    \"template_ref\": {\n      \"template_id\": \"yolox-end-to-end-qr-crop-remap-template\",\n      \"template_version\": \"1.0.0\",\n      \"source_kind\": \"json-file\",\n      \"source_uri\": \"docs/examples/workflows/yolox_end_to_end_qr_crop_remap.template.json\"\n    },\n    \"runtime_mode\": \"python-json-workflow\",\n    \"bindings\": [\n      {\n        \"binding_id\": \"import_request_payload\",\n        \"direction\": \"input\",\n        \"template_port_id\": \"import_request_payload\",\n        \"binding_kind\": \"workflow-execute-input\",\n        \"config\": {\n          \"payload_type_id\": \"value.v1\",\n          \"content_type\": \"application/json\"\n        },\n        \"metadata\": {}\n      },\n      {\n        \"binding_id\": \"request_package\",\n        \"direction\": \"input\",\n        \"template_port_id\": \"request_package\",\n        \"binding_kind\": \"workflow-execute-input\",\n        \"config\": {\n          \"payload_type_id\": \"dataset-package.v1\",\n          \"content_type\": \"application/zip\"\n        },\n        \"metadata\": {}\n      },\n      {\n        \"binding_id\": \"export_request_payload\",\n        \"direction\": \"input\",\n        \"template_port_id\": \"export_request_payload\",\n        \"binding_kind\": \"workflow-execute-input\",\n        \"config\": {\n          \"payload_type_id\": \"value.v1\",\n          \"content_type\": \"application/json\"\n        },\n        \"metadata\": {}\n      },\n      {\n        \"binding_id\": \"training_request_payload\",\n        \"direction\": \"input\",\n        \"template_port_id\": \"training_request_payload\",\n        \"binding_kind\": \"workflow-execute-input\",\n        \"config\": {\n          \"payload_type_id\": \"value.v1\",\n          \"content_type\": \"application/json\"\n        },\n        \"metadata\": {}\n      },\n      {\n        \"binding_id\": \"evaluation_request_payload\",\n        \"direction\": \"input\",\n        \"template_port_id\": \"evaluation_request_payload\",\n        \"binding_kind\": \"workflow-execute-input\",\n        \"config\": {\n          \"payload_type_id\": \"value.v1\",\n          \"content_type\": \"application/json\"\n        },\n        \"metadata\": {}\n      },\n      {\n        \"binding_id\": \"conversion_request_payload\",\n        \"direction\": \"input\",\n        \"template_port_id\": \"conversion_request_payload\",\n        \"binding_kind\": \"workflow-execute-input\",\n        \"config\": {\n          \"payload_type_id\": \"value.v1\",\n          \"content_type\": \"application/json\"\n        },\n        \"metadata\": {}\n      },\n      {\n        \"binding_id\": \"deployment_request_payload\",\n        \"direction\": \"input\",\n        \"template_port_id\": \"deployment_request_payload\",\n        \"binding_kind\": \"workflow-execute-input\",\n        \"config\": {\n          \"payload_type_id\": \"value.v1\",\n          \"content_type\": \"application/json\"\n        },\n        \"metadata\": {}\n      },\n      {\n        \"binding_id\": \"inference_request_payload\",\n        \"direction\": \"input\",\n        \"template_port_id\": \"inference_request_payload\",\n        \"binding_kind\": \"workflow-execute-input\",\n        \"config\": {\n          \"payload_type_id\": \"value.v1\",\n          \"content_type\": \"application/json\"\n        },\n        \"metadata\": {}\n      },\n      {\n        \"binding_id\": \"request_image\",\n        \"direction\": \"input\",\n        \"template_port_id\": \"request_image\",\n        \"binding_kind\": \"workflow-execute-input\",\n        \"config\": {\n          \"payload_type_id\": \"image-base64.v1\",\n          \"content_type\": \"application/json\"\n        },\n        \"metadata\": {}\n      },\n      {\n        \"binding_id\": \"response_body\",\n        \"direction\": \"output\",\n        \"template_port_id\": \"response_body\",\n        \"binding_kind\": \"workflow-execute-output\",\n        \"config\": {\n          \"payload_type_id\": \"response-body.v1\"\n        },\n        \"metadata\": {}\n      }\n    ],\n    \"metadata\": {\n      \"example_kind\": \"yolox-end-to-end-qr-crop-remap\",\n      \"transport_kind\": \"multipart-upload\",\n      \"intended_saved_object_key\": \"workflows/projects/{project_id}/applications/yolox-end-to-end-qr-crop-remap-app/application.json\"\n    }\n  }\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Create Preview Run",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-principal-id",
+            "value": "{{principalId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-project-ids",
+            "value": "{{projectId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-scopes",
+            "value": "workflows:read,workflows:write",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/preview-runs",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "workflows",
+            "preview-runs"
+          ]
+        },
+        "description": "创建 yolox_end_to_end_qr_crop_remap 的编辑态 preview run。",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"project_id\": \"project-1\",\n  \"application_ref\": {\n    \"application_id\": \"yolox-end-to-end-qr-crop-remap-app\"\n  },\n  \"input_bindings\": {\n    \"import_request_payload\": {\n      \"value\": {\n        \"project_id\": \"project-1\",\n        \"dataset_id\": \"barcodeqrcode-dataset\",\n        \"format_type\": \"voc\",\n        \"task_type\": \"detection\"\n      }\n    },\n    \"export_request_payload\": {\n      \"value\": {\n        \"project_id\": \"project-1\",\n        \"format_id\": \"coco-detection\"\n      }\n    },\n    \"training_request_payload\": {\n      \"value\": {\n        \"project_id\": \"project-1\",\n        \"recipe_id\": \"recipe-1\",\n        \"model_scale\": \"m\",\n        \"output_model_name\": \"barcodeqrcode-detector-m\",\n        \"evaluation_interval\": 5,\n        \"max_epochs\": 10,\n        \"batch_size\": 8,\n        \"gpu_count\": 1,\n        \"precision\": \"fp16\"\n      }\n    },\n    \"evaluation_request_payload\": {\n      \"value\": {\n        \"project_id\": \"project-1\",\n        \"score_threshold\": 0.25,\n        \"extra_options\": {\n          \"device\": \"cuda\"\n        }\n      }\n    },\n    \"conversion_request_payload\": {\n      \"value\": {\n        \"project_id\": \"project-1\",\n        \"target_formats\": [\n          \"tensorrt-engine\"\n        ],\n        \"extra_options\": {\n          \"tensorrt_engine_precision\": \"fp16\"\n        }\n      }\n    },\n    \"deployment_request_payload\": {\n      \"value\": {\n        \"project_id\": \"project-1\",\n        \"runtime_backend\": \"tensorrt\",\n        \"device_name\": \"cuda\",\n        \"runtime_precision\": \"fp16\",\n        \"instance_count\": 3,\n        \"keep_warm_enabled\": true,\n        \"display_name\": \"barcodeqrcode-tensorrt-fp16-deployment\"\n      }\n    },\n    \"inference_request_payload\": {\n      \"value\": {\n        \"score_threshold\": 0.3\n      }\n    },\n    \"request_image\": {\n      \"image_base64\": \"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO5WZr8AAAAASUVORK5CYII=\",\n      \"media_type\": \"image/png\"\n    },\n    \"request_package\": {\n      \"package_file_name\": \"barcodeqrcode.zip\",\n      \"package_bytes\": \"UEsDBBQAAAAIAPBhq1x+auFxJwAAACUAAAAKAAAAUkVBRE1FLnR4dCsoSi3LTC1XKEhMzk5MT1VIyy9SKM8vyk7LyS9XSK1IzC3ISeUCAFBLAQIUABQAAAAIAPBhq1x+auFxJwAAACUAAAAKAAAAAAAAAAAAAACAAQAAAABSRUFETUUudHh0UEsFBgAAAAABAAEAOAAAAE8AAAAAAA==\",\n      \"media_type\": \"application/zip\"\n    }\n  },\n  \"execution_metadata\": {\n    \"marker\": \"postman-workflow-example-documents-preview\",\n    \"example_name\": \"yolox_end_to_end_qr_crop_remap\",\n    \"scenario\": \"yolox-end-to-end-qr-crop-remap\",\n    \"trigger_source\": \"editor-preview\"\n  },\n  \"timeout_seconds\": 43200\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "response": [],
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(201);",
+              "const body = pm.response.json();",
+              "if (body.preview_run_id) {",
+              "  pm.collectionVariables.set('previewRunId', body.preview_run_id);",
+              "}"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Get Preview Run",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "x-amvision-principal-id",
+            "value": "{{principalId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-project-ids",
+            "value": "{{projectId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-scopes",
+            "value": "workflows:read,workflows:write",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/preview-runs/{{previewRunId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "workflows",
+            "preview-runs",
+            "{{previewRunId}}"
+          ]
+        },
+        "description": "读取上一步 preview run 的 outputs 和 node_records。"
+      },
+      "response": []
+    },
+    {
+      "name": "Create App Runtime",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-principal-id",
+            "value": "{{principalId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-project-ids",
+            "value": "{{projectId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-scopes",
+            "value": "workflows:read,workflows:write",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/app-runtimes",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "workflows",
+            "app-runtimes"
+          ]
+        },
+        "description": "创建保存后 app 的正式 runtime。",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"project_id\": \"project-1\",\n  \"application_id\": \"yolox-end-to-end-qr-crop-remap-app\",\n  \"display_name\": \"YOLOX End-to-End QR Crop Remap Runtime\",\n  \"metadata\": {\n    \"example_kind\": \"yolox-end-to-end-qr-crop-remap\",\n    \"transport_kind\": \"multipart-upload\"\n  },\n  \"request_timeout_seconds\": 43200\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "response": [],
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(201);",
+              "const body = pm.response.json();",
+              "if (body.workflow_runtime_id) {",
+              "  pm.collectionVariables.set('workflowRuntimeId', body.workflow_runtime_id);",
+              "}"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Start App Runtime",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "x-amvision-principal-id",
+            "value": "{{principalId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-project-ids",
+            "value": "{{projectId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-scopes",
+            "value": "workflows:read,workflows:write",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/app-runtimes/{{workflowRuntimeId}}/start",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "workflows",
+            "app-runtimes",
+            "{{workflowRuntimeId}}",
+            "start"
+          ]
+        },
+        "description": "启动正式 app runtime。"
+      },
+      "response": []
+    },
+    {
+      "name": "Get App Runtime Health",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "x-amvision-principal-id",
+            "value": "{{principalId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-project-ids",
+            "value": "{{projectId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-scopes",
+            "value": "workflows:read,workflows:write",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/app-runtimes/{{workflowRuntimeId}}/health",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "workflows",
+            "app-runtimes",
+            "{{workflowRuntimeId}}",
+            "health"
+          ]
+        },
+        "description": "读取正式 app runtime health。"
+      },
+      "response": []
+    },
+    {
+      "name": "Invoke App Runtime",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "x-amvision-principal-id",
+            "value": "{{principalId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-project-ids",
+            "value": "{{projectId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-scopes",
+            "value": "workflows:read,workflows:write",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/app-runtimes/{{workflowRuntimeId}}/invoke/upload",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "workflows",
+            "app-runtimes",
+            "{{workflowRuntimeId}}",
+            "invoke",
+            "upload"
+          ]
+        },
+        "description": "通过 multipart 同步调用正式 app runtime。",
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            {
+              "key": "input_bindings_json",
+              "type": "text",
+              "value": "{\"import_request_payload\": {\"value\": {\"project_id\": \"project-1\", \"dataset_id\": \"barcodeqrcode-dataset\", \"format_type\": \"voc\", \"task_type\": \"detection\"}}, \"export_request_payload\": {\"value\": {\"project_id\": \"project-1\", \"format_id\": \"coco-detection\"}}, \"training_request_payload\": {\"value\": {\"project_id\": \"project-1\", \"recipe_id\": \"recipe-1\", \"model_scale\": \"m\", \"output_model_name\": \"barcodeqrcode-detector-m\", \"evaluation_interval\": 5, \"max_epochs\": 10, \"batch_size\": 8, \"gpu_count\": 1, \"precision\": \"fp16\"}}, \"evaluation_request_payload\": {\"value\": {\"project_id\": \"project-1\", \"score_threshold\": 0.25, \"extra_options\": {\"device\": \"cuda\"}}}, \"conversion_request_payload\": {\"value\": {\"project_id\": \"project-1\", \"target_formats\": [\"tensorrt-engine\"], \"extra_options\": {\"tensorrt_engine_precision\": \"fp16\"}}}, \"deployment_request_payload\": {\"value\": {\"project_id\": \"project-1\", \"runtime_backend\": \"tensorrt\", \"device_name\": \"cuda\", \"runtime_precision\": \"fp16\", \"instance_count\": 3, \"keep_warm_enabled\": true, \"display_name\": \"barcodeqrcode-tensorrt-fp16-deployment\"}}, \"inference_request_payload\": {\"value\": {\"score_threshold\": 0.3}}, \"request_image\": {\"image_base64\": \"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO5WZr8AAAAASUVORK5CYII=\", \"media_type\": \"image/png\"}}"
+            },
+            {
+              "key": "request_package",
+              "type": "file",
+              "src": "projectsrc/datasets/barcodeqrcode.zip"
+            },
+            {
+              "key": "execution_metadata_json",
+              "type": "text",
+              "value": "{\"scenario\": \"yolox-end-to-end-qr-crop-remap\", \"trigger_source\": \"multipart-api\"}"
+            },
+            {
+              "key": "timeout_seconds",
+              "type": "text",
+              "value": "43200"
+            }
+          ]
+        }
+      },
+      "response": [],
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const body = pm.response.json();",
+              "if (body.workflow_run_id) {",
+              "  pm.collectionVariables.set('workflowRunId', body.workflow_run_id);",
+              "}"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Create Workflow Run",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "x-amvision-principal-id",
+            "value": "{{principalId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-project-ids",
+            "value": "{{projectId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-scopes",
+            "value": "workflows:read,workflows:write",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/app-runtimes/{{workflowRuntimeId}}/runs/upload",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "workflows",
+            "app-runtimes",
+            "{{workflowRuntimeId}}",
+            "runs",
+            "upload"
+          ]
+        },
+        "description": "通过 multipart 创建正式 async workflow run。",
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            {
+              "key": "input_bindings_json",
+              "type": "text",
+              "value": "{\"import_request_payload\": {\"value\": {\"project_id\": \"project-1\", \"dataset_id\": \"barcodeqrcode-dataset\", \"format_type\": \"voc\", \"task_type\": \"detection\"}}, \"export_request_payload\": {\"value\": {\"project_id\": \"project-1\", \"format_id\": \"coco-detection\"}}, \"training_request_payload\": {\"value\": {\"project_id\": \"project-1\", \"recipe_id\": \"recipe-1\", \"model_scale\": \"m\", \"output_model_name\": \"barcodeqrcode-detector-m\", \"evaluation_interval\": 5, \"max_epochs\": 10, \"batch_size\": 8, \"gpu_count\": 1, \"precision\": \"fp16\"}}, \"evaluation_request_payload\": {\"value\": {\"project_id\": \"project-1\", \"score_threshold\": 0.25, \"extra_options\": {\"device\": \"cuda\"}}}, \"conversion_request_payload\": {\"value\": {\"project_id\": \"project-1\", \"target_formats\": [\"tensorrt-engine\"], \"extra_options\": {\"tensorrt_engine_precision\": \"fp16\"}}}, \"deployment_request_payload\": {\"value\": {\"project_id\": \"project-1\", \"runtime_backend\": \"tensorrt\", \"device_name\": \"cuda\", \"runtime_precision\": \"fp16\", \"instance_count\": 3, \"keep_warm_enabled\": true, \"display_name\": \"barcodeqrcode-tensorrt-fp16-deployment\"}}, \"inference_request_payload\": {\"value\": {\"score_threshold\": 0.3}}, \"request_image\": {\"image_base64\": \"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO5WZr8AAAAASUVORK5CYII=\", \"media_type\": \"image/png\"}}"
+            },
+            {
+              "key": "request_package",
+              "type": "file",
+              "src": "projectsrc/datasets/barcodeqrcode.zip"
+            },
+            {
+              "key": "execution_metadata_json",
+              "type": "text",
+              "value": "{\"scenario\": \"yolox-end-to-end-qr-crop-remap\", \"trigger_source\": \"async-api\"}"
+            },
+            {
+              "key": "timeout_seconds",
+              "type": "text",
+              "value": "43200"
+            }
+          ]
+        }
+      },
+      "response": [],
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(201);",
+              "const body = pm.response.json();",
+              "if (body.workflow_run_id) {",
+              "  pm.collectionVariables.set('workflowRunId', body.workflow_run_id);",
+              "}"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Get Workflow Run",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "x-amvision-principal-id",
+            "value": "{{principalId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-project-ids",
+            "value": "{{projectId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-scopes",
+            "value": "workflows:read,workflows:write",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/runs/{{workflowRunId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "workflows",
+            "runs",
+            "{{workflowRunId}}"
+          ]
+        },
+        "description": "读取 invoke 或 async run 返回的 workflow_run_id。"
+      },
+      "response": []
+    },
+    {
+      "name": "Stop App Runtime",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "x-amvision-principal-id",
+            "value": "{{principalId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-project-ids",
+            "value": "{{projectId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-scopes",
+            "value": "workflows:read,workflows:write",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/app-runtimes/{{workflowRuntimeId}}/stop",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "workflows",
+            "app-runtimes",
+            "{{workflowRuntimeId}}",
+            "stop"
+          ]
+        },
+        "description": "停止正式 app runtime。"
+      },
+      "response": []
+    }
+  ]
+}

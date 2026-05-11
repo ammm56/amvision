@@ -1,0 +1,8 @@
+{
+  "project_id": "project-1",
+  "application_id": "opencv-process-save-image-app",
+  "display_name": "OpenCV Process Save Image Runtime",
+  "metadata": {
+    "example_kind": "opencv-process-save-image"
+  }
+}

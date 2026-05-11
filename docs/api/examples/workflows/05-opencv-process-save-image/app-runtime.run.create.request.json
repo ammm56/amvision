@@ -1,0 +1,12 @@
+{
+  "input_bindings": {
+    "request_image": {
+      "image_base64": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO5WZr8AAAAASUVORK5CYII=",
+      "media_type": "image/png"
+    }
+  },
+  "execution_metadata": {
+    "scenario": "opencv-process-save-image",
+    "trigger_source": "async-api"
+  }
+}
