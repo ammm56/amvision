@@ -19,6 +19,7 @@ from backend.nodes.local_node_pack_loader import LocalNodePackLoader
 from backend.nodes.node_catalog_registry import NodeCatalogRegistry
 from backend.queue import LocalFileQueueBackend
 from backend.service.application.errors import (
+    InvalidRequestError,
     OperationCancelledError,
     OperationTimeoutError,
     ServiceConfigurationError,
@@ -212,7 +213,7 @@ class WorkflowRuntimeWorkerManager:
                     return existing_state
                 self._cleanup_handle(existing_handle)
                 self._handles.pop(workflow_app_runtime.workflow_runtime_id, None)
-            if existing_handle is not None:
+            elif existing_handle is not None:
                 self._cleanup_handle(existing_handle)
                 self._handles.pop(workflow_app_runtime.workflow_runtime_id, None)
 
@@ -858,6 +859,28 @@ def run_workflow_runtime_worker_process(
                         },
                     }
                 )
+            except InvalidRequestError as exc:
+                current_observed_state = "running"
+                current_last_error = None
+                response_queue.put(
+                    _build_worker_error_message(
+                        workflow_runtime_id=workflow_runtime_id,
+                        workflow_run_id=workflow_run_id,
+                        error_message=exc.message,
+                        error_details={
+                            "error_code": exc.code,
+                            **dict(exc.details),
+                        },
+                        state="failed",
+                        instance_id=runtime_instance_id,
+                        current_run_id=None,
+                        started_at=worker_started_at,
+                        loaded_snapshot_fingerprint=snapshot_fingerprint,
+                        observed_state=current_observed_state,
+                        worker_last_error=current_last_error,
+                        health_summary=_build_runtime_health_summary(local_buffer_reader),
+                    )
+                )
             except ServiceError as exc:
                 current_observed_state = "failed"
                 current_last_error = exc.message
@@ -1015,6 +1038,8 @@ def _build_worker_error_message(
     current_run_id: str | None,
     started_at: str | None,
     loaded_snapshot_fingerprint: str | None,
+    observed_state: str = "failed",
+    worker_last_error: str | None = None,
     health_summary: dict[str, object] | None = None,
 ) -> dict[str, object]:
     """构造 worker-error 消息。"""
@@ -1027,14 +1052,14 @@ def _build_worker_error_message(
         "error_message": error_message,
         "error_details": dict(error_details),
         "worker_state": {
-            "observed_state": "failed",
+            "observed_state": observed_state,
             "instance_id": instance_id,
             "process_id": multiprocessing.current_process().pid,
             "current_run_id": current_run_id,
             "started_at": started_at,
             "heartbeat_at": _now_isoformat(),
             "loaded_snapshot_fingerprint": loaded_snapshot_fingerprint,
-            "last_error": error_message,
+            "last_error": error_message if worker_last_error is None and observed_state == "failed" else worker_last_error,
             "health_summary": dict(health_summary or {"mode": "single-instance-sync"}),
         },
     }

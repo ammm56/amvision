@@ -152,6 +152,80 @@ def test_workflow_app_runtime_invoke_api_accepts_image_base64_for_opencv_process
     assert dataset_storage.resolve(image_payload["object_key"]).is_file()
 
 
+def test_workflow_app_runtime_invoke_api_invalid_image_base64_keeps_runtime_running(
+    tmp_path: Path,
+) -> None:
+    """验证坏 base64 只会让当前 run 失败，不会把 runtime 打成 failed。"""
+
+    client, session_factory, dataset_storage = _create_runtime_api_client(
+        tmp_path,
+        database_name="workflow-runtime-invoke-invalid-base64.db",
+    )
+    headers = build_test_headers(scopes="workflows:read,workflows:write")
+    try:
+        with client:
+            _save_example_documents(
+                client=client,
+                dataset_storage=dataset_storage,
+                example_name="opencv_process_save_image",
+            )
+            workflow_runtime_id = _create_and_start_runtime(
+                client=client,
+                headers=headers,
+                application_id="opencv-process-save-image-app",
+                display_name="OpenCV Process Save Image Runtime",
+            )
+            invoke_response = client.post(
+                f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/invoke",
+                headers=headers,
+                json={
+                    "input_bindings": {
+                        "request_image": {
+                            "image_base64": "not-base64@@@",
+                            "media_type": "image/png",
+                        }
+                    },
+                    "execution_metadata": {
+                        "scenario": "opencv-process-save-image-invalid-base64-api",
+                        "trigger_source": "sync-api",
+                    },
+                },
+            )
+            health_response = client.get(
+                f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/health",
+                headers=headers,
+            )
+            second_start_response = client.post(
+                f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/start",
+                headers=headers,
+            )
+            stop_response = client.post(
+                f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/stop",
+                headers=headers,
+            )
+    finally:
+        session_factory.engine.dispose()
+
+    assert invoke_response.status_code == 200
+    assert health_response.status_code == 200
+    assert second_start_response.status_code == 200
+    assert stop_response.status_code == 200
+
+    run_payload = invoke_response.json()
+    assert run_payload["state"] == "failed"
+    assert run_payload["error_message"] == "image-base64 payload 不是有效的 base64 图片"
+    assert run_payload["metadata"]["error_details"]["error_code"] == "invalid_request"
+    assert run_payload["metadata"]["error_details"]["node_id"] == "decode_request_image"
+
+    health_payload = health_response.json()
+    assert health_payload["observed_state"] == "running"
+    assert health_payload["last_error"] is None
+
+    second_start_payload = second_start_response.json()
+    assert second_start_payload["observed_state"] == "running"
+    assert second_start_payload["worker_process_id"] == health_payload["worker_process_id"]
+
+
 def test_workflow_app_runtime_invoke_upload_rejects_image_file_for_non_dataset_package_binding(
     tmp_path: Path,
 ) -> None:

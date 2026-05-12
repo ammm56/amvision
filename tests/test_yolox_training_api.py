@@ -2129,6 +2129,11 @@ def _pause_training_from_fake_run(
         headers=_build_training_headers(),
     )
     assert pause_response.status_code == 200
+    pause_payload = pause_response.json()
+    assert pause_payload["task_id"] == task_id
+    assert pause_payload["events"] == []
+    assert pause_payload["control_status"]["status"] == "pause_requested"
+    assert pause_payload["control_status"]["pending_action"] == "pause"
 
     second_control = request.epoch_callback(
         _build_fake_epoch_progress(

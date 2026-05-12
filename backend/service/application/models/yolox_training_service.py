@@ -298,7 +298,7 @@ class SqlAlchemyYoloXTrainingTaskService:
 
         control = self._read_training_control(task_record)
         if self._read_control_flag(control, "save_requested"):
-            return self.task_service.get_task(task_id, include_events=True)
+            return self.task_service.get_task(task_id, include_events=False)
 
         requested_at = self._now_iso()
         updated_control = self._build_requested_training_control(
@@ -321,7 +321,7 @@ class SqlAlchemyYoloXTrainingTaskService:
                 },
             )
         )
-        return self.task_service.get_task(task_id, include_events=True)
+        return self.task_service.get_task(task_id, include_events=False)
 
     def request_training_pause(
         self,
@@ -333,7 +333,7 @@ class SqlAlchemyYoloXTrainingTaskService:
 
         task_record = self._require_training_task(task_id)
         if task_record.state == "paused":
-            return self.task_service.get_task(task_id, include_events=True)
+            return self.task_service.get_task(task_id, include_events=False)
         if task_record.state != "running":
             raise InvalidRequestError(
                 "当前训练任务不在运行中，不能暂停",
@@ -342,7 +342,7 @@ class SqlAlchemyYoloXTrainingTaskService:
 
         control = self._read_training_control(task_record)
         if self._read_control_flag(control, "pause_requested"):
-            return self.task_service.get_task(task_id, include_events=True)
+            return self.task_service.get_task(task_id, include_events=False)
 
         requested_at = self._now_iso()
         updated_control = self._build_requested_training_control(
@@ -365,7 +365,7 @@ class SqlAlchemyYoloXTrainingTaskService:
                 },
             )
         )
-        return self.task_service.get_task(task_id, include_events=True)
+        return self.task_service.get_task(task_id, include_events=False)
 
     def resume_training_task(
         self,
@@ -581,7 +581,7 @@ class SqlAlchemyYoloXTrainingTaskService:
                 },
             )
         )
-        return self.task_service.get_task(task_id, include_events=True)
+        return self.task_service.get_task(task_id, include_events=False)
 
     def process_training_task(self, task_id: str) -> YoloXTrainingTaskResult:
         """执行一条已入队的 YOLOX 训练任务。
