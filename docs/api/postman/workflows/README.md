@@ -32,5 +32,7 @@
 - `image-ref.v1` 输入绑定通过 JSON invoke 传入，常见形状是 `{"object_key": "inputs/source.jpg", "media_type": "image/png"}`。
 - `image-base64.v1` 输入绑定通过 JSON invoke 传入，常见形状是 `{"image_base64": "<base64>", "media_type": "image/png"}`；也支持 `data:image/png;base64,...` 形式的单行字符串。
 - `dataset-package.v1` 在 preview run 中使用 JSON 内联 base64 `package_bytes` 表达小型 zip 包；正式 runtime invoke/run 通过 `/invoke/upload` 或 `/runs/upload` 传入，文件字段名必须等于 binding_id。当前 multipart 上传入口只支持这类 zip 包文件输入，不支持把图片文件直接作为 `request_image` 上传。
+- 对于 template 内可以根据上下文自动补齐的默认参数，collection 里的请求体仍优先显式展示关键值，便于排查问题；例如第一类 workflow 的 `training_request_payload.value.warm_start_model_version_id` 会直接写出预训练 model_version_id，而不是只保留 `model_scale`。
+- 对于 `02-*`、`03-*`、`04-*` 这类依赖已有 deployment 的 collection，`Create Preview Run` 只适合校验编排绑定和输入形状。preview run 会在独立 snapshot 子进程中执行，不复用已经由 `Start` 或 `Warmup` 拉起的 deployment supervisor 状态；要验证真实已启动 deployment，请改用 `Invoke App Runtime` 或 `Create Workflow Run`。
 - `workflow-execute-output` 类型的输出会直接出现在 `outputs[binding_id]`；`http-response` 类型的输出会出现在 `outputs[binding_id] = {"status_code": 200, "body": {...}}`。
 - 第一类 collection 的 request_package 默认指向 `projectsrc/datasets/barcodeqrcode.zip`，导入 Postman 后如路径不匹配，需要把文件字段指到该 zip 包的本地路径。

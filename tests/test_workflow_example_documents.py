@@ -314,12 +314,44 @@ def test_yolox_end_to_end_qr_crop_remap_example_documents_are_valid() -> None:
         "extract_import_task_error_message",
         "extract_import_task_detail",
     ]
+    assert template.nodes[5].parameters["path"] == "task_spec.dataset_id"
+    assert template.nodes[6].parameters["path"] == "result.dataset_version_id"
     assert template.nodes[3].parameters["fields"]["include_events"] is False
+    default_warm_start_node = next(
+        node for node in template.nodes if node.node_id == "resolve_default_training_warm_start_model_version_id"
+    )
+    assert default_warm_start_node.node_type_id == "core.logic.match-case"
+    assert default_warm_start_node.parameters["default_value"] is None
+    default_warm_start_request_node = next(
+        node for node in template.nodes if node.node_id == "build_training_default_warm_start_request"
+    )
+    assert default_warm_start_request_node.parameters["keys"] == ["warm_start_model_version_id"]
+    pretrained_case_m_node = next(node for node in template.nodes if node.node_id == "build_training_pretrained_case_m")
+    assert pretrained_case_m_node.parameters["fields"]["condition"]["path"] == "model_scale"
+    assert pretrained_case_m_node.parameters["fields"]["condition"]["right"] == "m"
+    assert pretrained_case_m_node.parameters["fields"]["then"] == "model-version-pretrained-yolox-m"
+    conversion_builds_node = next(node for node in template.nodes if node.node_id == "extract_conversion_builds")
+    assert conversion_builds_node.parameters["path"] == "result.builds"
+    conversion_filter_node = next(node for node in template.nodes if node.node_id == "filter_conversion_tensorrt_builds")
+    assert conversion_filter_node.parameters["condition"]["path"] == "build_format"
+    assert conversion_filter_node.parameters["condition"]["right"] == "tensorrt-engine"
+    conversion_build_id_node = next(node for node in template.nodes if node.node_id == "extract_conversion_model_build_id")
+    assert conversion_build_id_node.node_type_id == "core.logic.list-item-get"
+    assert conversion_build_id_node.parameters["index"] == 0
     deployment_create_node = next(node for node in template.nodes if node.node_id == "create_deployment")
     assert deployment_create_node.parameters["cleanup_on_completion"] is True
     assert template.metadata["example_kind"] == "yolox-end-to-end-qr-crop-remap"
     assert template.metadata["deployment_cleanup_policy"] == "delete_on_completion"
     assert template.metadata["node_groups"]["training"] == [
+        "build_training_pretrained_case_nano",
+        "build_training_pretrained_case_tiny",
+        "build_training_pretrained_case_s",
+        "build_training_pretrained_case_m",
+        "build_training_pretrained_case_l",
+        "build_training_pretrained_case_x",
+        "build_training_pretrained_cases",
+        "resolve_default_training_warm_start_model_version_id",
+        "build_training_default_warm_start_request",
         "build_training_dynamic_request",
         "merge_training_request",
         "submit_training",

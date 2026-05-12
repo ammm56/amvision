@@ -1359,7 +1359,7 @@
             "description": "创建 dataset_export_submit 的编辑态 preview run。",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"project_id\": \"project-1\",\n  \"application_ref\": {\n    \"application_id\": \"dataset-export-submit-app\"\n  },\n  \"input_bindings\": {\n    \"request_payload\": {\n      \"value\": {\n        \"project_id\": \"project-1\",\n        \"dataset_id\": \"dataset-1\",\n        \"dataset_version_id\": \"dataset-version-1\",\n        \"format_id\": \"coco-detection\"\n      }\n    }\n  },\n  \"execution_metadata\": {\n    \"marker\": \"postman-workflow-example-documents-preview\",\n    \"example_name\": \"dataset_export_submit\",\n    \"scenario\": \"dataset-export-submit\",\n    \"trigger_source\": \"editor-preview\"\n  },\n  \"timeout_seconds\": 30\n}",
+              "raw": "{\n  \"project_id\": \"project-1\",\n  \"application_ref\": {\n    \"application_id\": \"dataset-export-submit-app\"\n  },\n  \"input_bindings\": {\n    \"request_payload\": {\n      \"value\": {\n        \"project_id\": \"project-1\",\n        \"dataset_id\": \"dataset-1\",\n        \"dataset_version_id\": \"dataset-version-1\",\n        \"format_id\": \"coco-detection-v1\"\n      }\n    }\n  },\n  \"execution_metadata\": {\n    \"marker\": \"postman-workflow-example-documents-preview\",\n    \"example_name\": \"dataset_export_submit\",\n    \"scenario\": \"dataset-export-submit\",\n    \"trigger_source\": \"editor-preview\"\n  },\n  \"timeout_seconds\": 30\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1609,7 +1609,7 @@
             "description": "同步调用正式 app runtime。",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"input_bindings\": {\n    \"request_payload\": {\n      \"value\": {\n        \"project_id\": \"project-1\",\n        \"dataset_id\": \"dataset-1\",\n        \"dataset_version_id\": \"dataset-version-1\",\n        \"format_id\": \"coco-detection\"\n      }\n    }\n  },\n  \"execution_metadata\": {\n    \"scenario\": \"dataset-export-submit\",\n    \"trigger_source\": \"sync-api\"\n  }\n}",
+              "raw": "{\n  \"input_bindings\": {\n    \"request_payload\": {\n      \"value\": {\n        \"project_id\": \"project-1\",\n        \"dataset_id\": \"dataset-1\",\n        \"dataset_version_id\": \"dataset-version-1\",\n        \"format_id\": \"coco-detection-v1\"\n      }\n    }\n  },\n  \"execution_metadata\": {\n    \"scenario\": \"dataset-export-submit\",\n    \"trigger_source\": \"sync-api\"\n  }\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1676,7 +1676,7 @@
             "description": "创建正式 async workflow run。",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"input_bindings\": {\n    \"request_payload\": {\n      \"value\": {\n        \"project_id\": \"project-1\",\n        \"dataset_id\": \"dataset-1\",\n        \"dataset_version_id\": \"dataset-version-1\",\n        \"format_id\": \"coco-detection\"\n      }\n    }\n  },\n  \"execution_metadata\": {\n    \"scenario\": \"dataset-export-submit\",\n    \"trigger_source\": \"async-api\"\n  }\n}",
+              "raw": "{\n  \"input_bindings\": {\n    \"request_payload\": {\n      \"value\": {\n        \"project_id\": \"project-1\",\n        \"dataset_id\": \"dataset-1\",\n        \"dataset_version_id\": \"dataset-version-1\",\n        \"format_id\": \"coco-detection-v1\"\n      }\n    }\n  },\n  \"execution_metadata\": {\n    \"scenario\": \"dataset-export-submit\",\n    \"trigger_source\": \"async-api\"\n  }\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1935,7 +1935,7 @@
             "description": "创建 dataset_import_upload 的编辑态 preview run。",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"project_id\": \"project-1\",\n  \"application_ref\": {\n    \"application_id\": \"dataset-import-upload-app\"\n  },\n  \"input_bindings\": {\n    \"request_payload\": {\n      \"value\": {\n        \"project_id\": \"project-1\",\n        \"dataset_id\": \"dataset-1\",\n        \"format_type\": \"coco-detection\",\n        \"task_type\": \"detection\"\n      }\n    },\n    \"request_package\": {\n      \"package_file_name\": \"coco-dataset.zip\",\n      \"package_bytes\": \"UEsDBBQAAAAIAPBhq1x+auFxJwAAACUAAAAKAAAAUkVBRE1FLnR4dCsoSi3LTC1XKEhMzk5MT1VIyy9SKM8vyk7LyS9XSK1IzC3ISeUCAFBLAQIUABQAAAAIAPBhq1x+auFxJwAAACUAAAAKAAAAAAAAAAAAAACAAQAAAABSRUFETUUudHh0UEsFBgAAAAABAAEAOAAAAE8AAAAAAA==\",\n      \"media_type\": \"application/zip\"\n    }\n  },\n  \"execution_metadata\": {\n    \"marker\": \"postman-workflow-example-documents-preview\",\n    \"example_name\": \"dataset_import_upload\",\n    \"scenario\": \"dataset-import-upload\",\n    \"trigger_source\": \"editor-preview\"\n  },\n  \"timeout_seconds\": 30\n}",
+              "raw": "{\n  \"project_id\": \"project-1\",\n  \"application_ref\": {\n    \"application_id\": \"dataset-import-upload-app\"\n  },\n  \"input_bindings\": {\n    \"request_payload\": {\n      \"value\": {\n        \"project_id\": \"project-1\",\n        \"dataset_id\": \"dataset-1\",\n        \"format_type\": \"coco\",\n        \"task_type\": \"detection\"\n      }\n    },\n    \"request_package\": {\n      \"package_file_name\": \"coco-dataset.zip\",\n      \"package_bytes\": \"UEsDBBQAAAAIAPBhq1x+auFxJwAAACUAAAAKAAAAUkVBRE1FLnR4dCsoSi3LTC1XKEhMzk5MT1VIyy9SKM8vyk7LyS9XSK1IzC3ISeUCAFBLAQIUABQAAAAIAPBhq1x+auFxJwAAACUAAAAKAAAAAAAAAAAAAACAAQAAAABSRUFETUUudHh0UEsFBgAAAAABAAEAOAAAAE8AAAAAAA==\",\n      \"media_type\": \"application/zip\"\n    }\n  },\n  \"execution_metadata\": {\n    \"marker\": \"postman-workflow-example-documents-preview\",\n    \"example_name\": \"dataset_import_upload\",\n    \"scenario\": \"dataset-import-upload\",\n    \"trigger_source\": \"editor-preview\"\n  },\n  \"timeout_seconds\": 30\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -2185,7 +2185,7 @@
                 {
                   "key": "input_bindings_json",
                   "type": "text",
-                  "value": "{\"request_payload\": {\"value\": {\"project_id\": \"project-1\", \"dataset_id\": \"dataset-1\", \"format_type\": \"coco-detection\", \"task_type\": \"detection\"}}}"
+                  "value": "{\"request_payload\":{\"value\":{\"project_id\":\"project-1\",\"dataset_id\":\"dataset-1\",\"format_type\":\"coco\",\"task_type\":\"detection\"}}}"
                 },
                 {
                   "key": "request_package",
@@ -2259,7 +2259,7 @@
                 {
                   "key": "input_bindings_json",
                   "type": "text",
-                  "value": "{\"request_payload\": {\"value\": {\"project_id\": \"project-1\", \"dataset_id\": \"dataset-1\", \"format_type\": \"coco-detection\", \"task_type\": \"detection\"}}}"
+                  "value": "{\"request_payload\":{\"value\":{\"project_id\":\"project-1\",\"dataset_id\":\"dataset-1\",\"format_type\":\"coco\",\"task_type\":\"detection\"}}}"
                 },
                 {
                   "key": "request_package",

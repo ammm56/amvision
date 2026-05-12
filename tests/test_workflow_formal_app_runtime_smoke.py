@@ -312,9 +312,17 @@ def test_yolox_end_to_end_qr_crop_remap_app_runtime_smoke_returns_slim_stage_sum
     )
 
     def _submit_import_handler(request) -> dict[str, object]:
+        request_payload = request.input_values.get("request")
+        request_value = request_payload.get("value") if isinstance(request_payload, dict) else None
+        assert isinstance(request_value, dict)
+        assert request_value["format_type"] == "coco"
         return {"body": {"task_id": "task-import-1", "status": "received"}}
 
     def _submit_export_handler(request) -> dict[str, object]:
+        request_payload = request.input_values.get("request")
+        request_value = request_payload.get("value") if isinstance(request_payload, dict) else None
+        assert isinstance(request_value, dict)
+        assert request_value["format_id"] == "coco-detection-v1"
         return {
             "body": {
                 "task_id": "task-export-1",
@@ -324,6 +332,11 @@ def test_yolox_end_to_end_qr_crop_remap_app_runtime_smoke_returns_slim_stage_sum
         }
 
     def _submit_training_handler(request) -> dict[str, object]:
+        request_payload = request.input_values.get("request")
+        request_value = request_payload.get("value") if isinstance(request_payload, dict) else None
+        assert isinstance(request_value, dict)
+        assert request_value["model_scale"] == "s"
+        assert request_value["warm_start_model_version_id"] == "model-version-pretrained-yolox-s"
         return {"body": {"task_id": "task-training-1", "status": "queued"}}
 
     def _submit_evaluation_handler(request) -> dict[str, object]:
@@ -344,9 +357,9 @@ def test_yolox_end_to_end_qr_crop_remap_app_runtime_smoke_returns_slim_stage_sum
                 "task_id": "task-import-1",
                 "state": "succeeded",
                 "result": {
-                    "dataset_id": "dataset-1",
                     "dataset_version_id": "dataset-version-1",
                 },
+                    "task_spec": {"dataset_id": "dataset-1"},
                 "error_message": None,
             },
             "task-export-1": {
@@ -370,7 +383,20 @@ def test_yolox_end_to_end_qr_crop_remap_app_runtime_smoke_returns_slim_stage_sum
             "task-conversion-1": {
                 "task_id": "task-conversion-1",
                 "state": "succeeded",
-                "result": {"model_build_id": "model-build-1"},
+                "result": {
+                    "model_build_id": "model-build-onnx-1",
+                    "builds": [
+                        {"model_build_id": "model-build-onnx-1", "build_format": "onnx"},
+                        {
+                            "model_build_id": "model-build-optimized-1",
+                            "build_format": "onnx-optimized",
+                        },
+                        {
+                            "model_build_id": "model-build-tensorrt-1",
+                            "build_format": "tensorrt-engine",
+                        },
+                    ],
+                },
                 "error_message": None,
             },
         }
@@ -411,14 +437,14 @@ def test_yolox_end_to_end_qr_crop_remap_app_runtime_smoke_returns_slim_stage_sum
                     "value": {
                         "project_id": "project-1",
                         "dataset_id": "dataset-1",
-                        "format_type": "coco-detection",
+                        "format_type": "coco",
                     }
                 },
                 "request_package": {
                     "package_file_name": "demo-dataset.zip",
                     "package_bytes": b"demo-zip",
                 },
-                "export_request_payload": {"value": {"project_id": "project-1", "format_id": "yolox"}},
+                "export_request_payload": {"value": {"project_id": "project-1", "format_id": "coco-detection-v1"}},
                 "training_request_payload": {
                     "value": {
                         "project_id": "project-1",
@@ -430,14 +456,18 @@ def test_yolox_end_to_end_qr_crop_remap_app_runtime_smoke_returns_slim_stage_sum
                 "conversion_request_payload": {
                     "value": {
                         "project_id": "project-1",
-                        "target_formats": ["onnx", "openvino-ir"],
+                        "target_formats": ["tensorrt-engine"],
+                        "extra_options": {"tensorrt_engine_precision": "fp16"},
                     }
                 },
                 "deployment_request_payload": {
                     "value": {
                         "project_id": "project-1",
-                        "runtime_backend": "openvino",
-                        "instance_count": 1,
+                        "runtime_backend": "tensorrt",
+                        "device_name": "cuda",
+                        "runtime_precision": "fp16",
+                        "instance_count": 3,
+                        "keep_warm_enabled": True,
                     }
                 },
                 "inference_request_payload": {"value": {"score_threshold": 0.3}},
@@ -470,7 +500,7 @@ def test_yolox_end_to_end_qr_crop_remap_app_runtime_smoke_returns_slim_stage_sum
         "dataset_version_id": "dataset-version-1",
         "dataset_export_id": "dataset-export-1",
         "model_version_id": "model-version-1",
-        "model_build_id": "model-build-1",
+        "model_build_id": "model-build-tensorrt-1",
         "deployment_instance_id": "deployment-instance-1",
     }
     for stage_name in [
@@ -483,11 +513,12 @@ def test_yolox_end_to_end_qr_crop_remap_app_runtime_smoke_returns_slim_stage_sum
         assert set(stages[stage_name]) == {"task_id", "state", "result", "error_message"}
         assert "events" not in stages[stage_name]
     assert stages["training_task"]["result"]["model_version_id"] == "model-version-1"
-    assert stages["conversion_task"]["result"]["model_build_id"] == "model-build-1"
+    assert stages["conversion_task"]["result"]["model_build_id"] == "model-build-onnx-1"
+    assert stages["conversion_task"]["result"]["builds"][-1]["model_build_id"] == "model-build-tensorrt-1"
     assert stages["deployment"]["deployment_instance_id"] == "deployment-instance-1"
     assert response_data["barcode_summary"]["count"] >= 1
     assert "qr-end-to-end-smoke" in response_data["barcode_summary"]["texts"]
-    assert tracked_deployment_service.create_requests[0]["request"].model_build_id == "model-build-1"
+    assert tracked_deployment_service.create_requests[0]["request"].model_build_id == "model-build-tensorrt-1"
     assert tracked_deployment_service.deleted_deployment_ids == ["deployment-instance-1"]
     assert tracked_deployment_service.list_saved_deployment_ids(project_id="project-1") == ()
 
@@ -654,14 +685,14 @@ def _build_end_to_end_input_bindings() -> dict[str, object]:
             "value": {
                 "project_id": "project-1",
                 "dataset_id": "dataset-1",
-                "format_type": "coco-detection",
+                "format_type": "coco",
             }
         },
         "request_package": {
             "package_file_name": "demo-dataset.zip",
             "package_bytes": b"demo-zip",
         },
-        "export_request_payload": {"value": {"project_id": "project-1", "format_id": "yolox"}},
+        "export_request_payload": {"value": {"project_id": "project-1", "format_id": "coco-detection-v1"}},
         "training_request_payload": {
             "value": {
                 "project_id": "project-1",
@@ -673,14 +704,18 @@ def _build_end_to_end_input_bindings() -> dict[str, object]:
         "conversion_request_payload": {
             "value": {
                 "project_id": "project-1",
-                "target_formats": ["onnx", "openvino-ir"],
+                "target_formats": ["tensorrt-engine"],
+                "extra_options": {"tensorrt_engine_precision": "fp16"},
             }
         },
         "deployment_request_payload": {
             "value": {
                 "project_id": "project-1",
-                "runtime_backend": "openvino",
-                "instance_count": 1,
+                "runtime_backend": "tensorrt",
+                "device_name": "cuda",
+                "runtime_precision": "fp16",
+                "instance_count": 3,
+                "keep_warm_enabled": True,
             }
         },
         "inference_request_payload": {"value": {"score_threshold": 0.3}},
@@ -733,9 +768,9 @@ def _install_end_to_end_submit_chain_runtime_overrides(
                 "task_id": "task-import-1",
                 "state": "succeeded",
                 "result": {
-                    "dataset_id": "dataset-1",
                     "dataset_version_id": "dataset-version-1",
                 },
+                    "task_spec": {"dataset_id": "dataset-1"},
                 "error_message": None,
             },
             "task-export-1": {
@@ -759,7 +794,20 @@ def _install_end_to_end_submit_chain_runtime_overrides(
             "task-conversion-1": {
                 "task_id": "task-conversion-1",
                 "state": "succeeded",
-                "result": {"model_build_id": "model-build-1"},
+                "result": {
+                    "model_build_id": "model-build-onnx-1",
+                    "builds": [
+                        {"model_build_id": "model-build-onnx-1", "build_format": "onnx"},
+                        {
+                            "model_build_id": "model-build-optimized-1",
+                            "build_format": "onnx-optimized",
+                        },
+                        {
+                            "model_build_id": "model-build-tensorrt-1",
+                            "build_format": "tensorrt-engine",
+                        },
+                    ],
+                },
                 "error_message": None,
             },
         }
@@ -816,8 +864,8 @@ class _TrackedDeploymentService(SqlAlchemyYoloXDeploymentService):
             project_id=request.project_id,
             model_id="model-1",
             model_version_id=request.model_version_id or "model-version-1",
-            model_build_id=request.model_build_id or "model-build-1",
-            runtime_backend=request.runtime_backend or "openvino",
+            model_build_id=request.model_build_id or "model-build-tensorrt-1",
+            runtime_backend=request.runtime_backend or "tensorrt",
             device_name=request.device_name or "cpu",
             instance_count=request.instance_count,
             status="active",
@@ -845,8 +893,11 @@ class _TrackedDeploymentService(SqlAlchemyYoloXDeploymentService):
             runtime_profile_id=None,
             runtime_backend=deployment_instance.runtime_backend,
             device_name=deployment_instance.device_name,
-            runtime_precision="fp32",
-            runtime_execution_mode="openvino:fp32:cpu",
+            runtime_precision=request.runtime_precision or "fp16",
+            runtime_execution_mode=(
+                f"{deployment_instance.runtime_backend}:{request.runtime_precision or 'fp16'}:"
+                f"{deployment_instance.device_name}"
+            ),
             instance_count=deployment_instance.instance_count,
             input_size=(640, 640),
             labels=("qr",),

@@ -46,7 +46,7 @@
         "node_id": "extract_import_dataset_id",
         "node_type_id": "core.logic.field-extract",
         "parameters": {
-          "path": "result.dataset_id"
+          "path": "task_spec.dataset_id"
         }
       },
       {
@@ -198,6 +198,111 @@
         "node_id": "training_request_input",
         "node_type_id": "core.io.template-input.object",
         "parameters": {}
+      },
+      {
+        "node_id": "build_training_pretrained_case_nano",
+        "node_type_id": "core.logic.object-create",
+        "parameters": {
+          "fields": {
+            "condition": {
+              "operator": "eq",
+              "path": "model_scale",
+              "right": "nano"
+            },
+            "then": "model-version-pretrained-yolox-nano"
+          }
+        }
+      },
+      {
+        "node_id": "build_training_pretrained_case_tiny",
+        "node_type_id": "core.logic.object-create",
+        "parameters": {
+          "fields": {
+            "condition": {
+              "operator": "eq",
+              "path": "model_scale",
+              "right": "tiny"
+            },
+            "then": "model-version-pretrained-yolox-tiny"
+          }
+        }
+      },
+      {
+        "node_id": "build_training_pretrained_case_s",
+        "node_type_id": "core.logic.object-create",
+        "parameters": {
+          "fields": {
+            "condition": {
+              "operator": "eq",
+              "path": "model_scale",
+              "right": "s"
+            },
+            "then": "model-version-pretrained-yolox-s"
+          }
+        }
+      },
+      {
+        "node_id": "build_training_pretrained_case_m",
+        "node_type_id": "core.logic.object-create",
+        "parameters": {
+          "fields": {
+            "condition": {
+              "operator": "eq",
+              "path": "model_scale",
+              "right": "m"
+            },
+            "then": "model-version-pretrained-yolox-m"
+          }
+        }
+      },
+      {
+        "node_id": "build_training_pretrained_case_l",
+        "node_type_id": "core.logic.object-create",
+        "parameters": {
+          "fields": {
+            "condition": {
+              "operator": "eq",
+              "path": "model_scale",
+              "right": "l"
+            },
+            "then": "model-version-pretrained-yolox-l"
+          }
+        }
+      },
+      {
+        "node_id": "build_training_pretrained_case_x",
+        "node_type_id": "core.logic.object-create",
+        "parameters": {
+          "fields": {
+            "condition": {
+              "operator": "eq",
+              "path": "model_scale",
+              "right": "x"
+            },
+            "then": "model-version-pretrained-yolox-x"
+          }
+        }
+      },
+      {
+        "node_id": "build_training_pretrained_cases",
+        "node_type_id": "core.logic.list-create",
+        "parameters": {}
+      },
+      {
+        "node_id": "resolve_default_training_warm_start_model_version_id",
+        "node_type_id": "core.logic.match-case",
+        "parameters": {
+          "default_value": null
+        }
+      },
+      {
+        "node_id": "build_training_default_warm_start_request",
+        "node_type_id": "core.logic.object-create",
+        "parameters": {
+          "keys": [
+            "warm_start_model_version_id"
+          ]
+        }
       },
       {
         "node_id": "build_training_dynamic_request",
@@ -473,10 +578,35 @@
         }
       },
       {
-        "node_id": "extract_conversion_model_build_id",
+        "node_id": "extract_conversion_builds",
         "node_type_id": "core.logic.field-extract",
         "parameters": {
-          "path": "result.model_build_id"
+          "path": "result.builds"
+        }
+      },
+      {
+        "node_id": "filter_conversion_tensorrt_builds",
+        "node_type_id": "core.logic.list-filter",
+        "parameters": {
+          "condition": {
+            "operator": "eq",
+            "path": "build_format",
+            "right": "tensorrt-engine"
+          }
+        }
+      },
+      {
+        "node_id": "map_conversion_tensorrt_model_build_ids",
+        "node_type_id": "core.logic.list-map",
+        "parameters": {
+          "path": "model_build_id"
+        }
+      },
+      {
+        "node_id": "extract_conversion_model_build_id",
+        "node_type_id": "core.logic.list-item-get",
+        "parameters": {
+          "index": 0
         }
       },
       {
@@ -912,6 +1042,76 @@
         "target_port": "values"
       },
       {
+        "edge_id": "edge-training-request-match-default-warm-start",
+        "source_node_id": "training_request_input",
+        "source_port": "value",
+        "target_node_id": "resolve_default_training_warm_start_model_version_id",
+        "target_port": "value"
+      },
+      {
+        "edge_id": "edge-training-pretrained-case-nano-list",
+        "source_node_id": "build_training_pretrained_case_nano",
+        "source_port": "value",
+        "target_node_id": "build_training_pretrained_cases",
+        "target_port": "items"
+      },
+      {
+        "edge_id": "edge-training-pretrained-case-tiny-list",
+        "source_node_id": "build_training_pretrained_case_tiny",
+        "source_port": "value",
+        "target_node_id": "build_training_pretrained_cases",
+        "target_port": "items"
+      },
+      {
+        "edge_id": "edge-training-pretrained-case-s-list",
+        "source_node_id": "build_training_pretrained_case_s",
+        "source_port": "value",
+        "target_node_id": "build_training_pretrained_cases",
+        "target_port": "items"
+      },
+      {
+        "edge_id": "edge-training-pretrained-case-m-list",
+        "source_node_id": "build_training_pretrained_case_m",
+        "source_port": "value",
+        "target_node_id": "build_training_pretrained_cases",
+        "target_port": "items"
+      },
+      {
+        "edge_id": "edge-training-pretrained-case-l-list",
+        "source_node_id": "build_training_pretrained_case_l",
+        "source_port": "value",
+        "target_node_id": "build_training_pretrained_cases",
+        "target_port": "items"
+      },
+      {
+        "edge_id": "edge-training-pretrained-case-x-list",
+        "source_node_id": "build_training_pretrained_case_x",
+        "source_port": "value",
+        "target_node_id": "build_training_pretrained_cases",
+        "target_port": "items"
+      },
+      {
+        "edge_id": "edge-training-pretrained-cases-match",
+        "source_node_id": "build_training_pretrained_cases",
+        "source_port": "value",
+        "target_node_id": "resolve_default_training_warm_start_model_version_id",
+        "target_port": "cases"
+      },
+      {
+        "edge_id": "edge-training-default-warm-start-build-request",
+        "source_node_id": "resolve_default_training_warm_start_model_version_id",
+        "source_port": "value",
+        "target_node_id": "build_training_default_warm_start_request",
+        "target_port": "values"
+      },
+      {
+        "edge_id": "edge-training-request-merge-default-warm-start",
+        "source_node_id": "build_training_default_warm_start_request",
+        "source_port": "value",
+        "target_node_id": "merge_training_request",
+        "target_port": "objects"
+      },
+      {
         "edge_id": "edge-training-request-merge-base",
         "source_node_id": "training_request_input",
         "source_port": "value",
@@ -1234,11 +1434,32 @@
         "target_port": "values"
       },
       {
-        "edge_id": "edge-wait-conversion-model-build-id",
+        "edge_id": "edge-wait-conversion-builds",
         "source_node_id": "wait_conversion",
         "source_port": "body",
-        "target_node_id": "extract_conversion_model_build_id",
+        "target_node_id": "extract_conversion_builds",
         "target_port": "body"
+      },
+      {
+        "edge_id": "edge-conversion-builds-filter-tensorrt",
+        "source_node_id": "extract_conversion_builds",
+        "source_port": "value",
+        "target_node_id": "filter_conversion_tensorrt_builds",
+        "target_port": "items"
+      },
+      {
+        "edge_id": "edge-filtered-conversion-builds-map-model-build-id",
+        "source_node_id": "filter_conversion_tensorrt_builds",
+        "source_port": "value",
+        "target_node_id": "map_conversion_tensorrt_model_build_ids",
+        "target_port": "items"
+      },
+      {
+        "edge_id": "edge-conversion-model-build-id-list-pick-first",
+        "source_node_id": "map_conversion_tensorrt_model_build_ids",
+        "source_port": "value",
+        "target_node_id": "extract_conversion_model_build_id",
+        "target_port": "items"
       },
       {
         "edge_id": "edge-training-model-version-id-build-deployment-request",
@@ -1661,6 +1882,15 @@
           "wait_export"
         ],
         "training": [
+          "build_training_pretrained_case_nano",
+          "build_training_pretrained_case_tiny",
+          "build_training_pretrained_case_s",
+          "build_training_pretrained_case_m",
+          "build_training_pretrained_case_l",
+          "build_training_pretrained_case_x",
+          "build_training_pretrained_cases",
+          "resolve_default_training_warm_start_model_version_id",
+          "build_training_default_warm_start_request",
           "build_training_dynamic_request",
           "merge_training_request",
           "submit_training",

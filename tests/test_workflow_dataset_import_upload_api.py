@@ -82,7 +82,7 @@ def test_workflow_app_runtime_invoke_upload_submits_dataset_import_package(tmp_p
                                 "value": {
                                     "project_id": "project-1",
                                     "dataset_id": "dataset-1",
-                                    "format_type": "coco-detection",
+                                    "format_type": "coco",
                                     "task_type": "detection",
                                 }
                             }
@@ -122,7 +122,7 @@ def test_workflow_app_runtime_invoke_upload_submits_dataset_import_package(tmp_p
     assert import_body["package_path"].endswith("package.zip")
     assert request_payload["project_id"] == "project-1"
     assert request_payload["dataset_id"] == "dataset-1"
-    assert request_payload["format_type"] == "coco-detection"
+    assert request_payload["format_type"] == "coco"
     assert request_package_payload["package_file_name"] == "coco-dataset.zip"
     assert request_package_payload["package_bytes"]["binary_redacted"] is True
     assert request_package_payload["package_bytes"]["byte_length"] > 0
@@ -169,7 +169,7 @@ def test_workflow_preview_run_accepts_dataset_package_base64_payload(tmp_path: P
                             "value": {
                                 "project_id": "project-1",
                                 "dataset_id": "dataset-1",
-                                "format_type": "coco-detection",
+                                "format_type": "coco",
                                 "task_type": "detection",
                             }
                         },

@@ -8,7 +8,7 @@
       "value": {
         "project_id": "project-1",
         "dataset_id": "dataset-1",
-        "format_type": "coco-detection",
+        "format_type": "coco",
         "task_type": "detection"
       }
     },

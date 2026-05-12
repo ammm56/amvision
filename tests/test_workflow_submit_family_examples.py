@@ -45,20 +45,20 @@ from backend.service.infrastructure.object_store.local_dataset_storage import Da
                 queue_name="dataset-exports",
                 queue_task_id="queue-dataset-export-1",
                 dataset_version_id="replace-with-dataset-version-id",
-                format_id="coco-detection",
+                format_id="coco-detection-v1",
                 status="queued",
             ),
             {
                 "project_id": "project-1",
                 "dataset_id": "dataset-1",
                 "dataset_version_id": "dataset-version-1",
-                "format_id": "coco-detection",
+                "format_id": "coco-detection-v1",
             },
             {
                 "project_id": "project-1",
                 "dataset_id": "dataset-1",
                 "dataset_version_id": "dataset-version-1",
-                "format_id": "coco-detection",
+                "format_id": "coco-detection-v1",
             },
             id="dataset-export",
         ),
@@ -74,7 +74,7 @@ from backend.service.infrastructure.object_store.local_dataset_storage import Da
                 dataset_export_id="replace-with-dataset-export-id",
                 dataset_export_manifest_key="exports/manifest.json",
                 dataset_version_id="dataset-version-1",
-                format_id="coco-detection",
+                format_id="coco-detection-v1",
             ),
                 {
                     "project_id": "project-1",
@@ -104,7 +104,7 @@ from backend.service.infrastructure.object_store.local_dataset_storage import Da
                 dataset_export_id="replace-with-dataset-export-id",
                 dataset_export_manifest_key="exports/manifest.json",
                 dataset_version_id="dataset-version-1",
-                format_id="coco-detection",
+                format_id="coco-detection-v1",
                 model_version_id="replace-with-model-version-id",
             ),
                 {
@@ -240,7 +240,7 @@ def test_yolox_evaluation_package_example_preview_run_waits_and_returns_package_
                 dataset_export_id="dataset-export-1",
                 dataset_export_manifest_key="exports/manifest.json",
                 dataset_version_id="dataset-version-1",
-                format_id="coco-detection",
+                format_id="coco-detection-v1",
                 model_version_id="model-version-1",
             )
 

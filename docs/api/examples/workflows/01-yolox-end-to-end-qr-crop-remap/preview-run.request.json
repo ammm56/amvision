@@ -15,7 +15,7 @@
     "export_request_payload": {
       "value": {
         "project_id": "project-1",
-        "format_id": "coco-detection"
+        "format_id": "coco-detection-v1"
       }
     },
     "training_request_payload": {
@@ -23,9 +23,10 @@
         "project_id": "project-1",
         "recipe_id": "recipe-1",
         "model_scale": "m",
+        "warm_start_model_version_id": "model-version-pretrained-yolox-m",
         "output_model_name": "barcodeqrcode-detector-m",
         "evaluation_interval": 5,
-        "max_epochs": 10,
+        "max_epochs": 6,
         "batch_size": 8,
         "gpu_count": 1,
         "precision": "fp16"

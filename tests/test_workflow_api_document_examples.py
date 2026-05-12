@@ -396,10 +396,13 @@ def test_workflow_api_standard_app_runtime_examples_are_valid(
         assert "request_package" in input_binding_ids
         assert invoke_request["content_type"] == "multipart/form-data"
         assert invoke_request["input_bindings_json"]["request_payload"]["value"]["project_id"] == "project-1"
+        assert invoke_request["input_bindings_json"]["request_payload"]["value"]["format_type"] == "coco"
         assert invoke_request["files"]["request_package"]["content_type"] == "application/zip"
     elif example_name == "dataset_export_package":
         assert invoke_request["input_bindings"]["request_payload"]["value"]["dataset_export_id"] == "dataset-export-1"
         assert invoke_request["input_bindings"]["request_payload"]["value"]["rebuild"] is False
+    elif example_name == "dataset_export_submit":
+        assert invoke_request["input_bindings"]["request_payload"]["value"]["format_id"] == "coco-detection-v1"
     else:
         assert invoke_request["input_bindings"]["request_payload"]["value"]["project_id"] == "project-1"
 
@@ -475,11 +478,21 @@ def test_workflow_api_image_app_runtime_examples_are_valid(
     input_binding_ids = {binding.binding_id for binding in application.bindings if binding.direction == "input"}
     if uses_existing_deployment_instance:
         assert input_binding_ids == {"request_image", "deployment_request"}
+        assert set(invoke_request["input_bindings"]) == input_binding_ids
+        assert set(run_create_request["input_bindings"]) == input_binding_ids
         assert invoke_request["input_bindings"]["deployment_request"]["value"]["deployment_instance_id"] == (
             "{{deploymentInstanceId}}"
         )
+        assert invoke_request["input_bindings"]["deployment_request"]["value"] == {
+            "deployment_instance_id": "{{deploymentInstanceId}}"
+        }
+        assert run_create_request["input_bindings"]["deployment_request"]["value"] == {
+            "deployment_instance_id": "{{deploymentInstanceId}}"
+        }
     else:
         assert input_binding_ids == {"request_image"}
+        assert set(invoke_request["input_bindings"]) == {"request_image"}
+        assert set(run_create_request["input_bindings"]) == {"request_image"}
     assert invoke_request["input_bindings"]["request_image"]["media_type"] == "image/png"
     assert invoke_request["execution_metadata"]["scenario"] == expected_example_kind
     assert run_create_request["execution_metadata"]["scenario"] == expected_example_kind
@@ -490,6 +503,7 @@ def test_workflow_api_image_app_runtime_examples_are_valid(
 def test_workflow_api_end_to_end_qr_crop_remap_app_runtime_examples_are_valid() -> None:
     """验证第一类完整端到端正式 app 的 create 与 invoke API 示例请求体。"""
 
+    template_request = _read_api_workflow_example("yolox_end_to_end_qr_crop_remap", "save-template.request.json")
     application = FlowApplication.model_validate(
         json.loads(
             (DOCS_WORKFLOW_EXAMPLE_DIR / "yolox_end_to_end_qr_crop_remap.application.json").read_text(
@@ -504,6 +518,37 @@ def test_workflow_api_end_to_end_qr_crop_remap_app_runtime_examples_are_valid() 
 
     assert application.application_id == "yolox-end-to-end-qr-crop-remap-app"
     assert application.metadata["example_kind"] == "yolox-end-to-end-qr-crop-remap"
+    assert template_request["template"]["nodes"][5]["node_id"] == "extract_import_dataset_id"
+    assert template_request["template"]["nodes"][5]["parameters"]["path"] == "task_spec.dataset_id"
+    default_warm_start_node = next(
+        node
+        for node in template_request["template"]["nodes"]
+        if node["node_id"] == "resolve_default_training_warm_start_model_version_id"
+    )
+    assert default_warm_start_node["node_type_id"] == "core.logic.match-case"
+    assert default_warm_start_node["parameters"]["default_value"] is None
+    pretrained_case_m_node = next(
+        node for node in template_request["template"]["nodes"] if node["node_id"] == "build_training_pretrained_case_m"
+    )
+    assert pretrained_case_m_node["parameters"]["fields"]["condition"]["path"] == "model_scale"
+    assert pretrained_case_m_node["parameters"]["fields"]["condition"]["right"] == "m"
+    assert pretrained_case_m_node["parameters"]["fields"]["then"] == "model-version-pretrained-yolox-m"
+    conversion_builds_node = next(
+        node for node in template_request["template"]["nodes"] if node["node_id"] == "extract_conversion_builds"
+    )
+    assert conversion_builds_node["parameters"]["path"] == "result.builds"
+    conversion_filter_node = next(
+        node for node in template_request["template"]["nodes"] if node["node_id"] == "filter_conversion_tensorrt_builds"
+    )
+    assert conversion_filter_node["parameters"]["condition"]["path"] == "build_format"
+    assert conversion_filter_node["parameters"]["condition"]["right"] == "tensorrt-engine"
+    conversion_model_build_id_node = next(
+        node
+        for node in template_request["template"]["nodes"]
+        if node["node_id"] == "extract_conversion_model_build_id"
+    )
+    assert conversion_model_build_id_node["node_type_id"] == "core.logic.list-item-get"
+    assert conversion_model_build_id_node["parameters"]["index"] == 0
     assert create_request["application_id"] == application.application_id
     assert "execution_policy_id" not in create_request
     assert create_request["metadata"]["example_kind"] == "yolox-end-to-end-qr-crop-remap"
@@ -528,10 +573,14 @@ def test_workflow_api_end_to_end_qr_crop_remap_app_runtime_examples_are_valid() 
     assert input_bindings_json["import_request_payload"]["value"]["project_id"] == "project-1"
     assert input_bindings_json["import_request_payload"]["value"]["dataset_id"] == "barcodeqrcode-dataset"
     assert input_bindings_json["import_request_payload"]["value"]["format_type"] == "voc"
-    assert input_bindings_json["export_request_payload"]["value"]["format_id"] == "coco-detection"
+    assert input_bindings_json["export_request_payload"]["value"]["format_id"] == "coco-detection-v1"
     assert input_bindings_json["training_request_payload"]["value"]["model_scale"] == "m"
+    assert (
+        input_bindings_json["training_request_payload"]["value"]["warm_start_model_version_id"]
+        == "model-version-pretrained-yolox-m"
+    )
     assert input_bindings_json["training_request_payload"]["value"]["evaluation_interval"] == 5
-    assert input_bindings_json["training_request_payload"]["value"]["max_epochs"] == 10
+    assert input_bindings_json["training_request_payload"]["value"]["max_epochs"] == 6
     assert input_bindings_json["training_request_payload"]["value"]["batch_size"] == 8
     assert input_bindings_json["training_request_payload"]["value"]["gpu_count"] == 1
     assert input_bindings_json["training_request_payload"]["value"]["precision"] == "fp16"
@@ -576,6 +625,7 @@ def test_workflow_postman_directory_contains_ordered_formal_workflow_collections
     assert "image-ref.v1" in readme_text
     assert "image-base64.v1" in readme_text
     assert "当前 multipart 上传入口只支持这类 zip 包文件输入" in readme_text
+    assert "preview run 会在独立 snapshot 子进程中执行" in readme_text
     assert 'outputs[binding_id] = {"status_code": 200, "body": {...}}' in readme_text
 
 
@@ -596,6 +646,7 @@ def test_workflow_api_examples_are_classified_by_numbered_directories() -> None:
         "05-opencv-process-save-image",
     ]
     assert "后续完整示例按 `06-*`" in readme_text
+    assert "preview run 会在独立 snapshot 子进程中执行" in readme_text
     for example_name, folder in WORKFLOW_API_EXAMPLE_FOLDERS.items():
         example_dir = API_WORKFLOW_EXAMPLE_DIR / folder
         assert (example_dir / "save-template.request.json").is_file(), example_name
@@ -763,6 +814,15 @@ def test_formal_workflow_postman_collections_match_api_examples(
     assert request_names == COMPLETE_WORKFLOW_REQUEST_NAMES
     assert create_preview_request["url"]["raw"] == "{{baseUrl}}/api/v1/workflows/preview-runs"
     assert json.loads(request_payloads["Create App Runtime"]) == create_example
+
+    if collection_dir in {
+        "02-yolox-deployment-sync-infer-health",
+        "03-yolox-deployment-qr-crop-remap",
+        "04-yolox-deployment-infer-opencv-health",
+    }:
+        assert "独立 snapshot 子进程" in create_preview_request["description"]
+        assert "Invoke App Runtime" in create_preview_request["description"]
+        assert "Create Workflow Run" in create_preview_request["description"]
 
     if multipart_invoke:
         assert invoke_request["url"]["raw"].endswith("/invoke/upload")

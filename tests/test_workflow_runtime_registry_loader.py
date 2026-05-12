@@ -319,7 +319,7 @@ def test_core_training_service_node_uses_runtime_context(
                 dataset_export_id="dataset-export-1",
                 dataset_export_manifest_key="exports/manifest.json",
                 dataset_version_id="dataset-version-1",
-                format_id="coco-detection",
+                format_id="coco-detection-v1",
             )
 
     monkeypatch.setattr(
@@ -420,7 +420,7 @@ def test_core_dataset_export_package_service_node_uses_runtime_context_and_regis
                 export_path="exports/dataset-export-1",
                 manifest_object_key="exports/dataset-export-1/manifest.json",
                 package_object_key=str(package_object_key),
-                package_file_name="dataset-1-coco-detection-dataset-export-1.zip",
+                package_file_name="dataset-1-coco-detection-v1-dataset-export-1.zip",
                 package_size=256,
                 packaged_at="2026-05-09T00:00:00+00:00",
             )
