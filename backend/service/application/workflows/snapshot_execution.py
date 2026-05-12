@@ -24,11 +24,19 @@ from backend.nodes import ExecutionImageRegistry
 from backend.nodes.local_node_pack_loader import LocalNodePackLoader
 from backend.nodes.node_catalog_registry import NodeCatalogRegistry
 from backend.queue import LocalFileQueueBackend
+from backend.service.application.deployments import (
+    PublishedInferenceGateway,
+    PublishedInferenceGatewayClient,
+    PublishedInferenceGatewayDispatcher,
+    PublishedInferenceGatewayEventChannel,
+)
 from backend.service.application.errors import OperationTimeoutError, ServiceConfigurationError, ServiceError
+from backend.service.application.local_buffers import LocalBufferBrokerClient, LocalBufferBrokerEventChannel
 from backend.service.application.workflows.execution_cleanup import (
     WORKFLOW_EXECUTION_CLEANUP_KIND_DATASET_STORAGE_OBJECT,
     WORKFLOW_EXECUTION_CLEANUP_KIND_DATASET_STORAGE_TREE,
     WORKFLOW_EXECUTION_CLEANUP_KIND_DEPLOYMENT_INSTANCE,
+    WORKFLOW_EXECUTION_CLEANUP_KIND_LOCAL_BUFFER_LEASE,
     WorkflowExecutionCleanupItem,
     execute_registered_execution_cleanups,
 )
@@ -155,6 +163,8 @@ class SnapshotExecutionService:
         execution_metadata_payload.setdefault("workflow_run_id", uuid4().hex)
         execution_metadata_payload["dataset_storage"] = self.dataset_storage
         execution_metadata_payload.setdefault("execution_image_registry", ExecutionImageRegistry())
+        if self.runtime_context.local_buffer_reader is not None:
+            execution_metadata_payload.setdefault("local_buffer_reader", self.runtime_context.local_buffer_reader)
         execution_error: Exception | None = None
         try:
             graph_execution_result = WorkflowGraphExecutor(registry=self.runtime_registry).execute(
@@ -174,6 +184,7 @@ class SnapshotExecutionService:
                     WORKFLOW_EXECUTION_CLEANUP_KIND_DATASET_STORAGE_OBJECT: _cleanup_dataset_storage_object,
                     WORKFLOW_EXECUTION_CLEANUP_KIND_DATASET_STORAGE_TREE: _cleanup_dataset_storage_tree,
                     WORKFLOW_EXECUTION_CLEANUP_KIND_DEPLOYMENT_INSTANCE: _cleanup_registered_deployment,
+                    WORKFLOW_EXECUTION_CLEANUP_KIND_LOCAL_BUFFER_LEASE: _cleanup_local_buffer_lease,
                 },
             )
             if cleanup_error is not None and execution_error is None:
@@ -257,6 +268,51 @@ def _cleanup_dataset_storage_tree(
     )
 
 
+def _cleanup_local_buffer_lease(
+    *,
+    cleanup: WorkflowExecutionCleanupItem,
+    runtime_context: WorkflowServiceNodeRuntimeContext,
+) -> list[dict[str, object]]:
+    """释放一条登记过的 LocalBufferBroker lease。"""
+
+    local_buffer_reader = runtime_context.require_local_buffer_reader()
+    release = getattr(local_buffer_reader, "release", None)
+    if not callable(release):
+        return [
+            {
+                "resource_kind": cleanup.resource_kind,
+                "resource_id": cleanup.resource_id,
+                "action": "release",
+                "error_code": "local_buffer_release_not_supported",
+                "error_message": "当前 LocalBufferBroker reader 不支持 release",
+            }
+        ]
+    pool_name = cleanup.metadata.get("pool_name")
+    try:
+        release(cleanup.resource_id, pool_name=pool_name if isinstance(pool_name, str) else None)
+    except ServiceError as exc:
+        return [
+            {
+                "resource_kind": cleanup.resource_kind,
+                "resource_id": cleanup.resource_id,
+                "action": "release",
+                "error_code": exc.code,
+                "error_message": exc.message,
+            }
+        ]
+    except Exception as exc:  # pragma: no cover - 依赖 broker I/O 失败场景，优先由行为测试覆盖
+        return [
+            {
+                "resource_kind": cleanup.resource_kind,
+                "resource_id": cleanup.resource_id,
+                "action": "release",
+                "error_code": "local_buffer_release_failed",
+                "error_message": str(exc) or exc.__class__.__name__,
+            }
+        ]
+    return []
+
+
 def _cleanup_dataset_storage_path(
     *,
     cleanup: WorkflowExecutionCleanupItem,
@@ -324,16 +380,22 @@ class WorkflowSnapshotProcessExecutor:
         *,
         settings: BackendServiceSettings,
         request_timeout_seconds: float = 60.0,
+        local_buffer_broker_event_channel: LocalBufferBrokerEventChannel | None = None,
+        published_inference_gateway: PublishedInferenceGateway | None = None,
     ) -> None:
         """初始化 snapshot 隔离进程执行器。
 
         参数：
         - settings：backend-service 当前使用的统一配置。
         - request_timeout_seconds：等待子进程返回执行结果的最长秒数。
+        - local_buffer_broker_event_channel：可选的 LocalBufferBroker 事件通道。
+        - published_inference_gateway：可选的父进程 PublishedInferenceGateway。
         """
 
         self.settings = _resolve_backend_service_settings(settings)
         self.request_timeout_seconds = max(0.1, request_timeout_seconds)
+        self.local_buffer_broker_event_channel = local_buffer_broker_event_channel
+        self.published_inference_gateway = published_inference_gateway
         self._context = multiprocessing.get_context("spawn")
 
     def execute(
@@ -350,6 +412,10 @@ class WorkflowSnapshotProcessExecutor:
         """
 
         response_queue: Queue[Any] = self._context.Queue()
+        gateway_channel = self._build_published_inference_gateway_channel()
+        gateway_dispatcher = self._build_published_inference_gateway_dispatcher(gateway_channel)
+        if gateway_dispatcher is not None:
+            gateway_dispatcher.start()
         process = self._context.Process(
             target=run_workflow_snapshot_process_worker,
             kwargs={
@@ -362,6 +428,8 @@ class WorkflowSnapshotProcessExecutor:
                     "input_bindings": dict(request.input_bindings),
                     "execution_metadata": dict(request.execution_metadata),
                 },
+                "local_buffer_broker_event_channel": self.local_buffer_broker_event_channel,
+                "published_inference_gateway_event_channel": gateway_channel,
                 "response_queue": response_queue,
             },
             name=f"workflow-snapshot-{request.application_id}",
@@ -388,8 +456,33 @@ class WorkflowSnapshotProcessExecutor:
 
             return deserialize_snapshot_execution_result(message)
         finally:
+            if gateway_dispatcher is not None:
+                gateway_dispatcher.stop()
+            _close_local_buffer_broker_channel(self.local_buffer_broker_event_channel)
+            _close_gateway_channel(gateway_channel)
             response_queue.close()
             response_queue.join_thread()
+
+    def _build_published_inference_gateway_channel(self) -> PublishedInferenceGatewayEventChannel | None:
+        """为当前 preview 子进程创建 PublishedInferenceGateway 事件通道。"""
+
+        if self.published_inference_gateway is None:
+            return None
+        return PublishedInferenceGatewayEventChannel(
+            request_queue=self._context.Queue(),
+            response_queue=self._context.Queue(),
+            request_timeout_seconds=self.request_timeout_seconds,
+        )
+
+    def _build_published_inference_gateway_dispatcher(
+        self,
+        channel: PublishedInferenceGatewayEventChannel | None,
+    ) -> PublishedInferenceGatewayDispatcher | None:
+        """为当前 preview 子进程创建父进程 gateway dispatcher。"""
+
+        if channel is None or self.published_inference_gateway is None:
+            return None
+        return PublishedInferenceGatewayDispatcher(channel=channel, gateway=self.published_inference_gateway)
 
 
 def run_workflow_snapshot_process_worker(
@@ -397,6 +490,8 @@ def run_workflow_snapshot_process_worker(
     settings_payload: dict[str, object],
     request_payload: dict[str, object],
     response_queue: Queue[Any],
+    local_buffer_broker_event_channel: LocalBufferBrokerEventChannel | None = None,
+    published_inference_gateway_event_channel: PublishedInferenceGatewayEventChannel | None = None,
 ) -> None:
     """workflow snapshot 子进程入口。"""
 
@@ -408,6 +503,8 @@ def run_workflow_snapshot_process_worker(
         session_factory = SessionFactory(settings.to_database_settings())
         dataset_storage = LocalDatasetStorage(settings.to_dataset_storage_settings())
         queue_backend = LocalFileQueueBackend(settings.to_queue_settings())
+        local_buffer_reader = _build_local_buffer_reader(local_buffer_broker_event_channel)
+        published_inference_gateway = _build_published_inference_gateway(published_inference_gateway_event_channel)
         node_pack_loader = LocalNodePackLoader(settings.custom_nodes.root_dir)
         node_pack_loader.refresh()
         node_catalog_registry = NodeCatalogRegistry(node_pack_loader=node_pack_loader)
@@ -420,11 +517,13 @@ def run_workflow_snapshot_process_worker(
             dataset_storage_root_dir=str(dataset_storage.root_dir),
             runtime_mode="sync",
             settings=settings.deployment_process_supervisor,
+            local_buffer_broker_event_channel=local_buffer_reader.channel if local_buffer_reader is not None else None,
         )
         async_supervisor = YoloXDeploymentProcessSupervisor(
             dataset_storage_root_dir=str(dataset_storage.root_dir),
             runtime_mode="async",
             settings=settings.deployment_process_supervisor,
+            local_buffer_broker_event_channel=local_buffer_reader.channel if local_buffer_reader is not None else None,
         )
         sync_supervisor.start()
         async_supervisor.start()
@@ -434,6 +533,8 @@ def run_workflow_snapshot_process_worker(
             queue_backend=queue_backend,
             yolox_sync_deployment_process_supervisor=sync_supervisor,
             yolox_async_deployment_process_supervisor=async_supervisor,
+            local_buffer_reader=local_buffer_reader,
+            published_inference_gateway=published_inference_gateway,
         )
         execution_result = SnapshotExecutionService(
             dataset_storage=dataset_storage,
@@ -492,8 +593,48 @@ def run_workflow_snapshot_process_worker(
             sync_supervisor.stop()
         if async_supervisor is not None:
             async_supervisor.stop()
+        if local_buffer_reader is not None:
+            local_buffer_reader.close()
         if session_factory is not None:
             session_factory.engine.dispose()
+
+
+def _build_local_buffer_reader(
+    channel: LocalBufferBrokerEventChannel | None,
+) -> LocalBufferBrokerClient | None:
+    """按事件通道创建 LocalBufferBroker client。"""
+
+    if channel is None:
+        return None
+    return LocalBufferBrokerClient(channel)
+
+
+def _build_published_inference_gateway(
+    channel: PublishedInferenceGatewayEventChannel | None,
+) -> PublishedInferenceGatewayClient | None:
+    """按事件通道创建 PublishedInferenceGateway client。"""
+
+    if channel is None:
+        return None
+    return PublishedInferenceGatewayClient(channel)
+
+
+def _close_gateway_channel(channel: PublishedInferenceGatewayEventChannel | None) -> None:
+    """关闭 preview 父进程持有的 gateway 队列。"""
+
+    if channel is None:
+        return
+    for queue in (channel.request_queue, channel.response_queue):
+        queue.close()
+        queue.join_thread()
+
+
+def _close_local_buffer_broker_channel(channel: LocalBufferBrokerEventChannel | None) -> None:
+    """关闭 preview 父进程持有的 LocalBufferBroker client channel。"""
+
+    if channel is None:
+        return
+    LocalBufferBrokerClient(channel).close()
 
 
 def serialize_snapshot_execution_result(

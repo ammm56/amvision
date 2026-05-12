@@ -20,6 +20,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 DOCS_WORKFLOW_EXAMPLE_DIR = REPO_ROOT / "docs" / "examples" / "workflows"
 API_WORKFLOW_EXAMPLE_DIR = REPO_ROOT / "docs" / "api" / "examples" / "workflows"
 POSTMAN_WORKFLOW_DIR = REPO_ROOT / "docs" / "api" / "postman" / "workflows"
+ARCHITECTURE_DIR = REPO_ROOT / "docs" / "architecture"
 
 SHORT_WORKFLOW_EXAMPLE_NAMES = [
     "barcode_result_display",
@@ -624,8 +625,11 @@ def test_workflow_postman_directory_contains_ordered_formal_workflow_collections
     assert "Create Workflow Run / Get Workflow Run" in readme_text
     assert "image-ref.v1" in readme_text
     assert "image-base64.v1" in readme_text
+    assert "buffer_ref" in readme_text
+    assert "frame_ref" in readme_text
+    assert "不写入当前通用 Postman 请求体" in readme_text
     assert "当前 multipart 上传入口只支持这类 zip 包文件输入" in readme_text
-    assert "preview run 会在独立 snapshot 子进程中执行" in readme_text
+    assert "已接入 LocalBufferBroker direct mmap 数据面和 PublishedInferenceGateway 事件 dispatcher" in readme_text
     assert 'outputs[binding_id] = {"status_code": 200, "body": {...}}' in readme_text
 
 
@@ -646,7 +650,10 @@ def test_workflow_api_examples_are_classified_by_numbered_directories() -> None:
         "05-opencv-process-save-image",
     ]
     assert "后续完整示例按 `06-*`" in readme_text
-    assert "preview run 会在独立 snapshot 子进程中执行" in readme_text
+    assert "已接入 LocalBufferBroker direct mmap 数据面和 PublishedInferenceGateway 事件 dispatcher" in readme_text
+    assert "BufferRef" in readme_text
+    assert "FrameRef" in readme_text
+    assert "不适合作为固定 checked-in 请求体" in readme_text
     for example_name, folder in WORKFLOW_API_EXAMPLE_FOLDERS.items():
         example_dir = API_WORKFLOW_EXAMPLE_DIR / folder
         assert (example_dir / "save-template.request.json").is_file(), example_name
@@ -655,6 +662,45 @@ def test_workflow_api_examples_are_classified_by_numbered_directories() -> None:
         assert (example_dir / "app-runtime.create.request.json").is_file(), example_name
         assert (example_dir / "app-runtime.invoke.request.json").is_file(), example_name
         assert (example_dir / "app-runtime.run.create.request.json").is_file(), example_name
+
+
+def test_local_buffer_broker_architecture_document_is_indexed() -> None:
+    """验证 LocalBufferBroker 架构规划已接入文档入口和通信边界说明。"""
+
+    document_text = (ARCHITECTURE_DIR / "local-buffer-broker.md").read_text(encoding="utf-8")
+    architecture_readme_text = (ARCHITECTURE_DIR / "README.md").read_text(encoding="utf-8")
+    docs_readme_text = (REPO_ROOT / "docs" / "README.md").read_text(encoding="utf-8")
+    workflow_examples_readme_text = (DOCS_WORKFLOW_EXAMPLE_DIR / "README.md").read_text(encoding="utf-8")
+    communication_text = (REPO_ROOT / "docs" / "api" / "communication-contracts.md").read_text(
+        encoding="utf-8"
+    )
+    trigger_sources_text = (REPO_ROOT / "docs" / "api" / "workflow-trigger-sources.md").read_text(
+        encoding="utf-8"
+    )
+
+    assert "# LocalBufferBroker 规划" in document_text
+    assert "Broker + mmap 文件池" in document_text
+    assert "本机独立 companion process" in document_text
+    assert "写入采用两阶段状态" in document_text
+    assert "broker_epoch" in document_text
+    assert "mmap ring buffer channel" in document_text
+    assert "PublishedInferenceGateway" in document_text
+    assert "LocalBufferBroker" in architecture_readme_text
+    assert "LocalBufferBroker" in docs_readme_text
+    assert "docs/examples/workflows/README.md" in docs_readme_text
+    assert "LocalBufferBroker 用于本机内部隔离进程之间的大图" in communication_text
+    assert "BufferRef" in workflow_examples_readme_text
+    assert "FrameRef" in workflow_examples_readme_text
+    assert "不适合作为 checked-in 示例中的固定请求体" in workflow_examples_readme_text
+    assert "ZeroMQ 可作为 workstation 或 standalone 场景下的高速外部触发" in trigger_sources_text
+    assert "HTTP JSON invoke 是当前已公开" in trigger_sources_text
+    assert "本地 adapter 收到图像或帧后先写入 LocalBufferBroker" in trigger_sources_text
+    assert "PublishedInferenceGateway" in trigger_sources_text
+    assert "outputs[\"http_response\"]" in trigger_sources_text
+    assert "FrameRef 的有效期很短" in trigger_sources_text
+    assert "当前可用性核查" in document_text
+    assert "示例与节点同步规则" in document_text
+    assert "WorkflowTriggerSource 资源和本地 adapter SDK 尚未公开实现" in document_text
 
 
 def test_workflow_example_documents_postman_collection_contains_remaining_debug_examples() -> None:
@@ -820,9 +866,9 @@ def test_formal_workflow_postman_collections_match_api_examples(
         "03-yolox-deployment-qr-crop-remap",
         "04-yolox-deployment-infer-opencv-health",
     }:
-        assert "独立 snapshot 子进程" in create_preview_request["description"]
-        assert "Invoke App Runtime" in create_preview_request["description"]
-        assert "Create Workflow Run" in create_preview_request["description"]
+        assert "已接入 LocalBufferBroker direct mmap 数据面和 PublishedInferenceGateway 事件 dispatcher" in create_preview_request["description"]
+        assert "backend-service 持有的长期运行 deployment worker" in create_preview_request["description"]
+        assert "BufferRef / FrameRef" in create_preview_request["description"]
 
     if multipart_invoke:
         assert invoke_request["url"]["raw"].endswith("/invoke/upload")

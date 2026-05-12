@@ -10,6 +10,7 @@ from typing import Any, Callable
 from uuid import uuid4
 
 from backend.service.application.errors import InvalidRequestError, ServiceConfigurationError
+from backend.service.application.local_buffers import LocalBufferBrokerClient, LocalBufferBrokerEventChannel
 from backend.service.application.runtime.deployment_process_settings import (
     DeploymentProcessSupervisorConfig,
 )
@@ -163,6 +164,7 @@ class YoloXDeploymentProcessHealth:
     - pinned_output_total_bytes：当前所有已加载 session 的 pinned output host buffer 总字节数。
     - instances：实例级健康状态列表。
     - keep_warm：当前 keep-warm 运行状态。
+    - local_buffer_broker：deployment worker 内 LocalBufferBroker 接入与输入计数摘要。
     """
 
     deployment_instance_id: str
@@ -181,6 +183,7 @@ class YoloXDeploymentProcessHealth:
     pinned_output_total_bytes: int = 0
     instances: tuple[YoloXDeploymentProcessInstanceHealth, ...] = ()
     keep_warm: YoloXDeploymentProcessKeepWarmStatus | None = None
+    local_buffer_broker: dict[str, object] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -210,6 +213,7 @@ class _DeploymentProcessState:
     process: Any | None = None
     request_queue: Any | None = None
     response_queue: Any | None = None
+    local_buffer_broker_event_channel: LocalBufferBrokerEventChannel | None = None
     response_thread: Thread | None = None
     response_stop_event: Event = field(default_factory=Event, repr=False)
     pending_responses: dict[str, _PendingResponse] = field(default_factory=dict)
@@ -229,6 +233,8 @@ class YoloXDeploymentProcessSupervisor:
         dataset_storage_root_dir: str,
         runtime_mode: str,
         settings: DeploymentProcessSupervisorConfig,
+        local_buffer_broker_event_channel: LocalBufferBrokerEventChannel | None = None,
+        local_buffer_broker_event_channel_provider: Callable[[], LocalBufferBrokerEventChannel | None] | None = None,
         worker_target: Callable[..., None] = run_yolox_deployment_process_worker,
     ) -> None:
         """初始化 deployment 进程监督器。
@@ -237,12 +243,16 @@ class YoloXDeploymentProcessSupervisor:
         - dataset_storage_root_dir：本地文件存储根目录。
         - runtime_mode：监督器所属通道；sync 或 async。
         - settings：监督器运行配置。
+        - local_buffer_broker_event_channel：固定的 broker 事件通道。
+        - local_buffer_broker_event_channel_provider：启动子进程时读取 broker 事件通道的函数。
         - worker_target：子进程入口函数；测试时可替换为 fake worker。
         """
 
         self.dataset_storage_root_dir = dataset_storage_root_dir
         self.runtime_mode = runtime_mode
         self.settings = settings
+        self.local_buffer_broker_event_channel = local_buffer_broker_event_channel
+        self.local_buffer_broker_event_channel_provider = local_buffer_broker_event_channel_provider
         self.worker_target = worker_target
         self._context = multiprocessing.get_context("spawn")
         self._deployments: dict[str, _DeploymentProcessState] = {}
@@ -358,6 +368,7 @@ class YoloXDeploymentProcessSupervisor:
             payload={
                 "input_uri": request.input_uri,
                 "input_image_bytes": request.input_image_bytes,
+                "input_image_payload": dict(request.input_image_payload or {}),
                 "score_threshold": request.score_threshold,
                 "save_result_image": request.save_result_image,
                 "extra_options": dict(request.extra_options),
@@ -473,16 +484,20 @@ class YoloXDeploymentProcessSupervisor:
         request_queue = self._context.Queue()
         response_queue = self._context.Queue()
         state.response_stop_event.clear()
+        worker_kwargs: dict[str, object] = {
+            "config": state.config,
+            "dataset_storage_root_dir": self.dataset_storage_root_dir,
+            "request_queue": request_queue,
+            "response_queue": response_queue,
+            "operator_thread_count": self.settings.operator_thread_count,
+            "supervisor_settings": self.settings.model_dump(mode="python"),
+        }
+        local_buffer_broker_event_channel = self._resolve_local_buffer_broker_event_channel()
+        if local_buffer_broker_event_channel is not None:
+            worker_kwargs["local_buffer_broker_event_channel"] = local_buffer_broker_event_channel
         process = self._context.Process(
             target=self.worker_target,
-            kwargs={
-                "config": state.config,
-                "dataset_storage_root_dir": self.dataset_storage_root_dir,
-                "request_queue": request_queue,
-                "response_queue": response_queue,
-                "operator_thread_count": self.settings.operator_thread_count,
-                "supervisor_settings": self.settings.model_dump(mode="python"),
-            },
+            kwargs=worker_kwargs,
             name=f"{self.runtime_mode}-{state.config.deployment_instance_id}",
             daemon=True,
         )
@@ -490,6 +505,7 @@ class YoloXDeploymentProcessSupervisor:
         state.process = process
         state.request_queue = request_queue
         state.response_queue = response_queue
+        state.local_buffer_broker_event_channel = local_buffer_broker_event_channel
         state.started_at_monotonic = monotonic()
         state.last_exit_code = None
         state.response_thread = Thread(
@@ -535,6 +551,8 @@ class YoloXDeploymentProcessSupervisor:
         state.process = None
         state.request_queue = None
         state.response_queue = None
+        _close_local_buffer_broker_event_channel(state.local_buffer_broker_event_channel)
+        state.local_buffer_broker_event_channel = None
         state.response_thread = None
         state.started_at_monotonic = None
         for pending in state.pending_responses.values():
@@ -590,6 +608,13 @@ class YoloXDeploymentProcessSupervisor:
             process = state.process
             return process is not None and process.is_alive()
 
+    def _resolve_local_buffer_broker_event_channel(self) -> LocalBufferBrokerEventChannel | None:
+        """返回当前应传给 deployment worker 的 broker 事件通道。"""
+
+        if self.local_buffer_broker_event_channel_provider is not None:
+            return self.local_buffer_broker_event_channel_provider()
+        return self.local_buffer_broker_event_channel
+
     def _build_status(self, state: _DeploymentProcessState) -> YoloXDeploymentProcessStatus:
         """根据内部监督状态构建公开 status 响应。"""
 
@@ -642,6 +667,9 @@ class YoloXDeploymentProcessSupervisor:
                 last_error=status.last_error,
             )
         keep_warm_payload = payload.get("keep_warm") if isinstance(payload.get("keep_warm"), dict) else None
+        local_buffer_broker_payload = (
+            payload.get("local_buffer_broker") if isinstance(payload.get("local_buffer_broker"), dict) else {}
+        )
         instances_payload = payload.get("instances") if isinstance(payload.get("instances"), list) else []
         instances = tuple(
             YoloXDeploymentProcessInstanceHealth(
@@ -672,6 +700,7 @@ class YoloXDeploymentProcessSupervisor:
             pinned_output_total_bytes=_read_response_optional_int(payload, "pinned_output_total_bytes") or 0,
             instances=instances,
             keep_warm=_deserialize_keep_warm_status(keep_warm_payload),
+            local_buffer_broker=dict(local_buffer_broker_payload),
         )
 
     @staticmethod
@@ -685,6 +714,14 @@ class YoloXDeploymentProcessSupervisor:
                 "instance_count 必须大于 0",
                 details={"instance_count": config.instance_count},
             )
+
+
+def _close_local_buffer_broker_event_channel(channel: LocalBufferBrokerEventChannel | None) -> None:
+    """关闭 deployment worker 对应的 broker client channel。"""
+
+    if channel is None:
+        return
+    LocalBufferBrokerClient(channel).close()
 
 
 def _build_config_signature(config: YoloXDeploymentProcessConfig) -> tuple[object, ...]:

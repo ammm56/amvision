@@ -29,9 +29,9 @@
 - 本项目是独立视觉处理后端服务，不承担相机、PLC、IO 传感器、机械臂等外部硬件的直接连接和驱动职责
 - 图像、视频流、任务触发、结果回传和联动信号通过界面或外部系统经协议交互完成
 - 上位机、采集系统、MES、PLC 网关、设备代理系统等属于外部系统，本项目只定义协议边界和集成接口规则
-- 上位机和其他外部系统原则上与前端共用同一套公开通信规则，即 REST API、WebSocket 和版本化接口规则
+- 上位机和其他外部系统可按部署场景使用 REST API、WebSocket、ZeroMQ、gRPC、MQTT、PLC、IO 或传感器触发入口，所有入口都应落到版本化资源、任务或 workflow 运行记录
 - 设备集成在本文档中指“与外部系统的协议协作”，不指“项目直接接入硬件”
-- 在 standalone 或 workstation 的同机本地部署中，可按需要补充 ZeroMQ 作为本地进程间通信方式，但不替代公开接口边界
+- 在 standalone 或 workstation 的同机本地部署中，ZeroMQ 可作为高速触发和图片提交入口；本机内部大图数据交换优先通过 LocalBufferBroker、mmap 文件池和后续 ring buffer 承接
 - 如确有现场直连相机、PLC、传感器等需求，应通过独立插件在受控边界中实现，而不是进入核心平台主链路
 
 ## 方案总览
@@ -74,9 +74,9 @@ frontend/web-ui    protocol integration boundary
                                   v                          v
                                runtimes                 本地基础设施与外部系统协议端点
                                   |
-                                                                                         | 同机本地部署时可补充 ZeroMQ 进程间通信
+                                                                                         | 高速触发入口 / 本机 Buffer 引用
                                                                                          v
-                                                                                 local ipc
+                                                                                 protocol adapters / LocalBufferBroker
                                                                                          |
                                   v
                          custom_nodes / assets / packaging
@@ -154,7 +154,8 @@ frontend/web-ui    protocol integration boundary
 - 浏览器前端与后端服务之间是标准前后端分离关系，不共享内部模块实现
 - 上位机、MES、采集系统和其他外部系统通过与前端一致的公开边界接入后端
 - REST API 用来做请求响应，WebSocket 用来推送状态、日志和任务事件
-- ZeroMQ 只用于同机本地部署中的进程间高频通信或低开销消息传递，不作为对外公开接口规则
+- ZeroMQ 可作为 workstation 或 standalone 场景下的高速触发和图片提交入口
+- LocalBufferBroker 用于 workflow 隔离进程、发布推理 worker 和本地 adapter 之间的大图、连续帧和中间结果引用传递，详细规划见 [docs/architecture/local-buffer-broker.md](local-buffer-broker.md)
 
 ## 整体流程
 

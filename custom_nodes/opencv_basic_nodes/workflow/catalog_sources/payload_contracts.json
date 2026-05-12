@@ -14,7 +14,9 @@
               "type": "string",
               "enum": [
                 "memory",
-                "storage"
+                "storage",
+                "buffer",
+                "frame"
               ]
             },
             "object_key": {
@@ -22,6 +24,12 @@
             },
             "image_handle": {
               "type": "string"
+            },
+            "buffer_ref": {
+              "type": "object"
+            },
+            "frame_ref": {
+              "type": "object"
             },
             "width": {
               "type": "integer"
@@ -56,6 +64,26 @@
               },
               "required": [
                 "image_handle"
+              ]
+            },
+            {
+              "properties": {
+                "transport_kind": {
+                  "const": "buffer"
+                }
+              },
+              "required": [
+                "buffer_ref"
+              ]
+            },
+            {
+              "properties": {
+                "transport_kind": {
+                  "const": "frame"
+                }
+              },
+              "required": [
+                "frame_ref"
               ]
             }
           ]
@@ -127,7 +155,9 @@
               "type": "string",
               "enum": [
                 "memory",
-                "storage"
+                "storage",
+                "buffer",
+                "frame"
               ]
             },
             "object_key": {
@@ -135,6 +165,12 @@
             },
             "image_handle": {
               "type": "string"
+            },
+            "buffer_ref": {
+              "type": "object"
+            },
+            "frame_ref": {
+              "type": "object"
             },
             "width": {
               "type": "integer"
@@ -169,6 +205,26 @@
               },
               "required": [
                 "image_handle"
+              ]
+            },
+            {
+              "properties": {
+                "transport_kind": {
+                  "const": "buffer"
+                }
+              },
+              "required": [
+                "buffer_ref"
+              ]
+            },
+            {
+              "properties": {
+                "transport_kind": {
+                  "const": "frame"
+                }
+              },
+              "required": [
+                "frame_ref"
               ]
             }
           ]

@@ -23,6 +23,7 @@
 - [docs/architecture/node-system.md](node-system.md)：节点系统、node pack 边界、custom node 模型和 ComfyUI 对齐方向
 - [docs/architecture/workflow-json-contracts.md](workflow-json-contracts.md)：NodeDefinition、payload contract、图模板与流程应用 JSON 合同
 - [docs/architecture/data-and-files.md](data-and-files.md)：关键对象、文件引用和版本关系
+- [docs/architecture/local-buffer-broker.md](local-buffer-broker.md)：LocalBufferBroker 本机高性能数据交换层，规划 Broker、mmap 文件池、ring buffer 和 workflow 推理调用边界
 - [docs/architecture/dataset-import-spec.md](dataset-import-spec.md)：DatasetImport、通用数据格式、任务类型格式矩阵和数据集导出规范
 - [docs/architecture/dataset-export-formats.md](dataset-export-formats.md)：数据集导出格式列表、格式命名和模型默认格式映射
 - [docs/architecture/runtime-packaging.md](runtime-packaging.md)：开发运行时、同目录 Python 发布运行时和发行装配结构
@@ -57,7 +58,8 @@
 13. [docs/architecture/node-system.md](node-system.md)
 14. [docs/architecture/workflow-json-contracts.md](workflow-json-contracts.md)
 15. [docs/architecture/data-and-files.md](data-and-files.md)
-16. [docs/architecture/dataset-import-spec.md](dataset-import-spec.md)
-17. [docs/architecture/dataset-export-formats.md](dataset-export-formats.md)
-18. [docs/architecture/runtime-packaging.md](runtime-packaging.md)
-19. 按任务继续进入集成规则或日志专题文档
+16. [docs/architecture/local-buffer-broker.md](local-buffer-broker.md)
+17. [docs/architecture/dataset-import-spec.md](dataset-import-spec.md)
+18. [docs/architecture/dataset-export-formats.md](dataset-export-formats.md)
+19. [docs/architecture/runtime-packaging.md](runtime-packaging.md)
+20. 按任务继续进入集成规则或日志专题文档

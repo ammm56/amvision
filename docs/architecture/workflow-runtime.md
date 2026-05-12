@@ -23,6 +23,7 @@
 - 每个 workflow app instance 默认独占一个子进程，实例之间不共享 Python 运行时、不共享节点模块状态、不共享执行上下文。
 - backend-service 保持控制面职责，负责资源创建、查询、健康观察、同步等待和路由分发，不再直接执行 workflow 图。
 - workflow runtime 不替代训练、转换、评估、导出和推理 worker；workflow 内部的 service 节点仍继续调用现有服务边界和任务系统。
+- workflow 进程如果需要调用已经发布的推理服务，应通过 PublishedInferenceGateway 和 LocalBufferBroker 传递图片引用，不直接持有 deployment supervisor 或模型 session。
 - PLC 读写、运动控制、传感器接入、结果上报等能力继续作为 custom node 或 node pack 的实现，不在 workflow runtime 外面再加一层硬件权限控制。
 - 如果现场需要仿真、空跑或联调，应使用 simulate 节点、mock 节点或模拟 node pack，而不是由 workflow 统一拦截硬件操作。
 - VLM、LLM、agent 和人格能力可以进入 workflow 编排，但应以受控节点或受控子运行时接入，不把当前 DAG 执行器扩成无边界循环代理引擎。
@@ -93,6 +94,15 @@
 - 当某个 workflow run 在执行过程中需要再次读取 PLC、传感器或其他外部状态时，应通过节点表达该读取动作，而不是把长期监听职责塞进 workflow 首节点。
 - runtime instance 的职责是执行已创建的 WorkflowRun，不应在没有 run 的情况下长期空转轮询外部世界。
 - 这种分层可以把外部监听、执行隔离、快照固定、回滚和审计边界稳定下来，避免随着节点数量增加把“触发器”和“业务图”混成同一类控制逻辑。
+
+## 与 LocalBufferBroker 的关系
+
+- LocalBufferBroker 是本机内部数据交换层，不是新的 workflow 触发入口。
+- trigger source、HTTP、ZeroMQ、gRPC、MQTT、PLC、IO 和传感器入口负责创建 PreviewRun、WorkflowRun 或 runtime invoke 请求。
+- 大图、连续帧和需要跨隔离进程复用的中间结果进入 LocalBufferBroker 后，以 BufferRef 或 FrameRef 传给 workflow 节点和发布推理 worker。
+- preview run 继续保持一请求一子进程；已发布 workflow runtime 继续保持长期独立 worker；已发布推理服务继续保持长期 deployment worker。
+- workflow 节点通过 PublishedInferenceGateway 调用已发布推理服务，不直接依赖 deployment worker 的父进程内存状态。
+- 详细规划见 [docs/architecture/local-buffer-broker.md](local-buffer-broker.md)。
 
 ## 资源模型
 

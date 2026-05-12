@@ -8,6 +8,7 @@ import mimetypes
 from pathlib import PurePosixPath
 from uuid import uuid4
 
+from backend.contracts.buffers import BufferRef, FrameRef
 from backend.service.application.errors import InvalidRequestError, ServiceConfigurationError
 from backend.service.application.workflows.execution_cleanup import register_dataset_storage_object_cleanup
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
@@ -16,6 +17,8 @@ from backend.service.infrastructure.object_store.local_dataset_storage import Lo
 
 IMAGE_TRANSPORT_MEMORY = "memory"
 IMAGE_TRANSPORT_STORAGE = "storage"
+IMAGE_TRANSPORT_BUFFER = "buffer"
+IMAGE_TRANSPORT_FRAME = "frame"
 RESPONSE_IMAGE_TRANSPORT_INLINE_BASE64 = "inline-base64"
 RESPONSE_IMAGE_TRANSPORT_STORAGE_REF = "storage-ref"
 
@@ -49,12 +52,14 @@ class ResolvedImageInput:
 
     字段：
     - payload：规范化后的 image-ref payload。
-    - transport_kind：图片传输方式，支持 memory 或 storage。
+    - transport_kind：图片传输方式，支持 memory、storage、buffer 或 frame。
     - media_type：图片媒体类型。
     - width：图片宽度。
     - height：图片高度。
     - object_key：storage 模式下的本地 object key。
     - image_handle：memory 模式下的执行期图片句柄。
+    - buffer_ref：buffer 模式下的 LocalBufferBroker 引用。
+    - frame_ref：frame 模式下的 LocalBufferBroker 帧引用。
     """
 
     payload: dict[str, object]
@@ -64,6 +69,8 @@ class ResolvedImageInput:
     height: int | None = None
     object_key: str | None = None
     image_handle: str | None = None
+    buffer_ref: BufferRef | None = None
+    frame_ref: FrameRef | None = None
 
 
 class ExecutionImageRegistry:
@@ -222,14 +229,25 @@ def require_image_payload(payload: object) -> dict[str, object]:
     normalized_transport_kind = transport_kind.strip() if isinstance(transport_kind, str) else ""
     object_key = normalized_payload.get("object_key")
     image_handle = normalized_payload.get("image_handle")
+    buffer_ref_value = normalized_payload.get("buffer_ref")
+    frame_ref_value = normalized_payload.get("frame_ref")
 
     if not normalized_transport_kind:
         if isinstance(object_key, str) and object_key.strip():
             normalized_transport_kind = IMAGE_TRANSPORT_STORAGE
         elif isinstance(image_handle, str) and image_handle.strip():
             normalized_transport_kind = IMAGE_TRANSPORT_MEMORY
+        elif buffer_ref_value is not None:
+            normalized_transport_kind = IMAGE_TRANSPORT_BUFFER
+        elif frame_ref_value is not None:
+            normalized_transport_kind = IMAGE_TRANSPORT_FRAME
 
-    if normalized_transport_kind not in {IMAGE_TRANSPORT_MEMORY, IMAGE_TRANSPORT_STORAGE}:
+    if normalized_transport_kind not in {
+        IMAGE_TRANSPORT_MEMORY,
+        IMAGE_TRANSPORT_STORAGE,
+        IMAGE_TRANSPORT_BUFFER,
+        IMAGE_TRANSPORT_FRAME,
+    }:
         raise InvalidRequestError("image-ref payload 缺少有效 transport_kind")
 
     normalized_payload["transport_kind"] = normalized_transport_kind
@@ -241,7 +259,7 @@ def require_image_payload(payload: object) -> dict[str, object]:
         media_type = normalized_payload.get("media_type")
         if not isinstance(media_type, str) or not media_type.strip():
             normalized_payload["media_type"] = infer_media_type(normalized_payload["object_key"])
-    else:
+    elif normalized_transport_kind == IMAGE_TRANSPORT_MEMORY:
         if not isinstance(image_handle, str) or not image_handle.strip():
             raise InvalidRequestError("memory image-ref payload 缺少有效 image_handle")
         normalized_payload["image_handle"] = image_handle.strip()
@@ -250,6 +268,38 @@ def require_image_payload(payload: object) -> dict[str, object]:
         if not isinstance(media_type, str) or not media_type.strip():
             raise InvalidRequestError("memory image-ref payload 缺少有效 media_type")
         normalized_payload["media_type"] = media_type.strip()
+    elif normalized_transport_kind == IMAGE_TRANSPORT_BUFFER:
+        buffer_ref = _require_buffer_ref_payload(buffer_ref_value)
+        _apply_media_type_from_ref(
+            normalized_payload,
+            ref_media_type=buffer_ref.media_type,
+            transport_kind=IMAGE_TRANSPORT_BUFFER,
+        )
+        _apply_dimensions_from_ref_shape(
+            normalized_payload,
+            shape=buffer_ref.shape,
+            layout=buffer_ref.layout,
+        )
+        normalized_payload["buffer_ref"] = buffer_ref.model_dump(mode="json")
+        normalized_payload.pop("object_key", None)
+        normalized_payload.pop("image_handle", None)
+        normalized_payload.pop("frame_ref", None)
+    else:
+        frame_ref = _require_frame_ref_payload(frame_ref_value)
+        _apply_media_type_from_ref(
+            normalized_payload,
+            ref_media_type=frame_ref.media_type,
+            transport_kind=IMAGE_TRANSPORT_FRAME,
+        )
+        _apply_dimensions_from_ref_shape(
+            normalized_payload,
+            shape=frame_ref.shape,
+            layout=frame_ref.layout,
+        )
+        normalized_payload["frame_ref"] = frame_ref.model_dump(mode="json")
+        normalized_payload.pop("object_key", None)
+        normalized_payload.pop("image_handle", None)
+        normalized_payload.pop("buffer_ref", None)
 
     normalized_width = _normalize_optional_dimension(normalized_payload.get("width"))
     normalized_height = _normalize_optional_dimension(normalized_payload.get("height"))
@@ -262,6 +312,74 @@ def require_image_payload(payload: object) -> dict[str, object]:
     else:
         normalized_payload["height"] = normalized_height
     return normalized_payload
+
+
+def _require_buffer_ref_payload(payload: object) -> BufferRef:
+    """校验并返回 BufferRef。"""
+
+    if isinstance(payload, BufferRef):
+        return payload
+    if not isinstance(payload, dict):
+        raise InvalidRequestError("buffer image-ref payload 缺少有效 buffer_ref")
+    try:
+        return BufferRef.model_validate(payload)
+    except ValueError as exc:
+        raise InvalidRequestError(
+            "buffer image-ref payload 缺少有效 buffer_ref",
+            details={"error": str(exc)},
+        ) from exc
+
+
+def _require_frame_ref_payload(payload: object) -> FrameRef:
+    """校验并返回 FrameRef。"""
+
+    if isinstance(payload, FrameRef):
+        return payload
+    if not isinstance(payload, dict):
+        raise InvalidRequestError("frame image-ref payload 缺少有效 frame_ref")
+    try:
+        return FrameRef.model_validate(payload)
+    except ValueError as exc:
+        raise InvalidRequestError(
+            "frame image-ref payload 缺少有效 frame_ref",
+            details={"error": str(exc)},
+        ) from exc
+
+
+def _apply_media_type_from_ref(
+    payload: dict[str, object],
+    *,
+    ref_media_type: str,
+    transport_kind: str,
+) -> None:
+    """按 BufferRef 或 FrameRef 统一 media_type。"""
+
+    normalized_media_type = _normalize_optional_text(payload.get("media_type"))
+    if normalized_media_type is not None and normalized_media_type != ref_media_type:
+        raise InvalidRequestError(
+            "image-ref payload media_type 与底层引用不一致",
+            details={"transport_kind": transport_kind, "media_type": normalized_media_type},
+        )
+    payload["media_type"] = ref_media_type
+
+
+def _apply_dimensions_from_ref_shape(
+    payload: dict[str, object],
+    *,
+    shape: tuple[int, ...],
+    layout: str | None,
+) -> None:
+    """在未显式提供宽高时尝试从 raw 图像 shape 推断。"""
+
+    if payload.get("width") is not None or payload.get("height") is not None:
+        return
+    normalized_layout = layout.strip().upper() if isinstance(layout, str) else ""
+    if normalized_layout == "HWC" and len(shape) >= 2:
+        payload["height"] = shape[0]
+        payload["width"] = shape[1]
+    elif normalized_layout == "CHW" and len(shape) >= 3:
+        payload["height"] = shape[1]
+        payload["width"] = shape[2]
 
 
 def resolve_image_reference(
@@ -288,6 +406,12 @@ def resolve_image_reference(
         height=_normalize_optional_dimension(payload.get("height")),
         object_key=_normalize_optional_text(payload.get("object_key")),
         image_handle=_normalize_optional_text(payload.get("image_handle")),
+        buffer_ref=BufferRef.model_validate(payload["buffer_ref"])
+        if payload.get("buffer_ref") is not None
+        else None,
+        frame_ref=FrameRef.model_validate(payload["frame_ref"])
+        if payload.get("frame_ref") is not None
+        else None,
     )
 
 
@@ -359,14 +483,21 @@ def load_image_bytes_from_payload(
     - tuple[dict[str, object], bytes]：规范化 payload 与图片字节。
     """
 
+    normalized_payload = require_image_payload(image_payload)
     resolved_image = ResolvedImageInput(
-        payload=require_image_payload(image_payload),
-        transport_kind=str(require_image_payload(image_payload)["transport_kind"]),
-        media_type=str(require_image_payload(image_payload)["media_type"]),
-        width=_normalize_optional_dimension(require_image_payload(image_payload).get("width")),
-        height=_normalize_optional_dimension(require_image_payload(image_payload).get("height")),
-        object_key=_normalize_optional_text(require_image_payload(image_payload).get("object_key")),
-        image_handle=_normalize_optional_text(require_image_payload(image_payload).get("image_handle")),
+        payload=normalized_payload,
+        transport_kind=str(normalized_payload["transport_kind"]),
+        media_type=str(normalized_payload["media_type"]),
+        width=_normalize_optional_dimension(normalized_payload.get("width")),
+        height=_normalize_optional_dimension(normalized_payload.get("height")),
+        object_key=_normalize_optional_text(normalized_payload.get("object_key")),
+        image_handle=_normalize_optional_text(normalized_payload.get("image_handle")),
+        buffer_ref=BufferRef.model_validate(normalized_payload["buffer_ref"])
+        if normalized_payload.get("buffer_ref") is not None
+        else None,
+        frame_ref=FrameRef.model_validate(normalized_payload["frame_ref"])
+        if normalized_payload.get("frame_ref") is not None
+        else None,
     )
     if resolved_image.transport_kind == IMAGE_TRANSPORT_STORAGE:
         dataset_storage = require_dataset_storage(request)
@@ -379,9 +510,51 @@ def load_image_bytes_from_payload(
             )
         return dict(resolved_image.payload), source_path.read_bytes()
 
-    image_registry = require_execution_image_registry(request)
-    assert resolved_image.image_handle is not None
-    return dict(resolved_image.payload), image_registry.read_bytes(resolved_image.image_handle)
+    if resolved_image.transport_kind == IMAGE_TRANSPORT_MEMORY:
+        image_registry = require_execution_image_registry(request)
+        assert resolved_image.image_handle is not None
+        return dict(resolved_image.payload), image_registry.read_bytes(resolved_image.image_handle)
+
+    local_buffer_reader = require_local_buffer_reader(request)
+    if resolved_image.transport_kind == IMAGE_TRANSPORT_BUFFER:
+        assert resolved_image.buffer_ref is not None
+        return dict(resolved_image.payload), local_buffer_reader.read_buffer_ref(resolved_image.buffer_ref)
+    if resolved_image.transport_kind == IMAGE_TRANSPORT_FRAME:
+        assert resolved_image.frame_ref is not None
+        return dict(resolved_image.payload), local_buffer_reader.read_frame_ref(resolved_image.frame_ref)
+    raise InvalidRequestError(
+        "image-ref payload 使用了不支持的 transport_kind",
+        details={"transport_kind": resolved_image.transport_kind},
+    )
+
+
+def require_local_buffer_reader(request: WorkflowNodeExecutionRequest) -> object:
+    """从执行元数据中读取 LocalBufferBroker reader。
+
+    参数：
+    - request：当前节点执行请求。
+
+    返回：
+    - object：实现 read_buffer_ref 与 read_frame_ref 的 reader。
+    """
+
+    local_buffer_reader = request.execution_metadata.get("local_buffer_reader")
+    if local_buffer_reader is None:
+        raise ServiceConfigurationError(
+            "当前节点执行缺少 LocalBufferBroker reader 上下文",
+            details={"node_id": request.node_id, "required_metadata": "local_buffer_reader"},
+        )
+    if not callable(getattr(local_buffer_reader, "read_buffer_ref", None)):
+        raise ServiceConfigurationError(
+            "LocalBufferBroker reader 缺少 read_buffer_ref 方法",
+            details={"node_id": request.node_id},
+        )
+    if not callable(getattr(local_buffer_reader, "read_frame_ref", None)):
+        raise ServiceConfigurationError(
+            "LocalBufferBroker reader 缺少 read_frame_ref 方法",
+            details={"node_id": request.node_id},
+        )
+    return local_buffer_reader
 
 
 def build_runtime_image_object_key(
@@ -665,9 +838,8 @@ def copy_image_payload(
         if target_object_key != source_object_key:
             dataset_storage.copy_relative_file(source_object_key, target_object_key)
     else:
-        image_registry = require_execution_image_registry(request)
-        image_handle = str(normalized_source_payload["image_handle"])
-        dataset_storage.write_bytes(target_object_key, image_registry.read_bytes(image_handle))
+        _, image_bytes = load_image_bytes_from_payload(request, image_payload=normalized_source_payload)
+        dataset_storage.write_bytes(target_object_key, image_bytes)
     _register_temporary_runtime_object_cleanup(
         request,
         object_key=target_object_key,

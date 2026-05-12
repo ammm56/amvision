@@ -8,12 +8,12 @@
 
 ## 当前边界
 
-- 当前 workflow runtime 的正式执行入口仍是 HTTP 控制面。
+- 当前 workflow runtime 已落地的正式执行入口仍是 HTTP 控制面。
 - 后续 PLC、MQTT、ZeroMQ、gRPC、IO 变化、传感器读取、schedule 和 Webhook 触发，可以继续扩展为 WorkflowTriggerSource。
 - 传感器读数、阈值越界、状态翻转和采样结果本身就是物理世界进入 workflow 的直接触发入口，不应只被视为运行中节点的附属输入。
 - 外部触发入口与节点图本身分层：触发源负责监听、过滤、去重和创建 WorkflowRun；runtime 负责执行。
 - 当前草案不把“首节点轮询外部世界”作为默认触发模型。
-- ZeroMQ 在当前平台中仍优先作为同机本地内部 IPC，不作为默认对外触发协议。
+- ZeroMQ 可作为 workstation 或 standalone 场景下的高速外部触发和图片提交入口之一，不等同于本机内部大图数据交换层。
 - 该资源属于 workflow runtime 后续控制面草案，不进入 [docs/api/current-api.md](current-api.md) 总览。
 
 ## 资源定位
@@ -40,11 +40,128 @@
 - 对于 PLC、IO 变化、传感器或其他强副作用场景，触发层应优先承担去抖、幂等键提取、超时和回执策略。
 - 如果某个入口本质上是长期监听器，不应由 workflow 图中的首节点无限轮询或长时间 sleep 代替。
 
+## 与 Workflow 图和应用的关系
+
+- WorkflowGraphTemplate 定义节点图、节点参数、输入端口和输出端口，不直接关心请求来自 HTTP、ZeroMQ、PLC、IO 还是本地 adapter。
+- FlowApplication 把图的输入输出端口发布成稳定 binding，例如 `request_image`、`deployment_request` 和 `http_response`。
+- WorkflowAppRuntime 固定 application snapshot 和 template snapshot，是现场长期运行的宿主。
+- WorkflowTriggerSource 绑定 WorkflowAppRuntime，并把外部事件映射到 application 的 `input_bindings`，不修改 workflow 图。
+- 同一张图可以同时被 HTTP invoke、async run 和后续 trigger source 使用；区别只在输入从哪里来、以 sync 还是 async 提交，以及回执如何返回。
+
+常见图链路可以保持为：`request_image` 输入 -> YOLOX detection 节点 -> OpenCV 后处理节点 -> HTTP Response 输出节点。HTTP Response 输出节点的结果会出现在 `outputs["http_response"] = {"status_code": 200, "body": ...}`，由同步调用或触发源回执层决定是否直接返回给调用方。
+
+## 图片输入的两条入口路径
+
+### HTTP JSON 同步调用
+
+HTTP JSON invoke 是当前已公开、最容易调试的入口。调用方把图片按 `image-base64.v1` 放到 `input_bindings`，runtime 会把输入转换成 execution memory image-ref，后续推理节点在存在 LocalBufferBroker writer 时会再转换成 BufferRef 调用已发布推理服务。
+
+```json
+{
+  "input_bindings": {
+    "request_image": {
+      "image_base64": "<base64 image bytes>",
+      "media_type": "image/png"
+    },
+    "deployment_request": {
+      "value": {
+        "deployment_instance_id": "deployment-instance-1"
+      }
+    }
+  },
+  "execution_metadata": {
+    "trigger_source": "sync-http-api",
+    "trace_id": "trace-1"
+  },
+  "timeout_seconds": 5
+}
+```
+
+这条路径可以完成“base64(img) 触发图片输入调用 -> 节点调用推理服务 -> 返回推理结果 -> 后续 OpenCV 处理 -> 默认 HTTP API 响应”。它适合调试、普通外部系统集成、低频同步请求和 Postman 示例，不适合作为高节拍大图热路径，因为 base64 和 JSON 都会产生额外复制和编解码成本。
+
+### 本地 adapter / TriggerSource 高速输入
+
+高速入口不应把大图塞进 trigger source 控制消息。推荐做法是本地 adapter 收到图像或帧后先写入 LocalBufferBroker，再把 `FrameRef` 或 `BufferRef` 填入 runtime 的 `input_bindings`。
+
+```json
+{
+  "input_bindings": {
+    "request_image": {
+      "transport_kind": "frame",
+      "frame_ref": {
+        "format_id": "amvision.frame-ref.v1",
+        "stream_id": "line-a-camera-1",
+        "sequence_id": 1024,
+        "buffer_id": "image-small:frame:line-a-camera-1:0",
+        "path": "data/buffers/image-small/pool-001.dat",
+        "offset": 0,
+        "size": 6220800,
+        "shape": [1080, 1920, 3],
+        "dtype": "uint8",
+        "layout": "HWC",
+        "pixel_format": "BGR",
+        "media_type": "image/raw",
+        "broker_epoch": "epoch-1",
+        "generation": 15
+      }
+    },
+    "deployment_request": {
+      "value": {
+        "deployment_instance_id": "deployment-instance-1"
+      }
+    }
+  },
+  "execution_metadata": {
+    "trigger_source": "zeromq-topic",
+    "stream_id": "line-a-camera-1",
+    "trace_id": "frame-1024"
+  }
+}
+```
+
+本地 adapter 可以把这份请求交给 runtime invoke 或 run 创建逻辑。sync 模式适合同机短链路、调用方需要即时结果的场景；async 模式适合长期监听、排队、断线后回查和高频事件削峰。
+
+FrameRef 的有效期很短，适合“立即执行一条 runtime 调用”。如果执行可能排队或后续节点需要稳定读取同一帧，触发层应把 FrameRef 固定为普通 BufferRef，或把关键图片保存到 ObjectStore 后再提交 run。该转换属于受控本地 adapter 或后续 TriggerSource 的职责，不属于 workflow 图中节点的职责。
+
+## 高速推理调用链路
+
+高速调用链路建议固定为以下顺序：
+
+```text
+本地输入 adapter / TriggerSource
+        |
+        | 写入 LocalBufferBroker ring channel 或普通 buffer pool
+        v
+FrameRef / BufferRef
+        |
+        | 映射到 FlowApplication input_bindings
+        v
+WorkflowAppRuntime invoke 或 WorkflowRun
+        |
+        v
+workflow worker 子进程
+        |
+        | PublishedInferenceGateway
+        v
+backend-service 持有的长期 deployment worker
+        |
+        v
+YOLOX detections / runtime_session_info
+        |
+        v
+OpenCV / rule / response nodes
+        |
+        v
+http-response 输出或 WorkflowRun outputs
+```
+
+这条链路里 workflow 图仍然只表达业务处理顺序：输入图片、调用推理、后处理、组装响应。TriggerSource 只负责把外部事件变成输入绑定和执行元数据，LocalBufferBroker 只负责本机内部大图数据面，PublishedInferenceGateway 只负责复用已启动 deployment 推理服务。
+
 ## 推荐触发类型
 
 - plc-register：PLC 寄存器点位变化或条件满足后触发
 - mqtt-topic：订阅指定 topic 并按消息内容创建 run
-- zeromq-topic：同机本地 IPC 主题触发
+- zeromq-topic：ZeroMQ 主题、请求或高速图像提交触发
 - grpc-method：由外部系统通过 gRPC 方法调用触发
 - io-change：离散 IO 状态变化触发
 - sensor-read：传感器读数达到阈值、状态翻转或采样规则命中时触发
@@ -107,7 +224,7 @@
 | --- | --- | --- |
 | plc-register | async 优先 | 更常见于设备侧条件成立后发起正式执行，适合排队、回查和断线后继续运行 |
 | mqtt-topic | async 优先 | 消息订阅通常是事件驱动入口，不适合把订阅侧连接长期阻塞到执行结束 |
-| zeromq-topic | async 优先；少量场景可用 sync | 作为本地内部 IPC 时可用于快速联动，但默认仍更适合创建 run 后异步观察 |
+| zeromq-topic | async 优先；少量场景可用 sync | 可承接上位机或本地桥接进程的高速触发和图像提交；如果调用方明确要求即时结果且链路可控，可显式配置为 sync |
 | grpc-method | sync 或 async 都可 | 如果调用方明确要求即时结果且链路可控，可用 sync；如果执行可能较长或需要排队，优先 async |
 | io-change | async 优先 | 离散 IO 变化更接近事件触发，通常不要求当前信号发送侧同步等待完整结果 |
 | sensor-read | async 优先 | 传感器阈值命中、状态翻转或采样规则命中后，通常只需要稳定触发和后续回查 |

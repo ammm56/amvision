@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from backend.queue import QueueBackend
+from backend.service.application.local_buffers import LocalBufferReader
 from backend.service.application.conversions.yolox_conversion_task_service import (
     SqlAlchemyYoloXConversionTaskService,
 )
@@ -12,6 +13,10 @@ from backend.service.application.datasets.dataset_import import SqlAlchemyDatase
 from backend.service.application.datasets.dataset_export import SqlAlchemyDatasetExportTaskService
 from backend.service.application.datasets.dataset_export_delivery import SqlAlchemyDatasetExportDeliveryService
 from backend.service.application.deployments.yolox_deployment_service import SqlAlchemyYoloXDeploymentService
+from backend.service.application.deployments import (
+    PublishedInferenceGateway,
+    YoloXDeploymentPublishedInferenceGateway,
+)
 from backend.service.application.errors import ServiceConfigurationError
 from backend.service.application.tasks.task_service import SqlAlchemyTaskService
 from backend.service.application.models.yolox_evaluation_task_service import (
@@ -41,6 +46,8 @@ class WorkflowServiceNodeRuntimeContext:
     - queue_backend：任务队列后端；提交类 service node 需要。
     - yolox_sync_deployment_process_supervisor：同步 YOLOX deployment 监督器。
     - yolox_async_deployment_process_supervisor：异步 YOLOX deployment 监督器。
+    - local_buffer_reader：读取 LocalBufferBroker 引用的 client。
+    - published_inference_gateway：调用已发布推理服务的稳定边界。
     """
 
     session_factory: SessionFactory
@@ -48,6 +55,8 @@ class WorkflowServiceNodeRuntimeContext:
     queue_backend: QueueBackend | None = None
     yolox_sync_deployment_process_supervisor: YoloXDeploymentProcessSupervisor | None = None
     yolox_async_deployment_process_supervisor: YoloXDeploymentProcessSupervisor | None = None
+    local_buffer_reader: LocalBufferReader | None = None
+    published_inference_gateway: PublishedInferenceGateway | None = None
 
     def build_training_task_service(self) -> SqlAlchemyYoloXTrainingTaskService:
         """构造训练任务 service。"""
@@ -122,6 +131,16 @@ class WorkflowServiceNodeRuntimeContext:
             dataset_storage=self.dataset_storage,
         )
 
+    def build_published_inference_gateway(self) -> PublishedInferenceGateway:
+        """构造 workflow 推理节点使用的 PublishedInferenceGateway。"""
+
+        if self.published_inference_gateway is not None:
+            return self.published_inference_gateway
+        return YoloXDeploymentPublishedInferenceGateway(
+            deployment_service=self.build_deployment_service(),
+            deployment_process_supervisor=self.require_sync_deployment_process_supervisor(),
+        )
+
     def build_inference_task_service(self) -> SqlAlchemyYoloXInferenceTaskService:
         """构造正式推理任务 service。"""
 
@@ -172,3 +191,10 @@ class WorkflowServiceNodeRuntimeContext:
             "当前 workflow 运行时不支持指定的 deployment runtime_mode",
             details={"runtime_mode": runtime_mode},
         )
+
+    def require_local_buffer_reader(self) -> LocalBufferReader:
+        """返回读取 LocalBufferBroker 引用所需的 client。"""
+
+        if self.local_buffer_reader is None:
+            raise ServiceConfigurationError("当前 workflow 运行时缺少 LocalBufferBroker reader")
+        return self.local_buffer_reader

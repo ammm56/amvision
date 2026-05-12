@@ -16,6 +16,7 @@ WORKFLOW_DEPLOYMENT_CLEANUP_IDS_KEY = "workflow_deployment_cleanup_ids"
 WORKFLOW_EXECUTION_CLEANUP_KIND_DEPLOYMENT_INSTANCE = "deployment_instance"
 WORKFLOW_EXECUTION_CLEANUP_KIND_DATASET_STORAGE_OBJECT = "dataset_storage_object"
 WORKFLOW_EXECUTION_CLEANUP_KIND_DATASET_STORAGE_TREE = "dataset_storage_tree"
+WORKFLOW_EXECUTION_CLEANUP_KIND_LOCAL_BUFFER_LEASE = "local_buffer_lease"
 
 
 @dataclass(frozen=True)
@@ -276,6 +277,31 @@ def register_dataset_storage_tree_cleanup(
         execution_metadata,
         resource_kind=WORKFLOW_EXECUTION_CLEANUP_KIND_DATASET_STORAGE_TREE,
         resource_id=relative_path,
+    )
+
+
+def register_local_buffer_lease_cleanup(
+    execution_metadata: dict[str, object],
+    *,
+    lease_id: str,
+    pool_name: str | None = None,
+) -> None:
+    """登记执行结束后需要释放的 LocalBufferBroker lease。
+
+    参数：
+    - execution_metadata：当前 workflow 执行元数据。
+    - lease_id：要释放的 broker lease id。
+    - pool_name：可选的目标 pool 名称。
+    """
+
+    metadata: dict[str, object] = {}
+    if isinstance(pool_name, str) and pool_name.strip():
+        metadata["pool_name"] = pool_name.strip()
+    register_execution_cleanup(
+        execution_metadata,
+        resource_kind=WORKFLOW_EXECUTION_CLEANUP_KIND_LOCAL_BUFFER_LEASE,
+        resource_id=lease_id,
+        metadata=metadata,
     )
 
 

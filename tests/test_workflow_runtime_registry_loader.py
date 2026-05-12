@@ -9,7 +9,6 @@ from types import SimpleNamespace
 
 import pytest
 
-import backend.nodes.core_nodes.yolox_detection as yolox_detection_node
 import backend.nodes.core_nodes.yolox_inference_submit as yolox_inference_submit_node
 from backend.contracts.workflows.workflow_graph import (
     WorkflowGraphEdge,
@@ -27,6 +26,7 @@ from backend.service.application.models.yolox_evaluation_task_service import Yol
 from backend.service.application.models.yolox_inference_task_service import (
     YoloXInferenceExecutionResult,
 )
+from backend.service.application.deployments import PublishedInferenceResult
 from backend.service.application.models.yolox_training_service import (
     YoloXTrainingTaskSubmission,
 )
@@ -648,7 +648,7 @@ def test_core_yolox_detection_node_uses_sync_runtime_context(
         "build_deployment_service",
         lambda self: _FakeDeploymentService(),
     )
-    monkeypatch.setattr(yolox_detection_node, "run_yolox_inference_task", _fake_run_yolox_inference_task)
+    _install_fake_published_inference_gateway(monkeypatch, fake_supervisor_calls, class_name="defect")
 
     executor = WorkflowGraphExecutor(registry=runtime_registry_loader.get_runtime_registry())
     runtime_context = WorkflowServiceNodeRuntimeContext(
@@ -790,7 +790,7 @@ def test_core_yolox_detection_node_accepts_dynamic_request_payload(
         "build_deployment_service",
         lambda self: _FakeDeploymentService(),
     )
-    monkeypatch.setattr(yolox_detection_node, "run_yolox_inference_task", _fake_run_yolox_inference_task)
+    _install_fake_published_inference_gateway(monkeypatch, fake_supervisor_calls, class_name="qr-region")
 
     executor = WorkflowGraphExecutor(registry=runtime_registry_loader.get_runtime_registry())
     runtime_context = WorkflowServiceNodeRuntimeContext(
@@ -938,7 +938,7 @@ def test_core_yolox_detection_node_auto_starts_sync_process(
         "build_deployment_service",
         lambda self: _FakeDeploymentService(),
     )
-    monkeypatch.setattr(yolox_detection_node, "run_yolox_inference_task", _fake_run_yolox_inference_task)
+    _install_fake_published_inference_gateway(monkeypatch, fake_supervisor_calls, class_name="defect")
 
     executor = WorkflowGraphExecutor(registry=runtime_registry_loader.get_runtime_registry())
     runtime_context = WorkflowServiceNodeRuntimeContext(
@@ -1143,7 +1143,7 @@ def test_core_yolox_detection_node_accepts_memory_image_payload(
         "build_deployment_service",
         lambda self: _FakeDeploymentService(),
     )
-    monkeypatch.setattr(yolox_detection_node, "run_yolox_inference_task", _fake_run_yolox_inference_task)
+    _install_fake_published_inference_gateway(monkeypatch, fake_supervisor_calls, class_name="defect")
 
     executor = WorkflowGraphExecutor(registry=runtime_registry_loader.get_runtime_registry())
     runtime_context = WorkflowServiceNodeRuntimeContext(
@@ -3160,6 +3160,63 @@ def _create_dataset_storage(tmp_path: Path) -> LocalDatasetStorage:
     """创建 workflow 运行时测试使用的本地文件存储。"""
 
     return LocalDatasetStorage(DatasetStorageSettings(root_dir=str(tmp_path / "dataset-files")))
+
+
+def _install_fake_published_inference_gateway(
+    monkeypatch: pytest.MonkeyPatch,
+    calls: dict[str, object],
+    *,
+    class_name: str,
+) -> None:
+    """把 workflow runtime context 的 PublishedInferenceGateway 替换为测试实现。
+
+    参数：
+    - monkeypatch：pytest monkeypatch fixture。
+    - calls：记录 gateway 调用的字典。
+    - class_name：测试 detection 结果使用的类别名。
+    """
+
+    class _FakePublishedInferenceGateway:
+        """记录 PublishedInferenceRequest 的测试 gateway。"""
+
+        def infer(self, request):
+            """记录请求并返回固定 detection。"""
+
+            calls["published_inference_request"] = request
+            calls["resolved_deployment_instance_id"] = request.deployment_instance_id
+            calls["ensure_config"] = SimpleNamespace(deployment_instance_id=request.deployment_instance_id)
+            if request.auto_start_process:
+                calls["start_config"] = SimpleNamespace(deployment_instance_id=request.deployment_instance_id)
+            calls["inference_kwargs"] = {
+                "input_uri": request.image_payload.get("object_key"),
+                "input_image_bytes": request.input_image_bytes,
+                "input_image_payload": request.image_payload,
+                "score_threshold": request.score_threshold,
+                "save_result_image": request.save_result_image,
+                "extra_options": request.extra_options,
+            }
+            return PublishedInferenceResult(
+                deployment_instance_id=request.deployment_instance_id,
+                detections=(
+                    {
+                        "bbox_xyxy": [4.0, 4.0, 24.0, 24.0],
+                        "score": 0.97,
+                        "class_id": 0,
+                        "class_name": class_name,
+                    },
+                ),
+                latency_ms=8.5,
+                image_width=64,
+                image_height=64,
+                runtime_session_info={"backend_name": "fake"},
+                metadata={"instance_id": "instance-1"},
+            )
+
+    monkeypatch.setattr(
+        WorkflowServiceNodeRuntimeContext,
+        "build_published_inference_gateway",
+        lambda self: _FakePublishedInferenceGateway(),
+    )
 
 
 def _get_repository_custom_nodes_root() -> Path:

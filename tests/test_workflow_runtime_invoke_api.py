@@ -60,6 +60,10 @@ def test_workflow_app_runtime_invoke_api_accepts_image_base64_for_barcode_result
                     },
                 },
             )
+            health_response = client.get(
+                f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/health",
+                headers=headers,
+            )
             stop_response = client.post(
                 f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/stop",
                 headers=headers,
@@ -68,6 +72,7 @@ def test_workflow_app_runtime_invoke_api_accepts_image_base64_for_barcode_result
         session_factory.engine.dispose()
 
     assert invoke_response.status_code == 200
+    assert health_response.status_code == 200
     assert stop_response.status_code == 200
 
     run_payload = invoke_response.json()
@@ -82,6 +87,10 @@ def test_workflow_app_runtime_invoke_api_accepts_image_base64_for_barcode_result
     assert response_data["count"] == 2
     assert set(response_data["matched_formats"]) == {"QR Code", "Code 128"}
     assert response_data["annotated_image"]["image"]["transport_kind"] == "inline-base64"
+
+    health_summary = health_response.json()["health_summary"]
+    assert health_summary["local_buffer_broker"]["connected"] is True
+    assert health_summary["parent_local_buffer_broker_channel"]["configured"] is True
 
 
 def test_workflow_app_runtime_invoke_api_accepts_image_base64_for_opencv_process_save_image(

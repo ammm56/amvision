@@ -50,10 +50,12 @@ def get_core_workflow_payload_contracts() -> tuple[WorkflowPayloadContract, ...]
                 "properties": {
                     "transport_kind": {
                         "type": "string",
-                        "enum": ["memory", "storage"],
+                        "enum": ["memory", "storage", "buffer", "frame"],
                     },
                     "object_key": {"type": "string"},
                     "image_handle": {"type": "string"},
+                    "buffer_ref": {"type": "object"},
+                    "frame_ref": {"type": "object"},
                     "width": {"type": "integer"},
                     "height": {"type": "integer"},
                     "media_type": {"type": "string"},
@@ -71,6 +73,18 @@ def get_core_workflow_payload_contracts() -> tuple[WorkflowPayloadContract, ...]
                             "transport_kind": {"const": "memory"},
                         },
                         "required": ["image_handle"],
+                    },
+                    {
+                        "properties": {
+                            "transport_kind": {"const": "buffer"},
+                        },
+                        "required": ["buffer_ref"],
+                    },
+                    {
+                        "properties": {
+                            "transport_kind": {"const": "frame"},
+                        },
+                        "required": ["frame_ref"],
                     },
                 ],
             },
@@ -129,10 +143,12 @@ def get_core_workflow_payload_contracts() -> tuple[WorkflowPayloadContract, ...]
                             "properties": {
                                 "transport_kind": {
                                     "type": "string",
-                                    "enum": ["memory", "storage"],
+                                    "enum": ["memory", "storage", "buffer", "frame"],
                                 },
                                 "object_key": {"type": "string"},
                                 "image_handle": {"type": "string"},
+                                "buffer_ref": {"type": "object"},
+                                "frame_ref": {"type": "object"},
                                 "width": {"type": "integer"},
                                 "height": {"type": "integer"},
                                 "media_type": {"type": "string"},
@@ -153,6 +169,18 @@ def get_core_workflow_payload_contracts() -> tuple[WorkflowPayloadContract, ...]
                                     },
                                     "required": ["image_handle"],
                                 },
+                                {
+                                    "properties": {
+                                        "transport_kind": {"const": "buffer"},
+                                    },
+                                    "required": ["buffer_ref"],
+                                },
+                                {
+                                    "properties": {
+                                        "transport_kind": {"const": "frame"},
+                                    },
+                                    "required": ["frame_ref"],
+                                },
                             ],
                         },
                     },
@@ -162,10 +190,12 @@ def get_core_workflow_payload_contracts() -> tuple[WorkflowPayloadContract, ...]
                         "properties": {
                             "transport_kind": {
                                 "type": "string",
-                                "enum": ["memory", "storage"],
+                                "enum": ["memory", "storage", "buffer", "frame"],
                             },
                             "object_key": {"type": "string"},
                             "image_handle": {"type": "string"},
+                            "buffer_ref": {"type": "object"},
+                            "frame_ref": {"type": "object"},
                             "width": {"type": "integer"},
                             "height": {"type": "integer"},
                             "media_type": {"type": "string"},
@@ -183,6 +213,18 @@ def get_core_workflow_payload_contracts() -> tuple[WorkflowPayloadContract, ...]
                                     "transport_kind": {"const": "memory"},
                                 },
                                 "required": ["image_handle"],
+                            },
+                            {
+                                "properties": {
+                                    "transport_kind": {"const": "buffer"},
+                                },
+                                "required": ["buffer_ref"],
+                            },
+                            {
+                                "properties": {
+                                    "transport_kind": {"const": "frame"},
+                                },
+                                "required": ["frame_ref"],
                             },
                         ],
                     },

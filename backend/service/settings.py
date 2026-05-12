@@ -10,6 +10,7 @@ from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, Settings
 
 from backend.bootstrap.settings import build_json_config_sources
 from backend.queue import LocalFileQueueSettings
+from backend.service.application.local_buffers import LocalBufferBrokerSettings
 from backend.service.application.runtime.deployment_process_settings import (
     DeploymentProcessSupervisorConfig,
 )
@@ -92,6 +93,10 @@ class BackendServiceCustomNodesConfig(BaseModel):
     root_dir: str = "./custom_nodes"
 
 
+# backend-service 对外使用的 deployment supervisor 配置别名。
+BackendServiceDeploymentProcessSupervisorConfig = DeploymentProcessSupervisorConfig
+
+
 class BackendServiceSettings(BaseSettings):
     """描述 backend-service 启动阶段使用的统一配置。
 
@@ -102,6 +107,7 @@ class BackendServiceSettings(BaseSettings):
     - queue：本地任务队列配置。
     - task_manager：内嵌后台任务管理器配置。
     - custom_nodes：自定义节点目录配置。
+    - local_buffer_broker：本机 buffer broker 进程配置。
     - deployment_process_supervisor：deployment 进程监督器配置。
     """
 
@@ -121,6 +127,7 @@ class BackendServiceSettings(BaseSettings):
         default_factory=BackendServiceTaskManagerConfig
     )
     custom_nodes: BackendServiceCustomNodesConfig = Field(default_factory=BackendServiceCustomNodesConfig)
+    local_buffer_broker: LocalBufferBrokerSettings = Field(default_factory=LocalBufferBrokerSettings)
     deployment_process_supervisor: DeploymentProcessSupervisorConfig = Field(
         default_factory=DeploymentProcessSupervisorConfig
     )

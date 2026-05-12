@@ -124,7 +124,7 @@ def test_worker_bootstrap_initializes_workspace_directory(tmp_path: Path) -> Non
         assert runtime.yolox_async_deployment_process_supervisor.runtime_mode == "async"
         assert bootstrap.get_step_names() == (
             "prepare-worker-workspace",
-            "load-worker-plugin-catalog",
+            "load-worker-node-catalog",
         )
     finally:
         runtime.yolox_async_deployment_process_supervisor.stop()

@@ -36,7 +36,7 @@ def load_image_matrix(
     input_name: str = "image",
     imdecode_flags: int | None = None,
 ) -> tuple[dict[str, object], str | None, Any]:
-    """按双模式规则读取图片输入，并解码为 OpenCV matrix。
+    """按多来源 image-ref 规则读取图片输入，并解码为 OpenCV matrix。
 
     参数：
     - request：当前节点执行请求。

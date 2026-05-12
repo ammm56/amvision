@@ -21,6 +21,8 @@ from backend.contracts.workflows import (
 from backend.nodes.node_catalog_registry import NodeCatalogRegistry
 from backend.service.api.deps.auth import AuthenticatedPrincipal, require_scopes
 from backend.service.application.errors import InvalidRequestError, PermissionDeniedError, ServiceConfigurationError
+from backend.service.application.deployments import PublishedInferenceGateway
+from backend.service.application.local_buffers import LocalBufferBrokerEventChannel, LocalBufferBrokerProcessSupervisor
 from backend.service.application.workflows.runtime_service import (
     WorkflowAppRuntimeCreateRequest,
     WorkflowExecutionPolicyCreateRequest,
@@ -514,6 +516,8 @@ def _build_workflow_runtime_service(request: Request) -> WorkflowRuntimeService:
         dataset_storage=_require_dataset_storage(request),
         node_catalog_registry=_require_node_catalog_registry(request),
         worker_manager=_require_workflow_runtime_worker_manager(request),
+        local_buffer_broker_event_channel=_read_local_buffer_broker_event_channel(request),
+        published_inference_gateway=_read_published_inference_gateway(request),
     )
 
 
@@ -560,6 +564,28 @@ def _require_workflow_runtime_worker_manager(request: Request) -> WorkflowRuntim
     if not isinstance(worker_manager, WorkflowRuntimeWorkerManager):
         raise ServiceConfigurationError("当前服务尚未完成 workflow_runtime_worker_manager 装配")
     return worker_manager
+
+
+def _read_local_buffer_broker_event_channel(request: Request) -> LocalBufferBrokerEventChannel | None:
+    """从 application.state 中读取 LocalBufferBroker 事件通道。"""
+
+    supervisor = getattr(request.app.state, "local_buffer_broker_supervisor", None)
+    if supervisor is None:
+        return None
+    if not isinstance(supervisor, LocalBufferBrokerProcessSupervisor):
+        raise ServiceConfigurationError("当前服务 local_buffer_broker_supervisor 装配无效")
+    return supervisor.get_event_channel()
+
+
+def _read_published_inference_gateway(request: Request) -> PublishedInferenceGateway | None:
+    """从 application.state 中读取父进程 PublishedInferenceGateway。"""
+
+    gateway = getattr(request.app.state, "published_inference_gateway", None)
+    if gateway is None:
+        return None
+    if not callable(getattr(gateway, "infer", None)):
+        raise ServiceConfigurationError("当前服务 published_inference_gateway 装配无效")
+    return gateway
 
 
 def _ensure_project_visible(*, principal: AuthenticatedPrincipal, project_id: str) -> None:

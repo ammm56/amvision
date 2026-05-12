@@ -225,6 +225,7 @@
 - invoke 请求体中的 `input_bindings` 按 application `binding_id` 组织，而不是按 template `input_id` 或节点 id 组织。
 - `image-ref.v1` 常见 JSON 形状是 `{"object_key": "inputs/source.jpg", "media_type": "image/png"}`；如果省略 `transport_kind`，当前实现会按 `object_key` 自动识别为 storage 引用。
 - `image-base64.v1` 常见 JSON 形状是 `{"image_base64": "<base64>", "media_type": "image/png"}`；也支持单行 data URL。
+- `image-ref.v1` 在本机受控 adapter 或 TriggerSource 场景下也可以携带 `buffer_ref` 或 `frame_ref`，用于复用 LocalBufferBroker 的 direct mmap 数据面；这类引用只在同机短期有效，不作为长期公开文件引用。
 - `value.v1` 常见 JSON 形状是 `{"value": {...}}`。
 - `dataset-package.v1` 通过 `POST /api/v1/workflows/app-runtimes/{workflow_runtime_id}/invoke/upload` 上传，文件字段名必须等于 binding_id。当前 multipart 上传入口只支持这类 zip 包输入，不支持把图片文件直接作为 `request_image` 上传。
 - invoke 返回体是 `WorkflowRunContract`。如果 application 输出绑定是 `workflow-execute-output`，结果会直接出现在 `outputs[binding_id]`；如果输出绑定是 `http-response`，结果会出现在 `outputs[binding_id] = {"status_code": ..., "body": ...}`。

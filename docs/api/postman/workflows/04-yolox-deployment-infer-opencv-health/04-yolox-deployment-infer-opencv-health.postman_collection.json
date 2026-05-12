@@ -200,7 +200,7 @@
             "preview-runs"
           ]
         },
-        "description": "创建 yolox_deployment_infer_opencv_health 的编辑态 preview run。注意：preview run 会在独立 snapshot 子进程中执行，不复用已经由 Start 或 Warmup 拉起的 deployment supervisor 状态；要验证真实已启动 deployment，请改用 Invoke App Runtime 或 Create Workflow Run。",
+        "description": "创建 yolox_deployment_infer_opencv_health 的编辑态 preview run。注意：preview run 仍保持独立 snapshot 子进程，不直接复用 backend-service 父进程中的 deployment supervisor 状态；当前主干已接入 LocalBufferBroker direct mmap 数据面和 PublishedInferenceGateway 事件 dispatcher，推理节点会通过 BufferRef / FrameRef 调用 backend-service 持有的长期运行 deployment worker。目标 deployment 仍需提前通过 sync/start 或 sync/warmup 启动，或者在节点参数中显式允许 auto_start_process。",
         "body": {
           "mode": "raw",
           "raw": "{\n  \"project_id\": \"project-1\",\n  \"application_ref\": {\n    \"application_id\": \"yolox-deployment-infer-opencv-health-app\"\n  },\n  \"input_bindings\": {\n    \"request_image\": {\n      \"image_base64\": \"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO5WZr8AAAAASUVORK5CYII=\",\n      \"media_type\": \"image/png\"\n    },\n    \"deployment_request\": {\n      \"value\": {\n        \"deployment_instance_id\": \"{{deploymentInstanceId}}\"\n      }\n    }\n  },\n  \"execution_metadata\": {\n    \"marker\": \"postman-workflow-example-documents-preview\",\n    \"example_name\": \"yolox_deployment_infer_opencv_health\",\n    \"scenario\": \"deployment-infer-opencv-health\",\n    \"trigger_source\": \"editor-preview\"\n  },\n  \"timeout_seconds\": 30\n}",

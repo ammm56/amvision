@@ -9,7 +9,9 @@ from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 from backend.contracts.workflows.workflow_graph import FlowApplication, WorkflowGraphTemplate
+from backend.service.application.deployments import PublishedInferenceGateway
 from backend.service.application.errors import InvalidRequestError, OperationTimeoutError, ResourceNotFoundError, ServiceError
+from backend.service.application.local_buffers import LocalBufferBrokerEventChannel
 from backend.service.application.workflows.runtime_worker import (
     WorkflowRuntimeAsyncRunCallbacks,
     WorkflowRuntimeWorkerInstance,
@@ -114,6 +116,8 @@ class WorkflowRuntimeService:
         dataset_storage: LocalDatasetStorage,
         node_catalog_registry: NodeCatalogRegistry,
         worker_manager: WorkflowRuntimeWorkerManager,
+        local_buffer_broker_event_channel: LocalBufferBrokerEventChannel | None = None,
+        published_inference_gateway: PublishedInferenceGateway | None = None,
     ) -> None:
         """初始化 workflow runtime 控制面服务。"""
 
@@ -122,6 +126,8 @@ class WorkflowRuntimeService:
         self.dataset_storage = dataset_storage
         self.node_catalog_registry = node_catalog_registry
         self.worker_manager = worker_manager
+        self.local_buffer_broker_event_channel = local_buffer_broker_event_channel
+        self.published_inference_gateway = published_inference_gateway
 
     def create_execution_policy(
         self,
@@ -256,6 +262,8 @@ class WorkflowRuntimeService:
             execution_result = WorkflowSnapshotProcessExecutor(
                 settings=self.settings,
                 request_timeout_seconds=effective_timeout_seconds,
+                local_buffer_broker_event_channel=self.local_buffer_broker_event_channel,
+                published_inference_gateway=self.published_inference_gateway,
             ).execute(
                 WorkflowSnapshotExecutionRequest(
                     project_id=normalized_request.project_id,

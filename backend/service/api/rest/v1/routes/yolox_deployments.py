@@ -175,6 +175,7 @@ class YoloXDeploymentRuntimeHealthResponse(YoloXDeploymentProcessStatusResponse)
 	- pinned_output_total_bytes：当前所有已加载 session 的 pinned output host buffer 总字节数。
 	- instances：实例级健康状态列表。
 	- keep_warm：当前 keep-warm 运行状态。
+	- local_buffer_broker：LocalBufferBroker 接入状态、输入计数和最近错误。
 	"""
 
 	healthy_instance_count: int = Field(description="健康实例数量")
@@ -182,6 +183,7 @@ class YoloXDeploymentRuntimeHealthResponse(YoloXDeploymentProcessStatusResponse)
 	pinned_output_total_bytes: int = Field(default=0, description="当前所有已加载 session 的 pinned output host buffer 总字节数")
 	instances: list[YoloXDeploymentRuntimeInstanceHealthResponse] = Field(default_factory=list, description="实例级健康状态列表")
 	keep_warm: YoloXDeploymentProcessKeepWarmResponse = Field(default_factory=YoloXDeploymentProcessKeepWarmResponse, description="keep-warm 运行状态")
+	local_buffer_broker: dict[str, object] = Field(default_factory=dict, description="LocalBufferBroker 接入状态、输入计数和最近错误")
 
 
 @yolox_deployments_router.post(
@@ -738,6 +740,7 @@ def _build_runtime_health_response(
 		pinned_output_total_bytes=process_health.pinned_output_total_bytes,
 		instances=[_build_runtime_instance_health_response(item) for item in process_health.instances],
 		keep_warm=_build_keep_warm_response(process_health.keep_warm),
+		local_buffer_broker=dict(process_health.local_buffer_broker),
 	)
 
 

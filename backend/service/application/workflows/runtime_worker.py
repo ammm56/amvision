@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from multiprocessing.queues import Queue
 from pathlib import Path
 from queue import Empty
@@ -24,6 +24,13 @@ from backend.service.application.errors import (
     ServiceConfigurationError,
     ServiceError,
 )
+from backend.service.application.deployments import (
+    PublishedInferenceGateway,
+    PublishedInferenceGatewayClient,
+    PublishedInferenceGatewayDispatcher,
+    PublishedInferenceGatewayEventChannel,
+)
+from backend.service.application.local_buffers import LocalBufferBrokerClient, LocalBufferBrokerEventChannel
 from backend.service.application.runtime.yolox_deployment_process_supervisor import (
     YoloXDeploymentProcessSupervisor,
 )
@@ -106,6 +113,9 @@ class _WorkflowRuntimeProcessHandle:
     process: Any
     request_queue: Any
     response_queue: Any
+    local_buffer_broker_event_channel: LocalBufferBrokerEventChannel | None = None
+    published_inference_gateway_channel: PublishedInferenceGatewayEventChannel | None = None
+    published_inference_gateway_dispatcher: PublishedInferenceGatewayDispatcher | None = None
     lock: Lock = field(default_factory=Lock, repr=False)
 
 
@@ -128,14 +138,24 @@ class _WorkflowRuntimeAsyncRunHandle:
 class WorkflowRuntimeWorkerManager:
     """管理 workflow runtime 的单实例 worker 进程。"""
 
-    def __init__(self, *, settings: BackendServiceSettings) -> None:
+    def __init__(
+        self,
+        *,
+        settings: BackendServiceSettings,
+        local_buffer_broker_event_channel_provider: Callable[[], LocalBufferBrokerEventChannel | None] | None = None,
+        published_inference_gateway: PublishedInferenceGateway | None = None,
+    ) -> None:
         """初始化 workflow runtime worker 管理器。
 
         参数：
         - settings：backend-service 当前使用的统一配置。
+        - local_buffer_broker_event_channel_provider：启动 worker 子进程时读取 broker 事件通道的函数。
+        - published_inference_gateway：父进程持有的已发布推理 gateway。
         """
 
         self.settings = _resolve_backend_service_settings(settings)
+        self.local_buffer_broker_event_channel_provider = local_buffer_broker_event_channel_provider
+        self.published_inference_gateway = published_inference_gateway
         self._context = multiprocessing.get_context("spawn")
         self._handles: dict[str, _WorkflowRuntimeProcessHandle] = {}
         self._async_runs: dict[str, _WorkflowRuntimeAsyncRunHandle] = {}
@@ -198,6 +218,11 @@ class WorkflowRuntimeWorkerManager:
 
             request_queue = self._context.Queue()
             response_queue = self._context.Queue()
+            local_buffer_broker_event_channel = self._resolve_local_buffer_broker_event_channel()
+            gateway_channel = self._build_published_inference_gateway_channel()
+            gateway_dispatcher = self._build_published_inference_gateway_dispatcher(gateway_channel)
+            if gateway_dispatcher is not None:
+                gateway_dispatcher.start()
             process = self._context.Process(
                 target=run_workflow_runtime_worker_process,
                 kwargs={
@@ -208,6 +233,8 @@ class WorkflowRuntimeWorkerManager:
                         "application_snapshot_object_key": workflow_app_runtime.application_snapshot_object_key,
                         "template_snapshot_object_key": workflow_app_runtime.template_snapshot_object_key,
                     },
+                    "local_buffer_broker_event_channel": local_buffer_broker_event_channel,
+                    "published_inference_gateway_event_channel": gateway_channel,
                     "request_queue": request_queue,
                     "response_queue": response_queue,
                 },
@@ -220,6 +247,9 @@ class WorkflowRuntimeWorkerManager:
                 process=process,
                 request_queue=request_queue,
                 response_queue=response_queue,
+                local_buffer_broker_event_channel=local_buffer_broker_event_channel,
+                published_inference_gateway_channel=gateway_channel,
+                published_inference_gateway_dispatcher=gateway_dispatcher,
             )
             self._handles[workflow_app_runtime.workflow_runtime_id] = handle
 
@@ -570,7 +600,20 @@ class WorkflowRuntimeWorkerManager:
                     "timeout_seconds": timeout_seconds,
                 },
             ) from exc
-        return _deserialize_runtime_state(message)
+        return self._attach_parent_health_summary(handle, _deserialize_runtime_state(message))
+
+    def _attach_parent_health_summary(
+        self,
+        handle: _WorkflowRuntimeProcessHandle,
+        runtime_state: WorkflowRuntimeWorkerState,
+    ) -> WorkflowRuntimeWorkerState:
+        """把父进程持有的 broker channel 状态合并到 worker health。"""
+
+        health_summary = dict(runtime_state.health_summary)
+        health_summary["parent_local_buffer_broker_channel"] = _build_parent_broker_channel_summary(
+            handle.local_buffer_broker_event_channel
+        )
+        return replace(runtime_state, health_summary=health_summary)
 
     def _terminate_failed_handle(
         self,
@@ -590,10 +633,42 @@ class WorkflowRuntimeWorkerManager:
         if handle.process.is_alive():
             handle.process.terminate()
             handle.process.join(timeout=1.0)
+        if handle.published_inference_gateway_dispatcher is not None:
+            handle.published_inference_gateway_dispatcher.stop()
         handle.request_queue.close()
         handle.request_queue.join_thread()
         handle.response_queue.close()
         handle.response_queue.join_thread()
+        _close_local_buffer_broker_channel(handle.local_buffer_broker_event_channel)
+        _close_published_inference_gateway_channel(handle.published_inference_gateway_channel)
+
+    def _resolve_local_buffer_broker_event_channel(self) -> LocalBufferBrokerEventChannel | None:
+        """读取当前 broker 事件通道。"""
+
+        if self.local_buffer_broker_event_channel_provider is None:
+            return None
+        return self.local_buffer_broker_event_channel_provider()
+
+    def _build_published_inference_gateway_channel(self) -> PublishedInferenceGatewayEventChannel | None:
+        """为一个 runtime worker 创建 PublishedInferenceGateway 事件通道。"""
+
+        if self.published_inference_gateway is None:
+            return None
+        return PublishedInferenceGatewayEventChannel(
+            request_queue=self._context.Queue(),
+            response_queue=self._context.Queue(),
+            request_timeout_seconds=self.settings.deployment_process_supervisor.request_timeout_seconds,
+        )
+
+    def _build_published_inference_gateway_dispatcher(
+        self,
+        channel: PublishedInferenceGatewayEventChannel | None,
+    ) -> PublishedInferenceGatewayDispatcher | None:
+        """为一个 runtime worker 创建父进程 gateway dispatcher。"""
+
+        if channel is None or self.published_inference_gateway is None:
+            return None
+        return PublishedInferenceGatewayDispatcher(channel=channel, gateway=self.published_inference_gateway)
 
 
 def run_workflow_runtime_worker_process(
@@ -602,6 +677,8 @@ def run_workflow_runtime_worker_process(
     runtime_payload: dict[str, object],
     request_queue: Queue[Any],
     response_queue: Queue[Any],
+    local_buffer_broker_event_channel: LocalBufferBrokerEventChannel | None = None,
+    published_inference_gateway_event_channel: PublishedInferenceGatewayEventChannel | None = None,
 ) -> None:
     """workflow runtime worker 子进程入口。"""
 
@@ -613,6 +690,8 @@ def run_workflow_runtime_worker_process(
         session_factory = SessionFactory(settings.to_database_settings())
         dataset_storage = LocalDatasetStorage(settings.to_dataset_storage_settings())
         queue_backend = LocalFileQueueBackend(settings.to_queue_settings())
+        local_buffer_reader = _build_local_buffer_reader(local_buffer_broker_event_channel)
+        published_inference_gateway = _build_published_inference_gateway(published_inference_gateway_event_channel)
         node_pack_loader = LocalNodePackLoader(settings.custom_nodes.root_dir)
         node_pack_loader.refresh()
         node_catalog_registry = NodeCatalogRegistry(node_pack_loader=node_pack_loader)
@@ -625,11 +704,13 @@ def run_workflow_runtime_worker_process(
             dataset_storage_root_dir=str(dataset_storage.root_dir),
             runtime_mode="sync",
             settings=settings.deployment_process_supervisor,
+            local_buffer_broker_event_channel=local_buffer_reader.channel if local_buffer_reader is not None else None,
         )
         async_supervisor = YoloXDeploymentProcessSupervisor(
             dataset_storage_root_dir=str(dataset_storage.root_dir),
             runtime_mode="async",
             settings=settings.deployment_process_supervisor,
+            local_buffer_broker_event_channel=local_buffer_reader.channel if local_buffer_reader is not None else None,
         )
         sync_supervisor.start()
         async_supervisor.start()
@@ -639,6 +720,8 @@ def run_workflow_runtime_worker_process(
             queue_backend=queue_backend,
             yolox_sync_deployment_process_supervisor=sync_supervisor,
             yolox_async_deployment_process_supervisor=async_supervisor,
+            local_buffer_reader=local_buffer_reader,
+            published_inference_gateway=published_inference_gateway,
         )
         workflow_runtime_id = _require_payload_str(runtime_payload, "workflow_runtime_id")
         application_id = _require_payload_str(runtime_payload, "application_id")
@@ -671,6 +754,7 @@ def run_workflow_runtime_worker_process(
                 heartbeat_at=_now_isoformat(),
                 loaded_snapshot_fingerprint=snapshot_fingerprint,
                 last_error=current_last_error,
+                health_summary=_build_runtime_health_summary(local_buffer_reader),
             )
         )
         while True:
@@ -688,6 +772,7 @@ def run_workflow_runtime_worker_process(
                         heartbeat_at=_now_isoformat(),
                         loaded_snapshot_fingerprint=snapshot_fingerprint,
                         last_error=current_last_error,
+                        health_summary=_build_runtime_health_summary(local_buffer_reader),
                     )
                 )
                 continue
@@ -704,6 +789,7 @@ def run_workflow_runtime_worker_process(
                         heartbeat_at=_now_isoformat(),
                         loaded_snapshot_fingerprint=snapshot_fingerprint,
                         last_error=current_last_error,
+                        health_summary=_build_runtime_health_summary(local_buffer_reader),
                     )
                 )
                 break
@@ -719,6 +805,7 @@ def run_workflow_runtime_worker_process(
                         current_run_id=current_run_id,
                         started_at=worker_started_at,
                         loaded_snapshot_fingerprint=snapshot_fingerprint,
+                        health_summary=_build_runtime_health_summary(local_buffer_reader),
                     )
                 )
                 continue
@@ -765,7 +852,7 @@ def run_workflow_runtime_worker_process(
                             "loaded_snapshot_fingerprint": snapshot_fingerprint,
                             "last_error": current_last_error,
                             "health_summary": {
-                                "mode": "single-instance-sync",
+                                **_build_runtime_health_summary(local_buffer_reader),
                                 "last_requested_timeout_seconds": requested_timeout_seconds,
                             },
                         },
@@ -788,6 +875,7 @@ def run_workflow_runtime_worker_process(
                         current_run_id=None,
                         started_at=worker_started_at,
                         loaded_snapshot_fingerprint=snapshot_fingerprint,
+                        health_summary=_build_runtime_health_summary(local_buffer_reader),
                     )
                 )
             except Exception as exc:  # pragma: no cover - 子进程兜底错误封装
@@ -807,6 +895,7 @@ def run_workflow_runtime_worker_process(
                         current_run_id=None,
                         started_at=worker_started_at,
                         loaded_snapshot_fingerprint=snapshot_fingerprint,
+                        health_summary=_build_runtime_health_summary(local_buffer_reader),
                     )
                 )
             finally:
@@ -816,8 +905,73 @@ def run_workflow_runtime_worker_process(
             sync_supervisor.stop()
         if async_supervisor is not None:
             async_supervisor.stop()
+        if local_buffer_reader is not None:
+            local_buffer_reader.close()
         if session_factory is not None:
             session_factory.engine.dispose()
+
+
+def _build_local_buffer_reader(
+    channel: LocalBufferBrokerEventChannel | None,
+) -> LocalBufferBrokerClient | None:
+    """按事件通道创建 LocalBufferBroker client。"""
+
+    if channel is None:
+        return None
+    return LocalBufferBrokerClient(channel)
+
+
+def _build_published_inference_gateway(
+    channel: PublishedInferenceGatewayEventChannel | None,
+) -> PublishedInferenceGatewayClient | None:
+    """按事件通道创建 PublishedInferenceGateway client。"""
+
+    if channel is None:
+        return None
+    return PublishedInferenceGatewayClient(channel)
+
+
+def _close_published_inference_gateway_channel(channel: PublishedInferenceGatewayEventChannel | None) -> None:
+    """关闭父进程持有的 gateway 事件队列。"""
+
+    if channel is None:
+        return
+    for queue in (channel.request_queue, channel.response_queue):
+        queue.close()
+        queue.join_thread()
+
+
+def _close_local_buffer_broker_channel(channel: LocalBufferBrokerEventChannel | None) -> None:
+    """关闭父进程持有的 LocalBufferBroker client channel。"""
+
+    if channel is None:
+        return
+    LocalBufferBrokerClient(channel).close()
+
+
+def _build_parent_broker_channel_summary(channel: LocalBufferBrokerEventChannel | None) -> dict[str, object]:
+    """构造父进程持有的 broker channel 摘要。"""
+
+    if channel is None:
+        return {"configured": False, "channel_id": None}
+    return {
+        "configured": True,
+        "channel_id": channel.channel_id,
+        "request_timeout_seconds": channel.request_timeout_seconds,
+    }
+
+
+def _build_runtime_health_summary(
+    local_buffer_reader: LocalBufferBrokerClient | None,
+) -> dict[str, object]:
+    """构造 workflow runtime worker 的健康摘要。"""
+
+    return {
+        "mode": "single-instance-sync",
+        "local_buffer_broker": local_buffer_reader.get_health_summary()
+        if local_buffer_reader is not None
+        else {"connected": False, "channel_id": None, "recent_error": None},
+    }
 
 
 def _build_runtime_state_message(
@@ -831,6 +985,7 @@ def _build_runtime_state_message(
     heartbeat_at: str,
     loaded_snapshot_fingerprint: str | None,
     last_error: str | None = None,
+    health_summary: dict[str, object] | None = None,
 ) -> dict[str, object]:
     """构造 runtime-state 消息。"""
 
@@ -845,7 +1000,7 @@ def _build_runtime_state_message(
         "heartbeat_at": heartbeat_at,
         "loaded_snapshot_fingerprint": loaded_snapshot_fingerprint,
         "last_error": last_error,
-        "health_summary": {"mode": "single-instance-sync"},
+        "health_summary": dict(health_summary or {"mode": "single-instance-sync"}),
     }
 
 
@@ -860,6 +1015,7 @@ def _build_worker_error_message(
     current_run_id: str | None,
     started_at: str | None,
     loaded_snapshot_fingerprint: str | None,
+    health_summary: dict[str, object] | None = None,
 ) -> dict[str, object]:
     """构造 worker-error 消息。"""
 
@@ -879,7 +1035,7 @@ def _build_worker_error_message(
             "heartbeat_at": _now_isoformat(),
             "loaded_snapshot_fingerprint": loaded_snapshot_fingerprint,
             "last_error": error_message,
-            "health_summary": {"mode": "single-instance-sync"},
+            "health_summary": dict(health_summary or {"mode": "single-instance-sync"}),
         },
     }
 

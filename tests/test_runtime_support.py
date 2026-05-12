@@ -1,4 +1,4 @@
-"""runtime_support 双模式图片 helper 测试。"""
+"""runtime_support 多来源图片 helper 测试。"""
 
 from __future__ import annotations
 

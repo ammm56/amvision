@@ -8,11 +8,13 @@ from backend.service.application.errors import ServiceConfigurationError
 from backend.service.application.workflows.execution_cleanup import (
     WORKFLOW_DEPLOYMENT_CLEANUP_IDS_KEY,
     WORKFLOW_EXECUTION_CLEANUP_KIND_DEPLOYMENT_INSTANCE,
+    WORKFLOW_EXECUTION_CLEANUP_KIND_LOCAL_BUFFER_LEASE,
     execute_registered_execution_cleanups,
     list_registered_deployment_cleanup_ids,
     list_registered_execution_cleanups,
     register_deployment_cleanup,
     register_execution_cleanup,
+    register_local_buffer_lease_cleanup,
 )
 
 
@@ -36,6 +38,11 @@ def test_register_execution_cleanup_lists_generic_items_and_keeps_deployment_com
         metadata={"bucket": "preview-cache"},
     )
     register_deployment_cleanup(execution_metadata, deployment_instance_id=" deployment-1 ")
+    register_local_buffer_lease_cleanup(
+        execution_metadata,
+        lease_id=" lease-1 ",
+        pool_name=" image-small ",
+    )
 
     registered_items = list_registered_execution_cleanups(execution_metadata)
 
@@ -49,6 +56,7 @@ def test_register_execution_cleanup_lists_generic_items_and_keeps_deployment_com
             {"path": "artifacts/demo.txt", "bucket": "preview-cache"},
         ),
         (WORKFLOW_EXECUTION_CLEANUP_KIND_DEPLOYMENT_INSTANCE, "deployment-1", {}),
+        (WORKFLOW_EXECUTION_CLEANUP_KIND_LOCAL_BUFFER_LEASE, "lease-1", {"pool_name": "image-small"}),
         (WORKFLOW_EXECUTION_CLEANUP_KIND_DEPLOYMENT_INSTANCE, "legacy-deployment-1", {}),
     ]
     assert list_registered_deployment_cleanup_ids(execution_metadata) == (

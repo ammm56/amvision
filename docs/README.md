@@ -14,7 +14,9 @@
 - [docs/architecture/current-implementation-status.md](architecture/current-implementation-status.md) 汇总当前主干已经落地的整体框架、代码落点和下一步收敛重点
 - [docs/architecture/execution-sequences.md](architecture/execution-sequences.md) 汇总训练、转换、部署推理和 workflow execute 四条关键调用顺序图
 - [docs/architecture/workflow-runtime.md](architecture/workflow-runtime.md) 汇总 workflow 编辑态试跑、已发布应用运行、队列划分、worker 拓扑和 API 草案
+- [docs/architecture/local-buffer-broker.md](architecture/local-buffer-broker.md) 汇总 LocalBufferBroker 本机高性能数据交换层、mmap 文件池、ring buffer 和 workflow 推理调用边界
 - [docs/api/README.md](api/README.md) 汇总 REST API、WebSocket、ZeroMQ 和公开接口文档
+- [docs/examples/workflows/README.md](examples/workflows/README.md) 说明 workflow template/application 源 JSON 与 LocalBufferBroker 输入形状的关系
 - [docs/deployment/README.md](deployment/README.md) 汇总开发环境、运行时、打包、安装和部署文档
 - [docs/nodes/README.md](nodes/README.md) 汇总 node pack、custom node 和 runtime hook 专题文档
 - [docs/architecture/node-system.md](architecture/node-system.md) 汇总 node pack、custom node 和扩展机制文档
@@ -55,9 +57,10 @@
 13. [docs/architecture/node-system.md](architecture/node-system.md)
 14. [docs/architecture/workflow-json-contracts.md](architecture/workflow-json-contracts.md)
 15. [docs/architecture/data-and-files.md](architecture/data-and-files.md)
-16. [docs/architecture/dataset-import-spec.md](architecture/dataset-import-spec.md)
-17. [docs/architecture/dataset-export-formats.md](architecture/dataset-export-formats.md)
-18. 根据任务继续进入 API、部署、节点扩展或决策文档
+16. [docs/architecture/local-buffer-broker.md](architecture/local-buffer-broker.md)
+17. [docs/architecture/dataset-import-spec.md](architecture/dataset-import-spec.md)
+18. [docs/architecture/dataset-export-formats.md](architecture/dataset-export-formats.md)
+19. 根据任务继续进入 API、部署、节点扩展或决策文档
 
 ## 文档维护建议
 
