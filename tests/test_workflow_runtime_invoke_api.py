@@ -5,11 +5,13 @@ from __future__ import annotations
 import base64
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
 
 from backend.contracts.workflows.workflow_graph import FlowApplication, WorkflowGraphTemplate
 from backend.service.api.app import create_app
+from backend.service.api.rest.v1.routes.workflow_runtime import _build_workflow_runtime_service
 from backend.service.application.workflows.workflow_service import LocalWorkflowJsonService
 from backend.service.settings import (
     BackendServiceCustomNodesConfig,
@@ -224,6 +226,43 @@ def test_workflow_app_runtime_invoke_api_invalid_image_base64_keeps_runtime_runn
     second_start_payload = second_start_response.json()
     assert second_start_payload["observed_state"] == "running"
     assert second_start_payload["worker_process_id"] == health_payload["worker_process_id"]
+
+
+def test_workflow_runtime_service_builder_reads_local_buffer_channel_only_when_requested(
+    tmp_path: Path,
+) -> None:
+    """验证 workflow runtime 路由只在显式需要时才读取 broker event channel。"""
+
+    client, session_factory, _ = _create_runtime_api_client(
+        tmp_path,
+        database_name="workflow-runtime-invoke-route-channel.db",
+    )
+    try:
+        request = SimpleNamespace(app=client.app)
+        supervisor = client.app.state.local_buffer_broker_supervisor
+        original_get_event_channel = supervisor.get_event_channel
+        channel_read_count = 0
+
+        def counting_get_event_channel() -> object:
+            nonlocal channel_read_count
+            channel_read_count += 1
+            return None
+
+        supervisor.get_event_channel = counting_get_event_channel
+        try:
+            default_service = _build_workflow_runtime_service(request)
+            preview_service = _build_workflow_runtime_service(
+                request,
+                include_local_buffer_broker_event_channel=True,
+            )
+        finally:
+            supervisor.get_event_channel = original_get_event_channel
+    finally:
+        session_factory.engine.dispose()
+
+    assert default_service.local_buffer_broker_event_channel is None
+    assert preview_service.local_buffer_broker_event_channel is None
+    assert channel_read_count == 1
 
 
 def test_workflow_app_runtime_invoke_upload_rejects_image_file_for_non_dataset_package_binding(

@@ -189,7 +189,10 @@ def create_workflow_preview_run(
     """创建并同步执行一次 preview run。"""
 
     _ensure_project_visible(principal=principal, project_id=body.project_id)
-    preview_run = _build_workflow_runtime_service(request).create_preview_run(
+    preview_run = _build_workflow_runtime_service(
+        request,
+        include_local_buffer_broker_event_channel=True,
+    ).create_preview_run(
         WorkflowPreviewRunCreateRequest(
             project_id=body.project_id,
             application_ref_id=body.application_ref.application_id if body.application_ref is not None else None,
@@ -507,7 +510,11 @@ def cancel_workflow_run(
     return _build_workflow_run_contract(updated_run)
 
 
-def _build_workflow_runtime_service(request: Request) -> WorkflowRuntimeService:
+def _build_workflow_runtime_service(
+    request: Request,
+    *,
+    include_local_buffer_broker_event_channel: bool = False,
+) -> WorkflowRuntimeService:
     """基于 application.state 构建 workflow runtime 控制面服务。"""
 
     return WorkflowRuntimeService(
@@ -516,7 +523,11 @@ def _build_workflow_runtime_service(request: Request) -> WorkflowRuntimeService:
         dataset_storage=_require_dataset_storage(request),
         node_catalog_registry=_require_node_catalog_registry(request),
         worker_manager=_require_workflow_runtime_worker_manager(request),
-        local_buffer_broker_event_channel=_read_local_buffer_broker_event_channel(request),
+        local_buffer_broker_event_channel=(
+            _read_local_buffer_broker_event_channel(request)
+            if include_local_buffer_broker_event_channel
+            else None
+        ),
         published_inference_gateway=_read_published_inference_gateway(request),
     )
 
