@@ -154,6 +154,65 @@ def test_workflow_app_runtime_invoke_api_accepts_image_base64_for_opencv_process
     assert dataset_storage.resolve(image_payload["object_key"]).is_file()
 
 
+def test_workflow_app_runtime_invoke_api_accepts_image_base64_for_dual_input_opencv_process_save_image(
+    tmp_path: Path,
+) -> None:
+    """验证双输入 OpenCV app 可以只通过 HTTP base64 binding 调用。"""
+
+    client, session_factory, dataset_storage = _create_runtime_api_client(
+        tmp_path,
+        database_name="workflow-runtime-invoke-opencv-dual-input.db",
+    )
+    headers = build_test_headers(scopes="workflows:read,workflows:write")
+    try:
+        with client:
+            _save_example_documents(
+                client=client,
+                dataset_storage=dataset_storage,
+                example_name="opencv_process_save_image_zeromq",
+            )
+            workflow_runtime_id = _create_and_start_runtime(
+                client=client,
+                headers=headers,
+                application_id="opencv-process-save-image-zeromq-app",
+                display_name="OpenCV Process Save Image ZeroMQ Runtime",
+            )
+            invoke_response = client.post(
+                f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/invoke",
+                headers=headers,
+                json={
+                    "input_bindings": {
+                        "request_image_base64": _build_image_base64_payload(build_valid_test_png_bytes())
+                    },
+                    "execution_metadata": {
+                        "scenario": "opencv-process-save-image-zeromq",
+                        "trigger_source": "sync-api",
+                    },
+                },
+            )
+            stop_response = client.post(
+                f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/stop",
+                headers=headers,
+            )
+    finally:
+        session_factory.engine.dispose()
+
+    assert invoke_response.status_code == 200
+    assert stop_response.status_code == 200
+
+    run_payload = invoke_response.json()
+    response_payload = run_payload["outputs"]["http_response"]
+    response_body = response_payload["body"]
+    image_payload = response_body["image"]
+
+    assert run_payload["state"] == "succeeded"
+    assert response_payload["status_code"] == 200
+    assert response_body["type"] == "image-preview"
+    assert response_body["title"] == "Saved Edge Image"
+    assert image_payload["transport_kind"] == "storage-ref"
+    assert dataset_storage.resolve(image_payload["object_key"]).is_file()
+
+
 def test_workflow_app_runtime_invoke_api_invalid_image_base64_keeps_runtime_running(
     tmp_path: Path,
 ) -> None:

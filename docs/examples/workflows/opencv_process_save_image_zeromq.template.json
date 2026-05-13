@@ -1,0 +1,181 @@
+{
+  "format_id": "amvision.workflow-graph-template.v1",
+  "template_id": "opencv-process-save-image-zeromq-template",
+  "template_version": "1.0.0",
+  "display_name": "OpenCV Process Save Image ZeroMQ Template",
+  "description": "同时接收 HTTP image-base64 和 TriggerSource image-ref 图片；图内显式把 image-ref 转成 image-base64 后复用既有 OpenCV 处理链路。",
+  "nodes": [
+    {
+      "node_id": "encode_request_image_ref",
+      "node_type_id": "core.io.image-base64-encode",
+      "parameters": {}
+    },
+    {
+      "node_id": "resolve_request_image",
+      "node_type_id": "core.logic.image-base64-coalesce",
+      "parameters": {}
+    },
+    {
+      "node_id": "decode_request_image",
+      "node_type_id": "core.io.image-base64-decode",
+      "parameters": {}
+    },
+    {
+      "node_id": "blur_image",
+      "node_type_id": "custom.opencv.gaussian-blur",
+      "parameters": {
+        "kernel_size": 5,
+        "sigma_x": 1.2
+      }
+    },
+    {
+      "node_id": "threshold_image",
+      "node_type_id": "custom.opencv.binary-threshold",
+      "parameters": {
+        "threshold": 96,
+        "max_value": 255
+      }
+    },
+    {
+      "node_id": "edge_image",
+      "node_type_id": "custom.opencv.canny",
+      "parameters": {
+        "threshold1": 60,
+        "threshold2": 160,
+        "aperture_size": 3,
+        "l2_gradient": false
+      }
+    },
+    {
+      "node_id": "save_image",
+      "node_type_id": "core.io.image-save",
+      "parameters": {
+        "object_key": "workflow-apps/opencv-process-save-image-zeromq/{workflow_run_id}/{timestamp}.png",
+        "overwrite": false
+      }
+    },
+    {
+      "node_id": "preview_image",
+      "node_type_id": "core.io.image-preview",
+      "parameters": {
+        "title": "Saved Edge Image",
+        "response_transport_mode": "storage-ref"
+      }
+    },
+    {
+      "node_id": "response",
+      "node_type_id": "core.output.http-response",
+      "parameters": {
+        "status_code": 200
+      }
+    }
+  ],
+  "edges": [
+    {
+      "edge_id": "edge-encode-request-image-ref",
+      "source_node_id": "encode_request_image_ref",
+      "source_port": "payload",
+      "target_node_id": "resolve_request_image",
+      "target_port": "fallback"
+    },
+    {
+      "edge_id": "edge-resolve-request-image",
+      "source_node_id": "resolve_request_image",
+      "source_port": "payload",
+      "target_node_id": "decode_request_image",
+      "target_port": "payload"
+    },
+    {
+      "edge_id": "edge-input-blur",
+      "source_node_id": "decode_request_image",
+      "source_port": "image",
+      "target_node_id": "blur_image",
+      "target_port": "image"
+    },
+    {
+      "edge_id": "edge-blur-threshold",
+      "source_node_id": "blur_image",
+      "source_port": "image",
+      "target_node_id": "threshold_image",
+      "target_port": "image"
+    },
+    {
+      "edge_id": "edge-threshold-canny",
+      "source_node_id": "threshold_image",
+      "source_port": "image",
+      "target_node_id": "edge_image",
+      "target_port": "image"
+    },
+    {
+      "edge_id": "edge-canny-save",
+      "source_node_id": "edge_image",
+      "source_port": "image",
+      "target_node_id": "save_image",
+      "target_port": "image"
+    },
+    {
+      "edge_id": "edge-save-preview",
+      "source_node_id": "save_image",
+      "source_port": "image",
+      "target_node_id": "preview_image",
+      "target_port": "image"
+    },
+    {
+      "edge_id": "edge-preview-response",
+      "source_node_id": "preview_image",
+      "source_port": "body",
+      "target_node_id": "response",
+      "target_port": "body"
+    }
+  ],
+  "template_inputs": [
+    {
+      "input_id": "request_image_base64",
+      "display_name": "Request Image Base64",
+      "payload_type_id": "image-base64.v1",
+      "target_node_id": "resolve_request_image",
+      "target_port": "primary",
+      "required": false
+    },
+    {
+      "input_id": "request_image_ref",
+      "display_name": "Request Image Ref",
+      "payload_type_id": "image-ref.v1",
+      "target_node_id": "encode_request_image_ref",
+      "target_port": "image",
+      "required": false
+    }
+  ],
+  "template_outputs": [
+    {
+      "output_id": "http_response",
+      "display_name": "HTTP Response",
+      "payload_type_id": "http-response.v1",
+      "source_node_id": "response",
+      "source_port": "response"
+    }
+  ],
+  "metadata": {
+    "example_kind": "opencv-process-save-image-zeromq",
+    "node_groups": {
+      "input": [
+        "encode_request_image_ref",
+        "resolve_request_image",
+        "decode_request_image"
+      ],
+      "opencv_process": [
+        "blur_image",
+        "threshold_image",
+        "edge_image"
+      ],
+      "output": [
+        "save_image",
+        "preview_image",
+        "response"
+      ]
+    },
+    "trigger_source_input": "zeromq",
+    "http_input_binding": "request_image_base64",
+    "trigger_source_input_binding": "request_image_ref"
+  }
+}

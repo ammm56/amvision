@@ -231,6 +231,86 @@ def test_yolox_deployment_infer_opencv_health_app_runtime_smoke_returns_health_s
     assert response_data["annotated_image"]["media_type"] == "image/png"
 
 
+def test_yolox_deployment_infer_opencv_health_zeromq_app_runtime_smoke_returns_detections_and_image(
+    tmp_path: Path,
+) -> None:
+    """验证第六类正式 app 会返回检测框列表和绘制后的 inline-base64 图片。"""
+
+    executor, workflow_service, _, runtime_registry = _build_example_runtime(
+        tmp_path,
+        database_name="workflow-formal-infer-opencv-health-zeromq.db",
+    )
+    _, application = _save_example_documents(
+        workflow_service,
+        example_name="yolox_deployment_infer_opencv_health_zeromq",
+    )
+
+    def _health_handler(request) -> dict[str, object]:
+        assert request.input_values["request"] == _build_deployment_request_payload()
+        return {
+            "body": {
+                "deployment_instance_id": "deployment-instance-1",
+                "process_state": "running",
+                "healthy_instance_count": 1,
+                "warmed_instance_count": 1,
+                "keep_warm": True,
+            }
+        }
+
+    def _detect_handler(request) -> dict[str, object]:
+        assert request.input_values["request"] == _build_deployment_request_payload()
+        return {
+            "detections": {
+                "items": [
+                    {
+                        "bbox_xyxy": [0.0, 0.0, 1.0, 1.0],
+                        "score": 0.95,
+                        "label": "box-a",
+                        "class_name": "box-a",
+                    },
+                    {
+                        "bbox_xyxy": [1.0, 1.0, 2.0, 2.0],
+                        "score": 0.85,
+                        "label": "box-b",
+                        "class_name": "box-b",
+                    },
+                ]
+            }
+        }
+
+    _override_python_handler(runtime_registry, "core.service.yolox-deployment.health", _health_handler)
+    _override_worker_task_handler(runtime_registry, "core.model.yolox-detection", _detect_handler)
+
+    execution_result = executor.execute(
+        WorkflowApplicationExecutionRequest(
+            project_id="project-1",
+            application_id=application.application_id,
+            input_bindings={
+                "request_image_base64": _build_image_base64_payload(build_valid_test_png_bytes()),
+                "deployment_request": _build_deployment_request_payload(),
+            },
+            execution_metadata={"scenario": "smoke-infer-opencv-health-zeromq"},
+        )
+    )
+
+    response_payload = execution_result.outputs["http_response"]
+    response_body = response_payload["body"]
+    response_data = response_body["data"]
+
+    assert response_payload["status_code"] == 200
+    assert response_body["code"] == 0
+    assert response_body["message"] == "ok"
+    assert response_data["health"]["deployment_instance_id"] == "deployment-instance-1"
+    assert response_data["health"]["process_state"] == "running"
+    assert len(response_data["detections"]) == 2
+    assert response_data["detections"][0]["bbox_xyxy"] == [0.0, 0.0, 1.0, 1.0]
+    assert response_data["detections"][1]["class_name"] == "box-b"
+    assert response_data["annotated_image"]["transport_kind"] == "inline-base64"
+    assert response_data["annotated_image"]["media_type"] == "image/png"
+    assert isinstance(response_data["annotated_image"]["image_base64"], str)
+    assert response_data["annotated_image"]["image_base64"]
+
+
 def test_yolox_deployment_qr_crop_remap_app_runtime_smoke_decodes_qr_from_real_crop(
     tmp_path: Path,
 ) -> None:

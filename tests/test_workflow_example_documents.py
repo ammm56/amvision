@@ -236,6 +236,81 @@ def test_yolox_deployment_infer_opencv_health_example_documents_are_valid() -> N
     ]
 
 
+@pytest.mark.parametrize(
+    ("example_name", "expected_example_kind", "expected_binding_ids", "expected_input_nodes"),
+    [
+        (
+            "yolox_deployment_infer_opencv_health_zeromq",
+            "deployment-infer-opencv-health-zeromq",
+            ["request_image_base64", "request_image_ref", "deployment_request", "http_response"],
+            [
+                "encode_request_image_ref",
+                "resolve_request_image",
+                "decode_request_image",
+                "deployment_request_input",
+            ],
+        ),
+        (
+            "opencv_process_save_image_zeromq",
+            "opencv-process-save-image-zeromq",
+            ["request_image_base64", "request_image_ref", "http_response"],
+            [
+                "encode_request_image_ref",
+                "resolve_request_image",
+                "decode_request_image",
+            ],
+        ),
+    ],
+)
+def test_zeromq_image_ref_example_documents_are_valid(
+    example_name: str,
+    expected_example_kind: str,
+    expected_binding_ids: list[str],
+    expected_input_nodes: list[str],
+) -> None:
+    """验证 ZeroMQ image-ref 示例模板与应用可以通过当前合同校验。"""
+
+    example_dir = Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
+    template_path = example_dir / f"{example_name}.template.json"
+    application_path = example_dir / f"{example_name}.application.json"
+    template = WorkflowGraphTemplate.model_validate(json.loads(template_path.read_text(encoding="utf-8")))
+    application = FlowApplication.model_validate(json.loads(application_path.read_text(encoding="utf-8")))
+
+    custom_nodes_root = Path(__file__).resolve().parents[1] / "custom_nodes"
+    node_pack_loader = LocalNodePackLoader(custom_nodes_root)
+    node_pack_loader.refresh()
+    registry = NodeCatalogRegistry(node_pack_loader=node_pack_loader)
+    validate_workflow_graph_template(
+        template=template,
+        node_definitions=registry.get_workflow_node_definitions(),
+    )
+    validate_flow_application_bindings(template=template, application=application)
+
+    assert [node.node_type_id for node in template.nodes[:3]] == [
+        "core.io.image-base64-encode",
+        "core.logic.image-base64-coalesce",
+        "core.io.image-base64-decode",
+    ]
+    assert template.template_inputs[0].input_id == "request_image_base64"
+    assert template.template_inputs[0].payload_type_id == "image-base64.v1"
+    assert template.template_inputs[0].required is False
+    assert template.template_inputs[1].input_id == "request_image_ref"
+    assert template.template_inputs[1].payload_type_id == "image-ref.v1"
+    assert template.template_inputs[1].required is False
+    assert template.metadata["example_kind"] == expected_example_kind
+    assert template.metadata["trigger_source_input"] == "zeromq"
+    assert template.metadata["node_groups"]["input"] == expected_input_nodes
+    assert application.template_ref.source_uri == f"docs/examples/workflows/{example_name}.template.json"
+    assert application.runtime_mode == "python-json-workflow"
+    assert application.bindings[0].binding_kind == "api-request"
+    assert application.bindings[0].required is False
+    assert application.bindings[0].metadata["payload_type_id"] == "image-base64.v1"
+    assert application.bindings[1].binding_kind == "trigger-source-input"
+    assert application.bindings[1].required is False
+    assert application.bindings[1].metadata["payload_type_id"] == "image-ref.v1"
+    assert [binding.binding_id for binding in application.bindings] == expected_binding_ids
+
+
 def test_yolox_deployment_qr_crop_remap_example_documents_are_valid() -> None:
     """验证 deployment qr crop remap 示例模板与应用可以通过当前合同校验。"""
 

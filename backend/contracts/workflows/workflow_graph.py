@@ -284,6 +284,7 @@ class WorkflowGraphInput(BaseModel):
     - payload_type_id：输入 payload 类型 id。
     - target_node_id：绑定到的目标节点实例 id。
     - target_port：绑定到的目标节点输入端口名称。
+    - required：当前模板输入是否必须在执行时提供。
     - metadata：附加元数据。
     """
 
@@ -294,6 +295,7 @@ class WorkflowGraphInput(BaseModel):
     payload_type_id: str
     target_node_id: str
     target_port: str
+    required: bool = True
     metadata: dict[str, object] = Field(default_factory=dict)
 
     @model_validator(mode="after")
@@ -441,6 +443,7 @@ class FlowApplicationBinding(BaseModel):
     - direction：绑定方向，支持 input 或 output。
     - template_port_id：引用的模板输入或输出 id。
     - binding_kind：端点类型，例如 api-request、http-response、zeromq-publish、plc-write。
+    - required：当前输入绑定是否必须在调用时提供；输出绑定按固定必选处理。
     - config：端点配置。
     - metadata：附加元数据。
     """
@@ -451,6 +454,7 @@ class FlowApplicationBinding(BaseModel):
     direction: Literal[FLOW_BINDING_DIRECTION_INPUT, FLOW_BINDING_DIRECTION_OUTPUT]
     template_port_id: str
     binding_kind: str
+    required: bool = True
     config: dict[str, object] = Field(default_factory=dict)
     metadata: dict[str, object] = Field(default_factory=dict)
 
@@ -633,6 +637,7 @@ def validate_flow_application_bindings(
         raise ValueError("流程应用引用的 template_version 与图模板不一致")
 
     template_input_ids = {item.input_id for item in template.template_inputs}
+    template_input_index = {item.input_id: item for item in template.template_inputs}
     template_output_ids = {item.output_id for item in template.template_outputs}
     input_binding_counts: dict[str, int] = {item.input_id: 0 for item in template.template_inputs}
     output_binding_counts: dict[str, int] = {item.output_id: 0 for item in template.template_outputs}
@@ -644,6 +649,10 @@ def validate_flow_application_bindings(
             input_binding_counts[binding.template_port_id] += 1
             if input_binding_counts[binding.template_port_id] > 1:
                 raise ValueError(f"模板输入 {binding.template_port_id} 只能绑定一个输入端点")
+            if template_input_index[binding.template_port_id].required and not binding.required:
+                raise ValueError(
+                    f"输入绑定 {binding.binding_id} 不能把必需模板输入 {binding.template_port_id} 标记为可选"
+                )
         if binding.direction == FLOW_BINDING_DIRECTION_OUTPUT:
             if binding.template_port_id not in template_output_ids:
                 raise ValueError(f"输出绑定 {binding.binding_id} 引用了不存在的模板输出")

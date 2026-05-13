@@ -731,7 +731,10 @@ def _build_template_input_values(
         for binding in application.bindings
         if binding.direction == FLOW_BINDING_DIRECTION_INPUT
     }
-    missing_binding_ids = sorted(set(input_binding_index.keys()) - set(input_bindings.keys()))
+    required_binding_ids = {
+        binding.binding_id for binding in input_binding_index.values() if binding.required
+    }
+    missing_binding_ids = sorted(required_binding_ids - set(input_bindings.keys()))
     if missing_binding_ids:
         from backend.service.application.errors import InvalidRequestError  # noqa: PLC0415
 
@@ -751,6 +754,7 @@ def _build_template_input_values(
     return {
         binding.template_port_id: input_bindings[binding.binding_id]
         for binding in input_binding_index.values()
+        if binding.binding_id in input_bindings
     }
 
 

@@ -10,6 +10,7 @@ from backend.service.api.rest.v1.routes.models import models_router
 from backend.service.api.rest.v1.routes.system import system_router
 from backend.service.api.rest.v1.routes.tasks import tasks_router
 from backend.service.api.rest.v1.routes.workflow_runtime import workflow_runtime_router
+from backend.service.api.rest.v1.routes.workflow_trigger_sources import workflow_trigger_sources_router
 from backend.service.api.rest.v1.routes.workflows import workflows_router
 from backend.service.api.rest.v1.routes.yolox_deployments import yolox_deployments_router
 from backend.service.api.rest.v1.routes.yolox_conversion_tasks import yolox_conversion_tasks_router
@@ -23,6 +24,7 @@ api_v1_router = APIRouter(prefix="/v1")
 api_v1_router.include_router(system_router)
 api_v1_router.include_router(workflows_router)
 api_v1_router.include_router(workflow_runtime_router)
+api_v1_router.include_router(workflow_trigger_sources_router)
 api_v1_router.include_router(datasets_router)
 api_v1_router.include_router(dataset_exports_router)
 api_v1_router.include_router(models_router)

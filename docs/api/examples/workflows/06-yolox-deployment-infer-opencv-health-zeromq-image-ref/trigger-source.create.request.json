@@ -1,0 +1,40 @@
+{
+  "trigger_source_id": "zeromq-trigger-source-06",
+  "project_id": "project-1",
+  "display_name": "ZeroMQ TriggerSource 06 YOLOX Infer OpenCV Health",
+  "trigger_kind": "zeromq-topic",
+  "workflow_runtime_id": "{{workflowRuntimeId}}",
+  "submit_mode": "sync",
+  "enabled": false,
+  "transport_config": {
+    "bind_endpoint": "tcp://127.0.0.1:5555",
+    "default_input_binding": "request_image",
+    "buffer_ttl_seconds": 30
+  },
+  "input_binding_mapping": {
+    "request_image_ref": {
+      "source": "payload.request_image",
+      "payload_type_id": "image-ref.v1"
+    },
+    "deployment_request": {
+      "source": "payload.deployment_request",
+      "payload_type_id": "value.v1"
+    }
+  },
+  "result_mapping": {
+    "result_binding": "http_response",
+    "result_mode": "sync-reply",
+    "reply_timeout_seconds": 30
+  },
+  "default_execution_metadata": {
+    "scenario": "deployment-infer-opencv-health-zeromq",
+    "trigger_source": "zeromq-sdk"
+  },
+  "ack_policy": "ack-after-run-finished",
+  "result_mode": "sync-reply",
+  "reply_timeout_seconds": 30,
+  "metadata": {
+    "example_kind": "deployment-infer-opencv-health-zeromq",
+    "sdk": "dotnet"
+  }
+}

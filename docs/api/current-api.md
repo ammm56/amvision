@@ -77,6 +77,13 @@
 | GET | /api/v1/workflows/app-runtimes/{workflow_runtime_id}/instances | workflows:read | 列出 runtime 当前可观测的 instance 摘要。 |
 | POST | /api/v1/workflows/app-runtimes/{workflow_runtime_id}/runs | workflows:write | 为已启动 runtime 创建一条异步 WorkflowRun。 |
 | POST | /api/v1/workflows/app-runtimes/{workflow_runtime_id}/invoke | workflows:write | 通过 runtime 发起一次同步调用。 |
+| POST | /api/v1/workflows/trigger-sources | workflows:write | 创建一条 WorkflowTriggerSource 管理资源。 |
+| GET | /api/v1/workflows/trigger-sources | workflows:read | 按 Project 列出 WorkflowTriggerSource。 |
+| GET | /api/v1/workflows/trigger-sources/{trigger_source_id} | workflows:read | 读取一条 WorkflowTriggerSource。 |
+| DELETE | /api/v1/workflows/trigger-sources/{trigger_source_id} | workflows:write | 删除一条 WorkflowTriggerSource；已接入 adapter 时会先停止监听。 |
+| POST | /api/v1/workflows/trigger-sources/{trigger_source_id}/enable | workflows:write | 启用一条 WorkflowTriggerSource；当前要求绑定的 runtime 已处于 running。 |
+| POST | /api/v1/workflows/trigger-sources/{trigger_source_id}/disable | workflows:write | 停用一条 WorkflowTriggerSource。 |
+| GET | /api/v1/workflows/trigger-sources/{trigger_source_id}/health | workflows:read | 读取一条 WorkflowTriggerSource 的健康摘要。 |
 | GET | /api/v1/workflows/runs/{workflow_run_id} | workflows:read | 读取一条 WorkflowRun。 |
 | POST | /api/v1/workflows/runs/{workflow_run_id}/cancel | workflows:write | 取消一条 queued 或 running 的异步 WorkflowRun。 |
 | POST | /api/v1/tasks | tasks:write | 创建公开任务记录，立即返回任务详情。 |
@@ -997,7 +1004,7 @@
 
 ## workflow 资源组
 
-当前 workflow runtime 公开接口描述的是 HTTP 控制面下的正式执行路径；后续 PLC、MQTT、ZeroMQ、gRPC、IO 变化等触发方式仍统一映射到 WorkflowRun，触发入口草案见 [docs/api/workflow-trigger-sources.md](workflow-trigger-sources.md)。
+当前 workflow runtime 公开接口描述的是 HTTP 控制面下的正式执行路径。WorkflowTriggerSource 第一阶段已经提供管理控制面，并已接入 ZeroMQ adapter 的 REST 启停和启动恢复；04/05 继续用于 HTTP JSON invoke，06/07 单独用于同 app HTTP base64 + ZeroMQ image-ref 双入口调试。TriggerSource 只提交协议原生输入，不负责跨 payload type 转换；如果同一 app 需要同时接 HTTP base64 和 ZeroMQ image-ref，应通过图里的显式 binding 或转换节点处理。后续 PLC、MQTT、gRPC、IO 变化等协议 adapter 仍统一映射到 WorkflowRun，触发入口说明见 [docs/api/workflow-trigger-sources.md](workflow-trigger-sources.md)。
 
 ### POST /api/v1/workflows/templates/validate
 
@@ -1188,6 +1195,108 @@
   - requested_timeout_seconds
   - input_payload
   - metadata
+
+### POST /api/v1/workflows/trigger-sources
+
+- Content-Type：application/json
+- 需要 workflows:write
+- 用于创建 WorkflowTriggerSource 管理资源，不替代 runtime invoke 或 runs 执行 API
+- 请求体字段：
+  - trigger_source_id
+  - project_id
+  - display_name
+  - trigger_kind
+  - workflow_runtime_id
+  - submit_mode，默认 async
+  - enabled，默认 false
+  - transport_config
+  - match_rule
+  - input_binding_mapping
+  - result_mapping
+  - default_execution_metadata
+  - ack_policy
+  - result_mode
+  - reply_timeout_seconds，可选
+  - debounce_window_ms，可选
+  - idempotency_key_path，可选
+  - metadata
+- ZeroMQ TriggerSource 常用请求体字段：
+
+```json
+{
+  "trigger_source_id": "zeromq-trigger-source-07",
+  "project_id": "project-1",
+  "display_name": "ZeroMQ TriggerSource 07 OpenCV Process Save Image",
+  "trigger_kind": "zeromq-topic",
+  "workflow_runtime_id": "{{workflowRuntimeId}}",
+  "submit_mode": "sync",
+  "transport_config": {
+    "bind_endpoint": "tcp://127.0.0.1:5556",
+    "default_input_binding": "request_image",
+    "buffer_ttl_seconds": 30
+  },
+  "input_binding_mapping": {
+    "request_image": {
+      "source": "payload.request_image",
+      "payload_type_id": "image-ref.v1"
+    }
+  },
+  "result_mapping": {
+    "result_binding": "http_response",
+    "result_mode": "sync-reply",
+    "reply_timeout_seconds": 30
+  },
+  "ack_policy": "ack-after-run-finished",
+  "result_mode": "sync-reply",
+  "reply_timeout_seconds": 30
+}
+```
+
+- 06 调试请求体见 `docs/api/examples/workflows/06-yolox-deployment-infer-opencv-health-zeromq-image-ref/trigger-source.create.request.json`
+- 07 调试请求体见 `docs/api/examples/workflows/07-opencv-process-save-image-zeromq-image-ref/trigger-source.create.request.json`
+- ZeroMQ 数据面不经过该 REST API 发送图片；图片 bytes 由 C# SDK 通过 ZeroMQ multipart 发送到已启用的 TriggerSource
+- 成功状态码：201 Created
+- 当前响应返回 WorkflowTriggerSource 合同，包括 desired_state、observed_state、health_summary、created_at 和 updated_at
+
+### GET /api/v1/workflows/trigger-sources
+
+- 需要 workflows:read
+- 当前必须显式提供查询参数：
+  - project_id
+- 返回当前 Project 下的 WorkflowTriggerSource 列表
+
+### GET /api/v1/workflows/trigger-sources/{trigger_source_id}
+
+- 需要 workflows:read
+- 返回单条 WorkflowTriggerSource 的完整配置和最近状态
+
+### DELETE /api/v1/workflows/trigger-sources/{trigger_source_id}
+
+- 需要 workflows:write
+- 删除一条 WorkflowTriggerSource
+- 如果 trigger_kind 已注册 adapter，当前会先停止对应 adapter，再删除持久化资源
+- 成功状态码：204 No Content
+- 删除后可重新使用同一个 trigger_source_id 再次创建 TriggerSource
+
+### POST /api/v1/workflows/trigger-sources/{trigger_source_id}/enable
+
+- 需要 workflows:write
+- 启用一条 WorkflowTriggerSource
+- 当前要求绑定的 WorkflowAppRuntime 已经处于 running 状态
+- 如果 trigger_kind 已注册 adapter，当前会启动对应 adapter，并在 health_summary 中返回 adapter_configured、adapter_running 和计数信息
+- 如果 trigger_kind 尚未注册 adapter，当前只更新管理态，observed_state 仍可能是 stopped
+
+### POST /api/v1/workflows/trigger-sources/{trigger_source_id}/disable
+
+- 需要 workflows:write
+- 停用一条 WorkflowTriggerSource
+- 如果 trigger_kind 已注册 adapter，当前会停止对应 adapter
+- disable 不会取消已经创建的 WorkflowRun
+
+### GET /api/v1/workflows/trigger-sources/{trigger_source_id}/health
+
+- 需要 workflows:read
+- 返回当前启用状态、期望状态、观测状态、最近错误、最近触发时间和 health_summary
 
 ### POST /api/v1/workflows/runs/{workflow_run_id}/cancel
 

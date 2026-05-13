@@ -16,6 +16,7 @@
 - [docs/architecture/workflow-runtime.md](architecture/workflow-runtime.md) 汇总 workflow 编辑态试跑、已发布应用运行、队列划分、worker 拓扑和 API 草案
 - [docs/architecture/local-buffer-broker.md](architecture/local-buffer-broker.md) 汇总 LocalBufferBroker 本机高性能数据交换层、mmap 文件池、ring buffer 和 workflow 推理调用边界
 - [docs/api/README.md](api/README.md) 汇总 REST API、WebSocket、ZeroMQ 和公开接口文档
+- [docs/api/trigger-source-sdks.md](api/trigger-source-sdks.md) 汇总 TriggerSource 外部调用方 SDK 的目录、流程和语言实现边界
 - [docs/examples/workflows/README.md](examples/workflows/README.md) 说明 workflow template/application 源 JSON 与 LocalBufferBroker 输入形状的关系
 - [docs/deployment/README.md](deployment/README.md) 汇总开发环境、运行时、打包、安装和部署文档
 - [docs/nodes/README.md](nodes/README.md) 汇总 node pack、custom node 和 runtime hook 专题文档

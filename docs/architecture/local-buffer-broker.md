@@ -115,13 +115,14 @@ workflow preview process / workflow runtime worker / deployment worker / local a
 
 仍不应视为完成的生产闭环包括：
 
-- WorkflowTriggerSource 资源和本地 adapter SDK 尚未公开实现。
+- C# / .NET 外部调用方 SDK 首版已实现，并已支持 `net461;net472;netstandard2.1;net10.0`；Python、Go 和 C SDK 尚未实现。
+- ZeroMQ TriggerSource 已具备普通 BufferRef 写入和 runtime submit 骨架，06/07 已补充同 app HTTP base64 + ZeroMQ image-ref 双输入 workflow app 请求体、TriggerSource 请求体和 C# SDK 调试命令，真实 backend-service 联调仍需完成。
 - FrameRef 在创建 WorkflowRun 前固定为 BufferRef 的步骤尚未实现。
 - ring channel 仍只有最小覆盖语义，latest、strict、drop-oldest、drop-newest 和 block-with-timeout 策略尚未落地。
 - lease heartbeat、registry 恢复、目录扫描清理、配额和背压策略仍在后续阶段。
 - 推理预览图写回 BufferRef、调试保存和更完整的指标面板仍未完成。
 
-因此，现阶段可以使用的路径是“HTTP/base64 或 storage 输入 -> workflow runtime -> 内部 LocalBufferBroker BufferRef/FrameRef -> PublishedInferenceGateway -> deployment worker”。高速本地 adapter 直接提交 FrameRef/BufferRef 的路径已经具备底层数据面，但还需要 TriggerSource / adapter 层把外部事件正式映射到 runtime invoke 或 WorkflowRun。
+因此，现阶段可以使用的路径是“HTTP/base64 或 storage 输入 -> workflow runtime -> 内部 LocalBufferBroker BufferRef/FrameRef -> PublishedInferenceGateway -> deployment worker”。ZeroMQ TriggerSource 已经具备把外部图片 bytes 写入普通 BufferRef 并提交 runtime 的骨架；C# / .NET SDK 已能封装单张图片 REQ/REP 调用；06/07 双输入 workflow app 与调试文档已补齐。`image-ref -> image-base64`、本地磁盘读图和相机抓帧仍属于图内节点边界，不属于 TriggerSource。连续帧 FrameRef、其他语言 SDK 和真实 backend-service 端到端联调仍属于下一步。
 
 ## 示例与节点同步规则
 

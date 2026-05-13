@@ -46,6 +46,20 @@ WORKFLOW_API_EXAMPLE_FOLDERS = {
     "opencv_process_save_image": Path("05-opencv-process-save-image"),
 }
 
+TRIGGER_SOURCE_API_EXAMPLE_FOLDERS = {
+    "yolox_deployment_infer_opencv_health_zeromq_image_ref": Path(
+        "06-yolox-deployment-infer-opencv-health-zeromq-image-ref"
+    ),
+    "opencv_process_save_image_zeromq_image_ref": Path(
+        "07-opencv-process-save-image-zeromq-image-ref"
+    ),
+}
+
+ALL_WORKFLOW_API_EXAMPLE_FOLDERS = {
+    **WORKFLOW_API_EXAMPLE_FOLDERS,
+    **TRIGGER_SOURCE_API_EXAMPLE_FOLDERS,
+}
+
 WORKFLOW_POSTMAN_COLLECTIONS = {
     "00-short-dev-examples": "00-workflow-example-documents.postman_collection.json",
     "01-yolox-end-to-end-qr-crop-remap": "01-yolox-end-to-end-qr-crop-remap.postman_collection.json",
@@ -53,6 +67,12 @@ WORKFLOW_POSTMAN_COLLECTIONS = {
     "03-yolox-deployment-qr-crop-remap": "03-yolox-deployment-qr-crop-remap.postman_collection.json",
     "04-yolox-deployment-infer-opencv-health": "04-yolox-deployment-infer-opencv-health.postman_collection.json",
     "05-opencv-process-save-image": "05-opencv-process-save-image.postman_collection.json",
+    "06-yolox-deployment-infer-opencv-health-zeromq-image-ref": (
+        "06-yolox-deployment-infer-opencv-health-zeromq-image-ref.postman_collection.json"
+    ),
+    "07-opencv-process-save-image-zeromq-image-ref": (
+        "07-opencv-process-save-image-zeromq-image-ref.postman_collection.json"
+    ),
 }
 
 COMPLETE_WORKFLOW_REQUEST_NAMES = {
@@ -69,11 +89,30 @@ COMPLETE_WORKFLOW_REQUEST_NAMES = {
     "Stop App Runtime",
 }
 
+TRIGGER_SOURCE_WORKFLOW_REQUEST_NAMES = {
+    "Save Template",
+    "Save Application",
+    "Create Preview Run",
+    "Get Preview Run",
+    "Create App Runtime",
+    "Start App Runtime",
+    "Get App Runtime Health",
+    "Invoke App Runtime (HTTP Base64)",
+    "Create Workflow Run",
+    "Get Workflow Run",
+    "Create TriggerSource",
+    "Enable TriggerSource",
+    "Get TriggerSource Health",
+    "Disable TriggerSource",
+    "Delete TriggerSource",
+    "Stop App Runtime",
+}
+
 
 def _api_workflow_example_dir(example_name: str) -> Path:
     """返回分类后的 workflow API 示例目录。"""
 
-    return API_WORKFLOW_EXAMPLE_DIR / WORKFLOW_API_EXAMPLE_FOLDERS[example_name]
+    return API_WORKFLOW_EXAMPLE_DIR / ALL_WORKFLOW_API_EXAMPLE_FOLDERS[example_name]
 
 
 def _read_api_workflow_example(example_name: str, file_name: str) -> dict[str, object]:
@@ -501,6 +540,142 @@ def test_workflow_api_image_app_runtime_examples_are_valid(
     assert "timeout_seconds" not in invoke_request
 
 
+@pytest.mark.parametrize(
+    ("example_name", "application_file_name", "expected_application_id", "expected_example_kind"),
+    [
+        pytest.param(
+            "yolox_deployment_infer_opencv_health_zeromq_image_ref",
+            "yolox_deployment_infer_opencv_health_zeromq.application.json",
+            "yolox-deployment-infer-opencv-health-zeromq-app",
+            "deployment-infer-opencv-health-zeromq",
+            id="06-deployment-infer-opencv-health-zeromq",
+        ),
+        pytest.param(
+            "opencv_process_save_image_zeromq_image_ref",
+            "opencv_process_save_image_zeromq.application.json",
+            "opencv-process-save-image-zeromq-app",
+            "opencv-process-save-image-zeromq",
+            id="07-opencv-process-save-image-zeromq",
+        ),
+    ],
+)
+def test_trigger_source_api_app_runtime_create_examples_are_valid(
+    example_name: str,
+    application_file_name: str,
+    expected_application_id: str,
+    expected_example_kind: str,
+) -> None:
+    """验证 06/07 TriggerSource app runtime 创建请求体与双输入 application 对齐。"""
+
+    application = FlowApplication.model_validate(
+        json.loads((DOCS_WORKFLOW_EXAMPLE_DIR / application_file_name).read_text(encoding="utf-8"))
+    )
+    create_request = _read_api_workflow_example(example_name, "app-runtime.create.request.json")
+
+    assert application.application_id == expected_application_id
+    assert application.metadata["example_kind"] == expected_example_kind
+    assert application.metadata["trigger_source_input"] == "zeromq"
+    assert create_request["application_id"] == application.application_id
+    assert create_request["metadata"]["example_kind"] == expected_example_kind
+    assert create_request["metadata"]["trigger_source_input"] == "zeromq"
+    assert "request_timeout_seconds" not in create_request
+    if example_name == "yolox_deployment_infer_opencv_health_zeromq_image_ref":
+        assert create_request["metadata"]["uses_existing_deployment_instance"] is True
+
+
+@pytest.mark.parametrize(
+    ("example_name", "application_file_name", "expected_input_binding_ids"),
+    [
+        pytest.param(
+            "yolox_deployment_infer_opencv_health_zeromq_image_ref",
+            "yolox_deployment_infer_opencv_health_zeromq.application.json",
+            {"request_image_base64", "deployment_request"},
+            id="06-http-base64-invoke",
+        ),
+        pytest.param(
+            "opencv_process_save_image_zeromq_image_ref",
+            "opencv_process_save_image_zeromq.application.json",
+            {"request_image_base64"},
+            id="07-http-base64-invoke",
+        ),
+    ],
+)
+def test_trigger_source_api_invoke_examples_target_http_base64_binding(
+    example_name: str,
+    application_file_name: str,
+    expected_input_binding_ids: set[str],
+) -> None:
+    """验证 06/07 preview、invoke 和 async run 示例只走同 app 的 HTTP base64 输入通道。"""
+
+    application = FlowApplication.model_validate(
+        json.loads((DOCS_WORKFLOW_EXAMPLE_DIR / application_file_name).read_text(encoding="utf-8"))
+    )
+    preview_run_request = _read_api_workflow_example(example_name, "preview-run.request.json")
+    invoke_request = _read_api_workflow_example(example_name, "app-runtime.invoke.request.json")
+    run_create_request = _read_api_workflow_example(example_name, "app-runtime.run.create.request.json")
+    input_binding_index = {
+        binding.binding_id: binding for binding in application.bindings if binding.direction == "input"
+    }
+
+    assert input_binding_index["request_image_base64"].required is False
+    assert input_binding_index["request_image_ref"].required is False
+    assert input_binding_index["request_image_base64"].metadata["payload_type_id"] == "image-base64.v1"
+    assert input_binding_index["request_image_ref"].metadata["payload_type_id"] == "image-ref.v1"
+    assert preview_run_request["application_ref"] == {"application_id": application.application_id}
+    assert set(preview_run_request["input_bindings"]) == expected_input_binding_ids
+    assert preview_run_request["execution_metadata"]["trigger_source"] == "editor-preview"
+    assert preview_run_request["timeout_seconds"] == 30
+    assert set(invoke_request["input_bindings"]) == expected_input_binding_ids
+    assert set(run_create_request["input_bindings"]) == expected_input_binding_ids
+    assert "request_image_ref" not in preview_run_request["input_bindings"]
+    assert "request_image_ref" not in invoke_request["input_bindings"]
+    assert "request_image_ref" not in run_create_request["input_bindings"]
+    assert preview_run_request["input_bindings"]["request_image_base64"]["media_type"] == "image/png"
+    assert invoke_request["input_bindings"]["request_image_base64"]["media_type"] == "image/png"
+    assert run_create_request["input_bindings"]["request_image_base64"]["media_type"] == "image/png"
+    assert invoke_request["execution_metadata"]["trigger_source"] == "sync-api"
+    assert run_create_request["execution_metadata"]["trigger_source"] == "async-api"
+
+
+@pytest.mark.parametrize(
+    ("example_name", "expected_trigger_source_id", "expected_example_kind", "expected_binding_ids"),
+    [
+        pytest.param(
+            "yolox_deployment_infer_opencv_health_zeromq_image_ref",
+            "zeromq-trigger-source-06",
+            "deployment-infer-opencv-health-zeromq",
+            {"request_image_ref", "deployment_request"},
+            id="06-trigger-source-request",
+        ),
+        pytest.param(
+            "opencv_process_save_image_zeromq_image_ref",
+            "zeromq-trigger-source-07",
+            "opencv-process-save-image-zeromq",
+            {"request_image_ref"},
+            id="07-trigger-source-request",
+        ),
+    ],
+)
+def test_trigger_source_create_examples_keep_protocol_native_input_boundary(
+    example_name: str,
+    expected_trigger_source_id: str,
+    expected_example_kind: str,
+    expected_binding_ids: set[str],
+) -> None:
+    """验证 06/07 TriggerSource 请求体继续保持 image-ref 协议原生输入边界。"""
+
+    create_request = _read_api_workflow_example(example_name, "trigger-source.create.request.json")
+
+    assert create_request["trigger_source_id"] == expected_trigger_source_id
+    assert create_request["metadata"]["example_kind"] == expected_example_kind
+    assert create_request["default_execution_metadata"]["trigger_source"] == "zeromq-sdk"
+    assert set(create_request["input_binding_mapping"]) == expected_binding_ids
+    assert all(
+        binding_payload["payload_type_id"] in {"image-ref.v1", "value.v1"}
+        for binding_payload in create_request["input_binding_mapping"].values()
+    )
+
+
 def test_workflow_api_end_to_end_qr_crop_remap_app_runtime_examples_are_valid() -> None:
     """验证第一类完整端到端正式 app 的 create 与 invoke API 示例请求体。"""
 
@@ -620,9 +795,12 @@ def test_workflow_postman_directory_contains_ordered_formal_workflow_collections
     readme_text = readme_path.read_text(encoding="utf-8")
     for collection_dir in collection_dirs:
         assert collection_dir in readme_text
-    assert "后续完整 workflow app 示例按 `06-*`" in readme_text
+    assert "06-yolox-deployment-infer-opencv-health-zeromq-image-ref" in readme_text
+    assert "07-opencv-process-save-image-zeromq-image-ref" in readme_text
     assert "Create Preview Run / Get Preview Run" in readme_text
     assert "Create Workflow Run / Get Workflow Run" in readme_text
+    assert "Create TriggerSource / Enable / Health / Disable" in readme_text
+    assert "Invoke App Runtime (HTTP Base64)" in readme_text
     assert "image-ref.v1" in readme_text
     assert "image-base64.v1" in readme_text
     assert "buffer_ref" in readme_text
@@ -631,6 +809,7 @@ def test_workflow_postman_directory_contains_ordered_formal_workflow_collections
     assert "当前 multipart 上传入口只支持这类 zip 包文件输入" in readme_text
     assert "已接入 LocalBufferBroker direct mmap 数据面和 PublishedInferenceGateway 事件 dispatcher" in readme_text
     assert 'outputs[binding_id] = {"status_code": 200, "body": {...}}' in readme_text
+    assert "不替 workflow 图做 `image-ref -> image-base64`" in readme_text
 
 
 def test_workflow_api_examples_are_classified_by_numbered_directories() -> None:
@@ -648,12 +827,15 @@ def test_workflow_api_examples_are_classified_by_numbered_directories() -> None:
         "03-yolox-deployment-qr-crop-remap",
         "04-yolox-deployment-infer-opencv-health",
         "05-opencv-process-save-image",
+        "06-yolox-deployment-infer-opencv-health-zeromq-image-ref",
+        "07-opencv-process-save-image-zeromq-image-ref",
     ]
-    assert "后续完整示例按 `06-*`" in readme_text
+    assert "同一个 workflow app 同时发布 HTTP `image-base64.v1` 和 ZeroMQ `image-ref.v1` 输入" in readme_text
     assert "已接入 LocalBufferBroker direct mmap 数据面和 PublishedInferenceGateway 事件 dispatcher" in readme_text
     assert "BufferRef" in readme_text
     assert "FrameRef" in readme_text
     assert "不适合作为固定 checked-in 请求体" in readme_text
+    assert "不把图内转换塞进触发层" in readme_text
     for example_name, folder in WORKFLOW_API_EXAMPLE_FOLDERS.items():
         example_dir = API_WORKFLOW_EXAMPLE_DIR / folder
         assert (example_dir / "save-template.request.json").is_file(), example_name
@@ -662,6 +844,94 @@ def test_workflow_api_examples_are_classified_by_numbered_directories() -> None:
         assert (example_dir / "app-runtime.create.request.json").is_file(), example_name
         assert (example_dir / "app-runtime.invoke.request.json").is_file(), example_name
         assert (example_dir / "app-runtime.run.create.request.json").is_file(), example_name
+    for example_name, folder in TRIGGER_SOURCE_API_EXAMPLE_FOLDERS.items():
+        example_dir = API_WORKFLOW_EXAMPLE_DIR / folder
+        assert (example_dir / "save-template.request.json").is_file(), example_name
+        assert (example_dir / "save-application.request.json").is_file(), example_name
+        assert (example_dir / "preview-run.request.json").is_file(), example_name
+        assert (example_dir / "app-runtime.create.request.json").is_file(), example_name
+        assert (example_dir / "app-runtime.invoke.request.json").is_file(), example_name
+        assert (example_dir / "app-runtime.run.create.request.json").is_file(), example_name
+        assert (example_dir / "trigger-source.create.request.json").is_file(), example_name
+
+
+@pytest.mark.parametrize(
+    (
+        "collection_dir",
+        "collection_name",
+        "example_name",
+        "expected_application_id",
+        "expected_example_kind",
+        "expected_invoke_binding_ids",
+    ),
+    [
+        pytest.param(
+            "06-yolox-deployment-infer-opencv-health-zeromq-image-ref",
+            "06-yolox-deployment-infer-opencv-health-zeromq-image-ref.postman_collection.json",
+            "yolox_deployment_infer_opencv_health_zeromq_image_ref",
+            "yolox-deployment-infer-opencv-health-zeromq-app",
+            "deployment-infer-opencv-health-zeromq",
+            {"request_image_base64", "deployment_request"},
+            id="06-zeromq-trigger-source",
+        ),
+        pytest.param(
+            "07-opencv-process-save-image-zeromq-image-ref",
+            "07-opencv-process-save-image-zeromq-image-ref.postman_collection.json",
+            "opencv_process_save_image_zeromq_image_ref",
+            "opencv-process-save-image-zeromq-app",
+            "opencv-process-save-image-zeromq",
+            {"request_image_base64"},
+            id="07-zeromq-trigger-source",
+        ),
+    ],
+)
+def test_trigger_source_postman_collections_include_runtime_prepare_steps(
+    collection_dir: str,
+    collection_name: str,
+    example_name: str,
+    expected_application_id: str,
+    expected_example_kind: str,
+    expected_invoke_binding_ids: set[str],
+) -> None:
+    """验证 06/07 TriggerSource Postman collection 已补齐完整本地调试链路。"""
+
+    collection_path = POSTMAN_WORKFLOW_DIR / collection_dir / collection_name
+    collection_payload = json.loads(collection_path.read_text(encoding="utf-8"))
+    request_names = _collect_postman_request_names(collection_payload["item"])
+    request_payloads = _collect_postman_request_payloads(collection_payload["item"])
+    variables = {item["key"]: item.get("value", "") for item in collection_payload.get("variable", [])}
+    save_template_body = json.loads(request_payloads["Save Template"])
+    save_application_body = json.loads(request_payloads["Save Application"])
+    create_preview_body = json.loads(request_payloads["Create Preview Run"])
+    create_runtime_body = json.loads(request_payloads["Create App Runtime"])
+    invoke_body = json.loads(request_payloads["Invoke App Runtime (HTTP Base64)"])
+    create_run_body = json.loads(request_payloads["Create Workflow Run"])
+    create_trigger_source_body = json.loads(request_payloads["Create TriggerSource"])
+    get_preview_request = _find_postman_request(collection_payload["item"], "Get Preview Run")
+    get_run_request = _find_postman_request(collection_payload["item"], "Get Workflow Run")
+    delete_trigger_source_request = _find_postman_request(collection_payload["item"], "Delete TriggerSource")
+
+    assert request_names == TRIGGER_SOURCE_WORKFLOW_REQUEST_NAMES
+    assert variables["previewRunId"] == ""
+    assert variables["workflowRuntimeId"] == ""
+    assert variables["workflowRunId"] == ""
+    assert variables["triggerSourceId"].startswith("zeromq-trigger-source-")
+    assert save_template_body == _read_api_workflow_example(example_name, "save-template.request.json")
+    assert save_application_body == _read_api_workflow_example(example_name, "save-application.request.json")
+    assert create_preview_body == _read_api_workflow_example(example_name, "preview-run.request.json")
+    assert get_preview_request["url"]["raw"] == "{{baseUrl}}/api/v1/workflows/preview-runs/{{previewRunId}}"
+    assert create_runtime_body["application_id"] == expected_application_id
+    assert create_runtime_body == _read_api_workflow_example(example_name, "app-runtime.create.request.json")
+    assert create_runtime_body["metadata"]["example_kind"] == expected_example_kind
+    assert create_runtime_body["metadata"]["trigger_source_input"] == "zeromq"
+    assert set(invoke_body["input_bindings"]) == expected_invoke_binding_ids
+    assert invoke_body == _read_api_workflow_example(example_name, "app-runtime.invoke.request.json")
+    assert create_run_body == _read_api_workflow_example(example_name, "app-runtime.run.create.request.json")
+    assert get_run_request["url"]["raw"] == "{{baseUrl}}/api/v1/workflows/runs/{{workflowRunId}}"
+    assert create_trigger_source_body == _read_api_workflow_example(example_name, "trigger-source.create.request.json")
+    assert delete_trigger_source_request["url"]["raw"] == "{{baseUrl}}/api/v1/workflows/trigger-sources/{{triggerSourceId}}"
+    assert invoke_body["input_bindings"]["request_image_base64"]["media_type"] == "image/png"
+    assert invoke_body["execution_metadata"]["trigger_source"] == "sync-api"
 
 
 def test_local_buffer_broker_architecture_document_is_indexed() -> None:
@@ -698,9 +968,12 @@ def test_local_buffer_broker_architecture_document_is_indexed() -> None:
     assert "PublishedInferenceGateway" in trigger_sources_text
     assert "outputs[\"http_response\"]" in trigger_sources_text
     assert "FrameRef 的有效期很短" in trigger_sources_text
+    assert "TriggerSource 不负责图级转换" in trigger_sources_text
+    assert "如果同一个 workflow app 既要接 HTTP base64，又要接 ZeroMQ image-ref" in trigger_sources_text
     assert "当前可用性核查" in document_text
     assert "示例与节点同步规则" in document_text
-    assert "WorkflowTriggerSource 资源和本地 adapter SDK 尚未公开实现" in document_text
+    assert "C# / .NET 外部调用方 SDK 首版已实现" in document_text
+    assert "06/07 双输入 workflow app 与调试文档已补齐" in document_text
 
 
 def test_workflow_example_documents_postman_collection_contains_remaining_debug_examples() -> None:

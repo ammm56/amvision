@@ -16,11 +16,29 @@ from backend.service.application.deployments import (
     PublishedInferenceGateway,
     YoloXDeploymentPublishedInferenceGateway,
 )
-from backend.service.application.deployments.yolox_deployment_service import SqlAlchemyYoloXDeploymentService
+from backend.service.application.deployments.yolox_deployment_service import (
+    SqlAlchemyYoloXDeploymentService,
+)
 from backend.service.application.local_buffers import LocalBufferBrokerProcessSupervisor
-from backend.service.application.models.pretrained_catalog import YoloXPretrainedModelCatalogSeeder
-from backend.service.application.workflows.graph_executor import WorkflowNodeRuntimeRegistry
-from backend.service.application.workflows.runtime_worker import WorkflowRuntimeWorkerManager
+from backend.service.application.models.pretrained_catalog import (
+    YoloXPretrainedModelCatalogSeeder,
+)
+from backend.service.application.workflows.graph_executor import (
+    WorkflowNodeRuntimeRegistry,
+)
+from backend.service.application.workflows.runtime_service import WorkflowRuntimeService
+from backend.service.application.workflows.runtime_worker import (
+    WorkflowRuntimeWorkerManager,
+)
+from backend.service.application.workflows.trigger_sources.trigger_source_service import (
+    WorkflowTriggerSourceService,
+)
+from backend.service.application.workflows.trigger_sources.trigger_source_supervisor import (
+    TriggerSourceSupervisor,
+)
+from backend.service.application.workflows.trigger_sources.workflow_submitter import (
+    WorkflowSubmitter,
+)
 from backend.service.application.workflows.service_node_runtime import (
     WorkflowServiceNodeRuntimeContext,
 )
@@ -32,10 +50,14 @@ from backend.service.application.runtime.yolox_deployment_process_supervisor imp
 )
 from backend.service.infrastructure.db.schema import initialize_database_schema
 from backend.service.infrastructure.db.session import SessionFactory
+from backend.service.infrastructure.integrations.zeromq import ZeroMqTriggerAdapter
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     LocalDatasetStorage,
 )
-from backend.service.settings import BackendServiceSettings, get_backend_service_settings
+from backend.service.settings import (
+    BackendServiceSettings,
+    get_backend_service_settings,
+)
 from backend.workers.task_manager import HostedBackgroundTaskManager
 
 
@@ -58,6 +80,7 @@ class BackendServiceRuntime:
     - yolox_sync_deployment_process_supervisor：同步 YOLOX deployment 进程监督器。
     - yolox_async_deployment_process_supervisor：异步 YOLOX deployment 进程监督器。
     - workflow_runtime_worker_manager：workflow runtime worker 管理器。
+    - trigger_source_supervisor：workflow trigger source adapter 监督器。
     - background_task_manager_host：当前进程托管的后台任务管理器宿主。
     """
 
@@ -75,6 +98,7 @@ class BackendServiceRuntime:
     yolox_sync_deployment_process_supervisor: YoloXDeploymentProcessSupervisor
     yolox_async_deployment_process_supervisor: YoloXDeploymentProcessSupervisor
     workflow_runtime_worker_manager: WorkflowRuntimeWorkerManager
+    trigger_source_supervisor: TriggerSourceSupervisor
     background_task_manager_host: HostedBackgroundTaskManager | None
 
 
@@ -163,7 +187,9 @@ class LoadBackendServiceNodeCatalogStep:
         runtime.workflow_node_runtime_registry_loader.refresh()
 
 
-class BackendServiceBootstrap(RuntimeBootstrap[BackendServiceSettings, BackendServiceRuntime]):
+class BackendServiceBootstrap(
+    RuntimeBootstrap[BackendServiceSettings, BackendServiceRuntime]
+):
     """按固定步骤准备 backend-service 运行环境。"""
 
     def __init__(
@@ -268,6 +294,24 @@ class BackendServiceBootstrap(RuntimeBootstrap[BackendServiceSettings, BackendSe
             local_buffer_broker_event_channel_provider=local_buffer_broker_supervisor.get_event_channel,
             published_inference_gateway=published_inference_gateway,
         )
+        trigger_workflow_runtime_service = WorkflowRuntimeService(
+            settings=settings,
+            session_factory=session_factory,
+            dataset_storage=dataset_storage,
+            node_catalog_registry=node_catalog_registry,
+            worker_manager=workflow_runtime_worker_manager,
+            published_inference_gateway=published_inference_gateway,
+        )
+        trigger_source_supervisor = TriggerSourceSupervisor(
+            adapters={
+                "zeromq-topic": ZeroMqTriggerAdapter(
+                    local_buffer_writer=local_buffer_broker_supervisor
+                )
+            },
+            workflow_submitter=WorkflowSubmitter(
+                runtime_service=trigger_workflow_runtime_service
+            ),
+        )
         return BackendServiceRuntime(
             settings=settings,
             session_factory=session_factory,
@@ -283,6 +327,7 @@ class BackendServiceBootstrap(RuntimeBootstrap[BackendServiceSettings, BackendSe
             yolox_sync_deployment_process_supervisor=yolox_sync_deployment_process_supervisor,
             yolox_async_deployment_process_supervisor=yolox_async_deployment_process_supervisor,
             workflow_runtime_worker_manager=workflow_runtime_worker_manager,
+            trigger_source_supervisor=trigger_source_supervisor,
             background_task_manager_host=background_task_manager_host,
         )
 
@@ -304,15 +349,34 @@ class BackendServiceBootstrap(RuntimeBootstrap[BackendServiceSettings, BackendSe
         application.state.queue_backend = runtime.queue_backend
         application.state.node_pack_loader = runtime.node_pack_loader
         application.state.node_catalog_registry = runtime.node_catalog_registry
-        application.state.workflow_node_runtime_registry_loader = runtime.workflow_node_runtime_registry_loader
-        application.state.workflow_node_runtime_registry = runtime.workflow_node_runtime_registry
-        application.state.workflow_service_node_runtime_context = runtime.workflow_service_node_runtime_context
-        application.state.local_buffer_broker_supervisor = runtime.local_buffer_broker_supervisor
-        application.state.published_inference_gateway = runtime.published_inference_gateway
-        application.state.yolox_sync_deployment_process_supervisor = runtime.yolox_sync_deployment_process_supervisor
-        application.state.yolox_async_deployment_process_supervisor = runtime.yolox_async_deployment_process_supervisor
-        application.state.workflow_runtime_worker_manager = runtime.workflow_runtime_worker_manager
-        application.state.background_task_manager_host = runtime.background_task_manager_host
+        application.state.workflow_node_runtime_registry_loader = (
+            runtime.workflow_node_runtime_registry_loader
+        )
+        application.state.workflow_node_runtime_registry = (
+            runtime.workflow_node_runtime_registry
+        )
+        application.state.workflow_service_node_runtime_context = (
+            runtime.workflow_service_node_runtime_context
+        )
+        application.state.local_buffer_broker_supervisor = (
+            runtime.local_buffer_broker_supervisor
+        )
+        application.state.published_inference_gateway = (
+            runtime.published_inference_gateway
+        )
+        application.state.yolox_sync_deployment_process_supervisor = (
+            runtime.yolox_sync_deployment_process_supervisor
+        )
+        application.state.yolox_async_deployment_process_supervisor = (
+            runtime.yolox_async_deployment_process_supervisor
+        )
+        application.state.workflow_runtime_worker_manager = (
+            runtime.workflow_runtime_worker_manager
+        )
+        application.state.trigger_source_supervisor = runtime.trigger_source_supervisor
+        application.state.background_task_manager_host = (
+            runtime.background_task_manager_host
+        )
 
     def start_runtime(self, runtime: BackendServiceRuntime) -> None:
         """启动 backend-service 托管的长生命周期资源。
@@ -325,6 +389,10 @@ class BackendServiceBootstrap(RuntimeBootstrap[BackendServiceSettings, BackendSe
         runtime.yolox_sync_deployment_process_supervisor.start()
         runtime.yolox_async_deployment_process_supervisor.start()
         runtime.workflow_runtime_worker_manager.start()
+        WorkflowTriggerSourceService(
+            session_factory=runtime.session_factory,
+            trigger_source_supervisor=runtime.trigger_source_supervisor,
+        ).start_enabled_trigger_sources()
         if runtime.background_task_manager_host is not None:
             runtime.background_task_manager_host.start()
 
@@ -337,6 +405,7 @@ class BackendServiceBootstrap(RuntimeBootstrap[BackendServiceSettings, BackendSe
 
         if runtime.background_task_manager_host is not None:
             runtime.background_task_manager_host.stop()
+        runtime.trigger_source_supervisor.stop_all()
         runtime.workflow_runtime_worker_manager.stop()
         runtime.yolox_sync_deployment_process_supervisor.stop()
         runtime.yolox_async_deployment_process_supervisor.stop()
@@ -368,7 +437,9 @@ class BackendServiceBootstrap(RuntimeBootstrap[BackendServiceSettings, BackendSe
         - 当前启动流程使用的 seeder 元组。
         """
 
-        default_seeders: tuple[BackendServiceSeeder, ...] = (YoloXPretrainedModelCatalogSeeder(),)
+        default_seeders: tuple[BackendServiceSeeder, ...] = (
+            YoloXPretrainedModelCatalogSeeder(),
+        )
         if self._provided_seeders is None:
             return default_seeders
 

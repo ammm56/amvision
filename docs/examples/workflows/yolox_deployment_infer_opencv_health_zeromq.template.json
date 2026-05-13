@@ -1,0 +1,410 @@
+{
+  "format_id": "amvision.workflow-graph-template.v1",
+  "template_id": "yolox-deployment-infer-opencv-health-zeromq-template",
+  "template_version": "1.1.0",
+  "display_name": "YOLOX Deployment Infer OpenCV Health ZeroMQ Template",
+  "description": "同时接收 HTTP image-base64 和 TriggerSource image-ref 图片；图内显式汇合双入口后，图末端返回检测框列表、绘制后的 inline-base64 图片和 deployment health 摘要。",
+  "nodes": [
+    {
+      "node_id": "encode_request_image_ref",
+      "node_type_id": "core.io.image-base64-encode",
+      "parameters": {}
+    },
+    {
+      "node_id": "resolve_request_image",
+      "node_type_id": "core.logic.image-base64-coalesce",
+      "parameters": {}
+    },
+    {
+      "node_id": "decode_request_image",
+      "node_type_id": "core.io.image-base64-decode",
+      "parameters": {}
+    },
+    {
+      "node_id": "deployment_request_input",
+      "node_type_id": "core.io.template-input.object",
+      "parameters": {}
+    },
+    {
+      "node_id": "health",
+      "node_type_id": "core.service.yolox-deployment.health",
+      "parameters": {
+        "runtime_mode": "sync"
+      },
+      "metadata": {
+        "sequence_index": 1
+      }
+    },
+    {
+      "node_id": "extract_deployment_instance_id",
+      "node_type_id": "core.logic.field-extract",
+      "parameters": {
+        "path": "deployment_instance_id"
+      }
+    },
+    {
+      "node_id": "detect",
+      "node_type_id": "core.model.yolox-detection",
+      "parameters": {
+        "auto_start_process": false,
+        "score_threshold": 0.3,
+        "save_result_image": false,
+        "return_preview_image_base64": false
+      },
+      "metadata": {
+        "sequence_index": 2
+      }
+    },
+    {
+      "node_id": "draw_detections",
+      "node_type_id": "custom.opencv.draw-detections",
+      "parameters": {
+        "line_thickness": 2,
+        "font_scale": 0.6,
+        "draw_scores": true
+      }
+    },
+    {
+      "node_id": "preview_image",
+      "node_type_id": "core.io.image-preview",
+      "parameters": {
+        "title": "Annotated Detection Image",
+        "response_transport_mode": "inline-base64"
+      }
+    },
+    {
+      "node_id": "extract_preview_image",
+      "node_type_id": "core.logic.field-extract",
+      "parameters": {
+        "path": "image"
+      }
+    },
+    {
+      "node_id": "extract_detection_items",
+      "node_type_id": "core.logic.detections-items",
+      "parameters": {}
+    },
+    {
+      "node_id": "extract_process_state",
+      "node_type_id": "core.logic.field-extract",
+      "parameters": {
+        "path": "process_state"
+      }
+    },
+    {
+      "node_id": "extract_healthy_instance_count",
+      "node_type_id": "core.logic.field-extract",
+      "parameters": {
+        "path": "healthy_instance_count"
+      }
+    },
+    {
+      "node_id": "extract_warmed_instance_count",
+      "node_type_id": "core.logic.field-extract",
+      "parameters": {
+        "path": "warmed_instance_count"
+      }
+    },
+    {
+      "node_id": "extract_keep_warm",
+      "node_type_id": "core.logic.field-extract",
+      "parameters": {
+        "path": "keep_warm"
+      }
+    },
+    {
+      "node_id": "build_health_summary",
+      "node_type_id": "core.logic.object-create",
+      "parameters": {
+        "keys": [
+          "process_state",
+          "healthy_instance_count",
+          "warmed_instance_count",
+          "keep_warm",
+          "deployment_instance_id"
+        ],
+        "fields": {
+          "runtime_mode": "sync"
+        }
+      }
+    },
+    {
+      "node_id": "build_response_data",
+      "node_type_id": "core.logic.object-create",
+      "parameters": {
+        "keys": [
+          "annotated_image",
+          "detections",
+          "health"
+        ],
+        "fields": {
+          "type": "deployment-infer-opencv-health"
+        }
+      }
+    },
+    {
+      "node_id": "envelope",
+      "node_type_id": "core.output.response-envelope",
+      "parameters": {
+        "code": 0,
+        "message": "ok"
+      }
+    },
+    {
+      "node_id": "response",
+      "node_type_id": "core.output.http-response",
+      "parameters": {
+        "status_code": 200
+      }
+    }
+  ],
+  "edges": [
+    {
+      "edge_id": "edge-encode-request-image-ref",
+      "source_node_id": "encode_request_image_ref",
+      "source_port": "payload",
+      "target_node_id": "resolve_request_image",
+      "target_port": "fallback"
+    },
+    {
+      "edge_id": "edge-resolve-request-image",
+      "source_node_id": "resolve_request_image",
+      "source_port": "payload",
+      "target_node_id": "decode_request_image",
+      "target_port": "payload"
+    },
+    {
+      "edge_id": "edge-input-detect",
+      "source_node_id": "decode_request_image",
+      "source_port": "image",
+      "target_node_id": "detect",
+      "target_port": "image"
+    },
+    {
+      "edge_id": "edge-input-draw",
+      "source_node_id": "decode_request_image",
+      "source_port": "image",
+      "target_node_id": "draw_detections",
+      "target_port": "image"
+    },
+    {
+      "edge_id": "edge-detect-draw",
+      "source_node_id": "detect",
+      "source_port": "detections",
+      "target_node_id": "draw_detections",
+      "target_port": "detections"
+    },
+    {
+      "edge_id": "edge-draw-preview",
+      "source_node_id": "draw_detections",
+      "source_port": "image",
+      "target_node_id": "preview_image",
+      "target_port": "image"
+    },
+    {
+      "edge_id": "edge-preview-extract-image",
+      "source_node_id": "preview_image",
+      "source_port": "body",
+      "target_node_id": "extract_preview_image",
+      "target_port": "body"
+    },
+    {
+      "edge_id": "edge-health-extract-process-state",
+      "source_node_id": "health",
+      "source_port": "body",
+      "target_node_id": "extract_process_state",
+      "target_port": "body"
+    },
+    {
+      "edge_id": "edge-health-extract-healthy-instance-count",
+      "source_node_id": "health",
+      "source_port": "body",
+      "target_node_id": "extract_healthy_instance_count",
+      "target_port": "body"
+    },
+    {
+      "edge_id": "edge-health-extract-warmed-instance-count",
+      "source_node_id": "health",
+      "source_port": "body",
+      "target_node_id": "extract_warmed_instance_count",
+      "target_port": "body"
+    },
+    {
+      "edge_id": "edge-health-extract-keep-warm",
+      "source_node_id": "health",
+      "source_port": "body",
+      "target_node_id": "extract_keep_warm",
+      "target_port": "body"
+    },
+    {
+      "edge_id": "edge-process-state-build-health-summary",
+      "source_node_id": "extract_process_state",
+      "source_port": "value",
+      "target_node_id": "build_health_summary",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-healthy-instance-count-build-health-summary",
+      "source_node_id": "extract_healthy_instance_count",
+      "source_port": "value",
+      "target_node_id": "build_health_summary",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-warmed-instance-count-build-health-summary",
+      "source_node_id": "extract_warmed_instance_count",
+      "source_port": "value",
+      "target_node_id": "build_health_summary",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-keep-warm-build-health-summary",
+      "source_node_id": "extract_keep_warm",
+      "source_port": "value",
+      "target_node_id": "build_health_summary",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-detect-extract-detection-items",
+      "source_node_id": "detect",
+      "source_port": "detections",
+      "target_node_id": "extract_detection_items",
+      "target_port": "detections"
+    },
+    {
+      "edge_id": "edge-preview-image-build-response-data",
+      "source_node_id": "extract_preview_image",
+      "source_port": "value",
+      "target_node_id": "build_response_data",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-detection-items-build-response-data",
+      "source_node_id": "extract_detection_items",
+      "source_port": "value",
+      "target_node_id": "build_response_data",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-health-summary-build-response-data",
+      "source_node_id": "build_health_summary",
+      "source_port": "value",
+      "target_node_id": "build_response_data",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-response-data-envelope",
+      "source_node_id": "build_response_data",
+      "source_port": "value",
+      "target_node_id": "envelope",
+      "target_port": "data"
+    },
+    {
+      "edge_id": "edge-envelope-response",
+      "source_node_id": "envelope",
+      "source_port": "body",
+      "target_node_id": "response",
+      "target_port": "body"
+    },
+    {
+      "edge_id": "edge-deployment-request-health",
+      "source_node_id": "deployment_request_input",
+      "source_port": "value",
+      "target_node_id": "health",
+      "target_port": "request"
+    },
+    {
+      "edge_id": "edge-deployment-request-detect",
+      "source_node_id": "deployment_request_input",
+      "source_port": "value",
+      "target_node_id": "detect",
+      "target_port": "request"
+    },
+    {
+      "edge_id": "edge-health-extract-deployment-instance-id",
+      "source_node_id": "health",
+      "source_port": "body",
+      "target_node_id": "extract_deployment_instance_id",
+      "target_port": "body"
+    },
+    {
+      "edge_id": "edge-deployment-instance-id-build-health-summary",
+      "source_node_id": "extract_deployment_instance_id",
+      "source_port": "value",
+      "target_node_id": "build_health_summary",
+      "target_port": "values"
+    }
+  ],
+  "template_inputs": [
+    {
+      "input_id": "request_image_base64",
+      "display_name": "Request Image Base64",
+      "payload_type_id": "image-base64.v1",
+      "target_node_id": "resolve_request_image",
+      "target_port": "primary",
+      "required": false
+    },
+    {
+      "input_id": "request_image_ref",
+      "display_name": "Request Image Ref",
+      "payload_type_id": "image-ref.v1",
+      "target_node_id": "encode_request_image_ref",
+      "target_port": "image",
+      "required": false
+    },
+    {
+      "input_id": "deployment_request",
+      "display_name": "Deployment Request",
+      "payload_type_id": "value.v1",
+      "target_node_id": "deployment_request_input",
+      "target_port": "payload"
+    }
+  ],
+  "template_outputs": [
+    {
+      "output_id": "http_response",
+      "display_name": "HTTP Response",
+      "payload_type_id": "http-response.v1",
+      "source_node_id": "response",
+      "source_port": "response"
+    }
+  ],
+  "metadata": {
+    "example_kind": "deployment-infer-opencv-health-zeromq",
+    "uses_existing_deployment_instance": true,
+    "deployment_runtime_owner": "backend-service",
+    "node_groups": {
+      "input": [
+        "encode_request_image_ref",
+        "resolve_request_image",
+        "decode_request_image",
+        "deployment_request_input"
+      ],
+      "deployment": [
+        "health",
+        "detect"
+      ],
+      "opencv_render": [
+        "draw_detections",
+        "preview_image"
+      ],
+      "response": [
+        "extract_deployment_instance_id",
+        "extract_detection_items",
+        "extract_preview_image",
+        "extract_process_state",
+        "extract_healthy_instance_count",
+        "extract_warmed_instance_count",
+        "extract_keep_warm",
+        "build_health_summary",
+        "build_response_data",
+        "envelope",
+        "response"
+      ]
+    },
+    "deployment_instance_id_binding": "deployment_request",
+    "trigger_source_input": "zeromq",
+    "http_input_binding": "request_image_base64",
+    "trigger_source_input_binding": "request_image_ref"
+  }
+}

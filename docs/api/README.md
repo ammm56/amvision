@@ -2,7 +2,7 @@
 
 ## 文档目的
 
-本目录用于存放对外公开接口文档，包括 REST API、WebSocket 消息和版本化接口说明。ZeroMQ 可作为后续高速触发和图片提交入口，未形成当前公开协议面时不在本目录展开具体消息字段。
+本目录用于存放对外公开接口文档，包括 REST API、WebSocket 消息、ZeroMQ TriggerSource 调用边界、SDK 使用边界和版本化接口说明。
 
 ## 当前文档
 
@@ -13,6 +13,8 @@
 - [docs/api/workflow-runs.md](workflow-runs.md)：WorkflowRun 的正式接口文档，覆盖 sync invoke、async run create、结果回查和取消
 - [docs/api/workflow-execution-policies.md](workflow-execution-policies.md)：WorkflowExecutionPolicy 的正式接口文档，覆盖 preview 和 runtime 的执行默认项
 - [docs/api/workflow-runtime-drafts.md](workflow-runtime-drafts.md)：workflow runtime 当前公开文档和后续扩展草案的导航页
+- [docs/api/workflow-trigger-sources.md](workflow-trigger-sources.md)：WorkflowTriggerSource 资源和 ZeroMQ adapter 的接口边界，覆盖外部触发入口、启停、health 和后续协议扩展
+- [docs/api/trigger-source-sdks.md](trigger-source-sdks.md)：TriggerSource 外部调用方 SDK 规划，覆盖 C# / .NET、Python、Go 和 C SDK 的目录、调用流程和版本规则
 - [docs/api/communication-contracts.md](communication-contracts.md)：REST API、WebSocket、ZeroMQ 的职责拆分与事件规则边界
 - [docs/api/datasets-imports.md](datasets-imports.md)：DatasetImport 导入、详情查询、列表查询、task_id 关联和错误语义
 - [docs/api/datasets-exports.md](datasets-exports.md)：DatasetExport 创建、详情查询、package/download/manifest 和 training 输入边界
@@ -43,7 +45,6 @@
 
 下列文档用于承接 workflow runtime 的后续扩展设计。preview-runs、app-runtimes 和 runs 的当前实现已经转为正式文档，不再放在草案列表中。
 
-- [docs/api/workflow-trigger-sources.md](workflow-trigger-sources.md)：WorkflowTriggerSource 资源的接口草案，覆盖 PLC、MQTT、ZeroMQ、gRPC、IO 变化、传感器读取和其他外部触发入口
 - [docs/api/workflow-persona-profiles.md](workflow-persona-profiles.md)：PersonaProfile 资源的接口草案，覆盖 AI 节点的人格、口吻和系统提示模板
 - [docs/api/workflow-tool-policies.md](workflow-tool-policies.md)：ToolPolicy 资源的接口草案，覆盖 AI 节点可用工具集合和调用上限
 - [docs/architecture/workflow-runtime-phase2.md](../architecture/workflow-runtime-phase2.md)：workflow runtime 第二阶段边界，收口 restart、instances、异步 runs 和 execution policies 的进入范围
@@ -53,6 +54,7 @@
 - REST 资源与版本说明
 - WebSocket 事件类型与订阅主题清单
 - ZeroMQ 高速触发和图片提交主题与消息约束
+- 外部调用方 SDK 的协议合同、语言实现和示例
 - 错误码、分页、鉴权和兼容性说明
 - Postman collection 与最小调试示例
 

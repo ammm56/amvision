@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from contextlib import contextmanager
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
@@ -65,6 +65,21 @@ class WorkflowAppRuntimeCreateRequest:
     display_name: str = ""
     request_timeout_seconds: int | None = None
     metadata: dict[str, object] | None = None
+
+
+@dataclass(frozen=True)
+class WorkflowRuntimeSyncInvokeResult:
+    """描述一次同步 WorkflowAppRuntime 调用结果。
+
+    字段：
+    - workflow_run：已持久化并完成状态回写的 WorkflowRun。
+    - raw_outputs：本次同步调用返回的未脱敏 application outputs。
+    - raw_template_outputs：本次同步调用返回的未脱敏 template outputs。
+    """
+
+    workflow_run: WorkflowRun
+    raw_outputs: dict[str, object] = field(default_factory=dict)
+    raw_template_outputs: dict[str, object] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -621,7 +636,40 @@ class WorkflowRuntimeService:
         *,
         created_by: str | None,
     ) -> WorkflowRun:
-        """通过已启动的 runtime 发起一次同步调用。"""
+        """通过已启动的 runtime 发起一次同步调用。
+
+        参数：
+        - workflow_runtime_id：目标 WorkflowAppRuntime id。
+        - request：同步运行请求。
+        - created_by：创建主体 id。
+
+        返回：
+        - WorkflowRun：已完成状态回写且输出已脱敏的 WorkflowRun。
+        """
+
+        return self.invoke_workflow_app_runtime_with_response(
+            workflow_runtime_id,
+            request,
+            created_by=created_by,
+        ).workflow_run
+
+    def invoke_workflow_app_runtime_with_response(
+        self,
+        workflow_runtime_id: str,
+        request: WorkflowRuntimeInvokeRequest,
+        *,
+        created_by: str | None,
+    ) -> WorkflowRuntimeSyncInvokeResult:
+        """通过已启动的 runtime 发起一次同步调用，并保留未脱敏输出。
+
+        参数：
+        - workflow_runtime_id：目标 WorkflowAppRuntime id。
+        - request：同步运行请求。
+        - created_by：创建主体 id。
+
+        返回：
+        - WorkflowRuntimeSyncInvokeResult：包含持久化 WorkflowRun 和未脱敏 outputs。
+        """
 
         workflow_app_runtime = self.get_workflow_app_runtime_health(workflow_runtime_id)
         if workflow_app_runtime.observed_state != "running":
@@ -662,6 +710,8 @@ class WorkflowRuntimeService:
             unit_of_work.workflow_runtime.save_workflow_run(workflow_run)
             unit_of_work.commit()
 
+        raw_outputs: dict[str, object] = {}
+        raw_template_outputs: dict[str, object] = {}
         try:
             worker_result = self.worker_manager.invoke_runtime(
                 workflow_app_runtime=workflow_app_runtime,
@@ -670,6 +720,8 @@ class WorkflowRuntimeService:
                 execution_metadata=execution_metadata,
                 timeout_seconds=workflow_run.requested_timeout_seconds,
             )
+            raw_outputs = dict(worker_result.outputs)
+            raw_template_outputs = dict(worker_result.template_outputs)
             workflow_run = self._apply_run_result(
                 workflow_run,
                 worker_result,
@@ -703,7 +755,11 @@ class WorkflowRuntimeService:
             unit_of_work.workflow_runtime.save_workflow_run(workflow_run)
             unit_of_work.workflow_runtime.save_workflow_app_runtime(workflow_app_runtime)
             unit_of_work.commit()
-        return workflow_run
+        return WorkflowRuntimeSyncInvokeResult(
+            workflow_run=workflow_run,
+            raw_outputs=raw_outputs,
+            raw_template_outputs=raw_template_outputs,
+        )
 
     def get_workflow_run(self, workflow_run_id: str) -> WorkflowRun:
         """按 id 读取一个 WorkflowRun。"""

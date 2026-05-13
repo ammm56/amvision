@@ -857,8 +857,11 @@ class WorkflowGraphExecutor:
         """校验图执行时提供的模板输入集合。"""
 
         template_input_ids = {item.input_id for item in template.template_inputs}
+        required_template_input_ids = {
+            item.input_id for item in template.template_inputs if item.required
+        }
         provided_input_ids = set(input_values.keys())
-        missing_input_ids = sorted(template_input_ids - provided_input_ids)
+        missing_input_ids = sorted(required_template_input_ids - provided_input_ids)
         if missing_input_ids:
             raise InvalidRequestError(
                 "图执行缺少必需的模板输入",
@@ -914,7 +917,8 @@ class WorkflowGraphExecutor:
             binding_key = (node_id, port.name)
             resolved_values: list[object] = []
             for template_input_id in template_input_bindings.get(binding_key, []):
-                resolved_values.append(input_values[template_input_id])
+                if template_input_id in input_values:
+                    resolved_values.append(input_values[template_input_id])
             for source_node_id, source_port in edge_bindings.get(binding_key, []):
                 source_key = (source_node_id, source_port)
                 if source_key not in node_output_values:
