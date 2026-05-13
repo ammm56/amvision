@@ -50,6 +50,130 @@
 
 常见图链路可以保持为：`request_image` 输入 -> YOLOX detection 节点 -> OpenCV 后处理节点 -> HTTP Response 输出节点。HTTP Response 输出节点的结果会出现在 `outputs["http_response"] = {"status_code": 200, "body": ...}`，由同步调用或触发源回执层决定是否直接返回给调用方。
 
+## 触发调用层总体框架
+
+触发调用层位于外部协议和 WorkflowAppRuntime 之间。它不是新的 workflow 执行器，也不是某个协议的专用实现，而是一组可替换的 adapter、mapper 和 result dispatcher。
+
+```text
+REST / WebSocket / ZeroMQ / gRPC / MQTT / PLC / IO / sensor
+  |
+  v
+ProtocolAdapter
+  |
+  v
+TriggerEventNormalizer
+  |
+  v
+InputBindingMapper
+  |
+  v
+WorkflowSubmitter
+  |
+  v
+WorkflowAppRuntime / WorkflowRun
+  |
+  v
+ResultDispatcher
+  |
+  v
+HTTP response / ZeroMQ reply / gRPC response / MQTT publish / PLC write / WebSocket event
+```
+
+建议拆成以下模块：
+
+- ProtocolAdapter：负责协议监听、连接管理、解包、基础鉴权、超时和关闭。
+- TriggerEventNormalizer：把不同协议消息转换成统一 TriggerEvent，生成 trace_id、event_id、idempotency_key 和 payload 摘要。
+- InputBindingMapper：把 TriggerEvent 映射成 FlowApplication 的 input_bindings，不直接改 workflow 图。
+- WorkflowSubmitter：按 submit_mode 调用 runtime invoke 或创建 WorkflowRun。
+- ResultDispatcher：读取 workflow 输出绑定，按 result_mapping 转换成协议回执、发布消息或状态写回。
+- TriggerSourceSupervisor：负责 trigger source 的启动、停止、健康检查、错误记录和长跑指标。
+
+该分层使 ZeroMQ、gRPC、MQTT、PLC、IO 和传感器入口可以共用同一套 run 创建、输入映射、结果回执和审计规则。后续新增协议时，只新增 adapter 和少量 transport_config schema，不复制 runtime 执行逻辑。
+
+## REST API 基线入口
+
+触发调用层的 REST 执行入口应复用当前已经完成本地调试的 FastAPI workflow runtime HTTP API，不再另起一套并行 HTTP 执行接口。
+
+当前可作为基线的入口包括：
+
+- `POST /api/v1/workflows/app-runtimes/{workflow_runtime_id}/invoke`：同步调用已经启动的 WorkflowAppRuntime。
+- `POST /api/v1/workflows/app-runtimes/{workflow_runtime_id}/invoke/upload`：multipart 同步调用，适合 HTTP 调试或低频图片上传。
+- `POST /api/v1/workflows/app-runtimes/{workflow_runtime_id}/runs`：创建异步 WorkflowRun。
+- `POST /api/v1/workflows/app-runtimes/{workflow_runtime_id}/runs/upload`：multipart 异步 WorkflowRun。
+- `GET /api/v1/workflows/runs/{workflow_run_id}`：查询 WorkflowRun 结果。
+- `POST /api/v1/workflows/runs/{workflow_run_id}/cancel`：取消 WorkflowRun。
+
+因此，REST 在触发调用层里有两类职责：
+
+- 执行基线入口：沿用现有 invoke 和 runs API，继续作为 Postman、本地调试、普通外部系统集成和低频同步调用入口。
+- 触发源管理入口：后续新增 `/api/v1/workflows/trigger-sources`，只负责创建、启停、查询和观测 TriggerSource，不替代现有 invoke 和 runs API。
+
+ZeroMQ、gRPC、MQTT、PLC、IO 和传感器 adapter 在内部提交 workflow 时，也应优先复用与现有 REST invoke/runs 相同的 `WorkflowRuntimeInvokeRequest`、`WorkflowRun` 和 `WorkflowAppRuntime` 语义。这样可以保证 HTTP 已验证路径、ZeroMQ 高速路径和后续协议路径最终落到同一套运行时行为。
+
+## 图编排中的入口和出口
+
+触发入口应在界面图编排中明确显示，但不应把长期协议监听器放进 workflow worker 内部执行。
+
+推荐 UI 表达方式：
+
+- 在 workflow app 的图边界显示入口节点，例如 `App Entry`、`ZeroMQ Frame Request`、`HTTP Invoke`、`PLC Ready Signal`。
+- 入口节点对应 FlowApplication 的输入 binding，并连接到 `core.io.template-input.image`、`core.io.template-input.value` 或 `core.io.template-input.object` 这类模板输入节点。
+- 协议配置、端口、topic、PLC 地址、去抖、幂等和 submit_mode 属于 WorkflowTriggerSource 资源，不写入可复用 WorkflowGraphTemplate。
+- 同一张 workflow 图可以被多个入口复用，例如 HTTP 调试入口和 ZeroMQ 高速入口同时绑定到 `request_image`。
+- 图中应显示输出节点，例如 `Response Envelope`、`HTTP Response`、后续的 `Workflow Result`、`PLC Write Result` 或 `MQTT Report`。
+
+这样可以同时满足两点：操作界面能清楚看到 workflow app 从哪里开始、结果到哪里结束；运行时实现仍保持协议监听、数据面和 workflow 执行器三者隔离。
+
+## 结果返回与回执适配
+
+触发入口和结果返回需要成对设计。不同协议的回执能力不同，因此 workflow 输出节点不应只绑定 HTTP 语义。
+
+推荐把结果分成两层：
+
+- 业务结果层：由 workflow 图中的 `response-envelope`、检测结果、保存文件引用或后续 `workflow-result` 节点生成稳定输出。
+- 协议回执层：由 ResultDispatcher 根据 trigger source 的 result_mapping 转换为 HTTP response、ZeroMQ reply、gRPC response、MQTT publish、PLC register write、IO output 或 WebSocket event。
+
+当前 `core.output.http-response` 可以继续作为 HTTP invoke 的默认输出，`core.output.response-envelope` 可以作为协议中立的业务包体。后续建议补一个更通用的 `workflow-result.v1` payload 或 `core.output.workflow-result` 节点，用于表达以下内容：
+
+- status：succeeded、failed、accepted 或 partial
+- code 和 message
+- data：结构化业务结果
+- files：需要长期保留的 ObjectStore 文件引用
+- metrics：耗时、模型版本、检测数量等摘要
+- trace_id 和 event_id
+
+回执模式建议按 trigger source 配置：
+
+| result_mode | 说明 | 典型协议 |
+| --- | --- | --- |
+| sync-reply | workflow 完成后在同一连接返回结果 | HTTP、gRPC、ZeroMQ REQ/REP |
+| accepted-then-query | 接收后立即返回 run id，完成后通过 REST 查询 | HTTP、Webhook、部分 PLC/MQTT 场景 |
+| async-report | 完成后主动发布或写回结果 | MQTT、ZeroMQ PUB、Webhook callback、PLC write、IO output |
+| event-only | 只写 WorkflowRun 和 WebSocket/事件流，不向触发方返回业务结果 | schedule、sensor、部分 IO 场景 |
+
+同步协议如果需要即时推理结果，应显式配置 result_binding，例如 `http_response` 或 `workflow_result`。异步入口默认先确认接收和 run 创建，再由 ResultDispatcher 或后续回查接口处理完成结果。
+
+## ZeroMQ 优先实现边界
+
+下一阶段可以优先实现 ZeroMQ，但实现应落在通用触发调用层框架中。
+
+ZeroMQ adapter 的第一阶段建议支持两类消息：
+
+- 单次请求：适合同步高速推理，外部进程发送 metadata 和一张图片，adapter 写入 LocalBufferBroker 后调用 WorkflowAppRuntime，完成后返回 ZeroMQ reply。
+- 连续帧：适合高节拍输入，adapter 写入 ring buffer channel，按策略创建 sync invoke 或 async WorkflowRun。
+
+ZeroMQ 消息不应把大图继续包装成 JSON base64。推荐 multipart 结构：
+
+```text
+frame 0: JSON envelope，包含 trigger_source_id、event_id、trace_id、input mapping key、media_type、shape、dtype、pixel_format
+frame 1: image bytes 或 frame bytes
+frame n: 可选附加二进制数据
+```
+
+adapter 收到二进制帧后先写入 LocalBufferBroker，随后把 BufferRef 或 FrameRef 映射到 application input_bindings。同步返回时，ResultDispatcher 读取 workflow 输出绑定，转换成 JSON reply 或 multipart reply；需要返回图片时，优先返回 ObjectStore 引用或受控 BufferRef 摘要，不把本机 mmap path 当成长期外部结果。
+
+ZeroMQ 第一阶段不直接实现 PLC、MQTT、gRPC 等协议，但需要先落下同一套 TriggerSource 合同、adapter 接口、输入映射、结果映射、health 和审计字段，避免后续每个协议各写一套调用链。
+
 ## 图片输入的两条入口路径
 
 ### HTTP JSON 同步调用
@@ -203,7 +327,11 @@ http-response 输出或 WorkflowRun outputs
 - transport_config
 - match_rule
 - input_binding_mapping
+- result_mapping
 - default_execution_metadata
+- ack_policy，可选
+- result_mode，可选
+- reply_timeout_seconds，可选
 - debounce_window_ms，可选
 - idempotency_key_path，可选
 - last_triggered_at
@@ -264,7 +392,11 @@ http-response 输出或 WorkflowRun outputs
 - transport_config
 - match_rule
 - input_binding_mapping
+- result_mapping
 - default_execution_metadata
+- ack_policy，可选
+- result_mode，可选
+- reply_timeout_seconds，可选
 - debounce_window_ms，可选
 - idempotency_key_path，可选
 - metadata
@@ -324,9 +456,14 @@ http-response 输出或 WorkflowRun outputs
       "source": "payload.value"
     }
   },
+  "result_mapping": {
+    "result_binding": "workflow_result",
+    "result_mode": "accepted-then-query"
+  },
   "default_execution_metadata": {
     "trigger_source": "plc-register"
   },
+  "ack_policy": "ack-after-run-created",
   "debounce_window_ms": 200,
   "idempotency_key_path": "payload.sequence_id",
   "metadata": {
@@ -334,6 +471,37 @@ http-response 输出或 WorkflowRun outputs
   }
 }
 ```
+
+## 推荐实现顺序
+
+第一阶段优先收口框架，不急着铺满所有协议。
+
+1. 把现有 FastAPI invoke、runs、upload、run 查询和 cancel API 明确为 REST 执行基线入口。
+2. 定义 WorkflowTriggerSource、TriggerEvent、TriggerResult、InputBindingMapping 和 ResultMapping 合同。
+3. 实现 TriggerSourceService、TriggerSourceSupervisor、ProtocolAdapter 接口和 ResultDispatcher 骨架。
+4. 通过 REST API 管理 trigger source 的创建、启停、health 和最近错误。
+5. 实现 ZeroMQ adapter 的最小 sync-reply 链路，复用 LocalBufferBroker 写入 BufferRef，再调用已有 WorkflowAppRuntime invoke 语义。
+6. 增加 ZeroMQ async 或 ring frame 链路，接入 WorkflowRun 持久化和回查。
+7. 在图编排界面显示 App Entry 和 App Result 边界节点，绑定到 FlowApplication 输入输出。
+8. 再按现场优先级补 MQTT、gRPC、PLC、IO 和传感器 adapter。
+
+代码建议边界：
+
+```text
+backend/contracts/workflows/trigger_sources.py
+backend/service/domain/workflows/workflow_trigger_source_records.py
+backend/service/application/workflows/trigger_sources/
+  trigger_source_service.py
+  trigger_source_supervisor.py
+  protocol_adapter.py
+  input_binding_mapper.py
+  result_dispatcher.py
+backend/service/infrastructure/integrations/zeromq/
+  zeromq_trigger_adapter.py
+backend/service/api/rest/v1/routes/workflow_trigger_sources.py
+```
+
+这些模块属于 workflow runtime 的外部调用触发层，不属于 LocalBufferBroker，也不属于单个 custom node。LocalBufferBroker 只承担本机数据面，workflow 图只承担业务处理和结果组织，TriggerSource 负责把二者连接到外部协议。
 
 ## 与其他资源的关系
 

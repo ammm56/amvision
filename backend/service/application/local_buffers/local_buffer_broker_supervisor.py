@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from multiprocessing.queues import Queue
 from queue import Empty
 from threading import Event, Lock, Thread
+from time import monotonic, sleep
 from typing import Any
 from uuid import uuid4
 import multiprocessing
@@ -18,6 +19,11 @@ from backend.service.application.local_buffers.local_buffer_broker_process impor
 from backend.service.application.local_buffers.local_buffer_client import (
     LocalBufferBrokerClient,
     LocalBufferBrokerEventChannel,
+)
+from backend.service.application.runtime.safe_counter import (
+    SafeCounterState,
+    increment_safe_counter,
+    snapshot_safe_counter,
 )
 from backend.service.infrastructure.local_buffers import MmapBufferWriteResult
 
@@ -81,6 +87,10 @@ class _LocalBufferBrokerEventRouter:
         self._client_routes: dict[str, _LocalBufferBrokerClientRoute] = {}
         self._response_routes: dict[str, _LocalBufferBrokerResponseRoute] = {}
         self._response_thread: Thread | None = None
+        self._forward_error_count = SafeCounterState()
+        self._dropped_response_count = SafeCounterState()
+        self._closed_channel_count = SafeCounterState()
+        self._last_router_error: dict[str, object] | None = None
 
     def start(self) -> None:
         """启动 broker 响应分发线程。"""
@@ -120,6 +130,37 @@ class _LocalBufferBrokerEventRouter:
             self._response_routes.clear()
         self._response_thread = None
 
+    def describe_state(self) -> dict[str, object]:
+        """返回当前 router 的运行时观测摘要。"""
+
+        with self._lock:
+            client_channel_ids = sorted(self._client_routes.keys())
+            response_thread = self._response_thread
+            active_forward_thread_count = sum(
+                1 for route in self._client_routes.values() if route.forward_thread.is_alive()
+            )
+            closed_channel_snapshot = snapshot_safe_counter(self._closed_channel_count)
+            forward_error_snapshot = snapshot_safe_counter(self._forward_error_count)
+            dropped_response_snapshot = snapshot_safe_counter(self._dropped_response_count)
+            return {
+                "configured": True,
+                "response_router_running": response_thread is not None and response_thread.is_alive(),
+                "active_client_channel_count": len(self._client_routes),
+                "pending_response_route_count": len(self._response_routes),
+                "active_forward_thread_count": active_forward_thread_count,
+                "closed_channel_count": closed_channel_snapshot["value"],
+                "closed_channel_count_rollover_count": closed_channel_snapshot["rollover_count"],
+                "forward_error_count": forward_error_snapshot["value"],
+                "forward_error_count_rollover_count": forward_error_snapshot["rollover_count"],
+                "dropped_response_count": dropped_response_snapshot["value"],
+                "dropped_response_count_rollover_count": dropped_response_snapshot["rollover_count"],
+                "active_client_channel_ids": client_channel_ids[:8],
+                "active_client_channel_overflow_count": max(0, len(client_channel_ids) - 8),
+                "last_router_error": (
+                    dict(self._last_router_error) if self._last_router_error is not None else None
+                ),
+            }
+
     def create_event_channel(self) -> LocalBufferBrokerEventChannel:
         """创建一个响应隔离的客户端事件通道。"""
 
@@ -156,6 +197,11 @@ class _LocalBufferBrokerEventRouter:
                     message = request_queue.get(timeout=0.1)
                 except Empty:
                     continue
+                except Exception as exc:
+                    self._record_router_error(action="read-client-request", channel_id=channel_id, error=exc)
+                    if self._stop_event.is_set():
+                        break
+                    continue
                 if not isinstance(message, dict):
                     continue
                 action = str(message.get("action") or "")
@@ -173,7 +219,10 @@ class _LocalBufferBrokerEventRouter:
                 except Exception as exc:
                     with self._lock:
                         self._response_routes.pop(request_id, None)
-                    response_queue.put(
+                        increment_safe_counter(self._forward_error_count)
+                    self._record_router_error(action="forward-request", channel_id=channel_id, error=exc)
+                    _safe_put(
+                        response_queue,
                         {
                             "request_id": request_id,
                             "ok": False,
@@ -201,6 +250,11 @@ class _LocalBufferBrokerEventRouter:
                 message = self._broker_response_queue.get(timeout=0.1)
             except Empty:
                 continue
+            except Exception as exc:
+                self._record_router_error(action="read-broker-response", error=exc)
+                if self._stop_event.is_set():
+                    break
+                continue
             if not isinstance(message, dict):
                 continue
             request_id = str(message.get("request_id") or "")
@@ -208,13 +262,25 @@ class _LocalBufferBrokerEventRouter:
                 response_route = self._response_routes.pop(request_id, None)
             if response_route is None:
                 continue
-            response_route.response_queue.put(message)
+            try:
+                response_route.response_queue.put(message)
+            except Exception as exc:
+                with self._lock:
+                    increment_safe_counter(self._dropped_response_count)
+                self._record_router_error(
+                    action="route-response",
+                    channel_id=response_route.channel_id,
+                    request_id=request_id,
+                    error=exc,
+                )
 
     def _remove_client_route(self, channel_id: str) -> None:
         """移除一个客户端通道及其未完成响应路由。"""
 
         with self._lock:
-            self._client_routes.pop(channel_id, None)
+            removed_route = self._client_routes.pop(channel_id, None)
+            if removed_route is not None:
+                increment_safe_counter(self._closed_channel_count)
             stale_request_ids = [
                 request_id
                 for request_id, response_route in self._response_routes.items()
@@ -222,6 +288,27 @@ class _LocalBufferBrokerEventRouter:
             ]
             for request_id in stale_request_ids:
                 self._response_routes.pop(request_id, None)
+
+    def _record_router_error(
+        self,
+        *,
+        action: str,
+        error: Exception,
+        channel_id: str | None = None,
+        request_id: str | None = None,
+    ) -> None:
+        """记录最近一次 router 运行错误。"""
+
+        payload = {
+            "action": action,
+            "channel_id": channel_id,
+            "request_id": request_id,
+            "error_type": type(error).__name__,
+            "error_message": str(error) or type(error).__name__,
+            "occurred_at": datetime.now(timezone.utc).isoformat(),
+        }
+        with self._lock:
+            self._last_router_error = payload
 
 
 class LocalBufferBrokerProcessSupervisor:
@@ -258,56 +345,65 @@ class LocalBufferBrokerProcessSupervisor:
 
         if not self.settings.enabled:
             return
-        with self._lock:
-            if self.is_running:
+        timeout_seconds = max(0.1, float(self.settings.startup_timeout_seconds))
+        deadline = monotonic() + timeout_seconds
+        while True:
+            with self._lock:
+                if self.is_running:
+                    return
+                startup_queue = self._context.Queue()
+                request_queue = self._context.Queue()
+                response_queue = self._context.Queue()
+                process = self._context.Process(
+                    target=run_local_buffer_broker_process,
+                    kwargs={
+                        "settings_payload": self.settings.model_dump(mode="python"),
+                        "startup_queue": startup_queue,
+                        "request_queue": request_queue,
+                        "response_queue": response_queue,
+                    },
+                    name="local-buffer-broker",
+                    daemon=False,
+                )
+                process.start()
+                self._process = process
+                self._startup_queue = startup_queue
+                self._request_queue = request_queue
+                self._response_queue = response_queue
+
+            remaining_seconds = max(0.1, deadline - monotonic())
+            try:
+                message = startup_queue.get(timeout=remaining_seconds)
+            except Empty as exc:
+                self.stop()
+                raise OperationTimeoutError(
+                    "等待 LocalBufferBroker 启动超时",
+                    details={"timeout_seconds": self.settings.startup_timeout_seconds},
+                ) from exc
+
+            if isinstance(message, dict) and message.get("ok") is True:
+                router = _LocalBufferBrokerEventRouter(
+                    context=self._context,
+                    broker_request_queue=request_queue,
+                    broker_response_queue=response_queue,
+                    request_timeout_seconds=self.settings.request_timeout_seconds,
+                )
+                router.start()
+                with self._lock:
+                    self._router = router
+                self._clear_recent_error()
+                self._start_expire_loop()
                 return
-            startup_queue = self._context.Queue()
-            request_queue = self._context.Queue()
-            response_queue = self._context.Queue()
-            process = self._context.Process(
-                target=run_local_buffer_broker_process,
-                kwargs={
-                    "settings_payload": self.settings.model_dump(mode="python"),
-                    "startup_queue": startup_queue,
-                    "request_queue": request_queue,
-                    "response_queue": response_queue,
-                },
-                name="local-buffer-broker",
-                daemon=False,
-            )
-            process.start()
-            self._process = process
-            self._startup_queue = startup_queue
-            self._request_queue = request_queue
-            self._response_queue = response_queue
 
-        try:
-            message = startup_queue.get(timeout=max(0.1, self.settings.startup_timeout_seconds))
-        except Empty as exc:
-            self.stop()
-            raise OperationTimeoutError(
-                "等待 LocalBufferBroker 启动超时",
-                details={"timeout_seconds": self.settings.startup_timeout_seconds},
-            ) from exc
-
-        if not isinstance(message, dict) or message.get("ok") is not True:
             self.stop()
             error_payload = message.get("error") if isinstance(message, dict) and isinstance(message.get("error"), dict) else {}
+            if self._is_retryable_startup_error(error_payload) and monotonic() < deadline:
+                sleep(min(0.2, max(0.05, deadline - monotonic())))
+                continue
             raise ServiceConfigurationError(
                 str(error_payload.get("message") or "LocalBufferBroker 启动失败"),
                 details=error_payload.get("details") if isinstance(error_payload.get("details"), dict) else {},
             )
-        router = _LocalBufferBrokerEventRouter(
-            context=self._context,
-            broker_request_queue=request_queue,
-            broker_response_queue=response_queue,
-            request_timeout_seconds=self.settings.request_timeout_seconds,
-        )
-        router.start()
-        with self._lock:
-            self._router = router
-        self._clear_recent_error()
-        self._start_expire_loop()
 
     def stop(self) -> None:
         """停止 broker companion process。"""
@@ -385,6 +481,8 @@ class LocalBufferBrokerProcessSupervisor:
                 "state": "disabled",
                 "running": False,
                 "recent_error": self.get_recent_error(),
+                "router": self._build_router_observation(),
+                "queues": self._build_queue_observation(),
             }
         try:
             status = self.get_status()
@@ -396,6 +494,8 @@ class LocalBufferBrokerProcessSupervisor:
                 "recent_error": self.get_recent_error(),
                 "expire_loop_running": self._is_expire_loop_running(),
                 "expire_interval_seconds": self.settings.expire_interval_seconds,
+                "router": self._build_router_observation(),
+                "queues": self._build_queue_observation(),
             }
         except Exception as exc:
             self._record_recent_error(action="health", error=exc)
@@ -406,6 +506,8 @@ class LocalBufferBrokerProcessSupervisor:
                 "recent_error": self.get_recent_error(),
                 "expire_loop_running": self._is_expire_loop_running(),
                 "expire_interval_seconds": self.settings.expire_interval_seconds,
+                "router": self._build_router_observation(),
+                "queues": self._build_queue_observation(),
             }
 
     def get_recent_error(self) -> dict[str, object] | None:
@@ -702,6 +804,55 @@ class LocalBufferBrokerProcessSupervisor:
             raise ServiceConfigurationError("LocalBufferBroker 当前未启动")
         return client
 
+    def _build_router_observation(self) -> dict[str, object]:
+        """构造 broker router 的观测摘要。"""
+
+        with self._lock:
+            router = self._router
+        if router is None:
+            return {
+                "configured": False,
+                "response_router_running": False,
+                "active_client_channel_count": 0,
+                "pending_response_route_count": 0,
+                "active_forward_thread_count": 0,
+                "closed_channel_count": 0,
+                "closed_channel_count_rollover_count": 0,
+                "forward_error_count": 0,
+                "forward_error_count_rollover_count": 0,
+                "dropped_response_count": 0,
+                "dropped_response_count_rollover_count": 0,
+                "active_client_channel_ids": [],
+                "active_client_channel_overflow_count": 0,
+                "last_router_error": None,
+            }
+        return router.describe_state()
+
+    def _build_queue_observation(self) -> dict[str, object]:
+        """构造 broker 队列的观测摘要。"""
+
+        with self._lock:
+            startup_queue = self._startup_queue
+            request_queue = self._request_queue
+            response_queue = self._response_queue
+        return {
+            "startup_queue_configured": startup_queue is not None,
+            "startup_queue_size": _safe_queue_size(startup_queue),
+            "request_queue_configured": request_queue is not None,
+            "request_queue_size": _safe_queue_size(request_queue),
+            "response_queue_configured": response_queue is not None,
+            "response_queue_size": _safe_queue_size(response_queue),
+        }
+
+    def _is_retryable_startup_error(self, error_payload: dict[str, object]) -> bool:
+        """判断 broker 启动失败是否属于可短暂重试的映射占用场景。"""
+
+        error_details = error_payload.get("details") if isinstance(error_payload.get("details"), dict) else {}
+        error_type = str(error_details.get("error_type") or "")
+        file_path = str(error_details.get("file_path") or "")
+        detail_message = str(error_details.get("error_message") or "")
+        return error_type == "OSError" and file_path.endswith(".dat") and "Invalid argument" in detail_message
+
     def _cleanup_startup_queue_locked(self) -> None:
         """关闭启动队列。"""
 
@@ -743,3 +894,18 @@ def _close_queue(queue: Any) -> None:
         queue.join_thread()
     except Exception:
         pass
+
+
+def _safe_queue_size(queue: Any) -> int | None:
+    """最佳努力读取 multiprocessing queue 当前长度。"""
+
+    if queue is None:
+        return None
+    qsize = getattr(queue, "qsize", None)
+    if not callable(qsize):
+        return None
+    try:
+        size = qsize()
+    except Exception:
+        return None
+    return int(size) if isinstance(size, int) else None

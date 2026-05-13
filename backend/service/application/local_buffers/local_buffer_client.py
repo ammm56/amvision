@@ -13,6 +13,11 @@ from dataclasses import dataclass
 
 from backend.contracts.buffers import BufferLease, BufferRef, FrameRef
 from backend.service.application.errors import InvalidRequestError, OperationTimeoutError, ServiceConfigurationError
+from backend.service.application.runtime.safe_counter import (
+    SafeCounterState,
+    increment_safe_counter,
+    snapshot_safe_counter,
+)
 from backend.service.infrastructure.local_buffers import MmapBufferWriteResult
 
 
@@ -118,8 +123,8 @@ class LocalBufferBrokerClient:
         self.channel = channel
         self._mmap_cache = _MmapFileCache()
         self._closed = False
-        self._request_count = 0
-        self._error_count = 0
+        self._request_count = SafeCounterState()
+        self._error_count = SafeCounterState()
         self._last_error: dict[str, object] | None = None
 
     def get_status(self) -> dict[str, object]:
@@ -541,12 +546,16 @@ class LocalBufferBrokerClient:
         - dict[str, object]：包含 channel、请求计数、错误计数和最近错误。
         """
 
+        request_counter_snapshot = snapshot_safe_counter(self._request_count)
+        error_counter_snapshot = snapshot_safe_counter(self._error_count)
         return {
             "connected": not self._closed,
             "channel_id": self.channel.channel_id,
             "request_timeout_seconds": self.channel.request_timeout_seconds,
-            "request_count": self._request_count,
-            "error_count": self._error_count,
+            "request_count": request_counter_snapshot["value"],
+            "request_count_rollover_count": request_counter_snapshot["rollover_count"],
+            "error_count": error_counter_snapshot["value"],
+            "error_count_rollover_count": error_counter_snapshot["rollover_count"],
             "recent_error": dict(self._last_error) if self._last_error is not None else None,
         }
 
@@ -554,7 +563,7 @@ class LocalBufferBrokerClient:
         """发送一条 broker 事件并解析响应。"""
 
         request_id = f"broker-{uuid4().hex}"
-        self._request_count += 1
+        increment_safe_counter(self._request_count)
         try:
             self.channel.request_queue.put(
                 {"request_id": request_id, "action": action, "payload": dict(payload)}
@@ -584,7 +593,7 @@ class LocalBufferBrokerClient:
         """记录一次 broker client 调用错误。"""
 
         details = getattr(error, "details", None)
-        self._error_count += 1
+        increment_safe_counter(self._error_count)
         self._last_error = {
             "action": action,
             "error_type": type(error).__name__,

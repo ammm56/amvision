@@ -10,7 +10,12 @@ from threading import Lock
 from uuid import uuid4
 
 from backend.contracts.buffers import BufferLease, BufferRef, FrameRef
-from backend.service.application.errors import InvalidRequestError
+from backend.service.application.errors import InvalidRequestError, ServiceConfigurationError
+from backend.service.application.runtime.safe_counter import (
+    SafeCounterState,
+    increment_safe_counter,
+    snapshot_safe_counter,
+)
 
 
 @dataclass(frozen=True)
@@ -106,16 +111,16 @@ class _RingChannelState:
     - slot_indices：该 channel 预留的 pool 槽位索引。
     - next_slot_position：下一次写入使用的 slot_indices 位置。
     - next_sequence_id：下一帧序号。
-    - published_frame_count：已发布帧数量。
-    - overwritten_frame_count：覆盖旧 active 帧数量。
+    - published_frame_count：已发布帧数量计数器状态。
+    - overwritten_frame_count：覆盖旧 active 帧数量计数器状态。
     """
 
     stream_id: str
     slot_indices: tuple[int, ...]
     next_slot_position: int = 0
     next_sequence_id: int = 0
-    published_frame_count: int = 0
-    overwritten_frame_count: int = 0
+    published_frame_count: SafeCounterState = field(default_factory=SafeCounterState)
+    overwritten_frame_count: SafeCounterState = field(default_factory=SafeCounterState)
 
 
 class MmapBufferPool:
@@ -137,21 +142,41 @@ class MmapBufferPool:
         self._ring_channels: dict[str, _RingChannelState] = {}
         self._lock = Lock()
         self._closed = False
-        self._allocation_count = 0
-        self._allocation_failure_count = 0
-        self._pool_full_count = 0
-        self._released_count = 0
-        self._expired_count = 0
+        self._allocation_count = SafeCounterState()
+        self._allocation_failure_count = SafeCounterState()
+        self._pool_full_count = SafeCounterState()
+        self._released_count = SafeCounterState()
+        self._expired_count = SafeCounterState()
         self._max_used_count = 0
-        self._frame_channel_count = 0
-        self._frame_write_count = 0
-        self._frame_overwrite_count = 0
+        self._frame_channel_count = SafeCounterState()
+        self._frame_write_count = SafeCounterState()
+        self._frame_overwrite_count = SafeCounterState()
 
-        self.config.root_dir.mkdir(parents=True, exist_ok=True)
-        with self.file_path.open("wb") as pool_file:
-            pool_file.truncate(self.config.file_size_bytes)
-        self._file = self.file_path.open("r+b")
-        self._mmap = mmap.mmap(self._file.fileno(), self.config.file_size_bytes)
+        file_handle = None
+        try:
+            self.config.root_dir.mkdir(parents=True, exist_ok=True)
+            with self.file_path.open("wb") as pool_file:
+                pool_file.truncate(self.config.file_size_bytes)
+            file_handle = self.file_path.open("r+b")
+            self._mmap = mmap.mmap(file_handle.fileno(), self.config.file_size_bytes)
+        except OSError as exc:
+            if file_handle is not None:
+                try:
+                    file_handle.close()
+                except OSError:
+                    pass
+            raise ServiceConfigurationError(
+                "初始化 mmap buffer pool 文件失败",
+                details={
+                    "pool_name": self.pool_name,
+                    "file_path": str(self.file_path),
+                    "file_size_bytes": self.config.file_size_bytes,
+                    "slot_size_bytes": self.config.slot_size_bytes,
+                    "error_type": type(exc).__name__,
+                    "error_message": str(exc) or type(exc).__name__,
+                },
+            ) from exc
+        self._file = file_handle
 
     @property
     def capacity_bytes(self) -> int:
@@ -199,8 +224,8 @@ class MmapBufferPool:
             try:
                 slot_index = self._find_free_slot_index()
             except InvalidRequestError:
-                self._allocation_failure_count += 1
-                self._pool_full_count += 1
+                increment_safe_counter(self._allocation_failure_count)
+                increment_safe_counter(self._pool_full_count)
                 raise
             slot_state = self._slots[slot_index]
             slot_state.generation += 1
@@ -222,7 +247,7 @@ class MmapBufferPool:
                 generation=slot_state.generation,
             )
             slot_state.lease = lease
-            self._allocation_count += 1
+            increment_safe_counter(self._allocation_count)
             self._max_used_count = max(self._max_used_count, self._count_used_slots_locked())
             return lease
 
@@ -434,7 +459,7 @@ class MmapBufferPool:
                 )
             channel = _RingChannelState(stream_id=normalized_stream_id, slot_indices=slot_indices)
             self._ring_channels[normalized_stream_id] = channel
-            self._frame_channel_count += 1
+            increment_safe_counter(self._frame_channel_count)
             self._max_used_count = max(self._max_used_count, self._count_used_slots_locked())
             return self._build_frame_channel_status_locked(channel)
 
@@ -467,8 +492,8 @@ class MmapBufferPool:
             if frame_state.state == "writing":
                 raise InvalidRequestError("ring buffer 当前槽位仍处于 writing 状态", details={"stream_id": normalized_stream_id})
             if frame_state.state == "active":
-                channel.overwritten_frame_count += 1
-                self._frame_overwrite_count += 1
+                increment_safe_counter(channel.overwritten_frame_count)
+                increment_safe_counter(self._frame_overwrite_count)
             slot_state.generation += 1
             sequence_id = channel.next_sequence_id
             channel.next_sequence_id += 1
@@ -534,8 +559,8 @@ class MmapBufferPool:
             frame_state.pixel_format = _normalize_optional_text(pixel_format)
             frame_state.metadata = dict(metadata or {})
             channel = self._require_frame_channel_locked(frame_state.stream_id)
-            channel.published_frame_count += 1
-            self._frame_write_count += 1
+            increment_safe_counter(channel.published_frame_count)
+            increment_safe_counter(self._frame_write_count)
             return self._build_frame_ref_locked(frame_state)
 
     def write_frame(
@@ -651,7 +676,7 @@ class MmapBufferPool:
                 lease = slot_state.lease
                 if lease is not None and lease.lease_id == normalized_lease_id:
                     slot_state.lease = None
-                    self._released_count += 1
+                    increment_safe_counter(self._released_count)
                     return
         raise InvalidRequestError("mmap buffer lease 不存在", details={"lease_id": normalized_lease_id})
 
@@ -694,7 +719,8 @@ class MmapBufferPool:
                     continue
                 slot_state.lease = None
                 released_count += 1
-            self._released_count += released_count
+            for _ in range(released_count):
+                increment_safe_counter(self._released_count)
         return released_count
 
     def expire_leases(self, *, now: datetime | None = None) -> int:
@@ -715,7 +741,8 @@ class MmapBufferPool:
                 if lease is not None and lease.expires_at is not None and lease.expires_at <= current_time:
                     slot_state.lease = None
                     expired_count += 1
-            self._expired_count += expired_count
+            for _ in range(expired_count):
+                increment_safe_counter(self._expired_count)
         return expired_count
 
     def build_status(self) -> dict[str, object]:
@@ -723,6 +750,14 @@ class MmapBufferPool:
 
         self._ensure_open()
         with self._lock:
+            allocation_count_snapshot = snapshot_safe_counter(self._allocation_count)
+            allocation_failure_count_snapshot = snapshot_safe_counter(self._allocation_failure_count)
+            pool_full_count_snapshot = snapshot_safe_counter(self._pool_full_count)
+            released_count_snapshot = snapshot_safe_counter(self._released_count)
+            expired_count_snapshot = snapshot_safe_counter(self._expired_count)
+            frame_channel_count_snapshot = snapshot_safe_counter(self._frame_channel_count)
+            frame_write_count_snapshot = snapshot_safe_counter(self._frame_write_count)
+            frame_overwrite_count_snapshot = snapshot_safe_counter(self._frame_overwrite_count)
             active_count = self._count_leases_by_state_locked("active")
             writing_count = self._count_leases_by_state_locked("writing")
             frame_active_count = self._count_frames_by_state_locked("active")
@@ -740,15 +775,23 @@ class MmapBufferPool:
                 "frame_reserved_count": self._count_frame_slots_locked(),
                 "used_count": used_count,
                 "free_count": self.slot_count - used_count,
-                "allocation_count": self._allocation_count,
-                "allocation_failure_count": self._allocation_failure_count,
-                "pool_full_count": self._pool_full_count,
-                "released_count": self._released_count,
-                "expired_count": self._expired_count,
+                "allocation_count": allocation_count_snapshot["value"],
+                "allocation_count_rollover_count": allocation_count_snapshot["rollover_count"],
+                "allocation_failure_count": allocation_failure_count_snapshot["value"],
+                "allocation_failure_count_rollover_count": allocation_failure_count_snapshot["rollover_count"],
+                "pool_full_count": pool_full_count_snapshot["value"],
+                "pool_full_count_rollover_count": pool_full_count_snapshot["rollover_count"],
+                "released_count": released_count_snapshot["value"],
+                "released_count_rollover_count": released_count_snapshot["rollover_count"],
+                "expired_count": expired_count_snapshot["value"],
+                "expired_count_rollover_count": expired_count_snapshot["rollover_count"],
                 "max_used_count": self._max_used_count,
-                "frame_channel_count": self._frame_channel_count,
-                "frame_write_count": self._frame_write_count,
-                "frame_overwrite_count": self._frame_overwrite_count,
+                "frame_channel_count": frame_channel_count_snapshot["value"],
+                "frame_channel_count_rollover_count": frame_channel_count_snapshot["rollover_count"],
+                "frame_write_count": frame_write_count_snapshot["value"],
+                "frame_write_count_rollover_count": frame_write_count_snapshot["rollover_count"],
+                "frame_overwrite_count": frame_overwrite_count_snapshot["value"],
+                "frame_overwrite_count_rollover_count": frame_overwrite_count_snapshot["rollover_count"],
                 "frame_channels": [
                     self._build_frame_channel_status_locked(channel)
                     for channel in self._ring_channels.values()
@@ -818,14 +861,18 @@ class MmapBufferPool:
     def _build_frame_channel_status_locked(self, channel: _RingChannelState) -> dict[str, object]:
         """构造 ring channel 状态摘要。"""
 
+        published_frame_count_snapshot = snapshot_safe_counter(channel.published_frame_count)
+        overwritten_frame_count_snapshot = snapshot_safe_counter(channel.overwritten_frame_count)
         return {
             "stream_id": channel.stream_id,
             "frame_capacity": len(channel.slot_indices),
             "slot_indices": list(channel.slot_indices),
             "next_sequence_id": channel.next_sequence_id,
             "next_slot_position": channel.next_slot_position,
-            "published_frame_count": channel.published_frame_count,
-            "overwritten_frame_count": channel.overwritten_frame_count,
+            "published_frame_count": published_frame_count_snapshot["value"],
+            "published_frame_count_rollover_count": published_frame_count_snapshot["rollover_count"],
+            "overwritten_frame_count": overwritten_frame_count_snapshot["value"],
+            "overwritten_frame_count_rollover_count": overwritten_frame_count_snapshot["rollover_count"],
         }
 
     def _require_frame_channel_locked(self, stream_id: str) -> _RingChannelState:

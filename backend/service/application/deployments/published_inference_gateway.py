@@ -282,7 +282,7 @@ class PublishedInferenceGatewayDispatcher:
         """停止事件 dispatcher。"""
 
         self._stop_event.set()
-        self.channel.request_queue.put({"request_id": f"stop-{uuid4().hex}", "action": "shutdown", "payload": {}})
+        _safe_put(self.channel.request_queue, {"request_id": f"stop-{uuid4().hex}", "action": "shutdown", "payload": {}})
         thread = self._thread
         if thread is not None:
             thread.join(timeout=1.0)
@@ -297,16 +297,20 @@ class PublishedInferenceGatewayDispatcher:
                 message = self.channel.request_queue.get(timeout=0.1)
             except Empty:
                 continue
+            except Exception:
+                if self._stop_event.is_set():
+                    break
+                continue
             request_id = str(message.get("request_id") or "") if isinstance(message, dict) else ""
             action = str(message.get("action") or "") if isinstance(message, dict) else ""
             payload = message.get("payload") if isinstance(message, dict) and isinstance(message.get("payload"), dict) else {}
             try:
                 response_payload = self._handle(action=action, payload=dict(payload))
-                self.channel.response_queue.put({"request_id": request_id, "ok": True, "payload": response_payload})
+                _safe_put(self.channel.response_queue, {"request_id": request_id, "ok": True, "payload": response_payload})
                 if action == "shutdown":
                     self._stop_event.set()
             except Exception as exc:
-                self.channel.response_queue.put({"request_id": request_id, **_serialize_error(exc)})
+                _safe_put(self.channel.response_queue, {"request_id": request_id, **_serialize_error(exc)})
 
     def _handle(self, *, action: str, payload: dict[str, object]) -> dict[str, object]:
         """处理一条 gateway 事件。"""
@@ -417,3 +421,12 @@ def _serialize_error(error: Exception) -> dict[str, object]:
             "details": getattr(error, "details", {"error_type": type(error).__name__}),
         },
     }
+
+
+def _safe_put(queue: Any, message: dict[str, object]) -> None:
+    """向 gateway 队列发送消息并忽略关闭期噪音。"""
+
+    try:
+        queue.put(message)
+    except Exception:
+        pass
