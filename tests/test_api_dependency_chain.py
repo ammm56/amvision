@@ -31,6 +31,8 @@ def test_health_route_returns_request_id_header() -> None:
     assert response.status_code == 200
     assert response.headers["x-request-id"] == "request-1"
     assert response.json()["request_id"] == "request-1"
+    assert response.json()["local_buffer_broker"]["enabled"] is True
+    assert response.json()["local_buffer_broker"]["state"] == "running"
 
 
 def test_me_route_requires_principal() -> None:
@@ -268,7 +270,7 @@ def test_bootstrap_runs_explicit_seeders_in_initialize(tmp_path: Path) -> None:
         assert bootstrap.get_step_names() == (
             "initialize-database-schema",
             "run-service-seeders",
-            "load-service-plugin-catalog",
+            "load-service-node-catalog",
         )
     finally:
         runtime.session_factory.engine.dispose()

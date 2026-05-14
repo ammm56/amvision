@@ -1,0 +1,91 @@
+{
+  "format_id": "amvision.node-definition.v1",
+  "node_type_id": "custom.barcode.qr-crop-decode-remap",
+  "display_name": "QR Crop Decode Remap",
+  "category": "barcode.compose",
+  "description": "逐个解码 crop-export 导出的裁剪图中的 QR Code，并把结果 position 回映射到原图坐标系。",
+  "implementation_kind": "custom-node",
+  "runtime_kind": "python-callable",
+  "input_ports": [
+    {
+      "name": "crops",
+      "display_name": "Crops",
+      "payload_type_id": "image-refs.v1"
+    }
+  ],
+  "output_ports": [
+    {
+      "name": "results",
+      "display_name": "Results",
+      "payload_type_id": "barcode-results.v1"
+    }
+  ],
+  "parameter_schema": {
+    "type": "object",
+    "properties": {
+      "try_rotate": {
+        "type": "boolean"
+      },
+      "try_downscale": {
+        "type": "boolean"
+      },
+      "try_invert": {
+        "type": "boolean"
+      },
+      "text_mode": {
+        "type": "string",
+        "enum": [
+          "plain",
+          "hri",
+          "escaped",
+          "hex",
+          "eci",
+          "hex-eci"
+        ]
+      },
+      "binarizer": {
+        "type": "string",
+        "enum": [
+          "local-average",
+          "global-histogram",
+          "fixed-threshold",
+          "bool-cast"
+        ]
+      },
+      "is_pure": {
+        "type": "boolean"
+      },
+      "ean_add_on_symbol": {
+        "type": "string",
+        "enum": [
+          "ignore",
+          "read",
+          "require"
+        ]
+      },
+      "return_errors": {
+        "type": "boolean"
+      }
+    }
+  },
+  "capability_tags": [
+    "barcode.decode",
+    "barcode.qr",
+    "barcode.remap"
+  ],
+  "runtime_requirements": {
+    "python_packages": [
+      "opencv-python",
+      "numpy",
+      "zxing-cpp"
+    ]
+  },
+  "node_pack_id": "barcode.protocol-nodes",
+  "node_pack_version": "0.1.0",
+  "metadata": {
+    "requested_format": "QR Code",
+    "input_kind": "image-refs.v1",
+    "position_field": "position",
+    "source_coordinate_space": "source-image"
+  }
+}

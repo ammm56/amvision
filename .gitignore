@@ -207,6 +207,10 @@ tempCodeRunnerFile.py
 # Ruff stuff:
 .ruff_cache/
 
+# .NET
+[Bb]in/
+[Oo]bj/
+
 # PyPI configuration file
 .pypirc
 

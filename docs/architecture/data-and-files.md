@@ -142,6 +142,14 @@
 - 运行结果的原始文件内容
 - 体积较大且不适合直接存放在数据库中的结构化或半结构化内容
 
+### LocalBufferBroker 负责的内容
+
+- workflow 隔离进程、发布推理 worker 和本地协议 adapter 之间的短期大图与连续帧交换
+- mmap 文件池、普通 buffer lease、ring buffer channel 和 BufferRef / FrameRef 生命周期管理
+- 短期数据的固定容量、TTL、引用计数、清理、背压和运行指标
+
+LocalBufferBroker 不替代 ObjectStore。需要下载、审计、复现、回滚或长期查看的文件仍应保存到 ObjectStore，并通过正式文件引用追踪。详细规划见 [docs/architecture/local-buffer-broker.md](local-buffer-broker.md)。
+
 ## 关键对象定义
 
 ### Project
@@ -570,4 +578,4 @@ data/files/models/pretrained/yolox/
 - [docs/architecture/dataset-import-spec.md](dataset-import-spec.md)
 - [docs/architecture/backend-service.md](backend-service.md)
 - [docs/architecture/system-overview.md](system-overview.md)
-- [docs/architecture/plugin-system.md](plugin-system.md)
+- [docs/architecture/node-system.md](node-system.md)

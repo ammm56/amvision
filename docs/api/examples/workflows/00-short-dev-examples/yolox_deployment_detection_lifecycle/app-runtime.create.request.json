@@ -1,0 +1,9 @@
+{
+  "project_id": "project-1",
+  "application_id": "yolox-deployment-detection-lifecycle-app",
+  "display_name": "YOLOX Deployment Detection Lifecycle App Runtime",
+  "metadata": {
+    "example_kind": "deployment-control-detection-lifecycle",
+    "uses_existing_deployment_instance": true
+  }
+}

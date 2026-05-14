@@ -1,0 +1,40 @@
+"""Simple node pack backend entrypoint 模板。"""
+
+from __future__ import annotations
+
+from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
+from backend.service.application.workflows.runtime_registry_loader import (
+    NodePackEntrypointRegistrationContext,
+)
+
+
+NODE_TYPE_ID = "custom.example-simple.message"
+
+
+def _handle_message_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
+    """返回一个最小 value.v1 示例输出。
+
+    参数：
+    - request：当前 workflow 节点执行请求。
+
+    返回：
+    - dict[str, object]：包含 value.v1 输出 payload 的字典。
+    """
+
+    message = request.parameters.get("message")
+    normalized_message = message.strip() if isinstance(message, str) and message.strip() else "hello world"
+    return {
+        "value": {
+            "value": normalized_message,
+        }
+    }
+
+
+def register(context: NodePackEntrypointRegistrationContext) -> None:
+    """注册模板中的最小 python-callable 节点。
+
+    参数：
+    - context：当前 node pack 的注册上下文。
+    """
+
+    context.register_python_callable(NODE_TYPE_ID, _handle_message_node)

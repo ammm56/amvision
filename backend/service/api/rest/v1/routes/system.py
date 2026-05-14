@@ -10,13 +10,14 @@ from sqlalchemy import text
 from backend.service.application.unit_of_work import UnitOfWork
 from backend.service.api.deps.auth import AuthenticatedPrincipal, require_principal, require_scopes
 from backend.service.api.deps.db import get_unit_of_work
+from backend.service.application.local_buffers import LocalBufferBrokerProcessSupervisor
 
 
 system_router = APIRouter(prefix="/system", tags=["system"])
 
 
 @system_router.get("/health")
-def get_service_health(request: Request) -> dict[str, str]:
+def get_service_health(request: Request) -> dict[str, object]:
     """返回最小健康检查结果。
 
     参数：
@@ -26,7 +27,22 @@ def get_service_health(request: Request) -> dict[str, str]:
     - 当前服务健康状态。
     """
 
-    return {"status": "ok", "request_id": request.state.request_id}
+    return {
+        "status": "ok",
+        "request_id": request.state.request_id,
+        "local_buffer_broker": _build_local_buffer_broker_health(request),
+    }
+
+
+def _build_local_buffer_broker_health(request: Request) -> dict[str, object]:
+    """读取 LocalBufferBroker 健康摘要。"""
+
+    supervisor = getattr(request.app.state, "local_buffer_broker_supervisor", None)
+    if supervisor is None:
+        return {"enabled": False, "state": "not_configured", "running": False}
+    if not isinstance(supervisor, LocalBufferBrokerProcessSupervisor):
+        return {"enabled": False, "state": "misconfigured", "running": False}
+    return supervisor.get_health_summary()
 
 
 @system_router.get("/me")

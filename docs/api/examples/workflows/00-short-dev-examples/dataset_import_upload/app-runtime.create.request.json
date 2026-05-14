@@ -1,0 +1,9 @@
+{
+  "project_id": "project-1",
+  "application_id": "dataset-import-upload-app",
+  "display_name": "Dataset Import Upload Runtime",
+  "metadata": {
+    "example_kind": "dataset-import-upload",
+    "transport_kind": "multipart-upload"
+  }
+}

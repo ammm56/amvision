@@ -20,9 +20,11 @@ from backend.service.application.runtime.safe_counter import (
 from backend.service.application.runtime.yolox_deployment_process_worker import (
     _DeploymentWarmupBehavior,
     _KeepWarmState,
+    _LocalBufferBrokerRuntimeHealth,
     _resolve_warmup_behavior,
     _run_dummy_warmup_passes,
     _run_keep_warm_loop,
+    _snapshot_local_buffer_health,
     _snapshot_keep_warm_state,
 )
 from backend.service.application.runtime.yolox_inference_runtime_pool import (
@@ -332,6 +334,31 @@ def test_snapshot_keep_warm_state_exposes_last_error(tmp_path: Path) -> None:
     assert snapshot["error_count"] == 1
     assert snapshot["error_count_rollover_count"] == 1
     assert snapshot["last_error"] == "keep warm infer failed"
+
+
+def test_snapshot_local_buffer_health_exposes_input_counts_and_recent_error() -> None:
+    """验证 deployment worker 会在 health 中暴露 broker 输入计数和最近错误。"""
+
+    broker_health = _LocalBufferBrokerRuntimeHealth(
+        connected=True,
+        channel_id="broker-channel-1",
+        buffer_input_count=2,
+        frame_input_count=1,
+        error_count=1,
+        last_error="broker read failed",
+    )
+
+    snapshot = _snapshot_local_buffer_health(
+        local_buffer_reader=None,
+        local_buffer_health=broker_health,
+    )
+
+    assert snapshot["connected"] is True
+    assert snapshot["channel_id"] == "broker-channel-1"
+    assert snapshot["buffer_input_count"] == 2
+    assert snapshot["frame_input_count"] == 1
+    assert snapshot["error_count"] == 1
+    assert snapshot["recent_error"] == "broker read failed"
 
 
 def _build_runtime_target(tmp_path: Path) -> RuntimeTargetSnapshot:

@@ -1,0 +1,44 @@
+{
+  "format_id": "amvision.node-pack-manifest.v1",
+  "id": "barcode.protocol-nodes",
+  "version": "0.1.0",
+  "displayName": "Barcode Protocol Nodes",
+  "description": "提供面向工业扫码场景的条码与二维码协议节点，包含解码、筛选、摘要和结果绘制能力。",
+  "category": "custom-node-pack",
+  "capabilities": [
+    "pipeline.node",
+    "barcode.decode",
+    "barcode.render"
+  ],
+  "permissionScopes": [],
+  "entrypoints": {
+    "backend": "custom_nodes.barcode_protocol_nodes.backend.entry:register"
+  },
+  "compatibility": {
+    "api": ">=0.1 <1.0",
+    "runtime": ">=3.12"
+  },
+  "timeout": {
+    "defaultSeconds": 30
+  },
+  "enabledByDefault": true,
+  "customNodeCatalogPath": "workflow/catalog.json",
+  "metadata": {
+    "phase": "implemented",
+    "families": [
+      "mixed",
+      "linear",
+      "matrix",
+      "retail",
+      "industrial",
+      "gs1"
+    ],
+    "features": [
+      "decode",
+      "filter",
+      "match",
+      "summary",
+      "draw"
+    ]
+  }
+}

@@ -1,0 +1,816 @@
+{
+  "info": {
+    "_postman_id": "amvision-workflow-07",
+    "name": "amvision workflow 07 opencv process save image zeromq dual input",
+    "description": "第七类 ZeroMQ TriggerSource 调试 collection。同一个 workflow app 同时发布 HTTP image-base64 和 ZeroMQ image-ref 两条输入通道；image-ref 到 image-base64 的转换明确放在图内节点，不放在 TriggerSource 中。",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://127.0.0.1:8000"
+    },
+    {
+      "key": "principalId",
+      "value": "user-1"
+    },
+    {
+      "key": "projectId",
+      "value": "project-1"
+    },
+    {
+      "key": "previewRunId",
+      "value": ""
+    },
+    {
+      "key": "workflowRuntimeId",
+      "value": ""
+    },
+    {
+      "key": "workflowRunId",
+      "value": ""
+    },
+    {
+      "key": "triggerSourceId",
+      "value": "zeromq-trigger-source-07"
+    }
+  ],
+  "item": [
+    {
+      "name": "Save Template",
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-principal-id",
+            "value": "{{principalId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-project-ids",
+            "value": "{{projectId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-scopes",
+            "value": "workflows:read,workflows:write",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/projects/{{projectId}}/templates/opencv-process-save-image-zeromq-template/versions/1.0.0",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "workflows",
+            "projects",
+            "{{projectId}}",
+            "templates",
+            "opencv-process-save-image-zeromq-template",
+            "versions",
+            "1.0.0"
+          ]
+        },
+        "description": "保存 opencv_process_save_image_zeromq 的 workflow template。",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"template\": {\n    \"format_id\": \"amvision.workflow-graph-template.v1\",\n    \"template_id\": \"opencv-process-save-image-zeromq-template\",\n    \"template_version\": \"1.0.0\",\n    \"display_name\": \"OpenCV Process Save Image ZeroMQ Template\",\n    \"description\": \"同时接收 HTTP image-base64 和 TriggerSource image-ref 图片；图内显式把 image-ref 转成 image-base64 后复用既有 OpenCV 处理链路。\",\n    \"nodes\": [\n      {\n        \"node_id\": \"encode_request_image_ref\",\n        \"node_type_id\": \"core.io.image-base64-encode\",\n        \"parameters\": {}\n      },\n      {\n        \"node_id\": \"resolve_request_image\",\n        \"node_type_id\": \"core.logic.image-base64-coalesce\",\n        \"parameters\": {}\n      },\n      {\n        \"node_id\": \"decode_request_image\",\n        \"node_type_id\": \"core.io.image-base64-decode\",\n        \"parameters\": {}\n      },\n      {\n        \"node_id\": \"blur_image\",\n        \"node_type_id\": \"custom.opencv.gaussian-blur\",\n        \"parameters\": {\n          \"kernel_size\": 5,\n          \"sigma_x\": 1.2\n        }\n      },\n      {\n        \"node_id\": \"threshold_image\",\n        \"node_type_id\": \"custom.opencv.binary-threshold\",\n        \"parameters\": {\n          \"threshold\": 96,\n          \"max_value\": 255\n        }\n      },\n      {\n        \"node_id\": \"edge_image\",\n        \"node_type_id\": \"custom.opencv.canny\",\n        \"parameters\": {\n          \"threshold1\": 60,\n          \"threshold2\": 160,\n          \"aperture_size\": 3,\n          \"l2_gradient\": false\n        }\n      },\n      {\n        \"node_id\": \"save_image\",\n        \"node_type_id\": \"core.io.image-save\",\n        \"parameters\": {\n          \"object_key\": \"workflow-apps/opencv-process-save-image-zeromq/{workflow_run_id}/{timestamp}.png\",\n          \"overwrite\": false\n        }\n      },\n      {\n        \"node_id\": \"preview_image\",\n        \"node_type_id\": \"core.io.image-preview\",\n        \"parameters\": {\n          \"title\": \"Saved Edge Image\",\n          \"response_transport_mode\": \"storage-ref\"\n        }\n      },\n      {\n        \"node_id\": \"response\",\n        \"node_type_id\": \"core.output.http-response\",\n        \"parameters\": {\n          \"status_code\": 200\n        }\n      }\n    ],\n    \"edges\": [\n      {\n        \"edge_id\": \"edge-encode-request-image-ref\",\n        \"source_node_id\": \"encode_request_image_ref\",\n        \"source_port\": \"payload\",\n        \"target_node_id\": \"resolve_request_image\",\n        \"target_port\": \"fallback\"\n      },\n      {\n        \"edge_id\": \"edge-resolve-request-image\",\n        \"source_node_id\": \"resolve_request_image\",\n        \"source_port\": \"payload\",\n        \"target_node_id\": \"decode_request_image\",\n        \"target_port\": \"payload\"\n      },\n      {\n        \"edge_id\": \"edge-input-blur\",\n        \"source_node_id\": \"decode_request_image\",\n        \"source_port\": \"image\",\n        \"target_node_id\": \"blur_image\",\n        \"target_port\": \"image\"\n      },\n      {\n        \"edge_id\": \"edge-blur-threshold\",\n        \"source_node_id\": \"blur_image\",\n        \"source_port\": \"image\",\n        \"target_node_id\": \"threshold_image\",\n        \"target_port\": \"image\"\n      },\n      {\n        \"edge_id\": \"edge-threshold-canny\",\n        \"source_node_id\": \"threshold_image\",\n        \"source_port\": \"image\",\n        \"target_node_id\": \"edge_image\",\n        \"target_port\": \"image\"\n      },\n      {\n        \"edge_id\": \"edge-canny-save\",\n        \"source_node_id\": \"edge_image\",\n        \"source_port\": \"image\",\n        \"target_node_id\": \"save_image\",\n        \"target_port\": \"image\"\n      },\n      {\n        \"edge_id\": \"edge-save-preview\",\n        \"source_node_id\": \"save_image\",\n        \"source_port\": \"image\",\n        \"target_node_id\": \"preview_image\",\n        \"target_port\": \"image\"\n      },\n      {\n        \"edge_id\": \"edge-preview-response\",\n        \"source_node_id\": \"preview_image\",\n        \"source_port\": \"body\",\n        \"target_node_id\": \"response\",\n        \"target_port\": \"body\"\n      }\n    ],\n    \"template_inputs\": [\n      {\n        \"input_id\": \"request_image_base64\",\n        \"display_name\": \"Request Image Base64\",\n        \"payload_type_id\": \"image-base64.v1\",\n        \"target_node_id\": \"resolve_request_image\",\n        \"target_port\": \"primary\",\n        \"required\": false\n      },\n      {\n        \"input_id\": \"request_image_ref\",\n        \"display_name\": \"Request Image Ref\",\n        \"payload_type_id\": \"image-ref.v1\",\n        \"target_node_id\": \"encode_request_image_ref\",\n        \"target_port\": \"image\",\n        \"required\": false\n      }\n    ],\n    \"template_outputs\": [\n      {\n        \"output_id\": \"http_response\",\n        \"display_name\": \"HTTP Response\",\n        \"payload_type_id\": \"http-response.v1\",\n        \"source_node_id\": \"response\",\n        \"source_port\": \"response\"\n      }\n    ],\n    \"metadata\": {\n      \"example_kind\": \"opencv-process-save-image-zeromq\",\n      \"node_groups\": {\n        \"input\": [\n          \"encode_request_image_ref\",\n          \"resolve_request_image\",\n          \"decode_request_image\"\n        ],\n        \"opencv_process\": [\n          \"blur_image\",\n          \"threshold_image\",\n          \"edge_image\"\n        ],\n        \"output\": [\n          \"save_image\",\n          \"preview_image\",\n          \"response\"\n        ]\n      },\n      \"trigger_source_input\": \"zeromq\",\n      \"http_input_binding\": \"request_image_base64\",\n      \"trigger_source_input_binding\": \"request_image_ref\"\n    }\n  }\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Save Application",
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-principal-id",
+            "value": "{{principalId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-project-ids",
+            "value": "{{projectId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-scopes",
+            "value": "workflows:read,workflows:write",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/projects/{{projectId}}/applications/opencv-process-save-image-zeromq-app",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "workflows",
+            "projects",
+            "{{projectId}}",
+            "applications",
+            "opencv-process-save-image-zeromq-app"
+          ]
+        },
+        "description": "保存 opencv_process_save_image_zeromq 的 FlowApplication。",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"application\": {\n    \"format_id\": \"amvision.flow-application.v1\",\n    \"application_id\": \"opencv-process-save-image-zeromq-app\",\n    \"display_name\": \"OpenCV Process Save Image ZeroMQ App\",\n    \"description\": \"同一个 workflow app 同时接收 HTTP image-base64 和 TriggerSource image-ref；图内显式把 image-ref 转成 image-base64 后复用已有 OpenCV 处理链路。\",\n    \"template_ref\": {\n      \"template_id\": \"opencv-process-save-image-zeromq-template\",\n      \"template_version\": \"1.0.0\",\n      \"source_kind\": \"json-file\",\n      \"source_uri\": \"docs/examples/workflows/opencv_process_save_image_zeromq.template.json\"\n    },\n    \"bindings\": [\n      {\n        \"binding_id\": \"request_image_base64\",\n        \"direction\": \"input\",\n        \"template_port_id\": \"request_image_base64\",\n        \"binding_kind\": \"api-request\",\n        \"required\": false,\n        \"config\": {\n          \"route\": \"/api/v1/workflow-apps/opencv/process-save-image-dual-input\",\n          \"method\": \"POST\"\n        },\n        \"metadata\": {\n          \"payload_type_id\": \"image-base64.v1\",\n          \"trigger_kind\": \"http-api\"\n        }\n      },\n      {\n        \"binding_id\": \"request_image_ref\",\n        \"direction\": \"input\",\n        \"template_port_id\": \"request_image_ref\",\n        \"binding_kind\": \"trigger-source-input\",\n        \"required\": false,\n        \"config\": {\n          \"payload_type_id\": \"image-ref.v1\",\n          \"content_type\": \"application/json\"\n        },\n        \"metadata\": {\n          \"payload_type_id\": \"image-ref.v1\",\n          \"trigger_kind\": \"zeromq-topic\"\n        }\n      },\n      {\n        \"binding_id\": \"http_response\",\n        \"direction\": \"output\",\n        \"template_port_id\": \"http_response\",\n        \"binding_kind\": \"http-response\",\n        \"config\": {\n          \"status_code\": 200\n        },\n        \"metadata\": {\n          \"payload_type_id\": \"http-response.v1\"\n        }\n      }\n    ],\n    \"runtime_mode\": \"python-json-workflow\",\n    \"metadata\": {\n      \"example_kind\": \"opencv-process-save-image-zeromq\",\n      \"intended_saved_object_key\": \"workflows/projects/{project_id}/applications/opencv-process-save-image-zeromq-app/application.json\",\n      \"trigger_source_input\": \"zeromq\",\n      \"http_input_binding\": \"request_image_base64\",\n      \"trigger_source_input_binding\": \"request_image_ref\"\n    }\n  }\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Create Preview Run",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-principal-id",
+            "value": "{{principalId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-project-ids",
+            "value": "{{projectId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-scopes",
+            "value": "workflows:read,workflows:write",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/preview-runs",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "workflows",
+            "preview-runs"
+          ]
+        },
+        "description": "创建 opencv_process_save_image_zeromq 的编辑态 preview run。双入口 app 的本地调试仍先走 HTTP base64 输入，ZeroMQ image-ref 入口单独通过 TriggerSource 管理控制面验证。",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"project_id\": \"project-1\",\n  \"application_ref\": {\n    \"application_id\": \"opencv-process-save-image-zeromq-app\"\n  },\n  \"input_bindings\": {\n    \"request_image_base64\": {\n      \"image_base64\": \"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO8B9pQAAAAASUVORK5CYII=\",\n      \"media_type\": \"image/png\"\n    }\n  },\n  \"execution_metadata\": {\n    \"marker\": \"postman-workflow-example-documents-preview\",\n    \"example_name\": \"opencv_process_save_image_zeromq_image_ref\",\n    \"scenario\": \"opencv-process-save-image-zeromq\",\n    \"trigger_source\": \"editor-preview\"\n  },\n  \"timeout_seconds\": 30\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "response": [],
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(201);",
+              "const body = pm.response.json();",
+              "if (body.preview_run_id) {",
+              "  pm.collectionVariables.set('previewRunId', body.preview_run_id);",
+              "}"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Get Preview Run",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "x-amvision-principal-id",
+            "value": "{{principalId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-project-ids",
+            "value": "{{projectId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-scopes",
+            "value": "workflows:read,workflows:write",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/preview-runs/{{previewRunId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "workflows",
+            "preview-runs",
+            "{{previewRunId}}"
+          ]
+        },
+        "description": "读取上一步 preview run 的 outputs 和 node_records。"
+      },
+      "response": []
+    },
+    {
+      "name": "Create App Runtime",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-principal-id",
+            "value": "{{principalId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-project-ids",
+            "value": "{{projectId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-scopes",
+            "value": "workflows:read,workflows:write",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/app-runtimes",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "workflows",
+            "app-runtimes"
+          ]
+        },
+        "description": "创建同时支持 HTTP base64 和 ZeroMQ image-ref 的正式 runtime。",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"project_id\": \"project-1\",\n  \"application_id\": \"opencv-process-save-image-zeromq-app\",\n  \"display_name\": \"OpenCV Process Save Image ZeroMQ Runtime\",\n  \"metadata\": {\n    \"example_kind\": \"opencv-process-save-image-zeromq\",\n    \"trigger_source_input\": \"zeromq\"\n  }\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "response": [],
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(201);",
+              "const body = pm.response.json();",
+              "if (body.workflow_runtime_id) {",
+              "  pm.collectionVariables.set('workflowRuntimeId', body.workflow_runtime_id);",
+              "}"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Start App Runtime",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "x-amvision-principal-id",
+            "value": "{{principalId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-project-ids",
+            "value": "{{projectId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-scopes",
+            "value": "workflows:read,workflows:write",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/app-runtimes/{{workflowRuntimeId}}/start",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "workflows",
+            "app-runtimes",
+            "{{workflowRuntimeId}}",
+            "start"
+          ]
+        },
+        "description": "启动正式 runtime。"
+      },
+      "response": []
+    },
+    {
+      "name": "Get App Runtime Health",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "x-amvision-principal-id",
+            "value": "{{principalId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-project-ids",
+            "value": "{{projectId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-scopes",
+            "value": "workflows:read,workflows:write",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/app-runtimes/{{workflowRuntimeId}}/health",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "workflows",
+            "app-runtimes",
+            "{{workflowRuntimeId}}",
+            "health"
+          ]
+        },
+        "description": "确认 runtime 已经处于 running。"
+      },
+      "response": []
+    },
+    {
+      "name": "Invoke App Runtime (HTTP Base64)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-principal-id",
+            "value": "{{principalId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-project-ids",
+            "value": "{{projectId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-scopes",
+            "value": "workflows:read,workflows:write",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/app-runtimes/{{workflowRuntimeId}}/invoke",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "workflows",
+            "app-runtimes",
+            "{{workflowRuntimeId}}",
+            "invoke"
+          ]
+        },
+        "description": "验证同一个 runtime 可以直接走 HTTP base64 输入通道。",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"input_bindings\": {\n    \"request_image_base64\": {\n      \"image_base64\": \"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO8B9pQAAAAASUVORK5CYII=\",\n      \"media_type\": \"image/png\"\n    }\n  },\n  \"execution_metadata\": {\n    \"scenario\": \"opencv-process-save-image-zeromq\",\n    \"trigger_source\": \"sync-api\"\n  }\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "response": [],
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const body = pm.response.json();",
+              "if (body.workflow_run_id) {",
+              "  pm.collectionVariables.set('workflowRunId', body.workflow_run_id);",
+              "}"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Create Workflow Run",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-principal-id",
+            "value": "{{principalId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-project-ids",
+            "value": "{{projectId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-scopes",
+            "value": "workflows:read,workflows:write",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/app-runtimes/{{workflowRuntimeId}}/runs",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "workflows",
+            "app-runtimes",
+            "{{workflowRuntimeId}}",
+            "runs"
+          ]
+        },
+        "description": "创建同一个双输入 runtime 的正式 async workflow run。",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"input_bindings\": {\n    \"request_image_base64\": {\n      \"image_base64\": \"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO8B9pQAAAAASUVORK5CYII=\",\n      \"media_type\": \"image/png\"\n    }\n  },\n  \"execution_metadata\": {\n    \"scenario\": \"opencv-process-save-image-zeromq\",\n    \"trigger_source\": \"async-api\"\n  }\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "response": [],
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(201);",
+              "const body = pm.response.json();",
+              "if (body.workflow_run_id) {",
+              "  pm.collectionVariables.set('workflowRunId', body.workflow_run_id);",
+              "}"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Get Workflow Run",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "x-amvision-principal-id",
+            "value": "{{principalId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-project-ids",
+            "value": "{{projectId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-scopes",
+            "value": "workflows:read,workflows:write",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/runs/{{workflowRunId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "workflows",
+            "runs",
+            "{{workflowRunId}}"
+          ]
+        },
+        "description": "读取 invoke 或 async run 返回的 workflow_run_id。"
+      },
+      "response": []
+    },
+    {
+      "name": "Create TriggerSource",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-principal-id",
+            "value": "{{principalId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-project-ids",
+            "value": "{{projectId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-scopes",
+            "value": "workflows:read,workflows:write",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/trigger-sources",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "workflows",
+            "trigger-sources"
+          ]
+        },
+        "description": "创建 ZeroMQ TriggerSource；数据面仍由 SDK 发送 multipart 图片 bytes。",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"trigger_source_id\": \"zeromq-trigger-source-07\",\n  \"project_id\": \"project-1\",\n  \"display_name\": \"ZeroMQ TriggerSource 07 OpenCV Process Save Image\",\n  \"trigger_kind\": \"zeromq-topic\",\n  \"workflow_runtime_id\": \"{{workflowRuntimeId}}\",\n  \"submit_mode\": \"sync\",\n  \"enabled\": false,\n  \"transport_config\": {\n    \"bind_endpoint\": \"tcp://127.0.0.1:5556\",\n    \"default_input_binding\": \"request_image\",\n    \"buffer_ttl_seconds\": 30\n  },\n  \"input_binding_mapping\": {\n    \"request_image_ref\": {\n      \"source\": \"payload.request_image\",\n      \"payload_type_id\": \"image-ref.v1\"\n    }\n  },\n  \"result_mapping\": {\n    \"result_binding\": \"http_response\",\n    \"result_mode\": \"sync-reply\",\n    \"reply_timeout_seconds\": 30\n  },\n  \"default_execution_metadata\": {\n    \"scenario\": \"opencv-process-save-image-zeromq\",\n    \"trigger_source\": \"zeromq-sdk\"\n  },\n  \"ack_policy\": \"ack-after-run-finished\",\n  \"result_mode\": \"sync-reply\",\n  \"reply_timeout_seconds\": 30,\n  \"metadata\": {\n    \"example_kind\": \"opencv-process-save-image-zeromq\",\n    \"sdk\": \"dotnet\"\n  }\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Enable TriggerSource",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "x-amvision-principal-id",
+            "value": "{{principalId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-project-ids",
+            "value": "{{projectId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-scopes",
+            "value": "workflows:read,workflows:write",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/trigger-sources/{{triggerSourceId}}/enable",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "workflows",
+            "trigger-sources",
+            "{{triggerSourceId}}",
+            "enable"
+          ]
+        },
+        "description": "启动 ZeroMQ adapter。"
+      },
+      "response": []
+    },
+    {
+      "name": "Get TriggerSource Health",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "x-amvision-principal-id",
+            "value": "{{principalId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-project-ids",
+            "value": "{{projectId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-scopes",
+            "value": "workflows:read,workflows:write",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/trigger-sources/{{triggerSourceId}}/health",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "workflows",
+            "trigger-sources",
+            "{{triggerSourceId}}",
+            "health"
+          ]
+        },
+        "description": "确认 adapter_running=true，然后再用 SDK 发送图片。"
+      },
+      "response": []
+    },
+    {
+      "name": "Disable TriggerSource",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "x-amvision-principal-id",
+            "value": "{{principalId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-project-ids",
+            "value": "{{projectId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-scopes",
+            "value": "workflows:read,workflows:write",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/trigger-sources/{{triggerSourceId}}/disable",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "workflows",
+            "trigger-sources",
+            "{{triggerSourceId}}",
+            "disable"
+          ]
+        },
+        "description": "停止 ZeroMQ adapter。"
+      },
+      "response": []
+    },
+    {
+      "name": "Delete TriggerSource",
+      "request": {
+        "method": "DELETE",
+        "header": [
+          {
+            "key": "x-amvision-principal-id",
+            "value": "{{principalId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-project-ids",
+            "value": "{{projectId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-scopes",
+            "value": "workflows:read,workflows:write",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/trigger-sources/{{triggerSourceId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "workflows",
+            "trigger-sources",
+            "{{triggerSourceId}}"
+          ]
+        },
+        "description": "删除当前 TriggerSource；如果需要重新绑定新的 runtime，可在这一步后重新执行 Create TriggerSource。"
+      },
+      "response": []
+    },
+    {
+      "name": "Stop App Runtime",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "x-amvision-principal-id",
+            "value": "{{principalId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-project-ids",
+            "value": "{{projectId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-scopes",
+            "value": "workflows:read,workflows:write",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/app-runtimes/{{workflowRuntimeId}}/stop",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "workflows",
+            "app-runtimes",
+            "{{workflowRuntimeId}}",
+            "stop"
+          ]
+        },
+        "description": "结束本次 07 双输入 runtime 调试。"
+      },
+      "response": []
+    }
+  ]
+}

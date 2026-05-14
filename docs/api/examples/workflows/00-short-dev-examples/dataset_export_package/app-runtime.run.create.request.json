@@ -1,0 +1,14 @@
+{
+  "input_bindings": {
+    "request_payload": {
+      "value": {
+        "dataset_export_id": "dataset-export-1",
+        "rebuild": false
+      }
+    }
+  },
+  "execution_metadata": {
+    "scenario": "dataset-export-package",
+    "trigger_source": "async-api"
+  }
+}

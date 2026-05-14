@@ -1,0 +1,820 @@
+{
+  "info": {
+    "_postman_id": "amvision-workflow-06",
+    "name": "amvision workflow 06 yolox deployment infer opencv health zeromq dual input",
+    "description": "第六类 ZeroMQ TriggerSource 调试 collection。同一个 workflow app 同时发布 HTTP image-base64 和 ZeroMQ image-ref 两条输入通道；image-ref 到 image-base64 的转换明确放在图内节点，不放在 TriggerSource 中。",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://127.0.0.1:8000"
+    },
+    {
+      "key": "principalId",
+      "value": "user-1"
+    },
+    {
+      "key": "projectId",
+      "value": "project-1"
+    },
+    {
+      "key": "previewRunId",
+      "value": ""
+    },
+    {
+      "key": "workflowRuntimeId",
+      "value": ""
+    },
+    {
+      "key": "workflowRunId",
+      "value": ""
+    },
+    {
+      "key": "deploymentInstanceId",
+      "value": "deployment-instance-1"
+    },
+    {
+      "key": "triggerSourceId",
+      "value": "zeromq-trigger-source-06"
+    }
+  ],
+  "item": [
+    {
+      "name": "Save Template",
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-principal-id",
+            "value": "{{principalId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-project-ids",
+            "value": "{{projectId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-scopes",
+            "value": "workflows:read,workflows:write",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/projects/{{projectId}}/templates/yolox-deployment-infer-opencv-health-zeromq-template/versions/1.1.0",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "workflows",
+            "projects",
+            "{{projectId}}",
+            "templates",
+            "yolox-deployment-infer-opencv-health-zeromq-template",
+            "versions",
+            "1.1.0"
+          ]
+        },
+        "description": "保存 yolox_deployment_infer_opencv_health_zeromq 的 workflow template。",
+        "body": {
+          "mode": "raw",
+          "raw": "{\r\n  \"template\": {\r\n    \"format_id\": \"amvision.workflow-graph-template.v1\",\r\n    \"template_id\": \"yolox-deployment-infer-opencv-health-zeromq-template\",\r\n    \"template_version\": \"1.1.0\",\r\n    \"display_name\": \"YOLOX Deployment Infer OpenCV Health ZeroMQ Template\",\r\n    \"description\": \"同时接收 HTTP image-base64 和 TriggerSource image-ref 图片；图内显式汇合双入口后，图末端返回检测框列表、绘制后的 inline-base64 图片和 deployment health 摘要。\",\r\n    \"nodes\": [\r\n      {\r\n        \"node_id\": \"encode_request_image_ref\",\r\n        \"node_type_id\": \"core.io.image-base64-encode\",\r\n        \"parameters\": {}\r\n      },\r\n      {\r\n        \"node_id\": \"resolve_request_image\",\r\n        \"node_type_id\": \"core.logic.image-base64-coalesce\",\r\n        \"parameters\": {}\r\n      },\r\n      {\r\n        \"node_id\": \"decode_request_image\",\r\n        \"node_type_id\": \"core.io.image-base64-decode\",\r\n        \"parameters\": {}\r\n      },\r\n      {\r\n        \"node_id\": \"deployment_request_input\",\r\n        \"node_type_id\": \"core.io.template-input.object\",\r\n        \"parameters\": {}\r\n      },\r\n      {\r\n        \"node_id\": \"health\",\r\n        \"node_type_id\": \"core.service.yolox-deployment.health\",\r\n        \"parameters\": {\r\n          \"runtime_mode\": \"sync\"\r\n        },\r\n        \"metadata\": {\r\n          \"sequence_index\": 1\r\n        }\r\n      },\r\n      {\r\n        \"node_id\": \"extract_deployment_instance_id\",\r\n        \"node_type_id\": \"core.logic.field-extract\",\r\n        \"parameters\": {\r\n          \"path\": \"deployment_instance_id\"\r\n        }\r\n      },\r\n      {\r\n        \"node_id\": \"detect\",\r\n        \"node_type_id\": \"core.model.yolox-detection\",\r\n        \"parameters\": {\r\n          \"auto_start_process\": false,\r\n          \"score_threshold\": 0.3,\r\n          \"save_result_image\": false,\r\n          \"return_preview_image_base64\": false\r\n        },\r\n        \"metadata\": {\r\n          \"sequence_index\": 2\r\n        }\r\n      },\r\n      {\r\n        \"node_id\": \"draw_detections\",\r\n        \"node_type_id\": \"custom.opencv.draw-detections\",\r\n        \"parameters\": {\r\n          \"line_thickness\": 2,\r\n          \"font_scale\": 0.6,\r\n          \"draw_scores\": true\r\n        }\r\n      },\r\n      {\r\n        \"node_id\": \"preview_image\",\r\n        \"node_type_id\": \"core.io.image-preview\",\r\n        \"parameters\": {\r\n          \"title\": \"Annotated Detection Image\",\r\n          \"response_transport_mode\": \"inline-base64\"\r\n        }\r\n      },\r\n      {\r\n        \"node_id\": \"extract_preview_image\",\r\n        \"node_type_id\": \"core.logic.field-extract\",\r\n        \"parameters\": {\r\n          \"path\": \"image\"\r\n        }\r\n      },\r\n      {\r\n        \"node_id\": \"extract_detection_items\",\r\n        \"node_type_id\": \"core.logic.detections-items\",\r\n        \"parameters\": {}\r\n      },\r\n      {\r\n        \"node_id\": \"extract_process_state\",\r\n        \"node_type_id\": \"core.logic.field-extract\",\r\n        \"parameters\": {\r\n          \"path\": \"process_state\"\r\n        }\r\n      },\r\n      {\r\n        \"node_id\": \"extract_healthy_instance_count\",\r\n        \"node_type_id\": \"core.logic.field-extract\",\r\n        \"parameters\": {\r\n          \"path\": \"healthy_instance_count\"\r\n        }\r\n      },\r\n      {\r\n        \"node_id\": \"extract_warmed_instance_count\",\r\n        \"node_type_id\": \"core.logic.field-extract\",\r\n        \"parameters\": {\r\n          \"path\": \"warmed_instance_count\"\r\n        }\r\n      },\r\n      {\r\n        \"node_id\": \"extract_keep_warm\",\r\n        \"node_type_id\": \"core.logic.field-extract\",\r\n        \"parameters\": {\r\n          \"path\": \"keep_warm\"\r\n        }\r\n      },\r\n      {\r\n        \"node_id\": \"build_health_summary\",\r\n        \"node_type_id\": \"core.logic.object-create\",\r\n        \"parameters\": {\r\n          \"keys\": [\r\n            \"process_state\",\r\n            \"healthy_instance_count\",\r\n            \"warmed_instance_count\",\r\n            \"keep_warm\",\r\n            \"deployment_instance_id\"\r\n          ],\r\n          \"fields\": {\r\n            \"runtime_mode\": \"sync\"\r\n          }\r\n        }\r\n      },\r\n      {\r\n        \"node_id\": \"build_response_data\",\r\n        \"node_type_id\": \"core.logic.object-create\",\r\n        \"parameters\": {\r\n          \"keys\": [\r\n            \"annotated_image\",\r\n            \"detections\",\r\n            \"health\"\r\n          ],\r\n          \"fields\": {\r\n            \"type\": \"deployment-infer-opencv-health\"\r\n          }\r\n        }\r\n      },\r\n      {\r\n        \"node_id\": \"envelope\",\r\n        \"node_type_id\": \"core.output.response-envelope\",\r\n        \"parameters\": {\r\n          \"code\": 0,\r\n          \"message\": \"ok\"\r\n        }\r\n      },\r\n      {\r\n        \"node_id\": \"response\",\r\n        \"node_type_id\": \"core.output.http-response\",\r\n        \"parameters\": {\r\n          \"status_code\": 200\r\n        }\r\n      }\r\n    ],\r\n    \"edges\": [\r\n      {\r\n        \"edge_id\": \"edge-encode-request-image-ref\",\r\n        \"source_node_id\": \"encode_request_image_ref\",\r\n        \"source_port\": \"payload\",\r\n        \"target_node_id\": \"resolve_request_image\",\r\n        \"target_port\": \"fallback\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-resolve-request-image\",\r\n        \"source_node_id\": \"resolve_request_image\",\r\n        \"source_port\": \"payload\",\r\n        \"target_node_id\": \"decode_request_image\",\r\n        \"target_port\": \"payload\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-input-detect\",\r\n        \"source_node_id\": \"decode_request_image\",\r\n        \"source_port\": \"image\",\r\n        \"target_node_id\": \"detect\",\r\n        \"target_port\": \"image\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-input-draw\",\r\n        \"source_node_id\": \"decode_request_image\",\r\n        \"source_port\": \"image\",\r\n        \"target_node_id\": \"draw_detections\",\r\n        \"target_port\": \"image\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-detect-draw\",\r\n        \"source_node_id\": \"detect\",\r\n        \"source_port\": \"detections\",\r\n        \"target_node_id\": \"draw_detections\",\r\n        \"target_port\": \"detections\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-draw-preview\",\r\n        \"source_node_id\": \"draw_detections\",\r\n        \"source_port\": \"image\",\r\n        \"target_node_id\": \"preview_image\",\r\n        \"target_port\": \"image\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-preview-extract-image\",\r\n        \"source_node_id\": \"preview_image\",\r\n        \"source_port\": \"body\",\r\n        \"target_node_id\": \"extract_preview_image\",\r\n        \"target_port\": \"body\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-health-extract-process-state\",\r\n        \"source_node_id\": \"health\",\r\n        \"source_port\": \"body\",\r\n        \"target_node_id\": \"extract_process_state\",\r\n        \"target_port\": \"body\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-health-extract-healthy-instance-count\",\r\n        \"source_node_id\": \"health\",\r\n        \"source_port\": \"body\",\r\n        \"target_node_id\": \"extract_healthy_instance_count\",\r\n        \"target_port\": \"body\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-health-extract-warmed-instance-count\",\r\n        \"source_node_id\": \"health\",\r\n        \"source_port\": \"body\",\r\n        \"target_node_id\": \"extract_warmed_instance_count\",\r\n        \"target_port\": \"body\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-health-extract-keep-warm\",\r\n        \"source_node_id\": \"health\",\r\n        \"source_port\": \"body\",\r\n        \"target_node_id\": \"extract_keep_warm\",\r\n        \"target_port\": \"body\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-process-state-build-health-summary\",\r\n        \"source_node_id\": \"extract_process_state\",\r\n        \"source_port\": \"value\",\r\n        \"target_node_id\": \"build_health_summary\",\r\n        \"target_port\": \"values\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-healthy-instance-count-build-health-summary\",\r\n        \"source_node_id\": \"extract_healthy_instance_count\",\r\n        \"source_port\": \"value\",\r\n        \"target_node_id\": \"build_health_summary\",\r\n        \"target_port\": \"values\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-warmed-instance-count-build-health-summary\",\r\n        \"source_node_id\": \"extract_warmed_instance_count\",\r\n        \"source_port\": \"value\",\r\n        \"target_node_id\": \"build_health_summary\",\r\n        \"target_port\": \"values\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-keep-warm-build-health-summary\",\r\n        \"source_node_id\": \"extract_keep_warm\",\r\n        \"source_port\": \"value\",\r\n        \"target_node_id\": \"build_health_summary\",\r\n        \"target_port\": \"values\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-detect-extract-detection-items\",\r\n        \"source_node_id\": \"detect\",\r\n        \"source_port\": \"detections\",\r\n        \"target_node_id\": \"extract_detection_items\",\r\n        \"target_port\": \"detections\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-preview-image-build-response-data\",\r\n        \"source_node_id\": \"extract_preview_image\",\r\n        \"source_port\": \"value\",\r\n        \"target_node_id\": \"build_response_data\",\r\n        \"target_port\": \"values\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-detection-items-build-response-data\",\r\n        \"source_node_id\": \"extract_detection_items\",\r\n        \"source_port\": \"value\",\r\n        \"target_node_id\": \"build_response_data\",\r\n        \"target_port\": \"values\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-health-summary-build-response-data\",\r\n        \"source_node_id\": \"build_health_summary\",\r\n        \"source_port\": \"value\",\r\n        \"target_node_id\": \"build_response_data\",\r\n        \"target_port\": \"values\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-response-data-envelope\",\r\n        \"source_node_id\": \"build_response_data\",\r\n        \"source_port\": \"value\",\r\n        \"target_node_id\": \"envelope\",\r\n        \"target_port\": \"data\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-envelope-response\",\r\n        \"source_node_id\": \"envelope\",\r\n        \"source_port\": \"body\",\r\n        \"target_node_id\": \"response\",\r\n        \"target_port\": \"body\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-deployment-request-health\",\r\n        \"source_node_id\": \"deployment_request_input\",\r\n        \"source_port\": \"value\",\r\n        \"target_node_id\": \"health\",\r\n        \"target_port\": \"request\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-deployment-request-detect\",\r\n        \"source_node_id\": \"deployment_request_input\",\r\n        \"source_port\": \"value\",\r\n        \"target_node_id\": \"detect\",\r\n        \"target_port\": \"request\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-health-extract-deployment-instance-id\",\r\n        \"source_node_id\": \"health\",\r\n        \"source_port\": \"body\",\r\n        \"target_node_id\": \"extract_deployment_instance_id\",\r\n        \"target_port\": \"body\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-deployment-instance-id-build-health-summary\",\r\n        \"source_node_id\": \"extract_deployment_instance_id\",\r\n        \"source_port\": \"value\",\r\n        \"target_node_id\": \"build_health_summary\",\r\n        \"target_port\": \"values\"\r\n      }\r\n    ],\r\n    \"template_inputs\": [\r\n      {\r\n        \"input_id\": \"request_image_base64\",\r\n        \"display_name\": \"Request Image Base64\",\r\n        \"payload_type_id\": \"image-base64.v1\",\r\n        \"target_node_id\": \"resolve_request_image\",\r\n        \"target_port\": \"primary\",\r\n        \"required\": false\r\n      },\r\n      {\r\n        \"input_id\": \"request_image_ref\",\r\n        \"display_name\": \"Request Image Ref\",\r\n        \"payload_type_id\": \"image-ref.v1\",\r\n        \"target_node_id\": \"encode_request_image_ref\",\r\n        \"target_port\": \"image\",\r\n        \"required\": false\r\n      },\r\n      {\r\n        \"input_id\": \"deployment_request\",\r\n        \"display_name\": \"Deployment Request\",\r\n        \"payload_type_id\": \"value.v1\",\r\n        \"target_node_id\": \"deployment_request_input\",\r\n        \"target_port\": \"payload\"\r\n      }\r\n    ],\r\n    \"template_outputs\": [\r\n      {\r\n        \"output_id\": \"http_response\",\r\n        \"display_name\": \"HTTP Response\",\r\n        \"payload_type_id\": \"http-response.v1\",\r\n        \"source_node_id\": \"response\",\r\n        \"source_port\": \"response\"\r\n      }\r\n    ],\r\n    \"metadata\": {\r\n      \"example_kind\": \"deployment-infer-opencv-health-zeromq\",\r\n      \"uses_existing_deployment_instance\": true,\r\n      \"deployment_runtime_owner\": \"backend-service\",\r\n      \"node_groups\": {\r\n        \"input\": [\r\n          \"encode_request_image_ref\",\r\n          \"resolve_request_image\",\r\n          \"decode_request_image\",\r\n          \"deployment_request_input\"\r\n        ],\r\n        \"deployment\": [\r\n          \"health\",\r\n          \"detect\"\r\n        ],\r\n        \"opencv_render\": [\r\n          \"draw_detections\",\r\n          \"preview_image\"\r\n        ],\r\n        \"response\": [\r\n          \"extract_deployment_instance_id\",\r\n          \"extract_detection_items\",\r\n          \"extract_preview_image\",\r\n          \"extract_process_state\",\r\n          \"extract_healthy_instance_count\",\r\n          \"extract_warmed_instance_count\",\r\n          \"extract_keep_warm\",\r\n          \"build_health_summary\",\r\n          \"build_response_data\",\r\n          \"envelope\",\r\n          \"response\"\r\n        ]\r\n      },\r\n      \"deployment_instance_id_binding\": \"deployment_request\",\r\n      \"trigger_source_input\": \"zeromq\",\r\n      \"http_input_binding\": \"request_image_base64\",\r\n      \"trigger_source_input_binding\": \"request_image_ref\"\r\n    }\r\n  }\r\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Save Application",
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-principal-id",
+            "value": "{{principalId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-project-ids",
+            "value": "{{projectId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-scopes",
+            "value": "workflows:read,workflows:write",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/projects/{{projectId}}/applications/yolox-deployment-infer-opencv-health-zeromq-app",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "workflows",
+            "projects",
+            "{{projectId}}",
+            "applications",
+            "yolox-deployment-infer-opencv-health-zeromq-app"
+          ]
+        },
+        "description": "保存 yolox_deployment_infer_opencv_health_zeromq 的 FlowApplication。",
+        "body": {
+          "mode": "raw",
+          "raw": "{\r\n  \"application\": {\r\n    \"format_id\": \"amvision.flow-application.v1\",\r\n    \"application_id\": \"yolox-deployment-infer-opencv-health-zeromq-app\",\r\n    \"display_name\": \"YOLOX Deployment Infer OpenCV Health ZeroMQ App\",\r\n    \"description\": \"同一个 workflow app 同时接收 HTTP image-base64 和 TriggerSource image-ref；图内显式汇合双入口后返回检测框列表、绘制图片和 deployment health 摘要。\",\r\n    \"template_ref\": {\r\n      \"template_id\": \"yolox-deployment-infer-opencv-health-zeromq-template\",\r\n      \"template_version\": \"1.1.0\",\r\n      \"source_kind\": \"json-file\",\r\n      \"source_uri\": \"docs/examples/workflows/yolox_deployment_infer_opencv_health_zeromq.template.json\"\r\n    },\r\n    \"bindings\": [\r\n      {\r\n        \"binding_id\": \"request_image_base64\",\r\n        \"direction\": \"input\",\r\n        \"template_port_id\": \"request_image_base64\",\r\n        \"binding_kind\": \"api-request\",\r\n        \"required\": false,\r\n        \"config\": {\r\n          \"route\": \"/api/v1/workflow-apps/yolox/deployment/infer-opencv-health-dual-input\",\r\n          \"method\": \"POST\"\r\n        },\r\n        \"metadata\": {\r\n          \"payload_type_id\": \"image-base64.v1\",\r\n          \"trigger_kind\": \"http-api\"\r\n        }\r\n      },\r\n      {\r\n        \"binding_id\": \"request_image_ref\",\r\n        \"direction\": \"input\",\r\n        \"template_port_id\": \"request_image_ref\",\r\n        \"binding_kind\": \"trigger-source-input\",\r\n        \"required\": false,\r\n        \"config\": {\r\n          \"payload_type_id\": \"image-ref.v1\",\r\n          \"content_type\": \"application/json\"\r\n        },\r\n        \"metadata\": {\r\n          \"payload_type_id\": \"image-ref.v1\",\r\n          \"trigger_kind\": \"zeromq-topic\"\r\n        }\r\n      },\r\n      {\r\n        \"binding_id\": \"deployment_request\",\r\n        \"direction\": \"input\",\r\n        \"template_port_id\": \"deployment_request\",\r\n        \"binding_kind\": \"workflow-execute-input\",\r\n        \"config\": {\r\n          \"payload_type_id\": \"value.v1\",\r\n          \"content_type\": \"application/json\"\r\n        },\r\n        \"metadata\": {}\r\n      },\r\n      {\r\n        \"binding_id\": \"http_response\",\r\n        \"direction\": \"output\",\r\n        \"template_port_id\": \"http_response\",\r\n        \"binding_kind\": \"http-response\",\r\n        \"config\": {\r\n          \"status_code\": 200\r\n        },\r\n        \"metadata\": {\r\n          \"payload_type_id\": \"http-response.v1\"\r\n        }\r\n      }\r\n    ],\r\n    \"runtime_mode\": \"python-json-workflow\",\r\n    \"metadata\": {\r\n      \"example_kind\": \"deployment-infer-opencv-health-zeromq\",\r\n      \"uses_existing_deployment_instance\": true,\r\n      \"intended_saved_object_key\": \"workflows/projects/{project_id}/applications/yolox-deployment-infer-opencv-health-zeromq-app/application.json\",\r\n      \"deployment_instance_id_binding\": \"deployment_request\",\r\n      \"trigger_source_input\": \"zeromq\",\r\n      \"http_input_binding\": \"request_image_base64\",\r\n      \"trigger_source_input_binding\": \"request_image_ref\"\r\n    }\r\n  }\r\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Create Preview Run",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-principal-id",
+            "value": "{{principalId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-project-ids",
+            "value": "{{projectId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-scopes",
+            "value": "workflows:read,workflows:write",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/preview-runs",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "workflows",
+            "preview-runs"
+          ]
+        },
+        "description": "创建 yolox_deployment_infer_opencv_health_zeromq 的编辑态 preview run。双入口 app 的本地调试仍先走 HTTP base64 输入，ZeroMQ image-ref 入口单独通过 TriggerSource 管理控制面验证。",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"project_id\": \"project-1\",\n  \"application_ref\": {\n    \"application_id\": \"yolox-deployment-infer-opencv-health-zeromq-app\"\n  },\n  \"input_bindings\": {\n    \"request_image_base64\": {\n      \"image_base64\": \"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO8B9pQAAAAASUVORK5CYII=\",\n      \"media_type\": \"image/png\"\n    },\n    \"deployment_request\": {\n      \"value\": {\n        \"deployment_instance_id\": \"{{deploymentInstanceId}}\"\n      }\n    }\n  },\n  \"execution_metadata\": {\n    \"marker\": \"postman-workflow-example-documents-preview\",\n    \"example_name\": \"yolox_deployment_infer_opencv_health_zeromq_image_ref\",\n    \"scenario\": \"deployment-infer-opencv-health-zeromq\",\n    \"trigger_source\": \"editor-preview\"\n  },\n  \"timeout_seconds\": 30\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "response": [],
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(201);",
+              "const body = pm.response.json();",
+              "if (body.preview_run_id) {",
+              "  pm.collectionVariables.set('previewRunId', body.preview_run_id);",
+              "}"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Get Preview Run",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "x-amvision-principal-id",
+            "value": "{{principalId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-project-ids",
+            "value": "{{projectId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-scopes",
+            "value": "workflows:read,workflows:write",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/preview-runs/{{previewRunId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "workflows",
+            "preview-runs",
+            "{{previewRunId}}"
+          ]
+        },
+        "description": "读取上一步 preview run 的 outputs 和 node_records。"
+      },
+      "response": []
+    },
+    {
+      "name": "Create App Runtime",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-principal-id",
+            "value": "{{principalId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-project-ids",
+            "value": "{{projectId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-scopes",
+            "value": "workflows:read,workflows:write",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/app-runtimes",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "workflows",
+            "app-runtimes"
+          ]
+        },
+        "description": "创建同时支持 HTTP base64 和 ZeroMQ image-ref 的正式 runtime。",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"project_id\": \"project-1\",\n  \"application_id\": \"yolox-deployment-infer-opencv-health-zeromq-app\",\n  \"display_name\": \"YOLOX Deployment Infer OpenCV Health ZeroMQ Runtime\",\n  \"metadata\": {\n    \"example_kind\": \"deployment-infer-opencv-health-zeromq\",\n    \"uses_existing_deployment_instance\": true,\n    \"trigger_source_input\": \"zeromq\"\n  }\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "response": [],
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(201);",
+              "const body = pm.response.json();",
+              "if (body.workflow_runtime_id) {",
+              "  pm.collectionVariables.set('workflowRuntimeId', body.workflow_runtime_id);",
+              "}"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Start App Runtime",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "x-amvision-principal-id",
+            "value": "{{principalId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-project-ids",
+            "value": "{{projectId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-scopes",
+            "value": "workflows:read,workflows:write",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/app-runtimes/{{workflowRuntimeId}}/start",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "workflows",
+            "app-runtimes",
+            "{{workflowRuntimeId}}",
+            "start"
+          ]
+        },
+        "description": "启动正式 runtime。"
+      },
+      "response": []
+    },
+    {
+      "name": "Get App Runtime Health",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "x-amvision-principal-id",
+            "value": "{{principalId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-project-ids",
+            "value": "{{projectId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-scopes",
+            "value": "workflows:read,workflows:write",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/app-runtimes/{{workflowRuntimeId}}/health",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "workflows",
+            "app-runtimes",
+            "{{workflowRuntimeId}}",
+            "health"
+          ]
+        },
+        "description": "确认 runtime 已经处于 running。"
+      },
+      "response": []
+    },
+    {
+      "name": "Invoke App Runtime (HTTP Base64)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-principal-id",
+            "value": "{{principalId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-project-ids",
+            "value": "{{projectId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-scopes",
+            "value": "workflows:read,workflows:write",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/app-runtimes/{{workflowRuntimeId}}/invoke",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "workflows",
+            "app-runtimes",
+            "{{workflowRuntimeId}}",
+            "invoke"
+          ]
+        },
+        "description": "验证同一个 runtime 可以直接走 HTTP base64 输入通道。",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"input_bindings\": {\n    \"request_image_base64\": {\n      \"image_base64\": \"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO8B9pQAAAAASUVORK5CYII=\",\n      \"media_type\": \"image/png\"\n    },\n    \"deployment_request\": {\n      \"value\": {\n        \"deployment_instance_id\": \"{{deploymentInstanceId}}\"\n      }\n    }\n  },\n  \"execution_metadata\": {\n    \"scenario\": \"deployment-infer-opencv-health-zeromq\",\n    \"trigger_source\": \"sync-api\"\n  }\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "response": [],
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const body = pm.response.json();",
+              "if (body.workflow_run_id) {",
+              "  pm.collectionVariables.set('workflowRunId', body.workflow_run_id);",
+              "}"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Create Workflow Run",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-principal-id",
+            "value": "{{principalId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-project-ids",
+            "value": "{{projectId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-scopes",
+            "value": "workflows:read,workflows:write",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/app-runtimes/{{workflowRuntimeId}}/runs",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "workflows",
+            "app-runtimes",
+            "{{workflowRuntimeId}}",
+            "runs"
+          ]
+        },
+        "description": "创建同一个双输入 runtime 的正式 async workflow run。",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"input_bindings\": {\n    \"request_image_base64\": {\n      \"image_base64\": \"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO8B9pQAAAAASUVORK5CYII=\",\n      \"media_type\": \"image/png\"\n    },\n    \"deployment_request\": {\n      \"value\": {\n        \"deployment_instance_id\": \"{{deploymentInstanceId}}\"\n      }\n    }\n  },\n  \"execution_metadata\": {\n    \"scenario\": \"deployment-infer-opencv-health-zeromq\",\n    \"trigger_source\": \"async-api\"\n  }\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "response": [],
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(201);",
+              "const body = pm.response.json();",
+              "if (body.workflow_run_id) {",
+              "  pm.collectionVariables.set('workflowRunId', body.workflow_run_id);",
+              "}"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Get Workflow Run",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "x-amvision-principal-id",
+            "value": "{{principalId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-project-ids",
+            "value": "{{projectId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-scopes",
+            "value": "workflows:read,workflows:write",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/runs/{{workflowRunId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "workflows",
+            "runs",
+            "{{workflowRunId}}"
+          ]
+        },
+        "description": "读取 invoke 或 async run 返回的 workflow_run_id。"
+      },
+      "response": []
+    },
+    {
+      "name": "Create TriggerSource",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-principal-id",
+            "value": "{{principalId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-project-ids",
+            "value": "{{projectId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-scopes",
+            "value": "workflows:read,workflows:write",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/trigger-sources",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "workflows",
+            "trigger-sources"
+          ]
+        },
+        "description": "创建 ZeroMQ TriggerSource；数据面仍由 SDK 发送 multipart 图片 bytes。",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"trigger_source_id\": \"zeromq-trigger-source-06\",\n  \"project_id\": \"project-1\",\n  \"display_name\": \"ZeroMQ TriggerSource 06 YOLOX Infer OpenCV Health\",\n  \"trigger_kind\": \"zeromq-topic\",\n  \"workflow_runtime_id\": \"{{workflowRuntimeId}}\",\n  \"submit_mode\": \"sync\",\n  \"enabled\": false,\n  \"transport_config\": {\n    \"bind_endpoint\": \"tcp://127.0.0.1:5555\",\n    \"default_input_binding\": \"request_image\",\n    \"buffer_ttl_seconds\": 30\n  },\n  \"input_binding_mapping\": {\n    \"request_image_ref\": {\n      \"source\": \"payload.request_image\",\n      \"payload_type_id\": \"image-ref.v1\"\n    },\n    \"deployment_request\": {\n      \"source\": \"payload.deployment_request\",\n      \"payload_type_id\": \"value.v1\"\n    }\n  },\n  \"result_mapping\": {\n    \"result_binding\": \"http_response\",\n    \"result_mode\": \"sync-reply\",\n    \"reply_timeout_seconds\": 30\n  },\n  \"default_execution_metadata\": {\n    \"scenario\": \"deployment-infer-opencv-health-zeromq\",\n    \"trigger_source\": \"zeromq-sdk\"\n  },\n  \"ack_policy\": \"ack-after-run-finished\",\n  \"result_mode\": \"sync-reply\",\n  \"reply_timeout_seconds\": 30,\n  \"metadata\": {\n    \"example_kind\": \"deployment-infer-opencv-health-zeromq\",\n    \"sdk\": \"dotnet\"\n  }\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Enable TriggerSource",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "x-amvision-principal-id",
+            "value": "{{principalId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-project-ids",
+            "value": "{{projectId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-scopes",
+            "value": "workflows:read,workflows:write",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/trigger-sources/{{triggerSourceId}}/enable",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "workflows",
+            "trigger-sources",
+            "{{triggerSourceId}}",
+            "enable"
+          ]
+        },
+        "description": "启动 ZeroMQ adapter。"
+      },
+      "response": []
+    },
+    {
+      "name": "Get TriggerSource Health",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "x-amvision-principal-id",
+            "value": "{{principalId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-project-ids",
+            "value": "{{projectId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-scopes",
+            "value": "workflows:read,workflows:write",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/trigger-sources/{{triggerSourceId}}/health",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "workflows",
+            "trigger-sources",
+            "{{triggerSourceId}}",
+            "health"
+          ]
+        },
+        "description": "确认 adapter_running=true，然后再用 SDK 发送图片。"
+      },
+      "response": []
+    },
+    {
+      "name": "Disable TriggerSource",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "x-amvision-principal-id",
+            "value": "{{principalId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-project-ids",
+            "value": "{{projectId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-scopes",
+            "value": "workflows:read,workflows:write",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/trigger-sources/{{triggerSourceId}}/disable",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "workflows",
+            "trigger-sources",
+            "{{triggerSourceId}}",
+            "disable"
+          ]
+        },
+        "description": "停止 ZeroMQ adapter。"
+      },
+      "response": []
+    },
+    {
+      "name": "Delete TriggerSource",
+      "request": {
+        "method": "DELETE",
+        "header": [
+          {
+            "key": "x-amvision-principal-id",
+            "value": "{{principalId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-project-ids",
+            "value": "{{projectId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-scopes",
+            "value": "workflows:read,workflows:write",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/trigger-sources/{{triggerSourceId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "workflows",
+            "trigger-sources",
+            "{{triggerSourceId}}"
+          ]
+        },
+        "description": "删除当前 TriggerSource；如果需要重新绑定新的 runtime，可在这一步后重新执行 Create TriggerSource。"
+      },
+      "response": []
+    },
+    {
+      "name": "Stop App Runtime",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "x-amvision-principal-id",
+            "value": "{{principalId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-project-ids",
+            "value": "{{projectId}}",
+            "type": "text"
+          },
+          {
+            "key": "x-amvision-scopes",
+            "value": "workflows:read,workflows:write",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/app-runtimes/{{workflowRuntimeId}}/stop",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "workflows",
+            "app-runtimes",
+            "{{workflowRuntimeId}}",
+            "stop"
+          ]
+        },
+        "description": "结束本次 06 双输入 runtime 调试。"
+      },
+      "response": []
+    }
+  ]
+}

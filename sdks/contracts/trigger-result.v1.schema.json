@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://amvision.local/contracts/trigger-result.v1.schema.json",
+  "title": "Amvision Workflow Trigger Result v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["format_id", "trigger_source_id", "event_id", "state"],
+  "properties": {
+    "format_id": { "const": "amvision.workflow-trigger-result.v1" },
+    "trigger_source_id": { "type": "string", "minLength": 1 },
+    "event_id": { "type": "string", "minLength": 1 },
+    "state": {
+      "type": "string",
+      "enum": ["accepted", "succeeded", "failed", "timed_out"]
+    },
+    "workflow_run_id": { "type": ["string", "null"] },
+    "response_payload": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "error_message": { "type": ["string", "null"] },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  }
+}

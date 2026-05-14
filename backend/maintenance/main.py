@@ -4,11 +4,16 @@ from __future__ import annotations
 
 import argparse
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 from backend.maintenance.bootstrap import BackendMaintenanceBootstrap, BackendMaintenanceRuntime
 from backend.maintenance.release_assembly import ReleaseAssemblyRequest, assemble_release
+from backend.service.infrastructure.db.session import SessionFactory
+from backend.service.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
+from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
+from backend.service.settings import BackendServiceSettings, get_backend_service_settings
 
 
 def build_argument_parser() -> argparse.ArgumentParser:
@@ -21,7 +26,13 @@ def build_argument_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="amvision backend-maintenance")
     parser.add_argument(
         "command",
-        choices=("version", "show-config", "validate-layout", "assemble-release"),
+        choices=(
+            "version",
+            "show-config",
+            "validate-layout",
+            "assemble-release",
+            "cleanup-preview-runs",
+        ),
         help="要执行的 maintenance 命令",
     )
     parser.add_argument(
@@ -55,6 +66,7 @@ def run_command(
     profile_id: str | None = None,
     release_root: str = "release",
     force: bool = False,
+    backend_service_settings: BackendServiceSettings | None = None,
 ) -> dict[str, object]:
     """执行指定 maintenance 命令。
 
@@ -133,7 +145,52 @@ def run_command(
             "generated_worker_launchers": [str(path) for path in result.generated_worker_launchers],
             "placeholder_dirs": [str(path) for path in result.placeholder_dirs],
         }
+    if command == "cleanup-preview-runs":
+        return cleanup_expired_preview_runs(
+            backend_service_settings=backend_service_settings,
+        )
     raise ValueError(f"unsupported maintenance command: {command}")
+
+
+def cleanup_expired_preview_runs(
+    *,
+    backend_service_settings: BackendServiceSettings | None = None,
+    now_iso: str | None = None,
+) -> dict[str, object]:
+    """按 retention_until 清理已过期的 preview run 记录和 snapshot 目录。"""
+
+    service_settings = backend_service_settings or get_backend_service_settings()
+    cutoff_time = _normalize_cutoff_time(now_iso)
+    session_factory = SessionFactory(service_settings.to_database_settings())
+    dataset_storage = LocalDatasetStorage(service_settings.to_dataset_storage_settings())
+    unit_of_work = SqlAlchemyUnitOfWork(session_factory.create_session())
+    try:
+        expired_preview_runs = unit_of_work.workflow_runtime.list_expired_preview_runs(
+            cutoff_time
+        )
+        deleted_preview_run_ids = [
+            item.preview_run_id for item in expired_preview_runs
+        ]
+        for preview_run in expired_preview_runs:
+            unit_of_work.workflow_runtime.delete_preview_run(preview_run.preview_run_id)
+        unit_of_work.commit()
+    finally:
+        unit_of_work.close()
+        session_factory.engine.dispose()
+
+    deleted_snapshot_dirs: list[str] = []
+    for preview_run_id in deleted_preview_run_ids:
+        snapshot_dir = f"workflows/runtime/preview-runs/{preview_run_id}"
+        dataset_storage.delete_tree(snapshot_dir)
+        deleted_snapshot_dirs.append(snapshot_dir)
+
+    return {
+        "command": "cleanup-preview-runs",
+        "cutoff_time": cutoff_time,
+        "expired_count": len(deleted_preview_run_ids),
+        "deleted_preview_run_ids": deleted_preview_run_ids,
+        "deleted_snapshot_dirs": deleted_snapshot_dirs,
+    }
 
 
 def format_text_output(payload: dict[str, object]) -> str:
@@ -184,6 +241,14 @@ def main(argv: list[str] | None = None) -> int:
     else:
         print(json.dumps(payload, ensure_ascii=False, indent=2))
     return 0
+
+
+def _normalize_cutoff_time(now_iso: str | None) -> str:
+    """规范化 preview run 清理使用的截止时间。"""
+
+    if isinstance(now_iso, str) and now_iso.strip():
+        return now_iso.strip()
+    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
 if __name__ == "__main__":

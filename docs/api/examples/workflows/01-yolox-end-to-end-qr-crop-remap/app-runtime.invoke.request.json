@@ -1,0 +1,84 @@
+{
+  "content_type": "multipart/form-data",
+  "input_bindings_json": {
+    "import_request_payload": {
+      "value": {
+        "project_id": "project-1",
+        "dataset_id": "barcodeqrcode-dataset",
+        "format_type": "voc",
+        "task_type": "detection"
+      }
+    },
+    "export_request_payload": {
+      "value": {
+        "project_id": "project-1",
+        "format_id": "coco-detection-v1"
+      }
+    },
+    "training_request_payload": {
+      "value": {
+        "project_id": "project-1",
+        "recipe_id": "recipe-1",
+        "model_scale": "m",
+        "warm_start_model_version_id": "model-version-pretrained-yolox-m",
+        "output_model_name": "barcodeqrcode-detector-m",
+        "evaluation_interval": 5,
+        "max_epochs": 6,
+        "batch_size": 8,
+        "gpu_count": 1,
+        "precision": "fp16"
+      }
+    },
+    "evaluation_request_payload": {
+      "value": {
+        "project_id": "project-1",
+        "score_threshold": 0.25,
+        "extra_options": {
+          "device": "cuda"
+        }
+      }
+    },
+    "conversion_request_payload": {
+      "value": {
+        "project_id": "project-1",
+        "target_formats": [
+          "tensorrt-engine"
+        ],
+        "extra_options": {
+          "tensorrt_engine_precision": "fp16"
+        }
+      }
+    },
+    "deployment_request_payload": {
+      "value": {
+        "project_id": "project-1",
+        "runtime_backend": "tensorrt",
+        "device_name": "cuda",
+        "runtime_precision": "fp16",
+        "instance_count": 3,
+        "keep_warm_enabled": true,
+        "display_name": "barcodeqrcode-tensorrt-fp16-deployment"
+      }
+    },
+    "inference_request_payload": {
+      "value": {
+        "score_threshold": 0.3
+      }
+    },
+    "request_image": {
+      "image_base64": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO5WZr8AAAAASUVORK5CYII=",
+      "media_type": "image/png"
+    }
+  },
+  "files": {
+    "request_package": {
+      "file_name": "barcodeqrcode.zip",
+      "content_type": "application/zip"
+    }
+  },
+  "execution_metadata": {
+    "scenario": "yolox-end-to-end-qr-crop-remap",
+    "trigger_source": "multipart-api"
+  },
+  "timeout_seconds": 43200
+}

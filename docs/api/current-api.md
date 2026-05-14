@@ -21,6 +21,8 @@
 - datasets:read
 - datasets:write
 - models:read
+- workflows:read
+- workflows:write
 - tasks:read
 - tasks:write
 - system:read
@@ -54,6 +56,36 @@
 | POST | /api/v1/models/yolox/training-tasks/{task_id}/pause | tasks:write | 为 running 的 YOLOX 训练任务请求暂停，并在下一轮边界先保存 latest checkpoint。 |
 | POST | /api/v1/models/yolox/training-tasks/{task_id}/resume | tasks:write | 把 paused 的 YOLOX 训练任务重新入队，并基于 latest checkpoint 恢复训练。 |
 | POST | /api/v1/models/yolox/training-tasks/{task_id}/register-model-version | tasks:write + models:write | 调试时手动重登记当前 latest checkpoint 对应的固定 latest ModelVersion，并回写到训练详情。 |
+| POST | /api/v1/workflows/templates/validate | workflows:read | 校验一份 workflow template。 |
+| PUT | /api/v1/workflows/projects/{project_id}/templates/{template_id}/versions/{template_version} | workflows:write | 保存一份 workflow template JSON。 |
+| GET | /api/v1/workflows/projects/{project_id}/templates/{template_id}/versions/{template_version} | workflows:read | 读取一份已保存的 workflow template JSON。 |
+| POST | /api/v1/workflows/applications/validate | workflows:read | 校验一份 FlowApplication 与 template 绑定关系。 |
+| PUT | /api/v1/workflows/projects/{project_id}/applications/{application_id} | workflows:write | 保存一份 FlowApplication JSON。 |
+| GET | /api/v1/workflows/projects/{project_id}/applications/{application_id} | workflows:read | 读取一份已保存的 FlowApplication JSON。 |
+| POST | /api/v1/workflows/execution-policies | workflows:write | 创建一条 WorkflowExecutionPolicy。 |
+| GET | /api/v1/workflows/execution-policies | workflows:read | 按 Project 列出 WorkflowExecutionPolicy。 |
+| GET | /api/v1/workflows/execution-policies/{execution_policy_id} | workflows:read | 读取一条 WorkflowExecutionPolicy。 |
+| POST | /api/v1/workflows/preview-runs | workflows:write | 创建并同步执行一次 WorkflowPreviewRun。 |
+| GET | /api/v1/workflows/preview-runs/{preview_run_id} | workflows:read | 读取一条 WorkflowPreviewRun。 |
+| POST | /api/v1/workflows/app-runtimes | workflows:write | 创建一条 WorkflowAppRuntime。 |
+| GET | /api/v1/workflows/app-runtimes | workflows:read | 按 Project 列出 WorkflowAppRuntime。 |
+| GET | /api/v1/workflows/app-runtimes/{workflow_runtime_id} | workflows:read | 读取一条 WorkflowAppRuntime。 |
+| POST | /api/v1/workflows/app-runtimes/{workflow_runtime_id}/start | workflows:write | 启动单实例 runtime worker。 |
+| POST | /api/v1/workflows/app-runtimes/{workflow_runtime_id}/stop | workflows:write | 停止单实例 runtime worker。 |
+| POST | /api/v1/workflows/app-runtimes/{workflow_runtime_id}/restart | workflows:write | 重启单实例 runtime worker，并重新加载固定 snapshot。 |
+| GET | /api/v1/workflows/app-runtimes/{workflow_runtime_id}/health | workflows:read | 查询 runtime 当前健康状态。 |
+| GET | /api/v1/workflows/app-runtimes/{workflow_runtime_id}/instances | workflows:read | 列出 runtime 当前可观测的 instance 摘要。 |
+| POST | /api/v1/workflows/app-runtimes/{workflow_runtime_id}/runs | workflows:write | 为已启动 runtime 创建一条异步 WorkflowRun。 |
+| POST | /api/v1/workflows/app-runtimes/{workflow_runtime_id}/invoke | workflows:write | 通过 runtime 发起一次同步调用。 |
+| POST | /api/v1/workflows/trigger-sources | workflows:write | 创建一条 WorkflowTriggerSource 管理资源。 |
+| GET | /api/v1/workflows/trigger-sources | workflows:read | 按 Project 列出 WorkflowTriggerSource。 |
+| GET | /api/v1/workflows/trigger-sources/{trigger_source_id} | workflows:read | 读取一条 WorkflowTriggerSource。 |
+| DELETE | /api/v1/workflows/trigger-sources/{trigger_source_id} | workflows:write | 删除一条 WorkflowTriggerSource；已接入 adapter 时会先停止监听。 |
+| POST | /api/v1/workflows/trigger-sources/{trigger_source_id}/enable | workflows:write | 启用一条 WorkflowTriggerSource；当前要求绑定的 runtime 已处于 running。 |
+| POST | /api/v1/workflows/trigger-sources/{trigger_source_id}/disable | workflows:write | 停用一条 WorkflowTriggerSource。 |
+| GET | /api/v1/workflows/trigger-sources/{trigger_source_id}/health | workflows:read | 读取一条 WorkflowTriggerSource 的健康摘要。 |
+| GET | /api/v1/workflows/runs/{workflow_run_id} | workflows:read | 读取一条 WorkflowRun。 |
+| POST | /api/v1/workflows/runs/{workflow_run_id}/cancel | workflows:write | 取消一条 queued 或 running 的异步 WorkflowRun。 |
 | POST | /api/v1/tasks | tasks:write | 创建公开任务记录，立即返回任务详情。 |
 | GET | /api/v1/tasks | tasks:read | 按公开筛选字段查询任务列表。 |
 | GET | /api/v1/tasks/{task_id} | tasks:read | 查询单条任务详情；默认同时返回 events。 |
@@ -222,6 +254,7 @@
 ### POST /api/v1/models/yolox/conversion-tasks/onnx
 
 - 需要同时具备 models:read 和 tasks:write
+- 转换链顺序图与常见失败分支见 [docs/architecture/execution-sequences.md](../architecture/execution-sequences.md)。
 - 当前请求体允许显式指定：
   - project_id
   - source_model_version_id
@@ -640,6 +673,7 @@
 
 - 需要 models:read
 - 这是同步直返推理接口；当前只使用 deployment 的同步推理子进程，并按 instance 简单轮转执行
+- 部署推理链顺序图与常见失败分支见 [docs/architecture/execution-sequences.md](../architecture/execution-sequences.md)。
 - 当前要求 deployment 的 sync 进程已经通过 `sync/start` 或 `sync/warmup` 启动；未启动时返回 `invalid_request`
 - 当前支持 `application/json` 和 `multipart/form-data`
 - 输入 one-of 规则：`input_uri`、`image_base64`、`input_image` 三者必须且只能提供一个
@@ -824,6 +858,7 @@
 ### POST /api/v1/models/yolox/training-tasks
 
 - 需要同时具备 datasets:read 和 tasks:write
+- 训练链顺序图与常见失败分支见 [docs/architecture/execution-sequences.md](../architecture/execution-sequences.md)。
 - 当前请求体允许显式指定：
   - project_id
   - dataset_export_id
@@ -966,6 +1001,317 @@
 - `summary`、`train-metrics`、`validation-metrics` 通过 `payload` 返回 JSON 内容
 - `labels` 通过 `text_content` 和 `lines` 返回文本内容
 - `best-checkpoint`、`latest-checkpoint` 当前只返回文件元数据，不直接返回二进制内容
+
+## workflow 资源组
+
+当前 workflow runtime 公开接口描述的是 HTTP 控制面下的正式执行路径。WorkflowTriggerSource 第一阶段已经提供管理控制面，并已接入 ZeroMQ adapter 的 REST 启停和启动恢复；04/05 继续用于 HTTP JSON invoke，06/07 单独用于同 app HTTP base64 + ZeroMQ image-ref 双入口调试。TriggerSource 只提交协议原生输入，不负责跨 payload type 转换；如果同一 app 需要同时接 HTTP base64 和 ZeroMQ image-ref，应通过图里的显式 binding 或转换节点处理。后续 PLC、MQTT、gRPC、IO 变化等协议 adapter 仍统一映射到 WorkflowRun，触发入口说明见 [docs/api/workflow-trigger-sources.md](workflow-trigger-sources.md)。
+
+### POST /api/v1/workflows/templates/validate
+
+- Content-Type：application/json
+- 需要 workflows:read
+- 请求体字段：
+  - template
+- 返回字段：
+  - valid
+  - template_id
+  - template_version
+  - node_count
+  - edge_count
+  - template_input_ids
+  - template_output_ids
+  - referenced_node_type_ids
+
+### PUT /api/v1/workflows/projects/{project_id}/templates/{template_id}/versions/{template_version}
+
+- Content-Type：application/json
+- 需要 workflows:write
+- 路径参数中的 template_id 与 template_version 必须和请求体中的 template 一致
+- 成功响应会同时返回：
+  - project_id
+  - object_key
+  - template
+  - 校验摘要字段
+
+### GET /api/v1/workflows/projects/{project_id}/templates/{template_id}/versions/{template_version}
+
+- 需要 workflows:read
+- 返回已保存 template 的 object_key 与完整 template JSON
+
+### POST /api/v1/workflows/applications/validate
+
+- Content-Type：application/json
+- 需要 workflows:read
+- 请求体字段：
+  - project_id
+  - application
+  - template，可选
+- 当 template 未提供时，当前实现会按 application.template_ref 读取已保存 template
+
+### PUT /api/v1/workflows/projects/{project_id}/applications/{application_id}
+
+- Content-Type：application/json
+- 需要 workflows:write
+- 路径参数中的 application_id 必须和请求体中的 application.application_id 一致
+- 保存时会把 application.template_ref.source_uri 规范化为真实 template object key
+- 成功响应会同时返回：
+  - project_id
+  - object_key
+  - application
+  - 校验摘要字段
+
+### GET /api/v1/workflows/projects/{project_id}/applications/{application_id}
+
+- 需要 workflows:read
+- 返回已保存 application 的 object_key 与完整 application JSON
+
+### POST /api/v1/workflows/preview-runs
+
+- Content-Type：application/json
+- 需要 workflows:write
+- 请求体字段：
+  - project_id
+  - application_ref，可选；当前至少需要 application_ref 或 inline application + template 其中一组
+  - application，可选
+  - template，可选
+  - input_bindings
+  - execution_metadata
+  - timeout_seconds
+- 成功状态码：201 Created
+- 当前响应会同时返回：
+  - preview_run_id
+  - state
+  - application_snapshot_object_key
+  - template_snapshot_object_key
+  - outputs
+  - template_outputs
+  - node_records
+  - error_message
+
+### GET /api/v1/workflows/preview-runs/{preview_run_id}
+
+- 需要 workflows:read
+- 返回单条 WorkflowPreviewRun 当前快照和执行结果
+
+### POST /api/v1/workflows/app-runtimes
+
+- Content-Type：application/json
+- 需要 workflows:write
+- 请求体字段：
+  - project_id
+  - application_id
+  - display_name，可选
+  - request_timeout_seconds，可选
+  - metadata，可选
+- 成功状态码：201 Created
+- 当前响应会同时返回：
+  - workflow_runtime_id
+  - desired_state
+  - observed_state
+  - application_snapshot_object_key
+  - template_snapshot_object_key
+  - request_timeout_seconds
+  - health_summary
+
+### GET /api/v1/workflows/app-runtimes
+
+- 需要 workflows:read
+- 当前必须显式提供查询参数：
+  - project_id
+
+### GET /api/v1/workflows/app-runtimes/{workflow_runtime_id}
+
+- 需要 workflows:read
+- 返回单条 WorkflowAppRuntime 的快照来源、期望状态、观察状态和健康摘要
+
+### POST /api/v1/workflows/app-runtimes/{workflow_runtime_id}/start
+
+- 需要 workflows:write
+- 成功后返回更新后的 WorkflowAppRuntime
+
+### POST /api/v1/workflows/app-runtimes/{workflow_runtime_id}/stop
+
+- 需要 workflows:write
+- 成功后返回更新后的 WorkflowAppRuntime
+
+### POST /api/v1/workflows/app-runtimes/{workflow_runtime_id}/restart
+
+- 需要 workflows:write
+- 成功后返回更新后的 WorkflowAppRuntime
+- 当前语义固定为 stop 当前单实例 worker，再重新加载同一组 application/template snapshot
+
+### GET /api/v1/workflows/app-runtimes/{workflow_runtime_id}/health
+
+- 需要 workflows:read
+- 返回当前 worker 观测到的 runtime 状态，包括 heartbeat_at、worker_process_id 和 loaded_snapshot_fingerprint
+
+### GET /api/v1/workflows/app-runtimes/{workflow_runtime_id}/instances
+
+- 需要 workflows:read
+- 返回当前 runtime 下面可观测的 instance 摘要列表
+- 当前单实例模型下，running 或 failed 且 worker 仍存活时通常返回 1 条；stopped 或已清理 worker 返回空列表
+- 当前列表项稳定字段包括：
+  - instance_id
+  - state
+  - process_id
+  - current_run_id
+  - started_at
+  - heartbeat_at
+  - loaded_snapshot_fingerprint
+  - last_error
+  - health_summary
+
+### POST /api/v1/workflows/app-runtimes/{workflow_runtime_id}/invoke
+
+- Content-Type：application/json
+- 需要 workflows:write
+- 仅支持已经处于 running 的 WorkflowAppRuntime
+- 请求体字段：
+  - input_bindings
+  - execution_metadata
+  - timeout_seconds，可选
+- 当前响应会同时返回：
+  - workflow_run_id
+  - state
+  - assigned_process_id
+  - outputs
+  - template_outputs
+  - node_records
+  - error_message
+  - metadata
+
+### POST /api/v1/workflows/app-runtimes/{workflow_runtime_id}/runs
+
+- Content-Type：application/json
+- 需要 workflows:write
+- 仅支持已经处于 running 的 WorkflowAppRuntime
+- 请求体字段：
+  - input_bindings
+  - execution_metadata
+  - timeout_seconds，可选
+- 当前响应会同时返回：
+  - workflow_run_id
+  - state
+  - requested_timeout_seconds
+  - input_payload
+  - metadata
+
+### POST /api/v1/workflows/trigger-sources
+
+- Content-Type：application/json
+- 需要 workflows:write
+- 用于创建 WorkflowTriggerSource 管理资源，不替代 runtime invoke 或 runs 执行 API
+- 请求体字段：
+  - trigger_source_id
+  - project_id
+  - display_name
+  - trigger_kind
+  - workflow_runtime_id
+  - submit_mode，默认 async
+  - enabled，默认 false
+  - transport_config
+  - match_rule
+  - input_binding_mapping
+  - result_mapping
+  - default_execution_metadata
+  - ack_policy
+  - result_mode
+  - reply_timeout_seconds，可选
+  - debounce_window_ms，可选
+  - idempotency_key_path，可选
+  - metadata
+- ZeroMQ TriggerSource 常用请求体字段：
+
+```json
+{
+  "trigger_source_id": "zeromq-trigger-source-07",
+  "project_id": "project-1",
+  "display_name": "ZeroMQ TriggerSource 07 OpenCV Process Save Image",
+  "trigger_kind": "zeromq-topic",
+  "workflow_runtime_id": "{{workflowRuntimeId}}",
+  "submit_mode": "sync",
+  "transport_config": {
+    "bind_endpoint": "tcp://127.0.0.1:5556",
+    "default_input_binding": "request_image",
+    "buffer_ttl_seconds": 30
+  },
+  "input_binding_mapping": {
+    "request_image": {
+      "source": "payload.request_image",
+      "payload_type_id": "image-ref.v1"
+    }
+  },
+  "result_mapping": {
+    "result_binding": "http_response",
+    "result_mode": "sync-reply",
+    "reply_timeout_seconds": 30
+  },
+  "ack_policy": "ack-after-run-finished",
+  "result_mode": "sync-reply",
+  "reply_timeout_seconds": 30
+}
+```
+
+- 06 调试请求体见 `docs/api/examples/workflows/06-yolox-deployment-infer-opencv-health-zeromq-image-ref/trigger-source.create.request.json`
+- 07 调试请求体见 `docs/api/examples/workflows/07-opencv-process-save-image-zeromq-image-ref/trigger-source.create.request.json`
+- ZeroMQ 数据面不经过该 REST API 发送图片；图片 bytes 由 C# SDK 通过 ZeroMQ multipart 发送到已启用的 TriggerSource
+- 成功状态码：201 Created
+- 当前响应返回 WorkflowTriggerSource 合同，包括 desired_state、observed_state、health_summary、created_at 和 updated_at
+
+### GET /api/v1/workflows/trigger-sources
+
+- 需要 workflows:read
+- 当前必须显式提供查询参数：
+  - project_id
+- 返回当前 Project 下的 WorkflowTriggerSource 列表
+
+### GET /api/v1/workflows/trigger-sources/{trigger_source_id}
+
+- 需要 workflows:read
+- 返回单条 WorkflowTriggerSource 的完整配置和最近状态
+
+### DELETE /api/v1/workflows/trigger-sources/{trigger_source_id}
+
+- 需要 workflows:write
+- 删除一条 WorkflowTriggerSource
+- 如果 trigger_kind 已注册 adapter，当前会先停止对应 adapter，再删除持久化资源
+- 成功状态码：204 No Content
+- 删除后可重新使用同一个 trigger_source_id 再次创建 TriggerSource
+
+### POST /api/v1/workflows/trigger-sources/{trigger_source_id}/enable
+
+- 需要 workflows:write
+- 启用一条 WorkflowTriggerSource
+- 当前要求绑定的 WorkflowAppRuntime 已经处于 running 状态
+- 如果 trigger_kind 已注册 adapter，当前会启动对应 adapter，并在 health_summary 中返回 adapter_configured、adapter_running 和计数信息
+- 如果 trigger_kind 尚未注册 adapter，当前只更新管理态，observed_state 仍可能是 stopped
+
+### POST /api/v1/workflows/trigger-sources/{trigger_source_id}/disable
+
+- 需要 workflows:write
+- 停用一条 WorkflowTriggerSource
+- 如果 trigger_kind 已注册 adapter，当前会停止对应 adapter
+- disable 不会取消已经创建的 WorkflowRun
+
+### GET /api/v1/workflows/trigger-sources/{trigger_source_id}/health
+
+- 需要 workflows:read
+- 返回当前启用状态、期望状态、观测状态、最近错误、最近触发时间和 health_summary
+
+### POST /api/v1/workflows/runs/{workflow_run_id}/cancel
+
+- 需要 workflows:write
+- 用于取消当前仍处于 queued 或 running 的异步 WorkflowRun
+- 当前响应会返回更新后的 WorkflowRun，包括：
+  - state
+  - error_message
+  - metadata.cancel_requested_at
+  - metadata.cancelled_by
+
+### GET /api/v1/workflows/runs/{workflow_run_id}
+
+- 需要 workflows:read
+- 返回单条 WorkflowRun 的当前持久化结果，包括输入、输出、错误信息和元数据
 
 ## tasks 资源组
 

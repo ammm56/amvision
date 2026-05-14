@@ -1,0 +1,8 @@
+{
+  "project_id": "project-1",
+  "application_id": "barcode-result-display-app",
+  "display_name": "Barcode Result Display App Runtime",
+  "metadata": {
+    "example_kind": "barcode-result-display"
+  }
+}

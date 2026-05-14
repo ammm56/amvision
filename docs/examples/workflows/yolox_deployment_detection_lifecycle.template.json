@@ -1,0 +1,167 @@
+{
+  "format_id": "amvision.workflow-graph-template.v1",
+  "template_id": "yolox-deployment-detection-lifecycle-demo",
+  "template_version": "1.0.0",
+  "display_name": "YOLOX Deployment Detection Lifecycle Demo",
+  "description": "接收 base64 图片，控制一个已有 sync deployment 资源，并在 backend-service 当前 deployment control plane 上按顺序执行 start、warmup、detection、health、stop。",
+  "nodes": [
+    {
+      "node_id": "decode_request_image",
+      "node_type_id": "core.io.image-base64-decode",
+      "parameters": {}
+    },
+    {
+      "node_id": "start",
+      "node_type_id": "core.service.yolox-deployment.start",
+      "parameters": {
+        "deployment_instance_id": "replace-with-existing-deployment-instance-id",
+        "runtime_mode": "sync"
+      },
+      "metadata": {
+        "sequence_index": 1
+      }
+    },
+    {
+      "node_id": "warmup",
+      "node_type_id": "core.service.yolox-deployment.warmup",
+      "parameters": {
+        "deployment_instance_id": "replace-with-existing-deployment-instance-id",
+        "runtime_mode": "sync"
+      },
+      "metadata": {
+        "sequence_index": 2
+      }
+    },
+    {
+      "node_id": "detect",
+      "node_type_id": "core.model.yolox-detection",
+      "parameters": {
+        "deployment_instance_id": "replace-with-existing-deployment-instance-id",
+        "auto_start_process": false,
+        "score_threshold": 0.3,
+        "save_result_image": false,
+        "return_preview_image_base64": false
+      },
+      "metadata": {
+        "sequence_index": 3
+      }
+    },
+    {
+      "node_id": "health",
+      "node_type_id": "core.service.yolox-deployment.health",
+      "parameters": {
+        "deployment_instance_id": "replace-with-existing-deployment-instance-id",
+        "runtime_mode": "sync"
+      },
+      "metadata": {
+        "sequence_index": 4
+      }
+    },
+    {
+      "node_id": "stop",
+      "node_type_id": "core.service.yolox-deployment.stop",
+      "parameters": {
+        "deployment_instance_id": "replace-with-existing-deployment-instance-id",
+        "runtime_mode": "sync"
+      },
+      "metadata": {
+        "sequence_index": 5
+      }
+    }
+  ],
+    "edges": [
+      {
+        "edge_id": "edge-decode-detect-image",
+        "source_node_id": "decode_request_image",
+        "source_port": "image",
+        "target_node_id": "detect",
+        "target_port": "image"
+      },
+      {
+        "edge_id": "edge-start-warmup-dependency",
+        "source_node_id": "start",
+        "source_port": "body",
+        "target_node_id": "warmup",
+        "target_port": "dependency"
+      },
+      {
+        "edge_id": "edge-warmup-detect-dependency",
+        "source_node_id": "warmup",
+        "source_port": "body",
+        "target_node_id": "detect",
+        "target_port": "dependency"
+      },
+      {
+        "edge_id": "edge-detect-health-dependency",
+        "source_node_id": "detect",
+        "source_port": "detections",
+        "target_node_id": "health",
+        "target_port": "dependency"
+      },
+      {
+        "edge_id": "edge-health-stop-dependency",
+        "source_node_id": "health",
+        "source_port": "body",
+        "target_node_id": "stop",
+        "target_port": "dependency"
+      }
+    ],
+  "template_inputs": [
+    {
+      "input_id": "request_image",
+      "display_name": "Request Image",
+      "payload_type_id": "image-base64.v1",
+      "target_node_id": "decode_request_image",
+      "target_port": "payload"
+    }
+  ],
+  "template_outputs": [
+    {
+      "output_id": "start_body",
+      "display_name": "Start Body",
+      "payload_type_id": "response-body.v1",
+      "source_node_id": "start",
+      "source_port": "body"
+    },
+    {
+      "output_id": "warmup_body",
+      "display_name": "Warmup Body",
+      "payload_type_id": "response-body.v1",
+      "source_node_id": "warmup",
+      "source_port": "body"
+    },
+    {
+      "output_id": "detections",
+      "display_name": "Detections",
+      "payload_type_id": "detections.v1",
+      "source_node_id": "detect",
+      "source_port": "detections"
+    },
+    {
+      "output_id": "health_body",
+      "display_name": "Health Body",
+      "payload_type_id": "response-body.v1",
+      "source_node_id": "health",
+      "source_port": "body"
+    },
+    {
+      "output_id": "stop_body",
+      "display_name": "Stop Body",
+      "payload_type_id": "response-body.v1",
+      "source_node_id": "stop",
+      "source_port": "body"
+    }
+  ],
+  "metadata": {
+    "example_kind": "deployment-control-detection-lifecycle",
+    "deployment_instance_id_placeholder": "replace-with-existing-deployment-instance-id",
+    "uses_existing_deployment_instance": true,
+    "deployment_runtime_owner": "backend-service",
+    "node_groups": {
+      "input": ["decode_request_image"],
+      "deployment_control": ["start", "warmup", "health", "stop"],
+      "model_node": ["detect"]
+    },
+    "execution_order_note": "当前最小执行器按图边做稳定拓扑排序；该示例通过显式 dependency 边表达 start -> warmup -> detection -> health -> stop。"
+  }
+}

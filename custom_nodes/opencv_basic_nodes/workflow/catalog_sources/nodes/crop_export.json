@@ -1,0 +1,56 @@
+{
+  "format_id": "amvision.node-definition.v1",
+  "node_type_id": "custom.opencv.crop-export",
+  "display_name": "Crop Export",
+  "category": "opencv.io",
+  "description": "根据 detection bbox 导出裁剪图集合。",
+  "implementation_kind": "custom-node",
+  "runtime_kind": "python-callable",
+  "input_ports": [
+    {
+      "name": "image",
+      "display_name": "Image",
+      "payload_type_id": "image-ref.v1"
+    },
+    {
+      "name": "detections",
+      "display_name": "Detections",
+      "payload_type_id": "detections.v1"
+    }
+  ],
+  "output_ports": [
+    {
+      "name": "crops",
+      "display_name": "Crops",
+      "payload_type_id": "image-refs.v1"
+    }
+  ],
+  "parameter_schema": {
+    "type": "object",
+    "properties": {
+      "box_padding": {
+        "type": "integer",
+        "minimum": 0
+      },
+      "max_crops": {
+        "type": "integer",
+        "minimum": 1
+      },
+      "output_dir": {
+        "type": "string"
+      }
+    }
+  },
+  "capability_tags": [
+    "opencv.crop",
+    "vision.export"
+  ],
+  "runtime_requirements": {
+    "python_packages": [
+      "opencv-python",
+      "numpy"
+    ]
+  },
+  "node_pack_id": "opencv.basic-nodes",
+  "node_pack_version": "0.1.0"
+}

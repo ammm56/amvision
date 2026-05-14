@@ -211,6 +211,27 @@ class SqlAlchemyYoloXDeploymentService:
             )
         return tuple(matched[:limit])
 
+    def delete_deployment_instance(self, deployment_instance_id: str) -> bool:
+        """按 id 删除 DeploymentInstance。
+
+        参数：
+        - deployment_instance_id：需要删除的 DeploymentInstance id。
+
+        返回：
+        - bool：存在并已删除时返回 True，不存在时返回 False。
+        """
+
+        normalized_deployment_instance_id = deployment_instance_id.strip()
+        if not normalized_deployment_instance_id:
+            raise InvalidRequestError("deployment_instance_id 不能为空")
+        with self._open_unit_of_work() as unit_of_work:
+            deleted = unit_of_work.deployments.delete_deployment_instance(
+                normalized_deployment_instance_id
+            )
+            if deleted:
+                unit_of_work.commit()
+        return deleted
+
     def resolve_inference_target(self, deployment_instance_id: str) -> RuntimeTargetSnapshot:
         """把 DeploymentInstance 解析为内部推理快照。"""
 

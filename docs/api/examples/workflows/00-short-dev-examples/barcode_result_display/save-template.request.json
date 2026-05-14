@@ -1,0 +1,431 @@
+{
+  "template": {
+    "format_id": "amvision.workflow-graph-template.v1",
+    "template_id": "barcode-result-display-template",
+    "template_version": "1.0.0",
+    "display_name": "Barcode Result Display Template",
+    "description": "对输入图片执行条码识别，返回标注预览图和结果表格。",
+    "nodes": [
+      {
+        "node_id": "decode_request_image",
+        "node_type_id": "core.io.image-base64-decode",
+        "parameters": {}
+      },
+      {
+        "node_id": "decode",
+        "node_type_id": "custom.barcode.all-readable-decode",
+        "parameters": {}
+      },
+      {
+        "node_id": "draw_results",
+        "node_type_id": "custom.barcode.draw-results",
+        "parameters": {
+          "draw_polygon": true,
+          "draw_text": true,
+          "draw_format": true,
+          "draw_index": true
+        }
+      },
+      {
+        "node_id": "image_preview",
+        "node_type_id": "core.io.image-preview",
+        "parameters": {
+          "title": "Detected Barcode Image"
+        }
+      },
+      {
+        "node_id": "summary",
+        "node_type_id": "custom.barcode.results-summary",
+        "parameters": {}
+      },
+      {
+        "node_id": "extract_image",
+        "node_type_id": "core.logic.field-extract",
+        "parameters": {
+          "path": "image"
+        }
+      },
+      {
+        "node_id": "build_image_preview_value",
+        "node_type_id": "core.logic.object-create",
+        "parameters": {
+          "keys": [
+            "image"
+          ],
+          "fields": {
+            "type": "image-preview",
+            "title": "Detected Barcode Image"
+          }
+        }
+      },
+      {
+        "node_id": "extract_items",
+        "node_type_id": "core.logic.field-extract",
+        "parameters": {
+          "path": "items"
+        }
+      },
+      {
+        "node_id": "table_preview",
+        "node_type_id": "core.io.table-preview",
+        "parameters": {
+          "title": "Barcode Results",
+          "columns": [
+            {
+              "key": "index",
+              "label": "Index",
+              "path": "index"
+            },
+            {
+              "key": "format",
+              "label": "Format",
+              "path": "format"
+            },
+            {
+              "key": "text",
+              "label": "Text",
+              "path": "text"
+            },
+            {
+              "key": "valid",
+              "label": "Valid",
+              "path": "valid"
+            }
+          ]
+        }
+      },
+      {
+        "node_id": "extract_table_columns",
+        "node_type_id": "core.logic.field-extract",
+        "parameters": {
+          "path": "columns"
+        }
+      },
+      {
+        "node_id": "extract_table_rows",
+        "node_type_id": "core.logic.field-extract",
+        "parameters": {
+          "path": "rows"
+        }
+      },
+      {
+        "node_id": "extract_table_row_count",
+        "node_type_id": "core.logic.field-extract",
+        "parameters": {
+          "path": "row_count"
+        }
+      },
+      {
+        "node_id": "build_table_preview_value",
+        "node_type_id": "core.logic.object-create",
+        "parameters": {
+          "keys": [
+            "columns",
+            "rows",
+            "row_count"
+          ],
+          "fields": {
+            "type": "table-preview",
+            "title": "Barcode Results"
+          }
+        }
+      },
+      {
+        "node_id": "extract_requested_format",
+        "node_type_id": "core.logic.field-extract",
+        "parameters": {
+          "path": "requested_format"
+        }
+      },
+      {
+        "node_id": "extract_count",
+        "node_type_id": "core.logic.field-extract",
+        "parameters": {
+          "path": "count"
+        }
+      },
+      {
+        "node_id": "extract_matched_formats",
+        "node_type_id": "core.logic.field-extract",
+        "parameters": {
+          "path": "matched_formats"
+        }
+      },
+      {
+        "node_id": "build_response_data",
+        "node_type_id": "core.logic.object-create",
+        "parameters": {
+          "keys": [
+            "requested_format",
+            "count",
+            "matched_formats",
+            "annotated_image",
+            "result_table"
+          ]
+        }
+      },
+      {
+        "node_id": "build_response_meta",
+        "node_type_id": "core.logic.object-create",
+        "parameters": {
+          "fields": {
+            "app_id": "barcode-result-display-app",
+            "template_id": "barcode-result-display-template",
+            "node_pack": "barcode.protocol-nodes"
+          }
+        }
+      },
+      {
+        "node_id": "envelope",
+        "node_type_id": "core.output.response-envelope",
+        "parameters": {
+          "code": 0,
+          "message": "decoded"
+        }
+      },
+      {
+        "node_id": "response",
+        "node_type_id": "core.output.http-response",
+        "parameters": {
+          "status_code": 200
+        }
+      }
+    ],
+    "edges": [
+      {
+        "edge_id": "edge-request-image-decode",
+        "source_node_id": "decode_request_image",
+        "source_port": "image",
+        "target_node_id": "decode",
+        "target_port": "image"
+      },
+      {
+        "edge_id": "edge-request-image-draw",
+        "source_node_id": "decode_request_image",
+        "source_port": "image",
+        "target_node_id": "draw_results",
+        "target_port": "image"
+      },
+      {
+        "edge_id": "edge-decode-draw",
+        "source_node_id": "decode",
+        "source_port": "results",
+        "target_node_id": "draw_results",
+        "target_port": "results"
+      },
+      {
+        "edge_id": "edge-draw-image-preview",
+        "source_node_id": "draw_results",
+        "source_port": "image",
+        "target_node_id": "image_preview",
+        "target_port": "image"
+      },
+      {
+        "edge_id": "edge-image-preview-extract-image",
+        "source_node_id": "image_preview",
+        "source_port": "body",
+        "target_node_id": "extract_image",
+        "target_port": "body"
+      },
+      {
+        "edge_id": "edge-extract-image-build-image-preview-value",
+        "source_node_id": "extract_image",
+        "source_port": "value",
+        "target_node_id": "build_image_preview_value",
+        "target_port": "values"
+      },
+      {
+        "edge_id": "edge-decode-summary",
+        "source_node_id": "decode",
+        "source_port": "results",
+        "target_node_id": "summary",
+        "target_port": "results"
+      },
+      {
+        "edge_id": "edge-summary-extract-items",
+        "source_node_id": "summary",
+        "source_port": "body",
+        "target_node_id": "extract_items",
+        "target_port": "body"
+      },
+      {
+        "edge_id": "edge-extract-items-table-preview",
+        "source_node_id": "extract_items",
+        "source_port": "value",
+        "target_node_id": "table_preview",
+        "target_port": "items"
+      },
+      {
+        "edge_id": "edge-table-preview-extract-columns",
+        "source_node_id": "table_preview",
+        "source_port": "body",
+        "target_node_id": "extract_table_columns",
+        "target_port": "body"
+      },
+      {
+        "edge_id": "edge-table-preview-extract-rows",
+        "source_node_id": "table_preview",
+        "source_port": "body",
+        "target_node_id": "extract_table_rows",
+        "target_port": "body"
+      },
+      {
+        "edge_id": "edge-table-preview-extract-row-count",
+        "source_node_id": "table_preview",
+        "source_port": "body",
+        "target_node_id": "extract_table_row_count",
+        "target_port": "body"
+      },
+      {
+        "edge_id": "edge-extract-table-columns-build-table-preview-value",
+        "source_node_id": "extract_table_columns",
+        "source_port": "value",
+        "target_node_id": "build_table_preview_value",
+        "target_port": "values"
+      },
+      {
+        "edge_id": "edge-extract-table-rows-build-table-preview-value",
+        "source_node_id": "extract_table_rows",
+        "source_port": "value",
+        "target_node_id": "build_table_preview_value",
+        "target_port": "values"
+      },
+      {
+        "edge_id": "edge-extract-table-row-count-build-table-preview-value",
+        "source_node_id": "extract_table_row_count",
+        "source_port": "value",
+        "target_node_id": "build_table_preview_value",
+        "target_port": "values"
+      },
+      {
+        "edge_id": "edge-summary-extract-requested-format",
+        "source_node_id": "summary",
+        "source_port": "body",
+        "target_node_id": "extract_requested_format",
+        "target_port": "body"
+      },
+      {
+        "edge_id": "edge-summary-extract-count",
+        "source_node_id": "summary",
+        "source_port": "body",
+        "target_node_id": "extract_count",
+        "target_port": "body"
+      },
+      {
+        "edge_id": "edge-summary-extract-matched-formats",
+        "source_node_id": "summary",
+        "source_port": "body",
+        "target_node_id": "extract_matched_formats",
+        "target_port": "body"
+      },
+      {
+        "edge_id": "edge-extract-requested-format-build-response-data",
+        "source_node_id": "extract_requested_format",
+        "source_port": "value",
+        "target_node_id": "build_response_data",
+        "target_port": "values"
+      },
+      {
+        "edge_id": "edge-extract-count-build-response-data",
+        "source_node_id": "extract_count",
+        "source_port": "value",
+        "target_node_id": "build_response_data",
+        "target_port": "values"
+      },
+      {
+        "edge_id": "edge-extract-matched-formats-build-response-data",
+        "source_node_id": "extract_matched_formats",
+        "source_port": "value",
+        "target_node_id": "build_response_data",
+        "target_port": "values"
+      },
+      {
+        "edge_id": "edge-image-preview-value-build-response-data",
+        "source_node_id": "build_image_preview_value",
+        "source_port": "value",
+        "target_node_id": "build_response_data",
+        "target_port": "values"
+      },
+      {
+        "edge_id": "edge-table-preview-value-build-response-data",
+        "source_node_id": "build_table_preview_value",
+        "source_port": "value",
+        "target_node_id": "build_response_data",
+        "target_port": "values"
+      },
+      {
+        "edge_id": "edge-build-response-data-envelope",
+        "source_node_id": "build_response_data",
+        "source_port": "value",
+        "target_node_id": "envelope",
+        "target_port": "data"
+      },
+      {
+        "edge_id": "edge-build-response-meta-envelope",
+        "source_node_id": "build_response_meta",
+        "source_port": "value",
+        "target_node_id": "envelope",
+        "target_port": "meta"
+      },
+      {
+        "edge_id": "edge-envelope-response",
+        "source_node_id": "envelope",
+        "source_port": "body",
+        "target_node_id": "response",
+        "target_port": "body"
+      }
+    ],
+    "template_inputs": [
+      {
+        "input_id": "request_image",
+        "display_name": "Request Image",
+        "payload_type_id": "image-base64.v1",
+        "target_node_id": "decode_request_image",
+        "target_port": "payload"
+      }
+    ],
+    "template_outputs": [
+      {
+        "output_id": "http_response",
+        "display_name": "HTTP Response",
+        "payload_type_id": "http-response.v1",
+        "source_node_id": "response",
+        "source_port": "response"
+      }
+    ],
+    "metadata": {
+      "example_kind": "barcode-result-display",
+      "intended_saved_object_key": "workflows/projects/{project_id}/templates/barcode-result-display-template/versions/1.0.0/template.json",
+      "node_groups": {
+        "input": [
+          "decode_request_image"
+        ],
+        "decode_and_render": [
+          "decode",
+          "draw_results",
+          "image_preview",
+          "extract_image",
+          "build_image_preview_value"
+        ],
+        "result_table": [
+          "summary",
+          "extract_items",
+          "table_preview",
+          "extract_table_columns",
+          "extract_table_rows",
+          "extract_table_row_count",
+          "build_table_preview_value"
+        ],
+        "response": [
+          "extract_requested_format",
+          "extract_count",
+          "extract_matched_formats",
+          "build_response_data",
+          "build_response_meta",
+          "envelope",
+          "response"
+        ]
+      }
+    }
+  }
+}

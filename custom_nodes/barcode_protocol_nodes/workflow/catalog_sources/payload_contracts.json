@@ -1,0 +1,257 @@
+[
+  {
+    "format_id": "amvision.workflow-payload-contract.v1",
+    "payload_type_id": "barcode-results.v1",
+    "display_name": "Barcode Results",
+    "transport_kind": "inline-json",
+    "json_schema": {
+      "type": "object",
+      "properties": {
+        "source_image": {
+          "type": "object",
+          "properties": {
+            "transport_kind": {
+              "type": "string",
+              "enum": [
+                "memory",
+                "storage",
+                "buffer",
+                "frame"
+              ]
+            },
+            "object_key": {
+              "type": "string"
+            },
+            "image_handle": {
+              "type": "string"
+            },
+            "buffer_ref": {
+              "type": "object"
+            },
+            "frame_ref": {
+              "type": "object"
+            },
+            "width": {
+              "type": "integer"
+            },
+            "height": {
+              "type": "integer"
+            },
+            "media_type": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "transport_kind",
+            "media_type"
+          ],
+          "oneOf": [
+            {
+              "properties": {
+                "transport_kind": {
+                  "const": "storage"
+                }
+              },
+              "required": [
+                "object_key"
+              ]
+            },
+            {
+              "properties": {
+                "transport_kind": {
+                  "const": "memory"
+                }
+              },
+              "required": [
+                "image_handle"
+              ]
+            },
+            {
+              "properties": {
+                "transport_kind": {
+                  "const": "buffer"
+                }
+              },
+              "required": [
+                "buffer_ref"
+              ]
+            },
+            {
+              "properties": {
+                "transport_kind": {
+                  "const": "frame"
+                }
+              },
+              "required": [
+                "frame_ref"
+              ]
+            }
+          ]
+        },
+        "source_object_key": {
+          "type": "string"
+        },
+        "requested_format": {
+          "type": "string"
+        },
+        "count": {
+          "type": "integer"
+        },
+        "matched_formats": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "index": {
+                "type": "integer"
+              },
+              "format": {
+                "type": "string"
+              },
+              "symbology": {
+                "type": "string"
+              },
+              "symbology_identifier": {
+                "type": "string"
+              },
+              "text": {
+                "type": "string"
+              },
+              "raw_bytes_base64": {
+                "type": "string"
+              },
+              "content_type": {
+                "type": "string"
+              },
+              "orientation": {
+                "type": "integer"
+              },
+              "ec_level": {
+                "type": "string"
+              },
+              "valid": {
+                "type": "boolean"
+              },
+              "error": {
+                "type": "string"
+              },
+              "position": {
+                "type": "object",
+                "properties": {
+                  "top_left_xy": {
+                    "type": "array",
+                    "items": {
+                      "type": "integer"
+                    },
+                    "minItems": 2,
+                    "maxItems": 2
+                  },
+                  "top_right_xy": {
+                    "type": "array",
+                    "items": {
+                      "type": "integer"
+                    },
+                    "minItems": 2,
+                    "maxItems": 2
+                  },
+                  "bottom_right_xy": {
+                    "type": "array",
+                    "items": {
+                      "type": "integer"
+                    },
+                    "minItems": 2,
+                    "maxItems": 2
+                  },
+                  "bottom_left_xy": {
+                    "type": "array",
+                    "items": {
+                      "type": "integer"
+                    },
+                    "minItems": 2,
+                    "maxItems": 2
+                  },
+                  "polygon_xy": {
+                    "type": "array",
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "integer"
+                      },
+                      "minItems": 2,
+                      "maxItems": 2
+                    },
+                    "minItems": 4,
+                    "maxItems": 4
+                  },
+                  "bounds_xyxy": {
+                    "type": "array",
+                    "items": {
+                      "type": "integer"
+                    },
+                    "minItems": 4,
+                    "maxItems": 4
+                  },
+                  "center_xy": {
+                    "type": "array",
+                    "items": {
+                      "type": "number"
+                    },
+                    "minItems": 2,
+                    "maxItems": 2
+                  },
+                  "size_wh": {
+                    "type": "array",
+                    "items": {
+                      "type": "integer"
+                    },
+                    "minItems": 2,
+                    "maxItems": 2
+                  }
+                },
+                "required": [
+                  "top_left_xy",
+                  "top_right_xy",
+                  "bottom_right_xy",
+                  "bottom_left_xy",
+                  "polygon_xy",
+                  "bounds_xyxy",
+                  "center_xy",
+                  "size_wh"
+                ]
+              },
+              "extra": {
+                "type": "object"
+              }
+            },
+            "required": [
+              "index",
+              "format",
+              "symbology",
+              "text",
+              "raw_bytes_base64",
+              "content_type",
+              "orientation",
+              "valid",
+              "position"
+            ]
+          }
+        }
+      },
+      "required": [
+        "source_image",
+        "requested_format",
+        "count",
+        "matched_formats",
+        "items"
+      ]
+    },
+    "artifact_kinds": [],
+    "metadata": {}
+  }
+]

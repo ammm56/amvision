@@ -16,6 +16,7 @@ from backend.service.application.runtime.yolox_runtime_target import (
     RuntimeTargetSnapshot,
     SqlAlchemyYoloXRuntimeTargetResolver,
     resolve_local_file_path,
+    resolve_runtime_precision,
 )
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
@@ -112,6 +113,7 @@ class YoloXValidationSessionView:
     runtime_profile_id: str | None
     runtime_backend: str
     device_name: str
+    runtime_precision: str
     score_threshold: float
     save_result_image: bool
     input_size: tuple[int, int]
@@ -212,6 +214,7 @@ class LocalYoloXValidationSessionService:
             runtime_profile_id=runtime_target.runtime_profile_id,
             runtime_backend=runtime_target.runtime_backend,
             device_name=runtime_target.device_name,
+            runtime_precision=runtime_target.runtime_precision,
             score_threshold=score_threshold,
             save_result_image=bool(request.save_result_image),
             input_size=runtime_target.input_size,
@@ -421,6 +424,7 @@ def _build_runtime_target_from_session(
         runtime_profile_id=session.runtime_profile_id,
         runtime_backend=session.runtime_backend,
         device_name=session.device_name,
+        runtime_precision=session.runtime_precision,
         input_size=session.input_size,
         labels=session.labels,
         runtime_artifact_file_id=session.checkpoint_file_id,
@@ -710,6 +714,7 @@ def _serialize_session(session: YoloXValidationSessionView) -> dict[str, object]
         "runtime_profile_id": session.runtime_profile_id,
         "runtime_backend": session.runtime_backend,
         "device_name": session.device_name,
+        "runtime_precision": session.runtime_precision,
         "score_threshold": session.score_threshold,
         "save_result_image": session.save_result_image,
         "input_size": [session.input_size[0], session.input_size[1]],
@@ -736,6 +741,9 @@ def _build_session_from_payload(payload: dict[str, object]) -> YoloXValidationSe
     ):
         raise ResourceNotFoundError("validation session 的 input_size 无效")
 
+    runtime_backend = _require_payload_str(payload, "runtime_backend")
+    device_name = _require_payload_str(payload, "device_name")
+
     return YoloXValidationSessionView(
         session_id=_require_payload_str(payload, "session_id"),
         project_id=_require_payload_str(payload, "project_id"),
@@ -746,8 +754,13 @@ def _build_session_from_payload(payload: dict[str, object]) -> YoloXValidationSe
         source_kind=_require_payload_str(payload, "source_kind"),
         status=_require_payload_str(payload, "status"),
         runtime_profile_id=_read_payload_optional_str(payload, "runtime_profile_id"),
-        runtime_backend=_require_payload_str(payload, "runtime_backend"),
-        device_name=_require_payload_str(payload, "device_name"),
+        runtime_backend=runtime_backend,
+        device_name=device_name,
+        runtime_precision=resolve_runtime_precision(
+            runtime_precision=_read_payload_optional_str(payload, "runtime_precision"),
+            runtime_backend=runtime_backend,
+            device_name=device_name,
+        ),
         score_threshold=float(payload.get("score_threshold", _DEFAULT_SCORE_THRESHOLD)),
         save_result_image=bool(payload.get("save_result_image", True)),
         input_size=(int(raw_input_size[0]), int(raw_input_size[1])),

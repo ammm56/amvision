@@ -1,0 +1,62 @@
+{
+  "template": {
+    "format_id": "amvision.workflow-graph-template.v1",
+    "template_id": "dataset-export-submit-template",
+    "template_version": "1.0.0",
+    "display_name": "Dataset Export Submit Template",
+    "description": "接收动态 request 对象，提交一个 DatasetExport 任务，并只返回 submission body。",
+    "nodes": [
+      {
+        "node_id": "request_payload_input",
+        "node_type_id": "core.io.template-input.object",
+        "parameters": {}
+      },
+      {
+        "node_id": "submit_export",
+        "node_type_id": "core.service.dataset-export.submit",
+        "parameters": {}
+      }
+    ],
+    "edges": [
+      {
+        "edge_id": "edge-request-submit-export",
+        "source_node_id": "request_payload_input",
+        "source_port": "value",
+        "target_node_id": "submit_export",
+        "target_port": "request"
+      }
+    ],
+    "template_inputs": [
+      {
+        "input_id": "request_payload",
+        "display_name": "Request Payload",
+        "payload_type_id": "value.v1",
+        "target_node_id": "request_payload_input",
+        "target_port": "payload"
+      }
+    ],
+    "template_outputs": [
+      {
+        "output_id": "submission_body",
+        "display_name": "Submission Body",
+        "payload_type_id": "response-body.v1",
+        "source_node_id": "submit_export",
+        "source_port": "body"
+      }
+    ],
+    "metadata": {
+      "example_kind": "dataset-export-submit",
+      "returns_submission_only": true,
+      "dynamic_request_binding_id": "request_payload",
+      "intended_saved_object_key": "workflows/projects/{project_id}/templates/dataset-export-submit-template/versions/1.0.0/template.json",
+      "node_groups": {
+        "request": [
+          "request_payload_input"
+        ],
+        "submit": [
+          "submit_export"
+        ]
+      }
+    }
+  }
+}

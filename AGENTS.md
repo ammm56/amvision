@@ -129,7 +129,7 @@
 - 文档总览： [docs/README.md](docs/README.md)
 - 平台整体框架、整体流程和功能总览： [docs/architecture/system-overview.md](docs/architecture/system-overview.md)
 - 项目结构、目录层级和模块关系总览： [docs/architecture/project-structure.md](docs/architecture/project-structure.md)
-- 插件系统与节点扩展架构： [docs/architecture/plugin-system.md](docs/architecture/plugin-system.md)
+- 节点系统与节点扩展架构： [docs/architecture/node-system.md](docs/architecture/node-system.md)
 - AGENTS.md 保持简明，详细架构规划统一沉淀到 docs/architecture/ 下
 
 ## Agent Routing

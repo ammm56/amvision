@@ -29,9 +29,9 @@
 - 本项目是独立视觉处理后端服务，不承担相机、PLC、IO 传感器、机械臂等外部硬件的直接连接和驱动职责
 - 图像、视频流、任务触发、结果回传和联动信号通过界面或外部系统经协议交互完成
 - 上位机、采集系统、MES、PLC 网关、设备代理系统等属于外部系统，本项目只定义协议边界和集成接口规则
-- 上位机和其他外部系统原则上与前端共用同一套公开通信规则，即 REST API、WebSocket 和版本化接口规则
+- 上位机和其他外部系统可按部署场景使用 REST API、WebSocket、ZeroMQ、gRPC、MQTT、PLC、IO 或传感器触发入口，所有入口都应落到版本化资源、任务或 workflow 运行记录
 - 设备集成在本文档中指“与外部系统的协议协作”，不指“项目直接接入硬件”
-- 在 standalone 或 workstation 的同机本地部署中，可按需要补充 ZeroMQ 作为本地进程间通信方式，但不替代公开接口边界
+- 在 standalone 或 workstation 的同机本地部署中，ZeroMQ 可作为高速触发和图片提交入口；本机内部大图数据交换优先通过 LocalBufferBroker、mmap 文件池和后续 ring buffer 承接
 - 如确有现场直连相机、PLC、传感器等需求，应通过独立插件在受控边界中实现，而不是进入核心平台主链路
 
 ## 方案总览
@@ -49,11 +49,11 @@
 - frontend/web-ui：浏览器前端，放页面、工作流和结果查看
 - backend/service：后端入口，处理 API、状态和任务安排
 - backend/workers：后台 worker，跑训练、推理、转换和流程
-- plugins：扩展层，放节点、回调、后处理和协议适配
+- custom_nodes：节点扩展层，放 node pack、custom node 和相关扩展资产
 - runtimes + packaging：运行和发布相关内容
 
 ```text
-操作人员 / 工程人员 / 外部系统 / 模型产物 / 插件
+操作人员 / 工程人员 / 外部系统 / 模型产物 / 节点包
         |              |
         |              | REST API / WebSocket / 协议调用 / 数据提交 / 结果回传
         v              v
@@ -70,16 +70,16 @@ frontend/web-ui    protocol integration boundary
                                   v                          v
                            backend/workers           backend/adapters
                                   |                          |
-                                                                                         | 调用运行时 / 插件        | 接入数据库、对象存储、队列、缓存、协议通信
+                                                                                         | 调用运行时 / 节点包      | 接入数据库、对象存储、队列、缓存、协议通信
                                   v                          v
                                runtimes                 本地基础设施与外部系统协议端点
                                   |
-                                                                                         | 同机本地部署时可补充 ZeroMQ 进程间通信
+                                                                                         | 高速触发入口 / 本机 Buffer 引用
                                                                                          v
-                                                                                 local ipc
+                                                                                 protocol adapters / LocalBufferBroker
                                                                                          |
                                   v
-                         plugins / assets / packaging
+                         custom_nodes / assets / packaging
 ```
 
 ## 一级模块与职责
@@ -94,7 +94,7 @@ frontend/web-ui    protocol integration boundary
 ### backend/service
 
 - 是统一后端入口，处理元数据、任务安排和对外接口
-- 管理项目、数据集、任务、模型、部署实例、集成端点、流程模板和插件记录
+- 管理项目、数据集、任务、模型、部署实例、集成端点、流程模板和节点包记录
 - 为浏览器前端、上位机和其他外部系统提供统一的公开通信边界
 - 协调 workers、适配器和公开接口规则，避免前端或外部直接耦合内部执行逻辑
 
@@ -102,12 +102,12 @@ frontend/web-ui    protocol integration boundary
 
 - 跑训练、验证、推理、转换和流程这些重任务
 - 作为后台 worker 运行，接受后端服务调度并回写任务状态和结果
-- 依赖运行时和插件体系完成模型执行、OpenCV 流程和后处理扩展
+- 依赖运行时和节点扩展体系完成模型执行、OpenCV 流程和后处理扩展
 
 ### backend/contracts
 
-- 放 API、事件、文件规则、插件规则和集成规则
-- 给后端服务、workers、插件和前端提供共用格式
+- 放 API、事件、文件规则、节点规则和集成规则
+- 给后端服务、workers、节点包和前端提供共用格式
 - 这里的内容一旦公开，就尽量保持稳定
 
 ### backend/adapters
@@ -121,13 +121,13 @@ frontend/web-ui    protocol integration boundary
 - 管理服务、worker 和维护脚本的统一启动入口
 - 管理运行时依赖、兼容性和目标平台差异边界
 
-### plugins
+### custom_nodes
 
-- 放流程节点、后处理插件、协议适配扩展、硬件桥接扩展和模块连接扩展
-- 通过 manifest 和接口规则接入平台，不直接侵入后端服务内部实现
-- 在节点编辑器中与核心节点统一注册和展示，方向上向 ComfyUI custom nodes 看齐
-- 大量自定义功能以插件形式独立实现、独立加载，可作为节点、hook 或连接器接入平台
-- 插件可连接外部系统、内部模块、任务对象和数据对象，承担触发、处理、回传和联动职责
+- 放流程节点包、结果处理节点包、协议节点包、硬件桥接节点包和模块连接节点包
+- 通过 manifest、节点目录和接口规则接入平台，不直接侵入后端服务内部实现
+- 在节点编辑器中与 core nodes 统一注册和展示，方向上向 ComfyUI custom nodes 看齐
+- 大量自定义功能以 node pack 形式独立实现、独立加载，可作为节点或连接器接入平台
+- 节点包可连接外部系统、内部模块、任务对象和数据对象，承担处理、回传和联动职责
 
 ### assets
 
@@ -154,7 +154,8 @@ frontend/web-ui    protocol integration boundary
 - 浏览器前端与后端服务之间是标准前后端分离关系，不共享内部模块实现
 - 上位机、MES、采集系统和其他外部系统通过与前端一致的公开边界接入后端
 - REST API 用来做请求响应，WebSocket 用来推送状态、日志和任务事件
-- ZeroMQ 只用于同机本地部署中的进程间高频通信或低开销消息传递，不作为对外公开接口规则
+- ZeroMQ 可作为 workstation 或 standalone 场景下的高速触发和图片提交入口
+- LocalBufferBroker 用于 workflow 隔离进程、发布推理 worker 和本地 adapter 之间的大图、连续帧和中间结果引用传递，详细规划见 [docs/architecture/local-buffer-broker.md](local-buffer-broker.md)
 
 ## 整体流程
 
@@ -190,28 +191,28 @@ frontend/web-ui    protocol integration boundary
 
 ### 5. 流程编排流程
 
-1. 选择模型节点、传统视觉节点、后处理节点、协议集成节点和插件节点
+1. 选择模型节点、传统视觉节点、后处理节点、协议集成节点和自定义节点
 2. 通过流程模板或节点编辑器定义执行图
 3. 后端服务检查节点输入输出规则和资源依赖
-4. worker 按流程图运行节点链路，并允许插件节点连接内部模块、外部端点和相关数据对象
+4. worker 按流程图运行节点链路，并允许自定义节点连接内部模块、外部端点和相关数据对象
 5. 模板与节点版本可被追踪、复用和回滚
 
 ### 6. 外部系统协议集成流程
 
 1. 注册外部系统、协议配置和回调规则
-2. 由上位机、采集系统或其他业务系统提交图片、视频流、批量任务或触发请求，也可由插件定义自定义触发入口
+2. 由上位机、采集系统或其他业务系统提交图片、视频流、批量任务或触发请求，也可由节点扩展定义自定义触发入口
 3. 后端服务根据 REST API、WebSocket 或其他版本化接口规则完成任务创建、状态跟踪和结果分发
-4. 结果可经核心链路或插件上报链路回传到前端、上位机、MES、PLC 网关或其他外部系统
-5. 发生异常时支持禁用集成端点、切换回调策略、停用插件或回滚模型版本
+4. 结果可经核心链路或节点扩展上报链路回传到前端、上位机、MES、PLC 网关或其他外部系统
+5. 发生异常时支持禁用集成端点、切换回调策略、停用节点包或回滚模型版本
 
-### 7. 插件扩展与节点注册流程
+### 7. 节点扩展与节点注册流程
 
-1. 安装或发现插件包，读取 manifest、capability 和节点定义
+1. 安装或发现 node pack，读取 manifest、capability 和节点定义
 2. 后端服务完成版本校验、依赖校验、权限校验和启用状态登记
-3. 前端节点编辑器读取插件节点目录、参数 schema 和分类信息
-4. worker 在运行时环境中按节点输入输出规则执行插件逻辑，并允许插件接入内部模块、外部系统和相关数据流
-5. 插件可实现外部触发、执行完成后的数据上报、结果后处理、回调分发和跨模块衔接逻辑
-6. 插件升级、禁用、回滚后，流程模板与部署引用关系同步更新
+3. 前端节点编辑器读取统一节点目录、参数 schema 和分类信息
+4. worker 在运行时环境中按节点输入输出规则执行 custom node 逻辑，并允许节点扩展接入内部模块、外部系统和相关数据流
+5. 节点扩展可实现外部触发、执行完成后的数据上报、结果后处理和跨模块衔接逻辑
+6. 节点包升级、禁用、回滚后，流程模板与部署引用关系同步更新
 
 ## 所需功能版图
 
@@ -243,16 +244,16 @@ frontend/web-ui    protocol integration boundary
 - 推理任务、批处理和结果回传
 - 部署切换、回滚、日志和健康状态监控
 
-### 流程与插件能力
+### 流程与节点扩展能力
 
 - 流程模板管理
 - 节点编排、节点版本和节点依赖校验
-- 后处理插件、协议适配插件、硬件桥接插件、模块连接插件和节点插件加载
-- 插件 manifest、capability、timeout、禁用和版本追踪
-- 插件节点目录、节点参数 schema 和节点分类管理
+- 结果处理节点包、协议节点包、硬件桥接节点包、模块连接节点包和 custom node 加载
+- 节点包 manifest、capability、timeout、禁用和版本追踪
+- 统一节点目录、节点参数 schema 和节点分类管理
 - 向 ComfyUI 风格靠拢的 custom nodes 和 workflow 扩展体验
-- 以插件独立实现和加载外部触发、自定义回调、完成后数据上报和结果后处理逻辑
-- 以插件连接项目、任务、部署、流程模板、集成端点和外部系统数据
+- 以节点包独立实现和加载外部触发、自定义回调、完成后数据上报和结果处理逻辑
+- 以节点包连接项目、任务、部署、流程模板、集成端点和外部系统数据
 
 ### 外部系统协议集成能力
 
@@ -261,14 +262,14 @@ frontend/web-ui    protocol integration boundary
 - 结果回传、状态订阅和联动触发的协议适配
 - REST API、WebSocket、ZeroMQ 或其他本地与在线协议边界支持
 - 与上位机、采集系统、MES、PLC 网关或设备代理系统协同
-- 允许通过插件实现自定义触发入口、完成通知、数据上报和特定系统联动
+- 允许通过节点扩展实现自定义触发入口、完成通知、数据上报和特定系统联动
 
 ### 硬件桥接与模块扩展能力
 
-- 以独立插件形式实现相机、PLC、传感器、机械臂等硬件桥接能力
-- 以独立插件形式实现跨模块事件连接、任务衔接和结果转发能力
-- 对可选插件施加额外权限、隔离、超时和回滚约束
-- 允许插件按受控接口规则连接内部模块、外部端点和数据对象，形成可编排的自定义链路
+- 以独立节点包形式实现相机、PLC、传感器、机械臂等硬件桥接能力
+- 以独立节点包形式实现跨模块事件连接、任务衔接和结果转发能力
+- 对可选节点包施加额外权限、隔离、超时和回滚约束
+- 允许节点扩展按受控接口规则连接内部模块、外部端点和数据对象，形成可编排的自定义链路
 
 ### 浏览器前端能力
 
@@ -280,7 +281,7 @@ frontend/web-ui    protocol integration boundary
 ### 系统管理功能
 
 - 任务状态流和事件审计
-- 插件和模型版本追踪
+- 节点包和模型版本追踪
 - 配置管理、兼容性声明和回滚机制
 - 基础健康检查、错误记录和最小可观测性能力
 
@@ -296,8 +297,7 @@ frontend/web-ui    protocol integration boundary
 - DeploymentInstance
 - InferenceTask
 - PipelineTemplate
-- PluginVersion
-- PluginManifest
+- NodePackManifest
 - NodeDefinition
 - IntegrationEndpoint
 - RuntimeProfile
@@ -310,7 +310,7 @@ frontend/web-ui    protocol integration boundary
 4. [docs/architecture/detection-model-rules.md](detection-model-rules.md)
 5. [docs/architecture/frontend-web-ui.md](frontend-web-ui.md)
 6. [docs/architecture/data-and-files.md](data-and-files.md)
-7. [docs/architecture/plugin-system.md](plugin-system.md)
+7. [docs/architecture/node-system.md](node-system.md)
 8. [docs/architecture/runtime-packaging.md](runtime-packaging.md)
 9. 根据任务继续进入 deployment 专题文档
 

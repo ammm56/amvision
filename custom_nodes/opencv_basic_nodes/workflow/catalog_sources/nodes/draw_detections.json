@@ -1,0 +1,59 @@
+{
+  "format_id": "amvision.node-definition.v1",
+  "node_type_id": "custom.opencv.draw-detections",
+  "display_name": "Draw Detections",
+  "category": "opencv.render",
+  "description": "通过 OpenCV 把 detection 结果绘制到图片上。",
+  "implementation_kind": "custom-node",
+  "runtime_kind": "python-callable",
+  "input_ports": [
+    {
+      "name": "image",
+      "display_name": "Image",
+      "payload_type_id": "image-ref.v1"
+    },
+    {
+      "name": "detections",
+      "display_name": "Detections",
+      "payload_type_id": "detections.v1"
+    }
+  ],
+  "output_ports": [
+    {
+      "name": "image",
+      "display_name": "Image",
+      "payload_type_id": "image-ref.v1"
+    }
+  ],
+  "parameter_schema": {
+    "type": "object",
+    "properties": {
+      "line_thickness": {
+        "type": "integer",
+        "minimum": 1
+      },
+      "font_scale": {
+        "type": "number",
+        "minimum": 0
+      },
+      "draw_scores": {
+        "type": "boolean"
+      },
+      "output_object_key": {
+        "type": "string"
+      }
+    }
+  },
+  "capability_tags": [
+    "opencv.draw",
+    "vision.render"
+  ],
+  "runtime_requirements": {
+    "python_packages": [
+      "opencv-python",
+      "numpy"
+    ]
+  },
+  "node_pack_id": "opencv.basic-nodes",
+  "node_pack_version": "0.1.0"
+}

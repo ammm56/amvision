@@ -1,0 +1,10 @@
+{
+  "project_id": "project-1",
+  "application_id": "yolox-deployment-infer-opencv-health-zeromq-app",
+  "display_name": "YOLOX Deployment Infer OpenCV Health ZeroMQ Runtime",
+  "metadata": {
+    "example_kind": "deployment-infer-opencv-health-zeromq",
+    "uses_existing_deployment_instance": true,
+    "trigger_source_input": "zeromq"
+  }
+}

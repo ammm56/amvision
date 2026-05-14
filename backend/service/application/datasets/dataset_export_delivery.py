@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from backend.service.application.errors import InvalidRequestError, ResourceNotFoundError
 from backend.service.domain.datasets.dataset_export import DatasetExport
@@ -60,12 +60,16 @@ class SqlAlchemyDatasetExportDeliveryService:
         dataset_export_id: str,
         *,
         rebuild: bool = False,
+        package_object_key: str | None = None,
+        persist_package_metadata: bool = True,
     ) -> DatasetExportPackage:
         """为指定 DatasetExport 生成或复用可下载 zip 包。
 
         参数：
         - dataset_export_id：目标 DatasetExport id。
         - rebuild：是否强制重建 zip 包。
+        - package_object_key：可选输出 zip object key；未提供时使用默认下载路径。
+        - persist_package_metadata：是否把 package 信息写回 DatasetExport metadata。
 
         返回：
         - 对应的打包产物描述。
@@ -74,34 +78,42 @@ class SqlAlchemyDatasetExportDeliveryService:
         dataset_export = self._require_dataset_export(dataset_export_id)
         self._validate_export_ready(dataset_export)
 
-        existing_package = self._read_existing_package(dataset_export)
+        resolved_package_object_key = self._normalize_optional_object_key(package_object_key)
+        if resolved_package_object_key is None:
+            resolved_package_object_key = self._build_package_object_key(dataset_export)
+
+        existing_package = self._read_existing_package(
+            dataset_export,
+            package_object_key=resolved_package_object_key,
+        )
         if existing_package is not None and not rebuild:
             return existing_package
 
-        package_object_key = self._build_package_object_key(dataset_export)
         packaged_at = datetime.now(timezone.utc).isoformat()
         package_size = self.dataset_storage.create_zip_from_directory(
             dataset_export.export_path or "",
-            package_object_key,
+            resolved_package_object_key,
         )
         package_file_name = self._build_package_file_name(dataset_export)
 
-        updated_export = replace(
-            dataset_export,
-            metadata={
-                **dataset_export.metadata,
-                "package_object_key": package_object_key,
-                "package_file_name": package_file_name,
-                "package_size": package_size,
-                "packaged_at": packaged_at,
-            },
-        )
-        self._save_dataset_export(updated_export)
+        updated_export = dataset_export
+        if persist_package_metadata:
+            updated_export = replace(
+                dataset_export,
+                metadata={
+                    **dataset_export.metadata,
+                    "package_object_key": resolved_package_object_key,
+                    "package_file_name": package_file_name,
+                    "package_size": package_size,
+                    "packaged_at": packaged_at,
+                },
+            )
+            self._save_dataset_export(updated_export)
         return DatasetExportPackage(
             dataset_export_id=updated_export.dataset_export_id,
             export_path=updated_export.export_path or "",
             manifest_object_key=updated_export.manifest_object_key or "",
-            package_object_key=package_object_key,
+            package_object_key=resolved_package_object_key,
             package_file_name=package_file_name,
             package_size=package_size,
             packaged_at=packaged_at,
@@ -118,7 +130,13 @@ class SqlAlchemyDatasetExportDeliveryService:
         dataset_export = self._require_dataset_export(dataset_export_id)
         self._validate_export_ready(dataset_export)
 
-        package = self._read_existing_package(dataset_export)
+        package = self._read_existing_package(
+            dataset_export,
+            package_object_key=(
+                self._read_optional_str(dataset_export.metadata, "package_object_key")
+                or self._build_package_object_key(dataset_export)
+            ),
+        )
         if package is None:
             if not rebuild_if_missing:
                 raise ResourceNotFoundError(
@@ -205,33 +223,68 @@ class SqlAlchemyDatasetExportDeliveryService:
                 details={"dataset_export_id": dataset_export.dataset_export_id},
             )
 
-    def _read_existing_package(self, dataset_export: DatasetExport) -> DatasetExportPackage | None:
-        """从 DatasetExport metadata 中读取已有下载包信息。"""
+    def _read_existing_package(
+        self,
+        dataset_export: DatasetExport,
+        *,
+        package_object_key: str,
+    ) -> DatasetExportPackage | None:
+        """按指定 object key 读取可复用的下载包信息。"""
 
-        package_object_key = self._read_optional_str(dataset_export.metadata, "package_object_key")
+        recorded_package_object_key = self._read_optional_str(dataset_export.metadata, "package_object_key")
         package_file_name = self._read_optional_str(dataset_export.metadata, "package_file_name")
         packaged_at = self._read_optional_str(dataset_export.metadata, "packaged_at")
         package_size = self._read_optional_int(dataset_export.metadata, "package_size")
         if (
-            package_object_key is None
+            recorded_package_object_key != package_object_key
+            or recorded_package_object_key is None
             or package_file_name is None
             or packaged_at is None
             or package_size is None
         ):
-            return None
+            return self._read_existing_package_at_path(
+                dataset_export,
+                package_object_key=package_object_key,
+            )
 
-        package_path = self.dataset_storage.resolve(package_object_key)
+        package_path = self.dataset_storage.resolve(recorded_package_object_key)
         if not package_path.is_file():
-            return None
+            return self._read_existing_package_at_path(
+                dataset_export,
+                package_object_key=package_object_key,
+            )
 
         return DatasetExportPackage(
             dataset_export_id=dataset_export.dataset_export_id,
             export_path=dataset_export.export_path or "",
             manifest_object_key=dataset_export.manifest_object_key or "",
-            package_object_key=package_object_key,
+            package_object_key=recorded_package_object_key,
             package_file_name=package_file_name,
             package_size=package_size,
             packaged_at=packaged_at,
+        )
+
+    def _read_existing_package_at_path(
+        self,
+        dataset_export: DatasetExport,
+        *,
+        package_object_key: str,
+    ) -> DatasetExportPackage | None:
+        """按指定 object key 直接读取已存在的 zip 文件。"""
+
+        package_path = self.dataset_storage.resolve(package_object_key)
+        if not package_path.is_file():
+            return None
+
+        package_stat = package_path.stat()
+        return DatasetExportPackage(
+            dataset_export_id=dataset_export.dataset_export_id,
+            export_path=dataset_export.export_path or "",
+            manifest_object_key=dataset_export.manifest_object_key or "",
+            package_object_key=package_object_key,
+            package_file_name=self._build_package_file_name(dataset_export),
+            package_size=int(package_stat.st_size),
+            packaged_at=datetime.fromtimestamp(package_stat.st_mtime, timezone.utc).isoformat(),
         )
 
     def _build_package_object_key(self, dataset_export: DatasetExport) -> str:
@@ -249,6 +302,16 @@ class SqlAlchemyDatasetExportDeliveryService:
             f"{dataset_export.dataset_id}-{dataset_export.format_id}-"
             f"{dataset_export.dataset_export_id}.zip"
         )
+
+    def _normalize_optional_object_key(self, value: str | None) -> str | None:
+        """规范化可选 package object key。"""
+
+        if not isinstance(value, str):
+            return None
+        normalized_value = value.strip()
+        if not normalized_value:
+            return None
+        return PurePosixPath(normalized_value).as_posix()
 
     def _read_optional_str(self, payload: dict[str, object], key: str) -> str | None:
         """从字典中读取可选字符串字段。"""

@@ -298,7 +298,7 @@ class SqlAlchemyYoloXTrainingTaskService:
 
         control = self._read_training_control(task_record)
         if self._read_control_flag(control, "save_requested"):
-            return self.task_service.get_task(task_id, include_events=True)
+            return self.task_service.get_task(task_id, include_events=False)
 
         requested_at = self._now_iso()
         updated_control = self._build_requested_training_control(
@@ -321,7 +321,7 @@ class SqlAlchemyYoloXTrainingTaskService:
                 },
             )
         )
-        return self.task_service.get_task(task_id, include_events=True)
+        return self.task_service.get_task(task_id, include_events=False)
 
     def request_training_pause(
         self,
@@ -333,7 +333,7 @@ class SqlAlchemyYoloXTrainingTaskService:
 
         task_record = self._require_training_task(task_id)
         if task_record.state == "paused":
-            return self.task_service.get_task(task_id, include_events=True)
+            return self.task_service.get_task(task_id, include_events=False)
         if task_record.state != "running":
             raise InvalidRequestError(
                 "当前训练任务不在运行中，不能暂停",
@@ -342,7 +342,7 @@ class SqlAlchemyYoloXTrainingTaskService:
 
         control = self._read_training_control(task_record)
         if self._read_control_flag(control, "pause_requested"):
-            return self.task_service.get_task(task_id, include_events=True)
+            return self.task_service.get_task(task_id, include_events=False)
 
         requested_at = self._now_iso()
         updated_control = self._build_requested_training_control(
@@ -365,7 +365,7 @@ class SqlAlchemyYoloXTrainingTaskService:
                 },
             )
         )
-        return self.task_service.get_task(task_id, include_events=True)
+        return self.task_service.get_task(task_id, include_events=False)
 
     def resume_training_task(
         self,
@@ -581,7 +581,7 @@ class SqlAlchemyYoloXTrainingTaskService:
                 },
             )
         )
-        return self.task_service.get_task(task_id, include_events=True)
+        return self.task_service.get_task(task_id, include_events=False)
 
     def process_training_task(self, task_id: str) -> YoloXTrainingTaskResult:
         """执行一条已入队的 YOLOX 训练任务。
@@ -751,6 +751,8 @@ class SqlAlchemyYoloXTrainingTaskService:
                             "metrics_object_key": metrics_object_key,
                             "validation_metrics_object_key": validation_metrics_object_key,
                             "summary_object_key": summary_object_key,
+                            "model_version_id": None,
+                            "latest_checkpoint_model_version_id": None,
                         },
                     },
                 )
@@ -2053,6 +2055,7 @@ class SqlAlchemyYoloXTrainingTaskService:
     def _serialize_task_result(self, task_result: YoloXTrainingTaskResult) -> dict[str, object]:
         """把训练任务处理结果序列化为 TaskRecord.result。"""
 
+        summary_payload = dict(task_result.summary)
         return {
             "dataset_export_id": task_result.dataset_export_id,
             "dataset_export_manifest_key": task_result.dataset_export_manifest_key,
@@ -2067,7 +2070,12 @@ class SqlAlchemyYoloXTrainingTaskService:
             "summary_object_key": task_result.summary_object_key,
             "best_metric_name": task_result.best_metric_name,
             "best_metric_value": task_result.best_metric_value,
-            "summary": dict(task_result.summary),
+            "model_version_id": self._read_optional_str(summary_payload, "model_version_id"),
+            "latest_checkpoint_model_version_id": self._read_optional_str(
+                summary_payload,
+                "latest_checkpoint_model_version_id",
+            ),
+            "summary": summary_payload,
         }
 
     def _read_manifest_split_names(self, manifest_payload: dict[str, object]) -> tuple[str, ...]:

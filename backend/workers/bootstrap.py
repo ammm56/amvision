@@ -58,8 +58,8 @@ class PrepareBackendWorkerWorkspaceStep:
         runtime.workspace_dir.mkdir(parents=True, exist_ok=True)
 
 
-class LoadBackendWorkerPluginCatalogStep:
-    """加载 backend-worker 启动期需要的插件目录元数据。"""
+class LoadBackendWorkerNodeCatalogStep:
+    """加载 backend-worker 启动期需要的节点目录元数据。"""
 
     def get_step_name(self) -> str:
         """返回当前步骤名称。
@@ -68,17 +68,17 @@ class LoadBackendWorkerPluginCatalogStep:
         - 当前步骤的稳定名称。
         """
 
-        return "load-worker-plugin-catalog"
+        return "load-worker-node-catalog"
 
     def run(self, runtime: BackendWorkerRuntime) -> None:
-        """执行 worker 插件目录元数据准备步骤。
+        """执行 worker 节点目录元数据准备步骤。
 
         参数：
         - runtime：当前 worker 进程使用的运行时资源。
 
         说明：
-        - 当前仓库还没有正式接入 worker 侧 PluginLoader。
-        - 后续模型运行时、转换 backend 和节点插件索引可放在这里。
+        - 当前仓库还没有正式接入 worker 侧 NodePackLoader。
+        - 后续模型运行时、转换 backend 和自定义节点索引可放在这里。
         """
 
         _ = runtime
@@ -152,5 +152,5 @@ class BackendWorkerBootstrap(RuntimeBootstrap[BackendWorkerSettings, BackendWork
 
         return (
             PrepareBackendWorkerWorkspaceStep(),
-            LoadBackendWorkerPluginCatalogStep(),
+            LoadBackendWorkerNodeCatalogStep(),
         )

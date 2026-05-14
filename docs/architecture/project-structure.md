@@ -43,7 +43,8 @@
 - frontend/web-ui：浏览器前端，放页面、工作流和结果查看
 - backend/service：后端入口，处理 API、状态和任务安排
 - backend/workers：后台 worker，跑训练、推理、转换和流程
-- plugins：扩展层，放节点、回调、后处理和协议适配
+- custom_nodes：节点扩展层，放 node pack、custom node 和相关扩展资产
+- sdks：外部调用方 SDK，封装 REST、WebSocket 和 ZeroMQ TriggerSource 调用
 - runtimes + packaging：运行和发布相关内容
 
 ## 建议仓库目录结构
@@ -82,7 +83,7 @@ repo/
 │  │  │  ├─ imports/
 │  │  │  └─ exports/
 │  │  ├─ files/
-│  │  ├─ plugins/
+│  │  ├─ nodes/
 │  │  └─ integrations/
 │  └─ adapters/
 │     ├─ database/
@@ -118,6 +119,13 @@ repo/
 │        ├─ services/
 │        ├─ composables/
 │        └─ contracts/
+├─ sdks/
+│  ├─ contracts/
+│  ├─ dotnet/
+│  ├─ python/
+│  ├─ go/
+│  ├─ c/
+│  └─ examples/
 ├─ runtimes/
 │  ├─ python/
 │  │  ├─ dev-conda/
@@ -130,13 +138,15 @@ repo/
 │     ├─ runtime/
 │     ├─ dependencies/
 │     └─ compatibility/
-├─ plugins/
-│  ├─ pipeline-nodes/
-│  ├─ postprocessors/
-│  ├─ protocol-adapters/
-│  ├─ hardware-bridges/
-│  ├─ module-connectors/
-│  └─ manifests/
+├─ custom_nodes/
+│  └─ <node-pack-name>/
+│     ├─ manifest.json
+│     ├─ workflow/
+│     │  └─ catalog.json
+│     ├─ backend/
+│     ├─ schemas/
+│     ├─ assets/
+│     └─ docs/
 ├─ assets/
 │  ├─ flow-templates/
 │  ├─ model-profiles/
@@ -150,7 +160,7 @@ repo/
 │  ├─ architecture/
 │  ├─ api/
 │  ├─ deployment/
-│  ├─ plugins/
+│  ├─ nodes/
 │  └─ decisions/
 └─ tests/
    ├─ backend/
@@ -165,9 +175,11 @@ repo/
 
 - backend：后端代码，包括服务、worker、共享规则和基础接入
 - frontend：浏览器前端工程，通过 API 和后端协作
+- sdks：外部调用方 SDK，服务设备上位机、MES、采集程序、现场桥接进程和调试脚本
 - runtimes：开发和发布时要用到的运行时
-- plugins：可插拔扩展，不放平台主干逻辑
-- plugins 是场景化能力、硬件桥接、协议适配和模块连接的主扩展平面
+- custom_nodes：可插拔节点扩展，不放平台主干逻辑
+- custom_nodes 是场景化能力、硬件桥接、协议适配和模块连接的主扩展平面
+- custom_nodes 允许 pack 间依赖，但简单节点优先 pack 内自给；复杂节点需要复用成熟能力时，再建立显式 pack 依赖
 - packaging：发行包装配，不放业务逻辑
 - docs：说明和设计文档
 - tests：边界和交互验证
@@ -176,9 +188,10 @@ repo/
 
 - service：系统主入口，处理 REST API、WebSocket、任务状态 API、元数据和当前进程托管的最小后台任务宿主
 - workers：重任务执行层，跑训练、推理、转换和流程
-- contracts：放共用的 schema、事件、数据集格式、文件规则、插件和集成规则
+- contracts：放共用的 schema、事件、数据集格式、文件规则、节点和集成规则
 - adapters：接数据库、对象存储、队列、缓存和协议通信
-- plugins 内部按能力分层：pipeline-nodes、postprocessors、protocol-adapters、hardware-bridges、module-connectors
+- custom_nodes 以 node pack 为最小分发单元，内部可按节点、协议、桥接和结果处理能力组织
+- custom_nodes 内部优先把简单 helper 和节点共享逻辑收敛到当前 pack，本地解决；确需跨 pack 复用时，依赖关系要显式记录，不通过隐式顶层 import 扩散
 
 ### backend/service 内部层级
 
@@ -234,19 +247,29 @@ repo/
 - packaging/common 维护各发行形态共享结构
 - packaging/standalone、workstation、edge 分别维护目标形态差异化装配规则
 
+### sdks 层级
+
+- sdks/contracts 放外部调用协议的稳定 schema、示例 payload 和错误码说明
+- sdks/dotnet 放 C# / .NET SDK，优先兼容 .NET Framework 上位机和 .NET Core / .NET 应用
+- sdks/python 放 Python SDK、CLI 和调试脚本能力
+- sdks/go 放 Go SDK，服务边缘代理和本地桥接服务
+- sdks/c 放 C ABI SDK，服务 C/C++ 上位机、厂商接口和其他需要稳定 C 接口的系统
+- sdks/examples 放跨语言共享的外部调用示例，不放 backend-service 内部测试夹具
+
 ## 模块关系
 
 ### 核心依赖方向
 
 - frontend/web-ui -> backend/service
 - external systems -> backend/service
+- external systems -> sdks -> backend/service
 - backend/service -> backend/contracts
 - backend/service -> backend/adapters
 - backend/service -> backend/workers
 - backend/workers -> backend/contracts
 - backend/workers -> runtimes
-- backend/workers -> plugins
-- plugins -> backend/contracts
+- backend/workers -> custom_nodes
+- custom_nodes -> backend/contracts
 - packaging -> backend + frontend + runtimes + assets
 - docs 与 tests 镜像上述公开边界，但不反向驱动业务依赖
 
@@ -254,12 +277,13 @@ repo/
 
 - frontend 只能依赖 backend-service 暴露的版本化 REST API、WebSocket 和任务状态流，不能直接依赖 workers 或 adapters
 - 上位机、MES、采集系统和其他外部系统与前端一样，统一通过 backend-service 的公开通信边界接入，而不是直接调用 workers
+- SDK 是外部系统使用公开通信边界的辅助层，只封装 REST、WebSocket 和 ZeroMQ TriggerSource 协议，不成为 backend-service 的内部依赖
 - ZeroMQ 只作为同机本地部署场景下的补充通信方式，用于本地进程间低开销交互，不替代公开的 REST API 和 WebSocket 规则
-- backend-service 和 workers 通过 contracts 共享任务、事件、文件规则、集成规则和插件规则，避免互相侵入内部实现
-- workers 使用 runtimes 提供的 Python 运行时和启动环境，使用 plugins 提供可扩展节点、后处理和协议适配扩展
-- 硬件直连与模块连接逻辑如有需要，优先放入 hardware-bridges 或 module-connectors 插件，而不是扩散到 core 目录
+- backend-service 和 workers 通过 contracts 共享任务、事件、文件规则、集成规则和节点规则，避免互相侵入内部实现
+- workers 使用 runtimes 提供的 Python 运行时和启动环境，使用 custom_nodes 提供可扩展节点、结果处理和协议适配扩展
+- 硬件直连与模块连接逻辑如有需要，优先放入现场桥接 node pack 或模块连接 node pack，而不是扩散到 core 目录
 - packaging 只负责装配和发布边界，不定义业务对象，也不持有独立领域规则
-- docs/architecture 说明结构边界，docs/api 说明公开接口，docs/deployment 说明运行和发布方式，docs/plugins 说明扩展规则
+- docs/architecture 说明结构边界，docs/api 说明公开接口，docs/deployment 说明运行和发布方式，节点扩展规则收敛到架构文档
 
 ### 通信边界与交互路径
 
@@ -272,11 +296,12 @@ repo/
 
 - frontend 不直接调用 workers 或读取 runtimes 内部目录
 - frontend 不与 backend 的 application、domain、infrastructure 代码直接共享运行时依赖
+- sdks 不导入 backend/service 的 application、domain、infrastructure 或 worker 代码，只依赖公开协议、schema 和示例 payload
 - external systems 不直接连接 workers、数据库或对象存储
 - domain 不直接依赖具体数据库方言、外部消息中间件或文件系统实现
-- plugins 不直接依赖 backend/service 内部 application 或 domain 细节
+- custom_nodes 不直接依赖 backend/service 内部 application 或 domain 细节
 - backend/service 和 workers 不直接持有相机、PLC、IO 传感器或机械臂的硬件驱动实现
-- 核心目录不直接放客户定制模块连接逻辑，优先通过插件扩展点实现
+- 核心目录不直接放客户定制模块连接逻辑，优先通过节点扩展点实现
 - packaging 不反向定义 backend 和 frontend 的业务模块边界
 - tests 不通过复制实现细节来建立伪结构，而应围绕公开接口规则和行为边界组织
 
@@ -285,12 +310,12 @@ repo/
 - [docs/README.md](../README.md) 作为整个仓库文档体系入口
 - 本文档放在 docs/architecture/ 下，作为项目结构与模块边界总览
 - 后续如需继续展开，可在 docs/architecture/ 下补充 backend-service、frontend-web-ui、runtime-packaging、plugin-system 等子文档
-- 插件扩展原则和节点体系详见 [docs/architecture/plugin-system.md](plugin-system.md)
+- 节点扩展原则和节点体系详见 [docs/architecture/node-system.md](node-system.md)
 - AGENTS.md 仅保留项目约束、Agent Routing、Agent Color Mapping 和架构文档入口，不继续展开详细目录层级
 
 ## 后续可扩展文档
 
 - docs/architecture/frontend-web-ui.md
-- docs/architecture/plugin-system.md
+- docs/architecture/node-system.md
 - docs/architecture/integration-rules.md
 - docs/architecture/execution-observability.md
