@@ -108,6 +108,15 @@
 
 ## 资源总览
 
+当前实现已经先落了一版 workflow 资源合同，后续继续收口时需要统一遵守下面这几条：
+
+- `WorkflowPreviewRun` 当前稳定状态集合为 `created`、`running`、`succeeded`、`failed`、`timed_out`，不再把 `queued`、`cancelled`、`expired` 混入第一阶段公开合同。
+- `WorkflowAppRuntime` 和 `TriggerSource` 的运行态当前统一使用 `stopped`、`starting`、`running`、`stopping`、`failed` 五态模型；两者的 `desired_state` 和 `observed_state` 应保持同一套语义。
+- `WorkflowRun` 当前稳定状态集合为 `created`、`queued`、`dispatching`、`running`、`succeeded`、`failed`、`cancelled`、`timed_out`。
+- `WorkflowExecutionPolicy` 当前只有 `preview-default` 和 `runtime-default` 两类，不在第一阶段继续引入更多 policy kind。
+- preview snapshot 目录固定在 `workflows/runtime/preview-runs/{preview_run_id}/`，app runtime snapshot 目录固定在 `workflows/runtime/app-runtimes/{workflow_runtime_id}/`。
+- preview cleanup 当前继续走显式 maintenance 命令 `cleanup-preview-runs`；删除语义是“先删数据库记录，再删对象存储目录”，因此当前仍属于可恢复但非原子清理。
+
 | 资源 | 作用 | 生命周期 |
 | --- | --- | --- |
 | WorkflowPreviewRun | 表示一次编辑态隔离试跑 | 短时、可过期 |
@@ -130,7 +139,7 @@ WorkflowPreviewRun 用于承接编辑器中的快速试跑。
 - application_snapshot_object_key
 - template_snapshot_object_key
 - created_by
-- state，取值建议为 queued、running、succeeded、failed、cancelled、timed_out、expired
+- state，当前稳定取值为 created、running、succeeded、failed、timed_out
 - started_at
 - finished_at
 - timeout_seconds
@@ -147,6 +156,7 @@ WorkflowPreviewRun 用于承接编辑器中的快速试跑。
 - preview run 默认只保留短期查询窗口，用于界面调试回看。
 - preview run 不要求长期稳定重试，也不要求自动重启。
 - preview run 的 application 或 template 可以来自尚未正式保存的 inline 快照。
+- 当前 cleanup 只针对 retention_until 已过期的 preview run 执行，并同步删除其 snapshot 根目录；如果对象存储删除失败，需要通过下次 maintenance 补偿，不在当前阶段伪装成原子事务。
 
 ### WorkflowExecutionPolicy
 
@@ -255,6 +265,8 @@ WorkflowAppRuntime 表示一份已发布应用的长期运行单元。
 
 如果 runtime 需要固定 AI 默认项，例如 persona 或 tool 集合，创建 runtime 时应固定对应的 execution policy 快照。硬件行为仍由节点实现和 node pack 版本决定。
 
+当前实现里的 snapshot 根目录已经固定在 `workflows/runtime/app-runtimes/{workflow_runtime_id}/`，application、template 和 execution-policy snapshot 都应落在这个目录下，而不是继续在不同服务里自由拼接路径。
+
 ### WorkflowAppInstance
 
 WorkflowAppInstance 表示 runtime 下面一个真正执行请求的独立实例。
@@ -320,8 +332,8 @@ WorkflowRun 表示已发布应用的一次正式调用。
 ## 划分结论
 
 - 编辑态 preview run 默认不走后台队列。
-- 已发布应用运行至少拆成一条控制队列和一条运行队列。
-- workflow runtime 队列与训练、转换、评估、导出、推理队列分开，避免长期 runtime 控制流和重任务执行流互相干扰。
+- 当前阶段已发布应用继续使用 backend-service 进程内的 manager 管理独立 workflow app 子进程，不额外引入专用 control queue / runs queue。
+- 如果后续出现明显的调度争用、服务重启恢复或跨进程拓扑需求，再把 runtime 控制流单独拆到专用队列和独立 worker profile。
 - 当前阶段不单独拆 PLC、运动控制、传感器或结果上报专用队列；这类副作用先通过 instance 隔离、simulate 节点和 node pack 自身约束控制风险。
 
 ### preview run
@@ -330,45 +342,25 @@ WorkflowRun 表示已发布应用的一次正式调用。
 - backend-service 直接创建 WorkflowPreviewRun，拉起子进程，同步等待结果或超时。
 - 如果后续需要削峰，可再补 preview 专用排队层，但不建议作为第一阶段前提。
 
-### workflow-runtime-control 队列
+### 当前阶段 manager 模型
 
-这条队列只承接 runtime 控制命令。
+当前实现使用 backend-service 进程内的 `WorkflowRuntimeWorkerManager` 管理 runtime 生命周期。
 
-建议消息类型：
+- manager 负责 start、stop、restart、health、sync invoke 和 async run 提交。
+- 每个 `WorkflowAppRuntime` 仍然对应独立 spawn 子进程，图执行状态不会和 backend-service 共享执行上下文。
+- 这个模型已经满足“runtime 独立进程执行”的目标，当前不再额外引入一层 runtime 控制队列。
 
-- create-runtime
-- start-runtime
-- stop-runtime
-- restart-runtime
-- reconcile-runtime
-- scale-runtime
-- refresh-runtime-snapshot
+### 后续扩展条件
 
-设计目的：
+只有在下面这些条件出现时，才建议把当前模型进一步拆成专用 control queue / runs queue + 独立 worker profile：
 
-- 把运行控制和业务调用分开。
-- 让 workflow-runtime-worker 以稳定节奏做状态收敛、拉起和回收。
+- backend-service 当前进程需要管理大量 runtime，开始影响 REST 控制面稳定性。
+- 需要在 backend-service 重启后恢复更完整的 runtime 调度状态。
+- 需要把 runtime 调度职责独立部署到另一类进程，而不是继续和控制面同机托管。
 
-### workflow-runtime-runs 队列
+## 可选扩展拓扑
 
-这条队列只承接已发布应用的异步调用。
-
-建议消息载荷最小字段：
-
-- workflow_runtime_id
-- workflow_run_id
-- requested_timeout_seconds
-- trigger_source
-- created_at
-
-设计目的：
-
-- 让 async 调用和控制命令分开。
-- 保持一个 runtime 的实例选择、超时处理和失败重试都收口在 workflow-runtime-worker。
-
-## worker 拓扑
-
-最小拓扑建议如下：
+如果未来真的需要继续拆分，可演进到下面的拓扑：
 
 ```text
 backend-service

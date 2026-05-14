@@ -27,6 +27,22 @@ def test_local_node_pack_loader_loads_enabled_custom_node_pack(tmp_path: Path) -
     ]
 
 
+def test_local_node_pack_loader_skips_disabled_node_pack_registration(tmp_path: Path) -> None:
+    """验证 disabled 节点包只保留 manifest，不进入目录定义注册。"""
+
+    custom_nodes_root_dir = _create_node_pack_fixture(tmp_path, enabled_by_default=False)
+    node_pack_loader = LocalNodePackLoader(custom_nodes_root_dir)
+
+    node_pack_loader.refresh()
+    catalog_snapshot = node_pack_loader.get_catalog_snapshot()
+
+    assert len(catalog_snapshot.node_pack_manifests) == 1
+    assert catalog_snapshot.node_pack_manifests[0].node_pack_id == "opencv.basic-nodes"
+    assert catalog_snapshot.node_pack_manifests[0].enabled_by_default is False
+    assert catalog_snapshot.payload_contracts == ()
+    assert catalog_snapshot.node_definitions == ()
+
+
 def test_local_node_pack_loader_loads_enabled_node_pack_with_satisfied_dependencies(
     tmp_path: Path,
 ) -> None:

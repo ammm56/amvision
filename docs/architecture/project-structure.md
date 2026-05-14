@@ -9,7 +9,7 @@
 ## 适用范围
 
 - 仓库顶层目录划分
-- 后端、前端、运行时、插件和打包模块的层级边界
+- 后端、前端、运行时、节点扩展和打包模块的层级边界
 - 模块之间的依赖关系与禁止耦合关系
 - 文档与测试如何镜像系统边界
 
@@ -20,11 +20,11 @@
 - 本地优先实现和在线化演进兼容并存
 - 先把输入输出规则定清楚，再补实现
 - 重任务异步化，避免直接挤入请求处理链路
-- 前端、插件、运行时和打包产物围绕同一套公开接口规则协作
+- 前端、节点扩展、运行时和打包产物围绕同一套公开接口规则协作
 - 浏览器前端与外部系统默认通过 REST API 和 WebSocket 接入后端服务；同机本地部署时可补充 ZeroMQ 作为进程间通信边界
 - 视觉服务与外部硬件控制解耦，项目只负责协议边界，不承担硬件驱动职责
-- 各类硬件桥接、协议集成、模块连接和场景特化能力优先通过插件扩展
-- 插件模型与节点编辑方向向 ComfyUI 的 custom nodes 和 workflow 体验靠拢，但保留工业现场需要的版本、权限和回滚限制
+- 各类硬件桥接、协议集成、模块连接和场景特化能力优先通过自定义节点扩展
+- 自定义节点包与节点编辑方向向 ComfyUI 的 custom nodes 和 workflow 体验靠拢，但保留工业现场需要的版本、权限和回滚限制
 
 ## 源码命名约定
 
@@ -309,7 +309,7 @@ repo/
 
 - [docs/README.md](../README.md) 作为整个仓库文档体系入口
 - 本文档放在 docs/architecture/ 下，作为项目结构与模块边界总览
-- 后续如需继续展开，可在 docs/architecture/ 下补充 backend-service、frontend-web-ui、runtime-packaging、plugin-system 等子文档
+- 后续如需继续展开，可在 docs/architecture/ 下补充 backend-service、frontend-web-ui、runtime-packaging、node-system 等子文档
 - 节点扩展原则和节点体系详见 [docs/architecture/node-system.md](node-system.md)
 - AGENTS.md 仅保留项目约束、Agent Routing、Agent Color Mapping 和架构文档入口，不继续展开详细目录层级
 

@@ -28,8 +28,6 @@
     "default_command": "validate-layout"
   },
   "artifacts": {
-    "include_frontend": true,
-    "include_plugins": true,
-    "include_zero_mq": true
+    "include_frontend": true
   }
 }

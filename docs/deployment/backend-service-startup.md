@@ -162,7 +162,7 @@
 5. FastAPI lifespan 启动时执行：
   - 初始化数据库缺失表
   - 运行显式传入的 seeders
-  - 执行插件目录元数据预留步骤
+  - 执行 `custom_nodes` 目录元数据预留步骤
   - 启动 sync / async deployment supervisor
 6. 应用关闭时停止 deployment supervisor，并释放数据库 engine
 

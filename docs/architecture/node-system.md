@@ -37,7 +37,7 @@
 
 ## 节点系统在整体架构中的位置
 
-- backend-service：发现 node pack、读取 manifest、管理启停状态、构建统一 NodeCatalogRegistry
+- backend-service：发现 node pack、读取 manifest，并按 enabledByDefault 决定是否把 pack 纳入统一 NodeCatalogRegistry
 - workers：在运行时环境中执行 custom node 逻辑，处理节点输入输出规则
 - frontend/web-ui：读取统一节点目录、参数 schema 和分类信息，在节点编辑器与配置面板里渲染节点能力
 - contracts：放 node pack manifest、节点定义、payload contract 和输入输出 schema 的共用格式

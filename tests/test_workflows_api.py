@@ -343,10 +343,10 @@ def _create_test_client(
         tmp_path,
         database_name="workflows-api.db",
     )
-    plugins_root_dir = _create_node_pack_fixture(tmp_path)
+    custom_nodes_root_dir = _create_node_pack_fixture(tmp_path)
     application = create_app(
         settings=BackendServiceSettings(
-            custom_nodes=BackendServiceCustomNodesConfig(root_dir=str(plugins_root_dir)),
+            custom_nodes=BackendServiceCustomNodesConfig(root_dir=str(custom_nodes_root_dir)),
             task_manager=BackendServiceTaskManagerConfig(enabled=False),
         ),
         session_factory=session_factory,

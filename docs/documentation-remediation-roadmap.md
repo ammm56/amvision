@@ -26,7 +26,7 @@
 - [docs/deployment/bundled-python-deployment.md](deployment/bundled-python-deployment.md)：同目录 Python 的部署与回滚流程
 - [docs/decisions/ADR-0001-modular-monolith-with-workers.md](decisions/ADR-0001-modular-monolith-with-workers.md)：模块化单体 + worker 决策记录
 - [docs/decisions/ADR-0002-bundled-python-runtime.md](decisions/ADR-0002-bundled-python-runtime.md)：同目录 Python 运行时决策记录
-- [docs/decisions/ADR-0003-plugin-first-extension-model.md](decisions/ADR-0003-plugin-first-extension-model.md)：插件优先扩展决策记录
+- [docs/decisions/ADR-0003-node-pack-extension-model.md](decisions/ADR-0003-node-pack-extension-model.md)：节点扩展优先决策记录
 
 ## 当前仍需补齐的主题
 
@@ -42,7 +42,7 @@
 - AGENTS.md 只保留约束、边界、agent 路由和文档入口
 - system-overview 只负责整体目标、模块协同和流程
 - project-structure 只负责结构边界、依赖方向和通信关系
-- plugin-system 只负责节点扩展体系与扩展边界
+- node-system 只负责节点扩展体系与扩展边界
 
 ### 需要避免的重复
 
@@ -64,7 +64,7 @@
 ### P1：下一阶段应完成
 
 - API 资源明细与事件清单
-- 插件示例模板
+- 节点包示例模板
 - 集成规则与可观测性文档
 
 ### P2：随实现推进补齐

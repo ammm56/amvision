@@ -10,34 +10,19 @@ from backend.contracts.workflows.runtime import (
     WorkflowApplicationReferenceSummaryContract,
     WorkflowRuntimeReferenceSummaryContract,
 )
+from backend.contracts.workflows.resource_semantics import (
+    WorkflowTriggerAckPolicy,
+    WorkflowTriggerKind,
+    WorkflowTriggerResultMode,
+    WorkflowTriggerResultState,
+    WorkflowTriggerRuntimeState,
+    WorkflowTriggerSubmitMode,
+)
 
 
 WORKFLOW_TRIGGER_SOURCE_FORMAT = "amvision.workflow-trigger-source.v1"
 WORKFLOW_TRIGGER_EVENT_FORMAT = "amvision.workflow-trigger-event.v1"
 WORKFLOW_TRIGGER_RESULT_FORMAT = "amvision.workflow-trigger-result.v1"
-
-WorkflowTriggerKind = Literal[
-    "plc-register",
-    "mqtt-topic",
-    "zeromq-topic",
-    "grpc-method",
-    "io-change",
-    "sensor-read",
-    "schedule",
-    "webhook",
-    "http-api",
-]
-WorkflowTriggerSubmitMode = Literal["sync", "async"]
-WorkflowTriggerRuntimeState = Literal[
-    "stopped", "starting", "running", "stopping", "failed"
-]
-WorkflowTriggerResultMode = Literal[
-    "sync-reply", "accepted-then-query", "async-report", "event-only"
-]
-WorkflowTriggerAckPolicy = Literal[
-    "ack-after-received", "ack-after-run-created", "ack-after-run-finished"
-]
-WorkflowTriggerResultState = Literal["accepted", "succeeded", "failed", "timed_out"]
 
 
 def _require_stripped_text(value: str, field_name: str) -> str:

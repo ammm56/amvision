@@ -53,6 +53,12 @@
 - 检查 runtime manifest、custom_nodes 目录和必要依赖是否完整
 - 检查 GPU、ZeroMQ、本地端口和目录权限是否满足要求
 
+当前 `assemble-release` 的 bundled Python 处理规则如下：
+
+- 组装阶段不会复制仓库内的 Python 运行时；发布包里的 `python/` 继续按人工复制处理。
+- 如果覆盖已有发布目录，组装阶段会先把旧的 `python/` 目录临时移动到旁路目录，完成发布目录重建后再移动回来，不做目录覆盖。
+- 如果当前发布目录原本没有 `python/`，组装阶段会创建空的 `python/` 目录，并在 release manifest 中把 bundled Python 状态标记为 `placeholder-empty`，用于明确提示这一步仍需手工补齐。
+
 ### 4. 启动 backend-service
 
 - 通过发布包自带启动器启动服务进程

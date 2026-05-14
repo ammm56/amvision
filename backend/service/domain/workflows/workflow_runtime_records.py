@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Literal
 
-
-WorkflowPreviewRunState = Literal["created", "running", "succeeded", "failed", "timed_out"]
-WorkflowAppRuntimeState = Literal["stopped", "starting", "running", "stopping", "failed"]
-WorkflowRunState = Literal["created", "queued", "dispatching", "running", "succeeded", "failed", "cancelled", "timed_out"]
-WorkflowExecutionPolicyKind = Literal["preview-default", "runtime-default"]
+from backend.contracts.workflows.resource_semantics import (
+    WorkflowAppRuntimeState,
+    WorkflowExecutionPolicyKind,
+    WorkflowPreviewRunState,
+    WorkflowRunState,
+)
 
 
 @dataclass(frozen=True)

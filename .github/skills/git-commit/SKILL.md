@@ -142,7 +142,7 @@ git add -p
 scope 建议：
 
 - 优先使用仓库中真实存在的模块、目录或主题名
-- 文档改动可用 `architecture`、`deployment`、`plugins`、`api` 等
+- 文档改动可用 `architecture`、`deployment`、`node-pack`、`api` 等
 - 前端改动可用 `web-ui`、`frontend`
 - 后端改动可用 `backend-service`、`workers`、`models` 等
 - 如果没有稳定 scope，可省略 scope
@@ -221,7 +221,7 @@ EOF
 
 `docs: 重构与补全文档体系`
 
-本次提交系统整理了 docs 目录下的架构、数据、插件和部署文档，补充了文档分层、入口导航和推荐阅读路径，同时完善了 AGENTS.md、agent 配置与 git-commit Skill 约束，整体提升了文档体系的可维护性与可追溯性。
+本次提交系统整理了 docs 目录下的架构、数据、节点扩展和部署文档，补充了文档分层、入口导航和推荐阅读路径，同时完善了 AGENTS.md、agent 配置与 git-commit Skill 约束，整体提升了文档体系的可维护性与可追溯性。
 
 ### 自然摘要模式示例
 

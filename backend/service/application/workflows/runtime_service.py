@@ -9,6 +9,14 @@ from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 from backend.contracts.workflows.workflow_graph import FlowApplication, WorkflowGraphTemplate
+from backend.contracts.workflows.resource_semantics import (
+    WORKFLOW_PREVIEW_RUN_DEFAULT_RETENTION_HOURS,
+    WORKFLOW_PREVIEW_RUN_STATES,
+    WorkflowPreviewRunState,
+    build_workflow_app_runtime_snapshot_object_key,
+    build_workflow_preview_run_snapshot_object_key,
+    build_workflow_preview_run_storage_dir,
+)
 from backend.service.application.deployments import PublishedInferenceGateway
 from backend.service.application.errors import InvalidRequestError, OperationTimeoutError, ResourceNotFoundError, ServiceError
 from backend.service.application.local_buffers import LocalBufferBrokerEventChannel
@@ -217,16 +225,19 @@ class WorkflowRuntimeService:
             execution_policy_id=normalized_request.execution_policy_id,
         )
         application_id, application, template, source_kind = self._resolve_preview_source(normalized_request)
-        application_snapshot_object_key = (
-            f"workflows/runtime/preview-runs/{preview_run_id}/application.snapshot.json"
+        application_snapshot_object_key = build_workflow_preview_run_snapshot_object_key(
+            preview_run_id,
+            "application.snapshot.json",
         )
-        template_snapshot_object_key = (
-            f"workflows/runtime/preview-runs/{preview_run_id}/template.snapshot.json"
+        template_snapshot_object_key = build_workflow_preview_run_snapshot_object_key(
+            preview_run_id,
+            "template.snapshot.json",
         )
         execution_policy_snapshot_object_key = None
         if execution_policy is not None:
-            execution_policy_snapshot_object_key = (
-                f"workflows/runtime/preview-runs/{preview_run_id}/execution-policy.snapshot.json"
+            execution_policy_snapshot_object_key = build_workflow_preview_run_snapshot_object_key(
+                preview_run_id,
+                "execution-policy.snapshot.json",
             )
             self.dataset_storage.write_json(
                 execution_policy_snapshot_object_key,
@@ -266,7 +277,7 @@ class WorkflowRuntimeService:
             started_at=now,
             created_by=_normalize_optional_str(created_by),
             timeout_seconds=effective_timeout_seconds,
-            retention_until=_future_isoformat(hours=24),
+            retention_until=_future_isoformat(hours=WORKFLOW_PREVIEW_RUN_DEFAULT_RETENTION_HOURS),
             metadata=preview_metadata,
         )
         with self._open_unit_of_work() as unit_of_work:
@@ -358,7 +369,7 @@ class WorkflowRuntimeService:
         self,
         *,
         project_id: str,
-        state: str | None,
+        state: WorkflowPreviewRunState | None,
         created_from: str | None,
         created_to: str | None,
     ) -> tuple[WorkflowPreviewRun, ...]:
@@ -395,13 +406,7 @@ class WorkflowRuntimeService:
         """执行 preview run 列表查询和过滤。"""
 
         normalized_state = _normalize_optional_str(state)
-        if normalized_state is not None and normalized_state not in {
-            "created",
-            "running",
-            "succeeded",
-            "failed",
-            "timed_out",
-        }:
+        if normalized_state is not None and normalized_state not in WORKFLOW_PREVIEW_RUN_STATES:
             raise InvalidRequestError(
                 "preview run state 过滤条件无效",
                 details={"state": normalized_state},
@@ -445,7 +450,7 @@ class WorkflowRuntimeService:
         with self._open_unit_of_work() as unit_of_work:
             unit_of_work.workflow_runtime.delete_preview_run(preview_run.preview_run_id)
             unit_of_work.commit()
-        self.dataset_storage.delete_tree(f"workflows/runtime/preview-runs/{preview_run.preview_run_id}")
+        self.dataset_storage.delete_tree(build_workflow_preview_run_storage_dir(preview_run.preview_run_id))
 
     def create_workflow_app_runtime(
         self,
@@ -475,16 +480,19 @@ class WorkflowRuntimeService:
             template_version=application.template_ref.template_version,
         )
         workflow_runtime_id = f"workflow-runtime-{uuid4().hex}"
-        application_snapshot_object_key = (
-            f"workflows/runtime/app-runtimes/{workflow_runtime_id}/application.snapshot.json"
+        application_snapshot_object_key = build_workflow_app_runtime_snapshot_object_key(
+            workflow_runtime_id,
+            "application.snapshot.json",
         )
-        template_snapshot_object_key = (
-            f"workflows/runtime/app-runtimes/{workflow_runtime_id}/template.snapshot.json"
+        template_snapshot_object_key = build_workflow_app_runtime_snapshot_object_key(
+            workflow_runtime_id,
+            "template.snapshot.json",
         )
         execution_policy_snapshot_object_key = None
         if execution_policy is not None:
-            execution_policy_snapshot_object_key = (
-                f"workflows/runtime/app-runtimes/{workflow_runtime_id}/execution-policy.snapshot.json"
+            execution_policy_snapshot_object_key = build_workflow_app_runtime_snapshot_object_key(
+                workflow_runtime_id,
+                "execution-policy.snapshot.json",
             )
             self.dataset_storage.write_json(
                 execution_policy_snapshot_object_key,

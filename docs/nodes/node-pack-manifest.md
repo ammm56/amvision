@@ -134,7 +134,7 @@ D:/software/anaconda3/envs/amvision/python.exe -m custom_nodes.barcode_protocol_
 - entrypoints：后端注册入口或等价注册入口
 - compatibility：平台 API、运行时和依赖兼容范围
 - timeout：默认超时策略
-- enabledByDefault：默认启用策略
+- enabledByDefault：静态启用开关。当前阶段不再叠加独立启停状态；loader 读取 manifest 后如果该值为 false，就直接跳过 custom node catalog 加载和后续 handler 注册。
 
 ## 推荐字段
 

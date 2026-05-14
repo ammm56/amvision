@@ -6,6 +6,13 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from backend.contracts.workflows.resource_semantics import (
+    WorkflowAppRuntimeState,
+    WorkflowExecutionPolicyKind,
+    WorkflowPreviewRunState,
+    WorkflowRunState,
+)
+
 
 WORKFLOW_PREVIEW_RUN_FORMAT = "amvision.workflow-preview-run.v1"
 WORKFLOW_PREVIEW_RUN_SUMMARY_FORMAT = "amvision.workflow-preview-run-summary.v1"
@@ -44,7 +51,7 @@ class WorkflowPreviewRunContract(BaseModel):
     source_kind: str
     application_snapshot_object_key: str
     template_snapshot_object_key: str
-    state: str
+    state: WorkflowPreviewRunState
     created_at: str
     started_at: str | None = None
     finished_at: str | None = None
@@ -98,7 +105,7 @@ class WorkflowPreviewRunSummaryContract(BaseModel):
     project_id: str
     application_id: str
     source_kind: str
-    state: str
+    state: WorkflowPreviewRunState
     created_at: str
     started_at: str | None = None
     finished_at: str | None = None
@@ -185,8 +192,8 @@ class WorkflowRuntimeReferenceSummaryContract(BaseModel):
     project_id: str
     application_id: str
     display_name: str
-    desired_state: str
-    observed_state: str
+    desired_state: WorkflowAppRuntimeState
+    observed_state: WorkflowAppRuntimeState
     created_at: str
     updated_at: str
     created_by: str | None = None
@@ -219,8 +226,8 @@ class WorkflowAppRuntimeContract(BaseModel):
     application_snapshot_object_key: str
     template_snapshot_object_key: str
     execution_policy_snapshot_object_key: str | None = None
-    desired_state: str
-    observed_state: str
+    desired_state: WorkflowAppRuntimeState
+    observed_state: WorkflowAppRuntimeState
     request_timeout_seconds: int = 60
     created_at: str
     updated_at: str
@@ -261,7 +268,7 @@ class WorkflowAppRuntimeInstanceContract(BaseModel):
     format_id: Literal[WORKFLOW_APP_RUNTIME_INSTANCE_FORMAT] = WORKFLOW_APP_RUNTIME_INSTANCE_FORMAT
     instance_id: str
     workflow_runtime_id: str
-    state: str
+    state: WorkflowAppRuntimeState
     process_id: int | None = None
     current_run_id: str | None = None
     started_at: str | None = None
@@ -290,7 +297,7 @@ class WorkflowRunContract(BaseModel):
     workflow_runtime_id: str
     project_id: str
     application_id: str
-    state: str
+    state: WorkflowRunState
     created_at: str
     started_at: str | None = None
     finished_at: str | None = None
@@ -326,7 +333,7 @@ class WorkflowExecutionPolicyContract(BaseModel):
     execution_policy_id: str
     project_id: str
     display_name: str
-    policy_kind: str
+    policy_kind: WorkflowExecutionPolicyKind
     default_timeout_seconds: int = 30
     max_run_timeout_seconds: int = 30
     trace_level: str = "node-summary"

@@ -8,7 +8,7 @@
 
 - [docs/decisions/ADR-0001-modular-monolith-with-workers.md](ADR-0001-modular-monolith-with-workers.md)：固定模块化单体 + 独立 worker 的总体形态
 - [docs/decisions/ADR-0002-bundled-python-runtime.md](ADR-0002-bundled-python-runtime.md)：固定开发 conda / 发布 bundled Python 的运行时策略
-- [docs/decisions/ADR-0003-plugin-first-extension-model.md](ADR-0003-plugin-first-extension-model.md)：固定插件优先扩展和 ComfyUI 风格能力模型
+- [docs/decisions/ADR-0003-node-pack-extension-model.md](ADR-0003-node-pack-extension-model.md)：固定节点扩展优先和 ComfyUI 风格能力模型
 
 ## 适合存放的内容
 

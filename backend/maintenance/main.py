@@ -10,6 +10,10 @@ from typing import Any
 
 from backend.maintenance.bootstrap import BackendMaintenanceBootstrap, BackendMaintenanceRuntime
 from backend.maintenance.release_assembly import ReleaseAssemblyRequest, assemble_release
+from backend.contracts.workflows.resource_semantics import (
+    WORKFLOW_PREVIEW_RUN_CLEANUP_COMMAND,
+    build_workflow_preview_run_storage_dir,
+)
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
@@ -31,7 +35,7 @@ def build_argument_parser() -> argparse.ArgumentParser:
             "show-config",
             "validate-layout",
             "assemble-release",
-            "cleanup-preview-runs",
+            WORKFLOW_PREVIEW_RUN_CLEANUP_COMMAND,
         ),
         help="要执行的 maintenance 命令",
     )
@@ -140,12 +144,13 @@ def run_command(
             "release_manifest": str(result.release_manifest_path),
             "requirements_file": str(result.requirements_path),
             "python_dir": str(result.bundled_python_dir),
+            "bundled_python_mode": result.bundled_python_mode,
             "generated_root_launchers": [str(path) for path in result.generated_root_launchers],
             "worker_profiles": list(result.worker_profile_ids),
             "generated_worker_launchers": [str(path) for path in result.generated_worker_launchers],
             "placeholder_dirs": [str(path) for path in result.placeholder_dirs],
         }
-    if command == "cleanup-preview-runs":
+    if command == WORKFLOW_PREVIEW_RUN_CLEANUP_COMMAND:
         return cleanup_expired_preview_runs(
             backend_service_settings=backend_service_settings,
         )
@@ -180,12 +185,12 @@ def cleanup_expired_preview_runs(
 
     deleted_snapshot_dirs: list[str] = []
     for preview_run_id in deleted_preview_run_ids:
-        snapshot_dir = f"workflows/runtime/preview-runs/{preview_run_id}"
+        snapshot_dir = build_workflow_preview_run_storage_dir(preview_run_id)
         dataset_storage.delete_tree(snapshot_dir)
         deleted_snapshot_dirs.append(snapshot_dir)
 
     return {
-        "command": "cleanup-preview-runs",
+        "command": WORKFLOW_PREVIEW_RUN_CLEANUP_COMMAND,
         "cutoff_time": cutoff_time,
         "expired_count": len(deleted_preview_run_ids),
         "deleted_preview_run_ids": deleted_preview_run_ids,

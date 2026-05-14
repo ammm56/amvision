@@ -27,6 +27,8 @@ python -m backend.maintenance.main assemble-release --profile-id full --release-
 说明：
 
 - 如果 `release/full/python/` 已经存在，`assemble-release --force` 会保留这个目录及其中内容，不会在覆盖发布时删除它
+- 发布目录会复制 `custom_nodes/` 作为 workflow app 运行资源
+- 数据库文件、workflow templates/applications、预训练模型、数据集文件和其他开发数据不会随包复制；发布后的 `data/` 目录默认保持空目录
 - 其他由发布流程生成的目录和脚本仍会按当前代码重新生成
 
 ## 根目录一键启动
@@ -47,6 +49,7 @@ Linux 等价调用：
 
 - 同时启动 backend-service 和 full profile 中声明的全部 worker
 - 默认使用 `manifests/release-profiles/full.json` 决定要拉起的 worker profile
+- `custom_nodes/` 已随发布目录一起准备好，适合作为完整运行资源直接发出
 - 子进程日志写到 `logs/full-stack/`
 - 运行状态文件写到 `logs/full-stack/runtime-state.json`
 - 根脚本保持前台运行，按 `Ctrl+C` 时会停止全部子进程
@@ -93,4 +96,5 @@ Linux 等价调用：
 ## 边界说明
 
 - 一键启动是生产环境的默认入口，不再要求手工分开拉起 service 和 worker
+- 当前 full 发布目录包含代码、worker profile 和 custom_nodes，但不包含数据库内容、workflow 业务数据、预训练模型和开发期数据文件
 - 如果一键启动后需要定位单一进程故障，再回退到 `launchers/service/` 和 `launchers/worker/` 的分开启动方式

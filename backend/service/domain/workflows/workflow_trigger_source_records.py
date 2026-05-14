@@ -3,30 +3,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Literal
 
-
-WorkflowTriggerKind = Literal[
-    "plc-register",
-    "mqtt-topic",
-    "zeromq-topic",
-    "grpc-method",
-    "io-change",
-    "sensor-read",
-    "schedule",
-    "webhook",
-    "http-api",
-]
-WorkflowTriggerSubmitMode = Literal["sync", "async"]
-WorkflowTriggerRuntimeState = Literal[
-    "stopped", "starting", "running", "stopping", "failed"
-]
-WorkflowTriggerResultMode = Literal[
-    "sync-reply", "accepted-then-query", "async-report", "event-only"
-]
-WorkflowTriggerAckPolicy = Literal[
-    "ack-after-received", "ack-after-run-created", "ack-after-run-finished"
-]
+from backend.contracts.workflows.resource_semantics import (
+    WorkflowTriggerAckPolicy,
+    WorkflowTriggerKind,
+    WorkflowTriggerResultMode,
+    WorkflowTriggerRuntimeState,
+    WorkflowTriggerSubmitMode,
+)
 
 
 @dataclass(frozen=True)
