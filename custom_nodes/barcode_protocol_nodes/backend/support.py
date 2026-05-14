@@ -119,7 +119,7 @@ def load_image_matrix(
         source_object_key = image_payload.get("object_key")
         if isinstance(source_object_key, str) and source_object_key:
             error_details["object_key"] = source_object_key
-        raise ServiceConfigurationError(
+        raise InvalidRequestError(
             "Barcode 节点无法读取输入图片",
             details=error_details,
         )

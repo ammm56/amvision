@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Http;
 using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
@@ -13,7 +14,10 @@ var tests = new Action[]
     ErrorReplyRaisesTypedException,
     InvalidImageRequestIsRejected,
     EmptyReplyIsRejected,
-    TimeoutExceptionIsPropagated
+    TimeoutExceptionIsPropagated,
+    WorkflowRuntimeImageInvokeBuildsExpectedHttpRequest,
+    TriggerSourceHealthUsesExpectedHttpEndpoint,
+    WorkflowApiResponseParsesBackendErrorEnvelope
 };
 
 foreach (var test in tests)
@@ -192,6 +196,116 @@ static void TimeoutExceptionIsPropagated()
     AssertEqual("timeout", exception.ErrorCode);
 }
 
+// 验证 WorkflowAppRuntime image-base64 invoke 会构造正确的 HTTP 请求。
+static void WorkflowRuntimeImageInvokeBuildsExpectedHttpRequest()
+{
+    var handler = new FakeHttpMessageHandler(
+        HttpStatusCode.OK,
+        "{\"workflow_run_id\":\"workflow-run-http\",\"state\":\"failed\"}"
+    );
+    using var httpClient = new HttpClient(handler)
+    {
+        BaseAddress = new Uri("http://127.0.0.1:8000/")
+    };
+    using var client = new AmvisionWorkflowClient(
+        new AmvisionWorkflowClientOptions
+        {
+            BaseApiUrl = "http://127.0.0.1:8000",
+            PrincipalId = "user-1",
+            ProjectIds = "project-1",
+            Scopes = "workflows:read,workflows:write"
+        },
+        httpClient
+    );
+
+    var response = client.InvokeWorkflowAppRuntimeWithImageBase64Async(
+        "runtime-07",
+        new WorkflowRuntimeImageInvokeRequest
+        {
+            ImageBytes = new byte[] { 1, 2, 3 },
+            MediaType = "image/png",
+            TimeoutSeconds = 5,
+            ExecutionMetadata = { ["scenario"] = "opencv-process-save-image-zeromq" }
+        }).GetAwaiter().GetResult();
+
+    AssertEqual(HttpMethod.Post, handler.LastMethod);
+    AssertEqual("http://127.0.0.1:8000/api/v1/workflows/app-runtimes/runtime-07/invoke", handler.LastRequestUri?.ToString());
+    AssertEqual("user-1", handler.LastHeaders["x-amvision-principal-id"].Single());
+    AssertEqual("project-1", handler.LastHeaders["x-amvision-project-ids"].Single());
+    AssertEqual("workflows:read,workflows:write", handler.LastHeaders["x-amvision-scopes"].Single());
+    AssertEqual(HttpStatusCode.OK, response.StatusCode);
+    AssertEqual(true, response.IsSuccessStatusCode);
+
+    using var document = JsonDocument.Parse(handler.LastBody);
+    var root = document.RootElement;
+    AssertEqual("AQID", root.GetProperty("input_bindings").GetProperty("request_image_base64").GetProperty("image_base64").GetString());
+    AssertEqual("image/png", root.GetProperty("input_bindings").GetProperty("request_image_base64").GetProperty("media_type").GetString());
+    AssertEqual("opencv-process-save-image-zeromq", root.GetProperty("execution_metadata").GetProperty("scenario").GetString());
+    AssertEqual(5, root.GetProperty("timeout_seconds").GetInt32());
+}
+
+// 验证 TriggerSource health 控制面会命中预期路径。
+static void TriggerSourceHealthUsesExpectedHttpEndpoint()
+{
+    var handler = new FakeHttpMessageHandler(
+        HttpStatusCode.OK,
+        "{\"trigger_source_id\":\"zeromq-trigger-source-06\",\"adapter_running\":true}"
+    );
+    using var httpClient = new HttpClient(handler)
+    {
+        BaseAddress = new Uri("http://127.0.0.1:8000/")
+    };
+    using var client = new AmvisionWorkflowClient(
+        new AmvisionWorkflowClientOptions
+        {
+            BaseApiUrl = "http://127.0.0.1:8000",
+            PrincipalId = "user-1",
+            ProjectIds = "project-1",
+            Scopes = "workflows:read,workflows:write"
+        },
+        httpClient
+    );
+
+    var response = client.GetTriggerSourceHealthAsync("zeromq-trigger-source-06").GetAwaiter().GetResult();
+
+    AssertEqual(HttpMethod.Get, handler.LastMethod);
+    AssertEqual(
+        "http://127.0.0.1:8000/api/v1/workflows/trigger-sources/zeromq-trigger-source-06/health",
+        handler.LastRequestUri?.ToString());
+    AssertEqual(HttpStatusCode.OK, response.StatusCode);
+}
+
+// 验证 backend-service 错误 envelope 会被解析到 SDK HTTP 响应对象中。
+static void WorkflowApiResponseParsesBackendErrorEnvelope()
+{
+    var handler = new FakeHttpMessageHandler(
+        HttpStatusCode.BadRequest,
+        "{\"error\":{\"code\":\"invalid_request\",\"message\":\"bad request\",\"details\":{\"binding_id\":\"request_image_base64\"}}}"
+    );
+    using var httpClient = new HttpClient(handler)
+    {
+        BaseAddress = new Uri("http://127.0.0.1:8000/")
+    };
+    using var client = new AmvisionWorkflowClient(
+        new AmvisionWorkflowClientOptions
+        {
+            BaseApiUrl = "http://127.0.0.1:8000",
+            PrincipalId = "user-1",
+            ProjectIds = "project-1",
+            Scopes = "workflows:read,workflows:write"
+        },
+        httpClient
+    );
+
+    var response = client.GetWorkflowAppRuntimeHealthAsync("runtime-07").GetAwaiter().GetResult();
+
+    AssertEqual(HttpStatusCode.BadRequest, response.StatusCode);
+    AssertEqual(false, response.IsSuccessStatusCode);
+    AssertEqual("invalid_request", response.ErrorCode);
+    AssertEqual("bad request", response.ErrorMessage);
+    AssertEqual("request_image_base64", response.ErrorDetails["binding_id"].GetString());
+}
+
 // 断言两个值相等。
 static void AssertEqual<T>(T expected, T actual)
 {
@@ -272,5 +386,47 @@ internal sealed class TimeoutTransport : IZeroMqRequestTransport
     // 释放 timeout transport。
     public void Dispose()
     {
+    }
+}
+
+internal sealed class FakeHttpMessageHandler : HttpMessageHandler
+{
+    private readonly HttpStatusCode statusCode;
+    private readonly string responseContent;
+
+    // 初始化 fake HTTP handler。
+    public FakeHttpMessageHandler(HttpStatusCode statusCode, string responseContent)
+    {
+        this.statusCode = statusCode;
+        this.responseContent = responseContent;
+    }
+
+    public HttpMethod? LastMethod { get; private set; }
+
+    public Uri? LastRequestUri { get; private set; }
+
+    public string LastBody { get; private set; } = string.Empty;
+
+    public Dictionary<string, string[]> LastHeaders { get; } = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
+
+    // 记录最近一次 HTTP 请求并返回预设 JSON 响应。
+    protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+    {
+        _ = cancellationToken;
+        LastMethod = request.Method;
+        LastRequestUri = request.RequestUri;
+        LastHeaders.Clear();
+        foreach (var header in request.Headers)
+        {
+            LastHeaders[header.Key] = header.Value.ToArray();
+        }
+
+        LastBody = request.Content is null
+            ? string.Empty
+            : await request.Content.ReadAsStringAsync().ConfigureAwait(false);
+        return new HttpResponseMessage(statusCode)
+        {
+            Content = new StringContent(responseContent, Encoding.UTF8, "application/json")
+        };
     }
 }

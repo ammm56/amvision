@@ -9,6 +9,9 @@ C# / .NET SDK 用于设备上位机、MES、采集程序和调试工具通过 Ze
 - ZeroMQ 依赖：NetMQ
 - 支持单张图片 REQ/REP 调用
 - 支持 TriggerResult 和 ZeroMQ error reply 解析
+- 支持 Workflow 控制面 HTTP client：`start app runtime`、`stop app runtime`、`get app runtime health`、`invoke app runtime`、`get workflow run`、`enable trigger source`、`disable trigger source`、`get trigger source health`
+
+SDK 只负责第三方程序对已有 WorkflowAppRuntime 和 TriggerSource 的使用与控制，不负责 `Save Template`、`Save Application`、`Create Runtime` 这类创建面动作。
 
 `net461` 和 `net472` 用于 .NET Framework 上位机程序，`netstandard2.1` 用于 .NET Core 3.0+，`net10.0` 用于现代运行时。`net461` 目标使用 NetMQ 4.0.1.10 和 System.Text.Json 6.0.10，其余目标使用当前较新的 NetMQ/System.Text.Json 组合。
 
@@ -31,18 +34,20 @@ dotnet run --project sdks/dotnet/examples/TriggerSourceDebugWinForms/TriggerSour
 
 界面当前提供以下能力：
 
-- 配置 `endpoint`、`trigger_source_id`、`default_input_binding`、`image_path`、`media_type` 和 `deployment_instance_id`
-- 预览本次请求实际发送的 ZeroMQ envelope JSON
-- 执行真实 TriggerSource 调用，并显示 `state`、`workflow_run_id`、`event_id`
-- 直接查看 SDK `TriggerResult.ResponsePayload` 和 `metadata`
-- 如果 `TriggerResult.ResponsePayload` 返回 inline-base64 图片，会在界面中直接预览，并在 `Response Image` 页签下方提供原始 `image_base64` 文本和复制按钮
-- 根据 `workflow_run_id` 调用 REST `GET /api/v1/workflows/runs/{workflow_run_id}`，读取完整 WorkflowRun JSON
+- `06 Workflow App` 和 `07 Workflow App` 两个页签按不同 workflow app 分开，便于分别调试 06 与 07 的本地链路；页面分开只是为了清晰，不代表协议能力不同
+- 两个页签现在都保留同一组按钮：`start runtime`、`stop runtime`、`get runtime health`、`invoke app runtime (HTTP base64)`、`enable trigger source`、`disable trigger source`、`get trigger source health`、`invoke trigger source (ZeroMQ)`、`GET WorkflowRun`
+- `06 Workflow App` 页签默认对应 `06-yolox-deployment-infer-opencv-health-zeromq-image-ref`：既可预览 ZeroMQ envelope、执行真实 TriggerSource 调用，也可通过 SDK 调用 HTTP runtime invoke；HTTP 请求会自动带上 `request_image_base64` 和 `deployment_request.deployment_instance_id`
+- `07 Workflow App` 页签默认对应 `07-opencv-process-save-image-zeromq-image-ref`：既可通过 SDK 调用 HTTP runtime invoke，也可直接执行真实 ZeroMQ TriggerSource 调用；HTTP 默认使用 `request_image_base64`，TriggerSource 事件层默认使用 `request_image`
+- `07 Workflow App` 页签仍保留 `Request Override JSON`，用于复现缺字段、坏 base64、坏图片 bytes 等参数错误
+- 两个页签都会保留 Request JSON / Request Envelope、Invoke / Trigger Result、Runtime Health、TriggerSource Health、WorkflowRun 和响应图片摘要；当响应返回 inline-base64 图片时，也会显示预览和原始 `image_base64`
 
 ## 真实 backend-service 调试
 
 06/07 的 ZeroMQ 调试应使用 `docs/examples/workflows/*_zeromq.*.json` 中的双入口 workflow app。原始 04/05 JSON 仍保留给 HTTP base64 invoke 调试。
 
 服务侧准备顺序：保存 06/07 的 template 和 application，创建并启动 WorkflowAppRuntime，按 `docs/api/examples/workflows/06-yolox-deployment-infer-opencv-health-zeromq-image-ref/trigger-source.create.request.json` 或 `docs/api/examples/workflows/07-opencv-process-save-image-zeromq-image-ref/trigger-source.create.request.json` 创建 TriggerSource，调用 enable，并确认 health 中 `adapter_running=true`。如果 06 的 template 已升级到返回 `detections + annotated_image + health`，需要重新执行 Save Template、Save Application，并重新创建或重建对应的 WorkflowAppRuntime；旧 runtime 继续运行时，返回结果仍会停留在旧图合同。
+
+上面这组 `Save Template`、`Save Application`、`Create TriggerSource`、`Create WorkflowAppRuntime` 仍然属于项目控制面或前端准备动作，不属于 SDK 对外提供的能力范围。
 
 常见控制面错误：
 

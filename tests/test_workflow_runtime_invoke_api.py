@@ -10,6 +10,7 @@ from types import SimpleNamespace
 from fastapi.testclient import TestClient
 
 from backend.contracts.workflows.workflow_graph import FlowApplication, WorkflowGraphTemplate
+from backend.service.application.local_buffers import LocalBufferBrokerSettings
 from backend.service.api.app import create_app
 from backend.service.api.rest.v1.routes.workflow_runtime import _build_workflow_runtime_service
 from backend.service.application.workflows.workflow_service import LocalWorkflowJsonService
@@ -221,6 +222,7 @@ def test_workflow_app_runtime_invoke_api_invalid_image_base64_keeps_runtime_runn
     client, session_factory, dataset_storage = _create_runtime_api_client(
         tmp_path,
         database_name="workflow-runtime-invoke-invalid-base64.db",
+        enable_local_buffer_broker=False,
     )
     headers = build_test_headers(scopes="workflows:read,workflows:write")
     try:
@@ -285,6 +287,137 @@ def test_workflow_app_runtime_invoke_api_invalid_image_base64_keeps_runtime_runn
     second_start_payload = second_start_response.json()
     assert second_start_payload["observed_state"] == "running"
     assert second_start_payload["worker_process_id"] == health_payload["worker_process_id"]
+
+
+def test_workflow_app_runtime_invoke_api_invalid_image_content_keeps_runtime_running_for_dual_input_opencv_process_save_image(
+    tmp_path: Path,
+) -> None:
+    """验证 07 双输入 OpenCV app 遇到坏图片 bytes 时只会让当前 run 失败。"""
+
+    client, session_factory, dataset_storage = _create_runtime_api_client(
+        tmp_path,
+        database_name="workflow-runtime-invoke-invalid-image-content-opencv-zeromq.db",
+        enable_local_buffer_broker=False,
+    )
+    headers = build_test_headers(scopes="workflows:read,workflows:write")
+    try:
+        with client:
+            _save_example_documents(
+                client=client,
+                dataset_storage=dataset_storage,
+                example_name="opencv_process_save_image_zeromq",
+            )
+            workflow_runtime_id = _create_and_start_runtime(
+                client=client,
+                headers=headers,
+                application_id="opencv-process-save-image-zeromq-app",
+                display_name="OpenCV Process Save Image ZeroMQ Runtime",
+            )
+            invoke_response = client.post(
+                f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/invoke",
+                headers=headers,
+                json={
+                    "input_bindings": {
+                        "request_image_base64": _build_image_base64_payload(b"not-a-valid-image-content")
+                    },
+                    "execution_metadata": {
+                        "scenario": "opencv-process-save-image-zeromq-invalid-image-content",
+                        "trigger_source": "sync-api",
+                    },
+                },
+            )
+            health_response = client.get(
+                f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/health",
+                headers=headers,
+            )
+            stop_response = client.post(
+                f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/stop",
+                headers=headers,
+            )
+    finally:
+        session_factory.engine.dispose()
+
+    assert invoke_response.status_code == 200
+    assert health_response.status_code == 200
+    assert stop_response.status_code == 200
+
+    run_payload = invoke_response.json()
+    assert run_payload["state"] == "failed"
+    assert run_payload["error_message"] == "OpenCV 无法读取输入图片"
+    error_details = run_payload["metadata"]["error_details"]
+    assert error_details["error_code"] == "invalid_request"
+    assert error_details["node_id"] == "blur_image"
+    assert error_details["transport_kind"] == "memory"
+    assert error_details["media_type"] == "image/png"
+
+    health_payload = health_response.json()
+    assert health_payload["observed_state"] == "running"
+    assert health_payload["last_error"] is None
+
+
+def test_workflow_app_runtime_invoke_api_invalid_image_content_keeps_runtime_running_for_barcode_result_display(
+    tmp_path: Path,
+) -> None:
+    """验证 Barcode app 遇到坏图片 bytes 时只会让当前 run 失败。"""
+
+    client, session_factory, dataset_storage = _create_runtime_api_client(
+        tmp_path,
+        database_name="workflow-runtime-invoke-invalid-image-content-barcode.db",
+        enable_local_buffer_broker=False,
+    )
+    headers = build_test_headers(scopes="workflows:read,workflows:write")
+    try:
+        with client:
+            _save_example_documents(
+                client=client,
+                dataset_storage=dataset_storage,
+                example_name="barcode_result_display",
+            )
+            workflow_runtime_id = _create_and_start_runtime(
+                client=client,
+                headers=headers,
+                application_id="barcode-result-display-app",
+                display_name="Barcode Result Display Runtime",
+            )
+            invoke_response = client.post(
+                f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/invoke",
+                headers=headers,
+                json={
+                    "input_bindings": {
+                        "request_image": _build_image_base64_payload(b"not-a-valid-image-content")
+                    },
+                    "execution_metadata": {
+                        "scenario": "barcode-result-display-invalid-image-content",
+                        "trigger_source": "sync-api",
+                    },
+                },
+            )
+            health_response = client.get(
+                f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/health",
+                headers=headers,
+            )
+            stop_response = client.post(
+                f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/stop",
+                headers=headers,
+            )
+    finally:
+        session_factory.engine.dispose()
+
+    assert invoke_response.status_code == 200
+    assert health_response.status_code == 200
+    assert stop_response.status_code == 200
+
+    run_payload = invoke_response.json()
+    assert run_payload["state"] == "failed"
+    assert run_payload["error_message"] == "Barcode 节点无法读取输入图片"
+    error_details = run_payload["metadata"]["error_details"]
+    assert error_details["error_code"] == "invalid_request"
+    assert error_details["transport_kind"] == "memory"
+    assert error_details["media_type"] == "image/png"
+
+    health_payload = health_response.json()
+    assert health_payload["observed_state"] == "running"
+    assert health_payload["last_error"] is None
 
 
 def test_workflow_runtime_service_builder_reads_local_buffer_channel_only_when_requested(
@@ -381,6 +514,7 @@ def _create_runtime_api_client(
     tmp_path: Path,
     *,
     database_name: str,
+    enable_local_buffer_broker: bool = True,
 ) -> tuple[TestClient, object, object]:
     """创建加载仓库 custom_nodes 的 workflow runtime API 测试客户端。"""
 
@@ -395,6 +529,7 @@ def _create_runtime_api_client(
             dataset_storage=BackendServiceDatasetStorageConfig(root_dir=str(dataset_storage.root_dir)),
             queue=BackendServiceQueueConfig(root_dir=str(queue_backend.root_dir)),
             custom_nodes=BackendServiceCustomNodesConfig(root_dir=str(custom_nodes_root_dir)),
+            local_buffer_broker=LocalBufferBrokerSettings(enabled=enable_local_buffer_broker),
             task_manager=BackendServiceTaskManagerConfig(enabled=False),
         ),
         session_factory=session_factory,

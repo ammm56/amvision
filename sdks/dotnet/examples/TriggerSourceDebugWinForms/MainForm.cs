@@ -1,4 +1,3 @@
-using System.Net.Http;
 using System.Text.Json;
 using System.Windows.Forms;
 using Amvision.TriggerSources;
@@ -14,7 +13,9 @@ internal sealed class MainForm : Form
 
     private readonly TextBox endpointTextBox;
     private readonly TextBox triggerSourceIdTextBox;
+    private readonly TextBox workflowRuntimeIdTextBox;
     private readonly TextBox defaultInputBindingTextBox;
+    private readonly TextBox httpInputBindingTextBox;
     private readonly TextBox imagePathTextBox;
     private readonly TextBox mediaTypeTextBox;
     private readonly NumericUpDown timeoutSecondsInput;
@@ -30,10 +31,21 @@ internal sealed class MainForm : Form
     private readonly TextBox stateTextBox;
     private readonly TextBox workflowRunIdTextBox;
     private readonly TextBox resultEventIdTextBox;
+    private readonly Button startRuntimeButton;
+    private readonly Button fetchRuntimeHealthButton;
+    private readonly Button stopRuntimeButton;
+    private readonly Button fetchTriggerSourceHealthButton;
+    private readonly Button enableTriggerSourceButton;
+    private readonly Button disableTriggerSourceButton;
     private readonly Button invokeButton;
+    private readonly Button invokeRuntimeButton;
     private readonly Button fetchRunButton;
     private readonly RichTextBox envelopePreviewTextBox;
+    private readonly RichTextBox requestPreviewTextBox;
     private readonly RichTextBox triggerResultTextBox;
+    private readonly RichTextBox invokeResponseTextBox;
+    private readonly RichTextBox runtimeHealthTextBox;
+    private readonly RichTextBox triggerSourceHealthTextBox;
     private readonly RichTextBox workflowRunTextBox;
     private readonly RichTextBox responseImageInfoTextBox;
     private readonly RichTextBox responseImageBase64TextBox;
@@ -47,7 +59,7 @@ internal sealed class MainForm : Form
     /// </summary>
     public MainForm()
     {
-        Text = "Amvision TriggerSource Debug WinForms";
+        Text = "Amvision TriggerSource / Runtime Debug WinForms";
         Width = 1360;
         Height = 980;
         MinimumSize = new Size(1180, 820);
@@ -62,7 +74,9 @@ internal sealed class MainForm : Form
 
         endpointTextBox = CreateTextBox("tcp://127.0.0.1:5555");
         triggerSourceIdTextBox = CreateTextBox("zeromq-trigger-source-06");
+        workflowRuntimeIdTextBox = CreateTextBox(string.Empty);
         defaultInputBindingTextBox = CreateTextBox("request_image");
+        httpInputBindingTextBox = CreateTextBox("request_image_base64");
         imagePathTextBox = CreateTextBox("data/files/validation-inputs/image-1.jpg");
         mediaTypeTextBox = CreateTextBox("image/jpeg");
         timeoutSecondsInput = new NumericUpDown
@@ -88,6 +102,54 @@ internal sealed class MainForm : Form
         workflowRunIdTextBox = CreateReadOnlyTextBox();
         resultEventIdTextBox = CreateReadOnlyTextBox();
 
+        startRuntimeButton = new Button
+        {
+            Text = "启动 Runtime",
+            AutoSize = true,
+            Padding = new Padding(10, 6, 10, 6)
+        };
+        startRuntimeButton.Click += async (_, _) => await StartWorkflowAppRuntimeAsync();
+
+        fetchRuntimeHealthButton = new Button
+        {
+            Text = "读取 Runtime Health",
+            AutoSize = true,
+            Padding = new Padding(10, 6, 10, 6)
+        };
+        fetchRuntimeHealthButton.Click += async (_, _) => await FetchWorkflowAppRuntimeHealthAsync();
+
+        stopRuntimeButton = new Button
+        {
+            Text = "停止 Runtime",
+            AutoSize = true,
+            Padding = new Padding(10, 6, 10, 6)
+        };
+        stopRuntimeButton.Click += async (_, _) => await StopWorkflowAppRuntimeAsync();
+
+        fetchTriggerSourceHealthButton = new Button
+        {
+            Text = "读取 TriggerSource Health",
+            AutoSize = true,
+            Padding = new Padding(10, 6, 10, 6)
+        };
+        fetchTriggerSourceHealthButton.Click += async (_, _) => await FetchTriggerSourceHealthAsync();
+
+        enableTriggerSourceButton = new Button
+        {
+            Text = "启用 TriggerSource",
+            AutoSize = true,
+            Padding = new Padding(10, 6, 10, 6)
+        };
+        enableTriggerSourceButton.Click += async (_, _) => await EnableTriggerSourceAsync();
+
+        disableTriggerSourceButton = new Button
+        {
+            Text = "停用 TriggerSource",
+            AutoSize = true,
+            Padding = new Padding(10, 6, 10, 6)
+        };
+        disableTriggerSourceButton.Click += async (_, _) => await DisableTriggerSourceAsync();
+
         invokeButton = new Button
         {
             Text = "调用 TriggerSource",
@@ -95,6 +157,14 @@ internal sealed class MainForm : Form
             Padding = new Padding(10, 6, 10, 6)
         };
         invokeButton.Click += async (_, _) => await InvokeTriggerSourceAsync();
+
+        invokeRuntimeButton = new Button
+        {
+            Text = "调用 App Runtime",
+            AutoSize = true,
+            Padding = new Padding(10, 6, 10, 6)
+        };
+        invokeRuntimeButton.Click += async (_, _) => await InvokeWorkflowRuntimeAsync();
 
         fetchRunButton = new Button
         {
@@ -105,7 +175,11 @@ internal sealed class MainForm : Form
         fetchRunButton.Click += async (_, _) => await FetchWorkflowRunAsync();
 
         envelopePreviewTextBox = CreateOutputBox();
+        requestPreviewTextBox = CreateOutputBox();
         triggerResultTextBox = CreateOutputBox();
+        invokeResponseTextBox = CreateOutputBox();
+        runtimeHealthTextBox = CreateOutputBox();
+        triggerSourceHealthTextBox = CreateOutputBox();
         workflowRunTextBox = CreateOutputBox();
         responseImageInfoTextBox = CreateOutputBox();
         responseImageInfoTextBox.Height = 96;
@@ -144,6 +218,21 @@ internal sealed class MainForm : Form
     /// <returns>根容器。</returns>
     private Control BuildRootLayout()
     {
+        var tabControl = new TabControl
+        {
+            Dock = DockStyle.Fill
+        };
+        tabControl.TabPages.Add(CreateTabPage("06 Workflow App", BuildTriggerSourcePage()));
+        tabControl.TabPages.Add(CreateTabPage("07 Workflow App", new WorkflowRuntimeDebugPage()));
+        return tabControl;
+    }
+
+    /// <summary>
+    /// 构造 06 TriggerSource 调试页内容。
+    /// </summary>
+    /// <returns>06 调试页根容器。</returns>
+    private Control BuildTriggerSourcePage()
+    {
         var rootLayout = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
@@ -169,7 +258,7 @@ internal sealed class MainForm : Form
         var group = new GroupBox
         {
             Dock = DockStyle.Top,
-            Text = "TriggerSource 调试参数",
+            Text = "06 Workflow App 调试参数",
             Padding = new Padding(12),
             AutoSize = true,
             AutoSizeMode = AutoSizeMode.GrowAndShrink
@@ -181,7 +270,7 @@ internal sealed class MainForm : Form
             AutoSize = true,
             AutoSizeMode = AutoSizeMode.GrowAndShrink,
             ColumnCount = 4,
-            RowCount = 10,
+            RowCount = 11,
             Margin = new Padding(0)
         };
         layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 120F));
@@ -194,15 +283,16 @@ internal sealed class MainForm : Form
         }
 
         AddField(layout, 0, "Endpoint", endpointTextBox, "TriggerSource Id", triggerSourceIdTextBox);
-        AddField(layout, 1, "Default Input", defaultInputBindingTextBox, "Media Type", mediaTypeTextBox);
-        AddField(layout, 2, "Timeout(s)", timeoutSecondsInput, "Deployment Id", deploymentInstanceIdTextBox);
-        AddField(layout, 3, "Base API URL", baseApiUrlTextBox, "Principal Id", principalIdTextBox);
-        AddField(layout, 4, "Project Id", projectIdTextBox, "Scopes", scopesTextBox);
-        AddField(layout, 5, "Event Id", eventIdTextBox, "Trace Id", traceIdTextBox);
-        AddImagePathRow(layout, 6);
-        AddJsonRow(layout, 7, "Metadata JSON", metadataJsonTextBox);
-        AddJsonRow(layout, 8, "Payload JSON", payloadJsonTextBox);
-        AddActionRow(layout, 9);
+        AddField(layout, 1, "Workflow Runtime Id", workflowRuntimeIdTextBox, "Trigger Input", defaultInputBindingTextBox);
+        AddField(layout, 2, "HTTP Input", httpInputBindingTextBox, "Media Type", mediaTypeTextBox);
+        AddField(layout, 3, "Timeout(s)", timeoutSecondsInput, "Deployment Id", deploymentInstanceIdTextBox);
+        AddField(layout, 4, "Base API URL", baseApiUrlTextBox, "Principal Id", principalIdTextBox);
+        AddField(layout, 5, "Project Id", projectIdTextBox, "Scopes", scopesTextBox);
+        AddField(layout, 6, "Event Id", eventIdTextBox, "Trace Id", traceIdTextBox);
+        AddImagePathRow(layout, 7);
+        AddJsonRow(layout, 8, "Metadata JSON", metadataJsonTextBox);
+        AddJsonRow(layout, 9, "Payload JSON", payloadJsonTextBox);
+        AddActionRow(layout, 10);
 
         group.Controls.Add(layout);
         return group;
@@ -249,7 +339,11 @@ internal sealed class MainForm : Form
             Dock = DockStyle.Fill
         };
         tabControl.TabPages.Add(CreateTabPage("Request Envelope", envelopePreviewTextBox));
+        tabControl.TabPages.Add(CreateTabPage("Request JSON", requestPreviewTextBox));
         tabControl.TabPages.Add(CreateTabPage("Trigger Result", triggerResultTextBox));
+        tabControl.TabPages.Add(CreateTabPage("Invoke Response", invokeResponseTextBox));
+        tabControl.TabPages.Add(CreateTabPage("Runtime Health", runtimeHealthTextBox));
+        tabControl.TabPages.Add(CreateTabPage("TriggerSource Health", triggerSourceHealthTextBox));
         tabControl.TabPages.Add(CreateTabPage("Workflow Run", workflowRunTextBox));
         tabControl.TabPages.Add(CreateTabPage("Response Image", BuildResponseImageTab()));
 
@@ -357,6 +451,40 @@ internal sealed class MainForm : Form
     }
 
     /// <summary>
+    /// 通过 HTTP 调用 06 WorkflowAppRuntime。
+    /// </summary>
+    private async Task InvokeWorkflowRuntimeAsync()
+    {
+        SetBusy(true, "正在调用 App Runtime...");
+        workflowRunTextBox.Clear();
+        try
+        {
+            using var client = CreateWorkflowClient();
+            var request = BuildRuntimeInvokeRequest(out var requestSummary);
+            var requestJson = request.ToJson();
+            requestPreviewTextBox.Text = FormatJsonIfPossible(requestJson);
+
+            var response = await client.InvokeWorkflowAppRuntimeAsync(RequireWorkflowRuntimeId(), request);
+            invokeResponseTextBox.Text = FormatJsonIfPossible(response.Content);
+            ApplyRuntimeInvokeResponse(response, requestSummary);
+        }
+        catch (Exception exception)
+        {
+            stateTextBox.Text = "failed";
+            workflowRunIdTextBox.Text = string.Empty;
+            resultEventIdTextBox.Text = string.Empty;
+            invokeResponseTextBox.Text = exception.ToString();
+            ClearResponseImagePreview("App Runtime 调用失败，当前没有可显示的响应图片。");
+            statusLabel.Text = "App Runtime 调用失败。";
+            statusLabel.ForeColor = Color.Maroon;
+        }
+        finally
+        {
+            SetBusy(false);
+        }
+    }
+
+    /// <summary>
     /// 通过 REST 查询 WorkflowRun 详情。
     /// </summary>
     private async Task FetchWorkflowRunAsync()
@@ -372,22 +500,14 @@ internal sealed class MainForm : Form
         SetBusy(true, "正在读取 WorkflowRun...");
         try
         {
-            using var httpClient = new HttpClient();
-            using var request = new HttpRequestMessage(
-                HttpMethod.Get,
-                $"{baseApiUrlTextBox.Text.TrimEnd('/')}/api/v1/workflows/runs/{workflowRunId}"
-            );
-            request.Headers.TryAddWithoutValidation("x-amvision-principal-id", principalIdTextBox.Text.Trim());
-            request.Headers.TryAddWithoutValidation("x-amvision-project-ids", projectIdTextBox.Text.Trim());
-            request.Headers.TryAddWithoutValidation("x-amvision-scopes", scopesTextBox.Text.Trim());
-
-            using var response = await httpClient.SendAsync(request);
-            var content = await response.Content.ReadAsStringAsync();
+            using var client = CreateWorkflowClient();
+            var response = await client.GetWorkflowRunAsync(workflowRunId);
+            var content = response.Content;
             workflowRunTextBox.Text = FormatJsonIfPossible(content);
             TryApplyResponseImagePreviewFromWorkflowRun(content);
             statusLabel.Text = response.IsSuccessStatusCode
                 ? "WorkflowRun 读取成功。"
-                : $"WorkflowRun 读取失败：HTTP {(int)response.StatusCode}";
+                : BuildApiFailureMessage("WorkflowRun 读取失败", response);
             statusLabel.ForeColor = response.IsSuccessStatusCode ? Color.DarkGreen : Color.Maroon;
         }
         catch (Exception exception)
@@ -457,6 +577,52 @@ internal sealed class MainForm : Form
     }
 
     /// <summary>
+    /// 构造 06 WorkflowAppRuntime HTTP invoke 请求。
+    /// </summary>
+    /// <param name="requestSummary">请求摘要。</param>
+    /// <returns>SDK invoke 请求对象。</returns>
+    private WorkflowRuntimeInvokeRequest BuildRuntimeInvokeRequest(out string requestSummary)
+    {
+        var httpInputBinding = httpInputBindingTextBox.Text.Trim();
+        if (string.IsNullOrWhiteSpace(httpInputBinding))
+        {
+            throw new InvalidOperationException("HTTP Input 不能为空。\n");
+        }
+
+        var resolvedImagePath = ResolveImagePath(imagePathTextBox.Text.Trim());
+        var mediaType = ResolveMediaType(resolvedImagePath, mediaTypeTextBox.Text.Trim());
+        var request = new WorkflowRuntimeInvokeRequest
+        {
+            TimeoutSeconds = decimal.ToInt32(timeoutSecondsInput.Value)
+        };
+        request.InputBindings[httpInputBinding] = new Dictionary<string, object?>
+        {
+            ["image_base64"] = Convert.ToBase64String(File.ReadAllBytes(resolvedImagePath)),
+            ["media_type"] = mediaType
+        };
+
+        foreach (var pair in ParseJsonObject(metadataJsonTextBox.Text))
+        {
+            request.ExecutionMetadata[pair.Key] = pair.Value;
+        }
+
+        var deploymentInstanceId = deploymentInstanceIdTextBox.Text.Trim();
+        if (!string.IsNullOrWhiteSpace(deploymentInstanceId))
+        {
+            request.InputBindings["deployment_request"] = new Dictionary<string, object?>
+            {
+                ["value"] = new Dictionary<string, object?>
+                {
+                    ["deployment_instance_id"] = deploymentInstanceId
+                }
+            };
+        }
+
+        requestSummary = Path.GetFileName(resolvedImagePath);
+        return request;
+    }
+
+    /// <summary>
     /// 把成功结果写入界面。
     /// </summary>
     /// <param name="result">SDK 返回的 TriggerResult。</param>
@@ -477,6 +643,37 @@ internal sealed class MainForm : Form
             metadata = result.Metadata
         });
         TryApplyResponseImagePreviewFromTriggerResult(result);
+    }
+
+    /// <summary>
+    /// 把 HTTP runtime invoke 响应写回界面。
+    /// </summary>
+    /// <param name="response">SDK HTTP 响应。</param>
+    /// <param name="requestSummary">请求摘要。</param>
+    private void ApplyRuntimeInvokeResponse(AmvisionWorkflowApiResponse response, string requestSummary)
+    {
+        if (!response.IsSuccessStatusCode)
+        {
+            stateTextBox.Text = "http-error";
+            workflowRunIdTextBox.Text = string.Empty;
+            resultEventIdTextBox.Text = string.Empty;
+            ClearResponseImagePreview("Invoke 返回了 HTTP 错误，当前没有可显示的响应图片。\n可继续读取 Runtime Health 查看 runtime 是否仍保持 running。");
+            statusLabel.Text = BuildApiFailureMessage("App Runtime 调用失败", response);
+            statusLabel.ForeColor = Color.Maroon;
+            return;
+        }
+
+        using var document = JsonDocument.Parse(response.Content);
+        var root = document.RootElement;
+        stateTextBox.Text = TryReadStringProperty(root, "state");
+        workflowRunIdTextBox.Text = TryReadStringProperty(root, "workflow_run_id");
+        resultEventIdTextBox.Text = string.Empty;
+        ClearResponseImagePreview("当前响应未包含可直接预览的 inline-base64 图片。");
+        TryApplyResponseImagePreviewFromWorkflowRun(response.Content);
+        statusLabel.Text = $"App Runtime 调用完成：{requestSummary} -> {stateTextBox.Text}";
+        statusLabel.ForeColor = string.Equals(stateTextBox.Text, "failed", StringComparison.OrdinalIgnoreCase)
+            ? Color.DarkGoldenrod
+            : Color.DarkGreen;
     }
 
     /// <summary>
@@ -506,6 +703,120 @@ internal sealed class MainForm : Form
 
         statusLabel.Text = "调用失败，请检查 TriggerSource 响应和参数。";
         statusLabel.ForeColor = Color.Maroon;
+    }
+
+    /// <summary>
+    /// 启动当前 workflow runtime。
+    /// </summary>
+    private Task StartWorkflowAppRuntimeAsync()
+    {
+        return ExecuteWorkflowClientActionAsync(
+            outputBox: runtimeHealthTextBox,
+            busyMessage: "正在启动 WorkflowAppRuntime...",
+            successMessage: "WorkflowAppRuntime 已启动。",
+            action: client => client.StartWorkflowAppRuntimeAsync(RequireWorkflowRuntimeId())
+        );
+    }
+
+    /// <summary>
+    /// 停止当前 workflow runtime。
+    /// </summary>
+    private Task StopWorkflowAppRuntimeAsync()
+    {
+        return ExecuteWorkflowClientActionAsync(
+            outputBox: runtimeHealthTextBox,
+            busyMessage: "正在停止 WorkflowAppRuntime...",
+            successMessage: "WorkflowAppRuntime 已停止。",
+            action: client => client.StopWorkflowAppRuntimeAsync(RequireWorkflowRuntimeId())
+        );
+    }
+
+    /// <summary>
+    /// 读取当前 workflow runtime health。
+    /// </summary>
+    private Task FetchWorkflowAppRuntimeHealthAsync()
+    {
+        return ExecuteWorkflowClientActionAsync(
+            outputBox: runtimeHealthTextBox,
+            busyMessage: "正在读取 WorkflowAppRuntime Health...",
+            successMessage: "WorkflowAppRuntime Health 读取成功。",
+            action: client => client.GetWorkflowAppRuntimeHealthAsync(RequireWorkflowRuntimeId())
+        );
+    }
+
+    /// <summary>
+    /// 读取当前 trigger source health。
+    /// </summary>
+    private Task FetchTriggerSourceHealthAsync()
+    {
+        return ExecuteWorkflowClientActionAsync(
+            outputBox: triggerSourceHealthTextBox,
+            busyMessage: "正在读取 TriggerSource Health...",
+            successMessage: "TriggerSource Health 读取成功。",
+            action: client => client.GetTriggerSourceHealthAsync(RequireTriggerSourceId())
+        );
+    }
+
+    /// <summary>
+    /// 启用当前 trigger source。
+    /// </summary>
+    private Task EnableTriggerSourceAsync()
+    {
+        return ExecuteWorkflowClientActionAsync(
+            outputBox: triggerSourceHealthTextBox,
+            busyMessage: "正在启用 TriggerSource...",
+            successMessage: "TriggerSource 已启用。",
+            action: client => client.EnableTriggerSourceAsync(RequireTriggerSourceId())
+        );
+    }
+
+    /// <summary>
+    /// 停用当前 trigger source。
+    /// </summary>
+    private Task DisableTriggerSourceAsync()
+    {
+        return ExecuteWorkflowClientActionAsync(
+            outputBox: triggerSourceHealthTextBox,
+            busyMessage: "正在停用 TriggerSource...",
+            successMessage: "TriggerSource 已停用。",
+            action: client => client.DisableTriggerSourceAsync(RequireTriggerSourceId())
+        );
+    }
+
+    /// <summary>
+    /// 执行 Workflow SDK 控制面动作。
+    /// </summary>
+    /// <param name="outputBox">结果输出框。</param>
+    /// <param name="busyMessage">进行中提示。</param>
+    /// <param name="successMessage">成功提示。</param>
+    /// <param name="action">SDK 动作。</param>
+    private async Task ExecuteWorkflowClientActionAsync(
+        RichTextBox outputBox,
+        string busyMessage,
+        string successMessage,
+        Func<AmvisionWorkflowClient, Task<AmvisionWorkflowApiResponse>> action)
+    {
+        SetBusy(true, busyMessage);
+        try
+        {
+            using var client = CreateWorkflowClient();
+            var response = await action(client);
+            outputBox.Text = FormatJsonIfPossible(response.Content);
+            statusLabel.Text = response.IsSuccessStatusCode
+                ? successMessage
+                : BuildApiFailureMessage(successMessage.Replace("成功。", "失败"), response);
+            statusLabel.ForeColor = response.IsSuccessStatusCode ? Color.DarkGreen : Color.Maroon;
+        }
+        catch (Exception exception)
+        {
+            outputBox.Text = exception.ToString();
+            statusLabel.Text = busyMessage.Replace("正在", string.Empty).TrimEnd('.').TrimEnd('。') + "失败。";
+            statusLabel.ForeColor = Color.Maroon;
+        }
+        finally
+        {
+            SetBusy(false);
+        }
     }
 
     /// <summary>
@@ -885,7 +1196,14 @@ internal sealed class MainForm : Form
     private void SetBusy(bool busy, string? message = null)
     {
         UseWaitCursor = busy;
+        startRuntimeButton.Enabled = !busy;
+        fetchRuntimeHealthButton.Enabled = !busy;
+        stopRuntimeButton.Enabled = !busy;
+        fetchTriggerSourceHealthButton.Enabled = !busy;
+        enableTriggerSourceButton.Enabled = !busy;
+        disableTriggerSourceButton.Enabled = !busy;
         invokeButton.Enabled = !busy;
+        invokeRuntimeButton.Enabled = !busy;
         fetchRunButton.Enabled = !busy;
         if (!string.IsNullOrWhiteSpace(message))
         {
@@ -1032,6 +1350,16 @@ internal sealed class MainForm : Form
     }
 
     /// <summary>
+    /// 添加单字段整行输入。
+    /// </summary>
+    private static void AddSingleFieldRow(TableLayoutPanel layout, int rowIndex, string label, Control control)
+    {
+        layout.Controls.Add(CreateLabel(label), 0, rowIndex);
+        layout.Controls.Add(control, 1, rowIndex);
+        layout.SetColumnSpan(control, 3);
+    }
+
+    /// <summary>
     /// 添加操作按钮和提示。
     /// </summary>
     private void AddActionRow(TableLayoutPanel layout, int rowIndex)
@@ -1040,18 +1368,25 @@ internal sealed class MainForm : Form
         {
             Dock = DockStyle.Fill,
             AutoSize = true,
-            WrapContents = false,
+            WrapContents = true,
             FlowDirection = FlowDirection.LeftToRight,
             Margin = new Padding(0)
         };
+        actionsPanel.Controls.Add(startRuntimeButton);
+        actionsPanel.Controls.Add(fetchRuntimeHealthButton);
+        actionsPanel.Controls.Add(stopRuntimeButton);
+        actionsPanel.Controls.Add(fetchTriggerSourceHealthButton);
+        actionsPanel.Controls.Add(enableTriggerSourceButton);
+        actionsPanel.Controls.Add(disableTriggerSourceButton);
         actionsPanel.Controls.Add(invokeButton);
+        actionsPanel.Controls.Add(invokeRuntimeButton);
         actionsPanel.Controls.Add(fetchRunButton);
 
         var helperLabel = new Label
         {
             AutoSize = true,
             Padding = new Padding(16, 10, 0, 0),
-            Text = "Trigger Result 会直接展示 response_payload；需要完整 outputs 时再点“读取 WorkflowRun”。"
+            Text = "06 页保留和 07 相同的控制按钮：runtime start/stop/health、HTTP invoke、trigger source enable/disable/health、ZeroMQ invoke 和 WorkflowRun 读取。"
         };
         actionsPanel.Controls.Add(helperLabel);
 
@@ -1171,6 +1506,73 @@ internal sealed class MainForm : Form
     private static string ResolveMediaType(string imagePath, string mediaType)
     {
         return string.IsNullOrWhiteSpace(mediaType) ? GuessMediaType(imagePath) : mediaType;
+    }
+
+    /// <summary>
+    /// 创建当前页面使用的 Workflow 控制面 SDK client。
+    /// </summary>
+    /// <returns>SDK client。</returns>
+    private AmvisionWorkflowClient CreateWorkflowClient()
+    {
+        return new AmvisionWorkflowClient(new AmvisionWorkflowClientOptions
+        {
+            BaseApiUrl = baseApiUrlTextBox.Text.Trim(),
+            PrincipalId = principalIdTextBox.Text.Trim(),
+            ProjectIds = projectIdTextBox.Text.Trim(),
+            Scopes = scopesTextBox.Text.Trim(),
+            Timeout = TimeSpan.FromSeconds(decimal.ToDouble(timeoutSecondsInput.Value))
+        });
+    }
+
+    /// <summary>
+    /// 获取必填 workflow runtime id。
+    /// </summary>
+    /// <returns>workflow runtime id。</returns>
+    private string RequireWorkflowRuntimeId()
+    {
+        var workflowRuntimeId = workflowRuntimeIdTextBox.Text.Trim();
+        if (string.IsNullOrWhiteSpace(workflowRuntimeId))
+        {
+            throw new InvalidOperationException("Workflow Runtime Id 不能为空。\n");
+        }
+
+        return workflowRuntimeId;
+    }
+
+    /// <summary>
+    /// 获取必填 trigger source id。
+    /// </summary>
+    /// <returns>trigger source id。</returns>
+    private string RequireTriggerSourceId()
+    {
+        var triggerSourceId = triggerSourceIdTextBox.Text.Trim();
+        if (string.IsNullOrWhiteSpace(triggerSourceId))
+        {
+            throw new InvalidOperationException("TriggerSource Id 不能为空。\n");
+        }
+
+        return triggerSourceId;
+    }
+
+    /// <summary>
+    /// 构造统一的 SDK HTTP 失败提示。
+    /// </summary>
+    /// <param name="prefix">提示前缀。</param>
+    /// <param name="response">HTTP 响应。</param>
+    /// <returns>状态栏提示。</returns>
+    private static string BuildApiFailureMessage(string prefix, AmvisionWorkflowApiResponse response)
+    {
+        var errorText = response.ErrorCode ?? string.Empty;
+        if (!string.IsNullOrWhiteSpace(response.ErrorMessage))
+        {
+            errorText = string.IsNullOrWhiteSpace(errorText)
+                ? response.ErrorMessage
+                : $"{errorText} {response.ErrorMessage}";
+        }
+
+        return string.IsNullOrWhiteSpace(errorText)
+            ? $"{prefix}：HTTP {(int)response.StatusCode}"
+            : $"{prefix}：HTTP {(int)response.StatusCode} {errorText}";
     }
 
     /// <summary>
