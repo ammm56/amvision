@@ -179,6 +179,50 @@ def decode_barcodes(
     return payload
 
 
+def require_image_refs_payload(payload: object) -> dict[str, object]:
+    """校验并规范化 image-refs payload。
+
+    参数：
+    - payload：待校验的图片集合 payload。
+
+    返回：
+    - dict[str, object]：规范化后的图片集合 payload。
+    """
+
+    if not isinstance(payload, dict):
+        raise InvalidRequestError("barcode 节点要求 image-refs payload 必须是对象")
+    raw_items = payload.get("items")
+    if not isinstance(raw_items, list):
+        raise InvalidRequestError("barcode 节点要求 image-refs.items 必须是数组")
+
+    normalized_items: list[dict[str, object]] = []
+    for item in raw_items:
+        normalized_item = require_image_payload(item)
+        if isinstance(item, dict):
+            raw_bbox = item.get("bbox_xyxy")
+            if isinstance(raw_bbox, list) and len(raw_bbox) == 4:
+                normalized_item["bbox_xyxy"] = [int(value) for value in raw_bbox]
+            crop_index = item.get("crop_index")
+            if isinstance(crop_index, (int, float)):
+                normalized_item["crop_index"] = int(crop_index)
+        normalized_items.append(normalized_item)
+
+    normalized_payload = dict(payload)
+    normalized_payload["items"] = normalized_items
+    normalized_payload["count"] = int(payload.get("count", len(normalized_items)))
+    source_image = payload.get("source_image")
+    if isinstance(source_image, dict):
+        normalized_payload["source_image"] = require_image_payload(source_image)
+    resolved_source_object_key = normalized_payload.get("source_object_key")
+    if not isinstance(resolved_source_object_key, str) or not resolved_source_object_key:
+        normalized_source_image = normalized_payload.get("source_image")
+        if isinstance(normalized_source_image, dict):
+            source_object_key = normalized_source_image.get("object_key")
+            if isinstance(source_object_key, str) and source_object_key:
+                normalized_payload["source_object_key"] = source_object_key
+    return normalized_payload
+
+
 def require_barcode_results_payload(payload: object) -> dict[str, object]:
     """校验并规范化 barcode-results payload。"""
 

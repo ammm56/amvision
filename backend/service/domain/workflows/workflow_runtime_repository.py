@@ -40,6 +40,16 @@ class WorkflowRuntimeRepository(Protocol):
 
         ...
 
+    def list_preview_runs(self, project_id: str) -> tuple[WorkflowPreviewRun, ...]:
+        """按 Project id 列出 WorkflowPreviewRun。"""
+
+        ...
+
+    def delete_preview_run(self, preview_run_id: str) -> None:
+        """按 id 删除一个 WorkflowPreviewRun。"""
+
+        ...
+
     def save_workflow_app_runtime(self, workflow_app_runtime: WorkflowAppRuntime) -> None:
         """保存一个 WorkflowAppRuntime。"""
 

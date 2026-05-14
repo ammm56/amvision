@@ -179,6 +179,7 @@ repo/
 - runtimes：开发和发布时要用到的运行时
 - custom_nodes：可插拔节点扩展，不放平台主干逻辑
 - custom_nodes 是场景化能力、硬件桥接、协议适配和模块连接的主扩展平面
+- custom_nodes 允许 pack 间依赖，但简单节点优先 pack 内自给；复杂节点需要复用成熟能力时，再建立显式 pack 依赖
 - packaging：发行包装配，不放业务逻辑
 - docs：说明和设计文档
 - tests：边界和交互验证
@@ -190,6 +191,7 @@ repo/
 - contracts：放共用的 schema、事件、数据集格式、文件规则、节点和集成规则
 - adapters：接数据库、对象存储、队列、缓存和协议通信
 - custom_nodes 以 node pack 为最小分发单元，内部可按节点、协议、桥接和结果处理能力组织
+- custom_nodes 内部优先把简单 helper 和节点共享逻辑收敛到当前 pack，本地解决；确需跨 pack 复用时，依赖关系要显式记录，不通过隐式顶层 import 扩散
 
 ### backend/service 内部层级
 

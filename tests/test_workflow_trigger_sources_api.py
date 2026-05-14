@@ -103,6 +103,9 @@ def test_workflow_trigger_source_api_manages_first_phase_resource(
     assert create_payload["trigger_source_id"] == "trigger-source-1"
     assert create_payload["enabled"] is False
     assert create_payload["observed_state"] == "stopped"
+    assert create_payload["updated_by"] == "user-1"
+    assert create_payload["runtime_summary"]["workflow_runtime_id"] == "workflow-runtime-1"
+    assert create_payload["application_summary"] is None
 
     assert list_response.status_code == 200
     assert len(list_response.json()) == 1
@@ -118,10 +121,12 @@ def test_workflow_trigger_source_api_manages_first_phase_resource(
     assert enable_response.status_code == 200
     assert enable_response.json()["enabled"] is True
     assert enable_response.json()["desired_state"] == "running"
+    assert enable_response.json()["updated_by"] == "user-1"
 
     assert disable_response.status_code == 200
     assert disable_response.json()["enabled"] is False
     assert disable_response.json()["desired_state"] == "stopped"
+    assert disable_response.json()["updated_by"] == "user-1"
 
     assert delete_response.status_code == 204
 
@@ -210,6 +215,7 @@ def test_workflow_trigger_source_api_controls_zeromq_adapter(
     enable_payload = enable_response.json()
     assert enable_payload["enabled"] is True
     assert enable_payload["observed_state"] == "running"
+    assert enable_payload["updated_by"] == "user-1"
     assert enable_payload["health_summary"]["adapter_configured"] is True
     assert enable_payload["health_summary"]["adapter_running"] is True
 

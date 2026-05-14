@@ -20,27 +20,96 @@
 
 ## manifest 最小结构
 
-```yaml
-id: nodes.example.name
-version: 1.0.0
-displayName: Example Node Pack
-category: custom-node-pack
-capabilities:
-  - pipeline.node
-  - result.postprocess
-permissionScopes:
-  - task.read
-  - task.result.write
-entrypoints:
-  backend: custom_nodes.example_nodes.backend.entry:register
-compatibility:
-  api: ">=1.0 <2.0"
-  runtime: ">=3.12"
-timeout:
-  defaultSeconds: 30
-enabledByDefault: false
-customNodeCatalogPath: workflow/catalog.json
+```json
+{
+  "format_id": "amvision.node-pack-manifest.v1",
+  "id": "example.simple-nodes",
+  "version": "0.1.0",
+  "displayName": "Example Simple Nodes",
+  "description": "提供一组简单的示例节点。",
+  "category": "custom-node-pack",
+  "capabilities": [
+    "pipeline.node"
+  ],
+  "permissionScopes": [],
+  "entrypoints": {
+    "backend": "custom_nodes.example_simple_nodes.backend.entry:register"
+  },
+  "compatibility": {
+    "api": ">=0.1 <1.0",
+    "runtime": ">=3.12"
+  },
+  "timeout": {
+    "defaultSeconds": 30
+  },
+  "enabledByDefault": true,
+  "customNodeCatalogPath": "workflow/catalog.json"
+}
 ```
+
+上面的模板适合没有 pack 间依赖的简单节点包，后续新增简单节点时可以直接复制后改 `id`、`displayName`、`entrypoints` 和 `capabilities`。
+
+可直接复制的示例文件：
+
+- [docs/nodes/examples/example.simple-node-pack.manifest.json](examples/example.simple-node-pack.manifest.json)
+- [custom_nodes/_scaffold/simple_node_pack/manifest.template.json](../../custom_nodes/_scaffold/simple_node_pack/manifest.template.json)
+- [custom_nodes/hello_world_nodes/manifest.json](../../custom_nodes/hello_world_nodes/manifest.json)
+
+## manifest 依赖模板
+
+```json
+{
+  "format_id": "amvision.node-pack-manifest.v1",
+  "id": "example.advanced-nodes",
+  "version": "0.1.0",
+  "displayName": "Example Advanced Nodes",
+  "description": "复用其他 node pack 能力的复杂示例节点包。",
+  "category": "custom-node-pack",
+  "capabilities": [
+    "pipeline.node",
+    "result.postprocess"
+  ],
+  "dependencies": [
+    {
+      "nodePackId": "opencv.basic-nodes",
+      "versionRange": ">=0.1.0 <1.0"
+    }
+  ],
+  "permissionScopes": [
+    "objectstore.read.ref",
+    "objectstore.write.ref"
+  ],
+  "entrypoints": {
+    "backend": "custom_nodes.example_advanced_nodes.backend.entry:register"
+  },
+  "compatibility": {
+    "api": ">=0.1 <1.0",
+    "runtime": ">=3.12"
+  },
+  "timeout": {
+    "defaultSeconds": 30
+  },
+  "enabledByDefault": false,
+  "customNodeCatalogPath": "workflow/catalog.json",
+  "metadata": {
+    "dependencyNotes": [
+      "复用 opencv.basic-nodes 中已经稳定的复杂图像处理能力"
+    ]
+  }
+}
+```
+
+依赖模板适合复杂节点包、组合节点包或桥接节点包。当前实现里 `dependencies` 是正式 manifest 字段，`metadata` 里的说明只是补充信息，不参与 loader 校验。
+
+基于现有复杂示例 pack 的案例文件：
+
+- [docs/nodes/examples/barcode.protocol-nodes.manifest.dependency-example.json](examples/barcode.protocol-nodes.manifest.dependency-example.json)
+- [custom_nodes/_scaffold/dependent_node_pack/manifest.template.json](../../custom_nodes/_scaffold/dependent_node_pack/manifest.template.json)
+- [custom_nodes/barcode_display_nodes/manifest.json](../../custom_nodes/barcode_display_nodes/manifest.json)
+
+这个案例文件使用现有 `barcode.protocol-nodes` 的真实 pack id、entrypoint 和 capability 形状，演示当复杂条码节点链需要复用 `opencv.basic-nodes` 时，应如何把 pack 级依赖显式写进 manifest。它是文档案例，不直接替代当前仓库运行时使用的 `custom_nodes/barcode_protocol_nodes/manifest.json`。
+
+当前仓库还提供了真正可复制的初始化模板目录 [custom_nodes/_scaffold](../../custom_nodes/_scaffold/README.md)，以及一个已经落地的复杂依赖 pack [custom_nodes/barcode_display_nodes/manifest.json](../../custom_nodes/barcode_display_nodes/manifest.json)。前者适合新 pack 起步，后者适合参考真实的 `dependencies` 写法和 entrypoint 组织方式。
 
 customNodeCatalogPath 指向 node pack 对外暴露的最终目录文件。对于采用碎片化维护的节点包，推荐把源文件放在 workflow/catalog_sources/ 下，再由生成步骤手动汇总成这个 catalog.json。当前 barcode.protocol-nodes 已采用这种方式，开发阶段通过以下命令手动回写目录文件：
 
@@ -61,6 +130,7 @@ D:/software/anaconda3/envs/amvision/python.exe -m custom_nodes.barcode_protocol_
 - version：node pack 版本
 - category：节点包主类别
 - capabilities：能力声明列表
+- dependencies：对其他 node pack 的正式依赖声明；没有依赖时可省略
 - entrypoints：后端注册入口或等价注册入口
 - compatibility：平台 API、运行时和依赖兼容范围
 - timeout：默认超时策略
@@ -142,9 +212,12 @@ D:/software/anaconda3/envs/amvision/python.exe -m custom_nodes.barcode_protocol_
 
 ## 依赖声明
 
-- externalDependencies：系统级依赖、厂商运行时、网络端点或本地服务依赖
-- nodeDependencies：对其他节点能力或 node pack 的依赖
-- assetRequirements：所需模型、字典、配置模板或前端资源
+- `dependencies`：对其他 node pack 的正式依赖声明，字段为 `nodePackId` 和可选 `versionRange`
+- `versionRange` 采用和 `compatibility` 一样的版本范围写法，例如 `>=0.1.0 <1.0` 或 `==0.1.0`
+- 简单节点包没有 pack 间依赖时，不需要写 `dependencies`
+- 复杂节点包复用其他 pack 的成熟能力时，应把依赖写进 `dependencies`，不要只留在顶层 import 或零散说明里
+- 当前 loader 会在节点包进入启用集之前检查 `dependencies` 是否存在、是否启用、版本是否满足要求
+- 系统级依赖、厂商 runtime、本地服务地址或额外资源文件，不属于 `dependencies`；这类前置条件应继续写在文档、metadata 或后续专用字段里
 
 ## timeout 和生命周期管理
 

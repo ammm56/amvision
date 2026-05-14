@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query, Request, status
+from fastapi import APIRouter, Depends, Query, Request, Response, status
 from pydantic import BaseModel, Field
 from starlette.datastructures import UploadFile
 
@@ -16,11 +16,12 @@ from backend.contracts.workflows import (
     WorkflowExecutionPolicyContract,
     WorkflowGraphTemplate,
     WorkflowPreviewRunContract,
+    WorkflowPreviewRunSummaryContract,
     WorkflowRunContract,
 )
 from backend.nodes.node_catalog_registry import NodeCatalogRegistry
 from backend.service.api.deps.auth import AuthenticatedPrincipal, require_scopes
-from backend.service.application.errors import InvalidRequestError, PermissionDeniedError, ServiceConfigurationError
+from backend.service.application.errors import InvalidRequestError, PermissionDeniedError, ResourceNotFoundError, ServiceConfigurationError
 from backend.service.application.deployments import PublishedInferenceGateway
 from backend.service.application.local_buffers import LocalBufferBrokerEventChannel, LocalBufferBrokerProcessSupervisor
 from backend.service.application.workflows.runtime_service import (
@@ -209,6 +210,30 @@ def create_workflow_preview_run(
 
 
 @workflow_runtime_router.get(
+    "/preview-runs",
+    response_model=list[WorkflowPreviewRunSummaryContract],
+)
+def list_workflow_preview_runs(
+    project_id: Annotated[str, Query(description="所属 Project id")],
+    request: Request,
+    principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("workflows:read"))],
+    state: Annotated[str | None, Query(description="按 preview run 状态过滤")] = None,
+    created_from: Annotated[str | None, Query(description="按 created_at 下界过滤，ISO8601")]= None,
+    created_to: Annotated[str | None, Query(description="按 created_at 上界过滤，ISO8601")] = None,
+) -> list[WorkflowPreviewRunSummaryContract]:
+    """按 Project id、状态和创建时间范围列出 WorkflowPreviewRun 摘要。"""
+
+    _ensure_project_visible(principal=principal, project_id=project_id)
+    preview_runs = _build_workflow_runtime_service(request).list_preview_runs_filtered(
+        project_id=project_id,
+        state=state,
+        created_from=created_from,
+        created_to=created_to,
+    )
+    return [_build_preview_run_summary_contract(item) for item in preview_runs]
+
+
+@workflow_runtime_router.get(
     "/preview-runs/{preview_run_id}",
     response_model=WorkflowPreviewRunContract,
 )
@@ -222,6 +247,23 @@ def get_workflow_preview_run(
     preview_run = _build_workflow_runtime_service(request).get_preview_run(preview_run_id)
     _ensure_project_visible(principal=principal, project_id=preview_run.project_id)
     return _build_preview_run_contract(preview_run)
+
+
+@workflow_runtime_router.delete(
+    "/preview-runs/{preview_run_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def delete_workflow_preview_run(
+    preview_run_id: str,
+    request: Request,
+    principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("workflows:write"))],
+) -> Response:
+    """删除一条 WorkflowPreviewRun 及其 snapshot 目录。"""
+
+    preview_run = _build_workflow_runtime_service(request).get_preview_run(preview_run_id)
+    _ensure_project_visible(principal=principal, project_id=preview_run.project_id)
+    _build_workflow_runtime_service(request).delete_preview_run(preview_run_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @workflow_runtime_router.post(
@@ -248,7 +290,10 @@ def create_workflow_app_runtime(
         ),
         created_by=principal.principal_id,
     )
-    return _build_workflow_app_runtime_contract(workflow_app_runtime)
+    return _build_workflow_app_runtime_contract(
+        workflow_app_runtime,
+        workflow_service=_build_workflow_json_service_from_request(request),
+    )
 
 
 @workflow_runtime_router.get(
@@ -264,7 +309,11 @@ def list_workflow_app_runtimes(
 
     _ensure_project_visible(principal=principal, project_id=project_id)
     runtimes = _build_workflow_runtime_service(request).list_workflow_app_runtimes(project_id=project_id)
-    return [_build_workflow_app_runtime_contract(item) for item in runtimes]
+    workflow_service = _build_workflow_json_service_from_request(request)
+    return [
+        _build_workflow_app_runtime_contract(item, workflow_service=workflow_service)
+        for item in runtimes
+    ]
 
 
 @workflow_runtime_router.get(
@@ -280,7 +329,10 @@ def get_workflow_app_runtime(
 
     workflow_app_runtime = _build_workflow_runtime_service(request).get_workflow_app_runtime(workflow_runtime_id)
     _ensure_project_visible(principal=principal, project_id=workflow_app_runtime.project_id)
-    return _build_workflow_app_runtime_contract(workflow_app_runtime)
+    return _build_workflow_app_runtime_contract(
+        workflow_app_runtime,
+        workflow_service=_build_workflow_json_service_from_request(request),
+    )
 
 
 @workflow_runtime_router.post(
@@ -296,8 +348,14 @@ def start_workflow_app_runtime(
 
     workflow_app_runtime = _build_workflow_runtime_service(request).get_workflow_app_runtime(workflow_runtime_id)
     _ensure_project_visible(principal=principal, project_id=workflow_app_runtime.project_id)
-    updated_runtime = _build_workflow_runtime_service(request).start_workflow_app_runtime(workflow_runtime_id)
-    return _build_workflow_app_runtime_contract(updated_runtime)
+    updated_runtime = _build_workflow_runtime_service(request).start_workflow_app_runtime(
+        workflow_runtime_id,
+        updated_by=principal.principal_id,
+    )
+    return _build_workflow_app_runtime_contract(
+        updated_runtime,
+        workflow_service=_build_workflow_json_service_from_request(request),
+    )
 
 
 @workflow_runtime_router.post(
@@ -313,8 +371,14 @@ def stop_workflow_app_runtime(
 
     workflow_app_runtime = _build_workflow_runtime_service(request).get_workflow_app_runtime(workflow_runtime_id)
     _ensure_project_visible(principal=principal, project_id=workflow_app_runtime.project_id)
-    updated_runtime = _build_workflow_runtime_service(request).stop_workflow_app_runtime(workflow_runtime_id)
-    return _build_workflow_app_runtime_contract(updated_runtime)
+    updated_runtime = _build_workflow_runtime_service(request).stop_workflow_app_runtime(
+        workflow_runtime_id,
+        updated_by=principal.principal_id,
+    )
+    return _build_workflow_app_runtime_contract(
+        updated_runtime,
+        workflow_service=_build_workflow_json_service_from_request(request),
+    )
 
 
 @workflow_runtime_router.post(
@@ -330,8 +394,14 @@ def restart_workflow_app_runtime(
 
     workflow_app_runtime = _build_workflow_runtime_service(request).get_workflow_app_runtime(workflow_runtime_id)
     _ensure_project_visible(principal=principal, project_id=workflow_app_runtime.project_id)
-    updated_runtime = _build_workflow_runtime_service(request).restart_workflow_app_runtime(workflow_runtime_id)
-    return _build_workflow_app_runtime_contract(updated_runtime)
+    updated_runtime = _build_workflow_runtime_service(request).restart_workflow_app_runtime(
+        workflow_runtime_id,
+        updated_by=principal.principal_id,
+    )
+    return _build_workflow_app_runtime_contract(
+        updated_runtime,
+        workflow_service=_build_workflow_json_service_from_request(request),
+    )
 
 
 @workflow_runtime_router.get(
@@ -348,7 +418,10 @@ def get_workflow_app_runtime_health(
     workflow_app_runtime = _build_workflow_runtime_service(request).get_workflow_app_runtime(workflow_runtime_id)
     _ensure_project_visible(principal=principal, project_id=workflow_app_runtime.project_id)
     updated_runtime = _build_workflow_runtime_service(request).get_workflow_app_runtime_health(workflow_runtime_id)
-    return _build_workflow_app_runtime_contract(updated_runtime)
+    return _build_workflow_app_runtime_contract(
+        updated_runtime,
+        workflow_service=_build_workflow_json_service_from_request(request),
+    )
 
 
 @workflow_runtime_router.get(
@@ -609,6 +682,15 @@ def _ensure_project_visible(*, principal: AuthenticatedPrincipal, project_id: st
         )
 
 
+def _build_workflow_json_service_from_request(request: Request) -> LocalWorkflowJsonService:
+    """基于 application.state 构建 workflow authoring 文件服务。"""
+
+    return LocalWorkflowJsonService(
+        dataset_storage=_require_dataset_storage(request),
+        node_catalog_registry=_require_node_catalog_registry(request),
+    )
+
+
 def _with_created_by(metadata: dict[str, object], created_by: str) -> dict[str, object]:
     """把 created_by 写入执行元数据。"""
 
@@ -797,8 +879,49 @@ def _build_preview_run_contract(preview_run: WorkflowPreviewRun) -> WorkflowPrev
     )
 
 
-def _build_workflow_app_runtime_contract(workflow_app_runtime: WorkflowAppRuntime) -> WorkflowAppRuntimeContract:
+def _build_preview_run_summary_contract(
+    preview_run: WorkflowPreviewRun,
+) -> WorkflowPreviewRunSummaryContract:
+    """把 WorkflowPreviewRun 领域对象转换为摘要合同。"""
+
+    return WorkflowPreviewRunSummaryContract(
+        preview_run_id=preview_run.preview_run_id,
+        project_id=preview_run.project_id,
+        application_id=preview_run.application_id,
+        source_kind=preview_run.source_kind,
+        state=preview_run.state,
+        created_at=preview_run.created_at,
+        started_at=preview_run.started_at,
+        finished_at=preview_run.finished_at,
+        created_by=preview_run.created_by,
+        timeout_seconds=preview_run.timeout_seconds,
+        error_message=preview_run.error_message,
+        retention_until=preview_run.retention_until,
+    )
+
+
+def _build_workflow_app_runtime_contract(
+    workflow_app_runtime: WorkflowAppRuntime,
+    *,
+    workflow_service: LocalWorkflowJsonService | None = None,
+) -> WorkflowAppRuntimeContract:
     """把 WorkflowAppRuntime 领域对象转换为公开合同。"""
+
+    application_summary = None
+    template_summary = None
+    if workflow_service is not None:
+        application_summary = _try_build_application_reference_summary_contract(
+            workflow_service=workflow_service,
+            project_id=workflow_app_runtime.project_id,
+            application_id=workflow_app_runtime.application_id,
+        )
+        if application_summary is not None:
+            template_summary = _try_build_template_reference_summary_contract(
+                workflow_service=workflow_service,
+                project_id=application_summary["project_id"],
+                template_id=application_summary["template_id"],
+                template_version=application_summary["template_version"],
+            )
 
     return WorkflowAppRuntimeContract(
         workflow_runtime_id=workflow_app_runtime.workflow_runtime_id,
@@ -814,6 +937,9 @@ def _build_workflow_app_runtime_contract(workflow_app_runtime: WorkflowAppRuntim
         created_at=workflow_app_runtime.created_at,
         updated_at=workflow_app_runtime.updated_at,
         created_by=workflow_app_runtime.created_by,
+        updated_by=_read_resource_updated_by(workflow_app_runtime.metadata),
+        application_summary=application_summary,
+        template_summary=template_summary,
         last_started_at=workflow_app_runtime.last_started_at,
         last_stopped_at=workflow_app_runtime.last_stopped_at,
         heartbeat_at=workflow_app_runtime.heartbeat_at,
@@ -823,6 +949,75 @@ def _build_workflow_app_runtime_contract(workflow_app_runtime: WorkflowAppRuntim
         health_summary=dict(workflow_app_runtime.health_summary),
         metadata=dict(workflow_app_runtime.metadata),
     )
+
+
+def _try_build_application_reference_summary_contract(
+    *,
+    workflow_service: LocalWorkflowJsonService,
+    project_id: str,
+    application_id: str,
+) -> dict[str, object] | None:
+    """按需读取 application 一跳摘要，不存在时返回 None。"""
+
+    try:
+        summary = workflow_service.get_application_summary(
+            project_id=project_id,
+            application_id=application_id,
+        )
+    except ResourceNotFoundError:
+        return None
+    return {
+        "project_id": summary.project_id,
+        "application_id": summary.application_id,
+        "display_name": summary.display_name,
+        "description": summary.description,
+        "created_at": summary.created_at,
+        "updated_at": summary.updated_at,
+        "created_by": summary.created_by,
+        "updated_by": summary.updated_by,
+        "template_id": summary.template_id,
+        "template_version": summary.template_version,
+    }
+
+
+def _try_build_template_reference_summary_contract(
+    *,
+    workflow_service: LocalWorkflowJsonService,
+    project_id: str,
+    template_id: str,
+    template_version: str,
+) -> dict[str, object] | None:
+    """按需读取 template 一跳摘要，不存在时返回 None。"""
+
+    try:
+        summary = workflow_service.get_template_version_summary(
+            project_id=project_id,
+            template_id=template_id,
+            template_version=template_version,
+        )
+    except ResourceNotFoundError:
+        return None
+    return {
+        "project_id": summary.project_id,
+        "template_id": summary.template_id,
+        "template_version": summary.template_version,
+        "display_name": summary.display_name,
+        "description": summary.description,
+        "created_at": summary.created_at,
+        "updated_at": summary.updated_at,
+        "created_by": summary.created_by,
+        "updated_by": summary.updated_by,
+    }
+
+
+def _read_resource_updated_by(metadata: dict[str, object]) -> str | None:
+    """从资源 metadata 中读取最近修改主体。"""
+
+    updated_by = metadata.get("updated_by")
+    if not isinstance(updated_by, str):
+        return None
+    normalized_updated_by = updated_by.strip()
+    return normalized_updated_by or None
 
 
 def _build_execution_policy_contract(execution_policy: WorkflowExecutionPolicy) -> WorkflowExecutionPolicyContract:

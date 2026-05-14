@@ -1,0 +1,39 @@
+{
+  "format_id": "amvision.node-pack-manifest.v1",
+  "id": "example.dependent-nodes",
+  "version": "0.1.0",
+  "displayName": "Example Dependent Nodes",
+  "description": "复用其他 node pack 能力的复杂示例节点包。",
+  "category": "custom-node-pack",
+  "capabilities": [
+    "pipeline.node",
+    "result.postprocess"
+  ],
+  "dependencies": [
+    {
+      "nodePackId": "opencv.basic-nodes",
+      "versionRange": ">=0.1.0 <1.0"
+    }
+  ],
+  "permissionScopes": [
+    "objectstore.read.ref",
+    "objectstore.write.ref"
+  ],
+  "entrypoints": {
+    "backend": "custom_nodes.example_dependent_nodes.backend.entry:register"
+  },
+  "compatibility": {
+    "api": ">=0.1 <1.0",
+    "runtime": ">=3.12"
+  },
+  "timeout": {
+    "defaultSeconds": 30
+  },
+  "enabledByDefault": false,
+  "customNodeCatalogPath": "workflow/catalog.json",
+  "metadata": {
+    "dependencyNotes": [
+      "把真正复用到的 node pack 写进 dependencies，而不是只留在顶层 import 里"
+    ]
+  }
+}

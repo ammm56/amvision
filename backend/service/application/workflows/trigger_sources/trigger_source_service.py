@@ -176,7 +176,10 @@ class WorkflowTriggerSourceService:
                 debounce_window_ms=normalized_request.debounce_window_ms,
                 idempotency_key_path=normalized_request.idempotency_key_path,
                 health_summary=_build_adapter_pending_health_summary(),
-                metadata=dict(normalized_request.metadata or {}),
+                metadata=_with_resource_updated_by(
+                    dict(normalized_request.metadata or {}),
+                    created_by,
+                ),
                 created_at=now,
                 updated_at=now,
                 created_by=_normalize_optional_str(created_by),
@@ -213,7 +216,12 @@ class WorkflowTriggerSourceService:
             )
         return trigger_source
 
-    def enable_trigger_source(self, trigger_source_id: str) -> WorkflowTriggerSource:
+    def enable_trigger_source(
+        self,
+        trigger_source_id: str,
+        *,
+        updated_by: str | None = None,
+    ) -> WorkflowTriggerSource:
         """启用一条 WorkflowTriggerSource。"""
 
         normalized_trigger_source_id = _require_stripped_text(
@@ -253,6 +261,10 @@ class WorkflowTriggerSourceService:
                 last_error=None,
                 health_summary=_build_adapter_pending_health_summary(),
                 updated_at=_now_isoformat(),
+                metadata=_with_resource_updated_by(
+                    dict(trigger_source.metadata),
+                    updated_by,
+                ),
             )
             unit_of_work.workflow_trigger_sources.save_trigger_source(updated_source)
             unit_of_work.commit()
@@ -261,7 +273,12 @@ class WorkflowTriggerSourceService:
             raise_on_error=True,
         )
 
-    def disable_trigger_source(self, trigger_source_id: str) -> WorkflowTriggerSource:
+    def disable_trigger_source(
+        self,
+        trigger_source_id: str,
+        *,
+        updated_by: str | None = None,
+    ) -> WorkflowTriggerSource:
         """停用一条 WorkflowTriggerSource。"""
 
         normalized_trigger_source_id = _require_stripped_text(
@@ -283,6 +300,10 @@ class WorkflowTriggerSourceService:
                 observed_state="stopped",
                 health_summary=_build_adapter_pending_health_summary(),
                 updated_at=_now_isoformat(),
+                metadata=_with_resource_updated_by(
+                    dict(trigger_source.metadata),
+                    updated_by,
+                ),
             )
             unit_of_work.workflow_trigger_sources.save_trigger_source(updated_source)
             unit_of_work.commit()
@@ -705,6 +726,19 @@ def _normalize_optional_str(value: str | None) -> str | None:
         return None
     normalized_value = value.strip()
     return normalized_value or None
+
+
+def _with_resource_updated_by(
+    metadata: dict[str, object],
+    updated_by: str | None,
+) -> dict[str, object]:
+    """把 TriggerSource 资源最近修改主体写入 metadata。"""
+
+    payload = dict(metadata)
+    normalized_updated_by = _normalize_optional_str(updated_by)
+    if normalized_updated_by is not None:
+        payload["updated_by"] = normalized_updated_by
+    return payload
 
 
 def _now_isoformat() -> str:

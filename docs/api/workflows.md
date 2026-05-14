@@ -2,14 +2,15 @@
 
 ## 文档目的
 
-本文档用于说明当前已经公开的 workflow template 与 FlowApplication 接口，以及 workflow runtime 第一阶段已经公开的资源边界。
+本文档用于说明当前已经公开的 workflow template、FlowApplication、node catalog 和 workflow runtime 第一阶段接口边界。
 
 本文档聚焦对外接口规则、真实存储路径和最小请求体例子，不展开执行器内部实现细节。
 
 ## 适用范围
 
-- workflow template validate、save、get 接口
-- FlowApplication validate、save、get 接口
+- workflow template validate、save、get、list、version browse、delete version 接口
+- FlowApplication validate、save、get、list、delete 接口
+- workflow node catalog 读取、过滤和 palette 分组结果
 - WorkflowPreviewRun、WorkflowAppRuntime、WorkflowRun 的第一阶段公开边界
 - workflow 请求头鉴权规则
 - workflow service 节点语义分组
@@ -54,8 +55,8 @@ workflow runtime 控制面当前已经公开 preview-runs、app-runtimes、runs 
 
 ### scope 要求
 
-- template/application 的 validate、get，以及 preview-runs、app-runtimes、runs 的读取接口需要 workflows:read
-- template/application 的 save，以及 preview-runs create、app-runtimes create/start/stop/invoke 需要 workflows:write
+- template/application 的 validate、get、list，以及 node-catalog、preview-runs、app-runtimes、runs 的读取接口需要 workflows:read
+- template/application 的 save、delete，以及 preview-runs create/delete、app-runtimes create/start/stop/invoke 需要 workflows:write
 - 如果需要先查询可用 deployment_instance_id，还需要 models:read 和 models:write
 
 ## 真实 workflow 路径
@@ -63,7 +64,9 @@ workflow runtime 控制面当前已经公开 preview-runs、app-runtimes、runs 
 当前 workflow 文件保存到 LocalDatasetStorage，路径规则固定如下：
 
 - template：workflows/projects/{project_id}/templates/{template_id}/versions/{template_version}/template.json
+- template sidecar：workflows/projects/{project_id}/templates/{template_id}/versions/{template_version}/template.summary.json
 - application：workflows/projects/{project_id}/applications/{application_id}/application.json
+- application sidecar：workflows/projects/{project_id}/applications/{application_id}/application.summary.json
 - preview snapshot：workflows/runtime/preview-runs/{preview_run_id}/
 - app runtime snapshot：workflows/runtime/app-runtimes/{workflow_runtime_id}/
 
@@ -87,6 +90,20 @@ workflow runtime 控制面当前已经公开 preview-runs、app-runtimes、runs 
 - 当前示例只覆盖 template/application 持久化输入边界，runtime 调用路径见 current-api 总览
 
 ## 接口清单
+
+### GET /api/v1/workflows/node-catalog
+
+- 需要 workflows:read
+- 可选查询参数：
+  - category：按节点分类前缀过滤
+  - node_pack_id：按节点包 id 过滤
+  - payload_type_id：按端口 payload 类型过滤
+  - q：按 node_type_id、display_name、description、category 搜索
+- 返回字段：
+  - node_pack_manifests
+  - payload_contracts
+  - node_definitions
+  - palette_groups：按 category 整理后的前端可直接消费分组结果
 
 ### POST /api/v1/workflows/templates/validate
 
@@ -114,6 +131,10 @@ workflow runtime 控制面当前已经公开 preview-runs、app-runtimes、runs 
 - 返回字段：
   - project_id
   - object_key
+  - created_at
+  - updated_at
+  - created_by
+  - updated_by
   - template
   - validate 接口中的同名校验摘要字段
 
@@ -123,8 +144,54 @@ workflow runtime 控制面当前已经公开 preview-runs、app-runtimes、runs 
 - 返回字段：
   - project_id
   - object_key
+  - created_at
+  - updated_at
+  - created_by
+  - updated_by
   - template
   - validate 接口中的同名校验摘要字段
+
+### GET /api/v1/workflows/projects/{project_id}/templates
+
+- 需要 workflows:read
+- 返回字段：
+  - project_id
+  - template_id
+  - display_name
+  - description
+  - created_at
+  - updated_at
+  - created_by
+  - updated_by
+  - latest_template_version
+  - version_count
+  - versions
+- 默认排序：updated_at 倒序；同一时间下按 template_id 排序
+
+### GET /api/v1/workflows/projects/{project_id}/templates/{template_id}/versions
+
+- 需要 workflows:read
+- 返回字段：
+  - project_id
+  - object_key
+  - template_id
+  - template_version
+  - display_name
+  - description
+  - created_at
+  - updated_at
+  - created_by
+  - updated_by
+  - node_count
+  - edge_count
+  - template_input_ids
+  - template_output_ids
+  - referenced_node_type_ids
+
+### DELETE /api/v1/workflows/projects/{project_id}/templates/{template_id}/versions/{template_version}
+
+- 需要 workflows:write
+- 成功状态码：204 No Content
 
 ### POST /api/v1/workflows/applications/validate
 
@@ -155,6 +222,11 @@ workflow runtime 控制面当前已经公开 preview-runs、app-runtimes、runs 
 - 返回字段：
   - project_id
   - object_key
+  - created_at
+  - updated_at
+  - created_by
+  - updated_by
+  - template_summary：引用模板的一跳摘要
   - application
   - validate 接口中的同名校验摘要字段
 
@@ -164,8 +236,39 @@ workflow runtime 控制面当前已经公开 preview-runs、app-runtimes、runs 
 - 返回字段：
   - project_id
   - object_key
+  - created_at
+  - updated_at
+  - created_by
+  - updated_by
+  - template_summary：引用模板的一跳摘要
   - application
   - validate 接口中的同名校验摘要字段
+
+### GET /api/v1/workflows/projects/{project_id}/applications
+
+- 需要 workflows:read
+- 返回字段：
+  - project_id
+  - object_key
+  - application_id
+  - display_name
+  - description
+  - created_at
+  - updated_at
+  - created_by
+  - updated_by
+  - template_id
+  - template_version
+  - template_summary：引用模板的一跳摘要
+  - binding_count
+  - input_binding_ids
+  - output_binding_ids
+- 默认排序：updated_at 倒序；同一时间下按 application_id 排序
+
+### DELETE /api/v1/workflows/projects/{project_id}/applications/{application_id}
+
+- 需要 workflows:write
+- 成功状态码：204 No Content
 
 ### FlowApplication 绑定说明
 
@@ -176,7 +279,9 @@ workflow runtime 控制面当前已经公开 preview-runs、app-runtimes、runs 
 ## workflow runtime phase1 当前公开路径
 
 - POST /api/v1/workflows/preview-runs：创建并同步执行一次 WorkflowPreviewRun
+- GET /api/v1/workflows/preview-runs：按 Project 列出 WorkflowPreviewRun，并支持 state、created_from、created_to 过滤
 - GET /api/v1/workflows/preview-runs/{preview_run_id}：读取一条 WorkflowPreviewRun
+- DELETE /api/v1/workflows/preview-runs/{preview_run_id}：删除一条 WorkflowPreviewRun 和对应 snapshot 目录
 - POST /api/v1/workflows/app-runtimes：创建一条 WorkflowAppRuntime
 - GET /api/v1/workflows/app-runtimes：按 Project 列出 WorkflowAppRuntime
 - GET /api/v1/workflows/app-runtimes/{workflow_runtime_id}：读取一条 WorkflowAppRuntime
@@ -192,7 +297,7 @@ workflow runtime 控制面当前已经公开 preview-runs、app-runtimes、runs 
 
 - 旧的 FlowApplication execute 路由已经删除，不再作为公开兼容入口。
 - 编辑态试跑与已发布应用运行已经拆成 PreviewRun、AppRuntime、WorkflowRun 三类资源。
-- 第一阶段只支持单实例、start、stop、health、sync invoke；不展开异步 WorkflowRun 队列。
+- 第一阶段已支持 preview run 的列表、删除和基础过滤；app runtime 仍以单实例、start、stop、health、sync invoke 为主。
 
 ## 常见调试点
 

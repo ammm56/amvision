@@ -110,6 +110,230 @@ def test_validate_flow_application_supports_embedded_template_override(tmp_path:
         session_factory.engine.dispose()
 
 
+def test_workflow_authoring_catalog_and_resource_management_endpoints(tmp_path: Path) -> None:
+    """验证节点目录读取、模板版本浏览和流程应用列表删除接口可用。"""
+
+    client, session_factory, _ = _create_test_client(tmp_path)
+    template_v1_payload = _build_template_payload()
+    template_v2_payload = json.loads(json.dumps(template_v1_payload))
+    template_v2_payload["template_version"] = "1.1.0"
+    template_v2_payload["nodes"][1]["parameters"]["score_threshold"] = 0.5
+
+    application_payload = _build_application_payload()
+    application_payload["template_ref"]["template_version"] = "1.1.0"
+
+    try:
+        with client:
+            node_catalog_response = client.get(
+                "/api/v1/workflows/node-catalog",
+                headers=_build_workflow_read_headers(),
+            )
+            save_template_v1_response = client.put(
+                "/api/v1/workflows/projects/project-1/templates/inspection-demo/versions/1.0.0",
+                headers=_build_workflow_write_headers(),
+                json={"template": template_v1_payload},
+            )
+            save_template_v2_response = client.put(
+                "/api/v1/workflows/projects/project-1/templates/inspection-demo/versions/1.1.0",
+                headers=_build_workflow_write_headers(),
+                json={"template": template_v2_payload},
+            )
+            save_application_response = client.put(
+                "/api/v1/workflows/projects/project-1/applications/inspection-api-app",
+                headers=_build_workflow_write_headers(),
+                json={"application": application_payload},
+            )
+            list_templates_response = client.get(
+                "/api/v1/workflows/projects/project-1/templates",
+                headers=_build_workflow_read_headers(),
+            )
+            list_template_versions_response = client.get(
+                "/api/v1/workflows/projects/project-1/templates/inspection-demo/versions",
+                headers=_build_workflow_read_headers(),
+            )
+            list_applications_response = client.get(
+                "/api/v1/workflows/projects/project-1/applications",
+                headers=_build_workflow_read_headers(),
+            )
+            delete_template_response = client.delete(
+                "/api/v1/workflows/projects/project-1/templates/inspection-demo/versions/1.0.0",
+                headers=_build_workflow_write_headers(),
+            )
+            list_template_versions_after_delete_response = client.get(
+                "/api/v1/workflows/projects/project-1/templates/inspection-demo/versions",
+                headers=_build_workflow_read_headers(),
+            )
+            get_deleted_template_response = client.get(
+                "/api/v1/workflows/projects/project-1/templates/inspection-demo/versions/1.0.0",
+                headers=_build_workflow_read_headers(),
+            )
+            delete_application_response = client.delete(
+                "/api/v1/workflows/projects/project-1/applications/inspection-api-app",
+                headers=_build_workflow_write_headers(),
+            )
+            list_applications_after_delete_response = client.get(
+                "/api/v1/workflows/projects/project-1/applications",
+                headers=_build_workflow_read_headers(),
+            )
+            get_deleted_application_response = client.get(
+                "/api/v1/workflows/projects/project-1/applications/inspection-api-app",
+                headers=_build_workflow_read_headers(),
+            )
+
+        assert node_catalog_response.status_code == 200
+        node_catalog_payload = node_catalog_response.json()
+        assert node_catalog_payload["node_pack_manifests"][0]["id"] == "opencv.basic-nodes"
+        assert any(
+            item["node_type_id"] == "custom.opencv.draw-detections"
+            for item in node_catalog_payload["node_definitions"]
+        )
+        assert any(
+            group["category"] == "opencv.render"
+            and any(
+                node_item["node_type_id"] == "custom.opencv.draw-detections"
+                for node_item in group["node_definitions"]
+            )
+            for group in node_catalog_payload["palette_groups"]
+        )
+
+        assert save_template_v1_response.status_code == 201
+        assert save_template_v2_response.status_code == 201
+        assert save_application_response.status_code == 201
+
+        assert list_templates_response.status_code == 200
+        templates_payload = list_templates_response.json()
+        assert len(templates_payload) == 1
+        assert templates_payload[0]["template_id"] == "inspection-demo"
+        assert templates_payload[0]["created_at"].endswith("Z")
+        assert templates_payload[0]["updated_at"].endswith("Z")
+        assert templates_payload[0]["latest_template_version"] == "1.1.0"
+        assert templates_payload[0]["version_count"] == 2
+        assert templates_payload[0]["versions"] == ["1.0.0", "1.1.0"]
+
+        assert list_template_versions_response.status_code == 200
+        template_versions_payload = list_template_versions_response.json()
+        assert [item["template_version"] for item in template_versions_payload] == ["1.0.0", "1.1.0"]
+        assert template_versions_payload[0]["object_key"].endswith(
+            "/templates/inspection-demo/versions/1.0.0/template.json"
+        )
+        assert template_versions_payload[0]["created_at"].endswith("Z")
+        assert template_versions_payload[0]["updated_at"].endswith("Z")
+        assert template_versions_payload[1]["node_count"] == 3
+
+        assert list_applications_response.status_code == 200
+        applications_payload = list_applications_response.json()
+        assert len(applications_payload) == 1
+        assert applications_payload[0]["application_id"] == "inspection-api-app"
+        assert applications_payload[0]["created_at"].endswith("Z")
+        assert applications_payload[0]["updated_at"].endswith("Z")
+        assert applications_payload[0]["template_version"] == "1.1.0"
+        assert applications_payload[0]["binding_count"] == 2
+
+        assert delete_template_response.status_code == 204
+        assert list_template_versions_after_delete_response.status_code == 200
+        assert [
+            item["template_version"]
+            for item in list_template_versions_after_delete_response.json()
+        ] == ["1.1.0"]
+        assert get_deleted_template_response.status_code == 404
+
+        assert delete_application_response.status_code == 204
+        assert list_applications_after_delete_response.status_code == 200
+        assert list_applications_after_delete_response.json() == []
+        assert get_deleted_application_response.status_code == 404
+    finally:
+        session_factory.engine.dispose()
+
+
+def test_workflow_node_catalog_supports_filters(tmp_path: Path) -> None:
+    """验证节点目录接口支持按节点包、分类、payload 类型和关键词过滤。"""
+
+    client, session_factory, _ = _create_test_client(tmp_path)
+
+    try:
+        with client:
+            by_node_pack_response = client.get(
+                "/api/v1/workflows/node-catalog",
+                params={"node_pack_id": "opencv.basic-nodes"},
+                headers=_build_workflow_read_headers(),
+            )
+            by_category_response = client.get(
+                "/api/v1/workflows/node-catalog",
+                params={"category": "opencv.render"},
+                headers=_build_workflow_read_headers(),
+            )
+            by_payload_type_response = client.get(
+                "/api/v1/workflows/node-catalog",
+                params={"payload_type_id": "detections.v1"},
+                headers=_build_workflow_read_headers(),
+            )
+            by_keyword_response = client.get(
+                "/api/v1/workflows/node-catalog",
+                params={"q": "draw detections"},
+                headers=_build_workflow_read_headers(),
+            )
+
+        assert by_node_pack_response.status_code == 200
+        by_node_pack_payload = by_node_pack_response.json()
+        assert [item["id"] for item in by_node_pack_payload["node_pack_manifests"]] == ["opencv.basic-nodes"]
+        assert by_node_pack_payload["node_definitions"]
+        assert by_node_pack_payload["palette_groups"]
+        assert all(
+            item["node_pack_id"] == "opencv.basic-nodes"
+            for item in by_node_pack_payload["node_definitions"]
+        )
+        assert all(
+            all(node_item["node_pack_id"] == "opencv.basic-nodes" for node_item in group["node_definitions"])
+            for group in by_node_pack_payload["palette_groups"]
+        )
+        assert any(
+            item["node_type_id"] == "custom.opencv.draw-detections"
+            for item in by_node_pack_payload["node_definitions"]
+        )
+
+        assert by_category_response.status_code == 200
+        by_category_payload = by_category_response.json()
+        assert by_category_payload["node_definitions"]
+        assert by_category_payload["palette_groups"]
+        assert all(
+            item["category"].startswith("opencv.render")
+            for item in by_category_payload["node_definitions"]
+        )
+        assert all(group["category"].startswith("opencv.render") for group in by_category_payload["palette_groups"])
+        assert any(
+            item["node_type_id"] == "custom.opencv.draw-detections"
+            for item in by_category_payload["node_definitions"]
+        )
+
+        assert by_payload_type_response.status_code == 200
+        by_payload_type_payload = by_payload_type_response.json()
+        assert any(
+            item["payload_type_id"] == "detections.v1"
+            for item in by_payload_type_payload["payload_contracts"]
+        )
+        assert any(
+            item["node_type_id"] == "custom.opencv.draw-detections"
+            for item in by_payload_type_payload["node_definitions"]
+        )
+
+        assert by_keyword_response.status_code == 200
+        by_keyword_payload = by_keyword_response.json()
+        assert by_keyword_payload["node_definitions"]
+        assert by_keyword_payload["palette_groups"]
+        assert any(
+            item["node_type_id"] == "custom.opencv.draw-detections"
+            for item in by_keyword_payload["node_definitions"]
+        )
+        assert all(
+            "draw detections" in (
+                f"{item['node_type_id']} {item['display_name']} {item['description']} {item['category']}".lower()
+            )
+            for item in by_keyword_payload["node_definitions"]
+        )
+    finally:
+        session_factory.engine.dispose()
+
+
 def _create_test_client(
     tmp_path: Path,
 ) -> tuple[TestClient, SessionFactory, LocalDatasetStorage]:

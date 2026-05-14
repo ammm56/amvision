@@ -12,6 +12,7 @@
 - [docs/architecture/current-implementation-status.md](current-implementation-status.md)：当前主干已经落地的整体框架、主要代码落点、运行时矩阵和下一步收敛重点
 - [docs/architecture/execution-sequences.md](execution-sequences.md)：训练、转换、部署推理和 workflow execute 四条关键调用顺序图
 - [docs/architecture/workflow-runtime.md](workflow-runtime.md)：workflow 编辑态试跑、已发布应用运行、队列划分、worker 拓扑和 API 草案
+- [docs/architecture/workflow-authoring-backend-checklist.md](workflow-authoring-backend-checklist.md)：workflow 图编排前端所需的后端接口现状、本轮已补齐项和下一批执行清单
 - [docs/architecture/workflow-runtime-phase1.md](workflow-runtime-phase1.md)：workflow runtime 第一阶段实现清单，收口状态机、snapshot 规则和 worker 消息合同
 - [docs/architecture/workflow-runtime-phase2.md](workflow-runtime-phase2.md)：workflow runtime 第二阶段边界，收口 restart、instances、异步 runs 和 execution policies 的进入范围
 - [docs/architecture/project-structure.md](project-structure.md)：项目目录结构、层级关系、模块关系和禁止直接耦合关系总览
@@ -47,19 +48,20 @@
 2. [docs/architecture/current-implementation-status.md](current-implementation-status.md)
 3. [docs/architecture/execution-sequences.md](execution-sequences.md)
 4. [docs/architecture/workflow-runtime.md](workflow-runtime.md)
-5. [docs/architecture/workflow-runtime-phase1.md](workflow-runtime-phase1.md)
-6. [docs/architecture/workflow-runtime-phase2.md](workflow-runtime-phase2.md)
-7. [docs/architecture/project-structure.md](project-structure.md)
-8. [docs/architecture/backend-service.md](backend-service.md)
-9. [docs/architecture/task-system.md](task-system.md)
-10. [docs/architecture/detection-model-rules.md](detection-model-rules.md)
-11. [docs/architecture/yolox-module-design.md](yolox-module-design.md)
-12. [docs/architecture/frontend-web-ui.md](frontend-web-ui.md)
-13. [docs/architecture/node-system.md](node-system.md)
-14. [docs/architecture/workflow-json-contracts.md](workflow-json-contracts.md)
-15. [docs/architecture/data-and-files.md](data-and-files.md)
-16. [docs/architecture/local-buffer-broker.md](local-buffer-broker.md)
-17. [docs/architecture/dataset-import-spec.md](dataset-import-spec.md)
-18. [docs/architecture/dataset-export-formats.md](dataset-export-formats.md)
-19. [docs/architecture/runtime-packaging.md](runtime-packaging.md)
-20. 按任务继续进入集成规则或日志专题文档
+5. [docs/architecture/workflow-authoring-backend-checklist.md](workflow-authoring-backend-checklist.md)
+6. [docs/architecture/workflow-runtime-phase1.md](workflow-runtime-phase1.md)
+7. [docs/architecture/workflow-runtime-phase2.md](workflow-runtime-phase2.md)
+8. [docs/architecture/project-structure.md](project-structure.md)
+9. [docs/architecture/backend-service.md](backend-service.md)
+10. [docs/architecture/task-system.md](task-system.md)
+11. [docs/architecture/detection-model-rules.md](detection-model-rules.md)
+12. [docs/architecture/yolox-module-design.md](yolox-module-design.md)
+13. [docs/architecture/frontend-web-ui.md](frontend-web-ui.md)
+14. [docs/architecture/node-system.md](node-system.md)
+15. [docs/architecture/workflow-json-contracts.md](workflow-json-contracts.md)
+16. [docs/architecture/data-and-files.md](data-and-files.md)
+17. [docs/architecture/local-buffer-broker.md](local-buffer-broker.md)
+18. [docs/architecture/dataset-import-spec.md](dataset-import-spec.md)
+19. [docs/architecture/dataset-export-formats.md](dataset-export-formats.md)
+20. [docs/architecture/runtime-packaging.md](runtime-packaging.md)
+21. 按任务继续进入集成规则或日志专题文档

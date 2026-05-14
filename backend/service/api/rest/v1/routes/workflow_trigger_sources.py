@@ -8,11 +8,14 @@ from fastapi import APIRouter, Depends, Query, Request, Response, status
 from pydantic import BaseModel, Field
 
 from backend.contracts.workflows import WorkflowTriggerSourceContract
+from backend.nodes.node_catalog_registry import NodeCatalogRegistry
 from backend.service.api.deps.auth import AuthenticatedPrincipal, require_scopes
 from backend.service.application.errors import (
     PermissionDeniedError,
+    ResourceNotFoundError,
     ServiceConfigurationError,
 )
+from backend.service.application.workflows.workflow_service import LocalWorkflowJsonService
 from backend.service.application.workflows.trigger_sources import (
     WorkflowTriggerSourceCreateRequest,
     WorkflowTriggerSourceService,
@@ -24,6 +27,8 @@ from backend.service.domain.workflows.workflow_trigger_source_records import (
     WorkflowTriggerSource,
 )
 from backend.service.infrastructure.db.session import SessionFactory
+from backend.service.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
+from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 
 
 workflow_trigger_sources_router = APIRouter(
@@ -125,7 +130,7 @@ def create_workflow_trigger_source(
         ),
         created_by=principal.principal_id,
     )
-    return _build_trigger_source_contract(trigger_source)
+    return _build_trigger_source_contract(trigger_source, request=request)
 
 
 @workflow_trigger_sources_router.get(
@@ -144,7 +149,7 @@ def list_workflow_trigger_sources(
     trigger_sources = _build_trigger_source_service(request).list_trigger_sources(
         project_id=project_id
     )
-    return [_build_trigger_source_contract(item) for item in trigger_sources]
+    return [_build_trigger_source_contract(item, request=request) for item in trigger_sources]
 
 
 @workflow_trigger_sources_router.get(
@@ -163,7 +168,7 @@ def get_workflow_trigger_source(
         trigger_source_id
     )
     _ensure_project_visible(principal=principal, project_id=trigger_source.project_id)
-    return _build_trigger_source_contract(trigger_source)
+    return _build_trigger_source_contract(trigger_source, request=request)
 
 
 @workflow_trigger_sources_router.post(
@@ -185,9 +190,10 @@ def enable_workflow_trigger_source(
         principal=principal, project_id=current_trigger_source.project_id
     )
     trigger_source = _build_trigger_source_service(request).enable_trigger_source(
-        trigger_source_id
+        trigger_source_id,
+        updated_by=principal.principal_id,
     )
-    return _build_trigger_source_contract(trigger_source)
+    return _build_trigger_source_contract(trigger_source, request=request)
 
 
 @workflow_trigger_sources_router.post(
@@ -209,9 +215,10 @@ def disable_workflow_trigger_source(
         principal=principal, project_id=current_trigger_source.project_id
     )
     trigger_source = _build_trigger_source_service(request).disable_trigger_source(
-        trigger_source_id
+        trigger_source_id,
+        updated_by=principal.principal_id,
     )
-    return _build_trigger_source_contract(trigger_source)
+    return _build_trigger_source_contract(trigger_source, request=request)
 
 
 @workflow_trigger_sources_router.delete(
@@ -284,6 +291,24 @@ def _read_trigger_source_supervisor(request: Request) -> TriggerSourceSupervisor
     return supervisor
 
 
+def _require_dataset_storage(request: Request) -> LocalDatasetStorage:
+    """从 application.state 中读取 LocalDatasetStorage。"""
+
+    dataset_storage = getattr(request.app.state, "dataset_storage", None)
+    if not isinstance(dataset_storage, LocalDatasetStorage):
+        raise ServiceConfigurationError("当前服务尚未完成 dataset_storage 装配")
+    return dataset_storage
+
+
+def _require_node_catalog_registry(request: Request) -> NodeCatalogRegistry:
+    """从 application.state 中读取 NodeCatalogRegistry。"""
+
+    node_catalog_registry = getattr(request.app.state, "node_catalog_registry", None)
+    if not isinstance(node_catalog_registry, NodeCatalogRegistry):
+        raise ServiceConfigurationError("当前服务尚未完成 node_catalog_registry 装配")
+    return node_catalog_registry
+
+
 def _ensure_project_visible(
     *, principal: AuthenticatedPrincipal, project_id: str
 ) -> None:
@@ -298,8 +323,22 @@ def _ensure_project_visible(
 
 def _build_trigger_source_contract(
     trigger_source: WorkflowTriggerSource,
+    *,
+    request: Request,
 ) -> WorkflowTriggerSourceContract:
     """把领域对象转换为 REST 合同。"""
+
+    runtime_summary = _try_build_runtime_reference_summary(
+        request=request,
+        workflow_runtime_id=trigger_source.workflow_runtime_id,
+    )
+    application_summary = None
+    if runtime_summary is not None:
+        application_summary = _try_build_application_reference_summary(
+            request=request,
+            project_id=runtime_summary["project_id"],
+            application_id=runtime_summary["application_id"],
+        )
 
     return WorkflowTriggerSourceContract(
         trigger_source_id=trigger_source.trigger_source_id,
@@ -329,4 +368,86 @@ def _build_trigger_source_contract(
         created_at=trigger_source.created_at,
         updated_at=trigger_source.updated_at,
         created_by=trigger_source.created_by,
+        updated_by=_read_resource_updated_by(trigger_source.metadata),
+        runtime_summary=runtime_summary,
+        application_summary=application_summary,
     )
+
+
+def _build_workflow_json_service_from_request(request: Request) -> LocalWorkflowJsonService:
+    """基于 application.state 构建 workflow authoring 文件服务。"""
+
+    return LocalWorkflowJsonService(
+        dataset_storage=_require_dataset_storage(request),
+        node_catalog_registry=_require_node_catalog_registry(request),
+    )
+
+
+def _try_build_runtime_reference_summary(
+    *,
+    request: Request,
+    workflow_runtime_id: str,
+) -> dict[str, object] | None:
+    """按需读取 runtime 一跳摘要，不存在时返回 None。"""
+
+    unit_of_work = SqlAlchemyUnitOfWork(_require_session_factory(request).create_session())
+    try:
+        workflow_runtime = unit_of_work.workflow_runtime.get_workflow_app_runtime(
+            workflow_runtime_id
+        )
+    finally:
+        unit_of_work.close()
+    if workflow_runtime is None:
+        return None
+    return {
+        "workflow_runtime_id": workflow_runtime.workflow_runtime_id,
+        "project_id": workflow_runtime.project_id,
+        "application_id": workflow_runtime.application_id,
+        "display_name": workflow_runtime.display_name,
+        "desired_state": workflow_runtime.desired_state,
+        "observed_state": workflow_runtime.observed_state,
+        "created_at": workflow_runtime.created_at,
+        "updated_at": workflow_runtime.updated_at,
+        "created_by": workflow_runtime.created_by,
+        "updated_by": _read_resource_updated_by(workflow_runtime.metadata),
+    }
+
+
+def _try_build_application_reference_summary(
+    *,
+    request: Request,
+    project_id: str,
+    application_id: str,
+) -> dict[str, object] | None:
+    """按需读取 application 一跳摘要，不存在时返回 None。"""
+
+    workflow_service = _build_workflow_json_service_from_request(request)
+    try:
+        summary = workflow_service.get_application_summary(
+            project_id=project_id,
+            application_id=application_id,
+        )
+    except ResourceNotFoundError:
+        return None
+    return {
+        "project_id": summary.project_id,
+        "application_id": summary.application_id,
+        "display_name": summary.display_name,
+        "description": summary.description,
+        "created_at": summary.created_at,
+        "updated_at": summary.updated_at,
+        "created_by": summary.created_by,
+        "updated_by": summary.updated_by,
+        "template_id": summary.template_id,
+        "template_version": summary.template_version,
+    }
+
+
+def _read_resource_updated_by(metadata: dict[str, object]) -> str | None:
+    """从资源 metadata 中读取最近修改主体。"""
+
+    updated_by = metadata.get("updated_by")
+    if not isinstance(updated_by, str):
+        return None
+    normalized_updated_by = updated_by.strip()
+    return normalized_updated_by or None

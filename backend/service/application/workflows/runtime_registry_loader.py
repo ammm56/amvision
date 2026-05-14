@@ -250,7 +250,7 @@ class WorkflowNodeRuntimeRegistryLoader:
             )
 
         with self._prepend_runtime_module_search_paths():
-            self._clear_cached_runtime_module(module_name)
+            self._clear_cached_runtime_modules(module_name)
             try:
                 imported_module = importlib.import_module(module_name)
             except Exception as exc:  # pragma: no cover - 防御性异常封装
@@ -275,20 +275,28 @@ class WorkflowNodeRuntimeRegistryLoader:
             )
         return cast(NodePackBackendEntrypoint, entrypoint_callable)
 
-    def _clear_cached_runtime_module(self, module_name: str) -> None:
-        """清理当前 entrypoint 及其父包的模块缓存。
+    def _clear_cached_runtime_modules(self, module_name: str) -> None:
+        """清理当前运行时顶级包下的全部模块缓存。
 
         参数：
         - module_name：准备重新导入的完整模块名。
 
         说明：
         - custom_nodes 允许来自不同目录的同名 node pack 在测试或刷新阶段重复装载。
-        - 这里在正式导入前移除当前模块及其父包，避免 Python 继续复用旧目录下的缓存对象。
+        - 仅清理当前 entrypoint 自身不足以隔离同名 sibling pack；如果旧缓存里残留了
+          custom_nodes.<pack>.backend 等模块，当前 entrypoint 在模块顶层跨包 import 时仍可能
+          继续命中旧目录对象。
+        - 这里按顶级包统一清空整棵模块树，确保当前导入始终只依赖本次 sys.path 搜索路径。
         """
 
-        module_name_parts = module_name.split(".")
-        for current_index in range(len(module_name_parts), 0, -1):
-            cached_module_name = ".".join(module_name_parts[:current_index])
+        top_level_package_name = module_name.split(".", 1)[0]
+        cached_module_names = [
+            cached_module_name
+            for cached_module_name in tuple(sys.modules)
+            if cached_module_name == top_level_package_name
+            or cached_module_name.startswith(f"{top_level_package_name}.")
+        ]
+        for cached_module_name in cached_module_names:
             sys.modules.pop(cached_module_name, None)
 
     @contextmanager

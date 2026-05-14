@@ -22,6 +22,18 @@
 - 如确有现场直连需求，应通过受控 node pack 在独立边界中实现，并接受 manifest、权限、超时、禁用和回滚约束
 - core nodes、custom nodes 和流程模板在节点编辑器中应作为统一的一等公民展示和编排
 - 节点注册机制向 ComfyUI custom nodes 的灵活性看齐，但不能牺牲工业场景的稳定性和可追溯性
+- node pack 之间允许存在依赖关系，这一点与 ComfyUI custom nodes 生态一致，但依赖关系必须保持范围清楚、行为可预期、失败点可定位
+
+## node pack 依赖约定
+
+- node pack 不要求绝对独立；当某个 pack 复用另一个 pack 中已经稳定、复杂、重复成本高的能力时，可以建立 pack 间依赖
+- 简单节点优先在本 pack 内完成实现；参数规范化、小型 helper、单一结果整理这类逻辑，优先放到当前 pack 的 support 模块，不要为了少量代码直接依赖另一个 pack
+- 复杂节点、组合节点、桥接节点或结果处理链，在复用另一个 pack 的成熟能力比重复实现更清楚时，可以依赖另一个 pack
+- pack 间依赖应尽量是显式、窄范围依赖，不要让一个简单 helper 把整个 sibling pack 变成启动期硬依赖
+- 当前阶段如确需 pack 间依赖，应至少在 manifest metadata、pack 文档或实现说明中写明依赖的 pack、用途和最低版本边界
+- pack 间依赖如果缺失，应在依赖节点自身附近给出清楚错误，而不是让无关节点或整个服务启动阶段一起失效
+- 不要通过 backend entrypoint、目录扫描初始化或类似全量预加载链路，引入仅为单个简单节点服务的跨 pack 顶层 import
+- 如果 pack 间依赖属于长期稳定关系，后续应继续向正式 dependency 字段、兼容性校验和启用前检查收敛，而不是长期停留在隐式代码耦合
 
 ## 节点系统在整体架构中的位置
 
@@ -91,6 +103,7 @@ custom_nodes/
 - node_pack_id
 - version
 - category 和 capabilities
+- dependencies
 - entrypoints
 - custom_node_catalog_path
 - timeout
@@ -114,7 +127,7 @@ custom_nodes/
 ### 3. 启用
 
 - 允许按 node pack、按版本、按节点类别启用
-- 启用前进行权限校验、依赖检查和运行时兼容性校验
+- 启用前进行权限校验、manifest dependencies 依赖检查和运行时兼容性校验
 
 ### 4. 执行
 
@@ -171,6 +184,7 @@ custom_nodes/
 - node pack 必须支持 timeout、disable 和版本回滚
 - 节点扩展错误不能直接拖垮后端服务主链路，应通过任务和状态流隔离处理
 - 节点日志、错误和版本必须可审计
+- 对其他 node pack 的依赖关系必须可说明、可追踪，不能只藏在顶层 import 链里
 
 ## 哪些能力优先放进 node pack
 

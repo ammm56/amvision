@@ -9,7 +9,9 @@
 ## 当前公开范围
 
 - POST /api/v1/workflows/preview-runs
+- GET /api/v1/workflows/preview-runs
 - GET /api/v1/workflows/preview-runs/{preview_run_id}
+- DELETE /api/v1/workflows/preview-runs/{preview_run_id}
 - saved application 引用执行
 - inline application + template snapshot 执行
 
@@ -31,7 +33,9 @@
 ## 鉴权规则
 
 - POST /api/v1/workflows/preview-runs 需要 workflows:write
+- GET /api/v1/workflows/preview-runs 需要 workflows:read
 - GET /api/v1/workflows/preview-runs/{preview_run_id} 需要 workflows:read
+- DELETE /api/v1/workflows/preview-runs/{preview_run_id} 需要 workflows:write
 
 ## 状态语义
 
@@ -173,6 +177,41 @@
 - 返回单条 WorkflowPreviewRun 的当前持久化结果
 - 返回字段与 create 接口一致
 - 典型用途：在 create 请求执行期间回查 running，或在返回后再次读取 outputs、node_records 和 error_message
+
+## GET /api/v1/workflows/preview-runs
+
+- 返回 WorkflowPreviewRun 摘要列表，不返回 outputs、template_outputs、node_records 和 metadata
+- 必填查询参数：
+  - project_id
+- 可选查询参数：
+  - state：按状态过滤，支持 created、running、succeeded、failed、timed_out
+  - created_from：按 created_at 下界过滤，使用 ISO8601 文本
+  - created_to：按 created_at 上界过滤，使用 ISO8601 文本
+- 摘要字段：
+  - format_id：固定为 amvision.workflow-preview-run-summary.v1
+  - preview_run_id
+  - project_id
+  - application_id
+  - source_kind
+  - state
+  - created_at
+  - started_at
+  - finished_at
+  - created_by
+  - timeout_seconds
+  - error_message
+  - retention_until
+
+## DELETE /api/v1/workflows/preview-runs/{preview_run_id}
+
+- 成功状态码：204 No Content
+- 删除 preview run 持久化记录时，会一并删除对应的 snapshot 目录
+
+## maintenance 清理动作
+
+- backend-maintenance 已提供 cleanup-preview-runs 命令。
+- 该命令按 retention_until 扫描并删除已过期 preview run 记录，同时清理对应 snapshot 目录。
+- 该动作属于运维清理，不新增公开 REST API。
 
 ## 当前不公开的扩展项
 

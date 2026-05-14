@@ -140,6 +140,80 @@ class SqlAlchemyWorkflowRuntimeRepository:
             return None
         return self._preview_to_domain(record)
 
+    def list_preview_runs(self, project_id: str) -> tuple[WorkflowPreviewRun, ...]:
+        """按 Project id 列出 WorkflowPreviewRun。
+
+        参数：
+        - project_id：所属 Project id。
+
+        返回：
+        - tuple[WorkflowPreviewRun, ...]：按创建时间倒序排列的 preview run 列表。
+        """
+
+        statement = (
+            select(WorkflowPreviewRunRecord)
+            .where(WorkflowPreviewRunRecord.project_id == project_id)
+            .order_by(
+                WorkflowPreviewRunRecord.created_at.desc(),
+                WorkflowPreviewRunRecord.preview_run_id.desc(),
+            )
+        )
+        try:
+            records = self.session.execute(statement).scalars().all()
+        except SQLAlchemyError as error:
+            raise PersistenceOperationError(
+                "列出 WorkflowPreviewRun 失败",
+                details={"error_type": error.__class__.__name__},
+            ) from error
+        return tuple(self._preview_to_domain(record) for record in records)
+
+    def delete_preview_run(self, preview_run_id: str) -> None:
+        """按 id 删除一个 WorkflowPreviewRun。
+
+        参数：
+        - preview_run_id：要删除的 preview run id。
+
+        返回：
+        - None。
+        """
+
+        try:
+            record = self.session.get(WorkflowPreviewRunRecord, preview_run_id)
+            if record is None:
+                return
+            self.session.delete(record)
+        except SQLAlchemyError as error:
+            raise PersistenceOperationError(
+                "删除 WorkflowPreviewRun 失败",
+                details={"error_type": error.__class__.__name__},
+            ) from error
+
+    def list_expired_preview_runs(
+        self,
+        retention_until: str,
+    ) -> tuple[WorkflowPreviewRun, ...]:
+        """列出 retention_until 已到期的 preview run。"""
+
+        statement = (
+            select(WorkflowPreviewRunRecord)
+            .where(
+                WorkflowPreviewRunRecord.retention_until.is_not(None),
+                WorkflowPreviewRunRecord.retention_until <= retention_until,
+            )
+            .order_by(
+                WorkflowPreviewRunRecord.retention_until.asc(),
+                WorkflowPreviewRunRecord.preview_run_id.asc(),
+            )
+        )
+        try:
+            records = self.session.execute(statement).scalars().all()
+        except SQLAlchemyError as error:
+            raise PersistenceOperationError(
+                "列出已过期 WorkflowPreviewRun 失败",
+                details={"error_type": error.__class__.__name__},
+            ) from error
+        return tuple(self._preview_to_domain(record) for record in records)
+
     def save_workflow_app_runtime(self, workflow_app_runtime: WorkflowAppRuntime) -> None:
         """保存一个 WorkflowAppRuntime。"""
 

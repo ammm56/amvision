@@ -6,6 +6,11 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from backend.contracts.workflows.runtime import (
+    WorkflowApplicationReferenceSummaryContract,
+    WorkflowRuntimeReferenceSummaryContract,
+)
+
 
 WORKFLOW_TRIGGER_SOURCE_FORMAT = "amvision.workflow-trigger-source.v1"
 WORKFLOW_TRIGGER_EVENT_FORMAT = "amvision.workflow-trigger-event.v1"
@@ -142,6 +147,9 @@ class WorkflowTriggerSourceContract(BaseModel):
     - created_at：创建时间。
     - updated_at：更新时间。
     - created_by：创建主体 id。
+    - updated_by：最近修改主体 id。
+    - runtime_summary：绑定 runtime 的一跳摘要。
+    - application_summary：绑定 application 的一跳摘要。
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -175,6 +183,9 @@ class WorkflowTriggerSourceContract(BaseModel):
     created_at: str
     updated_at: str
     created_by: str | None = None
+    updated_by: str | None = None
+    runtime_summary: WorkflowRuntimeReferenceSummaryContract | None = None
+    application_summary: WorkflowApplicationReferenceSummaryContract | None = None
 
     @model_validator(mode="after")
     def validate_contract(self) -> WorkflowTriggerSourceContract:

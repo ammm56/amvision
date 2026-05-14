@@ -1,0 +1,24 @@
+{
+  "format_id": "amvision.node-pack-manifest.v1",
+  "id": "example.simple-nodes",
+  "version": "0.1.0",
+  "displayName": "Example Simple Nodes",
+  "description": "提供一组简单示例节点。",
+  "category": "custom-node-pack",
+  "capabilities": [
+    "pipeline.node"
+  ],
+  "permissionScopes": [],
+  "entrypoints": {
+    "backend": "custom_nodes.example_simple_nodes.backend.entry:register"
+  },
+  "compatibility": {
+    "api": ">=0.1 <1.0",
+    "runtime": ">=3.12"
+  },
+  "timeout": {
+    "defaultSeconds": 30
+  },
+  "enabledByDefault": false,
+  "customNodeCatalogPath": "workflow/catalog.json"
+}

@@ -21,6 +21,7 @@
 
 - WorkflowAppRuntime 表示一份已发布应用的长期运行单元。
 - runtime 创建时会固定 application snapshot 和 template snapshot；如果提供 execution_policy_id，还会额外固定 execution policy snapshot。
+- runtime 返回会额外补 application_summary 和 template_summary 两个一跳 authoring 摘要，减少控制面二次请求。
 - 当前仍采用单 runtime 单实例单进程模型，已经公开 restart 和 instances，但不公开 scale。
 - runtime worker 提供 start、stop、health 和执行宿主能力；sync invoke 与 async WorkflowRun 都复用同一份固定 snapshot。
 
@@ -72,6 +73,9 @@
 | created_at | 记录创建时间 |
 | updated_at | 最近一次状态更新或健康刷新时间 |
 | created_by | 创建主体 id，可为空 |
+| updated_by | 最近一次 start、stop、restart 或 create 的主体 id，可为空 |
+| application_summary | 绑定 application 的一跳摘要，可为空 |
+| template_summary | 绑定 template 的一跳摘要，可为空 |
 | last_started_at | 最近一次成功 start 时间，可为空 |
 | last_stopped_at | 最近一次 stop 时间，可为空 |
 | heartbeat_at | 最近一次 worker 心跳时间，可为空 |
@@ -128,6 +132,30 @@
   "created_at": "2026-05-08T12:00:00Z",
   "updated_at": "2026-05-08T12:00:00Z",
   "created_by": "operator-1",
+  "updated_by": "operator-1",
+  "application_summary": {
+    "project_id": "project-1",
+    "application_id": "inspection-app",
+    "display_name": "Inspection App",
+    "description": "",
+    "created_at": "2026-05-08T11:58:00Z",
+    "updated_at": "2026-05-08T11:58:00Z",
+    "created_by": "operator-1",
+    "updated_by": "operator-1",
+    "template_id": "inspection-template",
+    "template_version": "1.0.0"
+  },
+  "template_summary": {
+    "project_id": "project-1",
+    "template_id": "inspection-template",
+    "template_version": "1.0.0",
+    "display_name": "Inspection Template",
+    "description": "",
+    "created_at": "2026-05-08T11:57:00Z",
+    "updated_at": "2026-05-08T11:57:00Z",
+    "created_by": "operator-1",
+    "updated_by": "operator-1"
+  },
   "last_started_at": null,
   "last_stopped_at": null,
   "heartbeat_at": null,
@@ -153,7 +181,7 @@
 
 - 需要显式提供查询参数 project_id
 - 返回当前 Project 下的 WorkflowAppRuntime 列表
-- 第一阶段列表项返回完整 WorkflowAppRuntime 合同，不只返回摘要字段
+- 第一阶段列表项返回完整 WorkflowAppRuntime 合同，不只返回摘要字段；其中包含 application_summary 和 template_summary 两个一跳摘要
 
 ## GET /api/v1/workflows/app-runtimes/{workflow_runtime_id}
 

@@ -45,6 +45,7 @@ from backend.service.infrastructure.object_store.local_dataset_storage import (
     DatasetStorageSettings,
     LocalDatasetStorage,
 )
+from custom_nodes.barcode_protocol_nodes.specs import QR_CROP_DECODE_REMAP_NODE_TYPE_ID
 from tests.api_test_support import build_test_jpeg_bytes, build_valid_test_png_bytes
 from tests.yolox_test_support import FakeDeploymentProcessSupervisor
 
@@ -282,6 +283,39 @@ def test_runtime_registry_loader_registers_core_service_nodes(
 
     stop_node_definition = runtime_registry.get_node_definition("core.service.yolox-deployment.stop")
     assert [port.name for port in stop_node_definition.input_ports] == ["request", "dependency"]
+
+
+def test_runtime_registry_loader_clears_custom_nodes_namespace_between_roots(
+    tmp_path: Path,
+) -> None:
+    """验证切换 custom_nodes 根目录后不会继续复用旧命名空间模块。"""
+
+    temporary_custom_nodes_root_dir = _create_shadow_opencv_node_pack_fixture(tmp_path)
+    temporary_node_pack_loader = LocalNodePackLoader(temporary_custom_nodes_root_dir)
+    temporary_node_pack_loader.refresh()
+    temporary_runtime_registry_loader = WorkflowNodeRuntimeRegistryLoader(
+        node_catalog_registry=NodeCatalogRegistry(node_pack_loader=temporary_node_pack_loader),
+        node_pack_loader=temporary_node_pack_loader,
+    )
+
+    temporary_runtime_registry_loader.refresh()
+
+    repository_custom_nodes_root_dir = _get_repository_custom_nodes_root()
+    repository_node_pack_loader = LocalNodePackLoader(repository_custom_nodes_root_dir)
+    repository_node_pack_loader.refresh()
+    repository_runtime_registry_loader = WorkflowNodeRuntimeRegistryLoader(
+        node_catalog_registry=NodeCatalogRegistry(node_pack_loader=repository_node_pack_loader),
+        node_pack_loader=repository_node_pack_loader,
+    )
+
+    repository_runtime_registry_loader.refresh()
+
+    qr_crop_node_definition = repository_runtime_registry_loader.get_runtime_registry().get_node_definition(
+        QR_CROP_DECODE_REMAP_NODE_TYPE_ID
+    )
+    assert repository_runtime_registry_loader.get_runtime_registry().has_registered_handler(
+        node_definition=qr_crop_node_definition
+    )
 
 
 def test_core_training_service_node_uses_runtime_context(
@@ -3141,6 +3175,102 @@ def _create_missing_entrypoint_node_pack_fixture(tmp_path: Path) -> Path:
                 "capability_tags": ["text.no-entrypoint"],
                 "runtime_requirements": {},
                 "node_pack_id": "missing.entrypoint-nodes",
+                "node_pack_version": "0.1.0",
+            }
+        ],
+    }
+    (node_pack_dir / "manifest.json").write_text(
+        json.dumps(manifest_payload, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    (workflow_dir / "catalog.json").write_text(
+        json.dumps(workflow_catalog_payload, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    return tmp_path / "custom_nodes"
+
+
+def _create_shadow_opencv_node_pack_fixture(tmp_path: Path) -> Path:
+    """创建与仓库 opencv_basic_nodes 同名的最小测试节点包。
+
+    参数：
+    - tmp_path：pytest 提供的临时目录。
+
+    返回：
+    - Path：临时 custom_nodes 根目录。
+    """
+
+    node_pack_dir = tmp_path / "custom_nodes" / "opencv_basic_nodes"
+    backend_dir = node_pack_dir / "backend"
+    workflow_dir = node_pack_dir / "workflow"
+    backend_dir.mkdir(parents=True, exist_ok=True)
+    workflow_dir.mkdir(parents=True, exist_ok=True)
+    (node_pack_dir / "__init__.py").write_text("", encoding="utf-8")
+    (backend_dir / "__init__.py").write_text("", encoding="utf-8")
+    (backend_dir / "entry.py").write_text(
+        """
+def _shadow_handler(request):
+    return {"result": {"value": "shadow"}}
+
+
+def register(context):
+    context.register_python_callable("custom.shadow.opencv-basic", _shadow_handler)
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    manifest_payload = {
+        "format_id": "amvision.node-pack-manifest.v1",
+        "id": "shadow.opencv-basic-nodes",
+        "version": "0.1.0",
+        "displayName": "Shadow OpenCV Basic Nodes",
+        "description": "测试 custom_nodes 命名空间隔离的同名节点包。",
+        "category": "custom-node-pack",
+        "capabilities": ["pipeline.node"],
+        "entrypoints": {"backend": "custom_nodes.opencv_basic_nodes.backend.entry:register"},
+        "compatibility": {"api": ">=0.1 <1.0", "runtime": ">=3.12"},
+        "timeout": {"defaultSeconds": 30},
+        "enabledByDefault": True,
+        "customNodeCatalogPath": "workflow/catalog.json",
+    }
+    workflow_catalog_payload = {
+        "format_id": "amvision.custom-node-catalog.v1",
+        "payload_contracts": [
+            {
+                "format_id": "amvision.workflow-payload-contract.v1",
+                "payload_type_id": "text.v1",
+                "display_name": "Text",
+                "transport_kind": "inline-json",
+                "json_schema": {
+                    "type": "object",
+                    "properties": {"value": {"type": "string"}},
+                    "required": ["value"],
+                },
+                "artifact_kinds": [],
+                "metadata": {},
+            }
+        ],
+        "node_definitions": [
+            {
+                "format_id": "amvision.node-definition.v1",
+                "node_type_id": "custom.shadow.opencv-basic",
+                "display_name": "Shadow OpenCV Basic",
+                "category": "test.shadow",
+                "description": "测试 custom_nodes 同名 pack 切换后的缓存隔离。",
+                "implementation_kind": "custom-node",
+                "runtime_kind": "python-callable",
+                "input_ports": [],
+                "output_ports": [
+                    {
+                        "name": "result",
+                        "display_name": "Result",
+                        "payload_type_id": "text.v1",
+                    }
+                ],
+                "parameter_schema": {"type": "object", "properties": {}},
+                "capability_tags": ["test.shadow"],
+                "runtime_requirements": {},
+                "node_pack_id": "shadow.opencv-basic-nodes",
                 "node_pack_version": "0.1.0",
             }
         ],

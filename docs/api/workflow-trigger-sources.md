@@ -411,6 +411,9 @@ http-response 输出或 WorkflowRun outputs
 - created_at
 - updated_at
 - created_by
+- updated_by
+- runtime_summary
+- application_summary
 
 ## submit_mode 为什么默认更偏 async
 
@@ -486,6 +489,8 @@ http-response 输出或 WorkflowRun outputs
 - display_name
 - trigger_kind
 - workflow_runtime_id
+- runtime_summary
+- application_summary
 - submit_mode
 - enabled
 - last_triggered_at

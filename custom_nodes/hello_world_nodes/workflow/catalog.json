@@ -1,0 +1,61 @@
+{
+  "format_id": "amvision.custom-node-catalog.v1",
+  "payload_contracts": [],
+  "node_definitions": [
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.hello-world.message",
+      "display_name": "Hello World Message",
+      "category": "example.hello",
+      "description": "根据输入 name 或默认参数生成一个最小的问候消息。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "input_ports": [
+        {
+          "name": "name",
+          "display_name": "Name",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": false,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "greeting",
+          "display_name": "Greeting",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "greeting": {
+            "type": "string",
+            "minLength": 1
+          },
+          "default_name": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "capability_tags": [
+        "example.hello"
+      ],
+      "runtime_requirements": {
+        "python_packages": []
+      },
+      "node_pack_id": "hello.world-nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {
+        "templateSource": "custom_nodes/_scaffold/simple_node_pack"
+      }
+    }
+  ]
+}

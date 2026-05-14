@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Mapping
 
 from backend.contracts.nodes.node_pack_manifest import CustomNodeCatalogDocument, NodePackManifest
 from backend.contracts.workflows.workflow_graph import (
@@ -43,13 +44,31 @@ class LocalNodePackLoader:
         node_pack_manifests: list[NodePackManifest] = []
         payload_contracts: list[WorkflowPayloadContract] = []
         node_definitions: list[NodeDefinition] = []
+        discovered_node_packs: list[tuple[Path, NodePackManifest]] = []
 
         for node_pack_dir in self._discover_node_pack_directories():
             manifest_path = self._resolve_manifest_path(node_pack_dir)
             if manifest_path is None:
                 continue
             manifest = self._load_manifest(manifest_path)
+            discovered_node_packs.append((node_pack_dir, manifest))
             node_pack_manifests.append(manifest)
+
+        manifest_index = self._build_manifest_index(node_pack_manifests)
+        enabled_manifest_index = {
+            manifest.node_pack_id: manifest
+            for manifest in node_pack_manifests
+            if manifest.enabled_by_default
+        }
+
+        for manifest in enabled_manifest_index.values():
+            self._validate_enabled_manifest_dependencies(
+                manifest=manifest,
+                manifest_index=manifest_index,
+                enabled_manifest_index=enabled_manifest_index,
+            )
+
+        for node_pack_dir, manifest in discovered_node_packs:
             if not manifest.enabled_by_default:
                 continue
             custom_node_catalog_path = self._resolve_custom_node_catalog_path(
@@ -95,6 +114,81 @@ class LocalNodePackLoader:
         """返回导入本地 node pack entrypoint 所需的模块搜索路径。"""
 
         return (str(self.custom_nodes_root_dir.parent),)
+
+    def _build_manifest_index(
+        self,
+        node_pack_manifests: list[NodePackManifest],
+    ) -> dict[str, NodePackManifest]:
+        """按 node_pack_id 构建 manifest 索引。
+
+        参数：
+        - node_pack_manifests：当前发现的 manifest 列表。
+
+        返回：
+        - dict[str, NodePackManifest]：按 node_pack_id 建立的索引。
+        """
+
+        manifest_index: dict[str, NodePackManifest] = {}
+        for manifest in node_pack_manifests:
+            existing_manifest = manifest_index.get(manifest.node_pack_id)
+            if existing_manifest is not None:
+                raise ServiceConfigurationError(
+                    "发现重复的节点包 id",
+                    details={
+                        "node_pack_id": manifest.node_pack_id,
+                        "existing_version": existing_manifest.version,
+                        "duplicated_version": manifest.version,
+                    },
+                )
+            manifest_index[manifest.node_pack_id] = manifest
+        return manifest_index
+
+    def _validate_enabled_manifest_dependencies(
+        self,
+        *,
+        manifest: NodePackManifest,
+        manifest_index: Mapping[str, NodePackManifest],
+        enabled_manifest_index: Mapping[str, NodePackManifest],
+    ) -> None:
+        """校验启用节点包的依赖是否已经满足。
+
+        参数：
+        - manifest：当前准备启用的节点包 manifest。
+        - manifest_index：全部已发现 manifest 的索引。
+        - enabled_manifest_index：全部已启用 manifest 的索引。
+        """
+
+        for dependency in manifest.dependencies:
+            dependency_manifest = manifest_index.get(dependency.node_pack_id)
+            if dependency_manifest is None:
+                raise ServiceConfigurationError(
+                    "启用节点包前校验依赖失败：缺少依赖节点包",
+                    details={
+                        "node_pack_id": manifest.node_pack_id,
+                        "dependency_node_pack_id": dependency.node_pack_id,
+                        "dependency_version_range": dependency.version_range,
+                    },
+                )
+            if dependency.node_pack_id not in enabled_manifest_index:
+                raise ServiceConfigurationError(
+                    "启用节点包前校验依赖失败：依赖节点包未启用",
+                    details={
+                        "node_pack_id": manifest.node_pack_id,
+                        "dependency_node_pack_id": dependency.node_pack_id,
+                        "dependency_version": dependency_manifest.version,
+                        "dependency_enabled_by_default": dependency_manifest.enabled_by_default,
+                    },
+                )
+            if not dependency.matches_version(dependency_manifest.version):
+                raise ServiceConfigurationError(
+                    "启用节点包前校验依赖失败：依赖节点包版本不满足要求",
+                    details={
+                        "node_pack_id": manifest.node_pack_id,
+                        "dependency_node_pack_id": dependency.node_pack_id,
+                        "dependency_version": dependency_manifest.version,
+                        "dependency_version_range": dependency.version_range,
+                    },
+                )
 
     def _discover_node_pack_directories(self) -> tuple[Path, ...]:
         """返回 custom_nodes 根目录下的一级节点包目录列表。"""

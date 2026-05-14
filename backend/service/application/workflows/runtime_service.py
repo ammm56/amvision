@@ -334,6 +334,119 @@ class WorkflowRuntimeService:
             )
         return preview_run
 
+    def list_preview_runs(self, *, project_id: str) -> tuple[WorkflowPreviewRun, ...]:
+        """按 Project id 列出 WorkflowPreviewRun。
+
+        参数：
+        - project_id：所属 Project id。
+
+        返回：
+        - tuple[WorkflowPreviewRun, ...]：按创建时间倒序排列的 preview run 列表。
+        """
+
+        normalized_project_id = project_id.strip()
+        if not normalized_project_id:
+            raise InvalidRequestError("查询 WorkflowPreviewRun 列表时 project_id 不能为空")
+        return self._list_preview_runs(
+            project_id=normalized_project_id,
+            state=None,
+            created_from=None,
+            created_to=None,
+        )
+
+    def list_preview_runs_filtered(
+        self,
+        *,
+        project_id: str,
+        state: str | None,
+        created_from: str | None,
+        created_to: str | None,
+    ) -> tuple[WorkflowPreviewRun, ...]:
+        """按 Project id、状态和创建时间范围列出 WorkflowPreviewRun。
+
+        参数：
+        - project_id：所属 Project id。
+        - state：可选状态过滤条件。
+        - created_from：可选创建时间下界，使用 ISO8601 文本。
+        - created_to：可选创建时间上界，使用 ISO8601 文本。
+
+        返回：
+        - tuple[WorkflowPreviewRun, ...]：按过滤条件返回的 preview run 列表。
+        """
+
+        normalized_project_id = project_id.strip()
+        if not normalized_project_id:
+            raise InvalidRequestError("查询 WorkflowPreviewRun 列表时 project_id 不能为空")
+        return self._list_preview_runs(
+            project_id=normalized_project_id,
+            state=state,
+            created_from=created_from,
+            created_to=created_to,
+        )
+
+    def _list_preview_runs(
+        self,
+        *,
+        project_id: str,
+        state: str | None,
+        created_from: str | None,
+        created_to: str | None,
+    ) -> tuple[WorkflowPreviewRun, ...]:
+        """执行 preview run 列表查询和过滤。"""
+
+        normalized_state = _normalize_optional_str(state)
+        if normalized_state is not None and normalized_state not in {
+            "created",
+            "running",
+            "succeeded",
+            "failed",
+            "timed_out",
+        }:
+            raise InvalidRequestError(
+                "preview run state 过滤条件无效",
+                details={"state": normalized_state},
+            )
+        created_from_at = _parse_optional_iso_datetime_text(created_from, field_name="created_from")
+        created_to_at = _parse_optional_iso_datetime_text(created_to, field_name="created_to")
+        if created_from_at is not None and created_to_at is not None and created_from_at > created_to_at:
+            raise InvalidRequestError(
+                "created_from 不能大于 created_to",
+                details={"created_from": created_from, "created_to": created_to},
+            )
+        with self._open_unit_of_work() as unit_of_work:
+            preview_runs = unit_of_work.workflow_runtime.list_preview_runs(project_id)
+
+        filtered_preview_runs: list[WorkflowPreviewRun] = []
+        for preview_run in preview_runs:
+            if normalized_state is not None and preview_run.state != normalized_state:
+                continue
+            preview_created_at = _parse_required_iso_datetime_text(
+                preview_run.created_at,
+                field_name="preview_run.created_at",
+            )
+            if created_from_at is not None and preview_created_at < created_from_at:
+                continue
+            if created_to_at is not None and preview_created_at > created_to_at:
+                continue
+            filtered_preview_runs.append(preview_run)
+        return tuple(filtered_preview_runs)
+
+    def delete_preview_run(self, preview_run_id: str) -> None:
+        """删除一个 WorkflowPreviewRun 及其 snapshot 目录。
+
+        参数：
+        - preview_run_id：要删除的 preview run id。
+
+        返回：
+        - None。
+        """
+
+        preview_run = self.get_preview_run(preview_run_id)
+        with self._open_unit_of_work() as unit_of_work:
+            unit_of_work.workflow_runtime.delete_preview_run(preview_run.preview_run_id)
+            unit_of_work.commit()
+        self.dataset_storage.delete_tree(f"workflows/runtime/preview-runs/{preview_run.preview_run_id}")
+
     def create_workflow_app_runtime(
         self,
         request: WorkflowAppRuntimeCreateRequest,
@@ -406,10 +519,13 @@ class WorkflowRuntimeService:
             created_at=now,
             updated_at=now,
             created_by=_normalize_optional_str(created_by),
-            metadata=self._apply_execution_policy_metadata(
-                dict(normalized_request.metadata or {}),
-                execution_policy=execution_policy,
-                execution_policy_snapshot_object_key=execution_policy_snapshot_object_key,
+            metadata=self._with_resource_updated_by(
+                self._apply_execution_policy_metadata(
+                    dict(normalized_request.metadata or {}),
+                    execution_policy=execution_policy,
+                    execution_policy_snapshot_object_key=execution_policy_snapshot_object_key,
+                ),
+                created_by,
             ),
         )
         with self._open_unit_of_work() as unit_of_work:
@@ -437,7 +553,12 @@ class WorkflowRuntimeService:
             )
         return workflow_app_runtime
 
-    def start_workflow_app_runtime(self, workflow_runtime_id: str) -> WorkflowAppRuntime:
+    def start_workflow_app_runtime(
+        self,
+        workflow_runtime_id: str,
+        *,
+        updated_by: str | None = None,
+    ) -> WorkflowAppRuntime:
         """启动一个 WorkflowAppRuntime 对应的 worker。"""
 
         workflow_app_runtime = self.get_workflow_app_runtime(workflow_runtime_id)
@@ -449,6 +570,10 @@ class WorkflowRuntimeService:
                 observed_state=runtime_state.observed_state,
                 updated_at=_now_isoformat(),
                 last_started_at=_now_isoformat(),
+                metadata=self._with_resource_updated_by(
+                    dict(workflow_app_runtime.metadata),
+                    updated_by,
+                ),
             ),
             runtime_state,
         )
@@ -457,7 +582,12 @@ class WorkflowRuntimeService:
             unit_of_work.commit()
         return updated_runtime
 
-    def stop_workflow_app_runtime(self, workflow_runtime_id: str) -> WorkflowAppRuntime:
+    def stop_workflow_app_runtime(
+        self,
+        workflow_runtime_id: str,
+        *,
+        updated_by: str | None = None,
+    ) -> WorkflowAppRuntime:
         """停止一个 WorkflowAppRuntime 对应的 worker。"""
 
         workflow_app_runtime = self.get_workflow_app_runtime(workflow_runtime_id)
@@ -469,6 +599,10 @@ class WorkflowRuntimeService:
                 observed_state=runtime_state.observed_state,
                 updated_at=_now_isoformat(),
                 last_stopped_at=_now_isoformat(),
+                metadata=self._with_resource_updated_by(
+                    dict(workflow_app_runtime.metadata),
+                    updated_by,
+                ),
             ),
             runtime_state,
         )
@@ -482,7 +616,12 @@ class WorkflowRuntimeService:
             unit_of_work.commit()
         return updated_runtime
 
-    def restart_workflow_app_runtime(self, workflow_runtime_id: str) -> WorkflowAppRuntime:
+    def restart_workflow_app_runtime(
+        self,
+        workflow_runtime_id: str,
+        *,
+        updated_by: str | None = None,
+    ) -> WorkflowAppRuntime:
         """重启一个 WorkflowAppRuntime 对应的 worker。
 
         参数：
@@ -504,6 +643,10 @@ class WorkflowRuntimeService:
                 updated_at=_now_isoformat(),
                 last_started_at=_now_isoformat(),
                 last_stopped_at=stopped_at,
+                metadata=self._with_resource_updated_by(
+                    dict(workflow_app_runtime.metadata),
+                    updated_by,
+                ),
             ),
             runtime_state,
         )
@@ -1289,6 +1432,19 @@ class WorkflowRuntimeService:
         return payload
 
     @staticmethod
+    def _with_resource_updated_by(
+        metadata: dict[str, object],
+        updated_by: str | None,
+    ) -> dict[str, object]:
+        """把 runtime 资源最近修改主体写入 metadata。"""
+
+        payload = dict(metadata)
+        normalized_updated_by = _normalize_optional_str(updated_by)
+        if normalized_updated_by is not None:
+            payload["updated_by"] = normalized_updated_by
+        return payload
+
+    @staticmethod
     def _resolve_effective_timeout_seconds(
         *,
         requested_timeout_seconds: int | None,
@@ -1350,3 +1506,27 @@ def _normalize_optional_str(value: str | None) -> str | None:
         return None
     normalized_value = value.strip()
     return normalized_value or None
+
+
+def _parse_optional_iso_datetime_text(value: str | None, *, field_name: str) -> datetime | None:
+    """把可选 ISO8601 文本解析为 UTC datetime。"""
+
+    normalized_value = _normalize_optional_str(value)
+    if normalized_value is None:
+        return None
+    return _parse_required_iso_datetime_text(normalized_value, field_name=field_name)
+
+
+def _parse_required_iso_datetime_text(value: str, *, field_name: str) -> datetime:
+    """把 ISO8601 文本解析为带时区的 UTC datetime。"""
+
+    try:
+        parsed_value = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise InvalidRequestError(
+            f"{field_name} 不是有效的 ISO8601 时间",
+            details={field_name: value},
+        ) from exc
+    if parsed_value.tzinfo is None:
+        parsed_value = parsed_value.replace(tzinfo=timezone.utc)
+    return parsed_value.astimezone(timezone.utc)

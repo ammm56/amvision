@@ -8,10 +8,10 @@ from backend.service.application.workflows.graph_executor import WorkflowNodeExe
 from custom_nodes.barcode_protocol_nodes.backend.support import (
     decode_barcodes,
     require_barcode_position_payload,
+    require_image_refs_payload,
     require_barcode_runtime_imports,
 )
 from custom_nodes.barcode_protocol_nodes.specs import QR_CROP_DECODE_REMAP_NODE_TYPE_ID
-from custom_nodes.opencv_basic_nodes.backend.support import require_image_refs_payload
 
 
 NODE_TYPE_ID = QR_CROP_DECODE_REMAP_NODE_TYPE_ID

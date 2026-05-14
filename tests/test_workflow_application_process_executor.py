@@ -367,6 +367,228 @@ def test_workflow_preview_run_api_marks_timed_out_when_child_process_exceeds_tim
     assert get_response.json()["error_message"] == "等待 workflow snapshot 子进程响应超时"
 
 
+def test_workflow_preview_run_api_lists_and_deletes_preview_runs(tmp_path: Path) -> None:
+    """验证 preview run 列表和删除接口可用，并会清理 snapshot 目录。"""
+
+    session_factory, dataset_storage, queue_backend = create_test_runtime(
+        tmp_path,
+        database_name="workflow-preview-list-delete-api.db",
+    )
+    custom_nodes_root_dir = _create_process_test_node_pack_fixture(tmp_path)
+    node_pack_loader = LocalNodePackLoader(custom_nodes_root_dir)
+    node_pack_loader.refresh()
+    node_catalog_registry = NodeCatalogRegistry(node_pack_loader=node_pack_loader)
+    workflow_service = LocalWorkflowJsonService(
+        dataset_storage=dataset_storage,
+        node_catalog_registry=node_catalog_registry,
+    )
+    workflow_service.save_template(
+        project_id="project-1",
+        template=_build_process_echo_template(),
+    )
+    workflow_service.save_application(
+        project_id="project-1",
+        application=_build_process_echo_application(),
+    )
+    application = create_app(
+        settings=BackendServiceSettings(
+            database=BackendServiceDatabaseConfig(url=session_factory.settings.url),
+            dataset_storage=BackendServiceDatasetStorageConfig(root_dir=str(dataset_storage.root_dir)),
+            queue=BackendServiceQueueConfig(root_dir=str(queue_backend.root_dir)),
+            custom_nodes=BackendServiceCustomNodesConfig(root_dir=str(custom_nodes_root_dir)),
+            task_manager=BackendServiceTaskManagerConfig(enabled=False),
+        ),
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+        queue_backend=queue_backend,
+    )
+    client = TestClient(application)
+
+    try:
+        with client:
+            create_response = client.post(
+                "/api/v1/workflows/preview-runs",
+                headers=build_test_headers(scopes="workflows:read,workflows:write"),
+                json={
+                    "project_id": "project-1",
+                    "application_ref": {"application_id": "process-echo-app"},
+                    "input_bindings": {"request_text": {"value": "hello preview list"}},
+                    "execution_metadata": {"marker": "preview-list-delete"},
+                },
+            )
+            preview_run_id = create_response.json()["preview_run_id"]
+            preview_run_dir = dataset_storage.resolve(f"workflows/runtime/preview-runs/{preview_run_id}")
+            preview_run_dir_exists_before_delete = preview_run_dir.exists()
+            list_response = client.get(
+                "/api/v1/workflows/preview-runs",
+                params={"project_id": "project-1"},
+                headers=build_test_headers(scopes="workflows:read,workflows:write"),
+            )
+            delete_response = client.delete(
+                f"/api/v1/workflows/preview-runs/{preview_run_id}",
+                headers=build_test_headers(scopes="workflows:read,workflows:write"),
+            )
+            list_after_delete_response = client.get(
+                "/api/v1/workflows/preview-runs",
+                params={"project_id": "project-1"},
+                headers=build_test_headers(scopes="workflows:read,workflows:write"),
+            )
+            get_deleted_response = client.get(
+                f"/api/v1/workflows/preview-runs/{preview_run_id}",
+                headers=build_test_headers(scopes="workflows:read,workflows:write"),
+            )
+    finally:
+        session_factory.engine.dispose()
+
+    assert create_response.status_code == 201
+    assert preview_run_dir_exists_before_delete is True
+
+    assert list_response.status_code == 200
+    list_payload = list_response.json()
+    assert len(list_payload) == 1
+    assert list_payload[0]["preview_run_id"] == preview_run_id
+    assert list_payload[0]["project_id"] == "project-1"
+    assert list_payload[0]["application_id"] == "process-echo-app"
+    assert list_payload[0]["state"] == "succeeded"
+    assert list_payload[0]["created_by"] == "user-1"
+    assert "outputs" not in list_payload[0]
+    assert "metadata" not in list_payload[0]
+
+    assert delete_response.status_code == 204
+    assert not preview_run_dir.exists()
+
+    assert list_after_delete_response.status_code == 200
+    assert list_after_delete_response.json() == []
+
+    assert get_deleted_response.status_code == 404
+    assert get_deleted_response.json()["error"]["code"] == "resource_not_found"
+
+
+def test_workflow_preview_run_api_supports_state_and_created_at_filters(tmp_path: Path) -> None:
+    """验证 preview run 列表接口支持按状态和创建时间范围过滤。"""
+
+    session_factory, dataset_storage, queue_backend = create_test_runtime(
+        tmp_path,
+        database_name="workflow-preview-list-filter-api.db",
+    )
+    custom_nodes_root_dir = _create_process_test_node_pack_fixture(tmp_path)
+    node_pack_loader = LocalNodePackLoader(custom_nodes_root_dir)
+    node_pack_loader.refresh()
+    node_catalog_registry = NodeCatalogRegistry(node_pack_loader=node_pack_loader)
+    workflow_service = LocalWorkflowJsonService(
+        dataset_storage=dataset_storage,
+        node_catalog_registry=node_catalog_registry,
+    )
+    workflow_service.save_template(
+        project_id="project-1",
+        template=_build_process_echo_template(),
+    )
+    workflow_service.save_application(
+        project_id="project-1",
+        application=_build_process_echo_application(),
+    )
+    workflow_service.save_template(
+        project_id="project-1",
+        template=_build_process_slow_template(),
+    )
+    workflow_service.save_application(
+        project_id="project-1",
+        application=_build_process_slow_application(),
+    )
+    application = create_app(
+        settings=BackendServiceSettings(
+            database=BackendServiceDatabaseConfig(url=session_factory.settings.url),
+            dataset_storage=BackendServiceDatasetStorageConfig(root_dir=str(dataset_storage.root_dir)),
+            queue=BackendServiceQueueConfig(root_dir=str(queue_backend.root_dir)),
+            custom_nodes=BackendServiceCustomNodesConfig(root_dir=str(custom_nodes_root_dir)),
+            task_manager=BackendServiceTaskManagerConfig(enabled=False),
+        ),
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+        queue_backend=queue_backend,
+    )
+    client = TestClient(application)
+
+    try:
+        with client:
+            succeeded_response = client.post(
+                "/api/v1/workflows/preview-runs",
+                headers=build_test_headers(scopes="workflows:read,workflows:write"),
+                json={
+                    "project_id": "project-1",
+                    "application_ref": {"application_id": "process-echo-app"},
+                    "input_bindings": {"request_text": {"value": "hello preview filters"}},
+                    "execution_metadata": {"marker": "preview-filter-succeeded"},
+                },
+            )
+            timed_out_response = client.post(
+                "/api/v1/workflows/preview-runs",
+                headers=build_test_headers(scopes="workflows:read,workflows:write"),
+                json={
+                    "project_id": "project-1",
+                    "application_ref": {"application_id": "process-slow-app"},
+                    "input_bindings": {"request_text": {"value": "hello preview timeout filters"}},
+                    "execution_metadata": {"marker": "preview-filter-timeout"},
+                    "timeout_seconds": 1,
+                },
+            )
+            list_all_response = client.get(
+                "/api/v1/workflows/preview-runs",
+                params={"project_id": "project-1"},
+                headers=build_test_headers(scopes="workflows:read,workflows:write"),
+            )
+            list_timed_out_response = client.get(
+                "/api/v1/workflows/preview-runs",
+                params={"project_id": "project-1", "state": "timed_out"},
+                headers=build_test_headers(scopes="workflows:read,workflows:write"),
+            )
+            list_created_from_response = client.get(
+                "/api/v1/workflows/preview-runs",
+                params={
+                    "project_id": "project-1",
+                    "created_from": timed_out_response.json()["created_at"],
+                },
+                headers=build_test_headers(scopes="workflows:read,workflows:write"),
+            )
+            list_created_to_response = client.get(
+                "/api/v1/workflows/preview-runs",
+                params={
+                    "project_id": "project-1",
+                    "created_to": succeeded_response.json()["created_at"],
+                },
+                headers=build_test_headers(scopes="workflows:read,workflows:write"),
+            )
+    finally:
+        session_factory.engine.dispose()
+
+    assert succeeded_response.status_code == 201
+    assert timed_out_response.status_code == 201
+    assert succeeded_response.json()["state"] == "succeeded"
+    assert timed_out_response.json()["state"] == "timed_out"
+
+    assert list_all_response.status_code == 200
+    list_all_payload = list_all_response.json()
+    assert [item["preview_run_id"] for item in list_all_payload] == [
+        timed_out_response.json()["preview_run_id"],
+        succeeded_response.json()["preview_run_id"],
+    ]
+
+    assert list_timed_out_response.status_code == 200
+    assert [item["preview_run_id"] for item in list_timed_out_response.json()] == [
+        timed_out_response.json()["preview_run_id"]
+    ]
+
+    assert list_created_from_response.status_code == 200
+    assert [item["preview_run_id"] for item in list_created_from_response.json()] == [
+        timed_out_response.json()["preview_run_id"]
+    ]
+
+    assert list_created_to_response.status_code == 200
+    assert [item["preview_run_id"] for item in list_created_to_response.json()] == [
+        succeeded_response.json()["preview_run_id"]
+    ]
+
+
 def test_workflow_execution_policy_api_creates_lists_and_applies_to_preview_and_runtime(
     tmp_path: Path,
 ) -> None:
@@ -514,13 +736,18 @@ def test_workflow_execution_policy_api_creates_lists_and_applies_to_preview_and_
     assert preview_payload["metadata"]["execution_policy"]["execution_policy_id"] == "preview-default-policy"
     assert runtime_payload["request_timeout_seconds"] == 7
     assert runtime_payload["execution_policy_snapshot_object_key"] is not None
+    assert runtime_payload["updated_by"] == "user-1"
+    assert runtime_payload["application_summary"]["application_id"] == "process-echo-app"
+    assert runtime_payload["template_summary"]["template_id"] == "process-echo-template"
     assert runtime_payload["metadata"]["execution_policy"]["execution_policy_id"] == "runtime-default-policy"
     assert invoke_payload["requested_timeout_seconds"] == 7
     assert invoke_payload["node_records"] == []
     assert invoke_payload["metadata"]["execution_policy"]["execution_policy_id"] == "runtime-default-policy"
     assert dataset_storage.read_json(preview_policy_snapshot_object_key)["execution_policy_id"] == "preview-default-policy"
     assert dataset_storage.read_json(runtime_policy_snapshot_object_key)["execution_policy_id"] == "runtime-default-policy"
+    assert start_response.json()["updated_by"] == "user-1"
     assert stop_response.json()["observed_state"] == "stopped"
+    assert stop_response.json()["updated_by"] == "user-1"
 
 
 def test_workflow_app_runtime_api_invokes_saved_application_in_worker_process(
