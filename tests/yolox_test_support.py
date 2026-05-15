@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from backend.queue import LocalFileQueueBackend
+from backend.service.application.events import InMemoryServiceEventBus
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.models.yolox_model_service import (
     SqlAlchemyYoloXModelService,
@@ -96,8 +97,17 @@ def create_yolox_api_test_context(
     sync_supervisor = None
     async_supervisor = None
     if attach_fake_deployment_supervisors:
-        sync_supervisor = FakeDeploymentProcessSupervisor(runtime_mode="sync")
-        async_supervisor = FakeDeploymentProcessSupervisor(runtime_mode="async")
+        service_event_bus = getattr(context.client.app.state, "service_event_bus", None)
+        sync_supervisor = FakeDeploymentProcessSupervisor(
+            runtime_mode="sync",
+            dataset_storage_root_dir=str(context.dataset_storage.root_dir),
+            service_event_bus=service_event_bus if isinstance(service_event_bus, InMemoryServiceEventBus) else None,
+        )
+        async_supervisor = FakeDeploymentProcessSupervisor(
+            runtime_mode="async",
+            dataset_storage_root_dir=str(context.dataset_storage.root_dir),
+            service_event_bus=service_event_bus if isinstance(service_event_bus, InMemoryServiceEventBus) else None,
+        )
         context.client.app.state.yolox_sync_deployment_process_supervisor = sync_supervisor
         context.client.app.state.yolox_async_deployment_process_supervisor = async_supervisor
 
@@ -242,15 +252,26 @@ class _FakeDeploymentProcessState:
 class FakeDeploymentProcessSupervisor(YoloXDeploymentProcessSupervisor):
     """用于 API 测试的最小 fake deployment 进程监督器。"""
 
-    def __init__(self, *, runtime_mode: str, starting_process_id: int = 1000) -> None:
+    def __init__(
+        self,
+        *,
+        runtime_mode: str,
+        dataset_storage_root_dir: str,
+        service_event_bus: InMemoryServiceEventBus | None = None,
+        starting_process_id: int = 1000,
+    ) -> None:
         """初始化 fake deployment 进程监督器。
 
         参数：
         - runtime_mode：当前监督器运行模式；sync 或 async。
+        - dataset_storage_root_dir：测试用本地文件存储根目录。
+        - service_event_bus：测试应用持有的统一事件总线。
         - starting_process_id：分配 fake process id 的起始值。
         """
 
         self.runtime_mode = runtime_mode
+        self.dataset_storage_root_dir = dataset_storage_root_dir
+        self.service_event_bus = service_event_bus
         self._states: dict[str, _FakeDeploymentProcessState] = {}
         self._next_process_id = starting_process_id
         self.load_calls: list[str] = []
@@ -266,20 +287,36 @@ class FakeDeploymentProcessSupervisor(YoloXDeploymentProcessSupervisor):
         """把指定 deployment 标记为 running。"""
 
         state = self._ensure_state(config)
+        previous_status = self._build_status(state)
         state.desired_running = True
         state.process_state = "running"
         if state.process_id is None:
             state.process_id = self._allocate_process_id()
-        return self._build_status(state)
+        current_status = self._build_status(state)
+        if self._status_changed(previous_status, current_status):
+            self._record_deployment_status_event(
+                current_status,
+                event_type="deployment.started",
+                message="deployment 进程已启动",
+            )
+        return current_status
 
     def stop_deployment(self, config: YoloXDeploymentProcessConfig) -> YoloXDeploymentProcessStatus:
         """把指定 deployment 标记为 stopped。"""
 
         state = self._ensure_state(config)
+        previous_status = self._build_status(state)
         state.desired_running = False
         state.process_state = "stopped"
         state.process_id = None
-        return self._build_status(state)
+        current_status = self._build_status(state)
+        if self._status_changed(previous_status, current_status):
+            self._record_deployment_status_event(
+                current_status,
+                event_type="deployment.stopped",
+                message="deployment 进程已停止",
+            )
+        return current_status
 
     def warmup_deployment(self, config: YoloXDeploymentProcessConfig) -> YoloXDeploymentProcessHealth:
         """把所有实例标记为 warmed。"""
@@ -288,7 +325,13 @@ class FakeDeploymentProcessSupervisor(YoloXDeploymentProcessSupervisor):
         self.start_deployment(config)
         for instance_index in range(config.instance_count):
             self._warm_instance(state, instance_index)
-        return self._build_health(state)
+        health = self._build_health(state)
+        self._record_deployment_health_event(
+            health,
+            event_type="deployment.warmup.completed",
+            message="deployment 预热已完成",
+        )
+        return health
 
     def get_status(self, config: YoloXDeploymentProcessConfig) -> YoloXDeploymentProcessStatus:
         """返回指定 deployment 的 fake 进程状态。"""
@@ -307,7 +350,13 @@ class FakeDeploymentProcessSupervisor(YoloXDeploymentProcessSupervisor):
         if state.process_state != "running":
             raise InvalidRequestError("当前 deployment 进程尚未启动")
         state.warmed_instance_indexes.clear()
-        return self._build_health(state)
+        health = self._build_health(state)
+        self._record_deployment_health_event(
+            health,
+            event_type="deployment.reset.completed",
+            message="deployment 实例池已重置",
+        )
+        return health
 
     def run_inference(self, *, config: YoloXDeploymentProcessConfig, request: object) -> YoloXDeploymentProcessExecution:
         """执行一次 fake 推理，并返回固定结果。

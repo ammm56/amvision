@@ -20,7 +20,7 @@
 - FastAPI app factory：backend.service.api.app.create_app
 - 健康检查：/api/v1/system/health
 - 当前公开任务接口：/api/v1/tasks
-- 当前公开任务事件订阅：/ws/tasks/events
+- 当前公开任务事件订阅：/ws/v1/tasks/events
 - OpenAPI JSON：/openapi.json
 - Swagger UI：/docs
 
@@ -131,7 +131,7 @@
 - FastAPI 服务可直接通过 uvicorn 启动
 - REST 路由、WebSocket 路由、中间件和异常映射已装配完成
 - /api/v1/system/health 可以直接返回最小健康状态
-- /api/v1/tasks 和 /ws/tasks/events 已经公开
+- /api/v1/tasks 和 /ws/v1/tasks/events 已经公开
 - 当前默认配置下，backend-service 不再自动托管任何队列消费者；dataset import、dataset export、training、conversion、evaluation 和 inference 全部迁到独立 worker profile
 - `task_manager` 字段当前仅保留兼容配置形态，service 启动链不会再创建进程内 BackgroundTaskManager
 
@@ -288,7 +288,7 @@ python -c "from backend.service.infrastructure.db.session import DatabaseSetting
 2. 访问 /api/v1/system/health
 3. 调用 /api/v1/datasets/imports 提交导入任务
 4. 用返回的 task_id 调用 /api/v1/tasks/{task_id}
-5. 如需实时观察任务事件，再建立 /ws/tasks/events?task_id=... 订阅
+5. 如需实时观察任务事件，再建立 /ws/v1/tasks/events?task_id=... 订阅
 6. 如果使用的是旧数据库文件，再检查是否存在 schema 不兼容问题
 
 ## 当前已验证的命令

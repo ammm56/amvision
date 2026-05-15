@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from multiprocessing.queues import Queue
 from pathlib import Path
 from queue import Empty
-from typing import Any
+from typing import Any, Callable
 from uuid import uuid4
 import multiprocessing
 import json
@@ -101,6 +101,18 @@ class WorkflowSnapshotExecutionResult:
     node_records: tuple[WorkflowNodeExecutionRecord, ...] = ()
 
 
+@dataclass
+class WorkflowSnapshotProcessHandle:
+    """描述一个已启动但尚未回收的 snapshot 子进程句柄。"""
+
+    process: Any
+    response_queue: Queue[Any]
+    event_queue: Queue[Any]
+    local_buffer_broker_event_channel: LocalBufferBrokerEventChannel | None = None
+    published_inference_gateway_channel: PublishedInferenceGatewayEventChannel | None = None
+    published_inference_gateway_dispatcher: PublishedInferenceGatewayDispatcher | None = None
+
+
 class SnapshotExecutionService:
     """在给定运行时资源中执行固定 snapshot 的 workflow 图。"""
 
@@ -111,6 +123,7 @@ class SnapshotExecutionService:
         node_catalog_registry: NodeCatalogRegistry,
         runtime_registry: WorkflowNodeRuntimeRegistry,
         runtime_context: WorkflowServiceNodeRuntimeContext,
+        event_sink: Callable[[dict[str, object]], None] | None = None,
     ) -> None:
         """初始化 snapshot 执行服务。
 
@@ -125,6 +138,7 @@ class SnapshotExecutionService:
         self.node_catalog_registry = node_catalog_registry
         self.runtime_registry = runtime_registry
         self.runtime_context = runtime_context
+        self.event_sink = event_sink
 
     def execute(
         self,
@@ -160,6 +174,8 @@ class SnapshotExecutionService:
             input_bindings=request.input_bindings,
         )
         execution_metadata_payload = dict(request.execution_metadata)
+        execution_metadata_payload.setdefault("project_id", request.project_id)
+        execution_metadata_payload.setdefault("application_id", request.application_id)
         execution_metadata_payload.setdefault("workflow_run_id", uuid4().hex)
         execution_metadata_payload["dataset_storage"] = self.dataset_storage
         execution_metadata_payload.setdefault("execution_image_registry", ExecutionImageRegistry())
@@ -172,6 +188,7 @@ class SnapshotExecutionService:
                 input_values=template_input_values,
                 execution_metadata=execution_metadata_payload,
                 runtime_context=self.runtime_context,
+                event_callback=self.event_sink,
             )
         except Exception as exc:
             execution_error = exc
@@ -411,7 +428,17 @@ class WorkflowSnapshotProcessExecutor:
         - WorkflowSnapshotExecutionResult：稳定执行结果。
         """
 
+        process_handle = self.start(request)
+        try:
+            return self.wait_for_result(process_handle, timeout_seconds=self.request_timeout_seconds)
+        finally:
+            self.close_handle(process_handle)
+
+    def start(self, request: WorkflowSnapshotExecutionRequest) -> WorkflowSnapshotProcessHandle:
+        """启动一个 snapshot 子进程，并返回可等待的句柄。"""
+
         response_queue: Queue[Any] = self._context.Queue()
+        event_queue: Queue[Any] = self._context.Queue()
         gateway_channel = self._build_published_inference_gateway_channel()
         gateway_dispatcher = self._build_published_inference_gateway_dispatcher(gateway_channel)
         if gateway_dispatcher is not None:
@@ -431,37 +458,77 @@ class WorkflowSnapshotProcessExecutor:
                 "local_buffer_broker_event_channel": self.local_buffer_broker_event_channel,
                 "published_inference_gateway_event_channel": gateway_channel,
                 "response_queue": response_queue,
+                "event_queue": event_queue,
             },
             name=f"workflow-snapshot-{request.application_id}",
             daemon=False,
         )
         process.start()
-        try:
-            try:
-                message = response_queue.get(timeout=self.request_timeout_seconds)
-            except Empty as exc:
-                raise OperationTimeoutError(
-                    "等待 workflow snapshot 子进程响应超时",
-                    details={
-                        "project_id": request.project_id,
-                        "application_id": request.application_id,
-                        "timeout_seconds": self.request_timeout_seconds,
-                    },
-                ) from exc
-            finally:
-                process.join(timeout=1.0)
-                if process.is_alive():
-                    process.terminate()
-                    process.join(timeout=1.0)
+        return WorkflowSnapshotProcessHandle(
+            process=process,
+            response_queue=response_queue,
+            event_queue=event_queue,
+            local_buffer_broker_event_channel=self.local_buffer_broker_event_channel,
+            published_inference_gateway_channel=gateway_channel,
+            published_inference_gateway_dispatcher=gateway_dispatcher,
+        )
 
-            return deserialize_snapshot_execution_result(message)
+    def wait_for_result(
+        self,
+        handle: WorkflowSnapshotProcessHandle,
+        *,
+        timeout_seconds: float | None = None,
+    ) -> WorkflowSnapshotExecutionResult:
+        """等待一个已启动的 snapshot 子进程返回最终结果。"""
+
+        effective_timeout_seconds = self.request_timeout_seconds if timeout_seconds is None else max(0.1, timeout_seconds)
+        try:
+            message = handle.response_queue.get(timeout=effective_timeout_seconds)
+        except Empty as exc:
+            raise OperationTimeoutError(
+                "等待 workflow snapshot 子进程响应超时",
+                details={"timeout_seconds": effective_timeout_seconds},
+            ) from exc
         finally:
-            if gateway_dispatcher is not None:
-                gateway_dispatcher.stop()
-            _close_local_buffer_broker_channel(self.local_buffer_broker_event_channel)
-            _close_gateway_channel(gateway_channel)
-            response_queue.close()
-            response_queue.join_thread()
+            handle.process.join(timeout=1.0)
+        return deserialize_snapshot_execution_result(message)
+
+    def read_event(
+        self,
+        handle: WorkflowSnapshotProcessHandle,
+        *,
+        timeout_seconds: float = 0.0,
+    ) -> dict[str, object] | None:
+        """读取一条 snapshot 子进程上报的执行事件。"""
+
+        try:
+            if timeout_seconds > 0:
+                message = handle.event_queue.get(timeout=timeout_seconds)
+            else:
+                message = handle.event_queue.get_nowait()
+        except Empty:
+            return None
+        return deserialize_snapshot_execution_event(message)
+
+    def terminate(self, handle: WorkflowSnapshotProcessHandle) -> None:
+        """强制终止一个仍在运行的 snapshot 子进程。"""
+
+        if handle.process.is_alive():
+            handle.process.terminate()
+            handle.process.join(timeout=1.0)
+
+    def close_handle(self, handle: WorkflowSnapshotProcessHandle) -> None:
+        """关闭并回收一个 snapshot 子进程句柄。"""
+
+        self.terminate(handle)
+        if handle.published_inference_gateway_dispatcher is not None:
+            handle.published_inference_gateway_dispatcher.stop()
+        _close_local_buffer_broker_channel(handle.local_buffer_broker_event_channel)
+        _close_gateway_channel(handle.published_inference_gateway_channel)
+        handle.response_queue.close()
+        handle.response_queue.join_thread()
+        handle.event_queue.close()
+        handle.event_queue.join_thread()
 
     def _build_published_inference_gateway_channel(self) -> PublishedInferenceGatewayEventChannel | None:
         """为当前 preview 子进程创建 PublishedInferenceGateway 事件通道。"""
@@ -490,6 +557,7 @@ def run_workflow_snapshot_process_worker(
     settings_payload: dict[str, object],
     request_payload: dict[str, object],
     response_queue: Queue[Any],
+    event_queue: Queue[Any] | None = None,
     local_buffer_broker_event_channel: LocalBufferBrokerEventChannel | None = None,
     published_inference_gateway_event_channel: PublishedInferenceGatewayEventChannel | None = None,
 ) -> None:
@@ -541,6 +609,7 @@ def run_workflow_snapshot_process_worker(
             node_catalog_registry=node_catalog_registry,
             runtime_registry=runtime_registry_loader.get_runtime_registry(),
             runtime_context=runtime_context,
+            event_sink=(lambda event: _emit_snapshot_execution_event(event_queue, event)),
         ).execute(
             WorkflowSnapshotExecutionRequest(
                 project_id=_require_payload_str(request_payload, "project_id"),
@@ -692,6 +761,40 @@ def deserialize_snapshot_execution_result(message: object) -> WorkflowSnapshotEx
         outputs=_require_payload_dict(payload, "outputs"),
         template_outputs=_require_payload_dict(payload, "template_outputs"),
         node_records=node_records,
+    )
+
+
+def deserialize_snapshot_execution_event(message: object) -> dict[str, object]:
+    """把子进程事件消息转换为稳定字典。"""
+
+    if not isinstance(message, dict):
+        raise ServiceConfigurationError("workflow snapshot 子进程返回了无效事件消息")
+    event_type = message.get("event_type") if isinstance(message.get("event_type"), str) else ""
+    if not event_type:
+        raise ServiceConfigurationError("workflow snapshot 子进程事件缺少 event_type")
+    payload = message.get("payload") if isinstance(message.get("payload"), dict) else {}
+    raw_message = message.get("message")
+    return {
+        "event_type": event_type,
+        "message": raw_message.strip() if isinstance(raw_message, str) else event_type,
+        "payload": payload,
+    }
+
+
+def _emit_snapshot_execution_event(
+    event_queue: Queue[Any] | None,
+    event: dict[str, object],
+) -> None:
+    """向父进程发送一条 snapshot 执行事件。"""
+
+    if event_queue is None:
+        return
+    event_queue.put(
+        {
+            "event_type": str(event.get("event_type") or "workflow.event"),
+            "message": str(event.get("message") or event.get("event_type") or "workflow event"),
+            "payload": event.get("payload") if isinstance(event.get("payload"), dict) else {},
+        }
     )
 
 

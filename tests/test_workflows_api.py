@@ -110,7 +110,7 @@ def test_validate_flow_application_supports_embedded_template_override(tmp_path:
         session_factory.engine.dispose()
 
 
-def test_workflow_authoring_catalog_and_resource_management_endpoints(tmp_path: Path) -> None:
+def test_workflow_editor_catalog_and_resource_management_endpoints(tmp_path: Path) -> None:
     """验证节点目录读取、模板版本浏览和流程应用列表删除接口可用。"""
 
     client, session_factory, _ = _create_test_client(tmp_path)
@@ -150,6 +150,11 @@ def test_workflow_authoring_catalog_and_resource_management_endpoints(tmp_path: 
             list_template_versions_response = client.get(
                 "/api/v1/workflows/projects/project-1/templates/inspection-demo/versions",
                 headers=_build_workflow_read_headers(),
+            )
+            paged_template_versions_response = client.get(
+                "/api/v1/workflows/projects/project-1/templates/inspection-demo/versions",
+                headers=_build_workflow_read_headers(),
+                params={"offset": 0, "limit": 1},
             )
             list_applications_response = client.get(
                 "/api/v1/workflows/projects/project-1/applications",
@@ -201,6 +206,7 @@ def test_workflow_authoring_catalog_and_resource_management_endpoints(tmp_path: 
         assert save_application_response.status_code == 201
 
         assert list_templates_response.status_code == 200
+        assert list_templates_response.headers["x-total-count"] == "1"
         templates_payload = list_templates_response.json()
         assert len(templates_payload) == 1
         assert templates_payload[0]["template_id"] == "inspection-demo"
@@ -220,7 +226,16 @@ def test_workflow_authoring_catalog_and_resource_management_endpoints(tmp_path: 
         assert template_versions_payload[0]["updated_at"].endswith("Z")
         assert template_versions_payload[1]["node_count"] == 3
 
+        assert paged_template_versions_response.status_code == 200
+        assert paged_template_versions_response.headers["x-offset"] == "0"
+        assert paged_template_versions_response.headers["x-limit"] == "1"
+        assert paged_template_versions_response.headers["x-total-count"] == "2"
+        assert paged_template_versions_response.headers["x-has-more"] == "true"
+        assert paged_template_versions_response.headers["x-next-offset"] == "1"
+        assert [item["template_version"] for item in paged_template_versions_response.json()] == ["1.0.0"]
+
         assert list_applications_response.status_code == 200
+        assert list_applications_response.headers["x-total-count"] == "1"
         applications_payload = list_applications_response.json()
         assert len(applications_payload) == 1
         assert applications_payload[0]["application_id"] == "inspection-api-app"
@@ -241,6 +256,105 @@ def test_workflow_authoring_catalog_and_resource_management_endpoints(tmp_path: 
         assert list_applications_after_delete_response.status_code == 200
         assert list_applications_after_delete_response.json() == []
         assert get_deleted_application_response.status_code == 404
+    finally:
+        session_factory.engine.dispose()
+
+
+def test_workflow_template_latest_and_copy_endpoints(tmp_path: Path) -> None:
+    """验证模板 latest 和 copy 便捷接口可用。"""
+
+    client, session_factory, dataset_storage = _create_test_client(tmp_path)
+    template_v1_payload = _build_template_payload()
+    template_v2_payload = json.loads(json.dumps(template_v1_payload))
+    template_v2_payload["template_version"] = "1.2.0"
+    template_v2_payload["display_name"] = "Inspection Demo Latest"
+    template_v2_payload["nodes"][1]["parameters"]["score_threshold"] = 0.65
+
+    try:
+        with client:
+            save_template_v1_response = client.put(
+                "/api/v1/workflows/projects/project-1/templates/inspection-demo/versions/1.0.0",
+                headers=_build_workflow_write_headers(),
+                json={"template": template_v1_payload},
+            )
+            save_template_v2_response = client.put(
+                "/api/v1/workflows/projects/project-1/templates/inspection-demo/versions/1.2.0",
+                headers=_build_workflow_write_headers(),
+                json={"template": template_v2_payload},
+            )
+            get_latest_response = client.get(
+                "/api/v1/workflows/projects/project-1/templates/inspection-demo/latest",
+                headers=_build_workflow_read_headers(),
+            )
+            copy_template_response = client.post(
+                "/api/v1/workflows/projects/project-1/templates/inspection-demo/versions/1.2.0/copy",
+                headers=_build_workflow_write_headers(),
+                json={
+                    "target_template_id": "inspection-demo-copy",
+                    "target_template_version": "2.0.0",
+                    "display_name": "Inspection Demo Copy",
+                },
+            )
+
+        assert save_template_v1_response.status_code == 201
+        assert save_template_v2_response.status_code == 201
+
+        assert get_latest_response.status_code == 200
+        assert get_latest_response.json()["template"]["template_version"] == "1.2.0"
+        assert get_latest_response.json()["template"]["display_name"] == "Inspection Demo Latest"
+
+        assert copy_template_response.status_code == 201
+        copied_template_payload = copy_template_response.json()
+        assert copied_template_payload["template"]["template_id"] == "inspection-demo-copy"
+        assert copied_template_payload["template"]["template_version"] == "2.0.0"
+        assert copied_template_payload["template"]["display_name"] == "Inspection Demo Copy"
+        assert copied_template_payload["template"]["nodes"][1]["parameters"]["score_threshold"] == 0.65
+        assert dataset_storage.resolve(copied_template_payload["object_key"]).is_file()
+    finally:
+        session_factory.engine.dispose()
+
+
+def test_workflow_application_copy_endpoint(tmp_path: Path) -> None:
+    """验证流程应用 copy 便捷接口可用。"""
+
+    client, session_factory, dataset_storage = _create_test_client(tmp_path)
+    template_payload = _build_template_payload()
+    application_payload = _build_application_payload()
+
+    try:
+        with client:
+            save_template_response = client.put(
+                "/api/v1/workflows/projects/project-1/templates/inspection-demo/versions/1.0.0",
+                headers=_build_workflow_write_headers(),
+                json={"template": template_payload},
+            )
+            save_application_response = client.put(
+                "/api/v1/workflows/projects/project-1/applications/inspection-api-app",
+                headers=_build_workflow_write_headers(),
+                json={"application": application_payload},
+            )
+            copy_application_response = client.post(
+                "/api/v1/workflows/projects/project-1/applications/inspection-api-app/copy",
+                headers=_build_workflow_write_headers(),
+                json={
+                    "target_application_id": "inspection-api-app-copy",
+                    "display_name": "Inspection API App Copy",
+                },
+            )
+
+        assert save_template_response.status_code == 201
+        assert save_application_response.status_code == 201
+
+        assert copy_application_response.status_code == 201
+        copied_application_payload = copy_application_response.json()
+        assert copied_application_payload["application"]["application_id"] == "inspection-api-app-copy"
+        assert copied_application_payload["application"]["display_name"] == "Inspection API App Copy"
+        assert copied_application_payload["application"]["template_ref"]["template_id"] == "inspection-demo"
+        assert copied_application_payload["application"]["template_ref"]["template_version"] == "1.0.0"
+        assert copied_application_payload["application"]["template_ref"]["source_uri"].endswith(
+            "/templates/inspection-demo/versions/1.0.0/template.json"
+        )
+        assert dataset_storage.resolve(copied_application_payload["object_key"]).is_file()
     finally:
         session_factory.engine.dispose()
 
@@ -330,6 +444,48 @@ def test_workflow_node_catalog_supports_filters(tmp_path: Path) -> None:
             )
             for item in by_keyword_payload["node_definitions"]
         )
+    finally:
+        session_factory.engine.dispose()
+
+
+def test_workflow_node_catalog_returns_effective_parameter_ui_schema(tmp_path: Path) -> None:
+    """验证节点目录接口会返回可直接渲染的参数 UI 合同。"""
+
+    client, session_factory, _ = _create_test_client(tmp_path)
+
+    try:
+        with client:
+            response = client.get(
+                "/api/v1/workflows/node-catalog",
+                params={"q": "compare values"},
+                headers=_build_workflow_read_headers(),
+            )
+
+        assert response.status_code == 200
+        payload = response.json()
+        compare_node = next(
+            item for item in payload["node_definitions"] if item["node_type_id"] == "core.logic.compare"
+        )
+        parameter_ui_schema = compare_node["parameter_ui_schema"]
+        assert any(item["group_id"] == "condition" for item in parameter_ui_schema["groups"])
+
+        operator_field = next(
+            item for item in parameter_ui_schema["fields"] if item["parameter_name"] == "operator"
+        )
+        assert operator_field["required"] is True
+        assert operator_field["group_id"] == "condition"
+        assert operator_field["default_value"] == "eq"
+        assert any(
+            option["value"] == "eq" and option["label"] == "Equals"
+            for option in operator_field["enum_options"]
+        )
+
+        right_value_field = next(
+            item for item in parameter_ui_schema["fields"] if item["parameter_name"] == "right_value"
+        )
+        assert right_value_field["display_name"] == "Right Value"
+        assert right_value_field["hidden"] is False
+        assert right_value_field["readonly"] is False
     finally:
         session_factory.engine.dispose()
 

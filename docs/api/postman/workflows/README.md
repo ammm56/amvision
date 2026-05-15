@@ -37,7 +37,7 @@
 
 - 当前 FastAPI 默认触发入口是通用接口 `POST /api/v1/workflows/app-runtimes/{workflow_runtime_id}/invoke`。
 - application JSON 中 `bindings.config.route` 当前作为绑定声明，用于表达目标接入形态；现阶段不会自动生成同名专用 HTTP 路由。
-- `image-ref.v1` 输入绑定通过 JSON invoke 传入，常见公开形状是 `{"object_key": "inputs/source.jpg", "media_type": "image/png"}`；受控本地 adapter 或后续 TriggerSource 场景也可以携带 `buffer_ref` 或 `frame_ref`，但这类引用依赖本机 LocalBufferBroker 的短期 mmap 状态，不写入当前通用 Postman 请求体。
+- `image-ref.v1` 输入绑定通过 JSON invoke 传入，常见公开形状是 `{"object_key": "projects/{project_id}/inputs/source.jpg", "media_type": "image/png"}`。长期输入资产应进入 `projects/{project_id}/inputs/...`，请求期临时输入应进入 `runtime/inputs/{consumer}/{request_id}/...`。受控本地 adapter 或后续 TriggerSource 场景也可以携带 `buffer_ref` 或 `frame_ref`，但这类引用依赖本机 LocalBufferBroker 的短期 mmap 状态，不写入当前通用 Postman 请求体。
 - `image-base64.v1` 输入绑定通过 JSON invoke 传入，常见形状是 `{"image_base64": "<base64>", "media_type": "image/png"}`；也支持 `data:image/png;base64,...` 形式的单行字符串。
 - `dataset-package.v1` 在 preview run 中使用 JSON 内联 base64 `package_bytes` 表达小型 zip 包；正式 runtime invoke/run 通过 `/invoke/upload` 或 `/runs/upload` 传入，文件字段名必须等于 binding_id。当前 multipart 上传入口只支持这类 zip 包文件输入，不支持把图片文件直接作为 `request_image` 上传。
 - 对于 template 内可以根据上下文自动补齐的默认参数，collection 里的请求体仍优先显式展示关键值，便于排查问题；例如第一类 workflow 的 `training_request_payload.value.warm_start_model_version_id` 会直接写出预训练 model_version_id，而不是只保留 `model_scale`。
@@ -46,4 +46,6 @@
 - FrameRef/BufferRef 的固定请求体需要由本地 adapter 在运行时生成，因此 `06-*`、`07-*` collection 仍不直接发送图片 bytes；图片数据面继续使用 C# SDK 或其他后续 SDK。
 - TriggerSource 只负责提交协议原生输入，不替 workflow 图做 `image-ref -> image-base64`、本地磁盘读图或相机取帧。需要这些能力时，应通过图中的显式节点或 custom node 实现。
 - `workflow-execute-output` 类型的输出会直接出现在 `outputs[binding_id]`；`http-response` 类型的输出会出现在 `outputs[binding_id] = {"status_code": 200, "body": {...}}`。
+- 项目目录读取、Project 文件 metadata/content，以及模板/应用/runtime 主列表的 offset/limit 分页示例统一收口到 [docs/api/postman/workflow-runtime.postman_collection.json](../workflow-runtime.postman_collection.json)。分场景 collection 继续只保留最短业务链路，不重复铺通用控制面请求。
+- `05-*`、`07-*` 这类保存图片场景的默认模板已经切到 `projects/{project_id}/results/workflow-applications/{application_id}/runs/{workflow_run_id}/...` 结果域，因此后续可以直接接入 Project 结果读取面。旧模板如果仍写 `workflow-apps/...`，当前运行时继续兼容，但不再作为默认示例。
 - 第一类 collection 的 request_package 默认指向 `projectsrc/datasets/barcodeqrcode.zip`，导入 Postman 后如路径不匹配，需要把文件字段指到该 zip 包的本地路径。

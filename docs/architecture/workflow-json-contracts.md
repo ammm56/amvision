@@ -340,11 +340,13 @@ barcode.protocol-nodes 当前已经采用这套维护方式，并固定通过 cu
 {
   "input_bindings": {
     "request_image": {
-      "object_key": "inputs/source.jpg"
+      "object_key": "projects/project-1/inputs/source.jpg"
     }
   }
 }
 ```
+
+这里的 `projects/project-1/inputs/source.jpg` 用来表达“传入一个 Project 管理的 storage object key”。请求期临时输入不应复用这个目录，而应进入 `runtime/inputs/{consumer}/{request_id}/...`。
 
 上面两份文件保持 contract 示例角色，继续使用 docs/examples 下的演示路径。面向真实 workflow object key 路径、真实 save、preview-run、app-runtime create 和 invoke 请求体，以及 Postman 手工测试的独立 JSON 示例，已另外放到下面这些文件：
 

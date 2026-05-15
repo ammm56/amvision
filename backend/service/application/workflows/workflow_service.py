@@ -507,6 +507,111 @@ class LocalWorkflowJsonService:
             resource_summary=self._read_resource_summary(object_key),
         )
 
+    def get_latest_template(
+        self,
+        *,
+        project_id: str,
+        template_id: str,
+    ) -> WorkflowTemplateDocument:
+        """读取指定模板当前可见的最新版本。"""
+
+        normalized_project_id = self._normalize_identifier(project_id, "project_id")
+        normalized_template_id = self._normalize_identifier(template_id, "template_id")
+        version_summaries = self.list_template_versions(
+            project_id=normalized_project_id,
+            template_id=normalized_template_id,
+        )
+        if not version_summaries:
+            raise ResourceNotFoundError(
+                "请求的 workflow template 不存在",
+                details={
+                    "project_id": normalized_project_id,
+                    "template_id": normalized_template_id,
+                },
+            )
+        latest_version = version_summaries[-1].template_version
+        return self.get_template(
+            project_id=normalized_project_id,
+            template_id=normalized_template_id,
+            template_version=latest_version,
+        )
+
+    def copy_template_version(
+        self,
+        *,
+        project_id: str,
+        source_template_id: str,
+        source_template_version: str,
+        target_template_id: str,
+        target_template_version: str,
+        actor_id: str | None = None,
+        display_name: str | None = None,
+        description: str | None = None,
+    ) -> WorkflowTemplateDocument:
+        """复制一份图模板版本到新的 template_id/template_version。"""
+
+        normalized_project_id = self._normalize_identifier(project_id, "project_id")
+        normalized_source_template_id = self._normalize_identifier(source_template_id, "source_template_id")
+        normalized_source_template_version = self._normalize_identifier(
+            source_template_version,
+            "source_template_version",
+        )
+        normalized_target_template_id = self._normalize_identifier(target_template_id, "target_template_id")
+        normalized_target_template_version = self._normalize_identifier(
+            target_template_version,
+            "target_template_version",
+        )
+        if (
+            normalized_source_template_id == normalized_target_template_id
+            and normalized_source_template_version == normalized_target_template_version
+        ):
+            raise InvalidRequestError(
+                "复制 workflow template 时目标 template_id 和 template_version 不能与源版本相同",
+                details={
+                    "template_id": normalized_target_template_id,
+                    "template_version": normalized_target_template_version,
+                },
+            )
+
+        source_document = self.get_template(
+            project_id=normalized_project_id,
+            template_id=normalized_source_template_id,
+            template_version=normalized_source_template_version,
+        )
+        target_object_key = self._build_template_object_key(
+            project_id=normalized_project_id,
+            template_id=normalized_target_template_id,
+            template_version=normalized_target_template_version,
+        )
+        if self.dataset_storage.resolve(target_object_key).is_file():
+            raise InvalidRequestError(
+                "目标 workflow template 已存在",
+                details={
+                    "project_id": normalized_project_id,
+                    "template_id": normalized_target_template_id,
+                    "template_version": normalized_target_template_version,
+                },
+            )
+
+        copied_template = source_document.template.model_copy(
+            update={
+                "template_id": normalized_target_template_id,
+                "template_version": normalized_target_template_version,
+                "display_name": (
+                    self._normalize_optional_non_empty_text(display_name, "display_name")
+                    or source_document.template.display_name
+                ),
+                "description": (
+                    source_document.template.description if description is None else description
+                ),
+            }
+        )
+        return self.save_template(
+            project_id=normalized_project_id,
+            template=copied_template,
+            actor_id=actor_id,
+        )
+
     def validate_application(
         self,
         *,
@@ -711,6 +816,62 @@ class LocalWorkflowJsonService:
                 application=application,
             ),
             resource_summary=self._read_resource_summary(object_key),
+        )
+
+    def copy_application(
+        self,
+        *,
+        project_id: str,
+        source_application_id: str,
+        target_application_id: str,
+        actor_id: str | None = None,
+        display_name: str | None = None,
+        description: str | None = None,
+    ) -> WorkflowApplicationDocument:
+        """复制一份流程应用到新的 application_id。"""
+
+        normalized_project_id = self._normalize_identifier(project_id, "project_id")
+        normalized_source_application_id = self._normalize_identifier(source_application_id, "source_application_id")
+        normalized_target_application_id = self._normalize_identifier(target_application_id, "target_application_id")
+        if normalized_source_application_id == normalized_target_application_id:
+            raise InvalidRequestError(
+                "复制 workflow application 时目标 application_id 不能与源 application_id 相同",
+                details={"application_id": normalized_target_application_id},
+            )
+
+        source_document = self.get_application(
+            project_id=normalized_project_id,
+            application_id=normalized_source_application_id,
+        )
+        target_object_key = self._build_application_object_key(
+            project_id=normalized_project_id,
+            application_id=normalized_target_application_id,
+        )
+        if self.dataset_storage.resolve(target_object_key).is_file():
+            raise InvalidRequestError(
+                "目标 workflow application 已存在",
+                details={
+                    "project_id": normalized_project_id,
+                    "application_id": normalized_target_application_id,
+                },
+            )
+
+        copied_application = source_document.application.model_copy(
+            update={
+                "application_id": normalized_target_application_id,
+                "display_name": (
+                    self._normalize_optional_non_empty_text(display_name, "display_name")
+                    or source_document.application.display_name
+                ),
+                "description": (
+                    source_document.application.description if description is None else description
+                ),
+            }
+        )
+        return self.save_application(
+            project_id=normalized_project_id,
+            application=copied_application,
+            actor_id=actor_id,
         )
 
     def _summarize_template(self, template: WorkflowGraphTemplate) -> WorkflowTemplateValidationSummary:
@@ -1099,6 +1260,19 @@ class LocalWorkflowJsonService:
             raise InvalidRequestError(
                 f"{field_name} 不能包含路径分隔符或父目录引用",
                 details={field_name: normalized_value},
+            )
+        return normalized_value
+
+    def _normalize_optional_non_empty_text(self, value: str | None, field_name: str) -> str | None:
+        """规范化可选非空文本；传空白字符串时抛出请求错误。"""
+
+        if value is None:
+            return None
+        normalized_value = value.strip()
+        if not normalized_value:
+            raise InvalidRequestError(
+                f"{field_name} 不能为空字符串",
+                details={field_name: value},
             )
         return normalized_value
 

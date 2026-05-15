@@ -47,6 +47,7 @@ def _build_local_buffer_broker_health(request: Request) -> dict[str, object]:
 
 @system_router.get("/me")
 def get_current_principal(
+    request: Request,
     principal: Annotated[AuthenticatedPrincipal, Depends(require_principal)],
 ) -> dict[str, object]:
     """返回当前请求主体信息。
@@ -63,6 +64,8 @@ def get_current_principal(
         "principal_type": principal.principal_type,
         "project_ids": principal.project_ids,
         "scopes": principal.scopes,
+        "auth_source": principal.metadata.get("auth_source"),
+        "auth_mode": getattr(request.app.state.backend_service_settings.auth, "mode", None),
     }
 
 

@@ -50,7 +50,7 @@
       "node_id": "save_image",
       "node_type_id": "core.io.image-save",
       "parameters": {
-        "object_key": "workflow-apps/opencv-process-save-image-zeromq/{workflow_run_id}/{timestamp}.png",
+        "object_key": "{workflow_app_result_dir}/{node_id}-{timestamp}.png",
         "overwrite": false
       }
     },

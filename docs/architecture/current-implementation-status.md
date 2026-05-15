@@ -17,8 +17,10 @@
 
 - 以 YOLOX 为中心的训练 -> 人工验证 -> 数据集级评估 -> 转换 -> DeploymentInstance 发布 -> 同步 / 异步推理接口闭环已经打通。
 - backend-service 当前承担 REST / WebSocket 控制面和 deployment process supervisor，全部队列消费者已经收敛到独立 worker profile。
-- 当前公开 REST v1 已覆盖 datasets、dataset-exports、models、yolox training tasks、validation-sessions、conversion-tasks、evaluation-tasks、deployment-instances、inference-tasks 和 tasks。
+- 当前公开 REST v1 已覆盖 datasets、dataset-exports、models、yolox training tasks、validation-sessions、conversion-tasks、evaluation-tasks、deployment-instances、inference-tasks、projects 目录与对象读取、workflow runtime 资源和 tasks。
 - workflow 公开资源面已经拆成 preview-runs、execution-policies、app-runtimes、runs 和 trigger-sources；当前开始把状态集合、snapshot 路径和 preview cleanup 规则收敛到共享 contracts 语义，避免 route、service、maintenance 和文档继续各写一份。
+- 当前公开 WebSocket 已覆盖 system、tasks、workflows.preview-runs、workflows.runs、workflows.app-runtimes、deployments 和 projects 七类资源流；统一的路由分层、重连规则和项目级聚合流边界已整理到 [websocket-architecture.md](websocket-architecture.md)。
+- backend-service 当前已经补齐本地前端接入所需的 CORS、hybrid auth、Project 目录接口和 Project 内对象读取接口；主要工作台列表接口已经统一到 offset/limit + 响应头分页规则。
 - 当前代码形态仍然是“模块化单体 + 本地队列 + 本地对象存储 + 独立 deployment 子进程”。下一步重点应转向拓扑收敛、运行时硬化和平台泛化，而不是继续补 YOLOX 基础闭环缺口。
 
 ## 当前整体框架
@@ -26,9 +28,11 @@
 ### backend-service 控制面
 
 - FastAPI 应用入口位于 `backend/service/api/app.py`，负责装配 settings、数据库会话、本地对象存储、本地队列、中间件、异常处理、REST 路由和 WebSocket 路由。
+- backend-service settings 位于 `backend/service/settings.py`，当前已经统一管理 CORS、auth mode、静态 token 和 Project 目录配置。
 - 启动编排位于 `backend/service/api/bootstrap.py`，负责在应用生命周期内初始化 SessionFactory、LocalDatasetStorage、LocalFileQueueBackend 和 deployment process supervisor。
-- REST v1 路由汇总位于 `backend/service/api/rest/v1/router.py`，当前已经挂载 system、datasets、dataset-exports、models、yolox-training-tasks、validation-sessions、conversion-tasks、evaluation-tasks、deployment-instances、inference-tasks 和 tasks。
-- WebSocket 路由位于 `backend/service/api/ws/router.py`，当前公开最小系统事件入口和按 task_id 订阅的任务事件入口。
+- REST v1 路由汇总位于 `backend/service/api/rest/v1/router.py`，当前已经挂载 system、projects、workflows、workflow runtime、datasets、dataset-exports、models、yolox-training-tasks、validation-sessions、conversion-tasks、evaluation-tasks、deployment-instances、inference-tasks 和 tasks。
+- REST v1 列表分页辅助函数位于 `backend/service/api/rest/v1/pagination.py`，当前用于 projects、workflow templates、template versions、applications、execution-policies、preview-runs、app-runtimes 和 trigger-sources。
+- WebSocket 路由位于 `backend/service/api/ws/router.py`，当前已经公开 system、tasks、workflow preview-runs、workflow runs、workflow app-runtimes、deployments 和 projects 聚合流入口。
 
 ### 后台执行与 runtime 面
 

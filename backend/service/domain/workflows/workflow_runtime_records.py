@@ -37,6 +37,30 @@ class WorkflowPreviewRun:
 
 
 @dataclass(frozen=True)
+class WorkflowPreviewRunEvent:
+    """描述一条 preview run 执行过程事件。"""
+
+    preview_run_id: str
+    sequence: int
+    event_type: str
+    created_at: str
+    message: str
+    payload: dict[str, object] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class WorkflowAppRuntimeEvent:
+    """描述一条 app runtime 生命周期或观测事件。"""
+
+    workflow_runtime_id: str
+    sequence: int
+    event_type: str
+    created_at: str
+    message: str
+    payload: dict[str, object] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
 class WorkflowExecutionPolicy:
     """描述一条 WorkflowExecutionPolicy 配置。
 
@@ -85,6 +109,8 @@ class WorkflowAppRuntime:
     desired_state: WorkflowAppRuntimeState = "stopped"
     observed_state: WorkflowAppRuntimeState = "stopped"
     request_timeout_seconds: int = 60
+    heartbeat_interval_seconds: int = 5
+    heartbeat_timeout_seconds: int = 15
     created_at: str = ""
     updated_at: str = ""
     created_by: str | None = None
@@ -119,3 +145,16 @@ class WorkflowRun:
     node_records: tuple[dict[str, object], ...] = ()
     error_message: str | None = None
     metadata: dict[str, object] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class WorkflowRunEvent:
+    """描述一条 WorkflowRun 生命周期事件。"""
+
+    workflow_run_id: str
+    workflow_runtime_id: str
+    sequence: int
+    event_type: str
+    created_at: str
+    message: str
+    payload: dict[str, object] = field(default_factory=dict)

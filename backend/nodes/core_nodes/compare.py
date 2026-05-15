@@ -78,12 +78,48 @@ CORE_NODE_SPEC = CoreNodeSpec(
         ),
         parameter_schema={
             "type": "object",
+            "x-amvision-ui": {
+                "groups": {
+                    "condition": {
+                        "display_name": "Condition",
+                        "order": 10,
+                    }
+                }
+            },
             "properties": {
                 "operator": {
                     "type": "string",
+                    "title": "Operator",
+                    "description": "比较左右值时使用的运算符。",
                     "enum": ["eq", "ne", "gt", "ge", "lt", "le", "=", "!=", ">", ">=", "<", "<="],
+                    "default": "eq",
+                    "x-amvision-ui": {
+                        "group": "condition",
+                        "order": 10,
+                        "enum_labels": {
+                            "eq": "Equals",
+                            "ne": "Not Equals",
+                            "gt": "Greater Than",
+                            "ge": "Greater Than Or Equals",
+                            "lt": "Less Than",
+                            "le": "Less Than Or Equals",
+                            "=": "Equals (=)",
+                            "!=": "Not Equals (!=)",
+                            ">": "Greater Than (>)",
+                            ">=": "Greater Than Or Equals (>=)",
+                            "<": "Less Than (<)",
+                            "<=": "Less Than Or Equals (<=)",
+                        },
+                    },
                 },
-                "right_value": {},
+                "right_value": {
+                    "title": "Right Value",
+                    "description": "未连接 Right 输入端口时使用的比较目标。",
+                    "x-amvision-ui": {
+                        "group": "condition",
+                        "order": 20,
+                    },
+                },
             },
             "required": ["operator"],
         },

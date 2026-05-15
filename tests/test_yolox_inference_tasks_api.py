@@ -20,6 +20,7 @@ from tests.yolox_test_support import (
 
 
 _VALID_TEST_IMAGE_BASE64 = base64.b64encode(build_valid_test_png_bytes()).decode("ascii")
+_PROJECT_INFERENCE_INPUT_URI = "projects/project-1/inputs/inference/inference-image.jpg"
 
 
 def test_create_yolox_inference_task_and_read_result_after_worker(
@@ -33,7 +34,7 @@ def test_create_yolox_inference_task_and_read_result_after_worker(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
     )
-    dataset_storage.write_bytes("runtime-inputs/inference-image.jpg", b"fake-image")
+    dataset_storage.write_bytes(_PROJECT_INFERENCE_INPUT_URI, b"fake-image")
     worker = YoloXInferenceQueueWorker(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
@@ -101,7 +102,7 @@ def test_create_yolox_inference_task_and_read_result_after_worker(
                 json={
                     "project_id": "project-1",
                     "deployment_instance_id": deployment_instance_id,
-                    "input_uri": "runtime-inputs/inference-image.jpg",
+                    "input_uri": _PROJECT_INFERENCE_INPUT_URI,
                     "score_threshold": 0.2,
                     "save_result_image": True,
                 },
@@ -236,6 +237,7 @@ def test_direct_inference_accepts_base64_and_round_robins_instances(
         payload_2 = response_2.json()
         payload_3 = response_3.json()
         assert payload_1["input_source_kind"] == "image_base64"
+        assert payload_1["input_uri"].startswith("runtime/inputs/inference/")
         assert payload_1["preview_image_base64"] is not None
         assert payload_1["decode_ms"] == 0.8
         assert payload_1["preprocess_ms"] == 1.2
@@ -446,7 +448,7 @@ def test_create_yolox_inference_task_requires_running_async_process(tmp_path: Pa
         session_factory=session_factory,
         dataset_storage=dataset_storage,
     )
-    dataset_storage.write_bytes("runtime-inputs/inference-image.jpg", b"fake-image")
+    dataset_storage.write_bytes(_PROJECT_INFERENCE_INPUT_URI, b"fake-image")
 
     try:
         with client:
@@ -468,7 +470,7 @@ def test_create_yolox_inference_task_requires_running_async_process(tmp_path: Pa
                 json={
                     "project_id": "project-1",
                     "deployment_instance_id": deployment_instance_id,
-                    "input_uri": "runtime-inputs/inference-image.jpg",
+                    "input_uri": _PROJECT_INFERENCE_INPUT_URI,
                 },
             )
 
@@ -592,7 +594,7 @@ def test_direct_inference_rejects_multiple_input_sources(tmp_path: Path) -> None
                 f"/api/v1/models/yolox/deployment-instances/{deployment_instance_id}/infer",
                 headers=_build_model_read_headers(),
                 json={
-                    "input_uri": "runtime-inputs/image.jpg",
+                    "input_uri": "projects/project-1/inputs/inference/image.jpg",
                     "image_base64": _VALID_TEST_IMAGE_BASE64,
                 },
             )

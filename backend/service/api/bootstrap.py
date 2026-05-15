@@ -12,6 +12,7 @@ from backend.nodes.node_catalog_registry import NodeCatalogRegistry
 from backend.nodes.node_pack_loader import NodePackLoader
 from backend.queue import LocalFileQueueBackend
 from backend.service.api.seeders import BackendServiceSeeder, BackendServiceSeederRunner
+from backend.service.application.events import InMemoryServiceEventBus
 from backend.service.application.deployments import (
     PublishedInferenceGateway,
     YoloXDeploymentPublishedInferenceGateway,
@@ -25,6 +26,9 @@ from backend.service.application.models.pretrained_catalog import (
 )
 from backend.service.application.workflows.graph_executor import (
     WorkflowNodeRuntimeRegistry,
+)
+from backend.service.application.workflows.preview_run_manager import (
+    WorkflowPreviewRunManager,
 )
 from backend.service.application.workflows.runtime_service import WorkflowRuntimeService
 from backend.service.application.workflows.runtime_worker import (
@@ -70,6 +74,7 @@ class BackendServiceRuntime:
     - session_factory：数据库会话工厂。
     - dataset_storage：本地数据集文件存储服务。
     - queue_backend：本地任务队列后端。
+    - service_event_bus：服务内统一事件总线。
     - node_pack_loader：节点包目录加载器。
     - node_catalog_registry：统一节点目录注册表。
     - workflow_node_runtime_registry_loader：workflow 节点运行时注册表加载器。
@@ -80,6 +85,7 @@ class BackendServiceRuntime:
     - yolox_sync_deployment_process_supervisor：同步 YOLOX deployment 进程监督器。
     - yolox_async_deployment_process_supervisor：异步 YOLOX deployment 进程监督器。
     - workflow_runtime_worker_manager：workflow runtime worker 管理器。
+    - workflow_preview_run_manager：preview run 进程管理器。
     - trigger_source_supervisor：workflow trigger source adapter 监督器。
     - background_task_manager_host：当前进程托管的后台任务管理器宿主。
     """
@@ -88,6 +94,7 @@ class BackendServiceRuntime:
     session_factory: SessionFactory
     dataset_storage: LocalDatasetStorage
     queue_backend: LocalFileQueueBackend
+    service_event_bus: InMemoryServiceEventBus
     node_pack_loader: NodePackLoader
     node_catalog_registry: NodeCatalogRegistry
     workflow_node_runtime_registry_loader: WorkflowNodeRuntimeRegistryLoader
@@ -98,6 +105,7 @@ class BackendServiceRuntime:
     yolox_sync_deployment_process_supervisor: YoloXDeploymentProcessSupervisor
     yolox_async_deployment_process_supervisor: YoloXDeploymentProcessSupervisor
     workflow_runtime_worker_manager: WorkflowRuntimeWorkerManager
+    workflow_preview_run_manager: WorkflowPreviewRunManager
     trigger_source_supervisor: TriggerSourceSupervisor
     background_task_manager_host: HostedBackgroundTaskManager | None
 
@@ -239,6 +247,8 @@ class BackendServiceBootstrap(
         session_factory = self._provided_session_factory or SessionFactory(
             settings.to_database_settings()
         )
+        service_event_bus = InMemoryServiceEventBus()
+        session_factory.service_event_bus = service_event_bus
         dataset_storage = self._provided_dataset_storage or LocalDatasetStorage(
             settings.to_dataset_storage_settings()
         )
@@ -258,12 +268,18 @@ class BackendServiceBootstrap(
             dataset_storage_root_dir=str(dataset_storage.root_dir),
             runtime_mode="sync",
             settings=settings.deployment_process_supervisor,
+            service_event_bus=service_event_bus,
+            session_factory=session_factory,
+            dataset_storage=dataset_storage,
             local_buffer_broker_event_channel_provider=local_buffer_broker_supervisor.get_event_channel,
         )
         yolox_async_deployment_process_supervisor = YoloXDeploymentProcessSupervisor(
             dataset_storage_root_dir=str(dataset_storage.root_dir),
             runtime_mode="async",
             settings=settings.deployment_process_supervisor,
+            service_event_bus=service_event_bus,
+            session_factory=session_factory,
+            dataset_storage=dataset_storage,
             local_buffer_broker_event_channel_provider=local_buffer_broker_supervisor.get_event_channel,
         )
         published_inference_gateway = YoloXDeploymentPublishedInferenceGateway(
@@ -291,6 +307,15 @@ class BackendServiceBootstrap(
         )
         workflow_runtime_worker_manager = WorkflowRuntimeWorkerManager(
             settings=settings,
+            session_factory=session_factory,
+            dataset_storage=dataset_storage,
+            local_buffer_broker_event_channel_provider=local_buffer_broker_supervisor.get_event_channel,
+            published_inference_gateway=published_inference_gateway,
+        )
+        workflow_preview_run_manager = WorkflowPreviewRunManager(
+            settings=settings,
+            session_factory=session_factory,
+            dataset_storage=dataset_storage,
             local_buffer_broker_event_channel_provider=local_buffer_broker_supervisor.get_event_channel,
             published_inference_gateway=published_inference_gateway,
         )
@@ -300,6 +325,7 @@ class BackendServiceBootstrap(
             dataset_storage=dataset_storage,
             node_catalog_registry=node_catalog_registry,
             worker_manager=workflow_runtime_worker_manager,
+            preview_run_manager=workflow_preview_run_manager,
             published_inference_gateway=published_inference_gateway,
         )
         trigger_source_supervisor = TriggerSourceSupervisor(
@@ -317,6 +343,7 @@ class BackendServiceBootstrap(
             session_factory=session_factory,
             dataset_storage=dataset_storage,
             queue_backend=queue_backend,
+            service_event_bus=service_event_bus,
             node_pack_loader=node_pack_loader,
             node_catalog_registry=node_catalog_registry,
             workflow_node_runtime_registry_loader=workflow_node_runtime_registry_loader,
@@ -327,6 +354,7 @@ class BackendServiceBootstrap(
             yolox_sync_deployment_process_supervisor=yolox_sync_deployment_process_supervisor,
             yolox_async_deployment_process_supervisor=yolox_async_deployment_process_supervisor,
             workflow_runtime_worker_manager=workflow_runtime_worker_manager,
+            workflow_preview_run_manager=workflow_preview_run_manager,
             trigger_source_supervisor=trigger_source_supervisor,
             background_task_manager_host=background_task_manager_host,
         )
@@ -347,6 +375,7 @@ class BackendServiceBootstrap(
         application.state.session_factory = runtime.session_factory
         application.state.dataset_storage = runtime.dataset_storage
         application.state.queue_backend = runtime.queue_backend
+        application.state.service_event_bus = runtime.service_event_bus
         application.state.node_pack_loader = runtime.node_pack_loader
         application.state.node_catalog_registry = runtime.node_catalog_registry
         application.state.workflow_node_runtime_registry_loader = (
@@ -373,6 +402,7 @@ class BackendServiceBootstrap(
         application.state.workflow_runtime_worker_manager = (
             runtime.workflow_runtime_worker_manager
         )
+        application.state.workflow_preview_run_manager = runtime.workflow_preview_run_manager
         application.state.trigger_source_supervisor = runtime.trigger_source_supervisor
         application.state.background_task_manager_host = (
             runtime.background_task_manager_host
@@ -389,6 +419,7 @@ class BackendServiceBootstrap(
         runtime.yolox_sync_deployment_process_supervisor.start()
         runtime.yolox_async_deployment_process_supervisor.start()
         runtime.workflow_runtime_worker_manager.start()
+        runtime.workflow_preview_run_manager.start()
         WorkflowTriggerSourceService(
             session_factory=runtime.session_factory,
             trigger_source_supervisor=runtime.trigger_source_supervisor,
@@ -406,6 +437,7 @@ class BackendServiceBootstrap(
         if runtime.background_task_manager_host is not None:
             runtime.background_task_manager_host.stop()
         runtime.trigger_source_supervisor.stop_all()
+        runtime.workflow_preview_run_manager.stop()
         runtime.workflow_runtime_worker_manager.stop()
         runtime.yolox_sync_deployment_process_supervisor.stop()
         runtime.yolox_async_deployment_process_supervisor.stop()

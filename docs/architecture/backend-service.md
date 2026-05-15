@@ -193,11 +193,13 @@ backend/service/
 
 - WebSocket 只负责状态流、日志流和告警流
 - WebSocket 不承担正式写入，不承担资源查询，不替代 REST 分页和详情查询
+- WebSocket 的版本化路由、统一消息结构、重连规则和资源流规划统一见 [websocket-architecture.md](websocket-architecture.md)
 - 当前已经公开的 WebSocket 入口包括：
-  - /ws/events：返回最小 system.connected 事件后关闭
-  - /ws/tasks/events：按 task_id 订阅任务事件
+	- /ws/v1/system/events：system 事件流入口
+	- /ws/v1/tasks/events：按 task_id 订阅任务事件
 - WebSocket 的权限检查应复用 REST 的主体与 scope 模型，而不是单独再造一套权限判断
-- 当前 /ws/tasks/events 使用相同的主体请求头和 scope 规则，并通过轮询数据库事件表输出事件流
+- 当前 /ws/v1/tasks/events 使用相同的主体请求头和 scope 规则；实时事件通过 service_event_bus 分发，`task_events` 表负责历史回放
+- 后续新增 preview run、workflow run、deployment 等实时事件时，应进入同一套版本化 WebSocket 分层，而不是为单个功能继续扩出专用 socket
 
 ### 不建议的做法
 

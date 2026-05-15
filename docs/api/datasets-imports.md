@@ -4,7 +4,7 @@
 
 本文档用于说明当前已经公开的 DatasetImport REST 接口，包括 zip 上传导入、导入详情查询和导入列表查询三组能力。
 
-当前导入提交已经正式关联 TaskRecord。提交响应、详情响应和列表响应都会公开 task_id，后续可以配合 tasks API 或 /ws/tasks/events 观察后台处理状态。
+当前导入提交已经正式关联 TaskRecord。提交响应、详情响应和列表响应都会公开 task_id，后续可以配合 tasks API 或 /ws/v1/tasks/events 观察后台处理状态。
 
 本文档聚焦对外接口规则、字段定义、错误语义和当前实现边界，不展开内部 repository 或持久化实现细节。
 
@@ -112,7 +112,7 @@ curl -X POST "http://127.0.0.1:8000/api/v1/datasets/imports" \
 - 当 POST /imports 返回 202 Accepted，且响应中的 upload_state 为 uploaded 时，可以判定 zip 文件已经完整落到 package.zip，上传本身已成功。
 - 返回 202 只表示“包已收到并已入队”，不表示解析、校验和版本生成已经完成。
 - 后续处理进度通过轮询 GET /api/v1/datasets/imports/{dataset_import_id} 或 GET /api/v1/datasets/{dataset_id}/imports 获得。
-- 如果响应中返回了 task_id，也可以调用 GET /api/v1/tasks/{task_id}、GET /api/v1/tasks/{task_id}/events，或订阅 /ws/tasks/events?task_id=... 观察任务状态和事件流。
+- 如果响应中返回了 task_id，也可以调用 GET /api/v1/tasks/{task_id}、GET /api/v1/tasks/{task_id}/events，或订阅 /ws/v1/tasks/events?task_id=... 观察任务状态和事件流。
 - 当前 processing_state 与 status 的对应关系为：received -> queued，extracted 或 validated -> running，completed -> completed，failed -> failed。
 - 如果需要在 HTTP 请求尚未结束前观察上传字节进度，当前单次 multipart 上传接口本身不提供服务端查询接口，进度应由浏览器或客户端 SDK 的 upload progress 事件自行统计。服务端只有在 POST 返回 202 之后，才会暴露 uploaded 状态。
 

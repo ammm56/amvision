@@ -93,6 +93,7 @@
 ### WebSocket
 
 - 负责任务状态、日志、进度、部署变化和告警事件订阅
+- 路由组织、连接规则、重连方式和资源流分层统一遵循 [websocket-architecture.md](websocket-architecture.md)
 
 ### ZeroMQ
 

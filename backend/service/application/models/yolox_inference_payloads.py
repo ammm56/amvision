@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.runtime.yolox_runtime_target import RuntimeTargetSnapshot
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
+from backend.service.infrastructure.object_store.object_key_layout import build_runtime_input_object_key
 
 if TYPE_CHECKING:
     from backend.service.application.models.yolox_inference_task_service import YoloXInferenceExecutionResult
@@ -196,7 +197,11 @@ def normalize_yolox_inference_input(
                 input_image_bytes=image_bytes,
                 input_transport_mode=input_transport_mode,
             )
-        input_uri = f"runtime/inference-inputs/{request_id}/input{suffix}"
+        input_uri = build_runtime_input_object_key(
+            consumer="inference",
+            request_id=request_id,
+            file_name=f"input{suffix}",
+        )
         dataset_storage.write_bytes(input_uri, image_bytes)
         return YoloXNormalizedInferenceInput(
             input_uri=input_uri,
@@ -217,7 +222,11 @@ def normalize_yolox_inference_input(
             input_image_bytes=normalized_upload_bytes,
             input_transport_mode=input_transport_mode,
         )
-    input_uri = f"runtime/inference-inputs/{request_id}/input{suffix}"
+    input_uri = build_runtime_input_object_key(
+        consumer="inference",
+        request_id=request_id,
+        file_name=f"input{suffix}",
+    )
     dataset_storage.write_bytes(input_uri, normalized_upload_bytes)
     return YoloXNormalizedInferenceInput(
         input_uri=input_uri,
@@ -400,7 +409,14 @@ def _build_memory_input_uri(*, request_id: str, suffix: str) -> str:
     - str：不落磁盘的 memory URI。
     """
 
-    return f"memory://runtime/inference-inputs/{request_id}/input{suffix}"
+    return (
+        "memory://"
+        + build_runtime_input_object_key(
+            consumer="inference",
+            request_id=request_id,
+            file_name=f"input{suffix}",
+        )
+    )
 
 
 def _validate_image_bytes(*, image_bytes: bytes, field_name: str) -> None:

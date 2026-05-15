@@ -74,3 +74,8 @@ class WorkflowRuntimeRepository(Protocol):
         """按 id 读取一个 WorkflowRun。"""
 
         ...
+
+    def list_workflow_runs(self, project_id: str) -> tuple[WorkflowRun, ...]:
+        """按 Project id 列出 WorkflowRun。"""
+
+        ...

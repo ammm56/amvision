@@ -42,8 +42,27 @@ def test_workflow_trigger_source_api_manages_first_phase_resource(
                     },
                 },
             )
+            create_second_response = context.client.post(
+                "/api/v1/workflows/trigger-sources",
+                headers=headers,
+                json={
+                    "trigger_source_id": "trigger-source-2",
+                    "project_id": "project-1",
+                    "display_name": "HTTP Secondary Trigger",
+                    "trigger_kind": "http-api",
+                    "workflow_runtime_id": "workflow-runtime-1",
+                    "submit_mode": "async",
+                    "input_binding_mapping": {
+                        "request_image": {"source": "payload.image"},
+                    },
+                    "result_mapping": {
+                        "result_binding": "http_response",
+                        "result_mode": "accepted-then-query",
+                    },
+                },
+            )
             list_response = context.client.get(
-                "/api/v1/workflows/trigger-sources?project_id=project-1",
+                "/api/v1/workflows/trigger-sources?project_id=project-1&offset=0&limit=1",
                 headers=headers,
             )
             get_response = context.client.get(
@@ -98,6 +117,7 @@ def test_workflow_trigger_source_api_manages_first_phase_resource(
         context.session_factory.engine.dispose()
 
     assert create_response.status_code == 201
+    assert create_second_response.status_code == 201
     create_payload = create_response.json()
     assert create_payload["format_id"] == "amvision.workflow-trigger-source.v1"
     assert create_payload["trigger_source_id"] == "trigger-source-1"
@@ -108,7 +128,13 @@ def test_workflow_trigger_source_api_manages_first_phase_resource(
     assert create_payload["application_summary"] is None
 
     assert list_response.status_code == 200
+    assert list_response.headers["x-offset"] == "0"
+    assert list_response.headers["x-limit"] == "1"
+    assert list_response.headers["x-total-count"] == "2"
+    assert list_response.headers["x-has-more"] == "true"
+    assert list_response.headers["x-next-offset"] == "1"
     assert len(list_response.json()) == 1
+    assert list_response.json()[0]["trigger_source_id"] == "trigger-source-2"
     assert get_response.status_code == 200
     assert get_response.json()["result_mapping"]["result_binding"] == "http_response"
 

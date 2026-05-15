@@ -101,6 +101,149 @@ def test_create_list_and_get_yolox_deployment_instance(tmp_path: Path) -> None:
         session_factory.engine.dispose()
 
 
+def test_yolox_deployment_events_api_and_websocket_stream_live_events(tmp_path: Path) -> None:
+    """验证 deployment 事件支持历史读取并通过 WebSocket 推送实时事件。"""
+
+    client, session_factory, dataset_storage = _create_test_client(tmp_path)
+    model_version_id = _seed_model_version(
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+    )
+    try:
+        with client:
+            create_response = client.post(
+                "/api/v1/models/yolox/deployment-instances",
+                headers=_build_headers(),
+                json={
+                    "project_id": "project-1",
+                    "model_version_id": model_version_id,
+                    "display_name": "deployment events runtime",
+                },
+            )
+            assert create_response.status_code == 201
+            deployment_instance_id = create_response.json()["deployment_instance_id"]
+
+            sync_start_response = client.post(
+                f"/api/v1/models/yolox/deployment-instances/{deployment_instance_id}/sync/start",
+                headers=_build_headers(),
+            )
+            assert sync_start_response.status_code == 200
+
+            warmup_response = client.post(
+                f"/api/v1/models/yolox/deployment-instances/{deployment_instance_id}/sync/warmup",
+                headers=_build_headers(),
+            )
+            assert warmup_response.status_code == 200
+
+            events_response = client.get(
+                f"/api/v1/models/yolox/deployment-instances/{deployment_instance_id}/events",
+                headers=_build_headers(),
+            )
+            limited_events_response = client.get(
+                f"/api/v1/models/yolox/deployment-instances/{deployment_instance_id}/events?limit=1",
+                headers=_build_headers(),
+            )
+            assert events_response.status_code == 200
+            events_payload = events_response.json()
+            assert limited_events_response.status_code == 200
+            assert [item["event_type"] for item in limited_events_response.json()] == ["deployment.started"]
+            assert [item["event_type"] for item in events_payload] == [
+                "deployment.started",
+                "deployment.warmup.completed",
+            ]
+            assert all(item["runtime_mode"] == "sync" for item in events_payload)
+
+            with_websocket = client.websocket_connect(
+                f"/ws/v1/deployments/events?deployment_instance_id={deployment_instance_id}&runtime_mode=async&after_cursor={events_payload[-1]['sequence']}",
+                headers=_build_headers(),
+            )
+            with with_websocket as websocket:
+                connected_message = websocket.receive_json()
+                assert connected_message["event_type"] == "deployments.connected"
+                assert connected_message["payload"]["filters"]["runtime_mode"] == "async"
+
+                async_start_response = client.post(
+                    f"/api/v1/models/yolox/deployment-instances/{deployment_instance_id}/async/start",
+                    headers=_build_headers(),
+                )
+                assert async_start_response.status_code == 200
+
+                live_event = websocket.receive_json()
+                assert live_event["stream"] == "deployments.events"
+                assert live_event["event_type"] == "deployment.started"
+                assert live_event["resource_id"] == deployment_instance_id
+                assert live_event["payload"]["runtime_mode"] == "async"
+                assert "data" not in live_event["payload"]
+                assert "process_state" in live_event["payload"]
+
+            async_events_response = client.get(
+                f"/api/v1/models/yolox/deployment-instances/{deployment_instance_id}/events?runtime_mode=async",
+                headers=_build_headers(),
+            )
+            assert async_events_response.status_code == 200
+            assert [item["event_type"] for item in async_events_response.json()] == ["deployment.started"]
+    finally:
+        session_factory.engine.dispose()
+
+
+def test_yolox_deployment_event_replay_does_not_depend_on_supervisor_instances(tmp_path: Path) -> None:
+    """验证 deployment 历史回放不依赖 sync 或 async supervisor 实例。"""
+
+    client, session_factory, dataset_storage = _create_test_client(tmp_path)
+    model_version_id = _seed_model_version(
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+    )
+    try:
+        with client:
+            create_response = client.post(
+                "/api/v1/models/yolox/deployment-instances",
+                headers=_build_headers(),
+                json={
+                    "project_id": "project-1",
+                    "model_version_id": model_version_id,
+                    "display_name": "deployment replay runtime",
+                },
+            )
+            assert create_response.status_code == 201
+            deployment_instance_id = create_response.json()["deployment_instance_id"]
+
+            async_start_response = client.post(
+                f"/api/v1/models/yolox/deployment-instances/{deployment_instance_id}/async/start",
+                headers=_build_headers(),
+            )
+            assert async_start_response.status_code == 200
+
+            client.app.state.yolox_sync_deployment_process_supervisor = object()
+            client.app.state.yolox_async_deployment_process_supervisor = object()
+
+            async_events_response = client.get(
+                f"/api/v1/models/yolox/deployment-instances/{deployment_instance_id}/events?runtime_mode=async",
+                headers=_build_headers(),
+            )
+            assert async_events_response.status_code == 200
+            assert [item["event_type"] for item in async_events_response.json()] == ["deployment.started"]
+            assert all(item["runtime_mode"] == "async" for item in async_events_response.json())
+
+            with client.websocket_connect(
+                f"/ws/v1/deployments/events?deployment_instance_id={deployment_instance_id}&runtime_mode=async",
+                headers=_build_headers(),
+            ) as websocket:
+                connected_message = websocket.receive_json()
+                replay_event = websocket.receive_json()
+
+            assert connected_message["event_type"] == "deployments.connected"
+            assert connected_message["payload"]["filters"]["runtime_mode"] == "async"
+            assert replay_event["stream"] == "deployments.events"
+            assert replay_event["event_type"] == "deployment.started"
+            assert replay_event["resource_id"] == deployment_instance_id
+            assert replay_event["payload"]["runtime_mode"] == "async"
+            assert "data" not in replay_event["payload"]
+            assert "process_state" in replay_event["payload"]
+    finally:
+        session_factory.engine.dispose()
+
+
 def test_create_yolox_deployment_instance_uses_model_build_snapshot(tmp_path: Path) -> None:
     """验证 DeploymentInstance 绑定 ModelBuild 时会固化 build 文件快照。"""
 

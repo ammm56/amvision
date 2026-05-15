@@ -35,6 +35,7 @@ from backend.service.application.local_buffers import LocalBufferBrokerClient, L
 from backend.service.application.runtime.yolox_deployment_process_supervisor import (
     YoloXDeploymentProcessSupervisor,
 )
+from backend.service.application.workflows.runtime_app_events import append_workflow_app_runtime_event
 from backend.service.application.workflows.snapshot_execution import (
     SnapshotExecutionService,
     WorkflowSnapshotExecutionRequest,
@@ -45,6 +46,7 @@ from backend.service.application.workflows.runtime_registry_loader import Workfl
 from backend.service.application.workflows.service_node_runtime import WorkflowServiceNodeRuntimeContext
 from backend.service.domain.workflows.workflow_runtime_records import WorkflowAppRuntime
 from backend.service.infrastructure.db.session import SessionFactory
+from backend.service.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 from backend.service.settings import BackendServiceSettings
 
@@ -107,6 +109,15 @@ class WorkflowRuntimeAsyncRunCallbacks:
 
 
 @dataclass
+class _WorkflowRuntimePendingResponse:
+    """描述一条等待中的 worker 响应。"""
+
+    event: Event = field(default_factory=Event)
+    response: dict[str, object] | None = None
+    error_message: str | None = None
+
+
+@dataclass
 class _WorkflowRuntimeProcessHandle:
     """描述父进程中维护的单个 runtime worker 句柄。"""
 
@@ -117,7 +128,19 @@ class _WorkflowRuntimeProcessHandle:
     local_buffer_broker_event_channel: LocalBufferBrokerEventChannel | None = None
     published_inference_gateway_channel: PublishedInferenceGatewayEventChannel | None = None
     published_inference_gateway_dispatcher: PublishedInferenceGatewayDispatcher | None = None
-    lock: Lock = field(default_factory=Lock, repr=False)
+    heartbeat_interval_seconds: int = 5
+    heartbeat_timeout_seconds: int = 15
+    response_thread: Thread | None = None
+    response_stop_event: Event = field(default_factory=Event, repr=False)
+    pending_responses: dict[str, _WorkflowRuntimePendingResponse] = field(default_factory=dict, repr=False)
+    started_event: Event = field(default_factory=Event, repr=False)
+    request_lock: Lock = field(default_factory=Lock, repr=False)
+    state_lock: Lock = field(default_factory=Lock, repr=False)
+    latest_runtime_state: WorkflowRuntimeWorkerState | None = None
+    latest_runtime_state_monotonic: float | None = None
+    expected_shutdown: bool = False
+    heartbeat_timeout_reported: bool = False
+    background_failure_reported: bool = False
 
 
 @dataclass
@@ -143,6 +166,8 @@ class WorkflowRuntimeWorkerManager:
         self,
         *,
         settings: BackendServiceSettings,
+        session_factory: SessionFactory,
+        dataset_storage: LocalDatasetStorage,
         local_buffer_broker_event_channel_provider: Callable[[], LocalBufferBrokerEventChannel | None] | None = None,
         published_inference_gateway: PublishedInferenceGateway | None = None,
     ) -> None:
@@ -150,11 +175,16 @@ class WorkflowRuntimeWorkerManager:
 
         参数：
         - settings：backend-service 当前使用的统一配置。
+        - session_factory：数据库会话工厂；用于后台 heartbeat 状态回写。
+        - dataset_storage：本地文件存储；用于后台事件写入。
         - local_buffer_broker_event_channel_provider：启动 worker 子进程时读取 broker 事件通道的函数。
         - published_inference_gateway：父进程持有的已发布推理 gateway。
         """
 
         self.settings = _resolve_backend_service_settings(settings)
+        self.session_factory = session_factory
+        self.dataset_storage = dataset_storage
+        self.service_event_bus = session_factory.service_event_bus
         self.local_buffer_broker_event_channel_provider = local_buffer_broker_event_channel_provider
         self.published_inference_gateway = published_inference_gateway
         self._context = multiprocessing.get_context("spawn")
@@ -162,6 +192,8 @@ class WorkflowRuntimeWorkerManager:
         self._async_runs: dict[str, _WorkflowRuntimeAsyncRunHandle] = {}
         self._lock = Lock()
         self._stopping = Event()
+        self._monitor_stop_event = Event()
+        self._monitor_thread: Thread | None = None
 
     def start(self) -> None:
         """启动管理器本身。
@@ -170,6 +202,14 @@ class WorkflowRuntimeWorkerManager:
         """
 
         self._stopping.clear()
+        if self._monitor_thread is None or not self._monitor_thread.is_alive():
+            self._monitor_stop_event.clear()
+            self._monitor_thread = Thread(
+                target=self._run_monitor_loop,
+                name="workflow-runtime-worker-monitor",
+                daemon=True,
+            )
+            self._monitor_thread.start()
 
     def stop(self) -> None:
         """停止全部 runtime worker 进程。"""
@@ -178,6 +218,12 @@ class WorkflowRuntimeWorkerManager:
             async_handles = tuple(self._async_runs.values())
             runtime_ids = tuple(self._handles.keys())
         self._stopping.set()
+        self._monitor_stop_event.set()
+        monitor_thread = self._monitor_thread
+        if monitor_thread is not None:
+            monitor_thread.join(timeout=1.0)
+            if not monitor_thread.is_alive():
+                self._monitor_thread = None
         for async_handle in async_handles:
             async_handle.cancel_event.set()
         for workflow_runtime_id in runtime_ids:
@@ -208,7 +254,7 @@ class WorkflowRuntimeWorkerManager:
         with self._lock:
             existing_handle = self._handles.get(workflow_app_runtime.workflow_runtime_id)
             if existing_handle is not None and existing_handle.process.is_alive():
-                existing_state = self._request_runtime_state(existing_handle)
+                existing_state = self._read_cached_runtime_state(existing_handle) or self._request_runtime_state(existing_handle)
                 if existing_state.observed_state == "running":
                     return existing_state
                 self._cleanup_handle(existing_handle)
@@ -233,6 +279,7 @@ class WorkflowRuntimeWorkerManager:
                         "application_id": workflow_app_runtime.application_id,
                         "application_snapshot_object_key": workflow_app_runtime.application_snapshot_object_key,
                         "template_snapshot_object_key": workflow_app_runtime.template_snapshot_object_key,
+                        "heartbeat_interval_seconds": workflow_app_runtime.heartbeat_interval_seconds,
                     },
                     "local_buffer_broker_event_channel": local_buffer_broker_event_channel,
                     "published_inference_gateway_event_channel": gateway_channel,
@@ -251,11 +298,23 @@ class WorkflowRuntimeWorkerManager:
                 local_buffer_broker_event_channel=local_buffer_broker_event_channel,
                 published_inference_gateway_channel=gateway_channel,
                 published_inference_gateway_dispatcher=gateway_dispatcher,
+                heartbeat_interval_seconds=workflow_app_runtime.heartbeat_interval_seconds,
+                heartbeat_timeout_seconds=workflow_app_runtime.heartbeat_timeout_seconds,
             )
+            handle.response_thread = Thread(
+                target=self._run_response_loop,
+                args=(handle,),
+                name=f"workflow-runtime-response-{workflow_app_runtime.workflow_runtime_id}",
+                daemon=True,
+            )
+            handle.response_thread.start()
             self._handles[workflow_app_runtime.workflow_runtime_id] = handle
 
         try:
-            return self._wait_for_runtime_state(handle, timeout_seconds=min(workflow_app_runtime.request_timeout_seconds, 15))
+            return self._wait_for_startup_state(
+                handle,
+                timeout_seconds=self._resolve_runtime_start_timeout_seconds(),
+            )
         except Exception:
             with self._lock:
                 self._handles.pop(workflow_app_runtime.workflow_runtime_id, None)
@@ -276,15 +335,20 @@ class WorkflowRuntimeWorkerManager:
             self._cleanup_handle(handle)
             return WorkflowRuntimeWorkerState(observed_state="stopped")
 
-        with handle.lock:
-            handle.request_queue.put(
-                {
+        with handle.state_lock:
+            handle.expected_shutdown = True
+        with handle.request_lock:
+            message_id = uuid4().hex
+            runtime_state = self._wait_for_runtime_state(
+                handle,
+                message_id=message_id,
+                timeout_seconds=10.0,
+                payload={
                     "message_type": "stop-runtime",
-                    "message_id": uuid4().hex,
+                    "message_id": message_id,
                     "workflow_runtime_id": workflow_runtime_id,
-                }
+                },
             )
-            runtime_state = self._wait_for_runtime_state(handle, timeout_seconds=10.0)
         with self._lock:
             self._handles.pop(workflow_runtime_id, None)
         self._cleanup_handle(handle)
@@ -305,6 +369,9 @@ class WorkflowRuntimeWorkerManager:
                 observed_state="failed",
                 last_error="workflow runtime worker 进程已退出",
             )
+        cached_state = self._read_cached_runtime_state(handle)
+        if cached_state is not None:
+            return cached_state
         return self._request_runtime_state(handle)
 
     def list_runtime_instances(self, workflow_runtime_id: str) -> tuple[WorkflowRuntimeWorkerInstance, ...]:
@@ -443,7 +510,7 @@ class WorkflowRuntimeWorkerManager:
                     "workflow runtime worker 当前未运行",
                     details={"workflow_runtime_id": workflow_app_runtime.workflow_runtime_id},
                 )
-            lock_acquired = handle.lock.acquire(timeout=0.1)
+            lock_acquired = handle.request_lock.acquire(timeout=0.1)
 
         try:
             if cancel_event is not None and cancel_event.is_set():
@@ -454,17 +521,30 @@ class WorkflowRuntimeWorkerManager:
                         "workflow_run_id": workflow_run_id,
                     },
                 )
-            handle.request_queue.put(
-                {
-                    "message_type": "invoke-run",
-                    "message_id": uuid4().hex,
-                    "workflow_runtime_id": workflow_app_runtime.workflow_runtime_id,
-                    "workflow_run_id": workflow_run_id,
-                    "requested_timeout_seconds": timeout_seconds,
-                    "input_bindings": dict(input_bindings),
-                    "execution_metadata": dict(execution_metadata),
-                }
-            )
+            message_id = uuid4().hex
+            pending = _WorkflowRuntimePendingResponse()
+            with handle.state_lock:
+                if not handle.process.is_alive():
+                    self._terminate_failed_handle(
+                        workflow_runtime_id=workflow_app_runtime.workflow_runtime_id,
+                        handle=handle,
+                    )
+                    raise ServiceConfigurationError(
+                        "workflow runtime worker 当前未运行",
+                        details={"workflow_runtime_id": workflow_app_runtime.workflow_runtime_id},
+                    )
+                handle.pending_responses[message_id] = pending
+                handle.request_queue.put(
+                    {
+                        "message_type": "invoke-run",
+                        "message_id": message_id,
+                        "workflow_runtime_id": workflow_app_runtime.workflow_runtime_id,
+                        "workflow_run_id": workflow_run_id,
+                        "requested_timeout_seconds": timeout_seconds,
+                        "input_bindings": dict(input_bindings),
+                        "execution_metadata": dict(execution_metadata),
+                    }
+                )
             if on_dispatched is not None:
                 on_dispatched()
 
@@ -496,29 +576,29 @@ class WorkflowRuntimeWorkerManager:
                             "timeout_seconds": timeout_seconds,
                         },
                     )
-                try:
-                    message = handle.response_queue.get(timeout=max(0.1, min(0.2, remaining_seconds)))
+                if pending.event.wait(timeout=max(0.1, min(0.2, remaining_seconds))):
+                    message = pending.response or {}
                     break
-                except Empty:
-                    if not handle.process.is_alive():
-                        self._terminate_failed_handle(
-                            workflow_runtime_id=workflow_app_runtime.workflow_runtime_id,
-                            handle=handle,
-                        )
-                        raise ServiceConfigurationError(
-                            "workflow runtime worker 进程已退出",
-                            details={
-                                "workflow_runtime_id": workflow_app_runtime.workflow_runtime_id,
-                                "workflow_run_id": workflow_run_id,
-                            },
-                        )
-                    continue
+                if not handle.process.is_alive():
+                    self._terminate_failed_handle(
+                        workflow_runtime_id=workflow_app_runtime.workflow_runtime_id,
+                        handle=handle,
+                    )
+                    raise ServiceConfigurationError(
+                        "workflow runtime worker 进程已退出",
+                        details={
+                            "workflow_runtime_id": workflow_app_runtime.workflow_runtime_id,
+                            "workflow_run_id": workflow_run_id,
+                        },
+                    )
         finally:
             if lock_acquired:
                 try:
-                    handle.lock.release()
+                    handle.request_lock.release()
                 except RuntimeError:
                     pass
+            with handle.state_lock:
+                handle.pending_responses.pop(message_id if 'message_id' in locals() else "", None)
 
         return _deserialize_run_result(message)
 
@@ -573,35 +653,81 @@ class WorkflowRuntimeWorkerManager:
     def _request_runtime_state(self, handle: _WorkflowRuntimeProcessHandle) -> WorkflowRuntimeWorkerState:
         """向指定 worker 请求当前状态。"""
 
-        with handle.lock:
-            handle.request_queue.put(
-                {
+        with handle.request_lock:
+            message_id = uuid4().hex
+            return self._wait_for_runtime_state(
+                handle,
+                message_id=message_id,
+                timeout_seconds=5.0,
+                payload={
                     "message_type": "health-check",
-                    "message_id": uuid4().hex,
+                    "message_id": message_id,
                     "workflow_runtime_id": handle.workflow_runtime_id,
-                }
+                },
             )
-            return self._wait_for_runtime_state(handle, timeout_seconds=5.0)
 
-    def _wait_for_runtime_state(
+    def _wait_for_startup_state(
         self,
         handle: _WorkflowRuntimeProcessHandle,
         *,
         timeout_seconds: float,
     ) -> WorkflowRuntimeWorkerState:
+        """等待 worker 首次启动状态消息。"""
+
+        started = handle.started_event.wait(timeout=max(0.1, timeout_seconds))
+        if not started:
+            raise OperationTimeoutError(
+                "等待 workflow runtime worker 启动状态超时",
+                details={
+                    "workflow_runtime_id": handle.workflow_runtime_id,
+                    "timeout_seconds": timeout_seconds,
+                },
+            )
+        runtime_state = self._read_cached_runtime_state(handle)
+        if runtime_state is None:
+            raise ServiceConfigurationError("workflow runtime worker 启动状态缺失")
+        return runtime_state
+
+    def _wait_for_runtime_state(
+        self,
+        handle: _WorkflowRuntimeProcessHandle,
+        *,
+        message_id: str,
+        timeout_seconds: float,
+        payload: dict[str, object],
+    ) -> WorkflowRuntimeWorkerState:
         """等待 worker 返回 runtime-state 消息。"""
 
-        try:
-            message = handle.response_queue.get(timeout=max(0.1, timeout_seconds))
-        except Empty as exc:
+        pending = _WorkflowRuntimePendingResponse()
+        with handle.state_lock:
+            if not handle.process.is_alive():
+                raise ServiceConfigurationError(
+                    "workflow runtime worker 当前未运行",
+                    details={"workflow_runtime_id": handle.workflow_runtime_id},
+                )
+            handle.pending_responses[message_id] = pending
+            handle.request_queue.put(dict(payload))
+        if not pending.event.wait(timeout=max(0.1, timeout_seconds)):
+            with handle.state_lock:
+                handle.pending_responses.pop(message_id, None)
             raise OperationTimeoutError(
                 "等待 workflow runtime worker 状态响应超时",
                 details={
                     "workflow_runtime_id": handle.workflow_runtime_id,
                     "timeout_seconds": timeout_seconds,
                 },
-            ) from exc
+            )
+        message = pending.response or {}
         return self._attach_parent_health_summary(handle, _deserialize_runtime_state(message))
+
+    def _read_cached_runtime_state(
+        self,
+        handle: _WorkflowRuntimeProcessHandle,
+    ) -> WorkflowRuntimeWorkerState | None:
+        """读取父进程缓存的最新 runtime 状态。"""
+
+        with handle.state_lock:
+            return handle.latest_runtime_state
 
     def _attach_parent_health_summary(
         self,
@@ -626,22 +752,203 @@ class WorkflowRuntimeWorkerManager:
 
         with self._lock:
             self._handles.pop(workflow_runtime_id, None)
+        with handle.state_lock:
+            handle.expected_shutdown = True
         self._cleanup_handle(handle)
 
     def _cleanup_handle(self, handle: _WorkflowRuntimeProcessHandle) -> None:
         """关闭并回收一个 worker 句柄。"""
 
+        handle.response_stop_event.set()
         if handle.process.is_alive():
             handle.process.terminate()
             handle.process.join(timeout=1.0)
+        response_thread = handle.response_thread
+        if response_thread is not None:
+            response_thread.join(timeout=1.0)
         if handle.published_inference_gateway_dispatcher is not None:
             handle.published_inference_gateway_dispatcher.stop()
+        with handle.state_lock:
+            for pending in handle.pending_responses.values():
+                pending.error_message = "workflow runtime worker 已退出"
+                pending.event.set()
+            handle.pending_responses.clear()
         handle.request_queue.close()
         handle.request_queue.join_thread()
         handle.response_queue.close()
         handle.response_queue.join_thread()
         _close_local_buffer_broker_channel(handle.local_buffer_broker_event_channel)
         _close_published_inference_gateway_channel(handle.published_inference_gateway_channel)
+
+    def _run_response_loop(self, handle: _WorkflowRuntimeProcessHandle) -> None:
+        """持续消费指定 runtime worker 的响应队列。"""
+
+        while not handle.response_stop_event.is_set():
+            try:
+                message = handle.response_queue.get(timeout=0.2)
+            except Empty:
+                continue
+            except Exception:
+                continue
+            if not isinstance(message, dict):
+                continue
+
+            message_type = str(message.get("message_type") or "")
+            request_id = str(message.get("request_id") or "")
+            pending: _WorkflowRuntimePendingResponse | None = None
+
+            runtime_state = _try_deserialize_runtime_state_message(message)
+            if runtime_state is not None:
+                runtime_state = self._attach_parent_health_summary(handle, runtime_state)
+                should_persist = False
+                event_type = "runtime.heartbeat"
+                event_message = "workflow app runtime heartbeat"
+                with handle.state_lock:
+                    handle.latest_runtime_state = runtime_state
+                    handle.latest_runtime_state_monotonic = monotonic()
+                    handle.background_failure_reported = False
+                    if handle.heartbeat_timeout_reported:
+                        handle.heartbeat_timeout_reported = False
+                        should_persist = True
+                        event_type = "runtime.heartbeat_recovered"
+                        event_message = "workflow app runtime heartbeat 已恢复"
+                    elif message_type == "runtime-heartbeat":
+                        should_persist = True
+                    if request_id:
+                        pending = handle.pending_responses.pop(request_id, None)
+                    elif message_type == "runtime-state" and not handle.started_event.is_set():
+                        handle.started_event.set()
+                if pending is not None:
+                    pending.response = message
+                    pending.event.set()
+                if should_persist:
+                    self._persist_runtime_state_event(
+                        workflow_runtime_id=handle.workflow_runtime_id,
+                        runtime_state=runtime_state,
+                        event_type=event_type,
+                        message=event_message,
+                    )
+                continue
+
+            worker_state = _try_deserialize_run_result_worker_state(message)
+            if worker_state is not None:
+                worker_state = self._attach_parent_health_summary(handle, worker_state)
+                with handle.state_lock:
+                    handle.latest_runtime_state = worker_state
+                    handle.latest_runtime_state_monotonic = monotonic()
+
+            if request_id:
+                with handle.state_lock:
+                    pending = handle.pending_responses.pop(request_id, None)
+                if pending is not None:
+                    pending.response = message
+                    pending.event.set()
+
+    def _run_monitor_loop(self) -> None:
+        """巡检 worker 心跳和异常退出，并把异常状态写入正式事件流。"""
+
+        while not self._monitor_stop_event.is_set():
+            with self._lock:
+                handles = tuple(self._handles.items())
+            now = monotonic()
+            for workflow_runtime_id, handle in handles:
+                runtime_state_to_persist: WorkflowRuntimeWorkerState | None = None
+                event_type: str | None = None
+                message: str | None = None
+                remove_handle = False
+                with handle.state_lock:
+                    process_alive = handle.process.is_alive()
+                    latest_runtime_state = handle.latest_runtime_state
+                    latest_runtime_state_monotonic = handle.latest_runtime_state_monotonic
+                    if not process_alive:
+                        if not handle.expected_shutdown and not handle.background_failure_reported:
+                            handle.background_failure_reported = True
+                            runtime_state_to_persist = _build_synthetic_runtime_state(
+                                previous_state=latest_runtime_state,
+                                observed_state="failed",
+                                last_error="workflow runtime worker 进程已退出",
+                            )
+                            handle.latest_runtime_state = runtime_state_to_persist
+                            handle.latest_runtime_state_monotonic = now
+                            event_type = "runtime.failed"
+                            message = "workflow runtime worker 进程异常退出"
+                        remove_handle = True
+                    elif (
+                        latest_runtime_state is not None
+                        and latest_runtime_state_monotonic is not None
+                        and not handle.heartbeat_timeout_reported
+                        and now - latest_runtime_state_monotonic > float(handle.heartbeat_timeout_seconds)
+                    ):
+                        handle.heartbeat_timeout_reported = True
+                        runtime_state_to_persist = _build_synthetic_runtime_state(
+                            previous_state=latest_runtime_state,
+                            observed_state="failed",
+                            last_error="workflow runtime heartbeat 超时",
+                        )
+                        handle.latest_runtime_state = runtime_state_to_persist
+                        handle.latest_runtime_state_monotonic = now
+                        event_type = "runtime.heartbeat_timed_out"
+                        message = "workflow app runtime heartbeat 超时"
+                if runtime_state_to_persist is not None and event_type is not None and message is not None:
+                    self._persist_runtime_state_event(
+                        workflow_runtime_id=workflow_runtime_id,
+                        runtime_state=runtime_state_to_persist,
+                        event_type=event_type,
+                        message=message,
+                    )
+                if remove_handle:
+                    with self._lock:
+                        stored_handle = self._handles.get(workflow_runtime_id)
+                        if stored_handle is handle:
+                            self._handles.pop(workflow_runtime_id, None)
+                    self._cleanup_handle(handle)
+            self._monitor_stop_event.wait(0.5)
+
+    def _persist_runtime_state_event(
+        self,
+        *,
+        workflow_runtime_id: str,
+        runtime_state: WorkflowRuntimeWorkerState,
+        event_type: str,
+        message: str,
+    ) -> None:
+        """把后台 runtime 状态变化回写到 DB 和 events.json。"""
+
+        unit_of_work = SqlAlchemyUnitOfWork(self.session_factory.create_session())
+        try:
+            workflow_app_runtime = unit_of_work.workflow_runtime.get_workflow_app_runtime(workflow_runtime_id)
+            if workflow_app_runtime is None:
+                return
+            updated_runtime = replace(
+                workflow_app_runtime,
+                observed_state=runtime_state.observed_state,
+                updated_at=_now_isoformat(),
+                heartbeat_at=runtime_state.heartbeat_at,
+                worker_process_id=runtime_state.process_id,
+                loaded_snapshot_fingerprint=runtime_state.loaded_snapshot_fingerprint,
+                last_error=runtime_state.last_error,
+                health_summary=dict(runtime_state.health_summary),
+            )
+            unit_of_work.workflow_runtime.save_workflow_app_runtime(updated_runtime)
+            unit_of_work.commit()
+        finally:
+            unit_of_work.close()
+        append_workflow_app_runtime_event(
+            dataset_storage=self.dataset_storage,
+            service_event_bus=self.service_event_bus,
+            session_factory=self.session_factory,
+            workflow_app_runtime=updated_runtime,
+            event_type=event_type,
+            message=message,
+        )
+
+    def _resolve_runtime_start_timeout_seconds(self) -> float:
+        """返回 runtime worker 启动阶段的控制面等待超时。"""
+
+        configured_timeout_seconds = float(
+            self.settings.deployment_process_supervisor.request_timeout_seconds
+        )
+        return min(max(configured_timeout_seconds, 5.0), 15.0)
 
     def _resolve_local_buffer_broker_event_channel(self) -> LocalBufferBrokerEventChannel | None:
         """读取当前 broker 事件通道。"""
@@ -744,61 +1051,60 @@ def run_workflow_runtime_worker_process(
         current_observed_state = "running"
         current_last_error: str | None = None
         current_run_id: str | None = None
-        response_queue.put(
-            _build_runtime_state_message(
-                workflow_runtime_id=workflow_runtime_id,
-                observed_state=current_observed_state,
-                instance_id=runtime_instance_id,
-                process_id=multiprocessing.current_process().pid,
-                current_run_id=current_run_id,
-                started_at=worker_started_at,
-                heartbeat_at=_now_isoformat(),
-                loaded_snapshot_fingerprint=snapshot_fingerprint,
-                last_error=current_last_error,
-                health_summary=_build_runtime_health_summary(local_buffer_reader),
-            )
+        state_lock = Lock()
+        heartbeat_stop_event = Event()
+
+        def build_runtime_state_message(*, message_type: str, request_id: str | None = None) -> dict[str, object]:
+            """按当前 worker 共享状态构造状态消息。"""
+
+            with state_lock:
+                return _build_runtime_state_message(
+                    workflow_runtime_id=workflow_runtime_id,
+                    observed_state=current_observed_state,
+                    instance_id=runtime_instance_id,
+                    process_id=multiprocessing.current_process().pid,
+                    current_run_id=current_run_id,
+                    started_at=worker_started_at,
+                    heartbeat_at=_now_isoformat(),
+                    loaded_snapshot_fingerprint=snapshot_fingerprint,
+                    last_error=current_last_error,
+                    health_summary=_build_runtime_health_summary(local_buffer_reader),
+                    message_type=message_type,
+                    request_id=request_id,
+                )
+
+        heartbeat_thread = Thread(
+            target=_run_workflow_runtime_heartbeat_loop,
+            kwargs={
+                "stop_event": heartbeat_stop_event,
+                "interval_seconds": _read_heartbeat_interval_seconds(runtime_payload),
+                "response_queue": response_queue,
+                "build_message": build_runtime_state_message,
+            },
+            name=f"workflow-runtime-heartbeat-{workflow_runtime_id}",
+            daemon=True,
         )
+        heartbeat_thread.start()
+        response_queue.put(build_runtime_state_message(message_type="runtime-state"))
         while True:
             command = request_queue.get()
             message_type = _read_message_type(command)
+            message_id = _read_optional_str(command, "message_id")
             if message_type == "health-check":
-                response_queue.put(
-                    _build_runtime_state_message(
-                        workflow_runtime_id=workflow_runtime_id,
-                        observed_state=current_observed_state,
-                        instance_id=runtime_instance_id,
-                        process_id=multiprocessing.current_process().pid,
-                        current_run_id=current_run_id,
-                        started_at=worker_started_at,
-                        heartbeat_at=_now_isoformat(),
-                        loaded_snapshot_fingerprint=snapshot_fingerprint,
-                        last_error=current_last_error,
-                        health_summary=_build_runtime_health_summary(local_buffer_reader),
-                    )
-                )
+                response_queue.put(build_runtime_state_message(message_type="runtime-state", request_id=message_id))
                 continue
             if message_type == "stop-runtime":
-                current_observed_state = "stopped"
-                response_queue.put(
-                    _build_runtime_state_message(
-                        workflow_runtime_id=workflow_runtime_id,
-                        observed_state=current_observed_state,
-                        instance_id=runtime_instance_id,
-                        process_id=multiprocessing.current_process().pid,
-                        current_run_id=None,
-                        started_at=worker_started_at,
-                        heartbeat_at=_now_isoformat(),
-                        loaded_snapshot_fingerprint=snapshot_fingerprint,
-                        last_error=current_last_error,
-                        health_summary=_build_runtime_health_summary(local_buffer_reader),
-                    )
-                )
+                with state_lock:
+                    current_observed_state = "stopped"
+                    current_run_id = None
+                response_queue.put(build_runtime_state_message(message_type="runtime-state", request_id=message_id))
                 break
             if message_type != "invoke-run":
                 response_queue.put(
                     _build_worker_error_message(
                         workflow_runtime_id=workflow_runtime_id,
                         workflow_run_id=None,
+                        request_id=message_id,
                         error_message="workflow runtime worker 收到未支持的消息类型",
                         error_details={"message_type": message_type},
                         state="failed",
@@ -816,7 +1122,8 @@ def run_workflow_runtime_worker_process(
             input_bindings = _require_payload_dict(command, "input_bindings")
             execution_metadata = _require_payload_dict(command, "execution_metadata")
             execution_metadata.setdefault("workflow_run_id", workflow_run_id)
-            current_run_id = workflow_run_id
+            with state_lock:
+                current_run_id = workflow_run_id
             try:
                 execution_result = snapshot_execution_service.execute(
                     WorkflowSnapshotExecutionRequest(
@@ -831,11 +1138,14 @@ def run_workflow_runtime_worker_process(
                         execution_metadata=execution_metadata,
                     )
                 )
-                current_observed_state = "running"
-                current_last_error = None
+                with state_lock:
+                    current_observed_state = "running"
+                    current_last_error = None
+                    current_run_id = None
                 response_queue.put(
                     {
                         "message_type": "run-result",
+                        "request_id": message_id,
                         "workflow_runtime_id": workflow_runtime_id,
                         "workflow_run_id": workflow_run_id,
                         "state": "succeeded",
@@ -851,7 +1161,7 @@ def run_workflow_runtime_worker_process(
                             "started_at": worker_started_at,
                             "heartbeat_at": _now_isoformat(),
                             "loaded_snapshot_fingerprint": snapshot_fingerprint,
-                            "last_error": current_last_error,
+                            "last_error": None,
                             "health_summary": {
                                 **_build_runtime_health_summary(local_buffer_reader),
                                 "last_requested_timeout_seconds": requested_timeout_seconds,
@@ -860,12 +1170,15 @@ def run_workflow_runtime_worker_process(
                     }
                 )
             except InvalidRequestError as exc:
-                current_observed_state = "running"
-                current_last_error = None
+                with state_lock:
+                    current_observed_state = "running"
+                    current_last_error = None
+                    current_run_id = None
                 response_queue.put(
                     _build_worker_error_message(
                         workflow_runtime_id=workflow_runtime_id,
                         workflow_run_id=workflow_run_id,
+                        request_id=message_id,
                         error_message=exc.message,
                         error_details={
                             "error_code": exc.code,
@@ -882,12 +1195,15 @@ def run_workflow_runtime_worker_process(
                     )
                 )
             except ServiceError as exc:
-                current_observed_state = "failed"
-                current_last_error = exc.message
+                with state_lock:
+                    current_observed_state = "failed"
+                    current_last_error = exc.message
+                    current_run_id = None
                 response_queue.put(
                     _build_worker_error_message(
                         workflow_runtime_id=workflow_runtime_id,
                         workflow_run_id=workflow_run_id,
+                        request_id=message_id,
                         error_message=exc.message,
                         error_details={
                             "error_code": exc.code,
@@ -902,12 +1218,15 @@ def run_workflow_runtime_worker_process(
                     )
                 )
             except Exception as exc:  # pragma: no cover - 子进程兜底错误封装
-                current_observed_state = "failed"
-                current_last_error = "workflow runtime worker 执行失败"
+                with state_lock:
+                    current_observed_state = "failed"
+                    current_last_error = "workflow runtime worker 执行失败"
+                    current_run_id = None
                 response_queue.put(
                     _build_worker_error_message(
                         workflow_runtime_id=workflow_runtime_id,
                         workflow_run_id=workflow_run_id,
+                        request_id=message_id,
                         error_message="workflow runtime worker 执行失败",
                         error_details={
                             "error_type": type(exc).__name__,
@@ -921,9 +1240,11 @@ def run_workflow_runtime_worker_process(
                         health_summary=_build_runtime_health_summary(local_buffer_reader),
                     )
                 )
-            finally:
-                current_run_id = None
     finally:
+        if 'heartbeat_stop_event' in locals():
+            heartbeat_stop_event.set()
+        if 'heartbeat_thread' in locals():
+            heartbeat_thread.join(timeout=1.0)
         if sync_supervisor is not None:
             sync_supervisor.stop()
         if async_supervisor is not None:
@@ -1009,11 +1330,13 @@ def _build_runtime_state_message(
     loaded_snapshot_fingerprint: str | None,
     last_error: str | None = None,
     health_summary: dict[str, object] | None = None,
+    message_type: str = "runtime-state",
+    request_id: str | None = None,
 ) -> dict[str, object]:
     """构造 runtime-state 消息。"""
 
-    return {
-        "message_type": "runtime-state",
+    payload = {
+        "message_type": message_type,
         "workflow_runtime_id": workflow_runtime_id,
         "observed_state": observed_state,
         "instance_id": instance_id,
@@ -1025,12 +1348,16 @@ def _build_runtime_state_message(
         "last_error": last_error,
         "health_summary": dict(health_summary or {"mode": "single-instance-sync"}),
     }
+    if request_id is not None:
+        payload["request_id"] = request_id
+    return payload
 
 
 def _build_worker_error_message(
     *,
     workflow_runtime_id: str,
     workflow_run_id: str | None,
+    request_id: str | None,
     error_message: str,
     error_details: dict[str, object],
     state: str,
@@ -1044,7 +1371,7 @@ def _build_worker_error_message(
 ) -> dict[str, object]:
     """构造 worker-error 消息。"""
 
-    return {
+    payload = {
         "message_type": "worker-error",
         "workflow_runtime_id": workflow_runtime_id,
         "workflow_run_id": workflow_run_id,
@@ -1063,12 +1390,15 @@ def _build_worker_error_message(
             "health_summary": dict(health_summary or {"mode": "single-instance-sync"}),
         },
     }
+    if request_id is not None:
+        payload["request_id"] = request_id
+    return payload
 
 
 def _deserialize_runtime_state(message: object) -> WorkflowRuntimeWorkerState:
     """把 runtime-state 消息反序列化为父进程可用对象。"""
 
-    if not isinstance(message, dict) or message.get("message_type") != "runtime-state":
+    if not isinstance(message, dict) or message.get("message_type") not in {"runtime-state", "runtime-heartbeat"}:
         raise ServiceConfigurationError("workflow runtime worker 返回了无效状态消息")
     return WorkflowRuntimeWorkerState(
         observed_state=_require_payload_str(message, "observed_state"),
@@ -1117,6 +1447,69 @@ def _deserialize_run_result(message: object) -> WorkflowRuntimeWorkerRunResult:
     )
 
 
+def _try_deserialize_runtime_state_message(message: object) -> WorkflowRuntimeWorkerState | None:
+    """尝试把 runtime-state 或 runtime-heartbeat 消息解析为 worker 状态。"""
+
+    try:
+        return _deserialize_runtime_state(message)
+    except ServiceError:
+        return None
+
+
+def _try_deserialize_run_result_worker_state(message: object) -> WorkflowRuntimeWorkerState | None:
+    """尝试从 run-result 或 worker-error 中提取 worker_state。"""
+
+    try:
+        return _deserialize_run_result(message).worker_state
+    except ServiceError:
+        return None
+
+
+def _build_synthetic_runtime_state(
+    *,
+    previous_state: WorkflowRuntimeWorkerState | None,
+    observed_state: str,
+    last_error: str,
+) -> WorkflowRuntimeWorkerState:
+    """基于最后一次已知状态构造一条合成 runtime 状态。"""
+
+    if previous_state is None:
+        return WorkflowRuntimeWorkerState(
+            observed_state=observed_state,
+            heartbeat_at=_now_isoformat(),
+            last_error=last_error,
+            health_summary={"mode": "single-instance-sync"},
+        )
+    return replace(
+        previous_state,
+        observed_state=observed_state,
+        heartbeat_at=_now_isoformat(),
+        last_error=last_error,
+        health_summary={
+            **dict(previous_state.health_summary),
+            "heartbeat_status": "timed_out" if "超时" in last_error else "process_exited",
+        },
+    )
+
+
+def _run_workflow_runtime_heartbeat_loop(
+    *,
+    stop_event: Event,
+    interval_seconds: float,
+    response_queue: Queue[Any],
+    build_message: Callable[..., dict[str, object]],
+) -> None:
+    """按固定间隔向父进程主动发送 runtime-heartbeat。"""
+
+    if interval_seconds <= 0:
+        return
+    while not stop_event.wait(timeout=max(0.1, interval_seconds)):
+        try:
+            response_queue.put(build_message(message_type="runtime-heartbeat"))
+        except Exception:
+            return
+
+
 def _serialize_node_records(node_records: tuple[dict[str, object], ...] | tuple[Any, ...]) -> tuple[dict[str, object], ...]:
     """把节点执行记录统一转换为 JSON 可序列化字典。"""
 
@@ -1141,6 +1534,19 @@ def _read_timeout_seconds(payload: object) -> int:
     if isinstance(value, int) and value > 0:
         return value
     return 60
+
+
+def _read_heartbeat_interval_seconds(payload: object) -> float:
+    """读取 runtime_payload 里的 heartbeat 周期秒数。"""
+
+    if not isinstance(payload, dict):
+        return 5.0
+    value = payload.get("heartbeat_interval_seconds")
+    if isinstance(value, int) and value > 0:
+        return float(value)
+    if isinstance(value, float) and value > 0:
+        return float(value)
+    return 5.0
 
 
 def _read_project_id_from_snapshot(

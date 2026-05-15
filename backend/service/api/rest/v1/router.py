@@ -7,6 +7,7 @@ from fastapi import APIRouter
 from backend.service.api.rest.v1.routes.dataset_exports import dataset_exports_router
 from backend.service.api.rest.v1.routes.datasets import datasets_router
 from backend.service.api.rest.v1.routes.models import models_router
+from backend.service.api.rest.v1.routes.projects import projects_router
 from backend.service.api.rest.v1.routes.system import system_router
 from backend.service.api.rest.v1.routes.tasks import tasks_router
 from backend.service.api.rest.v1.routes.workflow_runtime import workflow_runtime_router
@@ -22,6 +23,7 @@ from backend.service.api.rest.v1.routes.yolox_validation_sessions import yolox_v
 
 api_v1_router = APIRouter(prefix="/v1")
 api_v1_router.include_router(system_router)
+api_v1_router.include_router(projects_router)
 api_v1_router.include_router(workflows_router)
 api_v1_router.include_router(workflow_runtime_router)
 api_v1_router.include_router(workflow_trigger_sources_router)

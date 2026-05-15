@@ -4,7 +4,7 @@
 
 本文档用于说明当前已经公开的 DatasetExport REST 接口，包括导出创建、导出详情查询和按 DatasetVersion 列表查询三组能力。
 
-当前导出提交已经正式关联 TaskRecord。提交响应、详情响应和列表响应都会公开 task_id，后续可以配合 tasks API 或 /ws/tasks/events 观察后台处理状态。当前导出也已经公开打包和下载接口，export file 不再只是内部 worker 使用的中间结果。
+当前导出提交已经正式关联 TaskRecord。提交响应、详情响应和列表响应都会公开 task_id，后续可以配合 tasks API 或 /ws/v1/tasks/events 观察后台处理状态。当前导出也已经公开打包和下载接口，export file 不再只是内部 worker 使用的中间结果。
 
 本文档聚焦对外接口规则、字段定义、错误语义和当前实现边界，不展开内部 repository 或持久化实现细节。
 
@@ -268,5 +268,5 @@ curl -X POST "http://127.0.0.1:8000/api/v1/datasets/exports" \
 
 - 资源视角：GET /api/v1/datasets/exports/{dataset_export_id}
 - 下载视角：POST /api/v1/datasets/exports/{dataset_export_id}/package、GET /api/v1/datasets/exports/{dataset_export_id}/download、GET /api/v1/datasets/exports/{dataset_export_id}/manifest
-- 任务视角：GET /api/v1/tasks/{task_id}、GET /api/v1/tasks/{task_id}/events、/ws/tasks/events?task_id=...
+- 任务视角：GET /api/v1/tasks/{task_id}、GET /api/v1/tasks/{task_id}/events、/ws/v1/tasks/events?task_id=...
 - 当状态为 completed 时，优先检查 manifest_object_key 和 export_path 是否符合预期，再进入 training 前置步骤

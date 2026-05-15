@@ -5,6 +5,7 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from backend.queue import LocalFileQueueBackend
 from backend.service.api.bootstrap import BackendServiceBootstrap
@@ -16,6 +17,30 @@ from backend.service.api.ws.router import ws_router
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 from backend.service.settings import BackendServiceSettings
+
+
+def _register_cors_middleware(
+    application: FastAPI,
+    settings: BackendServiceSettings,
+) -> None:
+    """按统一配置注册 CORS 中间件。
+
+    参数：
+    - application：当前 FastAPI 应用。
+    - settings：当前 backend-service 配置。
+    """
+
+    if not settings.cors.enabled:
+        return
+    application.add_middleware(
+        CORSMiddleware,
+        allow_origins=list(settings.cors.allow_origins),
+        allow_origin_regex=settings.cors.allow_origin_regex,
+        allow_credentials=settings.cors.allow_credentials,
+        allow_methods=list(settings.cors.allow_methods),
+        allow_headers=list(settings.cors.allow_headers),
+        expose_headers=list(settings.cors.expose_headers),
+    )
 
 
 def create_app(
@@ -66,6 +91,7 @@ def create_app(
     )
     bootstrap.bind_application_state(application, runtime)
 
+    _register_cors_middleware(application, resolved_settings)
     application.add_middleware(RequestContextMiddleware)
     register_exception_handlers(application)
     application.include_router(rest_router)

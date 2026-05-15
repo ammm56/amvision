@@ -11,17 +11,19 @@
 - POST /api/v1/workflows/app-runtimes
 - GET /api/v1/workflows/app-runtimes
 - GET /api/v1/workflows/app-runtimes/{workflow_runtime_id}
+- GET /api/v1/workflows/app-runtimes/{workflow_runtime_id}/events
 - POST /api/v1/workflows/app-runtimes/{workflow_runtime_id}/start
 - POST /api/v1/workflows/app-runtimes/{workflow_runtime_id}/stop
 - POST /api/v1/workflows/app-runtimes/{workflow_runtime_id}/restart
 - GET /api/v1/workflows/app-runtimes/{workflow_runtime_id}/health
 - GET /api/v1/workflows/app-runtimes/{workflow_runtime_id}/instances
+- /ws/v1/workflows/app-runtimes/events
 
 ## 资源定位
 
 - WorkflowAppRuntime 表示一份已发布应用的长期运行单元。
 - runtime 创建时会固定 application snapshot 和 template snapshot；如果提供 execution_policy_id，还会额外固定 execution policy snapshot。
-- runtime 返回会额外补 application_summary 和 template_summary 两个一跳 authoring 摘要，减少控制面二次请求。
+- runtime 返回会额外补 application_summary 和 template_summary 两个用于图编排界面的一跳摘要，减少控制面二次请求。
 - 当前仍采用单 runtime 单实例单进程模型，已经公开 restart 和 instances，但不公开 scale。
 - runtime worker 提供 start、stop、health 和执行宿主能力；sync invoke 与 async WorkflowRun 都复用同一份固定 snapshot。
 
@@ -35,7 +37,8 @@
 ## 鉴权规则
 
 - create、start、stop、restart 需要 workflows:write
-- list、get、health、instances 需要 workflows:read
+- list、get、events、health、instances 需要 workflows:read
+- /ws/v1/workflows/app-runtimes/events 需要 workflows:read
 
 ## 状态语义
 
@@ -70,6 +73,8 @@
 | desired_state | 当前期望状态 |
 | observed_state | 当前观测状态 |
 | request_timeout_seconds | 默认同步调用超时秒数 |
+| heartbeat_interval_seconds | worker 主动 heartbeat 周期秒数 |
+| heartbeat_timeout_seconds | 控制面判定 heartbeat 超时的秒数 |
 | created_at | 记录创建时间 |
 | updated_at | 最近一次状态更新或健康刷新时间 |
 | created_by | 创建主体 id，可为空 |
@@ -98,6 +103,8 @@
 - execution_policy_id：可选，引用一条已保存 WorkflowExecutionPolicy
 - display_name：可选，展示名称
 - request_timeout_seconds：可选；未提供且存在 execution policy 时取 policy.default_timeout_seconds，否则默认 60
+- heartbeat_interval_seconds：可选；worker 主动 heartbeat 周期秒数，默认 5
+- heartbeat_timeout_seconds：可选；控制面判定 heartbeat 超时秒数，默认 15，且必须大于 heartbeat_interval_seconds
 - metadata：可选，附加元数据
 
 ### 最小请求 JSON
@@ -108,6 +115,8 @@
   "application_id": "inspection-app",
   "execution_policy_id": "runtime-default-policy",
   "display_name": "Inspection Runtime",
+  "heartbeat_interval_seconds": 5,
+  "heartbeat_timeout_seconds": 15,
   "metadata": {
     "line_id": "line-1"
   }
@@ -129,6 +138,8 @@
   "desired_state": "stopped",
   "observed_state": "stopped",
   "request_timeout_seconds": 60,
+  "heartbeat_interval_seconds": 5,
+  "heartbeat_timeout_seconds": 15,
   "created_at": "2026-05-08T12:00:00Z",
   "updated_at": "2026-05-08T12:00:00Z",
   "created_by": "operator-1",
@@ -188,6 +199,33 @@
 - 返回单条 WorkflowAppRuntime 的当前持久化记录
 - 不会主动刷新 worker 健康状态；如果需要最新 process_id、heartbeat_at 或 fingerprint，应调用 health 接口
 
+## GET /api/v1/workflows/app-runtimes/{workflow_runtime_id}/events
+
+- 成功状态码：200 OK
+- 需要 workflows:read
+- 当前支持查询参数 after_sequence 和 limit；只返回 sequence 更大的事件，并按升序截取前 N 条
+- 适合查看 runtime 生命周期和恢复游标对应的历史事件
+
+### 当前稳定事件类型
+
+- runtime.created
+- runtime.started
+- runtime.stopped
+- runtime.restarted
+- runtime.heartbeat
+- runtime.heartbeat_timed_out
+- runtime.heartbeat_recovered
+- runtime.failed
+
+### 最小事件语义
+
+- sequence：单条 WorkflowAppRuntime 内递增序号，从 1 开始
+- event_type：事件类型
+- created_at：事件写入时间
+- message：面向人读的摘要信息
+- payload：结构化摘要；当前至少包含 desired_state、observed_state、health_summary、heartbeat_interval_seconds 和 heartbeat_timeout_seconds，必要时补 worker_process_id、heartbeat_at、loaded_snapshot_fingerprint、last_error
+- `/ws/v1/workflows/app-runtimes/events` 的 replay 和 live 事件使用同一套平铺 payload，不再额外包一层 `payload.data`
+
 ## POST /api/v1/workflows/app-runtimes/{workflow_runtime_id}/start
 
 - 成功状态码：200 OK
@@ -236,6 +274,17 @@
 | last_error | 当前实例最近一次错误摘要，可为空 |
 | health_summary | 当前健康附加信息；当前至少包含 mode |
 
+## /ws/v1/workflows/app-runtimes/events
+
+- 需要 workflows:read
+- query 参数：workflow_runtime_id 必填；after_cursor、limit 可选
+- after_cursor 当前直接使用 WorkflowAppRuntime 事件的 sequence
+- 连接成功后先返回 workflows.app-runtimes.connected，再持续推送 runtime 增量事件
+- 实时推送走 service_event_bus，历史回放与 REST 事件接口共用同一份 `events.json`
+- replay 与 live 事件 payload 与 REST 事件合同保持同层字段结构，不再把业务字段包装到 `payload.data`
+- worker 子进程会按 heartbeat_interval_seconds 主动上报 `runtime.heartbeat`；控制面在连续超时后会追加 `runtime.heartbeat_timed_out`，恢复后会追加 `runtime.heartbeat_recovered`
+- 为避免长期运行把 `events.json` 无限写大，heartbeat 历史会裁剪为最近窗口，生命周期与异常事件不受影响
+
 ## 当前不公开的扩展项
 
 - min/max instance 扩缩容控制
@@ -245,17 +294,18 @@
 
 - WorkflowAppRuntime 是 [docs/api/workflow-runs.md](workflow-runs.md) 的宿主资源。
 - 当前同步调用入口仍挂在 runtime 下：POST /api/v1/workflows/app-runtimes/{workflow_runtime_id}/invoke。
+- `dataset-package.v1` 类型的同步调用和异步 run 也可以分别通过 `POST /api/v1/workflows/app-runtimes/{workflow_runtime_id}/invoke/upload` 与 `POST /api/v1/workflows/app-runtimes/{workflow_runtime_id}/runs/upload` 提交；两条 multipart 入口当前都只支持 zip 包文件输入。
 - WorkflowAppRuntime create 当前可以引用 [docs/api/workflow-execution-policies.md](workflow-execution-policies.md) 中的 execution_policy_id，并返回 execution_policy_snapshot_object_key。
 - 编辑态试跑见 [docs/api/workflow-preview-runs.md](workflow-preview-runs.md)。
 
 ## invoke 输入输出约定
 
 - invoke 请求体中的 `input_bindings` 按 application `binding_id` 组织，而不是按 template `input_id` 或节点 id 组织。
-- `image-ref.v1` 常见 JSON 形状是 `{"object_key": "inputs/source.jpg", "media_type": "image/png"}`；如果省略 `transport_kind`，当前实现会按 `object_key` 自动识别为 storage 引用。
+- `image-ref.v1` 常见 JSON 形状是 `{"object_key": "projects/{project_id}/inputs/source.jpg", "media_type": "image/png"}`；长期输入资产应进入 `projects/{project_id}/inputs/...`，请求期临时输入应进入 `runtime/inputs/{consumer}/{request_id}/...`。如果省略 `transport_kind`，当前实现会按 `object_key` 自动识别为 storage 引用。
 - `image-base64.v1` 常见 JSON 形状是 `{"image_base64": "<base64>", "media_type": "image/png"}`；也支持单行 data URL。
 - `image-ref.v1` 在本机受控 adapter 或 TriggerSource 场景下也可以携带 `buffer_ref` 或 `frame_ref`，用于复用 LocalBufferBroker 的 direct mmap 数据面；这类引用只在同机短期有效，不作为长期公开文件引用。
 - `value.v1` 常见 JSON 形状是 `{"value": {...}}`。
-- `dataset-package.v1` 通过 `POST /api/v1/workflows/app-runtimes/{workflow_runtime_id}/invoke/upload` 上传，文件字段名必须等于 binding_id。当前 multipart 上传入口只支持这类 zip 包输入，不支持把图片文件直接作为 `request_image` 上传。
+- `dataset-package.v1` 可以通过 `POST /api/v1/workflows/app-runtimes/{workflow_runtime_id}/invoke/upload` 或 `POST /api/v1/workflows/app-runtimes/{workflow_runtime_id}/runs/upload` 上传，文件字段名必须等于 binding_id。当前 multipart 上传入口只支持这类 zip 包输入，不支持把图片文件直接作为 `request_image` 上传。
 - invoke 返回体是 `WorkflowRunContract`。如果 application 输出绑定是 `workflow-execute-output`，结果会直接出现在 `outputs[binding_id]`；如果输出绑定是 `http-response`，结果会出现在 `outputs[binding_id] = {"status_code": ..., "body": ...}`。
 
 ## 相关文档

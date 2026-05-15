@@ -114,7 +114,7 @@ def test_task_events_websocket_streams_appended_events(tmp_path: Path) -> None:
         )
 
         with client.websocket_connect(
-            f"/ws/tasks/events?task_id={created_task.task_id}",
+            f"/ws/v1/tasks/events?task_id={created_task.task_id}",
             headers=_build_task_read_headers(),
         ) as websocket:
             connected_payload = websocket.receive_json()
@@ -135,7 +135,7 @@ def test_task_events_websocket_streams_appended_events(tmp_path: Path) -> None:
             streamed_event = websocket.receive_json()
 
         assert streamed_event["event_type"] == "progress"
-        assert streamed_event["payload"]["progress"]["stage"] == "validated"
+        assert streamed_event["payload"]["data"]["progress"]["stage"] == "validated"
     finally:
         session_factory.engine.dispose()
 

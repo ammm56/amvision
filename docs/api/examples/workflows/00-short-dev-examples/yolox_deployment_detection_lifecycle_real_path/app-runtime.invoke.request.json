@@ -1,7 +1,7 @@
 {
   "input_bindings": {
     "request_image": {
-      "object_key": "inputs/source.jpg"
+      "object_key": "projects/project-1/inputs/source.jpg"
     }
   },
   "execution_metadata": {

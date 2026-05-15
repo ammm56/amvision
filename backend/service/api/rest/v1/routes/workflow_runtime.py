@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, Query, Request, Response, status
 from pydantic import BaseModel, Field
@@ -11,19 +11,28 @@ from starlette.datastructures import UploadFile
 
 from backend.contracts.workflows import (
     FlowApplication,
+    WorkflowAppRuntimeEventContract,
     WorkflowAppRuntimeInstanceContract,
     WorkflowAppRuntimeContract,
     WorkflowExecutionPolicyContract,
     WorkflowGraphTemplate,
+    WorkflowPreviewRunEventContract,
     WorkflowPreviewRunContract,
     WorkflowPreviewRunSummaryContract,
     WorkflowRunContract,
+    WorkflowRunEventContract,
 )
 from backend.nodes.node_catalog_registry import NodeCatalogRegistry
 from backend.service.api.deps.auth import AuthenticatedPrincipal, require_scopes
+from backend.service.api.rest.v1.pagination import (
+    DEFAULT_LIST_LIMIT,
+    MAX_LIST_LIMIT,
+    paginate_sequence,
+)
 from backend.service.application.errors import InvalidRequestError, PermissionDeniedError, ResourceNotFoundError, ServiceConfigurationError
 from backend.service.application.deployments import PublishedInferenceGateway
 from backend.service.application.local_buffers import LocalBufferBrokerEventChannel, LocalBufferBrokerProcessSupervisor
+from backend.service.application.workflows.preview_run_manager import WorkflowPreviewRunManager
 from backend.service.application.workflows.runtime_service import (
     WorkflowAppRuntimeCreateRequest,
     WorkflowExecutionPolicyCreateRequest,
@@ -35,9 +44,12 @@ from backend.service.application.workflows.runtime_worker import WorkflowRuntime
 from backend.service.application.workflows.workflow_service import LocalWorkflowJsonService
 from backend.service.domain.workflows.workflow_runtime_records import (
     WorkflowAppRuntime,
+    WorkflowAppRuntimeEvent,
     WorkflowExecutionPolicy,
     WorkflowPreviewRun,
+    WorkflowPreviewRunEvent,
     WorkflowRun,
+    WorkflowRunEvent,
 )
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
@@ -78,6 +90,7 @@ class WorkflowPreviewRunCreateRequestBody(BaseModel):
     input_bindings: dict[str, object] = Field(default_factory=dict, description="输入绑定 payload")
     execution_metadata: dict[str, object] = Field(default_factory=dict, description="执行元数据")
     timeout_seconds: int | None = Field(default=None, description="可选同步等待超时秒数")
+    wait_mode: Literal["sync", "async"] = Field(default="sync", description="创建后是否同步等待 preview 完成")
 
 
 class WorkflowExecutionPolicyCreateRequestBody(BaseModel):
@@ -103,6 +116,8 @@ class WorkflowAppRuntimeCreateRequestBody(BaseModel):
     execution_policy_id: str | None = Field(default=None, description="可选的 WorkflowExecutionPolicy id")
     display_name: str = Field(default="", description="可选展示名称")
     request_timeout_seconds: int | None = Field(default=None, description="可选默认同步调用超时秒数")
+    heartbeat_interval_seconds: int | None = Field(default=None, description="可选 worker 主动 heartbeat 周期秒数")
+    heartbeat_timeout_seconds: int | None = Field(default=None, description="可选 heartbeat 判定超时秒数")
     metadata: dict[str, object] = Field(default_factory=dict, description="附加元数据")
 
 
@@ -144,13 +159,17 @@ def create_workflow_execution_policy(
 def list_workflow_execution_policies(
     project_id: Annotated[str, Query(description="所属 Project id")],
     request: Request,
+    response: Response,
     principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("workflows:read"))],
+    offset: Annotated[int, Query(ge=0, description="结果偏移量")] = 0,
+    limit: Annotated[int, Query(ge=1, le=MAX_LIST_LIMIT, description="最大返回数量")] = DEFAULT_LIST_LIMIT,
 ) -> list[WorkflowExecutionPolicyContract]:
     """按 Project id 列出 WorkflowExecutionPolicy。"""
 
     _ensure_project_visible(principal=principal, project_id=project_id)
     execution_policies = _build_workflow_runtime_service(request).list_execution_policies(project_id=project_id)
-    return [_build_execution_policy_contract(item) for item in execution_policies]
+    paged_items = paginate_sequence(execution_policies, response=response, offset=offset, limit=limit)
+    return [_build_execution_policy_contract(item) for item in paged_items]
 
 
 @workflow_runtime_router.get(
@@ -187,7 +206,7 @@ def create_workflow_preview_run(
     request: Request,
     principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("workflows:write"))],
 ) -> WorkflowPreviewRunContract:
-    """创建并同步执行一次 preview run。"""
+    """创建一条 preview run，支持 sync/async wait_mode。"""
 
     _ensure_project_visible(principal=principal, project_id=body.project_id)
     preview_run = _build_workflow_runtime_service(
@@ -203,6 +222,7 @@ def create_workflow_preview_run(
             input_bindings=dict(body.input_bindings),
             execution_metadata=_with_created_by(body.execution_metadata, principal.principal_id),
             timeout_seconds=body.timeout_seconds,
+            wait_mode=body.wait_mode,
         ),
         created_by=principal.principal_id,
     )
@@ -216,10 +236,13 @@ def create_workflow_preview_run(
 def list_workflow_preview_runs(
     project_id: Annotated[str, Query(description="所属 Project id")],
     request: Request,
+    response: Response,
     principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("workflows:read"))],
     state: Annotated[str | None, Query(description="按 preview run 状态过滤")] = None,
     created_from: Annotated[str | None, Query(description="按 created_at 下界过滤，ISO8601")]= None,
     created_to: Annotated[str | None, Query(description="按 created_at 上界过滤，ISO8601")] = None,
+    offset: Annotated[int, Query(ge=0, description="结果偏移量")] = 0,
+    limit: Annotated[int, Query(ge=1, le=MAX_LIST_LIMIT, description="最大返回数量")] = DEFAULT_LIST_LIMIT,
 ) -> list[WorkflowPreviewRunSummaryContract]:
     """按 Project id、状态和创建时间范围列出 WorkflowPreviewRun 摘要。"""
 
@@ -230,7 +253,8 @@ def list_workflow_preview_runs(
         created_from=created_from,
         created_to=created_to,
     )
-    return [_build_preview_run_summary_contract(item) for item in preview_runs]
+    paged_items = paginate_sequence(preview_runs, response=response, offset=offset, limit=limit)
+    return [_build_preview_run_summary_contract(item) for item in paged_items]
 
 
 @workflow_runtime_router.get(
@@ -247,6 +271,51 @@ def get_workflow_preview_run(
     preview_run = _build_workflow_runtime_service(request).get_preview_run(preview_run_id)
     _ensure_project_visible(principal=principal, project_id=preview_run.project_id)
     return _build_preview_run_contract(preview_run)
+
+
+@workflow_runtime_router.get(
+    "/preview-runs/{preview_run_id}/events",
+    response_model=list[WorkflowPreviewRunEventContract],
+)
+def get_workflow_preview_run_events(
+    preview_run_id: str,
+    request: Request,
+    principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("workflows:read"))],
+    after_sequence: Annotated[int | None, Query(description="只返回 sequence 大于该值的事件", ge=0)] = None,
+    limit: Annotated[int | None, Query(description="最多返回多少条事件", ge=1, le=500)] = None,
+) -> list[WorkflowPreviewRunEventContract]:
+    """读取一条 preview run 的执行事件。"""
+
+    runtime_service = _build_workflow_runtime_service(request)
+    preview_run = runtime_service.get_preview_run(preview_run_id)
+    _ensure_project_visible(principal=principal, project_id=preview_run.project_id)
+    events = runtime_service.get_preview_run_events(
+        preview_run_id,
+        after_sequence=after_sequence,
+        limit=limit,
+    )
+    return [_build_preview_run_event_contract(item) for item in events]
+
+
+@workflow_runtime_router.post(
+    "/preview-runs/{preview_run_id}/cancel",
+    response_model=WorkflowPreviewRunContract,
+)
+def cancel_workflow_preview_run(
+    preview_run_id: str,
+    request: Request,
+    principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("workflows:write"))],
+) -> WorkflowPreviewRunContract:
+    """取消一条 preview run。"""
+
+    runtime_service = _build_workflow_runtime_service(request)
+    preview_run = runtime_service.get_preview_run(preview_run_id)
+    _ensure_project_visible(principal=principal, project_id=preview_run.project_id)
+    updated_preview_run = runtime_service.cancel_preview_run(
+        preview_run_id,
+        cancelled_by=principal.principal_id,
+    )
+    return _build_preview_run_contract(updated_preview_run)
 
 
 @workflow_runtime_router.delete(
@@ -286,6 +355,8 @@ def create_workflow_app_runtime(
             execution_policy_id=body.execution_policy_id,
             display_name=body.display_name,
             request_timeout_seconds=body.request_timeout_seconds,
+            heartbeat_interval_seconds=body.heartbeat_interval_seconds,
+            heartbeat_timeout_seconds=body.heartbeat_timeout_seconds,
             metadata=dict(body.metadata),
         ),
         created_by=principal.principal_id,
@@ -303,16 +374,20 @@ def create_workflow_app_runtime(
 def list_workflow_app_runtimes(
     project_id: Annotated[str, Query(description="所属 Project id")],
     request: Request,
+    response: Response,
     principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("workflows:read"))],
+    offset: Annotated[int, Query(ge=0, description="结果偏移量")] = 0,
+    limit: Annotated[int, Query(ge=1, le=MAX_LIST_LIMIT, description="最大返回数量")] = DEFAULT_LIST_LIMIT,
 ) -> list[WorkflowAppRuntimeContract]:
     """按 Project id 列出 WorkflowAppRuntime。"""
 
     _ensure_project_visible(principal=principal, project_id=project_id)
     runtimes = _build_workflow_runtime_service(request).list_workflow_app_runtimes(project_id=project_id)
     workflow_service = _build_workflow_json_service_from_request(request)
+    paged_items = paginate_sequence(runtimes, response=response, offset=offset, limit=limit)
     return [
         _build_workflow_app_runtime_contract(item, workflow_service=workflow_service)
-        for item in runtimes
+        for item in paged_items
     ]
 
 
@@ -333,6 +408,30 @@ def get_workflow_app_runtime(
         workflow_app_runtime,
         workflow_service=_build_workflow_json_service_from_request(request),
     )
+
+
+@workflow_runtime_router.get(
+    "/app-runtimes/{workflow_runtime_id}/events",
+    response_model=list[WorkflowAppRuntimeEventContract],
+)
+def get_workflow_app_runtime_events(
+    workflow_runtime_id: str,
+    request: Request,
+    principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("workflows:read"))],
+    after_sequence: Annotated[int | None, Query(description="只返回 sequence 大于该值的事件", ge=0)] = None,
+    limit: Annotated[int | None, Query(description="最多返回多少条事件", ge=1, le=500)] = None,
+) -> list[WorkflowAppRuntimeEventContract]:
+    """读取一条 WorkflowAppRuntime 的事件列表。"""
+
+    runtime_service = _build_workflow_runtime_service(request)
+    workflow_app_runtime = runtime_service.get_workflow_app_runtime(workflow_runtime_id)
+    _ensure_project_visible(principal=principal, project_id=workflow_app_runtime.project_id)
+    events = runtime_service.get_workflow_app_runtime_events(
+        workflow_runtime_id,
+        after_sequence=after_sequence,
+        limit=limit,
+    )
+    return [_build_workflow_app_runtime_event_contract(item) for item in events]
 
 
 @workflow_runtime_router.post(
@@ -563,6 +662,30 @@ def get_workflow_run(
     return _build_workflow_run_contract(workflow_run)
 
 
+@workflow_runtime_router.get(
+    "/runs/{workflow_run_id}/events",
+    response_model=list[WorkflowRunEventContract],
+)
+def get_workflow_run_events(
+    workflow_run_id: str,
+    request: Request,
+    principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("workflows:read"))],
+    after_sequence: Annotated[int | None, Query(description="只返回 sequence 大于该值的事件", ge=0)] = None,
+    limit: Annotated[int | None, Query(description="最多返回多少条事件", ge=1, le=500)] = None,
+) -> list[WorkflowRunEventContract]:
+    """读取一条 WorkflowRun 的事件列表。"""
+
+    runtime_service = _build_workflow_runtime_service(request)
+    workflow_run = runtime_service.get_workflow_run(workflow_run_id)
+    _ensure_project_visible(principal=principal, project_id=workflow_run.project_id)
+    events = runtime_service.get_workflow_run_events(
+        workflow_run_id,
+        after_sequence=after_sequence,
+        limit=limit,
+    )
+    return [_build_workflow_run_event_contract(item) for item in events]
+
+
 @workflow_runtime_router.post(
     "/runs/{workflow_run_id}/cancel",
     response_model=WorkflowRunContract,
@@ -596,6 +719,7 @@ def _build_workflow_runtime_service(
         dataset_storage=_require_dataset_storage(request),
         node_catalog_registry=_require_node_catalog_registry(request),
         worker_manager=_require_workflow_runtime_worker_manager(request),
+        preview_run_manager=_read_workflow_preview_run_manager(request),
         local_buffer_broker_event_channel=(
             _read_local_buffer_broker_event_channel(request)
             if include_local_buffer_broker_event_channel
@@ -650,6 +774,17 @@ def _require_workflow_runtime_worker_manager(request: Request) -> WorkflowRuntim
     return worker_manager
 
 
+def _read_workflow_preview_run_manager(request: Request) -> WorkflowPreviewRunManager | None:
+    """从 application.state 中读取 WorkflowPreviewRunManager。"""
+
+    preview_run_manager = getattr(request.app.state, "workflow_preview_run_manager", None)
+    if preview_run_manager is None:
+        return None
+    if not isinstance(preview_run_manager, WorkflowPreviewRunManager):
+        raise ServiceConfigurationError("当前服务 workflow_preview_run_manager 装配无效")
+    return preview_run_manager
+
+
 def _read_local_buffer_broker_event_channel(request: Request) -> LocalBufferBrokerEventChannel | None:
     """从 application.state 中读取 LocalBufferBroker 事件通道。"""
 
@@ -683,7 +818,7 @@ def _ensure_project_visible(*, principal: AuthenticatedPrincipal, project_id: st
 
 
 def _build_workflow_json_service_from_request(request: Request) -> LocalWorkflowJsonService:
-    """基于 application.state 构建 workflow authoring 文件服务。"""
+    """基于 application.state 构建 workflow 图编排文件服务。"""
 
     return LocalWorkflowJsonService(
         dataset_storage=_require_dataset_storage(request),
@@ -900,6 +1035,21 @@ def _build_preview_run_summary_contract(
     )
 
 
+def _build_preview_run_event_contract(
+    preview_run_event: WorkflowPreviewRunEvent,
+) -> WorkflowPreviewRunEventContract:
+    """把 preview run 事件转换为公开合同。"""
+
+    return WorkflowPreviewRunEventContract(
+        preview_run_id=preview_run_event.preview_run_id,
+        sequence=preview_run_event.sequence,
+        event_type=preview_run_event.event_type,
+        created_at=preview_run_event.created_at,
+        message=preview_run_event.message,
+        payload=dict(preview_run_event.payload),
+    )
+
+
 def _build_workflow_app_runtime_contract(
     workflow_app_runtime: WorkflowAppRuntime,
     *,
@@ -934,6 +1084,8 @@ def _build_workflow_app_runtime_contract(
         desired_state=workflow_app_runtime.desired_state,
         observed_state=workflow_app_runtime.observed_state,
         request_timeout_seconds=workflow_app_runtime.request_timeout_seconds,
+        heartbeat_interval_seconds=workflow_app_runtime.heartbeat_interval_seconds,
+        heartbeat_timeout_seconds=workflow_app_runtime.heartbeat_timeout_seconds,
         created_at=workflow_app_runtime.created_at,
         updated_at=workflow_app_runtime.updated_at,
         created_by=workflow_app_runtime.created_by,
@@ -948,6 +1100,21 @@ def _build_workflow_app_runtime_contract(
         last_error=workflow_app_runtime.last_error,
         health_summary=dict(workflow_app_runtime.health_summary),
         metadata=dict(workflow_app_runtime.metadata),
+    )
+
+
+def _build_workflow_app_runtime_event_contract(
+    workflow_app_runtime_event: WorkflowAppRuntimeEvent,
+) -> WorkflowAppRuntimeEventContract:
+    """把 app runtime 事件转换为公开合同。"""
+
+    return WorkflowAppRuntimeEventContract(
+        workflow_runtime_id=workflow_app_runtime_event.workflow_runtime_id,
+        sequence=workflow_app_runtime_event.sequence,
+        event_type=workflow_app_runtime_event.event_type,
+        created_at=workflow_app_runtime_event.created_at,
+        message=workflow_app_runtime_event.message,
+        payload=dict(workflow_app_runtime_event.payload),
     )
 
 
@@ -1061,6 +1228,20 @@ def _build_workflow_run_contract(workflow_run: WorkflowRun) -> WorkflowRunContra
         node_records=[dict(item) for item in workflow_run.node_records],
         error_message=workflow_run.error_message,
         metadata=dict(workflow_run.metadata),
+    )
+
+
+def _build_workflow_run_event_contract(workflow_run_event: WorkflowRunEvent) -> WorkflowRunEventContract:
+    """把 WorkflowRun 事件转换为公开合同。"""
+
+    return WorkflowRunEventContract(
+        workflow_run_id=workflow_run_event.workflow_run_id,
+        workflow_runtime_id=workflow_run_event.workflow_runtime_id,
+        sequence=workflow_run_event.sequence,
+        event_type=workflow_run_event.event_type,
+        created_at=workflow_run_event.created_at,
+        message=workflow_run_event.message,
+        payload=dict(workflow_run_event.payload),
     )
 
 

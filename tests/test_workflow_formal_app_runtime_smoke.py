@@ -154,10 +154,17 @@ def test_opencv_process_save_image_app_runtime_smoke_saves_unique_object_key(tmp
     assert response_body["title"] == "Saved Edge Image"
     assert response_body["type"] == "image-preview"
     assert image_payload["transport_kind"] == "storage-ref"
-    assert object_key_parts[:2] == ("workflow-apps", "opencv-process-save-image")
-    assert len(object_key_parts) == 4
-    assert re.match(r"^[0-9a-f]{32}$", object_key_parts[2]) is not None
-    assert re.match(r"^\d{8}T\d{12}Z\.png$", object_key_parts[3]) is not None
+    assert object_key_parts[:6] == (
+        "projects",
+        "project-1",
+        "results",
+        "workflow-applications",
+        "opencv-process-save-image-app",
+        "runs",
+    )
+    assert len(object_key_parts) == 8
+    assert re.match(r"^[0-9a-f]{32}$", object_key_parts[6]) is not None
+    assert re.match(r"^save_image-\d{8}T\d{12}Z\.png$", object_key_parts[7]) is not None
     assert dataset_storage.resolve(object_key).is_file()
 
 

@@ -235,6 +235,8 @@ class SqlAlchemyWorkflowRuntimeRepository:
             existing_record.desired_state = workflow_app_runtime.desired_state
             existing_record.observed_state = workflow_app_runtime.observed_state
             existing_record.request_timeout_seconds = workflow_app_runtime.request_timeout_seconds
+            existing_record.heartbeat_interval_seconds = workflow_app_runtime.heartbeat_interval_seconds
+            existing_record.heartbeat_timeout_seconds = workflow_app_runtime.heartbeat_timeout_seconds
             existing_record.created_at = workflow_app_runtime.created_at
             existing_record.updated_at = workflow_app_runtime.updated_at
             existing_record.created_by = workflow_app_runtime.created_by
@@ -330,6 +332,26 @@ class SqlAlchemyWorkflowRuntimeRepository:
         if record is None:
             return None
         return self._run_to_domain(record)
+
+    def list_workflow_runs(self, project_id: str) -> tuple[WorkflowRun, ...]:
+        """按 Project id 列出 WorkflowRun。"""
+
+        statement = (
+            select(WorkflowRunRecord)
+            .where(WorkflowRunRecord.project_id == project_id)
+            .order_by(
+                WorkflowRunRecord.created_at.desc(),
+                WorkflowRunRecord.workflow_run_id.desc(),
+            )
+        )
+        try:
+            records = self.session.execute(statement).scalars().all()
+        except SQLAlchemyError as error:
+            raise PersistenceOperationError(
+                "列出 WorkflowRun 失败",
+                details={"error_type": error.__class__.__name__},
+            ) from error
+        return tuple(self._run_to_domain(record) for record in records)
 
     @staticmethod
     def _preview_to_record(preview_run: WorkflowPreviewRun) -> WorkflowPreviewRunRecord:
@@ -436,6 +458,8 @@ class SqlAlchemyWorkflowRuntimeRepository:
             desired_state=workflow_app_runtime.desired_state,
             observed_state=workflow_app_runtime.observed_state,
             request_timeout_seconds=workflow_app_runtime.request_timeout_seconds,
+            heartbeat_interval_seconds=workflow_app_runtime.heartbeat_interval_seconds,
+            heartbeat_timeout_seconds=workflow_app_runtime.heartbeat_timeout_seconds,
             created_at=workflow_app_runtime.created_at,
             updated_at=workflow_app_runtime.updated_at,
             created_by=workflow_app_runtime.created_by,
@@ -464,6 +488,8 @@ class SqlAlchemyWorkflowRuntimeRepository:
             desired_state=record.desired_state,
             observed_state=record.observed_state,
             request_timeout_seconds=record.request_timeout_seconds,
+            heartbeat_interval_seconds=record.heartbeat_interval_seconds,
+            heartbeat_timeout_seconds=record.heartbeat_timeout_seconds,
             created_at=record.created_at,
             updated_at=record.updated_at,
             created_by=record.created_by,

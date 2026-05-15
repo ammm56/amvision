@@ -60,6 +60,7 @@
 - 部署和发布默认提供项目同目录 Python 运行时，启动脚本、worker、CLI 和服务进程统一从该解释器启动，整体形态与 ComfyUI 的自带 Python 分发方式保持一致
 - 发行包默认不要求目标机器额外安装系统 Python、conda 或其他 Python 级运行时；无法内置的 GPU 驱动、推理厂商运行时或操作系统级通信依赖必须单独列明
 - Python 依赖、前端静态资源、启动脚本和必要的本地运行时配置应能一起打包，并可在 standalone、workstation、edge 形态中复用
+- `release/full/` 视为 `assemble-release` 生成结果，仓库内不得把 `release/full/app/` 当作手工维护源码面；任何发布目录代码更新都应先修改源目录，再重新执行 `python -m backend.maintenance.main assemble-release --profile-id full`
 
 ## 前端实现约定
 

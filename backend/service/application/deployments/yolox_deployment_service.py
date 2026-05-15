@@ -245,6 +245,7 @@ class SqlAlchemyYoloXDeploymentService:
         return YoloXDeploymentProcessConfig(
             deployment_instance_id=deployment_instance.deployment_instance_id,
             runtime_target=self._resolve_target_from_instance(deployment_instance),
+            project_id=deployment_instance.project_id,
             instance_count=deployment_instance.instance_count,
             runtime_behavior=_resolve_process_runtime_behavior(deployment_instance.metadata),
         )

@@ -7,10 +7,12 @@
 ## 当前文档
 
 - [docs/api/current-api.md](current-api.md)：当前已经公开的 REST API、WebSocket 入口、鉴权头和任务事件订阅规则
-- [docs/api/workflows.md](workflows.md)：workflow template/application validate、save、get 接口，以及 workflow runtime phase1 的当前公开边界说明
-- [docs/api/workflow-preview-runs.md](workflow-preview-runs.md)：WorkflowPreviewRun 的正式接口文档，覆盖编辑态快速试跑和结果回查
-- [docs/api/workflow-app-runtimes.md](workflow-app-runtimes.md)：WorkflowAppRuntime 的正式接口文档，覆盖长期运行单元的 create、list、get、start、stop、restart、health 和 instances
-- [docs/api/workflow-runs.md](workflow-runs.md)：WorkflowRun 的正式接口文档，覆盖 sync invoke、async run create、结果回查和取消
+- [docs/architecture/websocket-architecture.md](../architecture/websocket-architecture.md)：当前 WebSocket 资源流、统一消息结构、控制事件和重连规则
+- [docs/api/websocket-usage.md](websocket-usage.md)：第三方系统、HMI、嵌入式 UI 和前端界面接入公开 WebSocket 的连接顺序、恢复流程和最小客户端规则
+- [docs/api/workflows.md](workflows.md)：workflow template/application、node catalog 和 workflow runtime 当前公开边界说明
+- [docs/api/workflow-preview-runs.md](workflow-preview-runs.md)：WorkflowPreviewRun 的正式接口文档，覆盖编辑态快速试跑、sync/async wait_mode 和结果回查
+- [docs/api/workflow-app-runtimes.md](workflow-app-runtimes.md)：WorkflowAppRuntime 的正式接口文档，覆盖长期运行单元的 create、list、get、start、stop、restart、health、instances 和事件历史
+- [docs/api/workflow-runs.md](workflow-runs.md)：WorkflowRun 的正式接口文档，覆盖 sync invoke、multipart invoke、async run create、multipart run create、事件历史和取消
 - [docs/api/workflow-execution-policies.md](workflow-execution-policies.md)：WorkflowExecutionPolicy 的正式接口文档，覆盖 preview 和 runtime 的执行默认项
 - [docs/api/workflow-runtime-drafts.md](workflow-runtime-drafts.md)：workflow runtime 当前公开文档和后续扩展草案的导航页
 - [docs/api/workflow-trigger-sources.md](workflow-trigger-sources.md)：WorkflowTriggerSource 资源和 ZeroMQ adapter 的接口边界，覆盖外部触发入口、启停、health 和后续协议扩展
@@ -27,7 +29,7 @@
 - [docs/api/examples/workflows/00-short-dev-examples/yolox_deployment_detection_lifecycle_real_path/preview-run.request.json](examples/workflows/00-short-dev-examples/yolox_deployment_detection_lifecycle_real_path/preview-run.request.json)：WorkflowPreviewRun create 接口的真实路径 JSON 请求体示例
 - [docs/api/examples/workflows/00-short-dev-examples/yolox_deployment_detection_lifecycle_real_path/app-runtime.create.request.json](examples/workflows/00-short-dev-examples/yolox_deployment_detection_lifecycle_real_path/app-runtime.create.request.json)：WorkflowAppRuntime create 接口的真实路径 JSON 请求体示例
 - [docs/api/examples/workflows/00-short-dev-examples/yolox_deployment_detection_lifecycle_real_path/app-runtime.invoke.request.json](examples/workflows/00-short-dev-examples/yolox_deployment_detection_lifecycle_real_path/app-runtime.invoke.request.json)：WorkflowRun sync invoke 接口的真实路径 JSON 请求体示例
-- [docs/api/postman/workflow-runtime.postman_collection.json](postman/workflow-runtime.postman_collection.json)：workflow runtime 通用控制面 Postman collection，覆盖 execution-policies、preview-runs、app-runtimes、restart、instances、sync invoke、async runs 和 cancel 最小链路
+- [docs/api/postman/workflow-runtime.postman_collection.json](postman/workflow-runtime.postman_collection.json)：workflow runtime 通用控制面 Postman collection，覆盖 projects 目录与文件读取、template/application save/get/list、execution-policies、preview-runs、app-runtimes、restart、instances、sync invoke、async runs 和 cancel 最小链路，并给主要列表请求补齐 offset/limit 示例
 - [docs/api/postman/workflows/README.md](postman/workflows/README.md)：按第一到第五类正式 workflow 场景拆分的调试目录说明，包含依赖关系、建议联调顺序和对应 collection 清单
 - [docs/api/postman/workflows/00-short-dev-examples/00-workflow-example-documents.postman_collection.json](postman/workflows/00-short-dev-examples/00-workflow-example-documents.postman_collection.json)：把 docs/examples/workflows 下现有 template/application 示例按目录分组的保存与读取调试 collection
 - [docs/api/postman/workflows/01-yolox-end-to-end-qr-crop-remap/01-yolox-end-to-end-qr-crop-remap.postman_collection.json](postman/workflows/01-yolox-end-to-end-qr-crop-remap/01-yolox-end-to-end-qr-crop-remap.postman_collection.json)：第一类完整导入、导出、训练、评估、转换、部署和 QR remap 联调 collection
@@ -38,7 +40,7 @@
 - [docs/api/postman/datasets-imports.postman_collection.json](postman/datasets-imports.postman_collection.json)：当前公开的 system、DatasetImport、tasks 接口 Postman collection
 - [docs/api/postman/datasets-exports.postman_collection.json](postman/datasets-exports.postman_collection.json)：当前公开的 DatasetExport 接口 Postman collection
 - [docs/api/postman/platform-base-models.postman_collection.json](postman/platform-base-models.postman_collection.json)：当前公开的平台基础模型 list/detail 接口 Postman collection
-- [docs/api/postman/yolox-training.postman_collection.json](postman/yolox-training.postman_collection.json)：当前公开的 YOLOX training、validation-sessions、conversion-tasks、evaluation-tasks、deployment-instances 和 inference-tasks 接口 Postman collection
+- [docs/api/postman/yolox-training.postman_collection.json](postman/yolox-training.postman_collection.json)：当前公开的 YOLOX training、validation-sessions、conversion-tasks、evaluation-tasks、deployment-instances、deployment events、YOLOX workflow preview-runs sync/async 调试入口和 inference-tasks 接口 Postman collection
 - [docs/architecture/backend-service.md](../architecture/backend-service.md)：FastAPI 应用分层、路由拆分、数据库会话、权限和中间件骨架
 
 ## 设计草案

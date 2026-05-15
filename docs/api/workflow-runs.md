@@ -4,14 +4,18 @@
 
 本文档说明当前已经公开的 WorkflowRun REST API、状态语义和稳定返回字段。
 
-本文档描述当前已经公开的 WorkflowRun 行为，包括同步 invoke、异步 run create、结果回查和取消。
+本文档描述当前已经公开的 WorkflowRun 行为，包括同步 invoke、multipart invoke、异步 run create、multipart run create、结果回查、事件读取和取消。
 
 ## 当前公开范围
 
 - POST /api/v1/workflows/app-runtimes/{workflow_runtime_id}/invoke
+- POST /api/v1/workflows/app-runtimes/{workflow_runtime_id}/invoke/upload
 - POST /api/v1/workflows/app-runtimes/{workflow_runtime_id}/runs
+- POST /api/v1/workflows/app-runtimes/{workflow_runtime_id}/runs/upload
 - GET /api/v1/workflows/runs/{workflow_run_id}
+- GET /api/v1/workflows/runs/{workflow_run_id}/events
 - POST /api/v1/workflows/runs/{workflow_run_id}/cancel
+- /ws/v1/workflows/runs/events
 - sync invoke 和 async run 共用的 WorkflowRun 持久化记录
 
 ## 资源定位
@@ -37,17 +41,25 @@
 - 资源分组：/workflows
 - 资源路径：
   - /api/v1/workflows/app-runtimes/{workflow_runtime_id}/invoke
+  - /api/v1/workflows/app-runtimes/{workflow_runtime_id}/invoke/upload
   - /api/v1/workflows/app-runtimes/{workflow_runtime_id}/runs
+  - /api/v1/workflows/app-runtimes/{workflow_runtime_id}/runs/upload
   - /api/v1/workflows/runs/{workflow_run_id}
+  - /api/v1/workflows/runs/{workflow_run_id}/events
   - /api/v1/workflows/runs/{workflow_run_id}/cancel
+- 实时资源流：/ws/v1/workflows/runs/events
 - 稳定合同：amvision.workflow-run.v1
 
 ## 鉴权规则
 
 - POST /api/v1/workflows/app-runtimes/{workflow_runtime_id}/invoke 需要 workflows:write
+- POST /api/v1/workflows/app-runtimes/{workflow_runtime_id}/invoke/upload 需要 workflows:write
 - POST /api/v1/workflows/app-runtimes/{workflow_runtime_id}/runs 需要 workflows:write
+- POST /api/v1/workflows/app-runtimes/{workflow_runtime_id}/runs/upload 需要 workflows:write
 - GET /api/v1/workflows/runs/{workflow_run_id} 需要 workflows:read
+- GET /api/v1/workflows/runs/{workflow_run_id}/events 需要 workflows:read
 - POST /api/v1/workflows/runs/{workflow_run_id}/cancel 需要 workflows:write
+- /ws/v1/workflows/runs/events 需要 workflows:read
 
 ## 状态语义
 
@@ -127,6 +139,19 @@
 }
 ```
 
+## POST /api/v1/workflows/app-runtimes/{workflow_runtime_id}/runs/upload
+
+- Content-Type：multipart/form-data
+- 成功状态码：201 Created
+- 仅支持已经处于 running 的 WorkflowAppRuntime
+- 当前 multipart 保留字段：
+  - input_bindings_json，可选
+  - execution_metadata_json，可选
+  - timeout_seconds，可选
+- 其他文件字段名必须等于 application 的 input binding_id
+- 当前 multipart 文件上传只支持 `dataset-package.v1` 输入绑定，不支持把图片文件直接作为 `request_image` 上传
+- 返回完整 WorkflowRun 合同
+
 ### 最小响应 JSON
 
 ```json
@@ -195,6 +220,19 @@
 }
 ```
 
+## POST /api/v1/workflows/app-runtimes/{workflow_runtime_id}/invoke/upload
+
+- Content-Type：multipart/form-data
+- 成功状态码：200 OK
+- 仅支持 observed_state=running 的 WorkflowAppRuntime
+- 当前 multipart 保留字段：
+  - input_bindings_json，可选
+  - execution_metadata_json，可选
+  - timeout_seconds，可选
+- 其他文件字段名必须等于 application 的 input binding_id
+- 当前 multipart 文件上传只支持 `dataset-package.v1` 输入绑定，不支持把图片文件直接作为 `request_image` 上传
+- 返回完整 WorkflowRun 合同
+
 ### 最小响应 JSON
 
 ```json
@@ -258,6 +296,41 @@
 - 返回单条 WorkflowRun 的当前持久化结果
 - 适合回查输入、输出、node_records、assigned_process_id、error_message 和 metadata.error_details
 
+## GET /api/v1/workflows/runs/{workflow_run_id}/events
+
+- 成功状态码：200 OK
+- 需要 workflows:read
+- 当前支持查询参数 after_sequence 和 limit；只返回 sequence 更大的事件，并按升序截取前 N 条
+- 适合断线恢复、历史回看和测试验证
+
+### 当前稳定事件类型
+
+- run.queued
+- run.dispatching
+- run.started
+- run.cancel_requested
+- run.succeeded
+- run.failed
+- run.cancelled
+- run.timed_out
+
+### 最小事件语义
+
+- sequence：单条 WorkflowRun 内递增序号，从 1 开始
+- event_type：事件类型
+- created_at：事件写入时间
+- message：面向人读的摘要信息
+- payload：结构化摘要；当前至少包含 state 和 workflow_runtime_id，必要时补 assigned_process_id、error_message、started_at、finished_at
+- `/ws/v1/workflows/runs/events` 的 replay 和 live 事件与 REST 共用同一套平铺 payload，不再额外包一层 `payload.data`
+
+## /ws/v1/workflows/runs/events
+
+- 需要 workflows:read
+- query 参数：workflow_run_id 必填；after_cursor、limit 可选
+- after_cursor 当前直接使用 WorkflowRun 事件的 sequence
+- 连接成功后先返回 workflows.runs.connected，再按 sequence 持续推送增量事件
+- 实时推送走 service_event_bus，历史回放与 REST 事件接口共用同一份 `events.json`
+
 ## POST /api/v1/workflows/runs/{workflow_run_id}/cancel
 
 - 成功状态码：200 OK
@@ -274,7 +347,6 @@
 
 ## 当前不公开的扩展项
 
-- GET /api/v1/workflows/runs/{workflow_run_id}/events
 - schedule、integration trigger_source 的对外创建接口
 
 ## 与其他资源的关系

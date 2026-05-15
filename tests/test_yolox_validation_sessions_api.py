@@ -32,7 +32,7 @@ def test_create_and_predict_yolox_validation_session_returns_prediction_result(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
     )
-    input_uri = "validation-inputs/image-1.jpg"
+    input_uri = "projects/project-1/inputs/validation/image-1.jpg"
     dataset_storage.write_bytes(input_uri, _build_test_jpeg_bytes())
 
     def fake_predict(**kwargs):

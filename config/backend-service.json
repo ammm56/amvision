@@ -3,6 +3,31 @@
     "app_name": "amvision backend-service",
     "app_version": "0.1.0"
   },
+  "cors": {
+    "enabled": true,
+    "allow_origins": [],
+    "allow_origin_regex": "^https?://(localhost|127\\.0\\.0\\.1)(:\\d+)?$",
+    "allow_credentials": true,
+    "allow_methods": ["*"],
+    "allow_headers": ["*"],
+    "expose_headers": [
+      "x-request-id",
+      "x-offset",
+      "x-limit",
+      "x-total-count",
+      "x-has-more",
+      "x-next-offset"
+    ]
+  },
+  "auth": {
+    "mode": "hybrid",
+    "allow_development_headers": true,
+    "websocket_query_token_enabled": true,
+    "static_tokens": []
+  },
+  "projects": {
+    "items": []
+  },
   "database": {
     "url": "sqlite:///./data/amvision.db",
     "echo": false

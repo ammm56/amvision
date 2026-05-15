@@ -2,14 +2,17 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 import json
 import multiprocessing
 import os
 from pathlib import Path
+from threading import Thread
 import time
 
 from fastapi.testclient import TestClient
 
+import backend.service.application.workflows.runtime_worker as runtime_worker_module
 from backend.nodes.local_node_pack_loader import LocalNodePackLoader
 from backend.nodes.node_catalog_registry import NodeCatalogRegistry
 from backend.service.api.app import create_app
@@ -367,6 +370,923 @@ def test_workflow_preview_run_api_marks_timed_out_when_child_process_exceeds_tim
     assert get_response.json()["error_message"] == "等待 workflow snapshot 子进程响应超时"
 
 
+def test_workflow_preview_run_api_supports_async_events_and_wait_mode(tmp_path: Path) -> None:
+    """验证 preview run 支持异步创建、事件轮询和终态查询。"""
+
+    session_factory, dataset_storage, queue_backend = create_test_runtime(
+        tmp_path,
+        database_name="workflow-preview-async-events-api.db",
+    )
+    custom_nodes_root_dir = _create_process_test_node_pack_fixture(tmp_path)
+    node_pack_loader = LocalNodePackLoader(custom_nodes_root_dir)
+    node_pack_loader.refresh()
+    node_catalog_registry = NodeCatalogRegistry(node_pack_loader=node_pack_loader)
+    workflow_service = LocalWorkflowJsonService(
+        dataset_storage=dataset_storage,
+        node_catalog_registry=node_catalog_registry,
+    )
+    workflow_service.save_template(
+        project_id="project-1",
+        template=_build_process_slow_template(),
+    )
+    workflow_service.save_application(
+        project_id="project-1",
+        application=_build_process_slow_application(),
+    )
+    application = create_app(
+        settings=BackendServiceSettings(
+            database=BackendServiceDatabaseConfig(url=session_factory.settings.url),
+            dataset_storage=BackendServiceDatasetStorageConfig(root_dir=str(dataset_storage.root_dir)),
+            queue=BackendServiceQueueConfig(root_dir=str(queue_backend.root_dir)),
+            custom_nodes=BackendServiceCustomNodesConfig(root_dir=str(custom_nodes_root_dir)),
+            task_manager=BackendServiceTaskManagerConfig(enabled=False),
+        ),
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+        queue_backend=queue_backend,
+    )
+    client = TestClient(application)
+
+    try:
+        with client:
+            create_response = client.post(
+                "/api/v1/workflows/preview-runs",
+                headers=build_test_headers(scopes="workflows:read,workflows:write"),
+                json={
+                    "project_id": "project-1",
+                    "application_ref": {"application_id": "process-slow-app"},
+                    "input_bindings": {"request_text": {"value": "hello preview async"}},
+                    "execution_metadata": {"marker": "preview-async-events"},
+                    "timeout_seconds": 5,
+                    "wait_mode": "async",
+                },
+            )
+            preview_run_id = create_response.json()["preview_run_id"]
+            started_events_response = _wait_for_preview_run_event_types(
+                client,
+                preview_run_id,
+                expected_event_types={"preview.started", "node.started"},
+            )
+            completed_events_response = _wait_for_preview_run_event_types(
+                client,
+                preview_run_id,
+                expected_event_types={"node.completed", "preview.succeeded"},
+                after_sequence=max(item["sequence"] for item in started_events_response.json()),
+            )
+            final_preview_response = _wait_for_preview_run_state(
+                client,
+                preview_run_id,
+                expected_states={"succeeded"},
+            )
+    finally:
+        session_factory.engine.dispose()
+
+    assert create_response.status_code == 201
+    assert create_response.json()["state"] == "running"
+    assert started_events_response.status_code == 200
+    assert completed_events_response.status_code == 200
+    assert final_preview_response.status_code == 200
+    assert {item["event_type"] for item in started_events_response.json()} >= {
+        "preview.started",
+        "node.started",
+    }
+    assert {item["event_type"] for item in completed_events_response.json()} >= {
+        "node.completed",
+        "preview.succeeded",
+    }
+    assert final_preview_response.json()["state"] == "succeeded"
+
+
+def test_workflow_preview_run_events_websocket_streams_live_events(tmp_path: Path) -> None:
+    """验证 preview run WebSocket 可以在 REST 回放之后继续收到实时事件。"""
+
+    session_factory, dataset_storage, queue_backend = create_test_runtime(
+        tmp_path,
+        database_name="workflow-preview-events-websocket.db",
+    )
+    custom_nodes_root_dir = _create_process_test_node_pack_fixture(tmp_path)
+    node_pack_loader = LocalNodePackLoader(custom_nodes_root_dir)
+    node_pack_loader.refresh()
+    node_catalog_registry = NodeCatalogRegistry(node_pack_loader=node_pack_loader)
+    workflow_service = LocalWorkflowJsonService(
+        dataset_storage=dataset_storage,
+        node_catalog_registry=node_catalog_registry,
+    )
+    workflow_service.save_template(
+        project_id="project-1",
+        template=_build_process_slow_template(),
+    )
+    workflow_service.save_application(
+        project_id="project-1",
+        application=_build_process_slow_application(),
+    )
+    application = create_app(
+        settings=BackendServiceSettings(
+            database=BackendServiceDatabaseConfig(url=session_factory.settings.url),
+            dataset_storage=BackendServiceDatasetStorageConfig(root_dir=str(dataset_storage.root_dir)),
+            queue=BackendServiceQueueConfig(root_dir=str(queue_backend.root_dir)),
+            custom_nodes=BackendServiceCustomNodesConfig(root_dir=str(custom_nodes_root_dir)),
+            task_manager=BackendServiceTaskManagerConfig(enabled=False),
+        ),
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+        queue_backend=queue_backend,
+    )
+    client = TestClient(application)
+
+    try:
+        with client:
+            create_response = client.post(
+                "/api/v1/workflows/preview-runs",
+                headers=build_test_headers(scopes="workflows:read,workflows:write"),
+                json={
+                    "project_id": "project-1",
+                    "application_ref": {"application_id": "process-slow-app"},
+                    "input_bindings": {"request_text": {"value": "hello preview websocket"}},
+                    "execution_metadata": {"marker": "preview-websocket"},
+                    "timeout_seconds": 5,
+                    "wait_mode": "async",
+                },
+            )
+            preview_run_id = create_response.json()["preview_run_id"]
+            started_events_response = _wait_for_preview_run_event_types(
+                client,
+                preview_run_id,
+                expected_event_types={"preview.started", "node.started"},
+            )
+            limited_events_response = client.get(
+                f"/api/v1/workflows/preview-runs/{preview_run_id}/events",
+                headers=build_test_headers(scopes="workflows:read,workflows:write"),
+                params={"limit": 1},
+            )
+            after_cursor = str(max(item["sequence"] for item in started_events_response.json()))
+            pending_events_response = client.get(
+                f"/api/v1/workflows/preview-runs/{preview_run_id}/events",
+                headers=build_test_headers(scopes="workflows:read,workflows:write"),
+                params={"after_sequence": int(after_cursor), "limit": 1},
+            )
+
+            streamed_payloads: list[dict[str, object]] = []
+            with client.websocket_connect(
+                f"/ws/v1/workflows/preview-runs/events?preview_run_id={preview_run_id}&after_cursor={after_cursor}",
+                headers=build_test_headers(scopes="workflows:read,workflows:write"),
+            ) as websocket:
+                connected_payload = websocket.receive_json()
+                while {item["event_type"] for item in streamed_payloads} < {
+                    "node.completed",
+                    "preview.succeeded",
+                }:
+                    streamed_payloads.append(websocket.receive_json())
+
+            final_preview_response = _wait_for_preview_run_state(
+                client,
+                preview_run_id,
+                expected_states={"succeeded"},
+            )
+    finally:
+        session_factory.engine.dispose()
+
+    streamed_event_types = {item["event_type"] for item in streamed_payloads}
+    assert create_response.status_code == 201
+    assert limited_events_response.status_code == 200
+    assert [item["event_type"] for item in limited_events_response.json()] == ["preview.started"]
+    assert pending_events_response.status_code == 200
+    assert pending_events_response.json() == []
+    assert connected_payload["event_type"] == "workflows.preview-runs.connected"
+    assert connected_payload["resource_id"] == preview_run_id
+    assert streamed_event_types >= {"node.completed", "preview.succeeded"}
+    assert all(item["stream"] == "workflows.preview-runs.events" for item in streamed_payloads)
+    assert all(item["resource_id"] == preview_run_id for item in streamed_payloads)
+    assert all("sequence" in item["payload"] for item in streamed_payloads)
+    assert all("data" not in item["payload"] for item in streamed_payloads)
+    assert final_preview_response.json()["state"] == "succeeded"
+
+
+def test_workflow_run_events_websocket_streams_live_events(tmp_path: Path) -> None:
+    """验证 WorkflowRun WebSocket 可以在 REST 回放之后继续收到实时事件。"""
+
+    session_factory, dataset_storage, queue_backend = create_test_runtime(
+        tmp_path,
+        database_name="workflow-run-events-websocket.db",
+    )
+    custom_nodes_root_dir = _create_process_test_node_pack_fixture(tmp_path)
+    node_pack_loader = LocalNodePackLoader(custom_nodes_root_dir)
+    node_pack_loader.refresh()
+    node_catalog_registry = NodeCatalogRegistry(node_pack_loader=node_pack_loader)
+    workflow_service = LocalWorkflowJsonService(
+        dataset_storage=dataset_storage,
+        node_catalog_registry=node_catalog_registry,
+    )
+    workflow_service.save_template(
+        project_id="project-1",
+        template=_build_process_slow_template(),
+    )
+    workflow_service.save_application(
+        project_id="project-1",
+        application=_build_process_slow_application(),
+    )
+    application = create_app(
+        settings=BackendServiceSettings(
+            database=BackendServiceDatabaseConfig(url=session_factory.settings.url),
+            dataset_storage=BackendServiceDatasetStorageConfig(root_dir=str(dataset_storage.root_dir)),
+            queue=BackendServiceQueueConfig(root_dir=str(queue_backend.root_dir)),
+            custom_nodes=BackendServiceCustomNodesConfig(root_dir=str(custom_nodes_root_dir)),
+            task_manager=BackendServiceTaskManagerConfig(enabled=False),
+        ),
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+        queue_backend=queue_backend,
+    )
+    client = TestClient(application)
+
+    try:
+        with client:
+            create_runtime_response = client.post(
+                "/api/v1/workflows/app-runtimes",
+                headers=build_test_headers(scopes="workflows:read,workflows:write"),
+                json={
+                    "project_id": "project-1",
+                    "application_id": "process-slow-app",
+                    "display_name": "Process Slow Runtime",
+                    "request_timeout_seconds": 5,
+                },
+            )
+            workflow_runtime_id = create_runtime_response.json()["workflow_runtime_id"]
+            start_response = client.post(
+                f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/start",
+                headers=build_test_headers(scopes="workflows:read,workflows:write"),
+            )
+            create_run_response = client.post(
+                f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/runs",
+                headers=build_test_headers(scopes="workflows:read,workflows:write"),
+                json={
+                    "input_bindings": {"request_text": {"value": "cancel over websocket"}},
+                    "execution_metadata": {"marker": "workflow-run-websocket"},
+                },
+            )
+            workflow_run_id = create_run_response.json()["workflow_run_id"]
+            started_events_response = _wait_for_workflow_run_event_types(
+                client,
+                workflow_run_id,
+                expected_event_types={"run.queued", "run.started"},
+            )
+            limited_events_response = client.get(
+                f"/api/v1/workflows/runs/{workflow_run_id}/events",
+                headers=build_test_headers(scopes="workflows:read,workflows:write"),
+                params={"limit": 1},
+            )
+            after_cursor = str(max(item["sequence"] for item in started_events_response.json()))
+            pending_events_response = client.get(
+                f"/api/v1/workflows/runs/{workflow_run_id}/events",
+                headers=build_test_headers(scopes="workflows:read,workflows:write"),
+                params={"after_sequence": int(after_cursor), "limit": 1},
+            )
+
+            streamed_payloads: list[dict[str, object]] = []
+            with client.websocket_connect(
+                f"/ws/v1/workflows/runs/events?workflow_run_id={workflow_run_id}&after_cursor={after_cursor}",
+                headers=build_test_headers(scopes="workflows:read,workflows:write"),
+            ) as websocket:
+                connected_payload = websocket.receive_json()
+                cancel_response = client.post(
+                    f"/api/v1/workflows/runs/{workflow_run_id}/cancel",
+                    headers=build_test_headers(scopes="workflows:read,workflows:write"),
+                )
+                while {item["event_type"] for item in streamed_payloads} < {
+                    "run.cancel_requested",
+                    "run.cancelled",
+                }:
+                    streamed_payloads.append(websocket.receive_json())
+
+            final_run_response = _wait_for_workflow_run_state(
+                client,
+                workflow_run_id,
+                expected_states={"cancelled"},
+            )
+            stop_response = client.post(
+                f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/stop",
+                headers=build_test_headers(scopes="workflows:read,workflows:write"),
+            )
+    finally:
+        session_factory.engine.dispose()
+
+    streamed_event_types = {item["event_type"] for item in streamed_payloads}
+    assert create_runtime_response.status_code == 201
+    assert start_response.status_code == 200
+    assert create_run_response.status_code == 201
+    assert limited_events_response.status_code == 200
+    assert [item["event_type"] for item in limited_events_response.json()] == ["run.queued"]
+    assert pending_events_response.status_code == 200
+    assert pending_events_response.json() == []
+    assert cancel_response.status_code == 200
+    assert connected_payload["event_type"] == "workflows.runs.connected"
+    assert connected_payload["resource_id"] == workflow_run_id
+    assert streamed_event_types >= {"run.cancel_requested", "run.cancelled"}
+    assert all(item["stream"] == "workflows.runs.events" for item in streamed_payloads)
+    assert all(item["resource_id"] == workflow_run_id for item in streamed_payloads)
+    assert all("sequence" in item["payload"] for item in streamed_payloads)
+    assert all("data" not in item["payload"] for item in streamed_payloads)
+    assert all("state" in item["payload"] for item in streamed_payloads)
+    assert final_run_response.json()["state"] == "cancelled"
+    assert stop_response.json()["observed_state"] == "stopped"
+
+
+def test_workflow_app_runtime_events_websocket_streams_live_events(tmp_path: Path) -> None:
+    """验证 WorkflowAppRuntime WebSocket 可以在 REST 回放之后继续收到实时事件。"""
+
+    session_factory, dataset_storage, queue_backend = create_test_runtime(
+        tmp_path,
+        database_name="workflow-app-runtime-events-websocket.db",
+    )
+    custom_nodes_root_dir = _create_process_test_node_pack_fixture(tmp_path)
+    node_pack_loader = LocalNodePackLoader(custom_nodes_root_dir)
+    node_pack_loader.refresh()
+    node_catalog_registry = NodeCatalogRegistry(node_pack_loader=node_pack_loader)
+    workflow_service = LocalWorkflowJsonService(
+        dataset_storage=dataset_storage,
+        node_catalog_registry=node_catalog_registry,
+    )
+    workflow_service.save_template(
+        project_id="project-1",
+        template=_build_process_echo_template(),
+    )
+    workflow_service.save_application(
+        project_id="project-1",
+        application=_build_process_echo_application(),
+    )
+    application = create_app(
+        settings=BackendServiceSettings(
+            database=BackendServiceDatabaseConfig(url=session_factory.settings.url),
+            dataset_storage=BackendServiceDatasetStorageConfig(root_dir=str(dataset_storage.root_dir)),
+            queue=BackendServiceQueueConfig(root_dir=str(queue_backend.root_dir)),
+            custom_nodes=BackendServiceCustomNodesConfig(root_dir=str(custom_nodes_root_dir)),
+            task_manager=BackendServiceTaskManagerConfig(enabled=False),
+        ),
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+        queue_backend=queue_backend,
+    )
+    client = TestClient(application)
+
+    try:
+        with client:
+            create_runtime_response = client.post(
+                "/api/v1/workflows/app-runtimes",
+                headers=build_test_headers(scopes="workflows:read,workflows:write"),
+                json={
+                    "project_id": "project-1",
+                    "application_id": "process-echo-app",
+                    "display_name": "Process Echo Runtime",
+                },
+            )
+            workflow_runtime_id = create_runtime_response.json()["workflow_runtime_id"]
+            history_events_response = client.get(
+                f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/events",
+                headers=build_test_headers(scopes="workflows:read,workflows:write"),
+            )
+            limited_history_response = client.get(
+                f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/events",
+                headers=build_test_headers(scopes="workflows:read,workflows:write"),
+                params={"limit": 1},
+            )
+            after_cursor = str(max(item["sequence"] for item in history_events_response.json()))
+
+            streamed_payloads: list[dict[str, object]] = []
+            with client.websocket_connect(
+                f"/ws/v1/workflows/app-runtimes/events?workflow_runtime_id={workflow_runtime_id}&after_cursor={after_cursor}",
+                headers=build_test_headers(scopes="workflows:read,workflows:write"),
+            ) as websocket:
+                connected_payload = websocket.receive_json()
+                start_response = client.post(
+                    f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/start",
+                    headers=build_test_headers(scopes="workflows:read,workflows:write"),
+                )
+                stop_response = client.post(
+                    f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/stop",
+                    headers=build_test_headers(scopes="workflows:read,workflows:write"),
+                )
+                while {item["event_type"] for item in streamed_payloads} < {
+                    "runtime.started",
+                    "runtime.stopped",
+                }:
+                    streamed_payloads.append(websocket.receive_json())
+
+            limited_live_response = client.get(
+                f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/events",
+                headers=build_test_headers(scopes="workflows:read,workflows:write"),
+                params={"after_sequence": 1, "limit": 1},
+            )
+    finally:
+        session_factory.engine.dispose()
+
+    streamed_event_types = {item["event_type"] for item in streamed_payloads}
+    assert create_runtime_response.status_code == 201
+    assert history_events_response.status_code == 200
+    assert limited_history_response.status_code == 200
+    assert [item["event_type"] for item in limited_history_response.json()] == ["runtime.created"]
+    assert limited_live_response.status_code == 200
+    assert [item["event_type"] for item in limited_live_response.json()] == ["runtime.started"]
+    assert {item["event_type"] for item in history_events_response.json()} == {"runtime.created"}
+    assert connected_payload["event_type"] == "workflows.app-runtimes.connected"
+    assert connected_payload["resource_id"] == workflow_runtime_id
+    assert start_response.status_code == 200
+    assert stop_response.status_code == 200
+    assert streamed_event_types >= {"runtime.started", "runtime.stopped"}
+    assert all(item["stream"] == "workflows.app-runtimes.events" for item in streamed_payloads)
+    assert all(item["resource_id"] == workflow_runtime_id for item in streamed_payloads)
+    assert all("sequence" in item["payload"] for item in streamed_payloads)
+    assert all("data" not in item["payload"] for item in streamed_payloads)
+    assert all("observed_state" in item["payload"] for item in streamed_payloads)
+    assert stop_response.json()["observed_state"] == "stopped"
+
+
+def test_workflow_app_runtime_events_websocket_streams_live_heartbeat_events(tmp_path: Path) -> None:
+    """验证 app runtime 事件流会推送 worker 主动 heartbeat。"""
+
+    session_factory, dataset_storage, queue_backend = create_test_runtime(
+        tmp_path,
+        database_name="workflow-runtime-heartbeat-events-api.db",
+    )
+    custom_nodes_root_dir = _create_process_test_node_pack_fixture(tmp_path)
+    node_pack_loader = LocalNodePackLoader(custom_nodes_root_dir)
+    node_pack_loader.refresh()
+    node_catalog_registry = NodeCatalogRegistry(node_pack_loader=node_pack_loader)
+    workflow_service = LocalWorkflowJsonService(
+        dataset_storage=dataset_storage,
+        node_catalog_registry=node_catalog_registry,
+    )
+    workflow_service.save_template(
+        project_id="project-1",
+        template=_build_process_echo_template(),
+    )
+    workflow_service.save_application(
+        project_id="project-1",
+        application=_build_process_echo_application(),
+    )
+    application = create_app(
+        settings=BackendServiceSettings(
+            database=BackendServiceDatabaseConfig(url=session_factory.settings.url),
+            dataset_storage=BackendServiceDatasetStorageConfig(root_dir=str(dataset_storage.root_dir)),
+            queue=BackendServiceQueueConfig(root_dir=str(queue_backend.root_dir)),
+            custom_nodes=BackendServiceCustomNodesConfig(root_dir=str(custom_nodes_root_dir)),
+            task_manager=BackendServiceTaskManagerConfig(enabled=False),
+        ),
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+        queue_backend=queue_backend,
+    )
+    client = TestClient(application)
+
+    try:
+        with client:
+            create_runtime_response = client.post(
+                "/api/v1/workflows/app-runtimes",
+                headers=build_test_headers(scopes="workflows:read,workflows:write"),
+                json={
+                    "project_id": "project-1",
+                    "application_id": "process-echo-app",
+                    "display_name": "Process Echo Heartbeat Runtime",
+                    "heartbeat_interval_seconds": 1,
+                    "heartbeat_timeout_seconds": 4,
+                },
+            )
+            workflow_runtime_id = create_runtime_response.json()["workflow_runtime_id"]
+            history_events_response = client.get(
+                f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/events",
+                headers=build_test_headers(scopes="workflows:read,workflows:write"),
+            )
+            after_cursor = str(max(item["sequence"] for item in history_events_response.json()))
+
+            streamed_payloads: list[dict[str, object]] = []
+            with client.websocket_connect(
+                f"/ws/v1/workflows/app-runtimes/events?workflow_runtime_id={workflow_runtime_id}&after_cursor={after_cursor}",
+                headers=build_test_headers(scopes="workflows:read,workflows:write"),
+            ) as websocket:
+                connected_payload = websocket.receive_json()
+                start_response = client.post(
+                    f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/start",
+                    headers=build_test_headers(scopes="workflows:read,workflows:write"),
+                )
+                time.sleep(1.3)
+                stop_response = client.post(
+                    f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/stop",
+                    headers=build_test_headers(scopes="workflows:read,workflows:write"),
+                )
+                for _ in range(3):
+                    streamed_payloads.append(websocket.receive_json())
+
+            final_events_response = client.get(
+                f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/events",
+                headers=build_test_headers(scopes="workflows:read,workflows:write"),
+            )
+    finally:
+        session_factory.engine.dispose()
+
+    streamed_event_types = {item["event_type"] for item in streamed_payloads}
+    heartbeat_event = next(item for item in streamed_payloads if item["event_type"] == "runtime.heartbeat")
+    assert create_runtime_response.status_code == 201
+    assert create_runtime_response.json()["heartbeat_interval_seconds"] == 1
+    assert create_runtime_response.json()["heartbeat_timeout_seconds"] == 4
+    assert history_events_response.status_code == 200
+    assert connected_payload["event_type"] == "workflows.app-runtimes.connected"
+    assert start_response.status_code == 200
+    assert stop_response.status_code == 200
+    assert streamed_event_types >= {"runtime.started", "runtime.heartbeat", "runtime.stopped"}
+    assert "data" not in heartbeat_event["payload"]
+    assert "observed_state" in heartbeat_event["payload"]
+    assert heartbeat_event["payload"]["heartbeat_interval_seconds"] == 1
+    assert heartbeat_event["payload"]["heartbeat_timeout_seconds"] == 4
+    assert final_events_response.status_code == 200
+    assert {item["event_type"] for item in final_events_response.json()} >= {
+        "runtime.created",
+        "runtime.started",
+        "runtime.heartbeat",
+        "runtime.stopped",
+    }
+
+
+def test_workflow_app_runtime_health_and_instances_follow_heartbeat_timeout(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """验证 heartbeat 超时后 health、instances 和事件面会收敛到同一失败状态。"""
+
+    monkeypatch.setattr(
+        runtime_worker_module,
+        "run_workflow_runtime_worker_process",
+        _run_test_runtime_worker_without_heartbeat,
+    )
+    session_factory, dataset_storage, queue_backend = create_test_runtime(
+        tmp_path,
+        database_name="workflow-runtime-heartbeat-timeout-api.db",
+    )
+    custom_nodes_root_dir = _create_process_test_node_pack_fixture(tmp_path)
+    node_pack_loader = LocalNodePackLoader(custom_nodes_root_dir)
+    node_pack_loader.refresh()
+    node_catalog_registry = NodeCatalogRegistry(node_pack_loader=node_pack_loader)
+    workflow_service = LocalWorkflowJsonService(
+        dataset_storage=dataset_storage,
+        node_catalog_registry=node_catalog_registry,
+    )
+    workflow_service.save_template(
+        project_id="project-1",
+        template=_build_process_echo_template(),
+    )
+    workflow_service.save_application(
+        project_id="project-1",
+        application=_build_process_echo_application(),
+    )
+    application = create_app(
+        settings=BackendServiceSettings(
+            database=BackendServiceDatabaseConfig(url=session_factory.settings.url),
+            dataset_storage=BackendServiceDatasetStorageConfig(root_dir=str(dataset_storage.root_dir)),
+            queue=BackendServiceQueueConfig(root_dir=str(queue_backend.root_dir)),
+            custom_nodes=BackendServiceCustomNodesConfig(root_dir=str(custom_nodes_root_dir)),
+            task_manager=BackendServiceTaskManagerConfig(enabled=False),
+        ),
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+        queue_backend=queue_backend,
+    )
+    client = TestClient(application)
+
+    try:
+        with client:
+            create_runtime_response = client.post(
+                "/api/v1/workflows/app-runtimes",
+                headers=build_test_headers(scopes="workflows:read,workflows:write"),
+                json={
+                    "project_id": "project-1",
+                    "application_id": "process-echo-app",
+                    "display_name": "Process Echo Timeout Runtime",
+                    "heartbeat_interval_seconds": 1,
+                    "heartbeat_timeout_seconds": 2,
+                },
+            )
+            workflow_runtime_id = create_runtime_response.json()["workflow_runtime_id"]
+            start_response = client.post(
+                f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/start",
+                headers=build_test_headers(scopes="workflows:read,workflows:write"),
+            )
+
+            _force_runtime_worker_heartbeat_timeout(application, workflow_runtime_id)
+            health_response = _wait_for_workflow_app_runtime_health_state(
+                client,
+                workflow_runtime_id,
+                expected_state="failed",
+                expected_last_error="heartbeat 超时",
+            )
+            instances_response = _wait_for_workflow_app_runtime_instance_state(
+                client,
+                workflow_runtime_id,
+                expected_state="failed",
+                expected_last_error="heartbeat 超时",
+            )
+            events_response = _wait_for_workflow_app_runtime_event_types(
+                client,
+                workflow_runtime_id,
+                expected_event_types={"runtime.heartbeat_timed_out"},
+            )
+    finally:
+        session_factory.engine.dispose()
+
+    timeout_event = next(
+        item for item in events_response.json() if item["event_type"] == "runtime.heartbeat_timed_out"
+    )
+    instance_payload = instances_response.json()[0]
+    assert create_runtime_response.status_code == 201
+    assert start_response.status_code == 200
+    assert health_response.status_code == 200
+    assert health_response.json()["observed_state"] == "failed"
+    assert health_response.json()["last_error"] == "workflow runtime heartbeat 超时"
+    assert health_response.json()["health_summary"]["heartbeat_status"] == "timed_out"
+    assert instances_response.status_code == 200
+    assert len(instances_response.json()) == 1
+    assert instance_payload["state"] == "failed"
+    assert instance_payload["last_error"] == "workflow runtime heartbeat 超时"
+    assert instance_payload["health_summary"]["heartbeat_status"] == "timed_out"
+    assert events_response.status_code == 200
+    assert timeout_event["payload"]["observed_state"] == "failed"
+    assert timeout_event["payload"]["last_error"] == "workflow runtime heartbeat 超时"
+
+
+def test_workflow_app_runtime_recovery_event_streams_to_websocket_and_history(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """验证 heartbeat 恢复事件会同时出现在 WebSocket 和历史事件读取面。"""
+
+    monkeypatch.setattr(
+        runtime_worker_module,
+        "run_workflow_runtime_worker_process",
+        _run_test_runtime_worker_without_heartbeat,
+    )
+    session_factory, dataset_storage, queue_backend = create_test_runtime(
+        tmp_path,
+        database_name="workflow-runtime-heartbeat-recovery-api.db",
+    )
+    custom_nodes_root_dir = _create_process_test_node_pack_fixture(tmp_path)
+    node_pack_loader = LocalNodePackLoader(custom_nodes_root_dir)
+    node_pack_loader.refresh()
+    node_catalog_registry = NodeCatalogRegistry(node_pack_loader=node_pack_loader)
+    workflow_service = LocalWorkflowJsonService(
+        dataset_storage=dataset_storage,
+        node_catalog_registry=node_catalog_registry,
+    )
+    workflow_service.save_template(
+        project_id="project-1",
+        template=_build_process_echo_template(),
+    )
+    workflow_service.save_application(
+        project_id="project-1",
+        application=_build_process_echo_application(),
+    )
+    application = create_app(
+        settings=BackendServiceSettings(
+            database=BackendServiceDatabaseConfig(url=session_factory.settings.url),
+            dataset_storage=BackendServiceDatasetStorageConfig(root_dir=str(dataset_storage.root_dir)),
+            queue=BackendServiceQueueConfig(root_dir=str(queue_backend.root_dir)),
+            custom_nodes=BackendServiceCustomNodesConfig(root_dir=str(custom_nodes_root_dir)),
+            task_manager=BackendServiceTaskManagerConfig(enabled=False),
+        ),
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+        queue_backend=queue_backend,
+    )
+    client = TestClient(application)
+
+    try:
+        with client:
+            create_runtime_response = client.post(
+                "/api/v1/workflows/app-runtimes",
+                headers=build_test_headers(scopes="workflows:read,workflows:write"),
+                json={
+                    "project_id": "project-1",
+                    "application_id": "process-echo-app",
+                    "display_name": "Process Echo Recovery Runtime",
+                    "heartbeat_interval_seconds": 1,
+                    "heartbeat_timeout_seconds": 2,
+                },
+            )
+            workflow_runtime_id = create_runtime_response.json()["workflow_runtime_id"]
+            start_response = client.post(
+                f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/start",
+                headers=build_test_headers(scopes="workflows:read,workflows:write"),
+            )
+
+            running_state = _force_runtime_worker_heartbeat_timeout(application, workflow_runtime_id)
+            timeout_events_response = _wait_for_workflow_app_runtime_event_types(
+                client,
+                workflow_runtime_id,
+                expected_event_types={"runtime.heartbeat_timed_out"},
+            )
+            after_cursor = str(max(item["sequence"] for item in timeout_events_response.json()))
+
+            with client.websocket_connect(
+                f"/ws/v1/workflows/app-runtimes/events?workflow_runtime_id={workflow_runtime_id}&after_cursor={after_cursor}",
+                headers=build_test_headers(scopes="workflows:read,workflows:write"),
+            ) as websocket:
+                connected_payload = _receive_websocket_json_with_timeout(websocket)
+                _inject_runtime_worker_heartbeat(
+                    application,
+                    workflow_runtime_id,
+                    running_state,
+                )
+                recovered_payload = _receive_websocket_json_with_timeout(websocket)
+
+            recovered_events_response = _wait_for_workflow_app_runtime_event_types(
+                client,
+                workflow_runtime_id,
+                expected_event_types={"runtime.heartbeat_recovered"},
+            )
+            recovered_health_response = _wait_for_workflow_app_runtime_health_state(
+                client,
+                workflow_runtime_id,
+                expected_state="running",
+            )
+    finally:
+        session_factory.engine.dispose()
+
+    recovered_event = next(
+        item
+        for item in recovered_events_response.json()
+        if item["event_type"] == "runtime.heartbeat_recovered"
+    )
+    assert create_runtime_response.status_code == 201
+    assert start_response.status_code == 200
+    assert connected_payload["event_type"] == "workflows.app-runtimes.connected"
+    assert recovered_payload["event_type"] == "runtime.heartbeat_recovered"
+    assert recovered_payload["resource_id"] == workflow_runtime_id
+    assert recovered_payload["payload"]["data"]["observed_state"] == "running"
+    assert recovered_payload["payload"]["data"].get("last_error") is None
+    assert recovered_events_response.status_code == 200
+    assert recovered_event["payload"]["observed_state"] == "running"
+    assert recovered_event["payload"].get("last_error") is None
+    assert recovered_health_response.status_code == 200
+    assert recovered_health_response.json()["observed_state"] == "running"
+    assert recovered_health_response.json()["last_error"] is None
+
+
+def test_workflow_preview_run_api_supports_cancel_and_cancelled_state(tmp_path: Path) -> None:
+    """验证异步 preview run 支持取消，并会落成 cancelled。"""
+
+    session_factory, dataset_storage, queue_backend = create_test_runtime(
+        tmp_path,
+        database_name="workflow-preview-cancel-api.db",
+    )
+    custom_nodes_root_dir = _create_process_test_node_pack_fixture(tmp_path)
+    node_pack_loader = LocalNodePackLoader(custom_nodes_root_dir)
+    node_pack_loader.refresh()
+    node_catalog_registry = NodeCatalogRegistry(node_pack_loader=node_pack_loader)
+    workflow_service = LocalWorkflowJsonService(
+        dataset_storage=dataset_storage,
+        node_catalog_registry=node_catalog_registry,
+    )
+    workflow_service.save_template(
+        project_id="project-1",
+        template=_build_process_slow_template(),
+    )
+    workflow_service.save_application(
+        project_id="project-1",
+        application=_build_process_slow_application(),
+    )
+    application = create_app(
+        settings=BackendServiceSettings(
+            database=BackendServiceDatabaseConfig(url=session_factory.settings.url),
+            dataset_storage=BackendServiceDatasetStorageConfig(root_dir=str(dataset_storage.root_dir)),
+            queue=BackendServiceQueueConfig(root_dir=str(queue_backend.root_dir)),
+            custom_nodes=BackendServiceCustomNodesConfig(root_dir=str(custom_nodes_root_dir)),
+            task_manager=BackendServiceTaskManagerConfig(enabled=False),
+        ),
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+        queue_backend=queue_backend,
+    )
+    client = TestClient(application)
+
+    try:
+        with client:
+            create_response = client.post(
+                "/api/v1/workflows/preview-runs",
+                headers=build_test_headers(scopes="workflows:read,workflows:write"),
+                json={
+                    "project_id": "project-1",
+                    "application_ref": {"application_id": "process-slow-app"},
+                    "input_bindings": {"request_text": {"value": "hello preview cancel"}},
+                    "execution_metadata": {"marker": "preview-cancel"},
+                    "timeout_seconds": 10,
+                    "wait_mode": "async",
+                },
+            )
+            preview_run_id = create_response.json()["preview_run_id"]
+            _wait_for_preview_run_event_types(
+                client,
+                preview_run_id,
+                expected_event_types={"node.started"},
+            )
+            cancel_response = client.post(
+                f"/api/v1/workflows/preview-runs/{preview_run_id}/cancel",
+                headers=build_test_headers(scopes="workflows:read,workflows:write"),
+            )
+            final_preview_response = _wait_for_preview_run_state(
+                client,
+                preview_run_id,
+                expected_states={"cancelled"},
+            )
+            cancelled_events_response = _wait_for_preview_run_event_types(
+                client,
+                preview_run_id,
+                expected_event_types={"preview.cancelled"},
+            )
+    finally:
+        session_factory.engine.dispose()
+
+    assert create_response.status_code == 201
+    assert cancel_response.status_code == 200
+    assert final_preview_response.status_code == 200
+    assert cancel_response.json()["state"] == "cancelled"
+    assert cancel_response.json()["error_message"] == "workflow preview run 已取消"
+    assert cancel_response.json()["metadata"]["cancelled_by"] == "user-1"
+    assert final_preview_response.json()["state"] == "cancelled"
+    assert final_preview_response.json()["error_message"] == "workflow preview run 已取消"
+    assert {item["event_type"] for item in cancelled_events_response.json()} >= {"preview.cancelled"}
+
+
+def test_workflow_preview_run_api_delete_cleans_up_running_async_preview(tmp_path: Path) -> None:
+    """验证删除 running 的 async preview run 时会先收口，再清理记录和目录。"""
+
+    session_factory, dataset_storage, queue_backend = create_test_runtime(
+        tmp_path,
+        database_name="workflow-preview-delete-running-api.db",
+    )
+    custom_nodes_root_dir = _create_process_test_node_pack_fixture(tmp_path)
+    node_pack_loader = LocalNodePackLoader(custom_nodes_root_dir)
+    node_pack_loader.refresh()
+    node_catalog_registry = NodeCatalogRegistry(node_pack_loader=node_pack_loader)
+    workflow_service = LocalWorkflowJsonService(
+        dataset_storage=dataset_storage,
+        node_catalog_registry=node_catalog_registry,
+    )
+    workflow_service.save_template(
+        project_id="project-1",
+        template=_build_process_slow_template(),
+    )
+    workflow_service.save_application(
+        project_id="project-1",
+        application=_build_process_slow_application(),
+    )
+    application = create_app(
+        settings=BackendServiceSettings(
+            database=BackendServiceDatabaseConfig(url=session_factory.settings.url),
+            dataset_storage=BackendServiceDatasetStorageConfig(root_dir=str(dataset_storage.root_dir)),
+            queue=BackendServiceQueueConfig(root_dir=str(queue_backend.root_dir)),
+            custom_nodes=BackendServiceCustomNodesConfig(root_dir=str(custom_nodes_root_dir)),
+            task_manager=BackendServiceTaskManagerConfig(enabled=False),
+        ),
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+        queue_backend=queue_backend,
+    )
+    client = TestClient(application)
+
+    try:
+        with client:
+            create_response = client.post(
+                "/api/v1/workflows/preview-runs",
+                headers=build_test_headers(scopes="workflows:read,workflows:write"),
+                json={
+                    "project_id": "project-1",
+                    "application_ref": {"application_id": "process-slow-app"},
+                    "input_bindings": {"request_text": {"value": "hello preview delete"}},
+                    "execution_metadata": {"marker": "preview-delete-running"},
+                    "timeout_seconds": 10,
+                    "wait_mode": "async",
+                },
+            )
+            preview_run_id = create_response.json()["preview_run_id"]
+            preview_run_dir = dataset_storage.resolve(f"workflows/runtime/preview-runs/{preview_run_id}")
+            _wait_for_preview_run_event_types(
+                client,
+                preview_run_id,
+                expected_event_types={"node.started"},
+            )
+            delete_response = client.delete(
+                f"/api/v1/workflows/preview-runs/{preview_run_id}",
+                headers=build_test_headers(scopes="workflows:read,workflows:write"),
+            )
+            get_deleted_response = client.get(
+                f"/api/v1/workflows/preview-runs/{preview_run_id}",
+                headers=build_test_headers(scopes="workflows:read,workflows:write"),
+            )
+    finally:
+        session_factory.engine.dispose()
+
+    assert create_response.status_code == 201
+    assert delete_response.status_code == 204
+    assert get_deleted_response.status_code == 404
+    assert not preview_run_dir.exists()
+
+
 def test_workflow_preview_run_api_lists_and_deletes_preview_runs(tmp_path: Path) -> None:
     """验证 preview run 列表和删除接口可用，并会清理 snapshot 目录。"""
 
@@ -537,6 +1457,11 @@ def test_workflow_preview_run_api_supports_state_and_created_at_filters(tmp_path
                 params={"project_id": "project-1"},
                 headers=build_test_headers(scopes="workflows:read,workflows:write"),
             )
+            paged_list_response = client.get(
+                "/api/v1/workflows/preview-runs",
+                params={"project_id": "project-1", "offset": 0, "limit": 1},
+                headers=build_test_headers(scopes="workflows:read,workflows:write"),
+            )
             list_timed_out_response = client.get(
                 "/api/v1/workflows/preview-runs",
                 params={"project_id": "project-1", "state": "timed_out"},
@@ -571,6 +1496,16 @@ def test_workflow_preview_run_api_supports_state_and_created_at_filters(tmp_path
     assert [item["preview_run_id"] for item in list_all_payload] == [
         timed_out_response.json()["preview_run_id"],
         succeeded_response.json()["preview_run_id"],
+    ]
+
+    assert paged_list_response.status_code == 200
+    assert paged_list_response.headers["x-offset"] == "0"
+    assert paged_list_response.headers["x-limit"] == "1"
+    assert paged_list_response.headers["x-total-count"] == "2"
+    assert paged_list_response.headers["x-has-more"] == "true"
+    assert paged_list_response.headers["x-next-offset"] == "1"
+    assert [item["preview_run_id"] for item in paged_list_response.json()] == [
+        timed_out_response.json()["preview_run_id"]
     ]
 
     assert list_timed_out_response.status_code == 200
@@ -667,6 +1602,11 @@ def test_workflow_execution_policy_api_creates_lists_and_applies_to_preview_and_
                 params={"project_id": "project-1"},
                 headers=build_test_headers(scopes="workflows:read,workflows:write"),
             )
+            paged_policies_response = client.get(
+                "/api/v1/workflows/execution-policies",
+                params={"project_id": "project-1", "offset": 0, "limit": 1},
+                headers=build_test_headers(scopes="workflows:read,workflows:write"),
+            )
             get_runtime_policy_response = client.get(
                 "/api/v1/workflows/execution-policies/runtime-default-policy",
                 headers=build_test_headers(scopes="workflows:read,workflows:write"),
@@ -730,6 +1670,15 @@ def test_workflow_execution_policy_api_creates_lists_and_applies_to_preview_and_
     runtime_policy_snapshot_object_key = runtime_payload["execution_policy_snapshot_object_key"]
 
     assert listed_policy_ids == {"preview-default-policy", "runtime-default-policy"}
+    assert paged_policies_response.status_code == 200
+    assert paged_policies_response.headers["x-offset"] == "0"
+    assert paged_policies_response.headers["x-limit"] == "1"
+    assert paged_policies_response.headers["x-total-count"] == "2"
+    assert paged_policies_response.headers["x-has-more"] == "true"
+    assert paged_policies_response.headers["x-next-offset"] == "1"
+    assert [item["execution_policy_id"] for item in paged_policies_response.json()] == [
+        "runtime-default-policy"
+    ]
     assert get_runtime_policy_response.json()["policy_kind"] == "runtime-default"
     assert preview_payload["timeout_seconds"] == 9
     assert preview_payload["node_records"] == []
@@ -748,6 +1697,87 @@ def test_workflow_execution_policy_api_creates_lists_and_applies_to_preview_and_
     assert start_response.json()["updated_by"] == "user-1"
     assert stop_response.json()["observed_state"] == "stopped"
     assert stop_response.json()["updated_by"] == "user-1"
+
+
+def test_workflow_app_runtime_api_list_supports_offset_limit_pagination_headers(
+    tmp_path: Path,
+) -> None:
+    """验证 app runtime 列表接口支持统一分页参数与响应头。"""
+
+    session_factory, dataset_storage, queue_backend = create_test_runtime(
+        tmp_path,
+        database_name="workflow-runtime-list-pagination-api.db",
+    )
+    custom_nodes_root_dir = _create_process_test_node_pack_fixture(tmp_path)
+    node_pack_loader = LocalNodePackLoader(custom_nodes_root_dir)
+    node_pack_loader.refresh()
+    node_catalog_registry = NodeCatalogRegistry(node_pack_loader=node_pack_loader)
+    workflow_service = LocalWorkflowJsonService(
+        dataset_storage=dataset_storage,
+        node_catalog_registry=node_catalog_registry,
+    )
+    workflow_service.save_template(
+        project_id="project-1",
+        template=_build_process_echo_template(),
+    )
+    workflow_service.save_application(
+        project_id="project-1",
+        application=_build_process_echo_application(),
+    )
+    application = create_app(
+        settings=BackendServiceSettings(
+            database=BackendServiceDatabaseConfig(url=session_factory.settings.url),
+            dataset_storage=BackendServiceDatasetStorageConfig(root_dir=str(dataset_storage.root_dir)),
+            queue=BackendServiceQueueConfig(root_dir=str(queue_backend.root_dir)),
+            custom_nodes=BackendServiceCustomNodesConfig(root_dir=str(custom_nodes_root_dir)),
+            task_manager=BackendServiceTaskManagerConfig(enabled=False),
+        ),
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+        queue_backend=queue_backend,
+    )
+    client = TestClient(application)
+
+    try:
+        with client:
+            create_first_runtime_response = client.post(
+                "/api/v1/workflows/app-runtimes",
+                headers=build_test_headers(scopes="workflows:read,workflows:write"),
+                json={
+                    "project_id": "project-1",
+                    "application_id": "process-echo-app",
+                    "display_name": "Runtime A",
+                },
+            )
+            create_second_runtime_response = client.post(
+                "/api/v1/workflows/app-runtimes",
+                headers=build_test_headers(scopes="workflows:read,workflows:write"),
+                json={
+                    "project_id": "project-1",
+                    "application_id": "process-echo-app",
+                    "display_name": "Runtime B",
+                },
+            )
+            list_response = client.get(
+                "/api/v1/workflows/app-runtimes",
+                params={"project_id": "project-1", "offset": 0, "limit": 1},
+                headers=build_test_headers(scopes="workflows:read,workflows:write"),
+            )
+    finally:
+        session_factory.engine.dispose()
+
+    assert create_first_runtime_response.status_code == 201
+    assert create_second_runtime_response.status_code == 201
+    assert list_response.status_code == 200
+    assert list_response.headers["x-offset"] == "0"
+    assert list_response.headers["x-limit"] == "1"
+    assert list_response.headers["x-total-count"] == "2"
+    assert list_response.headers["x-has-more"] == "true"
+    assert list_response.headers["x-next-offset"] == "1"
+    assert [item["workflow_runtime_id"] for item in list_response.json()] == [
+        create_second_runtime_response.json()["workflow_runtime_id"]
+    ]
+    assert list_response.json()[0]["display_name"] == "Runtime B"
 
 
 def test_workflow_app_runtime_api_invokes_saved_application_in_worker_process(
@@ -2436,3 +3466,368 @@ def _wait_for_workflow_run_state(
         f"WorkflowRun {workflow_run_id} 未在 {timeout_seconds} 秒内进入目标状态 {sorted(expected_states)}；"
         f"最后一次响应：{None if last_response is None else last_response.json()}"
     )
+
+
+def _wait_for_preview_run_state(
+    client: TestClient,
+    preview_run_id: str,
+    *,
+    expected_states: set[str],
+    timeout_seconds: float = 10.0,
+):
+    """轮询 WorkflowPreviewRun，直到进入目标状态。"""
+
+    deadline = time.monotonic() + timeout_seconds
+    last_response = None
+    while time.monotonic() < deadline:
+        last_response = client.get(
+            f"/api/v1/workflows/preview-runs/{preview_run_id}",
+            headers=build_test_headers(scopes="workflows:read,workflows:write"),
+        )
+        if last_response.status_code == 200 and last_response.json().get("state") in expected_states:
+            return last_response
+        time.sleep(0.05)
+    raise AssertionError(
+        f"WorkflowPreviewRun {preview_run_id} 未在 {timeout_seconds} 秒内进入目标状态 {sorted(expected_states)}；"
+        f"最后一次响应：{None if last_response is None else last_response.json()}"
+    )
+
+
+def _wait_for_preview_run_event_types(
+    client: TestClient,
+    preview_run_id: str,
+    *,
+    expected_event_types: set[str],
+    after_sequence: int | None = None,
+    timeout_seconds: float = 10.0,
+):
+    """轮询 preview run 事件接口，直到出现指定事件类型。"""
+
+    deadline = time.monotonic() + timeout_seconds
+    last_response = None
+    while time.monotonic() < deadline:
+        params = {}
+        if after_sequence is not None:
+            params["after_sequence"] = after_sequence
+        last_response = client.get(
+            f"/api/v1/workflows/preview-runs/{preview_run_id}/events",
+            headers=build_test_headers(scopes="workflows:read,workflows:write"),
+            params=params,
+        )
+        if last_response.status_code == 200:
+            event_types = {item.get("event_type") for item in last_response.json()}
+            if expected_event_types.issubset(event_types):
+                return last_response
+        time.sleep(0.05)
+    raise AssertionError(
+        f"WorkflowPreviewRun {preview_run_id} 未在 {timeout_seconds} 秒内出现事件 {sorted(expected_event_types)}；"
+        f"最后一次响应：{None if last_response is None else last_response.json()}"
+    )
+
+
+def _wait_for_workflow_run_event_types(
+    client: TestClient,
+    workflow_run_id: str,
+    *,
+    expected_event_types: set[str],
+    after_sequence: int | None = None,
+    timeout_seconds: float = 10.0,
+):
+    """轮询 WorkflowRun 事件接口，直到出现指定事件类型。"""
+
+    deadline = time.monotonic() + timeout_seconds
+    last_response = None
+    while time.monotonic() < deadline:
+        params = {}
+        if after_sequence is not None:
+            params["after_sequence"] = after_sequence
+        last_response = client.get(
+            f"/api/v1/workflows/runs/{workflow_run_id}/events",
+            headers=build_test_headers(scopes="workflows:read,workflows:write"),
+            params=params,
+        )
+        if last_response.status_code == 200:
+            event_types = {item.get("event_type") for item in last_response.json()}
+            if expected_event_types.issubset(event_types):
+                return last_response
+        time.sleep(0.05)
+    raise AssertionError(
+        f"WorkflowRun {workflow_run_id} 未在 {timeout_seconds} 秒内出现事件 {sorted(expected_event_types)}；"
+        f"最后一次响应：{None if last_response is None else last_response.json()}"
+    )
+
+
+def _wait_for_workflow_app_runtime_health_state(
+    client: TestClient,
+    workflow_runtime_id: str,
+    *,
+    expected_state: str,
+    expected_last_error: str | None = None,
+    timeout_seconds: float = 10.0,
+):
+    """轮询 WorkflowAppRuntime health，直到进入目标观测状态。"""
+
+    deadline = time.monotonic() + timeout_seconds
+    last_response = None
+    while time.monotonic() < deadline:
+        last_response = client.get(
+            f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/health",
+            headers=build_test_headers(scopes="workflows:read,workflows:write"),
+        )
+        if last_response.status_code == 200:
+            payload = last_response.json()
+            if payload.get("observed_state") == expected_state:
+                if expected_last_error is None or expected_last_error in str(payload.get("last_error") or ""):
+                    return last_response
+        time.sleep(0.05)
+    raise AssertionError(
+        f"WorkflowAppRuntime {workflow_runtime_id} 未在 {timeout_seconds} 秒内进入 health 状态 {expected_state}；"
+        f"最后一次响应：{None if last_response is None else last_response.json()}"
+    )
+
+
+def _wait_for_workflow_app_runtime_instance_state(
+    client: TestClient,
+    workflow_runtime_id: str,
+    *,
+    expected_state: str,
+    expected_last_error: str | None = None,
+    timeout_seconds: float = 10.0,
+):
+    """轮询 WorkflowAppRuntime instances，直到单实例状态进入目标值。"""
+
+    deadline = time.monotonic() + timeout_seconds
+    last_response = None
+    while time.monotonic() < deadline:
+        last_response = client.get(
+            f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/instances",
+            headers=build_test_headers(scopes="workflows:read,workflows:write"),
+        )
+        if last_response.status_code == 200 and last_response.json():
+            payload = last_response.json()[0]
+            if payload.get("state") == expected_state:
+                if expected_last_error is None or expected_last_error in str(payload.get("last_error") or ""):
+                    return last_response
+        time.sleep(0.05)
+    raise AssertionError(
+        f"WorkflowAppRuntime {workflow_runtime_id} 未在 {timeout_seconds} 秒内让 instances 进入状态 {expected_state}；"
+        f"最后一次响应：{None if last_response is None else last_response.json()}"
+    )
+
+
+def _wait_for_workflow_app_runtime_event_types(
+    client: TestClient,
+    workflow_runtime_id: str,
+    *,
+    expected_event_types: set[str],
+    after_sequence: int | None = None,
+    timeout_seconds: float = 10.0,
+):
+    """轮询 WorkflowAppRuntime 事件接口，直到出现指定事件类型。"""
+
+    deadline = time.monotonic() + timeout_seconds
+    last_response = None
+    while time.monotonic() < deadline:
+        params = {}
+        if after_sequence is not None:
+            params["after_sequence"] = after_sequence
+        last_response = client.get(
+            f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/events",
+            headers=build_test_headers(scopes="workflows:read,workflows:write"),
+            params=params,
+        )
+        if last_response.status_code == 200:
+            event_types = {item.get("event_type") for item in last_response.json()}
+            if expected_event_types.issubset(event_types):
+                return last_response
+        time.sleep(0.05)
+    raise AssertionError(
+        f"WorkflowAppRuntime {workflow_runtime_id} 未在 {timeout_seconds} 秒内出现事件 {sorted(expected_event_types)}；"
+        f"最后一次响应：{None if last_response is None else last_response.json()}"
+    )
+
+
+def _receive_websocket_json_with_timeout(websocket, *, timeout_seconds: float = 5.0) -> dict[str, object]:
+    """在限定时间内读取一条 WebSocket JSON 消息。"""
+
+    result: list[dict[str, object]] = []
+    errors: list[BaseException] = []
+
+    def receive_json_message() -> None:
+        """在线程里执行阻塞式 receive_json。"""
+
+        try:
+            result.append(websocket.receive_json())
+        except BaseException as exc:  # pragma: no cover - 测试辅助只在失败路径触发
+            errors.append(exc)
+
+    thread = Thread(target=receive_json_message, name="test-websocket-receive", daemon=True)
+    thread.start()
+    thread.join(timeout_seconds)
+    if thread.is_alive():
+        raise AssertionError(f"WebSocket 未在 {timeout_seconds} 秒内收到消息")
+    if errors:
+        raise errors[0]
+    if not result:
+        raise AssertionError("WebSocket 没有返回任何 JSON 消息")
+    return result[0]
+
+
+def _force_runtime_worker_heartbeat_timeout(application, workflow_runtime_id: str):
+    """把指定 runtime 的父进程缓存状态推进到 heartbeat 超时窗口之外。"""
+
+    handle = _get_runtime_worker_handle(application, workflow_runtime_id)
+    with handle.state_lock:
+        runtime_state = handle.latest_runtime_state
+        if runtime_state is None:
+            raise AssertionError("workflow runtime worker 尚未缓存启动状态")
+        handle.heartbeat_timeout_reported = False
+        handle.latest_runtime_state_monotonic = (
+            time.monotonic() - float(handle.heartbeat_timeout_seconds) - 1.0
+        )
+        return runtime_state
+
+
+def _inject_runtime_worker_heartbeat(application, workflow_runtime_id: str, runtime_state) -> None:
+    """向指定 runtime 的响应队列注入一条恢复用 heartbeat 消息。"""
+
+    handle = _get_runtime_worker_handle(application, workflow_runtime_id)
+    handle.response_queue.put(
+        _build_test_runtime_worker_state_message(
+            workflow_runtime_id=workflow_runtime_id,
+            observed_state="running",
+            instance_id=runtime_state.instance_id,
+            process_id=runtime_state.process_id,
+            started_at=runtime_state.started_at,
+            loaded_snapshot_fingerprint=runtime_state.loaded_snapshot_fingerprint,
+            health_summary=dict(runtime_state.health_summary),
+            message_type="runtime-heartbeat",
+            last_error=None,
+        )
+    )
+
+
+def _get_runtime_worker_handle(application, workflow_runtime_id: str):
+    """从应用状态里读取指定 WorkflowAppRuntime 的 worker 句柄。"""
+
+    manager = application.state.workflow_runtime_worker_manager
+    handle = manager._handles.get(workflow_runtime_id)  # noqa: SLF001 - 测试需要读取内部句柄
+    if handle is None:
+        raise AssertionError(f"未找到 WorkflowAppRuntime {workflow_runtime_id} 的 worker 句柄")
+    return handle
+
+
+def _run_test_runtime_worker_without_heartbeat(
+    *,
+    settings_payload,
+    runtime_payload,
+    request_queue,
+    response_queue,
+    local_buffer_broker_event_channel=None,
+    published_inference_gateway_event_channel=None,
+) -> None:
+    """运行一个不会主动发送 heartbeat 的测试 runtime worker。"""
+
+    del settings_payload
+    del local_buffer_broker_event_channel
+    del published_inference_gateway_event_channel
+    workflow_runtime_id = str(runtime_payload.get("workflow_runtime_id") or "")
+    if not workflow_runtime_id:
+        raise AssertionError("测试 runtime worker 缺少 workflow_runtime_id")
+    started_at = _test_now_isoformat()
+    runtime_instance_id = f"test-runtime-instance::{workflow_runtime_id}"
+    snapshot_fingerprint = f"test-snapshot::{workflow_runtime_id}"
+    process_id = multiprocessing.current_process().pid
+    response_queue.put(
+        _build_test_runtime_worker_state_message(
+            workflow_runtime_id=workflow_runtime_id,
+            observed_state="running",
+            instance_id=runtime_instance_id,
+            process_id=process_id,
+            started_at=started_at,
+            loaded_snapshot_fingerprint=snapshot_fingerprint,
+        )
+    )
+    while True:
+        command = request_queue.get()
+        message_type = str(command.get("message_type") or "")
+        request_id = str(command.get("message_id") or "").strip() or None
+        if message_type == "health-check":
+            response_queue.put(
+                _build_test_runtime_worker_state_message(
+                    workflow_runtime_id=workflow_runtime_id,
+                    observed_state="running",
+                    instance_id=runtime_instance_id,
+                    process_id=process_id,
+                    started_at=started_at,
+                    loaded_snapshot_fingerprint=snapshot_fingerprint,
+                    request_id=request_id,
+                )
+            )
+            continue
+        if message_type == "stop-runtime":
+            response_queue.put(
+                _build_test_runtime_worker_state_message(
+                    workflow_runtime_id=workflow_runtime_id,
+                    observed_state="stopped",
+                    instance_id=runtime_instance_id,
+                    process_id=process_id,
+                    started_at=started_at,
+                    loaded_snapshot_fingerprint=snapshot_fingerprint,
+                    request_id=request_id,
+                )
+            )
+            break
+
+
+def _build_test_runtime_worker_state_message(
+    *,
+    workflow_runtime_id: str,
+    observed_state: str,
+    instance_id: str | None,
+    process_id: int | None,
+    started_at: str | None,
+    loaded_snapshot_fingerprint: str | None,
+    health_summary: dict[str, object] | None = None,
+    message_type: str = "runtime-state",
+    request_id: str | None = None,
+    current_run_id: str | None = None,
+    last_error: str | None = None,
+) -> dict[str, object]:
+    """构造测试 runtime worker 使用的状态消息。"""
+
+    payload = {
+        "message_type": message_type,
+        "workflow_runtime_id": workflow_runtime_id,
+        "observed_state": observed_state,
+        "instance_id": instance_id,
+        "process_id": process_id,
+        "current_run_id": current_run_id,
+        "started_at": started_at,
+        "heartbeat_at": _test_now_isoformat(),
+        "loaded_snapshot_fingerprint": loaded_snapshot_fingerprint,
+        "last_error": last_error,
+        "health_summary": dict(health_summary or _build_test_runtime_worker_health_summary()),
+    }
+    if request_id is not None:
+        payload["request_id"] = request_id
+    return payload
+
+
+def _build_test_runtime_worker_health_summary() -> dict[str, object]:
+    """构造测试 runtime worker 默认返回的健康摘要。"""
+
+    return {
+        "mode": "single-instance-sync",
+        "local_buffer_broker": {
+            "connected": False,
+            "channel_id": None,
+            "recent_error": None,
+        },
+    }
+
+
+def _test_now_isoformat() -> str:
+    """返回测试辅助使用的 UTC 时间字符串。"""
+
+    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")

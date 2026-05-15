@@ -20,6 +20,7 @@ from backend.service.application.deployments.yolox_deployment_service import (
 	YoloXDeploymentInstanceView,
 )
 from backend.service.application.errors import InvalidRequestError, PermissionDeniedError, ResourceNotFoundError
+from backend.service.application.runtime.deployment_event_source import YoloXDeploymentEventSource
 from backend.service.application.runtime.yolox_deployment_process_supervisor import (
 	YoloXDeploymentProcessHealth,
 	YoloXDeploymentProcessKeepWarmStatus,
@@ -27,6 +28,7 @@ from backend.service.application.runtime.yolox_deployment_process_supervisor imp
 	YoloXDeploymentProcessStatus,
 	YoloXDeploymentProcessSupervisor,
 )
+from backend.service.application.runtime.deployment_events import YoloXDeploymentProcessEvent
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 
@@ -186,6 +188,18 @@ class YoloXDeploymentRuntimeHealthResponse(YoloXDeploymentProcessStatusResponse)
 	local_buffer_broker: dict[str, object] = Field(default_factory=dict, description="LocalBufferBroker 接入状态、输入计数和最近错误")
 
 
+class YoloXDeploymentProcessEventResponse(BaseModel):
+	"""描述 deployment 生命周期与健康事件响应。"""
+
+	deployment_instance_id: str = Field(description="DeploymentInstance id")
+	runtime_mode: str = Field(description="运行时通道；sync 或 async")
+	sequence: int = Field(description="事件顺序号")
+	event_type: str = Field(description="事件类型")
+	created_at: str = Field(description="事件发生时间")
+	message: str = Field(description="事件摘要消息")
+	payload: dict[str, object] = Field(default_factory=dict, description="结构化事件正文")
+
+
 @yolox_deployments_router.post(
 	"/yolox/deployment-instances",
 	response_model=YoloXDeploymentInstanceResponse,
@@ -283,6 +297,44 @@ def get_yolox_deployment_instance_detail(
 	view = service.get_deployment_instance(deployment_instance_id)
 	_ensure_deployment_visible(principal=principal, view=view)
 	return _build_deployment_instance_response(view)
+
+
+@yolox_deployments_router.get(
+	"/yolox/deployment-instances/{deployment_instance_id}/events",
+	response_model=list[YoloXDeploymentProcessEventResponse],
+)
+def get_yolox_deployment_events(
+	deployment_instance_id: str,
+	principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("models:read"))],
+	session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
+	dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
+	after_sequence: Annotated[int | None, Query(description="只返回 sequence 大于该值的事件", ge=0)] = None,
+	limit: Annotated[int | None, Query(description="最多返回多少条事件", ge=1, le=500)] = None,
+	runtime_mode: Annotated[str | None, Query(description="按 sync 或 async 通道过滤事件")] = None,
+) -> list[YoloXDeploymentProcessEventResponse]:
+	"""读取一条 DeploymentInstance 的事件列表。"""
+
+	service = SqlAlchemyYoloXDeploymentService(
+		session_factory=session_factory,
+		dataset_storage=dataset_storage,
+	)
+	view = service.get_deployment_instance(deployment_instance_id)
+	_ensure_deployment_visible(principal=principal, view=view)
+	if runtime_mode is not None and runtime_mode not in {"sync", "async"}:
+		raise InvalidRequestError(
+			"runtime_mode 仅支持 sync 或 async",
+			details={"runtime_mode": runtime_mode},
+		)
+	event_source = YoloXDeploymentEventSource(
+		dataset_storage_root_dir=str(dataset_storage.root_dir),
+	)
+	events = event_source.list_events(
+		deployment_instance_id,
+		after_sequence=after_sequence,
+		runtime_mode=runtime_mode,
+		limit=limit,
+	)
+	return [_build_deployment_process_event_response(item) for item in events]
 
 
 @yolox_deployments_router.post(
@@ -755,6 +807,22 @@ def _build_runtime_instance_health_response(
 		warmed=item.warmed,
 		busy=item.busy,
 		last_error=item.last_error,
+	)
+
+
+def _build_deployment_process_event_response(
+	item: YoloXDeploymentProcessEvent,
+) -> YoloXDeploymentProcessEventResponse:
+	"""把 deployment 事件转换为 REST 响应。"""
+
+	return YoloXDeploymentProcessEventResponse(
+		deployment_instance_id=item.deployment_instance_id,
+		runtime_mode=item.runtime_mode,
+		sequence=item.sequence,
+		event_type=item.event_type,
+		created_at=item.created_at,
+		message=item.message,
+		payload=dict(item.payload),
 	)
 
 

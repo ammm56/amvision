@@ -8,6 +8,7 @@ from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from uuid import uuid4
 
+from backend.service.application.events.event_bus import ServiceEvent
 from backend.service.application.errors import InvalidRequestError, ResourceNotFoundError
 from backend.service.domain.tasks.task_records import TaskEvent, TaskEventType, TaskRecord, TaskRecordState
 from backend.service.infrastructure.db.session import SessionFactory
@@ -138,6 +139,7 @@ class SqlAlchemyTaskService:
         """
 
         self.session_factory = session_factory
+        self.service_event_bus = getattr(session_factory, "service_event_bus", None)
 
     def create_task(self, request: CreateTaskRequest) -> TaskRecord:
         """创建一条新的 TaskRecord。
@@ -185,6 +187,8 @@ class SqlAlchemyTaskService:
             unit_of_work.tasks.save_task(task_record)
             unit_of_work.tasks.save_task_event(created_event)
             unit_of_work.commit()
+
+        self._publish_task_event(created_event)
 
         return task_record
 
@@ -259,6 +263,8 @@ class SqlAlchemyTaskService:
             unit_of_work.tasks.save_task(updated_task)
             unit_of_work.tasks.save_task_event(task_event)
             unit_of_work.commit()
+
+        self._publish_task_event(task_event)
 
         return TaskDetail(task=updated_task, events=(task_event,))
 
@@ -406,6 +412,35 @@ class SqlAlchemyTaskService:
             current_attempt_no=current_attempt_no,
             started_at=started_at,
             finished_at=finished_at,
+        )
+
+    def _publish_task_event(self, task_event: TaskEvent) -> None:
+        """把 TaskEvent 发布到服务内事件总线。
+
+        参数：
+        - task_event：要发布的任务事件。
+        """
+
+        if self.service_event_bus is None:
+            return
+
+        self.service_event_bus.publish(
+            ServiceEvent(
+                stream="tasks.events",
+                resource_kind="task",
+                resource_id=task_event.task_id,
+                event_type=task_event.event_type,
+                event_version="v1",
+                occurred_at=task_event.created_at,
+                cursor=f"{task_event.created_at}|{task_event.event_id}",
+                payload={
+                    "event_id": task_event.event_id,
+                    "task_id": task_event.task_id,
+                    "attempt_id": task_event.attempt_id,
+                    "message": task_event.message,
+                    "data": dict(task_event.payload),
+                },
+            )
         )
 
     @contextmanager

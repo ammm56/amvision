@@ -16,9 +16,12 @@ from backend.contracts.workflows.resource_semantics import (
 
 WORKFLOW_PREVIEW_RUN_FORMAT = "amvision.workflow-preview-run.v1"
 WORKFLOW_PREVIEW_RUN_SUMMARY_FORMAT = "amvision.workflow-preview-run-summary.v1"
+WORKFLOW_PREVIEW_RUN_EVENT_FORMAT = "amvision.workflow-preview-run-event.v1"
 WORKFLOW_APP_RUNTIME_FORMAT = "amvision.workflow-app-runtime.v1"
 WORKFLOW_APP_RUNTIME_INSTANCE_FORMAT = "amvision.workflow-app-runtime-instance.v1"
+WORKFLOW_APP_RUNTIME_EVENT_FORMAT = "amvision.workflow-app-runtime-event.v1"
 WORKFLOW_RUN_FORMAT = "amvision.workflow-run.v1"
+WORKFLOW_RUN_EVENT_FORMAT = "amvision.workflow-run-event.v1"
 WORKFLOW_EXECUTION_POLICY_FORMAT = "amvision.workflow-execution-policy.v1"
 
 
@@ -127,6 +130,54 @@ class WorkflowPreviewRunSummaryContract(BaseModel):
         return self
 
 
+class WorkflowPreviewRunEventContract(BaseModel):
+    """描述 WorkflowPreviewRun 执行事件的稳定 JSON 合同。"""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    format_id: Literal[WORKFLOW_PREVIEW_RUN_EVENT_FORMAT] = WORKFLOW_PREVIEW_RUN_EVENT_FORMAT
+    preview_run_id: str
+    sequence: int = Field(ge=1)
+    event_type: str
+    created_at: str
+    message: str
+    payload: dict[str, object] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def validate_contract(self) -> WorkflowPreviewRunEventContract:
+        """校验 WorkflowPreviewRun 事件合同的关键字段。"""
+
+        _require_stripped_text(self.preview_run_id, "preview_run_id")
+        _require_stripped_text(self.event_type, "event_type")
+        _require_stripped_text(self.created_at, "created_at")
+        _require_stripped_text(self.message, "message")
+        return self
+
+
+class WorkflowAppRuntimeEventContract(BaseModel):
+    """描述 WorkflowAppRuntime 事件的稳定 JSON 合同。"""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    format_id: Literal[WORKFLOW_APP_RUNTIME_EVENT_FORMAT] = WORKFLOW_APP_RUNTIME_EVENT_FORMAT
+    workflow_runtime_id: str
+    sequence: int = Field(ge=1)
+    event_type: str
+    created_at: str
+    message: str
+    payload: dict[str, object] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def validate_contract(self) -> WorkflowAppRuntimeEventContract:
+        """校验 WorkflowAppRuntime 事件合同的关键字段。"""
+
+        _require_stripped_text(self.workflow_runtime_id, "workflow_runtime_id")
+        _require_stripped_text(self.event_type, "event_type")
+        _require_stripped_text(self.created_at, "created_at")
+        _require_stripped_text(self.message, "message")
+        return self
+
+
 class WorkflowTemplateReferenceSummaryContract(BaseModel):
     """描述 template 资源的一跳摘要。"""
 
@@ -229,6 +280,8 @@ class WorkflowAppRuntimeContract(BaseModel):
     desired_state: WorkflowAppRuntimeState
     observed_state: WorkflowAppRuntimeState
     request_timeout_seconds: int = 60
+    heartbeat_interval_seconds: int = 5
+    heartbeat_timeout_seconds: int = 15
     created_at: str
     updated_at: str
     created_by: str | None = None
@@ -257,6 +310,10 @@ class WorkflowAppRuntimeContract(BaseModel):
         _require_stripped_text(self.observed_state, "observed_state")
         _require_stripped_text(self.created_at, "created_at")
         _require_stripped_text(self.updated_at, "updated_at")
+        if self.heartbeat_interval_seconds <= 0:
+            raise ValueError("heartbeat_interval_seconds 必须大于 0")
+        if self.heartbeat_timeout_seconds <= self.heartbeat_interval_seconds:
+            raise ValueError("heartbeat_timeout_seconds 必须大于 heartbeat_interval_seconds")
         return self
 
 
@@ -321,6 +378,32 @@ class WorkflowRunContract(BaseModel):
         _require_stripped_text(self.application_id, "application_id")
         _require_stripped_text(self.state, "state")
         _require_stripped_text(self.created_at, "created_at")
+        return self
+
+
+class WorkflowRunEventContract(BaseModel):
+    """描述 WorkflowRun 事件的稳定 JSON 合同。"""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    format_id: Literal[WORKFLOW_RUN_EVENT_FORMAT] = WORKFLOW_RUN_EVENT_FORMAT
+    workflow_run_id: str
+    workflow_runtime_id: str
+    sequence: int = Field(ge=1)
+    event_type: str
+    created_at: str
+    message: str
+    payload: dict[str, object] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def validate_contract(self) -> WorkflowRunEventContract:
+        """校验 WorkflowRun 事件合同的关键字段。"""
+
+        _require_stripped_text(self.workflow_run_id, "workflow_run_id")
+        _require_stripped_text(self.workflow_runtime_id, "workflow_runtime_id")
+        _require_stripped_text(self.event_type, "event_type")
+        _require_stripped_text(self.created_at, "created_at")
+        _require_stripped_text(self.message, "message")
         return self
 
 

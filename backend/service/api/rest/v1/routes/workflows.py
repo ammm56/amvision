@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, Response, status
@@ -12,11 +13,20 @@ from backend.nodes.node_catalog_registry import NodeCatalogRegistry
 from backend.contracts.workflows.workflow_graph import (
     FlowApplication,
     NodeDefinition,
+    NodeParameterUiEnumOption,
+    NodeParameterUiField,
+    NodeParameterUiGroup,
+    NodeParameterUiSchema,
     WorkflowGraphTemplate,
     WorkflowPayloadContract,
 )
 from backend.service.api.deps.auth import AuthenticatedPrincipal, require_scopes
 from backend.service.api.deps.nodes import get_node_catalog_registry
+from backend.service.api.rest.v1.pagination import (
+    DEFAULT_LIST_LIMIT,
+    MAX_LIST_LIMIT,
+    paginate_sequence,
+)
 from backend.service.api.deps.storage import get_dataset_storage
 from backend.service.application.errors import (
     InvalidRequestError,
@@ -37,6 +47,9 @@ from backend.service.infrastructure.object_store.local_dataset_storage import Lo
 
 
 workflows_router = APIRouter(prefix="/workflows", tags=["workflows"])
+
+_WORKFLOW_PARAMETER_UI_EXTENSION_KEY = "x-amvision-ui"
+_WORKFLOW_PARAMETER_DEFAULT_GROUP_ID = "default"
 
 
 class WorkflowTemplateValidateRequestBody(BaseModel):
@@ -66,6 +79,23 @@ class WorkflowApplicationSaveRequestBody(BaseModel):
     """描述流程应用保存请求体。"""
 
     application: FlowApplication = Field(description="待保存的流程应用")
+
+
+class WorkflowTemplateCopyRequestBody(BaseModel):
+    """描述图模板版本复制请求体。"""
+
+    target_template_id: str = Field(description="目标模板 id")
+    target_template_version: str = Field(description="目标模板版本")
+    display_name: str | None = Field(default=None, description="可选目标显示名称；未提供时复用源模板")
+    description: str | None = Field(default=None, description="可选目标说明；未提供时复用源模板")
+
+
+class WorkflowApplicationCopyRequestBody(BaseModel):
+    """描述流程应用复制请求体。"""
+
+    target_application_id: str = Field(description="目标流程应用 id")
+    display_name: str | None = Field(default=None, description="可选目标显示名称；未提供时复用源应用")
+    description: str | None = Field(default=None, description="可选目标说明；未提供时复用源应用")
 
 
 class WorkflowTemplateValidationResponse(BaseModel):
@@ -269,11 +299,12 @@ def get_workflow_node_catalog(
         node_pack_id=node_pack_id,
         filters_active=any(item is not None and item.strip() for item in (category, node_pack_id, payload_type_id, q)),
     )
+    effective_node_definitions = _build_effective_node_definitions(filtered_node_definitions)
     return WorkflowNodeCatalogResponse(
         node_pack_manifests=filtered_node_pack_manifests,
         payload_contracts=filtered_payload_contracts,
-        node_definitions=filtered_node_definitions,
-        palette_groups=_build_workflow_node_palette_groups(filtered_node_definitions),
+        node_definitions=effective_node_definitions,
+        palette_groups=_build_workflow_node_palette_groups(effective_node_definitions),
     )
 
 
@@ -331,9 +362,12 @@ def save_workflow_template(
 )
 def list_workflow_templates(
     project_id: str,
+    response: Response,
     principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("workflows:read"))],
     dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
     node_catalog_registry: Annotated[NodeCatalogRegistry, Depends(get_node_catalog_registry)],
+    offset: Annotated[int, Query(ge=0, description="结果偏移量")] = 0,
+    limit: Annotated[int, Query(ge=1, le=MAX_LIST_LIMIT, description="最大返回数量")] = DEFAULT_LIST_LIMIT,
 ) -> list[WorkflowTemplateSummaryResponse]:
     """列出指定 Project 下全部图模板摘要。"""
 
@@ -342,7 +376,9 @@ def list_workflow_templates(
         dataset_storage=dataset_storage,
         node_catalog_registry=node_catalog_registry,
     )
-    return [_build_template_summary_response(item) for item in service.list_templates(project_id=project_id)]
+    template_summaries = service.list_templates(project_id=project_id)
+    paged_items = paginate_sequence(template_summaries, response=response, offset=offset, limit=limit)
+    return [_build_template_summary_response(item) for item in paged_items]
 
 
 @workflows_router.get(
@@ -352,9 +388,12 @@ def list_workflow_templates(
 def list_workflow_template_versions(
     project_id: str,
     template_id: str,
+    response: Response,
     principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("workflows:read"))],
     dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
     node_catalog_registry: Annotated[NodeCatalogRegistry, Depends(get_node_catalog_registry)],
+    offset: Annotated[int, Query(ge=0, description="结果偏移量")] = 0,
+    limit: Annotated[int, Query(ge=1, le=MAX_LIST_LIMIT, description="最大返回数量")] = DEFAULT_LIST_LIMIT,
 ) -> list[WorkflowTemplateVersionSummaryResponse]:
     """列出指定图模板的全部版本摘要。"""
 
@@ -363,9 +402,11 @@ def list_workflow_template_versions(
         dataset_storage=dataset_storage,
         node_catalog_registry=node_catalog_registry,
     )
+    template_versions = service.list_template_versions(project_id=project_id, template_id=template_id)
+    paged_items = paginate_sequence(template_versions, response=response, offset=offset, limit=limit)
     return [
         _build_template_version_summary_response(item)
-        for item in service.list_template_versions(project_id=project_id, template_id=template_id)
+        for item in paged_items
     ]
 
 
@@ -392,6 +433,62 @@ def get_workflow_template(
         project_id=project_id,
         template_id=template_id,
         template_version=template_version,
+    )
+    return _build_template_document_response(document)
+
+
+@workflows_router.get(
+    "/projects/{project_id}/templates/{template_id}/latest",
+    response_model=WorkflowTemplateDocumentResponse,
+)
+def get_latest_workflow_template(
+    project_id: str,
+    template_id: str,
+    principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("workflows:read"))],
+    dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
+    node_catalog_registry: Annotated[NodeCatalogRegistry, Depends(get_node_catalog_registry)],
+) -> WorkflowTemplateDocumentResponse:
+    """读取一份模板当前可见的最新版本。"""
+
+    _ensure_project_visible(principal=principal, project_id=project_id)
+    service = _build_workflow_json_service(
+        dataset_storage=dataset_storage,
+        node_catalog_registry=node_catalog_registry,
+    )
+    document = service.get_latest_template(project_id=project_id, template_id=template_id)
+    return _build_template_document_response(document)
+
+
+@workflows_router.post(
+    "/projects/{project_id}/templates/{template_id}/versions/{template_version}/copy",
+    response_model=WorkflowTemplateDocumentResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def copy_workflow_template_version(
+    project_id: str,
+    template_id: str,
+    template_version: str,
+    body: WorkflowTemplateCopyRequestBody,
+    principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("workflows:write"))],
+    dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
+    node_catalog_registry: Annotated[NodeCatalogRegistry, Depends(get_node_catalog_registry)],
+) -> WorkflowTemplateDocumentResponse:
+    """复制一份已保存的 workflow 图模板版本。"""
+
+    _ensure_project_visible(principal=principal, project_id=project_id)
+    service = _build_workflow_json_service(
+        dataset_storage=dataset_storage,
+        node_catalog_registry=node_catalog_registry,
+    )
+    document = service.copy_template_version(
+        project_id=project_id,
+        source_template_id=template_id,
+        source_template_version=template_version,
+        target_template_id=body.target_template_id,
+        target_template_version=body.target_template_version,
+        actor_id=principal.principal_id,
+        display_name=body.display_name,
+        description=body.description,
     )
     return _build_template_document_response(document)
 
@@ -480,9 +577,12 @@ def save_flow_application(
 )
 def list_flow_applications(
     project_id: str,
+    response: Response,
     principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("workflows:read"))],
     dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
     node_catalog_registry: Annotated[NodeCatalogRegistry, Depends(get_node_catalog_registry)],
+    offset: Annotated[int, Query(ge=0, description="结果偏移量")] = 0,
+    limit: Annotated[int, Query(ge=1, le=MAX_LIST_LIMIT, description="最大返回数量")] = DEFAULT_LIST_LIMIT,
 ) -> list[WorkflowApplicationSummaryResponse]:
     """列出指定 Project 下全部流程应用摘要。"""
 
@@ -491,9 +591,11 @@ def list_flow_applications(
         dataset_storage=dataset_storage,
         node_catalog_registry=node_catalog_registry,
     )
+    applications = service.list_applications(project_id=project_id)
+    paged_items = paginate_sequence(applications, response=response, offset=offset, limit=limit)
     return [
         _build_application_summary_response(item, workflow_service=service)
-        for item in service.list_applications(project_id=project_id)
+        for item in paged_items
     ]
 
 
@@ -516,6 +618,37 @@ def get_flow_application(
         node_catalog_registry=node_catalog_registry,
     )
     document = service.get_application(project_id=project_id, application_id=application_id)
+    return _build_application_document_response(document, workflow_service=service)
+
+
+@workflows_router.post(
+    "/projects/{project_id}/applications/{application_id}/copy",
+    response_model=WorkflowApplicationDocumentResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def copy_flow_application(
+    project_id: str,
+    application_id: str,
+    body: WorkflowApplicationCopyRequestBody,
+    principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("workflows:write"))],
+    dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
+    node_catalog_registry: Annotated[NodeCatalogRegistry, Depends(get_node_catalog_registry)],
+) -> WorkflowApplicationDocumentResponse:
+    """复制一份已保存的流程应用。"""
+
+    _ensure_project_visible(principal=principal, project_id=project_id)
+    service = _build_workflow_json_service(
+        dataset_storage=dataset_storage,
+        node_catalog_registry=node_catalog_registry,
+    )
+    document = service.copy_application(
+        project_id=project_id,
+        source_application_id=application_id,
+        target_application_id=body.target_application_id,
+        actor_id=principal.principal_id,
+        display_name=body.display_name,
+        description=body.description,
+    )
     return _build_application_document_response(document, workflow_service=service)
 
 
@@ -819,6 +952,278 @@ def _build_workflow_node_palette_groups(
     return palette_groups
 
 
+def _build_effective_node_definitions(node_definitions: list[NodeDefinition]) -> list[NodeDefinition]:
+    """为节点目录响应补齐可直接渲染的 parameter_ui_schema。"""
+
+    return [_with_effective_parameter_ui_schema(item) for item in node_definitions]
+
+
+def _with_effective_parameter_ui_schema(node_definition: NodeDefinition) -> NodeDefinition:
+    """为单个节点定义补齐 parameter_ui_schema。"""
+
+    return node_definition.model_copy(
+        update={
+            "parameter_ui_schema": _merge_parameter_ui_schema(
+                parameter_schema=node_definition.parameter_schema,
+                explicit_parameter_ui_schema=node_definition.parameter_ui_schema,
+            )
+        }
+    )
+
+
+def _merge_parameter_ui_schema(
+    *,
+    parameter_schema: dict[str, object],
+    explicit_parameter_ui_schema: NodeParameterUiSchema | None,
+) -> NodeParameterUiSchema:
+    """把原始 parameter_schema 和显式 parameter_ui_schema 合并为稳定合同。"""
+
+    derived_parameter_ui_schema = _derive_parameter_ui_schema_from_parameter_schema(parameter_schema)
+    if explicit_parameter_ui_schema is None:
+        return derived_parameter_ui_schema
+
+    group_index = {item.group_id: item for item in derived_parameter_ui_schema.groups}
+    for group in explicit_parameter_ui_schema.groups:
+        group_index[group.group_id] = group
+
+    field_index = {item.parameter_name: item for item in derived_parameter_ui_schema.fields}
+    for field in explicit_parameter_ui_schema.fields:
+        field_index[field.parameter_name] = field
+
+    for field in field_index.values():
+        if field.group_id not in group_index:
+            group_index[field.group_id] = NodeParameterUiGroup(
+                group_id=field.group_id,
+                display_name=_humanize_parameter_text(field.group_id),
+            )
+
+    return NodeParameterUiSchema(
+        groups=tuple(
+            sorted(
+                group_index.values(),
+                key=lambda item: (item.order, item.display_name.casefold(), item.group_id.casefold()),
+            )
+        ),
+        fields=tuple(
+            sorted(
+                field_index.values(),
+                key=lambda item: (item.order, item.display_name.casefold(), item.parameter_name.casefold()),
+            )
+        ),
+    )
+
+
+def _derive_parameter_ui_schema_from_parameter_schema(
+    parameter_schema: dict[str, object],
+) -> NodeParameterUiSchema:
+    """从 parameter_schema 推导稳定的参数 UI 合同。"""
+
+    if not isinstance(parameter_schema, dict):
+        return NodeParameterUiSchema()
+    raw_properties = parameter_schema.get("properties")
+    if not isinstance(raw_properties, dict) or not raw_properties:
+        return NodeParameterUiSchema()
+
+    raw_required_names = parameter_schema.get("required")
+    required_names = (
+        {
+            item.strip()
+            for item in raw_required_names
+            if isinstance(item, str) and item.strip()
+        }
+        if isinstance(raw_required_names, list)
+        else set()
+    )
+    root_ui_extension = _read_parameter_ui_extension(parameter_schema)
+    group_index = _build_parameter_ui_group_index(root_ui_extension.get("groups"))
+    fields: list[NodeParameterUiField] = []
+
+    for fallback_order, (parameter_name, raw_property_schema) in enumerate(raw_properties.items()):
+        if not isinstance(parameter_name, str) or not parameter_name.strip():
+            continue
+        property_schema = dict(raw_property_schema) if isinstance(raw_property_schema, dict) else {}
+        property_ui_extension = _read_parameter_ui_extension(property_schema)
+        group_id = (
+            _read_optional_non_empty_text(property_ui_extension.get("group"))
+            or _WORKFLOW_PARAMETER_DEFAULT_GROUP_ID
+        )
+        if group_id not in group_index:
+            group_index[group_id] = NodeParameterUiGroup(
+                group_id=group_id,
+                display_name=_humanize_parameter_text(group_id),
+                order=len(group_index),
+            )
+
+        readonly = _read_optional_bool(property_ui_extension.get("readonly"))
+        if readonly is None:
+            readonly = _read_optional_bool(property_schema.get("readOnly")) or False
+        hidden = _read_optional_bool(property_ui_extension.get("hidden")) or False
+        field_order = _read_optional_int(property_ui_extension.get("order"))
+        fields.append(
+            NodeParameterUiField(
+                parameter_name=parameter_name,
+                display_name=(
+                    _read_optional_non_empty_text(property_schema.get("title"))
+                    or _humanize_parameter_text(parameter_name)
+                ),
+                description=_read_optional_non_empty_text(property_schema.get("description")) or "",
+                group_id=group_id,
+                order=fallback_order if field_order is None else field_order,
+                required=parameter_name in required_names,
+                hidden=hidden,
+                readonly=readonly,
+                default_value=property_schema.get("default") if "default" in property_schema else None,
+                enum_options=_build_parameter_ui_enum_options(property_schema, property_ui_extension),
+                json_schema=_sanitize_parameter_schema_fragment(property_schema),
+            )
+        )
+
+    return NodeParameterUiSchema(
+        groups=tuple(
+            sorted(
+                group_index.values(),
+                key=lambda item: (item.order, item.display_name.casefold(), item.group_id.casefold()),
+            )
+        ),
+        fields=tuple(
+            sorted(
+                fields,
+                key=lambda item: (item.order, item.display_name.casefold(), item.parameter_name.casefold()),
+            )
+        ),
+    )
+
+
+def _build_parameter_ui_group_index(raw_groups: object) -> dict[str, NodeParameterUiGroup]:
+    """把参数 UI 分组配置解析为按 group_id 索引的字典。"""
+
+    group_index: dict[str, NodeParameterUiGroup] = {}
+    if isinstance(raw_groups, dict):
+        for fallback_order, (raw_group_id, raw_group_config) in enumerate(raw_groups.items()):
+            if not isinstance(raw_group_id, str) or not raw_group_id.strip():
+                continue
+            group_id = raw_group_id.strip()
+            group_config = raw_group_config if isinstance(raw_group_config, dict) else {}
+            group_index[group_id] = NodeParameterUiGroup(
+                group_id=group_id,
+                display_name=(
+                    _read_optional_non_empty_text(group_config.get("display_name"))
+                    or _read_optional_non_empty_text(group_config.get("title"))
+                    or _humanize_parameter_text(group_id)
+                ),
+                description=_read_optional_non_empty_text(group_config.get("description")) or "",
+                order=_read_optional_int(group_config.get("order")) or fallback_order,
+            )
+        return group_index
+
+    if isinstance(raw_groups, list):
+        for fallback_order, raw_group_item in enumerate(raw_groups):
+            if not isinstance(raw_group_item, dict):
+                continue
+            group_id = _read_optional_non_empty_text(raw_group_item.get("group_id") or raw_group_item.get("id"))
+            if group_id is None:
+                continue
+            group_index[group_id] = NodeParameterUiGroup(
+                group_id=group_id,
+                display_name=(
+                    _read_optional_non_empty_text(raw_group_item.get("display_name"))
+                    or _read_optional_non_empty_text(raw_group_item.get("title"))
+                    or _humanize_parameter_text(group_id)
+                ),
+                description=_read_optional_non_empty_text(raw_group_item.get("description")) or "",
+                order=_read_optional_int(raw_group_item.get("order")) or fallback_order,
+            )
+    return group_index
+
+
+def _build_parameter_ui_enum_options(
+    property_schema: dict[str, object],
+    property_ui_extension: dict[str, object],
+) -> tuple[NodeParameterUiEnumOption, ...]:
+    """从参数 schema 构建稳定的枚举选项展示列表。"""
+
+    raw_enum_values = property_schema.get("enum")
+    if not isinstance(raw_enum_values, list):
+        return ()
+    raw_enum_labels = property_ui_extension.get("enum_labels")
+    if raw_enum_labels is None:
+        raw_enum_labels = property_schema.get("enumNames")
+
+    options: list[NodeParameterUiEnumOption] = []
+    for index, enum_value in enumerate(raw_enum_values):
+        label = None
+        if isinstance(raw_enum_labels, list) and index < len(raw_enum_labels):
+            label = _read_optional_non_empty_text(raw_enum_labels[index])
+        elif isinstance(raw_enum_labels, dict):
+            label = _read_optional_non_empty_text(raw_enum_labels.get(_stringify_parameter_option_key(enum_value)))
+        options.append(
+            NodeParameterUiEnumOption(
+                value=enum_value,
+                label=label or _humanize_parameter_text(_stringify_parameter_option_key(enum_value)),
+            )
+        )
+    return tuple(options)
+
+
+def _read_parameter_ui_extension(payload: dict[str, object]) -> dict[str, object]:
+    """读取 parameter_schema 中预留的 UI 扩展字段。"""
+
+    raw_extension = payload.get(_WORKFLOW_PARAMETER_UI_EXTENSION_KEY)
+    return dict(raw_extension) if isinstance(raw_extension, dict) else {}
+
+
+def _sanitize_parameter_schema_fragment(property_schema: dict[str, object]) -> dict[str, object]:
+    """移除仅用于编辑器扩展的保留字段，保留原始 JSON Schema 片段。"""
+
+    return {
+        key: value
+        for key, value in property_schema.items()
+        if key != _WORKFLOW_PARAMETER_UI_EXTENSION_KEY
+    }
+
+
+def _read_optional_non_empty_text(value: object) -> str | None:
+    """读取一个可选非空字符串。"""
+
+    if not isinstance(value, str):
+        return None
+    normalized_value = value.strip()
+    return normalized_value or None
+
+
+def _read_optional_int(value: object) -> int | None:
+    """读取一个可选整数。"""
+
+    return value if isinstance(value, int) and not isinstance(value, bool) else None
+
+
+def _read_optional_bool(value: object) -> bool | None:
+    """读取一个可选布尔值。"""
+
+    return value if isinstance(value, bool) else None
+
+
+def _humanize_parameter_text(value: str) -> str:
+    """把参数名或分组名转换为更适合界面展示的文本。"""
+
+    normalized_value = value.replace(".", " ").replace("-", " ").replace("_", " ").strip()
+    if not normalized_value:
+        return value
+    return normalized_value.title()
+
+
+def _stringify_parameter_option_key(value: object) -> str:
+    """把枚举值转换为稳定的字符串键，用于匹配显式标签。"""
+
+    if isinstance(value, (dict, list, tuple)):
+        return json.dumps(value, ensure_ascii=False, sort_keys=True)
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if value is None:
+        return "null"
+    return str(value)
+
+
 def _build_workflow_palette_group_display_name(category: str) -> str:
     """把节点分类 id 转换为更适合 palette 展示的分组名称。"""
 
@@ -999,27 +1404,3 @@ def _normalize_optional_filter_text(value: str | None) -> str | None:
     if not normalized_value:
         return None
     return normalized_value.casefold()
-
-
-def _build_application_execute_response(
-    execution_result,
-) -> WorkflowApplicationExecuteResponse:
-    """构建 workflow application 执行响应。"""
-
-    return WorkflowApplicationExecuteResponse(
-        project_id=execution_result.project_id,
-        application_id=execution_result.application_id,
-        template_id=execution_result.template_id,
-        template_version=execution_result.template_version,
-        outputs=dict(execution_result.outputs),
-        template_outputs=dict(execution_result.template_outputs),
-        node_records=[
-            WorkflowNodeExecutionRecordResponse(
-                node_id=node_record.node_id,
-                node_type_id=node_record.node_type_id,
-                runtime_kind=node_record.runtime_kind,
-                outputs=dict(node_record.outputs),
-            )
-            for node_record in execution_result.node_records
-        ],
-    )

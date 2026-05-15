@@ -218,7 +218,7 @@ class LocalDatasetStorage:
         - 对应的绝对路径对象。
         """
 
-        normalized_path = PurePosixPath(relative_path)
+        normalized_path = self._normalize_relative_path(relative_path)
         return self.root_dir.joinpath(*normalized_path.parts)
 
     def write_bytes(self, relative_path: str, content: bytes) -> None:
@@ -430,6 +430,35 @@ class LocalDatasetStorage:
         """
 
         return PurePosixPath("projects") / project_id / "datasets" / dataset_id
+
+    def _normalize_relative_path(self, relative_path: str) -> PurePosixPath:
+        """规范化并校验本地 ObjectStore 使用的相对路径。
+
+        参数：
+        - relative_path：调用方传入的相对路径。
+
+        返回：
+        - PurePosixPath：去除空段后的安全相对路径。
+
+        异常：
+        - InvalidRequestError：当路径为空、为绝对路径或包含 `..` 时抛出。
+        """
+
+        normalized_text = relative_path.strip()
+        if not normalized_text:
+            raise InvalidRequestError("本地对象路径不能为空")
+        normalized_path = PurePosixPath(normalized_text)
+        if normalized_path.is_absolute() or ".." in normalized_path.parts:
+            raise InvalidRequestError(
+                "本地对象路径不合法",
+                details={"relative_path": relative_path},
+            )
+        cleaned_parts = tuple(
+            part for part in normalized_path.parts if part not in {"", "."}
+        )
+        if not cleaned_parts:
+            raise InvalidRequestError("本地对象路径不能为空")
+        return PurePosixPath(*cleaned_parts)
 
     def _validate_zip_member(self, member_path: PurePosixPath, member: zipfile.ZipInfo) -> None:
         """校验 zip 成员路径是否合法。

@@ -231,6 +231,7 @@ class WorkflowGraphExecutor:
         input_values: dict[str, object],
         execution_metadata: dict[str, object] | None = None,
         runtime_context: object | None = None,
+        event_callback: Callable[[dict[str, object]], None] | None = None,
     ) -> WorkflowGraphExecutionResult:
         """执行一份图模板。"""
 
@@ -271,23 +272,48 @@ class WorkflowGraphExecutor:
                 node_output_values=node_output_values,
             )
             execution_index = len(node_records) + 1
+            self._emit_node_event(
+                event_callback=event_callback,
+                event_type="node.started",
+                message="node execution started",
+                node_id=node_id,
+                node=node,
+                node_definition=node_definition,
+                execution_index=execution_index,
+                inputs=resolved_inputs,
+            )
             if node_definition.node_type_id == "core.logic.for-each":
-                raw_outputs = self._execute_for_each_node(
-                    template=template,
-                    for_each_node=node,
-                    for_each_node_definition=node_definition,
-                    plan=for_each_plans[node.node_id],
-                    input_values=input_values,
-                    resolved_inputs=resolved_inputs,
-                    execution_metadata=execution_metadata_payload,
-                    runtime_context=runtime_context,
-                    node_output_values=node_output_values,
-                    node_instances=node_instances,
-                    template_input_bindings=template_input_bindings,
-                    edge_bindings=edge_bindings,
-                    node_records=node_records,
-                    execution_index=execution_index,
-                )
+                try:
+                    raw_outputs = self._execute_for_each_node(
+                        template=template,
+                        for_each_node=node,
+                        for_each_node_definition=node_definition,
+                        plan=for_each_plans[node.node_id],
+                        input_values=input_values,
+                        resolved_inputs=resolved_inputs,
+                        execution_metadata=execution_metadata_payload,
+                        runtime_context=runtime_context,
+                        node_output_values=node_output_values,
+                        node_instances=node_instances,
+                        template_input_bindings=template_input_bindings,
+                        edge_bindings=edge_bindings,
+                        node_records=node_records,
+                        execution_index=execution_index,
+                        event_callback=event_callback,
+                    )
+                except ServiceError as exc:
+                    self._emit_node_event(
+                        event_callback=event_callback,
+                        event_type="node.failed",
+                        message="node execution failed",
+                        node_id=node_id,
+                        node=node,
+                        node_definition=node_definition,
+                        execution_index=execution_index,
+                        inputs=resolved_inputs,
+                        error_details=dict(exc.details),
+                    )
+                    raise
             else:
                 handler = self.registry.resolve_handler(node_definition=node_definition)
                 execution_request = WorkflowNodeExecutionRequest(
@@ -307,16 +333,39 @@ class WorkflowGraphExecutor:
                         node_definition=node_definition,
                         execution_index=execution_index,
                     )
+                    self._emit_node_event(
+                        event_callback=event_callback,
+                        event_type="node.failed",
+                        message="node execution failed",
+                        node_id=node_id,
+                        node=node,
+                        node_definition=node_definition,
+                        execution_index=execution_index,
+                        inputs=resolved_inputs,
+                        error_details=dict(exc.details),
+                    )
                     raise
                 except Exception as exc:
+                    failed_node_details = _build_failed_node_details(
+                        node=node,
+                        node_definition=node_definition,
+                        execution_index=execution_index,
+                        exc=exc,
+                    )
+                    self._emit_node_event(
+                        event_callback=event_callback,
+                        event_type="node.failed",
+                        message="node execution failed",
+                        node_id=node_id,
+                        node=node,
+                        node_definition=node_definition,
+                        execution_index=execution_index,
+                        inputs=resolved_inputs,
+                        error_details=failed_node_details,
+                    )
                     raise ServiceConfigurationError(
                         "workflow 节点执行失败",
-                        details=_build_failed_node_details(
-                            node=node,
-                            node_definition=node_definition,
-                            execution_index=execution_index,
-                            exc=exc,
-                        ),
+                        details=failed_node_details,
                     ) from exc
             declared_output_names = {port.name for port in node_definition.output_ports}
             for output_name, output_value in raw_outputs.items():
@@ -338,6 +387,17 @@ class WorkflowGraphExecutor:
                     inputs=sanitize_runtime_mapping(resolved_inputs),
                     outputs=sanitize_runtime_mapping(raw_outputs),
                 )
+            )
+            self._emit_node_event(
+                event_callback=event_callback,
+                event_type="node.completed",
+                message="node execution completed",
+                node_id=node_id,
+                node=node,
+                node_definition=node_definition,
+                execution_index=execution_index,
+                inputs=resolved_inputs,
+                outputs=raw_outputs,
             )
 
         resolved_template_outputs: dict[str, object] = {}
@@ -575,6 +635,7 @@ class WorkflowGraphExecutor:
         edge_bindings: dict[tuple[str, str], list[tuple[str, str]]],
         node_records: list[WorkflowNodeExecutionRecord],
         execution_index: int,
+        event_callback: Callable[[dict[str, object]], None] | None = None,
     ) -> dict[str, object]:
         """执行单个 for-each 节点的循环体并收集结果。"""
 
@@ -620,6 +681,7 @@ class WorkflowGraphExecutor:
                         template_input_bindings=template_input_bindings,
                         edge_bindings=edge_bindings,
                         node_records=node_records,
+                        event_callback=event_callback,
                     )
                     result_key = (plan.result_node_id, plan.result_port)
                     if result_key in iteration_result.output_values:
@@ -719,6 +781,7 @@ class WorkflowGraphExecutor:
         template_input_bindings: dict[tuple[str, str], list[str]],
         edge_bindings: dict[tuple[str, str], list[tuple[str, str]]],
         node_records: list[WorkflowNodeExecutionRecord],
+        event_callback: Callable[[dict[str, object]], None] | None = None,
     ) -> WorkflowForEachIterationResult:
         """执行单轮 for-each 循环体。"""
 
@@ -726,6 +789,7 @@ class WorkflowGraphExecutor:
         for body_node_id in plan.body_node_ids:
             body_node = node_instances[body_node_id]
             body_node_definition = self.registry.get_node_definition(body_node.node_type_id)
+            iteration_node_id = f"{for_each_node.node_id}[{iteration_index + 1}].{body_node_id}"
             visible_output_values = dict(node_output_values)
             visible_output_values.update(local_output_values)
             resolved_inputs = self._resolve_node_inputs(
@@ -746,6 +810,20 @@ class WorkflowGraphExecutor:
                 runtime_context=runtime_context,
             )
             execution_index = len(node_records) + 1
+            self._emit_node_event(
+                event_callback=event_callback,
+                event_type="node.started",
+                message="node execution started",
+                node_id=iteration_node_id,
+                node=body_node,
+                node_definition=body_node_definition,
+                execution_index=execution_index,
+                inputs=resolved_inputs,
+                extra_payload={
+                    "for_each_node_id": for_each_node.node_id,
+                    "for_each_iteration_index": iteration_index,
+                },
+            )
             try:
                 raw_outputs = dict(handler(execution_request))
             except ServiceError as exc:
@@ -757,20 +835,51 @@ class WorkflowGraphExecutor:
                 )
                 exc.details.setdefault("for_each_node_id", for_each_node.node_id)
                 exc.details.setdefault("for_each_iteration_index", iteration_index)
-                raise
-            except Exception as exc:
-                raise ServiceConfigurationError(
-                    "workflow 节点执行失败",
-                    details={
-                        **_build_failed_node_details(
-                            node=body_node,
-                            node_definition=body_node_definition,
-                            execution_index=execution_index,
-                            exc=exc,
-                        ),
+                self._emit_node_event(
+                    event_callback=event_callback,
+                    event_type="node.failed",
+                    message="node execution failed",
+                    node_id=iteration_node_id,
+                    node=body_node,
+                    node_definition=body_node_definition,
+                    execution_index=execution_index,
+                    inputs=resolved_inputs,
+                    error_details=dict(exc.details),
+                    extra_payload={
                         "for_each_node_id": for_each_node.node_id,
                         "for_each_iteration_index": iteration_index,
                     },
+                )
+                raise
+            except Exception as exc:
+                failed_node_details = {
+                    **_build_failed_node_details(
+                        node=body_node,
+                        node_definition=body_node_definition,
+                        execution_index=execution_index,
+                        exc=exc,
+                    ),
+                    "for_each_node_id": for_each_node.node_id,
+                    "for_each_iteration_index": iteration_index,
+                }
+                self._emit_node_event(
+                    event_callback=event_callback,
+                    event_type="node.failed",
+                    message="node execution failed",
+                    node_id=iteration_node_id,
+                    node=body_node,
+                    node_definition=body_node_definition,
+                    execution_index=execution_index,
+                    inputs=resolved_inputs,
+                    error_details=failed_node_details,
+                    extra_payload={
+                        "for_each_node_id": for_each_node.node_id,
+                        "for_each_iteration_index": iteration_index,
+                    },
+                )
+                raise ServiceConfigurationError(
+                    "workflow 节点执行失败",
+                    details=failed_node_details,
                 ) from exc
             declared_output_names = {port.name for port in body_node_definition.output_ports}
             for output_name, output_value in raw_outputs.items():
@@ -786,12 +895,27 @@ class WorkflowGraphExecutor:
                 local_output_values[(body_node_id, output_name)] = output_value
             node_records.append(
                 WorkflowNodeExecutionRecord(
-                    node_id=f"{for_each_node.node_id}[{iteration_index + 1}].{body_node_id}",
+                    node_id=iteration_node_id,
                     node_type_id=body_node_definition.node_type_id,
                     runtime_kind=body_node_definition.runtime_kind,
                     inputs=sanitize_runtime_mapping(resolved_inputs),
                     outputs=sanitize_runtime_mapping(raw_outputs),
                 )
+            )
+            self._emit_node_event(
+                event_callback=event_callback,
+                event_type="node.completed",
+                message="node execution completed",
+                node_id=iteration_node_id,
+                node=body_node,
+                node_definition=body_node_definition,
+                execution_index=execution_index,
+                inputs=resolved_inputs,
+                outputs=raw_outputs,
+                extra_payload={
+                    "for_each_node_id": for_each_node.node_id,
+                    "for_each_iteration_index": iteration_index,
+                },
             )
             control_action = self._read_for_each_loop_control_action(
                 body_node=body_node,
@@ -803,6 +927,51 @@ class WorkflowGraphExecutor:
                     control_action=control_action,
                 )
         return WorkflowForEachIterationResult(output_values=local_output_values)
+
+    def _emit_node_event(
+        self,
+        *,
+        event_callback: Callable[[dict[str, object]], None] | None,
+        event_type: str,
+        message: str,
+        node_id: str,
+        node: WorkflowGraphNode,
+        node_definition: NodeDefinition,
+        execution_index: int,
+        inputs: dict[str, object] | None = None,
+        outputs: dict[str, object] | None = None,
+        error_details: dict[str, object] | None = None,
+        extra_payload: dict[str, object] | None = None,
+    ) -> None:
+        """向外部事件回调发送节点执行过程事件。"""
+
+        if event_callback is None:
+            return
+        payload: dict[str, object] = {
+            "node_id": node_id,
+            "node_type_id": node_definition.node_type_id,
+            "node_display_name": node_definition.display_name,
+            "runtime_kind": node_definition.runtime_kind,
+            "execution_index": execution_index,
+        }
+        raw_sequence_index = node.metadata.get("sequence_index")
+        if isinstance(raw_sequence_index, int) and not isinstance(raw_sequence_index, bool):
+            payload["sequence_index"] = raw_sequence_index
+        if inputs is not None:
+            payload["inputs"] = sanitize_runtime_mapping(inputs)
+        if outputs is not None:
+            payload["outputs"] = sanitize_runtime_mapping(outputs)
+        if error_details is not None:
+            payload["error_details"] = sanitize_runtime_mapping(error_details)
+        if extra_payload is not None:
+            payload.update(extra_payload)
+        event_callback(
+            {
+                "event_type": event_type,
+                "message": message,
+                "payload": payload,
+            }
+        )
 
     def _read_for_each_loop_control_action(
         self,

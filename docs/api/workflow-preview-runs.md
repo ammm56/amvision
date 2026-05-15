@@ -2,7 +2,7 @@
 
 ## 文档目的
 
-本文档说明当前已经公开的 WorkflowPreviewRun REST API、状态语义和稳定返回字段。
+本文档说明当前已经公开的 WorkflowPreviewRun REST API、WebSocket 观察路径、状态语义和稳定返回字段。
 
 本文档只描述当前真实实现的 preview run 行为，不展开未落代码的扩展接口。
 
@@ -11,16 +11,20 @@
 - POST /api/v1/workflows/preview-runs
 - GET /api/v1/workflows/preview-runs
 - GET /api/v1/workflows/preview-runs/{preview_run_id}
+- GET /api/v1/workflows/preview-runs/{preview_run_id}/events
+- POST /api/v1/workflows/preview-runs/{preview_run_id}/cancel
 - DELETE /api/v1/workflows/preview-runs/{preview_run_id}
+- /ws/v1/workflows/preview-runs/events
 - saved application 引用执行
 - inline application + template snapshot 执行
+- sync/async wait_mode
 
 ## 资源定位
 
 - WorkflowPreviewRun 用于节点编辑器里的快速试跑、联调和隔离执行。
 - 每次 create 请求都会先固定 application snapshot 和 template snapshot，再在独立子进程里执行。
 - preview run 是短期调试资源，不进入长期 runtime worker 的实例管理。
-- 第一阶段只支持同步等待结果，不公开 async preview、events 和 cancel。
+- preview run 支持 sync/async wait_mode；async create 返回后可继续通过详情、事件接口和 WebSocket 资源流观察执行过程。
 - WorkflowPreviewRun 返回的是持久化记录视图；如果节点图里出现 inline base64 图片或 memory image-ref，资源返回会自动脱敏，不直接回显原始图片内容或 image_handle。
 
 ## 接口入口
@@ -35,7 +39,10 @@
 - POST /api/v1/workflows/preview-runs 需要 workflows:write
 - GET /api/v1/workflows/preview-runs 需要 workflows:read
 - GET /api/v1/workflows/preview-runs/{preview_run_id} 需要 workflows:read
+- GET /api/v1/workflows/preview-runs/{preview_run_id}/events 需要 workflows:read
+- POST /api/v1/workflows/preview-runs/{preview_run_id}/cancel 需要 workflows:write
 - DELETE /api/v1/workflows/preview-runs/{preview_run_id} 需要 workflows:write
+- /ws/v1/workflows/preview-runs/events 需要 workflows:read
 
 ## 状态语义
 
@@ -46,11 +53,12 @@
 | succeeded | 同步执行成功结束 |
 | failed | 执行失败 |
 | timed_out | 同步等待超时 |
+| cancelled | 已收到取消请求并完成收口 |
 
 补充说明：
 
-- create 接口是同步接口，正常调用方通常直接拿到 succeeded、failed 或 timed_out。
-- 当 create 请求尚未返回时，其他查询方可能会通过 GET 看到 running。
+- wait_mode=sync 时，create 接口通常直接返回 succeeded、failed、timed_out 或 cancelled。
+- wait_mode=async 时，create 接口先返回 running；后续状态变化通过详情、事件接口或 WebSocket 资源流观察。
 
 ## 稳定字段
 
@@ -97,12 +105,13 @@
 - input_bindings：可选，按 application input binding_id 组织的输入 payload
 - execution_metadata：可选，执行元数据；接口层会补写 created_by
 - timeout_seconds：可选；未提供且存在 execution policy 时取 policy.default_timeout_seconds，否则默认 30
+- wait_mode：可选；支持 sync 或 async，默认 sync
 
 ### 输入约束
 
 - application_ref 与 inline application/template 二选一。
 - 如果未提供 application_ref，则必须同时提供 application 和 template。
-- 当前不公开 wait_mode 或 async query_path。
+- wait_mode=async 时会立即返回 `state=running` 的 WorkflowPreviewRun。
 
 ### 最小请求 JSON
 
@@ -207,17 +216,38 @@
 - 成功状态码：204 No Content
 - 删除 preview run 持久化记录时，会一并删除对应的 snapshot 目录
 
+## GET /api/v1/workflows/preview-runs/{preview_run_id}/events
+
+- 返回当前 preview run 的执行事件列表
+- 可选查询参数：
+  - after_sequence：只返回 sequence 大于该值的事件，取值必须大于等于 0
+  - limit：最多返回多少条事件，默认按底层读取面返回全部匹配事件，最大 500
+- 当前事件持久化在 `workflows/runtime/preview-runs/{preview_run_id}/events.json`
+- 该接口继续作为历史事件读取、断线恢复和测试验证的正式读取面
+- `/ws/v1/workflows/preview-runs/events` 的 replay 和 live 事件与 REST 共用同一套平铺 payload，不再额外包一层 `payload.data`
+
+## POST /api/v1/workflows/preview-runs/{preview_run_id}/cancel
+
+- 成功状态码：200 OK
+- queued 或 running 的 preview run 可以取消
+- 取消成功后，`state` 会进入 cancelled，`error_message` 为 `workflow preview run 已取消`
+
+## WebSocket 观察路径
+
+- 路径：/ws/v1/workflows/preview-runs/events
+- 必填查询参数：
+  - preview_run_id
+- 可选查询参数：
+  - after_cursor：使用 preview run 事件的 sequence 作为恢复游标
+  - limit：首次回放数量，默认 100，最大 500
+- 连接建立后会先返回一条 `workflows.preview-runs.connected` 控制事件
+- 历史回放继续复用 `events.json`，实时增量由 `service_event_bus` 分发
+
 ## maintenance 清理动作
 
 - backend-maintenance 已提供 cleanup-preview-runs 命令。
 - 该命令按 retention_until 扫描并删除已过期 preview run 记录，同时清理对应 snapshot 目录。
 - 该动作属于运维清理，不新增公开 REST API。
-
-## 当前不公开的扩展项
-
-- GET /api/v1/workflows/preview-runs/{preview_run_id}/events
-- POST /api/v1/workflows/preview-runs/{preview_run_id}/cancel
-- async preview create
 
 ## 与其他资源的关系
 

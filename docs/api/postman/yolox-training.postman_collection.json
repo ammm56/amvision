@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "b0db9a90-95bc-4a01-b247-1ddb33e1a2a8",
     "name": "amvision yolox training validation conversion evaluation inference api",
-    "description": "当前公开的 YOLOX training create/list/detail/save/pause/resume/register-model-version/validation-metrics/train-metrics/output-files、validation-sessions create/detail/predict、conversion-tasks create/list/detail/result、evaluation-tasks create/list/detail/report/output-files，以及 deployment-instances create/list/detail、sync/async start/status/stop/warmup/health/reset、direct infer 和 inference-tasks create/list/detail/result 接口。本集合已经同步 fp16/fp32、CPU fallback 调试方式、latest checkpoint、validation metrics、output-files、training_summary、detail 响应里的 available_actions 与 control_status、save/pause 后自动登记 latest checkpoint 版本、latest checkpoint 与 completed best 的版本区分、训练完成后的单图人工验证闭环、source ModelVersion 到 ONNX/optimized ONNX/OpenVINO IR/TensorRT engine 的 conversion 主链、数据集级回归评估和结果包输出，以及 deployment_instance_id 驱动的正式推理链；当前 conversion 创建请求已按目标格式拆分，其中 OpenVINO IR 与 TensorRT engine 都已继续拆成 fp32 与 fp16 两种构建策略，deployment 发布模板也已按 PyTorch、ONNXRuntime、OpenVINO、TensorRT 拆分。当前 deployment 推理链要求先显式调用 start 或 warmup，再执行 infer 或 inference-task create。Postman collection 已按 validation、conversion、evaluation、sync deployment、async deployment、sync inference、async inference task 分组，并把 input_uri、image_base64、multipart input_image 三种输入方式分别拆成独立调试请求；TensorRT deployment 模板已额外暴露 metadata.deployment_process 下的 warmup_dummy_inference_count、warmup_dummy_image_size、keep_warm_enabled、keep_warm_interval_seconds 变量，sync/async warmup 和 health 也会自动回填 keep_warm 的 enabled、activated、success_count、error_count、last_error，便于确认是否真的生效。默认建议把 includeEvents 设为 false，用于高频轮询调试。",
+    "description": "当前公开的 YOLOX training create/list/detail/save/pause/resume/register-model-version/validation-metrics/train-metrics/output-files、validation-sessions create/detail/predict、conversion-tasks create/list/detail/result、evaluation-tasks create/list/detail/report/output-files，以及 deployment-instances create/list/detail/events、sync/async start/status/stop/warmup/health/reset、direct infer、inference-tasks create/list/detail/result 和 YOLOX 相关 workflow preview-runs sync/async 调试接口。本集合已经同步 fp16/fp32、CPU fallback 调试方式、latest checkpoint、validation metrics、output-files、training_summary、detail 响应里的 available_actions 与 control_status、save/pause 后自动登记 latest checkpoint 版本、latest checkpoint 与 completed best 的版本区分、训练完成后的单图人工验证闭环、source ModelVersion 到 ONNX/optimized ONNX/OpenVINO IR/TensorRT engine 的 conversion 主链、数据集级回归评估和结果包输出，以及 deployment_instance_id 驱动的正式推理链；当前 conversion 创建请求已按目标格式拆分，其中 OpenVINO IR 与 TensorRT engine 都已继续拆成 fp32 与 fp16 两种构建策略，deployment 发布模板也已按 PyTorch、ONNXRuntime、OpenVINO、TensorRT 拆分。当前 deployment 推理链要求先显式调用 start 或 warmup，再执行 infer 或 inference-task create。Postman collection 已按 validation、conversion、evaluation、sync deployment、async deployment、sync inference、async inference task 分组，并把 input_uri、image_base64、multipart input_image 三种输入方式分别拆成独立调试请求；TensorRT deployment 模板已额外暴露 metadata.deployment_process 下的 warmup_dummy_inference_count、warmup_dummy_image_size、keep_warm_enabled、keep_warm_interval_seconds 变量，sync/async warmup 和 health 也会自动回填 keep_warm 的 enabled、activated、success_count、error_count、last_error，便于确认是否真的生效。默认建议把 includeEvents 设为 false，用于高频轮询调试；如果需要读取 deployment 生命周期历史，可直接使用本集合里的 Get YOLOX Deployment Events 请求。",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "item": [
@@ -2495,6 +2495,61 @@
           "response": []
         },
         {
+          "name": "Get YOLOX Deployment Events",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-amvision-principal-id",
+                "value": "{{principalId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-project-ids",
+                "value": "{{projectId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-scopes",
+                "value": "models:read",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/models/yolox/deployment-instances/{{deploymentInstanceId}}/events?after_sequence={{deploymentEventAfterSequence}}&limit={{deploymentEventLimit}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "models",
+                "yolox",
+                "deployment-instances",
+                "{{deploymentInstanceId}}",
+                "events"
+              ],
+              "query": [
+                {
+                  "key": "after_sequence",
+                  "value": "{{deploymentEventAfterSequence}}"
+                },
+                {
+                  "key": "limit",
+                  "value": "{{deploymentEventLimit}}"
+                },
+                {
+                  "key": "runtime_mode",
+                  "value": "{{deploymentEventRuntimeMode}}",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "读取 DeploymentInstance 的生命周期事件列表。after_sequence 和 limit 用于最小分页；如只看 sync 或 async 通道，可启用 runtime_mode 查询参数。"
+          },
+          "response": []
+        },
+        {
           "name": "YOLOX Sync Deployment Process",
           "item": [
             {
@@ -3944,6 +3999,267 @@
           ]
         }
       ]
+    },
+    {
+      "name": "YOLOX Workflow Preview Runs",
+      "item": [
+        {
+          "name": "Create YOLOX Workflow Preview Run - Sync",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  var payload = pm.response.json();",
+                  "  if (payload.preview_run_id) pm.collectionVariables.set('previewRunId', payload.preview_run_id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-principal-id",
+                "value": "{{principalId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-project-ids",
+                "value": "{{projectId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-scopes",
+                "value": "workflows:read,workflows:write",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"application_ref\": {\n    \"application_id\": \"{{workflowApplicationId}}\"\n  },\n  \"input_bindings\": {{previewRunInputBindings}},\n  \"execution_metadata\": {{previewRunExecutionMetadata}},\n  \"timeout_seconds\": {{previewRunTimeoutSeconds}},\n  \"wait_mode\": \"sync\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workflows/preview-runs",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workflows",
+                "preview-runs"
+              ]
+            },
+            "description": "用已保存的 FlowApplication 创建一次同步 preview run。workflowApplicationId 需要先指向一个已经保存的 YOLOX 相关 application；previewRunInputBindings 默认只放 request_image 示例，实际调试时需要按目标 application 的 binding_id 形状调整。"
+          },
+          "response": []
+        },
+        {
+          "name": "Create YOLOX Workflow Preview Run - Async",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  var payload = pm.response.json();",
+                  "  if (payload.preview_run_id) pm.collectionVariables.set('previewRunId', payload.preview_run_id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-principal-id",
+                "value": "{{principalId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-project-ids",
+                "value": "{{projectId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-scopes",
+                "value": "workflows:read,workflows:write",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"application_ref\": {\n    \"application_id\": \"{{workflowApplicationId}}\"\n  },\n  \"input_bindings\": {{previewRunInputBindings}},\n  \"execution_metadata\": {{previewRunExecutionMetadata}},\n  \"timeout_seconds\": {{previewRunTimeoutSeconds}},\n  \"wait_mode\": \"async\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workflows/preview-runs",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workflows",
+                "preview-runs"
+              ]
+            },
+            "description": "用同一份保存后的 FlowApplication 创建异步 preview run。wait_mode=async 时接口会先返回 running，可继续使用 Get Preview Run、Get Preview Run Events 或 /ws/v1/workflows/preview-runs/events 观察执行过程。"
+          },
+          "response": []
+        },
+        {
+          "name": "Get YOLOX Workflow Preview Run",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-amvision-principal-id",
+                "value": "{{principalId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-project-ids",
+                "value": "{{projectId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-scopes",
+                "value": "workflows:read",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workflows/preview-runs/{{previewRunId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workflows",
+                "preview-runs",
+                "{{previewRunId}}"
+              ]
+            },
+            "description": "读取当前 preview run 详情，适合轮询 async create 后的 state、outputs、node_records 和 error_message。"
+          },
+          "response": []
+        },
+        {
+          "name": "Get YOLOX Workflow Preview Run Events",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-amvision-principal-id",
+                "value": "{{principalId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-project-ids",
+                "value": "{{projectId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-scopes",
+                "value": "workflows:read",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workflows/preview-runs/{{previewRunId}}/events?after_sequence={{previewRunAfterSequence}}&limit={{previewRunEventLimit}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workflows",
+                "preview-runs",
+                "{{previewRunId}}",
+                "events"
+              ],
+              "query": [
+                {
+                  "key": "after_sequence",
+                  "value": "{{previewRunAfterSequence}}"
+                },
+                {
+                  "key": "limit",
+                  "value": "{{previewRunEventLimit}}"
+                }
+              ]
+            },
+            "description": "读取 preview run 历史事件，验证 after_sequence 和 limit 分页，也可作为 async 断线恢复后的补回面。"
+          },
+          "response": []
+        },
+        {
+          "name": "Cancel YOLOX Workflow Preview Run",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-amvision-principal-id",
+                "value": "{{principalId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-project-ids",
+                "value": "{{projectId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-scopes",
+                "value": "workflows:write",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workflows/preview-runs/{{previewRunId}}/cancel",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workflows",
+                "preview-runs",
+                "{{previewRunId}}",
+                "cancel"
+              ]
+            },
+            "description": "取消当前 queued 或 running 的 preview run，主要用于 async 调试时快速收口。"
+          },
+          "response": []
+        }
+      ]
     }
   ],
   "variable": [
@@ -3958,6 +4274,34 @@
     {
       "key": "projectId",
       "value": "project-1"
+    },
+    {
+      "key": "workflowApplicationId",
+      "value": "replace-with-saved-flow-application-id"
+    },
+    {
+      "key": "previewRunId",
+      "value": ""
+    },
+    {
+      "key": "previewRunTimeoutSeconds",
+      "value": "30"
+    },
+    {
+      "key": "previewRunAfterSequence",
+      "value": "0"
+    },
+    {
+      "key": "previewRunEventLimit",
+      "value": "50"
+    },
+    {
+      "key": "previewRunInputBindings",
+      "value": "{\"request_image\":{\"object_key\":\"projects/project-1/inputs/source.jpg\"}}"
+    },
+    {
+      "key": "previewRunExecutionMetadata",
+      "value": "{\"scenario\":\"yolox-workflow-preview\",\"trigger_source\":\"postman-preview\"}"
     },
     {
       "key": "recipeId",
@@ -4077,7 +4421,7 @@
     },
     {
       "key": "validationImageUri",
-      "value": "validation-inputs/image-1.jpg"
+      "value": "projects/project-1/inputs/validation/image-1.jpg"
     },
     {
       "key": "validationScoreThreshold",
@@ -4220,6 +4564,18 @@
       "value": "20"
     },
     {
+      "key": "deploymentEventAfterSequence",
+      "value": "0"
+    },
+    {
+      "key": "deploymentEventLimit",
+      "value": "50"
+    },
+    {
+      "key": "deploymentEventRuntimeMode",
+      "value": "sync"
+    },
+    {
       "key": "deploymentDesiredState",
       "value": "stopped"
     },
@@ -4349,7 +4705,7 @@
     },
     {
       "key": "inferenceImageUri",
-      "value": "runtime-inputs/image-1.jpg"
+      "value": "projects/project-1/inputs/inference/image-1.jpg"
     },
     {
       "key": "directInferenceInputTransportMode",

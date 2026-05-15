@@ -50,6 +50,7 @@
 ## 当前建议
 
 1. 开发联调继续可以在仓库根目录直接运行 launcher，并显式传入 conda Python 路径。
-2. 发布打包时应优先通过 `assemble-release` 生成 `release/full/`，不要再手工拼接 launcher 和 manifest。
-3. 如果要做推理专用变体，直接复制 `release/full/`，再手工调整 `app/requirements.txt` 与 `python/` 即可。
-4. 发布验收优先跑 `launchers/maintenance/invoke_backend_maintenance.py -- validate-layout`、service health、目标 worker profile smoke test，再做业务联调。
+2. 发布打包时应通过 `assemble-release` 生成 `release/full/`，不要再手工拼接 launcher、manifest 或直接修改 `release/full/app/` 下的代码。
+3. 如果需要调整发布目录中的 backend、config、docs 或 requirements，应先修改仓库源文件，再重新执行 `assemble-release` 覆盖生成 `release/full/`。
+4. 如果要做推理专用变体，直接复制 `release/full/`，再手工调整 `app/requirements.txt` 与 `python/` 即可。
+5. 发布验收优先跑 `launchers/maintenance/invoke_backend_maintenance.py -- validate-layout`、service health、目标 worker profile smoke test，再做业务联调。

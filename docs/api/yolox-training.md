@@ -405,21 +405,21 @@ reference 风格增强示例：按需显式开启 Mosaic、MixUp 和动态尺寸
 
 #### 推荐实时方案
 
-- 详情页或日志面板可以额外建立 `GET /ws/tasks/events?task_id=...` 对应的 WebSocket 订阅。
+- 详情页或日志面板可以额外建立 `/ws/v1/tasks/events?task_id=...` 对应的 WebSocket 订阅。
 - 当前推荐策略：
   - 详情基础状态仍然走 HTTP 轮询
-  - 日志流和动作完成提示走 `/ws/tasks/events`
+  - 日志流和动作完成提示走 `/ws/v1/tasks/events`
 - 当前 WebSocket 支持的查询参数：
   - `task_id`：必填
   - `event_type`：可选
-  - `after_created_at`：可选
+  - `after_cursor`：可选
   - `limit`：可选，默认 100，最大 500
 
 #### 当前轮询注意点
 
 - 详情接口的 `include_events` 默认值是 `true`。
 - 前端如果把 detail 接口直接当成高频轮询接口，必须显式传 `include_events=false`，否则返回体会随着事件累积不断变大。
-- 如果页面需要展示事件流，应优先使用 `/ws/tasks/events` 或通用任务事件接口，而不是在高频轮询里反复拉完整 `events` 数组。
+- 如果页面需要展示事件流，应优先使用 `/ws/v1/tasks/events` 或通用任务事件接口，而不是在高频轮询里反复拉完整 `events` 数组。
 
 ### 前端交互建议流程
 
@@ -800,6 +800,8 @@ reference 风格增强示例：按需显式开启 Mosaic、MixUp 和动态尺寸
 - 创建接口：`POST /api/v1/models/yolox/deployment-instances`
 - 列表接口：`GET /api/v1/models/yolox/deployment-instances`
 - 详情接口：`GET /api/v1/models/yolox/deployment-instances/{deployment_instance_id}`
+- 事件接口：`GET /api/v1/models/yolox/deployment-instances/{deployment_instance_id}/events`
+- 实时事件流：`/ws/v1/deployments/events`
 
 #### 当前 deployment 创建请求字段
 
@@ -876,6 +878,7 @@ reference 风格增强示例：按需显式开启 Mosaic、MixUp 和动态尺寸
 - 每个 instance 对应一个独立推理线程和模型会话；同一 instance 一次只处理一个请求
 - 同步 `/infer` 和异步 `inference-tasks` 已经拆成两个独立 deployment 子进程，不再共用实例会话
 - 当前已经公开 sync/async 两组 `start`、`status`、`stop`、`warmup`、`health` 和 `reset` 接口，用于显式启动、停止、预热、查看状态和清空实例池
+- 当前已经公开 deployment 历史事件接口与 `/ws/v1/deployments/events` 实时资源流；实时分发走 `service_event_bus`，历史回放继续走 deployment snapshot 目录下的 `events.json`
 - `warmup` 会在预热前自动拉起目标子进程，并在模型会话加载后按默认配置或 `metadata.deployment_process` 覆盖值执行 N 次真实 dummy infer
 - 当 `metadata.deployment_process.keep_warm_enabled=true` 时，warmup 完成后会激活 keep-warm 后台线程；首次真实推理成功后也会激活同一机制
 - `reset` 只对已经启动的子进程生效；reset 后 keep-warm 会回到未激活状态，直到下一次 warmup 或下一次真实推理成功
@@ -889,6 +892,8 @@ reference 风格增强示例：按需显式开启 Mosaic、MixUp 和动态尺寸
 - 结果接口：`GET /api/v1/models/yolox/inference-tasks/{task_id}/result`
 - 同步直返接口：`POST /api/v1/models/yolox/deployment-instances/{deployment_instance_id}/infer`
 - 同步启动接口：`POST /api/v1/models/yolox/deployment-instances/{deployment_instance_id}/sync/start`
+- 事件读取接口：`GET /api/v1/models/yolox/deployment-instances/{deployment_instance_id}/events`
+- 实时事件流：`/ws/v1/deployments/events?deployment_instance_id=...`
 - 同步状态接口：`GET /api/v1/models/yolox/deployment-instances/{deployment_instance_id}/sync/status`
 - 同步停止接口：`POST /api/v1/models/yolox/deployment-instances/{deployment_instance_id}/sync/stop`
 - 同步预热接口：`POST /api/v1/models/yolox/deployment-instances/{deployment_instance_id}/sync/warmup`

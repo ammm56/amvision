@@ -70,6 +70,8 @@ class WorkflowAppRuntimeRecord(Base):
     desired_state: Mapped[str] = mapped_column(String(32), index=True)
     observed_state: Mapped[str] = mapped_column(String(32), index=True)
     request_timeout_seconds: Mapped[int] = mapped_column(Integer, default=60)
+    heartbeat_interval_seconds: Mapped[int] = mapped_column(Integer, default=5)
+    heartbeat_timeout_seconds: Mapped[int] = mapped_column(Integer, default=15)
     created_at: Mapped[str] = mapped_column(String(64), index=True)
     updated_at: Mapped[str] = mapped_column(String(64))
     created_by: Mapped[str | None] = mapped_column(String(128), nullable=True)

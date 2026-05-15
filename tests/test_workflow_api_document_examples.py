@@ -182,7 +182,9 @@ def test_workflow_api_real_path_example_requests_are_valid() -> None:
     assert runtime_execution_policy_request["policy_kind"] == "runtime-default"
     assert runtime_execution_policy_request["metadata"]["target_surface"] == "app-runtime"
     assert "execution_policy_id" not in preview_run_request
-    assert preview_run_request["input_bindings"]["request_image"]["object_key"] == "inputs/source.jpg"
+    assert preview_run_request["input_bindings"]["request_image"]["object_key"] == (
+        "projects/project-1/inputs/source.jpg"
+    )
     assert preview_run_request["execution_metadata"]["scenario"] == "deployment-control-detection-lifecycle-real-path"
     assert "timeout_seconds" not in preview_run_request
     assert "execution_policy_id" not in app_runtime_create_request
@@ -1182,7 +1184,7 @@ def test_workflow_app_runtimes_document_clarifies_invoke_input_shapes() -> None:
     document_text = document_path.read_text(encoding="utf-8")
 
     assert "input_bindings" in document_text
-    assert '"object_key": "inputs/source.jpg"' in document_text
+    assert '"object_key": "projects/{project_id}/inputs/source.jpg"' in document_text
     assert '"image_base64": "<base64>"' in document_text
     assert '"value": {...}' in document_text
     assert "当前 multipart 上传入口只支持这类 zip 包输入" in document_text

@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "cb7a8a14-cd66-4c4a-b4a8-6382f87bf7f1",
     "name": "amvision workflow runtime api",
-    "description": "workflow runtime 当前联调 collection，覆盖 deployment_instance_id 选择、template/application save/get、execution-policies、preview-runs、app-runtimes、sync invoke、async runs 和 cancel 的最小公开接口。当前 FastAPI 默认使用通用触发入口 /api/v1/workflows/app-runtimes/{workflow_runtime_id}/invoke，FlowApplication.bindings.config.route 在现阶段仅作为绑定声明，不自动生成专用 HTTP 路由。第一到第五类正式 workflow 的分拆调试 collection 已移动到 docs/api/postman/workflows/ 目录。",
+    "description": "workflow runtime 当前联调 collection，覆盖 projects 目录与文件读取、template/application save/get/list、execution-policies、preview-runs、app-runtimes、sync invoke、async runs 和 cancel 的最小公开接口。主要列表请求已补 offset/limit 示例，响应体仍保持数组，分页信息通过 x-offset、x-limit、x-total-count、x-has-more 和 x-next-offset 返回。当前 FastAPI 默认使用通用触发入口 /api/v1/workflows/app-runtimes/{workflow_runtime_id}/invoke，FlowApplication.bindings.config.route 在现阶段仅作为绑定声明，不自动生成专用 HTTP 路由。第一到第五类正式 workflow 的分拆调试 collection 已移动到 docs/api/postman/workflows/ 目录。",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -36,7 +36,19 @@
     },
     {
       "key": "requestImageObjectKey",
-      "value": "inputs/source.jpg"
+      "value": "projects/{{projectId}}/inputs/source.jpg"
+    },
+    {
+      "key": "projectFileRelativeKey",
+      "value": "projects/{{projectId}}/inputs/source.jpg"
+    },
+    {
+      "key": "listOffset",
+      "value": "0"
+    },
+    {
+      "key": "listLimit",
+      "value": "20"
     },
     {
       "key": "previewExecutionPolicyId",
@@ -85,6 +97,10 @@
     {
       "key": "workflowRunId",
       "value": ""
+    },
+    {
+      "key": "eventLimit",
+      "value": "20"
     }
   ],
   "item": [
@@ -178,6 +194,258 @@
               ]
             },
             "description": "列出当前 Project 下可复用的 deployment_instance_id。测试脚本会尝试把第一条记录的 deployment_instance_id 回填到 collection variable；如果列表为空，说明需要先通过 deployment create API 或 workflow create 节点准备实例。"
+          },
+          "response": []
+        },
+        {
+          "name": "List Projects",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-amvision-principal-id",
+                "value": "{{principalId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-project-ids",
+                "value": "{{projectId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-scopes",
+                "value": "workflows:read,models:read",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/projects?include_summary=true&offset={{listOffset}}&limit={{listLimit}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "projects"
+              ],
+              "query": [
+                {
+                  "key": "include_summary",
+                  "value": "true"
+                },
+                {
+                  "key": "offset",
+                  "value": "{{listOffset}}"
+                },
+                {
+                  "key": "limit",
+                  "value": "{{listLimit}}"
+                }
+              ]
+            },
+            "description": "列出当前主体可见的 Project 目录项，并内联 summary。当前响应体仍是数组；分页信息从 x-offset、x-limit、x-total-count、x-has-more 和 x-next-offset 读取。"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Project Detail",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-amvision-principal-id",
+                "value": "{{principalId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-project-ids",
+                "value": "{{projectId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-scopes",
+                "value": "workflows:read,models:read",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/projects/{{projectId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "projects",
+                "{{projectId}}"
+              ]
+            },
+            "description": "读取单个 Project 的目录信息和当前 summary。"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Project File Metadata",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-amvision-principal-id",
+                "value": "{{principalId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-project-ids",
+                "value": "{{projectId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-scopes",
+                "value": "workflows:read,models:read",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/projects/{{projectId}}/files/metadata?object_key=projects/{{projectId}}/{{projectFileRelativeKey}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "projects",
+                "{{projectId}}",
+                "files",
+                "metadata"
+              ],
+              "query": [
+                {
+                  "key": "object_key",
+                  "value": "projects/{{projectId}}/{{projectFileRelativeKey}}"
+                }
+              ]
+            },
+            "description": "读取 Project 内文件的元数据和稳定 content_url。object_key 必须位于 projects/{{projectId}}/ 下，默认示例使用 {{projectFileRelativeKey}}。"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Project File Content",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-amvision-principal-id",
+                "value": "{{principalId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-project-ids",
+                "value": "{{projectId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-scopes",
+                "value": "workflows:read,models:read",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/projects/{{projectId}}/files/content?object_key=projects/{{projectId}}/{{projectFileRelativeKey}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "projects",
+                "{{projectId}}",
+                "files",
+                "content"
+              ],
+              "query": [
+                {
+                  "key": "object_key",
+                  "value": "projects/{{projectId}}/{{projectFileRelativeKey}}"
+                }
+              ]
+            },
+            "description": "直接读取 Project 内文件内容，适合图片预览或结果文件下载前联调。object_key 必须位于 projects/{{projectId}}/ 下。"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Project Summary",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-amvision-principal-id",
+                "value": "{{principalId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-project-ids",
+                "value": "{{projectId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-scopes",
+                "value": "workflows:read,models:read",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/projects/{{projectId}}/summary",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "projects",
+                "{{projectId}}",
+                "summary"
+              ]
+            },
+            "description": "读取当前 Project 的聚合 summary，作为工作台快照和 projects.events 对照面。"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Workflow Node Catalog",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-amvision-principal-id",
+                "value": "{{principalId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-project-ids",
+                "value": "{{projectId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-scopes",
+                "value": "workflows:read",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workflows/node-catalog",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workflows",
+                "node-catalog"
+              ]
+            },
+            "description": "读取当前 workflow 节点目录快照，确认节点包和公开节点类型是否已装配。"
           },
           "response": []
         },
@@ -280,6 +548,147 @@
           "response": []
         },
         {
+          "name": "List Workflow Templates",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-amvision-principal-id",
+                "value": "{{principalId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-project-ids",
+                "value": "{{projectId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-scopes",
+                "value": "workflows:read",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workflows/projects/{{projectId}}/templates?offset={{listOffset}}&limit={{listLimit}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workflows",
+                "projects",
+                "{{projectId}}",
+                "templates"
+              ],
+              "query": [
+                {
+                  "key": "offset",
+                  "value": "{{listOffset}}"
+                },
+                {
+                  "key": "limit",
+                  "value": "{{listLimit}}"
+                }
+              ]
+            },
+            "description": "列出当前 Project 下全部 workflow template 摘要，并演示统一 offset/limit 分页请求。"
+          },
+          "response": []
+        },
+        {
+          "name": "List Workflow Template Versions",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-amvision-principal-id",
+                "value": "{{principalId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-project-ids",
+                "value": "{{projectId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-scopes",
+                "value": "workflows:read",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workflows/projects/{{projectId}}/templates/{{templateId}}/versions?offset={{listOffset}}&limit={{listLimit}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workflows",
+                "projects",
+                "{{projectId}}",
+                "templates",
+                "{{templateId}}",
+                "versions"
+              ],
+              "query": [
+                {
+                  "key": "offset",
+                  "value": "{{listOffset}}"
+                },
+                {
+                  "key": "limit",
+                  "value": "{{listLimit}}"
+                }
+              ]
+            },
+            "description": "列出当前 template 的全部版本摘要，并演示统一 offset/limit 分页请求。"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Latest Workflow Template",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-amvision-principal-id",
+                "value": "{{principalId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-project-ids",
+                "value": "{{projectId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-scopes",
+                "value": "workflows:read",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workflows/projects/{{projectId}}/templates/{{templateId}}/latest",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workflows",
+                "projects",
+                "{{projectId}}",
+                "templates",
+                "{{templateId}}",
+                "latest"
+              ]
+            },
+            "description": "读取当前 template 可见的最新版本。"
+          },
+          "response": []
+        },
+        {
           "name": "Save Flow Application",
           "request": {
             "method": "PUT",
@@ -370,6 +779,55 @@
               ]
             },
             "description": "读取已保存 application，并确认 template_ref.source_uri 已被规范化到真实 template object key。"
+          },
+          "response": []
+        },
+        {
+          "name": "List Flow Applications",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-amvision-principal-id",
+                "value": "{{principalId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-project-ids",
+                "value": "{{projectId}}",
+                "type": "text"
+              },
+              {
+                "key": "x-amvision-scopes",
+                "value": "workflows:read",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workflows/projects/{{projectId}}/applications?offset={{listOffset}}&limit={{listLimit}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workflows",
+                "projects",
+                "{{projectId}}",
+                "applications"
+              ],
+              "query": [
+                {
+                  "key": "offset",
+                  "value": "{{listOffset}}"
+                },
+                {
+                  "key": "limit",
+                  "value": "{{listLimit}}"
+                }
+              ]
+            },
+            "description": "列出当前 Project 下全部 FlowApplication 摘要，并演示统一 offset/limit 分页请求。"
           },
           "response": []
         }
@@ -505,7 +963,7 @@
                   }
                 ],
                 "url": {
-                  "raw": "{{baseUrl}}/api/v1/workflows/execution-policies?project_id={{projectId}}",
+                  "raw": "{{baseUrl}}/api/v1/workflows/execution-policies?project_id={{projectId}}&offset={{listOffset}}&limit={{listLimit}}",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -519,10 +977,18 @@
                     {
                       "key": "project_id",
                       "value": "{{projectId}}"
+                    },
+                    {
+                      "key": "offset",
+                      "value": "{{listOffset}}"
+                    },
+                    {
+                      "key": "limit",
+                      "value": "{{listLimit}}"
                     }
                   ]
                 },
-                "description": "列出当前 Project 下的 WorkflowExecutionPolicy。"
+                "description": "列出当前 Project 下的 WorkflowExecutionPolicy，并演示统一 offset/limit 分页请求。"
               },
               "response": []
             },
@@ -637,6 +1103,57 @@
               "response": []
             },
             {
+              "name": "List Preview Runs",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "x-amvision-principal-id",
+                    "value": "{{principalId}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "x-amvision-project-ids",
+                    "value": "{{projectId}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "x-amvision-scopes",
+                    "value": "workflows:read",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/workflows/preview-runs?project_id={{projectId}}&offset={{listOffset}}&limit={{listLimit}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "workflows",
+                    "preview-runs"
+                  ],
+                  "query": [
+                    {
+                      "key": "project_id",
+                      "value": "{{projectId}}"
+                    },
+                    {
+                      "key": "offset",
+                      "value": "{{listOffset}}"
+                    },
+                    {
+                      "key": "limit",
+                      "value": "{{listLimit}}"
+                    }
+                  ]
+                },
+                "description": "列出当前 Project 下的 WorkflowPreviewRun，并演示统一 offset/limit 分页请求。"
+              },
+              "response": []
+            },
+            {
               "name": "Get Preview Run",
               "request": {
                 "method": "GET",
@@ -671,6 +1188,55 @@
                   ]
                 },
                 "description": "读取刚创建的 WorkflowPreviewRun。"
+              },
+              "response": []
+            },
+            {
+              "name": "Get Preview Run Events",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "x-amvision-principal-id",
+                    "value": "{{principalId}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "x-amvision-project-ids",
+                    "value": "{{projectId}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "x-amvision-scopes",
+                    "value": "workflows:read",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/workflows/preview-runs/{{previewRunId}}/events?after_sequence=0&limit={{eventLimit}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "workflows",
+                    "preview-runs",
+                    "{{previewRunId}}",
+                    "events"
+                  ],
+                  "query": [
+                    {
+                      "key": "after_sequence",
+                      "value": "0"
+                    },
+                    {
+                      "key": "limit",
+                      "value": "{{eventLimit}}"
+                    }
+                  ]
+                },
+                "description": "读取 preview run 历史事件，验证 after_sequence 和 limit 分页。"
               },
               "response": []
             }
@@ -768,7 +1334,7 @@
                   }
                 ],
                 "url": {
-                  "raw": "{{baseUrl}}/api/v1/workflows/app-runtimes?project_id={{projectId}}",
+                  "raw": "{{baseUrl}}/api/v1/workflows/app-runtimes?project_id={{projectId}}&offset={{listOffset}}&limit={{listLimit}}",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -782,10 +1348,18 @@
                     {
                       "key": "project_id",
                       "value": "{{projectId}}"
+                    },
+                    {
+                      "key": "offset",
+                      "value": "{{listOffset}}"
+                    },
+                    {
+                      "key": "limit",
+                      "value": "{{listLimit}}"
                     }
                   ]
                 },
-                "description": "列出当前 Project 下的 WorkflowAppRuntime。"
+                "description": "列出当前 Project 下的 WorkflowAppRuntime，并演示统一 offset/limit 分页请求。"
               },
               "response": []
             },
@@ -907,6 +1481,55 @@
                   ]
                 },
                 "description": "读取 runtime 当前 worker 健康状态。"
+              },
+              "response": []
+            },
+            {
+              "name": "Get App Runtime Events",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "x-amvision-principal-id",
+                    "value": "{{principalId}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "x-amvision-project-ids",
+                    "value": "{{projectId}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "x-amvision-scopes",
+                    "value": "workflows:read",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/workflows/app-runtimes/{{workflowRuntimeId}}/events?after_sequence=0&limit={{eventLimit}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "workflows",
+                    "app-runtimes",
+                    "{{workflowRuntimeId}}",
+                    "events"
+                  ],
+                  "query": [
+                    {
+                      "key": "after_sequence",
+                      "value": "0"
+                    },
+                    {
+                      "key": "limit",
+                      "value": "{{eventLimit}}"
+                    }
+                  ]
+                },
+                "description": "读取 app runtime 历史事件，验证 heartbeat 和生命周期事件的分页读取。"
               },
               "response": []
             },
@@ -1230,6 +1853,82 @@
                   ]
                 },
                 "description": "发起 DatasetImport upload runtime invoke。请求体与 docs/api/examples/workflows/00-short-dev-examples/dataset_import_upload/app-runtime.invoke.request.json 对齐。"
+              },
+              "response": []
+            },
+            {
+              "name": "Create Dataset Import Upload Async Workflow Run",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "if (pm.response.code === 201) {",
+                      "  var payload = pm.response.json();",
+                      "  if (payload.workflow_run_id) {",
+                      "    pm.collectionVariables.set('workflowRunId', payload.workflow_run_id);",
+                      "  }",
+                      "}"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "x-amvision-principal-id",
+                    "value": "{{principalId}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "x-amvision-project-ids",
+                    "value": "{{projectId}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "x-amvision-scopes",
+                    "value": "workflows:read,workflows:write",
+                    "type": "text"
+                  }
+                ],
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "request_package",
+                      "type": "file",
+                      "src": "replace-with-local-zip-path"
+                    },
+                    {
+                      "key": "input_bindings_json",
+                      "type": "text",
+                      "value": "{\n  \"request_payload\": {\n    \"value\": {\n      \"project_id\": \"{{projectId}}\",\n      \"dataset_id\": \"dataset-1\",\n      \"format_type\": \"coco-detection\",\n      \"task_type\": \"detection\"\n    }\n  }\n}"
+                    },
+                    {
+                      "key": "execution_metadata_json",
+                      "type": "text",
+                      "value": "{\n  \"scenario\": \"dataset-import-upload\",\n  \"trigger_source\": \"multipart-async-api\"\n}"
+                    }
+                  ]
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/workflows/app-runtimes/{{datasetImportWorkflowRuntimeId}}/runs/upload",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "workflows",
+                    "app-runtimes",
+                    "{{datasetImportWorkflowRuntimeId}}",
+                    "runs",
+                    "upload"
+                  ]
+                },
+                "description": "通过 multipart/form-data 创建 DatasetImport upload 异步 WorkflowRun。"
               },
               "response": []
             },
@@ -2062,6 +2761,55 @@
                   ]
                 },
                 "description": "回查当前 collection 变量 workflowRunId 指向的 WorkflowRun，通常用于 async run 轮询，也可用于 sync invoke 后补查。"
+              },
+              "response": []
+            },
+            {
+              "name": "Get Workflow Run Events",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "x-amvision-principal-id",
+                    "value": "{{principalId}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "x-amvision-project-ids",
+                    "value": "{{projectId}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "x-amvision-scopes",
+                    "value": "workflows:read",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/workflows/runs/{{workflowRunId}}/events?after_sequence=0&limit={{eventLimit}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "workflows",
+                    "runs",
+                    "{{workflowRunId}}",
+                    "events"
+                  ],
+                  "query": [
+                    {
+                      "key": "after_sequence",
+                      "value": "0"
+                    },
+                    {
+                      "key": "limit",
+                      "value": "{{eventLimit}}"
+                    }
+                  ]
+                },
+                "description": "读取 WorkflowRun 历史事件，验证 after_sequence 和 limit 分页。"
               },
               "response": []
             },

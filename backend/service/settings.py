@@ -37,6 +37,131 @@ class BackendServiceAppSettings(BaseModel):
     app_version: str = "0.1.0"
 
 
+class BackendServiceCorsConfig(BaseModel):
+    """描述 backend-service 面向浏览器调用方的 CORS 配置。
+
+    字段：
+    - enabled：是否启用 CORS 中间件。
+    - allow_origins：显式允许的 origin 列表。
+    - allow_origin_regex：可选 origin 正则；默认允许 localhost 和 127.0.0.1。
+    - allow_credentials：是否允许浏览器发送凭证。
+    - allow_methods：允许的 HTTP 方法列表。
+    - allow_headers：允许的请求头列表。
+    - expose_headers：浏览器端可读取的响应头列表。
+    """
+
+    enabled: bool = True
+    allow_origins: list[str] = Field(default_factory=list)
+    allow_origin_regex: str | None = Field(
+        default=r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$"
+    )
+    allow_credentials: bool = True
+    allow_methods: list[str] = Field(default_factory=lambda: ["*"])
+    allow_headers: list[str] = Field(default_factory=lambda: ["*"])
+    expose_headers: list[str] = Field(
+        default_factory=lambda: [
+            "x-request-id",
+            "x-offset",
+            "x-limit",
+            "x-total-count",
+            "x-has-more",
+            "x-next-offset",
+        ]
+    )
+
+
+class BackendServiceStaticAccessTokenConfig(BaseModel):
+    """描述一个静态 access token 对应的主体配置。
+
+    字段：
+    - token：Bearer token 明文。
+    - principal_id：绑定的主体 id。
+    - principal_type：主体类型。
+    - project_ids：该 token 可访问的 Project id 列表。
+    - scopes：该 token 持有的 scopes。
+    - metadata：附加主体元数据。
+    """
+
+    token: str = Field(description="Bearer token 明文")
+    principal_id: str = Field(description="主体 id")
+    principal_type: str = Field(default="user", description="主体类型")
+    project_ids: list[str] = Field(default_factory=list, description="允许访问的 Project id 列表")
+    scopes: list[str] = Field(default_factory=list, description="当前 token 持有的 scopes")
+    metadata: dict[str, object] = Field(default_factory=dict, description="附加主体元数据")
+
+
+class BackendServiceAuthConfig(BaseModel):
+    """描述 backend-service 当前阶段使用的鉴权配置。
+
+    字段：
+    - mode：鉴权模式；支持 development-headers、static-bearer、hybrid。
+    - allow_development_headers：在 hybrid 或 development-headers 模式下是否允许开发头。
+    - websocket_query_token_enabled：是否允许 WebSocket 使用 access_token 查询参数。
+    - static_tokens：静态 Bearer token 列表。
+    """
+
+    mode: str = Field(default="hybrid", description="鉴权模式")
+    allow_development_headers: bool = Field(default=True, description="是否允许开发头鉴权")
+    websocket_query_token_enabled: bool = Field(
+        default=True,
+        description="是否允许 WebSocket 使用 access_token 查询参数",
+    )
+    static_tokens: list[BackendServiceStaticAccessTokenConfig] = Field(
+        default_factory=list,
+        description="静态 Bearer token 列表",
+    )
+
+    def bearer_auth_enabled(self) -> bool:
+        """判断当前配置是否启用了 Bearer token 鉴权。
+
+        返回：
+        - bool：当当前模式允许 Bearer token 时返回 True。
+        """
+
+        return self.mode in {"static-bearer", "hybrid"}
+
+    def development_headers_enabled(self) -> bool:
+        """判断当前配置是否启用了开发头鉴权。
+
+        返回：
+        - bool：当当前模式允许开发头且开关开启时返回 True。
+        """
+
+        return self.allow_development_headers and self.mode in {
+            "development-headers",
+            "hybrid",
+        }
+
+
+class BackendServiceProjectCatalogItemConfig(BaseModel):
+    """描述一个可对外公开的 Project 目录项。
+
+    字段：
+    - project_id：Project id。
+    - display_name：展示名称。
+    - description：项目说明。
+    - metadata：附加元数据。
+    """
+
+    project_id: str = Field(description="Project id")
+    display_name: str | None = Field(default=None, description="展示名称")
+    description: str | None = Field(default=None, description="项目说明")
+    metadata: dict[str, object] = Field(default_factory=dict, description="附加元数据")
+
+
+class BackendServiceProjectsConfig(BaseModel):
+    """描述 backend-service 当前公开的 Project 目录配置。
+
+    字段：
+    - items：Project 目录项列表。
+    """
+
+    items: list[BackendServiceProjectCatalogItemConfig] = Field(
+        default_factory=list,
+        description="Project 目录项列表",
+    )
+
+
 class BackendServiceDatabaseConfig(BaseModel):
     """描述 backend-service 使用的数据库配置。
 
@@ -102,6 +227,9 @@ class BackendServiceSettings(BaseSettings):
 
     字段：
     - app：FastAPI 应用基础配置。
+    - cors：浏览器跨域访问配置。
+    - auth：当前阶段鉴权配置。
+    - projects：Project 公开目录配置。
     - database：数据库连接配置。
     - dataset_storage：本地数据集文件存储配置。
     - queue：本地任务队列配置。
@@ -118,6 +246,9 @@ class BackendServiceSettings(BaseSettings):
     )
 
     app: BackendServiceAppSettings = Field(default_factory=BackendServiceAppSettings)
+    cors: BackendServiceCorsConfig = Field(default_factory=BackendServiceCorsConfig)
+    auth: BackendServiceAuthConfig = Field(default_factory=BackendServiceAuthConfig)
+    projects: BackendServiceProjectsConfig = Field(default_factory=BackendServiceProjectsConfig)
     database: BackendServiceDatabaseConfig = Field(default_factory=BackendServiceDatabaseConfig)
     dataset_storage: BackendServiceDatasetStorageConfig = Field(
         default_factory=BackendServiceDatasetStorageConfig

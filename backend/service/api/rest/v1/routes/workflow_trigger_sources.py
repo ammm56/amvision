@@ -10,6 +10,11 @@ from pydantic import BaseModel, Field
 from backend.contracts.workflows import WorkflowTriggerSourceContract
 from backend.nodes.node_catalog_registry import NodeCatalogRegistry
 from backend.service.api.deps.auth import AuthenticatedPrincipal, require_scopes
+from backend.service.api.rest.v1.pagination import (
+    DEFAULT_LIST_LIMIT,
+    MAX_LIST_LIMIT,
+    paginate_sequence,
+)
 from backend.service.application.errors import (
     PermissionDeniedError,
     ResourceNotFoundError,
@@ -139,9 +144,12 @@ def create_workflow_trigger_source(
 def list_workflow_trigger_sources(
     project_id: Annotated[str, Query(description="所属 Project id")],
     request: Request,
+    response: Response,
     principal: Annotated[
         AuthenticatedPrincipal, Depends(require_scopes("workflows:read"))
     ],
+    offset: Annotated[int, Query(ge=0, description="结果偏移量")] = 0,
+    limit: Annotated[int, Query(ge=1, le=MAX_LIST_LIMIT, description="最大返回数量")] = DEFAULT_LIST_LIMIT,
 ) -> list[WorkflowTriggerSourceContract]:
     """按 Project id 列出 WorkflowTriggerSource。"""
 
@@ -149,7 +157,8 @@ def list_workflow_trigger_sources(
     trigger_sources = _build_trigger_source_service(request).list_trigger_sources(
         project_id=project_id
     )
-    return [_build_trigger_source_contract(item, request=request) for item in trigger_sources]
+    paged_items = paginate_sequence(trigger_sources, response=response, offset=offset, limit=limit)
+    return [_build_trigger_source_contract(item, request=request) for item in paged_items]
 
 
 @workflow_trigger_sources_router.get(
@@ -375,7 +384,7 @@ def _build_trigger_source_contract(
 
 
 def _build_workflow_json_service_from_request(request: Request) -> LocalWorkflowJsonService:
-    """基于 application.state 构建 workflow authoring 文件服务。"""
+    """基于 application.state 构建 workflow 图编排文件服务。"""
 
     return LocalWorkflowJsonService(
         dataset_storage=_require_dataset_storage(request),

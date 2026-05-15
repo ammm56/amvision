@@ -2,16 +2,16 @@
 
 ## 文档目的
 
-本文档用于说明当前已经公开的 workflow template、FlowApplication、node catalog 和 workflow runtime 第一阶段接口边界。
+本文档用于说明当前已经公开的 workflow template、FlowApplication、node catalog 和 workflow runtime 正式接口边界。
 
 本文档聚焦对外接口规则、真实存储路径和最小请求体例子，不展开执行器内部实现细节。
 
 ## 适用范围
 
-- workflow template validate、save、get、list、version browse、delete version 接口
-- FlowApplication validate、save、get、list、delete 接口
+- workflow template validate、save、get、list、latest、copy、version browse、delete version 接口
+- FlowApplication validate、save、get、list、copy、delete 接口
 - workflow node catalog 读取、过滤和 palette 分组结果
-- WorkflowPreviewRun、WorkflowAppRuntime、WorkflowRun 的第一阶段公开边界
+- WorkflowPreviewRun、WorkflowAppRuntime、WorkflowRun、execution policy 和实时事件流的当前公开边界
 - workflow 请求头鉴权规则
 - workflow service 节点语义分组
 - 真实 workflow object key 路径
@@ -19,7 +19,7 @@
 
 ## 相关 runtime 文档
 
-workflow runtime 控制面当前已经公开 preview-runs、app-runtimes、runs 和 execution-policies 四类路径；其余扩展设计继续保留在独立草案文档中。
+workflow runtime 控制面当前已经公开 preview-runs、app-runtimes、runs、execution-policies 和对应 WebSocket 事件流；其余扩展设计继续保留在独立草案文档中。
 
 当前公开接口与后续扩展的导航页见 [docs/api/workflow-runtime-drafts.md](workflow-runtime-drafts.md)。
 
@@ -276,28 +276,44 @@ workflow runtime 控制面当前已经公开 preview-runs、app-runtimes、runs 
 - 当前 backend-service 不会在保存 application 后自动生成同名专用 FastAPI 路由。
 - 现阶段 FastAPI 默认触发入口仍是通用 runtime invoke：`POST /api/v1/workflows/app-runtimes/{workflow_runtime_id}/invoke`。
 
-## workflow runtime phase1 当前公开路径
+## workflow runtime 当前公开路径
 
-- POST /api/v1/workflows/preview-runs：创建并同步执行一次 WorkflowPreviewRun
+- POST /api/v1/workflows/preview-runs：创建一条 WorkflowPreviewRun，支持 sync/async wait_mode
 - GET /api/v1/workflows/preview-runs：按 Project 列出 WorkflowPreviewRun，并支持 state、created_from、created_to 过滤
 - GET /api/v1/workflows/preview-runs/{preview_run_id}：读取一条 WorkflowPreviewRun
+- GET /api/v1/workflows/preview-runs/{preview_run_id}/events：读取 preview run 事件历史，支持 after_sequence 和 limit
+- POST /api/v1/workflows/preview-runs/{preview_run_id}/cancel：取消 queued 或 running 的 preview run
 - DELETE /api/v1/workflows/preview-runs/{preview_run_id}：删除一条 WorkflowPreviewRun 和对应 snapshot 目录
+- POST /api/v1/workflows/execution-policies：创建一条 WorkflowExecutionPolicy
+- GET /api/v1/workflows/execution-policies：按 Project 列出 WorkflowExecutionPolicy
+- GET /api/v1/workflows/execution-policies/{execution_policy_id}：读取一条 WorkflowExecutionPolicy
 - POST /api/v1/workflows/app-runtimes：创建一条 WorkflowAppRuntime
 - GET /api/v1/workflows/app-runtimes：按 Project 列出 WorkflowAppRuntime
 - GET /api/v1/workflows/app-runtimes/{workflow_runtime_id}：读取一条 WorkflowAppRuntime
+- GET /api/v1/workflows/app-runtimes/{workflow_runtime_id}/events：读取 app runtime 事件历史，支持 after_sequence 和 limit
 - POST /api/v1/workflows/app-runtimes/{workflow_runtime_id}/start：启动单实例 runtime worker
 - POST /api/v1/workflows/app-runtimes/{workflow_runtime_id}/stop：停止单实例 runtime worker
+- POST /api/v1/workflows/app-runtimes/{workflow_runtime_id}/restart：重启单实例 runtime worker
 - GET /api/v1/workflows/app-runtimes/{workflow_runtime_id}/health：查询 runtime 当前健康状态
+- GET /api/v1/workflows/app-runtimes/{workflow_runtime_id}/instances：读取 runtime 当前实例摘要
 - POST /api/v1/workflows/app-runtimes/{workflow_runtime_id}/invoke：通过 runtime 发起一次同步调用
+- POST /api/v1/workflows/app-runtimes/{workflow_runtime_id}/invoke/upload：通过 multipart/form-data 发起一次同步调用
+- POST /api/v1/workflows/app-runtimes/{workflow_runtime_id}/runs：创建一条异步 WorkflowRun
+- POST /api/v1/workflows/app-runtimes/{workflow_runtime_id}/runs/upload：通过 multipart/form-data 创建一条异步 WorkflowRun
 - GET /api/v1/workflows/runs/{workflow_run_id}：读取一条 WorkflowRun
+- GET /api/v1/workflows/runs/{workflow_run_id}/events：读取 WorkflowRun 事件历史，支持 after_sequence 和 limit
+- POST /api/v1/workflows/runs/{workflow_run_id}/cancel：取消一条异步 WorkflowRun
+- /ws/v1/workflows/preview-runs/events：订阅 preview run 实时事件
+- /ws/v1/workflows/app-runtimes/events：订阅 app runtime 实时事件
+- /ws/v1/workflows/runs/events：订阅 WorkflowRun 实时事件
 
-这组路径的字段、状态和最小返回规则见 [docs/api/current-api.md](current-api.md) 与 [docs/architecture/workflow-runtime-phase1.md](../architecture/workflow-runtime-phase1.md)。
+这组路径的字段、状态和最小返回规则见 [docs/api/current-api.md](current-api.md)、[docs/api/workflow-preview-runs.md](workflow-preview-runs.md)、[docs/api/workflow-app-runtimes.md](workflow-app-runtimes.md)、[docs/api/workflow-runs.md](workflow-runs.md) 和 [docs/architecture/websocket-architecture.md](../architecture/websocket-architecture.md)。
 
 ## 当前边界说明
 
 - 旧的 FlowApplication execute 路由已经删除，不再作为公开兼容入口。
 - 编辑态试跑与已发布应用运行已经拆成 PreviewRun、AppRuntime、WorkflowRun 三类资源。
-- 第一阶段已支持 preview run 的列表、删除和基础过滤；app runtime 仍以单实例、start、stop、health、sync invoke 为主。
+- 当前公开面已经覆盖 execution policy、preview run 事件分页、app runtime restart/instances、WorkflowRun 事件分页，以及 preview-run、run、app-runtime 三类 WebSocket 实时观察路径。
 
 ## 常见调试点
 
@@ -321,3 +337,4 @@ workflow runtime 控制面当前已经公开 preview-runs、app-runtimes、runs 
 - [docs/api/current-api.md](current-api.md)
 - [docs/architecture/workflow-json-contracts.md](../architecture/workflow-json-contracts.md)
 - [docs/architecture/workflow-runtime-phase1.md](../architecture/workflow-runtime-phase1.md)
+- [docs/architecture/websocket-architecture.md](../architecture/websocket-architecture.md)

@@ -143,6 +143,85 @@ class NodePortDefinition(BaseModel):
         return self
 
 
+class NodeParameterUiGroup(BaseModel):
+    """描述节点参数编辑器中的一个稳定分组。"""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    group_id: str
+    display_name: str
+    description: str = ""
+    order: int = 0
+
+    @model_validator(mode="after")
+    def validate_group(self) -> NodeParameterUiGroup:
+        """校验参数分组定义。"""
+
+        _require_stripped_text(self.group_id, "group_id")
+        _require_stripped_text(self.display_name, "display_name")
+        return self
+
+
+class NodeParameterUiEnumOption(BaseModel):
+    """描述节点参数枚举值在编辑器中的展示文本。"""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    value: object | None = None
+    label: str
+
+    @model_validator(mode="after")
+    def validate_option(self) -> NodeParameterUiEnumOption:
+        """校验枚举选项展示定义。"""
+
+        _require_stripped_text(self.label, "label")
+        return self
+
+
+class NodeParameterUiField(BaseModel):
+    """描述节点参数在编辑器中的稳定渲染约束。"""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    parameter_name: str
+    display_name: str
+    description: str = ""
+    group_id: str = "default"
+    order: int = 0
+    required: bool = False
+    hidden: bool = False
+    readonly: bool = False
+    default_value: object | None = None
+    enum_options: tuple[NodeParameterUiEnumOption, ...] = ()
+    json_schema: dict[str, object] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def validate_field(self) -> NodeParameterUiField:
+        """校验参数渲染约束字段。"""
+
+        _require_stripped_text(self.parameter_name, "parameter_name")
+        _require_stripped_text(self.display_name, "display_name")
+        _require_stripped_text(self.group_id, "group_id")
+        return self
+
+
+class NodeParameterUiSchema(BaseModel):
+    """描述节点参数编辑器可以直接消费的稳定 UI 合同。"""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    groups: tuple[NodeParameterUiGroup, ...] = ()
+    fields: tuple[NodeParameterUiField, ...] = ()
+
+    @model_validator(mode="after")
+    def validate_schema(self) -> NodeParameterUiSchema:
+        """校验参数 UI 合同内部唯一性。"""
+
+        _ensure_unique_names(tuple(item.group_id for item in self.groups), "节点参数分组")
+        _ensure_unique_names(tuple(item.parameter_name for item in self.fields), "节点参数字段")
+        return self
+
+
 class NodeDefinition(BaseModel):
     """描述一个可注册到节点目录中的稳定节点定义。
 
@@ -157,6 +236,7 @@ class NodeDefinition(BaseModel):
     - input_ports：输入端口列表。
     - output_ports：输出端口列表。
     - parameter_schema：参数 schema。
+    - parameter_ui_schema：参数编辑器稳定 UI 合同。
     - capability_tags：能力标签列表。
     - runtime_requirements：运行依赖，例如 opencv-python、numpy 或特定 worker profile。
     - node_pack_id：当节点来自节点包时，对应节点包 id。
@@ -180,6 +260,7 @@ class NodeDefinition(BaseModel):
     input_ports: tuple[NodePortDefinition, ...] = ()
     output_ports: tuple[NodePortDefinition, ...] = ()
     parameter_schema: dict[str, object] = Field(default_factory=dict)
+    parameter_ui_schema: NodeParameterUiSchema | None = None
     capability_tags: tuple[str, ...] = ()
     runtime_requirements: dict[str, object] = Field(default_factory=dict)
     node_pack_id: str | None = None
