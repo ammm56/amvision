@@ -1,0 +1,821 @@
+{
+  "info": {
+    "_postman_id": "ce81a1d2-bdc9-4b2c-99e8-a7b055ea63a8",
+    "name": "amvision local auth api",
+    "description": "当前公开的本地用户、权限管理、session/refresh token 与长期调用 user token 接口集合。当前 local 是唯一完整可用的账号 provider；在线 provider 只保留目录发现边界。collection 覆盖 provider 目录、bootstrap、login、refresh、用户管理、密码重置、token 管理和 system/me 最小联调链路。auth.events WebSocket 调试见 docs/api/websocket-usage.md。 需要按当前环境填写实际账号或 token。",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Auth Catalog And Sessions",
+      "item": [
+        {
+          "name": "Get Auth Providers",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/providers",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "providers"
+              ]
+            },
+            "description": "读取当前公开可发现的 auth provider 目录。当前应把 provider_id=local 视为唯一完整可用的 provider。"
+          },
+          "response": []
+        },
+        {
+          "name": "Bootstrap Admin",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  var payload = pm.response.json();",
+                  "  if (payload.session_id) pm.collectionVariables.set('sessionId', payload.session_id);",
+                  "  if (payload.access_token) pm.collectionVariables.set('accessToken', payload.access_token);",
+                  "  if (payload.refresh_token) pm.collectionVariables.set('refreshToken', payload.refresh_token);",
+                  "  if (payload.user && payload.user.user_id) pm.collectionVariables.set('userId', payload.user.user_id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{username}}\",\n  \"password\": \"{{password}}\",\n  \"display_name\": \"{{displayName}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/bootstrap-admin",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "bootstrap-admin"
+              ]
+            },
+            "description": "当本地用户表为空时初始化首个管理员。已经 bootstrap 过的环境应改用 Login Admin。"
+          },
+          "response": []
+        },
+        {
+          "name": "Login Admin",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  var payload = pm.response.json();",
+                  "  if (payload.session_id) pm.collectionVariables.set('sessionId', payload.session_id);",
+                  "  if (payload.access_token) pm.collectionVariables.set('accessToken', payload.access_token);",
+                  "  if (payload.refresh_token) pm.collectionVariables.set('refreshToken', payload.refresh_token);",
+                  "  if (payload.user && payload.user.user_id) pm.collectionVariables.set('userId', payload.user.user_id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"provider_id\": \"{{providerId}}\",\n  \"username\": \"{{username}}\",\n  \"password\": \"{{password}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "login"
+              ]
+            },
+            "description": "使用 local provider 的 password login 登录管理员账号。"
+          },
+          "response": []
+        },
+        {
+          "name": "Refresh Admin Session",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  var payload = pm.response.json();",
+                  "  if (payload.session_id) pm.collectionVariables.set('sessionId', payload.session_id);",
+                  "  if (payload.access_token) pm.collectionVariables.set('accessToken', payload.access_token);",
+                  "  if (payload.refresh_token) pm.collectionVariables.set('refreshToken', payload.refresh_token);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refresh_token\": \"{{refreshToken}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/refresh",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "refresh"
+              ]
+            },
+            "description": "使用当前管理员 refresh token 换取一组新的登录会话凭据。"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Current Principal With Admin Session",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/system/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "system",
+                "me"
+              ]
+            },
+            "description": "查看当前管理员会话解析结果，重点确认 auth_provider_id、auth_credential_kind 和 scope。"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Local Users",
+      "item": [
+        {
+          "name": "List Local Users",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/users",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "users"
+              ]
+            },
+            "description": "列出当前全部本地用户。"
+          },
+          "response": []
+        },
+        {
+          "name": "Create Managed User",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  var payload = pm.response.json();",
+                  "  if (payload.user && payload.user.user_id) pm.collectionVariables.set('managedUserId', payload.user.user_id);",
+                  "  pm.collectionVariables.set('managedCurrentPassword', pm.collectionVariables.get('managedInitialPassword'));",
+                  "  if (payload.initial_user_token) {",
+                  "    if (payload.initial_user_token.token_id) pm.collectionVariables.set('managedDefaultUserTokenId', payload.initial_user_token.token_id);",
+                  "    if (payload.initial_user_token.token_name) pm.collectionVariables.set('managedDefaultUserTokenName', payload.initial_user_token.token_name);",
+                  "    if (payload.initial_user_token.token) pm.collectionVariables.set('managedDefaultUserToken', payload.initial_user_token.token);",
+                  "  }",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{managedUsername}}\",\n  \"password\": \"{{managedInitialPassword}}\",\n  \"display_name\": \"{{managedDisplayName}}\",\n  \"principal_type\": \"user\",\n  \"project_ids\": [\n    \"project-1\"\n  ],\n  \"scopes\": [\n    \"workflows:read\"\n  ],\n  \"metadata\": {\n    \"source\": \"postman\",\n    \"channel\": \"workstation\"\n  },\n  \"initial_user_token\": {\n    \"enabled\": true,\n    \"token_name\": \"default\",\n    \"metadata\": {\n      \"channel\": \"workstation\"\n    }\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/users",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "users"
+              ]
+            },
+            "description": "创建一个带默认长期调用 token 的本地用户。测试脚本会自动保存 user_id 和 default user token。"
+          },
+          "response": []
+        },
+        {
+          "name": "Update Managed User Permissions",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"display_name\": \"Line Operator Updated\",\n  \"project_ids\": [\n    \"project-1\",\n    \"project-2\"\n  ],\n  \"scopes\": [\n    \"workflows:read\",\n    \"tasks:read\"\n  ],\n  \"is_active\": true,\n  \"metadata\": {\n    \"source\": \"postman\",\n    \"channel\": \"workstation\",\n    \"updated_by\": \"manual-debug\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/users/{{managedUserId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "users",
+                "{{managedUserId}}"
+              ]
+            },
+            "description": "更新本地用户的展示名称、Project 可见性、scope 和 metadata。"
+          },
+          "response": []
+        },
+        {
+          "name": "Reset Managed User Password",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  pm.collectionVariables.set('managedCurrentPassword', pm.collectionVariables.get('managedResetPassword'));",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"new_password\": \"{{managedResetPassword}}\",\n  \"revoke_sessions\": true,\n  \"revoke_user_tokens\": false\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/users/{{managedUserId}}/reset-password",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "users",
+                "{{managedUserId}}",
+                "reset-password"
+              ]
+            },
+            "description": "重置本地用户密码，同时撤销该用户当前全部登录会话；长期调用 token 继续保留。"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Managed Sessions And Tokens",
+      "item": [
+        {
+          "name": "Login Managed User",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  var payload = pm.response.json();",
+                  "  if (payload.session_id) pm.collectionVariables.set('managedSessionId', payload.session_id);",
+                  "  if (payload.access_token) pm.collectionVariables.set('managedAccessToken', payload.access_token);",
+                  "  if (payload.refresh_token) pm.collectionVariables.set('managedRefreshToken', payload.refresh_token);",
+                  "  if (payload.user && payload.user.user_id) pm.collectionVariables.set('managedUserId', payload.user.user_id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"provider_id\": \"{{providerId}}\",\n  \"username\": \"{{managedUsername}}\",\n  \"password\": \"{{managedCurrentPassword}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "login"
+              ]
+            },
+            "description": "使用当前测试用户密码登录。默认先使用初始密码；执行 Reset Managed User Password 后会自动切到新密码。"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Current Principal With Managed Session",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{managedAccessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/system/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "system",
+                "me"
+              ]
+            },
+            "description": "查看普通本地用户登录会话的主体解析结果，确认 auth_provider_id=local 且 auth_credential_kind=session。"
+          },
+          "response": []
+        },
+        {
+          "name": "List Managed User Tokens",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/users/{{managedUserId}}/tokens",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "users",
+                "{{managedUserId}}",
+                "tokens"
+              ]
+            },
+            "description": "列出指定本地用户的长期调用 token 摘要；返回值不包含 token 明文。"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Current Principal With Default User Token",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{managedDefaultUserToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/system/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "system",
+                "me"
+              ]
+            },
+            "description": "使用创建用户时默认签发的长期调用 token 访问 system/me，确认 auth_credential_kind=user-token。"
+          },
+          "response": []
+        },
+        {
+          "name": "Create Extra Managed User Token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  var payload = pm.response.json();",
+                  "  if (payload.token_id) pm.collectionVariables.set('managedExtraTokenId', payload.token_id);",
+                  "  if (payload.token_name) pm.collectionVariables.set('managedExtraTokenName', payload.token_name);",
+                  "  if (payload.token) pm.collectionVariables.set('managedExtraToken', payload.token);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token_name\": \"{{managedExtraTokenName}}\",\n  \"ttl_hours\": 24,\n  \"metadata\": {\n    \"channel\": \"robot\",\n    \"source\": \"postman\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/users/{{managedUserId}}/tokens",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "users",
+                "{{managedUserId}}",
+                "tokens"
+              ]
+            },
+            "description": "为指定本地用户额外签发一个长期调用 token。测试脚本会保存 token_id 和一次性 token 明文。"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Current Principal With Extra User Token",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{managedExtraToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/system/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "system",
+                "me"
+              ]
+            },
+            "description": "使用额外签发的长期调用 token 访问 system/me。"
+          },
+          "response": []
+        },
+        {
+          "name": "Revoke Extra Managed User Token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 204) {",
+                  "  pm.collectionVariables.unset('managedExtraToken');",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/users/{{managedUserId}}/tokens/{{managedExtraTokenId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "users",
+                "{{managedUserId}}",
+                "tokens",
+                "{{managedExtraTokenId}}"
+              ]
+            },
+            "description": "撤销额外签发的长期调用 token。"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Cleanup",
+      "item": [
+        {
+          "name": "Delete Managed User",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 204) {",
+                  "  pm.collectionVariables.unset('managedUserId');",
+                  "  pm.collectionVariables.unset('managedSessionId');",
+                  "  pm.collectionVariables.unset('managedAccessToken');",
+                  "  pm.collectionVariables.unset('managedRefreshToken');",
+                  "  pm.collectionVariables.unset('managedDefaultUserTokenId');",
+                  "  pm.collectionVariables.unset('managedDefaultUserToken');",
+                  "  pm.collectionVariables.unset('managedExtraTokenId');",
+                  "  pm.collectionVariables.unset('managedExtraToken');",
+                  "  pm.collectionVariables.set('managedCurrentPassword', pm.collectionVariables.get('managedInitialPassword'));",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/users/{{managedUserId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "users",
+                "{{managedUserId}}"
+              ]
+            },
+            "description": "删除测试用本地用户，并级联清理其登录会话、refresh token 和长期调用 token。"
+          },
+          "response": []
+        },
+        {
+          "name": "Logout Admin Session",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/logout",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "logout"
+              ]
+            },
+            "description": "撤销当前管理员登录会话。执行后如果还要继续联调，需要重新运行 Login Admin。"
+          },
+          "response": []
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://127.0.0.1:8000"
+    },
+    {
+      "key": "providerId",
+      "value": "local"
+    },
+    {
+      "key": "username",
+      "value": "amvar"
+    },
+    {
+      "key": "password",
+      "value": "123456"
+    },
+    {
+      "key": "displayName",
+      "value": "amvar"
+    },
+    {
+      "key": "userId",
+      "value": ""
+    },
+    {
+      "key": "sessionId",
+      "value": ""
+    },
+    {
+      "key": "accessToken",
+      "value": "amvision-default-user-token"
+    },
+    {
+      "key": "refreshToken",
+      "value": ""
+    },
+    {
+      "key": "managedUsername",
+      "value": "operator"
+    },
+    {
+      "key": "managedInitialPassword",
+      "value": "Operator12345"
+    },
+    {
+      "key": "managedCurrentPassword",
+      "value": "Operator12345"
+    },
+    {
+      "key": "managedResetPassword",
+      "value": "Operator98765"
+    },
+    {
+      "key": "managedDisplayName",
+      "value": "Line Operator"
+    },
+    {
+      "key": "managedUserId",
+      "value": ""
+    },
+    {
+      "key": "managedSessionId",
+      "value": ""
+    },
+    {
+      "key": "managedAccessToken",
+      "value": ""
+    },
+    {
+      "key": "managedRefreshToken",
+      "value": ""
+    },
+    {
+      "key": "managedDefaultUserTokenId",
+      "value": ""
+    },
+    {
+      "key": "managedDefaultUserTokenName",
+      "value": "default"
+    },
+    {
+      "key": "managedDefaultUserToken",
+      "value": ""
+    },
+    {
+      "key": "managedExtraTokenId",
+      "value": ""
+    },
+    {
+      "key": "managedExtraTokenName",
+      "value": "robot"
+    },
+    {
+      "key": "managedExtraToken",
+      "value": ""
+    }
+  ]
+}

@@ -65,6 +65,11 @@ class WorkflowRuntimeRepository(Protocol):
 
         ...
 
+    def delete_workflow_app_runtime(self, workflow_runtime_id: str) -> None:
+        """按 id 删除一个 WorkflowAppRuntime。"""
+
+        ...
+
     def save_workflow_run(self, workflow_run: WorkflowRun) -> None:
         """保存一个 WorkflowRun。"""
 

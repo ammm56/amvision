@@ -10,6 +10,11 @@ from fastapi.testclient import TestClient
 
 from backend.queue import LocalFileQueueBackend, LocalFileQueueSettings
 from backend.service.api.app import create_app
+from backend.service.application.auth.default_local_auth_seeder import (
+    DEFAULT_LOCAL_AUTH_TOKEN,
+    DEFAULT_LOCAL_AUTH_USERNAME,
+)
+from backend.service.application.auth.local_auth_service import LocalAuthService, LocalAuthUserCreateRequest
 from backend.service.infrastructure.db.session import DatabaseSettings, SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     DatasetStorageSettings,
@@ -22,6 +27,8 @@ from backend.service.settings import BackendServiceSettings, BackendServiceTaskM
 _VALID_TEST_IMAGE_BASE64 = (
     "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAE0lEQVQIHWNk+M8ABIwM/xmAAAAREgIB9FemLQAAAABJRU5ErkJggg=="
 )
+_DEFAULT_TEST_AUTH_TOKEN = DEFAULT_LOCAL_AUTH_TOKEN
+_DEFAULT_TEST_AUTH_USERNAME = DEFAULT_LOCAL_AUTH_USERNAME
 
 
 @dataclass(frozen=True)
@@ -110,23 +117,91 @@ def create_api_test_context(
     )
 
 
-def build_test_headers(*, scopes: str, principal_id: str = "user-1", project_ids: str = "project-1") -> dict[str, str]:
-    """构建测试请求头。
+def build_test_headers(*, scopes: str) -> dict[str, str]:
+    """构建默认本地测试用户的 Bearer 请求头。
 
     参数：
-    - scopes：请求头里的 scopes 字符串。
-    - principal_id：请求头里的 principal id。
-    - project_ids：请求头里的 project ids。
+    - scopes：保留给调用点表达预期权限范围；当前默认本地测试用户始终持有全部 scopes。
 
     返回：
-    - dict[str, str]：统一格式的测试请求头。
+    - dict[str, str]：统一格式的 Bearer 鉴权请求头。
     """
 
-    return {
-        "x-amvision-principal-id": principal_id,
-        "x-amvision-project-ids": project_ids,
-        "x-amvision-scopes": scopes,
-    }
+    _ = scopes
+    return build_bearer_headers(_DEFAULT_TEST_AUTH_TOKEN)
+
+
+def build_bearer_headers(token: str) -> dict[str, str]:
+    """按显式 Bearer token 构建测试请求头。
+
+    参数：
+    - token：要发送的 Bearer token 明文。
+
+    返回：
+    - dict[str, str]：带 Authorization 头的请求头字典。
+    """
+
+    return {"Authorization": f"Bearer {token}"}
+
+
+def get_default_test_principal_id(session_factory: SessionFactory) -> str:
+    """解析默认本地测试用户当前实际 principal_id。
+
+    参数：
+    - session_factory：测试数据库会话工厂。
+
+    返回：
+    - str：默认本地测试用户当前解析得到的 user_id。
+    """
+
+    service = LocalAuthService(settings=BackendServiceSettings(), session_factory=session_factory)
+    resolved_credential = service.resolve_bearer_token(_DEFAULT_TEST_AUTH_TOKEN)
+    if resolved_credential is None:
+        raise AssertionError("默认本地测试用户尚未初始化")
+    if resolved_credential.user.username != _DEFAULT_TEST_AUTH_USERNAME:
+        raise AssertionError("默认本地测试用户与预期用户名不一致")
+    return resolved_credential.user.user_id
+
+
+def issue_test_user_token(
+    session_factory: SessionFactory,
+    *,
+    username: str,
+    scopes: tuple[str, ...],
+    project_ids: tuple[str, ...] = (),
+    password: str = "123456",
+    display_name: str | None = None,
+    principal_type: str = "user",
+) -> str:
+    """为测试数据库签发一个受限本地 user token。
+
+    参数：
+    - session_factory：测试数据库会话工厂。
+    - username：要创建的本地用户名。
+    - scopes：要授予该测试用户的 scopes。
+    - project_ids：要授予该测试用户的 Project 可见范围。
+    - password：测试用户密码。
+    - display_name：可选展示名称。
+    - principal_type：主体类型。
+
+    返回：
+    - str：新签发的长期调用 user token 明文。
+    """
+
+    service = LocalAuthService(settings=BackendServiceSettings(), session_factory=session_factory)
+    result = service.create_user(
+        LocalAuthUserCreateRequest(
+            username=username,
+            password=password,
+            display_name=display_name,
+            principal_type=principal_type,
+            project_ids=project_ids,
+            scopes=scopes,
+        )
+    )
+    if result.initial_user_token is None:
+        raise AssertionError("测试用户未返回默认长期调用 token")
+    return result.initial_user_token.token
 
 
 def build_valid_test_png_bytes() -> bytes:

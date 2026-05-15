@@ -8,7 +8,11 @@ from uuid import uuid4
 from backend.service.domain.workflows.workflow_runtime_records import WorkflowAppRuntime
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
-from tests.api_test_support import build_test_headers, create_api_test_context
+from tests.api_test_support import (
+    build_test_headers,
+    create_api_test_context,
+    get_default_test_principal_id,
+)
 
 
 def test_workflow_trigger_source_api_manages_first_phase_resource(
@@ -113,6 +117,7 @@ def test_workflow_trigger_source_api_manages_first_phase_resource(
                     },
                 },
             )
+            default_principal_id = get_default_test_principal_id(context.session_factory)
     finally:
         context.session_factory.engine.dispose()
 
@@ -123,7 +128,7 @@ def test_workflow_trigger_source_api_manages_first_phase_resource(
     assert create_payload["trigger_source_id"] == "trigger-source-1"
     assert create_payload["enabled"] is False
     assert create_payload["observed_state"] == "stopped"
-    assert create_payload["updated_by"] == "user-1"
+    assert create_payload["updated_by"] == default_principal_id
     assert create_payload["runtime_summary"]["workflow_runtime_id"] == "workflow-runtime-1"
     assert create_payload["application_summary"] is None
 
@@ -147,12 +152,12 @@ def test_workflow_trigger_source_api_manages_first_phase_resource(
     assert enable_response.status_code == 200
     assert enable_response.json()["enabled"] is True
     assert enable_response.json()["desired_state"] == "running"
-    assert enable_response.json()["updated_by"] == "user-1"
+    assert enable_response.json()["updated_by"] == default_principal_id
 
     assert disable_response.status_code == 200
     assert disable_response.json()["enabled"] is False
     assert disable_response.json()["desired_state"] == "stopped"
-    assert disable_response.json()["updated_by"] == "user-1"
+    assert disable_response.json()["updated_by"] == default_principal_id
 
     assert delete_response.status_code == 204
 
@@ -232,6 +237,7 @@ def test_workflow_trigger_source_api_controls_zeromq_adapter(
                     },
                 },
             )
+            default_principal_id = get_default_test_principal_id(context.session_factory)
     finally:
         context.session_factory.engine.dispose()
 
@@ -241,7 +247,7 @@ def test_workflow_trigger_source_api_controls_zeromq_adapter(
     enable_payload = enable_response.json()
     assert enable_payload["enabled"] is True
     assert enable_payload["observed_state"] == "running"
-    assert enable_payload["updated_by"] == "user-1"
+    assert enable_payload["updated_by"] == default_principal_id
     assert enable_payload["health_summary"]["adapter_configured"] is True
     assert enable_payload["health_summary"]["adapter_running"] is True
 

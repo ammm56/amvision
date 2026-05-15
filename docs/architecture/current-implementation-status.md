@@ -17,10 +17,11 @@
 
 - 以 YOLOX 为中心的训练 -> 人工验证 -> 数据集级评估 -> 转换 -> DeploymentInstance 发布 -> 同步 / 异步推理接口闭环已经打通。
 - backend-service 当前承担 REST / WebSocket 控制面和 deployment process supervisor，全部队列消费者已经收敛到独立 worker profile。
-- 当前公开 REST v1 已覆盖 datasets、dataset-exports、models、yolox training tasks、validation-sessions、conversion-tasks、evaluation-tasks、deployment-instances、inference-tasks、projects 目录与对象读取、workflow runtime 资源和 tasks。
+- 当前公开 REST v1 已覆盖 auth、本地用户与权限管理、datasets、dataset-exports、models、yolox training tasks、validation-sessions、conversion-tasks、evaluation-tasks、deployment-instances、inference-tasks、projects 目录与对象读取、workflow runtime 资源和 tasks。
 - workflow 公开资源面已经拆成 preview-runs、execution-policies、app-runtimes、runs 和 trigger-sources；当前开始把状态集合、snapshot 路径和 preview cleanup 规则收敛到共享 contracts 语义，避免 route、service、maintenance 和文档继续各写一份。
-- 当前公开 WebSocket 已覆盖 system、tasks、workflows.preview-runs、workflows.runs、workflows.app-runtimes、deployments 和 projects 七类资源流；统一的路由分层、重连规则和项目级聚合流边界已整理到 [websocket-architecture.md](websocket-architecture.md)。
+- 当前公开 WebSocket 已覆盖 auth、system、tasks、workflows.preview-runs、workflows.runs、workflows.app-runtimes、deployments 和 projects 八类资源流；统一的路由分层、重连规则和项目级聚合流边界已整理到 [websocket-architecture.md](websocket-architecture.md)。
 - backend-service 当前已经补齐本地前端接入所需的 CORS、hybrid auth、Project 目录接口和 Project 内对象读取接口；主要工作台列表接口已经统一到 offset/limit + 响应头分页规则。
+- backend-service 当前已经补齐本地用户、权限范围、session/refresh token、长期调用 user token 和 auth.events 审计流；在线 provider 只保留目录发现与后续扩展边界。
 - 当前代码形态仍然是“模块化单体 + 本地队列 + 本地对象存储 + 独立 deployment 子进程”。下一步重点应转向拓扑收敛、运行时硬化和平台泛化，而不是继续补 YOLOX 基础闭环缺口。
 
 ## 当前整体框架
@@ -28,11 +29,11 @@
 ### backend-service 控制面
 
 - FastAPI 应用入口位于 `backend/service/api/app.py`，负责装配 settings、数据库会话、本地对象存储、本地队列、中间件、异常处理、REST 路由和 WebSocket 路由。
-- backend-service settings 位于 `backend/service/settings.py`，当前已经统一管理 CORS、auth mode、静态 token 和 Project 目录配置。
+- backend-service settings 位于 `backend/service/settings.py`，当前已经统一管理 CORS、auth mode、本地 auth TTL、auth provider 目录、静态 token 和 Project 目录配置。
 - 启动编排位于 `backend/service/api/bootstrap.py`，负责在应用生命周期内初始化 SessionFactory、LocalDatasetStorage、LocalFileQueueBackend 和 deployment process supervisor。
-- REST v1 路由汇总位于 `backend/service/api/rest/v1/router.py`，当前已经挂载 system、projects、workflows、workflow runtime、datasets、dataset-exports、models、yolox-training-tasks、validation-sessions、conversion-tasks、evaluation-tasks、deployment-instances、inference-tasks 和 tasks。
+- REST v1 路由汇总位于 `backend/service/api/rest/v1/router.py`，当前已经挂载 auth、system、projects、workflows、workflow runtime、datasets、dataset-exports、models、yolox-training-tasks、validation-sessions、conversion-tasks、evaluation-tasks、deployment-instances、inference-tasks 和 tasks。
 - REST v1 列表分页辅助函数位于 `backend/service/api/rest/v1/pagination.py`，当前用于 projects、workflow templates、template versions、applications、execution-policies、preview-runs、app-runtimes 和 trigger-sources。
-- WebSocket 路由位于 `backend/service/api/ws/router.py`，当前已经公开 system、tasks、workflow preview-runs、workflow runs、workflow app-runtimes、deployments 和 projects 聚合流入口。
+- WebSocket 路由位于 `backend/service/api/ws/router.py`，当前已经公开 auth、system、tasks、workflow preview-runs、workflow runs、workflow app-runtimes、deployments 和 projects 聚合流入口。
 
 ### 后台执行与 runtime 面
 
@@ -78,6 +79,7 @@
 - 当前公开的 sync / async deployment 控制面已经包含 `start`、`status`、`stop`、`warmup`、`health` 和 `reset`，并公开 keep_warm、pinned output buffer、restart_count safe counter 等长期运行观测字段。
 - 当前 keep_warm 成功次数、失败次数和 deployment restart_count 都采用 JavaScript 安全整数窗口值加 rollover_count 的公开语义，避免长时间运行后的前端数值精度丢失。
 - 当前 `backend/workers/main.py` 已经以统一 registry 装配 dataset import、dataset export、training、conversion、evaluation 和 inference 六类消费者；backend-service 不再托管任何队列消费者。
+- 当前本地 auth 已拆成 session token、refresh token 和长期调用 user token 三类凭据，并通过 `/ws/v1/auth/events` 提供实时审计流；provider 目录里的在线 provider 当前只保留扩展边界。
 - 当前 preview run snapshot 根目录已经稳定到 `workflows/runtime/preview-runs/{preview_run_id}/`，并继续通过显式 maintenance 命令 `cleanup-preview-runs` 清理；当前清理顺序仍是“先删数据库记录，再删 snapshot 目录”，还没有做到跨存储原子提交。
 - 当前 app runtime snapshot 根目录已经稳定到 `workflows/runtime/app-runtimes/{workflow_runtime_id}/`；application、template 和 execution-policy snapshot 都按这个根目录组织，供 runtime worker 和后续发布形态复用。
 - 当前仓库已经提供 `backend.maintenance.main`、Python launchers、bat/sh wrapper、worker profile manifest，以及 `assemble-release` 命令来生成单一 `full` 发行目录。

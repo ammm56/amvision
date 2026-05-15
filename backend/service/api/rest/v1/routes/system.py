@@ -64,7 +64,16 @@ def get_current_principal(
         "principal_type": principal.principal_type,
         "project_ids": principal.project_ids,
         "scopes": principal.scopes,
+        "username": principal.metadata.get("username"),
+        "display_name": principal.metadata.get("display_name"),
         "auth_source": principal.metadata.get("auth_source"),
+        "auth_provider_id": principal.metadata.get("auth_provider_id"),
+        "auth_provider_kind": principal.metadata.get("auth_provider_kind"),
+        "auth_credential_kind": principal.metadata.get("auth_credential_kind"),
+        "auth_credential_id": principal.metadata.get("auth_credential_id"),
+        "auth_session_id": principal.metadata.get("auth_session_id"),
+        "auth_token_id": principal.metadata.get("auth_token_id"),
+        "auth_token_name": principal.metadata.get("auth_token_name"),
         "auth_mode": getattr(request.app.state.backend_service_settings.auth, "mode", None),
     }
 

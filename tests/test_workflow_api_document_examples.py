@@ -1007,7 +1007,7 @@ def test_workflow_example_documents_postman_collection_contains_remaining_debug_
     assert set(actual_example_names).isdisjoint(excluded_formal_example_names)
     assert {item["key"] for item in collection_payload["variable"]} >= {
         "baseUrl",
-        "principalId",
+        "accessToken",
         "projectId",
         "previewRunId",
         "deploymentInstanceId",

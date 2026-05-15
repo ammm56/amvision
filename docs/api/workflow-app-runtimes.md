@@ -11,6 +11,7 @@
 - POST /api/v1/workflows/app-runtimes
 - GET /api/v1/workflows/app-runtimes
 - GET /api/v1/workflows/app-runtimes/{workflow_runtime_id}
+- DELETE /api/v1/workflows/app-runtimes/{workflow_runtime_id}
 - GET /api/v1/workflows/app-runtimes/{workflow_runtime_id}/events
 - POST /api/v1/workflows/app-runtimes/{workflow_runtime_id}/start
 - POST /api/v1/workflows/app-runtimes/{workflow_runtime_id}/stop
@@ -36,7 +37,7 @@
 
 ## 鉴权规则
 
-- create、start、stop、restart 需要 workflows:write
+- create、start、stop、restart、delete 需要 workflows:write
 - list、get、events、health、instances 需要 workflows:read
 - /ws/v1/workflows/app-runtimes/events 需要 workflows:read
 
@@ -199,6 +200,14 @@
 - 返回单条 WorkflowAppRuntime 的当前持久化记录
 - 不会主动刷新 worker 健康状态；如果需要最新 process_id、heartbeat_at 或 fingerprint，应调用 health 接口
 
+## DELETE /api/v1/workflows/app-runtimes/{workflow_runtime_id}
+
+- 成功状态码：204 No Content
+- 如果 runtime 当前仍持有活动 WorkflowRun，会返回 400，要求先完成或取消当前执行
+- 如果 runtime 当前仍有活动 worker 进程，当前会先停止 worker，再删除持久化记录
+- 删除时会一并清理 `workflows/runtime/app-runtimes/{workflow_runtime_id}/` snapshot 目录
+- 删除后再次读取同一 runtime 会返回 404
+
 ## GET /api/v1/workflows/app-runtimes/{workflow_runtime_id}/events
 
 - 成功状态码：200 OK
@@ -209,6 +218,7 @@
 ### 当前稳定事件类型
 
 - runtime.created
+- runtime.deleted
 - runtime.started
 - runtime.stopped
 - runtime.restarted

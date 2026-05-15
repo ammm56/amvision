@@ -8,7 +8,11 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from backend.nodes.node_catalog_registry import NodeCatalogRegistry
-from backend.service.settings import BackendServiceSettings
+from backend.service.application.auth.auth_events import (
+    AUTH_EVENTS_RESOURCE_ID,
+    AUTH_EVENTS_RESOURCE_KIND,
+    AUTH_EVENTS_STREAM,
+)
 from backend.service.api.deps.auth import AuthenticatedPrincipal, resolve_socket_principal
 from backend.service.application.deployments.yolox_deployment_service import SqlAlchemyYoloXDeploymentService
 from backend.service.application.events import InMemoryServiceEventBus, ServiceEvent
@@ -36,6 +40,7 @@ from backend.service.domain.workflows.workflow_runtime_records import (
 )
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
+from backend.service.settings import BackendServiceSettings
 
 
 ws_v1_router = APIRouter(prefix="/ws/v1")
@@ -64,6 +69,80 @@ async def subscribe_system_events(socket: WebSocket) -> None:
         }
     )
     await socket.close(code=1000)
+
+
+@ws_v1_router.websocket("/auth/events")
+async def subscribe_auth_events(socket: WebSocket) -> None:
+    """建立 auth 审计事件订阅会话。
+
+    参数：
+    - socket：当前 WebSocket 连接。
+    """
+
+    principal = _get_socket_principal(socket)
+    if principal is None:
+        await socket.close(code=4401, reason="authentication_required")
+        return
+    if not _scope_granted(principal.scopes, "auth:read"):
+        await socket.close(code=4403, reason="permission_denied")
+        return
+
+    event_bus = _get_socket_event_bus(socket)
+    if event_bus is None:
+        await socket.close(code=1011, reason="service_event_bus_not_ready")
+        return
+
+    event_type = socket.query_params.get("event_type")
+    user_id = socket.query_params.get("user_id")
+    provider_id = socket.query_params.get("provider_id")
+    credential_kind = socket.query_params.get("credential_kind")
+    subscription = event_bus.subscribe(stream=AUTH_EVENTS_STREAM, resource_id=AUTH_EVENTS_RESOURCE_ID)
+
+    await socket.accept()
+    await socket.send_json(
+        {
+            "stream": AUTH_EVENTS_STREAM,
+            "event_type": "auth.connected",
+            "event_version": "v1",
+            "occurred_at": _now_iso(),
+            "resource_kind": AUTH_EVENTS_RESOURCE_KIND,
+            "resource_id": AUTH_EVENTS_RESOURCE_ID,
+            "cursor": None,
+            "payload": {
+                "filters": {
+                    "event_type": event_type,
+                    "user_id": user_id,
+                    "provider_id": provider_id,
+                    "credential_kind": credential_kind,
+                }
+            },
+        }
+    )
+
+    try:
+        while True:
+            if subscription.consume_overflowed():
+                await socket.send_json(_build_auth_lagging_message())
+                await socket.close(code=1013, reason="subscriber_queue_overflowed")
+                return
+
+            service_event = await subscription.receive(timeout_seconds=15.0)
+            if service_event is None:
+                await socket.send_json(_build_auth_heartbeat_message())
+                continue
+            if not _auth_service_event_matches(
+                service_event,
+                event_type=event_type,
+                user_id=user_id,
+                provider_id=provider_id,
+                credential_kind=credential_kind,
+            ):
+                continue
+            await socket.send_json(_build_service_event_message(service_event))
+    except WebSocketDisconnect:
+        return
+    finally:
+        subscription.close()
 
 
 @ws_v1_router.websocket("/tasks/events")
@@ -879,6 +958,38 @@ def _build_project_heartbeat_message(project_id: str) -> dict[str, object]:
     }
 
 
+def _build_auth_heartbeat_message() -> dict[str, object]:
+    """构造 auth 审计事件流心跳消息。"""
+
+    occurred_at = _now_iso()
+    return {
+        "stream": AUTH_EVENTS_STREAM,
+        "event_type": "auth.heartbeat",
+        "event_version": "v1",
+        "occurred_at": occurred_at,
+        "resource_kind": AUTH_EVENTS_RESOURCE_KIND,
+        "resource_id": AUTH_EVENTS_RESOURCE_ID,
+        "cursor": f"heartbeat|{occurred_at}",
+        "payload": {},
+    }
+
+
+def _build_auth_lagging_message() -> dict[str, object]:
+    """构造 auth 审计订阅端跟不上时的提示消息。"""
+
+    occurred_at = _now_iso()
+    return {
+        "stream": AUTH_EVENTS_STREAM,
+        "event_type": "auth.lagging",
+        "event_version": "v1",
+        "occurred_at": occurred_at,
+        "resource_kind": AUTH_EVENTS_RESOURCE_KIND,
+        "resource_id": AUTH_EVENTS_RESOURCE_ID,
+        "cursor": f"lagging|{occurred_at}",
+        "payload": {"message": "subscriber queue overflowed"},
+    }
+
+
 def _build_project_lagging_message(project_id: str) -> dict[str, object]:
     """构造项目级聚合流订阅端跟不上时的提示消息。"""
 
@@ -1132,6 +1243,28 @@ def _service_event_after_cursor(event: ServiceEvent, after_cursor: str | None) -
     if event.cursor is None or not event.cursor.strip():
         return True
     return event.cursor > after_cursor
+
+
+def _auth_service_event_matches(
+    event: ServiceEvent,
+    *,
+    event_type: str | None,
+    user_id: str | None,
+    provider_id: str | None,
+    credential_kind: str | None,
+) -> bool:
+    """判断 auth 审计事件是否命中当前订阅筛选。"""
+
+    payload = event.payload
+    if event_type is not None and event.event_type != event_type:
+        return False
+    if user_id is not None and payload.get("user_id") != user_id:
+        return False
+    if provider_id is not None and payload.get("provider_id") != provider_id:
+        return False
+    if credential_kind is not None and payload.get("credential_kind") != credential_kind:
+        return False
+    return True
 
 
 def _preview_service_event_after_cursor(

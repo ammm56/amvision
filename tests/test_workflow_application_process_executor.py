@@ -30,7 +30,7 @@ from backend.service.settings import (
     BackendServiceSettings,
     BackendServiceTaskManagerConfig,
 )
-from tests.api_test_support import build_test_headers, create_test_runtime
+from tests.api_test_support import build_test_headers, create_test_runtime, get_default_test_principal_id
 
 
 def test_workflow_application_process_executor_runs_application_in_child_process(
@@ -667,6 +667,7 @@ def test_workflow_run_events_websocket_streams_live_events(tmp_path: Path) -> No
                 f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/stop",
                 headers=build_test_headers(scopes="workflows:read,workflows:write"),
             )
+            default_principal_id = get_default_test_principal_id(session_factory)
     finally:
         session_factory.engine.dispose()
 
@@ -1117,8 +1118,8 @@ def test_workflow_app_runtime_recovery_event_streams_to_websocket_and_history(
     assert connected_payload["event_type"] == "workflows.app-runtimes.connected"
     assert recovered_payload["event_type"] == "runtime.heartbeat_recovered"
     assert recovered_payload["resource_id"] == workflow_runtime_id
-    assert recovered_payload["payload"]["data"]["observed_state"] == "running"
-    assert recovered_payload["payload"]["data"].get("last_error") is None
+    assert recovered_payload["payload"]["observed_state"] == "running"
+    assert recovered_payload["payload"].get("last_error") is None
     assert recovered_events_response.status_code == 200
     assert recovered_event["payload"]["observed_state"] == "running"
     assert recovered_event["payload"].get("last_error") is None
@@ -1198,6 +1199,7 @@ def test_workflow_preview_run_api_supports_cancel_and_cancelled_state(tmp_path: 
                 preview_run_id,
                 expected_event_types={"preview.cancelled"},
             )
+            default_principal_id = get_default_test_principal_id(session_factory)
     finally:
         session_factory.engine.dispose()
 
@@ -1206,7 +1208,7 @@ def test_workflow_preview_run_api_supports_cancel_and_cancelled_state(tmp_path: 
     assert final_preview_response.status_code == 200
     assert cancel_response.json()["state"] == "cancelled"
     assert cancel_response.json()["error_message"] == "workflow preview run 已取消"
-    assert cancel_response.json()["metadata"]["cancelled_by"] == "user-1"
+    assert cancel_response.json()["metadata"]["cancelled_by"] == default_principal_id
     assert final_preview_response.json()["state"] == "cancelled"
     assert final_preview_response.json()["error_message"] == "workflow preview run 已取消"
     assert {item["event_type"] for item in cancelled_events_response.json()} >= {"preview.cancelled"}
@@ -1278,6 +1280,7 @@ def test_workflow_preview_run_api_delete_cleans_up_running_async_preview(tmp_pat
                 f"/api/v1/workflows/preview-runs/{preview_run_id}",
                 headers=build_test_headers(scopes="workflows:read,workflows:write"),
             )
+            default_principal_id = get_default_test_principal_id(session_factory)
     finally:
         session_factory.engine.dispose()
 
@@ -1357,6 +1360,7 @@ def test_workflow_preview_run_api_lists_and_deletes_preview_runs(tmp_path: Path)
                 f"/api/v1/workflows/preview-runs/{preview_run_id}",
                 headers=build_test_headers(scopes="workflows:read,workflows:write"),
             )
+            default_principal_id = get_default_test_principal_id(session_factory)
     finally:
         session_factory.engine.dispose()
 
@@ -1370,7 +1374,7 @@ def test_workflow_preview_run_api_lists_and_deletes_preview_runs(tmp_path: Path)
     assert list_payload[0]["project_id"] == "project-1"
     assert list_payload[0]["application_id"] == "process-echo-app"
     assert list_payload[0]["state"] == "succeeded"
-    assert list_payload[0]["created_by"] == "user-1"
+    assert list_payload[0]["created_by"] == default_principal_id
     assert "outputs" not in list_payload[0]
     assert "metadata" not in list_payload[0]
 
@@ -1649,6 +1653,7 @@ def test_workflow_execution_policy_api_creates_lists_and_applies_to_preview_and_
                 f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/stop",
                 headers=build_test_headers(scopes="workflows:read,workflows:write"),
             )
+            default_principal_id = get_default_test_principal_id(session_factory)
     finally:
         session_factory.engine.dispose()
 
@@ -1685,7 +1690,7 @@ def test_workflow_execution_policy_api_creates_lists_and_applies_to_preview_and_
     assert preview_payload["metadata"]["execution_policy"]["execution_policy_id"] == "preview-default-policy"
     assert runtime_payload["request_timeout_seconds"] == 7
     assert runtime_payload["execution_policy_snapshot_object_key"] is not None
-    assert runtime_payload["updated_by"] == "user-1"
+    assert runtime_payload["updated_by"] == default_principal_id
     assert runtime_payload["application_summary"]["application_id"] == "process-echo-app"
     assert runtime_payload["template_summary"]["template_id"] == "process-echo-template"
     assert runtime_payload["metadata"]["execution_policy"]["execution_policy_id"] == "runtime-default-policy"
@@ -1694,9 +1699,9 @@ def test_workflow_execution_policy_api_creates_lists_and_applies_to_preview_and_
     assert invoke_payload["metadata"]["execution_policy"]["execution_policy_id"] == "runtime-default-policy"
     assert dataset_storage.read_json(preview_policy_snapshot_object_key)["execution_policy_id"] == "preview-default-policy"
     assert dataset_storage.read_json(runtime_policy_snapshot_object_key)["execution_policy_id"] == "runtime-default-policy"
-    assert start_response.json()["updated_by"] == "user-1"
+    assert start_response.json()["updated_by"] == default_principal_id
     assert stop_response.json()["observed_state"] == "stopped"
-    assert stop_response.json()["updated_by"] == "user-1"
+    assert stop_response.json()["updated_by"] == default_principal_id
 
 
 def test_workflow_app_runtime_api_list_supports_offset_limit_pagination_headers(
@@ -1780,6 +1785,177 @@ def test_workflow_app_runtime_api_list_supports_offset_limit_pagination_headers(
     assert list_response.json()[0]["display_name"] == "Runtime B"
 
 
+def test_workflow_app_runtime_api_lists_and_deletes_stopped_runtimes(tmp_path: Path) -> None:
+    """验证 app runtime 列表和删除接口可用，并会清理 snapshot 目录。"""
+
+    session_factory, dataset_storage, queue_backend = create_test_runtime(
+        tmp_path,
+        database_name="workflow-runtime-list-delete-api.db",
+    )
+    custom_nodes_root_dir = _create_process_test_node_pack_fixture(tmp_path)
+    node_pack_loader = LocalNodePackLoader(custom_nodes_root_dir)
+    node_pack_loader.refresh()
+    node_catalog_registry = NodeCatalogRegistry(node_pack_loader=node_pack_loader)
+    workflow_service = LocalWorkflowJsonService(
+        dataset_storage=dataset_storage,
+        node_catalog_registry=node_catalog_registry,
+    )
+    workflow_service.save_template(
+        project_id="project-1",
+        template=_build_process_echo_template(),
+    )
+    workflow_service.save_application(
+        project_id="project-1",
+        application=_build_process_echo_application(),
+    )
+    application = create_app(
+        settings=BackendServiceSettings(
+            database=BackendServiceDatabaseConfig(url=session_factory.settings.url),
+            dataset_storage=BackendServiceDatasetStorageConfig(root_dir=str(dataset_storage.root_dir)),
+            queue=BackendServiceQueueConfig(root_dir=str(queue_backend.root_dir)),
+            custom_nodes=BackendServiceCustomNodesConfig(root_dir=str(custom_nodes_root_dir)),
+            task_manager=BackendServiceTaskManagerConfig(enabled=False),
+        ),
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+        queue_backend=queue_backend,
+    )
+    client = TestClient(application)
+
+    try:
+        with client:
+            create_response = client.post(
+                "/api/v1/workflows/app-runtimes",
+                headers=build_test_headers(scopes="workflows:read,workflows:write"),
+                json={
+                    "project_id": "project-1",
+                    "application_id": "process-echo-app",
+                    "display_name": "Process Echo Runtime",
+                },
+            )
+            workflow_runtime_id = create_response.json()["workflow_runtime_id"]
+            runtime_dir = dataset_storage.resolve(f"workflows/runtime/app-runtimes/{workflow_runtime_id}")
+            runtime_dir_exists_before_delete = runtime_dir.exists()
+            list_response = client.get(
+                "/api/v1/workflows/app-runtimes",
+                params={"project_id": "project-1"},
+                headers=build_test_headers(scopes="workflows:read,workflows:write"),
+            )
+            delete_response = client.delete(
+                f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}",
+                headers=build_test_headers(scopes="workflows:read,workflows:write"),
+            )
+            list_after_delete_response = client.get(
+                "/api/v1/workflows/app-runtimes",
+                params={"project_id": "project-1"},
+                headers=build_test_headers(scopes="workflows:read,workflows:write"),
+            )
+            get_deleted_response = client.get(
+                f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}",
+                headers=build_test_headers(scopes="workflows:read,workflows:write"),
+            )
+            default_principal_id = get_default_test_principal_id(session_factory)
+    finally:
+        session_factory.engine.dispose()
+
+    assert create_response.status_code == 201
+    assert runtime_dir_exists_before_delete is True
+
+    assert list_response.status_code == 200
+    list_payload = list_response.json()
+    assert len(list_payload) == 1
+    assert list_payload[0]["workflow_runtime_id"] == workflow_runtime_id
+    assert list_payload[0]["project_id"] == "project-1"
+    assert list_payload[0]["application_id"] == "process-echo-app"
+    assert list_payload[0]["observed_state"] == "stopped"
+    assert list_payload[0]["created_by"] == default_principal_id
+
+    assert delete_response.status_code == 204
+    assert not runtime_dir.exists()
+
+    assert list_after_delete_response.status_code == 200
+    assert list_after_delete_response.json() == []
+
+    assert get_deleted_response.status_code == 404
+    assert get_deleted_response.json()["error"]["code"] == "resource_not_found"
+
+
+def test_workflow_app_runtime_api_deletes_running_runtime_and_cleans_worker_handle(tmp_path: Path) -> None:
+    """验证删除运行中的 app runtime 时会先停止 worker 并清理 snapshot 目录。"""
+
+    session_factory, dataset_storage, queue_backend = create_test_runtime(
+        tmp_path,
+        database_name="workflow-runtime-delete-running-api.db",
+    )
+    custom_nodes_root_dir = _create_process_test_node_pack_fixture(tmp_path)
+    node_pack_loader = LocalNodePackLoader(custom_nodes_root_dir)
+    node_pack_loader.refresh()
+    node_catalog_registry = NodeCatalogRegistry(node_pack_loader=node_pack_loader)
+    workflow_service = LocalWorkflowJsonService(
+        dataset_storage=dataset_storage,
+        node_catalog_registry=node_catalog_registry,
+    )
+    workflow_service.save_template(
+        project_id="project-1",
+        template=_build_process_slow_template(),
+    )
+    workflow_service.save_application(
+        project_id="project-1",
+        application=_build_process_slow_application(),
+    )
+    application = create_app(
+        settings=BackendServiceSettings(
+            database=BackendServiceDatabaseConfig(url=session_factory.settings.url),
+            dataset_storage=BackendServiceDatasetStorageConfig(root_dir=str(dataset_storage.root_dir)),
+            queue=BackendServiceQueueConfig(root_dir=str(queue_backend.root_dir)),
+            custom_nodes=BackendServiceCustomNodesConfig(root_dir=str(custom_nodes_root_dir)),
+            task_manager=BackendServiceTaskManagerConfig(enabled=False),
+        ),
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+        queue_backend=queue_backend,
+    )
+    client = TestClient(application)
+
+    try:
+        with client:
+            create_response = client.post(
+                "/api/v1/workflows/app-runtimes",
+                headers=build_test_headers(scopes="workflows:read,workflows:write"),
+                json={
+                    "project_id": "project-1",
+                    "application_id": "process-slow-app",
+                    "display_name": "Process Slow Runtime",
+                },
+            )
+            workflow_runtime_id = create_response.json()["workflow_runtime_id"]
+            runtime_dir = dataset_storage.resolve(f"workflows/runtime/app-runtimes/{workflow_runtime_id}")
+            start_response = client.post(
+                f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/start",
+                headers=build_test_headers(scopes="workflows:read,workflows:write"),
+            )
+            delete_response = client.delete(
+                f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}",
+                headers=build_test_headers(scopes="workflows:read,workflows:write"),
+            )
+            get_deleted_response = client.get(
+                f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}",
+                headers=build_test_headers(scopes="workflows:read,workflows:write"),
+            )
+            worker_instances = application.state.workflow_runtime_worker_manager.list_runtime_instances(
+                workflow_runtime_id
+            )
+    finally:
+        session_factory.engine.dispose()
+
+    assert create_response.status_code == 201
+    assert start_response.status_code == 200
+    assert delete_response.status_code == 204
+    assert get_deleted_response.status_code == 404
+    assert not runtime_dir.exists()
+    assert worker_instances == ()
+
+
 def test_workflow_app_runtime_api_invokes_saved_application_in_worker_process(
     tmp_path: Path,
 ) -> None:
@@ -1856,6 +2032,7 @@ def test_workflow_app_runtime_api_invokes_saved_application_in_worker_process(
                 f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/stop",
                 headers=build_test_headers(scopes="workflows:read,workflows:write"),
             )
+            default_principal_id = get_default_test_principal_id(session_factory)
     finally:
         session_factory.engine.dispose()
 
@@ -1968,6 +2145,7 @@ def test_workflow_app_runtime_api_marks_run_timed_out_when_worker_exceeds_timeou
                 f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/stop",
                 headers=build_test_headers(scopes="workflows:read,workflows:write"),
             )
+            default_principal_id = get_default_test_principal_id(session_factory)
     finally:
         session_factory.engine.dispose()
 
@@ -2066,6 +2244,7 @@ def test_workflow_app_runtime_api_persists_failed_invoke_details(
                 f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/stop",
                 headers=build_test_headers(scopes="workflows:read,workflows:write"),
             )
+            default_principal_id = get_default_test_principal_id(session_factory)
     finally:
         session_factory.engine.dispose()
 
@@ -2491,6 +2670,7 @@ def test_workflow_app_runtime_async_run_api_can_cancel_running_and_queued_runs(
                 f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/stop",
                 headers=build_test_headers(scopes="workflows:read,workflows:write"),
             )
+            default_principal_id = get_default_test_principal_id(session_factory)
     finally:
         session_factory.engine.dispose()
 
@@ -2509,7 +2689,7 @@ def test_workflow_app_runtime_async_run_api_can_cancel_running_and_queued_runs(
     assert queued_final_response.json()["error_message"] == "workflow run 已取消"
     assert running_final_response.json()["state"] == "cancelled"
     assert running_final_response.json()["error_message"] == "workflow run 已取消"
-    assert running_final_response.json()["metadata"]["cancelled_by"] == "user-1"
+    assert running_final_response.json()["metadata"]["cancelled_by"] == default_principal_id
     assert health_response.json()["observed_state"] == "running"
     assert stop_response.json()["observed_state"] == "stopped"
 

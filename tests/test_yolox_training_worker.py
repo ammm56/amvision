@@ -13,6 +13,7 @@ import torch
 
 from backend.contracts.datasets.exports.coco_detection_export import COCO_DETECTION_DATASET_FORMAT
 from backend.queue import LocalFileQueueBackend, LocalFileQueueSettings
+from backend.service.application.auth.default_local_auth_seeder import DEFAULT_LOCAL_AUTH_USERNAME
 from backend.service.application.errors import InvalidRequestError
 import backend.service.application.models.yolox_detection_training as yolox_detection_training_module
 from backend.service.application.models.yolox_detection_training import (
@@ -155,7 +156,7 @@ def test_yolox_training_worker_advances_task_from_queued_to_succeeded(tmp_path: 
                 precision="fp32",
                 input_size=(64, 64),
             ),
-            created_by="user-1",
+            created_by=DEFAULT_LOCAL_AUTH_USERNAME,
         )
 
         queued_task = SqlAlchemyTaskService(session_factory).get_task(
@@ -282,7 +283,7 @@ def test_yolox_training_worker_uses_test_split_as_validation_when_val_is_missing
                 precision="fp32",
                 input_size=(64, 64),
             ),
-            created_by="user-1",
+            created_by=DEFAULT_LOCAL_AUTH_USERNAME,
         )
 
         assert worker.run_once() is True
@@ -373,7 +374,7 @@ def test_yolox_training_worker_can_warm_start_from_existing_model_version(tmp_pa
                 precision="fp32",
                 input_size=(64, 64),
             ),
-            created_by="user-1",
+            created_by=DEFAULT_LOCAL_AUTH_USERNAME,
         )
         assert worker.run_once() is True
         first_completed_task = SqlAlchemyTaskService(session_factory).get_task(
@@ -405,7 +406,7 @@ def test_yolox_training_worker_can_warm_start_from_existing_model_version(tmp_pa
                 precision="fp32",
                 input_size=(64, 64),
             ),
-            created_by="user-1",
+            created_by=DEFAULT_LOCAL_AUTH_USERNAME,
         )
 
         assert worker.run_once() is True
@@ -461,7 +462,7 @@ def test_training_service_writes_intermediate_validation_snapshot_on_evaluation_
             precision="fp32",
             input_size=(640, 640),
         ),
-        created_by="user-1",
+        created_by=DEFAULT_LOCAL_AUTH_USERNAME,
     )
     expected_validation_metrics_object_key = (
         f"task-runs/training/{submission.task_id}/artifacts/reports/validation-metrics.json"

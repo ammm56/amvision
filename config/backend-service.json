@@ -20,9 +20,12 @@
     ]
   },
   "auth": {
-    "mode": "hybrid",
-    "allow_development_headers": true,
+    "mode": "local",
     "websocket_query_token_enabled": true,
+    "local_auth": {
+      "password_min_length": 6,
+      "initialize_default_user_on_empty_db": true
+    },
     "static_tokens": []
   },
   "projects": {

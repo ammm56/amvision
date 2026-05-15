@@ -131,13 +131,13 @@ Invoke-RestMethod http://127.0.0.1:8000/api/v1/system/health
 
 推荐先做 DatasetImport，因为它同时覆盖文件上传、正式 TaskRecord 建立、队列落盘和 worker 消费。
 
+如果当前数据库为空，服务首次启动会自动初始化默认本地用户；初始化数据由启动期默认用户初始化器写入数据库，不在 backend-service.json 中配置。执行 smoke test 时应填写当前环境实际 Bearer token。
+
 ### 方案 A：直接用 Swagger UI
 
 在 `http://127.0.0.1:8000/docs` 中调用 `POST /api/v1/datasets/imports`，至少填写：
 
-- header：`x-amvision-principal-id=user-1`
-- header：`x-amvision-project-ids=project-1`
-- header：`x-amvision-scopes=datasets:write`
+- header：`Authorization=Bearer <token>`
 - form：`project_id=project-1`
 - form：`dataset_id=dataset-1`
 - form：`task_type=detection`
@@ -147,9 +147,7 @@ Invoke-RestMethod http://127.0.0.1:8000/api/v1/system/health
 
 ```bash
 curl -X POST "http://127.0.0.1:8000/api/v1/datasets/imports" \
-  -H "x-amvision-principal-id: user-1" \
-  -H "x-amvision-project-ids: project-1" \
-  -H "x-amvision-scopes: datasets:write" \
+  -H "Authorization: Bearer <token>" \
   -F "project_id=project-1" \
   -F "dataset_id=dataset-1" \
   -F "task_type=detection" \

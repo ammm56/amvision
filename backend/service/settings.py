@@ -90,21 +90,89 @@ class BackendServiceStaticAccessTokenConfig(BaseModel):
     metadata: dict[str, object] = Field(default_factory=dict, description="附加主体元数据")
 
 
+class BackendServiceLocalAuthConfig(BaseModel):
+    """描述 backend-service 本地用户与会话鉴权配置。
+
+    字段：
+    - enabled：是否启用本地用户与登录会话。
+    - access_token_ttl_hours：兼容字段；表示登录会话 access token 默认有效期小时数。
+    - session_access_token_ttl_hours：登录会话 access token 默认有效期小时数；为空时回退到 access_token_ttl_hours。
+    - refresh_token_ttl_hours：登录会话 refresh token 默认有效期小时数；小于等于 0 表示不设置过期时间。
+    - user_token_default_ttl_hours：长期调用 user token 默认有效期小时数；小于等于 0 表示默认永久有效。
+    - password_min_length：本地密码最小长度。
+    - initialize_default_user_on_empty_db：当本地用户表为空时是否自动初始化默认本地用户。
+    """
+
+    enabled: bool = Field(default=True, description="是否启用本地用户与登录会话")
+    access_token_ttl_hours: int = Field(default=168, description="兼容字段；登录会话 access token 默认有效期小时数")
+    session_access_token_ttl_hours: int | None = Field(
+        default=None,
+        description="登录会话 access token 默认有效期小时数",
+    )
+    refresh_token_ttl_hours: int = Field(default=720, description="登录会话 refresh token 默认有效期小时数")
+    user_token_default_ttl_hours: int = Field(
+        default=0,
+        description="长期调用 user token 默认有效期小时数；0 表示永久有效",
+    )
+    password_min_length: int = Field(default=6, description="本地密码最小长度")
+    initialize_default_user_on_empty_db: bool = Field(
+        default=True,
+        description="当本地用户表为空时是否自动初始化默认本地用户",
+    )
+
+    def resolve_session_access_token_ttl_hours(self) -> int:
+        """返回登录会话 access token 的默认有效期小时数。"""
+
+        if self.session_access_token_ttl_hours is not None:
+            return self.session_access_token_ttl_hours
+        return self.access_token_ttl_hours
+
+
+class BackendServiceAuthProviderConfig(BaseModel):
+    """描述一个可公开发现的账号 provider 配置。
+
+    字段：
+    - provider_id：provider 的稳定标识，用于前端和工作站选择登录源。
+    - provider_kind：provider 类型，例如 oidc、oauth2。
+    - display_name：展示名称。
+    - enabled：是否公开该 provider。
+    - login_mode：登录模式，例如 external-browser。
+    - issuer_url：可选 issuer 地址。
+    - metadata：附加目录元数据。
+    """
+
+    provider_id: str = Field(description="provider 的稳定标识")
+    provider_kind: str = Field(default="oidc", description="provider 类型")
+    display_name: str = Field(description="provider 展示名称")
+    enabled: bool = Field(default=True, description="是否公开该 provider")
+    login_mode: str = Field(default="external-browser", description="provider 登录模式")
+    issuer_url: str | None = Field(default=None, description="可选 issuer 地址")
+    metadata: dict[str, object] = Field(default_factory=dict, description="附加目录元数据")
+
+
 class BackendServiceAuthConfig(BaseModel):
     """描述 backend-service 当前阶段使用的鉴权配置。
 
     字段：
-    - mode：鉴权模式；支持 development-headers、static-bearer、hybrid。
-    - allow_development_headers：在 hybrid 或 development-headers 模式下是否允许开发头。
+    - mode：鉴权模式；支持 static-bearer、local、hybrid。
     - websocket_query_token_enabled：是否允许 WebSocket 使用 access_token 查询参数。
+    - local_auth：本地用户与会话配置。
+    - providers：可公开发现的在线账号 provider 目录配置。
     - static_tokens：静态 Bearer token 列表。
     """
 
-    mode: str = Field(default="hybrid", description="鉴权模式")
-    allow_development_headers: bool = Field(default=True, description="是否允许开发头鉴权")
+    mode: str = Field(default="local", description="鉴权模式")
     websocket_query_token_enabled: bool = Field(
         default=True,
         description="是否允许 WebSocket 使用 access_token 查询参数",
+    )
+    local_auth: BackendServiceLocalAuthConfig = Field(
+        default_factory=BackendServiceLocalAuthConfig,
+        description="本地用户与会话配置",
+    )
+    providers: list[BackendServiceAuthProviderConfig] = Field(
+        default_factory=list,
+        description="可公开发现的在线账号 provider 目录配置",
     )
     static_tokens: list[BackendServiceStaticAccessTokenConfig] = Field(
         default_factory=list,
@@ -118,19 +186,17 @@ class BackendServiceAuthConfig(BaseModel):
         - bool：当当前模式允许 Bearer token 时返回 True。
         """
 
+        return self.static_token_auth_enabled() or self.local_session_auth_enabled()
+
+    def static_token_auth_enabled(self) -> bool:
+        """判断当前配置是否启用了静态 Bearer token 鉴权。"""
+
         return self.mode in {"static-bearer", "hybrid"}
 
-    def development_headers_enabled(self) -> bool:
-        """判断当前配置是否启用了开发头鉴权。
+    def local_session_auth_enabled(self) -> bool:
+        """判断当前配置是否启用了本地会话 Bearer token 鉴权。"""
 
-        返回：
-        - bool：当当前模式允许开发头且开关开启时返回 True。
-        """
-
-        return self.allow_development_headers and self.mode in {
-            "development-headers",
-            "hybrid",
-        }
+        return self.local_auth.enabled and self.mode in {"local", "hybrid"}
 
 
 class BackendServiceProjectCatalogItemConfig(BaseModel):

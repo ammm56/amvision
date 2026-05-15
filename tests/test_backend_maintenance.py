@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from backend.maintenance.main import cleanup_expired_preview_runs, cleanup_runtime_storage
+from backend.service.application.auth.default_local_auth_seeder import DEFAULT_LOCAL_AUTH_USERNAME
 from backend.service.domain.workflows.workflow_runtime_records import WorkflowAppRuntime, WorkflowPreviewRun, WorkflowRun
 from backend.service.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
 from backend.service.settings import (
@@ -246,7 +247,7 @@ def _save_preview_run(
                 state="succeeded",
                 created_at="2026-05-14T09:00:00Z",
                 finished_at="2026-05-14T09:00:02Z",
-                created_by="user-1",
+                created_by=DEFAULT_LOCAL_AUTH_USERNAME,
                 retention_until=retention_until,
             )
         )

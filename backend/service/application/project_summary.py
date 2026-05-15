@@ -39,6 +39,7 @@ _PROJECT_SUMMARY_PREVIEW_EVENT_TYPES = frozenset(
 _PROJECT_SUMMARY_RUNTIME_EVENT_TYPES = frozenset(
     {
         "runtime.created",
+        "runtime.deleted",
         "runtime.started",
         "runtime.stopped",
         "runtime.restarted",

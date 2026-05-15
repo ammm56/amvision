@@ -578,11 +578,7 @@ def test_sync_and_async_runtime_pools_are_isolated(
 
             infer_response = client.post(
                 f"/api/v1/models/yolox/deployment-instances/{deployment_instance_id}/infer",
-                headers={
-                    "x-amvision-principal-id": "user-1",
-                    "x-amvision-project-ids": "project-1",
-                    "x-amvision-scopes": "models:read",
-                },
+                headers=build_test_headers(scopes="models:read"),
                 json={
                     "image_base64": "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAE0lEQVQIHWNk+M8ABIwM/xmAAAAREgIB9FemLQAAAABJRU5ErkJggg==",
                 },

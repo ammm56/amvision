@@ -23,9 +23,8 @@ internal sealed class MainForm : Form
     private readonly TextBox eventIdTextBox;
     private readonly TextBox traceIdTextBox;
     private readonly TextBox baseApiUrlTextBox;
-    private readonly TextBox principalIdTextBox;
+    private readonly TextBox accessTokenTextBox;
     private readonly TextBox projectIdTextBox;
-    private readonly TextBox scopesTextBox;
     private readonly RichTextBox metadataJsonTextBox;
     private readonly RichTextBox payloadJsonTextBox;
     private readonly TextBox stateTextBox;
@@ -91,9 +90,8 @@ internal sealed class MainForm : Form
         eventIdTextBox = CreateTextBox(string.Empty);
         traceIdTextBox = CreateTextBox(string.Empty);
         baseApiUrlTextBox = CreateTextBox("http://127.0.0.1:8000");
-        principalIdTextBox = CreateTextBox("user-1");
+        accessTokenTextBox = CreateTextBox("amvision-default-user-token");
         projectIdTextBox = CreateTextBox("project-1");
-        scopesTextBox = CreateTextBox("workflows:read,workflows:write");
 
         metadataJsonTextBox = CreateJsonBox("{\n  \"source\": \"winforms-debugger\"\n}");
         payloadJsonTextBox = CreateJsonBox("{}");
@@ -286,8 +284,8 @@ internal sealed class MainForm : Form
         AddField(layout, 1, "Workflow Runtime Id", workflowRuntimeIdTextBox, "Trigger Input", defaultInputBindingTextBox);
         AddField(layout, 2, "HTTP Input", httpInputBindingTextBox, "Media Type", mediaTypeTextBox);
         AddField(layout, 3, "Timeout(s)", timeoutSecondsInput, "Deployment Id", deploymentInstanceIdTextBox);
-        AddField(layout, 4, "Base API URL", baseApiUrlTextBox, "Principal Id", principalIdTextBox);
-        AddField(layout, 5, "Project Id", projectIdTextBox, "Scopes", scopesTextBox);
+        AddField(layout, 4, "Base API URL", baseApiUrlTextBox, "Access Token", accessTokenTextBox);
+        AddSingleFieldRow(layout, 5, "Project Id", projectIdTextBox);
         AddField(layout, 6, "Event Id", eventIdTextBox, "Trace Id", traceIdTextBox);
         AddImagePathRow(layout, 7);
         AddJsonRow(layout, 8, "Metadata JSON", metadataJsonTextBox);
@@ -1517,9 +1515,7 @@ internal sealed class MainForm : Form
         return new AmvisionWorkflowClient(new AmvisionWorkflowClientOptions
         {
             BaseApiUrl = baseApiUrlTextBox.Text.Trim(),
-            PrincipalId = principalIdTextBox.Text.Trim(),
-            ProjectIds = projectIdTextBox.Text.Trim(),
-            Scopes = scopesTextBox.Text.Trim(),
+            AccessToken = accessTokenTextBox.Text.Trim(),
             Timeout = TimeSpan.FromSeconds(decimal.ToDouble(timeoutSecondsInput.Value))
         });
     }

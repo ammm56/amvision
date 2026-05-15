@@ -12,7 +12,13 @@ from backend.service.settings import (
     BackendServiceProjectsConfig,
     BackendServiceSettings,
 )
-from tests.api_test_support import build_test_headers, build_valid_test_png_bytes, create_test_runtime
+from tests.api_test_support import (
+    build_bearer_headers,
+    build_test_headers,
+    build_valid_test_png_bytes,
+    create_test_runtime,
+    issue_test_user_token,
+)
 
 
 def test_list_and_get_project_detail_expose_catalog_and_summary(tmp_path: Path) -> None:
@@ -73,10 +79,16 @@ def test_project_list_supports_offset_limit_and_pagination_headers(tmp_path: Pat
     )
 
     try:
+        visible_token = issue_test_user_token(
+            session_factory,
+            username="project-resources-viewer",
+            scopes=("workflows:read", "models:read"),
+            project_ids=("project-2", "project-1"),
+        )
         with client:
             list_response = client.get(
                 "/api/v1/projects",
-                headers=_build_project_headers(project_ids="project-2,project-1"),
+                headers=build_bearer_headers(visible_token),
                 params={"offset": 0, "limit": 1},
             )
     finally:
@@ -158,13 +170,10 @@ def test_project_object_interface_rejects_non_public_namespace(tmp_path: Path) -
     assert "allowed_namespaces" in error_payload["details"]
 
 
-def _build_project_headers(*, project_ids: str = "project-1") -> dict[str, str]:
+def _build_project_headers() -> dict[str, str]:
     """构建当前测试需要的 Project 读取请求头。"""
 
-    return build_test_headers(
-        scopes="workflows:read,models:read",
-        project_ids=project_ids,
-    )
+    return build_test_headers(scopes="workflows:read,models:read")
 
 
 def _create_project_resources_test_client(

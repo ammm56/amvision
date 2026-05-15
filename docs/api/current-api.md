@@ -2,7 +2,7 @@
 
 ## 文档目的
 
-本文档用于汇总当前仓库已经公开的 REST API、WebSocket 入口、最小鉴权头规则，以及 DatasetImport、DatasetExport 与 TaskRecord 之间的公开关系。
+本文档用于汇总当前仓库已经公开的 REST API、WebSocket 入口、最小鉴权规则，以及 DatasetImport、DatasetExport 与 TaskRecord 之间的公开关系。
 
 WebSocket 资源流的统一消息结构、控制事件和重连规则见 [docs/architecture/websocket-architecture.md](../architecture/websocket-architecture.md)。
 
@@ -10,36 +10,37 @@ WebSocket 资源流的统一消息结构、控制事件和重连规则见 [docs/
 
 ## 统一鉴权输入
 
-当前公开 REST 接口支持 Bearer token 和开发请求头两种主体输入方式；实际可用模式由 backend-service 配置决定。
+当前公开业务 REST 接口统一使用 Bearer token。仓库默认配置为 `mode=local`，并在空库首次启动时自动初始化默认本地用户和长期调用 token。
 
 ### Bearer token
 
 - Authorization: Bearer <token>
-- 当前用于 static-bearer 或 hybrid 模式
-
-### 开发请求头
-
-- x-amvision-principal-id：调用主体 id
-- x-amvision-project-ids：当前主体可访问的 Project id 列表，多个值用逗号分隔；为空时表示不按 Project 做可见性裁剪
-- x-amvision-scopes：当前主体持有的 scope 列表，多个值用逗号分隔
-- 当前用于 development-headers 或 hybrid 模式
+- 默认配置使用 `mode=local`；Bearer token 可以是登录会话 access token，也可以是长期调用 user token
+- 当本地用户表为空时，服务会在启动阶段自动初始化默认本地用户和长期调用 token；这组初始化数据由启动期初始化器写入数据库，不通过 runtime JSON 配置维护
+- 业务接口、调试工具和集成调用应填写当前环境实际 Bearer token，不假定固定 token 值
+- 需要区分 token 类型时，可通过 `/api/v1/system/me` 返回的 `auth_credential_kind` 和 `auth_provider_id` 判断
 
 ### 最小请求头
 
-- x-amvision-principal-id：调用主体 id
-- x-amvision-project-ids：当前主体可访问的 Project id 列表，多个值用逗号分隔；为空时表示不按 Project 做可见性裁剪
-- x-amvision-scopes：当前主体持有的 scope 列表，多个值用逗号分隔
+- Authorization: Bearer <token>
 
 ### 当前公开 scope
 
 - datasets:read
 - datasets:write
+- auth:read
+- auth:write
 - models:read
 - workflows:read
 - workflows:write
 - tasks:read
 - tasks:write
 - system:read
+
+## 当前 auth 状态
+
+- 当前本地用户、权限范围、session token、refresh token、长期调用 user token 和 `auth.events` 实时审计已经闭环。
+- 在线 provider 当前只保留目录发现和后续扩展边界，不构成当前前端、工作站或外部集成接入的前提。
 
 ## 统一列表分页规则
 
@@ -68,6 +69,19 @@ WebSocket 资源流的统一消息结构、控制事件和重连规则见 [docs/
 
 | 方法 | 路径 | scope | 说明 |
 | --- | --- | --- | --- |
+| GET | /api/v1/auth/providers | 无 | 返回当前公开可发现的账号 provider 目录；当前 local 是唯一完整可用的 provider，其他已配置在线 provider 只保留扩展边界。 |
+| POST | /api/v1/auth/bootstrap-admin | 无 | 当本地用户表为空时初始化首个管理员，并返回登录会话 access token 与 refresh token。 |
+| POST | /api/v1/auth/login | 无 | 使用指定 provider 的 password login 入口登录；当前只有 local 提供完整 password login。 |
+| POST | /api/v1/auth/refresh | 无 | 使用 local 登录返回的 refresh token 刷新一组新的登录会话凭据。 |
+| POST | /api/v1/auth/logout | 仅需主体 | 撤销当前 Bearer token 对应的本地登录会话；长期调用 token 不支持 logout。 |
+| GET | /api/v1/auth/users | auth:read | 列出当前全部本地用户。 |
+| POST | /api/v1/auth/users | auth:write | 创建一个本地用户，写入 scopes 与 project_ids，并默认签发一个长期调用 token。 |
+| PATCH | /api/v1/auth/users/{user_id} | auth:write | 更新一个本地用户的展示名称、密码、scope、Project 可见性和启用状态。 |
+| DELETE | /api/v1/auth/users/{user_id} | auth:write | 删除一个本地用户，并清理其登录会话、refresh token 与长期调用 token。 |
+| POST | /api/v1/auth/users/{user_id}/reset-password | auth:write | 重置一个本地用户密码，并按请求撤销现有会话或长期调用 token。 |
+| GET | /api/v1/auth/users/{user_id}/tokens | auth:read | 列出一个本地用户的长期调用 token 摘要。 |
+| POST | /api/v1/auth/users/{user_id}/tokens | auth:write | 为一个本地用户创建长期调用 token，并返回一次性 token 明文。 |
+| DELETE | /api/v1/auth/users/{user_id}/tokens/{token_id} | auth:write | 撤销一个本地用户的长期调用 token。 |
 | GET | /api/v1/system/health | 无 | 返回最小健康状态和 request_id。 |
 | GET | /api/v1/system/me | 仅需主体 | 返回当前主体、project_ids 和 scopes。 |
 | GET | /api/v1/system/database | system:read | 返回数据库连通性检查结果。 |
@@ -125,6 +139,7 @@ WebSocket 资源流的统一消息结构、控制事件和重连规则见 [docs/
 | POST | /api/v1/workflows/app-runtimes | workflows:write | 创建一条 WorkflowAppRuntime。 |
 | GET | /api/v1/workflows/app-runtimes | workflows:read | 按 Project 列出 WorkflowAppRuntime；支持 offset、limit 和统一分页响应头。 |
 | GET | /api/v1/workflows/app-runtimes/{workflow_runtime_id} | workflows:read | 读取一条 WorkflowAppRuntime。 |
+| DELETE | /api/v1/workflows/app-runtimes/{workflow_runtime_id} | workflows:write | 删除一条 WorkflowAppRuntime，并清理对应 snapshot 目录。 |
 | POST | /api/v1/workflows/app-runtimes/{workflow_runtime_id}/start | workflows:write | 启动单实例 runtime worker。 |
 | POST | /api/v1/workflows/app-runtimes/{workflow_runtime_id}/stop | workflows:write | 停止单实例 runtime worker。 |
 | POST | /api/v1/workflows/app-runtimes/{workflow_runtime_id}/restart | workflows:write | 重启单实例 runtime worker，并重新加载固定 snapshot。 |
@@ -152,6 +167,82 @@ WebSocket 资源流的统一消息结构、控制事件和重连规则见 [docs/
 | GET | /api/v1/tasks/{task_id}/events | tasks:read | 按任务查询事件流快照。 |
 | POST | /api/v1/tasks/{task_id}/cancel | tasks:write | 取消一条尚未结束的任务。 |
 
+## auth 资源组
+
+- 当前本地用户与权限管理已经作为现阶段稳定基线收敛完成。
+- 在线 provider 当前只保留目录发现与后续扩展边界。
+
+### GET /api/v1/auth/providers
+
+- 返回当前公开可发现的账号 provider 目录
+- 当前应把 `provider_id=local` 视为唯一完整可用的 provider
+- 当前目录项字段：provider_id、provider_kind、display_name、enabled、login_mode、supports_password_login、supports_refresh、supports_bootstrap_admin、supports_user_management、supports_long_lived_tokens、issuer_url、metadata
+
+### POST /api/v1/auth/bootstrap-admin
+
+- 当本地用户表为空时可调用一次
+- 创建首个本地管理员，默认授予 `*` scope 和不受限的 Project 可见性
+- 返回字段：session_id、access_token、token_type、expires_at、refresh_token、refresh_expires_at、user
+
+### POST /api/v1/auth/login
+
+- 使用 password login 入口登录指定 provider
+- 当前支持请求体字段：provider_id、username、password
+- 返回字段：session_id、access_token、token_type、expires_at、refresh_token、refresh_expires_at、user
+
+### POST /api/v1/auth/refresh
+
+- 使用 local 登录返回的 refresh token 刷新一组新的登录会话凭据
+- 返回字段：session_id、access_token、token_type、expires_at、refresh_token、refresh_expires_at、user
+
+### POST /api/v1/auth/logout
+
+- 需要 Bearer token 主体
+- 只撤销当前本地 access token 对应的会话
+- 只接受登录会话 token，不接受长期调用 token
+
+### GET /api/v1/auth/users
+
+- 需要 auth:read
+- 返回当前全部本地用户列表
+
+### POST /api/v1/auth/users
+
+- 需要 auth:write
+- 可写字段：username、password、display_name、principal_type、project_ids、scopes、metadata、initial_user_token
+- 默认会返回 `user` 和 `initial_user_token`
+
+### PATCH /api/v1/auth/users/{user_id}
+
+- 需要 auth:write
+- 可更新字段：display_name、password、project_ids、scopes、is_active、metadata
+
+### DELETE /api/v1/auth/users/{user_id}
+
+- 需要 auth:write
+- 删除用户时会级联清理其登录会话、refresh token 和长期调用 token
+
+### POST /api/v1/auth/users/{user_id}/reset-password
+
+- 需要 auth:write
+- 可写字段：new_password、revoke_sessions、revoke_user_tokens
+
+### GET /api/v1/auth/users/{user_id}/tokens
+
+- 需要 auth:read
+- 返回指定用户的长期调用 token 摘要列表
+
+### POST /api/v1/auth/users/{user_id}/tokens
+
+- 需要 auth:write
+- 可写字段：token_name、ttl_hours、expires_at、metadata
+- 返回新 token 的一次性明文值
+
+### DELETE /api/v1/auth/users/{user_id}/tokens/{token_id}
+
+- 需要 auth:write
+- 撤销指定长期调用 token
+
 ## system 资源组
 
 ### GET /api/v1/system/health
@@ -162,7 +253,7 @@ WebSocket 资源流的统一消息结构、控制事件和重连规则见 [docs/
 ### GET /api/v1/system/me
 
 - 需要主体请求头
-- 返回字段：principal_id、principal_type、project_ids、scopes、auth_source、auth_mode
+- 返回字段：principal_id、principal_type、project_ids、scopes、username、display_name、auth_source、auth_provider_id、auth_provider_kind、auth_credential_kind、auth_credential_id、auth_session_id、auth_token_id、auth_token_name、auth_mode
 
 ### GET /api/v1/system/database
 
@@ -1596,6 +1687,7 @@ WebSocket 资源流的统一消息结构、控制事件和重连规则见 [docs/
 | 路径 | scope | 说明 |
 | --- | --- | --- |
 | /ws/v1/system/events | 无 | system 事件流入口，当前会返回 system.connected。 |
+| /ws/v1/auth/events | auth:read | 订阅登录会话和长期调用 token 的实时审计事件。 |
 | /ws/v1/tasks/events | tasks:read | 按 task_id 订阅任务事件。 |
 | /ws/v1/workflows/preview-runs/events | workflows:read | 按 preview_run_id 订阅 preview run 实时事件。 |
 | /ws/v1/workflows/runs/events | workflows:read | 按 workflow_run_id 订阅 WorkflowRun 实时事件。 |
@@ -1604,6 +1696,23 @@ WebSocket 资源流的统一消息结构、控制事件和重连规则见 [docs/
 | /ws/v1/projects/events | workflows:read + models:read | 按 project_id 订阅项目级聚合 summary 快照与后续更新。 |
 
 workflow preview-run、run、app-runtime 和 deployment 四类事件流当前都已经把 WebSocket payload 与对应 REST 事件合同对齐，业务字段直接平铺在 `payload` 下，不再额外包一层 `payload.data`。
+
+### /ws/v1/auth/events
+
+请求头沿用 REST 的主体和 scope 规则。
+
+当前流面向本地登录会话与长期调用 user token 的实时审计事件。
+
+当前支持的 query 参数：
+
+- event_type：可选
+- user_id：可选
+- provider_id：可选
+- credential_kind：可选
+
+连接成功后会先收到一条 auth.connected 事件，随后按当前筛选条件持续推送实时审计事件。
+
+当前实现使用 service_event_bus 分发实时审计事件；当前阶段不提供历史回放。
 
 ### /ws/v1/tasks/events
 

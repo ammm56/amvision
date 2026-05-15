@@ -12,7 +12,12 @@ from backend.service.application.models.yolox_model_service import (
     YoloXTrainingOutputRegistration,
 )
 from backend.service.infrastructure.db.session import SessionFactory
-from tests.api_test_support import build_test_headers, create_api_test_context
+from tests.api_test_support import (
+    build_bearer_headers,
+    build_test_headers,
+    create_api_test_context,
+    issue_test_user_token,
+)
 
 
 def test_list_platform_base_models_returns_only_platform_models(tmp_path: Path) -> None:
@@ -93,11 +98,16 @@ def test_list_platform_base_models_requires_models_read_scope(tmp_path: Path) ->
 
     client, session_factory = _create_test_client(tmp_path)
     _seed_platform_and_project_models(session_factory)
+    denied_token = issue_test_user_token(
+        session_factory,
+        username="platform-model-reader",
+        scopes=("tasks:read",),
+    )
     try:
         with client:
             response = client.get(
                 "/api/v1/models/platform-base",
-                headers=_build_model_headers(scopes="tasks:read"),
+                headers=build_bearer_headers(denied_token),
             )
 
         assert response.status_code == 403

@@ -20,9 +20,8 @@ internal sealed class WorkflowRuntimeDebugPage : UserControl
     private readonly TextBox imagePathTextBox;
     private readonly TextBox mediaTypeTextBox;
     private readonly NumericUpDown timeoutSecondsInput;
-    private readonly TextBox principalIdTextBox;
+    private readonly TextBox accessTokenTextBox;
     private readonly TextBox projectIdTextBox;
-    private readonly TextBox scopesTextBox;
     private readonly TextBox eventIdTextBox;
     private readonly TextBox traceIdTextBox;
     private readonly RichTextBox metadataJsonTextBox;
@@ -83,9 +82,8 @@ internal sealed class WorkflowRuntimeDebugPage : UserControl
             Value = 5,
             Dock = DockStyle.Fill
         };
-        principalIdTextBox = CreateTextBox("user-1");
+        accessTokenTextBox = CreateTextBox("amvision-default-user-token");
         projectIdTextBox = CreateTextBox("project-1");
-        scopesTextBox = CreateTextBox("workflows:read,workflows:write");
         eventIdTextBox = CreateTextBox(string.Empty);
         traceIdTextBox = CreateTextBox(string.Empty);
         metadataJsonTextBox = CreateJsonBox("{\n  \"scenario\": \"opencv-process-save-image-zeromq\",\n  \"trigger_source\": \"sync-api\",\n  \"source\": \"winforms-runtime-debugger\"\n}");
@@ -264,8 +262,8 @@ internal sealed class WorkflowRuntimeDebugPage : UserControl
         AddField(layout, 1, "Base API URL", baseApiUrlTextBox, "Workflow Runtime Id", workflowRuntimeIdTextBox);
         AddField(layout, 2, "Trigger Input", defaultInputBindingTextBox, "HTTP Input", inputBindingTextBox);
         AddField(layout, 3, "Media Type", mediaTypeTextBox, "Timeout(s)", timeoutSecondsInput);
-        AddField(layout, 4, "Principal Id", principalIdTextBox, "Project Id", projectIdTextBox);
-        AddField(layout, 5, "Scopes", scopesTextBox, "Event Id", eventIdTextBox);
+        AddField(layout, 4, "Access Token", accessTokenTextBox, "Project Id", projectIdTextBox);
+        AddSingleFieldRow(layout, 5, "Event Id", eventIdTextBox);
         AddSingleFieldRow(layout, 6, "Trace Id", traceIdTextBox);
         AddImagePathRow(layout, 7);
         AddJsonRow(layout, 8, "Execution Metadata JSON", metadataJsonTextBox);
@@ -1156,9 +1154,7 @@ internal sealed class WorkflowRuntimeDebugPage : UserControl
         return new AmvisionWorkflowClient(new AmvisionWorkflowClientOptions
         {
             BaseApiUrl = baseApiUrlTextBox.Text.Trim(),
-            PrincipalId = principalIdTextBox.Text.Trim(),
-            ProjectIds = projectIdTextBox.Text.Trim(),
-            Scopes = scopesTextBox.Text.Trim(),
+            AccessToken = accessTokenTextBox.Text.Trim(),
             Timeout = TimeSpan.FromSeconds(decimal.ToDouble(timeoutSecondsInput.Value))
         });
     }

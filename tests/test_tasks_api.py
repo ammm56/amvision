@@ -6,6 +6,7 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
+from backend.service.application.auth.default_local_auth_seeder import DEFAULT_LOCAL_AUTH_USERNAME
 from backend.service.application.tasks.task_service import (
     AppendTaskEventRequest,
     CreateTaskRequest,
@@ -104,35 +105,36 @@ def test_task_events_websocket_streams_appended_events(tmp_path: Path) -> None:
     client, session_factory = _create_test_client(tmp_path)
     service = SqlAlchemyTaskService(session_factory)
     try:
-        created_task = service.create_task(
-            CreateTaskRequest(
-                project_id="project-1",
-                task_kind="dataset-import",
-                display_name="import dataset-3",
-                created_by="user-1",
-            )
-        )
-
-        with client.websocket_connect(
-            f"/ws/v1/tasks/events?task_id={created_task.task_id}",
-            headers=_build_task_read_headers(),
-        ) as websocket:
-            connected_payload = websocket.receive_json()
-            assert connected_payload["event_type"] == "tasks.connected"
-
-            initial_event = websocket.receive_json()
-            assert initial_event["event_type"] == "status"
-
-            service.append_task_event(
-                AppendTaskEventRequest(
-                    task_id=created_task.task_id,
-                    event_type="progress",
-                    message="dataset import validated",
-                    payload={"progress": {"stage": "validated", "percent": 60}},
+        with client:
+            created_task = service.create_task(
+                CreateTaskRequest(
+                    project_id="project-1",
+                    task_kind="dataset-import",
+                    display_name="import dataset-3",
+                    created_by=DEFAULT_LOCAL_AUTH_USERNAME,
                 )
             )
 
-            streamed_event = websocket.receive_json()
+            with client.websocket_connect(
+                f"/ws/v1/tasks/events?task_id={created_task.task_id}",
+                headers=_build_task_read_headers(),
+            ) as websocket:
+                connected_payload = websocket.receive_json()
+                assert connected_payload["event_type"] == "tasks.connected"
+
+                initial_event = websocket.receive_json()
+                assert initial_event["event_type"] == "status"
+
+                service.append_task_event(
+                    AppendTaskEventRequest(
+                        task_id=created_task.task_id,
+                        event_type="progress",
+                        message="dataset import validated",
+                        payload={"progress": {"stage": "validated", "percent": 60}},
+                    )
+                )
+
+                streamed_event = websocket.receive_json()
 
         assert streamed_event["event_type"] == "progress"
         assert streamed_event["payload"]["data"]["progress"]["stage"] == "validated"

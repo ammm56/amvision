@@ -13,19 +13,9 @@ public sealed class AmvisionWorkflowClientOptions
     public string BaseApiUrl { get; set; } = string.Empty;
 
     /// <summary>
-    /// x-amvision-principal-id 请求头值。
+    /// Authorization Bearer token 明文。
     /// </summary>
-    public string PrincipalId { get; set; } = string.Empty;
-
-    /// <summary>
-    /// x-amvision-project-ids 请求头值。
-    /// </summary>
-    public string ProjectIds { get; set; } = string.Empty;
-
-    /// <summary>
-    /// x-amvision-scopes 请求头值。
-    /// </summary>
-    public string Scopes { get; set; } = "workflows:read,workflows:write";
+    public string AccessToken { get; set; } = string.Empty;
 
     /// <summary>
     /// HTTP 请求超时时间。
@@ -47,19 +37,9 @@ public sealed class AmvisionWorkflowClientOptions
             throw new ArgumentException("BaseApiUrl must be an absolute URI.", nameof(BaseApiUrl));
         }
 
-        if (string.IsNullOrWhiteSpace(PrincipalId))
+        if (string.IsNullOrWhiteSpace(AccessToken))
         {
-            throw new ArgumentException("PrincipalId cannot be empty.", nameof(PrincipalId));
-        }
-
-        if (string.IsNullOrWhiteSpace(ProjectIds))
-        {
-            throw new ArgumentException("ProjectIds cannot be empty.", nameof(ProjectIds));
-        }
-
-        if (string.IsNullOrWhiteSpace(Scopes))
-        {
-            throw new ArgumentException("Scopes cannot be empty.", nameof(Scopes));
+            throw new ArgumentException("AccessToken cannot be empty.", nameof(AccessToken));
         }
 
         if (Timeout <= TimeSpan.Zero)

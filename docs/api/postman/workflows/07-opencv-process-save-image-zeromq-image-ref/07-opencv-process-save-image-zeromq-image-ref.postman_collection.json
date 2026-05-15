@@ -11,10 +11,6 @@
       "value": "http://127.0.0.1:8000"
     },
     {
-      "key": "principalId",
-      "value": "user-1"
-    },
-    {
       "key": "projectId",
       "value": "project-1"
     },
@@ -33,6 +29,10 @@
     {
       "key": "triggerSourceId",
       "value": "zeromq-trigger-source-07"
+    },
+    {
+      "key": "accessToken",
+      "value": "amvision-default-user-token"
     }
   ],
   "item": [
@@ -47,18 +47,8 @@
             "type": "text"
           },
           {
-            "key": "x-amvision-principal-id",
-            "value": "{{principalId}}",
-            "type": "text"
-          },
-          {
-            "key": "x-amvision-project-ids",
-            "value": "{{projectId}}",
-            "type": "text"
-          },
-          {
-            "key": "x-amvision-scopes",
-            "value": "workflows:read,workflows:write",
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}",
             "type": "text"
           }
         ],
@@ -103,18 +93,8 @@
             "type": "text"
           },
           {
-            "key": "x-amvision-principal-id",
-            "value": "{{principalId}}",
-            "type": "text"
-          },
-          {
-            "key": "x-amvision-project-ids",
-            "value": "{{projectId}}",
-            "type": "text"
-          },
-          {
-            "key": "x-amvision-scopes",
-            "value": "workflows:read,workflows:write",
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}",
             "type": "text"
           }
         ],
@@ -157,18 +137,8 @@
             "type": "text"
           },
           {
-            "key": "x-amvision-principal-id",
-            "value": "{{principalId}}",
-            "type": "text"
-          },
-          {
-            "key": "x-amvision-project-ids",
-            "value": "{{projectId}}",
-            "type": "text"
-          },
-          {
-            "key": "x-amvision-scopes",
-            "value": "workflows:read,workflows:write",
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}",
             "type": "text"
           }
         ],
@@ -218,18 +188,8 @@
         "method": "GET",
         "header": [
           {
-            "key": "x-amvision-principal-id",
-            "value": "{{principalId}}",
-            "type": "text"
-          },
-          {
-            "key": "x-amvision-project-ids",
-            "value": "{{projectId}}",
-            "type": "text"
-          },
-          {
-            "key": "x-amvision-scopes",
-            "value": "workflows:read,workflows:write",
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}",
             "type": "text"
           }
         ],
@@ -261,18 +221,8 @@
             "type": "text"
           },
           {
-            "key": "x-amvision-principal-id",
-            "value": "{{principalId}}",
-            "type": "text"
-          },
-          {
-            "key": "x-amvision-project-ids",
-            "value": "{{projectId}}",
-            "type": "text"
-          },
-          {
-            "key": "x-amvision-scopes",
-            "value": "workflows:read,workflows:write",
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}",
             "type": "text"
           }
         ],
@@ -322,18 +272,8 @@
         "method": "POST",
         "header": [
           {
-            "key": "x-amvision-principal-id",
-            "value": "{{principalId}}",
-            "type": "text"
-          },
-          {
-            "key": "x-amvision-project-ids",
-            "value": "{{projectId}}",
-            "type": "text"
-          },
-          {
-            "key": "x-amvision-scopes",
-            "value": "workflows:read,workflows:write",
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}",
             "type": "text"
           }
         ],
@@ -361,18 +301,8 @@
         "method": "GET",
         "header": [
           {
-            "key": "x-amvision-principal-id",
-            "value": "{{principalId}}",
-            "type": "text"
-          },
-          {
-            "key": "x-amvision-project-ids",
-            "value": "{{projectId}}",
-            "type": "text"
-          },
-          {
-            "key": "x-amvision-scopes",
-            "value": "workflows:read,workflows:write",
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}",
             "type": "text"
           }
         ],
@@ -405,18 +335,8 @@
             "type": "text"
           },
           {
-            "key": "x-amvision-principal-id",
-            "value": "{{principalId}}",
-            "type": "text"
-          },
-          {
-            "key": "x-amvision-project-ids",
-            "value": "{{projectId}}",
-            "type": "text"
-          },
-          {
-            "key": "x-amvision-scopes",
-            "value": "workflows:read,workflows:write",
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}",
             "type": "text"
           }
         ],
@@ -472,18 +392,8 @@
             "type": "text"
           },
           {
-            "key": "x-amvision-principal-id",
-            "value": "{{principalId}}",
-            "type": "text"
-          },
-          {
-            "key": "x-amvision-project-ids",
-            "value": "{{projectId}}",
-            "type": "text"
-          },
-          {
-            "key": "x-amvision-scopes",
-            "value": "workflows:read,workflows:write",
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}",
             "type": "text"
           }
         ],
@@ -535,18 +445,8 @@
         "method": "GET",
         "header": [
           {
-            "key": "x-amvision-principal-id",
-            "value": "{{principalId}}",
-            "type": "text"
-          },
-          {
-            "key": "x-amvision-project-ids",
-            "value": "{{projectId}}",
-            "type": "text"
-          },
-          {
-            "key": "x-amvision-scopes",
-            "value": "workflows:read,workflows:write",
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}",
             "type": "text"
           }
         ],
@@ -578,18 +478,8 @@
             "type": "text"
           },
           {
-            "key": "x-amvision-principal-id",
-            "value": "{{principalId}}",
-            "type": "text"
-          },
-          {
-            "key": "x-amvision-project-ids",
-            "value": "{{projectId}}",
-            "type": "text"
-          },
-          {
-            "key": "x-amvision-scopes",
-            "value": "workflows:read,workflows:write",
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}",
             "type": "text"
           }
         ],
@@ -624,18 +514,8 @@
         "method": "POST",
         "header": [
           {
-            "key": "x-amvision-principal-id",
-            "value": "{{principalId}}",
-            "type": "text"
-          },
-          {
-            "key": "x-amvision-project-ids",
-            "value": "{{projectId}}",
-            "type": "text"
-          },
-          {
-            "key": "x-amvision-scopes",
-            "value": "workflows:read,workflows:write",
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}",
             "type": "text"
           }
         ],
@@ -663,18 +543,8 @@
         "method": "GET",
         "header": [
           {
-            "key": "x-amvision-principal-id",
-            "value": "{{principalId}}",
-            "type": "text"
-          },
-          {
-            "key": "x-amvision-project-ids",
-            "value": "{{projectId}}",
-            "type": "text"
-          },
-          {
-            "key": "x-amvision-scopes",
-            "value": "workflows:read,workflows:write",
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}",
             "type": "text"
           }
         ],
@@ -702,18 +572,8 @@
         "method": "POST",
         "header": [
           {
-            "key": "x-amvision-principal-id",
-            "value": "{{principalId}}",
-            "type": "text"
-          },
-          {
-            "key": "x-amvision-project-ids",
-            "value": "{{projectId}}",
-            "type": "text"
-          },
-          {
-            "key": "x-amvision-scopes",
-            "value": "workflows:read,workflows:write",
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}",
             "type": "text"
           }
         ],
@@ -741,18 +601,8 @@
         "method": "DELETE",
         "header": [
           {
-            "key": "x-amvision-principal-id",
-            "value": "{{principalId}}",
-            "type": "text"
-          },
-          {
-            "key": "x-amvision-project-ids",
-            "value": "{{projectId}}",
-            "type": "text"
-          },
-          {
-            "key": "x-amvision-scopes",
-            "value": "workflows:read,workflows:write",
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}",
             "type": "text"
           }
         ],
@@ -779,18 +629,8 @@
         "method": "POST",
         "header": [
           {
-            "key": "x-amvision-principal-id",
-            "value": "{{principalId}}",
-            "type": "text"
-          },
-          {
-            "key": "x-amvision-project-ids",
-            "value": "{{projectId}}",
-            "type": "text"
-          },
-          {
-            "key": "x-amvision-scopes",
-            "value": "workflows:read,workflows:write",
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}",
             "type": "text"
           }
         ],

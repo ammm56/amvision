@@ -22,6 +22,7 @@ from backend.contracts.workflows.resource_semantics import (
     WORKFLOW_PREVIEW_RUN_TERMINAL_STATES,
     WorkflowPreviewRunState,
     build_workflow_app_runtime_events_object_key,
+    build_workflow_app_runtime_storage_dir,
     build_workflow_app_runtime_snapshot_object_key,
     build_workflow_preview_run_snapshot_object_key,
     build_workflow_preview_run_storage_dir,
@@ -740,6 +741,50 @@ class WorkflowRuntimeService:
             message="workflow app runtime 已停止",
         )
         return updated_runtime
+
+    def delete_workflow_app_runtime(
+        self,
+        workflow_runtime_id: str,
+        *,
+        deleted_by: str | None = None,
+    ) -> None:
+        """删除一个 WorkflowAppRuntime 及其 snapshot 目录。"""
+
+        workflow_app_runtime = self.get_workflow_app_runtime(workflow_runtime_id)
+        runtime_state = self.worker_manager.get_runtime_health(workflow_runtime_id)
+        if runtime_state.current_run_id is not None:
+            raise InvalidRequestError(
+                "当前 WorkflowAppRuntime 仍有活动 WorkflowRun，不能删除",
+                details={
+                    "workflow_runtime_id": workflow_runtime_id,
+                    "workflow_run_id": runtime_state.current_run_id,
+                },
+            )
+        if runtime_state.observed_state != "stopped":
+            workflow_app_runtime = self.stop_workflow_app_runtime(
+                workflow_runtime_id,
+                updated_by=deleted_by,
+            )
+
+        deleted_runtime = replace(
+            workflow_app_runtime,
+            desired_state="stopped",
+            observed_state="stopped",
+            updated_at=_now_isoformat(),
+            metadata=self._with_resource_updated_by(
+                dict(workflow_app_runtime.metadata),
+                deleted_by,
+            ),
+        )
+        self._append_workflow_app_runtime_event(
+            deleted_runtime,
+            event_type="runtime.deleted",
+            message="workflow app runtime 已删除",
+        )
+        with self._open_unit_of_work() as unit_of_work:
+            unit_of_work.workflow_runtime.delete_workflow_app_runtime(workflow_runtime_id)
+            unit_of_work.commit()
+        self.dataset_storage.delete_tree(build_workflow_app_runtime_storage_dir(workflow_runtime_id))
 
     def restart_workflow_app_runtime(
         self,

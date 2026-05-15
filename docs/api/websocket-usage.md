@@ -8,6 +8,7 @@
 
 ## 适用范围
 
+- `/ws/v1/auth/events`
 - `/ws/v1/projects/events`
 - `/ws/v1/workflows/preview-runs/events`
 - `/ws/v1/workflows/runs/events`
@@ -22,15 +23,43 @@
 - preview-runs、runs、app-runtimes 三类资源流支持 `after_cursor` 和 `limit`，适合做断线补回和最小重放。
 - `limit` 只影响建连后的首轮 replay，不影响后续 live 事件推送。
 - 需要持久化恢复点时，只保存业务事件的数值 cursor，不保存 `*.heartbeat` 或 `*.lagging` 的 synthetic cursor。
-- 如果调用方无法在 WebSocket 握手里写入自定义 `x-amvision-*` 请求头，应通过 SDK、本地代理、边车服务或可控网关代发握手；当前实现不提供 query token 替代规则。
+- 如果调用方无法在 WebSocket 握手里写入 `Authorization` 请求头，可在启用 `websocket_query_token_enabled` 时改用 `access_token` 查询参数；如果部署侧禁用了该能力，则应通过 SDK、本地代理、边车服务或可控网关代发握手。
 
 ## 鉴权和握手规则
 
-当前 WebSocket 握手沿用 REST 的主体与 scope 请求头：
+当前 WebSocket 握手沿用 REST 的 Bearer token 鉴权：
 
-- `x-amvision-principal-id`
-- `x-amvision-project-ids`
-- `x-amvision-scopes`
+- `Authorization: Bearer <token>`
+- 启用 `websocket_query_token_enabled` 时，也可使用 `?access_token=<token>`
+- 联调或集成时应填写当前环境实际 Bearer token；如果使用长期调用 token，应使用当前环境有效的用户 token
+
+当前建议：
+
+- 人工登录和管理台会话使用短期登录 session token。
+- 工作站、workflow app、MES、边车服务和其他长期集成调用优先使用用户管理接口签发的长期调用 token。
+- 长期调用 token 默认永久有效；如果接入侧需要轮换策略，可在签发时显式设置 `ttl_hours` 或 `expires_at`。
+
+### `/ws/v1/auth/events`
+
+当前查询参数：
+
+- `event_type`，可选
+- `user_id`，可选
+- `provider_id`，可选
+- `credential_kind`，可选，当前常见值为 `session`、`user-token`
+
+适用场景：
+
+- 管理台安全审计面板
+- 工作站或边车对 token 签发与撤销的观察
+- 联调 provider 切换和 refresh 流程时的实时诊断
+
+当前注意点：
+
+- `auth.events` 只提供实时流，不提供 `after_cursor` 回放
+- 连接成功后会先收到 `auth.connected`
+- 当前主要业务事件类型包括 `auth.sessions.issued`、`auth.sessions.revoked`、`auth.user-tokens.issued`、`auth.user-tokens.revoked`
+- 当前事件流只覆盖本地登录会话与长期调用 token 审计；在线 provider 扩展事件尚未进入公开 WebSocket 面
 
 当前常见关闭码和原因如下：
 

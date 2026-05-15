@@ -480,6 +480,27 @@ def stop_workflow_app_runtime(
     )
 
 
+@workflow_runtime_router.delete(
+    "/app-runtimes/{workflow_runtime_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def delete_workflow_app_runtime(
+    workflow_runtime_id: str,
+    request: Request,
+    principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("workflows:write"))],
+) -> Response:
+    """删除一条 WorkflowAppRuntime 及其 snapshot 目录。"""
+
+    runtime_service = _build_workflow_runtime_service(request)
+    workflow_app_runtime = runtime_service.get_workflow_app_runtime(workflow_runtime_id)
+    _ensure_project_visible(principal=principal, project_id=workflow_app_runtime.project_id)
+    runtime_service.delete_workflow_app_runtime(
+        workflow_runtime_id,
+        deleted_by=principal.principal_id,
+    )
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 @workflow_runtime_router.post(
     "/app-runtimes/{workflow_runtime_id}/restart",
     response_model=WorkflowAppRuntimeContract,

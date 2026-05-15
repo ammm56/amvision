@@ -40,13 +40,8 @@
             "method": "GET",
             "header": [
               {
-                "key": "x-amvision-principal-id",
-                "value": "{{principalId}}",
-                "type": "text"
-              },
-              {
-                "key": "x-amvision-scopes",
-                "value": "models:read",
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
                 "type": "text"
               }
             ],
@@ -113,13 +108,8 @@
             "method": "GET",
             "header": [
               {
-                "key": "x-amvision-principal-id",
-                "value": "{{principalId}}",
-                "type": "text"
-              },
-              {
-                "key": "x-amvision-scopes",
-                "value": "models:read",
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
                 "type": "text"
               }
             ],
@@ -147,10 +137,6 @@
     {
       "key": "baseUrl",
       "value": "http://127.0.0.1:8000"
-    },
-    {
-      "key": "principalId",
-      "value": "user-1"
     },
     {
       "key": "modelId",
@@ -183,6 +169,10 @@
     {
       "key": "catalogManifestObjectKey",
       "value": "models/pretrained/yolox/nano/default/manifest.json"
+    },
+    {
+      "key": "accessToken",
+      "value": "amvision-default-user-token"
     }
   ]
 }

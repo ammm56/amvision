@@ -288,6 +288,20 @@ class SqlAlchemyWorkflowRuntimeRepository:
             ) from error
         return tuple(self._runtime_to_domain(record) for record in records)
 
+    def delete_workflow_app_runtime(self, workflow_runtime_id: str) -> None:
+        """按 id 删除一个 WorkflowAppRuntime。"""
+
+        try:
+            record = self.session.get(WorkflowAppRuntimeRecord, workflow_runtime_id)
+            if record is None:
+                return
+            self.session.delete(record)
+        except SQLAlchemyError as error:
+            raise PersistenceOperationError(
+                "删除 WorkflowAppRuntime 失败",
+                details={"error_type": error.__class__.__name__},
+            ) from error
+
     def save_workflow_run(self, workflow_run: WorkflowRun) -> None:
         """保存一个 WorkflowRun。"""
 

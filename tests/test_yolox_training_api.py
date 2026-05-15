@@ -1035,11 +1035,7 @@ def test_pause_and_resume_yolox_training_task_reuses_latest_checkpoint(
             assert dataset_storage.resolve(paused_payload["labels_object_key"]).read_text(encoding="utf-8") == "bolt\n"
             paused_validation_session_response = client.post(
                 "/api/v1/models/yolox/validation-sessions",
-                headers={
-                    "x-amvision-principal-id": "user-1",
-                    "x-amvision-project-ids": "project-1",
-                    "x-amvision-scopes": "models:read",
-                },
+                headers=build_test_headers(scopes="models:read"),
                 json={
                     "project_id": "project-1",
                     "model_version_id": paused_payload["model_version_id"],
@@ -1209,11 +1205,7 @@ def test_register_latest_checkpoint_model_version_for_paused_task(
         with client:
             validation_session_response = client.post(
                 "/api/v1/models/yolox/validation-sessions",
-                headers={
-                    "x-amvision-principal-id": "user-1",
-                    "x-amvision-project-ids": "project-1",
-                    "x-amvision-scopes": "models:read",
-                },
+                headers=build_test_headers(scopes="models:read"),
                 json={
                     "project_id": "project-1",
                     "model_version_id": payload["model_version_id"],
@@ -1929,11 +1921,7 @@ def test_request_yolox_training_save_creates_manual_checkpoint_event(
         assert dataset_storage.resolve(running_payload["labels_object_key"]).read_text(encoding="utf-8") == "bolt\n"
         running_validation_session_response = client.post(
             "/api/v1/models/yolox/validation-sessions",
-            headers={
-                "x-amvision-principal-id": "user-1",
-                "x-amvision-project-ids": "project-1",
-                "x-amvision-scopes": "models:read",
-            },
+            headers=build_test_headers(scopes="models:read"),
             json={
                 "project_id": "project-1",
                 "model_version_id": running_payload["model_version_id"],

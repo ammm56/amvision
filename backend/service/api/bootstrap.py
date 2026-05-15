@@ -12,6 +12,7 @@ from backend.nodes.node_catalog_registry import NodeCatalogRegistry
 from backend.nodes.node_pack_loader import NodePackLoader
 from backend.queue import LocalFileQueueBackend
 from backend.service.api.seeders import BackendServiceSeeder, BackendServiceSeederRunner
+from backend.service.application.auth.default_local_auth_seeder import DefaultLocalAuthSeeder
 from backend.service.application.events import InMemoryServiceEventBus
 from backend.service.application.deployments import (
     PublishedInferenceGateway,
@@ -470,6 +471,7 @@ class BackendServiceBootstrap(
         """
 
         default_seeders: tuple[BackendServiceSeeder, ...] = (
+            DefaultLocalAuthSeeder(),
             YoloXPretrainedModelCatalogSeeder(),
         )
         if self._provided_seeders is None:

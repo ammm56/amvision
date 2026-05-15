@@ -211,9 +211,7 @@ static void WorkflowRuntimeImageInvokeBuildsExpectedHttpRequest()
         new AmvisionWorkflowClientOptions
         {
             BaseApiUrl = "http://127.0.0.1:8000",
-            PrincipalId = "user-1",
-            ProjectIds = "project-1",
-            Scopes = "workflows:read,workflows:write"
+            AccessToken = "amvision-default-user-token"
         },
         httpClient
     );
@@ -230,9 +228,7 @@ static void WorkflowRuntimeImageInvokeBuildsExpectedHttpRequest()
 
     AssertEqual(HttpMethod.Post, handler.LastMethod);
     AssertEqual("http://127.0.0.1:8000/api/v1/workflows/app-runtimes/runtime-07/invoke", handler.LastRequestUri?.ToString());
-    AssertEqual("user-1", handler.LastHeaders["x-amvision-principal-id"].Single());
-    AssertEqual("project-1", handler.LastHeaders["x-amvision-project-ids"].Single());
-    AssertEqual("workflows:read,workflows:write", handler.LastHeaders["x-amvision-scopes"].Single());
+    AssertEqual("Bearer amvision-default-user-token", handler.LastHeaders["Authorization"].Single());
     AssertEqual(HttpStatusCode.OK, response.StatusCode);
     AssertEqual(true, response.IsSuccessStatusCode);
 
@@ -259,9 +255,7 @@ static void TriggerSourceHealthUsesExpectedHttpEndpoint()
         new AmvisionWorkflowClientOptions
         {
             BaseApiUrl = "http://127.0.0.1:8000",
-            PrincipalId = "user-1",
-            ProjectIds = "project-1",
-            Scopes = "workflows:read,workflows:write"
+            AccessToken = "amvision-default-user-token"
         },
         httpClient
     );
@@ -290,9 +284,7 @@ static void WorkflowApiResponseParsesBackendErrorEnvelope()
         new AmvisionWorkflowClientOptions
         {
             BaseApiUrl = "http://127.0.0.1:8000",
-            PrincipalId = "user-1",
-            ProjectIds = "project-1",
-            Scopes = "workflows:read,workflows:write"
+            AccessToken = "amvision-default-user-token"
         },
         httpClient
     );

@@ -10,6 +10,7 @@ import pytest
 from backend.queue import LocalFileQueueBackend, LocalFileQueueSettings
 from backend.contracts.datasets.exports.coco_detection_export import COCO_DETECTION_DATASET_FORMAT
 from backend.contracts.datasets.exports.voc_detection_export import VOC_DETECTION_DATASET_FORMAT
+from backend.service.application.auth.default_local_auth_seeder import DEFAULT_LOCAL_AUTH_USERNAME
 from backend.service.application.datasets.dataset_export import (
     DATASET_EXPORT_QUEUE_NAME,
     DatasetExportRequest,
@@ -293,7 +294,7 @@ def test_export_task_worker_persists_export_artifact_for_training_input_boundary
                 dataset_version_id="dataset-version-task-1",
                 format_id=COCO_DETECTION_DATASET_FORMAT,
             ),
-            created_by="user-1",
+            created_by=DEFAULT_LOCAL_AUTH_USERNAME,
         )
 
         queued_task = SqlAlchemyTaskService(session_factory).get_task(

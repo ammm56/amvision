@@ -1,5 +1,6 @@
 using System;
 using System.Net.Http;
+using System.Net.Http.Headers;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -256,9 +257,7 @@ public sealed class AmvisionWorkflowClient : IDisposable
         }
 
         using var request = new HttpRequestMessage(method, relativePath);
-        request.Headers.TryAddWithoutValidation("x-amvision-principal-id", options.PrincipalId.Trim());
-        request.Headers.TryAddWithoutValidation("x-amvision-project-ids", options.ProjectIds.Trim());
-        request.Headers.TryAddWithoutValidation("x-amvision-scopes", options.Scopes.Trim());
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", options.AccessToken.Trim());
         if (content is not null)
         {
             request.Content = new StringContent(content, Encoding.UTF8, "application/json");

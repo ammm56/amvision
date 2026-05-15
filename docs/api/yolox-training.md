@@ -27,9 +27,8 @@
 
 ### 最小请求头
 
-- x-amvision-principal-id：调用主体 id
-- x-amvision-project-ids：当前主体可访问的 Project id 列表，多个值用逗号分隔；为空时表示不按 Project 做可见性裁剪
-- x-amvision-scopes：当前主体持有的 scope 列表，多个值用逗号分隔
+- Authorization: Bearer <token>
+- 使用当前环境实际 Bearer token
 
 ### scope 要求
 

@@ -37,7 +37,7 @@ def test_system_me_accepts_static_bearer_token_and_reports_auth_source(tmp_path:
     assert payload["principal_id"] == "frontend-user"
     assert payload["project_ids"] == ["project-1"]
     assert payload["auth_source"] == "bearer-token"
-    assert payload["auth_mode"] == "hybrid"
+    assert payload["auth_mode"] == "static-bearer"
 
 
 def test_projects_events_websocket_accepts_query_access_token(tmp_path: Path) -> None:
@@ -110,8 +110,7 @@ def _create_access_boundary_test_client(
     application = create_app(
         settings=BackendServiceSettings(
             auth=BackendServiceAuthConfig(
-                mode="hybrid",
-                allow_development_headers=True,
+                mode="static-bearer",
                 websocket_query_token_enabled=True,
                 static_tokens=[
                     BackendServiceStaticAccessTokenConfig(

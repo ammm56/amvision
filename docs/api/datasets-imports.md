@@ -25,13 +25,12 @@
 
 ## 鉴权规则
 
-当前接口通过请求头传入主体信息与 scope。
+当前接口通过 `Authorization: Bearer <token>` 鉴权。`scopes` 和 `project_ids` 从 Bearer token 对应的本地用户或静态 token 配置中解析。
 
 ### 最小请求头
 
-- x-amvision-principal-id：调用主体 id
-- x-amvision-project-ids：当前主体可访问的 Project id 列表，多个值用逗号分隔；为空时表示不按 Project 做可见性裁剪
-- x-amvision-scopes：当前主体持有的 scope 列表，多个值用逗号分隔
+- Authorization: Bearer <token>
+- 使用当前环境实际 Bearer token
 
 ### scope 要求
 
@@ -64,9 +63,7 @@
 
 ```bash
 curl -X POST "http://127.0.0.1:8000/api/v1/datasets/imports" \
-  -H "x-amvision-principal-id: user-1" \
-  -H "x-amvision-project-ids: project-1" \
-  -H "x-amvision-scopes: datasets:write" \
+  -H "Authorization: Bearer <token>" \
   -F "project_id=project-1" \
   -F "dataset_id=dataset-1" \
   -F "task_type=detection" \
@@ -210,7 +207,7 @@ curl -X POST "http://127.0.0.1:8000/api/v1/datasets/imports" \
   "metadata": {
     "source_file_name": "barcodeqrcode.zip",
     "package_size": 7538487,
-    "principal_id": "user-1",
+    "principal_id": "current-principal-id",
     "sample_count": 10,
     "category_count": 2,
     "split_counts": {
