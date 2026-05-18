@@ -21,6 +21,11 @@ from backend.contracts.workflows.resource_semantics import (
     build_workflow_preview_run_storage_dir,
 )
 from backend.service.domain.workflows.workflow_runtime_records import WorkflowRun
+from backend.service.application.workflows.preview_run_cleanup import (
+    finalize_staged_preview_run_storage,
+    restore_staged_preview_run_storage,
+    stage_preview_run_storage_for_cleanup,
+)
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
@@ -198,6 +203,7 @@ def cleanup_expired_preview_runs(
     session_factory = SessionFactory(service_settings.to_database_settings())
     dataset_storage = LocalDatasetStorage(service_settings.to_dataset_storage_settings())
     unit_of_work = SqlAlchemyUnitOfWork(session_factory.create_session())
+    staged_snapshot_dirs: list[tuple[str, str | None]] = []
     try:
         expired_preview_runs = unit_of_work.workflow_runtime.list_expired_preview_runs(
             cutoff_time
@@ -206,17 +212,42 @@ def cleanup_expired_preview_runs(
             item.preview_run_id for item in expired_preview_runs
         ]
         for preview_run in expired_preview_runs:
+            staged_snapshot_dirs.append(
+                (
+                    preview_run.preview_run_id,
+                    stage_preview_run_storage_for_cleanup(
+                        dataset_storage=dataset_storage,
+                        preview_run_id=preview_run.preview_run_id,
+                    ),
+                )
+            )
+        for preview_run in expired_preview_runs:
             unit_of_work.workflow_runtime.delete_preview_run(preview_run.preview_run_id)
-        unit_of_work.commit()
+        try:
+            unit_of_work.commit()
+        except Exception:
+            for preview_run_id, staging_dir in staged_snapshot_dirs:
+                restore_staged_preview_run_storage(
+                    dataset_storage=dataset_storage,
+                    preview_run_id=preview_run_id,
+                    staging_dir=staging_dir,
+                )
+            raise
     finally:
         unit_of_work.close()
         session_factory.engine.dispose()
 
     deleted_snapshot_dirs: list[str] = []
-    for preview_run_id in deleted_preview_run_ids:
+    pending_staging_dirs: list[str] = []
+    for preview_run_id, staging_dir in staged_snapshot_dirs:
         snapshot_dir = build_workflow_preview_run_storage_dir(preview_run_id)
-        dataset_storage.delete_tree(snapshot_dir)
         deleted_snapshot_dirs.append(snapshot_dir)
+        pending_staging_dir = finalize_staged_preview_run_storage(
+            dataset_storage=dataset_storage,
+            staging_dir=staging_dir,
+        )
+        if pending_staging_dir is not None:
+            pending_staging_dirs.append(pending_staging_dir)
 
     return {
         "command": WORKFLOW_PREVIEW_RUN_CLEANUP_COMMAND,
@@ -224,6 +255,7 @@ def cleanup_expired_preview_runs(
         "expired_count": len(deleted_preview_run_ids),
         "deleted_preview_run_ids": deleted_preview_run_ids,
         "deleted_snapshot_dirs": deleted_snapshot_dirs,
+        "pending_staging_dirs": pending_staging_dirs,
     }
 
 

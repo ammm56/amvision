@@ -23,6 +23,7 @@
 - GET /api/v1/auth/users/{user_id}/tokens
 - POST /api/v1/auth/users/{user_id}/tokens
 - DELETE /api/v1/auth/users/{user_id}/tokens/{token_id}
+- GET /api/v1/system/bootstrap
 - GET /api/v1/system/me
 - /ws/v1/auth/events
 
@@ -50,7 +51,10 @@
 - 空库首次启动时，服务会自动写入一组默认本地用户数据。
 - 初始化逻辑定义在 [backend/service/application/auth/default_local_auth_seeder.py](../../backend/service/application/auth/default_local_auth_seeder.py)。
 - backend-service.json 只保留是否启用自动初始化的开关，不保存默认用户名、密码或 token 明文。
-- Postman、Swagger 和业务接口示例统一填写当前环境实际 Bearer token，不把默认 token 当成固定联调值。
+- 当前仓库默认 seed 值为：用户名 `amvar`、密码 `123456`、长期调用 token `amvision-default-user-token`。
+- 这组 seed 只会在本地用户表为空时写入；数据库已有用户数据时不会覆盖。
+- docs/api/postman 下的根 collection 默认变量已经预置这组 seed 值，用于空库首次启动后的最小联调。
+- 如果数据库已经存在用户数据，或当前环境手动改过默认账号，应改用当前环境实际 Bearer token。
 
 ## 当前公开 scope
 
@@ -236,6 +240,32 @@
 - `auth_session_id`
 - `auth_token_id`
 - `auth_token_name`
+
+## GET /api/v1/system/bootstrap
+
+- 成功状态码：200 OK
+- 当前接口支持匿名调用；未带 Bearer token 时，`current_user` 返回空。
+- 当前接口适合作为前端首屏初始化和联调入口，不替代 `GET /api/v1/system/me` 的主体详情读取。
+
+### 当前响应重点字段
+
+- `auth_mode`
+- `bearer_auth_enabled`
+- `websocket_query_token_enabled`
+- `current_user`
+- `providers`
+- `visible_projects`
+- `capabilities.project_bootstrap_enabled`
+- `capabilities.dataset_export.supported_formats`
+- `capabilities.dataset_export.implemented_formats`
+- `capabilities.dataset_export.default_format`
+- `capabilities.project_summary_topics`
+
+### 当前调试语义
+
+- 默认空库调试环境中，使用 `amvision-default-user-token` 调用时，`current_user.username` 应返回 `amvar`。
+- 当前 `current_user.auth_credential_kind` 应返回 `user-token`。
+- 当前 `providers` 至少包含 `local`。
 
 ## /ws/v1/auth/events
 

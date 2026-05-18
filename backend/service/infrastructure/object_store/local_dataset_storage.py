@@ -408,6 +408,34 @@ class LocalDatasetStorage:
         if target_path.exists():
             target_path.unlink(missing_ok=True)
 
+    def move_tree(self, source_relative_path: str, destination_relative_path: str) -> None:
+        """把一个相对目录或文件移动到另一个相对路径。
+
+        参数：
+        - source_relative_path：源目录或文件相对路径。
+        - destination_relative_path：目标目录或文件相对路径。
+
+        异常：
+        - InvalidRequestError：当源路径不存在或目标路径已存在时抛出。
+        """
+
+        source_path = self.resolve(source_relative_path)
+        if not source_path.exists():
+            raise InvalidRequestError(
+                "找不到要移动的本地对象路径",
+                details={"source_relative_path": source_relative_path},
+            )
+
+        destination_path = self.resolve(destination_relative_path)
+        if destination_path.exists():
+            raise InvalidRequestError(
+                "目标本地对象路径已存在",
+                details={"destination_relative_path": destination_relative_path},
+            )
+
+        destination_path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(source_path), str(destination_path))
+
     def reset_directory(self, relative_path: str) -> None:
         """清空一个目录并重新创建空目录。
 

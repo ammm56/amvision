@@ -108,6 +108,24 @@ class SqlAlchemyDatasetImportRepository:
 
         return tuple(self._to_domain(record) for record in records)
 
+    def list_dataset_imports_by_project(self, project_id: str) -> tuple[DatasetImport, ...]:
+        """按 Project id 列出导入记录。"""
+
+        statement = (
+            select(DatasetImportRecord)
+            .where(DatasetImportRecord.project_id == project_id)
+            .order_by(DatasetImportRecord.created_at, DatasetImportRecord.dataset_import_id)
+        )
+        try:
+            records = self.session.execute(statement).scalars().all()
+        except SQLAlchemyError as error:
+            raise PersistenceOperationError(
+                "按 Project 列出 DatasetImport 失败",
+                details={"error_type": error.__class__.__name__},
+            ) from error
+
+        return tuple(self._to_domain(record) for record in records)
+
     def _to_record(self, dataset_import: DatasetImport) -> DatasetImportRecord:
         """把领域对象转换为 ORM 实体。
 

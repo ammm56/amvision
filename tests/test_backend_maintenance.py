@@ -10,6 +10,7 @@ from backend.maintenance.main import cleanup_expired_preview_runs, cleanup_runti
 from backend.service.application.auth.default_local_auth_seeder import DEFAULT_LOCAL_AUTH_USERNAME
 from backend.service.domain.workflows.workflow_runtime_records import WorkflowAppRuntime, WorkflowPreviewRun, WorkflowRun
 from backend.service.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
+from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 from backend.service.settings import (
     BackendServiceDatabaseConfig,
     BackendServiceDatasetStorageConfig,
@@ -74,6 +75,68 @@ def test_cleanup_expired_preview_runs_removes_expired_records_and_snapshot_dirs(
     ).is_file()
     remaining_preview_run_ids = _list_preview_run_ids(session_factory)
     assert remaining_preview_run_ids == ["preview-active"]
+
+
+def test_cleanup_expired_preview_runs_moves_snapshot_to_staging_when_final_delete_fails(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """验证 preview run cleanup 在最终物理删除失败时仍会先移出用户可见目录。"""
+
+    session_factory, dataset_storage, _ = create_test_runtime(
+        tmp_path,
+        database_name="backend-maintenance-preview-staging.db",
+    )
+    service_settings = BackendServiceSettings(
+        database=BackendServiceDatabaseConfig(url=session_factory.settings.url),
+        dataset_storage=BackendServiceDatasetStorageConfig(
+            root_dir=str(dataset_storage.root_dir)
+        ),
+    )
+    _save_preview_run(
+        session_factory,
+        preview_run_id="preview-expired",
+        retention_until="2026-05-14T09:59:59Z",
+    )
+    dataset_storage.write_json(
+        "workflows/runtime/preview-runs/preview-expired/application.snapshot.json",
+        {"application_id": "preview-expired"},
+    )
+
+    original_delete_tree = LocalDatasetStorage.delete_tree
+
+    def _delete_tree_with_staging_failure(self, relative_path: str) -> None:
+        if (
+            relative_path == "workflows/runtime/cleanup-staging/preview-runs/preview-expired"
+            and self.resolve(relative_path).exists()
+        ):
+            raise OSError("simulated staging delete failure")
+        original_delete_tree(self, relative_path)
+
+    monkeypatch.setattr(LocalDatasetStorage, "delete_tree", _delete_tree_with_staging_failure)
+
+    try:
+        payload = cleanup_expired_preview_runs(
+            backend_service_settings=service_settings,
+            now_iso="2026-05-14T10:00:00Z",
+        )
+    finally:
+        session_factory.engine.dispose()
+
+    assert payload["deleted_preview_run_ids"] == ["preview-expired"]
+    assert payload["deleted_snapshot_dirs"] == [
+        "workflows/runtime/preview-runs/preview-expired"
+    ]
+    assert payload["pending_staging_dirs"] == [
+        "workflows/runtime/cleanup-staging/preview-runs/preview-expired"
+    ]
+    assert not dataset_storage.resolve(
+        "workflows/runtime/preview-runs/preview-expired"
+    ).exists()
+    assert dataset_storage.resolve(
+        "workflows/runtime/cleanup-staging/preview-runs/preview-expired"
+    ).exists()
+    assert _list_preview_run_ids(session_factory) == []
 
 
 def test_cleanup_runtime_storage_removes_short_lived_runtime_objects_but_keeps_project_assets(

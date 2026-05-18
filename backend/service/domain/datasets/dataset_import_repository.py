@@ -42,3 +42,15 @@ class DatasetImportRepository(Protocol):
         """
 
         ...
+
+    def list_dataset_imports_by_project(self, project_id: str) -> tuple[DatasetImport, ...]:
+        """按 Project id 列出导入记录。
+
+        参数：
+        - project_id：所属 Project id。
+
+        返回：
+        - 当前 Project 下的 DatasetImport 列表。
+        """
+
+        ...

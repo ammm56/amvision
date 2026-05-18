@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "cb7a8a14-cd66-4c4a-b4a8-6382f87bf7f1",
     "name": "amvision workflow runtime api",
-    "description": "workflow runtime 当前联调 collection，覆盖 projects 目录与文件读取、template/application save/get/list、execution-policies、preview-runs、app-runtimes、sync invoke、async runs 和 cancel 的最小公开接口。主要列表请求已补 offset/limit 示例，响应体仍保持数组，分页信息通过 x-offset、x-limit、x-total-count、x-has-more 和 x-next-offset 返回。当前 FastAPI 默认使用通用触发入口 /api/v1/workflows/app-runtimes/{workflow_runtime_id}/invoke，FlowApplication.bindings.config.route 在现阶段仅作为绑定声明，不自动生成专用 HTTP 路由。第一到第五类正式 workflow 的分拆调试 collection 已移动到 docs/api/postman/workflows/ 目录。",
+    "description": "workflow runtime 当前联调 collection，覆盖 system/bootstrap、projects/bootstrap、projects 目录与文件读取、template/application validate/save/get/list/copy/delete、execution-policies、preview-runs、app-runtimes、sync invoke、async runs、trigger-sources list/detail 和 cancel 的最小公开接口。主要列表请求已补 offset/limit 示例，响应体仍保持数组，分页信息通过 x-offset、x-limit、x-total-count、x-has-more 和 x-next-offset 返回。当前 FastAPI 默认使用通用触发入口 /api/v1/workflows/app-runtimes/{workflow_runtime_id}/invoke，FlowApplication.bindings.config.route 在现阶段仅作为绑定声明，不自动生成专用 HTTP 路由。第一到第五类正式 workflow 的分拆调试 collection 已移动到 docs/api/postman/workflows/ 目录。",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -15,6 +15,14 @@
       "value": "project-1"
     },
     {
+      "key": "projectDisplayName",
+      "value": "Project One"
+    },
+    {
+      "key": "projectDescription",
+      "value": "Workflow runtime project bootstrapped from Postman"
+    },
+    {
       "key": "templateId",
       "value": "yolox-deployment-detection-lifecycle-real-path"
     },
@@ -25,6 +33,18 @@
     {
       "key": "applicationId",
       "value": "yolox-deployment-detection-lifecycle-real-path-app"
+    },
+    {
+      "key": "copiedTemplateId",
+      "value": "yolox-deployment-detection-lifecycle-real-path-copy"
+    },
+    {
+      "key": "copiedTemplateVersion",
+      "value": "1.0.1"
+    },
+    {
+      "key": "copiedApplicationId",
+      "value": "yolox-deployment-detection-lifecycle-real-path-app-copy"
     },
     {
       "key": "deploymentInstanceId",
@@ -95,6 +115,10 @@
       "value": ""
     },
     {
+      "key": "triggerSourceId",
+      "value": "trigger-source-1"
+    },
+    {
       "key": "eventLimit",
       "value": "20"
     },
@@ -125,6 +149,33 @@
               ]
             },
             "description": "返回最小健康状态。"
+          },
+          "response": []
+        },
+        {
+          "name": "Get System Bootstrap",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/system/bootstrap",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "system",
+                "bootstrap"
+              ]
+            },
+            "description": "读取前端首屏 bootstrap 聚合结果，确认当前主体、visible_projects 和 dataset export 能力。"
           },
           "response": []
         }
@@ -184,6 +235,61 @@
               ]
             },
             "description": "列出当前 Project 下可复用的 deployment_instance_id。测试脚本会尝试把第一条记录的 deployment_instance_id 回填到 collection variable；如果列表为空，说明需要先通过 deployment create API 或 workflow create 节点准备实例。"
+          },
+          "response": []
+        },
+        {
+          "name": "Bootstrap Project",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  var payload = pm.response.json();",
+                  "  if (payload.project_id) pm.collectionVariables.set('projectId', payload.project_id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"display_name\": \"{{projectDisplayName}}\",\n  \"description\": \"{{projectDescription}}\",\n  \"metadata\": {\n    \"source\": \"postman-workflow-runtime\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/projects/bootstrap",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "projects",
+                "bootstrap"
+              ]
+            },
+            "description": "初始化一个 Project 目录、最小 manifest 和工作区骨架。workflow template、application、preview run 和 runtime 资源都推荐先绑定到已初始化的 Project。"
           },
           "response": []
         },
@@ -380,6 +486,48 @@
           "response": []
         },
         {
+          "name": "Validate Workflow Template",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n  \"template\": {\r\n    \"format_id\": \"amvision.workflow-graph-template.v1\",\r\n    \"template_id\": \"{{templateId}}\",\r\n    \"template_version\": \"{{templateVersion}}\",\r\n    \"display_name\": \"YOLOX Deployment Detection Lifecycle Real Path\",\r\n    \"description\": \"控制一个已有 sync deployment 资源，并在 backend-service 当前 deployment control plane 上按顺序执行 start、warmup、detection、health、stop。\",\r\n    \"nodes\": [\r\n      {\r\n        \"node_id\": \"start\",\r\n        \"node_type_id\": \"core.service.yolox-deployment.start\",\r\n        \"parameters\": {\r\n          \"deployment_instance_id\": \"{{deploymentInstanceId}}\",\r\n          \"runtime_mode\": \"sync\"\r\n        },\r\n        \"metadata\": {\r\n          \"sequence_index\": 1\r\n        }\r\n      },\r\n      {\r\n        \"node_id\": \"warmup\",\r\n        \"node_type_id\": \"core.service.yolox-deployment.warmup\",\r\n        \"parameters\": {\r\n          \"deployment_instance_id\": \"{{deploymentInstanceId}}\",\r\n          \"runtime_mode\": \"sync\"\r\n        },\r\n        \"metadata\": {\r\n          \"sequence_index\": 2\r\n        }\r\n      },\r\n      {\r\n        \"node_id\": \"detect\",\r\n        \"node_type_id\": \"core.model.yolox-detection\",\r\n        \"parameters\": {\r\n          \"deployment_instance_id\": \"{{deploymentInstanceId}}\",\r\n          \"auto_start_process\": false,\r\n          \"score_threshold\": 0.3,\r\n          \"save_result_image\": false,\r\n          \"return_preview_image_base64\": false\r\n        },\r\n        \"metadata\": {\r\n          \"sequence_index\": 3\r\n        }\r\n      },\r\n      {\r\n        \"node_id\": \"health\",\r\n        \"node_type_id\": \"core.service.yolox-deployment.health\",\r\n        \"parameters\": {\r\n          \"deployment_instance_id\": \"{{deploymentInstanceId}}\",\r\n          \"runtime_mode\": \"sync\"\r\n        },\r\n        \"metadata\": {\r\n          \"sequence_index\": 4\r\n        }\r\n      },\r\n      {\r\n        \"node_id\": \"stop\",\r\n        \"node_type_id\": \"core.service.yolox-deployment.stop\",\r\n        \"parameters\": {\r\n          \"deployment_instance_id\": \"{{deploymentInstanceId}}\",\r\n          \"runtime_mode\": \"sync\"\r\n        },\r\n        \"metadata\": {\r\n          \"sequence_index\": 5\r\n        }\r\n      }\r\n    ],\r\n    \"edges\": [\r\n      {\r\n        \"edge_id\": \"edge-start-warmup-dependency\",\r\n        \"source_node_id\": \"start\",\r\n        \"source_port\": \"body\",\r\n        \"target_node_id\": \"warmup\",\r\n        \"target_port\": \"dependency\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-warmup-detect-dependency\",\r\n        \"source_node_id\": \"warmup\",\r\n        \"source_port\": \"body\",\r\n        \"target_node_id\": \"detect\",\r\n        \"target_port\": \"dependency\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-detect-health-dependency\",\r\n        \"source_node_id\": \"detect\",\r\n        \"source_port\": \"detections\",\r\n        \"target_node_id\": \"health\",\r\n        \"target_port\": \"dependency\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-health-stop-dependency\",\r\n        \"source_node_id\": \"health\",\r\n        \"source_port\": \"body\",\r\n        \"target_node_id\": \"stop\",\r\n        \"target_port\": \"dependency\"\r\n      }\r\n    ],\r\n    \"template_inputs\": [\r\n      {\r\n        \"input_id\": \"request_image\",\r\n        \"display_name\": \"Request Image\",\r\n        \"payload_type_id\": \"image-ref.v1\",\r\n        \"target_node_id\": \"detect\",\r\n        \"target_port\": \"image\"\r\n      }\r\n    ],\r\n    \"template_outputs\": [\r\n      {\r\n        \"output_id\": \"start_body\",\r\n        \"display_name\": \"Start Body\",\r\n        \"payload_type_id\": \"response-body.v1\",\r\n        \"source_node_id\": \"start\",\r\n        \"source_port\": \"body\"\r\n      },\r\n      {\r\n        \"output_id\": \"warmup_body\",\r\n        \"display_name\": \"Warmup Body\",\r\n        \"payload_type_id\": \"response-body.v1\",\r\n        \"source_node_id\": \"warmup\",\r\n        \"source_port\": \"body\"\r\n      },\r\n      {\r\n        \"output_id\": \"detections\",\r\n        \"display_name\": \"Detections\",\r\n        \"payload_type_id\": \"detections.v1\",\r\n        \"source_node_id\": \"detect\",\r\n        \"source_port\": \"detections\"\r\n      },\r\n      {\r\n        \"output_id\": \"health_body\",\r\n        \"display_name\": \"Health Body\",\r\n        \"payload_type_id\": \"response-body.v1\",\r\n        \"source_node_id\": \"health\",\r\n        \"source_port\": \"body\"\r\n      },\r\n      {\r\n        \"output_id\": \"stop_body\",\r\n        \"display_name\": \"Stop Body\",\r\n        \"payload_type_id\": \"response-body.v1\",\r\n        \"source_node_id\": \"stop\",\r\n        \"source_port\": \"body\"\r\n      }\r\n    ],\r\n    \"metadata\": {\r\n      \"intended_saved_object_key\": \"workflows/projects/{{projectId}}/templates/{{templateId}}/versions/{{templateVersion}}/template.json\",\r\n      \"example_kind\": \"deployment-control-detection-lifecycle-real-path\",\r\n      \"deployment_instance_id_placeholder\": \"replace-with-existing-deployment-instance-id\",\r\n      \"uses_existing_deployment_instance\": true,\r\n      \"deployment_runtime_owner\": \"backend-service\",\r\n      \"node_groups\": {\r\n        \"deployment_control\": [\r\n          \"start\",\r\n          \"warmup\",\r\n          \"health\",\r\n          \"stop\"\r\n        ],\r\n        \"model_node\": [\r\n          \"detect\"\r\n        ]\r\n      },\r\n      \"execution_order_note\": \"当前最小执行器按图边做稳定拓扑排序；该示例通过显式 dependency 边表达 start -> warmup -> detection -> health -> stop。\"\r\n    }\r\n  }\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workflows/templates/validate",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workflows",
+                "templates",
+                "validate"
+              ]
+            },
+            "description": "校验 workflow template 合同，复用 Save Workflow Template 的同一份请求体。"
+          },
+          "response": []
+        },
+        {
           "name": "Save Workflow Template",
           "request": {
             "method": "PUT",
@@ -569,6 +717,127 @@
           "response": []
         },
         {
+          "name": "Copy Workflow Template Version",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"target_template_id\": \"{{copiedTemplateId}}\",\n  \"target_template_version\": \"{{copiedTemplateVersion}}\",\n  \"display_name\": \"YOLOX Deployment Detection Lifecycle Real Path Copy\",\n  \"description\": \"Copied from {{templateId}} {{templateVersion}} for Postman validation.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workflows/projects/{{projectId}}/templates/{{templateId}}/versions/{{templateVersion}}/copy",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workflows",
+                "projects",
+                "{{projectId}}",
+                "templates",
+                "{{templateId}}",
+                "versions",
+                "{{templateVersion}}",
+                "copy"
+              ]
+            },
+            "description": "复制当前 template 版本到 {{copiedTemplateId}} / {{copiedTemplateVersion}}。"
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Copied Workflow Template Version",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workflows/projects/{{projectId}}/templates/{{copiedTemplateId}}/versions/{{copiedTemplateVersion}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workflows",
+                "projects",
+                "{{projectId}}",
+                "templates",
+                "{{copiedTemplateId}}",
+                "versions",
+                "{{copiedTemplateVersion}}"
+              ]
+            },
+            "description": "删除 Copy Workflow Template Version 创建的副本。"
+          },
+          "response": []
+        },
+        {
+          "name": "Validate Flow Application",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"application\": {\n    \"format_id\": \"amvision.flow-application.v1\",\n    \"application_id\": \"{{applicationId}}\",\n    \"display_name\": \"YOLOX Deployment Detection Lifecycle Real Path App\",\n    \"template_ref\": {\n      \"template_id\": \"{{templateId}}\",\n      \"template_version\": \"{{templateVersion}}\",\n      \"source_kind\": \"json-file\",\n      \"source_uri\": \"workflows/projects/{{projectId}}/templates/{{templateId}}/versions/{{templateVersion}}/template.json\",\n      \"metadata\": {}\n    },\n    \"runtime_mode\": \"python-json-workflow\",\n    \"description\": \"面向 Postman 手工调试的最小 FlowApplication 示例，控制并使用一个已有 deployment 资源，使用真实 workflow object key 路径。\",\n    \"bindings\": [\n      {\n        \"binding_id\": \"request_image\",\n        \"direction\": \"input\",\n        \"template_port_id\": \"request_image\",\n        \"binding_kind\": \"workflow-execute-input\",\n        \"config\": {\n          \"payload_type_id\": \"image-ref.v1\",\n          \"content_type\": \"image/*\"\n        },\n        \"metadata\": {}\n      },\n      {\n        \"binding_id\": \"start_body\",\n        \"direction\": \"output\",\n        \"template_port_id\": \"start_body\",\n        \"binding_kind\": \"workflow-execute-output\",\n        \"config\": {\n          \"payload_type_id\": \"response-body.v1\"\n        },\n        \"metadata\": {}\n      },\n      {\n        \"binding_id\": \"warmup_body\",\n        \"direction\": \"output\",\n        \"template_port_id\": \"warmup_body\",\n        \"binding_kind\": \"workflow-execute-output\",\n        \"config\": {\n          \"payload_type_id\": \"response-body.v1\"\n        },\n        \"metadata\": {}\n      },\n      {\n        \"binding_id\": \"detections\",\n        \"direction\": \"output\",\n        \"template_port_id\": \"detections\",\n        \"binding_kind\": \"workflow-execute-output\",\n        \"config\": {\n          \"payload_type_id\": \"detections.v1\"\n        },\n        \"metadata\": {}\n      },\n      {\n        \"binding_id\": \"health_body\",\n        \"direction\": \"output\",\n        \"template_port_id\": \"health_body\",\n        \"binding_kind\": \"workflow-execute-output\",\n        \"config\": {\n          \"payload_type_id\": \"response-body.v1\"\n        },\n        \"metadata\": {}\n      },\n      {\n        \"binding_id\": \"stop_body\",\n        \"direction\": \"output\",\n        \"template_port_id\": \"stop_body\",\n        \"binding_kind\": \"workflow-execute-output\",\n        \"config\": {\n          \"payload_type_id\": \"response-body.v1\"\n        },\n        \"metadata\": {}\n      }\n    ],\n    \"metadata\": {\n      \"intended_saved_object_key\": \"workflows/projects/{{projectId}}/applications/{{applicationId}}/application.json\",\n      \"example_kind\": \"deployment-control-detection-lifecycle-real-path\",\n      \"uses_existing_deployment_instance\": true,\n      \"deployment_instance_id_placeholder\": \"replace-with-existing-deployment-instance-id\"\n    }\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workflows/applications/validate",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workflows",
+                "applications",
+                "validate"
+              ]
+            },
+            "description": "校验 FlowApplication 与模板绑定关系，复用 Save Flow Application 的同一份 application 载荷。"
+          },
+          "response": []
+        },
+        {
           "name": "Save Flow Application",
           "request": {
             "method": "PUT",
@@ -678,6 +947,81 @@
               ]
             },
             "description": "列出当前 Project 下全部 FlowApplication 摘要，并演示统一 offset/limit 分页请求。"
+          },
+          "response": []
+        },
+        {
+          "name": "Copy Flow Application",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"target_application_id\": \"{{copiedApplicationId}}\",\n  \"display_name\": \"YOLOX Deployment Detection Lifecycle Real Path App Copy\",\n  \"description\": \"Copied from {{applicationId}} for Postman validation.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workflows/projects/{{projectId}}/applications/{{applicationId}}/copy",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workflows",
+                "projects",
+                "{{projectId}}",
+                "applications",
+                "{{applicationId}}",
+                "copy"
+              ]
+            },
+            "description": "复制当前 FlowApplication 到 {{copiedApplicationId}}。"
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Copied Flow Application",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workflows/projects/{{projectId}}/applications/{{copiedApplicationId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workflows",
+                "projects",
+                "{{projectId}}",
+                "applications",
+                "{{copiedApplicationId}}"
+              ]
+            },
+            "description": "删除 Copy Flow Application 创建的副本。"
           },
           "response": []
         }
@@ -1009,6 +1353,34 @@
                 "description": "读取 preview run 历史事件，验证 after_sequence 和 limit 分页。"
               },
               "response": []
+            },
+            {
+              "name": "Delete Preview Run",
+              "request": {
+                "method": "DELETE",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{accessToken}}",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/workflows/preview-runs/{{previewRunId}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "workflows",
+                    "preview-runs",
+                    "{{previewRunId}}"
+                  ]
+                },
+                "description": "删除当前 collection 变量 previewRunId 指向的 WorkflowPreviewRun 和对应 snapshot 目录。"
+              },
+              "response": []
             }
           ]
         },
@@ -1138,6 +1510,34 @@
                   ]
                 },
                 "description": "读取当前 WorkflowAppRuntime 持久化记录。"
+              },
+              "response": []
+            },
+            {
+              "name": "Delete App Runtime",
+              "request": {
+                "method": "DELETE",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{accessToken}}",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/workflows/app-runtimes/{{workflowRuntimeId}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "workflows",
+                    "app-runtimes",
+                    "{{workflowRuntimeId}}"
+                  ]
+                },
+                "description": "删除当前 collection 变量 workflowRuntimeId 指向的 WorkflowAppRuntime 和对应 snapshot 目录。"
               },
               "response": []
             }
@@ -2329,6 +2729,80 @@
                   ]
                 },
                 "description": "取消当前 collection 变量 workflowRunId 指向的异步 WorkflowRun。"
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Trigger Sources",
+          "item": [
+            {
+              "name": "List Trigger Sources",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{accessToken}}",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/workflows/trigger-sources?project_id={{projectId}}&offset={{listOffset}}&limit={{listLimit}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "workflows",
+                    "trigger-sources"
+                  ],
+                  "query": [
+                    {
+                      "key": "project_id",
+                      "value": "{{projectId}}"
+                    },
+                    {
+                      "key": "offset",
+                      "value": "{{listOffset}}"
+                    },
+                    {
+                      "key": "limit",
+                      "value": "{{listLimit}}"
+                    }
+                  ]
+                },
+                "description": "按 Project 列出 WorkflowTriggerSource；创建、启停和健康检查的完整链路见 docs/api/postman/workflows/06 和 07 分拆 collection。"
+              },
+              "response": []
+            },
+            {
+              "name": "Get Trigger Source",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{accessToken}}",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/workflows/trigger-sources/{{triggerSourceId}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "workflows",
+                    "trigger-sources",
+                    "{{triggerSourceId}}"
+                  ]
+                },
+                "description": "读取单条 WorkflowTriggerSource。triggerSourceId 可来自 06/07 分拆 collection 的创建响应，或来自 List Trigger Sources。"
               },
               "response": []
             }

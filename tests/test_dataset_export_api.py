@@ -8,6 +8,10 @@ from fastapi.testclient import TestClient
 
 from backend.queue import LocalFileQueueBackend
 from backend.contracts.datasets.exports.coco_detection_export import COCO_DETECTION_DATASET_FORMAT
+from backend.contracts.datasets.exports.dataset_formats import (
+    IMPLEMENTED_DATASET_EXPORT_FORMATS,
+    SUPPORTED_DATASET_EXPORT_FORMATS,
+)
 from backend.contracts.datasets.exports.voc_detection_export import VOC_DETECTION_DATASET_FORMAT
 from backend.service.domain.datasets.dataset_version import (
     DatasetCategory,
@@ -140,6 +144,30 @@ def test_create_dataset_export_supports_voc_format(tmp_path: Path) -> None:
         assert dataset_storage.resolve(f"{detail_payload['export_path']}/ImageSets/Main/train.txt").is_file()
     finally:
         session_factory.engine.dispose()
+
+
+def test_dataset_export_format_catalog_exposes_supported_and_implemented_contract(tmp_path: Path) -> None:
+    """验证导出格式合同接口会公开 supported、implemented 和默认格式。"""
+
+    client, session_factory, _, _ = _create_test_client(tmp_path)
+    try:
+        with client:
+            response = client.get(
+                "/api/v1/datasets/export-formats",
+                headers=_build_dataset_read_headers(),
+            )
+    finally:
+        session_factory.engine.dispose()
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["supported_formats"] == list(SUPPORTED_DATASET_EXPORT_FORMATS)
+    assert payload["implemented_formats"] == list(IMPLEMENTED_DATASET_EXPORT_FORMATS)
+    assert payload["default_format"] == COCO_DETECTION_DATASET_FORMAT
+    items_by_id = {item["format_id"]: item for item in payload["items"]}
+    assert items_by_id[COCO_DETECTION_DATASET_FORMAT]["implemented"] is True
+    assert items_by_id[VOC_DETECTION_DATASET_FORMAT]["implemented"] is True
+    assert items_by_id["yolo-detection-v1"]["implemented"] is False
 
 
 def test_package_and_download_dataset_export_archive(tmp_path: Path) -> None:

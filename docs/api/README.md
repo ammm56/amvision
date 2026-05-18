@@ -8,6 +8,7 @@
 
 - [docs/api/current-api.md](current-api.md)：当前已经公开的 REST API、WebSocket 入口、鉴权头、本地鉴权输入和任务事件订阅规则
 - [docs/api/local-auth.md](local-auth.md)：本地用户、权限管理、session/refresh token、长期调用 user token、provider 目录和 auth.events 接口
+- [docs/api/projects.md](projects.md)：system/bootstrap、Project 初始化、Project 目录项、Project summary 和公开文件读取接口
 - [docs/architecture/websocket-architecture.md](../architecture/websocket-architecture.md)：当前 WebSocket 资源流、统一消息结构、控制事件和重连规则
 - [docs/api/websocket-usage.md](websocket-usage.md)：第三方系统、HMI、嵌入式 UI 和前端界面接入公开 WebSocket 的连接顺序、恢复流程和最小客户端规则
 - [docs/api/workflows.md](workflows.md)：workflow template/application、node catalog 和 workflow runtime 当前公开边界说明
@@ -30,8 +31,8 @@
 - [docs/api/examples/workflows/00-short-dev-examples/yolox_deployment_detection_lifecycle_real_path/preview-run.request.json](examples/workflows/00-short-dev-examples/yolox_deployment_detection_lifecycle_real_path/preview-run.request.json)：WorkflowPreviewRun create 接口的真实路径 JSON 请求体示例
 - [docs/api/examples/workflows/00-short-dev-examples/yolox_deployment_detection_lifecycle_real_path/app-runtime.create.request.json](examples/workflows/00-short-dev-examples/yolox_deployment_detection_lifecycle_real_path/app-runtime.create.request.json)：WorkflowAppRuntime create 接口的真实路径 JSON 请求体示例
 - [docs/api/examples/workflows/00-short-dev-examples/yolox_deployment_detection_lifecycle_real_path/app-runtime.invoke.request.json](examples/workflows/00-short-dev-examples/yolox_deployment_detection_lifecycle_real_path/app-runtime.invoke.request.json)：WorkflowRun sync invoke 接口的真实路径 JSON 请求体示例
-- [docs/api/postman/workflow-runtime.postman_collection.json](postman/workflow-runtime.postman_collection.json)：workflow runtime 通用控制面 Postman collection，覆盖 projects 目录与文件读取、template/application save/get/list、execution-policies、preview-runs、app-runtimes、restart、instances、sync invoke、async runs 和 cancel 最小链路，并给主要列表请求补齐 offset/limit 示例
-- [docs/api/postman/local-auth.postman_collection.json](postman/local-auth.postman_collection.json)：本地用户、权限管理、session/refresh token 和长期调用 user token 的 Postman collection，覆盖 provider 目录、bootstrap、login、refresh、用户管理、密码重置、token 管理和 system/me 调试链路
+- [docs/api/postman/workflow-runtime.postman_collection.json](postman/workflow-runtime.postman_collection.json)：workflow runtime 通用控制面 Postman collection，覆盖 system/bootstrap、projects/bootstrap、projects 目录与文件读取、template/application save/get/list、execution-policies、preview-runs、app-runtimes、restart、instances、sync invoke、async runs 和 cancel 最小链路，并给主要列表请求补齐 offset/limit 示例
+- [docs/api/postman/local-auth.postman_collection.json](postman/local-auth.postman_collection.json)：本地用户、权限管理、session/refresh token 和长期调用 user token 的 Postman collection，覆盖 provider 目录、bootstrap、login、refresh、用户管理、密码重置、token 管理、system/me 和 system/bootstrap 调试链路
 - [docs/api/postman/workflows/README.md](postman/workflows/README.md)：按第一到第五类正式 workflow 场景拆分的调试目录说明，包含依赖关系、建议联调顺序和对应 collection 清单
 - [docs/api/postman/workflows/00-short-dev-examples/00-workflow-example-documents.postman_collection.json](postman/workflows/00-short-dev-examples/00-workflow-example-documents.postman_collection.json)：把 docs/examples/workflows 下现有 template/application 示例按目录分组的保存与读取调试 collection
 - [docs/api/postman/workflows/01-yolox-end-to-end-qr-crop-remap/01-yolox-end-to-end-qr-crop-remap.postman_collection.json](postman/workflows/01-yolox-end-to-end-qr-crop-remap/01-yolox-end-to-end-qr-crop-remap.postman_collection.json)：第一类完整导入、导出、训练、评估、转换、部署和 QR remap 联调 collection
@@ -39,8 +40,8 @@
 - [docs/api/postman/workflows/03-yolox-deployment-qr-crop-remap/03-yolox-deployment-qr-crop-remap.postman_collection.json](postman/workflows/03-yolox-deployment-qr-crop-remap/03-yolox-deployment-qr-crop-remap.postman_collection.json)：第三类检测、AOI crop、二维码识别和原图回绘联调 collection
 - [docs/api/postman/workflows/04-yolox-deployment-infer-opencv-health/04-yolox-deployment-infer-opencv-health.postman_collection.json](postman/workflows/04-yolox-deployment-infer-opencv-health/04-yolox-deployment-infer-opencv-health.postman_collection.json)：第四类 sync infer、health 和 OpenCV 处理联调 collection
 - [docs/api/postman/workflows/05-opencv-process-save-image/05-opencv-process-save-image.postman_collection.json](postman/workflows/05-opencv-process-save-image/05-opencv-process-save-image.postman_collection.json)：第五类 OpenCV 处理、图片保存和默认 HTTP 返回联调 collection
-- [docs/api/postman/datasets-imports.postman_collection.json](postman/datasets-imports.postman_collection.json)：当前公开的 system、DatasetImport、tasks 接口 Postman collection
-- [docs/api/postman/datasets-exports.postman_collection.json](postman/datasets-exports.postman_collection.json)：当前公开的 DatasetExport 接口 Postman collection
+- [docs/api/postman/datasets-imports.postman_collection.json](postman/datasets-imports.postman_collection.json)：当前公开的 system/bootstrap、projects/bootstrap、Project 目录、DatasetImport、tasks 接口 Postman collection
+- [docs/api/postman/datasets-exports.postman_collection.json](postman/datasets-exports.postman_collection.json)：当前公开的 DatasetExport 格式合同、导出创建、详情、打包和下载接口 Postman collection
 - [docs/api/postman/platform-base-models.postman_collection.json](postman/platform-base-models.postman_collection.json)：当前公开的平台基础模型 list/detail 接口 Postman collection
 - [docs/api/postman/yolox-training.postman_collection.json](postman/yolox-training.postman_collection.json)：当前公开的 YOLOX training、validation-sessions、conversion-tasks、evaluation-tasks、deployment-instances、deployment events、YOLOX workflow preview-runs sync/async 调试入口和 inference-tasks 接口 Postman collection
 - [docs/architecture/backend-service.md](../architecture/backend-service.md)：FastAPI 应用分层、路由拆分、数据库会话、权限和中间件骨架

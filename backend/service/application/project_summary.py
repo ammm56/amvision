@@ -21,6 +21,12 @@ PROJECT_SUMMARY_TOPIC_WORKFLOW_RUNS = "workflows.runs"
 PROJECT_SUMMARY_TOPIC_WORKFLOW_APP_RUNTIMES = "workflows.app-runtimes"
 PROJECT_SUMMARY_TOPIC_DEPLOYMENTS = "deployments"
 
+_DATASET_IMPORT_TASK_KIND = "dataset-import"
+_YOLOX_TRAINING_TASK_KIND = "yolox-training"
+_YOLOX_EVALUATION_TASK_KIND = "yolox-evaluation"
+_YOLOX_CONVERSION_TASK_KIND = "yolox-conversion"
+_YOLOX_INFERENCE_TASK_KIND = "yolox-inference"
+
 _SUPPORTED_PROJECT_SUMMARY_TOPICS = (
     PROJECT_SUMMARY_TOPIC_WORKFLOW_PREVIEW_RUNS,
     PROJECT_SUMMARY_TOPIC_WORKFLOW_RUNS,
@@ -89,18 +95,49 @@ class ProjectDeploymentSummarySnapshot:
 
 
 @dataclass(frozen=True)
+class ProjectDatasetInventorySnapshot:
+    """描述 Project 下数据集目录库存摘要。"""
+
+    dataset_total: int = 0
+
+
+@dataclass(frozen=True)
+class ProjectStatusSummarySnapshot:
+    """描述某一类 Project 资源的总数与状态分布。"""
+
+    total: int = 0
+    status_counts: dict[str, int] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
 class ProjectSummarySnapshot:
     """描述一个 Project 当前可公开的聚合摘要快照。
 
     字段：
     - project_id：所属 Project id。
     - generated_at：当前聚合快照生成时间。
+    - datasets：Project 数据集目录聚合摘要。
+    - imports：数据集导入聚合摘要。
+    - exports：数据集导出聚合摘要。
+    - training：训练任务聚合摘要。
+    - validation：人工验证 session 聚合摘要。
+    - evaluation：评估任务聚合摘要。
+    - conversion：转换任务聚合摘要。
+    - inference：推理任务聚合摘要。
     - workflows：workflow 相关聚合摘要。
     - deployments：deployment 相关聚合摘要。
     """
 
     project_id: str
     generated_at: str
+    datasets: ProjectDatasetInventorySnapshot = field(default_factory=ProjectDatasetInventorySnapshot)
+    imports: ProjectStatusSummarySnapshot = field(default_factory=ProjectStatusSummarySnapshot)
+    exports: ProjectStatusSummarySnapshot = field(default_factory=ProjectStatusSummarySnapshot)
+    training: ProjectStatusSummarySnapshot = field(default_factory=ProjectStatusSummarySnapshot)
+    validation: ProjectStatusSummarySnapshot = field(default_factory=ProjectStatusSummarySnapshot)
+    evaluation: ProjectStatusSummarySnapshot = field(default_factory=ProjectStatusSummarySnapshot)
+    conversion: ProjectStatusSummarySnapshot = field(default_factory=ProjectStatusSummarySnapshot)
+    inference: ProjectStatusSummarySnapshot = field(default_factory=ProjectStatusSummarySnapshot)
     workflows: ProjectWorkflowSummarySnapshot = field(default_factory=ProjectWorkflowSummarySnapshot)
     deployments: ProjectDeploymentSummarySnapshot = field(default_factory=ProjectDeploymentSummarySnapshot)
 
@@ -139,6 +176,9 @@ class ProjectSummaryService:
 
         unit_of_work = SqlAlchemyUnitOfWork(self.session_factory.create_session())
         try:
+            dataset_imports = unit_of_work.dataset_imports.list_dataset_imports_by_project(normalized_project_id)
+            dataset_exports = unit_of_work.dataset_exports.list_dataset_exports_by_project(normalized_project_id)
+            tasks = unit_of_work.tasks.list_tasks(normalized_project_id)
             preview_runs = unit_of_work.workflow_runtime.list_preview_runs(normalized_project_id)
             workflow_runs = unit_of_work.workflow_runtime.list_workflow_runs(normalized_project_id)
             app_runtimes = unit_of_work.workflow_runtime.list_workflow_app_runtimes(normalized_project_id)
@@ -146,9 +186,35 @@ class ProjectSummaryService:
         finally:
             unit_of_work.close()
 
+        validation_statuses = _list_validation_session_statuses(
+            dataset_storage=self.dataset_storage,
+            project_id=normalized_project_id,
+        )
+        dataset_ids = _list_project_dataset_ids(
+            dataset_storage=self.dataset_storage,
+            project_id=normalized_project_id,
+        )
+
         return ProjectSummarySnapshot(
             project_id=normalized_project_id,
             generated_at=_now_isoformat(),
+            datasets=ProjectDatasetInventorySnapshot(dataset_total=len(dataset_ids)),
+            imports=ProjectStatusSummarySnapshot(
+                total=len(dataset_imports),
+                status_counts=_build_counter(item.status for item in dataset_imports),
+            ),
+            exports=ProjectStatusSummarySnapshot(
+                total=len(dataset_exports),
+                status_counts=_build_counter(item.status for item in dataset_exports),
+            ),
+            training=_build_task_status_summary(tasks, _YOLOX_TRAINING_TASK_KIND),
+            validation=ProjectStatusSummarySnapshot(
+                total=len(validation_statuses),
+                status_counts=_build_counter(validation_statuses),
+            ),
+            evaluation=_build_task_status_summary(tasks, _YOLOX_EVALUATION_TASK_KIND),
+            conversion=_build_task_status_summary(tasks, _YOLOX_CONVERSION_TASK_KIND),
+            inference=_build_task_status_summary(tasks, _YOLOX_INFERENCE_TASK_KIND),
             workflows=ProjectWorkflowSummarySnapshot(
                 template_total=len(templates),
                 application_total=len(applications),
@@ -215,6 +281,37 @@ def serialize_project_summary(snapshot: ProjectSummarySnapshot) -> dict[str, obj
     return {
         "project_id": snapshot.project_id,
         "generated_at": snapshot.generated_at,
+        "datasets": {
+            "dataset_total": snapshot.datasets.dataset_total,
+        },
+        "imports": {
+            "total": snapshot.imports.total,
+            "status_counts": dict(snapshot.imports.status_counts),
+        },
+        "exports": {
+            "total": snapshot.exports.total,
+            "status_counts": dict(snapshot.exports.status_counts),
+        },
+        "training": {
+            "total": snapshot.training.total,
+            "status_counts": dict(snapshot.training.status_counts),
+        },
+        "validation": {
+            "total": snapshot.validation.total,
+            "status_counts": dict(snapshot.validation.status_counts),
+        },
+        "evaluation": {
+            "total": snapshot.evaluation.total,
+            "status_counts": dict(snapshot.evaluation.status_counts),
+        },
+        "conversion": {
+            "total": snapshot.conversion.total,
+            "status_counts": dict(snapshot.conversion.status_counts),
+        },
+        "inference": {
+            "total": snapshot.inference.total,
+            "status_counts": dict(snapshot.inference.status_counts),
+        },
         "workflows": {
             "template_total": snapshot.workflows.template_total,
             "application_total": snapshot.workflows.application_total,
@@ -301,6 +398,66 @@ def _build_counter(values: object) -> dict[str, int]:
         if isinstance(item, str) and item.strip()
     )
     return {key: counter[key] for key in sorted(counter)}
+
+
+def _build_task_status_summary(tasks: tuple[object, ...], task_kind: str) -> ProjectStatusSummarySnapshot:
+    """按 task_kind 聚合任务总数和状态分布。"""
+
+    matched_tasks = tuple(
+        task_record for task_record in tasks
+        if getattr(task_record, "task_kind", None) == task_kind
+    )
+    return ProjectStatusSummarySnapshot(
+        total=len(matched_tasks),
+        status_counts=_build_counter(getattr(task_record, "state", None) for task_record in matched_tasks),
+    )
+
+
+def _list_project_dataset_ids(
+    *,
+    dataset_storage: LocalDatasetStorage,
+    project_id: str,
+) -> tuple[str, ...]:
+    """扫描 Project datasets 目录并返回一级数据集目录名。"""
+
+    datasets_root = dataset_storage.resolve(f"projects/{project_id}/datasets")
+    if not datasets_root.is_dir():
+        return ()
+    dataset_ids = sorted(
+        path.name
+        for path in datasets_root.iterdir()
+        if path.is_dir()
+    )
+    return tuple(dataset_ids)
+
+
+def _list_validation_session_statuses(
+    *,
+    dataset_storage: LocalDatasetStorage,
+    project_id: str,
+) -> tuple[str, ...]:
+    """扫描本地 validation session 文件并返回目标 Project 的状态列表。"""
+
+    sessions_root = dataset_storage.resolve("runtime/validation-sessions")
+    if not sessions_root.is_dir():
+        return ()
+
+    statuses: list[str] = []
+    for session_path in sorted(sessions_root.glob("*/session.json")):
+        try:
+            payload = dataset_storage.read_json(session_path.relative_to(dataset_storage.root_dir).as_posix())
+        except OSError:
+            continue
+        if not isinstance(payload, dict):
+            continue
+        raw_project_id = payload.get("project_id")
+        raw_status = payload.get("status")
+        if raw_project_id != project_id or not isinstance(raw_status, str):
+            continue
+        normalized_status = raw_status.strip()
+        if normalized_status:
+            statuses.append(normalized_status)
+    return tuple(statuses)
 
 
 def _now_isoformat() -> str:

@@ -2,11 +2,16 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi.testclient import TestClient
 
 from backend.service.api.app import create_app
+from backend.service.domain.datasets.dataset_export import DatasetExport
+from backend.service.domain.datasets.dataset_import import DatasetImport
+from backend.service.domain.tasks.task_records import TaskRecord
+from backend.service.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
 from backend.service.settings import (
     BackendServiceProjectCatalogItemConfig,
     BackendServiceProjectsConfig,
@@ -170,6 +175,171 @@ def test_project_object_interface_rejects_non_public_namespace(tmp_path: Path) -
     assert "allowed_namespaces" in error_payload["details"]
 
 
+def test_project_bootstrap_creates_manifest_workspace_and_catalog_entry(tmp_path: Path) -> None:
+    """验证 Project bootstrap 会创建目录骨架、manifest，并立即出现在目录列表中。"""
+
+    client, session_factory, dataset_storage = _create_project_resources_test_client(
+        tmp_path,
+        database_name="project-resources-bootstrap.db",
+        include_storage=True,
+        project_items=[],
+    )
+
+    try:
+        with client:
+            bootstrap_response = client.post(
+                "/api/v1/projects/bootstrap",
+                headers=build_test_headers(scopes="datasets:write"),
+                json={
+                    "project_id": "project-bootstrap",
+                    "display_name": "Bootstrap Project",
+                    "description": "初始化项目",
+                    "metadata": {"site": "line-b"},
+                },
+            )
+            list_response = client.get(
+                "/api/v1/projects",
+                headers=_build_project_headers(),
+            )
+    finally:
+        session_factory.engine.dispose()
+
+    assert bootstrap_response.status_code == 201
+    bootstrap_payload = bootstrap_response.json()
+    assert bootstrap_payload["project_id"] == "project-bootstrap"
+    assert bootstrap_payload["display_name"] == "Bootstrap Project"
+    assert bootstrap_payload["description"] == "初始化项目"
+    assert bootstrap_payload["metadata"] == {"site": "line-b"}
+    assert bootstrap_payload["registered_in_catalog"] is False
+    assert bootstrap_payload["summary"]["project_id"] == "project-bootstrap"
+
+    assert dataset_storage.resolve("projects/project-bootstrap/project.json").is_file()
+    assert dataset_storage.resolve("projects/project-bootstrap/inputs").is_dir()
+    assert dataset_storage.resolve("projects/project-bootstrap/results").is_dir()
+    assert dataset_storage.resolve("projects/project-bootstrap/datasets").is_dir()
+    assert dataset_storage.resolve("projects/project-bootstrap/workflow/templates").is_dir()
+    assert dataset_storage.resolve("projects/project-bootstrap/workflow/applications").is_dir()
+
+    assert list_response.status_code == 200
+    assert [item["project_id"] for item in list_response.json()] == ["project-bootstrap"]
+
+
+def test_project_detail_summary_aggregates_dataset_io_and_model_runtime_slices(tmp_path: Path) -> None:
+    """验证 Project detail summary 会聚合数据集、导入导出、任务和 validation session 统计。"""
+
+    client, session_factory, dataset_storage = _create_project_resources_test_client(
+        tmp_path,
+        database_name="project-resources-summary-slices.db",
+        include_storage=True,
+    )
+    dataset_storage.resolve("projects/project-1/datasets/dataset-1").mkdir(parents=True, exist_ok=True)
+    dataset_storage.resolve("projects/project-1/datasets/dataset-2").mkdir(parents=True, exist_ok=True)
+    dataset_storage.write_json(
+        "runtime/validation-sessions/validation-session-1/session.json",
+        _build_validation_session_payload(project_id="project-1", status="ready"),
+    )
+    dataset_storage.write_json(
+        "runtime/validation-sessions/validation-session-2/session.json",
+        _build_validation_session_payload(project_id="project-2", status="ready"),
+    )
+
+    unit_of_work = SqlAlchemyUnitOfWork(session_factory.create_session())
+    try:
+        unit_of_work.dataset_imports.save_dataset_import(
+            DatasetImport(
+                dataset_import_id="dataset-import-1",
+                dataset_id="dataset-1",
+                project_id="project-1",
+                format_type="coco",
+                task_type="detection",
+                status="completed",
+                created_at=_now_isoformat(),
+                dataset_version_id="dataset-version-1",
+                package_path="projects/project-1/datasets/dataset-1/imports/dataset-import-1/package.zip",
+                staging_path="projects/project-1/datasets/dataset-1/imports/dataset-import-1/staging/extracted",
+            )
+        )
+        unit_of_work.dataset_exports.save_dataset_export(
+            DatasetExport(
+                dataset_export_id="dataset-export-1",
+                dataset_id="dataset-1",
+                project_id="project-1",
+                dataset_version_id="dataset-version-1",
+                format_id="coco-detection-v1",
+                status="running",
+                created_at=_now_isoformat(),
+                task_id="task-export-1",
+            )
+        )
+        unit_of_work.tasks.save_task(
+            TaskRecord(
+                task_id="task-training-1",
+                task_kind="yolox-training",
+                project_id="project-1",
+                display_name="train yolox-s",
+                created_at=_now_isoformat(),
+                state="running",
+            )
+        )
+        unit_of_work.tasks.save_task(
+            TaskRecord(
+                task_id="task-evaluation-1",
+                task_kind="yolox-evaluation",
+                project_id="project-1",
+                display_name="evaluate yolox-s",
+                created_at=_now_isoformat(),
+                state="succeeded",
+            )
+        )
+        unit_of_work.tasks.save_task(
+            TaskRecord(
+                task_id="task-conversion-1",
+                task_kind="yolox-conversion",
+                project_id="project-1",
+                display_name="convert yolox-s",
+                created_at=_now_isoformat(),
+                state="queued",
+            )
+        )
+        unit_of_work.tasks.save_task(
+            TaskRecord(
+                task_id="task-inference-1",
+                task_kind="yolox-inference",
+                project_id="project-1",
+                display_name="infer yolox-s",
+                created_at=_now_isoformat(),
+                state="failed",
+            )
+        )
+        unit_of_work.commit()
+    finally:
+        unit_of_work.close()
+
+    try:
+        with client:
+            detail_response = client.get(
+                "/api/v1/projects/project-1",
+                headers=_build_project_headers(),
+            )
+    finally:
+        session_factory.engine.dispose()
+
+    assert detail_response.status_code == 200
+    summary = detail_response.json()["summary"]
+    assert summary["datasets"]["dataset_total"] == 2
+    assert summary["imports"]["total"] == 1
+    assert summary["imports"]["status_counts"] == {"completed": 1}
+    assert summary["exports"]["total"] == 1
+    assert summary["exports"]["status_counts"] == {"running": 1}
+    assert summary["training"]["total"] == 1
+    assert summary["training"]["status_counts"] == {"running": 1}
+    assert summary["validation"]["total"] == 1
+    assert summary["validation"]["status_counts"] == {"ready": 1}
+    assert summary["evaluation"]["status_counts"] == {"succeeded": 1}
+    assert summary["conversion"]["status_counts"] == {"queued": 1}
+    assert summary["inference"]["status_counts"] == {"failed": 1}
+
+
 def _build_project_headers() -> dict[str, str]:
     """构建当前测试需要的 Project 读取请求头。"""
 
@@ -223,3 +393,41 @@ def _create_project_resources_test_client(
     if include_storage:
         return client, session_factory, dataset_storage
     return client, session_factory
+
+
+def _build_validation_session_payload(*, project_id: str, status: str) -> dict[str, object]:
+    """构造最小可读的 validation session JSON。"""
+
+    now = _now_isoformat()
+    return {
+        "session_id": f"validation-session-{project_id}",
+        "project_id": project_id,
+        "model_id": "model-1",
+        "model_version_id": "model-version-1",
+        "model_name": "yolox",
+        "model_scale": "s",
+        "source_kind": "training-output",
+        "status": status,
+        "runtime_profile_id": None,
+        "runtime_backend": "pytorch",
+        "device_name": "cpu",
+        "runtime_precision": "fp32",
+        "score_threshold": 0.3,
+        "save_result_image": True,
+        "input_size": [640, 640],
+        "labels": ["bolt"],
+        "checkpoint_file_id": "checkpoint-1",
+        "checkpoint_storage_uri": "projects/project-1/models/checkpoint.pt",
+        "labels_storage_uri": None,
+        "extra_options": {},
+        "created_at": now,
+        "updated_at": now,
+        "created_by": "amvar",
+        "last_prediction": None,
+    }
+
+
+def _now_isoformat() -> str:
+    """返回当前 UTC 时间字符串。"""
+
+    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")

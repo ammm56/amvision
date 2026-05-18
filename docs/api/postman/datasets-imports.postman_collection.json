@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "8c5b24d5-8c8d-4bc2-9415-0e9db7c0e901",
     "name": "amvision current api",
-    "description": "当前公开的 system、DatasetImport、tasks 接口集合。",
+    "description": "当前公开的 system/bootstrap、Project bootstrap/catalog/summary、DatasetImport 和 tasks 接口集合。默认 accessToken 变量已对齐空库首次启动 seed token amvision-default-user-token。",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "item": [
@@ -27,6 +27,33 @@
               ]
             },
             "description": "返回最小健康检查结果。"
+          },
+          "response": []
+        },
+        {
+          "name": "Get System Bootstrap",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/system/bootstrap",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "system",
+                "bootstrap"
+              ]
+            },
+            "description": "读取前端首屏 bootstrap 聚合结果，确认当前主体、可见 Project 和导出格式能力。"
           },
           "response": []
         },
@@ -81,6 +108,161 @@
               ]
             },
             "description": "返回数据库连通性检查结果。"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Projects",
+      "item": [
+        {
+          "name": "Bootstrap Project",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  var payload = pm.response.json();",
+                  "  if (payload.project_id) pm.collectionVariables.set('projectId', payload.project_id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"display_name\": \"{{projectDisplayName}}\",\n  \"description\": \"{{projectDescription}}\",\n  \"metadata\": {\n    \"source\": \"postman-current-api\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/projects/bootstrap",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "projects",
+                "bootstrap"
+              ]
+            },
+            "description": "初始化一个 Project 目录、最小 manifest 和工作区骨架。"
+          },
+          "response": []
+        },
+        {
+          "name": "List Projects",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/projects?include_summary=true&offset=0&limit=20",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "projects"
+              ],
+              "query": [
+                {
+                  "key": "include_summary",
+                  "value": "true"
+                },
+                {
+                  "key": "offset",
+                  "value": "0"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
+            },
+            "description": "列出当前主体可见的 Project 目录项，并内联 summary。"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Project Detail",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/projects/{{projectId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "projects",
+                "{{projectId}}"
+              ]
+            },
+            "description": "读取单个 Project 的目录信息和当前 summary。"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Project Summary",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/projects/{{projectId}}/summary",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "projects",
+                "{{projectId}}",
+                "summary"
+              ]
+            },
+            "description": "读取当前 Project 的工作台聚合快照。"
           },
           "response": []
         }
@@ -469,6 +651,14 @@
     {
       "key": "projectId",
       "value": "project-1"
+    },
+    {
+      "key": "projectDisplayName",
+      "value": "Project One"
+    },
+    {
+      "key": "projectDescription",
+      "value": "Project bootstrapped from Postman"
     },
     {
       "key": "datasetId",

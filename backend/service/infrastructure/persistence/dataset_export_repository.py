@@ -126,6 +126,24 @@ class SqlAlchemyDatasetExportRepository:
 
         return tuple(self._to_domain(record) for record in records)
 
+    def list_dataset_exports_by_project(self, project_id: str) -> tuple[DatasetExport, ...]:
+        """按 Project id 列出导出记录。"""
+
+        statement = (
+            select(DatasetExportRecord)
+            .where(DatasetExportRecord.project_id == project_id)
+            .order_by(DatasetExportRecord.created_at, DatasetExportRecord.dataset_export_id)
+        )
+        try:
+            records = self.session.execute(statement).scalars().all()
+        except SQLAlchemyError as error:
+            raise PersistenceOperationError(
+                "按 Project 列出 DatasetExport 失败",
+                details={"error_type": error.__class__.__name__},
+            ) from error
+
+        return tuple(self._to_domain(record) for record in records)
+
     def _to_record(self, dataset_export: DatasetExport) -> DatasetExportRecord:
         """把领域对象转换为 ORM 实体。"""
 

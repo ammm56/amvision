@@ -11,6 +11,7 @@
 ## 适用范围
 
 - DatasetExport 创建接口
+- DatasetExport 格式合同接口
 - DatasetExport 详情查询接口
 - DatasetVersion 下的导出记录列表接口
 - DatasetExport 打包与下载接口
@@ -42,6 +43,7 @@
 ## 当前实现边界
 
 - 当前只支持 detection 类型 DatasetVersion
+- 当前已经公开独立的格式合同接口 `GET /api/v1/datasets/export-formats`，用于先读取 supported / implemented / default_format，再决定是否创建导出任务
 - 当前已经正式实现并对外开放的 format_id：
   - coco-detection-v1
   - voc-detection-v1
@@ -50,6 +52,27 @@
 - training 前置步骤应消费 manifest_object_key，而不是直接读取 DatasetVersion 内部目录结构
 
 ## 接口清单
+
+### GET /api/v1/datasets/export-formats
+
+返回当前公开的数据集导出格式合同，用于前端、工作站或脚本在提交导出任务前先读取能力范围。
+
+#### 成功响应要点
+
+- 状态码：200 OK
+- 当前公开字段包括：
+  - supported_formats
+  - implemented_formats
+  - default_format
+  - items[].format_id
+  - items[].implemented
+
+#### 当前返回语义
+
+- `supported_formats` 表示规划支持的全部格式。
+- `implemented_formats` 表示当前已经正式实现并可用的格式。
+- `default_format` 表示当前默认导出格式；当前值为 `coco-detection-v1`。
+- `items` 用于给前端直接渲染格式清单和“是否可用”状态。
 
 ### POST /api/v1/datasets/exports
 
@@ -244,6 +267,13 @@ curl -X POST "http://127.0.0.1:8000/api/v1/datasets/exports" \
 - 一个完成态 DatasetExport 必须稳定对应一个 manifest_object_key。
 - 当前训练创建接口允许传 dataset_export_id 或 manifest_object_key；如果同时传两者，服务会验证它们是否属于同一个 DatasetExport。
 - 实践上：面向用户和平台资源管理时优先传 dataset_export_id，面向执行器和文件消费侧时优先用 manifest_object_key。
+
+## GET /api/v1/datasets/export-formats 与 POST /api/v1/datasets/exports 的关系
+
+- `GET /api/v1/datasets/export-formats` 是能力目录接口，用于回答“当前能导出成什么格式”。
+- `POST /api/v1/datasets/exports` 是资源创建接口，用于回答“现在要为哪个 DatasetVersion 创建一条具体导出任务”。
+- 推荐顺序是先读 export-formats，确定 `format_id`，再创建 DatasetExport。
+- 前端界面里，export-formats 适合驱动下拉选项；exports 适合驱动任务创建、详情轮询、打包下载和训练输入选择。
 
 ## 导出目录语义
 

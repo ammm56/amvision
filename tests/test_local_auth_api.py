@@ -7,12 +7,17 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from backend.service.api.app import create_app
-from backend.service.application.auth.default_local_auth_seeder import DEFAULT_LOCAL_AUTH_TOKEN
+from backend.service.application.auth.default_local_auth_seeder import (
+    DEFAULT_LOCAL_AUTH_TOKEN,
+    DEFAULT_LOCAL_AUTH_USERNAME,
+)
 from backend.service.application.auth.local_auth_service import LocalAuthService, LocalAuthUserCreateRequest
 from backend.service.settings import (
     BackendServiceAuthConfig,
     BackendServiceLocalAuthConfig,
     BackendServiceAuthProviderConfig,
+    BackendServiceProjectCatalogItemConfig,
+    BackendServiceProjectsConfig,
     BackendServiceSettings,
     BackendServiceTaskManagerConfig,
 )
@@ -250,6 +255,67 @@ def test_auth_providers_endpoint_lists_local_and_configured_online_provider(tmp_
 
     assert unsupported_password_login_response.status_code == 400
     assert unsupported_password_login_response.json()["error"]["code"] == "invalid_request"
+
+
+def test_system_bootstrap_aggregates_current_user_providers_projects_and_capabilities(tmp_path: Path) -> None:
+    """验证 system/bootstrap 会聚合首屏所需的主体、provider、Project 和能力信息。"""
+
+    client, session_factory = _create_local_auth_test_client(
+        tmp_path,
+        database_name="system-bootstrap.db",
+        auth_config=BackendServiceAuthConfig(
+            mode="local",
+            websocket_query_token_enabled=True,
+            local_auth=BackendServiceLocalAuthConfig(
+                initialize_default_user_on_empty_db=True,
+            ),
+            providers=[
+                BackendServiceAuthProviderConfig(
+                    provider_id="company-sso",
+                    provider_kind="oidc",
+                    display_name="Company SSO",
+                    issuer_url="https://sso.example.test",
+                    metadata={"audience": "frontend"},
+                )
+            ],
+        ),
+        projects_config=BackendServiceProjectsConfig(
+            items=[
+                BackendServiceProjectCatalogItemConfig(
+                    project_id="project-1",
+                    display_name="Project One",
+                    description="测试项目一",
+                )
+            ]
+        ),
+    )
+
+    try:
+        with client:
+            bootstrap_response = client.get(
+                "/api/v1/system/bootstrap",
+                headers=build_bearer_headers(DEFAULT_LOCAL_AUTH_TOKEN),
+            )
+    finally:
+        session_factory.engine.dispose()
+
+    assert bootstrap_response.status_code == 200
+    payload = bootstrap_response.json()
+    assert payload["auth_mode"] == "local"
+    assert payload["bearer_auth_enabled"] is True
+    assert payload["websocket_query_token_enabled"] is True
+    assert payload["current_user"]["username"] == DEFAULT_LOCAL_AUTH_USERNAME
+    assert payload["current_user"]["auth_credential_kind"] == "user-token"
+    assert {item["provider_id"] for item in payload["providers"]} == {"local", "company-sso"}
+    assert [item["project_id"] for item in payload["visible_projects"]] == ["project-1"]
+    assert payload["visible_projects"][0]["display_name"] == "Project One"
+    assert payload["capabilities"]["project_bootstrap_enabled"] is True
+    assert payload["capabilities"]["dataset_export"]["implemented_formats"] == [
+        "coco-detection-v1",
+        "voc-detection-v1",
+    ]
+    assert payload["capabilities"]["dataset_export"]["default_format"] == "coco-detection-v1"
+    assert "workflows.preview-runs" in payload["capabilities"]["project_summary_topics"]
 
 
 def test_default_local_auth_initializer_skips_non_empty_user_table(tmp_path: Path) -> None:
@@ -599,6 +665,7 @@ def _create_local_auth_test_client(
     *,
     database_name: str,
     auth_config: BackendServiceAuthConfig | None = None,
+    projects_config: BackendServiceProjectsConfig | None = None,
 ) -> tuple[TestClient, object]:
     """创建启用 local auth 模式的测试客户端。"""
 
@@ -617,6 +684,7 @@ def _create_local_auth_test_client(
                     initialize_default_user_on_empty_db=False,
                 ),
             ),
+            projects=projects_config or BackendServiceProjectsConfig(),
             task_manager=BackendServiceTaskManagerConfig(enabled=False),
         ),
         session_factory=session_factory,

@@ -41,6 +41,11 @@ from backend.service.application.workflows.preview_run_manager import (
     WorkflowPreviewRunExecutionRequest,
     WorkflowPreviewRunManager,
 )
+from backend.service.application.workflows.preview_run_cleanup import (
+    finalize_staged_preview_run_storage,
+    restore_staged_preview_run_storage,
+    stage_preview_run_storage_for_cleanup,
+)
 from backend.service.application.workflows.runtime_worker import (
     WorkflowRuntimeAsyncRunCallbacks,
     WorkflowRuntimeWorkerInstance,
@@ -518,10 +523,25 @@ class WorkflowRuntimeService:
             if self.preview_run_manager is None:
                 raise ServiceConfigurationError("当前服务尚未完成 workflow_preview_run_manager 装配")
             preview_run = self.preview_run_manager.cancel_run(preview_run_id, cancelled_by=None)
-        with self._open_unit_of_work() as unit_of_work:
-            unit_of_work.workflow_runtime.delete_preview_run(preview_run.preview_run_id)
-            unit_of_work.commit()
-        self.dataset_storage.delete_tree(build_workflow_preview_run_storage_dir(preview_run.preview_run_id))
+        staging_dir = stage_preview_run_storage_for_cleanup(
+            dataset_storage=self.dataset_storage,
+            preview_run_id=preview_run.preview_run_id,
+        )
+        try:
+            with self._open_unit_of_work() as unit_of_work:
+                unit_of_work.workflow_runtime.delete_preview_run(preview_run.preview_run_id)
+                unit_of_work.commit()
+        except Exception:
+            restore_staged_preview_run_storage(
+                dataset_storage=self.dataset_storage,
+                preview_run_id=preview_run.preview_run_id,
+                staging_dir=staging_dir,
+            )
+            raise
+        finalize_staged_preview_run_storage(
+            dataset_storage=self.dataset_storage,
+            staging_dir=staging_dir,
+        )
 
     def create_workflow_app_runtime(
         self,

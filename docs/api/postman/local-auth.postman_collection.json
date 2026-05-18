@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "ce81a1d2-bdc9-4b2c-99e8-a7b055ea63a8",
     "name": "amvision local auth api",
-    "description": "当前公开的本地用户、权限管理、session/refresh token 与长期调用 user token 接口集合。当前 local 是唯一完整可用的账号 provider；在线 provider 只保留目录发现边界。collection 覆盖 provider 目录、bootstrap、login、refresh、用户管理、密码重置、token 管理和 system/me 最小联调链路。auth.events WebSocket 调试见 docs/api/websocket-usage.md。 需要按当前环境填写实际账号或 token。",
+    "description": "当前公开的本地用户、权限管理、session/refresh token 与长期调用 user token 接口集合。当前 local 是唯一完整可用的账号 provider；在线 provider 只保留目录发现边界。collection 覆盖 provider 目录、bootstrap、login、refresh、用户管理、密码重置、token 管理、system/me 和 system/bootstrap 最小联调链路。auth.events WebSocket 调试见 docs/api/websocket-usage.md。默认变量已对齐空库首次启动 seed 值 amvar / 123456 / amvision-default-user-token；数据库已有用户数据时应改用当前环境实际账号或 token。",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "item": [
@@ -197,6 +197,33 @@
               ]
             },
             "description": "查看当前管理员会话解析结果，重点确认 auth_provider_id、auth_credential_kind 和 scope。"
+          },
+          "response": []
+        },
+        {
+          "name": "Get System Bootstrap",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/system/bootstrap",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "system",
+                "bootstrap"
+              ]
+            },
+            "description": "读取前端首屏 bootstrap 聚合结果。默认 collection variable 已预置空库 seed token，可直接验证 current_user、providers、visible_projects 和 capabilities。"
           },
           "response": []
         }

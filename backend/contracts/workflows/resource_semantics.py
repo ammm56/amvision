@@ -51,6 +51,7 @@ WORKFLOW_PREVIEW_RUN_STATES: tuple[WorkflowPreviewRunState, ...] = (
 WORKFLOW_PREVIEW_RUN_TERMINAL_STATES = frozenset(("succeeded", "failed", "cancelled", "timed_out"))
 WORKFLOW_PREVIEW_RUN_DEFAULT_RETENTION_HOURS = 24
 WORKFLOW_PREVIEW_RUN_STORAGE_ROOT = "workflows/runtime/preview-runs"
+WORKFLOW_PREVIEW_RUN_CLEANUP_STAGING_ROOT = "workflows/runtime/cleanup-staging/preview-runs"
 WORKFLOW_PREVIEW_RUN_CLEANUP_COMMAND = "cleanup-preview-runs"
 WORKFLOW_RUNTIME_STORAGE_DEFAULT_RETENTION_HOURS = 24
 WORKFLOW_RUNTIME_STORAGE_CLEANUP_COMMAND = "cleanup-runtime-storage"
@@ -141,6 +142,19 @@ def build_workflow_preview_run_snapshot_object_key(preview_run_id: str, snapshot
     """
 
     return f"{build_workflow_preview_run_storage_dir(preview_run_id)}/{snapshot_name}"
+
+
+def build_workflow_preview_run_cleanup_staging_dir(preview_run_id: str) -> str:
+    """返回单个 preview run 的 cleanup staging 目录。
+
+    参数：
+    - preview_run_id：preview run id。
+
+    返回：
+    - str：preview run cleanup staging 目录。
+    """
+
+    return f"{WORKFLOW_PREVIEW_RUN_CLEANUP_STAGING_ROOT}/{preview_run_id}"
 
 
 def build_workflow_preview_run_events_object_key(preview_run_id: str) -> str:
