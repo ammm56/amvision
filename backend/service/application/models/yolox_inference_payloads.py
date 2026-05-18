@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from backend.service.application.errors import InvalidRequestError
+from backend.service.application.project_public_files import resolve_public_project_file_reference
 from backend.service.application.runtime.yolox_runtime_target import RuntimeTargetSnapshot
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 from backend.service.infrastructure.object_store.object_key_layout import build_runtime_input_object_key
@@ -18,6 +19,7 @@ if TYPE_CHECKING:
 
 
 YOLOX_INFERENCE_INPUT_SOURCE_URI = "input_uri"
+YOLOX_INFERENCE_INPUT_SOURCE_FILE_ID = "input_file_id"
 YOLOX_INFERENCE_INPUT_SOURCE_BASE64 = "image_base64"
 YOLOX_INFERENCE_INPUT_SOURCE_MULTIPART = "multipart"
 YOLOX_INFERENCE_INPUT_TRANSPORT_STORAGE = "storage"
@@ -29,6 +31,7 @@ class YoloXInferenceInputSource:
     """描述一次推理请求提供的原始输入源。
 
     字段：
+    - input_file_id：Project 公开文件稳定 id。
     - input_uri：本地 object key 或输入 URI。
     - image_base64：JSON 中直接提供的 base64 图片内容。
     - upload_bytes：multipart 上传的原始二进制内容。
@@ -36,6 +39,7 @@ class YoloXInferenceInputSource:
     - upload_content_type：multipart 上传 content-type。
     """
 
+    input_file_id: str | None = None
     input_uri: str | None = None
     image_base64: str | None = None
     upload_bytes: bytes | None = None
@@ -50,7 +54,7 @@ class YoloXNormalizedInferenceInput:
     字段：
     - input_uri：归一化后可直接读取的输入 URI。
     - input_source_kind：输入来源类型。
-    - input_file_id：平台文件 id；当前固定为空。
+    - input_file_id：Project 公开文件 id；输入不是 file_id 时为空。
     - input_image_bytes：memory 模式下直接送入推理链路的原始图片字节。
     - input_transport_mode：输入传输模式；storage 表示经本地文件，memory 表示内存直通。
     """
@@ -75,7 +79,7 @@ class YoloXInferencePayload:
     - model_build_id：推理使用的 ModelBuild id。
     - input_uri：归一化后的输入 URI。
     - input_source_kind：输入来源类型。
-    - input_file_id：平台文件 id；当前固定为空。
+    - input_file_id：Project 公开文件 id；输入不是 file_id 时为空。
     - score_threshold：本次推理阈值。
     - save_result_image：是否保存结果图。
     - return_preview_image_base64：是否回传 base64 预览图。
@@ -131,6 +135,7 @@ def normalize_yolox_inference_input(
     request_id: str,
     source: YoloXInferenceInputSource,
     input_transport_mode: str = YOLOX_INFERENCE_INPUT_TRANSPORT_STORAGE,
+    expected_project_id: str | None = None,
 ) -> YoloXNormalizedInferenceInput:
     """按 one-of 规则把推理输入归一化为可直接读取的 input_uri。
 
@@ -139,6 +144,7 @@ def normalize_yolox_inference_input(
     - request_id：当前请求 id。
     - source：原始输入源。
     - input_transport_mode：输入传输模式；storage 会写入本地文件，memory 会直接保留图片字节。
+    - expected_project_id：可选 Project 约束；当输入来自 input_file_id 时会校验所属 Project。
 
     返回：
     - YoloXNormalizedInferenceInput：归一化后的输入信息。
@@ -153,22 +159,43 @@ def normalize_yolox_inference_input(
             details={"input_transport_mode": input_transport_mode},
         )
 
+    normalized_input_file_id = source.input_file_id.strip() if isinstance(source.input_file_id, str) and source.input_file_id.strip() else None
     normalized_input_uri = source.input_uri.strip() if isinstance(source.input_uri, str) and source.input_uri.strip() else None
     normalized_base64 = source.image_base64.strip() if isinstance(source.image_base64, str) and source.image_base64.strip() else None
     upload_bytes = source.upload_bytes if isinstance(source.upload_bytes, bytes) and source.upload_bytes else None
     provided_count = sum(
         1
-        for item in (normalized_input_uri, normalized_base64, upload_bytes)
+        for item in (normalized_input_file_id, normalized_input_uri, normalized_base64, upload_bytes)
         if item is not None
     )
     if provided_count != 1:
         raise InvalidRequestError(
-            "input_uri、image_base64、multipart 文件三者必须且只能提供一个",
+            "input_file_id、input_uri、image_base64、multipart 文件四者必须且只能提供一个",
             details={
+                "provided_input_file_id": normalized_input_file_id is not None,
                 "provided_input_uri": normalized_input_uri is not None,
                 "provided_image_base64": normalized_base64 is not None,
                 "provided_multipart_file": upload_bytes is not None,
             },
+        )
+
+    if normalized_input_file_id is not None:
+        if input_transport_mode == YOLOX_INFERENCE_INPUT_TRANSPORT_MEMORY:
+            raise InvalidRequestError(
+                "input_transport_mode=memory 不支持 input_file_id",
+                details={"input_source_kind": YOLOX_INFERENCE_INPUT_SOURCE_FILE_ID},
+            )
+        reference = resolve_public_project_file_reference(
+            dataset_storage=dataset_storage,
+            file_id=normalized_input_file_id,
+            expected_project_id=expected_project_id,
+            field_name="input_file_id",
+        )
+        return YoloXNormalizedInferenceInput(
+            input_uri=reference.object_key,
+            input_source_kind=YOLOX_INFERENCE_INPUT_SOURCE_FILE_ID,
+            input_file_id=normalized_input_file_id,
+            input_transport_mode=input_transport_mode,
         )
 
     if normalized_input_uri is not None:

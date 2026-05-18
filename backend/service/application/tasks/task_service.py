@@ -237,7 +237,14 @@ class SqlAlchemyTaskService:
         return tuple(matched_events[: filters.limit])
 
     def append_task_event(self, request: AppendTaskEventRequest) -> TaskDetail:
-        """为指定任务追加一条事件，并同步更新任务快照。"""
+        """为指定任务追加一条事件，并同步更新任务快照。
+
+        参数：
+        - request：待追加的任务事件请求。
+
+        返回：
+        - TaskDetail：更新后的任务快照，以及只包含本次新追加事件的 events；不返回历史事件。
+        """
 
         if not request.task_id.strip():
             raise InvalidRequestError("追加任务事件时 task_id 不能为空")

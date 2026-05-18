@@ -91,6 +91,7 @@ WebSocket 资源流的统一消息结构、控制事件和重连规则见 [docs/
 | POST | /api/v1/projects/bootstrap | datasets:write 或 workflows:write | 初始化一个 Project 目录、最小 manifest 和工作区骨架。 |
 | GET | /api/v1/projects/{project_id} | workflows:read + models:read | 读取一个 Project 的目录信息和当前 summary。 |
 | GET | /api/v1/projects/{project_id}/summary | workflows:read + models:read | 读取一个 Project 当前工作台可用的聚合摘要。 |
+| GET | /api/v1/projects/{project_id}/files | workflows:read + models:read | 列出一个 Project 公开文件命名空间中的文件，并直接返回 file_id、content_url 和 download_url；支持可选前缀过滤与分页。 |
 | GET | /api/v1/projects/{project_id}/files/metadata | workflows:read + models:read | 读取一个 Project 公开文件命名空间中的对象元数据、content_url 和 download_url；当前只开放 inputs、results 和 datasets 下的 versions、exports。 |
 | GET | /api/v1/projects/{project_id}/files/content | workflows:read + models:read | 直接输出一个 Project 公开文件命名空间中的对象文件内容，适用于图片预览和结果文件下载。 |
 | POST | /api/v1/datasets/imports | datasets:write | 上传 zip，创建 DatasetImport 和关联 TaskRecord，并提交到本地队列。 |
@@ -272,6 +273,8 @@ WebSocket 资源流的统一消息结构、控制事件和重连规则见 [docs/
 
 - 需要 auth:read
 - 返回指定用户的长期调用 token 摘要列表
+- 当前只列出长期 user token，不包含登录 session token
+- 当前返回顺序：默认名为 `default` 的长期调用 token 优先；其后是其他永久 token；最后是带过期时间的 token；同组内再按 `created_at` 倒序
 
 ### POST /api/v1/auth/users/{user_id}/tokens
 
@@ -304,7 +307,6 @@ WebSocket 资源流的统一消息结构、控制事件和重连规则见 [docs/
   - capabilities
 - 当前 capabilities 重点字段包括：
   - project_bootstrap_enabled
-  - dataset_export.supported_formats
   - dataset_export.implemented_formats
   - dataset_export.default_format
   - project_summary_topics
@@ -387,6 +389,32 @@ WebSocket 资源流的统一消息结构、控制事件和重连规则见 [docs/
   - deployments.deployment_status_counts
 - 该接口是项目级工作台和 `/ws/v1/projects/events` 的正式快照面
 
+### GET /api/v1/projects/{project_id}/files
+
+- 需要 workflows:read 和 models:read
+- 当前支持查询参数：
+  - object_prefix
+  - storage_prefix，兼容字段；等价于 object_prefix
+  - offset
+  - limit
+- 当省略 object_prefix 时，会扫描当前 Project 下全部公开文件命名空间
+- object_prefix 只能指向当前 Project 的公开文件命名空间
+- 当前允许的命名空间包括：
+  - projects/{project_id}/inputs/**
+  - projects/{project_id}/results/**
+  - projects/{project_id}/datasets/*/versions/**
+  - projects/{project_id}/datasets/*/exports/**
+- 返回字段包括：
+  - project_id
+  - file_id
+  - object_key
+  - file_name
+  - media_type
+  - size_bytes
+  - last_modified_at
+  - content_url
+  - download_url
+
 ### GET /api/v1/projects/{project_id}/files/metadata
 
 - 需要 workflows:read 和 models:read
@@ -402,6 +430,7 @@ WebSocket 资源流的统一消息结构、控制事件和重连规则见 [docs/
 - 当同时提供 object_key 和 storage_uri 时，两者必须一致
 - 返回字段包括：
   - project_id
+  - file_id
   - object_key
   - file_name
   - media_type
@@ -452,11 +481,9 @@ WebSocket 资源流的统一消息结构、控制事件和重连规则见 [docs/
 
 - 需要 datasets:read
 - 返回字段：
-  - supported_formats
   - implemented_formats
   - default_format
   - items[].format_id
-  - items[].implemented
 - 当前推荐顺序是先读取该接口，再调用 POST /api/v1/datasets/exports 创建具体导出任务
 
 ### POST /api/v1/datasets/exports
@@ -662,7 +689,8 @@ WebSocket 资源流的统一消息结构、控制事件和重连规则见 [docs/
 ### GET /api/v1/models/yolox/conversion-tasks/{task_id}
 
 - 需要 tasks:read
-- 默认 include_events=true
+- 默认 include_events=false
+- 默认返回轻量详情，不带 events；仅在 include_events=true 时返回历史事件列表
 - 返回单条 YOLOX conversion 任务详情，包括 task_spec、events、builds 和 report_summary
 - 当前 progress 会在执行期回写 `stage` 和 `percent`
 
@@ -733,7 +761,8 @@ WebSocket 资源流的统一消息结构、控制事件和重连规则见 [docs/
 ### GET /api/v1/models/yolox/evaluation-tasks/{task_id}
 
 - 需要 tasks:read
-- 默认 include_events=true
+- 默认 include_events=false
+- 默认返回轻量详情，不带 events；仅在 include_events=true 时返回历史事件列表
 - 返回单条 YOLOX 评估任务详情，包括 task_spec、events、report_summary 和结果文件 object key
 - 当前 progress 会在执行期回写 `stage` 和 `percent`
 
@@ -1009,7 +1038,7 @@ WebSocket 资源流的统一消息结构、控制事件和重连规则见 [docs/
 - 部署推理链顺序图与常见失败分支见 [docs/architecture/execution-sequences.md](../architecture/execution-sequences.md)。
 - 当前要求 deployment 的 sync 进程已经通过 `sync/start` 或 `sync/warmup` 启动；未启动时返回 `invalid_request`
 - 当前支持 `application/json` 和 `multipart/form-data`
-- 输入 one-of 规则：`input_uri`、`image_base64`、`input_image` 三者必须且只能提供一个
+- 输入 one-of 规则：`input_file_id`、`input_uri`、`image_base64`、`input_image` 四者必须且只能提供一个
 - JSON 请求可显式指定：
   - input_uri
   - image_base64
@@ -1029,8 +1058,9 @@ WebSocket 资源流的统一消息结构、控制事件和重连规则见 [docs/
   - save_result_image
   - return_preview_image_base64
   - extra_options：JSON 字符串
-- 当前 `input_file_id` 仍是保留字段，会返回 `invalid_request`
+- `input_file_id` 现在支持 Project 公开文件 id；稳定来源可直接使用 GET /api/v1/projects/{project_id}/files 或 GET /api/v1/projects/{project_id}/files/metadata 返回的 `file_id`
 - 当前同步 `/infer` 支持 `input_transport_mode=memory`：仅允许 `image_base64` 或 `input_image`，请求图片不会写入临时输入文件，而是直接以内存字节送入 deployment 子进程
+- 当同步 `/infer` 使用 `input_transport_mode=memory` 时，不支持 `input_file_id`
 - 当同步 `/infer` 使用 `input_transport_mode=memory` 时，响应 `input_uri` 会返回 `memory://...` 虚拟 URI，`result_object_key` 为 `null`
 - 当前响应会直接返回统一推理载荷，重点字段包括：
   - request_id
@@ -1038,6 +1068,7 @@ WebSocket 资源流的统一消息结构、控制事件和重连规则见 [docs/
   - instance_id
   - input_uri
   - input_source_kind
+  - input_file_id
   - detections
   - latency_ms：decode、preprocess、infer、postprocess 四段总耗时
   - decode_ms
@@ -1065,8 +1096,8 @@ WebSocket 资源流的统一消息结构、控制事件和重连规则见 [docs/
   - display_name
 - 当前实现会先校验 `deployment_instance_id` 属于请求 Project，再按 one-of 规则把输入归一化后放入 `yolox-inferences` 队列
 - 当前支持 `application/json` 和 `multipart/form-data`
-- 输入 one-of 规则：`input_uri`、`image_base64`、`input_image` 三者必须且只能提供一个
-- 当前 `input_file_id` 仍是保留字段，会返回 `invalid_request`
+- 输入 one-of 规则：`input_file_id`、`input_uri`、`image_base64`、`input_image` 四者必须且只能提供一个
+- `input_file_id` 现在支持 Project 公开文件 id；稳定来源可直接使用 GET /api/v1/projects/{project_id}/files 或 GET /api/v1/projects/{project_id}/files/metadata 返回的 `file_id`
 - 当前异步推理只使用 deployment 的 async 推理子进程；如果同步 `/infer` 已经加载过模型，异步侧仍会在自己的独立子进程中维护实例会话
 - 当前当 deployment 绑定 `tensorrt-engine` ModelBuild 时，worker 会通过 async deployment 子进程真实加载 TensorRT engine，并在结果 `runtime_session_info` 中回写 `runtime_execution_mode` 与 `compiled_runtime_precision`
 - inference task 创建接口不会自动启动 async 推理子进程；如果当前 async 进程尚未通过 `async/start` 或 `async/warmup` 启动，接口会直接返回 `invalid_request`
@@ -1097,6 +1128,7 @@ WebSocket 资源流的统一消息结构、控制事件和重连规则见 [docs/
   - model_build_id
   - input_uri
   - input_source_kind
+  - input_file_id
   - score_threshold
   - save_result_image
   - output_object_prefix
@@ -1109,7 +1141,8 @@ WebSocket 资源流的统一消息结构、控制事件和重连规则见 [docs/
 ### GET /api/v1/models/yolox/inference-tasks/{task_id}
 
 - 需要 tasks:read
-- 默认 include_events=true
+- 默认 include_events=false
+- 默认返回轻量详情，不带 events；仅在 include_events=true 时返回历史事件列表
 - 返回单条 YOLOX 推理任务详情，包括 task_spec、events、result_summary 和结果文件 object key
 
 ### GET /api/v1/models/yolox/inference-tasks/{task_id}/result
@@ -1172,12 +1205,14 @@ WebSocket 资源流的统一消息结构、控制事件和重连规则见 [docs/
   - score_threshold
   - save_result_image
   - extra_options
-- 当前最小实现只支持本地 `input_uri` 或 object key；`input_file_id` 当前会返回 invalid_request
+- `input_uri` 和 `input_file_id` 二选一
+- `input_file_id` 现在支持 Project 公开文件 id；稳定来源可直接使用 GET /api/v1/projects/{project_id}/files 或 GET /api/v1/projects/{project_id}/files/metadata 返回的 `file_id`
 - 当前预测会把 raw-result.json 固定写到 `runtime/validation-sessions/{session_id}/predictions/{prediction_id}/`，在 `save_result_image=true` 时额外写出 preview.jpg
 - 当前响应会返回：
   - prediction_id
   - session_id
   - input_uri
+  - input_file_id
   - score_threshold
   - detections
   - preview_image_uri
@@ -1265,7 +1300,8 @@ WebSocket 资源流的统一消息结构、控制事件和重连规则见 [docs/
 ### GET /api/v1/models/yolox/training-tasks/{task_id}
 
 - 需要 tasks:read
-- 默认 include_events=true
+- 默认 include_events=false
+- 默认返回轻量详情，不带 events；仅在 include_events=true 时返回历史事件列表
 - 返回单条 YOLOX 训练任务详情，包括 task_spec、events、训练结果文件 object key、顶层 `model_version_id`、`latest_checkpoint_model_version_id`、training_summary，以及正式训练控制字段 `available_actions` 与 `control_status`
 - 如果训练尚未完成，并且已经在 `save` 或 `pause` 的 epoch 边界成功落盘 latest checkpoint，顶层 `model_version_id` 和 `training_summary.model_version_id` 会自动指向当前 latest checkpoint 的固定版本 id
 - 如果训练已经完成，顶层 `model_version_id` 继续表示自动登记的 best checkpoint 版本，`latest_checkpoint_model_version_id` 表示 save/pause 自动登记或调试接口手动重登记的 latest checkpoint 版本；两者语义不同，不会互相覆盖
@@ -1763,7 +1799,8 @@ WebSocket 资源流的统一消息结构、控制事件和重连规则见 [docs/
 
 ### GET /api/v1/tasks/{task_id}
 
-- 默认 include_events=true
+- 默认 include_events=false
+- 默认返回轻量详情，不带 events；仅在 include_events=true 时返回历史事件列表
 - 返回任务摘要字段、task_spec 和 events
 
 ### GET /api/v1/tasks/{task_id}/events
@@ -1776,7 +1813,7 @@ WebSocket 资源流的统一消息结构、控制事件和重连规则见 [docs/
 ### POST /api/v1/tasks/{task_id}/cancel
 
 - 取消尚未结束的任务
-- 成功后返回更新后的任务详情和事件列表
+- 成功后返回更新后的任务快照，以及本次取消动作新增的事件
 
 ## 当前公开 WebSocket
 

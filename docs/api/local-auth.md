@@ -210,7 +210,9 @@
 
 - 需要 `auth:read`
 - 返回指定用户的全部长期调用 token 摘要
+- 当前只读取 `auth_user_tokens`，不包含登录 session token
 - 返回列表不包含 token 明文
+- 当前返回顺序：默认名为 `default` 的长期调用 token 优先；其后是其他永久 token；最后是带过期时间的 token；同组内再按 `created_at` 倒序
 
 ## POST /api/v1/auth/users/{user_id}/tokens
 
@@ -256,7 +258,6 @@
 - `providers`
 - `visible_projects`
 - `capabilities.project_bootstrap_enabled`
-- `capabilities.dataset_export.supported_formats`
 - `capabilities.dataset_export.implemented_formats`
 - `capabilities.dataset_export.default_format`
 - `capabilities.project_summary_topics`

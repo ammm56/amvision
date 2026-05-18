@@ -41,9 +41,14 @@ def test_create_task_and_list_with_public_filters(tmp_path: Path) -> None:
             assert create_response.status_code == 201
             task_id = create_response.json()["task_id"]
 
+            default_detail_response = client.get(
+                f"/api/v1/tasks/{task_id}",
+                headers=_build_task_read_headers(),
+            )
             detail_response = client.get(
                 f"/api/v1/tasks/{task_id}",
                 headers=_build_task_read_headers(),
+                params={"include_events": True},
             )
             list_response = client.get(
                 "/api/v1/tasks",
@@ -56,6 +61,10 @@ def test_create_task_and_list_with_public_filters(tmp_path: Path) -> None:
                     "source_import_id": "dataset-import-1",
                 },
             )
+
+        assert default_detail_response.status_code == 200
+        assert default_detail_response.json()["task_id"] == task_id
+        assert default_detail_response.json()["events"] == []
 
         assert detail_response.status_code == 200
         assert detail_response.json()["task_id"] == task_id
@@ -70,7 +79,7 @@ def test_create_task_and_list_with_public_filters(tmp_path: Path) -> None:
 
 
 def test_cancel_task_updates_state_and_events(tmp_path: Path) -> None:
-    """验证取消任务会更新状态并追加取消事件。"""
+    """验证取消任务响应只返回本次新增事件，而完整详情查询可返回历史事件。"""
 
     client, session_factory = _create_test_client(tmp_path)
     try:
@@ -91,10 +100,19 @@ def test_cancel_task_updates_state_and_events(tmp_path: Path) -> None:
                 f"/api/v1/tasks/{task_id}/cancel",
                 headers=_build_task_write_headers(),
             )
+            detail_response = client.get(
+                f"/api/v1/tasks/{task_id}",
+                headers=_build_task_read_headers(),
+                params={"include_events": True},
+            )
 
         assert cancel_response.status_code == 200
         assert cancel_response.json()["state"] == "cancelled"
-        assert cancel_response.json()["events"][-1]["message"] == "task cancelled"
+        assert len(cancel_response.json()["events"]) == 1
+        assert cancel_response.json()["events"][0]["message"] == "task cancelled"
+        assert detail_response.status_code == 200
+        assert len(detail_response.json()["events"]) == 2
+        assert detail_response.json()["events"][-1]["message"] == "task cancelled"
     finally:
         session_factory.engine.dispose()
 

@@ -363,6 +363,93 @@ def test_workflow_postman_collection_contains_manual_test_sequence() -> None:
     assert dataset_import_execution_metadata["scenario"] == "dataset-import-upload"
 
 
+def test_yolox_training_postman_collection_contains_project_file_lookup_chain() -> None:
+    """验证 YOLOX Postman collection 已补齐 Project 公开文件 file_id 取值链。"""
+
+    collection_path = (
+        Path(__file__).resolve().parents[1]
+        / "docs"
+        / "api"
+        / "postman"
+        / "yolox-training.postman_collection.json"
+    )
+    collection_payload = json.loads(collection_path.read_text(encoding="utf-8"))
+    request_names = _collect_postman_request_names(collection_payload["item"])
+    request_payloads = _collect_postman_request_payloads(collection_payload["item"])
+    variables = {item["key"]: item.get("value", "") for item in collection_payload.get("variable", [])}
+    list_project_files_request = _find_postman_request(collection_payload["item"], "List Project Files")
+    get_project_file_metadata_request = _find_postman_request(collection_payload["item"], "Get Project File Metadata")
+
+    assert collection_payload["info"]["name"] == "amvision yolox training validation conversion evaluation inference api"
+    assert "List Project Files" in request_names
+    assert "Get Project File Metadata" in request_names
+    assert "Predict YOLOX Validation Session By File ID" in request_names
+    assert "Direct YOLOX Inference By File ID" in request_names
+    assert "Create YOLOX Inference Task By File ID" in request_names
+    assert variables["projectFileObjectKey"] == "projects/project-1/inputs/validation/image-1.jpg"
+    assert variables["projectFilesPrefix"] == "projects/project-1/inputs"
+    assert "projectPublicFileId" in variables
+    assert request_payloads["Predict YOLOX Validation Session By File ID"].count("input_file_id") == 1
+    assert request_payloads["Direct YOLOX Inference By File ID"].count("input_file_id") == 1
+    assert request_payloads["Create YOLOX Inference Task By File ID"].count("input_file_id") == 1
+    assert list_project_files_request["url"]["raw"] == "{{baseUrl}}/api/v1/projects/{{projectId}}/files?object_prefix={{projectFilesPrefix}}&offset={{listOffset}}&limit={{listLimit}}"
+    assert get_project_file_metadata_request["url"]["raw"] == "{{baseUrl}}/api/v1/projects/{{projectId}}/files/metadata?object_key={{projectFileObjectKey}}"
+
+
+def test_dataset_imports_postman_collection_uses_lightweight_task_detail() -> None:
+    """验证 datasets-imports Postman collection 已按轻量任务详情合同更新。"""
+
+    collection_path = (
+        Path(__file__).resolve().parents[1]
+        / "docs"
+        / "api"
+        / "postman"
+        / "datasets-imports.postman_collection.json"
+    )
+    collection_payload = json.loads(collection_path.read_text(encoding="utf-8"))
+    request_names = _collect_postman_request_names(collection_payload["item"])
+    get_task_detail_request = _find_postman_request(collection_payload["item"], "Get Task Detail")
+
+    assert collection_payload["info"]["name"] == "amvision current api"
+    assert "Get System Bootstrap" in request_names
+    assert "Bootstrap Project" in request_names
+    assert "Create Dataset Import" in request_names
+    assert "Get Task Detail" in request_names
+    assert "List Task Events" in request_names
+    assert get_task_detail_request["url"]["raw"] == "{{baseUrl}}/api/v1/tasks/{{taskId}}?include_events=false"
+    assert get_task_detail_request["url"]["query"][0] == {"key": "include_events", "value": "false"}
+
+
+def test_local_auth_postman_collection_describes_user_token_boundary() -> None:
+    """验证 local-auth Postman collection 已写明 user token 列表边界与排序。"""
+
+    collection_path = (
+        Path(__file__).resolve().parents[1]
+        / "docs"
+        / "api"
+        / "postman"
+        / "local-auth.postman_collection.json"
+    )
+    collection_payload = json.loads(collection_path.read_text(encoding="utf-8"))
+    request_names = _collect_postman_request_names(collection_payload["item"])
+    variables = {item["key"]: item.get("value", "") for item in collection_payload.get("variable", [])}
+    list_tokens_request = _find_postman_request(collection_payload["item"], "List Managed User Tokens")
+
+    assert collection_payload["info"]["name"] == "amvision local auth api"
+    assert "Create Managed User" in request_names
+    assert "Login Managed User" in request_names
+    assert "Get Current Principal With Managed Session" in request_names
+    assert "List Managed User Tokens" in request_names
+    assert "Get Current Principal With Default User Token" in request_names
+    assert "Create Extra Managed User Token" in request_names
+    assert "Get Current Principal With Extra User Token" in request_names
+    assert variables["managedDefaultUserTokenName"] == "default"
+    assert variables["managedExtraTokenName"] == "robot"
+    assert list_tokens_request["url"]["raw"] == "{{baseUrl}}/api/v1/auth/users/{{managedUserId}}/tokens"
+    assert "不包含登录 session token" in list_tokens_request["description"]
+    assert "default 的永久 token 会优先排在前面" in list_tokens_request["description"]
+
+
 @pytest.mark.parametrize(
     ("example_name", "expected_application_id", "expected_example_kind"),
     [

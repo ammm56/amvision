@@ -144,7 +144,11 @@ def test_workflow_trigger_source_api_manages_first_phase_resource(
     assert get_response.json()["result_mapping"]["result_binding"] == "http_response"
 
     assert health_response.status_code == 200
-    assert health_response.json()["health_summary"]["adapter_configured"] is False
+    health_payload = health_response.json()
+    assert health_payload["trigger_source_id"] == "trigger-source-1"
+    assert health_payload["enabled"] is False
+    assert health_payload["health_summary"]["adapter_configured"] is False
+    assert health_payload["health_summary"]["request_count"] == 0
 
     assert enable_stopped_response.status_code == 400
     assert enable_stopped_response.json()["error"]["code"] == "invalid_request"
@@ -255,6 +259,7 @@ def test_workflow_trigger_source_api_controls_zeromq_adapter(
     health_payload = health_response.json()
     assert health_payload["observed_state"] == "running"
     assert health_payload["health_summary"]["adapter_running"] is True
+    assert isinstance(health_payload["health_summary"]["supervisor"], dict)
 
     assert disable_response.status_code == 200
     disable_payload = disable_response.json()

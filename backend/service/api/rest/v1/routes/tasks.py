@@ -70,10 +70,18 @@ class TaskSummaryResponse(BaseModel):
 
 
 class TaskDetailResponse(TaskSummaryResponse):
-	"""描述任务详情响应。"""
+	"""描述任务详情响应。
+
+	字段：
+	- task_spec：任务规格。
+	- events：普通详情查询默认不返回；部分操作响应只返回本次新增事件。
+	"""
 
 	task_spec: dict[str, object] = Field(default_factory=dict, description="任务规格")
-	events: list[TaskEventResponse] = Field(default_factory=list, description="任务事件列表")
+	events: list[TaskEventResponse] = Field(
+		default_factory=list,
+		description="普通详情查询默认不返回；部分操作响应只返回本次新增事件",
+	)
 
 
 @tasks_router.post("", response_model=TaskDetailResponse, status_code=status.HTTP_201_CREATED)
@@ -157,14 +165,17 @@ def get_task_detail(
 	task_id: str,
 	principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("tasks:read"))],
 	session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
-	include_events: Annotated[bool, Query(description="是否返回事件列表")] = True,
+	include_events: Annotated[bool, Query(description="是否返回事件列表")] = False,
 ) -> TaskDetailResponse:
-	"""按任务 id 返回任务详情。"""
+	"""按任务 id 返回任务详情。
+
+	默认返回轻量详情，不带 events；仅在 include_events=True 时返回历史事件列表。
+	"""
 
 	service = SqlAlchemyTaskService(session_factory)
 	task_detail = service.get_task(task_id, include_events=include_events)
 	_ensure_task_visible(principal=principal, task_project_id=task_detail.task.project_id, task_id=task_id)
-	return _build_task_detail_response(task_detail.task, task_detail.events)
+	return _build_task_query_detail_response(task_detail.task, task_detail.events)
 
 
 @tasks_router.get("/{task_id}/events", response_model=list[TaskEventResponse])
@@ -198,16 +209,18 @@ def cancel_task(
 	principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("tasks:write"))],
 	session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
 ) -> TaskDetailResponse:
-	"""取消一条尚未结束的任务。"""
+	"""取消一条尚未结束的任务。
+
+	响应只返回本次取消动作新增的事件，不返回历史事件列表。
+	"""
 
 	service = SqlAlchemyTaskService(session_factory)
 	task_detail = service.get_task(task_id)
 	_ensure_task_visible(principal=principal, task_project_id=task_detail.task.project_id, task_id=task_id)
 	cancelled_detail = service.cancel_task(task_id, cancelled_by=principal.principal_id)
-	refreshed_detail = service.get_task(task_id, include_events=True)
 	if cancelled_detail.task.state != "cancelled":
 		raise InvalidRequestError("任务取消失败", details={"task_id": task_id})
-	return _build_task_detail_response(refreshed_detail.task, refreshed_detail.events)
+	return _build_task_incremental_event_response(cancelled_detail.task, cancelled_detail.events)
 
 
 def _resolve_visible_project_ids(
@@ -278,6 +291,24 @@ def _build_task_detail_response(task: object, events: tuple[object, ...]) -> Tas
 		task_spec=dict(task.task_spec),
 		events=[_build_task_event_response(event) for event in events],
 	)
+
+
+def _build_task_query_detail_response(task: object, events: tuple[object, ...]) -> TaskDetailResponse:
+	"""构造普通详情查询响应。
+
+	调用方应按 include_events 语义传入 events；默认轻量模式通常传入空列表。
+	"""
+
+	return _build_task_detail_response(task, events)
+
+
+def _build_task_incremental_event_response(task: object, events: tuple[object, ...]) -> TaskDetailResponse:
+	"""构造操作后的新增事件响应。
+
+	events 只应包含当前操作新增的事件，不返回历史事件列表。
+	"""
+
+	return _build_task_detail_response(task, events)
 
 
 def _build_task_event_response(event: object) -> TaskEventResponse:

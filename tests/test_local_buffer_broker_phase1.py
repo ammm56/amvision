@@ -484,6 +484,7 @@ def test_backend_service_runtime_starts_broker_and_binds_workflow_context(tmp_pa
     bootstrap = BackendServiceBootstrap(settings=settings)
     runtime = bootstrap.build_runtime(bootstrap.load_settings())
 
+    bootstrap.initialize(runtime)
     bootstrap.start_runtime(runtime)
     try:
         status = runtime.local_buffer_broker_supervisor.get_status()

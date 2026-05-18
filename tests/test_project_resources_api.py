@@ -8,6 +8,7 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from backend.service.api.app import create_app
+from backend.service.infrastructure.object_store.object_key_layout import build_public_project_file_id
 from backend.service.domain.datasets.dataset_export import DatasetExport
 from backend.service.domain.datasets.dataset_import import DatasetImport
 from backend.service.domain.tasks.task_records import TaskRecord
@@ -139,6 +140,10 @@ def test_project_object_metadata_and_content_support_image_preview(tmp_path: Pat
 
     assert metadata_response.status_code == 200
     metadata_payload = metadata_response.json()
+    assert metadata_payload["file_id"] == build_public_project_file_id(
+        project_id="project-1",
+        object_key=object_key,
+    )
     assert metadata_payload["object_key"] == object_key
     assert metadata_payload["media_type"] == "image/png"
     assert metadata_payload["content_url"].startswith("/api/v1/projects/project-1/files/content")
@@ -146,6 +151,80 @@ def test_project_object_metadata_and_content_support_image_preview(tmp_path: Pat
     assert content_response.status_code == 200
     assert content_response.headers["content-type"] == "image/png"
     assert content_response.content == build_valid_test_png_bytes()
+
+
+def test_project_file_list_returns_public_files_with_file_ids(tmp_path: Path) -> None:
+    """验证项目公开文件列表会直接返回 file_id，并过滤非公开命名空间。"""
+
+    input_object_key = "projects/project-1/inputs/gallery/input-1.jpg"
+    result_object_key = "projects/project-1/results/workflow-runs/run-1/result.json"
+    version_object_key = "projects/project-1/datasets/dataset-1/versions/version-1/images/sample-1.jpg"
+    private_object_key = "projects/project-1/datasets/dataset-1/imports/import-1/package.zip"
+
+    client, session_factory, dataset_storage = _create_project_resources_test_client(
+        tmp_path,
+        database_name="project-resources-file-list.db",
+        include_storage=True,
+    )
+    dataset_storage.write_bytes(input_object_key, build_valid_test_png_bytes())
+    dataset_storage.write_text(result_object_key, '{"ok": true}')
+    dataset_storage.write_bytes(version_object_key, build_valid_test_png_bytes())
+    dataset_storage.write_bytes(private_object_key, b"fake-package")
+
+    try:
+        with client:
+            list_response = client.get(
+                "/api/v1/projects/project-1/files",
+                headers=_build_project_headers(),
+                params={"offset": 0, "limit": 10},
+            )
+            prefix_response = client.get(
+                "/api/v1/projects/project-1/files",
+                headers=_build_project_headers(),
+                params={"object_prefix": "projects/project-1/inputs"},
+            )
+    finally:
+        session_factory.engine.dispose()
+
+    assert list_response.status_code == 200
+    assert list_response.headers["x-total-count"] == "3"
+    payload = list_response.json()
+    object_keys = [item["object_key"] for item in payload]
+    assert object_keys == sorted([input_object_key, version_object_key, result_object_key])
+    item_by_object_key = {item["object_key"]: item for item in payload}
+    assert item_by_object_key[input_object_key]["file_id"] == build_public_project_file_id(
+        project_id="project-1",
+        object_key=input_object_key,
+    )
+    assert private_object_key not in item_by_object_key
+
+    assert prefix_response.status_code == 200
+    prefix_payload = prefix_response.json()
+    assert [item["object_key"] for item in prefix_payload] == [input_object_key]
+
+
+def test_project_file_list_rejects_non_public_prefix(tmp_path: Path) -> None:
+    """验证项目公开文件列表会拒绝非公开命名空间前缀。"""
+
+    client, session_factory = _create_project_resources_test_client(
+        tmp_path,
+        database_name="project-resources-file-list-reject.db",
+    )
+
+    try:
+        with client:
+            response = client.get(
+                "/api/v1/projects/project-1/files",
+                headers=_build_project_headers(),
+                params={
+                    "object_prefix": "projects/project-1/datasets/dataset-1/imports/import-1",
+                },
+            )
+    finally:
+        session_factory.engine.dispose()
+
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "invalid_request"
 
 
 def test_project_object_interface_rejects_non_public_namespace(tmp_path: Path) -> None:

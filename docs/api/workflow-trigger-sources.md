@@ -526,6 +526,70 @@ http-response 输出或 WorkflowRun outputs
 - 建议需要 workflows:read
 - 用途：查询 trigger source 的启用状态、期望状态、观测状态、最近错误和健康摘要
 
+#### 当前响应字段
+
+- `trigger_source_id`
+- `enabled`
+- `desired_state`
+- `observed_state`
+- `last_triggered_at`
+- `last_error`
+- `health_summary.adapter_configured`
+- `health_summary.adapter_running`
+- `health_summary.request_count`
+- `health_summary.request_count_rollover_count`
+- `health_summary.success_count`
+- `health_summary.success_count_rollover_count`
+- `health_summary.error_count`
+- `health_summary.error_count_rollover_count`
+- `health_summary.timeout_count`
+- `health_summary.timeout_count_rollover_count`
+- `health_summary.recent_error`
+- `health_summary.supervisor`
+
+#### 完整 typed 响应示例
+
+```json
+{
+  "trigger_source_id": "zeromq-trigger-source-1",
+  "enabled": true,
+  "desired_state": "running",
+  "observed_state": "running",
+  "last_triggered_at": "2026-05-18T09:42:31Z",
+  "last_error": null,
+  "health_summary": {
+    "adapter_configured": true,
+    "adapter_running": true,
+    "request_count": 12,
+    "request_count_rollover_count": 0,
+    "success_count": 11,
+    "success_count_rollover_count": 0,
+    "error_count": 1,
+    "error_count_rollover_count": 0,
+    "timeout_count": 0,
+    "timeout_count_rollover_count": 0,
+    "recent_error": {
+      "code": "invalid_request",
+      "message": "payload.image 缺失",
+      "at": "2026-05-18T09:38:12Z"
+    },
+    "supervisor": {
+      "state": "running",
+      "adapter_kind": "zeromq-topic",
+      "configured": true,
+      "running": true
+    }
+  }
+}
+```
+
+#### 字段解读
+
+- `enabled` 表示资源管理态是否启用；`desired_state` 表示控制面期望状态；`observed_state` 表示当前实际观测状态。
+- `last_error` 是 TriggerSource 资源级最近错误摘要；`health_summary.recent_error` 是 adapter 运行级最近错误摘要。两者可能同时为空，也可能只存在其中一个。
+- `health_summary.*_rollover_count` 用于表达累计计数发生安全回卷的次数；常规调试场景通常保持为 `0`。
+- `health_summary.supervisor` 保留底层 supervisor 原始健康摘要，字段会随 adapter 类型变化；前端或 SDK 应优先依赖正式顶层字段和 `health_summary` 中已经固定公开的计数字段。
+
 ## 最小请求 JSON 草案
 
 ```json

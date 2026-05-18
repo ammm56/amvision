@@ -218,7 +218,9 @@ reference 风格增强示例：按需显式开启 Mosaic、MixUp 和动态尺寸
 
 | 字段 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
-| include_events | boolean | 否 | 是否返回任务事件列表，默认 true。 |
+| include_events | boolean | 否 | 是否返回任务事件列表，默认 false。 |
+
+- 默认返回轻量详情，不带 events；只有在确实需要完整历史事件流时再显式传 `include_events=true`。
 
 #### 当前详情重点字段
 
@@ -416,8 +418,8 @@ reference 风格增强示例：按需显式开启 Mosaic、MixUp 和动态尺寸
 
 #### 当前轮询注意点
 
-- 详情接口的 `include_events` 默认值是 `true`。
-- 前端如果把 detail 接口直接当成高频轮询接口，必须显式传 `include_events=false`，否则返回体会随着事件累积不断变大。
+- 详情接口的 `include_events` 默认值是 `false`。
+- 如果页面需要完整历史事件流，应显式传 `include_events=true`，或直接改用 `/ws/v1/tasks/events` / 通用任务事件接口。
 - 如果页面需要展示事件流，应优先使用 `/ws/v1/tasks/events` 或通用任务事件接口，而不是在高频轮询里反复拉完整 `events` 数组。
 
 ### 前端交互建议流程
@@ -652,6 +654,7 @@ reference 风格增强示例：按需显式开启 Mosaic、MixUp 和动态尺寸
 - `detections`
 - `preview_image_uri`
 - `raw_result_uri`
+- `input_file_id`
 - `latency_ms`
 - `runtime_session_info`
 - `labels`
@@ -660,7 +663,7 @@ reference 风格增强示例：按需显式开启 Mosaic、MixUp 和动态尺寸
 
 - 当前 runtime_backend 只支持 `pytorch`
 - 当前只支持本地 `input_uri` 或本地 object key，不支持远程 URL
-- `input_file_id` 当前只是保留字段，调用时会返回 `invalid_request`
+- `input_file_id` 现在支持 Project 公开文件 id；稳定来源可直接使用 `GET /api/v1/projects/{project_id}/files` 或 `GET /api/v1/projects/{project_id}/files/metadata` 返回的 `file_id`
 - `runtime_profile_id` 当前仅作为创建参数和详情回传字段，不参与实际模型加载
 - session 状态和预测结果默认写到 `runtime/validation-sessions/{session_id}/...` 下，便于先把人工验证闭环跑通
 
@@ -926,15 +929,16 @@ reference 风格增强示例：按需显式开启 Mosaic、MixUp 和动态尺寸
 #### 当前 inference 输入规则
 
 - 当前正式推理支持 `application/json` 和 `multipart/form-data`
-- `input_uri`、`image_base64`、`input_image` 三者必须且只能提供一个
+- `input_file_id`、`input_uri`、`image_base64`、`input_image` 四者必须且只能提供一个
 - `image_base64` 同时支持纯 base64 内容和 `data:image/...;base64,...` 形式
 - `application/json` 场景下，`image_base64` 必须是单行 JSON 字符串；如果把带原始换行的 base64 直接贴进 JSON，请求会在 JSON 解析阶段返回 `请求体不是合法的 JSON`
-- `input_file_id` 当前仍是保留字段，会返回 `invalid_request`
+- `input_file_id` 现在支持 Project 公开文件 id；稳定来源可直接使用 `GET /api/v1/projects/{project_id}/files` 或 `GET /api/v1/projects/{project_id}/files/metadata` 返回的 `file_id`
 - multipart 场景下，`extra_options` 以 JSON 字符串传入
 - 服务会在写入临时输入前校验 `image_base64` 与 `input_image` 是否为可读取图片；损坏图片会直接返回 `invalid_request`，不会继续下发到 deployment 推理进程
 - 同步 `/infer` 额外支持 `input_transport_mode`：
   - `storage`：保持当前默认行为，Base64 或上传文件会先写入临时输入文件，再按 `input_uri` 进入 deployment 推理进程
   - `memory`：只允许 `image_base64` 或 `input_image`，请求图片不会落到临时目录，会直接以原始字节送入 deployment 推理进程
+- 当同步 `/infer` 使用 `input_transport_mode=memory` 时，不支持 `input_file_id`
 - 当同步 `/infer` 使用 `input_transport_mode=memory` 时：
   - 响应里的 `input_uri` 会返回 `memory://...` 形式的虚拟 URI，用于标识这次调用没有输入落盘
   - 响应里的 `result_object_key` 为 `null`，因为不会写 `raw-result.json`
@@ -950,6 +954,7 @@ reference 风格增强示例：按需显式开启 Mosaic、MixUp 和动态尺寸
 - `model_build_id`
 - `input_uri`
 - `input_source_kind`
+- `input_file_id`
 - `score_threshold`
 - `save_result_image`
 - `result_object_key`

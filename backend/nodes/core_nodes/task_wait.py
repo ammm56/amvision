@@ -51,7 +51,7 @@ def _task_wait_handler(request: WorkflowNodeExecutionRequest) -> dict[str, objec
     deadline = time.monotonic() + timeout_seconds
     task_service = runtime_context.build_task_service()
     while True:
-        task_detail = task_service.get_task(task_id, include_events=True if include_events is None else include_events)
+        task_detail = task_service.get_task(task_id, include_events=False if include_events is None else include_events)
         if task_detail.task.state in TASK_TERMINAL_STATES:
             return build_response_body_output(build_task_detail_body(task_detail))
         remaining_seconds = deadline - time.monotonic()

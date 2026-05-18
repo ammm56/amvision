@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "cb7a8a14-cd66-4c4a-b4a8-6382f87bf7f1",
     "name": "amvision workflow runtime api",
-    "description": "workflow runtime 当前联调 collection，覆盖 system/bootstrap、projects/bootstrap、projects 目录与文件读取、template/application validate/save/get/list/copy/delete、execution-policies、preview-runs、app-runtimes、sync invoke、async runs、trigger-sources list/detail 和 cancel 的最小公开接口。主要列表请求已补 offset/limit 示例，响应体仍保持数组，分页信息通过 x-offset、x-limit、x-total-count、x-has-more 和 x-next-offset 返回。当前 FastAPI 默认使用通用触发入口 /api/v1/workflows/app-runtimes/{workflow_runtime_id}/invoke，FlowApplication.bindings.config.route 在现阶段仅作为绑定声明，不自动生成专用 HTTP 路由。第一到第五类正式 workflow 的分拆调试 collection 已移动到 docs/api/postman/workflows/ 目录。",
+    "description": "workflow runtime 当前联调 collection，覆盖 system/bootstrap、projects/bootstrap、projects 目录与公开文件读取、template/application validate/save/get/list/copy/delete、execution-policies、preview-runs、app-runtimes、sync invoke、async runs、trigger-sources list/detail/health 和 cancel 的最小公开接口。主要列表请求已补 offset/limit 示例，响应体仍保持数组，分页信息通过 x-offset、x-limit、x-total-count、x-has-more 和 x-next-offset 返回。当前 FastAPI 默认使用通用触发入口 /api/v1/workflows/app-runtimes/{workflow_runtime_id}/invoke，FlowApplication.bindings.config.route 在现阶段仅作为绑定声明，不自动生成专用 HTTP 路由。第一到第五类正式 workflow 的分拆调试 collection 已移动到 docs/api/postman/workflows/ 目录。",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -55,8 +55,16 @@
       "value": "projects/{{projectId}}/inputs/source.jpg"
     },
     {
-      "key": "projectFileRelativeKey",
+      "key": "projectFileObjectKey",
       "value": "projects/{{projectId}}/inputs/source.jpg"
+    },
+    {
+      "key": "projectFilesPrefix",
+      "value": "projects/{{projectId}}/inputs"
+    },
+    {
+      "key": "projectFileId",
+      "value": ""
     },
     {
       "key": "listOffset",
@@ -362,6 +370,21 @@
         },
         {
           "name": "Get Project File Metadata",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  var payload = pm.response.json();",
+                  "  if (payload.object_key) pm.collectionVariables.set('projectFileObjectKey', payload.object_key);",
+                  "  if (payload.file_id) pm.collectionVariables.set('projectFileId', payload.file_id);",
+                  "}"
+                ]
+              }
+            }
+          ],
           "request": {
             "method": "GET",
             "header": [
@@ -372,7 +395,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/v1/projects/{{projectId}}/files/metadata?object_key=projects/{{projectId}}/{{projectFileRelativeKey}}",
+              "raw": "{{baseUrl}}/api/v1/projects/{{projectId}}/files/metadata?object_key={{projectFileObjectKey}}",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -387,11 +410,70 @@
               "query": [
                 {
                   "key": "object_key",
-                  "value": "projects/{{projectId}}/{{projectFileRelativeKey}}"
+                  "value": "{{projectFileObjectKey}}"
                 }
               ]
             },
-            "description": "读取 Project 内文件的元数据和稳定 content_url。object_key 必须位于 projects/{{projectId}}/ 下，默认示例使用 {{projectFileRelativeKey}}。"
+            "description": "读取 Project 公开文件的元数据和稳定 content_url，并把 file_id 回填到 collection 变量。object_key 必须位于公开命名空间，默认示例使用 projects/{{projectId}}/inputs/...。"
+          },
+          "response": []
+        },
+        {
+          "name": "List Project Files",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  var payload = pm.response.json();",
+                  "  if (Array.isArray(payload) && payload.length > 0) {",
+                  "    if (payload[0].object_key) pm.collectionVariables.set('projectFileObjectKey', payload[0].object_key);",
+                  "    if (payload[0].file_id) pm.collectionVariables.set('projectFileId', payload[0].file_id);",
+                  "  }",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/projects/{{projectId}}/files?object_prefix={{projectFilesPrefix}}&offset={{listOffset}}&limit={{listLimit}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "projects",
+                "{{projectId}}",
+                "files"
+              ],
+              "query": [
+                {
+                  "key": "object_prefix",
+                  "value": "{{projectFilesPrefix}}"
+                },
+                {
+                  "key": "offset",
+                  "value": "{{listOffset}}"
+                },
+                {
+                  "key": "limit",
+                  "value": "{{listLimit}}"
+                }
+              ]
+            },
+            "description": "列出当前 Project 公开命名空间中的文件，并直接返回 file_id。默认只扫 projects/{{projectId}}/inputs。"
           },
           "response": []
         },
@@ -407,7 +489,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/v1/projects/{{projectId}}/files/content?object_key=projects/{{projectId}}/{{projectFileRelativeKey}}",
+              "raw": "{{baseUrl}}/api/v1/projects/{{projectId}}/files/content?object_key={{projectFileObjectKey}}",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -422,11 +504,11 @@
               "query": [
                 {
                   "key": "object_key",
-                  "value": "projects/{{projectId}}/{{projectFileRelativeKey}}"
+                  "value": "{{projectFileObjectKey}}"
                 }
               ]
             },
-            "description": "直接读取 Project 内文件内容，适合图片预览或结果文件下载前联调。object_key 必须位于 projects/{{projectId}}/ 下。"
+            "description": "直接读取 Project 公开文件内容，适合图片预览或结果文件下载前联调。object_key 必须位于公开命名空间。"
           },
           "response": []
         },
@@ -2803,6 +2885,35 @@
                   ]
                 },
                 "description": "读取单条 WorkflowTriggerSource。triggerSourceId 可来自 06/07 分拆 collection 的创建响应，或来自 List Trigger Sources。"
+              },
+              "response": []
+            },
+            {
+              "name": "Get Trigger Source Health",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{accessToken}}",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/workflows/trigger-sources/{{triggerSourceId}}/health",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "workflows",
+                    "trigger-sources",
+                    "{{triggerSourceId}}",
+                    "health"
+                  ]
+                },
+                "description": "读取单条 WorkflowTriggerSource 的正式 health 响应，重点关注 enabled、observed_state、health_summary.adapter_running 和计数摘要。"
               },
               "response": []
             }

@@ -547,7 +547,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/v1/tasks/{{taskId}}?include_events=true",
+              "raw": "{{baseUrl}}/api/v1/tasks/{{taskId}}?include_events=false",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -560,11 +560,11 @@
               "query": [
                 {
                   "key": "include_events",
-                  "value": "true"
+                  "value": "false"
                 }
               ]
             },
-            "description": "按 task_id 查询任务详情，默认同时返回事件列表。"
+            "description": "按 task_id 查询轻量任务详情。默认不带历史事件；如需完整事件流，可把 include_events 改成 true，或直接调用 List Task Events。"
           },
           "response": []
         },

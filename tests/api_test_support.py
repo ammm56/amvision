@@ -15,12 +15,12 @@ from backend.service.application.auth.default_local_auth_seeder import (
     DEFAULT_LOCAL_AUTH_USERNAME,
 )
 from backend.service.application.auth.local_auth_service import LocalAuthService, LocalAuthUserCreateRequest
+from backend.service.infrastructure.db.schema import initialize_database_schema
 from backend.service.infrastructure.db.session import DatabaseSettings, SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     DatasetStorageSettings,
     LocalDatasetStorage,
 )
-from backend.service.infrastructure.persistence.base import Base
 from backend.service.settings import BackendServiceSettings, BackendServiceTaskManagerConfig
 
 
@@ -65,7 +65,7 @@ def create_test_runtime(
 
     database_path = tmp_path / database_name
     session_factory = SessionFactory(DatabaseSettings(url=f"sqlite:///{database_path.as_posix()}"))
-    Base.metadata.create_all(session_factory.engine)
+    initialize_database_schema(session_factory)
     dataset_storage = LocalDatasetStorage(DatasetStorageSettings(root_dir=str(tmp_path / "dataset-files")))
     queue_backend = LocalFileQueueBackend(LocalFileQueueSettings(root_dir=str(tmp_path / "queue-files")))
     return session_factory, dataset_storage, queue_backend

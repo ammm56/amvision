@@ -56,7 +56,7 @@ class YoloXInferenceTaskCreateRequestBody(BaseModel):
 
 	project_id: str = Field(description="所属 Project id")
 	deployment_instance_id: str = Field(description="执行推理使用的 DeploymentInstance id")
-	input_file_id: str | None = Field(default=None, description="平台内输入文件 id；当前为保留字段")
+	input_file_id: str | None = Field(default=None, description="Project 公开文件 id；与 input_uri、image_base64、input_image 四选一")
 	input_uri: str | None = Field(default=None, description="输入图片 URI 或 object key")
 	image_base64: str | None = Field(default=None, description="直接提交的 base64 图片内容")
 	score_threshold: float | None = Field(default=None, ge=0.0, le=1.0, description="推理阈值")
@@ -69,7 +69,7 @@ class YoloXInferenceTaskCreateRequestBody(BaseModel):
 class YoloXDirectInferenceRequestBody(BaseModel):
 	"""描述同步直返推理请求体。"""
 
-	input_file_id: str | None = Field(default=None, description="平台内输入文件 id；当前为保留字段")
+	input_file_id: str | None = Field(default=None, description="Project 公开文件 id；与 input_uri、image_base64、input_image 四选一")
 	input_uri: str | None = Field(default=None, description="输入图片 URI 或 object key")
 	image_base64: str | None = Field(default=None, description="直接提交的 base64 图片内容")
 	input_transport_mode: Literal["storage", "memory"] = Field(
@@ -133,7 +133,7 @@ class YoloXInferencePayloadResponse(BaseModel):
 	model_build_id: str | None = Field(default=None, description="推理使用的 ModelBuild id")
 	input_uri: str = Field(description="归一化后的输入 URI")
 	input_source_kind: str = Field(description="输入来源类型")
-	input_file_id: str | None = Field(default=None, description="平台内输入文件 id；当前固定为空")
+	input_file_id: str | None = Field(default=None, description="Project 公开文件 id；输入不是 file_id 时为空")
 	score_threshold: float = Field(description="本次推理阈值")
 	save_result_image: bool = Field(description="是否保存预览图")
 	return_preview_image_base64: bool = Field(description="是否直接返回预览图 base64")
@@ -252,6 +252,7 @@ async def create_yolox_inference_task(
 		dataset_storage=dataset_storage,
 		request_id=_resolve_http_request_id(request, prefix="inference-task-submit"),
 		source=input_source,
+		expected_project_id=body.project_id,
 	)
 	service = SqlAlchemyYoloXInferenceTaskService(
 		session_factory=session_factory,
@@ -319,6 +320,7 @@ async def infer_yolox_deployment_instance(
 		request_id=request_id,
 		source=input_source,
 		input_transport_mode=body.input_transport_mode,
+		expected_project_id=deployment_view.project_id,
 	)
 	execution_result = run_yolox_inference_task(
 		deployment_process_supervisor=deployment_process_supervisor,
@@ -415,7 +417,7 @@ def get_yolox_inference_task_detail(
 	task_id: str,
 	principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("tasks:read"))],
 	session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
-	include_events: Annotated[bool, Query(description="是否返回事件列表")] = True,
+	include_events: Annotated[bool, Query(description="是否返回事件列表")] = False,
 ) -> YoloXInferenceTaskDetailResponse:
 	"""按任务 id 返回 YOLOX 推理任务详情。"""
 
@@ -618,6 +620,7 @@ async def _read_yolox_inference_request_payload(
 			"display_name": _read_optional_form_str(form, "display_name") or "",
 		}
 		return payload, YoloXInferenceInputSource(
+			input_file_id=payload.get("input_file_id") if isinstance(payload.get("input_file_id"), str) else None,
 			input_uri=payload.get("input_uri") if isinstance(payload.get("input_uri"), str) else None,
 			image_base64=payload.get("image_base64") if isinstance(payload.get("image_base64"), str) else None,
 			upload_bytes=upload_bytes,
@@ -633,6 +636,7 @@ async def _read_yolox_inference_request_payload(
 			raise InvalidRequestError("请求体必须是 JSON 对象")
 		normalized_payload = {str(key): value for key, value in payload.items()}
 		return normalized_payload, YoloXInferenceInputSource(
+			input_file_id=normalized_payload.get("input_file_id") if isinstance(normalized_payload.get("input_file_id"), str) else None,
 			input_uri=normalized_payload.get("input_uri") if isinstance(normalized_payload.get("input_uri"), str) else None,
 			image_base64=normalized_payload.get("image_base64") if isinstance(normalized_payload.get("image_base64"), str) else None,
 		)

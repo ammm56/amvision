@@ -1542,8 +1542,15 @@ def test_core_yolox_deployment_lifecycle_nodes_drive_sync_supervisor(
 
     deployment_view = _build_fake_deployment_view()
     process_config = _build_fake_process_config(instance_count=2)
-    sync_supervisor = FakeDeploymentProcessSupervisor(runtime_mode="sync")
-    async_supervisor = FakeDeploymentProcessSupervisor(runtime_mode="async")
+    dataset_storage = _create_dataset_storage(tmp_path)
+    sync_supervisor = FakeDeploymentProcessSupervisor(
+        runtime_mode="sync",
+        dataset_storage_root_dir=str(dataset_storage.root_dir),
+    )
+    async_supervisor = FakeDeploymentProcessSupervisor(
+        runtime_mode="async",
+        dataset_storage_root_dir=str(dataset_storage.root_dir),
+    )
 
     class _FakeDeploymentService:
         """返回固定 deployment view 与 process_config 的假 service。"""
@@ -1569,7 +1576,7 @@ def test_core_yolox_deployment_lifecycle_nodes_drive_sync_supervisor(
     executor = WorkflowGraphExecutor(registry=runtime_registry_loader.get_runtime_registry())
     runtime_context = WorkflowServiceNodeRuntimeContext(
         session_factory=object(),
-        dataset_storage=_create_dataset_storage(tmp_path),
+        dataset_storage=dataset_storage,
         yolox_sync_deployment_process_supervisor=sync_supervisor,
         yolox_async_deployment_process_supervisor=async_supervisor,
     )
@@ -1715,8 +1722,15 @@ def test_core_yolox_deployment_health_node_uses_async_supervisor(
 
     deployment_view = _build_fake_deployment_view()
     process_config = _build_fake_process_config(instance_count=1)
-    sync_supervisor = FakeDeploymentProcessSupervisor(runtime_mode="sync")
-    async_supervisor = FakeDeploymentProcessSupervisor(runtime_mode="async")
+    dataset_storage = _create_dataset_storage(tmp_path)
+    sync_supervisor = FakeDeploymentProcessSupervisor(
+        runtime_mode="sync",
+        dataset_storage_root_dir=str(dataset_storage.root_dir),
+    )
+    async_supervisor = FakeDeploymentProcessSupervisor(
+        runtime_mode="async",
+        dataset_storage_root_dir=str(dataset_storage.root_dir),
+    )
     async_supervisor.warmup_deployment(process_config)
     async_state = async_supervisor._states[deployment_view.deployment_instance_id]
     async_state.last_error = "async-last-error"
@@ -1746,7 +1760,7 @@ def test_core_yolox_deployment_health_node_uses_async_supervisor(
     executor = WorkflowGraphExecutor(registry=runtime_registry_loader.get_runtime_registry())
     runtime_context = WorkflowServiceNodeRuntimeContext(
         session_factory=object(),
-        dataset_storage=_create_dataset_storage(tmp_path),
+        dataset_storage=dataset_storage,
         yolox_sync_deployment_process_supervisor=sync_supervisor,
         yolox_async_deployment_process_supervisor=async_supervisor,
     )

@@ -492,6 +492,7 @@ def test_get_yolox_training_task_detail_returns_completed_result(tmp_path: Path)
             detail_response = client.get(
                 f"/api/v1/models/yolox/training-tasks/{task_id}",
                 headers=_build_training_headers(),
+                params={"include_events": True},
             )
 
         assert detail_response.status_code == 200
@@ -787,6 +788,7 @@ def test_get_yolox_training_task_detail_exposes_output_prefix_while_running(tmp_
             detail_response = client.get(
                 f"/api/v1/models/yolox/training-tasks/{task_id}",
                 headers=_build_training_headers(),
+                params={"include_events": True},
             )
 
         assert detail_response.status_code == 200
@@ -1020,6 +1022,7 @@ def test_pause_and_resume_yolox_training_task_reuses_latest_checkpoint(
             paused_detail_response = client.get(
                 f"/api/v1/models/yolox/training-tasks/{task_id}",
                 headers=_build_training_headers(),
+                params={"include_events": True},
             )
             assert paused_detail_response.status_code == 200
             paused_payload = paused_detail_response.json()
@@ -1087,6 +1090,7 @@ def test_pause_and_resume_yolox_training_task_reuses_latest_checkpoint(
             final_detail_response = client.get(
                 f"/api/v1/models/yolox/training-tasks/{task_id}",
                 headers=_build_training_headers(),
+                params={"include_events": True},
             )
 
         assert final_detail_response.status_code == 200
@@ -1198,6 +1202,7 @@ def test_register_latest_checkpoint_model_version_for_paused_task(
         assert dataset_storage.resolve(payload["labels_object_key"]).is_file()
         assert dataset_storage.resolve(payload["labels_object_key"]).read_text(encoding="utf-8") == "bolt\n"
         assert payload["checkpoint_object_key"].endswith("/best_ckpt.pth")
+        assert len(payload["events"]) == 1
         assert any(
             event["message"] == "yolox training latest checkpoint registered as model version"
             for event in payload["events"]
@@ -1412,6 +1417,7 @@ def test_completed_training_keeps_best_model_version_distinct_from_auto_latest_c
             detail_response = client.get(
                 f"/api/v1/models/yolox/training-tasks/{task_id}",
                 headers=_build_training_headers(),
+                params={"include_events": True},
             )
 
         assert detail_response.status_code == 200
@@ -1512,6 +1518,7 @@ def test_resume_yolox_training_task_rejects_missing_latest_checkpoint_file(
             detail_response = client.get(
                 f"/api/v1/models/yolox/training-tasks/{task_id}",
                 headers=_build_training_headers(),
+                params={"include_events": True},
             )
 
         assert resume_response.status_code == 400
@@ -1600,6 +1607,7 @@ def test_resume_yolox_training_task_rejects_duplicate_resume_request(
             detail_response = client.get(
                 f"/api/v1/models/yolox/training-tasks/{task_id}",
                 headers=_build_training_headers(),
+                params={"include_events": True},
             )
 
         assert first_resume_response.status_code == 200
@@ -1734,6 +1742,7 @@ def test_resume_yolox_training_task_fails_when_latest_checkpoint_is_corrupted(
             detail_response = client.get(
                 f"/api/v1/models/yolox/training-tasks/{task_id}",
                 headers=_build_training_headers(),
+                params={"include_events": True},
             )
 
         assert detail_response.status_code == 200
@@ -1854,6 +1863,7 @@ def test_resume_yolox_training_task_fails_when_validation_configuration_mismatch
             detail_response = client.get(
                 f"/api/v1/models/yolox/training-tasks/{task_id}",
                 headers=_build_training_headers(),
+                params={"include_events": True},
             )
 
         assert detail_response.status_code == 200
@@ -1897,6 +1907,9 @@ def test_request_yolox_training_save_creates_manual_checkpoint_event(
             headers=_build_training_headers(),
         )
         assert save_response.status_code == 200
+        save_payload = save_response.json()
+        assert save_payload["task_id"] == task_id
+        assert save_payload["events"] == []
 
         second_control = request.epoch_callback(
             _build_fake_epoch_progress(epoch=2, max_epochs=3, best_metric_value=0.28)
@@ -1972,6 +1985,7 @@ def test_request_yolox_training_save_creates_manual_checkpoint_event(
             detail_response = client.get(
                 f"/api/v1/models/yolox/training-tasks/{task_id}",
                 headers=_build_training_headers(),
+                    params={"include_events": True},
             )
 
         assert detail_response.status_code == 200

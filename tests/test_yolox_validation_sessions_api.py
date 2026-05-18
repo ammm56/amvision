@@ -13,6 +13,7 @@ from backend.service.infrastructure.object_store.local_dataset_storage import (
     DatasetStorageSettings,
     LocalDatasetStorage,
 )
+from backend.service.infrastructure.object_store.object_key_layout import build_public_project_file_id
 from backend.workers.shared.yolox_runtime_contracts import RuntimeTensorSpec, YoloXRuntimeSessionInfo
 from tests.api_test_support import build_test_headers, build_test_jpeg_bytes
 from tests.yolox_test_support import (
@@ -121,13 +122,45 @@ def test_create_and_predict_yolox_validation_session_returns_prediction_result(
         session_factory.engine.dispose()
 
 
-def test_predict_yolox_validation_session_rejects_input_file_id(tmp_path: Path) -> None:
-    """验证最小 validation session 会显式拒绝尚未支持的 input_file_id。"""
+def test_predict_yolox_validation_session_accepts_public_project_file_id(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """验证 validation session 可以直接消费 Project 公开文件 id。"""
 
     client, session_factory, dataset_storage = _create_test_client(tmp_path)
     model_version_id = _seed_training_output_model_version(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
+    )
+    input_uri = "projects/project-1/inputs/validation/input-file-id.jpg"
+    dataset_storage.write_bytes(input_uri, _build_test_jpeg_bytes())
+    input_file_id = build_public_project_file_id(
+        project_id="project-1",
+        object_key=input_uri,
+    )
+
+    def fake_predict(**kwargs):
+        return validation_session_service_module._YoloXValidationPredictionExecution(
+            detections=(),
+            latency_ms=5.2,
+            image_width=64,
+            image_height=64,
+            preview_image_bytes=None,
+            runtime_session_info=YoloXRuntimeSessionInfo(
+                backend_name="pytorch",
+                model_uri=kwargs["session"].checkpoint_storage_uri,
+                device_name="cpu",
+                input_spec=RuntimeTensorSpec(name="images", shape=(1, 3, 64, 64), dtype="float32"),
+                output_spec=RuntimeTensorSpec(name="detections", shape=(-1, 7), dtype="float32"),
+                metadata={"model_version_id": kwargs["session"].model_version_id},
+            ),
+        )
+
+    monkeypatch.setattr(
+        validation_session_service_module,
+        "_run_yolox_validation_prediction",
+        fake_predict,
     )
 
     try:
@@ -147,13 +180,21 @@ def test_predict_yolox_validation_session_rejects_input_file_id(tmp_path: Path) 
                 f"/api/v1/models/yolox/validation-sessions/{session_id}/predict",
                 headers=_build_model_headers(),
                 json={
-                    "input_file_id": "input-file-1",
+                    "input_file_id": input_file_id,
                 },
             )
 
-        assert predict_response.status_code == 400
+            detail_response = client.get(
+                f"/api/v1/models/yolox/validation-sessions/{session_id}",
+                headers=_build_model_headers(),
+            )
+
+        assert predict_response.status_code == 200
         payload = predict_response.json()
-        assert payload["error"]["code"] == "invalid_request"
+        assert payload["input_uri"] == input_uri
+        assert payload["input_file_id"] == input_file_id
+        assert detail_response.status_code == 200
+        assert detail_response.json()["last_prediction"]["input_file_id"] == input_file_id
     finally:
         session_factory.engine.dispose()
 

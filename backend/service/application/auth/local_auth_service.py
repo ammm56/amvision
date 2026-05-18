@@ -35,6 +35,7 @@ _PASSWORD_HASH_ITERATIONS = 600_000
 _USERNAME_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._@-]{2,63}$")
 _TOKEN_NAME_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._@-]{0,127}$")
 _LOCAL_PROVIDER_ID = "local"
+_DEFAULT_LOCAL_AUTH_USER_TOKEN_NAME = "default"
 
 
 @dataclass(frozen=True)
@@ -682,6 +683,13 @@ class LocalAuthService:
                     "列出本地 user token 失败",
                     details={"error_type": error.__class__.__name__},
                 ) from error
+        # default 长期 token 优先，其次其他永久 token，最后是带过期时间的 token。
+        token_records.sort(
+            key=lambda record: (
+                0 if record.token_name == _DEFAULT_LOCAL_AUTH_USER_TOKEN_NAME else 1,
+                0 if record.expires_at is None else 1,
+            )
+        )
         return tuple(_user_token_from_record(record) for record in token_records)
 
     def create_user_token(

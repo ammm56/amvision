@@ -10,6 +10,7 @@ from types import SimpleNamespace
 from backend.contracts.workflows.workflow_graph import FlowApplication, WorkflowGraphTemplate
 from backend.nodes.local_node_pack_loader import LocalNodePackLoader
 from backend.nodes.node_catalog_registry import NodeCatalogRegistry
+from backend.service.application.workflows.preview_run_manager import WorkflowPreviewRunManager
 from backend.service.application.workflows.runtime_service import (
     WorkflowPreviewRunCreateRequest,
     WorkflowRuntimeService,
@@ -95,17 +96,25 @@ def _build_barcode_example_runtime_service(tmp_path: Path) -> tuple[WorkflowRunt
     node_pack_loader = LocalNodePackLoader(custom_nodes_root_dir)
     node_pack_loader.refresh()
     node_catalog_registry = NodeCatalogRegistry(node_pack_loader=node_pack_loader)
+    settings = BackendServiceSettings(
+        database=BackendServiceDatabaseConfig(url=session_factory.settings.url),
+        dataset_storage=BackendServiceDatasetStorageConfig(root_dir=str(dataset_storage.root_dir)),
+        queue=BackendServiceQueueConfig(root_dir=str(queue_backend.root_dir)),
+        custom_nodes=BackendServiceCustomNodesConfig(root_dir=str(custom_nodes_root_dir)),
+        task_manager=BackendServiceTaskManagerConfig(enabled=False),
+    )
+    preview_run_manager = WorkflowPreviewRunManager(
+        settings=settings,
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+    )
+    preview_run_manager.start()
     service = WorkflowRuntimeService(
-        settings=BackendServiceSettings(
-            database=BackendServiceDatabaseConfig(url=session_factory.settings.url),
-            dataset_storage=BackendServiceDatasetStorageConfig(root_dir=str(dataset_storage.root_dir)),
-            queue=BackendServiceQueueConfig(root_dir=str(queue_backend.root_dir)),
-            custom_nodes=BackendServiceCustomNodesConfig(root_dir=str(custom_nodes_root_dir)),
-            task_manager=BackendServiceTaskManagerConfig(enabled=False),
-        ),
+        settings=settings,
         session_factory=session_factory,
         dataset_storage=dataset_storage,
         node_catalog_registry=node_catalog_registry,
+        preview_run_manager=preview_run_manager,
         worker_manager=SimpleNamespace(),
     )
     return service, dataset_storage

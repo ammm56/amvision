@@ -77,6 +77,59 @@ def test_preview_run_task_wait_node_blocks_until_task_reaches_terminal_state(tmp
     assert body["state"] == "succeeded"
     assert body["result"]["model_version_id"] == "model-version-1"
     assert body["result"]["model_build_id"] == "model-build-1"
+    assert body["events"] == []
+
+
+def test_preview_run_task_wait_node_can_include_events_when_requested(tmp_path: Path) -> None:
+    """验证 task.wait 节点在显式请求时会返回事件列表。"""
+
+    service, _, _ = _build_runtime_service(tmp_path)
+    task_service = SqlAlchemyTaskService(service.session_factory)
+    task_record = task_service.create_task(
+        CreateTaskRequest(
+            project_id="project-1",
+            task_kind="demo-task-wait-events",
+            display_name="Wait Task With Events",
+            created_by="tester",
+        )
+    )
+
+    def _finish_task() -> None:
+        time.sleep(0.2)
+        task_service.append_task_event(
+            AppendTaskEventRequest(
+                task_id=task_record.task_id,
+                event_type="result",
+                message="task finished with events",
+                payload={
+                    "state": "succeeded",
+                    "result": {"model_version_id": "model-version-events-1"},
+                },
+            )
+        )
+
+    worker = threading.Thread(target=_finish_task, daemon=True)
+    worker.start()
+    try:
+        preview_run = service.create_preview_run(
+            WorkflowPreviewRunCreateRequest(
+                project_id="project-1",
+                application=_build_task_wait_application(),
+                template=_build_task_wait_template(task_id=task_record.task_id, include_events=True),
+                input_bindings={},
+                timeout_seconds=5,
+            ),
+            created_by="workflow-user",
+        )
+    finally:
+        worker.join(timeout=2)
+
+    assert preview_run.state == "succeeded"
+    body = preview_run.outputs["task_body"]
+    assert body["task_id"] == task_record.task_id
+    assert body["state"] == "succeeded"
+    assert body["result"]["model_version_id"] == "model-version-events-1"
+    assert any(event["message"] == "task finished with events" for event in body["events"])
 
 
 def test_preview_run_task_wait_node_accepts_dynamic_request_payload(tmp_path: Path) -> None:
@@ -142,8 +195,16 @@ def test_preview_run_task_wait_node_accepts_dynamic_request_payload(tmp_path: Pa
     assert body["events"] == []
 
 
-def _build_task_wait_template(*, task_id: str) -> WorkflowGraphTemplate:
+def _build_task_wait_template(*, task_id: str, include_events: bool | None = None) -> WorkflowGraphTemplate:
     """构造 task.wait 最小模板。"""
+
+    parameters: dict[str, object] = {
+        "task_id": task_id,
+        "timeout_seconds": 2,
+        "poll_interval_seconds": 0.05,
+    }
+    if include_events is not None:
+        parameters["include_events"] = include_events
 
     return WorkflowGraphTemplate(
         template_id="task-wait-template",
@@ -153,11 +214,7 @@ def _build_task_wait_template(*, task_id: str) -> WorkflowGraphTemplate:
             WorkflowGraphNode(
                 node_id="task_wait",
                 node_type_id="core.service.task.wait",
-                parameters={
-                    "task_id": task_id,
-                    "timeout_seconds": 2,
-                    "poll_interval_seconds": 0.05,
-                },
+                parameters=parameters,
             ),
         ),
         edges=(),

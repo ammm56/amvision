@@ -59,7 +59,7 @@ class YoloXValidationPredictionSummaryResponse(BaseModel):
     - prediction_id：最近一次预测 id。
     - created_at：最近一次预测创建时间。
     - input_uri：最近一次预测输入 URI。
-    - input_file_id：最近一次预测输入 file id；当前固定为空。
+    - input_file_id：最近一次预测输入 file id；输入不是 file_id 时为空。
     - detection_count：最近一次预测 detection 数量。
     - preview_image_uri：最近一次预测预览图 URI。
     - raw_result_uri：最近一次预测原始结果 URI。
@@ -69,7 +69,7 @@ class YoloXValidationPredictionSummaryResponse(BaseModel):
     prediction_id: str = Field(description="最近一次预测 id")
     created_at: str = Field(description="最近一次预测创建时间")
     input_uri: str | None = Field(default=None, description="最近一次预测输入 URI")
-    input_file_id: str | None = Field(default=None, description="最近一次预测输入 file id；当前固定为空")
+    input_file_id: str | None = Field(default=None, description="最近一次预测输入 file id；输入不是 file_id 时为空")
     detection_count: int = Field(description="最近一次预测 detection 数量")
     preview_image_uri: str | None = Field(default=None, description="最近一次预测预览图 URI")
     raw_result_uri: str | None = Field(default=None, description="最近一次预测原始结果 URI")
@@ -184,15 +184,15 @@ class YoloXValidationSessionPredictRequestBody(BaseModel):
     """描述 validation session 预测请求体。
 
     字段：
-    - input_uri：输入图片 URI 或本地 object key。
-    - input_file_id：保留字段；当前最小实现暂不支持。
+    - input_uri：输入图片 URI 或本地 object key；与 input_file_id 二选一。
+    - input_file_id：Project 公开文件 id；与 input_uri 二选一。
     - score_threshold：本次预测覆盖的 score threshold。
     - save_result_image：本次预测是否输出预览图。
     - extra_options：附加运行时选项。
     """
 
     input_uri: str | None = Field(default=None, description="输入图片 URI 或本地 object key")
-    input_file_id: str | None = Field(default=None, description="保留字段；当前最小实现暂不支持")
+    input_file_id: str | None = Field(default=None, description="Project 公开文件 id；与 input_uri 二选一")
     score_threshold: float | None = Field(default=None, ge=0.0, le=1.0, description="本次预测覆盖的 score threshold")
     save_result_image: bool | None = Field(default=None, description="本次预测是否输出预览图")
     extra_options: dict[str, object] = Field(default_factory=dict, description="附加运行时选项")
@@ -206,7 +206,7 @@ class YoloXValidationPredictionResponse(BaseModel):
     - session_id：所属 validation session id。
     - created_at：预测创建时间。
     - input_uri：输入图片 URI。
-    - input_file_id：输入 file id；当前固定为空。
+    - input_file_id：输入 file id；输入不是 file_id 时为空。
     - score_threshold：本次预测使用的 score threshold。
     - save_result_image：本次预测是否输出预览图。
     - detections：检测结果列表。
@@ -223,7 +223,7 @@ class YoloXValidationPredictionResponse(BaseModel):
     session_id: str = Field(description="所属 validation session id")
     created_at: str = Field(description="预测创建时间")
     input_uri: str | None = Field(default=None, description="输入图片 URI")
-    input_file_id: str | None = Field(default=None, description="输入 file id；当前固定为空")
+    input_file_id: str | None = Field(default=None, description="输入 file id；输入不是 file_id 时为空")
     score_threshold: float = Field(description="本次预测使用的 score threshold")
     save_result_image: bool = Field(description="本次预测是否输出预览图")
     detections: list[YoloXValidationDetectionResponse] = Field(default_factory=list, description="检测结果列表")

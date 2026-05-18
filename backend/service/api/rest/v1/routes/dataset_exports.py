@@ -9,10 +9,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from backend.queue import LocalFileQueueBackend
-from backend.contracts.datasets.exports.dataset_formats import (
-	IMPLEMENTED_DATASET_EXPORT_FORMATS,
-	SUPPORTED_DATASET_EXPORT_FORMATS,
-)
+from backend.contracts.datasets.exports.dataset_formats import IMPLEMENTED_DATASET_EXPORT_FORMATS
 from backend.service.api.deps.auth import AuthenticatedPrincipal, require_scopes
 from backend.service.api.deps.db import get_session_factory, get_unit_of_work
 from backend.service.api.deps.queue import get_queue_backend
@@ -104,19 +101,17 @@ class DatasetExportPackageResponse(BaseModel):
 
 
 class DatasetExportFormatItemResponse(BaseModel):
-	"""描述单个数据集导出格式的公开合同项。"""
+	"""描述单个已实现数据集导出格式的公开合同项。"""
 
 	format_id: str = Field(description="导出格式 id")
-	implemented: bool = Field(description="当前是否已经正式实现并可用")
 
 
 class DatasetExportFormatCatalogResponse(BaseModel):
-	"""描述数据集导出格式能力合同。"""
+	"""描述数据集导出格式公开能力合同。"""
 
-	supported_formats: list[str] = Field(default_factory=list, description="规划支持的全部格式")
 	implemented_formats: list[str] = Field(default_factory=list, description="当前已实现并可用的格式")
 	default_format: str = Field(description="默认导出格式")
-	items: list[DatasetExportFormatItemResponse] = Field(default_factory=list, description="逐项格式能力列表")
+	items: list[DatasetExportFormatItemResponse] = Field(default_factory=list, description="已实现格式列表")
 
 
 @dataset_exports_router.get(
@@ -389,17 +384,12 @@ def _build_dataset_export_package_response(
 def _build_dataset_export_format_catalog_response() -> DatasetExportFormatCatalogResponse:
 	"""构造稳定的数据集导出格式能力合同响应。"""
 
-	implemented_formats = set(IMPLEMENTED_DATASET_EXPORT_FORMATS)
 	return DatasetExportFormatCatalogResponse(
-		supported_formats=list(SUPPORTED_DATASET_EXPORT_FORMATS),
 		implemented_formats=list(IMPLEMENTED_DATASET_EXPORT_FORMATS),
 		default_format=IMPLEMENTED_DATASET_EXPORT_FORMATS[0],
 		items=[
-			DatasetExportFormatItemResponse(
-				format_id=format_id,
-				implemented=format_id in implemented_formats,
-			)
-			for format_id in SUPPORTED_DATASET_EXPORT_FORMATS
+			DatasetExportFormatItemResponse(format_id=format_id)
+			for format_id in IMPLEMENTED_DATASET_EXPORT_FORMATS
 		],
 	)
 

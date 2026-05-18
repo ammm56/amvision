@@ -43,7 +43,7 @@ def test_preview_run_task_get_node_reads_existing_task_detail(tmp_path: Path) ->
         WorkflowPreviewRunCreateRequest(
             project_id="project-1",
             application=_build_task_get_application(),
-            template=_build_task_get_template(task_id=task_record.task_id),
+            template=_build_task_get_template(task_id=task_record.task_id, include_events=True),
             input_bindings={},
         ),
         created_by="workflow-user",
@@ -55,6 +55,37 @@ def test_preview_run_task_get_node_reads_existing_task_detail(tmp_path: Path) ->
     assert body["task_kind"] == "demo-task"
     assert body["task_spec"]["dataset_id"] == "dataset-1"
     assert body["events"][0]["event_type"] == "status"
+
+
+def test_preview_run_task_get_node_defaults_to_lightweight_detail(tmp_path: Path) -> None:
+    """验证 task.get 节点默认不返回事件列表。"""
+
+    service, _, session_factory = _build_task_runtime_service(tmp_path)
+    task_record = SqlAlchemyTaskService(session_factory).create_task(
+        CreateTaskRequest(
+            project_id="project-1",
+            task_kind="demo-task-default-lightweight",
+            display_name="Default Lightweight Task",
+            created_by="tester",
+            task_spec={"dataset_id": "dataset-lightweight-1"},
+        )
+    )
+
+    preview_run = service.create_preview_run(
+        WorkflowPreviewRunCreateRequest(
+            project_id="project-1",
+            application=_build_task_get_application(),
+            template=_build_task_get_template(task_id=task_record.task_id),
+            input_bindings={},
+        ),
+        created_by="workflow-user",
+    )
+
+    assert preview_run.state == "succeeded"
+    body = preview_run.outputs["task_body"]
+    assert body["task_id"] == task_record.task_id
+    assert body["task_kind"] == "demo-task-default-lightweight"
+    assert body["events"] == []
 
 
 def test_preview_run_task_get_node_accepts_dynamic_request_payload(tmp_path: Path) -> None:
@@ -106,8 +137,12 @@ def _build_task_runtime_service(
     return service, workflow_service, service.session_factory
 
 
-def _build_task_get_template(*, task_id: str) -> WorkflowGraphTemplate:
+def _build_task_get_template(*, task_id: str, include_events: bool | None = None) -> WorkflowGraphTemplate:
     """构造 task.get 最小模板。"""
+
+    parameters: dict[str, object] = {"task_id": task_id}
+    if include_events is not None:
+        parameters["include_events"] = include_events
 
     return WorkflowGraphTemplate(
         template_id="task-get-template",
@@ -117,10 +152,7 @@ def _build_task_get_template(*, task_id: str) -> WorkflowGraphTemplate:
             WorkflowGraphNode(
                 node_id="task_get",
                 node_type_id="core.service.task.get",
-                parameters={
-                    "task_id": task_id,
-                    "include_events": True,
-                },
+                parameters=parameters,
             ),
         ),
         edges=(),

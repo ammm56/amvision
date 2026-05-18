@@ -294,7 +294,7 @@ def get_yolox_evaluation_task_detail(
     task_id: str,
     principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("tasks:read"))],
     session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
-    include_events: Annotated[bool, Query(description="是否返回事件列表")] = True,
+    include_events: Annotated[bool, Query(description="是否返回事件列表")] = False,
 ) -> YoloXEvaluationTaskDetailResponse:
     """按任务 id 返回 YOLOX 评估任务详情。"""
 

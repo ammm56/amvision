@@ -287,7 +287,15 @@ class SqlAlchemyYoloXTrainingTaskService:
         *,
         requested_by: str | None = None,
     ) -> TaskDetail:
-        """为运行中的 YOLOX 训练任务追加一次手动保存请求。"""
+        """为运行中的 YOLOX 训练任务追加一次手动保存请求。
+
+        参数：
+        - task_id：训练任务 id。
+        - requested_by：发起保存请求的主体 id。
+
+        返回：
+        - TaskDetail：更新后的轻量任务详情；events 默认返回空列表，不携带历史事件。
+        """
 
         task_record = self._require_training_task(task_id)
         if task_record.state != "running":
@@ -329,7 +337,15 @@ class SqlAlchemyYoloXTrainingTaskService:
         *,
         requested_by: str | None = None,
     ) -> TaskDetail:
-        """为运行中的 YOLOX 训练任务追加一次暂停请求。"""
+        """为运行中的 YOLOX 训练任务追加一次暂停请求。
+
+        参数：
+        - task_id：训练任务 id。
+        - requested_by：发起暂停请求的主体 id。
+
+        返回：
+        - TaskDetail：更新后的轻量任务详情；events 默认返回空列表，不携带历史事件。
+        """
 
         task_record = self._require_training_task(task_id)
         if task_record.state == "paused":
@@ -514,7 +530,7 @@ class SqlAlchemyYoloXTrainingTaskService:
         - registered_by：执行手动登记的主体 id。
 
         返回：
-        - TaskDetail：写回登记结果后的任务详情。
+        - TaskDetail：写回登记结果后的任务详情，以及仅包含本次登记动作新增事件的 events。
         """
 
         dataset_storage = self._require_dataset_storage()
@@ -570,7 +586,7 @@ class SqlAlchemyYoloXTrainingTaskService:
             registered_by=registered_by,
             registration_kind="latest-checkpoint",
         )
-        self.task_service.append_task_event(
+        return self.task_service.append_task_event(
             AppendTaskEventRequest(
                 task_id=task_id,
                 event_type="status",
@@ -581,7 +597,6 @@ class SqlAlchemyYoloXTrainingTaskService:
                 },
             )
         )
-        return self.task_service.get_task(task_id, include_events=False)
 
     def process_training_task(self, task_id: str) -> YoloXTrainingTaskResult:
         """执行一条已入队的 YOLOX 训练任务。

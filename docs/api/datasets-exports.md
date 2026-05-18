@@ -43,7 +43,7 @@
 ## 当前实现边界
 
 - 当前只支持 detection 类型 DatasetVersion
-- 当前已经公开独立的格式合同接口 `GET /api/v1/datasets/export-formats`，用于先读取 supported / implemented / default_format，再决定是否创建导出任务
+- 当前已经公开独立的格式合同接口 `GET /api/v1/datasets/export-formats`，用于先读取 implemented_formats 和 default_format，再决定是否创建导出任务
 - 当前已经正式实现并对外开放的 format_id：
   - coco-detection-v1
   - voc-detection-v1
@@ -61,18 +61,15 @@
 
 - 状态码：200 OK
 - 当前公开字段包括：
-  - supported_formats
   - implemented_formats
   - default_format
   - items[].format_id
-  - items[].implemented
 
 #### 当前返回语义
 
-- `supported_formats` 表示规划支持的全部格式。
 - `implemented_formats` 表示当前已经正式实现并可用的格式。
 - `default_format` 表示当前默认导出格式；当前值为 `coco-detection-v1`。
-- `items` 用于给前端直接渲染格式清单和“是否可用”状态。
+- `items` 只列出当前已经实现并可直接使用的格式。
 
 ### POST /api/v1/datasets/exports
 

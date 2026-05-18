@@ -33,6 +33,7 @@ from backend.service.application.project_summary import ProjectSummaryService, P
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 from backend.service.infrastructure.object_store.object_key_layout import (
+    build_public_project_file_id,
     build_public_project_object_namespace_patterns,
     is_public_project_object_key,
 )
@@ -125,6 +126,7 @@ class ProjectObjectMetadataResponse(BaseModel):
 
     字段：
     - project_id：所属 Project id。
+    - file_id：公开文件稳定 id，可用于 input_file_id 等调用面。
     - object_key：本地 ObjectStore 相对路径。
     - file_name：文件名。
     - media_type：推断出的媒体类型。
@@ -135,6 +137,7 @@ class ProjectObjectMetadataResponse(BaseModel):
     """
 
     project_id: str = Field(description="所属 Project id")
+    file_id: str = Field(description="公开文件稳定 id")
     object_key: str = Field(description="本地 ObjectStore 相对路径")
     file_name: str = Field(description="文件名")
     media_type: str = Field(description="推断出的媒体类型")
@@ -265,6 +268,46 @@ def get_project_summary(
 
 
 @projects_router.get(
+    "/{project_id}/files",
+    response_model=list[ProjectObjectMetadataResponse],
+)
+def list_project_objects(
+    project_id: str,
+    request: Request,
+    response: Response,
+    principal: Annotated[
+        AuthenticatedPrincipal,
+        Depends(require_scopes("workflows:read", "models:read")),
+    ],
+    object_prefix: Annotated[str | None, Query(description="Project 内对象前缀")] = None,
+    storage_prefix: Annotated[str | None, Query(description="兼容字段；等价于 object_prefix")] = None,
+    offset: Annotated[int, Query(ge=0, description="结果偏移量")] = 0,
+    limit: Annotated[
+        int,
+        Query(ge=1, le=MAX_LIST_LIMIT, description="最大返回数量"),
+    ] = DEFAULT_LIST_LIMIT,
+) -> list[ProjectObjectMetadataResponse]:
+    """列出一个 Project 公开命名空间中的文件，并直接返回 file_id。"""
+
+    object_entries = _list_project_public_object_entries(
+        request=request,
+        principal=principal,
+        project_id=project_id,
+        object_prefix=object_prefix,
+        storage_prefix=storage_prefix,
+    )
+    paged_entries = paginate_sequence(object_entries, response=response, offset=offset, limit=limit)
+    return [
+        _build_project_object_metadata_response(
+            project_id=project_id,
+            object_key=object_key,
+            file_path=file_path,
+        )
+        for object_key, file_path in paged_entries
+    ]
+
+
+@projects_router.get(
     "/{project_id}/files/metadata",
     response_model=ProjectObjectMetadataResponse,
 )
@@ -287,24 +330,10 @@ def get_project_object_metadata(
         object_key=object_key,
         storage_uri=storage_uri,
     )
-    media_type = _guess_media_type(file_path, object_key=resolved_object_key)
-    encoded_object_key = quote(resolved_object_key, safe="")
-    content_url = (
-        f"/api/v1/projects/{project_id}/files/content?object_key={encoded_object_key}"
-    )
-    download_url = f"{content_url}&download=true"
-    return ProjectObjectMetadataResponse(
+    return _build_project_object_metadata_response(
         project_id=project_id,
         object_key=resolved_object_key,
-        file_name=file_path.name,
-        media_type=media_type,
-        size_bytes=file_path.stat().st_size,
-        last_modified_at=datetime.fromtimestamp(
-            file_path.stat().st_mtime,
-            tz=timezone.utc,
-        ).isoformat(),
-        content_url=content_url,
-        download_url=download_url,
+        file_path=file_path,
     )
 
 
@@ -351,6 +380,36 @@ def _build_project_bootstrap_service(request: Request) -> LocalProjectBootstrapS
     """基于 application.state 构建 Project bootstrap 服务。"""
 
     return LocalProjectBootstrapService(dataset_storage=_require_dataset_storage(request))
+
+
+def _build_project_object_metadata_response(
+    *,
+    project_id: str,
+    object_key: str,
+    file_path: Path,
+) -> ProjectObjectMetadataResponse:
+    """把 Project 公开文件转换为带 file_id 的统一元数据响应。"""
+
+    media_type = _guess_media_type(file_path, object_key=object_key)
+    encoded_object_key = quote(object_key, safe="")
+    content_url = (
+        f"/api/v1/projects/{project_id}/files/content?object_key={encoded_object_key}"
+    )
+    download_url = f"{content_url}&download=true"
+    return ProjectObjectMetadataResponse(
+        project_id=project_id,
+        file_id=build_public_project_file_id(project_id=project_id, object_key=object_key),
+        object_key=object_key,
+        file_name=file_path.name,
+        media_type=media_type,
+        size_bytes=file_path.stat().st_size,
+        last_modified_at=datetime.fromtimestamp(
+            file_path.stat().st_mtime,
+            tz=timezone.utc,
+        ).isoformat(),
+        content_url=content_url,
+        download_url=download_url,
+    )
 
 
 def _require_backend_service_settings(request: Request) -> BackendServiceSettings:
@@ -573,6 +632,65 @@ def _resolve_project_object_path(
     return resolved_object_key, file_path
 
 
+def _list_project_public_object_entries(
+    *,
+    request: Request,
+    principal: AuthenticatedPrincipal,
+    project_id: str,
+    object_prefix: str | None,
+    storage_prefix: str | None,
+) -> list[tuple[str, Path]]:
+    """列出一个 Project 公开命名空间中的文件路径。"""
+
+    _ensure_project_known_and_visible(
+        request=request,
+        principal=principal,
+        project_id=project_id,
+    )
+    dataset_storage = _require_dataset_storage(request)
+    resolved_object_prefix = _resolve_requested_object_prefix(
+        object_prefix=object_prefix,
+        storage_prefix=storage_prefix,
+    )
+
+    if resolved_object_prefix is None:
+        scan_root = dataset_storage.resolve(f"projects/{project_id}")
+        if not scan_root.exists():
+            return []
+        candidate_paths = [
+            file_path
+            for file_path in sorted(scan_root.rglob("*"))
+            if file_path.is_file()
+        ]
+    else:
+        if not is_public_project_object_key(project_id=project_id, object_key=resolved_object_prefix):
+            raise InvalidRequestError(
+                "当前接口只允许列出 Project 公开文件命名空间中的对象文件",
+                details={
+                    "project_id": project_id,
+                    "object_prefix": resolved_object_prefix,
+                    "allowed_namespaces": build_public_project_object_namespace_patterns(project_id=project_id),
+                },
+            )
+        scan_root = dataset_storage.resolve(resolved_object_prefix)
+        if scan_root.is_file():
+            return [(resolved_object_prefix, scan_root)]
+        if not scan_root.exists():
+            return []
+        candidate_paths = [
+            file_path
+            for file_path in sorted(scan_root.rglob("*"))
+            if file_path.is_file()
+        ]
+
+    entries: list[tuple[str, Path]] = []
+    for file_path in candidate_paths:
+        object_key = file_path.relative_to(dataset_storage.root_dir).as_posix()
+        if is_public_project_object_key(project_id=project_id, object_key=object_key):
+            entries.append((object_key, file_path))
+    return entries
+
+
 def _resolve_requested_object_key(
     *,
     object_key: str | None,
@@ -591,6 +709,28 @@ def _resolve_requested_object_key(
         raise InvalidRequestError(
             "object_key 和 storage_uri 不能同时提供不同的值",
             details={"object_key": object_key, "storage_uri": storage_uri},
+        )
+    return candidates[0]
+
+
+def _resolve_requested_object_prefix(
+    *,
+    object_prefix: str | None,
+    storage_prefix: str | None,
+) -> str | None:
+    """统一解析 object_prefix 和兼容 storage_prefix 参数。"""
+
+    candidates = [
+        candidate.strip()
+        for candidate in (object_prefix, storage_prefix)
+        if candidate is not None and candidate.strip()
+    ]
+    if not candidates:
+        return None
+    if len(set(candidates)) > 1:
+        raise InvalidRequestError(
+            "object_prefix 和 storage_prefix 不能同时提供不同的值",
+            details={"object_prefix": object_prefix, "storage_prefix": storage_prefix},
         )
     return candidates[0]
 

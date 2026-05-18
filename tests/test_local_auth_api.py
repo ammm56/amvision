@@ -522,9 +522,22 @@ def test_local_auth_admin_can_manage_long_lived_user_tokens(tmp_path: Path) -> N
             )
             issued_user_token_payload = create_user_token_response.json()
             extra_user_token = issued_user_token_payload["token"]
+            operator_login_response = client.post(
+                "/api/v1/auth/login",
+                json={
+                    "provider_id": "local",
+                    "username": "operator",
+                    "password": "Operator12345",
+                },
+            )
+            operator_session_payload = operator_login_response.json()
             list_tokens_response = client.get(
                 f"/api/v1/auth/users/{user_id}/tokens",
                 headers=admin_headers,
+            )
+            operator_me_response = client.get(
+                "/api/v1/system/me",
+                headers={"Authorization": f"Bearer {operator_session_payload['access_token']}"},
             )
             token_me_response = client.get(
                 "/api/v1/system/me",
@@ -544,14 +557,21 @@ def test_local_auth_admin_can_manage_long_lived_user_tokens(tmp_path: Path) -> N
     assert bootstrap_response.status_code == 201
     assert create_user_response.status_code == 201
     assert create_user_token_response.status_code == 201
+    assert operator_login_response.status_code == 200
     assert issued_user_token_payload["token_name"] == "tablet"
     assert issued_user_token_payload["expires_at"] is not None
     assert issued_user_token_payload["created_by_user_id"] == admin_payload["user"]["user_id"]
     assert issued_user_token_payload["metadata"] == {"channel": "workstation"}
 
     assert list_tokens_response.status_code == 200
-    listed_token_names = [item["token_name"] for item in list_tokens_response.json()]
-    assert listed_token_names == ["tablet", "default"]
+    listed_tokens = list_tokens_response.json()
+    listed_token_names = [item["token_name"] for item in listed_tokens]
+    assert listed_token_names == ["default", "tablet"]
+    assert listed_tokens[0]["expires_at"] is None
+    assert listed_tokens[1]["expires_at"] is not None
+
+    assert operator_me_response.status_code == 200
+    assert operator_me_response.json()["auth_credential_kind"] == "session"
 
     assert token_me_response.status_code == 200
     assert token_me_response.json()["auth_credential_kind"] == "user-token"

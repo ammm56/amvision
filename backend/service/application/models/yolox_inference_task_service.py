@@ -15,6 +15,7 @@ from backend.service.application.models.yolox_inference_payloads import (
     build_yolox_inference_payload,
     serialize_yolox_inference_payload,
 )
+from backend.service.application.project_public_files import resolve_public_project_file_reference
 from backend.service.application.runtime.yolox_deployment_process_supervisor import (
     YoloXDeploymentProcessConfig,
     YoloXDeploymentProcessSupervisor,
@@ -393,10 +394,15 @@ class SqlAlchemyYoloXInferenceTaskService:
             raise InvalidRequestError("project_id 不能为空")
         if not request.deployment_instance_id.strip():
             raise InvalidRequestError("deployment_instance_id 不能为空")
-        if request.input_file_id is not None:
+        has_input_uri = isinstance(request.input_uri, str) and bool(request.input_uri.strip())
+        has_input_file_id = isinstance(request.input_file_id, str) and bool(request.input_file_id.strip())
+        if not has_input_uri and not has_input_file_id:
             raise InvalidRequestError(
-                "当前 inference task 暂不支持 input_file_id，请改用 input_uri",
-                details={"input_file_id": request.input_file_id},
+                "input_uri 或 input_file_id 至少需要提供一个",
+                details={
+                    "input_uri": request.input_uri,
+                    "input_file_id": request.input_file_id,
+                },
             )
 
     def _build_deployment_service(self) -> SqlAlchemyYoloXDeploymentService:
@@ -432,15 +438,24 @@ class SqlAlchemyYoloXInferenceTaskService:
         """解析并校验推理输入 URI。"""
 
         value = request.input_uri if isinstance(request.input_uri, str) else None
-        if value is None or not value.strip():
-            raise InvalidRequestError("input_uri 不能为空")
-        resolved_input_uri = value.strip()
-        if not self._require_dataset_storage().resolve(resolved_input_uri).is_file():
-            raise InvalidRequestError(
-                "input_uri 对应的本地文件不存在",
-                details={"input_uri": resolved_input_uri},
+        dataset_storage = self._require_dataset_storage()
+        if value is not None and value.strip():
+            resolved_input_uri = value.strip()
+            if not dataset_storage.resolve(resolved_input_uri).is_file():
+                raise InvalidRequestError(
+                    "input_uri 对应的本地文件不存在",
+                    details={"input_uri": resolved_input_uri},
+                )
+            return resolved_input_uri
+        if isinstance(request.input_file_id, str) and request.input_file_id.strip():
+            reference = resolve_public_project_file_reference(
+                dataset_storage=dataset_storage,
+                file_id=request.input_file_id,
+                expected_project_id=request.project_id,
+                field_name="input_file_id",
             )
-        return resolved_input_uri
+            return reference.object_key
+        raise InvalidRequestError("input_uri 或 input_file_id 至少需要提供一个")
 
     def _require_inference_task(self, task_id: str) -> TaskRecord:
         """读取并校验推理任务主记录。"""

@@ -485,6 +485,26 @@
         },
         {
           "name": "List Managed User Tokens",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  var payload = pm.response.json();",
+                  "  if (Array.isArray(payload)) {",
+                  "    var defaultToken = payload.find(function (item) { return item.token_name === 'default'; });",
+                  "    if (defaultToken && defaultToken.token_id) pm.collectionVariables.set('managedDefaultUserTokenId', defaultToken.token_id);",
+                  "    var extraTokenName = pm.collectionVariables.get('managedExtraTokenName');",
+                  "    var extraToken = payload.find(function (item) { return item.token_name === extraTokenName; });",
+                  "    if (extraToken && extraToken.token_id) pm.collectionVariables.set('managedExtraTokenId', extraToken.token_id);",
+                  "  }",
+                  "}"
+                ]
+              }
+            }
+          ],
           "request": {
             "method": "GET",
             "header": [
@@ -508,7 +528,7 @@
                 "tokens"
               ]
             },
-            "description": "列出指定本地用户的长期调用 token 摘要；返回值不包含 token 明文。"
+            "description": "列出指定本地用户的长期调用 token 摘要；当前只返回长期 user token，不包含登录 session token。默认名为 default 的永久 token 会优先排在前面，其后才是其他永久 token 和带过期时间的 token；返回值不包含 token 明文。"
           },
           "response": []
         },

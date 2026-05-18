@@ -561,6 +561,120 @@
       ]
     },
     {
+      "name": "Project Files",
+      "item": [
+        {
+          "name": "List Project Files",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  var payload = pm.response.json();",
+                  "  if (Array.isArray(payload) && payload.length > 0) {",
+                  "    if (payload[0].object_key) pm.collectionVariables.set('projectFileObjectKey', payload[0].object_key);",
+                  "    if (payload[0].file_id) pm.collectionVariables.set('projectPublicFileId', payload[0].file_id);",
+                  "  }",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/projects/{{projectId}}/files?object_prefix={{projectFilesPrefix}}&offset={{listOffset}}&limit={{listLimit}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "projects",
+                "{{projectId}}",
+                "files"
+              ],
+              "query": [
+                {
+                  "key": "object_prefix",
+                  "value": "{{projectFilesPrefix}}"
+                },
+                {
+                  "key": "offset",
+                  "value": "{{listOffset}}"
+                },
+                {
+                  "key": "limit",
+                  "value": "{{listLimit}}"
+                }
+              ]
+            },
+            "description": "列出当前 Project 公开命名空间中的文件，并直接回填 projectPublicFileId。默认只扫 projects/{{projectId}}/inputs，适合作为 validation session by file id、direct infer by file id 和 async inference task by file id 的前置步骤。"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Project File Metadata",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  var payload = pm.response.json();",
+                  "  if (payload.object_key) pm.collectionVariables.set('projectFileObjectKey', payload.object_key);",
+                  "  if (payload.file_id) pm.collectionVariables.set('projectPublicFileId', payload.file_id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/projects/{{projectId}}/files/metadata?object_key={{projectFileObjectKey}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "projects",
+                "{{projectId}}",
+                "files",
+                "metadata"
+              ],
+              "query": [
+                {
+                  "key": "object_key",
+                  "value": "{{projectFileObjectKey}}"
+                }
+              ]
+            },
+            "description": "读取一个 Project 公开文件的元数据并回填 projectPublicFileId。适合已知 object_key、但希望拿到稳定 file_id 再走 input_file_id 链路的场景。"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
       "name": "YOLOX Validation Sessions",
       "item": [
         {
@@ -697,7 +811,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"input_uri\": \"{{validationImageUri}}\",\n  \"input_file_id\": null,\n  \"score_threshold\": {{validationScoreThreshold}},\n  \"save_result_image\": {{validationSaveResultImage}},\n  \"extra_options\": {}\n}",
+              "raw": "{\n  \"input_uri\": \"{{validationImageUri}}\",\n  \"score_threshold\": {{validationScoreThreshold}},\n  \"save_result_image\": {{validationSaveResultImage}},\n  \"extra_options\": {}\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -719,7 +833,66 @@
                 "predict"
               ]
             },
-            "description": "对指定 validation session 执行一次单图预测。当前最小实现只支持本地 input_uri 或 object key；input_file_id 仍是保留字段，传入时会返回 invalid_request。成功后会写出 raw-result.json，并在 save_result_image=true 时额外写出 preview.jpg。"
+            "description": "对指定 validation session 执行一次单图预测，输入来源为 input_uri。成功后会写出 raw-result.json，并在 save_result_image=true 时额外写出 preview.jpg。"
+          },
+          "response": []
+        },
+        {
+          "name": "Predict YOLOX Validation Session By File ID",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  var payload = pm.response.json();",
+                  "  if (payload.raw_result_uri) pm.collectionVariables.set('validationRawResultUri', payload.raw_result_uri);",
+                  "  if (payload.preview_image_uri) pm.collectionVariables.set('validationPreviewImageUri', payload.preview_image_uri);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"input_file_id\": \"{{projectPublicFileId}}\",\n  \"score_threshold\": {{validationScoreThreshold}},\n  \"save_result_image\": {{validationSaveResultImage}},\n  \"extra_options\": {}\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/models/yolox/validation-sessions/{{validationSessionId}}/predict",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "models",
+                "yolox",
+                "validation-sessions",
+                "{{validationSessionId}}",
+                "predict"
+              ]
+            },
+            "description": "对指定 validation session 执行一次单图预测，输入来源为 Project 公开文件 file_id。projectPublicFileId 可来自 /api/v1/projects/{project_id}/files 或 /files/metadata 的响应。"
           },
           "response": []
         }
@@ -2877,7 +3050,7 @@
                 ],
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"input_uri\": \"{{inferenceImageUri}}\",\n  \"input_file_id\": null,\n  \"score_threshold\": {{inferenceScoreThreshold}},\n  \"save_result_image\": {{inferenceSaveResultImage}},\n  \"return_preview_image_base64\": {{inferenceReturnPreviewImageBase64}},\n  \"extra_options\": {}\n}",
+                  "raw": "{\n  \"input_uri\": \"{{inferenceImageUri}}\",\n  \"score_threshold\": {{inferenceScoreThreshold}},\n  \"save_result_image\": {{inferenceSaveResultImage}},\n  \"return_preview_image_base64\": {{inferenceReturnPreviewImageBase64}},\n  \"extra_options\": {}\n}",
                   "options": {
                     "raw": {
                       "language": "json"
@@ -2900,6 +3073,66 @@
                   ]
                 },
                 "description": "直接执行一次同步 YOLOX 推理并返回结果，输入来源为 input_uri。调用前需要先让 sync deployment 子进程通过 sync/start 或 sync/warmup 进入 running。"
+              },
+              "response": []
+            },
+            {
+              "name": "Direct YOLOX Inference By File ID",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "if (pm.response.code === 200) {",
+                      "  var payload = pm.response.json();",
+                      "  if (payload.request_id) pm.collectionVariables.set('directInferenceRequestId', payload.request_id);",
+                      "  if (payload.result_object_key) pm.collectionVariables.set('inferenceResultObjectKey', payload.result_object_key);",
+                      "  if (payload.preview_image_uri) pm.collectionVariables.set('inferencePreviewImageUri', payload.preview_image_uri);",
+                      "}"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{accessToken}}",
+                    "type": "text"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"input_file_id\": \"{{projectPublicFileId}}\",\n  \"score_threshold\": {{inferenceScoreThreshold}},\n  \"save_result_image\": {{inferenceSaveResultImage}},\n  \"return_preview_image_base64\": {{inferenceReturnPreviewImageBase64}},\n  \"extra_options\": {}\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/models/yolox/deployment-instances/{{deploymentInstanceId}}/infer",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "models",
+                    "yolox",
+                    "deployment-instances",
+                    "{{deploymentInstanceId}}",
+                    "infer"
+                  ]
+                },
+                "description": "直接执行一次同步 YOLOX 推理并返回结果，输入来源为 Project 公开文件 file_id。projectPublicFileId 可来自 /api/v1/projects/{project_id}/files 或 /files/metadata 的响应；使用 file_id 时不要再把 input_transport_mode 设为 memory。"
               },
               "response": []
             },
@@ -2937,7 +3170,7 @@
                 ],
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"image_base64\": \"{{inferenceImageBase64}}\",\n  \"input_file_id\": null,\n  \"input_transport_mode\": \"{{directInferenceInputTransportMode}}\",\n  \"score_threshold\": {{inferenceScoreThreshold}},\n  \"save_result_image\": {{inferenceSaveResultImage}},\n  \"return_preview_image_base64\": {{inferenceReturnPreviewImageBase64}},\n  \"extra_options\": {}\n}",
+                  "raw": "{\n  \"image_base64\": \"{{inferenceImageBase64}}\",\n  \"input_transport_mode\": \"{{directInferenceInputTransportMode}}\",\n  \"score_threshold\": {{inferenceScoreThreshold}},\n  \"save_result_image\": {{inferenceSaveResultImage}},\n  \"return_preview_image_base64\": {{inferenceReturnPreviewImageBase64}},\n  \"extra_options\": {}\n}",
                   "options": {
                     "raw": {
                       "language": "json"
@@ -3081,7 +3314,7 @@
                 ],
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"deployment_instance_id\": \"{{deploymentInstanceId}}\",\n  \"input_file_id\": null,\n  \"input_uri\": \"{{inferenceImageUri}}\",\n  \"score_threshold\": {{inferenceScoreThreshold}},\n  \"save_result_image\": {{inferenceSaveResultImage}},\n  \"return_preview_image_base64\": {{inferenceReturnPreviewImageBase64}},\n  \"extra_options\": {},\n  \"display_name\": \"{{inferenceDisplayName}}\"\n}",
+                  "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"deployment_instance_id\": \"{{deploymentInstanceId}}\",\n  \"input_uri\": \"{{inferenceImageUri}}\",\n  \"score_threshold\": {{inferenceScoreThreshold}},\n  \"save_result_image\": {{inferenceSaveResultImage}},\n  \"return_preview_image_base64\": {{inferenceReturnPreviewImageBase64}},\n  \"extra_options\": {},\n  \"display_name\": \"{{inferenceDisplayName}}\"\n}",
                   "options": {
                     "raw": {
                       "language": "json"
@@ -3102,6 +3335,62 @@
                   ]
                 },
                 "description": "创建一个正式 YOLOX inference task，输入来源为 input_uri。调用前需要先让 async deployment 子进程通过 async/start 或 async/warmup 进入 running，否则 create 会直接返回 invalid_request。"
+              },
+              "response": []
+            },
+            {
+              "name": "Create YOLOX Inference Task By File ID",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "if (pm.response.code === 202) {",
+                      "  var payload = pm.response.json();",
+                      "  pm.collectionVariables.set('inferenceTaskId', payload.task_id);",
+                      "}"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{accessToken}}",
+                    "type": "text"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"deployment_instance_id\": \"{{deploymentInstanceId}}\",\n  \"input_file_id\": \"{{projectPublicFileId}}\",\n  \"score_threshold\": {{inferenceScoreThreshold}},\n  \"save_result_image\": {{inferenceSaveResultImage}},\n  \"return_preview_image_base64\": {{inferenceReturnPreviewImageBase64}},\n  \"extra_options\": {},\n  \"display_name\": \"{{inferenceDisplayName}}\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/models/yolox/inference-tasks",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "models",
+                    "yolox",
+                    "inference-tasks"
+                  ]
+                },
+                "description": "创建一个正式 YOLOX inference task，输入来源为 Project 公开文件 file_id。projectPublicFileId 可来自 /api/v1/projects/{project_id}/files 或 /files/metadata 的响应。"
               },
               "response": []
             },
@@ -3137,7 +3426,7 @@
                 ],
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"deployment_instance_id\": \"{{deploymentInstanceId}}\",\n  \"input_file_id\": null,\n  \"image_base64\": \"{{inferenceImageBase64}}\",\n  \"score_threshold\": {{inferenceScoreThreshold}},\n  \"save_result_image\": {{inferenceSaveResultImage}},\n  \"return_preview_image_base64\": {{inferenceReturnPreviewImageBase64}},\n  \"extra_options\": {},\n  \"display_name\": \"{{inferenceDisplayName}}\"\n}",
+                  "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"deployment_instance_id\": \"{{deploymentInstanceId}}\",\n  \"image_base64\": \"{{inferenceImageBase64}}\",\n  \"score_threshold\": {{inferenceScoreThreshold}},\n  \"save_result_image\": {{inferenceSaveResultImage}},\n  \"return_preview_image_base64\": {{inferenceReturnPreviewImageBase64}},\n  \"extra_options\": {},\n  \"display_name\": \"{{inferenceDisplayName}}\"\n}",
                   "options": {
                     "raw": {
                       "language": "json"
@@ -3342,7 +3631,7 @@
                     }
                   ]
                 },
-                "description": "读取单条 async inference task 当前详情。任务完成后，detail 会直接返回 result_object_key、preview_image_object_key、detection_count 和 latency。"
+                  "description": "读取单条 async inference task 当前详情。默认建议把 includeEvents 保持为 false，只在需要完整历史事件流时再打开。任务完成后，detail 会直接返回 result_object_key、preview_image_object_key、detection_count 和 latency。"
               },
               "response": []
             },
@@ -3748,6 +4037,18 @@
     {
       "key": "validationImageUri",
       "value": "projects/project-1/inputs/validation/image-1.jpg"
+    },
+    {
+      "key": "projectFileObjectKey",
+      "value": "projects/project-1/inputs/validation/image-1.jpg"
+    },
+    {
+      "key": "projectFilesPrefix",
+      "value": "projects/project-1/inputs"
+    },
+    {
+      "key": "projectPublicFileId",
+      "value": ""
     },
     {
       "key": "validationScoreThreshold",

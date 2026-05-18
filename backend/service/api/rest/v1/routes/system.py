@@ -26,10 +26,7 @@ from backend.service.application.auth.provider_registry import AuthProviderRegis
 from backend.service.application.project_summary import get_supported_project_summary_topics
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.settings import BackendServiceSettings
-from backend.contracts.datasets.exports.dataset_formats import (
-    IMPLEMENTED_DATASET_EXPORT_FORMATS,
-    SUPPORTED_DATASET_EXPORT_FORMATS,
-)
+from backend.contracts.datasets.exports.dataset_formats import IMPLEMENTED_DATASET_EXPORT_FORMATS
 
 
 system_router = APIRouter(prefix="/system", tags=["system"])
@@ -74,7 +71,6 @@ class SystemAuthProviderContract(BaseModel):
 class DatasetExportCapabilityContract(BaseModel):
     """描述前端需要读取的数据集导出格式能力。"""
 
-    supported_formats: list[str] = Field(default_factory=list, description="规划支持的全部格式")
     implemented_formats: list[str] = Field(default_factory=list, description="当前已实现并可用的格式")
     default_format: str = Field(description="当前默认导出格式")
 
@@ -164,7 +160,6 @@ def get_system_bootstrap(
         capabilities=SystemBootstrapCapabilitiesContract(
             project_bootstrap_enabled=True,
             dataset_export=DatasetExportCapabilityContract(
-                supported_formats=list(SUPPORTED_DATASET_EXPORT_FORMATS),
                 implemented_formats=list(IMPLEMENTED_DATASET_EXPORT_FORMATS),
                 default_format=IMPLEMENTED_DATASET_EXPORT_FORMATS[0],
             ),

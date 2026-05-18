@@ -363,6 +363,7 @@
           }
         }
       },
+      "parameter_ui_schema": null,
       "capability_tags": [
         "opencv.threshold",
         "vision.filter"
@@ -433,6 +434,7 @@
           }
         }
       },
+      "parameter_ui_schema": null,
       "capability_tags": [
         "opencv.canny",
         "vision.filter"
@@ -513,6 +515,7 @@
           }
         }
       },
+      "parameter_ui_schema": null,
       "capability_tags": [
         "opencv.contour",
         "vision.analysis"
@@ -582,6 +585,7 @@
           }
         }
       },
+      "parameter_ui_schema": null,
       "capability_tags": [
         "opencv.crop",
         "vision.export"
@@ -654,6 +658,7 @@
           }
         }
       },
+      "parameter_ui_schema": null,
       "capability_tags": [
         "opencv.draw",
         "vision.render"
@@ -720,6 +725,7 @@
           }
         }
       },
+      "parameter_ui_schema": null,
       "capability_tags": [
         "ui.gallery",
         "response.body"
@@ -775,6 +781,7 @@
           }
         }
       },
+      "parameter_ui_schema": null,
       "capability_tags": [
         "opencv.blur",
         "vision.filter"
@@ -841,6 +848,7 @@
           }
         }
       },
+      "parameter_ui_schema": null,
       "capability_tags": [
         "opencv.measure",
         "vision.analysis"
@@ -921,6 +929,7 @@
           }
         }
       },
+      "parameter_ui_schema": null,
       "capability_tags": [
         "opencv.morphology",
         "vision.filter"

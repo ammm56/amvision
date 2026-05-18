@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import base64
+import json
 from pathlib import PurePosixPath
 
 
 RUNTIME_INPUTS_STORAGE_ROOT = "runtime/inputs"
+PUBLIC_PROJECT_FILE_ID_PREFIX = "public-project-file-v1_"
 
 
 def build_project_workflow_application_results_dir(
@@ -108,6 +111,74 @@ def is_public_project_object_key(*, project_id: str, object_key: str) -> bool:
     if len(path_parts) < 5 or path_parts[2] != "datasets":
         return False
     return path_parts[4] in {"versions", "exports"}
+
+
+def build_public_project_file_id(*, project_id: str, object_key: str) -> str:
+    """为 Project 公开文件构造稳定 file_id。
+
+    参数：
+    - project_id：所属 Project id。
+    - object_key：公开文件的 object key。
+
+    返回：
+    - str：可供前端与推理接口复用的稳定 file_id。
+
+    异常：
+    - ValueError：当 object_key 不属于 Project 公开文件命名空间时抛出。
+    """
+
+    normalized_project_id = _normalize_segment(project_id, field_name="project_id")
+    normalized_object_key = object_key.strip() if isinstance(object_key, str) else ""
+    if not is_public_project_object_key(project_id=normalized_project_id, object_key=normalized_object_key):
+        raise ValueError("object_key 不属于 Project 公开文件命名空间")
+    payload = json.dumps(
+        {
+            "project_id": normalized_project_id,
+            "object_key": normalized_object_key,
+        },
+        ensure_ascii=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    token = base64.urlsafe_b64encode(payload).decode("ascii").rstrip("=")
+    return f"{PUBLIC_PROJECT_FILE_ID_PREFIX}{token}"
+
+
+def parse_public_project_file_id(file_id: str) -> tuple[str, str]:
+    """解析 Project 公开文件 file_id。
+
+    参数：
+    - file_id：待解析的公开文件 id。
+
+    返回：
+    - tuple[str, str]：解析得到的 project_id 与 object_key。
+
+    异常：
+    - ValueError：当 file_id 非法或不属于公开文件命名空间时抛出。
+    """
+
+    normalized_file_id = file_id.strip() if isinstance(file_id, str) else ""
+    if not normalized_file_id.startswith(PUBLIC_PROJECT_FILE_ID_PREFIX):
+        raise ValueError("file_id 不是合法的 Project 公开文件 id")
+    encoded_payload = normalized_file_id.removeprefix(PUBLIC_PROJECT_FILE_ID_PREFIX)
+    if not encoded_payload:
+        raise ValueError("file_id 不是合法的 Project 公开文件 id")
+    padding = "=" * (-len(encoded_payload) % 4)
+    try:
+        raw_payload = base64.urlsafe_b64decode(f"{encoded_payload}{padding}".encode("ascii"))
+        payload = json.loads(raw_payload.decode("utf-8"))
+    except (ValueError, json.JSONDecodeError, UnicodeDecodeError) as error:
+        raise ValueError("file_id 不是合法的 Project 公开文件 id") from error
+    if not isinstance(payload, dict):
+        raise ValueError("file_id 不是合法的 Project 公开文件 id")
+    project_id = payload.get("project_id")
+    object_key = payload.get("object_key")
+    if not isinstance(project_id, str) or not isinstance(object_key, str):
+        raise ValueError("file_id 不是合法的 Project 公开文件 id")
+    normalized_project_id = _normalize_segment(project_id, field_name="project_id")
+    normalized_object_key = object_key.strip()
+    if not is_public_project_object_key(project_id=normalized_project_id, object_key=normalized_object_key):
+        raise ValueError("file_id 对应的对象文件不属于公开命名空间")
+    return normalized_project_id, normalized_object_key
 
 
 def _normalize_segment(value: str, *, field_name: str) -> str:

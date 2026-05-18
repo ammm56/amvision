@@ -128,12 +128,16 @@ def test_yolox_deployment_events_api_and_websocket_stream_live_events(tmp_path: 
                 headers=_build_headers(),
             )
             assert sync_start_response.status_code == 200
+            assert "events" not in sync_start_response.json()
+            assert "sequence" not in sync_start_response.json()
 
             warmup_response = client.post(
                 f"/api/v1/models/yolox/deployment-instances/{deployment_instance_id}/sync/warmup",
                 headers=_build_headers(),
             )
             assert warmup_response.status_code == 200
+            assert "events" not in warmup_response.json()
+            assert "sequence" not in warmup_response.json()
 
             events_response = client.get(
                 f"/api/v1/models/yolox/deployment-instances/{deployment_instance_id}/events",
@@ -550,6 +554,8 @@ def test_sync_and_async_runtime_pools_are_isolated(
             )
             assert sync_start_response.status_code == 200
             sync_start_payload = sync_start_response.json()
+            assert "events" not in sync_start_payload
+            assert "sequence" not in sync_start_payload
             assert sync_start_payload["runtime_mode"] == "sync"
             assert sync_start_payload["process_state"] == "running"
             assert sync_start_payload["process_id"] is not None
@@ -560,6 +566,8 @@ def test_sync_and_async_runtime_pools_are_isolated(
             )
             assert warmup_response.status_code == 200
             warmup_payload = warmup_response.json()
+            assert "events" not in warmup_payload
+            assert "sequence" not in warmup_payload
             assert warmup_payload["runtime_mode"] == "sync"
             assert warmup_payload["warmed_instance_count"] == 2
             assert warmup_payload["healthy_instance_count"] == 2
@@ -607,6 +615,8 @@ def test_sync_and_async_runtime_pools_are_isolated(
             )
             assert async_warmup_response.status_code == 200
             async_warmup_payload = async_warmup_response.json()
+            assert "events" not in async_warmup_payload
+            assert "sequence" not in async_warmup_payload
             assert async_warmup_payload["runtime_mode"] == "async"
             assert async_warmup_payload["warmed_instance_count"] == 2
             assert len(async_supervisor.load_calls) == 2
@@ -617,6 +627,8 @@ def test_sync_and_async_runtime_pools_are_isolated(
             )
             assert reset_response.status_code == 200
             reset_payload = reset_response.json()
+            assert "events" not in reset_payload
+            assert "sequence" not in reset_payload
             assert reset_payload["healthy_instance_count"] == 2
             assert reset_payload["warmed_instance_count"] == 0
             assert all(item["warmed"] is False for item in reset_payload["instances"])
@@ -641,6 +653,8 @@ def test_sync_and_async_runtime_pools_are_isolated(
             )
             assert sync_stop_response.status_code == 200
             sync_stop_payload = sync_stop_response.json()
+            assert "events" not in sync_stop_payload
+            assert "sequence" not in sync_stop_payload
             assert sync_stop_payload["process_state"] == "stopped"
             assert sync_stop_payload["process_id"] is None
     finally:

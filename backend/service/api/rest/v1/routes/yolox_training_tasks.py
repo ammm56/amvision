@@ -380,13 +380,16 @@ class YoloXTrainingTaskDetailResponse(YoloXTrainingTaskSummaryResponse):
     - available_actions：当前建议前端展示的控制动作列表。
     - control_status：正式训练控制状态。
     - task_spec：任务规格。
-    - events：任务事件列表。
+    - events：普通详情查询默认不返回；部分操作响应只返回本次新增事件。
     """
 
     available_actions: list[YoloXTrainingTaskActionName] = Field(description="当前建议展示的训练控制动作列表")
     control_status: YoloXTrainingTaskControlStatusResponse = Field(description="正式训练控制状态")
     task_spec: dict[str, object] = Field(default_factory=dict, description="任务规格")
-    events: list[YoloXTrainingTaskEventResponse] = Field(default_factory=list, description="任务事件列表")
+    events: list[YoloXTrainingTaskEventResponse] = Field(
+        default_factory=list,
+        description="普通详情查询默认不返回；部分操作响应只返回本次新增事件",
+    )
 
 
 @yolox_training_tasks_router.post(
@@ -501,9 +504,12 @@ def get_yolox_training_task_detail(
     task_id: str,
     principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("tasks:read"))],
     session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
-    include_events: Annotated[bool, Query(description="是否返回事件列表")] = True,
+    include_events: Annotated[bool, Query(description="是否返回事件列表")] = False,
 ) -> YoloXTrainingTaskDetailResponse:
-    """按任务 id 返回 YOLOX 训练任务详情。"""
+    """按任务 id 返回 YOLOX 训练任务详情。
+
+    默认返回轻量详情，不带 events；仅在 include_events=True 时返回历史事件列表。
+    """
 
     task_detail = _require_visible_yolox_training_task(
         principal=principal,
@@ -511,7 +517,7 @@ def get_yolox_training_task_detail(
         session_factory=session_factory,
         include_events=include_events,
     )
-    return _build_yolox_training_task_detail_response(task_detail.task, tuple(task_detail.events))
+    return _build_yolox_training_task_query_detail_response(task_detail.task, tuple(task_detail.events))
 
 
 @yolox_training_tasks_router.post(
@@ -523,7 +529,10 @@ def request_yolox_training_save(
     principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("tasks:write"))],
     session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
 ) -> YoloXTrainingTaskDetailResponse:
-    """为运行中的 YOLOX 训练任务请求一次手动保存。"""
+    """为运行中的 YOLOX 训练任务请求一次手动保存。
+
+    响应返回更新后的轻量详情，不回传历史事件列表。
+    """
 
     _require_visible_yolox_training_task(
         principal=principal,
@@ -533,7 +542,7 @@ def request_yolox_training_save(
     )
     service = SqlAlchemyYoloXTrainingTaskService(session_factory=session_factory)
     task_detail = service.request_training_save(task_id, requested_by=principal.principal_id)
-    return _build_yolox_training_task_detail_response(task_detail.task, tuple(task_detail.events))
+    return _build_yolox_training_task_query_detail_response(task_detail.task, tuple(task_detail.events))
 
 
 @yolox_training_tasks_router.post(
@@ -545,7 +554,10 @@ def request_yolox_training_pause(
     principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("tasks:write"))],
     session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
 ) -> YoloXTrainingTaskDetailResponse:
-    """为运行中的 YOLOX 训练任务请求暂停。"""
+    """为运行中的 YOLOX 训练任务请求暂停。
+
+    响应返回更新后的轻量详情，不回传历史事件列表。
+    """
 
     _require_visible_yolox_training_task(
         principal=principal,
@@ -555,7 +567,7 @@ def request_yolox_training_pause(
     )
     service = SqlAlchemyYoloXTrainingTaskService(session_factory=session_factory)
     task_detail = service.request_training_pause(task_id, requested_by=principal.principal_id)
-    return _build_yolox_training_task_detail_response(task_detail.task, tuple(task_detail.events))
+    return _build_yolox_training_task_query_detail_response(task_detail.task, tuple(task_detail.events))
 
 
 @yolox_training_tasks_router.post(
@@ -605,7 +617,10 @@ def register_yolox_training_latest_checkpoint_model_version(
     session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
     dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
 ) -> YoloXTrainingTaskDetailResponse:
-    """把当前训练任务 latest checkpoint 手动登记为一个新的 ModelVersion。"""
+    """把当前训练任务 latest checkpoint 手动登记为一个新的 ModelVersion。
+
+    响应返回更新后的任务快照，以及本次登记动作新增的事件，不返回历史事件列表。
+    """
 
     _require_visible_yolox_training_task(
         principal=principal,
@@ -621,7 +636,7 @@ def register_yolox_training_latest_checkpoint_model_version(
         task_id,
         registered_by=principal.principal_id,
     )
-    return _build_yolox_training_task_detail_response(task_detail.task, tuple(task_detail.events))
+    return _build_yolox_training_task_incremental_event_response(task_detail.task, tuple(task_detail.events))
 
 
 @yolox_training_tasks_router.get(
@@ -1030,6 +1045,30 @@ def _build_yolox_training_task_detail_response(
         task_spec=dict(task.task_spec),
         events=[_build_yolox_training_task_event_response(event) for event in events],
     )
+
+
+def _build_yolox_training_task_query_detail_response(
+    task: object,
+    events: tuple[object, ...],
+) -> YoloXTrainingTaskDetailResponse:
+    """构造 YOLOX 训练任务详情查询响应。
+
+    调用方应按 include_events 语义传入 events；默认轻量模式通常传入空列表。
+    """
+
+    return _build_yolox_training_task_detail_response(task, events)
+
+
+def _build_yolox_training_task_incremental_event_response(
+    task: object,
+    events: tuple[object, ...],
+) -> YoloXTrainingTaskDetailResponse:
+    """构造 YOLOX 训练任务操作后的新增事件响应。
+
+    events 只应包含当前操作新增的事件，不返回历史事件列表。
+    """
+
+    return _build_yolox_training_task_detail_response(task, events)
 
 
 def _build_yolox_training_task_event_response(event: object) -> YoloXTrainingTaskEventResponse:

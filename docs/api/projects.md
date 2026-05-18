@@ -13,6 +13,7 @@
 - GET /api/v1/projects
 - GET /api/v1/projects/{project_id}
 - GET /api/v1/projects/{project_id}/summary
+- GET /api/v1/projects/{project_id}/files
 - GET /api/v1/projects/{project_id}/files/metadata
 - GET /api/v1/projects/{project_id}/files/content
 
@@ -34,8 +35,8 @@
 
 - GET /api/v1/system/bootstrap：无；未登录也可调用
 - POST /api/v1/projects/bootstrap：当前主体需要至少具备 `datasets:write` 或 `workflows:write`
-- GET /api/v1/projects、GET /api/v1/projects/{project_id}、GET /api/v1/projects/{project_id}/summary`：需要 `workflows:read` 和 `models:read`
-- GET /api/v1/projects/{project_id}/files/metadata`、GET /api/v1/projects/{project_id}/files/content`：需要 `workflows:read` 和 `models:read`
+- GET /api/v1/projects、GET /api/v1/projects/{project_id}、GET /api/v1/projects/{project_id}/summary：需要 `workflows:read` 和 `models:read`
+- GET /api/v1/projects/{project_id}/files、GET /api/v1/projects/{project_id}/files/metadata、GET /api/v1/projects/{project_id}/files/content：需要 `workflows:read` 和 `models:read`
 
 当 Bearer token 自带 `project_ids` 可见性裁剪时，Project 相关接口还会额外校验 `project_id` 是否在可访问范围内。
 
@@ -89,7 +90,6 @@
 ### capabilities 重点字段
 
 - `project_bootstrap_enabled`
-- `dataset_export.supported_formats`
 - `dataset_export.implemented_formats`
 - `dataset_export.default_format`
 - `project_summary_topics`
@@ -189,6 +189,35 @@
 - `deployments.deployment_instance_total`
 - `deployments.deployment_status_counts`
 
+## GET /api/v1/projects/{project_id}/files
+
+- 当前支持查询参数：
+  - `object_prefix`
+  - `storage_prefix`，兼容字段，等价于 `object_prefix`
+  - `offset`
+  - `limit`
+- 用于列出当前 Project 公开命名空间中的文件，并直接返回可复用的 `file_id`。
+- 当省略 `object_prefix` 时，会扫描当前 Project 下全部公开命名空间。
+
+### 当前返回字段
+
+- `project_id`
+- `file_id`
+- `object_key`
+- `file_name`
+- `media_type`
+- `size_bytes`
+- `last_modified_at`
+- `content_url`
+- `download_url`
+
+### 当前公开命名空间
+
+- `projects/{project_id}/inputs/**`
+- `projects/{project_id}/results/**`
+- `projects/{project_id}/datasets/*/versions/**`
+- `projects/{project_id}/datasets/*/exports/**`
+
 ## GET /api/v1/projects/{project_id}/files/metadata
 
 - 当前支持查询参数：
@@ -199,6 +228,7 @@
 ### 当前返回字段
 
 - `project_id`
+- `file_id`
 - `object_key`
 - `file_name`
 - `media_type`

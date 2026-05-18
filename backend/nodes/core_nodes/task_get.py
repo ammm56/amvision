@@ -28,7 +28,7 @@ def _task_get_handler(request: WorkflowNodeExecutionRequest) -> dict[str, object
     include_events = get_optional_bool_parameter(request, "include_events")
     task_detail = runtime_context.build_task_service().get_task(
         require_str_parameter(request, "task_id"),
-        include_events=True if include_events is None else include_events,
+        include_events=False if include_events is None else include_events,
     )
     return build_response_body_output(build_task_detail_body(task_detail))
 

@@ -147,6 +147,8 @@ class YoloXDeploymentProcessStatusResponse(BaseModel):
 	- last_exit_code：最近一次退出码。
 	- last_error：最近一次监督错误。
 	- instance_count：实例数量。
+
+	该响应用于 start、stop、status 这类操作和状态查询，返回当前状态快照，不返回历史事件；历史事件请通过 /events 查询。
 	"""
 
 	deployment_instance_id: str = Field(description="DeploymentInstance id")
@@ -178,6 +180,8 @@ class YoloXDeploymentRuntimeHealthResponse(YoloXDeploymentProcessStatusResponse)
 	- instances：实例级健康状态列表。
 	- keep_warm：当前 keep-warm 运行状态。
 	- local_buffer_broker：LocalBufferBroker 接入状态、输入计数和最近错误。
+
+	该响应用于 warmup、reset、health 这类操作和查询，返回当前健康快照，不返回历史事件；历史事件请通过 /events 查询。
 	"""
 
 	healthy_instance_count: int = Field(description="健康实例数量")
@@ -312,7 +316,10 @@ def get_yolox_deployment_events(
 	limit: Annotated[int | None, Query(description="最多返回多少条事件", ge=1, le=500)] = None,
 	runtime_mode: Annotated[str | None, Query(description="按 sync 或 async 通道过滤事件")] = None,
 ) -> list[YoloXDeploymentProcessEventResponse]:
-	"""读取一条 DeploymentInstance 的事件列表。"""
+	"""读取一条 DeploymentInstance 的事件列表。
+
+	该接口返回历史事件列表；start、stop、status、warmup、reset、health 这些接口只返回当前状态或健康快照。
+	"""
 
 	service = SqlAlchemyYoloXDeploymentService(
 		session_factory=session_factory,
@@ -698,7 +705,10 @@ def _run_process_status_action(
 	runtime_mode: str,
 	action: str,
 ) -> YoloXDeploymentProcessStatusResponse:
-	"""执行指定通道的 deployment 进程状态动作。"""
+	"""执行指定通道的 deployment 进程状态动作。
+
+	返回的是当前状态快照，不包含历史事件列表。
+	"""
 
 	service = SqlAlchemyYoloXDeploymentService(
 		session_factory=session_factory,
@@ -726,7 +736,10 @@ def _run_process_health_action(
 	runtime_mode: str,
 	action: str,
 ) -> YoloXDeploymentRuntimeHealthResponse:
-	"""执行指定通道的 deployment 进程健康动作。"""
+	"""执行指定通道的 deployment 进程健康动作。
+
+	返回的是当前健康快照，不包含历史事件列表。
+	"""
 
 	service = SqlAlchemyYoloXDeploymentService(
 		session_factory=session_factory,

@@ -7,6 +7,7 @@ from pathlib import PurePosixPath
 from uuid import uuid4
 
 from backend.service.application.errors import InvalidRequestError, ResourceNotFoundError
+from backend.service.application.project_public_files import resolve_public_project_file_reference
 from backend.service.application.runtime.yolox_predictor import (
     PyTorchYoloXPredictor,
     YoloXPredictionRequest,
@@ -61,7 +62,7 @@ class YoloXValidationSessionPredictRequest:
 
     字段：
     - input_uri：输入图片 URI 或本地 object key。
-    - input_file_id：保留字段；当前最小实现暂不支持。
+    - input_file_id：Project 公开文件 id；与 input_uri 二选一。
     - score_threshold：本次预测覆盖的阈值。
     - save_result_image：本次预测是否输出预览图。
     - extra_options：附加运行时选项。
@@ -256,14 +257,28 @@ class LocalYoloXValidationSessionService:
         """对指定 validation session 执行一次单图预测。"""
 
         session = self.get_session(session_id)
-        if request.input_file_id is not None:
-            raise InvalidRequestError(
-                "当前 validation session 暂不支持 input_file_id，请改用 input_uri",
-                details={"session_id": session_id, "input_file_id": request.input_file_id},
-            )
         input_uri = _normalize_optional_str(request.input_uri)
+        input_file_id = _normalize_optional_str(request.input_file_id)
+        if input_uri is not None and input_file_id is not None:
+            raise InvalidRequestError(
+                "input_uri 和 input_file_id 只能提供一个",
+                details={
+                    "session_id": session_id,
+                    "input_uri": input_uri,
+                    "input_file_id": input_file_id,
+                },
+            )
+        resolved_input_file_id = input_file_id
+        if input_file_id is not None:
+            reference = resolve_public_project_file_reference(
+                dataset_storage=self.dataset_storage,
+                file_id=input_file_id,
+                expected_project_id=session.project_id,
+                field_name="input_file_id",
+            )
+            input_uri = reference.object_key
         if input_uri is None:
-            raise InvalidRequestError("predict 请求必须提供 input_uri")
+            raise InvalidRequestError("predict 请求必须提供 input_uri 或 input_file_id")
 
         score_threshold = _resolve_probability(
             value=request.score_threshold,
@@ -297,7 +312,7 @@ class LocalYoloXValidationSessionService:
             "session_id": session.session_id,
             "created_at": created_at,
             "input_uri": input_uri,
-            "input_file_id": None,
+            "input_file_id": resolved_input_file_id,
             "score_threshold": score_threshold,
             "save_result_image": save_result_image,
             "latency_ms": execution.latency_ms,
@@ -314,7 +329,7 @@ class LocalYoloXValidationSessionService:
             prediction_id=prediction_id,
             created_at=created_at,
             input_uri=input_uri,
-            input_file_id=None,
+            input_file_id=resolved_input_file_id,
             detection_count=len(execution.detections),
             preview_image_uri=preview_image_uri,
             raw_result_uri=raw_result_uri,
@@ -333,7 +348,7 @@ class LocalYoloXValidationSessionService:
             session_id=session.session_id,
             created_at=created_at,
             input_uri=input_uri,
-            input_file_id=None,
+            input_file_id=resolved_input_file_id,
             score_threshold=score_threshold,
             save_result_image=save_result_image,
             detections=execution.detections,
