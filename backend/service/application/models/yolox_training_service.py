@@ -9,7 +9,12 @@ from urllib.parse import urlparse
 
 from backend.queue import QueueBackend
 from backend.contracts.datasets.exports.coco_detection_export import COCO_DETECTION_DATASET_FORMAT
-from backend.service.application.errors import InvalidRequestError, ResourceNotFoundError, ServiceConfigurationError
+from backend.service.application.errors import (
+    InvalidRequestError,
+    OperationCancelledError,
+    ResourceNotFoundError,
+    ServiceConfigurationError,
+)
 from backend.service.application.models.yolox_detection_training import (
     run_yolox_detection_training,
     YoloXTrainingBatchProgress,
@@ -17,6 +22,7 @@ from backend.service.application.models.yolox_detection_training import (
     YoloXTrainingEpochProgress,
     YoloXTrainingPausedError,
     YoloXTrainingSavePoint,
+    YoloXTrainingTerminatedError,
     YOLOX_MINIMAL_DEFAULT_EVALUATION_INTERVAL,
     YOLOX_SUPPORTED_MODEL_SCALES,
     YoloXDetectionTrainingExecutionRequest,
@@ -383,6 +389,124 @@ class SqlAlchemyYoloXTrainingTaskService:
         )
         return self.task_service.get_task(task_id, include_events=False)
 
+    def request_training_terminate(
+        self,
+        task_id: str,
+        *,
+        requested_by: str | None = None,
+    ) -> TaskDetail:
+        """为一个 queued、running 或 paused 的训练任务请求终止。
+
+        参数：
+        - task_id：训练任务 id。
+        - requested_by：发起终止请求的主体 id。
+
+        返回：
+        - TaskDetail：更新后的轻量任务详情；events 默认返回空列表，不携带历史事件。
+        """
+
+        task_record = self._require_training_task(task_id)
+        if task_record.state == "cancelled":
+            return self.task_service.get_task(task_id, include_events=False)
+        if task_record.state in {"succeeded", "failed"}:
+            raise InvalidRequestError(
+                "当前训练任务已经结束，不能终止",
+                details={"task_id": task_id, "state": task_record.state},
+            )
+
+        control = self._read_training_control(task_record)
+        requested_at = self._now_iso()
+        if task_record.state == "running":
+            if self._read_control_flag(control, "terminate_requested"):
+                return self.task_service.get_task(task_id, include_events=False)
+            updated_control = self._build_requested_training_terminate_control(
+                control=control,
+                requested_by=requested_by,
+                requested_at=requested_at,
+            )
+            self.task_service.append_task_event(
+                AppendTaskEventRequest(
+                    task_id=task_id,
+                    event_type="status",
+                    message="yolox training terminate requested",
+                    payload={
+                        "metadata": {
+                            YOLOX_TRAINING_CONTROL_METADATA_KEY: updated_control,
+                        },
+                    },
+                )
+            )
+            return self.task_service.get_task(task_id, include_events=False)
+
+        cancelled_control = self._clear_training_control_requests(control)
+        cancelled_progress = dict(task_record.progress)
+        cancelled_progress["stage"] = "cancelled"
+        cancelled_metadata = {
+            YOLOX_TRAINING_CONTROL_METADATA_KEY: cancelled_control,
+        }
+        if requested_by:
+            cancelled_metadata["terminated_by"] = requested_by
+        self.task_service.append_task_event(
+            AppendTaskEventRequest(
+                task_id=task_id,
+                event_type="status",
+                message="yolox training terminated",
+                payload={
+                    "state": "cancelled",
+                    "finished_at": requested_at,
+                    "progress": cancelled_progress,
+                    "metadata": cancelled_metadata,
+                    "result": dict(task_record.result),
+                },
+            )
+        )
+        return self.task_service.get_task(task_id, include_events=False)
+
+    def delete_training_task(self, task_id: str) -> None:
+        """删除一个已经停止且可安全删除的训练任务记录。
+
+        参数：
+        - task_id：训练任务 id。
+        """
+
+        queue_backend = self.queue_backend
+        dataset_storage = self.dataset_storage
+        task_record = self._require_training_task(task_id)
+        if task_record.state in {"queued", "running"}:
+            raise InvalidRequestError(
+                "当前训练任务仍在排队或运行中，不能删除",
+                details={"task_id": task_id, "state": task_record.state},
+            )
+
+        queue_task_id = self._read_optional_str(dict(task_record.metadata), "queue_task_id")
+        if queue_backend is not None and queue_task_id is not None:
+            queue_task = queue_backend.get_task(
+                queue_name=YOLOX_TRAINING_QUEUE_NAME,
+                task_id=queue_task_id,
+            )
+            if queue_task is not None and queue_task.status in {"queued", "leased"}:
+                raise InvalidRequestError(
+                    "当前训练任务仍有未消费的队列消息，暂时不能删除",
+                    details={
+                        "task_id": task_id,
+                        "queue_task_id": queue_task_id,
+                        "queue_status": queue_task.status,
+                    },
+                )
+
+        output_object_prefix = self._read_optional_str(
+            dict(task_record.result),
+            "output_object_prefix",
+        ) or self._read_optional_str(dict(task_record.metadata), "output_object_prefix")
+        if (
+            dataset_storage is not None
+            and output_object_prefix is not None
+            and self._can_delete_training_output_tree(task_record)
+        ):
+            dataset_storage.delete_tree(output_object_prefix)
+
+        self.task_service.delete_task(task_id)
+
     def resume_training_task(
         self,
         task_id: str,
@@ -623,7 +747,12 @@ class SqlAlchemyYoloXTrainingTaskService:
                 "当前训练任务处于 paused 状态，需先调用继续训练接口",
                 details={"task_id": task_id},
             )
-        if task_record.state in {"failed", "cancelled"}:
+        if task_record.state == "cancelled":
+            raise OperationCancelledError(
+                "当前训练任务已经终止",
+                details={"task_id": task_id, "state": task_record.state},
+            )
+        if task_record.state == "failed":
             raise InvalidRequestError(
                 "当前训练任务已经结束，不能重复执行",
                 details={"task_id": task_id, "state": task_record.state},
@@ -743,6 +872,52 @@ class SqlAlchemyYoloXTrainingTaskService:
                 training_result.summary["latest_checkpoint_model_version_id"] = (
                     latest_checkpoint_model_version_id
                 )
+        except YoloXTrainingTerminatedError:
+            cancelled_task = self._require_training_task(task_id)
+            cancelled_control = self._clear_training_control_requests(
+                self._read_training_control(cancelled_task)
+            )
+            cancelled_progress = dict(cancelled_task.progress)
+            cancelled_progress["stage"] = "cancelled"
+            cancelled_at = self._now_iso()
+            cancelled_result = self._build_cancelled_training_result(
+                task_record=cancelled_task,
+                dataset_export=dataset_export,
+                output_object_prefix=output_object_prefix,
+                checkpoint_object_key=checkpoint_object_key,
+                latest_checkpoint_object_key=latest_checkpoint_object_key,
+                labels_object_key=labels_object_key,
+                metrics_object_key=metrics_object_key,
+                validation_metrics_object_key=validation_metrics_object_key,
+                summary_object_key=summary_object_key,
+                finished_at=cancelled_at,
+                status_message="terminated",
+            )
+            terminated_by = self._read_optional_str(
+                self._read_training_control(cancelled_task),
+                "terminate_requested_by",
+            )
+            metadata_payload = {
+                YOLOX_TRAINING_CONTROL_METADATA_KEY: cancelled_control,
+            }
+            if terminated_by is not None:
+                metadata_payload["terminated_by"] = terminated_by
+            self.task_service.append_task_event(
+                AppendTaskEventRequest(
+                    task_id=task_id,
+                    event_type="status",
+                    message="yolox training terminated",
+                    payload={
+                        "state": "cancelled",
+                        "finished_at": cancelled_at,
+                        "attempt_no": attempt_no,
+                        "progress": cancelled_progress,
+                        "metadata": metadata_payload,
+                        "result": self._serialize_task_result(cancelled_result),
+                    },
+                )
+            )
+            return cancelled_result
         except Exception as error:
             self.task_service.append_task_event(
                 AppendTaskEventRequest(
@@ -1271,6 +1446,7 @@ class SqlAlchemyYoloXTrainingTaskService:
                     or self._read_control_flag(control, "pause_requested")
                 ),
                 pause_training=self._read_control_flag(control, "pause_requested"),
+                terminate_training=self._read_control_flag(control, "terminate_requested"),
             )
 
         def on_savepoint_created(savepoint: YoloXTrainingSavePoint) -> None:
@@ -1555,6 +1731,99 @@ class SqlAlchemyYoloXTrainingTaskService:
             summary=summary,
         )
 
+    def _build_cancelled_training_result(
+        self,
+        *,
+        task_record: TaskRecord,
+        dataset_export: DatasetExport,
+        output_object_prefix: str,
+        checkpoint_object_key: str,
+        latest_checkpoint_object_key: str,
+        labels_object_key: str,
+        metrics_object_key: str,
+        validation_metrics_object_key: str,
+        summary_object_key: str,
+        finished_at: str,
+        status_message: str,
+    ) -> YoloXTrainingTaskResult:
+        """根据当前任务快照构建一个 cancelled 训练结果。"""
+
+        progress = dict(task_record.progress)
+        result = dict(task_record.result)
+        summary_value = result.get("summary")
+        summary = dict(summary_value) if isinstance(summary_value, dict) else {}
+        best_metric_name = self._read_optional_str(progress, "best_metric_name") or self._read_optional_str(
+            result,
+            "best_metric_name",
+        )
+        raw_best_metric_value = progress.get("best_metric_value", result.get("best_metric_value"))
+        best_metric_value = (
+            float(raw_best_metric_value)
+            if isinstance(raw_best_metric_value, int | float)
+            else None
+        )
+        updated_summary = {
+            **summary,
+            "task_id": task_record.task_id,
+            "status": "cancelled",
+            "status_message": status_message,
+            "finished_at": finished_at,
+            "dataset_export_id": dataset_export.dataset_export_id,
+            "dataset_export_manifest_key": dataset_export.manifest_object_key,
+            "dataset_version_id": dataset_export.dataset_version_id,
+            "format_id": dataset_export.format_id,
+            "output_object_prefix": output_object_prefix,
+            "checkpoint_object_key": checkpoint_object_key,
+            "latest_checkpoint_object_key": latest_checkpoint_object_key,
+            "best_metric_name": best_metric_name,
+            "best_metric_value": best_metric_value,
+            "output_files": {
+                "output_object_prefix": output_object_prefix,
+                "checkpoint_object_key": checkpoint_object_key,
+                "latest_checkpoint_object_key": latest_checkpoint_object_key,
+                "labels_object_key": labels_object_key,
+                "metrics_object_key": metrics_object_key,
+                "validation_metrics_object_key": validation_metrics_object_key,
+                "summary_object_key": summary_object_key,
+            },
+        }
+        if isinstance(progress.get("epoch"), int):
+            updated_summary["stopped_epoch"] = progress["epoch"]
+        return YoloXTrainingTaskResult(
+            task_id=task_record.task_id,
+            status="cancelled",
+            dataset_export_id=dataset_export.dataset_export_id,
+            dataset_export_manifest_key=dataset_export.manifest_object_key or "",
+            dataset_version_id=dataset_export.dataset_version_id,
+            format_id=dataset_export.format_id,
+            output_object_prefix=output_object_prefix,
+            checkpoint_object_key=checkpoint_object_key,
+            latest_checkpoint_object_key=latest_checkpoint_object_key,
+            labels_object_key=labels_object_key,
+            metrics_object_key=metrics_object_key,
+            validation_metrics_object_key=validation_metrics_object_key,
+            summary_object_key=summary_object_key,
+            best_metric_name=best_metric_name,
+            best_metric_value=best_metric_value,
+            summary=updated_summary,
+        )
+
+    def _can_delete_training_output_tree(self, task_record: TaskRecord) -> bool:
+        """判断当前训练输出目录是否可以随任务一起删除。"""
+
+        result = dict(task_record.result)
+        summary_value = result.get("summary")
+        summary = dict(summary_value) if isinstance(summary_value, dict) else {}
+        if self._read_optional_str(result, "model_version_id") is not None:
+            return False
+        if self._read_optional_str(summary, "model_version_id") is not None:
+            return False
+        if self._resolve_manual_latest_model_version_id(task_record) is not None:
+            return False
+        if self._read_optional_str(summary, "latest_checkpoint_model_version_id") is not None:
+            return False
+        return True
+
     def _resolve_requested_evaluation_interval(self, request: YoloXTrainingTaskRequest) -> int:
         """解析当前任务请求的真实验证评估周期。"""
 
@@ -1629,7 +1898,25 @@ class SqlAlchemyYoloXTrainingTaskService:
         updated_control["pause_requested"] = pause_requested
         updated_control["pause_requested_at"] = requested_at if pause_requested else None
         updated_control["pause_requested_by"] = requested_by if pause_requested else None
+        updated_control["terminate_requested"] = False
+        updated_control["terminate_requested_at"] = None
+        updated_control["terminate_requested_by"] = None
         updated_control["save_reason"] = save_reason if save_requested else None
+        return updated_control
+
+    def _build_requested_training_terminate_control(
+        self,
+        *,
+        control: dict[str, object],
+        requested_by: str | None,
+        requested_at: str,
+    ) -> dict[str, object]:
+        """基于当前控制状态构建新的 terminate 请求快照。"""
+
+        updated_control = self._clear_training_control_requests(control)
+        updated_control["terminate_requested"] = True
+        updated_control["terminate_requested_at"] = requested_at
+        updated_control["terminate_requested_by"] = requested_by
         return updated_control
 
     def _clear_training_control_requests(self, control: dict[str, object]) -> dict[str, object]:
@@ -1646,6 +1933,9 @@ class SqlAlchemyYoloXTrainingTaskService:
         updated_control["resume_pending"] = False
         updated_control["resume_requested_at"] = None
         updated_control["resume_requested_by"] = None
+        updated_control["terminate_requested"] = False
+        updated_control["terminate_requested_at"] = None
+        updated_control["terminate_requested_by"] = None
         return updated_control
 
     def _mark_training_control_saved(

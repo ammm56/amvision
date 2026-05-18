@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from backend.queue import QueueBackend, QueueMessage
 from backend.service.application.backends import TrainingBackend, TrainingBackendRunRequest
-from backend.service.application.errors import InvalidRequestError, ServiceError
+from backend.service.application.errors import InvalidRequestError, OperationCancelledError, ServiceError
 from backend.service.application.models.yolox_training_service import YOLOX_TRAINING_QUEUE_NAME
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
@@ -66,6 +66,17 @@ class YoloXTrainingQueueWorker:
                     },
                 )
             )
+        except OperationCancelledError as error:
+            self.queue_backend.complete(
+                queue_task,
+                metadata={
+                    "task_id": queue_task.payload.get("task_id"),
+                    "dataset_export_id": queue_task.metadata.get("dataset_export_id"),
+                    "status": "cancelled",
+                    "cancel_message": error.message,
+                },
+            )
+            return True
         except ServiceError as error:
             self.queue_backend.fail(
                 queue_task,

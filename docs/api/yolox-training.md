@@ -306,6 +306,38 @@ reference 风格增强示例：按需显式开启 Mosaic、MixUp 和动态尺寸
   - 接口层失败：例如任务不处于 `paused`、latest checkpoint 缺失、latest checkpoint 文件不存在。这类错误会直接返回 400。
   - worker 执行层失败：例如 latest checkpoint 损坏、resume checkpoint 内容与当前任务配置不一致。这类错误会先返回 200 并进入 `queued`，随后任务会在 worker 执行阶段进入 `failed`，并在 detail 的 `error_message` 中给出失败原因。
 
+### POST /api/v1/models/yolox/training-tasks/{task_id}/terminate
+
+请求终止一个 `queued`、`running` 或 `paused` 状态的训练任务。
+
+#### 当前用途
+
+- `queued` 或 `paused` 状态下，接口会直接把任务切到 `cancelled`。
+- `running` 状态下，接口先登记 terminate 请求，训练会在下一个 epoch 边界结束。
+- running terminate 不会额外保存 checkpoint；当前目标是尽快结束训练并释放 worker 内的训练资源。
+
+#### 当前返回语义
+
+- 当前接口返回训练任务详情，而不是单独动作回执对象。
+- 对 running 任务调用成功后，任务通常仍暂时处于 `running`，并通过 `control_status.status=terminate_requested` 与 `control_status.pending_action=terminate` 表示请求已经登记。
+- 等待 worker 处理到下一轮边界后，任务会切到 `cancelled`，并追加 `yolox training terminated` 事件。
+
+### DELETE /api/v1/models/yolox/training-tasks/{task_id}
+
+删除一个已经停止的训练任务。
+
+#### 当前用途
+
+- 用于清理已经 `succeeded`、`failed`、`cancelled` 或 `paused` 后不再保留的训练任务记录。
+- 当前会同时删除任务记录、关联事件和尝试记录。
+- 当训练输出目录没有被已登记 ModelVersion 继续引用时，服务会一起清理该目录；如果已有引用，则只删除任务记录，不删除仍被版本复用的文件。
+
+#### 当前约束
+
+- 当前不会删除仍处于队列待执行的训练任务。
+- 当前不会删除仍处于 `running` 的训练任务；应先调用 `terminate` 或等待训练自然结束。
+- 如果任务输出已经被 best checkpoint 或 latest checkpoint 的固定 ModelVersion 复用，训练目录不会被一起清理。
+
 ### POST /api/v1/models/yolox/training-tasks/{task_id}/register-model-version
 
 把当前训练任务已经落盘的 latest checkpoint 手动重登记为可复用的 ModelVersion。
@@ -341,6 +373,8 @@ reference 风格增强示例：按需显式开启 Mosaic、MixUp 和动态尺寸
 - `save`：只登记一次保存请求，真正写盘要等到下一个 epoch 边界。
 - `pause`：先登记暂停请求，真正暂停也要等到下一个 epoch 边界，并且会先写 latest checkpoint。
 - `resume`：把 paused 任务重新放回队列；真正恢复执行要等 worker 再次开始处理。
+- `terminate`：queued 或 paused 时会直接取消；running 时先登记终止请求，等到下一个 epoch 边界结束训练。
+- `delete`：只在任务已经停止后可用；是否连训练输出一起清理，取决于当前文件是否仍被 ModelVersion 引用。
 
 ### 前端应读取的关键字段
 
@@ -370,29 +404,36 @@ reference 风格增强示例：按需显式开启 Mosaic、MixUp 和动态尺寸
 
 #### `available_actions` 当前取值
 
+- `['terminate']`：任务处于 `queued`，或者 `running` 且已经登记了 `pause_requested`。
+- `['save', 'pause', 'terminate']`：任务处于正常 `running`。
+- `['pause', 'terminate']`：任务已经登记过一次 save，请求仍未在 epoch 边界生效，此时仍允许升级为 pause 或直接 terminate。
+- `['resume', 'terminate', 'delete']`：任务处于 `paused` 且已解析到可用的 resume checkpoint object key。
+- `['terminate', 'delete']`：任务处于 `paused`，但当前缺少可恢复的 latest checkpoint。
+- `['delete']`：任务已经 `succeeded`、`failed` 或 `cancelled`。
 - `[]`：当前不建议展示训练控制按钮。
-- `['save', 'pause']`：任务处于正常 `running`。
-- `['pause']`：任务已经登记过一次 save，请求仍未在 epoch 边界生效，此时仍允许升级为 pause。
-- `['resume']`：任务处于 `paused` 且已解析到可用的 resume checkpoint object key。
 
 #### `control_status` 当前取值
 
 - `status=idle`：当前没有待生效的控制请求。
 - `status=save_requested`：已经登记 save，请等待下一个 epoch 边界。
 - `status=pause_requested`：已经登记 pause，请等待下一个 epoch 边界。
+- `status=terminate_requested`：已经登记 terminate，请等待下一个 epoch 边界结束训练。
 - `status=resume_pending`：已经登记 resume，请等待 worker 重新开始执行。
 
 ### 按钮启用规则
 
-| 场景 | Save | Pause | Resume | 说明 |
-| --- | --- | --- | --- | --- |
-| `queued` | 禁用 | 禁用 | 禁用 | 任务尚未进入训练执行。 |
-| `running` 且无控制请求 | 启用 | 启用 | 禁用 | 正常训练中。 |
-| `running` 且 `control_status.status=save_requested` | 禁用 | 启用 | 禁用 | 已经登记过一次保存请求，但仍允许升级为 pause。 |
-| `running` 且 `control_status.status=pause_requested` | 禁用 | 禁用 | 禁用 | 已经登记过一次暂停请求，等待 epoch 边界处理。 |
-| `paused` | 禁用 | 禁用 | 启用 | latest checkpoint 已经自动落盘并登记固定版本。 |
-| `succeeded` | 禁用 | 禁用 | 禁用 | 训练已完成。 |
-| `failed` | 禁用 | 禁用 | 禁用 | 当前没有失败后直接 resume 的正式接口语义。 |
+| 场景 | Save | Pause | Resume | Terminate | Delete | 说明 |
+| --- | --- | --- | --- | --- | --- | --- |
+| `queued` | 禁用 | 禁用 | 禁用 | 启用 | 禁用 | 任务尚未进入训练执行，但允许直接取消。 |
+| `running` 且无控制请求 | 启用 | 启用 | 禁用 | 启用 | 禁用 | 正常训练中。 |
+| `running` 且 `control_status.status=save_requested` | 禁用 | 启用 | 禁用 | 启用 | 禁用 | 已登记 save，但仍允许升级为 pause 或 terminate。 |
+| `running` 且 `control_status.status=pause_requested` | 禁用 | 禁用 | 禁用 | 启用 | 禁用 | 已登记 pause，等待 epoch 边界处理；仍允许直接 terminate。 |
+| `running` 且 `control_status.status=terminate_requested` | 禁用 | 禁用 | 禁用 | 禁用 | 禁用 | 已登记 terminate，等待 epoch 边界结束训练。 |
+| `paused` 且可 resume | 禁用 | 禁用 | 启用 | 启用 | 启用 | latest checkpoint 已经落盘，可继续训练或直接清理。 |
+| `paused` 且不可 resume | 禁用 | 禁用 | 禁用 | 启用 | 启用 | 缺少可恢复 checkpoint，只能 terminate 或 delete。 |
+| `succeeded` | 禁用 | 禁用 | 禁用 | 禁用 | 启用 | 训练已完成。 |
+| `failed` | 禁用 | 禁用 | 禁用 | 禁用 | 启用 | 当前没有失败后直接 resume 的正式接口语义。 |
+| `cancelled` | 禁用 | 禁用 | 禁用 | 禁用 | 启用 | 训练已取消，可继续清理记录。 |
 
 ### 页面轮询与事件订阅建议
 

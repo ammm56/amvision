@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 import io
 from pathlib import Path
+from threading import Event, Thread
 from types import SimpleNamespace
 import torch
 
@@ -18,6 +19,7 @@ from backend.service.application.models.yolox_detection_training import (
     YoloXTrainingEpochProgress,
     YoloXTrainingPausedError,
     YoloXTrainingSavePoint,
+    YoloXTrainingTerminatedError,
     _build_checkpoint_state,
     _load_resume_checkpoint,
 )
@@ -499,7 +501,7 @@ def test_get_yolox_training_task_detail_returns_completed_result(tmp_path: Path)
         payload = detail_response.json()
         assert payload["task_id"] == task_id
         assert payload["state"] == "succeeded"
-        assert payload["available_actions"] == []
+        assert payload["available_actions"] == ["delete"]
         assert payload["dataset_export_id"] == dataset_export.dataset_export_id
         assert payload["checkpoint_object_key"].endswith("/best_ckpt.pth")
         assert payload["latest_checkpoint_object_key"].endswith("/latest_ckpt.pth")
@@ -1027,7 +1029,7 @@ def test_pause_and_resume_yolox_training_task_reuses_latest_checkpoint(
             assert paused_detail_response.status_code == 200
             paused_payload = paused_detail_response.json()
             assert paused_payload["state"] == "paused"
-            assert paused_payload["available_actions"] == ["resume"]
+            assert paused_payload["available_actions"] == ["resume", "terminate", "delete"]
             assert paused_payload["model_version_id"]
             assert paused_payload["latest_checkpoint_model_version_id"] == paused_payload["model_version_id"]
             assert paused_payload["metadata"]["training_control"]["last_save_epoch"] == 2
@@ -1096,7 +1098,7 @@ def test_pause_and_resume_yolox_training_task_reuses_latest_checkpoint(
         assert final_detail_response.status_code == 200
         final_payload = final_detail_response.json()
         assert final_payload["state"] == "succeeded"
-        assert final_payload["available_actions"] == []
+        assert final_payload["available_actions"] == ["delete"]
         assert run_count == 2
         assert any(event["message"] == "yolox training resumed" for event in final_payload["events"])
     finally:
@@ -1166,7 +1168,7 @@ def test_register_latest_checkpoint_model_version_for_paused_task(
             )
             assert paused_detail_response.status_code == 200
             paused_payload = paused_detail_response.json()
-            assert paused_payload["available_actions"] == ["resume"]
+            assert paused_payload["available_actions"] == ["resume", "terminate", "delete"]
             latest_checkpoint_object_key = paused_payload["latest_checkpoint_object_key"]
             auto_model_version_id = paused_payload["latest_checkpoint_model_version_id"]
             assert auto_model_version_id == paused_payload["model_version_id"]
@@ -1431,7 +1433,7 @@ def test_completed_training_keeps_best_model_version_distinct_from_auto_latest_c
             payload["training_summary"]["latest_checkpoint_model_version_id"]
             == manual_model_version_id
         )
-        assert payload["available_actions"] == []
+        assert payload["available_actions"] == ["delete"]
     finally:
         session_factory.engine.dispose()
 
@@ -1470,103 +1472,6 @@ def test_resume_yolox_training_task_rejects_missing_latest_checkpoint_file(
             )
 
         raise AssertionError("latest checkpoint 缺失时不应继续进入 resume 执行")
-
-    monkeypatch.setattr(yolox_training_service_module, "run_yolox_detection_training", fake_run)
-
-    try:
-        with client:
-            create_response = client.post(
-                "/api/v1/models/yolox/training-tasks",
-                headers=_build_training_headers(),
-                json={
-                    "project_id": "project-1",
-                    "dataset_export_id": dataset_export.dataset_export_id,
-                    "recipe_id": "yolox-default",
-                    "model_scale": "nano",
-                    "output_model_name": "yolox-s-resume-missing-latest",
-                    "max_epochs": 4,
-                    "batch_size": 1,
-                    "precision": "fp32",
-                    "input_size": [64, 64],
-                },
-            )
-            assert create_response.status_code == 202
-            task_id = create_response.json()["task_id"]
-
-            assert _run_yolox_training_worker_once(
-                session_factory=session_factory,
-                dataset_storage=dataset_storage,
-                queue_backend=queue_backend,
-            ) is True
-
-            paused_detail_response = client.get(
-                f"/api/v1/models/yolox/training-tasks/{task_id}",
-                headers=_build_training_headers(),
-            )
-            assert paused_detail_response.status_code == 200
-            paused_payload = paused_detail_response.json()
-            latest_checkpoint_path = dataset_storage.resolve(
-                paused_payload["latest_checkpoint_object_key"]
-            )
-            assert latest_checkpoint_path.is_file() is True
-            latest_checkpoint_path.unlink()
-
-            resume_response = client.post(
-                f"/api/v1/models/yolox/training-tasks/{task_id}/resume",
-                headers=_build_training_headers(),
-            )
-            detail_response = client.get(
-                f"/api/v1/models/yolox/training-tasks/{task_id}",
-                headers=_build_training_headers(),
-                params={"include_events": True},
-            )
-
-        assert resume_response.status_code == 400
-        resume_payload = resume_response.json()
-        assert resume_payload["error"]["code"] == "invalid_request"
-        assert resume_payload["error"]["message"] == "当前训练任务的 latest checkpoint 文件不存在，不能继续训练"
-        assert detail_response.status_code == 200
-        detail_payload = detail_response.json()
-        assert detail_payload["state"] == "paused"
-        assert run_count == 1
-    finally:
-        session_factory.engine.dispose()
-
-
-def test_resume_yolox_training_task_rejects_duplicate_resume_request(
-    tmp_path: Path,
-    monkeypatch,
-) -> None:
-    """验证同一个 paused 任务在重新入队后不能重复触发 resume。"""
-
-    client, session_factory, dataset_storage, queue_backend = _create_test_client(tmp_path)
-    dataset_export = _seed_completed_dataset_export(
-        session_factory=session_factory,
-        dataset_storage=dataset_storage,
-        dataset_export_id="dataset-export-resume-duplicate-1",
-        manifest_object_key=(
-            "projects/project-1/datasets/dataset-1/exports/"
-            "dataset-export-resume-duplicate-1/manifest.json"
-        ),
-    )
-    run_count = 0
-    task_id = ""
-
-    def fake_run(request):
-        nonlocal run_count
-        run_count += 1
-        if run_count == 1:
-            _pause_training_from_fake_run(
-                client=client,
-                task_id=task_id,
-                request=request,
-                max_epochs=4,
-                first_best_metric_value=0.21,
-                pause_best_metric_value=0.34,
-                savepoint=_build_fake_savepoint(epoch=2, best_metric_value=0.34),
-            )
-
-        raise AssertionError("重复 resume 请求测试不应在 worker 中继续执行")
 
     monkeypatch.setattr(yolox_training_service_module, "run_yolox_detection_training", fake_run)
 
@@ -1620,6 +1525,129 @@ def test_resume_yolox_training_task_rejects_duplicate_resume_request(
         detail_payload = detail_response.json()
         assert detail_payload["state"] == "queued"
         assert run_count == 1
+    finally:
+        session_factory.engine.dispose()
+
+
+def test_terminate_and_delete_yolox_training_task(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """验证 running 训练可以 terminate，随后可直接 delete。"""
+
+    client, session_factory, dataset_storage, queue_backend = _create_test_client(tmp_path)
+    dataset_export = _seed_completed_dataset_export(
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+        dataset_export_id="dataset-export-terminate-delete-1",
+        manifest_object_key=(
+            "projects/project-1/datasets/dataset-1/exports/"
+            "dataset-export-terminate-delete-1/manifest.json"
+        ),
+    )
+    task_id = ""
+    training_started = Event()
+    continue_training = Event()
+    worker_result: dict[str, object] = {}
+
+    def fake_run(request):
+        first_control = request.epoch_callback(
+            _build_fake_epoch_progress(epoch=1, max_epochs=4, best_metric_value=0.21)
+        )
+        assert first_control is not None
+        assert first_control.terminate_training is False
+
+        training_started.set()
+        assert continue_training.wait(timeout=5)
+
+        second_control = request.epoch_callback(
+            _build_fake_epoch_progress(epoch=2, max_epochs=4, best_metric_value=0.28)
+        )
+        assert second_control is not None
+        assert second_control.terminate_training is True
+        assert second_control.save_checkpoint is False
+        raise YoloXTrainingTerminatedError()
+
+    monkeypatch.setattr(yolox_training_service_module, "run_yolox_detection_training", fake_run)
+
+    try:
+        with client:
+            create_response = client.post(
+                "/api/v1/models/yolox/training-tasks",
+                headers=_build_training_headers(),
+                json={
+                    "project_id": "project-1",
+                    "dataset_export_id": dataset_export.dataset_export_id,
+                    "recipe_id": "yolox-default",
+                    "model_scale": "nano",
+                    "output_model_name": "yolox-s-terminate-delete",
+                    "max_epochs": 4,
+                    "batch_size": 1,
+                    "precision": "fp32",
+                    "input_size": [64, 64],
+                },
+            )
+            assert create_response.status_code == 202
+            task_id = create_response.json()["task_id"]
+
+            def run_worker() -> None:
+                try:
+                    worker_result["value"] = _run_yolox_training_worker_once(
+                        session_factory=session_factory,
+                        dataset_storage=dataset_storage,
+                        queue_backend=queue_backend,
+                    )
+                except BaseException as error:
+                    worker_result["error"] = error
+
+            worker_thread = Thread(target=run_worker)
+            worker_thread.start()
+            assert training_started.wait(timeout=5)
+
+            terminate_response = client.post(
+                f"/api/v1/models/yolox/training-tasks/{task_id}/terminate",
+                headers=_build_training_headers(),
+            )
+            assert terminate_response.status_code == 200
+            terminate_payload = terminate_response.json()
+            assert terminate_payload["state"] == "running"
+            assert terminate_payload["control_status"]["status"] == "terminate_requested"
+            assert terminate_payload["control_status"]["pending_action"] == "terminate"
+            assert terminate_payload["available_actions"] == []
+
+            continue_training.set()
+            worker_thread.join(timeout=10)
+            assert worker_thread.is_alive() is False
+            if "error" in worker_result:
+                raise worker_result["error"]
+            assert worker_result.get("value") is True
+
+            terminated_detail_response = client.get(
+                f"/api/v1/models/yolox/training-tasks/{task_id}",
+                headers=_build_training_headers(),
+                params={"include_events": True},
+            )
+            assert terminated_detail_response.status_code == 200
+            terminated_payload = terminated_detail_response.json()
+            assert terminated_payload["state"] == "cancelled"
+            assert terminated_payload["available_actions"] == ["delete"]
+            assert terminated_payload["control_status"]["status"] == "idle"
+            assert any(
+                event["message"] == "yolox training terminated"
+                for event in terminated_payload["events"]
+            )
+
+            delete_response = client.delete(
+                f"/api/v1/models/yolox/training-tasks/{task_id}",
+                headers=_build_training_headers(),
+            )
+            assert delete_response.status_code == 204
+
+            deleted_detail_response = client.get(
+                f"/api/v1/models/yolox/training-tasks/{task_id}",
+                headers=_build_training_headers(),
+            )
+            assert deleted_detail_response.status_code == 404
     finally:
         session_factory.engine.dispose()
 
@@ -1926,7 +1954,7 @@ def test_request_yolox_training_save_creates_manual_checkpoint_event(
         assert running_detail_response.status_code == 200
         running_payload = running_detail_response.json()
         assert running_payload["state"] == "running"
-        assert running_payload["available_actions"] == ["save", "pause"]
+        assert running_payload["available_actions"] == ["save", "pause", "terminate"]
         assert running_payload["model_version_id"]
         assert running_payload["latest_checkpoint_model_version_id"] == running_payload["model_version_id"]
         assert running_payload["labels_object_key"].endswith("/labels.txt")

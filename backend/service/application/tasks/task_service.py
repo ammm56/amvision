@@ -300,6 +300,23 @@ class SqlAlchemyTaskService:
             )
         )
 
+    def delete_task(self, task_id: str) -> None:
+        """删除一条任务记录及其关联尝试、事件。
+
+        参数：
+        - task_id：任务 id。
+        """
+
+        with self._open_unit_of_work() as unit_of_work:
+            task_record = unit_of_work.tasks.get_task(task_id)
+            if task_record is None:
+                raise ResourceNotFoundError(
+                    "找不到指定的任务",
+                    details={"task_id": task_id},
+                )
+            unit_of_work.tasks.delete_task(task_id)
+            unit_of_work.commit()
+
     def _validate_create_request(self, request: CreateTaskRequest) -> None:
         """校验创建任务请求。"""
 

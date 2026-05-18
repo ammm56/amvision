@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, Query, Response, status
 from pydantic import BaseModel, ConfigDict, Field
 
 from backend.queue import LocalFileQueueBackend
@@ -35,11 +35,12 @@ from backend.service.infrastructure.object_store.local_dataset_storage import Lo
 
 yolox_training_tasks_router = APIRouter(prefix="/models", tags=["models"])
 
-YoloXTrainingTaskActionName = Literal["save", "pause", "resume"]
+YoloXTrainingTaskActionName = Literal["save", "pause", "resume", "terminate", "delete"]
 YoloXTrainingTaskControlPhase = Literal[
     "idle",
     "save_requested",
     "pause_requested",
+    "terminate_requested",
     "resume_pending",
 ]
 
@@ -608,6 +609,56 @@ def resume_yolox_training_task(
 
 
 @yolox_training_tasks_router.post(
+    "/yolox/training-tasks/{task_id}/terminate",
+    response_model=YoloXTrainingTaskDetailResponse,
+)
+def terminate_yolox_training_task(
+    task_id: str,
+    principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("tasks:write"))],
+    session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
+) -> YoloXTrainingTaskDetailResponse:
+    """请求终止一个 queued、running 或 paused 的 YOLOX 训练任务。"""
+
+    _require_visible_yolox_training_task(
+        principal=principal,
+        task_id=task_id,
+        session_factory=session_factory,
+        include_events=False,
+    )
+    service = SqlAlchemyYoloXTrainingTaskService(session_factory=session_factory)
+    task_detail = service.request_training_terminate(task_id, requested_by=principal.principal_id)
+    return _build_yolox_training_task_query_detail_response(task_detail.task, tuple(task_detail.events))
+
+
+@yolox_training_tasks_router.delete(
+    "/yolox/training-tasks/{task_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def delete_yolox_training_task(
+    task_id: str,
+    principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("tasks:write"))],
+    session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
+    dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
+    queue_backend: Annotated[LocalFileQueueBackend, Depends(get_queue_backend)],
+) -> Response:
+    """删除一个已经停止且可安全删除的 YOLOX 训练任务。"""
+
+    _require_visible_yolox_training_task(
+        principal=principal,
+        task_id=task_id,
+        session_factory=session_factory,
+        include_events=False,
+    )
+    service = SqlAlchemyYoloXTrainingTaskService(
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+        queue_backend=queue_backend,
+    )
+    service.delete_training_task(task_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@yolox_training_tasks_router.post(
     "/yolox/training-tasks/{task_id}/register-model-version",
     response_model=YoloXTrainingTaskDetailResponse,
 )
@@ -855,14 +906,24 @@ def _build_yolox_training_task_available_actions(
     """根据当前任务状态构建建议展示的控制动作列表。"""
 
     control = _read_yolox_training_control(task)
+    if task.state == "queued":
+        return ["terminate"]
     if task.state == "running":
-        if _read_yolox_training_control_flag(control, "pause_requested"):
+        if _read_yolox_training_control_flag(control, "terminate_requested"):
             return []
+        if _read_yolox_training_control_flag(control, "pause_requested"):
+            return ["terminate"]
         if _read_yolox_training_control_flag(control, "save_requested"):
-            return ["pause"]
-        return ["save", "pause"]
-    if task.state == "paused" and _resolve_yolox_training_resume_checkpoint_object_key(task, control):
-        return ["resume"]
+            return ["pause", "terminate"]
+        return ["save", "pause", "terminate"]
+    if task.state == "paused":
+        actions: list[YoloXTrainingTaskActionName] = []
+        if _resolve_yolox_training_resume_checkpoint_object_key(task, control):
+            actions.append("resume")
+        actions.extend(["terminate", "delete"])
+        return actions
+    if task.state in {"succeeded", "failed", "cancelled"}:
+        return ["delete"]
     return []
 
 
@@ -876,7 +937,12 @@ def _build_yolox_training_task_control_status(
     pending_action: YoloXTrainingTaskActionName | None = None
     requested_at: str | None = None
     requested_by: str | None = None
-    if _read_yolox_training_control_flag(control, "pause_requested"):
+    if _read_yolox_training_control_flag(control, "terminate_requested"):
+        status_value = "terminate_requested"
+        pending_action = "terminate"
+        requested_at = _read_optional_str(control, "terminate_requested_at")
+        requested_by = _read_optional_str(control, "terminate_requested_by")
+    elif _read_yolox_training_control_flag(control, "pause_requested"):
         status_value = "pause_requested"
         pending_action = "pause"
         requested_at = _read_optional_str(control, "pause_requested_at")

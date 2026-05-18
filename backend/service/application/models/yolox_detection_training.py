@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import gc
 import io
 import json
 import math
@@ -198,10 +199,12 @@ class YoloXTrainingControlCommand:
     字段：
     - save_checkpoint：是否在当前 epoch 边界生成并交付 savepoint。
     - pause_training：是否在交付 savepoint 后暂停训练。
+    - terminate_training：是否在当前 epoch 边界终止训练。
     """
 
     save_checkpoint: bool = False
     pause_training: bool = False
+    terminate_training: bool = False
 
 
 @dataclass(frozen=True)
@@ -318,6 +321,15 @@ class YoloXTrainingPausedError(Exception):
 
         super().__init__("yolox training paused")
         self.savepoint = savepoint
+
+
+class YoloXTrainingTerminatedError(Exception):
+    """表示训练在 epoch 边界按请求终止。"""
+
+    def __init__(self) -> None:
+        """初始化终止异常。"""
+
+        super().__init__("yolox training terminated")
 
 
 # 训练结果与接口文档会公开这一实现模式标识，用于区分最小闭环训练链路。
@@ -1179,6 +1191,24 @@ def run_yolox_detection_training(
                 )
             )
 
+        if control_command is not None and control_command.terminate_training:
+            checkpoint_model = None
+            model_ema = None
+            base_model = None
+            optimizer = None
+            lr_scheduler = None
+            scaler = None
+            train_loader = None
+            validation_loader = None
+            train_dataset = None
+            train_base_dataset = None
+            validation_dataset = None
+            _release_yolox_training_runtime_resources(
+                imports=imports,
+                runtime=runtime,
+            )
+            raise YoloXTrainingTerminatedError()
+
         if control_command is not None and (
             control_command.save_checkpoint or control_command.pause_training
         ):
@@ -1236,6 +1266,21 @@ def run_yolox_detection_training(
             if request.savepoint_callback is not None:
                 request.savepoint_callback(savepoint)
             if control_command.pause_training:
+                checkpoint_model = None
+                model_ema = None
+                base_model = None
+                optimizer = None
+                lr_scheduler = None
+                scaler = None
+                train_loader = None
+                validation_loader = None
+                train_dataset = None
+                train_base_dataset = None
+                validation_dataset = None
+                _release_yolox_training_runtime_resources(
+                    imports=imports,
+                    runtime=runtime,
+                )
                 raise YoloXTrainingPausedError(savepoint)
 
     if best_checkpoint_state is None or best_metric_value is None:
@@ -1313,7 +1358,7 @@ def run_yolox_detection_training(
         parameter_count=int(parameter_count),
         warm_start_summary=warm_start_summary,
     )
-    return YoloXDetectionTrainingExecutionResult(
+    execution_result = YoloXDetectionTrainingExecutionResult(
         checkpoint_bytes=checkpoint_bytes,
         latest_checkpoint_bytes=latest_checkpoint_bytes,
         metrics_payload=metrics_payload,
@@ -1339,6 +1384,50 @@ def run_yolox_detection_training(
         validation_sample_count=len(validation_dataset) if validation_dataset is not None else 0,
         parameter_count=int(parameter_count),
     )
+    checkpoint_model = None
+    model_ema = None
+    base_model = None
+    optimizer = None
+    lr_scheduler = None
+    scaler = None
+    train_loader = None
+    validation_loader = None
+    train_dataset = None
+    train_base_dataset = None
+    validation_dataset = None
+    _release_yolox_training_runtime_resources(
+        imports=imports,
+        runtime=runtime,
+    )
+    return execution_result
+
+
+def _release_yolox_training_runtime_resources(
+    *,
+    imports: _YoloXTrainingImports,
+    runtime: _ResolvedTrainingRuntime | None,
+) -> None:
+    """释放一次训练执行后遗留的 Python 对象与 CUDA cache。
+
+    参数：
+    - imports：当前训练依赖对象集合。
+    - runtime：本次训练解析出的运行时信息；为空时只执行 Python 侧回收。
+    """
+
+    gc.collect()
+    if runtime is None or not runtime.device.startswith("cuda"):
+        return
+    cuda_module = getattr(imports.torch, "cuda", None)
+    if cuda_module is None or not callable(getattr(cuda_module, "is_available", None)):
+        return
+    if not cuda_module.is_available():
+        return
+    empty_cache = getattr(cuda_module, "empty_cache", None)
+    if callable(empty_cache):
+        empty_cache()
+    ipc_collect = getattr(cuda_module, "ipc_collect", None)
+    if callable(ipc_collect):
+        ipc_collect()
 
 
 def _require_training_imports() -> _YoloXTrainingImports:

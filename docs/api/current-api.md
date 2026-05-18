@@ -121,6 +121,8 @@ WebSocket 资源流的统一消息结构、控制事件和重连规则见 [docs/
 | POST | /api/v1/models/yolox/training-tasks/{task_id}/save | tasks:write | 为 running 的 YOLOX 训练任务登记一次手动保存请求。 |
 | POST | /api/v1/models/yolox/training-tasks/{task_id}/pause | tasks:write | 为 running 的 YOLOX 训练任务请求暂停，并在下一轮边界先保存 latest checkpoint。 |
 | POST | /api/v1/models/yolox/training-tasks/{task_id}/resume | tasks:write | 把 paused 的 YOLOX 训练任务重新入队，并基于 latest checkpoint 恢复训练。 |
+| POST | /api/v1/models/yolox/training-tasks/{task_id}/terminate | tasks:write | 请求终止一个 queued、running 或 paused 的 YOLOX 训练任务。 |
+| DELETE | /api/v1/models/yolox/training-tasks/{task_id} | tasks:write | 删除一个已经停止且允许清理的 YOLOX 训练任务。 |
 | POST | /api/v1/models/yolox/training-tasks/{task_id}/register-model-version | tasks:write + models:write | 调试时手动重登记当前 latest checkpoint 对应的固定 latest ModelVersion，并回写到训练详情。 |
 | GET | /api/v1/models/yolox/training-tasks/{task_id}/validation-metrics | tasks:read | 读取当前训练任务最新的 validation-metrics.json 内容。 |
 | GET | /api/v1/models/yolox/training-tasks/{task_id}/train-metrics | tasks:read | 读取当前训练任务最新的 train-metrics.json 内容。 |
@@ -1329,6 +1331,18 @@ WebSocket 资源流的统一消息结构、控制事件和重连规则见 [docs/
 - 需要 tasks:write
 - 只允许 paused 状态调用
 - 接口会复用同一个 task_id，把任务重新放回队列，并基于 latest checkpoint 恢复 optimizer、epoch 和最佳指标状态
+
+### POST /api/v1/models/yolox/training-tasks/{task_id}/terminate
+
+- 需要 tasks:write
+- 允许 queued、running 和 paused 状态调用
+- queued 或 paused 状态会直接把任务切到 cancelled；running 状态会先登记 `control_status.status=terminate_requested`，在下一个 epoch 边界结束训练
+
+### DELETE /api/v1/models/yolox/training-tasks/{task_id}
+
+- 需要 tasks:write
+- 只允许已经停止的训练任务调用
+- 当前会额外校验任务已经不在队列待执行，并且训练输出目录没有被已登记 ModelVersion 引用；满足条件时才会真正删除任务记录和可安全清理的输出目录
 
 ### POST /api/v1/models/yolox/training-tasks/{task_id}/register-model-version
 
