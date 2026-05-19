@@ -11,6 +11,7 @@ from backend.service.api.deps.auth import AuthenticatedPrincipal, require_scopes
 from backend.service.api.deps.db import get_session_factory
 from backend.service.api.deps.storage import get_dataset_storage
 from backend.service.api.deps.yolox_deployment_process_supervisor import (
+	get_yolox_async_inference_gateway_dispatcher_registry,
 	get_yolox_async_deployment_process_supervisor,
 	get_yolox_sync_deployment_process_supervisor,
 )
@@ -20,6 +21,9 @@ from backend.service.application.deployments.yolox_deployment_service import (
 	YoloXDeploymentInstanceView,
 )
 from backend.service.application.errors import InvalidRequestError, PermissionDeniedError, ResourceNotFoundError
+from backend.service.application.models.yolox_async_inference_gateway import (
+	YoloXAsyncInferenceGatewayDispatcherRegistry,
+)
 from backend.service.application.runtime.deployment_event_source import YoloXDeploymentEventSource
 from backend.service.application.runtime.yolox_deployment_process_supervisor import (
 	YoloXDeploymentProcessHealth,
@@ -498,6 +502,7 @@ def start_yolox_async_runtime(
 	session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
 	dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
 	supervisor: Annotated[YoloXDeploymentProcessSupervisor, Depends(get_yolox_async_deployment_process_supervisor)],
+	gateway_dispatcher_registry: Annotated[YoloXAsyncInferenceGatewayDispatcherRegistry, Depends(get_yolox_async_inference_gateway_dispatcher_registry)],
 ) -> YoloXDeploymentProcessStatusResponse:
 	"""启动指定 deployment 的异步推理进程。"""
 
@@ -507,6 +512,7 @@ def start_yolox_async_runtime(
 		session_factory=session_factory,
 		dataset_storage=dataset_storage,
 		supervisor=supervisor,
+		gateway_dispatcher_registry=gateway_dispatcher_registry,
 		runtime_mode="async",
 		action="start",
 	)
@@ -546,6 +552,7 @@ def stop_yolox_async_runtime(
 	session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
 	dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
 	supervisor: Annotated[YoloXDeploymentProcessSupervisor, Depends(get_yolox_async_deployment_process_supervisor)],
+	gateway_dispatcher_registry: Annotated[YoloXAsyncInferenceGatewayDispatcherRegistry, Depends(get_yolox_async_inference_gateway_dispatcher_registry)],
 ) -> YoloXDeploymentProcessStatusResponse:
 	"""停止指定 deployment 的异步推理进程。"""
 
@@ -555,6 +562,7 @@ def stop_yolox_async_runtime(
 		session_factory=session_factory,
 		dataset_storage=dataset_storage,
 		supervisor=supervisor,
+		gateway_dispatcher_registry=gateway_dispatcher_registry,
 		runtime_mode="async",
 		action="stop",
 	)
@@ -570,6 +578,7 @@ def warmup_yolox_async_runtime(
 	session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
 	dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
 	supervisor: Annotated[YoloXDeploymentProcessSupervisor, Depends(get_yolox_async_deployment_process_supervisor)],
+	gateway_dispatcher_registry: Annotated[YoloXAsyncInferenceGatewayDispatcherRegistry, Depends(get_yolox_async_inference_gateway_dispatcher_registry)],
 ) -> YoloXDeploymentRuntimeHealthResponse:
 	"""显式预热指定 deployment 的所有异步推理实例。"""
 
@@ -579,6 +588,7 @@ def warmup_yolox_async_runtime(
 		session_factory=session_factory,
 		dataset_storage=dataset_storage,
 		supervisor=supervisor,
+		gateway_dispatcher_registry=gateway_dispatcher_registry,
 		runtime_mode="async",
 		action="warmup",
 	)
@@ -702,6 +712,7 @@ def _run_process_status_action(
 	session_factory: SessionFactory,
 	dataset_storage: LocalDatasetStorage,
 	supervisor: YoloXDeploymentProcessSupervisor,
+	gateway_dispatcher_registry: YoloXAsyncInferenceGatewayDispatcherRegistry | None = None,
 	runtime_mode: str,
 	action: str,
 ) -> YoloXDeploymentProcessStatusResponse:
@@ -719,8 +730,12 @@ def _run_process_status_action(
 	process_config = service.resolve_process_config(deployment_instance_id)
 	if action == "start":
 		process_status = supervisor.start_deployment(process_config)
+		if runtime_mode == "async" and gateway_dispatcher_registry is not None:
+			gateway_dispatcher_registry.ensure_dispatcher_for_deployment(deployment_instance_id)
 	elif action == "stop":
 		process_status = supervisor.stop_deployment(process_config)
+		if runtime_mode == "async" and gateway_dispatcher_registry is not None:
+			gateway_dispatcher_registry.stop_dispatcher_for_deployment(deployment_instance_id)
 	else:
 		process_status = supervisor.get_status(process_config)
 	return _build_process_status_response(view, process_status, runtime_mode)
@@ -733,6 +748,7 @@ def _run_process_health_action(
 	session_factory: SessionFactory,
 	dataset_storage: LocalDatasetStorage,
 	supervisor: YoloXDeploymentProcessSupervisor,
+	gateway_dispatcher_registry: YoloXAsyncInferenceGatewayDispatcherRegistry | None = None,
 	runtime_mode: str,
 	action: str,
 ) -> YoloXDeploymentRuntimeHealthResponse:
@@ -750,6 +766,8 @@ def _run_process_health_action(
 	process_config = service.resolve_process_config(deployment_instance_id)
 	if action == "warmup":
 		process_health = supervisor.warmup_deployment(process_config)
+		if runtime_mode == "async" and gateway_dispatcher_registry is not None:
+			gateway_dispatcher_registry.ensure_dispatcher_for_deployment(deployment_instance_id)
 	elif action == "reset":
 		process_health = supervisor.reset_deployment(process_config)
 	else:

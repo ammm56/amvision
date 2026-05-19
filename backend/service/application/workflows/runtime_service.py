@@ -15,6 +15,7 @@ from backend.service.application.project_summary import (
     publish_project_summary_event,
     should_publish_project_summary_for_workflow_run_event,
 )
+from backend.contracts.buffers import BufferRef
 from backend.contracts.workflows.workflow_graph import FlowApplication, WorkflowGraphTemplate
 from backend.contracts.workflows.resource_semantics import (
     WORKFLOW_PREVIEW_RUN_DEFAULT_RETENTION_HOURS,
@@ -25,7 +26,6 @@ from backend.contracts.workflows.resource_semantics import (
     build_workflow_app_runtime_storage_dir,
     build_workflow_app_runtime_snapshot_object_key,
     build_workflow_preview_run_snapshot_object_key,
-    build_workflow_preview_run_storage_dir,
     build_workflow_run_events_object_key,
 )
 from backend.service.application.deployments import PublishedInferenceGateway
@@ -46,16 +46,13 @@ from backend.service.application.workflows.preview_run_cleanup import (
     restore_staged_preview_run_storage,
     stage_preview_run_storage_for_cleanup,
 )
+from backend.service.application.workflows.execution_cleanup import register_local_buffer_lease_cleanup
 from backend.service.application.workflows.runtime_worker import (
     WorkflowRuntimeAsyncRunCallbacks,
     WorkflowRuntimeWorkerInstance,
     WorkflowRuntimeWorkerManager,
     WorkflowRuntimeWorkerRunResult,
     WorkflowRuntimeWorkerState,
-)
-from backend.service.application.workflows.snapshot_execution import (
-    WorkflowSnapshotExecutionRequest,
-    WorkflowSnapshotProcessExecutor,
 )
 from backend.service.application.workflows.runtime_payload_sanitizer import (
     sanitize_runtime_mapping,
@@ -80,6 +77,11 @@ from backend.service.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 from backend.service.settings import BackendServiceSettings
 from backend.nodes.node_catalog_registry import NodeCatalogRegistry
+
+
+WORKFLOW_RUN_DEFAULT_TRACE_LEVEL = "none"
+WORKFLOW_RUN_DEFAULT_RETAIN_TRACE_ENABLED = False
+WORKFLOW_RUN_DEFAULT_RETAIN_NODE_RECORDS_ENABLED = False
 
 
 @dataclass(frozen=True)
@@ -149,9 +151,9 @@ class WorkflowExecutionPolicyCreateRequest:
     policy_kind: str
     default_timeout_seconds: int = 30
     max_run_timeout_seconds: int = 30
-    trace_level: str = "node-summary"
-    retain_node_records_enabled: bool = True
-    retain_trace_enabled: bool = True
+    trace_level: str = WORKFLOW_RUN_DEFAULT_TRACE_LEVEL
+    retain_node_records_enabled: bool = WORKFLOW_RUN_DEFAULT_RETAIN_NODE_RECORDS_ENABLED
+    retain_trace_enabled: bool = WORKFLOW_RUN_DEFAULT_RETAIN_TRACE_ENABLED
     metadata: dict[str, object] | None = None
 
 
@@ -951,6 +953,10 @@ class WorkflowRuntimeService:
             execution_policy=execution_policy,
             execution_policy_snapshot_object_key=workflow_app_runtime.execution_policy_snapshot_object_key,
         )
+        metadata = _apply_workflow_run_persistence_defaults(
+            metadata,
+            execution_policy=execution_policy,
+        )
         now = _now_isoformat()
         workflow_run = WorkflowRun(
             workflow_run_id=f"workflow-run-{uuid4().hex}",
@@ -983,7 +989,10 @@ class WorkflowRuntimeService:
                 workflow_app_runtime=workflow_app_runtime,
                 workflow_run_id=workflow_run.workflow_run_id,
                 input_bindings=dict(normalized_request.input_bindings or {}),
-                execution_metadata=metadata,
+                execution_metadata=_with_input_buffer_ref_cleanups(
+                    metadata,
+                    normalized_request.input_bindings or {},
+                ),
                 timeout_seconds=workflow_run.requested_timeout_seconds,
                 callbacks=self._build_async_run_callbacks(
                     workflow_app_runtime.workflow_runtime_id,
@@ -1067,6 +1076,10 @@ class WorkflowRuntimeService:
             execution_policy=execution_policy,
             execution_policy_snapshot_object_key=workflow_app_runtime.execution_policy_snapshot_object_key,
         )
+        execution_metadata = _apply_workflow_run_persistence_defaults(
+            execution_metadata,
+            execution_policy=execution_policy,
+        )
         workflow_run = WorkflowRun(
             workflow_run_id=f"workflow-run-{uuid4().hex}",
             workflow_runtime_id=workflow_app_runtime.workflow_runtime_id,
@@ -1100,7 +1113,10 @@ class WorkflowRuntimeService:
                 workflow_app_runtime=workflow_app_runtime,
                 workflow_run_id=workflow_run.workflow_run_id,
                 input_bindings=dict(normalized_request.input_bindings or {}),
-                execution_metadata=execution_metadata,
+                execution_metadata=_with_input_buffer_ref_cleanups(
+                    execution_metadata,
+                    normalized_request.input_bindings or {},
+                ),
                 timeout_seconds=workflow_run.requested_timeout_seconds,
             )
             raw_outputs = dict(worker_result.outputs)
@@ -1285,8 +1301,9 @@ class WorkflowRuntimeService:
             template_outputs=sanitize_runtime_mapping(worker_result.template_outputs),
             node_records=_serialize_node_records(
                 tuple(worker_result.node_records),
-                retain_node_records_enabled=(
-                    True if execution_policy is None else execution_policy.retain_node_records_enabled
+                retain_node_records_enabled=_should_retain_workflow_run_node_records(
+                    workflow_run,
+                    execution_policy=execution_policy,
                 ),
             ),
             error_message=worker_result.error_message,
@@ -1542,7 +1559,34 @@ class WorkflowRuntimeService:
         message: str,
         payload: dict[str, object] | None = None,
     ) -> WorkflowRunEvent:
-        """向 WorkflowRun 的 events.json 追加一条事件。"""
+        """按本次运行策略向 WorkflowRun 追加事件。
+
+        参数：
+        - workflow_run：目标 WorkflowRun。
+        - event_type：事件类型。
+        - message：事件说明。
+        - payload：附加事件载荷。
+
+        返回：
+        - WorkflowRunEvent：新生成的事件；no-trace 模式下只返回内存事件，不写磁盘。
+        """
+
+        event_payload = sanitize_runtime_mapping(
+            {
+                **self._build_workflow_run_event_payload(workflow_run),
+                **dict(payload or {}),
+            }
+        )
+        if not _should_retain_workflow_run_trace(workflow_run):
+            return WorkflowRunEvent(
+                workflow_run_id=workflow_run.workflow_run_id,
+                workflow_runtime_id=workflow_run.workflow_runtime_id,
+                sequence=0,
+                event_type=event_type.strip() or "run.updated",
+                created_at=_now_isoformat(),
+                message=message.strip() or "workflow run 事件",
+                payload=event_payload,
+            )
 
         event_lock = self._resolve_workflow_run_event_lock(workflow_run.workflow_run_id)
         with event_lock:
@@ -1554,12 +1598,7 @@ class WorkflowRuntimeService:
                 event_type=event_type.strip() or "run.updated",
                 created_at=_now_isoformat(),
                 message=message.strip() or "workflow run 事件",
-                payload=sanitize_runtime_mapping(
-                    {
-                        **self._build_workflow_run_event_payload(workflow_run),
-                        **dict(payload or {}),
-                    }
-                ),
+                payload=event_payload,
             )
             existing_events.append(event)
             self._write_workflow_run_events(workflow_run.workflow_run_id, tuple(existing_events))
@@ -2066,9 +2105,19 @@ class WorkflowRuntimeService:
             policy_kind=str(payload.get("policy_kind") or "runtime-default"),
             default_timeout_seconds=int(payload.get("default_timeout_seconds") or 30),
             max_run_timeout_seconds=int(payload.get("max_run_timeout_seconds") or 30),
-            trace_level=str(payload.get("trace_level") or "node-summary"),
-            retain_node_records_enabled=bool(payload.get("retain_node_records_enabled", True)),
-            retain_trace_enabled=bool(payload.get("retain_trace_enabled", True)),
+            trace_level=str(payload.get("trace_level") or WORKFLOW_RUN_DEFAULT_TRACE_LEVEL),
+            retain_node_records_enabled=bool(
+                payload.get(
+                    "retain_node_records_enabled",
+                    WORKFLOW_RUN_DEFAULT_RETAIN_NODE_RECORDS_ENABLED,
+                )
+            ),
+            retain_trace_enabled=bool(
+                payload.get(
+                    "retain_trace_enabled",
+                    WORKFLOW_RUN_DEFAULT_RETAIN_TRACE_ENABLED,
+                )
+            ),
             created_at=str(payload.get("created_at") or ""),
             updated_at=str(payload.get("updated_at") or ""),
             created_by=_normalize_optional_str(payload.get("created_by") if isinstance(payload.get("created_by"), str) else None),
@@ -2171,6 +2220,182 @@ def _serialize_node_records(
     for item in node_records:
         serialized.append(serialize_node_execution_record(item))
     return tuple(serialized)
+
+
+def _with_input_buffer_ref_cleanups(
+    execution_metadata: dict[str, object],
+    input_bindings: dict[str, object],
+) -> dict[str, object]:
+    """把本次输入里的 BufferRef lease 登记为执行期 cleanup。
+
+    参数：
+    - execution_metadata：原始执行元数据。
+    - input_bindings：本次 WorkflowRun 的输入绑定。
+
+    返回：
+    - dict[str, object]：包含 cleanup 登记项的执行元数据副本。
+    """
+
+    payload = dict(execution_metadata)
+    for buffer_ref in _iter_input_buffer_refs(input_bindings):
+        pool_name_value = buffer_ref.metadata.get("pool_name")
+        register_local_buffer_lease_cleanup(
+            payload,
+            lease_id=buffer_ref.lease_id,
+            pool_name=pool_name_value if isinstance(pool_name_value, str) else None,
+        )
+    return payload
+
+
+def _apply_workflow_run_persistence_defaults(
+    metadata: dict[str, object],
+    *,
+    execution_policy: WorkflowExecutionPolicy | None,
+) -> dict[str, object]:
+    """补齐正式 WorkflowRun 的轻量持久化默认值。
+
+    参数：
+    - metadata：调用方传入并已合并 execution policy 摘要的元数据。
+    - execution_policy：runtime 当前绑定的执行策略。
+
+    返回：
+    - dict[str, object]：包含 trace 和 node_records 保留策略的元数据副本。
+    """
+
+    payload = dict(metadata)
+    if "trace_level" not in payload:
+        payload["trace_level"] = (
+            execution_policy.trace_level
+            if execution_policy is not None
+            else WORKFLOW_RUN_DEFAULT_TRACE_LEVEL
+        )
+    if "retain_trace_enabled" not in payload:
+        payload["retain_trace_enabled"] = (
+            execution_policy.retain_trace_enabled
+            if execution_policy is not None
+            else WORKFLOW_RUN_DEFAULT_RETAIN_TRACE_ENABLED
+        )
+    if "retain_node_records_enabled" not in payload:
+        payload["retain_node_records_enabled"] = (
+            execution_policy.retain_node_records_enabled
+            if execution_policy is not None
+            else WORKFLOW_RUN_DEFAULT_RETAIN_NODE_RECORDS_ENABLED
+        )
+    return payload
+
+
+def _iter_input_buffer_refs(value: object) -> Iterator[BufferRef]:
+    """递归读取输入载荷里的 BufferRef。
+
+    参数：
+    - value：待扫描的输入载荷片段。
+
+    返回：
+    - Iterator[BufferRef]：输入载荷中可解析的 BufferRef。
+    """
+
+    if isinstance(value, BufferRef):
+        yield value
+        return
+    if isinstance(value, dict):
+        buffer_ref_payload = value.get("buffer_ref")
+        if isinstance(buffer_ref_payload, dict):
+            try:
+                yield BufferRef.model_validate(buffer_ref_payload)
+            except Exception:
+                pass
+        for child_value in value.values():
+            yield from _iter_input_buffer_refs(child_value)
+        return
+    if isinstance(value, list | tuple):
+        for child_value in value:
+            yield from _iter_input_buffer_refs(child_value)
+
+
+def _should_retain_workflow_run_node_records(
+    workflow_run: WorkflowRun,
+    *,
+    execution_policy: WorkflowExecutionPolicy | None,
+) -> bool:
+    """判断 WorkflowRun 是否需要保留 node_records。
+
+    参数：
+    - workflow_run：目标 WorkflowRun。
+    - execution_policy：runtime 当前绑定的执行策略。
+
+    返回：
+    - bool：需要保留时返回 True。
+    """
+
+    metadata_flag = _read_optional_bool_flag(
+        workflow_run.metadata.get("retain_node_records_enabled")
+    )
+    if metadata_flag is False:
+        return False
+    if execution_policy is not None and not execution_policy.retain_node_records_enabled:
+        return False
+    if metadata_flag is True:
+        return True
+    return bool(execution_policy is not None and execution_policy.retain_node_records_enabled)
+
+
+def _should_retain_workflow_run_trace(workflow_run: WorkflowRun) -> bool:
+    """判断 WorkflowRun 是否需要写入 events.json。
+
+    参数：
+    - workflow_run：目标 WorkflowRun。
+
+    返回：
+    - bool：需要写入事件文件时返回 True。
+    """
+
+    metadata = dict(workflow_run.metadata)
+    metadata_flag = _read_optional_bool_flag(metadata.get("retain_trace_enabled"))
+    if metadata_flag is False:
+        return False
+    trace_level_value = metadata.get("trace_level")
+    trace_level = trace_level_value if isinstance(trace_level_value, str) else None
+    if _normalize_optional_str(trace_level) == "none":
+        return False
+    if metadata_flag is True and trace_level is not None:
+        return True
+    execution_policy_payload = metadata.get("execution_policy")
+    if isinstance(execution_policy_payload, dict):
+        execution_policy_flag = _read_optional_bool_flag(
+            execution_policy_payload.get("retain_trace_enabled")
+        )
+        if execution_policy_flag is False:
+            return False
+        policy_trace_level = execution_policy_payload.get("trace_level")
+        normalized_policy_trace_level = (
+            policy_trace_level if isinstance(policy_trace_level, str) else None
+        )
+        if _normalize_optional_str(normalized_policy_trace_level) == "none":
+            return False
+        if execution_policy_flag is True and normalized_policy_trace_level is not None:
+            return True
+    return False
+
+
+def _read_optional_bool_flag(value: object) -> bool | None:
+    """读取可由 JSON 或文本传入的布尔开关。
+
+    参数：
+    - value：原始开关值。
+
+    返回：
+    - bool | None：可识别时返回布尔值，否则返回 None。
+    """
+
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        normalized_value = value.strip().lower()
+        if normalized_value in {"true", "1", "yes", "on"}:
+            return True
+        if normalized_value in {"false", "0", "no", "off"}:
+            return False
+    return None
 
 
 def _now_isoformat() -> str:

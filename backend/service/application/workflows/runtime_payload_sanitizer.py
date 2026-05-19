@@ -3,6 +3,11 @@
 from __future__ import annotations
 
 
+MAX_PERSISTED_STRING_CHARS = 8192
+MAX_PERSISTED_COLLECTION_ITEMS = 256
+MAX_PERSISTED_NESTING_DEPTH = 12
+
+
 def sanitize_runtime_value(value: object) -> object:
     """把 workflow runtime 的输入输出值转换为可持久化的脱敏结构。
 
@@ -13,18 +18,46 @@ def sanitize_runtime_value(value: object) -> object:
     - object：JSON 安全且已做敏感字段脱敏的值。
     """
 
+    return _sanitize_runtime_value(value, depth=0)
+
+
+def _sanitize_runtime_value(value: object, *, depth: int) -> object:
+    """按深度限制把运行时值转换为可持久化结构。
+
+    参数：
+    - value：待脱敏的任意运行时值。
+    - depth：当前递归深度。
+
+    返回：
+    - object：JSON 安全且大小受控的值。
+    """
+
+    if depth > MAX_PERSISTED_NESTING_DEPTH:
+        return {
+            "value_type": value.__class__.__name__,
+            "redacted": True,
+            "reason": "max_depth_exceeded",
+        }
+
     if isinstance(value, dict):
-        return _sanitize_mapping(value)
+        return _sanitize_mapping(value, depth=depth + 1)
     if isinstance(value, list):
-        return [sanitize_runtime_value(item) for item in value]
+        return _sanitize_sequence(value, depth=depth + 1)
     if isinstance(value, tuple):
-        return [sanitize_runtime_value(item) for item in value]
-    if isinstance(value, (str, int, float, bool)) or value is None:
+        return _sanitize_sequence(list(value), depth=depth + 1)
+    if isinstance(value, str):
+        if len(value) > MAX_PERSISTED_STRING_CHARS:
+            return {
+                "text_redacted": True,
+                "char_length": len(value),
+            }
+        return value
+    if isinstance(value, (int, float, bool)) or value is None:
         return value
     if isinstance(value, (bytes, bytearray, memoryview)):
         return {
             "binary_redacted": True,
-            "byte_length": len(bytes(value)),
+            "byte_length": _read_binary_length(value),
         }
     return {
         "value_type": value.__class__.__name__,
@@ -75,19 +108,71 @@ def serialize_node_execution_record(item: object) -> dict[str, object]:
     }
 
 
-def _sanitize_mapping(value: dict[str, object]) -> dict[str, object]:
-    """递归脱敏字典结构中的敏感字段。"""
+def _sanitize_mapping(value: dict[str, object], *, depth: int) -> dict[str, object]:
+    """递归脱敏字典结构中的敏感字段。
+
+    参数：
+    - value：待脱敏的字典。
+    - depth：当前递归深度。
+
+    返回：
+    - dict[str, object]：大小受控且已脱敏的字典。
+    """
 
     sanitized: dict[str, object] = {}
-    for key, item in value.items():
+    for index, (raw_key, item) in enumerate(value.items()):
+        if index >= MAX_PERSISTED_COLLECTION_ITEMS:
+            sanitized["mapping_truncated"] = True
+            sanitized["original_key_count"] = len(value)
+            break
+        key = raw_key if isinstance(raw_key, str) else str(raw_key)
         if key == "image_handle" and isinstance(item, str):
             sanitized["image_handle_redacted"] = True
             continue
         if key.endswith("_base64") and isinstance(item, str):
             sanitized[f"{key}_redacted"] = True
+            sanitized[f"{key}_char_length"] = len(item)
             continue
-        sanitized[key] = sanitize_runtime_value(item)
+        sanitized[key] = _sanitize_runtime_value(item, depth=depth)
     return sanitized
+
+
+def _sanitize_sequence(value: list[object], *, depth: int) -> object:
+    """递归脱敏列表并限制持久化条数。
+
+    参数：
+    - value：待脱敏的列表。
+    - depth：当前递归深度。
+
+    返回：
+    - object：未超限时返回列表，超限时返回摘要字典。
+    """
+
+    if len(value) <= MAX_PERSISTED_COLLECTION_ITEMS:
+        return [_sanitize_runtime_value(item, depth=depth) for item in value]
+    return {
+        "sequence_truncated": True,
+        "item_count": len(value),
+        "items": [
+            _sanitize_runtime_value(item, depth=depth)
+            for item in value[:MAX_PERSISTED_COLLECTION_ITEMS]
+        ],
+    }
+
+
+def _read_binary_length(value: bytes | bytearray | memoryview) -> int:
+    """读取二进制对象长度且避免复制完整内容。
+
+    参数：
+    - value：bytes、bytearray 或 memoryview 对象。
+
+    返回：
+    - int：二进制内容字节数。
+    """
+
+    if isinstance(value, memoryview):
+        return value.nbytes
+    return len(value)
 
 
 def _read_text(value: object) -> str:

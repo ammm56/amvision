@@ -15,6 +15,7 @@ from backend.service.application.deployments import (
     PublishedInferenceRequest,
     YoloXDeploymentPublishedInferenceGateway,
 )
+from backend.service.application.models.yolox_inference_task_service import run_yolox_inference_task
 from backend.service.application.runtime.yolox_deployment_process_supervisor import YoloXDeploymentProcessExecution
 from backend.service.application.runtime.yolox_predictor import (
     YoloXPredictionDetection,
@@ -185,6 +186,37 @@ def test_yolox_detection_node_registers_local_buffer_lease_cleanup() -> None:
     assert cleanup_items[0].resource_kind == WORKFLOW_EXECUTION_CLEANUP_KIND_LOCAL_BUFFER_LEASE
     assert cleanup_items[0].resource_id == "lease-memory"
     assert cleanup_items[0].metadata == {"pool_name": "image-small"}
+
+
+def test_run_yolox_inference_task_preserves_input_image_payload() -> None:
+    """验证统一推理执行入口不会丢掉跨进程图片载荷。"""
+
+    fake_supervisor = _FakeDeploymentSupervisor()
+
+    run_yolox_inference_task(
+        deployment_process_supervisor=fake_supervisor,
+        process_config=SimpleNamespace(deployment_instance_id="deployment-1"),
+        input_uri=None,
+        input_image_bytes=None,
+        input_image_payload={
+            "transport_kind": "buffer",
+            "buffer_ref": _build_buffer_ref().model_dump(mode="json"),
+            "media_type": "image/jpeg",
+            "width": 64,
+            "height": 64,
+        },
+        score_threshold=0.37,
+        save_result_image=False,
+        return_preview_image_base64=False,
+        extra_options={},
+    )
+
+    assert fake_supervisor.last_prediction_request is not None
+    assert fake_supervisor.last_prediction_request.input_uri is None
+    assert fake_supervisor.last_prediction_request.input_image_bytes is None
+    assert fake_supervisor.last_prediction_request.input_image_payload is not None
+    assert fake_supervisor.last_prediction_request.input_image_payload["transport_kind"] == "buffer"
+    assert fake_supervisor.last_prediction_request.input_image_payload["buffer_ref"]["lease_id"] == "lease-1"
 
 
 class _FakeDeploymentService:

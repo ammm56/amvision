@@ -71,6 +71,7 @@ def _yolox_inference_submit_handler(request: WorkflowNodeExecutionRequest) -> di
             input_file_id=input_file_id,
             input_uri=normalized_input_uri,
             input_source_kind=input_source_kind,
+            async_inference_owner_id=runtime_context.async_inference_service_id,
             score_threshold=get_optional_float_parameter(request, "score_threshold"),
             save_result_image=get_optional_bool_parameter(request, "save_result_image")
             if get_optional_bool_parameter(request, "save_result_image") is not None

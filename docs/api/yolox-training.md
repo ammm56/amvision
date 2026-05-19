@@ -961,7 +961,7 @@ reference 风格增强示例：按需显式开启 Mosaic、MixUp 和动态尺寸
 - `input_uri`
 - `image_base64`
 - `input_image`（仅 `multipart/form-data` 文件字段）
-- `input_transport_mode`（仅同步 `/infer` 使用；支持 `storage`、`memory`）
+- `input_transport_mode`（同步 `/infer` 与异步 `inference-tasks` 都支持；支持 `storage`、`memory`）
 - `score_threshold`
 - `save_result_image`
 - `return_preview_image_base64`
@@ -976,13 +976,13 @@ reference 风格增强示例：按需显式开启 Mosaic、MixUp 和动态尺寸
 - `input_file_id` 现在支持 Project 公开文件 id；稳定来源可直接使用 `GET /api/v1/projects/{project_id}/files` 或 `GET /api/v1/projects/{project_id}/files/metadata` 返回的 `file_id`
 - multipart 场景下，`extra_options` 以 JSON 字符串传入
 - 服务会在写入临时输入前校验 `image_base64` 与 `input_image` 是否为可读取图片；损坏图片会直接返回 `invalid_request`，不会继续下发到 deployment 推理进程
-- 同步 `/infer` 额外支持 `input_transport_mode`：
+- 同步 `/infer` 与异步 `inference-tasks` 共用同一套 `input_transport_mode` 语义：
   - `storage`：保持当前默认行为，Base64 或上传文件会先写入临时输入文件，再按 `input_uri` 进入 deployment 推理进程
-  - `memory`：只允许 `image_base64` 或 `input_image`，请求图片不会落到临时目录，会直接以原始字节送入 deployment 推理进程
-- 当同步 `/infer` 使用 `input_transport_mode=memory` 时，不支持 `input_file_id`
-- 当同步 `/infer` 使用 `input_transport_mode=memory` 时：
+  - `memory`：只允许 `image_base64` 或 `input_image`，请求图片不会落到临时目录；同步链直接以内存字节进入 deployment 推理进程，异步链会先固化到任务 `normalized_input`，再由 worker 通过 queue IPC 把字节转给 backend-service 持有的 async deployment 子进程
+- 当 `input_transport_mode=memory` 时，不支持 `input_file_id`
+- 当 `input_transport_mode=memory` 时：
   - 响应里的 `input_uri` 会返回 `memory://...` 形式的虚拟 URI，用于标识这次调用没有输入落盘
-  - 响应里的 `result_object_key` 为 `null`，因为不会写 `raw-result.json`
+  - 同步 `/infer` 的响应 `result_object_key` 为 `null`，因为不会写 `raw-result.json`
   - 如果同时设置 `save_result_image=true`，预览图仍会按现有语义写盘；如果只需要直接返回图像，应使用 `return_preview_image_base64=true`
 - 同步 `/infer` 真正执行前，需要先通过 `sync/start` 或 `sync/warmup` 拉起对应 deployment 的 sync 子进程
 - 异步 `inference-tasks` 创建前，需要先通过 `async/start` 或 `async/warmup` 拉起对应 deployment 的 async 子进程；未启动时 create 接口会直接返回 `invalid_request`
@@ -1033,7 +1033,9 @@ reference 风格增强示例：按需显式开启 Mosaic、MixUp 和动态尺寸
 - 当前 deployment create 允许绑定 `ModelVersion` 或 `ModelBuild`；其中 `pytorch`、`onnxruntime`、`openvino`、`tensorrt` 已接通真实 runtime
 - 当前 inference 执行通过 DeploymentInstance 解析运行时快照，并在 deployment 子进程内部复用常驻会话
 - 当前同步 `/infer` 与异步 `inference-tasks` 使用同一套结果载荷字段
-- 当前同步 `/infer` 已支持 `input_transport_mode=memory`，用于 Base64 与 multipart 上传图片的高速内存直通；异步 `inference-tasks` 仍保持 storage 模式
+- 当前同步 `/infer` 与异步 `inference-tasks` 已共用同一套输入归一化、`input_transport_mode` 和 `YoloXPredictionRequest` 构造逻辑；异步链额外通过 `yolox-ai-gw-{service_id}-{deployment_id}` 这类 deployment 专属队列把推理请求转回 backend-service 持有的 async deployment supervisor
+- 当前正式 HTTP inference 公开入口支持本地文件、Base64 和 multipart 上传；image-ref / local buffer 仍主要用于 workflow / published inference 这类进程间图片引用路径，不作为当前 REST inference task 的公开输入字段
+- 当前 workflow preview run、WorkflowAppRuntime 和已发布应用里的 YOLOX detection 节点，继续通过 `PublishedInferenceGateway` 命中 backend-service 持有的 sync deployment worker；这条路径不走公开 `inference-tasks` 接口，也不复用 async deployment 通道
 - 当前 inference 响应已经拆出 `decode_ms`、`preprocess_ms`、`infer_ms`、`postprocess_ms`、`serialize_ms`；其中 `latency_ms` 表示前四段总耗时，不包含 `serialize_ms`
 - 当前 `preview_image_base64` 仅在 `return_preview_image_base64=true` 时生成
 - 当前 `preview_image_object_key` 仅在 `save_result_image=true` 时生成

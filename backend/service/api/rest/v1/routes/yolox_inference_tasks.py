@@ -17,16 +17,17 @@ from backend.service.api.deps.db import get_session_factory
 from backend.service.api.deps.queue import get_queue_backend
 from backend.service.api.deps.storage import get_dataset_storage
 from backend.service.api.deps.yolox_deployment_process_supervisor import (
+	get_yolox_async_inference_gateway_dispatcher_registry,
 	get_yolox_async_deployment_process_supervisor,
 	get_yolox_sync_deployment_process_supervisor,
 )
 from backend.service.application.deployments.yolox_deployment_service import SqlAlchemyYoloXDeploymentService
 from backend.service.application.errors import InvalidRequestError, PermissionDeniedError, ResourceNotFoundError
 from backend.service.application.models.yolox_inference_payloads import (
-	YOLOX_INFERENCE_INPUT_TRANSPORT_MEMORY,
 	YOLOX_INFERENCE_INPUT_TRANSPORT_STORAGE,
 	YoloXInferenceInputSource,
 	attach_yolox_inference_serialize_timing,
+	build_yolox_prediction_request,
 	build_yolox_inference_payload,
 	normalize_yolox_inference_input,
 	serialize_yolox_inference_payload,
@@ -36,6 +37,9 @@ from backend.service.application.models.yolox_inference_task_service import (
 	SqlAlchemyYoloXInferenceTaskService,
 	YoloXInferenceTaskRequest,
 	run_yolox_inference_task,
+)
+from backend.service.application.models.yolox_async_inference_gateway import (
+	YoloXAsyncInferenceGatewayDispatcherRegistry,
 )
 from backend.service.application.runtime.yolox_deployment_process_supervisor import (
 	YoloXDeploymentProcessSupervisor,
@@ -59,6 +63,10 @@ class YoloXInferenceTaskCreateRequestBody(BaseModel):
 	input_file_id: str | None = Field(default=None, description="Project 公开文件 id；与 input_uri、image_base64、input_image 四选一")
 	input_uri: str | None = Field(default=None, description="输入图片 URI 或 object key")
 	image_base64: str | None = Field(default=None, description="直接提交的 base64 图片内容")
+	input_transport_mode: Literal["storage", "memory"] = Field(
+		default="storage",
+		description="异步输入传输模式；memory 仅支持 image_base64 或 multipart input_image，并保持请求图片不写入临时输入文件",
+	)
 	score_threshold: float | None = Field(default=None, ge=0.0, le=1.0, description="推理阈值")
 	save_result_image: bool = Field(default=False, description="是否输出预览图")
 	return_preview_image_base64: bool = Field(default=False, description="是否在响应中直接返回预览图 base64")
@@ -216,6 +224,7 @@ async def create_yolox_inference_task(
 	queue_backend: Annotated[LocalFileQueueBackend, Depends(get_queue_backend)],
 	dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
 	deployment_process_supervisor: Annotated[YoloXDeploymentProcessSupervisor, Depends(get_yolox_async_deployment_process_supervisor)],
+	gateway_dispatcher_registry: Annotated[YoloXAsyncInferenceGatewayDispatcherRegistry, Depends(get_yolox_async_inference_gateway_dispatcher_registry)],
 ) -> YoloXInferenceTaskSubmissionResponse:
 	"""创建一个正式 YOLOX inference task。"""
 
@@ -252,6 +261,7 @@ async def create_yolox_inference_task(
 		dataset_storage=dataset_storage,
 		request_id=_resolve_http_request_id(request, prefix="inference-task-submit"),
 		source=input_source,
+		input_transport_mode=body.input_transport_mode,
 		expected_project_id=body.project_id,
 	)
 	service = SqlAlchemyYoloXInferenceTaskService(
@@ -259,6 +269,7 @@ async def create_yolox_inference_task(
 		dataset_storage=dataset_storage,
 		queue_backend=queue_backend,
 		deployment_process_supervisor=deployment_process_supervisor,
+		async_inference_gateway_dispatcher_registry=gateway_dispatcher_registry,
 	)
 	submission = service.submit_inference_task(
 		YoloXInferenceTaskRequest(
@@ -267,6 +278,9 @@ async def create_yolox_inference_task(
 			input_file_id=body.input_file_id,
 			input_uri=normalized_input.input_uri,
 			input_source_kind=normalized_input.input_source_kind,
+			input_transport_mode=normalized_input.input_transport_mode,
+			input_image_bytes=normalized_input.input_image_bytes,
+			async_inference_owner_id=_read_async_inference_service_id(request),
 			score_threshold=body.score_threshold,
 			save_result_image=body.save_result_image,
 			return_preview_image_base64=body.return_preview_image_base64,
@@ -322,17 +336,23 @@ async def infer_yolox_deployment_instance(
 		input_transport_mode=body.input_transport_mode,
 		expected_project_id=deployment_view.project_id,
 	)
-	execution_result = run_yolox_inference_task(
-		deployment_process_supervisor=deployment_process_supervisor,
-		process_config=process_config,
-		input_uri=normalized_input.input_uri
-		if normalized_input.input_transport_mode == YOLOX_INFERENCE_INPUT_TRANSPORT_STORAGE
-		else None,
-		input_image_bytes=normalized_input.input_image_bytes,
+	prediction_request = build_yolox_prediction_request(
+		normalized_input=normalized_input,
 		score_threshold=_resolve_requested_score_threshold(body.score_threshold),
 		save_result_image=body.save_result_image,
 		return_preview_image_base64=body.return_preview_image_base64,
 		extra_options=dict(body.extra_options),
+	)
+	execution_result = run_yolox_inference_task(
+		deployment_process_supervisor=deployment_process_supervisor,
+		process_config=process_config,
+		input_uri=prediction_request.input_uri,
+		input_image_bytes=prediction_request.input_image_bytes,
+		input_image_payload=prediction_request.input_image_payload,
+		score_threshold=prediction_request.score_threshold,
+		save_result_image=prediction_request.save_result_image,
+		return_preview_image_base64=body.return_preview_image_base64,
+		extra_options=dict(prediction_request.extra_options),
 	)
 	output_prefix = f"runtime/direct-inference/{request_id}"
 	preview_image_uri = None
@@ -612,7 +632,7 @@ async def _read_yolox_inference_request_payload(
 			"input_file_id": _read_optional_form_str(form, "input_file_id"),
 			"input_uri": _read_optional_form_str(form, "input_uri"),
 			"image_base64": _read_optional_form_str(form, "image_base64"),
-			"input_transport_mode": _read_optional_form_str(form, "input_transport_mode"),
+			"input_transport_mode": _read_optional_form_str(form, "input_transport_mode") or YOLOX_INFERENCE_INPUT_TRANSPORT_STORAGE,
 			"score_threshold": _parse_optional_form_float(form.get("score_threshold"), field_name="score_threshold"),
 			"save_result_image": _parse_optional_form_bool(form.get("save_result_image"), field_name="save_result_image", default=False),
 			"return_preview_image_base64": _parse_optional_form_bool(form.get("return_preview_image_base64"), field_name="return_preview_image_base64", default=False),
@@ -653,6 +673,15 @@ def _resolve_http_request_id(request: Request, *, prefix: str) -> str:
 	if isinstance(request_id, str) and request_id.strip():
 		return f"{prefix}-{request_id.strip()}"
 	return f"{prefix}-{uuid4().hex}"
+
+
+def _read_async_inference_service_id(request: Request) -> str | None:
+	"""读取当前 async inference service 稳定 id。"""
+
+	value = getattr(request.app.state, "yolox_async_inference_service_id", None)
+	if isinstance(value, str) and value.strip():
+		return value.strip()
+	return None
 
 
 def _resolve_requested_score_threshold(value: float | None) -> float:

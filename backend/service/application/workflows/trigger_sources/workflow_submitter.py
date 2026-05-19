@@ -120,6 +120,10 @@ def _build_execution_metadata(
     """构造传入 WorkflowRuntime 的执行元数据。"""
 
     metadata = dict(request.trigger_source.default_execution_metadata)
+    if _is_high_speed_trigger_source(request.trigger_source):
+        metadata.setdefault("trace_level", "none")
+        metadata.setdefault("retain_trace_enabled", False)
+        metadata.setdefault("retain_node_records_enabled", False)
     metadata.update(
         {
             "trigger_source_id": request.trigger_source.trigger_source_id,
@@ -132,3 +136,16 @@ def _build_execution_metadata(
     if request.trigger_event.idempotency_key is not None:
         metadata["idempotency_key"] = request.trigger_event.idempotency_key
     return metadata
+
+
+def _is_high_speed_trigger_source(trigger_source: WorkflowTriggerSource) -> bool:
+    """判断 TriggerSource 是否属于默认不保留磁盘 trace 的高速入口。
+
+    参数：
+    - trigger_source：待判断的 TriggerSource。
+
+    返回：
+    - bool：属于高速入口时返回 True。
+    """
+
+    return trigger_source.trigger_kind.startswith("zeromq")

@@ -1254,6 +1254,11 @@ def test_core_yolox_inference_submit_node_auto_starts_async_process(
 ) -> None:
     """验证异步推理提交节点在 workflow 内默认会自动拉起本地 async deployment 进程。"""
 
+    assert (
+        yolox_inference_submit_node.CORE_NODE_SPEC.node_definition.node_type_id
+        == "core.service.yolox-inference.submit"
+    )
+
     custom_nodes_root_dir = tmp_path / "custom_nodes"
     node_pack_loader = LocalNodePackLoader(custom_nodes_root_dir)
     node_pack_loader.refresh()
@@ -1339,6 +1344,7 @@ def test_core_yolox_inference_submit_node_auto_starts_async_process(
         session_factory=object(),
         dataset_storage=dataset_storage,
         yolox_async_deployment_process_supervisor=_FakeAsyncSupervisor(),
+        async_inference_service_id="backend-service-main",
     )
     template = WorkflowGraphTemplate(
         template_id="yolox-inference-submit-auto-start-workflow",
@@ -1404,6 +1410,7 @@ def test_core_yolox_inference_submit_node_auto_starts_async_process(
     assert submission["task_id"] == "task-inference-1"
     assert fake_supervisor_calls["start_config"].deployment_instance_id == "deployment-instance-1"
     assert fake_supervisor_calls["request"].input_uri == "inputs/source.jpg"
+    assert fake_supervisor_calls["request"].async_inference_owner_id == "backend-service-main"
 
 
 def test_core_yolox_deployment_create_node_accepts_dynamic_request_payload(

@@ -7,7 +7,6 @@ from backend.workers.consumer_registry import (
     BackgroundTaskConsumerResources,
     build_background_task_consumers,
 )
-from backend.workers.settings import BACKEND_WORKER_CONSUMER_YOLOX_INFERENCE
 from backend.workers.task_manager import BackgroundTaskManager, BackgroundTaskManagerConfig
 
 
@@ -28,7 +27,9 @@ def build_background_task_manager(runtime: BackendWorkerRuntime) -> BackgroundTa
                 dataset_storage=runtime.dataset_storage,
                 queue_backend=runtime.queue_backend,
                 worker_id_prefix=runtime.settings.app.app_name,
-                yolox_async_deployment_process_supervisor=runtime.yolox_async_deployment_process_supervisor,
+                async_inference_request_timeout_seconds=(
+                    runtime.settings.deployment_process_supervisor.request_timeout_seconds
+                ),
             ),
             enabled_consumer_kinds=runtime.settings.task_manager.enabled_consumer_kinds,
         ),
@@ -46,11 +47,8 @@ def run_worker_forever() -> None:
     runtime = bootstrap.build_runtime(bootstrap.load_settings())
     bootstrap.initialize(runtime)
     try:
-        if BACKEND_WORKER_CONSUMER_YOLOX_INFERENCE in runtime.settings.task_manager.enabled_consumer_kinds:
-            runtime.yolox_async_deployment_process_supervisor.start()
         build_background_task_manager(runtime).run_forever()
     finally:
-        runtime.yolox_async_deployment_process_supervisor.stop()
         runtime.session_factory.engine.dispose()
 
 

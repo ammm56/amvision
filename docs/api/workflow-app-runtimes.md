@@ -180,9 +180,9 @@
     "execution_policy": {
       "execution_policy_id": "runtime-default-policy",
       "policy_kind": "runtime-default",
-      "trace_level": "node-summary",
-      "retain_node_records_enabled": true,
-      "retain_trace_enabled": true,
+      "trace_level": "none",
+      "retain_node_records_enabled": false,
+      "retain_trace_enabled": false,
       "snapshot_object_key": "workflows/runtime/app-runtimes/workflow-runtime-1/execution-policy.snapshot.json"
     }
   }

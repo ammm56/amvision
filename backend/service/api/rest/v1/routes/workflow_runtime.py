@@ -102,9 +102,9 @@ class WorkflowExecutionPolicyCreateRequestBody(BaseModel):
     policy_kind: str = Field(description="策略类型")
     default_timeout_seconds: int = Field(default=30, description="默认执行超时秒数")
     max_run_timeout_seconds: int = Field(default=30, description="最大执行超时秒数")
-    trace_level: str = Field(default="node-summary", description="trace 保留级别")
-    retain_node_records_enabled: bool = Field(default=True, description="是否保留 node_records")
-    retain_trace_enabled: bool = Field(default=True, description="是否保留 trace 数据")
+    trace_level: str = Field(default="none", description="trace 保留级别")
+    retain_node_records_enabled: bool = Field(default=False, description="是否保留 node_records")
+    retain_trace_enabled: bool = Field(default=False, description="是否保留 trace 数据")
     metadata: dict[str, object] = Field(default_factory=dict, description="附加元数据")
 
 

@@ -70,12 +70,19 @@
     "root_dir": "./data/files"
   },
   "queue": {
-    "root_dir": "./data/queue"
+    "root_dir": "./data/queue",
+    "lease_timeout_seconds": 86400.0,
+    "completed_retention_seconds": 86400.0,
+    "failed_retention_seconds": 604800.0,
+    "response_queue_retention_seconds": 3600.0
   },
   "task_manager": {
     "enabled": false,
     "max_concurrent_tasks": 2,
     "poll_interval_seconds": 1.0
+  },
+  "async_inference_gateway": {
+    "service_id": "backend-service-main"
   },
   "deployment_process_supervisor": {
     "auto_restart": true,
@@ -100,9 +107,14 @@
 - AMVISION_DATABASE__ECHO=false
 - AMVISION_DATASET_STORAGE__ROOT_DIR=./data/files
 - AMVISION_QUEUE__ROOT_DIR=./data/queue
+- AMVISION_QUEUE__LEASE_TIMEOUT_SECONDS=86400.0
+- AMVISION_QUEUE__COMPLETED_RETENTION_SECONDS=86400.0
+- AMVISION_QUEUE__FAILED_RETENTION_SECONDS=604800.0
+- AMVISION_QUEUE__RESPONSE_QUEUE_RETENTION_SECONDS=3600.0
 - AMVISION_TASK_MANAGER__ENABLED=false
 - AMVISION_TASK_MANAGER__MAX_CONCURRENT_TASKS=2
 - AMVISION_TASK_MANAGER__POLL_INTERVAL_SECONDS=1.0
+- AMVISION_ASYNC_INFERENCE_GATEWAY__SERVICE_ID=backend-service-main
 - AMVISION_DEPLOYMENT_PROCESS_SUPERVISOR__AUTO_RESTART=true
 - AMVISION_DEPLOYMENT_PROCESS_SUPERVISOR__MONITOR_INTERVAL_SECONDS=0.5
 - AMVISION_DEPLOYMENT_PROCESS_SUPERVISOR__REQUEST_TIMEOUT_SECONDS=30.0
@@ -123,6 +135,7 @@
 - 如果 config 文件和环境变量都未提供，当前服务会回退到仓库默认值
 - `deployment_process_supervisor` 提供 deployment 子进程的默认 warmup、keep-warm 和 TensorRT 输出 host buffer 行为；DeploymentInstance 还可以通过 `metadata.deployment_process` 覆盖 `warmup_dummy_inference_count`、`warmup_dummy_image_size`、`keep_warm_enabled`、`keep_warm_interval_seconds`、`tensorrt_pinned_output_buffer_enabled` 和 `tensorrt_pinned_output_buffer_max_bytes`
 - `tensorrt_pinned_output_buffer_max_bytes` 用于限制单实例允许长期驻留的 pinned output host buffer 上限；当前超过阈值后会自动回退到 pageable memory，避免多 deployment、多实例场景下 pinned memory 累积过大
+- `async_inference_gateway.service_id` 是 async inference gateway 的稳定 owner id，会进入 inference task 的 `task_spec.async_inference_owner_id`；实际请求队列按 `service_id + deployment_instance_id` 构建为 `yolox-ai-gw-{service_id}-{deployment_id}`，其中 `deployment-instance-` 前缀会在队列名中省略。同一 backend-service 内的多个 async deployment 也会使用独立 gateway 队列和 dispatcher 线程；一次性响应队列使用 `yolox-ai-rsp-*`，响应被 worker 取走后会立即删除，TTL 清理只作为异常兜底
 
 ## 启动前要知道的事
 
@@ -157,6 +170,8 @@
   - `LocalDatasetStorage`
   - `LocalFileQueueBackend`
   - sync / async deployment supervisor
+  - `PublishedInferenceGateway`
+  - async inference gateway dispatcher registry，按当前 `async_inference_gateway.service_id` 和 DeploymentInstance id 为每个 async deployment 懒启动专属请求队列与 dispatcher 线程，并定期清理一次性响应队列
   - `background_task_manager_host=None`
 4. `create_app` 把这些运行时对象绑定到 `application.state`
 5. FastAPI lifespan 启动时执行：
@@ -164,7 +179,8 @@
   - 运行显式传入的 seeders
   - 执行 `custom_nodes` 目录元数据预留步骤
   - 启动 sync / async deployment supervisor
-6. 应用关闭时停止 deployment supervisor，并释放数据库 engine
+  - 启动 async inference gateway dispatcher
+6. 应用关闭时停止 async inference gateway dispatcher、deployment supervisor，并释放数据库 engine
 
 ## 开发环境启动
 

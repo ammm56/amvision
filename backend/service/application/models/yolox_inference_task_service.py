@@ -8,9 +8,19 @@ from time import perf_counter
 
 from backend.queue import QueueBackend
 from backend.service.application.deployments.yolox_deployment_service import SqlAlchemyYoloXDeploymentService
-from backend.service.application.errors import InvalidRequestError, ResourceNotFoundError, ServiceConfigurationError
+from backend.service.application.errors import InvalidRequestError, ServiceConfigurationError
+from backend.service.application.models.yolox_async_inference_gateway import (
+    YoloXAsyncInferenceExecutor,
+    YoloXAsyncInferenceGatewayDispatcherRegistry,
+    deserialize_yolox_async_inference_execution_result_payload,
+)
 from backend.service.application.models.yolox_inference_payloads import (
+    build_yolox_prediction_request,
     attach_yolox_inference_serialize_timing,
+    deserialize_yolox_normalized_inference_input,
+    serialize_yolox_normalized_inference_input,
+    YOLOX_INFERENCE_INPUT_TRANSPORT_MEMORY,
+    YOLOX_INFERENCE_INPUT_TRANSPORT_STORAGE,
     YoloXNormalizedInferenceInput,
     build_yolox_inference_payload,
     serialize_yolox_inference_payload,
@@ -18,6 +28,7 @@ from backend.service.application.models.yolox_inference_payloads import (
 from backend.service.application.project_public_files import resolve_public_project_file_reference
 from backend.service.application.runtime.yolox_deployment_process_supervisor import (
     YoloXDeploymentProcessConfig,
+    YoloXDeploymentProcessRuntimeBehavior,
     YoloXDeploymentProcessSupervisor,
 )
 from backend.service.application.runtime.yolox_predictor import (
@@ -48,13 +59,31 @@ _DEFAULT_SCORE_THRESHOLD = 0.3
 
 @dataclass(frozen=True)
 class YoloXInferenceTaskRequest:
-    """描述一次 YOLOX 推理任务创建请求。"""
+    """描述一次 YOLOX 推理任务创建请求。
+
+    字段：
+    - project_id：所属 Project id。
+    - deployment_instance_id：执行推理使用的 DeploymentInstance id。
+    - input_file_id：Project 公开文件 id。
+    - input_uri：输入图片 object key 或虚拟 URI。
+    - input_source_kind：输入来源类型。
+    - input_transport_mode：输入传输模式。
+    - input_image_bytes：memory 模式下冻结到任务里的图片字节。
+    - async_inference_owner_id：创建任务时持有 async deployment owner 的稳定 service id。
+    - score_threshold：推理阈值。
+    - save_result_image：是否保存结果图。
+    - return_preview_image_base64：是否直接返回 base64 预览图。
+    - extra_options：附加推理选项。
+    """
 
     project_id: str
     deployment_instance_id: str
     input_file_id: str | None = None
     input_uri: str | None = None
     input_source_kind: str = "input_uri"
+    input_transport_mode: str = YOLOX_INFERENCE_INPUT_TRANSPORT_STORAGE
+    input_image_bytes: bytes | None = None
+    async_inference_owner_id: str | None = None
     score_threshold: float | None = None
     save_result_image: bool = False
     return_preview_image_base64: bool = False
@@ -117,6 +146,8 @@ class SqlAlchemyYoloXInferenceTaskService:
         dataset_storage: LocalDatasetStorage | None = None,
         queue_backend: QueueBackend | None = None,
         deployment_process_supervisor: YoloXDeploymentProcessSupervisor | None = None,
+        async_inference_executor: YoloXAsyncInferenceExecutor | None = None,
+        async_inference_gateway_dispatcher_registry: YoloXAsyncInferenceGatewayDispatcherRegistry | None = None,
     ) -> None:
         """初始化推理任务服务。"""
 
@@ -124,6 +155,8 @@ class SqlAlchemyYoloXInferenceTaskService:
         self.dataset_storage = dataset_storage
         self.queue_backend = queue_backend
         self.deployment_process_supervisor = deployment_process_supervisor
+        self.async_inference_executor = async_inference_executor
+        self.async_inference_gateway_dispatcher_registry = async_inference_gateway_dispatcher_registry
         self.task_service = SqlAlchemyTaskService(session_factory)
 
     def submit_inference_task(
@@ -139,18 +172,23 @@ class SqlAlchemyYoloXInferenceTaskService:
         queue_backend = self._require_queue_backend()
         deployment_service = self._build_deployment_service()
         process_config = deployment_service.resolve_process_config(request.deployment_instance_id)
-        input_uri = self._resolve_input_uri(request)
+        self._ensure_async_inference_gateway_dispatcher(process_config)
+        normalized_input = self._build_normalized_input_from_request(request)
 
         task_spec = YoloXInferenceTaskSpec(
             project_id=request.project_id,
             deployment_instance_id=request.deployment_instance_id,
             input_file_id=request.input_file_id,
-            input_uri=input_uri,
-            input_source_kind=request.input_source_kind,
+            input_uri=normalized_input.input_uri,
+            input_source_kind=normalized_input.input_source_kind,
+            input_transport_mode=normalized_input.input_transport_mode,
+            normalized_input=serialize_yolox_normalized_inference_input(normalized_input),
+            async_inference_owner_id=_normalize_optional_str(request.async_inference_owner_id),
             score_threshold=request.score_threshold,
             save_result_image=request.save_result_image,
             return_preview_image_base64=request.return_preview_image_base64,
             runtime_target_snapshot=serialize_runtime_target_snapshot(process_config.runtime_target),
+            runtime_behavior=_serialize_process_runtime_behavior(process_config.runtime_behavior),
             instance_count=process_config.instance_count,
             extra_options=dict(request.extra_options),
         )
@@ -167,10 +205,14 @@ class SqlAlchemyYoloXInferenceTaskService:
                     "input_file_id": task_spec.input_file_id,
                     "input_uri": task_spec.input_uri,
                     "input_source_kind": task_spec.input_source_kind,
+                    "input_transport_mode": task_spec.input_transport_mode,
+                    "normalized_input": dict(task_spec.normalized_input),
+                    "async_inference_owner_id": task_spec.async_inference_owner_id,
                     "score_threshold": task_spec.score_threshold,
                     "save_result_image": task_spec.save_result_image,
                     "return_preview_image_base64": task_spec.return_preview_image_base64,
                     "runtime_target_snapshot": dict(task_spec.runtime_target_snapshot),
+                    "runtime_behavior": dict(task_spec.runtime_behavior),
                     "instance_count": task_spec.instance_count,
                     "extra_options": dict(task_spec.extra_options),
                 },
@@ -212,7 +254,7 @@ class SqlAlchemyYoloXInferenceTaskService:
             queue_name=queue_task.queue_name,
             queue_task_id=queue_task.task_id,
             deployment_instance_id=request.deployment_instance_id,
-            input_uri=input_uri,
+            input_uri=normalized_input.input_uri,
         )
 
     def process_inference_task(self, task_id: str) -> YoloXInferenceTaskResult:
@@ -235,6 +277,7 @@ class SqlAlchemyYoloXInferenceTaskService:
             )
 
         request = self._build_request_from_task_record(task_record)
+        normalized_input = self._build_normalized_input_from_task_record(task_record)
         runtime_target = self._build_runtime_target_from_task_record(
             task_record=task_record,
             dataset_storage=dataset_storage,
@@ -243,7 +286,6 @@ class SqlAlchemyYoloXInferenceTaskService:
             task_record=task_record,
             dataset_storage=dataset_storage,
         )
-        input_uri = self._resolve_input_uri(request)
         attempt_no = max(1, task_record.current_attempt_no + 1)
         output_object_prefix = self._build_output_object_prefix(task_id)
         result_object_key = f"{output_object_prefix}/artifacts/reports/raw-result.json"
@@ -274,14 +316,21 @@ class SqlAlchemyYoloXInferenceTaskService:
             )
         )
         try:
-            execution_result = run_yolox_inference_task(
-                deployment_process_supervisor=self._require_deployment_process_supervisor(),
-                process_config=process_config,
-                input_uri=input_uri,
+            prediction_request = self._build_prediction_request(
+                normalized_input=normalized_input,
                 score_threshold=self._resolve_score_threshold(request),
                 save_result_image=request.save_result_image,
                 return_preview_image_base64=request.return_preview_image_base64,
                 extra_options=dict(request.extra_options),
+            )
+            async_inference_owner_id = _normalize_optional_str(request.async_inference_owner_id)
+            if async_inference_owner_id is None:
+                raise InvalidRequestError("task_spec.async_inference_owner_id 不能为空")
+            execution_result = self._execute_inference(
+                process_config=process_config,
+                prediction_request=prediction_request,
+                async_inference_owner_id=async_inference_owner_id,
+                return_preview_image_base64=request.return_preview_image_base64,
             )
             if preview_image_object_key is not None and execution_result.preview_image_bytes is not None:
                 dataset_storage.write_bytes(preview_image_object_key, execution_result.preview_image_bytes)
@@ -293,11 +342,7 @@ class SqlAlchemyYoloXInferenceTaskService:
                     deployment_instance_id=request.deployment_instance_id,
                     instance_id=execution_result.instance_id,
                     runtime_target=runtime_target,
-                    normalized_input=YoloXNormalizedInferenceInput(
-                        input_uri=input_uri,
-                        input_source_kind=request.input_source_kind,
-                        input_file_id=request.input_file_id,
-                    ),
+                    normalized_input=normalized_input,
                     score_threshold=self._resolve_score_threshold(request),
                     save_result_image=request.save_result_image,
                     return_preview_image_base64=request.return_preview_image_base64,
@@ -346,9 +391,9 @@ class SqlAlchemyYoloXInferenceTaskService:
             output_object_prefix=output_object_prefix,
             result_object_key=result_object_key,
             preview_image_object_key=preview_image_object_key,
-            input_uri=input_uri,
-            input_source_kind=request.input_source_kind,
-            input_file_id=request.input_file_id,
+            input_uri=normalized_input.input_uri,
+            input_source_kind=normalized_input.input_source_kind,
+            input_file_id=normalized_input.input_file_id,
             detection_count=len(execution_result.detections),
             latency_ms=execution_result.latency_ms,
             result_summary={
@@ -356,8 +401,8 @@ class SqlAlchemyYoloXInferenceTaskService:
                 "instance_id": execution_result.instance_id,
                 "model_version_id": runtime_target.model_version_id,
                 "model_build_id": runtime_target.model_build_id,
-                "input_uri": input_uri,
-                "input_source_kind": request.input_source_kind,
+                "input_uri": normalized_input.input_uri,
+                "input_source_kind": normalized_input.input_source_kind,
                 "score_threshold": self._resolve_score_threshold(request),
                 "save_result_image": request.save_result_image,
                 "return_preview_image_base64": request.return_preview_image_base64,
@@ -394,8 +439,22 @@ class SqlAlchemyYoloXInferenceTaskService:
             raise InvalidRequestError("project_id 不能为空")
         if not request.deployment_instance_id.strip():
             raise InvalidRequestError("deployment_instance_id 不能为空")
+        if _normalize_optional_str(request.async_inference_owner_id) is None:
+            raise InvalidRequestError("async_inference_owner_id 不能为空")
+        input_transport_mode = self._normalize_input_transport_mode(request.input_transport_mode)
         has_input_uri = isinstance(request.input_uri, str) and bool(request.input_uri.strip())
         has_input_file_id = isinstance(request.input_file_id, str) and bool(request.input_file_id.strip())
+        if input_transport_mode == YOLOX_INFERENCE_INPUT_TRANSPORT_MEMORY:
+            if has_input_file_id:
+                raise InvalidRequestError(
+                    "input_transport_mode=memory 不支持 input_file_id",
+                    details={"input_source_kind": request.input_source_kind},
+                )
+            if not has_input_uri:
+                raise InvalidRequestError("memory 模式推理任务缺少 input_uri")
+            if not isinstance(request.input_image_bytes, bytes) or not request.input_image_bytes:
+                raise InvalidRequestError("memory 模式推理任务缺少 input_image_bytes")
+            return
         if not has_input_uri and not has_input_file_id:
             raise InvalidRequestError(
                 "input_uri 或 input_file_id 至少需要提供一个",
@@ -434,8 +493,42 @@ class SqlAlchemyYoloXInferenceTaskService:
             raise ServiceConfigurationError("处理推理任务时缺少 deployment 进程监督器")
         return self.deployment_process_supervisor
 
+    def _ensure_async_inference_gateway_dispatcher(
+        self,
+        process_config: YoloXDeploymentProcessConfig,
+    ) -> None:
+        """确保当前推理任务的 async gateway dispatcher 已经按 deployment 启动。"""
+
+        if self.async_inference_gateway_dispatcher_registry is None:
+            return
+        self.async_inference_gateway_dispatcher_registry.ensure_dispatcher_for_deployment(
+            process_config.deployment_instance_id
+        )
+
+    def _build_normalized_input_from_request(
+        self,
+        request: YoloXInferenceTaskRequest,
+    ) -> YoloXNormalizedInferenceInput:
+        """根据提交请求构造统一输入合同。"""
+
+        input_transport_mode = self._normalize_input_transport_mode(request.input_transport_mode)
+        if input_transport_mode == YOLOX_INFERENCE_INPUT_TRANSPORT_MEMORY:
+            return YoloXNormalizedInferenceInput(
+                input_uri=(request.input_uri or "").strip(),
+                input_source_kind=request.input_source_kind,
+                input_file_id=request.input_file_id,
+                input_image_bytes=request.input_image_bytes,
+                input_transport_mode=input_transport_mode,
+            )
+        return YoloXNormalizedInferenceInput(
+            input_uri=self._resolve_input_uri(request),
+            input_source_kind=request.input_source_kind,
+            input_file_id=request.input_file_id,
+            input_transport_mode=input_transport_mode,
+        )
+
     def _resolve_input_uri(self, request: YoloXInferenceTaskRequest) -> str:
-        """解析并校验推理输入 URI。"""
+        """解析并校验 storage 模式下的推理输入 URI。"""
 
         value = request.input_uri if isinstance(request.input_uri, str) else None
         dataset_storage = self._require_dataset_storage()
@@ -472,16 +565,58 @@ class SqlAlchemyYoloXInferenceTaskService:
         """从 TaskRecord 反解析推理任务请求。"""
 
         task_spec = dict(task_record.task_spec)
+        normalized_input_payload = task_spec.get("normalized_input")
+        normalized_input = None
+        if isinstance(normalized_input_payload, dict):
+            normalized_input = deserialize_yolox_normalized_inference_input(normalized_input_payload)
         return YoloXInferenceTaskRequest(
             project_id=self._require_str(task_spec, "project_id"),
             deployment_instance_id=self._require_str(task_spec, "deployment_instance_id"),
-            input_file_id=self._read_optional_str(task_spec, "input_file_id"),
-            input_uri=self._require_str(task_spec, "input_uri"),
-            input_source_kind=self._read_optional_str(task_spec, "input_source_kind") or "input_uri",
+            input_file_id=(
+                normalized_input.input_file_id
+                if normalized_input is not None
+                else self._read_optional_str(task_spec, "input_file_id")
+            ),
+            input_uri=(
+                normalized_input.input_uri
+                if normalized_input is not None
+                else self._require_str(task_spec, "input_uri")
+            ),
+            input_source_kind=(
+                normalized_input.input_source_kind
+                if normalized_input is not None
+                else self._read_optional_str(task_spec, "input_source_kind") or "input_uri"
+            ),
+            input_transport_mode=(
+                normalized_input.input_transport_mode
+                if normalized_input is not None
+                else self._read_optional_str(task_spec, "input_transport_mode")
+                or YOLOX_INFERENCE_INPUT_TRANSPORT_STORAGE
+            ),
+            input_image_bytes=(
+                normalized_input.input_image_bytes
+                if normalized_input is not None
+                else None
+            ),
+            async_inference_owner_id=self._read_optional_str(task_spec, "async_inference_owner_id"),
             score_threshold=self._read_optional_float(task_spec, "score_threshold"),
             save_result_image=bool(task_spec.get("save_result_image") is True),
             return_preview_image_base64=bool(task_spec.get("return_preview_image_base64") is True),
             extra_options=self._read_dict(task_spec, "extra_options"),
+        )
+
+    def _build_normalized_input_from_task_record(
+        self,
+        task_record: TaskRecord,
+    ) -> YoloXNormalizedInferenceInput:
+        """从 TaskRecord 反解析统一输入合同。"""
+
+        task_spec = dict(task_record.task_spec)
+        normalized_input_payload = task_spec.get("normalized_input")
+        if isinstance(normalized_input_payload, dict):
+            return deserialize_yolox_normalized_inference_input(normalized_input_payload)
+        return self._build_normalized_input_from_request(
+            self._build_request_from_task_record(task_record)
         )
 
     def _build_process_config_from_task_record(
@@ -501,7 +636,9 @@ class SqlAlchemyYoloXInferenceTaskService:
         return YoloXDeploymentProcessConfig(
             deployment_instance_id=self._require_str(task_spec, "deployment_instance_id"),
             runtime_target=runtime_target,
+            project_id=self._read_optional_str(task_spec, "project_id") or "",
             instance_count=instance_count,
+            runtime_behavior=_deserialize_process_runtime_behavior(task_spec.get("runtime_behavior")),
         )
 
     def _build_runtime_target_from_task_record(
@@ -591,6 +728,82 @@ class SqlAlchemyYoloXInferenceTaskService:
             )
         return threshold
 
+    def _execute_inference(
+        self,
+        *,
+        process_config: YoloXDeploymentProcessConfig,
+        prediction_request: YoloXPredictionRequest,
+        async_inference_owner_id: str,
+        return_preview_image_base64: bool,
+    ) -> YoloXInferenceExecutionResult:
+        """执行底层推理，并根据运行环境选择 supervisor 或 queue IPC client。"""
+
+        if self.async_inference_executor is not None:
+            payload = self.async_inference_executor.execute_inference(
+                process_config=process_config,
+                request=prediction_request,
+                owner_id=async_inference_owner_id,
+            )
+            parsed_payload = deserialize_yolox_async_inference_execution_result_payload(payload)
+            return YoloXInferenceExecutionResult(
+                instance_id=self._read_optional_str(parsed_payload, "instance_id"),
+                detections=self._read_detection_items(parsed_payload),
+                latency_ms=self._read_optional_float(parsed_payload, "latency_ms"),
+                image_width=self._read_optional_int(parsed_payload, "image_width") or 0,
+                image_height=self._read_optional_int(parsed_payload, "image_height") or 0,
+                preview_image_bytes=(
+                    parsed_payload.get("preview_image_bytes")
+                    if isinstance(parsed_payload.get("preview_image_bytes"), bytes)
+                    else None
+                ),
+                runtime_session_info=self._read_dict(parsed_payload, "runtime_session_info"),
+            )
+        return run_yolox_inference_task(
+            deployment_process_supervisor=self._require_deployment_process_supervisor(),
+            process_config=process_config,
+            input_uri=prediction_request.input_uri,
+            input_image_bytes=prediction_request.input_image_bytes,
+            input_image_payload=prediction_request.input_image_payload,
+            score_threshold=prediction_request.score_threshold,
+            save_result_image=prediction_request.save_result_image,
+            return_preview_image_base64=return_preview_image_base64,
+            extra_options=dict(prediction_request.extra_options),
+        )
+
+    @staticmethod
+    def _build_prediction_request(
+        *,
+        normalized_input: YoloXNormalizedInferenceInput,
+        score_threshold: float,
+        save_result_image: bool,
+        return_preview_image_base64: bool,
+        extra_options: dict[str, object],
+    ) -> YoloXPredictionRequest:
+        """把任务层统一输入合同折叠为 prediction request。"""
+
+        return build_yolox_prediction_request(
+            normalized_input=normalized_input,
+            score_threshold=score_threshold,
+            save_result_image=save_result_image,
+            return_preview_image_base64=return_preview_image_base64,
+            extra_options=extra_options,
+        )
+
+    @staticmethod
+    def _read_detection_items(
+        payload: dict[str, object],
+    ) -> tuple[dict[str, object], ...]:
+        """从已解析的 gateway 结果中读取 detection 列表。"""
+
+        detections = payload.get("detections")
+        if not isinstance(detections, tuple | list):
+            return ()
+        normalized_items: list[dict[str, object]] = []
+        for item in detections:
+            if isinstance(item, dict):
+                normalized_items.append({str(key): value for key, value in item.items()})
+        return tuple(normalized_items)
+
     @staticmethod
     def _read_optional_str(payload: dict[str, object], key: str) -> str | None:
         """从字典中读取可选字符串字段。"""
@@ -627,6 +840,24 @@ class SqlAlchemyYoloXInferenceTaskService:
             return {str(item_key): item_value for item_key, item_value in value.items()}
         return {}
 
+    @staticmethod
+    def _normalize_input_transport_mode(value: object) -> str:
+        """规范化任务输入传输模式。"""
+
+        if isinstance(value, str) and value.strip():
+            normalized_value = value.strip().lower()
+        else:
+            normalized_value = YOLOX_INFERENCE_INPUT_TRANSPORT_STORAGE
+        if normalized_value not in {
+            YOLOX_INFERENCE_INPUT_TRANSPORT_STORAGE,
+            YOLOX_INFERENCE_INPUT_TRANSPORT_MEMORY,
+        }:
+            raise InvalidRequestError(
+                "input_transport_mode 仅支持 storage 或 memory",
+                details={"input_transport_mode": value},
+            )
+        return normalized_value
+
     def _require_str(self, payload: dict[str, object], key: str) -> str:
         """从字典中读取必填字符串。"""
 
@@ -639,12 +870,91 @@ class SqlAlchemyYoloXInferenceTaskService:
         return value
 
 
+def _serialize_process_runtime_behavior(
+    runtime_behavior: YoloXDeploymentProcessRuntimeBehavior,
+) -> dict[str, object]:
+    """把 deployment runtime behavior 序列化到任务快照。"""
+
+    warmup_dummy_image_size = runtime_behavior.warmup_dummy_image_size
+    return {
+        "warmup_dummy_inference_count": runtime_behavior.warmup_dummy_inference_count,
+        "warmup_dummy_image_size": list(warmup_dummy_image_size)
+        if warmup_dummy_image_size is not None
+        else None,
+        "keep_warm_enabled": runtime_behavior.keep_warm_enabled,
+        "keep_warm_interval_seconds": runtime_behavior.keep_warm_interval_seconds,
+        "tensorrt_pinned_output_buffer_enabled": runtime_behavior.tensorrt_pinned_output_buffer_enabled,
+        "tensorrt_pinned_output_buffer_max_bytes": runtime_behavior.tensorrt_pinned_output_buffer_max_bytes,
+    }
+
+
+def _deserialize_process_runtime_behavior(payload: object) -> YoloXDeploymentProcessRuntimeBehavior:
+    """从任务快照恢复 deployment runtime behavior。"""
+
+    if not isinstance(payload, dict):
+        return YoloXDeploymentProcessRuntimeBehavior()
+    warmup_dummy_image_size = payload.get("warmup_dummy_image_size")
+    resolved_warmup_dummy_image_size = None
+    if isinstance(warmup_dummy_image_size, list | tuple) and len(warmup_dummy_image_size) == 2:
+        resolved_warmup_dummy_image_size = (
+            int(warmup_dummy_image_size[0]),
+            int(warmup_dummy_image_size[1]),
+        )
+    return YoloXDeploymentProcessRuntimeBehavior(
+        warmup_dummy_inference_count=_read_optional_int_value(payload.get("warmup_dummy_inference_count")),
+        warmup_dummy_image_size=resolved_warmup_dummy_image_size,
+        keep_warm_enabled=_read_optional_bool_value(payload.get("keep_warm_enabled")),
+        keep_warm_interval_seconds=_read_optional_float_value(payload.get("keep_warm_interval_seconds")),
+        tensorrt_pinned_output_buffer_enabled=_read_optional_bool_value(
+            payload.get("tensorrt_pinned_output_buffer_enabled")
+        ),
+        tensorrt_pinned_output_buffer_max_bytes=_read_optional_int_value(
+            payload.get("tensorrt_pinned_output_buffer_max_bytes")
+        ),
+    )
+
+
+def _normalize_optional_str(value: object) -> str | None:
+    """把可选字符串规范化为空值或非空字符串。"""
+
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    return None
+
+
+def _read_optional_bool_value(value: object) -> bool | None:
+    """从任意值中读取可选 bool。"""
+
+    if isinstance(value, bool):
+        return value
+    return None
+
+
+def _read_optional_float_value(value: object) -> float | None:
+    """从任意值中读取可选 float。"""
+
+    if isinstance(value, int | float):
+        return float(value)
+    return None
+
+
+def _read_optional_int_value(value: object) -> int | None:
+    """从任意值中读取可选 int。"""
+
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    return None
+
+
 def run_yolox_inference_task(
     *,
     deployment_process_supervisor: YoloXDeploymentProcessSupervisor,
     process_config: YoloXDeploymentProcessConfig,
     input_uri: str | None,
     input_image_bytes: bytes | None = None,
+    input_image_payload: dict[str, object] | None = None,
     score_threshold: float,
     save_result_image: bool,
     return_preview_image_base64: bool,
@@ -657,6 +967,7 @@ def run_yolox_inference_task(
     - process_config：本次推理命中的 deployment 配置。
     - input_uri：storage 模式下的输入文件 URI。
     - input_image_bytes：memory 模式下直接传递给运行时的原始图片字节。
+    - input_image_payload：跨进程图片引用载荷，例如 image-ref 或 local buffer。
     - score_threshold：置信度阈值。
     - save_result_image：是否生成预览图。
     - return_preview_image_base64：是否直接返回预览图 base64。
@@ -671,6 +982,7 @@ def run_yolox_inference_task(
         request=YoloXPredictionRequest(
             input_uri=input_uri,
             input_image_bytes=input_image_bytes,
+            input_image_payload=(dict(input_image_payload) if isinstance(input_image_payload, dict) else None),
             score_threshold=score_threshold,
             save_result_image=save_result_image or return_preview_image_base64,
             extra_options=dict(extra_options),

@@ -758,6 +758,9 @@ def test_trigger_source_create_examples_keep_protocol_native_input_boundary(
     assert create_request["trigger_source_id"] == expected_trigger_source_id
     assert create_request["metadata"]["example_kind"] == expected_example_kind
     assert create_request["default_execution_metadata"]["trigger_source"] == "zeromq-sdk"
+    assert create_request["default_execution_metadata"]["trace_level"] == "none"
+    assert create_request["default_execution_metadata"]["retain_trace_enabled"] is False
+    assert create_request["default_execution_metadata"]["retain_node_records_enabled"] is False
     assert set(create_request["input_binding_mapping"]) == expected_binding_ids
     assert all(
         binding_payload["payload_type_id"] in {"image-ref.v1", "value.v1"}

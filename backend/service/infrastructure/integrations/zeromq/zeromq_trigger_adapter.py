@@ -9,6 +9,7 @@ from typing import Any, Protocol
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from backend.contracts.buffers import BufferRef
 from backend.contracts.workflows import TriggerResultContract
 from backend.service.application.errors import (
     InvalidRequestError,
@@ -51,6 +52,11 @@ class LocalBufferByteWriter(Protocol):
         trace_id: str | None = None,
     ) -> object:
         """写入 bytes 并返回带 buffer_ref 属性的结果对象。"""
+
+        ...
+
+    def release(self, lease_id: str, *, pool_name: str | None = None) -> None:
+        """释放指定 LocalBufferBroker lease。"""
 
         ...
 
@@ -282,6 +288,7 @@ class ZeroMqTriggerAdapter:
         """
 
         state = self._states.get(trigger_source.trigger_source_id)
+        buffer_ref_payload: dict[str, object] | None = None
         if state is not None:
             increment_safe_counter(state.received_count)
         try:
@@ -312,10 +319,13 @@ class ZeroMqTriggerAdapter:
             result = event_handler.handle_trigger_event(
                 trigger_source=trigger_source, raw_event=raw_event
             )
+            if result.state == "failed" and result.workflow_run_id is None:
+                self._release_buffer_ref_payload(buffer_ref_payload)
             if state is not None:
                 self._record_result(state, result)
             return result
         except Exception as error:
+            self._release_buffer_ref_payload(buffer_ref_payload)
             if state is not None:
                 _record_adapter_error(state, error)
             raise
@@ -438,6 +448,28 @@ class ZeroMqTriggerAdapter:
         if buffer_ref is None or not callable(getattr(buffer_ref, "model_dump", None)):
             raise InvalidRequestError("LocalBufferBroker 写入结果缺少 buffer_ref")
         return dict(buffer_ref.model_dump(mode="json"))
+
+    def _release_buffer_ref_payload(self, buffer_ref_payload: dict[str, object] | None) -> None:
+        """在提交失败且 WorkflowRun 未接管 cleanup 时释放输入 buffer。
+
+        参数：
+        - buffer_ref_payload：已写入 LocalBufferBroker 后返回的 BufferRef payload。
+        """
+
+        if buffer_ref_payload is None:
+            return
+        release = getattr(self.local_buffer_writer, "release", None)
+        if not callable(release):
+            return
+        try:
+            buffer_ref = BufferRef.model_validate(buffer_ref_payload)
+            pool_name_value = buffer_ref.metadata.get("pool_name")
+            release(
+                buffer_ref.lease_id,
+                pool_name=pool_name_value if isinstance(pool_name_value, str) else None,
+            )
+        except Exception:
+            return
 
     def _record_result(
         self,

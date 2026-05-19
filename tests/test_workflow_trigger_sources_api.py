@@ -21,7 +21,9 @@ def test_workflow_trigger_source_api_manages_first_phase_resource(
     """验证 TriggerSource 管理 API 可以创建、查询、启用、停用并删除后重建资源。"""
 
     context = create_api_test_context(
-        tmp_path, database_name="workflow-trigger-sources.db"
+        tmp_path,
+        database_name="workflow-trigger-sources.db",
+        enable_local_buffer_broker=False,
     )
     headers = build_test_headers(scopes="workflows:read,workflows:write")
     try:
@@ -178,7 +180,9 @@ def test_workflow_trigger_source_api_controls_zeromq_adapter(
     """验证 TriggerSource 管理 API 可以删除并重建 ZeroMQ TriggerSource。"""
 
     context = create_api_test_context(
-        tmp_path, database_name="workflow-trigger-sources-zeromq.db"
+        tmp_path,
+        database_name="workflow-trigger-sources-zeromq.db",
+        enable_local_buffer_broker=False,
     )
     headers = build_test_headers(scopes="workflows:read,workflows:write")
     bind_endpoint = f"inproc://workflow-trigger-source-{uuid4().hex}"

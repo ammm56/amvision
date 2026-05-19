@@ -419,9 +419,9 @@ class WorkflowExecutionPolicyContract(BaseModel):
     policy_kind: WorkflowExecutionPolicyKind
     default_timeout_seconds: int = 30
     max_run_timeout_seconds: int = 30
-    trace_level: str = "node-summary"
-    retain_node_records_enabled: bool = True
-    retain_trace_enabled: bool = True
+    trace_level: str = "none"
+    retain_node_records_enabled: bool = False
+    retain_trace_enabled: bool = False
     created_at: str
     updated_at: str
     created_by: str | None = None

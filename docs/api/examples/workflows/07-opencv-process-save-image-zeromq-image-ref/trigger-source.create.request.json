@@ -24,7 +24,10 @@
   },
   "default_execution_metadata": {
     "scenario": "opencv-process-save-image-zeromq",
-    "trigger_source": "zeromq-sdk"
+    "trigger_source": "zeromq-sdk",
+    "trace_level": "none",
+    "retain_trace_enabled": false,
+    "retain_node_records_enabled": false
   },
   "ack_policy": "ack-after-run-finished",
   "result_mode": "sync-reply",

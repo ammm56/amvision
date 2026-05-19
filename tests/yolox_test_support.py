@@ -5,9 +5,14 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
+import backend.service.application.models.yolox_inference_task_service as yolox_inference_task_service_module
+
 from backend.queue import LocalFileQueueBackend
 from backend.service.application.events import InMemoryServiceEventBus
 from backend.service.application.errors import InvalidRequestError
+from backend.service.application.models.yolox_async_inference_gateway import (
+    serialize_yolox_async_inference_execution_result,
+)
 from backend.service.application.models.yolox_model_service import (
     SqlAlchemyYoloXModelService,
     YoloXBuildRegistration,
@@ -90,6 +95,7 @@ def create_yolox_api_test_context(
     context = create_api_test_context(
         tmp_path,
         database_name=database_name,
+        enable_local_buffer_broker=False,
         max_concurrent_tasks=max_concurrent_tasks,
         poll_interval_seconds=poll_interval_seconds,
     )
@@ -110,6 +116,16 @@ def create_yolox_api_test_context(
         )
         context.client.app.state.yolox_sync_deployment_process_supervisor = sync_supervisor
         context.client.app.state.yolox_async_deployment_process_supervisor = async_supervisor
+        gateway_dispatcher_registry = getattr(
+            context.client.app.state,
+            "yolox_async_inference_gateway_dispatcher_registry",
+            None,
+        )
+        if gateway_dispatcher_registry is not None:
+            gateway_dispatcher_registry.execution_handler = _build_fake_async_inference_gateway_handler(
+                async_supervisor
+            )
+            gateway_dispatcher_registry.dataset_storage = context.dataset_storage
 
     return YoloXApiTestContext(
         client=context.client,
@@ -496,3 +512,26 @@ class FakeDeploymentProcessSupervisor(YoloXDeploymentProcessSupervisor):
         process_id = self._next_process_id
         self._next_process_id += 1
         return process_id
+
+
+def _build_fake_async_inference_gateway_handler(
+    async_supervisor: FakeDeploymentProcessSupervisor,
+):
+    """构造绑定 fake async supervisor 的 service-side gateway 处理器。"""
+
+    def _execute(*, process_config, request):
+        """通过 fake async supervisor 执行一次 queue-backed 推理请求。"""
+
+        execution_result = yolox_inference_task_service_module.run_yolox_inference_task(
+            deployment_process_supervisor=async_supervisor,
+            process_config=process_config,
+            input_uri=request.input_uri,
+            input_image_bytes=request.input_image_bytes,
+            score_threshold=request.score_threshold,
+            save_result_image=request.save_result_image,
+            return_preview_image_base64=False,
+            extra_options=dict(request.extra_options),
+        )
+        return serialize_yolox_async_inference_execution_result(execution_result)
+
+    return _execute

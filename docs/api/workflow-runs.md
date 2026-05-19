@@ -180,12 +180,15 @@
   "metadata": {
     "trigger_source": "async-invoke",
     "created_by": "operator-1",
+    "trace_level": "none",
+    "retain_trace_enabled": false,
+    "retain_node_records_enabled": false,
     "execution_policy": {
       "execution_policy_id": "runtime-default-policy",
       "policy_kind": "runtime-default",
-      "trace_level": "node-summary",
-      "retain_node_records_enabled": true,
-      "retain_trace_enabled": true,
+      "trace_level": "none",
+      "retain_node_records_enabled": false,
+      "retain_trace_enabled": false,
       "snapshot_object_key": "workflows/runtime/app-runtimes/workflow-runtime-1/execution-policy.snapshot.json"
     }
   }
@@ -272,12 +275,15 @@
   "metadata": {
     "trigger_source": "sync-api",
     "created_by": "operator-1",
+    "trace_level": "none",
+    "retain_trace_enabled": false,
+    "retain_node_records_enabled": false,
     "execution_policy": {
       "execution_policy_id": "runtime-default-policy",
       "policy_kind": "runtime-default",
-      "trace_level": "node-summary",
-      "retain_node_records_enabled": true,
-      "retain_trace_enabled": true,
+      "trace_level": "none",
+      "retain_node_records_enabled": false,
+      "retain_trace_enabled": false,
       "snapshot_object_key": "workflows/runtime/app-runtimes/workflow-runtime-1/execution-policy.snapshot.json"
     }
   }
@@ -330,6 +336,8 @@
 - after_cursor 当前直接使用 WorkflowRun 事件的 sequence
 - 连接成功后先返回 workflows.runs.connected，再按 sequence 持续推送增量事件
 - 实时推送走 service_event_bus，历史回放与 REST 事件接口共用同一份 `events.json`
+- WorkflowAppRuntime 正式调用默认使用轻量持久化策略：`trace_level=none`、`retain_trace_enabled=false`、`retain_node_records_enabled=false`。默认不会创建 `workflows/runtime/{workflow_run_id}/events.json`，事件查询返回空列表，node_records 也不会写入数据库。
+- 如需临时排查单次调用，可在 invoke/runs 请求或 TriggerSource `default_execution_metadata` 中显式设置 `retain_trace_enabled=true`、`retain_node_records_enabled=true` 和非 `none` 的 `trace_level`。
 
 ## POST /api/v1/workflows/runs/{workflow_run_id}/cancel
 

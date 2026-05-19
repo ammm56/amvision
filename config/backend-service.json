@@ -39,12 +39,28 @@
     "root_dir": "./data/files"
   },
   "queue": {
-    "root_dir": "./data/queue"
+    "root_dir": "./data/queue",
+    "lease_timeout_seconds": 86400.0,
+    "completed_retention_seconds": 86400.0,
+    "failed_retention_seconds": 604800.0,
+    "response_queue_retention_seconds": 3600.0
   },
   "task_manager": {
     "enabled": false,
     "max_concurrent_tasks": 2,
     "poll_interval_seconds": 1.0
+  },
+  "async_inference_gateway": {
+    "service_id": "backend-service-main"
+  },
+  "local_buffer_broker": {
+    "enabled": true,
+    "root_dir": "./data/buffers",
+    "startup_timeout_seconds": 5.0,
+    "request_timeout_seconds": 5.0,
+    "shutdown_timeout_seconds": 5.0,
+    "expire_interval_seconds": 5.0,
+    "default_pool_name": "image-1080p"
   },
   "deployment_process_supervisor": {
     "auto_restart": true,

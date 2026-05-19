@@ -621,7 +621,11 @@ def test_workflow_run_events_websocket_streams_live_events(tmp_path: Path) -> No
                 headers=build_test_headers(scopes="workflows:read,workflows:write"),
                 json={
                     "input_bindings": {"request_text": {"value": "cancel over websocket"}},
-                    "execution_metadata": {"marker": "workflow-run-websocket"},
+                    "execution_metadata": {
+                        "marker": "workflow-run-websocket",
+                        "trace_level": "node-summary",
+                        "retain_trace_enabled": True,
+                    },
                 },
             )
             workflow_run_id = create_run_response.json()["workflow_run_id"]
@@ -667,7 +671,6 @@ def test_workflow_run_events_websocket_streams_live_events(tmp_path: Path) -> No
                 f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/stop",
                 headers=build_test_headers(scopes="workflows:read,workflows:write"),
             )
-            default_principal_id = get_default_test_principal_id(session_factory)
     finally:
         session_factory.engine.dispose()
 
@@ -1280,7 +1283,6 @@ def test_workflow_preview_run_api_delete_cleans_up_running_async_preview(tmp_pat
                 f"/api/v1/workflows/preview-runs/{preview_run_id}",
                 headers=build_test_headers(scopes="workflows:read,workflows:write"),
             )
-            default_principal_id = get_default_test_principal_id(session_factory)
     finally:
         session_factory.engine.dispose()
 
@@ -2032,7 +2034,6 @@ def test_workflow_app_runtime_api_invokes_saved_application_in_worker_process(
                 f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/stop",
                 headers=build_test_headers(scopes="workflows:read,workflows:write"),
             )
-            default_principal_id = get_default_test_principal_id(session_factory)
     finally:
         session_factory.engine.dispose()
 
@@ -2145,7 +2146,6 @@ def test_workflow_app_runtime_api_marks_run_timed_out_when_worker_exceeds_timeou
                 f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/stop",
                 headers=build_test_headers(scopes="workflows:read,workflows:write"),
             )
-            default_principal_id = get_default_test_principal_id(session_factory)
     finally:
         session_factory.engine.dispose()
 
@@ -2244,7 +2244,6 @@ def test_workflow_app_runtime_api_persists_failed_invoke_details(
                 f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/stop",
                 headers=build_test_headers(scopes="workflows:read,workflows:write"),
             )
-            default_principal_id = get_default_test_principal_id(session_factory)
     finally:
         session_factory.engine.dispose()
 

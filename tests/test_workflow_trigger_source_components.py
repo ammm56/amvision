@@ -133,6 +133,39 @@ def test_workflow_submitter_sync_reply_prefers_unsanitized_outputs() -> None:
     assert "image_base64_redacted" not in result_body["data"]["annotated_image"]
 
 
+def test_workflow_submitter_zeromq_defaults_to_no_trace() -> None:
+    """验证 ZeroMQ TriggerSource 默认关闭磁盘 trace。"""
+
+    trigger_source = _build_trigger_source(
+        trigger_kind="zeromq-topic",
+        submit_mode="sync",
+        input_binding_mapping={"request_image_ref": {"source": "payload.request_image"}},
+    )
+    trigger_event = TriggerEventNormalizer().normalize(
+        trigger_source,
+        RawTriggerEvent(
+            event_id="event-1",
+            payload={
+                "request_image": {
+                    "transport_kind": "buffer",
+                    "buffer_ref": _build_buffer_ref_payload(lease_id="lease-input-1"),
+                }
+            },
+        ),
+    )
+    runtime_service = _CapturingSyncRuntimeService()
+
+    trigger_result = WorkflowSubmitter(runtime_service=runtime_service).submit_event(
+        WorkflowTriggerSubmitRequest(trigger_source=trigger_source, trigger_event=trigger_event)
+    )
+
+    execution_metadata = runtime_service.last_request.execution_metadata
+    assert trigger_result.state == "succeeded"
+    assert execution_metadata["trace_level"] == "none"
+    assert execution_metadata["retain_trace_enabled"] is False
+    assert execution_metadata["retain_node_records_enabled"] is False
+
+
 def test_trigger_source_supervisor_submits_normalized_event() -> None:
     """验证 supervisor 可以标准化事件并提交给 WorkflowSubmitter。"""
 
@@ -206,6 +239,32 @@ def test_zeromq_trigger_adapter_maps_content_frame_to_buffer_ref_payload() -> No
     assert image_payload["transport_kind"] == "buffer"
     assert image_payload["buffer_ref"]["format_id"] == "amvision.buffer-ref.v1"
     assert image_payload["buffer_ref"]["media_type"] == "image/png"
+
+
+def test_zeromq_trigger_adapter_releases_buffer_when_submit_is_rejected() -> None:
+    """验证提交在创建 WorkflowRun 前失败时会释放刚写入的输入 buffer。"""
+
+    trigger_source = _build_trigger_source(
+        trigger_kind="zeromq-topic",
+        input_binding_mapping={"request_image": {"source": "payload.request_image"}},
+        transport_config={"default_input_binding": "request_image"},
+    )
+    local_buffer_writer = _FakeLocalBufferWriter()
+    adapter = ZeroMqTriggerAdapter(local_buffer_writer=local_buffer_writer)
+    supervisor = TriggerSourceSupervisor(
+        adapters={"zeromq-topic": _FakeProtocolAdapter(adapter_kind="zeromq-topic")},
+        workflow_submitter=_RejectingWorkflowSubmitter(),
+    )
+
+    result = adapter.handle_multipart_message(
+        trigger_source=trigger_source,
+        frames=[b'{"event_id":"event-1","media_type":"image/png"}', b"image-bytes"],
+        event_handler=supervisor,
+    )
+
+    assert result.state == "failed"
+    assert result.workflow_run_id is None
+    assert local_buffer_writer.released_leases == [("lease-1", None)]
 
 
 def test_zeromq_trigger_adapter_serves_req_rep_message() -> None:
@@ -391,6 +450,74 @@ class _FakeSyncRuntimeService:
         )
 
 
+class _CapturingSyncRuntimeService(_FakeSyncRuntimeService):
+    """记录同步调用请求的 WorkflowRuntimeService 替身。
+
+    字段：
+    - last_request：最近一次同步调用请求。
+    """
+
+    def __init__(self) -> None:
+        """初始化请求记录。"""
+
+        self.last_request = None
+
+    def invoke_workflow_app_runtime_with_response(
+        self,
+        workflow_runtime_id: str,
+        request,
+        *,
+        created_by: str | None,
+    ) -> WorkflowRuntimeSyncInvokeResult:
+        """记录请求并返回固定成功结果。
+
+        参数：
+        - workflow_runtime_id：目标 WorkflowAppRuntime id。
+        - request：同步调用请求。
+        - created_by：调用主体 id。
+
+        返回：
+        - WorkflowRuntimeSyncInvokeResult：固定成功调用结果。
+        """
+
+        _ = workflow_runtime_id, created_by
+        self.last_request = request
+        return WorkflowRuntimeSyncInvokeResult(
+            workflow_run=WorkflowRun(
+                workflow_run_id="workflow-run-sync-1",
+                workflow_runtime_id="workflow-runtime-1",
+                project_id="project-1",
+                application_id="app-1",
+                state="succeeded",
+                outputs={"http_response": {"status_code": 200}},
+            ),
+            raw_outputs={"http_response": {"status_code": 200}},
+        )
+
+
+class _RejectingWorkflowSubmitter:
+    """返回创建前失败结果的 WorkflowSubmitter 替身。"""
+
+    def submit_event(
+        self, request: WorkflowTriggerSubmitRequest
+    ) -> TriggerResultContract:
+        """模拟 WorkflowRun 创建前失败。
+
+        参数：
+        - request：TriggerSource 提交请求。
+
+        返回：
+        - TriggerResultContract：失败结果。
+        """
+
+        return TriggerResultContract(
+            trigger_source_id=request.trigger_source.trigger_source_id,
+            event_id=request.trigger_event.event_id,
+            state="failed",
+            error_message="runtime not running",
+        )
+
+
 class _FakeProtocolAdapter:
     """测试用协议 adapter。"""
 
@@ -434,6 +561,11 @@ class _FakeProtocolAdapter:
 class _FakeLocalBufferWriter:
     """测试用 LocalBufferBroker 写入器。"""
 
+    def __init__(self) -> None:
+        """初始化释放记录。"""
+
+        self.released_leases: list[tuple[str, str | None]] = []
+
     def write_bytes(
         self,
         *,
@@ -468,3 +600,35 @@ class _FakeLocalBufferWriter:
                 generation=1,
             )
         )
+
+    def release(self, lease_id: str, *, pool_name: str | None = None) -> None:
+        """记录释放的 lease。
+
+        参数：
+        - lease_id：待释放的 lease id。
+        - pool_name：可选 pool 名称。
+        """
+
+        self.released_leases.append((lease_id, pool_name))
+
+
+def _build_buffer_ref_payload(*, lease_id: str = "lease-1") -> dict[str, object]:
+    """构造测试用 BufferRef payload。
+
+    参数：
+    - lease_id：测试使用的 lease id。
+
+    返回：
+    - dict[str, object]：JSON 可序列化的 BufferRef payload。
+    """
+
+    return BufferRef(
+        buffer_id="buffer-1",
+        lease_id=lease_id,
+        path="data/buffers/pool-001.dat",
+        offset=0,
+        size=10,
+        media_type="image/png",
+        broker_epoch="epoch-1",
+        generation=1,
+    ).model_dump(mode="json")

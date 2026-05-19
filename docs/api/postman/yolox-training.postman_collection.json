@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "b0db9a90-95bc-4a01-b247-1ddb33e1a2a8",
     "name": "amvision yolox training validation conversion evaluation inference api",
-    "description": "当前公开的 YOLOX training create/list/detail/save/pause/resume/terminate/delete/register-model-version/validation-metrics/train-metrics/output-files、validation-sessions create/detail/predict、conversion-tasks create/list/detail/result、evaluation-tasks create/list/detail/report/output-files，以及 deployment-instances create/list/detail/events、sync/async start/status/stop/warmup/health/reset、direct infer、inference-tasks create/list/detail/result 和 YOLOX 相关 workflow preview-runs sync/async 调试接口。本集合已经同步 fp16/fp32、CPU fallback 调试方式、latest checkpoint、validation metrics、output-files、training_summary、detail 响应里的 available_actions 与 control_status、save/pause 后自动登记 latest checkpoint 版本、terminate/delete 控制链，以及 latest checkpoint 与 completed best 的版本区分、训练完成后的单图人工验证闭环、source ModelVersion 到 ONNX/optimized ONNX/OpenVINO IR/TensorRT engine 的 conversion 主链、数据集级回归评估和结果包输出，以及 deployment_instance_id 驱动的正式推理链；当前 conversion 创建请求已按目标格式拆分，其中 OpenVINO IR 与 TensorRT engine 都已继续拆成 fp32 与 fp16 两种构建策略，deployment 发布模板也已按 PyTorch、ONNXRuntime、OpenVINO、TensorRT 拆分。当前 deployment 推理链要求先显式调用 start 或 warmup，再执行 infer 或 inference-task create。Postman collection 已按 validation、conversion、evaluation、sync deployment、async deployment、sync inference、async inference task 分组，并把 input_uri、image_base64、multipart input_image 三种输入方式分别拆成独立调试请求；TensorRT deployment 模板已额外暴露 metadata.deployment_process 下的 warmup_dummy_inference_count、warmup_dummy_image_size、keep_warm_enabled、keep_warm_interval_seconds 变量，sync/async warmup 和 health 也会自动回填 keep_warm 的 enabled、activated、success_count、error_count、last_error，便于确认是否真的生效。默认建议把 includeEvents 设为 false，用于高频轮询调试；如果需要读取 deployment 生命周期历史，可直接使用本集合里的 Get YOLOX Deployment Events 请求。",
+    "description": "当前公开的 YOLOX training create/list/detail/save/pause/resume/terminate/delete/register-model-version/validation-metrics/train-metrics/output-files、validation-sessions create/detail/predict、conversion-tasks create/list/detail/result、evaluation-tasks create/list/detail/report/output-files，以及 deployment-instances create/list/detail/events、sync/async start/status/stop/warmup/health/reset、direct infer、inference-tasks create/list/detail/result 和 YOLOX 相关 workflow preview-runs sync/async 调试接口。本集合已经同步 fp16/fp32、CPU fallback 调试方式、latest checkpoint、validation metrics、output-files、training_summary、detail 响应里的 available_actions 与 control_status、save/pause 后自动登记 latest checkpoint 版本、terminate/delete 控制链，以及 latest checkpoint 与 completed best 的版本区分、训练完成后的单图人工验证闭环、source ModelVersion 到 ONNX/optimized ONNX/OpenVINO IR/TensorRT engine 的 conversion 主链、数据集级回归评估和结果包输出，以及 deployment_instance_id 驱动的正式推理链；当前 conversion 创建请求已按目标格式拆分，其中 OpenVINO IR 与 TensorRT engine 都已继续拆成 fp32 与 fp16 两种构建策略，deployment 发布模板也已按 PyTorch、ONNXRuntime、OpenVINO、TensorRT 拆分。当前 deployment 推理链要求先显式调用 start 或 warmup，再执行 infer 或 inference-task create；其中 async inference task 由 worker 通过 queue gateway 回调 backend-service 持有的 async deployment owner，workflow preview/runtime 里的推理示例仍走 PublishedInferenceGateway + sync deployment。Postman collection 已按 validation、conversion、evaluation、sync deployment、async deployment、sync inference、async inference task 分组，并把 input_uri、image_base64、multipart input_image 三种输入方式分别拆成独立调试请求；TensorRT deployment 模板已额外暴露 metadata.deployment_process 下的 warmup_dummy_inference_count、warmup_dummy_image_size、keep_warm_enabled、keep_warm_interval_seconds 变量，sync/async warmup 和 health 也会自动回填 keep_warm 的 enabled、activated、success_count、error_count、last_error，便于确认是否真的生效。默认建议把 includeEvents 设为 false，用于高频轮询调试；如果需要读取 deployment 生命周期历史，可直接使用本集合里的 Get YOLOX Deployment Events 请求。",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "item": [
@@ -3229,7 +3229,7 @@
                 ],
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"image_base64\": \"{{inferenceImageBase64}}\",\n  \"input_transport_mode\": \"{{directInferenceInputTransportMode}}\",\n  \"score_threshold\": {{inferenceScoreThreshold}},\n  \"save_result_image\": {{inferenceSaveResultImage}},\n  \"return_preview_image_base64\": {{inferenceReturnPreviewImageBase64}},\n  \"extra_options\": {}\n}",
+                  "raw": "{\n  \"image_base64\": \"{{inferenceImageBase64}}\",\n  \"input_transport_mode\": \"{{inferenceInputTransportMode}}\",\n  \"score_threshold\": {{inferenceScoreThreshold}},\n  \"save_result_image\": {{inferenceSaveResultImage}},\n  \"return_preview_image_base64\": {{inferenceReturnPreviewImageBase64}},\n  \"extra_options\": {}\n}",
                   "options": {
                     "raw": {
                       "language": "json"
@@ -3251,7 +3251,7 @@
                     "infer"
                   ]
                 },
-                "description": "直接执行一次同步 YOLOX 推理并返回结果，输入来源为 image_base64。请求体只保留这一个输入字段，便于单独调试 base64 上传路径。image_base64 既可以填纯 base64 内容，也可以改成 data:image/png;base64,{{inferenceImageBase64}} 这类 data URI；但 application/json 请求体里的字符串必须保持单行。默认增加 input_transport_mode={{directInferenceInputTransportMode}}；当取值为 memory 时，请求图片不会写入临时输入目录，而是直接以内存字节进入 deployment 推理进程。"
+                "description": "直接执行一次同步 YOLOX 推理并返回结果，输入来源为 image_base64。请求体只保留这一个输入字段，便于单独调试 base64 上传路径。image_base64 既可以填纯 base64 内容，也可以改成 data:image/png;base64,{{inferenceImageBase64}} 这类 data URI；但 application/json 请求体里的字符串必须保持单行。默认增加 input_transport_mode={{inferenceInputTransportMode}}；当取值为 memory 时，请求图片不会写入临时输入目录，而是直接以内存字节进入 deployment 推理进程。"
               },
               "response": []
             },
@@ -3292,7 +3292,7 @@
                     },
                     {
                       "key": "input_transport_mode",
-                      "value": "{{directInferenceInputTransportMode}}",
+                      "value": "{{inferenceInputTransportMode}}",
                       "type": "text"
                     },
                     {
@@ -3332,7 +3332,7 @@
                     "infer"
                   ]
                 },
-                "description": "直接执行一次同步 YOLOX 推理并返回结果，输入来源为 multipart/form-data 的 input_image 文件字段。不要再同时提交 input_uri 或 image_base64。默认增加 input_transport_mode={{directInferenceInputTransportMode}}；当取值为 memory 时，请求图片不会写入临时输入目录，而是直接以内存字节进入 deployment 推理进程。"
+                "description": "直接执行一次同步 YOLOX 推理并返回结果，输入来源为 multipart/form-data 的 input_image 文件字段。不要再同时提交 input_uri 或 image_base64。默认增加 input_transport_mode={{inferenceInputTransportMode}}；当取值为 memory 时，请求图片不会写入临时输入目录，而是直接以内存字节进入 deployment 推理进程。"
               },
               "response": []
             }
@@ -3485,7 +3485,7 @@
                 ],
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"deployment_instance_id\": \"{{deploymentInstanceId}}\",\n  \"image_base64\": \"{{inferenceImageBase64}}\",\n  \"score_threshold\": {{inferenceScoreThreshold}},\n  \"save_result_image\": {{inferenceSaveResultImage}},\n  \"return_preview_image_base64\": {{inferenceReturnPreviewImageBase64}},\n  \"extra_options\": {},\n  \"display_name\": \"{{inferenceDisplayName}}\"\n}",
+                  "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"deployment_instance_id\": \"{{deploymentInstanceId}}\",\n  \"image_base64\": \"{{inferenceImageBase64}}\",\n  \"input_transport_mode\": \"{{inferenceInputTransportMode}}\",\n  \"score_threshold\": {{inferenceScoreThreshold}},\n  \"save_result_image\": {{inferenceSaveResultImage}},\n  \"return_preview_image_base64\": {{inferenceReturnPreviewImageBase64}},\n  \"extra_options\": {},\n  \"display_name\": \"{{inferenceDisplayName}}\"\n}",
                   "options": {
                     "raw": {
                       "language": "json"
@@ -3505,7 +3505,7 @@
                     "inference-tasks"
                   ]
                 },
-                "description": "创建一个正式 YOLOX inference task，输入来源为 image_base64。请求体只保留这一种输入方式，便于单独调试 base64 入队路径。image_base64 既可以填纯 base64 内容，也可以改成 data:image/png;base64,{{inferenceImageBase64}} 这类 data URI；但 application/json 请求体里的字符串必须保持单行。"
+                "description": "创建一个正式 YOLOX inference task，输入来源为 image_base64。请求体只保留这一种输入方式，便于单独调试 base64 入队路径。image_base64 既可以填纯 base64 内容，也可以改成 data:image/png;base64,{{inferenceImageBase64}} 这类 data URI；但 application/json 请求体里的字符串必须保持单行。默认增加 input_transport_mode={{inferenceInputTransportMode}}；当取值为 memory 时，请求图片不会写入临时输入目录，而是会作为任务 normalized_input 固化，并由 worker 通过 queue IPC 转发到 async deployment 推理进程。"
               },
               "response": []
             },
@@ -3553,6 +3553,11 @@
                       "src": "{{inferenceUploadImagePath}}"
                     },
                     {
+                      "key": "input_transport_mode",
+                      "value": "{{inferenceInputTransportMode}}",
+                      "type": "text"
+                    },
+                    {
                       "key": "score_threshold",
                       "value": "{{inferenceScoreThreshold}}",
                       "type": "text"
@@ -3592,7 +3597,7 @@
                     "inference-tasks"
                   ]
                 },
-                "description": "创建一个正式 YOLOX inference task，输入来源为 multipart/form-data 的 input_image 文件字段。不要再同时提交 input_uri 或 image_base64。"
+                "description": "创建一个正式 YOLOX inference task，输入来源为 multipart/form-data 的 input_image 文件字段。不要再同时提交 input_uri 或 image_base64。默认增加 input_transport_mode={{inferenceInputTransportMode}}；当取值为 memory 时，请求图片不会写入临时输入目录，而是会作为任务 normalized_input 固化，并由 worker 通过 queue IPC 转发到 async deployment 推理进程。"
               },
               "response": []
             },
@@ -4394,7 +4399,7 @@
       "value": "projects/project-1/inputs/inference/image-1.jpg"
     },
     {
-      "key": "directInferenceInputTransportMode",
+      "key": "inferenceInputTransportMode",
       "value": "memory"
     },
     {

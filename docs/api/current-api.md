@@ -1045,7 +1045,7 @@ WebSocket 资源流的统一消息结构、控制事件和重连规则见 [docs/
   - input_uri
   - image_base64
   - input_file_id
-  - input_transport_mode：仅同步 `/infer` 使用，支持 `storage`、`memory`
+  - input_transport_mode：支持 `storage`、`memory`
   - score_threshold
   - save_result_image
   - return_preview_image_base64
@@ -1055,7 +1055,7 @@ WebSocket 资源流的统一消息结构、控制事件和重连规则见 [docs/
   - input_uri
   - image_base64
   - input_file_id
-  - input_transport_mode：仅同步 `/infer` 使用，支持 `storage`、`memory`
+  - input_transport_mode：支持 `storage`、`memory`
   - score_threshold
   - save_result_image
   - return_preview_image_base64
@@ -1064,6 +1064,7 @@ WebSocket 资源流的统一消息结构、控制事件和重连规则见 [docs/
 - 当前同步 `/infer` 支持 `input_transport_mode=memory`：仅允许 `image_base64` 或 `input_image`，请求图片不会写入临时输入文件，而是直接以内存字节送入 deployment 子进程
 - 当同步 `/infer` 使用 `input_transport_mode=memory` 时，不支持 `input_file_id`
 - 当同步 `/infer` 使用 `input_transport_mode=memory` 时，响应 `input_uri` 会返回 `memory://...` 虚拟 URI，`result_object_key` 为 `null`
+- 当前 workflow preview run、WorkflowAppRuntime 和已发布应用里的 YOLOX detection 节点，继续通过 `PublishedInferenceGateway` 命中 backend-service 持有的 sync deployment worker；这条路径不走公开 `inference-tasks` 接口，也不复用 async deployment 通道
 - 当前响应会直接返回统一推理载荷，重点字段包括：
   - request_id
   - deployment_instance_id
@@ -1091,6 +1092,7 @@ WebSocket 资源流的统一消息结构、控制事件和重连规则见 [docs/
   - input_file_id
   - input_uri
   - image_base64
+  - input_transport_mode：支持 `storage`、`memory`
   - score_threshold
   - save_result_image
   - return_preview_image_base64
@@ -1100,6 +1102,9 @@ WebSocket 资源流的统一消息结构、控制事件和重连规则见 [docs/
 - 当前支持 `application/json` 和 `multipart/form-data`
 - 输入 one-of 规则：`input_file_id`、`input_uri`、`image_base64`、`input_image` 四者必须且只能提供一个
 - `input_file_id` 现在支持 Project 公开文件 id；稳定来源可直接使用 GET /api/v1/projects/{project_id}/files 或 GET /api/v1/projects/{project_id}/files/metadata 返回的 `file_id`
+- 当前异步 `inference-tasks` 也支持 `input_transport_mode=memory`：仅允许 `image_base64` 或 `input_image`，请求图片不会写入临时输入目录，而是先固化到任务 `normalized_input`，随后由 worker 通过 queue IPC 把 `input_image_bytes` 发给 backend-service 持有的 async deployment 子进程
+- 当异步 `inference-tasks` 使用 `input_transport_mode=memory` 时，不支持 `input_file_id`
+- 当异步 `inference-tasks` 使用 `input_transport_mode=memory` 时，任务提交响应和结果载荷里的 `input_uri` 会返回 `memory://...` 虚拟 URI，用于标识这次调用没有输入落盘
 - 当前异步推理只使用 deployment 的 async 推理子进程；如果同步 `/infer` 已经加载过模型，异步侧仍会在自己的独立子进程中维护实例会话
 - 当前当 deployment 绑定 `tensorrt-engine` ModelBuild 时，worker 会通过 async deployment 子进程真实加载 TensorRT engine，并在结果 `runtime_session_info` 中回写 `runtime_execution_mode` 与 `compiled_runtime_precision`
 - inference task 创建接口不会自动启动 async 推理子进程；如果当前 async 进程尚未通过 `async/start` 或 `async/warmup` 启动，接口会直接返回 `invalid_request`

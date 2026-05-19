@@ -25,6 +25,9 @@ from backend.service.application.models.yolox_evaluation_task_service import (
 from backend.service.application.models.yolox_inference_task_service import (
     SqlAlchemyYoloXInferenceTaskService,
 )
+from backend.service.application.models.yolox_async_inference_gateway import (
+    YoloXAsyncInferenceGatewayDispatcherRegistry,
+)
 from backend.service.application.models.yolox_training_service import SqlAlchemyYoloXTrainingTaskService
 from backend.service.application.models.yolox_validation_session_service import (
     LocalYoloXValidationSessionService,
@@ -46,6 +49,8 @@ class WorkflowServiceNodeRuntimeContext:
     - queue_backend：任务队列后端；提交类 service node 需要。
     - yolox_sync_deployment_process_supervisor：同步 YOLOX deployment 监督器。
     - yolox_async_deployment_process_supervisor：异步 YOLOX deployment 监督器。
+    - async_inference_service_id：异步推理 gateway 稳定 service id。
+    - async_inference_gateway_dispatcher_registry：按 deployment 管理 async gateway dispatcher 的 registry。
     - local_buffer_reader：读取 LocalBufferBroker 引用的 client。
     - published_inference_gateway：调用已发布推理服务的稳定边界。
     """
@@ -55,6 +60,8 @@ class WorkflowServiceNodeRuntimeContext:
     queue_backend: QueueBackend | None = None
     yolox_sync_deployment_process_supervisor: YoloXDeploymentProcessSupervisor | None = None
     yolox_async_deployment_process_supervisor: YoloXDeploymentProcessSupervisor | None = None
+    async_inference_service_id: str | None = None
+    async_inference_gateway_dispatcher_registry: YoloXAsyncInferenceGatewayDispatcherRegistry | None = None
     local_buffer_reader: LocalBufferReader | None = None
     published_inference_gateway: PublishedInferenceGateway | None = None
 
@@ -149,6 +156,7 @@ class WorkflowServiceNodeRuntimeContext:
             dataset_storage=self.dataset_storage,
             queue_backend=self.require_queue_backend(),
             deployment_process_supervisor=self.require_async_deployment_process_supervisor(),
+            async_inference_gateway_dispatcher_registry=self.async_inference_gateway_dispatcher_registry,
         )
 
     def require_queue_backend(self) -> QueueBackend:

@@ -7,6 +7,7 @@ from queue import Empty
 from threading import Thread
 from time import monotonic, sleep
 from typing import Any
+import json
 import multiprocessing
 
 import pytest
@@ -92,6 +93,63 @@ def test_local_buffer_broker_supervisor_starts_process_and_serves_mmap_refs(tmp_
         supervisor.stop()
 
     assert supervisor.is_running is False
+
+
+def test_local_buffer_broker_default_pool_is_1080p_ready() -> None:
+    """验证默认 buffer pool 面向 1080p 高频输入而不是 small pool。"""
+
+    settings = LocalBufferBrokerSettings()
+    pools = {item.pool_name: item for item in settings.pools}
+    default_pool = pools[settings.default_pool_name]
+    raw_1080p_rgba_bytes = 1920 * 1080 * 4
+
+    assert settings.default_pool_name == "image-1080p"
+    assert default_pool.slot_size_bytes >= 16 * 1024 * 1024
+    assert default_pool.slot_size_bytes > raw_1080p_rgba_bytes
+    assert default_pool.file_size_bytes // default_pool.slot_size_bytes >= 32
+    assert set(pools) == {"image-1080p"}
+
+
+@pytest.mark.parametrize(
+    ("pool_name", "minimum_slot_size_bytes", "minimum_slot_count"),
+    (
+        ("image-small", 4 * 1024 * 1024, 32),
+        ("image-1080p", 16 * 1024 * 1024, 32),
+        ("image-4k", 64 * 1024 * 1024, 32),
+    ),
+)
+def test_local_buffer_broker_builtin_pool_presets_are_selectable(
+    pool_name: str,
+    minimum_slot_size_bytes: int,
+    minimum_slot_count: int,
+) -> None:
+    """验证配置 default_pool_name 可以选择内置 pool preset。
+
+    参数：
+    - pool_name：待选择的内置 pool 名称。
+    - minimum_slot_size_bytes：预期最小单槽字节数。
+    - minimum_slot_count：预期最小槽位数量。
+    """
+
+    settings = LocalBufferBrokerSettings(default_pool_name=pool_name)
+    pools = {item.pool_name: item for item in settings.pools}
+    selected_pool = pools[pool_name]
+
+    assert settings.default_pool_name == pool_name
+    assert set(pools) == {pool_name}
+    assert selected_pool.slot_size_bytes >= minimum_slot_size_bytes
+    assert selected_pool.file_size_bytes // selected_pool.slot_size_bytes >= minimum_slot_count
+
+
+def test_backend_service_config_selects_1080p_local_buffer_pool() -> None:
+    """验证 backend-service.json 默认选择 image-1080p pool。"""
+
+    payload = json.loads(Path("config/backend-service.json").read_text(encoding="utf-8"))
+    settings = BackendServiceSettings.model_validate(payload)
+    pool_names = {item.pool_name for item in settings.local_buffer_broker.pools}
+
+    assert settings.local_buffer_broker.default_pool_name == "image-1080p"
+    assert pool_names == {"image-1080p"}
 
 
 def test_local_buffer_broker_client_writes_and_reads_by_direct_mmap(tmp_path: Path) -> None:
@@ -696,6 +754,7 @@ def _build_broker_settings(
 
     return LocalBufferBrokerSettings(
         root_dir=str(tmp_path / "buffers"),
+        default_pool_name="image-small",
         startup_timeout_seconds=3.0,
         request_timeout_seconds=3.0,
         shutdown_timeout_seconds=1.0,

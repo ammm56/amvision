@@ -18,6 +18,7 @@
 - WorkflowExecutionPolicy 主要用于表达 preview 和 runtime 的执行默认项。
 - 当前已公开 create、list、get 三组接口，并允许 preview create 与 app runtime create 引用 execution_policy_id。
 - 当前资源只覆盖 timeout、trace_level、node_records 保留策略和 trace 保留策略。
+- runtime-default 策略默认应面向生产态正式调用：不写磁盘 trace，不保留 node_records。需要排查时再显式打开 `retain_trace_enabled`、`retain_node_records_enabled` 和非 `none` 的 `trace_level`。
 - 当前资源不负责 PLC、运动控制、传感器接入或结果上报的硬件权限控制。
 - 这类硬件或外部系统行为继续由 custom node 或 node pack 本身决定。
 - PersonaProfile、ToolPolicy 和 max_agent_steps 仍不进入当前实现范围。
@@ -96,16 +97,16 @@
 ```json
 {
   "project_id": "project-1",
-  "execution_policy_id": "preview-default",
-  "display_name": "Preview Default",
-  "policy_kind": "preview-default",
+  "execution_policy_id": "runtime-default",
+  "display_name": "Runtime Default",
+  "policy_kind": "runtime-default",
   "default_timeout_seconds": 30,
   "max_run_timeout_seconds": 30,
-  "trace_level": "node-summary",
-  "retain_node_records_enabled": true,
-  "retain_trace_enabled": true,
+  "trace_level": "none",
+  "retain_node_records_enabled": false,
+  "retain_trace_enabled": false,
   "metadata": {
-    "notes": "用于节点编辑器里的快速试跑"
+    "notes": "用于生产态正式调用"
   }
 }
 ```
@@ -116,19 +117,19 @@
 {
   "format_id": "amvision.workflow-execution-policy.v1",
   "project_id": "project-1",
-  "execution_policy_id": "preview-default",
-  "display_name": "Preview Default",
-  "policy_kind": "preview-default",
+  "execution_policy_id": "runtime-default",
+  "display_name": "Runtime Default",
+  "policy_kind": "runtime-default",
   "default_timeout_seconds": 30,
   "max_run_timeout_seconds": 30,
-  "trace_level": "node-summary",
-  "retain_node_records_enabled": true,
-  "retain_trace_enabled": true,
+  "trace_level": "none",
+  "retain_node_records_enabled": false,
+  "retain_trace_enabled": false,
   "created_at": "2026-05-08T12:00:00Z",
   "updated_at": "2026-05-08T12:00:00Z",
   "created_by": "operator-1",
   "metadata": {
-    "notes": "用于节点编辑器里的快速试跑"
+    "notes": "用于生产态正式调用"
   }
 }
 ```

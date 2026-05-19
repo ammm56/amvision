@@ -255,9 +255,17 @@ class BackendServiceQueueConfig(BaseModel):
 
     字段：
     - root_dir：队列根目录。
+    - lease_timeout_seconds：普通任务 leased 文件的默认恢复超时秒数。
+    - completed_retention_seconds：completed 任务文件保留秒数。
+    - failed_retention_seconds：failed 任务文件保留秒数。
+    - response_queue_retention_seconds：一次性响应队列目录保留秒数。
     """
 
     root_dir: str = "./data/queue"
+    lease_timeout_seconds: float = 86400.0
+    completed_retention_seconds: float = 86400.0
+    failed_retention_seconds: float = 604800.0
+    response_queue_retention_seconds: float = 3600.0
 
 
 class BackendServiceTaskManagerConfig(BaseModel):
@@ -272,6 +280,16 @@ class BackendServiceTaskManagerConfig(BaseModel):
     enabled: bool = True
     max_concurrent_tasks: int = 2
     poll_interval_seconds: float = 1.0
+
+
+class BackendServiceAsyncInferenceGatewayConfig(BaseModel):
+    """描述 async inference gateway 的服务标识配置。
+
+    字段：
+    - service_id：当前 async inference service 的稳定 id，用于构建专属请求队列。
+    """
+
+    service_id: str = "backend-service-main"
 
 
 class BackendServiceCustomNodesConfig(BaseModel):
@@ -300,6 +318,7 @@ class BackendServiceSettings(BaseSettings):
     - dataset_storage：本地数据集文件存储配置。
     - queue：本地任务队列配置。
     - task_manager：内嵌后台任务管理器配置。
+    - async_inference_gateway：异步推理 gateway 配置。
     - custom_nodes：自定义节点目录配置。
     - local_buffer_broker：本机 buffer broker 进程配置。
     - deployment_process_supervisor：deployment 进程监督器配置。
@@ -322,6 +341,9 @@ class BackendServiceSettings(BaseSettings):
     queue: BackendServiceQueueConfig = Field(default_factory=BackendServiceQueueConfig)
     task_manager: BackendServiceTaskManagerConfig = Field(
         default_factory=BackendServiceTaskManagerConfig
+    )
+    async_inference_gateway: BackendServiceAsyncInferenceGatewayConfig = Field(
+        default_factory=BackendServiceAsyncInferenceGatewayConfig
     )
     custom_nodes: BackendServiceCustomNodesConfig = Field(default_factory=BackendServiceCustomNodesConfig)
     local_buffer_broker: LocalBufferBrokerSettings = Field(default_factory=LocalBufferBrokerSettings)
@@ -395,7 +417,13 @@ class BackendServiceSettings(BaseSettings):
         - 供 LocalFileQueueBackend 使用的 LocalFileQueueSettings。
         """
 
-        return LocalFileQueueSettings(root_dir=self.queue.root_dir)
+        return LocalFileQueueSettings(
+            root_dir=self.queue.root_dir,
+            lease_timeout_seconds=self.queue.lease_timeout_seconds,
+            completed_retention_seconds=self.queue.completed_retention_seconds,
+            failed_retention_seconds=self.queue.failed_retention_seconds,
+            response_queue_retention_seconds=self.queue.response_queue_retention_seconds,
+        )
 
 
 @lru_cache

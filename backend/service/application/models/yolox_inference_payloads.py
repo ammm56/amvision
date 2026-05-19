@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.project_public_files import resolve_public_project_file_reference
+from backend.service.application.runtime.yolox_predictor import YoloXPredictionRequest
 from backend.service.application.runtime.yolox_runtime_target import RuntimeTargetSnapshot
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 from backend.service.infrastructure.object_store.object_key_layout import build_runtime_input_object_key
@@ -64,6 +65,98 @@ class YoloXNormalizedInferenceInput:
     input_file_id: str | None = None
     input_image_bytes: bytes | None = None
     input_transport_mode: str = YOLOX_INFERENCE_INPUT_TRANSPORT_STORAGE
+
+
+def serialize_yolox_normalized_inference_input(
+    normalized_input: YoloXNormalizedInferenceInput,
+) -> dict[str, object]:
+    """把归一化后的推理输入序列化为可持久化字典。
+
+    参数：
+    - normalized_input：归一化后的推理输入。
+
+    返回：
+    - dict[str, object]：可写入 task_spec 的稳定输入快照。
+    """
+
+    return {
+        "input_uri": normalized_input.input_uri,
+        "input_source_kind": normalized_input.input_source_kind,
+        "input_file_id": normalized_input.input_file_id,
+        "input_transport_mode": normalized_input.input_transport_mode,
+        "input_image_bytes_base64": (
+            base64.b64encode(normalized_input.input_image_bytes).decode("ascii")
+            if normalized_input.input_image_bytes is not None
+            else None
+        ),
+    }
+
+
+def deserialize_yolox_normalized_inference_input(
+    payload: object,
+) -> YoloXNormalizedInferenceInput:
+    """从持久化字典反解析归一化后的推理输入。
+
+    参数：
+    - payload：写入 task_spec 的输入快照。
+
+    返回：
+    - YoloXNormalizedInferenceInput：恢复后的统一输入对象。
+    """
+
+    if not isinstance(payload, dict):
+        raise InvalidRequestError("normalized_input 格式不合法")
+    input_transport_mode = _read_normalized_input_transport_mode(payload)
+    input_image_bytes = _read_optional_normalized_input_bytes(payload)
+    if input_transport_mode == YOLOX_INFERENCE_INPUT_TRANSPORT_MEMORY and input_image_bytes is None:
+        raise InvalidRequestError("memory 模式的 normalized_input 缺少 input_image_bytes")
+    if input_transport_mode == YOLOX_INFERENCE_INPUT_TRANSPORT_STORAGE and input_image_bytes is not None:
+        raise InvalidRequestError("storage 模式的 normalized_input 不应包含 input_image_bytes")
+    return YoloXNormalizedInferenceInput(
+        input_uri=_require_normalized_input_str(payload, "input_uri"),
+        input_source_kind=_require_normalized_input_str(payload, "input_source_kind"),
+        input_file_id=_read_optional_normalized_input_str(payload, "input_file_id"),
+        input_image_bytes=input_image_bytes,
+        input_transport_mode=input_transport_mode,
+    )
+
+
+def build_yolox_prediction_request(
+    *,
+    normalized_input: YoloXNormalizedInferenceInput,
+    score_threshold: float,
+    save_result_image: bool,
+    return_preview_image_base64: bool,
+    extra_options: dict[str, object],
+) -> YoloXPredictionRequest:
+    """把统一输入合同转换为 runtime 侧 prediction request。
+
+    参数：
+    - normalized_input：归一化后的统一输入对象。
+    - score_threshold：推理阈值。
+    - save_result_image：是否保存结果图。
+    - return_preview_image_base64：是否在结果里直接返回 base64 预览图。
+    - extra_options：附加推理参数。
+
+    返回：
+    - YoloXPredictionRequest：可直接送入 deployment supervisor 的请求对象。
+    """
+
+    return YoloXPredictionRequest(
+        input_uri=(
+            normalized_input.input_uri
+            if normalized_input.input_transport_mode == YOLOX_INFERENCE_INPUT_TRANSPORT_STORAGE
+            else None
+        ),
+        input_image_bytes=(
+            normalized_input.input_image_bytes
+            if normalized_input.input_transport_mode == YOLOX_INFERENCE_INPUT_TRANSPORT_MEMORY
+            else None
+        ),
+        score_threshold=score_threshold,
+        save_result_image=save_result_image or return_preview_image_base64,
+        extra_options=dict(extra_options),
+    )
 
 
 @dataclass(frozen=True)
@@ -500,3 +593,55 @@ def _infer_suffix_from_upload(*, upload_filename: str | None, upload_content_typ
     if content_type == "image/bmp":
         return ".bmp"
     return ".jpg"
+
+
+def _read_normalized_input_transport_mode(payload: dict[str, object]) -> str:
+    """从 normalized_input 字典读取 transport mode。"""
+
+    value = _read_optional_normalized_input_str(payload, "input_transport_mode")
+    if value not in {
+        YOLOX_INFERENCE_INPUT_TRANSPORT_STORAGE,
+        YOLOX_INFERENCE_INPUT_TRANSPORT_MEMORY,
+    }:
+        raise InvalidRequestError(
+            "normalized_input.input_transport_mode 仅支持 storage 或 memory",
+            details={"input_transport_mode": value},
+        )
+    return value
+
+
+def _read_optional_normalized_input_bytes(payload: dict[str, object]) -> bytes | None:
+    """从 normalized_input 字典读取可选图片字节。"""
+
+    value = payload.get("input_image_bytes_base64")
+    if value is None:
+        return None
+    if not isinstance(value, str) or not value.strip():
+        raise InvalidRequestError("normalized_input.input_image_bytes_base64 必须是非空字符串")
+    try:
+        return base64.b64decode(value.encode("ascii"), validate=True)
+    except (ValueError, binascii.Error) as error:
+        raise InvalidRequestError(
+            "normalized_input.input_image_bytes_base64 不是合法的 base64 字符串"
+        ) from error
+
+
+def _read_optional_normalized_input_str(payload: dict[str, object], key: str) -> str | None:
+    """从 normalized_input 字典读取可选字符串。"""
+
+    value = payload.get(key)
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    return None
+
+
+def _require_normalized_input_str(payload: dict[str, object], key: str) -> str:
+    """从 normalized_input 字典读取必填字符串。"""
+
+    value = _read_optional_normalized_input_str(payload, key)
+    if value is None:
+        raise InvalidRequestError(
+            "normalized_input 缺少必要字段",
+            details={"field": key},
+        )
+    return value

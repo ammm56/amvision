@@ -4,12 +4,13 @@ from __future__ import annotations
 
 from backend.queue import QueueBackend, QueueMessage
 from backend.service.application.errors import InvalidRequestError, ServiceError
+from backend.service.application.models.yolox_async_inference_gateway import (
+    QueueBackedYoloXAsyncInferenceClient,
+    YoloXAsyncInferenceExecutor,
+)
 from backend.service.application.models.yolox_inference_task_service import (
     YOLOX_INFERENCE_QUEUE_NAME,
     SqlAlchemyYoloXInferenceTaskService,
-)
-from backend.service.application.runtime.yolox_deployment_process_supervisor import (
-    YoloXDeploymentProcessSupervisor,
 )
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
@@ -24,7 +25,8 @@ class YoloXInferenceQueueWorker:
         session_factory: SessionFactory,
         dataset_storage: LocalDatasetStorage,
         queue_backend: QueueBackend,
-        deployment_process_supervisor: YoloXDeploymentProcessSupervisor,
+        async_inference_executor: YoloXAsyncInferenceExecutor | None = None,
+        async_inference_request_timeout_seconds: float = 30.0,
         worker_id: str = "yolox-inference-worker",
     ) -> None:
         """初始化 YOLOX 推理队列 worker。"""
@@ -32,7 +34,11 @@ class YoloXInferenceQueueWorker:
         self.session_factory = session_factory
         self.dataset_storage = dataset_storage
         self.queue_backend = queue_backend
-        self.deployment_process_supervisor = deployment_process_supervisor
+        self.async_inference_executor = async_inference_executor or QueueBackedYoloXAsyncInferenceClient(
+            queue_backend=queue_backend,
+            request_timeout_seconds=async_inference_request_timeout_seconds,
+            client_id=worker_id,
+        )
         self.worker_id = worker_id
 
     def run_once(self) -> bool:
@@ -50,7 +56,7 @@ class YoloXInferenceQueueWorker:
             service = SqlAlchemyYoloXInferenceTaskService(
                 session_factory=self.session_factory,
                 dataset_storage=self.dataset_storage,
-                deployment_process_supervisor=self.deployment_process_supervisor,
+                async_inference_executor=self.async_inference_executor,
             )
             run_result = service.process_inference_task(task_id)
         except ServiceError as error:

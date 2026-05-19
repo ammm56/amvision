@@ -6,9 +6,6 @@ from dataclasses import dataclass
 
 from backend.queue import LocalFileQueueBackend
 from backend.service.application.errors import ServiceConfigurationError
-from backend.service.application.runtime.yolox_deployment_process_supervisor import (
-    YoloXDeploymentProcessSupervisor,
-)
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 from backend.workers.conversion.yolox_conversion_queue_worker import YoloXConversionQueueWorker
@@ -37,14 +34,14 @@ class BackgroundTaskConsumerResources:
     - dataset_storage：本地文件存储服务。
     - queue_backend：本地队列后端。
     - worker_id_prefix：worker id 前缀。
-    - yolox_async_deployment_process_supervisor：异步 deployment 进程监督器；YOLOX inference 消费者依赖该对象。
+    - async_inference_request_timeout_seconds：等待 backend-service async inference 响应的最长秒数。
     """
 
     session_factory: SessionFactory
     dataset_storage: LocalDatasetStorage
     queue_backend: LocalFileQueueBackend
     worker_id_prefix: str
-    yolox_async_deployment_process_supervisor: YoloXDeploymentProcessSupervisor | None = None
+    async_inference_request_timeout_seconds: float = 30.0
 
 
 def build_background_task_consumers(
@@ -115,14 +112,14 @@ def build_background_task_consumers(
             )
             continue
         if consumer_kind == BACKEND_WORKER_CONSUMER_YOLOX_INFERENCE:
-            if resources.yolox_async_deployment_process_supervisor is None:
-                raise ServiceConfigurationError("YOLOX inference 消费者缺少异步 deployment supervisor")
             consumers.append(
                 YoloXInferenceQueueWorker(
                     session_factory=resources.session_factory,
                     dataset_storage=resources.dataset_storage,
                     queue_backend=resources.queue_backend,
-                    deployment_process_supervisor=resources.yolox_async_deployment_process_supervisor,
+                    async_inference_request_timeout_seconds=(
+                        resources.async_inference_request_timeout_seconds
+                    ),
                     worker_id=f"{resources.worker_id_prefix}-yolox-inference",
                 )
             )

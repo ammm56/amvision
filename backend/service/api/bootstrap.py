@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+import backend.service.application.models.yolox_inference_task_service as yolox_inference_task_service_module
+
 from fastapi import FastAPI
 
 from backend.bootstrap.core import BootstrapStep, RuntimeBootstrap
@@ -22,6 +24,11 @@ from backend.service.application.deployments.yolox_deployment_service import (
     SqlAlchemyYoloXDeploymentService,
 )
 from backend.service.application.local_buffers import LocalBufferBrokerProcessSupervisor
+from backend.service.application.models.yolox_async_inference_gateway import (
+    YoloXAsyncInferenceGatewayDispatcherRegistry,
+    normalize_yolox_async_inference_owner_id,
+    serialize_yolox_async_inference_execution_result,
+)
 from backend.service.application.models.pretrained_catalog import (
     YoloXPretrainedModelCatalogSeeder,
 )
@@ -51,8 +58,10 @@ from backend.service.application.workflows.runtime_registry_loader import (
     WorkflowNodeRuntimeRegistryLoader,
 )
 from backend.service.application.runtime.yolox_deployment_process_supervisor import (
+    YoloXDeploymentProcessConfig,
     YoloXDeploymentProcessSupervisor,
 )
+from backend.service.application.runtime.yolox_predictor import YoloXPredictionRequest
 from backend.service.infrastructure.db.schema import initialize_database_schema
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.integrations.zeromq import ZeroMqTriggerAdapter
@@ -72,6 +81,7 @@ class BackendServiceRuntime:
 
     字段：
     - settings：当前 backend-service 进程使用的统一配置。
+    - async_inference_service_id：当前 async inference service 稳定 id。
     - session_factory：数据库会话工厂。
     - dataset_storage：本地数据集文件存储服务。
     - queue_backend：本地任务队列后端。
@@ -85,6 +95,7 @@ class BackendServiceRuntime:
     - published_inference_gateway：workflow 子进程通过事件 dispatcher 调用的父进程 gateway。
     - yolox_sync_deployment_process_supervisor：同步 YOLOX deployment 进程监督器。
     - yolox_async_deployment_process_supervisor：异步 YOLOX deployment 进程监督器。
+    - yolox_async_inference_gateway_dispatcher_registry：按 deployment 管理 async gateway dispatcher 的 registry。
     - workflow_runtime_worker_manager：workflow runtime worker 管理器。
     - workflow_preview_run_manager：preview run 进程管理器。
     - trigger_source_supervisor：workflow trigger source adapter 监督器。
@@ -92,6 +103,7 @@ class BackendServiceRuntime:
     """
 
     settings: BackendServiceSettings
+    async_inference_service_id: str
     session_factory: SessionFactory
     dataset_storage: LocalDatasetStorage
     queue_backend: LocalFileQueueBackend
@@ -105,6 +117,7 @@ class BackendServiceRuntime:
     published_inference_gateway: PublishedInferenceGateway
     yolox_sync_deployment_process_supervisor: YoloXDeploymentProcessSupervisor
     yolox_async_deployment_process_supervisor: YoloXDeploymentProcessSupervisor
+    yolox_async_inference_gateway_dispatcher_registry: YoloXAsyncInferenceGatewayDispatcherRegistry
     workflow_runtime_worker_manager: WorkflowRuntimeWorkerManager
     workflow_preview_run_manager: WorkflowPreviewRunManager
     trigger_source_supervisor: TriggerSourceSupervisor
@@ -248,6 +261,7 @@ class BackendServiceBootstrap(
         session_factory = self._provided_session_factory or SessionFactory(
             settings.to_database_settings()
         )
+        async_inference_service_id = _resolve_async_inference_service_id(settings)
         service_event_bus = InMemoryServiceEventBus()
         session_factory.service_event_bus = service_event_bus
         dataset_storage = self._provided_dataset_storage or LocalDatasetStorage(
@@ -283,6 +297,19 @@ class BackendServiceBootstrap(
             dataset_storage=dataset_storage,
             local_buffer_broker_event_channel_provider=local_buffer_broker_supervisor.get_event_channel,
         )
+        yolox_async_inference_gateway_dispatcher_registry = YoloXAsyncInferenceGatewayDispatcherRegistry(
+            queue_backend=queue_backend,
+            execution_handler=_build_yolox_async_inference_gateway_execution_handler(
+                deployment_process_supervisor=yolox_async_deployment_process_supervisor,
+            ),
+            service_id=async_inference_service_id,
+            dataset_storage=dataset_storage,
+            request_queue_lease_timeout_seconds=max(
+                1.0,
+                settings.deployment_process_supervisor.request_timeout_seconds * 2,
+            ),
+            response_queue_retention_seconds=settings.queue.response_queue_retention_seconds,
+        )
         published_inference_gateway = YoloXDeploymentPublishedInferenceGateway(
             deployment_service=SqlAlchemyYoloXDeploymentService(
                 session_factory=session_factory,
@@ -303,6 +330,8 @@ class BackendServiceBootstrap(
             queue_backend=queue_backend,
             yolox_sync_deployment_process_supervisor=yolox_sync_deployment_process_supervisor,
             yolox_async_deployment_process_supervisor=yolox_async_deployment_process_supervisor,
+            async_inference_service_id=async_inference_service_id,
+            async_inference_gateway_dispatcher_registry=yolox_async_inference_gateway_dispatcher_registry,
             local_buffer_reader=local_buffer_broker_supervisor,
             published_inference_gateway=published_inference_gateway,
         )
@@ -341,6 +370,7 @@ class BackendServiceBootstrap(
         )
         return BackendServiceRuntime(
             settings=settings,
+            async_inference_service_id=async_inference_service_id,
             session_factory=session_factory,
             dataset_storage=dataset_storage,
             queue_backend=queue_backend,
@@ -354,6 +384,7 @@ class BackendServiceBootstrap(
             published_inference_gateway=published_inference_gateway,
             yolox_sync_deployment_process_supervisor=yolox_sync_deployment_process_supervisor,
             yolox_async_deployment_process_supervisor=yolox_async_deployment_process_supervisor,
+            yolox_async_inference_gateway_dispatcher_registry=yolox_async_inference_gateway_dispatcher_registry,
             workflow_runtime_worker_manager=workflow_runtime_worker_manager,
             workflow_preview_run_manager=workflow_preview_run_manager,
             trigger_source_supervisor=trigger_source_supervisor,
@@ -373,6 +404,7 @@ class BackendServiceBootstrap(
         """
 
         application.state.backend_service_settings = runtime.settings
+        application.state.yolox_async_inference_service_id = runtime.async_inference_service_id
         application.state.session_factory = runtime.session_factory
         application.state.dataset_storage = runtime.dataset_storage
         application.state.queue_backend = runtime.queue_backend
@@ -400,6 +432,9 @@ class BackendServiceBootstrap(
         application.state.yolox_async_deployment_process_supervisor = (
             runtime.yolox_async_deployment_process_supervisor
         )
+        application.state.yolox_async_inference_gateway_dispatcher_registry = (
+            runtime.yolox_async_inference_gateway_dispatcher_registry
+        )
         application.state.workflow_runtime_worker_manager = (
             runtime.workflow_runtime_worker_manager
         )
@@ -419,6 +454,7 @@ class BackendServiceBootstrap(
         runtime.local_buffer_broker_supervisor.start()
         runtime.yolox_sync_deployment_process_supervisor.start()
         runtime.yolox_async_deployment_process_supervisor.start()
+        runtime.yolox_async_inference_gateway_dispatcher_registry.start()
         runtime.workflow_runtime_worker_manager.start()
         runtime.workflow_preview_run_manager.start()
         WorkflowTriggerSourceService(
@@ -440,6 +476,7 @@ class BackendServiceBootstrap(
         runtime.trigger_source_supervisor.stop_all()
         runtime.workflow_preview_run_manager.stop()
         runtime.workflow_runtime_worker_manager.stop()
+        runtime.yolox_async_inference_gateway_dispatcher_registry.stop()
         runtime.yolox_sync_deployment_process_supervisor.stop()
         runtime.yolox_async_deployment_process_supervisor.stop()
         runtime.local_buffer_broker_supervisor.stop()
@@ -508,3 +545,40 @@ class BackendServiceBootstrap(
             yolox_async_deployment_process_supervisor,
         )
         return None
+
+
+def _build_yolox_async_inference_gateway_execution_handler(
+    *,
+    deployment_process_supervisor: YoloXDeploymentProcessSupervisor,
+):
+    """构造 service-side async inference gateway 的执行处理器。"""
+
+    def _execute(
+        *,
+        process_config: YoloXDeploymentProcessConfig,
+        request: YoloXPredictionRequest,
+    ) -> dict[str, object]:
+        """通过 backend-service 持有的 async deployment supervisor 执行一次推理。"""
+
+        execution_result = yolox_inference_task_service_module.run_yolox_inference_task(
+            deployment_process_supervisor=deployment_process_supervisor,
+            process_config=process_config,
+            input_uri=request.input_uri,
+            input_image_bytes=request.input_image_bytes,
+            input_image_payload=request.input_image_payload,
+            score_threshold=request.score_threshold,
+            save_result_image=request.save_result_image,
+            return_preview_image_base64=False,
+            extra_options=dict(request.extra_options),
+        )
+        return serialize_yolox_async_inference_execution_result(execution_result)
+
+    return _execute
+
+
+def _resolve_async_inference_service_id(settings: BackendServiceSettings) -> str:
+    """解析当前 backend-service 使用的 async inference service id。"""
+
+    return normalize_yolox_async_inference_owner_id(
+        settings.async_inference_gateway.service_id
+    )

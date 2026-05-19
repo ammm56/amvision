@@ -236,8 +236,8 @@ HTTP JSON invoke 是当前已公开、最容易调试的入口。调用方把图
         "format_id": "amvision.frame-ref.v1",
         "stream_id": "line-a-camera-1",
         "sequence_id": 1024,
-        "buffer_id": "image-small:frame:line-a-camera-1:0",
-        "path": "data/buffers/image-small/pool-001.dat",
+        "buffer_id": "image-1080p:frame:line-a-camera-1:0",
+        "path": "data/buffers/image-1080p/image-1080p-001.dat",
         "offset": 0,
         "size": 6220800,
         "shape": [1080, 1920, 3],
@@ -260,10 +260,12 @@ HTTP JSON invoke 是当前已公开、最容易调试的入口。调用方把图
     "stream_id": "line-a-camera-1",
     "trace_id": "frame-1024"
   }
-}
+}P
 ```
 
 本地 adapter 可以把这份请求交给 runtime invoke 或 run 创建逻辑。sync 模式适合同机短链路、调用方需要即时结果的场景；async 模式适合长期监听、排队、断线后回查和高频事件削峰。
+
+LocalBufferBroker 默认池由 `config/backend-service.json` 的 `local_buffer_broker.default_pool_name` 决定，可选 `image-small`、`image-1080p` 和 `image-4k`。默认值为 `image-1080p`，单槽按 16MB 设计，默认 32 个槽位，用于覆盖常见 1080p raw BGR/RGBA 图片输入和短时间并发占用。4K 原始图输入场景应把该配置切换为 `image-4k`；小图或中间结果可显式使用 `image-small`。
 
 FrameRef 的有效期很短，适合“立即执行一条 runtime 调用”。如果执行可能排队或后续节点需要稳定读取同一帧，触发层应把 FrameRef 固定为普通 BufferRef，或把关键图片保存到 ObjectStore 后再提交 run。该转换属于受控本地 adapter 或后续 TriggerSource 的职责，不属于 workflow 图中节点的职责。
 
@@ -350,6 +352,11 @@ http-response 输出或 WorkflowRun outputs
 ```
 
 这条链路里 workflow 图仍然只表达业务处理顺序：输入图片、调用推理、后处理、组装响应。TriggerSource 只负责把外部事件变成输入绑定和执行元数据，LocalBufferBroker 只负责本机内部大图数据面，PublishedInferenceGateway 只负责复用已启动 deployment 推理服务。
+
+- WorkflowAppRuntime 是生产态正式调用入口，默认会把执行元数据补为 `trace_level=none`、`retain_trace_enabled=false` 和 `retain_node_records_enabled=false`。因此正式调用不会默认创建 `workflows/runtime/workflow-run-*/events.json`，也不会默认把节点级输入输出记录写入数据库。
+- ZeroMQ TriggerSource 属于高速图片提交入口，会沿用上述轻量持久化默认值。HTTP、ZeroMQ 和后续协议入口都应通过同一套 WorkflowAppRuntime / WorkflowRun 策略收敛，不为某个协议单独保留磁盘 trace。
+- ZeroMQ adapter 写入 LocalBufferBroker 的输入 `BufferRef` 会在 WorkflowRun 执行期登记为 cleanup，运行结束后释放对应 lease；如果提交在创建 WorkflowRun 前失败，adapter 会直接释放刚写入的输入 buffer。
+- 如需临时排查单次调用，可在 HTTP invoke/runs 请求或 TriggerSource 的 `default_execution_metadata` 里显式设置 `retain_trace_enabled=true`、`retain_node_records_enabled=true` 和非 `none` 的 `trace_level`，再通过 WorkflowRun 事件接口查看历史事件。
 
 ## 推荐触发类型
 

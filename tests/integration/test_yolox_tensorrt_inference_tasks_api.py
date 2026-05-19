@@ -63,7 +63,6 @@ def test_tensorrt_inference_task_runs_through_real_async_deployment_process(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
         queue_backend=queue_backend,
-        deployment_process_supervisor=client.app.state.yolox_async_deployment_process_supervisor,
         worker_id=f"test-yolox-tensorrt-inference-worker-{runtime_precision}",
     )
 
