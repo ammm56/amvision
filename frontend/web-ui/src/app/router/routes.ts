@@ -1,6 +1,9 @@
 import type { RouteRecordRaw } from 'vue-router'
 
 import { authRoutes } from '@/modules/auth/routes'
+import { datasetRoutes } from '@/modules/datasets/routes'
+import { deploymentRoutes } from '@/modules/deployments/routes'
+import { modelRoutes } from '@/modules/models/routes'
 import { projectRoutes } from '@/modules/projects/routes'
 import { taskRoutes } from '@/modules/tasks/routes'
 import ErrorView from '@/views/ErrorView.vue'
@@ -26,15 +29,9 @@ export const routes: RouteRecordRaw[] = [
   ...authRoutes,
   ...projectRoutes,
   ...taskRoutes,
-  placeholderRoute('/datasets', 'placeholders.datasetsTitle', 'placeholders.datasetsDescription', [
-    'datasets:read',
-  ]),
-  placeholderRoute('/models', 'placeholders.modelsTitle', 'placeholders.modelsDescription', [
-    'models:read',
-  ]),
-  placeholderRoute('/deployments', 'placeholders.deploymentsTitle', 'placeholders.deploymentsDescription', [
-    'models:read',
-  ]),
+  ...datasetRoutes,
+  ...modelRoutes,
+  ...deploymentRoutes,
   placeholderRoute('/workflows/templates', 'placeholders.workflowTemplatesTitle', 'placeholders.workflowTemplatesDescription', [
     'workflows:read',
   ]),
