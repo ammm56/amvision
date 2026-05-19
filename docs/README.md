@@ -17,6 +17,10 @@
 - [docs/architecture/execution-sequences.md](architecture/execution-sequences.md) 汇总训练、转换、部署推理和 workflow execute 四条关键调用顺序图
 - [docs/architecture/workflow-runtime.md](architecture/workflow-runtime.md) 汇总 workflow 编辑态试跑、已发布应用运行、队列划分、worker 拓扑和 API 草案
 - [docs/architecture/local-buffer-broker.md](architecture/local-buffer-broker.md) 汇总 LocalBufferBroker 本机高性能数据交换层、mmap 文件池、ring buffer 和 workflow 推理调用边界
+- [docs/architecture/frontend-web-ui-structure.md](architecture/frontend-web-ui-structure.md) 汇总浏览器前端 Web UI 的工程骨架、目录分层、LiteGraph 接入位置和组件层边界
+- [docs/architecture/frontend-web-ui-startup-session.md](architecture/frontend-web-ui-startup-session.md) 汇总浏览器前端 Web UI 的本地启动、默认用户、自动进入、登录页和退出规则
+- [docs/architecture/frontend-web-ui-development-readiness.md](architecture/frontend-web-ui-development-readiness.md) 汇总浏览器前端 Web UI 真实编码前的准备检查、剩余缺口和开工顺序
+- [docs/architecture/frontend-web-ui-workflows.md](architecture/frontend-web-ui-workflows.md) 汇总浏览器前端 Web UI 的节点映射、业务页面流程、workflow app 调用和事件通信规则
 - [docs/api/README.md](api/README.md) 汇总 REST API、WebSocket、ZeroMQ 和公开接口文档
 - [docs/api/trigger-source-sdks.md](api/trigger-source-sdks.md) 汇总 TriggerSource 外部调用方 SDK 的目录、流程和语言实现边界
 - [docs/examples/workflows/README.md](examples/workflows/README.md) 说明 workflow template/application 源 JSON 与 LocalBufferBroker 输入形状的关系
@@ -58,13 +62,17 @@
 11. [docs/architecture/task-system.md](architecture/task-system.md)
 12. [docs/architecture/yolox-module-design.md](architecture/yolox-module-design.md)
 13. [docs/architecture/frontend-web-ui.md](architecture/frontend-web-ui.md)
-14. [docs/architecture/node-system.md](architecture/node-system.md)
-15. [docs/architecture/workflow-json-contracts.md](architecture/workflow-json-contracts.md)
-16. [docs/architecture/data-and-files.md](architecture/data-and-files.md)
-17. [docs/architecture/local-buffer-broker.md](architecture/local-buffer-broker.md)
-18. [docs/architecture/dataset-import-spec.md](architecture/dataset-import-spec.md)
-19. [docs/architecture/dataset-export-formats.md](architecture/dataset-export-formats.md)
-20. 根据任务继续进入 API、部署、节点扩展或决策文档
+14. [docs/architecture/frontend-web-ui-structure.md](architecture/frontend-web-ui-structure.md)
+15. [docs/architecture/frontend-web-ui-startup-session.md](architecture/frontend-web-ui-startup-session.md)
+16. [docs/architecture/frontend-web-ui-development-readiness.md](architecture/frontend-web-ui-development-readiness.md)
+17. [docs/architecture/frontend-web-ui-workflows.md](architecture/frontend-web-ui-workflows.md)
+18. [docs/architecture/node-system.md](architecture/node-system.md)
+19. [docs/architecture/workflow-json-contracts.md](architecture/workflow-json-contracts.md)
+20. [docs/architecture/data-and-files.md](architecture/data-and-files.md)
+21. [docs/architecture/local-buffer-broker.md](architecture/local-buffer-broker.md)
+22. [docs/architecture/dataset-import-spec.md](architecture/dataset-import-spec.md)
+23. [docs/architecture/dataset-export-formats.md](architecture/dataset-export-formats.md)
+24. 根据任务继续进入 API、部署、节点扩展或决策文档
 
 ## 文档维护建议
 

@@ -14,7 +14,7 @@
 - [docs/architecture/execution-sequences.md](execution-sequences.md)：训练、转换、部署推理和 workflow execute 四条关键调用顺序图
 - [docs/architecture/workflow-runtime.md](workflow-runtime.md)：workflow 编辑态试跑、已发布应用运行、队列划分、worker 拓扑和 API 草案
 - [docs/architecture/workflow-editor-backend-checklist.md](workflow-editor-backend-checklist.md)：workflow 图编排前端所需的后端接口现状、本轮已补齐项和下一批执行清单
-- [docs/architecture/workflow-runtime-phase1.md](workflow-runtime-phase1.md)：workflow runtime 第一阶段实现清单，收口状态机、snapshot 规则和 worker 消息合同
+- [docs/architecture/workflow-runtime-phase1.md](workflow-runtime-phase1.md)：workflow runtime 第一阶段实现清单，收口状态机、snapshot 规则和 worker 消息规则
 - [docs/architecture/workflow-runtime-phase2.md](workflow-runtime-phase2.md)：workflow runtime 第二阶段边界，收口 restart、instances、异步 runs 和 execution policies 的进入范围
 - [docs/architecture/project-structure.md](project-structure.md)：项目目录结构、层级关系、模块关系和禁止直接耦合关系总览
 - [docs/architecture/backend-service.md](backend-service.md)：后端服务职责、任务状态、执行调度、QueueBackend 和状态回写边界
@@ -22,8 +22,12 @@
 - [docs/architecture/detection-model-rules.md](detection-model-rules.md)：检测类模型的最小平台规则，以及正式对象与 metadata 的边界
 - [docs/architecture/yolox-module-design.md](yolox-module-design.md)：YOLOX 在 amvision 里的模块拆分、目录位置、当前代码落点和后续收敛方向
 - [docs/architecture/frontend-web-ui.md](frontend-web-ui.md)：浏览器前端 Web UI 的模块划分、路由结构、状态组织和交互边界
+- [docs/architecture/frontend-web-ui-structure.md](frontend-web-ui-structure.md)：浏览器前端 Web UI 的工程骨架、目录分层、LiteGraph 接入位置和组件层边界
+- [docs/architecture/frontend-web-ui-startup-session.md](frontend-web-ui-startup-session.md)：浏览器前端 Web UI 的本地启动、默认用户、自动进入、登录页和退出规则
+- [docs/architecture/frontend-web-ui-development-readiness.md](frontend-web-ui-development-readiness.md)：浏览器前端 Web UI 真实编码前的准备检查、剩余缺口和开工顺序
+- [docs/architecture/frontend-web-ui-workflows.md](frontend-web-ui-workflows.md)：浏览器前端 Web UI 的节点映射、业务页面流程、workflow app 调用和事件通信规则
 - [docs/architecture/node-system.md](node-system.md)：节点系统、node pack 边界、custom node 模型和 ComfyUI 对齐方向
-- [docs/architecture/workflow-json-contracts.md](workflow-json-contracts.md)：NodeDefinition、payload contract、图模板与流程应用 JSON 合同
+- [docs/architecture/workflow-json-contracts.md](workflow-json-contracts.md)：NodeDefinition、payload 规则、图模板与流程应用 JSON 规则
 - [docs/architecture/data-and-files.md](data-and-files.md)：关键对象、文件引用和版本关系
 - [docs/architecture/local-buffer-broker.md](local-buffer-broker.md)：LocalBufferBroker 本机高性能数据交换层，规划 Broker、mmap 文件池、ring buffer 和 workflow 推理调用边界
 - [docs/architecture/dataset-import-spec.md](dataset-import-spec.md)：DatasetImport、通用数据格式、任务类型格式矩阵和数据集导出规范
@@ -59,11 +63,15 @@
 12. [docs/architecture/detection-model-rules.md](detection-model-rules.md)
 13. [docs/architecture/yolox-module-design.md](yolox-module-design.md)
 14. [docs/architecture/frontend-web-ui.md](frontend-web-ui.md)
-15. [docs/architecture/node-system.md](node-system.md)
-16. [docs/architecture/workflow-json-contracts.md](workflow-json-contracts.md)
-17. [docs/architecture/data-and-files.md](data-and-files.md)
-18. [docs/architecture/local-buffer-broker.md](local-buffer-broker.md)
-19. [docs/architecture/dataset-import-spec.md](dataset-import-spec.md)
-20. [docs/architecture/dataset-export-formats.md](dataset-export-formats.md)
-21. [docs/architecture/runtime-packaging.md](runtime-packaging.md)
-22. 按任务继续进入集成规则或日志专题文档
+15. [docs/architecture/frontend-web-ui-structure.md](frontend-web-ui-structure.md)
+16. [docs/architecture/frontend-web-ui-startup-session.md](frontend-web-ui-startup-session.md)
+17. [docs/architecture/frontend-web-ui-development-readiness.md](frontend-web-ui-development-readiness.md)
+18. [docs/architecture/frontend-web-ui-workflows.md](frontend-web-ui-workflows.md)
+19. [docs/architecture/node-system.md](node-system.md)
+20. [docs/architecture/workflow-json-contracts.md](workflow-json-contracts.md)
+21. [docs/architecture/data-and-files.md](data-and-files.md)
+22. [docs/architecture/local-buffer-broker.md](local-buffer-broker.md)
+23. [docs/architecture/dataset-import-spec.md](dataset-import-spec.md)
+24. [docs/architecture/dataset-export-formats.md](dataset-export-formats.md)
+25. [docs/architecture/runtime-packaging.md](runtime-packaging.md)
+26. 按任务继续进入集成规则或日志专题文档

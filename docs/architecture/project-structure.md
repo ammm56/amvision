@@ -235,9 +235,15 @@ repo/
 ### frontend 内部分层
 
 - shells 负责工作台骨架、布局、导航和全局状态容器
-- modules 负责数据集、任务、模型、部署、集成端点、流程等业务模块页面
+- modules 负责数据集、任务、模型、部署、集成端点、自定义节点和设置等业务模块页面
 - workflows 负责跨模块操作流，例如训练发布链路、推理回滚链路和外部系统触发链路
-- shared：放组件、状态封装、服务访问、组合式能力和前端接口定义
+- shared 放通用 UI、API client、WebSocket client、组合式能力和前端公开类型
+- config 放前端运行配置、导航配置和 feature flags
+- platform 放鉴权、默认本地用户自动进入、运行环境、浏览器存储和诊断适配
+- plugins 放受控前端插件注册层，不作为任意 node pack 前端脚本注入入口
+- lib 放第三方或底层库源码与薄封装，例如 LiteGraph
+- views 只放顶层通用视图，业务页面放各模块 pages 目录
+- 详细工程骨架见 [frontend-web-ui-structure.md](frontend-web-ui-structure.md)，本地启动和会话规则见 [frontend-web-ui-startup-session.md](frontend-web-ui-startup-session.md)，开发准备检查见 [frontend-web-ui-development-readiness.md](frontend-web-ui-development-readiness.md)
 
 ### 运行时与打包层级
 

@@ -6,11 +6,22 @@
 
 这里的前端是现代浏览器中的 Vue 3 Web 应用，服务于工作站、现场操作和运维管理场景。
 
+具体工程骨架、目录分层、LiteGraph 接入位置、组件层和插件层边界见 [frontend-web-ui-structure.md](frontend-web-ui-structure.md)。
+
+前端节点与后端节点目录的对应关系、数据集到模型发布的页面流程、workflow app 调用流程和事件通信规则见 [frontend-web-ui-workflows.md](frontend-web-ui-workflows.md)。
+
+本地部署默认用户、长期 user token、自动进入工作台、登录页出现条件和退出语义见 [frontend-web-ui-startup-session.md](frontend-web-ui-startup-session.md)。
+
+前端真实代码实现前的准备检查、剩余缺口和开工顺序见 [frontend-web-ui-development-readiness.md](frontend-web-ui-development-readiness.md)。
+
 ## 适用范围
 
 - 浏览器前端界面的职责边界
 - Vue 3 应用的模块划分、路由结构和状态组织
 - 与 backend-service 的 REST API、WebSocket 交互模型
+- 本地部署默认启动、自动登录、退出和会话恢复规则
+- 前端开发准备检查、横切能力和发布接入要求
+- 前端节点、后端 core nodes 和 custom nodes 的对应关系
 - 页面类型、工作流页面和大图像结果浏览界面
 - 与自定义节点目录、节点编辑器、集成端点和任务状态流的关系
 
@@ -40,6 +51,15 @@
 - 不持有任务最终状态，只消费 backend-service 暴露的状态视图
 - 不在前端重新发明自定义节点加载规则或任务状态模型
 
+## 本地启动和会话边界
+
+- standalone、workstation 和 edge 本地部署默认直接进入工作台，不把登录页作为默认首屏。
+- 默认本地用户为 `amvar`，前端应通过本地部署注入的长期 user token 完成自动进入。
+- 用户明确退出后，前端记录本机退出标记，再次打开时显示登录页。
+- 默认 user token 失效、被撤销、后端不可用或权限不足时，前端进入登录页或错误页。
+- 登录页默认用户名为 `amvar`，但不默认填入密码。
+- 长期 user token 不能调用 logout；退出时只清理前端本地凭据和连接。
+
 ## 模块划分
 
 ### shells
@@ -50,10 +70,10 @@
 
 - datasets：数据集与数据版本界面
 - tasks：任务列表、任务详情、日志和状态追踪界面
-- models：模型、产物、转换结果和 benchmark 界面
+- models：模型、模型输出文件、转换结果和 benchmark 界面
 - deployments：部署实例、运行状态和回滚界面
 - integrations：外部系统集成端点、回调和联动界面
-- pipelines：流程模板、节点编排和执行结果界面
+- workflows：流程模板、节点编排和执行结果界面
 - custom-nodes：自定义节点包、节点定义和 schema 界面
 - settings：系统配置、运行时配置和管理设置界面
 
@@ -73,9 +93,16 @@
 - /models
 - /deployments
 - /integrations
-- /pipelines
+- /workflows
 - /custom-nodes
 - /settings
+
+## 图编辑器和 UI 组件方向
+
+- workflow 图编辑器底层采用 LiteGraph 方向，通过本项目自己的 adapter 接入，正式保存格式仍以 `WorkflowGraphTemplate` 和 `FlowApplication` 为准。
+- LiteGraph 相关源码和薄封装放在 `frontend/web-ui/src/lib/litegraph`，业务侧只通过 workflow editor 的 graph-engine adapter 使用。
+- UI primitives 采用 Reka UI，项目内在 `shared/ui` 沉淀自己的组件体系，不把 shadcn-vue 整套作为项目组件来源。
+- 自定义节点的前端展示优先通过后端 `NodeDefinition.parameter_ui_schema`、payload 规则和 metadata 渲染，不在第一阶段允许 node pack 任意注入前端 JS。
 
 ## 状态组织原则
 
@@ -135,4 +162,5 @@
 
 - [docs/architecture/system-overview.md](system-overview.md)
 - [docs/architecture/project-structure.md](project-structure.md)
+- [docs/architecture/frontend-web-ui-startup-session.md](frontend-web-ui-startup-session.md)
 - [docs/api/communication-contracts.md](../api/communication-contracts.md)
