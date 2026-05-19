@@ -1,5 +1,5 @@
 export const appConfig = {
   appName: 'amvision',
-  defaultPageTitle: '工作台',
+  defaultPageTitle: 'Workbench',
   defaultLanguage: 'zh-CN',
 }

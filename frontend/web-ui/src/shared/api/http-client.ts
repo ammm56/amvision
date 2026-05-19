@@ -1,5 +1,6 @@
 import { buildBearerAuthHeader } from './auth-header'
 import { ApiError } from './error'
+import { translate } from '@/platform/i18n'
 import { getRuntimeConfig } from '@/platform/runtime/runtime-config'
 
 type ResponseType = 'json' | 'text' | 'blob' | 'void'
@@ -71,7 +72,7 @@ async function parseErrorPayload(response: Response): Promise<{ message: string;
     }
     return { message: String(payload.message ?? response.statusText) }
   } catch {
-    return { message: response.statusText || '请求失败' }
+    return { message: response.statusText || translate('errors.requestFailed') }
   }
 }
 

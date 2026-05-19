@@ -12,7 +12,7 @@ npm run build
 npm run test
 ```
 
-默认开发服务地址为 `http://127.0.0.1:5173`。
+默认开发服务地址为 `http://127.0.0.1:5601`。
 
 ## runtime config
 

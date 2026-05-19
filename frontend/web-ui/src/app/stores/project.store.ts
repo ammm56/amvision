@@ -3,6 +3,7 @@ import { defineStore } from 'pinia'
 import { getRuntimeConfig } from '@/platform/runtime/runtime-config'
 import type { ProjectCatalogItem, ProjectSummary } from '@/shared/contracts'
 import { bootstrapProject, getProjectSummary, listProjects } from '@/modules/projects/services/project.service'
+import { translate } from '@/platform/i18n'
 
 export const useProjectStore = defineStore('project', {
   state: () => ({
@@ -29,7 +30,7 @@ export const useProjectStore = defineStore('project', {
           await this.loadSummary(this.selectedProjectId)
         }
       } catch (error) {
-        this.error = error instanceof Error ? error.message : 'Project 列表加载失败'
+        this.error = error instanceof Error ? error.message : translate('projects.listLoadFailed')
       } finally {
         this.loading = false
       }
@@ -42,7 +43,7 @@ export const useProjectStore = defineStore('project', {
       await this.loadSummary(projectId)
     },
     async bootstrapDefaultProject(): Promise<void> {
-      await bootstrapProject({ project_id: getRuntimeConfig().defaultProjectId, display_name: '默认项目' })
+      await bootstrapProject({ project_id: getRuntimeConfig().defaultProjectId, display_name: translate('projects.defaultDisplayName') })
       await this.loadProjects()
     },
   },

@@ -6,6 +6,7 @@ import { apiRequest } from '@/shared/api/http-client'
 import type { AuthLoginResponse, CurrentUser, LocalAuthUser, SystemBootstrapResponse } from '@/shared/contracts'
 import { getRuntimeConfig } from '@/platform/runtime/runtime-config'
 import { readStorageValue, removeStorageValue, writeStorageValue } from '@/platform/storage/browser-storage'
+import { translate } from '@/platform/i18n'
 
 type CredentialKind = 'session' | 'user-token' | 'static-bearer' | null
 type LoginState = 'checking' | 'auto-authenticated' | 'authenticated' | 'manual-login-required' | 'offline' | 'failed'
@@ -82,7 +83,7 @@ export const useSessionStore = defineStore('session', {
   }),
   getters: {
     isAuthenticated: (state) => Boolean(state.currentUser && state.accessToken),
-    displayName: (state) => state.currentUser?.display_name || state.currentUser?.username || '未登录',
+    displayName: (state) => state.currentUser?.display_name || state.currentUser?.username || '',
   },
   actions: {
     hasScopes(requiredScopes: string[]): boolean {
@@ -111,7 +112,7 @@ export const useSessionStore = defineStore('session', {
       } catch (error) {
         this.isInitialized = true
         this.loginState = 'offline'
-        this.lastAuthError = error instanceof Error ? error.message : '后端连接失败'
+        this.lastAuthError = error instanceof Error ? error.message : translate('auth.backendConnectionFailed')
         useAppStore().setBackendConnectionState('offline')
         return
       }
@@ -167,7 +168,7 @@ export const useSessionStore = defineStore('session', {
         this.accessToken = null
         this.refreshToken = null
         this.credentialKind = null
-        this.lastAuthError = error instanceof Error ? error.message : '会话校验失败'
+        this.lastAuthError = error instanceof Error ? error.message : translate('auth.sessionValidationFailed')
         return false
       }
     },
@@ -234,7 +235,7 @@ export const useSessionStore = defineStore('session', {
           await apiRequest<void>('/auth/logout', { method: 'POST', responseType: 'void', retryOnUnauthorized: false })
         } catch (error) {
           if (!(error instanceof ApiError) || error.status !== 401) {
-            this.lastAuthError = error instanceof Error ? error.message : '退出失败'
+            this.lastAuthError = error instanceof Error ? error.message : translate('auth.logoutFailed')
           }
         }
       }

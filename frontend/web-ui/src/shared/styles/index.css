@@ -4,7 +4,8 @@
     Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   font-size: 14px;
   color: #1e2329;
-  background: #f4f7fb;
+  background: var(--page);
+  --page: #f4f7fb;
   --surface: #ffffff;
   --surface-muted: #eef3f6;
   --line: #d6dee4;
@@ -13,13 +14,72 @@
   --muted: #65727d;
   --sidebar: #252a2f;
   --sidebar-active: #33444a;
+  --sidebar-text: #edf4f6;
+  --sidebar-link: #dce7eb;
+  --sidebar-muted: #b7c5cc;
   --accent: #168a9e;
   --accent-strong: #0f6f82;
   --success: #26845b;
   --warning: #a36c00;
   --danger: #b33d42;
   --info: #326db3;
+  --auth-shell-bg: linear-gradient(90deg, #252a2f 0%, #252a2f 34%, #f4f7fb 34%, #f4f7fb 100%);
+  --input-bg: #ffffff;
+  --input-text: var(--text);
+  --button-secondary-bg: #ffffff;
+  --pill-bg: #eef3f6;
+  --table-header-bg: #eef3f6;
+  --selected-row-bg: #e8f6f8;
+  --summary-bg: #f8fafc;
+  --inline-error-bg: #fff0f0;
+  --inline-error-border: #f0b8bb;
+  --badge-neutral-bg: #edf1f4;
+  --badge-neutral-text: #52616c;
+  --badge-success-bg: #e3f4ec;
+  --badge-warning-bg: #fff4d8;
+  --badge-danger-bg: #ffe7e8;
+  --badge-info-bg: #e4effc;
   --radius: 8px;
+}
+
+[data-theme='dark'] {
+  color-scheme: dark;
+  color: #e8ecef;
+  background: var(--page);
+  --page: #17191b;
+  --surface: #222629;
+  --surface-muted: #2b3033;
+  --line: #3a4448;
+  --line-strong: #5a666b;
+  --text: #e8ecef;
+  --muted: #a6b2b8;
+  --sidebar: #151718;
+  --sidebar-active: #273337;
+  --sidebar-text: #edf4f6;
+  --sidebar-link: #c8d5da;
+  --sidebar-muted: #97a6ad;
+  --accent: #27a6b8;
+  --accent-strong: #71d1dc;
+  --success: #58bf8b;
+  --warning: #d7a044;
+  --danger: #e07176;
+  --info: #76a9e5;
+  --auth-shell-bg: linear-gradient(90deg, #151718 0%, #151718 34%, #17191b 34%, #17191b 100%);
+  --input-bg: #1b1f21;
+  --input-text: var(--text);
+  --button-secondary-bg: #252a2d;
+  --pill-bg: #2b3336;
+  --table-header-bg: #2b3033;
+  --selected-row-bg: #17373c;
+  --summary-bg: #1d2225;
+  --inline-error-bg: #3a2023;
+  --inline-error-border: #8d4247;
+  --badge-neutral-bg: #30363a;
+  --badge-neutral-text: #c6d0d5;
+  --badge-success-bg: #1d3a2e;
+  --badge-warning-bg: #3d321d;
+  --badge-danger-bg: #3d2225;
+  --badge-info-bg: #223246;
 }
 
 * {
@@ -30,6 +90,8 @@ body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
+  color: var(--text);
+  background: var(--page);
 }
 
 button,
@@ -61,7 +123,7 @@ a:hover {
 .auth-shell {
   display: grid;
   grid-template-columns: minmax(240px, 360px) minmax(320px, 1fr);
-  background: linear-gradient(90deg, #252a2f 0%, #252a2f 34%, #f4f7fb 34%, #f4f7fb 100%);
+  background: var(--auth-shell-bg);
 }
 
 .auth-shell__brand {
@@ -69,7 +131,7 @@ a:hover {
   align-items: flex-start;
   gap: 12px;
   padding: 32px;
-  color: #ffffff;
+  color: var(--sidebar-text);
 }
 
 .auth-shell__brand strong,
@@ -80,7 +142,7 @@ a:hover {
 
 .auth-shell__brand small {
   display: block;
-  color: #b7c5cc;
+  color: var(--sidebar-muted);
   margin-top: 4px;
 }
 
@@ -96,7 +158,7 @@ a:hover {
   width: 34px;
   height: 34px;
   border-radius: 8px;
-  background: #28a1b5;
+  background: var(--accent);
   color: #ffffff;
   font-weight: 700;
 }
@@ -111,7 +173,7 @@ a:hover {
   min-height: 100vh;
   display: grid;
   grid-template-columns: 220px minmax(0, 1fr);
-  background: #f4f7fb;
+  background: var(--page);
 }
 
 .workbench-shell__main {
@@ -128,7 +190,7 @@ a:hover {
 
 .app-sidebar {
   background: var(--sidebar);
-  color: #edf4f6;
+  color: var(--sidebar-text);
   padding: 18px 12px;
 }
 
@@ -136,7 +198,7 @@ a:hover {
   display: flex;
   align-items: center;
   gap: 10px;
-  color: #ffffff;
+  color: var(--sidebar-text);
   margin-bottom: 24px;
   padding: 0 8px;
 }
@@ -148,7 +210,7 @@ a:hover {
   height: 38px;
   padding: 0 12px;
   border-radius: 8px;
-  color: #dce7eb;
+  color: var(--sidebar-link);
 }
 
 .app-sidebar__link:hover,
@@ -193,14 +255,58 @@ a:hover {
   color: var(--muted);
 }
 
+.locale-switcher {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--muted);
+}
+
+.locale-switcher span {
+  font-size: 12px;
+  font-weight: 600;
+}
+
 .project-switcher select,
+.locale-switcher select,
 .auth-form input {
   min-height: 34px;
   border: 1px solid var(--line-strong);
   border-radius: 8px;
-  background: #ffffff;
-  color: var(--text);
+  background: var(--input-bg);
+  color: var(--input-text);
   padding: 0 10px;
+}
+
+.theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  min-height: 32px;
+  padding: 2px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--pill-bg);
+}
+
+.theme-toggle button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 26px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0 8px;
+  font-weight: 600;
+}
+
+.theme-toggle button.is-active {
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.08);
 }
 
 .connection-status,
@@ -211,7 +317,7 @@ a:hover {
   min-height: 28px;
   padding: 0 9px;
   border-radius: 999px;
-  background: #eef3f6;
+  background: var(--pill-bg);
   color: var(--muted);
 }
 
@@ -285,7 +391,7 @@ a:hover {
 }
 
 .ui-button--secondary {
-  background: #ffffff;
+  background: var(--button-secondary-bg);
   color: var(--text);
   border-color: var(--line-strong);
 }
@@ -310,8 +416,8 @@ a:hover {
   align-items: center;
   gap: 8px;
   color: var(--danger);
-  background: #fff0f0;
-  border: 1px solid #f0b8bb;
+  background: var(--inline-error-bg);
+  border: 1px solid var(--inline-error-border);
   border-radius: 8px;
   padding: 10px 12px;
 }
@@ -368,7 +474,7 @@ a:hover {
 }
 
 .resource-table th {
-  background: #eef3f6;
+  background: var(--table-header-bg);
   color: var(--muted);
   font-size: 12px;
   font-weight: 700;
@@ -381,7 +487,7 @@ a:hover {
 }
 
 .resource-table tr.is-selected {
-  background: #e8f6f8;
+  background: var(--selected-row-bg);
 }
 
 .status-badge {
@@ -395,27 +501,27 @@ a:hover {
 }
 
 .status-badge--neutral {
-  background: #edf1f4;
-  color: #52616c;
+  background: var(--badge-neutral-bg);
+  color: var(--badge-neutral-text);
 }
 
 .status-badge--success {
-  background: #e3f4ec;
+  background: var(--badge-success-bg);
   color: var(--success);
 }
 
 .status-badge--warning {
-  background: #fff4d8;
+  background: var(--badge-warning-bg);
   color: var(--warning);
 }
 
 .status-badge--danger {
-  background: #ffe7e8;
+  background: var(--badge-danger-bg);
   color: var(--danger);
 }
 
 .status-badge--info {
-  background: #e4effc;
+  background: var(--badge-info-bg);
   color: var(--info);
 }
 
@@ -440,7 +546,7 @@ a:hover {
   padding: 12px;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: #f8fafc;
+  background: var(--summary-bg);
 }
 
 .summary-grid span,

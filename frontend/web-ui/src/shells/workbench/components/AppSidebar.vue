@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import {
   Blocks,
   Cable,
@@ -17,6 +18,7 @@ import { navigationItems, type NavigationItem } from '@/config/navigation.config
 import { useSessionStore } from '@/app/stores/session.store'
 
 const route = useRoute()
+const { t } = useI18n()
 const sessionStore = useSessionStore()
 
 const iconMap = {
@@ -55,7 +57,7 @@ function isActive(item: NavigationItem): boolean {
         :to="item.path"
       >
         <component :is="iconMap[item.icon]" :size="18" />
-        <span>{{ item.label }}</span>
+        <span>{{ t(item.labelKey) }}</span>
       </RouterLink>
     </nav>
   </aside>

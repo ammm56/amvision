@@ -1,3 +1,5 @@
+import { translate } from '@/platform/i18n'
+
 export interface ApiErrorPayload {
   message: string
   code?: string
@@ -25,5 +27,5 @@ export function getErrorMessage(error: unknown): string {
   if (error instanceof Error) {
     return error.message
   }
-  return '请求失败'
+  return translate('errors.requestFailed')
 }

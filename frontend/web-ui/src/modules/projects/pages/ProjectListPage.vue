@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted } from 'vue'
 import { RefreshCw, Plus } from '@lucide/vue'
+import { useI18n } from 'vue-i18n'
 
 import { useProjectStore } from '@/app/stores/project.store'
 import { useSessionStore } from '@/app/stores/session.store'
@@ -11,6 +12,7 @@ import StatusBadge from '@/shared/ui/data-display/StatusBadge.vue'
 
 const projectStore = useProjectStore()
 const sessionStore = useSessionStore()
+const { t } = useI18n()
 
 const canBootstrapProject = computed(() =>
   sessionStore.hasScopes(['datasets:write']) || sessionStore.hasScopes(['workflows:write']),
@@ -31,17 +33,17 @@ function formatCount(value: unknown): string {
   <section class="page-stack">
     <header class="page-header">
       <div>
-        <p class="page-kicker">Workspace</p>
-        <h1>项目工作台</h1>
+        <p class="page-kicker">{{ t('projects.kicker') }}</p>
+        <h1>{{ t('projects.title') }}</h1>
       </div>
       <div class="page-actions">
         <Button variant="secondary" @click="projectStore.loadProjects()">
           <RefreshCw :size="16" />
-          刷新
+          {{ t('common.refresh') }}
         </Button>
         <Button v-if="canBootstrapProject" variant="primary" @click="projectStore.bootstrapDefaultProject()">
           <Plus :size="16" />
-          初始化默认项目
+          {{ t('projects.initDefault') }}
         </Button>
       </div>
     </header>
@@ -50,12 +52,12 @@ function formatCount(value: unknown): string {
 
     <EmptyState
       v-if="!projectStore.loading && projectStore.projects.length === 0"
-      title="暂无可见 Project"
-      description="当前主体没有可见 Project，或本地工作区尚未初始化。"
+      :title="t('projects.emptyTitle')"
+      :description="t('projects.emptyDescription')"
     >
       <Button v-if="canBootstrapProject" variant="primary" @click="projectStore.bootstrapDefaultProject()">
         <Plus :size="16" />
-        初始化默认项目
+        {{ t('projects.initDefault') }}
       </Button>
     </EmptyState>
 
@@ -63,12 +65,12 @@ function formatCount(value: unknown): string {
       <table>
         <thead>
           <tr>
-            <th>Project</th>
-            <th>状态</th>
-            <th>数据集</th>
-            <th>训练</th>
-            <th>部署</th>
-            <th>流程</th>
+            <th>{{ t('projects.columns.project') }}</th>
+            <th>{{ t('projects.columns.status') }}</th>
+            <th>{{ t('projects.columns.datasets') }}</th>
+            <th>{{ t('projects.columns.training') }}</th>
+            <th>{{ t('projects.columns.deployments') }}</th>
+            <th>{{ t('projects.columns.workflows') }}</th>
           </tr>
         </thead>
         <tbody>
@@ -84,7 +86,7 @@ function formatCount(value: unknown): string {
             </td>
             <td>
               <StatusBadge :tone="project.registered_in_catalog === false ? 'warning' : 'success'">
-                {{ project.registered_in_catalog === false ? '未登记' : '可用' }}
+                {{ project.registered_in_catalog === false ? t('projects.status.unregistered') : t('projects.status.available') }}
               </StatusBadge>
             </td>
             <td>{{ formatCount(project.summary?.datasets?.dataset_total) }}</td>

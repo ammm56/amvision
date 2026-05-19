@@ -2,6 +2,7 @@
 import { onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Loader2, RotateCcw } from '@lucide/vue'
+import { useI18n } from 'vue-i18n'
 
 import { useProjectStore } from '@/app/stores/project.store'
 import { useSessionStore } from '@/app/stores/session.store'
@@ -12,6 +13,7 @@ const route = useRoute()
 const router = useRouter()
 const sessionStore = useSessionStore()
 const projectStore = useProjectStore()
+const { t } = useI18n()
 const starting = ref(false)
 
 async function start(): Promise<void> {
@@ -36,8 +38,8 @@ onMounted(() => {
 <template>
   <section class="startup-view">
     <span class="brand-mark brand-mark--large">AM</span>
-    <h1>amvision</h1>
-    <p>正在连接本地后端并检查会话状态。</p>
+    <h1>{{ t('common.appName') }}</h1>
+    <p>{{ t('startup.checkingSession') }}</p>
     <div class="startup-view__status">
       <Loader2 v-if="starting" class="spin" :size="20" />
       <span>{{ sessionStore.loginState }}</span>
@@ -45,7 +47,7 @@ onMounted(() => {
     <InlineError :message="sessionStore.lastAuthError" />
     <Button v-if="sessionStore.loginState === 'offline'" variant="primary" @click="start">
       <RotateCcw :size="16" />
-      重试
+      {{ t('common.retry') }}
     </Button>
   </section>
 </template>

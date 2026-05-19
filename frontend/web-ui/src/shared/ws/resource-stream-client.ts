@@ -1,5 +1,6 @@
 import type { ResourceStreamState, WebSocketEnvelope } from '@/shared/contracts'
 import { isControlEvent } from '@/shared/contracts'
+import { translate } from '@/platform/i18n'
 import { getRuntimeConfig } from '@/platform/runtime/runtime-config'
 
 export interface ResourceStreamClientOptions {
@@ -63,7 +64,7 @@ export class ResourceStreamClient {
     }
     this.socket.onmessage = (event) => this.handleMessage(event)
     this.socket.onerror = () => {
-      this.state.lastError = 'WebSocket 连接异常'
+      this.state.lastError = translate('ws.connectionError')
       this.emitState()
     }
     this.socket.onclose = (event) => {

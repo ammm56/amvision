@@ -2,6 +2,7 @@
 import { onMounted, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 import { RefreshCw } from '@lucide/vue'
+import { useI18n } from 'vue-i18n'
 
 import TaskStatusBadge from '../components/TaskStatusBadge.vue'
 import { getTaskProgressPercent, useTaskStore } from '../stores/task.store'
@@ -12,6 +13,7 @@ import InlineError from '@/shared/ui/feedback/InlineError.vue'
 
 const taskStore = useTaskStore()
 const projectStore = useProjectStore()
+const { t } = useI18n()
 
 onMounted(() => {
   void taskStore.loadTasks(projectStore.selectedProjectId)
@@ -33,28 +35,32 @@ function refreshTasks(): void {
   <section class="page-stack">
     <header class="page-header">
       <div>
-        <p class="page-kicker">Operations</p>
-        <h1>任务</h1>
+        <p class="page-kicker">{{ t('tasks.kicker') }}</p>
+        <h1>{{ t('tasks.title') }}</h1>
       </div>
       <Button variant="secondary" @click="refreshTasks">
         <RefreshCw :size="16" />
-        刷新
+        {{ t('common.refresh') }}
       </Button>
     </header>
 
     <InlineError :message="taskStore.error" />
 
-    <EmptyState v-if="!taskStore.loading && taskStore.tasks.length === 0" title="暂无任务" description="训练、转换、部署、推理和 workflow 调用任务会在这里汇总。" />
+    <EmptyState
+      v-if="!taskStore.loading && taskStore.tasks.length === 0"
+      :title="t('tasks.emptyTitle')"
+      :description="t('tasks.emptyDescription')"
+    />
 
     <div v-else class="resource-table">
       <table>
         <thead>
           <tr>
-            <th>任务</th>
-            <th>类型</th>
-            <th>状态</th>
-            <th>进度</th>
-            <th>更新时间</th>
+            <th>{{ t('tasks.columns.task') }}</th>
+            <th>{{ t('tasks.columns.type') }}</th>
+            <th>{{ t('tasks.columns.state') }}</th>
+            <th>{{ t('tasks.columns.progress') }}</th>
+            <th>{{ t('tasks.columns.updatedAt') }}</th>
           </tr>
         </thead>
         <tbody>

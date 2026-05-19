@@ -2,6 +2,7 @@
 import { computed, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { Ban, RefreshCw } from '@lucide/vue'
+import { useI18n } from 'vue-i18n'
 
 import TaskEventTimeline from '../components/TaskEventTimeline.vue'
 import TaskStatusBadge from '../components/TaskStatusBadge.vue'
@@ -12,6 +13,7 @@ import InlineError from '@/shared/ui/feedback/InlineError.vue'
 
 const route = useRoute()
 const taskStore = useTaskStore()
+const { t } = useI18n()
 const taskId = computed(() => String(route.params.taskId))
 
 const taskEvents = useTaskEvents(() => taskId.value, (event) => taskStore.appendTaskEvent(event))
@@ -38,17 +40,17 @@ watch(taskId, async (nextTaskId) => {
   <section class="page-stack">
     <header class="page-header">
       <div>
-        <p class="page-kicker">Task Detail</p>
+        <p class="page-kicker">{{ t('tasks.detailKicker') }}</p>
         <h1>{{ taskStore.selectedTask?.task_id || taskId }}</h1>
       </div>
       <div class="page-actions">
         <Button variant="secondary" @click="taskStore.loadTask(taskId)">
           <RefreshCw :size="16" />
-          刷新
+          {{ t('common.refresh') }}
         </Button>
         <Button v-if="canCancel" variant="danger" @click="taskStore.cancelSelectedTask()">
           <Ban :size="16" />
-          取消
+          {{ t('common.cancel') }}
         </Button>
       </div>
     </header>
@@ -59,37 +61,37 @@ watch(taskId, async (nextTaskId) => {
       <section class="detail-main">
         <div class="summary-grid">
           <div>
-            <span>状态</span>
+            <span>{{ t('tasks.columns.state') }}</span>
             <TaskStatusBadge :task="taskStore.selectedTask" />
           </div>
           <div>
-            <span>类型</span>
+            <span>{{ t('tasks.columns.type') }}</span>
             <strong>{{ taskStore.selectedTask.task_kind || taskStore.selectedTask.kind || '-' }}</strong>
           </div>
           <div>
-            <span>进度</span>
+            <span>{{ t('tasks.columns.progress') }}</span>
             <strong>{{ getTaskProgressPercent(taskStore.selectedTask) }}%</strong>
           </div>
           <div>
-            <span>Project</span>
+            <span>{{ t('common.project') }}</span>
             <strong>{{ taskStore.selectedTask.project_id || '-' }}</strong>
           </div>
         </div>
 
         <section class="panel-section">
-          <h2>事件</h2>
+          <h2>{{ t('tasks.events') }}</h2>
           <TaskEventTimeline :events="taskStore.selectedTaskEvents" />
         </section>
       </section>
 
       <aside class="detail-side">
-        <h2>诊断</h2>
+        <h2>{{ t('tasks.diagnostics') }}</h2>
         <dl>
-          <dt>WebSocket</dt>
-          <dd>{{ taskEvents.streamState.value?.connected ? 'connected' : 'not connected' }}</dd>
-          <dt>最近断开</dt>
+          <dt>{{ t('common.websocket') }}</dt>
+          <dd>{{ taskEvents.streamState.value?.connected ? t('tasks.connected') : t('tasks.notConnected') }}</dd>
+          <dt>{{ t('tasks.lastDisconnect') }}</dt>
           <dd>{{ taskEvents.streamState.value?.lastDisconnectReason || '-' }}</dd>
-          <dt>错误</dt>
+          <dt>{{ t('tasks.error') }}</dt>
           <dd>{{ taskStore.selectedTask.error_message || '-' }}</dd>
         </dl>
       </aside>

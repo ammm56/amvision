@@ -8,11 +8,11 @@ import ModulePlaceholderView from '@/views/ModulePlaceholderView.vue'
 import NotFoundView from '@/views/NotFoundView.vue'
 import StartupView from '@/views/StartupView.vue'
 
-function placeholderRoute(path: string, title: string, description: string, scopes: string[]): RouteRecordRaw {
+function placeholderRoute(path: string, titleKey: string, descriptionKey: string, scopes: string[]): RouteRecordRaw {
   return {
     path,
     component: ModulePlaceholderView,
-    props: { title, description },
+    props: { titleKey, descriptionKey },
     meta: { requiredScopes: scopes },
   }
 }
@@ -26,28 +26,28 @@ export const routes: RouteRecordRaw[] = [
   ...authRoutes,
   ...projectRoutes,
   ...taskRoutes,
-  placeholderRoute('/datasets', '数据集', '数据集导入、导出和 DatasetVersion 页面将在第一条业务闭环后接入。', [
+  placeholderRoute('/datasets', 'placeholders.datasetsTitle', 'placeholders.datasetsDescription', [
     'datasets:read',
   ]),
-  placeholderRoute('/models', '模型', '模型版本、验证、评估、转换和训练输出文件页面将在模型链路阶段接入。', [
+  placeholderRoute('/models', 'placeholders.modelsTitle', 'placeholders.modelsDescription', [
     'models:read',
   ]),
-  placeholderRoute('/deployments', '部署', 'DeploymentInstance、health、warmup 和推理调试页面将在部署链路阶段接入。', [
+  placeholderRoute('/deployments', 'placeholders.deploymentsTitle', 'placeholders.deploymentsDescription', [
     'models:read',
   ]),
-  placeholderRoute('/workflows/templates', '流程模板', 'LiteGraph workflow editor 将在 node catalog 和模板校验链路固定后接入。', [
+  placeholderRoute('/workflows/templates', 'placeholders.workflowTemplatesTitle', 'placeholders.workflowTemplatesDescription', [
     'workflows:read',
   ]),
-  placeholderRoute('/workflows/applications', '流程应用', 'FlowApplication、AppRuntime 和 WorkflowRun 页面将在 workflow runtime 阶段接入。', [
+  placeholderRoute('/workflows/applications', 'placeholders.workflowAppsTitle', 'placeholders.workflowAppsDescription', [
     'workflows:read',
   ]),
-  placeholderRoute('/integrations/trigger-sources', '集成端点', 'TriggerSource 配置和协议入口管理将在 workflow app 调用链路后接入。', [
+  placeholderRoute('/integrations/trigger-sources', 'placeholders.integrationsTitle', 'placeholders.integrationsDescription', [
     'workflows:read',
   ]),
-  placeholderRoute('/custom-nodes', '自定义节点', '第一阶段只读 node catalog 页面将在基础壳层稳定后接入。', [
+  placeholderRoute('/custom-nodes', 'placeholders.customNodesTitle', 'placeholders.customNodesDescription', [
     'workflows:read',
   ]),
-  placeholderRoute('/settings', '设置', '用户、token、运行时配置和诊断设置将在基础会话链路后接入。', ['auth:read']),
+  placeholderRoute('/settings', 'placeholders.settingsTitle', 'placeholders.settingsDescription', ['auth:read']),
   {
     path: '/forbidden',
     component: ErrorView,

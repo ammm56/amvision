@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 
 import { cancelTask, getTask, getTaskEvents, listTasks } from '../services/task.service'
 import type { TaskEvent, TaskRecord, TaskState } from '@/shared/contracts'
+import { translate } from '@/platform/i18n'
 
 export function normalizeTaskState(task: TaskRecord): TaskState {
   const rawState = String(task.state ?? task.status ?? '').toLowerCase()
@@ -36,7 +37,7 @@ export const useTaskStore = defineStore('tasks', {
         const response = await listTasks(projectId)
         this.tasks = response.items
       } catch (error) {
-        this.error = error instanceof Error ? error.message : '任务列表加载失败'
+        this.error = error instanceof Error ? error.message : translate('tasks.listLoadFailed')
       } finally {
         this.loading = false
       }
@@ -48,7 +49,7 @@ export const useTaskStore = defineStore('tasks', {
         this.selectedTask = await getTask(taskId)
         this.selectedTaskEvents = await getTaskEvents(taskId)
       } catch (error) {
-        this.error = error instanceof Error ? error.message : '任务详情加载失败'
+        this.error = error instanceof Error ? error.message : translate('tasks.detailLoadFailed')
       } finally {
         this.detailLoading = false
       }

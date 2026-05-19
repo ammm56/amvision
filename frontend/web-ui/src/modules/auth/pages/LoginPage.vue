@@ -2,6 +2,7 @@
 import { ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { LogIn } from '@lucide/vue'
+import { useI18n } from 'vue-i18n'
 
 import { useProjectStore } from '@/app/stores/project.store'
 import { useSessionStore } from '@/app/stores/session.store'
@@ -13,6 +14,7 @@ const route = useRoute()
 const router = useRouter()
 const sessionStore = useSessionStore()
 const projectStore = useProjectStore()
+const { t } = useI18n()
 
 const username = ref(getRuntimeConfig().auth.defaultUsername)
 const password = ref('')
@@ -28,7 +30,7 @@ async function submitLogin(): Promise<void> {
     const redirect = typeof route.query.redirect === 'string' ? route.query.redirect : '/projects'
     await router.replace(redirect)
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : '登录失败'
+    errorMessage.value = error instanceof Error ? error.message : t('auth.loginFailed')
   } finally {
     submitting.value = false
   }
@@ -38,25 +40,25 @@ async function submitLogin(): Promise<void> {
 <template>
   <form class="auth-form" @submit.prevent="submitLogin">
     <header>
-      <p class="page-kicker">Local Auth</p>
-      <h1>登录</h1>
-      <p>本机已记录退出状态，需要使用本地账号重新进入。</p>
+      <p class="page-kicker">{{ t('auth.localAuth') }}</p>
+      <h1>{{ t('auth.login') }}</h1>
+      <p>{{ t('auth.loginIntro') }}</p>
     </header>
 
     <InlineError :message="errorMessage || sessionStore.lastAuthError" />
 
     <label>
-      <span>用户名</span>
+      <span>{{ t('auth.username') }}</span>
       <input v-model="username" autocomplete="username" />
     </label>
     <label>
-      <span>密码</span>
+      <span>{{ t('auth.password') }}</span>
       <input v-model="password" type="password" autocomplete="current-password" />
     </label>
 
     <Button variant="primary" type="submit" :disabled="submitting">
       <LogIn :size="16" />
-      {{ submitting ? '登录中' : '登录' }}
+      {{ submitting ? t('auth.loggingIn') : t('auth.login') }}
     </Button>
   </form>
 </template>
