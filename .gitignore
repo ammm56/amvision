@@ -229,3 +229,10 @@ projectsrc/
 # disk data
 data/
 release/
+
+# frontend
+node_modules/
+frontend/web-ui/public/runtime-config.json
+frontend/web-ui/public/runtime-config.local.json
+frontend/web-ui/playwright-report/
+frontend/web-ui/test-results/

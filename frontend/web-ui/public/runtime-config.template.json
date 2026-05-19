@@ -1,0 +1,19 @@
+{
+  "apiBaseUrl": "http://127.0.0.1:8000/api/v1",
+  "wsBaseUrl": "ws://127.0.0.1:8000/ws/v1",
+  "defaultProjectId": "project-1",
+  "auth": {
+    "autoLoginEnabled": true,
+    "defaultUsername": "amvar",
+    "defaultUserToken": "amvision-default-user-token",
+    "manualLoginRequiredKey": "amvision.web-ui.manual-login-required"
+  },
+  "storage": {
+    "sessionTokenStorage": "sessionStorage",
+    "manualLoginStorage": "localStorage"
+  },
+  "features": {
+    "workflowEditor": true,
+    "customNodeManagement": false
+  }
+}
