@@ -1,3 +1,11 @@
+<template>
+  <span class="connection-status" :class="`connection-status--${appStore.backendConnectionState}`">
+    <WifiOff v-if="appStore.backendConnectionState === 'offline'" :size="15" />
+    <Circle v-else :size="12" />
+    {{ label }}
+  </span>
+</template>
+
 <script setup lang="ts">
 import { computed } from 'vue'
 import { Circle, WifiOff } from '@lucide/vue'
@@ -15,11 +23,3 @@ const label = computed(() => {
   return t('connection.checking')
 })
 </script>
-
-<template>
-  <span class="connection-status" :class="`connection-status--${appStore.backendConnectionState}`">
-    <WifiOff v-if="appStore.backendConnectionState === 'offline'" :size="15" />
-    <Circle v-else :size="12" />
-    {{ label }}
-  </span>
-</template>

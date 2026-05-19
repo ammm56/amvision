@@ -100,9 +100,61 @@ export interface YoloXTrainingTaskSummary {
   model_version_id?: string | null
   latest_checkpoint_model_version_id?: string | null
   output_object_prefix?: string | null
+  checkpoint_object_key?: string | null
+  latest_checkpoint_object_key?: string | null
   best_metric_name?: string | null
   best_metric_value?: number | null
   training_summary: Record<string, unknown>
+}
+
+export type YoloXTrainingTaskActionName = 'save' | 'pause' | 'resume' | 'terminate' | 'delete'
+
+export interface YoloXTrainingTaskControlStatus {
+  status: string
+  pending_action?: YoloXTrainingTaskActionName | null
+  requested_at?: string | null
+  requested_by?: string | null
+  last_save_at?: string | null
+  last_save_epoch?: number | null
+  last_save_reason?: string | null
+  last_save_by?: string | null
+  last_resume_at?: string | null
+  last_resume_by?: string | null
+  resume_count: number
+  resume_checkpoint_object_key?: string | null
+}
+
+export interface YoloXTrainingTaskEvent {
+  event_id: string
+  task_id: string
+  attempt_id?: string | null
+  event_type: string
+  created_at: string
+  message: string
+  payload: Record<string, unknown>
+}
+
+export interface YoloXTrainingTaskDetail extends YoloXTrainingTaskSummary {
+  available_actions: YoloXTrainingTaskActionName[]
+  control_status: YoloXTrainingTaskControlStatus
+  task_spec: Record<string, unknown>
+  events: YoloXTrainingTaskEvent[]
+}
+
+export interface YoloXTrainingOutputFileSummary {
+  file_name: string
+  file_kind: string
+  file_status: string
+  task_state: string
+  object_key?: string | null
+  size_bytes?: number | null
+  updated_at?: string | null
+}
+
+export interface YoloXTrainingOutputFileDetail extends YoloXTrainingOutputFileSummary {
+  payload: Record<string, unknown>
+  text_content?: string | null
+  lines: string[]
 }
 
 export interface YoloXTrainingTaskCreateInput {
@@ -225,6 +277,51 @@ export async function listYoloXTrainingTasks(projectId: string): Promise<YoloXTr
   return apiRequest<YoloXTrainingTaskSummary[]>('/models/yolox/training-tasks', {
     query: { project_id: projectId, limit: 100 },
   })
+}
+
+export async function getYoloXTrainingTaskDetail(taskId: string): Promise<YoloXTrainingTaskDetail> {
+  return apiRequest<YoloXTrainingTaskDetail>(`/models/yolox/training-tasks/${encodeURIComponent(taskId)}`, {
+    query: { include_events: true },
+  })
+}
+
+export async function requestYoloXTrainingTaskAction(
+  taskId: string,
+  action: Exclude<YoloXTrainingTaskActionName, 'delete'>,
+): Promise<YoloXTrainingTaskDetail | YoloXTrainingTaskSubmissionResponse> {
+  return apiRequest<YoloXTrainingTaskDetail | YoloXTrainingTaskSubmissionResponse>(
+    `/models/yolox/training-tasks/${encodeURIComponent(taskId)}/${action}`,
+    { method: 'POST' },
+  )
+}
+
+export async function deleteYoloXTrainingTask(taskId: string): Promise<void> {
+  return apiRequest<void>(`/models/yolox/training-tasks/${encodeURIComponent(taskId)}`, {
+    method: 'DELETE',
+    responseType: 'void',
+  })
+}
+
+export async function registerYoloXTrainingLatestCheckpoint(taskId: string): Promise<YoloXTrainingTaskDetail> {
+  return apiRequest<YoloXTrainingTaskDetail>(
+    `/models/yolox/training-tasks/${encodeURIComponent(taskId)}/register-model-version`,
+    { method: 'POST' },
+  )
+}
+
+export async function listYoloXTrainingOutputFiles(taskId: string): Promise<YoloXTrainingOutputFileSummary[]> {
+  return apiRequest<YoloXTrainingOutputFileSummary[]>(
+    `/models/yolox/training-tasks/${encodeURIComponent(taskId)}/output-files`,
+  )
+}
+
+export async function getYoloXTrainingOutputFileDetail(
+  taskId: string,
+  fileName: string,
+): Promise<YoloXTrainingOutputFileDetail> {
+  return apiRequest<YoloXTrainingOutputFileDetail>(
+    `/models/yolox/training-tasks/${encodeURIComponent(taskId)}/output-files/${encodeURIComponent(fileName)}`,
+  )
 }
 
 export async function createYoloXConversionTask(input: YoloXConversionTaskCreateInput): Promise<YoloXConversionTaskSubmissionResponse> {

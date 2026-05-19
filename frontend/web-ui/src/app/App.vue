@@ -1,3 +1,9 @@
+<template>
+  <component :is="shellComponent">
+    <RouterView />
+  </component>
+</template>
+
 <script setup lang="ts">
 import { computed } from 'vue'
 import { RouterView, useRoute } from 'vue-router'
@@ -18,9 +24,3 @@ const shellComponent = computed(() => {
   return WorkbenchShell
 })
 </script>
-
-<template>
-  <component :is="shellComponent">
-    <RouterView />
-  </component>
-</template>

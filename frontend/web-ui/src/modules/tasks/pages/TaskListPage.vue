@@ -1,36 +1,3 @@
-<script setup lang="ts">
-import { onMounted, watch } from 'vue'
-import { RouterLink } from 'vue-router'
-import { RefreshCw } from '@lucide/vue'
-import { useI18n } from 'vue-i18n'
-
-import TaskStatusBadge from '../components/TaskStatusBadge.vue'
-import { getTaskProgressPercent, useTaskStore } from '../stores/task.store'
-import { useProjectStore } from '@/app/stores/project.store'
-import Button from '@/shared/ui/components/Button.vue'
-import EmptyState from '@/shared/ui/feedback/EmptyState.vue'
-import InlineError from '@/shared/ui/feedback/InlineError.vue'
-
-const taskStore = useTaskStore()
-const projectStore = useProjectStore()
-const { t } = useI18n()
-
-onMounted(() => {
-  void taskStore.loadTasks(projectStore.selectedProjectId)
-})
-
-watch(
-  () => projectStore.selectedProjectId,
-  (projectId) => {
-    void taskStore.loadTasks(projectId)
-  },
-)
-
-function refreshTasks(): void {
-  void taskStore.loadTasks(projectStore.selectedProjectId)
-}
-</script>
-
 <template>
   <section class="page-stack">
     <header class="page-header">
@@ -71,10 +38,44 @@ function refreshTasks(): void {
             <td>{{ task.task_kind || task.kind || '-' }}</td>
             <td><TaskStatusBadge :task="task" /></td>
             <td>{{ getTaskProgressPercent(task) }}%</td>
-            <td>{{ task.updated_at || task.created_at || '-' }}</td>
+            <td>{{ formatSystemDateTime(task.updated_at || task.created_at) }}</td>
           </tr>
         </tbody>
       </table>
     </div>
   </section>
 </template>
+
+<script setup lang="ts">
+import { onMounted, watch } from 'vue'
+import { RouterLink } from 'vue-router'
+import { RefreshCw } from '@lucide/vue'
+import { useI18n } from 'vue-i18n'
+
+import TaskStatusBadge from '../components/TaskStatusBadge.vue'
+import { getTaskProgressPercent, useTaskStore } from '../stores/task.store'
+import { useProjectStore } from '@/app/stores/project.store'
+import Button from '@/shared/ui/components/Button.vue'
+import EmptyState from '@/shared/ui/feedback/EmptyState.vue'
+import InlineError from '@/shared/ui/feedback/InlineError.vue'
+import { formatSystemDateTime } from '@/shared/formatters/date-time'
+
+const taskStore = useTaskStore()
+const projectStore = useProjectStore()
+const { t } = useI18n()
+
+onMounted(() => {
+  void taskStore.loadTasks(projectStore.selectedProjectId)
+})
+
+watch(
+  () => projectStore.selectedProjectId,
+  (projectId) => {
+    void taskStore.loadTasks(projectId)
+  },
+)
+
+function refreshTasks(): void {
+  void taskStore.loadTasks(projectStore.selectedProjectId)
+}
+</script>

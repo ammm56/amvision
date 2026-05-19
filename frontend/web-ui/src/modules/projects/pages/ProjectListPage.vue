@@ -1,34 +1,3 @@
-<script setup lang="ts">
-import { computed, onMounted } from 'vue'
-import { RefreshCw, Plus } from '@lucide/vue'
-import { useI18n } from 'vue-i18n'
-
-import { useProjectStore } from '@/app/stores/project.store'
-import { useSessionStore } from '@/app/stores/session.store'
-import Button from '@/shared/ui/components/Button.vue'
-import EmptyState from '@/shared/ui/feedback/EmptyState.vue'
-import InlineError from '@/shared/ui/feedback/InlineError.vue'
-import StatusBadge from '@/shared/ui/data-display/StatusBadge.vue'
-
-const projectStore = useProjectStore()
-const sessionStore = useSessionStore()
-const { t } = useI18n()
-
-const canBootstrapProject = computed(() =>
-  sessionStore.hasScopes(['datasets:write']) || sessionStore.hasScopes(['workflows:write']),
-)
-
-onMounted(() => {
-  if (projectStore.projects.length === 0) {
-    void projectStore.loadProjects()
-  }
-})
-
-function formatCount(value: unknown): string {
-  return typeof value === 'number' ? String(value) : '0'
-}
-</script>
-
 <template>
   <section class="page-stack">
     <header class="page-header">
@@ -99,3 +68,34 @@ function formatCount(value: unknown): string {
     </div>
   </section>
 </template>
+
+<script setup lang="ts">
+import { computed, onMounted } from 'vue'
+import { RefreshCw, Plus } from '@lucide/vue'
+import { useI18n } from 'vue-i18n'
+
+import { useProjectStore } from '@/app/stores/project.store'
+import { useSessionStore } from '@/app/stores/session.store'
+import Button from '@/shared/ui/components/Button.vue'
+import EmptyState from '@/shared/ui/feedback/EmptyState.vue'
+import InlineError from '@/shared/ui/feedback/InlineError.vue'
+import StatusBadge from '@/shared/ui/data-display/StatusBadge.vue'
+
+const projectStore = useProjectStore()
+const sessionStore = useSessionStore()
+const { t } = useI18n()
+
+const canBootstrapProject = computed(() =>
+  sessionStore.hasScopes(['datasets:write']) || sessionStore.hasScopes(['workflows:write']),
+)
+
+onMounted(() => {
+  if (projectStore.projects.length === 0) {
+    void projectStore.loadProjects()
+  }
+})
+
+function formatCount(value: unknown): string {
+  return typeof value === 'number' ? String(value) : '0'
+}
+</script>

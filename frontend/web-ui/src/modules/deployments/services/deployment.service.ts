@@ -62,6 +62,16 @@ export interface YoloXDeploymentRuntimeHealth extends YoloXDeploymentProcessStat
   local_buffer_broker: Record<string, unknown>
 }
 
+export interface YoloXDeploymentProcessEvent {
+  deployment_instance_id: string
+  runtime_mode: string
+  sequence: number
+  event_type: string
+  created_at: string
+  message: string
+  payload: Record<string, unknown>
+}
+
 export type DeploymentRuntimeMode = 'sync' | 'async'
 export type DeploymentStatusAction = 'start' | 'status' | 'stop'
 export type DeploymentHealthAction = 'warmup' | 'health' | 'reset'
@@ -109,5 +119,15 @@ export async function runYoloXDeploymentHealthAction(
   return apiRequest<YoloXDeploymentRuntimeHealth>(
     `/models/yolox/deployment-instances/${encodeURIComponent(deploymentInstanceId)}/${mode}/${action}`,
     { method: action === 'health' ? 'GET' : 'POST' },
+  )
+}
+
+export async function listYoloXDeploymentEvents(
+  deploymentInstanceId: string,
+  mode: DeploymentRuntimeMode,
+): Promise<YoloXDeploymentProcessEvent[]> {
+  return apiRequest<YoloXDeploymentProcessEvent[]>(
+    `/models/yolox/deployment-instances/${encodeURIComponent(deploymentInstanceId)}/events`,
+    { query: { runtime_mode: mode, limit: 100 } },
   )
 }

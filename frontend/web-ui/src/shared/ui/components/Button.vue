@@ -1,3 +1,9 @@
+<template>
+  <button class="ui-button" :class="[`ui-button--${variant}`, `ui-button--${size}`]" :type="type" :disabled="disabled">
+    <slot />
+  </button>
+</template>
+
 <script setup lang="ts">
 withDefaults(
   defineProps<{
@@ -14,9 +20,3 @@ withDefaults(
   },
 )
 </script>
-
-<template>
-  <button class="ui-button" :class="[`ui-button--${variant}`, `ui-button--${size}`]" :type="type" :disabled="disabled">
-    <slot />
-  </button>
-</template>

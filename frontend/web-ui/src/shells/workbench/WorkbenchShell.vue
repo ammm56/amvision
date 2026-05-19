@@ -1,3 +1,16 @@
+<template>
+  <main class="workbench-shell">
+    <AppSidebar />
+    <section class="workbench-shell__main">
+      <AppTopbar />
+      <div class="workbench-shell__content">
+        <slot />
+      </div>
+      <AppBottomPanel />
+    </section>
+  </main>
+</template>
+
 <script setup lang="ts">
 import { onMounted } from 'vue'
 
@@ -16,16 +29,3 @@ onMounted(() => {
   }
 })
 </script>
-
-<template>
-  <main class="workbench-shell">
-    <AppSidebar />
-    <section class="workbench-shell__main">
-      <AppTopbar />
-      <div class="workbench-shell__content">
-        <slot />
-      </div>
-      <AppBottomPanel />
-    </section>
-  </main>
-</template>

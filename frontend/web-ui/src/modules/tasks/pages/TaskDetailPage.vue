@@ -1,41 +1,3 @@
-<script setup lang="ts">
-import { computed, onMounted, watch } from 'vue'
-import { useRoute } from 'vue-router'
-import { Ban, RefreshCw } from '@lucide/vue'
-import { useI18n } from 'vue-i18n'
-
-import TaskEventTimeline from '../components/TaskEventTimeline.vue'
-import TaskStatusBadge from '../components/TaskStatusBadge.vue'
-import { getTaskProgressPercent, normalizeTaskState, useTaskStore } from '../stores/task.store'
-import { useTaskEvents } from '../composables/useTaskEvents'
-import Button from '@/shared/ui/components/Button.vue'
-import InlineError from '@/shared/ui/feedback/InlineError.vue'
-
-const route = useRoute()
-const taskStore = useTaskStore()
-const { t } = useI18n()
-const taskId = computed(() => String(route.params.taskId))
-
-const taskEvents = useTaskEvents(() => taskId.value, (event) => taskStore.appendTaskEvent(event))
-
-const canCancel = computed(() => {
-  if (!taskStore.selectedTask) return false
-  const state = normalizeTaskState(taskStore.selectedTask)
-  return state === 'queued' || state === 'running'
-})
-
-onMounted(async () => {
-  await taskStore.loadTask(taskId.value)
-  taskEvents.start()
-})
-
-watch(taskId, async (nextTaskId) => {
-  taskEvents.stop()
-  await taskStore.loadTask(nextTaskId)
-  taskEvents.start()
-})
-</script>
-
 <template>
   <section class="page-stack">
     <header class="page-header">
@@ -98,3 +60,41 @@ watch(taskId, async (nextTaskId) => {
     </div>
   </section>
 </template>
+
+<script setup lang="ts">
+import { computed, onMounted, watch } from 'vue'
+import { useRoute } from 'vue-router'
+import { Ban, RefreshCw } from '@lucide/vue'
+import { useI18n } from 'vue-i18n'
+
+import TaskEventTimeline from '../components/TaskEventTimeline.vue'
+import TaskStatusBadge from '../components/TaskStatusBadge.vue'
+import { getTaskProgressPercent, normalizeTaskState, useTaskStore } from '../stores/task.store'
+import { useTaskEvents } from '../composables/useTaskEvents'
+import Button from '@/shared/ui/components/Button.vue'
+import InlineError from '@/shared/ui/feedback/InlineError.vue'
+
+const route = useRoute()
+const taskStore = useTaskStore()
+const { t } = useI18n()
+const taskId = computed(() => String(route.params.taskId))
+
+const taskEvents = useTaskEvents(() => taskId.value, (event) => taskStore.appendTaskEvent(event))
+
+const canCancel = computed(() => {
+  if (!taskStore.selectedTask) return false
+  const state = normalizeTaskState(taskStore.selectedTask)
+  return state === 'queued' || state === 'running'
+})
+
+onMounted(async () => {
+  await taskStore.loadTask(taskId.value)
+  taskEvents.start()
+})
+
+watch(taskId, async (nextTaskId) => {
+  taskEvents.stop()
+  await taskStore.loadTask(nextTaskId)
+  taskEvents.start()
+})
+</script>

@@ -1,47 +1,3 @@
-<script setup lang="ts">
-import { computed } from 'vue'
-import { RouterLink, useRoute } from 'vue-router'
-import { useI18n } from 'vue-i18n'
-import {
-  Blocks,
-  Cable,
-  Cpu,
-  Database,
-  FolderKanban,
-  ListChecks,
-  Rocket,
-  Settings,
-  Workflow,
-} from '@lucide/vue'
-
-import { navigationItems, type NavigationItem } from '@/config/navigation.config'
-import { useSessionStore } from '@/app/stores/session.store'
-
-const route = useRoute()
-const { t } = useI18n()
-const sessionStore = useSessionStore()
-
-const iconMap = {
-  FolderKanban,
-  ListChecks,
-  Database,
-  Cpu,
-  Rocket,
-  Workflow,
-  Cable,
-  Blocks,
-  Settings,
-}
-
-const visibleItems = computed(() =>
-  navigationItems.filter((item) => item.requiredScopes.length === 0 || sessionStore.hasScopes(item.requiredScopes)),
-)
-
-function isActive(item: NavigationItem): boolean {
-  return route.path === item.path || route.path.startsWith(`${item.path}/`)
-}
-</script>
-
 <template>
   <aside class="app-sidebar">
     <RouterLink class="app-sidebar__brand" to="/projects">
@@ -62,3 +18,49 @@ function isActive(item: NavigationItem): boolean {
     </nav>
   </aside>
 </template>
+
+<script setup lang="ts">
+import { computed } from 'vue'
+import { RouterLink, useRoute } from 'vue-router'
+import { useI18n } from 'vue-i18n'
+import {
+  Activity,
+  Blocks,
+  Cable,
+  Cpu,
+  Database,
+  FolderKanban,
+  ListChecks,
+  Rocket,
+  Settings,
+  Workflow,
+} from '@lucide/vue'
+
+import { navigationItems, type NavigationItem } from '@/config/navigation.config'
+import { useSessionStore } from '@/app/stores/session.store'
+
+const route = useRoute()
+const { t } = useI18n()
+const sessionStore = useSessionStore()
+
+const iconMap = {
+  Activity,
+  FolderKanban,
+  ListChecks,
+  Database,
+  Cpu,
+  Rocket,
+  Workflow,
+  Cable,
+  Blocks,
+  Settings,
+}
+
+const visibleItems = computed(() =>
+  navigationItems.filter((item) => item.requiredScopes.length === 0 || sessionStore.hasScopes(item.requiredScopes)),
+)
+
+function isActive(item: NavigationItem): boolean {
+  return route.path === item.path || route.path.startsWith(`${item.path}/`)
+}
+</script>

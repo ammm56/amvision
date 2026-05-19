@@ -1,3 +1,9 @@
+<template>
+  <StatusBadge :tone="stateTone[normalizeTaskState(props.task)]">
+    {{ props.task.state || props.task.status || 'unknown' }}
+  </StatusBadge>
+</template>
+
 <script setup lang="ts">
 import StatusBadge from '@/shared/ui/data-display/StatusBadge.vue'
 import type { TaskRecord } from '@/shared/contracts'
@@ -14,9 +20,3 @@ const stateTone = {
   unknown: 'neutral',
 } as const
 </script>
-
-<template>
-  <StatusBadge :tone="stateTone[normalizeTaskState(props.task)]">
-    {{ props.task.state || props.task.status || 'unknown' }}
-  </StatusBadge>
-</template>

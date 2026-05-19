@@ -1,12 +1,3 @@
-<script setup lang="ts">
-import { useI18n } from 'vue-i18n'
-
-import { useProjectStore } from '@/app/stores/project.store'
-
-const projectStore = useProjectStore()
-const { t } = useI18n()
-</script>
-
 <template>
   <label class="project-switcher">
     <span>{{ t('common.project') }}</span>
@@ -20,3 +11,12 @@ const { t } = useI18n()
     </select>
   </label>
 </template>
+
+<script setup lang="ts">
+import { useI18n } from 'vue-i18n'
+
+import { useProjectStore } from '@/app/stores/project.store'
+
+const projectStore = useProjectStore()
+const { t } = useI18n()
+</script>

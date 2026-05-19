@@ -1,17 +1,3 @@
-<script setup lang="ts">
-import { Moon, Sun } from '@lucide/vue'
-import { useI18n } from 'vue-i18n'
-
-import { usePreferencesStore, type ThemeMode } from '@/app/stores/preferences.store'
-
-const { t } = useI18n()
-const preferencesStore = usePreferencesStore()
-
-function setTheme(theme: ThemeMode): void {
-  preferencesStore.setTheme(theme)
-}
-</script>
-
 <template>
   <div class="theme-toggle" :aria-label="t('preferences.theme')">
     <button
@@ -36,3 +22,17 @@ function setTheme(theme: ThemeMode): void {
     </button>
   </div>
 </template>
+
+<script setup lang="ts">
+import { Moon, Sun } from '@lucide/vue'
+import { useI18n } from 'vue-i18n'
+
+import { usePreferencesStore, type ThemeMode } from '@/app/stores/preferences.store'
+
+const { t } = useI18n()
+const preferencesStore = usePreferencesStore()
+
+function setTheme(theme: ThemeMode): void {
+  preferencesStore.setTheme(theme)
+}
+</script>

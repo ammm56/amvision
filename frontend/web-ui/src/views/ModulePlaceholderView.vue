@@ -1,14 +1,3 @@
-<script setup lang="ts">
-import { useI18n } from 'vue-i18n'
-
-defineProps<{
-  titleKey: string
-  descriptionKey: string
-}>()
-
-const { t } = useI18n()
-</script>
-
 <template>
   <section class="page-stack">
     <header class="page-header">
@@ -22,3 +11,14 @@ const { t } = useI18n()
     </section>
   </section>
 </template>
+
+<script setup lang="ts">
+import { useI18n } from 'vue-i18n'
+
+defineProps<{
+  titleKey: string
+  descriptionKey: string
+}>()
+
+const { t } = useI18n()
+</script>

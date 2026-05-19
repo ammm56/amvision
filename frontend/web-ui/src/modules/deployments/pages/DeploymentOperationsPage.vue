@@ -1,134 +1,3 @@
-<script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
-import { HeartPulse, Play, RefreshCw, RotateCcw, Square, Zap } from '@lucide/vue'
-import { useI18n } from 'vue-i18n'
-
-import {
-  createYoloXDeployment,
-  listYoloXDeployments,
-  runYoloXDeploymentHealthAction,
-  runYoloXDeploymentStatusAction,
-  type DeploymentHealthAction,
-  type DeploymentRuntimeMode,
-  type DeploymentStatusAction,
-  type YoloXDeploymentInstance,
-  type YoloXDeploymentProcessStatus,
-  type YoloXDeploymentRuntimeHealth,
-} from '../services/deployment.service'
-import { useProjectStore } from '@/app/stores/project.store'
-import { useSessionStore } from '@/app/stores/session.store'
-import Button from '@/shared/ui/components/Button.vue'
-import EmptyState from '@/shared/ui/feedback/EmptyState.vue'
-import InlineError from '@/shared/ui/feedback/InlineError.vue'
-import StatusBadge from '@/shared/ui/data-display/StatusBadge.vue'
-
-const projectStore = useProjectStore()
-const sessionStore = useSessionStore()
-const { t } = useI18n()
-
-const deployments = ref<YoloXDeploymentInstance[]>([])
-const loading = ref(false)
-const creating = ref(false)
-const runningAction = ref<string | null>(null)
-const errorMessage = ref<string | null>(null)
-const lastCreatedDeployment = ref<YoloXDeploymentInstance | null>(null)
-const lastRuntimeStatus = ref<YoloXDeploymentProcessStatus | null>(null)
-const lastRuntimeHealth = ref<YoloXDeploymentRuntimeHealth | null>(null)
-
-const modelVersionId = ref('')
-const modelBuildId = ref('')
-const runtimeProfileId = ref('')
-const runtimeBackend = ref('')
-const runtimePrecision = ref('fp32')
-const deviceName = ref('cpu')
-const instanceCount = ref(1)
-const displayName = ref('')
-const runtimeMode = ref<DeploymentRuntimeMode>('sync')
-
-const canWriteModels = computed(() => sessionStore.hasScopes(['models:write']))
-const selectedProjectId = computed(() => projectStore.selectedProjectId)
-
-onMounted(async () => {
-  if (projectStore.projects.length === 0) {
-    await projectStore.loadProjects()
-  }
-  await refreshPage()
-})
-
-function statusTone(status: string | null | undefined): 'neutral' | 'success' | 'warning' | 'danger' | 'info' {
-  const normalized = String(status ?? '').toLowerCase()
-  if (normalized.includes('running') || normalized.includes('active') || normalized.includes('ready')) return 'success'
-  if (normalized.includes('crash') || normalized.includes('error') || normalized.includes('fail')) return 'danger'
-  if (normalized.includes('start') || normalized.includes('created') || normalized.includes('stopped')) return 'warning'
-  return 'neutral'
-}
-
-async function refreshPage(): Promise<void> {
-  loading.value = true
-  errorMessage.value = null
-  try {
-    deployments.value = await listYoloXDeployments(selectedProjectId.value)
-  } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : t('deploymentOps.messages.loadFailed')
-  } finally {
-    loading.value = false
-  }
-}
-
-async function submitDeployment(): Promise<void> {
-  if (!modelVersionId.value.trim() && !modelBuildId.value.trim()) {
-    errorMessage.value = t('deploymentOps.messages.modelInputRequired')
-    return
-  }
-  creating.value = true
-  errorMessage.value = null
-  try {
-    lastCreatedDeployment.value = await createYoloXDeployment({
-      projectId: selectedProjectId.value,
-      modelVersionId: modelVersionId.value.trim(),
-      modelBuildId: modelBuildId.value.trim(),
-      runtimeProfileId: runtimeProfileId.value.trim(),
-      runtimeBackend: runtimeBackend.value.trim(),
-      runtimePrecision: runtimePrecision.value,
-      deviceName: deviceName.value.trim(),
-      instanceCount: instanceCount.value,
-      displayName: displayName.value,
-    })
-    await refreshPage()
-  } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : t('deploymentOps.messages.createFailed')
-  } finally {
-    creating.value = false
-  }
-}
-
-async function runStatusAction(deploymentId: string, action: DeploymentStatusAction): Promise<void> {
-  runningAction.value = `${deploymentId}:${runtimeMode.value}:${action}`
-  errorMessage.value = null
-  try {
-    lastRuntimeStatus.value = await runYoloXDeploymentStatusAction(deploymentId, runtimeMode.value, action)
-    if (action !== 'status') await refreshPage()
-  } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : t('deploymentOps.messages.actionFailed')
-  } finally {
-    runningAction.value = null
-  }
-}
-
-async function runHealthAction(deploymentId: string, action: DeploymentHealthAction): Promise<void> {
-  runningAction.value = `${deploymentId}:${runtimeMode.value}:${action}`
-  errorMessage.value = null
-  try {
-    lastRuntimeHealth.value = await runYoloXDeploymentHealthAction(deploymentId, runtimeMode.value, action)
-    lastRuntimeStatus.value = lastRuntimeHealth.value
-  } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : t('deploymentOps.messages.actionFailed')
-  } finally {
-    runningAction.value = null
-  }
-}
-</script>
-
 <template>
   <section class="page-stack">
     <header class="page-header">
@@ -279,7 +148,11 @@ async function runHealthAction(deploymentId: string, action: DeploymentHealthAct
             </tr>
           </thead>
           <tbody>
-            <tr v-for="item in deployments" :key="item.deployment_instance_id">
+            <tr
+              v-for="item in deployments"
+              :key="item.deployment_instance_id"
+              :class="{ 'is-selected': item.deployment_instance_id === selectedDeploymentId }"
+            >
               <td>
                 <strong>{{ item.display_name || item.deployment_instance_id }}</strong>
                 <span>{{ item.deployment_instance_id }}</span>
@@ -295,6 +168,9 @@ async function runHealthAction(deploymentId: string, action: DeploymentHealthAct
                 <div class="table-actions table-actions--wrap">
                   <Button size="sm" variant="secondary" :disabled="!canWriteModels || runningAction !== null" @click="runStatusAction(item.deployment_instance_id, 'start')">
                     <Play :size="14" />{{ t('deploymentOps.actions.start') }}
+                  </Button>
+                  <Button size="sm" variant="secondary" :disabled="eventsLoading" @click="selectDeployment(item.deployment_instance_id)">
+                    <ListChecks :size="14" />{{ t('deploymentOps.actions.events') }}
                   </Button>
                   <Button size="sm" variant="ghost" :disabled="runningAction !== null" @click="runStatusAction(item.deployment_instance_id, 'status')">
                     <HeartPulse :size="14" />{{ t('deploymentOps.actions.status') }}
@@ -318,5 +194,202 @@ async function runHealthAction(deploymentId: string, action: DeploymentHealthAct
         </table>
       </div>
     </section>
+
+    <section v-if="selectedDeployment" class="resource-section">
+      <div class="section-heading">
+        <div>
+          <p class="page-kicker">{{ t('deploymentOps.eventsKicker') }}</p>
+          <h2>{{ t('deploymentOps.eventsTitle') }}</h2>
+          <p class="page-description">{{ selectedDeployment.deployment_instance_id }}</p>
+        </div>
+        <Button variant="secondary" :disabled="eventsLoading" @click="loadDeploymentEvents">
+          <RefreshCw :size="16" />
+          {{ t('common.refresh') }}
+        </Button>
+      </div>
+      <EmptyState v-if="!eventsLoading && deploymentEvents.length === 0" :title="t('deploymentOps.emptyEventsTitle')" :description="t('deploymentOps.emptyEventsDescription')" />
+      <ol v-else class="event-timeline event-timeline--compact">
+        <li v-for="event in deploymentEvents" :key="`${event.runtime_mode}-${event.sequence}`">
+          <time>{{ formatSystemDateTime(event.created_at) }}</time>
+          <strong>{{ event.event_type }}</strong>
+          <span>{{ event.message }}</span>
+        </li>
+      </ol>
+    </section>
   </section>
 </template>
+
+<script setup lang="ts">
+import { computed, onMounted, ref, watch } from 'vue'
+import { HeartPulse, ListChecks, Play, RefreshCw, RotateCcw, Square, Zap } from '@lucide/vue'
+import { useI18n } from 'vue-i18n'
+
+import {
+  createYoloXDeployment,
+  listYoloXDeploymentEvents,
+  listYoloXDeployments,
+  runYoloXDeploymentHealthAction,
+  runYoloXDeploymentStatusAction,
+  type DeploymentHealthAction,
+  type DeploymentRuntimeMode,
+  type DeploymentStatusAction,
+  type YoloXDeploymentInstance,
+  type YoloXDeploymentProcessEvent,
+  type YoloXDeploymentProcessStatus,
+  type YoloXDeploymentRuntimeHealth,
+} from '../services/deployment.service'
+import { useProjectStore } from '@/app/stores/project.store'
+import { useSessionStore } from '@/app/stores/session.store'
+import { formatSystemDateTime } from '@/shared/formatters/date-time'
+import Button from '@/shared/ui/components/Button.vue'
+import EmptyState from '@/shared/ui/feedback/EmptyState.vue'
+import InlineError from '@/shared/ui/feedback/InlineError.vue'
+import StatusBadge from '@/shared/ui/data-display/StatusBadge.vue'
+
+const projectStore = useProjectStore()
+const sessionStore = useSessionStore()
+const { t } = useI18n()
+
+const deployments = ref<YoloXDeploymentInstance[]>([])
+const deploymentEvents = ref<YoloXDeploymentProcessEvent[]>([])
+const loading = ref(false)
+const creating = ref(false)
+const eventsLoading = ref(false)
+const runningAction = ref<string | null>(null)
+const errorMessage = ref<string | null>(null)
+const lastCreatedDeployment = ref<YoloXDeploymentInstance | null>(null)
+const lastRuntimeStatus = ref<YoloXDeploymentProcessStatus | null>(null)
+const lastRuntimeHealth = ref<YoloXDeploymentRuntimeHealth | null>(null)
+const selectedDeploymentId = ref('')
+
+const modelVersionId = ref('')
+const modelBuildId = ref('')
+const runtimeProfileId = ref('')
+const runtimeBackend = ref('')
+const runtimePrecision = ref('fp32')
+const deviceName = ref('cpu')
+const instanceCount = ref(1)
+const displayName = ref('')
+const runtimeMode = ref<DeploymentRuntimeMode>('sync')
+
+const canWriteModels = computed(() => sessionStore.hasScopes(['models:write']))
+const selectedProjectId = computed(() => projectStore.selectedProjectId)
+const selectedDeployment = computed(() => deployments.value.find((item) => item.deployment_instance_id === selectedDeploymentId.value) ?? null)
+
+onMounted(async () => {
+  if (projectStore.projects.length === 0) {
+    await projectStore.loadProjects()
+  }
+  await refreshPage()
+})
+
+watch(runtimeMode, () => {
+  void loadDeploymentEvents()
+})
+
+function statusTone(status: string | null | undefined): 'neutral' | 'success' | 'warning' | 'danger' | 'info' {
+  const normalized = String(status ?? '').toLowerCase()
+  if (normalized.includes('running') || normalized.includes('active') || normalized.includes('ready')) return 'success'
+  if (normalized.includes('crash') || normalized.includes('error') || normalized.includes('fail')) return 'danger'
+  if (normalized.includes('start') || normalized.includes('created') || normalized.includes('stopped')) return 'warning'
+  return 'neutral'
+}
+
+async function refreshPage(): Promise<void> {
+  loading.value = true
+  errorMessage.value = null
+  try {
+    deployments.value = await listYoloXDeployments(selectedProjectId.value)
+    if (!deployments.value.some((item) => item.deployment_instance_id === selectedDeploymentId.value)) {
+      selectedDeploymentId.value = deployments.value[0]?.deployment_instance_id ?? ''
+    }
+    await loadDeploymentEvents()
+  } catch (error) {
+    errorMessage.value = error instanceof Error ? error.message : t('deploymentOps.messages.loadFailed')
+  } finally {
+    loading.value = false
+  }
+}
+
+async function selectDeployment(deploymentId: string): Promise<void> {
+  selectedDeploymentId.value = deploymentId
+  await loadDeploymentEvents()
+}
+
+async function loadDeploymentEvents(): Promise<void> {
+  if (!selectedDeploymentId.value) {
+    deploymentEvents.value = []
+    return
+  }
+  eventsLoading.value = true
+  errorMessage.value = null
+  try {
+    deploymentEvents.value = await listYoloXDeploymentEvents(selectedDeploymentId.value, runtimeMode.value)
+  } catch (error) {
+    errorMessage.value = error instanceof Error ? error.message : t('deploymentOps.messages.eventsFailed')
+  } finally {
+    eventsLoading.value = false
+  }
+}
+
+async function submitDeployment(): Promise<void> {
+  if (!modelVersionId.value.trim() && !modelBuildId.value.trim()) {
+    errorMessage.value = t('deploymentOps.messages.modelInputRequired')
+    return
+  }
+  creating.value = true
+  errorMessage.value = null
+  try {
+    lastCreatedDeployment.value = await createYoloXDeployment({
+      projectId: selectedProjectId.value,
+      modelVersionId: modelVersionId.value.trim(),
+      modelBuildId: modelBuildId.value.trim(),
+      runtimeProfileId: runtimeProfileId.value.trim(),
+      runtimeBackend: runtimeBackend.value.trim(),
+      runtimePrecision: runtimePrecision.value,
+      deviceName: deviceName.value.trim(),
+      instanceCount: instanceCount.value,
+      displayName: displayName.value,
+    })
+    selectedDeploymentId.value = lastCreatedDeployment.value.deployment_instance_id
+    await refreshPage()
+  } catch (error) {
+    errorMessage.value = error instanceof Error ? error.message : t('deploymentOps.messages.createFailed')
+  } finally {
+    creating.value = false
+  }
+}
+
+async function runStatusAction(deploymentId: string, action: DeploymentStatusAction): Promise<void> {
+  selectedDeploymentId.value = deploymentId
+  runningAction.value = `${deploymentId}:${runtimeMode.value}:${action}`
+  errorMessage.value = null
+  try {
+    lastRuntimeStatus.value = await runYoloXDeploymentStatusAction(deploymentId, runtimeMode.value, action)
+    if (action !== 'status') {
+      await refreshPage()
+      return
+    }
+    await loadDeploymentEvents()
+  } catch (error) {
+    errorMessage.value = error instanceof Error ? error.message : t('deploymentOps.messages.actionFailed')
+  } finally {
+    runningAction.value = null
+  }
+}
+
+async function runHealthAction(deploymentId: string, action: DeploymentHealthAction): Promise<void> {
+  selectedDeploymentId.value = deploymentId
+  runningAction.value = `${deploymentId}:${runtimeMode.value}:${action}`
+  errorMessage.value = null
+  try {
+    lastRuntimeHealth.value = await runYoloXDeploymentHealthAction(deploymentId, runtimeMode.value, action)
+    lastRuntimeStatus.value = lastRuntimeHealth.value
+    await loadDeploymentEvents()
+  } catch (error) {
+    errorMessage.value = error instanceof Error ? error.message : t('deploymentOps.messages.actionFailed')
+  } finally {
+    runningAction.value = null
+  }
+}
+</script>

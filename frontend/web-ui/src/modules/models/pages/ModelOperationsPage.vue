@@ -1,181 +1,3 @@
-<script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
-import { Play, RefreshCw, Wand2 } from '@lucide/vue'
-import { RouterLink } from 'vue-router'
-import { useI18n } from 'vue-i18n'
-
-import {
-  createYoloXConversionTask,
-  createYoloXTrainingTask,
-  getPlatformBaseModelDetail,
-  listPlatformBaseModels,
-  listYoloXConversionTasks,
-  listYoloXTrainingTasks,
-  type ConversionTargetKey,
-  type PlatformBaseModelDetail,
-  type PlatformBaseModelSummary,
-  type YoloXConversionTaskSummary,
-  type YoloXTrainingTaskSubmissionResponse,
-  type YoloXTrainingTaskSummary,
-  type YoloXConversionTaskSubmissionResponse,
-} from '../services/model.service'
-import { useProjectStore } from '@/app/stores/project.store'
-import { useSessionStore } from '@/app/stores/session.store'
-import Button from '@/shared/ui/components/Button.vue'
-import EmptyState from '@/shared/ui/feedback/EmptyState.vue'
-import InlineError from '@/shared/ui/feedback/InlineError.vue'
-import StatusBadge from '@/shared/ui/data-display/StatusBadge.vue'
-
-const projectStore = useProjectStore()
-const sessionStore = useSessionStore()
-const { t } = useI18n()
-
-const baseModels = ref<PlatformBaseModelSummary[]>([])
-const selectedModelDetail = ref<PlatformBaseModelDetail | null>(null)
-const trainingTasks = ref<YoloXTrainingTaskSummary[]>([])
-const conversionTasks = ref<YoloXConversionTaskSummary[]>([])
-const loading = ref(false)
-const trainingSubmitting = ref(false)
-const conversionSubmitting = ref(false)
-const errorMessage = ref<string | null>(null)
-const lastTrainingSubmission = ref<YoloXTrainingTaskSubmissionResponse | null>(null)
-const lastConversionSubmission = ref<YoloXConversionTaskSubmissionResponse | null>(null)
-
-const trainingDatasetExportId = ref('')
-const trainingManifestKey = ref('')
-const recipeId = ref('yolox-default')
-const modelScale = ref('tiny')
-const outputModelName = ref('yolox-custom')
-const warmStartModelVersionId = ref('')
-const maxEpochs = ref(1)
-const batchSize = ref(1)
-const evaluationInterval = ref(5)
-const precision = ref('fp32')
-const inputWidth = ref(640)
-const inputHeight = ref(640)
-const trainingDisplayName = ref('')
-
-const conversionSourceModelVersionId = ref('')
-const conversionTarget = ref<ConversionTargetKey>('onnx')
-const conversionRuntimeProfileId = ref('')
-const conversionDisplayName = ref('')
-
-const canWriteTasks = computed(() => sessionStore.hasScopes(['tasks:write']))
-const selectedProjectId = computed(() => projectStore.selectedProjectId)
-
-const selectedModelAvailableVersions = computed(() => selectedModelDetail.value?.versions ?? selectedModelDetail.value?.available_versions ?? [])
-
-onMounted(async () => {
-  if (projectStore.projects.length === 0) {
-    await projectStore.loadProjects()
-  }
-  await refreshPage()
-})
-
-function statusTone(status: string | null | undefined): 'neutral' | 'success' | 'warning' | 'danger' | 'info' {
-  const normalized = String(status ?? '').toLowerCase()
-  if (normalized.includes('complete') || normalized.includes('success') || normalized.includes('succeed')) return 'success'
-  if (normalized.includes('fail') || normalized.includes('error')) return 'danger'
-  if (normalized.includes('queue') || normalized.includes('pending')) return 'warning'
-  if (normalized.includes('run') || normalized.includes('process')) return 'info'
-  return 'neutral'
-}
-
-function progressText(progress: Record<string, unknown>): string {
-  const value = progress.percent ?? progress.progress_percent ?? progress.progress
-  return typeof value === 'number' && Number.isFinite(value) ? `${Math.round(value)}%` : '-'
-}
-
-async function refreshPage(): Promise<void> {
-  loading.value = true
-  errorMessage.value = null
-  try {
-    const [models, training, conversion] = await Promise.all([
-      listPlatformBaseModels(),
-      listYoloXTrainingTasks(selectedProjectId.value),
-      listYoloXConversionTasks(selectedProjectId.value),
-    ])
-    baseModels.value = models
-    trainingTasks.value = training
-    conversionTasks.value = conversion
-    if (!selectedModelDetail.value && models[0]) {
-      await selectBaseModel(models[0].model_id)
-    }
-  } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : t('modelOps.messages.loadFailed')
-  } finally {
-    loading.value = false
-  }
-}
-
-async function selectBaseModel(modelId: string): Promise<void> {
-  try {
-    selectedModelDetail.value = await getPlatformBaseModelDetail(modelId)
-  } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : t('modelOps.messages.detailFailed')
-  }
-}
-
-function useVersionForTraining(modelVersionId: string): void {
-  warmStartModelVersionId.value = modelVersionId
-}
-
-function useVersionForConversion(modelVersionId: string): void {
-  conversionSourceModelVersionId.value = modelVersionId
-}
-
-async function submitTraining(): Promise<void> {
-  if (!trainingDatasetExportId.value.trim() && !trainingManifestKey.value.trim()) {
-    errorMessage.value = t('modelOps.messages.trainingInputRequired')
-    return
-  }
-  trainingSubmitting.value = true
-  errorMessage.value = null
-  try {
-    lastTrainingSubmission.value = await createYoloXTrainingTask({
-      projectId: selectedProjectId.value,
-      datasetExportId: trainingDatasetExportId.value.trim(),
-      datasetExportManifestKey: trainingManifestKey.value.trim(),
-      recipeId: recipeId.value,
-      modelScale: modelScale.value,
-      outputModelName: outputModelName.value,
-      warmStartModelVersionId: warmStartModelVersionId.value.trim(),
-      evaluationInterval: evaluationInterval.value,
-      maxEpochs: maxEpochs.value,
-      batchSize: batchSize.value,
-      precision: precision.value,
-      inputWidth: inputWidth.value,
-      inputHeight: inputHeight.value,
-      displayName: trainingDisplayName.value,
-    })
-    trainingTasks.value = await listYoloXTrainingTasks(selectedProjectId.value)
-  } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : t('modelOps.messages.submitTrainingFailed')
-  } finally {
-    trainingSubmitting.value = false
-  }
-}
-
-async function submitConversion(): Promise<void> {
-  conversionSubmitting.value = true
-  errorMessage.value = null
-  try {
-    lastConversionSubmission.value = await createYoloXConversionTask({
-      projectId: selectedProjectId.value,
-      sourceModelVersionId: conversionSourceModelVersionId.value.trim(),
-      target: conversionTarget.value,
-      runtimeProfileId: conversionRuntimeProfileId.value.trim(),
-      displayName: conversionDisplayName.value,
-    })
-    conversionTasks.value = await listYoloXConversionTasks(selectedProjectId.value)
-  } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : t('modelOps.messages.submitConversionFailed')
-  } finally {
-    conversionSubmitting.value = false
-  }
-}
-</script>
-
 <template>
   <section class="page-stack">
     <header class="page-header">
@@ -410,14 +232,14 @@ async function submitConversion(): Promise<void> {
           <tbody>
             <tr v-for="task in trainingTasks" :key="task.task_id">
               <td>
-                <RouterLink :to="`/tasks/${task.task_id}`"><strong>{{ task.display_name || task.task_id }}</strong></RouterLink>
+                <RouterLink :to="`/models/training-tasks/${task.task_id}`"><strong>{{ task.display_name || task.task_id }}</strong></RouterLink>
                 <span>{{ task.dataset_export_id || task.dataset_export_manifest_key }}</span>
               </td>
               <td><StatusBadge :tone="statusTone(task.state)">{{ task.state }}</StatusBadge></td>
               <td>{{ progressText(task.progress) }}</td>
               <td>{{ task.output_model_name || '-' }}</td>
               <td>{{ task.model_version_id || task.latest_checkpoint_model_version_id || '-' }}</td>
-              <td>{{ task.created_at }}</td>
+              <td>{{ formatSystemDateTime(task.created_at) }}</td>
             </tr>
           </tbody>
         </table>
@@ -452,7 +274,7 @@ async function submitConversion(): Promise<void> {
               <td>{{ task.source_model_version_id }}</td>
               <td>{{ (task.produced_formats.length ? task.produced_formats : task.target_formats).join(', ') || '-' }}</td>
               <td>{{ task.builds.map((build) => build.model_build_id).join(', ') || '-' }}</td>
-              <td>{{ task.created_at }}</td>
+              <td>{{ formatSystemDateTime(task.created_at) }}</td>
             </tr>
           </tbody>
         </table>
@@ -460,3 +282,182 @@ async function submitConversion(): Promise<void> {
     </section>
   </section>
 </template>
+
+<script setup lang="ts">
+import { computed, onMounted, ref } from 'vue'
+import { Play, RefreshCw, Wand2 } from '@lucide/vue'
+import { RouterLink } from 'vue-router'
+import { useI18n } from 'vue-i18n'
+
+import {
+  createYoloXConversionTask,
+  createYoloXTrainingTask,
+  getPlatformBaseModelDetail,
+  listPlatformBaseModels,
+  listYoloXConversionTasks,
+  listYoloXTrainingTasks,
+  type ConversionTargetKey,
+  type PlatformBaseModelDetail,
+  type PlatformBaseModelSummary,
+  type YoloXConversionTaskSummary,
+  type YoloXTrainingTaskSubmissionResponse,
+  type YoloXTrainingTaskSummary,
+  type YoloXConversionTaskSubmissionResponse,
+} from '../services/model.service'
+import { useProjectStore } from '@/app/stores/project.store'
+import { useSessionStore } from '@/app/stores/session.store'
+import Button from '@/shared/ui/components/Button.vue'
+import EmptyState from '@/shared/ui/feedback/EmptyState.vue'
+import InlineError from '@/shared/ui/feedback/InlineError.vue'
+import StatusBadge from '@/shared/ui/data-display/StatusBadge.vue'
+import { formatSystemDateTime } from '@/shared/formatters/date-time'
+
+const projectStore = useProjectStore()
+const sessionStore = useSessionStore()
+const { t } = useI18n()
+
+const baseModels = ref<PlatformBaseModelSummary[]>([])
+const selectedModelDetail = ref<PlatformBaseModelDetail | null>(null)
+const trainingTasks = ref<YoloXTrainingTaskSummary[]>([])
+const conversionTasks = ref<YoloXConversionTaskSummary[]>([])
+const loading = ref(false)
+const trainingSubmitting = ref(false)
+const conversionSubmitting = ref(false)
+const errorMessage = ref<string | null>(null)
+const lastTrainingSubmission = ref<YoloXTrainingTaskSubmissionResponse | null>(null)
+const lastConversionSubmission = ref<YoloXConversionTaskSubmissionResponse | null>(null)
+
+const trainingDatasetExportId = ref('')
+const trainingManifestKey = ref('')
+const recipeId = ref('yolox-default')
+const modelScale = ref('tiny')
+const outputModelName = ref('yolox-custom')
+const warmStartModelVersionId = ref('')
+const maxEpochs = ref(1)
+const batchSize = ref(1)
+const evaluationInterval = ref(5)
+const precision = ref('fp32')
+const inputWidth = ref(640)
+const inputHeight = ref(640)
+const trainingDisplayName = ref('')
+
+const conversionSourceModelVersionId = ref('')
+const conversionTarget = ref<ConversionTargetKey>('onnx')
+const conversionRuntimeProfileId = ref('')
+const conversionDisplayName = ref('')
+
+const canWriteTasks = computed(() => sessionStore.hasScopes(['tasks:write']))
+const selectedProjectId = computed(() => projectStore.selectedProjectId)
+
+const selectedModelAvailableVersions = computed(() => selectedModelDetail.value?.versions ?? selectedModelDetail.value?.available_versions ?? [])
+
+onMounted(async () => {
+  if (projectStore.projects.length === 0) {
+    await projectStore.loadProjects()
+  }
+  await refreshPage()
+})
+
+function statusTone(status: string | null | undefined): 'neutral' | 'success' | 'warning' | 'danger' | 'info' {
+  const normalized = String(status ?? '').toLowerCase()
+  if (normalized.includes('complete') || normalized.includes('success') || normalized.includes('succeed')) return 'success'
+  if (normalized.includes('fail') || normalized.includes('error')) return 'danger'
+  if (normalized.includes('queue') || normalized.includes('pending')) return 'warning'
+  if (normalized.includes('run') || normalized.includes('process')) return 'info'
+  return 'neutral'
+}
+
+function progressText(progress: Record<string, unknown>): string {
+  const value = progress.percent ?? progress.progress_percent ?? progress.progress
+  return typeof value === 'number' && Number.isFinite(value) ? `${Math.round(value)}%` : '-'
+}
+
+async function refreshPage(): Promise<void> {
+  loading.value = true
+  errorMessage.value = null
+  try {
+    const [models, training, conversion] = await Promise.all([
+      listPlatformBaseModels(),
+      listYoloXTrainingTasks(selectedProjectId.value),
+      listYoloXConversionTasks(selectedProjectId.value),
+    ])
+    baseModels.value = models
+    trainingTasks.value = training
+    conversionTasks.value = conversion
+    if (!selectedModelDetail.value && models[0]) {
+      await selectBaseModel(models[0].model_id)
+    }
+  } catch (error) {
+    errorMessage.value = error instanceof Error ? error.message : t('modelOps.messages.loadFailed')
+  } finally {
+    loading.value = false
+  }
+}
+
+async function selectBaseModel(modelId: string): Promise<void> {
+  try {
+    selectedModelDetail.value = await getPlatformBaseModelDetail(modelId)
+  } catch (error) {
+    errorMessage.value = error instanceof Error ? error.message : t('modelOps.messages.detailFailed')
+  }
+}
+
+function useVersionForTraining(modelVersionId: string): void {
+  warmStartModelVersionId.value = modelVersionId
+}
+
+function useVersionForConversion(modelVersionId: string): void {
+  conversionSourceModelVersionId.value = modelVersionId
+}
+
+async function submitTraining(): Promise<void> {
+  if (!trainingDatasetExportId.value.trim() && !trainingManifestKey.value.trim()) {
+    errorMessage.value = t('modelOps.messages.trainingInputRequired')
+    return
+  }
+  trainingSubmitting.value = true
+  errorMessage.value = null
+  try {
+    lastTrainingSubmission.value = await createYoloXTrainingTask({
+      projectId: selectedProjectId.value,
+      datasetExportId: trainingDatasetExportId.value.trim(),
+      datasetExportManifestKey: trainingManifestKey.value.trim(),
+      recipeId: recipeId.value,
+      modelScale: modelScale.value,
+      outputModelName: outputModelName.value,
+      warmStartModelVersionId: warmStartModelVersionId.value.trim(),
+      evaluationInterval: evaluationInterval.value,
+      maxEpochs: maxEpochs.value,
+      batchSize: batchSize.value,
+      precision: precision.value,
+      inputWidth: inputWidth.value,
+      inputHeight: inputHeight.value,
+      displayName: trainingDisplayName.value,
+    })
+    trainingTasks.value = await listYoloXTrainingTasks(selectedProjectId.value)
+  } catch (error) {
+    errorMessage.value = error instanceof Error ? error.message : t('modelOps.messages.submitTrainingFailed')
+  } finally {
+    trainingSubmitting.value = false
+  }
+}
+
+async function submitConversion(): Promise<void> {
+  conversionSubmitting.value = true
+  errorMessage.value = null
+  try {
+    lastConversionSubmission.value = await createYoloXConversionTask({
+      projectId: selectedProjectId.value,
+      sourceModelVersionId: conversionSourceModelVersionId.value.trim(),
+      target: conversionTarget.value,
+      runtimeProfileId: conversionRuntimeProfileId.value.trim(),
+      displayName: conversionDisplayName.value,
+    })
+    conversionTasks.value = await listYoloXConversionTasks(selectedProjectId.value)
+  } catch (error) {
+    errorMessage.value = error instanceof Error ? error.message : t('modelOps.messages.submitConversionFailed')
+  } finally {
+    conversionSubmitting.value = false
+  }
+}
+</script>

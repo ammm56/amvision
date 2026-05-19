@@ -1,3 +1,29 @@
+<template>
+  <form class="auth-form" @submit.prevent="submitLogin">
+    <header>
+      <p class="page-kicker">{{ t('auth.localAuth') }}</p>
+      <h1>{{ t('auth.login') }}</h1>
+      <p>{{ t('auth.loginIntro') }}</p>
+    </header>
+
+    <InlineError :message="errorMessage || sessionStore.lastAuthError" />
+
+    <label>
+      <span>{{ t('auth.username') }}</span>
+      <input v-model="username" autocomplete="username" />
+    </label>
+    <label>
+      <span>{{ t('auth.password') }}</span>
+      <input v-model="password" type="password" autocomplete="current-password" />
+    </label>
+
+    <Button variant="primary" type="submit" :disabled="submitting">
+      <LogIn :size="16" />
+      {{ submitting ? t('auth.loggingIn') : t('auth.login') }}
+    </Button>
+  </form>
+</template>
+
 <script setup lang="ts">
 import { ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -36,29 +62,3 @@ async function submitLogin(): Promise<void> {
   }
 }
 </script>
-
-<template>
-  <form class="auth-form" @submit.prevent="submitLogin">
-    <header>
-      <p class="page-kicker">{{ t('auth.localAuth') }}</p>
-      <h1>{{ t('auth.login') }}</h1>
-      <p>{{ t('auth.loginIntro') }}</p>
-    </header>
-
-    <InlineError :message="errorMessage || sessionStore.lastAuthError" />
-
-    <label>
-      <span>{{ t('auth.username') }}</span>
-      <input v-model="username" autocomplete="username" />
-    </label>
-    <label>
-      <span>{{ t('auth.password') }}</span>
-      <input v-model="password" type="password" autocomplete="current-password" />
-    </label>
-
-    <Button variant="primary" type="submit" :disabled="submitting">
-      <LogIn :size="16" />
-      {{ submitting ? t('auth.loggingIn') : t('auth.login') }}
-    </Button>
-  </form>
-</template>

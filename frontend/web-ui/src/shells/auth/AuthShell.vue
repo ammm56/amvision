@@ -1,9 +1,3 @@
-<script setup lang="ts">
-import { useI18n } from 'vue-i18n'
-
-const { t } = useI18n()
-</script>
-
 <template>
   <main class="auth-shell">
     <section class="auth-shell__brand">
@@ -18,3 +12,9 @@ const { t } = useI18n()
     </section>
   </main>
 </template>
+
+<script setup lang="ts">
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
+</script>

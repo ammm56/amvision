@@ -1,3 +1,20 @@
+<template>
+  <section class="startup-view">
+    <span class="brand-mark brand-mark--large">AM</span>
+    <h1>{{ t('common.appName') }}</h1>
+    <p>{{ t('startup.checkingSession') }}</p>
+    <div class="startup-view__status">
+      <Loader2 v-if="starting" class="spin" :size="20" />
+      <span>{{ sessionStore.loginState }}</span>
+    </div>
+    <InlineError :message="sessionStore.lastAuthError" />
+    <Button v-if="sessionStore.loginState === 'offline'" variant="primary" @click="start">
+      <RotateCcw :size="16" />
+      {{ t('common.retry') }}
+    </Button>
+  </section>
+</template>
+
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -34,20 +51,3 @@ onMounted(() => {
   void start()
 })
 </script>
-
-<template>
-  <section class="startup-view">
-    <span class="brand-mark brand-mark--large">AM</span>
-    <h1>{{ t('common.appName') }}</h1>
-    <p>{{ t('startup.checkingSession') }}</p>
-    <div class="startup-view__status">
-      <Loader2 v-if="starting" class="spin" :size="20" />
-      <span>{{ sessionStore.loginState }}</span>
-    </div>
-    <InlineError :message="sessionStore.lastAuthError" />
-    <Button v-if="sessionStore.loginState === 'offline'" variant="primary" @click="start">
-      <RotateCcw :size="16" />
-      {{ t('common.retry') }}
-    </Button>
-  </section>
-</template>

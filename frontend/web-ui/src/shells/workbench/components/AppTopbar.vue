@@ -1,3 +1,23 @@
+<template>
+  <header class="app-topbar">
+    <ProjectSwitcher />
+    <div class="app-topbar__right">
+      <ConnectionStatus />
+      <LocaleSwitcher />
+      <ThemeToggle />
+      <span class="credential-pill">
+        <ShieldCheck :size="15" />
+        {{ sessionStore.credentialKind || t('common.none') }}
+      </span>
+      <span class="user-label">{{ sessionStore.displayName || t('auth.notSignedIn') }}</span>
+      <Button variant="ghost" size="sm" @click="logout">
+        <LogOut :size="16" />
+        {{ t('auth.logout') }}
+      </Button>
+    </div>
+  </header>
+</template>
+
 <script setup lang="ts">
 import { useRouter } from 'vue-router'
 import { LogOut, ShieldCheck } from '@lucide/vue'
@@ -19,23 +39,3 @@ async function logout(): Promise<void> {
   await router.replace('/login')
 }
 </script>
-
-<template>
-  <header class="app-topbar">
-    <ProjectSwitcher />
-    <div class="app-topbar__right">
-      <ConnectionStatus />
-      <LocaleSwitcher />
-      <ThemeToggle />
-      <span class="credential-pill">
-        <ShieldCheck :size="15" />
-        {{ sessionStore.credentialKind || t('common.none') }}
-      </span>
-      <span class="user-label">{{ sessionStore.displayName || t('auth.notSignedIn') }}</span>
-      <Button variant="ghost" size="sm" @click="logout">
-        <LogOut :size="16" />
-        {{ t('auth.logout') }}
-      </Button>
-    </div>
-  </header>
-</template>

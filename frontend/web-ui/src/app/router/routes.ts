@@ -3,6 +3,7 @@ import type { RouteRecordRaw } from 'vue-router'
 import { authRoutes } from '@/modules/auth/routes'
 import { datasetRoutes } from '@/modules/datasets/routes'
 import { deploymentRoutes } from '@/modules/deployments/routes'
+import { inferenceRoutes } from '@/modules/inference/routes'
 import { modelRoutes } from '@/modules/models/routes'
 import { projectRoutes } from '@/modules/projects/routes'
 import { taskRoutes } from '@/modules/tasks/routes'
@@ -32,6 +33,7 @@ export const routes: RouteRecordRaw[] = [
   ...datasetRoutes,
   ...modelRoutes,
   ...deploymentRoutes,
+  ...inferenceRoutes,
   placeholderRoute('/workflows/templates', 'placeholders.workflowTemplatesTitle', 'placeholders.workflowTemplatesDescription', [
     'workflows:read',
   ]),
