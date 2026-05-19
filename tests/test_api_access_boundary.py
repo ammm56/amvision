@@ -76,7 +76,7 @@ def test_localhost_cors_preflight_is_allowed(tmp_path: Path) -> None:
             response = client.options(
                 "/api/v1/system/health",
                 headers={
-                    "Origin": "http://127.0.0.1:5173",
+                    "Origin": "http://127.0.0.1:5601",
                     "Access-Control-Request-Method": "GET",
                 },
             )
@@ -84,7 +84,7 @@ def test_localhost_cors_preflight_is_allowed(tmp_path: Path) -> None:
         session_factory.engine.dispose()
 
     assert response.status_code == 200
-    assert response.headers["access-control-allow-origin"] == "http://127.0.0.1:5173"
+    assert response.headers["access-control-allow-origin"] == "http://127.0.0.1:5601"
     assert response.headers["access-control-allow-credentials"] == "true"
 
 
