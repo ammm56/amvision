@@ -45,6 +45,7 @@ from backend.service.application.workflows.graph_executor import (
     WorkflowNodeExecutionRecord,
     WorkflowNodeRuntimeRegistry,
 )
+from backend.service.application.workflows.preview_display_outputs import list_preview_display_outputs
 from backend.service.application.workflows.runtime_payload_sanitizer import serialize_node_execution_record
 from backend.service.application.workflows.runtime_registry_loader import WorkflowNodeRuntimeRegistryLoader
 from backend.service.application.workflows.service_node_runtime import WorkflowServiceNodeRuntimeContext
@@ -90,6 +91,7 @@ class WorkflowSnapshotExecutionResult:
     - outputs：按 output binding_id 组织的输出 payload。
     - template_outputs：按 template output id 组织的底层执行结果。
     - node_records：节点执行记录。
+    - preview_display_outputs：只用于本次 Preview Run 响应的显示输出，不进入持久化记录。
     """
 
     project_id: str
@@ -99,6 +101,7 @@ class WorkflowSnapshotExecutionResult:
     outputs: dict[str, object] = field(default_factory=dict)
     template_outputs: dict[str, object] = field(default_factory=dict)
     node_records: tuple[WorkflowNodeExecutionRecord, ...] = ()
+    preview_display_outputs: tuple[dict[str, object], ...] = ()
 
 
 @dataclass
@@ -217,6 +220,7 @@ class SnapshotExecutionService:
             ),
             template_outputs=dict(graph_execution_result.outputs),
             node_records=graph_execution_result.node_records,
+            preview_display_outputs=list_preview_display_outputs(execution_metadata_payload),
         )
 
 
@@ -719,6 +723,7 @@ def serialize_snapshot_execution_result(
         "outputs": dict(result.outputs),
         "template_outputs": dict(result.template_outputs),
         "node_records": [_serialize_node_record(record) for record in result.node_records],
+        "preview_display_outputs": [dict(item) for item in result.preview_display_outputs],
     }
 
 
@@ -742,6 +747,9 @@ def deserialize_snapshot_execution_result(message: object) -> WorkflowSnapshotEx
 
     payload = message.get("payload") if isinstance(message.get("payload"), dict) else {}
     node_records_payload = payload.get("node_records") if isinstance(payload.get("node_records"), list) else []
+    preview_display_outputs_payload = (
+        payload.get("preview_display_outputs") if isinstance(payload.get("preview_display_outputs"), list) else []
+    )
     node_records = tuple(
         WorkflowNodeExecutionRecord(
             node_id=_require_payload_str(item, "node_id"),
@@ -761,6 +769,9 @@ def deserialize_snapshot_execution_result(message: object) -> WorkflowSnapshotEx
         outputs=_require_payload_dict(payload, "outputs"),
         template_outputs=_require_payload_dict(payload, "template_outputs"),
         node_records=node_records,
+        preview_display_outputs=tuple(
+            dict(item) for item in preview_display_outputs_payload if isinstance(item, dict)
+        ),
     )
 
 

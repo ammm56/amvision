@@ -14,7 +14,29 @@ from backend.contracts.workflows.resource_semantics import (
 
 @dataclass(frozen=True)
 class WorkflowPreviewRun:
-    """描述一次编辑态隔离试跑记录。"""
+    """描述一次编辑态隔离试跑记录。
+
+    字段：
+    - preview_run_id：preview run id。
+    - project_id：所属 Project id。
+    - application_id：所属 application id。
+    - source_kind：创建来源类型。
+    - application_snapshot_object_key：application snapshot object key。
+    - template_snapshot_object_key：template snapshot object key。
+    - state：当前运行状态。
+    - created_at：创建时间。
+    - started_at：开始时间。
+    - finished_at：结束时间。
+    - created_by：创建主体 id。
+    - timeout_seconds：执行超时秒数。
+    - outputs：持久化的脱敏 application 输出。
+    - template_outputs：持久化的脱敏 template 输出。
+    - node_records：持久化的脱敏节点执行记录。
+    - preview_display_outputs：仅用于本次同步响应的即时显示输出，不写入数据库。
+    - error_message：失败或超时时的错误信息。
+    - retention_until：保留截止时间。
+    - metadata：附加元数据。
+    """
 
     preview_run_id: str
     project_id: str
@@ -31,6 +53,7 @@ class WorkflowPreviewRun:
     outputs: dict[str, object] = field(default_factory=dict)
     template_outputs: dict[str, object] = field(default_factory=dict)
     node_records: tuple[dict[str, object], ...] = ()
+    preview_display_outputs: tuple[dict[str, object], ...] = ()
     error_message: str | None = None
     retention_until: str | None = None
     metadata: dict[str, object] = field(default_factory=dict)

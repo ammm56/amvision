@@ -347,6 +347,7 @@ class WorkflowRuntimeService:
                     execution_metadata=preview_metadata,
                     timeout_seconds=effective_timeout_seconds,
                     retain_node_records_enabled=retain_node_records_enabled,
+                    return_preview_display_outputs_enabled=normalized_request.wait_mode == "sync",
                 )
             )
         except ServiceError as exc:

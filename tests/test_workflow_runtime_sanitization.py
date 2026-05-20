@@ -78,6 +78,40 @@ def test_preview_run_sanitizes_inline_base64_outputs_and_node_records(tmp_path: 
     assert preview_run.node_records[0]["outputs"]["image"]["image_handle_redacted"] is True
     assert preview_run.node_records[1]["inputs"]["image"]["image_handle_redacted"] is True
     assert preview_run.node_records[1]["outputs"]["body"]["image"]["image_base64_redacted"] is True
+    display_output = preview_run.preview_display_outputs[0]
+    assert display_output["node_id"] == "preview"
+    assert display_output["payload"]["image"]["image_base64"]
+    persisted_preview_run = service.get_preview_run(preview_run.preview_run_id)
+    assert persisted_preview_run.preview_display_outputs == ()
+
+
+def test_preview_run_storage_ref_image_preview_uses_preview_artifact(tmp_path: Path) -> None:
+    """验证 storage-ref Image Preview 会保存到 Preview Run artifact 目录。"""
+
+    service, _, _ = _build_runtime_service(tmp_path)
+    image_base64 = base64.b64encode(build_valid_test_png_bytes()).decode("ascii")
+
+    preview_run = service.create_preview_run(
+        WorkflowPreviewRunCreateRequest(
+            project_id="project-1",
+            application=_build_image_decode_save_preview_application(),
+            template=_build_image_decode_save_preview_template(),
+            input_bindings={"request_image": {"image_base64": image_base64}},
+        ),
+        created_by="workflow-user",
+    )
+
+    assert preview_run.state == "succeeded"
+    display_output = preview_run.preview_display_outputs[0]
+    preview_image = display_output["payload"]["image"]
+    object_key = preview_image["object_key"]
+    assert preview_image["transport_kind"] == "storage-ref"
+    assert object_key.startswith(
+        f"workflows/runtime/preview-runs/{preview_run.preview_run_id}/artifacts/preview/"
+    )
+    assert service.dataset_storage.resolve(object_key).exists()
+    persisted_preview_run = service.get_preview_run(preview_run.preview_run_id)
+    assert persisted_preview_run.preview_display_outputs == ()
 
 
 def test_invoke_workflow_run_sanitizes_input_payload_outputs_and_node_records(tmp_path: Path) -> None:
@@ -433,6 +467,71 @@ def _build_image_decode_preview_template() -> WorkflowGraphTemplate:
     )
 
 
+def _build_image_decode_save_preview_template() -> WorkflowGraphTemplate:
+    """构造 image-base64 decode、save、storage-ref preview 的模板。"""
+
+    return WorkflowGraphTemplate(
+        template_id="image-decode-save-preview-template",
+        template_version="1.0.0",
+        display_name="Image Decode Save Preview Template",
+        nodes=(
+            WorkflowGraphNode(node_id="decode", node_type_id="core.io.image-base64-decode"),
+            WorkflowGraphNode(
+                node_id="save",
+                node_type_id="core.io.image-save",
+                parameters={"object_key": "projects/project-1/results/formal-preview-source.png"},
+            ),
+            WorkflowGraphNode(
+                node_id="preview",
+                node_type_id="core.io.image-preview",
+                parameters={"response_transport_mode": "storage-ref"},
+            ),
+            WorkflowGraphNode(node_id="response", node_type_id="core.output.http-response"),
+        ),
+        edges=(
+            WorkflowGraphEdge(
+                edge_id="edge-decode-save",
+                source_node_id="decode",
+                source_port="image",
+                target_node_id="save",
+                target_port="image",
+            ),
+            WorkflowGraphEdge(
+                edge_id="edge-save-preview",
+                source_node_id="save",
+                source_port="image",
+                target_node_id="preview",
+                target_port="image",
+            ),
+            WorkflowGraphEdge(
+                edge_id="edge-preview-response",
+                source_node_id="preview",
+                source_port="body",
+                target_node_id="response",
+                target_port="body",
+            ),
+        ),
+        template_inputs=(
+            WorkflowGraphInput(
+                input_id="request_image",
+                display_name="Request Image",
+                payload_type_id="image-base64.v1",
+                target_node_id="decode",
+                target_port="payload",
+            ),
+        ),
+        template_outputs=(
+            WorkflowGraphOutput(
+                output_id="http_response",
+                display_name="HTTP Response",
+                payload_type_id="http-response.v1",
+                source_node_id="response",
+                source_port="response",
+            ),
+        ),
+    )
+
+
 def _build_image_decode_preview_application() -> FlowApplication:
     """构造 image-base64 decode 到 preview 的最小流程应用。"""
 
@@ -441,6 +540,37 @@ def _build_image_decode_preview_application() -> FlowApplication:
         display_name="Image Decode Preview App",
         template_ref=FlowTemplateReference(
             template_id="image-decode-preview-template",
+            template_version="1.0.0",
+            source_kind="json-file",
+            source_uri="placeholder",
+        ),
+        bindings=(
+            FlowApplicationBinding(
+                binding_id="request_image",
+                direction="input",
+                template_port_id="request_image",
+                binding_kind="api-request",
+                config={"route": "/execute/image-preview", "method": "POST"},
+            ),
+            FlowApplicationBinding(
+                binding_id="http_response",
+                direction="output",
+                template_port_id="http_response",
+                binding_kind="http-response",
+                config={"status_code": 200},
+            ),
+        ),
+    )
+
+
+def _build_image_decode_save_preview_application() -> FlowApplication:
+    """构造 image-base64 decode、save、storage-ref preview 的流程应用。"""
+
+    return FlowApplication(
+        application_id="image-decode-save-preview-app",
+        display_name="Image Decode Save Preview App",
+        template_ref=FlowTemplateReference(
+            template_id="image-decode-save-preview-template",
             template_version="1.0.0",
             source_kind="json-file",
             source_uri="placeholder",

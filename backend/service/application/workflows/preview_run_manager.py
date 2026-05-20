@@ -29,6 +29,7 @@ from backend.service.application.project_summary import (
     should_publish_project_summary_for_preview_event,
 )
 from backend.service.application.local_buffers import LocalBufferBrokerEventChannel
+from backend.service.application.workflows.preview_display_outputs import WORKFLOW_PREVIEW_RUN_ID_METADATA_KEY
 from backend.service.application.workflows.runtime_payload_sanitizer import (
     sanitize_runtime_mapping,
     serialize_node_execution_record,
@@ -52,7 +53,20 @@ from backend.service.settings import BackendServiceSettings
 
 @dataclass(frozen=True)
 class WorkflowPreviewRunExecutionRequest:
-    """描述一条交给 preview manager 托管执行的请求。"""
+    """描述一条交给 preview manager 托管执行的请求。
+
+    字段：
+    - preview_run_id：preview run id。
+    - project_id：所属 Project id。
+    - application_id：所属 application id。
+    - application_snapshot_object_key：application snapshot object key。
+    - template_snapshot_object_key：template snapshot object key。
+    - input_bindings：按 application input binding id 组织的输入 payload。
+    - execution_metadata：执行元数据。
+    - timeout_seconds：子进程执行超时秒数。
+    - retain_node_records_enabled：是否保留 node_records。
+    - return_preview_display_outputs_enabled：是否为同步响应暂存即时显示输出。
+    """
 
     preview_run_id: str
     project_id: str
@@ -63,6 +77,7 @@ class WorkflowPreviewRunExecutionRequest:
     execution_metadata: dict[str, object] = field(default_factory=dict)
     timeout_seconds: int = 30
     retain_node_records_enabled: bool = True
+    return_preview_display_outputs_enabled: bool = False
 
 
 @dataclass
@@ -72,6 +87,7 @@ class _ActiveWorkflowPreviewRun:
     request: WorkflowPreviewRunExecutionRequest
     executor: WorkflowSnapshotProcessExecutor
     handle: WorkflowSnapshotProcessHandle
+    final_preview_run: WorkflowPreviewRun | None = None
     cancel_event: Event = field(default_factory=Event, repr=False)
     completion_event: Event = field(default_factory=Event, repr=False)
     event_lock: Lock = field(default_factory=Lock, repr=False)
@@ -99,6 +115,7 @@ class WorkflowPreviewRunManager:
         self.local_buffer_broker_event_channel_provider = local_buffer_broker_event_channel_provider
         self.published_inference_gateway = published_inference_gateway
         self._active_runs: dict[str, _ActiveWorkflowPreviewRun] = {}
+        self._completed_preview_runs: dict[str, WorkflowPreviewRun] = {}
         self._lock = Lock()
         self._stopping = Event()
 
@@ -137,6 +154,8 @@ class WorkflowPreviewRunManager:
             local_buffer_broker_event_channel=self._resolve_local_buffer_broker_event_channel(),
             published_inference_gateway=self.published_inference_gateway,
         )
+        execution_metadata = dict(request.execution_metadata)
+        execution_metadata.setdefault(WORKFLOW_PREVIEW_RUN_ID_METADATA_KEY, request.preview_run_id)
         handle = executor.start(
             WorkflowSnapshotExecutionRequest(
                 project_id=request.project_id,
@@ -144,7 +163,7 @@ class WorkflowPreviewRunManager:
                 application_snapshot_object_key=request.application_snapshot_object_key,
                 template_snapshot_object_key=request.template_snapshot_object_key,
                 input_bindings=dict(request.input_bindings),
-                execution_metadata=dict(request.execution_metadata),
+                execution_metadata=execution_metadata,
             )
         )
         active_run = _ActiveWorkflowPreviewRun(
@@ -187,7 +206,8 @@ class WorkflowPreviewRunManager:
 
         active_run = self._get_active_run(preview_run_id)
         if active_run is None:
-            return self.get_preview_run(preview_run_id)
+            completed_preview_run = self._pop_completed_preview_run(preview_run_id)
+            return completed_preview_run if completed_preview_run is not None else self.get_preview_run(preview_run_id)
         if not active_run.completion_event.wait(timeout=max(0.1, timeout_seconds)):
             raise OperationTimeoutError(
                 "等待 workflow preview run 完成超时",
@@ -196,7 +216,11 @@ class WorkflowPreviewRunManager:
                     "timeout_seconds": timeout_seconds,
                 },
             )
-        return self.get_preview_run(preview_run_id)
+        if active_run.final_preview_run is not None:
+            self._pop_completed_preview_run(preview_run_id)
+            return active_run.final_preview_run
+        completed_preview_run = self._pop_completed_preview_run(preview_run_id)
+        return completed_preview_run if completed_preview_run is not None else self.get_preview_run(preview_run_id)
 
     def list_events(
         self,
@@ -303,6 +327,7 @@ class WorkflowPreviewRunManager:
                         },
                     )
                     updated_preview_run = self._mark_run_timed_out(preview_run_id, error)
+                    active_run.final_preview_run = updated_preview_run
                     self._append_event(
                         preview_run_id,
                         event_type="preview.timed_out",
@@ -323,6 +348,7 @@ class WorkflowPreviewRunManager:
                             details={"preview_run_id": preview_run_id},
                         )
                         updated_preview_run = self._mark_run_failed(preview_run_id, error)
+                        active_run.final_preview_run = updated_preview_run
                         self._append_event(
                             preview_run_id,
                             event_type="preview.failed",
@@ -338,6 +364,7 @@ class WorkflowPreviewRunManager:
                     execution_result = deserialize_snapshot_execution_result(message)
                 except OperationTimeoutError as exc:
                     updated_preview_run = self._mark_run_timed_out(preview_run_id, exc)
+                    active_run.final_preview_run = updated_preview_run
                     self._append_event(
                         preview_run_id,
                         event_type="preview.timed_out",
@@ -348,6 +375,7 @@ class WorkflowPreviewRunManager:
                     return
                 except ServiceError as exc:
                     updated_preview_run = self._mark_run_failed(preview_run_id, exc)
+                    active_run.final_preview_run = updated_preview_run
                     self._append_event(
                         preview_run_id,
                         event_type="preview.failed",
@@ -362,6 +390,7 @@ class WorkflowPreviewRunManager:
                     execution_result,
                     retain_node_records_enabled=active_run.request.retain_node_records_enabled,
                 )
+                active_run.final_preview_run = updated_preview_run
                 self._append_event(
                     preview_run_id,
                     event_type="preview.succeeded",
@@ -376,9 +405,26 @@ class WorkflowPreviewRunManager:
             except ServiceError:
                 pass
             active_run.executor.close_handle(active_run.handle)
+            self._remember_completed_preview_run(active_run)
             with self._lock:
                 self._active_runs.pop(preview_run_id, None)
             active_run.completion_event.set()
+
+    def _remember_completed_preview_run(self, active_run: _ActiveWorkflowPreviewRun) -> None:
+        """为同步等待方暂存刚完成的 PreviewRun。"""
+
+        if not active_run.request.return_preview_display_outputs_enabled:
+            return
+        if active_run.final_preview_run is None:
+            return
+        with self._lock:
+            self._completed_preview_runs[active_run.request.preview_run_id] = active_run.final_preview_run
+
+    def _pop_completed_preview_run(self, preview_run_id: str) -> WorkflowPreviewRun | None:
+        """读取并移除刚完成但已离开 active map 的 PreviewRun。"""
+
+        with self._lock:
+            return self._completed_preview_runs.pop(preview_run_id, None)
 
     def _drain_child_events(self, active_run: _ActiveWorkflowPreviewRun) -> None:
         """把子进程已经产生的过程事件持久化到 events.json。"""
@@ -417,6 +463,7 @@ class WorkflowPreviewRunManager:
                     if retain_node_records_enabled
                     else ()
                 ),
+                preview_display_outputs=tuple(dict(item) for item in execution_result.preview_display_outputs),
                 error_message=None,
             )
             unit_of_work.workflow_runtime.save_preview_run(updated_preview_run)

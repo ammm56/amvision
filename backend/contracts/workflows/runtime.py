@@ -63,6 +63,7 @@ class WorkflowPreviewRunContract(BaseModel):
     outputs: dict[str, object] = Field(default_factory=dict)
     template_outputs: dict[str, object] = Field(default_factory=dict)
     node_records: list[dict[str, object]] = Field(default_factory=list)
+    preview_display_outputs: list[dict[str, object]] = Field(default_factory=list)
     error_message: str | None = None
     retention_until: str | None = None
     metadata: dict[str, object] = Field(default_factory=dict)

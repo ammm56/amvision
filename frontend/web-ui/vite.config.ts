@@ -7,6 +7,7 @@ export default defineConfig({
   plugins: [vue()],
   resolve: {
     alias: {
+      '@litegraph': path.resolve(__dirname, 'src/lib/litegraph/src'),
       '@': path.resolve(__dirname, 'src'),
     },
   },

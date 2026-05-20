@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import json
+import mimetypes
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, Query, Request, Response, status
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from starlette.datastructures import UploadFile
 
@@ -33,6 +35,7 @@ from backend.service.application.errors import InvalidRequestError, PermissionDe
 from backend.service.application.deployments import PublishedInferenceGateway
 from backend.service.application.local_buffers import LocalBufferBrokerEventChannel, LocalBufferBrokerProcessSupervisor
 from backend.service.application.workflows.preview_run_manager import WorkflowPreviewRunManager
+from backend.service.application.workflows.preview_display_outputs import is_preview_run_artifact_object_key
 from backend.service.application.workflows.runtime_service import (
     WorkflowAppRuntimeCreateRequest,
     WorkflowExecutionPolicyCreateRequest,
@@ -271,6 +274,41 @@ def get_workflow_preview_run(
     preview_run = _build_workflow_runtime_service(request).get_preview_run(preview_run_id)
     _ensure_project_visible(principal=principal, project_id=preview_run.project_id)
     return _build_preview_run_contract(preview_run)
+
+
+@workflow_runtime_router.get("/preview-runs/{preview_run_id}/artifacts/content")
+def read_workflow_preview_run_artifact_content(
+    preview_run_id: str,
+    request: Request,
+    principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("workflows:read"))],
+    object_key: Annotated[str, Query(description="Preview Run artifact object key")],
+    download: Annotated[bool, Query(description="是否按附件下载")] = False,
+) -> FileResponse:
+    """读取一个 Preview Run 生命周期内的 artifact 文件内容。"""
+
+    preview_run = _build_workflow_runtime_service(request).get_preview_run(preview_run_id)
+    _ensure_project_visible(principal=principal, project_id=preview_run.project_id)
+    normalized_object_key = object_key.strip()
+    if not is_preview_run_artifact_object_key(
+        preview_run_id=preview_run.preview_run_id,
+        object_key=normalized_object_key,
+    ):
+        raise InvalidRequestError(
+            "当前接口只允许读取指定 Preview Run 的 artifact 文件",
+            details={"preview_run_id": preview_run.preview_run_id, "object_key": normalized_object_key},
+        )
+    file_path = _require_dataset_storage(request).resolve(normalized_object_key)
+    if not file_path.is_file():
+        raise ResourceNotFoundError(
+            "请求的 Preview Run artifact 文件不存在",
+            details={"preview_run_id": preview_run.preview_run_id, "object_key": normalized_object_key},
+        )
+    media_type, _ = mimetypes.guess_type(normalized_object_key)
+    return FileResponse(
+        path=file_path,
+        media_type=media_type or "application/octet-stream",
+        filename=file_path.name if download else None,
+    )
 
 
 @workflow_runtime_router.get(
@@ -1029,6 +1067,7 @@ def _build_preview_run_contract(preview_run: WorkflowPreviewRun) -> WorkflowPrev
         outputs=dict(preview_run.outputs),
         template_outputs=dict(preview_run.template_outputs),
         node_records=[dict(item) for item in preview_run.node_records],
+        preview_display_outputs=[dict(item) for item in preview_run.preview_display_outputs],
         error_message=preview_run.error_message,
         retention_until=preview_run.retention_until,
         metadata=dict(preview_run.metadata),

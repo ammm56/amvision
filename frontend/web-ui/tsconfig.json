@@ -12,6 +12,7 @@
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "types": ["vite/client", "vitest/globals"],
     "paths": {
+      "@litegraph/*": ["./src/lib/litegraph/src/*"],
       "@/*": ["./src/*"]
     },
     "skipLibCheck": true,
