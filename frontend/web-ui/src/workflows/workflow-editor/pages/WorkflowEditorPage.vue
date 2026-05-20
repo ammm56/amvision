@@ -42,8 +42,6 @@
     <div
       ref="canvasRef"
       class="workflow-graph-stage"
-      @dragover.prevent
-      @drop="dropPaletteNode"
       @mousedown="startStagePan"
       @wheel="handleStageWheel"
       @contextmenu.prevent="openStageContextMenu"
@@ -230,53 +228,6 @@
           </div>
         </div>
       </div>
-
-      <button
-        type="button"
-        class="workflow-graph-palette-toggle"
-        :class="{ 'workflow-graph-palette-toggle--open': !paletteCollapsed }"
-        @click.stop="paletteCollapsed = !paletteCollapsed"
-      >
-        <PanelLeftOpen v-if="paletteCollapsed" :size="17" />
-        <PanelLeftClose v-else :size="17" />
-        <span>{{ t('workflowEditor.actions.toggleNodePalette') }}</span>
-      </button>
-
-      <aside v-if="!paletteCollapsed" class="workflow-graph-floating-panel workflow-graph-palette-panel" @mousedown.stop @contextmenu.stop>
-        <div class="workflow-graph-panel__header">
-          <div>
-            <p>{{ t('workflowEditor.catalog.kicker') }}</p>
-            <h2>{{ t('workflowEditor.catalog.paletteTitle') }}</h2>
-          </div>
-          <StatusBadge tone="info">{{ nodeCatalog?.node_definitions.length ?? 0 }}</StatusBadge>
-        </div>
-        <div class="workflow-graph-palette-sections">
-          <section v-for="section in paletteSections" :key="section.id" class="workflow-graph-palette-section">
-            <div class="workflow-graph-palette-section__title">
-              <strong>{{ section.title }}</strong>
-              <span>{{ section.nodeCount }}</span>
-            </div>
-            <EmptyState v-if="section.nodeCount === 0" :title="section.emptyTitle" :description="section.emptyDescription" />
-            <details v-for="group in section.groups" v-else :key="`${section.id}-${group.category}`" open class="workflow-graph-node-group">
-              <summary>
-                <span>{{ group.displayName }}</span>
-                <strong>{{ group.nodes.length }}</strong>
-              </summary>
-              <button
-                v-for="definition in group.nodes"
-                :key="definition.node_type_id"
-                type="button"
-                draggable="true"
-                class="workflow-graph-palette-node"
-                @dragstart="startPaletteDrag($event, definition)"
-              >
-                <strong>{{ definition.display_name }}</strong>
-                <span>{{ definition.node_type_id }}</span>
-              </button>
-            </details>
-          </section>
-        </div>
-      </aside>
 
       <aside class="workflow-graph-floating-panel workflow-graph-inspector-panel" @mousedown.stop @contextmenu.stop>
         <div class="workflow-graph-panel__header">
@@ -580,6 +531,11 @@
       </button>
 
       <div v-if="contextMenu" class="workflow-graph-context-menu" :style="contextMenuStyle" @mousedown.stop @contextmenu.prevent>
+        <button type="button" class="workflow-graph-context-menu__submenu-trigger" @mouseenter="openNodePickerFromContextMenu" @click="openNodePickerFromContextMenu">
+          <Plus :size="15" />
+          {{ t('workflowEditor.nodePicker.addNode') }}
+          <ChevronRight :size="14" />
+        </button>
         <button v-if="contextMenu.nodeId" type="button" @click="deleteSelectedNode">
           <Trash2 :size="15" />
           删除节点
@@ -615,6 +571,20 @@
         </button>
       </div>
 
+      <WorkflowNodePicker
+        v-if="nodePicker"
+        :open="Boolean(nodePicker)"
+        :x="nodePicker.x"
+        :y="nodePicker.y"
+        :definitions="nodePickerDefinitions"
+        :mode="nodePicker.mode"
+        :title="nodePickerTitle"
+        :required-port-direction="nodePickerRequiredPortDirection"
+        :required-payload-type-id="nodePickerRequiredPayloadTypeId"
+        @select="selectNodeFromPicker"
+        @close="closeNodePicker"
+      />
+
       <div v-if="!loading && graphNodes.length === 0" class="workflow-graph-empty">
         <Workflow :size="42" />
         <strong>{{ t('workflowEditor.editor.canvasPlaceholderTitle') }}</strong>
@@ -627,7 +597,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, shallowRef } from 'vue'
-import { ArrowLeft, CircleAlert, Map as MapIcon, Moon, PanelLeftClose, PanelLeftOpen, Play, Plus, RefreshCw, Save, Sun, Trash2, Workflow, X } from '@lucide/vue'
+import { ArrowLeft, ChevronRight, CircleAlert, Map as MapIcon, Moon, Play, Plus, RefreshCw, Save, Sun, Trash2, Workflow, X } from '@lucide/vue'
 import { RouterLink, useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 
@@ -639,6 +609,7 @@ import ImageViewer from '@/shared/ui/components/ImageViewer.vue'
 import StatusBadge from '@/shared/ui/data-display/StatusBadge.vue'
 import EmptyState from '@/shared/ui/feedback/EmptyState.vue'
 import InlineError from '@/shared/ui/feedback/InlineError.vue'
+import WorkflowNodePicker from '../components/WorkflowNodePicker.vue'
 import { createWorkflowLiteGraphAdapter, type WorkflowLiteGraphAdapter } from '../canvas/graph-engine/litegraph-adapter'
 import { type WorkflowCanvasGraphSnapshot } from '../canvas/graph-engine/workflow-graph-conversion'
 import { getWorkflowNodeCatalog } from '../services/node-catalog.service'
@@ -701,27 +672,25 @@ interface PanState {
   startY: number
 }
 
-interface PaletteGroup {
-  category: string
-  displayName: string
-  nodes: NodeDefinition[]
-}
-
-interface PaletteSection {
-  id: 'core' | 'custom'
-  title: string
-  emptyTitle: string
-  emptyDescription: string
-  nodeCount: number
-  groups: PaletteGroup[]
-}
-
 interface ContextMenuState {
   x: number
   y: number
+  worldX: number
+  worldY: number
   nodeId: string | null
   edgeId: string | null
 }
+
+interface NodePickerState {
+  x: number
+  y: number
+  worldX: number
+  worldY: number
+  mode: 'context-menu' | 'link-drop'
+  connectionDraft: ConnectionDraftState | null
+}
+
+type RequiredNodePickerPortDirection = 'input' | 'output'
 
 interface MinimapNodeView {
   nodeId: string
@@ -802,10 +771,9 @@ const dragState = ref<DragState | null>(null)
 const connectionDraft = ref<ConnectionDraftState | null>(null)
 const panState = ref<PanState | null>(null)
 const suppressNextNodeClick = ref(false)
-const pendingPaletteNodeTypeId = ref<string | null>(null)
-const paletteCollapsed = ref(false)
 const minimapVisible = ref(true)
 const contextMenu = ref<ContextMenuState | null>(null)
+const nodePicker = ref<NodePickerState | null>(null)
 const previewInputState = ref<Record<string, PreviewInputState>>({})
 const viewportX = ref(0)
 const viewportY = ref(0)
@@ -835,6 +803,18 @@ const routeApplicationId = computed(() => (typeof route.params.applicationId ===
 const isNewApp = computed(() => route.path.endsWith('/new'))
 const graphTheme = computed(() => preferencesStore.theme)
 const nodeDefinitionsById = computed(() => new Map((nodeCatalog.value?.node_definitions ?? []).map((definition) => [definition.node_type_id, definition])))
+const nodePickerDefinitions = computed(() => nodeCatalog.value?.node_definitions ?? [])
+const nodePickerTitle = computed(() => nodePicker.value?.mode === 'link-drop' ? t('workflowEditor.nodePicker.selectAndConnect') : t('workflowEditor.nodePicker.addNode'))
+const nodePickerRequiredPortDirection = computed<RequiredNodePickerPortDirection | null>(() => {
+  const draft = nodePicker.value?.connectionDraft
+  if (!draft) return null
+  return draft.anchorDirection === 'output' ? 'input' : 'output'
+})
+const nodePickerRequiredPayloadTypeId = computed(() => {
+  const draft = nodePicker.value?.connectionDraft
+  if (!draft) return null
+  return getConnectionDraftPayloadTypeId(draft)
+})
 const editorTitle = computed(() => workflowApp.value?.applicationDocument.application.display_name || (isNewApp.value ? t('workflowEditor.editor.newTitle') : routeApplicationId.value))
 const selectedNode = computed(() => graphNodes.value.find((node) => node.node.node_id === selectedNodeId.value) ?? null)
 const selectedPreviewNodeImage = computed(() => selectedNode.value ? previewNodeImages.value[selectedNode.value.node.node_id] ?? null : null)
@@ -894,29 +874,6 @@ const minimapViewportStyle = computed(() => {
     height: `${Math.max((stageSize.value.height / viewportScale.value) * scale, 8)}px`,
   }
 })
-const paletteSections = computed<PaletteSection[]>(() => {
-  const definitions = nodeCatalog.value?.node_definitions ?? []
-  const coreDefinitions = definitions.filter((definition) => definition.implementation_kind === 'core-node')
-  const customDefinitions = definitions.filter((definition) => definition.implementation_kind === 'custom-node')
-  return [
-    {
-      id: 'core',
-      title: t('workflowEditor.palette.coreNodes'),
-      emptyTitle: t('workflowEditor.palette.emptyCoreTitle'),
-      emptyDescription: t('workflowEditor.palette.emptyCoreDescription'),
-      nodeCount: coreDefinitions.length,
-      groups: groupDefinitionsByCategory(coreDefinitions),
-    },
-    {
-      id: 'custom',
-      title: t('workflowEditor.palette.customNodes'),
-      emptyTitle: t('workflowEditor.palette.emptyCustomTitle'),
-      emptyDescription: t('workflowEditor.palette.emptyCustomDescription'),
-      nodeCount: customDefinitions.length,
-      groups: groupDefinitionsByCategory(customDefinitions),
-    },
-  ]
-})
 const appBoundaryNodes = computed<AppBoundaryNodeView[]>(() => buildAppBoundaryNodes())
 const previewInputBindings = computed(() => appInputBindings.value)
 const previewAlternativeImageBindingIds = computed(() => {
@@ -957,22 +914,6 @@ const previewHelpText = computed(() => {
   }
   return messages.join('；')
 })
-
-function groupDefinitionsByCategory(definitions: NodeDefinition[]): PaletteGroup[] {
-  const groupsByCategory = new Map<string, NodeDefinition[]>()
-  for (const definition of definitions) {
-    const groupDefinitions = groupsByCategory.get(definition.category) ?? []
-    groupDefinitions.push(definition)
-    groupsByCategory.set(definition.category, groupDefinitions)
-  }
-  return [...groupsByCategory.entries()]
-    .sort(([leftCategory], [rightCategory]) => leftCategory.localeCompare(rightCategory))
-    .map(([category, nodes]) => ({
-      category,
-      displayName: category.replaceAll('.', ' / '),
-      nodes: [...nodes].sort((leftNode, rightNode) => leftNode.display_name.localeCompare(rightNode.display_name)),
-    }))
-}
 
 function buildAppBoundaryNodes(): AppBoundaryNodeView[] {
   if (!workflowApp.value || graphNodes.value.length === 0) return []
@@ -1368,6 +1309,7 @@ function selectNode(nodeId: string): void {
   selectedBoundaryKind.value = null
   connectionDraft.value = null
   contextMenu.value = null
+  nodePicker.value = null
 }
 
 function handleNodeClick(nodeId: string): void {
@@ -1391,6 +1333,7 @@ function selectEdge(edgeId: string): void {
   selectedBoundaryKind.value = null
   connectionDraft.value = null
   contextMenu.value = null
+  nodePicker.value = null
 }
 
 function selectPortEndpoint(node: GraphNodeView, port: NodePortDefinition, direction: PortDirection): void {
@@ -1410,27 +1353,10 @@ function selectApplicationBoundary(kind: 'entry' | 'result'): void {
   selectedEdgeId.value = null
   connectionDraft.value = null
   contextMenu.value = null
+  nodePicker.value = null
 }
 
-function startPaletteDrag(event: DragEvent, definition: NodeDefinition): void {
-  pendingPaletteNodeTypeId.value = definition.node_type_id
-  event.dataTransfer?.setData('application/x-amvision-node-type-id', definition.node_type_id)
-  if (event.dataTransfer) {
-    event.dataTransfer.effectAllowed = 'copy'
-  }
-}
-
-function dropPaletteNode(event: DragEvent): void {
-  const nodeTypeId = event.dataTransfer?.getData('application/x-amvision-node-type-id') || pendingPaletteNodeTypeId.value
-  pendingPaletteNodeTypeId.value = null
-  if (!nodeTypeId) return
-  const definition = nodeDefinitionsById.value.get(nodeTypeId)
-  if (!definition) return
-  const position = screenToWorld(event.clientX, event.clientY)
-  addPaletteNode(definition, position.x, position.y)
-}
-
-function addPaletteNode(definition: NodeDefinition, rawX: number, rawY: number): void {
+function addGraphNode(definition: NodeDefinition, rawX: number, rawY: number): GraphNodeView {
   const nodeId = createGraphNodeId(definition.node_type_id)
   const x = Math.round(rawX - 115)
   const y = Math.round(rawY - 40)
@@ -1441,9 +1367,92 @@ function addPaletteNode(definition: NodeDefinition, rawX: number, rawY: number):
     ui_state: { x, y, width: 250 },
     metadata: {},
   }
-  graphNodes.value.push(buildGraphNodeView(node, graphNodes.value.length, new Map([[nodeId, { x, y }]])))
+  const graphNode = buildGraphNodeView(node, graphNodes.value.length, new Map([[nodeId, { x, y }]]))
+  graphNodes.value.push(graphNode)
   selectedNodeId.value = nodeId
+  selectedEdgeId.value = null
+  selectedBoundaryKind.value = null
   statusMessage.value = '已添加节点'
+  return graphNode
+}
+
+function openNodePickerFromContextMenu(): void {
+  const menu = contextMenu.value
+  if (!menu) return
+  const pickerWidth = 640
+  const preferredX = menu.x + 198
+  const hasRightSpace = typeof window === 'undefined' || preferredX + pickerWidth + 12 <= window.innerWidth
+  nodePicker.value = {
+    x: hasRightSpace ? preferredX : menu.x - pickerWidth - 8,
+    y: menu.y,
+    worldX: menu.worldX,
+    worldY: menu.worldY,
+    mode: 'context-menu',
+    connectionDraft: null,
+  }
+}
+
+function openNodePickerFromConnectionDraft(draft: ConnectionDraftState, event: MouseEvent): void {
+  const position = screenToWorld(event.clientX, event.clientY)
+  contextMenu.value = null
+  nodePicker.value = {
+    x: event.clientX + 8,
+    y: event.clientY + 8,
+    worldX: position.x,
+    worldY: position.y,
+    mode: 'link-drop',
+    connectionDraft: { ...draft },
+  }
+  errorMessage.value = null
+}
+
+function closeNodePicker(): void {
+  nodePicker.value = null
+  contextMenu.value = null
+}
+
+function selectNodeFromPicker(definition: NodeDefinition): void {
+  const picker = nodePicker.value
+  if (!picker) return
+  const graphNode = addGraphNode(definition, picker.worldX, picker.worldY)
+  const connectionResult = picker.connectionDraft ? connectConnectionDraftToNewNode(picker.connectionDraft, graphNode) : true
+  nodePicker.value = null
+  contextMenu.value = null
+  if (!connectionResult && picker.connectionDraft) {
+    selectedNodeId.value = graphNode.node.node_id
+  }
+}
+
+function connectConnectionDraftToNewNode(draft: ConnectionDraftState, graphNode: GraphNodeView): boolean {
+  const anchorNode = graphNodes.value.find((node) => node.node.node_id === draft.anchorNodeId)
+  if (!anchorNode) return false
+  if (draft.anchorDirection === 'output') {
+    const sourcePort = anchorNode.outputs.find((port) => port.name === draft.anchorPort)
+    if (!sourcePort) return false
+    const targetPort = graphNode.inputs.find((port) => portsCanConnect(sourcePort, port))
+    if (!targetPort) {
+      errorMessage.value = '选中的节点没有兼容的输入端口'
+      return false
+    }
+    return connectOutputToInput({ nodeId: draft.anchorNodeId, portName: draft.anchorPort, direction: 'output' }, { nodeId: graphNode.node.node_id, portName: targetPort.name, direction: 'input' }, draft.replacingEdgeId)
+  }
+  const targetPort = anchorNode.inputs.find((port) => port.name === draft.anchorPort)
+  if (!targetPort) return false
+  const sourcePort = graphNode.outputs.find((port) => portsCanConnect(port, targetPort))
+  if (!sourcePort) {
+    errorMessage.value = '选中的节点没有兼容的输出端口'
+    return false
+  }
+  return connectOutputToInput({ nodeId: graphNode.node.node_id, portName: sourcePort.name, direction: 'output' }, { nodeId: draft.anchorNodeId, portName: draft.anchorPort, direction: 'input' }, draft.replacingEdgeId)
+}
+
+function getConnectionDraftPayloadTypeId(draft: ConnectionDraftState): string | null {
+  const anchorNode = graphNodes.value.find((node) => node.node.node_id === draft.anchorNodeId)
+  if (!anchorNode) return null
+  const port = draft.anchorDirection === 'output'
+    ? anchorNode.outputs.find((item) => item.name === draft.anchorPort)
+    : anchorNode.inputs.find((item) => item.name === draft.anchorPort)
+  return port?.payload_type_id ?? null
 }
 
 function createGraphNodeId(nodeTypeId: string): string {
@@ -1471,6 +1480,7 @@ function handleStageWheel(event: WheelEvent): void {
   if (shouldIgnoreStageWheelTarget(event.target)) return
   event.preventDefault()
   contextMenu.value = null
+  nodePicker.value = null
   const wheelStep = Math.max(-3, Math.min(3, -event.deltaY / 100))
   const nextScale = clampNumber(viewportScale.value * Math.pow(1.12, wheelStep), minViewportScale, maxViewportScale)
   zoomViewportAt(event.clientX, event.clientY, nextScale)
@@ -1499,6 +1509,7 @@ function startNodeDrag(event: MouseEvent, node: GraphNodeView): void {
   selectedEdgeId.value = null
   selectedBoundaryKind.value = null
   contextMenu.value = null
+  nodePicker.value = null
   dragState.value = {
     nodeId: node.node.node_id,
     offsetX: worldPosition.x - node.x,
@@ -1555,6 +1566,7 @@ function startConnectionDraft(event: MouseEvent, node: GraphNodeView, port: Node
   selectedEdgeId.value = null
   selectedBoundaryKind.value = null
   contextMenu.value = null
+  nodePicker.value = null
   errorMessage.value = null
   document.addEventListener('mousemove', movePortConnection)
   document.addEventListener('mouseup', stopPortConnection)
@@ -1584,6 +1596,7 @@ function startEdgeTargetReconnect(event: MouseEvent, edgeId: string): void {
   selectedEdgeId.value = edgeId
   selectedBoundaryKind.value = null
   contextMenu.value = null
+  nodePicker.value = null
   errorMessage.value = null
   document.addEventListener('mousemove', movePortConnection)
   document.addEventListener('mouseup', stopPortConnection)
@@ -1604,16 +1617,21 @@ function movePortConnection(event: MouseEvent): void {
 function stopPortConnection(event?: MouseEvent): void {
   const draft = connectionDraft.value
   let didConnect = false
+  let didOpenNodePicker = false
   if (draft && event) {
     const targetPort = resolvePortElement(event.clientX, event.clientY)
     if (targetPort) {
       didConnect = connectDraftToPort(draft, targetPort)
     } else if (draft.hasMoved) {
-      errorMessage.value = draft.anchorDirection === 'output' ? '请连接到输入端口' : '请连接到输出端口'
+      openNodePickerFromConnectionDraft(draft, event)
+      didOpenNodePicker = true
     }
     if (draft.hasMoved || didConnect) {
       suppressNodeClickOnce()
     }
+  }
+  if (!didOpenNodePicker) {
+    nodePicker.value = null
   }
   connectionDraft.value = null
   document.removeEventListener('mousemove', movePortConnection)
@@ -1706,6 +1724,7 @@ function createGraphEdgeId(sourceNodeId: string, sourcePort: string, targetNodeI
 function startStagePan(event: MouseEvent): void {
   if (event.button !== 0 || shouldIgnoreStagePointer(event.target)) return
   contextMenu.value = null
+  nodePicker.value = null
   panState.value = {
     startClientX: event.clientX,
     startClientY: event.clientY,
@@ -1730,11 +1749,11 @@ function stopStagePan(): void {
 }
 
 function shouldIgnoreStagePointer(target: EventTarget | null): boolean {
-  return target instanceof Element && Boolean(target.closest('.workflow-graph-node, .workflow-graph-boundary-node, .workflow-graph-floating-panel, .workflow-graph-palette-toggle, .workflow-graph-minimap, .workflow-graph-minimap-toggle, .workflow-graph-context-menu, .workflow-graph-link, .workflow-graph-link-hit-area, .workflow-graph-link-handle, .workflow-graph-port'))
+  return target instanceof Element && Boolean(target.closest('.workflow-graph-node, .workflow-graph-boundary-node, .workflow-graph-floating-panel, .workflow-graph-minimap, .workflow-graph-minimap-toggle, .workflow-graph-context-menu, .workflow-node-picker, .workflow-graph-link, .workflow-graph-link-hit-area, .workflow-graph-link-handle, .workflow-graph-port'))
 }
 
 function shouldIgnoreStageWheelTarget(target: EventTarget | null): boolean {
-  return target instanceof Element && Boolean(target.closest('input, textarea, select, button, .workflow-graph-floating-panel, .workflow-graph-minimap, .workflow-graph-minimap-toggle, .workflow-graph-context-menu, .image-viewer'))
+  return target instanceof Element && Boolean(target.closest('input, textarea, select, button, .workflow-graph-floating-panel, .workflow-graph-minimap, .workflow-graph-minimap-toggle, .workflow-graph-context-menu, .workflow-node-picker, .image-viewer'))
 }
 
 function deleteSelectedNode(): void {
@@ -1746,6 +1765,7 @@ function deleteSelectedNode(): void {
   selectedEdgeId.value = null
   selectedBoundaryKind.value = null
   contextMenu.value = null
+  nodePicker.value = null
   statusMessage.value = '已删除节点'
 }
 
@@ -1756,6 +1776,7 @@ function deleteSelectedEdge(): void {
   selectedEdgeId.value = null
   selectedBoundaryKind.value = null
   contextMenu.value = null
+  nodePicker.value = null
   statusMessage.value = '已删除连线'
 }
 
@@ -1763,19 +1784,25 @@ function openNodeContextMenu(event: MouseEvent, node: GraphNodeView): void {
   selectedNodeId.value = node.node.node_id
   selectedEdgeId.value = null
   selectedBoundaryKind.value = null
-  contextMenu.value = { x: event.clientX, y: event.clientY, nodeId: node.node.node_id, edgeId: null }
+  const position = screenToWorld(event.clientX, event.clientY)
+  nodePicker.value = null
+  contextMenu.value = { x: event.clientX, y: event.clientY, worldX: position.x, worldY: position.y, nodeId: node.node.node_id, edgeId: null }
 }
 
 function openEdgeContextMenu(event: MouseEvent, link: GraphLinkView): void {
   selectedEdgeId.value = link.edgeId
   selectedNodeId.value = null
   selectedBoundaryKind.value = null
-  contextMenu.value = { x: event.clientX, y: event.clientY, nodeId: null, edgeId: link.edgeId }
+  const position = screenToWorld(event.clientX, event.clientY)
+  nodePicker.value = null
+  contextMenu.value = { x: event.clientX, y: event.clientY, worldX: position.x, worldY: position.y, nodeId: null, edgeId: link.edgeId }
 }
 
 function openStageContextMenu(event: MouseEvent): void {
   if (shouldIgnoreStagePointer(event.target)) return
-  contextMenu.value = { x: event.clientX, y: event.clientY, nodeId: null, edgeId: null }
+  const position = screenToWorld(event.clientX, event.clientY)
+  nodePicker.value = null
+  contextMenu.value = { x: event.clientX, y: event.clientY, worldX: position.x, worldY: position.y, nodeId: null, edgeId: null }
 }
 
 function calculateWorldBounds(): { minX: number; minY: number; maxX: number; maxY: number; width: number; height: number } {
