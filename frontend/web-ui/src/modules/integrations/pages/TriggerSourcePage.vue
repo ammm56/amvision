@@ -207,7 +207,7 @@
           <p class="page-kicker">Existing</p>
           <h2>已有 TriggerSource</h2>
         </div>
-        <StatusBadge tone="neutral">{{ triggerSources.length }}</StatusBadge>
+        <StatusBadge tone="neutral">{{ totalTriggerSourceCount }}</StatusBadge>
       </div>
       <EmptyState v-if="!loading && triggerSources.length === 0" title="还没有 TriggerSource" description="创建后会显示启停状态、health、last_error 和映射摘要。" />
       <div v-else class="resource-table">
@@ -263,19 +263,33 @@
           </tbody>
         </table>
       </div>
+      <PaginationControls
+        v-if="triggerSources.length > 0"
+        class="trigger-source-page__pagination"
+        :offset="triggerSourcePagination.offset"
+        :limit="triggerSourcePagination.limit"
+        :item-count="triggerSources.length"
+        :total-count="triggerSourcePagination.totalCount"
+        :has-more="triggerSourcePagination.hasMore"
+        :disabled="loading"
+        @previous="loadPreviousTriggerSourcePage"
+        @next="loadNextTriggerSourcePage"
+      />
     </section>
   </section>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
 import { Activity, Power, PowerOff, RefreshCw, Save, Settings2, Trash2, Workflow } from '@lucide/vue'
 
 import { useProjectStore } from '@/app/stores/project.store'
+import type { PaginationMeta } from '@/shared/api/pagination'
 import { formatSystemDateTime } from '@/shared/formatters/date-time'
 import Button from '@/shared/ui/components/Button.vue'
 import InfoHint from '@/shared/ui/components/InfoHint.vue'
+import PaginationControls from '@/shared/ui/components/PaginationControls.vue'
 import SelectField from '@/shared/ui/components/Select.vue'
 import StatusBadge from '@/shared/ui/data-display/StatusBadge.vue'
 import EmptyState from '@/shared/ui/feedback/EmptyState.vue'
@@ -399,6 +413,7 @@ const errorMessage = ref<string | null>(null)
 const statusMessage = ref<string | null>(null)
 const runtimes = ref<WorkflowAppRuntime[]>([])
 const triggerSources = ref<WorkflowTriggerSource[]>([])
+const triggerSourcePagination = ref<PaginationMeta>(createPaginationState())
 const workflowApp = ref<WorkflowAppDocument | null>(null)
 const selectedRuntimeId = ref('')
 const protocolTemplateId = ref<ProtocolTemplateId>('zeromq-image-trigger')
@@ -449,6 +464,7 @@ const resultBindingOptions = computed<SelectOption[]>(() => [
   })),
   { label: 'workflow_result', value: 'workflow_result' },
 ])
+const totalTriggerSourceCount = computed(() => triggerSourcePagination.value.totalCount ?? triggerSources.value.length)
 
 function readQueryString(name: string): string {
   const value = route.query[name]
@@ -623,17 +639,32 @@ async function loadSelectedRuntimeApp(): Promise<void> {
   }
 }
 
-async function loadPage(): Promise<void> {
+async function loadPage(options: { triggerSourceOffset?: number; resetTriggerSourcePage?: boolean; preserveStatusMessage?: boolean } = {}): Promise<void> {
+  if (!selectedProjectId.value) {
+    runtimes.value = []
+    triggerSources.value = []
+    workflowApp.value = null
+    triggerSourcePagination.value = createPaginationState()
+    return
+  }
   loading.value = true
   errorMessage.value = null
-  statusMessage.value = null
+  if (!options.preserveStatusMessage) {
+    statusMessage.value = null
+  }
   try {
+    const triggerSourceOffset = options.resetTriggerSourcePage ? 0 : options.triggerSourceOffset ?? triggerSourcePagination.value.offset
     const [runtimeResult, triggerSourceResult] = await Promise.all([
       listWorkflowAppRuntimes({ projectId: selectedProjectId.value, limit: 100 }),
-      listWorkflowTriggerSources({ projectId: selectedProjectId.value, limit: 100 }),
+      listWorkflowTriggerSources({
+        projectId: selectedProjectId.value,
+        offset: triggerSourceOffset,
+        limit: triggerSourcePagination.value.limit,
+      }),
     ])
     runtimes.value = runtimeResult.items
     triggerSources.value = triggerSourceResult.items
+    triggerSourcePagination.value = triggerSourceResult.pagination
     const queryRuntimeId = readQueryString('runtime_id')
     const queryApplicationId = readQueryString('application_id')
     const contextRuntime = runtimes.value.find((runtime) => runtime.workflow_runtime_id === queryRuntimeId)
@@ -785,7 +816,7 @@ async function submitTriggerSource(): Promise<void> {
         manual_mapping_available: true,
       },
     })
-    replaceTriggerSource(triggerSource)
+    await loadPage({ triggerSourceOffset: 0, preserveStatusMessage: true })
     statusMessage.value = `已创建 TriggerSource：${triggerSource.trigger_source_id}`
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : '创建 TriggerSource 失败'
@@ -834,7 +865,10 @@ async function deleteTriggerSource(source: WorkflowTriggerSource): Promise<void>
   errorMessage.value = null
   try {
     await deleteWorkflowTriggerSource(source.trigger_source_id)
-    triggerSources.value = triggerSources.value.filter((item) => item.trigger_source_id !== source.trigger_source_id)
+    const nextOffset = triggerSources.value.length === 1
+      ? Math.max(0, triggerSourcePagination.value.offset - triggerSourcePagination.value.limit)
+      : triggerSourcePagination.value.offset
+    await loadPage({ triggerSourceOffset: nextOffset, preserveStatusMessage: true })
     const nextHealth = { ...healthByTriggerSourceId.value }
     delete nextHealth[source.trigger_source_id]
     healthByTriggerSourceId.value = nextHealth
@@ -846,5 +880,40 @@ async function deleteTriggerSource(source: WorkflowTriggerSource): Promise<void>
   }
 }
 
-onMounted(loadPage)
+function loadPreviousTriggerSourcePage(): void {
+  void loadPage({ triggerSourceOffset: Math.max(0, triggerSourcePagination.value.offset - triggerSourcePagination.value.limit) })
+}
+
+function loadNextTriggerSourcePage(): void {
+  if (!triggerSourcePagination.value.hasMore) return
+  void loadPage({
+    triggerSourceOffset: triggerSourcePagination.value.nextOffset ?? triggerSourcePagination.value.offset + triggerSourcePagination.value.limit,
+  })
+}
+
+function createPaginationState(): PaginationMeta {
+  return {
+    offset: 0,
+    limit: 50,
+    totalCount: 0,
+    hasMore: false,
+    nextOffset: null,
+  }
+}
+
+watch(
+  () => [selectedProjectId.value, route.query.runtime_id, route.query.application_id] as const,
+  (currentValue, previousValue) => {
+    const [projectId] = currentValue
+    const previousProjectId = previousValue?.[0]
+    void loadPage({ resetTriggerSourcePage: projectId !== previousProjectId })
+  },
+  { immediate: true },
+)
 </script>
+
+<style scoped>
+.trigger-source-page__pagination {
+  margin-top: 16px;
+}
+</style>

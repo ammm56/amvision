@@ -84,7 +84,7 @@ class TaskQueryFilters:
     - parent_task_id：父任务 id。
     - dataset_id：task_spec 中记录的 Dataset id。
     - source_import_id：task_spec 或 metadata 中记录的 DatasetImport id。
-    - limit：最大返回数量。
+    - limit：最大返回数量；为空时返回全部匹配结果。
     """
 
     project_id: str
@@ -95,7 +95,7 @@ class TaskQueryFilters:
     parent_task_id: str | None = None
     dataset_id: str | None = None
     source_import_id: str | None = None
-    limit: int = 100
+    limit: int | None = 100
 
 
 @dataclass(frozen=True)
@@ -211,7 +211,7 @@ class SqlAlchemyTaskService:
 
         if not filters.project_id.strip():
             raise InvalidRequestError("查询任务列表时 project_id 不能为空")
-        if filters.limit <= 0:
+        if filters.limit is not None and filters.limit <= 0:
             raise InvalidRequestError("limit 必须大于 0")
 
         with self._open_unit_of_work() as unit_of_work:
@@ -219,6 +219,8 @@ class SqlAlchemyTaskService:
 
         matched_tasks = [task for task in tasks if self._task_matches_filters(task, filters)]
         matched_tasks.sort(key=lambda task: (task.created_at, task.task_id), reverse=True)
+        if filters.limit is None:
+            return tuple(matched_tasks)
         return tuple(matched_tasks[: filters.limit])
 
     def list_task_events(self, filters: TaskEventQueryFilters) -> tuple[TaskEvent, ...]:

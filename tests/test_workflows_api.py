@@ -7,6 +7,7 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
+from backend.service.application.local_buffers.broker_settings import LocalBufferBrokerSettings
 from backend.service.api.app import create_app
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
@@ -448,6 +449,76 @@ def test_workflow_node_catalog_supports_filters(tmp_path: Path) -> None:
         session_factory.engine.dispose()
 
 
+def test_workflow_node_pack_status_and_control_endpoints(tmp_path: Path) -> None:
+    """验证 node pack 状态、日志、重载、校验和启停接口可用。"""
+
+    client, session_factory, _ = _create_test_client(tmp_path)
+
+    try:
+        with client:
+            status_response = client.get(
+                "/api/v1/workflows/node-pack-status",
+                headers=_build_workflow_read_headers(),
+            )
+            logs_response = client.get(
+                "/api/v1/workflows/node-packs/opencv.basic-nodes/logs",
+                headers=_build_workflow_read_headers(),
+            )
+            validate_response = client.post(
+                "/api/v1/workflows/node-packs/opencv.basic-nodes/validate",
+                headers=_build_workflow_read_headers(),
+            )
+            reload_response = client.post(
+                "/api/v1/workflows/node-packs/reload",
+                headers=_build_workflow_write_headers(),
+            )
+            disable_response = client.post(
+                "/api/v1/workflows/node-packs/opencv.basic-nodes/disable",
+                headers=_build_workflow_write_headers(),
+            )
+            catalog_after_disable_response = client.get(
+                "/api/v1/workflows/node-catalog",
+                params={"node_pack_id": "opencv.basic-nodes"},
+                headers=_build_workflow_read_headers(),
+            )
+            enable_response = client.post(
+                "/api/v1/workflows/node-packs/opencv.basic-nodes/enable",
+                headers=_build_workflow_write_headers(),
+            )
+
+        assert status_response.status_code == 200
+        status_payload = status_response.json()
+        status_item = _find_node_pack_status_item(status_payload, "opencv.basic-nodes")
+        assert status_item["state"] == "loaded"
+        assert status_item["enabled"] is True
+        assert status_item["source_dir"]
+        assert status_item["manifest_path"].endswith("manifest.json")
+        catalog_path = status_item["custom_node_catalog_path"].replace("\\", "/")
+        assert catalog_path.endswith("workflow/catalog.json")
+        assert status_item["node_count"] == 1
+        assert status_item["issues"] == []
+
+        assert logs_response.status_code == 200
+        assert logs_response.json()[0]["message"] == "节点包状态正常"
+
+        assert validate_response.status_code == 200
+        assert _find_node_pack_status_item(validate_response.json(), "opencv.basic-nodes")["state"] == "loaded"
+
+        assert reload_response.status_code == 200
+        assert _find_node_pack_status_item(reload_response.json(), "opencv.basic-nodes")["state"] == "loaded"
+
+        assert disable_response.status_code == 200
+        assert _find_node_pack_status_item(disable_response.json(), "opencv.basic-nodes")["state"] == "disabled"
+
+        assert catalog_after_disable_response.status_code == 200
+        assert catalog_after_disable_response.json()["node_definitions"] == []
+
+        assert enable_response.status_code == 200
+        assert _find_node_pack_status_item(enable_response.json(), "opencv.basic-nodes")["state"] == "loaded"
+    finally:
+        session_factory.engine.dispose()
+
+
 def test_workflow_node_catalog_returns_effective_parameter_ui_schema(tmp_path: Path) -> None:
     """验证节点目录接口会返回可直接渲染的参数 UI 合同。"""
 
@@ -503,6 +574,7 @@ def _create_test_client(
     application = create_app(
         settings=BackendServiceSettings(
             custom_nodes=BackendServiceCustomNodesConfig(root_dir=str(custom_nodes_root_dir)),
+            local_buffer_broker=LocalBufferBrokerSettings(enabled=False),
             task_manager=BackendServiceTaskManagerConfig(enabled=False),
         ),
         session_factory=session_factory,
@@ -510,6 +582,21 @@ def _create_test_client(
         queue_backend=queue_backend,
     )
     return TestClient(application), session_factory, dataset_storage
+
+
+def _find_node_pack_status_item(
+    payload: dict[str, object],
+    node_pack_id: str,
+) -> dict[str, object]:
+    """从 node pack status 响应中查找指定状态项。"""
+
+    items = payload.get("items")
+    if not isinstance(items, list):
+        raise AssertionError("node pack status 响应缺少 items")
+    for item in items:
+        if isinstance(item, dict) and item.get("node_pack_id") == node_pack_id:
+            return item
+    raise AssertionError(f"未找到 node pack 状态项: {node_pack_id}")
 
 
 def _build_workflow_write_headers() -> dict[str, str]:

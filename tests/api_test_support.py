@@ -100,12 +100,17 @@ def create_api_test_context(
         database_name=database_name,
     )
     settings = BackendServiceSettings(
-        local_buffer_broker=LocalBufferBrokerSettings(enabled=enable_local_buffer_broker),
+        local_buffer_broker=LocalBufferBrokerSettings(
+            enabled=enable_local_buffer_broker,
+            root_dir=str(tmp_path / "local-buffer-broker"),
+            startup_timeout_seconds=10.0,
+            default_pool_name="image-small",
+        ),
         task_manager=BackendServiceTaskManagerConfig(
             enabled=enable_task_manager,
             max_concurrent_tasks=max_concurrent_tasks,
             poll_interval_seconds=poll_interval_seconds,
-        )
+        ),
     )
     application = create_app(
         settings=settings,

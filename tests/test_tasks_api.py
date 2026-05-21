@@ -117,6 +117,46 @@ def test_cancel_task_updates_state_and_events(tmp_path: Path) -> None:
         session_factory.engine.dispose()
 
 
+def test_list_tasks_returns_pagination_headers_and_offset_window(tmp_path: Path) -> None:
+    """验证 tasks 列表接口按统一分页响应头返回结果窗口。"""
+
+    client, session_factory = _create_test_client(tmp_path)
+    service = SqlAlchemyTaskService(session_factory)
+    try:
+        with client:
+            for index in range(3):
+                service.create_task(
+                    CreateTaskRequest(
+                        project_id="project-1",
+                        task_kind="dataset-import",
+                        display_name=f"import dataset-{index}",
+                        created_by=DEFAULT_LOCAL_AUTH_USERNAME,
+                        task_id=f"task-fixed-{index}",
+                        created_at=f"2026-01-01T00:00:0{index}Z",
+                    )
+                )
+
+            list_response = client.get(
+                "/api/v1/tasks",
+                headers=_build_task_read_headers(),
+                params={
+                    "project_id": "project-1",
+                    "offset": 1,
+                    "limit": 1,
+                },
+            )
+
+        assert list_response.status_code == 200
+        assert list_response.headers["x-offset"] == "1"
+        assert list_response.headers["x-limit"] == "1"
+        assert list_response.headers["x-total-count"] == "3"
+        assert list_response.headers["x-has-more"] == "true"
+        assert list_response.headers["x-next-offset"] == "2"
+        assert [item["task_id"] for item in list_response.json()] == ["task-fixed-1"]
+    finally:
+        session_factory.engine.dispose()
+
+
 def test_task_events_websocket_streams_appended_events(tmp_path: Path) -> None:
     """验证任务事件 WebSocket 可以收到新追加的任务事件。"""
 

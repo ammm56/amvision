@@ -5,11 +5,13 @@ from __future__ import annotations
 import json
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query, Response, status
+from fastapi import APIRouter, Depends, Query, Request, Response, status
 from pydantic import BaseModel, Field
 
 from backend.contracts.nodes import NodePackManifest
+from backend.nodes.local_node_pack_loader import LocalNodePackLoader
 from backend.nodes.node_catalog_registry import NodeCatalogRegistry
+from backend.nodes.node_pack_loader import NodePackStatusItem, NodePackStatusLog, NodePackStatusSnapshot
 from backend.contracts.workflows.workflow_graph import (
     FlowApplication,
     NodeDefinition,
@@ -32,6 +34,7 @@ from backend.service.application.errors import (
     InvalidRequestError,
     PermissionDeniedError,
     ResourceNotFoundError,
+    ServiceConfigurationError,
 )
 from backend.service.application.workflows.workflow_service import (
     LocalWorkflowJsonService,
@@ -43,6 +46,7 @@ from backend.service.application.workflows.workflow_service import (
     WorkflowTemplateVersionSummary,
     WorkflowTemplateValidationSummary,
 )
+from backend.service.application.workflows.runtime_registry_loader import WorkflowNodeRuntimeRegistryLoader
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 
 
@@ -196,6 +200,68 @@ class WorkflowNodePaletteGroupResponse(BaseModel):
     node_definitions: list[NodeDefinition] = Field(default_factory=list, description="当前分组下的节点定义列表")
 
 
+class WorkflowNodePackStatusIssueResponse(BaseModel):
+    """描述 node pack 状态问题响应。"""
+
+    severity: str = Field(description="问题级别")
+    code: str = Field(description="稳定问题码")
+    message: str = Field(description="问题消息")
+    details: dict[str, object] = Field(default_factory=dict, description="附加问题细节")
+
+
+class WorkflowNodePackStatusLogResponse(BaseModel):
+    """描述 node pack 状态日志响应。"""
+
+    level: str = Field(description="日志级别")
+    message: str = Field(description="日志消息")
+    created_at: str = Field(description="日志生成时间")
+    details: dict[str, object] = Field(default_factory=dict, description="附加日志细节")
+
+
+class WorkflowNodePackDependencyStatusResponse(BaseModel):
+    """描述 node pack 依赖状态响应。"""
+
+    node_pack_id: str = Field(description="依赖的 node pack id")
+    version_range: str | None = Field(default=None, description="依赖版本范围")
+    installed: bool = Field(description="依赖包是否存在")
+    enabled: bool = Field(description="依赖包是否启用")
+    version: str | None = Field(default=None, description="当前发现的依赖包版本")
+    satisfied: bool = Field(description="依赖是否满足")
+
+
+class WorkflowNodePackStatusItemResponse(BaseModel):
+    """描述单个 node pack 状态响应。"""
+
+    node_pack_id: str = Field(description="node pack id")
+    display_name: str = Field(description="显示名称")
+    version: str | None = Field(default=None, description="版本号")
+    state: str = Field(description="状态：loaded、disabled 或 failed")
+    enabled: bool = Field(description="manifest 当前是否启用")
+    source_dir: str = Field(description="来源目录")
+    manifest_path: str | None = Field(default=None, description="manifest 文件路径")
+    custom_node_catalog_path: str | None = Field(default=None, description="自定义节点目录文件路径")
+    loaded_at: str | None = Field(default=None, description="最近一次 loader 扫描时间")
+    node_count: int = Field(description="当前成功加载的节点数量")
+    capabilities: list[str] = Field(default_factory=list, description="能力标签")
+    permission_scopes: list[str] = Field(default_factory=list, description="权限 scope")
+    dependencies: list[WorkflowNodePackDependencyStatusResponse] = Field(
+        default_factory=list,
+        description="依赖状态列表",
+    )
+    issues: list[WorkflowNodePackStatusIssueResponse] = Field(default_factory=list, description="问题列表")
+    logs: list[WorkflowNodePackStatusLogResponse] = Field(default_factory=list, description="状态日志")
+    manifest: dict[str, object] | None = Field(default=None, description="manifest JSON 摘要")
+
+
+class WorkflowNodePackStatusResponse(BaseModel):
+    """描述 node pack loader 状态快照响应。"""
+
+    generated_at: str = Field(description="快照生成时间")
+    custom_nodes_root_dir: str = Field(description="custom_nodes 根目录")
+    items: list[WorkflowNodePackStatusItemResponse] = Field(default_factory=list, description="node pack 状态列表")
+    logs: list[WorkflowNodePackStatusLogResponse] = Field(default_factory=list, description="聚合日志")
+
+
 class WorkflowTemplateSummaryResponse(BaseModel):
     """描述图模板聚合摘要响应。"""
 
@@ -306,6 +372,91 @@ def get_workflow_node_catalog(
         node_definitions=effective_node_definitions,
         palette_groups=_build_workflow_node_palette_groups(effective_node_definitions),
     )
+
+
+@workflows_router.get("/node-pack-status", response_model=WorkflowNodePackStatusResponse)
+def get_workflow_node_pack_status(
+    principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("workflows:read"))],
+    node_catalog_registry: Annotated[NodeCatalogRegistry, Depends(get_node_catalog_registry)],
+) -> WorkflowNodePackStatusResponse:
+    """读取本地 node pack loader 的真实状态快照。"""
+
+    _ = principal
+    node_pack_loader = _require_local_node_pack_loader(node_catalog_registry)
+    return _build_node_pack_status_response(node_pack_loader.get_node_pack_status_snapshot())
+
+
+@workflows_router.post("/node-packs/reload", response_model=WorkflowNodePackStatusResponse)
+def reload_workflow_node_packs(
+    principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("workflows:write"))],
+    node_catalog_registry: Annotated[NodeCatalogRegistry, Depends(get_node_catalog_registry)],
+    request: Request,
+) -> WorkflowNodePackStatusResponse:
+    """重新扫描并加载本地 node pack。"""
+
+    _ = principal
+    node_pack_loader = _require_local_node_pack_loader(node_catalog_registry)
+    snapshot = node_pack_loader.reload()
+    _refresh_workflow_runtime_registry(request)
+    return _build_node_pack_status_response(snapshot)
+
+
+@workflows_router.post("/node-packs/{node_pack_id}/validate", response_model=WorkflowNodePackStatusResponse)
+def validate_workflow_node_pack(
+    node_pack_id: str,
+    principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("workflows:read"))],
+    node_catalog_registry: Annotated[NodeCatalogRegistry, Depends(get_node_catalog_registry)],
+) -> WorkflowNodePackStatusResponse:
+    """只读校验单个本地 node pack。"""
+
+    _ = principal
+    node_pack_loader = _require_local_node_pack_loader(node_catalog_registry)
+    return _build_node_pack_status_response(node_pack_loader.validate(node_pack_id))
+
+
+@workflows_router.post("/node-packs/{node_pack_id}/enable", response_model=WorkflowNodePackStatusResponse)
+def enable_workflow_node_pack(
+    node_pack_id: str,
+    principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("workflows:write"))],
+    node_catalog_registry: Annotated[NodeCatalogRegistry, Depends(get_node_catalog_registry)],
+    request: Request,
+) -> WorkflowNodePackStatusResponse:
+    """启用本地 JSON manifest 中的 node pack。"""
+
+    _ = principal
+    node_pack_loader = _require_local_node_pack_loader(node_catalog_registry)
+    snapshot = node_pack_loader.set_node_pack_enabled(node_pack_id, True)
+    _refresh_workflow_runtime_registry(request)
+    return _build_node_pack_status_response(snapshot)
+
+
+@workflows_router.post("/node-packs/{node_pack_id}/disable", response_model=WorkflowNodePackStatusResponse)
+def disable_workflow_node_pack(
+    node_pack_id: str,
+    principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("workflows:write"))],
+    node_catalog_registry: Annotated[NodeCatalogRegistry, Depends(get_node_catalog_registry)],
+    request: Request,
+) -> WorkflowNodePackStatusResponse:
+    """禁用本地 JSON manifest 中的 node pack。"""
+
+    _ = principal
+    node_pack_loader = _require_local_node_pack_loader(node_catalog_registry)
+    snapshot = node_pack_loader.set_node_pack_enabled(node_pack_id, False)
+    _refresh_workflow_runtime_registry(request)
+    return _build_node_pack_status_response(snapshot)
+
+
+@workflows_router.get("/node-packs/{node_pack_id}/logs", response_model=list[WorkflowNodePackStatusLogResponse])
+def get_workflow_node_pack_logs(
+    node_pack_id: str,
+    principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("workflows:read"))],
+    node_catalog_registry: Annotated[NodeCatalogRegistry, Depends(get_node_catalog_registry)],
+) -> list[WorkflowNodePackStatusLogResponse]:
+    """读取单个本地 node pack 的状态日志。"""
+
+    _ = principal
+    node_pack_loader = _require_local_node_pack_loader(node_catalog_registry)
+    return _build_node_pack_log_responses(node_pack_loader.get_node_pack_logs(node_pack_id))
 
 
 @workflows_router.post("/templates/validate", response_model=WorkflowTemplateValidationResponse)
@@ -924,6 +1075,98 @@ def _build_application_summary_response(
         input_binding_ids=list(summary.input_binding_ids),
         output_binding_ids=list(summary.output_binding_ids),
     )
+
+
+def _require_local_node_pack_loader(node_catalog_registry: NodeCatalogRegistry) -> LocalNodePackLoader:
+    """读取当前服务中的本地 node pack loader。"""
+
+    node_pack_loader = node_catalog_registry.node_pack_loader
+    if not isinstance(node_pack_loader, LocalNodePackLoader):
+        raise ServiceConfigurationError(
+            "当前服务未启用本地 node pack loader",
+            details={"loader_type": type(node_pack_loader).__name__ if node_pack_loader is not None else None},
+        )
+    return node_pack_loader
+
+
+def _refresh_workflow_runtime_registry(request: Request) -> None:
+    """刷新当前应用状态中的 workflow node runtime registry。"""
+
+    runtime_registry_loader = getattr(request.app.state, "workflow_node_runtime_registry_loader", None)
+    if not isinstance(runtime_registry_loader, WorkflowNodeRuntimeRegistryLoader):
+        raise ServiceConfigurationError(
+            "当前服务尚未完成 workflow node runtime registry loader 装配",
+            details={"state_field": "workflow_node_runtime_registry_loader"},
+        )
+    runtime_registry_loader.refresh()
+
+
+def _build_node_pack_status_response(snapshot: NodePackStatusSnapshot) -> WorkflowNodePackStatusResponse:
+    """构建 node pack 状态快照响应。"""
+
+    return WorkflowNodePackStatusResponse(
+        generated_at=snapshot.generated_at,
+        custom_nodes_root_dir=snapshot.custom_nodes_root_dir,
+        items=[_build_node_pack_status_item_response(item) for item in snapshot.items],
+        logs=_build_node_pack_log_responses(snapshot.logs),
+    )
+
+
+def _build_node_pack_status_item_response(item: NodePackStatusItem) -> WorkflowNodePackStatusItemResponse:
+    """构建单个 node pack 状态响应。"""
+
+    return WorkflowNodePackStatusItemResponse(
+        node_pack_id=item.node_pack_id,
+        display_name=item.display_name,
+        version=item.version,
+        state=item.state,
+        enabled=item.enabled,
+        source_dir=item.source_dir,
+        manifest_path=item.manifest_path,
+        custom_node_catalog_path=item.custom_node_catalog_path,
+        loaded_at=item.loaded_at,
+        node_count=item.node_count,
+        capabilities=list(item.capabilities),
+        permission_scopes=list(item.permission_scopes),
+        dependencies=[
+            WorkflowNodePackDependencyStatusResponse(
+                node_pack_id=dependency.node_pack_id,
+                version_range=dependency.version_range,
+                installed=dependency.installed,
+                enabled=dependency.enabled,
+                version=dependency.version,
+                satisfied=dependency.satisfied,
+            )
+            for dependency in item.dependencies
+        ],
+        issues=[
+            WorkflowNodePackStatusIssueResponse(
+                severity=issue.severity,
+                code=issue.code,
+                message=issue.message,
+                details=issue.details,
+            )
+            for issue in item.issues
+        ],
+        logs=_build_node_pack_log_responses(item.logs),
+        manifest=item.manifest,
+    )
+
+
+def _build_node_pack_log_responses(
+    logs: tuple[NodePackStatusLog, ...],
+) -> list[WorkflowNodePackStatusLogResponse]:
+    """构建 node pack 状态日志响应列表。"""
+
+    return [
+        WorkflowNodePackStatusLogResponse(
+            level=log.level,
+            message=log.message,
+            created_at=log.created_at,
+            details=log.details,
+        )
+        for log in logs
+    ]
 
 
 def _build_workflow_node_palette_groups(

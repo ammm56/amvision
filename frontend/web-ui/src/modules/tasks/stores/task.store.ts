@@ -1,8 +1,27 @@
 import { defineStore } from 'pinia'
 
 import { cancelTask, getTask, getTaskEvents, listTasks } from '../services/task.service'
+import type { PaginationMeta } from '@/shared/api/pagination'
 import type { TaskEvent, TaskRecord, TaskState } from '@/shared/contracts'
 import { translate } from '@/platform/i18n'
+
+export const DEFAULT_TASK_PAGE_SIZE = 50
+
+interface TaskListLoadOptions {
+  offset?: number
+  limit?: number
+  reset?: boolean
+}
+
+function createPaginationState(): PaginationMeta {
+  return {
+    offset: 0,
+    limit: DEFAULT_TASK_PAGE_SIZE,
+    totalCount: 0,
+    hasMore: false,
+    nextOffset: null,
+  }
+}
 
 export function normalizeTaskState(task: TaskRecord): TaskState {
   const rawState = String(task.state ?? task.status ?? '').toLowerCase()
@@ -25,22 +44,46 @@ export const useTaskStore = defineStore('tasks', {
     tasks: [] as TaskRecord[],
     selectedTask: null as TaskRecord | null,
     selectedTaskEvents: [] as TaskEvent[],
+    listProjectId: null as string | null,
+    pagination: createPaginationState(),
     loading: false,
     detailLoading: false,
     error: null as string | null,
   }),
   actions: {
-    async loadTasks(projectId?: string | null): Promise<void> {
+    async loadTasks(projectId?: string | null, options: TaskListLoadOptions = {}): Promise<void> {
       this.loading = true
       this.error = null
       try {
-        const response = await listTasks(projectId)
+        const normalizedProjectId = projectId ?? null
+        const shouldResetOffset = options.reset === true || normalizedProjectId !== this.listProjectId
+        const nextLimit = typeof options.limit === 'number' && options.limit > 0 ? options.limit : this.pagination.limit
+        const nextOffset = shouldResetOffset ? 0 : Math.max(0, options.offset ?? this.pagination.offset)
+        const response = await listTasks({
+          projectId: normalizedProjectId,
+          offset: nextOffset,
+          limit: nextLimit,
+        })
         this.tasks = response.items
+        this.listProjectId = normalizedProjectId
+        this.pagination = response.pagination
       } catch (error) {
         this.error = error instanceof Error ? error.message : translate('tasks.listLoadFailed')
       } finally {
         this.loading = false
       }
+    },
+    async loadPreviousTasks(projectId?: string | null): Promise<void> {
+      if (this.pagination.offset <= 0) return
+      await this.loadTasks(projectId, {
+        offset: Math.max(0, this.pagination.offset - this.pagination.limit),
+      })
+    },
+    async loadNextTasks(projectId?: string | null): Promise<void> {
+      if (!this.pagination.hasMore) return
+      await this.loadTasks(projectId, {
+        offset: this.pagination.nextOffset ?? this.pagination.offset + this.pagination.limit,
+      })
     },
     async loadTask(taskId: string): Promise<void> {
       this.detailLoading = true

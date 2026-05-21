@@ -5,10 +5,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import pytest
-
 from backend.nodes.local_node_pack_loader import LocalNodePackLoader
-from backend.service.application.errors import ServiceConfigurationError
+from backend.nodes.node_pack_loader import NodePackStatusItem, NodePackStatusSnapshot
 
 
 def test_local_node_pack_loader_loads_enabled_custom_node_pack(tmp_path: Path) -> None:
@@ -72,7 +70,7 @@ def test_local_node_pack_loader_loads_enabled_node_pack_with_satisfied_dependenc
 def test_local_node_pack_loader_requires_declared_dependency_to_exist_before_enable(
     tmp_path: Path,
 ) -> None:
-    """验证启用节点包前会检查 manifest dependencies 中声明的节点包是否存在。"""
+    """验证缺少依赖的节点包会进入失败状态且不注册节点定义。"""
 
     custom_nodes_root_dir = _create_dependent_node_pack_fixture(
         tmp_path,
@@ -81,14 +79,20 @@ def test_local_node_pack_loader_requires_declared_dependency_to_exist_before_ena
     )
     node_pack_loader = LocalNodePackLoader(custom_nodes_root_dir)
 
-    with pytest.raises(ServiceConfigurationError, match="缺少依赖节点包"):
-        node_pack_loader.refresh()
+    node_pack_loader.refresh()
+    catalog_snapshot = node_pack_loader.get_catalog_snapshot()
+    status_snapshot = node_pack_loader.get_node_pack_status_snapshot()
+    status_item = _find_status_item(status_snapshot, "barcode.protocol-nodes")
+
+    assert catalog_snapshot.node_definitions == ()
+    assert status_item.state == "failed"
+    assert [issue.code for issue in status_item.issues] == ["dependency_unsatisfied"]
 
 
 def test_local_node_pack_loader_requires_dependency_to_be_enabled_before_enable(
     tmp_path: Path,
 ) -> None:
-    """验证启用节点包前会检查依赖节点包是否已经启用。"""
+    """验证依赖节点包未启用时依赖方会进入失败状态。"""
 
     custom_nodes_root_dir = _create_node_pack_fixture(tmp_path, enabled_by_default=False)
     _create_dependent_node_pack_fixture(
@@ -98,14 +102,25 @@ def test_local_node_pack_loader_requires_dependency_to_be_enabled_before_enable(
     )
     node_pack_loader = LocalNodePackLoader(custom_nodes_root_dir)
 
-    with pytest.raises(ServiceConfigurationError, match="依赖节点包未启用"):
-        node_pack_loader.refresh()
+    node_pack_loader.refresh()
+    catalog_snapshot = node_pack_loader.get_catalog_snapshot()
+    status_snapshot = node_pack_loader.get_node_pack_status_snapshot()
+    status_item = _find_status_item(status_snapshot, "barcode.protocol-nodes")
+
+    assert {manifest.node_pack_id for manifest in catalog_snapshot.node_pack_manifests} == {
+        "opencv.basic-nodes",
+        "barcode.protocol-nodes",
+    }
+    assert catalog_snapshot.node_definitions == ()
+    assert status_item.state == "failed"
+    assert status_item.dependencies[0].installed is True
+    assert status_item.dependencies[0].enabled is False
 
 
 def test_local_node_pack_loader_requires_dependency_version_to_match_before_enable(
     tmp_path: Path,
 ) -> None:
-    """验证启用节点包前会检查依赖节点包版本是否满足 manifest 要求。"""
+    """验证依赖版本不满足时依赖方会进入失败状态。"""
 
     custom_nodes_root_dir = _create_node_pack_fixture(tmp_path, version="0.2.0")
     _create_dependent_node_pack_fixture(
@@ -115,8 +130,36 @@ def test_local_node_pack_loader_requires_dependency_version_to_match_before_enab
     )
     node_pack_loader = LocalNodePackLoader(custom_nodes_root_dir)
 
-    with pytest.raises(ServiceConfigurationError, match="依赖节点包版本不满足要求"):
-        node_pack_loader.refresh()
+    node_pack_loader.refresh()
+    catalog_snapshot = node_pack_loader.get_catalog_snapshot()
+    status_snapshot = node_pack_loader.get_node_pack_status_snapshot()
+    status_item = _find_status_item(status_snapshot, "barcode.protocol-nodes")
+
+    assert {node.node_type_id for node in catalog_snapshot.node_definitions} == {"custom.opencv.draw-detections"}
+    assert status_item.state == "failed"
+    assert status_item.dependencies[0].installed is True
+    assert status_item.dependencies[0].version == "0.2.0"
+    assert status_item.dependencies[0].satisfied is False
+
+
+def test_local_node_pack_loader_status_reports_disabled_and_missing_manifest(
+    tmp_path: Path,
+) -> None:
+    """验证状态快照会返回禁用节点包和缺少 manifest 的目录。"""
+
+    custom_nodes_root_dir = _create_node_pack_fixture(tmp_path, enabled_by_default=False)
+    (tmp_path / "custom_nodes" / "missing_manifest_nodes").mkdir(parents=True, exist_ok=True)
+    node_pack_loader = LocalNodePackLoader(custom_nodes_root_dir)
+
+    node_pack_loader.refresh()
+    status_snapshot = node_pack_loader.get_node_pack_status_snapshot()
+    disabled_item = _find_status_item(status_snapshot, "opencv.basic-nodes")
+    missing_item = _find_status_item(status_snapshot, "missing_manifest_nodes")
+
+    assert disabled_item.state == "disabled"
+    assert disabled_item.enabled is False
+    assert missing_item.state == "failed"
+    assert [issue.code for issue in missing_item.issues] == ["manifest_missing"]
 
 
 def _create_node_pack_fixture(
@@ -208,6 +251,15 @@ def register(context):
         encoding="utf-8",
     )
     return tmp_path / "custom_nodes"
+
+
+def _find_status_item(snapshot: NodePackStatusSnapshot, node_pack_id: str) -> NodePackStatusItem:
+    """从状态快照中查找指定 node pack 状态项。"""
+
+    for item in snapshot.items:
+        if item.node_pack_id == node_pack_id:
+            return item
+    raise AssertionError(f"未找到 node pack 状态项: {node_pack_id}")
 
 
 def _create_dependent_node_pack_fixture(

@@ -14,12 +14,13 @@ from backend.service.application.auth.default_local_auth_seeder import (
 from backend.service.application.auth.local_auth_service import LocalAuthService, LocalAuthUserCreateRequest
 from backend.service.settings import (
     BackendServiceAuthConfig,
-    BackendServiceLocalAuthConfig,
     BackendServiceAuthProviderConfig,
+    BackendServiceLocalAuthConfig,
     BackendServiceProjectCatalogItemConfig,
     BackendServiceProjectsConfig,
     BackendServiceSettings,
     BackendServiceTaskManagerConfig,
+    LocalBufferBrokerSettings,
 )
 from tests.api_test_support import build_bearer_headers, create_test_runtime
 
@@ -341,6 +342,7 @@ def test_default_local_auth_initializer_skips_non_empty_user_table(tmp_path: Pat
 
     application = create_app(
         settings=BackendServiceSettings(
+            local_buffer_broker=LocalBufferBrokerSettings(enabled=False),
             task_manager=BackendServiceTaskManagerConfig(enabled=False),
         ),
         session_factory=session_factory,
@@ -705,6 +707,7 @@ def _create_local_auth_test_client(
                 ),
             ),
             projects=projects_config or BackendServiceProjectsConfig(),
+            local_buffer_broker=LocalBufferBrokerSettings(enabled=False),
             task_manager=BackendServiceTaskManagerConfig(enabled=False),
         ),
         session_factory=session_factory,

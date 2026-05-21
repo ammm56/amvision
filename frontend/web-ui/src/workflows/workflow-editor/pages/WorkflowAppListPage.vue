@@ -28,7 +28,7 @@
       <div class="summary-grid">
         <div>
           <span>{{ t('workflowEditor.fields.applications') }}</span>
-          <strong>{{ workflowApps.length }}</strong>
+          <strong>{{ applicationCount }}</strong>
         </div>
         <div>
           <span>{{ t('workflowEditor.fields.appRuntimes') }}</span>
@@ -99,20 +99,34 @@
           </tbody>
         </table>
       </div>
+      <PaginationControls
+        v-if="workflowApps.length > 0"
+        class="workflow-app-list__pagination"
+        :offset="applicationPagination.offset"
+        :limit="applicationPagination.limit"
+        :item-count="workflowApps.length"
+        :total-count="applicationPagination.totalCount"
+        :has-more="applicationPagination.hasMore"
+        :disabled="loading"
+        @previous="loadPreviousPage"
+        @next="loadNextPage"
+      />
     </section>
   </section>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { Plus, RefreshCw, Trash2 } from '@lucide/vue'
 import { RouterLink } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 
 import { useProjectStore } from '@/app/stores/project.store'
 import { useSessionStore } from '@/app/stores/session.store'
+import type { PaginationMeta } from '@/shared/api/pagination'
 import { formatSystemDateTime } from '@/shared/formatters/date-time'
 import Button from '@/shared/ui/components/Button.vue'
+import PaginationControls from '@/shared/ui/components/PaginationControls.vue'
 import StatusBadge from '@/shared/ui/data-display/StatusBadge.vue'
 import EmptyState from '@/shared/ui/feedback/EmptyState.vue'
 import InlineError from '@/shared/ui/feedback/InlineError.vue'
@@ -132,10 +146,12 @@ const nodeCatalog = ref<WorkflowNodeCatalogResponse | null>(null)
 const workflowApps = ref<WorkflowAppSummary[]>([])
 const appRuntimes = ref<WorkflowAppRuntime[]>([])
 const deletingApplicationId = ref<string | null>(null)
+const applicationPagination = ref<PaginationMeta>(createPaginationState())
 
 const selectedProjectId = computed(() => projectStore.selectedProjectId)
 const canWriteWorkflows = computed(() => sessionStore.hasScopes(['workflows:write']))
 const runningRuntimeCount = computed(() => appRuntimes.value.filter((runtime) => runtime.observed_state === 'running').length)
+const applicationCount = computed(() => applicationPagination.value.totalCount ?? workflowApps.value.length)
 
 function runtimeTone(state: string): 'neutral' | 'success' | 'warning' | 'danger' | 'info' {
   if (state === 'running') return 'success'
@@ -152,17 +168,24 @@ function detailPath(applicationId: string): string {
   return `/workflows/apps/${encodeURIComponent(applicationId)}`
 }
 
-async function loadPage(): Promise<void> {
+async function loadPage(offset = applicationPagination.value.offset): Promise<void> {
+  if (!selectedProjectId.value) {
+    workflowApps.value = []
+    appRuntimes.value = []
+    applicationPagination.value = createPaginationState()
+    return
+  }
   loading.value = true
   errorMessage.value = null
   try {
     const [catalogResponse, workflowAppResponse] = await Promise.all([
       getWorkflowNodeCatalog(),
-      listWorkflowApps(selectedProjectId.value, { limit: 100 }),
+      listWorkflowApps(selectedProjectId.value, { offset, limit: applicationPagination.value.limit }),
     ])
     nodeCatalog.value = catalogResponse
     workflowApps.value = workflowAppResponse.items
     appRuntimes.value = workflowAppResponse.runtimes
+    applicationPagination.value = workflowAppResponse.pagination
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : t('workflowEditor.messages.loadFailed')
   } finally {
@@ -187,7 +210,10 @@ async function deleteWorkflowApp(workflowApp: WorkflowAppSummary): Promise<void>
         workflowApp.application.template_version,
       )
     }
-    workflowApps.value = workflowApps.value.filter((item) => item.application.application_id !== applicationId)
+    const nextOffset = workflowApps.value.length === 1
+      ? Math.max(0, applicationPagination.value.offset - applicationPagination.value.limit)
+      : applicationPagination.value.offset
+    await loadPage(nextOffset)
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : '删除应用失败'
   } finally {
@@ -202,5 +228,37 @@ function isGraphVersionOnlyUsedByApplication(workflowApp: WorkflowAppSummary): b
   })
 }
 
-onMounted(loadPage)
+function loadPreviousPage(): void {
+  void loadPage(Math.max(0, applicationPagination.value.offset - applicationPagination.value.limit))
+}
+
+function loadNextPage(): void {
+  if (!applicationPagination.value.hasMore) return
+  void loadPage(applicationPagination.value.nextOffset ?? applicationPagination.value.offset + applicationPagination.value.limit)
+}
+
+function createPaginationState(): PaginationMeta {
+  return {
+    offset: 0,
+    limit: 50,
+    totalCount: 0,
+    hasMore: false,
+    nextOffset: null,
+  }
+}
+
+watch(
+  () => selectedProjectId.value,
+  () => {
+    applicationPagination.value = createPaginationState()
+    void loadPage(0)
+  },
+  { immediate: true },
+)
 </script>
+
+<style scoped>
+.workflow-app-list__pagination {
+  margin-top: 16px;
+}
+</style>

@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 
 import { getRuntimeConfig } from '@/platform/runtime/runtime-config'
 import type { ProjectCatalogItem, ProjectSummary } from '@/shared/contracts'
-import { bootstrapProject, getProjectSummary, listProjects } from '@/modules/projects/services/project.service'
+import { bootstrapProject, getProjectSummary, listProjects, type ProjectBootstrapInput } from '@/modules/projects/services/project.service'
 import { translate } from '@/platform/i18n'
 
 export const useProjectStore = defineStore('project', {
@@ -45,6 +45,11 @@ export const useProjectStore = defineStore('project', {
     async bootstrapDefaultProject(): Promise<void> {
       await bootstrapProject({ project_id: getRuntimeConfig().defaultProjectId, display_name: translate('projects.defaultDisplayName') })
       await this.loadProjects()
+    },
+    async createProject(input: ProjectBootstrapInput): Promise<void> {
+      const project = await bootstrapProject(input)
+      await this.loadProjects()
+      await this.selectProject(project.project_id)
     },
   },
 })

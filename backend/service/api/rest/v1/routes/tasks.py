@@ -4,9 +4,10 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, Query, Response, status
 from pydantic import BaseModel, Field
 
+from backend.service.api.rest.v1.pagination import DEFAULT_LIST_LIMIT, MAX_LIST_LIMIT, paginate_sequence
 from backend.service.api.deps.auth import AuthenticatedPrincipal, require_scopes
 from backend.service.api.deps.db import get_session_factory
 from backend.service.application.errors import InvalidRequestError, PermissionDeniedError, ResourceNotFoundError
@@ -120,6 +121,7 @@ def create_task(
 @tasks_router.get("", response_model=list[TaskSummaryResponse])
 def list_tasks(
 	principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("tasks:read"))],
+	response: Response,
 	session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
 	project_id: Annotated[str | None, Query(description="所属 Project id")] = None,
 	task_kind: Annotated[str | None, Query(description="任务类型")] = None,
@@ -132,7 +134,8 @@ def list_tasks(
 		str | None,
 		Query(description="task_spec.dataset_import_id 或 metadata.source_import_id"),
 	] = None,
-	limit: Annotated[int, Query(ge=1, le=500, description="最大返回数量")] = 100,
+	offset: Annotated[int, Query(ge=0, description="结果偏移量")] = 0,
+	limit: Annotated[int, Query(ge=1, le=MAX_LIST_LIMIT, description="最大返回数量")] = DEFAULT_LIST_LIMIT,
 ) -> list[TaskSummaryResponse]:
 	"""按公开筛选字段列出任务摘要。"""
 
@@ -151,13 +154,14 @@ def list_tasks(
 					parent_task_id=parent_task_id,
 					dataset_id=dataset_id,
 					source_import_id=source_import_id,
-					limit=limit,
+					limit=None,
 				)
 			)
 		)
 
 	matched_tasks.sort(key=lambda task: (task.created_at, task.task_id), reverse=True)
-	return [_build_task_summary_response(task) for task in matched_tasks[:limit]]
+	paged_tasks = paginate_sequence(matched_tasks, response=response, offset=offset, limit=limit)
+	return [_build_task_summary_response(task) for task in paged_tasks]
 
 
 @tasks_router.get("/{task_id}", response_model=TaskDetailResponse)

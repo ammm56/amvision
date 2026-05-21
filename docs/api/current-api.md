@@ -87,6 +87,7 @@ WebSocket 资源流的统一消息结构、控制事件和重连规则见 [docs/
 | GET | /api/v1/system/bootstrap | 无 | 返回前端首屏初始化使用的主体、provider、visible_projects 和关键能力摘要。 |
 | GET | /api/v1/system/me | 仅需主体 | 返回当前主体、project_ids 和 scopes。 |
 | GET | /api/v1/system/database | system:read | 返回数据库连通性检查结果。 |
+| GET | /api/v1/system/diagnostics | auth:read | 返回设置页使用的应用、系统、Python、设备和服务诊断摘要。 |
 | GET | /api/v1/projects | workflows:read + models:read | 列出当前主体可见的 Project 目录项；支持 include_summary、offset、limit 和统一分页响应头。 |
 | POST | /api/v1/projects/bootstrap | datasets:write 或 workflows:write | 初始化一个 Project 目录、最小 manifest 和工作区骨架。 |
 | GET | /api/v1/projects/{project_id} | workflows:read + models:read | 读取一个 Project 的目录信息和当前 summary。 |
@@ -158,6 +159,12 @@ WebSocket 资源流的统一消息结构、控制事件和重连规则见 [docs/
 | GET | /api/v1/models/yolox/inference-tasks/{task_id} | tasks:read | 查询单条 YOLOX 推理任务详情和事件流。 |
 | GET | /api/v1/models/yolox/inference-tasks/{task_id}/result | tasks:read | 读取当前 YOLOX 推理结果文件状态和 payload。 |
 | GET | /api/v1/workflows/node-catalog | workflows:read | 读取 workflow 节点目录快照，并支持按分类、节点包、payload 类型和关键词过滤。 |
+| GET | /api/v1/workflows/node-pack-status | workflows:read | 读取本地 node pack loader 状态，包含已加载、加载失败、禁用、manifest 问题、来源路径、加载时间和最近日志。 |
+| POST | /api/v1/workflows/node-packs/reload | workflows:write | 重新扫描本地 node pack，并刷新 workflow node runtime registry。 |
+| POST | /api/v1/workflows/node-packs/{node_pack_id}/validate | workflows:read | 只读校验单个本地 node pack，返回该节点包状态与问题列表。 |
+| POST | /api/v1/workflows/node-packs/{node_pack_id}/enable | workflows:write | 启用 JSON manifest 中的本地 node pack，并刷新节点目录与运行时注册表。 |
+| POST | /api/v1/workflows/node-packs/{node_pack_id}/disable | workflows:write | 禁用 JSON manifest 中的本地 node pack，并刷新节点目录与运行时注册表。 |
+| GET | /api/v1/workflows/node-packs/{node_pack_id}/logs | workflows:read | 读取单个本地 node pack 最近一次 loader 状态日志。 |
 | POST | /api/v1/workflows/templates/validate | workflows:read | 校验一份 workflow template。 |
 | GET | /api/v1/workflows/projects/{project_id}/templates | workflows:read | 列出指定 Project 下的 workflow template 摘要；支持 offset、limit 和统一分页响应头。 |
 | GET | /api/v1/workflows/projects/{project_id}/templates/{template_id}/versions | workflows:read | 列出指定 workflow template 的全部版本摘要；支持 offset、limit 和统一分页响应头。 |
@@ -322,6 +329,12 @@ WebSocket 资源流的统一消息结构、控制事件和重连规则见 [docs/
 
 - 需要 system:read
 - 返回字段：status、database、scalar、principal_id、request_id
+
+### GET /api/v1/system/diagnostics
+
+- 需要 auth:read
+- 返回字段：generated_at、request_id、about、system、python_runtime、devices、services
+- 当前用于前端设置页的只读诊断与系统信息展示；字段中会隐藏数据库 URL 密码，不返回 token 明文。
 
 ## projects 资源组
 
