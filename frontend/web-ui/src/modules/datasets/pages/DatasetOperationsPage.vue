@@ -33,29 +33,15 @@
           </label>
           <label class="field">
             <span>{{ t('datasetOps.fields.formatType') }}</span>
-            <select v-model="formatType">
-              <option value="">{{ t('datasetOps.fields.autoDetect') }}</option>
-              <option value="coco">COCO</option>
-              <option value="voc">VOC</option>
-            </select>
+            <SelectField :model-value="formatType" :options="formatTypeOptions" @update:model-value="setFormatType" />
           </label>
           <label class="field">
             <span>{{ t('datasetOps.fields.taskType') }}</span>
-            <select v-model="taskType">
-              <option value="detection">detection</option>
-              <option value="instance-segmentation">instance-segmentation</option>
-              <option value="semantic-segmentation">semantic-segmentation</option>
-              <option value="pose">pose</option>
-            </select>
+            <SelectField :model-value="taskType" :options="taskTypeOptions" @update:model-value="setTaskType" />
           </label>
           <label class="field">
             <span>{{ t('datasetOps.fields.splitStrategy') }}</span>
-            <select v-model="splitStrategy">
-              <option value="auto">auto</option>
-              <option value="train">train</option>
-              <option value="val">val</option>
-              <option value="test">test</option>
-            </select>
+            <SelectField :model-value="splitStrategy" :options="splitStrategyOptions" @update:model-value="setSplitStrategy" />
           </label>
           <FilePicker
             v-model="importFile"
@@ -98,9 +84,7 @@
           </label>
           <label class="field">
             <span>{{ t('datasetOps.fields.exportFormat') }}</span>
-            <select v-model="exportFormatId" required>
-              <option v-for="item in exportFormatOptions" :key="item" :value="item">{{ item }}</option>
-            </select>
+            <SelectField :model-value="exportFormatId" :options="exportFormatSelectOptions" @update:model-value="setExportFormatId" />
           </label>
           <label class="field field--wide">
             <span>{{ t('datasetOps.fields.displayName') }}</span>
@@ -243,6 +227,7 @@ import { useSessionStore } from '@/app/stores/session.store'
 import { formatSystemDateTime } from '@/shared/formatters/date-time'
 import Button from '@/shared/ui/components/Button.vue'
 import FilePicker from '@/shared/ui/components/FilePicker.vue'
+import SelectField from '@/shared/ui/components/Select.vue'
 import EmptyState from '@/shared/ui/feedback/EmptyState.vue'
 import InlineError from '@/shared/ui/feedback/InlineError.vue'
 import StatusBadge from '@/shared/ui/data-display/StatusBadge.vue'
@@ -250,6 +235,22 @@ import StatusBadge from '@/shared/ui/data-display/StatusBadge.vue'
 const projectStore = useProjectStore()
 const sessionStore = useSessionStore()
 const { t } = useI18n()
+
+type SelectValue = string | number | boolean | null
+
+const taskTypeOptions = [
+  { label: 'detection', value: 'detection' },
+  { label: 'instance-segmentation', value: 'instance-segmentation' },
+  { label: 'semantic-segmentation', value: 'semantic-segmentation' },
+  { label: 'pose', value: 'pose' },
+]
+
+const splitStrategyOptions = [
+  { label: 'auto', value: 'auto' },
+  { label: 'train', value: 'train' },
+  { label: 'val', value: 'val' },
+  { label: 'test', value: 'test' },
+]
 
 const datasetId = ref('dataset-1')
 const datasetVersionId = ref('')
@@ -282,6 +283,32 @@ const exportFormatOptions = computed(() => {
   if (!catalog) return []
   return catalog.implemented_formats.length > 0 ? catalog.implemented_formats : catalog.items.map((item) => item.format_id)
 })
+const formatTypeOptions = computed(() => [
+  { label: t('datasetOps.fields.autoDetect'), value: '' },
+  { label: 'COCO', value: 'coco' },
+  { label: 'VOC', value: 'voc' },
+])
+const exportFormatSelectOptions = computed(() => exportFormatOptions.value.map((item) => ({ label: item, value: item })))
+
+function selectValueToString(value: SelectValue): string {
+  return typeof value === 'string' ? value : String(value ?? '')
+}
+
+function setFormatType(value: SelectValue): void {
+  formatType.value = selectValueToString(value)
+}
+
+function setTaskType(value: SelectValue): void {
+  taskType.value = selectValueToString(value) || 'detection'
+}
+
+function setSplitStrategy(value: SelectValue): void {
+  splitStrategy.value = selectValueToString(value) || 'auto'
+}
+
+function setExportFormatId(value: SelectValue): void {
+  exportFormatId.value = selectValueToString(value)
+}
 
 onMounted(async () => {
   if (projectStore.projects.length === 0) {

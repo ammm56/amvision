@@ -39,11 +39,36 @@ export interface WorkflowTriggerSource {
   debounce_window_ms?: number | null
   idempotency_key_path?: string | null
   last_triggered_at?: string | null
-  last_error?: string | null
+  last_error?: WorkflowJsonObject | string | null
   health_summary: WorkflowJsonObject
   metadata: WorkflowJsonObject
   created_at: string
   updated_at: string
+}
+
+export interface WorkflowTriggerSourceHealthSummary {
+  adapter_configured: boolean
+  adapter_running: boolean
+  request_count: number
+  request_count_rollover_count: number
+  success_count: number
+  success_count_rollover_count: number
+  error_count: number
+  error_count_rollover_count: number
+  timeout_count: number
+  timeout_count_rollover_count: number
+  recent_error?: WorkflowJsonObject | string | null
+  supervisor: WorkflowJsonObject
+}
+
+export interface WorkflowTriggerSourceHealth {
+  trigger_source_id: string
+  enabled: boolean
+  desired_state: string
+  observed_state: string
+  last_triggered_at?: string | null
+  last_error?: WorkflowJsonObject | string | null
+  health_summary: WorkflowTriggerSourceHealthSummary
 }
 
 export interface WorkflowTriggerSourceCreateInput {
@@ -78,6 +103,10 @@ export async function listWorkflowTriggerSources(query: { projectId: string; off
   return { items: payload, pagination: parsePaginationHeaders(headers) }
 }
 
+export async function getWorkflowTriggerSource(triggerSourceId: string): Promise<WorkflowTriggerSource> {
+  return apiRequest<WorkflowTriggerSource>(`/workflows/trigger-sources/${encodePathPart(triggerSourceId)}`)
+}
+
 export async function createWorkflowTriggerSource(input: WorkflowTriggerSourceCreateInput): Promise<WorkflowTriggerSource> {
   return apiRequest<WorkflowTriggerSource>('/workflows/trigger-sources', {
     method: 'POST',
@@ -110,4 +139,12 @@ export async function enableWorkflowTriggerSource(triggerSourceId: string): Prom
 
 export async function disableWorkflowTriggerSource(triggerSourceId: string): Promise<WorkflowTriggerSource> {
   return apiRequest<WorkflowTriggerSource>(`/workflows/trigger-sources/${encodePathPart(triggerSourceId)}/disable`, { method: 'POST' })
+}
+
+export async function deleteWorkflowTriggerSource(triggerSourceId: string): Promise<void> {
+  return apiRequest<void>(`/workflows/trigger-sources/${encodePathPart(triggerSourceId)}`, { method: 'DELETE', responseType: 'void' })
+}
+
+export async function getWorkflowTriggerSourceHealth(triggerSourceId: string): Promise<WorkflowTriggerSourceHealth> {
+  return apiRequest<WorkflowTriggerSourceHealth>(`/workflows/trigger-sources/${encodePathPart(triggerSourceId)}/health`)
 }

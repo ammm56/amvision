@@ -23,11 +23,7 @@
       <div v-else class="form-grid">
         <label class="field field--wide">
           <span>{{ t('inferenceOps.fields.deploymentId') }}</span>
-          <select v-model="selectedDeploymentId" @change="selectDeployment">
-            <option v-for="deployment in deployments" :key="deployment.deployment_instance_id" :value="deployment.deployment_instance_id">
-              {{ deployment.display_name || deployment.deployment_instance_id }} / {{ deployment.model_name }}
-            </option>
-          </select>
+          <SelectField :model-value="selectedDeploymentId" :options="deploymentOptions" @update:model-value="setSelectedDeployment" />
         </label>
       </div>
       <div v-if="selectedDeployment" class="summary-grid">
@@ -70,10 +66,7 @@
         </label>
         <label class="field">
           <span>{{ t('inferenceOps.fields.transportMode') }}</span>
-          <select v-model="inputTransportMode">
-            <option value="storage">storage</option>
-            <option value="memory">memory</option>
-          </select>
+          <SelectField :model-value="inputTransportMode" :options="inputTransportModeOptions" @update:model-value="setInputTransportMode" />
         </label>
         <FilePicker
           v-model="imageFile"
@@ -253,6 +246,7 @@ import { useSessionStore } from '@/app/stores/session.store'
 import { formatSystemDateTime } from '@/shared/formatters/date-time'
 import Button from '@/shared/ui/components/Button.vue'
 import FilePicker from '@/shared/ui/components/FilePicker.vue'
+import SelectField from '@/shared/ui/components/Select.vue'
 import EmptyState from '@/shared/ui/feedback/EmptyState.vue'
 import InlineError from '@/shared/ui/feedback/InlineError.vue'
 import StatusBadge from '@/shared/ui/data-display/StatusBadge.vue'
@@ -260,6 +254,8 @@ import StatusBadge from '@/shared/ui/data-display/StatusBadge.vue'
 const projectStore = useProjectStore()
 const sessionStore = useSessionStore()
 const { t } = useI18n()
+
+type SelectValue = string | number | boolean | null
 
 const deployments = ref<YoloXDeploymentInstance[]>([])
 const selectedDeploymentId = ref('')
@@ -289,6 +285,14 @@ const selectedProjectId = computed(() => projectStore.selectedProjectId)
 const canReadTasks = computed(() => sessionStore.hasScopes(['tasks:read']))
 const canWriteTasks = computed(() => sessionStore.hasScopes(['tasks:write']))
 const selectedDeployment = computed(() => deployments.value.find((item) => item.deployment_instance_id === selectedDeploymentId.value) ?? null)
+const deploymentOptions = computed(() => deployments.value.map((deployment) => ({
+  label: `${deployment.display_name || deployment.deployment_instance_id} / ${deployment.model_name}`,
+  value: deployment.deployment_instance_id,
+})))
+const inputTransportModeOptions = [
+  { label: 'storage', value: 'storage' },
+  { label: 'memory', value: 'memory' },
+]
 const directInferenceResultJson = computed(() => (directInferenceResult.value ? JSON.stringify(directInferenceResult.value, null, 2) : ''))
 const selectedInferenceTaskResultJson = computed(() => (selectedInferenceTaskResult.value ? JSON.stringify(selectedInferenceTaskResult.value, null, 2) : ''))
 const directPreviewImageSrc = computed(() => buildPreviewImageSrc(directInferenceResult.value?.preview_image_base64))
@@ -360,6 +364,16 @@ async function selectDeployment(): Promise<void> {
   selectedInferenceTaskResult.value = null
   expandedInferenceTaskId.value = null
   await loadInferenceTasks()
+}
+
+async function setSelectedDeployment(value: SelectValue): Promise<void> {
+  if (typeof value !== 'string') return
+  selectedDeploymentId.value = value
+  await selectDeployment()
+}
+
+function setInputTransportMode(value: SelectValue): void {
+  inputTransportMode.value = value === 'memory' ? 'memory' : 'storage'
 }
 
 async function loadInferenceTasks(): Promise<void> {

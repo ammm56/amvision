@@ -28,11 +28,11 @@
           <Moon v-else :size="16" />
           {{ graphTheme === 'dark' ? t('preferences.light') : t('preferences.dark') }}
         </Button>
-        <Button variant="secondary" :disabled="previewing || !workflowApp" @click="runPreview">
+        <Button variant="secondary" :disabled="previewDisabled" @click="runPreview">
           <Play :size="16" />
           {{ t('workflowEditor.actions.previewRun') }}
         </Button>
-        <Button variant="primary" :disabled="saving || !workflowApp" @click="saveCurrentWorkflowApp">
+        <Button variant="primary" :disabled="saveDisabled" @click="saveCurrentWorkflowApp">
           <Save :size="16" />
           {{ t('workflowEditor.actions.saveWorkflowApp') }}
         </Button>
@@ -55,28 +55,28 @@
             :key="`${link.edgeId}-hit-area`"
             class="workflow-graph-link-hit-area"
             :d="linkPath(link)"
-            @click.stop="selectEdge(link.edgeId)"
-            @contextmenu.prevent.stop="openEdgeContextMenu($event, link)"
+            @click.stop="selectGraphLink(link)"
+            @contextmenu.prevent.stop="openGraphLinkContextMenu($event, link)"
           />
           <path
             v-for="link in graphLinks"
             :key="link.edgeId"
             class="workflow-graph-link"
-            :class="{ 'is-selected': selectedEdgeId === link.edgeId }"
+            :class="{ 'is-selected': isGraphLinkSelected(link), 'workflow-graph-link--boundary': link.linkKind !== 'edge' }"
             :d="linkPath(link)"
-            @click.stop="selectEdge(link.edgeId)"
-            @contextmenu.prevent.stop="openEdgeContextMenu($event, link)"
+            @click.stop="selectGraphLink(link)"
+            @contextmenu.prevent.stop="openGraphLinkContextMenu($event, link)"
           />
           <circle
             v-for="marker in graphLinkMidpoints"
             :key="`${marker.edgeId}-midpoint`"
             class="workflow-graph-link-midpoint"
-            :class="{ 'is-selected': selectedEdgeId === marker.edgeId }"
+            :class="{ 'is-selected': isGraphLinkSelected(marker.link) }"
             :cx="marker.x"
             :cy="marker.y"
             r="4.5"
-            @click.stop="selectEdge(marker.edgeId)"
-            @contextmenu.prevent.stop="openEdgeContextMenu($event, marker.link)"
+            @click.stop="selectGraphLink(marker.link)"
+            @contextmenu.prevent.stop="openGraphLinkContextMenu($event, marker.link)"
           />
           <circle
             v-for="handle in selectedEdgeReconnectHandles"
@@ -98,16 +98,41 @@
           role="button"
           tabindex="0"
           class="workflow-graph-boundary-node"
-          :class="[`workflow-graph-boundary-node--${boundary.kind}`, { 'is-selected': selectedBoundaryKind === boundary.kind }]"
-          :style="{ left: `${boundary.x}px`, top: `${boundary.y}px`, width: `${boundary.width}px` }"
+          :class="[`workflow-graph-boundary-node--${boundary.kind}`, { 'is-selected': selectedBoundaryKind === boundary.kind, 'is-dragging': boundaryDragState?.boundaryKind === boundary.kind }]"
+          :style="{ left: `${boundary.x}px`, top: `${boundary.y}px`, width: `${boundary.width}px`, height: `${boundaryNodeHeight(boundary)}px` }"
+          @mousedown.stop="startBoundaryDrag($event, boundary)"
           @click.stop="selectApplicationBoundary(boundary.kind)"
+          @contextmenu.prevent.stop="openBoundaryContextMenu($event, boundary)"
         >
-          <span class="workflow-graph-boundary-node__title">{{ boundary.title }}</span>
-          <span class="workflow-graph-boundary-node__type">{{ boundary.description }}</span>
-          <span v-for="binding in boundary.bindings" :key="`${boundary.id}-${binding.binding_id}`" class="workflow-graph-boundary-binding">
-            <strong>{{ binding.binding_id }}</strong>
-            <small>{{ getBindingPayloadTypeId(binding) || 'unknown' }}</small>
-          </span>
+          <div class="workflow-graph-boundary-node__header">
+            <span class="workflow-graph-boundary-node__title">{{ boundary.title }}</span>
+            <span class="workflow-graph-boundary-node__type">{{ boundary.description }}</span>
+          </div>
+          <div class="workflow-graph-boundary-node__ports">
+            <span
+              v-for="binding in boundary.bindings"
+              :key="`${boundary.id}-${binding.binding_id}`"
+              class="workflow-graph-port workflow-graph-boundary-port"
+              :class="[
+                `workflow-graph-port--${boundary.portDirection}`,
+                { 'is-connected': isBoundaryPortConnected(boundary.kind, binding), 'is-selected-endpoint': selectedBoundaryKind === boundary.kind },
+              ]"
+              :data-node-id="boundary.id"
+              :data-port-name="binding.binding_id"
+              :data-payload-type-id="getBindingPayloadTypeId(binding)"
+              :data-port-direction="boundary.portDirection"
+              @mousedown.stop="startBoundaryPortConnection($event, boundary, binding)"
+              @click.stop="selectBoundaryBinding(boundary.kind, binding)"
+              @contextmenu.prevent.stop="openBoundaryPortContextMenu($event, boundary, binding)"
+            >
+              <span v-if="boundary.portDirection === 'input'" class="workflow-graph-port__dot" aria-hidden="true" />
+              <span class="workflow-graph-port__label">
+                <strong>{{ binding.binding_id }}</strong>
+                <small>{{ getBindingPayloadTypeId(binding) || 'unknown' }}</small>
+              </span>
+              <span v-if="boundary.portDirection === 'output'" class="workflow-graph-port__dot" aria-hidden="true" />
+            </span>
+          </div>
         </div>
 
         <div
@@ -140,6 +165,7 @@
                 data-port-direction="input"
                 @mousedown.stop.prevent="startPortConnection($event, node, row.input, 'input')"
                 @click.stop="selectPortEndpoint(node, row.input, 'input')"
+                @contextmenu.prevent.stop="openPortContextMenu($event, node, row.input, 'input')"
               >
                 <span class="workflow-graph-port__dot" aria-hidden="true" />
                 <span class="workflow-graph-port__label">{{ row.input.display_name || row.input.name }}</span>
@@ -159,6 +185,7 @@
                 data-port-direction="output"
                 @mousedown.stop.prevent="startPortConnection($event, node, row.output, 'output')"
                 @click.stop="selectPortEndpoint(node, row.output, 'output')"
+                @contextmenu.prevent.stop="openPortContextMenu($event, node, row.output, 'output')"
               >
                 <span class="workflow-graph-port__label">{{ row.output.display_name || row.output.name }}</span>
                 <span class="workflow-graph-port__dot" aria-hidden="true" />
@@ -175,17 +202,13 @@
               @click.stop
             >
               <span>{{ field.display_name }}</span>
-              <select
+              <SelectField
                 v-if="field.enum_options.length"
-                :value="readNodeParameterEnumIndex(node, field)"
+                :model-value="readNodeParameterEnumIndex(node, field)"
+                :options="nodeParameterEnumOptions(field)"
                 :disabled="field.readonly"
-                @change="updateNodeParameterFromEnumEvent(node, field, $event)"
-              >
-                <option v-if="!field.required" value="">未设置</option>
-                <option v-for="(option, index) in field.enum_options" :key="`${field.parameter_name}-${index}`" :value="String(index)">
-                  {{ option.label }}
-                </option>
-              </select>
+                @update:model-value="updateNodeParameterFromEnumValue(node, field, $event)"
+              />
               <input
                 v-else-if="isBooleanParameter(field)"
                 type="checkbox"
@@ -229,24 +252,75 @@
         </div>
       </div>
 
-      <aside class="workflow-graph-floating-panel workflow-graph-inspector-panel" @mousedown.stop @contextmenu.stop>
+      <aside v-if="!inspectorCollapsed" class="workflow-graph-floating-panel workflow-graph-inspector-panel" @mousedown.stop @contextmenu.stop>
         <div class="workflow-graph-panel__header">
           <div>
-            <p>{{ t('workflowEditor.editor.inspectorKicker') }}</p>
             <h2>{{ t('workflowEditor.editor.inspectorTitle') }}</h2>
           </div>
-          <StatusBadge tone="neutral">Inspector</StatusBadge>
+          <div class="workflow-graph-panel__tools">
+            <button
+              type="button"
+              class="workflow-graph-panel__icon-button"
+              :title="t('workflowEditor.editor.hideInspector')"
+              :aria-label="t('workflowEditor.editor.hideInspector')"
+              @click="inspectorCollapsed = true"
+            >
+              <PanelRightClose :size="15" />
+            </button>
+          </div>
+        </div>
+        <div v-if="workflowApp && isNewApp" class="workflow-graph-new-app-panel">
+          <div class="workflow-graph-panel__header workflow-graph-panel__header--compact">
+            <div>
+              <p>Draft</p>
+              <h2>首次保存</h2>
+            </div>
+            <StatusBadge :tone="newWorkflowAppSaveBlocker ? 'warning' : 'success'">{{ newWorkflowAppSaveBlocker ? '待完成' : '可保存' }}</StatusBadge>
+          </div>
+          <label class="workflow-graph-preview-field">
+            <span>应用名称</span>
+            <input v-model="newWorkflowAppDraft.displayName" placeholder="检测应用" />
+          </label>
+          <label class="workflow-graph-preview-field">
+            <span>应用 id</span>
+            <input v-model="newWorkflowAppDraft.applicationId" placeholder="inspection-app" @change="normalizeNewWorkflowApplicationId" />
+          </label>
+          <label class="workflow-graph-preview-field">
+            <span>图 id</span>
+            <input v-model="newWorkflowAppDraft.graphId" placeholder="inspection-graph" @change="normalizeNewWorkflowGraphId" />
+          </label>
+          <label class="workflow-graph-preview-field">
+            <span>图版本</span>
+            <input v-model="newWorkflowAppDraft.graphVersion" placeholder="1.0.0" @change="normalizeNewWorkflowGraphVersion" />
+          </label>
+          <label class="workflow-graph-preview-field">
+            <span>说明</span>
+            <input v-model="newWorkflowAppDraft.description" placeholder="可选" />
+          </label>
+          <p class="workflow-graph-preview-hint" :class="{ 'workflow-graph-preview-hint--danger': newWorkflowAppSaveBlocker }">
+            {{ newWorkflowAppSaveBlocker || '首次保存会创建应用和图。' }}
+          </p>
         </div>
         <div v-if="workflowApp" class="workflow-graph-app-contract">
           <div class="workflow-graph-panel__header workflow-graph-panel__header--compact">
             <div>
-              <p>Application</p>
+              <p>应用</p>
               <h2>应用入口</h2>
             </div>
             <StatusBadge tone="info">{{ appInputBindings.length }} / {{ appOutputBindings.length }}</StatusBadge>
           </div>
           <section class="workflow-graph-contract-section">
             <h3>应用输入</h3>
+            <div class="workflow-graph-contract-actions">
+              <Button size="sm" variant="secondary" type="button" @click="addRequestImageRefInput">
+                <Plus :size="14" />
+                request_image_ref
+              </Button>
+              <Button size="sm" variant="secondary" type="button" @click="addRequestImageBase64Input">
+                <Plus :size="14" />
+                request_image_base64
+              </Button>
+            </div>
             <div v-for="binding in appInputBindings" :key="`contract-input-${binding.binding_id}`" class="workflow-graph-contract-binding">
               <div>
                 <strong>{{ binding.binding_id }}</strong>
@@ -268,7 +342,7 @@
         </div>
         <div v-if="selectedNode" class="workflow-graph-inspector-body">
           <div class="workflow-graph-inspector-row">
-            <span>{{ t('workflowEditor.columns.application') }}</span>
+            <span>应用</span>
             <strong>{{ selectedNode.title }}</strong>
           </div>
           <div class="workflow-graph-inspector-row">
@@ -311,27 +385,18 @@
             >
               <div class="workflow-graph-parameter-field__label">
                 <span>{{ field.display_name }}</span>
-                <button
+                <InfoHint
                   v-if="parameterHelpText(field)"
-                  type="button"
-                  class="workflow-graph-help-icon"
-                  :title="parameterHelpText(field)"
-                  :aria-label="parameterHelpText(field)"
-                >
-                  <CircleAlert :size="13" />
-                </button>
+                  :text="parameterHelpText(field)"
+                />
               </div>
-              <select
+              <SelectField
                 v-if="field.enum_options.length"
-                :value="readNodeParameterEnumIndex(selectedNode, field)"
+                :model-value="readNodeParameterEnumIndex(selectedNode, field)"
+                :options="nodeParameterEnumOptions(field)"
                 :disabled="field.readonly"
-                @change="updateNodeParameterFromEnumEvent(selectedNode, field, $event)"
-              >
-                <option v-if="!field.required" value="">未设置</option>
-                <option v-for="(option, index) in field.enum_options" :key="`inspector-${field.parameter_name}-${index}`" :value="String(index)">
-                  {{ option.label }}
-                </option>
-              </select>
+                @update:model-value="updateNodeParameterFromEnumValue(selectedNode, field, $event)"
+              />
               <input
                 v-else-if="isBooleanParameter(field)"
                 type="checkbox"
@@ -379,17 +444,61 @@
             删除连线
           </Button>
         </div>
+        <div v-else-if="selectedBoundaryKind" class="workflow-graph-inspector-body">
+          <div class="workflow-graph-panel__header workflow-graph-panel__header--compact">
+            <div>
+              <p>Public IO</p>
+              <h2>{{ selectedBoundaryTitle }}</h2>
+            </div>
+            <StatusBadge tone="info">{{ selectedBoundaryBindings.length }}</StatusBadge>
+          </div>
+          <EmptyState v-if="selectedBoundaryBindings.length === 0" title="暂无公开接口" description="右键节点端口后选择公开为应用输入或应用输出。" />
+          <section
+            v-for="binding in selectedBoundaryBindings"
+            :key="`public-binding-editor-${binding.direction}-${binding.binding_id}`"
+            class="workflow-graph-public-binding-editor"
+          >
+            <div class="workflow-graph-public-binding-editor__title">
+              <strong>{{ binding.binding_id }}</strong>
+              <small>{{ bindingEndpointText(binding) }}</small>
+            </div>
+            <label class="workflow-graph-preview-field">
+              <span>公开 id</span>
+              <input :value="binding.binding_id" @change="updateBindingIdFromEvent(binding, $event)" />
+            </label>
+            <label class="workflow-graph-preview-field">
+              <span>显示名称</span>
+              <input :value="bindingDisplayName(binding)" @input="updateBindingDisplayNameFromEvent(binding, $event)" />
+            </label>
+            <label class="workflow-graph-preview-field">
+              <span>binding kind</span>
+              <SelectField :model-value="binding.binding_kind" :options="bindingKindSelectOptions(binding)" @update:model-value="updateBindingKindFromValue(binding, $event)" />
+            </label>
+            <label v-if="binding.direction === 'input'" class="workflow-graph-public-binding-editor__checkbox">
+              <input type="checkbox" :checked="binding.required" @change="updateBindingRequiredFromEvent(binding, $event)" />
+              <span>必填输入</span>
+            </label>
+            <div class="workflow-graph-inspector-row">
+              <span>payload type</span>
+              <strong>{{ getBindingPayloadTypeId(binding) || 'unknown' }}</strong>
+            </div>
+            <Button variant="danger" type="button" @click="deleteApplicationBinding(binding)">
+              <Trash2 :size="16" />
+              删除公开接口
+            </Button>
+          </section>
+        </div>
         <div v-else-if="workflowApp" class="workflow-graph-inspector-body">
           <div class="workflow-graph-inspector-row">
-            <span>{{ t('workflowEditor.columns.application') }}</span>
+            <span>应用</span>
             <strong>{{ workflowApp.applicationDocument.application_id }}</strong>
           </div>
           <div class="workflow-graph-inspector-row">
-            <span>{{ t('workflowEditor.fields.templateInputs') }}</span>
+            <span>应用输入</span>
             <strong>{{ workflowApp.graphDocument.template_input_ids.join(', ') || t('common.noValue') }}</strong>
           </div>
           <div class="workflow-graph-inspector-row">
-            <span>{{ t('workflowEditor.fields.templateOutputs') }}</span>
+            <span>应用输出</span>
             <strong>{{ workflowApp.graphDocument.template_output_ids.join(', ') || t('common.noValue') }}</strong>
           </div>
           <div v-if="lastPreviewRun" class="workflow-graph-inspector-row">
@@ -406,15 +515,10 @@
               <h2>Preview 输入</h2>
             </div>
             <div class="workflow-graph-panel__tools">
-              <button
+              <InfoHint
                 v-if="previewHelpText"
-                type="button"
-                class="workflow-graph-help-icon"
-                :title="previewHelpText"
-                :aria-label="previewHelpText"
-              >
-                <CircleAlert :size="14" />
-              </button>
+                :text="previewHelpText"
+              />
               <StatusBadge :tone="previewBlockingMessages.length ? 'danger' : 'success'">
                 {{ previewBlockingMessages.length ? '缺少输入' : '就绪' }}
               </StatusBadge>
@@ -427,14 +531,7 @@
                 <small>{{ getBindingPayloadTypeId(binding) || 'unknown' }}</small>
               </span>
               <div class="workflow-graph-preview-binding__tools">
-                <button
-                  type="button"
-                  class="workflow-graph-help-icon"
-                  :title="previewBindingHelpText(binding)"
-                  :aria-label="previewBindingHelpText(binding)"
-                >
-                  <CircleAlert :size="13" />
-                </button>
+                <InfoHint :text="previewBindingHelpText(binding)" />
                 <StatusBadge :tone="binding.required ? 'warning' : 'neutral'">{{ binding.required ? '必填' : '可选' }}</StatusBadge>
               </div>
             </div>
@@ -468,10 +565,7 @@
             <template v-else-if="previewInputState[binding.binding_id] && getBindingPayloadTypeId(binding) === 'image-ref.v1'">
               <label class="workflow-graph-preview-field">
                 <span>引用来源</span>
-                <select v-model="previewInputState[binding.binding_id].imageRefTransportKind">
-                  <option value="storage">ObjectStore 图片</option>
-                  <option value="memory">运行内存 image handle</option>
-                </select>
+                <SelectField :model-value="previewInputState[binding.binding_id].imageRefTransportKind" :options="imageRefTransportKindOptions" @update:model-value="setPreviewImageRefTransportKind(binding.binding_id, $event)" />
               </label>
               <label v-if="previewInputState[binding.binding_id].imageRefTransportKind === 'storage'" class="workflow-graph-preview-field">
                 <span>object_key</span>
@@ -495,6 +589,17 @@
           </section>
         </div>
       </aside>
+      <button
+        v-else
+        type="button"
+        class="workflow-graph-inspector-toggle"
+        :title="t('workflowEditor.editor.showInspector')"
+        :aria-label="t('workflowEditor.editor.showInspector')"
+        @mousedown.stop
+        @click.stop="inspectorCollapsed = false"
+      >
+        <PanelRightOpen :size="16" />
+      </button>
 
       <div v-if="minimapVisible" class="workflow-graph-minimap" @mousedown.stop="startMinimapNavigation" @contextmenu.stop>
         <button
@@ -512,7 +617,7 @@
             v-for="miniNode in minimapNodes"
             :key="miniNode.nodeId"
             class="workflow-graph-minimap__node"
-            :class="{ 'is-selected': miniNode.nodeId === selectedNodeId }"
+            :class="{ 'is-selected': isMinimapNodeSelected(miniNode.nodeId) }"
             :style="miniNode.style"
           />
           <span class="workflow-graph-minimap__viewport" :style="minimapViewportStyle" />
@@ -536,6 +641,18 @@
           {{ t('workflowEditor.nodePicker.addNode') }}
           <ChevronRight :size="14" />
         </button>
+        <button v-if="contextMenu.port?.direction === 'input'" type="button" @click="exposeContextPortAsAppInput">
+          <Plus :size="15" />
+          公开为应用输入
+        </button>
+        <button v-if="contextMenu.port?.direction === 'output'" type="button" @click="exposeContextPortAsAppOutput">
+          <Plus :size="15" />
+          公开为应用输出
+        </button>
+        <button v-if="contextMenu.bindingId" type="button" @click="deleteContextApplicationBinding">
+          <Trash2 :size="15" />
+          删除公开接口
+        </button>
         <button v-if="contextMenu.nodeId" type="button" @click="deleteSelectedNode">
           <Trash2 :size="15" />
           删除节点
@@ -543,6 +660,10 @@
         <button v-if="contextMenu.edgeId" type="button" @click="deleteSelectedEdge">
           <Trash2 :size="15" />
           删除连线
+        </button>
+        <button v-if="contextMenu.boundaryKind" type="button" @click="resetContextBoundaryPosition">
+          <RefreshCw :size="15" />
+          重置边界位置
         </button>
         <button type="button" @click="fitView">
           <MapIcon :size="15" />
@@ -561,11 +682,11 @@
           <Moon v-else :size="15" />
           {{ graphTheme === 'dark' ? t('preferences.light') : t('preferences.dark') }}
         </button>
-        <button type="button" :disabled="!workflowApp || saving" @click="saveCurrentWorkflowApp">
+        <button type="button" :disabled="saveDisabled" @click="saveCurrentWorkflowApp">
           <Save :size="15" />
           {{ t('workflowEditor.actions.saveWorkflowApp') }}
         </button>
-        <button type="button" :disabled="!workflowApp || previewing" @click="runPreview">
+        <button type="button" :disabled="previewDisabled" @click="runPreview">
           <Play :size="15" />
           {{ t('workflowEditor.actions.previewRun') }}
         </button>
@@ -588,7 +709,7 @@
       <div v-if="!loading && graphNodes.length === 0" class="workflow-graph-empty">
         <Workflow :size="42" />
         <strong>{{ t('workflowEditor.editor.canvasPlaceholderTitle') }}</strong>
-        <span>{{ t('workflowEditor.editor.canvasPlaceholderDescription') }}</span>
+        <span>{{ isNewApp ? '右键画布添加节点，至少添加一个节点后可以首次保存应用。' : t('workflowEditor.editor.canvasPlaceholderDescription') }}</span>
       </div>
     </div>
     <ImageViewer :open="Boolean(activeImageViewer)" :image="activeImageViewer" @close="activeImageViewer = null" />
@@ -597,25 +718,29 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, shallowRef } from 'vue'
-import { ArrowLeft, ChevronRight, CircleAlert, Map as MapIcon, Moon, Play, Plus, RefreshCw, Save, Sun, Trash2, Workflow, X } from '@lucide/vue'
-import { RouterLink, useRoute } from 'vue-router'
+import { ArrowLeft, ChevronRight, Map as MapIcon, Moon, PanelRightClose, PanelRightOpen, Play, Plus, RefreshCw, Save, Sun, Trash2, Workflow, X } from '@lucide/vue'
+import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 
 import { usePreferencesStore } from '@/app/stores/preferences.store'
 import { useProjectStore } from '@/app/stores/project.store'
 import Button from '@/shared/ui/components/Button.vue'
 import FilePicker from '@/shared/ui/components/FilePicker.vue'
+import InfoHint from '@/shared/ui/components/InfoHint.vue'
 import ImageViewer from '@/shared/ui/components/ImageViewer.vue'
+import SelectField from '@/shared/ui/components/Select.vue'
 import StatusBadge from '@/shared/ui/data-display/StatusBadge.vue'
 import EmptyState from '@/shared/ui/feedback/EmptyState.vue'
 import InlineError from '@/shared/ui/feedback/InlineError.vue'
 import WorkflowNodePicker from '../components/WorkflowNodePicker.vue'
 import { createWorkflowLiteGraphAdapter, type WorkflowLiteGraphAdapter } from '../canvas/graph-engine/litegraph-adapter'
 import { type WorkflowCanvasGraphSnapshot } from '../canvas/graph-engine/workflow-graph-conversion'
+import { validateWorkflowApplication } from '../services/workflow-application.service'
 import { getWorkflowNodeCatalog } from '../services/node-catalog.service'
 import { getWorkflowApp, saveWorkflowApp, type WorkflowAppDocument } from '../services/workflow-app.service'
 import { createWorkflowPreviewRun, readProjectObjectContentBlob, readWorkflowPreviewRunArtifactBlob } from '../services/workflow-runtime.service'
-import type { FlowApplicationBinding, NodeDefinition, NodeParameterUiField, NodePortDefinition, WorkflowGraphEdge, WorkflowGraphNode, WorkflowJsonObject, WorkflowNodeCatalogResponse, WorkflowPreviewDisplayOutput, WorkflowPreviewRun } from '../types'
+import { validateWorkflowTemplate } from '../services/workflow-template.service'
+import type { FlowApplication, FlowApplicationBinding, NodeDefinition, NodeParameterUiField, NodePortDefinition, WorkflowApplicationDocument, WorkflowGraphEdge, WorkflowGraphInput, WorkflowGraphNode, WorkflowGraphOutput, WorkflowGraphTemplate, WorkflowJsonObject, WorkflowNodeCatalogResponse, WorkflowPreviewDisplayOutput, WorkflowPreviewRun, WorkflowTemplateDocument } from '../types'
 
 interface GraphNodeView {
   node: WorkflowGraphNode
@@ -629,16 +754,39 @@ interface GraphNodeView {
 }
 
 interface GraphLinkView {
+  linkKind: 'edge' | 'template-input' | 'template-output'
   edgeId: string
-  edge: WorkflowGraphEdge
+  edge: WorkflowGraphEdge | null
   sourceX: number
   sourceY: number
   targetX: number
   targetY: number
+  bindingId?: string
+  templatePortId?: string
 }
 
 interface DragState {
   nodeId: string
+  offsetX: number
+  offsetY: number
+}
+
+type AppBoundaryKind = 'entry' | 'result'
+type SelectValue = string | number | boolean | null
+
+interface SelectOption {
+  label: string
+  value: SelectValue
+  description?: string
+}
+
+interface BoundaryPosition {
+  x: number
+  y: number
+}
+
+interface BoundaryDragState {
+  boundaryKind: AppBoundaryKind
   offsetX: number
   offsetY: number
 }
@@ -679,6 +827,9 @@ interface ContextMenuState {
   worldY: number
   nodeId: string | null
   edgeId: string | null
+  port: PortReference | null
+  boundaryKind?: AppBoundaryKind | null
+  bindingId?: string | null
 }
 
 interface NodePickerState {
@@ -690,6 +841,14 @@ interface NodePickerState {
   connectionDraft: ConnectionDraftState | null
 }
 
+interface NewWorkflowAppDraftState {
+  applicationId: string
+  displayName: string
+  graphId: string
+  graphVersion: string
+  description: string
+}
+
 type RequiredNodePickerPortDirection = 'input' | 'output'
 
 interface MinimapNodeView {
@@ -699,7 +858,8 @@ interface MinimapNodeView {
 
 interface AppBoundaryNodeView {
   id: string
-  kind: 'entry' | 'result'
+  kind: AppBoundaryKind
+  portDirection: PortDirection
   title: string
   description: string
   x: number
@@ -750,8 +910,17 @@ interface EdgeHandleView {
   link: GraphLinkView
 }
 
+interface WorkflowValidationIssue {
+  message: string
+  nodeId?: string
+  edgeId?: string
+  boundaryKind?: AppBoundaryKind
+  bindingId?: string
+}
+
 const { t } = useI18n()
 const route = useRoute()
+const router = useRouter()
 const preferencesStore = usePreferencesStore()
 const projectStore = useProjectStore()
 
@@ -764,14 +933,21 @@ const nodeCatalog = ref<WorkflowNodeCatalogResponse | null>(null)
 const workflowApp = ref<WorkflowAppDocument | null>(null)
 const graphNodes = ref<GraphNodeView[]>([])
 const graphEdges = ref<WorkflowGraphEdge[]>([])
+const templateInputs = ref<WorkflowGraphInput[]>([])
+const templateOutputs = ref<WorkflowGraphOutput[]>([])
+const applicationBindingsDraft = ref<FlowApplicationBinding[]>([])
+const newWorkflowAppDraft = ref<NewWorkflowAppDraftState>(createNewWorkflowAppDraftState())
+const boundaryPositions = ref<Partial<Record<AppBoundaryKind, BoundaryPosition>>>({})
 const selectedNodeId = ref<string | null>(null)
 const selectedEdgeId = ref<string | null>(null)
-const selectedBoundaryKind = ref<'entry' | 'result' | null>(null)
+const selectedBoundaryKind = ref<AppBoundaryKind | null>(null)
 const dragState = ref<DragState | null>(null)
+const boundaryDragState = ref<BoundaryDragState | null>(null)
 const connectionDraft = ref<ConnectionDraftState | null>(null)
 const panState = ref<PanState | null>(null)
 const suppressNextNodeClick = ref(false)
 const minimapVisible = ref(true)
+const inspectorCollapsed = ref(false)
 const contextMenu = ref<ContextMenuState | null>(null)
 const nodePicker = ref<NodePickerState | null>(null)
 const previewInputState = ref<Record<string, PreviewInputState>>({})
@@ -790,9 +966,23 @@ let previewImageObjectUrls: string[] = []
 const minimapWidth = 184
 const minimapHeight = 116
 const minimapPadding = 10
-const graphNodeHeaderHeight = 62
-const graphPortRowHeight = 28
-const graphPortInsetX = 17
+const graphNodeHeaderHeight = 60
+const graphPortRowHeight = 30
+const graphPortInsetX = 18
+const appEntryBoundaryId = 'app-entry-boundary'
+const appResultBoundaryId = 'app-result-boundary'
+const graphBoundaryHeaderHeight = 64
+const graphBoundaryPortRowHeight = 44
+const graphBoundaryPortInsetX = 16
+const workflowGraphEditorMetadataKey = 'workflow_graph_editor'
+const boundaryPositionsMetadataKey = 'boundary_positions'
+const inputBindingKindOptions = ['api-request', 'trigger-source-input']
+const outputBindingKindOptions = ['http-response', 'zeromq-publish']
+const imageRefTransportKindOptions: SelectOption[] = [
+  { label: 'ObjectStore 图片', value: 'storage' },
+  { label: '运行内存 image handle', value: 'memory' },
+]
+const optionalRequestImageBindingIds = new Set(['request_image_ref', 'request_image_base64'])
 const graphNodeWidgetRowHeight = 34
 const graphNodePreviewHeight = 138
 const minViewportScale = 0.35
@@ -815,7 +1005,10 @@ const nodePickerRequiredPayloadTypeId = computed(() => {
   if (!draft) return null
   return getConnectionDraftPayloadTypeId(draft)
 })
-const editorTitle = computed(() => workflowApp.value?.applicationDocument.application.display_name || (isNewApp.value ? t('workflowEditor.editor.newTitle') : routeApplicationId.value))
+const editorTitle = computed(() => isNewApp.value ? newWorkflowAppDraft.value.displayName || t('workflowEditor.editor.newTitle') : workflowApp.value?.applicationDocument.application.display_name || routeApplicationId.value)
+const newWorkflowAppSaveBlocker = computed(() => readNewWorkflowAppSaveBlocker())
+const saveDisabled = computed(() => saving.value || !workflowApp.value || Boolean(newWorkflowAppSaveBlocker.value))
+const previewDisabled = computed(() => previewing.value || !workflowApp.value || isNewApp.value || Boolean(newWorkflowAppSaveBlocker.value))
 const selectedNode = computed(() => graphNodes.value.find((node) => node.node.node_id === selectedNodeId.value) ?? null)
 const selectedPreviewNodeImage = computed(() => selectedNode.value ? previewNodeImages.value[selectedNode.value.node.node_id] ?? null : null)
 const selectedEdge = computed(() => graphEdges.value.find((edge) => edge.edge_id === selectedEdgeId.value) ?? null)
@@ -827,15 +1020,15 @@ const graphLinkMidpoints = computed<EdgeHandleView[]>(() => graphLinks.value.map
   ...linkPointAt(link, 0.5),
 })))
 const selectedEdgeReconnectHandles = computed<EdgeHandleView[]>(() => {
-  const link = graphLinks.value.find((item) => item.edgeId === selectedEdgeId.value)
+  const link = graphLinks.value.find((item) => item.edgeId === selectedEdgeId.value && item.linkKind === 'edge')
   if (!link) return []
   return [{ key: `${link.edgeId}-reconnect`, edgeId: link.edgeId, link, ...linkPointAt(link, 0.5) }]
 })
-const applicationBindings = computed(() => workflowApp.value?.applicationDocument.application.bindings ?? [])
+const applicationBindings = computed(() => applicationBindingsDraft.value)
 const appInputBindings = computed(() => applicationBindings.value.filter((binding) => binding.direction === 'input'))
 const appOutputBindings = computed(() => applicationBindings.value.filter((binding) => binding.direction === 'output'))
-const templateInputById = computed(() => new Map((workflowApp.value?.graphDocument.template.template_inputs ?? []).map((input) => [input.input_id, input])))
-const templateOutputById = computed(() => new Map((workflowApp.value?.graphDocument.template.template_outputs ?? []).map((output) => [output.output_id, output])))
+const templateInputById = computed(() => new Map(templateInputs.value.map((input) => [input.input_id, input])))
+const templateOutputById = computed(() => new Map(templateOutputs.value.map((output) => [output.output_id, output])))
 const graphLinks = computed(() => buildGraphLinks(graphEdges.value))
 const draftLinkPath = computed(() => connectionDraft.value ? linkPath(buildDraftLink(connectionDraft.value)) : '')
 const worldTransformStyle = computed(() => ({
@@ -849,10 +1042,10 @@ const minimapScale = computed(() => {
   const availableHeight = minimapHeight - minimapPadding * 2
   return Math.min(availableWidth / Math.max(bounds.width, 1), availableHeight / Math.max(bounds.height, 1))
 })
-const minimapNodes = computed<MinimapNodeView[]>(() => graphNodes.value.map((node) => {
+const minimapNodes = computed<MinimapNodeView[]>(() => {
   const bounds = worldBounds.value
   const scale = minimapScale.value
-  return {
+  const regularNodes = graphNodes.value.map((node) => ({
     nodeId: node.node.node_id,
     style: {
       left: `${minimapPadding + (node.x - bounds.minX) * scale}px`,
@@ -860,8 +1053,18 @@ const minimapNodes = computed<MinimapNodeView[]>(() => graphNodes.value.map((nod
       width: `${Math.max(node.width * scale, 8)}px`,
       height: `${Math.max(72 * scale, 5)}px`,
     },
-  }
-}))
+  }))
+  const boundaryNodes = appBoundaryNodes.value.map((boundary) => ({
+    nodeId: boundary.id,
+    style: {
+      left: `${minimapPadding + (boundary.x - bounds.minX) * scale}px`,
+      top: `${minimapPadding + (boundary.y - bounds.minY) * scale}px`,
+      width: `${Math.max(boundary.width * scale, 8)}px`,
+      height: `${Math.max(boundaryNodeHeight(boundary) * scale, 5)}px`,
+    },
+  }))
+  return [...regularNodes, ...boundaryNodes]
+})
 const minimapViewportStyle = computed(() => {
   const bounds = worldBounds.value
   const scale = minimapScale.value
@@ -875,6 +1078,8 @@ const minimapViewportStyle = computed(() => {
   }
 })
 const appBoundaryNodes = computed<AppBoundaryNodeView[]>(() => buildAppBoundaryNodes())
+const selectedBoundaryBindings = computed(() => selectedBoundaryKind.value === 'entry' ? appInputBindings.value : selectedBoundaryKind.value === 'result' ? appOutputBindings.value : [])
+const selectedBoundaryTitle = computed(() => selectedBoundaryKind.value === 'entry' ? 'App Entry' : selectedBoundaryKind.value === 'result' ? 'App Result' : '')
 const previewInputBindings = computed(() => appInputBindings.value)
 const previewAlternativeImageBindingIds = computed(() => {
   const metadata = workflowApp.value?.applicationDocument.application.metadata ?? {}
@@ -915,42 +1120,273 @@ const previewHelpText = computed(() => {
   return messages.join('；')
 })
 
+function createNewWorkflowAppDraftState(): NewWorkflowAppDraftState {
+  const suffix = new Date().toISOString().replace(/[-:T.Z]/g, '').slice(0, 14)
+  return {
+    applicationId: `workflow-app-${suffix}`,
+    displayName: '新建应用',
+    graphId: `workflow-graph-${suffix}`,
+    graphVersion: '1.0.0',
+    description: '',
+  }
+}
+
+function normalizeNewWorkflowApplicationId(event?: Event): void {
+  const normalizedApplicationId = normalizeWorkflowIdentifier(newWorkflowAppDraft.value.applicationId, 'workflow-app')
+  newWorkflowAppDraft.value.applicationId = normalizedApplicationId
+  if (event?.target instanceof HTMLInputElement) event.target.value = normalizedApplicationId
+}
+
+function normalizeNewWorkflowGraphId(event?: Event): void {
+  const normalizedGraphId = normalizeWorkflowIdentifier(newWorkflowAppDraft.value.graphId, `${newWorkflowAppDraft.value.applicationId || 'workflow'}-graph`)
+  newWorkflowAppDraft.value.graphId = normalizedGraphId
+  if (event?.target instanceof HTMLInputElement) event.target.value = normalizedGraphId
+}
+
+function normalizeNewWorkflowGraphVersion(event?: Event): void {
+  const normalizedGraphVersion = newWorkflowAppDraft.value.graphVersion.trim() || '1.0.0'
+  newWorkflowAppDraft.value.graphVersion = normalizedGraphVersion
+  if (event?.target instanceof HTMLInputElement) event.target.value = normalizedGraphVersion
+}
+
+function readNewWorkflowAppSaveBlocker(): string | null {
+  if (!isNewApp.value) return null
+  const draft = newWorkflowAppDraft.value
+  if (!draft.displayName.trim()) return '填写应用名称后才能保存。'
+  if (!draft.applicationId.trim()) return '填写应用 id 后才能保存。'
+  if (!draft.graphId.trim()) return '填写图 id 后才能保存。'
+  if (!draft.graphVersion.trim()) return '填写图版本后才能保存。'
+  if (graphNodes.value.length === 0) return '至少添加一个节点后才能首次保存。'
+  return null
+}
+
+function createLocalWorkflowAppDraft(): WorkflowAppDocument {
+  const template = createLocalWorkflowTemplate()
+  const application = createLocalFlowApplication(template)
+  const now = new Date().toISOString()
+  return {
+    applicationDocument: createLocalWorkflowApplicationDocument(application, template, now),
+    graphDocument: createLocalWorkflowTemplateDocument(template, now),
+    runtimes: [],
+    primaryRuntime: null,
+  }
+}
+
+function createLocalWorkflowTemplate(): WorkflowGraphTemplate {
+  const draft = newWorkflowAppDraft.value
+  return {
+    format_id: 'amvision.workflow-graph-template.v1',
+    template_id: draft.graphId,
+    template_version: draft.graphVersion,
+    display_name: `${draft.displayName || draft.graphId} 图`,
+    description: draft.description.trim(),
+    nodes: [],
+    edges: [],
+    template_inputs: [],
+    template_outputs: [],
+    metadata: { source: 'workflow-graph-editor' },
+  }
+}
+
+function createLocalFlowApplication(template: WorkflowGraphTemplate): FlowApplication {
+  const draft = newWorkflowAppDraft.value
+  return {
+    format_id: 'amvision.flow-application.v1',
+    application_id: draft.applicationId,
+    display_name: draft.displayName,
+    template_ref: {
+      template_id: template.template_id,
+      template_version: template.template_version,
+      source_kind: 'json-file',
+      source_uri: buildWorkflowTemplateSourceUri(selectedProjectId.value, template.template_id, template.template_version),
+      metadata: {},
+    },
+    runtime_mode: 'python-json-workflow',
+    description: draft.description.trim(),
+    bindings: [],
+    metadata: { source: 'workflow-graph-editor' },
+  }
+}
+
+function buildWorkflowTemplateSourceUri(projectId: string, templateId: string, templateVersion: string): string {
+  return `workflows/projects/${projectId}/templates/${templateId}/versions/${templateVersion}/template.json`
+}
+
+function normalizeWorkflowIdentifier(value: string, fallback: string): string {
+  const normalized = value.trim().replace(/[\\/]+/g, '_').replace(/\.{2,}/g, '_').replace(/[^a-zA-Z0-9._-]+/g, '_').replace(/^[_ .-]+|[_ .-]+$/g, '')
+  return normalized || fallback
+}
+
+function createLocalWorkflowTemplateDocument(template: WorkflowGraphTemplate, now: string): WorkflowTemplateDocument {
+  return {
+    valid: false,
+    template_id: template.template_id,
+    template_version: template.template_version,
+    node_count: template.nodes.length,
+    edge_count: template.edges.length,
+    template_input_ids: template.template_inputs.map((input) => input.input_id),
+    template_output_ids: template.template_outputs.map((output) => output.output_id),
+    referenced_node_type_ids: template.nodes.map((node) => node.node_type_id),
+    project_id: selectedProjectId.value,
+    object_key: '',
+    created_at: now,
+    updated_at: now,
+    created_by: null,
+    updated_by: null,
+    template,
+  }
+}
+
+function createLocalWorkflowApplicationDocument(application: FlowApplication, template: WorkflowGraphTemplate, now: string): WorkflowApplicationDocument {
+  const inputBindingIds = application.bindings.filter((binding) => binding.direction === 'input').map((binding) => binding.binding_id)
+  const outputBindingIds = application.bindings.filter((binding) => binding.direction === 'output').map((binding) => binding.binding_id)
+  return {
+    valid: false,
+    application_id: application.application_id,
+    template_id: template.template_id,
+    template_version: template.template_version,
+    binding_count: application.bindings.length,
+    input_binding_ids: inputBindingIds,
+    output_binding_ids: outputBindingIds,
+    project_id: selectedProjectId.value,
+    object_key: '',
+    created_at: now,
+    updated_at: now,
+    created_by: null,
+    updated_by: null,
+    template_summary: null,
+    application,
+  }
+}
+
+function readBoundaryPositionsFromMetadata(metadata: WorkflowJsonObject): Partial<Record<AppBoundaryKind, BoundaryPosition>> {
+  const editorMetadata = metadata[workflowGraphEditorMetadataKey]
+  if (!isWorkflowJsonObject(editorMetadata)) return {}
+  const rawPositions = editorMetadata[boundaryPositionsMetadataKey]
+  if (!isWorkflowJsonObject(rawPositions)) return {}
+  const entryPosition = readBoundaryPosition(rawPositions.entry)
+  const resultPosition = readBoundaryPosition(rawPositions.result)
+  return {
+    ...(entryPosition ? { entry: entryPosition } : {}),
+    ...(resultPosition ? { result: resultPosition } : {}),
+  }
+}
+
+function readBoundaryPosition(value: unknown): BoundaryPosition | null {
+  if (!isWorkflowJsonObject(value)) return null
+  const x = readDisplayNumber(value.x)
+  const y = readDisplayNumber(value.y)
+  return x === null || y === null ? null : { x, y }
+}
+
+function writeBoundaryPositionsToMetadata(metadata: WorkflowJsonObject): WorkflowJsonObject {
+  const nextMetadata: WorkflowJsonObject = { ...metadata }
+  const editorMetadataValue = nextMetadata[workflowGraphEditorMetadataKey]
+  const editorMetadata: WorkflowJsonObject = isWorkflowJsonObject(editorMetadataValue) ? { ...editorMetadataValue } : {}
+  const serializedPositions: WorkflowJsonObject = {}
+  for (const kind of ['entry', 'result'] as AppBoundaryKind[]) {
+    const position = boundaryPositions.value[kind]
+    if (position) serializedPositions[kind] = { x: position.x, y: position.y }
+  }
+  if (Object.keys(serializedPositions).length > 0) {
+    editorMetadata[boundaryPositionsMetadataKey] = serializedPositions
+  } else {
+    delete editorMetadata[boundaryPositionsMetadataKey]
+  }
+  if (Object.keys(editorMetadata).length > 0) {
+    nextMetadata[workflowGraphEditorMetadataKey] = editorMetadata
+  } else {
+    delete nextMetadata[workflowGraphEditorMetadataKey]
+  }
+  return nextMetadata
+}
+
+function applyNewWorkflowTemplateSettings(template: WorkflowGraphTemplate): WorkflowGraphTemplate {
+  if (!isNewApp.value) return template
+  const draft = newWorkflowAppDraft.value
+  return {
+    ...template,
+    template_id: draft.graphId.trim(),
+    template_version: draft.graphVersion.trim(),
+    display_name: `${draft.displayName.trim() || draft.graphId.trim()} 图`,
+    description: draft.description.trim(),
+    metadata: { ...template.metadata, source: template.metadata.source ?? 'workflow-graph-editor' },
+  }
+}
+
 function buildAppBoundaryNodes(): AppBoundaryNodeView[] {
   if (!workflowApp.value || graphNodes.value.length === 0) return []
   const minNodeX = Math.min(...graphNodes.value.map((node) => node.x))
   const minNodeY = Math.min(...graphNodes.value.map((node) => node.y))
   const maxNodeX = Math.max(...graphNodes.value.map((node) => node.x + node.width))
+  const entryPosition = boundaryPositions.value.entry ?? { x: minNodeX - 320, y: minNodeY }
+  const resultPosition = boundaryPositions.value.result ?? { x: maxNodeX + 140, y: minNodeY }
   return [
     {
-      id: 'app-entry-boundary',
+      id: appEntryBoundaryId,
       kind: 'entry',
+      portDirection: 'output',
       title: 'App Entry',
       description: `公开输入 ${appInputBindings.value.length}`,
-      x: minNodeX - 320,
-      y: minNodeY,
+      x: entryPosition.x,
+      y: entryPosition.y,
       width: 250,
       bindings: appInputBindings.value,
     },
     {
-      id: 'app-result-boundary',
+      id: appResultBoundaryId,
       kind: 'result',
+      portDirection: 'input',
       title: 'App Result',
       description: `公开输出 ${appOutputBindings.value.length}`,
-      x: maxNodeX + 140,
-      y: minNodeY,
+      x: resultPosition.x,
+      y: resultPosition.y,
       width: 250,
       bindings: appOutputBindings.value,
     },
   ]
 }
 
+function boundaryNodeHeight(boundary: AppBoundaryNodeView): number {
+  return Math.max(116, graphBoundaryHeaderHeight + Math.max(boundary.bindings.length, 1) * graphBoundaryPortRowHeight + 16)
+}
+
+function boundaryPortY(boundary: AppBoundaryNodeView, bindingId: string): number {
+  const index = Math.max(boundary.bindings.findIndex((binding) => binding.binding_id === bindingId), 0)
+  return boundary.y + graphBoundaryHeaderHeight + index * graphBoundaryPortRowHeight + graphBoundaryPortRowHeight / 2
+}
+
+function boundaryPortX(boundary: AppBoundaryNodeView): number {
+  return boundary.kind === 'entry' ? boundary.x + boundary.width - graphBoundaryPortInsetX - 1 : boundary.x + graphBoundaryPortInsetX + 1
+}
+
+function isBoundaryPortConnected(kind: 'entry' | 'result', binding: FlowApplicationBinding): boolean {
+  if (kind === 'entry') {
+    const templateInput = templateInputById.value.get(binding.template_port_id)
+    return Boolean(templateInput && graphNodes.value.some((node) => node.node.node_id === templateInput.target_node_id))
+  }
+  const templateOutput = templateOutputById.value.get(binding.template_port_id)
+  return Boolean(templateOutput && graphNodes.value.some((node) => node.node.node_id === templateOutput.source_node_id))
+}
+
+function selectBoundaryBinding(kind: 'entry' | 'result', binding: FlowApplicationBinding): void {
+  selectedBoundaryKind.value = kind
+  selectedNodeId.value = null
+  selectedEdgeId.value = null
+  connectionDraft.value = null
+  contextMenu.value = null
+  nodePicker.value = null
+  statusMessage.value = `已选择 ${binding.binding_id}`
+}
+
 function getBindingPayloadTypeId(binding: FlowApplicationBinding): string {
+  const templatePort = binding.direction === 'input' ? templateInputById.value.get(binding.template_port_id) : templateOutputById.value.get(binding.template_port_id)
+  if (templatePort?.payload_type_id) return templatePort.payload_type_id
   const configPayloadType = binding.config.payload_type_id
   if (typeof configPayloadType === 'string' && configPayloadType.trim()) return configPayloadType.trim()
   const metadataPayloadType = binding.metadata.payload_type_id
   if (typeof metadataPayloadType === 'string' && metadataPayloadType.trim()) return metadataPayloadType.trim()
-  const templatePort = binding.direction === 'input' ? templateInputById.value.get(binding.template_port_id) : templateOutputById.value.get(binding.template_port_id)
-  return templatePort?.payload_type_id ?? ''
+  return ''
 }
 
 function hasPreviewBindingValue(binding: FlowApplicationBinding): boolean {
@@ -1151,6 +1587,15 @@ function readNodeParameterEnumIndex(node: GraphNodeView, field: NodeParameterUiF
   return optionIndex >= 0 ? String(optionIndex) : ''
 }
 
+function selectValueToString(value: SelectValue): string {
+  return typeof value === 'string' ? value : String(value ?? '')
+}
+
+function nodeParameterEnumOptions(field: NodeParameterUiField): SelectOption[] {
+  const options = field.enum_options.map((option, index) => ({ label: option.label, value: String(index) }))
+  return field.required ? options : [{ label: '未设置', value: '' }, ...options]
+}
+
 function areParameterValuesEqual(leftValue: unknown, rightValue: unknown): boolean {
   if (Object.is(leftValue, rightValue)) return true
   return String(leftValue) === String(rightValue)
@@ -1175,10 +1620,8 @@ function updateNodeParameterFromCheckboxEvent(node: GraphNodeView, field: NodePa
   updateNodeParameter(node, field, target.checked)
 }
 
-function updateNodeParameterFromEnumEvent(node: GraphNodeView, field: NodeParameterUiField, event: Event): void {
-  const target = event.target
-  if (!(target instanceof HTMLSelectElement)) return
-  const optionIndex = Number(target.value)
+function updateNodeParameterFromEnumValue(node: GraphNodeView, field: NodeParameterUiField, value: SelectValue): void {
+  const optionIndex = Number(selectValueToString(value))
   if (!Number.isInteger(optionIndex) || optionIndex < 0) {
     updateNodeParameter(node, field, '')
     return
@@ -1216,9 +1659,13 @@ function portX(node: GraphNodeView, direction: 'input' | 'output'): number {
 }
 
 function isPortConnected(nodeId: string, portName: string, direction: 'input' | 'output'): boolean {
-  return graphEdges.value.some((edge) => direction === 'input'
+  const hasGraphEdge = graphEdges.value.some((edge) => direction === 'input'
     ? edge.target_node_id === nodeId && edge.target_port === portName
     : edge.source_node_id === nodeId && edge.source_port === portName)
+  if (hasGraphEdge) return true
+  return direction === 'input'
+    ? templateInputs.value.some((input) => input.target_node_id === nodeId && input.target_port === portName)
+    : templateOutputs.value.some((output) => output.source_node_id === nodeId && output.source_port === portName)
 }
 
 function isSelectedEdgeEndpoint(nodeId: string, portName: string, direction: PortDirection): boolean {
@@ -1235,6 +1682,14 @@ function isDraftAnchorPort(nodeId: string, portName: string, direction: PortDire
 }
 
 function buildGraphLinks(edges: WorkflowGraphEdge[]): GraphLinkView[] {
+  return [
+    ...buildGraphEdgeLinks(edges),
+    ...buildTemplateInputLinks(),
+    ...buildTemplateOutputLinks(),
+  ]
+}
+
+function buildGraphEdgeLinks(edges: WorkflowGraphEdge[]): GraphLinkView[] {
   return edges.flatMap((edge) => {
     const sourceNode = graphNodes.value.find((node) => node.node.node_id === edge.source_node_id)
     const targetNode = graphNodes.value.find((node) => node.node.node_id === edge.target_node_id)
@@ -1242,12 +1697,55 @@ function buildGraphLinks(edges: WorkflowGraphEdge[]): GraphLinkView[] {
       return []
     }
     return [{
+      linkKind: 'edge' as const,
       edgeId: edge.edge_id,
       edge,
       sourceX: portX(sourceNode, 'output'),
       sourceY: portY(sourceNode, edge.source_port, 'output'),
       targetX: portX(targetNode, 'input'),
       targetY: portY(targetNode, edge.target_port, 'input'),
+    }]
+  })
+}
+
+function buildTemplateInputLinks(): GraphLinkView[] {
+  const entryBoundary = appBoundaryNodes.value.find((boundary) => boundary.kind === 'entry')
+  if (!entryBoundary) return []
+  return appInputBindings.value.flatMap((binding) => {
+    const templateInput = templateInputById.value.get(binding.template_port_id)
+    const targetNode = templateInput ? graphNodes.value.find((node) => node.node.node_id === templateInput.target_node_id) : null
+    if (!templateInput || !targetNode) return []
+    return [{
+      linkKind: 'template-input' as const,
+      edgeId: `template-input-${binding.binding_id}`,
+      edge: null,
+      sourceX: boundaryPortX(entryBoundary),
+      sourceY: boundaryPortY(entryBoundary, binding.binding_id),
+      targetX: portX(targetNode, 'input'),
+      targetY: portY(targetNode, templateInput.target_port, 'input'),
+      bindingId: binding.binding_id,
+      templatePortId: templateInput.input_id,
+    }]
+  })
+}
+
+function buildTemplateOutputLinks(): GraphLinkView[] {
+  const resultBoundary = appBoundaryNodes.value.find((boundary) => boundary.kind === 'result')
+  if (!resultBoundary) return []
+  return appOutputBindings.value.flatMap((binding) => {
+    const templateOutput = templateOutputById.value.get(binding.template_port_id)
+    const sourceNode = templateOutput ? graphNodes.value.find((node) => node.node.node_id === templateOutput.source_node_id) : null
+    if (!templateOutput || !sourceNode) return []
+    return [{
+      linkKind: 'template-output' as const,
+      edgeId: `template-output-${binding.binding_id}`,
+      edge: null,
+      sourceX: portX(sourceNode, 'output'),
+      sourceY: portY(sourceNode, templateOutput.source_port, 'output'),
+      targetX: boundaryPortX(resultBoundary),
+      targetY: boundaryPortY(resultBoundary, binding.binding_id),
+      bindingId: binding.binding_id,
+      templatePortId: templateOutput.output_id,
     }]
   })
 }
@@ -1259,6 +1757,7 @@ function buildDraftLink(draft: ConnectionDraftState): GraphLinkView {
   const targetY = draft.anchorDirection === 'input' ? draft.anchorY : draft.pointerY
   return {
     edgeId: 'draft',
+    linkKind: 'edge',
     edge: {
       edge_id: 'draft',
       source_node_id: draft.anchorDirection === 'output' ? draft.anchorNodeId : '',
@@ -1281,10 +1780,12 @@ function linkPath(link: GraphLinkView): string {
 
 function linkControlPoints(link: GraphLinkView): { sourceControlX: number; sourceControlY: number; targetControlX: number; targetControlY: number } {
   const distanceX = link.targetX - link.sourceX
-  const forwardDistance = Math.max(distanceX, 0)
-  const controlOffset = forwardDistance > 0
-    ? Math.min(140, Math.max(1, forwardDistance / 2), Math.max(10, forwardDistance * 0.45))
-    : Math.min(120, Math.max(42, Math.abs(distanceX) * 0.32))
+  const distanceY = Math.abs(link.targetY - link.sourceY)
+  const distanceFactor = distanceX < 0 ? 0.26 : 0.34
+  const minControlOffset = distanceX < 0 ? 40 : 48
+  const maxControlOffset = distanceX < 0 ? 132 : 180
+  const shortDistanceOffset = Math.max(Math.abs(distanceX), distanceY) * distanceFactor
+  const controlOffset = clampNumber(shortDistanceOffset, minControlOffset, maxControlOffset)
   return {
     sourceControlX: link.sourceX + controlOffset,
     sourceControlY: link.sourceY,
@@ -1336,6 +1837,34 @@ function selectEdge(edgeId: string): void {
   nodePicker.value = null
 }
 
+function selectGraphLink(link: GraphLinkView): void {
+  if (link.linkKind === 'edge') {
+    selectEdge(link.edgeId)
+    return
+  }
+  selectApplicationBoundary(link.linkKind === 'template-input' ? 'entry' : 'result')
+}
+
+function isGraphLinkSelected(link: GraphLinkView): boolean {
+  if (link.linkKind === 'edge') return selectedEdgeId.value === link.edgeId
+  if (link.linkKind === 'template-input') return selectedBoundaryKind.value === 'entry'
+  return selectedBoundaryKind.value === 'result'
+}
+
+function openGraphLinkContextMenu(event: MouseEvent, link: GraphLinkView): void {
+  if (link.linkKind === 'edge') {
+    openEdgeContextMenu(event, link)
+    return
+  }
+  const boundaryKind: AppBoundaryKind = link.linkKind === 'template-input' ? 'entry' : 'result'
+  selectedBoundaryKind.value = boundaryKind
+  selectedNodeId.value = null
+  selectedEdgeId.value = null
+  const position = screenToWorld(event.clientX, event.clientY)
+  nodePicker.value = null
+  contextMenu.value = { x: event.clientX, y: event.clientY, worldX: position.x, worldY: position.y, nodeId: null, edgeId: null, port: null, boundaryKind, bindingId: link.bindingId ?? null }
+}
+
 function selectPortEndpoint(node: GraphNodeView, port: NodePortDefinition, direction: PortDirection): void {
   const edge = direction === 'input'
     ? findInputEdge(node.node.node_id, port.name)
@@ -1347,13 +1876,20 @@ function selectPortEndpoint(node: GraphNodeView, port: NodePortDefinition, direc
   selectNode(node.node.node_id)
 }
 
-function selectApplicationBoundary(kind: 'entry' | 'result'): void {
+function selectApplicationBoundary(kind: AppBoundaryKind): void {
   selectedBoundaryKind.value = kind
   selectedNodeId.value = null
   selectedEdgeId.value = null
   connectionDraft.value = null
   contextMenu.value = null
   nodePicker.value = null
+}
+
+function isMinimapNodeSelected(nodeId: string): boolean {
+  if (selectedNodeId.value === nodeId) return true
+  if (selectedBoundaryKind.value === 'entry') return nodeId === appEntryBoundaryId
+  if (selectedBoundaryKind.value === 'result') return nodeId === appResultBoundaryId
+  return false
 }
 
 function addGraphNode(definition: NodeDefinition, rawX: number, rawY: number): GraphNodeView {
@@ -1537,6 +2073,43 @@ function stopNodeDrag(): void {
   document.removeEventListener('mouseup', stopNodeDrag)
 }
 
+function startBoundaryDrag(event: MouseEvent, boundary: AppBoundaryNodeView): void {
+  if (event.button !== 0 || connectionDraft.value) return
+  const worldPosition = screenToWorld(event.clientX, event.clientY)
+  selectedBoundaryKind.value = boundary.kind
+  selectedNodeId.value = null
+  selectedEdgeId.value = null
+  contextMenu.value = null
+  nodePicker.value = null
+  boundaryDragState.value = {
+    boundaryKind: boundary.kind,
+    offsetX: worldPosition.x - boundary.x,
+    offsetY: worldPosition.y - boundary.y,
+  }
+  event.preventDefault()
+  document.addEventListener('mousemove', moveDraggedBoundary)
+  document.addEventListener('mouseup', stopBoundaryDrag)
+}
+
+function moveDraggedBoundary(event: MouseEvent): void {
+  const drag = boundaryDragState.value
+  if (!drag) return
+  const worldPosition = screenToWorld(event.clientX, event.clientY)
+  boundaryPositions.value = {
+    ...boundaryPositions.value,
+    [drag.boundaryKind]: {
+      x: Math.round(worldPosition.x - drag.offsetX),
+      y: Math.round(worldPosition.y - drag.offsetY),
+    },
+  }
+}
+
+function stopBoundaryDrag(): void {
+  boundaryDragState.value = null
+  document.removeEventListener('mousemove', moveDraggedBoundary)
+  document.removeEventListener('mouseup', stopBoundaryDrag)
+}
+
 function startPortConnection(event: MouseEvent, node: GraphNodeView, port: NodePortDefinition, direction: PortDirection): void {
   if (event.button !== 0) return
   const existingInputEdge = direction === 'input' ? findInputEdge(node.node.node_id, port.name) : null
@@ -1545,6 +2118,33 @@ function startPortConnection(event: MouseEvent, node: GraphNodeView, port: NodeP
     return
   }
   startConnectionDraft(event, node, port, direction)
+}
+
+function startBoundaryPortConnection(event: MouseEvent, boundary: AppBoundaryNodeView, binding: FlowApplicationBinding): void {
+  if (event.button !== 0) return
+  const pointer = screenToWorld(event.clientX, event.clientY)
+  connectionDraft.value = {
+    anchorDirection: boundary.portDirection,
+    anchorNodeId: boundary.id,
+    anchorPort: binding.binding_id,
+    anchorX: boundaryPortX(boundary),
+    anchorY: boundaryPortY(boundary, binding.binding_id),
+    pointerX: pointer.x,
+    pointerY: pointer.y,
+    startClientX: event.clientX,
+    startClientY: event.clientY,
+    hasMoved: false,
+    replacingEdgeId: null,
+  }
+  selectedBoundaryKind.value = boundary.kind
+  selectedNodeId.value = null
+  selectedEdgeId.value = null
+  contextMenu.value = null
+  nodePicker.value = null
+  errorMessage.value = null
+  event.preventDefault()
+  document.addEventListener('mousemove', movePortConnection)
+  document.addEventListener('mouseup', stopPortConnection)
 }
 
 function startConnectionDraft(event: MouseEvent, node: GraphNodeView, port: NodePortDefinition, anchorDirection: PortDirection, replacingEdgeId: string | null = null): void {
@@ -1573,10 +2173,11 @@ function startConnectionDraft(event: MouseEvent, node: GraphNodeView, port: Node
 }
 
 function startEdgeTargetReconnect(event: MouseEvent, edgeId: string): void {
-  const link = graphLinks.value.find((item) => item.edgeId === edgeId)
-  if (!link) return
-  const sourceNode = graphNodes.value.find((node) => node.node.node_id === link.edge.source_node_id)
-  const sourcePort = sourceNode?.outputs.find((port) => port.name === link.edge.source_port)
+  const link = graphLinks.value.find((item) => item.edgeId === edgeId && item.linkKind === 'edge')
+  if (!link?.edge) return
+  const edge = link.edge
+  const sourceNode = graphNodes.value.find((node) => node.node.node_id === edge.source_node_id)
+  const sourcePort = sourceNode?.outputs.find((port) => port.name === edge.source_port)
   if (!sourceNode || !sourcePort) return
   const pointer = screenToWorld(event.clientX, event.clientY)
   connectionDraft.value = {
@@ -1665,6 +2266,16 @@ function connectDraftToPort(draft: ConnectionDraftState, targetPort: PortReferen
 }
 
 function connectOutputToInput(sourcePortRef: PortReference, targetPortRef: PortReference, replacingEdgeId?: string | null): boolean {
+  if (sourcePortRef.nodeId === appEntryBoundaryId) {
+    return connectAppEntryBindingToNode(sourcePortRef.portName, targetPortRef)
+  }
+  if (targetPortRef.nodeId === appResultBoundaryId) {
+    return connectNodeOutputToAppResultBinding(sourcePortRef, targetPortRef.portName)
+  }
+  if (sourcePortRef.nodeId === appResultBoundaryId || targetPortRef.nodeId === appEntryBoundaryId) {
+    errorMessage.value = 'App Entry 只能连接到节点输入，节点输出只能连接到 App Result'
+    return false
+  }
   if (sourcePortRef.nodeId === targetPortRef.nodeId) {
     errorMessage.value = '不能把节点输出连接到同一个节点的输入'
     return false
@@ -1677,6 +2288,11 @@ function connectOutputToInput(sourcePortRef: PortReference, targetPortRef: PortR
   if (!sourcePort || !inputPort) return false
   if (!portsCanConnect(sourcePort, inputPort)) {
     errorMessage.value = `端口类型不匹配：${sourcePort.payload_type_id || 'unknown'} -> ${inputPort.payload_type_id || 'unknown'}`
+    return false
+  }
+  const existingTemplateInput = templateInputs.value.find((input) => input.target_node_id === targetPortRef.nodeId && input.target_port === targetPortRef.portName)
+  if (existingTemplateInput && !inputPort.multiple) {
+    errorMessage.value = '该输入端口已公开为应用输入，请先删除公开接口再连接普通节点'
     return false
   }
   const nextEdge: WorkflowGraphEdge = {
@@ -1704,6 +2320,50 @@ function connectOutputToInput(sourcePortRef: PortReference, targetPortRef: PortR
   return true
 }
 
+function connectAppEntryBindingToNode(bindingId: string, targetPortRef: PortReference): boolean {
+  const binding = appInputBindings.value.find((item) => item.binding_id === bindingId)
+  const templateInput = binding ? templateInputById.value.get(binding.template_port_id) : null
+  const targetNode = graphNodes.value.find((node) => node.node.node_id === targetPortRef.nodeId)
+  const targetPort = targetNode?.inputs.find((port) => port.name === targetPortRef.portName)
+  if (!binding || !templateInput || !targetNode || !targetPort || targetPortRef.direction !== 'input') return false
+  const previousPayloadTypeId = getBindingPayloadTypeId(binding)
+  const conflictingInput = templateInputs.value.find((input) => input !== templateInput && input.target_node_id === targetNode.node.node_id && input.target_port === targetPort.name)
+  if ((findInputEdge(targetNode.node.node_id, targetPort.name) || conflictingInput) && !targetPort.multiple) {
+    errorMessage.value = '该输入端口已有输入来源，请先删除现有连线或公开接口'
+    return false
+  }
+  templateInput.target_node_id = targetNode.node.node_id
+  templateInput.target_port = targetPort.name
+  templateInput.payload_type_id = targetPort.payload_type_id
+  templateInput.required = binding.required
+  binding.config = { ...binding.config, payload_type_id: targetPort.payload_type_id }
+  binding.metadata = { ...binding.metadata, ...buildPublicPortMetadata(targetNode, targetPort) }
+  if (previousPayloadTypeId !== targetPort.payload_type_id) {
+    previewInputState.value = { ...previewInputState.value, [binding.binding_id]: createEmptyPreviewInputState(binding) }
+  }
+  selectApplicationBoundary('entry')
+  statusMessage.value = '已更新应用输入连接'
+  errorMessage.value = null
+  return true
+}
+
+function connectNodeOutputToAppResultBinding(sourcePortRef: PortReference, bindingId: string): boolean {
+  const binding = appOutputBindings.value.find((item) => item.binding_id === bindingId)
+  const templateOutput = binding ? templateOutputById.value.get(binding.template_port_id) : null
+  const sourceNode = graphNodes.value.find((node) => node.node.node_id === sourcePortRef.nodeId)
+  const sourcePort = sourceNode?.outputs.find((port) => port.name === sourcePortRef.portName)
+  if (!binding || !templateOutput || !sourceNode || !sourcePort || sourcePortRef.direction !== 'output') return false
+  templateOutput.source_node_id = sourceNode.node.node_id
+  templateOutput.source_port = sourcePort.name
+  templateOutput.payload_type_id = sourcePort.payload_type_id
+  binding.config = { ...binding.config, payload_type_id: sourcePort.payload_type_id }
+  binding.metadata = { ...binding.metadata, ...buildPublicPortMetadata(sourceNode, sourcePort) }
+  selectApplicationBoundary('result')
+  statusMessage.value = '已更新应用输出连接'
+  errorMessage.value = null
+  return true
+}
+
 function findInputEdge(nodeId: string, portName: string): WorkflowGraphEdge | null {
   return [...graphEdges.value].reverse().find((edge) => edge.target_node_id === nodeId && edge.target_port === portName) ?? null
 }
@@ -1715,6 +2375,414 @@ function findOutputEdge(nodeId: string, portName: string): WorkflowGraphEdge | n
 function portsCanConnect(sourcePort: NodePortDefinition, targetPort: NodePortDefinition): boolean {
   if (!sourcePort.payload_type_id || !targetPort.payload_type_id) return true
   return sourcePort.payload_type_id === targetPort.payload_type_id
+}
+
+function exposeContextPortAsAppInput(): void {
+  const portRef = contextMenu.value?.port
+  if (!portRef || portRef.direction !== 'input') return
+  const node = graphNodes.value.find((item) => item.node.node_id === portRef.nodeId)
+  const port = node?.inputs.find((item) => item.name === portRef.portName)
+  if (!node || !port) return
+  exposeNodeInputAsAppInput(node, port)
+}
+
+function exposeContextPortAsAppOutput(): void {
+  const portRef = contextMenu.value?.port
+  if (!portRef || portRef.direction !== 'output') return
+  const node = graphNodes.value.find((item) => item.node.node_id === portRef.nodeId)
+  const port = node?.outputs.find((item) => item.name === portRef.portName)
+  if (!node || !port) return
+  exposeNodeOutputAsAppOutput(node, port)
+}
+
+function exposeNodeInputAsAppInput(node: GraphNodeView, port: NodePortDefinition, options: { required?: boolean } = {}): void {
+  if (!workflowApp.value) {
+    errorMessage.value = '当前图还没有应用草稿，暂不能创建公开输入'
+    return
+  }
+  const existingInput = templateInputs.value.find((input) => input.target_node_id === node.node.node_id && input.target_port === port.name)
+  if (existingInput) {
+    selectApplicationBoundary('entry')
+    statusMessage.value = `${existingInput.input_id} 已经是应用输入`
+    return
+  }
+  if (findInputEdge(node.node.node_id, port.name) && !port.multiple) {
+    errorMessage.value = '该输入端口已有普通连线，请先删除连线再公开为应用输入'
+    return
+  }
+  const inputId = createUniquePublicId(`${node.node.node_id}_${port.name}`, new Set(templateInputs.value.map((input) => input.input_id)))
+  const displayName = port.display_name || port.name
+  const metadata = buildPublicPortMetadata(node, port)
+  const required = options.required ?? port.required
+  const templateInput: WorkflowGraphInput = {
+    input_id: inputId,
+    display_name: displayName,
+    payload_type_id: port.payload_type_id,
+    target_node_id: node.node.node_id,
+    target_port: port.name,
+    required,
+    metadata,
+  }
+  const binding: FlowApplicationBinding = {
+    binding_id: inputId,
+    direction: 'input',
+    template_port_id: inputId,
+    binding_kind: 'api-request',
+    required,
+    config: { payload_type_id: port.payload_type_id },
+    metadata,
+  }
+  templateInputs.value = [...templateInputs.value, templateInput]
+  applicationBindingsDraft.value = [...applicationBindingsDraft.value, binding]
+  previewInputState.value = { ...previewInputState.value, [binding.binding_id]: createEmptyPreviewInputState(binding) }
+  selectApplicationBoundary('entry')
+  statusMessage.value = '已公开为应用输入'
+  errorMessage.value = null
+}
+
+function exposeNodeOutputAsAppOutput(node: GraphNodeView, port: NodePortDefinition): void {
+  if (!workflowApp.value) {
+    errorMessage.value = '当前图还没有应用草稿，暂不能创建公开输出'
+    return
+  }
+  const existingOutput = templateOutputs.value.find((output) => output.source_node_id === node.node.node_id && output.source_port === port.name)
+  if (existingOutput) {
+    selectApplicationBoundary('result')
+    statusMessage.value = `${existingOutput.output_id} 已经是应用输出`
+    return
+  }
+  const outputId = createDefaultPublicOutputId(node, port)
+  const displayName = port.display_name || port.name
+  const metadata = buildPublicPortMetadata(node, port)
+  const templateOutput: WorkflowGraphOutput = {
+    output_id: outputId,
+    display_name: displayName,
+    payload_type_id: port.payload_type_id,
+    source_node_id: node.node.node_id,
+    source_port: port.name,
+    metadata,
+  }
+  const binding: FlowApplicationBinding = {
+    binding_id: outputId,
+    direction: 'output',
+    template_port_id: outputId,
+    binding_kind: 'http-response',
+    required: false,
+    config: { payload_type_id: port.payload_type_id },
+    metadata,
+  }
+  templateOutputs.value = [...templateOutputs.value, templateOutput]
+  applicationBindingsDraft.value = [...applicationBindingsDraft.value, binding]
+  selectApplicationBoundary('result')
+  statusMessage.value = '已公开为应用输出'
+  errorMessage.value = null
+}
+
+function createDefaultPublicOutputId(node: GraphNodeView, port: NodePortDefinition): string {
+  const shouldUseNodeId = node.node.node_type_id === 'core.output.http-response' && port.name === 'response'
+  const baseValue = shouldUseNodeId ? node.node.node_id : `${node.node.node_id}_${port.name}`
+  return createUniquePublicId(baseValue, new Set(templateOutputs.value.map((output) => output.output_id)))
+}
+
+function buildPublicPortMetadata(node: GraphNodeView, port: NodePortDefinition): WorkflowJsonObject {
+  return {
+    payload_type_id: port.payload_type_id,
+    display_name: port.display_name || port.name,
+    node_id: node.node.node_id,
+    node_type_id: node.node.node_type_id,
+    port_name: port.name,
+    source: 'workflow-graph-editor',
+  }
+}
+
+function createUniquePublicId(baseValue: string, existingIds: Set<string>): string {
+  const baseId = normalizePublicIdentifier(baseValue, 'public_port')
+  let candidateId = baseId
+  let suffix = 1
+  while (existingIds.has(candidateId)) {
+    suffix += 1
+    candidateId = `${baseId}_${suffix}`
+  }
+  return candidateId
+}
+
+function normalizePublicIdentifier(value: string, fallback: string): string {
+  return value.trim().replace(/[^a-zA-Z0-9]+/g, '_').replace(/^_+|_+$/g, '').toLowerCase() || fallback
+}
+
+function bindingDisplayName(binding: FlowApplicationBinding): string {
+  const templatePort = readTemplatePortForBinding(binding)
+  if (templatePort && 'display_name' in templatePort) return templatePort.display_name
+  const metadataDisplayName = binding.metadata.display_name
+  return typeof metadataDisplayName === 'string' ? metadataDisplayName : binding.binding_id
+}
+
+function bindingKindOptions(binding: FlowApplicationBinding): string[] {
+  const defaultOptions = binding.direction === 'input' ? inputBindingKindOptions : outputBindingKindOptions
+  return defaultOptions.includes(binding.binding_kind) ? defaultOptions : [binding.binding_kind, ...defaultOptions].filter(Boolean)
+}
+
+function bindingKindSelectOptions(binding: FlowApplicationBinding): SelectOption[] {
+  return bindingKindOptions(binding).map((option) => ({ label: option, value: option }))
+}
+
+function addRequestImageRefInput(): void {
+  addRequestImageInputNode({
+    bindingId: 'request_image_ref',
+    displayName: 'request_image_ref',
+    nodeTypeId: 'core.io.image-base64-encode',
+    portName: 'image',
+  })
+}
+
+function addRequestImageBase64Input(): void {
+  addRequestImageInputNode({
+    bindingId: 'request_image_base64',
+    displayName: 'request_image_base64',
+    nodeTypeId: 'core.logic.image-base64-coalesce',
+    portName: 'primary',
+  })
+}
+
+function addRequestImageInputNode(input: { bindingId: string; displayName: string; nodeTypeId: string; portName: string }): void {
+  if (!workflowApp.value) return
+  const existingBinding = appInputBindings.value.find((binding) => binding.binding_id === input.bindingId)
+  if (existingBinding) {
+    selectApplicationBoundary('entry')
+    statusMessage.value = `${input.bindingId} 已存在`
+    return
+  }
+  const definition = nodeDefinitionsById.value.get(input.nodeTypeId)
+  if (!definition) {
+    errorMessage.value = `节点目录缺少 ${input.nodeTypeId}`
+    return
+  }
+  const previousBindingIds = new Set(applicationBindingsDraft.value.map((binding) => binding.binding_id))
+  const position = readNextRequestInputNodePosition()
+  const graphNode = addGraphNode(definition, position.x, position.y)
+  const payloadPort = graphNode.inputs.find((port) => port.name === input.portName) ?? graphNode.inputs[0]
+  if (!payloadPort) {
+    deleteSelectedNode()
+    errorMessage.value = `${definition.display_name} 没有可公开的输入端口`
+    return
+  }
+  exposeNodeInputAsAppInput(graphNode, payloadPort, { required: false })
+  const binding = applicationBindingsDraft.value.find((item) => !previousBindingIds.has(item.binding_id) && item.direction === 'input')
+  if (binding) {
+    const nextBindingId = createUniquePublicId(input.bindingId, new Set(applicationBindingsDraft.value.filter((item) => item !== binding).map((item) => item.binding_id)))
+    renameApplicationBinding(binding, nextBindingId)
+    setBindingDisplayName(binding, input.displayName)
+    binding.binding_kind = 'api-request'
+    updateApplicationBindingRequired(binding, false)
+  }
+  connectRequestImageFallbackIfReady()
+  ensureRequestImageDecodeNodeIfReady()
+  layoutRequestImageNodes()
+  selectApplicationBoundary('entry')
+  statusMessage.value = `已添加 ${input.bindingId}`
+  errorMessage.value = null
+}
+
+function layoutRequestImageNodes(): void {
+  const encodeNode = graphNodes.value.find((node) => node.node.node_type_id === 'core.io.image-base64-encode')
+  const coalesceNode = graphNodes.value.find((node) => node.node.node_type_id === 'core.logic.image-base64-coalesce')
+  const decodeNode = graphNodes.value.find((node) => node.node.node_type_id === 'core.io.image-base64-decode')
+  const requestNodes = [encodeNode, coalesceNode, decodeNode].filter((node): node is GraphNodeView => Boolean(node))
+  if (requestNodes.length === 0) return
+  const entryPosition = boundaryPositions.value.entry
+  const baseX = entryPosition
+    ? entryPosition.x + 250 + 220
+    : Math.min(...requestNodes.map((node) => node.x))
+  const baseY = entryPosition
+    ? entryPosition.y
+    : Math.min(...requestNodes.map((node) => node.y))
+  if (encodeNode) moveGraphNodeTo(encodeNode, baseX, baseY)
+  if (coalesceNode) moveGraphNodeTo(coalesceNode, baseX, baseY + (encodeNode ? 180 : 0))
+  if (decodeNode && coalesceNode) moveGraphNodeTo(decodeNode, coalesceNode.x + 330, coalesceNode.y)
+}
+
+function moveGraphNodeTo(node: GraphNodeView, x: number, y: number): void {
+  node.x = Math.round(x)
+  node.y = Math.round(y)
+  node.node.ui_state = { ...node.node.ui_state, x: node.x, y: node.y, width: node.width }
+}
+
+function connectRequestImageFallbackIfReady(): void {
+  const encodeNode = graphNodes.value.find((node) => node.node.node_type_id === 'core.io.image-base64-encode')
+  const coalesceNode = graphNodes.value.find((node) => node.node.node_type_id === 'core.logic.image-base64-coalesce')
+  if (!encodeNode || !coalesceNode) return
+  const hasEncodeOutput = encodeNode.outputs.some((port) => port.name === 'payload')
+  const hasCoalesceFallback = coalesceNode.inputs.some((port) => port.name === 'fallback')
+  if (!hasEncodeOutput || !hasCoalesceFallback) return
+  const hasFallbackInput = graphEdges.value.some(
+    (edge) => edge.target_node_id === coalesceNode.node.node_id && edge.target_port === 'fallback',
+  )
+  if (hasFallbackInput) return
+  connectOutputToInput(
+    { nodeId: encodeNode.node.node_id, portName: 'payload', direction: 'output' },
+    { nodeId: coalesceNode.node.node_id, portName: 'fallback', direction: 'input' },
+  )
+}
+
+function ensureRequestImageDecodeNodeIfReady(): void {
+  const coalesceNode = graphNodes.value.find((node) => node.node.node_type_id === 'core.logic.image-base64-coalesce')
+  if (!coalesceNode || !coalesceNode.outputs.some((port) => port.name === 'payload')) return
+  const existingDecodeEdge = graphEdges.value.some((edge) => {
+    const targetNode = graphNodes.value.find((node) => node.node.node_id === edge.target_node_id)
+    return edge.source_node_id === coalesceNode.node.node_id
+      && edge.source_port === 'payload'
+      && targetNode?.node.node_type_id === 'core.io.image-base64-decode'
+      && edge.target_port === 'payload'
+  })
+  if (existingDecodeEdge) return
+  const decodeDefinition = nodeDefinitionsById.value.get('core.io.image-base64-decode')
+  if (!decodeDefinition) return
+  const decodeNode = addGraphNode(decodeDefinition, coalesceNode.x + 280, coalesceNode.y)
+  connectOutputToInput(
+    { nodeId: coalesceNode.node.node_id, portName: 'payload', direction: 'output' },
+    { nodeId: decodeNode.node.node_id, portName: 'payload', direction: 'input' },
+  )
+}
+
+function readNextRequestInputNodePosition(): { x: number; y: number } {
+  const entryBoundary = appBoundaryNodes.value.find((boundary) => boundary.kind === 'entry')
+  if (entryBoundary) {
+    return {
+      x: entryBoundary.x + entryBoundary.width + 240,
+      y: entryBoundary.y + appInputBindings.value.length * 180 + 40,
+    }
+  }
+  const canvasCenterX = (stageSize.value.width / 2 - viewportX.value) / viewportScale.value
+  const canvasCenterY = (stageSize.value.height / 2 - viewportY.value) / viewportScale.value
+  return { x: canvasCenterX, y: canvasCenterY }
+}
+
+function bindingEndpointText(binding: FlowApplicationBinding): string {
+  const templatePort = readTemplatePortForBinding(binding)
+  if (!templatePort) return '未找到 template port'
+  if (binding.direction === 'input' && 'target_node_id' in templatePort) return `${templatePort.target_node_id}.${templatePort.target_port}`
+  if (binding.direction === 'output' && 'source_node_id' in templatePort) return `${templatePort.source_node_id}.${templatePort.source_port}`
+  return binding.template_port_id
+}
+
+function readTemplatePortForBinding(binding: FlowApplicationBinding): WorkflowGraphInput | WorkflowGraphOutput | null {
+  return binding.direction === 'input'
+    ? templateInputById.value.get(binding.template_port_id) ?? null
+    : templateOutputById.value.get(binding.template_port_id) ?? null
+}
+
+function updateBindingIdFromEvent(binding: FlowApplicationBinding, event: Event): void {
+  const target = event.target
+  if (!(target instanceof HTMLInputElement)) return
+  const oldBindingId = binding.binding_id
+  const nextBindingId = normalizePublicIdentifier(target.value, oldBindingId)
+  if (!renameApplicationBinding(binding, nextBindingId)) {
+    target.value = oldBindingId
+    errorMessage.value = `公开 id 已存在：${nextBindingId}`
+    return
+  }
+  target.value = binding.binding_id
+  statusMessage.value = '已更新公开 id'
+  errorMessage.value = null
+}
+
+function renameApplicationBinding(binding: FlowApplicationBinding, nextBindingId: string): boolean {
+  const oldBindingId = binding.binding_id
+  const existingBindingIds = new Set(applicationBindingsDraft.value.filter((item) => item !== binding).map((item) => item.binding_id))
+  if (existingBindingIds.has(nextBindingId)) return false
+  const templatePort = readTemplatePortForBinding(binding)
+  if (binding.direction === 'input' && templatePort && 'input_id' in templatePort) {
+    templatePort.input_id = nextBindingId
+  }
+  if (binding.direction === 'output' && templatePort && 'output_id' in templatePort) {
+    templatePort.output_id = nextBindingId
+  }
+  binding.binding_id = nextBindingId
+  binding.template_port_id = nextBindingId
+  binding.config = { ...binding.config, payload_type_id: getBindingPayloadTypeId(binding) }
+  if (binding.direction === 'input' && oldBindingId !== nextBindingId) {
+    const previousState = previewInputState.value[oldBindingId]
+    const nextState = { ...previewInputState.value }
+    delete nextState[oldBindingId]
+    nextState[nextBindingId] = previousState ?? createEmptyPreviewInputState(binding)
+    previewInputState.value = nextState
+  }
+  return true
+}
+
+function updateBindingDisplayNameFromEvent(binding: FlowApplicationBinding, event: Event): void {
+  const target = event.target
+  if (!(target instanceof HTMLInputElement)) return
+  const nextDisplayName = target.value.trim() || binding.binding_id
+  setBindingDisplayName(binding, nextDisplayName)
+  statusMessage.value = '已更新显示名称'
+}
+
+function setBindingDisplayName(binding: FlowApplicationBinding, nextDisplayName: string): void {
+  const templatePort = readTemplatePortForBinding(binding)
+  if (templatePort && 'display_name' in templatePort) templatePort.display_name = nextDisplayName
+  binding.metadata = { ...binding.metadata, display_name: nextDisplayName }
+}
+
+function updateBindingKindFromValue(binding: FlowApplicationBinding, value: SelectValue): void {
+  const fallbackKind = binding.direction === 'input' ? 'api-request' : 'http-response'
+  binding.binding_kind = selectValueToString(value).trim() || fallbackKind
+  statusMessage.value = '已更新 binding kind'
+}
+
+function setPreviewImageRefTransportKind(bindingId: string, value: SelectValue): void {
+  const state = previewInputState.value[bindingId]
+  if (!state) return
+  state.imageRefTransportKind = selectValueToString(value) === 'memory' ? 'memory' : 'storage'
+}
+
+function updateBindingRequiredFromEvent(binding: FlowApplicationBinding, event: Event): void {
+  const target = event.target
+  if (!(target instanceof HTMLInputElement)) return
+  updateApplicationBindingRequired(binding, target.checked)
+  statusMessage.value = '已更新输入必填状态'
+}
+
+function updateApplicationBindingRequired(binding: FlowApplicationBinding, required: boolean): void {
+  binding.required = required
+  const templateInput = binding.direction === 'input' ? templateInputById.value.get(binding.template_port_id) : null
+  if (templateInput) templateInput.required = required
+}
+
+function deleteApplicationBinding(binding: FlowApplicationBinding): void {
+  applicationBindingsDraft.value = applicationBindingsDraft.value.filter((item) => item !== binding)
+  if (binding.direction === 'input') {
+    templateInputs.value = templateInputs.value.filter((input) => input.input_id !== binding.template_port_id)
+    const nextState = { ...previewInputState.value }
+    delete nextState[binding.binding_id]
+    previewInputState.value = nextState
+    selectedBoundaryKind.value = 'entry'
+  } else {
+    templateOutputs.value = templateOutputs.value.filter((output) => output.output_id !== binding.template_port_id)
+    selectedBoundaryKind.value = 'result'
+  }
+  statusMessage.value = '已删除公开接口'
+  errorMessage.value = null
+}
+
+function deleteContextApplicationBinding(): void {
+  const bindingId = contextMenu.value?.bindingId
+  if (!bindingId) return
+  const binding = applicationBindingsDraft.value.find((item) => item.binding_id === bindingId)
+  if (!binding) return
+  deleteApplicationBinding(binding)
+  contextMenu.value = null
+  nodePicker.value = null
+}
+
+function resetContextBoundaryPosition(): void {
+  const boundaryKind = contextMenu.value?.boundaryKind ?? selectedBoundaryKind.value
+  if (!boundaryKind) return
+  const nextPositions = { ...boundaryPositions.value }
+  delete nextPositions[boundaryKind]
+  boundaryPositions.value = nextPositions
+  selectApplicationBoundary(boundaryKind)
+  statusMessage.value = '已重置边界位置'
 }
 
 function createGraphEdgeId(sourceNodeId: string, sourcePort: string, targetNodeId: string, targetPort: string): string {
@@ -1759,8 +2827,21 @@ function shouldIgnoreStageWheelTarget(target: EventTarget | null): boolean {
 function deleteSelectedNode(): void {
   const nodeId = selectedNodeId.value ?? contextMenu.value?.nodeId
   if (!nodeId) return
+  const removedInputIds = new Set(templateInputs.value.filter((input) => input.target_node_id === nodeId).map((input) => input.input_id))
+  const removedOutputIds = new Set(templateOutputs.value.filter((output) => output.source_node_id === nodeId).map((output) => output.output_id))
   graphNodes.value = graphNodes.value.filter((node) => node.node.node_id !== nodeId)
   graphEdges.value = graphEdges.value.filter((edge) => edge.source_node_id !== nodeId && edge.target_node_id !== nodeId)
+  templateInputs.value = templateInputs.value.filter((input) => !removedInputIds.has(input.input_id))
+  templateOutputs.value = templateOutputs.value.filter((output) => !removedOutputIds.has(output.output_id))
+  const removedBindingIds = new Set(applicationBindingsDraft.value
+    .filter((binding) => removedInputIds.has(binding.template_port_id) || removedOutputIds.has(binding.template_port_id))
+    .map((binding) => binding.binding_id))
+  applicationBindingsDraft.value = applicationBindingsDraft.value.filter((binding) => !removedInputIds.has(binding.template_port_id) && !removedOutputIds.has(binding.template_port_id))
+  if (removedBindingIds.size > 0) {
+    const nextState = { ...previewInputState.value }
+    for (const bindingId of removedBindingIds) delete nextState[bindingId]
+    previewInputState.value = nextState
+  }
   selectedNodeId.value = graphNodes.value[0]?.node.node_id ?? null
   selectedEdgeId.value = null
   selectedBoundaryKind.value = null
@@ -1786,23 +2867,60 @@ function openNodeContextMenu(event: MouseEvent, node: GraphNodeView): void {
   selectedBoundaryKind.value = null
   const position = screenToWorld(event.clientX, event.clientY)
   nodePicker.value = null
-  contextMenu.value = { x: event.clientX, y: event.clientY, worldX: position.x, worldY: position.y, nodeId: node.node.node_id, edgeId: null }
+  contextMenu.value = { x: event.clientX, y: event.clientY, worldX: position.x, worldY: position.y, nodeId: node.node.node_id, edgeId: null, port: null }
+}
+
+function openPortContextMenu(event: MouseEvent, node: GraphNodeView, port: NodePortDefinition, direction: PortDirection): void {
+  selectedNodeId.value = node.node.node_id
+  selectedEdgeId.value = null
+  selectedBoundaryKind.value = null
+  const position = screenToWorld(event.clientX, event.clientY)
+  nodePicker.value = null
+  contextMenu.value = {
+    x: event.clientX,
+    y: event.clientY,
+    worldX: position.x,
+    worldY: position.y,
+    nodeId: node.node.node_id,
+    edgeId: null,
+    port: { nodeId: node.node.node_id, portName: port.name, direction },
+  }
+}
+
+function openBoundaryContextMenu(event: MouseEvent, boundary: AppBoundaryNodeView): void {
+  selectedBoundaryKind.value = boundary.kind
+  selectedNodeId.value = null
+  selectedEdgeId.value = null
+  const position = screenToWorld(event.clientX, event.clientY)
+  nodePicker.value = null
+  contextMenu.value = { x: event.clientX, y: event.clientY, worldX: position.x, worldY: position.y, nodeId: null, edgeId: null, port: null, boundaryKind: boundary.kind, bindingId: null }
+}
+
+function openBoundaryPortContextMenu(event: MouseEvent, boundary: AppBoundaryNodeView, binding: FlowApplicationBinding): void {
+  selectedBoundaryKind.value = boundary.kind
+  selectedNodeId.value = null
+  selectedEdgeId.value = null
+  const position = screenToWorld(event.clientX, event.clientY)
+  nodePicker.value = null
+  contextMenu.value = { x: event.clientX, y: event.clientY, worldX: position.x, worldY: position.y, nodeId: null, edgeId: null, port: null, boundaryKind: boundary.kind, bindingId: binding.binding_id }
+  statusMessage.value = `已选择 ${binding.binding_id}`
 }
 
 function openEdgeContextMenu(event: MouseEvent, link: GraphLinkView): void {
+  if (!link.edge) return
   selectedEdgeId.value = link.edgeId
   selectedNodeId.value = null
   selectedBoundaryKind.value = null
   const position = screenToWorld(event.clientX, event.clientY)
   nodePicker.value = null
-  contextMenu.value = { x: event.clientX, y: event.clientY, worldX: position.x, worldY: position.y, nodeId: null, edgeId: link.edgeId }
+  contextMenu.value = { x: event.clientX, y: event.clientY, worldX: position.x, worldY: position.y, nodeId: null, edgeId: link.edgeId, port: null }
 }
 
 function openStageContextMenu(event: MouseEvent): void {
   if (shouldIgnoreStagePointer(event.target)) return
   const position = screenToWorld(event.clientX, event.clientY)
   nodePicker.value = null
-  contextMenu.value = { x: event.clientX, y: event.clientY, worldX: position.x, worldY: position.y, nodeId: null, edgeId: null }
+  contextMenu.value = { x: event.clientX, y: event.clientY, worldX: position.x, worldY: position.y, nodeId: null, edgeId: null, port: null }
 }
 
 function calculateWorldBounds(): { minX: number; minY: number; maxX: number; maxY: number; width: number; height: number } {
@@ -1813,10 +2931,11 @@ function calculateWorldBounds(): { minX: number; minY: number; maxX: number; max
     const viewHeight = stageSize.value.height / viewportScale.value
     return { minX: viewLeft, minY: viewTop, maxX: viewLeft + viewWidth, maxY: viewTop + viewHeight, width: viewWidth, height: viewHeight }
   }
-  const minX = Math.min(...graphNodes.value.map((node) => node.x)) - 160
-  const minY = Math.min(...graphNodes.value.map((node) => node.y)) - 120
-  const maxX = Math.max(...graphNodes.value.map((node) => node.x + node.width)) + 160
-  const maxY = Math.max(...graphNodes.value.map((node) => node.y + nodeVisualHeight(node))) + 120
+  const boundaryNodes = appBoundaryNodes.value
+  const minX = Math.min(...graphNodes.value.map((node) => node.x), ...boundaryNodes.map((boundary) => boundary.x)) - 160
+  const minY = Math.min(...graphNodes.value.map((node) => node.y), ...boundaryNodes.map((boundary) => boundary.y)) - 120
+  const maxX = Math.max(...graphNodes.value.map((node) => node.x + node.width), ...boundaryNodes.map((boundary) => boundary.x + boundary.width)) + 160
+  const maxY = Math.max(...graphNodes.value.map((node) => node.y + nodeVisualHeight(node)), ...boundaryNodes.map((boundary) => boundary.y + boundaryNodeHeight(boundary))) + 120
   return { minX, minY, maxX, maxY, width: maxX - minX, height: maxY - minY }
 }
 
@@ -1891,6 +3010,52 @@ function initializePreviewInputs(applicationBindings: FlowApplicationBinding[]):
     nextInputState[binding.binding_id] = createEmptyPreviewInputState(binding)
   }
   previewInputState.value = nextInputState
+}
+
+function initializeWorkflowAppDrafts(appDocument: WorkflowAppDocument): void {
+  templateInputs.value = appDocument.graphDocument.template.template_inputs.map((input) => ({ ...input, metadata: { ...input.metadata } }))
+  templateOutputs.value = appDocument.graphDocument.template.template_outputs.map((output) => ({ ...output, metadata: { ...output.metadata } }))
+  applicationBindingsDraft.value = appDocument.applicationDocument.application.bindings.map((binding) => ({
+    ...binding,
+    config: { ...binding.config },
+    metadata: { ...binding.metadata },
+  }))
+  normalizeLoadedHttpResponseOutputIds(appDocument.graphDocument.template.nodes)
+  normalizeLoadedRequestImageInputBindings()
+  boundaryPositions.value = readBoundaryPositionsFromMetadata(appDocument.applicationDocument.application.metadata)
+  initializePreviewInputs(applicationBindingsDraft.value)
+}
+
+function normalizeLoadedHttpResponseOutputIds(nodes: WorkflowGraphNode[]): void {
+  const nodeTypeById = new Map(nodes.map((node) => [node.node_id, node.node_type_id]))
+  for (const output of templateOutputs.value) {
+    if (nodeTypeById.get(output.source_node_id) !== 'core.output.http-response') continue
+    if (output.source_port !== 'response') continue
+    const legacyOutputId = normalizePublicIdentifier(`${output.source_node_id}_${output.source_port}`, output.output_id)
+    if (output.output_id !== legacyOutputId) continue
+    const existingIds = new Set([
+      ...templateOutputs.value.filter((item) => item !== output).map((item) => item.output_id),
+      ...applicationBindingsDraft.value
+        .filter((binding) => binding.template_port_id !== output.output_id && binding.binding_id !== output.output_id)
+        .map((binding) => binding.binding_id),
+    ])
+    const nextOutputId = createUniquePublicId(output.source_node_id, existingIds)
+    if (nextOutputId === output.output_id) continue
+    const previousOutputId = output.output_id
+    output.output_id = nextOutputId
+    for (const binding of applicationBindingsDraft.value) {
+      if (binding.direction !== 'output' || binding.template_port_id !== previousOutputId) continue
+      binding.template_port_id = nextOutputId
+      if (binding.binding_id === previousOutputId) binding.binding_id = nextOutputId
+    }
+  }
+}
+
+function normalizeLoadedRequestImageInputBindings(): void {
+  for (const binding of applicationBindingsDraft.value) {
+    if (binding.direction !== 'input' || !optionalRequestImageBindingIds.has(binding.binding_id)) continue
+    updateApplicationBindingRequired(binding, false)
+  }
 }
 
 function addPreviewValueField(bindingId: string): void {
@@ -2109,6 +3274,8 @@ function createCanvasSnapshot(): WorkflowCanvasGraphSnapshot {
       ui_state: { ...node.node.ui_state, x: node.x, y: node.y, width: node.width },
     })),
     edges: graphEdges.value.map((edge) => ({ ...edge, metadata: { ...edge.metadata } })),
+    template_inputs: templateInputs.value.map((input) => ({ ...input, metadata: { ...input.metadata } })),
+    template_outputs: templateOutputs.value.map((output) => ({ ...output, metadata: { ...output.metadata } })),
   }
 }
 
@@ -2116,28 +3283,235 @@ function buildCurrentTemplate() {
   const sourceTemplate = workflowApp.value?.graphDocument.template
   if (!sourceTemplate) return null
   const snapshot = createCanvasSnapshot()
-  return liteGraphAdapter.value?.exportTemplate(sourceTemplate, snapshot) ?? sourceTemplate
+  const template = liteGraphAdapter.value?.exportTemplate(sourceTemplate, snapshot) ?? sourceTemplate
+  return applyNewWorkflowTemplateSettings(template)
+}
+
+function buildCurrentApplication(template: ReturnType<typeof buildCurrentTemplate>): FlowApplication | null {
+  const sourceApplication = workflowApp.value?.applicationDocument.application
+  if (!sourceApplication || !template) return null
+  const draft = newWorkflowAppDraft.value
+  return {
+    ...sourceApplication,
+    application_id: isNewApp.value ? draft.applicationId.trim() : sourceApplication.application_id,
+    display_name: isNewApp.value ? draft.displayName.trim() : sourceApplication.display_name,
+    template_ref: {
+      ...sourceApplication.template_ref,
+      template_id: template.template_id,
+      template_version: template.template_version,
+      source_kind: isNewApp.value ? 'json-file' : sourceApplication.template_ref.source_kind,
+      source_uri: isNewApp.value
+        ? buildWorkflowTemplateSourceUri(selectedProjectId.value, template.template_id, template.template_version)
+        : sourceApplication.template_ref.source_uri,
+    },
+    description: isNewApp.value ? draft.description.trim() : sourceApplication.description,
+    bindings: applicationBindingsDraft.value.map((binding) => ({
+      ...binding,
+      config: { ...binding.config },
+      metadata: { ...binding.metadata },
+    })),
+    metadata: writeBoundaryPositionsToMetadata(sourceApplication.metadata),
+  }
+}
+
+function runWorkflowPreflight(template: WorkflowGraphTemplate, application: FlowApplication): WorkflowValidationIssue | null {
+  if (template.nodes.length === 0) return { message: '图至少需要一个节点。' }
+  const duplicateNodeId = findDuplicateValue(template.nodes.map((node) => node.node_id))
+  if (duplicateNodeId) return { message: `节点 id 重复：${duplicateNodeId}`, nodeId: duplicateNodeId }
+  const duplicateEdgeId = findDuplicateValue(template.edges.map((edge) => edge.edge_id))
+  if (duplicateEdgeId) return { message: `连线 id 重复：${duplicateEdgeId}`, edgeId: duplicateEdgeId }
+  const duplicateInputId = findDuplicateValue(template.template_inputs.map((input) => input.input_id))
+  if (duplicateInputId) return { message: `应用输入 id 重复：${duplicateInputId}`, boundaryKind: 'entry', bindingId: duplicateInputId }
+  const duplicateOutputId = findDuplicateValue(template.template_outputs.map((output) => output.output_id))
+  if (duplicateOutputId) return { message: `应用输出 id 重复：${duplicateOutputId}`, boundaryKind: 'result', bindingId: duplicateOutputId }
+
+  const nodeViewsById = new Map(graphNodes.value.map((node) => [node.node.node_id, node]))
+  const inputUsage = new Map<string, string[]>()
+  for (const node of template.nodes) {
+    const graphNode = nodeViewsById.get(node.node_id)
+    if (!graphNode) return { message: `节点 ${node.node_id} 没有画布视图，请刷新后重试。`, nodeId: node.node_id }
+    if (!nodeDefinitionsById.value.has(node.node_type_id)) return { message: `节点 ${node.node_id} 引用了不可用的 Node type：${node.node_type_id}`, nodeId: node.node_id }
+  }
+
+  for (const edge of template.edges) {
+    const sourceNode = nodeViewsById.get(edge.source_node_id)
+    const targetNode = nodeViewsById.get(edge.target_node_id)
+    if (!sourceNode) return { message: `连线 ${edge.edge_id} 引用了不存在的源节点：${edge.source_node_id}`, edgeId: edge.edge_id }
+    if (!targetNode) return { message: `连线 ${edge.edge_id} 引用了不存在的目标节点：${edge.target_node_id}`, edgeId: edge.edge_id }
+    const sourcePort = sourceNode.outputs.find((port) => port.name === edge.source_port)
+    const targetPort = targetNode.inputs.find((port) => port.name === edge.target_port)
+    if (!sourcePort) return { message: `连线 ${edge.edge_id} 引用了不存在的源端口：${edge.source_node_id}.${edge.source_port}`, nodeId: edge.source_node_id, edgeId: edge.edge_id }
+    if (!targetPort) return { message: `连线 ${edge.edge_id} 引用了不存在的目标端口：${edge.target_node_id}.${edge.target_port}`, nodeId: edge.target_node_id, edgeId: edge.edge_id }
+    if (!portsCanConnect(sourcePort, targetPort)) return { message: `连线 ${edge.edge_id} 的 payload type 不匹配：${sourcePort.payload_type_id || 'unknown'} -> ${targetPort.payload_type_id || 'unknown'}`, edgeId: edge.edge_id }
+    const issue = registerInputUsage(inputUsage, targetNode, targetPort, `连线 ${edge.edge_id}`)
+    if (issue) return { ...issue, edgeId: edge.edge_id }
+  }
+
+  for (const input of template.template_inputs) {
+    const targetNode = nodeViewsById.get(input.target_node_id)
+    if (!targetNode) return { message: `应用输入 ${input.input_id} 引用了不存在的目标节点：${input.target_node_id}`, boundaryKind: 'entry', bindingId: input.input_id }
+    const targetPort = targetNode.inputs.find((port) => port.name === input.target_port)
+    if (!targetPort) return { message: `应用输入 ${input.input_id} 引用了不存在的目标端口：${input.target_node_id}.${input.target_port}`, nodeId: input.target_node_id, boundaryKind: 'entry', bindingId: input.input_id }
+    if (input.payload_type_id !== targetPort.payload_type_id) return { message: `应用输入 ${input.input_id} 的 payload type 与目标端口不匹配：${input.payload_type_id || 'unknown'} -> ${targetPort.payload_type_id || 'unknown'}`, nodeId: input.target_node_id, boundaryKind: 'entry', bindingId: input.input_id }
+    const issue = registerInputUsage(inputUsage, targetNode, targetPort, `应用输入 ${input.input_id}`)
+    if (issue) return { ...issue, nodeId: input.target_node_id, boundaryKind: 'entry', bindingId: input.input_id }
+  }
+
+  for (const output of template.template_outputs) {
+    const sourceNode = nodeViewsById.get(output.source_node_id)
+    if (!sourceNode) return { message: `应用输出 ${output.output_id} 引用了不存在的源节点：${output.source_node_id}`, boundaryKind: 'result', bindingId: output.output_id }
+    const sourcePort = sourceNode.outputs.find((port) => port.name === output.source_port)
+    if (!sourcePort) return { message: `应用输出 ${output.output_id} 引用了不存在的源端口：${output.source_node_id}.${output.source_port}`, nodeId: output.source_node_id, boundaryKind: 'result', bindingId: output.output_id }
+    if (output.payload_type_id !== sourcePort.payload_type_id) return { message: `应用输出 ${output.output_id} 的 payload type 与源端口不匹配：${sourcePort.payload_type_id || 'unknown'} -> ${output.payload_type_id || 'unknown'}`, nodeId: output.source_node_id, boundaryKind: 'result', bindingId: output.output_id }
+  }
+
+  if (application.template_ref.template_id !== template.template_id) return { message: `应用引用的图 id 与当前图不一致：${application.template_ref.template_id} / ${template.template_id}` }
+  if (application.template_ref.template_version !== template.template_version) return { message: `应用引用的图版本与当前图不一致：${application.template_ref.template_version} / ${template.template_version}` }
+
+  const duplicateBindingId = findDuplicateValue(application.bindings.map((binding) => binding.binding_id))
+  if (duplicateBindingId) return { message: `公开接口 id 重复：${duplicateBindingId}`, boundaryKind: findBindingBoundaryKind(duplicateBindingId), bindingId: duplicateBindingId }
+
+  const templateInputIds = new Set(template.template_inputs.map((input) => input.input_id))
+  const templateOutputIds = new Set(template.template_outputs.map((output) => output.output_id))
+  const inputBindingCounts = new Map<string, number>()
+  const outputBindingCounts = new Map<string, number>()
+  for (const binding of application.bindings) {
+    const boundaryKind = binding.direction === 'input' ? 'entry' : 'result'
+    if (!binding.binding_id.trim()) return { message: '公开接口 id 不能为空。', boundaryKind, bindingId: binding.binding_id }
+    if (!binding.template_port_id.trim()) return { message: `公开接口 ${binding.binding_id} 缺少 template port id。`, boundaryKind, bindingId: binding.binding_id }
+    if (!binding.binding_kind.trim()) return { message: `公开接口 ${binding.binding_id} 缺少 binding kind。`, boundaryKind, bindingId: binding.binding_id }
+    if (binding.direction === 'input') {
+      if (!templateInputIds.has(binding.template_port_id)) return { message: `输入绑定 ${binding.binding_id} 引用了不存在的应用输入：${binding.template_port_id}`, boundaryKind, bindingId: binding.binding_id }
+      const templateInput = template.template_inputs.find((input) => input.input_id === binding.template_port_id)
+      if (templateInput?.required && !binding.required) return { message: `输入绑定 ${binding.binding_id} 不能把必填应用输入标记为可选。`, boundaryKind, bindingId: binding.binding_id }
+      inputBindingCounts.set(binding.template_port_id, (inputBindingCounts.get(binding.template_port_id) ?? 0) + 1)
+      if ((inputBindingCounts.get(binding.template_port_id) ?? 0) > 1) return { message: `应用输入 ${binding.template_port_id} 只能绑定一个输入端点。`, boundaryKind, bindingId: binding.binding_id }
+      continue
+    }
+    if (!templateOutputIds.has(binding.template_port_id)) return { message: `输出绑定 ${binding.binding_id} 引用了不存在的应用输出：${binding.template_port_id}`, boundaryKind, bindingId: binding.binding_id }
+    outputBindingCounts.set(binding.template_port_id, (outputBindingCounts.get(binding.template_port_id) ?? 0) + 1)
+  }
+
+  for (const input of template.template_inputs) {
+    if (!inputBindingCounts.has(input.input_id)) return { message: `应用输入 ${input.input_id} 缺少输入绑定。`, boundaryKind: 'entry', bindingId: input.input_id }
+  }
+  for (const output of template.template_outputs) {
+    if (!outputBindingCounts.has(output.output_id)) return { message: `应用输出 ${output.output_id} 缺少输出绑定。`, boundaryKind: 'result', bindingId: output.output_id }
+  }
+  return null
+}
+
+function registerInputUsage(inputUsage: Map<string, string[]>, node: GraphNodeView, port: NodePortDefinition, sourceLabel: string): WorkflowValidationIssue | null {
+  const inputKey = `${node.node.node_id}.${port.name}`
+  const sources = inputUsage.get(inputKey) ?? []
+  sources.push(sourceLabel)
+  inputUsage.set(inputKey, sources)
+  if (sources.length > 1 && !port.multiple) {
+    return { message: `输入端口 ${inputKey} 不能同时接收多个来源：${sources.join('、')}`, nodeId: node.node.node_id }
+  }
+  return null
+}
+
+function findDuplicateValue(values: string[]): string | null {
+  const seen = new Set<string>()
+  for (const value of values) {
+    if (seen.has(value)) return value
+    seen.add(value)
+  }
+  return null
+}
+
+function findBindingBoundaryKind(bindingId: string): 'entry' | 'result' | undefined {
+  const binding = applicationBindingsDraft.value.find((item) => item.binding_id === bindingId)
+  if (!binding) return undefined
+  return binding.direction === 'input' ? 'entry' : 'result'
+}
+
+function applyWorkflowValidationIssue(issue: WorkflowValidationIssue): void {
+  errorMessage.value = issue.message
+  statusMessage.value = issue.bindingId ? `检查公开接口 ${issue.bindingId}` : null
+  contextMenu.value = null
+  nodePicker.value = null
+  connectionDraft.value = null
+  if (issue.edgeId && graphEdges.value.some((edge) => edge.edge_id === issue.edgeId)) {
+    selectedEdgeId.value = issue.edgeId
+    selectedNodeId.value = null
+    selectedBoundaryKind.value = null
+    return
+  }
+  if (issue.nodeId && graphNodes.value.some((node) => node.node.node_id === issue.nodeId)) {
+    selectedNodeId.value = issue.nodeId
+    selectedEdgeId.value = null
+    selectedBoundaryKind.value = null
+    return
+  }
+  if (issue.boundaryKind) {
+    selectedBoundaryKind.value = issue.boundaryKind
+    selectedNodeId.value = null
+    selectedEdgeId.value = null
+  }
+}
+
+async function refreshSavedWorkflowApp(applicationId: string): Promise<void> {
+  const previousNodeId = selectedNodeId.value
+  const previousEdgeId = selectedEdgeId.value
+  const previousBoundaryKind = selectedBoundaryKind.value
+  const refreshedApp = await getWorkflowApp(selectedProjectId.value, applicationId)
+  workflowApp.value = refreshedApp
+  initializeWorkflowAppDrafts(refreshedApp)
+  liteGraphAdapter.value?.loadTemplate(refreshedApp.graphDocument.template)
+  graphEdges.value = refreshedApp.graphDocument.template.edges.map((edge) => ({ ...edge, metadata: { ...edge.metadata } }))
+  graphNodes.value = buildGraphNodeViews(refreshedApp.graphDocument.template.nodes)
+  if (previousBoundaryKind) {
+    selectedBoundaryKind.value = previousBoundaryKind
+    selectedNodeId.value = null
+    selectedEdgeId.value = null
+    return
+  }
+  selectedBoundaryKind.value = null
+  selectedEdgeId.value = previousEdgeId && graphEdges.value.some((edge) => edge.edge_id === previousEdgeId) ? previousEdgeId : null
+  selectedNodeId.value = selectedEdgeId.value
+    ? null
+    : previousNodeId && graphNodes.value.some((node) => node.node.node_id === previousNodeId)
+      ? previousNodeId
+      : graphNodes.value[0]?.node.node_id ?? null
 }
 
 async function saveCurrentWorkflowApp(): Promise<void> {
   if (!workflowApp.value) return
+  const saveBlocker = readNewWorkflowAppSaveBlocker()
+  if (saveBlocker) {
+    errorMessage.value = saveBlocker
+    return
+  }
   const template = buildCurrentTemplate()
   if (!template) return
+  const application = buildCurrentApplication(template)
+  if (!application) return
+  const preflightIssue = runWorkflowPreflight(template, application)
+  if (preflightIssue) {
+    applyWorkflowValidationIssue(preflightIssue)
+    return
+  }
+  const wasNewApp = isNewApp.value
   saving.value = true
   errorMessage.value = null
   statusMessage.value = null
   contextMenu.value = null
   try {
+    await validateWorkflowTemplate(template)
+    await validateWorkflowApplication(selectedProjectId.value, application, template)
     const result = await saveWorkflowApp({
       projectId: selectedProjectId.value,
-      application: workflowApp.value.applicationDocument.application,
+      application,
       template,
     })
-    workflowApp.value = {
-      ...workflowApp.value,
-      applicationDocument: result.applicationDocument,
-      graphDocument: result.graphDocument,
+    if (wasNewApp) {
+      await router.replace(`/workflows/graph/apps/${encodeURIComponent(result.applicationDocument.application_id)}`)
     }
+    await refreshSavedWorkflowApp(result.applicationDocument.application_id)
+    lastPreviewRun.value = null
+    revokePreviewImageObjectUrls()
     statusMessage.value = '已保存'
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : '保存失败'
@@ -2148,8 +3522,20 @@ async function saveCurrentWorkflowApp(): Promise<void> {
 
 async function runPreview(): Promise<void> {
   if (!workflowApp.value) return
+  const previewBlocker = readNewWorkflowAppSaveBlocker()
+  if (previewBlocker) {
+    errorMessage.value = previewBlocker
+    return
+  }
   const template = buildCurrentTemplate()
   if (!template) return
+  const application = buildCurrentApplication(template)
+  if (!application) return
+  const preflightIssue = runWorkflowPreflight(template, application)
+  if (preflightIssue) {
+    applyWorkflowValidationIssue(preflightIssue)
+    return
+  }
   const inputBindings = await buildPreviewInputBindings()
   if (!inputBindings) return
   previewing.value = true
@@ -2158,13 +3544,15 @@ async function runPreview(): Promise<void> {
   contextMenu.value = null
   revokePreviewImageObjectUrls()
   try {
+    await validateWorkflowTemplate(template)
+    await validateWorkflowApplication(selectedProjectId.value, application, template)
     lastPreviewRun.value = await createWorkflowPreviewRun({
       projectId: selectedProjectId.value,
-      application: workflowApp.value.applicationDocument.application,
       template,
       inputBindings,
       executionMetadata: { source: 'workflow-graph-workbench' },
       waitMode: 'sync',
+      application,
     })
     await refreshPreviewNodeImages(lastPreviewRun.value)
     if (lastPreviewRun.value.state === 'failed') {
@@ -2213,7 +3601,7 @@ async function loadPage(): Promise<void> {
     liteGraphAdapter.value = createWorkflowLiteGraphAdapter({ nodeDefinitions: nodeCatalog.value.node_definitions })
     if (!isNewApp.value && routeApplicationId.value) {
       workflowApp.value = await getWorkflowApp(selectedProjectId.value, routeApplicationId.value)
-      initializePreviewInputs(workflowApp.value.applicationDocument.application.bindings)
+      initializeWorkflowAppDrafts(workflowApp.value)
       liteGraphAdapter.value.loadTemplate(workflowApp.value.graphDocument.template)
       graphEdges.value = workflowApp.value.graphDocument.template.edges.map((edge) => ({ ...edge, metadata: { ...edge.metadata } }))
       graphNodes.value = buildGraphNodeViews(workflowApp.value.graphDocument.template.nodes)
@@ -2221,13 +3609,15 @@ async function loadPage(): Promise<void> {
       selectedEdgeId.value = null
       selectedBoundaryKind.value = null
     } else {
-      workflowApp.value = null
+      newWorkflowAppDraft.value = createNewWorkflowAppDraftState()
+      workflowApp.value = createLocalWorkflowAppDraft()
+      initializeWorkflowAppDrafts(workflowApp.value)
+      liteGraphAdapter.value.loadTemplate(workflowApp.value.graphDocument.template)
       graphEdges.value = []
       graphNodes.value = []
       selectedNodeId.value = null
       selectedEdgeId.value = null
       selectedBoundaryKind.value = null
-      previewInputState.value = {}
     }
     await nextTick()
     updateStageSize()
@@ -2253,6 +3643,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   stopNodeDrag()
+  stopBoundaryDrag()
   stopPortConnection()
   stopStagePan()
   stopMinimapNavigation()

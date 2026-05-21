@@ -107,14 +107,7 @@
           </label>
           <label class="field">
             <span>{{ t('modelOps.fields.modelScale') }}</span>
-            <select v-model="modelScale">
-              <option value="nano">nano</option>
-              <option value="tiny">tiny</option>
-              <option value="s">s</option>
-              <option value="m">m</option>
-              <option value="l">l</option>
-              <option value="x">x</option>
-            </select>
+            <SelectField :model-value="modelScale" :options="modelScaleOptions" @update:model-value="setModelScale" />
           </label>
           <label class="field">
             <span>{{ t('modelOps.fields.outputModelName') }}</span>
@@ -138,10 +131,7 @@
           </label>
           <label class="field">
             <span>{{ t('modelOps.fields.precision') }}</span>
-            <select v-model="precision">
-              <option value="fp32">fp32</option>
-              <option value="fp16">fp16</option>
-            </select>
+            <SelectField :model-value="precision" :options="precisionOptions" @update:model-value="setPrecision" />
           </label>
           <label class="field">
             <span>{{ t('modelOps.fields.inputWidth') }}</span>
@@ -180,14 +170,7 @@
           </label>
           <label class="field">
             <span>{{ t('modelOps.fields.targetFormat') }}</span>
-            <select v-model="conversionTarget">
-              <option value="onnx">ONNX</option>
-              <option value="onnx-optimized">ONNX optimized</option>
-              <option value="openvino-ir-fp32">OpenVINO IR FP32</option>
-              <option value="openvino-ir-fp16">OpenVINO IR FP16</option>
-              <option value="tensorrt-engine-fp32">TensorRT FP32</option>
-              <option value="tensorrt-engine-fp16">TensorRT FP16</option>
-            </select>
+            <SelectField :model-value="conversionTarget" :options="conversionTargetOptions" @update:model-value="setConversionTarget" />
           </label>
           <label class="field">
             <span>{{ t('modelOps.fields.runtimeProfileId') }}</span>
@@ -307,6 +290,7 @@ import {
 import { useProjectStore } from '@/app/stores/project.store'
 import { useSessionStore } from '@/app/stores/session.store'
 import Button from '@/shared/ui/components/Button.vue'
+import SelectField from '@/shared/ui/components/Select.vue'
 import EmptyState from '@/shared/ui/feedback/EmptyState.vue'
 import InlineError from '@/shared/ui/feedback/InlineError.vue'
 import StatusBadge from '@/shared/ui/data-display/StatusBadge.vue'
@@ -315,6 +299,31 @@ import { formatSystemDateTime } from '@/shared/formatters/date-time'
 const projectStore = useProjectStore()
 const sessionStore = useSessionStore()
 const { t } = useI18n()
+
+type SelectValue = string | number | boolean | null
+
+const modelScaleOptions = [
+  { label: 'nano', value: 'nano' },
+  { label: 'tiny', value: 'tiny' },
+  { label: 's', value: 's' },
+  { label: 'm', value: 'm' },
+  { label: 'l', value: 'l' },
+  { label: 'x', value: 'x' },
+]
+
+const precisionOptions = [
+  { label: 'fp32', value: 'fp32' },
+  { label: 'fp16', value: 'fp16' },
+]
+
+const conversionTargetOptions = [
+  { label: 'ONNX', value: 'onnx' },
+  { label: 'ONNX optimized', value: 'onnx-optimized' },
+  { label: 'OpenVINO IR FP32', value: 'openvino-ir-fp32' },
+  { label: 'OpenVINO IR FP16', value: 'openvino-ir-fp16' },
+  { label: 'TensorRT FP32', value: 'tensorrt-engine-fp32' },
+  { label: 'TensorRT FP16', value: 'tensorrt-engine-fp16' },
+]
 
 const baseModels = ref<PlatformBaseModelSummary[]>([])
 const selectedModelDetail = ref<PlatformBaseModelDetail | null>(null)
@@ -350,6 +359,23 @@ const canWriteTasks = computed(() => sessionStore.hasScopes(['tasks:write']))
 const selectedProjectId = computed(() => projectStore.selectedProjectId)
 
 const selectedModelAvailableVersions = computed(() => selectedModelDetail.value?.versions ?? selectedModelDetail.value?.available_versions ?? [])
+
+function selectValueToString(value: SelectValue): string {
+  return typeof value === 'string' ? value : String(value ?? '')
+}
+
+function setModelScale(value: SelectValue): void {
+  modelScale.value = selectValueToString(value) || 'tiny'
+}
+
+function setPrecision(value: SelectValue): void {
+  precision.value = selectValueToString(value) === 'fp16' ? 'fp16' : 'fp32'
+}
+
+function setConversionTarget(value: SelectValue): void {
+  const nextValue = selectValueToString(value)
+  conversionTarget.value = (nextValue || 'onnx') as ConversionTargetKey
+}
 
 onMounted(async () => {
   if (projectStore.projects.length === 0) {

@@ -1,4 +1,4 @@
-import type { WorkflowGraphEdge, WorkflowGraphNode, WorkflowGraphTemplate, WorkflowJsonObject } from '../../types'
+import type { WorkflowGraphEdge, WorkflowGraphInput, WorkflowGraphNode, WorkflowGraphOutput, WorkflowGraphTemplate, WorkflowJsonObject } from '../../types'
 
 export interface WorkflowCanvasNodeSnapshot {
   node_id: string
@@ -14,6 +14,8 @@ export interface WorkflowCanvasNodeSnapshot {
 export interface WorkflowCanvasGraphSnapshot {
   nodes: WorkflowCanvasNodeSnapshot[]
   edges: WorkflowGraphEdge[]
+  template_inputs: WorkflowGraphInput[]
+  template_outputs: WorkflowGraphOutput[]
 }
 
 function readNumber(value: unknown, fallback: number): number {
@@ -48,6 +50,8 @@ export function workflowTemplateToCanvasSnapshot(template: WorkflowGraphTemplate
       ui_state: { ...node.ui_state },
     })),
     edges: template.edges.map((edge) => ({ ...edge, metadata: { ...edge.metadata } })),
+    template_inputs: template.template_inputs.map((input) => ({ ...input, metadata: { ...input.metadata } })),
+    template_outputs: template.template_outputs.map((output) => ({ ...output, metadata: { ...output.metadata } })),
   }
 }
 
@@ -59,8 +63,8 @@ export function canvasSnapshotToWorkflowTemplate(
     ...sourceTemplate,
     nodes: snapshot.nodes.map(snapshotNodeToGraphNode),
     edges: snapshot.edges.map((edge) => ({ ...edge, metadata: { ...edge.metadata } })),
-    template_inputs: sourceTemplate.template_inputs.map((input) => ({ ...input, metadata: { ...input.metadata } })),
-    template_outputs: sourceTemplate.template_outputs.map((output) => ({ ...output, metadata: { ...output.metadata } })),
+    template_inputs: snapshot.template_inputs.map((input) => ({ ...input, metadata: { ...input.metadata } })),
+    template_outputs: snapshot.template_outputs.map((output) => ({ ...output, metadata: { ...output.metadata } })),
     metadata: { ...sourceTemplate.metadata },
   }
 }

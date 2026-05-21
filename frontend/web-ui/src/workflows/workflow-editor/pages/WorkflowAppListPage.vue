@@ -65,7 +65,9 @@
           <tbody>
             <tr v-for="workflowApp in workflowApps" :key="workflowApp.application.application_id">
               <td>
-                <strong>{{ workflowApp.application.display_name || workflowApp.application.application_id }}</strong>
+                <RouterLink :to="detailPath(workflowApp.application.application_id)">
+                  <strong>{{ workflowApp.application.display_name || workflowApp.application.application_id }}</strong>
+                </RouterLink>
                 <span>{{ workflowApp.application.application_id }}</span>
               </td>
               <td>{{ workflowApp.application.binding_count }}</td>
@@ -78,7 +80,19 @@
               <td>{{ formatSystemDateTime(workflowApp.application.updated_at) }}</td>
               <td>
                 <div class="table-actions table-actions--wrap">
+                  <RouterLink :to="detailPath(workflowApp.application.application_id)">详情</RouterLink>
                   <RouterLink :to="editorPath(workflowApp.application.application_id)">{{ t('workflowEditor.actions.openGraphEditor') }}</RouterLink>
+                  <Button
+                    v-if="canWriteWorkflows"
+                    size="sm"
+                    variant="danger"
+                    :disabled="deletingApplicationId === workflowApp.application.application_id || workflowApp.runtimes.length > 0"
+                    :title="workflowApp.runtimes.length > 0 ? '先删除运行记录后再删除应用' : '删除应用；未被其他应用使用的图版本会一并删除'"
+                    @click="deleteWorkflowApp(workflowApp)"
+                  >
+                    <Trash2 :size="14" />
+                    删除
+                  </Button>
                 </div>
               </td>
             </tr>
@@ -91,7 +105,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { Plus, RefreshCw } from '@lucide/vue'
+import { Plus, RefreshCw, Trash2 } from '@lucide/vue'
 import { RouterLink } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 
@@ -103,6 +117,8 @@ import StatusBadge from '@/shared/ui/data-display/StatusBadge.vue'
 import EmptyState from '@/shared/ui/feedback/EmptyState.vue'
 import InlineError from '@/shared/ui/feedback/InlineError.vue'
 import { getWorkflowNodeCatalog } from '../services/node-catalog.service'
+import { deleteWorkflowApplication } from '../services/workflow-application.service'
+import { deleteWorkflowTemplateVersion } from '../services/workflow-template.service'
 import { listWorkflowApps, type WorkflowAppSummary } from '../services/workflow-app.service'
 import type { WorkflowAppRuntime, WorkflowNodeCatalogResponse } from '../types'
 
@@ -115,6 +131,7 @@ const errorMessage = ref<string | null>(null)
 const nodeCatalog = ref<WorkflowNodeCatalogResponse | null>(null)
 const workflowApps = ref<WorkflowAppSummary[]>([])
 const appRuntimes = ref<WorkflowAppRuntime[]>([])
+const deletingApplicationId = ref<string | null>(null)
 
 const selectedProjectId = computed(() => projectStore.selectedProjectId)
 const canWriteWorkflows = computed(() => sessionStore.hasScopes(['workflows:write']))
@@ -129,6 +146,10 @@ function runtimeTone(state: string): 'neutral' | 'success' | 'warning' | 'danger
 
 function editorPath(applicationId: string): string {
   return `/workflows/graph/apps/${encodeURIComponent(applicationId)}`
+}
+
+function detailPath(applicationId: string): string {
+  return `/workflows/apps/${encodeURIComponent(applicationId)}`
 }
 
 async function loadPage(): Promise<void> {
@@ -147,6 +168,38 @@ async function loadPage(): Promise<void> {
   } finally {
     loading.value = false
   }
+}
+
+async function deleteWorkflowApp(workflowApp: WorkflowAppSummary): Promise<void> {
+  if (!canWriteWorkflows.value || workflowApp.runtimes.length > 0) return
+  const applicationId = workflowApp.application.application_id
+  const shouldDeleteGraph = isGraphVersionOnlyUsedByApplication(workflowApp)
+  const confirmed = window.confirm(shouldDeleteGraph ? `删除应用 ${applicationId}，并删除未被其他应用使用的图版本？` : `删除应用 ${applicationId}？`)
+  if (!confirmed) return
+  deletingApplicationId.value = applicationId
+  errorMessage.value = null
+  try {
+    await deleteWorkflowApplication(selectedProjectId.value, applicationId)
+    if (shouldDeleteGraph) {
+      await deleteWorkflowTemplateVersion(
+        selectedProjectId.value,
+        workflowApp.application.template_id,
+        workflowApp.application.template_version,
+      )
+    }
+    workflowApps.value = workflowApps.value.filter((item) => item.application.application_id !== applicationId)
+  } catch (error) {
+    errorMessage.value = error instanceof Error ? error.message : '删除应用失败'
+  } finally {
+    deletingApplicationId.value = null
+  }
+}
+
+function isGraphVersionOnlyUsedByApplication(workflowApp: WorkflowAppSummary): boolean {
+  return workflowApps.value.every((item) => {
+    if (item.application.application_id === workflowApp.application.application_id) return true
+    return item.application.template_id !== workflowApp.application.template_id || item.application.template_version !== workflowApp.application.template_version
+  })
 }
 
 onMounted(loadPage)

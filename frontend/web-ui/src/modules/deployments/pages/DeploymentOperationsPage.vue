@@ -9,10 +9,7 @@
       <div class="page-actions">
         <label class="segmented-field">
           <span>{{ t('deploymentOps.fields.runtimeMode') }}</span>
-          <select v-model="runtimeMode">
-            <option value="sync">sync</option>
-            <option value="async">async</option>
-          </select>
+          <SelectField :model-value="runtimeMode" :options="runtimeModeOptions" @update:model-value="setRuntimeMode" />
         </label>
         <Button variant="secondary" :disabled="loading" @click="refreshPage">
           <RefreshCw :size="16" />
@@ -47,20 +44,11 @@
         </label>
         <label class="field">
           <span>{{ t('deploymentOps.fields.runtimeBackend') }}</span>
-          <select v-model="runtimeBackend">
-            <option value="">{{ t('common.none') }}</option>
-            <option value="pytorch">pytorch</option>
-            <option value="onnxruntime">onnxruntime</option>
-            <option value="openvino">openvino</option>
-            <option value="tensorrt">tensorrt</option>
-          </select>
+          <SelectField :model-value="runtimeBackend" :options="runtimeBackendOptions" @update:model-value="setRuntimeBackend" />
         </label>
         <label class="field">
           <span>{{ t('deploymentOps.fields.runtimePrecision') }}</span>
-          <select v-model="runtimePrecision">
-            <option value="fp32">fp32</option>
-            <option value="fp16">fp16</option>
-          </select>
+          <SelectField :model-value="runtimePrecision" :options="runtimePrecisionOptions" @update:model-value="setRuntimePrecision" />
         </label>
         <label class="field">
           <span>{{ t('deploymentOps.fields.deviceName') }}</span>
@@ -242,6 +230,7 @@ import { useProjectStore } from '@/app/stores/project.store'
 import { useSessionStore } from '@/app/stores/session.store'
 import { formatSystemDateTime } from '@/shared/formatters/date-time'
 import Button from '@/shared/ui/components/Button.vue'
+import SelectField from '@/shared/ui/components/Select.vue'
 import EmptyState from '@/shared/ui/feedback/EmptyState.vue'
 import InlineError from '@/shared/ui/feedback/InlineError.vue'
 import StatusBadge from '@/shared/ui/data-display/StatusBadge.vue'
@@ -249,6 +238,18 @@ import StatusBadge from '@/shared/ui/data-display/StatusBadge.vue'
 const projectStore = useProjectStore()
 const sessionStore = useSessionStore()
 const { t } = useI18n()
+
+type SelectValue = string | number | boolean | null
+
+const runtimeModeOptions = [
+  { label: 'sync', value: 'sync' },
+  { label: 'async', value: 'async' },
+]
+
+const runtimePrecisionOptions = [
+  { label: 'fp32', value: 'fp32' },
+  { label: 'fp16', value: 'fp16' },
+]
 
 const deployments = ref<YoloXDeploymentInstance[]>([])
 const deploymentEvents = ref<YoloXDeploymentProcessEvent[]>([])
@@ -275,6 +276,13 @@ const runtimeMode = ref<DeploymentRuntimeMode>('sync')
 const canWriteModels = computed(() => sessionStore.hasScopes(['models:write']))
 const selectedProjectId = computed(() => projectStore.selectedProjectId)
 const selectedDeployment = computed(() => deployments.value.find((item) => item.deployment_instance_id === selectedDeploymentId.value) ?? null)
+const runtimeBackendOptions = computed(() => [
+  { label: t('common.none'), value: '' },
+  { label: 'pytorch', value: 'pytorch' },
+  { label: 'onnxruntime', value: 'onnxruntime' },
+  { label: 'openvino', value: 'openvino' },
+  { label: 'tensorrt', value: 'tensorrt' },
+])
 
 onMounted(async () => {
   if (projectStore.projects.length === 0) {
@@ -286,6 +294,22 @@ onMounted(async () => {
 watch(runtimeMode, () => {
   void loadDeploymentEvents()
 })
+
+function selectValueToString(value: SelectValue): string {
+  return typeof value === 'string' ? value : String(value ?? '')
+}
+
+function setRuntimeMode(value: SelectValue): void {
+  runtimeMode.value = selectValueToString(value) === 'async' ? 'async' : 'sync'
+}
+
+function setRuntimeBackend(value: SelectValue): void {
+  runtimeBackend.value = selectValueToString(value)
+}
+
+function setRuntimePrecision(value: SelectValue): void {
+  runtimePrecision.value = selectValueToString(value) === 'fp16' ? 'fp16' : 'fp32'
+}
 
 function statusTone(status: string | null | undefined): 'neutral' | 'success' | 'warning' | 'danger' | 'info' {
   const normalized = String(status ?? '').toLowerCase()

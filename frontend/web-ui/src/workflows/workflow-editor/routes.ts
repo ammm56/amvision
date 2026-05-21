@@ -2,6 +2,7 @@ import type { RouteRecordRaw } from 'vue-router'
 
 const WorkflowEditorPage = () => import('./pages/WorkflowEditorPage.vue')
 const WorkflowAppListPage = () => import('./pages/WorkflowAppListPage.vue')
+const WorkflowAppDetailPage = () => import('./pages/WorkflowAppDetailPage.vue')
 
 export const workflowEditorRoutes: RouteRecordRaw[] = [
   {
@@ -11,6 +12,15 @@ export const workflowEditorRoutes: RouteRecordRaw[] = [
   {
     path: '/workflows/apps',
     component: WorkflowAppListPage,
+    meta: { requiredScopes: ['workflows:read'] },
+  },
+  {
+    path: '/workflows/apps/new',
+    redirect: '/workflows/graph/new',
+  },
+  {
+    path: '/workflows/apps/:applicationId',
+    component: WorkflowAppDetailPage,
     meta: { requiredScopes: ['workflows:read'] },
   },
   {
@@ -26,10 +36,6 @@ export const workflowEditorRoutes: RouteRecordRaw[] = [
     path: '/workflows/graph/apps/:applicationId',
     component: WorkflowEditorPage,
     meta: { requiredScopes: ['workflows:read'], graphWorkbench: true },
-  },
-  {
-    path: '/workflows/apps/new',
-    redirect: '/workflows/graph/new',
   },
   {
     path: '/workflows/apps/:applicationId/edit',
