@@ -98,12 +98,14 @@ export interface ProjectSummary {
   [key: string]: unknown
 }
 
+export type ProjectSource = 'configured' | 'local_disk'
+
 export interface ProjectCatalogItem {
   project_id: string
   display_name?: string | null
   description?: string | null
   metadata?: Record<string, unknown>
-  registered_in_catalog?: boolean
+  project_source?: ProjectSource
   storage_prefix?: string | null
   summary?: ProjectSummary | null
 }

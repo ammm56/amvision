@@ -310,6 +310,7 @@ def test_system_bootstrap_aggregates_current_user_providers_projects_and_capabil
     assert {item["provider_id"] for item in payload["providers"]} == {"local", "company-sso"}
     assert [item["project_id"] for item in payload["visible_projects"]] == ["project-1"]
     assert payload["visible_projects"][0]["display_name"] == "Project One"
+    assert payload["visible_projects"][0]["project_source"] == "configured"
     assert payload["capabilities"]["project_bootstrap_enabled"] is True
     assert payload["capabilities"]["dataset_export"]["implemented_formats"] == [
         "coco-detection-v1",

@@ -5,7 +5,7 @@ from __future__ import annotations
 import mimetypes
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Literal
 from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, Query, Request, Response, status
@@ -44,6 +44,8 @@ from backend.service.settings import (
 
 
 projects_router = APIRouter(prefix="/projects", tags=["projects"])
+
+ProjectSource = Literal["configured", "local_disk"]
 
 
 class ProjectWorkflowSummaryResponse(BaseModel):
@@ -107,7 +109,7 @@ class ProjectCatalogItemResponse(BaseModel):
     - display_name：展示名称。
     - description：项目说明。
     - metadata：附加元数据。
-    - registered_in_catalog：是否来自显式 Project 目录配置。
+    - project_source：Project 来源；configured 表示来自 backend settings.projects.items，local_disk 表示从本地 projects 目录读取。
     - storage_prefix：Project 在本地 ObjectStore 中的固定前缀。
     - summary：可选聚合摘要；仅当请求显式要求时返回。
     """
@@ -116,7 +118,7 @@ class ProjectCatalogItemResponse(BaseModel):
     display_name: str = Field(description="展示名称")
     description: str | None = Field(default=None, description="项目说明")
     metadata: dict[str, object] = Field(default_factory=dict, description="附加元数据")
-    registered_in_catalog: bool = Field(description="是否来自显式 Project 目录配置")
+    project_source: ProjectSource = Field(description="Project 来源；configured 表示来自 backend settings.projects.items，local_disk 表示从本地 projects 目录读取")
     storage_prefix: str = Field(description="Project 对应的本地 ObjectStore 前缀")
     summary: ProjectSummaryResponse | None = Field(default=None, description="可选聚合摘要")
 
@@ -473,7 +475,12 @@ def _list_visible_project_ids(
     request: Request,
     principal: AuthenticatedPrincipal,
 ) -> tuple[str, ...]:
-    """列出当前主体可见的 Project id 列表。"""
+    """列出当前主体可见的 Project id 列表。
+
+    规则：
+    - principal.project_ids 非空时，按主体显式授权的 Project id 列表裁剪。
+    - principal.project_ids 为空时，表示不按 Project 裁剪，此时返回配置目录中的 Project 和本地磁盘中已发现的 Project 并集。
+    """
 
     settings = _require_backend_service_settings(request)
     if principal.project_ids:
@@ -541,10 +548,19 @@ def _build_project_catalog_item_response(
         display_name=display_name,
         description=description,
         metadata=metadata,
-        registered_in_catalog=catalog_item is not None,
+        project_source=_resolve_project_source(catalog_item=catalog_item),
         storage_prefix=f"projects/{project_id}",
         summary=summary,
     )
+
+
+def _resolve_project_source(
+    *,
+    catalog_item: BackendServiceProjectCatalogItemConfig | None,
+) -> ProjectSource:
+    """根据 Project 是否来自配置目录返回公开来源值。"""
+
+    return "configured" if catalog_item is not None else "local_disk"
 
 
 def _find_project_catalog_item(

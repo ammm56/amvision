@@ -86,6 +86,16 @@ export const useSessionStore = defineStore('session', {
     displayName: (state) => state.currentUser?.display_name || state.currentUser?.username || '',
   },
   actions: {
+    async loadBootstrap(options: { skipAuth?: boolean } = {}): Promise<SystemBootstrapResponse> {
+      const bootstrap = await apiRequest<SystemBootstrapResponse>('/system/bootstrap', {
+        skipAuth: options.skipAuth ?? false,
+      })
+      this.bootstrap = bootstrap
+      this.authMode = bootstrap.auth_mode
+      this.bearerAuthEnabled = bootstrap.bearer_auth_enabled
+      this.websocketQueryTokenEnabled = bootstrap.websocket_query_token_enabled
+      return bootstrap
+    },
     hasScopes(requiredScopes: string[]): boolean {
       const grantedScopes = this.currentUser?.scopes ?? []
       return requiredScopes.every((requiredScope) =>
@@ -103,11 +113,7 @@ export const useSessionStore = defineStore('session', {
       this.manualLoginRequired = getManualLoginRequired()
 
       try {
-        const bootstrap = await apiRequest<SystemBootstrapResponse>('/system/bootstrap', { skipAuth: true })
-        this.bootstrap = bootstrap
-        this.authMode = bootstrap.auth_mode
-        this.bearerAuthEnabled = bootstrap.bearer_auth_enabled
-        this.websocketQueryTokenEnabled = bootstrap.websocket_query_token_enabled
+        await this.loadBootstrap({ skipAuth: true })
         useAppStore().setBackendConnectionState('online')
       } catch (error) {
         this.isInitialized = true
@@ -160,6 +166,11 @@ export const useSessionStore = defineStore('session', {
         const currentUser = await apiRequest<CurrentUser>('/system/me')
         this.currentUser = currentUser
         this.credentialKind = (currentUser.auth_credential_kind ?? this.credentialKind) as CredentialKind
+        try {
+          await this.loadBootstrap()
+        } catch {
+          // 当前用户已完成鉴权，bootstrap 刷新失败时保留现有主体状态。
+        }
         this.loginState = successState
         this.lastAuthError = null
         return true
@@ -183,6 +194,7 @@ export const useSessionStore = defineStore('session', {
         },
       })
       this.applyLoginResponse(response)
+      await this.loadBootstrap()
       setManualLoginRequired(false)
       this.manualLoginRequired = false
       this.isInitialized = true
@@ -240,6 +252,11 @@ export const useSessionStore = defineStore('session', {
         }
       }
       this.clearCredentials()
+      try {
+        await this.loadBootstrap({ skipAuth: true })
+      } catch {
+        // 登出后刷新匿名 bootstrap 失败不影响本地凭据清理。
+      }
       setManualLoginRequired(true)
       this.manualLoginRequired = true
       this.isInitialized = true

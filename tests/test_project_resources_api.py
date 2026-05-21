@@ -54,7 +54,7 @@ def test_list_and_get_project_detail_expose_catalog_and_summary(tmp_path: Path) 
     assert len(list_payload) == 1
     assert list_payload[0]["project_id"] == "project-1"
     assert list_payload[0]["display_name"] == "Project One"
-    assert list_payload[0]["registered_in_catalog"] is True
+    assert list_payload[0]["project_source"] == "configured"
     assert list_payload[0]["summary"]["project_id"] == "project-1"
 
     assert detail_response.status_code == 200
@@ -289,7 +289,7 @@ def test_project_bootstrap_creates_manifest_workspace_and_catalog_entry(tmp_path
     assert bootstrap_payload["display_name"] == "Bootstrap Project"
     assert bootstrap_payload["description"] == "初始化项目"
     assert bootstrap_payload["metadata"] == {"site": "line-b"}
-    assert bootstrap_payload["registered_in_catalog"] is False
+    assert bootstrap_payload["project_source"] == "local_disk"
     assert bootstrap_payload["summary"]["project_id"] == "project-bootstrap"
 
     assert dataset_storage.resolve("projects/project-bootstrap/project.json").is_file()

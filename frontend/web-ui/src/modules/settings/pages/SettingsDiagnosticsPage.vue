@@ -120,47 +120,6 @@
           <InfoRow :label="t('settingsDiagnostics.fields.featureFlags')" :value="enabledFeatureFlagsText" />
         </dl>
       </section>
-
-      <section class="resource-section diagnostic-section">
-        <div>
-          <p class="page-kicker">{{ t('settingsDiagnostics.sections.projectsKicker') }}</p>
-          <h2>{{ t('settingsDiagnostics.sections.projects') }}</h2>
-        </div>
-        <div class="resource-table diagnostic-section__table">
-          <table>
-            <thead>
-              <tr>
-                <th>{{ t('settingsDiagnostics.columns.project') }}</th>
-                <th>{{ t('settingsDiagnostics.columns.projectId') }}</th>
-                <th>{{ t('settingsDiagnostics.columns.status') }}</th>
-                <th>{{ t('settingsDiagnostics.columns.selected') }}</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="project in visibleProjects" :key="project.project_id">
-                <td>{{ project.display_name || project.project_id }}</td>
-                <td>{{ project.project_id }}</td>
-                <td>
-                  <StatusPill
-                    :status="project.registered_in_catalog === false ? 'unregistered' : 'registered'"
-                    :label="formatProjectRegistration(project.registered_in_catalog)"
-                  />
-                </td>
-                <td>
-                  <StatusPill
-                    :status="project.project_id === projectStore.selectedProjectId ? 'active' : 'available'"
-                    :label="booleanText(project.project_id === projectStore.selectedProjectId)"
-                    :tone="project.project_id === projectStore.selectedProjectId ? 'success' : 'neutral'"
-                  />
-                </td>
-              </tr>
-              <tr v-if="visibleProjects.length === 0">
-                <td colspan="4">{{ t('settingsDiagnostics.emptyVisibleProjects') }}</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </section>
     </section>
 
     <section v-else-if="activeCategory === 'security'" class="settings-category-panel">
@@ -181,10 +140,55 @@
           <InfoRow :label="t('settingsDiagnostics.fields.authTokenId')" :value="sessionStore.currentUser?.auth_token_id || '-'" />
           <InfoRow :label="t('settingsDiagnostics.fields.authTokenName')" :value="sessionStore.currentUser?.auth_token_name || '-'" />
           <InfoRow :label="t('settingsDiagnostics.fields.scopes')" :value="sessionStore.currentUser?.scopes?.join(', ') || '-'" />
-          <InfoRow :label="t('settingsDiagnostics.fields.projectScopes')" :value="sessionStore.currentUser?.project_ids?.join(', ') || '-'" />
+          <InfoRow :label="t('settingsDiagnostics.fields.projectVisibility')" :value="formatProjectVisibility(sessionStore.currentUser?.project_ids)" />
           <InfoRow :label="t('settingsDiagnostics.fields.sessionStorage')" :value="runtimeConfig.storage.sessionTokenStorage" />
           <InfoRow :label="t('settingsDiagnostics.fields.manualLoginStorage')" :value="runtimeConfig.storage.manualLoginStorage" />
         </dl>
+      </section>
+
+      <section class="resource-section diagnostic-section">
+        <div>
+          <p class="page-kicker">{{ t('settingsDiagnostics.sections.projectsKicker') }}</p>
+          <h2 class="heading-with-hint">
+            {{ t('settingsDiagnostics.sections.projects') }}
+            <InfoHint :text="t('settingsDiagnostics.sections.projectsHint')" />
+          </h2>
+        </div>
+        <div class="resource-table diagnostic-section__table">
+          <table>
+            <thead>
+              <tr>
+                <th>{{ t('settingsDiagnostics.columns.project') }}</th>
+                <th>{{ t('settingsDiagnostics.columns.projectId') }}</th>
+                <th>{{ t('settingsDiagnostics.columns.projectSource') }}</th>
+                <th>{{ t('settingsDiagnostics.columns.selected') }}</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="project in visibleProjects" :key="project.project_id">
+                <td>{{ project.display_name || project.project_id }}</td>
+                <td>{{ project.project_id }}</td>
+                <td>
+                  <StatusPill
+                    :status="project.project_source === 'local_disk' ? 'local_disk' : 'configured'"
+                    :label="formatProjectSource(project.project_source)"
+                    :tone="project.project_source === 'local_disk' ? 'info' : 'success'"
+                  />
+                </td>
+                <td>
+                  <StatusPill
+                    :status="project.project_id === projectStore.selectedProjectId ? 'active' : 'available'"
+                    :label="booleanText(project.project_id === projectStore.selectedProjectId)"
+                    :tone="project.project_id === projectStore.selectedProjectId ? 'success' : 'neutral'"
+                  />
+                </td>
+              </tr>
+              <tr v-if="visibleProjects.length === 0">
+                <td colspan="4">{{ t('settingsDiagnostics.emptyVisibleProjects') }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </section>
 
       <section class="resource-section diagnostic-section">
@@ -431,6 +435,7 @@ import { supportedLocaleOptions, type SupportedLocale } from '@/platform/i18n'
 import { getRuntimeConfig } from '@/platform/runtime/runtime-config'
 import type { AuthProvider, ProjectCatalogItem, SystemCapabilities } from '@/shared/contracts'
 import Button from '@/shared/ui/components/Button.vue'
+import InfoHint from '@/shared/ui/components/InfoHint.vue'
 import SelectField from '@/shared/ui/components/Select.vue'
 import StatusBadge from '@/shared/ui/data-display/StatusBadge.vue'
 import StatusPill from '@/shared/ui/data-display/StatusPill.vue'
@@ -583,7 +588,11 @@ async function loadDiagnostics(): Promise<void> {
   loading.value = true
   errorMessage.value = null
   try {
-    diagnostics.value = await getSystemDiagnostics()
+    const [nextDiagnostics] = await Promise.all([
+      getSystemDiagnostics(),
+      sessionStore.loadBootstrap().catch(() => sessionStore.bootstrap),
+    ])
+    diagnostics.value = nextDiagnostics
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : t('settingsDiagnostics.messages.loadFailed')
   } finally {
@@ -689,10 +698,14 @@ function buildStatusRow(name: string, label: string, value: unknown): { name: st
   }
 }
 
-function formatProjectRegistration(value: unknown): string {
-  if (value === true) return t('settingsDiagnostics.status.registered')
-  if (value === false) return t('settingsDiagnostics.status.unregistered')
+function formatProjectSource(value: ProjectCatalogItem['project_source']): string {
+  if (value === 'configured') return t('settingsDiagnostics.projectSources.configured')
+  if (value === 'local_disk') return t('settingsDiagnostics.projectSources.localDisk')
   return '-'
+}
+
+function formatProjectVisibility(value: string[] | undefined): string {
+  return Array.isArray(value) && value.length > 0 ? value.join(', ') : t('settingsDiagnostics.fields.allProjects')
 }
 
 function formatServiceStatus(value: string): string {

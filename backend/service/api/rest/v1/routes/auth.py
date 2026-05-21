@@ -48,7 +48,7 @@ class LocalAuthUserContract(BaseModel):
     username: str
     display_name: str
     principal_type: str
-    project_ids: list[str] = Field(default_factory=list)
+    project_ids: list[str] = Field(default_factory=list, description="Project 可见范围列表；为空表示全部 Project")
     scopes: list[str] = Field(default_factory=list)
     is_active: bool
     created_at: str
@@ -162,7 +162,7 @@ class LocalAuthUserCreateRequestBody(BaseModel):
     password: str = Field(description="密码")
     display_name: str | None = Field(default=None, description="展示名称")
     principal_type: str = Field(default="user", description="主体类型")
-    project_ids: list[str] = Field(default_factory=list, description="允许访问的 Project id 列表")
+    project_ids: list[str] = Field(default_factory=list, description="Project 可见范围列表；为空表示全部 Project")
     scopes: list[str] = Field(default_factory=list, description="当前用户持有的 scopes")
     metadata: dict[str, object] = Field(default_factory=dict, description="附加元数据")
     initial_user_token: LocalAuthInitialUserTokenRequestBody | None = Field(
@@ -176,7 +176,7 @@ class LocalAuthUserUpdateRequestBody(BaseModel):
 
     display_name: str | None = Field(default=None, description="展示名称")
     password: str | None = Field(default=None, description="新密码")
-    project_ids: list[str] | None = Field(default=None, description="允许访问的 Project id 列表")
+    project_ids: list[str] | None = Field(default=None, description="Project 可见范围列表；为空表示全部 Project")
     scopes: list[str] | None = Field(default=None, description="当前用户持有的 scopes")
     is_active: bool | None = Field(default=None, description="是否启用")
     metadata: dict[str, object] | None = Field(default=None, description="附加元数据")

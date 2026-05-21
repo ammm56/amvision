@@ -79,7 +79,12 @@
         <thead>
           <tr>
             <th>{{ t('projects.columns.project') }}</th>
-            <th>{{ t('projects.columns.status') }}</th>
+            <th>
+              <span class="heading-with-hint">
+                {{ t('projects.columns.source') }}
+                <InfoHint :text="t('projects.sourceHint')" />
+              </span>
+            </th>
             <th>{{ t('projects.columns.datasets') }}</th>
             <th>{{ t('projects.columns.training') }}</th>
             <th>{{ t('projects.columns.deployments') }}</th>
@@ -99,8 +104,9 @@
             </td>
             <td>
               <StatusPill
-                :status="project.registered_in_catalog === false ? 'unregistered' : 'available'"
-                :label="project.registered_in_catalog === false ? t('projects.status.unregistered') : t('projects.status.available')"
+                :status="project.project_source === 'local_disk' ? 'local_disk' : 'configured'"
+                :label="project.project_source === 'local_disk' ? t('projects.sources.localDisk') : t('projects.sources.configured')"
+                :tone="project.project_source === 'local_disk' ? 'info' : 'success'"
               />
             </td>
             <td>{{ formatCount(project.summary?.datasets?.dataset_total) }}</td>
@@ -123,6 +129,7 @@ import { useProjectStore } from '@/app/stores/project.store'
 import { useSessionStore } from '@/app/stores/session.store'
 import { getRuntimeConfig } from '@/platform/runtime/runtime-config'
 import Button from '@/shared/ui/components/Button.vue'
+import InfoHint from '@/shared/ui/components/InfoHint.vue'
 import EmptyState from '@/shared/ui/feedback/EmptyState.vue'
 import InlineError from '@/shared/ui/feedback/InlineError.vue'
 import StatusPill from '@/shared/ui/data-display/StatusPill.vue'

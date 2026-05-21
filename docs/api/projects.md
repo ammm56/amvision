@@ -121,7 +121,7 @@
 - `display_name`
 - `description`
 - `metadata`
-- `registered_in_catalog`
+- `project_source`：`configured` 表示该 Project 在 backend settings.projects.items 中显式声明；`local_disk` 表示该 Project 来自本地 `projects/<project_id>/` 目录
 - `storage_prefix`
 - `summary`
 
@@ -145,7 +145,7 @@
 - `display_name`
 - `description`
 - `metadata`
-- `registered_in_catalog`
+- `project_source`：`configured` 表示该 Project 在 backend settings.projects.items 中显式声明；`local_disk` 表示该 Project 来自本地 `projects/<project_id>/` 目录
 - `storage_prefix`
 - `summary`，仅在 `include_summary=true` 时内联返回
 

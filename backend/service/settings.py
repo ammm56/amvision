@@ -77,7 +77,7 @@ class BackendServiceStaticAccessTokenConfig(BaseModel):
     - token：Bearer token 明文。
     - principal_id：绑定的主体 id。
     - principal_type：主体类型。
-    - project_ids：该 token 可访问的 Project id 列表。
+    - project_ids：该 token 的 Project 可见范围；为空表示全部 Project。
     - scopes：该 token 持有的 scopes。
     - metadata：附加主体元数据。
     """
@@ -85,7 +85,7 @@ class BackendServiceStaticAccessTokenConfig(BaseModel):
     token: str = Field(description="Bearer token 明文")
     principal_id: str = Field(description="主体 id")
     principal_type: str = Field(default="user", description="主体类型")
-    project_ids: list[str] = Field(default_factory=list, description="允许访问的 Project id 列表")
+    project_ids: list[str] = Field(default_factory=list, description="Project 可见范围列表；为空表示全部 Project")
     scopes: list[str] = Field(default_factory=list, description="当前 token 持有的 scopes")
     metadata: dict[str, object] = Field(default_factory=dict, description="附加主体元数据")
 

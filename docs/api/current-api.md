@@ -346,7 +346,7 @@ WebSocket 资源流的统一消息结构、控制事件和重连规则见 [docs/
   - display_name
   - description
   - metadata
-- 当前响应字段与 Project 目录项一致，并内联返回 summary
+- 响应字段里的 `project_source`：`configured` 表示该 Project 在 backend settings.projects.items 中显式声明；`local_disk` 表示该 Project 来自本地 `projects/<project_id>/` 目录
 - 当前接口用于初始化 `projects/{project_id}` 命名空间和最小 manifest，不引入独立 Project 数据表
 
 ### GET /api/v1/projects
@@ -367,7 +367,7 @@ WebSocket 资源流的统一消息结构、控制事件和重连规则见 [docs/
   - display_name
   - description
   - metadata
-  - registered_in_catalog
+  - `project_source`：`configured` 表示该 Project 在 backend settings.projects.items 中显式声明；`local_disk` 表示该 Project 来自本地 `projects/<project_id>/` 目录
   - storage_prefix
   - summary
 

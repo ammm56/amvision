@@ -1005,11 +1005,10 @@ a:hover {
 }
 
 .info-hint__bubble {
-  position: absolute;
-  z-index: 80;
-  bottom: calc(100% + 8px);
-  left: 50%;
-  width: min(320px, 80vw);
+  position: fixed;
+  z-index: 2600;
+  width: min(320px, calc(100vw - 16px));
+  max-width: min(320px, calc(100vw - 16px));
   padding: 8px 10px;
   border: 1px solid var(--line-strong);
   border-radius: 8px;
@@ -1021,15 +1020,14 @@ a:hover {
   line-height: 1.45;
   opacity: 0;
   pointer-events: none;
-  transform: translate(-50%, 4px);
+  transform: translateY(4px);
   transition: opacity 120ms ease, transform 120ms ease;
   white-space: normal;
 }
 
-.info-hint:hover .info-hint__bubble,
-.info-hint:focus-visible .info-hint__bubble {
+.info-hint__bubble.is-visible {
   opacity: 1;
-  transform: translate(-50%, 0);
+  transform: translateY(0);
 }
 
 .inline-error {

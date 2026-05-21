@@ -41,7 +41,7 @@
           />
         </label>
         <label class="field field--wide">
-          <span>{{ t('settingsDiagnostics.fields.projectScopes') }}</span>
+          <span>{{ t('settingsDiagnostics.fields.projectVisibility') }}</span>
           <input v-model.trim="createUserForm.projectIds" autocomplete="off" :placeholder="t('settingsDiagnostics.placeholders.projectList')" />
         </label>
         <label class="checkbox-field">
@@ -66,7 +66,7 @@
               <th>{{ t('settingsDiagnostics.columns.user') }}</th>
               <th>{{ t('settingsDiagnostics.columns.status') }}</th>
               <th>{{ t('settingsDiagnostics.columns.scopes') }}</th>
-              <th>{{ t('settingsDiagnostics.columns.projects') }}</th>
+              <th>{{ t('settingsDiagnostics.columns.projectVisibility') }}</th>
               <th>{{ t('settingsDiagnostics.columns.lastLogin') }}</th>
               <th>{{ t('settingsDiagnostics.columns.actions') }}</th>
             </tr>
@@ -86,7 +86,7 @@
                   <InfoHint v-if="user.scopes.length > 0" :text="formatScopeHint(user.scopes)" />
                 </span>
               </td>
-              <td>{{ formatList(user.project_ids) }}</td>
+              <td>{{ formatProjectVisibility(user.project_ids) }}</td>
               <td>{{ formatDate(user.last_login_at) }}</td>
               <td>
                 <div class="table-actions">
@@ -483,8 +483,8 @@ function parseCsv(value: string): string[] {
     .filter(Boolean)
 }
 
-function formatList(value: string[]): string {
-  return value.length > 0 ? value.join(', ') : '-'
+function formatProjectVisibility(value: string[]): string {
+  return value.length > 0 ? value.join(', ') : t('settingsDiagnostics.fields.allProjects')
 }
 
 function formatScopeSummary(value: string[]): string {

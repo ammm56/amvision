@@ -47,7 +47,7 @@ class SystemCurrentPrincipalContract(BaseModel):
 
     principal_id: str = Field(description="主体 id")
     principal_type: str = Field(description="主体类型")
-    project_ids: list[str] = Field(default_factory=list, description="当前主体可见的 Project id 列表")
+    project_ids: list[str] = Field(default_factory=list, description="当前主体的 Project 可见范围；为空表示全部 Project")
     scopes: list[str] = Field(default_factory=list, description="当前主体持有的 scopes")
     username: str | None = Field(default=None, description="用户名")
     display_name: str | None = Field(default=None, description="展示名称")
@@ -101,7 +101,7 @@ class SystemBootstrapResponse(BaseModel):
     websocket_query_token_enabled: bool = Field(description="WebSocket 是否允许 access_token 查询参数")
     current_user: SystemCurrentPrincipalContract | None = Field(default=None, description="当前已登录主体；未登录时为空")
     providers: list[SystemAuthProviderContract] = Field(default_factory=list, description="公开可发现的账号 provider 列表")
-    visible_projects: list[ProjectCatalogItemResponse] = Field(default_factory=list, description="当前主体可见的 Project 目录项")
+    visible_projects: list[ProjectCatalogItemResponse] = Field(default_factory=list, description="当前主体当前可访问的 Project 列表；每个元素通过 project_source 标记来自配置目录还是本地磁盘")
     capabilities: SystemBootstrapCapabilitiesContract = Field(description="前端需要读取的关键能力摘要")
 
 
