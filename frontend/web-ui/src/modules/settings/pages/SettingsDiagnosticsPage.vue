@@ -487,7 +487,7 @@ const preferencesStore = usePreferencesStore()
 const sessionStore = useSessionStore()
 const projectStore = useProjectStore()
 const runtimeConfig = getRuntimeConfig()
-const frontendVersion = '0.1.0'
+const frontendVersion = __AMVISION_FRONTEND_VERSION__
 
 const diagnostics = ref<SystemDiagnosticsResponse | null>(null)
 const loading = ref(false)

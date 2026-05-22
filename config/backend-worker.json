@@ -1,7 +1,7 @@
 {
   "app": {
     "app_name": "amvision worker",
-    "app_version": "0.1.0"
+    "app_version": "0.1.1"
   },
   "workspace": {
     "root_dir": "./data/worker"
