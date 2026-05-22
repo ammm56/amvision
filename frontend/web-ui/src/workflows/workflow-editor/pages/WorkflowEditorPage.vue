@@ -7,16 +7,15 @@
           {{ t('workflowEditor.actions.backToApps') }}
         </RouterLink>
         <div>
-          <p>{{ t('workflowEditor.editor.kicker') }}</p>
           <h1>{{ editorTitle }}</h1>
         </div>
       </div>
       <div class="workflow-graph-toolbar__meta">
         <span>{{ t('workflowEditor.fields.nodeCount') }} {{ graphNodes.length }}</span>
         <span>{{ t('workflowEditor.fields.edgeCount') }} {{ graphLinks.length }}</span>
-        <span>{{ workflowApp?.primaryRuntime?.observed_state ?? t('common.none') }}</span>
-        <span v-if="lastPreviewRun">Preview {{ lastPreviewRun.state }}</span>
-        <span v-if="statusMessage">{{ statusMessage }}</span>
+        <span v-if="workflowApp?.primaryRuntime?.observed_state">{{ workflowApp.primaryRuntime.observed_state }}</span>
+        <StatusBadge v-if="lastPreviewRun" :tone="readPreviewRunBadgeTone(lastPreviewRun.state)">{{ formatPreviewRunStatusLabel(lastPreviewRun.state) }}</StatusBadge>
+        <span v-if="toolbarStatusMessage">{{ toolbarStatusMessage }}</span>
       </div>
       <div class="workflow-graph-toolbar__actions">
         <Button variant="secondary" :disabled="loading" @click="loadPage">
@@ -141,13 +140,13 @@
           role="button"
           tabindex="0"
           class="workflow-graph-node"
-          :class="{ 'is-selected': selectedNodeId === node.node.node_id }"
+          :class="{ 'is-selected': selectedNodeId === node.node.node_id, 'is-runtime-failed': lastPreviewFailureNodeId === node.node.node_id }"
           :style="{ left: `${node.x}px`, top: `${node.y}px`, width: `${node.width}px`, height: `${nodeVisualHeight(node)}px` }"
           @mousedown.stop="startNodeDrag($event, node)"
           @click.stop="handleNodeClick(node.node.node_id)"
           @contextmenu.prevent.stop="openNodeContextMenu($event, node)"
         >
-          <span class="workflow-graph-node__title">{{ node.title }}</span>
+          <span class="workflow-graph-node__title">{{ readGraphNodeTitle(node) }}</span>
           <span class="workflow-graph-node__type">{{ node.definition?.category || node.node.node_type_id }}</span>
           <div class="workflow-graph-node__ports">
             <div v-for="row in nodePortRows(node)" :key="row.key" class="workflow-graph-node__port-row">
@@ -168,7 +167,7 @@
                 @contextmenu.prevent.stop="openPortContextMenu($event, node, row.input, 'input')"
               >
                 <span class="workflow-graph-port__dot" aria-hidden="true" />
-                <span class="workflow-graph-port__label">{{ row.input.display_name || row.input.name }}</span>
+                <span class="workflow-graph-port__label">{{ readNodePortLabel(row.input) }}</span>
               </span>
               <span v-else class="workflow-graph-port workflow-graph-port--placeholder" />
               <span
@@ -187,7 +186,7 @@
                 @click.stop="selectPortEndpoint(node, row.output, 'output')"
                 @contextmenu.prevent.stop="openPortContextMenu($event, node, row.output, 'output')"
               >
-                <span class="workflow-graph-port__label">{{ row.output.display_name || row.output.name }}</span>
+                <span class="workflow-graph-port__label">{{ readNodePortLabel(row.output) }}</span>
                 <span class="workflow-graph-port__dot" aria-hidden="true" />
               </span>
               <span v-else class="workflow-graph-port workflow-graph-port--placeholder" />
@@ -195,13 +194,15 @@
           </div>
           <div v-if="nodeParameterFieldsForNode(node).length" class="workflow-graph-node-widgets">
             <label
-              v-for="field in nodeParameterFieldsForNode(node).slice(0, 4)"
+              v-for="field in nodeParameterFieldsForNode(node)"
               :key="`${node.node.node_id}-${field.parameter_name}`"
               class="workflow-graph-node-widget"
               @mousedown.stop
               @click.stop
             >
-              <span>{{ field.display_name }}</span>
+              <div class="workflow-graph-node-widget__label">
+                <span>{{ readNodeParameterLabel(field) }}</span>
+              </div>
               <SelectField
                 v-if="field.enum_options.length"
                 :model-value="readNodeParameterEnumIndex(node, field)"
@@ -230,24 +231,56 @@
                 :disabled="field.readonly"
                 @input="updateNodeParameterFromTextEvent(node, field, $event)"
               />
-              <small v-else>高级参数</small>
+              <template v-else-if="isJsonParameter(field)">
+                <textarea
+                  :value="readNodeParameterJsonTextValue(node, field)"
+                  :disabled="field.readonly"
+                  :placeholder="nodeParameterJsonPlaceholder(field)"
+                  @input="updateNodeParameterJsonDraft(node, field, $event)"
+                  @change="commitNodeParameterJsonDraft(node, field, $event)"
+                />
+              </template>
             </label>
           </div>
           <div
-            v-if="getPreviewNodeImage(node.node.node_id)"
+            v-if="previewNodeDisplays[node.node.node_id]"
             class="workflow-graph-node-preview"
-            title="双击查看原图"
+            :title="readPreviewNodeDisplayTooltip(previewNodeDisplays[node.node.node_id])"
             @mousedown.stop
-            @dblclick.stop="openImageViewer(getPreviewNodeImage(node.node.node_id))"
+            @dblclick.stop="openPreviewDisplayViewer(previewNodeDisplays[node.node.node_id])"
           >
             <img
-              v-if="getPreviewNodeImage(node.node.node_id)?.src"
-              :src="getPreviewNodeImage(node.node.node_id)?.src || ''"
-              :alt="getPreviewNodeImage(node.node.node_id)?.title || node.title"
+              v-if="previewNodeDisplays[node.node.node_id]?.kind === 'image' && previewNodeDisplays[node.node.node_id]?.image?.src"
+              :src="previewNodeDisplays[node.node.node_id]?.image?.src || ''"
+              :alt="previewNodeDisplays[node.node.node_id]?.image?.title || readGraphNodeTitle(node)"
               draggable="false"
             />
-            <span v-else>{{ getPreviewNodeImage(node.node.node_id)?.statusText }}</span>
-            <small>{{ getPreviewNodeImage(node.node.node_id)?.title }}</small>
+            <div v-else-if="previewNodeDisplays[node.node.node_id]?.kind === 'gallery'" class="workflow-graph-node-preview__gallery">
+              <button
+                v-for="item in previewNodeDisplays[node.node.node_id]?.galleryItems"
+                :key="`${item.nodeId}-${item.objectKey || item.caption}`"
+                type="button"
+                class="workflow-graph-node-preview__gallery-item"
+                @mousedown.stop
+                @click.stop="openImageViewer(item)"
+              >
+                <img v-if="item.src" :src="item.src" :alt="item.caption" draggable="false" />
+                <span v-else class="workflow-graph-node-preview__empty">{{ item.statusText }}</span>
+              </button>
+            </div>
+            <WorkflowPreviewTable
+              v-else-if="previewNodeDisplays[node.node.node_id]?.kind === 'table'"
+              :columns="previewNodeDisplays[node.node.node_id]?.columns || []"
+              :rows="previewNodeDisplays[node.node.node_id]?.rows || []"
+              :empty-text="previewNodeDisplays[node.node.node_id]?.emptyText"
+              :max-rows="4"
+              compact
+            />
+            <pre
+              v-else-if="previewNodeDisplays[node.node.node_id]?.kind === 'value'"
+              class="json-view workflow-graph-node-preview__json"
+            >{{ previewNodeDisplays[node.node.node_id]?.formattedValue }}</pre>
+            <div v-else class="workflow-graph-node-preview__empty">{{ previewNodeDisplays[node.node.node_id]?.statusText }}</div>
           </div>
         </div>
       </div>
@@ -303,14 +336,10 @@
         </div>
         <div v-if="workflowApp" class="workflow-graph-app-contract">
           <div class="workflow-graph-panel__header workflow-graph-panel__header--compact">
-            <div>
-              <p>应用</p>
-              <h2>应用入口</h2>
-            </div>
+            <h2>应用输入</h2>
             <StatusBadge tone="info">{{ appInputBindings.length }} / {{ appOutputBindings.length }}</StatusBadge>
           </div>
           <section class="workflow-graph-contract-section">
-            <h3>应用输入</h3>
             <div class="workflow-graph-contract-actions">
               <Button size="sm" variant="secondary" type="button" @click="addRequestImageRefInput">
                 <Plus :size="14" />
@@ -342,88 +371,24 @@
         </div>
         <div v-if="selectedNode" class="workflow-graph-inspector-body">
           <div class="workflow-graph-inspector-row">
-            <span>应用</span>
-            <strong>{{ selectedNode.title }}</strong>
+            <span>节点</span>
+            <strong>{{ readGraphNodeTitle(selectedNode) }}</strong>
+          </div>
+          <div class="workflow-graph-inspector-row">
+            <span>Node ID</span>
+            <strong>{{ selectedNode.node.node_id }}</strong>
           </div>
           <div class="workflow-graph-inspector-row">
             <span>Node type</span>
             <strong>{{ selectedNode.node.node_type_id }}</strong>
           </div>
-          <div v-if="selectedPreviewNodeImage" class="workflow-graph-preview-card">
-            <img
-              v-if="selectedPreviewNodeImage.src"
-              :src="selectedPreviewNodeImage.src"
-              :alt="selectedPreviewNodeImage.title"
-              draggable="false"
-              title="双击查看原图"
-              @dblclick.stop="openImageViewer(selectedPreviewNodeImage)"
-            />
-            <div v-else class="workflow-graph-preview-card__empty">{{ selectedPreviewNodeImage.statusText }}</div>
-            <div class="workflow-graph-preview-card__meta">
-              <strong>{{ selectedPreviewNodeImage.title }}</strong>
-              <span>{{ selectedPreviewNodeImage.transportKind }} / {{ selectedPreviewNodeImage.mediaType || 'unknown' }}</span>
-              <span v-if="selectedPreviewNodeImage.width || selectedPreviewNodeImage.height">
-                {{ selectedPreviewNodeImage.width || '-' }} × {{ selectedPreviewNodeImage.height || '-' }}
-              </span>
-            </div>
-            <Button v-if="selectedPreviewNodeImage.src" size="sm" variant="secondary" type="button" @click="openImageViewer(selectedPreviewNodeImage)">
-              查看原图
-            </Button>
-          </div>
-          <div v-if="selectedNodeParameterFields.length" class="workflow-graph-parameter-panel">
-            <div class="workflow-graph-panel__header workflow-graph-panel__header--compact">
-              <div>
-                <p>Parameters</p>
-                <h2>节点参数</h2>
-              </div>
-              <StatusBadge tone="info">{{ selectedNodeParameterFields.length }}</StatusBadge>
-            </div>
-            <label
-              v-for="field in selectedNodeParameterFields"
-              :key="`inspector-${selectedNode.node.node_id}-${field.parameter_name}`"
-              class="workflow-graph-parameter-field"
-            >
-              <div class="workflow-graph-parameter-field__label">
-                <span>{{ field.display_name }}</span>
-                <InfoHint
-                  v-if="parameterHelpText(field)"
-                  :text="parameterHelpText(field)"
-                />
-              </div>
-              <SelectField
-                v-if="field.enum_options.length"
-                :model-value="readNodeParameterEnumIndex(selectedNode, field)"
-                :options="nodeParameterEnumOptions(field)"
-                :disabled="field.readonly"
-                @update:model-value="updateNodeParameterFromEnumValue(selectedNode, field, $event)"
-              />
-              <input
-                v-else-if="isBooleanParameter(field)"
-                type="checkbox"
-                :checked="readNodeParameterBooleanValue(selectedNode, field)"
-                :disabled="field.readonly"
-                @change="updateNodeParameterFromCheckboxEvent(selectedNode, field, $event)"
-              />
-              <input
-                v-else-if="isNumberParameter(field)"
-                type="number"
-                step="any"
-                :value="readNodeParameterTextValue(selectedNode, field)"
-                :disabled="field.readonly"
-                @change="updateNodeParameterFromNumberEvent(selectedNode, field, $event)"
-              />
-              <input
-                v-else-if="isStringParameter(field)"
-                :value="readNodeParameterTextValue(selectedNode, field)"
-                :disabled="field.readonly"
-                @input="updateNodeParameterFromTextEvent(selectedNode, field, $event)"
-              />
-              <div v-else class="workflow-graph-parameter-field__unsupported">复杂参数后续用专用控件编辑</div>
-            </label>
+          <div class="workflow-graph-inspector-row">
+            <span>分类</span>
+            <strong>{{ selectedNode.definition?.category || 'unknown' }}</strong>
           </div>
           <div class="workflow-graph-inspector-row">
-            <span>{{ t('workflowEditor.fields.payloadTypes') }}</span>
-            <strong>{{ selectedNode.inputs.length }} / {{ selectedNode.outputs.length }}</strong>
+            <span>端口</span>
+            <strong>{{ selectedNode.inputs.length }} in / {{ selectedNode.outputs.length }} out</strong>
           </div>
         </div>
         <div v-else-if="selectedEdge" class="workflow-graph-inspector-body">
@@ -510,10 +475,7 @@
 
         <div v-if="workflowApp" class="workflow-graph-preview-inputs">
           <div class="workflow-graph-panel__header">
-            <div>
-              <p>Preview</p>
-              <h2>Preview 输入</h2>
-            </div>
+            <h2>Preview 输入</h2>
             <div class="workflow-graph-panel__tools">
               <InfoHint
                 v-if="previewHelpText"
@@ -526,7 +488,7 @@
           </div>
           <section v-for="binding in previewInputBindings" :key="binding.binding_id" class="workflow-graph-preview-binding">
             <div class="workflow-graph-preview-binding__header">
-              <span>
+              <span class="workflow-graph-preview-binding__summary">
                 <strong>{{ binding.binding_id }}</strong>
                 <small>{{ getBindingPayloadTypeId(binding) || 'unknown' }}</small>
               </span>
@@ -586,6 +548,52 @@
                 <input v-model="previewInputState[binding.binding_id].plainValue" placeholder="按字符串值提交" />
               </label>
             </template>
+          </section>
+        </div>
+        <div v-if="lastPreviewRun" class="workflow-graph-preview-inputs">
+          <div class="workflow-graph-panel__header">
+            <h2>运行结果</h2>
+            <StatusBadge :tone="readPreviewRunBadgeTone(lastPreviewRun.state)">
+              {{ formatPreviewRunStatusLabel(lastPreviewRun.state) }}
+            </StatusBadge>
+          </div>
+          <section class="workflow-graph-preview-binding">
+            <div class="workflow-graph-preview-binding__header">
+              <span class="workflow-graph-preview-binding__summary">
+                <strong>{{ lastPreviewRun.preview_run_id }}</strong>
+                <small>{{ formatSystemDateTime(lastPreviewRun.created_at) }}</small>
+              </span>
+              <div class="workflow-graph-preview-binding__tools">
+                <StatusBadge tone="info">{{ lastPreviewRun.node_records.length }} records</StatusBadge>
+              </div>
+            </div>
+            <div v-if="lastPreviewRun.state === 'failed'" class="workflow-graph-preview-result workflow-graph-preview-result--error">
+              <div class="workflow-graph-inspector-row">
+                <span>失败消息</span>
+                <strong>{{ lastPreviewFailureMessage }}</strong>
+              </div>
+              <div v-if="lastPreviewFailureNodeLabel" class="workflow-graph-inspector-row">
+                <span>失败节点</span>
+                <strong>{{ lastPreviewFailureNodeLabel }}</strong>
+              </div>
+              <div v-if="lastPreviewFailureLocation" class="workflow-graph-inspector-row">
+                <span>执行位置</span>
+                <strong>{{ lastPreviewFailureLocation }}</strong>
+              </div>
+              <div v-if="lastPreviewFailureDetailMessage && lastPreviewFailureDetailMessage !== lastPreviewFailureMessage" class="workflow-graph-inspector-row">
+                <span>底层错误</span>
+                <strong>{{ lastPreviewFailureDetailMessage }}</strong>
+              </div>
+              <pre v-if="lastPreviewFailureDetailsJson" class="json-view">{{ lastPreviewFailureDetailsJson }}</pre>
+            </div>
+            <div v-if="lastPreviewHttpResponse" class="workflow-graph-preview-result">
+              <div class="workflow-graph-inspector-row">
+                <span>HTTP status</span>
+                <strong>{{ lastPreviewHttpStatus ?? 'unknown' }}</strong>
+              </div>
+              <pre class="json-view">{{ lastPreviewHttpResponseBodyJson || lastPreviewHttpResponseJson }}</pre>
+            </div>
+            <div v-else-if="lastPreviewRun.state !== 'failed'" class="workflow-graph-preview-card__empty">{{ hasPreviewNodeDisplays ? '本次 Preview 没有 http_response 输出，结果已在节点预览中显示。' : '本次 Preview 没有 http_response 输出。' }}</div>
           </section>
         </div>
       </aside>
@@ -713,6 +721,7 @@
       </div>
     </div>
     <ImageViewer :open="Boolean(activeImageViewer)" :image="activeImageViewer" @close="activeImageViewer = null" />
+    <WorkflowPreviewTableViewer :open="Boolean(activePreviewTable)" :table="activePreviewTable" @close="activePreviewTable = null" />
   </section>
 </template>
 
@@ -724,6 +733,8 @@ import { useI18n } from 'vue-i18n'
 
 import { usePreferencesStore } from '@/app/stores/preferences.store'
 import { useProjectStore } from '@/app/stores/project.store'
+import type { SupportedLocale } from '@/platform/i18n'
+import { formatSystemDateTime } from '@/shared/formatters/date-time'
 import Button from '@/shared/ui/components/Button.vue'
 import FilePicker from '@/shared/ui/components/FilePicker.vue'
 import InfoHint from '@/shared/ui/components/InfoHint.vue'
@@ -733,8 +744,11 @@ import StatusBadge from '@/shared/ui/data-display/StatusBadge.vue'
 import EmptyState from '@/shared/ui/feedback/EmptyState.vue'
 import InlineError from '@/shared/ui/feedback/InlineError.vue'
 import WorkflowNodePicker from '../components/WorkflowNodePicker.vue'
+import WorkflowPreviewTable from '../components/WorkflowPreviewTable.vue'
+import WorkflowPreviewTableViewer from '../components/WorkflowPreviewTableViewer.vue'
 import { createWorkflowLiteGraphAdapter, type WorkflowLiteGraphAdapter } from '../canvas/graph-engine/litegraph-adapter'
 import { type WorkflowCanvasGraphSnapshot } from '../canvas/graph-engine/workflow-graph-conversion'
+import { resolveNodeDefinitionDisplayName, resolveNodeParameterDisplayName, resolveNodePortDisplayName } from '../node-definition-localization'
 import { validateWorkflowApplication } from '../services/workflow-application.service'
 import { getWorkflowNodeCatalog } from '../services/node-catalog.service'
 import { getWorkflowApp, saveWorkflowApp, type WorkflowAppDocument } from '../services/workflow-app.service'
@@ -884,7 +898,7 @@ interface PreviewInputState {
   plainValue: string
 }
 
-interface PreviewNodeImageView {
+interface PreviewViewerImage {
   nodeId: string
   title: string
   src: string | null
@@ -894,6 +908,43 @@ interface PreviewNodeImageView {
   width: number | null
   height: number | null
   objectKey: string | null
+}
+
+interface PreviewGalleryItemView extends PreviewViewerImage {
+  caption: string
+  cropIndex: number | null
+}
+
+interface PreviewTableColumnView {
+  key: string
+  label: string
+}
+
+interface PreviewTableViewerState {
+  title: string
+  columns: PreviewTableColumnView[]
+  rows: WorkflowJsonObject[]
+  rowCount: number | null
+  emptyText: string | null
+}
+
+type PreviewNodeDisplayKind = 'image' | 'table' | 'gallery' | 'value'
+
+interface PreviewNodeDisplay {
+  nodeId: string
+  nodeTypeId: string
+  outputName: string
+  title: string
+  kind: PreviewNodeDisplayKind
+  payload: WorkflowJsonObject
+  statusText: string
+  formattedValue: string
+  image: PreviewViewerImage | null
+  galleryItems: PreviewGalleryItemView[]
+  columns: PreviewTableColumnView[]
+  rows: WorkflowJsonObject[]
+  rowCount: number | null
+  emptyText: string | null
 }
 
 interface NodePortRowView {
@@ -918,11 +969,16 @@ interface WorkflowValidationIssue {
   bindingId?: string
 }
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
 const route = useRoute()
 const router = useRouter()
 const preferencesStore = usePreferencesStore()
 const projectStore = useProjectStore()
+
+const currentLocale = computed<SupportedLocale>(() => {
+  const value = typeof locale.value === 'string' ? locale.value : 'en-US'
+  return value === 'zh-CN' || value === 'en-US' || value === 'ja-JP' || value === 'ko-KR' ? value : 'en-US'
+})
 
 const loading = ref(false)
 const saving = ref(false)
@@ -951,13 +1007,15 @@ const inspectorCollapsed = ref(false)
 const contextMenu = ref<ContextMenuState | null>(null)
 const nodePicker = ref<NodePickerState | null>(null)
 const previewInputState = ref<Record<string, PreviewInputState>>({})
+const complexParameterDrafts = ref<Record<string, string>>({})
 const viewportX = ref(0)
 const viewportY = ref(0)
 const viewportScale = ref(1)
 const stageSize = ref({ width: 1, height: 1 })
 const lastPreviewRun = ref<WorkflowPreviewRun | null>(null)
-const previewNodeImages = ref<Record<string, PreviewNodeImageView>>({})
-const activeImageViewer = ref<PreviewNodeImageView | null>(null)
+const previewNodeDisplays = ref<Record<string, PreviewNodeDisplay>>({})
+const activeImageViewer = ref<PreviewViewerImage | null>(null)
+const activePreviewTable = ref<PreviewTableViewerState | null>(null)
 const canvasRef = ref<HTMLElement | null>(null)
 const liteGraphAdapter = shallowRef<WorkflowLiteGraphAdapter | null>(null)
 let resizeObserver: ResizeObserver | null = null
@@ -969,6 +1027,12 @@ const minimapPadding = 10
 const graphNodeHeaderHeight = 60
 const graphPortRowHeight = 30
 const graphPortInsetX = 18
+const graphNodePreviewFrameHeight = 28
+const graphNodePreviewImageHeight = 140
+const graphNodePreviewDataHeight = 176
+const graphNodePreviewGalleryColumns = 2
+const graphNodePreviewGalleryItemHeight = 72
+const graphNodePreviewGalleryGap = 6
 const appEntryBoundaryId = 'app-entry-boundary'
 const appResultBoundaryId = 'app-result-boundary'
 const graphBoundaryHeaderHeight = 64
@@ -984,7 +1048,6 @@ const imageRefTransportKindOptions: SelectOption[] = [
 ]
 const optionalRequestImageBindingIds = new Set(['request_image_ref', 'request_image_base64'])
 const graphNodeWidgetRowHeight = 34
-const graphNodePreviewHeight = 138
 const minViewportScale = 0.35
 const maxViewportScale = 2.4
 
@@ -1010,9 +1073,7 @@ const newWorkflowAppSaveBlocker = computed(() => readNewWorkflowAppSaveBlocker()
 const saveDisabled = computed(() => saving.value || !workflowApp.value || Boolean(newWorkflowAppSaveBlocker.value))
 const previewDisabled = computed(() => previewing.value || !workflowApp.value || isNewApp.value || Boolean(newWorkflowAppSaveBlocker.value))
 const selectedNode = computed(() => graphNodes.value.find((node) => node.node.node_id === selectedNodeId.value) ?? null)
-const selectedPreviewNodeImage = computed(() => selectedNode.value ? previewNodeImages.value[selectedNode.value.node.node_id] ?? null : null)
 const selectedEdge = computed(() => graphEdges.value.find((edge) => edge.edge_id === selectedEdgeId.value) ?? null)
-const selectedNodeParameterFields = computed(() => nodeParameterFieldsForNode(selectedNode.value))
 const graphLinkMidpoints = computed<EdgeHandleView[]>(() => graphLinks.value.map((link) => ({
   key: `${link.edgeId}-midpoint`,
   edgeId: link.edgeId,
@@ -1119,6 +1180,32 @@ const previewHelpText = computed(() => {
   }
   return messages.join('；')
 })
+const lastPreviewHttpResponse = computed(() => {
+  const outputs = lastPreviewRun.value?.outputs
+  if (!isWorkflowJsonObject(outputs)) return null
+  const response = outputs.http_response
+  return isWorkflowJsonObject(response) ? response : null
+})
+const lastPreviewHttpStatus = computed(() => readDisplayNumber(lastPreviewHttpResponse.value?.status_code))
+const lastPreviewHttpResponseJson = computed(() => lastPreviewHttpResponse.value ? formatWorkflowJson(lastPreviewHttpResponse.value) : '')
+const lastPreviewHttpResponseBodyJson = computed(() => {
+  if (!lastPreviewHttpResponse.value || !("body" in lastPreviewHttpResponse.value)) return ''
+  return formatWorkflowJson(lastPreviewHttpResponse.value.body)
+})
+const hasPreviewNodeDisplays = computed(() => Object.keys(previewNodeDisplays.value).length > 0)
+const toolbarStatusMessage = computed(() => {
+  const message = statusMessage.value?.trim()
+  if (!message) return null
+  if (lastPreviewRun.value && message === formatPreviewRunStatusLabel(lastPreviewRun.value.state)) return null
+  return message
+})
+const lastPreviewFailureDetails = computed(() => readPreviewRunFailureDetails(lastPreviewRun.value))
+const lastPreviewFailureNodeId = computed(() => readDisplayText(lastPreviewFailureDetails.value?.node_id))
+const lastPreviewFailureMessage = computed(() => formatPreviewRunFailureMessage(lastPreviewRun.value))
+const lastPreviewFailureDetailMessage = computed(() => readDisplayText(lastPreviewFailureDetails.value?.error_message))
+const lastPreviewFailureNodeLabel = computed(() => formatPreviewRunFailureNodeLabel(lastPreviewFailureDetails.value))
+const lastPreviewFailureLocation = computed(() => formatPreviewRunFailureLocation(lastPreviewFailureDetails.value))
+const lastPreviewFailureDetailsJson = computed(() => lastPreviewFailureDetails.value ? formatWorkflowJson(lastPreviewFailureDetails.value) : '')
 
 function createNewWorkflowAppDraftState(): NewWorkflowAppDraftState {
   const suffix = new Date().toISOString().replace(/[-:T.Z]/g, '').slice(0, 14)
@@ -1518,22 +1605,50 @@ function inferPortsFromEdges(node: WorkflowGraphNode, direction: 'input' | 'outp
 
 function buildGraphNodeView(node: WorkflowGraphNode, index: number, fallbackByNodeId: Map<string, { x: number; y: number }>): GraphNodeView {
   const definition = nodeDefinitionsById.value.get(node.node_type_id) ?? null
-  const position = readNodePosition(node, index, fallbackByNodeId)
+  const normalizedNode = definition ? applyMissingNodeParameterDefaults(node, definition) : node
+  const position = readNodePosition(normalizedNode, index, fallbackByNodeId)
+  const defaultWidth = definition ? buildDefaultGraphNodeWidth(definition) : 256
   return {
-    node,
+    node: normalizedNode,
     definition,
-    title: definition?.display_name || node.node_type_id,
+    title: definition?.display_name || normalizedNode.node_type_id,
     x: position.x,
     y: position.y,
-    width: readNumber(node.ui_state.width, 250),
-    inputs: definition?.input_ports.length ? definition.input_ports : inferPortsFromEdges(node, 'input'),
-    outputs: definition?.output_ports.length ? definition.output_ports : inferPortsFromEdges(node, 'output'),
+    width: normalizeGraphNodeWidth(normalizedNode.ui_state.width, defaultWidth),
+    inputs: definition?.input_ports.length ? definition.input_ports : inferPortsFromEdges(normalizedNode, 'input'),
+    outputs: definition?.output_ports.length ? definition.output_ports : inferPortsFromEdges(normalizedNode, 'output'),
+  }
+}
+
+function applyMissingNodeParameterDefaults(node: WorkflowGraphNode, definition: NodeDefinition): WorkflowGraphNode {
+  const defaultParameters = buildInitialNodeParameters(definition)
+  const missingParameterNames = Object.keys(defaultParameters).filter((parameterName) => !(parameterName in node.parameters) || node.parameters[parameterName] === null)
+  if (missingParameterNames.length === 0) return node
+  const normalizedParameters = { ...node.parameters }
+  for (const parameterName of missingParameterNames) {
+    normalizedParameters[parameterName] = defaultParameters[parameterName]
+  }
+  return {
+    ...node,
+    parameters: normalizedParameters,
   }
 }
 
 function buildGraphNodeViews(nodes: WorkflowGraphNode[]): GraphNodeView[] {
   const fallbackByNodeId = buildFallbackPositions(nodes, graphEdges.value)
   return nodes.map((node, index) => buildGraphNodeView(node, index, fallbackByNodeId))
+}
+
+function readGraphNodeTitle(node: GraphNodeView): string {
+  return node.definition ? resolveNodeDefinitionDisplayName(node.definition, currentLocale.value) : node.title
+}
+
+function readNodePortLabel(port: NodePortDefinition): string {
+  return resolveNodePortDisplayName(port, currentLocale.value) || port.name
+}
+
+function readNodeParameterLabel(field: NodeParameterUiField): string {
+  return resolveNodeParameterDisplayName(field, currentLocale.value) || field.parameter_name
 }
 
 function nodePortRows(node: GraphNodeView): NodePortRowView[] {
@@ -1548,6 +1663,10 @@ function nodePortRows(node: GraphNodeView): NodePortRowView[] {
 function nodeParameterFieldsForNode(node: GraphNodeView | null): NodeParameterUiField[] {
   if (!node?.definition?.parameter_ui_schema) return []
   return node.definition.parameter_ui_schema.fields.filter((field) => !field.hidden)
+}
+
+function isJsonParameter(field: NodeParameterUiField): boolean {
+  return field.json_schema.type === 'object' || field.json_schema.type === 'array'
 }
 
 function isStringParameter(field: NodeParameterUiField): boolean {
@@ -1640,12 +1759,143 @@ function updateNodeParameter(node: GraphNodeView, field: NodeParameterUiField, v
   statusMessage.value = '已更新节点参数'
 }
 
+function readNodeParameterJsonTextValue(node: GraphNodeView, field: NodeParameterUiField): string {
+  const draftKey = buildComplexParameterDraftKey(node, field)
+  if (!(draftKey in complexParameterDrafts.value)) {
+    const value = readNodeParameterValue(node, field)
+    complexParameterDrafts.value = {
+      ...complexParameterDrafts.value,
+      [draftKey]: value === '' || value === undefined ? '' : formatWorkflowJson(value),
+    }
+  }
+  return complexParameterDrafts.value[draftKey] ?? ''
+}
+
+function updateNodeParameterJsonDraft(node: GraphNodeView, field: NodeParameterUiField, event: Event): void {
+  const target = event.target
+  if (!(target instanceof HTMLTextAreaElement)) return
+  const draftKey = buildComplexParameterDraftKey(node, field)
+  complexParameterDrafts.value = {
+    ...complexParameterDrafts.value,
+    [draftKey]: target.value,
+  }
+}
+
+function commitNodeParameterJsonDraft(node: GraphNodeView, field: NodeParameterUiField, event: Event): void {
+  const target = event.target
+  if (!(target instanceof HTMLTextAreaElement)) return
+  const rawValue = target.value.trim()
+  if (!rawValue) {
+    if (field.required) {
+      errorMessage.value = `${readGraphNodeTitle(node)} / ${readNodeParameterLabel(field)} 不能为空。`
+      return
+    }
+    updateNodeParameter(node, field, '')
+    const draftKey = buildComplexParameterDraftKey(node, field)
+    complexParameterDrafts.value = { ...complexParameterDrafts.value, [draftKey]: '' }
+    errorMessage.value = null
+    return
+  }
+  try {
+    const parsedValue = JSON.parse(rawValue)
+    if (!isJsonParameterValueCompatible(field, parsedValue)) {
+      const expectedType = field.json_schema.type === 'array' ? '数组' : '对象'
+      throw new Error(`参数要求 ${expectedType}`)
+    }
+    updateNodeParameter(node, field, parsedValue)
+    const draftKey = buildComplexParameterDraftKey(node, field)
+    complexParameterDrafts.value = {
+      ...complexParameterDrafts.value,
+      [draftKey]: formatWorkflowJson(parsedValue),
+    }
+    errorMessage.value = null
+  } catch (error) {
+    const detail = error instanceof Error && error.message ? `：${error.message}` : ''
+    errorMessage.value = `${readGraphNodeTitle(node)} / ${readNodeParameterLabel(field)} 需要填写合法 JSON${detail}`
+  }
+}
+
+function buildComplexParameterDraftKey(node: GraphNodeView, field: NodeParameterUiField): string {
+  return `${node.node.node_id}:${field.parameter_name}`
+}
+
+function isJsonParameterValueCompatible(field: NodeParameterUiField, value: unknown): boolean {
+  if (field.json_schema.type === 'array') return Array.isArray(value)
+  if (field.json_schema.type === 'object') return Boolean(value && typeof value === 'object' && !Array.isArray(value))
+  return true
+}
+
+function nodeParameterJsonPlaceholder(field: NodeParameterUiField): string {
+  const exampleValue = buildSchemaExampleValue(field.json_schema)
+  if (exampleValue === undefined) return field.json_schema.type === 'array' ? '[\n  \n]' : '{\n  \n}'
+  return formatWorkflowJson(exampleValue)
+}
+
+function buildSchemaExampleValue(schema: unknown, keyHint = 'value'): unknown {
+  if (!isWorkflowJsonObject(schema)) return undefined
+  const enumValues = Array.isArray(schema.enum) ? schema.enum : null
+  if (enumValues?.length) return enumValues[0]
+  if ('default' in schema) return schema.default
+  const schemaType = readDisplayText(schema.type)
+  if (schemaType === 'object') {
+    const properties = isWorkflowJsonObject(schema.properties) ? schema.properties : null
+    if (!properties) return {}
+    const sample: WorkflowJsonObject = {}
+    let propertyCount = 0
+    for (const [propertyName, propertySchema] of Object.entries(properties)) {
+      if (propertyCount >= 4) break
+      sample[propertyName] = buildSchemaExampleValue(propertySchema, propertyName) ?? buildSchemaFallbackValue(propertySchema, propertyName)
+      propertyCount += 1
+    }
+    return sample
+  }
+  if (schemaType === 'array') {
+    const itemSchema = isWorkflowJsonObject(schema.items) ? schema.items : null
+    if (!itemSchema) return []
+    return [buildSchemaExampleValue(itemSchema, keyHint) ?? buildSchemaFallbackValue(itemSchema, keyHint)]
+  }
+  return buildSchemaFallbackValue(schema, keyHint)
+}
+
+function buildSchemaFallbackValue(schema: unknown, keyHint: string): unknown {
+  if (!isWorkflowJsonObject(schema)) return keyHint
+  const schemaType = readDisplayText(schema.type)
+  if (schemaType === 'integer' || schemaType === 'number') return 0
+  if (schemaType === 'boolean') return true
+  if (schemaType === 'array') return []
+  if (schemaType === 'object') return {}
+  if (keyHint === 'path') return 'field.path'
+  if (keyHint === 'key') return 'column_key'
+  if (keyHint === 'label') return 'Column Label'
+  if (keyHint === 'title') return 'Preview Title'
+  if (keyHint === 'caption') return 'Image'
+  return keyHint
+}
+
 function nodeVisualHeight(node: GraphNodeView): number {
   const portRowCount = Math.max(node.inputs.length, node.outputs.length)
-  const parameterFieldCount = nodeParameterFieldsForNode(node).length
-  const widgetHeight = parameterFieldCount > 0 ? 12 + Math.min(parameterFieldCount, 4) * graphNodeWidgetRowHeight : 0
-  const previewHeight = getPreviewNodeImage(node.node.node_id) ? graphNodePreviewHeight : 0
-  return Math.max(116, graphNodeHeaderHeight + portRowCount * graphPortRowHeight + widgetHeight + previewHeight + 22)
+  const widgetHeight = readNodeWidgetHeight(node)
+  const previewHeight = readNodePreviewHeight(node.node.node_id)
+  const footerHeight = previewHeight > 0 ? 0 : 22
+  return Math.max(116, graphNodeHeaderHeight + portRowCount * graphPortRowHeight + widgetHeight + previewHeight + footerHeight)
+}
+
+function readNodeWidgetHeight(node: GraphNodeView): number {
+  const fields = nodeParameterFieldsForNode(node)
+  if (fields.length === 0) return 0
+  const editorsHeight = fields.reduce((total, field) => total + (isJsonParameter(field) ? 126 : graphNodeWidgetRowHeight), 0)
+  return 12 + editorsHeight + Math.max(fields.length - 1, 0) * 6
+}
+
+function readNodePreviewHeight(nodeId: string): number {
+  const display = getPreviewNodeDisplay(nodeId)
+  if (!display) return 0
+  if (display.kind === 'gallery') {
+    const rowCount = Math.max(1, Math.ceil(Math.max(display.galleryItems.length, 1) / graphNodePreviewGalleryColumns))
+    return graphNodePreviewFrameHeight + rowCount * graphNodePreviewGalleryItemHeight + Math.max(0, rowCount - 1) * graphNodePreviewGalleryGap
+  }
+  if (display.kind === 'table' || display.kind === 'value') return graphNodePreviewDataHeight
+  return graphNodePreviewImageHeight
 }
 
 function portY(node: GraphNodeView, portName: string, direction: 'input' | 'output'): number {
@@ -1899,8 +2149,8 @@ function addGraphNode(definition: NodeDefinition, rawX: number, rawY: number): G
   const node: WorkflowGraphNode = {
     node_id: nodeId,
     node_type_id: definition.node_type_id,
-    parameters: {},
-    ui_state: { x, y, width: 250 },
+    parameters: buildInitialNodeParameters(definition),
+    ui_state: { x, y, width: buildDefaultGraphNodeWidth(definition) },
     metadata: {},
   }
   const graphNode = buildGraphNodeView(node, graphNodes.value.length, new Map([[nodeId, { x, y }]]))
@@ -1910,6 +2160,40 @@ function addGraphNode(definition: NodeDefinition, rawX: number, rawY: number): G
   selectedBoundaryKind.value = null
   statusMessage.value = '已添加节点'
   return graphNode
+}
+
+function buildInitialNodeParameters(definition: NodeDefinition): WorkflowJsonObject {
+  const nextParameters: WorkflowJsonObject = {}
+  for (const field of definition.parameter_ui_schema?.fields ?? []) {
+    if (field.default_value !== undefined) {
+      nextParameters[field.parameter_name] = cloneWorkflowJsonValue(field.default_value)
+    }
+  }
+  const schemaProperties = isWorkflowJsonObject(definition.parameter_schema) && isWorkflowJsonObject(definition.parameter_schema.properties)
+    ? definition.parameter_schema.properties
+    : null
+  for (const [parameterName, propertySchema] of Object.entries(schemaProperties ?? {})) {
+    if (parameterName in nextParameters) continue
+    if (!isWorkflowJsonObject(propertySchema) || !("default" in propertySchema)) continue
+    nextParameters[parameterName] = cloneWorkflowJsonValue(propertySchema.default)
+  }
+  return nextParameters
+}
+
+function cloneWorkflowJsonValue<T>(value: T): T {
+  if (value === undefined) return value
+  return JSON.parse(JSON.stringify(value)) as T
+}
+
+function buildDefaultGraphNodeWidth(definition: NodeDefinition): number {
+  void definition
+  return 256
+}
+
+function normalizeGraphNodeWidth(value: unknown, fallbackWidth: number): number {
+  const width = readNumber(value, fallbackWidth)
+  if ([250, 300, 320, 340].includes(width)) return fallbackWidth
+  return width
 }
 
 function openNodePickerFromContextMenu(): void {
@@ -2969,6 +3253,16 @@ function fitView(): void {
   contextMenu.value = null
 }
 
+function focusGraphNode(nodeId: string): void {
+  const graphNode = graphNodes.value.find((node) => node.node.node_id === nodeId)
+  if (!graphNode) return
+  selectNode(nodeId)
+  const centerX = graphNode.x + graphNode.width / 2
+  const centerY = graphNode.y + nodeVisualHeight(graphNode) / 2
+  viewportX.value = stageSize.value.width / 2 - centerX * viewportScale.value
+  viewportY.value = stageSize.value.height / 2 - centerY * viewportScale.value
+}
+
 function resetView(): void {
   viewportX.value = 0
   viewportY.value = 0
@@ -2984,14 +3278,6 @@ function toggleMinimap(): void {
 function toggleGraphTheme(): void {
   preferencesStore.setTheme(graphTheme.value === 'dark' ? 'light' : 'dark')
   contextMenu.value = null
-}
-
-function parameterHelpText(field: NodeParameterUiField): string {
-  const messages: string[] = []
-  if (field.description) messages.push(field.description)
-  if (field.required) messages.push('必填参数')
-  if (field.readonly) messages.push('只读参数')
-  return messages.join('；')
 }
 
 function previewBindingHelpText(binding: FlowApplicationBinding): string {
@@ -3151,46 +3437,247 @@ function readFileAsBase64(file: File): Promise<string> {
   })
 }
 
-async function refreshPreviewNodeImages(previewRun: WorkflowPreviewRun): Promise<void> {
+async function refreshPreviewNodeDisplays(previewRun: WorkflowPreviewRun): Promise<void> {
   revokePreviewImageObjectUrls()
-  const nextImages: Record<string, PreviewNodeImageView> = {}
+  const nextDisplays: Record<string, PreviewNodeDisplay> = {}
   for (const displayOutput of readPreviewDisplayOutputs(previewRun)) {
-    const imageView = await buildPreviewNodeImageView(previewRun, displayOutput)
-    if (imageView) {
-      nextImages[imageView.nodeId] = imageView
+    const previewDisplay = await buildPreviewNodeDisplay(previewRun, displayOutput)
+    if (previewDisplay) {
+      nextDisplays[previewDisplay.nodeId] = previewDisplay
     }
   }
-  previewNodeImages.value = nextImages
+  previewNodeDisplays.value = nextDisplays
 }
 
 function readPreviewDisplayOutputs(previewRun: WorkflowPreviewRun): WorkflowPreviewDisplayOutput[] {
-  if (previewRun.preview_display_outputs?.length) return previewRun.preview_display_outputs
-  return previewRun.node_records.flatMap((record) => {
-    if (readDisplayText(record.node_type_id) !== 'core.io.image-preview') return []
+  const outputIndex = new Map<string, WorkflowPreviewDisplayOutput>()
+  const registerDisplayOutput = (displayOutput: WorkflowPreviewDisplayOutput, options?: { overwrite?: boolean }): void => {
+    const nodeId = readDisplayText(displayOutput.node_id)
+    const nodeTypeId = readDisplayText(displayOutput.node_type_id)
+    const outputName = readDisplayText(displayOutput.output_name)
+    if (!nodeId || !nodeTypeId || !outputName || !isWorkflowJsonObject(displayOutput.payload)) return
+    const key = `${nodeId}:${nodeTypeId}:${outputName}`
+    if (options?.overwrite === false && outputIndex.has(key)) return
+    outputIndex.set(key, {
+      node_id: nodeId,
+      node_type_id: nodeTypeId,
+      output_name: outputName,
+      payload: displayOutput.payload,
+    })
+  }
+  for (const displayOutput of previewRun.preview_display_outputs ?? []) {
+    registerDisplayOutput(displayOutput)
+  }
+  for (const record of previewRun.node_records) {
+    const nodeId = readDisplayText(record.node_id)
+    const nodeTypeId = readDisplayText(record.node_type_id)
     const outputs = record.outputs
-    if (!isWorkflowJsonObject(outputs) || !isWorkflowJsonObject(outputs.body)) return []
-    return [{
-      node_id: readDisplayText(record.node_id),
-      node_type_id: 'core.io.image-preview',
-      output_name: 'body',
-      payload: outputs.body,
-    }]
-  }).filter((displayOutput) => displayOutput.node_id)
+    if (!nodeId || !nodeTypeId || !isWorkflowJsonObject(outputs)) continue
+    for (const [outputName, payload] of Object.entries(outputs)) {
+      if (!isWorkflowJsonObject(payload)) continue
+      const previewType = readDisplayText(payload.type)
+      if (!previewType.endsWith('-preview')) continue
+      registerDisplayOutput({
+        node_id: nodeId,
+        node_type_id: nodeTypeId,
+        output_name: outputName,
+        payload,
+      }, { overwrite: false })
+    }
+  }
+  return [...outputIndex.values()]
 }
 
-async function buildPreviewNodeImageView(previewRun: WorkflowPreviewRun, displayOutput: WorkflowPreviewDisplayOutput): Promise<PreviewNodeImageView | null> {
-  if (displayOutput.node_type_id !== 'core.io.image-preview') return null
+async function buildPreviewNodeDisplay(previewRun: WorkflowPreviewRun, displayOutput: WorkflowPreviewDisplayOutput): Promise<PreviewNodeDisplay | null> {
   const payload = displayOutput.payload
-  if (payload.type !== 'image-preview' || !isWorkflowJsonObject(payload.image)) return null
-  const imagePayload = payload.image
+  const previewType = readDisplayText(payload.type)
+  if (previewType === 'image-preview') return buildImagePreviewNodeDisplay(previewRun, displayOutput)
+  if (previewType === 'table-preview') return buildTablePreviewNodeDisplay(displayOutput)
+  if (previewType === 'gallery-preview') return buildGalleryPreviewNodeDisplay(previewRun, displayOutput)
+  if (previewType === 'value-preview') return buildValuePreviewNodeDisplay(displayOutput)
+  return null
+}
+
+async function buildImagePreviewNodeDisplay(
+  previewRun: WorkflowPreviewRun,
+  displayOutput: WorkflowPreviewDisplayOutput,
+): Promise<PreviewNodeDisplay | null> {
+  const payload = displayOutput.payload
+  if (!isWorkflowJsonObject(payload.image)) return null
   const title = readDisplayText(payload.title) || displayOutput.node_id
+  const image = await buildPreviewViewerImage(previewRun, payload.image, title, displayOutput.node_id)
+  return {
+    nodeId: displayOutput.node_id,
+    nodeTypeId: displayOutput.node_type_id,
+    outputName: displayOutput.output_name,
+    title,
+    kind: 'image',
+    payload,
+    statusText: image.statusText,
+    formattedValue: '',
+    image,
+    galleryItems: [],
+    columns: [],
+    rows: [],
+    rowCount: 1,
+    emptyText: null,
+  }
+}
+
+function buildTablePreviewNodeDisplay(displayOutput: WorkflowPreviewDisplayOutput): PreviewNodeDisplay {
+  const payload = displayOutput.payload
+  const columns = Array.isArray(payload.columns)
+    ? payload.columns.flatMap((column) => {
+      if (!isWorkflowJsonObject(column)) return []
+      const key = readDisplayText(column.key)
+      if (!key) return []
+      return [{ key, label: readDisplayText(column.label) || key }]
+    })
+    : []
+  const rows = Array.isArray(payload.rows)
+    ? payload.rows.map((row) => (isWorkflowJsonObject(row) ? row : { value: row }))
+    : []
+  const rowCount = readDisplayNumber(payload.row_count) ?? rows.length
+  const emptyText = readDisplayText(payload.empty_text) || null
+  return {
+    nodeId: displayOutput.node_id,
+    nodeTypeId: displayOutput.node_type_id,
+    outputName: displayOutput.output_name,
+    title: readDisplayText(payload.title) || displayOutput.node_id,
+    kind: 'table',
+    payload,
+    statusText: rows.length > 0 ? `${columns.length} 列 / ${rowCount} 行` : emptyText || `${columns.length} 列 / 0 行`,
+    formattedValue: '',
+    image: null,
+    galleryItems: [],
+    columns,
+    rows,
+    rowCount,
+    emptyText,
+  }
+}
+
+async function buildGalleryPreviewNodeDisplay(
+  previewRun: WorkflowPreviewRun,
+  displayOutput: WorkflowPreviewDisplayOutput,
+): Promise<PreviewNodeDisplay> {
+  const payload = displayOutput.payload
+  const rawItems = Array.isArray(payload.items) ? payload.items : []
+  const galleryItems: PreviewGalleryItemView[] = []
+  for (const [itemIndex, rawItem] of rawItems.entries()) {
+    if (!isWorkflowJsonObject(rawItem) || !isWorkflowJsonObject(rawItem.image)) continue
+    const caption = readDisplayText(rawItem.caption) || `Image ${itemIndex + 1}`
+    const image = await buildPreviewViewerImage(previewRun, rawItem.image, caption, displayOutput.node_id)
+    galleryItems.push({
+      ...image,
+      title: caption,
+      caption,
+      cropIndex: readDisplayNumber(rawItem.crop_index),
+    })
+  }
+  const totalCount = readDisplayNumber(payload.total_count) ?? galleryItems.length
+  return {
+    nodeId: displayOutput.node_id,
+    nodeTypeId: displayOutput.node_type_id,
+    outputName: displayOutput.output_name,
+    title: readDisplayText(payload.title) || displayOutput.node_id,
+    kind: 'gallery',
+    payload,
+    statusText: galleryItems.length > 0 ? `${galleryItems.length} 张 / 总计 ${totalCount} 张` : '图库没有可显示图片',
+    formattedValue: '',
+    image: galleryItems[0] ?? null,
+    galleryItems,
+    columns: [],
+    rows: [],
+    rowCount: galleryItems.length,
+    emptyText: null,
+  }
+}
+
+function buildValuePreviewNodeDisplay(displayOutput: WorkflowPreviewDisplayOutput): PreviewNodeDisplay {
+  const payload = displayOutput.payload
+  const hasValue = Object.prototype.hasOwnProperty.call(payload, 'value')
+  const previewValue = hasValue ? payload.value : null
+  const emptyText = readDisplayText(payload.empty_text) || null
+  return {
+    nodeId: displayOutput.node_id,
+    nodeTypeId: displayOutput.node_type_id,
+    outputName: displayOutput.output_name,
+    title: readDisplayText(payload.title) || displayOutput.node_id,
+    kind: 'value',
+    payload,
+    statusText: readDisplayText(payload.status_text) || emptyText || (hasValue ? 'JSON 预览' : '未返回可显示 value'),
+    formattedValue: formatWorkflowJson(previewValue) || 'null',
+    image: null,
+    galleryItems: [],
+    columns: [],
+    rows: [],
+    rowCount: null,
+    emptyText,
+  }
+}
+
+function readPreviewRunFailureDetails(previewRun: WorkflowPreviewRun | null): WorkflowJsonObject | null {
+  if (!previewRun) return null
+  const lastError = previewRun.metadata.last_error
+  if (!isWorkflowJsonObject(lastError)) return null
+  const details = lastError.details
+  return isWorkflowJsonObject(details) ? details : null
+}
+
+function formatPreviewRunFailureMessage(previewRun: WorkflowPreviewRun | null): string {
+  if (!previewRun) return ''
+  const errorMessage = readDisplayText(previewRun.error_message)
+  const detailMessage = readDisplayText(readPreviewRunFailureDetails(previewRun)?.error_message)
+  const nodeLabel = formatPreviewRunFailureNodeLabel(readPreviewRunFailureDetails(previewRun))
+  if (detailMessage && (!errorMessage || isGenericPreviewRunFailureMessage(errorMessage))) {
+    return nodeLabel ? `${nodeLabel}：${detailMessage}` : detailMessage
+  }
+  if (errorMessage) {
+    return nodeLabel && isGenericPreviewRunFailureMessage(errorMessage) ? `${nodeLabel}：${errorMessage}` : errorMessage
+  }
+  return detailMessage || 'Preview run failed'
+}
+
+function formatPreviewRunFailureNodeLabel(details: WorkflowJsonObject | null): string {
+  const nodeId = readDisplayText(details?.node_id)
+  const nodeTypeId = readDisplayText(details?.node_type_id)
+  if (nodeId && nodeTypeId) return `${nodeId} / ${nodeTypeId}`
+  return nodeId || nodeTypeId
+}
+
+function formatPreviewRunFailureLocation(details: WorkflowJsonObject | null): string {
+  if (!details) return ''
+  const runtimeKind = readDisplayText(details.runtime_kind)
+  const errorType = readDisplayText(details.error_type)
+  const executionIndex = readDisplayNumber(details.execution_index)
+  const sequenceIndex = readDisplayNumber(details.sequence_index)
+  const parts = [
+    runtimeKind,
+    executionIndex === null ? '' : `execution #${executionIndex}`,
+    sequenceIndex === null ? '' : `sequence #${sequenceIndex}`,
+    errorType,
+  ].filter(Boolean)
+  return parts.join(' / ')
+}
+
+function isGenericPreviewRunFailureMessage(message: string): boolean {
+  return ['workflow 节点执行失败', 'Preview run failed', 'Preview run 失败'].includes(message)
+}
+
+async function buildPreviewViewerImage(
+  previewRun: WorkflowPreviewRun,
+  imagePayload: WorkflowJsonObject,
+  title: string,
+  nodeId: string,
+): Promise<PreviewViewerImage> {
   const transportKind = readDisplayText(imagePayload.transport_kind) || 'unknown'
   const mediaType = readDisplayText(imagePayload.media_type)
   const objectKey = readDisplayText(imagePayload.object_key) || null
   const imageBase64 = readDisplayText(imagePayload.image_base64)
   const src = imageBase64 ? `data:${mediaType || 'image/png'};base64,${imageBase64}` : await resolveStoragePreviewImageSrc(previewRun, objectKey)
   return {
-    nodeId: displayOutput.node_id,
+    nodeId,
     title,
     src,
     statusText: src ? '预览图已生成' : buildPreviewImageStatusText(transportKind, objectKey),
@@ -3236,17 +3723,70 @@ function revokePreviewImageObjectUrls(): void {
     URL.revokeObjectURL(objectUrl)
   }
   previewImageObjectUrls = []
-  previewNodeImages.value = {}
+  previewNodeDisplays.value = {}
   activeImageViewer.value = null
 }
 
-function getPreviewNodeImage(nodeId: string): PreviewNodeImageView | null {
-  return previewNodeImages.value[nodeId] ?? null
+function getPreviewNodeDisplay(nodeId: string): PreviewNodeDisplay | null {
+  return previewNodeDisplays.value[nodeId] ?? null
 }
 
-function openImageViewer(image: PreviewNodeImageView | null): void {
+function formatPreviewRunStatusLabel(state: WorkflowPreviewRun['state']): string {
+  return `Preview ${state}`
+}
+
+function readPreviewRunBadgeTone(state: WorkflowPreviewRun['state']): 'info' | 'danger' | 'neutral' {
+  if (state === 'failed' || state === 'timed_out' || state === 'cancelled') return 'danger'
+  if (state === 'succeeded') return 'info'
+  return 'neutral'
+}
+
+function readPreviewNodeDisplayTooltip(display: PreviewNodeDisplay | null): string {
+  if (!display) return ''
+  if (display.kind === 'table') {
+    return display.rows.length > 0 ? '双击查看完整表格' : (display.statusText || '当前没有表格数据')
+  }
+  if (display.kind === 'gallery') {
+    return display.galleryItems.length > 0 ? '双击查看首张预览图片' : display.statusText
+  }
+  if (display.kind === 'image') {
+    return display.image?.src ? '双击查看预览图片' : display.statusText
+  }
+  return display.statusText
+}
+
+function openPreviewDisplayViewer(display: PreviewNodeDisplay | null): void {
+  if (!display) return
+  if (display.kind === 'table') {
+    openPreviewTableViewer(display)
+    return
+  }
+  openPrimaryPreviewImage(display)
+}
+
+function openPrimaryPreviewImage(display: PreviewNodeDisplay | null): void {
+  openImageViewer(display?.image ?? null)
+}
+
+function openPreviewTableViewer(display: PreviewNodeDisplay | null): void {
+  if (!display || display.kind !== 'table') return
+  activePreviewTable.value = {
+    title: display.title,
+    columns: display.columns,
+    rows: display.rows,
+    rowCount: display.rowCount,
+    emptyText: display.emptyText,
+  }
+}
+
+function openImageViewer(image: PreviewViewerImage | null): void {
   if (!image?.src) return
   activeImageViewer.value = image
+}
+
+function formatWorkflowJson(value: unknown): string {
+  if (value === undefined) return ''
+  return JSON.stringify(value, null, 2)
 }
 
 function isWorkflowJsonObject(value: unknown): value is WorkflowJsonObject {
@@ -3440,9 +3980,7 @@ function applyWorkflowValidationIssue(issue: WorkflowValidationIssue): void {
     return
   }
   if (issue.nodeId && graphNodes.value.some((node) => node.node.node_id === issue.nodeId)) {
-    selectedNodeId.value = issue.nodeId
-    selectedEdgeId.value = null
-    selectedBoundaryKind.value = null
+    focusGraphNode(issue.nodeId)
     return
   }
   if (issue.boundaryKind) {
@@ -3459,6 +3997,7 @@ async function refreshSavedWorkflowApp(applicationId: string): Promise<void> {
   const refreshedApp = await getWorkflowApp(selectedProjectId.value, applicationId)
   workflowApp.value = refreshedApp
   initializeWorkflowAppDrafts(refreshedApp)
+  complexParameterDrafts.value = {}
   liteGraphAdapter.value?.loadTemplate(refreshedApp.graphDocument.template)
   graphEdges.value = refreshedApp.graphDocument.template.edges.map((edge) => ({ ...edge, metadata: { ...edge.metadata } }))
   graphNodes.value = buildGraphNodeViews(refreshedApp.graphDocument.template.nodes)
@@ -3554,11 +4093,13 @@ async function runPreview(): Promise<void> {
       waitMode: 'sync',
       application,
     })
-    await refreshPreviewNodeImages(lastPreviewRun.value)
+    await refreshPreviewNodeDisplays(lastPreviewRun.value)
     if (lastPreviewRun.value.state === 'failed') {
-      errorMessage.value = lastPreviewRun.value.error_message || 'Preview run failed'
+      const failedNodeId = readDisplayText(readPreviewRunFailureDetails(lastPreviewRun.value)?.node_id)
+      if (failedNodeId) focusGraphNode(failedNodeId)
+      errorMessage.value = formatPreviewRunFailureMessage(lastPreviewRun.value)
     }
-    statusMessage.value = `Preview ${lastPreviewRun.value.state}`
+    statusMessage.value = null
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : 'Preview run 失败'
   } finally {
@@ -3595,6 +4136,7 @@ async function loadPage(): Promise<void> {
   errorMessage.value = null
   statusMessage.value = null
   lastPreviewRun.value = null
+  complexParameterDrafts.value = {}
   revokePreviewImageObjectUrls()
   try {
     nodeCatalog.value = await getWorkflowNodeCatalog()

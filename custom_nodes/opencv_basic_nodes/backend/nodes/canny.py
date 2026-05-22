@@ -26,9 +26,12 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
         imdecode_flags=cv2_module.IMREAD_GRAYSCALE,
     )
 
-    threshold1 = require_non_negative_float(request.parameters.get("threshold1", 50), field_name="threshold1")
-    threshold2 = require_non_negative_float(request.parameters.get("threshold2", 150), field_name="threshold2")
-    aperture_size = require_aperture_size(request.parameters.get("aperture_size", 3))
+    raw_threshold1 = request.parameters.get("threshold1")
+    threshold1 = 50 if raw_threshold1 in {None, ""} else require_non_negative_float(raw_threshold1, field_name="threshold1")
+    raw_threshold2 = request.parameters.get("threshold2")
+    threshold2 = 150 if raw_threshold2 in {None, ""} else require_non_negative_float(raw_threshold2, field_name="threshold2")
+    raw_aperture_size = request.parameters.get("aperture_size")
+    aperture_size = 3 if raw_aperture_size in {None, ""} else require_aperture_size(raw_aperture_size)
     l2_gradient = bool(request.parameters.get("l2_gradient", False))
     output_image = cv2_module.Canny(
         image_matrix,

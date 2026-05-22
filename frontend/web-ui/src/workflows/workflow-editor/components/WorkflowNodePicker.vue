@@ -71,8 +71,9 @@
           class="workflow-node-picker__node"
           @click="emit('select', definition)"
         >
-          <strong>{{ definition.display_name }}</strong>
+          <strong>{{ readDefinitionDisplayName(definition) }}</strong>
           <span>{{ definition.category.replaceAll('.', ' / ') }}</span>
+          <p v-if="readDefinitionDescription(definition)">{{ readDefinitionDescription(definition) }}</p>
           <small>{{ definition.node_type_id }}</small>
         </button>
         <div v-if="visibleNodes.length === 0" class="workflow-node-picker__empty">
@@ -88,6 +89,12 @@ import { ChevronRight, Search, X } from '@lucide/vue'
 import { computed, nextTick, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
+import type { SupportedLocale } from '@/platform/i18n'
+
+import {
+  resolveNodeDefinitionDescription,
+  resolveNodeDefinitionDisplayName,
+} from '../node-definition-localization'
 import type { NodeDefinition } from '../types'
 
 type NodePickerMode = 'context-menu' | 'link-drop'
@@ -131,7 +138,8 @@ const searchInputRef = ref<HTMLInputElement | null>(null)
 const searchQuery = ref('')
 const activeSourceId = ref('')
 const activeCategoryId = ref('')
-const { t } = useI18n()
+const { t, locale } = useI18n()
+const currentLocale = computed(() => (typeof locale.value === 'string' ? locale.value : 'en-US') as SupportedLocale)
 
 const pickerStyle = computed(() => ({
   left: `${clampToViewport(props.x, 640, 'width')}px`,
@@ -252,18 +260,26 @@ function matchesConnectionFilter(definition: NodeDefinition): boolean {
 }
 
 function sortDefinitions(definitions: NodeDefinition[]): NodeDefinition[] {
-  return [...definitions].sort((left, right) => left.display_name.localeCompare(right.display_name))
+  return [...definitions].sort((left, right) => readDefinitionDisplayName(left).localeCompare(readDefinitionDisplayName(right)))
 }
 
 function buildSearchText(definition: NodeDefinition): string {
   return [
-    definition.display_name,
+    readDefinitionDisplayName(definition),
     definition.node_type_id,
     definition.category,
-    definition.description,
+    readDefinitionDescription(definition),
     definition.node_pack_id ?? '',
     ...definition.capability_tags,
   ].join(' ').toLowerCase()
+}
+
+function readDefinitionDisplayName(definition: NodeDefinition): string {
+  return resolveNodeDefinitionDisplayName(definition, currentLocale.value)
+}
+
+function readDefinitionDescription(definition: NodeDefinition): string {
+  return resolveNodeDefinitionDescription(definition, currentLocale.value)
 }
 
 function formatNodePackLabel(packId: string): string {

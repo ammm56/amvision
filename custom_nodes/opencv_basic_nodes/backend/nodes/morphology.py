@@ -29,10 +29,14 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
         imdecode_flags=cv2_module.IMREAD_GRAYSCALE,
     )
 
-    operation_name = normalize_morphology_operation(request.parameters.get("operation", "open"))
-    kernel_shape = normalize_kernel_shape(request.parameters.get("shape", "rect"), cv2_module=cv2_module)
-    kernel_size = normalize_odd_kernel_size(request.parameters.get("kernel_size", 3))
-    iterations = require_positive_int(request.parameters.get("iterations", 1), field_name="iterations")
+    raw_operation = request.parameters.get("operation")
+    operation_name = normalize_morphology_operation("open" if raw_operation in {None, ""} else raw_operation)
+    raw_kernel_shape = request.parameters.get("shape")
+    kernel_shape = normalize_kernel_shape("rect" if raw_kernel_shape in {None, ""} else raw_kernel_shape, cv2_module=cv2_module)
+    raw_kernel_size = request.parameters.get("kernel_size")
+    kernel_size = 3 if raw_kernel_size in {None, ""} else normalize_odd_kernel_size(raw_kernel_size)
+    raw_iterations = request.parameters.get("iterations")
+    iterations = 1 if raw_iterations in {None, ""} else require_positive_int(raw_iterations, field_name="iterations")
     kernel = cv2_module.getStructuringElement(kernel_shape, (kernel_size, kernel_size))
     if operation_name == "erode":
         output_image = cv2_module.erode(image_matrix, kernel, iterations=iterations)

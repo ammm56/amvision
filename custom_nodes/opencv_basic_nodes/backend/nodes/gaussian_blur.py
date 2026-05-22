@@ -23,8 +23,10 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
     cv2_module, _ = require_opencv_imports()
     image_payload, _, image_matrix = load_image_matrix(request)
 
-    kernel_size = normalize_odd_kernel_size(request.parameters.get("kernel_size", 5))
-    sigma_x = require_non_negative_float(request.parameters.get("sigma_x", 0.0), field_name="sigma_x")
+    raw_kernel_size = request.parameters.get("kernel_size")
+    kernel_size = 5 if raw_kernel_size in {None, ""} else normalize_odd_kernel_size(raw_kernel_size)
+    raw_sigma_x = request.parameters.get("sigma_x")
+    sigma_x = 0.0 if raw_sigma_x in {None, ""} else require_non_negative_float(raw_sigma_x, field_name="sigma_x")
     blurred_image = cv2_module.GaussianBlur(image_matrix, (kernel_size, kernel_size), sigma_x)
     success, encoded_image = cv2_module.imencode(".png", blurred_image)
     if success is not True:

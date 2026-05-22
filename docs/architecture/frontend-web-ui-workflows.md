@@ -224,6 +224,10 @@ PreviewRun 用于工作流调试，不等同于正式运行。
 
 界面不能假设 `node_records` 一定存在。执行策略可能关闭 trace 和节点记录，此时应只展示最终 outputs、template_outputs 和错误摘要。
 
+`wait_mode=sync` 的 editor preview 应优先读取 `preview_display_outputs`。这部分数据只存在于当前 create 响应里，保留未脱敏的临时 preview payload，适合直接渲染 image-preview、gallery-preview 和 table-preview。
+
+`node_records` 只适合做回退摘要面。它属于持久化记录视图，图片 base64 和 memory image-ref 会被脱敏，不能当作 editor 的主图片预览来源。
+
 ### 发布应用运行
 
 已发布应用运行由 WorkflowAppRuntime 承接。

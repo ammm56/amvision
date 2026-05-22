@@ -10,19 +10,58 @@
     {
       "name": "image",
       "display_name": "Image",
-      "payload_type_id": "image-ref.v1"
+      "payload_type_id": "image-ref.v1",
+      "description": "待绘制 detection 的原图。",
+      "metadata": {
+        "i18n": {
+          "display_name": {
+            "zh-CN": "原图",
+            "en-US": "Image"
+          },
+          "description": {
+            "zh-CN": "待绘制 detection 的原图。",
+            "en-US": "Source image that receives the detection overlay."
+          }
+        }
+      }
     },
     {
       "name": "detections",
       "display_name": "Detections",
-      "payload_type_id": "detections.v1"
+      "payload_type_id": "detections.v1",
+      "description": "标准 detections.v1 检测结果。",
+      "metadata": {
+        "i18n": {
+          "display_name": {
+            "zh-CN": "检测结果",
+            "en-US": "Detections"
+          },
+          "description": {
+            "zh-CN": "标准 detections.v1 检测结果。",
+            "en-US": "Standard detections.v1 payload to render on the image."
+          }
+        }
+      }
     }
   ],
   "output_ports": [
     {
       "name": "image",
       "display_name": "Image",
-      "payload_type_id": "image-ref.v1"
+      "payload_type_id": "image-ref.v1",
+      "description": "绘制完成后的输出图片。",
+      "metadata": {
+        "i18n": {
+          "display_name": {
+            "zh-CN": "输出图片",
+            "en-US": "Image"
+          },
+          "description": {
+            "zh-CN": "绘制完成后的输出图片。",
+            "en-US": "Rendered output image with boxes and labels."
+          }
+        }
+      }
     }
   ],
   "parameter_schema": {
@@ -30,17 +69,64 @@
     "properties": {
       "line_thickness": {
         "type": "integer",
-        "minimum": 1
+        "minimum": 1,
+        "default": 2,
+        "description": "绘制 bbox 边框时使用的线宽。",
+        "x-amvision-i18n": {
+          "title": {
+            "zh-CN": "线宽",
+            "en-US": "Line thickness"
+          },
+          "description": {
+            "zh-CN": "绘制 bbox 边框时使用的线宽。",
+            "en-US": "Stroke width used for detection boxes."
+          }
+        }
       },
       "font_scale": {
         "type": "number",
-        "minimum": 0
+        "minimum": 0,
+        "default": 0.5,
+        "description": "绘制标签文本时使用的字体缩放。",
+        "x-amvision-i18n": {
+          "title": {
+            "zh-CN": "字体缩放",
+            "en-US": "Font scale"
+          },
+          "description": {
+            "zh-CN": "绘制标签文本时使用的字体缩放。",
+            "en-US": "Font scale used when drawing labels."
+          }
+        }
       },
       "draw_scores": {
-        "type": "boolean"
+        "type": "boolean",
+        "default": true,
+        "description": "是否把 score 一起画到标签文本中。",
+        "x-amvision-i18n": {
+          "title": {
+            "zh-CN": "绘制 score",
+            "en-US": "Draw scores"
+          },
+          "description": {
+            "zh-CN": "是否把 score 一起画到标签文本中。",
+            "en-US": "Whether to include detection scores in the label text."
+          }
+        }
       },
       "output_object_key": {
-        "type": "string"
+        "type": "string",
+        "description": "可选输出 object key；留空时返回 memory image-ref。",
+        "x-amvision-i18n": {
+          "title": {
+            "zh-CN": "输出 object key",
+            "en-US": "Output object key"
+          },
+          "description": {
+            "zh-CN": "可选输出 object key；留空时返回 memory image-ref。",
+            "en-US": "Optional output object key. When omitted, the node returns a memory image-ref."
+          }
+        }
       }
     }
   },
@@ -53,6 +139,18 @@
       "opencv-python",
       "numpy"
     ]
+  },
+  "metadata": {
+    "i18n": {
+      "display_name": {
+        "zh-CN": "绘制检测框",
+        "en-US": "Draw Detections"
+      },
+      "description": {
+        "zh-CN": "通过 OpenCV 把 detection 结果绘制到图片上。",
+        "en-US": "Draw detection boxes and labels on the image with OpenCV."
+      }
+    }
   },
   "node_pack_id": "opencv.basic-nodes",
   "node_pack_version": "0.1.0"

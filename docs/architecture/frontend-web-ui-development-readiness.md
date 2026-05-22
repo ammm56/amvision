@@ -147,6 +147,7 @@ src/workflows/workflow-editor/result-viewer/
 - 如果文件内容接口需要 Bearer token，图片预览使用 `fetch` 加 Authorization，再生成 browser object URL。
 - object URL 要在组件卸载或资源切换时 revoke。
 - 下载同样走 `fetch` 加 Authorization，再触发本地下载。
+- sync preview run 的 `preview_display_outputs` 属于即时响应数据；如果里面直接带 inline base64，editor 可以直接渲染，不需要走持久化回放逻辑。
 - `memory image-ref` 只显示摘要和短期有效提示，不当作可长期打开的图片。
 - 脱敏 base64 只显示脱敏状态，不尝试还原。
 

@@ -26,16 +26,22 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
         imdecode_flags=cv2_module.IMREAD_GRAYSCALE,
     )
 
-    threshold_value = require_uint8_int(request.parameters.get("threshold", 127), field_name="threshold")
-    min_area = require_non_negative_float(request.parameters.get("min_area", 0), field_name="min_area")
+    raw_threshold = request.parameters.get("threshold")
+    threshold_value = 127 if raw_threshold in {None, ""} else require_uint8_int(raw_threshold, field_name="threshold")
+    raw_min_area = request.parameters.get("min_area")
+    min_area = 0 if raw_min_area in {None, ""} else require_non_negative_float(raw_min_area, field_name="min_area")
     max_contours_raw = request.parameters.get("max_contours")
+    if max_contours_raw == "":
+        max_contours_raw = None
     max_contours = require_positive_int(max_contours_raw, field_name="max_contours") if max_contours_raw is not None else None
+    raw_retrieval_mode = request.parameters.get("retrieval_mode")
     retrieval_mode = normalize_contour_retrieval_mode(
-        request.parameters.get("retrieval_mode", "external"),
+        "external" if raw_retrieval_mode in {None, ""} else raw_retrieval_mode,
         cv2_module=cv2_module,
     )
+    raw_approximation = request.parameters.get("approximation")
     approximation = normalize_contour_approximation(
-        request.parameters.get("approximation", "simple"),
+        "simple" if raw_approximation in {None, ""} else raw_approximation,
         cv2_module=cv2_module,
     )
 

@@ -6,6 +6,7 @@ from pathlib import PurePosixPath
 
 from backend.nodes.runtime_support import build_response_image_payload
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
+from backend.service.application.workflows.preview_display_outputs import register_preview_display_output
 from custom_nodes.opencv_basic_nodes.backend.support import require_image_refs_payload, require_positive_int
 
 
@@ -65,7 +66,14 @@ def _build_gallery_item(
 
 
 def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
-    """把 image-refs payload 转换为可直接进入 HTTP 响应的 gallery body。"""
+    """把 image-refs payload 转换为可直接进入 HTTP 响应的 gallery body。
+
+    参数：
+    - request：当前 workflow 节点执行请求。
+
+    返回：
+    - dict[str, object]：包含 gallery-preview body 的节点输出。
+    """
 
     image_refs_payload = require_image_refs_payload(request.input_values.get("images"))
     response_transport_mode = str(request.parameters.get("response_transport_mode", "inline-base64"))
@@ -97,6 +105,13 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
     title = request.parameters.get("title")
     if isinstance(title, str) and title.strip():
         response_body["title"] = title.strip()
+    register_preview_display_output(
+        request.execution_metadata,
+        node_id=request.node_id,
+        node_type_id=request.node_definition.node_type_id,
+        output_name="body",
+        payload=response_body,
+    )
     return {"body": response_body}
 
 

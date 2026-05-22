@@ -26,6 +26,7 @@
 - preview run 是短期调试资源，不进入长期 runtime worker 的实例管理。
 - preview run 支持 sync/async wait_mode；async create 返回后可继续通过详情、事件接口和 WebSocket 资源流观察执行过程。
 - WorkflowPreviewRun 返回的是持久化记录视图；如果节点图里出现 inline base64 图片或 memory image-ref，资源返回会自动脱敏，不直接回显原始图片内容或 image_handle。
+- `preview_display_outputs` 只服务 sync create 的即时预览显示，不写入数据库，也不用于历史回放。
 
 ## 接口入口
 
@@ -80,6 +81,7 @@
 | outputs | 按 application output binding_id 组织的输出；inline base64 图片会改写为 redacted 标记 |
 | template_outputs | 按 template output id 组织的底层输出；inline base64 图片会改写为 redacted 标记 |
 | node_records | 节点执行记录列表；当前包含 inputs 和 outputs 的脱敏快照 |
+| preview_display_outputs | sync create 返回里的即时预览输出列表；保留未脱敏的 preview payload，适合 editor 直接显示图片、gallery 和 table |
 | error_message | 失败或超时时的摘要信息，可为空 |
 | retention_until | 建议清理时间，可为空 |
 | metadata | 调用附加元数据；接口层会补写 created_by；当绑定 execution policy 时还会补写 metadata.execution_policy 摘要 |
@@ -88,12 +90,14 @@
 
 - 对 image_base64、preview_image_base64 一类大字段，记录资源会返回对应的 _redacted 标记，不保留原始 base64 文本。
 - 对 memory image-ref，记录资源会保留 transport_kind、media_type、width、height 等摘要字段，但不会返回 image_handle。
+- `node_records` 脱敏的目的，是避免把图片和大体积 payload 写入数据库持久化记录。
+- `preview_display_outputs` 不走持久化脱敏路径；它只存在于 sync create 的即时响应里，供图编辑器直接渲染当前这次 preview run 的临时结果。
 
 ## POST /api/v1/workflows/preview-runs
 
 - Content-Type：application/json
 - 成功状态码：201 Created
-- 返回完整 WorkflowPreviewRun 合同
+- 返回完整 WorkflowPreviewRun 合同；当 wait_mode=sync 且节点产生 preview 输出时，`preview_display_outputs` 会携带当前这次执行的未脱敏临时预览 payload
 
 ### 请求体字段
 
@@ -164,6 +168,7 @@
     }
   },
   "node_records": [],
+  "preview_display_outputs": [],
   "error_message": null,
   "retention_until": "2026-05-09T12:00:00Z",
   "metadata": {
@@ -186,6 +191,7 @@
 - 返回单条 WorkflowPreviewRun 的当前持久化结果
 - 返回字段与 create 接口一致
 - 典型用途：在 create 请求执行期间回查 running，或在返回后再次读取 outputs、node_records 和 error_message
+- `preview_display_outputs` 不会被持久化；通过详情接口回查历史 preview run 时，通常会看到空数组
 
 ## GET /api/v1/workflows/preview-runs
 

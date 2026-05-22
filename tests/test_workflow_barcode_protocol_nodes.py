@@ -27,6 +27,7 @@ from backend.service.infrastructure.object_store.local_dataset_storage import (
 from custom_nodes.barcode_protocol_nodes.specs import (
     DRAW_BARCODE_RESULTS_NODE_TYPE_ID,
     QR_CROP_DECODE_REMAP_NODE_TYPE_ID,
+    build_common_parameter_schema,
 )
 
 
@@ -313,6 +314,32 @@ def test_repository_barcode_protocol_node_pack_is_enabled_by_default() -> None:
         "custom.barcode.results-summary",
         DRAW_BARCODE_RESULTS_NODE_TYPE_ID,
     }.issubset(loaded_node_type_ids)
+
+
+def test_barcode_decode_common_parameter_schema_exposes_runtime_defaults() -> None:
+    """验证 barcode decode 共用参数 schema 会暴露与运行时一致的默认值。"""
+
+    parameter_schema = build_common_parameter_schema()
+    properties = parameter_schema["properties"]
+
+    assert properties["try_rotate"]["default"] is True
+    assert properties["try_downscale"]["default"] is True
+    assert properties["try_invert"]["default"] is True
+    assert properties["is_pure"]["default"] is False
+    assert properties["return_errors"]["default"] is False
+    assert properties["text_mode"]["default"] == "hri"
+    assert properties["binarizer"]["default"] == "local-average"
+    assert properties["ean_add_on_symbol"]["default"] == "ignore"
+
+    node_pack_loader = LocalNodePackLoader(_get_repository_custom_nodes_root())
+    node_pack_loader.refresh()
+    qr_decode_definition = next(
+        node for node in node_pack_loader.get_workflow_node_definitions() if node.node_type_id == "custom.barcode.qr-code-decode"
+    )
+
+    assert qr_decode_definition.parameter_schema["properties"]["try_rotate"]["default"] is True
+    assert qr_decode_definition.parameter_schema["properties"]["text_mode"]["default"] == "hri"
+    assert qr_decode_definition.parameter_schema["properties"]["binarizer"]["default"] == "local-average"
 
 
 def test_barcode_node_modules_are_aggregated_bottom_up() -> None:
@@ -617,6 +644,105 @@ def test_repository_barcode_draw_results_node_renders_position_overlay(tmp_path:
     assert output_image_bytes.startswith(b"\x89PNG\r\n\x1a\n")
     assert output_image_bytes != source_image_bytes
     assert any(record.node_type_id == DRAW_BARCODE_RESULTS_NODE_TYPE_ID for record in execution_result.node_records)
+
+
+def test_repository_barcode_draw_results_node_uses_defaults_when_parameters_are_null(tmp_path: Path) -> None:
+    """验证 barcode draw-results 在旧图参数为 null 时仍会回退到默认值。"""
+
+    node_pack_loader = LocalNodePackLoader(_get_repository_custom_nodes_root())
+    node_pack_loader.refresh()
+    node_catalog_registry = NodeCatalogRegistry(node_pack_loader=node_pack_loader)
+    runtime_registry_loader = WorkflowNodeRuntimeRegistryLoader(
+        node_catalog_registry=node_catalog_registry,
+        node_pack_loader=node_pack_loader,
+    )
+    dataset_storage = _create_dataset_storage(tmp_path)
+    source_image_bytes = _build_mixed_barcode_test_png_bytes()
+    dataset_storage.write_bytes("inputs/mixed-readable.png", source_image_bytes)
+
+    runtime_registry_loader.refresh()
+    executor = WorkflowGraphExecutor(registry=runtime_registry_loader.get_runtime_registry())
+    template = WorkflowGraphTemplate(
+        template_id="barcode-draw-results-null-parameter-pipeline",
+        template_version="1.0.0",
+        display_name="Barcode Draw Results Null Parameter Pipeline",
+        nodes=(
+            WorkflowGraphNode(node_id="decode", node_type_id="custom.barcode.all-readable-decode"),
+            WorkflowGraphNode(
+                node_id="draw",
+                node_type_id=DRAW_BARCODE_RESULTS_NODE_TYPE_ID,
+                parameters={
+                    "line_thickness": None,
+                    "font_scale": None,
+                    "draw_polygon": None,
+                    "draw_text": None,
+                    "draw_format": None,
+                    "draw_index": None,
+                },
+            ),
+        ),
+        edges=(
+            WorkflowGraphEdge(
+                edge_id="edge-decode-draw-results",
+                source_node_id="decode",
+                source_port="results",
+                target_node_id="draw",
+                target_port="results",
+            ),
+        ),
+        template_inputs=(
+            WorkflowGraphInput(
+                input_id="request_image",
+                display_name="Request Image",
+                payload_type_id="image-ref.v1",
+                target_node_id="draw",
+                target_port="image",
+            ),
+            WorkflowGraphInput(
+                input_id="decode_image",
+                display_name="Decode Image",
+                payload_type_id="image-ref.v1",
+                target_node_id="decode",
+                target_port="image",
+            ),
+        ),
+        template_outputs=(
+            WorkflowGraphOutput(
+                output_id="drawn_image",
+                display_name="Drawn Image",
+                payload_type_id="image-ref.v1",
+                source_node_id="draw",
+                source_port="image",
+            ),
+        ),
+    )
+
+    execution_metadata = {
+        "dataset_storage": dataset_storage,
+        "workflow_run_id": "barcode-draw-results-null-parameter",
+        "execution_image_registry": ExecutionImageRegistry(),
+    }
+    execution_result = executor.execute(
+        template=template,
+        input_values={
+            "request_image": {
+                "object_key": "inputs/mixed-readable.png",
+                "media_type": "image/png",
+            },
+            "decode_image": {
+                "object_key": "inputs/mixed-readable.png",
+                "media_type": "image/png",
+            },
+        },
+        execution_metadata=execution_metadata,
+    )
+
+    output_payload = execution_result.outputs["drawn_image"]
+    assert output_payload["transport_kind"] == "memory"
+    assert output_payload["media_type"] == "image/png"
+    output_image_bytes = execution_metadata["execution_image_registry"].read_bytes(str(output_payload["image_handle"]))
+    assert output_image_bytes.startswith(b"\x89PNG\r\n\x1a\n")
+    assert output_image_bytes != source_image_bytes
 
 
 def test_repository_barcode_qr_crop_decode_remap_node_offsets_positions_to_source_image(

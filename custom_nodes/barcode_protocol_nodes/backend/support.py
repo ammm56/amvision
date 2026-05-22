@@ -746,7 +746,9 @@ def _build_bounds_xyxy(polygon_xy: list[list[int]]) -> list[int]:
 def _resolve_ean_add_on_symbol(request: WorkflowNodeExecutionRequest, *, zxing_module: Any) -> object:
     """把 workflow 参数中的 ean_add_on_symbol 映射到 zxingcpp EanAddOnSymbol。"""
 
-    raw_value = request.parameters.get("ean_add_on_symbol", "ignore")
+    raw_value = request.parameters.get("ean_add_on_symbol")
+    if raw_value is None or (isinstance(raw_value, str) and not raw_value.strip()):
+        raw_value = "ignore"
     if not isinstance(raw_value, str):
         raise InvalidRequestError(
             "ean_add_on_symbol 参数必须是字符串",
@@ -787,10 +789,40 @@ def _read_bool_parameter(
     )
 
 
+def _read_positive_int_parameter(
+    request: WorkflowNodeExecutionRequest,
+    *,
+    field_name: str,
+    default: int,
+) -> int:
+    """读取正整数参数，并在 null 或空字符串时回退默认值。"""
+
+    raw_value = request.parameters.get(field_name)
+    if raw_value in {None, ""}:
+        return default
+    return require_positive_int(raw_value, field_name=field_name)
+
+
+def _read_non_negative_float_parameter(
+    request: WorkflowNodeExecutionRequest,
+    *,
+    field_name: str,
+    default: float,
+) -> float:
+    """读取非负浮点参数，并在 null 或空字符串时回退默认值。"""
+
+    raw_value = request.parameters.get(field_name)
+    if raw_value in {None, ""}:
+        return default
+    return require_non_negative_float(raw_value, field_name=field_name)
+
+
 def _resolve_text_mode(request: WorkflowNodeExecutionRequest, *, zxing_module: Any) -> object:
     """把 workflow 参数中的 text_mode 映射到 zxingcpp TextMode。"""
 
-    raw_value = request.parameters.get("text_mode", "hri")
+    raw_value = request.parameters.get("text_mode")
+    if raw_value is None or (isinstance(raw_value, str) and not raw_value.strip()):
+        raw_value = "hri"
     if not isinstance(raw_value, str):
         raise InvalidRequestError("text_mode 参数必须是字符串", details={"node_id": request.node_id})
     normalized_value = raw_value.strip().lower()
@@ -806,7 +838,9 @@ def _resolve_text_mode(request: WorkflowNodeExecutionRequest, *, zxing_module: A
 def _resolve_binarizer(request: WorkflowNodeExecutionRequest, *, zxing_module: Any) -> object:
     """把 workflow 参数中的 binarizer 映射到 zxingcpp Binarizer。"""
 
-    raw_value = request.parameters.get("binarizer", "local-average")
+    raw_value = request.parameters.get("binarizer")
+    if raw_value is None or (isinstance(raw_value, str) and not raw_value.strip()):
+        raw_value = "local-average"
     if not isinstance(raw_value, str):
         raise InvalidRequestError("binarizer 参数必须是字符串", details={"node_id": request.node_id})
     normalized_value = raw_value.strip().lower()

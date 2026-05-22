@@ -4,25 +4,58 @@
   "display_name": "Draw Barcode Results",
   "category": "barcode.render",
   "description": "把 barcode-results 中的 position 轮廓和文本叠加回原图，输出新的图片引用。",
+  "metadata": {
+    "i18n": {
+      "display_name": {
+        "zh-CN": "绘制条码结果"
+      },
+      "description": {
+        "en-US": "Overlay barcode result polygons and label text back onto the source image, then output a new image reference."
+      }
+    },
+    "input_kind": "barcode-results.v1",
+    "position_field": "position"
+  },
   "implementation_kind": "custom-node",
   "runtime_kind": "python-callable",
   "input_ports": [
     {
       "name": "image",
       "display_name": "Image",
-      "payload_type_id": "image-ref.v1"
+      "payload_type_id": "image-ref.v1",
+      "metadata": {
+        "i18n": {
+          "display_name": {
+            "zh-CN": "原图"
+          }
+        }
+      }
     },
     {
       "name": "results",
       "display_name": "Results",
-      "payload_type_id": "barcode-results.v1"
+      "payload_type_id": "barcode-results.v1",
+      "metadata": {
+        "i18n": {
+          "display_name": {
+            "zh-CN": "识别结果"
+          }
+        }
+      }
     }
   ],
   "output_ports": [
     {
       "name": "image",
       "display_name": "Image",
-      "payload_type_id": "image-ref.v1"
+      "payload_type_id": "image-ref.v1",
+      "metadata": {
+        "i18n": {
+          "display_name": {
+            "zh-CN": "输出图片"
+          }
+        }
+      }
     }
   ],
   "parameter_schema": {
@@ -30,26 +63,102 @@
     "properties": {
       "line_thickness": {
         "type": "integer",
-        "minimum": 1
+        "minimum": 1,
+        "default": 2,
+        "title": "Line thickness",
+        "description": "Stroke width used for barcode polygons and label borders.",
+        "x-amvision-i18n": {
+          "title": {
+            "zh-CN": "线宽"
+          },
+          "description": {
+            "zh-CN": "绘制条码轮廓和标签边框时使用的线宽。"
+          }
+        }
       },
       "font_scale": {
         "type": "number",
-        "minimum": 0
+        "minimum": 0,
+        "default": 0.5,
+        "title": "Font scale",
+        "description": "Font scale used when rendering barcode labels.",
+        "x-amvision-i18n": {
+          "title": {
+            "zh-CN": "字体缩放"
+          },
+          "description": {
+            "zh-CN": "绘制条码标签文本时使用的字体缩放。"
+          }
+        }
       },
       "draw_polygon": {
-        "type": "boolean"
+        "type": "boolean",
+        "default": true,
+        "title": "Draw polygon",
+        "description": "Whether to draw the barcode polygon overlay.",
+        "x-amvision-i18n": {
+          "title": {
+            "zh-CN": "绘制轮廓"
+          },
+          "description": {
+            "zh-CN": "是否绘制条码位置轮廓。"
+          }
+        }
       },
       "draw_text": {
-        "type": "boolean"
+        "type": "boolean",
+        "default": true,
+        "title": "Draw text",
+        "description": "Whether to draw decoded text on the image.",
+        "x-amvision-i18n": {
+          "title": {
+            "zh-CN": "绘制文本"
+          },
+          "description": {
+            "zh-CN": "是否把识别文本绘制到图片上。"
+          }
+        }
       },
       "draw_format": {
-        "type": "boolean"
+        "type": "boolean",
+        "default": false,
+        "title": "Draw format",
+        "description": "Whether to include barcode format in the label text.",
+        "x-amvision-i18n": {
+          "title": {
+            "zh-CN": "绘制格式"
+          },
+          "description": {
+            "zh-CN": "是否在标签文本中包含条码格式。"
+          }
+        }
       },
       "draw_index": {
-        "type": "boolean"
+        "type": "boolean",
+        "default": false,
+        "title": "Draw index",
+        "description": "Whether to include the result index in the label text.",
+        "x-amvision-i18n": {
+          "title": {
+            "zh-CN": "绘制序号"
+          },
+          "description": {
+            "zh-CN": "是否在标签文本中包含结果序号。"
+          }
+        }
       },
       "output_object_key": {
-        "type": "string"
+        "type": "string",
+        "title": "Output object key",
+        "description": "Optional storage object key. Leave empty to return a memory image reference.",
+        "x-amvision-i18n": {
+          "title": {
+            "zh-CN": "输出 object key"
+          },
+          "description": {
+            "zh-CN": "可选输出 object key；留空时返回 memory image-ref。"
+          }
+        }
       }
     }
   },
@@ -64,9 +173,5 @@
     ]
   },
   "node_pack_id": "barcode.protocol-nodes",
-  "node_pack_version": "0.1.0",
-  "metadata": {
-    "input_kind": "barcode-results.v1",
-    "position_field": "position"
-  }
+  "node_pack_version": "0.1.0"
 }

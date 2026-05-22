@@ -84,6 +84,8 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
     measurement_items.sort(key=lambda current_item: current_item[sort_by], reverse=descending)
 
     limit_raw = request.parameters.get("limit")
+    if limit_raw == "":
+        limit_raw = None
     if limit_raw is not None:
         limit = require_positive_int(limit_raw, field_name="limit")
         measurement_items = measurement_items[:limit]

@@ -494,22 +494,48 @@ def build_common_parameter_schema() -> dict[str, object]:
     return {
         "type": "object",
         "properties": {
-            "try_rotate": {"type": "boolean"},
-            "try_downscale": {"type": "boolean"},
-            "try_invert": {"type": "boolean"},
-            "is_pure": {"type": "boolean"},
-            "return_errors": {"type": "boolean"},
+            "try_rotate": {
+                "type": "boolean",
+                "default": True,
+                "description": "默认启用旋转尝试，适合大多数现场图片。",
+            },
+            "try_downscale": {
+                "type": "boolean",
+                "default": True,
+                "description": "默认启用缩放尝试，便于识读大尺寸条码图。",
+            },
+            "try_invert": {
+                "type": "boolean",
+                "default": True,
+                "description": "默认启用反色尝试，适合浅码深底或深码浅底混合场景。",
+            },
+            "is_pure": {
+                "type": "boolean",
+                "default": False,
+                "description": "纯净条码图才建议开启；普通实拍图默认关闭。",
+            },
+            "return_errors": {
+                "type": "boolean",
+                "default": False,
+                "description": "默认只返回成功结果；调试识读失败原因时再开启。",
+            },
             "text_mode": {
                 "type": "string",
+                "default": "hri",
                 "enum": ["plain", "hri", "escaped", "hex", "eci", "hex-eci"],
+                "description": "默认使用 hri，兼顾可读文本和常见条码显示习惯。",
             },
             "binarizer": {
                 "type": "string",
+                "default": "local-average",
                 "enum": ["local-average", "global-histogram", "fixed-threshold", "bool-cast"],
+                "description": "默认使用 local-average，适合亮度不均的工业图像。",
             },
             "ean_add_on_symbol": {
                 "type": "string",
+                "default": "ignore",
                 "enum": ["ignore", "read", "require"],
+                "description": "默认忽略 EAN add-on；只有明确需要副码时再切换。",
             },
         },
     }

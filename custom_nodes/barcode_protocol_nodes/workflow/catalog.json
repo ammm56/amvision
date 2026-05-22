@@ -292,22 +292,33 @@
         "type": "object",
         "properties": {
           "try_rotate": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用旋转尝试，适合大多数现场图片。"
           },
           "try_downscale": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用缩放尝试，便于识读大尺寸条码图。"
           },
           "try_invert": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用反色尝试，适合浅码深底或深码浅底混合场景。"
           },
           "is_pure": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": false,
+            "description": "纯净条码图才建议开启；普通实拍图默认关闭。"
           },
           "return_errors": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": false,
+            "description": "默认只返回成功结果；调试识读失败原因时再开启。"
           },
           "text_mode": {
             "type": "string",
+            "default": "hri",
             "enum": [
               "plain",
               "hri",
@@ -315,24 +326,29 @@
               "hex",
               "eci",
               "hex-eci"
-            ]
+            ],
+            "description": "默认使用 hri，兼顾可读文本和常见条码显示习惯。"
           },
           "binarizer": {
             "type": "string",
+            "default": "local-average",
             "enum": [
               "local-average",
               "global-histogram",
               "fixed-threshold",
               "bool-cast"
-            ]
+            ],
+            "description": "默认使用 local-average，适合亮度不均的工业图像。"
           },
           "ean_add_on_symbol": {
             "type": "string",
+            "default": "ignore",
             "enum": [
               "ignore",
               "read",
               "require"
-            ]
+            ],
+            "description": "默认忽略 EAN add-on；只有明确需要副码时再切换。"
           }
         }
       },
@@ -391,22 +407,33 @@
         "type": "object",
         "properties": {
           "try_rotate": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用旋转尝试，适合大多数现场图片。"
           },
           "try_downscale": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用缩放尝试，便于识读大尺寸条码图。"
           },
           "try_invert": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用反色尝试，适合浅码深底或深码浅底混合场景。"
           },
           "is_pure": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": false,
+            "description": "纯净条码图才建议开启；普通实拍图默认关闭。"
           },
           "return_errors": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": false,
+            "description": "默认只返回成功结果；调试识读失败原因时再开启。"
           },
           "text_mode": {
             "type": "string",
+            "default": "hri",
             "enum": [
               "plain",
               "hri",
@@ -414,24 +441,29 @@
               "hex",
               "eci",
               "hex-eci"
-            ]
+            ],
+            "description": "默认使用 hri，兼顾可读文本和常见条码显示习惯。"
           },
           "binarizer": {
             "type": "string",
+            "default": "local-average",
             "enum": [
               "local-average",
               "global-histogram",
               "fixed-threshold",
               "bool-cast"
-            ]
+            ],
+            "description": "默认使用 local-average，适合亮度不均的工业图像。"
           },
           "ean_add_on_symbol": {
             "type": "string",
+            "default": "ignore",
             "enum": [
               "ignore",
               "read",
               "require"
-            ]
+            ],
+            "description": "默认忽略 EAN add-on；只有明确需要副码时再切换。"
           }
         }
       },
@@ -490,22 +522,33 @@
         "type": "object",
         "properties": {
           "try_rotate": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用旋转尝试，适合大多数现场图片。"
           },
           "try_downscale": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用缩放尝试，便于识读大尺寸条码图。"
           },
           "try_invert": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用反色尝试，适合浅码深底或深码浅底混合场景。"
           },
           "is_pure": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": false,
+            "description": "纯净条码图才建议开启；普通实拍图默认关闭。"
           },
           "return_errors": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": false,
+            "description": "默认只返回成功结果；调试识读失败原因时再开启。"
           },
           "text_mode": {
             "type": "string",
+            "default": "hri",
             "enum": [
               "plain",
               "hri",
@@ -513,24 +556,29 @@
               "hex",
               "eci",
               "hex-eci"
-            ]
+            ],
+            "description": "默认使用 hri，兼顾可读文本和常见条码显示习惯。"
           },
           "binarizer": {
             "type": "string",
+            "default": "local-average",
             "enum": [
               "local-average",
               "global-histogram",
               "fixed-threshold",
               "bool-cast"
-            ]
+            ],
+            "description": "默认使用 local-average，适合亮度不均的工业图像。"
           },
           "ean_add_on_symbol": {
             "type": "string",
+            "default": "ignore",
             "enum": [
               "ignore",
               "read",
               "require"
-            ]
+            ],
+            "description": "默认忽略 EAN add-on；只有明确需要副码时再切换。"
           }
         }
       },
@@ -589,22 +637,33 @@
         "type": "object",
         "properties": {
           "try_rotate": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用旋转尝试，适合大多数现场图片。"
           },
           "try_downscale": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用缩放尝试，便于识读大尺寸条码图。"
           },
           "try_invert": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用反色尝试，适合浅码深底或深码浅底混合场景。"
           },
           "is_pure": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": false,
+            "description": "纯净条码图才建议开启；普通实拍图默认关闭。"
           },
           "return_errors": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": false,
+            "description": "默认只返回成功结果；调试识读失败原因时再开启。"
           },
           "text_mode": {
             "type": "string",
+            "default": "hri",
             "enum": [
               "plain",
               "hri",
@@ -612,24 +671,29 @@
               "hex",
               "eci",
               "hex-eci"
-            ]
+            ],
+            "description": "默认使用 hri，兼顾可读文本和常见条码显示习惯。"
           },
           "binarizer": {
             "type": "string",
+            "default": "local-average",
             "enum": [
               "local-average",
               "global-histogram",
               "fixed-threshold",
               "bool-cast"
-            ]
+            ],
+            "description": "默认使用 local-average，适合亮度不均的工业图像。"
           },
           "ean_add_on_symbol": {
             "type": "string",
+            "default": "ignore",
             "enum": [
               "ignore",
               "read",
               "require"
-            ]
+            ],
+            "description": "默认忽略 EAN add-on；只有明确需要副码时再切换。"
           }
         }
       },
@@ -688,22 +752,33 @@
         "type": "object",
         "properties": {
           "try_rotate": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用旋转尝试，适合大多数现场图片。"
           },
           "try_downscale": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用缩放尝试，便于识读大尺寸条码图。"
           },
           "try_invert": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用反色尝试，适合浅码深底或深码浅底混合场景。"
           },
           "is_pure": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": false,
+            "description": "纯净条码图才建议开启；普通实拍图默认关闭。"
           },
           "return_errors": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": false,
+            "description": "默认只返回成功结果；调试识读失败原因时再开启。"
           },
           "text_mode": {
             "type": "string",
+            "default": "hri",
             "enum": [
               "plain",
               "hri",
@@ -711,24 +786,29 @@
               "hex",
               "eci",
               "hex-eci"
-            ]
+            ],
+            "description": "默认使用 hri，兼顾可读文本和常见条码显示习惯。"
           },
           "binarizer": {
             "type": "string",
+            "default": "local-average",
             "enum": [
               "local-average",
               "global-histogram",
               "fixed-threshold",
               "bool-cast"
-            ]
+            ],
+            "description": "默认使用 local-average，适合亮度不均的工业图像。"
           },
           "ean_add_on_symbol": {
             "type": "string",
+            "default": "ignore",
             "enum": [
               "ignore",
               "read",
               "require"
-            ]
+            ],
+            "description": "默认忽略 EAN add-on；只有明确需要副码时再切换。"
           }
         }
       },
@@ -787,22 +867,33 @@
         "type": "object",
         "properties": {
           "try_rotate": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用旋转尝试，适合大多数现场图片。"
           },
           "try_downscale": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用缩放尝试，便于识读大尺寸条码图。"
           },
           "try_invert": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用反色尝试，适合浅码深底或深码浅底混合场景。"
           },
           "is_pure": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": false,
+            "description": "纯净条码图才建议开启；普通实拍图默认关闭。"
           },
           "return_errors": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": false,
+            "description": "默认只返回成功结果；调试识读失败原因时再开启。"
           },
           "text_mode": {
             "type": "string",
+            "default": "hri",
             "enum": [
               "plain",
               "hri",
@@ -810,24 +901,29 @@
               "hex",
               "eci",
               "hex-eci"
-            ]
+            ],
+            "description": "默认使用 hri，兼顾可读文本和常见条码显示习惯。"
           },
           "binarizer": {
             "type": "string",
+            "default": "local-average",
             "enum": [
               "local-average",
               "global-histogram",
               "fixed-threshold",
               "bool-cast"
-            ]
+            ],
+            "description": "默认使用 local-average，适合亮度不均的工业图像。"
           },
           "ean_add_on_symbol": {
             "type": "string",
+            "default": "ignore",
             "enum": [
               "ignore",
               "read",
               "require"
-            ]
+            ],
+            "description": "默认忽略 EAN add-on；只有明确需要副码时再切换。"
           }
         }
       },
@@ -886,22 +982,33 @@
         "type": "object",
         "properties": {
           "try_rotate": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用旋转尝试，适合大多数现场图片。"
           },
           "try_downscale": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用缩放尝试，便于识读大尺寸条码图。"
           },
           "try_invert": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用反色尝试，适合浅码深底或深码浅底混合场景。"
           },
           "is_pure": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": false,
+            "description": "纯净条码图才建议开启；普通实拍图默认关闭。"
           },
           "return_errors": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": false,
+            "description": "默认只返回成功结果；调试识读失败原因时再开启。"
           },
           "text_mode": {
             "type": "string",
+            "default": "hri",
             "enum": [
               "plain",
               "hri",
@@ -909,24 +1016,29 @@
               "hex",
               "eci",
               "hex-eci"
-            ]
+            ],
+            "description": "默认使用 hri，兼顾可读文本和常见条码显示习惯。"
           },
           "binarizer": {
             "type": "string",
+            "default": "local-average",
             "enum": [
               "local-average",
               "global-histogram",
               "fixed-threshold",
               "bool-cast"
-            ]
+            ],
+            "description": "默认使用 local-average，适合亮度不均的工业图像。"
           },
           "ean_add_on_symbol": {
             "type": "string",
+            "default": "ignore",
             "enum": [
               "ignore",
               "read",
               "require"
-            ]
+            ],
+            "description": "默认忽略 EAN add-on；只有明确需要副码时再切换。"
           }
         }
       },
@@ -985,22 +1097,33 @@
         "type": "object",
         "properties": {
           "try_rotate": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用旋转尝试，适合大多数现场图片。"
           },
           "try_downscale": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用缩放尝试，便于识读大尺寸条码图。"
           },
           "try_invert": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用反色尝试，适合浅码深底或深码浅底混合场景。"
           },
           "is_pure": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": false,
+            "description": "纯净条码图才建议开启；普通实拍图默认关闭。"
           },
           "return_errors": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": false,
+            "description": "默认只返回成功结果；调试识读失败原因时再开启。"
           },
           "text_mode": {
             "type": "string",
+            "default": "hri",
             "enum": [
               "plain",
               "hri",
@@ -1008,24 +1131,29 @@
               "hex",
               "eci",
               "hex-eci"
-            ]
+            ],
+            "description": "默认使用 hri，兼顾可读文本和常见条码显示习惯。"
           },
           "binarizer": {
             "type": "string",
+            "default": "local-average",
             "enum": [
               "local-average",
               "global-histogram",
               "fixed-threshold",
               "bool-cast"
-            ]
+            ],
+            "description": "默认使用 local-average，适合亮度不均的工业图像。"
           },
           "ean_add_on_symbol": {
             "type": "string",
+            "default": "ignore",
             "enum": [
               "ignore",
               "read",
               "require"
-            ]
+            ],
+            "description": "默认忽略 EAN add-on；只有明确需要副码时再切换。"
           }
         }
       },
@@ -1194,22 +1322,33 @@
         "type": "object",
         "properties": {
           "try_rotate": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用旋转尝试，适合大多数现场图片。"
           },
           "try_downscale": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用缩放尝试，便于识读大尺寸条码图。"
           },
           "try_invert": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用反色尝试，适合浅码深底或深码浅底混合场景。"
           },
           "is_pure": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": false,
+            "description": "纯净条码图才建议开启；普通实拍图默认关闭。"
           },
           "return_errors": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": false,
+            "description": "默认只返回成功结果；调试识读失败原因时再开启。"
           },
           "text_mode": {
             "type": "string",
+            "default": "hri",
             "enum": [
               "plain",
               "hri",
@@ -1217,24 +1356,29 @@
               "hex",
               "eci",
               "hex-eci"
-            ]
+            ],
+            "description": "默认使用 hri，兼顾可读文本和常见条码显示习惯。"
           },
           "binarizer": {
             "type": "string",
+            "default": "local-average",
             "enum": [
               "local-average",
               "global-histogram",
               "fixed-threshold",
               "bool-cast"
-            ]
+            ],
+            "description": "默认使用 local-average，适合亮度不均的工业图像。"
           },
           "ean_add_on_symbol": {
             "type": "string",
+            "default": "ignore",
             "enum": [
               "ignore",
               "read",
               "require"
-            ]
+            ],
+            "description": "默认忽略 EAN add-on；只有明确需要副码时再切换。"
           }
         }
       },
@@ -1293,22 +1437,33 @@
         "type": "object",
         "properties": {
           "try_rotate": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用旋转尝试，适合大多数现场图片。"
           },
           "try_downscale": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用缩放尝试，便于识读大尺寸条码图。"
           },
           "try_invert": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用反色尝试，适合浅码深底或深码浅底混合场景。"
           },
           "is_pure": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": false,
+            "description": "纯净条码图才建议开启；普通实拍图默认关闭。"
           },
           "return_errors": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": false,
+            "description": "默认只返回成功结果；调试识读失败原因时再开启。"
           },
           "text_mode": {
             "type": "string",
+            "default": "hri",
             "enum": [
               "plain",
               "hri",
@@ -1316,24 +1471,29 @@
               "hex",
               "eci",
               "hex-eci"
-            ]
+            ],
+            "description": "默认使用 hri，兼顾可读文本和常见条码显示习惯。"
           },
           "binarizer": {
             "type": "string",
+            "default": "local-average",
             "enum": [
               "local-average",
               "global-histogram",
               "fixed-threshold",
               "bool-cast"
-            ]
+            ],
+            "description": "默认使用 local-average，适合亮度不均的工业图像。"
           },
           "ean_add_on_symbol": {
             "type": "string",
+            "default": "ignore",
             "enum": [
               "ignore",
               "read",
               "require"
-            ]
+            ],
+            "description": "默认忽略 EAN add-on；只有明确需要副码时再切换。"
           }
         }
       },
@@ -1392,22 +1552,33 @@
         "type": "object",
         "properties": {
           "try_rotate": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用旋转尝试，适合大多数现场图片。"
           },
           "try_downscale": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用缩放尝试，便于识读大尺寸条码图。"
           },
           "try_invert": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用反色尝试，适合浅码深底或深码浅底混合场景。"
           },
           "is_pure": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": false,
+            "description": "纯净条码图才建议开启；普通实拍图默认关闭。"
           },
           "return_errors": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": false,
+            "description": "默认只返回成功结果；调试识读失败原因时再开启。"
           },
           "text_mode": {
             "type": "string",
+            "default": "hri",
             "enum": [
               "plain",
               "hri",
@@ -1415,24 +1586,29 @@
               "hex",
               "eci",
               "hex-eci"
-            ]
+            ],
+            "description": "默认使用 hri，兼顾可读文本和常见条码显示习惯。"
           },
           "binarizer": {
             "type": "string",
+            "default": "local-average",
             "enum": [
               "local-average",
               "global-histogram",
               "fixed-threshold",
               "bool-cast"
-            ]
+            ],
+            "description": "默认使用 local-average，适合亮度不均的工业图像。"
           },
           "ean_add_on_symbol": {
             "type": "string",
+            "default": "ignore",
             "enum": [
               "ignore",
               "read",
               "require"
-            ]
+            ],
+            "description": "默认忽略 EAN add-on；只有明确需要副码时再切换。"
           }
         }
       },
@@ -1491,22 +1667,33 @@
         "type": "object",
         "properties": {
           "try_rotate": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用旋转尝试，适合大多数现场图片。"
           },
           "try_downscale": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用缩放尝试，便于识读大尺寸条码图。"
           },
           "try_invert": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用反色尝试，适合浅码深底或深码浅底混合场景。"
           },
           "is_pure": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": false,
+            "description": "纯净条码图才建议开启；普通实拍图默认关闭。"
           },
           "return_errors": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": false,
+            "description": "默认只返回成功结果；调试识读失败原因时再开启。"
           },
           "text_mode": {
             "type": "string",
+            "default": "hri",
             "enum": [
               "plain",
               "hri",
@@ -1514,24 +1701,29 @@
               "hex",
               "eci",
               "hex-eci"
-            ]
+            ],
+            "description": "默认使用 hri，兼顾可读文本和常见条码显示习惯。"
           },
           "binarizer": {
             "type": "string",
+            "default": "local-average",
             "enum": [
               "local-average",
               "global-histogram",
               "fixed-threshold",
               "bool-cast"
-            ]
+            ],
+            "description": "默认使用 local-average，适合亮度不均的工业图像。"
           },
           "ean_add_on_symbol": {
             "type": "string",
+            "default": "ignore",
             "enum": [
               "ignore",
               "read",
               "require"
-            ]
+            ],
+            "description": "默认忽略 EAN add-on；只有明确需要副码时再切换。"
           }
         }
       },
@@ -1590,22 +1782,33 @@
         "type": "object",
         "properties": {
           "try_rotate": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用旋转尝试，适合大多数现场图片。"
           },
           "try_downscale": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用缩放尝试，便于识读大尺寸条码图。"
           },
           "try_invert": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用反色尝试，适合浅码深底或深码浅底混合场景。"
           },
           "is_pure": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": false,
+            "description": "纯净条码图才建议开启；普通实拍图默认关闭。"
           },
           "return_errors": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": false,
+            "description": "默认只返回成功结果；调试识读失败原因时再开启。"
           },
           "text_mode": {
             "type": "string",
+            "default": "hri",
             "enum": [
               "plain",
               "hri",
@@ -1613,24 +1816,29 @@
               "hex",
               "eci",
               "hex-eci"
-            ]
+            ],
+            "description": "默认使用 hri，兼顾可读文本和常见条码显示习惯。"
           },
           "binarizer": {
             "type": "string",
+            "default": "local-average",
             "enum": [
               "local-average",
               "global-histogram",
               "fixed-threshold",
               "bool-cast"
-            ]
+            ],
+            "description": "默认使用 local-average，适合亮度不均的工业图像。"
           },
           "ean_add_on_symbol": {
             "type": "string",
+            "default": "ignore",
             "enum": [
               "ignore",
               "read",
               "require"
-            ]
+            ],
+            "description": "默认忽略 EAN add-on；只有明确需要副码时再切换。"
           }
         }
       },
@@ -1689,22 +1897,33 @@
         "type": "object",
         "properties": {
           "try_rotate": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用旋转尝试，适合大多数现场图片。"
           },
           "try_downscale": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用缩放尝试，便于识读大尺寸条码图。"
           },
           "try_invert": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用反色尝试，适合浅码深底或深码浅底混合场景。"
           },
           "is_pure": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": false,
+            "description": "纯净条码图才建议开启；普通实拍图默认关闭。"
           },
           "return_errors": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": false,
+            "description": "默认只返回成功结果；调试识读失败原因时再开启。"
           },
           "text_mode": {
             "type": "string",
+            "default": "hri",
             "enum": [
               "plain",
               "hri",
@@ -1712,24 +1931,29 @@
               "hex",
               "eci",
               "hex-eci"
-            ]
+            ],
+            "description": "默认使用 hri，兼顾可读文本和常见条码显示习惯。"
           },
           "binarizer": {
             "type": "string",
+            "default": "local-average",
             "enum": [
               "local-average",
               "global-histogram",
               "fixed-threshold",
               "bool-cast"
-            ]
+            ],
+            "description": "默认使用 local-average，适合亮度不均的工业图像。"
           },
           "ean_add_on_symbol": {
             "type": "string",
+            "default": "ignore",
             "enum": [
               "ignore",
               "read",
               "require"
-            ]
+            ],
+            "description": "默认忽略 EAN add-on；只有明确需要副码时再切换。"
           }
         }
       },
@@ -1788,22 +2012,33 @@
         "type": "object",
         "properties": {
           "try_rotate": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用旋转尝试，适合大多数现场图片。"
           },
           "try_downscale": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用缩放尝试，便于识读大尺寸条码图。"
           },
           "try_invert": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用反色尝试，适合浅码深底或深码浅底混合场景。"
           },
           "is_pure": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": false,
+            "description": "纯净条码图才建议开启；普通实拍图默认关闭。"
           },
           "return_errors": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": false,
+            "description": "默认只返回成功结果；调试识读失败原因时再开启。"
           },
           "text_mode": {
             "type": "string",
+            "default": "hri",
             "enum": [
               "plain",
               "hri",
@@ -1811,24 +2046,29 @@
               "hex",
               "eci",
               "hex-eci"
-            ]
+            ],
+            "description": "默认使用 hri，兼顾可读文本和常见条码显示习惯。"
           },
           "binarizer": {
             "type": "string",
+            "default": "local-average",
             "enum": [
               "local-average",
               "global-histogram",
               "fixed-threshold",
               "bool-cast"
-            ]
+            ],
+            "description": "默认使用 local-average，适合亮度不均的工业图像。"
           },
           "ean_add_on_symbol": {
             "type": "string",
+            "default": "ignore",
             "enum": [
               "ignore",
               "read",
               "require"
-            ]
+            ],
+            "description": "默认忽略 EAN add-on；只有明确需要副码时再切换。"
           }
         }
       },
@@ -1887,22 +2127,33 @@
         "type": "object",
         "properties": {
           "try_rotate": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用旋转尝试，适合大多数现场图片。"
           },
           "try_downscale": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用缩放尝试，便于识读大尺寸条码图。"
           },
           "try_invert": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用反色尝试，适合浅码深底或深码浅底混合场景。"
           },
           "is_pure": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": false,
+            "description": "纯净条码图才建议开启；普通实拍图默认关闭。"
           },
           "return_errors": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": false,
+            "description": "默认只返回成功结果；调试识读失败原因时再开启。"
           },
           "text_mode": {
             "type": "string",
+            "default": "hri",
             "enum": [
               "plain",
               "hri",
@@ -1910,24 +2161,29 @@
               "hex",
               "eci",
               "hex-eci"
-            ]
+            ],
+            "description": "默认使用 hri，兼顾可读文本和常见条码显示习惯。"
           },
           "binarizer": {
             "type": "string",
+            "default": "local-average",
             "enum": [
               "local-average",
               "global-histogram",
               "fixed-threshold",
               "bool-cast"
-            ]
+            ],
+            "description": "默认使用 local-average，适合亮度不均的工业图像。"
           },
           "ean_add_on_symbol": {
             "type": "string",
+            "default": "ignore",
             "enum": [
               "ignore",
               "read",
               "require"
-            ]
+            ],
+            "description": "默认忽略 EAN add-on；只有明确需要副码时再切换。"
           }
         }
       },
@@ -1986,22 +2242,33 @@
         "type": "object",
         "properties": {
           "try_rotate": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用旋转尝试，适合大多数现场图片。"
           },
           "try_downscale": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用缩放尝试，便于识读大尺寸条码图。"
           },
           "try_invert": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用反色尝试，适合浅码深底或深码浅底混合场景。"
           },
           "is_pure": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": false,
+            "description": "纯净条码图才建议开启；普通实拍图默认关闭。"
           },
           "return_errors": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": false,
+            "description": "默认只返回成功结果；调试识读失败原因时再开启。"
           },
           "text_mode": {
             "type": "string",
+            "default": "hri",
             "enum": [
               "plain",
               "hri",
@@ -2009,24 +2276,29 @@
               "hex",
               "eci",
               "hex-eci"
-            ]
+            ],
+            "description": "默认使用 hri，兼顾可读文本和常见条码显示习惯。"
           },
           "binarizer": {
             "type": "string",
+            "default": "local-average",
             "enum": [
               "local-average",
               "global-histogram",
               "fixed-threshold",
               "bool-cast"
-            ]
+            ],
+            "description": "默认使用 local-average，适合亮度不均的工业图像。"
           },
           "ean_add_on_symbol": {
             "type": "string",
+            "default": "ignore",
             "enum": [
               "ignore",
               "read",
               "require"
-            ]
+            ],
+            "description": "默认忽略 EAN add-on；只有明确需要副码时再切换。"
           }
         }
       },
@@ -2085,22 +2357,33 @@
         "type": "object",
         "properties": {
           "try_rotate": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用旋转尝试，适合大多数现场图片。"
           },
           "try_downscale": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用缩放尝试，便于识读大尺寸条码图。"
           },
           "try_invert": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用反色尝试，适合浅码深底或深码浅底混合场景。"
           },
           "is_pure": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": false,
+            "description": "纯净条码图才建议开启；普通实拍图默认关闭。"
           },
           "return_errors": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": false,
+            "description": "默认只返回成功结果；调试识读失败原因时再开启。"
           },
           "text_mode": {
             "type": "string",
+            "default": "hri",
             "enum": [
               "plain",
               "hri",
@@ -2108,24 +2391,29 @@
               "hex",
               "eci",
               "hex-eci"
-            ]
+            ],
+            "description": "默认使用 hri，兼顾可读文本和常见条码显示习惯。"
           },
           "binarizer": {
             "type": "string",
+            "default": "local-average",
             "enum": [
               "local-average",
               "global-histogram",
               "fixed-threshold",
               "bool-cast"
-            ]
+            ],
+            "description": "默认使用 local-average，适合亮度不均的工业图像。"
           },
           "ean_add_on_symbol": {
             "type": "string",
+            "default": "ignore",
             "enum": [
               "ignore",
               "read",
               "require"
-            ]
+            ],
+            "description": "默认忽略 EAN add-on；只有明确需要副码时再切换。"
           }
         }
       },
@@ -2184,22 +2472,33 @@
         "type": "object",
         "properties": {
           "try_rotate": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用旋转尝试，适合大多数现场图片。"
           },
           "try_downscale": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用缩放尝试，便于识读大尺寸条码图。"
           },
           "try_invert": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用反色尝试，适合浅码深底或深码浅底混合场景。"
           },
           "is_pure": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": false,
+            "description": "纯净条码图才建议开启；普通实拍图默认关闭。"
           },
           "return_errors": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": false,
+            "description": "默认只返回成功结果；调试识读失败原因时再开启。"
           },
           "text_mode": {
             "type": "string",
+            "default": "hri",
             "enum": [
               "plain",
               "hri",
@@ -2207,24 +2506,29 @@
               "hex",
               "eci",
               "hex-eci"
-            ]
+            ],
+            "description": "默认使用 hri，兼顾可读文本和常见条码显示习惯。"
           },
           "binarizer": {
             "type": "string",
+            "default": "local-average",
             "enum": [
               "local-average",
               "global-histogram",
               "fixed-threshold",
               "bool-cast"
-            ]
+            ],
+            "description": "默认使用 local-average，适合亮度不均的工业图像。"
           },
           "ean_add_on_symbol": {
             "type": "string",
+            "default": "ignore",
             "enum": [
               "ignore",
               "read",
               "require"
-            ]
+            ],
+            "description": "默认忽略 EAN add-on；只有明确需要副码时再切换。"
           }
         }
       },
@@ -2283,22 +2587,33 @@
         "type": "object",
         "properties": {
           "try_rotate": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用旋转尝试，适合大多数现场图片。"
           },
           "try_downscale": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用缩放尝试，便于识读大尺寸条码图。"
           },
           "try_invert": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用反色尝试，适合浅码深底或深码浅底混合场景。"
           },
           "is_pure": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": false,
+            "description": "纯净条码图才建议开启；普通实拍图默认关闭。"
           },
           "return_errors": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": false,
+            "description": "默认只返回成功结果；调试识读失败原因时再开启。"
           },
           "text_mode": {
             "type": "string",
+            "default": "hri",
             "enum": [
               "plain",
               "hri",
@@ -2306,24 +2621,29 @@
               "hex",
               "eci",
               "hex-eci"
-            ]
+            ],
+            "description": "默认使用 hri，兼顾可读文本和常见条码显示习惯。"
           },
           "binarizer": {
             "type": "string",
+            "default": "local-average",
             "enum": [
               "local-average",
               "global-histogram",
               "fixed-threshold",
               "bool-cast"
-            ]
+            ],
+            "description": "默认使用 local-average，适合亮度不均的工业图像。"
           },
           "ean_add_on_symbol": {
             "type": "string",
+            "default": "ignore",
             "enum": [
               "ignore",
               "read",
               "require"
-            ]
+            ],
+            "description": "默认忽略 EAN add-on；只有明确需要副码时再切换。"
           }
         }
       },
@@ -2382,22 +2702,33 @@
         "type": "object",
         "properties": {
           "try_rotate": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用旋转尝试，适合大多数现场图片。"
           },
           "try_downscale": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用缩放尝试，便于识读大尺寸条码图。"
           },
           "try_invert": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用反色尝试，适合浅码深底或深码浅底混合场景。"
           },
           "is_pure": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": false,
+            "description": "纯净条码图才建议开启；普通实拍图默认关闭。"
           },
           "return_errors": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": false,
+            "description": "默认只返回成功结果；调试识读失败原因时再开启。"
           },
           "text_mode": {
             "type": "string",
+            "default": "hri",
             "enum": [
               "plain",
               "hri",
@@ -2405,24 +2736,29 @@
               "hex",
               "eci",
               "hex-eci"
-            ]
+            ],
+            "description": "默认使用 hri，兼顾可读文本和常见条码显示习惯。"
           },
           "binarizer": {
             "type": "string",
+            "default": "local-average",
             "enum": [
               "local-average",
               "global-histogram",
               "fixed-threshold",
               "bool-cast"
-            ]
+            ],
+            "description": "默认使用 local-average，适合亮度不均的工业图像。"
           },
           "ean_add_on_symbol": {
             "type": "string",
+            "default": "ignore",
             "enum": [
               "ignore",
               "read",
               "require"
-            ]
+            ],
+            "description": "默认忽略 EAN add-on；只有明确需要副码时再切换。"
           }
         }
       },
@@ -2481,22 +2817,33 @@
         "type": "object",
         "properties": {
           "try_rotate": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用旋转尝试，适合大多数现场图片。"
           },
           "try_downscale": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用缩放尝试，便于识读大尺寸条码图。"
           },
           "try_invert": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用反色尝试，适合浅码深底或深码浅底混合场景。"
           },
           "is_pure": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": false,
+            "description": "纯净条码图才建议开启；普通实拍图默认关闭。"
           },
           "return_errors": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": false,
+            "description": "默认只返回成功结果；调试识读失败原因时再开启。"
           },
           "text_mode": {
             "type": "string",
+            "default": "hri",
             "enum": [
               "plain",
               "hri",
@@ -2504,24 +2851,29 @@
               "hex",
               "eci",
               "hex-eci"
-            ]
+            ],
+            "description": "默认使用 hri，兼顾可读文本和常见条码显示习惯。"
           },
           "binarizer": {
             "type": "string",
+            "default": "local-average",
             "enum": [
               "local-average",
               "global-histogram",
               "fixed-threshold",
               "bool-cast"
-            ]
+            ],
+            "description": "默认使用 local-average，适合亮度不均的工业图像。"
           },
           "ean_add_on_symbol": {
             "type": "string",
+            "default": "ignore",
             "enum": [
               "ignore",
               "read",
               "require"
-            ]
+            ],
+            "description": "默认忽略 EAN add-on；只有明确需要副码时再切换。"
           }
         }
       },
@@ -2562,7 +2914,13 @@
           "description": "",
           "required": true,
           "multiple": false,
-          "metadata": {}
+          "metadata": {
+            "i18n": {
+              "display_name": {
+                "zh-CN": "原图"
+              }
+            }
+          }
         },
         {
           "name": "results",
@@ -2571,7 +2929,13 @@
           "description": "",
           "required": true,
           "multiple": false,
-          "metadata": {}
+          "metadata": {
+            "i18n": {
+              "display_name": {
+                "zh-CN": "识别结果"
+              }
+            }
+          }
         }
       ],
       "output_ports": [
@@ -2582,7 +2946,13 @@
           "description": "",
           "required": true,
           "multiple": false,
-          "metadata": {}
+          "metadata": {
+            "i18n": {
+              "display_name": {
+                "zh-CN": "输出图片"
+              }
+            }
+          }
         }
       ],
       "parameter_schema": {
@@ -2590,26 +2960,102 @@
         "properties": {
           "line_thickness": {
             "type": "integer",
-            "minimum": 1
+            "minimum": 1,
+            "default": 2,
+            "title": "Line thickness",
+            "description": "Stroke width used for barcode polygons and label borders.",
+            "x-amvision-i18n": {
+              "title": {
+                "zh-CN": "线宽"
+              },
+              "description": {
+                "zh-CN": "绘制条码轮廓和标签边框时使用的线宽。"
+              }
+            }
           },
           "font_scale": {
             "type": "number",
-            "minimum": 0
+            "minimum": 0,
+            "default": 0.5,
+            "title": "Font scale",
+            "description": "Font scale used when rendering barcode labels.",
+            "x-amvision-i18n": {
+              "title": {
+                "zh-CN": "字体缩放"
+              },
+              "description": {
+                "zh-CN": "绘制条码标签文本时使用的字体缩放。"
+              }
+            }
           },
           "draw_polygon": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "title": "Draw polygon",
+            "description": "Whether to draw the barcode polygon overlay.",
+            "x-amvision-i18n": {
+              "title": {
+                "zh-CN": "绘制轮廓"
+              },
+              "description": {
+                "zh-CN": "是否绘制条码位置轮廓。"
+              }
+            }
           },
           "draw_text": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "title": "Draw text",
+            "description": "Whether to draw decoded text on the image.",
+            "x-amvision-i18n": {
+              "title": {
+                "zh-CN": "绘制文本"
+              },
+              "description": {
+                "zh-CN": "是否把识别文本绘制到图片上。"
+              }
+            }
           },
           "draw_format": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": false,
+            "title": "Draw format",
+            "description": "Whether to include barcode format in the label text.",
+            "x-amvision-i18n": {
+              "title": {
+                "zh-CN": "绘制格式"
+              },
+              "description": {
+                "zh-CN": "是否在标签文本中包含条码格式。"
+              }
+            }
           },
           "draw_index": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": false,
+            "title": "Draw index",
+            "description": "Whether to include the result index in the label text.",
+            "x-amvision-i18n": {
+              "title": {
+                "zh-CN": "绘制序号"
+              },
+              "description": {
+                "zh-CN": "是否在标签文本中包含结果序号。"
+              }
+            }
           },
           "output_object_key": {
-            "type": "string"
+            "type": "string",
+            "title": "Output object key",
+            "description": "Optional storage object key. Leave empty to return a memory image reference.",
+            "x-amvision-i18n": {
+              "title": {
+                "zh-CN": "输出 object key"
+              },
+              "description": {
+                "zh-CN": "可选输出 object key；留空时返回 memory image-ref。"
+              }
+            }
           }
         }
       },
@@ -2627,6 +3073,14 @@
       "node_pack_id": "barcode.protocol-nodes",
       "node_pack_version": "0.1.0",
       "metadata": {
+        "i18n": {
+          "display_name": {
+            "zh-CN": "绘制条码结果"
+          },
+          "description": {
+            "en-US": "Overlay barcode result polygons and label text back onto the source image, then output a new image reference."
+          }
+        },
         "input_kind": "barcode-results.v1",
         "position_field": "position"
       }
@@ -2665,22 +3119,33 @@
         "type": "object",
         "properties": {
           "try_rotate": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用旋转尝试，适合大多数现场图片。"
           },
           "try_downscale": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用缩放尝试，便于识读大尺寸条码图。"
           },
           "try_invert": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用反色尝试，适合浅码深底或深码浅底混合场景。"
           },
           "is_pure": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": false,
+            "description": "纯净条码图才建议开启；普通实拍图默认关闭。"
           },
           "return_errors": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": false,
+            "description": "默认只返回成功结果；调试识读失败原因时再开启。"
           },
           "text_mode": {
             "type": "string",
+            "default": "hri",
             "enum": [
               "plain",
               "hri",
@@ -2688,24 +3153,29 @@
               "hex",
               "eci",
               "hex-eci"
-            ]
+            ],
+            "description": "默认使用 hri，兼顾可读文本和常见条码显示习惯。"
           },
           "binarizer": {
             "type": "string",
+            "default": "local-average",
             "enum": [
               "local-average",
               "global-histogram",
               "fixed-threshold",
               "bool-cast"
-            ]
+            ],
+            "description": "默认使用 local-average，适合亮度不均的工业图像。"
           },
           "ean_add_on_symbol": {
             "type": "string",
+            "default": "ignore",
             "enum": [
               "ignore",
               "read",
               "require"
-            ]
+            ],
+            "description": "默认忽略 EAN add-on；只有明确需要副码时再切换。"
           }
         }
       },
@@ -2764,22 +3234,33 @@
         "type": "object",
         "properties": {
           "try_rotate": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用旋转尝试，适合大多数现场图片。"
           },
           "try_downscale": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用缩放尝试，便于识读大尺寸条码图。"
           },
           "try_invert": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用反色尝试，适合浅码深底或深码浅底混合场景。"
           },
           "is_pure": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": false,
+            "description": "纯净条码图才建议开启；普通实拍图默认关闭。"
           },
           "return_errors": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": false,
+            "description": "默认只返回成功结果；调试识读失败原因时再开启。"
           },
           "text_mode": {
             "type": "string",
+            "default": "hri",
             "enum": [
               "plain",
               "hri",
@@ -2787,24 +3268,29 @@
               "hex",
               "eci",
               "hex-eci"
-            ]
+            ],
+            "description": "默认使用 hri，兼顾可读文本和常见条码显示习惯。"
           },
           "binarizer": {
             "type": "string",
+            "default": "local-average",
             "enum": [
               "local-average",
               "global-histogram",
               "fixed-threshold",
               "bool-cast"
-            ]
+            ],
+            "description": "默认使用 local-average，适合亮度不均的工业图像。"
           },
           "ean_add_on_symbol": {
             "type": "string",
+            "default": "ignore",
             "enum": [
               "ignore",
               "read",
               "require"
-            ]
+            ],
+            "description": "默认忽略 EAN add-on；只有明确需要副码时再切换。"
           }
         }
       },
@@ -2863,22 +3349,33 @@
         "type": "object",
         "properties": {
           "try_rotate": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用旋转尝试，适合大多数现场图片。"
           },
           "try_downscale": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用缩放尝试，便于识读大尺寸条码图。"
           },
           "try_invert": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用反色尝试，适合浅码深底或深码浅底混合场景。"
           },
           "is_pure": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": false,
+            "description": "纯净条码图才建议开启；普通实拍图默认关闭。"
           },
           "return_errors": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": false,
+            "description": "默认只返回成功结果；调试识读失败原因时再开启。"
           },
           "text_mode": {
             "type": "string",
+            "default": "hri",
             "enum": [
               "plain",
               "hri",
@@ -2886,24 +3383,29 @@
               "hex",
               "eci",
               "hex-eci"
-            ]
+            ],
+            "description": "默认使用 hri，兼顾可读文本和常见条码显示习惯。"
           },
           "binarizer": {
             "type": "string",
+            "default": "local-average",
             "enum": [
               "local-average",
               "global-histogram",
               "fixed-threshold",
               "bool-cast"
-            ]
+            ],
+            "description": "默认使用 local-average，适合亮度不均的工业图像。"
           },
           "ean_add_on_symbol": {
             "type": "string",
+            "default": "ignore",
             "enum": [
               "ignore",
               "read",
               "require"
-            ]
+            ],
+            "description": "默认忽略 EAN add-on；只有明确需要副码时再切换。"
           }
         }
       },
@@ -2962,22 +3464,33 @@
         "type": "object",
         "properties": {
           "try_rotate": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用旋转尝试，适合大多数现场图片。"
           },
           "try_downscale": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用缩放尝试，便于识读大尺寸条码图。"
           },
           "try_invert": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用反色尝试，适合浅码深底或深码浅底混合场景。"
           },
           "is_pure": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": false,
+            "description": "纯净条码图才建议开启；普通实拍图默认关闭。"
           },
           "return_errors": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": false,
+            "description": "默认只返回成功结果；调试识读失败原因时再开启。"
           },
           "text_mode": {
             "type": "string",
+            "default": "hri",
             "enum": [
               "plain",
               "hri",
@@ -2985,24 +3498,29 @@
               "hex",
               "eci",
               "hex-eci"
-            ]
+            ],
+            "description": "默认使用 hri，兼顾可读文本和常见条码显示习惯。"
           },
           "binarizer": {
             "type": "string",
+            "default": "local-average",
             "enum": [
               "local-average",
               "global-histogram",
               "fixed-threshold",
               "bool-cast"
-            ]
+            ],
+            "description": "默认使用 local-average，适合亮度不均的工业图像。"
           },
           "ean_add_on_symbol": {
             "type": "string",
+            "default": "ignore",
             "enum": [
               "ignore",
               "read",
               "require"
-            ]
+            ],
+            "description": "默认忽略 EAN add-on；只有明确需要副码时再切换。"
           }
         }
       },
@@ -3061,22 +3579,33 @@
         "type": "object",
         "properties": {
           "try_rotate": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用旋转尝试，适合大多数现场图片。"
           },
           "try_downscale": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用缩放尝试，便于识读大尺寸条码图。"
           },
           "try_invert": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用反色尝试，适合浅码深底或深码浅底混合场景。"
           },
           "is_pure": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": false,
+            "description": "纯净条码图才建议开启；普通实拍图默认关闭。"
           },
           "return_errors": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": false,
+            "description": "默认只返回成功结果；调试识读失败原因时再开启。"
           },
           "text_mode": {
             "type": "string",
+            "default": "hri",
             "enum": [
               "plain",
               "hri",
@@ -3084,24 +3613,29 @@
               "hex",
               "eci",
               "hex-eci"
-            ]
+            ],
+            "description": "默认使用 hri，兼顾可读文本和常见条码显示习惯。"
           },
           "binarizer": {
             "type": "string",
+            "default": "local-average",
             "enum": [
               "local-average",
               "global-histogram",
               "fixed-threshold",
               "bool-cast"
-            ]
+            ],
+            "description": "默认使用 local-average，适合亮度不均的工业图像。"
           },
           "ean_add_on_symbol": {
             "type": "string",
+            "default": "ignore",
             "enum": [
               "ignore",
               "read",
               "require"
-            ]
+            ],
+            "description": "默认忽略 EAN add-on；只有明确需要副码时再切换。"
           }
         }
       },
@@ -3260,22 +3794,33 @@
         "type": "object",
         "properties": {
           "try_rotate": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用旋转尝试，适合大多数现场图片。"
           },
           "try_downscale": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用缩放尝试，便于识读大尺寸条码图。"
           },
           "try_invert": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用反色尝试，适合浅码深底或深码浅底混合场景。"
           },
           "is_pure": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": false,
+            "description": "纯净条码图才建议开启；普通实拍图默认关闭。"
           },
           "return_errors": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": false,
+            "description": "默认只返回成功结果；调试识读失败原因时再开启。"
           },
           "text_mode": {
             "type": "string",
+            "default": "hri",
             "enum": [
               "plain",
               "hri",
@@ -3283,24 +3828,29 @@
               "hex",
               "eci",
               "hex-eci"
-            ]
+            ],
+            "description": "默认使用 hri，兼顾可读文本和常见条码显示习惯。"
           },
           "binarizer": {
             "type": "string",
+            "default": "local-average",
             "enum": [
               "local-average",
               "global-histogram",
               "fixed-threshold",
               "bool-cast"
-            ]
+            ],
+            "description": "默认使用 local-average，适合亮度不均的工业图像。"
           },
           "ean_add_on_symbol": {
             "type": "string",
+            "default": "ignore",
             "enum": [
               "ignore",
               "read",
               "require"
-            ]
+            ],
+            "description": "默认忽略 EAN add-on；只有明确需要副码时再切换。"
           }
         }
       },
@@ -3359,22 +3909,33 @@
         "type": "object",
         "properties": {
           "try_rotate": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用旋转尝试，适合大多数现场图片。"
           },
           "try_downscale": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用缩放尝试，便于识读大尺寸条码图。"
           },
           "try_invert": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用反色尝试，适合浅码深底或深码浅底混合场景。"
           },
           "is_pure": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": false,
+            "description": "纯净条码图才建议开启；普通实拍图默认关闭。"
           },
           "return_errors": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": false,
+            "description": "默认只返回成功结果；调试识读失败原因时再开启。"
           },
           "text_mode": {
             "type": "string",
+            "default": "hri",
             "enum": [
               "plain",
               "hri",
@@ -3382,24 +3943,29 @@
               "hex",
               "eci",
               "hex-eci"
-            ]
+            ],
+            "description": "默认使用 hri，兼顾可读文本和常见条码显示习惯。"
           },
           "binarizer": {
             "type": "string",
+            "default": "local-average",
             "enum": [
               "local-average",
               "global-histogram",
               "fixed-threshold",
               "bool-cast"
-            ]
+            ],
+            "description": "默认使用 local-average，适合亮度不均的工业图像。"
           },
           "ean_add_on_symbol": {
             "type": "string",
+            "default": "ignore",
             "enum": [
               "ignore",
               "read",
               "require"
-            ]
+            ],
+            "description": "默认忽略 EAN add-on；只有明确需要副码时再切换。"
           }
         }
       },
@@ -3458,22 +4024,33 @@
         "type": "object",
         "properties": {
           "try_rotate": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用旋转尝试，适合大多数现场图片。"
           },
           "try_downscale": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用缩放尝试，便于识读大尺寸条码图。"
           },
           "try_invert": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用反色尝试，适合浅码深底或深码浅底混合场景。"
           },
           "is_pure": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": false,
+            "description": "纯净条码图才建议开启；普通实拍图默认关闭。"
           },
           "return_errors": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": false,
+            "description": "默认只返回成功结果；调试识读失败原因时再开启。"
           },
           "text_mode": {
             "type": "string",
+            "default": "hri",
             "enum": [
               "plain",
               "hri",
@@ -3481,24 +4058,29 @@
               "hex",
               "eci",
               "hex-eci"
-            ]
+            ],
+            "description": "默认使用 hri，兼顾可读文本和常见条码显示习惯。"
           },
           "binarizer": {
             "type": "string",
+            "default": "local-average",
             "enum": [
               "local-average",
               "global-histogram",
               "fixed-threshold",
               "bool-cast"
-            ]
+            ],
+            "description": "默认使用 local-average，适合亮度不均的工业图像。"
           },
           "ean_add_on_symbol": {
             "type": "string",
+            "default": "ignore",
             "enum": [
               "ignore",
               "read",
               "require"
-            ]
+            ],
+            "description": "默认忽略 EAN add-on；只有明确需要副码时再切换。"
           }
         }
       },
@@ -3557,22 +4139,33 @@
         "type": "object",
         "properties": {
           "try_rotate": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用旋转尝试，适合大多数现场图片。"
           },
           "try_downscale": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用缩放尝试，便于识读大尺寸条码图。"
           },
           "try_invert": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用反色尝试，适合浅码深底或深码浅底混合场景。"
           },
           "is_pure": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": false,
+            "description": "纯净条码图才建议开启；普通实拍图默认关闭。"
           },
           "return_errors": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": false,
+            "description": "默认只返回成功结果；调试识读失败原因时再开启。"
           },
           "text_mode": {
             "type": "string",
+            "default": "hri",
             "enum": [
               "plain",
               "hri",
@@ -3580,24 +4173,29 @@
               "hex",
               "eci",
               "hex-eci"
-            ]
+            ],
+            "description": "默认使用 hri，兼顾可读文本和常见条码显示习惯。"
           },
           "binarizer": {
             "type": "string",
+            "default": "local-average",
             "enum": [
               "local-average",
               "global-histogram",
               "fixed-threshold",
               "bool-cast"
-            ]
+            ],
+            "description": "默认使用 local-average，适合亮度不均的工业图像。"
           },
           "ean_add_on_symbol": {
             "type": "string",
+            "default": "ignore",
             "enum": [
               "ignore",
               "read",
               "require"
-            ]
+            ],
+            "description": "默认忽略 EAN add-on；只有明确需要副码时再切换。"
           }
         }
       },
@@ -3656,22 +4254,33 @@
         "type": "object",
         "properties": {
           "try_rotate": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用旋转尝试，适合大多数现场图片。"
           },
           "try_downscale": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用缩放尝试，便于识读大尺寸条码图。"
           },
           "try_invert": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用反色尝试，适合浅码深底或深码浅底混合场景。"
           },
           "is_pure": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": false,
+            "description": "纯净条码图才建议开启；普通实拍图默认关闭。"
           },
           "return_errors": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": false,
+            "description": "默认只返回成功结果；调试识读失败原因时再开启。"
           },
           "text_mode": {
             "type": "string",
+            "default": "hri",
             "enum": [
               "plain",
               "hri",
@@ -3679,24 +4288,29 @@
               "hex",
               "eci",
               "hex-eci"
-            ]
+            ],
+            "description": "默认使用 hri，兼顾可读文本和常见条码显示习惯。"
           },
           "binarizer": {
             "type": "string",
+            "default": "local-average",
             "enum": [
               "local-average",
               "global-histogram",
               "fixed-threshold",
               "bool-cast"
-            ]
+            ],
+            "description": "默认使用 local-average，适合亮度不均的工业图像。"
           },
           "ean_add_on_symbol": {
             "type": "string",
+            "default": "ignore",
             "enum": [
               "ignore",
               "read",
               "require"
-            ]
+            ],
+            "description": "默认忽略 EAN add-on；只有明确需要副码时再切换。"
           }
         }
       },
@@ -3755,22 +4369,33 @@
         "type": "object",
         "properties": {
           "try_rotate": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用旋转尝试，适合大多数现场图片。"
           },
           "try_downscale": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用缩放尝试，便于识读大尺寸条码图。"
           },
           "try_invert": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用反色尝试，适合浅码深底或深码浅底混合场景。"
           },
           "is_pure": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": false,
+            "description": "纯净条码图才建议开启；普通实拍图默认关闭。"
           },
           "return_errors": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": false,
+            "description": "默认只返回成功结果；调试识读失败原因时再开启。"
           },
           "text_mode": {
             "type": "string",
+            "default": "hri",
             "enum": [
               "plain",
               "hri",
@@ -3778,24 +4403,29 @@
               "hex",
               "eci",
               "hex-eci"
-            ]
+            ],
+            "description": "默认使用 hri，兼顾可读文本和常见条码显示习惯。"
           },
           "binarizer": {
             "type": "string",
+            "default": "local-average",
             "enum": [
               "local-average",
               "global-histogram",
               "fixed-threshold",
               "bool-cast"
-            ]
+            ],
+            "description": "默认使用 local-average，适合亮度不均的工业图像。"
           },
           "ean_add_on_symbol": {
             "type": "string",
+            "default": "ignore",
             "enum": [
               "ignore",
               "read",
               "require"
-            ]
+            ],
+            "description": "默认忽略 EAN add-on；只有明确需要副码时再切换。"
           }
         }
       },
@@ -3854,22 +4484,33 @@
         "type": "object",
         "properties": {
           "try_rotate": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用旋转尝试，适合大多数现场图片。"
           },
           "try_downscale": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用缩放尝试，便于识读大尺寸条码图。"
           },
           "try_invert": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用反色尝试，适合浅码深底或深码浅底混合场景。"
           },
           "is_pure": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": false,
+            "description": "纯净条码图才建议开启；普通实拍图默认关闭。"
           },
           "return_errors": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": false,
+            "description": "默认只返回成功结果；调试识读失败原因时再开启。"
           },
           "text_mode": {
             "type": "string",
+            "default": "hri",
             "enum": [
               "plain",
               "hri",
@@ -3877,24 +4518,29 @@
               "hex",
               "eci",
               "hex-eci"
-            ]
+            ],
+            "description": "默认使用 hri，兼顾可读文本和常见条码显示习惯。"
           },
           "binarizer": {
             "type": "string",
+            "default": "local-average",
             "enum": [
               "local-average",
               "global-histogram",
               "fixed-threshold",
               "bool-cast"
-            ]
+            ],
+            "description": "默认使用 local-average，适合亮度不均的工业图像。"
           },
           "ean_add_on_symbol": {
             "type": "string",
+            "default": "ignore",
             "enum": [
               "ignore",
               "read",
               "require"
-            ]
+            ],
+            "description": "默认忽略 EAN add-on；只有明确需要副码时再切换。"
           }
         }
       },
@@ -3953,22 +4599,33 @@
         "type": "object",
         "properties": {
           "try_rotate": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用旋转尝试，适合大多数现场图片。"
           },
           "try_downscale": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用缩放尝试，便于识读大尺寸条码图。"
           },
           "try_invert": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用反色尝试，适合浅码深底或深码浅底混合场景。"
           },
           "is_pure": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": false,
+            "description": "纯净条码图才建议开启；普通实拍图默认关闭。"
           },
           "return_errors": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": false,
+            "description": "默认只返回成功结果；调试识读失败原因时再开启。"
           },
           "text_mode": {
             "type": "string",
+            "default": "hri",
             "enum": [
               "plain",
               "hri",
@@ -3976,24 +4633,29 @@
               "hex",
               "eci",
               "hex-eci"
-            ]
+            ],
+            "description": "默认使用 hri，兼顾可读文本和常见条码显示习惯。"
           },
           "binarizer": {
             "type": "string",
+            "default": "local-average",
             "enum": [
               "local-average",
               "global-histogram",
               "fixed-threshold",
               "bool-cast"
-            ]
+            ],
+            "description": "默认使用 local-average，适合亮度不均的工业图像。"
           },
           "ean_add_on_symbol": {
             "type": "string",
+            "default": "ignore",
             "enum": [
               "ignore",
               "read",
               "require"
-            ]
+            ],
+            "description": "默认忽略 EAN add-on；只有明确需要副码时再切换。"
           }
         }
       },
@@ -4052,22 +4714,33 @@
         "type": "object",
         "properties": {
           "try_rotate": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用旋转尝试，适合大多数现场图片。"
           },
           "try_downscale": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用缩放尝试，便于识读大尺寸条码图。"
           },
           "try_invert": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用反色尝试，适合浅码深底或深码浅底混合场景。"
           },
           "is_pure": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": false,
+            "description": "纯净条码图才建议开启；普通实拍图默认关闭。"
           },
           "return_errors": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": false,
+            "description": "默认只返回成功结果；调试识读失败原因时再开启。"
           },
           "text_mode": {
             "type": "string",
+            "default": "hri",
             "enum": [
               "plain",
               "hri",
@@ -4075,24 +4748,29 @@
               "hex",
               "eci",
               "hex-eci"
-            ]
+            ],
+            "description": "默认使用 hri，兼顾可读文本和常见条码显示习惯。"
           },
           "binarizer": {
             "type": "string",
+            "default": "local-average",
             "enum": [
               "local-average",
               "global-histogram",
               "fixed-threshold",
               "bool-cast"
-            ]
+            ],
+            "description": "默认使用 local-average，适合亮度不均的工业图像。"
           },
           "ean_add_on_symbol": {
             "type": "string",
+            "default": "ignore",
             "enum": [
               "ignore",
               "read",
               "require"
-            ]
+            ],
+            "description": "默认忽略 EAN add-on；只有明确需要副码时再切换。"
           }
         }
       },
@@ -4151,22 +4829,33 @@
         "type": "object",
         "properties": {
           "try_rotate": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用旋转尝试，适合大多数现场图片。"
           },
           "try_downscale": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用缩放尝试，便于识读大尺寸条码图。"
           },
           "try_invert": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用反色尝试，适合浅码深底或深码浅底混合场景。"
           },
           "is_pure": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": false,
+            "description": "纯净条码图才建议开启；普通实拍图默认关闭。"
           },
           "return_errors": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": false,
+            "description": "默认只返回成功结果；调试识读失败原因时再开启。"
           },
           "text_mode": {
             "type": "string",
+            "default": "hri",
             "enum": [
               "plain",
               "hri",
@@ -4174,24 +4863,29 @@
               "hex",
               "eci",
               "hex-eci"
-            ]
+            ],
+            "description": "默认使用 hri，兼顾可读文本和常见条码显示习惯。"
           },
           "binarizer": {
             "type": "string",
+            "default": "local-average",
             "enum": [
               "local-average",
               "global-histogram",
               "fixed-threshold",
               "bool-cast"
-            ]
+            ],
+            "description": "默认使用 local-average，适合亮度不均的工业图像。"
           },
           "ean_add_on_symbol": {
             "type": "string",
+            "default": "ignore",
             "enum": [
               "ignore",
               "read",
               "require"
-            ]
+            ],
+            "description": "默认忽略 EAN add-on；只有明确需要副码时再切换。"
           }
         }
       },
@@ -4250,22 +4944,33 @@
         "type": "object",
         "properties": {
           "try_rotate": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用旋转尝试，适合大多数现场图片。"
           },
           "try_downscale": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用缩放尝试，便于识读大尺寸条码图。"
           },
           "try_invert": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用反色尝试，适合浅码深底或深码浅底混合场景。"
           },
           "is_pure": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": false,
+            "description": "纯净条码图才建议开启；普通实拍图默认关闭。"
           },
           "return_errors": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": false,
+            "description": "默认只返回成功结果；调试识读失败原因时再开启。"
           },
           "text_mode": {
             "type": "string",
+            "default": "hri",
             "enum": [
               "plain",
               "hri",
@@ -4273,24 +4978,29 @@
               "hex",
               "eci",
               "hex-eci"
-            ]
+            ],
+            "description": "默认使用 hri，兼顾可读文本和常见条码显示习惯。"
           },
           "binarizer": {
             "type": "string",
+            "default": "local-average",
             "enum": [
               "local-average",
               "global-histogram",
               "fixed-threshold",
               "bool-cast"
-            ]
+            ],
+            "description": "默认使用 local-average，适合亮度不均的工业图像。"
           },
           "ean_add_on_symbol": {
             "type": "string",
+            "default": "ignore",
             "enum": [
               "ignore",
               "read",
               "require"
-            ]
+            ],
+            "description": "默认忽略 EAN add-on；只有明确需要副码时再切换。"
           }
         }
       },
@@ -4320,7 +5030,7 @@
       "node_type_id": "custom.barcode.qr-crop-decode-remap",
       "display_name": "QR Crop Decode Remap",
       "category": "barcode.compose",
-      "description": "逐个解码 crop-export 导出的裁剪图中的 QR Code，并把结果 position 回映射到原图坐标系。",
+      "description": "直接消费 crop-export.crops，逐张解码裁剪图中的 QR Code，并把每个结果的 position 回映射到原图坐标。适合 detect -> crop-export -> qr-crop-decode-remap 这条链。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
       "input_ports": [
@@ -4409,6 +5119,12 @@
       "node_pack_id": "barcode.protocol-nodes",
       "node_pack_version": "0.1.0",
       "metadata": {
+        "i18n": {
+          "description": {
+            "zh-CN": "直接消费 crop-export.crops，逐张解码裁剪图中的 QR Code，并把每个结果的 position 回映射到原图坐标。适合 detect -> crop-export -> qr-crop-decode-remap 这条链。",
+            "en-US": "Consume crop-export.crops directly, decode QR Codes from each crop, and remap each result position back to source-image coordinates. This fits the detect -> crop-export -> qr-crop-decode-remap chain."
+          }
+        },
         "requested_format": "QR Code",
         "input_kind": "image-refs.v1",
         "position_field": "position",
@@ -4449,22 +5165,33 @@
         "type": "object",
         "properties": {
           "try_rotate": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用旋转尝试，适合大多数现场图片。"
           },
           "try_downscale": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用缩放尝试，便于识读大尺寸条码图。"
           },
           "try_invert": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用反色尝试，适合浅码深底或深码浅底混合场景。"
           },
           "is_pure": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": false,
+            "description": "纯净条码图才建议开启；普通实拍图默认关闭。"
           },
           "return_errors": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": false,
+            "description": "默认只返回成功结果；调试识读失败原因时再开启。"
           },
           "text_mode": {
             "type": "string",
+            "default": "hri",
             "enum": [
               "plain",
               "hri",
@@ -4472,24 +5199,29 @@
               "hex",
               "eci",
               "hex-eci"
-            ]
+            ],
+            "description": "默认使用 hri，兼顾可读文本和常见条码显示习惯。"
           },
           "binarizer": {
             "type": "string",
+            "default": "local-average",
             "enum": [
               "local-average",
               "global-histogram",
               "fixed-threshold",
               "bool-cast"
-            ]
+            ],
+            "description": "默认使用 local-average，适合亮度不均的工业图像。"
           },
           "ean_add_on_symbol": {
             "type": "string",
+            "default": "ignore",
             "enum": [
               "ignore",
               "read",
               "require"
-            ]
+            ],
+            "description": "默认忽略 EAN add-on；只有明确需要副码时再切换。"
           }
         }
       },
@@ -4601,22 +5333,33 @@
         "type": "object",
         "properties": {
           "try_rotate": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用旋转尝试，适合大多数现场图片。"
           },
           "try_downscale": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用缩放尝试，便于识读大尺寸条码图。"
           },
           "try_invert": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用反色尝试，适合浅码深底或深码浅底混合场景。"
           },
           "is_pure": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": false,
+            "description": "纯净条码图才建议开启；普通实拍图默认关闭。"
           },
           "return_errors": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": false,
+            "description": "默认只返回成功结果；调试识读失败原因时再开启。"
           },
           "text_mode": {
             "type": "string",
+            "default": "hri",
             "enum": [
               "plain",
               "hri",
@@ -4624,24 +5367,29 @@
               "hex",
               "eci",
               "hex-eci"
-            ]
+            ],
+            "description": "默认使用 hri，兼顾可读文本和常见条码显示习惯。"
           },
           "binarizer": {
             "type": "string",
+            "default": "local-average",
             "enum": [
               "local-average",
               "global-histogram",
               "fixed-threshold",
               "bool-cast"
-            ]
+            ],
+            "description": "默认使用 local-average，适合亮度不均的工业图像。"
           },
           "ean_add_on_symbol": {
             "type": "string",
+            "default": "ignore",
             "enum": [
               "ignore",
               "read",
               "require"
-            ]
+            ],
+            "description": "默认忽略 EAN add-on；只有明确需要副码时再切换。"
           }
         }
       },
@@ -4700,22 +5448,33 @@
         "type": "object",
         "properties": {
           "try_rotate": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用旋转尝试，适合大多数现场图片。"
           },
           "try_downscale": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用缩放尝试，便于识读大尺寸条码图。"
           },
           "try_invert": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true,
+            "description": "默认启用反色尝试，适合浅码深底或深码浅底混合场景。"
           },
           "is_pure": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": false,
+            "description": "纯净条码图才建议开启；普通实拍图默认关闭。"
           },
           "return_errors": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": false,
+            "description": "默认只返回成功结果；调试识读失败原因时再开启。"
           },
           "text_mode": {
             "type": "string",
+            "default": "hri",
             "enum": [
               "plain",
               "hri",
@@ -4723,24 +5482,29 @@
               "hex",
               "eci",
               "hex-eci"
-            ]
+            ],
+            "description": "默认使用 hri，兼顾可读文本和常见条码显示习惯。"
           },
           "binarizer": {
             "type": "string",
+            "default": "local-average",
             "enum": [
               "local-average",
               "global-histogram",
               "fixed-threshold",
               "bool-cast"
-            ]
+            ],
+            "description": "默认使用 local-average，适合亮度不均的工业图像。"
           },
           "ean_add_on_symbol": {
             "type": "string",
+            "default": "ignore",
             "enum": [
               "ignore",
               "read",
               "require"
-            ]
+            ],
+            "description": "默认忽略 EAN add-on；只有明确需要副码时再切换。"
           }
         }
       },

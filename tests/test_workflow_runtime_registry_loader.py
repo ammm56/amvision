@@ -2244,6 +2244,119 @@ def test_repository_opencv_draw_detections_node_defaults_to_memory_output_with_m
     assert image_registry.read_bytes(str(image_payload["image_handle"])).startswith(b"\x89PNG\r\n\x1a\n")
 
 
+def test_repository_opencv_draw_detections_node_uses_defaults_when_parameters_are_null(
+    tmp_path: Path,
+) -> None:
+    """验证 draw-detections 在旧图参数为 null 时仍会回退到默认值。"""
+
+    custom_nodes_root_dir = _get_repository_custom_nodes_root()
+    node_pack_loader = LocalNodePackLoader(custom_nodes_root_dir)
+    node_pack_loader.refresh()
+    node_catalog_registry = NodeCatalogRegistry(node_pack_loader=node_pack_loader)
+    runtime_registry_loader = WorkflowNodeRuntimeRegistryLoader(
+        node_catalog_registry=node_catalog_registry,
+        node_pack_loader=node_pack_loader,
+    )
+    dataset_storage = _create_dataset_storage(tmp_path)
+    dataset_storage.write_bytes("inputs/source.jpg", build_test_jpeg_bytes())
+
+    runtime_registry_loader.refresh()
+    executor = WorkflowGraphExecutor(registry=runtime_registry_loader.get_runtime_registry())
+    template = WorkflowGraphTemplate(
+        template_id="opencv-draw-null-parameter-pipeline",
+        template_version="1.0.0",
+        display_name="OpenCV Draw Null Parameter Pipeline",
+        nodes=(
+            WorkflowGraphNode(node_id="input", node_type_id="core.io.template-input.image"),
+            WorkflowGraphNode(
+                node_id="draw",
+                node_type_id="custom.opencv.draw-detections",
+                parameters={"line_thickness": None, "font_scale": None, "draw_scores": None},
+            ),
+            WorkflowGraphNode(node_id="preview", node_type_id="core.io.image-preview"),
+            WorkflowGraphNode(node_id="response", node_type_id="core.output.http-response"),
+        ),
+        edges=(
+            WorkflowGraphEdge(
+                edge_id="edge-input-draw",
+                source_node_id="input",
+                source_port="image",
+                target_node_id="draw",
+                target_port="image",
+            ),
+            WorkflowGraphEdge(
+                edge_id="edge-draw-preview",
+                source_node_id="draw",
+                source_port="image",
+                target_node_id="preview",
+                target_port="image",
+            ),
+            WorkflowGraphEdge(
+                edge_id="edge-preview-response",
+                source_node_id="preview",
+                source_port="body",
+                target_node_id="response",
+                target_port="body",
+            ),
+        ),
+        template_inputs=(
+            WorkflowGraphInput(
+                input_id="request_image",
+                display_name="Request Image",
+                payload_type_id="image-ref.v1",
+                target_node_id="input",
+                target_port="payload",
+            ),
+            WorkflowGraphInput(
+                input_id="request_detections",
+                display_name="Request Detections",
+                payload_type_id="detections.v1",
+                target_node_id="draw",
+                target_port="detections",
+            ),
+        ),
+        template_outputs=(
+            WorkflowGraphOutput(
+                output_id="inspection_response",
+                display_name="Inspection Response",
+                payload_type_id="http-response.v1",
+                source_node_id="response",
+                source_port="response",
+            ),
+        ),
+    )
+
+    execution_result = executor.execute(
+        template=template,
+        input_values={
+            "request_image": {
+                "object_key": "inputs/source.jpg",
+                "width": 64,
+                "height": 64,
+                "media_type": "image/jpeg",
+            },
+            "request_detections": {
+                "items": [
+                    {
+                        "bbox_xyxy": [5, 5, 40, 40],
+                        "score": 0.95,
+                        "class_name": "defect",
+                    }
+                ]
+            },
+        },
+        execution_metadata={
+            "dataset_storage": dataset_storage,
+            "workflow_run_id": "opencv-draw-null-parameter",
+        },
+    )
+
+    response_payload = execution_result.outputs["inspection_response"]
+    assert response_payload["status_code"] == 200
+    assert response_payload["body"]["type"] == "image-preview"
+    assert response_payload["body"]["image"]["image_base64"]
+
+
 def test_repository_opencv_node_pack_executes_morphology_and_canny_nodes(
     tmp_path: Path,
 ) -> None:
@@ -2674,6 +2787,101 @@ def test_repository_opencv_crop_export_node_defaults_to_memory_crops_with_memory
         assert isinstance(crop_item["bbox_xyxy"], list)
         assert crop_item["crop_index"] >= 1
         assert image_registry.read_bytes(str(crop_item["image_handle"])).startswith(b"\x89PNG\r\n\x1a\n")
+
+
+def test_repository_opencv_crop_export_node_uses_defaults_when_parameters_are_null(
+    tmp_path: Path,
+) -> None:
+    """验证 crop-export 在旧图参数为 null 时仍会回退到默认值。"""
+
+    custom_nodes_root_dir = _get_repository_custom_nodes_root()
+    node_pack_loader = LocalNodePackLoader(custom_nodes_root_dir)
+    node_pack_loader.refresh()
+    node_catalog_registry = NodeCatalogRegistry(node_pack_loader=node_pack_loader)
+    runtime_registry_loader = WorkflowNodeRuntimeRegistryLoader(
+        node_catalog_registry=node_catalog_registry,
+        node_pack_loader=node_pack_loader,
+    )
+    image_registry = ExecutionImageRegistry()
+    source_image = image_registry.register_image_bytes(
+        content=build_test_jpeg_bytes(),
+        media_type="image/jpeg",
+        width=64,
+        height=64,
+        created_by_node_id="fixture",
+    )
+
+    runtime_registry_loader.refresh()
+    executor = WorkflowGraphExecutor(registry=runtime_registry_loader.get_runtime_registry())
+    template = WorkflowGraphTemplate(
+        template_id="opencv-crop-null-parameter-pipeline",
+        template_version="1.0.0",
+        display_name="OpenCV Crop Null Parameter Pipeline",
+        nodes=(
+            WorkflowGraphNode(
+                node_id="crop",
+                node_type_id="custom.opencv.crop-export",
+                parameters={"box_padding": None, "max_crops": None, "output_dir": None},
+            ),
+        ),
+        template_inputs=(
+            WorkflowGraphInput(
+                input_id="request_image",
+                display_name="Request Image",
+                payload_type_id="image-ref.v1",
+                target_node_id="crop",
+                target_port="image",
+            ),
+            WorkflowGraphInput(
+                input_id="request_detections",
+                display_name="Request Detections",
+                payload_type_id="detections.v1",
+                target_node_id="crop",
+                target_port="detections",
+            ),
+        ),
+        template_outputs=(
+            WorkflowGraphOutput(
+                output_id="exported_crops",
+                display_name="Exported Crops",
+                payload_type_id="image-refs.v1",
+                source_node_id="crop",
+                source_port="crops",
+            ),
+        ),
+    )
+
+    execution_result = executor.execute(
+        template=template,
+        input_values={
+            "request_image": build_memory_image_payload(
+                image_handle=source_image.image_handle,
+                media_type="image/jpeg",
+                width=64,
+                height=64,
+            ),
+            "request_detections": {
+                "items": [
+                    {
+                        "bbox_xyxy": [6, 6, 40, 40],
+                        "score": 0.9,
+                        "class_name": "part-a",
+                    }
+                ]
+            },
+        },
+        execution_metadata={
+            "execution_image_registry": image_registry,
+            "workflow_run_id": "opencv-crop-null-parameter",
+        },
+    )
+
+    crops_payload = execution_result.outputs["exported_crops"]
+    assert crops_payload["count"] == 1
+    crop_item = crops_payload["items"][0]
+    assert crop_item["transport_kind"] == "memory"
+    assert crop_item["media_type"] == "image/png"
+    assert image_registry.read_bytes(str(crop_item["image_handle"])).startswith(b"\x89PNG\r\n\x1a\n")
 
 
 def test_repository_opencv_node_pack_executes_contour_and_measure_nodes(

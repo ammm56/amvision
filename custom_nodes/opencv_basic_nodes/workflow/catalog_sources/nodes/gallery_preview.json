@@ -3,7 +3,15 @@
   "node_type_id": "custom.opencv.gallery-preview",
   "display_name": "Gallery Preview",
   "category": "opencv.preview",
-  "description": "把图片集合转换成可直接进入 HTTP 响应的 gallery body。",
+  "description": "把 image-refs.v1 图片集合转换成可直接进入 HTTP 响应的 gallery body。最常见接法是直接连接 crop-export.crops，先快速检查每张裁剪图是否正确。",
+  "metadata": {
+    "i18n": {
+      "description": {
+        "zh-CN": "把 image-refs.v1 图片集合转换成可直接进入 HTTP 响应的 gallery body。最常见接法是直接连接 crop-export.crops，先快速检查每张裁剪图是否正确。",
+        "en-US": "Convert an image-refs.v1 collection into a gallery response body. The most common wiring is crop-export.crops -> images so the cropped images can be inspected quickly."
+      }
+    }
+  },
   "implementation_kind": "custom-node",
   "runtime_kind": "python-callable",
   "input_ports": [

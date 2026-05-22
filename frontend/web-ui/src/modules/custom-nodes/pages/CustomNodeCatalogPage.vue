@@ -183,7 +183,7 @@
                   @click="selectNode(node)"
                 >
                   <td>
-                    <strong>{{ node.display_name || node.node_type_id }}</strong>
+                    <strong>{{ readNodeDisplayName(node) || node.node_type_id }}</strong>
                     <span>{{ node.node_type_id }}</span>
                   </td>
                   <td>{{ node.category || '-' }}</td>
@@ -208,8 +208,8 @@
               <div class="node-detail-panel__header">
                 <div>
                   <p class="page-kicker">{{ t('customNodes.detailKicker') }}</p>
-                  <h2>{{ selectedNode.display_name || selectedNode.node_type_id }}</h2>
-                  <p>{{ selectedNode.description || t('common.noValue') }}</p>
+                  <h2>{{ readNodeDisplayName(selectedNode) || selectedNode.node_type_id }}</h2>
+                  <p>{{ readNodeDescription(selectedNode) || t('common.noValue') }}</p>
                 </div>
                 <StatusBadge :tone="selectedNode.implementation_kind === 'custom-node' ? 'info' : 'neutral'">
                   {{ selectedNode.runtime_kind }}
@@ -243,9 +243,10 @@
                 <h3>{{ t('customNodes.detail.parameters') }}</h3>
                 <div v-if="parameterFields.length" class="parameter-list">
                   <article v-for="field in parameterFields" :key="field.parameter_name">
-                    <strong>{{ field.display_name || field.parameter_name }}</strong>
-                    <span>{{ field.parameter_name }} / {{ field.required ? t('customNodes.required') : t('customNodes.optional') }}</span>
+                    <strong>{{ field.parameter_name }}</strong>
+                    <span>{{ readParameterDisplayName(field) }} / {{ field.required ? t('customNodes.required') : t('customNodes.optional') }}</span>
                     <small>{{ t('customNodes.fields.defaultValue') }}: {{ formatValue(field.default_value) }}</small>
+                    <p v-if="readParameterDescription(field)">{{ readParameterDescription(field) }}</p>
                   </article>
                 </div>
                 <pre v-else class="json-view custom-node-catalog__json">{{ formatJson(selectedNode.parameter_schema) }}</pre>
@@ -456,7 +457,15 @@ import { computed, defineComponent, h, onMounted, ref, watch, type PropType } fr
 import { Blocks, CircleCheck, Power, PowerOff, Puzzle, RefreshCw, ScrollText, Search } from '@lucide/vue'
 import { useI18n } from 'vue-i18n'
 
+import type { SupportedLocale } from '@/platform/i18n'
 import { getWorkflowNodeCatalog } from '@/workflows/workflow-editor/services/node-catalog.service'
+import {
+  resolveNodeDefinitionDescription,
+  resolveNodeDefinitionDisplayName,
+  resolveNodeParameterDescription,
+  resolveNodeParameterDisplayName,
+  resolveNodePortDescription,
+} from '@/workflows/workflow-editor/node-definition-localization'
 import {
   disableNodePack,
   enableNodePack,
@@ -560,7 +569,8 @@ const PortList = defineComponent({
     },
   },
   setup(props) {
-    const { t } = useI18n()
+    const { t, locale } = useI18n()
+    const currentLocale = computed(() => (typeof locale.value === 'string' ? locale.value : 'en-US') as SupportedLocale)
     return () =>
       props.ports.length === 0
         ? h('p', { class: 'result-note' }, '-')
@@ -569,8 +579,9 @@ const PortList = defineComponent({
             { class: 'port-list' },
             props.ports.map((port) =>
               h('article', { key: port.name }, [
-                h('strong', port.display_name || port.name),
-                h('span', `${port.name} / ${port.payload_type_id}`),
+                h('strong', port.name),
+                h('span', `${port.payload_type_id} / ${port.required ? t('customNodes.required') : t('customNodes.optional')}`),
+                resolveNodePortDescription(port, currentLocale.value) ? h('p', resolveNodePortDescription(port, currentLocale.value)) : null,
                 h('small', port.required ? t('customNodes.required') : t('customNodes.optional')),
               ]),
             ),
@@ -578,7 +589,8 @@ const PortList = defineComponent({
   },
 })
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
+const currentLocale = computed(() => (typeof locale.value === 'string' ? locale.value : 'en-US') as SupportedLocale)
 const catalog = ref<WorkflowNodeCatalogResponse | null>(null)
 const nodePackStatus = ref<NodePackStatusResponse | null>(null)
 const loading = ref(false)
@@ -653,9 +665,9 @@ const filteredNodes = computed(() => {
     if (!normalizedKeyword) return true
     return [
       node.node_type_id,
-      node.display_name,
+      readNodeDisplayName(node),
       node.category,
-      node.description,
+      readNodeDescription(node),
       node.node_pack_id ?? '',
       node.node_pack_version ?? '',
       ...node.capability_tags,
@@ -960,6 +972,22 @@ function formatIssueDetails(details: Record<string, unknown>): string {
 
 function formatJson(value: unknown): string {
   return JSON.stringify(value ?? {}, null, 2)
+}
+
+function readNodeDisplayName(node: NodeDefinition): string {
+  return resolveNodeDefinitionDisplayName(node, currentLocale.value)
+}
+
+function readNodeDescription(node: NodeDefinition): string {
+  return resolveNodeDefinitionDescription(node, currentLocale.value)
+}
+
+function readParameterDisplayName(field: NodeParameterUiField): string {
+  return resolveNodeParameterDisplayName(field, currentLocale.value)
+}
+
+function readParameterDescription(field: NodeParameterUiField): string {
+  return resolveNodeParameterDescription(field, currentLocale.value)
 }
 
 function formatValue(value: unknown): string {

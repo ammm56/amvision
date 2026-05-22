@@ -26,9 +26,18 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
     cv2_module, _ = require_opencv_imports()
     image_payload, _, image_matrix = load_image_matrix(request)
 
-    line_thickness = require_positive_int(request.parameters.get("line_thickness", 2), field_name="line_thickness")
-    font_scale = require_non_negative_float(request.parameters.get("font_scale", 0.5), field_name="font_scale")
-    draw_scores = bool(request.parameters.get("draw_scores", True))
+    raw_line_thickness = request.parameters.get("line_thickness")
+    if raw_line_thickness in (None, ""):
+        raw_line_thickness = 2
+    line_thickness = require_positive_int(raw_line_thickness, field_name="line_thickness")
+
+    raw_font_scale = request.parameters.get("font_scale")
+    if raw_font_scale in (None, ""):
+        raw_font_scale = 0.5
+    font_scale = require_non_negative_float(raw_font_scale, field_name="font_scale")
+
+    raw_draw_scores = request.parameters.get("draw_scores")
+    draw_scores = True if raw_draw_scores is None else bool(raw_draw_scores)
     for item in iter_detection_items(request.input_values.get("detections")):
         x1, y1, x2, y2 = normalize_bbox(item.get("bbox_xyxy"))
         cv2_module.rectangle(image_matrix, (x1, y1), (x2, y2), (0, 255, 0), line_thickness)

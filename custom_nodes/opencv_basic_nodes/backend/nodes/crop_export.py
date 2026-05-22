@@ -28,8 +28,11 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
     image_payload, image_object_key, image_matrix = load_image_matrix(request)
 
     image_height, image_width = image_matrix.shape[:2]
-    box_padding = require_non_negative_int(request.parameters.get("box_padding", 0), field_name="box_padding")
+    raw_box_padding = request.parameters.get("box_padding")
+    box_padding = 0 if raw_box_padding in {None, ""} else require_non_negative_int(raw_box_padding, field_name="box_padding")
     max_crops_raw = request.parameters.get("max_crops")
+    if max_crops_raw == "":
+        max_crops_raw = None
     max_crops = require_positive_int(max_crops_raw, field_name="max_crops") if max_crops_raw is not None else None
     output_dir = normalize_optional_output_dir(request.parameters.get("output_dir"))
     exported_crops: list[dict[str, object]] = []

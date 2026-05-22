@@ -369,7 +369,11 @@ class WorkflowPreviewRunManager:
                         preview_run_id,
                         event_type="preview.timed_out",
                         message="preview run timed out",
-                        payload={"state": "timed_out", "error_message": updated_preview_run.error_message},
+                        payload={
+                            "state": "timed_out",
+                            "error_message": updated_preview_run.error_message,
+                            "error_details": _read_preview_run_last_error_details(updated_preview_run),
+                        },
                         event_lock=active_run.event_lock,
                     )
                     return
@@ -380,7 +384,11 @@ class WorkflowPreviewRunManager:
                         preview_run_id,
                         event_type="preview.failed",
                         message="preview run failed",
-                        payload={"state": "failed", "error_message": updated_preview_run.error_message},
+                        payload={
+                            "state": "failed",
+                            "error_message": updated_preview_run.error_message,
+                            "error_details": _read_preview_run_last_error_details(updated_preview_run),
+                        },
                         event_lock=active_run.event_lock,
                     )
                     return
@@ -484,6 +492,7 @@ class WorkflowPreviewRunManager:
                 state="failed",
                 finished_at=_now_isoformat(),
                 error_message=error.message,
+                metadata=_build_preview_run_error_metadata(preview_run, error=error),
             )
             unit_of_work.workflow_runtime.save_preview_run(updated_preview_run)
             unit_of_work.commit()
@@ -503,6 +512,7 @@ class WorkflowPreviewRunManager:
                 state="timed_out",
                 finished_at=_now_isoformat(),
                 error_message=error.message,
+                metadata=_build_preview_run_error_metadata(preview_run, error=error),
             )
             unit_of_work.workflow_runtime.save_preview_run(updated_preview_run)
             unit_of_work.commit()
@@ -727,6 +737,47 @@ def _normalize_optional_str(value: str | None) -> str | None:
         return None
     normalized_value = value.strip()
     return normalized_value or None
+
+
+def _build_preview_run_error_metadata(
+    preview_run: WorkflowPreviewRun,
+    *,
+    error: ServiceError,
+) -> dict[str, object]:
+    """把失败错误细节合并进 preview run metadata。
+
+    参数：
+    - preview_run：当前待更新的 preview run。
+    - error：导致失败或超时的 ServiceError。
+
+    返回：
+    - dict[str, object]：包含 last_error 的新 metadata。
+    """
+
+    metadata = dict(preview_run.metadata)
+    metadata["last_error"] = {
+        "code": error.code,
+        "message": error.message,
+        "details": sanitize_runtime_mapping(error.details),
+    }
+    return metadata
+
+
+def _read_preview_run_last_error_details(preview_run: WorkflowPreviewRun) -> dict[str, object]:
+    """读取 preview run metadata 中的 last_error.details。
+
+    参数：
+    - preview_run：目标 preview run。
+
+    返回：
+    - dict[str, object]：已脱敏的错误细节；不存在时返回空字典。
+    """
+
+    last_error = preview_run.metadata.get("last_error")
+    if not isinstance(last_error, dict):
+        return {}
+    details = last_error.get("details")
+    return details if isinstance(details, dict) else {}
 
 
 def _now_isoformat() -> str:

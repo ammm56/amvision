@@ -25,8 +25,10 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
         imdecode_flags=cv2_module.IMREAD_GRAYSCALE,
     )
 
-    threshold = require_non_negative_float(request.parameters.get("threshold", 127), field_name="threshold")
-    max_value = require_non_negative_float(request.parameters.get("max_value", 255), field_name="max_value")
+    raw_threshold = request.parameters.get("threshold")
+    threshold = 127 if raw_threshold in {None, ""} else require_non_negative_float(raw_threshold, field_name="threshold")
+    raw_max_value = request.parameters.get("max_value")
+    max_value = 255 if raw_max_value in {None, ""} else require_non_negative_float(raw_max_value, field_name="max_value")
     _, threshold_image = cv2_module.threshold(image_matrix, threshold, max_value, cv2_module.THRESH_BINARY)
     success, encoded_image = cv2_module.imencode(".png", threshold_image)
     if success is not True:

@@ -15,6 +15,7 @@ from backend.contracts.workflows.workflow_graph import (
     WorkflowGraphTemplate,
 )
 from backend.service.application.workflows.runtime_service import WorkflowPreviewRunCreateRequest
+from tests.api_test_support import build_valid_test_png_bytes
 from tests.test_workflow_runtime_sanitization import _build_runtime_service
 
 
@@ -53,6 +54,170 @@ def test_preview_run_table_preview_formats_rows_for_http_response(tmp_path: Path
         {"code": "XYZ999", "score": 0.76, "line": "-"},
     ]
     assert response_body["row_count"] == 2
+    assert preview_run.preview_display_outputs == (
+        {
+            "node_id": "table_preview",
+            "node_type_id": "core.io.table-preview",
+            "output_name": "body",
+            "payload": response_body,
+        },
+    )
+
+
+def test_preview_run_value_preview_formats_any_value_for_http_response(tmp_path: Path) -> None:
+    """验证 value-preview 可以把任意 value.v1 包装成可显示 JSON 预览。"""
+
+    service, _, _ = _build_runtime_service(tmp_path)
+    preview_run = service.create_preview_run(
+        WorkflowPreviewRunCreateRequest(
+            project_id="project-1",
+            application=_build_value_preview_application(),
+            template=_build_value_preview_template(),
+            input_bindings={
+                "payload": {
+                    "value": {
+                        "kind": "yolox-detections",
+                        "count": 2,
+                        "items": [
+                            {"class_name": "box-a", "score": 0.95, "bbox_xyxy": [0, 0, 16, 16]},
+                            {"class_name": "box-b", "score": 0.86, "bbox_xyxy": [18, 18, 40, 40]},
+                        ],
+                    }
+                }
+            },
+        ),
+        created_by="workflow-user",
+    )
+
+    assert preview_run.state == "succeeded"
+    response_body = preview_run.outputs["http_response"]["body"]
+    assert response_body == {
+        "type": "value-preview",
+        "title": "Detection JSON",
+        "value": {
+            "kind": "yolox-detections",
+            "count": 2,
+            "items": [
+                {"class_name": "box-a", "score": 0.95, "bbox_xyxy": [0, 0, 16, 16]},
+                {"class_name": "box-b", "score": 0.86, "bbox_xyxy": [18, 18, 40, 40]},
+            ],
+        },
+    }
+    assert preview_run.preview_display_outputs == (
+        {
+            "node_id": "value_preview",
+            "node_type_id": "core.io.value-preview",
+            "output_name": "body",
+            "payload": response_body,
+        },
+    )
+
+
+def test_preview_run_value_preview_path_extracts_single_subfield(tmp_path: Path) -> None:
+    """验证 value-preview 可以按 path 只显示某个子字段。"""
+
+    service, _, _ = _build_runtime_service(tmp_path)
+    preview_run = service.create_preview_run(
+        WorkflowPreviewRunCreateRequest(
+            project_id="project-1",
+            application=_build_value_preview_application(),
+            template=_build_value_preview_template(path="items.1.class_name"),
+            input_bindings={
+                "payload": {
+                    "value": {
+                        "kind": "yolox-detections",
+                        "count": 2,
+                        "items": [
+                            {"class_name": "box-a", "score": 0.95, "bbox_xyxy": [0, 0, 16, 16]},
+                            {"class_name": "box-b", "score": 0.86, "bbox_xyxy": [18, 18, 40, 40]},
+                        ],
+                    }
+                }
+            },
+        ),
+        created_by="workflow-user",
+    )
+
+    assert preview_run.state == "succeeded"
+    response_body = preview_run.outputs["http_response"]["body"]
+    assert response_body == {
+        "type": "value-preview",
+        "title": "Detection JSON",
+        "path": "items.1.class_name",
+        "status_text": "Path: items.1.class_name",
+        "value": "box-b",
+    }
+
+
+def test_preview_run_failed_metadata_exposes_node_details(tmp_path: Path) -> None:
+    """验证 preview run 失败时会把失败节点定位细节保留到 metadata。"""
+
+    service, _, _ = _build_runtime_service(tmp_path)
+    service.dataset_storage.write_bytes("inputs/crop-001.png", build_valid_test_png_bytes())
+
+    preview_run = service.create_preview_run(
+        WorkflowPreviewRunCreateRequest(
+            project_id="project-1",
+            application=_build_image_refs_item_get_application(),
+            template=_build_image_refs_item_get_template(index=9),
+            input_bindings={
+                "crops": {
+                    "items": [
+                        {"transport_kind": "storage", "object_key": "inputs/crop-001.png", "media_type": "image/png", "crop_index": 1},
+                    ],
+                    "count": 1,
+                }
+            },
+        ),
+        created_by="workflow-user",
+    )
+
+    assert preview_run.state == "failed"
+    assert preview_run.error_message == "image-refs-item-get 节点索引越界"
+    last_error = preview_run.metadata["last_error"]
+    assert last_error["message"] == "image-refs-item-get 节点索引越界"
+    assert last_error["details"]["node_id"] == "select_image"
+    assert last_error["details"]["node_type_id"] == "core.io.image-refs-item-get"
+    assert last_error["details"]["error_message"] == "image-refs-item-get 节点索引越界"
+
+
+def test_preview_run_image_refs_item_get_selects_single_image_ref(tmp_path: Path) -> None:
+    """验证 image-refs-item-get 可以从 crop-export 风格 payload 中选出单张图片。"""
+
+    service, _, _ = _build_runtime_service(tmp_path)
+    service.dataset_storage.write_bytes("inputs/crop-001.png", build_valid_test_png_bytes())
+    service.dataset_storage.write_bytes("inputs/crop-002.png", build_valid_test_png_bytes())
+
+    preview_run = service.create_preview_run(
+        WorkflowPreviewRunCreateRequest(
+            project_id="project-1",
+            application=_build_image_refs_item_get_application(),
+            template=_build_image_refs_item_get_template(),
+            input_bindings={
+                "crops": {
+                    "items": [
+                        {"transport_kind": "storage", "object_key": "inputs/crop-001.png", "media_type": "image/png", "crop_index": 1},
+                        {"transport_kind": "storage", "object_key": "inputs/crop-002.png", "media_type": "image/png", "crop_index": 2},
+                    ],
+                    "count": 2,
+                }
+            },
+        ),
+        created_by="workflow-user",
+    )
+
+    assert preview_run.state == "succeeded"
+    response_body = preview_run.outputs["http_response"]["body"]
+    select_record = next(record for record in preview_run.node_records if record["node_id"] == "select_image")
+    preview_record = next(record for record in preview_run.node_records if record["node_id"] == "preview")
+    assert response_body["type"] == "image-preview"
+    assert response_body["title"] == "Selected Crop"
+    assert select_record["outputs"]["image"]["object_key"] == "inputs/crop-002.png"
+    assert preview_record["inputs"]["image"]["object_key"] == "inputs/crop-002.png"
+    assert response_body["image"]["transport_kind"] == "storage-ref"
+    assert response_body["image"]["object_key"].startswith(
+        f"workflows/runtime/preview-runs/{preview_run.preview_run_id}/artifacts/preview/"
+    )
 
 
 def test_preview_run_response_envelope_wraps_data_and_meta(tmp_path: Path) -> None:
@@ -264,6 +429,174 @@ def _build_response_envelope_application() -> FlowApplication:
                 template_port_id="result_message",
                 binding_kind="api-request",
                 config={"route": "/execute/response-envelope", "method": "POST"},
+            ),
+            FlowApplicationBinding(
+                binding_id="http_response",
+                direction="output",
+                template_port_id="http_response",
+                binding_kind="http-response",
+                config={"status_code": 200},
+            ),
+        ),
+    )
+
+
+def _build_value_preview_template(*, path: str | None = None) -> WorkflowGraphTemplate:
+    """构造 value-preview 的最小 workflow 模板。"""
+
+    parameters: dict[str, object] = {"title": "Detection JSON"}
+    if isinstance(path, str) and path.strip():
+        parameters["path"] = path.strip()
+
+    return WorkflowGraphTemplate(
+        template_id="value-preview-template",
+        template_version="1.0.0",
+        display_name="Value Preview Template",
+        nodes=(
+            WorkflowGraphNode(
+                node_id="value_preview",
+                node_type_id="core.io.value-preview",
+                parameters=parameters,
+            ),
+            WorkflowGraphNode(node_id="response", node_type_id="core.output.http-response"),
+        ),
+        edges=(
+            WorkflowGraphEdge(
+                edge_id="edge-value-preview-response",
+                source_node_id="value_preview",
+                source_port="body",
+                target_node_id="response",
+                target_port="body",
+            ),
+        ),
+        template_inputs=(
+            WorkflowGraphInput(
+                input_id="payload",
+                display_name="Payload",
+                payload_type_id="value.v1",
+                target_node_id="value_preview",
+                target_port="value",
+            ),
+        ),
+        template_outputs=(
+            WorkflowGraphOutput(
+                output_id="http_response",
+                display_name="HTTP Response",
+                payload_type_id="http-response.v1",
+                source_node_id="response",
+                source_port="response",
+            ),
+        ),
+    )
+
+
+def _build_value_preview_application() -> FlowApplication:
+    """构造 value-preview 的最小流程应用。"""
+
+    return FlowApplication(
+        application_id="value-preview-app",
+        display_name="Value Preview App",
+        template_ref=FlowTemplateReference(
+            template_id="value-preview-template",
+            template_version="1.0.0",
+            source_kind="json-file",
+            source_uri="placeholder",
+        ),
+        bindings=(
+            FlowApplicationBinding(
+                binding_id="payload",
+                direction="input",
+                template_port_id="payload",
+                binding_kind="api-request",
+                config={"route": "/execute/value-preview", "method": "POST"},
+            ),
+            FlowApplicationBinding(
+                binding_id="http_response",
+                direction="output",
+                template_port_id="http_response",
+                binding_kind="http-response",
+                config={"status_code": 200},
+            ),
+        ),
+    )
+
+
+def _build_image_refs_item_get_template(*, index: int = 1) -> WorkflowGraphTemplate:
+    """构造 image-refs-item-get 到 image-preview 的最小模板。"""
+
+    return WorkflowGraphTemplate(
+        template_id="image-refs-item-get-template",
+        template_version="1.0.0",
+        display_name="Image Refs Item Get Template",
+        nodes=(
+            WorkflowGraphNode(
+                node_id="select_image",
+                node_type_id="core.io.image-refs-item-get",
+                parameters={"index": index},
+            ),
+            WorkflowGraphNode(
+                node_id="preview",
+                node_type_id="core.io.image-preview",
+                parameters={"title": "Selected Crop", "response_transport_mode": "storage-ref"},
+            ),
+            WorkflowGraphNode(node_id="response", node_type_id="core.output.http-response"),
+        ),
+        edges=(
+            WorkflowGraphEdge(
+                edge_id="edge-image-select-preview",
+                source_node_id="select_image",
+                source_port="image",
+                target_node_id="preview",
+                target_port="image",
+            ),
+            WorkflowGraphEdge(
+                edge_id="edge-image-preview-response",
+                source_node_id="preview",
+                source_port="body",
+                target_node_id="response",
+                target_port="body",
+            ),
+        ),
+        template_inputs=(
+            WorkflowGraphInput(
+                input_id="crops",
+                display_name="Crops",
+                payload_type_id="image-refs.v1",
+                target_node_id="select_image",
+                target_port="images",
+            ),
+        ),
+        template_outputs=(
+            WorkflowGraphOutput(
+                output_id="http_response",
+                display_name="HTTP Response",
+                payload_type_id="http-response.v1",
+                source_node_id="response",
+                source_port="response",
+            ),
+        ),
+    )
+
+
+def _build_image_refs_item_get_application() -> FlowApplication:
+    """构造 image-refs-item-get 的最小流程应用。"""
+
+    return FlowApplication(
+        application_id="image-refs-item-get-app",
+        display_name="Image Refs Item Get App",
+        template_ref=FlowTemplateReference(
+            template_id="image-refs-item-get-template",
+            template_version="1.0.0",
+            source_kind="json-file",
+            source_uri="placeholder",
+        ),
+        bindings=(
+            FlowApplicationBinding(
+                binding_id="crops",
+                direction="input",
+                template_port_id="crops",
+                binding_kind="api-request",
+                config={"route": "/execute/image-refs-item-get", "method": "POST"},
             ),
             FlowApplicationBinding(
                 binding_id="http_response",
