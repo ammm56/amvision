@@ -2983,6 +2983,127 @@ def test_repository_opencv_node_pack_executes_contour_and_measure_nodes(
     ]
 
 
+def test_repository_opencv_payload_to_value_node_supports_response_composition(
+    tmp_path: Path,
+) -> None:
+    """验证 OpenCV payload-to-value 可以把 measurements 接到 response-envelope。"""
+
+    custom_nodes_root_dir = _get_repository_custom_nodes_root()
+    node_pack_loader = LocalNodePackLoader(custom_nodes_root_dir)
+    node_pack_loader.refresh()
+    node_catalog_registry = NodeCatalogRegistry(node_pack_loader=node_pack_loader)
+    runtime_registry_loader = WorkflowNodeRuntimeRegistryLoader(
+        node_catalog_registry=node_catalog_registry,
+        node_pack_loader=node_pack_loader,
+    )
+    dataset_storage = _create_dataset_storage(tmp_path)
+    dataset_storage.write_bytes("inputs/contours.png", _build_contour_test_png_bytes())
+
+    runtime_registry_loader.refresh()
+    executor = WorkflowGraphExecutor(registry=runtime_registry_loader.get_runtime_registry())
+    template = WorkflowGraphTemplate(
+        template_id="opencv-payload-to-value-pipeline",
+        template_version="1.0.0",
+        display_name="OpenCV Payload To Value Pipeline",
+        nodes=(
+            WorkflowGraphNode(node_id="input", node_type_id="core.io.template-input.image"),
+            WorkflowGraphNode(
+                node_id="contour",
+                node_type_id="custom.opencv.contour",
+                parameters={"threshold": 127, "min_area": 20, "retrieval_mode": "external"},
+            ),
+            WorkflowGraphNode(
+                node_id="measure",
+                node_type_id="custom.opencv.measure",
+                parameters={"sort_by": "area", "descending": True},
+            ),
+            WorkflowGraphNode(node_id="to_value", node_type_id="custom.opencv.payload-to-value"),
+            WorkflowGraphNode(
+                node_id="compose",
+                node_type_id="core.logic.object-create",
+                parameters={"fields": {"source": "opencv"}, "keys": ["measurements"]},
+            ),
+            WorkflowGraphNode(node_id="envelope", node_type_id="core.output.response-envelope"),
+        ),
+        edges=(
+            WorkflowGraphEdge(
+                edge_id="edge-input-contour",
+                source_node_id="input",
+                source_port="image",
+                target_node_id="contour",
+                target_port="image",
+            ),
+            WorkflowGraphEdge(
+                edge_id="edge-contour-measure",
+                source_node_id="contour",
+                source_port="contours",
+                target_node_id="measure",
+                target_port="contours",
+            ),
+            WorkflowGraphEdge(
+                edge_id="edge-measure-value",
+                source_node_id="measure",
+                source_port="measurements",
+                target_node_id="to_value",
+                target_port="measurements",
+            ),
+            WorkflowGraphEdge(
+                edge_id="edge-value-compose",
+                source_node_id="to_value",
+                source_port="value",
+                target_node_id="compose",
+                target_port="values",
+            ),
+            WorkflowGraphEdge(
+                edge_id="edge-compose-envelope",
+                source_node_id="compose",
+                source_port="value",
+                target_node_id="envelope",
+                target_port="data",
+            ),
+        ),
+        template_inputs=(
+            WorkflowGraphInput(
+                input_id="request_image",
+                display_name="Request Image",
+                payload_type_id="image-ref.v1",
+                target_node_id="input",
+                target_port="payload",
+            ),
+        ),
+        template_outputs=(
+            WorkflowGraphOutput(
+                output_id="response_body",
+                display_name="Response Body",
+                payload_type_id="response-body.v1",
+                source_node_id="envelope",
+                source_port="body",
+            ),
+        ),
+    )
+
+    execution_result = executor.execute(
+        template=template,
+        input_values={
+            "request_image": {
+                "object_key": "inputs/contours.png",
+                "width": 96,
+                "height": 96,
+                "media_type": "image/png",
+            }
+        },
+        execution_metadata={
+            "dataset_storage": dataset_storage,
+            "workflow_run_id": "opencv-payload-to-value",
+        },
+    )
+
+    response_body = execution_result.outputs["response_body"]
+    assert response_body["data"]["source"] == "opencv"
+    assert response_body["data"]["measurements"]["count"] == 2
+    assert response_body["data"]["measurements"]["summary"]["total_area"] > 0
+
+
 def test_repository_opencv_contour_and_measure_nodes_accept_memory_image_payload(
     tmp_path: Path,
 ) -> None:

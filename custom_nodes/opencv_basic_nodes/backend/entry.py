@@ -34,6 +34,10 @@ from custom_nodes.opencv_basic_nodes.backend.nodes.measure import (
     NODE_TYPE_ID as MEASURE_NODE_TYPE_ID,
     handle_node as measure_handler,
 )
+from custom_nodes.opencv_basic_nodes.backend.nodes.payload_to_value import (
+    NODE_TYPE_ID as PAYLOAD_TO_VALUE_NODE_TYPE_ID,
+    handle_node as payload_to_value_handler,
+)
 from custom_nodes.opencv_basic_nodes.backend.nodes.morphology import (
     NODE_TYPE_ID as MORPHOLOGY_NODE_TYPE_ID,
     handle_node as morphology_handler,
@@ -57,5 +61,6 @@ def register(context: NodePackEntrypointRegistrationContext) -> None:
     context.register_python_callable(CANNY_NODE_TYPE_ID, canny_handler)
     context.register_python_callable(CONTOUR_NODE_TYPE_ID, contour_handler)
     context.register_python_callable(MEASURE_NODE_TYPE_ID, measure_handler)
+    context.register_python_callable(PAYLOAD_TO_VALUE_NODE_TYPE_ID, payload_to_value_handler)
     context.register_python_callable(CROP_EXPORT_NODE_TYPE_ID, crop_export_handler)
     context.register_python_callable(GALLERY_PREVIEW_NODE_TYPE_ID, gallery_preview_handler)

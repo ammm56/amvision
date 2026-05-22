@@ -128,8 +128,17 @@ CORE_NODE_SPEC = CoreNodeSpec(
         parameter_schema={
             "type": "object",
             "properties": {
-                "code": {"type": "integer"},
-                "message": {"type": "string", "minLength": 1},
+                "code": {
+                    "type": "integer",
+                    "title": "Code",
+                    "description": "固定响应码；未提供时默认 0。",
+                },
+                "message": {
+                    "type": "string",
+                    "minLength": 1,
+                    "title": "Message",
+                    "description": "默认响应消息；如果 Message 输入端口有值，会优先使用输入端口。",
+                },
             },
         },
         capability_tags=("integration.output", "response.body"),

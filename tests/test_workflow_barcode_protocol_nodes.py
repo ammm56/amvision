@@ -553,6 +553,66 @@ def test_repository_barcode_results_summary_node_outputs_lightweight_summary(tmp
     assert summary_body["format_counts"]["Code 128"] == 1
 
 
+def test_repository_barcode_results_to_value_node_supports_object_create(tmp_path: Path) -> None:
+    """验证 results-to-value 可以把 barcode-results 接到 object-create。"""
+
+    executor = _create_barcode_executor()
+    template = WorkflowGraphTemplate(
+        template_id="barcode-results-to-value-pipeline",
+        template_version="1.0.0",
+        display_name="Barcode Results To Value Pipeline",
+        nodes=(
+            WorkflowGraphNode(node_id="to_value", node_type_id="custom.barcode.results-to-value"),
+            WorkflowGraphNode(
+                node_id="compose",
+                node_type_id="core.logic.object-create",
+                parameters={"fields": {"source": "barcode"}, "keys": ["results"]},
+            ),
+        ),
+        edges=(
+            WorkflowGraphEdge(
+                edge_id="edge-results-value-compose",
+                source_node_id="to_value",
+                source_port="value",
+                target_node_id="compose",
+                target_port="values",
+            ),
+        ),
+        template_inputs=(
+            WorkflowGraphInput(
+                input_id="barcode_results",
+                display_name="Barcode Results",
+                payload_type_id="barcode-results.v1",
+                target_node_id="to_value",
+                target_port="results",
+            ),
+        ),
+        template_outputs=(
+            WorkflowGraphOutput(
+                output_id="composed_value",
+                display_name="Composed Value",
+                payload_type_id="value.v1",
+                source_node_id="compose",
+                source_port="value",
+            ),
+        ),
+    )
+
+    execution_result = executor.execute(
+        template=template,
+        input_values={"barcode_results": _build_barcode_results_fixture()},
+        execution_metadata={
+            "dataset_storage": _create_dataset_storage(tmp_path),
+            "workflow_run_id": "barcode-results-to-value",
+        },
+    )
+
+    composed_value = execution_result.outputs["composed_value"]["value"]
+    assert composed_value["source"] == "barcode"
+    assert composed_value["results"]["count"] == 3
+    assert composed_value["results"]["items"][0]["text"] == "station-A"
+
+
 def test_repository_barcode_draw_results_node_renders_position_overlay(tmp_path: Path) -> None:
     """验证 barcode draw 节点会消费 position 信息并输出新的图片引用。"""
 

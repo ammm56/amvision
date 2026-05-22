@@ -115,9 +115,13 @@ CORE_NODE_SPEC = CoreNodeSpec(
                 "keys": {
                     "type": "array",
                     "items": {"type": "string"},
+                    "title": "Keys",
+                    "description": "动态 values 输入对应的字段名数组，顺序必须与 Values 端口上各条输入连线的实际顺序一致；例如 [\"yolox_detections\", \"opencv_measurements\", \"preview_image_base64\"]。",
                 },
                 "fields": {
                     "type": "object",
+                    "title": "Fields",
+                    "description": "静态固定字段对象，会直接写入结果；例如 {\"source\": \"workflow-preview\", \"ok\": true}。",
                 },
             },
         },

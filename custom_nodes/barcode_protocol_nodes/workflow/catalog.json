@@ -5133,6 +5133,79 @@
     },
     {
       "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.barcode.results-to-value",
+      "display_name": "Barcode Results To Value",
+      "category": "barcode.transform",
+      "description": "把 barcode-results.v1 包装成 value.v1，供 object-create、response-envelope 和 value-preview 继续组合或预览。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "input_ports": [
+        {
+          "name": "results",
+          "display_name": "Results",
+          "payload_type_id": "barcode-results.v1",
+          "description": "待包装的 barcode 识别结果。",
+          "required": true,
+          "multiple": false,
+          "metadata": {
+            "i18n": {
+              "display_name": {
+                "zh-CN": "识别结果",
+                "en-US": "Results"
+              },
+              "description": {
+                "zh-CN": "待包装的 barcode 识别结果。",
+                "en-US": "Barcode results to wrap as value.v1."
+              }
+            }
+          }
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "value",
+          "display_name": "Value",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {
+            "i18n": {
+              "display_name": {
+                "zh-CN": "值",
+                "en-US": "Value"
+              }
+            }
+          }
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {}
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "barcode.transform",
+        "value.bridge"
+      ],
+      "runtime_requirements": {},
+      "node_pack_id": "barcode.protocol-nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {
+        "i18n": {
+          "display_name": {
+            "zh-CN": "条码结果转值",
+            "en-US": "Barcode Results To Value"
+          },
+          "description": {
+            "zh-CN": "把 barcode-results.v1 包装成 value.v1，便于继续组合 JSON 响应或统一做 JSON 预览。",
+            "en-US": "Wrap barcode-results.v1 as value.v1 so the result can be composed into JSON responses or previewed as JSON."
+          }
+        }
+      }
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
       "node_type_id": "custom.barcode.rmqr-code-decode",
       "display_name": "rMQR Decode",
       "category": "barcode.decode",

@@ -248,6 +248,46 @@ def test_preview_run_response_envelope_wraps_data_and_meta(tmp_path: Path) -> No
     }
 
 
+def test_preview_run_response_envelope_can_compose_detections_and_preview_image_base64(tmp_path: Path) -> None:
+    """验证 payload-to-value 可以组装统一响应，且图片 base64 会按持久化规则脱敏。"""
+
+    service, _, _ = _build_runtime_service(tmp_path)
+    service.dataset_storage.write_bytes("inputs/source.png", build_valid_test_png_bytes())
+
+    preview_run = service.create_preview_run(
+        WorkflowPreviewRunCreateRequest(
+            project_id="project-1",
+            application=_build_payload_composition_application(),
+            template=_build_payload_composition_template(),
+            input_bindings={
+                "request_image": {
+                    "transport_kind": "storage",
+                    "object_key": "inputs/source.png",
+                    "media_type": "image/png",
+                },
+                "yolox_detections": {
+                    "items": [
+                        {"class_name": "part-a", "score": 0.95, "bbox_xyxy": [4, 6, 32, 40]},
+                        {"class_name": "part-b", "score": 0.78, "bbox_xyxy": [36, 12, 60, 48]},
+                    ],
+                    "count": 2,
+                },
+            },
+        ),
+        created_by="workflow-user",
+    )
+
+    assert preview_run.state == "succeeded"
+    response_body = preview_run.outputs["http_response"]["body"]
+    assert response_body["code"] == 0
+    assert response_body["message"] == "ok"
+    assert response_body["data"]["source"] == "workflow-preview"
+    assert response_body["data"]["yolox_detections"]["count"] == 2
+    assert response_body["data"]["yolox_detections"]["items"][0]["class_name"] == "part-a"
+    assert response_body["data"]["input_image_base64_redacted"] is True
+    assert response_body["data"]["input_image_base64_char_length"] > 0
+
+
 def _build_table_preview_template() -> WorkflowGraphTemplate:
     """构造 table-preview 的最小 workflow 模板。"""
 
@@ -597,6 +637,145 @@ def _build_image_refs_item_get_application() -> FlowApplication:
                 template_port_id="crops",
                 binding_kind="api-request",
                 config={"route": "/execute/image-refs-item-get", "method": "POST"},
+            ),
+            FlowApplicationBinding(
+                binding_id="http_response",
+                direction="output",
+                template_port_id="http_response",
+                binding_kind="http-response",
+                config={"status_code": 200},
+            ),
+        ),
+    )
+
+
+def _build_payload_composition_template() -> WorkflowGraphTemplate:
+    """构造 detections 与图片 base64 组合响应的模板。"""
+
+    return WorkflowGraphTemplate(
+        template_id="payload-composition-template",
+        template_version="1.0.0",
+        display_name="Payload Composition Template",
+        nodes=(
+            WorkflowGraphNode(
+                node_id="preview_image",
+                node_type_id="core.io.image-preview",
+                parameters={"title": "Input Preview", "response_transport_mode": "inline-base64"},
+            ),
+            WorkflowGraphNode(
+                node_id="extract_image_base64",
+                node_type_id="core.logic.field-extract",
+                parameters={"path": "image.image_base64"},
+            ),
+            WorkflowGraphNode(
+                node_id="detections_as_value",
+                node_type_id="core.logic.payload-to-value",
+            ),
+            WorkflowGraphNode(
+                node_id="response_data",
+                node_type_id="core.logic.object-create",
+                parameters={
+                    "fields": {"source": "workflow-preview"},
+                    "keys": ["yolox_detections", "input_image_base64"],
+                },
+            ),
+            WorkflowGraphNode(
+                node_id="envelope",
+                node_type_id="core.output.response-envelope",
+            ),
+            WorkflowGraphNode(node_id="response", node_type_id="core.output.http-response"),
+        ),
+        edges=(
+            WorkflowGraphEdge(
+                edge_id="edge-image-preview",
+                source_node_id="preview_image",
+                source_port="body",
+                target_node_id="extract_image_base64",
+                target_port="body",
+            ),
+            WorkflowGraphEdge(
+                edge_id="edge-detections-object",
+                source_node_id="detections_as_value",
+                source_port="value",
+                target_node_id="response_data",
+                target_port="values",
+            ),
+            WorkflowGraphEdge(
+                edge_id="edge-image-base64-object",
+                source_node_id="extract_image_base64",
+                source_port="value",
+                target_node_id="response_data",
+                target_port="values",
+            ),
+            WorkflowGraphEdge(
+                edge_id="edge-response-data-envelope",
+                source_node_id="response_data",
+                source_port="value",
+                target_node_id="envelope",
+                target_port="data",
+            ),
+            WorkflowGraphEdge(
+                edge_id="edge-envelope-response",
+                source_node_id="envelope",
+                source_port="body",
+                target_node_id="response",
+                target_port="body",
+            ),
+        ),
+        template_inputs=(
+            WorkflowGraphInput(
+                input_id="request_image",
+                display_name="Request Image",
+                payload_type_id="image-ref.v1",
+                target_node_id="preview_image",
+                target_port="image",
+            ),
+            WorkflowGraphInput(
+                input_id="yolox_detections",
+                display_name="YOLOX Detections",
+                payload_type_id="detections.v1",
+                target_node_id="detections_as_value",
+                target_port="detections",
+            ),
+        ),
+        template_outputs=(
+            WorkflowGraphOutput(
+                output_id="http_response",
+                display_name="HTTP Response",
+                payload_type_id="http-response.v1",
+                source_node_id="response",
+                source_port="response",
+            ),
+        ),
+    )
+
+
+def _build_payload_composition_application() -> FlowApplication:
+    """构造 detections 与图片 base64 组合响应的流程应用。"""
+
+    return FlowApplication(
+        application_id="payload-composition-app",
+        display_name="Payload Composition App",
+        template_ref=FlowTemplateReference(
+            template_id="payload-composition-template",
+            template_version="1.0.0",
+            source_kind="json-file",
+            source_uri="placeholder",
+        ),
+        bindings=(
+            FlowApplicationBinding(
+                binding_id="request_image",
+                direction="input",
+                template_port_id="request_image",
+                binding_kind="api-request",
+                config={"route": "/execute/payload-composition", "method": "POST"},
+            ),
+            FlowApplicationBinding(
+                binding_id="yolox_detections",
+                direction="input",
+                template_port_id="yolox_detections",
+                binding_kind="api-request",
+                config={"route": "/execute/payload-composition", "method": "POST"},
             ),
             FlowApplicationBinding(
                 binding_id="http_response",

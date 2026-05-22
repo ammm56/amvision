@@ -54,7 +54,11 @@ CORE_NODE_SPEC = CoreNodeSpec(
         parameter_schema={
             "type": "object",
             "properties": {
-                "path": {"type": "string"},
+                "path": {
+                    "type": "string",
+                    "title": "Path",
+                    "description": "点分字段路径；例如 image.image_base64 或 result.items.0.class_name。留空字符串时直接透传整个 body，适合先把 response-body 转成 value.v1 再交给 object-create 或 value-preview。",
+                },
             },
             "required": ["path"],
         },
