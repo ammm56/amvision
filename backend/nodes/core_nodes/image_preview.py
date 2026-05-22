@@ -18,7 +18,6 @@ from backend.service.application.workflows.graph_executor import WorkflowNodeExe
 from backend.service.application.workflows.preview_display_outputs import (
     build_preview_run_artifact_object_key,
     read_preview_run_id,
-    register_preview_display_output,
 )
 
 
@@ -48,13 +47,6 @@ def _image_preview_handler(request: WorkflowNodeExecutionRequest) -> dict[str, o
     title = request.parameters.get("title")
     if isinstance(title, str) and title.strip():
         preview_body["title"] = title.strip()
-    register_preview_display_output(
-        request.execution_metadata,
-        node_id=request.node_id,
-        node_type_id=request.node_definition.node_type_id,
-        output_name="body",
-        payload=preview_body,
-    )
     return {"body": preview_body}
 
 

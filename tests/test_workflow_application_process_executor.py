@@ -16,6 +16,7 @@ import backend.service.application.workflows.runtime_worker as runtime_worker_mo
 from backend.nodes.local_node_pack_loader import LocalNodePackLoader
 from backend.nodes.node_catalog_registry import NodeCatalogRegistry
 from backend.service.api.app import create_app
+from backend.service.application.local_buffers import LocalBufferBrokerSettings
 from backend.service.application.workflows.process_executor import (
     WorkflowApplicationExecutionRequest,
     WorkflowApplicationProcessExecutor,
@@ -256,6 +257,7 @@ def test_workflow_preview_run_api_executes_saved_application_in_child_process(
             dataset_storage=BackendServiceDatasetStorageConfig(root_dir=str(dataset_storage.root_dir)),
             queue=BackendServiceQueueConfig(root_dir=str(queue_backend.root_dir)),
             custom_nodes=BackendServiceCustomNodesConfig(root_dir=str(custom_nodes_root_dir)),
+            local_buffer_broker=LocalBufferBrokerSettings(enabled=False),
             task_manager=BackendServiceTaskManagerConfig(enabled=False),
         ),
         session_factory=session_factory,
@@ -290,6 +292,7 @@ def test_workflow_preview_run_api_executes_saved_application_in_child_process(
     body = preview_payload["outputs"]["http_response"]["body"]
     assert preview_payload["state"] == "succeeded"
     assert preview_payload["source_kind"] == "saved-application"
+    assert "preview_display_outputs" not in preview_payload
     assert body["message"] == "hello execute api"
     assert body["marker"] == "api-execute"
     assert body["pid"] != os.getpid()
@@ -297,6 +300,7 @@ def test_workflow_preview_run_api_executes_saved_application_in_child_process(
     assert isinstance(body["workflow_run_id"], str)
     assert get_response.json()["preview_run_id"] == preview_payload["preview_run_id"]
     assert get_response.json()["state"] == "succeeded"
+    assert "preview_display_outputs" not in get_response.json()
 
 
 def test_workflow_preview_run_api_marks_timed_out_when_child_process_exceeds_timeout(

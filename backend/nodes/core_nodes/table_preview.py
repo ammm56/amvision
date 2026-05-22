@@ -13,7 +13,6 @@ from backend.nodes.core_nodes._collection_node_support import require_list_value
 from backend.nodes.core_nodes._logic_node_support import try_extract_value_by_path
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
-from backend.service.application.workflows.preview_display_outputs import register_preview_display_output
 
 
 def _table_preview_handler(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
@@ -46,13 +45,6 @@ def _table_preview_handler(request: WorkflowNodeExecutionRequest) -> dict[str, o
         empty_text = _read_optional_non_empty_string(request.parameters.get("empty_text"), field_name="empty_text")
         if empty_text is not None:
             body["empty_text"] = empty_text
-    register_preview_display_output(
-        request.execution_metadata,
-        node_id=request.node_id,
-        node_type_id=request.node_definition.node_type_id,
-        output_name="body",
-        payload=body,
-    )
     return {"body": body}
 
 

@@ -243,7 +243,17 @@ GET /api/v1/workflows/runs/{workflow_run_id}</pre>
             <strong>{{ lastRun.finished_at ? formatSystemDateTime(lastRun.finished_at) : '-' }}</strong>
           </div>
         </div>
-        <pre v-if="lastRun" class="json-view">{{ lastRunReceiptText }}</pre>
+        <WorkflowRuntimeBodyViewer
+          v-if="lastRunResponseBody"
+          :project-id="selectedProjectId"
+          :status-code="lastRunResponseStatusCode"
+          :body="lastRunResponseBody"
+        />
+        <p v-else-if="lastRun" class="result-note">当前结果没有可渲染的 http_response.body，下面保留完整回执 JSON。</p>
+        <details v-if="lastRun" class="result-details">
+          <summary>查看完整回执 JSON</summary>
+          <pre class="json-view">{{ lastRunReceiptText }}</pre>
+        </details>
       </section>
 
       <section class="resource-section">
@@ -316,6 +326,7 @@ import StatusBadge from '@/shared/ui/data-display/StatusBadge.vue'
 import EmptyState from '@/shared/ui/feedback/EmptyState.vue'
 import InlineError from '@/shared/ui/feedback/InlineError.vue'
 import { listWorkflowTriggerSources, type WorkflowTriggerSource } from '@/modules/integrations/services/trigger-source.service'
+import WorkflowRuntimeBodyViewer from '../components/WorkflowRuntimeBodyViewer.vue'
 import { getWorkflowApp, type WorkflowAppDocument } from '../services/workflow-app.service'
 import {
   createWorkflowAppRuntime,
@@ -380,6 +391,29 @@ const lastRunReceiptText = computed(() => {
     null,
     2,
   )
+})
+const lastRunResponsePayload = computed<Record<string, unknown> | null>(() => {
+  const outputs = lastRun.value?.outputs
+  if (!isRecord(outputs)) return null
+  const responsePayload = outputs.http_response
+  return isRecord(responsePayload) ? responsePayload : null
+})
+const lastRunResponseBody = computed<WorkflowJsonObject | null>(() => {
+  const responsePayload = lastRunResponsePayload.value
+  if (!responsePayload) return null
+  const body = responsePayload.body
+  return isRecord(body) ? body : null
+})
+const lastRunResponseStatusCode = computed<number | null>(() => {
+  const responsePayload = lastRunResponsePayload.value
+  if (!responsePayload) return null
+  const rawStatusCode = responsePayload.status_code
+  if (typeof rawStatusCode === 'number' && Number.isFinite(rawStatusCode)) return rawStatusCode
+  if (typeof rawStatusCode === 'string' && rawStatusCode.trim()) {
+    const parsedValue = Number(rawStatusCode)
+    return Number.isFinite(parsedValue) ? parsedValue : null
+  }
+  return null
 })
 
 function getBindingPayloadTypeId(binding: FlowApplicationBinding): string {
@@ -610,3 +644,22 @@ async function refreshLastRun(): Promise<void> {
 
 onMounted(loadPage)
 </script>
+
+<style scoped>
+.result-details {
+  margin-top: 16px;
+  border: 1px solid var(--ui-border-subtle, rgba(148, 163, 184, 0.24));
+  border-radius: 14px;
+  padding: 12px 14px;
+  background: var(--ui-surface-raised, rgba(15, 23, 42, 0.02));
+}
+
+.result-details summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.result-details .json-view {
+  margin-top: 12px;
+}
+</style>

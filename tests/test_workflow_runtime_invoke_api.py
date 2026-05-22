@@ -34,6 +34,7 @@ def test_workflow_app_runtime_invoke_api_accepts_image_base64_for_barcode_result
     client, session_factory, dataset_storage = _create_runtime_api_client(
         tmp_path,
         database_name="workflow-runtime-invoke-barcode.db",
+        enable_local_buffer_broker=False,
     )
     headers = build_test_headers(scopes="workflows:read,workflows:write")
     try:
@@ -63,8 +64,9 @@ def test_workflow_app_runtime_invoke_api_accepts_image_base64_for_barcode_result
                     },
                 },
             )
-            health_response = client.get(
-                f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/health",
+            workflow_run_id = invoke_response.json()["workflow_run_id"]
+            get_run_response = client.get(
+                f"/api/v1/workflows/runs/{workflow_run_id}",
                 headers=headers,
             )
             stop_response = client.post(
@@ -75,13 +77,15 @@ def test_workflow_app_runtime_invoke_api_accepts_image_base64_for_barcode_result
         session_factory.engine.dispose()
 
     assert invoke_response.status_code == 200
-    assert health_response.status_code == 200
+    assert get_run_response.status_code == 200
     assert stop_response.status_code == 200
 
     run_payload = invoke_response.json()
+    persisted_run_payload = get_run_response.json()
     response_payload = run_payload["outputs"]["http_response"]
     response_body = response_payload["body"]
     response_data = response_body["data"]
+    persisted_response_data = persisted_run_payload["outputs"]["http_response"]["body"]["data"]
 
     assert run_payload["state"] == "succeeded"
     assert response_payload["status_code"] == 200
@@ -90,10 +94,10 @@ def test_workflow_app_runtime_invoke_api_accepts_image_base64_for_barcode_result
     assert response_data["count"] == 2
     assert set(response_data["matched_formats"]) == {"QR Code", "Code 128"}
     assert response_data["annotated_image"]["image"]["transport_kind"] == "inline-base64"
-
-    health_summary = health_response.json()["health_summary"]
-    assert health_summary["local_buffer_broker"]["connected"] is True
-    assert health_summary["parent_local_buffer_broker_channel"]["configured"] is True
+    assert isinstance(response_data["annotated_image"]["image"]["image_base64"], str)
+    assert response_data["annotated_image"]["image"]["image_base64"]
+    assert persisted_response_data["annotated_image"]["image"]["image_base64_redacted"] is True
+    assert "image_base64" not in persisted_response_data["annotated_image"]["image"]
 
 
 def test_workflow_app_runtime_invoke_api_accepts_image_base64_for_opencv_process_save_image(
@@ -104,6 +108,7 @@ def test_workflow_app_runtime_invoke_api_accepts_image_base64_for_opencv_process
     client, session_factory, dataset_storage = _create_runtime_api_client(
         tmp_path,
         database_name="workflow-runtime-invoke-opencv.db",
+        enable_local_buffer_broker=False,
     )
     headers = build_test_headers(scopes="workflows:read,workflows:write")
     try:
@@ -149,7 +154,7 @@ def test_workflow_app_runtime_invoke_api_accepts_image_base64_for_opencv_process
 
     assert run_payload["state"] == "succeeded"
     assert response_payload["status_code"] == 200
-    assert response_body["type"] == "image-preview"
+    assert response_body["type"] == "image"
     assert response_body["title"] == "Saved Edge Image"
     assert image_payload["transport_kind"] == "storage-ref"
     assert dataset_storage.resolve(image_payload["object_key"]).is_file()
@@ -163,6 +168,7 @@ def test_workflow_app_runtime_invoke_api_accepts_image_base64_for_dual_input_ope
     client, session_factory, dataset_storage = _create_runtime_api_client(
         tmp_path,
         database_name="workflow-runtime-invoke-opencv-dual-input.db",
+        enable_local_buffer_broker=False,
     )
     headers = build_test_headers(scopes="workflows:read,workflows:write")
     try:
@@ -208,7 +214,7 @@ def test_workflow_app_runtime_invoke_api_accepts_image_base64_for_dual_input_ope
 
     assert run_payload["state"] == "succeeded"
     assert response_payload["status_code"] == 200
-    assert response_body["type"] == "image-preview"
+    assert response_body["type"] == "image"
     assert response_body["title"] == "Saved Edge Image"
     assert image_payload["transport_kind"] == "storage-ref"
     assert dataset_storage.resolve(image_payload["object_key"]).is_file()

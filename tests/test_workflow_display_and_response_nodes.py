@@ -54,14 +54,8 @@ def test_preview_run_table_preview_formats_rows_for_http_response(tmp_path: Path
         {"code": "XYZ999", "score": 0.76, "line": "-"},
     ]
     assert response_body["row_count"] == 2
-    assert preview_run.preview_display_outputs == (
-        {
-            "node_id": "table_preview",
-            "node_type_id": "core.io.table-preview",
-            "output_name": "body",
-            "payload": response_body,
-        },
-    )
+    preview_record = next(record for record in preview_run.node_records if record["node_id"] == "table_preview")
+    assert preview_record["outputs"]["body"] == response_body
 
 
 def test_preview_run_value_preview_formats_any_value_for_http_response(tmp_path: Path) -> None:
@@ -103,14 +97,8 @@ def test_preview_run_value_preview_formats_any_value_for_http_response(tmp_path:
             ],
         },
     }
-    assert preview_run.preview_display_outputs == (
-        {
-            "node_id": "value_preview",
-            "node_type_id": "core.io.value-preview",
-            "output_name": "body",
-            "payload": response_body,
-        },
-    )
+    preview_record = next(record for record in preview_run.node_records if record["node_id"] == "value_preview")
+    assert preview_record["outputs"]["body"] == response_body
 
 
 def test_preview_run_value_preview_path_extracts_single_subfield(tmp_path: Path) -> None:
@@ -220,6 +208,43 @@ def test_preview_run_image_refs_item_get_selects_single_image_ref(tmp_path: Path
     )
 
 
+def test_preview_run_image_body_returns_raw_inline_base64_but_persists_redacted(tmp_path: Path) -> None:
+    """验证 image-body 在同步响应返回原始 base64，持久化结果继续脱敏。"""
+
+    service, _, _ = _build_runtime_service(tmp_path)
+    service.dataset_storage.write_bytes("inputs/source.png", build_valid_test_png_bytes())
+
+    preview_run = service.create_preview_run(
+        WorkflowPreviewRunCreateRequest(
+            project_id="project-1",
+            application=_build_image_body_application(),
+            template=_build_image_body_template(),
+            input_bindings={
+                "request_image": {
+                    "transport_kind": "storage",
+                    "object_key": "inputs/source.png",
+                    "media_type": "image/png",
+                }
+            },
+        ),
+        created_by="workflow-user",
+    )
+
+    assert preview_run.state == "succeeded"
+    response_body = preview_run.outputs["http_response"]["body"]
+    assert response_body["type"] == "image"
+    assert response_body["title"] == "Formal Image"
+    assert response_body["image"]["transport_kind"] == "inline-base64"
+    assert isinstance(response_body["image"]["image_base64"], str)
+    assert response_body["image"]["image_base64"]
+
+    persisted_preview_run = service.get_preview_run(preview_run.preview_run_id)
+    persisted_response_body = persisted_preview_run.outputs["http_response"]["body"]
+    assert persisted_response_body["image"]["image_base64_redacted"] is True
+    assert persisted_response_body["image"]["image_base64_char_length"] > 0
+    assert "image_base64" not in persisted_response_body["image"]
+
+
 def test_preview_run_response_envelope_wraps_data_and_meta(tmp_path: Path) -> None:
     """验证 response-envelope 可以稳定组装标准响应包体。"""
 
@@ -249,7 +274,7 @@ def test_preview_run_response_envelope_wraps_data_and_meta(tmp_path: Path) -> No
 
 
 def test_preview_run_response_envelope_can_compose_detections_and_preview_image_base64(tmp_path: Path) -> None:
-    """验证 payload-to-value 可以组装统一响应，且图片 base64 会按持久化规则脱敏。"""
+    """验证 payload-to-value 可以组装统一响应，且同步返回 raw 图片 base64。"""
 
     service, _, _ = _build_runtime_service(tmp_path)
     service.dataset_storage.write_bytes("inputs/source.png", build_valid_test_png_bytes())
@@ -284,8 +309,12 @@ def test_preview_run_response_envelope_can_compose_detections_and_preview_image_
     assert response_body["data"]["source"] == "workflow-preview"
     assert response_body["data"]["yolox_detections"]["count"] == 2
     assert response_body["data"]["yolox_detections"]["items"][0]["class_name"] == "part-a"
-    assert response_body["data"]["input_image_base64_redacted"] is True
-    assert response_body["data"]["input_image_base64_char_length"] > 0
+    assert isinstance(response_body["data"]["input_image_base64"], str)
+    assert response_body["data"]["input_image_base64"]
+    persisted_preview_run = service.get_preview_run(preview_run.preview_run_id)
+    persisted_response_body = persisted_preview_run.outputs["http_response"]["body"]
+    assert persisted_response_body["data"]["input_image_base64_redacted"] is True
+    assert persisted_response_body["data"]["input_image_base64_char_length"] > 0
 
 
 def _build_table_preview_template() -> WorkflowGraphTemplate:
@@ -776,6 +805,82 @@ def _build_payload_composition_application() -> FlowApplication:
                 template_port_id="yolox_detections",
                 binding_kind="api-request",
                 config={"route": "/execute/payload-composition", "method": "POST"},
+            ),
+            FlowApplicationBinding(
+                binding_id="http_response",
+                direction="output",
+                template_port_id="http_response",
+                binding_kind="http-response",
+                config={"status_code": 200},
+            ),
+        ),
+    )
+
+
+def _build_image_body_template() -> WorkflowGraphTemplate:
+    """构造 image-body 的最小 workflow 模板。"""
+
+    return WorkflowGraphTemplate(
+        template_id="image-body-template",
+        template_version="1.0.0",
+        display_name="Image Body Template",
+        nodes=(
+            WorkflowGraphNode(
+                node_id="image_body",
+                node_type_id="core.output.image-body",
+                parameters={"title": "Formal Image", "response_transport_mode": "inline-base64"},
+            ),
+            WorkflowGraphNode(node_id="response", node_type_id="core.output.http-response"),
+        ),
+        edges=(
+            WorkflowGraphEdge(
+                edge_id="edge-image-body-response",
+                source_node_id="image_body",
+                source_port="body",
+                target_node_id="response",
+                target_port="body",
+            ),
+        ),
+        template_inputs=(
+            WorkflowGraphInput(
+                input_id="request_image",
+                display_name="Request Image",
+                payload_type_id="image-ref.v1",
+                target_node_id="image_body",
+                target_port="image",
+            ),
+        ),
+        template_outputs=(
+            WorkflowGraphOutput(
+                output_id="http_response",
+                display_name="HTTP Response",
+                payload_type_id="http-response.v1",
+                source_node_id="response",
+                source_port="response",
+            ),
+        ),
+    )
+
+
+def _build_image_body_application() -> FlowApplication:
+    """构造 image-body 的最小流程应用。"""
+
+    return FlowApplication(
+        application_id="image-body-app",
+        display_name="Image Body App",
+        template_ref=FlowTemplateReference(
+            template_id="image-body-template",
+            template_version="1.0.0",
+            source_kind="json-file",
+            source_uri="placeholder",
+        ),
+        bindings=(
+            FlowApplicationBinding(
+                binding_id="request_image",
+                direction="input",
+                template_port_id="request_image",
+                binding_kind="api-request",
+                config={"route": "/execute/image-body", "method": "POST"},
             ),
             FlowApplicationBinding(
                 binding_id="http_response",

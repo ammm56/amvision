@@ -108,6 +108,33 @@ def serialize_node_execution_record(item: object) -> dict[str, object]:
     }
 
 
+def serialize_node_execution_record_for_response(item: object) -> dict[str, object]:
+    """把节点执行记录序列化为同步响应可直接返回的 JSON 结构。
+
+    参数：
+    - item：节点执行记录对象或字典。
+
+    返回：
+    - dict[str, object]：保留原始 outputs、仅对 inputs 做轻量脱敏的节点执行记录。
+    """
+
+    if isinstance(item, dict):
+        return {
+            "node_id": _read_text(item.get("node_id")),
+            "node_type_id": _read_text(item.get("node_type_id")),
+            "runtime_kind": _read_text(item.get("runtime_kind")),
+            "inputs": sanitize_runtime_mapping(item.get("inputs")),
+            "outputs": _copy_runtime_mapping(item.get("outputs")),
+        }
+    return {
+        "node_id": _read_text(getattr(item, "node_id", "")),
+        "node_type_id": _read_text(getattr(item, "node_type_id", "")),
+        "runtime_kind": _read_text(getattr(item, "runtime_kind", "")),
+        "inputs": sanitize_runtime_mapping(getattr(item, "inputs", {}) or {}),
+        "outputs": _copy_runtime_mapping(getattr(item, "outputs", {}) or {}),
+    }
+
+
 def _sanitize_mapping(value: dict[str, object], *, depth: int) -> dict[str, object]:
     """递归脱敏字典结构中的敏感字段。
 
@@ -135,6 +162,24 @@ def _sanitize_mapping(value: dict[str, object], *, depth: int) -> dict[str, obje
             continue
         sanitized[key] = _sanitize_runtime_value(item, depth=depth)
     return sanitized
+
+
+def _copy_runtime_mapping(value: object) -> dict[str, object]:
+    """把运行时字典浅拷贝为稳定 JSON mapping。
+
+    参数：
+    - value：待复制的运行时对象。
+
+    返回：
+    - dict[str, object]：键名规范化后的浅拷贝；非字典输入返回空字典。
+    """
+
+    if not isinstance(value, dict):
+        return {}
+    return {
+        raw_key if isinstance(raw_key, str) else str(raw_key): item
+        for raw_key, item in value.items()
+    }
 
 
 def _sanitize_sequence(value: list[object], *, depth: int) -> object:

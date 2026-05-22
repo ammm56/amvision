@@ -52,8 +52,8 @@ from backend.service.settings import (
 from tests.api_test_support import build_valid_test_png_bytes, create_test_runtime
 
 
-def test_preview_run_sanitizes_inline_base64_outputs_and_node_records(tmp_path: Path) -> None:
-    """验证 preview run 会对 inline-base64 输出和 node_records 做脱敏。"""
+def test_preview_run_sync_response_keeps_inline_base64_but_persisted_copy_is_sanitized(tmp_path: Path) -> None:
+    """验证 preview run 同步响应返回 raw base64，而持久化详情仍会脱敏。"""
 
     service, _, _ = _build_runtime_service(tmp_path)
     image_base64 = base64.b64encode(build_valid_test_png_bytes()).decode("ascii")
@@ -71,18 +71,19 @@ def test_preview_run_sanitizes_inline_base64_outputs_and_node_records(tmp_path: 
     assert preview_run.state == "succeeded"
     preview_image = preview_run.outputs["http_response"]["body"]["image"]
     assert preview_image["transport_kind"] == "inline-base64"
-    assert preview_image["image_base64_redacted"] is True
-    assert "image_base64" not in preview_image
-    assert preview_run.template_outputs["http_response"]["body"]["image"]["image_base64_redacted"] is True
+    assert preview_image["image_base64"] == image_base64
+    assert preview_run.template_outputs["http_response"]["body"]["image"]["image_base64"] == image_base64
     assert preview_run.node_records[0]["inputs"]["payload"]["image_base64_redacted"] is True
-    assert preview_run.node_records[0]["outputs"]["image"]["image_handle_redacted"] is True
+    assert preview_run.node_records[0]["outputs"]["image"]["image_handle"]
     assert preview_run.node_records[1]["inputs"]["image"]["image_handle_redacted"] is True
-    assert preview_run.node_records[1]["outputs"]["body"]["image"]["image_base64_redacted"] is True
-    display_output = preview_run.preview_display_outputs[0]
-    assert display_output["node_id"] == "preview"
-    assert display_output["payload"]["image"]["image_base64"]
+    assert preview_run.node_records[1]["outputs"]["body"]["image"]["image_base64"] == image_base64
     persisted_preview_run = service.get_preview_run(preview_run.preview_run_id)
-    assert persisted_preview_run.preview_display_outputs == ()
+    persisted_preview_image = persisted_preview_run.outputs["http_response"]["body"]["image"]
+    assert persisted_preview_image["image_base64_redacted"] is True
+    assert "image_base64" not in persisted_preview_image
+    assert persisted_preview_run.template_outputs["http_response"]["body"]["image"]["image_base64_redacted"] is True
+    assert persisted_preview_run.node_records[0]["outputs"]["image"]["image_handle_redacted"] is True
+    assert persisted_preview_run.node_records[1]["outputs"]["body"]["image"]["image_base64_redacted"] is True
 
 
 def test_preview_run_storage_ref_image_preview_uses_preview_artifact(tmp_path: Path) -> None:
@@ -102,8 +103,7 @@ def test_preview_run_storage_ref_image_preview_uses_preview_artifact(tmp_path: P
     )
 
     assert preview_run.state == "succeeded"
-    display_output = preview_run.preview_display_outputs[0]
-    preview_image = display_output["payload"]["image"]
+    preview_image = preview_run.outputs["http_response"]["body"]["image"]
     object_key = preview_image["object_key"]
     assert preview_image["transport_kind"] == "storage-ref"
     assert object_key.startswith(
@@ -111,7 +111,7 @@ def test_preview_run_storage_ref_image_preview_uses_preview_artifact(tmp_path: P
     )
     assert service.dataset_storage.resolve(object_key).exists()
     persisted_preview_run = service.get_preview_run(preview_run.preview_run_id)
-    assert persisted_preview_run.preview_display_outputs == ()
+    assert persisted_preview_run.outputs["http_response"]["body"]["image"]["object_key"] == object_key
 
 
 def test_invoke_workflow_run_sanitizes_input_payload_outputs_and_node_records(tmp_path: Path) -> None:

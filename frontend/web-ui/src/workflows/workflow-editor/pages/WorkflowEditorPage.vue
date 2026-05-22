@@ -584,14 +584,21 @@
                 <span>底层错误</span>
                 <strong>{{ lastPreviewFailureDetailMessage }}</strong>
               </div>
-              <pre v-if="lastPreviewFailureDetailsJson" class="json-view">{{ lastPreviewFailureDetailsJson }}</pre>
+              <pre
+                v-if="lastPreviewFailureDetailsJson"
+                class="json-view"
+                @dblclick.stop="openPreviewJsonViewer('失败详情', lastPreviewFailureDetails, lastPreviewFailureDetailMessage || lastPreviewFailureMessage)"
+              >{{ lastPreviewFailureDetailsJson }}</pre>
             </div>
             <div v-if="lastPreviewHttpResponse" class="workflow-graph-preview-result">
               <div class="workflow-graph-inspector-row">
                 <span>HTTP status</span>
                 <strong>{{ lastPreviewHttpStatus ?? 'unknown' }}</strong>
               </div>
-              <pre class="json-view">{{ lastPreviewHttpResponseBodyJson || lastPreviewHttpResponseJson }}</pre>
+              <pre
+                class="json-view"
+                @dblclick.stop="openPreviewJsonViewer('HTTP Response', lastPreviewHttpResponse?.body ?? lastPreviewHttpResponse, `HTTP ${lastPreviewHttpStatus ?? 'unknown'}`)"
+              >{{ lastPreviewHttpResponseBodyJson || lastPreviewHttpResponseJson }}</pre>
             </div>
             <div v-else-if="lastPreviewRun.state !== 'failed'" class="workflow-graph-preview-card__empty">{{ hasPreviewNodeDisplays ? '本次 Preview 没有 http_response 输出，结果已在节点预览中显示。' : '本次 Preview 没有 http_response 输出。' }}</div>
           </section>
@@ -722,6 +729,7 @@
     </div>
     <ImageViewer :open="Boolean(activeImageViewer)" :image="activeImageViewer" @close="activeImageViewer = null" />
     <WorkflowPreviewTableViewer :open="Boolean(activePreviewTable)" :table="activePreviewTable" @close="activePreviewTable = null" />
+    <WorkflowPreviewJsonViewer :open="Boolean(activePreviewJson)" :viewer="activePreviewJson" @close="activePreviewJson = null" />
   </section>
 </template>
 
@@ -744,6 +752,7 @@ import StatusBadge from '@/shared/ui/data-display/StatusBadge.vue'
 import EmptyState from '@/shared/ui/feedback/EmptyState.vue'
 import InlineError from '@/shared/ui/feedback/InlineError.vue'
 import WorkflowNodePicker from '../components/WorkflowNodePicker.vue'
+import WorkflowPreviewJsonViewer from '../components/WorkflowPreviewJsonViewer.vue'
 import WorkflowPreviewTable from '../components/WorkflowPreviewTable.vue'
 import WorkflowPreviewTableViewer from '../components/WorkflowPreviewTableViewer.vue'
 import { createWorkflowLiteGraphAdapter, type WorkflowLiteGraphAdapter } from '../canvas/graph-engine/litegraph-adapter'
@@ -754,7 +763,7 @@ import { getWorkflowNodeCatalog } from '../services/node-catalog.service'
 import { getWorkflowApp, saveWorkflowApp, type WorkflowAppDocument } from '../services/workflow-app.service'
 import { createWorkflowPreviewRun, readProjectObjectContentBlob, readWorkflowPreviewRunArtifactBlob } from '../services/workflow-runtime.service'
 import { validateWorkflowTemplate } from '../services/workflow-template.service'
-import type { FlowApplication, FlowApplicationBinding, NodeDefinition, NodeParameterUiField, NodePortDefinition, WorkflowApplicationDocument, WorkflowGraphEdge, WorkflowGraphInput, WorkflowGraphNode, WorkflowGraphOutput, WorkflowGraphTemplate, WorkflowJsonObject, WorkflowNodeCatalogResponse, WorkflowPreviewDisplayOutput, WorkflowPreviewRun, WorkflowTemplateDocument } from '../types'
+import type { FlowApplication, FlowApplicationBinding, NodeDefinition, NodeParameterUiField, NodePortDefinition, WorkflowApplicationDocument, WorkflowGraphEdge, WorkflowGraphInput, WorkflowGraphNode, WorkflowGraphOutput, WorkflowGraphTemplate, WorkflowJsonObject, WorkflowNodeCatalogResponse, WorkflowPreviewRun, WorkflowTemplateDocument } from '../types'
 
 interface GraphNodeView {
   node: WorkflowGraphNode
@@ -928,6 +937,19 @@ interface PreviewTableViewerState {
   emptyText: string | null
 }
 
+interface PreviewJsonViewerState {
+  title: string
+  value: unknown
+  statusText: string | null
+}
+
+interface PreviewNodeOutput {
+  nodeId: string
+  nodeTypeId: string
+  outputName: string
+  payload: WorkflowJsonObject
+}
+
 type PreviewNodeDisplayKind = 'image' | 'table' | 'gallery' | 'value'
 
 interface PreviewNodeDisplay {
@@ -1016,6 +1038,7 @@ const lastPreviewRun = ref<WorkflowPreviewRun | null>(null)
 const previewNodeDisplays = ref<Record<string, PreviewNodeDisplay>>({})
 const activeImageViewer = ref<PreviewViewerImage | null>(null)
 const activePreviewTable = ref<PreviewTableViewerState | null>(null)
+const activePreviewJson = ref<PreviewJsonViewerState | null>(null)
 const canvasRef = ref<HTMLElement | null>(null)
 const liteGraphAdapter = shallowRef<WorkflowLiteGraphAdapter | null>(null)
 let resizeObserver: ResizeObserver | null = null
@@ -3449,24 +3472,20 @@ async function refreshPreviewNodeDisplays(previewRun: WorkflowPreviewRun): Promi
   previewNodeDisplays.value = nextDisplays
 }
 
-function readPreviewDisplayOutputs(previewRun: WorkflowPreviewRun): WorkflowPreviewDisplayOutput[] {
-  const outputIndex = new Map<string, WorkflowPreviewDisplayOutput>()
-  const registerDisplayOutput = (displayOutput: WorkflowPreviewDisplayOutput, options?: { overwrite?: boolean }): void => {
-    const nodeId = readDisplayText(displayOutput.node_id)
-    const nodeTypeId = readDisplayText(displayOutput.node_type_id)
-    const outputName = readDisplayText(displayOutput.output_name)
+function readPreviewDisplayOutputs(previewRun: WorkflowPreviewRun): PreviewNodeOutput[] {
+  const outputIndex = new Map<string, PreviewNodeOutput>()
+  const registerDisplayOutput = (displayOutput: PreviewNodeOutput): void => {
+    const nodeId = readDisplayText(displayOutput.nodeId)
+    const nodeTypeId = readDisplayText(displayOutput.nodeTypeId)
+    const outputName = readDisplayText(displayOutput.outputName)
     if (!nodeId || !nodeTypeId || !outputName || !isWorkflowJsonObject(displayOutput.payload)) return
     const key = `${nodeId}:${nodeTypeId}:${outputName}`
-    if (options?.overwrite === false && outputIndex.has(key)) return
     outputIndex.set(key, {
-      node_id: nodeId,
-      node_type_id: nodeTypeId,
-      output_name: outputName,
+      nodeId,
+      nodeTypeId,
+      outputName,
       payload: displayOutput.payload,
     })
-  }
-  for (const displayOutput of previewRun.preview_display_outputs ?? []) {
-    registerDisplayOutput(displayOutput)
   }
   for (const record of previewRun.node_records) {
     const nodeId = readDisplayText(record.node_id)
@@ -3478,17 +3497,17 @@ function readPreviewDisplayOutputs(previewRun: WorkflowPreviewRun): WorkflowPrev
       const previewType = readDisplayText(payload.type)
       if (!previewType.endsWith('-preview')) continue
       registerDisplayOutput({
-        node_id: nodeId,
-        node_type_id: nodeTypeId,
-        output_name: outputName,
+        nodeId,
+        nodeTypeId,
+        outputName,
         payload,
-      }, { overwrite: false })
+      })
     }
   }
   return [...outputIndex.values()]
 }
 
-async function buildPreviewNodeDisplay(previewRun: WorkflowPreviewRun, displayOutput: WorkflowPreviewDisplayOutput): Promise<PreviewNodeDisplay | null> {
+async function buildPreviewNodeDisplay(previewRun: WorkflowPreviewRun, displayOutput: PreviewNodeOutput): Promise<PreviewNodeDisplay | null> {
   const payload = displayOutput.payload
   const previewType = readDisplayText(payload.type)
   if (previewType === 'image-preview') return buildImagePreviewNodeDisplay(previewRun, displayOutput)
@@ -3500,16 +3519,16 @@ async function buildPreviewNodeDisplay(previewRun: WorkflowPreviewRun, displayOu
 
 async function buildImagePreviewNodeDisplay(
   previewRun: WorkflowPreviewRun,
-  displayOutput: WorkflowPreviewDisplayOutput,
+  displayOutput: PreviewNodeOutput,
 ): Promise<PreviewNodeDisplay | null> {
   const payload = displayOutput.payload
   if (!isWorkflowJsonObject(payload.image)) return null
-  const title = readDisplayText(payload.title) || displayOutput.node_id
-  const image = await buildPreviewViewerImage(previewRun, payload.image, title, displayOutput.node_id)
+  const title = readDisplayText(payload.title) || displayOutput.nodeId
+  const image = await buildPreviewViewerImage(previewRun, payload.image, title, displayOutput.nodeId)
   return {
-    nodeId: displayOutput.node_id,
-    nodeTypeId: displayOutput.node_type_id,
-    outputName: displayOutput.output_name,
+    nodeId: displayOutput.nodeId,
+    nodeTypeId: displayOutput.nodeTypeId,
+    outputName: displayOutput.outputName,
     title,
     kind: 'image',
     payload,
@@ -3524,7 +3543,7 @@ async function buildImagePreviewNodeDisplay(
   }
 }
 
-function buildTablePreviewNodeDisplay(displayOutput: WorkflowPreviewDisplayOutput): PreviewNodeDisplay {
+function buildTablePreviewNodeDisplay(displayOutput: PreviewNodeOutput): PreviewNodeDisplay {
   const payload = displayOutput.payload
   const columns = Array.isArray(payload.columns)
     ? payload.columns.flatMap((column) => {
@@ -3540,10 +3559,10 @@ function buildTablePreviewNodeDisplay(displayOutput: WorkflowPreviewDisplayOutpu
   const rowCount = readDisplayNumber(payload.row_count) ?? rows.length
   const emptyText = readDisplayText(payload.empty_text) || null
   return {
-    nodeId: displayOutput.node_id,
-    nodeTypeId: displayOutput.node_type_id,
-    outputName: displayOutput.output_name,
-    title: readDisplayText(payload.title) || displayOutput.node_id,
+    nodeId: displayOutput.nodeId,
+    nodeTypeId: displayOutput.nodeTypeId,
+    outputName: displayOutput.outputName,
+    title: readDisplayText(payload.title) || displayOutput.nodeId,
     kind: 'table',
     payload,
     statusText: rows.length > 0 ? `${columns.length} 列 / ${rowCount} 行` : emptyText || `${columns.length} 列 / 0 行`,
@@ -3559,7 +3578,7 @@ function buildTablePreviewNodeDisplay(displayOutput: WorkflowPreviewDisplayOutpu
 
 async function buildGalleryPreviewNodeDisplay(
   previewRun: WorkflowPreviewRun,
-  displayOutput: WorkflowPreviewDisplayOutput,
+  displayOutput: PreviewNodeOutput,
 ): Promise<PreviewNodeDisplay> {
   const payload = displayOutput.payload
   const rawItems = Array.isArray(payload.items) ? payload.items : []
@@ -3567,7 +3586,7 @@ async function buildGalleryPreviewNodeDisplay(
   for (const [itemIndex, rawItem] of rawItems.entries()) {
     if (!isWorkflowJsonObject(rawItem) || !isWorkflowJsonObject(rawItem.image)) continue
     const caption = readDisplayText(rawItem.caption) || `Image ${itemIndex + 1}`
-    const image = await buildPreviewViewerImage(previewRun, rawItem.image, caption, displayOutput.node_id)
+    const image = await buildPreviewViewerImage(previewRun, rawItem.image, caption, displayOutput.nodeId)
     galleryItems.push({
       ...image,
       title: caption,
@@ -3577,10 +3596,10 @@ async function buildGalleryPreviewNodeDisplay(
   }
   const totalCount = readDisplayNumber(payload.total_count) ?? galleryItems.length
   return {
-    nodeId: displayOutput.node_id,
-    nodeTypeId: displayOutput.node_type_id,
-    outputName: displayOutput.output_name,
-    title: readDisplayText(payload.title) || displayOutput.node_id,
+    nodeId: displayOutput.nodeId,
+    nodeTypeId: displayOutput.nodeTypeId,
+    outputName: displayOutput.outputName,
+    title: readDisplayText(payload.title) || displayOutput.nodeId,
     kind: 'gallery',
     payload,
     statusText: galleryItems.length > 0 ? `${galleryItems.length} 张 / 总计 ${totalCount} 张` : '图库没有可显示图片',
@@ -3594,16 +3613,16 @@ async function buildGalleryPreviewNodeDisplay(
   }
 }
 
-function buildValuePreviewNodeDisplay(displayOutput: WorkflowPreviewDisplayOutput): PreviewNodeDisplay {
+function buildValuePreviewNodeDisplay(displayOutput: PreviewNodeOutput): PreviewNodeDisplay {
   const payload = displayOutput.payload
   const hasValue = Object.prototype.hasOwnProperty.call(payload, 'value')
   const previewValue = hasValue ? payload.value : null
   const emptyText = readDisplayText(payload.empty_text) || null
   return {
-    nodeId: displayOutput.node_id,
-    nodeTypeId: displayOutput.node_type_id,
-    outputName: displayOutput.output_name,
-    title: readDisplayText(payload.title) || displayOutput.node_id,
+    nodeId: displayOutput.nodeId,
+    nodeTypeId: displayOutput.nodeTypeId,
+    outputName: displayOutput.outputName,
+    title: readDisplayText(payload.title) || displayOutput.nodeId,
     kind: 'value',
     payload,
     statusText: readDisplayText(payload.status_text) || emptyText || (hasValue ? 'JSON 预览' : '未返回可显示 value'),
@@ -3757,6 +3776,14 @@ function readPreviewNodeDisplayTooltip(display: PreviewNodeDisplay | null): stri
 
 function openPreviewDisplayViewer(display: PreviewNodeDisplay | null): void {
   if (!display) return
+  if (display.kind === 'value') {
+    openPreviewJsonViewer(
+      display.title,
+      Object.prototype.hasOwnProperty.call(display.payload, 'value') ? display.payload.value : null,
+      display.statusText,
+    )
+    return
+  }
   if (display.kind === 'table') {
     openPreviewTableViewer(display)
     return
@@ -3776,6 +3803,14 @@ function openPreviewTableViewer(display: PreviewNodeDisplay | null): void {
     rows: display.rows,
     rowCount: display.rowCount,
     emptyText: display.emptyText,
+  }
+}
+
+function openPreviewJsonViewer(title: string, value: unknown, statusText: string | null = null): void {
+  activePreviewJson.value = {
+    title,
+    value,
+    statusText,
   }
 }
 

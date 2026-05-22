@@ -152,7 +152,7 @@ def test_opencv_process_save_image_app_runtime_smoke_saves_unique_object_key(tmp
 
     assert response_payload["status_code"] == 200
     assert response_body["title"] == "Saved Edge Image"
-    assert response_body["type"] == "image-preview"
+    assert response_body["type"] == "image"
     assert image_payload["transport_kind"] == "storage-ref"
     assert object_key_parts[:6] == (
         "projects",

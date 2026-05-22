@@ -1,4 +1,4 @@
-"""workflow preview run 即时显示输出 helper。"""
+"""workflow Preview Run artifact 与上下文 helper。"""
 
 from __future__ import annotations
 
@@ -8,78 +8,6 @@ from backend.contracts.workflows.resource_semantics import build_workflow_previe
 
 
 WORKFLOW_PREVIEW_RUN_ID_METADATA_KEY = "workflow_preview_run_id"
-WORKFLOW_PREVIEW_DISPLAY_OUTPUTS_KEY = "workflow_preview_display_outputs"
-
-
-def register_preview_display_output(
-    execution_metadata: dict[str, object],
-    *,
-    node_id: str,
-    node_type_id: str,
-    output_name: str,
-    payload: dict[str, object],
-) -> None:
-    """登记一次只用于本次 Preview Run 响应的节点显示输出。
-
-    参数：
-    - execution_metadata：当前 workflow 执行元数据。
-    - node_id：产生显示输出的节点实例 id。
-    - node_type_id：产生显示输出的节点类型 id。
-    - output_name：产生显示输出的节点输出端口名称。
-    - payload：直接返回给前端显示的 JSON payload；该值不进入持久化记录。
-    """
-
-    normalized_node_id = _normalize_text(node_id)
-    normalized_node_type_id = _normalize_text(node_type_id)
-    normalized_output_name = _normalize_text(output_name)
-    if not normalized_node_id or not normalized_node_type_id or not normalized_output_name:
-        return
-    raw_outputs = execution_metadata.get(WORKFLOW_PREVIEW_DISPLAY_OUTPUTS_KEY)
-    if not isinstance(raw_outputs, list):
-        raw_outputs = []
-        execution_metadata[WORKFLOW_PREVIEW_DISPLAY_OUTPUTS_KEY] = raw_outputs
-    raw_outputs.append(
-        {
-            "node_id": normalized_node_id,
-            "node_type_id": normalized_node_type_id,
-            "output_name": normalized_output_name,
-            "payload": dict(payload),
-        }
-    )
-
-
-def list_preview_display_outputs(execution_metadata: dict[str, object]) -> tuple[dict[str, object], ...]:
-    """读取执行期登记的 Preview Run 即时显示输出。
-
-    参数：
-    - execution_metadata：当前 workflow 执行元数据。
-
-    返回：
-    - tuple[dict[str, object], ...]：可直接进入本次响应的显示输出列表。
-    """
-
-    raw_outputs = execution_metadata.get(WORKFLOW_PREVIEW_DISPLAY_OUTPUTS_KEY)
-    if not isinstance(raw_outputs, list):
-        return ()
-    normalized_outputs: list[dict[str, object]] = []
-    for raw_output in raw_outputs:
-        if not isinstance(raw_output, dict):
-            continue
-        node_id = _normalize_text(raw_output.get("node_id"))
-        node_type_id = _normalize_text(raw_output.get("node_type_id"))
-        output_name = _normalize_text(raw_output.get("output_name"))
-        payload = raw_output.get("payload")
-        if not node_id or not node_type_id or not output_name or not isinstance(payload, dict):
-            continue
-        normalized_outputs.append(
-            {
-                "node_id": node_id,
-                "node_type_id": node_type_id,
-                "output_name": output_name,
-                "payload": dict(payload),
-            }
-        )
-    return tuple(normalized_outputs)
 
 
 def read_preview_run_id(execution_metadata: dict[str, object]) -> str | None:

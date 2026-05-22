@@ -121,11 +121,13 @@ class WorkflowRuntimeSyncInvokeResult:
     - workflow_run：已持久化并完成状态回写的 WorkflowRun。
     - raw_outputs：本次同步调用返回的未脱敏 application outputs。
     - raw_template_outputs：本次同步调用返回的未脱敏 template outputs。
+    - raw_node_records：本次同步调用返回的未脱敏 node_records。
     """
 
     workflow_run: WorkflowRun
     raw_outputs: dict[str, object] = field(default_factory=dict)
     raw_template_outputs: dict[str, object] = field(default_factory=dict)
+    raw_node_records: tuple[dict[str, object], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -347,7 +349,7 @@ class WorkflowRuntimeService:
                     execution_metadata=preview_metadata,
                     timeout_seconds=effective_timeout_seconds,
                     retain_node_records_enabled=retain_node_records_enabled,
-                    return_preview_display_outputs_enabled=normalized_request.wait_mode == "sync",
+                    return_sync_response_payload_enabled=normalized_request.wait_mode == "sync",
                 )
             )
         except ServiceError as exc:
@@ -1109,6 +1111,7 @@ class WorkflowRuntimeService:
 
         raw_outputs: dict[str, object] = {}
         raw_template_outputs: dict[str, object] = {}
+        raw_node_records: tuple[dict[str, object], ...] = ()
         try:
             worker_result = self.worker_manager.invoke_runtime(
                 workflow_app_runtime=workflow_app_runtime,
@@ -1122,6 +1125,7 @@ class WorkflowRuntimeService:
             )
             raw_outputs = dict(worker_result.outputs)
             raw_template_outputs = dict(worker_result.template_outputs)
+            raw_node_records = tuple(dict(item) for item in worker_result.node_records)
             workflow_run = self._apply_run_result(
                 workflow_run,
                 worker_result,
@@ -1171,6 +1175,7 @@ class WorkflowRuntimeService:
             workflow_run=workflow_run,
             raw_outputs=raw_outputs,
             raw_template_outputs=raw_template_outputs,
+            raw_node_records=raw_node_records,
         )
 
     def get_workflow_run(self, workflow_run_id: str) -> WorkflowRun:

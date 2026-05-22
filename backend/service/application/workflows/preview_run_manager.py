@@ -33,6 +33,7 @@ from backend.service.application.workflows.preview_display_outputs import WORKFL
 from backend.service.application.workflows.runtime_payload_sanitizer import (
     sanitize_runtime_mapping,
     serialize_node_execution_record,
+    serialize_node_execution_record_for_response,
 )
 from backend.service.application.workflows.snapshot_execution import (
     WorkflowSnapshotExecutionRequest,
@@ -65,7 +66,7 @@ class WorkflowPreviewRunExecutionRequest:
     - execution_metadata：执行元数据。
     - timeout_seconds：子进程执行超时秒数。
     - retain_node_records_enabled：是否保留 node_records。
-    - return_preview_display_outputs_enabled：是否为同步响应暂存即时显示输出。
+    - return_sync_response_payload_enabled：是否为同步响应暂存原始 outputs、template_outputs 和 node_records。
     """
 
     preview_run_id: str
@@ -77,7 +78,7 @@ class WorkflowPreviewRunExecutionRequest:
     execution_metadata: dict[str, object] = field(default_factory=dict)
     timeout_seconds: int = 30
     retain_node_records_enabled: bool = True
-    return_preview_display_outputs_enabled: bool = False
+    return_sync_response_payload_enabled: bool = False
 
 
 @dataclass
@@ -397,6 +398,7 @@ class WorkflowPreviewRunManager:
                     preview_run_id,
                     execution_result,
                     retain_node_records_enabled=active_run.request.retain_node_records_enabled,
+                    return_sync_response_payload_enabled=active_run.request.return_sync_response_payload_enabled,
                 )
                 active_run.final_preview_run = updated_preview_run
                 self._append_event(
@@ -421,7 +423,7 @@ class WorkflowPreviewRunManager:
     def _remember_completed_preview_run(self, active_run: _ActiveWorkflowPreviewRun) -> None:
         """为同步等待方暂存刚完成的 PreviewRun。"""
 
-        if not active_run.request.return_preview_display_outputs_enabled:
+        if not active_run.request.return_sync_response_payload_enabled:
             return
         if active_run.final_preview_run is None:
             return
@@ -455,12 +457,13 @@ class WorkflowPreviewRunManager:
         execution_result: WorkflowSnapshotExecutionResult,
         *,
         retain_node_records_enabled: bool,
+        return_sync_response_payload_enabled: bool,
     ) -> WorkflowPreviewRun:
         """把 preview run 更新为 succeeded。"""
 
         with self._open_unit_of_work() as unit_of_work:
             preview_run = self._require_preview_run(unit_of_work, preview_run_id)
-            updated_preview_run = replace(
+            persisted_preview_run = replace(
                 preview_run,
                 state="succeeded",
                 finished_at=_now_isoformat(),
@@ -471,12 +474,22 @@ class WorkflowPreviewRunManager:
                     if retain_node_records_enabled
                     else ()
                 ),
-                preview_display_outputs=tuple(dict(item) for item in execution_result.preview_display_outputs),
                 error_message=None,
             )
-            unit_of_work.workflow_runtime.save_preview_run(updated_preview_run)
+            unit_of_work.workflow_runtime.save_preview_run(persisted_preview_run)
             unit_of_work.commit()
-        return updated_preview_run
+        if not return_sync_response_payload_enabled:
+            return persisted_preview_run
+        return replace(
+            persisted_preview_run,
+            outputs=dict(execution_result.outputs),
+            template_outputs=dict(execution_result.template_outputs),
+            node_records=(
+                tuple(serialize_node_execution_record_for_response(item) for item in execution_result.node_records)
+                if retain_node_records_enabled
+                else ()
+            ),
+        )
 
     def _mark_run_failed(
         self,

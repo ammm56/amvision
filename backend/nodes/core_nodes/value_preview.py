@@ -11,7 +11,6 @@ from backend.contracts.workflows.workflow_graph import (
 from backend.nodes.core_nodes._base import CoreNodeSpec
 from backend.nodes.core_nodes._logic_node_support import require_value_payload, try_extract_value_by_path
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
-from backend.service.application.workflows.preview_display_outputs import register_preview_display_output
 
 
 def _value_preview_handler(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
@@ -44,13 +43,6 @@ def _value_preview_handler(request: WorkflowNodeExecutionRequest) -> dict[str, o
             preview_body["value"] = None
             preview_body["missing_path"] = True
             preview_body["empty_text"] = f"未找到路径：{normalized_path}"
-    register_preview_display_output(
-        request.execution_metadata,
-        node_id=request.node_id,
-        node_type_id=request.node_definition.node_type_id,
-        output_name="body",
-        payload=preview_body,
-    )
     return {"body": preview_body}
 
 

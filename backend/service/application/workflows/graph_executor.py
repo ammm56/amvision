@@ -46,7 +46,7 @@ class WorkflowNodeExecutionRecord:
     - node_type_id：当前节点类型 id。
     - runtime_kind：节点运行方式。
     - inputs：当前节点输入的脱敏快照。
-    - outputs：当前节点输出。
+    - outputs：当前节点输出的原始快照；持久化时再统一脱敏。
     """
 
     node_id: str
@@ -385,7 +385,7 @@ class WorkflowGraphExecutor:
                     node_type_id=node_definition.node_type_id,
                     runtime_kind=node_definition.runtime_kind,
                     inputs=sanitize_runtime_mapping(resolved_inputs),
-                    outputs=sanitize_runtime_mapping(raw_outputs),
+                    outputs=dict(raw_outputs),
                 )
             )
             self._emit_node_event(
@@ -899,7 +899,7 @@ class WorkflowGraphExecutor:
                     node_type_id=body_node_definition.node_type_id,
                     runtime_kind=body_node_definition.runtime_kind,
                     inputs=sanitize_runtime_mapping(resolved_inputs),
-                    outputs=sanitize_runtime_mapping(raw_outputs),
+                    outputs=dict(raw_outputs),
                 )
             )
             self._emit_node_event(

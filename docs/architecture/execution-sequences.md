@@ -392,7 +392,7 @@ sequenceDiagram
         RuntimeSvc->>DB: save WorkflowPreviewRun(state=running)
         RuntimeSvc->>PreviewProc: execute(snapshot request)
         PreviewProc->>SnapshotExec: execute(snapshot)
-        SnapshotExec-->>PreviewProc: outputs + template_outputs + node_records + preview_display_outputs
+        SnapshotExec-->>PreviewProc: outputs + template_outputs + node_records
         PreviewProc-->>RuntimeSvc: execution_result
         RuntimeSvc->>DB: update WorkflowPreviewRun(state=succeeded|failed|timed_out)
         RuntimeSvc-->>API: WorkflowPreviewRun

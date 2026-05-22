@@ -286,13 +286,6 @@ export interface WorkflowApplicationDocument extends WorkflowApplicationValidati
 export type WorkflowRunState = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled' | 'timeout' | string
 export type WorkflowAppRuntimeState = 'created' | 'starting' | 'running' | 'stopping' | 'stopped' | 'failed' | string
 
-export interface WorkflowPreviewDisplayOutput {
-  node_id: string
-  node_type_id: string
-  output_name: string
-  payload: WorkflowJsonObject
-}
-
 export interface WorkflowPreviewRun {
   format_id: string
   preview_run_id: string
@@ -310,7 +303,6 @@ export interface WorkflowPreviewRun {
   outputs: WorkflowJsonObject
   template_outputs: WorkflowJsonObject
   node_records: WorkflowJsonObject[]
-  preview_display_outputs: WorkflowPreviewDisplayOutput[]
   error_message?: string | null
   retention_until?: string | null
   metadata: WorkflowJsonObject

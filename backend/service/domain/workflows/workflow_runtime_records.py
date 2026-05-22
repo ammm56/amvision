@@ -32,7 +32,6 @@ class WorkflowPreviewRun:
     - outputs：持久化的脱敏 application 输出。
     - template_outputs：持久化的脱敏 template 输出。
     - node_records：持久化的脱敏节点执行记录。
-    - preview_display_outputs：仅用于本次同步响应的即时显示输出，不写入数据库。
     - error_message：失败或超时时的错误信息。
     - retention_until：保留截止时间。
     - metadata：附加元数据。
@@ -53,7 +52,6 @@ class WorkflowPreviewRun:
     outputs: dict[str, object] = field(default_factory=dict)
     template_outputs: dict[str, object] = field(default_factory=dict)
     node_records: tuple[dict[str, object], ...] = ()
-    preview_display_outputs: tuple[dict[str, object], ...] = ()
     error_message: str | None = None
     retention_until: str | None = None
     metadata: dict[str, object] = field(default_factory=dict)

@@ -667,7 +667,7 @@ def invoke_workflow_app_runtime(
 
     workflow_app_runtime = _build_workflow_runtime_service(request).get_workflow_app_runtime(workflow_runtime_id)
     _ensure_project_visible(principal=principal, project_id=workflow_app_runtime.project_id)
-    workflow_run = _build_workflow_runtime_service(request).invoke_workflow_app_runtime(
+    invoke_result = _build_workflow_runtime_service(request).invoke_workflow_app_runtime_with_response(
         workflow_runtime_id,
         WorkflowRuntimeInvokeRequest(
             input_bindings=dict(body.input_bindings),
@@ -676,7 +676,12 @@ def invoke_workflow_app_runtime(
         ),
         created_by=principal.principal_id,
     )
-    return _build_workflow_run_contract(workflow_run)
+    return _build_workflow_run_contract(
+        invoke_result.workflow_run,
+        outputs=invoke_result.raw_outputs,
+        template_outputs=invoke_result.raw_template_outputs,
+        node_records=invoke_result.raw_node_records,
+    )
 
 
 @workflow_runtime_router.post(
@@ -697,12 +702,17 @@ async def invoke_workflow_app_runtime_upload(
         workflow_app_runtime=workflow_app_runtime,
         created_by=principal.principal_id,
     )
-    workflow_run = _build_workflow_runtime_service(request).invoke_workflow_app_runtime(
+    invoke_result = _build_workflow_runtime_service(request).invoke_workflow_app_runtime_with_response(
         workflow_runtime_id,
         invoke_request,
         created_by=principal.principal_id,
     )
-    return _build_workflow_run_contract(workflow_run)
+    return _build_workflow_run_contract(
+        invoke_result.workflow_run,
+        outputs=invoke_result.raw_outputs,
+        template_outputs=invoke_result.raw_template_outputs,
+        node_records=invoke_result.raw_node_records,
+    )
 
 
 @workflow_runtime_router.get(
@@ -1067,7 +1077,6 @@ def _build_preview_run_contract(preview_run: WorkflowPreviewRun) -> WorkflowPrev
         outputs=dict(preview_run.outputs),
         template_outputs=dict(preview_run.template_outputs),
         node_records=[dict(item) for item in preview_run.node_records],
-        preview_display_outputs=[dict(item) for item in preview_run.preview_display_outputs],
         error_message=preview_run.error_message,
         retention_until=preview_run.retention_until,
         metadata=dict(preview_run.metadata),
@@ -1267,8 +1276,24 @@ def _build_execution_policy_contract(execution_policy: WorkflowExecutionPolicy) 
     )
 
 
-def _build_workflow_run_contract(workflow_run: WorkflowRun) -> WorkflowRunContract:
-    """把 WorkflowRun 领域对象转换为公开合同。"""
+def _build_workflow_run_contract(
+    workflow_run: WorkflowRun,
+    *,
+    outputs: dict[str, object] | None = None,
+    template_outputs: dict[str, object] | None = None,
+    node_records: tuple[dict[str, object], ...] | list[dict[str, object]] | None = None,
+) -> WorkflowRunContract:
+    """把 WorkflowRun 领域对象转换为公开合同。
+
+    参数：
+    - workflow_run：持久化后的 WorkflowRun 领域对象。
+    - outputs：可选同步响应 outputs 覆盖值；为空时返回持久化脱敏版本。
+    - template_outputs：可选同步响应 template_outputs 覆盖值。
+    - node_records：可选同步响应 node_records 覆盖值。
+
+    返回：
+    - WorkflowRunContract：公开合同对象。
+    """
 
     return WorkflowRunContract(
         workflow_run_id=workflow_run.workflow_run_id,
@@ -1283,9 +1308,13 @@ def _build_workflow_run_contract(workflow_run: WorkflowRun) -> WorkflowRunContra
         requested_timeout_seconds=workflow_run.requested_timeout_seconds,
         assigned_process_id=workflow_run.assigned_process_id,
         input_payload=dict(workflow_run.input_payload),
-        outputs=dict(workflow_run.outputs),
-        template_outputs=dict(workflow_run.template_outputs),
-        node_records=[dict(item) for item in workflow_run.node_records],
+        outputs=dict(outputs) if outputs is not None else dict(workflow_run.outputs),
+        template_outputs=(
+            dict(template_outputs)
+            if template_outputs is not None
+            else dict(workflow_run.template_outputs)
+        ),
+        node_records=[dict(item) for item in (node_records if node_records is not None else workflow_run.node_records)],
         error_message=workflow_run.error_message,
         metadata=dict(workflow_run.metadata),
     )

@@ -6,7 +6,6 @@ from pathlib import PurePosixPath
 
 from backend.nodes.runtime_support import build_response_image_payload
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
-from backend.service.application.workflows.preview_display_outputs import register_preview_display_output
 from custom_nodes.opencv_basic_nodes.backend.support import require_image_refs_payload, require_positive_int
 
 
@@ -105,13 +104,6 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
     title = request.parameters.get("title")
     if isinstance(title, str) and title.strip():
         response_body["title"] = title.strip()
-    register_preview_display_output(
-        request.execution_metadata,
-        node_id=request.node_id,
-        node_type_id=request.node_definition.node_type_id,
-        output_name="body",
-        payload=response_body,
-    )
     return {"body": response_body}
 
 
