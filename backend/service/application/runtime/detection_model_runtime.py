@@ -17,6 +17,10 @@ from backend.service.application.runtime.yolox_predictor import (
     YoloXPredictionExecutionResult,
     YoloXPredictionRequest,
 )
+from backend.service.application.runtime.yolov8_predictor import (
+    OnnxRuntimeYoloV8RuntimeSession,
+    PyTorchYoloV8RuntimeSession,
+)
 from backend.service.application.runtime.yolox_runtime_target import RuntimeTargetSnapshot
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 
@@ -130,6 +134,7 @@ def build_default_detection_model_runtime_registry() -> DetectionModelRuntimeReg
 
     registry = DetectionModelRuntimeRegistry()
     registry.register_runtime_loader("yolox", _load_yolox_detection_session)
+    registry.register_runtime_loader("yolov8", _load_yolov8_detection_session)
     return registry
 
 
@@ -162,6 +167,29 @@ def _load_yolox_detection_session(
             runtime_target=runtime_target,
             pinned_output_buffer_enabled=pinned_output_buffer_enabled,
             pinned_output_buffer_max_bytes=pinned_output_buffer_max_bytes,
+        )
+    raise ValueError(f"unsupported runtime backend: {runtime_target.runtime_backend}")
+
+
+def _load_yolov8_detection_session(
+    dataset_storage: LocalDatasetStorage,
+    runtime_target: RuntimeTargetSnapshot,
+    pinned_output_buffer_enabled: bool | None,
+    pinned_output_buffer_max_bytes: int | None,
+) -> DetectionModelRuntimeSession:
+    """按 runtime backend 加载当前已接通的 YOLOv8 detection 会话。"""
+
+    del pinned_output_buffer_enabled
+    del pinned_output_buffer_max_bytes
+    if runtime_target.runtime_backend == "pytorch":
+        return PyTorchYoloV8RuntimeSession.load(
+            dataset_storage=dataset_storage,
+            runtime_target=runtime_target,
+        )
+    if runtime_target.runtime_backend == "onnxruntime":
+        return OnnxRuntimeYoloV8RuntimeSession.load(
+            dataset_storage=dataset_storage,
+            runtime_target=runtime_target,
         )
     raise ValueError(f"unsupported runtime backend: {runtime_target.runtime_backend}")
 

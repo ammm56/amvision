@@ -2,14 +2,15 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from backend.service.application.detection_backend_registry import (
     DETECTION_BACKEND_STATUS_ACTIVE,
-    DETECTION_BACKEND_STATUS_REGISTERED,
     get_detection_backend_registration,
 )
-from backend.service.application.errors import ServiceConfigurationError
+import backend.service.application.runtime.yolov8_predictor as yolov8_predictor_module
 from backend.service.application.runtime.detection_model_runtime import (
     DefaultDetectionModelRuntime,
 )
@@ -38,24 +39,40 @@ def test_detection_backend_registry_exposes_yolox_and_yolov8() -> None:
     assert yolox_registration.features.deployment is True
 
     assert yolov8_registration is not None
-    assert yolov8_registration.status == DETECTION_BACKEND_STATUS_REGISTERED
+    assert yolov8_registration.status == DETECTION_BACKEND_STATUS_ACTIVE
     assert yolov8_registration.features.training is False
-    assert yolov8_registration.features.conversion is False
-    assert yolov8_registration.features.inference is False
-    assert yolov8_registration.features.deployment is False
+    assert yolov8_registration.features.conversion is True
+    assert yolov8_registration.features.inference is True
+    assert yolov8_registration.features.deployment is True
 
 
-def test_default_detection_model_runtime_rejects_unimplemented_yolov8(tmp_path) -> None:
-    """验证已登记但未实现的 YOLOv8 detection 会给出明确错误。"""
+def test_default_detection_model_runtime_routes_yolov8_to_yolov8_loader(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """验证默认 detection runtime 会把 YOLOv8 路由到自身加载器。"""
 
     storage = LocalDatasetStorage(DatasetStorageSettings(root_dir=str(tmp_path / "storage")))
     runtime_target = _build_runtime_target(storage=storage, model_type="yolov8")
+    sentinel_session = object()
 
-    with pytest.raises(ServiceConfigurationError, match="尚未接通"):
-        DefaultDetectionModelRuntime().load_session(
-            dataset_storage=storage,
-            runtime_target=runtime_target,
-        )
+    def _fake_load(*, dataset_storage, runtime_target):
+        assert dataset_storage is storage
+        assert runtime_target.model_type == "yolov8"
+        return sentinel_session
+
+    monkeypatch.setattr(
+        yolov8_predictor_module.OnnxRuntimeYoloV8RuntimeSession,
+        "load",
+        staticmethod(_fake_load),
+    )
+
+    resolved_session = DefaultDetectionModelRuntime().load_session(
+        dataset_storage=storage,
+        runtime_target=runtime_target,
+    )
+
+    assert resolved_session is sentinel_session
 
 
 def test_runtime_target_snapshot_serialization_preserves_model_type(tmp_path) -> None:

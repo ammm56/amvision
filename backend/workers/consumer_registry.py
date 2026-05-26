@@ -8,6 +8,7 @@ from backend.queue import LocalFileQueueBackend
 from backend.service.application.errors import ServiceConfigurationError
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
+from backend.workers.conversion.yolov8_conversion_queue_worker import YoloV8ConversionQueueWorker
 from backend.workers.conversion.yolox_conversion_queue_worker import YoloXConversionQueueWorker
 from backend.workers.datasets.dataset_export_queue_worker import DatasetExportQueueWorker
 from backend.workers.datasets.dataset_import_queue_worker import DatasetImportQueueWorker
@@ -16,6 +17,7 @@ from backend.workers.inference.yolox_inference_queue_worker import YoloXInferenc
 from backend.workers.settings import (
     BACKEND_WORKER_CONSUMER_DATASET_EXPORT,
     BACKEND_WORKER_CONSUMER_DATASET_IMPORT,
+    BACKEND_WORKER_CONSUMER_YOLOV8_CONVERSION,
     BACKEND_WORKER_CONSUMER_YOLOX_CONVERSION,
     BACKEND_WORKER_CONSUMER_YOLOX_EVALUATION,
     BACKEND_WORKER_CONSUMER_YOLOX_INFERENCE,
@@ -98,6 +100,16 @@ def build_background_task_consumers(
                     dataset_storage=resources.dataset_storage,
                     queue_backend=resources.queue_backend,
                     worker_id=f"{resources.worker_id_prefix}-yolox-conversion",
+                )
+            )
+            continue
+        if consumer_kind == BACKEND_WORKER_CONSUMER_YOLOV8_CONVERSION:
+            consumers.append(
+                YoloV8ConversionQueueWorker(
+                    session_factory=resources.session_factory,
+                    dataset_storage=resources.dataset_storage,
+                    queue_backend=resources.queue_backend,
+                    worker_id=f"{resources.worker_id_prefix}-yolov8-conversion",
                 )
             )
             continue

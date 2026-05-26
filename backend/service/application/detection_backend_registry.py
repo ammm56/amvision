@@ -66,11 +66,16 @@ _DETECTION_BACKEND_REGISTRATIONS: Final[dict[str, DetectionBackendRegistration]]
     "yolov8": DetectionBackendRegistration(
         model_type="yolov8",
         display_name="YOLOv8 Detection",
-        status=DETECTION_BACKEND_STATUS_REGISTERED,
-        features=DetectionBackendFeatureSet(),
+        status=DETECTION_BACKEND_STATUS_ACTIVE,
+        features=DetectionBackendFeatureSet(
+            training=False,
+            conversion=True,
+            inference=True,
+            deployment=True,
+        ),
         notes=(
-            "模型登记、训练任务入口、转换规划和运行时目标解析已接入 detection 通用层；"
-            "训练执行后端、runtime loader 和 deployment 进程仍待接通。"
+            "模型登记、训练任务入口、转换规划、PyTorch/ONNXRuntime 推理与 deployment 外壳已接通；"
+            "训练执行后端以及 OpenVINO/TensorRT 链仍待补齐。"
         ),
     ),
 }
