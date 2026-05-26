@@ -8,7 +8,6 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from backend.queue import QueueBackend
-from backend.contracts.datasets.exports.coco_detection_export import COCO_DETECTION_DATASET_FORMAT
 from backend.service.application.errors import (
     InvalidRequestError,
     OperationCancelledError,
@@ -24,13 +23,14 @@ from backend.service.application.models.yolox_detection_training import (
     YoloXTrainingSavePoint,
     YoloXTrainingTerminatedError,
     YOLOX_MINIMAL_DEFAULT_EVALUATION_INTERVAL,
-    YOLOX_SUPPORTED_MODEL_SCALES,
     YoloXDetectionTrainingExecutionRequest,
 )
 from backend.service.application.models.yolox_model_service import (
     SqlAlchemyYoloXModelService,
     YoloXTrainingOutputRegistration,
 )
+from backend.service.domain.models.model_task_types import DETECTION_TASK_TYPE
+from backend.service.domain.models.yolox_model_spec import DEFAULT_YOLOX_MODEL_SPEC, YoloXModelSpec
 from backend.service.domain.files.model_file import ModelFile
 from backend.service.domain.files.yolox_file_types import YOLOX_CHECKPOINT_FILE
 from backend.service.domain.models.model_records import (
@@ -186,6 +186,7 @@ class SqlAlchemyYoloXTrainingTaskService:
         session_factory: SessionFactory,
         dataset_storage: LocalDatasetStorage | None = None,
         queue_backend: QueueBackend | None = None,
+        spec: YoloXModelSpec = DEFAULT_YOLOX_MODEL_SPEC,
     ) -> None:
         """初始化 YOLOX 训练任务创建服务。
 
@@ -193,11 +194,13 @@ class SqlAlchemyYoloXTrainingTaskService:
         - session_factory：数据库会话工厂。
         - dataset_storage：可选的本地数据集文件存储服务；处理训练任务时必填。
         - queue_backend：可选的任务队列后端；提交训练任务时必填。
+        - spec：当前使用的 YOLOX 模型规格。
         """
 
         self.session_factory = session_factory
         self.dataset_storage = dataset_storage
         self.queue_backend = queue_backend
+        self.spec = spec
         self.task_service = SqlAlchemyTaskService(session_factory)
 
     def submit_training_task(
@@ -985,7 +988,7 @@ class SqlAlchemyYoloXTrainingTaskService:
             raise InvalidRequestError("recipe_id 不能为空")
         if not request.model_scale.strip():
             raise InvalidRequestError("model_scale 不能为空")
-        if request.model_scale not in YOLOX_SUPPORTED_MODEL_SCALES:
+        if not self.spec.supports_model_scale(request.model_scale):
             raise InvalidRequestError(
                 "当前不支持指定的 YOLOX model_scale",
                 details={"model_scale": request.model_scale},
@@ -1307,10 +1310,16 @@ class SqlAlchemyYoloXTrainingTaskService:
         """执行当前阶段的最小真实 YOLOX detection 训练流程。"""
 
         dataset_storage = self._require_dataset_storage()
-        if dataset_export.format_id != COCO_DETECTION_DATASET_FORMAT:
+        expected_dataset_format = self.spec.resolve_default_dataset_format(DETECTION_TASK_TYPE)
+        if expected_dataset_format is None:
+            raise ServiceConfigurationError("当前 YOLOX 规格缺少 detection 默认导出格式配置")
+        if dataset_export.format_id != expected_dataset_format:
             raise InvalidRequestError(
-                "当前最小真实训练只支持 coco-detection-v1 输入",
-                details={"format_id": dataset_export.format_id},
+                "当前最小真实训练只支持当前 YOLOX 默认 detection 导出格式输入",
+                details={
+                    "format_id": dataset_export.format_id,
+                    "expected_format_id": expected_dataset_format,
+                },
             )
 
         category_names = self._read_str_tuple(manifest_payload.get("category_names"))

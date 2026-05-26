@@ -22,6 +22,13 @@ from backend.service.domain.files.yolox_file_types import (
     YOLOX_TENSORRT_ENGINE_FILE,
     YOLOX_TRAINING_METRICS_FILE,
 )
+from backend.service.domain.models.model_build_formats import (
+    ONNX_BUILD_FORMAT,
+    ONNX_OPTIMIZED_BUILD_FORMAT,
+    OPENVINO_IR_BUILD_FORMAT,
+    RKNN_BUILD_FORMAT,
+    TENSORRT_ENGINE_BUILD_FORMAT,
+)
 from backend.service.domain.models.model_records import (
     PLATFORM_BASE_MODEL_SCOPE,
     PROJECT_MODEL_SCOPE,
@@ -30,6 +37,7 @@ from backend.service.domain.models.model_records import (
     ModelScopeKind,
     ModelVersion,
 )
+from backend.service.domain.models.model_task_types import DETECTION_TASK_TYPE
 from backend.service.domain.models.yolox_model_spec import DEFAULT_YOLOX_MODEL_SPEC, YoloXModelSpec
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
@@ -54,7 +62,7 @@ class YoloXPretrainedRegistrationRequest:
     model_scale: str
     model_version_id: str | None = None
     checkpoint_file_id: str | None = None
-    task_type: str = "detection"
+    task_type: str = DETECTION_TASK_TYPE
     metadata: dict[str, object] = field(default_factory=dict)
 
 
@@ -372,6 +380,8 @@ class SqlAlchemyYoloXModelService:
         - 新登记的 ModelVersion id。
         """
 
+        self._validate_task_type(request.task_type)
+        self._validate_model_scale(request.model_scale)
         with self._open_unit_of_work() as unit_of_work:
             model_version_id = request.model_version_id or self._next_id("model-version")
             checkpoint_file_id = request.checkpoint_file_id or self._next_id("model-file")
@@ -428,6 +438,7 @@ class SqlAlchemyYoloXModelService:
         - 新登记的 ModelVersion id。
         """
 
+        self._validate_model_scale(request.model_scale)
         with self._open_unit_of_work() as unit_of_work:
             model = self._ensure_model(
                 unit_of_work=unit_of_work,
@@ -435,7 +446,7 @@ class SqlAlchemyYoloXModelService:
                 scope_kind=PROJECT_MODEL_SCOPE,
                 model_name=request.model_name,
                 model_scale=request.model_scale,
-                task_type="detection",
+                task_type=DETECTION_TASK_TYPE,
                 labels_file_id=request.labels_file_id,
                 metadata=request.metadata,
             )
@@ -480,6 +491,7 @@ class SqlAlchemyYoloXModelService:
         - 新登记的 ModelBuild id。
         """
 
+        self._validate_build_format(request.build_format)
         with self._open_unit_of_work() as unit_of_work:
             source_version = unit_of_work.models.get_model_version(request.source_model_version_id)
             if source_version is None:
@@ -718,6 +730,8 @@ class SqlAlchemyYoloXModelService:
         - 已存在或新建的 Model。
         """
 
+        self._validate_task_type(task_type)
+        self._validate_model_scale(model_scale)
         model = unit_of_work.models.find_model(
             project_id=project_id,
             scope_kind=scope_kind,
@@ -742,6 +756,24 @@ class SqlAlchemyYoloXModelService:
         unit_of_work.models.save_model(model)
 
         return model
+
+    def _validate_task_type(self, task_type: str) -> None:
+        """校验传入任务类型是否被当前规格支持。"""
+
+        if not self.spec.supports_task_type(task_type):
+            raise ValueError(f"不支持的任务类型: {task_type}")
+
+    def _validate_model_scale(self, model_scale: str) -> None:
+        """校验传入模型 scale 是否被当前规格支持。"""
+
+        if not self.spec.supports_model_scale(model_scale):
+            raise ValueError(f"不支持的 model_scale: {model_scale}")
+
+    def _validate_build_format(self, build_format: str) -> None:
+        """校验传入 build 格式是否被当前规格支持。"""
+
+        if not self.spec.supports_build_format(build_format):
+            raise ValueError(f"不支持的 build 格式: {build_format}")
 
     def _build_pretrained_metadata(self, metadata: dict[str, object]) -> dict[str, object]:
         """构建平台级预训练模型登记元数据。
@@ -1090,11 +1122,11 @@ class SqlAlchemyYoloXModelService:
         """
 
         build_file_type_map = {
-            "onnx": YOLOX_ONNX_FILE,
-            "onnx-optimized": YOLOX_ONNX_OPTIMIZED_FILE,
-            "openvino-ir": YOLOX_OPENVINO_IR_FILE,
-            "tensorrt-engine": YOLOX_TENSORRT_ENGINE_FILE,
-            "rknn": YOLOX_RKNN_FILE,
+            ONNX_BUILD_FORMAT: YOLOX_ONNX_FILE,
+            ONNX_OPTIMIZED_BUILD_FORMAT: YOLOX_ONNX_OPTIMIZED_FILE,
+            OPENVINO_IR_BUILD_FORMAT: YOLOX_OPENVINO_IR_FILE,
+            TENSORRT_ENGINE_BUILD_FORMAT: YOLOX_TENSORRT_ENGINE_FILE,
+            RKNN_BUILD_FORMAT: YOLOX_RKNN_FILE,
         }
         if build_format not in build_file_type_map:
             raise ValueError(f"不支持的 build 格式: {build_format}")

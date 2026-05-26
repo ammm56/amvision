@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from backend.service.application.models.yolox_model_service import (
     SqlAlchemyYoloXModelService,
     YoloXBuildRegistration,
@@ -109,6 +111,47 @@ def test_register_training_output_and_build_creates_linked_records() -> None:
     assert service.get_model(model_version.model_id).project_id == "project-1"
     assert build_file.file_type == YOLOX_ONNX_FILE
     assert build_file.model_build_id == model_build_id
+
+
+def test_register_pretrained_rejects_unsupported_model_scale() -> None:
+    """验证预训练模型登记会拒绝不受支持的 model_scale。"""
+
+    service = _create_model_service()
+
+    with pytest.raises(ValueError, match="model_scale"):
+        service.register_pretrained(
+            YoloXPretrainedRegistrationRequest(
+                model_name="yolox",
+                storage_uri="memory://weights/yolox_unknown.pth",
+                model_scale="unknown",
+            )
+        )
+
+
+def test_register_build_rejects_unsupported_build_format() -> None:
+    """验证 build 登记会拒绝不受支持的 build 格式。"""
+
+    service = _create_model_service()
+    model_version_id = service.register_training_output(
+        YoloXTrainingOutputRegistration(
+            project_id="project-1",
+            training_task_id="training-1",
+            model_name="yolox",
+            model_scale="s",
+            dataset_version_id="dataset-version-1",
+            checkpoint_file_id="checkpoint-file-1",
+        )
+    )
+
+    with pytest.raises(ValueError, match="build"):
+        service.register_build(
+            YoloXBuildRegistration(
+                project_id="project-1",
+                source_model_version_id=model_version_id,
+                build_format="unsupported-build",
+                build_file_id="build-file-1",
+            )
+        )
 
 
 def _create_model_service() -> SqlAlchemyYoloXModelService:
