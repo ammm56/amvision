@@ -61,6 +61,8 @@ class YoloXTrainingQueueWorker:
             run_result = training_backend.run_training(
                 TrainingBackendRunRequest(
                     training_task_id=task_id,
+                    model_type="yolox",
+                    task_type="detection",
                     metadata={
                         "queue_task_id": queue_task.task_id,
                     },

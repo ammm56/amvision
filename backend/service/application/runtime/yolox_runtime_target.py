@@ -81,6 +81,7 @@ class RuntimeTargetSnapshot:
     字段：
     - project_id：所属 Project id。
     - model_id：关联 Model id。
+    - model_type：模型分类名称。
     - model_version_id：执行使用的 ModelVersion id。
     - model_build_id：绑定的 ModelBuild id。
     - model_name：模型名。
@@ -125,6 +126,7 @@ class RuntimeTargetSnapshot:
     checkpoint_storage_uri: str | None = None
     checkpoint_path: Path | None = None
     labels_storage_uri: str | None = None
+    model_type: str = "yolox"
 
 
 def serialize_runtime_target_snapshot(snapshot: RuntimeTargetSnapshot) -> dict[str, object]:
@@ -140,6 +142,7 @@ def serialize_runtime_target_snapshot(snapshot: RuntimeTargetSnapshot) -> dict[s
     return {
         "project_id": snapshot.project_id,
         "model_id": snapshot.model_id,
+        "model_type": snapshot.model_type,
         "model_version_id": snapshot.model_version_id,
         "model_build_id": snapshot.model_build_id,
         "model_name": snapshot.model_name,
@@ -204,6 +207,7 @@ def deserialize_runtime_target_snapshot(
     return RuntimeTargetSnapshot(
         project_id=_require_payload_str(payload, "project_id"),
         model_id=_require_payload_str(payload, "model_id"),
+        model_type=_read_payload_optional_str(payload, "model_type") or "yolox",
         model_version_id=_require_payload_str(payload, "model_version_id"),
         model_build_id=_read_payload_optional_str(payload, "model_build_id"),
         model_name=_require_payload_str(payload, "model_name"),
@@ -400,6 +404,7 @@ class SqlAlchemyYoloXRuntimeTargetResolver:
         return RuntimeTargetSnapshot(
             project_id=request.project_id,
             model_id=model.model_id,
+            model_type=model.model_type,
             model_version_id=model_version.model_version_id,
             model_build_id=model_build.model_build_id if model_build is not None else None,
             model_name=model.model_name,

@@ -4,12 +4,15 @@ from __future__ import annotations
 
 import subprocess
 import json
-from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 import sys
-from typing import Protocol
 
-from backend.service.application.conversions.yolox_conversion_planner import YoloXConversionStep
+from backend.service.application.backends import (
+    ConversionBackend,
+    ConversionBackendOutput,
+    ConversionBackendRunRequest,
+    ConversionBackendRunResult,
+)
 from backend.service.application.errors import InvalidRequestError, ServiceConfigurationError
 from backend.service.application.runtime.yolox_predictor import PyTorchYoloXRuntimeSession
 from backend.service.application.runtime.yolox_runtime_target import RuntimeTargetSnapshot
@@ -30,73 +33,11 @@ _OPENVINO_IR_BUILD_SCRIPT_FILE = "build_openvino_ir.py"
 _TENSORRT_ENGINE_BUILD_SCRIPT_FILE = "build_tensorrt_engine.py"
 
 
-@dataclass(frozen=True)
-class YoloXConversionRunRequest:
-    """描述一次 YOLOX 转换执行请求。
-
-    字段：
-    - conversion_task_id：转换任务 id。
-    - source_runtime_target：来源 ModelVersion 解析得到的 PyTorch runtime 快照。
-    - target_formats：目标输出格式列表。
-    - plan_steps：已经固化的转换步骤图谱。
-    - output_object_prefix：输出目录前缀。
-    - metadata：附加元数据。
-    """
-
-    conversion_task_id: str
-    source_runtime_target: RuntimeTargetSnapshot
-    target_formats: tuple[str, ...]
-    plan_steps: tuple[YoloXConversionStep, ...]
-    output_object_prefix: str
-    metadata: dict[str, object] = field(default_factory=dict)
-
-
-@dataclass(frozen=True)
-class YoloXConversionOutput:
-    """描述单个转换输出文件。
-
-    字段：
-    - target_format：目标格式。
-    - object_uri：输出文件 URI。
-    - file_type：登记到平台的 file type。
-    - metadata：输出元数据摘要。
-    """
-
-    target_format: str
-    object_uri: str
-    file_type: str
-    metadata: dict[str, object] = field(default_factory=dict)
-
-
-@dataclass(frozen=True)
-class YoloXConversionRunResult:
-    """描述一次 YOLOX 转换执行结果。
-
-    字段：
-    - conversion_task_id：转换任务 id。
-    - outputs：转换输出文件列表。
-    - metadata：附加元数据。
-    """
-
-    conversion_task_id: str
-    outputs: tuple[YoloXConversionOutput, ...]
-    metadata: dict[str, object] = field(default_factory=dict)
-
-
-class YoloXConversionRunner(Protocol):
-    """执行 YOLOX 导出与转换任务的 worker 接口。"""
-
-    def run_conversion(self, request: YoloXConversionRunRequest) -> YoloXConversionRunResult:
-        """执行转换并返回结果。
-
-        参数：
-        - request：转换执行请求。
-
-        返回：
-        - 转换执行结果。
-        """
-
-        ...
+# 兼容旧命名的转换执行合同。
+YoloXConversionRunRequest = ConversionBackendRunRequest
+YoloXConversionOutput = ConversionBackendOutput
+YoloXConversionRunResult = ConversionBackendRunResult
+YoloXConversionRunner = ConversionBackend
 
 
 class LocalYoloXConversionRunner:

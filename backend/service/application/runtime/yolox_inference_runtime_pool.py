@@ -7,7 +7,7 @@ from threading import Lock
 
 from backend.service.application.errors import InvalidRequestError, ServiceConfigurationError
 from backend.service.application.runtime.model_runtime import (
-    DefaultYoloXModelRuntime,
+    DefaultDetectionModelRuntime,
     ModelRuntime,
     ModelRuntimeSession,
 )
@@ -145,11 +145,11 @@ class YoloXDeploymentRuntimePool:
 
         参数：
         - dataset_storage：本地文件存储服务。
-        - model_runtime：可选模型运行时加载器；未提供时使用当前 YOLOX 默认实现。
+        - model_runtime：可选模型运行时加载器；未提供时使用当前 detection 默认实现。
         """
 
         self.dataset_storage = dataset_storage
-        self.model_runtime = model_runtime or DefaultYoloXModelRuntime()
+        self.model_runtime = model_runtime or DefaultDetectionModelRuntime()
         self._deployments: dict[str, _DeploymentRuntimeState] = {}
         self._lock = Lock()
 

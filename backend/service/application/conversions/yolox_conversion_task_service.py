@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from uuid import uuid4
 
 from backend.queue import QueueBackend
-from backend.service.application.backends import ConversionBackend
+from backend.service.application.backends import ConversionBackend, DetectionConversionPlanStep
 from backend.service.application.conversions.yolox_conversion_planner import (
     DefaultYoloXConversionPlanner,
     YoloXConversionPlan,
@@ -339,8 +339,10 @@ class SqlAlchemyYoloXConversionTaskService:
                     conversion_task_id=task_id,
                     source_runtime_target=source_runtime_target,
                     target_formats=plan.target_formats,
-                    plan_steps=plan.steps,
+                    plan_steps=self._build_backend_plan_steps(plan),
                     output_object_prefix=output_object_prefix,
+                    model_type=source_runtime_target.model_type,
+                    task_type=source_runtime_target.task_type,
                     metadata={
                         "project_id": request.project_id,
                         "runtime_profile_id": request.runtime_profile_id,
@@ -545,6 +547,23 @@ class SqlAlchemyYoloXConversionTaskService:
                 "target_formats": list(task_spec.target_formats),
                 "steps": list(task_spec.planned_steps),
             }
+        )
+
+    def _build_backend_plan_steps(
+        self,
+        plan: YoloXConversionPlan,
+    ) -> tuple[DetectionConversionPlanStep, ...]:
+        """把 YOLOX 内部转换计划转换为 detection 通用后端步骤。"""
+
+        return tuple(
+            DetectionConversionPlanStep(
+                kind=step.kind,
+                source_format=step.source_format,
+                target_format=step.target_format,
+                required_file_type=step.required_file_type,
+                produced_file_type=step.produced_file_type,
+            )
+            for step in plan.steps
         )
 
     def _register_conversion_outputs(
