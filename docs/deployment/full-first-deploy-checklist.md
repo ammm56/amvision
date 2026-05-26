@@ -7,7 +7,6 @@
 ## 适用范围
 
 - 已通过 `assemble-release` 生成 `release/full/`
-- 已手工准备 `python/` 目录
 - 需要在一台新机器或新目录上完成首次可运行验证
 
 ## 执行前提
@@ -16,6 +15,8 @@
 - `python/` 下已经存在可执行 Python，并已安装 `app/requirements.txt` 中的依赖
 - `config/backend-service.json`、`config/backend-worker.json` 已按现场路径和端口要求检查过一遍
 - 准备一个体积较小的 zip 数据集样本，用于 DatasetImport smoke test
+
+如果当前 `assemble-release` 已按标准 maintenance 配置执行，`frontend/` 应该已经被自动填充；`python/` 则应来自已有发布目录的保留回迁或事先准备好的 bundled Python。这里如果仍缺少 Python 或前端构建产物，优先回到 release 组装阶段排查。
 
 ## 0. 目录快照检查
 
@@ -33,6 +34,8 @@
 - `manifests/release-profiles/full.json`
 - `manifests/worker-profiles/dataset-import.json`
 - `python/python.exe`
+- `frontend/index.html`
+- `frontend/runtime-config.json`
 
 如果目录结构不完整，先停止后续步骤，回到 release 组装阶段排查。
 

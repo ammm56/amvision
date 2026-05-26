@@ -75,6 +75,11 @@ def build_argument_parser() -> argparse.ArgumentParser:
         help="assemble-release 时允许覆盖现有目录",
     )
     parser.add_argument(
+        "--bundled-python-source-dir",
+        default=None,
+        help="仅在需要重建 release/python 时显式指定 bundled Python 来源目录",
+    )
+    parser.add_argument(
         "--now-iso",
         default=None,
         help="cleanup 命令使用的当前时间覆盖值，格式为 ISO8601",
@@ -95,6 +100,7 @@ def run_command(
     profile_id: str | None = None,
     release_root: str = "release",
     force: bool = False,
+    bundled_python_source_dir: str | None = None,
     now_iso: str | None = None,
     retention_hours: int = WORKFLOW_RUNTIME_STORAGE_DEFAULT_RETENTION_HOURS,
     backend_service_settings: BackendServiceSettings | None = None,
@@ -107,6 +113,7 @@ def run_command(
     - profile_id：assemble-release 使用的 profile id。
     - release_root：assemble-release 输出根目录。
     - force：assemble-release 时是否允许覆盖已存在目录。
+    - bundled_python_source_dir：可选的 bundled Python 来源目录，仅在需要重建时使用。
 
     返回：
     - dict[str, object]：命令执行结果。
@@ -126,6 +133,7 @@ def run_command(
         }
     if command == "validate-layout":
         app_root = Path.cwd()
+        layout_kind = "release" if (app_root / "app" / "backend").is_dir() else "source"
         expected_paths = {
             "config": (app_root / "config",),
             "data": (app_root / "data",),
@@ -142,9 +150,27 @@ def run_command(
                 app_root / "runtimes" / "manifests" / "worker-profiles",
             ),
         }
+        if layout_kind == "release":
+            expected_paths.update(
+                {
+                    "app_backend": (app_root / "app" / "backend",),
+                    "app_requirements": (app_root / "app" / "requirements.txt",),
+                    "custom_nodes": (app_root / "custom_nodes",),
+                    "frontend_index": (app_root / "frontend" / "index.html",),
+                    "frontend_runtime_config": (
+                        app_root / "frontend" / "runtime-config.json",
+                    ),
+                    "python_executable": (
+                        app_root / "python" / "python.exe",
+                        app_root / "python" / "bin" / "python3",
+                        app_root / "python" / "bin" / "python",
+                    ),
+                }
+            )
         return {
             "command": command,
             "app_root": str(app_root),
+            "layout_kind": layout_kind,
             "workspace_dir": str(runtime.workspace_dir),
             "paths": {
                 name: {
@@ -162,6 +188,24 @@ def run_command(
                 profile_id=resolved_profile_id,
                 output_root=Path(release_root),
                 overwrite=force,
+                bundled_python_source_dir=(
+                    Path(bundled_python_source_dir)
+                    if bundled_python_source_dir
+                    else (
+                        Path(runtime.settings.release.bundled_python.source_dir)
+                        if runtime.settings.release.bundled_python.source_dir
+                        else None
+                    )
+                ),
+                frontend_dist_dir=Path(runtime.settings.release.frontend.dist_dir),
+                frontend_runtime_config_source_file=(
+                    Path(runtime.settings.release.frontend.runtime_config_source_file)
+                    if runtime.settings.release.frontend.runtime_config_source_file
+                    else None
+                ),
+                frontend_runtime_config_template_file=Path(
+                    runtime.settings.release.frontend.runtime_config_template_file
+                ),
             )
         )
         return {
@@ -375,6 +419,7 @@ def main(argv: list[str] | None = None) -> int:
         profile_id=args.profile_id,
         release_root=args.release_root,
         force=args.force,
+        bundled_python_source_dir=args.bundled_python_source_dir,
         now_iso=args.now_iso,
         retention_hours=args.retention_hours,
     )

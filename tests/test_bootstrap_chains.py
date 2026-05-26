@@ -182,6 +182,12 @@ def test_get_backend_maintenance_settings_reads_json_files_and_environment_overr
                 "workspace": {
                     "root_dir": "./data/from-maintenance-config",
                 },
+                "release": {
+                    "frontend": {
+                        "dist_dir": "./frontend/dist",
+                        "runtime_config_template_file": "./frontend/runtime-config.template.json"
+                    }
+                },
             }
         ),
         encoding="utf-8",
@@ -203,12 +209,23 @@ def test_get_backend_maintenance_settings_reads_json_files_and_environment_overr
         "AMVISION_MAINTENANCE_WORKSPACE__ROOT_DIR",
         "./data/from-maintenance-env",
     )
+    monkeypatch.setenv(
+        "AMVISION_MAINTENANCE_RELEASE__FRONTEND__RUNTIME_CONFIG_SOURCE_FILE",
+        "./frontend/runtime-config.local.json",
+    )
 
     settings = get_backend_maintenance_settings()
 
     assert settings.app.app_name == "amvision config-maintenance"
     assert settings.app.app_version == "0.4.1-local"
     assert settings.workspace.root_dir == "./data/from-maintenance-env"
+    assert settings.release.bundled_python.source_dir is None
+    assert settings.release.frontend.dist_dir == "./frontend/dist"
+    assert settings.release.frontend.runtime_config_template_file == "./frontend/runtime-config.template.json"
+    assert (
+        settings.release.frontend.runtime_config_source_file
+        == "./frontend/runtime-config.local.json"
+    )
 
     get_backend_maintenance_settings.cache_clear()
 

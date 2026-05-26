@@ -14,6 +14,13 @@ REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 SOURCE_BACKEND_DIR = REPOSITORY_ROOT / "backend"
 SOURCE_CONFIG_DIR = REPOSITORY_ROOT / "config"
 SOURCE_CUSTOM_NODES_DIR = REPOSITORY_ROOT / "custom_nodes"
+SOURCE_FRONTEND_DIST_DIR = REPOSITORY_ROOT / "frontend" / "web-ui" / "dist"
+SOURCE_FRONTEND_RUNTIME_CONFIG_LOCAL_FILE = (
+    REPOSITORY_ROOT / "frontend" / "web-ui" / "public" / "runtime-config.local.json"
+)
+SOURCE_FRONTEND_RUNTIME_CONFIG_TEMPLATE_FILE = (
+    REPOSITORY_ROOT / "frontend" / "web-ui" / "public" / "runtime-config.template.json"
+)
 SOURCE_REQUIREMENTS_FILE = REPOSITORY_ROOT / "requirements.txt"
 SOURCE_LAUNCHERS_DIR = REPOSITORY_ROOT / "runtimes" / "launchers"
 SOURCE_FULL_LAUNCHERS_DIR = SOURCE_LAUNCHERS_DIR / "full"
@@ -29,11 +36,19 @@ class ReleaseAssemblyRequest:
     - profile_id：要组装的 release profile id。
     - output_root：release 输出根目录。
     - overwrite：目标目录已存在时是否允许覆盖。
+    - bundled_python_source_dir：可选的 bundled Python 来源目录。
+    - frontend_dist_dir：可选的前端构建产物目录。
+    - frontend_runtime_config_source_file：优先复制为 runtime-config.json 的配置文件。
+    - frontend_runtime_config_template_file：找不到 source_file 时使用的模板文件。
     """
 
     profile_id: str
     output_root: Path
     overwrite: bool = False
+    bundled_python_source_dir: Path | None = None
+    frontend_dist_dir: Path | None = None
+    frontend_runtime_config_source_file: Path | None = None
+    frontend_runtime_config_template_file: Path | None = None
 
     def resolve_release_dir(self) -> Path:
         """返回当前 profile 的发行目录。"""
@@ -51,7 +66,7 @@ class ReleaseAssemblyResult:
     - release_manifest_path：发行目录里的 release manifest 路径。
     - requirements_path：发行目录里的 requirements.txt 路径。
     - bundled_python_dir：发行目录里的 bundled Python 目录。
-    - bundled_python_mode：bundled Python 的来源模式，支持 preserved-existing 或 placeholder-empty。
+    - bundled_python_mode：bundled Python 的来源模式，支持 copied-from-source、preserved-existing 或 placeholder-empty。
     - generated_root_launchers：发行目录根目录的一键启动脚本列表。
     - worker_profile_ids：本次打入发行目录的 worker profile id 列表。
     - generated_worker_launchers：自动生成的 worker wrapper 列表。
@@ -125,6 +140,21 @@ def _ignore_custom_nodes_copy(directory: str, names: list[str]) -> set[str]:
     """
 
     ignored_names = {"__pycache__"}
+    return {
+        name
+        for name in names
+        if name in ignored_names or name.endswith(".pyc") or name.endswith(".pyo")
+    }
+
+
+def _ignore_bundled_python_copy(directory: str, names: list[str]) -> set[str]:
+    """返回复制 bundled Python 时需要忽略的目录和文件名。"""
+
+    ignored_names = {
+        "__pycache__",
+        ".pytest_cache",
+        ".ruff_cache",
+    }
     return {
         name
         for name in names
@@ -283,6 +313,76 @@ def _copy_runtime_assets(release_dir: Path) -> None:
     )
 
 
+def _resolve_frontend_dist_dir(request: ReleaseAssemblyRequest) -> Path:
+    """解析 release 组装使用的前端构建产物目录。"""
+
+    return (
+        request.frontend_dist_dir.resolve()
+        if request.frontend_dist_dir is not None
+        else SOURCE_FRONTEND_DIST_DIR.resolve()
+    )
+
+
+def _resolve_frontend_runtime_config_source_file(
+    request: ReleaseAssemblyRequest,
+) -> Path | None:
+    """解析优先复制为 runtime-config.json 的前端运行时配置文件。"""
+
+    return (
+        request.frontend_runtime_config_source_file.resolve()
+        if request.frontend_runtime_config_source_file is not None
+        else SOURCE_FRONTEND_RUNTIME_CONFIG_LOCAL_FILE.resolve()
+    )
+
+
+def _resolve_frontend_runtime_config_template_file(
+    request: ReleaseAssemblyRequest,
+) -> Path:
+    """解析前端运行时配置模板文件。"""
+
+    return (
+        request.frontend_runtime_config_template_file.resolve()
+        if request.frontend_runtime_config_template_file is not None
+        else SOURCE_FRONTEND_RUNTIME_CONFIG_TEMPLATE_FILE.resolve()
+    )
+
+
+def _copy_frontend_assets(
+    release_dir: Path,
+    *,
+    request: ReleaseAssemblyRequest,
+) -> None:
+    """复制前端构建产物，并确保发布目录存在 runtime-config.json。"""
+
+    frontend_dist_dir = _resolve_frontend_dist_dir(request)
+    if not frontend_dist_dir.is_dir():
+        raise FileNotFoundError(
+            f"前端构建产物目录不存在；请先执行 frontend/web-ui 构建: {frontend_dist_dir}"
+        )
+
+    _copy_directory_tree(frontend_dist_dir, release_dir / "frontend")
+    frontend_root_dir = release_dir / "frontend"
+    if not (frontend_root_dir / "index.html").is_file():
+        raise FileNotFoundError(f"前端构建产物缺少 index.html: {frontend_root_dir / 'index.html'}")
+
+    runtime_config_target_path = frontend_root_dir / "runtime-config.json"
+    if runtime_config_target_path.is_file():
+        return
+
+    runtime_config_source_file = _resolve_frontend_runtime_config_source_file(request)
+    if runtime_config_source_file is not None and runtime_config_source_file.is_file():
+        _copy_file(runtime_config_source_file, runtime_config_target_path)
+        return
+
+    runtime_config_template_file = _resolve_frontend_runtime_config_template_file(request)
+    if not runtime_config_template_file.is_file():
+        raise FileNotFoundError(
+            "前端运行时配置模板不存在，无法生成 runtime-config.json: "
+            f"{runtime_config_template_file}"
+        )
+    _copy_file(runtime_config_template_file, runtime_config_target_path)
+
+
 def _stash_existing_python_dir(release_dir: Path) -> Path | None:
     """把已有 release 目录中的 python 目录临时搬离。
 
@@ -327,6 +427,55 @@ def _restore_preserved_python_dir(
     return release_python_dir
 
 
+def _discard_preserved_python_dir(preserved_python_temp_dir: Path | None) -> None:
+    """清理已经不再需要的暂存 python 目录。"""
+
+    if preserved_python_temp_dir is None:
+        return
+    shutil.rmtree(preserved_python_temp_dir, ignore_errors=True)
+
+
+def _recover_preserved_python_dir(
+    release_dir: Path,
+    preserved_python_temp_dir: Path | None,
+) -> None:
+    """在发布失败时把暂存的 python 目录恢复回发行目录。"""
+
+    if preserved_python_temp_dir is None:
+        return
+
+    preserved_python_dir = preserved_python_temp_dir / "python"
+    if not preserved_python_dir.exists():
+        shutil.rmtree(preserved_python_temp_dir, ignore_errors=True)
+        return
+
+    release_dir.mkdir(parents=True, exist_ok=True)
+    release_python_dir = release_dir / "python"
+    if release_python_dir.exists():
+        shutil.rmtree(release_python_dir, ignore_errors=True)
+    shutil.move(str(preserved_python_dir), str(release_python_dir))
+    shutil.rmtree(preserved_python_temp_dir, ignore_errors=True)
+
+
+def _copy_bundled_python_dir(
+    release_dir: Path,
+    *,
+    source_dir: Path,
+) -> Path:
+    """把指定 Python 运行时目录复制到发行目录。"""
+
+    if not source_dir.is_dir():
+        raise FileNotFoundError(f"bundled Python 来源目录不存在: {source_dir}")
+
+    release_python_dir = release_dir / "python"
+    _copy_directory_tree(
+        source_dir,
+        release_python_dir,
+        ignore=_ignore_bundled_python_copy,
+    )
+    return release_python_dir
+
+
 def _prepare_bundled_python_dir(release_dir: Path) -> Path:
     """创建发行目录中的空 python 目录。
 
@@ -345,6 +494,8 @@ def _prepare_bundled_python_dir(release_dir: Path) -> Path:
 def _materialize_bundled_python_dir(
     release_dir: Path,
     preserved_python_temp_dir: Path | None,
+    *,
+    bundled_python_source_dir: Path | None,
 ) -> tuple[Path, str]:
     """为发行目录准备 bundled Python，并返回来源模式。
 
@@ -356,6 +507,12 @@ def _materialize_bundled_python_dir(
     - tuple[Path, str]：发行目录中的 python 路径和来源模式。
     """
 
+    if bundled_python_source_dir is not None:
+        copied_python_dir = _copy_bundled_python_dir(
+            release_dir,
+            source_dir=bundled_python_source_dir,
+        )
+        return copied_python_dir, "copied-from-source"
     if preserved_python_temp_dir is not None:
         restored_python_dir = _restore_preserved_python_dir(release_dir, preserved_python_temp_dir)
         return restored_python_dir, "preserved-existing"
@@ -367,7 +524,6 @@ def _materialize_placeholder_dirs(
     release_dir: Path,
     *,
     include_python_placeholder: bool,
-    include_frontend: bool,
 ) -> tuple[Path, ...]:
     """创建 release 目录中的占位目录。"""
 
@@ -377,8 +533,6 @@ def _materialize_placeholder_dirs(
     ]
     if include_python_placeholder:
         placeholder_dirs.append(release_dir / "python")
-    if include_frontend:
-        placeholder_dirs.append(release_dir / "frontend")
     for directory in placeholder_dirs:
         directory.mkdir(parents=True, exist_ok=True)
     return tuple(placeholder_dirs)
@@ -401,118 +555,147 @@ def assemble_release(request: ReleaseAssemblyRequest) -> ReleaseAssemblyResult:
         shutil.rmtree(release_dir)
     release_dir.mkdir(parents=True, exist_ok=True)
 
-    _copy_application_sources(release_dir)
-    _copy_runtime_assets(release_dir)
-    requirements_path = release_dir / "app" / "requirements.txt"
-    bundled_python_dir, bundled_python_mode = _materialize_bundled_python_dir(
-        release_dir,
-        preserved_python_temp_dir,
-    )
-    _copy_launcher_tree(release_dir)
-    generated_root_launchers = _copy_full_root_launchers(release_dir)
+    try:
+        _copy_application_sources(release_dir)
+        _copy_runtime_assets(release_dir)
+        requirements_path = release_dir / "app" / "requirements.txt"
+        _copy_launcher_tree(release_dir)
+        generated_root_launchers = _copy_full_root_launchers(release_dir)
 
-    worker_section = source_release_profile["worker"]
-    assert isinstance(worker_section, dict)
-    worker_profile_ids_raw = worker_section.get("worker_profile_ids")
-    if not isinstance(worker_profile_ids_raw, list) or not worker_profile_ids_raw:
-        raise ValueError("release profile 必须包含非空 worker.worker_profile_ids")
-    worker_profile_ids = tuple(str(profile_id) for profile_id in worker_profile_ids_raw)
+        worker_section = source_release_profile["worker"]
+        assert isinstance(worker_section, dict)
+        worker_profile_ids_raw = worker_section.get("worker_profile_ids")
+        if not isinstance(worker_profile_ids_raw, list) or not worker_profile_ids_raw:
+            raise ValueError("release profile 必须包含非空 worker.worker_profile_ids")
+        worker_profile_ids = tuple(str(profile_id) for profile_id in worker_profile_ids_raw)
 
-    worker_entries: list[dict[str, object]] = []
-    generated_worker_launchers: list[Path] = []
-    for profile_id in worker_profile_ids:
-        source_worker_profile_path = SOURCE_WORKER_PROFILES_DIR / f"{profile_id}.json"
-        if not source_worker_profile_path.is_file():
-            raise FileNotFoundError(f"worker profile 不存在: {source_worker_profile_path}")
-        source_worker_profile = _load_json_file(source_worker_profile_path)
-        release_worker_profile_path = release_dir / "manifests" / "worker-profiles" / f"{profile_id}.json"
-        _write_json_file(release_worker_profile_path, source_worker_profile)
+        worker_entries: list[dict[str, object]] = []
+        generated_worker_launchers: list[Path] = []
+        for profile_id in worker_profile_ids:
+            source_worker_profile_path = SOURCE_WORKER_PROFILES_DIR / f"{profile_id}.json"
+            if not source_worker_profile_path.is_file():
+                raise FileNotFoundError(f"worker profile 不存在: {source_worker_profile_path}")
+            source_worker_profile = _load_json_file(source_worker_profile_path)
+            release_worker_profile_path = (
+                release_dir / "manifests" / "worker-profiles" / f"{profile_id}.json"
+            )
+            _write_json_file(release_worker_profile_path, source_worker_profile)
 
-        windows_wrapper_path = release_dir / "launchers" / "worker" / f"start-{profile_id}-worker.bat"
-        linux_wrapper_path = release_dir / "launchers" / "worker" / f"start-{profile_id}-worker.sh"
-        windows_wrapper_path.write_text(_build_worker_windows_wrapper(profile_id), encoding="utf-8")
-        linux_wrapper_path.write_text(_build_worker_linux_wrapper(profile_id), encoding="utf-8")
-        generated_worker_launchers.extend((windows_wrapper_path, linux_wrapper_path))
+            windows_wrapper_path = (
+                release_dir / "launchers" / "worker" / f"start-{profile_id}-worker.bat"
+            )
+            linux_wrapper_path = (
+                release_dir / "launchers" / "worker" / f"start-{profile_id}-worker.sh"
+            )
+            windows_wrapper_path.write_text(
+                _build_worker_windows_wrapper(profile_id),
+                encoding="utf-8",
+            )
+            linux_wrapper_path.write_text(
+                _build_worker_linux_wrapper(profile_id),
+                encoding="utf-8",
+            )
+            generated_worker_launchers.extend((windows_wrapper_path, linux_wrapper_path))
 
-        worker_entries.append(
-            {
-                "profile_id": source_worker_profile["profile_id"],
-                "display_name": source_worker_profile["display_name"],
-                "description": source_worker_profile["description"],
-                "manifest": f"manifests/worker-profiles/{profile_id}.json",
-                "python_launcher": "launchers/worker/start_backend_worker.py",
-                "windows_launcher": f"launchers/worker/start-{profile_id}-worker.bat",
-                "linux_launcher": f"launchers/worker/start-{profile_id}-worker.sh",
-                "enabled_consumer_kinds": source_worker_profile["enabled_consumer_kinds"],
-                "max_concurrent_tasks": source_worker_profile.get("max_concurrent_tasks", 1),
-                "poll_interval_seconds": source_worker_profile.get("poll_interval_seconds", 1.0),
-            }
+            worker_entries.append(
+                {
+                    "profile_id": source_worker_profile["profile_id"],
+                    "display_name": source_worker_profile["display_name"],
+                    "description": source_worker_profile["description"],
+                    "manifest": f"manifests/worker-profiles/{profile_id}.json",
+                    "python_launcher": "launchers/worker/start_backend_worker.py",
+                    "windows_launcher": f"launchers/worker/start-{profile_id}-worker.bat",
+                    "linux_launcher": f"launchers/worker/start-{profile_id}-worker.sh",
+                    "enabled_consumer_kinds": source_worker_profile["enabled_consumer_kinds"],
+                    "max_concurrent_tasks": source_worker_profile.get("max_concurrent_tasks", 1),
+                    "poll_interval_seconds": source_worker_profile.get("poll_interval_seconds", 1.0),
+                }
+            )
+
+        artifacts_section = source_release_profile["artifacts"]
+        assert isinstance(artifacts_section, dict)
+        if bool(artifacts_section.get("include_frontend", False)):
+            _copy_frontend_assets(release_dir, request=request)
+
+        bundled_python_source_dir = (
+            request.bundled_python_source_dir.resolve()
+            if request.bundled_python_source_dir is not None
+            else None
+        )
+        bundled_python_dir, bundled_python_mode = _materialize_bundled_python_dir(
+            release_dir,
+            preserved_python_temp_dir,
+            bundled_python_source_dir=bundled_python_source_dir,
+        )
+        placeholder_dirs = _materialize_placeholder_dirs(
+            release_dir,
+            include_python_placeholder=(bundled_python_mode == "placeholder-empty"),
         )
 
-    artifacts_section = source_release_profile["artifacts"]
-    assert isinstance(artifacts_section, dict)
-    placeholder_dirs = _materialize_placeholder_dirs(
-        release_dir,
-        include_python_placeholder=(bundled_python_mode == "placeholder-empty"),
-        include_frontend=bool(artifacts_section.get("include_frontend", False)),
-    )
+        release_manifest = {
+            "profile_id": source_release_profile["profile_id"],
+            "display_name": source_release_profile["display_name"],
+            "description": source_release_profile["description"],
+            "requirements_file": "app/requirements.txt",
+            "bundled_python": {
+                "python_dir": "python",
+                "mode": bundled_python_mode,
+                "included": bundled_python_mode != "placeholder-empty",
+                "managed_manually": bundled_python_mode == "placeholder-empty",
+            },
+            "service": {
+                "python_launcher": "launchers/service/start_backend_service.py",
+                "windows_launcher": "launchers/service/start-backend-service.bat",
+                "linux_launcher": "launchers/service/start-backend-service.sh",
+                "hosted_task_manager_enabled": source_release_profile["service"][
+                    "hosted_task_manager_enabled"
+                ],
+            },
+            "workers": worker_entries,
+            "maintenance": {
+                "python_launcher": "launchers/maintenance/invoke_backend_maintenance.py",
+                "windows_launcher": "launchers/maintenance/invoke-backend-maintenance.bat",
+                "linux_launcher": "launchers/maintenance/invoke-backend-maintenance.sh",
+                "default_command": source_release_profile["maintenance"]["default_command"],
+            },
+            "stack": {
+                "python_launcher": "start_amvision_full.py",
+                "windows_launcher": "start-amvision-full.bat",
+                "linux_launcher": "start-amvision-full.sh",
+                "logs_dir": "logs/full-stack",
+                "state_file": "logs/full-stack/runtime-state.json",
+                "stop_python_launcher": "stop_amvision_full.py",
+                "stop_windows_launcher": "stop-amvision-full.bat",
+                "stop_linux_launcher": "stop-amvision-full.sh",
+            },
+            "artifacts": artifacts_section,
+            "layout": {
+                "app_dir": "app",
+                "config_dir": "config",
+                "custom_nodes_dir": "custom_nodes",
+                "data_dir": "data",
+                "logs_dir": "logs",
+                "python_dir": "python",
+            },
+        }
+        release_manifest_path = (
+            release_dir / "manifests" / "release-profiles" / f"{request.profile_id}.json"
+        )
+        _write_json_file(release_manifest_path, release_manifest)
+        _discard_preserved_python_dir(preserved_python_temp_dir)
 
-    release_manifest = {
-        "profile_id": source_release_profile["profile_id"],
-        "display_name": source_release_profile["display_name"],
-        "description": source_release_profile["description"],
-        "requirements_file": "app/requirements.txt",
-        "bundled_python": {
-            "python_dir": "python",
-            "mode": bundled_python_mode,
-            "included": bundled_python_mode != "placeholder-empty",
-            "managed_manually": True,
-        },
-        "service": {
-            "python_launcher": "launchers/service/start_backend_service.py",
-            "windows_launcher": "launchers/service/start-backend-service.bat",
-            "linux_launcher": "launchers/service/start-backend-service.sh",
-            "hosted_task_manager_enabled": source_release_profile["service"]["hosted_task_manager_enabled"],
-        },
-        "workers": worker_entries,
-        "maintenance": {
-            "python_launcher": "launchers/maintenance/invoke_backend_maintenance.py",
-            "windows_launcher": "launchers/maintenance/invoke-backend-maintenance.bat",
-            "linux_launcher": "launchers/maintenance/invoke-backend-maintenance.sh",
-            "default_command": source_release_profile["maintenance"]["default_command"],
-        },
-        "stack": {
-            "python_launcher": "start_amvision_full.py",
-            "windows_launcher": "start-amvision-full.bat",
-            "linux_launcher": "start-amvision-full.sh",
-            "logs_dir": "logs/full-stack",
-            "state_file": "logs/full-stack/runtime-state.json",
-            "stop_python_launcher": "stop_amvision_full.py",
-            "stop_windows_launcher": "stop-amvision-full.bat",
-            "stop_linux_launcher": "stop-amvision-full.sh",
-        },
-        "artifacts": artifacts_section,
-        "layout": {
-            "app_dir": "app",
-            "config_dir": "config",
-            "custom_nodes_dir": "custom_nodes",
-            "data_dir": "data",
-            "logs_dir": "logs",
-            "python_dir": "python",
-        },
-    }
-    release_manifest_path = release_dir / "manifests" / "release-profiles" / f"{request.profile_id}.json"
-    _write_json_file(release_manifest_path, release_manifest)
-
-    return ReleaseAssemblyResult(
-        profile_id=request.profile_id,
-        release_dir=release_dir,
-        release_manifest_path=release_manifest_path,
-        requirements_path=requirements_path,
-        bundled_python_dir=bundled_python_dir,
-        bundled_python_mode=bundled_python_mode,
-        generated_root_launchers=generated_root_launchers,
-        worker_profile_ids=worker_profile_ids,
-        generated_worker_launchers=tuple(generated_worker_launchers),
-        placeholder_dirs=placeholder_dirs,
-    )
+        return ReleaseAssemblyResult(
+            profile_id=request.profile_id,
+            release_dir=release_dir,
+            release_manifest_path=release_manifest_path,
+            requirements_path=requirements_path,
+            bundled_python_dir=bundled_python_dir,
+            bundled_python_mode=bundled_python_mode,
+            generated_root_launchers=generated_root_launchers,
+            worker_profile_ids=worker_profile_ids,
+            generated_worker_launchers=tuple(generated_worker_launchers),
+            placeholder_dirs=placeholder_dirs,
+        )
+    except Exception:
+        _recover_preserved_python_dir(release_dir, preserved_python_temp_dir)
+        raise

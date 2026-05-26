@@ -84,7 +84,7 @@
 - 当前 app runtime snapshot 根目录已经稳定到 `workflows/runtime/app-runtimes/{workflow_runtime_id}/`；application、template 和 execution-policy snapshot 都按这个根目录组织，供 runtime worker 和后续发布形态复用。
 - 当前仓库已经提供 `backend.maintenance.main`、Python launchers、bat/sh wrapper、worker profile manifest，以及 `assemble-release` 命令来生成单一 `full` 发行目录。
 - 当前 release 组装会复制完整项目代码和仓库根目录的 `requirements.txt`，不做源码裁剪，也不再维护多套运行时依赖配置。
-- 当前真正还未落地的是 bundled Python 二进制和 site-packages 本体；发行目录里的 `python/` 只会被创建为空目录，后续由手工复制填充。
+- 当前标准 maintenance 配置已经接通前端 dist 目录；`assemble-release` 会复制 `frontend/web-ui/dist/` 到发行目录里的 `frontend/`，补齐 `runtime-config.json`，并在覆盖发布时保留现有 `python/` 目录。
 
 ## 下一步建议
 

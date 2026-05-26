@@ -61,7 +61,7 @@ release/
 
 ## runtimes 目录在仓库中的职责
 
-- 当前仓库里的 runtimes 目录主要包含 launchers 和 manifests 两部分；`python/` 目录在发行时只创建空目录，不在仓库里预置 bundled Python 内容。
+- 当前仓库里的 runtimes 目录主要包含 launchers 和 manifests 两部分；bundled Python 本体不放在仓库里预置，release 组装阶段默认保留现有发布目录里的 `python/`。
 - runtimes/launchers：统一服务、worker 和维护命令入口；当前仓库已经提供 Python 主逻辑 launcher，以及 bat/sh wrapper。
 - runtimes/manifests：发布目录和 worker 职责拆分的清单；当前仓库已经提供 `full` release profile 与 worker profile。
 
@@ -69,8 +69,8 @@ release/
 
 - 当前后端功能面已经可用，开发环境仍以 `python -m uvicorn backend.service.api.app:app --host 127.0.0.1 --port 8000` 这类直接启动方式为主。
 - `backend.maintenance.main assemble-release` 当前会生成 `release/full/` 目录，复制完整 backend 代码、配置、launcher、manifest，并把仓库根目录的 `requirements.txt` 复制到发行目录。
-- 当前 `python/` 目录只会被创建为空目录，后续 bundled Python 需要手工复制进去。
-- 因此，当前 runtimes 已经具备“完整代码不裁剪、直接得到一个完整发布目录”的装配骨架，但 Python 运行时本体仍由后续手工落盘。
+- 当前 release 组装会保留并回迁现有发行目录里的 `python/`，也会把 `frontend/web-ui/dist/` 复制到发行目录里的 `frontend/`，并补齐 `runtime-config.json`。
+- 只有显式提供 bundled Python 来源目录时，当前才会重建 `python/`；如果发行目录原本没有 `python/`，则会退回空目录占位模式。
 
 ## 启动器设计
 
@@ -120,7 +120,7 @@ release/
 ## 当前装配结果
 
 - 当前对应 manifest：`runtimes/manifests/release-profiles/full.json`
-- 发布目录默认包含 backend-service、全部 worker profile、前端目录、custom_nodes 目录、配置目录、数据目录、日志目录和空的 `python/` 目录
+- 发布目录默认包含 backend-service、全部 worker profile、前端目录、custom_nodes 目录、配置目录、数据目录、日志目录，以及保留或占位的 `python/` 目录
 - 如果后续需要推理专用目录，建议从 `release/full/` 复制一份后再手工调整 `requirements.txt`、`python/` 和不需要的 worker launcher
 
 ## 兼容性管理

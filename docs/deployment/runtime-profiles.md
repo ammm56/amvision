@@ -27,7 +27,10 @@
 - `hosted_task_manager_enabled=false`
 - worker 默认拆成 `dataset-import`、`dataset-export`、`training`、`conversion`、`evaluation`、`inference` 六个独立 profile
 - 发布目录名默认为 `release/full/`
-- 发行目录中的 `python/` 只创建空目录，Python 解释器与依赖由后续手工复制
+- 覆盖发布时会优先保留并回迁现有 `release/full/python/`
+- 只有显式提供 bundled Python 来源目录时，才会重建发行目录里的 `python/`
+- 如果当前发布目录原本没有 `python/`，发行目录中的 `python/` 才会退回空目录模式
+- release 组装会复制 `frontend/web-ui/dist/`，并保证 `frontend/runtime-config.json` 存在
 - 可选启用本地 ZeroMQ 作为内部 IPC 补充
 
 ## 推荐启动顺序
@@ -49,7 +52,7 @@
 
 ## 当前建议
 
-1. 开发联调继续可以在仓库根目录直接运行 launcher，并显式传入 conda Python 路径。
+1. 开发联调继续可以在仓库根目录直接运行 launcher，并默认使用当前已激活的 `conda amvision` 解释器。
 2. 发布打包时应通过 `assemble-release` 生成 `release/full/`，不要再手工拼接 launcher、manifest 或直接修改 `release/full/app/` 下的代码。
 3. 如果需要调整发布目录中的 backend、config、docs 或 requirements，应先修改仓库源文件，再重新执行 `assemble-release` 覆盖生成 `release/full/`。
 4. 如果要做推理专用变体，直接复制 `release/full/`，再手工调整 `app/requirements.txt` 与 `python/` 即可。

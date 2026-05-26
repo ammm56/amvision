@@ -10,6 +10,10 @@
 
 - [docs/architecture/system-overview.md](system-overview.md)：平台整体框架、一级模块、端到端流程和所需功能总览
 - [docs/architecture/current-implementation-status.md](current-implementation-status.md)：当前主干已经落地的整体框架、主要代码落点、运行时矩阵和下一步收敛重点
+- [docs/architecture/next-stage-roadmap.md](next-stage-roadmap.md)：当前阶段判断、本轮已收口事项、固定开发环境与下一阶段五条主线
+- [docs/architecture/model-platform-plan.md](model-platform-plan.md)：多模型平台化路线，说明通用层、任务分类层、模型分类适配层和各模型分类的最小接入范围
+- [docs/architecture/yolo-model-plan.md](yolo-model-plan.md)：YOLO 系列模型的参考源码边界、层级关系、任务分类拆分、模型分类适配和进入顺序
+- [docs/architecture/model-workflow-boundaries.md](model-workflow-boundaries.md)：模型接入、数据集、部署长期运行服务、workflow app 和 TriggerSource 之间的正式边界
 - [docs/architecture/websocket-architecture.md](websocket-architecture.md)：WebSocket 子系统的职责边界、版本化路由、事件流组织和重连规则
 - [docs/architecture/execution-sequences.md](execution-sequences.md)：训练、转换、部署推理和 workflow execute 四条关键调用顺序图
 - [docs/architecture/workflow-runtime.md](workflow-runtime.md)：workflow 编辑态试跑、已发布应用运行、队列划分、worker 拓扑和 API 草案
@@ -51,27 +55,31 @@
 
 1. [docs/architecture/system-overview.md](system-overview.md)
 2. [docs/architecture/current-implementation-status.md](current-implementation-status.md)
-3. [docs/architecture/execution-sequences.md](execution-sequences.md)
-4. [docs/architecture/workflow-runtime.md](workflow-runtime.md)
-5. [docs/architecture/workflow-editor-backend-checklist.md](workflow-editor-backend-checklist.md)
-6. [docs/architecture/workflow-runtime-phase1.md](workflow-runtime-phase1.md)
-7. [docs/architecture/workflow-runtime-phase2.md](workflow-runtime-phase2.md)
-8. [docs/architecture/project-structure.md](project-structure.md)
-9. [docs/architecture/backend-service.md](backend-service.md)
-10. [docs/architecture/websocket-architecture.md](websocket-architecture.md)
-11. [docs/architecture/task-system.md](task-system.md)
-12. [docs/architecture/detection-model-rules.md](detection-model-rules.md)
-13. [docs/architecture/yolox-module-design.md](yolox-module-design.md)
-14. [docs/architecture/frontend-web-ui.md](frontend-web-ui.md)
-15. [docs/architecture/frontend-web-ui-structure.md](frontend-web-ui-structure.md)
-16. [docs/architecture/frontend-web-ui-startup-session.md](frontend-web-ui-startup-session.md)
-17. [docs/architecture/frontend-web-ui-development-readiness.md](frontend-web-ui-development-readiness.md)
-18. [docs/architecture/frontend-web-ui-workflows.md](frontend-web-ui-workflows.md)
-19. [docs/architecture/node-system.md](node-system.md)
-20. [docs/architecture/workflow-json-contracts.md](workflow-json-contracts.md)
-21. [docs/architecture/data-and-files.md](data-and-files.md)
-22. [docs/architecture/local-buffer-broker.md](local-buffer-broker.md)
-23. [docs/architecture/dataset-import-spec.md](dataset-import-spec.md)
-24. [docs/architecture/dataset-export-formats.md](dataset-export-formats.md)
-25. [docs/architecture/runtime-packaging.md](runtime-packaging.md)
-26. 按任务继续进入集成规则或日志专题文档
+3. [docs/architecture/next-stage-roadmap.md](next-stage-roadmap.md)
+4. [docs/architecture/model-platform-plan.md](model-platform-plan.md)
+5. [docs/architecture/yolo-model-plan.md](yolo-model-plan.md)
+6. [docs/architecture/model-workflow-boundaries.md](model-workflow-boundaries.md)
+7. [docs/architecture/execution-sequences.md](execution-sequences.md)
+8. [docs/architecture/workflow-runtime.md](workflow-runtime.md)
+9. [docs/architecture/workflow-editor-backend-checklist.md](workflow-editor-backend-checklist.md)
+10. [docs/architecture/workflow-runtime-phase1.md](workflow-runtime-phase1.md)
+11. [docs/architecture/workflow-runtime-phase2.md](workflow-runtime-phase2.md)
+12. [docs/architecture/project-structure.md](project-structure.md)
+13. [docs/architecture/backend-service.md](backend-service.md)
+14. [docs/architecture/websocket-architecture.md](websocket-architecture.md)
+15. [docs/architecture/task-system.md](task-system.md)
+16. [docs/architecture/detection-model-rules.md](detection-model-rules.md)
+17. [docs/architecture/yolox-module-design.md](yolox-module-design.md)
+18. [docs/architecture/frontend-web-ui.md](frontend-web-ui.md)
+19. [docs/architecture/frontend-web-ui-structure.md](frontend-web-ui-structure.md)
+20. [docs/architecture/frontend-web-ui-startup-session.md](frontend-web-ui-startup-session.md)
+21. [docs/architecture/frontend-web-ui-development-readiness.md](frontend-web-ui-development-readiness.md)
+22. [docs/architecture/frontend-web-ui-workflows.md](frontend-web-ui-workflows.md)
+23. [docs/architecture/node-system.md](node-system.md)
+24. [docs/architecture/workflow-json-contracts.md](workflow-json-contracts.md)
+25. [docs/architecture/data-and-files.md](data-and-files.md)
+26. [docs/architecture/local-buffer-broker.md](local-buffer-broker.md)
+27. [docs/architecture/dataset-import-spec.md](dataset-import-spec.md)
+28. [docs/architecture/dataset-export-formats.md](dataset-export-formats.md)
+29. [docs/architecture/runtime-packaging.md](runtime-packaging.md)
+30. 按任务继续进入集成规则或日志专题文档

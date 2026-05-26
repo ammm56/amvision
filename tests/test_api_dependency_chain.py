@@ -211,6 +211,46 @@ def test_create_app_uses_explicit_backend_service_settings(tmp_path: Path) -> No
         application.state.session_factory.engine.dispose()
 
 
+def test_create_app_mounts_frontend_static_files_with_spa_fallback(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """验证存在前端构建产物时会挂载静态资源并保留单页应用路由回退。"""
+
+    frontend_dir = tmp_path / "frontend"
+    frontend_dir.mkdir(parents=True, exist_ok=True)
+    (frontend_dir / "index.html").write_text("<html><body>amvision frontend</body></html>\n", encoding="utf-8")
+    (frontend_dir / "assets").mkdir(parents=True, exist_ok=True)
+    (frontend_dir / "assets" / "app.js").write_text("console.log('app');\n", encoding="utf-8")
+
+    monkeypatch.chdir(tmp_path)
+
+    settings = BackendServiceSettings(
+        database=BackendServiceDatabaseConfig(
+            url=f"sqlite:///{(tmp_path / 'frontend-static.db').as_posix()}"
+        ),
+        dataset_storage=BackendServiceDatasetStorageConfig(root_dir=str(tmp_path / "files")),
+        queue=BackendServiceQueueConfig(root_dir=str(tmp_path / "queue-root")),
+        task_manager=BackendServiceTaskManagerConfig(enabled=False),
+        local_buffer_broker=LocalBufferBrokerSettings(enabled=False),
+    )
+
+    application = create_app(settings=settings)
+    try:
+        with TestClient(application) as client:
+            root_response = client.get("/")
+            route_fallback_response = client.get("/workflows/editor")
+            missing_asset_response = client.get("/assets/missing.js")
+
+        assert root_response.status_code == 200
+        assert "amvision frontend" in root_response.text
+        assert route_fallback_response.status_code == 200
+        assert "amvision frontend" in route_fallback_response.text
+        assert missing_asset_response.status_code == 404
+    finally:
+        application.state.session_factory.engine.dispose()
+
+
 def test_get_backend_service_settings_reads_json_files_and_environment_overrides(
     tmp_path: Path,
     monkeypatch,

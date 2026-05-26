@@ -38,12 +38,53 @@ class BackendMaintenanceWorkspaceConfig(BaseModel):
     root_dir: str = "./data/maintenance"
 
 
+class BackendMaintenanceReleaseBundledPythonConfig(BaseModel):
+    """描述 release 组装阶段 bundled Python 的可选来源配置。
+
+    字段：
+    - source_dir：仅在需要显式重建 bundled Python 时使用的来源目录。
+    """
+
+    source_dir: str | None = None
+
+
+class BackendMaintenanceReleaseFrontendConfig(BaseModel):
+    """描述 release 组装阶段前端静态资源的来源配置。
+
+    字段：
+    - dist_dir：前端构建产物目录。
+    - runtime_config_source_file：优先复制为 `runtime-config.json` 的运行时配置文件。
+    - runtime_config_template_file：当 source_file 不存在时使用的模板文件。
+    """
+
+    dist_dir: str = "./frontend/web-ui/dist"
+    runtime_config_source_file: str | None = "./frontend/web-ui/public/runtime-config.local.json"
+    runtime_config_template_file: str = "./frontend/web-ui/public/runtime-config.template.json"
+
+
+class BackendMaintenanceReleaseConfig(BaseModel):
+    """描述 release 组装阶段的统一来源配置。
+
+    字段：
+    - bundled_python：bundled Python 的可选重建来源配置。
+    - frontend：前端静态资源来源配置。
+    """
+
+    bundled_python: BackendMaintenanceReleaseBundledPythonConfig = Field(
+        default_factory=BackendMaintenanceReleaseBundledPythonConfig
+    )
+    frontend: BackendMaintenanceReleaseFrontendConfig = Field(
+        default_factory=BackendMaintenanceReleaseFrontendConfig
+    )
+
+
 class BackendMaintenanceSettings(BaseSettings):
     """描述 backend-maintenance 启动阶段使用的统一配置。
 
     字段：
     - app：maintenance 进程基础配置。
     - workspace：maintenance 工作目录配置。
+    - release：release 组装来源配置。
     """
 
     model_config = SettingsConfigDict(
@@ -55,6 +96,9 @@ class BackendMaintenanceSettings(BaseSettings):
     app: BackendMaintenanceAppSettings = Field(default_factory=BackendMaintenanceAppSettings)
     workspace: BackendMaintenanceWorkspaceConfig = Field(
         default_factory=BackendMaintenanceWorkspaceConfig
+    )
+    release: BackendMaintenanceReleaseConfig = Field(
+        default_factory=BackendMaintenanceReleaseConfig
     )
 
     @classmethod

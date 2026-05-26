@@ -26,6 +26,14 @@
 conda activate amvision
 ```
 
+当前项目约定直接使用已经激活的 `conda amvision` 环境，不在仓库文档和配置里写死系统绝对路径。
+
+如果需要确认当前 shell 正在使用哪个解释器，可执行：
+
+```powershell
+python -c "import sys; print(sys.executable)"
+```
+
 ### service 开发调试启动
 
 ```powershell
@@ -70,6 +78,23 @@ python runtimes/launchers/worker/start_backend_worker.py --worker-profile-file r
 ```powershell
 python -m backend.maintenance.main validate-layout --output json
 python -m backend.maintenance.main assemble-release --profile-id full --release-root ./release --force --output text
+```
+
+### 当前最小回归入口
+
+后端最小回归：
+
+```powershell
+python -m pytest tests/test_release_assembly.py tests/test_bootstrap_chains.py tests/test_api_dependency_chain.py -k frontend_static
+python -m pytest --collect-only -q
+```
+
+前端最小回归：
+
+```powershell
+cd frontend/web-ui
+npm run test
+npm run build
 ```
 
 ## 细分文档入口

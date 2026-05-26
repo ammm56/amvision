@@ -40,8 +40,13 @@
 - 自动复制 backend 源码、配置模板、Python launcher 和 bat/sh wrapper
 - 自动复制当前 profile 需要的 worker profile manifest，并生成 `start-<profile_id>-worker.bat/sh`
 - 自动复制仓库根目录的 `requirements.txt` 到发行目录里的 `app/requirements.txt`
-- 自动创建空的 `python/` 目录，供后续手工复制 bundled Python
-- 如果目标发行目录已经存在且传入 `--force`，当前会保留已有的 `python/` 目录内容，不会在覆盖时删除它
+- 当目标发行目录已经存在且传入 `--force`，当前会先把已有的 `python/` 目录临时移到旁路目录，完成目录重建后再移回
+- 如果 release 组装中途失败，当前也会恢复原来的 `python/` 目录，避免 bundled Python 在失败时丢失
+- 只有在显式提供 bundled Python 来源目录时，才会重建发行目录里的 `python/`
+- 如果当前发布目录原本没有 `python/`，且这次也没有显式提供 bundled Python 来源目录，才会创建空的 `python/` 目录，供后续手工补齐
+- 如需一次性重建 bundled Python，可在命令行传 `--bundled-python-source-dir <目录>`
+- 当 release profile 要求包含前端时，自动复制 `frontend/web-ui/dist/` 到发行目录里的 `frontend/`
+- 如果前端构建结果里没有 `runtime-config.json`，当前会优先使用 `runtime-config.local.json`，否则回退到 `runtime-config.template.json` 自动生成
 - 自动生成发行目录内可直接使用的 `manifests/release-profiles/<profile_id>.json`
 
 ## 开发环境调用
