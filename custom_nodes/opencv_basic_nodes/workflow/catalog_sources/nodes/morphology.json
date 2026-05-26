@@ -1,0 +1,71 @@
+{
+  "format_id": "amvision.node-definition.v1",
+  "node_type_id": "custom.opencv.morphology",
+  "display_name": "Morphology",
+  "category": "opencv.filter",
+  "description": "对输入图片执行 morphology 操作。",
+  "implementation_kind": "custom-node",
+  "runtime_kind": "python-callable",
+  "input_ports": [
+    {
+      "name": "image",
+      "display_name": "Image",
+      "payload_type_id": "image-ref.v1"
+    }
+  ],
+  "output_ports": [
+    {
+      "name": "image",
+      "display_name": "Image",
+      "payload_type_id": "image-ref.v1"
+    }
+  ],
+  "parameter_schema": {
+    "type": "object",
+    "properties": {
+      "operation": {
+        "type": "string",
+        "enum": [
+          "erode",
+          "dilate",
+          "open",
+          "close",
+          "gradient",
+          "top-hat",
+          "black-hat"
+        ]
+      },
+      "shape": {
+        "type": "string",
+        "enum": [
+          "rect",
+          "ellipse",
+          "cross"
+        ]
+      },
+      "kernel_size": {
+        "type": "integer",
+        "minimum": 1
+      },
+      "iterations": {
+        "type": "integer",
+        "minimum": 1
+      },
+      "output_object_key": {
+        "type": "string"
+      }
+    }
+  },
+  "capability_tags": [
+    "opencv.morphology",
+    "vision.filter"
+  ],
+  "runtime_requirements": {
+    "python_packages": [
+      "opencv-python",
+      "numpy"
+    ]
+  },
+  "node_pack_id": "opencv.basic-nodes",
+  "node_pack_version": "0.1.0"
+}

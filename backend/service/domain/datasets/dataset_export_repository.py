@@ -57,3 +57,15 @@ class DatasetExportRepository(Protocol):
         """
 
         ...
+
+    def list_dataset_exports_by_project(self, project_id: str) -> tuple[DatasetExport, ...]:
+        """按 Project id 列出导出记录。
+
+        参数：
+        - project_id：所属 Project id。
+
+        返回：
+        - 当前 Project 下的 DatasetExport 列表。
+        """
+
+        ...

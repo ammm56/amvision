@@ -1,0 +1,42 @@
+"""Dependent node pack backend entrypoint 模板。"""
+
+from __future__ import annotations
+
+from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
+from backend.service.application.workflows.runtime_registry_loader import (
+    NodePackEntrypointRegistrationContext,
+)
+
+
+NODE_TYPE_ID = "custom.example-dependent.aggregate"
+
+
+def _handle_aggregate_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
+    """返回一个最小 response-body.v1 示例输出。
+
+    参数：
+    - request：当前 workflow 节点执行请求。
+
+    返回：
+    - dict[str, object]：包含 response-body.v1 输出 payload 的字典。
+    """
+
+    title = request.parameters.get("title")
+    normalized_title = title.strip() if isinstance(title, str) and title.strip() else "Example Dependent Result"
+    return {
+        "body": {
+            "type": "summary-preview",
+            "title": normalized_title,
+            "summary": "replace-with-real-dependent-logic"
+        }
+    }
+
+
+def register(context: NodePackEntrypointRegistrationContext) -> None:
+    """注册模板中的最小复杂节点。
+
+    参数：
+    - context：当前 node pack 的注册上下文。
+    """
+
+    context.register_python_callable(NODE_TYPE_ID, _handle_aggregate_node)

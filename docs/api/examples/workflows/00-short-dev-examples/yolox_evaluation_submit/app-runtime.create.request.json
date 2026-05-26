@@ -1,0 +1,8 @@
+{
+  "project_id": "project-1",
+  "application_id": "yolox-evaluation-submit-app",
+  "display_name": "YOLOX Evaluation Submit Runtime",
+  "metadata": {
+    "example_kind": "yolox-evaluation-submit"
+  }
+}

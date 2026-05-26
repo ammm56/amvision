@@ -1,7 +1,7 @@
 {
   "app": {
     "app_name": "amvision worker",
-    "app_version": "0.1.0"
+    "app_version": "0.1.1"
   },
   "workspace": {
     "root_dir": "./data/worker"
@@ -14,7 +14,11 @@
     "root_dir": "./data/files"
   },
   "queue": {
-    "root_dir": "./data/queue"
+    "root_dir": "./data/queue",
+    "lease_timeout_seconds": 86400.0,
+    "completed_retention_seconds": 86400.0,
+    "failed_retention_seconds": 604800.0,
+    "response_queue_retention_seconds": 3600.0
   },
   "task_manager": {
     "enabled_consumer_kinds": [

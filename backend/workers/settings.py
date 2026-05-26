@@ -89,9 +89,17 @@ class BackendWorkerQueueConfig(BaseModel):
 
     字段：
     - root_dir：队列根目录。
+    - lease_timeout_seconds：普通任务 leased 文件的默认恢复超时秒数。
+    - completed_retention_seconds：completed 任务文件保留秒数。
+    - failed_retention_seconds：failed 任务文件保留秒数。
+    - response_queue_retention_seconds：一次性响应队列目录保留秒数。
     """
 
     root_dir: str = "./data/queue"
+    lease_timeout_seconds: float = 86400.0
+    completed_retention_seconds: float = 86400.0
+    failed_retention_seconds: float = 604800.0
+    response_queue_retention_seconds: float = 3600.0
 
 
 class BackendWorkerTaskManagerConfig(BaseModel):
@@ -156,7 +164,7 @@ class BackendWorkerSettings(BaseSettings):
     - dataset_storage：数据集文件存储配置。
     - queue：本地任务队列配置。
     - task_manager：后台任务管理器配置。
-    - deployment_process_supervisor：YOLOX async deployment 监督器配置。
+    - deployment_process_supervisor：沿用历史字段名；当前主要复用 request_timeout_seconds 作为 async inference gateway 等待超时。
     """
 
     model_config = SettingsConfigDict(
@@ -239,7 +247,13 @@ class BackendWorkerSettings(BaseSettings):
     def to_queue_settings(self) -> LocalFileQueueSettings:
         """把统一配置转换为本地任务队列配置。"""
 
-        return LocalFileQueueSettings(root_dir=self.queue.root_dir)
+        return LocalFileQueueSettings(
+            root_dir=self.queue.root_dir,
+            lease_timeout_seconds=self.queue.lease_timeout_seconds,
+            completed_retention_seconds=self.queue.completed_retention_seconds,
+            failed_retention_seconds=self.queue.failed_retention_seconds,
+            response_queue_retention_seconds=self.queue.response_queue_retention_seconds,
+        )
 
 
 @lru_cache

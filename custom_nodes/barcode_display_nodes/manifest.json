@@ -1,0 +1,41 @@
+{
+  "format_id": "amvision.node-pack-manifest.v1",
+  "id": "barcode.display-nodes",
+  "version": "0.1.0",
+  "displayName": "Barcode Display Nodes",
+  "description": "提供面向工作站和 REST 回包的条码结果展示节点。",
+  "category": "custom-node-pack",
+  "capabilities": [
+    "pipeline.node",
+    "barcode.display",
+    "response.body"
+  ],
+  "dependencies": [
+    {
+      "nodePackId": "barcode.protocol-nodes",
+      "versionRange": ">=0.1.0 <1.0"
+    }
+  ],
+  "permissionScopes": [
+    "objectstore.read.ref"
+  ],
+  "entrypoints": {
+    "backend": "custom_nodes.barcode_display_nodes.backend.entry:register"
+  },
+  "compatibility": {
+    "api": ">=0.1 <1.0",
+    "runtime": ">=3.12"
+  },
+  "timeout": {
+    "defaultSeconds": 30
+  },
+  "enabledByDefault": true,
+  "customNodeCatalogPath": "workflow/catalog.json",
+  "metadata": {
+    "phase": "implemented",
+    "dependencyNotes": [
+      "复用 barcode.protocol-nodes 的结果摘要能力，把条码结果展示收敛成应用层节点"
+    ],
+    "templateSource": "custom_nodes/_scaffold/dependent_node_pack"
+  }
+}

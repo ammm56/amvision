@@ -10,6 +10,7 @@ from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, Settings
 
 from backend.bootstrap.settings import build_json_config_sources
 from backend.queue import LocalFileQueueSettings
+from backend.service.application.local_buffers import LocalBufferBrokerSettings
 from backend.service.application.runtime.deployment_process_settings import (
     DeploymentProcessSupervisorConfig,
 )
@@ -34,6 +35,197 @@ class BackendServiceAppSettings(BaseModel):
 
     app_name: str = "amvision backend-service"
     app_version: str = "0.1.0"
+
+
+class BackendServiceCorsConfig(BaseModel):
+    """描述 backend-service 面向浏览器调用方的 CORS 配置。
+
+    字段：
+    - enabled：是否启用 CORS 中间件。
+    - allow_origins：显式允许的 origin 列表。
+    - allow_origin_regex：可选 origin 正则；默认允许 localhost 和 127.0.0.1。
+    - allow_credentials：是否允许浏览器发送凭证。
+    - allow_methods：允许的 HTTP 方法列表。
+    - allow_headers：允许的请求头列表。
+    - expose_headers：浏览器端可读取的响应头列表。
+    """
+
+    enabled: bool = True
+    allow_origins: list[str] = Field(default_factory=list)
+    allow_origin_regex: str | None = Field(
+        default=r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$"
+    )
+    allow_credentials: bool = True
+    allow_methods: list[str] = Field(default_factory=lambda: ["*"])
+    allow_headers: list[str] = Field(default_factory=lambda: ["*"])
+    expose_headers: list[str] = Field(
+        default_factory=lambda: [
+            "x-request-id",
+            "x-offset",
+            "x-limit",
+            "x-total-count",
+            "x-has-more",
+            "x-next-offset",
+        ]
+    )
+
+
+class BackendServiceStaticAccessTokenConfig(BaseModel):
+    """描述一个静态 access token 对应的主体配置。
+
+    字段：
+    - token：Bearer token 明文。
+    - principal_id：绑定的主体 id。
+    - principal_type：主体类型。
+    - project_ids：该 token 的 Project 可见范围；为空表示全部 Project。
+    - scopes：该 token 持有的 scopes。
+    - metadata：附加主体元数据。
+    """
+
+    token: str = Field(description="Bearer token 明文")
+    principal_id: str = Field(description="主体 id")
+    principal_type: str = Field(default="user", description="主体类型")
+    project_ids: list[str] = Field(default_factory=list, description="Project 可见范围列表；为空表示全部 Project")
+    scopes: list[str] = Field(default_factory=list, description="当前 token 持有的 scopes")
+    metadata: dict[str, object] = Field(default_factory=dict, description="附加主体元数据")
+
+
+class BackendServiceLocalAuthConfig(BaseModel):
+    """描述 backend-service 本地用户与会话鉴权配置。
+
+    字段：
+    - enabled：是否启用本地用户与登录会话。
+    - access_token_ttl_hours：兼容字段；表示登录会话 access token 默认有效期小时数。
+    - session_access_token_ttl_hours：登录会话 access token 默认有效期小时数；为空时回退到 access_token_ttl_hours。
+    - refresh_token_ttl_hours：登录会话 refresh token 默认有效期小时数；小于等于 0 表示不设置过期时间。
+    - user_token_default_ttl_hours：长期调用 user token 默认有效期小时数；小于等于 0 表示默认永久有效。
+    - password_min_length：本地密码最小长度。
+    - initialize_default_user_on_empty_db：当本地用户表为空时是否自动初始化默认本地用户。
+    """
+
+    enabled: bool = Field(default=True, description="是否启用本地用户与登录会话")
+    access_token_ttl_hours: int = Field(default=168, description="兼容字段；登录会话 access token 默认有效期小时数")
+    session_access_token_ttl_hours: int | None = Field(
+        default=None,
+        description="登录会话 access token 默认有效期小时数",
+    )
+    refresh_token_ttl_hours: int = Field(default=720, description="登录会话 refresh token 默认有效期小时数")
+    user_token_default_ttl_hours: int = Field(
+        default=0,
+        description="长期调用 user token 默认有效期小时数；0 表示永久有效",
+    )
+    password_min_length: int = Field(default=6, description="本地密码最小长度")
+    initialize_default_user_on_empty_db: bool = Field(
+        default=True,
+        description="当本地用户表为空时是否自动初始化默认本地用户",
+    )
+
+    def resolve_session_access_token_ttl_hours(self) -> int:
+        """返回登录会话 access token 的默认有效期小时数。"""
+
+        if self.session_access_token_ttl_hours is not None:
+            return self.session_access_token_ttl_hours
+        return self.access_token_ttl_hours
+
+
+class BackendServiceAuthProviderConfig(BaseModel):
+    """描述一个可公开发现的账号 provider 配置。
+
+    字段：
+    - provider_id：provider 的稳定标识，用于前端和工作站选择登录源。
+    - provider_kind：provider 类型，例如 oidc、oauth2。
+    - display_name：展示名称。
+    - enabled：是否公开该 provider。
+    - login_mode：登录模式，例如 external-browser。
+    - issuer_url：可选 issuer 地址。
+    - metadata：附加目录元数据。
+    """
+
+    provider_id: str = Field(description="provider 的稳定标识")
+    provider_kind: str = Field(default="oidc", description="provider 类型")
+    display_name: str = Field(description="provider 展示名称")
+    enabled: bool = Field(default=True, description="是否公开该 provider")
+    login_mode: str = Field(default="external-browser", description="provider 登录模式")
+    issuer_url: str | None = Field(default=None, description="可选 issuer 地址")
+    metadata: dict[str, object] = Field(default_factory=dict, description="附加目录元数据")
+
+
+class BackendServiceAuthConfig(BaseModel):
+    """描述 backend-service 当前阶段使用的鉴权配置。
+
+    字段：
+    - mode：鉴权模式；支持 static-bearer、local、hybrid。
+    - websocket_query_token_enabled：是否允许 WebSocket 使用 access_token 查询参数。
+    - local_auth：本地用户与会话配置。
+    - providers：可公开发现的在线账号 provider 目录配置。
+    - static_tokens：静态 Bearer token 列表。
+    """
+
+    mode: str = Field(default="local", description="鉴权模式")
+    websocket_query_token_enabled: bool = Field(
+        default=True,
+        description="是否允许 WebSocket 使用 access_token 查询参数",
+    )
+    local_auth: BackendServiceLocalAuthConfig = Field(
+        default_factory=BackendServiceLocalAuthConfig,
+        description="本地用户与会话配置",
+    )
+    providers: list[BackendServiceAuthProviderConfig] = Field(
+        default_factory=list,
+        description="可公开发现的在线账号 provider 目录配置",
+    )
+    static_tokens: list[BackendServiceStaticAccessTokenConfig] = Field(
+        default_factory=list,
+        description="静态 Bearer token 列表",
+    )
+
+    def bearer_auth_enabled(self) -> bool:
+        """判断当前配置是否启用了 Bearer token 鉴权。
+
+        返回：
+        - bool：当当前模式允许 Bearer token 时返回 True。
+        """
+
+        return self.static_token_auth_enabled() or self.local_session_auth_enabled()
+
+    def static_token_auth_enabled(self) -> bool:
+        """判断当前配置是否启用了静态 Bearer token 鉴权。"""
+
+        return self.mode in {"static-bearer", "hybrid"}
+
+    def local_session_auth_enabled(self) -> bool:
+        """判断当前配置是否启用了本地会话 Bearer token 鉴权。"""
+
+        return self.local_auth.enabled and self.mode in {"local", "hybrid"}
+
+
+class BackendServiceProjectCatalogItemConfig(BaseModel):
+    """描述一个可对外公开的 Project 目录项。
+
+    字段：
+    - project_id：Project id。
+    - display_name：展示名称。
+    - description：项目说明。
+    - metadata：附加元数据。
+    """
+
+    project_id: str = Field(description="Project id")
+    display_name: str | None = Field(default=None, description="展示名称")
+    description: str | None = Field(default=None, description="项目说明")
+    metadata: dict[str, object] = Field(default_factory=dict, description="附加元数据")
+
+
+class BackendServiceProjectsConfig(BaseModel):
+    """描述 backend-service 当前公开的 Project 目录配置。
+
+    字段：
+    - items：Project 目录项列表。
+    """
+
+    items: list[BackendServiceProjectCatalogItemConfig] = Field(
+        default_factory=list,
+        description="Project 目录项列表",
+    )
 
 
 class BackendServiceDatabaseConfig(BaseModel):
@@ -63,9 +255,17 @@ class BackendServiceQueueConfig(BaseModel):
 
     字段：
     - root_dir：队列根目录。
+    - lease_timeout_seconds：普通任务 leased 文件的默认恢复超时秒数。
+    - completed_retention_seconds：completed 任务文件保留秒数。
+    - failed_retention_seconds：failed 任务文件保留秒数。
+    - response_queue_retention_seconds：一次性响应队列目录保留秒数。
     """
 
     root_dir: str = "./data/queue"
+    lease_timeout_seconds: float = 86400.0
+    completed_retention_seconds: float = 86400.0
+    failed_retention_seconds: float = 604800.0
+    response_queue_retention_seconds: float = 3600.0
 
 
 class BackendServiceTaskManagerConfig(BaseModel):
@@ -82,15 +282,45 @@ class BackendServiceTaskManagerConfig(BaseModel):
     poll_interval_seconds: float = 1.0
 
 
+class BackendServiceAsyncInferenceGatewayConfig(BaseModel):
+    """描述 async inference gateway 的服务标识配置。
+
+    字段：
+    - service_id：当前 async inference service 的稳定 id，用于构建专属请求队列。
+    """
+
+    service_id: str = "backend-service-main"
+
+
+class BackendServiceCustomNodesConfig(BaseModel):
+    """描述 backend-service 使用的 custom_nodes 目录配置。
+
+    字段：
+    - root_dir：自定义节点根目录。
+    """
+
+    root_dir: str = "./custom_nodes"
+
+
+# backend-service 对外使用的 deployment supervisor 配置别名。
+BackendServiceDeploymentProcessSupervisorConfig = DeploymentProcessSupervisorConfig
+
+
 class BackendServiceSettings(BaseSettings):
     """描述 backend-service 启动阶段使用的统一配置。
 
     字段：
     - app：FastAPI 应用基础配置。
+    - cors：浏览器跨域访问配置。
+    - auth：当前阶段鉴权配置。
+    - projects：Project 公开目录配置。
     - database：数据库连接配置。
     - dataset_storage：本地数据集文件存储配置。
     - queue：本地任务队列配置。
     - task_manager：内嵌后台任务管理器配置。
+    - async_inference_gateway：异步推理 gateway 配置。
+    - custom_nodes：自定义节点目录配置。
+    - local_buffer_broker：本机 buffer broker 进程配置。
     - deployment_process_supervisor：deployment 进程监督器配置。
     """
 
@@ -101,6 +331,9 @@ class BackendServiceSettings(BaseSettings):
     )
 
     app: BackendServiceAppSettings = Field(default_factory=BackendServiceAppSettings)
+    cors: BackendServiceCorsConfig = Field(default_factory=BackendServiceCorsConfig)
+    auth: BackendServiceAuthConfig = Field(default_factory=BackendServiceAuthConfig)
+    projects: BackendServiceProjectsConfig = Field(default_factory=BackendServiceProjectsConfig)
     database: BackendServiceDatabaseConfig = Field(default_factory=BackendServiceDatabaseConfig)
     dataset_storage: BackendServiceDatasetStorageConfig = Field(
         default_factory=BackendServiceDatasetStorageConfig
@@ -109,6 +342,11 @@ class BackendServiceSettings(BaseSettings):
     task_manager: BackendServiceTaskManagerConfig = Field(
         default_factory=BackendServiceTaskManagerConfig
     )
+    async_inference_gateway: BackendServiceAsyncInferenceGatewayConfig = Field(
+        default_factory=BackendServiceAsyncInferenceGatewayConfig
+    )
+    custom_nodes: BackendServiceCustomNodesConfig = Field(default_factory=BackendServiceCustomNodesConfig)
+    local_buffer_broker: LocalBufferBrokerSettings = Field(default_factory=LocalBufferBrokerSettings)
     deployment_process_supervisor: DeploymentProcessSupervisorConfig = Field(
         default_factory=DeploymentProcessSupervisorConfig
     )
@@ -179,7 +417,13 @@ class BackendServiceSettings(BaseSettings):
         - 供 LocalFileQueueBackend 使用的 LocalFileQueueSettings。
         """
 
-        return LocalFileQueueSettings(root_dir=self.queue.root_dir)
+        return LocalFileQueueSettings(
+            root_dir=self.queue.root_dir,
+            lease_timeout_seconds=self.queue.lease_timeout_seconds,
+            completed_retention_seconds=self.queue.completed_retention_seconds,
+            failed_retention_seconds=self.queue.failed_retention_seconds,
+            response_queue_retention_seconds=self.queue.response_queue_retention_seconds,
+        )
 
 
 @lru_cache

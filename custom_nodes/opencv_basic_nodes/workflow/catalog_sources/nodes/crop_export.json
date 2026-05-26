@@ -1,0 +1,144 @@
+{
+  "format_id": "amvision.node-definition.v1",
+  "node_type_id": "custom.opencv.crop-export",
+  "display_name": "Crop Export",
+  "category": "opencv.io",
+  "description": "把 image 和 detections 裁成 image-refs.v1 图片集合。常见接法：原图接 image，检测结果接 detections，输出 crops 可继续接 Gallery Preview.images、Get Image Ref.images 或 QR Crop Decode Remap.crops。",
+  "metadata": {
+    "i18n": {
+      "display_name": {
+        "zh-CN": "裁剪导出",
+        "en-US": "Crop Export"
+      },
+      "description": {
+        "zh-CN": "把 image 和 detections 裁成 image-refs.v1 图片集合。常见接法：原图接 image，检测结果接 detections，输出 crops 可继续接 Gallery Preview.images、Get Image Ref.images 或 QR Crop Decode Remap.crops。",
+        "en-US": "Crop the source image with detection boxes and output an image-refs.v1 collection. Typical wiring: source image -> image, detections -> detections, then connect crops to Gallery Preview.images, Get Image Ref.images, or QR Crop Decode Remap.crops."
+      }
+    }
+  },
+  "implementation_kind": "custom-node",
+  "runtime_kind": "python-callable",
+  "input_ports": [
+    {
+      "name": "image",
+      "display_name": "Image",
+      "payload_type_id": "image-ref.v1",
+      "description": "待裁剪的原图。",
+      "metadata": {
+        "i18n": {
+          "display_name": {
+            "zh-CN": "原图",
+            "en-US": "Image"
+          },
+          "description": {
+            "zh-CN": "待裁剪的原图。",
+            "en-US": "Source image used for crop extraction."
+          }
+        }
+      }
+    },
+    {
+      "name": "detections",
+      "display_name": "Detections",
+      "payload_type_id": "detections.v1",
+      "description": "用于裁剪的 detections.v1 检测框集合。",
+      "metadata": {
+        "i18n": {
+          "display_name": {
+            "zh-CN": "检测结果",
+            "en-US": "Detections"
+          },
+          "description": {
+            "zh-CN": "用于裁剪的 detections.v1 检测框集合。",
+            "en-US": "detections.v1 payload that provides the crop boxes."
+          }
+        }
+      }
+    }
+  ],
+  "output_ports": [
+    {
+      "name": "crops",
+      "display_name": "Crops",
+      "payload_type_id": "image-refs.v1",
+      "description": "裁剪完成后的 image-refs.v1 图片集合。",
+      "metadata": {
+        "i18n": {
+          "display_name": {
+            "zh-CN": "裁剪图集",
+            "en-US": "Crops"
+          },
+          "description": {
+            "zh-CN": "裁剪完成后的 image-refs.v1 图片集合。",
+            "en-US": "image-refs.v1 collection that contains the exported crops."
+          }
+        }
+      }
+    }
+  ],
+  "parameter_schema": {
+    "type": "object",
+    "properties": {
+      "box_padding": {
+        "type": "integer",
+        "minimum": 0,
+        "default": 0,
+        "title": "Box padding",
+        "description": "Expand every detection box by this many pixels before cropping.",
+        "x-amvision-i18n": {
+          "title": {
+            "zh-CN": "边框扩展",
+            "en-US": "Box padding"
+          },
+          "description": {
+            "zh-CN": "裁剪前向四周额外扩展的像素数。",
+            "en-US": "Number of pixels added around each detection box before cropping."
+          }
+        }
+      },
+      "max_crops": {
+        "type": "integer",
+        "minimum": 1,
+        "title": "Max crops",
+        "description": "Maximum number of crops to export. Leave empty to export all detections.",
+        "x-amvision-i18n": {
+          "title": {
+            "zh-CN": "最大裁剪数",
+            "en-US": "Max crops"
+          },
+          "description": {
+            "zh-CN": "最多导出多少张裁剪图；留空时导出全部检测结果。",
+            "en-US": "Maximum number of crops to export. Leave blank to export every detection."
+          }
+        }
+      },
+      "output_dir": {
+        "type": "string",
+        "title": "Output directory",
+        "description": "Optional storage directory for exported crops. Leave empty to return memory image refs.",
+        "x-amvision-i18n": {
+          "title": {
+            "zh-CN": "输出目录",
+            "en-US": "Output directory"
+          },
+          "description": {
+            "zh-CN": "可选输出目录；留空时返回 memory image-ref。",
+            "en-US": "Optional storage directory for exported crops. Leave blank to return memory image refs."
+          }
+        }
+      }
+    }
+  },
+  "capability_tags": [
+    "opencv.crop",
+    "vision.export"
+  ],
+  "runtime_requirements": {
+    "python_packages": [
+      "opencv-python",
+      "numpy"
+    ]
+  },
+  "node_pack_id": "opencv.basic-nodes",
+  "node_pack_version": "0.1.0"
+}

@@ -1,0 +1,8 @@
+{
+  "project_id": "project-1",
+  "application_id": "yolox-conversion-submit-app",
+  "display_name": "YOLOX Conversion Submit Runtime",
+  "metadata": {
+    "example_kind": "yolox-conversion-submit"
+  }
+}

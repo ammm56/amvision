@@ -5,15 +5,40 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Python 调试程序: FastAPI",
+            "name": "Python 调试程序: backend-service",
             "type": "debugpy",
             "request": "launch",
+            "python": "${command:python.interpreterPath}",
             "module": "uvicorn",
             "args": [
                 "backend.service.api.app:app",
+                "--host",
+                "127.0.0.1",
+                "--port",
+                "8000",
                 "--reload"
             ],
-            "jinja": true
+            "jinja": true,
+            "cwd": "${workspaceFolder}",
+            "console": "integratedTerminal",
+            "env": {
+                "PYTHONUNBUFFERED": "1"
+            }
+        },
+        {
+            "name": "Python 调试程序: worker",
+            "type": "debugpy",
+            "request": "launch",
+            "python": "${command:python.interpreterPath}",
+            "module": "backend.workers.main",
+            "args": [
+            ],
+            "jinja": true,
+            "cwd": "${workspaceFolder}",
+            "console": "integratedTerminal",
+            "env": {
+                "PYTHONUNBUFFERED": "1"
+            }
         }
     ]
 }

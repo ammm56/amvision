@@ -46,6 +46,18 @@ class TaskRepository(Protocol):
 
         ...
 
+    def delete_task(self, task_id: str) -> bool:
+        """按 id 删除一个 TaskRecord。
+
+        参数：
+        - task_id：任务 id。
+
+        返回：
+        - 当任务存在且已删除时返回 True；否则返回 False。
+        """
+
+        ...
+
     def save_task_attempt(self, task_attempt: TaskAttempt) -> None:
         """保存一个 TaskAttempt。
 

@@ -7,12 +7,17 @@ from pathlib import Path
 
 import pytest
 
+import backend.maintenance.release_assembly as release_assembly
 from backend.maintenance.release_assembly import ReleaseAssemblyRequest, assemble_release
 
 
-def test_assemble_release_materializes_full_layout(tmp_path: Path) -> None:
+def test_assemble_release_materializes_full_layout(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """验证 full profile 会生成完整的 release 布局和专用 worker wrapper。"""
 
+    _patch_release_runtime_asset_sources(monkeypatch, tmp_path)
     result = assemble_release(
         ReleaseAssemblyRequest(
             profile_id="full",
@@ -35,9 +40,12 @@ def test_assemble_release_materializes_full_layout(tmp_path: Path) -> None:
     assert (release_dir / "stop-amvision-full.bat").is_file()
     assert (release_dir / "stop-amvision-full.sh").is_file()
     assert (release_dir / "app" / "requirements.txt").is_file()
+    assert (release_dir / "custom_nodes" / "opencv_basic_nodes" / "manifest.json").is_file()
+    assert (release_dir / "custom_nodes" / "_scaffold" / "README.md").is_file()
+    assert not (release_dir / "custom_nodes" / "__pycache__").exists()
     assert (release_dir / "frontend").is_dir()
-    assert (release_dir / "plugins").is_dir()
     assert (release_dir / "python").is_dir()
+    assert result.bundled_python_mode == "placeholder-empty"
 
     requirements_text = (release_dir / "app" / "requirements.txt").read_text(encoding="utf-8")
     assert "torch==2.8.0" in requirements_text
@@ -65,6 +73,13 @@ def test_assemble_release_materializes_full_layout(tmp_path: Path) -> None:
         )
     )
     assert release_manifest["requirements_file"] == "app/requirements.txt"
+    assert release_manifest["bundled_python"] == {
+        "python_dir": "python",
+        "mode": "placeholder-empty",
+        "included": False,
+        "managed_manually": True,
+    }
+    assert release_manifest["layout"]["custom_nodes_dir"] == "custom_nodes"
     assert release_manifest["layout"]["python_dir"] == "python"
     assert release_manifest["service"]["windows_launcher"] == "launchers/service/start-backend-service.bat"
     assert release_manifest["stack"]["windows_launcher"] == "start-amvision-full.bat"
@@ -91,9 +106,13 @@ def test_assemble_release_requires_force_to_overwrite_existing_directory(tmp_pat
         )
 
 
-def test_assemble_release_preserves_existing_python_dir_when_overwriting(tmp_path: Path) -> None:
+def test_assemble_release_preserves_existing_python_dir_when_overwriting(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """验证覆盖发布时会保留已有 python 目录内容。"""
 
+    _patch_release_runtime_asset_sources(monkeypatch, tmp_path)
     release_dir = tmp_path / "full"
     existing_python_dir = release_dir / "python"
     existing_python_dir.mkdir(parents=True, exist_ok=True)
@@ -113,6 +132,28 @@ def test_assemble_release_preserves_existing_python_dir_when_overwriting(tmp_pat
     )
 
     assert result.bundled_python_dir == (release_dir / "python").resolve()
+    assert result.bundled_python_mode == "preserved-existing"
     assert marker_file.read_text(encoding="utf-8") == "keep"
     assert not stale_file.exists()
     assert (release_dir / "app" / "backend").is_dir()
+    assert (release_dir / "custom_nodes" / "opencv_basic_nodes" / "manifest.json").is_file()
+
+
+def _patch_release_runtime_asset_sources(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """用轻量测试目录替换 release 组装使用的运行期资产源目录。"""
+
+    source_custom_nodes_dir = tmp_path / "source-custom-nodes"
+    (source_custom_nodes_dir / "opencv_basic_nodes").mkdir(parents=True, exist_ok=True)
+    (source_custom_nodes_dir / "opencv_basic_nodes" / "manifest.json").write_text(
+        '{"id": "opencv.basic-nodes"}\n',
+        encoding="utf-8",
+    )
+    (source_custom_nodes_dir / "_scaffold").mkdir(parents=True, exist_ok=True)
+    (source_custom_nodes_dir / "_scaffold" / "README.md").write_text("template\n", encoding="utf-8")
+    (source_custom_nodes_dir / "__pycache__").mkdir(parents=True, exist_ok=True)
+    (source_custom_nodes_dir / "__pycache__" / "cached.pyc").write_bytes(b"cache")
+
+    monkeypatch.setattr(release_assembly, "SOURCE_CUSTOM_NODES_DIR", source_custom_nodes_dir)

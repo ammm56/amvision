@@ -1,0 +1,9 @@
+{
+  "project_id": "project-1",
+  "application_id": "yolox-deployment-detection-lifecycle-real-path-app",
+  "display_name": "YOLOX Deployment Detection Lifecycle Runtime",
+  "metadata": {
+    "example_kind": "deployment-control-detection-lifecycle-real-path",
+    "uses_existing_deployment_instance": true
+  }
+}

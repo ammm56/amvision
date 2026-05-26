@@ -271,9 +271,11 @@ TaskManager 在当前阶段只需要把任务送到 training pool，由 training
 
 当前阶段已经公开以下 WebSocket API：
 
-- /ws/tasks/events：按 task_id 订阅任务事件
+- /ws/v1/tasks/events：按 task_id 订阅任务事件
 
-当前 WebSocket 订阅采用本地最小轮询实现，目标是先把公开协议和事件读取面稳定下来，而不是先上复杂事件总线。
+tasks 事件流是当前统一 WebSocket 架构里第一个落地的资源流；版本化路由、统一游标和重连规则见 [websocket-architecture.md](websocket-architecture.md)。当前 live 事件通过 service_event_bus 分发，`task_events` 表继续负责历史回放。
+
+当前 WebSocket 订阅已经按“service_event_bus 实时分发 + `task_events` 表历史回放”的结构收口。
 
 ## 当前筛选字段
 
@@ -296,13 +298,22 @@ TaskManager 在当前阶段只需要把任务送到 training pool，由 training
 - dataset_id 来自 task_spec.dataset_id
 - source_import_id 优先来自 task_spec.dataset_import_id，其次兼容 metadata.source_import_id
 
-### 任务事件筛选字段
+### 任务事件查询字段
 
-当前事件查询与订阅支持以下筛选字段：
+当前 REST 事件查询接口支持以下筛选字段：
 
 - task_id
 - event_type
 - after_created_at
+- limit
+
+### 任务 WebSocket 订阅字段
+
+当前 WebSocket 订阅支持以下筛选字段：
+
+- task_id
+- event_type
+- after_cursor
 - limit
 
 ## DatasetImport 与 TaskRecord 的当前绑定方式
@@ -321,7 +332,7 @@ DatasetImport 当前已经正式挂到统一任务系统，绑定方式如下：
 
 ## 后续实现顺序
 
-1. 保持当前 tasks API 稳定，再补事件广播或事件总线替换当前轮询订阅
+1. 保持当前 tasks API 稳定，先把 tasks 事件流接入统一 WebSocket 路由和游标模型，再决定是否替换当前轮询订阅
 2. 把 DatasetExport 接到统一 TaskRecord
 3. 再把 TrainingTask、ValidationTask、ConversionTask 逐步接入统一任务系统
 4. 最后再评估是否需要更细的 worker pool 管理和任务恢复策略

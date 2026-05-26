@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from backend.service.application.errors import ServiceConfigurationError
+from backend.service.application.errors import InvalidRequestError, ServiceConfigurationError
 from backend.service.application.runtime.yolox_inference_runtime_pool import (
     YoloXDeploymentRuntimePool,
     YoloXDeploymentRuntimePoolConfig,
@@ -123,3 +123,76 @@ def test_runtime_pool_marks_onnxruntime_instance_unhealthy_after_predict_failure
     assert health.instances[0].warmed is False
     assert health.instances[0].busy is False
     assert health.instances[0].last_error == "onnxruntime predict failed"
+
+
+def test_runtime_pool_keeps_instance_healthy_after_invalid_request_failure(
+    tmp_path: Path,
+) -> None:
+    """验证用户输入类 InvalidRequestError 不会把 deployment 实例打成 unhealthy。"""
+
+    class InvalidRequestPredictionSession:
+        """在 predict 时抛出 InvalidRequestError 的 fake runtime session。"""
+
+        def __init__(self) -> None:
+            """初始化 invalid request fake session。"""
+
+            self.requests: list[YoloXPredictionRequest] = []
+
+        def predict(self, request: YoloXPredictionRequest):
+            """记录请求并抛出用户输入错误。"""
+
+            self.requests.append(request)
+            raise InvalidRequestError(
+                "input_image_bytes 不是可读取的图片内容",
+                details={"field": "input_image_bytes"},
+            )
+
+    dataset_storage = create_test_dataset_storage(tmp_path)
+    runtime_target = build_test_runtime_target(
+        dataset_storage=dataset_storage,
+        runtime_backend="onnxruntime",
+        device_name="cpu",
+        runtime_precision="fp32",
+        runtime_artifact_file_name="fake-model.optimized.onnx",
+        runtime_artifact_file_type=YOLOX_ONNX_OPTIMIZED_FILE,
+    )
+    config = YoloXDeploymentRuntimePoolConfig(
+        deployment_instance_id="deployment-instance-runtime-pool-invalid-request-1",
+        runtime_target=runtime_target,
+        instance_count=3,
+    )
+    request = YoloXPredictionRequest(
+        score_threshold=0.1,
+        save_result_image=False,
+        input_image_bytes=b"broken-image-bytes",
+    )
+    invalid_session = InvalidRequestPredictionSession()
+    load_requests: list[tuple[object, object, object, object]] = []
+    pool = YoloXDeploymentRuntimePool(
+        dataset_storage=dataset_storage,
+        model_runtime=build_recording_model_runtime(
+            load_requests=load_requests,
+            session=invalid_session,
+        ),
+    )
+
+    with pytest.raises(InvalidRequestError) as caught_error:
+        pool.run_inference(config=config, request=request)
+
+    health = pool.get_health(config)
+
+    assert caught_error.value.message == "input_image_bytes 不是可读取的图片内容"
+    assert len(load_requests) == 1
+    assert invalid_session.requests == [request]
+    assert health.healthy_instance_count == 3
+    assert health.warmed_instance_count == 1
+    assert health.instances[0].healthy is True
+    assert health.instances[0].warmed is True
+    assert health.instances[0].busy is False
+    assert health.instances[0].last_error is None
+    assert health.instances[1].healthy is True
+    assert health.instances[1].warmed is False
+    assert health.instances[1].last_error is None
+    assert health.instances[2].healthy is True
+    assert health.instances[2].warmed is False
+    assert health.instances[2].last_error is None

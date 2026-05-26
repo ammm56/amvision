@@ -1,0 +1,53 @@
+{
+  "format_id": "amvision.node-definition.v1",
+  "node_type_id": "custom.opencv.binary-threshold",
+  "display_name": "Binary Threshold",
+  "category": "opencv.filter",
+  "description": "把输入图片转为灰度后执行二值化。",
+  "implementation_kind": "custom-node",
+  "runtime_kind": "python-callable",
+  "input_ports": [
+    {
+      "name": "image",
+      "display_name": "Image",
+      "payload_type_id": "image-ref.v1"
+    }
+  ],
+  "output_ports": [
+    {
+      "name": "image",
+      "display_name": "Image",
+      "payload_type_id": "image-ref.v1"
+    }
+  ],
+  "parameter_schema": {
+    "type": "object",
+    "properties": {
+      "threshold": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 255
+      },
+      "max_value": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 255
+      },
+      "output_object_key": {
+        "type": "string"
+      }
+    }
+  },
+  "capability_tags": [
+    "opencv.threshold",
+    "vision.filter"
+  ],
+  "runtime_requirements": {
+    "python_packages": [
+      "opencv-python",
+      "numpy"
+    ]
+  },
+  "node_pack_id": "opencv.basic-nodes",
+  "node_pack_version": "0.1.0"
+}

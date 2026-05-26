@@ -1,0 +1,15 @@
+{
+  "project_id": "project-1",
+  "execution_policy_id": "preview-default-policy",
+  "display_name": "Preview Default Policy",
+  "policy_kind": "preview-default",
+  "default_timeout_seconds": 30,
+  "max_run_timeout_seconds": 30,
+  "trace_level": "summary",
+  "retain_node_records_enabled": true,
+  "retain_trace_enabled": true,
+  "metadata": {
+    "example_kind": "deployment-control-detection-lifecycle-real-path",
+    "target_surface": "preview-run"
+  }
+}

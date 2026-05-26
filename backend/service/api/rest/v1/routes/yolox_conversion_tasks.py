@@ -480,7 +480,7 @@ def get_yolox_conversion_task_detail(
     principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("tasks:read"))],
     session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
     dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
-    include_events: Annotated[bool, Query(description="是否返回事件列表")] = True,
+    include_events: Annotated[bool, Query(description="是否返回事件列表")] = False,
 ) -> YoloXConversionTaskDetailResponse:
     """按任务 id 返回 YOLOX conversion 任务详情。"""
 

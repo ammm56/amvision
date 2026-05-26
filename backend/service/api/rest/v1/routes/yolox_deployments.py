@@ -11,6 +11,7 @@ from backend.service.api.deps.auth import AuthenticatedPrincipal, require_scopes
 from backend.service.api.deps.db import get_session_factory
 from backend.service.api.deps.storage import get_dataset_storage
 from backend.service.api.deps.yolox_deployment_process_supervisor import (
+	get_yolox_async_inference_gateway_dispatcher_registry,
 	get_yolox_async_deployment_process_supervisor,
 	get_yolox_sync_deployment_process_supervisor,
 )
@@ -20,6 +21,10 @@ from backend.service.application.deployments.yolox_deployment_service import (
 	YoloXDeploymentInstanceView,
 )
 from backend.service.application.errors import InvalidRequestError, PermissionDeniedError, ResourceNotFoundError
+from backend.service.application.models.yolox_async_inference_gateway import (
+	YoloXAsyncInferenceGatewayDispatcherRegistry,
+)
+from backend.service.application.runtime.deployment_event_source import YoloXDeploymentEventSource
 from backend.service.application.runtime.yolox_deployment_process_supervisor import (
 	YoloXDeploymentProcessHealth,
 	YoloXDeploymentProcessKeepWarmStatus,
@@ -27,6 +32,7 @@ from backend.service.application.runtime.yolox_deployment_process_supervisor imp
 	YoloXDeploymentProcessStatus,
 	YoloXDeploymentProcessSupervisor,
 )
+from backend.service.application.runtime.deployment_events import YoloXDeploymentProcessEvent
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 
@@ -145,6 +151,8 @@ class YoloXDeploymentProcessStatusResponse(BaseModel):
 	- last_exit_code：最近一次退出码。
 	- last_error：最近一次监督错误。
 	- instance_count：实例数量。
+
+	该响应用于 start、stop、status 这类操作和状态查询，返回当前状态快照，不返回历史事件；历史事件请通过 /events 查询。
 	"""
 
 	deployment_instance_id: str = Field(description="DeploymentInstance id")
@@ -175,6 +183,9 @@ class YoloXDeploymentRuntimeHealthResponse(YoloXDeploymentProcessStatusResponse)
 	- pinned_output_total_bytes：当前所有已加载 session 的 pinned output host buffer 总字节数。
 	- instances：实例级健康状态列表。
 	- keep_warm：当前 keep-warm 运行状态。
+	- local_buffer_broker：LocalBufferBroker 接入状态、输入计数和最近错误。
+
+	该响应用于 warmup、reset、health 这类操作和查询，返回当前健康快照，不返回历史事件；历史事件请通过 /events 查询。
 	"""
 
 	healthy_instance_count: int = Field(description="健康实例数量")
@@ -182,6 +193,19 @@ class YoloXDeploymentRuntimeHealthResponse(YoloXDeploymentProcessStatusResponse)
 	pinned_output_total_bytes: int = Field(default=0, description="当前所有已加载 session 的 pinned output host buffer 总字节数")
 	instances: list[YoloXDeploymentRuntimeInstanceHealthResponse] = Field(default_factory=list, description="实例级健康状态列表")
 	keep_warm: YoloXDeploymentProcessKeepWarmResponse = Field(default_factory=YoloXDeploymentProcessKeepWarmResponse, description="keep-warm 运行状态")
+	local_buffer_broker: dict[str, object] = Field(default_factory=dict, description="LocalBufferBroker 接入状态、输入计数和最近错误")
+
+
+class YoloXDeploymentProcessEventResponse(BaseModel):
+	"""描述 deployment 生命周期与健康事件响应。"""
+
+	deployment_instance_id: str = Field(description="DeploymentInstance id")
+	runtime_mode: str = Field(description="运行时通道；sync 或 async")
+	sequence: int = Field(description="事件顺序号")
+	event_type: str = Field(description="事件类型")
+	created_at: str = Field(description="事件发生时间")
+	message: str = Field(description="事件摘要消息")
+	payload: dict[str, object] = Field(default_factory=dict, description="结构化事件正文")
 
 
 @yolox_deployments_router.post(
@@ -281,6 +305,47 @@ def get_yolox_deployment_instance_detail(
 	view = service.get_deployment_instance(deployment_instance_id)
 	_ensure_deployment_visible(principal=principal, view=view)
 	return _build_deployment_instance_response(view)
+
+
+@yolox_deployments_router.get(
+	"/yolox/deployment-instances/{deployment_instance_id}/events",
+	response_model=list[YoloXDeploymentProcessEventResponse],
+)
+def get_yolox_deployment_events(
+	deployment_instance_id: str,
+	principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("models:read"))],
+	session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
+	dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
+	after_sequence: Annotated[int | None, Query(description="只返回 sequence 大于该值的事件", ge=0)] = None,
+	limit: Annotated[int | None, Query(description="最多返回多少条事件", ge=1, le=500)] = None,
+	runtime_mode: Annotated[str | None, Query(description="按 sync 或 async 通道过滤事件")] = None,
+) -> list[YoloXDeploymentProcessEventResponse]:
+	"""读取一条 DeploymentInstance 的事件列表。
+
+	该接口返回历史事件列表；start、stop、status、warmup、reset、health 这些接口只返回当前状态或健康快照。
+	"""
+
+	service = SqlAlchemyYoloXDeploymentService(
+		session_factory=session_factory,
+		dataset_storage=dataset_storage,
+	)
+	view = service.get_deployment_instance(deployment_instance_id)
+	_ensure_deployment_visible(principal=principal, view=view)
+	if runtime_mode is not None and runtime_mode not in {"sync", "async"}:
+		raise InvalidRequestError(
+			"runtime_mode 仅支持 sync 或 async",
+			details={"runtime_mode": runtime_mode},
+		)
+	event_source = YoloXDeploymentEventSource(
+		dataset_storage_root_dir=str(dataset_storage.root_dir),
+	)
+	events = event_source.list_events(
+		deployment_instance_id,
+		after_sequence=after_sequence,
+		runtime_mode=runtime_mode,
+		limit=limit,
+	)
+	return [_build_deployment_process_event_response(item) for item in events]
 
 
 @yolox_deployments_router.post(
@@ -437,6 +502,7 @@ def start_yolox_async_runtime(
 	session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
 	dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
 	supervisor: Annotated[YoloXDeploymentProcessSupervisor, Depends(get_yolox_async_deployment_process_supervisor)],
+	gateway_dispatcher_registry: Annotated[YoloXAsyncInferenceGatewayDispatcherRegistry, Depends(get_yolox_async_inference_gateway_dispatcher_registry)],
 ) -> YoloXDeploymentProcessStatusResponse:
 	"""启动指定 deployment 的异步推理进程。"""
 
@@ -446,6 +512,7 @@ def start_yolox_async_runtime(
 		session_factory=session_factory,
 		dataset_storage=dataset_storage,
 		supervisor=supervisor,
+		gateway_dispatcher_registry=gateway_dispatcher_registry,
 		runtime_mode="async",
 		action="start",
 	)
@@ -485,6 +552,7 @@ def stop_yolox_async_runtime(
 	session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
 	dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
 	supervisor: Annotated[YoloXDeploymentProcessSupervisor, Depends(get_yolox_async_deployment_process_supervisor)],
+	gateway_dispatcher_registry: Annotated[YoloXAsyncInferenceGatewayDispatcherRegistry, Depends(get_yolox_async_inference_gateway_dispatcher_registry)],
 ) -> YoloXDeploymentProcessStatusResponse:
 	"""停止指定 deployment 的异步推理进程。"""
 
@@ -494,6 +562,7 @@ def stop_yolox_async_runtime(
 		session_factory=session_factory,
 		dataset_storage=dataset_storage,
 		supervisor=supervisor,
+		gateway_dispatcher_registry=gateway_dispatcher_registry,
 		runtime_mode="async",
 		action="stop",
 	)
@@ -509,6 +578,7 @@ def warmup_yolox_async_runtime(
 	session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
 	dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
 	supervisor: Annotated[YoloXDeploymentProcessSupervisor, Depends(get_yolox_async_deployment_process_supervisor)],
+	gateway_dispatcher_registry: Annotated[YoloXAsyncInferenceGatewayDispatcherRegistry, Depends(get_yolox_async_inference_gateway_dispatcher_registry)],
 ) -> YoloXDeploymentRuntimeHealthResponse:
 	"""显式预热指定 deployment 的所有异步推理实例。"""
 
@@ -518,6 +588,7 @@ def warmup_yolox_async_runtime(
 		session_factory=session_factory,
 		dataset_storage=dataset_storage,
 		supervisor=supervisor,
+		gateway_dispatcher_registry=gateway_dispatcher_registry,
 		runtime_mode="async",
 		action="warmup",
 	)
@@ -641,10 +712,14 @@ def _run_process_status_action(
 	session_factory: SessionFactory,
 	dataset_storage: LocalDatasetStorage,
 	supervisor: YoloXDeploymentProcessSupervisor,
+	gateway_dispatcher_registry: YoloXAsyncInferenceGatewayDispatcherRegistry | None = None,
 	runtime_mode: str,
 	action: str,
 ) -> YoloXDeploymentProcessStatusResponse:
-	"""执行指定通道的 deployment 进程状态动作。"""
+	"""执行指定通道的 deployment 进程状态动作。
+
+	返回的是当前状态快照，不包含历史事件列表。
+	"""
 
 	service = SqlAlchemyYoloXDeploymentService(
 		session_factory=session_factory,
@@ -655,8 +730,12 @@ def _run_process_status_action(
 	process_config = service.resolve_process_config(deployment_instance_id)
 	if action == "start":
 		process_status = supervisor.start_deployment(process_config)
+		if runtime_mode == "async" and gateway_dispatcher_registry is not None:
+			gateway_dispatcher_registry.ensure_dispatcher_for_deployment(deployment_instance_id)
 	elif action == "stop":
 		process_status = supervisor.stop_deployment(process_config)
+		if runtime_mode == "async" and gateway_dispatcher_registry is not None:
+			gateway_dispatcher_registry.stop_dispatcher_for_deployment(deployment_instance_id)
 	else:
 		process_status = supervisor.get_status(process_config)
 	return _build_process_status_response(view, process_status, runtime_mode)
@@ -669,10 +748,14 @@ def _run_process_health_action(
 	session_factory: SessionFactory,
 	dataset_storage: LocalDatasetStorage,
 	supervisor: YoloXDeploymentProcessSupervisor,
+	gateway_dispatcher_registry: YoloXAsyncInferenceGatewayDispatcherRegistry | None = None,
 	runtime_mode: str,
 	action: str,
 ) -> YoloXDeploymentRuntimeHealthResponse:
-	"""执行指定通道的 deployment 进程健康动作。"""
+	"""执行指定通道的 deployment 进程健康动作。
+
+	返回的是当前健康快照，不包含历史事件列表。
+	"""
 
 	service = SqlAlchemyYoloXDeploymentService(
 		session_factory=session_factory,
@@ -683,6 +766,8 @@ def _run_process_health_action(
 	process_config = service.resolve_process_config(deployment_instance_id)
 	if action == "warmup":
 		process_health = supervisor.warmup_deployment(process_config)
+		if runtime_mode == "async" and gateway_dispatcher_registry is not None:
+			gateway_dispatcher_registry.ensure_dispatcher_for_deployment(deployment_instance_id)
 	elif action == "reset":
 		process_health = supervisor.reset_deployment(process_config)
 	else:
@@ -738,6 +823,7 @@ def _build_runtime_health_response(
 		pinned_output_total_bytes=process_health.pinned_output_total_bytes,
 		instances=[_build_runtime_instance_health_response(item) for item in process_health.instances],
 		keep_warm=_build_keep_warm_response(process_health.keep_warm),
+		local_buffer_broker=dict(process_health.local_buffer_broker),
 	)
 
 
@@ -752,6 +838,22 @@ def _build_runtime_instance_health_response(
 		warmed=item.warmed,
 		busy=item.busy,
 		last_error=item.last_error,
+	)
+
+
+def _build_deployment_process_event_response(
+	item: YoloXDeploymentProcessEvent,
+) -> YoloXDeploymentProcessEventResponse:
+	"""把 deployment 事件转换为 REST 响应。"""
+
+	return YoloXDeploymentProcessEventResponse(
+		deployment_instance_id=item.deployment_instance_id,
+		runtime_mode=item.runtime_mode,
+		sequence=item.sequence,
+		event_type=item.event_type,
+		created_at=item.created_at,
+		message=item.message,
+		payload=dict(item.payload),
 	)
 
 

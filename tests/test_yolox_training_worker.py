@@ -13,6 +13,7 @@ import torch
 
 from backend.contracts.datasets.exports.coco_detection_export import COCO_DETECTION_DATASET_FORMAT
 from backend.queue import LocalFileQueueBackend, LocalFileQueueSettings
+from backend.service.application.auth.default_local_auth_seeder import DEFAULT_LOCAL_AUTH_USERNAME
 from backend.service.application.errors import InvalidRequestError
 import backend.service.application.models.yolox_detection_training as yolox_detection_training_module
 from backend.service.application.models.yolox_detection_training import (
@@ -23,6 +24,7 @@ from backend.service.application.models.yolox_detection_training import (
     _build_checkpoint_state,
     _load_coco_ground_truth_silently,
     _load_resume_checkpoint,
+    _release_yolox_training_runtime_resources,
     _resolve_input_size,
     run_yolox_detection_training,
 )
@@ -39,6 +41,24 @@ from backend.service.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
 from backend.service.infrastructure.object_store.local_dataset_storage import DatasetStorageSettings, LocalDatasetStorage
 from backend.service.infrastructure.persistence.base import Base
 from backend.workers.training.yolox_training_queue_worker import YoloXTrainingQueueWorker
+
+
+def test_release_yolox_training_runtime_resources_clears_cuda_cache(monkeypatch) -> None:
+    """验证训练 runtime 清理会主动触发 gc 与 CUDA cache 回收。"""
+
+    calls: list[str] = []
+    monkeypatch.setattr(yolox_detection_training_module.gc, "collect", lambda: calls.append("gc"))
+    cuda_module = SimpleNamespace(
+        is_available=lambda: True,
+        empty_cache=lambda: calls.append("empty_cache"),
+        ipc_collect=lambda: calls.append("ipc_collect"),
+    )
+    imports = SimpleNamespace(torch=SimpleNamespace(cuda=cuda_module))
+    runtime = SimpleNamespace(device="cuda:0")
+
+    _release_yolox_training_runtime_resources(imports=imports, runtime=runtime)
+
+    assert calls == ["gc", "empty_cache", "ipc_collect"]
 
 
 def test_local_pretrained_yolox_checkpoints_match_internal_model_structure() -> None:
@@ -155,7 +175,7 @@ def test_yolox_training_worker_advances_task_from_queued_to_succeeded(tmp_path: 
                 precision="fp32",
                 input_size=(64, 64),
             ),
-            created_by="user-1",
+            created_by=DEFAULT_LOCAL_AUTH_USERNAME,
         )
 
         queued_task = SqlAlchemyTaskService(session_factory).get_task(
@@ -187,6 +207,8 @@ def test_yolox_training_worker_advances_task_from_queued_to_succeeded(tmp_path: 
         assert "map50_95" in completed_task.task.result["summary"]["validation"]["final_metrics"]
         assert completed_task.task.result["summary"]["warm_start"]["enabled"] is False
         assert completed_task.task.result["summary"]["model_version_id"]
+        assert completed_task.task.result["model_version_id"] == completed_task.task.result["summary"]["model_version_id"]
+        assert completed_task.task.result["latest_checkpoint_model_version_id"] is None
         assert any(event.message == "yolox training started" for event in completed_task.events)
         assert any(event.message == "yolox training completed" for event in completed_task.events)
         assert any(event.event_type == "progress" for event in completed_task.events)
@@ -280,7 +302,7 @@ def test_yolox_training_worker_uses_test_split_as_validation_when_val_is_missing
                 precision="fp32",
                 input_size=(64, 64),
             ),
-            created_by="user-1",
+            created_by=DEFAULT_LOCAL_AUTH_USERNAME,
         )
 
         assert worker.run_once() is True
@@ -371,7 +393,7 @@ def test_yolox_training_worker_can_warm_start_from_existing_model_version(tmp_pa
                 precision="fp32",
                 input_size=(64, 64),
             ),
-            created_by="user-1",
+            created_by=DEFAULT_LOCAL_AUTH_USERNAME,
         )
         assert worker.run_once() is True
         first_completed_task = SqlAlchemyTaskService(session_factory).get_task(
@@ -403,7 +425,7 @@ def test_yolox_training_worker_can_warm_start_from_existing_model_version(tmp_pa
                 precision="fp32",
                 input_size=(64, 64),
             ),
-            created_by="user-1",
+            created_by=DEFAULT_LOCAL_AUTH_USERNAME,
         )
 
         assert worker.run_once() is True
@@ -459,7 +481,7 @@ def test_training_service_writes_intermediate_validation_snapshot_on_evaluation_
             precision="fp32",
             input_size=(640, 640),
         ),
-        created_by="user-1",
+        created_by=DEFAULT_LOCAL_AUTH_USERNAME,
     )
     expected_validation_metrics_object_key = (
         f"task-runs/training/{submission.task_id}/artifacts/reports/validation-metrics.json"

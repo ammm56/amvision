@@ -28,10 +28,14 @@
 当前仓库的默认 worker 配置位于 `config/backend-worker.json`，主要包含以下几组字段：
 
 - `queue.root_dir`：本地持久化队列目录
+- `queue.lease_timeout_seconds`：普通队列任务领取后的 lease 恢复超时；worker 进程异常退出后，超过该时间的 leased 任务会重新进入 pending
+- `queue.completed_retention_seconds`：completed 任务文件保留秒数
+- `queue.failed_retention_seconds`：failed 任务文件保留秒数
+- `queue.response_queue_retention_seconds`：一次性响应队列目录保留秒数，主要用于 async inference gateway 响应队列清理
 - `task_manager.enabled_consumer_kinds`：当前独立 worker 需要托管的消费者种类
 - `task_manager.max_concurrent_tasks`：最大并发任务数
 - `task_manager.poll_interval_seconds`：空闲轮询间隔秒数
-- `deployment_process_supervisor.*`：YOLOX async deployment supervisor 的默认行为
+- `deployment_process_supervisor.*`：沿用历史字段名；当前 inference worker 主要复用 `request_timeout_seconds` 作为 async inference gateway 等待超时
 
 当前默认启用的消费者种类为：
 
@@ -47,7 +51,9 @@
 - backend-service 当前只承担 REST / WebSocket 控制面和 sync / async deployment supervisor，不再托管任何队列消费者。
 - `config/backend-service.json` 里的 `task_manager` 字段仅保留兼容配置形态，当前 service 启动链不会再创建进程内 BackgroundTaskManager。
 - backend-worker 通过统一 `enabled_consumer_kinds` 配置和 `worker profile` manifest 接管全部队列消费者。
-- inference consumer 依赖 worker 内部创建的 async deployment supervisor，以便异步 `inference-tasks` 能在独立 worker 里消费 deployment 常驻会话。
+- inference consumer 当前不再持有本地 async deployment supervisor；worker 只消费 `yolox-inference` 队列，并通过 queue-backed async inference client 把冻结下来的 `process_config` 与 `prediction_request` 转发回创建任务时记录的 backend-service async deployment owner。
+- backend-service 的 async inference gateway dispatcher registry 会按 `async_inference_gateway.service_id + deployment_instance_id` 为每个 async deployment 启动专属请求队列和 dispatcher 线程，请求队列名形如 `yolox-ai-gw-{service_id}-{deployment_id}`；缺少 `task_spec.async_inference_owner_id` 的 inference task 会被判定为无效任务，不会写入全局请求队列。
+- 多个 backend-service 或后续独立推理服务共享同一 `queue.root_dir` 时，必须为每个服务配置唯一 `async_inference_gateway.service_id`；同一 service 内的多个 async deployment 还会继续按 `deployment_instance_id` 隔离队列，避免一个 deployment 队列阻塞影响其他 deployment。
 
 ## 开发环境启动
 
@@ -124,4 +130,4 @@ python runtimes/launchers/worker/start_backend_worker.py --worker-profile-file r
 1. 先通过 `backend-service` 创建任务，再确认队列目录有新任务写入。
 2. 启动目标 worker profile，确认任务状态能从 `queued` 推进到 `running` 或 `succeeded`。
 3. 针对 inference profile，先通过 deployment 控制面启动 async deployment，再创建异步 inference task。
-4. 如果 inference-task 无法消费，先检查 worker 是否启用了 `yolox-inference`，再检查 async deployment supervisor 配置。
+4. 如果 inference-task 无法消费，先检查 worker 是否启用了 `yolox-inference`，再检查 queue 目录是否共享、backend-service 里的 async inference gateway dispatcher 是否已启动，以及 `deployment_process_supervisor.request_timeout_seconds` 是否过小。若任务报出 deployment 进程未启动，还需要确认任务创建时间晚于当前 backend-service 启动，并且 task_spec 内已经包含稳定 async owner id 与完整 runtime_behavior 快照。

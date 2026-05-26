@@ -4,9 +4,8 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
-from backend.queue import LocalFileQueueBackend, LocalFileQueueSettings
-from backend.service.api.bootstrap import BackendServiceRuntime
 from backend.service.application.models.pretrained_catalog import (
     YOLOX_PRETRAINED_CATALOG_ROOT,
     YoloXPretrainedModelCatalogSeeder,
@@ -16,7 +15,6 @@ from backend.service.domain.models.model_records import PLATFORM_BASE_MODEL_SCOP
 from backend.service.infrastructure.db.session import DatabaseSettings, SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import DatasetStorageSettings, LocalDatasetStorage
 from backend.service.infrastructure.persistence.base import Base
-from backend.service.settings import BackendServiceSettings, BackendServiceTaskManagerConfig
 
 
 def test_yolox_pretrained_catalog_seeder_registers_disk_models(tmp_path: Path) -> None:
@@ -29,17 +27,9 @@ def test_yolox_pretrained_catalog_seeder_registers_disk_models(tmp_path: Path) -
     dataset_storage = LocalDatasetStorage(
         DatasetStorageSettings(root_dir=str(tmp_path / "dataset-files"))
     )
-    queue_backend = LocalFileQueueBackend(
-        LocalFileQueueSettings(root_dir=str(tmp_path / "queue-files"))
-    )
-    runtime = BackendServiceRuntime(
-        settings=BackendServiceSettings(
-            task_manager=BackendServiceTaskManagerConfig(enabled=False),
-        ),
+    runtime = SimpleNamespace(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
-        queue_backend=queue_backend,
-        background_task_manager_host=None,
     )
     manifest_path = dataset_storage.resolve(
         (

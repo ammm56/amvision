@@ -121,13 +121,11 @@ def test_worker_bootstrap_initializes_workspace_directory(tmp_path: Path) -> Non
         assert runtime.workspace_dir.is_dir()
         assert runtime.dataset_storage.root_dir == (tmp_path / "dataset-files").resolve()
         assert runtime.queue_backend.root_dir == (tmp_path / "queue-root").resolve()
-        assert runtime.yolox_async_deployment_process_supervisor.runtime_mode == "async"
         assert bootstrap.get_step_names() == (
             "prepare-worker-workspace",
-            "load-worker-plugin-catalog",
+            "load-worker-node-catalog",
         )
     finally:
-        runtime.yolox_async_deployment_process_supervisor.stop()
         runtime.session_factory.engine.dispose()
 
 
@@ -163,7 +161,6 @@ def test_build_background_task_manager_respects_enabled_consumer_kinds(
             "YoloXInferenceQueueWorker",
         ]
     finally:
-        runtime.yolox_async_deployment_process_supervisor.stop()
         runtime.session_factory.engine.dispose()
 
 

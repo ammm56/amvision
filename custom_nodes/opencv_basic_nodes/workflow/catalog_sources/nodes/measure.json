@@ -1,0 +1,57 @@
+{
+  "format_id": "amvision.node-definition.v1",
+  "node_type_id": "custom.opencv.measure",
+  "display_name": "Measure",
+  "category": "opencv.analysis",
+  "description": "对 contour 集合执行面积、周长与包围框度量。",
+  "implementation_kind": "custom-node",
+  "runtime_kind": "python-callable",
+  "input_ports": [
+    {
+      "name": "contours",
+      "display_name": "Contours",
+      "payload_type_id": "contours.v1"
+    }
+  ],
+  "output_ports": [
+    {
+      "name": "measurements",
+      "display_name": "Measurements",
+      "payload_type_id": "measurements.v1"
+    }
+  ],
+  "parameter_schema": {
+    "type": "object",
+    "properties": {
+      "sort_by": {
+        "type": "string",
+        "enum": [
+          "contour_index",
+          "area",
+          "perimeter",
+          "width",
+          "height"
+        ]
+      },
+      "descending": {
+        "type": "boolean"
+      },
+      "limit": {
+        "type": "integer",
+        "minimum": 1
+      }
+    }
+  },
+  "capability_tags": [
+    "opencv.measure",
+    "vision.analysis"
+  ],
+  "runtime_requirements": {
+    "python_packages": [
+      "opencv-python",
+      "numpy"
+    ]
+  },
+  "node_pack_id": "opencv.basic-nodes",
+  "node_pack_version": "0.1.0"
+}

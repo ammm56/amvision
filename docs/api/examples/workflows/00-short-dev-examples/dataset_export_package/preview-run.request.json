@@ -1,0 +1,21 @@
+{
+  "project_id": "project-1",
+  "application_ref": {
+    "application_id": "dataset-export-package-app"
+  },
+  "input_bindings": {
+    "request_payload": {
+      "value": {
+        "dataset_export_id": "dataset-export-1",
+        "rebuild": false
+      }
+    }
+  },
+  "execution_metadata": {
+    "marker": "postman-workflow-example-documents-preview",
+    "example_name": "dataset_export_package",
+    "scenario": "dataset-export-package",
+    "trigger_source": "editor-preview"
+  },
+  "timeout_seconds": 30
+}

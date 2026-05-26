@@ -1,0 +1,40 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "amvision: 启动 backend-worker",
+            "type": "shell",
+            "command": "python",
+            "args": [
+                "-m",
+                "backend.workers.main"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}",
+                "env": {
+                    "PYTHONUNBUFFERED": "1"
+                }
+            },
+            "problemMatcher": [],
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated",
+                "group": "amvision-worker"
+            }
+        },
+        {
+            "label": "amvision: 停止 backend-worker",
+            "type": "shell",
+            "windows": {
+                "command": "$processIds = Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -match 'backend\\.workers\\.main' } | Select-Object -ExpandProperty ProcessId -Unique; foreach ($processId in $processIds) { Stop-Process -Id $processId -Force }"
+            },
+            "linux": {
+                "command": "pkill -f 'backend.workers.main' || true"
+            },
+            "osx": {
+                "command": "pkill -f 'backend.workers.main' || true"
+            },
+            "problemMatcher": []
+        }
+    ]
+}

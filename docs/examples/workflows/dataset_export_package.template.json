@@ -1,0 +1,62 @@
+{
+  "format_id": "amvision.workflow-graph-template.v1",
+  "template_id": "dataset-export-package-template",
+  "template_version": "1.0.0",
+  "display_name": "Dataset Export Package Template",
+  "description": "接收动态 request 对象，按 DatasetExport delivery 能力生成或复用一个 zip 包。示例默认关闭 cleanup；如果需要临时包回收，应在 package 节点参数里显式开启 cleanup_on_completion。",
+  "nodes": [
+    {
+      "node_id": "request_payload_input",
+      "node_type_id": "core.io.template-input.object",
+      "parameters": {}
+    },
+    {
+      "node_id": "package_export",
+      "node_type_id": "core.service.dataset-export.package",
+      "parameters": {
+        "cleanup_on_completion": false
+      }
+    }
+  ],
+  "edges": [
+    {
+      "edge_id": "edge-request-package-export",
+      "source_node_id": "request_payload_input",
+      "source_port": "value",
+      "target_node_id": "package_export",
+      "target_port": "request"
+    }
+  ],
+  "template_inputs": [
+    {
+      "input_id": "request_payload",
+      "display_name": "Request Payload",
+      "payload_type_id": "value.v1",
+      "target_node_id": "request_payload_input",
+      "target_port": "payload"
+    }
+  ],
+  "template_outputs": [
+    {
+      "output_id": "package_body",
+      "display_name": "Package Body",
+      "payload_type_id": "response-body.v1",
+      "source_node_id": "package_export",
+      "source_port": "body"
+    }
+  ],
+  "metadata": {
+    "example_kind": "dataset-export-package",
+    "dynamic_request_binding_id": "request_payload",
+    "cleanup_mode": "explicit-node-parameter",
+    "intended_saved_object_key": "workflows/projects/{project_id}/templates/dataset-export-package-template/versions/1.0.0/template.json",
+    "node_groups": {
+      "request": [
+        "request_payload_input"
+      ],
+      "package": [
+        "package_export"
+      ]
+    }
+  }
+}

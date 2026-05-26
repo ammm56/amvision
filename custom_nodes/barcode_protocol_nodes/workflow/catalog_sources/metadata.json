@@ -1,0 +1,20 @@
+{
+  "phase": "implemented",
+  "node_definition_source": "workflow.catalog_sources.nodes",
+  "families": [
+    "mixed",
+    "linear",
+    "matrix",
+    "retail",
+    "industrial",
+    "gs1"
+  ],
+  "features": [
+    "decode",
+    "filter",
+    "match",
+    "summary",
+    "draw",
+    "remap"
+  ]
+}

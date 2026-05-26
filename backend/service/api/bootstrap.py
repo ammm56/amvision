@@ -4,21 +4,74 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+import backend.service.application.models.yolox_inference_task_service as yolox_inference_task_service_module
+
 from fastapi import FastAPI
 
 from backend.bootstrap.core import BootstrapStep, RuntimeBootstrap
+from backend.nodes.local_node_pack_loader import LocalNodePackLoader
+from backend.nodes.node_catalog_registry import NodeCatalogRegistry
+from backend.nodes.node_pack_loader import NodePackLoader
 from backend.queue import LocalFileQueueBackend
 from backend.service.api.seeders import BackendServiceSeeder, BackendServiceSeederRunner
-from backend.service.application.models.pretrained_catalog import YoloXPretrainedModelCatalogSeeder
+from backend.service.application.auth.default_local_auth_seeder import DefaultLocalAuthSeeder
+from backend.service.application.events import InMemoryServiceEventBus
+from backend.service.application.deployments import (
+    PublishedInferenceGateway,
+    YoloXDeploymentPublishedInferenceGateway,
+)
+from backend.service.application.deployments.yolox_deployment_service import (
+    SqlAlchemyYoloXDeploymentService,
+)
+from backend.service.application.local_buffers import LocalBufferBrokerProcessSupervisor
+from backend.service.application.models.yolox_async_inference_gateway import (
+    YoloXAsyncInferenceGatewayDispatcherRegistry,
+    normalize_yolox_async_inference_owner_id,
+    serialize_yolox_async_inference_execution_result,
+)
+from backend.service.application.models.pretrained_catalog import (
+    YoloXPretrainedModelCatalogSeeder,
+)
+from backend.service.application.workflows.graph_executor import (
+    WorkflowNodeRuntimeRegistry,
+)
+from backend.service.application.workflows.preview_run_manager import (
+    WorkflowPreviewRunManager,
+)
+from backend.service.application.workflows.runtime_service import WorkflowRuntimeService
+from backend.service.application.workflows.runtime_worker import (
+    WorkflowRuntimeWorkerManager,
+)
+from backend.service.application.workflows.trigger_sources.trigger_source_service import (
+    WorkflowTriggerSourceService,
+)
+from backend.service.application.workflows.trigger_sources.trigger_source_supervisor import (
+    TriggerSourceSupervisor,
+)
+from backend.service.application.workflows.trigger_sources.workflow_submitter import (
+    WorkflowSubmitter,
+)
+from backend.service.application.workflows.service_node_runtime import (
+    WorkflowServiceNodeRuntimeContext,
+)
+from backend.service.application.workflows.runtime_registry_loader import (
+    WorkflowNodeRuntimeRegistryLoader,
+)
 from backend.service.application.runtime.yolox_deployment_process_supervisor import (
+    YoloXDeploymentProcessConfig,
     YoloXDeploymentProcessSupervisor,
 )
+from backend.service.application.runtime.yolox_predictor import YoloXPredictionRequest
 from backend.service.infrastructure.db.schema import initialize_database_schema
 from backend.service.infrastructure.db.session import SessionFactory
+from backend.service.infrastructure.integrations.zeromq import ZeroMqTriggerAdapter
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     LocalDatasetStorage,
 )
-from backend.service.settings import BackendServiceSettings, get_backend_service_settings
+from backend.service.settings import (
+    BackendServiceSettings,
+    get_backend_service_settings,
+)
 from backend.workers.task_manager import HostedBackgroundTaskManager
 
 
@@ -28,20 +81,46 @@ class BackendServiceRuntime:
 
     字段：
     - settings：当前 backend-service 进程使用的统一配置。
+    - async_inference_service_id：当前 async inference service 稳定 id。
     - session_factory：数据库会话工厂。
     - dataset_storage：本地数据集文件存储服务。
     - queue_backend：本地任务队列后端。
+    - service_event_bus：服务内统一事件总线。
+    - node_pack_loader：节点包目录加载器。
+    - node_catalog_registry：统一节点目录注册表。
+    - workflow_node_runtime_registry_loader：workflow 节点运行时注册表加载器。
+    - workflow_node_runtime_registry：workflow 节点运行时注册表。
+    - workflow_service_node_runtime_context：workflow service nodes 使用的进程级上下文。
+    - local_buffer_broker_supervisor：本机 LocalBufferBroker 进程监督器。
+    - published_inference_gateway：workflow 子进程通过事件 dispatcher 调用的父进程 gateway。
     - yolox_sync_deployment_process_supervisor：同步 YOLOX deployment 进程监督器。
     - yolox_async_deployment_process_supervisor：异步 YOLOX deployment 进程监督器。
+    - yolox_async_inference_gateway_dispatcher_registry：按 deployment 管理 async gateway dispatcher 的 registry。
+    - workflow_runtime_worker_manager：workflow runtime worker 管理器。
+    - workflow_preview_run_manager：preview run 进程管理器。
+    - trigger_source_supervisor：workflow trigger source adapter 监督器。
     - background_task_manager_host：当前进程托管的后台任务管理器宿主。
     """
 
     settings: BackendServiceSettings
+    async_inference_service_id: str
     session_factory: SessionFactory
     dataset_storage: LocalDatasetStorage
     queue_backend: LocalFileQueueBackend
+    service_event_bus: InMemoryServiceEventBus
+    node_pack_loader: NodePackLoader
+    node_catalog_registry: NodeCatalogRegistry
+    workflow_node_runtime_registry_loader: WorkflowNodeRuntimeRegistryLoader
+    workflow_node_runtime_registry: WorkflowNodeRuntimeRegistry
+    workflow_service_node_runtime_context: WorkflowServiceNodeRuntimeContext
+    local_buffer_broker_supervisor: LocalBufferBrokerProcessSupervisor
+    published_inference_gateway: PublishedInferenceGateway
     yolox_sync_deployment_process_supervisor: YoloXDeploymentProcessSupervisor
     yolox_async_deployment_process_supervisor: YoloXDeploymentProcessSupervisor
+    yolox_async_inference_gateway_dispatcher_registry: YoloXAsyncInferenceGatewayDispatcherRegistry
+    workflow_runtime_worker_manager: WorkflowRuntimeWorkerManager
+    workflow_preview_run_manager: WorkflowPreviewRunManager
+    trigger_source_supervisor: TriggerSourceSupervisor
     background_task_manager_host: HostedBackgroundTaskManager | None
 
 
@@ -102,8 +181,8 @@ class RunBackendServiceSeedersStep:
         BackendServiceSeederRunner(self._seeders).run(runtime)
 
 
-class LoadBackendServicePluginCatalogStep:
-    """加载 backend-service 插件目录元数据的步骤。"""
+class LoadBackendServiceNodeCatalogStep:
+    """加载 backend-service 节点目录元数据的步骤。"""
 
     def get_step_name(self) -> str:
         """返回当前步骤名称。
@@ -112,23 +191,27 @@ class LoadBackendServicePluginCatalogStep:
         - 当前步骤的稳定名称。
         """
 
-        return "load-service-plugin-catalog"
+        return "load-service-node-catalog"
 
     def run(self, runtime: BackendServiceRuntime) -> None:
-        """执行 backend-service 插件目录元数据准备步骤。
+        """执行 backend-service 节点目录元数据准备步骤。
 
         参数：
         - runtime：当前应用实例使用的运行时资源。
 
         说明：
-        - 当前仓库还没有正式接入 PluginLoader 和插件目录扫描。
-        - 后续插件 manifest、capability 索引和启用状态读取可放在这里。
+        - 当前阶段把自定义节点包发现和 workflow 节点目录扫描收敛到 NodePackLoader。
+        - 当前步骤同时执行 node pack entrypoint 到 runtime handler 的注册。
+        - 后续节点包 capability 索引、启停状态和版本管理继续在这里扩展。
         """
 
-        _ = runtime
+        runtime.node_pack_loader.refresh()
+        runtime.workflow_node_runtime_registry_loader.refresh()
 
 
-class BackendServiceBootstrap(RuntimeBootstrap[BackendServiceSettings, BackendServiceRuntime]):
+class BackendServiceBootstrap(
+    RuntimeBootstrap[BackendServiceSettings, BackendServiceRuntime]
+):
     """按固定步骤准备 backend-service 运行环境。"""
 
     def __init__(
@@ -178,21 +261,61 @@ class BackendServiceBootstrap(RuntimeBootstrap[BackendServiceSettings, BackendSe
         session_factory = self._provided_session_factory or SessionFactory(
             settings.to_database_settings()
         )
+        async_inference_service_id = _resolve_async_inference_service_id(settings)
+        service_event_bus = InMemoryServiceEventBus()
+        session_factory.service_event_bus = service_event_bus
         dataset_storage = self._provided_dataset_storage or LocalDatasetStorage(
             settings.to_dataset_storage_settings()
         )
         queue_backend = self._provided_queue_backend or LocalFileQueueBackend(
             settings.to_queue_settings()
         )
+        node_pack_loader = LocalNodePackLoader(settings.custom_nodes.root_dir)
+        node_catalog_registry = NodeCatalogRegistry(node_pack_loader=node_pack_loader)
+        workflow_node_runtime_registry_loader = WorkflowNodeRuntimeRegistryLoader(
+            node_catalog_registry=node_catalog_registry,
+            node_pack_loader=node_pack_loader,
+        )
+        local_buffer_broker_supervisor = LocalBufferBrokerProcessSupervisor(
+            settings=settings.local_buffer_broker,
+        )
         yolox_sync_deployment_process_supervisor = YoloXDeploymentProcessSupervisor(
             dataset_storage_root_dir=str(dataset_storage.root_dir),
             runtime_mode="sync",
             settings=settings.deployment_process_supervisor,
+            service_event_bus=service_event_bus,
+            session_factory=session_factory,
+            dataset_storage=dataset_storage,
+            local_buffer_broker_event_channel_provider=local_buffer_broker_supervisor.get_event_channel,
         )
         yolox_async_deployment_process_supervisor = YoloXDeploymentProcessSupervisor(
             dataset_storage_root_dir=str(dataset_storage.root_dir),
             runtime_mode="async",
             settings=settings.deployment_process_supervisor,
+            service_event_bus=service_event_bus,
+            session_factory=session_factory,
+            dataset_storage=dataset_storage,
+            local_buffer_broker_event_channel_provider=local_buffer_broker_supervisor.get_event_channel,
+        )
+        yolox_async_inference_gateway_dispatcher_registry = YoloXAsyncInferenceGatewayDispatcherRegistry(
+            queue_backend=queue_backend,
+            execution_handler=_build_yolox_async_inference_gateway_execution_handler(
+                deployment_process_supervisor=yolox_async_deployment_process_supervisor,
+            ),
+            service_id=async_inference_service_id,
+            dataset_storage=dataset_storage,
+            request_queue_lease_timeout_seconds=max(
+                1.0,
+                settings.deployment_process_supervisor.request_timeout_seconds * 2,
+            ),
+            response_queue_retention_seconds=settings.queue.response_queue_retention_seconds,
+        )
+        published_inference_gateway = YoloXDeploymentPublishedInferenceGateway(
+            deployment_service=SqlAlchemyYoloXDeploymentService(
+                session_factory=session_factory,
+                dataset_storage=dataset_storage,
+            ),
+            deployment_process_supervisor=yolox_sync_deployment_process_supervisor,
         )
         background_task_manager_host = self._build_background_task_manager_host(
             settings=settings,
@@ -201,13 +324,70 @@ class BackendServiceBootstrap(RuntimeBootstrap[BackendServiceSettings, BackendSe
             queue_backend=queue_backend,
             yolox_async_deployment_process_supervisor=yolox_async_deployment_process_supervisor,
         )
-        return BackendServiceRuntime(
-            settings=settings,
+        workflow_service_node_runtime_context = WorkflowServiceNodeRuntimeContext(
             session_factory=session_factory,
             dataset_storage=dataset_storage,
             queue_backend=queue_backend,
             yolox_sync_deployment_process_supervisor=yolox_sync_deployment_process_supervisor,
             yolox_async_deployment_process_supervisor=yolox_async_deployment_process_supervisor,
+            async_inference_service_id=async_inference_service_id,
+            async_inference_gateway_dispatcher_registry=yolox_async_inference_gateway_dispatcher_registry,
+            local_buffer_reader=local_buffer_broker_supervisor,
+            published_inference_gateway=published_inference_gateway,
+        )
+        workflow_runtime_worker_manager = WorkflowRuntimeWorkerManager(
+            settings=settings,
+            session_factory=session_factory,
+            dataset_storage=dataset_storage,
+            local_buffer_broker_event_channel_provider=local_buffer_broker_supervisor.get_event_channel,
+            published_inference_gateway=published_inference_gateway,
+        )
+        workflow_preview_run_manager = WorkflowPreviewRunManager(
+            settings=settings,
+            session_factory=session_factory,
+            dataset_storage=dataset_storage,
+            local_buffer_broker_event_channel_provider=local_buffer_broker_supervisor.get_event_channel,
+            published_inference_gateway=published_inference_gateway,
+        )
+        trigger_workflow_runtime_service = WorkflowRuntimeService(
+            settings=settings,
+            session_factory=session_factory,
+            dataset_storage=dataset_storage,
+            node_catalog_registry=node_catalog_registry,
+            worker_manager=workflow_runtime_worker_manager,
+            preview_run_manager=workflow_preview_run_manager,
+            published_inference_gateway=published_inference_gateway,
+        )
+        trigger_source_supervisor = TriggerSourceSupervisor(
+            adapters={
+                "zeromq-topic": ZeroMqTriggerAdapter(
+                    local_buffer_writer=local_buffer_broker_supervisor
+                )
+            },
+            workflow_submitter=WorkflowSubmitter(
+                runtime_service=trigger_workflow_runtime_service
+            ),
+        )
+        return BackendServiceRuntime(
+            settings=settings,
+            async_inference_service_id=async_inference_service_id,
+            session_factory=session_factory,
+            dataset_storage=dataset_storage,
+            queue_backend=queue_backend,
+            service_event_bus=service_event_bus,
+            node_pack_loader=node_pack_loader,
+            node_catalog_registry=node_catalog_registry,
+            workflow_node_runtime_registry_loader=workflow_node_runtime_registry_loader,
+            workflow_node_runtime_registry=workflow_node_runtime_registry_loader.get_runtime_registry(),
+            workflow_service_node_runtime_context=workflow_service_node_runtime_context,
+            local_buffer_broker_supervisor=local_buffer_broker_supervisor,
+            published_inference_gateway=published_inference_gateway,
+            yolox_sync_deployment_process_supervisor=yolox_sync_deployment_process_supervisor,
+            yolox_async_deployment_process_supervisor=yolox_async_deployment_process_supervisor,
+            yolox_async_inference_gateway_dispatcher_registry=yolox_async_inference_gateway_dispatcher_registry,
+            workflow_runtime_worker_manager=workflow_runtime_worker_manager,
+            workflow_preview_run_manager=workflow_preview_run_manager,
+            trigger_source_supervisor=trigger_source_supervisor,
             background_task_manager_host=background_task_manager_host,
         )
 
@@ -224,12 +404,45 @@ class BackendServiceBootstrap(RuntimeBootstrap[BackendServiceSettings, BackendSe
         """
 
         application.state.backend_service_settings = runtime.settings
+        application.state.yolox_async_inference_service_id = runtime.async_inference_service_id
         application.state.session_factory = runtime.session_factory
         application.state.dataset_storage = runtime.dataset_storage
         application.state.queue_backend = runtime.queue_backend
-        application.state.yolox_sync_deployment_process_supervisor = runtime.yolox_sync_deployment_process_supervisor
-        application.state.yolox_async_deployment_process_supervisor = runtime.yolox_async_deployment_process_supervisor
-        application.state.background_task_manager_host = runtime.background_task_manager_host
+        application.state.service_event_bus = runtime.service_event_bus
+        application.state.node_pack_loader = runtime.node_pack_loader
+        application.state.node_catalog_registry = runtime.node_catalog_registry
+        application.state.workflow_node_runtime_registry_loader = (
+            runtime.workflow_node_runtime_registry_loader
+        )
+        application.state.workflow_node_runtime_registry = (
+            runtime.workflow_node_runtime_registry
+        )
+        application.state.workflow_service_node_runtime_context = (
+            runtime.workflow_service_node_runtime_context
+        )
+        application.state.local_buffer_broker_supervisor = (
+            runtime.local_buffer_broker_supervisor
+        )
+        application.state.published_inference_gateway = (
+            runtime.published_inference_gateway
+        )
+        application.state.yolox_sync_deployment_process_supervisor = (
+            runtime.yolox_sync_deployment_process_supervisor
+        )
+        application.state.yolox_async_deployment_process_supervisor = (
+            runtime.yolox_async_deployment_process_supervisor
+        )
+        application.state.yolox_async_inference_gateway_dispatcher_registry = (
+            runtime.yolox_async_inference_gateway_dispatcher_registry
+        )
+        application.state.workflow_runtime_worker_manager = (
+            runtime.workflow_runtime_worker_manager
+        )
+        application.state.workflow_preview_run_manager = runtime.workflow_preview_run_manager
+        application.state.trigger_source_supervisor = runtime.trigger_source_supervisor
+        application.state.background_task_manager_host = (
+            runtime.background_task_manager_host
+        )
 
     def start_runtime(self, runtime: BackendServiceRuntime) -> None:
         """启动 backend-service 托管的长生命周期资源。
@@ -238,8 +451,16 @@ class BackendServiceBootstrap(RuntimeBootstrap[BackendServiceSettings, BackendSe
         - runtime：当前应用实例使用的运行时资源。
         """
 
+        runtime.local_buffer_broker_supervisor.start()
         runtime.yolox_sync_deployment_process_supervisor.start()
         runtime.yolox_async_deployment_process_supervisor.start()
+        runtime.yolox_async_inference_gateway_dispatcher_registry.start()
+        runtime.workflow_runtime_worker_manager.start()
+        runtime.workflow_preview_run_manager.start()
+        WorkflowTriggerSourceService(
+            session_factory=runtime.session_factory,
+            trigger_source_supervisor=runtime.trigger_source_supervisor,
+        ).start_enabled_trigger_sources()
         if runtime.background_task_manager_host is not None:
             runtime.background_task_manager_host.start()
 
@@ -252,8 +473,13 @@ class BackendServiceBootstrap(RuntimeBootstrap[BackendServiceSettings, BackendSe
 
         if runtime.background_task_manager_host is not None:
             runtime.background_task_manager_host.stop()
+        runtime.trigger_source_supervisor.stop_all()
+        runtime.workflow_preview_run_manager.stop()
+        runtime.workflow_runtime_worker_manager.stop()
+        runtime.yolox_async_inference_gateway_dispatcher_registry.stop()
         runtime.yolox_sync_deployment_process_supervisor.stop()
         runtime.yolox_async_deployment_process_supervisor.stop()
+        runtime.local_buffer_broker_supervisor.stop()
         runtime.session_factory.engine.dispose()
 
     def _build_steps(self) -> tuple[BootstrapStep[BackendServiceRuntime], ...]:
@@ -265,13 +491,13 @@ class BackendServiceBootstrap(RuntimeBootstrap[BackendServiceSettings, BackendSe
         说明：
         - 配置加载是 bootstrap 的第一步，在 build_runtime 之前完成。
         - 当前服务进程只执行适合 backend-service 的轻量启动步骤。
-        - 当前启动顺序为：数据库 -> seeders -> 插件目录元数据。
+        - 当前启动顺序为：数据库 -> seeders -> 节点目录元数据。
         """
 
         return (
             InitializeDatabaseSchemaStep(),
             RunBackendServiceSeedersStep(self._build_seeders()),
-            LoadBackendServicePluginCatalogStep(),
+            LoadBackendServiceNodeCatalogStep(),
         )
 
     def _build_seeders(self) -> tuple[BackendServiceSeeder, ...]:
@@ -281,7 +507,10 @@ class BackendServiceBootstrap(RuntimeBootstrap[BackendServiceSettings, BackendSe
         - 当前启动流程使用的 seeder 元组。
         """
 
-        default_seeders: tuple[BackendServiceSeeder, ...] = (YoloXPretrainedModelCatalogSeeder(),)
+        default_seeders: tuple[BackendServiceSeeder, ...] = (
+            DefaultLocalAuthSeeder(),
+            YoloXPretrainedModelCatalogSeeder(),
+        )
         if self._provided_seeders is None:
             return default_seeders
 
@@ -316,3 +545,40 @@ class BackendServiceBootstrap(RuntimeBootstrap[BackendServiceSettings, BackendSe
             yolox_async_deployment_process_supervisor,
         )
         return None
+
+
+def _build_yolox_async_inference_gateway_execution_handler(
+    *,
+    deployment_process_supervisor: YoloXDeploymentProcessSupervisor,
+):
+    """构造 service-side async inference gateway 的执行处理器。"""
+
+    def _execute(
+        *,
+        process_config: YoloXDeploymentProcessConfig,
+        request: YoloXPredictionRequest,
+    ) -> dict[str, object]:
+        """通过 backend-service 持有的 async deployment supervisor 执行一次推理。"""
+
+        execution_result = yolox_inference_task_service_module.run_yolox_inference_task(
+            deployment_process_supervisor=deployment_process_supervisor,
+            process_config=process_config,
+            input_uri=request.input_uri,
+            input_image_bytes=request.input_image_bytes,
+            input_image_payload=request.input_image_payload,
+            score_threshold=request.score_threshold,
+            save_result_image=request.save_result_image,
+            return_preview_image_base64=False,
+            extra_options=dict(request.extra_options),
+        )
+        return serialize_yolox_async_inference_execution_result(execution_result)
+
+    return _execute
+
+
+def _resolve_async_inference_service_id(settings: BackendServiceSettings) -> str:
+    """解析当前 backend-service 使用的 async inference service id。"""
+
+    return normalize_yolox_async_inference_owner_id(
+        settings.async_inference_gateway.service_id
+    )

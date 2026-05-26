@@ -1,0 +1,25 @@
+{
+  "project_id": "project-1",
+  "application_ref": {
+    "application_id": "yolox-conversion-submit-app"
+  },
+  "input_bindings": {
+    "request_payload": {
+      "value": {
+        "project_id": "project-1",
+        "source_model_version_id": "model-version-1",
+        "target_formats": [
+          "onnx",
+          "openvino-ir"
+        ]
+      }
+    }
+  },
+  "execution_metadata": {
+    "marker": "postman-workflow-example-documents-preview",
+    "example_name": "yolox_conversion_submit",
+    "scenario": "yolox-conversion-submit",
+    "trigger_source": "editor-preview"
+  },
+  "timeout_seconds": 30
+}

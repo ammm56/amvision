@@ -1,0 +1,71 @@
+{
+  "format_id": "amvision.node-definition.v1",
+  "node_type_id": "custom.opencv.contour",
+  "display_name": "Contour",
+  "category": "opencv.analysis",
+  "description": "对输入图片提取 contour，并输出结构化 contour 集合。",
+  "implementation_kind": "custom-node",
+  "runtime_kind": "python-callable",
+  "input_ports": [
+    {
+      "name": "image",
+      "display_name": "Image",
+      "payload_type_id": "image-ref.v1"
+    }
+  ],
+  "output_ports": [
+    {
+      "name": "contours",
+      "display_name": "Contours",
+      "payload_type_id": "contours.v1"
+    }
+  ],
+  "parameter_schema": {
+    "type": "object",
+    "properties": {
+      "threshold": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 255
+      },
+      "retrieval_mode": {
+        "type": "string",
+        "enum": [
+          "external",
+          "list",
+          "tree",
+          "ccomp"
+        ]
+      },
+      "approximation": {
+        "type": "string",
+        "enum": [
+          "simple",
+          "none",
+          "tc89-l1",
+          "tc89-kcos"
+        ]
+      },
+      "min_area": {
+        "type": "number",
+        "minimum": 0
+      },
+      "max_contours": {
+        "type": "integer",
+        "minimum": 1
+      }
+    }
+  },
+  "capability_tags": [
+    "opencv.contour",
+    "vision.analysis"
+  ],
+  "runtime_requirements": {
+    "python_packages": [
+      "opencv-python",
+      "numpy"
+    ]
+  },
+  "node_pack_id": "opencv.basic-nodes",
+  "node_pack_version": "0.1.0"
+}

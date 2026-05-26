@@ -8,7 +8,7 @@
 
 ## 适用范围
 
-- 项目、数据集、模型、任务、部署、插件和集成对象的关系
+- 项目、数据集、模型、任务、部署、节点定义和集成对象的关系
 - 后端服务中与数据集、模型、转换输出和结果暂存相关的领域层级
 - 文件记录与文件内容分开保存的原则
 - 版本链路、引用规则和回滚追踪关系
@@ -20,6 +20,18 @@
 - 文件一旦对外可见，尽量当成不可变内容处理，用新版本替代原地覆盖
 - 任务产生的结果应通过结果引用与版本链路挂接，而不是写成孤立文件
 - 训练、转换、部署、推理和流程执行之间应通过对象关系而不是临时路径字符串衔接
+
+## ObjectStore 目录划分原则
+
+ObjectStore 的目录结构需要同时表达三个维度，不能只按一个维度硬收口：
+
+- 归属边界：平台级、Project 级、任务级、运行时级。
+- 资源类型：dataset、workflow 定义、model、运行结果、调试输入。
+- 生命周期：长期保留、任务期暂存、运行时快照、调试样例。
+
+因此，Project 归属并不等于所有文件都必须物理放在 `projects/{project_id}/...`。只要目录语义稳定、边界清楚，Project 级 workflow 定义放在 `workflows/projects/{project_id}/...` 也是合理的；它表达的是“属于某个 Project 的 workflow 控制面资产”，而不是“通用 Project 业务文件”。
+
+当前更重要的问题不是把所有路径机械并到一个前缀下，而是先把顶层命名空间定义清楚，并让 API、文档、对象引用和清理策略都遵守同一套分类。
 
 ## 对象分组
 
@@ -59,11 +71,10 @@
 - DeploymentInstance：部署实例与已绑定的模型版本、运行时和配置
 - PipelineTemplate：流程模板、节点图、参数和版本引用
 
-### 插件对象
+### 节点扩展对象
 
-- PluginManifest：插件身份、能力、入口点和权限声明
-- PluginVersion：插件的具体可启用版本与兼容性信息
-- NodeDefinition：插件或核心节点的输入输出、参数和分类定义
+- NodePackManifest：自定义节点包身份、入口点、capabilities、enabledByDefault 和版本声明
+- NodeDefinition：自定义节点包或核心节点的输入输出、参数和分类定义
 
 ## 核心关系链
 
@@ -99,16 +110,16 @@
 - InferenceTask 产生临时运行结果、结构化摘要和可选持久化结果引用
 - 需要保留的结果应提升为 ResultFile；仅用于短期查看或回传的结果应保留在 task-scoped staging 区
 
-### 流程与插件关系
+### 流程与节点关系
 
-- PipelineTemplate 引用 NodeDefinition、PluginVersion、参数 schema 和节点连接关系
+- PipelineTemplate 引用 NodeDefinition、自定义节点包 version 信息、参数 schema 和节点连接关系
 - PipelineTemplate 可引用逻辑输入类型、模型版本占位或具体集成端点
 - 流程执行任务产出的结果也应形成可追踪的文件记录或结果引用
 
 ### 集成与回传关系
 
-- IntegrationEndpoint 可以触发 InferenceTask、PipelineExecution 或插件回调任务
-- 外部回调、结果上报和插件后处理应保留与原始 task id 或 deployment id 的关系
+- IntegrationEndpoint 可以触发 InferenceTask、PipelineExecution 或节点回调任务
+- 外部回调、结果上报和自定义节点后处理应保留与原始 task id 或 deployment id 的关系
 
 ## 对象权责边界
 
@@ -133,7 +144,7 @@
 
 - 对象身份、版本号、状态、标签和元数据
 - 对象之间的引用关系
-- 任务状态、部署状态、插件启停状态和兼容性标记
+- 任务状态、部署状态、节点定义兼容性标记
 - 文件引用信息、摘要信息和来源链路
 
 ### ObjectStore 负责的内容
@@ -141,6 +152,14 @@
 - 模型文件、转换产物、样本文件、结果文件、日志归档和大对象输出
 - 运行结果的原始文件内容
 - 体积较大且不适合直接存放在数据库中的结构化或半结构化内容
+
+### LocalBufferBroker 负责的内容
+
+- workflow 隔离进程、发布推理 worker 和本地协议 adapter 之间的短期大图与连续帧交换
+- mmap 文件池、普通 buffer lease、ring buffer channel 和 BufferRef / FrameRef 生命周期管理
+- 短期数据的固定容量、TTL、引用计数、清理、背压和运行指标
+
+LocalBufferBroker 不替代 ObjectStore。需要下载、审计、复现、回滚或长期查看的文件仍应保存到 ObjectStore，并通过正式文件引用追踪。详细规划见 [docs/architecture/local-buffer-broker.md](local-buffer-broker.md)。
 
 ## 关键对象定义
 
@@ -270,29 +289,29 @@
 ### PipelineTemplate
 
 - 定义流程图结构、节点参数和节点之间的连接关系
-- 可以引用核心节点和插件节点
+- 可以引用核心节点和自定义节点
 - 版本变化应可追踪，避免流程定义被原地覆盖后失去可回放性
 
-### PluginManifest、PluginVersion 与 NodeDefinition
+### NodePackManifest 与 NodeDefinition
 
-- PluginManifest 负责定义插件身份和能力声明
-- PluginVersion 负责定义某个具体发布版本及兼容性范围
+- NodePackManifest 负责定义自定义节点包身份、入口点、capabilities、enabledByDefault 和 version
+- 当前阶段不单独维护 NodePackVersion；版本以 NodePackManifest.version 为准
 - NodeDefinition 负责定义可在节点编辑器中展示和执行的节点能力
-- 三者应关联但职责分离，避免把节点定义直接混写到启用状态记录中
+- 二者应关联但职责分离，避免把节点定义直接混写到 manifest 记录中
 
 ## 可追溯规则
 
-- 每个任务都应能追到输入引用、执行配置、运行时环境、插件版本和结果引用
+- 每个任务都应能追到输入引用、执行配置、运行时环境、自定义节点包 version 和结果引用
 - 每个部署都应能追到来源模型、运行时 profile、配置版本和回滚候选
 - 每个 ModelVersion 都应能追到来源类型：pretrained-reference 或 training-output；后续再扩展其他来源类型
 - 每个 ModelBuild 都应能追到来源 ModelVersion、目标运行时、目标硬件、精度策略和转换任务
-- 每个流程模板都应能追到节点定义来源和插件版本引用
+- 每个流程模板都应能追到节点定义来源和自定义节点包 version 引用
 - 每个外部回调或上报结果都应能追到原始任务或部署实例
 
 ## 回滚与替换原则
 
 - 回滚通过切换版本引用实现，而不是覆盖文件内容
-- 插件回滚、模型回滚和部署回滚都应保留历史链路
+- 自定义节点包回滚、模型回滚和部署回滚都应保留历史链路
 - 数据版本、模型版本和流程模板版本之间应能形成组合快照，支撑问题复现
 
 ## ObjectStore 推荐布局
@@ -360,12 +379,13 @@ data/
 ├─ amvision.db
 ├─ queue/
 ├─ files/
-│  └─ projects/
-│     └─ {project_id}/
-│        └─ datasets/
-│           └─ {dataset_id}/
-│              ├─ imports/
-│              └─ versions/
+│  ├─ inputs/
+│  ├─ models/
+│  ├─ projects/
+│  ├─ runtime/
+│  ├─ task-runs/
+│  ├─ workflow-apps/
+│  └─ workflows/
 ├─ worker/
 └─ maintenance/
 ```
@@ -374,9 +394,108 @@ data/
 | --- | --- |
 | data/amvision.db | 默认开发数据库文件，保存 DatasetImport、DatasetVersion、Model、ModelVersion、ModelBuild 等正式元数据。 |
 | data/queue | backend-service 与 backend-worker 共用的本地持久化队列根目录。当前 DatasetImport 提交后会先在这里登记一条待消费任务。 |
-| data/files | backend-service 默认 ObjectStore 根目录。当前数据集导入的原始包、版本文件和后续导出结果都放在这里。 |
+| data/files | backend-service 默认 ObjectStore 根目录。当前 Project 文件、workflow 定义、任务产物、运行时快照和平台级模型文件都放在这里。 |
 | data/worker | worker 进程的默认本地工作目录。当前只是 bootstrap 级目录约定，还没有落正式任务内容。 |
 | data/maintenance | maintenance 进程的默认本地工作目录。当前只是 bootstrap 级目录约定，还没有落正式运维产物。 |
+
+### ObjectStore 顶层命名空间
+
+当前主干已经实际使用下面这些顶层目录。它们的职责应该按“归属边界 + 资源类型 + 生命周期 + 访问级别”一起划分，而不是简单按文件拥有者名字分桶。
+
+| 路径 | 建议语义 | 当前边界 |
+| --- | --- | --- |
+| data/files/projects/{project_id}/ | Project 级长期业务资产 | 当前主要承载 datasets/imports、versions、exports 等正式业务文件。后续如果有需要长期保留、并且应被 Project 文件查询接口直接暴露的结果文件，也应优先放在这里。 |
+| data/files/workflows/projects/{project_id}/ | Project 级 workflow 定义资产 | 当前承载 template、application 及其 sidecar。虽然归属某个 Project，但它们属于 workflow 控制面文档，不与 dataset、export 这类通用业务文件混放。 |
+| data/files/workflows/runtime/ | workflow 运行时控制面快照 | 当前承载 preview-runs、app-runtimes、WorkflowRun 的快照和事件文件，属于运行期状态，不应当成长期业务交付物。 |
+| data/files/workflow-apps/ | 遗留 workflow app 结果目录 | 历史模板和历史运行产物仍可能写到这里。新的默认模板已经迁到 `projects/{project_id}/results/workflow-applications/{application_id}/runs/{workflow_run_id}/...`，因此这里不再继续扩展。 |
+| data/files/task-runs/{task_type}/{task_id}/ | worker 任务级产物和 staging | 当前训练、验证、转换、推理等任务会把中间产物或输出先写到这里，再由上层对象决定是否提升为正式版本或结果文件。 |
+| data/files/models/ | 平台级或模型域文件资产 | 当前至少用于 pretrained 模型目录，后续也可承载 build/package 一类模型文件。它不默认归属单个 Project。 |
+| data/files/runtime/ | 运行时级短期输入或直接调用暂存 | 当前已用于 direct-inference 和 inference input 一类运行期数据，不应承担长期归档责任。 |
+| data/files/inputs/ | 人工调试或示例输入文件 | 当前更多是本地调试和文档示例用目录，不应直接当成正式公开对象模型的一部分。 |
+
+### 目录收口决策
+
+这一轮先固定目录语义，不先改 builder 和对象路径。决策如下。
+
+1. `workflow-apps/` 不作为长期保留的独立顶层目录继续扩展。
+	workflow app 产生、并且需要按 Project 管理和公开读取的结果文件，应进入 Project 结果域。目标根路径统一为：
+
+```text
+projects/{project_id}/results/workflow-applications/{application_id}/runs/{workflow_run_id}/
+```
+
+2. 输入目录不再保留多个同义顶层。
+	后续只保留两类输入命名空间：
+
+	- `projects/{project_id}/inputs/...`：Project 管理的长期输入资产、示例图、基准图和可复用输入文件。
+	- `runtime/inputs/{consumer}/{request_id}/...`：请求期、运行时或短期解码得到的临时输入文件，例如 inference、validation、workflow-invoke。
+
+3. 顶层长期命名空间收敛为 `projects/`、`workflows/`、`task-runs/`、`runtime/`、`models/`。
+	`workflow-apps/`、`inputs/`、`runtime-inputs/`、`validation-inputs/` 都属于过渡性命名空间，后续不应再继续新增内容。
+
+### 目标 data/files 目录结构
+
+下面这份目录图表达的是目标层次，不代表当前代码已经全部迁移完成。
+
+```text
+data/files/
+├─ models/
+│  └─ pretrained/
+├─ projects/
+│  └─ {project_id}/
+│     ├─ datasets/
+│     ├─ inputs/
+│     └─ results/
+│        └─ workflow-applications/
+│           └─ {application_id}/
+│              └─ runs/
+│                 └─ {workflow_run_id}/
+├─ runtime/
+│  ├─ direct-inference/
+│  └─ inputs/
+│     ├─ inference/
+│     ├─ validation/
+│     └─ workflow-invoke/
+├─ task-runs/
+│  ├─ training/
+│  ├─ evaluation/
+│  ├─ conversion/
+│  └─ inference/
+└─ workflows/
+	├─ projects/
+	└─ runtime/
+```
+
+### 命名空间公开读取边界
+
+目录语义固定后，公开读取面也要跟着分层，不能继续用“只要文件放在 data/files 里就可能被公开读取”的做法。
+
+| 命名空间 | 目标公开方式 | 说明 |
+| --- | --- | --- |
+| projects/{project_id}/datasets/{dataset_id}/versions/** | 公开稳定读 | 允许通过 Project 文件接口或更专用的 dataset 读接口访问。属于正式版本内容。 |
+| projects/{project_id}/datasets/{dataset_id}/exports/** | 公开稳定读 | 导出后的 manifest、annotations、images、downloads 属于可交付文件。 |
+| projects/{project_id}/inputs/** | 公开稳定读 | 这是 Project 管理的长期输入资产，允许受控读取与复用。 |
+| projects/{project_id}/results/** | 公开稳定读 | Workflow、推理或后处理提升后的正式结果文件应从这里读取。 |
+| workflows/projects/{project_id}/templates/** | 专用公开读 | 只通过 workflow 模板/应用 API 读取，不并入通用 Project 文件接口。 |
+| workflows/projects/{project_id}/applications/** | 专用公开读 | 只通过 workflow 模板/应用 API 读取，不并入通用 Project 文件接口。 |
+| models/** | 专用公开读 | 通过模型域 API 暴露，不走 Project 文件接口。 |
+| projects/{project_id}/datasets/{dataset_id}/imports/** | 内部或运维读 | package、manifests、logs 用于导入审计和问题复查，不作为默认公开文件面。 |
+| workflows/runtime/** | 内部读 | preview run、app runtime、WorkflowRun 快照和事件文件只供运行时与诊断使用。 |
+| runtime/** | 内部读 | direct-inference 和 runtime/inputs 是短期运行数据，不提供公开读取。 |
+| task-runs/** | 内部读 | 任务级 staging 和中间产物只在任务域内使用，不能直接当公开文件面。 |
+
+### 迁移顺序约束
+
+- 第一阶段先冻结目标目录语义和公开读边界。
+- 第二阶段把 `workflow-apps/...`、`inputs/...`、`runtime-inputs/...`、`validation-inputs/...` 的 builder 和默认示例逐步迁到目标目录。
+- 第三阶段再调整公开文件读取接口、Postman、示例模板和清理策略。
+- 在第二阶段完成前，现有旧路径继续按兼容路径处理，但不再当成新的标准路径继续扩展。
+
+### 清理与兼容策略
+
+- `runtime/inputs/**` 和 `workflows/runtime/**` 都属于短期运行时数据，应进入统一 cleanup 策略，不参与长期业务归档。
+- `projects/{project_id}/inputs/**`、`projects/{project_id}/results/**`、`projects/{project_id}/datasets/**` 属于 Project 管理资产，不应被通用 runtime cleanup 直接删除。
+- 旧的 `workflow-apps/**`、`inputs/**`、`runtime-inputs/**`、`validation-inputs/**` 当前继续保留兼容读取和已有模板执行能力，但它们不再作为新的默认示例，也不进入 Project 文件公开读取面。
 
 ### DatasetImport 目录用途
 
@@ -570,4 +689,4 @@ data/files/models/pretrained/yolox/
 - [docs/architecture/dataset-import-spec.md](dataset-import-spec.md)
 - [docs/architecture/backend-service.md](backend-service.md)
 - [docs/architecture/system-overview.md](system-overview.md)
-- [docs/architecture/plugin-system.md](plugin-system.md)
+- [docs/architecture/node-system.md](node-system.md)

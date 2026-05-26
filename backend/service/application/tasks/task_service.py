@@ -8,6 +8,7 @@ from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from uuid import uuid4
 
+from backend.service.application.events.event_bus import ServiceEvent
 from backend.service.application.errors import InvalidRequestError, ResourceNotFoundError
 from backend.service.domain.tasks.task_records import TaskEvent, TaskEventType, TaskRecord, TaskRecordState
 from backend.service.infrastructure.db.session import SessionFactory
@@ -83,7 +84,7 @@ class TaskQueryFilters:
     - parent_task_id：父任务 id。
     - dataset_id：task_spec 中记录的 Dataset id。
     - source_import_id：task_spec 或 metadata 中记录的 DatasetImport id。
-    - limit：最大返回数量。
+    - limit：最大返回数量；为空时返回全部匹配结果。
     """
 
     project_id: str
@@ -94,7 +95,7 @@ class TaskQueryFilters:
     parent_task_id: str | None = None
     dataset_id: str | None = None
     source_import_id: str | None = None
-    limit: int = 100
+    limit: int | None = 100
 
 
 @dataclass(frozen=True)
@@ -138,6 +139,7 @@ class SqlAlchemyTaskService:
         """
 
         self.session_factory = session_factory
+        self.service_event_bus = getattr(session_factory, "service_event_bus", None)
 
     def create_task(self, request: CreateTaskRequest) -> TaskRecord:
         """创建一条新的 TaskRecord。
@@ -186,6 +188,8 @@ class SqlAlchemyTaskService:
             unit_of_work.tasks.save_task_event(created_event)
             unit_of_work.commit()
 
+        self._publish_task_event(created_event)
+
         return task_record
 
     def get_task(self, task_id: str, *, include_events: bool = False) -> TaskDetail:
@@ -207,7 +211,7 @@ class SqlAlchemyTaskService:
 
         if not filters.project_id.strip():
             raise InvalidRequestError("查询任务列表时 project_id 不能为空")
-        if filters.limit <= 0:
+        if filters.limit is not None and filters.limit <= 0:
             raise InvalidRequestError("limit 必须大于 0")
 
         with self._open_unit_of_work() as unit_of_work:
@@ -215,6 +219,8 @@ class SqlAlchemyTaskService:
 
         matched_tasks = [task for task in tasks if self._task_matches_filters(task, filters)]
         matched_tasks.sort(key=lambda task: (task.created_at, task.task_id), reverse=True)
+        if filters.limit is None:
+            return tuple(matched_tasks)
         return tuple(matched_tasks[: filters.limit])
 
     def list_task_events(self, filters: TaskEventQueryFilters) -> tuple[TaskEvent, ...]:
@@ -233,7 +239,14 @@ class SqlAlchemyTaskService:
         return tuple(matched_events[: filters.limit])
 
     def append_task_event(self, request: AppendTaskEventRequest) -> TaskDetail:
-        """为指定任务追加一条事件，并同步更新任务快照。"""
+        """为指定任务追加一条事件，并同步更新任务快照。
+
+        参数：
+        - request：待追加的任务事件请求。
+
+        返回：
+        - TaskDetail：更新后的任务快照，以及只包含本次新追加事件的 events；不返回历史事件。
+        """
 
         if not request.task_id.strip():
             raise InvalidRequestError("追加任务事件时 task_id 不能为空")
@@ -259,6 +272,8 @@ class SqlAlchemyTaskService:
             unit_of_work.tasks.save_task(updated_task)
             unit_of_work.tasks.save_task_event(task_event)
             unit_of_work.commit()
+
+        self._publish_task_event(task_event)
 
         return TaskDetail(task=updated_task, events=(task_event,))
 
@@ -286,6 +301,23 @@ class SqlAlchemyTaskService:
                 },
             )
         )
+
+    def delete_task(self, task_id: str) -> None:
+        """删除一条任务记录及其关联尝试、事件。
+
+        参数：
+        - task_id：任务 id。
+        """
+
+        with self._open_unit_of_work() as unit_of_work:
+            task_record = unit_of_work.tasks.get_task(task_id)
+            if task_record is None:
+                raise ResourceNotFoundError(
+                    "找不到指定的任务",
+                    details={"task_id": task_id},
+                )
+            unit_of_work.tasks.delete_task(task_id)
+            unit_of_work.commit()
 
     def _validate_create_request(self, request: CreateTaskRequest) -> None:
         """校验创建任务请求。"""
@@ -406,6 +438,35 @@ class SqlAlchemyTaskService:
             current_attempt_no=current_attempt_no,
             started_at=started_at,
             finished_at=finished_at,
+        )
+
+    def _publish_task_event(self, task_event: TaskEvent) -> None:
+        """把 TaskEvent 发布到服务内事件总线。
+
+        参数：
+        - task_event：要发布的任务事件。
+        """
+
+        if self.service_event_bus is None:
+            return
+
+        self.service_event_bus.publish(
+            ServiceEvent(
+                stream="tasks.events",
+                resource_kind="task",
+                resource_id=task_event.task_id,
+                event_type=task_event.event_type,
+                event_version="v1",
+                occurred_at=task_event.created_at,
+                cursor=f"{task_event.created_at}|{task_event.event_id}",
+                payload={
+                    "event_id": task_event.event_id,
+                    "task_id": task_event.task_id,
+                    "attempt_id": task_event.attempt_id,
+                    "message": task_event.message,
+                    "data": dict(task_event.payload),
+                },
+            )
         )
 
     @contextmanager

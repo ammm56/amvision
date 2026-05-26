@@ -1,0 +1,18 @@
+{
+  "input_bindings": {
+    "request_payload": {
+      "value": {
+        "project_id": "project-1",
+        "dataset_export_id": "dataset-export-1",
+        "recipe_id": "recipe-1",
+        "model_scale": "s",
+        "output_model_name": "demo-model",
+        "max_epochs": 3
+      }
+    }
+  },
+  "execution_metadata": {
+    "scenario": "yolox-training-submit",
+    "trigger_source": "sync-api"
+  }
+}

@@ -225,6 +225,8 @@ class YoloXDeploymentRuntimePool:
                     instance_id=_build_instance_id(config.deployment_instance_id, instance.instance_index),
                     execution_result=execution_result,
                 )
+            except InvalidRequestError:
+                raise
             except Exception as error:
                 last_error = error
                 self._mark_instance_unhealthy(instance=instance, error=error)

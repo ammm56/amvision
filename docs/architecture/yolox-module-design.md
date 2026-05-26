@@ -266,7 +266,7 @@ backend/
 - segmentation、pose 等非 detection 任务类型
 - 浏览器前端的完整训练后验证、评估和部署运维页面
 - worker 拓扑与发布形态的最终收敛
-- 面向多模型类型的统一抽象和插件化扩展
+- 面向多模型类型的统一抽象和可扩展能力
 
 ## 迁移策略
 
@@ -288,7 +288,7 @@ backend/
 
 1. 继续收敛 worker 拓扑，把 import、export、training、conversion 也逐步从 service 进程内 task manager 迁到更清晰的独立 worker profile。
 2. 为 pytorch、onnxruntime、openvino、tensorrt 的已支持组合补齐最小 smoke test、精度回归和 benchmark 基线。
-3. 继续抽象训练、转换、运行时和插件边界，让 YOLOX 成为平台里的第一套完整实现，而不是唯一实现。
+3. 继续抽象训练、转换、运行时和节点扩展边界，让 YOLOX 成为平台里的第一套完整实现，而不是唯一实现。
 4. 补齐 standalone、workstation、edge 三类发布形态下的运行时打包、启动脚本和运维文档。
 
 ## 推荐关联文档

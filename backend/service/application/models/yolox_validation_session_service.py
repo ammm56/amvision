@@ -7,6 +7,7 @@ from pathlib import PurePosixPath
 from uuid import uuid4
 
 from backend.service.application.errors import InvalidRequestError, ResourceNotFoundError
+from backend.service.application.project_public_files import resolve_public_project_file_reference
 from backend.service.application.runtime.yolox_predictor import (
     PyTorchYoloXPredictor,
     YoloXPredictionRequest,
@@ -16,6 +17,7 @@ from backend.service.application.runtime.yolox_runtime_target import (
     RuntimeTargetSnapshot,
     SqlAlchemyYoloXRuntimeTargetResolver,
     resolve_local_file_path,
+    resolve_runtime_precision,
 )
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
@@ -60,7 +62,7 @@ class YoloXValidationSessionPredictRequest:
 
     字段：
     - input_uri：输入图片 URI 或本地 object key。
-    - input_file_id：保留字段；当前最小实现暂不支持。
+    - input_file_id：Project 公开文件 id；与 input_uri 二选一。
     - score_threshold：本次预测覆盖的阈值。
     - save_result_image：本次预测是否输出预览图。
     - extra_options：附加运行时选项。
@@ -112,6 +114,7 @@ class YoloXValidationSessionView:
     runtime_profile_id: str | None
     runtime_backend: str
     device_name: str
+    runtime_precision: str
     score_threshold: float
     save_result_image: bool
     input_size: tuple[int, int]
@@ -212,6 +215,7 @@ class LocalYoloXValidationSessionService:
             runtime_profile_id=runtime_target.runtime_profile_id,
             runtime_backend=runtime_target.runtime_backend,
             device_name=runtime_target.device_name,
+            runtime_precision=runtime_target.runtime_precision,
             score_threshold=score_threshold,
             save_result_image=bool(request.save_result_image),
             input_size=runtime_target.input_size,
@@ -253,14 +257,28 @@ class LocalYoloXValidationSessionService:
         """对指定 validation session 执行一次单图预测。"""
 
         session = self.get_session(session_id)
-        if request.input_file_id is not None:
-            raise InvalidRequestError(
-                "当前 validation session 暂不支持 input_file_id，请改用 input_uri",
-                details={"session_id": session_id, "input_file_id": request.input_file_id},
-            )
         input_uri = _normalize_optional_str(request.input_uri)
+        input_file_id = _normalize_optional_str(request.input_file_id)
+        if input_uri is not None and input_file_id is not None:
+            raise InvalidRequestError(
+                "input_uri 和 input_file_id 只能提供一个",
+                details={
+                    "session_id": session_id,
+                    "input_uri": input_uri,
+                    "input_file_id": input_file_id,
+                },
+            )
+        resolved_input_file_id = input_file_id
+        if input_file_id is not None:
+            reference = resolve_public_project_file_reference(
+                dataset_storage=self.dataset_storage,
+                file_id=input_file_id,
+                expected_project_id=session.project_id,
+                field_name="input_file_id",
+            )
+            input_uri = reference.object_key
         if input_uri is None:
-            raise InvalidRequestError("predict 请求必须提供 input_uri")
+            raise InvalidRequestError("predict 请求必须提供 input_uri 或 input_file_id")
 
         score_threshold = _resolve_probability(
             value=request.score_threshold,
@@ -294,7 +312,7 @@ class LocalYoloXValidationSessionService:
             "session_id": session.session_id,
             "created_at": created_at,
             "input_uri": input_uri,
-            "input_file_id": None,
+            "input_file_id": resolved_input_file_id,
             "score_threshold": score_threshold,
             "save_result_image": save_result_image,
             "latency_ms": execution.latency_ms,
@@ -311,7 +329,7 @@ class LocalYoloXValidationSessionService:
             prediction_id=prediction_id,
             created_at=created_at,
             input_uri=input_uri,
-            input_file_id=None,
+            input_file_id=resolved_input_file_id,
             detection_count=len(execution.detections),
             preview_image_uri=preview_image_uri,
             raw_result_uri=raw_result_uri,
@@ -330,7 +348,7 @@ class LocalYoloXValidationSessionService:
             session_id=session.session_id,
             created_at=created_at,
             input_uri=input_uri,
-            input_file_id=None,
+            input_file_id=resolved_input_file_id,
             score_threshold=score_threshold,
             save_result_image=save_result_image,
             detections=execution.detections,
@@ -421,6 +439,7 @@ def _build_runtime_target_from_session(
         runtime_profile_id=session.runtime_profile_id,
         runtime_backend=session.runtime_backend,
         device_name=session.device_name,
+        runtime_precision=session.runtime_precision,
         input_size=session.input_size,
         labels=session.labels,
         runtime_artifact_file_id=session.checkpoint_file_id,
@@ -710,6 +729,7 @@ def _serialize_session(session: YoloXValidationSessionView) -> dict[str, object]
         "runtime_profile_id": session.runtime_profile_id,
         "runtime_backend": session.runtime_backend,
         "device_name": session.device_name,
+        "runtime_precision": session.runtime_precision,
         "score_threshold": session.score_threshold,
         "save_result_image": session.save_result_image,
         "input_size": [session.input_size[0], session.input_size[1]],
@@ -736,6 +756,9 @@ def _build_session_from_payload(payload: dict[str, object]) -> YoloXValidationSe
     ):
         raise ResourceNotFoundError("validation session 的 input_size 无效")
 
+    runtime_backend = _require_payload_str(payload, "runtime_backend")
+    device_name = _require_payload_str(payload, "device_name")
+
     return YoloXValidationSessionView(
         session_id=_require_payload_str(payload, "session_id"),
         project_id=_require_payload_str(payload, "project_id"),
@@ -746,8 +769,13 @@ def _build_session_from_payload(payload: dict[str, object]) -> YoloXValidationSe
         source_kind=_require_payload_str(payload, "source_kind"),
         status=_require_payload_str(payload, "status"),
         runtime_profile_id=_read_payload_optional_str(payload, "runtime_profile_id"),
-        runtime_backend=_require_payload_str(payload, "runtime_backend"),
-        device_name=_require_payload_str(payload, "device_name"),
+        runtime_backend=runtime_backend,
+        device_name=device_name,
+        runtime_precision=resolve_runtime_precision(
+            runtime_precision=_read_payload_optional_str(payload, "runtime_precision"),
+            runtime_backend=runtime_backend,
+            device_name=device_name,
+        ),
         score_threshold=float(payload.get("score_threshold", _DEFAULT_SCORE_THRESHOLD)),
         save_result_image=bool(payload.get("save_result_image", True)),
         input_size=(int(raw_input_size[0]), int(raw_input_size[1])),

@@ -89,6 +89,21 @@ class SqlAlchemyDeploymentInstanceRepository:
             ) from error
         return tuple(self._to_domain(record) for record in records)
 
+    def delete_deployment_instance(self, deployment_instance_id: str) -> bool:
+        """按 id 删除一个 DeploymentInstance。"""
+
+        try:
+            record = self.session.get(DeploymentInstanceRecord, deployment_instance_id)
+            if record is None:
+                return False
+            self.session.delete(record)
+        except SQLAlchemyError as error:
+            raise PersistenceOperationError(
+                "删除 DeploymentInstance 失败",
+                details={"error_type": error.__class__.__name__},
+            ) from error
+        return True
+
     @staticmethod
     def _to_record(deployment_instance: DeploymentInstance) -> DeploymentInstanceRecord:
         """把领域对象转换为 ORM 实体。"""

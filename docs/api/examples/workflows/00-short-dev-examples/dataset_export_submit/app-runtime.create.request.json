@@ -1,0 +1,8 @@
+{
+  "project_id": "project-1",
+  "application_id": "dataset-export-submit-app",
+  "display_name": "Dataset Export Submit Runtime",
+  "metadata": {
+    "example_kind": "dataset-export-submit"
+  }
+}

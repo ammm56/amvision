@@ -69,5 +69,5 @@ python -m backend.maintenance.main assemble-release --profile-id full --release-
 ## 当前用途边界
 
 - 当前 maintenance 只覆盖版本查看、配置输出、布局校验和最小 release 目录组装
-- 当前还没有正式接入数据库修复、文件修复、缓存清理或插件修复命令
+- 当前还没有正式接入数据库修复、文件修复、缓存清理或自定义节点修复命令
 - 后续如果增加修复类命令，应继续挂在 `backend.maintenance.main` 入口下，而不是再分散到多个临时脚本

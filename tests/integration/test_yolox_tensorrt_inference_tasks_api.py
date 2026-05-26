@@ -23,6 +23,7 @@ from backend.service.infrastructure.object_store.local_dataset_storage import Da
 from backend.service.infrastructure.persistence.base import Base
 from backend.service.settings import BackendServiceSettings, BackendServiceTaskManagerConfig
 from backend.workers.inference.yolox_inference_queue_worker import YoloXInferenceQueueWorker
+from tests.api_test_support import build_test_headers
 
 
 pytest.importorskip("onnx")
@@ -62,7 +63,6 @@ def test_tensorrt_inference_task_runs_through_real_async_deployment_process(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
         queue_backend=queue_backend,
-        deployment_process_supervisor=client.app.state.yolox_async_deployment_process_supervisor,
         worker_id=f"test-yolox-tensorrt-inference-worker-{runtime_precision}",
     )
 
@@ -480,11 +480,7 @@ def _build_model_headers() -> dict[str, str]:
     - 具备 models:read 和 models:write scope 的请求头。
     """
 
-    return {
-        "x-amvision-principal-id": "user-1",
-        "x-amvision-project-ids": "project-1",
-        "x-amvision-scopes": "models:read,models:write",
-    }
+    return build_test_headers(scopes="models:read,models:write")
 
 
 def _build_inference_headers() -> dict[str, str]:
@@ -494,11 +490,7 @@ def _build_inference_headers() -> dict[str, str]:
     - 具备 models:read 和 tasks:write scope 的请求头。
     """
 
-    return {
-        "x-amvision-principal-id": "user-1",
-        "x-amvision-project-ids": "project-1",
-        "x-amvision-scopes": "models:read,tasks:write",
-    }
+    return build_test_headers(scopes="models:read,tasks:write")
 
 
 def _build_task_headers() -> dict[str, str]:
@@ -508,8 +500,4 @@ def _build_task_headers() -> dict[str, str]:
     - 具备 tasks:read scope 的请求头。
     """
 
-    return {
-        "x-amvision-principal-id": "user-1",
-        "x-amvision-project-ids": "project-1",
-        "x-amvision-scopes": "tasks:read",
-    }
+    return build_test_headers(scopes="tasks:read")

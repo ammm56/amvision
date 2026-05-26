@@ -10,8 +10,10 @@ from fastapi.testclient import TestClient
 import backend.service.application.models.yolox_validation_session_service as validation_session_service_module
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import (
+    DatasetStorageSettings,
     LocalDatasetStorage,
 )
+from backend.service.infrastructure.object_store.object_key_layout import build_public_project_file_id
 from backend.workers.shared.yolox_runtime_contracts import RuntimeTensorSpec, YoloXRuntimeSessionInfo
 from tests.api_test_support import build_test_headers, build_test_jpeg_bytes
 from tests.yolox_test_support import (
@@ -31,7 +33,7 @@ def test_create_and_predict_yolox_validation_session_returns_prediction_result(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
     )
-    input_uri = "validation-inputs/image-1.jpg"
+    input_uri = "projects/project-1/inputs/validation/image-1.jpg"
     dataset_storage.write_bytes(input_uri, _build_test_jpeg_bytes())
 
     def fake_predict(**kwargs):
@@ -120,13 +122,45 @@ def test_create_and_predict_yolox_validation_session_returns_prediction_result(
         session_factory.engine.dispose()
 
 
-def test_predict_yolox_validation_session_rejects_input_file_id(tmp_path: Path) -> None:
-    """验证最小 validation session 会显式拒绝尚未支持的 input_file_id。"""
+def test_predict_yolox_validation_session_accepts_public_project_file_id(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """验证 validation session 可以直接消费 Project 公开文件 id。"""
 
     client, session_factory, dataset_storage = _create_test_client(tmp_path)
     model_version_id = _seed_training_output_model_version(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
+    )
+    input_uri = "projects/project-1/inputs/validation/input-file-id.jpg"
+    dataset_storage.write_bytes(input_uri, _build_test_jpeg_bytes())
+    input_file_id = build_public_project_file_id(
+        project_id="project-1",
+        object_key=input_uri,
+    )
+
+    def fake_predict(**kwargs):
+        return validation_session_service_module._YoloXValidationPredictionExecution(
+            detections=(),
+            latency_ms=5.2,
+            image_width=64,
+            image_height=64,
+            preview_image_bytes=None,
+            runtime_session_info=YoloXRuntimeSessionInfo(
+                backend_name="pytorch",
+                model_uri=kwargs["session"].checkpoint_storage_uri,
+                device_name="cpu",
+                input_spec=RuntimeTensorSpec(name="images", shape=(1, 3, 64, 64), dtype="float32"),
+                output_spec=RuntimeTensorSpec(name="detections", shape=(-1, 7), dtype="float32"),
+                metadata={"model_version_id": kwargs["session"].model_version_id},
+            ),
+        )
+
+    monkeypatch.setattr(
+        validation_session_service_module,
+        "_run_yolox_validation_prediction",
+        fake_predict,
     )
 
     try:
@@ -146,15 +180,71 @@ def test_predict_yolox_validation_session_rejects_input_file_id(tmp_path: Path) 
                 f"/api/v1/models/yolox/validation-sessions/{session_id}/predict",
                 headers=_build_model_headers(),
                 json={
-                    "input_file_id": "input-file-1",
+                    "input_file_id": input_file_id,
                 },
             )
 
-        assert predict_response.status_code == 400
+            detail_response = client.get(
+                f"/api/v1/models/yolox/validation-sessions/{session_id}",
+                headers=_build_model_headers(),
+            )
+
+        assert predict_response.status_code == 200
         payload = predict_response.json()
-        assert payload["error"]["code"] == "invalid_request"
+        assert payload["input_uri"] == input_uri
+        assert payload["input_file_id"] == input_file_id
+        assert detail_response.status_code == 200
+        assert detail_response.json()["last_prediction"]["input_file_id"] == input_file_id
     finally:
         session_factory.engine.dispose()
+
+
+def test_legacy_validation_session_payload_defaults_runtime_precision(tmp_path: Path) -> None:
+    """验证旧 session JSON 缺少 runtime_precision 时仍可恢复运行时快照。"""
+
+    dataset_storage = LocalDatasetStorage(
+        DatasetStorageSettings(root_dir=str(tmp_path / "dataset-files"))
+    )
+    checkpoint_storage_uri = "runtime/validation-sessions/session-1/checkpoints/best_ckpt.pth"
+    checkpoint_path = dataset_storage.resolve(checkpoint_storage_uri)
+    checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
+    checkpoint_path.write_bytes(b"fake-checkpoint")
+
+    session = validation_session_service_module._build_session_from_payload(
+        {
+            "session_id": "validation-session-1",
+            "project_id": "project-1",
+            "model_id": "model-1",
+            "model_version_id": "model-version-1",
+            "model_name": "yolox-nano-bolt",
+            "model_scale": "nano",
+            "source_kind": "training-output",
+            "status": "ready",
+            "runtime_profile_id": None,
+            "runtime_backend": "pytorch",
+            "device_name": "cpu",
+            "score_threshold": 0.35,
+            "save_result_image": True,
+            "input_size": [64, 64],
+            "labels": ["bolt"],
+            "checkpoint_file_id": "checkpoint-file-1",
+            "checkpoint_storage_uri": checkpoint_storage_uri,
+            "labels_storage_uri": None,
+            "extra_options": {},
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+            "created_by": "tester",
+            "last_prediction": None,
+        }
+    )
+
+    runtime_target = validation_session_service_module._build_runtime_target_from_session(
+        session=session,
+        dataset_storage=dataset_storage,
+    )
+
+    assert session.runtime_precision == "fp32"
+    assert runtime_target.runtime_precision == "fp32"
 
 
 def _create_test_client(tmp_path: Path) -> tuple[TestClient, SessionFactory, LocalDatasetStorage]:

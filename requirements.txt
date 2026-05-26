@@ -4,13 +4,17 @@
 fastapi[standard]>=0.136
 SQLAlchemy>=2.0
 pydantic-settings>=2.0
-pytest>=8.3
+packaging>=24,<26
 chardet>=5.2,<6
 numpy>=2.2,<3
 opencv-python>=4.11,<5
 tensorboard>=2.19,<3
 torch==2.8.0
 torchvision==0.23.0
+
+# 开发工具依赖
+pytest>=8.3,<9
+ruff>=0.15.12,<0.20
 
 # COCO 数据集与评估
 pycocotools>=2.0.8,<3
@@ -29,6 +33,12 @@ openvino>=2026.1.0
 # 统一固定为 CUDA 12 发行包，目标最低支持 CUDA 12.8；当前不跟随最新 TensorRT 版本。
 tensorrt-cu12==10.13.2.6
 cuda-python==12.8.0
+
+# 自定义节点依赖
+zxing-cpp>=3.0,<4
+
+# 图触发调用层依赖
+pyzmq>=27.1.0,<30
 
 # 如需通过 PyTorch 官方 CUDA 12.8 源安装：
 # pip install torch==2.8.0 torchvision==0.23.0 torchaudio==2.8.0 --index-url https://download.pytorch.org/whl/cu128

@@ -1,0 +1,46 @@
+{
+  "format_id": "amvision.custom-node-catalog.v1",
+  "payload_contracts": [],
+  "node_definitions": [
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.example-dependent.aggregate",
+      "display_name": "Example Dependent Aggregate",
+      "category": "example.dependent",
+      "description": "复用其他 node pack 能力后输出一个最小 response-body.v1 结果。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "input_ports": [],
+      "output_ports": [
+        {
+          "name": "body",
+          "display_name": "Body",
+          "payload_type_id": "response-body.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "capability_tags": [
+        "example.dependent",
+        "response.body"
+      ],
+      "runtime_requirements": {
+        "python_packages": []
+      },
+      "node_pack_id": "example.dependent-nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {}
+    }
+  ]
+}

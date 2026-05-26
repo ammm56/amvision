@@ -42,6 +42,7 @@ class SessionFactory:
             future=True,
             **self._build_engine_options(settings.url),
         )
+        self.service_event_bus: object | None = None
         self._session_maker = sessionmaker(
             bind=self.engine,
             autoflush=False,

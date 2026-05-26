@@ -1,0 +1,54 @@
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.5.2.0
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "examples", "examples", "{892D20ED-E6E4-9067-D176-A43BEF3C1636}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ZeroMqImageInvoke", "examples\ZeroMqImageInvoke\ZeroMqImageInvoke.csproj", "{4D7C40C8-A561-1A1D-BF10-A690555E9DDF}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TriggerSourceDebugWinForms", "examples\TriggerSourceDebugWinForms\TriggerSourceDebugWinForms.csproj", "{0FD6D0A7-76A1-4F06-AEF5-FDBFEF915A5E}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{ECF4E390-50D3-58FE-ACDC-9A9EFA44BC6B}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Amvision.TriggerSources", "src\Amvision.TriggerSources\Amvision.TriggerSources.csproj", "{D5613758-2261-267C-AC01-C3C1C75B8BAC}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{A9AE20D8-44CC-D737-B0DB-E8F7BEB3084C}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Amvision.TriggerSources.Tests", "tests\Amvision.TriggerSources.Tests\Amvision.TriggerSources.Tests.csproj", "{4395B9CC-78FB-B704-1D3B-2C638305B5DE}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{4D7C40C8-A561-1A1D-BF10-A690555E9DDF}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{4D7C40C8-A561-1A1D-BF10-A690555E9DDF}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{4D7C40C8-A561-1A1D-BF10-A690555E9DDF}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{4D7C40C8-A561-1A1D-BF10-A690555E9DDF}.Release|Any CPU.Build.0 = Release|Any CPU
+		{0FD6D0A7-76A1-4F06-AEF5-FDBFEF915A5E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{0FD6D0A7-76A1-4F06-AEF5-FDBFEF915A5E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{0FD6D0A7-76A1-4F06-AEF5-FDBFEF915A5E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{0FD6D0A7-76A1-4F06-AEF5-FDBFEF915A5E}.Release|Any CPU.Build.0 = Release|Any CPU
+		{D5613758-2261-267C-AC01-C3C1C75B8BAC}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D5613758-2261-267C-AC01-C3C1C75B8BAC}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D5613758-2261-267C-AC01-C3C1C75B8BAC}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D5613758-2261-267C-AC01-C3C1C75B8BAC}.Release|Any CPU.Build.0 = Release|Any CPU
+		{4395B9CC-78FB-B704-1D3B-2C638305B5DE}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{4395B9CC-78FB-B704-1D3B-2C638305B5DE}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{4395B9CC-78FB-B704-1D3B-2C638305B5DE}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{4395B9CC-78FB-B704-1D3B-2C638305B5DE}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{4D7C40C8-A561-1A1D-BF10-A690555E9DDF} = {892D20ED-E6E4-9067-D176-A43BEF3C1636}
+		{0FD6D0A7-76A1-4F06-AEF5-FDBFEF915A5E} = {892D20ED-E6E4-9067-D176-A43BEF3C1636}
+		{D5613758-2261-267C-AC01-C3C1C75B8BAC} = {ECF4E390-50D3-58FE-ACDC-9A9EFA44BC6B}
+		{4395B9CC-78FB-B704-1D3B-2C638305B5DE} = {A9AE20D8-44CC-D737-B0DB-E8F7BEB3084C}
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {EEAA1AC0-A319-4A34-B8CC-17E6A611688D}
+	EndGlobalSection
+EndGlobal

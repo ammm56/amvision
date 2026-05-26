@@ -1,0 +1,39 @@
+{
+  "format_id": "amvision.node-pack-manifest.v1",
+  "id": "barcode.protocol-nodes",
+  "version": "0.1.0",
+  "displayName": "Barcode Protocol Nodes",
+  "description": "文档示例：当 barcode.protocol-nodes 复用 opencv.basic-nodes 中复杂图像预处理能力时的 manifest 写法。",
+  "category": "custom-node-pack",
+  "capabilities": [
+    "pipeline.node",
+    "barcode.decode",
+    "barcode.render"
+  ],
+  "dependencies": [
+    {
+      "nodePackId": "opencv.basic-nodes",
+      "versionRange": ">=0.1.0 <1.0"
+    }
+  ],
+  "permissionScopes": [],
+  "entrypoints": {
+    "backend": "custom_nodes.barcode_protocol_nodes.backend.entry:register"
+  },
+  "compatibility": {
+    "api": ">=0.1 <1.0",
+    "runtime": ">=3.12"
+  },
+  "timeout": {
+    "defaultSeconds": 30
+  },
+  "enabledByDefault": true,
+  "customNodeCatalogPath": "workflow/catalog.json",
+  "metadata": {
+    "templateKind": "documentation-example",
+    "dependencyNotes": [
+      "当条码节点包需要复用 opencv.basic-nodes 中已经稳定的复杂图像预处理链时，可通过 dependencies 显式声明 pack 级依赖",
+      "当前仓库运行时 manifest 是否需要该依赖，应以实际节点实现是否存在 pack 级复用为准"
+    ]
+  }
+}

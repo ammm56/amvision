@@ -1,0 +1,186 @@
+{
+  "format_id": "amvision.workflow-graph-template.v1",
+  "template_id": "yolox-deployment-sync-infer-health-template",
+  "template_version": "1.0.0",
+  "display_name": "YOLOX Deployment Sync Infer Health Template",
+  "description": "接收 base64 图片，启动并预热一个已有 sync deployment，执行同步推理并读取 health。",
+  "nodes": [
+    {
+      "node_id": "decode_request_image",
+      "node_type_id": "core.io.image-base64-decode",
+      "parameters": {}
+    },
+    {
+      "node_id": "deployment_request_input",
+      "node_type_id": "core.io.template-input.object",
+      "parameters": {}
+    },
+    {
+      "node_id": "start",
+      "node_type_id": "core.service.yolox-deployment.start",
+      "parameters": {
+        "runtime_mode": "sync"
+      },
+      "metadata": {
+        "sequence_index": 1
+      }
+    },
+    {
+      "node_id": "warmup",
+      "node_type_id": "core.service.yolox-deployment.warmup",
+      "parameters": {
+        "runtime_mode": "sync"
+      },
+      "metadata": {
+        "sequence_index": 2
+      }
+    },
+    {
+      "node_id": "detect",
+      "node_type_id": "core.model.yolox-detection",
+      "parameters": {
+        "auto_start_process": false,
+        "score_threshold": 0.3,
+        "save_result_image": false,
+        "return_preview_image_base64": false
+      },
+      "metadata": {
+        "sequence_index": 3
+      }
+    },
+    {
+      "node_id": "health",
+      "node_type_id": "core.service.yolox-deployment.health",
+      "parameters": {
+        "runtime_mode": "sync"
+      },
+      "metadata": {
+        "sequence_index": 4
+      }
+    }
+  ],
+  "edges": [
+    {
+      "edge_id": "edge-decode-detect",
+      "source_node_id": "decode_request_image",
+      "source_port": "image",
+      "target_node_id": "detect",
+      "target_port": "image"
+    },
+    {
+      "edge_id": "edge-start-warmup-dependency",
+      "source_node_id": "start",
+      "source_port": "body",
+      "target_node_id": "warmup",
+      "target_port": "dependency"
+    },
+    {
+      "edge_id": "edge-warmup-detect-dependency",
+      "source_node_id": "warmup",
+      "source_port": "body",
+      "target_node_id": "detect",
+      "target_port": "dependency"
+    },
+    {
+      "edge_id": "edge-detect-health-dependency",
+      "source_node_id": "detect",
+      "source_port": "detections",
+      "target_node_id": "health",
+      "target_port": "dependency"
+    },
+    {
+      "edge_id": "edge-deployment-request-start",
+      "source_node_id": "deployment_request_input",
+      "source_port": "value",
+      "target_node_id": "start",
+      "target_port": "request"
+    },
+    {
+      "edge_id": "edge-deployment-request-warmup",
+      "source_node_id": "deployment_request_input",
+      "source_port": "value",
+      "target_node_id": "warmup",
+      "target_port": "request"
+    },
+    {
+      "edge_id": "edge-deployment-request-detect",
+      "source_node_id": "deployment_request_input",
+      "source_port": "value",
+      "target_node_id": "detect",
+      "target_port": "request"
+    },
+    {
+      "edge_id": "edge-deployment-request-health",
+      "source_node_id": "deployment_request_input",
+      "source_port": "value",
+      "target_node_id": "health",
+      "target_port": "request"
+    }
+  ],
+  "template_inputs": [
+    {
+      "input_id": "request_image",
+      "display_name": "Request Image",
+      "payload_type_id": "image-base64.v1",
+      "target_node_id": "decode_request_image",
+      "target_port": "payload"
+    },
+    {
+      "input_id": "deployment_request",
+      "display_name": "Deployment Request",
+      "payload_type_id": "value.v1",
+      "target_node_id": "deployment_request_input",
+      "target_port": "payload"
+    }
+  ],
+  "template_outputs": [
+    {
+      "output_id": "start_body",
+      "display_name": "Start Body",
+      "payload_type_id": "response-body.v1",
+      "source_node_id": "start",
+      "source_port": "body"
+    },
+    {
+      "output_id": "warmup_body",
+      "display_name": "Warmup Body",
+      "payload_type_id": "response-body.v1",
+      "source_node_id": "warmup",
+      "source_port": "body"
+    },
+    {
+      "output_id": "detections",
+      "display_name": "Detections",
+      "payload_type_id": "detections.v1",
+      "source_node_id": "detect",
+      "source_port": "detections"
+    },
+    {
+      "output_id": "health_body",
+      "display_name": "Health Body",
+      "payload_type_id": "response-body.v1",
+      "source_node_id": "health",
+      "source_port": "body"
+    }
+  ],
+  "metadata": {
+    "example_kind": "deployment-sync-infer-health",
+    "uses_existing_deployment_instance": true,
+    "deployment_runtime_owner": "backend-service",
+    "node_groups": {
+      "input": [
+        "decode_request_image",
+        "deployment_request_input"
+      ],
+      "deployment_control": [
+        "start",
+        "warmup",
+        "health"
+      ],
+      "model_node": [
+        "detect"
+      ]
+    },
+    "deployment_instance_id_binding": "deployment_request"
+  }
+}

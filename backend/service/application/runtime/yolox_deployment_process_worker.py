@@ -7,7 +7,16 @@ import os
 from threading import BoundedSemaphore, Event, Lock, Thread
 from typing import Any
 
+from backend.contracts.buffers import BufferRef, FrameRef
+from backend.nodes.runtime_support import (
+    IMAGE_TRANSPORT_BUFFER,
+    IMAGE_TRANSPORT_FRAME,
+    IMAGE_TRANSPORT_MEMORY,
+    IMAGE_TRANSPORT_STORAGE,
+    require_image_payload,
+)
 from backend.service.application.errors import InvalidRequestError, ServiceError, ServiceConfigurationError
+from backend.service.application.local_buffers import LocalBufferBrokerClient, LocalBufferBrokerEventChannel
 from backend.service.application.runtime.deployment_process_settings import (
     DeploymentProcessSupervisorConfig,
 )
@@ -88,6 +97,29 @@ class _KeepWarmState:
         self.idle_event.set()
 
 
+@dataclass
+class _LocalBufferBrokerRuntimeHealth:
+    """描述 deployment worker 内 LocalBufferBroker 调用健康状态。
+
+    字段：
+    - connected：当前 worker 是否持有 broker client。
+    - channel_id：当前 broker client channel id。
+    - buffer_input_count：通过 BufferRef 读取输入的次数。
+    - frame_input_count：通过 FrameRef 读取输入的次数。
+    - error_count：读取 broker 输入失败次数。
+    - last_error：最近一次 broker 输入错误。
+    - lock：并发更新计数的互斥锁。
+    """
+
+    connected: bool
+    channel_id: str | None
+    buffer_input_count: int = 0
+    frame_input_count: int = 0
+    error_count: int = 0
+    last_error: str | None = None
+    lock: Lock = field(default_factory=Lock, repr=False)
+
+
 def run_yolox_deployment_process_worker(
     *,
     config: Any,
@@ -96,6 +128,7 @@ def run_yolox_deployment_process_worker(
     response_queue: Any,
     operator_thread_count: int,
     supervisor_settings: dict[str, object] | None = None,
+    local_buffer_broker_event_channel: LocalBufferBrokerEventChannel | None = None,
 ) -> None:
     """运行单个 deployment 的子进程工作循环。
 
@@ -106,9 +139,12 @@ def run_yolox_deployment_process_worker(
     - response_queue：子进程回传控制结果与推理结果的队列。
     - operator_thread_count：子进程内部推理库允许使用的算子线程数。
     - supervisor_settings：deployment supervisor 默认行为配置。
+    - local_buffer_broker_event_channel：可选的 LocalBufferBroker 事件通道。
     """
 
     _configure_process_threads(operator_thread_count)
+    local_buffer_reader = _build_local_buffer_reader(local_buffer_broker_event_channel)
+    local_buffer_health = _build_local_buffer_health(local_buffer_reader)
     dataset_storage = LocalDatasetStorage(
         DatasetStorageSettings(root_dir=dataset_storage_root_dir)
     )
@@ -156,6 +192,8 @@ def run_yolox_deployment_process_worker(
                 keep_warm_state=keep_warm_state,
                 timeout_seconds=behavior.keep_warm_yield_timeout_seconds,
             )
+            if local_buffer_reader is not None:
+                local_buffer_reader.close()
             _put_ok_response(
                 response_queue=response_queue,
                 request_id=request_id,
@@ -171,6 +209,8 @@ def run_yolox_deployment_process_worker(
                     health=runtime_pool.get_health(runtime_pool_config),
                     behavior=behavior,
                     keep_warm_state=keep_warm_state,
+                    local_buffer_reader=local_buffer_reader,
+                    local_buffer_health=local_buffer_health,
                 ),
             )
             continue
@@ -199,6 +239,8 @@ def run_yolox_deployment_process_worker(
                         health=runtime_pool.get_health(runtime_pool_config),
                         behavior=behavior,
                         keep_warm_state=keep_warm_state,
+                        local_buffer_reader=local_buffer_reader,
+                        local_buffer_health=local_buffer_health,
                     ),
                 )
             except Exception as error:
@@ -216,6 +258,8 @@ def run_yolox_deployment_process_worker(
                         health=runtime_pool.get_health(runtime_pool_config),
                         behavior=behavior,
                         keep_warm_state=keep_warm_state,
+                        local_buffer_reader=local_buffer_reader,
+                        local_buffer_health=local_buffer_health,
                     ),
                 )
             except Exception as error:
@@ -238,6 +282,8 @@ def run_yolox_deployment_process_worker(
                         health=runtime_pool.reset_deployment(runtime_pool_config),
                         behavior=behavior,
                         keep_warm_state=keep_warm_state,
+                        local_buffer_reader=local_buffer_reader,
+                        local_buffer_health=local_buffer_health,
                     ),
                 )
             except Exception as error:
@@ -289,6 +335,8 @@ def run_yolox_deployment_process_worker(
                     "runtime_pool": runtime_pool,
                     "runtime_pool_config": runtime_pool_config,
                     "payload": payload,
+                    "local_buffer_reader": local_buffer_reader,
+                    "local_buffer_health": local_buffer_health,
                     "infer_slots": infer_slots,
                     "keep_warm_state": keep_warm_state,
                 },
@@ -314,6 +362,8 @@ def _run_inference_request(
     runtime_pool: YoloXDeploymentRuntimePool,
     runtime_pool_config: YoloXDeploymentRuntimePoolConfig,
     payload: dict[str, object],
+    local_buffer_reader: LocalBufferBrokerClient | None,
+    local_buffer_health: _LocalBufferBrokerRuntimeHealth,
     infer_slots: BoundedSemaphore,
     keep_warm_state: _KeepWarmState | None,
 ) -> None:
@@ -321,15 +371,14 @@ def _run_inference_request(
 
     inference_succeeded = False
     try:
+        prediction_request = _build_prediction_request(
+            payload=payload,
+            local_buffer_reader=local_buffer_reader,
+            local_buffer_health=local_buffer_health,
+        )
         execution = runtime_pool.run_inference(
             config=runtime_pool_config,
-            request=YoloXPredictionRequest(
-                input_uri=_read_payload_optional_str(payload, "input_uri"),
-                input_image_bytes=_read_payload_optional_bytes(payload, "input_image_bytes"),
-                score_threshold=_require_payload_float(payload, "score_threshold"),
-                save_result_image=bool(payload.get("save_result_image") is True),
-                extra_options=_read_payload_dict(payload, "extra_options"),
-            ),
+            request=prediction_request,
         )
         inference_succeeded = True
         _put_ok_response(
@@ -355,6 +404,122 @@ def _run_inference_request(
     finally:
         infer_slots.release()
         _finish_real_inference(keep_warm_state, activate_keep_warm=inference_succeeded)
+
+
+def _build_prediction_request(
+    *,
+    payload: dict[str, object],
+    local_buffer_reader: LocalBufferBrokerClient | None,
+    local_buffer_health: _LocalBufferBrokerRuntimeHealth,
+) -> YoloXPredictionRequest:
+    """把 deployment worker 控制 payload 转换为预测请求。"""
+
+    image_payload = _read_payload_dict(payload, "input_image_payload")
+    input_uri = _read_payload_optional_str(payload, "input_uri")
+    input_image_bytes = _read_payload_optional_bytes(payload, "input_image_bytes")
+    if image_payload:
+        resolved_uri, resolved_bytes = _resolve_input_image_payload(
+            image_payload=image_payload,
+            local_buffer_reader=local_buffer_reader,
+            local_buffer_health=local_buffer_health,
+        )
+        input_uri = resolved_uri
+        input_image_bytes = resolved_bytes
+    return YoloXPredictionRequest(
+        input_uri=input_uri,
+        input_image_bytes=input_image_bytes,
+        score_threshold=_require_payload_float(payload, "score_threshold"),
+        save_result_image=bool(payload.get("save_result_image") is True),
+        extra_options=_read_payload_dict(payload, "extra_options"),
+    )
+
+
+def _resolve_input_image_payload(
+    *,
+    image_payload: dict[str, object],
+    local_buffer_reader: LocalBufferBrokerClient | None,
+    local_buffer_health: _LocalBufferBrokerRuntimeHealth,
+) -> tuple[str | None, bytes | None]:
+    """把 image-ref payload 解析为 deployment runtime pool 可读的输入。"""
+
+    normalized_payload = require_image_payload(image_payload)
+    transport_kind = str(normalized_payload.get("transport_kind") or "")
+    if transport_kind == IMAGE_TRANSPORT_STORAGE:
+        return str(normalized_payload.get("object_key") or ""), None
+    if transport_kind == IMAGE_TRANSPORT_BUFFER:
+        if local_buffer_reader is None:
+            raise ServiceConfigurationError("deployment worker 缺少 LocalBufferBroker reader")
+        buffer_ref = BufferRef.model_validate(normalized_payload.get("buffer_ref"))
+        try:
+            content = local_buffer_reader.read_buffer_ref(buffer_ref)
+            _record_local_buffer_input(local_buffer_health, transport_kind=IMAGE_TRANSPORT_BUFFER)
+            return None, content
+        except Exception as exc:
+            _record_local_buffer_error(local_buffer_health, exc)
+            raise
+    if transport_kind == IMAGE_TRANSPORT_FRAME:
+        if local_buffer_reader is None:
+            raise ServiceConfigurationError("deployment worker 缺少 LocalBufferBroker reader")
+        frame_ref = FrameRef.model_validate(normalized_payload.get("frame_ref"))
+        try:
+            content = local_buffer_reader.read_frame_ref(frame_ref)
+            _record_local_buffer_input(local_buffer_health, transport_kind=IMAGE_TRANSPORT_FRAME)
+            return None, content
+        except Exception as exc:
+            _record_local_buffer_error(local_buffer_health, exc)
+            raise
+    if transport_kind == IMAGE_TRANSPORT_MEMORY:
+        raise InvalidRequestError("deployment worker 不支持 execution memory image-ref")
+    raise InvalidRequestError("deployment worker 收到不支持的 image-ref transport_kind")
+
+
+def _build_local_buffer_reader(
+    channel: LocalBufferBrokerEventChannel | None,
+) -> LocalBufferBrokerClient | None:
+    """按事件通道创建 LocalBufferBroker client。"""
+
+    if channel is None:
+        return None
+    return LocalBufferBrokerClient(channel)
+
+
+def _build_local_buffer_health(
+    local_buffer_reader: LocalBufferBrokerClient | None,
+) -> _LocalBufferBrokerRuntimeHealth:
+    """构造 deployment worker 内 broker 健康计数容器。"""
+
+    if local_buffer_reader is None:
+        return _LocalBufferBrokerRuntimeHealth(connected=False, channel_id=None)
+    return _LocalBufferBrokerRuntimeHealth(
+        connected=True,
+        channel_id=local_buffer_reader.channel.channel_id,
+    )
+
+
+def _record_local_buffer_input(
+    local_buffer_health: _LocalBufferBrokerRuntimeHealth,
+    *,
+    transport_kind: str,
+) -> None:
+    """记录一次 broker 输入读取成功。"""
+
+    with local_buffer_health.lock:
+        if transport_kind == IMAGE_TRANSPORT_BUFFER:
+            local_buffer_health.buffer_input_count += 1
+        elif transport_kind == IMAGE_TRANSPORT_FRAME:
+            local_buffer_health.frame_input_count += 1
+        local_buffer_health.last_error = None
+
+
+def _record_local_buffer_error(
+    local_buffer_health: _LocalBufferBrokerRuntimeHealth,
+    error: Exception,
+) -> None:
+    """记录一次 broker 输入读取失败。"""
+
+    with local_buffer_health.lock:
+        local_buffer_health.error_count += 1
+        local_buffer_health.last_error = getattr(error, "message", str(error) or type(error).__name__)
 
 
 def _resolve_warmup_behavior(
@@ -731,6 +896,8 @@ def _serialize_health_with_keep_warm(
     health: object,
     behavior: _DeploymentWarmupBehavior,
     keep_warm_state: _KeepWarmState | None,
+    local_buffer_reader: LocalBufferBrokerClient | None,
+    local_buffer_health: _LocalBufferBrokerRuntimeHealth,
 ) -> dict[str, object]:
     """把 runtime health 与 keep-warm 状态一起转换为跨进程字典。"""
 
@@ -739,7 +906,38 @@ def _serialize_health_with_keep_warm(
         behavior=behavior,
         keep_warm_state=keep_warm_state,
     )
+    payload["local_buffer_broker"] = _snapshot_local_buffer_health(
+        local_buffer_reader=local_buffer_reader,
+        local_buffer_health=local_buffer_health,
+    )
     return payload
+
+
+def _snapshot_local_buffer_health(
+    *,
+    local_buffer_reader: LocalBufferBrokerClient | None,
+    local_buffer_health: _LocalBufferBrokerRuntimeHealth,
+) -> dict[str, object]:
+    """生成 deployment worker 的 broker health 快照。"""
+
+    client_summary = (
+        local_buffer_reader.get_health_summary()
+        if local_buffer_reader is not None
+        else {"connected": False, "channel_id": None, "recent_error": None}
+    )
+    with local_buffer_health.lock:
+        return {
+            **client_summary,
+            "connected": local_buffer_health.connected,
+            "channel_id": local_buffer_health.channel_id,
+            "buffer_input_count": local_buffer_health.buffer_input_count,
+            "frame_input_count": local_buffer_health.frame_input_count,
+            "error_count": max(
+                local_buffer_health.error_count,
+                int(client_summary.get("error_count") or 0),
+            ),
+            "recent_error": local_buffer_health.last_error or client_summary.get("recent_error"),
+        }
 
 
 def _configure_process_threads(operator_thread_count: int) -> None:

@@ -32,6 +32,8 @@ conda activate amvision
 python -m uvicorn backend.service.api.app:app --host 127.0.0.1 --port 8000 --reload
 ```
 
+VS Code 中当前推荐直接使用 Run and Debug 里的 `Python 调试程序: backend-service 热重载` 或 `Python 调试程序: backend-service 全量启动`。
+
 ### worker 开发调试启动
 
 全量默认 worker：
@@ -39,6 +41,23 @@ python -m uvicorn backend.service.api.app:app --host 127.0.0.1 --port 8000 --rel
 ```powershell
 python -m backend.workers.main
 ```
+
+VS Code 中当前推荐直接在终端或任务里执行 `python -m backend.workers.main`，不通过 Python debugpy 启动 worker。
+打开命令面板 ctrl + p
+执行 Tasks: Run Task
+选择 amvision: 启动 backend-worker 全量
+
+### workflow 开发调试启动说明
+
+workflow 当前没有单独的 `python -m ...` 常驻进程入口，不需要再额外手工启动一个独立的 workflow worker 主进程。
+
+- preview run 通过 backend-service 当前进程按请求临时拉起隔离子进程，执行完成后回收
+- WorkflowAppRuntime 的长期运行实例由 backend-service 启动时一并创建的 runtime manager 托管；真正的 runtime worker 进程在调用 `POST /api/v1/workflows/app-runtimes/{workflow_runtime_id}/start` 或 restart 后按需拉起
+- sync invoke 和 async run 都复用已经启动的 WorkflowAppRuntime 单实例 worker；如果 runtime 还没有处于 running，需要先调用 start
+
+当前开发联调如果只覆盖 workflow template save、application save、execution policy、preview run、app runtime start、sync invoke、async runs 和 cancel，启动 backend-service 即可看到 workflow 相关进程被按需拉起。
+
+`python -m backend.workers.main` 仍然是任务系统和后台 consumer 的独立入口，但它不负责 workflow runtime 的长期实例管理。只有当 workflow 节点内部依赖现有后台任务系统、异步推理、训练、转换、评估、导出等 worker consumer 时，才需要同时启动 backend-worker。
 
 单一 profile worker：
 

@@ -7,9 +7,6 @@ from pathlib import Path
 
 from backend.bootstrap.core import BootstrapStep, RuntimeBootstrap
 from backend.queue import LocalFileQueueBackend
-from backend.service.application.runtime.yolox_deployment_process_supervisor import (
-    YoloXDeploymentProcessSupervisor,
-)
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 from backend.workers.settings import BackendWorkerSettings, get_backend_worker_settings
@@ -25,7 +22,6 @@ class BackendWorkerRuntime:
     - session_factory：数据库会话工厂。
     - dataset_storage：本地数据集文件存储服务。
     - queue_backend：本地任务队列后端。
-    - yolox_async_deployment_process_supervisor：YOLOX async deployment 进程监督器。
     """
 
     settings: BackendWorkerSettings
@@ -33,7 +29,6 @@ class BackendWorkerRuntime:
     session_factory: SessionFactory
     dataset_storage: LocalDatasetStorage
     queue_backend: LocalFileQueueBackend
-    yolox_async_deployment_process_supervisor: YoloXDeploymentProcessSupervisor
 
 
 class PrepareBackendWorkerWorkspaceStep:
@@ -58,8 +53,8 @@ class PrepareBackendWorkerWorkspaceStep:
         runtime.workspace_dir.mkdir(parents=True, exist_ok=True)
 
 
-class LoadBackendWorkerPluginCatalogStep:
-    """加载 backend-worker 启动期需要的插件目录元数据。"""
+class LoadBackendWorkerNodeCatalogStep:
+    """加载 backend-worker 启动期需要的节点目录元数据。"""
 
     def get_step_name(self) -> str:
         """返回当前步骤名称。
@@ -68,17 +63,17 @@ class LoadBackendWorkerPluginCatalogStep:
         - 当前步骤的稳定名称。
         """
 
-        return "load-worker-plugin-catalog"
+        return "load-worker-node-catalog"
 
     def run(self, runtime: BackendWorkerRuntime) -> None:
-        """执行 worker 插件目录元数据准备步骤。
+        """执行 worker 节点目录元数据准备步骤。
 
         参数：
         - runtime：当前 worker 进程使用的运行时资源。
 
         说明：
-        - 当前仓库还没有正式接入 worker 侧 PluginLoader。
-        - 后续模型运行时、转换 backend 和节点插件索引可放在这里。
+        - 当前仓库还没有正式接入 worker 侧 NodePackLoader。
+        - 后续模型运行时、转换 backend 和自定义节点索引可放在这里。
         """
 
         _ = runtime
@@ -136,11 +131,6 @@ class BackendWorkerBootstrap(RuntimeBootstrap[BackendWorkerSettings, BackendWork
             session_factory=session_factory,
             dataset_storage=dataset_storage,
             queue_backend=queue_backend,
-            yolox_async_deployment_process_supervisor=YoloXDeploymentProcessSupervisor(
-                dataset_storage_root_dir=str(dataset_storage.root_dir),
-                runtime_mode="async",
-                settings=settings.deployment_process_supervisor,
-            ),
         )
 
     def _build_steps(self) -> tuple[BootstrapStep[BackendWorkerRuntime], ...]:
@@ -152,5 +142,5 @@ class BackendWorkerBootstrap(RuntimeBootstrap[BackendWorkerSettings, BackendWork
 
         return (
             PrepareBackendWorkerWorkspaceStep(),
-            LoadBackendWorkerPluginCatalogStep(),
+            LoadBackendWorkerNodeCatalogStep(),
         )

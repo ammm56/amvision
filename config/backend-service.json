@@ -1,7 +1,35 @@
 {
   "app": {
     "app_name": "amvision backend-service",
-    "app_version": "0.1.0"
+    "app_version": "0.1.1"
+  },
+  "cors": {
+    "enabled": true,
+    "allow_origins": [],
+    "allow_origin_regex": "^https?://(localhost|127\\.0\\.0\\.1)(:\\d+)?$",
+    "allow_credentials": true,
+    "allow_methods": ["*"],
+    "allow_headers": ["*"],
+    "expose_headers": [
+      "x-request-id",
+      "x-offset",
+      "x-limit",
+      "x-total-count",
+      "x-has-more",
+      "x-next-offset"
+    ]
+  },
+  "auth": {
+    "mode": "local",
+    "websocket_query_token_enabled": true,
+    "local_auth": {
+      "password_min_length": 6,
+      "initialize_default_user_on_empty_db": true
+    },
+    "static_tokens": []
+  },
+  "projects": {
+    "items": []
   },
   "database": {
     "url": "sqlite:///./data/amvision.db",
@@ -11,12 +39,28 @@
     "root_dir": "./data/files"
   },
   "queue": {
-    "root_dir": "./data/queue"
+    "root_dir": "./data/queue",
+    "lease_timeout_seconds": 86400.0,
+    "completed_retention_seconds": 86400.0,
+    "failed_retention_seconds": 604800.0,
+    "response_queue_retention_seconds": 3600.0
   },
   "task_manager": {
     "enabled": false,
     "max_concurrent_tasks": 2,
     "poll_interval_seconds": 1.0
+  },
+  "async_inference_gateway": {
+    "service_id": "backend-service-main"
+  },
+  "local_buffer_broker": {
+    "enabled": true,
+    "root_dir": "./data/buffers",
+    "startup_timeout_seconds": 5.0,
+    "request_timeout_seconds": 5.0,
+    "shutdown_timeout_seconds": 5.0,
+    "expire_interval_seconds": 5.0,
+    "default_pool_name": "image-1080p"
   },
   "deployment_process_supervisor": {
     "auto_restart": true,

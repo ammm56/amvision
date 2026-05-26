@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
+from backend.service.application.auth.default_local_auth_seeder import DEFAULT_LOCAL_AUTH_USERNAME
 from backend.service.domain.datasets.dataset_import import DatasetImport
 from backend.service.domain.datasets.dataset_version import (
     DatasetCategory,
@@ -174,7 +175,7 @@ def test_task_repository_round_trip_persists_task_runtime_records() -> None:
         task_kind="training",
         project_id="project-1",
         display_name="train yolox-s",
-        created_by="user-1",
+        created_by=DEFAULT_LOCAL_AUTH_USERNAME,
         created_at=datetime.now(timezone.utc).isoformat(),
         task_spec={"gpu_count": 1, "model_type": "yolox"},
         resource_profile_id="profile-training-default",

@@ -7,11 +7,13 @@ import shutil
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Callable
 
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 SOURCE_BACKEND_DIR = REPOSITORY_ROOT / "backend"
 SOURCE_CONFIG_DIR = REPOSITORY_ROOT / "config"
+SOURCE_CUSTOM_NODES_DIR = REPOSITORY_ROOT / "custom_nodes"
 SOURCE_REQUIREMENTS_FILE = REPOSITORY_ROOT / "requirements.txt"
 SOURCE_LAUNCHERS_DIR = REPOSITORY_ROOT / "runtimes" / "launchers"
 SOURCE_FULL_LAUNCHERS_DIR = SOURCE_LAUNCHERS_DIR / "full"
@@ -49,6 +51,7 @@ class ReleaseAssemblyResult:
     - release_manifest_path：发行目录里的 release manifest 路径。
     - requirements_path：发行目录里的 requirements.txt 路径。
     - bundled_python_dir：发行目录里的 bundled Python 目录。
+    - bundled_python_mode：bundled Python 的来源模式，支持 preserved-existing 或 placeholder-empty。
     - generated_root_launchers：发行目录根目录的一键启动脚本列表。
     - worker_profile_ids：本次打入发行目录的 worker profile id 列表。
     - generated_worker_launchers：自动生成的 worker wrapper 列表。
@@ -60,6 +63,7 @@ class ReleaseAssemblyResult:
     release_manifest_path: Path
     requirements_path: Path
     bundled_python_dir: Path
+    bundled_python_mode: str
     generated_root_launchers: tuple[Path, ...]
     worker_profile_ids: tuple[str, ...]
     generated_worker_launchers: tuple[Path, ...]
@@ -87,6 +91,45 @@ def _copy_file(source_path: Path, target_path: Path) -> None:
 
     target_path.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(source_path, target_path)
+
+
+def _copy_directory_tree(
+    source_dir: Path,
+    target_dir: Path,
+    *,
+    ignore: Callable[[str, list[str]], set[str]] | None = None,
+) -> None:
+    """复制目录树；如果源目录不存在则仅创建目标目录。
+
+    参数：
+    - source_dir：源目录。
+    - target_dir：目标目录。
+    - ignore：可选忽略规则。
+    """
+
+    if source_dir.is_dir():
+        shutil.copytree(source_dir, target_dir, dirs_exist_ok=True, ignore=ignore)
+        return
+    target_dir.mkdir(parents=True, exist_ok=True)
+
+
+def _ignore_custom_nodes_copy(directory: str, names: list[str]) -> set[str]:
+    """返回复制 custom_nodes 时需要忽略的目录和文件名。
+
+    参数：
+    - directory：当前正在复制的目录。
+    - names：当前目录下候选名称列表。
+
+    返回：
+    - set[str]：需要忽略的名称集合。
+    """
+
+    ignored_names = {"__pycache__"}
+    return {
+        name
+        for name in names
+        if name in ignored_names or name.endswith(".pyc") or name.endswith(".pyo")
+    }
 
 
 def _copy_launcher_tree(release_dir: Path) -> None:
@@ -222,19 +265,22 @@ def _copy_application_sources(release_dir: Path) -> None:
     _copy_file(SOURCE_REQUIREMENTS_FILE, release_dir / "app" / "requirements.txt")
 
 
-def _prepare_bundled_python_dir(release_dir: Path) -> Path:
-    """创建或恢复发行目录中的 python 目录。
+def _copy_runtime_assets(release_dir: Path) -> None:
+    """复制 release 运行期需要的静态资产。
 
     参数：
     - release_dir：当前发行目录。
 
-    返回：
-    - Path：发行目录中的 python 目录路径。
+    说明：
+    - custom_nodes 作为 workflow app 运行期代码资产随包发布。
+    - 其他数据库、workflow JSON、预训练模型和开发数据不在这里复制。
     """
 
-    release_python_dir = release_dir / "python"
-    release_python_dir.mkdir(parents=True, exist_ok=True)
-    return release_python_dir
+    _copy_directory_tree(
+        SOURCE_CUSTOM_NODES_DIR,
+        release_dir / "custom_nodes",
+        ignore=_ignore_custom_nodes_copy,
+    )
 
 
 def _stash_existing_python_dir(release_dir: Path) -> Path | None:
@@ -281,23 +327,58 @@ def _restore_preserved_python_dir(
     return release_python_dir
 
 
+def _prepare_bundled_python_dir(release_dir: Path) -> Path:
+    """创建发行目录中的空 python 目录。
+
+    参数：
+    - release_dir：当前发行目录。
+
+    返回：
+    - Path：发行目录中的 python 目录路径。
+    """
+
+    release_python_dir = release_dir / "python"
+    release_python_dir.mkdir(parents=True, exist_ok=True)
+    return release_python_dir
+
+
+def _materialize_bundled_python_dir(
+    release_dir: Path,
+    preserved_python_temp_dir: Path | None,
+) -> tuple[Path, str]:
+    """为发行目录准备 bundled Python，并返回来源模式。
+
+    参数：
+    - release_dir：当前发行目录。
+    - preserved_python_temp_dir：覆盖发布时暂存的旧 python 目录。
+
+    返回：
+    - tuple[Path, str]：发行目录中的 python 路径和来源模式。
+    """
+
+    if preserved_python_temp_dir is not None:
+        restored_python_dir = _restore_preserved_python_dir(release_dir, preserved_python_temp_dir)
+        return restored_python_dir, "preserved-existing"
+    release_python_dir = _prepare_bundled_python_dir(release_dir)
+    return release_python_dir, "placeholder-empty"
+
+
 def _materialize_placeholder_dirs(
     release_dir: Path,
     *,
+    include_python_placeholder: bool,
     include_frontend: bool,
-    include_plugins: bool,
 ) -> tuple[Path, ...]:
     """创建 release 目录中的占位目录。"""
 
-    placeholder_dirs = [
-        release_dir / "python",
+    placeholder_dirs: list[Path] = [
         release_dir / "data",
         release_dir / "logs",
     ]
+    if include_python_placeholder:
+        placeholder_dirs.append(release_dir / "python")
     if include_frontend:
         placeholder_dirs.append(release_dir / "frontend")
-    if include_plugins:
-        placeholder_dirs.append(release_dir / "plugins")
     for directory in placeholder_dirs:
         directory.mkdir(parents=True, exist_ok=True)
     return tuple(placeholder_dirs)
@@ -321,8 +402,12 @@ def assemble_release(request: ReleaseAssemblyRequest) -> ReleaseAssemblyResult:
     release_dir.mkdir(parents=True, exist_ok=True)
 
     _copy_application_sources(release_dir)
+    _copy_runtime_assets(release_dir)
     requirements_path = release_dir / "app" / "requirements.txt"
-    bundled_python_dir = _restore_preserved_python_dir(release_dir, preserved_python_temp_dir)
+    bundled_python_dir, bundled_python_mode = _materialize_bundled_python_dir(
+        release_dir,
+        preserved_python_temp_dir,
+    )
     _copy_launcher_tree(release_dir)
     generated_root_launchers = _copy_full_root_launchers(release_dir)
 
@@ -368,8 +453,8 @@ def assemble_release(request: ReleaseAssemblyRequest) -> ReleaseAssemblyResult:
     assert isinstance(artifacts_section, dict)
     placeholder_dirs = _materialize_placeholder_dirs(
         release_dir,
+        include_python_placeholder=(bundled_python_mode == "placeholder-empty"),
         include_frontend=bool(artifacts_section.get("include_frontend", False)),
-        include_plugins=bool(artifacts_section.get("include_plugins", False)),
     )
 
     release_manifest = {
@@ -377,6 +462,12 @@ def assemble_release(request: ReleaseAssemblyRequest) -> ReleaseAssemblyResult:
         "display_name": source_release_profile["display_name"],
         "description": source_release_profile["description"],
         "requirements_file": "app/requirements.txt",
+        "bundled_python": {
+            "python_dir": "python",
+            "mode": bundled_python_mode,
+            "included": bundled_python_mode != "placeholder-empty",
+            "managed_manually": True,
+        },
         "service": {
             "python_launcher": "launchers/service/start_backend_service.py",
             "windows_launcher": "launchers/service/start-backend-service.bat",
@@ -404,6 +495,7 @@ def assemble_release(request: ReleaseAssemblyRequest) -> ReleaseAssemblyResult:
         "layout": {
             "app_dir": "app",
             "config_dir": "config",
+            "custom_nodes_dir": "custom_nodes",
             "data_dir": "data",
             "logs_dir": "logs",
             "python_dir": "python",
@@ -418,6 +510,7 @@ def assemble_release(request: ReleaseAssemblyRequest) -> ReleaseAssemblyResult:
         release_manifest_path=release_manifest_path,
         requirements_path=requirements_path,
         bundled_python_dir=bundled_python_dir,
+        bundled_python_mode=bundled_python_mode,
         generated_root_launchers=generated_root_launchers,
         worker_profile_ids=worker_profile_ids,
         generated_worker_launchers=tuple(generated_worker_launchers),

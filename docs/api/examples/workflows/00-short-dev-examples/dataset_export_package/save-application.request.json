@@ -1,0 +1,43 @@
+{
+  "application": {
+    "format_id": "amvision.flow-application.v1",
+    "application_id": "dataset-export-package-app",
+    "display_name": "Dataset Export Package App",
+    "description": "标准 dataset-export package app 示例，默认复用持久 package 路径；如果需要在 workflow 结束时回收临时包，应修改 package 节点参数显式开启 cleanup_on_completion。",
+    "template_ref": {
+      "template_id": "dataset-export-package-template",
+      "template_version": "1.0.0",
+      "source_kind": "json-file",
+      "source_uri": "docs/examples/workflows/dataset_export_package.template.json"
+    },
+    "runtime_mode": "python-json-workflow",
+    "bindings": [
+      {
+        "binding_id": "request_payload",
+        "direction": "input",
+        "template_port_id": "request_payload",
+        "binding_kind": "workflow-execute-input",
+        "config": {
+          "payload_type_id": "value.v1",
+          "content_type": "application/json"
+        },
+        "metadata": {}
+      },
+      {
+        "binding_id": "package_body",
+        "direction": "output",
+        "template_port_id": "package_body",
+        "binding_kind": "workflow-execute-output",
+        "config": {
+          "payload_type_id": "response-body.v1"
+        },
+        "metadata": {}
+      }
+    ],
+    "metadata": {
+      "example_kind": "dataset-export-package",
+      "cleanup_mode": "explicit-node-parameter",
+      "intended_saved_object_key": "workflows/projects/{project_id}/applications/dataset-export-package-app/application.json"
+    }
+  }
+}

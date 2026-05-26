@@ -126,6 +126,7 @@ class YoloXConversionTaskResult:
     - report_object_key：转换报告文件 object key。
     - requested_target_formats：提交请求中的目标格式。
     - produced_formats：本次实际产出的格式。
+    - model_build_id：主输出对应的 ModelBuild id；默认取第一项产物。
     - builds：登记成功的 ModelBuild 摘要列表。
     - report_summary：转换报告摘要。
     """
@@ -139,6 +140,7 @@ class YoloXConversionTaskResult:
     requested_target_formats: tuple[str, ...]
     produced_formats: tuple[str, ...]
     builds: tuple[YoloXConversionBuildSummary, ...]
+    model_build_id: str | None = None
     report_summary: dict[str, object] = field(default_factory=dict)
 
 
@@ -379,12 +381,14 @@ class SqlAlchemyYoloXConversionTaskService:
                             "plan_object_key": plan_object_key,
                             "report_object_key": report_object_key,
                             "requested_target_formats": list(request.target_formats),
+                            "model_build_id": None,
                         },
                     },
                 )
             )
             raise
 
+        primary_model_build_id = build_summaries[0].model_build_id if build_summaries else None
         self.task_service.append_task_event(
             AppendTaskEventRequest(
                 task_id=task_id,
@@ -402,6 +406,7 @@ class SqlAlchemyYoloXConversionTaskService:
                         "report_object_key": report_object_key,
                         "requested_target_formats": list(request.target_formats),
                         "produced_formats": [item.build_format for item in build_summaries],
+                        "model_build_id": primary_model_build_id,
                         "builds": [_serialize_build_summary(item) for item in build_summaries],
                         "report_summary": report_summary,
                     },
@@ -417,6 +422,7 @@ class SqlAlchemyYoloXConversionTaskService:
             report_object_key=report_object_key,
             requested_target_formats=request.target_formats,
             produced_formats=tuple(item.build_format for item in build_summaries),
+            model_build_id=primary_model_build_id,
             builds=build_summaries,
             report_summary=report_summary,
         )
@@ -591,6 +597,7 @@ class SqlAlchemyYoloXConversionTaskService:
         produced_formats = result_payload.get("produced_formats")
         raw_builds = result_payload.get("builds")
         report_summary = result_payload.get("report_summary")
+        model_build_id = _read_optional_payload_str(result_payload, "model_build_id")
         if not all(
             isinstance(item, str) and item.strip()
             for item in (
@@ -623,6 +630,7 @@ class SqlAlchemyYoloXConversionTaskService:
             produced_formats=tuple(
                 item for item in produced_formats if isinstance(item, str) and item.strip()
             ),
+            model_build_id=model_build_id or (builds[0].model_build_id if builds else None),
             builds=builds,
             report_summary=dict(report_summary) if isinstance(report_summary, dict) else {},
         )

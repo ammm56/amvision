@@ -36,6 +36,7 @@ class YoloXPredictionRequest:
     字段：
     - input_uri：storage 模式下的输入图片 URI 或 object key。
     - input_image_bytes：memory 模式下直接提供的原始图片字节。
+    - input_image_payload：跨进程 image-ref payload；deployment worker 会先解析为 uri 或 bytes。
     - score_threshold：预测阈值。
     - save_result_image：是否生成预览图。
     - extra_options：附加运行时选项。
@@ -45,6 +46,7 @@ class YoloXPredictionRequest:
     save_result_image: bool
     input_uri: str | None = None
     input_image_bytes: bytes | None = None
+    input_image_payload: dict[str, object] | None = None
     extra_options: dict[str, object] = field(default_factory=dict)
 
 

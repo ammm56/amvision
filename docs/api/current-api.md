@@ -2,39 +2,103 @@
 
 ## 文档目的
 
-本文档用于汇总当前仓库已经公开的 REST API、WebSocket 入口、最小鉴权头规则，以及 DatasetImport、DatasetExport 与 TaskRecord 之间的公开关系。
+本文档用于汇总当前仓库已经公开的 REST API、WebSocket 入口、最小鉴权规则，以及 DatasetImport、DatasetExport 与 TaskRecord 之间的公开关系。
+
+WebSocket 资源流的统一消息结构、控制事件和重连规则见 [docs/architecture/websocket-architecture.md](../architecture/websocket-architecture.md)。
 
 本文档只描述当前真实实现，不展开未来接口规划。
 
-## 统一请求头
+## 统一鉴权输入
 
-当前公开接口通过请求头传入主体和 scope 信息。
+当前公开业务 REST 接口统一使用 Bearer token。仓库默认配置为 `mode=local`，并在空库首次启动时自动初始化默认本地用户和长期调用 token。
+
+### Bearer token
+
+- Authorization: Bearer <token>
+- 默认配置使用 `mode=local`；Bearer token 可以是登录会话 access token，也可以是长期调用 user token
+- 当本地用户表为空时，服务会在启动阶段自动初始化默认本地用户和长期调用 token；这组初始化数据由启动期初始化器写入数据库，不通过 runtime JSON 配置维护
+- 当前仓库默认 seed 值为用户名 `amvar`、密码 `123456`、长期调用 token `amvision-default-user-token`；docs/api/postman 下的根 collection 默认变量按这组值预置
+- 数据库已有用户数据或当前环境手动修改过账号时，应改用当前环境实际 Bearer token
+- 需要区分 token 类型时，可通过 `/api/v1/system/me` 返回的 `auth_credential_kind` 和 `auth_provider_id` 判断
 
 ### 最小请求头
 
-- x-amvision-principal-id：调用主体 id
-- x-amvision-project-ids：当前主体可访问的 Project id 列表，多个值用逗号分隔；为空时表示不按 Project 做可见性裁剪
-- x-amvision-scopes：当前主体持有的 scope 列表，多个值用逗号分隔
+- Authorization: Bearer <token>
 
 ### 当前公开 scope
 
 - datasets:read
 - datasets:write
+- auth:read
+- auth:write
 - models:read
+- workflows:read
+- workflows:write
 - tasks:read
 - tasks:write
 - system:read
+
+## 当前 auth 状态
+
+- 当前本地用户、权限范围、session token、refresh token、长期调用 user token 和 `auth.events` 实时审计已经闭环。
+- 在线 provider 当前只保留目录发现和后续扩展边界，不构成当前前端、工作站或外部集成接入的前提。
+
+## 统一列表分页规则
+
+当前公开的主要列表接口已经统一到 offset/limit + 响应头分页规则，保持 JSON 响应体仍然是原有数组。
+
+- 查询参数：
+  - offset：可选，默认 0
+  - limit：可选，默认 100，最大 500
+- 响应头：
+  - x-offset：本次请求实际 offset
+  - x-limit：本次请求实际 limit
+  - x-total-count：当前筛选条件下的总条数
+  - x-has-more：是否还有后续页，取值 true 或 false
+  - x-next-offset：仅当 x-has-more=true 时返回
+- 当前已经接入该规则的列表接口包括：
+  - /api/v1/projects
+  - /api/v1/workflows/projects/{project_id}/templates
+  - /api/v1/workflows/projects/{project_id}/templates/{template_id}/versions
+  - /api/v1/workflows/projects/{project_id}/applications
+  - /api/v1/workflows/execution-policies
+  - /api/v1/workflows/preview-runs
+  - /api/v1/workflows/app-runtimes
+  - /api/v1/workflows/trigger-sources
 
 ## 当前公开 REST API
 
 | 方法 | 路径 | scope | 说明 |
 | --- | --- | --- | --- |
+| GET | /api/v1/auth/providers | 无 | 返回当前公开可发现的账号 provider 目录；当前 local 是唯一完整可用的 provider，其他已配置在线 provider 只保留扩展边界。 |
+| POST | /api/v1/auth/bootstrap-admin | 无 | 当本地用户表为空时初始化首个管理员，并返回登录会话 access token 与 refresh token。 |
+| POST | /api/v1/auth/login | 无 | 使用指定 provider 的 password login 入口登录；当前只有 local 提供完整 password login。 |
+| POST | /api/v1/auth/refresh | 无 | 使用 local 登录返回的 refresh token 刷新一组新的登录会话凭据。 |
+| POST | /api/v1/auth/logout | 仅需主体 | 撤销当前 Bearer token 对应的本地登录会话；长期调用 token 不支持 logout。 |
+| GET | /api/v1/auth/users | auth:read | 列出当前全部本地用户。 |
+| POST | /api/v1/auth/users | auth:write | 创建一个本地用户，写入 scopes 与 project_ids，并默认签发一个长期调用 token。 |
+| PATCH | /api/v1/auth/users/{user_id} | auth:write | 更新一个本地用户的展示名称、密码、scope、Project 可见性和启用状态。 |
+| DELETE | /api/v1/auth/users/{user_id} | auth:write | 删除一个本地用户，并清理其登录会话、refresh token 与长期调用 token。 |
+| POST | /api/v1/auth/users/{user_id}/reset-password | auth:write | 重置一个本地用户密码，并按请求撤销现有会话或长期调用 token。 |
+| GET | /api/v1/auth/users/{user_id}/tokens | auth:read | 列出一个本地用户的长期调用 token 摘要。 |
+| POST | /api/v1/auth/users/{user_id}/tokens | auth:write | 为一个本地用户创建长期调用 token，并返回一次性 token 明文。 |
+| DELETE | /api/v1/auth/users/{user_id}/tokens/{token_id} | auth:write | 撤销一个本地用户的长期调用 token。 |
 | GET | /api/v1/system/health | 无 | 返回最小健康状态和 request_id。 |
+| GET | /api/v1/system/bootstrap | 无 | 返回前端首屏初始化使用的主体、provider、visible_projects 和关键能力摘要。 |
 | GET | /api/v1/system/me | 仅需主体 | 返回当前主体、project_ids 和 scopes。 |
 | GET | /api/v1/system/database | system:read | 返回数据库连通性检查结果。 |
+| GET | /api/v1/system/diagnostics | auth:read | 返回设置页使用的应用、系统、Python、设备和服务诊断摘要。 |
+| GET | /api/v1/projects | workflows:read + models:read | 列出当前主体可见的 Project 目录项；支持 include_summary、offset、limit 和统一分页响应头。 |
+| POST | /api/v1/projects/bootstrap | datasets:write 或 workflows:write | 初始化一个 Project 目录、最小 manifest 和工作区骨架。 |
+| GET | /api/v1/projects/{project_id} | workflows:read + models:read | 读取一个 Project 的目录信息和当前 summary。 |
+| GET | /api/v1/projects/{project_id}/summary | workflows:read + models:read | 读取一个 Project 当前工作台可用的聚合摘要。 |
+| GET | /api/v1/projects/{project_id}/files | workflows:read + models:read | 列出一个 Project 公开文件命名空间中的文件，并直接返回 file_id、content_url 和 download_url；支持可选前缀过滤与分页。 |
+| GET | /api/v1/projects/{project_id}/files/metadata | workflows:read + models:read | 读取一个 Project 公开文件命名空间中的对象元数据、content_url 和 download_url；当前只开放 inputs、results 和 datasets 下的 versions、exports。 |
+| GET | /api/v1/projects/{project_id}/files/content | workflows:read + models:read | 直接输出一个 Project 公开文件命名空间中的对象文件内容，适用于图片预览和结果文件下载。 |
 | POST | /api/v1/datasets/imports | datasets:write | 上传 zip，创建 DatasetImport 和关联 TaskRecord，并提交到本地队列。 |
 | GET | /api/v1/datasets/imports/{dataset_import_id} | datasets:read | 查询单条导入记录详情、校验报告和关联 DatasetVersion。 |
 | GET | /api/v1/datasets/{dataset_id}/imports | datasets:read | 查询某个 Dataset 下的导入记录列表。 |
+| GET | /api/v1/datasets/export-formats | datasets:read | 返回当前公开的数据集导出格式合同，包括 supported、implemented 和 default_format。 |
 | POST | /api/v1/datasets/exports | datasets:write | 为指定 DatasetVersion 创建 DatasetExport 资源和关联 TaskRecord，并提交到本地队列。 |
 | GET | /api/v1/datasets/exports/{dataset_export_id} | datasets:read | 查询单条导出记录详情，包括 manifest_object_key、export_path 和样本摘要。 |
 | GET | /api/v1/datasets/{dataset_id}/versions/{dataset_version_id}/exports | datasets:read | 查询某个 DatasetVersion 下的导出记录列表。 |
@@ -44,7 +108,12 @@
 | POST | /api/v1/models/yolox/training-tasks | datasets:read + tasks:write | 以 DatasetExport 为唯一输入边界创建 YOLOX 训练任务。 |
 | GET | /api/v1/models/platform-base | models:read | 列出平台基础模型及其可用 ModelVersion 摘要。 |
 | GET | /api/v1/models/platform-base/{model_id} | models:read | 查询单个平台基础模型详情、版本文件和构建文件。 |
-| POST | /api/v1/models/yolox/conversion-tasks | models:read + tasks:write | 以训练产出的 source ModelVersion 创建 YOLOX conversion 任务。 |
+| POST | /api/v1/models/yolox/conversion-tasks/onnx | models:read + tasks:write | 以训练产出的 source ModelVersion 创建 ONNX conversion 任务。 |
+| POST | /api/v1/models/yolox/conversion-tasks/onnx-optimized | models:read + tasks:write | 创建 optimized ONNX conversion 任务。 |
+| POST | /api/v1/models/yolox/conversion-tasks/openvino-ir-fp32 | models:read + tasks:write | 创建 OpenVINO IR FP32 conversion 任务。 |
+| POST | /api/v1/models/yolox/conversion-tasks/openvino-ir-fp16 | models:read + tasks:write | 创建 OpenVINO IR FP16 conversion 任务。 |
+| POST | /api/v1/models/yolox/conversion-tasks/tensorrt-engine-fp32 | models:read + tasks:write | 创建 TensorRT Engine FP32 conversion 任务。 |
+| POST | /api/v1/models/yolox/conversion-tasks/tensorrt-engine-fp16 | models:read + tasks:write | 创建 TensorRT Engine FP16 conversion 任务。 |
 | GET | /api/v1/models/yolox/conversion-tasks | tasks:read | 按 Project、来源版本和状态列出 YOLOX conversion 任务。 |
 | GET | /api/v1/models/yolox/conversion-tasks/{task_id} | tasks:read | 查询单条 YOLOX conversion 任务详情和事件流。 |
 | GET | /api/v1/models/yolox/conversion-tasks/{task_id}/result | tasks:read | 查询 YOLOX conversion 结果文件状态与当前转换摘要。 |
@@ -53,12 +122,179 @@
 | POST | /api/v1/models/yolox/training-tasks/{task_id}/save | tasks:write | 为 running 的 YOLOX 训练任务登记一次手动保存请求。 |
 | POST | /api/v1/models/yolox/training-tasks/{task_id}/pause | tasks:write | 为 running 的 YOLOX 训练任务请求暂停，并在下一轮边界先保存 latest checkpoint。 |
 | POST | /api/v1/models/yolox/training-tasks/{task_id}/resume | tasks:write | 把 paused 的 YOLOX 训练任务重新入队，并基于 latest checkpoint 恢复训练。 |
+| POST | /api/v1/models/yolox/training-tasks/{task_id}/terminate | tasks:write | 请求终止一个 queued、running 或 paused 的 YOLOX 训练任务。 |
+| DELETE | /api/v1/models/yolox/training-tasks/{task_id} | tasks:write | 删除一个已经停止且允许清理的 YOLOX 训练任务。 |
 | POST | /api/v1/models/yolox/training-tasks/{task_id}/register-model-version | tasks:write + models:write | 调试时手动重登记当前 latest checkpoint 对应的固定 latest ModelVersion，并回写到训练详情。 |
+| GET | /api/v1/models/yolox/training-tasks/{task_id}/validation-metrics | tasks:read | 读取当前训练任务最新的 validation-metrics.json 内容。 |
+| GET | /api/v1/models/yolox/training-tasks/{task_id}/train-metrics | tasks:read | 读取当前训练任务最新的 train-metrics.json 内容。 |
+| GET | /api/v1/models/yolox/training-tasks/{task_id}/output-files | tasks:read | 列出当前训练任务公开输出文件状态。 |
+| GET | /api/v1/models/yolox/training-tasks/{task_id}/output-files/{file_name} | tasks:read | 读取单个训练输出文件的状态、object_key 和可内联 payload。 |
+| POST | /api/v1/models/yolox/validation-sessions | models:read | 创建一个训练后单图人工验证 session。 |
+| GET | /api/v1/models/yolox/validation-sessions/{session_id} | models:read | 读取单条 validation session 当前详情。 |
+| POST | /api/v1/models/yolox/validation-sessions/{session_id}/predict | models:read | 对 validation session 执行一次单图预测，并返回 raw-result 与 preview 引用。 |
+| POST | /api/v1/models/yolox/evaluation-tasks | datasets:read + models:read + tasks:write | 以 DatasetExport 和 ModelVersion 创建数据集级回归评估任务。 |
+| GET | /api/v1/models/yolox/evaluation-tasks | tasks:read | 按 Project、DatasetExport、ModelVersion 和状态列出 YOLOX 评估任务。 |
+| GET | /api/v1/models/yolox/evaluation-tasks/{task_id} | tasks:read | 查询单条 YOLOX 评估任务详情和事件流。 |
+| GET | /api/v1/models/yolox/evaluation-tasks/{task_id}/report | tasks:read | 读取当前 YOLOX 评估报告。 |
+| GET | /api/v1/models/yolox/evaluation-tasks/{task_id}/output-files | tasks:read | 列出当前 YOLOX 评估输出文件状态。 |
+| POST | /api/v1/models/yolox/deployment-instances | models:read + models:write | 创建一个最小 YOLOX DeploymentInstance。 |
+| GET | /api/v1/models/yolox/deployment-instances | models:read | 按 Project、ModelVersion、ModelBuild 和状态列出 DeploymentInstance。 |
+| GET | /api/v1/models/yolox/deployment-instances/{deployment_instance_id} | models:read | 读取单条 DeploymentInstance 详情。 |
+| GET | /api/v1/models/yolox/deployment-instances/{deployment_instance_id}/events | models:read | 读取一条 deployment 生命周期事件列表；支持 after_sequence、runtime_mode 和 limit。 |
+| POST | /api/v1/models/yolox/deployment-instances/{deployment_instance_id}/sync/start | models:read + models:write | 启动指定 deployment 的同步推理子进程。 |
+| GET | /api/v1/models/yolox/deployment-instances/{deployment_instance_id}/sync/status | models:read | 查询指定 deployment 的同步推理进程状态。 |
+| POST | /api/v1/models/yolox/deployment-instances/{deployment_instance_id}/sync/stop | models:read + models:write | 停止指定 deployment 的同步推理子进程。 |
+| POST | /api/v1/models/yolox/deployment-instances/{deployment_instance_id}/sync/warmup | models:read + models:write | 启动并预热指定 deployment 的同步推理实例池。 |
+| GET | /api/v1/models/yolox/deployment-instances/{deployment_instance_id}/sync/health | models:read | 读取指定 deployment 的同步 runtime pool 健康视图。 |
+| POST | /api/v1/models/yolox/deployment-instances/{deployment_instance_id}/sync/reset | models:read + models:write | 重置指定 deployment 的同步推理实例池。 |
+| POST | /api/v1/models/yolox/deployment-instances/{deployment_instance_id}/async/start | models:read + models:write | 启动指定 deployment 的异步推理子进程。 |
+| GET | /api/v1/models/yolox/deployment-instances/{deployment_instance_id}/async/status | models:read | 查询指定 deployment 的异步推理进程状态。 |
+| POST | /api/v1/models/yolox/deployment-instances/{deployment_instance_id}/async/stop | models:read + models:write | 停止指定 deployment 的异步推理子进程。 |
+| POST | /api/v1/models/yolox/deployment-instances/{deployment_instance_id}/async/warmup | models:read + models:write | 启动并预热指定 deployment 的异步推理实例池。 |
+| GET | /api/v1/models/yolox/deployment-instances/{deployment_instance_id}/async/health | models:read | 读取指定 deployment 的异步 runtime pool 健康视图。 |
+| POST | /api/v1/models/yolox/deployment-instances/{deployment_instance_id}/async/reset | models:read + models:write | 重置指定 deployment 的异步推理实例池。 |
+| POST | /api/v1/models/yolox/deployment-instances/{deployment_instance_id}/infer | models:read | 通过同步 deployment 进程直接执行一次推理并返回结果。 |
+| POST | /api/v1/models/yolox/inference-tasks | models:read + tasks:write | 为已启动 async deployment 创建一条正式推理任务。 |
+| GET | /api/v1/models/yolox/inference-tasks | tasks:read | 按 Project、DeploymentInstance 和状态列出 YOLOX 推理任务。 |
+| GET | /api/v1/models/yolox/inference-tasks/{task_id} | tasks:read | 查询单条 YOLOX 推理任务详情和事件流。 |
+| GET | /api/v1/models/yolox/inference-tasks/{task_id}/result | tasks:read | 读取当前 YOLOX 推理结果文件状态和 payload。 |
+| GET | /api/v1/workflows/node-catalog | workflows:read | 读取 workflow 节点目录快照，并支持按分类、节点包、payload 类型和关键词过滤。 |
+| GET | /api/v1/workflows/node-pack-status | workflows:read | 读取本地 node pack loader 状态，包含已加载、加载失败、禁用、manifest 问题、来源路径、加载时间和最近日志。 |
+| POST | /api/v1/workflows/node-packs/reload | workflows:write | 重新扫描本地 node pack，并刷新 workflow node runtime registry。 |
+| POST | /api/v1/workflows/node-packs/{node_pack_id}/validate | workflows:read | 只读校验单个本地 node pack，返回该节点包状态与问题列表。 |
+| POST | /api/v1/workflows/node-packs/{node_pack_id}/enable | workflows:write | 启用 JSON manifest 中的本地 node pack，并刷新节点目录与运行时注册表。 |
+| POST | /api/v1/workflows/node-packs/{node_pack_id}/disable | workflows:write | 禁用 JSON manifest 中的本地 node pack，并刷新节点目录与运行时注册表。 |
+| GET | /api/v1/workflows/node-packs/{node_pack_id}/logs | workflows:read | 读取单个本地 node pack 最近一次 loader 状态日志。 |
+| POST | /api/v1/workflows/templates/validate | workflows:read | 校验一份 workflow template。 |
+| GET | /api/v1/workflows/projects/{project_id}/templates | workflows:read | 列出指定 Project 下的 workflow template 摘要；支持 offset、limit 和统一分页响应头。 |
+| GET | /api/v1/workflows/projects/{project_id}/templates/{template_id}/versions | workflows:read | 列出指定 workflow template 的全部版本摘要；支持 offset、limit 和统一分页响应头。 |
+| PUT | /api/v1/workflows/projects/{project_id}/templates/{template_id}/versions/{template_version} | workflows:write | 保存一份 workflow template JSON。 |
+| GET | /api/v1/workflows/projects/{project_id}/templates/{template_id}/versions/{template_version} | workflows:read | 读取一份已保存的 workflow template JSON。 |
+| GET | /api/v1/workflows/projects/{project_id}/templates/{template_id}/latest | workflows:read | 读取指定 workflow template 当前可见的最新版本。 |
+| POST | /api/v1/workflows/projects/{project_id}/templates/{template_id}/versions/{template_version}/copy | workflows:write | 复制一份已保存的 workflow template 版本。 |
+| DELETE | /api/v1/workflows/projects/{project_id}/templates/{template_id}/versions/{template_version} | workflows:write | 删除一份已保存的 workflow template 版本。 |
+| POST | /api/v1/workflows/applications/validate | workflows:read | 校验一份 FlowApplication 与 template 绑定关系。 |
+| GET | /api/v1/workflows/projects/{project_id}/applications | workflows:read | 列出指定 Project 下的 FlowApplication 摘要；支持 offset、limit 和统一分页响应头。 |
+| PUT | /api/v1/workflows/projects/{project_id}/applications/{application_id} | workflows:write | 保存一份 FlowApplication JSON。 |
+| GET | /api/v1/workflows/projects/{project_id}/applications/{application_id} | workflows:read | 读取一份已保存的 FlowApplication JSON。 |
+| POST | /api/v1/workflows/projects/{project_id}/applications/{application_id}/copy | workflows:write | 复制一份已保存的 FlowApplication。 |
+| DELETE | /api/v1/workflows/projects/{project_id}/applications/{application_id} | workflows:write | 删除一份已保存的 FlowApplication。 |
+| POST | /api/v1/workflows/execution-policies | workflows:write | 创建一条 WorkflowExecutionPolicy。 |
+| GET | /api/v1/workflows/execution-policies | workflows:read | 按 Project 列出 WorkflowExecutionPolicy；支持 offset、limit 和统一分页响应头。 |
+| GET | /api/v1/workflows/execution-policies/{execution_policy_id} | workflows:read | 读取一条 WorkflowExecutionPolicy。 |
+| POST | /api/v1/workflows/preview-runs | workflows:write | 创建一条 WorkflowPreviewRun；支持 sync/async wait_mode。 |
+| GET | /api/v1/workflows/preview-runs | workflows:read | 按 Project 列出 WorkflowPreviewRun，并支持状态、创建时间、offset、limit 和统一分页响应头。 |
+| GET | /api/v1/workflows/preview-runs/{preview_run_id} | workflows:read | 读取一条 WorkflowPreviewRun。 |
+| GET | /api/v1/workflows/preview-runs/{preview_run_id}/events | workflows:read | 读取一条 WorkflowPreviewRun 的执行事件；支持 after_sequence 和 limit。 |
+| POST | /api/v1/workflows/preview-runs/{preview_run_id}/cancel | workflows:write | 取消一条 queued 或 running 的 WorkflowPreviewRun。 |
+| DELETE | /api/v1/workflows/preview-runs/{preview_run_id} | workflows:write | 删除一条 WorkflowPreviewRun 和对应 snapshot 目录。 |
+| POST | /api/v1/workflows/app-runtimes | workflows:write | 创建一条 WorkflowAppRuntime。 |
+| GET | /api/v1/workflows/app-runtimes | workflows:read | 按 Project 列出 WorkflowAppRuntime；支持 offset、limit 和统一分页响应头。 |
+| GET | /api/v1/workflows/app-runtimes/{workflow_runtime_id} | workflows:read | 读取一条 WorkflowAppRuntime。 |
+| DELETE | /api/v1/workflows/app-runtimes/{workflow_runtime_id} | workflows:write | 删除一条 WorkflowAppRuntime，并清理对应 snapshot 目录。 |
+| POST | /api/v1/workflows/app-runtimes/{workflow_runtime_id}/start | workflows:write | 启动单实例 runtime worker。 |
+| POST | /api/v1/workflows/app-runtimes/{workflow_runtime_id}/stop | workflows:write | 停止单实例 runtime worker。 |
+| POST | /api/v1/workflows/app-runtimes/{workflow_runtime_id}/restart | workflows:write | 重启单实例 runtime worker，并重新加载固定 snapshot。 |
+| GET | /api/v1/workflows/app-runtimes/{workflow_runtime_id}/events | workflows:read | 读取一条 WorkflowAppRuntime 的事件列表；支持 after_sequence 和 limit。 |
+| GET | /api/v1/workflows/app-runtimes/{workflow_runtime_id}/health | workflows:read | 查询 runtime 当前健康状态。 |
+| GET | /api/v1/workflows/app-runtimes/{workflow_runtime_id}/instances | workflows:read | 列出 runtime 当前可观测的 instance 摘要。 |
+| POST | /api/v1/workflows/app-runtimes/{workflow_runtime_id}/runs | workflows:write | 为已启动 runtime 创建一条异步 WorkflowRun。 |
+| POST | /api/v1/workflows/app-runtimes/{workflow_runtime_id}/runs/upload | workflows:write | 通过 multipart/form-data 为已启动 runtime 创建一条异步 WorkflowRun；当前只支持 dataset-package.v1 文件输入。 |
+| POST | /api/v1/workflows/app-runtimes/{workflow_runtime_id}/invoke | workflows:write | 通过 runtime 发起一次同步调用。 |
+| POST | /api/v1/workflows/app-runtimes/{workflow_runtime_id}/invoke/upload | workflows:write | 通过 multipart/form-data 发起一次同步调用；当前只支持 dataset-package.v1 文件输入。 |
+| POST | /api/v1/workflows/trigger-sources | workflows:write | 创建一条 WorkflowTriggerSource 管理资源。 |
+| GET | /api/v1/workflows/trigger-sources | workflows:read | 按 Project 列出 WorkflowTriggerSource；支持 offset、limit 和统一分页响应头。 |
+| GET | /api/v1/workflows/trigger-sources/{trigger_source_id} | workflows:read | 读取一条 WorkflowTriggerSource。 |
+| DELETE | /api/v1/workflows/trigger-sources/{trigger_source_id} | workflows:write | 删除一条 WorkflowTriggerSource；已接入 adapter 时会先停止监听。 |
+| POST | /api/v1/workflows/trigger-sources/{trigger_source_id}/enable | workflows:write | 启用一条 WorkflowTriggerSource；当前要求绑定的 runtime 已处于 running。 |
+| POST | /api/v1/workflows/trigger-sources/{trigger_source_id}/disable | workflows:write | 停用一条 WorkflowTriggerSource。 |
+| GET | /api/v1/workflows/trigger-sources/{trigger_source_id}/health | workflows:read | 读取一条 WorkflowTriggerSource 的健康摘要。 |
+| GET | /api/v1/workflows/runs/{workflow_run_id} | workflows:read | 读取一条 WorkflowRun。 |
+| GET | /api/v1/workflows/runs/{workflow_run_id}/events | workflows:read | 读取一条 WorkflowRun 的事件列表；支持 after_sequence 和 limit。 |
+| POST | /api/v1/workflows/runs/{workflow_run_id}/cancel | workflows:write | 取消一条 queued 或 running 的异步 WorkflowRun。 |
 | POST | /api/v1/tasks | tasks:write | 创建公开任务记录，立即返回任务详情。 |
 | GET | /api/v1/tasks | tasks:read | 按公开筛选字段查询任务列表。 |
 | GET | /api/v1/tasks/{task_id} | tasks:read | 查询单条任务详情；默认同时返回 events。 |
 | GET | /api/v1/tasks/{task_id}/events | tasks:read | 按任务查询事件流快照。 |
 | POST | /api/v1/tasks/{task_id}/cancel | tasks:write | 取消一条尚未结束的任务。 |
+
+## auth 资源组
+
+- 当前本地用户与权限管理已经作为现阶段稳定基线收敛完成。
+- 在线 provider 当前只保留目录发现与后续扩展边界。
+
+### GET /api/v1/auth/providers
+
+- 返回当前公开可发现的账号 provider 目录
+- 当前应把 `provider_id=local` 视为唯一完整可用的 provider
+- 当前目录项字段：provider_id、provider_kind、display_name、enabled、login_mode、supports_password_login、supports_refresh、supports_bootstrap_admin、supports_user_management、supports_long_lived_tokens、issuer_url、metadata
+
+### POST /api/v1/auth/bootstrap-admin
+
+- 当本地用户表为空时可调用一次
+- 创建首个本地管理员，默认授予 `*` scope 和不受限的 Project 可见性
+- 返回字段：session_id、access_token、token_type、expires_at、refresh_token、refresh_expires_at、user
+
+### POST /api/v1/auth/login
+
+- 使用 password login 入口登录指定 provider
+- 当前支持请求体字段：provider_id、username、password
+- 返回字段：session_id、access_token、token_type、expires_at、refresh_token、refresh_expires_at、user
+
+### POST /api/v1/auth/refresh
+
+- 使用 local 登录返回的 refresh token 刷新一组新的登录会话凭据
+- 返回字段：session_id、access_token、token_type、expires_at、refresh_token、refresh_expires_at、user
+
+### POST /api/v1/auth/logout
+
+- 需要 Bearer token 主体
+- 只撤销当前本地 access token 对应的会话
+- 只接受登录会话 token，不接受长期调用 token
+
+### GET /api/v1/auth/users
+
+- 需要 auth:read
+- 返回当前全部本地用户列表
+
+### POST /api/v1/auth/users
+
+- 需要 auth:write
+- 可写字段：username、password、display_name、principal_type、project_ids、scopes、metadata、initial_user_token
+- 默认会返回 `user` 和 `initial_user_token`
+
+### PATCH /api/v1/auth/users/{user_id}
+
+- 需要 auth:write
+- 可更新字段：display_name、password、project_ids、scopes、is_active、metadata
+
+### DELETE /api/v1/auth/users/{user_id}
+
+- 需要 auth:write
+- 删除用户时会级联清理其登录会话、refresh token 和长期调用 token
+
+### POST /api/v1/auth/users/{user_id}/reset-password
+
+- 需要 auth:write
+- 可写字段：new_password、revoke_sessions、revoke_user_tokens
+
+### GET /api/v1/auth/users/{user_id}/tokens
+
+- 需要 auth:read
+- 返回指定用户的长期调用 token 摘要列表
+- 当前只列出长期 user token，不包含登录 session token
+- 当前返回顺序：默认名为 `default` 的长期调用 token 优先；其后是其他永久 token；最后是带过期时间的 token；同组内再按 `created_at` 倒序
+
+### POST /api/v1/auth/users/{user_id}/tokens
+
+- 需要 auth:write
+- 可写字段：token_name、ttl_hours、expires_at、metadata
+- 返回新 token 的一次性明文值
+
+### DELETE /api/v1/auth/users/{user_id}/tokens/{token_id}
+
+- 需要 auth:write
+- 撤销指定长期调用 token
 
 ## system 资源组
 
@@ -67,15 +303,167 @@
 - 无需鉴权 scope
 - 返回字段：status、request_id
 
+### GET /api/v1/system/bootstrap
+
+- 无需鉴权 scope；未登录也可调用
+- 当前返回字段包括：
+  - auth_mode
+  - bearer_auth_enabled
+  - websocket_query_token_enabled
+  - current_user
+  - providers
+  - visible_projects
+  - capabilities
+- 当前 capabilities 重点字段包括：
+  - project_bootstrap_enabled
+  - dataset_export.implemented_formats
+  - dataset_export.default_format
+  - project_summary_topics
+
 ### GET /api/v1/system/me
 
 - 需要主体请求头
-- 返回字段：principal_id、principal_type、project_ids、scopes
+- 返回字段：principal_id、principal_type、project_ids、scopes、username、display_name、auth_source、auth_provider_id、auth_provider_kind、auth_credential_kind、auth_credential_id、auth_session_id、auth_token_id、auth_token_name、auth_mode
 
 ### GET /api/v1/system/database
 
 - 需要 system:read
 - 返回字段：status、database、scalar、principal_id、request_id
+
+### GET /api/v1/system/diagnostics
+
+- 需要 auth:read
+- 返回字段：generated_at、request_id、about、system、python_runtime、devices、services
+- 当前用于前端设置页的只读诊断与系统信息展示；字段中会隐藏数据库 URL 密码，不返回 token 明文。
+
+## projects 资源组
+
+### POST /api/v1/projects/bootstrap
+
+- 需要当前主体至少具备 `datasets:write` 或 `workflows:write`
+- 当前请求体允许显式指定：
+  - project_id
+  - display_name
+  - description
+  - metadata
+- 响应字段里的 `project_source`：`configured` 表示该 Project 在 backend settings.projects.items 中显式声明；`local_disk` 表示该 Project 来自本地 `projects/<project_id>/` 目录
+- 当前接口用于初始化 `projects/{project_id}` 命名空间和最小 manifest，不引入独立 Project 数据表
+
+### GET /api/v1/projects
+
+- 需要 workflows:read 和 models:read
+- 当前支持查询参数：
+  - include_summary
+  - offset
+  - limit
+- 返回当前主体可见的 Project 目录项列表
+- 响应体仍然是数组；分页信息通过统一分页响应头返回
+
+### GET /api/v1/projects/{project_id}
+
+- 需要 workflows:read 和 models:read
+- 返回字段包括：
+  - project_id
+  - display_name
+  - description
+  - metadata
+  - `project_source`：`configured` 表示该 Project 在 backend settings.projects.items 中显式声明；`local_disk` 表示该 Project 来自本地 `projects/<project_id>/` 目录
+  - storage_prefix
+  - summary
+
+### GET /api/v1/projects/{project_id}/summary
+
+- 需要 workflows:read 和 models:read
+- 返回字段：
+  - project_id
+  - generated_at
+  - datasets.dataset_total
+  - imports.total
+  - imports.status_counts
+  - exports.total
+  - exports.status_counts
+  - training.total
+  - training.status_counts
+  - validation.total
+  - validation.status_counts
+  - evaluation.total
+  - evaluation.status_counts
+  - conversion.total
+  - conversion.status_counts
+  - inference.total
+  - inference.status_counts
+  - workflows.template_total
+  - workflows.application_total
+  - workflows.preview_run_total
+  - workflows.preview_run_state_counts
+  - workflows.workflow_run_total
+  - workflows.workflow_run_state_counts
+  - workflows.app_runtime_total
+  - workflows.app_runtime_observed_state_counts
+  - deployments.deployment_instance_total
+  - deployments.deployment_status_counts
+- 该接口是项目级工作台和 `/ws/v1/projects/events` 的正式快照面
+
+### GET /api/v1/projects/{project_id}/files
+
+- 需要 workflows:read 和 models:read
+- 当前支持查询参数：
+  - object_prefix
+  - storage_prefix，兼容字段；等价于 object_prefix
+  - offset
+  - limit
+- 当省略 object_prefix 时，会扫描当前 Project 下全部公开文件命名空间
+- object_prefix 只能指向当前 Project 的公开文件命名空间
+- 当前允许的命名空间包括：
+  - projects/{project_id}/inputs/**
+  - projects/{project_id}/results/**
+  - projects/{project_id}/datasets/*/versions/**
+  - projects/{project_id}/datasets/*/exports/**
+- 返回字段包括：
+  - project_id
+  - file_id
+  - object_key
+  - file_name
+  - media_type
+  - size_bytes
+  - last_modified_at
+  - content_url
+  - download_url
+
+### GET /api/v1/projects/{project_id}/files/metadata
+
+- 需要 workflows:read 和 models:read
+- 当前支持查询参数：
+  - object_key
+  - storage_uri，兼容字段；等价于 object_key
+- object_key 只能指向当前 Project 的公开文件命名空间
+- 当前允许的命名空间包括：
+  - projects/{project_id}/inputs/**
+  - projects/{project_id}/results/**
+  - projects/{project_id}/datasets/*/versions/**
+  - projects/{project_id}/datasets/*/exports/**
+- 当同时提供 object_key 和 storage_uri 时，两者必须一致
+- 返回字段包括：
+  - project_id
+  - file_id
+  - object_key
+  - file_name
+  - media_type
+  - size_bytes
+  - last_modified_at
+  - content_url
+  - download_url
+
+### GET /api/v1/projects/{project_id}/files/content
+
+- 需要 workflows:read 和 models:read
+- 当前支持查询参数：
+  - object_key
+  - storage_uri，兼容字段；等价于 object_key
+  - download
+- object_key 只能指向当前 Project 的公开文件命名空间
+- 当前允许的命名空间与 metadata 接口保持一致
+- 当前适用于图片预览和结果文件下载
 
 ## DatasetImport 资源组
 
@@ -103,6 +491,15 @@
 - 当前列表项也会公开 task_id
 
 ## DatasetExport 资源组
+
+### GET /api/v1/datasets/export-formats
+
+- 需要 datasets:read
+- 返回字段：
+  - implemented_formats
+  - default_format
+  - items[].format_id
+- 当前推荐顺序是先读取该接口，再调用 POST /api/v1/datasets/exports 创建具体导出任务
 
 ### POST /api/v1/datasets/exports
 
@@ -222,6 +619,7 @@
 ### POST /api/v1/models/yolox/conversion-tasks/onnx
 
 - 需要同时具备 models:read 和 tasks:write
+- 转换链顺序图与常见失败分支见 [docs/architecture/execution-sequences.md](../architecture/execution-sequences.md)。
 - 当前请求体允许显式指定：
   - project_id
   - source_model_version_id
@@ -306,7 +704,8 @@
 ### GET /api/v1/models/yolox/conversion-tasks/{task_id}
 
 - 需要 tasks:read
-- 默认 include_events=true
+- 默认 include_events=false
+- 默认返回轻量详情，不带 events；仅在 include_events=true 时返回历史事件列表
 - 返回单条 YOLOX conversion 任务详情，包括 task_spec、events、builds 和 report_summary
 - 当前 progress 会在执行期回写 `stage` 和 `percent`
 
@@ -377,7 +776,8 @@
 ### GET /api/v1/models/yolox/evaluation-tasks/{task_id}
 
 - 需要 tasks:read
-- 默认 include_events=true
+- 默认 include_events=false
+- 默认返回轻量详情，不带 events；仅在 include_events=true 时返回历史事件列表
 - 返回单条 YOLOX 评估任务详情，包括 task_spec、events、report_summary 和结果文件 object key
 - 当前 progress 会在执行期回写 `stage` 和 `percent`
 
@@ -457,6 +857,16 @@
 
 - 需要 models:read
 - 返回单条 DeploymentInstance 详情，包括绑定的模型、运行时、输入尺寸和 labels
+
+### GET /api/v1/models/yolox/deployment-instances/{deployment_instance_id}/events
+
+- 需要 models:read
+- 当前支持的查询参数：
+  - runtime_mode，可选，支持 `sync`、`async`
+  - after_sequence
+  - limit
+- 返回 deployment 进程历史事件列表
+- 当前稳定事件类型覆盖 start、stop、warmup、health、crash、restart 等过程事件
 
 ### POST /api/v1/models/yolox/deployment-instances/{deployment_instance_id}/sync/start
 
@@ -640,14 +1050,15 @@
 
 - 需要 models:read
 - 这是同步直返推理接口；当前只使用 deployment 的同步推理子进程，并按 instance 简单轮转执行
+- 部署推理链顺序图与常见失败分支见 [docs/architecture/execution-sequences.md](../architecture/execution-sequences.md)。
 - 当前要求 deployment 的 sync 进程已经通过 `sync/start` 或 `sync/warmup` 启动；未启动时返回 `invalid_request`
 - 当前支持 `application/json` 和 `multipart/form-data`
-- 输入 one-of 规则：`input_uri`、`image_base64`、`input_image` 三者必须且只能提供一个
+- 输入 one-of 规则：`input_file_id`、`input_uri`、`image_base64`、`input_image` 四者必须且只能提供一个
 - JSON 请求可显式指定：
   - input_uri
   - image_base64
   - input_file_id
-  - input_transport_mode：仅同步 `/infer` 使用，支持 `storage`、`memory`
+  - input_transport_mode：支持 `storage`、`memory`
   - score_threshold
   - save_result_image
   - return_preview_image_base64
@@ -657,20 +1068,23 @@
   - input_uri
   - image_base64
   - input_file_id
-  - input_transport_mode：仅同步 `/infer` 使用，支持 `storage`、`memory`
+  - input_transport_mode：支持 `storage`、`memory`
   - score_threshold
   - save_result_image
   - return_preview_image_base64
   - extra_options：JSON 字符串
-- 当前 `input_file_id` 仍是保留字段，会返回 `invalid_request`
+- `input_file_id` 现在支持 Project 公开文件 id；稳定来源可直接使用 GET /api/v1/projects/{project_id}/files 或 GET /api/v1/projects/{project_id}/files/metadata 返回的 `file_id`
 - 当前同步 `/infer` 支持 `input_transport_mode=memory`：仅允许 `image_base64` 或 `input_image`，请求图片不会写入临时输入文件，而是直接以内存字节送入 deployment 子进程
+- 当同步 `/infer` 使用 `input_transport_mode=memory` 时，不支持 `input_file_id`
 - 当同步 `/infer` 使用 `input_transport_mode=memory` 时，响应 `input_uri` 会返回 `memory://...` 虚拟 URI，`result_object_key` 为 `null`
+- 当前 workflow preview run、WorkflowAppRuntime 和已发布应用里的 YOLOX detection 节点，继续通过 `PublishedInferenceGateway` 命中 backend-service 持有的 sync deployment worker；这条路径不走公开 `inference-tasks` 接口，也不复用 async deployment 通道
 - 当前响应会直接返回统一推理载荷，重点字段包括：
   - request_id
   - deployment_instance_id
   - instance_id
   - input_uri
   - input_source_kind
+  - input_file_id
   - detections
   - latency_ms：decode、preprocess、infer、postprocess 四段总耗时
   - decode_ms
@@ -691,6 +1105,7 @@
   - input_file_id
   - input_uri
   - image_base64
+  - input_transport_mode：支持 `storage`、`memory`
   - score_threshold
   - save_result_image
   - return_preview_image_base64
@@ -698,8 +1113,11 @@
   - display_name
 - 当前实现会先校验 `deployment_instance_id` 属于请求 Project，再按 one-of 规则把输入归一化后放入 `yolox-inferences` 队列
 - 当前支持 `application/json` 和 `multipart/form-data`
-- 输入 one-of 规则：`input_uri`、`image_base64`、`input_image` 三者必须且只能提供一个
-- 当前 `input_file_id` 仍是保留字段，会返回 `invalid_request`
+- 输入 one-of 规则：`input_file_id`、`input_uri`、`image_base64`、`input_image` 四者必须且只能提供一个
+- `input_file_id` 现在支持 Project 公开文件 id；稳定来源可直接使用 GET /api/v1/projects/{project_id}/files 或 GET /api/v1/projects/{project_id}/files/metadata 返回的 `file_id`
+- 当前异步 `inference-tasks` 也支持 `input_transport_mode=memory`：仅允许 `image_base64` 或 `input_image`，请求图片不会写入临时输入目录，而是先固化到任务 `normalized_input`，随后由 worker 通过 queue IPC 把 `input_image_bytes` 发给 backend-service 持有的 async deployment 子进程
+- 当异步 `inference-tasks` 使用 `input_transport_mode=memory` 时，不支持 `input_file_id`
+- 当异步 `inference-tasks` 使用 `input_transport_mode=memory` 时，任务提交响应和结果载荷里的 `input_uri` 会返回 `memory://...` 虚拟 URI，用于标识这次调用没有输入落盘
 - 当前异步推理只使用 deployment 的 async 推理子进程；如果同步 `/infer` 已经加载过模型，异步侧仍会在自己的独立子进程中维护实例会话
 - 当前当 deployment 绑定 `tensorrt-engine` ModelBuild 时，worker 会通过 async deployment 子进程真实加载 TensorRT engine，并在结果 `runtime_session_info` 中回写 `runtime_execution_mode` 与 `compiled_runtime_precision`
 - inference task 创建接口不会自动启动 async 推理子进程；如果当前 async 进程尚未通过 `async/start` 或 `async/warmup` 启动，接口会直接返回 `invalid_request`
@@ -730,6 +1148,7 @@
   - model_build_id
   - input_uri
   - input_source_kind
+  - input_file_id
   - score_threshold
   - save_result_image
   - output_object_prefix
@@ -742,7 +1161,8 @@
 ### GET /api/v1/models/yolox/inference-tasks/{task_id}
 
 - 需要 tasks:read
-- 默认 include_events=true
+- 默认 include_events=false
+- 默认返回轻量详情，不带 events；仅在 include_events=true 时返回历史事件列表
 - 返回单条 YOLOX 推理任务详情，包括 task_spec、events、result_summary 和结果文件 object key
 
 ### GET /api/v1/models/yolox/inference-tasks/{task_id}/result
@@ -805,12 +1225,14 @@
   - score_threshold
   - save_result_image
   - extra_options
-- 当前最小实现只支持本地 `input_uri` 或 object key；`input_file_id` 当前会返回 invalid_request
+- `input_uri` 和 `input_file_id` 二选一
+- `input_file_id` 现在支持 Project 公开文件 id；稳定来源可直接使用 GET /api/v1/projects/{project_id}/files 或 GET /api/v1/projects/{project_id}/files/metadata 返回的 `file_id`
 - 当前预测会把 raw-result.json 固定写到 `runtime/validation-sessions/{session_id}/predictions/{prediction_id}/`，在 `save_result_image=true` 时额外写出 preview.jpg
 - 当前响应会返回：
   - prediction_id
   - session_id
   - input_uri
+  - input_file_id
   - score_threshold
   - detections
   - preview_image_uri
@@ -824,6 +1246,7 @@
 ### POST /api/v1/models/yolox/training-tasks
 
 - 需要同时具备 datasets:read 和 tasks:write
+- 训练链顺序图与常见失败分支见 [docs/architecture/execution-sequences.md](../architecture/execution-sequences.md)。
 - 当前请求体允许显式指定：
   - project_id
   - dataset_export_id
@@ -849,7 +1272,7 @@
 - 当前 `save`、`pause` 都是“请求登记后等待下一个 epoch 边界生效”，不是同步完成动作。
 - 当前 `resume` 会先把任务切回 `queued` 并重新入队；checkpoint 读取失败或配置不一致这类问题可能在后续 worker 执行阶段才把任务切成 `failed`。
 - 当前训练详情响应已经正式公开 `available_actions` 和 `control_status`；前端可以直接按这两个字段收口按钮与控制态判断。
-- 前端如果轮询训练详情，建议显式传 `include_events=false`；日志流优先使用 `/ws/tasks/events?task_id=...`。
+- 前端如果轮询训练详情，建议显式传 `include_events=false`；日志流优先使用 `/ws/v1/tasks/events?task_id=...`。
 - warm_start_model_version_id 表示“本次训练要从哪个已有 ModelVersion 对应的 checkpoint 开始训练”，而不是从随机初始化开始；当前服务会真实沿 ModelVersion -> ModelFile -> checkpoint 链路加载来源权重。
 - 当前 warm start 来源既可以是当前 Project 自己已有的历史训练产出，也可以是平台基础模型目录中登记的 pretrained-reference ModelVersion；如需选择平台基础模型来源，可先查询 /api/v1/models/platform-base 或 /api/v1/models/platform-base/{model_id}，再把 available_versions[].model_version_id 传给 warm_start_model_version_id。
 - evaluation_interval 表示每隔多少轮执行一次真实验证评估，默认 5；最后一轮会强制补做一次评估，并回写 map50、map50_95。
@@ -897,7 +1320,8 @@
 ### GET /api/v1/models/yolox/training-tasks/{task_id}
 
 - 需要 tasks:read
-- 默认 include_events=true
+- 默认 include_events=false
+- 默认返回轻量详情，不带 events；仅在 include_events=true 时返回历史事件列表
 - 返回单条 YOLOX 训练任务详情，包括 task_spec、events、训练结果文件 object key、顶层 `model_version_id`、`latest_checkpoint_model_version_id`、training_summary，以及正式训练控制字段 `available_actions` 与 `control_status`
 - 如果训练尚未完成，并且已经在 `save` 或 `pause` 的 epoch 边界成功落盘 latest checkpoint，顶层 `model_version_id` 和 `training_summary.model_version_id` 会自动指向当前 latest checkpoint 的固定版本 id
 - 如果训练已经完成，顶层 `model_version_id` 继续表示自动登记的 best checkpoint 版本，`latest_checkpoint_model_version_id` 表示 save/pause 自动登记或调试接口手动重登记的 latest checkpoint 版本；两者语义不同，不会互相覆盖
@@ -925,6 +1349,18 @@
 - 需要 tasks:write
 - 只允许 paused 状态调用
 - 接口会复用同一个 task_id，把任务重新放回队列，并基于 latest checkpoint 恢复 optimizer、epoch 和最佳指标状态
+
+### POST /api/v1/models/yolox/training-tasks/{task_id}/terminate
+
+- 需要 tasks:write
+- 允许 queued、running 和 paused 状态调用
+- queued 或 paused 状态会直接把任务切到 cancelled；running 状态会先登记 `control_status.status=terminate_requested`，在下一个 epoch 边界结束训练
+
+### DELETE /api/v1/models/yolox/training-tasks/{task_id}
+
+- 需要 tasks:write
+- 只允许已经停止的训练任务调用
+- 当前会额外校验任务已经不在队列待执行，并且训练输出目录没有被已登记 ModelVersion 引用；满足条件时才会真正删除任务记录和可安全清理的输出目录
 
 ### POST /api/v1/models/yolox/training-tasks/{task_id}/register-model-version
 
@@ -967,6 +1403,401 @@
 - `labels` 通过 `text_content` 和 `lines` 返回文本内容
 - `best-checkpoint`、`latest-checkpoint` 当前只返回文件元数据，不直接返回二进制内容
 
+## workflow 资源组
+
+当前 workflow runtime 公开接口描述的是 HTTP 控制面下的正式执行路径。WorkflowTriggerSource 第一阶段已经提供管理控制面，并已接入 ZeroMQ adapter 的 REST 启停和启动恢复；04/05 继续用于 HTTP JSON invoke，06/07 单独用于同 app HTTP base64 + ZeroMQ image-ref 双入口调试。TriggerSource 只提交协议原生输入，不负责跨 payload type 转换；如果同一 app 需要同时接 HTTP base64 和 ZeroMQ image-ref，应通过图里的显式 binding 或转换节点处理。后续 PLC、MQTT、gRPC、IO 变化等协议 adapter 仍统一映射到 WorkflowRun，触发入口说明见 [docs/api/workflow-trigger-sources.md](workflow-trigger-sources.md)。
+
+### POST /api/v1/workflows/templates/validate
+
+- Content-Type：application/json
+- 需要 workflows:read
+- 请求体字段：
+  - template
+- 返回字段：
+  - valid
+  - template_id
+  - template_version
+  - node_count
+  - edge_count
+  - template_input_ids
+  - template_output_ids
+  - referenced_node_type_ids
+
+### PUT /api/v1/workflows/projects/{project_id}/templates/{template_id}/versions/{template_version}
+
+- Content-Type：application/json
+- 需要 workflows:write
+- 路径参数中的 template_id 与 template_version 必须和请求体中的 template 一致
+- 成功响应会同时返回：
+  - project_id
+  - object_key
+  - template
+  - 校验摘要字段
+
+### GET /api/v1/workflows/projects/{project_id}/templates/{template_id}/versions/{template_version}
+
+- 需要 workflows:read
+- 返回已保存 template 的 object_key 与完整 template JSON
+
+### POST /api/v1/workflows/applications/validate
+
+- Content-Type：application/json
+- 需要 workflows:read
+- 请求体字段：
+  - project_id
+  - application
+  - template，可选
+- 当 template 未提供时，当前实现会按 application.template_ref 读取已保存 template
+
+### PUT /api/v1/workflows/projects/{project_id}/applications/{application_id}
+
+- Content-Type：application/json
+- 需要 workflows:write
+- 路径参数中的 application_id 必须和请求体中的 application.application_id 一致
+- 保存时会把 application.template_ref.source_uri 规范化为真实 template object key
+- 成功响应会同时返回：
+  - project_id
+  - object_key
+  - application
+  - 校验摘要字段
+
+### GET /api/v1/workflows/projects/{project_id}/applications/{application_id}
+
+- 需要 workflows:read
+- 返回已保存 application 的 object_key 与完整 application JSON
+
+### POST /api/v1/workflows/preview-runs
+
+- Content-Type：application/json
+- 需要 workflows:write
+- 请求体字段：
+  - project_id
+  - application_ref，可选；当前至少需要 application_ref 或 inline application + template 其中一组
+  - application，可选
+  - template，可选
+  - input_bindings
+  - execution_metadata
+  - timeout_seconds
+- 成功状态码：201 Created
+- 当前响应会同时返回：
+  - preview_run_id
+  - state
+  - application_snapshot_object_key
+  - template_snapshot_object_key
+  - outputs
+  - template_outputs
+  - node_records
+  - error_message
+
+### GET /api/v1/workflows/preview-runs
+
+- 需要 workflows:read
+- 当前必须显式提供查询参数：
+  - project_id
+- 当前支持的可选查询参数：
+  - state
+  - created_from
+  - created_to
+  - offset
+  - limit
+- 响应体仍然是数组；分页信息通过统一分页响应头返回
+
+### GET /api/v1/workflows/execution-policies
+
+- 需要 workflows:read
+- 当前必须显式提供查询参数：
+  - project_id
+  - offset，可选
+  - limit，可选
+- 响应体仍然是数组；分页信息通过统一分页响应头返回
+
+### GET /api/v1/workflows/preview-runs/{preview_run_id}
+
+- 需要 workflows:read
+- 返回单条 WorkflowPreviewRun 当前快照和执行结果
+
+### POST /api/v1/workflows/app-runtimes
+
+- Content-Type：application/json
+- 需要 workflows:write
+- 请求体字段：
+  - project_id
+  - application_id
+  - display_name，可选
+  - request_timeout_seconds，可选
+  - heartbeat_interval_seconds，可选
+  - heartbeat_timeout_seconds，可选，且必须大于 heartbeat_interval_seconds
+  - metadata，可选
+- 成功状态码：201 Created
+- 当前响应会同时返回：
+  - workflow_runtime_id
+  - desired_state
+  - observed_state
+  - application_snapshot_object_key
+  - template_snapshot_object_key
+  - request_timeout_seconds
+  - heartbeat_interval_seconds
+  - heartbeat_timeout_seconds
+  - health_summary
+
+### GET /api/v1/workflows/app-runtimes
+
+- 需要 workflows:read
+- 当前必须显式提供查询参数：
+  - project_id
+  - offset，可选
+  - limit，可选
+- 响应体仍然是数组；分页信息通过统一分页响应头返回
+
+### GET /api/v1/workflows/app-runtimes/{workflow_runtime_id}
+
+- 需要 workflows:read
+- 返回单条 WorkflowAppRuntime 的快照来源、期望状态、观察状态和健康摘要
+
+### GET /api/v1/workflows/app-runtimes/{workflow_runtime_id}/events
+
+- 需要 workflows:read
+- 当前支持的查询参数：
+  - after_sequence
+  - limit
+- 返回 WorkflowAppRuntime 历史事件列表
+- 当前稳定事件类型包括：
+  - runtime.created
+  - runtime.started
+  - runtime.stopped
+  - runtime.restarted
+  - runtime.heartbeat
+  - runtime.heartbeat_timed_out
+  - runtime.heartbeat_recovered
+  - runtime.failed
+
+### POST /api/v1/workflows/app-runtimes/{workflow_runtime_id}/start
+
+- 需要 workflows:write
+- 成功后返回更新后的 WorkflowAppRuntime
+
+### POST /api/v1/workflows/app-runtimes/{workflow_runtime_id}/stop
+
+- 需要 workflows:write
+- 成功后返回更新后的 WorkflowAppRuntime
+
+### POST /api/v1/workflows/app-runtimes/{workflow_runtime_id}/restart
+
+- 需要 workflows:write
+- 成功后返回更新后的 WorkflowAppRuntime
+- 当前语义固定为 stop 当前单实例 worker，再重新加载同一组 application/template snapshot
+
+### GET /api/v1/workflows/app-runtimes/{workflow_runtime_id}/health
+
+- 需要 workflows:read
+- 返回当前 worker 观测到的 runtime 状态，包括 heartbeat_at、worker_process_id 和 loaded_snapshot_fingerprint
+
+### GET /api/v1/workflows/app-runtimes/{workflow_runtime_id}/instances
+
+- 需要 workflows:read
+- 返回当前 runtime 下面可观测的 instance 摘要列表
+- 当前单实例模型下，running 或 failed 且 worker 仍存活时通常返回 1 条；stopped 或已清理 worker 返回空列表
+- 当前列表项稳定字段包括：
+  - instance_id
+  - state
+  - process_id
+  - current_run_id
+  - started_at
+  - heartbeat_at
+  - loaded_snapshot_fingerprint
+  - last_error
+  - health_summary
+
+### POST /api/v1/workflows/app-runtimes/{workflow_runtime_id}/invoke
+
+- Content-Type：application/json
+- 需要 workflows:write
+- 仅支持已经处于 running 的 WorkflowAppRuntime
+- 请求体字段：
+  - input_bindings
+  - execution_metadata
+  - timeout_seconds，可选
+- 当前响应会同时返回：
+  - workflow_run_id
+  - state
+  - assigned_process_id
+  - outputs
+  - template_outputs
+  - node_records
+  - error_message
+  - metadata
+
+### POST /api/v1/workflows/app-runtimes/{workflow_runtime_id}/invoke/upload
+
+- Content-Type：multipart/form-data
+- 需要 workflows:write
+- 仅支持已经处于 running 的 WorkflowAppRuntime
+- 当前 multipart 保留字段：
+  - input_bindings_json，可选
+  - execution_metadata_json，可选
+  - timeout_seconds，可选
+- 其他文件字段名必须等于 application 的 input binding_id
+- 当前 multipart 文件上传只支持 `dataset-package.v1` 输入绑定，不支持把图片文件直接作为 `request_image` 上传
+- 当前响应与 JSON `invoke` 一样返回完整 WorkflowRun 合同
+
+### POST /api/v1/workflows/app-runtimes/{workflow_runtime_id}/runs
+
+- Content-Type：application/json
+- 需要 workflows:write
+- 仅支持已经处于 running 的 WorkflowAppRuntime
+- 请求体字段：
+  - input_bindings
+  - execution_metadata
+  - timeout_seconds，可选
+- 当前响应会同时返回：
+  - workflow_run_id
+  - state
+  - requested_timeout_seconds
+  - input_payload
+  - metadata
+
+### POST /api/v1/workflows/app-runtimes/{workflow_runtime_id}/runs/upload
+
+- Content-Type：multipart/form-data
+- 需要 workflows:write
+- 仅支持已经处于 running 的 WorkflowAppRuntime
+- 当前 multipart 保留字段：
+  - input_bindings_json，可选
+  - execution_metadata_json，可选
+  - timeout_seconds，可选
+- 其他文件字段名必须等于 application 的 input binding_id
+- 当前 multipart 文件上传只支持 `dataset-package.v1` 输入绑定，不支持把图片文件直接作为 `request_image` 上传
+- 当前响应与 JSON `runs` 一样返回完整 WorkflowRun 合同
+
+### POST /api/v1/workflows/trigger-sources
+
+- Content-Type：application/json
+- 需要 workflows:write
+- 用于创建 WorkflowTriggerSource 管理资源，不替代 runtime invoke 或 runs 执行 API
+- 请求体字段：
+  - trigger_source_id
+  - project_id
+  - display_name
+  - trigger_kind
+  - workflow_runtime_id
+  - submit_mode，默认 async
+  - enabled，默认 false
+  - transport_config
+  - match_rule
+  - input_binding_mapping
+  - result_mapping
+  - default_execution_metadata
+  - ack_policy
+  - result_mode
+  - reply_timeout_seconds，可选
+  - debounce_window_ms，可选
+  - idempotency_key_path，可选
+  - metadata
+- ZeroMQ TriggerSource 常用请求体字段：
+
+```json
+{
+  "trigger_source_id": "zeromq-trigger-source-07",
+  "project_id": "project-1",
+  "display_name": "ZeroMQ TriggerSource 07 OpenCV Process Save Image",
+  "trigger_kind": "zeromq-topic",
+  "workflow_runtime_id": "{{workflowRuntimeId}}",
+  "submit_mode": "sync",
+  "transport_config": {
+    "bind_endpoint": "tcp://127.0.0.1:5556",
+    "default_input_binding": "request_image",
+    "buffer_ttl_seconds": 30
+  },
+  "input_binding_mapping": {
+    "request_image": {
+      "source": "payload.request_image",
+      "payload_type_id": "image-ref.v1"
+    }
+  },
+  "result_mapping": {
+    "result_binding": "http_response",
+    "result_mode": "sync-reply",
+    "reply_timeout_seconds": 30
+  },
+  "ack_policy": "ack-after-run-finished",
+  "result_mode": "sync-reply",
+  "reply_timeout_seconds": 30
+}
+```
+
+- 06 调试请求体见 `docs/api/examples/workflows/06-yolox-deployment-infer-opencv-health-zeromq-image-ref/trigger-source.create.request.json`
+- 07 调试请求体见 `docs/api/examples/workflows/07-opencv-process-save-image-zeromq-image-ref/trigger-source.create.request.json`
+- ZeroMQ 数据面不经过该 REST API 发送图片；图片 bytes 由 C# SDK 通过 ZeroMQ multipart 发送到已启用的 TriggerSource
+- 成功状态码：201 Created
+- 当前响应返回 WorkflowTriggerSource 合同，包括 desired_state、observed_state、health_summary、created_at 和 updated_at
+
+### GET /api/v1/workflows/trigger-sources
+
+- 需要 workflows:read
+- 当前必须显式提供查询参数：
+  - project_id
+  - offset，可选
+  - limit，可选
+- 返回当前 Project 下的 WorkflowTriggerSource 列表
+- 响应体仍然是数组；分页信息通过统一分页响应头返回
+
+### GET /api/v1/workflows/trigger-sources/{trigger_source_id}
+
+- 需要 workflows:read
+- 返回单条 WorkflowTriggerSource 的完整配置和最近状态
+
+### DELETE /api/v1/workflows/trigger-sources/{trigger_source_id}
+
+- 需要 workflows:write
+- 删除一条 WorkflowTriggerSource
+- 如果 trigger_kind 已注册 adapter，当前会先停止对应 adapter，再删除持久化资源
+- 成功状态码：204 No Content
+- 删除后可重新使用同一个 trigger_source_id 再次创建 TriggerSource
+
+### POST /api/v1/workflows/trigger-sources/{trigger_source_id}/enable
+
+- 需要 workflows:write
+- 启用一条 WorkflowTriggerSource
+- 当前要求绑定的 WorkflowAppRuntime 已经处于 running 状态
+- 如果 trigger_kind 已注册 adapter，当前会启动对应 adapter，并在 health_summary 中返回 adapter_configured、adapter_running 和计数信息
+- 如果 trigger_kind 尚未注册 adapter，当前只更新管理态，observed_state 仍可能是 stopped
+
+### POST /api/v1/workflows/trigger-sources/{trigger_source_id}/disable
+
+- 需要 workflows:write
+- 停用一条 WorkflowTriggerSource
+- 如果 trigger_kind 已注册 adapter，当前会停止对应 adapter
+- disable 不会取消已经创建的 WorkflowRun
+
+### GET /api/v1/workflows/trigger-sources/{trigger_source_id}/health
+
+- 需要 workflows:read
+- 返回当前启用状态、期望状态、观测状态、最近错误、最近触发时间和 health_summary
+
+### POST /api/v1/workflows/runs/{workflow_run_id}/cancel
+
+- 需要 workflows:write
+- 用于取消当前仍处于 queued 或 running 的异步 WorkflowRun
+- 当前响应会返回更新后的 WorkflowRun，包括：
+  - state
+  - error_message
+  - metadata.cancel_requested_at
+  - metadata.cancelled_by
+
+### GET /api/v1/workflows/runs/{workflow_run_id}
+
+- 需要 workflows:read
+- 返回单条 WorkflowRun 的当前持久化结果，包括输入、输出、错误信息和元数据
+
+### GET /api/v1/workflows/runs/{workflow_run_id}/events
+
+- 需要 workflows:read
+- 当前支持的查询参数：
+  - after_sequence
+  - limit
+- 返回 WorkflowRun 历史事件列表
+- 当前 WebSocket replay 与 live 事件 payload 与 REST 事件合同保持同层字段结构，不再额外包一层 `payload.data`
+
 ## tasks 资源组
 
 ### POST /api/v1/tasks
@@ -1000,7 +1831,8 @@
 
 ### GET /api/v1/tasks/{task_id}
 
-- 默认 include_events=true
+- 默认 include_events=false
+- 默认返回轻量详情，不带 events；仅在 include_events=true 时返回历史事件列表
 - 返回任务摘要字段、task_spec 和 events
 
 ### GET /api/v1/tasks/{task_id}/events
@@ -1013,16 +1845,41 @@
 ### POST /api/v1/tasks/{task_id}/cancel
 
 - 取消尚未结束的任务
-- 成功后返回更新后的任务详情和事件列表
+- 成功后返回更新后的任务快照，以及本次取消动作新增的事件
 
 ## 当前公开 WebSocket
 
 | 路径 | scope | 说明 |
 | --- | --- | --- |
-| /ws/events | 无 | 最小系统连接探针，返回 system.connected 后关闭。 |
-| /ws/tasks/events | tasks:read | 按 task_id 订阅任务事件。 |
+| /ws/v1/system/events | 无 | system 事件流入口，当前会返回 system.connected。 |
+| /ws/v1/auth/events | auth:read | 订阅登录会话和长期调用 token 的实时审计事件。 |
+| /ws/v1/tasks/events | tasks:read | 按 task_id 订阅任务事件。 |
+| /ws/v1/workflows/preview-runs/events | workflows:read | 按 preview_run_id 订阅 preview run 实时事件。 |
+| /ws/v1/workflows/runs/events | workflows:read | 按 workflow_run_id 订阅 WorkflowRun 实时事件。 |
+| /ws/v1/workflows/app-runtimes/events | workflows:read | 按 workflow_runtime_id 订阅 WorkflowAppRuntime 实时事件。 |
+| /ws/v1/deployments/events | models:read | 按 deployment_instance_id 订阅 deployment 实时事件。 |
+| /ws/v1/projects/events | workflows:read + models:read | 按 project_id 订阅项目级聚合 summary 快照与后续更新。 |
 
-### /ws/tasks/events
+workflow preview-run、run、app-runtime 和 deployment 四类事件流当前都已经把 WebSocket payload 与对应 REST 事件合同对齐，业务字段直接平铺在 `payload` 下，不再额外包一层 `payload.data`。
+
+### /ws/v1/auth/events
+
+请求头沿用 REST 的主体和 scope 规则。
+
+当前流面向本地登录会话与长期调用 user token 的实时审计事件。
+
+当前支持的 query 参数：
+
+- event_type：可选
+- user_id：可选
+- provider_id：可选
+- credential_kind：可选
+
+连接成功后会先收到一条 auth.connected 事件，随后按当前筛选条件持续推送实时审计事件。
+
+当前实现使用 service_event_bus 分发实时审计事件；当前阶段不提供历史回放。
+
+### /ws/v1/tasks/events
 
 请求头沿用 REST 的主体和 scope 规则。
 
@@ -1030,12 +1887,84 @@
 
 - task_id：必填
 - event_type：可选
-- after_created_at：可选
+- after_cursor：可选
 - limit：可选，默认 100，最大 500
 
 连接成功后会先收到一条 tasks.connected 事件，随后按当前筛选条件持续推送任务事件。
 
-当前实现使用最小数据库轮询方式推送任务事件，目标是先稳定公开协议，而不是先引入复杂消息总线。
+当前实现使用 service_event_bus 分发实时事件，并使用 `task_events` 表提供历史回放。
+
+### /ws/v1/workflows/preview-runs/events
+
+请求头沿用 REST 的主体和 scope 规则。
+
+当前支持的 query 参数：
+
+- preview_run_id：必填
+- after_cursor：可选；当前使用 preview run 事件的 sequence 作为恢复游标
+- limit：可选，默认 100，最大 500
+
+连接成功后会先收到一条 workflows.preview-runs.connected 事件，随后按当前筛选条件持续推送 preview run 事件。
+
+当前实现使用 service_event_bus 分发实时事件，并使用 preview run snapshot 目录下的 `events.json` 提供历史回放。
+
+### /ws/v1/workflows/runs/events
+
+请求头沿用 REST 的主体和 scope 规则。
+
+当前支持的 query 参数：
+
+- workflow_run_id：必填
+- after_cursor：可选；当前使用 WorkflowRun 事件的 sequence 作为恢复游标
+- limit：可选，默认 100，最大 500
+
+连接成功后会先收到一条 workflows.runs.connected 事件，随后按当前筛选条件持续推送 WorkflowRun 事件。
+
+当前实现使用 service_event_bus 分发实时事件，并使用 `GET /api/v1/workflows/runs/{workflow_run_id}/events` 对应的 `events.json` 提供历史回放。
+
+### /ws/v1/workflows/app-runtimes/events
+
+请求头沿用 REST 的主体和 scope 规则。
+
+当前支持的 query 参数：
+
+- workflow_runtime_id：必填
+- after_cursor：可选；当前使用 WorkflowAppRuntime 事件的 sequence 作为恢复游标
+- limit：可选，默认 100，最大 500
+
+连接成功后会先收到一条 workflows.app-runtimes.connected 事件，随后按当前筛选条件持续推送 WorkflowAppRuntime 事件。
+
+当前实现使用 service_event_bus 分发实时事件，并使用 `GET /api/v1/workflows/app-runtimes/{workflow_runtime_id}/events` 对应的 `events.json` 提供历史回放。
+
+当前实时事件会覆盖生命周期、worker 主动 heartbeat、heartbeat 超时和 heartbeat 恢复。
+
+### /ws/v1/deployments/events
+
+请求头沿用 REST 的主体和 scope 规则。
+
+当前支持的 query 参数：
+
+- deployment_instance_id：必填
+- runtime_mode：可选；支持 `sync`、`async`
+- after_cursor：可选；当前使用 deployment 事件的 sequence 作为恢复游标
+- limit：可选，默认 100，最大 500
+
+连接成功后会先收到一条 deployments.connected 事件，随后按当前筛选条件持续推送 deployment 事件。
+
+当前实现使用 service_event_bus 分发实时事件，并使用 `GET /api/v1/models/yolox/deployment-instances/{deployment_instance_id}/events` 对应的 `events.json` 提供历史回放。
+
+### /ws/v1/projects/events
+
+请求头沿用 REST 的主体和 scope 规则。
+
+当前支持的 query 参数：
+
+- project_id：必填
+- topic：可选；当前支持 `workflows.preview-runs`、`workflows.runs`、`workflows.app-runtimes` 和 `deployments`
+
+连接成功后会先收到一条 `projects.connected` 控制事件，再收到一条 `projects.summary.snapshot` 快照事件；之后当 workflow preview-run、WorkflowRun、WorkflowAppRuntime 或 deployment 生命周期事件导致项目级聚合摘要变化时，会持续推送 `projects.summary.updated`。
+
+当前实现使用 service_event_bus 分发实时项目聚合更新，并使用 `GET /api/v1/projects/{project_id}/summary` 作为正式快照面。
 
 ## DatasetImport、DatasetExport 与 TaskRecord 的公开关系
 
@@ -1050,7 +1979,7 @@
 因此，导入状态有两条公开观察路径：
 
 - 资源视角：GET /api/v1/datasets/imports/{dataset_import_id}
-- 任务视角：GET /api/v1/tasks/{task_id}、GET /api/v1/tasks/{task_id}/events、/ws/tasks/events?task_id=...
+- 任务视角：GET /api/v1/tasks/{task_id}、GET /api/v1/tasks/{task_id}/events、/ws/v1/tasks/events?task_id=...
 
 当前 DatasetExport 提交流程也已经正式挂接 TaskRecord：
 
@@ -1063,7 +1992,7 @@
 因此，导出状态同样有两条公开观察路径：
 
 - 资源视角：GET /api/v1/datasets/exports/{dataset_export_id}、GET /api/v1/datasets/{dataset_id}/versions/{dataset_version_id}/exports
-- 任务视角：GET /api/v1/tasks/{task_id}、GET /api/v1/tasks/{task_id}/events、/ws/tasks/events?task_id=...
+- 任务视角：GET /api/v1/tasks/{task_id}、GET /api/v1/tasks/{task_id}/events、/ws/v1/tasks/events?task_id=...
 
 当前 YOLOX training 创建流程也已经开始正式挂接 DatasetExport：
 

@@ -1,0 +1,84 @@
+{
+  "application": {
+    "format_id": "amvision.flow-application.v1",
+    "application_id": "yolox-deployment-detection-lifecycle-app",
+    "display_name": "YOLOX Deployment Detection Lifecycle App",
+    "template_ref": {
+      "template_id": "yolox-deployment-detection-lifecycle-demo",
+      "template_version": "1.0.0",
+      "source_kind": "json-file",
+      "source_uri": "docs/examples/workflows/yolox_deployment_detection_lifecycle.template.json",
+      "metadata": {}
+    },
+    "runtime_mode": "python-json-workflow",
+    "description": "最小 FlowApplication 示例，使用 base64 图片控制并使用一个已有 deployment 资源，在 execute API 中返回 start、warmup、detections、health、stop 五类输出。",
+    "bindings": [
+      {
+        "binding_id": "request_image",
+        "direction": "input",
+        "template_port_id": "request_image",
+        "binding_kind": "workflow-execute-input",
+        "config": {
+          "payload_type_id": "image-base64.v1",
+          "content_type": "application/json"
+        },
+        "metadata": {}
+      },
+      {
+        "binding_id": "start_body",
+        "direction": "output",
+        "template_port_id": "start_body",
+        "binding_kind": "workflow-execute-output",
+        "config": {
+          "payload_type_id": "response-body.v1"
+        },
+        "metadata": {}
+      },
+      {
+        "binding_id": "warmup_body",
+        "direction": "output",
+        "template_port_id": "warmup_body",
+        "binding_kind": "workflow-execute-output",
+        "config": {
+          "payload_type_id": "response-body.v1"
+        },
+        "metadata": {}
+      },
+      {
+        "binding_id": "detections",
+        "direction": "output",
+        "template_port_id": "detections",
+        "binding_kind": "workflow-execute-output",
+        "config": {
+          "payload_type_id": "detections.v1"
+        },
+        "metadata": {}
+      },
+      {
+        "binding_id": "health_body",
+        "direction": "output",
+        "template_port_id": "health_body",
+        "binding_kind": "workflow-execute-output",
+        "config": {
+          "payload_type_id": "response-body.v1"
+        },
+        "metadata": {}
+      },
+      {
+        "binding_id": "stop_body",
+        "direction": "output",
+        "template_port_id": "stop_body",
+        "binding_kind": "workflow-execute-output",
+        "config": {
+          "payload_type_id": "response-body.v1"
+        },
+        "metadata": {}
+      }
+    ],
+    "metadata": {
+      "example_kind": "deployment-control-detection-lifecycle",
+      "uses_existing_deployment_instance": true,
+      "deployment_instance_id_placeholder": "replace-with-existing-deployment-instance-id"
+    }
+  }
+}

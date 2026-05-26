@@ -4,13 +4,14 @@
 
 本文档用于说明当前已经公开的 DatasetExport REST 接口，包括导出创建、导出详情查询和按 DatasetVersion 列表查询三组能力。
 
-当前导出提交已经正式关联 TaskRecord。提交响应、详情响应和列表响应都会公开 task_id，后续可以配合 tasks API 或 /ws/tasks/events 观察后台处理状态。当前导出也已经公开打包和下载接口，export file 不再只是内部 worker 使用的中间结果。
+当前导出提交已经正式关联 TaskRecord。提交响应、详情响应和列表响应都会公开 task_id，后续可以配合 tasks API 或 /ws/v1/tasks/events 观察后台处理状态。当前导出也已经公开打包和下载接口，export file 不再只是内部 worker 使用的中间结果。
 
 本文档聚焦对外接口规则、字段定义、错误语义和当前实现边界，不展开内部 repository 或持久化实现细节。
 
 ## 适用范围
 
 - DatasetExport 创建接口
+- DatasetExport 格式合同接口
 - DatasetExport 详情查询接口
 - DatasetVersion 下的导出记录列表接口
 - DatasetExport 打包与下载接口
@@ -26,13 +27,12 @@
 
 ## 鉴权规则
 
-当前接口通过请求头传入主体信息与 scope。
+当前接口通过 `Authorization: Bearer <token>` 鉴权。`scopes` 和 `project_ids` 从 Bearer token 对应的本地用户或静态 token 配置中解析。
 
 ### 最小请求头
 
-- x-amvision-principal-id：调用主体 id
-- x-amvision-project-ids：当前主体可访问的 Project id 列表，多个值用逗号分隔；为空时表示不按 Project 做可见性裁剪
-- x-amvision-scopes：当前主体持有的 scope 列表，多个值用逗号分隔
+- Authorization: Bearer <token>
+- 使用当前环境实际 Bearer token
 
 ### scope 要求
 
@@ -43,6 +43,7 @@
 ## 当前实现边界
 
 - 当前只支持 detection 类型 DatasetVersion
+- 当前已经公开独立的格式合同接口 `GET /api/v1/datasets/export-formats`，用于先读取 implemented_formats 和 default_format，再决定是否创建导出任务
 - 当前已经正式实现并对外开放的 format_id：
   - coco-detection-v1
   - voc-detection-v1
@@ -51,6 +52,24 @@
 - training 前置步骤应消费 manifest_object_key，而不是直接读取 DatasetVersion 内部目录结构
 
 ## 接口清单
+
+### GET /api/v1/datasets/export-formats
+
+返回当前公开的数据集导出格式合同，用于前端、工作站或脚本在提交导出任务前先读取能力范围。
+
+#### 成功响应要点
+
+- 状态码：200 OK
+- 当前公开字段包括：
+  - implemented_formats
+  - default_format
+  - items[].format_id
+
+#### 当前返回语义
+
+- `implemented_formats` 表示当前已经正式实现并可用的格式。
+- `default_format` 表示当前默认导出格式；当前值为 `coco-detection-v1`。
+- `items` 只列出当前已经实现并可直接使用的格式。
 
 ### POST /api/v1/datasets/exports
 
@@ -85,9 +104,7 @@
 ```bash
 curl -X POST "http://127.0.0.1:8000/api/v1/datasets/exports" \
   -H "Content-Type: application/json" \
-  -H "x-amvision-principal-id: user-1" \
-  -H "x-amvision-project-ids: project-1" \
-  -H "x-amvision-scopes: datasets:write" \
+  -H "Authorization: Bearer <token>" \
   -d '{
     "project_id": "project-1",
     "dataset_id": "dataset-1",
@@ -248,6 +265,13 @@ curl -X POST "http://127.0.0.1:8000/api/v1/datasets/exports" \
 - 当前训练创建接口允许传 dataset_export_id 或 manifest_object_key；如果同时传两者，服务会验证它们是否属于同一个 DatasetExport。
 - 实践上：面向用户和平台资源管理时优先传 dataset_export_id，面向执行器和文件消费侧时优先用 manifest_object_key。
 
+## GET /api/v1/datasets/export-formats 与 POST /api/v1/datasets/exports 的关系
+
+- `GET /api/v1/datasets/export-formats` 是能力目录接口，用于回答“当前能导出成什么格式”。
+- `POST /api/v1/datasets/exports` 是资源创建接口，用于回答“现在要为哪个 DatasetVersion 创建一条具体导出任务”。
+- 推荐顺序是先读 export-formats，确定 `format_id`，再创建 DatasetExport。
+- 前端界面里，export-formats 适合驱动下拉选项；exports 适合驱动任务创建、详情轮询、打包下载和训练输入选择。
+
 ## 导出目录语义
 
 当请求不显式提供 output_object_prefix 时，导出文件默认写到：
@@ -268,5 +292,5 @@ curl -X POST "http://127.0.0.1:8000/api/v1/datasets/exports" \
 
 - 资源视角：GET /api/v1/datasets/exports/{dataset_export_id}
 - 下载视角：POST /api/v1/datasets/exports/{dataset_export_id}/package、GET /api/v1/datasets/exports/{dataset_export_id}/download、GET /api/v1/datasets/exports/{dataset_export_id}/manifest
-- 任务视角：GET /api/v1/tasks/{task_id}、GET /api/v1/tasks/{task_id}/events、/ws/tasks/events?task_id=...
+- 任务视角：GET /api/v1/tasks/{task_id}、GET /api/v1/tasks/{task_id}/events、/ws/v1/tasks/events?task_id=...
 - 当状态为 completed 时，优先检查 manifest_object_key 和 export_path 是否符合预期，再进入 training 前置步骤

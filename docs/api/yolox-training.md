@@ -27,9 +27,8 @@
 
 ### 最小请求头
 
-- x-amvision-principal-id：调用主体 id
-- x-amvision-project-ids：当前主体可访问的 Project id 列表，多个值用逗号分隔；为空时表示不按 Project 做可见性裁剪
-- x-amvision-scopes：当前主体持有的 scope 列表，多个值用逗号分隔
+- Authorization: Bearer <token>
+- 使用当前环境实际 Bearer token
 
 ### scope 要求
 
@@ -43,6 +42,8 @@
 ### POST /api/v1/models/yolox/training-tasks
 
 创建一个以 DatasetExport 为唯一输入边界的 YOLOX 训练任务，并提交到 yolox-trainings 队列。
+
+训练链顺序图与常见失败分支见 [docs/architecture/execution-sequences.md](../architecture/execution-sequences.md)。
 
 #### Content-Type
 
@@ -217,7 +218,9 @@ reference 风格增强示例：按需显式开启 Mosaic、MixUp 和动态尺寸
 
 | 字段 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
-| include_events | boolean | 否 | 是否返回任务事件列表，默认 true。 |
+| include_events | boolean | 否 | 是否返回任务事件列表，默认 false。 |
+
+- 默认返回轻量详情，不带 events；只有在确实需要完整历史事件流时再显式传 `include_events=true`。
 
 #### 当前详情重点字段
 
@@ -303,6 +306,38 @@ reference 风格增强示例：按需显式开启 Mosaic、MixUp 和动态尺寸
   - 接口层失败：例如任务不处于 `paused`、latest checkpoint 缺失、latest checkpoint 文件不存在。这类错误会直接返回 400。
   - worker 执行层失败：例如 latest checkpoint 损坏、resume checkpoint 内容与当前任务配置不一致。这类错误会先返回 200 并进入 `queued`，随后任务会在 worker 执行阶段进入 `failed`，并在 detail 的 `error_message` 中给出失败原因。
 
+### POST /api/v1/models/yolox/training-tasks/{task_id}/terminate
+
+请求终止一个 `queued`、`running` 或 `paused` 状态的训练任务。
+
+#### 当前用途
+
+- `queued` 或 `paused` 状态下，接口会直接把任务切到 `cancelled`。
+- `running` 状态下，接口先登记 terminate 请求，训练会在下一个 epoch 边界结束。
+- running terminate 不会额外保存 checkpoint；当前目标是尽快结束训练并释放 worker 内的训练资源。
+
+#### 当前返回语义
+
+- 当前接口返回训练任务详情，而不是单独动作回执对象。
+- 对 running 任务调用成功后，任务通常仍暂时处于 `running`，并通过 `control_status.status=terminate_requested` 与 `control_status.pending_action=terminate` 表示请求已经登记。
+- 等待 worker 处理到下一轮边界后，任务会切到 `cancelled`，并追加 `yolox training terminated` 事件。
+
+### DELETE /api/v1/models/yolox/training-tasks/{task_id}
+
+删除一个已经停止的训练任务。
+
+#### 当前用途
+
+- 用于清理已经 `succeeded`、`failed`、`cancelled` 或 `paused` 后不再保留的训练任务记录。
+- 当前会同时删除任务记录、关联事件和尝试记录。
+- 当训练输出目录没有被已登记 ModelVersion 继续引用时，服务会一起清理该目录；如果已有引用，则只删除任务记录，不删除仍被版本复用的文件。
+
+#### 当前约束
+
+- 当前不会删除仍处于队列待执行的训练任务。
+- 当前不会删除仍处于 `running` 的训练任务；应先调用 `terminate` 或等待训练自然结束。
+- 如果任务输出已经被 best checkpoint 或 latest checkpoint 的固定 ModelVersion 复用，训练目录不会被一起清理。
+
 ### POST /api/v1/models/yolox/training-tasks/{task_id}/register-model-version
 
 把当前训练任务已经落盘的 latest checkpoint 手动重登记为可复用的 ModelVersion。
@@ -338,6 +373,8 @@ reference 风格增强示例：按需显式开启 Mosaic、MixUp 和动态尺寸
 - `save`：只登记一次保存请求，真正写盘要等到下一个 epoch 边界。
 - `pause`：先登记暂停请求，真正暂停也要等到下一个 epoch 边界，并且会先写 latest checkpoint。
 - `resume`：把 paused 任务重新放回队列；真正恢复执行要等 worker 再次开始处理。
+- `terminate`：queued 或 paused 时会直接取消；running 时先登记终止请求，等到下一个 epoch 边界结束训练。
+- `delete`：只在任务已经停止后可用；是否连训练输出一起清理，取决于当前文件是否仍被 ModelVersion 引用。
 
 ### 前端应读取的关键字段
 
@@ -367,29 +404,36 @@ reference 风格增强示例：按需显式开启 Mosaic、MixUp 和动态尺寸
 
 #### `available_actions` 当前取值
 
+- `['terminate']`：任务处于 `queued`，或者 `running` 且已经登记了 `pause_requested`。
+- `['save', 'pause', 'terminate']`：任务处于正常 `running`。
+- `['pause', 'terminate']`：任务已经登记过一次 save，请求仍未在 epoch 边界生效，此时仍允许升级为 pause 或直接 terminate。
+- `['resume', 'terminate', 'delete']`：任务处于 `paused` 且已解析到可用的 resume checkpoint object key。
+- `['terminate', 'delete']`：任务处于 `paused`，但当前缺少可恢复的 latest checkpoint。
+- `['delete']`：任务已经 `succeeded`、`failed` 或 `cancelled`。
 - `[]`：当前不建议展示训练控制按钮。
-- `['save', 'pause']`：任务处于正常 `running`。
-- `['pause']`：任务已经登记过一次 save，请求仍未在 epoch 边界生效，此时仍允许升级为 pause。
-- `['resume']`：任务处于 `paused` 且已解析到可用的 resume checkpoint object key。
 
 #### `control_status` 当前取值
 
 - `status=idle`：当前没有待生效的控制请求。
 - `status=save_requested`：已经登记 save，请等待下一个 epoch 边界。
 - `status=pause_requested`：已经登记 pause，请等待下一个 epoch 边界。
+- `status=terminate_requested`：已经登记 terminate，请等待下一个 epoch 边界结束训练。
 - `status=resume_pending`：已经登记 resume，请等待 worker 重新开始执行。
 
 ### 按钮启用规则
 
-| 场景 | Save | Pause | Resume | 说明 |
-| --- | --- | --- | --- | --- |
-| `queued` | 禁用 | 禁用 | 禁用 | 任务尚未进入训练执行。 |
-| `running` 且无控制请求 | 启用 | 启用 | 禁用 | 正常训练中。 |
-| `running` 且 `control_status.status=save_requested` | 禁用 | 启用 | 禁用 | 已经登记过一次保存请求，但仍允许升级为 pause。 |
-| `running` 且 `control_status.status=pause_requested` | 禁用 | 禁用 | 禁用 | 已经登记过一次暂停请求，等待 epoch 边界处理。 |
-| `paused` | 禁用 | 禁用 | 启用 | latest checkpoint 已经自动落盘并登记固定版本。 |
-| `succeeded` | 禁用 | 禁用 | 禁用 | 训练已完成。 |
-| `failed` | 禁用 | 禁用 | 禁用 | 当前没有失败后直接 resume 的正式接口语义。 |
+| 场景 | Save | Pause | Resume | Terminate | Delete | 说明 |
+| --- | --- | --- | --- | --- | --- | --- |
+| `queued` | 禁用 | 禁用 | 禁用 | 启用 | 禁用 | 任务尚未进入训练执行，但允许直接取消。 |
+| `running` 且无控制请求 | 启用 | 启用 | 禁用 | 启用 | 禁用 | 正常训练中。 |
+| `running` 且 `control_status.status=save_requested` | 禁用 | 启用 | 禁用 | 启用 | 禁用 | 已登记 save，但仍允许升级为 pause 或 terminate。 |
+| `running` 且 `control_status.status=pause_requested` | 禁用 | 禁用 | 禁用 | 启用 | 禁用 | 已登记 pause，等待 epoch 边界处理；仍允许直接 terminate。 |
+| `running` 且 `control_status.status=terminate_requested` | 禁用 | 禁用 | 禁用 | 禁用 | 禁用 | 已登记 terminate，等待 epoch 边界结束训练。 |
+| `paused` 且可 resume | 禁用 | 禁用 | 启用 | 启用 | 启用 | latest checkpoint 已经落盘，可继续训练或直接清理。 |
+| `paused` 且不可 resume | 禁用 | 禁用 | 禁用 | 启用 | 启用 | 缺少可恢复 checkpoint，只能 terminate 或 delete。 |
+| `succeeded` | 禁用 | 禁用 | 禁用 | 禁用 | 启用 | 训练已完成。 |
+| `failed` | 禁用 | 禁用 | 禁用 | 禁用 | 启用 | 当前没有失败后直接 resume 的正式接口语义。 |
+| `cancelled` | 禁用 | 禁用 | 禁用 | 禁用 | 启用 | 训练已取消，可继续清理记录。 |
 
 ### 页面轮询与事件订阅建议
 
@@ -403,21 +447,21 @@ reference 风格增强示例：按需显式开启 Mosaic、MixUp 和动态尺寸
 
 #### 推荐实时方案
 
-- 详情页或日志面板可以额外建立 `GET /ws/tasks/events?task_id=...` 对应的 WebSocket 订阅。
+- 详情页或日志面板可以额外建立 `/ws/v1/tasks/events?task_id=...` 对应的 WebSocket 订阅。
 - 当前推荐策略：
   - 详情基础状态仍然走 HTTP 轮询
-  - 日志流和动作完成提示走 `/ws/tasks/events`
+  - 日志流和动作完成提示走 `/ws/v1/tasks/events`
 - 当前 WebSocket 支持的查询参数：
   - `task_id`：必填
   - `event_type`：可选
-  - `after_created_at`：可选
+  - `after_cursor`：可选
   - `limit`：可选，默认 100，最大 500
 
 #### 当前轮询注意点
 
-- 详情接口的 `include_events` 默认值是 `true`。
-- 前端如果把 detail 接口直接当成高频轮询接口，必须显式传 `include_events=false`，否则返回体会随着事件累积不断变大。
-- 如果页面需要展示事件流，应优先使用 `/ws/tasks/events` 或通用任务事件接口，而不是在高频轮询里反复拉完整 `events` 数组。
+- 详情接口的 `include_events` 默认值是 `false`。
+- 如果页面需要完整历史事件流，应显式传 `include_events=true`，或直接改用 `/ws/v1/tasks/events` / 通用任务事件接口。
+- 如果页面需要展示事件流，应优先使用 `/ws/v1/tasks/events` 或通用任务事件接口，而不是在高频轮询里反复拉完整 `events` 数组。
 
 ### 前端交互建议流程
 
@@ -651,6 +695,7 @@ reference 风格增强示例：按需显式开启 Mosaic、MixUp 和动态尺寸
 - `detections`
 - `preview_image_uri`
 - `raw_result_uri`
+- `input_file_id`
 - `latency_ms`
 - `runtime_session_info`
 - `labels`
@@ -659,7 +704,7 @@ reference 风格增强示例：按需显式开启 Mosaic、MixUp 和动态尺寸
 
 - 当前 runtime_backend 只支持 `pytorch`
 - 当前只支持本地 `input_uri` 或本地 object key，不支持远程 URL
-- `input_file_id` 当前只是保留字段，调用时会返回 `invalid_request`
+- `input_file_id` 现在支持 Project 公开文件 id；稳定来源可直接使用 `GET /api/v1/projects/{project_id}/files` 或 `GET /api/v1/projects/{project_id}/files/metadata` 返回的 `file_id`
 - `runtime_profile_id` 当前仅作为创建参数和详情回传字段，不参与实际模型加载
 - session 状态和预测结果默认写到 `runtime/validation-sessions/{session_id}/...` 下，便于先把人工验证闭环跑通
 
@@ -726,6 +771,8 @@ reference 风格增强示例：按需显式开启 Mosaic、MixUp 和动态尺寸
 
 当前已经公开 conversion-tasks 资源，转换链路固定为 `ModelVersion -> ConversionTask -> ModelBuild`，当前先以 ONNX 主链打通最小可执行闭环，不把转换逻辑混进 training 或 deployment。
 
+转换链顺序图与常见失败分支见 [docs/architecture/execution-sequences.md](../architecture/execution-sequences.md)。
+
 #### 当前 conversion 资源组
 
 - 资源组：`/api/v1/models/yolox/conversion-tasks`
@@ -788,12 +835,16 @@ reference 风格增强示例：按需显式开启 Mosaic、MixUp 和动态尺寸
 
 当前已经公开 DeploymentInstance 资源和正式 inference-tasks 资源，推理请求继续绑定 `DeploymentInstance`，不直接读取 `DatasetVersion`，也不直接暴露 checkpoint 路径。
 
+部署推理链顺序图与常见失败分支见 [docs/architecture/execution-sequences.md](../architecture/execution-sequences.md)。
+
 #### 当前 deployment 资源组
 
 - 资源组：`/api/v1/models/yolox/deployment-instances`
 - 创建接口：`POST /api/v1/models/yolox/deployment-instances`
 - 列表接口：`GET /api/v1/models/yolox/deployment-instances`
 - 详情接口：`GET /api/v1/models/yolox/deployment-instances/{deployment_instance_id}`
+- 事件接口：`GET /api/v1/models/yolox/deployment-instances/{deployment_instance_id}/events`
+- 实时事件流：`/ws/v1/deployments/events`
 
 #### 当前 deployment 创建请求字段
 
@@ -870,6 +921,7 @@ reference 风格增强示例：按需显式开启 Mosaic、MixUp 和动态尺寸
 - 每个 instance 对应一个独立推理线程和模型会话；同一 instance 一次只处理一个请求
 - 同步 `/infer` 和异步 `inference-tasks` 已经拆成两个独立 deployment 子进程，不再共用实例会话
 - 当前已经公开 sync/async 两组 `start`、`status`、`stop`、`warmup`、`health` 和 `reset` 接口，用于显式启动、停止、预热、查看状态和清空实例池
+- 当前已经公开 deployment 历史事件接口与 `/ws/v1/deployments/events` 实时资源流；实时分发走 `service_event_bus`，历史回放继续走 deployment snapshot 目录下的 `events.json`
 - `warmup` 会在预热前自动拉起目标子进程，并在模型会话加载后按默认配置或 `metadata.deployment_process` 覆盖值执行 N 次真实 dummy infer
 - 当 `metadata.deployment_process.keep_warm_enabled=true` 时，warmup 完成后会激活 keep-warm 后台线程；首次真实推理成功后也会激活同一机制
 - `reset` 只对已经启动的子进程生效；reset 后 keep-warm 会回到未激活状态，直到下一次 warmup 或下一次真实推理成功
@@ -883,6 +935,8 @@ reference 风格增强示例：按需显式开启 Mosaic、MixUp 和动态尺寸
 - 结果接口：`GET /api/v1/models/yolox/inference-tasks/{task_id}/result`
 - 同步直返接口：`POST /api/v1/models/yolox/deployment-instances/{deployment_instance_id}/infer`
 - 同步启动接口：`POST /api/v1/models/yolox/deployment-instances/{deployment_instance_id}/sync/start`
+- 事件读取接口：`GET /api/v1/models/yolox/deployment-instances/{deployment_instance_id}/events`
+- 实时事件流：`/ws/v1/deployments/events?deployment_instance_id=...`
 - 同步状态接口：`GET /api/v1/models/yolox/deployment-instances/{deployment_instance_id}/sync/status`
 - 同步停止接口：`POST /api/v1/models/yolox/deployment-instances/{deployment_instance_id}/sync/stop`
 - 同步预热接口：`POST /api/v1/models/yolox/deployment-instances/{deployment_instance_id}/sync/warmup`
@@ -907,7 +961,7 @@ reference 风格增强示例：按需显式开启 Mosaic、MixUp 和动态尺寸
 - `input_uri`
 - `image_base64`
 - `input_image`（仅 `multipart/form-data` 文件字段）
-- `input_transport_mode`（仅同步 `/infer` 使用；支持 `storage`、`memory`）
+- `input_transport_mode`（同步 `/infer` 与异步 `inference-tasks` 都支持；支持 `storage`、`memory`）
 - `score_threshold`
 - `save_result_image`
 - `return_preview_image_base64`
@@ -916,18 +970,19 @@ reference 风格增强示例：按需显式开启 Mosaic、MixUp 和动态尺寸
 #### 当前 inference 输入规则
 
 - 当前正式推理支持 `application/json` 和 `multipart/form-data`
-- `input_uri`、`image_base64`、`input_image` 三者必须且只能提供一个
+- `input_file_id`、`input_uri`、`image_base64`、`input_image` 四者必须且只能提供一个
 - `image_base64` 同时支持纯 base64 内容和 `data:image/...;base64,...` 形式
 - `application/json` 场景下，`image_base64` 必须是单行 JSON 字符串；如果把带原始换行的 base64 直接贴进 JSON，请求会在 JSON 解析阶段返回 `请求体不是合法的 JSON`
-- `input_file_id` 当前仍是保留字段，会返回 `invalid_request`
+- `input_file_id` 现在支持 Project 公开文件 id；稳定来源可直接使用 `GET /api/v1/projects/{project_id}/files` 或 `GET /api/v1/projects/{project_id}/files/metadata` 返回的 `file_id`
 - multipart 场景下，`extra_options` 以 JSON 字符串传入
 - 服务会在写入临时输入前校验 `image_base64` 与 `input_image` 是否为可读取图片；损坏图片会直接返回 `invalid_request`，不会继续下发到 deployment 推理进程
-- 同步 `/infer` 额外支持 `input_transport_mode`：
+- 同步 `/infer` 与异步 `inference-tasks` 共用同一套 `input_transport_mode` 语义：
   - `storage`：保持当前默认行为，Base64 或上传文件会先写入临时输入文件，再按 `input_uri` 进入 deployment 推理进程
-  - `memory`：只允许 `image_base64` 或 `input_image`，请求图片不会落到临时目录，会直接以原始字节送入 deployment 推理进程
-- 当同步 `/infer` 使用 `input_transport_mode=memory` 时：
+  - `memory`：只允许 `image_base64` 或 `input_image`，请求图片不会落到临时目录；同步链直接以内存字节进入 deployment 推理进程，异步链会先固化到任务 `normalized_input`，再由 worker 通过 queue IPC 把字节转给 backend-service 持有的 async deployment 子进程
+- 当 `input_transport_mode=memory` 时，不支持 `input_file_id`
+- 当 `input_transport_mode=memory` 时：
   - 响应里的 `input_uri` 会返回 `memory://...` 形式的虚拟 URI，用于标识这次调用没有输入落盘
-  - 响应里的 `result_object_key` 为 `null`，因为不会写 `raw-result.json`
+  - 同步 `/infer` 的响应 `result_object_key` 为 `null`，因为不会写 `raw-result.json`
   - 如果同时设置 `save_result_image=true`，预览图仍会按现有语义写盘；如果只需要直接返回图像，应使用 `return_preview_image_base64=true`
 - 同步 `/infer` 真正执行前，需要先通过 `sync/start` 或 `sync/warmup` 拉起对应 deployment 的 sync 子进程
 - 异步 `inference-tasks` 创建前，需要先通过 `async/start` 或 `async/warmup` 拉起对应 deployment 的 async 子进程；未启动时 create 接口会直接返回 `invalid_request`
@@ -940,6 +995,7 @@ reference 风格增强示例：按需显式开启 Mosaic、MixUp 和动态尺寸
 - `model_build_id`
 - `input_uri`
 - `input_source_kind`
+- `input_file_id`
 - `score_threshold`
 - `save_result_image`
 - `result_object_key`
@@ -977,7 +1033,9 @@ reference 风格增强示例：按需显式开启 Mosaic、MixUp 和动态尺寸
 - 当前 deployment create 允许绑定 `ModelVersion` 或 `ModelBuild`；其中 `pytorch`、`onnxruntime`、`openvino`、`tensorrt` 已接通真实 runtime
 - 当前 inference 执行通过 DeploymentInstance 解析运行时快照，并在 deployment 子进程内部复用常驻会话
 - 当前同步 `/infer` 与异步 `inference-tasks` 使用同一套结果载荷字段
-- 当前同步 `/infer` 已支持 `input_transport_mode=memory`，用于 Base64 与 multipart 上传图片的高速内存直通；异步 `inference-tasks` 仍保持 storage 模式
+- 当前同步 `/infer` 与异步 `inference-tasks` 已共用同一套输入归一化、`input_transport_mode` 和 `YoloXPredictionRequest` 构造逻辑；异步链额外通过 `yolox-ai-gw-{service_id}-{deployment_id}` 这类 deployment 专属队列把推理请求转回 backend-service 持有的 async deployment supervisor
+- 当前正式 HTTP inference 公开入口支持本地文件、Base64 和 multipart 上传；image-ref / local buffer 仍主要用于 workflow / published inference 这类进程间图片引用路径，不作为当前 REST inference task 的公开输入字段
+- 当前 workflow preview run、WorkflowAppRuntime 和已发布应用里的 YOLOX detection 节点，继续通过 `PublishedInferenceGateway` 命中 backend-service 持有的 sync deployment worker；这条路径不走公开 `inference-tasks` 接口，也不复用 async deployment 通道
 - 当前 inference 响应已经拆出 `decode_ms`、`preprocess_ms`、`infer_ms`、`postprocess_ms`、`serialize_ms`；其中 `latency_ms` 表示前四段总耗时，不包含 `serialize_ms`
 - 当前 `preview_image_base64` 仅在 `return_preview_image_base64=true` 时生成
 - 当前 `preview_image_object_key` 仅在 `save_result_image=true` 时生成

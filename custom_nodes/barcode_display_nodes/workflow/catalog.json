@@ -1,0 +1,99 @@
+{
+  "format_id": "amvision.custom-node-catalog.v1",
+  "payload_contracts": [],
+  "node_definitions": [
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.barcode.display-response",
+      "display_name": "Barcode Display Response",
+      "category": "barcode.display",
+      "description": "把标注图片和 barcode 结果摘要组装成适合工作站或 REST 返回的 response-body。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "input_ports": [
+        {
+          "name": "annotated_image",
+          "display_name": "Annotated Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": false,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "results",
+          "display_name": "Results",
+          "payload_type_id": "barcode-results.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "meta",
+          "display_name": "Meta",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": false,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "body",
+          "display_name": "Body",
+          "payload_type_id": "response-body.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "integer"
+          },
+          "message": {
+            "type": "string",
+            "minLength": 1
+          },
+          "image_title": {
+            "type": "string",
+            "minLength": 1
+          },
+          "table_title": {
+            "type": "string",
+            "minLength": 1
+          },
+          "response_transport_mode": {
+            "type": "string",
+            "enum": [
+              "inline-base64",
+              "storage-ref"
+            ]
+          },
+          "output_object_key": {
+            "type": "string"
+          }
+        }
+      },
+      "capability_tags": [
+        "barcode.display",
+        "response.body"
+      ],
+      "runtime_requirements": {
+        "python_packages": []
+      },
+      "node_pack_id": "barcode.display-nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {
+        "dependencyPackIds": [
+          "barcode.protocol-nodes"
+        ]
+      }
+    }
+  ]
+}

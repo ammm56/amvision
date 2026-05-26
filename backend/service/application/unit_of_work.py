@@ -13,6 +13,7 @@ from backend.service.domain.files.model_file_repository import ModelFileReposito
 from backend.service.domain.models.model_repository import ModelRepository
 from backend.service.domain.tasks.resource_profile_repository import ResourceProfileRepository
 from backend.service.domain.tasks.task_repository import TaskRepository
+from backend.service.domain.workflows.workflow_runtime_repository import WorkflowRuntimeRepository
 
 
 class UnitOfWork(Protocol):
@@ -26,6 +27,7 @@ class UnitOfWork(Protocol):
     - model_files：ModelFile 仓储。
     - tasks：TaskRecord、TaskAttempt、TaskEvent 仓储。
     - resource_profiles：ResourceProfile 仓储。
+    - workflow_runtime：WorkflowPreviewRun、WorkflowAppRuntime、WorkflowRun 仓储。
     """
 
     dataset_exports: DatasetExportRepository
@@ -35,6 +37,7 @@ class UnitOfWork(Protocol):
     model_files: ModelFileRepository
     tasks: TaskRepository
     resource_profiles: ResourceProfileRepository
+    workflow_runtime: WorkflowRuntimeRepository
 
     def scalar(self, statement: Executable) -> object | None:
         """执行查询并返回标量结果。

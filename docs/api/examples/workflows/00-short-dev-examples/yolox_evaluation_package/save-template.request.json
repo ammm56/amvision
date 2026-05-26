@@ -1,0 +1,213 @@
+{
+  "template": {
+    "format_id": "amvision.workflow-graph-template.v1",
+    "template_id": "yolox-evaluation-package-template",
+    "template_version": "1.0.0",
+    "display_name": "YOLOX Evaluation Package Template",
+    "description": "接收动态 request 对象，提交一个 YOLOX evaluation 任务，等待终态后再由独立 package 节点生成结果包。示例会显式禁用 submit 阶段的默认 result-package，并在 package 节点上显式开启 cleanup_on_completion。",
+    "nodes": [
+      {
+        "node_id": "request_payload_input",
+        "node_type_id": "core.io.template-input.object",
+        "parameters": {}
+      },
+      {
+        "node_id": "sanitize_submit_request",
+        "node_type_id": "core.logic.object-remove",
+        "parameters": {
+          "paths": [
+            "save_result_package"
+          ]
+        }
+      },
+      {
+        "node_id": "merge_submit_request",
+        "node_type_id": "core.logic.object-merge",
+        "parameters": {
+          "base": {
+            "save_result_package": false
+          }
+        }
+      },
+      {
+        "node_id": "submit_evaluation",
+        "node_type_id": "core.service.yolox-evaluation.submit",
+        "parameters": {}
+      },
+      {
+        "node_id": "extract_evaluation_task_id",
+        "node_type_id": "core.logic.field-extract",
+        "parameters": {
+          "path": "task_id"
+        }
+      },
+      {
+        "node_id": "build_evaluation_wait_request",
+        "node_type_id": "core.logic.object-create",
+        "parameters": {
+          "keys": [
+            "task_id"
+          ],
+          "fields": {
+            "include_events": false,
+            "timeout_seconds": 7200,
+            "poll_interval_seconds": 2
+          }
+        }
+      },
+      {
+        "node_id": "wait_evaluation",
+        "node_type_id": "core.service.task.wait",
+        "parameters": {}
+      },
+      {
+        "node_id": "extract_waited_task_id",
+        "node_type_id": "core.logic.field-extract",
+        "parameters": {
+          "path": "task_id"
+        }
+      },
+      {
+        "node_id": "build_package_request",
+        "node_type_id": "core.logic.object-create",
+        "parameters": {
+          "keys": [
+            "task_id"
+          ]
+        }
+      },
+      {
+        "node_id": "package_result",
+        "node_type_id": "core.service.yolox-evaluation.package",
+        "parameters": {
+          "cleanup_on_completion": true
+        }
+      }
+    ],
+    "edges": [
+      {
+        "edge_id": "edge-request-sanitize-submit-request",
+        "source_node_id": "request_payload_input",
+        "source_port": "value",
+        "target_node_id": "sanitize_submit_request",
+        "target_port": "object"
+      },
+      {
+        "edge_id": "edge-sanitize-merge-submit-request",
+        "source_node_id": "sanitize_submit_request",
+        "source_port": "value",
+        "target_node_id": "merge_submit_request",
+        "target_port": "objects"
+      },
+      {
+        "edge_id": "edge-merge-submit-evaluation",
+        "source_node_id": "merge_submit_request",
+        "source_port": "value",
+        "target_node_id": "submit_evaluation",
+        "target_port": "request"
+      },
+      {
+        "edge_id": "edge-submit-evaluation-task-id",
+        "source_node_id": "submit_evaluation",
+        "source_port": "body",
+        "target_node_id": "extract_evaluation_task_id",
+        "target_port": "body"
+      },
+      {
+        "edge_id": "edge-evaluation-task-id-build-wait-request",
+        "source_node_id": "extract_evaluation_task_id",
+        "source_port": "value",
+        "target_node_id": "build_evaluation_wait_request",
+        "target_port": "values"
+      },
+      {
+        "edge_id": "edge-build-wait-request-wait-evaluation",
+        "source_node_id": "build_evaluation_wait_request",
+        "source_port": "value",
+        "target_node_id": "wait_evaluation",
+        "target_port": "request"
+      },
+      {
+        "edge_id": "edge-wait-evaluation-extract-waited-task-id",
+        "source_node_id": "wait_evaluation",
+        "source_port": "body",
+        "target_node_id": "extract_waited_task_id",
+        "target_port": "body"
+      },
+      {
+        "edge_id": "edge-waited-task-id-build-package-request",
+        "source_node_id": "extract_waited_task_id",
+        "source_port": "value",
+        "target_node_id": "build_package_request",
+        "target_port": "values"
+      },
+      {
+        "edge_id": "edge-build-package-request-package-result",
+        "source_node_id": "build_package_request",
+        "source_port": "value",
+        "target_node_id": "package_result",
+        "target_port": "request"
+      }
+    ],
+    "template_inputs": [
+      {
+        "input_id": "request_payload",
+        "display_name": "Request Payload",
+        "payload_type_id": "value.v1",
+        "target_node_id": "request_payload_input",
+        "target_port": "payload"
+      }
+    ],
+    "template_outputs": [
+      {
+        "output_id": "submission_body",
+        "display_name": "Submission Body",
+        "payload_type_id": "response-body.v1",
+        "source_node_id": "submit_evaluation",
+        "source_port": "body"
+      },
+      {
+        "output_id": "evaluation_task_detail",
+        "display_name": "Evaluation Task Detail",
+        "payload_type_id": "response-body.v1",
+        "source_node_id": "wait_evaluation",
+        "source_port": "body"
+      },
+      {
+        "output_id": "package_body",
+        "display_name": "Package Body",
+        "payload_type_id": "response-body.v1",
+        "source_node_id": "package_result",
+        "source_port": "body"
+      }
+    ],
+    "metadata": {
+      "example_kind": "yolox-evaluation-package",
+      "dynamic_request_binding_id": "request_payload",
+      "cleanup_mode": "explicit-node-parameter",
+      "package_cleanup_policy": "delete_on_completion",
+      "submission_result_package_mode": "disabled_in_submit",
+      "intended_saved_object_key": "workflows/projects/{project_id}/templates/yolox-evaluation-package-template/versions/1.0.0/template.json",
+      "node_groups": {
+        "request": [
+          "request_payload_input",
+          "sanitize_submit_request",
+          "merge_submit_request"
+        ],
+        "submit": [
+          "submit_evaluation"
+        ],
+        "wait": [
+          "extract_evaluation_task_id",
+          "build_evaluation_wait_request",
+          "wait_evaluation",
+          "extract_waited_task_id"
+        ],
+        "package": [
+          "build_package_request",
+          "package_result"
+        ]
+      }
+    }
+  }
+}

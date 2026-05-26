@@ -1,0 +1,45 @@
+{
+  "format_id": "amvision.custom-node-catalog.v1",
+  "payload_contracts": [],
+  "node_definitions": [
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.example-simple.message",
+      "display_name": "Example Simple Message",
+      "category": "example.simple",
+      "description": "返回一个最小 value.v1 示例输出。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "input_ports": [],
+      "output_ports": [
+        {
+          "name": "value",
+          "display_name": "Value",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "capability_tags": [
+        "example.simple"
+      ],
+      "runtime_requirements": {
+        "python_packages": []
+      },
+      "node_pack_id": "example.simple-nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {}
+    }
+  ]
+}

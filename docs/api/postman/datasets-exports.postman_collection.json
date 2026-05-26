@@ -2,13 +2,54 @@
   "info": {
     "_postman_id": "1c5deeba-80c9-40cd-a170-db18dbde5e15",
     "name": "amvision dataset exports api",
-    "description": "当前公开的 DatasetExport 接口集合。",
+    "description": "当前公开的 DatasetExport 格式合同、导出创建、详情、打包和下载接口集合。默认 accessToken 变量已对齐空库首次启动 seed token amvision-default-user-token。",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "item": [
     {
       "name": "Dataset Exports",
       "item": [
+        {
+          "name": "Get Dataset Export Formats",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  var payload = pm.response.json();",
+                  "  if (payload.default_format) pm.collectionVariables.set('exportFormatId', payload.default_format);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/datasets/export-formats",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "datasets",
+                "export-formats"
+              ]
+            },
+            "description": "读取当前导出格式合同。测试脚本会把 default_format 回填到 exportFormatId 变量。"
+          },
+          "response": []
+        },
         {
           "name": "Create Dataset Export",
           "event": [
@@ -35,18 +76,8 @@
                 "type": "text"
               },
               {
-                "key": "x-amvision-principal-id",
-                "value": "{{principalId}}",
-                "type": "text"
-              },
-              {
-                "key": "x-amvision-project-ids",
-                "value": "{{projectId}}",
-                "type": "text"
-              },
-              {
-                "key": "x-amvision-scopes",
-                "value": "datasets:write",
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
                 "type": "text"
               }
             ],
@@ -76,18 +107,8 @@
             "method": "GET",
             "header": [
               {
-                "key": "x-amvision-principal-id",
-                "value": "{{principalId}}",
-                "type": "text"
-              },
-              {
-                "key": "x-amvision-project-ids",
-                "value": "{{projectId}}",
-                "type": "text"
-              },
-              {
-                "key": "x-amvision-scopes",
-                "value": "datasets:read",
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
                 "type": "text"
               }
             ],
@@ -114,18 +135,8 @@
             "method": "GET",
             "header": [
               {
-                "key": "x-amvision-principal-id",
-                "value": "{{principalId}}",
-                "type": "text"
-              },
-              {
-                "key": "x-amvision-project-ids",
-                "value": "{{projectId}}",
-                "type": "text"
-              },
-              {
-                "key": "x-amvision-scopes",
-                "value": "datasets:read",
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
                 "type": "text"
               }
             ],
@@ -154,18 +165,8 @@
             "method": "POST",
             "header": [
               {
-                "key": "x-amvision-principal-id",
-                "value": "{{principalId}}",
-                "type": "text"
-              },
-              {
-                "key": "x-amvision-project-ids",
-                "value": "{{projectId}}",
-                "type": "text"
-              },
-              {
-                "key": "x-amvision-scopes",
-                "value": "datasets:write",
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
                 "type": "text"
               }
             ],
@@ -193,18 +194,8 @@
             "method": "GET",
             "header": [
               {
-                "key": "x-amvision-principal-id",
-                "value": "{{principalId}}",
-                "type": "text"
-              },
-              {
-                "key": "x-amvision-project-ids",
-                "value": "{{projectId}}",
-                "type": "text"
-              },
-              {
-                "key": "x-amvision-scopes",
-                "value": "datasets:read",
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
                 "type": "text"
               }
             ],
@@ -232,18 +223,8 @@
             "method": "GET",
             "header": [
               {
-                "key": "x-amvision-principal-id",
-                "value": "{{principalId}}",
-                "type": "text"
-              },
-              {
-                "key": "x-amvision-project-ids",
-                "value": "{{projectId}}",
-                "type": "text"
-              },
-              {
-                "key": "x-amvision-scopes",
-                "value": "datasets:read",
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
                 "type": "text"
               }
             ],
@@ -274,10 +255,6 @@
       "value": "http://127.0.0.1:8000"
     },
     {
-      "key": "principalId",
-      "value": "user-1"
-    },
-    {
       "key": "projectId",
       "value": "project-1"
     },
@@ -300,6 +277,10 @@
     {
       "key": "exportFormatId",
       "value": "coco-detection-v1"
+    },
+    {
+      "key": "accessToken",
+      "value": "amvision-default-user-token"
     }
   ]
 }

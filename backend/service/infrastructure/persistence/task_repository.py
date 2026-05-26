@@ -110,6 +110,28 @@ class SqlAlchemyTaskRepository:
 
         return tuple(self._to_task_record_domain(record) for record in records)
 
+    def delete_task(self, task_id: str) -> bool:
+        """按 id 删除一个 TaskRecord。
+
+        参数：
+        - task_id：任务 id。
+
+        返回：
+        - 当任务存在且已删除时返回 True；否则返回 False。
+        """
+
+        try:
+            existing_record = self.session.get(TaskRecordEntity, task_id)
+            if existing_record is None:
+                return False
+            self.session.delete(existing_record)
+            return True
+        except SQLAlchemyError as error:
+            raise PersistenceOperationError(
+                "删除 TaskRecord 失败",
+                details={"error_type": error.__class__.__name__},
+            ) from error
+
     def save_task_attempt(self, task_attempt: TaskAttempt) -> None:
         """保存一个 TaskAttempt。
 

@@ -1,0 +1,79 @@
+{
+  "application": {
+    "format_id": "amvision.flow-application.v1",
+    "application_id": "yolox-deployment-infer-opencv-health-zeromq-app",
+    "display_name": "YOLOX Deployment Infer OpenCV Health ZeroMQ App",
+    "description": "同一个 workflow app 同时接收 HTTP image-base64 和 TriggerSource image-ref；图内显式汇合双入口后返回检测框列表、绘制图片和 deployment health 摘要。",
+    "template_ref": {
+      "template_id": "yolox-deployment-infer-opencv-health-zeromq-template",
+      "template_version": "1.1.0",
+      "source_kind": "json-file",
+      "source_uri": "docs/examples/workflows/yolox_deployment_infer_opencv_health_zeromq.template.json"
+    },
+    "bindings": [
+      {
+        "binding_id": "request_image_base64",
+        "direction": "input",
+        "template_port_id": "request_image_base64",
+        "binding_kind": "api-request",
+        "required": false,
+        "config": {
+          "route": "/api/v1/workflow-apps/yolox/deployment/infer-opencv-health-dual-input",
+          "method": "POST"
+        },
+        "metadata": {
+          "payload_type_id": "image-base64.v1",
+          "trigger_kind": "http-api"
+        }
+      },
+      {
+        "binding_id": "request_image_ref",
+        "direction": "input",
+        "template_port_id": "request_image_ref",
+        "binding_kind": "trigger-source-input",
+        "required": false,
+        "config": {
+          "payload_type_id": "image-ref.v1",
+          "content_type": "application/json"
+        },
+        "metadata": {
+          "payload_type_id": "image-ref.v1",
+          "trigger_kind": "zeromq-topic"
+        }
+      },
+      {
+        "binding_id": "deployment_request",
+        "direction": "input",
+        "template_port_id": "deployment_request",
+        "binding_kind": "workflow-execute-input",
+        "config": {
+          "payload_type_id": "value.v1",
+          "content_type": "application/json"
+        },
+        "metadata": {}
+      },
+      {
+        "binding_id": "http_response",
+        "direction": "output",
+        "template_port_id": "http_response",
+        "binding_kind": "http-response",
+        "config": {
+          "status_code": 200
+        },
+        "metadata": {
+          "payload_type_id": "http-response.v1"
+        }
+      }
+    ],
+    "runtime_mode": "python-json-workflow",
+    "metadata": {
+      "example_kind": "deployment-infer-opencv-health-zeromq",
+      "uses_existing_deployment_instance": true,
+      "intended_saved_object_key": "workflows/projects/{project_id}/applications/yolox-deployment-infer-opencv-health-zeromq-app/application.json",
+      "deployment_instance_id_binding": "deployment_request",
+      "trigger_source_input": "zeromq",
+      "http_input_binding": "request_image_base64",
+      "trigger_source_input_binding": "request_image_ref"
+    }
+  }
+}
