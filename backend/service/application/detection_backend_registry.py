@@ -68,7 +68,10 @@ _DETECTION_BACKEND_REGISTRATIONS: Final[dict[str, DetectionBackendRegistration]]
         display_name="YOLOv8 Detection",
         status=DETECTION_BACKEND_STATUS_REGISTERED,
         features=DetectionBackendFeatureSet(),
-        notes="已经登记到 detection 通用后端层，具体训练、转换、推理和 deployment 实现待接入。",
+        notes=(
+            "模型登记、训练任务入口、转换规划和运行时目标解析已接入 detection 通用层；"
+            "训练执行后端、runtime loader 和 deployment 进程仍待接通。"
+        ),
     ),
 }
 

@@ -11,24 +11,11 @@ from urllib.parse import urlparse
 from uuid import uuid4
 
 from backend.contracts.files.yolox_model_files import YoloXFileNamingContext, build_default_file_name
+from backend.service.domain.files.detection_model_file_types import (
+    DetectionModelFileTypes,
+    YOLOX_DETECTION_FILE_TYPES,
+)
 from backend.service.domain.files.model_file import ModelFile
-from backend.service.domain.files.yolox_file_types import (
-    YOLOX_CHECKPOINT_FILE,
-    YOLOX_LABEL_MAP_FILE,
-    YOLOX_ONNX_FILE,
-    YOLOX_ONNX_OPTIMIZED_FILE,
-    YOLOX_OPENVINO_IR_FILE,
-    YOLOX_RKNN_FILE,
-    YOLOX_TENSORRT_ENGINE_FILE,
-    YOLOX_TRAINING_METRICS_FILE,
-)
-from backend.service.domain.models.model_build_formats import (
-    ONNX_BUILD_FORMAT,
-    ONNX_OPTIMIZED_BUILD_FORMAT,
-    OPENVINO_IR_BUILD_FORMAT,
-    RKNN_BUILD_FORMAT,
-    TENSORRT_ENGINE_BUILD_FORMAT,
-)
 from backend.service.domain.models.model_records import (
     PLATFORM_BASE_MODEL_SCOPE,
     PROJECT_MODEL_SCOPE,
@@ -359,16 +346,19 @@ class SqlAlchemyYoloXModelService:
         self,
         session_factory: SessionFactory,
         spec: YoloXModelSpec = DEFAULT_YOLOX_MODEL_SPEC,
+        file_types: DetectionModelFileTypes = YOLOX_DETECTION_FILE_TYPES,
     ) -> None:
         """初始化基于 SQLAlchemy 的模型登记服务。
 
         参数：
         - session_factory：用于创建数据库会话的工厂。
         - spec：当前使用的 YOLOX 模型规格。
+        - file_types：当前 detection 模型分类使用的文件类型集合。
         """
 
         self.session_factory = session_factory
         self.spec = spec
+        self.file_types = file_types
 
     def register_pretrained(self, request: YoloXPretrainedRegistrationRequest) -> str:
         """登记预置预训练模型并返回模型版本 id。
@@ -403,13 +393,13 @@ class SqlAlchemyYoloXModelService:
                 scope_kind=PLATFORM_BASE_MODEL_SCOPE,
                 model_id=model.model_id,
                 model_version_id=model_version_id,
-                file_type=YOLOX_CHECKPOINT_FILE,
+                file_type=self.file_types.checkpoint_file_type,
                 logical_name=build_default_file_name(
                     YoloXFileNamingContext(
                         model_name=request.model_name,
                         model_scale=request.model_scale,
                         source_version=model_version_id,
-                        file_kind=YOLOX_CHECKPOINT_FILE,
+                        file_kind=self.file_types.checkpoint_file_type,
                         suffix=self._guess_suffix(request.storage_uri),
                     )
                 ),
@@ -934,7 +924,7 @@ class SqlAlchemyYoloXModelService:
         """在文件列表中查找 checkpoint 文件。"""
 
         for model_file in model_files:
-            if model_file.file_type == YOLOX_CHECKPOINT_FILE:
+            if model_file.file_type == self.file_types.checkpoint_file_type:
                 return model_file
 
         return None
@@ -979,21 +969,21 @@ class SqlAlchemyYoloXModelService:
         registered_files = (
             (
                 checkpoint_file_id,
-                YOLOX_CHECKPOINT_FILE,
+                self.file_types.checkpoint_file_type,
                 checkpoint_file_uri or f"registered://{checkpoint_file_id}",
                 build_default_file_name(
                     YoloXFileNamingContext(
                         model_name=model_name,
                         model_scale=model_scale,
                         source_version=model_version_id,
-                        file_kind=YOLOX_CHECKPOINT_FILE,
+                        file_kind=self.file_types.checkpoint_file_type,
                         suffix="pth",
                     )
                 ),
             ),
             (
                 labels_file_id,
-                YOLOX_LABEL_MAP_FILE,
+                self.file_types.label_map_file_type,
                 (
                     labels_file_uri or f"registered://{labels_file_id}"
                     if labels_file_id is not None
@@ -1003,7 +993,7 @@ class SqlAlchemyYoloXModelService:
             ),
             (
                 metrics_file_id,
-                YOLOX_TRAINING_METRICS_FILE,
+                self.file_types.training_metrics_file_type,
                 (
                     metrics_file_uri or f"registered://{metrics_file_id}"
                     if metrics_file_id is not None
@@ -1121,17 +1111,10 @@ class SqlAlchemyYoloXModelService:
         - 对应的 ModelFile 类型。
         """
 
-        build_file_type_map = {
-            ONNX_BUILD_FORMAT: YOLOX_ONNX_FILE,
-            ONNX_OPTIMIZED_BUILD_FORMAT: YOLOX_ONNX_OPTIMIZED_FILE,
-            OPENVINO_IR_BUILD_FORMAT: YOLOX_OPENVINO_IR_FILE,
-            TENSORRT_ENGINE_BUILD_FORMAT: YOLOX_TENSORRT_ENGINE_FILE,
-            RKNN_BUILD_FORMAT: YOLOX_RKNN_FILE,
-        }
-        if build_format not in build_file_type_map:
-            raise ValueError(f"不支持的 build 格式: {build_format}")
-
-        return build_file_type_map[build_format]
+        try:
+            return self.file_types.resolve_build_file_type(build_format)
+        except Exception as error:
+            raise ValueError(f"不支持的 build 格式: {build_format}") from error
 
     @contextmanager
     def _open_unit_of_work(self) -> Iterator[SqlAlchemyUnitOfWork]:

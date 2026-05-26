@@ -2,22 +2,18 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import unquote, urlparse
 
 from backend.service.application.errors import InvalidRequestError, ResourceNotFoundError
+from backend.service.domain.files.detection_model_file_types import (
+    DetectionModelFileTypes,
+    YOLOX_DETECTION_FILE_TYPES,
+)
 from backend.service.application.models.yolox_model_service import SqlAlchemyYoloXModelService
 from backend.service.domain.files.model_file import ModelFile
-from backend.service.domain.files.yolox_file_types import (
-    YOLOX_CHECKPOINT_FILE,
-    YOLOX_LABEL_MAP_FILE,
-    YOLOX_ONNX_FILE,
-    YOLOX_ONNX_OPTIMIZED_FILE,
-    YOLOX_OPENVINO_IR_FILE,
-    YOLOX_RKNN_FILE,
-    YOLOX_TENSORRT_ENGINE_FILE,
-)
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 
@@ -34,13 +30,6 @@ _DEFAULT_DEVICE_NAME_BY_BACKEND = {
     "openvino": "auto",
     "tensorrt": "cuda:0",
     "rknn": "npu",
-}
-_MODEL_BUILD_FILE_TYPE_MAP = {
-    "onnx": YOLOX_ONNX_FILE,
-    "onnx-optimized": YOLOX_ONNX_OPTIMIZED_FILE,
-    "openvino-ir": YOLOX_OPENVINO_IR_FILE,
-    "tensorrt-engine": YOLOX_TENSORRT_ENGINE_FILE,
-    "rknn": YOLOX_RKNN_FILE,
 }
 _MODEL_BUILD_RUNTIME_BACKEND_MAP = {
     "onnx": "onnxruntime",
@@ -241,16 +230,32 @@ def deserialize_runtime_target_snapshot(
 class SqlAlchemyYoloXRuntimeTargetResolver:
     """解析 ModelVersion 或 ModelBuild 对应的运行时快照。"""
 
-    def __init__(self, *, session_factory: SessionFactory, dataset_storage: LocalDatasetStorage) -> None:
+    def __init__(
+        self,
+        *,
+        session_factory: SessionFactory,
+        dataset_storage: LocalDatasetStorage,
+        file_types: DetectionModelFileTypes = YOLOX_DETECTION_FILE_TYPES,
+        model_service_factory: Callable[[SessionFactory], SqlAlchemyYoloXModelService] | None = None,
+    ) -> None:
         """初始化运行时快照解析服务。
 
         参数：
         - session_factory：数据库会话工厂。
         - dataset_storage：本地文件存储服务。
+        - file_types：当前 detection 模型分类使用的文件类型集合。
+        - model_service_factory：用于构建模型登记服务的工厂。
         """
 
         self.session_factory = session_factory
         self.dataset_storage = dataset_storage
+        self.file_types = file_types
+        self.model_service_factory = model_service_factory or (
+            lambda current_session_factory: SqlAlchemyYoloXModelService(
+                session_factory=current_session_factory,
+                file_types=file_types,
+            )
+        )
 
     def resolve_target(self, request: RuntimeTargetResolveRequest) -> RuntimeTargetSnapshot:
         """解析一次运行时快照。
@@ -267,7 +272,7 @@ class SqlAlchemyYoloXRuntimeTargetResolver:
         if not _normalize_optional_str(request.model_version_id) and not _normalize_optional_str(request.model_build_id):
             raise InvalidRequestError("model_version_id 和 model_build_id 至少需要提供一个")
 
-        model_service = SqlAlchemyYoloXModelService(session_factory=self.session_factory)
+        model_service = self.model_service_factory(self.session_factory)
         model_build = None
         if _normalize_optional_str(request.model_build_id) is not None:
             model_build = model_service.get_model_build(_normalize_optional_str(request.model_build_id) or "")
@@ -329,12 +334,18 @@ class SqlAlchemyYoloXRuntimeTargetResolver:
             )
 
         model_files = model_service.list_model_files(model_version_id=model_version.model_version_id)
-        checkpoint_file = find_model_file(model_files=model_files, file_type=YOLOX_CHECKPOINT_FILE)
-        labels_file = find_model_file(model_files=model_files, file_type=YOLOX_LABEL_MAP_FILE)
+        checkpoint_file = find_model_file(
+            model_files=model_files,
+            file_type=self.file_types.checkpoint_file_type,
+        )
+        labels_file = find_model_file(
+            model_files=model_files,
+            file_type=self.file_types.label_map_file_type,
+        )
         if model_build is None:
             runtime_artifact_file = require_model_file(
                 model_files=model_files,
-                file_type=YOLOX_CHECKPOINT_FILE,
+                file_type=self.file_types.checkpoint_file_type,
                 owner_kind="ModelVersion",
                 owner_id=model_version.model_version_id,
                 missing_message="当前 ModelVersion 缺少运行时所需文件",
@@ -342,7 +353,10 @@ class SqlAlchemyYoloXRuntimeTargetResolver:
         else:
             runtime_artifact_file = require_model_file(
                 model_files=model_service.list_model_files(model_build_id=model_build.model_build_id),
-                file_type=resolve_model_build_file_type(model_build.build_format),
+                file_type=resolve_model_build_file_type(
+                    build_format=model_build.build_format,
+                    file_types=self.file_types,
+                ),
                 owner_kind="ModelBuild",
                 owner_id=model_build.model_build_id,
                 missing_message="当前 ModelBuild 缺少运行时所需文件",
@@ -632,15 +646,22 @@ def resolve_runtime_backend(*, runtime_backend: str | None, model_build_format: 
     return expected_backend
 
 
-def resolve_model_build_file_type(build_format: str) -> str:
+def resolve_model_build_file_type(
+    *,
+    build_format: str,
+    file_types: DetectionModelFileTypes = YOLOX_DETECTION_FILE_TYPES,
+) -> str:
     """把 ModelBuild 的 build_format 映射为运行时文件类型。"""
 
-    if build_format not in _MODEL_BUILD_FILE_TYPE_MAP:
+    try:
+        return file_types.resolve_build_file_type(build_format)
+    except InvalidRequestError:
+        raise
+    except Exception as error:
         raise InvalidRequestError(
             "不支持的 ModelBuild build_format",
             details={"build_format": build_format},
-        )
-    return _MODEL_BUILD_FILE_TYPE_MAP[build_format]
+        ) from error
 
 
 def resolve_model_build_runtime_backend(build_format: str) -> str:

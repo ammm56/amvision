@@ -6,12 +6,9 @@ from dataclasses import dataclass, field
 from typing import Literal, Protocol
 
 from backend.service.application.errors import InvalidRequestError
-from backend.service.domain.files.yolox_file_types import (
-    YOLOX_ONNX_FILE,
-    YOLOX_ONNX_OPTIMIZED_FILE,
-    YOLOX_OPENVINO_IR_FILE,
-    YOLOX_RKNN_FILE,
-    YOLOX_TENSORRT_ENGINE_FILE,
+from backend.service.domain.files.detection_model_file_types import (
+    DetectionModelFileTypes,
+    YOLOX_DETECTION_FILE_TYPES,
 )
 from backend.service.domain.tasks.yolox_task_specs import YoloXConversionTarget
 
@@ -115,6 +112,15 @@ _DOWNSTREAM_TARGETS_REQUIRING_OPTIMIZED_ONNX = frozenset({
 class DefaultYoloXConversionPlanner:
     """根据稳定 build 图谱生成 YOLOX 转换计划。"""
 
+    def __init__(
+        self,
+        *,
+        file_types: DetectionModelFileTypes = YOLOX_DETECTION_FILE_TYPES,
+    ) -> None:
+        """初始化转换规划器。"""
+
+        self.file_types = file_types
+
     def build_plan(self, request: YoloXConversionPlanningRequest) -> YoloXConversionPlan:
         """构建转换计划。
 
@@ -140,8 +146,8 @@ class DefaultYoloXConversionPlanner:
                     kind="export-onnx",
                     source_format="pytorch-checkpoint",
                     target_format="onnx",
-                    required_file_type="yolox-checkpoint",
-                    produced_file_type=YOLOX_ONNX_FILE,
+                    required_file_type=self.file_types.checkpoint_file_type,
+                    produced_file_type=self.file_types.onnx_file_type,
                 )
             )
             planned_steps.append(
@@ -149,7 +155,7 @@ class DefaultYoloXConversionPlanner:
                     kind="validate-onnx",
                     source_format="onnx",
                     target_format="onnx",
-                    required_file_type=YOLOX_ONNX_FILE,
+                    required_file_type=self.file_types.onnx_file_type,
                     produced_file_type=None,
                 )
             )
@@ -160,8 +166,8 @@ class DefaultYoloXConversionPlanner:
                     kind="optimize-onnx",
                     source_format="onnx",
                     target_format="onnx-optimized",
-                    required_file_type=YOLOX_ONNX_FILE,
-                    produced_file_type=YOLOX_ONNX_OPTIMIZED_FILE,
+                    required_file_type=self.file_types.onnx_file_type,
+                    produced_file_type=self.file_types.onnx_optimized_file_type,
                 )
             )
 
@@ -171,8 +177,8 @@ class DefaultYoloXConversionPlanner:
                     kind="build-openvino-ir",
                     source_format="onnx-optimized",
                     target_format="openvino-ir",
-                    required_file_type=YOLOX_ONNX_OPTIMIZED_FILE,
-                    produced_file_type=YOLOX_OPENVINO_IR_FILE,
+                    required_file_type=self.file_types.onnx_optimized_file_type,
+                    produced_file_type=self.file_types.openvino_ir_file_type,
                 )
             )
 
@@ -182,8 +188,8 @@ class DefaultYoloXConversionPlanner:
                     kind="build-tensorrt-engine",
                     source_format="onnx-optimized",
                     target_format="tensorrt-engine",
-                    required_file_type=YOLOX_ONNX_OPTIMIZED_FILE,
-                    produced_file_type=YOLOX_TENSORRT_ENGINE_FILE,
+                    required_file_type=self.file_types.onnx_optimized_file_type,
+                    produced_file_type=self.file_types.tensorrt_engine_file_type,
                 )
             )
 
@@ -193,8 +199,8 @@ class DefaultYoloXConversionPlanner:
                     kind="build-rknn",
                     source_format="onnx-optimized",
                     target_format="rknn",
-                    required_file_type=YOLOX_ONNX_OPTIMIZED_FILE,
-                    produced_file_type=YOLOX_RKNN_FILE,
+                    required_file_type=self.file_types.onnx_optimized_file_type,
+                    produced_file_type=self.file_types.rknn_file_type,
                 )
             )
 
