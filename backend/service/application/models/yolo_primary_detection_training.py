@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import json
+import math
 import random
 from collections.abc import Callable
 from contextlib import nullcontext, redirect_stdout
@@ -24,7 +25,7 @@ from backend.service.application.runtime.detection_runtime_support import batche
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 
 
-YOLO_PRIMARY_BOOTSTRAP_IMPLEMENTATION_MODE = "yolo-primary-detection-bootstrap"
+YOLO_PRIMARY_BOOTSTRAP_IMPLEMENTATION_MODE = "yolo-primary-detection"
 YOLO_PRIMARY_DEFAULT_INPUT_SIZE = (640, 640)
 YOLO_PRIMARY_DEFAULT_BATCH_SIZE = 1
 YOLO_PRIMARY_DEFAULT_MAX_EPOCHS = 1
@@ -338,6 +339,7 @@ def run_yolo_primary_detection_training(
         "grad_clip_norm",
         default=YOLO_PRIMARY_DEFAULT_GRAD_CLIP_NORM,
     )
+    validation_split_name = validation_split.name if validation_split is not None else None
 
     model = build_yolo_primary_detection_model(
         model_type=request.model_type,
@@ -387,17 +389,46 @@ def run_yolo_primary_detection_training(
             imports=imports,
             model=model,
             optimizer=optimizer,
+            scheduler=scheduler,
+            scaler=scaler,
             checkpoint_path=request.resume_checkpoint_path,
             expected_model_type=request.model_type,
             expected_model_scale=request.model_scale,
             expected_num_classes=len(category_names),
             expected_input_size=input_size,
+            expected_batch_size=batch_size,
+            expected_max_epochs=max_epochs,
+            expected_precision=runtime_precision,
+            expected_validation_split_name=validation_split_name,
+            expected_evaluation_interval=evaluation_interval,
+            expected_evaluation_confidence_threshold=(
+                evaluation_confidence_threshold
+                if validation_split is not None and bool(validation_samples)
+                else None
+            ),
+            expected_evaluation_nms_threshold=(
+                evaluation_nms_threshold
+                if validation_split is not None and bool(validation_samples)
+                else None
+            ),
+            expected_learning_rate=learning_rate,
+            expected_weight_decay=weight_decay,
+            expected_class_loss_weight=class_loss_weight,
+            expected_box_loss_weight=box_loss_weight,
+            expected_dfl_loss_weight=dfl_loss_weight,
+            expected_assign_topk=assign_topk,
+            expected_assign_alpha=assign_alpha,
+            expected_assign_beta=assign_beta,
+            expected_min_lr_ratio=min_lr_ratio,
+            expected_grad_clip_norm=grad_clip_norm,
         )
         warm_start_summary = dict(resume_state.warm_start_summary)
 
     model.to(device)
     if runtime_precision == "fp16":
         model.half()
+    if resume_state is not None:
+        _move_optimizer_state_to_device(optimizer=optimizer, device=device)
     autocast_context = _build_autocast_context(
         imports=imports,
         device=device,
@@ -419,7 +450,11 @@ def run_yolo_primary_detection_training(
         if resume_state is not None
         else []
     )
-    best_metric_name = "map50_95" if validation_split is not None else "train_loss"
+    best_metric_name = (
+        resume_state.best_metric_name
+        if resume_state is not None and resume_state.best_metric_name.strip()
+        else ("map50_95" if validation_split is not None else "train_loss")
+    )
     best_metric_value = (
         resume_state.best_metric_value
         if resume_state is not None and resume_state.best_metric_value is not None
@@ -550,37 +585,79 @@ def run_yolo_primary_detection_training(
             evaluated_epochs.append(epoch)
             current_metric_value = validation_metrics[best_metric_name]
 
-        latest_checkpoint_bytes = _build_checkpoint_bytes(
-            imports=imports,
+        improved_best = False
+        candidate_best_metric_value = best_metric_value
+        if validation_ran and current_metric_value is not None:
+            if current_metric_value >= best_metric_value:
+                improved_best = True
+                candidate_best_metric_value = current_metric_value
+        elif train_metrics["loss"] <= best_metric_value:
+            improved_best = True
+            candidate_best_metric_value = train_metrics["loss"]
+
+        scheduler.step()
+        previous_best_checkpoint_state = (
+            _load_checkpoint_state_from_bytes(imports=imports, checkpoint_bytes=best_checkpoint_bytes)
+            if best_checkpoint_bytes
+            else None
+        )
+        current_checkpoint_state = _build_checkpoint_state(
             model=model,
             optimizer=optimizer,
+            scheduler=scheduler,
+            scaler=scaler,
             model_type=request.model_type,
             model_scale=request.model_scale,
             category_names=category_names,
             input_size=input_size,
+            batch_size=batch_size,
+            max_epochs=max_epochs,
             epoch=epoch,
             precision=runtime_precision,
+            validation_split_name=validation_split_name,
+            evaluation_interval=evaluation_interval,
+            evaluation_confidence_threshold=(
+                evaluation_confidence_threshold
+                if validation_split is not None and bool(validation_samples)
+                else None
+            ),
+            evaluation_nms_threshold=(
+                evaluation_nms_threshold
+                if validation_split is not None and bool(validation_samples)
+                else None
+            ),
+            learning_rate=learning_rate,
+            weight_decay=weight_decay,
+            class_loss_weight=class_loss_weight,
+            box_loss_weight=box_loss_weight,
+            dfl_loss_weight=dfl_loss_weight,
+            assign_topk=assign_topk,
+            assign_alpha=assign_alpha,
+            assign_beta=assign_beta,
+            min_lr_ratio=min_lr_ratio,
+            grad_clip_norm=grad_clip_norm,
             metrics_history=metrics_history,
             validation_history=validation_history,
             evaluated_epochs=tuple(evaluated_epochs),
             warm_start_summary=warm_start_summary,
             implementation_mode=request.implementation_mode,
             best_metric_name=best_metric_name,
-            best_metric_value=best_metric_value,
-            best_checkpoint_state=(
-                _load_checkpoint_state_from_bytes(imports=imports, checkpoint_bytes=best_checkpoint_bytes)
-                if best_checkpoint_bytes
-                else None
-            ),
+            best_metric_value=candidate_best_metric_value,
+            best_checkpoint_state=previous_best_checkpoint_state,
         )
-        if validation_ran and current_metric_value is not None:
-            if current_metric_value >= best_metric_value:
-                best_metric_value = current_metric_value
-                best_checkpoint_bytes = latest_checkpoint_bytes
-        elif train_metrics["loss"] <= best_metric_value:
-            best_metric_value = train_metrics["loss"]
-            best_checkpoint_bytes = latest_checkpoint_bytes
-        scheduler.step()
+        if improved_best:
+            current_best_checkpoint_state = dict(current_checkpoint_state)
+            current_best_checkpoint_state["best_checkpoint_state"] = None
+            current_checkpoint_state["best_checkpoint_state"] = current_best_checkpoint_state
+            best_metric_value = candidate_best_metric_value
+            best_checkpoint_bytes = _build_checkpoint_bytes_from_state(
+                imports=imports,
+                checkpoint_state=current_best_checkpoint_state,
+            )
+        latest_checkpoint_bytes = _build_checkpoint_bytes_from_state(
+            imports=imports,
+            checkpoint_state=current_checkpoint_state,
+        )
 
         control_command = None
         if request.epoch_callback is not None:
@@ -691,10 +768,36 @@ def run_yolo_primary_detection_training(
             "learning_rate": learning_rate,
             "weight_decay": weight_decay,
         },
+        "scheduler": {
+            "name": "CosineAnnealingLR",
+            "min_lr_ratio": min_lr_ratio,
+            "latest_learning_rate": float(optimizer.param_groups[0]["lr"]),
+        },
+        "evaluation": {
+            "split_name": validation_split_name,
+            "confidence_threshold": (
+                evaluation_confidence_threshold
+                if validation_split is not None and bool(validation_samples)
+                else None
+            ),
+            "nms_threshold": (
+                evaluation_nms_threshold
+                if validation_split is not None and bool(validation_samples)
+                else None
+            ),
+        },
         "loss_weights": {
             "class_loss_weight": class_loss_weight,
             "box_loss_weight": box_loss_weight,
             "dfl_loss_weight": dfl_loss_weight,
+        },
+        "assignment": {
+            "assign_topk": assign_topk,
+            "assign_alpha": assign_alpha,
+            "assign_beta": assign_beta,
+        },
+        "gradient_control": {
+            "grad_clip_norm": grad_clip_norm,
         },
     }
     return YoloPrimaryDetectionTrainingExecutionResult(
@@ -980,11 +1083,30 @@ def _load_resume_checkpoint(
     imports: _TrainingImports,
     model: Any,
     optimizer: Any,
+    scheduler: Any,
+    scaler: Any,
     checkpoint_path: Path,
     expected_model_type: str,
     expected_model_scale: str,
     expected_num_classes: int,
     expected_input_size: tuple[int, int],
+    expected_batch_size: int,
+    expected_max_epochs: int,
+    expected_precision: str,
+    expected_validation_split_name: str | None,
+    expected_evaluation_interval: int,
+    expected_evaluation_confidence_threshold: float | None,
+    expected_evaluation_nms_threshold: float | None,
+    expected_learning_rate: float,
+    expected_weight_decay: float,
+    expected_class_loss_weight: float,
+    expected_box_loss_weight: float,
+    expected_dfl_loss_weight: float,
+    expected_assign_topk: int,
+    expected_assign_alpha: float,
+    expected_assign_beta: float,
+    expected_min_lr_ratio: float,
+    expected_grad_clip_norm: float,
 ) -> _LoadedResumeState:
     """从 latest checkpoint 恢复训练状态。"""
 
@@ -997,11 +1119,36 @@ def _load_resume_checkpoint(
         expected_model_scale=expected_model_scale,
         expected_num_classes=expected_num_classes,
         expected_input_size=expected_input_size,
+        expected_batch_size=expected_batch_size,
+        expected_max_epochs=expected_max_epochs,
+        expected_precision=expected_precision,
+        expected_validation_split_name=expected_validation_split_name,
+        expected_evaluation_interval=expected_evaluation_interval,
+        expected_evaluation_confidence_threshold=expected_evaluation_confidence_threshold,
+        expected_evaluation_nms_threshold=expected_evaluation_nms_threshold,
+        expected_learning_rate=expected_learning_rate,
+        expected_weight_decay=expected_weight_decay,
+        expected_class_loss_weight=expected_class_loss_weight,
+        expected_box_loss_weight=expected_box_loss_weight,
+        expected_dfl_loss_weight=expected_dfl_loss_weight,
+        expected_assign_topk=expected_assign_topk,
+        expected_assign_alpha=expected_assign_alpha,
+        expected_assign_beta=expected_assign_beta,
+        expected_min_lr_ratio=expected_min_lr_ratio,
+        expected_grad_clip_norm=expected_grad_clip_norm,
     )
     model.load_state_dict(dict(checkpoint_payload.get("model_state_dict") or {}))
     optimizer_state_dict = checkpoint_payload.get("optimizer_state_dict")
     if isinstance(optimizer_state_dict, dict):
         optimizer.load_state_dict(optimizer_state_dict)
+    scheduler_state_dict = checkpoint_payload.get("scheduler_state_dict")
+    if not isinstance(scheduler_state_dict, dict):
+        raise InvalidRequestError("resume checkpoint 缺少 scheduler_state_dict")
+    scheduler.load_state_dict(scheduler_state_dict)
+    scaler_state_dict = checkpoint_payload.get("scaler_state_dict")
+    if not isinstance(scaler_state_dict, dict):
+        raise InvalidRequestError("resume checkpoint 缺少 scaler_state_dict")
+    scaler.load_state_dict(scaler_state_dict)
 
     raw_resume_epoch = checkpoint_payload.get("epoch")
     resume_epoch = int(raw_resume_epoch) if isinstance(raw_resume_epoch, int) and raw_resume_epoch >= 0 else 0
@@ -1052,6 +1199,23 @@ def _validate_resume_checkpoint(
     expected_model_scale: str,
     expected_num_classes: int,
     expected_input_size: tuple[int, int],
+    expected_batch_size: int,
+    expected_max_epochs: int,
+    expected_precision: str,
+    expected_validation_split_name: str | None,
+    expected_evaluation_interval: int,
+    expected_evaluation_confidence_threshold: float | None,
+    expected_evaluation_nms_threshold: float | None,
+    expected_learning_rate: float,
+    expected_weight_decay: float,
+    expected_class_loss_weight: float,
+    expected_box_loss_weight: float,
+    expected_dfl_loss_weight: float,
+    expected_assign_topk: int,
+    expected_assign_alpha: float,
+    expected_assign_beta: float,
+    expected_min_lr_ratio: float,
+    expected_grad_clip_norm: float,
 ) -> None:
     """校验恢复训练使用的 checkpoint 是否与当前请求匹配。"""
 
@@ -1059,6 +1223,9 @@ def _validate_resume_checkpoint(
     checkpoint_model_scale = checkpoint_payload.get("model_scale")
     checkpoint_category_names = checkpoint_payload.get("category_names")
     checkpoint_input_size = checkpoint_payload.get("input_size")
+    checkpoint_batch_size = checkpoint_payload.get("batch_size")
+    checkpoint_max_epochs = checkpoint_payload.get("max_epochs")
+    checkpoint_precision = checkpoint_payload.get("precision")
     if checkpoint_model_type != expected_model_type:
         raise InvalidRequestError(
             "resume checkpoint 的 model_type 与当前训练请求不一致",
@@ -1099,6 +1266,177 @@ def _validate_resume_checkpoint(
                 "expected_input_size": list(expected_input_size),
             },
         )
+    if checkpoint_batch_size != expected_batch_size:
+        raise InvalidRequestError(
+            "resume checkpoint 的 batch_size 与当前训练请求不一致",
+            details={
+                "checkpoint_batch_size": checkpoint_batch_size,
+                "expected_batch_size": expected_batch_size,
+            },
+        )
+    if checkpoint_max_epochs != expected_max_epochs:
+        raise InvalidRequestError(
+            "resume checkpoint 的 max_epochs 与当前训练请求不一致",
+            details={
+                "checkpoint_max_epochs": checkpoint_max_epochs,
+                "expected_max_epochs": expected_max_epochs,
+            },
+        )
+    if checkpoint_precision != expected_precision:
+        raise InvalidRequestError(
+            "resume checkpoint 的 precision 与当前训练请求不一致",
+            details={
+                "checkpoint_precision": checkpoint_precision,
+                "expected_precision": expected_precision,
+            },
+        )
+    _validate_resume_validation_configuration(
+        checkpoint_payload=checkpoint_payload,
+        expected_validation_split_name=expected_validation_split_name,
+        expected_evaluation_interval=expected_evaluation_interval,
+        expected_evaluation_confidence_threshold=expected_evaluation_confidence_threshold,
+        expected_evaluation_nms_threshold=expected_evaluation_nms_threshold,
+    )
+    _assert_resume_required_float_matches(
+        checkpoint_value=checkpoint_payload.get("learning_rate"),
+        expected_value=expected_learning_rate,
+        field_name="learning_rate",
+    )
+    _assert_resume_required_float_matches(
+        checkpoint_value=checkpoint_payload.get("weight_decay"),
+        expected_value=expected_weight_decay,
+        field_name="weight_decay",
+    )
+    _assert_resume_required_float_matches(
+        checkpoint_value=checkpoint_payload.get("class_loss_weight"),
+        expected_value=expected_class_loss_weight,
+        field_name="class_loss_weight",
+    )
+    _assert_resume_required_float_matches(
+        checkpoint_value=checkpoint_payload.get("box_loss_weight"),
+        expected_value=expected_box_loss_weight,
+        field_name="box_loss_weight",
+    )
+    _assert_resume_required_float_matches(
+        checkpoint_value=checkpoint_payload.get("dfl_loss_weight"),
+        expected_value=expected_dfl_loss_weight,
+        field_name="dfl_loss_weight",
+    )
+    _assert_resume_required_float_matches(
+        checkpoint_value=checkpoint_payload.get("assign_alpha"),
+        expected_value=expected_assign_alpha,
+        field_name="assign_alpha",
+    )
+    _assert_resume_required_float_matches(
+        checkpoint_value=checkpoint_payload.get("assign_beta"),
+        expected_value=expected_assign_beta,
+        field_name="assign_beta",
+    )
+    _assert_resume_required_float_matches(
+        checkpoint_value=checkpoint_payload.get("min_lr_ratio"),
+        expected_value=expected_min_lr_ratio,
+        field_name="min_lr_ratio",
+    )
+    _assert_resume_required_float_matches(
+        checkpoint_value=checkpoint_payload.get("grad_clip_norm"),
+        expected_value=expected_grad_clip_norm,
+        field_name="grad_clip_norm",
+    )
+    _assert_resume_required_int_matches(
+        checkpoint_value=checkpoint_payload.get("assign_topk"),
+        expected_value=expected_assign_topk,
+        field_name="assign_topk",
+    )
+
+
+def _validate_resume_validation_configuration(
+    *,
+    checkpoint_payload: dict[str, object],
+    expected_validation_split_name: str | None,
+    expected_evaluation_interval: int,
+    expected_evaluation_confidence_threshold: float | None,
+    expected_evaluation_nms_threshold: float | None,
+) -> None:
+    """校验 resume checkpoint 中记录的验证配置是否与当前任务一致。"""
+
+    checkpoint_validation_split_name = checkpoint_payload.get("validation_split_name")
+    if checkpoint_validation_split_name != expected_validation_split_name:
+        raise InvalidRequestError(
+            "resume checkpoint 的 validation_split_name 与当前训练请求不一致",
+            details={
+                "checkpoint_validation_split_name": checkpoint_validation_split_name,
+                "expected_validation_split_name": expected_validation_split_name,
+            },
+        )
+    if expected_validation_split_name is None:
+        return
+    checkpoint_evaluation_interval = checkpoint_payload.get("evaluation_interval")
+    if checkpoint_evaluation_interval != expected_evaluation_interval:
+        raise InvalidRequestError(
+            "resume checkpoint 的 evaluation_interval 与当前训练请求不一致",
+            details={
+                "checkpoint_evaluation_interval": checkpoint_evaluation_interval,
+                "expected_evaluation_interval": expected_evaluation_interval,
+            },
+        )
+    _assert_resume_optional_float_matches(
+        checkpoint_value=checkpoint_payload.get("evaluation_confidence_threshold"),
+        expected_value=expected_evaluation_confidence_threshold,
+        field_name="evaluation_confidence_threshold",
+    )
+    _assert_resume_optional_float_matches(
+        checkpoint_value=checkpoint_payload.get("evaluation_nms_threshold"),
+        expected_value=expected_evaluation_nms_threshold,
+        field_name="evaluation_nms_threshold",
+    )
+
+
+def _assert_resume_required_float_matches(
+    *,
+    checkpoint_value: object,
+    expected_value: float,
+    field_name: str,
+) -> None:
+    """断言 resume checkpoint 中的必填浮点配置与当前任务一致。"""
+
+    if not isinstance(checkpoint_value, int | float) or not math.isclose(
+        float(checkpoint_value),
+        float(expected_value),
+        rel_tol=0.0,
+        abs_tol=1e-12,
+    ):
+        raise InvalidRequestError(f"resume checkpoint 的 {field_name} 与当前训练请求不一致")
+
+
+def _assert_resume_optional_float_matches(
+    *,
+    checkpoint_value: object,
+    expected_value: float | None,
+    field_name: str,
+) -> None:
+    """断言 resume checkpoint 中的可选浮点配置与当前任务一致。"""
+
+    if expected_value is None:
+        if checkpoint_value is not None:
+            raise InvalidRequestError(f"resume checkpoint 的 {field_name} 与当前训练请求不一致")
+        return
+    _assert_resume_required_float_matches(
+        checkpoint_value=checkpoint_value,
+        expected_value=expected_value,
+        field_name=field_name,
+    )
+
+
+def _assert_resume_required_int_matches(
+    *,
+    checkpoint_value: object,
+    expected_value: int,
+    field_name: str,
+) -> None:
+    """断言 resume checkpoint 中的必填整型配置与当前任务一致。"""
+
+    if not isinstance(checkpoint_value, int) or int(checkpoint_value) != int(expected_value):
+        raise InvalidRequestError(f"resume checkpoint 的 {field_name} 与当前训练请求不一致")
 
 
 def _build_autocast_context(
@@ -1938,17 +2276,123 @@ def _normalize_evaluated_epochs(value: object) -> tuple[int, ...]:
     return tuple(item for item in value if isinstance(item, int) and item > 0)
 
 
+def _move_optimizer_state_to_device(*, optimizer: Any, device: str) -> None:
+    """把 optimizer 状态里的张量迁移到当前训练设备。"""
+
+    for state in optimizer.state.values():
+        if not isinstance(state, dict):
+            continue
+        for key, value in tuple(state.items()):
+            if hasattr(value, "to"):
+                state[key] = value.to(device=device)
+
+
+def _build_checkpoint_state(
+    *,
+    model: Any,
+    optimizer: Any,
+    scheduler: Any,
+    scaler: Any,
+    model_type: str,
+    model_scale: str,
+    category_names: tuple[str, ...],
+    input_size: tuple[int, int],
+    batch_size: int,
+    max_epochs: int,
+    epoch: int,
+    precision: str,
+    validation_split_name: str | None,
+    evaluation_interval: int | None,
+    evaluation_confidence_threshold: float | None,
+    evaluation_nms_threshold: float | None,
+    learning_rate: float,
+    weight_decay: float,
+    class_loss_weight: float,
+    box_loss_weight: float,
+    dfl_loss_weight: float,
+    assign_topk: int,
+    assign_alpha: float,
+    assign_beta: float,
+    min_lr_ratio: float,
+    grad_clip_norm: float,
+    metrics_history: list[dict[str, object]],
+    validation_history: list[dict[str, object]],
+    evaluated_epochs: tuple[int, ...],
+    warm_start_summary: dict[str, object],
+    implementation_mode: str,
+    best_metric_name: str,
+    best_metric_value: float | None,
+    best_checkpoint_state: dict[str, object] | None,
+) -> dict[str, object]:
+    """构建一个可直接序列化保存的项目内训练 checkpoint 状态。"""
+
+    return {
+        "model_state_dict": model.state_dict(),
+        "optimizer_state_dict": optimizer.state_dict(),
+        "scheduler_state_dict": scheduler.state_dict(),
+        "scaler_state_dict": scaler.state_dict(),
+        "model_type": model_type,
+        "model_scale": model_scale,
+        "category_names": list(category_names),
+        "input_size": list(input_size),
+        "batch_size": batch_size,
+        "max_epochs": max_epochs,
+        "epoch": epoch,
+        "precision": precision,
+        "validation_split_name": validation_split_name,
+        "evaluation_interval": evaluation_interval,
+        "evaluation_confidence_threshold": evaluation_confidence_threshold,
+        "evaluation_nms_threshold": evaluation_nms_threshold,
+        "learning_rate": learning_rate,
+        "weight_decay": weight_decay,
+        "class_loss_weight": class_loss_weight,
+        "box_loss_weight": box_loss_weight,
+        "dfl_loss_weight": dfl_loss_weight,
+        "assign_topk": assign_topk,
+        "assign_alpha": assign_alpha,
+        "assign_beta": assign_beta,
+        "min_lr_ratio": min_lr_ratio,
+        "grad_clip_norm": grad_clip_norm,
+        "metrics_history": metrics_history,
+        "validation_history": validation_history,
+        "evaluated_epochs": list(evaluated_epochs),
+        "warm_start": warm_start_summary,
+        "implementation_mode": implementation_mode,
+        "best_metric_name": best_metric_name,
+        "best_metric_value": best_metric_value,
+        "best_checkpoint_state": best_checkpoint_state,
+    }
+
+
 def _build_checkpoint_bytes(
     *,
     imports: _TrainingImports,
     model: Any,
     optimizer: Any,
+    scheduler: Any,
+    scaler: Any,
     model_type: str,
     model_scale: str,
     category_names: tuple[str, ...],
     input_size: tuple[int, int],
+    batch_size: int,
+    max_epochs: int,
     epoch: int,
     precision: str,
+    validation_split_name: str | None,
+    evaluation_interval: int | None,
+    evaluation_confidence_threshold: float | None,
+    evaluation_nms_threshold: float | None,
+    learning_rate: float,
+    weight_decay: float,
+    class_loss_weight: float,
+    box_loss_weight: float,
+    dfl_loss_weight: float,
+    assign_topk: int,
+    assign_alpha: float,
+    assign_beta: float,
+    min_lr_ratio: float,
+    grad_clip_norm: float,
     metrics_history: list[dict[str, object]],
     validation_history: list[dict[str, object]],
     evaluated_epochs: tuple[int, ...],
@@ -1960,28 +2404,44 @@ def _build_checkpoint_bytes(
 ) -> bytes:
     """把当前训练状态导出为项目内 checkpoint。"""
 
-    buffer = io.BytesIO()
-    imports.torch.save(
-        {
-            "model_state_dict": model.state_dict(),
-            "optimizer_state_dict": optimizer.state_dict(),
-            "model_type": model_type,
-            "model_scale": model_scale,
-            "category_names": list(category_names),
-            "input_size": list(input_size),
-            "epoch": epoch,
-            "precision": precision,
-            "metrics_history": metrics_history,
-            "validation_history": validation_history,
-            "evaluated_epochs": list(evaluated_epochs),
-            "warm_start": warm_start_summary,
-            "implementation_mode": implementation_mode,
-            "best_metric_name": best_metric_name,
-            "best_metric_value": best_metric_value,
-            "best_checkpoint_state": best_checkpoint_state,
-        },
-        buffer,
+    checkpoint_state = _build_checkpoint_state(
+        model=model,
+        optimizer=optimizer,
+        scheduler=scheduler,
+        scaler=scaler,
+        model_type=model_type,
+        model_scale=model_scale,
+        category_names=category_names,
+        input_size=input_size,
+        batch_size=batch_size,
+        max_epochs=max_epochs,
+        epoch=epoch,
+        precision=precision,
+        validation_split_name=validation_split_name,
+        evaluation_interval=evaluation_interval,
+        evaluation_confidence_threshold=evaluation_confidence_threshold,
+        evaluation_nms_threshold=evaluation_nms_threshold,
+        learning_rate=learning_rate,
+        weight_decay=weight_decay,
+        class_loss_weight=class_loss_weight,
+        box_loss_weight=box_loss_weight,
+        dfl_loss_weight=dfl_loss_weight,
+        assign_topk=assign_topk,
+        assign_alpha=assign_alpha,
+        assign_beta=assign_beta,
+        min_lr_ratio=min_lr_ratio,
+        grad_clip_norm=grad_clip_norm,
+        metrics_history=metrics_history,
+        validation_history=validation_history,
+        evaluated_epochs=evaluated_epochs,
+        warm_start_summary=warm_start_summary,
+        implementation_mode=implementation_mode,
+        best_metric_name=best_metric_name,
+        best_metric_value=best_metric_value,
+        best_checkpoint_state=best_checkpoint_state,
     )
+    buffer = io.BytesIO()
+    imports.torch.save(checkpoint_state, buffer)
     return buffer.getvalue()
 
 
