@@ -9,32 +9,35 @@ from pydantic import BaseModel, Field
 
 from backend.service.api.deps.auth import AuthenticatedPrincipal, require_scopes
 from backend.service.api.deps.db import get_session_factory
-from backend.service.api.deps.storage import get_dataset_storage
-from backend.service.api.deps.yolox_deployment_process_supervisor import (
-    get_yolox_async_inference_gateway_dispatcher_registry,
-    get_yolox_async_deployment_process_supervisor,
-    get_yolox_sync_deployment_process_supervisor,
+from backend.service.api.deps.detection_deployment_process_supervisor import (
+    get_detection_async_deployment_process_supervisor,
+    get_detection_async_inference_gateway_dispatcher_registry,
+    get_detection_sync_deployment_process_supervisor,
 )
-from backend.service.api.rest.v1.routes.yolox_deployments import (
-    YoloXDeploymentInstanceResponse,
-    YoloXDeploymentProcessStatusResponse,
-    YoloXDeploymentRuntimeHealthResponse,
-    _build_deployment_instance_response,
-    _ensure_deployment_visible,
-    _run_process_health_action,
-    _run_process_status_action,
+from backend.service.api.deps.storage import get_dataset_storage
+from backend.service.api.rest.v1.routes.detection_deployment_helpers import (
+    DetectionDeploymentInstanceResponse,
+    DetectionDeploymentProcessEventResponse,
+    DetectionDeploymentProcessStatusResponse,
+    DetectionDeploymentRuntimeHealthResponse,
+    _build_detection_deployment_instance_response,
+    _build_detection_deployment_process_event_response,
+    _ensure_detection_deployment_visible,
+    _run_detection_process_health_action,
+    _run_detection_process_status_action,
 )
 from backend.service.application.deployments.detection_deployment_service import (
     DetectionDeploymentInstanceCreateRequest,
     SqlAlchemyDetectionDeploymentService,
 )
 from backend.service.application.errors import PermissionDeniedError
-from backend.service.application.models.yolox_async_inference_gateway import (
-    YoloXAsyncInferenceGatewayDispatcherRegistry,
+from backend.service.application.models.detection_async_inference_gateway import (
+    DetectionAsyncInferenceGatewayDispatcherRegistry,
 )
 from backend.service.application.runtime.yolox_deployment_process_supervisor import (
     YoloXDeploymentProcessSupervisor,
 )
+from backend.service.application.runtime.deployment_event_source import YoloXDeploymentEventSource
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 
@@ -60,7 +63,7 @@ class DetectionDeploymentInstanceCreateRequestBody(BaseModel):
 
 @detection_deployments_router.post(
     "/detection/deployment-instances",
-    response_model=YoloXDeploymentInstanceResponse,
+    response_model=DetectionDeploymentInstanceResponse,
     status_code=status.HTTP_201_CREATED,
 )
 def create_detection_deployment_instance(
@@ -68,7 +71,7 @@ def create_detection_deployment_instance(
     principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("models:read", "models:write"))],
     session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
     dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
-) -> YoloXDeploymentInstanceResponse:
+) -> DetectionDeploymentInstanceResponse:
     """创建一个 detection DeploymentInstance。"""
 
     if principal.project_ids and body.project_id not in principal.project_ids:
@@ -96,12 +99,12 @@ def create_detection_deployment_instance(
         ),
         created_by=principal.principal_id,
     )
-    return _build_deployment_instance_response(view)
+    return _build_detection_deployment_instance_response(view)
 
 
 @detection_deployments_router.get(
     "/detection/deployment-instances",
-    response_model=list[YoloXDeploymentInstanceResponse],
+    response_model=list[DetectionDeploymentInstanceResponse],
 )
 def list_detection_deployment_instances(
     principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("models:read"))],
@@ -113,7 +116,7 @@ def list_detection_deployment_instances(
     model_build_id: Annotated[str | None, Query(description="绑定的 ModelBuild id")] = None,
     status_filter: Annotated[str | None, Query(alias="status", description="实例状态")] = None,
     limit: Annotated[int, Query(ge=1, le=200, description="最大返回数量")] = 100,
-) -> list[YoloXDeploymentInstanceResponse]:
+) -> list[DetectionDeploymentInstanceResponse]:
     """列出当前主体可见的 detection DeploymentInstance。"""
 
     visible_project_ids = tuple(principal.project_ids or ())
@@ -139,19 +142,19 @@ def list_detection_deployment_instances(
         status=status_filter,
         limit=limit,
     )
-    return [_build_deployment_instance_response(item) for item in views]
+    return [_build_detection_deployment_instance_response(item) for item in views]
 
 
 @detection_deployments_router.get(
     "/detection/deployment-instances/{deployment_instance_id}",
-    response_model=YoloXDeploymentInstanceResponse,
+    response_model=DetectionDeploymentInstanceResponse,
 )
 def get_detection_deployment_instance(
     deployment_instance_id: str,
     principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("models:read"))],
     session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
     dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
-) -> YoloXDeploymentInstanceResponse:
+) -> DetectionDeploymentInstanceResponse:
     """读取一个 detection DeploymentInstance。"""
 
     service = SqlAlchemyDetectionDeploymentService(
@@ -159,8 +162,46 @@ def get_detection_deployment_instance(
         dataset_storage=dataset_storage,
     )
     view = service.get_deployment_instance(deployment_instance_id)
-    _ensure_deployment_visible(principal=principal, view=view)
-    return _build_deployment_instance_response(view)
+    _ensure_detection_deployment_visible(principal=principal, view=view)
+    return _build_detection_deployment_instance_response(view)
+
+
+@detection_deployments_router.get(
+    "/detection/deployment-instances/{deployment_instance_id}/events",
+    response_model=list[DetectionDeploymentProcessEventResponse],
+)
+def get_detection_deployment_events(
+    deployment_instance_id: str,
+    principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("models:read"))],
+    session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
+    dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
+    after_sequence: Annotated[int | None, Query(description="只返回 sequence 大于该值的事件", ge=0)] = None,
+    limit: Annotated[int | None, Query(description="最多返回多少条事件", ge=1, le=500)] = None,
+    runtime_mode: Annotated[str | None, Query(description="按 sync 或 async 通道过滤事件")] = None,
+) -> list[DetectionDeploymentProcessEventResponse]:
+    """读取一条 detection DeploymentInstance 的事件列表。"""
+
+    service = SqlAlchemyDetectionDeploymentService(
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+    )
+    view = service.get_deployment_instance(deployment_instance_id)
+    _ensure_detection_deployment_visible(principal=principal, view=view)
+    if runtime_mode is not None and runtime_mode not in {"sync", "async"}:
+        raise InvalidRequestError(
+            "runtime_mode 仅支持 sync 或 async",
+            details={"runtime_mode": runtime_mode},
+        )
+    event_source = YoloXDeploymentEventSource(
+        dataset_storage_root_dir=str(dataset_storage.root_dir),
+    )
+    events = event_source.list_events(
+        deployment_instance_id,
+        after_sequence=after_sequence,
+        runtime_mode=runtime_mode,
+        limit=limit,
+    )
+    return [_build_detection_deployment_process_event_response(item) for item in events]
 
 
 @detection_deployments_router.delete(
@@ -180,24 +221,24 @@ def delete_detection_deployment_instance(
         dataset_storage=dataset_storage,
     )
     view = service.get_deployment_instance(deployment_instance_id)
-    _ensure_deployment_visible(principal=principal, view=view)
+    _ensure_detection_deployment_visible(principal=principal, view=view)
     service.delete_deployment_instance(deployment_instance_id)
 
 
 @detection_deployments_router.post(
     "/detection/deployment-instances/{deployment_instance_id}/sync/start",
-    response_model=YoloXDeploymentProcessStatusResponse,
+    response_model=DetectionDeploymentProcessStatusResponse,
 )
 def start_detection_sync_deployment(
     deployment_instance_id: str,
     principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("models:read", "models:write"))],
     session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
     dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
-    supervisor: Annotated[YoloXDeploymentProcessSupervisor, Depends(get_yolox_sync_deployment_process_supervisor)],
-) -> YoloXDeploymentProcessStatusResponse:
+    supervisor: Annotated[YoloXDeploymentProcessSupervisor, Depends(get_detection_sync_deployment_process_supervisor)],
+) -> DetectionDeploymentProcessStatusResponse:
     """启动一个 detection sync deployment 进程。"""
 
-    return _run_process_status_action(
+    return _run_detection_process_status_action(
         deployment_instance_id=deployment_instance_id,
         principal=principal,
         session_factory=session_factory,
@@ -210,18 +251,18 @@ def start_detection_sync_deployment(
 
 @detection_deployments_router.post(
     "/detection/deployment-instances/{deployment_instance_id}/sync/stop",
-    response_model=YoloXDeploymentProcessStatusResponse,
+    response_model=DetectionDeploymentProcessStatusResponse,
 )
 def stop_detection_sync_deployment(
     deployment_instance_id: str,
     principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("models:read", "models:write"))],
     session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
     dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
-    supervisor: Annotated[YoloXDeploymentProcessSupervisor, Depends(get_yolox_sync_deployment_process_supervisor)],
-) -> YoloXDeploymentProcessStatusResponse:
+    supervisor: Annotated[YoloXDeploymentProcessSupervisor, Depends(get_detection_sync_deployment_process_supervisor)],
+) -> DetectionDeploymentProcessStatusResponse:
     """停止一个 detection sync deployment 进程。"""
 
-    return _run_process_status_action(
+    return _run_detection_process_status_action(
         deployment_instance_id=deployment_instance_id,
         principal=principal,
         session_factory=session_factory,
@@ -234,18 +275,18 @@ def stop_detection_sync_deployment(
 
 @detection_deployments_router.get(
     "/detection/deployment-instances/{deployment_instance_id}/sync/status",
-    response_model=YoloXDeploymentProcessStatusResponse,
+    response_model=DetectionDeploymentProcessStatusResponse,
 )
 def get_detection_sync_deployment_status(
     deployment_instance_id: str,
     principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("models:read"))],
     session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
     dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
-    supervisor: Annotated[YoloXDeploymentProcessSupervisor, Depends(get_yolox_sync_deployment_process_supervisor)],
-) -> YoloXDeploymentProcessStatusResponse:
+    supervisor: Annotated[YoloXDeploymentProcessSupervisor, Depends(get_detection_sync_deployment_process_supervisor)],
+) -> DetectionDeploymentProcessStatusResponse:
     """读取一个 detection sync deployment 监督状态。"""
 
-    return _run_process_status_action(
+    return _run_detection_process_status_action(
         deployment_instance_id=deployment_instance_id,
         principal=principal,
         session_factory=session_factory,
@@ -258,18 +299,18 @@ def get_detection_sync_deployment_status(
 
 @detection_deployments_router.post(
     "/detection/deployment-instances/{deployment_instance_id}/sync/warmup",
-    response_model=YoloXDeploymentRuntimeHealthResponse,
+    response_model=DetectionDeploymentRuntimeHealthResponse,
 )
 def warmup_detection_sync_deployment(
     deployment_instance_id: str,
     principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("models:read", "models:write"))],
     session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
     dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
-    supervisor: Annotated[YoloXDeploymentProcessSupervisor, Depends(get_yolox_sync_deployment_process_supervisor)],
-) -> YoloXDeploymentRuntimeHealthResponse:
+    supervisor: Annotated[YoloXDeploymentProcessSupervisor, Depends(get_detection_sync_deployment_process_supervisor)],
+) -> DetectionDeploymentRuntimeHealthResponse:
     """执行一个 detection sync deployment warmup。"""
 
-    return _run_process_health_action(
+    return _run_detection_process_health_action(
         deployment_instance_id=deployment_instance_id,
         principal=principal,
         session_factory=session_factory,
@@ -282,18 +323,18 @@ def warmup_detection_sync_deployment(
 
 @detection_deployments_router.get(
     "/detection/deployment-instances/{deployment_instance_id}/sync/health",
-    response_model=YoloXDeploymentRuntimeHealthResponse,
+    response_model=DetectionDeploymentRuntimeHealthResponse,
 )
 def get_detection_sync_deployment_health(
     deployment_instance_id: str,
     principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("models:read"))],
     session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
     dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
-    supervisor: Annotated[YoloXDeploymentProcessSupervisor, Depends(get_yolox_sync_deployment_process_supervisor)],
-) -> YoloXDeploymentRuntimeHealthResponse:
+    supervisor: Annotated[YoloXDeploymentProcessSupervisor, Depends(get_detection_sync_deployment_process_supervisor)],
+) -> DetectionDeploymentRuntimeHealthResponse:
     """读取一个 detection sync deployment 健康状态。"""
 
-    return _run_process_health_action(
+    return _run_detection_process_health_action(
         deployment_instance_id=deployment_instance_id,
         principal=principal,
         session_factory=session_factory,
@@ -306,19 +347,19 @@ def get_detection_sync_deployment_health(
 
 @detection_deployments_router.post(
     "/detection/deployment-instances/{deployment_instance_id}/async/start",
-    response_model=YoloXDeploymentProcessStatusResponse,
+    response_model=DetectionDeploymentProcessStatusResponse,
 )
 def start_detection_async_deployment(
     deployment_instance_id: str,
     principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("models:read", "models:write"))],
     session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
     dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
-    supervisor: Annotated[YoloXDeploymentProcessSupervisor, Depends(get_yolox_async_deployment_process_supervisor)],
-    gateway_dispatcher_registry: Annotated[YoloXAsyncInferenceGatewayDispatcherRegistry, Depends(get_yolox_async_inference_gateway_dispatcher_registry)],
-) -> YoloXDeploymentProcessStatusResponse:
+    supervisor: Annotated[YoloXDeploymentProcessSupervisor, Depends(get_detection_async_deployment_process_supervisor)],
+    gateway_dispatcher_registry: Annotated[DetectionAsyncInferenceGatewayDispatcherRegistry, Depends(get_detection_async_inference_gateway_dispatcher_registry)],
+) -> DetectionDeploymentProcessStatusResponse:
     """启动一个 detection async deployment 进程。"""
 
-    return _run_process_status_action(
+    return _run_detection_process_status_action(
         deployment_instance_id=deployment_instance_id,
         principal=principal,
         session_factory=session_factory,
@@ -332,19 +373,19 @@ def start_detection_async_deployment(
 
 @detection_deployments_router.post(
     "/detection/deployment-instances/{deployment_instance_id}/async/stop",
-    response_model=YoloXDeploymentProcessStatusResponse,
+    response_model=DetectionDeploymentProcessStatusResponse,
 )
 def stop_detection_async_deployment(
     deployment_instance_id: str,
     principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("models:read", "models:write"))],
     session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
     dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
-    supervisor: Annotated[YoloXDeploymentProcessSupervisor, Depends(get_yolox_async_deployment_process_supervisor)],
-    gateway_dispatcher_registry: Annotated[YoloXAsyncInferenceGatewayDispatcherRegistry, Depends(get_yolox_async_inference_gateway_dispatcher_registry)],
-) -> YoloXDeploymentProcessStatusResponse:
+    supervisor: Annotated[YoloXDeploymentProcessSupervisor, Depends(get_detection_async_deployment_process_supervisor)],
+    gateway_dispatcher_registry: Annotated[DetectionAsyncInferenceGatewayDispatcherRegistry, Depends(get_detection_async_inference_gateway_dispatcher_registry)],
+) -> DetectionDeploymentProcessStatusResponse:
     """停止一个 detection async deployment 进程。"""
 
-    return _run_process_status_action(
+    return _run_detection_process_status_action(
         deployment_instance_id=deployment_instance_id,
         principal=principal,
         session_factory=session_factory,
@@ -358,19 +399,19 @@ def stop_detection_async_deployment(
 
 @detection_deployments_router.get(
     "/detection/deployment-instances/{deployment_instance_id}/async/status",
-    response_model=YoloXDeploymentProcessStatusResponse,
+    response_model=DetectionDeploymentProcessStatusResponse,
 )
 def get_detection_async_deployment_status(
     deployment_instance_id: str,
     principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("models:read"))],
     session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
     dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
-    supervisor: Annotated[YoloXDeploymentProcessSupervisor, Depends(get_yolox_async_deployment_process_supervisor)],
-    gateway_dispatcher_registry: Annotated[YoloXAsyncInferenceGatewayDispatcherRegistry, Depends(get_yolox_async_inference_gateway_dispatcher_registry)],
-) -> YoloXDeploymentProcessStatusResponse:
+    supervisor: Annotated[YoloXDeploymentProcessSupervisor, Depends(get_detection_async_deployment_process_supervisor)],
+    gateway_dispatcher_registry: Annotated[DetectionAsyncInferenceGatewayDispatcherRegistry, Depends(get_detection_async_inference_gateway_dispatcher_registry)],
+) -> DetectionDeploymentProcessStatusResponse:
     """读取一个 detection async deployment 监督状态。"""
 
-    return _run_process_status_action(
+    return _run_detection_process_status_action(
         deployment_instance_id=deployment_instance_id,
         principal=principal,
         session_factory=session_factory,
@@ -384,19 +425,19 @@ def get_detection_async_deployment_status(
 
 @detection_deployments_router.post(
     "/detection/deployment-instances/{deployment_instance_id}/async/warmup",
-    response_model=YoloXDeploymentRuntimeHealthResponse,
+    response_model=DetectionDeploymentRuntimeHealthResponse,
 )
 def warmup_detection_async_deployment(
     deployment_instance_id: str,
     principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("models:read", "models:write"))],
     session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
     dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
-    supervisor: Annotated[YoloXDeploymentProcessSupervisor, Depends(get_yolox_async_deployment_process_supervisor)],
-    gateway_dispatcher_registry: Annotated[YoloXAsyncInferenceGatewayDispatcherRegistry, Depends(get_yolox_async_inference_gateway_dispatcher_registry)],
-) -> YoloXDeploymentRuntimeHealthResponse:
+    supervisor: Annotated[YoloXDeploymentProcessSupervisor, Depends(get_detection_async_deployment_process_supervisor)],
+    gateway_dispatcher_registry: Annotated[DetectionAsyncInferenceGatewayDispatcherRegistry, Depends(get_detection_async_inference_gateway_dispatcher_registry)],
+) -> DetectionDeploymentRuntimeHealthResponse:
     """执行一个 detection async deployment warmup。"""
 
-    return _run_process_health_action(
+    return _run_detection_process_health_action(
         deployment_instance_id=deployment_instance_id,
         principal=principal,
         session_factory=session_factory,
@@ -410,19 +451,19 @@ def warmup_detection_async_deployment(
 
 @detection_deployments_router.get(
     "/detection/deployment-instances/{deployment_instance_id}/async/health",
-    response_model=YoloXDeploymentRuntimeHealthResponse,
+    response_model=DetectionDeploymentRuntimeHealthResponse,
 )
 def get_detection_async_deployment_health(
     deployment_instance_id: str,
     principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("models:read"))],
     session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
     dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
-    supervisor: Annotated[YoloXDeploymentProcessSupervisor, Depends(get_yolox_async_deployment_process_supervisor)],
-    gateway_dispatcher_registry: Annotated[YoloXAsyncInferenceGatewayDispatcherRegistry, Depends(get_yolox_async_inference_gateway_dispatcher_registry)],
-) -> YoloXDeploymentRuntimeHealthResponse:
+    supervisor: Annotated[YoloXDeploymentProcessSupervisor, Depends(get_detection_async_deployment_process_supervisor)],
+    gateway_dispatcher_registry: Annotated[DetectionAsyncInferenceGatewayDispatcherRegistry, Depends(get_detection_async_inference_gateway_dispatcher_registry)],
+) -> DetectionDeploymentRuntimeHealthResponse:
     """读取一个 detection async deployment 健康状态。"""
 
-    return _run_process_health_action(
+    return _run_detection_process_health_action(
         deployment_instance_id=deployment_instance_id,
         principal=principal,
         session_factory=session_factory,

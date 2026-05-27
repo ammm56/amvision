@@ -8,6 +8,7 @@ from backend.service.application.deployments.detection_deployment_service import
     SqlAlchemyDetectionDeploymentService,
 )
 from backend.service.application.errors import InvalidRequestError
+from backend.service.domain.tasks.detection_task_specs import DetectionInferenceTaskSpec
 from backend.service.application.models.yolox_inference_task_service import (
     YOLOX_INFERENCE_QUEUE_NAME as DETECTION_INFERENCE_QUEUE_NAME,
     YOLOX_INFERENCE_TASK_KIND as DETECTION_INFERENCE_TASK_KIND,
@@ -40,6 +41,8 @@ class DetectionInferenceTaskRequest:
 
 class SqlAlchemyDetectionInferenceTaskService(SqlAlchemyYoloXInferenceTaskService):
     """复用已验证 YOLOX 控制链的 detection 公共推理任务服务。"""
+
+    task_spec_cls = DetectionInferenceTaskSpec
 
     def submit_inference_task(
         self,

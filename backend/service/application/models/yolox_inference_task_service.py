@@ -143,6 +143,8 @@ class YoloXInferenceTaskResult:
 class SqlAlchemyYoloXInferenceTaskService:
     """基于 SQLAlchemy、本地队列和本地文件存储实现 YOLOX 推理任务。"""
 
+    task_spec_cls = YoloXInferenceTaskSpec
+
     def __init__(
         self,
         *,
@@ -163,6 +165,11 @@ class SqlAlchemyYoloXInferenceTaskService:
         self.async_inference_gateway_dispatcher_registry = async_inference_gateway_dispatcher_registry
         self.task_service = SqlAlchemyTaskService(session_factory)
 
+    def _resolve_task_spec_cls(self) -> type:
+        """返回当前推理服务绑定的任务规格类型。"""
+
+        return self.task_spec_cls
+
     def submit_inference_task(
         self,
         request: YoloXInferenceTaskRequest,
@@ -179,7 +186,7 @@ class SqlAlchemyYoloXInferenceTaskService:
         self._ensure_async_inference_gateway_dispatcher(process_config)
         normalized_input = self._build_normalized_input_from_request(request)
 
-        task_spec = YoloXInferenceTaskSpec(
+        task_spec = self._resolve_task_spec_cls()(
             project_id=request.project_id,
             deployment_instance_id=request.deployment_instance_id,
             input_file_id=request.input_file_id,

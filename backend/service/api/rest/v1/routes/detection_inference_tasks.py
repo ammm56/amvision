@@ -13,26 +13,26 @@ from backend.service.api.deps.auth import AuthenticatedPrincipal, require_scopes
 from backend.service.api.deps.db import get_session_factory
 from backend.service.api.deps.queue import get_queue_backend
 from backend.service.api.deps.storage import get_dataset_storage
-from backend.service.api.deps.yolox_deployment_process_supervisor import (
-    get_yolox_async_inference_gateway_dispatcher_registry,
-    get_yolox_async_deployment_process_supervisor,
-    get_yolox_sync_deployment_process_supervisor,
+from backend.service.api.deps.detection_deployment_process_supervisor import (
+    get_detection_async_inference_gateway_dispatcher_registry,
+    get_detection_async_deployment_process_supervisor,
+    get_detection_sync_deployment_process_supervisor,
 )
-from backend.service.api.rest.v1.routes.yolox_inference_tasks import (
-    YoloXInferencePayloadResponse,
-    YoloXInferenceTaskDetailResponse,
-    YoloXInferenceTaskResultResponse,
-    YoloXInferenceTaskSubmissionResponse,
-    YoloXInferenceTaskSummaryResponse,
-    _build_inference_task_detail_response,
-    _build_inference_task_summary_response,
-    _ensure_visible_deployment,
-    _matches_inference_filters,
-    _read_async_inference_service_id,
-    _read_yolox_inference_request_payload,
-    _require_running_deployment_process,
-    _resolve_http_request_id,
-    _resolve_requested_score_threshold,
+from backend.service.api.rest.v1.routes.detection_inference_helpers import (
+    DetectionInferencePayloadResponse,
+    DetectionInferenceTaskDetailResponse,
+    DetectionInferenceTaskResultResponse,
+    DetectionInferenceTaskSubmissionResponse,
+    DetectionInferenceTaskSummaryResponse,
+    _build_detection_inference_task_detail_response,
+    _build_detection_inference_task_summary_response,
+    _ensure_visible_detection_deployment,
+    _matches_detection_inference_filters,
+    _read_detection_async_inference_service_id,
+    _read_detection_inference_request_payload,
+    _require_running_detection_deployment_process,
+    _resolve_detection_http_request_id,
+    _resolve_detection_requested_score_threshold,
 )
 from backend.service.application.deployments.detection_deployment_service import (
     SqlAlchemyDetectionDeploymentService,
@@ -52,8 +52,8 @@ from backend.service.application.models.detection_inference_task_service import 
     SqlAlchemyDetectionInferenceTaskService,
     run_detection_inference_task,
 )
-from backend.service.application.models.yolox_async_inference_gateway import (
-    YoloXAsyncInferenceGatewayDispatcherRegistry,
+from backend.service.application.models.detection_async_inference_gateway import (
+    DetectionAsyncInferenceGatewayDispatcherRegistry,
 )
 from backend.service.application.runtime.yolox_deployment_process_supervisor import (
     YoloXDeploymentProcessSupervisor,
@@ -99,7 +99,7 @@ class DetectionDirectInferenceRequestBody(BaseModel):
 
 @detection_inference_tasks_router.post(
     "/detection/inference-tasks",
-    response_model=YoloXInferenceTaskSubmissionResponse,
+    response_model=DetectionInferenceTaskSubmissionResponse,
     status_code=status.HTTP_202_ACCEPTED,
 )
 async def create_detection_inference_task(
@@ -108,12 +108,12 @@ async def create_detection_inference_task(
     session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
     queue_backend: Annotated[LocalFileQueueBackend, Depends(get_queue_backend)],
     dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
-    deployment_process_supervisor: Annotated[YoloXDeploymentProcessSupervisor, Depends(get_yolox_async_deployment_process_supervisor)],
-    gateway_dispatcher_registry: Annotated[YoloXAsyncInferenceGatewayDispatcherRegistry, Depends(get_yolox_async_inference_gateway_dispatcher_registry)],
-) -> YoloXInferenceTaskSubmissionResponse:
+    deployment_process_supervisor: Annotated[YoloXDeploymentProcessSupervisor, Depends(get_detection_async_deployment_process_supervisor)],
+    gateway_dispatcher_registry: Annotated[DetectionAsyncInferenceGatewayDispatcherRegistry, Depends(get_detection_async_inference_gateway_dispatcher_registry)],
+) -> DetectionInferenceTaskSubmissionResponse:
     """创建一个正式 detection inference task。"""
 
-    payload, input_source = await _read_yolox_inference_request_payload(request)
+    payload, input_source = await _read_detection_inference_request_payload(request)
     try:
         body = DetectionInferenceTaskCreateRequestBody.model_validate(payload)
     except Exception as error:
@@ -147,14 +147,14 @@ async def create_detection_inference_task(
         deployment_instance_id=body.deployment_instance_id,
     )
     deployment_process_supervisor.ensure_deployment(process_config)
-    _require_running_deployment_process(
+    _require_running_detection_deployment_process(
         deployment_process_supervisor=deployment_process_supervisor,
         process_config=process_config,
         runtime_mode="async",
     )
     normalized_input = normalize_detection_inference_input(
         dataset_storage=dataset_storage,
-        request_id=_resolve_http_request_id(request, prefix="inference-task-submit"),
+        request_id=_resolve_detection_http_request_id(request, prefix="inference-task-submit"),
         source=input_source,
         input_transport_mode=body.input_transport_mode,
         expected_project_id=body.project_id,
@@ -176,7 +176,7 @@ async def create_detection_inference_task(
             input_source_kind=normalized_input.input_source_kind,
             input_transport_mode=normalized_input.input_transport_mode,
             input_image_bytes=normalized_input.input_image_bytes,
-            async_inference_owner_id=_read_async_inference_service_id(request),
+            async_inference_owner_id=_read_detection_async_inference_service_id(request),
             score_threshold=body.score_threshold,
             save_result_image=body.save_result_image,
             return_preview_image_base64=body.return_preview_image_base64,
@@ -185,7 +185,7 @@ async def create_detection_inference_task(
         created_by=principal.principal_id,
         display_name=body.display_name,
     )
-    return YoloXInferenceTaskSubmissionResponse(
+    return DetectionInferenceTaskSubmissionResponse(
         task_id=submission.task_id,
         status=submission.status,
         queue_name=submission.queue_name,
@@ -198,7 +198,7 @@ async def create_detection_inference_task(
 
 @detection_inference_tasks_router.post(
     "/detection/deployment-instances/{deployment_instance_id}/infer",
-    response_model=YoloXInferencePayloadResponse,
+    response_model=DetectionInferencePayloadResponse,
 )
 async def infer_detection_deployment_instance(
     deployment_instance_id: str,
@@ -206,11 +206,11 @@ async def infer_detection_deployment_instance(
     principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("models:read"))],
     session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
     dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
-    deployment_process_supervisor: Annotated[YoloXDeploymentProcessSupervisor, Depends(get_yolox_sync_deployment_process_supervisor)],
-) -> YoloXInferencePayloadResponse:
+    deployment_process_supervisor: Annotated[YoloXDeploymentProcessSupervisor, Depends(get_detection_sync_deployment_process_supervisor)],
+) -> DetectionInferencePayloadResponse:
     """直接执行一次同步 detection 推理并返回结果。"""
 
-    payload, input_source = await _read_yolox_inference_request_payload(request)
+    payload, input_source = await _read_detection_inference_request_payload(request)
     payload.pop("project_id", None)
     payload.pop("deployment_instance_id", None)
     payload.pop("display_name", None)
@@ -226,7 +226,7 @@ async def infer_detection_deployment_instance(
         dataset_storage=dataset_storage,
     )
     deployment_view = deployment_service.get_deployment_instance(deployment_instance_id)
-    _ensure_visible_deployment(
+    _ensure_visible_detection_deployment(
         principal=principal,
         deployment_project_id=deployment_view.project_id,
         deployment_instance_id=deployment_instance_id,
@@ -238,12 +238,12 @@ async def infer_detection_deployment_instance(
         deployment_instance_id=deployment_instance_id,
     )
     deployment_process_supervisor.ensure_deployment(process_config)
-    _require_running_deployment_process(
+    _require_running_detection_deployment_process(
         deployment_process_supervisor=deployment_process_supervisor,
         process_config=process_config,
         runtime_mode="sync",
     )
-    request_id = _resolve_http_request_id(request, prefix="direct-inference")
+    request_id = _resolve_detection_http_request_id(request, prefix="direct-inference")
     normalized_input = normalize_detection_inference_input(
         dataset_storage=dataset_storage,
         request_id=request_id,
@@ -253,7 +253,7 @@ async def infer_detection_deployment_instance(
     )
     prediction_request = build_detection_prediction_request(
         normalized_input=normalized_input,
-        score_threshold=_resolve_requested_score_threshold(body.score_threshold),
+        score_threshold=_resolve_detection_requested_score_threshold(body.score_threshold),
         save_result_image=body.save_result_image,
         return_preview_image_base64=body.return_preview_image_base64,
         extra_options=dict(body.extra_options),
@@ -285,7 +285,7 @@ async def infer_detection_deployment_instance(
         instance_id=execution_result.instance_id,
         runtime_target=process_config.runtime_target,
         normalized_input=normalized_input,
-        score_threshold=_resolve_requested_score_threshold(body.score_threshold),
+        score_threshold=_resolve_detection_requested_score_threshold(body.score_threshold),
         save_result_image=body.save_result_image,
         return_preview_image_base64=body.return_preview_image_base64,
         execution_result=execution_result,
@@ -299,12 +299,12 @@ async def infer_detection_deployment_instance(
     )
     if result_object_key is not None:
         dataset_storage.write_json(result_object_key, serialized_payload)
-    return YoloXInferencePayloadResponse.model_validate(serialized_payload)
+    return DetectionInferencePayloadResponse.model_validate(serialized_payload)
 
 
 @detection_inference_tasks_router.get(
     "/detection/inference-tasks",
-    response_model=list[YoloXInferenceTaskSummaryResponse],
+    response_model=list[DetectionInferenceTaskSummaryResponse],
 )
 def list_detection_inference_tasks(
     principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("tasks:read"))],
@@ -314,7 +314,7 @@ def list_detection_inference_tasks(
     created_by: Annotated[str | None, Query(description="提交主体 id")] = None,
     deployment_instance_id: Annotated[str | None, Query(description="DeploymentInstance id")] = None,
     limit: Annotated[int, Query(ge=1, le=500, description="最大返回数量")] = 100,
-) -> list[YoloXInferenceTaskSummaryResponse]:
+) -> list[DetectionInferenceTaskSummaryResponse]:
     """按公开筛选条件列出 detection 推理任务。"""
 
     visible_project_ids = []
@@ -347,25 +347,25 @@ def list_detection_inference_tasks(
     visible_tasks = [
         task
         for task in matched_tasks
-        if _matches_inference_filters(
+        if _matches_detection_inference_filters(
             task=task,
             deployment_instance_id=deployment_instance_id,
         )
     ]
     visible_tasks.sort(key=lambda task: (task.created_at, task.task_id), reverse=True)
-    return [_build_inference_task_summary_response(task) for task in visible_tasks[:limit]]
+    return [_build_detection_inference_task_summary_response(task) for task in visible_tasks[:limit]]
 
 
 @detection_inference_tasks_router.get(
     "/detection/inference-tasks/{task_id}",
-    response_model=YoloXInferenceTaskDetailResponse,
+    response_model=DetectionInferenceTaskDetailResponse,
 )
 def get_detection_inference_task_detail(
     task_id: str,
     principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("tasks:read"))],
     session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
     include_events: Annotated[bool, Query(description="是否返回事件列表")] = False,
-) -> YoloXInferenceTaskDetailResponse:
+) -> DetectionInferenceTaskDetailResponse:
     """按任务 id 返回 detection 推理任务详情。"""
 
     task_detail = _require_visible_detection_inference_task(
@@ -374,19 +374,19 @@ def get_detection_inference_task_detail(
         session_factory=session_factory,
         include_events=include_events,
     )
-    return _build_inference_task_detail_response(task_detail.task, tuple(task_detail.events))
+    return _build_detection_inference_task_detail_response(task_detail.task, tuple(task_detail.events))
 
 
 @detection_inference_tasks_router.get(
     "/detection/inference-tasks/{task_id}/result",
-    response_model=YoloXInferenceTaskResultResponse,
+    response_model=DetectionInferenceTaskResultResponse,
 )
 def get_detection_inference_task_result(
     task_id: str,
     principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("tasks:read"))],
     session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
     dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
-) -> YoloXInferenceTaskResultResponse:
+) -> DetectionInferenceTaskResultResponse:
     """按任务 id 返回当前 detection 推理结果。"""
 
     task_detail = _require_visible_detection_inference_task(
@@ -399,7 +399,7 @@ def get_detection_inference_task_result(
     object_key = result.get("result_object_key")
     if not isinstance(object_key, str) or not object_key.strip():
         if task_detail.task.state in {"queued", "running"}:
-            return YoloXInferenceTaskResultResponse(
+            return DetectionInferenceTaskResultResponse(
                 file_status="pending",
                 task_state=task_detail.task.state,
                 object_key=None,
@@ -412,7 +412,7 @@ def get_detection_inference_task_result(
     resolved_path = dataset_storage.resolve(object_key)
     if not resolved_path.is_file():
         if task_detail.task.state in {"queued", "running"}:
-            return YoloXInferenceTaskResultResponse(
+            return DetectionInferenceTaskResultResponse(
                 file_status="pending",
                 task_state=task_detail.task.state,
                 object_key=object_key,
@@ -423,7 +423,7 @@ def get_detection_inference_task_result(
             details={"task_id": task_id, "object_key": object_key},
         )
     payload = dataset_storage.read_json(object_key)
-    return YoloXInferenceTaskResultResponse(
+    return DetectionInferenceTaskResultResponse(
         file_status="ready",
         task_state=task_detail.task.state,
         object_key=object_key,
