@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import cv2
+import numpy as np
 import pytest
 
 from backend.contracts.datasets.exports.dataset_formats import YOLO_DETECTION_DATASET_FORMAT
@@ -12,7 +14,7 @@ from backend.service.application.conversions.yolov8_conversion_planner import (
     DefaultYoloV8ConversionPlanner,
     YoloV8ConversionPlanningRequest,
 )
-from backend.service.application.errors import InvalidRequestError, ServiceConfigurationError
+from backend.service.application.errors import InvalidRequestError
 from backend.service.application.models.yolov8_model_service import (
     SqlAlchemyYoloV8ModelService,
     YoloV8BuildRegistration,
@@ -26,6 +28,7 @@ from backend.service.application.runtime.yolov8_runtime_target import (
     RuntimeTargetResolveRequest,
     SqlAlchemyYoloV8RuntimeTargetResolver,
 )
+from backend.service.application.tasks.task_service import SqlAlchemyTaskService
 from backend.service.domain.datasets.dataset_export import DatasetExport
 from backend.service.domain.files.detection_model_file_types import YOLOV8_DETECTION_FILE_TYPES
 from backend.service.infrastructure.db.session import DatabaseSettings, SessionFactory
@@ -35,6 +38,7 @@ from backend.service.infrastructure.object_store.local_dataset_storage import (
     LocalDatasetStorage,
 )
 from backend.service.infrastructure.persistence.base import Base
+from backend.workers.training.yolov8_training_queue_worker import YoloV8TrainingQueueWorker
 
 
 def test_yolov8_model_service_registers_yolov8_specific_file_types() -> None:
@@ -162,19 +166,28 @@ def test_yolov8_runtime_target_resolver_returns_yolov8_snapshot(tmp_path: Path) 
     assert snapshot.labels == ("part",)
 
 
-def test_yolov8_training_task_service_submits_task_and_fails_with_clear_backend_message(
+def test_yolov8_training_task_service_submits_task_and_worker_completes_training(
     tmp_path: Path,
 ) -> None:
-    """验证 YOLOv8 detection 训练入口已接通，执行后端未实现时给出明确失败。"""
+    """验证 YOLOv8 detection 训练入口和 worker 已接通。"""
 
     session_factory = _create_session_factory()
+    dataset_storage = _create_dataset_storage(tmp_path)
     queue_backend = LocalFileQueueBackend(
         LocalFileQueueSettings(root_dir=str(tmp_path / "queue"))
     )
     _save_completed_dataset_export(session_factory)
+    _write_completed_dataset_export_files(dataset_storage)
     service = SqlAlchemyYoloV8TrainingTaskService(
         session_factory=session_factory,
+        dataset_storage=dataset_storage,
         queue_backend=queue_backend,
+    )
+    worker = YoloV8TrainingQueueWorker(
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+        queue_backend=queue_backend,
+        worker_id="test-yolov8-training-worker",
     )
 
     submission = service.submit_training_task(
@@ -184,7 +197,10 @@ def test_yolov8_training_task_service_submits_task_and_fails_with_clear_backend_
             recipe_id="recipe-1",
             model_scale="s",
             output_model_name="yolov8-s-workpiece",
-            input_size=(640, 640),
+            input_size=(64, 64),
+            max_epochs=1,
+            batch_size=1,
+            precision="fp32",
         )
     )
 
@@ -194,19 +210,39 @@ def test_yolov8_training_task_service_submits_task_and_fails_with_clear_backend_
         task_id=submission.queue_task_id,
     ) is not None
 
-    with pytest.raises(ServiceConfigurationError, match="尚未接通"):
-        service.process_training_task(submission.task_id)
+    assert worker.run_once() is True
 
-    task_detail = service.task_service.get_task(submission.task_id, include_events=True)
+    task_detail = SqlAlchemyTaskService(session_factory).get_task(
+        submission.task_id,
+        include_events=True,
+    )
 
-    assert task_detail.task.state == "failed"
+    assert task_detail.task.state == "succeeded"
     assert task_detail.task.metadata["model_type"] == "yolov8"
     assert task_detail.task.task_spec["task_type"] == "detection"
-    assert task_detail.task.error_message == "当前 YOLOv8 detection 训练执行后端尚未接通"
+    assert task_detail.task.error_message is None
+    assert task_detail.task.result["checkpoint_object_key"].endswith("/best.pt")
+    assert task_detail.task.result["latest_checkpoint_object_key"].endswith("/latest.pt")
+    assert task_detail.task.result["summary"]["implementation_mode"] == "yolov8-detection-bootstrap"
+    assert task_detail.task.result["summary"]["dataset_export_id"] == "dataset-export-1"
+    assert task_detail.task.result["summary"]["dataset_version_id"] == "dataset-version-1"
+    assert task_detail.task.result["summary"]["training_config"]["recipe_id"] == "recipe-1"
+    assert task_detail.task.result["summary"]["output_files"]["checkpoint_object_key"].endswith(
+        "/best.pt"
+    )
+    assert task_detail.task.result["summary"]["model_version_id"]
     assert any(
-        event.message == "yolov8 detection training backend not implemented yet"
+        event.message == "yolov8 training completed"
         for event in task_detail.events
     )
+    assert any(event.event_type == "progress" for event in task_detail.events)
+    assert dataset_storage.resolve(task_detail.task.result["checkpoint_object_key"]).is_file()
+    assert dataset_storage.resolve(task_detail.task.result["metrics_object_key"]).is_file()
+
+    model_service = SqlAlchemyYoloV8ModelService(session_factory=session_factory)
+    model_version = model_service.get_model_version(task_detail.task.result["model_version_id"])
+    assert model_version is not None
+    assert model_version.training_task_id == submission.task_id
 
 
 def test_yolov8_training_task_service_rejects_unsupported_model_scale(tmp_path: Path) -> None:
@@ -275,3 +311,52 @@ def _save_completed_dataset_export(session_factory: SessionFactory) -> None:
         unit_of_work.commit()
     finally:
         unit_of_work.close()
+
+
+def _write_completed_dataset_export_files(dataset_storage: LocalDatasetStorage) -> None:
+    """写入一套最小 YOLO detection 导出目录。"""
+
+    export_root = "exports/dataset-export-1"
+    train_image_key = f"{export_root}/images/train/sample-train.jpg"
+    val_image_key = f"{export_root}/images/val/sample-val.jpg"
+    train_annotation_key = f"{export_root}/annotations/instances_train.json"
+    val_annotation_key = f"{export_root}/annotations/instances_val.json"
+    manifest_key = f"{export_root}/manifest.json"
+
+    image = np.zeros((64, 64, 3), dtype=np.uint8)
+    image[12:36, 18:40] = (255, 255, 255)
+    for image_key in (train_image_key, val_image_key):
+        target_path = dataset_storage.resolve(image_key)
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+        assert cv2.imwrite(str(target_path), image)
+
+    train_annotation = {
+        "images": [{"id": 1, "file_name": "sample-train.jpg", "width": 64, "height": 64}],
+        "annotations": [{"id": 1, "image_id": 1, "category_id": 0, "bbox": [18, 12, 22, 24]}],
+        "categories": [{"id": 0, "name": "part"}],
+    }
+    val_annotation = {
+        "images": [{"id": 2, "file_name": "sample-val.jpg", "width": 64, "height": 64}],
+        "annotations": [{"id": 2, "image_id": 2, "category_id": 0, "bbox": [16, 10, 20, 22]}],
+        "categories": [{"id": 0, "name": "part"}],
+    }
+    dataset_storage.write_json(train_annotation_key, train_annotation)
+    dataset_storage.write_json(val_annotation_key, val_annotation)
+    dataset_storage.write_json(
+        manifest_key,
+        {
+            "format_id": YOLO_DETECTION_DATASET_FORMAT,
+            "splits": [
+                {
+                    "name": "train",
+                    "image_root": f"{export_root}/images/train",
+                    "annotation_file": train_annotation_key,
+                },
+                {
+                    "name": "val",
+                    "image_root": f"{export_root}/images/val",
+                    "annotation_file": val_annotation_key,
+                },
+            ],
+        },
+    )

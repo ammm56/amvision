@@ -84,3 +84,29 @@ YOLOV8_DETECTION_FILE_TYPES: Final[DetectionModelFileTypes] = DetectionModelFile
     training_metrics_file_type="yolov8-training-metrics",
     eval_report_file_type="yolov8-eval-report",
 )
+
+
+YOLO11_DETECTION_FILE_TYPES: Final[DetectionModelFileTypes] = DetectionModelFileTypes(
+    checkpoint_file_type="yolo11-checkpoint",
+    onnx_file_type="yolo11-onnx",
+    onnx_optimized_file_type="yolo11-onnx-optimized",
+    openvino_ir_file_type="yolo11-openvino-ir",
+    tensorrt_engine_file_type="yolo11-tensorrt-engine",
+    rknn_file_type="yolo11-rknn",
+    label_map_file_type="yolo11-label-map",
+    training_metrics_file_type="yolo11-training-metrics",
+    eval_report_file_type="yolo11-eval-report",
+)
+
+
+YOLO26_DETECTION_FILE_TYPES: Final[DetectionModelFileTypes] = DetectionModelFileTypes(
+    checkpoint_file_type="yolo26-checkpoint",
+    onnx_file_type="yolo26-onnx",
+    onnx_optimized_file_type="yolo26-onnx-optimized",
+    openvino_ir_file_type="yolo26-openvino-ir",
+    tensorrt_engine_file_type="yolo26-tensorrt-engine",
+    rknn_file_type="yolo26-rknn",
+    label_map_file_type="yolo26-label-map",
+    training_metrics_file_type="yolo26-training-metrics",
+    eval_report_file_type="yolo26-eval-report",
+)

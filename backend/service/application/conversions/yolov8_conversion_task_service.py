@@ -45,7 +45,9 @@ from backend.service.domain.tasks.task_records import TaskRecord, TaskRecordStat
 
 YOLOV8_CONVERSION_TASK_KIND = "yolov8-conversion"
 YOLOV8_CONVERSION_QUEUE_NAME = "yolov8-conversions"
-_YOLOV8_EXECUTABLE_TARGET_FORMATS = frozenset({"onnx", "onnx-optimized"})
+_YOLOV8_EXECUTABLE_TARGET_FORMATS = frozenset(
+    {"onnx", "onnx-optimized", "openvino-ir", "tensorrt-engine"}
+)
 
 
 class SqlAlchemyYoloV8ConversionTaskService(SqlAlchemyYoloXConversionTaskService):
@@ -442,6 +444,6 @@ class SqlAlchemyYoloV8ConversionTaskService(SqlAlchemyYoloXConversionTaskService
         ]
         if unsupported_formats:
             raise InvalidRequestError(
-                "当前 YOLOv8 conversion runner 仅支持 onnx 与 onnx-optimized",
+                "当前 YOLOv8 conversion runner 仅支持 onnx、onnx-optimized、openvino-ir、tensorrt-engine",
                 details={"unsupported_target_formats": unsupported_formats},
             )

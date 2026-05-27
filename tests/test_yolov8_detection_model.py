@@ -7,6 +7,10 @@ from types import SimpleNamespace
 
 import torch
 
+from backend.service.application.models.yolo_primary_detection_model import (
+    build_yolo11_detection_model,
+    build_yolo26_detection_model,
+)
 from backend.service.application.models.yolov8_detection_model import (
     build_yolov8_detection_model,
     load_yolov8_checkpoint,
@@ -41,3 +45,46 @@ def test_yolov8_detection_model_can_reload_project_checkpoint(tmp_path: Path) ->
 
     assert load_summary["checkpoint_path"] == str(checkpoint_path)
     assert load_summary["unexpected_keys"] == []
+
+
+def test_yolov8_checkpoint_loader_tolerates_class_head_shape_mismatch(tmp_path: Path) -> None:
+    """验证加载不同类别数 checkpoint 时会跳过不兼容分类头。"""
+
+    checkpoint_path = tmp_path / "yolov8-class-mismatch.pt"
+    source_model = build_yolov8_detection_model(model_scale="n", num_classes=2)
+    torch.save({"model_state_dict": source_model.state_dict()}, checkpoint_path)
+
+    target_model = build_yolov8_detection_model(model_scale="n", num_classes=1)
+    load_summary = load_yolov8_checkpoint(
+        imports=SimpleNamespace(torch=torch),
+        model=target_model,
+        checkpoint_path=checkpoint_path,
+    )
+
+    assert load_summary["checkpoint_path"] == str(checkpoint_path)
+    assert load_summary["shape_mismatch_keys"]
+    assert any(".cv3." in key for key in load_summary["shape_mismatch_keys"])
+
+
+def test_yolo11_detection_model_forward_returns_detection_tensor() -> None:
+    """验证共享层已经可以构建并前向 YOLO11 detection 模型。"""
+
+    model = build_yolo11_detection_model(model_scale="n", num_classes=2)
+    model.eval()
+
+    with torch.inference_mode():
+        prediction = model(torch.randn(1, 3, 64, 64))
+
+    assert prediction.shape == (1, 84, 6)
+
+
+def test_yolo26_detection_model_forward_returns_detection_tensor() -> None:
+    """验证共享层已经可以构建并前向 YOLO26 detection 模型。"""
+
+    model = build_yolo26_detection_model(model_scale="n", num_classes=2)
+    model.eval()
+
+    with torch.inference_mode():
+        prediction = model(torch.randn(1, 3, 64, 64))
+
+    assert prediction.shape == (1, 84, 6)

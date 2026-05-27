@@ -18,8 +18,10 @@ from backend.service.application.runtime.yolox_predictor import (
     YoloXPredictionRequest,
 )
 from backend.service.application.runtime.yolov8_predictor import (
+    OpenVINOYoloV8RuntimeSession,
     OnnxRuntimeYoloV8RuntimeSession,
     PyTorchYoloV8RuntimeSession,
+    TensorRTYoloV8RuntimeSession,
 )
 from backend.service.application.runtime.yolox_runtime_target import RuntimeTargetSnapshot
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
@@ -179,8 +181,6 @@ def _load_yolov8_detection_session(
 ) -> DetectionModelRuntimeSession:
     """按 runtime backend 加载当前已接通的 YOLOv8 detection 会话。"""
 
-    del pinned_output_buffer_enabled
-    del pinned_output_buffer_max_bytes
     if runtime_target.runtime_backend == "pytorch":
         return PyTorchYoloV8RuntimeSession.load(
             dataset_storage=dataset_storage,
@@ -190,6 +190,18 @@ def _load_yolov8_detection_session(
         return OnnxRuntimeYoloV8RuntimeSession.load(
             dataset_storage=dataset_storage,
             runtime_target=runtime_target,
+        )
+    if runtime_target.runtime_backend == "openvino":
+        return OpenVINOYoloV8RuntimeSession.load(
+            dataset_storage=dataset_storage,
+            runtime_target=runtime_target,
+        )
+    if runtime_target.runtime_backend == "tensorrt":
+        return TensorRTYoloV8RuntimeSession.load(
+            dataset_storage=dataset_storage,
+            runtime_target=runtime_target,
+            pinned_output_buffer_enabled=pinned_output_buffer_enabled,
+            pinned_output_buffer_max_bytes=pinned_output_buffer_max_bytes,
         )
     raise ValueError(f"unsupported runtime backend: {runtime_target.runtime_backend}")
 

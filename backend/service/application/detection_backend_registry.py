@@ -68,15 +68,29 @@ _DETECTION_BACKEND_REGISTRATIONS: Final[dict[str, DetectionBackendRegistration]]
         display_name="YOLOv8 Detection",
         status=DETECTION_BACKEND_STATUS_ACTIVE,
         features=DetectionBackendFeatureSet(
-            training=False,
+            training=True,
             conversion=True,
             inference=True,
             deployment=True,
         ),
         notes=(
-            "模型登记、训练任务入口、转换规划、PyTorch/ONNXRuntime 推理与 deployment 外壳已接通；"
-            "训练执行后端以及 OpenVINO/TensorRT 链仍待补齐。"
+            "模型登记、训练执行、转换规划、PyTorch/ONNXRuntime/OpenVINO/TensorRT 推理与 deployment 外壳已接通；"
+            "训练当前为 bootstrap 闭环实现。"
         ),
+    ),
+    "yolo11": DetectionBackendRegistration(
+        model_type="yolo11",
+        display_name="YOLO11 Detection",
+        status=DETECTION_BACKEND_STATUS_REGISTERED,
+        features=DetectionBackendFeatureSet(),
+        notes="项目内共享结构层与 checkpoint 兼容入口已接通；训练、转换、推理、deployment 待补齐。",
+    ),
+    "yolo26": DetectionBackendRegistration(
+        model_type="yolo26",
+        display_name="YOLO26 Detection",
+        status=DETECTION_BACKEND_STATUS_REGISTERED,
+        features=DetectionBackendFeatureSet(),
+        notes="项目内共享结构层与 checkpoint 兼容入口已接通；训练、转换、推理、deployment 待补齐。",
     ),
 }
 

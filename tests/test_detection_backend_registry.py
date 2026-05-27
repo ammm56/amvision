@@ -30,6 +30,8 @@ def test_detection_backend_registry_exposes_yolox_and_yolov8() -> None:
 
     yolox_registration = get_detection_backend_registration("yolox")
     yolov8_registration = get_detection_backend_registration("yolov8")
+    yolo11_registration = get_detection_backend_registration("yolo11")
+    yolo26_registration = get_detection_backend_registration("yolo26")
 
     assert yolox_registration is not None
     assert yolox_registration.status == DETECTION_BACKEND_STATUS_ACTIVE
@@ -40,10 +42,18 @@ def test_detection_backend_registry_exposes_yolox_and_yolov8() -> None:
 
     assert yolov8_registration is not None
     assert yolov8_registration.status == DETECTION_BACKEND_STATUS_ACTIVE
-    assert yolov8_registration.features.training is False
+    assert yolov8_registration.features.training is True
     assert yolov8_registration.features.conversion is True
     assert yolov8_registration.features.inference is True
     assert yolov8_registration.features.deployment is True
+
+    assert yolo11_registration is not None
+    assert yolo11_registration.features.training is False
+    assert yolo11_registration.features.conversion is False
+
+    assert yolo26_registration is not None
+    assert yolo26_registration.features.training is False
+    assert yolo26_registration.features.conversion is False
 
 
 def test_default_detection_model_runtime_routes_yolov8_to_yolov8_loader(
@@ -75,6 +85,50 @@ def test_default_detection_model_runtime_routes_yolov8_to_yolov8_loader(
     assert resolved_session is sentinel_session
 
 
+@pytest.mark.parametrize(
+    ("runtime_backend", "loader_name"),
+    [
+        ("openvino", "OpenVINOYoloV8RuntimeSession"),
+        ("tensorrt", "TensorRTYoloV8RuntimeSession"),
+    ],
+)
+def test_default_detection_model_runtime_routes_yolov8_specialized_backends(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    runtime_backend: str,
+    loader_name: str,
+) -> None:
+    """验证默认 detection runtime 会把 YOLOv8 特定后端路由到对应加载器。"""
+
+    storage = LocalDatasetStorage(DatasetStorageSettings(root_dir=str(tmp_path / "storage")))
+    runtime_target = _build_runtime_target(
+        storage=storage,
+        model_type="yolov8",
+        runtime_backend=runtime_backend,
+    )
+    sentinel_session = object()
+
+    def _fake_load(**kwargs):
+        assert kwargs["dataset_storage"] is storage
+        assert kwargs["runtime_target"].runtime_backend == runtime_backend
+        return sentinel_session
+
+    monkeypatch.setattr(
+        getattr(yolov8_predictor_module, loader_name),
+        "load",
+        staticmethod(_fake_load),
+    )
+
+    resolved_session = DefaultDetectionModelRuntime().load_session(
+        dataset_storage=storage,
+        runtime_target=runtime_target,
+        pinned_output_buffer_enabled=True,
+        pinned_output_buffer_max_bytes=1024,
+    )
+
+    assert resolved_session is sentinel_session
+
+
 def test_runtime_target_snapshot_serialization_preserves_model_type(tmp_path) -> None:
     """验证运行时快照在持久化往返后仍保留模型分类。"""
 
@@ -96,6 +150,7 @@ def _build_runtime_target(
     *,
     storage: LocalDatasetStorage,
     model_type: str,
+    runtime_backend: str = "onnxruntime",
 ) -> RuntimeTargetSnapshot:
     """构造 detection runtime 测试使用的最小运行时快照。"""
 
@@ -115,7 +170,7 @@ def _build_runtime_target(
         task_type="detection",
         source_kind="training-output",
         runtime_profile_id="runtime-profile-1",
-        runtime_backend="onnxruntime",
+        runtime_backend=runtime_backend,
         device_name="cpu",
         runtime_precision="fp32",
         input_size=(640, 640),

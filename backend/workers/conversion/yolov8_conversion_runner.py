@@ -1,4 +1,4 @@
-"""YOLOv8 转换 worker 接口与 ONNX phase-1 实现。"""
+"""YOLOv8 转换 worker 接口与 ONNX/OpenVINO/TensorRT 实现。"""
 
 from __future__ import annotations
 
@@ -13,6 +13,8 @@ from backend.service.application.runtime.yolov8_predictor import PyTorchYoloV8Ru
 from backend.service.domain.files.yolov8_file_types import (
     YOLOV8_ONNX_FILE,
     YOLOV8_ONNX_OPTIMIZED_FILE,
+    YOLOV8_OPENVINO_IR_FILE,
+    YOLOV8_TENSORRT_ENGINE_FILE,
 )
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 from backend.workers.conversion.yolox_conversion_runner import (
@@ -21,6 +23,8 @@ from backend.workers.conversion.yolox_conversion_runner import (
     _build_output_base_name,
     _import_onnx_dependencies,
     _resolve_conversion_phase,
+    _resolve_openvino_ir_build_precision,
+    _resolve_tensorrt_engine_build_precision,
 )
 
 
@@ -31,7 +35,7 @@ YoloV8ConversionRunner = ConversionBackend
 
 
 class LocalYoloV8ConversionRunner(LocalYoloXConversionRunner):
-    """使用本地文件存储执行 YOLOv8 ONNX 转换链。"""
+    """使用本地文件存储执行 YOLOv8 ONNX/OpenVINO/TensorRT 转换链。"""
 
     def __init__(self, *, dataset_storage: LocalDatasetStorage) -> None:
         """初始化本地 YOLOv8 转换 runner。"""
@@ -39,7 +43,7 @@ class LocalYoloV8ConversionRunner(LocalYoloXConversionRunner):
         super().__init__(dataset_storage=dataset_storage)
 
     def run_conversion(self, request: YoloV8ConversionRunRequest) -> YoloV8ConversionRunResult:
-        """执行当前已接通的 YOLOv8 ONNX 转换链。"""
+        """执行当前已接通的 YOLOv8 ONNX/OpenVINO/TensorRT 转换链。"""
 
         if not request.plan_steps:
             raise InvalidRequestError("转换计划 steps 不能为空")
@@ -51,10 +55,20 @@ class LocalYoloV8ConversionRunner(LocalYoloXConversionRunner):
         base_name = _build_output_base_name(request.source_runtime_target)
         onnx_object_key = f"{request.output_object_prefix}/artifacts/builds/{base_name}.onnx"
         optimized_object_key = f"{request.output_object_prefix}/artifacts/builds/{base_name}.optimized.onnx"
+        openvino_object_key = f"{request.output_object_prefix}/artifacts/builds/{base_name}.openvino.xml"
+        tensorrt_object_key = (
+            f"{request.output_object_prefix}/artifacts/builds/{base_name}.tensorrt.engine"
+        )
+        openvino_ir_build_precision = _resolve_openvino_ir_build_precision(request.metadata)
+        tensorrt_engine_build_precision = _resolve_tensorrt_engine_build_precision(
+            request.metadata
+        )
         executed_step_kinds: list[str] = []
         validation_summary: dict[str, object] = {}
         onnx_output: YoloV8ConversionOutput | None = None
         optimized_output: YoloV8ConversionOutput | None = None
+        openvino_output: YoloV8ConversionOutput | None = None
+        tensorrt_output: YoloV8ConversionOutput | None = None
 
         for step in request.plan_steps:
             executed_step_kinds.append(step.kind)
@@ -106,6 +120,44 @@ class LocalYoloV8ConversionRunner(LocalYoloXConversionRunner):
                     },
                 )
                 continue
+            if step.kind == "build-openvino-ir":
+                if optimized_output is None:
+                    raise ServiceConfigurationError("build-openvino-ir 缺少 optimize-onnx 输出")
+                build_summary = self._build_openvino_ir(
+                    source_object_key=optimized_object_key,
+                    output_object_key=openvino_object_key,
+                    build_precision=openvino_ir_build_precision,
+                )
+                openvino_output = YoloV8ConversionOutput(
+                    target_format="openvino-ir",
+                    object_uri=openvino_object_key,
+                    file_type=YOLOV8_OPENVINO_IR_FILE,
+                    metadata={
+                        **build_summary,
+                        "validation_summary": validation_summary,
+                        "source_object_uri": optimized_object_key,
+                    },
+                )
+                continue
+            if step.kind == "build-tensorrt-engine":
+                if optimized_output is None:
+                    raise ServiceConfigurationError("build-tensorrt-engine 缺少 optimize-onnx 输出")
+                build_summary = self._build_tensorrt_engine(
+                    source_object_key=optimized_object_key,
+                    output_object_key=tensorrt_object_key,
+                    build_precision=tensorrt_engine_build_precision,
+                )
+                tensorrt_output = YoloV8ConversionOutput(
+                    target_format="tensorrt-engine",
+                    object_uri=tensorrt_object_key,
+                    file_type=YOLOV8_TENSORRT_ENGINE_FILE,
+                    metadata={
+                        **build_summary,
+                        "validation_summary": validation_summary,
+                        "source_object_uri": optimized_object_key,
+                    },
+                )
+                continue
             raise InvalidRequestError(
                 "当前 YOLOv8 conversion runner 不支持指定步骤",
                 details={"step_kind": step.kind},
@@ -116,6 +168,10 @@ class LocalYoloV8ConversionRunner(LocalYoloXConversionRunner):
             outputs.append(onnx_output)
         if optimized_output is not None:
             outputs.append(optimized_output)
+        if openvino_output is not None:
+            outputs.append(openvino_output)
+        if tensorrt_output is not None:
+            outputs.append(tensorrt_output)
         return YoloV8ConversionRunResult(
             conversion_task_id=request.conversion_task_id,
             outputs=tuple(outputs),
@@ -125,8 +181,8 @@ class LocalYoloV8ConversionRunner(LocalYoloXConversionRunner):
                 "validation_summary": validation_summary,
                 "conversion_options": _build_conversion_options_metadata(
                     target_formats=request.target_formats,
-                    openvino_ir_build_precision="fp32",
-                    tensorrt_engine_build_precision="fp32",
+                    openvino_ir_build_precision=openvino_ir_build_precision,
+                    tensorrt_engine_build_precision=tensorrt_engine_build_precision,
                 ),
             },
         )

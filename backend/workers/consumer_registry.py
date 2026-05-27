@@ -17,6 +17,7 @@ from backend.workers.inference.yolox_inference_queue_worker import YoloXInferenc
 from backend.workers.settings import (
     BACKEND_WORKER_CONSUMER_DATASET_EXPORT,
     BACKEND_WORKER_CONSUMER_DATASET_IMPORT,
+    BACKEND_WORKER_CONSUMER_YOLOV8_TRAINING,
     BACKEND_WORKER_CONSUMER_YOLOV8_CONVERSION,
     BACKEND_WORKER_CONSUMER_YOLOX_CONVERSION,
     BACKEND_WORKER_CONSUMER_YOLOX_EVALUATION,
@@ -24,6 +25,7 @@ from backend.workers.settings import (
     BACKEND_WORKER_CONSUMER_YOLOX_TRAINING,
 )
 from backend.workers.task_manager import BackgroundTaskConsumer
+from backend.workers.training.yolov8_training_queue_worker import YoloV8TrainingQueueWorker
 from backend.workers.training.yolox_training_queue_worker import YoloXTrainingQueueWorker
 
 
@@ -90,6 +92,16 @@ def build_background_task_consumers(
                     dataset_storage=resources.dataset_storage,
                     queue_backend=resources.queue_backend,
                     worker_id=f"{resources.worker_id_prefix}-yolox-training",
+                )
+            )
+            continue
+        if consumer_kind == BACKEND_WORKER_CONSUMER_YOLOV8_TRAINING:
+            consumers.append(
+                YoloV8TrainingQueueWorker(
+                    session_factory=resources.session_factory,
+                    dataset_storage=resources.dataset_storage,
+                    queue_backend=resources.queue_backend,
+                    worker_id=f"{resources.worker_id_prefix}-yolov8-training",
                 )
             )
             continue

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import math
 from dataclasses import dataclass
 from typing import Any
@@ -173,6 +174,206 @@ class C2f(nn.Module):
         return self.cv2(torch.cat(y, dim=1))
 
 
+class C3(nn.Module):
+    """YOLO C3 模块。"""
+
+    def __init__(
+        self,
+        c1: int,
+        c2: int,
+        n: int = 1,
+        shortcut: bool = True,
+        g: int = 1,
+        e: float = 0.5,
+    ) -> None:
+        """初始化 C3 模块。"""
+
+        super().__init__()
+        hidden_channels = int(c2 * e)
+        self.cv1 = Conv(c1, hidden_channels, 1, 1)
+        self.cv2 = Conv(c1, hidden_channels, 1, 1)
+        self.cv3 = Conv(2 * hidden_channels, c2, 1, 1)
+        self.m = nn.Sequential(
+            *(
+                Bottleneck(
+                    hidden_channels,
+                    hidden_channels,
+                    shortcut=shortcut,
+                    g=g,
+                    k=(1, 3),
+                    e=1.0,
+                )
+                for _ in range(n)
+            )
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """执行 C3 前向。"""
+
+        return self.cv3(torch.cat((self.m(self.cv1(x)), self.cv2(x)), dim=1))
+
+
+class C3k(C3):
+    """支持可调卷积核的 C3 模块。"""
+
+    def __init__(
+        self,
+        c1: int,
+        c2: int,
+        n: int = 1,
+        shortcut: bool = True,
+        g: int = 1,
+        e: float = 0.5,
+        k: int = 3,
+    ) -> None:
+        """初始化 C3k 模块。"""
+
+        super().__init__(c1, c2, n=n, shortcut=shortcut, g=g, e=e)
+        hidden_channels = int(c2 * e)
+        self.m = nn.Sequential(
+            *(
+                Bottleneck(
+                    hidden_channels,
+                    hidden_channels,
+                    shortcut=shortcut,
+                    g=g,
+                    k=(k, k),
+                    e=1.0,
+                )
+                for _ in range(n)
+            )
+        )
+
+
+class Attention(nn.Module):
+    """多头注意力模块。"""
+
+    def __init__(self, dim: int, num_heads: int = 8, attn_ratio: float = 0.5) -> None:
+        """初始化注意力模块。"""
+
+        super().__init__()
+        self.num_heads = max(1, int(num_heads))
+        self.head_dim = dim // self.num_heads
+        self.key_dim = max(1, int(self.head_dim * attn_ratio))
+        self.scale = float(self.key_dim) ** -0.5
+        qk_channels = self.key_dim * self.num_heads
+        hidden_channels = dim + qk_channels * 2
+        self.qkv = Conv(dim, hidden_channels, 1, act=False)
+        self.proj = Conv(dim, dim, 1, act=False)
+        self.pe = Conv(dim, dim, 3, 1, g=dim, act=False)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """执行注意力前向。"""
+
+        batch_size, channels, height, width = x.shape
+        token_count = height * width
+        qkv = self.qkv(x)
+        q, k, v = qkv.view(
+            batch_size,
+            self.num_heads,
+            (self.key_dim * 2) + self.head_dim,
+            token_count,
+        ).split([self.key_dim, self.key_dim, self.head_dim], dim=2)
+        attention = (q.transpose(-2, -1) @ k) * self.scale
+        attention = attention.softmax(dim=-1)
+        attended = (v @ attention.transpose(-2, -1)).view(batch_size, channels, height, width)
+        return self.proj(attended + self.pe(v.reshape(batch_size, channels, height, width)))
+
+
+class PSABlock(nn.Module):
+    """位置敏感注意力块。"""
+
+    def __init__(
+        self,
+        c: int,
+        attn_ratio: float = 0.5,
+        num_heads: int = 4,
+        shortcut: bool = True,
+    ) -> None:
+        """初始化 PSA block。"""
+
+        super().__init__()
+        self.attn = Attention(c, attn_ratio=attn_ratio, num_heads=num_heads)
+        self.ffn = nn.Sequential(Conv(c, c * 2, 1), Conv(c * 2, c, 1, act=False))
+        self.add = shortcut
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """执行 PSA block 前向。"""
+
+        x = x + self.attn(x) if self.add else self.attn(x)
+        x = x + self.ffn(x) if self.add else self.ffn(x)
+        return x
+
+
+class C2PSA(nn.Module):
+    """带 PSA 的 C2 模块。"""
+
+    def __init__(self, c1: int, c2: int, n: int = 1, e: float = 0.5) -> None:
+        """初始化 C2PSA 模块。"""
+
+        super().__init__()
+        if c1 != c2:
+            raise ServiceConfigurationError(
+                "C2PSA 要求输入输出通道一致",
+                details={"input_channels": c1, "output_channels": c2},
+            )
+        hidden_channels = int(c1 * e)
+        self.hidden_channels = hidden_channels
+        self.cv1 = Conv(c1, 2 * hidden_channels, 1, 1)
+        self.cv2 = Conv(2 * hidden_channels, c1, 1, 1)
+        self.m = nn.Sequential(
+            *(
+                PSABlock(
+                    hidden_channels,
+                    attn_ratio=0.5,
+                    num_heads=max(hidden_channels // 64, 1),
+                )
+                for _ in range(n)
+            )
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """执行 C2PSA 前向。"""
+
+        a, b = self.cv1(x).split((self.hidden_channels, self.hidden_channels), dim=1)
+        b = self.m(b)
+        return self.cv2(torch.cat((a, b), dim=1))
+
+
+class C3k2(C2f):
+    """YOLO11/26 使用的 C3k2 模块。"""
+
+    def __init__(
+        self,
+        c1: int,
+        c2: int,
+        n: int = 1,
+        c3k: bool = False,
+        e: float = 0.5,
+        attn: bool = False,
+        g: int = 1,
+        shortcut: bool = True,
+    ) -> None:
+        """初始化 C3k2 模块。"""
+
+        super().__init__(c1, c2, n=n, shortcut=shortcut, g=g, e=e)
+        self.m = nn.ModuleList(
+            nn.Sequential(
+                Bottleneck(self.hidden_channels, self.hidden_channels, shortcut=shortcut, g=g),
+                PSABlock(
+                    self.hidden_channels,
+                    attn_ratio=0.5,
+                    num_heads=max(self.hidden_channels // 64, 1),
+                ),
+            )
+            if attn
+            else C3k(self.hidden_channels, self.hidden_channels, 2, shortcut=shortcut, g=g)
+            if c3k
+            else Bottleneck(self.hidden_channels, self.hidden_channels, shortcut=shortcut, g=g)
+            for _ in range(n)
+        )
+
+
 class SPPF(nn.Module):
     """YOLO detection 使用的 SPPF 模块。"""
 
@@ -236,6 +437,7 @@ class Detect(nn.Module):
         *,
         reg_max: int = 16,
         strides: tuple[int, ...] = (8, 16, 32),
+        end2end: bool = False,
     ) -> None:
         """初始化检测头。"""
 
@@ -245,6 +447,7 @@ class Detect(nn.Module):
         self.reg_max = reg_max
         self.no = nc + 4
         self.strides = tuple(int(item) for item in strides)
+        self.end2end = bool(end2end)
         if len(self.strides) != self.nl:
             raise ServiceConfigurationError(
                 "Detect 头的 stride 数量与特征层数量不一致",
@@ -272,7 +475,14 @@ class Detect(nn.Module):
             )
             for input_channels in ch
         )
-        self.dfl = DistributionFocalLossDecoder(self.reg_max)
+        self.dfl = (
+            DistributionFocalLossDecoder(self.reg_max)
+            if self.reg_max > 1
+            else nn.Identity()
+        )
+        if self.end2end:
+            self.one2one_cv2 = copy.deepcopy(self.cv2)
+            self.one2one_cv3 = copy.deepcopy(self.cv3)
 
     def forward(
         self,
@@ -287,26 +497,55 @@ class Detect(nn.Module):
             )
 
         batch_size = int(x[0].shape[0])
+        raw_outputs = self._build_head_outputs(
+            x,
+            box_head=self.cv2,
+            class_head=self.cv3,
+        )
+        if self.end2end:
+            detached_inputs = [feature.detach() for feature in x]
+            one2one_outputs = self._build_head_outputs(
+                detached_inputs,
+                box_head=self.one2one_cv2,
+                class_head=self.one2one_cv3,
+            )
+            raw_outputs = {
+                "one2many": raw_outputs,
+                "one2one": one2one_outputs,
+            }
+        if self.training:
+            return raw_outputs
+
+        inference_outputs = raw_outputs["one2one"] if self.end2end else raw_outputs
+        decoded_boxes = self._decode_boxes(inference_outputs)
+        class_scores = inference_outputs["scores"].sigmoid()
+        prediction = torch.cat((decoded_boxes, class_scores), dim=1)
+        return prediction.transpose(1, 2).contiguous()
+
+    def _build_head_outputs(
+        self,
+        x: list[torch.Tensor] | tuple[torch.Tensor, ...],
+        *,
+        box_head: nn.ModuleList,
+        class_head: nn.ModuleList,
+    ) -> dict[str, torch.Tensor]:
+        """根据指定 head 组装原始检测输出。"""
+
+        batch_size = int(x[0].shape[0])
+        box_channels = 4 * self.reg_max if self.reg_max > 1 else 4
         box_outputs = torch.cat(
-            [self.cv2[index](feature).view(batch_size, 4 * self.reg_max, -1) for index, feature in enumerate(x)],
+            [box_head[index](feature).view(batch_size, box_channels, -1) for index, feature in enumerate(x)],
             dim=2,
         )
         class_outputs = torch.cat(
-            [self.cv3[index](feature).view(batch_size, self.nc, -1) for index, feature in enumerate(x)],
+            [class_head[index](feature).view(batch_size, self.nc, -1) for index, feature in enumerate(x)],
             dim=2,
         )
-        raw_outputs = {
+        return {
             "boxes": box_outputs,
             "scores": class_outputs,
             "feats": tuple(x),
         }
-        if self.training:
-            return raw_outputs
-
-        decoded_boxes = self._decode_boxes(raw_outputs)
-        class_scores = raw_outputs["scores"].sigmoid()
-        prediction = torch.cat((decoded_boxes, class_scores), dim=1)
-        return prediction.transpose(1, 2).contiguous()
 
     def _decode_boxes(self, raw_outputs: dict[str, torch.Tensor]) -> torch.Tensor:
         """把分布式回归输出解码成 xyxy 边界框。"""
@@ -423,6 +662,10 @@ def _parse_yolo_detection_model(
     module_map = {
         "Conv": Conv,
         "C2f": C2f,
+        "C3": C3,
+        "C3k": C3k,
+        "C3k2": C3k2,
+        "C2PSA": C2PSA,
         "SPPF": SPPF,
         "Concat": Concat,
         "Detect": Detect,
@@ -454,7 +697,7 @@ def _parse_yolo_detection_model(
         module_args = list(raw_args)
         output_channels: int
 
-        if module_type in {Conv, C2f, SPPF}:
+        if module_type in {Conv, C2f, C3, C3k, C3k2, C2PSA, SPPF}:
             source_channels = channels[_resolve_single_from_index(from_index)]
             output_channels = make_divisible(
                 min(float(module_args[0]), float(scale_profile.max_channels)) * scale_profile.width,
@@ -465,6 +708,9 @@ def _parse_yolo_detection_model(
                 module = module_type(*built_module_args)
             elif module_type is SPPF:
                 built_module_args = [source_channels, output_channels, *module_args[1:]]
+                module = module_type(*built_module_args)
+            elif module_type in {C2PSA, C2f, C3, C3k, C3k2}:
+                built_module_args = [source_channels, output_channels, repeat_count, *module_args[1:]]
                 module = module_type(*built_module_args)
             else:
                 built_module_args = [source_channels, output_channels, repeat_count, *module_args[1:]]
@@ -485,6 +731,7 @@ def _parse_yolo_detection_model(
                 detect_channels,
                 reg_max=int(model_config.get("reg_max", 16)),
                 strides=tuple(int(item) for item in model_config.get("strides", (8, 16, 32))),
+                end2end=bool(model_config.get("end2end", False)),
             )
 
         setattr(module, "layer_index", layer_index)
