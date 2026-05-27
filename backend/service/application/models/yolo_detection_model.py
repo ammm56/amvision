@@ -427,6 +427,24 @@ class DistributionFocalLossDecoder(nn.Module):
         return (prediction * projection).sum(dim=2)
 
 
+class Proto(nn.Module):
+    """实例分割使用的原型 mask 生成头。"""
+
+    def __init__(self, c1: int, c_: int = 256, c2: int = 32) -> None:
+        """初始化分割 proto 头。"""
+
+        super().__init__()
+        self.cv1 = Conv(c1, c_, 3)
+        self.upsample = nn.ConvTranspose2d(c_, c_, 2, 2, 0, bias=True)
+        self.cv2 = Conv(c_, c_, 3)
+        self.cv3 = Conv(c_, c2, 1)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """根据高分辨率特征图生成原型 mask。"""
+
+        return self.cv3(self.cv2(self.upsample(self.cv1(x))))
+
+
 class Detect(nn.Module):
     """YOLO detection 头的项目内实现。"""
 
@@ -517,9 +535,7 @@ class Detect(nn.Module):
             return raw_outputs
 
         inference_outputs = raw_outputs["one2one"] if self.end2end else raw_outputs
-        decoded_boxes = self._decode_boxes(inference_outputs)
-        class_scores = inference_outputs["scores"].sigmoid()
-        prediction = torch.cat((decoded_boxes, class_scores), dim=1)
+        prediction = self._build_inference_prediction(inference_outputs)
         return prediction.transpose(1, 2).contiguous()
 
     def _build_head_outputs(
@@ -528,6 +544,9 @@ class Detect(nn.Module):
         *,
         box_head: nn.ModuleList,
         class_head: nn.ModuleList,
+        extra_head: nn.ModuleList | None = None,
+        extra_key: str | None = None,
+        extra_channels: int | None = None,
     ) -> dict[str, torch.Tensor]:
         """根据指定 head 组装原始检测输出。"""
 
@@ -541,11 +560,20 @@ class Detect(nn.Module):
             [class_head[index](feature).view(batch_size, self.nc, -1) for index, feature in enumerate(x)],
             dim=2,
         )
-        return {
+        output_bundle = {
             "boxes": box_outputs,
             "scores": class_outputs,
             "feats": tuple(x),
         }
+        if extra_head is not None and extra_key is not None and extra_channels is not None:
+            output_bundle[extra_key] = torch.cat(
+                [
+                    extra_head[index](feature).view(batch_size, int(extra_channels), -1)
+                    for index, feature in enumerate(x)
+                ],
+                dim=2,
+            )
+        return output_bundle
 
     def _decode_boxes(self, raw_outputs: dict[str, torch.Tensor]) -> torch.Tensor:
         """把分布式回归输出解码成 xyxy 边界框。"""
@@ -561,9 +589,317 @@ class Detect(nn.Module):
             stride_tensor=stride_tensor.unsqueeze(0),
         )
 
+    def _build_inference_prediction(self, raw_outputs: dict[str, torch.Tensor]) -> torch.Tensor:
+        """把检测头输出组装成推理预测张量。"""
+
+        decoded_boxes = self._decode_boxes(raw_outputs)
+        class_scores = raw_outputs["scores"].sigmoid()
+        return torch.cat((decoded_boxes, class_scores), dim=1)
+
+
+class Segment(Detect):
+    """YOLO 实例分割头的项目内实现。"""
+
+    def __init__(
+        self,
+        nc: int,
+        nm: int,
+        npr: int,
+        ch: tuple[int, ...],
+        *,
+        reg_max: int = 16,
+        strides: tuple[int, ...] = (8, 16, 32),
+        end2end: bool = False,
+    ) -> None:
+        """初始化分割头。"""
+
+        super().__init__(nc, ch, reg_max=reg_max, strides=strides, end2end=end2end)
+        self.nm = int(nm)
+        self.npr = int(npr)
+        self.proto = Proto(ch[0], self.npr, self.nm)
+        hidden_channels = max(ch[0] // 4, self.nm)
+        self.cv4 = nn.ModuleList(
+            nn.Sequential(
+                Conv(input_channels, hidden_channels, 3),
+                Conv(hidden_channels, hidden_channels, 3),
+                nn.Conv2d(hidden_channels, self.nm, 1),
+            )
+            for input_channels in ch
+        )
+        if self.end2end:
+            self.one2one_cv4 = copy.deepcopy(self.cv4)
+
+    def forward(
+        self,
+        x: list[torch.Tensor] | tuple[torch.Tensor, ...],
+    ) -> dict[str, torch.Tensor] | tuple[torch.Tensor, torch.Tensor]:
+        """执行实例分割头前向。"""
+
+        if not isinstance(x, list | tuple) or len(x) != self.nl:
+            raise InvalidRequestError(
+                "Segment 头收到的特征层数量不合法",
+                details={"expected_feature_count": self.nl},
+            )
+        proto = self.proto(x[0])
+        raw_outputs = self._build_head_outputs(
+            x,
+            box_head=self.cv2,
+            class_head=self.cv3,
+            extra_head=self.cv4,
+            extra_key="mask_coefficients",
+            extra_channels=self.nm,
+        )
+        if self.end2end:
+            detached_inputs = [feature.detach() for feature in x]
+            one2one_outputs = self._build_head_outputs(
+                detached_inputs,
+                box_head=self.one2one_cv2,
+                class_head=self.one2one_cv3,
+                extra_head=self.one2one_cv4,
+                extra_key="mask_coefficients",
+                extra_channels=self.nm,
+            )
+            raw_outputs = {
+                "one2many": raw_outputs,
+                "one2one": one2one_outputs,
+            }
+        if self.training:
+            if self.end2end:
+                raw_outputs["one2many"]["proto"] = proto
+                raw_outputs["one2one"]["proto"] = proto.detach()
+            else:
+                raw_outputs["proto"] = proto
+            return raw_outputs
+
+        inference_outputs = raw_outputs["one2one"] if self.end2end else raw_outputs
+        prediction = self._build_inference_prediction(inference_outputs)
+        prediction = torch.cat((prediction, inference_outputs["mask_coefficients"]), dim=1)
+        return prediction.transpose(1, 2).contiguous(), proto
+
+
+class Segment26(Segment):
+    """YOLO26 分割头当前阶段复用主线分割实现。"""
+
+
+class OBB(Detect):
+    """YOLO 旋转框头的项目内实现。"""
+
+    def __init__(
+        self,
+        nc: int,
+        ne: int,
+        ch: tuple[int, ...],
+        *,
+        reg_max: int = 16,
+        strides: tuple[int, ...] = (8, 16, 32),
+        end2end: bool = False,
+    ) -> None:
+        """初始化旋转框头。"""
+
+        super().__init__(nc, ch, reg_max=reg_max, strides=strides, end2end=end2end)
+        self.ne = int(ne)
+        hidden_channels = max(ch[0] // 4, self.ne)
+        self.cv4 = nn.ModuleList(
+            nn.Sequential(
+                Conv(input_channels, hidden_channels, 3),
+                Conv(hidden_channels, hidden_channels, 3),
+                nn.Conv2d(hidden_channels, self.ne, 1),
+            )
+            for input_channels in ch
+        )
+        if self.end2end:
+            self.one2one_cv4 = copy.deepcopy(self.cv4)
+
+    def forward(
+        self,
+        x: list[torch.Tensor] | tuple[torch.Tensor, ...],
+    ) -> dict[str, torch.Tensor] | torch.Tensor:
+        """执行旋转框头前向。"""
+
+        if not isinstance(x, list | tuple) or len(x) != self.nl:
+            raise InvalidRequestError(
+                "OBB 头收到的特征层数量不合法",
+                details={"expected_feature_count": self.nl},
+            )
+        raw_outputs = self._build_head_outputs(
+            x,
+            box_head=self.cv2,
+            class_head=self.cv3,
+            extra_head=self.cv4,
+            extra_key="angle",
+            extra_channels=self.ne,
+        )
+        if self.end2end:
+            detached_inputs = [feature.detach() for feature in x]
+            one2one_outputs = self._build_head_outputs(
+                detached_inputs,
+                box_head=self.one2one_cv2,
+                class_head=self.one2one_cv3,
+                extra_head=self.one2one_cv4,
+                extra_key="angle",
+                extra_channels=self.ne,
+            )
+            raw_outputs = {
+                "one2many": raw_outputs,
+                "one2one": one2one_outputs,
+            }
+        if self.training:
+            return raw_outputs
+        inference_outputs = raw_outputs["one2one"] if self.end2end else raw_outputs
+        prediction = self._build_inference_prediction(inference_outputs)
+        prediction = torch.cat((prediction, self._decode_angle_logits(inference_outputs["angle"])), dim=1)
+        return prediction.transpose(1, 2).contiguous()
+
+    def _decode_angle_logits(self, angle_logits: torch.Tensor) -> torch.Tensor:
+        """把角度 logits 解码成旋转角。"""
+
+        return (angle_logits.sigmoid() - 0.25) * math.pi
+
+
+class OBB26(OBB):
+    """YOLO26 旋转框头当前阶段保留原始角度输出。"""
+
+    def _decode_angle_logits(self, angle_logits: torch.Tensor) -> torch.Tensor:
+        """YOLO26 当前阶段返回原始角度分支输出。"""
+
+        return angle_logits
+
+
+class Pose(Detect):
+    """YOLO 关键点头的项目内实现。"""
+
+    def __init__(
+        self,
+        nc: int,
+        kpt_shape: tuple[int, int],
+        ch: tuple[int, ...],
+        *,
+        reg_max: int = 16,
+        strides: tuple[int, ...] = (8, 16, 32),
+        end2end: bool = False,
+    ) -> None:
+        """初始化关键点头。"""
+
+        super().__init__(nc, ch, reg_max=reg_max, strides=strides, end2end=end2end)
+        self.kpt_shape = tuple(int(item) for item in kpt_shape)
+        self.nk = self.kpt_shape[0] * self.kpt_shape[1]
+        hidden_channels = max(ch[0] // 4, self.nk)
+        self.cv4 = nn.ModuleList(
+            nn.Sequential(
+                Conv(input_channels, hidden_channels, 3),
+                Conv(hidden_channels, hidden_channels, 3),
+                nn.Conv2d(hidden_channels, self.nk, 1),
+            )
+            for input_channels in ch
+        )
+        if self.end2end:
+            self.one2one_cv4 = copy.deepcopy(self.cv4)
+
+    def forward(
+        self,
+        x: list[torch.Tensor] | tuple[torch.Tensor, ...],
+    ) -> dict[str, torch.Tensor] | torch.Tensor:
+        """执行关键点头前向。"""
+
+        if not isinstance(x, list | tuple) or len(x) != self.nl:
+            raise InvalidRequestError(
+                "Pose 头收到的特征层数量不合法",
+                details={"expected_feature_count": self.nl},
+            )
+        raw_outputs = self._build_head_outputs(
+            x,
+            box_head=self.cv2,
+            class_head=self.cv3,
+            extra_head=self.cv4,
+            extra_key="kpts",
+            extra_channels=self.nk,
+        )
+        if self.end2end:
+            detached_inputs = [feature.detach() for feature in x]
+            one2one_outputs = self._build_head_outputs(
+                detached_inputs,
+                box_head=self.one2one_cv2,
+                class_head=self.one2one_cv3,
+                extra_head=self.one2one_cv4,
+                extra_key="kpts",
+                extra_channels=self.nk,
+            )
+            raw_outputs = {
+                "one2many": raw_outputs,
+                "one2one": one2one_outputs,
+            }
+        if self.training:
+            return raw_outputs
+        inference_outputs = raw_outputs["one2one"] if self.end2end else raw_outputs
+        prediction = self._build_inference_prediction(inference_outputs)
+        prediction = torch.cat((prediction, self._decode_keypoints(inference_outputs)), dim=1)
+        return prediction.transpose(1, 2).contiguous()
+
+    def _decode_keypoints(self, raw_outputs: dict[str, torch.Tensor]) -> torch.Tensor:
+        """把关键点分支输出解码成绝对坐标。"""
+
+        anchor_points, stride_tensor = _make_anchors(
+            feature_maps=raw_outputs["feats"],
+            strides=self.strides,
+        )
+        kpts = raw_outputs["kpts"]
+        batch_size = int(kpts.shape[0])
+        decoded = kpts.view(batch_size, self.kpt_shape[0], self.kpt_shape[1], -1).clone()
+        anchor_x = anchor_points[:, 0].view(1, 1, -1)
+        anchor_y = anchor_points[:, 1].view(1, 1, -1)
+        stride = stride_tensor.view(1, 1, -1)
+        decoded[:, :, 0, :] = (decoded[:, :, 0, :] * 2.0 + (anchor_x - 0.5)) * stride
+        decoded[:, :, 1, :] = (decoded[:, :, 1, :] * 2.0 + (anchor_y - 0.5)) * stride
+        if self.kpt_shape[1] > 2:
+            decoded[:, :, 2:, :] = decoded[:, :, 2:, :].sigmoid()
+        return decoded.view(batch_size, self.nk, -1)
+
+
+class Pose26(Pose):
+    """YOLO26 关键点头当前阶段复用主线关键点实现。"""
+
+
+class Classify(nn.Module):
+    """YOLO 分类头的项目内实现。"""
+
+    export = False
+
+    def __init__(
+        self,
+        c1: int,
+        c2: int,
+        k: int = 1,
+        s: int = 1,
+        p: int | None = None,
+        g: int = 1,
+    ) -> None:
+        """初始化分类头。"""
+
+        super().__init__()
+        hidden_channels = 1280
+        self.conv = Conv(c1, hidden_channels, k, s, p, g)
+        self.pool = nn.AdaptiveAvgPool2d(1)
+        self.drop = nn.Dropout(p=0.0, inplace=True)
+        self.linear = nn.Linear(hidden_channels, c2)
+
+    def forward(self, x: list[torch.Tensor] | tuple[torch.Tensor, ...] | torch.Tensor) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
+        """把高层特征映射成分类 logits。"""
+
+        if isinstance(x, list | tuple):
+            if len(x) == 1:
+                x = x[0]
+            else:
+                x = torch.cat(tuple(x), dim=1)
+        logits = self.linear(self.drop(self.pool(self.conv(x)).flatten(1)))
+        if self.training:
+            return logits
+        probabilities = logits.softmax(dim=1)
+        return probabilities if self.export else (probabilities, logits)
+
+
 
 class YoloDetectionModel(nn.Module):
-    """按配置图谱构建的 YOLO detection 模型。"""
+    """按配置图谱构建的项目内 YOLO 主线模型。"""
 
     def __init__(
         self,
@@ -574,7 +910,7 @@ class YoloDetectionModel(nn.Module):
         model_config: dict[str, object],
         input_channels: int = 3,
     ) -> None:
-        """初始化 detection 模型。"""
+        """初始化 YOLO 主线模型。"""
 
         super().__init__()
         self.model_name = model_name
@@ -614,7 +950,7 @@ def build_yolo_detection_model(
     model_config: dict[str, object],
     input_channels: int = 3,
 ) -> YoloDetectionModel:
-    """按指定配置构建一套 detection 模型。"""
+    """按指定配置构建一套项目内 YOLO 主线模型。"""
 
     return YoloDetectionModel(
         model_name=model_name,
@@ -633,15 +969,15 @@ def _parse_yolo_detection_model(
     model_config: dict[str, object],
     input_channels: int,
 ) -> tuple[nn.Sequential, tuple[int, ...]]:
-    """把 detection 配置解析为顺序模块和跨层保存列表。"""
+    """把 YOLO 主线配置解析为顺序模块和跨层保存列表。"""
 
     scales = model_config.get("scales")
     if not isinstance(scales, dict):
-        raise ServiceConfigurationError(f"{model_name} detection 模型配置缺少 scales")
+        raise ServiceConfigurationError(f"{model_name} 模型配置缺少 scales")
     raw_scale_profile = scales.get(model_scale)
     if not isinstance(raw_scale_profile, list | tuple) or len(raw_scale_profile) != 3:
         raise InvalidRequestError(
-            f"当前 {model_name} detection 不支持指定 model_scale",
+            f"当前 {model_name} 不支持指定 model_scale",
             details={"model_scale": model_scale},
         )
     scale_profile = YoloDetectionScaleProfile(
@@ -653,7 +989,7 @@ def _parse_yolo_detection_model(
     backbone = model_config.get("backbone")
     head = model_config.get("head")
     if not isinstance(backbone, list) or not isinstance(head, list):
-        raise ServiceConfigurationError(f"{model_name} detection 模型配置缺少 backbone/head")
+        raise ServiceConfigurationError(f"{model_name} 模型配置缺少 backbone/head")
 
     channels: list[int] = [input_channels]
     layers: list[nn.Module] = []
@@ -669,13 +1005,20 @@ def _parse_yolo_detection_model(
         "SPPF": SPPF,
         "Concat": Concat,
         "Detect": Detect,
+        "Segment": Segment,
+        "Segment26": Segment26,
+        "Pose": Pose,
+        "Pose26": Pose26,
+        "OBB": OBB,
+        "OBB26": OBB26,
+        "Classify": Classify,
         "nn.Upsample": nn.Upsample,
     }
 
     for layer_index, raw_layer_def in enumerate(module_defs):
         if not isinstance(raw_layer_def, list | tuple) or len(raw_layer_def) != 4:
             raise ServiceConfigurationError(
-                f"{model_name} detection 配置层定义不合法",
+                f"{model_name} 配置层定义不合法",
                 details={"layer_index": layer_index},
             )
         raw_from, raw_repeat, raw_module_name, raw_args = raw_layer_def
@@ -683,12 +1026,12 @@ def _parse_yolo_detection_model(
         module_type = module_map.get(module_name)
         if module_type is None:
             raise ServiceConfigurationError(
-                f"{model_name} detection 当前不支持配置里的模块类型",
+                f"{model_name} 当前不支持配置里的模块类型",
                 details={"layer_index": layer_index, "module_name": module_name},
             )
         if not isinstance(raw_args, list | tuple):
             raise ServiceConfigurationError(
-                f"{model_name} detection 配置层参数不合法",
+                f"{model_name} 配置层参数不合法",
                 details={"layer_index": layer_index},
             )
 
@@ -722,13 +1065,25 @@ def _parse_yolo_detection_model(
         elif module_type is nn.Upsample:
             output_channels = channels[_resolve_single_from_index(from_index)]
             module = module_type(size=module_args[0], scale_factor=module_args[1], mode=module_args[2])
+        elif module_type is Classify:
+            source_channels = channels[_resolve_single_from_index(from_index)]
+            resolved_module_args = [
+                _resolve_model_config_argument(item, num_classes=num_classes, model_config=model_config)
+                for item in module_args
+            ]
+            output_channels = int(resolved_module_args[0]) if resolved_module_args else num_classes
+            module = module_type(source_channels, output_channels, *resolved_module_args[1:])
         else:
             detect_sources = _resolve_multi_from_indexes(from_index)
             detect_channels = tuple(channels[item] for item in detect_sources)
             output_channels = sum(detect_channels)
+            resolved_module_args = [
+                _resolve_model_config_argument(item, num_classes=num_classes, model_config=model_config)
+                for item in module_args
+            ]
             module = module_type(
-                num_classes,
-                detect_channels,
+                *resolved_module_args,
+                ch=detect_channels,
                 reg_max=int(model_config.get("reg_max", 16)),
                 strides=tuple(int(item) for item in model_config.get("strides", (8, 16, 32))),
                 end2end=bool(model_config.get("end2end", False)),
@@ -752,6 +1107,24 @@ def _parse_yolo_detection_model(
                 save.append(referenced_index)
 
     return nn.Sequential(*layers), tuple(sorted(set(save)))
+
+
+def _resolve_model_config_argument(
+    value: object,
+    *,
+    num_classes: int,
+    model_config: dict[str, object],
+) -> object:
+    """把配置里的占位参数替换成当前模型实例的真实值。"""
+
+    if value == "nc":
+        return int(num_classes)
+    if value == "kpt_shape":
+        kpt_shape = model_config.get("kpt_shape")
+        if not isinstance(kpt_shape, list | tuple) or len(kpt_shape) != 2:
+            raise ServiceConfigurationError("当前 YOLO pose 配置缺少合法的 kpt_shape")
+        return tuple(int(item) for item in kpt_shape)
+    return value
 
 
 def _resolve_repeat_count(raw_repeat: object, depth_multiple: float) -> int:

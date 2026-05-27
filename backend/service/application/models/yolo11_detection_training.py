@@ -1,4 +1,4 @@
-"""YOLO11 detection bootstrap 训练执行模块。"""
+"""YOLO11 detection 训练执行模块。"""
 
 from __future__ import annotations
 
@@ -13,13 +13,13 @@ from backend.service.application.models.yolo_primary_detection_training import (
 )
 
 
-YOLO11_BOOTSTRAP_IMPLEMENTATION_MODE = "yolo11-detection-bootstrap"
+YOLO11_BOOTSTRAP_IMPLEMENTATION_MODE = "yolo11-detection"
 
 
 def run_yolo11_detection_training(
     request: Yolo11DetectionTrainingExecutionRequest,
 ) -> Yolo11DetectionTrainingExecutionResult:
-    """执行一轮项目内 YOLO11 detection bootstrap 训练。"""
+    """执行一轮项目内 YOLO11 detection 训练。"""
 
     return run_yolo_primary_detection_training(
         replace(
