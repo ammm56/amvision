@@ -129,6 +129,9 @@ WebSocket 资源流的统一消息结构、控制事件和重连规则见 [docs/
 | GET | /api/v1/models/yolox/training-tasks/{task_id}/train-metrics | tasks:read | 读取当前训练任务最新的 train-metrics.json 内容。 |
 | GET | /api/v1/models/yolox/training-tasks/{task_id}/output-files | tasks:read | 列出当前训练任务公开输出文件状态。 |
 | GET | /api/v1/models/yolox/training-tasks/{task_id}/output-files/{file_name} | tasks:read | 读取单个训练输出文件的状态、object_key 和可内联 payload。 |
+| POST | /api/v1/models/detection/validation-sessions | models:read | 为指定 detection 模型分类与 ModelVersion 创建一个训练后单图人工验证 session；当前 validation runtime 固定走 pytorch。 |
+| GET | /api/v1/models/detection/validation-sessions/{session_id} | models:read | 读取单条 detection validation session 当前详情。 |
+| POST | /api/v1/models/detection/validation-sessions/{session_id}/predict | models:read | 对 detection validation session 执行一次单图预测，并返回 raw-result 与 preview 引用。 |
 | POST | /api/v1/models/yolox/validation-sessions | models:read | 创建一个训练后单图人工验证 session。 |
 | GET | /api/v1/models/yolox/validation-sessions/{session_id} | models:read | 读取单条 validation session 当前详情。 |
 | POST | /api/v1/models/yolox/validation-sessions/{session_id}/predict | models:read | 对 validation session 执行一次单图预测，并返回 raw-result 与 preview 引用。 |

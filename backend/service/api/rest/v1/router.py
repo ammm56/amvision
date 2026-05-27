@@ -10,6 +10,9 @@ from backend.service.api.rest.v1.routes.detection_conversion_tasks import detect
 from backend.service.api.rest.v1.routes.detection_deployments import detection_deployments_router
 from backend.service.api.rest.v1.routes.detection_inference_tasks import detection_inference_tasks_router
 from backend.service.api.rest.v1.routes.detection_training_tasks import detection_training_tasks_router
+from backend.service.api.rest.v1.routes.detection_validation_sessions import (
+    detection_validation_sessions_router,
+)
 from backend.service.api.rest.v1.routes.auth import auth_router
 from backend.service.api.rest.v1.routes.models import models_router
 from backend.service.api.rest.v1.routes.projects import projects_router
@@ -37,6 +40,7 @@ api_v1_router.include_router(datasets_router)
 api_v1_router.include_router(dataset_exports_router)
 api_v1_router.include_router(models_router)
 api_v1_router.include_router(detection_training_tasks_router)
+api_v1_router.include_router(detection_validation_sessions_router)
 api_v1_router.include_router(detection_conversion_tasks_router)
 api_v1_router.include_router(detection_deployments_router)
 api_v1_router.include_router(detection_inference_tasks_router)

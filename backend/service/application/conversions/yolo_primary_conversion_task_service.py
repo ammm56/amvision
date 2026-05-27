@@ -4,18 +4,18 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
-from backend.service.application.conversions.yolox_conversion_task_service import (
-    SqlAlchemyYoloXConversionTaskService,
-    YoloXBuildRegistration as YoloPrimaryBuildRegistration,
-    YoloXConversionBuildSummary as YoloPrimaryConversionBuildSummary,
-    YoloXConversionResultSnapshot as YoloPrimaryConversionResultSnapshot,
-    YoloXConversionRunRequest as YoloPrimaryConversionRunRequest,
-    YoloXConversionTaskRequest as YoloPrimaryConversionTaskRequest,
-    YoloXConversionTaskResult as YoloPrimaryConversionTaskResult,
-    YoloXConversionTaskSubmission as YoloPrimaryConversionTaskSubmission,
-    _serialize_build_summary,
-    _deserialize_task_spec,
-    _serialize_task_spec,
+from backend.service.application.conversions.detection_conversion_task_service import (
+    DetectionBuildRegistration as YoloPrimaryBuildRegistration,
+    DetectionConversionBuildSummary as YoloPrimaryConversionBuildSummary,
+    DetectionConversionResultSnapshot as YoloPrimaryConversionResultSnapshot,
+    DetectionConversionRunRequest as YoloPrimaryConversionRunRequest,
+    DetectionConversionTaskRequest as YoloPrimaryConversionTaskRequest,
+    DetectionConversionTaskResult as YoloPrimaryConversionTaskResult,
+    DetectionConversionTaskSubmission as YoloPrimaryConversionTaskSubmission,
+    SqlAlchemyDetectionConversionTaskService,
+    deserialize_detection_conversion_task_spec as _deserialize_task_spec,
+    serialize_detection_conversion_build_summary as _serialize_build_summary,
+    serialize_detection_conversion_task_spec as _serialize_task_spec,
 )
 from backend.service.application.errors import (
     InvalidRequestError,
@@ -45,7 +45,7 @@ _YOLO_PRIMARY_EXECUTABLE_TARGET_FORMATS = frozenset(
 )
 
 
-class SqlAlchemyYoloPrimaryConversionTaskService(SqlAlchemyYoloXConversionTaskService):
+class SqlAlchemyYoloPrimaryConversionTaskService(SqlAlchemyDetectionConversionTaskService):
     """基于 detection 公共链路实现的 YOLO 主线转换任务服务。"""
 
     model_type = "yolo-primary"
