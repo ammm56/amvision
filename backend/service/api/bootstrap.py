@@ -17,11 +17,11 @@ from backend.service.api.seeders import BackendServiceSeeder, BackendServiceSeed
 from backend.service.application.auth.default_local_auth_seeder import DefaultLocalAuthSeeder
 from backend.service.application.events import InMemoryServiceEventBus
 from backend.service.application.deployments import (
+    DetectionDeploymentPublishedInferenceGateway,
     PublishedInferenceGateway,
-    YoloXDeploymentPublishedInferenceGateway,
 )
-from backend.service.application.deployments.yolox_deployment_service import (
-    SqlAlchemyYoloXDeploymentService,
+from backend.service.application.deployments.detection_deployment_service import (
+    SqlAlchemyDetectionDeploymentService,
 )
 from backend.service.application.local_buffers import LocalBufferBrokerProcessSupervisor
 from backend.service.application.models.yolox_async_inference_gateway import (
@@ -310,8 +310,8 @@ class BackendServiceBootstrap(
             ),
             response_queue_retention_seconds=settings.queue.response_queue_retention_seconds,
         )
-        published_inference_gateway = YoloXDeploymentPublishedInferenceGateway(
-            deployment_service=SqlAlchemyYoloXDeploymentService(
+        published_inference_gateway = DetectionDeploymentPublishedInferenceGateway(
+            deployment_service=SqlAlchemyDetectionDeploymentService(
                 session_factory=session_factory,
                 dataset_storage=dataset_storage,
             ),

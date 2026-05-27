@@ -1,6 +1,7 @@
 """deployment application 包。"""
 
 from backend.service.application.deployments.published_inference_gateway import (
+    DetectionDeploymentPublishedInferenceGateway,
     PublishedInferenceGateway,
     PublishedInferenceGatewayClient,
     PublishedInferenceGatewayDispatcher,
@@ -11,6 +12,7 @@ from backend.service.application.deployments.published_inference_gateway import 
 )
 
 __all__ = [
+    "DetectionDeploymentPublishedInferenceGateway",
     "PublishedInferenceGateway",
     "PublishedInferenceGatewayClient",
     "PublishedInferenceGatewayDispatcher",

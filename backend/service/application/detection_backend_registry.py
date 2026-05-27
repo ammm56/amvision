@@ -86,8 +86,9 @@ _DETECTION_BACKEND_REGISTRATIONS: Final[dict[str, DetectionBackendRegistration]]
             training=True,
             conversion=True,
             inference=True,
+            deployment=True,
         ),
-        notes="共享结构、权重加载、训练入口、转换链和 runtime loader 已接通；deployment 正式服务入口待补齐。",
+        notes="共享结构、权重加载、训练入口、转换链、runtime loader 与 detection deployment 正式入口已接通。",
     ),
     "yolo26": DetectionBackendRegistration(
         model_type="yolo26",
@@ -97,8 +98,9 @@ _DETECTION_BACKEND_REGISTRATIONS: Final[dict[str, DetectionBackendRegistration]]
             training=True,
             conversion=True,
             inference=True,
+            deployment=True,
         ),
-        notes="共享结构、权重加载、训练入口、转换链和 runtime loader 已接通；deployment 正式服务入口待补齐。",
+        notes="共享结构、权重加载、训练入口、转换链、runtime loader 与 detection deployment 正式入口已接通。",
     ),
 }
 

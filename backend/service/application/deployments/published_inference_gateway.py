@@ -206,6 +206,11 @@ class YoloXDeploymentPublishedInferenceGateway:
         )
 
 
+@dataclass(frozen=True)
+class DetectionDeploymentPublishedInferenceGateway(YoloXDeploymentPublishedInferenceGateway):
+    """通过长期运行的 detection deployment worker 执行已发布推理。"""
+
+
 class PublishedInferenceGatewayClient:
     """通过父进程事件 dispatcher 调用 PublishedInferenceGateway。"""
 

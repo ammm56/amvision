@@ -52,14 +52,14 @@ def test_detection_backend_registry_exposes_yolox_and_yolov8() -> None:
     assert yolo11_registration.features.training is True
     assert yolo11_registration.features.conversion is True
     assert yolo11_registration.features.inference is True
-    assert yolo11_registration.features.deployment is False
+    assert yolo11_registration.features.deployment is True
 
     assert yolo26_registration is not None
     assert yolo26_registration.status == DETECTION_BACKEND_STATUS_ACTIVE
     assert yolo26_registration.features.training is True
     assert yolo26_registration.features.conversion is True
     assert yolo26_registration.features.inference is True
-    assert yolo26_registration.features.deployment is False
+    assert yolo26_registration.features.deployment is True
 
 
 def test_default_detection_model_runtime_routes_yolov8_to_yolov8_loader(

@@ -629,6 +629,7 @@ async def _read_yolox_inference_request_payload(
 		payload = {
 			"project_id": _read_optional_form_str(form, "project_id"),
 			"deployment_instance_id": _read_optional_form_str(form, "deployment_instance_id"),
+			"model_type": _read_optional_form_str(form, "model_type"),
 			"input_file_id": _read_optional_form_str(form, "input_file_id"),
 			"input_uri": _read_optional_form_str(form, "input_uri"),
 			"image_base64": _read_optional_form_str(form, "image_base64"),

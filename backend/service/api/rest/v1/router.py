@@ -6,6 +6,8 @@ from fastapi import APIRouter
 
 from backend.service.api.rest.v1.routes.dataset_exports import dataset_exports_router
 from backend.service.api.rest.v1.routes.datasets import datasets_router
+from backend.service.api.rest.v1.routes.detection_deployments import detection_deployments_router
+from backend.service.api.rest.v1.routes.detection_inference_tasks import detection_inference_tasks_router
 from backend.service.api.rest.v1.routes.auth import auth_router
 from backend.service.api.rest.v1.routes.models import models_router
 from backend.service.api.rest.v1.routes.projects import projects_router
@@ -32,6 +34,8 @@ api_v1_router.include_router(workflow_trigger_sources_router)
 api_v1_router.include_router(datasets_router)
 api_v1_router.include_router(dataset_exports_router)
 api_v1_router.include_router(models_router)
+api_v1_router.include_router(detection_deployments_router)
+api_v1_router.include_router(detection_inference_tasks_router)
 api_v1_router.include_router(yolox_training_tasks_router)
 api_v1_router.include_router(yolox_validation_sessions_router)
 api_v1_router.include_router(yolox_conversion_tasks_router)

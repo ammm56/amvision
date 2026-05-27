@@ -12,18 +12,18 @@ from backend.service.application.conversions.yolox_conversion_task_service impor
 from backend.service.application.datasets.dataset_import import SqlAlchemyDatasetImportService
 from backend.service.application.datasets.dataset_export import SqlAlchemyDatasetExportTaskService
 from backend.service.application.datasets.dataset_export_delivery import SqlAlchemyDatasetExportDeliveryService
-from backend.service.application.deployments.yolox_deployment_service import SqlAlchemyYoloXDeploymentService
+from backend.service.application.deployments.detection_deployment_service import SqlAlchemyDetectionDeploymentService
 from backend.service.application.deployments import (
+    DetectionDeploymentPublishedInferenceGateway,
     PublishedInferenceGateway,
-    YoloXDeploymentPublishedInferenceGateway,
 )
 from backend.service.application.errors import ServiceConfigurationError
 from backend.service.application.tasks.task_service import SqlAlchemyTaskService
 from backend.service.application.models.yolox_evaluation_task_service import (
     SqlAlchemyYoloXEvaluationTaskService,
 )
-from backend.service.application.models.yolox_inference_task_service import (
-    SqlAlchemyYoloXInferenceTaskService,
+from backend.service.application.models.detection_inference_task_service import (
+    SqlAlchemyDetectionInferenceTaskService,
 )
 from backend.service.application.models.yolox_async_inference_gateway import (
     YoloXAsyncInferenceGatewayDispatcherRegistry,
@@ -130,10 +130,10 @@ class WorkflowServiceNodeRuntimeContext:
             queue_backend=self.require_queue_backend(),
         )
 
-    def build_deployment_service(self) -> SqlAlchemyYoloXDeploymentService:
+    def build_deployment_service(self) -> SqlAlchemyDetectionDeploymentService:
         """构造 DeploymentInstance service。"""
 
-        return SqlAlchemyYoloXDeploymentService(
+        return SqlAlchemyDetectionDeploymentService(
             session_factory=self.session_factory,
             dataset_storage=self.dataset_storage,
         )
@@ -143,15 +143,15 @@ class WorkflowServiceNodeRuntimeContext:
 
         if self.published_inference_gateway is not None:
             return self.published_inference_gateway
-        return YoloXDeploymentPublishedInferenceGateway(
+        return DetectionDeploymentPublishedInferenceGateway(
             deployment_service=self.build_deployment_service(),
             deployment_process_supervisor=self.require_sync_deployment_process_supervisor(),
         )
 
-    def build_inference_task_service(self) -> SqlAlchemyYoloXInferenceTaskService:
+    def build_inference_task_service(self) -> SqlAlchemyDetectionInferenceTaskService:
         """构造正式推理任务 service。"""
 
-        return SqlAlchemyYoloXInferenceTaskService(
+        return SqlAlchemyDetectionInferenceTaskService(
             session_factory=self.session_factory,
             dataset_storage=self.dataset_storage,
             queue_backend=self.require_queue_backend(),
