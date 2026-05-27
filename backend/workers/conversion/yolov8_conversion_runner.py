@@ -11,6 +11,9 @@ from backend.service.application.backends import (
 from backend.service.application.runtime.yolov8_classification_predictor import (
     PyTorchYoloV8ClassificationRuntimeSession,
 )
+from backend.service.application.runtime.yolov8_segmentation_predictor import (
+    PyTorchYoloV8SegmentationRuntimeSession,
+)
 from backend.service.application.runtime.yolov8_predictor import PyTorchYoloV8RuntimeSession
 from backend.service.domain.files.yolov8_file_types import (
     YOLOV8_ONNX_FILE,
@@ -37,6 +40,7 @@ class LocalYoloV8ConversionRunner(LocalYoloPrimaryConversionRunner):
     task_runtime_session_classes = {
         "detection": PyTorchYoloV8RuntimeSession,
         "classification": PyTorchYoloV8ClassificationRuntimeSession,
+        "segmentation": PyTorchYoloV8SegmentationRuntimeSession,
     }
     onnx_file_type = YOLOV8_ONNX_FILE
     onnx_optimized_file_type = YOLOV8_ONNX_OPTIMIZED_FILE

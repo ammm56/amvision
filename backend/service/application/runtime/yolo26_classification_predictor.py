@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from backend.service.application.runtime.yolo_primary_classification_predictor import (
     OnnxRuntimeYoloPrimaryClassificationRuntimeSession,
+    OpenVINOYoloPrimaryClassificationRuntimeSession,
     PyTorchYoloPrimaryClassificationRuntimeSession,
+    TensorRTYoloPrimaryClassificationRuntimeSession,
 )
 
 
@@ -22,7 +24,23 @@ class OnnxRuntimeYolo26ClassificationRuntimeSession(OnnxRuntimeYoloPrimaryClassi
     model_label = "YOLO26"
 
 
+class OpenVINOYolo26ClassificationRuntimeSession(OpenVINOYoloPrimaryClassificationRuntimeSession):
+    """已经加载完成并可重复推理的 OpenVINO YOLO26 classification 会话。"""
+
+    model_type = "yolo26"
+    model_label = "YOLO26"
+
+
+class TensorRTYolo26ClassificationRuntimeSession(TensorRTYoloPrimaryClassificationRuntimeSession):
+    """已经加载完成并可重复推理的 TensorRT YOLO26 classification 会话。"""
+
+    model_type = "yolo26"
+    model_label = "YOLO26"
+
+
 __all__ = [
     "PyTorchYolo26ClassificationRuntimeSession",
     "OnnxRuntimeYolo26ClassificationRuntimeSession",
+    "OpenVINOYolo26ClassificationRuntimeSession",
+    "TensorRTYolo26ClassificationRuntimeSession",
 ]

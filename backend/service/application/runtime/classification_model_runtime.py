@@ -12,15 +12,21 @@ from backend.service.application.runtime.classification_runtime_contracts import
 )
 from backend.service.application.runtime.yolo11_classification_predictor import (
     OnnxRuntimeYolo11ClassificationRuntimeSession,
+    OpenVINOYolo11ClassificationRuntimeSession,
     PyTorchYolo11ClassificationRuntimeSession,
+    TensorRTYolo11ClassificationRuntimeSession,
 )
 from backend.service.application.runtime.yolo26_classification_predictor import (
     OnnxRuntimeYolo26ClassificationRuntimeSession,
+    OpenVINOYolo26ClassificationRuntimeSession,
     PyTorchYolo26ClassificationRuntimeSession,
+    TensorRTYolo26ClassificationRuntimeSession,
 )
 from backend.service.application.runtime.yolov8_classification_predictor import (
     OnnxRuntimeYoloV8ClassificationRuntimeSession,
+    OpenVINOYoloV8ClassificationRuntimeSession,
     PyTorchYoloV8ClassificationRuntimeSession,
+    TensorRTYoloV8ClassificationRuntimeSession,
 )
 from backend.service.application.runtime.yolox_runtime_target import RuntimeTargetSnapshot
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
@@ -104,10 +110,13 @@ class DefaultClassificationModelRuntime:
     ) -> ClassificationModelRuntimeSession:
         """按模型分类和 runtime backend 加载 classification 模型会话。"""
 
-        del pinned_output_buffer_enabled
-        del pinned_output_buffer_max_bytes
         runtime_loader = self.runtime_registry.resolve_runtime_loader(runtime_target.model_type)
-        return runtime_loader(dataset_storage, runtime_target, None, None)
+        return runtime_loader(
+            dataset_storage,
+            runtime_target,
+            pinned_output_buffer_enabled,
+            pinned_output_buffer_max_bytes,
+        )
 
 
 def build_default_classification_model_runtime_registry() -> ClassificationModelRuntimeRegistry:
@@ -140,6 +149,18 @@ def _load_yolov8_classification_session(
             dataset_storage=dataset_storage,
             runtime_target=runtime_target,
         )
+    if runtime_target.runtime_backend == "openvino":
+        return OpenVINOYoloV8ClassificationRuntimeSession.load(
+            dataset_storage=dataset_storage,
+            runtime_target=runtime_target,
+        )
+    if runtime_target.runtime_backend == "tensorrt":
+        return TensorRTYoloV8ClassificationRuntimeSession.load(
+            dataset_storage=dataset_storage,
+            runtime_target=runtime_target,
+            pinned_output_buffer_enabled=pinned_output_buffer_enabled,
+            pinned_output_buffer_max_bytes=pinned_output_buffer_max_bytes,
+        )
     raise ValueError(f"unsupported classification runtime backend: {runtime_target.runtime_backend}")
 
 
@@ -163,6 +184,18 @@ def _load_yolo11_classification_session(
             dataset_storage=dataset_storage,
             runtime_target=runtime_target,
         )
+    if runtime_target.runtime_backend == "openvino":
+        return OpenVINOYolo11ClassificationRuntimeSession.load(
+            dataset_storage=dataset_storage,
+            runtime_target=runtime_target,
+        )
+    if runtime_target.runtime_backend == "tensorrt":
+        return TensorRTYolo11ClassificationRuntimeSession.load(
+            dataset_storage=dataset_storage,
+            runtime_target=runtime_target,
+            pinned_output_buffer_enabled=pinned_output_buffer_enabled,
+            pinned_output_buffer_max_bytes=pinned_output_buffer_max_bytes,
+        )
     raise ValueError(f"unsupported classification runtime backend: {runtime_target.runtime_backend}")
 
 
@@ -185,6 +218,18 @@ def _load_yolo26_classification_session(
         return OnnxRuntimeYolo26ClassificationRuntimeSession.load(
             dataset_storage=dataset_storage,
             runtime_target=runtime_target,
+        )
+    if runtime_target.runtime_backend == "openvino":
+        return OpenVINOYolo26ClassificationRuntimeSession.load(
+            dataset_storage=dataset_storage,
+            runtime_target=runtime_target,
+        )
+    if runtime_target.runtime_backend == "tensorrt":
+        return TensorRTYolo26ClassificationRuntimeSession.load(
+            dataset_storage=dataset_storage,
+            runtime_target=runtime_target,
+            pinned_output_buffer_enabled=pinned_output_buffer_enabled,
+            pinned_output_buffer_max_bytes=pinned_output_buffer_max_bytes,
         )
     raise ValueError(f"unsupported classification runtime backend: {runtime_target.runtime_backend}")
 

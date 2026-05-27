@@ -43,6 +43,7 @@ class LocalYoloPrimaryConversionRunner(LocalYoloXConversionRunner):
     tensorrt_engine_file_type: str | None = None
     task_export_output_names: dict[str, tuple[str, ...]] = {
         "classification": ("probabilities",),
+        "segmentation": ("predictions", "proto"),
     }
     task_export_mode_enabled: frozenset[str] = frozenset({"classification"})
 
