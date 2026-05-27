@@ -21,13 +21,15 @@ from backend.service.application.runtime.yolo26_predictor import (
     PyTorchYolo26RuntimeSession,
     TensorRTYolo26RuntimeSession,
 )
+from backend.service.application.runtime.detection_runtime_contracts import (
+    DetectionPredictionExecutionResult,
+    DetectionPredictionRequest,
+)
 from backend.service.application.runtime.yolox_predictor import (
     OpenVINOYoloXRuntimeSession,
     OnnxRuntimeYoloXRuntimeSession,
     PyTorchYoloXRuntimeSession,
     TensorRTYoloXRuntimeSession,
-    YoloXPredictionExecutionResult,
-    YoloXPredictionRequest,
 )
 from backend.service.application.runtime.yolov8_predictor import (
     OpenVINOYoloV8RuntimeSession,
@@ -48,7 +50,7 @@ DetectionRuntimeLoader = Callable[
 class DetectionModelRuntimeSession(Protocol):
     """定义 detection 模型会话需要满足的最小协议。"""
 
-    def predict(self, request: YoloXPredictionRequest) -> YoloXPredictionExecutionResult:
+    def predict(self, request: DetectionPredictionRequest) -> DetectionPredictionExecutionResult:
         """执行一次 detection 预测并返回结果。"""
 
         ...

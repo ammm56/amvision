@@ -14,12 +14,16 @@ from backend.service.application.models.yolo_primary_detection_model import (
 from backend.service.application.models.yolox_detection_training import (
     _require_training_imports,
 )
+from backend.service.application.runtime.detection_runtime_contracts import (
+    DetectionPredictionDetection,
+    DetectionPredictionExecutionResult,
+    DetectionPredictionRequest,
+    DetectionRuntimeSessionInfo,
+    DetectionRuntimeTensorSpec,
+)
 from backend.service.application.runtime.yolox_predictor import (
     OpenVINOYoloXRuntimeSession,
     TensorRTYoloXRuntimeSession,
-    YoloXPredictionDetection,
-    YoloXPredictionExecutionResult,
-    YoloXPredictionRequest,
     _DEFAULT_NMS_THRESHOLD,
     _batched_nms_indices,
     _build_openvino_compile_properties,
@@ -59,7 +63,6 @@ from backend.service.application.runtime.yolox_runtime_target import (
     describe_runtime_execution_mode,
 )
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
-from backend.workers.shared.yolox_runtime_contracts import RuntimeTensorSpec, YoloXRuntimeSessionInfo
 
 
 @dataclass(frozen=True)
@@ -74,8 +77,8 @@ class _YoloV8PostprocessResult:
 class PyTorchYoloPrimaryRuntimeSession:
     """已经加载完成并可重复推理的 PyTorch YOLO 主线会话。"""
 
-    model_type = "yolov8"
-    model_label = "YOLOv8"
+    model_type = "yolo-primary"
+    model_label = "YOLO primary"
 
     def __init__(
         self,
@@ -113,7 +116,7 @@ class PyTorchYoloPrimaryRuntimeSession:
 
         imports = _require_training_imports()
         model = build_yolo_primary_detection_model(
-            model_type=cls.model_type,
+            model_type=_require_primary_model_type(cls.model_type, cls.model_label),
             model_scale=runtime_target.model_scale,
             num_classes=len(runtime_target.labels),
         )
@@ -143,7 +146,7 @@ class PyTorchYoloPrimaryRuntimeSession:
             runtime_precision=runtime_target.runtime_precision,
         )
 
-    def predict(self, request: YoloXPredictionRequest) -> YoloXPredictionExecutionResult:
+    def predict(self, request: DetectionPredictionRequest) -> DetectionPredictionExecutionResult:
         """执行一次 PyTorch YOLOv8 预测。"""
 
         decode_started_at = perf_counter()
@@ -229,22 +232,22 @@ class PyTorchYoloPrimaryRuntimeSession:
                 detections=detections,
             )
 
-        return YoloXPredictionExecutionResult(
+        return DetectionPredictionExecutionResult(
             detections=detections,
             latency_ms=round(latency_ms, 3),
             image_width=image_width,
             image_height=image_height,
             preview_image_bytes=preview_image_bytes,
-            runtime_session_info=YoloXRuntimeSessionInfo(
+            runtime_session_info=DetectionRuntimeSessionInfo(
                 backend_name=self.runtime_target.runtime_backend,
                 model_uri=self.runtime_target.runtime_artifact_storage_uri,
                 device_name=self.device_name,
-                input_spec=RuntimeTensorSpec(
+                input_spec=DetectionRuntimeTensorSpec(
                     name="images",
                     shape=(1, 3, self.runtime_target.input_size[0], self.runtime_target.input_size[1]),
                     dtype="float16" if self.runtime_precision == "fp16" else "float32",
                 ),
-                output_spec=RuntimeTensorSpec(
+                output_spec=DetectionRuntimeTensorSpec(
                     name="predictions",
                     shape=(-1, 4 + len(self.runtime_target.labels)),
                     dtype="float16" if self.runtime_precision == "fp16" else "float32",
@@ -273,7 +276,8 @@ class PyTorchYoloPrimaryRuntimeSession:
 class OnnxRuntimeYoloPrimaryRuntimeSession:
     """已经加载完成并可重复推理的 ONNXRuntime YOLO 主线会话。"""
 
-    model_label = "YOLOv8"
+    model_type = "yolo-primary"
+    model_label = "YOLO primary"
 
     def __init__(
         self,
@@ -331,7 +335,7 @@ class OnnxRuntimeYoloPrimaryRuntimeSession:
             output_name=session.get_outputs()[0].name,
         )
 
-    def predict(self, request: YoloXPredictionRequest) -> YoloXPredictionExecutionResult:
+    def predict(self, request: DetectionPredictionRequest) -> DetectionPredictionExecutionResult:
         """执行一次 ONNXRuntime YOLOv8 预测。"""
 
         decode_started_at = perf_counter()
@@ -392,22 +396,22 @@ class OnnxRuntimeYoloPrimaryRuntimeSession:
                 detections=detections,
             )
 
-        return YoloXPredictionExecutionResult(
+        return DetectionPredictionExecutionResult(
             detections=detections,
             latency_ms=round(latency_ms, 3),
             image_width=image_width,
             image_height=image_height,
             preview_image_bytes=preview_image_bytes,
-            runtime_session_info=YoloXRuntimeSessionInfo(
+            runtime_session_info=DetectionRuntimeSessionInfo(
                 backend_name=self.runtime_target.runtime_backend,
                 model_uri=self.runtime_target.runtime_artifact_storage_uri,
                 device_name=self.device_name,
-                input_spec=RuntimeTensorSpec(
+                input_spec=DetectionRuntimeTensorSpec(
                     name=self.input_name,
                     shape=(1, 3, self.runtime_target.input_size[0], self.runtime_target.input_size[1]),
                     dtype="float32",
                 ),
-                output_spec=RuntimeTensorSpec(
+                output_spec=DetectionRuntimeTensorSpec(
                     name=self.output_name,
                     shape=(-1, 4 + len(self.runtime_target.labels)),
                     dtype="float32",
@@ -437,7 +441,8 @@ class OnnxRuntimeYoloPrimaryRuntimeSession:
 class OpenVINOYoloPrimaryRuntimeSession(OpenVINOYoloXRuntimeSession):
     """已经加载完成并可重复推理的 OpenVINO YOLO 主线会话。"""
 
-    model_label = "YOLOv8"
+    model_type = "yolo-primary"
+    model_label = "YOLO primary"
 
     @classmethod
     def load(
@@ -488,7 +493,7 @@ class OpenVINOYoloPrimaryRuntimeSession(OpenVINOYoloXRuntimeSession):
             ),
         )
 
-    def predict(self, request: YoloXPredictionRequest) -> YoloXPredictionExecutionResult:
+    def predict(self, request: DetectionPredictionRequest) -> DetectionPredictionExecutionResult:
         """执行一次 OpenVINO YOLOv8 预测。"""
 
         decode_started_at = perf_counter()
@@ -554,22 +559,22 @@ class OpenVINOYoloPrimaryRuntimeSession(OpenVINOYoloXRuntimeSession):
                 detections=detections,
             )
 
-        return YoloXPredictionExecutionResult(
+        return DetectionPredictionExecutionResult(
             detections=detections,
             latency_ms=round(latency_ms, 3),
             image_width=image_width,
             image_height=image_height,
             preview_image_bytes=preview_image_bytes,
-            runtime_session_info=YoloXRuntimeSessionInfo(
+            runtime_session_info=DetectionRuntimeSessionInfo(
                 backend_name=self.runtime_target.runtime_backend,
                 model_uri=self.runtime_target.runtime_artifact_storage_uri,
                 device_name=self.device_name,
-                input_spec=RuntimeTensorSpec(
+                input_spec=DetectionRuntimeTensorSpec(
                     name=self.input_name,
                     shape=(1, 3, self.runtime_target.input_size[0], self.runtime_target.input_size[1]),
                     dtype=_resolve_openvino_port_dtype(self.input_port, fallback="float32"),
                 ),
-                output_spec=RuntimeTensorSpec(
+                output_spec=DetectionRuntimeTensorSpec(
                     name=self.output_name,
                     shape=(-1, 4 + len(self.runtime_target.labels)),
                     dtype=_resolve_openvino_port_dtype(self.output_port, fallback="float32"),
@@ -600,7 +605,8 @@ class OpenVINOYoloPrimaryRuntimeSession(OpenVINOYoloXRuntimeSession):
 class TensorRTYoloPrimaryRuntimeSession(TensorRTYoloXRuntimeSession):
     """已经加载完成并可重复推理的 TensorRT YOLO 主线会话。"""
 
-    model_label = "YOLOv8"
+    model_type = "yolo-primary"
+    model_label = "YOLO primary"
 
     @classmethod
     def load(
@@ -706,7 +712,7 @@ class TensorRTYoloPrimaryRuntimeSession(TensorRTYoloXRuntimeSession):
             pinned_output_buffer_max_bytes=pinned_output_buffer_max_bytes,
         )
 
-    def predict(self, request: YoloXPredictionRequest) -> YoloXPredictionExecutionResult:
+    def predict(self, request: DetectionPredictionRequest) -> DetectionPredictionExecutionResult:
         """执行一次 TensorRT YOLOv8 预测。"""
 
         decode_started_at = perf_counter()
@@ -875,22 +881,22 @@ class TensorRTYoloPrimaryRuntimeSession(TensorRTYoloXRuntimeSession):
                 detections=detections,
             )
 
-        return YoloXPredictionExecutionResult(
+        return DetectionPredictionExecutionResult(
             detections=detections,
             latency_ms=round(latency_ms, 3),
             image_width=image_width,
             image_height=image_height,
             preview_image_bytes=preview_image_bytes,
-            runtime_session_info=YoloXRuntimeSessionInfo(
+            runtime_session_info=DetectionRuntimeSessionInfo(
                 backend_name=self.runtime_target.runtime_backend,
                 model_uri=self.runtime_target.runtime_artifact_storage_uri,
                 device_name=self.device_name,
-                input_spec=RuntimeTensorSpec(
+                input_spec=DetectionRuntimeTensorSpec(
                     name=self.input_name,
                     shape=requested_input_shape,
                     dtype=self.input_dtype_name,
                 ),
-                output_spec=RuntimeTensorSpec(
+                output_spec=DetectionRuntimeTensorSpec(
                     name=self.output_name,
                     shape=resolved_output_shape,
                     dtype=self.output_dtype_name,
@@ -928,7 +934,7 @@ def _build_yolov8_detection_records(
     resize_ratio: float,
     image_width: int,
     image_height: int,
-) -> tuple[YoloXPredictionDetection, ...]:
+) -> tuple[DetectionPredictionDetection, ...]:
     """把 YOLOv8 输出数组转换成平台 detection 记录。"""
 
     postprocess_results = _postprocess_yolov8_prediction_array(
@@ -941,7 +947,7 @@ def _build_yolov8_detection_records(
     if not postprocess_results:
         return ()
 
-    detections: list[YoloXPredictionDetection] = []
+    detections: list[DetectionPredictionDetection] = []
     prediction = postprocess_results[0]
     if prediction is None:
         return ()
@@ -959,7 +965,7 @@ def _build_yolov8_detection_records(
         resolved_class_id = int(class_id)
         class_name = labels[resolved_class_id] if 0 <= resolved_class_id < len(labels) else None
         detections.append(
-            YoloXPredictionDetection(
+            DetectionPredictionDetection(
                 bbox_xyxy=(round(x1, 4), round(y1, 4), round(x2, 4), round(y2, 4)),
                 score=round(float(score), 6),
                 class_id=resolved_class_id,
@@ -1031,3 +1037,15 @@ def _postprocess_yolov8_prediction_array(
             )
         )
     return results
+
+
+def _require_primary_model_type(model_type: str, model_label: str) -> str:
+    """返回当前主线 predictor 允许使用的正式模型分类。"""
+
+    normalized_model_type = model_type.strip().lower()
+    if not normalized_model_type or normalized_model_type == "yolo-primary":
+        raise ServiceConfigurationError(
+            f"当前 {model_label} predictor 缺少正式 model_type 配置",
+            details={"model_type": model_type},
+        )
+    return normalized_model_type

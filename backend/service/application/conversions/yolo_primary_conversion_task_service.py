@@ -2,14 +2,8 @@
 
 from __future__ import annotations
 
-from backend.service.application.conversions.yolov8_conversion_planner import (
-    DefaultYoloV8ConversionPlanner,
-    YoloV8ConversionPlan,
-    YoloV8ConversionPlanner,
-    YoloV8ConversionPlanningRequest,
-    deserialize_yolov8_conversion_plan,
-    serialize_yolov8_conversion_plan,
-)
+from typing import Any, Callable
+
 from backend.service.application.conversions.yolox_conversion_task_service import (
     SqlAlchemyYoloXConversionTaskService,
     YoloXBuildRegistration as YoloPrimaryBuildRegistration,
@@ -31,11 +25,9 @@ from backend.service.application.errors import (
 from backend.service.application.models.detection_operation_rules import (
     DetectionConversionOutputFiles,
 )
-from backend.service.application.models.yolov8_model_service import SqlAlchemyYoloV8ModelService
-from backend.service.application.runtime.yolov8_runtime_target import (
+from backend.service.application.runtime.yolox_runtime_target import (
     RuntimeTargetResolveRequest,
     RuntimeTargetSnapshot,
-    SqlAlchemyYoloV8RuntimeTargetResolver,
 )
 from backend.service.application.tasks.task_service import (
     AppendTaskEventRequest,
@@ -46,8 +38,8 @@ from backend.service.application.tasks.task_service import (
 from backend.service.domain.tasks.task_records import TaskRecord, TaskRecordState
 
 
-YOLO_PRIMARY_CONVERSION_TASK_KIND = "yolov8-conversion"
-YOLO_PRIMARY_CONVERSION_QUEUE_NAME = "yolov8-conversions"
+YOLO_PRIMARY_CONVERSION_TASK_KIND = "yolo-primary-conversion"
+YOLO_PRIMARY_CONVERSION_QUEUE_NAME = "yolo-primary-conversions"
 _YOLO_PRIMARY_EXECUTABLE_TARGET_FORMATS = frozenset(
     {"onnx", "onnx-optimized", "openvino-ir", "tensorrt-engine"}
 )
@@ -56,25 +48,102 @@ _YOLO_PRIMARY_EXECUTABLE_TARGET_FORMATS = frozenset(
 class SqlAlchemyYoloPrimaryConversionTaskService(SqlAlchemyYoloXConversionTaskService):
     """基于 detection 公共链路实现的 YOLO 主线转换任务服务。"""
 
-    model_type = "yolov8"
-    model_label = "YOLOv8"
+    model_type = "yolo-primary"
+    model_label = "YOLO primary"
     task_kind = YOLO_PRIMARY_CONVERSION_TASK_KIND
     queue_name = YOLO_PRIMARY_CONVERSION_QUEUE_NAME
     executable_target_formats = _YOLO_PRIMARY_EXECUTABLE_TARGET_FORMATS
-    planning_request_cls = YoloV8ConversionPlanningRequest
-    runtime_target_resolver_cls = SqlAlchemyYoloV8RuntimeTargetResolver
-    model_service_cls = SqlAlchemyYoloV8ModelService
+    planning_request_cls: type | None = None
+    runtime_target_resolver_cls: type | None = None
+    model_service_cls: type | None = None
     build_registration_cls = YoloPrimaryBuildRegistration
     build_summary_cls = YoloPrimaryConversionBuildSummary
     request_cls = YoloPrimaryConversionTaskRequest
     result_cls = YoloPrimaryConversionTaskResult
-    serialize_plan = staticmethod(serialize_yolov8_conversion_plan)
-    deserialize_plan = staticmethod(deserialize_yolov8_conversion_plan)
+    serialize_plan: Callable[[object], dict[str, object]] | None = None
+    deserialize_plan: Callable[[object], object] | None = None
 
-    def __init__(self, *args, planner: YoloV8ConversionPlanner | None = None, **kwargs) -> None:
-        """初始化 YOLOv8 转换任务服务。"""
+    def __init__(self, *args, planner: object, **kwargs) -> None:
+        """初始化 YOLO 主线转换任务服务。"""
 
-        super().__init__(*args, planner=planner or DefaultYoloV8ConversionPlanner(), **kwargs)
+        super().__init__(*args, planner=planner, **kwargs)
+
+    def _resolve_task_kind(self) -> str:
+        """返回当前模型分类转换任务种类。"""
+
+        value = _require_hook_value("task_kind", self.task_kind, model_label=self.model_label)
+        return str(value)
+
+    def _resolve_queue_name(self) -> str:
+        """返回当前模型分类转换队列名称。"""
+
+        value = _require_hook_value("queue_name", self.queue_name, model_label=self.model_label)
+        return str(value)
+
+    def _resolve_planning_request_cls(self) -> type:
+        """返回当前模型分类转换规划请求类型。"""
+
+        return _require_hook_value(
+            "planning_request_cls",
+            self.planning_request_cls,
+            model_label=self.model_label,
+        )
+
+    def _resolve_runtime_target_resolver_cls(self) -> type:
+        """返回当前模型分类运行时目标解析器类型。"""
+
+        return _require_hook_value(
+            "runtime_target_resolver_cls",
+            self.runtime_target_resolver_cls,
+            model_label=self.model_label,
+        )
+
+    def _resolve_model_service_cls(self) -> type:
+        """返回当前模型分类模型服务类型。"""
+
+        return _require_hook_value("model_service_cls", self.model_service_cls, model_label=self.model_label)
+
+    def _resolve_build_registration_cls(self) -> type:
+        """返回当前模型分类构建登记类型。"""
+
+        return _require_hook_value(
+            "build_registration_cls",
+            self.build_registration_cls,
+            model_label=self.model_label,
+        )
+
+    def _resolve_build_summary_cls(self) -> type:
+        """返回当前模型分类构建摘要类型。"""
+
+        return _require_hook_value(
+            "build_summary_cls",
+            self.build_summary_cls,
+            model_label=self.model_label,
+        )
+
+    def _resolve_request_cls(self) -> type:
+        """返回当前模型分类转换请求类型。"""
+
+        return _require_hook_value("request_cls", self.request_cls, model_label=self.model_label)
+
+    def _resolve_result_cls(self) -> type:
+        """返回当前模型分类转换结果类型。"""
+
+        return _require_hook_value("result_cls", self.result_cls, model_label=self.model_label)
+
+    def _resolve_serialize_plan(self) -> Callable[[object], dict[str, object]]:
+        """返回当前模型分类转换计划序列化函数。"""
+
+        return _require_hook_value("serialize_plan", self.serialize_plan, model_label=self.model_label)
+
+    def _resolve_deserialize_plan(self) -> Callable[[object], object]:
+        """返回当前模型分类转换计划反序列化函数。"""
+
+        return _require_hook_value(
+            "deserialize_plan",
+            self.deserialize_plan,
+            model_label=self.model_label,
+        )
 
     def submit_conversion_task(
         self,
@@ -83,12 +152,14 @@ class SqlAlchemyYoloPrimaryConversionTaskService(SqlAlchemyYoloXConversionTaskSe
         created_by: str | None = None,
         display_name: str = "",
     ) -> YoloPrimaryConversionTaskSubmission:
-        """创建并入队一条 YOLOv8 转换任务。"""
+        """创建并入队一条 YOLO 主线转换任务。"""
 
         self._validate_request(request)
         queue_backend = self._require_queue_backend()
+        task_kind = self._resolve_task_kind()
+        queue_name = self._resolve_queue_name()
         plan = self.planner.build_plan(
-            self.planning_request_cls(
+            self._resolve_planning_request_cls()(
                 project_id=request.project_id,
                 source_model_version_id=request.source_model_version_id,
                 target_formats=request.target_formats,
@@ -102,12 +173,12 @@ class SqlAlchemyYoloPrimaryConversionTaskService(SqlAlchemyYoloXConversionTaskSe
         created_task = self.task_service.create_task(
             CreateTaskRequest(
                 project_id=request.project_id,
-                task_kind=self.task_kind,
+                task_kind=task_kind,
                 display_name=display_name.strip()
                 or f"{self.model_type} conversion {request.source_model_version_id}",
                 created_by=created_by,
                 task_spec=_serialize_task_spec(task_spec),
-                worker_pool=self.task_kind,
+                worker_pool=task_kind,
                 metadata={
                     "source_model_version_id": request.source_model_version_id,
                     "target_formats": list(plan.target_formats),
@@ -118,7 +189,7 @@ class SqlAlchemyYoloPrimaryConversionTaskService(SqlAlchemyYoloXConversionTaskSe
         )
         try:
             queue_task = queue_backend.enqueue(
-                queue_name=self.queue_name,
+                queue_name=queue_name,
                 payload={"task_id": created_task.task_id},
                 metadata={
                     "project_id": request.project_id,
@@ -183,7 +254,7 @@ class SqlAlchemyYoloPrimaryConversionTaskService(SqlAlchemyYoloXConversionTaskSe
         return self.task_service.list_tasks(
             TaskQueryFilters(
                 project_id=project_id,
-                task_kind=self.task_kind,
+                task_kind=self._resolve_task_kind(),
                 state=state,
                 created_by=created_by,
                 limit=limit,
@@ -199,7 +270,7 @@ class SqlAlchemyYoloPrimaryConversionTaskService(SqlAlchemyYoloXConversionTaskSe
         """读取一条 YOLOv8 转换任务详情。"""
 
         task_detail = self.task_service.get_task(task_id, include_events=include_events)
-        if task_detail.task.task_kind != self.task_kind:
+        if task_detail.task.task_kind != self._resolve_task_kind():
             raise ResourceNotFoundError(
                 f"找不到指定的 {self.model_label} 转换任务",
                 details={"task_id": task_id},
@@ -262,7 +333,7 @@ class SqlAlchemyYoloPrimaryConversionTaskService(SqlAlchemyYoloXConversionTaskSe
             )
         )
 
-        dataset_storage.write_json(plan_object_key, self.serialize_plan(plan))
+        dataset_storage.write_json(plan_object_key, self._resolve_serialize_plan()(plan))
         try:
             run_result = conversion_runner.run_conversion(
                 YoloPrimaryConversionRunRequest(
@@ -346,7 +417,7 @@ class SqlAlchemyYoloPrimaryConversionTaskService(SqlAlchemyYoloXConversionTaskSe
                 },
             )
         )
-        return self.result_cls(
+        return self._resolve_result_cls()(
             task_id=task_id,
             status="succeeded",
             source_model_version_id=request.source_model_version_id,
@@ -364,9 +435,9 @@ class SqlAlchemyYoloPrimaryConversionTaskService(SqlAlchemyYoloXConversionTaskSe
         self,
         *,
         request: YoloPrimaryConversionTaskRequest,
-        plan: YoloV8ConversionPlan,
+        plan: object,
     ):
-        """构建持久化到 TaskRecord 的 YOLOv8 转换任务规格。"""
+        """构建持久化到 TaskRecord 的 YOLO 主线转换任务规格。"""
 
         task_spec = super()._build_task_spec(request=request, plan=plan)
         return task_spec.__class__(
@@ -374,7 +445,7 @@ class SqlAlchemyYoloPrimaryConversionTaskService(SqlAlchemyYoloXConversionTaskSe
             source_model_version_id=task_spec.source_model_version_id,
             target_formats=task_spec.target_formats,
             runtime_profile_id=task_spec.runtime_profile_id,
-            planned_steps=tuple(serialize_yolov8_conversion_plan(plan)["steps"]),
+            planned_steps=tuple(self._resolve_serialize_plan()(plan)["steps"]),
             extra_options=dict(task_spec.extra_options),
         )
 
@@ -385,7 +456,7 @@ class SqlAlchemyYoloPrimaryConversionTaskService(SqlAlchemyYoloXConversionTaskSe
         """从 TaskRecord 中恢复 YOLOv8 转换请求。"""
 
         task_spec = _deserialize_task_spec(task_record.task_spec)
-        return self.request_cls(
+        return self._resolve_request_cls()(
             project_id=task_spec.project_id,
             source_model_version_id=task_spec.source_model_version_id,
             target_formats=task_spec.target_formats,
@@ -393,11 +464,11 @@ class SqlAlchemyYoloPrimaryConversionTaskService(SqlAlchemyYoloXConversionTaskSe
             extra_options=dict(task_spec.extra_options),
         )
 
-    def _read_plan_from_task_record(self, task_record: TaskRecord) -> YoloV8ConversionPlan:
-        """从 TaskRecord 中恢复 YOLOv8 转换计划。"""
+    def _read_plan_from_task_record(self, task_record: TaskRecord) -> object:
+        """从 TaskRecord 中恢复 YOLO 主线转换计划。"""
 
         task_spec = _deserialize_task_spec(task_record.task_spec)
-        return self.deserialize_plan(
+        return self._resolve_deserialize_plan()(
             {
                 "source_model_version_id": task_spec.source_model_version_id,
                 "target_formats": list(task_spec.target_formats),
@@ -416,12 +487,12 @@ class SqlAlchemyYoloPrimaryConversionTaskService(SqlAlchemyYoloXConversionTaskSe
     ) -> tuple[YoloPrimaryConversionBuildSummary, ...]:
         """把 runner 产出的 build 文件登记为 YOLOv8 ModelBuild。"""
 
-        model_service = self.model_service_cls(session_factory=self.session_factory)
+        model_service = self._resolve_model_service_cls()(session_factory=self.session_factory)
         build_summaries: list[YoloPrimaryConversionBuildSummary] = []
         for output in outputs:
             build_file_id = self._next_id("model-file")
             model_build_id = model_service.register_build(
-                self.build_registration_cls(
+                self._resolve_build_registration_cls()(
                     project_id=project_id,
                     source_model_version_id=source_model_version_id,
                     build_format=output.target_format,
@@ -433,7 +504,7 @@ class SqlAlchemyYoloPrimaryConversionTaskService(SqlAlchemyYoloXConversionTaskSe
                 )
             )
             build_summaries.append(
-                self.build_summary_cls(
+                self._resolve_build_summary_cls()(
                     model_build_id=model_build_id,
                     build_format=output.target_format,
                     build_file_id=build_file_id,
@@ -451,7 +522,7 @@ class SqlAlchemyYoloPrimaryConversionTaskService(SqlAlchemyYoloXConversionTaskSe
         """解析转换来源 ModelVersion 对应的 PyTorch runtime 快照。"""
 
         dataset_storage = self._require_dataset_storage()
-        resolver = self.runtime_target_resolver_cls(
+        resolver = self._resolve_runtime_target_resolver_cls()(
             session_factory=self.session_factory,
             dataset_storage=dataset_storage,
         )
@@ -475,3 +546,14 @@ class SqlAlchemyYoloPrimaryConversionTaskService(SqlAlchemyYoloXConversionTaskSe
                 f"当前 {self.model_label} conversion runner 仅支持 onnx、onnx-optimized、openvino-ir、tensorrt-engine",
                 details={"unsupported_target_formats": unsupported_formats},
             )
+
+
+def _require_hook_value(hook_name: str, value: object, *, model_label: str) -> Any:
+    """返回共享转换层要求子类提供的 hook 值。"""
+
+    if value is None:
+        raise ServiceConfigurationError(
+            f"当前 {model_label} 转换适配器缺少 {hook_name} 配置",
+            details={"hook_name": hook_name, "model_label": model_label},
+        )
+    return value

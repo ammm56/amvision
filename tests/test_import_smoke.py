@@ -77,6 +77,7 @@ BACKEND_MODULES: tuple[str, ...] = (
     "backend.service.application.models.yolox_model_service",
     "backend.service.application.models.yolox_training_service",
     "backend.service.application.runtime.detection_model_runtime",
+    "backend.service.application.runtime.detection_runtime_contracts",
     "backend.service.application.runtime.yolo11_predictor",
     "backend.service.application.runtime.yolo11_runtime_target",
     "backend.service.application.runtime.yolo26_predictor",

@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any, Callable
 
 from backend.queue import QueueBackend
 from backend.service.application.errors import (
@@ -29,31 +30,21 @@ from backend.service.application.models.yolo_primary_detection_training import (
     YoloPrimaryTrainingEpochProgress,
     run_yolo_primary_detection_training,
 )
-from backend.service.application.models.yolov8_model_service import (
-    SqlAlchemyYoloV8ModelService,
-    YoloV8TrainingOutputRegistration,
-)
 from backend.service.application.tasks.task_service import (
     AppendTaskEventRequest,
     CreateTaskRequest,
     SqlAlchemyTaskService,
 )
 from backend.service.domain.datasets.dataset_export import DatasetExport
-from backend.service.domain.files.detection_model_file_types import YOLOV8_DETECTION_FILE_TYPES
 from backend.service.domain.models.model_task_types import DETECTION_TASK_TYPE
-from backend.service.domain.models.yolov8_model_spec import (
-    DEFAULT_YOLOV8_MODEL_SPEC,
-    YoloV8ModelSpec,
-)
 from backend.service.domain.tasks.task_records import TaskRecord
-from backend.service.domain.tasks.yolov8_task_specs import YoloV8TrainingTaskSpec
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 
 
-YOLO_PRIMARY_TRAINING_TASK_KIND = "yolov8-training"
-YOLO_PRIMARY_TRAINING_QUEUE_NAME = "yolov8-trainings"
+YOLO_PRIMARY_TRAINING_TASK_KIND = "yolo-primary-training"
+YOLO_PRIMARY_TRAINING_QUEUE_NAME = "yolo-primary-trainings"
 
 
 @dataclass(frozen=True)
@@ -127,19 +118,20 @@ class _ResolvedWarmStartReference:
 class SqlAlchemyYoloPrimaryTrainingTaskService:
     """基于现有任务系统的 YOLO 主线 detection 训练任务适配器。"""
 
-    model_type = "yolov8"
-    model_label = "YOLOv8"
+    model_type = "yolo-primary"
+    model_label = "YOLO primary"
     training_task_kind = YOLO_PRIMARY_TRAINING_TASK_KIND
     training_queue_name = YOLO_PRIMARY_TRAINING_QUEUE_NAME
-    model_service_cls = SqlAlchemyYoloV8ModelService
-    output_registration_cls = YoloV8TrainingOutputRegistration
-    task_spec_cls = YoloV8TrainingTaskSpec
+    model_service_cls: type | None = None
+    output_registration_cls: type | None = None
+    task_spec_cls: type | None = None
     request_cls = YoloPrimaryTrainingTaskRequest
     task_result_cls = YoloPrimaryTrainingTaskResult
     execution_request_cls = YoloPrimaryDetectionTrainingExecutionRequest
     training_runner = staticmethod(run_yolo_primary_detection_training)
     implementation_mode = YOLO_PRIMARY_BOOTSTRAP_IMPLEMENTATION_MODE
-    file_types = YOLOV8_DETECTION_FILE_TYPES
+    file_types: Any = None
+    default_spec: Any = None
 
     def __init__(
         self,
@@ -147,15 +139,88 @@ class SqlAlchemyYoloPrimaryTrainingTaskService:
         session_factory: SessionFactory,
         dataset_storage: LocalDatasetStorage | None = None,
         queue_backend: QueueBackend | None = None,
-        spec: YoloV8ModelSpec = DEFAULT_YOLOV8_MODEL_SPEC,
+        spec: object | None = None,
     ) -> None:
-        """初始化 YOLOv8 detection 训练任务适配器。"""
+        """初始化 YOLO 主线 detection 训练任务适配器。"""
 
         self.session_factory = session_factory
         self.dataset_storage = dataset_storage
         self.queue_backend = queue_backend
-        self.spec = spec
+        self.spec = spec if spec is not None else self._resolve_default_spec()
         self.task_service = SqlAlchemyTaskService(session_factory)
+
+    def _resolve_default_spec(self) -> object:
+        """返回当前模型分类默认使用的模型规格。"""
+
+        return _require_hook_value("default_spec", self.default_spec, model_label=self.model_label)
+
+    def _resolve_training_task_kind(self) -> str:
+        """返回当前模型分类训练任务种类。"""
+
+        value = _require_hook_value(
+            "training_task_kind",
+            self.training_task_kind,
+            model_label=self.model_label,
+        )
+        return str(value)
+
+    def _resolve_training_queue_name(self) -> str:
+        """返回当前模型分类训练队列名称。"""
+
+        value = _require_hook_value(
+            "training_queue_name",
+            self.training_queue_name,
+            model_label=self.model_label,
+        )
+        return str(value)
+
+    def _resolve_model_service_cls(self) -> type:
+        """返回当前模型分类绑定的模型服务类型。"""
+
+        return _require_hook_value("model_service_cls", self.model_service_cls, model_label=self.model_label)
+
+    def _resolve_output_registration_cls(self) -> type:
+        """返回当前模型分类训练输出登记类型。"""
+
+        return _require_hook_value(
+            "output_registration_cls",
+            self.output_registration_cls,
+            model_label=self.model_label,
+        )
+
+    def _resolve_task_spec_cls(self) -> type:
+        """返回当前模型分类任务规格类型。"""
+
+        return _require_hook_value("task_spec_cls", self.task_spec_cls, model_label=self.model_label)
+
+    def _resolve_request_cls(self) -> type:
+        """返回当前模型分类训练请求类型。"""
+
+        return _require_hook_value("request_cls", self.request_cls, model_label=self.model_label)
+
+    def _resolve_task_result_cls(self) -> type:
+        """返回当前模型分类训练结果类型。"""
+
+        return _require_hook_value("task_result_cls", self.task_result_cls, model_label=self.model_label)
+
+    def _resolve_execution_request_cls(self) -> type:
+        """返回当前模型分类训练执行请求类型。"""
+
+        return _require_hook_value(
+            "execution_request_cls",
+            self.execution_request_cls,
+            model_label=self.model_label,
+        )
+
+    def _resolve_training_runner(self) -> Callable[..., object]:
+        """返回当前模型分类训练执行函数。"""
+
+        return _require_hook_value("training_runner", self.training_runner, model_label=self.model_label)
+
+    def _resolve_file_types(self) -> object:
+        """返回当前模型分类文件类型集合。"""
+
+        return _require_hook_value("file_types", self.file_types, model_label=self.model_label)
 
     def submit_training_task(
         self,
@@ -164,21 +229,23 @@ class SqlAlchemyYoloPrimaryTrainingTaskService:
         created_by: str | None = None,
         display_name: str = "",
     ) -> YoloPrimaryTrainingTaskSubmission:
-        """创建并入队一条 YOLOv8 detection 训练任务。"""
+        """创建并入队一条 YOLO 主线 detection 训练任务。"""
 
         self._validate_request(request)
         queue_backend = self._require_queue_backend()
+        training_task_kind = self._resolve_training_task_kind()
+        training_queue_name = self._resolve_training_queue_name()
         dataset_export = self._resolve_dataset_export(request)
         task_spec = self._build_task_spec(request=request, dataset_export=dataset_export)
         created_task = self.task_service.create_task(
             CreateTaskRequest(
                 project_id=request.project_id,
-                task_kind=self.training_task_kind,
+                task_kind=training_task_kind,
                 display_name=display_name.strip()
                 or f"{self.model_type} training {dataset_export.dataset_export_id}",
                 created_by=created_by,
                 task_spec=task_spec,
-                worker_pool=self.training_task_kind,
+                worker_pool=training_task_kind,
                 metadata={
                     "dataset_export_id": dataset_export.dataset_export_id,
                     "dataset_export_manifest_key": dataset_export.manifest_object_key,
@@ -192,7 +259,7 @@ class SqlAlchemyYoloPrimaryTrainingTaskService:
         )
         try:
             queue_task = queue_backend.enqueue(
-                queue_name=self.training_queue_name,
+                queue_name=training_queue_name,
                 payload={"task_id": created_task.task_id},
                 metadata={
                     "project_id": request.project_id,
@@ -323,8 +390,8 @@ class SqlAlchemyYoloPrimaryTrainingTaskService:
         )
 
         try:
-            execution_result = self.training_runner(
-                self.execution_request_cls(
+            execution_result = self._resolve_training_runner()(
+                self._resolve_execution_request_cls()(
                     dataset_storage=dataset_storage,
                     manifest_payload=manifest_payload,
                     model_scale=request.model_scale,
@@ -587,7 +654,7 @@ class SqlAlchemyYoloPrimaryTrainingTaskService:
     ) -> dict[str, object]:
         """构建 YOLOv8 detection 训练任务使用的 task_spec。"""
 
-        task_spec = self.task_spec_cls(
+        task_spec = self._resolve_task_spec_cls()(
             project_id=request.project_id,
             dataset_export_id=dataset_export.dataset_export_id,
             dataset_export_manifest_key=dataset_export.manifest_object_key or "",
@@ -628,7 +695,7 @@ class SqlAlchemyYoloPrimaryTrainingTaskService:
         """读取并校验训练任务主记录。"""
 
         task_record = self.task_service.get_task(task_id).task
-        if task_record.task_kind != self.training_task_kind:
+        if task_record.task_kind != self._resolve_training_task_kind():
             raise InvalidRequestError(
                 f"当前任务不是 {self.model_label} detection 训练任务",
                 details={"task_id": task_id, "task_kind": task_record.task_kind},
@@ -646,7 +713,7 @@ class SqlAlchemyYoloPrimaryTrainingTaskService:
         input_size = None
         if isinstance(raw_input_size, list | tuple) and len(raw_input_size) == 2:
             input_size = (int(raw_input_size[0]), int(raw_input_size[1]))
-        return self.request_cls(
+        return self._resolve_request_cls()(
             project_id=str(task_spec.get("project_id") or task_record.project_id),
             dataset_export_id=self._read_optional_str(task_spec.get("dataset_export_id")),
             dataset_export_manifest_key=self._read_optional_str(
@@ -826,7 +893,7 @@ class SqlAlchemyYoloPrimaryTrainingTaskService:
     ) -> str:
         """把训练输出登记为 ModelVersion。"""
 
-        model_service = self.model_service_cls(session_factory=self.session_factory)
+        model_service = self._resolve_model_service_cls()(session_factory=self.session_factory)
         runtime_summary = build_detection_runtime_summary_payload(
             device=execution_result.device,
             gpu_count=execution_result.gpu_count,
@@ -839,7 +906,7 @@ class SqlAlchemyYoloPrimaryTrainingTaskService:
             best_metric_value=execution_result.best_metric_value,
         )
         return model_service.register_training_output(
-            self.output_registration_cls(
+            self._resolve_output_registration_cls()(
                 project_id=request.project_id,
                 training_task_id=task_record.task_id,
                 model_name=request.output_model_name,
@@ -880,7 +947,7 @@ class SqlAlchemyYoloPrimaryTrainingTaskService:
 
         if request.warm_start_model_version_id is None:
             return None
-        model_service = self.model_service_cls(session_factory=self.session_factory)
+        model_service = self._resolve_model_service_cls()(session_factory=self.session_factory)
         model_version = model_service.get_model_version(request.warm_start_model_version_id)
         if model_version is None:
             raise ResourceNotFoundError(
@@ -899,7 +966,7 @@ class SqlAlchemyYoloPrimaryTrainingTaskService:
                 for model_file in model_service.list_model_files(
                     model_version_id=request.warm_start_model_version_id
                 )
-                if model_file.file_type == self.file_types.checkpoint_file_type
+                if model_file.file_type == self._resolve_file_types().checkpoint_file_type
             ),
             None,
         )
@@ -962,7 +1029,7 @@ class SqlAlchemyYoloPrimaryTrainingTaskService:
         )
         if not all(isinstance(result.get(field_name), str) for field_name in required_fields):
             return None
-        return self.task_result_cls(
+        return self._resolve_task_result_cls()(
             task_id=task_record.task_id,
             status=str(result.get("status") or task_record.state),
             dataset_export_id=str(result["dataset_export_id"]),
@@ -1033,3 +1100,14 @@ class SqlAlchemyYoloPrimaryTrainingTaskService:
         """返回当前 UTC 时间的 ISO 字符串。"""
 
         return datetime.now(timezone.utc).isoformat()
+
+
+def _require_hook_value(hook_name: str, value: object, *, model_label: str) -> Any:
+    """返回共享训练层要求子类提供的 hook 值。"""
+
+    if value is None:
+        raise ServiceConfigurationError(
+            f"当前 {model_label} 训练适配器缺少 {hook_name} 配置",
+            details={"hook_name": hook_name, "model_label": model_label},
+        )
+    return value

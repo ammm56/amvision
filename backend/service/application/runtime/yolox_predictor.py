@@ -19,73 +19,26 @@ from backend.service.application.runtime.yolox_runtime_target import (
     describe_runtime_execution_mode,
     resolve_local_file_path,
 )
+from backend.service.application.runtime.detection_runtime_contracts import (
+    DetectionPredictionDetection,
+    DetectionPredictionExecutionResult,
+    DetectionPredictionRequest,
+    DetectionRuntimeSessionInfo,
+    DetectionRuntimeTensorSpec,
+)
 from backend.service.settings import get_backend_service_settings
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
-from backend.workers.shared.yolox_runtime_contracts import RuntimeTensorSpec, YoloXRuntimeSessionInfo
 
 
 _DEFAULT_NMS_THRESHOLD = 0.65
 _TENSORRT_LOGGER: Any | None = None
 _TENSORRT_LOGGER_SEVERITY: int | None = None
 
-
-@dataclass(frozen=True)
-class YoloXPredictionRequest:
-    """描述一次 YOLOX 单图预测请求。
-
-    字段：
-    - input_uri：storage 模式下的输入图片 URI 或 object key。
-    - input_image_bytes：memory 模式下直接提供的原始图片字节。
-    - input_image_payload：跨进程 image-ref payload；deployment worker 会先解析为 uri 或 bytes。
-    - score_threshold：预测阈值。
-    - save_result_image：是否生成预览图。
-    - extra_options：附加运行时选项。
-    """
-
-    score_threshold: float
-    save_result_image: bool
-    input_uri: str | None = None
-    input_image_bytes: bytes | None = None
-    input_image_payload: dict[str, object] | None = None
-    extra_options: dict[str, object] = field(default_factory=dict)
-
-
-@dataclass(frozen=True)
-class YoloXPredictionDetection:
-    """描述单条 YOLOX detection 结果。
-
-    字段：
-    - bbox_xyxy：边界框坐标。
-    - score：置信度。
-    - class_id：类别 id。
-    - class_name：类别名。
-    """
-
-    bbox_xyxy: tuple[float, float, float, float]
-    score: float
-    class_id: int
-    class_name: str | None = None
-
-
-@dataclass(frozen=True)
-class YoloXPredictionExecutionResult:
-    """描述一次 YOLOX 单图预测执行结果。
-
-    字段：
-    - detections：检测框列表。
-    - latency_ms：decode、preprocess、infer、postprocess 四段总耗时。
-    - image_width：原图宽度。
-    - image_height：原图高度。
-    - preview_image_bytes：可选预览图字节内容。
-    - runtime_session_info：运行时摘要。
-    """
-
-    detections: tuple[YoloXPredictionDetection, ...]
-    latency_ms: float | None
-    image_width: int
-    image_height: int
-    preview_image_bytes: bytes | None
-    runtime_session_info: YoloXRuntimeSessionInfo
+RuntimeTensorSpec = DetectionRuntimeTensorSpec
+YoloXRuntimeSessionInfo = DetectionRuntimeSessionInfo
+YoloXPredictionRequest = DetectionPredictionRequest
+YoloXPredictionDetection = DetectionPredictionDetection
+YoloXPredictionExecutionResult = DetectionPredictionExecutionResult
 
 
 @dataclass(frozen=True)

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from backend.service.application.backends import (
     ConversionBackend,
     ConversionBackendOutput,
@@ -11,12 +13,6 @@ from backend.service.application.backends import (
 from backend.service.application.errors import InvalidRequestError, ServiceConfigurationError
 from backend.service.application.runtime.yolo_primary_predictor import (
     PyTorchYoloPrimaryRuntimeSession,
-)
-from backend.service.domain.files.yolov8_file_types import (
-    YOLOV8_ONNX_FILE,
-    YOLOV8_ONNX_OPTIMIZED_FILE,
-    YOLOV8_OPENVINO_IR_FILE,
-    YOLOV8_TENSORRT_ENGINE_FILE,
 )
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 from backend.workers.conversion.yolox_conversion_runner import (
@@ -39,15 +35,15 @@ YoloPrimaryConversionRunner = ConversionBackend
 class LocalYoloPrimaryConversionRunner(LocalYoloXConversionRunner):
     """使用本地文件存储执行 YOLO 主线 ONNX/OpenVINO/TensorRT 转换链。"""
 
-    model_label = "YOLOv8"
+    model_label = "YOLO primary"
     pytorch_runtime_session_cls = PyTorchYoloPrimaryRuntimeSession
-    onnx_file_type = YOLOV8_ONNX_FILE
-    onnx_optimized_file_type = YOLOV8_ONNX_OPTIMIZED_FILE
-    openvino_ir_file_type = YOLOV8_OPENVINO_IR_FILE
-    tensorrt_engine_file_type = YOLOV8_TENSORRT_ENGINE_FILE
+    onnx_file_type: str | None = None
+    onnx_optimized_file_type: str | None = None
+    openvino_ir_file_type: str | None = None
+    tensorrt_engine_file_type: str | None = None
 
     def __init__(self, *, dataset_storage: LocalDatasetStorage) -> None:
-        """初始化本地 YOLOv8 转换 runner。"""
+        """初始化本地 YOLO 主线转换 runner。"""
 
         super().__init__(dataset_storage=dataset_storage)
 
@@ -59,7 +55,12 @@ class LocalYoloPrimaryConversionRunner(LocalYoloXConversionRunner):
 
         if not request.plan_steps:
             raise InvalidRequestError("转换计划 steps 不能为空")
-        session = self.pytorch_runtime_session_cls.load(
+        session_cls = _require_runner_hook(
+            "pytorch_runtime_session_cls",
+            self.pytorch_runtime_session_cls,
+            model_label=self.model_label,
+        )
+        session = session_cls.load(
             dataset_storage=self.dataset_storage,
             runtime_target=request.source_runtime_target,
         )
@@ -93,7 +94,11 @@ class LocalYoloPrimaryConversionRunner(LocalYoloXConversionRunner):
                 onnx_output = YoloPrimaryConversionOutput(
                     target_format="onnx",
                     object_uri=onnx_object_key,
-                    file_type=self.onnx_file_type,
+                    file_type=_require_runner_hook(
+                        "onnx_file_type",
+                        self.onnx_file_type,
+                        model_label=self.model_label,
+                    ),
                     metadata=export_summary,
                 )
                 continue
@@ -124,7 +129,11 @@ class LocalYoloPrimaryConversionRunner(LocalYoloXConversionRunner):
                 optimized_output = YoloPrimaryConversionOutput(
                     target_format="onnx-optimized",
                     object_uri=optimized_object_key,
-                    file_type=self.onnx_optimized_file_type,
+                    file_type=_require_runner_hook(
+                        "onnx_optimized_file_type",
+                        self.onnx_optimized_file_type,
+                        model_label=self.model_label,
+                    ),
                     metadata={
                         **optimize_summary,
                         "validation_summary": validation_summary,
@@ -143,7 +152,11 @@ class LocalYoloPrimaryConversionRunner(LocalYoloXConversionRunner):
                 openvino_output = YoloPrimaryConversionOutput(
                     target_format="openvino-ir",
                     object_uri=openvino_object_key,
-                    file_type=self.openvino_ir_file_type,
+                    file_type=_require_runner_hook(
+                        "openvino_ir_file_type",
+                        self.openvino_ir_file_type,
+                        model_label=self.model_label,
+                    ),
                     metadata={
                         **build_summary,
                         "validation_summary": validation_summary,
@@ -162,7 +175,11 @@ class LocalYoloPrimaryConversionRunner(LocalYoloXConversionRunner):
                 tensorrt_output = YoloPrimaryConversionOutput(
                     target_format="tensorrt-engine",
                     object_uri=tensorrt_object_key,
-                    file_type=self.tensorrt_engine_file_type,
+                    file_type=_require_runner_hook(
+                        "tensorrt_engine_file_type",
+                        self.tensorrt_engine_file_type,
+                        model_label=self.model_label,
+                    ),
                     metadata={
                         **build_summary,
                         "validation_summary": validation_summary,
@@ -198,3 +215,14 @@ class LocalYoloPrimaryConversionRunner(LocalYoloXConversionRunner):
                 ),
             },
         )
+
+
+def _require_runner_hook(hook_name: str, value: Any, *, model_label: str) -> Any:
+    """返回共享转换 runner 要求子类提供的 hook 值。"""
+
+    if value is None:
+        raise ServiceConfigurationError(
+            f"当前 {model_label} conversion runner 缺少 {hook_name} 配置",
+            details={"hook_name": hook_name, "model_label": model_label},
+        )
+    return value

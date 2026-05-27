@@ -20,16 +20,19 @@ class PyTorchYolo26RuntimeSession(PyTorchYoloPrimaryRuntimeSession):
 class OnnxRuntimeYolo26RuntimeSession(OnnxRuntimeYoloPrimaryRuntimeSession):
     """已经加载完成并可重复推理的 ONNXRuntime YOLO26 会话。"""
 
+    model_type = "yolo26"
     model_label = "YOLO26"
 
 
 class OpenVINOYolo26RuntimeSession(OpenVINOYoloPrimaryRuntimeSession):
     """已经加载完成并可重复推理的 OpenVINO YOLO26 会话。"""
 
+    model_type = "yolo26"
     model_label = "YOLO26"
 
 
 class TensorRTYolo26RuntimeSession(TensorRTYoloPrimaryRuntimeSession):
     """已经加载完成并可重复推理的 TensorRT YOLO26 会话。"""
 
+    model_type = "yolo26"
     model_label = "YOLO26"
