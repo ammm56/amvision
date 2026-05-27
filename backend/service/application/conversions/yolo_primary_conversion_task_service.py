@@ -158,17 +158,21 @@ class SqlAlchemyYoloPrimaryConversionTaskService(SqlAlchemyDetectionConversionTa
         queue_backend = self._require_queue_backend()
         task_kind = self._resolve_task_kind()
         queue_name = self._resolve_queue_name()
+        source_runtime_target = self._resolve_source_runtime_target(
+            request.project_id,
+            request.source_model_version_id,
+        )
         plan = self.planner.build_plan(
             self._resolve_planning_request_cls()(
                 project_id=request.project_id,
                 source_model_version_id=request.source_model_version_id,
                 target_formats=request.target_formats,
+                task_type=source_runtime_target.task_type,
                 runtime_profile_id=request.runtime_profile_id,
                 metadata=dict(request.extra_options),
             )
         )
         self._validate_executable_targets(plan.target_formats)
-        self._resolve_source_runtime_target(request.project_id, request.source_model_version_id)
         task_spec = self._build_task_spec(request=request, plan=plan)
         created_task = self.task_service.create_task(
             CreateTaskRequest(
@@ -184,6 +188,7 @@ class SqlAlchemyYoloPrimaryConversionTaskService(SqlAlchemyDetectionConversionTa
                     "target_formats": list(plan.target_formats),
                     "runtime_profile_id": request.runtime_profile_id,
                     "model_type": self.model_type,
+                    "task_type": source_runtime_target.task_type,
                 },
             )
         )
@@ -197,6 +202,7 @@ class SqlAlchemyYoloPrimaryConversionTaskService(SqlAlchemyDetectionConversionTa
                     "target_formats": list(plan.target_formats),
                     "runtime_profile_id": request.runtime_profile_id,
                     "model_type": self.model_type,
+                    "task_type": source_runtime_target.task_type,
                 },
             )
         except Exception as error:

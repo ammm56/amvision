@@ -8,6 +8,9 @@ from backend.service.application.backends import (
     ConversionBackendRunRequest,
     ConversionBackendRunResult,
 )
+from backend.service.application.runtime.yolov8_classification_predictor import (
+    PyTorchYoloV8ClassificationRuntimeSession,
+)
 from backend.service.application.runtime.yolov8_predictor import PyTorchYoloV8RuntimeSession
 from backend.service.domain.files.yolov8_file_types import (
     YOLOV8_ONNX_FILE,
@@ -31,7 +34,10 @@ class LocalYoloV8ConversionRunner(LocalYoloPrimaryConversionRunner):
     """使用本地文件存储执行 YOLOv8 ONNX/OpenVINO/TensorRT 转换链。"""
 
     model_label = "YOLOv8"
-    pytorch_runtime_session_cls = PyTorchYoloV8RuntimeSession
+    task_runtime_session_classes = {
+        "detection": PyTorchYoloV8RuntimeSession,
+        "classification": PyTorchYoloV8ClassificationRuntimeSession,
+    }
     onnx_file_type = YOLOV8_ONNX_FILE
     onnx_optimized_file_type = YOLOV8_ONNX_OPTIMIZED_FILE
     openvino_ir_file_type = YOLOV8_OPENVINO_IR_FILE

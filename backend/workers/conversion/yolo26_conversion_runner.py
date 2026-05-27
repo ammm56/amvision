@@ -8,6 +8,9 @@ from backend.service.application.backends import (
     ConversionBackendRunRequest,
     ConversionBackendRunResult,
 )
+from backend.service.application.runtime.yolo26_classification_predictor import (
+    PyTorchYolo26ClassificationRuntimeSession,
+)
 from backend.service.application.runtime.yolo26_predictor import PyTorchYolo26RuntimeSession
 from backend.service.domain.files.yolo26_file_types import (
     YOLO26_ONNX_FILE,
@@ -31,7 +34,10 @@ class LocalYolo26ConversionRunner(LocalYoloPrimaryConversionRunner):
     """使用本地文件存储执行 YOLO26 ONNX/OpenVINO/TensorRT 转换链。"""
 
     model_label = "YOLO26"
-    pytorch_runtime_session_cls = PyTorchYolo26RuntimeSession
+    task_runtime_session_classes = {
+        "detection": PyTorchYolo26RuntimeSession,
+        "classification": PyTorchYolo26ClassificationRuntimeSession,
+    }
     onnx_file_type = YOLO26_ONNX_FILE
     onnx_optimized_file_type = YOLO26_ONNX_OPTIMIZED_FILE
     openvino_ir_file_type = YOLO26_OPENVINO_IR_FILE
