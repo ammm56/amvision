@@ -9,6 +9,18 @@ from backend.service.application.detection_backend_registry import (
     get_detection_backend_registration,
 )
 from backend.service.application.errors import ServiceConfigurationError
+from backend.service.application.runtime.yolo11_predictor import (
+    OnnxRuntimeYolo11RuntimeSession,
+    OpenVINOYolo11RuntimeSession,
+    PyTorchYolo11RuntimeSession,
+    TensorRTYolo11RuntimeSession,
+)
+from backend.service.application.runtime.yolo26_predictor import (
+    OnnxRuntimeYolo26RuntimeSession,
+    OpenVINOYolo26RuntimeSession,
+    PyTorchYolo26RuntimeSession,
+    TensorRTYolo26RuntimeSession,
+)
 from backend.service.application.runtime.yolox_predictor import (
     OpenVINOYoloXRuntimeSession,
     OnnxRuntimeYoloXRuntimeSession,
@@ -127,16 +139,14 @@ class DefaultDetectionModelRuntime:
         )
 
 
-class DefaultYoloXModelRuntime(DefaultDetectionModelRuntime):
-    """兼容旧命名的 YOLOX 运行时加载器包装。"""
-
-
 def build_default_detection_model_runtime_registry() -> DetectionModelRuntimeRegistry:
     """构建当前进程默认使用的 detection runtime 注册表。"""
 
     registry = DetectionModelRuntimeRegistry()
     registry.register_runtime_loader("yolox", _load_yolox_detection_session)
     registry.register_runtime_loader("yolov8", _load_yolov8_detection_session)
+    registry.register_runtime_loader("yolo11", _load_yolo11_detection_session)
+    registry.register_runtime_loader("yolo26", _load_yolo26_detection_session)
     return registry
 
 
@@ -198,6 +208,72 @@ def _load_yolov8_detection_session(
         )
     if runtime_target.runtime_backend == "tensorrt":
         return TensorRTYoloV8RuntimeSession.load(
+            dataset_storage=dataset_storage,
+            runtime_target=runtime_target,
+            pinned_output_buffer_enabled=pinned_output_buffer_enabled,
+            pinned_output_buffer_max_bytes=pinned_output_buffer_max_bytes,
+        )
+    raise ValueError(f"unsupported runtime backend: {runtime_target.runtime_backend}")
+
+
+def _load_yolo11_detection_session(
+    dataset_storage: LocalDatasetStorage,
+    runtime_target: RuntimeTargetSnapshot,
+    pinned_output_buffer_enabled: bool | None,
+    pinned_output_buffer_max_bytes: int | None,
+) -> DetectionModelRuntimeSession:
+    """按 runtime backend 加载当前已接通的 YOLO11 detection 会话。"""
+
+    if runtime_target.runtime_backend == "pytorch":
+        return PyTorchYolo11RuntimeSession.load(
+            dataset_storage=dataset_storage,
+            runtime_target=runtime_target,
+        )
+    if runtime_target.runtime_backend == "onnxruntime":
+        return OnnxRuntimeYolo11RuntimeSession.load(
+            dataset_storage=dataset_storage,
+            runtime_target=runtime_target,
+        )
+    if runtime_target.runtime_backend == "openvino":
+        return OpenVINOYolo11RuntimeSession.load(
+            dataset_storage=dataset_storage,
+            runtime_target=runtime_target,
+        )
+    if runtime_target.runtime_backend == "tensorrt":
+        return TensorRTYolo11RuntimeSession.load(
+            dataset_storage=dataset_storage,
+            runtime_target=runtime_target,
+            pinned_output_buffer_enabled=pinned_output_buffer_enabled,
+            pinned_output_buffer_max_bytes=pinned_output_buffer_max_bytes,
+        )
+    raise ValueError(f"unsupported runtime backend: {runtime_target.runtime_backend}")
+
+
+def _load_yolo26_detection_session(
+    dataset_storage: LocalDatasetStorage,
+    runtime_target: RuntimeTargetSnapshot,
+    pinned_output_buffer_enabled: bool | None,
+    pinned_output_buffer_max_bytes: int | None,
+) -> DetectionModelRuntimeSession:
+    """按 runtime backend 加载当前已接通的 YOLO26 detection 会话。"""
+
+    if runtime_target.runtime_backend == "pytorch":
+        return PyTorchYolo26RuntimeSession.load(
+            dataset_storage=dataset_storage,
+            runtime_target=runtime_target,
+        )
+    if runtime_target.runtime_backend == "onnxruntime":
+        return OnnxRuntimeYolo26RuntimeSession.load(
+            dataset_storage=dataset_storage,
+            runtime_target=runtime_target,
+        )
+    if runtime_target.runtime_backend == "openvino":
+        return OpenVINOYolo26RuntimeSession.load(
+            dataset_storage=dataset_storage,
+            runtime_target=runtime_target,
+        )
+    if runtime_target.runtime_backend == "tensorrt":
+        return TensorRTYolo26RuntimeSession.load(
             dataset_storage=dataset_storage,
             runtime_target=runtime_target,
             pinned_output_buffer_enabled=pinned_output_buffer_enabled,

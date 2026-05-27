@@ -9,6 +9,9 @@ from datetime import datetime, timezone
 from uuid import uuid4
 
 from backend.service.application.errors import InvalidRequestError, ResourceNotFoundError, ServiceConfigurationError
+from backend.service.application.models.detection_operation_rules import (
+    build_detection_deployment_runtime_summary,
+)
 from backend.service.application.runtime.yolox_deployment_process_supervisor import (
     YoloXDeploymentProcessConfig,
     YoloXDeploymentProcessRuntimeBehavior,
@@ -328,11 +331,34 @@ class SqlAlchemyYoloXDeploymentService:
         return normalized_metadata
 
     @staticmethod
-    def _build_public_metadata(metadata: object) -> dict[str, object]:
+    def _build_public_metadata(
+        metadata: object,
+        *,
+        runtime_target: RuntimeTargetSnapshot,
+        instance_count: int,
+    ) -> dict[str, object]:
         """过滤仅用于内部执行的 metadata 字段。"""
 
         normalized_metadata = _normalize_metadata(metadata)
         normalized_metadata.pop(_RUNTIME_TARGET_SNAPSHOT_METADATA_KEY, None)
+        normalized_metadata["runtime_summary"] = build_detection_deployment_runtime_summary(
+            model_version_id=runtime_target.model_version_id,
+            model_build_id=runtime_target.model_build_id,
+            model_name=runtime_target.model_name,
+            model_scale=runtime_target.model_scale,
+            task_type=runtime_target.task_type,
+            runtime_backend=runtime_target.runtime_backend,
+            runtime_precision=runtime_target.runtime_precision,
+            device_name=runtime_target.device_name,
+            runtime_execution_mode=describe_runtime_execution_mode(
+                runtime_backend=runtime_target.runtime_backend,
+                runtime_precision=runtime_target.runtime_precision,
+                device_name=runtime_target.device_name,
+            ),
+            input_size=runtime_target.input_size,
+            label_count=len(runtime_target.labels),
+            instance_count=instance_count,
+        )
         return normalized_metadata
 
     @staticmethod
@@ -369,7 +395,11 @@ class SqlAlchemyYoloXDeploymentService:
             created_at=deployment_instance.created_at,
             updated_at=deployment_instance.updated_at,
             created_by=deployment_instance.created_by,
-            metadata=SqlAlchemyYoloXDeploymentService._build_public_metadata(deployment_instance.metadata),
+            metadata=SqlAlchemyYoloXDeploymentService._build_public_metadata(
+                deployment_instance.metadata,
+                runtime_target=runtime_target,
+                instance_count=deployment_instance.instance_count,
+            ),
         )
 
     @contextmanager

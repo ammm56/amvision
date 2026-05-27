@@ -1,4 +1,4 @@
-"""YOLOX 训练 worker 接口与 SQLAlchemy 实现。"""
+"""YOLO11 训练 worker 接口与 SQLAlchemy 实现。"""
 
 from __future__ import annotations
 
@@ -7,21 +7,20 @@ from backend.service.application.backends import (
     TrainingBackendRunRequest,
     TrainingBackendRunResult,
 )
-from backend.service.application.models.yolox_training_service import (
-    SqlAlchemyYoloXTrainingTaskService,
+from backend.service.application.models.yolo11_training_service import (
+    SqlAlchemyYolo11TrainingTaskService,
 )
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 
 
-# 沿用统一训练执行合同的 YOLOX 命名导出。
-YoloXTrainingRunRequest = TrainingBackendRunRequest
-YoloXTrainingRunResult = TrainingBackendRunResult
-YoloXTrainerRunner = TrainingBackend
+Yolo11TrainingRunRequest = TrainingBackendRunRequest
+Yolo11TrainingRunResult = TrainingBackendRunResult
+Yolo11TrainerRunner = TrainingBackend
 
 
-class SqlAlchemyYoloXTrainerRunner:
-    """基于 SQLAlchemy 与本地文件存储的 YOLOX 训练 worker。"""
+class SqlAlchemyYolo11TrainerRunner:
+    """基于 SQLAlchemy 与本地文件存储的 YOLO11 训练 worker。"""
 
     def __init__(
         self,
@@ -29,32 +28,20 @@ class SqlAlchemyYoloXTrainerRunner:
         session_factory: SessionFactory,
         dataset_storage: LocalDatasetStorage,
     ) -> None:
-        """初始化 YOLOX 训练 worker。
-
-        参数：
-        - session_factory：数据库会话工厂。
-        - dataset_storage：本地数据集文件存储服务。
-        """
+        """初始化 YOLO11 训练 worker。"""
 
         self.session_factory = session_factory
         self.dataset_storage = dataset_storage
 
-    def run_training(self, request: YoloXTrainingRunRequest) -> YoloXTrainingRunResult:
-        """执行 YOLOX 训练处理链路并返回结果。
+    def run_training(self, request: Yolo11TrainingRunRequest) -> Yolo11TrainingRunResult:
+        """执行 YOLO11 训练处理链路并返回结果。"""
 
-        参数：
-        - request：训练执行请求。
-
-        返回：
-        - 训练执行结果。
-        """
-
-        service = SqlAlchemyYoloXTrainingTaskService(
+        service = SqlAlchemyYolo11TrainingTaskService(
             session_factory=self.session_factory,
             dataset_storage=self.dataset_storage,
         )
         task_result = service.process_training_task(request.training_task_id)
-        return YoloXTrainingRunResult(
+        return Yolo11TrainingRunResult(
             training_task_id=task_result.task_id,
             status=task_result.status,
             dataset_export_id=task_result.dataset_export_id,

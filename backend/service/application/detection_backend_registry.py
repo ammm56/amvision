@@ -81,16 +81,24 @@ _DETECTION_BACKEND_REGISTRATIONS: Final[dict[str, DetectionBackendRegistration]]
     "yolo11": DetectionBackendRegistration(
         model_type="yolo11",
         display_name="YOLO11 Detection",
-        status=DETECTION_BACKEND_STATUS_REGISTERED,
-        features=DetectionBackendFeatureSet(),
-        notes="项目内共享结构层与 checkpoint 兼容入口已接通；训练、转换、推理、deployment 待补齐。",
+        status=DETECTION_BACKEND_STATUS_ACTIVE,
+        features=DetectionBackendFeatureSet(
+            training=True,
+            conversion=True,
+            inference=True,
+        ),
+        notes="共享结构、权重加载、训练入口、转换链和 runtime loader 已接通；deployment 正式服务入口待补齐。",
     ),
     "yolo26": DetectionBackendRegistration(
         model_type="yolo26",
         display_name="YOLO26 Detection",
-        status=DETECTION_BACKEND_STATUS_REGISTERED,
-        features=DetectionBackendFeatureSet(),
-        notes="项目内共享结构层与 checkpoint 兼容入口已接通；训练、转换、推理、deployment 待补齐。",
+        status=DETECTION_BACKEND_STATUS_ACTIVE,
+        features=DetectionBackendFeatureSet(
+            training=True,
+            conversion=True,
+            inference=True,
+        ),
+        notes="共享结构、权重加载、训练入口、转换链和 runtime loader 已接通；deployment 正式服务入口待补齐。",
     ),
 }
 

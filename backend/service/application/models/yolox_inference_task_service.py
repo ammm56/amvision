@@ -9,6 +9,10 @@ from time import perf_counter
 from backend.queue import QueueBackend
 from backend.service.application.deployments.yolox_deployment_service import SqlAlchemyYoloXDeploymentService
 from backend.service.application.errors import InvalidRequestError, ServiceConfigurationError
+from backend.service.application.models.detection_operation_rules import (
+    DetectionInferenceOutputFiles,
+    build_detection_inference_result_summary,
+)
 from backend.service.application.models.yolox_async_inference_gateway import (
     YoloXAsyncInferenceExecutor,
     YoloXAsyncInferenceGatewayDispatcherRegistry,
@@ -288,12 +292,17 @@ class SqlAlchemyYoloXInferenceTaskService:
         )
         attempt_no = max(1, task_record.current_attempt_no + 1)
         output_object_prefix = self._build_output_object_prefix(task_id)
-        result_object_key = f"{output_object_prefix}/artifacts/reports/raw-result.json"
-        preview_image_object_key = (
-            f"{output_object_prefix}/artifacts/images/preview.jpg"
-            if request.save_result_image
-            else None
+        output_files = DetectionInferenceOutputFiles(
+            output_object_prefix=output_object_prefix,
+            result_object_key=f"{output_object_prefix}/artifacts/reports/raw-result.json",
+            preview_image_object_key=(
+                f"{output_object_prefix}/artifacts/images/preview.jpg"
+                if request.save_result_image
+                else None
+            ),
         )
+        result_object_key = output_files.result_object_key
+        preview_image_object_key = output_files.preview_image_object_key
         self.task_service.append_task_event(
             AppendTaskEventRequest(
                 task_id=task_id,
@@ -396,21 +405,20 @@ class SqlAlchemyYoloXInferenceTaskService:
             input_file_id=normalized_input.input_file_id,
             detection_count=len(execution_result.detections),
             latency_ms=execution_result.latency_ms,
-            result_summary={
-                "deployment_instance_id": request.deployment_instance_id,
-                "instance_id": execution_result.instance_id,
-                "model_version_id": runtime_target.model_version_id,
-                "model_build_id": runtime_target.model_build_id,
-                "input_uri": normalized_input.input_uri,
-                "input_source_kind": normalized_input.input_source_kind,
-                "score_threshold": self._resolve_score_threshold(request),
-                "save_result_image": request.save_result_image,
-                "return_preview_image_base64": request.return_preview_image_base64,
-                "detection_count": len(execution_result.detections),
-                "latency_ms": execution_result.latency_ms,
-                "result_object_key": result_object_key,
-                "preview_image_object_key": preview_image_object_key,
-            },
+            result_summary=build_detection_inference_result_summary(
+                deployment_instance_id=request.deployment_instance_id,
+                instance_id=execution_result.instance_id,
+                model_version_id=runtime_target.model_version_id,
+                model_build_id=runtime_target.model_build_id,
+                input_uri=normalized_input.input_uri,
+                input_source_kind=normalized_input.input_source_kind,
+                score_threshold=self._resolve_score_threshold(request),
+                save_result_image=request.save_result_image,
+                return_preview_image_base64=request.return_preview_image_base64,
+                detection_count=len(execution_result.detections),
+                latency_ms=execution_result.latency_ms,
+                output_files=output_files,
+            ),
         )
         self.task_service.append_task_event(
             AppendTaskEventRequest(

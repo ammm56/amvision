@@ -6,10 +6,10 @@ from dataclasses import dataclass, field
 from threading import Lock
 
 from backend.service.application.errors import InvalidRequestError, ServiceConfigurationError
-from backend.service.application.runtime.model_runtime import (
+from backend.service.application.runtime.detection_model_runtime import (
     DefaultDetectionModelRuntime,
-    ModelRuntime,
-    ModelRuntimeSession,
+    DetectionModelRuntime,
+    DetectionModelRuntimeSession,
 )
 from backend.service.application.runtime.yolox_predictor import (
     YoloXPredictionExecutionResult,
@@ -115,7 +115,7 @@ class _InferenceInstanceState:
     """描述单个推理实例的内部运行时状态。"""
 
     instance_index: int
-    session: ModelRuntimeSession | None = None
+    session: DetectionModelRuntimeSession | None = None
     healthy: bool = True
     busy: bool = False
     last_error: str | None = None
@@ -139,7 +139,7 @@ class YoloXDeploymentRuntimePool:
         self,
         *,
         dataset_storage: LocalDatasetStorage,
-        model_runtime: ModelRuntime | None = None,
+        model_runtime: DetectionModelRuntime | None = None,
     ) -> None:
         """初始化 runtime pool。
 

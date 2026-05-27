@@ -18,6 +18,10 @@ from backend.service.application.conversions.yolox_conversion_planner import (
 )
 from backend.service.application.errors import InvalidRequestError, ServiceConfigurationError
 from backend.service.application.errors import ResourceNotFoundError
+from backend.service.application.models.detection_operation_rules import (
+    DetectionConversionOutputFiles,
+    build_detection_conversion_report_summary,
+)
 from backend.service.application.models.yolox_model_service import (
     SqlAlchemyYoloXModelService,
     YoloXBuildRegistration,
@@ -316,8 +320,13 @@ class SqlAlchemyYoloXConversionTaskService:
 
         attempt_no = max(1, task_record.current_attempt_no + 1)
         output_object_prefix = self._build_output_object_prefix(task_id)
-        plan_object_key = f"{output_object_prefix}/artifacts/reports/conversion-plan.json"
-        report_object_key = f"{output_object_prefix}/artifacts/reports/conversion-report.json"
+        output_files = DetectionConversionOutputFiles(
+            output_object_prefix=output_object_prefix,
+            plan_object_key=f"{output_object_prefix}/artifacts/reports/conversion-plan.json",
+            report_object_key=f"{output_object_prefix}/artifacts/reports/conversion-report.json",
+        )
+        plan_object_key = output_files.plan_object_key
+        report_object_key = output_files.report_object_key
         self.task_service.append_task_event(
             AppendTaskEventRequest(
                 task_id=task_id,
@@ -363,6 +372,7 @@ class SqlAlchemyYoloXConversionTaskService:
                 run_result=run_result,
                 build_summaries=build_summaries,
                 requested_target_formats=request.target_formats,
+                output_files=output_files,
             )
             dataset_storage.write_json(report_object_key, report_summary)
         except Exception as error:
@@ -627,9 +637,11 @@ class SqlAlchemyYoloXConversionTaskService:
             )
         ):
             return None
-        if not isinstance(requested_target_formats, list) or not isinstance(produced_formats, list):
+        if not isinstance(requested_target_formats, list | tuple) or not isinstance(
+            produced_formats, list | tuple
+        ):
             return None
-        if not isinstance(raw_builds, list):
+        if not isinstance(raw_builds, list | tuple):
             return None
         builds = tuple(
             _deserialize_build_summary(item)
@@ -683,23 +695,24 @@ class SqlAlchemyYoloXConversionTaskService:
         run_result: YoloXConversionRunResult,
         build_summaries: tuple[YoloXConversionBuildSummary, ...],
         requested_target_formats: tuple[str, ...],
+        output_files: DetectionConversionOutputFiles,
     ) -> dict[str, object]:
         """组装转换报告摘要。"""
 
-        return {
-            "phase": str(run_result.metadata.get("phase") or "phase-1-onnx"),
-            "source_model_version_id": source_runtime_target.model_version_id,
-            "source_checkpoint_uri": source_runtime_target.checkpoint_storage_uri,
-            "model_name": source_runtime_target.model_name,
-            "model_scale": source_runtime_target.model_scale,
-            "input_size": list(source_runtime_target.input_size),
-            "label_count": len(source_runtime_target.labels),
-            "requested_target_formats": list(requested_target_formats),
-            "planned_target_formats": list(plan.target_formats),
-            "executed_step_kinds": list(run_result.metadata.get("executed_step_kinds", [])),
-            "conversion_options": dict(run_result.metadata.get("conversion_options", {})),
-            "validation_summary": dict(run_result.metadata.get("validation_summary", {})),
-            "outputs": [
+        return build_detection_conversion_report_summary(
+            phase=str(run_result.metadata.get("phase") or "phase-1-onnx"),
+            source_model_version_id=source_runtime_target.model_version_id,
+            source_checkpoint_uri=source_runtime_target.checkpoint_storage_uri,
+            model_name=source_runtime_target.model_name,
+            model_scale=source_runtime_target.model_scale,
+            input_size=source_runtime_target.input_size,
+            label_count=len(source_runtime_target.labels),
+            requested_target_formats=requested_target_formats,
+            planned_target_formats=plan.target_formats,
+            executed_step_kinds=tuple(run_result.metadata.get("executed_step_kinds", ())),
+            conversion_options=dict(run_result.metadata.get("conversion_options", {})),
+            validation_summary=dict(run_result.metadata.get("validation_summary", {})),
+            outputs=tuple(
                 {
                     "target_format": item.target_format,
                     "object_uri": item.object_uri,
@@ -707,9 +720,10 @@ class SqlAlchemyYoloXConversionTaskService:
                     "metadata": dict(item.metadata),
                 }
                 for item in run_result.outputs
-            ],
-            "builds": [_serialize_build_summary(item) for item in build_summaries],
-        }
+            ),
+            builds=tuple(_serialize_build_summary(item) for item in build_summaries),
+            output_files=output_files,
+        )
 
     @staticmethod
     def _build_output_object_prefix(task_id: str) -> str:

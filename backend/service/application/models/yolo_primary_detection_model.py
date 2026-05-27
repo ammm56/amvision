@@ -1,4 +1,4 @@
-"""YOLO 主线 detection 模型的共享结构与 checkpoint 兼容实现。"""
+"""YOLO 主线 detection 模型的共享结构与权重加载实现。"""
 
 from __future__ import annotations
 
@@ -164,36 +164,6 @@ def build_yolo_primary_detection_model(
     )
 
 
-def build_yolov8_detection_model(*, model_scale: str, num_classes: int) -> Any:
-    """构建一套 YOLOv8 detection 模型。"""
-
-    return build_yolo_primary_detection_model(
-        model_type="yolov8",
-        model_scale=model_scale,
-        num_classes=num_classes,
-    )
-
-
-def build_yolo11_detection_model(*, model_scale: str, num_classes: int) -> Any:
-    """构建一套 YOLO11 detection 模型。"""
-
-    return build_yolo_primary_detection_model(
-        model_type="yolo11",
-        model_scale=model_scale,
-        num_classes=num_classes,
-    )
-
-
-def build_yolo26_detection_model(*, model_scale: str, num_classes: int) -> Any:
-    """构建一套 YOLO26 detection 模型。"""
-
-    return build_yolo_primary_detection_model(
-        model_type="yolo26",
-        model_scale=model_scale,
-        num_classes=num_classes,
-    )
-
-
 def load_yolo_primary_checkpoint(
     *,
     imports: Any,
@@ -240,21 +210,6 @@ def load_yolo_primary_checkpoint(
         "unexpected_keys": unexpected_keys,
         "ignored_source_keys": ignored_source_keys,
     }
-
-
-def load_yolov8_checkpoint(
-    *,
-    imports: Any,
-    model: Any,
-    checkpoint_path: Path,
-) -> dict[str, object]:
-    """兼容旧入口的 YOLOv8 checkpoint 加载包装。"""
-
-    return load_yolo_primary_checkpoint(
-        imports=imports,
-        model=model,
-        checkpoint_path=checkpoint_path,
-    )
 
 
 def _load_checkpoint_payload(*, imports: Any, checkpoint_path: Path) -> object:

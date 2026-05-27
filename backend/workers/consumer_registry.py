@@ -8,6 +8,8 @@ from backend.queue import LocalFileQueueBackend
 from backend.service.application.errors import ServiceConfigurationError
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
+from backend.workers.conversion.yolo11_conversion_queue_worker import Yolo11ConversionQueueWorker
+from backend.workers.conversion.yolo26_conversion_queue_worker import Yolo26ConversionQueueWorker
 from backend.workers.conversion.yolov8_conversion_queue_worker import YoloV8ConversionQueueWorker
 from backend.workers.conversion.yolox_conversion_queue_worker import YoloXConversionQueueWorker
 from backend.workers.datasets.dataset_export_queue_worker import DatasetExportQueueWorker
@@ -17,6 +19,10 @@ from backend.workers.inference.yolox_inference_queue_worker import YoloXInferenc
 from backend.workers.settings import (
     BACKEND_WORKER_CONSUMER_DATASET_EXPORT,
     BACKEND_WORKER_CONSUMER_DATASET_IMPORT,
+    BACKEND_WORKER_CONSUMER_YOLO11_TRAINING,
+    BACKEND_WORKER_CONSUMER_YOLO11_CONVERSION,
+    BACKEND_WORKER_CONSUMER_YOLO26_TRAINING,
+    BACKEND_WORKER_CONSUMER_YOLO26_CONVERSION,
     BACKEND_WORKER_CONSUMER_YOLOV8_TRAINING,
     BACKEND_WORKER_CONSUMER_YOLOV8_CONVERSION,
     BACKEND_WORKER_CONSUMER_YOLOX_CONVERSION,
@@ -25,6 +31,8 @@ from backend.workers.settings import (
     BACKEND_WORKER_CONSUMER_YOLOX_TRAINING,
 )
 from backend.workers.task_manager import BackgroundTaskConsumer
+from backend.workers.training.yolo11_training_queue_worker import Yolo11TrainingQueueWorker
+from backend.workers.training.yolo26_training_queue_worker import Yolo26TrainingQueueWorker
 from backend.workers.training.yolov8_training_queue_worker import YoloV8TrainingQueueWorker
 from backend.workers.training.yolox_training_queue_worker import YoloXTrainingQueueWorker
 
@@ -105,6 +113,26 @@ def build_background_task_consumers(
                 )
             )
             continue
+        if consumer_kind == BACKEND_WORKER_CONSUMER_YOLO11_TRAINING:
+            consumers.append(
+                Yolo11TrainingQueueWorker(
+                    session_factory=resources.session_factory,
+                    dataset_storage=resources.dataset_storage,
+                    queue_backend=resources.queue_backend,
+                    worker_id=f"{resources.worker_id_prefix}-yolo11-training",
+                )
+            )
+            continue
+        if consumer_kind == BACKEND_WORKER_CONSUMER_YOLO26_TRAINING:
+            consumers.append(
+                Yolo26TrainingQueueWorker(
+                    session_factory=resources.session_factory,
+                    dataset_storage=resources.dataset_storage,
+                    queue_backend=resources.queue_backend,
+                    worker_id=f"{resources.worker_id_prefix}-yolo26-training",
+                )
+            )
+            continue
         if consumer_kind == BACKEND_WORKER_CONSUMER_YOLOX_CONVERSION:
             consumers.append(
                 YoloXConversionQueueWorker(
@@ -122,6 +150,26 @@ def build_background_task_consumers(
                     dataset_storage=resources.dataset_storage,
                     queue_backend=resources.queue_backend,
                     worker_id=f"{resources.worker_id_prefix}-yolov8-conversion",
+                )
+            )
+            continue
+        if consumer_kind == BACKEND_WORKER_CONSUMER_YOLO11_CONVERSION:
+            consumers.append(
+                Yolo11ConversionQueueWorker(
+                    session_factory=resources.session_factory,
+                    dataset_storage=resources.dataset_storage,
+                    queue_backend=resources.queue_backend,
+                    worker_id=f"{resources.worker_id_prefix}-yolo11-conversion",
+                )
+            )
+            continue
+        if consumer_kind == BACKEND_WORKER_CONSUMER_YOLO26_CONVERSION:
+            consumers.append(
+                Yolo26ConversionQueueWorker(
+                    session_factory=resources.session_factory,
+                    dataset_storage=resources.dataset_storage,
+                    queue_backend=resources.queue_backend,
+                    worker_id=f"{resources.worker_id_prefix}-yolo26-conversion",
                 )
             )
             continue
