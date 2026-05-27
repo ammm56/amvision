@@ -223,7 +223,7 @@ def test_yolov8_training_task_service_submits_task_and_worker_completes_training
     assert task_detail.task.error_message is None
     assert task_detail.task.result["checkpoint_object_key"].endswith("/best.pt")
     assert task_detail.task.result["latest_checkpoint_object_key"].endswith("/latest.pt")
-    assert task_detail.task.result["summary"]["implementation_mode"] == "yolov8-detection-bootstrap"
+    assert task_detail.task.result["summary"]["implementation_mode"] == "yolov8-detection"
     assert task_detail.task.result["summary"]["dataset_export_id"] == "dataset-export-1"
     assert task_detail.task.result["summary"]["dataset_version_id"] == "dataset-version-1"
     assert task_detail.task.result["summary"]["training_config"]["recipe_id"] == "recipe-1"

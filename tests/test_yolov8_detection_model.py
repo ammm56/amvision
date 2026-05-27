@@ -11,6 +11,7 @@ from backend.service.application.models.yolo_primary_detection_model import (
     build_yolo_primary_detection_model,
     load_yolo_primary_checkpoint,
 )
+from backend.service.application.models.yolo_primary_model_configs import build_yolo_primary_model
 
 
 def test_yolov8_detection_model_forward_returns_detection_tensor() -> None:
@@ -112,3 +113,40 @@ def test_yolo26_detection_model_forward_returns_detection_tensor() -> None:
         prediction = model(torch.randn(1, 3, 64, 64))
 
     assert prediction.shape == (1, 84, 6)
+
+
+def test_yolo11_segmentation_model_forward_returns_prediction_and_proto() -> None:
+    """验证共享任务配置已经可以构建并前向 YOLO11 segmentation 模型。"""
+
+    model = build_yolo_primary_model(
+        model_type="yolo11",
+        task_type="segmentation",
+        model_scale="n",
+        num_classes=2,
+    )
+    model.eval()
+
+    with torch.inference_mode():
+        prediction, proto = model(torch.randn(1, 3, 64, 64))
+
+    assert prediction.shape == (1, 84, 38)
+    assert proto.shape[0] == 1
+    assert proto.shape[1] == 32
+
+
+def test_yolo26_classification_model_forward_returns_probabilities_and_logits() -> None:
+    """验证共享任务配置已经可以构建并前向 YOLO26 classification 模型。"""
+
+    model = build_yolo_primary_model(
+        model_type="yolo26",
+        task_type="classification",
+        model_scale="n",
+        num_classes=3,
+    )
+    model.eval()
+
+    with torch.inference_mode():
+        probabilities, logits = model(torch.randn(1, 3, 64, 64))
+
+    assert probabilities.shape == (1, 3)
+    assert logits.shape == (1, 3)

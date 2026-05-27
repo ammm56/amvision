@@ -1,4 +1,4 @@
-"""YOLOv8 detection 模型登记适配器。"""
+"""YOLOv8 模型登记适配器。"""
 
 from __future__ import annotations
 
@@ -17,14 +17,14 @@ from backend.service.infrastructure.db.session import SessionFactory
 
 
 class SqlAlchemyYoloV8ModelService(SqlAlchemyYoloXModelService):
-    """基于通用 detection 登记逻辑的 YOLOv8 detection 模型服务。"""
+    """基于通用登记逻辑的 YOLOv8 模型服务。"""
 
     def __init__(
         self,
         session_factory: SessionFactory,
         spec: YoloV8ModelSpec = DEFAULT_YOLOV8_MODEL_SPEC,
     ) -> None:
-        """初始化 YOLOv8 detection 模型登记服务。"""
+        """初始化 YOLOv8 模型登记服务。"""
 
         super().__init__(
             session_factory=session_factory,

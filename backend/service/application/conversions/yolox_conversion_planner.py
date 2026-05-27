@@ -10,6 +10,7 @@ from backend.service.domain.files.detection_model_file_types import (
     DetectionModelFileTypes,
     YOLOX_DETECTION_FILE_TYPES,
 )
+from backend.service.domain.models.model_task_types import DETECTION_TASK_TYPE
 from backend.service.domain.tasks.yolox_task_specs import YoloXConversionTarget
 
 
@@ -31,6 +32,7 @@ class YoloXConversionPlanningRequest:
     字段：
     - project_id：所属项目 id。
     - source_model_version_id：来源 ModelVersion id。
+    - task_type：来源模型任务分类。
     - target_formats：目标格式列表。
     - runtime_profile_id：目标 RuntimeProfile id。
     - preferred_device：优先使用的 device。
@@ -40,6 +42,7 @@ class YoloXConversionPlanningRequest:
     project_id: str
     source_model_version_id: str
     target_formats: tuple[YoloXConversionTarget, ...]
+    task_type: str = DETECTION_TASK_TYPE
     runtime_profile_id: str | None = None
     preferred_device: str | None = None
     metadata: dict[str, object] = field(default_factory=dict)
@@ -116,10 +119,12 @@ class DefaultYoloXConversionPlanner:
         self,
         *,
         file_types: DetectionModelFileTypes = YOLOX_DETECTION_FILE_TYPES,
+        supported_task_types: tuple[str, ...] = (DETECTION_TASK_TYPE,),
     ) -> None:
         """初始化转换规划器。"""
 
         self.file_types = file_types
+        self.supported_task_types = tuple(item for item in supported_task_types if isinstance(item, str) and item.strip())
 
     def build_plan(self, request: YoloXConversionPlanningRequest) -> YoloXConversionPlan:
         """构建转换计划。
@@ -135,6 +140,11 @@ class DefaultYoloXConversionPlanner:
             raise InvalidRequestError("project_id 不能为空")
         if not request.source_model_version_id.strip():
             raise InvalidRequestError("source_model_version_id 不能为空")
+        if request.task_type not in self.supported_task_types:
+            raise InvalidRequestError(
+                "当前模型分类不支持指定任务分类的转换规划",
+                details={"task_type": request.task_type},
+            )
         target_formats = _normalize_target_formats(request.target_formats)
         if not target_formats:
             raise InvalidRequestError("target_formats 不能为空")

@@ -67,6 +67,7 @@ class YoloXTrainingOutputRegistration:
     - parent_version_id：warm start 或 lineage 对应的父 ModelVersion id。
     - checkpoint_file_id：checkpoint 文件 id。
     - checkpoint_file_uri：checkpoint 文件存储 URI。
+    - task_type：任务分类。
     - labels_file_id：标签文件 id。
     - labels_file_uri：标签文件存储 URI。
     - metrics_file_id：指标文件 id。
@@ -80,6 +81,7 @@ class YoloXTrainingOutputRegistration:
     model_scale: str
     dataset_version_id: str
     checkpoint_file_id: str
+    task_type: str = DETECTION_TASK_TYPE
     model_version_id: str | None = None
     parent_version_id: str | None = None
     checkpoint_file_uri: str | None = None
@@ -430,13 +432,14 @@ class SqlAlchemyYoloXModelService:
 
         self._validate_model_scale(request.model_scale)
         with self._open_unit_of_work() as unit_of_work:
+            self._validate_task_type(request.task_type)
             model = self._ensure_model(
                 unit_of_work=unit_of_work,
                 project_id=request.project_id,
                 scope_kind=PROJECT_MODEL_SCOPE,
                 model_name=request.model_name,
                 model_scale=request.model_scale,
-                task_type=DETECTION_TASK_TYPE,
+                task_type=request.task_type,
                 labels_file_id=request.labels_file_id,
                 metadata=request.metadata,
             )

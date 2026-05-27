@@ -14,6 +14,7 @@ from backend.service.domain.files.detection_model_file_types import (
 )
 from backend.service.application.models.yolox_model_service import SqlAlchemyYoloXModelService
 from backend.service.domain.files.model_file import ModelFile
+from backend.service.domain.models.model_task_types import DETECTION_TASK_TYPE
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 
@@ -236,6 +237,7 @@ class SqlAlchemyYoloXRuntimeTargetResolver:
         session_factory: SessionFactory,
         dataset_storage: LocalDatasetStorage,
         file_types: DetectionModelFileTypes = YOLOX_DETECTION_FILE_TYPES,
+        supported_task_types: tuple[str, ...] = (DETECTION_TASK_TYPE,),
         model_service_factory: Callable[[SessionFactory], SqlAlchemyYoloXModelService] | None = None,
     ) -> None:
         """初始化运行时快照解析服务。
@@ -250,6 +252,11 @@ class SqlAlchemyYoloXRuntimeTargetResolver:
         self.session_factory = session_factory
         self.dataset_storage = dataset_storage
         self.file_types = file_types
+        self.supported_task_types = tuple(
+            item
+            for item in supported_task_types
+            if isinstance(item, str) and item.strip()
+        )
         self.model_service_factory = model_service_factory or (
             lambda current_session_factory: SqlAlchemyYoloXModelService(
                 session_factory=current_session_factory,
@@ -330,6 +337,14 @@ class SqlAlchemyYoloXRuntimeTargetResolver:
                     "project_id": request.project_id,
                     "model_project_id": model.project_id,
                     "model_version_id": model_version.model_version_id,
+                },
+            )
+        if model.task_type not in self.supported_task_types:
+            raise InvalidRequestError(
+                "当前模型分类尚未接通指定任务分类的运行时解析",
+                details={
+                    "model_type": model.model_type,
+                    "task_type": model.task_type,
                 },
             )
 

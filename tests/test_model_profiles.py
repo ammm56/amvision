@@ -9,12 +9,16 @@ from backend.contracts.datasets.exports.dataset_formats import (
     YOLO_POSE_DATASET_FORMAT,
 )
 from backend.service.domain.models.model_task_types import (
+    CLASSIFICATION_TASK_TYPE,
     DETECTION_TASK_TYPE,
     OBB_TASK_TYPE,
     POSE_TASK_TYPE,
     SEGMENTATION_TASK_TYPE,
 )
 from backend.service.domain.models.yolo_model_profiles import get_yolo_model_profile
+from backend.service.domain.models.yolo11_model_spec import DEFAULT_YOLO11_MODEL_SPEC
+from backend.service.domain.models.yolo26_model_spec import DEFAULT_YOLO26_MODEL_SPEC
+from backend.service.domain.models.yolov8_model_spec import DEFAULT_YOLOV8_MODEL_SPEC
 from backend.service.domain.models.yolox_model_spec import DEFAULT_YOLOX_MODEL_SPEC
 
 
@@ -45,3 +49,18 @@ def test_yolo_model_profiles_expose_shared_task_defaults() -> None:
     assert profile.resolve_default_dataset_format(SEGMENTATION_TASK_TYPE) == YOLO_INSTANCE_SEGMENTATION_DATASET_FORMAT
     assert profile.resolve_default_dataset_format(POSE_TASK_TYPE) == YOLO_POSE_DATASET_FORMAT
     assert profile.resolve_default_dataset_format(OBB_TASK_TYPE) is None
+
+
+def test_yolo_model_specs_follow_registered_profiles() -> None:
+    """验证 YOLOv8、YOLO11、YOLO26 规格对象已经正式暴露多任务能力。"""
+
+    for spec in (DEFAULT_YOLOV8_MODEL_SPEC, DEFAULT_YOLO11_MODEL_SPEC, DEFAULT_YOLO26_MODEL_SPEC):
+        assert spec.supports_task_type(DETECTION_TASK_TYPE) is True
+        assert spec.supports_task_type(SEGMENTATION_TASK_TYPE) is True
+        assert spec.supports_task_type(POSE_TASK_TYPE) is True
+        assert spec.supports_task_type(OBB_TASK_TYPE) is True
+        assert spec.supports_task_type(CLASSIFICATION_TASK_TYPE) is True
+        assert spec.resolve_default_dataset_format(DETECTION_TASK_TYPE) == YOLO_DETECTION_DATASET_FORMAT
+        assert spec.resolve_default_dataset_format(SEGMENTATION_TASK_TYPE) == YOLO_INSTANCE_SEGMENTATION_DATASET_FORMAT
+        assert spec.resolve_default_dataset_format(POSE_TASK_TYPE) == YOLO_POSE_DATASET_FORMAT
+        assert spec.resolve_default_dataset_format(CLASSIFICATION_TASK_TYPE) is None
