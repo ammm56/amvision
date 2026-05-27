@@ -105,6 +105,18 @@ WebSocket 资源流的统一消息结构、控制事件和重连规则见 [docs/
 | POST | /api/v1/datasets/exports/{dataset_export_id}/package | datasets:write | 为已完成的 DatasetExport 生成可下载 zip 包。 |
 | GET | /api/v1/datasets/exports/{dataset_export_id}/download | datasets:read | 下载 DatasetExport 的 zip 包；当下载包不存在时会同步生成。 |
 | GET | /api/v1/datasets/exports/{dataset_export_id}/manifest | datasets:read | 下载 DatasetExport 的 manifest 文件。 |
+| POST | /api/v1/models/detection/training-tasks | datasets:read + tasks:write | 按统一 detection 控制面创建 YOLOX、YOLOv8、YOLO11、YOLO26 训练任务。 |
+| GET | /api/v1/models/detection/training-tasks | tasks:read | 按 Project、模型分类、DatasetExport 边界和状态列出 detection 训练任务。 |
+| GET | /api/v1/models/detection/training-tasks/{task_id} | tasks:read | 查询单条 detection 训练任务详情和事件流。 |
+| POST | /api/v1/models/detection/training-tasks/{task_id}/save | tasks:write | 为 running 的 detection 训练任务登记一次手动保存请求。 |
+| POST | /api/v1/models/detection/training-tasks/{task_id}/pause | tasks:write | 为 running 的 detection 训练任务请求暂停，并在下一轮边界先保存 latest checkpoint。 |
+| POST | /api/v1/models/detection/training-tasks/{task_id}/resume | tasks:write | 把 paused 的 detection 训练任务重新入队，并基于 latest checkpoint 恢复训练。 |
+| POST | /api/v1/models/detection/training-tasks/{task_id}/terminate | tasks:write | 请求终止一个 queued、running 或 paused 的 detection 训练任务。 |
+| DELETE | /api/v1/models/detection/training-tasks/{task_id} | tasks:write | 删除一个已经停止且允许清理的 detection 训练任务。 |
+| GET | /api/v1/models/detection/training-tasks/{task_id}/validation-metrics | tasks:read | 读取当前 detection 训练任务最新的 validation-metrics.json 内容。 |
+| GET | /api/v1/models/detection/training-tasks/{task_id}/train-metrics | tasks:read | 读取当前 detection 训练任务最新的 train-metrics.json 内容。 |
+| GET | /api/v1/models/detection/training-tasks/{task_id}/output-files | tasks:read | 列出当前 detection 训练任务公开输出文件状态。 |
+| GET | /api/v1/models/detection/training-tasks/{task_id}/output-files/{file_name} | tasks:read | 读取单个 detection 训练输出文件的状态、object_key 和可内联 payload。 |
 | POST | /api/v1/models/yolox/training-tasks | datasets:read + tasks:write | 以 DatasetExport 为唯一输入边界创建 YOLOX 训练任务。 |
 | GET | /api/v1/models/platform-base | models:read | 列出平台基础模型及其可用 ModelVersion 摘要。 |
 | GET | /api/v1/models/platform-base/{model_id} | models:read | 查询单个平台基础模型详情、版本文件和构建文件。 |

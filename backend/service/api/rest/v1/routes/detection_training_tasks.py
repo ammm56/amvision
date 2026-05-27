@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, Query, Response, status
 from pydantic import BaseModel, Field
 
 from backend.queue import LocalFileQueueBackend
@@ -26,6 +26,7 @@ from backend.service.api.rest.v1.routes.yolox_training_tasks import (
     YoloXTrainingTaskActionName,
     YoloXTrainingTaskControlStatusResponse,
     YoloXTrainingTaskEventResponse,
+    YoloXTrainingTaskSubmissionResponse,
     YoloXTrainingTaskSummaryResponse,
     _build_yolox_training_task_available_actions,
     _build_yolox_training_task_control_status,
@@ -262,6 +263,157 @@ def get_detection_training_task_detail(
     return _build_detection_training_task_detail_response(task_detail.task, tuple(task_detail.events))
 
 
+@detection_training_tasks_router.post(
+    "/detection/training-tasks/{task_id}/save",
+    response_model=DetectionTrainingTaskDetailResponse,
+)
+def request_detection_training_save(
+    task_id: str,
+    principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("tasks:write"))],
+    session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
+) -> DetectionTrainingTaskDetailResponse:
+    """为运行中的 detection 训练任务请求一次手动保存。"""
+
+    task_detail = _require_visible_detection_training_task(
+        principal=principal,
+        task_id=task_id,
+        session_factory=session_factory,
+        include_events=False,
+    )
+    service = _build_detection_training_service_for_task(
+        task=task_detail.task,
+        session_factory=session_factory,
+    )
+    updated_task_detail = service.request_training_save(task_id, requested_by=principal.principal_id)
+    return _build_detection_training_task_detail_response(
+        updated_task_detail.task,
+        tuple(updated_task_detail.events),
+    )
+
+
+@detection_training_tasks_router.post(
+    "/detection/training-tasks/{task_id}/pause",
+    response_model=DetectionTrainingTaskDetailResponse,
+)
+def request_detection_training_pause(
+    task_id: str,
+    principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("tasks:write"))],
+    session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
+) -> DetectionTrainingTaskDetailResponse:
+    """为运行中的 detection 训练任务请求暂停。"""
+
+    task_detail = _require_visible_detection_training_task(
+        principal=principal,
+        task_id=task_id,
+        session_factory=session_factory,
+        include_events=False,
+    )
+    service = _build_detection_training_service_for_task(
+        task=task_detail.task,
+        session_factory=session_factory,
+    )
+    updated_task_detail = service.request_training_pause(task_id, requested_by=principal.principal_id)
+    return _build_detection_training_task_detail_response(
+        updated_task_detail.task,
+        tuple(updated_task_detail.events),
+    )
+
+
+@detection_training_tasks_router.post(
+    "/detection/training-tasks/{task_id}/resume",
+    response_model=YoloXTrainingTaskSubmissionResponse,
+)
+def resume_detection_training_task(
+    task_id: str,
+    principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("tasks:write"))],
+    session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
+    dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
+    queue_backend: Annotated[LocalFileQueueBackend, Depends(get_queue_backend)],
+) -> YoloXTrainingTaskSubmissionResponse:
+    """把一个 paused 的 detection 训练任务重新入队执行。"""
+
+    task_detail = _require_visible_detection_training_task(
+        principal=principal,
+        task_id=task_id,
+        session_factory=session_factory,
+        include_events=False,
+    )
+    service = _build_detection_training_service_for_task(
+        task=task_detail.task,
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+        queue_backend=queue_backend,
+    )
+    submission = service.resume_training_task(task_id, resumed_by=principal.principal_id)
+    return YoloXTrainingTaskSubmissionResponse(
+        task_id=submission.task_id,
+        status=submission.status,
+        queue_name=submission.queue_name,
+        queue_task_id=submission.queue_task_id,
+        dataset_export_id=submission.dataset_export_id,
+        dataset_export_manifest_key=submission.dataset_export_manifest_key,
+        dataset_version_id=submission.dataset_version_id,
+        format_id=submission.format_id,
+    )
+
+
+@detection_training_tasks_router.post(
+    "/detection/training-tasks/{task_id}/terminate",
+    response_model=DetectionTrainingTaskDetailResponse,
+)
+def terminate_detection_training_task(
+    task_id: str,
+    principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("tasks:write"))],
+    session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
+) -> DetectionTrainingTaskDetailResponse:
+    """请求终止一个 queued、running 或 paused 的 detection 训练任务。"""
+
+    task_detail = _require_visible_detection_training_task(
+        principal=principal,
+        task_id=task_id,
+        session_factory=session_factory,
+        include_events=False,
+    )
+    service = _build_detection_training_service_for_task(
+        task=task_detail.task,
+        session_factory=session_factory,
+    )
+    updated_task_detail = service.request_training_terminate(task_id, requested_by=principal.principal_id)
+    return _build_detection_training_task_detail_response(
+        updated_task_detail.task,
+        tuple(updated_task_detail.events),
+    )
+
+
+@detection_training_tasks_router.delete(
+    "/detection/training-tasks/{task_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def delete_detection_training_task(
+    task_id: str,
+    principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("tasks:write"))],
+    session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
+    dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
+    queue_backend: Annotated[LocalFileQueueBackend, Depends(get_queue_backend)],
+) -> Response:
+    """删除一个已经停止且可安全删除的 detection 训练任务。"""
+
+    task_detail = _require_visible_detection_training_task(
+        principal=principal,
+        task_id=task_id,
+        session_factory=session_factory,
+        include_events=False,
+    )
+    service = _build_detection_training_service_for_task(
+        task=task_detail.task,
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+        queue_backend=queue_backend,
+    )
+    service.delete_training_task(task_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 @detection_training_tasks_router.get(
     "/detection/training-tasks/{task_id}/validation-metrics",
     response_model=DetectionTrainingMetricsFileResponse,
@@ -433,23 +585,8 @@ def _build_detection_training_task_control_status(
 ) -> DetectionTrainingTaskControlStatusResponse:
     """把训练控制元数据归一成 detection 正式控制状态响应。"""
 
-    if getattr(task, "task_kind", "") == YOLOX_TRAINING_TASK_KIND:
-        return DetectionTrainingTaskControlStatusResponse.model_validate(
-            _build_yolox_training_task_control_status(task).model_dump()
-        )
-    return DetectionTrainingTaskControlStatusResponse(
-        status="idle",
-        pending_action=None,
-        requested_at=None,
-        requested_by=None,
-        last_save_at=None,
-        last_save_epoch=None,
-        last_save_reason=None,
-        last_save_by=None,
-        last_resume_at=None,
-        last_resume_by=None,
-        resume_count=0,
-        resume_checkpoint_object_key=None,
+    return DetectionTrainingTaskControlStatusResponse.model_validate(
+        _build_yolox_training_task_control_status(task).model_dump()
     )
 
 
@@ -458,9 +595,7 @@ def _build_detection_training_task_available_actions(
 ) -> list[YoloXTrainingTaskActionName]:
     """根据当前任务状态构建 detection 建议展示的控制动作列表。"""
 
-    if getattr(task, "task_kind", "") == YOLOX_TRAINING_TASK_KIND:
-        return _build_yolox_training_task_available_actions(task)
-    return []
+    return _build_yolox_training_task_available_actions(task)
 
 
 def _build_detection_training_task_event_response(
@@ -565,3 +700,21 @@ def _matches_detection_training_filters(
     ):
         return False
     return True
+
+
+def _build_detection_training_service_for_task(
+    *,
+    task: object,
+    session_factory: SessionFactory,
+    dataset_storage: LocalDatasetStorage | None = None,
+    queue_backend: LocalFileQueueBackend | None = None,
+):
+    """按训练任务模型分类构造对应的 detection 训练服务。"""
+
+    model_type = _resolve_detection_training_model_type_from_task(task)
+    service_cls, _request_cls = _DETECTION_TRAINING_SERVICE_BY_MODEL_TYPE[model_type]
+    return service_cls(
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+        queue_backend=queue_backend,
+    )

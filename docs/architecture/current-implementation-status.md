@@ -46,6 +46,7 @@
 
 - DatasetExport 是训练和评估的正式执行边界，不直接让训练或评估逻辑读取原始 DatasetVersion 目录结构。
 - TrainingTask 负责把训练结果登记为 ModelVersion，并关联 checkpoint、summary、metrics、labels 等输出文件。
+- `/models/detection/training-tasks` 当前已经成为 detection 训练的正式公开主链，统一覆盖 `yolox / yolov8 / yolo11 / yolo26` 四类模型的创建、查询、save、pause、resume、terminate 和输出文件读取。
 - ValidationSession 用于训练后的单图人工验证，解决“模型看起来是否正确”的快速抽样检查。
 - EvaluationTask 负责基于 DatasetExport 做数据集级回归评估，输出 report、detections 和可选 result-package。
 - ConversionTask 负责把 ModelVersion 转成一个或多个 ModelBuild，形成正式部署输入。

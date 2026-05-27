@@ -61,6 +61,26 @@ class YoloPrimaryTrainingEpochProgress:
 
 
 @dataclass(frozen=True)
+class YoloPrimaryTrainingControlCommand:
+    """描述单轮训练结束后由上层返回给训练循环的控制命令。"""
+
+    save_checkpoint: bool = False
+    pause_training: bool = False
+    terminate_training: bool = False
+
+
+@dataclass(frozen=True)
+class YoloPrimaryTrainingSavePoint:
+    """描述训练在某个 epoch 边界导出的可恢复 savepoint。"""
+
+    epoch: int
+    latest_checkpoint_bytes: bytes
+    best_checkpoint_bytes: bytes | None = None
+    best_metric_name: str = ""
+    best_metric_value: float | None = None
+
+
+@dataclass(frozen=True)
 class YoloPrimaryDetectionTrainingExecutionRequest:
     """描述一次 YOLO 主线 detection 共享训练执行请求。"""
 
@@ -75,11 +95,13 @@ class YoloPrimaryDetectionTrainingExecutionRequest:
     gpu_count: int | None = None
     precision: str | None = None
     warm_start_checkpoint_path: Path | None = None
+    resume_checkpoint_path: Path | None = None
     warm_start_source_summary: dict[str, object] | None = None
     input_size: tuple[int, int] | None = None
     extra_options: dict[str, object] | None = None
     batch_callback: Callable[[YoloPrimaryTrainingBatchProgress], None] | None = None
-    epoch_callback: Callable[[YoloPrimaryTrainingEpochProgress], None] | None = None
+    epoch_callback: Callable[[YoloPrimaryTrainingEpochProgress], YoloPrimaryTrainingControlCommand | None] | None = None
+    savepoint_callback: Callable[[YoloPrimaryTrainingSavePoint], None] | None = None
 
 
 @dataclass(frozen=True)
@@ -139,6 +161,35 @@ class _ResolvedTrainingSample:
     class_presence: tuple[int, ...]
     mean_box_xyxy: tuple[float, float, float, float]
     has_boxes: bool
+
+
+@dataclass(frozen=True)
+class _LoadedResumeState:
+    """描述从 latest checkpoint 解析出的恢复训练状态。"""
+
+    resume_epoch: int
+    epoch_history: list[dict[str, object]]
+    validation_history: list[dict[str, object]]
+    evaluated_epochs: tuple[int, ...]
+    best_metric_name: str
+    best_metric_value: float | None
+    best_checkpoint_state: dict[str, object] | None
+    warm_start_summary: dict[str, object]
+
+
+class YoloPrimaryTrainingPausedError(Exception):
+    """表示训练在 epoch 边界按请求完成保存后进入 paused 状态。"""
+
+    def __init__(self, savepoint: YoloPrimaryTrainingSavePoint) -> None:
+        super().__init__("yolo primary detection training paused")
+        self.savepoint = savepoint
+
+
+class YoloPrimaryTrainingTerminatedError(Exception):
+    """表示训练在 epoch 边界按请求终止。"""
+
+    def __init__(self) -> None:
+        super().__init__("yolo primary detection training terminated")
 
 
 def run_yolo_primary_detection_training(
@@ -219,30 +270,73 @@ def run_yolo_primary_detection_training(
         int(parameter.numel())
         for parameter in model.parameters()
     )
-    model.to(device)
-    if runtime_precision == "fp16":
-        model.half()
     optimizer = imports.torch.optim.AdamW(
         model.parameters(),
         lr=learning_rate,
         weight_decay=weight_decay,
     )
+    resume_state: _LoadedResumeState | None = None
+    if request.resume_checkpoint_path is not None:
+        resume_state = _load_resume_checkpoint(
+            imports=imports,
+            model=model,
+            optimizer=optimizer,
+            checkpoint_path=request.resume_checkpoint_path,
+            expected_model_type=request.model_type,
+            expected_model_scale=request.model_scale,
+            expected_num_classes=len(category_names),
+            expected_input_size=input_size,
+        )
+        warm_start_summary = dict(resume_state.warm_start_summary)
+
+    model.to(device)
+    if runtime_precision == "fp16":
+        model.half()
     autocast_context = _build_autocast_context(
         imports=imports,
         device=device,
         runtime_precision=runtime_precision,
     )
     total_iterations = max_epochs * max(1, (len(train_samples) + batch_size - 1) // batch_size)
-    global_iteration = 0
-    metrics_history: list[dict[str, object]] = []
-    validation_history: list[dict[str, object]] = []
-    evaluated_epochs: list[int] = []
+    metrics_history: list[dict[str, object]] = (
+        [dict(item) for item in resume_state.epoch_history]
+        if resume_state is not None
+        else []
+    )
+    validation_history: list[dict[str, object]] = (
+        [dict(item) for item in resume_state.validation_history]
+        if resume_state is not None
+        else []
+    )
+    evaluated_epochs: list[int] = (
+        list(resume_state.evaluated_epochs)
+        if resume_state is not None
+        else []
+    )
     best_metric_name = "class_presence_accuracy" if validation_split is not None else "train_loss"
-    best_metric_value = float("-inf") if validation_split is not None else float("inf")
+    best_metric_value = (
+        resume_state.best_metric_value
+        if resume_state is not None and resume_state.best_metric_value is not None
+        else (float("-inf") if validation_split is not None else float("inf"))
+    )
     latest_checkpoint_bytes = b""
-    best_checkpoint_bytes = b""
+    best_checkpoint_bytes = (
+        _build_checkpoint_bytes_from_state(
+            imports=imports,
+            checkpoint_state=resume_state.best_checkpoint_state,
+        )
+        if resume_state is not None and resume_state.best_checkpoint_state is not None
+        else b""
+    )
+    resume_epoch = resume_state.resume_epoch if resume_state is not None else 0
+    if resume_epoch >= max_epochs:
+        raise InvalidRequestError(
+            "resume checkpoint 已经达到或超过本次训练请求的最大 epoch",
+            details={"resume_epoch": resume_epoch, "max_epochs": max_epochs},
+        )
+    global_iteration = resume_epoch * max(1, (len(train_samples) + batch_size - 1) // batch_size)
 
-    for epoch in range(1, max_epochs + 1):
+    for epoch in range(resume_epoch + 1, max_epochs + 1):
         shuffled_samples = list(train_samples)
         random.shuffle(shuffled_samples)
         epoch_losses = {"loss": 0.0, "class_loss": 0.0, "box_loss": 0.0, "score_penalty": 0.0}
@@ -338,6 +432,7 @@ def run_yolo_primary_detection_training(
         latest_checkpoint_bytes = _build_checkpoint_bytes(
             imports=imports,
             model=model,
+            optimizer=optimizer,
             model_type=request.model_type,
             model_scale=request.model_scale,
             category_names=category_names,
@@ -346,8 +441,16 @@ def run_yolo_primary_detection_training(
             precision=runtime_precision,
             metrics_history=metrics_history,
             validation_history=validation_history,
+            evaluated_epochs=tuple(evaluated_epochs),
             warm_start_summary=warm_start_summary,
             implementation_mode=request.implementation_mode,
+            best_metric_name=best_metric_name,
+            best_metric_value=best_metric_value,
+            best_checkpoint_state=(
+                _load_checkpoint_state_from_bytes(imports=imports, checkpoint_bytes=best_checkpoint_bytes)
+                if best_checkpoint_bytes
+                else None
+            ),
         )
         if validation_ran and current_metric_value is not None:
             if current_metric_value >= best_metric_value:
@@ -357,8 +460,9 @@ def run_yolo_primary_detection_training(
             best_metric_value = train_metrics["loss"]
             best_checkpoint_bytes = latest_checkpoint_bytes
 
+        control_command = None
         if request.epoch_callback is not None:
-            request.epoch_callback(
+            control_command = request.epoch_callback(
                 YoloPrimaryTrainingEpochProgress(
                     epoch=epoch,
                     max_epochs=max_epochs,
@@ -385,6 +489,29 @@ def run_yolo_primary_detection_training(
                     ),
                 )
             )
+        if control_command is not None and (
+            control_command.save_checkpoint or control_command.pause_training
+        ):
+            savepoint = YoloPrimaryTrainingSavePoint(
+                epoch=epoch,
+                latest_checkpoint_bytes=latest_checkpoint_bytes,
+                best_checkpoint_bytes=best_checkpoint_bytes or latest_checkpoint_bytes,
+                best_metric_name=best_metric_name,
+                best_metric_value=(
+                    None
+                    if (
+                        (validation_split is not None and best_metric_value == float("-inf"))
+                        or (validation_split is None and best_metric_value == float("inf"))
+                    )
+                    else round(best_metric_value, 6)
+                ),
+            )
+            if request.savepoint_callback is not None:
+                request.savepoint_callback(savepoint)
+            if control_command.pause_training:
+                raise YoloPrimaryTrainingPausedError(savepoint)
+        if control_command is not None and control_command.terminate_training:
+            raise YoloPrimaryTrainingTerminatedError()
 
     if not best_checkpoint_bytes:
         best_checkpoint_bytes = latest_checkpoint_bytes
@@ -442,7 +569,7 @@ def run_yolo_primary_detection_training(
 
 
 def _require_training_imports() -> _TrainingImports:
-    """导入 YOLOv8 bootstrap 训练所需依赖。"""
+    """导入 YOLO 主线 detection 训练所需依赖。"""
 
     try:
         import cv2
@@ -450,7 +577,7 @@ def _require_training_imports() -> _TrainingImports:
         import torch
     except Exception as error:  # pragma: no cover - 缺依赖时直接报配置错误
         raise ServiceConfigurationError(
-            "当前环境缺少 YOLOv8 bootstrap 训练所需依赖",
+            "当前环境缺少 YOLO 主线 detection 训练所需依赖",
             details={"error": str(error)},
         ) from error
     return _TrainingImports(cv2=cv2, np=np, torch=torch)
@@ -681,6 +808,132 @@ def _load_warm_start_checkpoint(
     }
 
 
+def _load_resume_checkpoint(
+    *,
+    imports: _TrainingImports,
+    model: Any,
+    optimizer: Any,
+    checkpoint_path: Path,
+    expected_model_type: str,
+    expected_model_scale: str,
+    expected_num_classes: int,
+    expected_input_size: tuple[int, int],
+) -> _LoadedResumeState:
+    """从 latest checkpoint 恢复训练状态。"""
+
+    checkpoint_payload = imports.torch.load(checkpoint_path, map_location="cpu")
+    if not isinstance(checkpoint_payload, dict):
+        raise InvalidRequestError("resume checkpoint 内容不合法")
+    _validate_resume_checkpoint(
+        checkpoint_payload=checkpoint_payload,
+        expected_model_type=expected_model_type,
+        expected_model_scale=expected_model_scale,
+        expected_num_classes=expected_num_classes,
+        expected_input_size=expected_input_size,
+    )
+    model.load_state_dict(dict(checkpoint_payload.get("model_state_dict") or {}))
+    optimizer_state_dict = checkpoint_payload.get("optimizer_state_dict")
+    if isinstance(optimizer_state_dict, dict):
+        optimizer.load_state_dict(optimizer_state_dict)
+
+    raw_resume_epoch = checkpoint_payload.get("epoch")
+    resume_epoch = int(raw_resume_epoch) if isinstance(raw_resume_epoch, int) and raw_resume_epoch >= 0 else 0
+    raw_best_metric_name = checkpoint_payload.get("best_metric_name")
+    best_metric_name = (
+        str(raw_best_metric_name)
+        if isinstance(raw_best_metric_name, str) and raw_best_metric_name.strip()
+        else "class_presence_accuracy"
+    )
+    raw_best_metric_value = checkpoint_payload.get("best_metric_value")
+    best_metric_value = (
+        float(raw_best_metric_value)
+        if isinstance(raw_best_metric_value, int | float)
+        else None
+    )
+    warm_start_summary = checkpoint_payload.get("warm_start")
+    return _LoadedResumeState(
+        resume_epoch=resume_epoch,
+        epoch_history=_normalize_history_items(checkpoint_payload.get("metrics_history")),
+        validation_history=_normalize_history_items(checkpoint_payload.get("validation_history")),
+        evaluated_epochs=_normalize_evaluated_epochs(checkpoint_payload.get("evaluated_epochs")),
+        best_metric_name=best_metric_name,
+        best_metric_value=best_metric_value,
+        best_checkpoint_state=(
+            dict(checkpoint_payload.get("best_checkpoint_state"))
+            if isinstance(checkpoint_payload.get("best_checkpoint_state"), dict)
+            else None
+        ),
+        warm_start_summary=(
+            dict(warm_start_summary)
+            if isinstance(warm_start_summary, dict)
+            else {
+                "enabled": False,
+                "source_model_version_id": None,
+                "source_kind": None,
+                "source_model_name": None,
+                "source_model_scale": None,
+                "load_summary": None,
+            }
+        ),
+    )
+
+
+def _validate_resume_checkpoint(
+    *,
+    checkpoint_payload: dict[str, object],
+    expected_model_type: str,
+    expected_model_scale: str,
+    expected_num_classes: int,
+    expected_input_size: tuple[int, int],
+) -> None:
+    """校验恢复训练使用的 checkpoint 是否与当前请求匹配。"""
+
+    checkpoint_model_type = checkpoint_payload.get("model_type")
+    checkpoint_model_scale = checkpoint_payload.get("model_scale")
+    checkpoint_category_names = checkpoint_payload.get("category_names")
+    checkpoint_input_size = checkpoint_payload.get("input_size")
+    if checkpoint_model_type != expected_model_type:
+        raise InvalidRequestError(
+            "resume checkpoint 的 model_type 与当前训练请求不一致",
+            details={
+                "checkpoint_model_type": checkpoint_model_type,
+                "expected_model_type": expected_model_type,
+            },
+        )
+    if checkpoint_model_scale != expected_model_scale:
+        raise InvalidRequestError(
+            "resume checkpoint 的 model_scale 与当前训练请求不一致",
+            details={
+                "checkpoint_model_scale": checkpoint_model_scale,
+                "expected_model_scale": expected_model_scale,
+            },
+        )
+    if not isinstance(checkpoint_category_names, list) or len(checkpoint_category_names) != expected_num_classes:
+        raise InvalidRequestError(
+            "resume checkpoint 的类别数量与当前训练请求不一致",
+            details={
+                "checkpoint_class_count": (
+                    len(checkpoint_category_names)
+                    if isinstance(checkpoint_category_names, list)
+                    else None
+                ),
+                "expected_class_count": expected_num_classes,
+            },
+        )
+    if (
+        not isinstance(checkpoint_input_size, list)
+        or len(checkpoint_input_size) != 2
+        or tuple(int(item) for item in checkpoint_input_size) != expected_input_size
+    ):
+        raise InvalidRequestError(
+            "resume checkpoint 的 input_size 与当前训练请求不一致",
+            details={
+                "checkpoint_input_size": checkpoint_input_size,
+                "expected_input_size": list(expected_input_size),
+            },
+        )
+
+
 def _build_autocast_context(
     *,
     imports: _TrainingImports,
@@ -881,10 +1134,31 @@ def _evaluate_detection_model(
     }
 
 
+def _normalize_history_items(value: object) -> list[dict[str, object]]:
+    """把 checkpoint 中的指标历史归一成可继续追加的列表。"""
+
+    if not isinstance(value, list):
+        return []
+    normalized_items: list[dict[str, object]] = []
+    for item in value:
+        if isinstance(item, dict):
+            normalized_items.append({str(key): current_value for key, current_value in item.items()})
+    return normalized_items
+
+
+def _normalize_evaluated_epochs(value: object) -> tuple[int, ...]:
+    """把 checkpoint 中的验证 epoch 列表归一成整数元组。"""
+
+    if not isinstance(value, list):
+        return ()
+    return tuple(item for item in value if isinstance(item, int) and item > 0)
+
+
 def _build_checkpoint_bytes(
     *,
     imports: _TrainingImports,
     model: Any,
+    optimizer: Any,
     model_type: str,
     model_scale: str,
     category_names: tuple[str, ...],
@@ -893,8 +1167,12 @@ def _build_checkpoint_bytes(
     precision: str,
     metrics_history: list[dict[str, object]],
     validation_history: list[dict[str, object]],
+    evaluated_epochs: tuple[int, ...],
     warm_start_summary: dict[str, object],
     implementation_mode: str,
+    best_metric_name: str,
+    best_metric_value: float | None,
+    best_checkpoint_state: dict[str, object] | None,
 ) -> bytes:
     """把当前训练状态导出为项目内 checkpoint。"""
 
@@ -902,6 +1180,7 @@ def _build_checkpoint_bytes(
     imports.torch.save(
         {
             "model_state_dict": model.state_dict(),
+            "optimizer_state_dict": optimizer.state_dict(),
             "model_type": model_type,
             "model_scale": model_scale,
             "category_names": list(category_names),
@@ -910,12 +1189,43 @@ def _build_checkpoint_bytes(
             "precision": precision,
             "metrics_history": metrics_history,
             "validation_history": validation_history,
+            "evaluated_epochs": list(evaluated_epochs),
             "warm_start": warm_start_summary,
             "implementation_mode": implementation_mode,
+            "best_metric_name": best_metric_name,
+            "best_metric_value": best_metric_value,
+            "best_checkpoint_state": best_checkpoint_state,
         },
         buffer,
     )
     return buffer.getvalue()
+
+
+def _build_checkpoint_bytes_from_state(
+    *,
+    imports: _TrainingImports,
+    checkpoint_state: dict[str, object] | None,
+) -> bytes:
+    """把已缓存的 checkpoint 状态重新编码成二进制。"""
+
+    if checkpoint_state is None:
+        return b""
+    buffer = io.BytesIO()
+    imports.torch.save(checkpoint_state, buffer)
+    return buffer.getvalue()
+
+
+def _load_checkpoint_state_from_bytes(
+    *,
+    imports: _TrainingImports,
+    checkpoint_bytes: bytes,
+) -> dict[str, object]:
+    """从 checkpoint 二进制反序列化为字典状态。"""
+
+    payload = imports.torch.load(io.BytesIO(checkpoint_bytes), map_location="cpu")
+    if not isinstance(payload, dict):
+        raise InvalidRequestError("checkpoint 内容不合法")
+    return dict(payload)
 
 
 def _read_float_option(
