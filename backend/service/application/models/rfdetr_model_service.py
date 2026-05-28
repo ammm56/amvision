@@ -1,15 +1,60 @@
 """RF-DETR 模型服务。"""
 
 from __future__ import annotations
+
 from backend.service.application.models.rfdetr_model import build_rfdetr_model, RfdetrModel
+from backend.service.application.models.yolox_model_service import (
+    SqlAlchemyYoloXModelService,
+    YoloXBuildRegistration as RfdetrBuildRegistration,
+    YoloXPretrainedRegistrationRequest as RfdetrPretrainedRegistrationRequest,
+    YoloXTrainingOutputRegistration as RfdetrTrainingOutputRegistration,
+)
+from backend.service.domain.files.detection_model_file_types import YOLOV8_DETECTION_FILE_TYPES
+from backend.service.domain.models.rfdetr_model_spec import (
+    RFDETR_DEFAULT_DATASET_FORMAT,
+    RFDETR_MODEL_SCALES,
+    RFDETR_SUPPORTED_BUILD_FORMATS,
+    RFDETR_SUPPORTED_TASKS,
+)
+from backend.service.domain.models.model_task_types import DETECTION_TASK_TYPE
+from backend.service.infrastructure.db.session import SessionFactory
 
 
-class RfdetrModelService:
-    """RF-DETR 模型登记与预训练注册服务。"""
+RFDETR_DETECTION_FILE_TYPES = YOLOV8_DETECTION_FILE_TYPES
 
-    def __init__(self, *, session_factory=None, dataset_storage=None) -> None:
-        self.session_factory = session_factory
-        self.dataset_storage = dataset_storage
 
-    def build_model(self, *, model_scale: str = "nano", num_classes: int = 91, pretrained_path: str | None = None) -> RfdetrModel:
-        return build_rfdetr_model(model_scale=model_scale, num_classes=num_classes, pretrained_path=pretrained_path)
+class RfdetrModelSpec:
+    """RF-DETR 模型规格。实现 YOLO 通用服务 spec 接口。"""
+
+    def __init__(self) -> None:
+        self._supported_tasks = RFDETR_SUPPORTED_TASKS
+        self._supported_scales = RFDETR_MODEL_SCALES
+        self._supported_build_formats = RFDETR_SUPPORTED_BUILD_FORMATS
+        self._default_dataset_format = RFDETR_DEFAULT_DATASET_FORMAT
+
+    def supports_task_type(self, task_type: str) -> bool:
+        return task_type in self._supported_tasks
+
+    def supports_model_scale(self, model_scale: str) -> bool:
+        return model_scale in self._supported_scales
+
+    def supports_build_format(self, build_format: str) -> bool:
+        return build_format in self._supported_build_formats
+
+    def resolve_default_dataset_format(self, task_type: str) -> str | None:
+        return self._default_dataset_format
+
+
+DEFAULT_RFDETR_MODEL_SPEC = RfdetrModelSpec()
+
+
+class SqlAlchemyRfdetrModelService(SqlAlchemyYoloXModelService):
+    """RF-DETR 模型服务。基于通用登记逻辑。"""
+
+    def __init__(self, session_factory: SessionFactory, spec: RfdetrModelSpec | None = None) -> None:
+        super().__init__(
+            session_factory=session_factory,
+            spec=spec or DEFAULT_RFDETR_MODEL_SPEC,
+            file_types=RFDETR_DETECTION_FILE_TYPES,
+            default_task_type=DETECTION_TASK_TYPE,
+        )

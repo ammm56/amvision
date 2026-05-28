@@ -512,9 +512,9 @@ class SqlAlchemyDatasetImportService:
             raise InvalidRequestError("当前导入接口只接受 zip 压缩包")
         if package_file is None and not request.package_bytes:
             raise InvalidRequestError("上传 zip 文件不能为空")
-        if request.task_type not in ("detection", "instance-segmentation", "pose"):
+        if request.task_type not in ("detection", "instance-segmentation", "pose", "classification", "obb"):
             raise UnsupportedDatasetFormatError(
-                "当前导入接口支持 detection、instance-segmentation、pose task type",
+                "当前导入接口支持 detection、instance-segmentation、pose、classification、obb task type",
                 details={"task_type": request.task_type},
             )
         if request.split_strategy not in (None, "auto", "train", "val", "test"):

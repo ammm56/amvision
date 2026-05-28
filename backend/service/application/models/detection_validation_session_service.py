@@ -23,6 +23,9 @@ from backend.service.application.runtime.yolo11_runtime_target import (
 from backend.service.application.runtime.yolo26_runtime_target import (
     SqlAlchemyYolo26RuntimeTargetResolver,
 )
+from backend.service.application.runtime.rfdetr_runtime_target import (
+    SqlAlchemyRfdetrRuntimeTargetResolver,
+)
 from backend.service.application.runtime.yolov8_runtime_target import (
     SqlAlchemyYoloV8RuntimeTargetResolver,
 )
@@ -49,7 +52,7 @@ _VALIDATION_SESSION_STATUS_READY = "ready"
 _VALIDATION_RUNTIME_BACKEND = "pytorch"
 _DEFAULT_SCORE_THRESHOLD = 0.3
 _DEFAULT_INPUT_SIZE = (640, 640)
-_SUPPORTED_DETECTION_MODEL_TYPES = ("yolox", "yolov8", "yolo11", "yolo26")
+_SUPPORTED_DETECTION_MODEL_TYPES = ("yolox", "yolov8", "yolo11", "yolo26", "rfdetr")
 
 
 @dataclass(frozen=True)
@@ -457,6 +460,7 @@ def _build_runtime_target_resolver(
         "yolov8": SqlAlchemyYoloV8RuntimeTargetResolver,
         "yolo11": SqlAlchemyYolo11RuntimeTargetResolver,
         "yolo26": SqlAlchemyYolo26RuntimeTargetResolver,
+        "rfdetr": SqlAlchemyRfdetrRuntimeTargetResolver,
     }
     resolver_factory = resolver_factory_map.get(model_type)
     if resolver_factory is None:

@@ -1,4 +1,13 @@
-"""YOLO 主线预训练模型目录约定与启动登记。"""
+"""YOLO 主线预训练模型目录约定与启动登记。
+
+目录结构：
+    {root}/{model_type}/{task_type}/{scale}/{variant}/manifest.json
+    {root}/{model_type}/{task_type}/{scale}/{variant}/checkpoints/{file}.pt
+
+示例：
+    models/pretrained/yolov8/detection/n/default/manifest.json
+    models/pretrained/yolov8/detection/n/default/checkpoints/yolov8n.pt
+"""
 
 from __future__ import annotations
 
@@ -12,6 +21,7 @@ from backend.service.application.models.yolox_model_service import YoloXPretrain
 from backend.service.application.models.yolov8_model_service import SqlAlchemyYoloV8ModelService
 from backend.service.application.models.yolo11_model_service import SqlAlchemyYolo11ModelService
 from backend.service.application.models.yolo26_model_service import SqlAlchemyYolo26ModelService
+from backend.service.application.models.rfdetr_model_service import SqlAlchemyRfdetrModelService
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 
 if TYPE_CHECKING:
@@ -21,6 +31,7 @@ YOLO_PRIMARY_PRETRAINED_CATALOG_ROOTS: dict[str, str] = {
     "yolov8": "models/pretrained/yolov8",
     "yolo11": "models/pretrained/yolo11",
     "yolo26": "models/pretrained/yolo26",
+    "rfdetr": "models/pretrained/rf-detr",
 }
 YOLO_PRIMARY_PRETRAINED_MANIFEST_FILE = "manifest.json"
 
@@ -28,6 +39,7 @@ _YOLO_PRIMARY_MODEL_SERVICE_REGISTRY: dict[str, type] = {
     "yolov8": SqlAlchemyYoloV8ModelService,
     "yolo11": SqlAlchemyYolo11ModelService,
     "yolo26": SqlAlchemyYolo26ModelService,
+    "rfdetr": SqlAlchemyRfdetrModelService,
 }
 
 
@@ -46,7 +58,7 @@ class YoloPrimaryPretrainedCatalogEntry:
 
 
 class YoloPrimaryPretrainedModelCatalogSeeder:
-    """扫描预训练模型目录并自动登记 YOLOv8/YOLO11/YOLO26 预训练模型。"""
+    """扫描预训练模型目录并自动登记 YOLOv8/YOLO11/YOLO26/RF-DETR 预训练模型。"""
 
     def get_step_name(self) -> str:
         """返回当前 seeder 的稳定步骤名。"""

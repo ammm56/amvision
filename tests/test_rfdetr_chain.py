@@ -24,7 +24,7 @@ def test_rfdetr_backend_registration():
 def test_rfdetr_imports():
     """验证所有 RF-DETR 模块可以被导入。"""
     from backend.service.application.models.rfdetr_model import RfdetrModel, RfdetrPostProcess
-    from backend.service.application.models.rfdetr_model_service import RfdetrModelService
+    from backend.service.application.models.rfdetr_model_service import SqlAlchemyRfdetrModelService
     from backend.service.application.runtime.rfdetr_predictor import PyTorchRfdetrRuntimeSession
     from backend.service.application.runtime.rfdetr_runtime_target import SqlAlchemyRfdetrRuntimeTargetResolver
     from backend.service.application.conversions.rfdetr_conversion_planner import DefaultRfdetrConversionPlanner
