@@ -25,7 +25,7 @@ from backend.service.application.runtime.detection_runtime_support import batche
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 
 
-YOLO_PRIMARY_BOOTSTRAP_IMPLEMENTATION_MODE = "yolo-primary-detection"
+YOLO_PRIMARY_IMPLEMENTATION_MODE = "yolo-primary-detection"
 YOLO_PRIMARY_DEFAULT_INPUT_SIZE = (640, 640)
 YOLO_PRIMARY_DEFAULT_BATCH_SIZE = 1
 YOLO_PRIMARY_DEFAULT_MAX_EPOCHS = 1
@@ -104,7 +104,7 @@ class YoloPrimaryDetectionTrainingExecutionRequest:
     manifest_payload: dict[str, object]
     model_scale: str
     model_type: str = "yolov8"
-    implementation_mode: str = YOLO_PRIMARY_BOOTSTRAP_IMPLEMENTATION_MODE
+    implementation_mode: str = YOLO_PRIMARY_IMPLEMENTATION_MODE
     evaluation_interval: int | None = None
     max_epochs: int | None = None
     batch_size: int | None = None

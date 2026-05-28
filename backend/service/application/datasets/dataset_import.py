@@ -32,10 +32,11 @@ from backend.service.domain.datasets.dataset_import import (
 from backend.service.domain.datasets.dataset_version import (
     DatasetCategory,
     DatasetSample,
-    DatasetSplitName,
-    DatasetTaskType,
     DatasetVersion,
+    DatasetAnnotation,
     DetectionAnnotation,
+    InstanceSegmentationAnnotation,
+    PoseAnnotation,
 )
 from backend.service.domain.tasks.task_records import TaskEvent, TaskRecord
 from backend.service.infrastructure.db.session import SessionFactory
@@ -511,9 +512,9 @@ class SqlAlchemyDatasetImportService:
             raise InvalidRequestError("当前导入接口只接受 zip 压缩包")
         if package_file is None and not request.package_bytes:
             raise InvalidRequestError("上传 zip 文件不能为空")
-        if request.task_type != "detection":
+        if request.task_type not in ("detection", "instance-segmentation", "pose"):
             raise UnsupportedDatasetFormatError(
-                "当前导入接口只支持 detection task type",
+                "当前导入接口支持 detection、instance-segmentation、pose task type",
                 details={"task_type": request.task_type},
             )
         if request.split_strategy not in (None, "auto", "train", "val", "test"):
@@ -936,35 +937,24 @@ class SqlAlchemyDatasetImportService:
                 image_refs.append(self._relative_path(dataset_root, source_image_path))
                 width = self._read_int(image_payload, "width", "COCO image.width 不能为空")
                 height = self._read_int(image_payload, "height", "COCO image.height 不能为空")
-                annotations: list[DetectionAnnotation] = []
+                annotations: list[DatasetAnnotation] = []
                 for annotation_index, annotation_payload in enumerate(
                     annotations_by_image_id.get(source_image_key, ()),
                     start=1,
                 ):
                     source_category_id = str(annotation_payload.get("category_id", "")).strip()
                     if source_category_id not in category_id_map:
-                        raise InvalidRequestError(
-                            "COCO annotation 引用了未定义的 category_id",
-                            details={"category_id": source_category_id},
-                        )
+                        raise InvalidRequestError("COCO annotation 引用了未定义的 category_id", details={"category_id": source_category_id})
                     bbox_xywh = self._read_bbox_xywh(annotation_payload.get("bbox"))
                     annotations.append(
-                        DetectionAnnotation(
-                            annotation_id=str(
-                                annotation_payload.get(
-                                    "id",
-                                    f"coco-ann-{source_image_key}-{annotation_index}",
-                                )
-                            ),
+                        _build_annotation_for_task(
+                            task_type=request.task_type,
+                            annotation_id=str(annotation_payload.get("id", f"coco-ann-{source_image_key}-{annotation_index}")),
                             category_id=category_id_map[source_category_id],
                             bbox_xywh=bbox_xywh,
                             iscrowd=int(annotation_payload.get("iscrowd", 0) or 0),
                             area=float(annotation_payload.get("area") or (bbox_xywh[2] * bbox_xywh[3])),
-                            metadata={
-                                key: value
-                                for key, value in annotation_payload.items()
-                                if key not in {"id", "image_id", "category_id", "bbox", "iscrowd", "area"}
-                            },
+                            annotation_payload=annotation_payload,
                         )
                     )
                 parsed_samples.append(
@@ -1968,3 +1958,38 @@ class SqlAlchemyDatasetImportService:
             raise
         finally:
             unit_of_work.close()
+
+
+def _build_annotation_for_task(
+    *, task_type: str, annotation_id: str, category_id: int,
+    bbox_xywh: tuple[float, float, float, float],
+    iscrowd: int, area: float | None, annotation_payload: dict[str, object],
+) -> DatasetAnnotation:
+    """根据 task_type 创建对应的标注对象。"""
+
+    extra_meta = {
+        key: value for key, value in annotation_payload.items()
+        if key not in {"id", "image_id", "category_id", "bbox", "iscrowd", "area"}
+    }
+    if task_type == "instance-segmentation":
+        seg = annotation_payload.get("segmentation")
+        return InstanceSegmentationAnnotation(
+            annotation_id=annotation_id, category_id=category_id,
+            bbox_xywh=bbox_xywh, iscrowd=iscrowd, area=area,
+            segmentation=seg if isinstance(seg, list) else None,
+            metadata=extra_meta,
+        )
+    if task_type == "pose":
+        kp = annotation_payload.get("keypoints")
+        nk = int(annotation_payload.get("num_keypoints", 0) or 0)
+        return PoseAnnotation(
+            annotation_id=annotation_id, category_id=category_id,
+            bbox_xywh=bbox_xywh, iscrowd=iscrowd, area=area,
+            keypoints=kp if isinstance(kp, list) else None,
+            num_keypoints=nk, metadata=extra_meta,
+        )
+    return DetectionAnnotation(
+        annotation_id=annotation_id, category_id=category_id,
+        bbox_xywh=bbox_xywh, iscrowd=iscrowd, area=area,
+        metadata=extra_meta,
+    )

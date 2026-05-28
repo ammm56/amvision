@@ -17,8 +17,12 @@ from backend.workers.datasets.dataset_import_queue_worker import DatasetImportQu
 from backend.workers.evaluation.yolox_evaluation_queue_worker import YoloXEvaluationQueueWorker
 from backend.workers.inference.yolox_inference_queue_worker import YoloXInferenceQueueWorker
 from backend.workers.settings import (
+    BACKEND_WORKER_CONSUMER_CLASSIFICATION_INFERENCE,
     BACKEND_WORKER_CONSUMER_DATASET_EXPORT,
     BACKEND_WORKER_CONSUMER_DATASET_IMPORT,
+    BACKEND_WORKER_CONSUMER_OBB_INFERENCE,
+    BACKEND_WORKER_CONSUMER_POSE_INFERENCE,
+    BACKEND_WORKER_CONSUMER_SEGMENTATION_INFERENCE,
     BACKEND_WORKER_CONSUMER_YOLO11_TRAINING,
     BACKEND_WORKER_CONSUMER_YOLO11_CONVERSION,
     BACKEND_WORKER_CONSUMER_YOLO26_TRAINING,
@@ -193,6 +197,21 @@ def build_background_task_consumers(
                         resources.async_inference_request_timeout_seconds
                     ),
                     worker_id=f"{resources.worker_id_prefix}-yolox-inference",
+                )
+            )
+            continue
+        if consumer_kind in (
+            BACKEND_WORKER_CONSUMER_CLASSIFICATION_INFERENCE,
+            BACKEND_WORKER_CONSUMER_SEGMENTATION_INFERENCE,
+            BACKEND_WORKER_CONSUMER_POSE_INFERENCE,
+            BACKEND_WORKER_CONSUMER_OBB_INFERENCE,
+        ):
+            consumers.append(
+                YoloXInferenceQueueWorker(
+                    session_factory=resources.session_factory,
+                    dataset_storage=resources.dataset_storage,
+                    queue_backend=resources.queue_backend,
+                    worker_id=f"{resources.worker_id_prefix}-{consumer_kind}",
                 )
             )
             continue

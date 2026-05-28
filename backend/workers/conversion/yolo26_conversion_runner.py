@@ -11,6 +11,12 @@ from backend.service.application.backends import (
 from backend.service.application.runtime.yolo26_classification_predictor import (
     PyTorchYolo26ClassificationRuntimeSession,
 )
+from backend.service.application.runtime.yolo26_obb_predictor import (
+    PyTorchYolo26ObbRuntimeSession,
+)
+from backend.service.application.runtime.yolo26_pose_predictor import (
+    PyTorchYolo26PoseRuntimeSession,
+)
 from backend.service.application.runtime.yolo26_segmentation_predictor import (
     PyTorchYolo26SegmentationRuntimeSession,
 )
@@ -41,6 +47,8 @@ class LocalYolo26ConversionRunner(LocalYoloPrimaryConversionRunner):
         "detection": PyTorchYolo26RuntimeSession,
         "classification": PyTorchYolo26ClassificationRuntimeSession,
         "segmentation": PyTorchYolo26SegmentationRuntimeSession,
+        "pose": PyTorchYolo26PoseRuntimeSession,
+        "obb": PyTorchYolo26ObbRuntimeSession,
     }
     onnx_file_type = YOLO26_ONNX_FILE
     onnx_optimized_file_type = YOLO26_ONNX_OPTIMIZED_FILE

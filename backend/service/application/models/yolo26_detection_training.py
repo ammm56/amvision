@@ -13,7 +13,7 @@ from backend.service.application.models.yolo_primary_detection_training import (
 )
 
 
-YOLO26_BOOTSTRAP_IMPLEMENTATION_MODE = "yolo26-detection"
+YOLO26_IMPLEMENTATION_MODE = "yolo26-detection"
 
 
 def run_yolo26_detection_training(
@@ -25,6 +25,6 @@ def run_yolo26_detection_training(
         replace(
             request,
             model_type="yolo26",
-            implementation_mode=YOLO26_BOOTSTRAP_IMPLEMENTATION_MODE,
+            implementation_mode=YOLO26_IMPLEMENTATION_MODE,
         )
     )

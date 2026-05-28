@@ -255,7 +255,7 @@ class SqlAlchemyYoloPrimaryConversionTaskService(SqlAlchemyDetectionConversionTa
         created_by: str | None = None,
         limit: int = 100,
     ) -> tuple[TaskRecord, ...]:
-        """按公开筛选条件返回 YOLOv8 转换任务列表。"""
+        """按公开筛选条件返回 YOLO 主线转换任务列表。"""
 
         return self.task_service.list_tasks(
             TaskQueryFilters(
@@ -273,7 +273,7 @@ class SqlAlchemyYoloPrimaryConversionTaskService(SqlAlchemyDetectionConversionTa
         *,
         include_events: bool = False,
     ) -> TaskDetail:
-        """读取一条 YOLOv8 转换任务详情。"""
+        """读取一条 YOLO 主线转换任务详情。"""
 
         task_detail = self.task_service.get_task(task_id, include_events=include_events)
         if task_detail.task.task_kind != self._resolve_task_kind():
@@ -284,7 +284,7 @@ class SqlAlchemyYoloPrimaryConversionTaskService(SqlAlchemyDetectionConversionTa
         return task_detail
 
     def process_conversion_task(self, task_id: str) -> YoloPrimaryConversionTaskResult:
-        """执行一条已入队的 YOLOv8 转换任务。"""
+        """执行一条已入队的 YOLO 主线转换任务。"""
 
         dataset_storage = self._require_dataset_storage()
         task_record = self._require_conversion_task(task_id)
@@ -459,7 +459,7 @@ class SqlAlchemyYoloPrimaryConversionTaskService(SqlAlchemyDetectionConversionTa
         self,
         task_record: TaskRecord,
     ) -> YoloPrimaryConversionTaskRequest:
-        """从 TaskRecord 中恢复 YOLOv8 转换请求。"""
+        """从 TaskRecord 中恢复 YOLO 主线转换请求。"""
 
         task_spec = _deserialize_task_spec(task_record.task_spec)
         return self._resolve_request_cls()(
@@ -491,7 +491,7 @@ class SqlAlchemyYoloPrimaryConversionTaskService(SqlAlchemyDetectionConversionTa
         conversion_task_id: str,
         outputs,
     ) -> tuple[YoloPrimaryConversionBuildSummary, ...]:
-        """把 runner 产出的 build 文件登记为 YOLOv8 ModelBuild。"""
+        """把 runner 产出的 build 文件登记为 YOLO 主线 ModelBuild。"""
 
         model_service = self._resolve_model_service_cls()(session_factory=self.session_factory)
         build_summaries: list[YoloPrimaryConversionBuildSummary] = []
@@ -542,7 +542,7 @@ class SqlAlchemyYoloPrimaryConversionTaskService(SqlAlchemyDetectionConversionTa
         )
 
     def _validate_executable_targets(self, target_formats: tuple[str, ...]) -> None:
-        """限制当前 YOLOv8 只执行已经接通的转换目标。"""
+        """限制当前 YOLO 主线转换只执行已经接通的转换目标。"""
 
         unsupported_formats = [
             item for item in target_formats if item not in self.executable_target_formats

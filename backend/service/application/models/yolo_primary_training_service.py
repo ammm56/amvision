@@ -24,7 +24,7 @@ from backend.service.application.models.detection_training_rules import (
     build_detection_validation_summary_payload,
 )
 from backend.service.application.models.yolo_primary_detection_training import (
-    YOLO_PRIMARY_BOOTSTRAP_IMPLEMENTATION_MODE,
+    YOLO_PRIMARY_IMPLEMENTATION_MODE,
     YOLO_PRIMARY_DEFAULT_EVALUATION_INTERVAL,
     YoloPrimaryDetectionTrainingExecutionRequest,
     YoloPrimaryDetectionTrainingExecutionResult,
@@ -136,7 +136,7 @@ class SqlAlchemyYoloPrimaryTrainingTaskService:
     task_result_cls = YoloPrimaryTrainingTaskResult
     execution_request_cls = YoloPrimaryDetectionTrainingExecutionRequest
     training_runner = staticmethod(run_yolo_primary_detection_training)
-    implementation_mode = YOLO_PRIMARY_BOOTSTRAP_IMPLEMENTATION_MODE
+    implementation_mode = YOLO_PRIMARY_IMPLEMENTATION_MODE
     file_types: Any = None
     default_spec: Any = None
 

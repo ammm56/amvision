@@ -25,7 +25,13 @@
       "dataset-import",
       "dataset-export",
       "yolox-training",
+      "yolov8-training",
+      "yolo11-training",
+      "yolo26-training",
       "yolox-conversion",
+      "yolov8-conversion",
+      "yolo11-conversion",
+      "yolo26-conversion",
       "yolox-evaluation",
       "yolox-inference"
     ],

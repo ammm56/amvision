@@ -10,12 +10,12 @@ from backend.service.application.models.yolo_primary_detection_training import (
     run_yolo_primary_detection_training,
 )
 
-YOLOV8_BOOTSTRAP_IMPLEMENTATION_MODE = "yolov8-detection"
+YOLOV8_IMPLEMENTATION_MODE = "yolov8-detection"
 run_yolov8_detection_training = run_yolo_primary_detection_training
 
 
 __all__ = [
-    "YOLOV8_BOOTSTRAP_IMPLEMENTATION_MODE",
+    "YOLOV8_IMPLEMENTATION_MODE",
     "YoloV8TrainingBatchProgress",
     "YoloV8TrainingEpochProgress",
     "YoloV8DetectionTrainingExecutionRequest",

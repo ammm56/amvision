@@ -441,8 +441,35 @@ class Proto(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """根据高分辨率特征图生成原型 mask。"""
-
         return self.cv3(self.cv2(self.upsample(self.cv1(x))))
+
+
+class Proto26(Proto):
+    """YOLO26 分割 proto 头，支持多尺度特征融合。"""
+
+    def __init__(self, c_: int = 256, c2: int = 32, nc: int = 80, feature_channels: tuple[int, ...] = ()) -> None:
+        """初始化多尺度融合 proto 头。"""
+
+        super().__init__(c_, c_, c2)
+        self.feat_refine = nn.ModuleList(Conv(ch, feature_channels[0] if feature_channels else c_, k=1) for ch in feature_channels[1:])
+        self.feat_fuse = Conv(feature_channels[0] if feature_channels else c_, c_, k=3)
+        self.semseg = nn.Sequential(Conv(feature_channels[0] if feature_channels else c_, c_, k=3), Conv(c_, c_, k=3), nn.Conv2d(c_, nc, 1))
+
+    def forward(self, x) -> torch.Tensor:
+        """对多尺度特征图进行融合后生成 proto mask。"""
+
+        if isinstance(x, (list, tuple)):
+            feat = x[0]
+            for i, f in enumerate(self.feat_refine):
+                up_feat = f(x[i + 1])
+                up_feat = torch.nn.functional.interpolate(up_feat, size=feat.shape[2:], mode="nearest")
+                feat = feat + up_feat
+            p = super().forward(self.feat_fuse(feat))
+            if self.training:
+                semseg = self.semseg(feat)
+                return (p, semseg)
+            return p
+        return super().forward(x)
 
 
 class Detect(nn.Module):
@@ -678,7 +705,25 @@ class Segment(Detect):
 
 
 class Segment26(Segment):
-    """YOLO26 分割头当前阶段复用主线分割实现。"""
+    """YOLO26 分割头。复用主线分割实现，forward 返回 (prediction, proto) 并支持多尺度 Proto26。"""
+
+    def forward(
+        self,
+        x: list[torch.Tensor] | tuple[torch.Tensor, ...],
+    ) -> dict[str, torch.Tensor] | torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
+        """执行分割头前向。训练时返回 raw dict，eval 时返回 (prediction, proto)。"""
+
+        raw_outputs = self._build_head_outputs(x, box_head=self.cv2, class_head=self.cv3, extra_head=self.cv4, extra_key="mask_coefficients", extra_channels=self.nm)
+        if self.end2end:
+            detached_inputs = [feature.detach() for feature in x]
+            one2one_outputs = self._build_head_outputs(detached_inputs, box_head=self.one2one_cv2, class_head=self.one2one_cv3, extra_head=self.one2one_cv4, extra_key="mask_coefficients", extra_channels=self.nm)
+            raw_outputs = {"one2many": raw_outputs, "one2one": one2one_outputs}
+        if self.training:
+            return raw_outputs
+        inference_outputs = raw_outputs["one2one"] if self.end2end else raw_outputs
+        prediction = self._build_inference_prediction(inference_outputs)
+        prediction = torch.cat((prediction, inference_outputs["mask_coefficients"]), dim=1)
+        return prediction.transpose(1, 2).contiguous(), inference_outputs.get("proto")
 
 
 class OBB(Detect):
@@ -856,7 +901,85 @@ class Pose(Detect):
 
 
 class Pose26(Pose):
-    """YOLO26 关键点头当前阶段复用主线关键点实现。"""
+    """YOLO26 关键点头。含 RealNVP 流模型和独立 kpts/sigma 分支。"""
+
+    def __init__(
+        self,
+        nc: int,
+        kpt_shape: tuple[int, int],
+        ch: tuple[int, ...],
+        *,
+        reg_max: int = 16,
+        strides: tuple[int, ...] = (8, 16, 32),
+        end2end: bool = False,
+    ) -> None:
+        """初始化 YOLO26 关键点头。"""
+
+        super().__init__(nc, kpt_shape, ch, reg_max=reg_max, strides=strides, end2end=end2end)
+        self.flow_model = RealNVP()
+        c4 = max(ch[0] // 4, self.nk + kpt_shape[0] * 2)
+        self.cv4 = nn.ModuleList(nn.Sequential(Conv(x, c4, 3), Conv(c4, c4, 3)) for x in ch)
+        self.cv4_kpts = nn.ModuleList(nn.Conv2d(c4, self.nk, 1) for _ in ch)
+        self.nk_sigma = kpt_shape[0] * 2
+        self.cv4_sigma = nn.ModuleList(nn.Conv2d(c4, self.nk_sigma, 1) for _ in ch)
+        if end2end:
+            self.one2one_cv4 = copy.deepcopy(self.cv4)
+            self.one2one_cv4_kpts = copy.deepcopy(self.cv4_kpts)
+            self.one2one_cv4_sigma = copy.deepcopy(self.cv4_sigma)
+
+    def forward(
+        self,
+        x: list[torch.Tensor] | tuple[torch.Tensor, ...],
+    ) -> dict[str, torch.Tensor] | torch.Tensor:
+        """执行 YOLO26 关键点头前向。训练时返回 raw dict 含 kpts_sigma，eval 时返回组合预测张量。"""
+
+        if not isinstance(x, list | tuple) or len(x) != self.nl:
+            raise InvalidRequestError("Pose26 头收到的特征层数量不合法", details={"expected_feature_count": self.nl})
+        raw_outputs = self._build_head_outputs_pose26(x, box_head=self.cv2, class_head=self.cv3, pose_head=self.cv4, kpts_head=self.cv4_kpts, kpts_sigma_head=self.cv4_sigma)
+        if self.end2end:
+            detached_inputs = [feature.detach() for feature in x]
+            one2one_outputs = self._build_head_outputs_pose26(detached_inputs, box_head=self.one2one_cv2, class_head=self.one2one_cv3, pose_head=self.one2one_cv4, kpts_head=self.one2one_cv4_kpts, kpts_sigma_head=self.one2one_cv4_sigma)
+            raw_outputs = {"one2many": raw_outputs, "one2one": one2one_outputs}
+        if self.training:
+            return raw_outputs
+        inference_outputs = raw_outputs["one2one"] if self.end2end else raw_outputs
+        prediction = self._build_inference_prediction(inference_outputs)
+        kpts = self._decode_keypoints_pose26(inference_outputs)
+        prediction = torch.cat((prediction, kpts), dim=1)
+        return prediction.transpose(1, 2).contiguous()
+
+    def _build_head_outputs_pose26(self, x, *, box_head, class_head, pose_head, kpts_head, kpts_sigma_head):
+        """构建 YOLO26 关键点头的多分支输出。"""
+
+        batch_size = int(x[0].shape[0])
+        box_channels = 4 * self.reg_max if self.reg_max > 1 else 4
+        box_outputs = torch.cat([box_head[index](feature).view(batch_size, box_channels, -1) for index, feature in enumerate(x)], dim=2)
+        class_outputs = torch.cat([class_head[index](feature).view(batch_size, self.nc, -1) for index, feature in enumerate(x)], dim=2)
+        result = {"boxes": box_outputs, "scores": class_outputs, "feats": [x[i] for i in range(self.nl)]}
+        if pose_head is not None:
+            bs = int(x[0].shape[0])
+            features = [pose_head[i](x[i]) for i in range(self.nl)]
+            result["kpts"] = torch.cat([kpts_head[i](features[i]).view(bs, self.nk, -1) for i in range(self.nl)], 2)
+            if self.training:
+                result["kpts_sigma"] = torch.cat([kpts_sigma_head[i](features[i]).view(bs, self.nk_sigma, -1) for i in range(self.nl)], 2)
+        return result
+
+    def _decode_keypoints_pose26(self, raw_outputs: dict[str, torch.Tensor]) -> torch.Tensor:
+        """解码 YOLO26 关键点坐标（锚点 + 偏移 * 步幅）。"""
+
+        anchor_points, stride_tensor = _make_anchors(feature_maps=raw_outputs["feats"], strides=self.strides)
+        kpts = raw_outputs["kpts"]
+        batch_size = int(kpts.shape[0])
+        ndim = self.kpt_shape[1]
+        decoded = kpts.view(batch_size, self.kpt_shape[0], ndim, -1).clone()
+        anchor_x = anchor_points[:, 0].view(1, 1, -1)
+        anchor_y = anchor_points[:, 1].view(1, 1, -1)
+        stride = stride_tensor.view(1, 1, -1)
+        decoded[:, :, 0, :] = (decoded[:, :, 0, :] + anchor_x) * stride
+        decoded[:, :, 1, :] = (decoded[:, :, 1, :] + anchor_y) * stride
+        if ndim == 3:
+            decoded[:, :, 2, :] = decoded[:, :, 2, :].sigmoid()
+        return decoded.view(batch_size, self.nk, -1)
 
 
 class Classify(nn.Module):
@@ -896,6 +1019,57 @@ class Classify(nn.Module):
         probabilities = logits.softmax(dim=1)
         return probabilities if self.export else (probabilities, logits)
 
+
+class RealNVP(nn.Module):
+    """RealNVP 流模型。用于 YOLO26 关键点概率建模。"""
+
+    @staticmethod
+    def _nets():
+        return nn.Sequential(nn.Linear(2, 64), nn.SiLU(), nn.Linear(64, 64), nn.SiLU(), nn.Linear(64, 2), nn.Tanh())
+
+    @staticmethod
+    def _nett():
+        return nn.Sequential(nn.Linear(2, 64), nn.SiLU(), nn.Linear(64, 64), nn.SiLU(), nn.Linear(64, 2))
+
+    def __init__(self) -> None:
+        """初始化 RealNVP 流模型。"""
+
+        super().__init__()
+        self.register_buffer("loc", torch.zeros(2))
+        self.register_buffer("cov", torch.eye(2))
+        mask = torch.tensor([[0, 1], [1, 0]] * 3, dtype=torch.float32)
+        self.register_buffer("mask", mask)
+        self.s = nn.ModuleList([self._nets() for _ in range(len(mask))])
+        self.t = nn.ModuleList([self._nett() for _ in range(len(mask))])
+        self._init_weights()
+
+    def _init_weights(self) -> None:
+        """初始化权重。"""
+
+        for m in self.modules():
+            if isinstance(m, nn.Linear):
+                nn.init.xavier_uniform_(m.weight, gain=0.01)
+
+    def _backward_p(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        """把数据空间映射到潜空间，计算 Jacobian 的行列式对数。"""
+
+        log_det, z = x.new_zeros(x.shape[0]), x
+        for i in reversed(range(len(self.t))):
+            z_ = self.mask[i] * z
+            s_val = self.s[i](z_) * (1 - self.mask[i])
+            t_val = self.t[i](z_) * (1 - self.mask[i])
+            z = (1 - self.mask[i]) * (z - t_val) * torch.exp(-s_val) + z_
+            log_det = log_det - s_val.sum(dim=1)
+        return z, log_det
+
+    def log_prob(self, x: torch.Tensor) -> torch.Tensor:
+        """计算给定数据点的 log 概率。"""
+
+        if x.dtype == torch.float32 and self.s[0][0].weight.dtype != torch.float32:
+            self.float()
+        z, log_det = self._backward_p(x)
+        prior = torch.distributions.MultivariateNormal(self.loc, self.cov)
+        return prior.log_prob(z) + log_det
 
 
 class YoloDetectionModel(nn.Module):

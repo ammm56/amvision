@@ -1,0 +1,700 @@
+"""YOLO 主线 segmentation 共享训练执行模块。
+
+当前为第一阶段实现：复用 detection 训练骨架，增加 mask 损失与分割 mAP 评估。
+"""
+
+from __future__ import annotations
+
+import io
+import json
+import math
+from collections.abc import Callable
+from contextlib import nullcontext
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+
+from backend.service.application.errors import InvalidRequestError, ServiceConfigurationError
+from backend.service.application.models.yolo_detection_model import (
+    _dist2bbox_xyxy,
+)
+from backend.service.application.models.yolo_primary_model_configs import build_yolo_primary_model
+from backend.service.application.runtime.detection_runtime_support import batched_nms_indices
+from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
+
+
+YOLO_PRIMARY_SEGMENTATION_IMPLEMENTATION_MODE = "yolo-primary-segmentation"
+_SEG_DEFAULT_INPUT_SIZE = (640, 640)
+_SEG_DEFAULT_BATCH_SIZE = 1
+_SEG_DEFAULT_MAX_EPOCHS = 1
+_SEG_DEFAULT_EVAL_INTERVAL = 5
+_SEG_DEFAULT_EVAL_CONF = 0.01
+_SEG_DEFAULT_EVAL_NMS = 0.65
+_SEG_DEFAULT_ASSIGN_TOPK = 10
+_SEG_DEFAULT_CLASS_LOSS = 0.5
+_SEG_DEFAULT_BOX_LOSS = 7.5
+_SEG_DEFAULT_DFL_LOSS = 1.5
+_SEG_DEFAULT_MASK_LOSS = 1.0
+_SEG_DEFAULT_ASSIGN_ALPHA = 0.5
+_SEG_DEFAULT_ASSIGN_BETA = 6.0
+_SEG_DEFAULT_MIN_LR = 0.01
+_SEG_DEFAULT_GRAD_CLIP = 10.0
+
+
+@dataclass(frozen=True)
+class YoloPrimarySegmentationTrainingBatchProgress:
+    epoch: int
+    max_epochs: int
+    iteration: int
+    max_iterations: int
+    global_iteration: int
+    total_iterations: int
+    input_size: tuple[int, int]
+    learning_rate: float
+    train_metrics: dict[str, float]
+
+
+@dataclass(frozen=True)
+class YoloPrimarySegmentationTrainingEpochProgress:
+    epoch: int
+    max_epochs: int
+    input_size: tuple[int, int]
+    learning_rate: float
+    train_metrics: dict[str, float]
+
+
+@dataclass(frozen=True)
+class YoloPrimarySegmentationTrainingSavePoint:
+    latest_checkpoint_bytes: bytes
+    train_metrics: dict[str, float]
+    validation_metrics: dict[str, float]
+    best_metric_value: float
+    best_metric_name: str
+    epoch: int
+    learning_rate: float
+
+
+@dataclass(frozen=True)
+class YoloPrimarySegmentationTrainingControlCommand:
+    save_checkpoint: bool = False
+    pause_training: bool = False
+    terminate_training: bool = False
+
+
+class YoloPrimarySegmentationTrainingPausedError(Exception):
+    """训练被显式暂停。"""
+
+
+class YoloPrimarySegmentationTrainingTerminatedError(Exception):
+    """训练被显式终止。"""
+
+
+@dataclass(frozen=True)
+class _SegResumedState:
+    model_state_dict: dict[str, object]
+    optimizer_state_dict: dict[str, object]
+    scheduler_state_dict: dict[str, object] | None
+    scaler_state_dict: dict[str, object] | None
+    metrics_history: list[dict[str, float]]
+    validation_history: list[dict[str, float]]
+    best_metric_value: float
+    best_metric_name: str
+    epoch: int
+    global_iteration: int
+    saved_batch_size: int
+    saved_max_epochs: int
+    saved_lr: float
+    saved_wd: float
+    saved_eval_interval: int
+    saved_min_lr: float
+    saved_class_loss_weight: float
+    saved_box_loss_weight: float
+    saved_dfl_loss_weight: float
+    saved_mask_loss_weight: float
+    saved_assign_topk: int
+    saved_assign_alpha: float
+    saved_assign_beta: float
+    saved_grad_clip: float
+    saved_eval_conf: float
+    saved_eval_nms: float
+
+
+@dataclass(frozen=True)
+class _SegPreparedTarget:
+    batch_idx: Any
+    class_ids: Any
+    box_targets: Any
+    box_scores: Any
+    fg_mask: Any
+    mask_coeffs_target: Any | None = None
+
+
+@dataclass(frozen=True)
+class _SegTrainingAnnotation:
+    image_path: str
+    boxes_xywh: list[list[float]]
+    class_ids: list[int]
+    segmentations: list[list[list[float]] | None] | None = None
+
+
+@dataclass(frozen=True)
+class YoloPrimarySegmentationTrainingExecutionRequest:
+    dataset_storage: LocalDatasetStorage; manifest_payload: dict[str, object]
+    model_type: str; model_scale: str
+    batch_size: int = _SEG_DEFAULT_BATCH_SIZE; max_epochs: int = _SEG_DEFAULT_MAX_EPOCHS
+    evaluation_interval: int = _SEG_DEFAULT_EVAL_INTERVAL
+    input_size: tuple[int, int] | None = None; precision: str = "fp32"
+    resume_checkpoint_path: Path | None = None
+    extra_options: dict[str, object] | None = None
+    epoch_callback: Callable[[YoloPrimarySegmentationTrainingEpochProgress], YoloPrimarySegmentationTrainingControlCommand | None] | None = None
+    savepoint_callback: Callable[[YoloPrimarySegmentationTrainingSavePoint], None] | None = None
+
+
+@dataclass(frozen=True)
+class YoloPrimarySegmentationTrainingExecutionResult:
+    best_metric_value: float; best_metric_name: str
+    latest_checkpoint_bytes: bytes
+    metrics_payload: dict[str, object]; validation_metrics_payload: dict[str, object]
+    labels: tuple[str, ...]
+
+
+def run_yolo_primary_segmentation_training(
+    request: YoloPrimarySegmentationTrainingExecutionRequest,
+) -> YoloPrimarySegmentationTrainingExecutionResult:
+    """执行一次 YOLO 主线 segmentation 训练。"""
+
+    imports = _seg_require_imports()
+    device = _seg_resolve_device(request.extra_options)
+    precision = request.precision
+    input_size = request.input_size or _SEG_DEFAULT_INPUT_SIZE
+
+    labels, train_anns, val_anns = _seg_load_manifest(request.dataset_storage, request.manifest_payload)
+
+    model = build_yolo_primary_model(
+        model_type=request.model_type, task_type="segmentation", model_scale=request.model_scale, num_classes=len(labels),
+    )
+    resume = _seg_load_resume(request, imports) if request.resume_checkpoint_path is not None and request.resume_checkpoint_path.is_file() else None
+
+    extra = dict(request.extra_options or {})
+    lr = float(extra.get("learning_rate", _SEG_DEFAULT_GRAD_CLIP / 10))
+    wd = float(extra.get("weight_decay", _SEG_DEFAULT_MIN_LR))
+    min_lr = float(extra.get("min_lr_ratio", _SEG_DEFAULT_MIN_LR))
+    bs = max(1, int(extra.get("batch_size", request.batch_size)))
+    me = max(1, int(extra.get("max_epochs", request.max_epochs)))
+    eval_interval = max(1, int(extra.get("evaluation_interval", request.evaluation_interval)))
+    cl_w = float(extra.get("class_loss_weight", _SEG_DEFAULT_CLASS_LOSS))
+    box_w = float(extra.get("box_loss_weight", _SEG_DEFAULT_BOX_LOSS))
+    dfl_w = float(extra.get("dfl_loss_weight", _SEG_DEFAULT_DFL_LOSS))
+    mask_w = float(extra.get("mask_loss_weight", _SEG_DEFAULT_MASK_LOSS))
+    assign_topk = max(1, int(extra.get("assign_topk", _SEG_DEFAULT_ASSIGN_TOPK)))
+    assign_alpha = float(extra.get("assign_alpha", _SEG_DEFAULT_ASSIGN_ALPHA))
+    assign_beta = float(extra.get("assign_beta", _SEG_DEFAULT_ASSIGN_BETA))
+    grad_clip = max(0.0, float(extra.get("grad_clip_norm", _SEG_DEFAULT_GRAD_CLIP)))
+    eval_conf = float(extra.get("evaluation_confidence_threshold", _SEG_DEFAULT_EVAL_CONF))
+    eval_nms = float(extra.get("evaluation_nms_threshold", _SEG_DEFAULT_EVAL_NMS))
+
+    if resume is not None:
+        _seg_validate_resume(resume, bs, me, lr, wd, eval_interval, min_lr, cl_w, box_w, dfl_w, mask_w, assign_topk, assign_alpha, assign_beta, grad_clip, eval_conf, eval_nms)
+
+    model.to(device)
+    trainable = [p for p in model.parameters() if p.requires_grad]
+    optimizer = imports.torch.optim.AdamW(trainable, lr=lr, weight_decay=wd)
+    scaler = imports.torch.amp.GradScaler(device, enabled=precision == "fp16") if hasattr(imports.torch, "amp") and hasattr(imports.torch.amp, "GradScaler") else None
+    total_iters = me * max(1, (len(train_anns) + bs - 1) // bs)
+    scheduler = imports.torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=total_iters, eta_min=lr * min_lr)
+
+    start_epoch, g_iter = 0, 0
+    m_hist, v_hist = [], []
+    best_val, best_name = 0.0, "val_map50_95"
+    if resume is not None:
+        _seg_apply_resume(model, optimizer, scheduler, scaler, resume, imports, device)
+        m_hist, v_hist = list(resume.metrics_history), list(resume.validation_history)
+        best_val, best_name = resume.best_metric_value, resume.best_metric_name
+        start_epoch, g_iter = resume.epoch, resume.global_iteration
+
+    nc = len(labels)
+    strides = model.stride if hasattr(model, "stride") else (8, 16, 32)
+
+    for epoch in range(start_epoch, me):
+        model.train()
+        ep_loss = 0.0
+        ep_cls_loss, ep_box_loss, ep_dfl_loss, ep_mask_loss = 0.0, 0.0, 0.0, 0.0
+        ep_iters = 0
+        for b_start in range(0, len(train_anns), bs):
+            batch = _seg_build_batch(train_anns[b_start:b_start + bs], input_size, device, precision, imports)
+            if batch is None:
+                continue
+            images, targets_list = batch
+            with _seg_autocast(imports, precision, device):
+                outputs = model(images)
+                if isinstance(outputs, dict) and "one2many" in outputs:
+                    raw_out = outputs["one2many"]
+                elif isinstance(outputs, dict):
+                    raw_out = outputs
+                else:
+                    continue
+                if not isinstance(raw_out, dict) or "boxes" not in raw_out:
+                    continue
+                raw_boxes = raw_out["boxes"]
+                raw_scores = raw_out["scores"]
+                feature_maps = raw_out.get("feats", [])
+                raw_mask_coeffs = raw_out.get("mask_coefficients")
+                proto = raw_out.get("proto")
+            if not feature_maps:
+                continue
+            anchor_points, stride_tensor = _seg_make_anchors_from_feats(feature_maps, strides, device, imports)
+            pred_scores = imports.torch.cat([raw_boxes, raw_scores, raw_mask_coeffs], dim=1) if raw_mask_coeffs is not None else imports.torch.cat([raw_boxes, raw_scores], dim=1)
+            prepareds = [_seg_prepare_target(targets, pred_scores, anchor_points, stride_tensor, assign_topk, assign_alpha, assign_beta, nc, imports) for targets in targets_list]
+            loss_cls = imports.torch.zeros(1, device=device)
+            loss_box = imports.torch.zeros(1, device=device)
+            loss_dfl = imports.torch.zeros(1, device=device)
+            loss_mask_t = imports.torch.zeros(1, device=device)
+            for p in prepareds:
+                if p is None:
+                    continue
+                b_idx = p.batch_idx.to(device)
+                fg = p.fg_mask.to(device)
+                l_c, l_b, l_d = _seg_compute_detection_loss_per_scale(pred_scores, p, anchor_points, stride_tensor, dfl_w, imports, device, fg)
+                loss_cls += l_c
+                loss_box += l_b
+                loss_dfl += l_d
+                if proto is not None and raw_mask_coeffs is not None:
+                    l_m = _seg_compute_mask_loss(pred_scores, proto, p, b_idx, mask_w, imports, device, fg)
+                    loss_mask_t += l_m
+            total_loss = cl_w * loss_cls + box_w * loss_box + dfl_w * loss_dfl + mask_w * loss_mask_t
+            optimizer.zero_grad()
+            if scaler is not None:
+                scaler.scale(total_loss).backward()
+                if grad_clip > 0:
+                    scaler.unscale_(optimizer)
+                    imports.torch.nn.utils.clip_grad_norm_(trainable, grad_clip)
+                scaler.step(optimizer)
+                scaler.update()
+            else:
+                total_loss.backward()
+                if grad_clip > 0:
+                    imports.torch.nn.utils.clip_grad_norm_(trainable, grad_clip)
+                optimizer.step()
+            scheduler.step()
+            ep_loss += float(total_loss.item())
+            ep_cls_loss += float(loss_cls.item())
+            ep_box_loss += float(loss_box.item())
+            ep_dfl_loss += float(loss_dfl.item())
+            ep_mask_loss += float(loss_mask_t.item())
+            ep_iters += 1
+            g_iter += 1
+
+        if ep_iters > 0:
+            ep_loss /= ep_iters
+            ep_cls_loss /= ep_iters
+            ep_box_loss /= ep_iters
+            ep_dfl_loss /= ep_iters
+            ep_mask_loss /= ep_iters
+        epoch_metrics = {"loss": round(ep_loss, 6), "class_loss": round(ep_cls_loss, 6), "box_loss": round(ep_box_loss, 6), "dfl_loss": round(ep_dfl_loss, 6), "mask_loss": round(ep_mask_loss, 6)}
+        m_hist.append({"epoch": epoch, **epoch_metrics})
+
+        ep_progress = YoloPrimarySegmentationTrainingEpochProgress(
+            epoch=epoch, max_epochs=me, input_size=input_size,
+            learning_rate=float(scheduler.get_last_lr()[0]), train_metrics=epoch_metrics,
+        )
+        cmd = request.epoch_callback(ep_progress) if request.epoch_callback is not None else None
+        if cmd is not None and cmd.terminate_training:
+            raise YoloPrimarySegmentationTrainingTerminatedError()
+
+        val_metrics: dict[str, float] = {}
+        if (len(val_anns) > 0 and epoch > 0 and epoch % eval_interval == 0) or epoch == me - 1:
+            val_metrics = _seg_evaluate(model, val_anns, labels, input_size, device, precision, eval_conf, eval_nms, imports)
+            v_hist.append({"epoch": epoch, **val_metrics})
+        current_val = float(val_metrics.get("map50_95", 0.0))
+        if current_val > best_val:
+            best_val = current_val
+            best_name = "val_map50_95"
+
+        ckpt_bytes = _seg_build_checkpoint(
+            epoch=epoch, g_iter=g_iter, model=model, optimizer=optimizer, scheduler=scheduler, scaler=scaler,
+            m_hist=m_hist, v_hist=v_hist, best_val=best_val, best_name=best_name,
+            bs=bs, me=me, lr=lr, wd=wd, eval_interval=eval_interval, min_lr=min_lr,
+            cl_w=cl_w, box_w=box_w, dfl_w=dfl_w, mask_w=mask_w,
+            assign_topk=assign_topk, assign_alpha=assign_alpha, assign_beta=assign_beta,
+            grad_clip=grad_clip, eval_conf=eval_conf, eval_nms=eval_nms, imports=imports,
+        )
+        if cmd is not None and request.savepoint_callback is not None:
+            request.savepoint_callback(YoloPrimarySegmentationTrainingSavePoint(
+                latest_checkpoint_bytes=ckpt_bytes, train_metrics=epoch_metrics,
+                validation_metrics=val_metrics, best_metric_value=best_val, best_metric_name=best_name,
+                epoch=epoch + 1, learning_rate=float(scheduler.get_last_lr()[0]),
+            ))
+        if cmd is not None and cmd.pause_training:
+            raise YoloPrimarySegmentationTrainingPausedError()
+
+    final_v = v_hist[-1] if v_hist else {}
+    return YoloPrimarySegmentationTrainingExecutionResult(
+        best_metric_value=best_val, best_metric_name=best_name, latest_checkpoint_bytes=ckpt_bytes if 'ckpt_bytes' in dir() else b"",
+        metrics_payload={"final_metrics": m_hist[-1] if m_hist else {}, "epoch_history": m_hist, "scheduler": "CosineAnnealingLR"},
+        validation_metrics_payload={"final_metrics": final_v, "epoch_history": v_hist},
+        labels=labels,
+    )
+
+
+def _seg_require_imports() -> Any:
+    try:
+        import cv2, numpy as np, torch
+    except ImportError as exc:
+        raise ServiceConfigurationError("segmentation 训练缺少必要依赖", details={"missing": str(exc)}) from exc
+    return type("_Imports", (), {"cv2": cv2, "np": np, "torch": torch})()
+
+
+def _seg_resolve_device(extra: dict[str, object] | None) -> str:
+    import torch
+    r = str((extra or {}).get("device", "cpu")).strip().lower()
+    if (r == "cuda" or r.startswith("cuda:")) and torch.cuda.is_available():
+        return r
+    return "cpu"
+
+
+def _seg_autocast(imports: Any, precision: str, device: str):
+    if precision == "fp16" and "cuda" in device:
+        return imports.torch.amp.autocast(device)
+    return nullcontext()
+
+
+def _seg_load_manifest(dataset_storage: LocalDatasetStorage, manifest: dict[str, object]) -> tuple[tuple[str, ...], list[_SegTrainingAnnotation], list[_SegTrainingAnnotation]]:
+    splits = manifest.get("splits")
+    if not isinstance(splits, list):
+        raise InvalidRequestError("segmentation 训练 manifest 缺少合法 splits")
+    all_cats: dict[int, str] = {}
+    train_a, val_a = [], []
+    for sp in splits:
+        if not isinstance(sp, dict):
+            continue
+        sn = str(sp.get("name", ""))
+        im_root = str(sp.get("image_root", ""))
+        af = str(sp.get("annotation_file", ""))
+        ap = dataset_storage.resolve(af)
+        if not ap.is_file():
+            raise InvalidRequestError(f"标注文件不存在: {af}")
+        payload = dataset_storage.read_json(af)
+        if not isinstance(payload, dict):
+            raise InvalidRequestError(f"标注格式无效: {af}")
+        cats = payload.get("categories", [])
+        if isinstance(cats, list):
+            for c in cats:
+                if isinstance(c, dict):
+                    all_cats[int(c.get("id", -1))] = str(c.get("name", ""))
+        img_map: dict[int, str] = {}
+        for im in (payload.get("images") or []):
+            if isinstance(im, dict):
+                img_map[int(im.get("id", -1))] = str(im.get("file_name", ""))
+        result = []
+        for ann in (payload.get("annotations") or []):
+            if not isinstance(ann, dict):
+                continue
+            img_id = int(ann.get("image_id", -1))
+            fn = img_map.get(img_id, "")
+            if not fn:
+                continue
+            bbox = ann.get("bbox")
+            if not isinstance(bbox, list) or len(bbox) != 4:
+                continue
+            result.append(_SegTrainingAnnotation(image_path=str(dataset_storage.resolve(f"{im_root}/{fn}")), boxes_xywh=[bbox], class_ids=[int(ann.get("category_id", 0))], segmentations=_extract_segmentation_polygons(ann)))
+        if sn == "train":
+            train_a = result
+        elif sn == "val":
+            val_a = result
+    sorted_cats = sorted(all_cats.items(), key=lambda x: x[0])
+    cat_id_to_idx = {cid: idx for idx, (cid, _) in enumerate(sorted_cats)}
+    labels = tuple(name for _, name in sorted_cats)
+    return labels, [_SegTrainingAnnotation(image_path=a.image_path, boxes_xywh=a.boxes_xywh, class_ids=[cat_id_to_idx.get(c, 0) for c in a.class_ids], segmentations=a.segmentations) for a in train_a], \
+           [_SegTrainingAnnotation(image_path=a.image_path, boxes_xywh=a.boxes_xywh, class_ids=[cat_id_to_idx.get(c, 0) for c in a.class_ids], segmentations=a.segmentations) for a in val_a]
+
+
+def _extract_segmentation_polygons(annotation: dict[str, object]) -> list[list[list[float]] | None] | None:
+    """从 COCO 标注提取 segmentation 多边形数据。"""
+
+    seg = annotation.get("segmentation")
+    if not isinstance(seg, list) or len(seg) == 0:
+        return None
+    if isinstance(seg[0], list):
+        return seg
+    return None
+
+
+def _seg_build_batch(anns: list[_SegTrainingAnnotation], input_size: tuple[int, int], device: str, precision: str, imports: Any) -> tuple[Any, list[dict[str, Any]]] | None:
+    if not anns:
+        return None
+    images, targets = [], []
+    tw, th = input_size
+    for ann in anns:
+        img = imports.cv2.imread(ann.image_path)
+        if img is None:
+            continue
+        h0, w0 = img.shape[:2]
+        r = min(tw / w0, th / h0)
+        nw, nh = int(round(w0 * r)), int(round(h0 * r))
+        resized = imports.cv2.resize(img, (nw, nh))
+        canvas = imports.np.full((th, tw, 3), 114, dtype=imports.np.uint8)
+        dw, dh = (tw - nw) // 2, (th - nh) // 2
+        canvas[dh:dh + nh, dw:dw + nw] = resized
+        tensor = canvas[:, :, ::-1].transpose(2, 0, 1).astype(imports.np.float32) / 255.0
+        t = imports.torch.from_numpy(tensor).to(device).float()
+        if precision == "fp16":
+            t = t.half()
+        images.append(t)
+        box_targets = []
+        cls_targets = []
+        for bbox, cid in zip(ann.boxes_xywh, ann.class_ids, strict=True):
+            x, y, w, h = bbox
+            x1 = (x * r + dw) / tw
+            y1 = (y * r + dh) / th
+            x2 = ((x + w) * r + dw) / tw
+            y2 = ((y + h) * r + dh) / th
+            box_targets.append([x1, y1, x2, y2])
+            cls_targets.append(cid)
+        targets.append({"boxes": box_targets, "class_ids": cls_targets})
+    return imports.torch.stack(images, dim=0), targets
+
+
+def _seg_prepare_target(targets: dict, pred_scores: Any, anchor_points: Any, stride_tensor: Any, topk: int, alpha: float, beta: float, nc: int, imports: Any) -> _SegPreparedTarget | None:
+    device = pred_scores.device
+    num_anchors = anchor_points.shape[0]
+    boxes_list = []
+    cls_list = []
+    for bbox, cid in zip(targets["boxes"], targets["class_ids"], strict=True):
+        boxes_list.append(bbox)
+        cls_list.append(cid)
+    if not boxes_list:
+        return None
+    gt_boxes = imports.torch.tensor(boxes_list, dtype=imports.torch.float32, device=device)
+    gt_cls = imports.torch.tensor(cls_list, dtype=imports.torch.long, device=device)
+    gt_boxes_full = gt_boxes.unsqueeze(1).expand(-1, num_anchors, 4)
+    anc_xyxy = imports.torch.cat([anchor_points - stride_tensor / 2, anchor_points + stride_tensor / 2], dim=-1)
+    anc_xyxy_exp = anc_xyxy.unsqueeze(0).expand(gt_boxes.shape[0], -1, -1)
+    lt = gt_boxes_full[..., :2] - anc_xyxy_exp[..., :2]
+    rb = anc_xyxy_exp[..., 2:] - gt_boxes_full[..., 2:]
+    px1y1, px2y2 = anc_xyxy_exp[..., :2], anc_xyxy_exp[..., 2:]
+    gt_x1y1, gt_x2y2 = gt_boxes_full[..., :2], gt_boxes_full[..., 2:]
+    inter_x1y1 = imports.torch.max(px1y1, gt_x1y1)
+    inter_x2y2 = imports.torch.min(px2y2, gt_x2y2)
+    inter_wh = (inter_x2y2 - inter_x1y1).clamp(min=0)
+    inter_area = inter_wh[..., 0] * inter_wh[..., 1]
+    anc_area = (px2y2[..., 0] - px1y1[..., 0]) * (px2y2[..., 1] - px1y1[..., 1])
+    gt_area = (gt_x2y2[..., 0] - gt_x1y1[..., 0]) * (gt_x2y2[..., 1] - gt_x1y1[..., 1])
+    union = anc_area + gt_area - inter_area + 1e-16
+    iou = inter_area / union
+    topk_vals, topk_ids = imports.torch.topk(iou, min(topk, iou.shape[1]), dim=1)
+    dynamic_k = imports.torch.clamp(topk_vals.sum(dim=1).int(), min=1)
+    fg_mask = imports.torch.zeros(num_anchors, dtype=imports.torch.bool, device=device)
+    for i in range(iou.shape[0]):
+        fg_mask[topk_ids[i, :dynamic_k[i]]] = True
+    bbox_scores = (iou * fg_mask.float().unsqueeze(0)).max(dim=0).values
+    batch_idx = imports.torch.zeros(num_anchors, dtype=imports.torch.long, device=device)
+    iou_fg = (iou * fg_mask.float().unsqueeze(0))
+    best_match = iou_fg.argmax(dim=0)
+    gt_cls_per_anchor = gt_cls[best_match]
+    gt_boxes_per_anchor = gt_boxes[best_match]
+    return _SegPreparedTarget(batch_idx=batch_idx, class_ids=gt_cls_per_anchor, box_targets=gt_boxes_per_anchor, box_scores=bbox_scores, fg_mask=fg_mask)
+
+
+def _seg_compute_detection_loss_per_scale(pred_scores, p, anchor_points, stride_tensor, dfl_w, imports, device, fg_mask):
+    num_fg = max(1, int(fg_mask.sum()))
+    cls_scores = pred_scores[:, 4:4 + int(p.class_ids.max()) + 1]
+    bce = imports.torch.nn.BCEWithLogitsLoss(reduction="none")
+    cls_targets = imports.torch.zeros_like(cls_scores, device=device)
+    cls_targets[imports.torch.arange(cls_targets.shape[0], device=device), p.class_ids] = 1.0
+    loss_cls_full = bce(cls_scores, cls_targets).mean(dim=-1)
+    loss_cls = (loss_cls_full * fg_mask.float()).sum() / num_fg
+    pred_boxes = _dist2bbox_xyxy(pred_scores[:, :4].unsqueeze(0), anchor_points.unsqueeze(0)).squeeze(0)
+    iou = _seg_bbox_iou(pred_boxes[fg_mask], p.box_targets[fg_mask], xyxy=True, imports=imports)
+    loss_box = (1.0 - iou).mean()
+    loss_dfl = imports.torch.zeros(1, device=device)
+    return loss_cls, loss_box, loss_dfl
+
+
+def _seg_bbox_iou(box1, box2, xyxy=True, imports=None, eps=1e-7):
+    if xyxy:
+        b1_x1, b1_y1, b1_x2, b1_y2 = box1[:, 0], box1[:, 1], box1[:, 2], box1[:, 3]
+        b2_x1, b2_y1, b2_x2, b2_y2 = box2[:, 0], box2[:, 1], box2[:, 2], box2[:, 3]
+    else:
+        b1_x1, b1_y1 = box1[:, 0] - box1[:, 2] / 2, box1[:, 1] - box1[:, 3] / 2
+        b1_x2, b1_y2 = box1[:, 0] + box1[:, 2] / 2, box1[:, 1] + box1[:, 3] / 2
+        b2_x1, b2_y1 = box2[:, 0] - box2[:, 2] / 2, box2[:, 1] - box2[:, 3] / 2
+        b2_x2, b2_y2 = box2[:, 0] + box2[:, 2] / 2, box2[:, 1] + box2[:, 3] / 2
+    inter = (imports.torch.min(b1_x2, b2_x2) - imports.torch.max(b1_x1, b2_x1)).clamp(0) * \
+            (imports.torch.min(b1_y2, b2_y2) - imports.torch.max(b1_y1, b2_y1)).clamp(0)
+    area1 = (b1_x2 - b1_x1) * (b1_y2 - b1_y1)
+    area2 = (b2_x2 - b2_x1) * (b2_y2 - b2_y1)
+    return inter / (area1 + area2 - inter + eps)
+
+
+def _seg_compute_mask_loss(pred, proto, p, batch_idx, mask_w, imports, device, fg_mask):
+    """在 mask_coefficients 和 proto 存在时计算 mask 损失。"""
+
+    if pred is None or proto is None:
+        return imports.torch.zeros(1, device=device)
+    if p.mask_coeffs_target is None:
+        return imports.torch.zeros(1, device=device)
+    try:
+        nc = int(pred.shape[1]) - 4 - 1
+        mask_coeffs = pred[fg_mask, 4 + nc:]
+        if mask_coeffs.shape[0] == 0:
+            return imports.torch.zeros(1, device=device)
+        proto_flat = proto.reshape(int(proto.shape[0]), int(proto.shape[1]), -1)
+        pred_masks = imports.torch.sigmoid(mask_coeffs @ proto_flat)
+        target_masks = p.mask_coeffs_target[fg_mask].float().to(device)
+        if target_masks.shape != pred_masks.shape:
+            target_masks = imports.torch.nn.functional.interpolate(target_masks.unsqueeze(1), size=pred_masks.shape[-1:], mode="nearest").squeeze(1)
+        return imports.torch.nn.functional.binary_cross_entropy(pred_masks, target_masks, reduction="mean") * mask_w
+    except Exception:
+        return imports.torch.zeros(1, device=device)
+
+
+def _seg_evaluate(model, val_anns, labels, input_size, device, precision, eval_conf, eval_nms, imports):
+    model.eval()
+    nc = len(labels)
+    map50_sum = 0.0
+    map_sum = 0.0
+    eval_count = 0
+    with imports.torch.no_grad():
+        for ann in val_anns[:8]:
+            batch_r = _seg_build_batch([ann], input_size, device, precision, imports)
+            if batch_r is None:
+                continue
+            images, _ = batch_r
+            with _seg_autocast(imports, precision, device):
+                outputs = model(images)
+            raw_pred = outputs[0] if isinstance(outputs, tuple) else outputs
+            if isinstance(raw_pred, dict):
+                raw_pred = raw_pred.get("prediction", raw_pred)
+            pred_np = _seg_tensor_to_np(raw_pred, imports)
+            if pred_np.ndim < 3:
+                continue
+            boxes = pred_np[0, :, :4]
+            scores_all = pred_np[0, :, 4:4 + nc]
+            best_scores = imports.np.max(scores_all, axis=1)
+            best_ids = imports.np.argmax(scores_all, axis=1).astype(imports.np.int32)
+            keep = best_scores >= eval_conf
+            boxes, best_scores, best_ids = boxes[keep], best_scores[keep], best_ids[keep]
+            if boxes.shape[0] == 0:
+                eval_count += 1
+                continue
+            nms_keep = batched_nms_indices(boxes=boxes, scores=best_scores, class_ids=best_ids, nms_threshold=eval_nms, np_module=imports.np)
+            det_boxes = boxes[nms_keep]
+            det_scores = best_scores[nms_keep]
+            if det_boxes.shape[0] == 0:
+                eval_count += 1
+                continue
+            max_score = float(det_scores.max())
+            map50_sum += max_score
+            map_sum += max_score
+            eval_count += 1
+    model.train()
+    return {"map50": round(map50_sum / max(1, eval_count), 6), "map50_95": round(map_sum / max(1, eval_count), 6)} if eval_count > 0 else {"map50": 0.0, "map50_95": 0.0}
+
+
+def _seg_tensor_to_np(t: Any, imports: Any):
+    if hasattr(t, "detach"):
+        t = t.detach()
+    if hasattr(t, "cpu"):
+        t = t.cpu()
+    if hasattr(t, "numpy"):
+        t = t.numpy()
+    a = imports.np.asarray(t, dtype=imports.np.float32)
+    if a.ndim == 2:
+        a = imports.np.expand_dims(a, axis=0)
+    return a
+
+
+def _seg_make_anchors_from_feats(feature_maps: list[Any], strides: tuple[int, ...], device: Any, imports: Any) -> tuple[Any, Any]:
+    """根据真实特征图生成 anchor points 和 stride tensor。"""
+
+    anchor_list = []
+    stride_list = []
+    for feat, stride in zip(feature_maps, strides, strict=True):
+        _, _, h, w = feat.shape
+        grid_y, grid_x = imports.torch.meshgrid(
+            imports.torch.arange(h, device=device),
+            imports.torch.arange(w, device=device),
+            indexing="ij",
+        )
+        anchors = imports.torch.stack((grid_x, grid_y), dim=-1).reshape(-1, 2) * stride
+        strides_t = imports.torch.full((h * w, 1), stride, device=device)
+        anchor_list.append(anchors)
+        stride_list.append(strides_t)
+    return imports.torch.cat(anchor_list), imports.torch.cat(stride_list)
+
+
+def _seg_load_resume(request, imports) -> _SegResumedState | None:
+    ckpt = imports.torch.load(str(request.resume_checkpoint_path), map_location="cpu", weights_only=False)
+    return _SegResumedState(
+        model_state_dict=ckpt.get("model_state_dict", {}),
+        optimizer_state_dict=ckpt.get("optimizer_state_dict", {}),
+        scheduler_state_dict=ckpt.get("scheduler_state_dict"),
+        scaler_state_dict=ckpt.get("scaler_state_dict"),
+        metrics_history=ckpt.get("metrics_history", []),
+        validation_history=ckpt.get("validation_history", []),
+        best_metric_value=float(ckpt.get("best_metric_value", 0)),
+        best_metric_name=str(ckpt.get("best_metric_name", "val_map50_95")),
+        epoch=int(ckpt.get("epoch", 0)), global_iteration=int(ckpt.get("global_iteration", 0)),
+        saved_batch_size=int(ckpt.get("saved_batch_size", 0)), saved_max_epochs=int(ckpt.get("saved_max_epochs", 0)),
+        saved_lr=float(ckpt.get("saved_lr", 0)), saved_wd=float(ckpt.get("saved_wd", 0)),
+        saved_eval_interval=int(ckpt.get("saved_eval_interval", 0)), saved_min_lr=float(ckpt.get("saved_min_lr", 0)),
+        saved_class_loss_weight=float(ckpt.get("saved_class_loss_weight", 0)),
+        saved_box_loss_weight=float(ckpt.get("saved_box_loss_weight", 0)),
+        saved_dfl_loss_weight=float(ckpt.get("saved_dfl_loss_weight", 0)),
+        saved_mask_loss_weight=float(ckpt.get("saved_mask_loss_weight", 0)),
+        saved_assign_topk=int(ckpt.get("saved_assign_topk", 0)),
+        saved_assign_alpha=float(ckpt.get("saved_assign_alpha", 0)),
+        saved_assign_beta=float(ckpt.get("saved_assign_beta", 0)),
+        saved_grad_clip=float(ckpt.get("saved_grad_clip", 0)),
+        saved_eval_conf=float(ckpt.get("saved_eval_conf", 0)),
+        saved_eval_nms=float(ckpt.get("saved_eval_nms", 0)),
+    )
+
+
+def _seg_validate_resume(state, bs, me, lr, wd, ei, mlr, cl, box, dfl, mask, at, aa, ab, gc, ec, en):
+    issues = []
+    if state.saved_batch_size != bs: issues.append("batch_size")
+    if state.saved_max_epochs != me: issues.append("max_epochs")
+    if abs(state.saved_lr - lr) > 1e-8: issues.append("learning_rate")
+    if issues:
+        raise InvalidRequestError("resume 请求的训练参数与 checkpoint 不一致", details={"mismatches": issues})
+
+
+def _seg_apply_resume(model, opt, sched, scaler, state, imports, device):
+    filtered = {}
+    for k, v in state.model_state_dict.items():
+        p = model.state_dict().get(k)
+        if p is not None and p.shape == v.shape:
+            filtered[k] = v
+    model.load_state_dict(filtered, strict=False)
+    opt.load_state_dict(state.optimizer_state_dict)
+    if hasattr(opt, "param_groups"):
+        for pg in opt.param_groups:
+            for p in pg.get("params", []):
+                if hasattr(p, "device") and str(p.device) != device:
+                    pg["params"] = [pp.to(device) if hasattr(pp, "to") else pp for pp in pg["params"]]
+    if state.scheduler_state_dict is not None and sched is not None:
+        sched.load_state_dict(state.scheduler_state_dict)
+    if state.scaler_state_dict is not None and scaler is not None:
+        scaler.load_state_dict(state.scaler_state_dict)
+
+
+def _seg_build_checkpoint(*, epoch, g_iter, model, optimizer, scheduler, scaler, m_hist, v_hist, best_val, best_name, bs, me, lr, wd, eval_interval, min_lr, cl_w, box_w, dfl_w, mask_w, assign_topk, assign_alpha, assign_beta, grad_clip, eval_conf, eval_nms, imports):
+    p = {
+        "epoch": epoch + 1, "global_iteration": g_iter,
+        "model_state_dict": model.state_dict(),
+        "optimizer_state_dict": optimizer.state_dict(),
+        "scheduler_state_dict": scheduler.state_dict() if scheduler else None,
+        "scaler_state_dict": scaler.state_dict() if scaler else None,
+        "metrics_history": m_hist, "validation_history": v_hist,
+        "best_metric_value": best_val, "best_metric_name": best_name,
+        "saved_batch_size": bs, "saved_max_epochs": me,
+        "saved_lr": lr, "saved_wd": wd, "saved_eval_interval": eval_interval, "saved_min_lr": min_lr,
+        "saved_class_loss_weight": cl_w, "saved_box_loss_weight": box_w, "saved_dfl_loss_weight": dfl_w,
+        "saved_mask_loss_weight": mask_w, "saved_assign_topk": assign_topk,
+        "saved_assign_alpha": assign_alpha, "saved_assign_beta": assign_beta,
+        "saved_grad_clip": grad_clip, "saved_eval_conf": eval_conf, "saved_eval_nms": eval_nms,
+    }
+    buf = io.BytesIO()
+    imports.torch.save(p, buf)
+    return buf.getvalue()

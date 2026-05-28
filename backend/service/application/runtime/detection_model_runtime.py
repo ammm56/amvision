@@ -26,10 +26,10 @@ from backend.service.application.runtime.detection_runtime_contracts import (
     DetectionPredictionRequest,
 )
 from backend.service.application.runtime.yolox_predictor import (
-    OpenVINOYoloXRuntimeSession,
-    OnnxRuntimeYoloXRuntimeSession,
-    PyTorchYoloXRuntimeSession,
-    TensorRTYoloXRuntimeSession,
+    OpenVINODetectionRuntimeSession,
+    OnnxRuntimeDetectionRuntimeSession,
+    PyTorchDetectionRuntimeSession,
+    TensorRTDetectionRuntimeSession,
 )
 from backend.service.application.runtime.yolov8_predictor import (
     OpenVINOYoloV8RuntimeSession,
@@ -161,22 +161,22 @@ def _load_yolox_detection_session(
     """按 runtime backend 加载当前已接通的 YOLOX detection 会话。"""
 
     if runtime_target.runtime_backend == "pytorch":
-        return PyTorchYoloXRuntimeSession.load(
+        return PyTorchDetectionRuntimeSession.load(
             dataset_storage=dataset_storage,
             runtime_target=runtime_target,
         )
     if runtime_target.runtime_backend == "onnxruntime":
-        return OnnxRuntimeYoloXRuntimeSession.load(
+        return OnnxRuntimeDetectionRuntimeSession.load(
             dataset_storage=dataset_storage,
             runtime_target=runtime_target,
         )
     if runtime_target.runtime_backend == "openvino":
-        return OpenVINOYoloXRuntimeSession.load(
+        return OpenVINODetectionRuntimeSession.load(
             dataset_storage=dataset_storage,
             runtime_target=runtime_target,
         )
     if runtime_target.runtime_backend == "tensorrt":
-        return TensorRTYoloXRuntimeSession.load(
+        return TensorRTDetectionRuntimeSession.load(
             dataset_storage=dataset_storage,
             runtime_target=runtime_target,
             pinned_output_buffer_enabled=pinned_output_buffer_enabled,

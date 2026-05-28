@@ -29,8 +29,23 @@ from backend.service.application.models.yolox_async_inference_gateway import (
     normalize_yolox_async_inference_owner_id,
     serialize_yolox_async_inference_execution_result,
 )
+from backend.service.application.models.classification_async_inference_gateway import (
+    ClassificationAsyncInferenceGatewayDispatcherRegistry,
+)
+from backend.service.application.models.segmentation_async_inference_gateway import (
+    SegmentationAsyncInferenceGatewayDispatcherRegistry,
+)
+from backend.service.application.models.pose_async_inference_gateway import (
+    PoseAsyncInferenceGatewayDispatcherRegistry,
+)
+from backend.service.application.models.obb_async_inference_gateway import (
+    ObbAsyncInferenceGatewayDispatcherRegistry,
+)
 from backend.service.application.models.pretrained_catalog import (
     YoloXPretrainedModelCatalogSeeder,
+)
+from backend.service.application.models.yolo_primary_pretrained_catalog import (
+    YoloPrimaryPretrainedModelCatalogSeeder,
 )
 from backend.service.application.workflows.graph_executor import (
     WorkflowNodeRuntimeRegistry,
@@ -122,6 +137,18 @@ class BackendServiceRuntime:
     workflow_preview_run_manager: WorkflowPreviewRunManager
     trigger_source_supervisor: TriggerSourceSupervisor
     background_task_manager_host: HostedBackgroundTaskManager | None
+    classification_sync_deployment_supervisor: YoloXDeploymentProcessSupervisor | None = None
+    classification_async_deployment_supervisor: YoloXDeploymentProcessSupervisor | None = None
+    classification_async_inference_gateway_registry: ClassificationAsyncInferenceGatewayDispatcherRegistry | None = None
+    segmentation_sync_deployment_supervisor: YoloXDeploymentProcessSupervisor | None = None
+    segmentation_async_deployment_supervisor: YoloXDeploymentProcessSupervisor | None = None
+    segmentation_async_inference_gateway_registry: SegmentationAsyncInferenceGatewayDispatcherRegistry | None = None
+    pose_sync_deployment_supervisor: YoloXDeploymentProcessSupervisor | None = None
+    pose_async_deployment_supervisor: YoloXDeploymentProcessSupervisor | None = None
+    pose_async_inference_gateway_registry: PoseAsyncInferenceGatewayDispatcherRegistry | None = None
+    obb_sync_deployment_supervisor: YoloXDeploymentProcessSupervisor | None = None
+    obb_async_deployment_supervisor: YoloXDeploymentProcessSupervisor | None = None
+    obb_async_inference_gateway_registry: ObbAsyncInferenceGatewayDispatcherRegistry | None = None
 
 
 class InitializeDatabaseSchemaStep:
@@ -310,6 +337,127 @@ class BackendServiceBootstrap(
             ),
             response_queue_retention_seconds=settings.queue.response_queue_retention_seconds,
         )
+        classification_sync_deployment_supervisor = YoloXDeploymentProcessSupervisor(
+            dataset_storage_root_dir=str(dataset_storage.root_dir),
+            runtime_mode="sync",
+            settings=settings.deployment_process_supervisor,
+            service_event_bus=service_event_bus,
+            session_factory=session_factory,
+            dataset_storage=dataset_storage,
+            local_buffer_broker_event_channel_provider=local_buffer_broker_supervisor.get_event_channel,
+        )
+        classification_async_deployment_supervisor = YoloXDeploymentProcessSupervisor(
+            dataset_storage_root_dir=str(dataset_storage.root_dir),
+            runtime_mode="async",
+            settings=settings.deployment_process_supervisor,
+            service_event_bus=service_event_bus,
+            session_factory=session_factory,
+            dataset_storage=dataset_storage,
+            local_buffer_broker_event_channel_provider=local_buffer_broker_supervisor.get_event_channel,
+        )
+        classification_async_inference_gateway_registry = ClassificationAsyncInferenceGatewayDispatcherRegistry(
+            queue_backend=queue_backend,
+            execution_handler=_build_yolox_async_inference_gateway_execution_handler(
+                deployment_process_supervisor=classification_async_deployment_supervisor,
+            ),
+            service_id=async_inference_service_id,
+            dataset_storage=dataset_storage,
+            request_queue_lease_timeout_seconds=max(
+                1.0,
+                settings.deployment_process_supervisor.request_timeout_seconds * 2,
+            ),
+            response_queue_retention_seconds=settings.queue.response_queue_retention_seconds,
+        )
+        segmentation_sync_deployment_supervisor = YoloXDeploymentProcessSupervisor(
+            dataset_storage_root_dir=str(dataset_storage.root_dir),
+            runtime_mode="sync",
+            settings=settings.deployment_process_supervisor,
+            service_event_bus=service_event_bus,
+            session_factory=session_factory,
+            dataset_storage=dataset_storage,
+            local_buffer_broker_event_channel_provider=local_buffer_broker_supervisor.get_event_channel,
+        )
+        segmentation_async_deployment_supervisor = YoloXDeploymentProcessSupervisor(
+            dataset_storage_root_dir=str(dataset_storage.root_dir),
+            runtime_mode="async",
+            settings=settings.deployment_process_supervisor,
+            service_event_bus=service_event_bus,
+            session_factory=session_factory,
+            dataset_storage=dataset_storage,
+            local_buffer_broker_event_channel_provider=local_buffer_broker_supervisor.get_event_channel,
+        )
+        segmentation_async_inference_gateway_registry = SegmentationAsyncInferenceGatewayDispatcherRegistry(
+            queue_backend=queue_backend,
+            execution_handler=_build_yolox_async_inference_gateway_execution_handler(
+                deployment_process_supervisor=segmentation_async_deployment_supervisor,
+            ),
+            service_id=async_inference_service_id,
+            dataset_storage=dataset_storage,
+            request_queue_lease_timeout_seconds=max(
+                1.0, settings.deployment_process_supervisor.request_timeout_seconds * 2,
+            ),
+            response_queue_retention_seconds=settings.queue.response_queue_retention_seconds,
+        )
+        pose_sync_deployment_supervisor = YoloXDeploymentProcessSupervisor(
+            dataset_storage_root_dir=str(dataset_storage.root_dir),
+            runtime_mode="sync",
+            settings=settings.deployment_process_supervisor,
+            service_event_bus=service_event_bus,
+            session_factory=session_factory,
+            dataset_storage=dataset_storage,
+            local_buffer_broker_event_channel_provider=local_buffer_broker_supervisor.get_event_channel,
+        )
+        pose_async_deployment_supervisor = YoloXDeploymentProcessSupervisor(
+            dataset_storage_root_dir=str(dataset_storage.root_dir),
+            runtime_mode="async",
+            settings=settings.deployment_process_supervisor,
+            service_event_bus=service_event_bus,
+            session_factory=session_factory,
+            dataset_storage=dataset_storage,
+            local_buffer_broker_event_channel_provider=local_buffer_broker_supervisor.get_event_channel,
+        )
+        pose_async_inference_gateway_registry = PoseAsyncInferenceGatewayDispatcherRegistry(
+            queue_backend=queue_backend,
+            execution_handler=_build_yolox_async_inference_gateway_execution_handler(
+                deployment_process_supervisor=pose_async_deployment_supervisor,
+            ),
+            service_id=async_inference_service_id,
+            dataset_storage=dataset_storage,
+            request_queue_lease_timeout_seconds=max(
+                1.0, settings.deployment_process_supervisor.request_timeout_seconds * 2,
+            ),
+            response_queue_retention_seconds=settings.queue.response_queue_retention_seconds,
+        )
+        obb_sync_deployment_supervisor = YoloXDeploymentProcessSupervisor(
+            dataset_storage_root_dir=str(dataset_storage.root_dir),
+            runtime_mode="sync",
+            settings=settings.deployment_process_supervisor,
+            service_event_bus=service_event_bus,
+            session_factory=session_factory,
+            dataset_storage=dataset_storage,
+            local_buffer_broker_event_channel_provider=local_buffer_broker_supervisor.get_event_channel,
+        )
+        obb_async_deployment_supervisor = YoloXDeploymentProcessSupervisor(
+            dataset_storage_root_dir=str(dataset_storage.root_dir),
+            runtime_mode="async",
+            settings=settings.deployment_process_supervisor,
+            service_event_bus=service_event_bus,
+            session_factory=session_factory,
+            dataset_storage=dataset_storage,
+            local_buffer_broker_event_channel_provider=local_buffer_broker_supervisor.get_event_channel,
+        )
+        obb_async_inference_gateway_registry = ObbAsyncInferenceGatewayDispatcherRegistry(
+            queue_backend=queue_backend,
+            execution_handler=_build_yolox_async_inference_gateway_execution_handler(
+                deployment_process_supervisor=obb_async_deployment_supervisor,
+            ),
+            service_id=async_inference_service_id,
+            dataset_storage=dataset_storage,
+            request_queue_lease_timeout_seconds=max(
+                1.0, settings.deployment_process_supervisor.request_timeout_seconds * 2,
+            ),
+            response_queue_retention_seconds=settings.queue.response_queue_retention_seconds,
+        )
         published_inference_gateway = DetectionDeploymentPublishedInferenceGateway(
             deployment_service=SqlAlchemyDetectionDeploymentService(
                 session_factory=session_factory,
@@ -389,6 +537,18 @@ class BackendServiceBootstrap(
             workflow_preview_run_manager=workflow_preview_run_manager,
             trigger_source_supervisor=trigger_source_supervisor,
             background_task_manager_host=background_task_manager_host,
+            classification_sync_deployment_supervisor=classification_sync_deployment_supervisor,
+            classification_async_deployment_supervisor=classification_async_deployment_supervisor,
+            classification_async_inference_gateway_registry=classification_async_inference_gateway_registry,
+            segmentation_sync_deployment_supervisor=segmentation_sync_deployment_supervisor,
+            segmentation_async_deployment_supervisor=segmentation_async_deployment_supervisor,
+            segmentation_async_inference_gateway_registry=segmentation_async_inference_gateway_registry,
+            pose_sync_deployment_supervisor=pose_sync_deployment_supervisor,
+            pose_async_deployment_supervisor=pose_async_deployment_supervisor,
+            pose_async_inference_gateway_registry=pose_async_inference_gateway_registry,
+            obb_sync_deployment_supervisor=obb_sync_deployment_supervisor,
+            obb_async_deployment_supervisor=obb_async_deployment_supervisor,
+            obb_async_inference_gateway_registry=obb_async_inference_gateway_registry,
         )
 
     def bind_application_state(
@@ -455,6 +615,30 @@ class BackendServiceBootstrap(
         runtime.yolox_sync_deployment_process_supervisor.start()
         runtime.yolox_async_deployment_process_supervisor.start()
         runtime.yolox_async_inference_gateway_dispatcher_registry.start()
+        if runtime.classification_sync_deployment_supervisor is not None:
+            runtime.classification_sync_deployment_supervisor.start()
+        if runtime.classification_async_deployment_supervisor is not None:
+            runtime.classification_async_deployment_supervisor.start()
+        if runtime.classification_async_inference_gateway_registry is not None:
+            runtime.classification_async_inference_gateway_registry.start()
+        if runtime.segmentation_sync_deployment_supervisor is not None:
+            runtime.segmentation_sync_deployment_supervisor.start()
+        if runtime.segmentation_async_deployment_supervisor is not None:
+            runtime.segmentation_async_deployment_supervisor.start()
+        if runtime.segmentation_async_inference_gateway_registry is not None:
+            runtime.segmentation_async_inference_gateway_registry.start()
+        if runtime.pose_sync_deployment_supervisor is not None:
+            runtime.pose_sync_deployment_supervisor.start()
+        if runtime.pose_async_deployment_supervisor is not None:
+            runtime.pose_async_deployment_supervisor.start()
+        if runtime.pose_async_inference_gateway_registry is not None:
+            runtime.pose_async_inference_gateway_registry.start()
+        if runtime.obb_sync_deployment_supervisor is not None:
+            runtime.obb_sync_deployment_supervisor.start()
+        if runtime.obb_async_deployment_supervisor is not None:
+            runtime.obb_async_deployment_supervisor.start()
+        if runtime.obb_async_inference_gateway_registry is not None:
+            runtime.obb_async_inference_gateway_registry.start()
         runtime.workflow_runtime_worker_manager.start()
         runtime.workflow_preview_run_manager.start()
         WorkflowTriggerSourceService(
@@ -476,6 +660,30 @@ class BackendServiceBootstrap(
         runtime.trigger_source_supervisor.stop_all()
         runtime.workflow_preview_run_manager.stop()
         runtime.workflow_runtime_worker_manager.stop()
+        if runtime.segmentation_async_inference_gateway_registry is not None:
+            runtime.segmentation_async_inference_gateway_registry.stop()
+        if runtime.segmentation_sync_deployment_supervisor is not None:
+            runtime.segmentation_sync_deployment_supervisor.stop()
+        if runtime.segmentation_async_deployment_supervisor is not None:
+            runtime.segmentation_async_deployment_supervisor.stop()
+        if runtime.obb_async_inference_gateway_registry is not None:
+            runtime.obb_async_inference_gateway_registry.stop()
+        if runtime.obb_sync_deployment_supervisor is not None:
+            runtime.obb_sync_deployment_supervisor.stop()
+        if runtime.obb_async_deployment_supervisor is not None:
+            runtime.obb_async_deployment_supervisor.stop()
+        if runtime.pose_async_inference_gateway_registry is not None:
+            runtime.pose_async_inference_gateway_registry.stop()
+        if runtime.pose_sync_deployment_supervisor is not None:
+            runtime.pose_sync_deployment_supervisor.stop()
+        if runtime.pose_async_deployment_supervisor is not None:
+            runtime.pose_async_deployment_supervisor.stop()
+        if runtime.classification_async_inference_gateway_registry is not None:
+            runtime.classification_async_inference_gateway_registry.stop()
+        if runtime.classification_sync_deployment_supervisor is not None:
+            runtime.classification_sync_deployment_supervisor.stop()
+        if runtime.classification_async_deployment_supervisor is not None:
+            runtime.classification_async_deployment_supervisor.stop()
         runtime.yolox_async_inference_gateway_dispatcher_registry.stop()
         runtime.yolox_sync_deployment_process_supervisor.stop()
         runtime.yolox_async_deployment_process_supervisor.stop()
@@ -510,6 +718,7 @@ class BackendServiceBootstrap(
         default_seeders: tuple[BackendServiceSeeder, ...] = (
             DefaultLocalAuthSeeder(),
             YoloXPretrainedModelCatalogSeeder(),
+            YoloPrimaryPretrainedModelCatalogSeeder(),
         )
         if self._provided_seeders is None:
             return default_seeders

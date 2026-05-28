@@ -2492,3 +2492,10 @@ def _resolve_probability(*, value: object, field_name: str, default: float) -> f
             details={field_name: resolved_value},
         )
     return resolved_value
+
+
+# Detection 公共层别名，用于逐步收口 YOLOX 命名到 detection 公共层。
+PyTorchDetectionRuntimeSession = PyTorchYoloXRuntimeSession
+OnnxRuntimeDetectionRuntimeSession = OnnxRuntimeYoloXRuntimeSession
+OpenVINODetectionRuntimeSession = OpenVINOYoloXRuntimeSession
+TensorRTDetectionRuntimeSession = TensorRTYoloXRuntimeSession

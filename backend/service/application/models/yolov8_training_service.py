@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from backend.service.application.models.yolov8_detection_training import (
     YoloV8DetectionTrainingExecutionRequest,
-    YOLOV8_BOOTSTRAP_IMPLEMENTATION_MODE,
+    YOLOV8_IMPLEMENTATION_MODE,
     run_yolov8_detection_training,
 )
 from backend.service.application.models.yolo_primary_training_service import (
@@ -42,7 +42,7 @@ class SqlAlchemyYoloV8TrainingTaskService(SqlAlchemyYoloPrimaryTrainingTaskServi
     task_result_cls = YoloV8TrainingTaskResult
     execution_request_cls = YoloV8DetectionTrainingExecutionRequest
     training_runner = staticmethod(run_yolov8_detection_training)
-    implementation_mode = YOLOV8_BOOTSTRAP_IMPLEMENTATION_MODE
+    implementation_mode = YOLOV8_IMPLEMENTATION_MODE
     file_types = YOLOV8_DETECTION_FILE_TYPES
     default_spec = DEFAULT_YOLOV8_MODEL_SPEC
 

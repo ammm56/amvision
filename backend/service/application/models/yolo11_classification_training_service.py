@@ -1,0 +1,15 @@
+"""YOLO11 classification 训练任务服务。"""
+
+from __future__ import annotations
+
+from backend.service.application.models.yolo_primary_classification_training_service import (
+    YOLO_PRIMARY_CLASSIFICATION_TRAINING_TASK_KIND,
+    YOLO_PRIMARY_CLASSIFICATION_TRAINING_QUEUE_NAME,
+    SqlAlchemyYoloPrimaryClassificationTrainingTaskService,
+    YoloPrimaryClassificationTrainingTaskRequest,
+)
+
+YOLO11_CLASSIFICATION_TRAINING_TASK_KIND = YOLO_PRIMARY_CLASSIFICATION_TRAINING_TASK_KIND
+YOLO11_CLASSIFICATION_TRAINING_QUEUE_NAME = YOLO_PRIMARY_CLASSIFICATION_TRAINING_QUEUE_NAME
+Yolo11ClassificationTrainingTaskRequest = YoloPrimaryClassificationTrainingTaskRequest
+SqlAlchemyYolo11ClassificationTrainingTaskService = SqlAlchemyYoloPrimaryClassificationTrainingTaskService

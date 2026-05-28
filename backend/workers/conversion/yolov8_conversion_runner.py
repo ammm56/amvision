@@ -11,6 +11,12 @@ from backend.service.application.backends import (
 from backend.service.application.runtime.yolov8_classification_predictor import (
     PyTorchYoloV8ClassificationRuntimeSession,
 )
+from backend.service.application.runtime.yolov8_obb_predictor import (
+    PyTorchYoloV8ObbRuntimeSession,
+)
+from backend.service.application.runtime.yolov8_pose_predictor import (
+    PyTorchYoloV8PoseRuntimeSession,
+)
 from backend.service.application.runtime.yolov8_segmentation_predictor import (
     PyTorchYoloV8SegmentationRuntimeSession,
 )
@@ -41,6 +47,8 @@ class LocalYoloV8ConversionRunner(LocalYoloPrimaryConversionRunner):
         "detection": PyTorchYoloV8RuntimeSession,
         "classification": PyTorchYoloV8ClassificationRuntimeSession,
         "segmentation": PyTorchYoloV8SegmentationRuntimeSession,
+        "pose": PyTorchYoloV8PoseRuntimeSession,
+        "obb": PyTorchYoloV8ObbRuntimeSession,
     }
     onnx_file_type = YOLOV8_ONNX_FILE
     onnx_optimized_file_type = YOLOV8_ONNX_OPTIMIZED_FILE

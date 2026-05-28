@@ -75,7 +75,7 @@ _DETECTION_BACKEND_REGISTRATIONS: Final[dict[str, DetectionBackendRegistration]]
         ),
         notes=(
             "模型登记、训练执行、转换规划、PyTorch/ONNXRuntime/OpenVINO/TensorRT 推理与 deployment 外壳已接通；"
-            "训练当前为 bootstrap 闭环实现。"
+            "训练链已接通，支持检测训练闭环。"
         ),
     ),
     "yolo11": DetectionBackendRegistration(

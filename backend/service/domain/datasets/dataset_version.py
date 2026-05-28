@@ -29,16 +29,7 @@ class DatasetCategory:
 
 @dataclass(frozen=True)
 class DetectionAnnotation:
-    """描述 detection 样本中的单个标注。
-
-    字段：
-    - annotation_id：标注 id。
-    - category_id：类别 id。
-    - bbox_xywh：检测框坐标，格式为 xywh。
-    - iscrowd：是否为 crowd 标记。
-    - area：标注面积。
-    - metadata：附加元数据。
-    """
+    """描述 detection 样本中的单个标注。"""
 
     annotation_id: str
     category_id: int
@@ -46,6 +37,36 @@ class DetectionAnnotation:
     iscrowd: int = 0
     area: float | None = None
     metadata: dict[str, object] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class InstanceSegmentationAnnotation:
+    """描述 instance segmentation 样本中的单个标注。"""
+
+    annotation_id: str
+    category_id: int
+    bbox_xywh: tuple[float, float, float, float]
+    segmentation: list[list[float]] | None = None
+    iscrowd: int = 0
+    area: float | None = None
+    metadata: dict[str, object] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class PoseAnnotation:
+    """描述 pose 样本中的单个标注。"""
+
+    annotation_id: str
+    category_id: int
+    bbox_xywh: tuple[float, float, float, float]
+    keypoints: list[float] | None = None
+    num_keypoints: int = 0
+    iscrowd: int = 0
+    area: float | None = None
+    metadata: dict[str, object] = field(default_factory=dict)
+
+
+DatasetAnnotation = DetectionAnnotation | InstanceSegmentationAnnotation | PoseAnnotation
 
 
 @dataclass(frozen=True)
@@ -69,7 +90,7 @@ class DatasetSample:
     width: int
     height: int
     split: DatasetSplitName
-    annotations: tuple[DetectionAnnotation, ...] = ()
+    annotations: tuple[DatasetAnnotation, ...] = ()
     metadata: dict[str, object] = field(default_factory=dict)
 
 

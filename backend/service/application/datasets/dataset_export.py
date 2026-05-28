@@ -20,10 +20,29 @@ from backend.contracts.datasets.exports.coco_detection_export import (
     CocoDetectionSplit,
     CocoImage,
 )
+from backend.contracts.datasets.exports.coco_instance_segmentation_export import (
+    COCO_INSTANCE_SEGMENTATION_DATASET_FORMAT,
+    CocoInstanceSegmentationExportManifest,
+    CocoInstanceSegmentationSplit,
+)
+from backend.contracts.datasets.exports.coco_keypoints_export import (
+    COCO_KEYPOINTS_DATASET_FORMAT,
+    CocoKeypointsExportManifest,
+    CocoKeypointsSplit,
+)
 from backend.contracts.datasets.exports.dataset_formats import (
     DatasetExportFormatId,
     IMPLEMENTED_DATASET_EXPORT_FORMATS,
     SUPPORTED_DATASET_EXPORT_FORMATS,
+    YOLO_DETECTION_DATASET_FORMAT,
+    YOLO_INSTANCE_SEGMENTATION_DATASET_FORMAT,
+    YOLO_POSE_DATASET_FORMAT,
+)
+from backend.contracts.datasets.exports.yolo_export import (
+    YoloDetectionExportManifest,
+    YoloExportSplit,
+    YoloInstanceSegmentationExportManifest,
+    YoloPoseExportManifest,
 )
 from backend.contracts.datasets.exports.voc_detection_export import (
     VOC_DETECTION_DATASET_FORMAT,
@@ -43,7 +62,13 @@ from backend.service.application.tasks.task_service import (
     SqlAlchemyTaskService,
 )
 from backend.service.domain.datasets.dataset_export import DatasetExport
-from backend.service.domain.datasets.dataset_version import DatasetCategory, DatasetSample, DatasetVersion
+from backend.service.domain.datasets.dataset_version import (
+    DatasetCategory,
+    DatasetSample,
+    DatasetVersion,
+    InstanceSegmentationAnnotation,
+    PoseAnnotation,
+)
 from backend.service.domain.tasks.task_records import TaskEvent, TaskRecord
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
@@ -259,8 +284,8 @@ class SqlAlchemyDatasetExporter:
             raise NotImplementedError(
                 f"当前最小实现只落了 {IMPLEMENTED_DATASET_EXPORT_FORMATS}，其他格式已在支持列表中预留"
             )
-        if dataset_version.task_type != "detection":
-            raise ValueError("当前最小实现只支持 detection 类型的 DatasetVersion")
+        if dataset_version.task_type != "detection" and dataset_version.task_type != "instance-segmentation" and dataset_version.task_type != "pose":
+            raise ValueError(f"当前导出不支持 task_type={dataset_version.task_type}，只支持 detection、instance-segmentation、pose")
 
         category_names = self._resolve_category_names(
             categories=dataset_version.categories,
@@ -408,6 +433,52 @@ class SqlAlchemyDatasetExporter:
                     split_samples=split_samples,
                 ),
             )
+        if request.format_id == COCO_INSTANCE_SEGMENTATION_DATASET_FORMAT:
+            seg_splits = tuple(
+                CocoInstanceSegmentationSplit(
+                    name=split_name,
+                    image_root=f"{export_prefix}/images/{split_name}",
+                    annotation_file=f"{export_prefix}/annotations/instances_{split_name}.json",
+                    sample_count=len(samples),
+                )
+                for split_name, samples in split_samples
+            )
+            return (
+                CocoInstanceSegmentationExportManifest(
+                    format_id=request.format_id,
+                    dataset_version_id=request.dataset_version_id,
+                    category_names=category_names,
+                    splits=seg_splits,
+                    metadata=metadata,
+                ),
+                self._build_coco_detection_payloads(
+                    dataset_version=dataset_version,
+                    split_samples=split_samples,
+                ),
+            )
+        if request.format_id == COCO_KEYPOINTS_DATASET_FORMAT:
+            kpt_splits = tuple(
+                CocoKeypointsSplit(
+                    name=split_name,
+                    image_root=f"{export_prefix}/images/{split_name}",
+                    annotation_file=f"{export_prefix}/annotations/person_keypoints_{split_name}.json",
+                    sample_count=len(samples),
+                )
+                for split_name, samples in split_samples
+            )
+            return (
+                CocoKeypointsExportManifest(
+                    format_id=request.format_id,
+                    dataset_version_id=request.dataset_version_id,
+                    category_names=category_names,
+                    splits=kpt_splits,
+                    metadata=metadata,
+                ),
+                self._build_coco_detection_payloads(
+                    dataset_version=dataset_version,
+                    split_samples=split_samples,
+                ),
+            )
         if request.format_id == VOC_DETECTION_DATASET_FORMAT:
             detection_splits = tuple(
                 VocDetectionSplit(
@@ -432,6 +503,16 @@ class SqlAlchemyDatasetExporter:
                     split_samples=split_samples,
                 ),
             )
+
+        if request.format_id == YOLO_DETECTION_DATASET_FORMAT:
+            yolo_splits = tuple(YoloExportSplit(name=split_name, image_root=f"{export_prefix}/images/{split_name}", label_root=f"{export_prefix}/labels/{split_name}", sample_count=len(samples)) for split_name, samples in split_samples)
+            return (YoloDetectionExportManifest(format_id=request.format_id, dataset_version_id=request.dataset_version_id, category_names=category_names, splits=yolo_splits, metadata=metadata), self._build_coco_detection_payloads(dataset_version=dataset_version, split_samples=split_samples))
+        if request.format_id == YOLO_INSTANCE_SEGMENTATION_DATASET_FORMAT:
+            yolo_splits = tuple(YoloExportSplit(name=split_name, image_root=f"{export_prefix}/images/{split_name}", label_root=f"{export_prefix}/labels/{split_name}", sample_count=len(samples)) for split_name, samples in split_samples)
+            return (YoloInstanceSegmentationExportManifest(format_id=request.format_id, dataset_version_id=request.dataset_version_id, category_names=category_names, splits=yolo_splits, metadata=metadata), self._build_coco_detection_payloads(dataset_version=dataset_version, split_samples=split_samples))
+        if request.format_id == YOLO_POSE_DATASET_FORMAT:
+            yolo_splits = tuple(YoloExportSplit(name=split_name, image_root=f"{export_prefix}/images/{split_name}", label_root=f"{export_prefix}/labels/{split_name}", sample_count=len(samples)) for split_name, samples in split_samples)
+            return (YoloPoseExportManifest(format_id=request.format_id, dataset_version_id=request.dataset_version_id, category_names=category_names, splits=yolo_splits, metadata=metadata), self._build_coco_detection_payloads(dataset_version=dataset_version, split_samples=split_samples))
 
         raise NotImplementedError(f"当前尚未实现导出格式: {request.format_id}")
 
@@ -513,6 +594,12 @@ class SqlAlchemyDatasetExporter:
             for sample in samples:
                 for annotation in sample.annotations:
                     bbox_x, bbox_y, bbox_w, bbox_h = annotation.bbox_xywh
+                    extra_meta = dict(annotation.metadata)
+                    if isinstance(annotation, InstanceSegmentationAnnotation) and annotation.segmentation is not None:
+                        extra_meta["segmentation"] = annotation.segmentation
+                    if isinstance(annotation, PoseAnnotation) and annotation.keypoints is not None:
+                        extra_meta["keypoints"] = annotation.keypoints
+                        extra_meta["num_keypoints"] = annotation.num_keypoints
                     annotations.append(
                         CocoDetectionAnnotation(
                             annotation_id=next_annotation_id,
@@ -521,6 +608,7 @@ class SqlAlchemyDatasetExporter:
                             bbox_xywh=(bbox_x, bbox_y, bbox_w, bbox_h),
                             area=annotation.area if annotation.area is not None else bbox_w * bbox_h,
                             iscrowd=annotation.iscrowd,
+                            metadata=extra_meta,
                         )
                     )
                     next_annotation_id += 1
@@ -623,25 +711,23 @@ class SqlAlchemyDatasetExporter:
                 asdict(export_result.format_manifest),
             )
 
-        if export_result.format_id == COCO_DETECTION_DATASET_FORMAT:
+        if export_result.format_id in (COCO_DETECTION_DATASET_FORMAT, COCO_INSTANCE_SEGMENTATION_DATASET_FORMAT, COCO_KEYPOINTS_DATASET_FORMAT):
             export_layout = self.dataset_storage.prepare_export_layout(export_result.export_path)
+            annotation_filename = "instances" if export_result.format_id != COCO_KEYPOINTS_DATASET_FORMAT else "person_keypoints"
             for split_name, payload in export_result.annotation_payloads_by_split.items():
                 if not isinstance(payload, CocoDetectionAnnotationPayload):
                     raise ValueError("COCO 导出结果缺少有效的 annotation payload")
                 self.dataset_storage.write_json(
-                    f"{export_layout.annotations_dir}/instances_{split_name}.json",
+                    f"{export_layout.annotations_dir}/{annotation_filename}_{split_name}.json",
                     self._serialize_coco_annotation_payload(payload),
                 )
-
             for split_name, samples in split_samples:
                 for sample in samples:
                     source_relative_path = self._build_version_image_relative_path(
-                        dataset_version=dataset_version,
-                        sample=sample,
+                        dataset_version=dataset_version, sample=sample,
                     )
                     self.dataset_storage.copy_relative_file(
-                        source_relative_path,
-                        f"{export_layout.images_dir}/{split_name}/{sample.file_name}",
+                        source_relative_path, f"{export_layout.images_dir}/{split_name}/{sample.file_name}",
                     )
             return
 
@@ -651,6 +737,10 @@ class SqlAlchemyDatasetExporter:
                 split_samples=split_samples,
                 export_result=export_result,
             )
+            return
+
+        if export_result.format_id in (YOLO_DETECTION_DATASET_FORMAT, YOLO_INSTANCE_SEGMENTATION_DATASET_FORMAT, YOLO_POSE_DATASET_FORMAT):
+            self._write_yolo_export_files(dataset_version=dataset_version, split_samples=split_samples, export_result=export_result)
             return
 
         raise NotImplementedError(f"当前尚未实现导出格式: {export_result.format_id}")
@@ -673,14 +763,7 @@ class SqlAlchemyDatasetExporter:
                 for image in payload.images
             ],
             "annotations": [
-                {
-                    "id": annotation.annotation_id,
-                    "image_id": annotation.image_id,
-                    "category_id": annotation.category_id,
-                    "bbox": list(annotation.bbox_xywh),
-                    "area": annotation.area,
-                    "iscrowd": annotation.iscrowd,
-                }
+                _build_coco_annotation_entry(annotation)
                 for annotation in payload.annotations
             ],
             "categories": [
@@ -834,6 +917,66 @@ class SqlAlchemyDatasetExporter:
         """生成一个带前缀的新对象 id。"""
 
         return f"{prefix}-{uuid4().hex[:12]}"
+
+    def _write_yolo_export_files(
+        self, *, dataset_version, split_samples, export_result,
+    ) -> None:
+        """把 YOLO 格式导出结果写入本地文件存储。"""
+
+        if self.dataset_storage is None or export_result.export_path is None:
+            return
+        for split_name, samples in split_samples:
+            label_dir = f"{export_result.export_path}/labels/{split_name}"
+            image_dir = f"{export_result.export_path}/images/{split_name}"
+            for sample in samples:
+                source = self._build_version_image_relative_path(dataset_version=dataset_version, sample=sample)
+                self.dataset_storage.copy_relative_file(source, f"{image_dir}/{sample.file_name}")
+                label_lines = []
+                for ann in sample.annotations:
+                    x, y, w, h = ann.bbox_xywh
+                    xc = (x + w / 2) / sample.width
+                    yc = (y + h / 2) / sample.height
+                    nw = w / sample.width
+                    nh = h / sample.height
+                    xc = max(0.0, min(1.0, xc))
+                    yc = max(0.0, min(1.0, yc))
+                    nw = max(0.0, min(1.0, nw))
+                    nh = max(0.0, min(1.0, nh))
+                    category_index = ann.category_id - 1 if ann.category_id >= 1 else 0
+                    parts = [str(category_index), f"{xc:.6f}", f"{yc:.6f}", f"{nw:.6f}", f"{nh:.6f}"]
+                    if export_result.format_id == YOLO_POSE_DATASET_FORMAT and isinstance(ann.metadata.get("keypoints"), list):
+                        for val in ann.metadata["keypoints"]:
+                            parts.append(f"{float(val):.6f}")
+                    elif export_result.format_id == YOLO_INSTANCE_SEGMENTATION_DATASET_FORMAT and isinstance(ann.metadata.get("segmentation"), list):
+                        for seg in ann.metadata["segmentation"]:
+                            if isinstance(seg, list):
+                                for val in seg:
+                                    parts.append(f"{float(val):.6f}")
+                    label_lines.append(" ".join(parts))
+                base_name = sample.file_name.rsplit(".", 1)[0] if "." in sample.file_name else sample.file_name
+                self.dataset_storage.write_text(f"{label_dir}/{base_name}.txt", "\n".join(label_lines))
+
+
+def _build_coco_annotation_entry(annotation: CocoDetectionAnnotation) -> dict[str, object]:
+    """把 COCO annotation 序列化为字典，包含 metadata 中的 segmentation/keypoints。"""
+
+    entry: dict[str, object] = {
+        "id": annotation.annotation_id,
+        "image_id": annotation.image_id,
+        "category_id": annotation.category_id,
+        "bbox": list(annotation.bbox_xywh),
+        "area": annotation.area,
+        "iscrowd": annotation.iscrowd,
+    }
+    meta = annotation.metadata
+    if isinstance(meta, dict):
+        if "segmentation" in meta:
+            entry["segmentation"] = meta["segmentation"]
+        if "keypoints" in meta:
+            entry["keypoints"] = meta["keypoints"]
+        if "num_keypoints" in meta:
+            entry["num_keypoints"] = meta["num_keypoints"]
+    return entry
 
 
 class SqlAlchemyDatasetExportTaskService:

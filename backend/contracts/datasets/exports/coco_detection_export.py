@@ -60,16 +60,7 @@ class CocoImage:
 
 @dataclass(frozen=True)
 class CocoDetectionAnnotation:
-    """描述 COCO detection payload 中的标注对象。
-
-    字段：
-    - annotation_id：标注 id。
-    - image_id：所属图片 id。
-    - category_id：类别 id。
-    - bbox_xywh：检测框坐标，格式为 xywh。
-    - area：标注面积。
-    - iscrowd：crowd 标记。
-    """
+    """描述 COCO detection payload 中的标注对象。"""
 
     annotation_id: int
     image_id: int
@@ -77,6 +68,7 @@ class CocoDetectionAnnotation:
     bbox_xywh: tuple[float, float, float, float]
     area: float
     iscrowd: int = 0
+    metadata: dict[str, object] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)

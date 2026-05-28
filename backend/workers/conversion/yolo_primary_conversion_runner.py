@@ -44,6 +44,8 @@ class LocalYoloPrimaryConversionRunner(LocalYoloXConversionRunner):
     task_export_output_names: dict[str, tuple[str, ...]] = {
         "classification": ("probabilities",),
         "segmentation": ("predictions", "proto"),
+        "pose": ("predictions",),
+        "obb": ("predictions",),
     }
     task_export_mode_enabled: frozenset[str] = frozenset({"classification"})
 
