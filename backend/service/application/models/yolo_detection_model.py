@@ -705,9 +705,14 @@ class Segment(Detect):
 
 
 class Segment26(Segment):
-    """YOLO26 分割头。复用主线分割实现，forward 返回 (prediction, proto) 并支持多尺度 Proto26。"""
+    """YOLO26 分割头。使用 Proto26 多尺度融合 proto。"""
+
+    def __init__(self, nc: int, nm: int = 32, npr: int = 256, *, ch: tuple[int, ...] = (), reg_max: int = 16, strides: tuple[int, ...] = (8, 16, 32), end2end: bool = False) -> None:
+        super().__init__(nc, nm=nm, npr=npr, ch=ch, reg_max=reg_max, strides=strides, end2end=end2end)
+        self.proto = Proto26(c_=256, c2=self.nm, nc=nc, feature_channels=ch)
 
     def forward(
+
         self,
         x: list[torch.Tensor] | tuple[torch.Tensor, ...],
     ) -> dict[str, torch.Tensor] | torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
@@ -791,14 +796,31 @@ class OBB(Detect):
         if self.training:
             return raw_outputs
         inference_outputs = raw_outputs["one2one"] if self.end2end else raw_outputs
-        prediction = self._build_inference_prediction(inference_outputs)
-        prediction = torch.cat((prediction, self._decode_angle_logits(inference_outputs["angle"])), dim=1)
+        dfl_distances = self.dfl(inference_outputs["boxes"])
+        angle = self._decode_angle_logits(inference_outputs["angle"])
+        anchor_points = _make_anchors(feature_maps=inference_outputs["feats"], strides=self.strides)[0]
+        rbox = _dist2rbox(dfl_distances, angle, anchor_points=anchor_points)
+        prediction = torch.cat((rbox, inference_outputs["scores"]), dim=1)
         return prediction.transpose(1, 2).contiguous()
 
     def _decode_angle_logits(self, angle_logits: torch.Tensor) -> torch.Tensor:
         """把角度 logits 解码成旋转角。"""
 
         return (angle_logits.sigmoid() - 0.25) * math.pi
+
+
+def _dist2rbox(pred_dist: torch.Tensor, pred_angle: torch.Tensor, anchor_points: torch.Tensor, dim: int = 1) -> torch.Tensor:
+    lt, rb = pred_dist.split(2, dim=dim)
+    cos_a, sin_a = torch.cos(pred_angle), torch.sin(pred_angle)
+    xf, yf = (rb - lt).chunk(2, dim=dim)
+    x = xf * cos_a - yf * sin_a
+    y = xf * sin_a + yf * cos_a
+    xy = torch.cat([x, y], dim=dim)
+    if anchor_points.ndim == 2:
+        xy = xy + anchor_points.unsqueeze(0).permute(0, 2, 1)
+    else:
+        xy = xy + anchor_points
+    return torch.cat([xy, lt + rb], dim=dim)
 
 
 class OBB26(OBB):

@@ -12,6 +12,9 @@ from backend.service.application.deployments.yolox_deployment_service import (
     YoloXDeploymentInstanceView as DetectionDeploymentInstanceView,
 )
 from backend.service.application.errors import InvalidRequestError, ServiceConfigurationError
+from backend.service.application.runtime.rfdetr_runtime_target import (
+    SqlAlchemyRfdetrRuntimeTargetResolver,
+)
 from backend.service.application.runtime.yolo11_runtime_target import (
     SqlAlchemyYolo11RuntimeTargetResolver,
 )
@@ -50,6 +53,7 @@ _RUNTIME_TARGET_RESOLVER_BY_MODEL_TYPE: dict[str, type] = {
     "yolov8": SqlAlchemyYoloV8RuntimeTargetResolver,
     "yolo11": SqlAlchemyYolo11RuntimeTargetResolver,
     "yolo26": SqlAlchemyYolo26RuntimeTargetResolver,
+    "rfdetr": SqlAlchemyRfdetrRuntimeTargetResolver,
 }
 
 

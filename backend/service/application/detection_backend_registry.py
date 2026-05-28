@@ -95,12 +95,18 @@ _DETECTION_BACKEND_REGISTRATIONS: Final[dict[str, DetectionBackendRegistration]]
         display_name="YOLO26 Detection",
         status=DETECTION_BACKEND_STATUS_ACTIVE,
         features=DetectionBackendFeatureSet(
-            training=True,
-            conversion=True,
-            inference=True,
-            deployment=True,
+            training=True, conversion=True, inference=True, deployment=True,
         ),
         notes="共享结构、权重加载、训练入口、转换链、runtime loader 与 detection deployment 正式入口已接通。",
+    ),
+    "rfdetr": DetectionBackendRegistration(
+        model_type="rfdetr",
+        display_name="RF-DETR",
+        status=DETECTION_BACKEND_STATUS_ACTIVE,
+        features=DetectionBackendFeatureSet(
+            conversion=True, inference=True, deployment=True,
+        ),
+        notes="模型登记、转换规划、PyTorch 推理与 deployment 外壳已接通；训练后端待实现。",
     ),
 }
 

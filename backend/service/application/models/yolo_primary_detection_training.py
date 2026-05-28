@@ -1941,7 +1941,7 @@ def _distribution_focal_loss(
     """计算 DFL 损失。"""
 
     reg_max = int(logits.shape[2])
-    target_left = target.floor().clamp(0, reg_max - 1).long()
+    target_left = target.clamp(0, reg_max - 1 - 0.01).floor().long()
     target_right = (target_left + 1).clamp(0, reg_max - 1)
     weight_left = target_right.to(target.dtype) - target
     weight_right = 1.0 - weight_left
