@@ -15,6 +15,7 @@ from backend.service.application.errors import InvalidRequestError, ServiceConfi
 from backend.service.application.runtime.yolo11_runtime_target import SqlAlchemyYolo11RuntimeTargetResolver
 from backend.service.application.runtime.yolo26_runtime_target import SqlAlchemyYolo26RuntimeTargetResolver
 from backend.service.application.runtime.yolov8_runtime_target import SqlAlchemyYoloV8RuntimeTargetResolver
+from backend.service.application.runtime.rfdetr_runtime_target import SqlAlchemyRfdetrRuntimeTargetResolver
 from backend.service.application.runtime.yolox_runtime_target import (
     RuntimeTargetResolveRequest,
     RuntimeTargetSnapshot,
@@ -41,6 +42,7 @@ _RUNTIME_TARGET_RESOLVER_BY_MODEL_TYPE: dict[str, type] = {
     "yolov8": SqlAlchemyYoloV8RuntimeTargetResolver,
     "yolo11": SqlAlchemyYolo11RuntimeTargetResolver,
     "yolo26": SqlAlchemyYolo26RuntimeTargetResolver,
+    "rfdetr": SqlAlchemyRfdetrRuntimeTargetResolver,
 }
 
 

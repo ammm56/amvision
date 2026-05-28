@@ -12,6 +12,8 @@ from backend.service.api.deps.db import get_session_factory
 from backend.service.api.deps.queue import get_queue_backend
 from backend.service.api.deps.storage import get_dataset_storage
 from backend.service.application.errors import InvalidRequestError, PermissionDeniedError
+from backend.service.infrastructure.db.session import SessionFactory
+from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 from backend.service.application.models.yolov8_segmentation_training_service import (
     SqlAlchemyYoloV8SegmentationTrainingTaskService,
     YoloV8SegmentationTrainingTaskRequest,
@@ -29,6 +31,7 @@ _SEG_SERVICE_MAP = {
     "yolov8": (SqlAlchemyYoloV8SegmentationTrainingTaskService, YoloV8SegmentationTrainingTaskRequest),
     "yolo11": (SqlAlchemyYolo11SegmentationTrainingTaskService, Yolo11SegmentationTrainingTaskRequest),
     "yolo26": (SqlAlchemyYolo26SegmentationTrainingTaskService, Yolo26SegmentationTrainingTaskRequest),
+    "rfdetr": None,
 }
 
 
@@ -75,6 +78,8 @@ def create_segmentation_training_task(
     n = body.model_type.strip().lower()
     entry = _SEG_SERVICE_MAP.get(n)
     if entry is None:
+        if n == "rfdetr":
+            raise InvalidRequestError("RF-DETR segmentation 训练后端尚未接通", details={"model_type": n})
         raise InvalidRequestError("当前 segmentation 训练不支持指定模型分类", details={"model_type": n})
     svc_cls, req_cls = entry
     svc = svc_cls(session_factory=session_factory, queue_backend=queue_backend, dataset_storage=dataset_storage)

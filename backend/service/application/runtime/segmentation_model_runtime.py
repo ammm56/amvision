@@ -28,6 +28,9 @@ from backend.service.application.runtime.yolov8_segmentation_predictor import (
     PyTorchYoloV8SegmentationRuntimeSession,
     TensorRTYoloV8SegmentationRuntimeSession,
 )
+from backend.service.application.runtime.rfdetr_segmentation_predictor import (
+    PyTorchRfdetrSegmentationRuntimeSession,
+)
 from backend.service.application.runtime.yolox_runtime_target import RuntimeTargetSnapshot
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 
@@ -121,6 +124,7 @@ def build_default_segmentation_model_runtime_registry() -> SegmentationModelRunt
     registry.register_runtime_loader("yolov8", _load_yolov8_segmentation_session)
     registry.register_runtime_loader("yolo11", _load_yolo11_segmentation_session)
     registry.register_runtime_loader("yolo26", _load_yolo26_segmentation_session)
+    registry.register_runtime_loader("rfdetr", _load_rfdetr_segmentation_session)
     return registry
 
 
@@ -221,6 +225,20 @@ def _load_yolo26_segmentation_session(
             pinned_output_buffer_max_bytes=pinned_output_buffer_max_bytes,
         )
     raise ValueError(f"unsupported segmentation runtime backend: {runtime_target.runtime_backend}")
+
+
+def _load_rfdetr_segmentation_session(
+    dataset_storage: LocalDatasetStorage,
+    runtime_target: RuntimeTargetSnapshot,
+    pinned_output_buffer_enabled: bool | None,
+    pinned_output_buffer_max_bytes: int | None,
+) -> SegmentationModelRuntimeSession:
+    """按 runtime backend 加载 RF-DETR segmentation 会话。"""
+
+    del pinned_output_buffer_enabled, pinned_output_buffer_max_bytes
+    if runtime_target.runtime_backend == "pytorch":
+        return PyTorchRfdetrSegmentationRuntimeSession.load(dataset_storage=dataset_storage, runtime_target=runtime_target)
+    raise ValueError(f"unsupported rfdetr segmentation backend: {runtime_target.runtime_backend}")
 
 
 def _normalize_model_type(model_type: str | None) -> str | None:

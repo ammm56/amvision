@@ -16,6 +16,8 @@ DatasetExportFormatId = Literal[
     "coco-keypoints-v1",
     "semantic-mask-dir-v1",
     "sam-promptable-seg-v1",
+    "imagenet-classification-v1",
+    "dota-obb-v1",
 ]
 
 
@@ -34,6 +36,8 @@ SEMANTIC_MASK_DIRECTORY_DATASET_FORMAT: Final[DatasetExportFormatId] = "semantic
 SAM_PROMPTABLE_SEGMENTATION_DATASET_FORMAT: Final[DatasetExportFormatId] = (
     "sam-promptable-seg-v1"
 )
+IMAGENET_CLASSIFICATION_DATASET_FORMAT: Final[DatasetExportFormatId] = "imagenet-classification-v1"
+DOTA_OBB_DATASET_FORMAT: Final[DatasetExportFormatId] = "dota-obb-v1"
 
 
 # 当前规划支持的全部数据集导出格式。
@@ -47,6 +51,8 @@ SUPPORTED_DATASET_EXPORT_FORMATS: Final[tuple[DatasetExportFormatId, ...]] = (
     COCO_KEYPOINTS_DATASET_FORMAT,
     SEMANTIC_MASK_DIRECTORY_DATASET_FORMAT,
     SAM_PROMPTABLE_SEGMENTATION_DATASET_FORMAT,
+    IMAGENET_CLASSIFICATION_DATASET_FORMAT,
+    DOTA_OBB_DATASET_FORMAT,
 )
 
 
@@ -59,5 +65,6 @@ IMPLEMENTED_DATASET_EXPORT_FORMATS: Final[tuple[DatasetExportFormatId, ...]] = (
     YOLO_DETECTION_DATASET_FORMAT,
     YOLO_INSTANCE_SEGMENTATION_DATASET_FORMAT,
     YOLO_POSE_DATASET_FORMAT,
-    # semantic-mask-dir-v1 和 sam-promptable-seg-v1 暂不实现，待 SAM 模型接入后再补
+    IMAGENET_CLASSIFICATION_DATASET_FORMAT,
+    DOTA_OBB_DATASET_FORMAT,
 )

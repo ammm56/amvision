@@ -79,13 +79,15 @@ _SEGMENTATION_BACKEND_REGISTRATIONS: Final[dict[str, SegmentationBackendRegistra
         model_type="yolo26",
         display_name="YOLO26 Segmentation",
         status=SEGMENTATION_BACKEND_STATUS_ACTIVE,
-        features=SegmentationBackendFeatureSet(
-            training=True,
-            conversion=True,
-            inference=True,
-            deployment=True,
-        ),
+        features=SegmentationBackendFeatureSet(training=True, conversion=True, inference=True, deployment=True),
         notes="共享结构与四后端推理、训练执行已接通。",
+    ),
+    "rfdetr": SegmentationBackendRegistration(
+        model_type="rfdetr",
+        display_name="RF-DETR Segmentation",
+        status=SEGMENTATION_BACKEND_STATUS_ACTIVE,
+        features=SegmentationBackendFeatureSet(inference=True, deployment=True),
+        notes="模型登记、部署入口已接通；训练与转换后端待实现。",
     ),
 }
 

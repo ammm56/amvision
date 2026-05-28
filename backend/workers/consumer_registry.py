@@ -18,11 +18,16 @@ from backend.workers.evaluation.yolox_evaluation_queue_worker import YoloXEvalua
 from backend.workers.inference.yolox_inference_queue_worker import YoloXInferenceQueueWorker
 from backend.workers.settings import (
     BACKEND_WORKER_CONSUMER_CLASSIFICATION_INFERENCE,
+    BACKEND_WORKER_CONSUMER_CLASSIFICATION_TRAINING,
     BACKEND_WORKER_CONSUMER_DATASET_EXPORT,
     BACKEND_WORKER_CONSUMER_DATASET_IMPORT,
     BACKEND_WORKER_CONSUMER_OBB_INFERENCE,
+    BACKEND_WORKER_CONSUMER_OBB_TRAINING,
     BACKEND_WORKER_CONSUMER_POSE_INFERENCE,
+    BACKEND_WORKER_CONSUMER_POSE_TRAINING,
+    BACKEND_WORKER_CONSUMER_RFDETR_TRAINING,
     BACKEND_WORKER_CONSUMER_SEGMENTATION_INFERENCE,
+    BACKEND_WORKER_CONSUMER_SEGMENTATION_TRAINING,
     BACKEND_WORKER_CONSUMER_YOLO11_TRAINING,
     BACKEND_WORKER_CONSUMER_YOLO11_CONVERSION,
     BACKEND_WORKER_CONSUMER_YOLO26_TRAINING,
@@ -39,6 +44,13 @@ from backend.workers.training.yolo11_training_queue_worker import Yolo11Training
 from backend.workers.training.yolo26_training_queue_worker import Yolo26TrainingQueueWorker
 from backend.workers.training.yolov8_training_queue_worker import YoloV8TrainingQueueWorker
 from backend.workers.training.yolox_training_queue_worker import YoloXTrainingQueueWorker
+from backend.workers.training.yolo_primary_training_queue_worker import (
+    ClassificationTrainingQueueWorker,
+    SegmentationTrainingQueueWorker,
+    PoseTrainingQueueWorker,
+    ObbTrainingQueueWorker,
+)
+from backend.workers.training.rfdetr_training_queue_worker import RfdetrTrainingQueueWorker
 
 
 @dataclass(frozen=True)
@@ -212,6 +224,56 @@ def build_background_task_consumers(
                     dataset_storage=resources.dataset_storage,
                     queue_backend=resources.queue_backend,
                     worker_id=f"{resources.worker_id_prefix}-{consumer_kind}",
+                )
+            )
+            continue
+        if consumer_kind == BACKEND_WORKER_CONSUMER_CLASSIFICATION_TRAINING:
+            consumers.append(
+                ClassificationTrainingQueueWorker(
+                    session_factory=resources.session_factory,
+                    dataset_storage=resources.dataset_storage,
+                    queue_backend=resources.queue_backend,
+                    worker_id=f"{resources.worker_id_prefix}-classification-training",
+                )
+            )
+            continue
+        if consumer_kind == BACKEND_WORKER_CONSUMER_SEGMENTATION_TRAINING:
+            consumers.append(
+                SegmentationTrainingQueueWorker(
+                    session_factory=resources.session_factory,
+                    dataset_storage=resources.dataset_storage,
+                    queue_backend=resources.queue_backend,
+                    worker_id=f"{resources.worker_id_prefix}-segmentation-training",
+                )
+            )
+            continue
+        if consumer_kind == BACKEND_WORKER_CONSUMER_POSE_TRAINING:
+            consumers.append(
+                PoseTrainingQueueWorker(
+                    session_factory=resources.session_factory,
+                    dataset_storage=resources.dataset_storage,
+                    queue_backend=resources.queue_backend,
+                    worker_id=f"{resources.worker_id_prefix}-pose-training",
+                )
+            )
+            continue
+        if consumer_kind == BACKEND_WORKER_CONSUMER_OBB_TRAINING:
+            consumers.append(
+                ObbTrainingQueueWorker(
+                    session_factory=resources.session_factory,
+                    dataset_storage=resources.dataset_storage,
+                    queue_backend=resources.queue_backend,
+                    worker_id=f"{resources.worker_id_prefix}-obb-training",
+                )
+            )
+            continue
+        if consumer_kind == BACKEND_WORKER_CONSUMER_RFDETR_TRAINING:
+            consumers.append(
+                RfdetrTrainingQueueWorker(
+                    session_factory=resources.session_factory,
+                    dataset_storage=resources.dataset_storage,
+                    queue_backend=resources.queue_backend,
+                    worker_id=f"{resources.worker_id_prefix}-rfdetr-training",
                 )
             )
             continue

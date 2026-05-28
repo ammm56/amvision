@@ -61,7 +61,7 @@ from backend.service.infrastructure.object_store.local_dataset_storage import Lo
 
 detection_training_tasks_router = APIRouter(prefix="/models", tags=["models"])
 
-_SUPPORTED_DETECTION_TRAINING_MODEL_TYPES = ("yolox", "yolov8", "yolo11", "yolo26")
+_SUPPORTED_DETECTION_TRAINING_MODEL_TYPES = ("yolox", "yolov8", "yolo11", "yolo26", "rfdetr")
 _DETECTION_TRAINING_SERVICE_BY_MODEL_TYPE = {
     "yolox": (SqlAlchemyYoloXTrainingTaskService, YoloXTrainingTaskRequest),
     "yolov8": (SqlAlchemyYoloV8TrainingTaskService, YoloV8TrainingTaskRequest),
