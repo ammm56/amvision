@@ -31,7 +31,7 @@ YOLO_PRIMARY_PRETRAINED_CATALOG_ROOTS: dict[str, str] = {
     "yolov8": "models/pretrained/yolov8",
     "yolo11": "models/pretrained/yolo11",
     "yolo26": "models/pretrained/yolo26",
-    "rfdetr": "models/pretrained/rf-detr",
+    "rfdetr": "models/pretrained/rfdetr",
 }
 YOLO_PRIMARY_PRETRAINED_MANIFEST_FILE = "manifest.json"
 

@@ -28,4 +28,4 @@ def test_rfdetr_imports():
     from backend.service.application.runtime.rfdetr_predictor import PyTorchRfdetrRuntimeSession
     from backend.service.application.runtime.rfdetr_runtime_target import SqlAlchemyRfdetrRuntimeTargetResolver
     from backend.service.application.conversions.rfdetr_conversion_planner import DefaultRfdetrConversionPlanner
-    from backend.service.domain.models.rfdetr_model_spec import RFDETR_MODEL_SCALES
+    from backend.service.domain.models.rfdetr_model_spec import RFDETR_DETECTION_SCALES

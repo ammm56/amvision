@@ -43,6 +43,7 @@ from backend.service.domain.files.detection_model_file_types import (
     YOLOV8_DETECTION_FILE_TYPES,
     YOLOX_DETECTION_FILE_TYPES,
 )
+from backend.service.application.models.rfdetr_model_service import RFDETR_DETECTION_FILE_TYPES
 from backend.service.domain.models.model_task_types import DETECTION_TASK_TYPE
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
@@ -522,6 +523,7 @@ def _resolve_detection_file_types(model_type: str) -> DetectionModelFileTypes:
         "yolov8": YOLOV8_DETECTION_FILE_TYPES,
         "yolo11": YOLO11_DETECTION_FILE_TYPES,
         "yolo26": YOLO26_DETECTION_FILE_TYPES,
+        "rfdetr": RFDETR_DETECTION_FILE_TYPES,
     }
     file_types = file_types_map.get(model_type)
     if file_types is None:
