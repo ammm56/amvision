@@ -31,7 +31,7 @@ from backend.service.domain.models.model_task_types import (
 
 YoloModelType = Literal["yolov8", "yolo11", "yolo26"]
 
-YOLO_PRIMARY_MODEL_SCALES: Final[tuple[str, ...]] = ("n", "s", "m", "l", "x")
+YOLO_PRIMARY_MODEL_SCALES: Final[tuple[str, ...]] = ("nano", "s", "m", "l", "x")
 YOLO_PRIMARY_BUILD_FORMATS: Final[tuple[ModelBuildFormat, ...]] = (
     PYTORCH_CHECKPOINT_BUILD_FORMAT,
     ONNX_BUILD_FORMAT,

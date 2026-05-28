@@ -23,7 +23,7 @@ from backend.service.domain.models.model_task_types import (
 
 YOLOV8_CLASSIFICATION_MODEL_CONFIG: dict[str, object] = {
     "scales": {
-        "n": (0.33, 0.25, 1024),
+        "nano": (0.33, 0.25, 1024),
         "s": (0.33, 0.50, 1024),
         "m": (0.67, 0.75, 1024),
         "l": (1.00, 1.00, 1024),

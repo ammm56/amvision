@@ -17,7 +17,7 @@ YOLOV8_DETECTION_MODEL_CONFIG: dict[str, object] = {
     "reg_max": 16,
     "strides": (8, 16, 32),
     "scales": {
-        "n": (0.33, 0.25, 1024),
+        "nano": (0.33, 0.25, 1024),
         "s": (0.33, 0.50, 1024),
         "m": (0.67, 0.75, 768),
         "l": (1.00, 1.00, 512),

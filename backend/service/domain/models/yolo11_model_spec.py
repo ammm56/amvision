@@ -12,7 +12,7 @@ from backend.service.domain.models.model_task_types import ModelTaskType
 from backend.service.domain.models.yolo_model_profiles import YOLO11_MODEL_PROFILE
 
 
-Yolo11ModelScale = Literal["n", "s", "m", "l", "x"]
+Yolo11ModelScale = Literal["nano", "s", "m", "l", "x"]
 
 
 @dataclass(frozen=True)

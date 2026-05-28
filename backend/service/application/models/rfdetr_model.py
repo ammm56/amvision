@@ -385,9 +385,9 @@ def _compute_valid_ratios(masks: list[torch.Tensor]) -> torch.Tensor:
 
 _RF_SCALE = {
     "nano": {"hd": 256, "nq": 300, "ndl": 2, "san": 8, "can": 8, "gd": 1, "vd": 12, "ve": 384, "vh": 6, "is": 384, "ps": 14},
-    "small": {"hd": 256, "nq": 300, "ndl": 3, "san": 8, "can": 8, "gd": 1, "vd": 12, "ve": 384, "vh": 6, "is": 512, "ps": 14},
-    "medium": {"hd": 256, "nq": 300, "ndl": 4, "san": 8, "can": 8, "gd": 1, "vd": 12, "ve": 384, "vh": 6, "is": 576, "ps": 14},
-    "large": {"hd": 256, "nq": 300, "ndl": 4, "san": 8, "can": 8, "gd": 1, "vd": 12, "ve": 384, "vh": 6, "is": 704, "ps": 14},
+    "s": {"hd": 256, "nq": 300, "ndl": 3, "san": 8, "can": 8, "gd": 1, "vd": 12, "ve": 384, "vh": 6, "is": 512, "ps": 14},
+    "m": {"hd": 256, "nq": 300, "ndl": 4, "san": 8, "can": 8, "gd": 1, "vd": 12, "ve": 384, "vh": 6, "is": 576, "ps": 14},
+    "l": {"hd": 256, "nq": 300, "ndl": 4, "san": 8, "can": 8, "gd": 1, "vd": 12, "ve": 384, "vh": 6, "is": 704, "ps": 14},
 }
 
 
