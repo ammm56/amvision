@@ -189,20 +189,33 @@ class MSDeformAttn(nn.Module):
         if reference_points.shape[-1] == 2:
             rp = reference_points[:, :, None, :, None, :]
         else:
-            rp = reference_points[:, :, None, :, None, :2]
+            rp = reference_points[:, :, None, None, None, :2]
         sampling_locs = rp + offsets / torch.stack([spatial_shapes[:, 1], spatial_shapes[:, 0]], dim=1).float()[None, None, None, :, None, :]
-        sampling_locs = sampling_locs.reshape(B, N * nh, nl, np_val, 2)
-        attn = attn.reshape(B, N * nh, 1, nl, np_val)
         head_dim = self.d_model // nh
-        output = torch.zeros(B, N * nh, head_dim, device=value.device, dtype=value.dtype)
+        output = torch.zeros(B, N, nh, head_dim, device=value.device, dtype=value.dtype)
         for level in range(nl):
             hs = int(spatial_shapes[level, 0]); ws = int(spatial_shapes[level, 1])
             ls = int(level_start_index[level]); le = ls + hs * ws
             lv = value[:, ls:le].reshape(B, hs, ws, nh, head_dim).permute(0, 3, 4, 1, 2).contiguous()
-            g = sampling_locs[:, :, level, :, :] * 2.0 - 1.0
-            s = F.grid_sample(lv.flatten(0, 1).float(), g.flatten(0, 1).unsqueeze(2).float(), mode="bilinear", padding_mode="zeros", align_corners=False)
-            s = s.reshape(B, nh, head_dim, N, np_val).permute(0, 3, 1, 4, 2).reshape(B, N, nh, np_val, head_dim)
-            output += (s * attn[:, :, :, level, :, None]).sum(dim=3)
+            g = (
+                sampling_locs[:, :, :, level, :, :]
+                .permute(0, 2, 1, 3, 4)
+                .contiguous()
+                * 2.0
+                - 1.0
+            )
+            sampled = F.grid_sample(
+                lv.flatten(0, 1).float(),
+                g.flatten(0, 1).float(),
+                mode="bilinear",
+                padding_mode="zeros",
+                align_corners=False,
+            )
+            sampled = sampled.reshape(B, nh, head_dim, N, np_val).permute(0, 3, 1, 4, 2)
+            output = output + (
+                sampled
+                * attn[:, :, :, level, :, None]
+            ).sum(dim=3)
         return self.output_proj(output.reshape(B, N, nh * head_dim))
 
 
@@ -359,7 +372,12 @@ class RfdetrModel(nn.Module):
             B, C, H, W = pf.shape
             src.append(pf.flatten(2).permute(0, 2, 1)); msk.append(mk.flatten(1))
             y, x = torch.meshgrid(torch.arange(H, dtype=torch.float32, device=pf.device), torch.arange(W, dtype=torch.float32, device=pf.device), indexing="ij")
-            pos_parts.append(gen_sineembed(torch.stack([x, y], dim=-1).reshape(1, H * W, 2).repeat(B, 1, 1), dim=hidden_dim // 2))
+            pos_parts.append(
+                gen_sineembed(
+                    torch.stack([x, y], dim=-1).reshape(1, H * W, 2).repeat(B, 1, 1),
+                    dim=self.hidden_dim // 2,
+                )
+            )
             ss_list.append((H, W))
         memory = torch.cat(src, dim=1); mask_t = torch.cat(msk, dim=1); pos = torch.cat(pos_parts, dim=1)
         ss = torch.tensor(ss_list, device=images.device); lsi = torch.cat((ss.new_zeros((1,)), ss.prod(1).cumsum(0)[:-1]))
@@ -388,6 +406,7 @@ _RF_SCALE = {
     "s": {"hd": 256, "nq": 300, "ndl": 3, "san": 8, "can": 8, "gd": 1, "vd": 12, "ve": 384, "vh": 6, "is": 512, "ps": 14},
     "m": {"hd": 256, "nq": 300, "ndl": 4, "san": 8, "can": 8, "gd": 1, "vd": 12, "ve": 384, "vh": 6, "is": 576, "ps": 14},
     "l": {"hd": 256, "nq": 300, "ndl": 4, "san": 8, "can": 8, "gd": 1, "vd": 12, "ve": 384, "vh": 6, "is": 704, "ps": 14},
+    "x": {"hd": 256, "nq": 300, "ndl": 4, "san": 8, "can": 8, "gd": 1, "vd": 12, "ve": 384, "vh": 6, "is": 768, "ps": 14},
 }
 
 

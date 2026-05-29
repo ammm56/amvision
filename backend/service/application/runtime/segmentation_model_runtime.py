@@ -29,6 +29,7 @@ from backend.service.application.runtime.yolov8_segmentation_predictor import (
     TensorRTYoloV8SegmentationRuntimeSession,
 )
 from backend.service.application.runtime.rfdetr_segmentation_predictor import (
+    OnnxRuntimeRfdetrSegmentationRuntimeSession,
     PyTorchRfdetrSegmentationRuntimeSession,
 )
 from backend.service.application.runtime.yolox_runtime_target import RuntimeTargetSnapshot
@@ -238,6 +239,11 @@ def _load_rfdetr_segmentation_session(
     del pinned_output_buffer_enabled, pinned_output_buffer_max_bytes
     if runtime_target.runtime_backend == "pytorch":
         return PyTorchRfdetrSegmentationRuntimeSession.load(dataset_storage=dataset_storage, runtime_target=runtime_target)
+    if runtime_target.runtime_backend == "onnxruntime":
+        return OnnxRuntimeRfdetrSegmentationRuntimeSession.load(
+            dataset_storage=dataset_storage,
+            runtime_target=runtime_target,
+        )
     raise ValueError(f"unsupported rfdetr segmentation backend: {runtime_target.runtime_backend}")
 
 

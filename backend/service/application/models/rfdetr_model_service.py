@@ -10,8 +10,11 @@ from backend.service.application.models.yolox_model_service import (
 )
 from backend.service.domain.files.detection_model_file_types import YOLOV8_DETECTION_FILE_TYPES
 from backend.service.domain.models.rfdetr_model_spec import (
-    RFDETR_DEFAULT_DATASET_FORMAT,
     RFDETR_DETECTION_SCALES,
+    RFDETR_SEGMENTATION_SCALES,
+    RFDETR_DETECTION_DATASET_FORMAT,
+    RFDETR_SEGMENTATION_DATASET_FORMAT,
+    RFDETR_SUPPORTED_SCALES,
     RFDETR_SUPPORTED_BUILD_FORMATS,
     RFDETR_SUPPORTED_TASKS,
 )
@@ -27,9 +30,8 @@ class RfdetrModelSpec:
     def __init__(self) -> None:
         self.model_name = "rfdetr"
         self.supported_tasks = RFDETR_SUPPORTED_TASKS
-        self.supported_scales = RFDETR_DETECTION_SCALES
+        self.supported_scales = RFDETR_SUPPORTED_SCALES
         self.supported_build_formats = RFDETR_SUPPORTED_BUILD_FORMATS
-        self.default_dataset_format = RFDETR_DEFAULT_DATASET_FORMAT
 
     def supports_task_type(self, task_type: str) -> bool:
         return task_type in self.supported_tasks
@@ -42,7 +44,9 @@ class RfdetrModelSpec:
 
     def resolve_default_dataset_format(self, task_type: str) -> str | None:
         if task_type == "detection":
-            return self.default_dataset_format
+            return RFDETR_DETECTION_DATASET_FORMAT
+        if task_type == "segmentation":
+            return RFDETR_SEGMENTATION_DATASET_FORMAT
         return None
 
 

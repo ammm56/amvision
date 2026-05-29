@@ -36,12 +36,16 @@ from backend.service.application.models.yolo26_segmentation_training_service imp
     SqlAlchemyYolo26SegmentationTrainingTaskService,
     Yolo26SegmentationTrainingTaskRequest,
 )
+from backend.service.application.models.rfdetr_segmentation_training_service import (
+    SqlAlchemyRfdetrSegmentationTrainingTaskService,
+    RfdetrSegmentationTrainingTaskRequest,
+)
 
 _SEG_SERVICE_MAP = {
     "yolov8": (SqlAlchemyYoloV8SegmentationTrainingTaskService, YoloV8SegmentationTrainingTaskRequest),
     "yolo11": (SqlAlchemyYolo11SegmentationTrainingTaskService, Yolo11SegmentationTrainingTaskRequest),
     "yolo26": (SqlAlchemyYolo26SegmentationTrainingTaskService, Yolo26SegmentationTrainingTaskRequest),
-    "rfdetr": None,
+    "rfdetr": (SqlAlchemyRfdetrSegmentationTrainingTaskService, RfdetrSegmentationTrainingTaskRequest),
 }
 
 
@@ -50,7 +54,7 @@ segmentation_training_tasks_router = APIRouter(prefix="/models", tags=["models"]
 
 class SegmentationTrainingTaskCreateRequestBody(BaseModel):
     project_id: str = Field(description="所属 Project id")
-    model_type: str = Field(description="模型分类；支持 yolov8、yolo11、yolo26")
+    model_type: str = Field(description="模型分类；支持 yolov8、yolo11、yolo26、rfdetr")
     dataset_export_id: str | None = Field(default=None, description="DatasetExport id")
     dataset_export_manifest_key: str | None = Field(default=None, description="导出 manifest key")
     recipe_id: str = Field(default="default", description="训练 recipe id")
@@ -88,8 +92,6 @@ def create_segmentation_training_task(
     n = body.model_type.strip().lower()
     entry = _SEG_SERVICE_MAP.get(n)
     if entry is None:
-        if n == "rfdetr":
-            raise InvalidRequestError("RF-DETR segmentation 训练后端尚未接通", details={"model_type": n})
         raise InvalidRequestError("当前 segmentation 训练不支持指定模型分类", details={"model_type": n})
     svc_cls, req_cls = entry
     svc = svc_cls(session_factory=session_factory, queue_backend=queue_backend, dataset_storage=dataset_storage)

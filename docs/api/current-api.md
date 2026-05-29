@@ -126,7 +126,7 @@ WebSocket 资源流的统一消息结构、控制事件和重连规则见 [docs/
 | POST | /api/v1/models/classification/training-tasks/{task_id}/terminate | tasks:write | 请求终止一个 queued、running 或 paused 的 classification 训练任务。 |
 | POST | /api/v1/models/classification/training-tasks/{task_id}/resume | tasks:write | 把 paused 的 classification 训练任务重新入队。 |
 | DELETE | /api/v1/models/classification/training-tasks/{task_id} | tasks:write | 删除一个已经停止且允许清理的 classification 训练任务。 |
-| POST | /api/v1/models/segmentation/training-tasks | datasets:read + tasks:write | 按统一 segmentation 控制面创建 YOLOv8、YOLO11、YOLO26 分割训练任务。 |
+| POST | /api/v1/models/segmentation/training-tasks | datasets:read + tasks:write | 按统一 segmentation 控制面创建 YOLOv8、YOLO11、YOLO26、RF-DETR 分割训练任务。 |
 | GET | /api/v1/models/segmentation/training-tasks | tasks:read | 按 Project、模型分类和状态列出 segmentation 训练任务。 |
 | GET | /api/v1/models/segmentation/training-tasks/{task_id} | tasks:read | 查询单条 segmentation 训练任务详情。 |
 | POST | /api/v1/models/segmentation/training-tasks/{task_id}/save | tasks:write | 为 running 的 segmentation 训练任务登记一次手动保存请求。 |
@@ -1512,7 +1512,7 @@ classification、segmentation、pose 和 obb 四种任务类型各自提供与 d
 
 以下端点与上述 classification 端点结构和语义完全一致：
 
-- `POST/GET /api/v1/models/segmentation/training-tasks` — 分割训练任务创建与列表
+- `POST/GET /api/v1/models/segmentation/training-tasks` — 分割训练任务创建与列表；当前模型分类包括 YOLOv8、YOLO11、YOLO26、RF-DETR
 - `GET /api/v1/models/segmentation/training-tasks/{task_id}` — 分割训练任务详情
 - `POST .../segmentation/training-tasks/{task_id}/save|pause|terminate|resume` — 分割训练管理
 - `DELETE /api/v1/models/segmentation/training-tasks/{task_id}` — 删除分割训练任务

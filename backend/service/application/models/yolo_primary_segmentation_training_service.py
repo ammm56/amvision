@@ -12,6 +12,18 @@ from backend.service.application.models.yolo11_model_service import (
     SqlAlchemyYolo11ModelService,
     Yolo11TrainingOutputRegistration,
 )
+from backend.service.application.models.rfdetr_model_service import (
+    SqlAlchemyRfdetrModelService,
+    RfdetrTrainingOutputRegistration,
+)
+from backend.service.application.models.rfdetr_segmentation_training import (
+    RFDETR_SEGMENTATION_IMPLEMENTATION_MODE,
+    RfdetrSegmentationTrainingExecutionRequest,
+    RfdetrSegmentationTrainingSavePoint,
+    RfdetrSegmentationTrainingTerminatedError,
+    RfdetrSegmentationTrainingPausedError,
+    run_rfdetr_segmentation_training,
+)
 from backend.service.application.models.yolo26_model_service import (
     SqlAlchemyYolo26ModelService,
     Yolo26TrainingOutputRegistration,
@@ -53,6 +65,7 @@ _SEGMENTATION_MODEL_SERVICE_MAP: dict[str, tuple[type, type]] = {
     "yolov8": (SqlAlchemyYoloV8ModelService, YoloV8TrainingOutputRegistration),
     "yolo11": (SqlAlchemyYolo11ModelService, Yolo11TrainingOutputRegistration),
     "yolo26": (SqlAlchemyYolo26ModelService, Yolo26TrainingOutputRegistration),
+    "rfdetr": (SqlAlchemyRfdetrModelService, RfdetrTrainingOutputRegistration),
 }
 
 
@@ -288,7 +301,10 @@ class SqlAlchemyYoloPrimarySegmentationTrainingTaskService:
                 savepoint.latest_checkpoint_bytes,
             )
             validation_metric = float(
-                savepoint.validation_metrics.get("map50_95", 0.0)
+                savepoint.validation_metrics.get(
+                    savepoint.best_metric_name,
+                    savepoint.best_metric_value,
+                )
             )
             if validation_metric >= savepoint.best_metric_value:
                 self.dataset_storage.write_bytes(
@@ -296,27 +312,48 @@ class SqlAlchemyYoloPrimarySegmentationTrainingTaskService:
                     savepoint.latest_checkpoint_bytes,
                 )
 
-        request = YoloPrimarySegmentationTrainingExecutionRequest(
-            dataset_storage=self.dataset_storage,
-            manifest_payload=manifest_payload,
-            model_type=resolved_model_type,
-            model_scale=str(payload.get("model_scale") or "nano"),
-            batch_size=int(payload.get("batch_size") or 1),
-            max_epochs=int(payload.get("max_epochs") or 1),
-            evaluation_interval=int(
-                payload.get("evaluation_interval")
-                or YOLO_PRIMARY_SEGMENTATION_DEFAULT_EVALUATION_INTERVAL
-            ),
-            input_size=input_size,
-            precision=str(payload.get("precision") or "fp32"),
-            resume_checkpoint_path=resume_checkpoint_path,
-            extra_options=dict(payload.get("extra_options") or {}),
-            epoch_callback=on_epoch,
-            savepoint_callback=on_savepoint,
-        )
         try:
-            execution_result = run_yolo_primary_segmentation_training(request)
-        except YoloPrimarySegmentationTrainingTerminatedError:
+            if resolved_model_type == "rfdetr":
+                execution_result = run_rfdetr_segmentation_training(
+                    RfdetrSegmentationTrainingExecutionRequest(
+                        dataset_storage=self.dataset_storage,
+                        manifest_payload=manifest_payload,
+                        model_scale=str(payload.get("model_scale") or "nano"),
+                        batch_size=int(payload.get("batch_size") or 1),
+                        max_epochs=int(payload.get("max_epochs") or 1),
+                        input_size=input_size,
+                        precision=str(payload.get("precision") or "fp32"),
+                        resume_checkpoint_path=resume_checkpoint_path,
+                        extra_options=dict(payload.get("extra_options") or {}),
+                        epoch_callback=on_epoch,
+                        savepoint_callback=on_savepoint,
+                    )
+                )
+            else:
+                execution_result = run_yolo_primary_segmentation_training(
+                    YoloPrimarySegmentationTrainingExecutionRequest(
+                        dataset_storage=self.dataset_storage,
+                        manifest_payload=manifest_payload,
+                        model_type=resolved_model_type,
+                        model_scale=str(payload.get("model_scale") or "nano"),
+                        batch_size=int(payload.get("batch_size") or 1),
+                        max_epochs=int(payload.get("max_epochs") or 1),
+                        evaluation_interval=int(
+                            payload.get("evaluation_interval")
+                            or YOLO_PRIMARY_SEGMENTATION_DEFAULT_EVALUATION_INTERVAL
+                        ),
+                        input_size=input_size,
+                        precision=str(payload.get("precision") or "fp32"),
+                        resume_checkpoint_path=resume_checkpoint_path,
+                        extra_options=dict(payload.get("extra_options") or {}),
+                        epoch_callback=on_epoch,
+                        savepoint_callback=on_savepoint,
+                    )
+                )
+        except (
+            YoloPrimarySegmentationTrainingTerminatedError,
+            RfdetrSegmentationTrainingTerminatedError,
+        ):
             cancelled_result = self._build_interrupted_result(
                 status="cancelled",
                 task_record=task_record,
@@ -346,7 +383,10 @@ class SqlAlchemyYoloPrimarySegmentationTrainingTaskService:
                 )
             )
             return cancelled_result
-        except YoloPrimarySegmentationTrainingPausedError:
+        except (
+            YoloPrimarySegmentationTrainingPausedError,
+            RfdetrSegmentationTrainingPausedError,
+        ):
             paused_result = self._build_interrupted_result(
                 status="paused",
                 task_record=task_record,
@@ -730,7 +770,7 @@ class SqlAlchemyYoloPrimarySegmentationTrainingTaskService:
             "validation_metrics_object_key": validation_metrics_object_key,
             "summary_object_key": summary_object_key,
         }
-        return {
+        result = {
             "task_id": task_record.task_id,
             "task_type": SEGMENTATION_TASK_TYPE,
             "model_type": model_type,
@@ -751,6 +791,8 @@ class SqlAlchemyYoloPrimarySegmentationTrainingTaskService:
             "validation_metrics_payload": execution_result.validation_metrics_payload,
             "output_prefix": output_prefix,
         }
+        result["implementation_mode"] = self._resolve_implementation_mode(model_type)
+        return result
 
     def _register_training_output_model_version(
         self,
@@ -792,10 +834,17 @@ class SqlAlchemyYoloPrimarySegmentationTrainingTaskService:
                     "metrics_summary": dict(summary["metrics_summary"]),
                     "output_files": dict(summary["output_files"]),
                     "registration_kind": "best-checkpoint",
-                    "implementation_mode": YOLO_PRIMARY_SEGMENTATION_IMPLEMENTATION_MODE,
+                    "implementation_mode": self._resolve_implementation_mode(model_type),
                 },
             )
         )
+
+    def _resolve_implementation_mode(self, model_type: str) -> str:
+        """按模型分类返回训练实现标记。"""
+
+        if model_type == "rfdetr":
+            return RFDETR_SEGMENTATION_IMPLEMENTATION_MODE
+        return YOLO_PRIMARY_SEGMENTATION_IMPLEMENTATION_MODE
 
     def _build_interrupted_result(
         self,

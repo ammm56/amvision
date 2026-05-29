@@ -12,6 +12,9 @@ from backend.service.application.backends import (
 )
 from backend.service.application.errors import ServiceError
 from backend.service.application.models.rfdetr_model import build_rfdetr_model
+from backend.service.application.models.rfdetr_segmentation_model import (
+    build_rfdetr_segmentation_model,
+)
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 
 
@@ -53,11 +56,17 @@ class LocalRfdetrConversionRunner(ConversionBackend):
         if not checkpoint_key:
             raise ServiceError("RF-DETR 转换缺少 checkpoint_object_key")
 
-        target_format = metadata.get("target_format", "onnx")
+        target_formats = tuple(
+            item
+            for item in request.target_formats
+            if isinstance(item, str) and item
+        )
+        target_format = target_formats[0] if target_formats else metadata.get("target_format", "onnx")
         precision = metadata.get("precision", "fp32")
         model_scale = metadata.get("model_scale", "nano")
         num_classes = int(metadata.get("num_classes", 80))
         input_size = metadata.get("input_size", [384, 384])
+        task_type = str(metadata.get("task_type") or request.task_type or "detection").strip().lower()
 
         if isinstance(input_size, (list, tuple)) and len(input_size) == 2:
             input_h, input_w = int(input_size[0]), int(input_size[1])
@@ -73,7 +82,13 @@ class LocalRfdetrConversionRunner(ConversionBackend):
         state_dict = checkpoint.get("model_state_dict", checkpoint)
 
         # 构建模型
-        model = build_rfdetr_model(model_scale=model_scale, num_classes=num_classes)
+        if task_type == "segmentation":
+            model = build_rfdetr_segmentation_model(
+                model_scale=model_scale,
+                num_classes=num_classes,
+            )
+        else:
+            model = build_rfdetr_model(model_scale=model_scale, num_classes=num_classes)
         model.load_state_dict(state_dict, strict=False)
         model.eval()
 
@@ -91,11 +106,16 @@ class LocalRfdetrConversionRunner(ConversionBackend):
                 str(onnx_path),
                 opset_version=17,
                 input_names=["image"],
-                output_names=["pred_logits", "pred_boxes"],
+                output_names=(
+                    ["pred_logits", "pred_boxes", "pred_masks"]
+                    if task_type == "segmentation"
+                    else ["pred_logits", "pred_boxes"]
+                ),
                 dynamic_axes={
                     "image": {0: "batch"},
                     "pred_logits": {0: "batch"},
                     "pred_boxes": {0: "batch"},
+                    **({"pred_masks": {0: "batch"}} if task_type == "segmentation" else {}),
                 },
             )
 
@@ -109,6 +129,7 @@ class LocalRfdetrConversionRunner(ConversionBackend):
                     "model_scale": model_scale,
                     "num_classes": num_classes,
                     "input_size": [input_h, input_w],
+                    "task_type": task_type,
                 },
             ))
         else:
@@ -119,6 +140,7 @@ class LocalRfdetrConversionRunner(ConversionBackend):
         report = {
             "conversion_task_id": request.conversion_task_id,
             "model_type": "rfdetr",
+            "task_type": task_type,
             "model_scale": model_scale,
             "num_classes": num_classes,
             "input_size": [input_h, input_w],

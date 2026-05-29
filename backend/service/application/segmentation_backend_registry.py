@@ -85,9 +85,14 @@ _SEGMENTATION_BACKEND_REGISTRATIONS: Final[dict[str, SegmentationBackendRegistra
     "rfdetr": SegmentationBackendRegistration(
         model_type="rfdetr",
         display_name="RF-DETR Segmentation",
-        status=SEGMENTATION_BACKEND_STATUS_REGISTERED,
-        features=SegmentationBackendFeatureSet(),
-        notes="只保留模型分类预登记；训练、转换、推理与 deployment 还未接通正式 project-native 实现。",
+        status=SEGMENTATION_BACKEND_STATUS_ACTIVE,
+        features=SegmentationBackendFeatureSet(
+            training=True,
+            conversion=True,
+            inference=True,
+            deployment=True,
+        ),
+        notes="project-native 模型、训练、ONNX 转换、PyTorch/ONNXRuntime 推理与 deployment 已接通。",
     ),
 }
 

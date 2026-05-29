@@ -19,6 +19,7 @@ from backend.service.application.runtime.segmentation_runtime_contracts import (
 )
 from backend.service.application.runtime.yolo11_runtime_target import SqlAlchemyYolo11RuntimeTargetResolver
 from backend.service.application.runtime.yolo26_runtime_target import SqlAlchemyYolo26RuntimeTargetResolver
+from backend.service.application.runtime.rfdetr_runtime_target import SqlAlchemyRfdetrRuntimeTargetResolver
 from backend.service.application.runtime.yolov8_runtime_target import SqlAlchemyYoloV8RuntimeTargetResolver
 from backend.service.application.runtime.yolox_runtime_target import (
     RuntimeTargetResolveRequest,
@@ -36,7 +37,7 @@ _VALIDATION_RUNTIME_BACKEND = "pytorch"
 _DEFAULT_SCORE_THRESHOLD = 0.3
 _DEFAULT_MASK_THRESHOLD = 0.5
 _DEFAULT_INPUT_SIZE = (640, 640)
-_SUPPORTED_SEGMENTATION_MODEL_TYPES = ("yolov8", "yolo11", "yolo26")
+_SUPPORTED_SEGMENTATION_MODEL_TYPES = ("yolov8", "yolo11", "yolo26", "rfdetr")
 
 
 @dataclass(frozen=True)
@@ -302,7 +303,12 @@ class LocalSegmentationValidationSessionService:
 
 
 def _build_runtime_target_resolver(*, model_type: str, session_factory: SessionFactory, dataset_storage: LocalDatasetStorage):
-    m = {"yolov8": SqlAlchemyYoloV8RuntimeTargetResolver, "yolo11": SqlAlchemyYolo11RuntimeTargetResolver, "yolo26": SqlAlchemyYolo26RuntimeTargetResolver}
+    m = {
+        "yolov8": SqlAlchemyYoloV8RuntimeTargetResolver,
+        "yolo11": SqlAlchemyYolo11RuntimeTargetResolver,
+        "yolo26": SqlAlchemyYolo26RuntimeTargetResolver,
+        "rfdetr": SqlAlchemyRfdetrRuntimeTargetResolver,
+    }
     f = m.get(model_type)
     if f is None:
         raise InvalidRequestError("当前 segmentation validation session 不支持指定模型分类", details={"model_type": model_type})

@@ -23,13 +23,52 @@ def test_rfdetr_backend_registration():
     assert reg.features.inference is True
     assert reg.features.deployment is True
 
+
+def test_rfdetr_segmentation_backend_registration():
+    """验证 RF-DETR segmentation 已登记为正式后端。"""
+
+    from backend.service.application.segmentation_backend_registry import (
+        get_segmentation_backend_registration,
+    )
+
+    reg = get_segmentation_backend_registration("rfdetr")
+    assert reg is not None
+    assert reg.display_name == "RF-DETR Segmentation"
+    assert reg.features.training is True
+    assert reg.features.conversion is True
+    assert reg.features.inference is True
+    assert reg.features.deployment is True
+
+
+def test_rfdetr_segmentation_model_can_forward():
+    """验证 RF-DETR segmentation 模型可以构建并完成一次前向。"""
+
+    from backend.service.application.models.rfdetr_segmentation_model import (
+        build_rfdetr_segmentation_model,
+    )
+
+    model = build_rfdetr_segmentation_model(model_scale="nano", num_classes=4)
+    model.eval()
+    with torch.no_grad():
+        outputs = model(torch.randn(1, 3, 56, 56))
+    assert outputs["pred_logits"].shape[0] == 1
+    assert outputs["pred_boxes"].shape[0] == 1
+    assert outputs["pred_masks"].shape[0] == 1
+
+
 def test_rfdetr_imports():
     """验证所有 RF-DETR 模块可以被导入。"""
     from backend.service.application.models.rfdetr_model import RfdetrModel, RfdetrPostProcess
     from backend.service.application.models.rfdetr_model_service import SqlAlchemyRfdetrModelService
+    from backend.service.application.models.rfdetr_segmentation_model import RfdetrSegmentationModel
+    from backend.service.application.models.rfdetr_segmentation_training import run_rfdetr_segmentation_training
+    from backend.service.application.models.rfdetr_segmentation_training_service import SqlAlchemyRfdetrSegmentationTrainingTaskService
     from backend.service.application.models.rfdetr_training_service import SqlAlchemyRfdetrTrainingTaskService
     from backend.service.application.conversions.rfdetr_conversion_task_service import SqlAlchemyRfdetrConversionTaskService
     from backend.service.application.runtime.rfdetr_predictor import PyTorchRfdetrRuntimeSession
+    from backend.service.application.runtime.rfdetr_segmentation_predictor import (
+        PyTorchRfdetrSegmentationRuntimeSession,
+    )
     from backend.service.application.runtime.rfdetr_runtime_target import SqlAlchemyRfdetrRuntimeTargetResolver
     from backend.service.application.conversions.rfdetr_conversion_planner import DefaultRfdetrConversionPlanner
     from backend.service.domain.models.rfdetr_model_spec import RFDETR_DETECTION_SCALES

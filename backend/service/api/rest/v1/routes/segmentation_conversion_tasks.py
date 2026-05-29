@@ -13,6 +13,7 @@ from backend.service.application.errors import InvalidRequestError, PermissionDe
 from backend.service.application.conversions.yolov8_conversion_task_service import SqlAlchemyYoloV8ConversionTaskService, YoloV8ConversionTaskRequest, YOLOV8_CONVERSION_QUEUE_NAME
 from backend.service.application.conversions.yolo11_conversion_task_service import SqlAlchemyYolo11ConversionTaskService, Yolo11ConversionTaskRequest, YOLO11_CONVERSION_QUEUE_NAME
 from backend.service.application.conversions.yolo26_conversion_task_service import SqlAlchemyYolo26ConversionTaskService, Yolo26ConversionTaskRequest, YOLO26_CONVERSION_QUEUE_NAME
+from backend.service.application.conversions.rfdetr_conversion_task_service import SqlAlchemyRfdetrConversionTaskService, RfdetrConversionTaskRequest, RFDETR_CONVERSION_QUEUE_NAME
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 
@@ -22,6 +23,7 @@ _CONVERSION_SERVICE_MAP = {
     "yolov8": (SqlAlchemyYoloV8ConversionTaskService, YoloV8ConversionTaskRequest, YOLOV8_CONVERSION_QUEUE_NAME),
     "yolo11": (SqlAlchemyYolo11ConversionTaskService, Yolo11ConversionTaskRequest, YOLO11_CONVERSION_QUEUE_NAME),
     "yolo26": (SqlAlchemyYolo26ConversionTaskService, Yolo26ConversionTaskRequest, YOLO26_CONVERSION_QUEUE_NAME),
+    "rfdetr": (SqlAlchemyRfdetrConversionTaskService, RfdetrConversionTaskRequest, RFDETR_CONVERSION_QUEUE_NAME),
 }
 
 class SegmentationConversionTaskCreateRequestBody(BaseModel):
@@ -51,5 +53,35 @@ def create_segmentation_conversion_task(
         raise PermissionDeniedError("无权访问")
     svc_cls, req_cls, queue_name = entry
     svc = svc_cls(session_factory=sf, queue_backend=qb, dataset_storage=ds)
-    r = svc.submit_conversion_task(req_cls(project_id=body.project_id, model_type=mt, task_type="segmentation", model_version_id=body.model_version_id, model_build_id=body.model_build_id, target_format=body.target_format, extra_options=dict(body.extra_options)), created_by=principal.principal_id)
-    return SegmentationConversionTaskSubmissionResponse(task_id=r["task_id"], queue_name=queue_name, queue_task_id=r["queue_task_id"])
+    source_model_version_id = body.model_version_id
+    if source_model_version_id is None and body.model_build_id is not None:
+        raise InvalidRequestError(
+            "当前 segmentation 转换只支持从 ModelVersion 发起",
+            details={"model_type": mt, "model_build_id": body.model_build_id},
+        )
+    if source_model_version_id is None:
+        raise InvalidRequestError("model_version_id 不能为空")
+    if mt == "rfdetr":
+        request = req_cls(
+            project_id=body.project_id,
+            source_model_version_id=source_model_version_id,
+            target_formats=(body.target_format,),
+            extra_options=dict(body.extra_options),
+            runtime_profile_id=None,
+            model_type=mt,
+            task_type="segmentation",
+        )
+    else:
+        request = req_cls(
+            project_id=body.project_id,
+            source_model_version_id=source_model_version_id,
+            target_formats=(body.target_format,),
+            extra_options=dict(body.extra_options),
+            runtime_profile_id=None,
+        )
+    response = svc.submit_conversion_task(request, created_by=principal.principal_id)
+    return SegmentationConversionTaskSubmissionResponse(
+        task_id=response.task_id,
+        queue_name=queue_name,
+        queue_task_id=response.queue_task_id,
+    )
