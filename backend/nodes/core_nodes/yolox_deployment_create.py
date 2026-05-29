@@ -1,4 +1,4 @@
-"""YOLOX deployment create service node。"""
+"""deployment create service node。"""
 
 from __future__ import annotations
 
@@ -9,6 +9,9 @@ from backend.contracts.workflows.workflow_graph import (
     NodePortDefinition,
 )
 from backend.nodes.core_nodes._base import CoreNodeSpec
+from backend.nodes.core_nodes._platform_service_node_support import (
+    get_optional_platform_model_type,
+)
 from backend.nodes.core_nodes._service_node_support import (
     build_response_body_output,
     get_optional_bool_parameter,
@@ -20,15 +23,15 @@ from backend.nodes.core_nodes._service_node_support import (
     require_workflow_service_node_runtime,
     resolve_created_by,
 )
-from backend.service.application.deployments.yolox_deployment_service import (
-    YoloXDeploymentInstanceCreateRequest,
+from backend.service.application.deployments.detection_deployment_service import (
+    DetectionDeploymentInstanceCreateRequest,
 )
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 from backend.service.application.workflows.execution_cleanup import register_deployment_cleanup
 
 
 def _yolox_deployment_create_handler(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
-    """调用现有 DeploymentInstance 创建服务。
+    """调用正式 detection DeploymentInstance 创建服务。
 
     参数：
     - request：当前 workflow 节点执行请求。
@@ -40,8 +43,13 @@ def _yolox_deployment_create_handler(request: WorkflowNodeExecutionRequest) -> d
     request = overlay_parameters_from_object_input(request)
     runtime_context = require_workflow_service_node_runtime(request)
     view = runtime_context.build_deployment_service().create_deployment_instance(
-        YoloXDeploymentInstanceCreateRequest(
+        DetectionDeploymentInstanceCreateRequest(
             project_id=require_str_parameter(request, "project_id"),
+            model_type=get_optional_platform_model_type(
+                request,
+                supported_model_types=("yolox", "yolov8", "yolo11", "yolo26", "rfdetr"),
+            )
+            or "yolox",
             model_version_id=get_optional_str_parameter(request, "model_version_id"),
             model_build_id=get_optional_str_parameter(request, "model_build_id"),
             runtime_profile_id=get_optional_str_parameter(request, "runtime_profile_id"),
@@ -110,9 +118,9 @@ def _register_created_deployment_for_cleanup(
 CORE_NODE_SPEC = CoreNodeSpec(
     node_definition=NodeDefinition(
         node_type_id="core.service.yolox-deployment.create",
-        display_name="Create YOLOX Deployment",
+        display_name="Create Deployment",
         category="service.model.deployment.resource",
-        description="按现有 deployment create API 的公开参数创建一个 DeploymentInstance 资源。",
+        description="兼容旧 YOLOX 节点名，按正式 detection deployment API 参数创建 DeploymentInstance。",
         implementation_kind=NODE_IMPLEMENTATION_CORE,
         runtime_kind=NODE_RUNTIME_PYTHON_CALLABLE,
         input_ports=(
@@ -133,6 +141,10 @@ CORE_NODE_SPEC = CoreNodeSpec(
         parameter_schema={
             "type": "object",
             "properties": {
+                "model_type": {
+                    "type": "string",
+                    "enum": ["yolox", "yolov8", "yolo11", "yolo26", "rfdetr"],
+                },
                 "project_id": {"type": "string"},
                 "model_version_id": {"type": "string"},
                 "model_build_id": {"type": "string"},

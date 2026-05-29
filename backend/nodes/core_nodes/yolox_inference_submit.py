@@ -1,4 +1,4 @@
-"""YOLOX inference task service node。"""
+"""inference task service node。"""
 
 from __future__ import annotations
 
@@ -9,6 +9,9 @@ from backend.contracts.workflows.workflow_graph import (
     NodePortDefinition,
 )
 from backend.nodes.core_nodes._base import CoreNodeSpec
+from backend.nodes.core_nodes._platform_service_node_support import (
+    get_optional_platform_model_type,
+)
 from backend.nodes.core_nodes._service_node_support import (
     build_response_body_output,
     ensure_running_deployment_process,
@@ -23,14 +26,14 @@ from backend.nodes.core_nodes._service_node_support import (
     resolve_display_name,
 )
 from backend.service.application.errors import InvalidRequestError
-from backend.service.application.models.yolox_inference_task_service import (
-    YoloXInferenceTaskRequest,
+from backend.service.application.models.detection_inference_task_service import (
+    DetectionInferenceTaskRequest,
 )
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 
 
 def _yolox_inference_submit_handler(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
-    """调用现有 YOLOX inference task 提交服务。"""
+    """调用正式 detection inference task 提交服务。"""
 
     runtime_context = require_workflow_service_node_runtime(request)
     deployment_service = runtime_context.build_deployment_service()
@@ -65,9 +68,13 @@ def _yolox_inference_submit_handler(request: WorkflowNodeExecutionRequest) -> di
         input_source_kind = "input_file_id"
 
     submission = runtime_context.build_inference_task_service().submit_inference_task(
-        YoloXInferenceTaskRequest(
+        DetectionInferenceTaskRequest(
             project_id=project_id,
             deployment_instance_id=deployment_instance_id,
+            model_type=get_optional_platform_model_type(
+                request,
+                supported_model_types=("yolox", "yolov8", "yolo11", "yolo26", "rfdetr"),
+            ),
             input_file_id=input_file_id,
             input_uri=normalized_input_uri,
             input_source_kind=input_source_kind,
@@ -100,9 +107,9 @@ def _yolox_inference_submit_handler(request: WorkflowNodeExecutionRequest) -> di
 CORE_NODE_SPEC = CoreNodeSpec(
     node_definition=NodeDefinition(
         node_type_id="core.service.yolox-inference.submit",
-        display_name="Submit YOLOX Inference",
+        display_name="Submit Inference",
         category="service.model.inference",
-        description="按现有 inference task API 的公开参数直接提交一个正式推理任务。",
+        description="兼容旧 YOLOX 节点名，按正式 detection inference API 的公开参数提交推理任务。",
         implementation_kind=NODE_IMPLEMENTATION_CORE,
         runtime_kind=NODE_RUNTIME_PYTHON_CALLABLE,
         input_ports=(
@@ -125,6 +132,10 @@ CORE_NODE_SPEC = CoreNodeSpec(
             "properties": {
                 "project_id": {"type": "string"},
                 "deployment_instance_id": {"type": "string"},
+                "model_type": {
+                    "type": "string",
+                    "enum": ["yolox", "yolov8", "yolo11", "yolo26", "rfdetr"],
+                },
                 "input_file_id": {"type": "string"},
                 "input_uri": {"type": "string"},
                 "score_threshold": {"type": "number", "minimum": 0, "maximum": 1},

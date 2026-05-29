@@ -1,4 +1,4 @@
-"""YOLOX conversion task service node。"""
+"""转换任务提交 service node。"""
 
 from __future__ import annotations
 
@@ -9,6 +9,14 @@ from backend.contracts.workflows.workflow_graph import (
     NodePortDefinition,
 )
 from backend.nodes.core_nodes._base import CoreNodeSpec
+from backend.nodes.core_nodes._platform_service_node_support import (
+    WORKFLOW_SERVICE_TASK_TYPES,
+    get_optional_platform_model_type,
+    get_optional_platform_task_type,
+    resolve_platform_model_type,
+    resolve_platform_task_type,
+    should_use_platform_service_routing,
+)
 from backend.nodes.core_nodes._service_node_support import (
     build_response_body_output,
     get_optional_dict_parameter,
@@ -20,15 +28,19 @@ from backend.nodes.core_nodes._service_node_support import (
     resolve_created_by,
     resolve_display_name,
 )
-from backend.service.application.errors import InvalidRequestError
+from backend.service.application.conversions.yolo_primary_conversion_task_service import (
+    YoloPrimaryConversionTaskRequest,
+)
 from backend.service.application.conversions.yolox_conversion_task_service import (
     YoloXConversionTaskRequest,
 )
+from backend.service.application.errors import InvalidRequestError
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
+from backend.service.domain.models.model_task_types import DETECTION_TASK_TYPE
 
 
 def _yolox_conversion_submit_handler(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
-    """调用现有 YOLOX conversion 提交服务。"""
+    """调用转换任务 service，兼容旧 YOLOX 节点名并支持显式平台路由。"""
 
     request = overlay_parameters_from_object_input(request)
     runtime_context = require_workflow_service_node_runtime(request)
@@ -38,8 +50,48 @@ def _yolox_conversion_submit_handler(request: WorkflowNodeExecutionRequest) -> d
             "target_formats 至少需要一个目标格式",
             details={"node_id": request.node_id, "parameter": "target_formats"},
         )
-    submission = runtime_context.build_conversion_task_service().submit_conversion_task(
-        YoloXConversionTaskRequest(
+
+    requested_task_type = get_optional_platform_task_type(request)
+    requested_model_type = get_optional_platform_model_type(
+        request,
+        supported_model_types=("yolox", "yolov8", "yolo11", "yolo26"),
+    )
+    use_platform_routing = should_use_platform_service_routing(
+        task_type=requested_task_type,
+        model_type=requested_model_type,
+    )
+    if not use_platform_routing:
+        submission = runtime_context.build_conversion_task_service().submit_conversion_task(
+            YoloXConversionTaskRequest(
+                project_id=require_str_parameter(request, "project_id"),
+                source_model_version_id=require_str_parameter(request, "source_model_version_id"),
+                target_formats=target_formats,
+                runtime_profile_id=get_optional_str_parameter(request, "runtime_profile_id"),
+                extra_options=get_optional_dict_parameter(request, "extra_options"),
+            ),
+            created_by=resolve_created_by(request),
+            display_name=resolve_display_name(request),
+        )
+        return build_response_body_output(submission)
+
+    task_type = resolve_platform_task_type(
+        requested_task_type,
+        default_task_type=DETECTION_TASK_TYPE,
+    )
+    model_type = resolve_platform_model_type(
+        requested_model_type,
+        task_type=task_type,
+    )
+    request_cls = (
+        YoloXConversionTaskRequest
+        if task_type == DETECTION_TASK_TYPE and model_type == "yolox"
+        else YoloPrimaryConversionTaskRequest
+    )
+    submission = runtime_context.build_conversion_task_service(
+        task_type=task_type,
+        model_type=model_type,
+    ).submit_conversion_task(
+        request_cls(
             project_id=require_str_parameter(request, "project_id"),
             source_model_version_id=require_str_parameter(request, "source_model_version_id"),
             target_formats=target_formats,
@@ -55,9 +107,9 @@ def _yolox_conversion_submit_handler(request: WorkflowNodeExecutionRequest) -> d
 CORE_NODE_SPEC = CoreNodeSpec(
     node_definition=NodeDefinition(
         node_type_id="core.service.yolox-conversion.submit",
-        display_name="Submit YOLOX Conversion",
+        display_name="Submit Conversion",
         category="service.model.conversion",
-        description="按现有 conversion API 的公开参数直接提交一个转换任务。",
+        description="兼容旧 YOLOX 节点名，同时支持按 task_type 和 model_type 提交正式转换任务。",
         implementation_kind=NODE_IMPLEMENTATION_CORE,
         runtime_kind=NODE_RUNTIME_PYTHON_CALLABLE,
         input_ports=(
@@ -78,6 +130,11 @@ CORE_NODE_SPEC = CoreNodeSpec(
         parameter_schema={
             "type": "object",
             "properties": {
+                "task_type": {"type": "string", "enum": list(WORKFLOW_SERVICE_TASK_TYPES)},
+                "model_type": {
+                    "type": "string",
+                    "enum": ["yolox", "yolov8", "yolo11", "yolo26"],
+                },
                 "project_id": {"type": "string"},
                 "source_model_version_id": {"type": "string"},
                 "target_formats": {
