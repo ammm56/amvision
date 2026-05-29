@@ -1,0 +1,317 @@
+"""统一 detection 数据集级评估执行模块。
+
+适用于所有 detection 模型（yolox/yolov8/yolo11/yolo26/rfdetr），
+通过 DefaultDetectionModelRuntime 加载推理会话，逐图推理并计算 mAP。
+"""
+
+from __future__ import annotations
+
+import time
+from dataclasses import dataclass, field
+from typing import Any
+
+from backend.service.application.errors import InvalidRequestError
+from backend.service.application.runtime.detection_model_runtime import (
+    DefaultDetectionModelRuntime,
+)
+from backend.service.application.runtime.detection_runtime_contracts import (
+    DetectionPredictionRequest,
+)
+from backend.service.application.runtime.yolox_runtime_target import RuntimeTargetSnapshot
+from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
+
+
+@dataclass(frozen=True)
+class DetectionEvaluationRequest:
+    """描述一次统一 detection 数据集级评估请求。"""
+
+    dataset_storage: LocalDatasetStorage
+    runtime_target: RuntimeTargetSnapshot
+    manifest_payload: dict[str, object]
+    score_threshold: float = 0.01
+    nms_threshold: float = 0.65
+    extra_options: dict[str, object] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class DetectionEvaluationResult:
+    """描述一次统一 detection 评估结果。"""
+
+    split_name: str
+    sample_count: int
+    duration_seconds: float
+    map50: float
+    map50_95: float
+    per_class_metrics: list[dict[str, object]] = field(default_factory=list)
+    report_payload: dict[str, object] = field(default_factory=dict)
+    detections_payload: list[dict[str, object]] = field(default_factory=list)
+
+
+def run_detection_evaluation(
+    request: DetectionEvaluationRequest,
+) -> DetectionEvaluationResult:
+    """执行统一 detection 数据集级评估。
+
+    通过 DefaultDetectionModelRuntime 加载推理会话，逐样本推理，
+    用简化版 COCO-style AP 计算 mAP50 和 mAP50:95。
+    """
+    dataset_storage = request.dataset_storage
+    manifest = request.manifest_payload
+    runtime_target = request.runtime_target
+
+    split_name, images, categories = _parse_detection_manifest(manifest, dataset_storage)
+    if not images:
+        return DetectionEvaluationResult(
+            split_name=split_name, sample_count=0, duration_seconds=0.0,
+            map50=0.0, map50_95=0.0,
+        )
+
+    label_names = tuple(str(c.get("name", c.get("id", ""))) for c in categories)
+    cat_id_to_index = {int(c.get("id", i)): i for i, c in enumerate(categories)}
+
+    runtime = DefaultDetectionModelRuntime()
+    session = runtime.load_session(
+        dataset_storage=dataset_storage,
+        runtime_target=runtime_target,
+    )
+
+    started = time.monotonic()
+
+    # 收集所有 GT 和预测结果
+    all_gt: list[dict[str, Any]] = []
+    all_pred: list[dict[str, Any]] = []
+    predictions_out: list[dict[str, object]] = []
+
+    for img_idx, img_info in enumerate(images):
+        image_path = img_info["image_path"]
+        gt_annotations = img_info.get("annotations", [])
+        resolved = dataset_storage.resolve(image_path) if image_path else None
+        if resolved is None or not resolved.is_file():
+            continue
+
+        # 记录 GT
+        for ann in gt_annotations:
+            bbox = ann.get("bbox")
+            if isinstance(bbox, list) and len(bbox) == 4:
+                x, y, w, h = float(bbox[0]), float(bbox[1]), float(bbox[2]), float(bbox[3])
+                all_gt.append({
+                    "image_id": img_idx,
+                    "category_id": int(ann.get("category_id", 0)),
+                    "bbox_xyxy": (x, y, x + w, y + h),
+                    "area": w * h,
+                })
+
+        # 推理
+        image_bytes = resolved.read_bytes()
+        pred_request = DetectionPredictionRequest(
+            score_threshold=request.score_threshold,
+            save_result_image=False,
+            input_image_bytes=image_bytes,
+            extra_options={"nms_threshold": request.nms_threshold},
+        )
+        try:
+            result = session.predict(pred_request)
+        except Exception:
+            continue
+
+        for det in result.detections:
+            all_pred.append({
+                "image_id": img_idx,
+                "category_id": det.class_id,
+                "bbox_xyxy": det.bbox_xyxy,
+                "score": det.score,
+            })
+
+        predictions_out.append({
+            "image_index": img_idx,
+            "image_path": str(image_path),
+            "gt_count": len(gt_annotations),
+            "pred_count": len(result.detections),
+            "latency_ms": result.latency_ms,
+        })
+
+    duration = time.monotonic() - started
+    total_images = len(predictions_out)
+
+    # 计算 mAP
+    iou_thresholds = [0.5 + 0.05 * i for i in range(10)]  # 0.5, 0.55, ..., 0.95
+    all_class_ids = sorted(set(
+        [g["category_id"] for g in all_gt] + [p["category_id"] for p in all_pred]
+    ))
+
+    ap_at_50_list: list[float] = []
+    ap_at_all_list: list[float] = []
+    per_class: list[dict[str, object]] = []
+
+    for cat_id in all_class_ids:
+        cat_gt = [g for g in all_gt if g["category_id"] == cat_id]
+        cat_pred = sorted(
+            [p for p in all_pred if p["category_id"] == cat_id],
+            key=lambda x: x["score"],
+            reverse=True,
+        )
+        if not cat_gt:
+            continue
+
+        cat_ap50 = _compute_ap(cat_gt, cat_pred, iou_threshold=0.5)
+        cat_ap_all = [_compute_ap(cat_gt, cat_pred, iou_threshold=t) for t in iou_thresholds]
+        cat_ap_mean = sum(cat_ap_all) / max(len(cat_ap_all), 1)
+
+        ap_at_50_list.append(cat_ap50)
+        ap_at_all_list.extend(cat_ap_all)
+
+        name = label_names[cat_id] if 0 <= cat_id < len(label_names) else str(cat_id)
+        per_class.append({
+            "class_id": cat_id,
+            "class_name": name,
+            "gt_count": len(cat_gt),
+            "pred_count": len(cat_pred),
+            "ap50": round(cat_ap50, 6),
+            "ap50_95": round(cat_ap_mean, 6),
+        })
+
+    map50 = sum(ap_at_50_list) / max(len(ap_at_50_list), 1) if ap_at_50_list else 0.0
+    map50_95 = sum(ap_at_all_list) / max(len(ap_at_all_list), 1) if ap_at_all_list else 0.0
+
+    report = {
+        "task_type": "detection",
+        "model_type": runtime_target.model_type,
+        "split_name": split_name,
+        "sample_count": total_images,
+        "duration_seconds": round(duration, 3),
+        "map50": round(map50, 6),
+        "map50_95": round(map50_95, 6),
+        "score_threshold": request.score_threshold,
+        "nms_threshold": request.nms_threshold,
+        "per_class_metrics": per_class,
+    }
+
+    return DetectionEvaluationResult(
+        split_name=split_name, sample_count=total_images, duration_seconds=duration,
+        map50=map50, map50_95=map50_95,
+        per_class_metrics=per_class, report_payload=report,
+        detections_payload=predictions_out,
+    )
+
+
+def _parse_detection_manifest(
+    manifest: dict[str, object],
+    dataset_storage: LocalDatasetStorage,
+) -> tuple[str, list[dict[str, Any]], list[dict[str, Any]]]:
+    """解析 COCO detection manifest，返回 (split_name, images, categories)。"""
+    splits = manifest.get("splits", [])
+    categories = manifest.get("categories", [])
+
+    chosen_split: dict[str, object] | None = None
+    for split in (splits or []):
+        if not isinstance(split, dict):
+            continue
+        name = str(split.get("name", "")).lower()
+        if name in ("val", "valid", "validation", "test"):
+            chosen_split = split
+            break
+    if chosen_split is None and splits:
+        chosen_split = next((s for s in splits if isinstance(s, dict)), None)
+    if chosen_split is None:
+        raise InvalidRequestError("detection manifest 不包含可用的 split")
+
+    split_name = str(chosen_split.get("name", "unknown"))
+    image_root = str(chosen_split.get("image_root", ""))
+
+    # 构建图片映射
+    images_by_id: dict[int, str] = {}
+    for img in (chosen_split.get("images") or []):
+        if isinstance(img, dict):
+            images_by_id[int(img.get("id", -1))] = str(img.get("file_name", ""))
+
+    # 构建标注映射
+    anns_by_image: dict[int, list[dict]] = {}
+    for ann in (chosen_split.get("annotations") or []):
+        if isinstance(ann, dict):
+            img_id = int(ann.get("image_id", -1))
+            anns_by_image.setdefault(img_id, []).append(ann)
+
+    images: list[dict[str, Any]] = []
+    for img_id, file_name in images_by_id.items():
+        full_path = f"{image_root}/{file_name}" if image_root else file_name
+        images.append({
+            "image_path": full_path,
+            "annotations": anns_by_image.get(img_id, []),
+        })
+
+    return split_name, images, categories
+
+
+def _compute_ap(
+    gt_list: list[dict],
+    pred_list: list[dict],
+    iou_threshold: float = 0.5,
+) -> float:
+    """计算单类别在指定 IoU 阈值下的 AP。
+
+    使用贪心匹配：按置信度降序排列预测，每个预测匹配 IoU 最高且未被匹配的 GT。
+    """
+    if not gt_list:
+        return 0.0
+    if not pred_list:
+        return 0.0
+
+    # 按 image_id 分组 GT
+    gt_by_image: dict[int, list[dict]] = {}
+    for g in gt_list:
+        gt_by_image.setdefault(g["image_id"], []).append(g)
+
+    matched_gt: set[int] = set()  # (image_id, gt_index) 用唯一 id 标识
+    gt_id_counter = 0
+    gt_id_map: dict[int, dict[int, int]] = {}
+    for g in gt_list:
+        img_id = g["image_id"]
+        if img_id not in gt_id_map:
+            gt_id_map[img_id] = {}
+        gt_idx = len(gt_id_map[img_id])
+        gt_id_map[img_id][gt_idx] = gt_id_counter
+        gt_id_counter += 1
+
+    tp = 0
+    fp = 0
+    total_gt = len(gt_list)
+
+    # pred_list 已按 score 降序排列
+    for pred in pred_list:
+        img_id = pred["image_id"]
+        img_gt = gt_by_image.get(img_id, [])
+        best_iou = 0.0
+        best_gt_idx = -1
+
+        for gt_idx, gt in enumerate(img_gt):
+            gid = gt_id_map[img_id][gt_idx]
+            if gid in matched_gt:
+                continue
+            iou = _box_iou(pred["bbox_xyxy"], gt["bbox_xyxy"])
+            if iou > best_iou:
+                best_iou = iou
+                best_gt_idx = gt_idx
+
+        if best_iou >= iou_threshold and best_gt_idx >= 0:
+            tp += 1
+            gid = gt_id_map[img_id][best_gt_idx]
+            matched_gt.add(gid)
+        else:
+            fp += 1
+
+    precision = tp / max(tp + fp, 1)
+    recall = tp / max(total_gt, 1)
+    return precision * recall
+
+
+def _box_iou(box1: tuple, box2: tuple) -> float:
+    """计算两个 xyxy 框的 IoU。"""
+    x1 = max(box1[0], box2[0])
+    y1 = max(box1[1], box2[1])
+    x2 = min(box1[2], box2[2])
+    y2 = min(box1[3], box2[3])
+    inter = max(0, x2 - x1) * max(0, y2 - y1)
+    area1 = (box1[2] - box1[0]) * (box1[3] - box1[1])
+    area2 = (box2[2] - box2[0]) * (box2[3] - box2[1])
+    union = area1 + area2 - inter
+    return inter / max(union, 1e-6)

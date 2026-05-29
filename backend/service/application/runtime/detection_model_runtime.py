@@ -34,6 +34,8 @@ from backend.service.application.runtime.yolox_predictor import (
 from backend.service.application.runtime.rfdetr_predictor import (
     PyTorchRfdetrRuntimeSession,
     OnnxRuntimeRfdetrRuntimeSession,
+    OpenVINORfdetrRuntimeSession,
+    TensorRTRfdetrRuntimeSession,
 )
 from backend.service.application.runtime.yolov8_predictor import (
     OpenVINOYoloV8RuntimeSession,
@@ -302,6 +304,10 @@ def _load_rfdetr_detection_session(
         return PyTorchRfdetrRuntimeSession.load(dataset_storage=dataset_storage, runtime_target=runtime_target)
     if runtime_target.runtime_backend == "onnxruntime":
         return OnnxRuntimeRfdetrRuntimeSession.load(dataset_storage=dataset_storage, runtime_target=runtime_target)
+    if runtime_target.runtime_backend == "openvino":
+        return OpenVINORfdetrRuntimeSession.load(dataset_storage=dataset_storage, runtime_target=runtime_target)
+    if runtime_target.runtime_backend == "tensorrt":
+        return TensorRTRfdetrRuntimeSession.load(dataset_storage=dataset_storage, runtime_target=runtime_target)
     raise ValueError(f"unsupported rfdetr runtime backend: {runtime_target.runtime_backend}")
 
 

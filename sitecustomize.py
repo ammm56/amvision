@@ -1,13 +1,14 @@
-"""修正 Windows 开发环境中的 MKL 与 PyTorch OpenMP 运行时冲突。
+"""Windows 开发环境运行时修正。
 
-本模块会在 Python 启动时被 site 自动导入。
-当前 conda 环境同时提供 MKL 的 libiomp5md.dll，torch 也自带一份
-libiomp5md.dll；在 Windows 下二者可能在导入 numpy 或 torch 时触发
-重复初始化并导致进程 abort。
+本模块会在 Python 启动时被 site 自动导入，处理以下问题：
+
+1. MKL 与 PyTorch OpenMP 运行时冲突
+   当前 conda 环境同时提供 MKL 的 libiomp5md.dll，torch 也自带一份
+   libiomp5md.dll；在 Windows 下二者可能在导入 numpy 或 torch 时触发
+   重复初始化并导致进程 abort。
 
 约束：
 - 只在 Windows 下生效。
-- 只在未显式配置 MKL_SERVICE_FORCE_INTEL 时提供默认值。
 - 不使用 KMP_DUPLICATE_LIB_OK 这种不安全绕过。
 """
 

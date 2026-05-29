@@ -6,6 +6,7 @@ from fastapi import APIRouter
 
 from backend.service.api.rest.v1.routes.classification_conversion_tasks import classification_conversion_tasks_router
 from backend.service.api.rest.v1.routes.classification_deployments import classification_deployments_router
+from backend.service.api.rest.v1.routes.classification_evaluation_tasks import classification_evaluation_tasks_router
 from backend.service.api.rest.v1.routes.classification_inference_tasks import classification_inference_tasks_router
 from backend.service.api.rest.v1.routes.classification_training_tasks import classification_training_tasks_router
 from backend.service.api.rest.v1.routes.classification_validation_sessions import classification_validation_sessions_router
@@ -13,6 +14,7 @@ from backend.service.api.rest.v1.routes.dataset_exports import dataset_exports_r
 from backend.service.api.rest.v1.routes.datasets import datasets_router
 from backend.service.api.rest.v1.routes.detection_conversion_tasks import detection_conversion_tasks_router
 from backend.service.api.rest.v1.routes.detection_deployments import detection_deployments_router
+from backend.service.api.rest.v1.routes.detection_evaluation_tasks import detection_evaluation_tasks_router
 from backend.service.api.rest.v1.routes.detection_inference_tasks import detection_inference_tasks_router
 from backend.service.api.rest.v1.routes.detection_training_tasks import detection_training_tasks_router
 from backend.service.api.rest.v1.routes.detection_validation_sessions import (
@@ -20,16 +22,20 @@ from backend.service.api.rest.v1.routes.detection_validation_sessions import (
 )
 from backend.service.api.rest.v1.routes.segmentation_conversion_tasks import segmentation_conversion_tasks_router
 from backend.service.api.rest.v1.routes.segmentation_deployments import segmentation_deployments_router
+from backend.service.api.rest.v1.routes.segmentation_evaluation_tasks import segmentation_evaluation_tasks_router
 from backend.service.api.rest.v1.routes.segmentation_inference_tasks import segmentation_inference_tasks_router
 from backend.service.api.rest.v1.routes.segmentation_training_tasks import segmentation_training_tasks_router
 from backend.service.api.rest.v1.routes.segmentation_validation_sessions import segmentation_validation_sessions_router
 from backend.service.api.rest.v1.routes.pose_conversion_tasks import pose_conversion_tasks_router
 from backend.service.api.rest.v1.routes.pose_deployments import pose_deployments_router
+from backend.service.api.rest.v1.routes.pose_evaluation_tasks import pose_evaluation_tasks_router
 from backend.service.api.rest.v1.routes.pose_inference_tasks import pose_inference_tasks_router
 from backend.service.api.rest.v1.routes.pose_training_tasks import pose_training_tasks_router
 from backend.service.api.rest.v1.routes.pose_validation_sessions import pose_validation_sessions_router
+from backend.service.api.rest.v1.routes.rfdetr_conversion_tasks import rfdetr_conversion_tasks_router
 from backend.service.api.rest.v1.routes.obb_conversion_tasks import obb_conversion_tasks_router
 from backend.service.api.rest.v1.routes.obb_deployments import obb_deployments_router
+from backend.service.api.rest.v1.routes.obb_evaluation_tasks import obb_evaluation_tasks_router
 from backend.service.api.rest.v1.routes.obb_inference_tasks import obb_inference_tasks_router
 from backend.service.api.rest.v1.routes.obb_training_tasks import obb_training_tasks_router
 from backend.service.api.rest.v1.routes.obb_validation_sessions import obb_validation_sessions_router
@@ -64,26 +70,32 @@ api_v1_router.include_router(detection_validation_sessions_router)
 api_v1_router.include_router(detection_conversion_tasks_router)
 api_v1_router.include_router(detection_deployments_router)
 api_v1_router.include_router(detection_inference_tasks_router)
+api_v1_router.include_router(detection_evaluation_tasks_router)
 api_v1_router.include_router(classification_deployments_router)
 api_v1_router.include_router(classification_inference_tasks_router)
 api_v1_router.include_router(classification_training_tasks_router)
 api_v1_router.include_router(classification_conversion_tasks_router)
+api_v1_router.include_router(classification_evaluation_tasks_router)
 api_v1_router.include_router(classification_validation_sessions_router)
 api_v1_router.include_router(segmentation_deployments_router)
 api_v1_router.include_router(segmentation_inference_tasks_router)
 api_v1_router.include_router(segmentation_training_tasks_router)
 api_v1_router.include_router(segmentation_conversion_tasks_router)
+api_v1_router.include_router(segmentation_evaluation_tasks_router)
 api_v1_router.include_router(segmentation_validation_sessions_router)
 api_v1_router.include_router(pose_deployments_router)
 api_v1_router.include_router(pose_inference_tasks_router)
 api_v1_router.include_router(pose_training_tasks_router)
 api_v1_router.include_router(pose_conversion_tasks_router)
 api_v1_router.include_router(pose_validation_sessions_router)
+api_v1_router.include_router(pose_evaluation_tasks_router)
+api_v1_router.include_router(rfdetr_conversion_tasks_router)
 api_v1_router.include_router(obb_deployments_router)
 api_v1_router.include_router(obb_inference_tasks_router)
 api_v1_router.include_router(obb_training_tasks_router)
 api_v1_router.include_router(obb_conversion_tasks_router)
 api_v1_router.include_router(obb_validation_sessions_router)
+api_v1_router.include_router(obb_evaluation_tasks_router)
 api_v1_router.include_router(yolox_training_tasks_router)
 api_v1_router.include_router(yolox_validation_sessions_router)
 api_v1_router.include_router(yolox_conversion_tasks_router)

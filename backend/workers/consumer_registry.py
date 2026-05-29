@@ -1,7 +1,12 @@
-"""后台任务消费者注册表。"""
+"""后台任务消费者注册表。
+
+采用声明式工厂模式：每种消费者类型只需在 ``_CONSUMER_FACTORIES`` 中
+注册一个工厂函数，不再使用长 if-else 链。
+"""
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 
 from backend.queue import LocalFileQueueBackend
@@ -12,20 +17,34 @@ from backend.workers.conversion.yolo11_conversion_queue_worker import Yolo11Conv
 from backend.workers.conversion.yolo26_conversion_queue_worker import Yolo26ConversionQueueWorker
 from backend.workers.conversion.yolov8_conversion_queue_worker import YoloV8ConversionQueueWorker
 from backend.workers.conversion.yolox_conversion_queue_worker import YoloXConversionQueueWorker
+from backend.workers.conversion.rfdetr_conversion_queue_worker import RfdetrConversionQueueWorker
 from backend.workers.datasets.dataset_export_queue_worker import DatasetExportQueueWorker
 from backend.workers.datasets.dataset_import_queue_worker import DatasetImportQueueWorker
 from backend.workers.evaluation.yolox_evaluation_queue_worker import YoloXEvaluationQueueWorker
+from backend.workers.evaluation.yolo_primary_evaluation_queue_worker import (
+    ClassificationEvaluationQueueWorker,
+    SegmentationEvaluationQueueWorker,
+    DetectionEvaluationQueueWorker,
+    PoseEvaluationQueueWorker,
+    ObbEvaluationQueueWorker,
+)
 from backend.workers.inference.yolox_inference_queue_worker import YoloXInferenceQueueWorker
 from backend.workers.settings import (
+    BACKEND_WORKER_CONSUMER_CLASSIFICATION_EVALUATION,
     BACKEND_WORKER_CONSUMER_CLASSIFICATION_INFERENCE,
     BACKEND_WORKER_CONSUMER_CLASSIFICATION_TRAINING,
     BACKEND_WORKER_CONSUMER_DATASET_EXPORT,
     BACKEND_WORKER_CONSUMER_DATASET_IMPORT,
+    BACKEND_WORKER_CONSUMER_DETECTION_EVALUATION,
+    BACKEND_WORKER_CONSUMER_OBB_EVALUATION,
     BACKEND_WORKER_CONSUMER_OBB_INFERENCE,
     BACKEND_WORKER_CONSUMER_OBB_TRAINING,
+    BACKEND_WORKER_CONSUMER_POSE_EVALUATION,
     BACKEND_WORKER_CONSUMER_POSE_INFERENCE,
     BACKEND_WORKER_CONSUMER_POSE_TRAINING,
+    BACKEND_WORKER_CONSUMER_RFDETR_CONVERSION,
     BACKEND_WORKER_CONSUMER_RFDETR_TRAINING,
+    BACKEND_WORKER_CONSUMER_SEGMENTATION_EVALUATION,
     BACKEND_WORKER_CONSUMER_SEGMENTATION_INFERENCE,
     BACKEND_WORKER_CONSUMER_SEGMENTATION_TRAINING,
     BACKEND_WORKER_CONSUMER_YOLO11_TRAINING,
@@ -72,6 +91,95 @@ class BackgroundTaskConsumerResources:
     async_inference_request_timeout_seconds: float = 30.0
 
 
+# ── 工厂函数类型 ──
+
+_ConsumerFactory = Callable[[BackgroundTaskConsumerResources], BackgroundTaskConsumer]
+
+
+def _std_factory(worker_cls: type, suffix: str) -> _ConsumerFactory:
+    """构建标准 worker 工厂：session_factory + dataset_storage + queue_backend + worker_id。"""
+
+    def _factory(resources: BackgroundTaskConsumerResources) -> BackgroundTaskConsumer:
+        return worker_cls(
+            session_factory=resources.session_factory,
+            dataset_storage=resources.dataset_storage,
+            queue_backend=resources.queue_backend,
+            worker_id=f"{resources.worker_id_prefix}-{suffix}",
+        )
+
+    return _factory
+
+
+def _inference_factory(suffix: str) -> _ConsumerFactory:
+    """构建推理 worker 工厂：额外传递 async_inference_request_timeout_seconds。"""
+
+    def _factory(resources: BackgroundTaskConsumerResources) -> BackgroundTaskConsumer:
+        return YoloXInferenceQueueWorker(
+            session_factory=resources.session_factory,
+            dataset_storage=resources.dataset_storage,
+            queue_backend=resources.queue_backend,
+            async_inference_request_timeout_seconds=resources.async_inference_request_timeout_seconds,
+            worker_id=f"{resources.worker_id_prefix}-{suffix}",
+        )
+
+    return _factory
+
+
+def _dynamic_inference_factory(resources: BackgroundTaskConsumerResources, consumer_kind: str) -> BackgroundTaskConsumer:
+    """构建动态推理 worker 工厂：worker_id 使用 consumer_kind。"""
+    return YoloXInferenceQueueWorker(
+        session_factory=resources.session_factory,
+        dataset_storage=resources.dataset_storage,
+        queue_backend=resources.queue_backend,
+        worker_id=f"{resources.worker_id_prefix}-{consumer_kind}",
+    )
+
+
+# ── 声明式注册表 ──
+
+_CONSUMER_FACTORIES: dict[str, _ConsumerFactory] = {
+    # 数据集
+    BACKEND_WORKER_CONSUMER_DATASET_IMPORT: _std_factory(DatasetImportQueueWorker, "dataset-import"),
+    BACKEND_WORKER_CONSUMER_DATASET_EXPORT: _std_factory(DatasetExportQueueWorker, "dataset-export"),
+    # YOLOX
+    BACKEND_WORKER_CONSUMER_YOLOX_TRAINING: _std_factory(YoloXTrainingQueueWorker, "yolox-training"),
+    BACKEND_WORKER_CONSUMER_YOLOX_CONVERSION: _std_factory(YoloXConversionQueueWorker, "yolox-conversion"),
+    BACKEND_WORKER_CONSUMER_YOLOX_EVALUATION: _std_factory(YoloXEvaluationQueueWorker, "yolox-evaluation"),
+    BACKEND_WORKER_CONSUMER_YOLOX_INFERENCE: _inference_factory("yolox-inference"),
+    # YOLOv8
+    BACKEND_WORKER_CONSUMER_YOLOV8_TRAINING: _std_factory(YoloV8TrainingQueueWorker, "yolov8-training"),
+    BACKEND_WORKER_CONSUMER_YOLOV8_CONVERSION: _std_factory(YoloV8ConversionQueueWorker, "yolov8-conversion"),
+    # YOLO11
+    BACKEND_WORKER_CONSUMER_YOLO11_TRAINING: _std_factory(Yolo11TrainingQueueWorker, "yolo11-training"),
+    BACKEND_WORKER_CONSUMER_YOLO11_CONVERSION: _std_factory(Yolo11ConversionQueueWorker, "yolo11-conversion"),
+    # YOLO26
+    BACKEND_WORKER_CONSUMER_YOLO26_TRAINING: _std_factory(Yolo26TrainingQueueWorker, "yolo26-training"),
+    BACKEND_WORKER_CONSUMER_YOLO26_CONVERSION: _std_factory(Yolo26ConversionQueueWorker, "yolo26-conversion"),
+    # RF-DETR
+    BACKEND_WORKER_CONSUMER_RFDETR_TRAINING: _std_factory(RfdetrTrainingQueueWorker, "rfdetr-training"),
+    BACKEND_WORKER_CONSUMER_RFDETR_CONVERSION: _std_factory(RfdetrConversionQueueWorker, "rfdetr-conversion"),
+    # 非 Detection 训练
+    BACKEND_WORKER_CONSUMER_CLASSIFICATION_TRAINING: _std_factory(ClassificationTrainingQueueWorker, "classification-training"),
+    BACKEND_WORKER_CONSUMER_SEGMENTATION_TRAINING: _std_factory(SegmentationTrainingQueueWorker, "segmentation-training"),
+    BACKEND_WORKER_CONSUMER_POSE_TRAINING: _std_factory(PoseTrainingQueueWorker, "pose-training"),
+    BACKEND_WORKER_CONSUMER_OBB_TRAINING: _std_factory(ObbTrainingQueueWorker, "obb-training"),
+    # 非 Detection 评估
+    BACKEND_WORKER_CONSUMER_CLASSIFICATION_EVALUATION: _std_factory(ClassificationEvaluationQueueWorker, "classification-evaluation"),
+    BACKEND_WORKER_CONSUMER_SEGMENTATION_EVALUATION: _std_factory(SegmentationEvaluationQueueWorker, "segmentation-evaluation"),
+    BACKEND_WORKER_CONSUMER_DETECTION_EVALUATION: _std_factory(DetectionEvaluationQueueWorker, "detection-evaluation"),
+    BACKEND_WORKER_CONSUMER_POSE_EVALUATION: _std_factory(PoseEvaluationQueueWorker, "pose-evaluation"),
+    BACKEND_WORKER_CONSUMER_OBB_EVALUATION: _std_factory(ObbEvaluationQueueWorker, "obb-evaluation"),
+}
+
+# 动态推理 worker（多个 consumer_kind 共享同一 worker 类，但 worker_id 不同）
+_DYNAMIC_INFERENCE_KINDS: frozenset[str] = frozenset({
+    BACKEND_WORKER_CONSUMER_CLASSIFICATION_INFERENCE,
+    BACKEND_WORKER_CONSUMER_SEGMENTATION_INFERENCE,
+    BACKEND_WORKER_CONSUMER_POSE_INFERENCE,
+    BACKEND_WORKER_CONSUMER_OBB_INFERENCE,
+})
+
+
 def build_background_task_consumers(
     *,
     resources: BackgroundTaskConsumerResources,
@@ -89,193 +197,12 @@ def build_background_task_consumers(
 
     consumers: list[BackgroundTaskConsumer] = []
     for consumer_kind in enabled_consumer_kinds:
-        if consumer_kind == BACKEND_WORKER_CONSUMER_DATASET_IMPORT:
-            consumers.append(
-                DatasetImportQueueWorker(
-                    session_factory=resources.session_factory,
-                    dataset_storage=resources.dataset_storage,
-                    queue_backend=resources.queue_backend,
-                    worker_id=f"{resources.worker_id_prefix}-dataset-import",
-                )
-            )
+        factory = _CONSUMER_FACTORIES.get(consumer_kind)
+        if factory is not None:
+            consumers.append(factory(resources))
             continue
-        if consumer_kind == BACKEND_WORKER_CONSUMER_DATASET_EXPORT:
-            consumers.append(
-                DatasetExportQueueWorker(
-                    session_factory=resources.session_factory,
-                    dataset_storage=resources.dataset_storage,
-                    queue_backend=resources.queue_backend,
-                    worker_id=f"{resources.worker_id_prefix}-dataset-export",
-                )
-            )
-            continue
-        if consumer_kind == BACKEND_WORKER_CONSUMER_YOLOX_TRAINING:
-            consumers.append(
-                YoloXTrainingQueueWorker(
-                    session_factory=resources.session_factory,
-                    dataset_storage=resources.dataset_storage,
-                    queue_backend=resources.queue_backend,
-                    worker_id=f"{resources.worker_id_prefix}-yolox-training",
-                )
-            )
-            continue
-        if consumer_kind == BACKEND_WORKER_CONSUMER_YOLOV8_TRAINING:
-            consumers.append(
-                YoloV8TrainingQueueWorker(
-                    session_factory=resources.session_factory,
-                    dataset_storage=resources.dataset_storage,
-                    queue_backend=resources.queue_backend,
-                    worker_id=f"{resources.worker_id_prefix}-yolov8-training",
-                )
-            )
-            continue
-        if consumer_kind == BACKEND_WORKER_CONSUMER_YOLO11_TRAINING:
-            consumers.append(
-                Yolo11TrainingQueueWorker(
-                    session_factory=resources.session_factory,
-                    dataset_storage=resources.dataset_storage,
-                    queue_backend=resources.queue_backend,
-                    worker_id=f"{resources.worker_id_prefix}-yolo11-training",
-                )
-            )
-            continue
-        if consumer_kind == BACKEND_WORKER_CONSUMER_YOLO26_TRAINING:
-            consumers.append(
-                Yolo26TrainingQueueWorker(
-                    session_factory=resources.session_factory,
-                    dataset_storage=resources.dataset_storage,
-                    queue_backend=resources.queue_backend,
-                    worker_id=f"{resources.worker_id_prefix}-yolo26-training",
-                )
-            )
-            continue
-        if consumer_kind == BACKEND_WORKER_CONSUMER_YOLOX_CONVERSION:
-            consumers.append(
-                YoloXConversionQueueWorker(
-                    session_factory=resources.session_factory,
-                    dataset_storage=resources.dataset_storage,
-                    queue_backend=resources.queue_backend,
-                    worker_id=f"{resources.worker_id_prefix}-yolox-conversion",
-                )
-            )
-            continue
-        if consumer_kind == BACKEND_WORKER_CONSUMER_YOLOV8_CONVERSION:
-            consumers.append(
-                YoloV8ConversionQueueWorker(
-                    session_factory=resources.session_factory,
-                    dataset_storage=resources.dataset_storage,
-                    queue_backend=resources.queue_backend,
-                    worker_id=f"{resources.worker_id_prefix}-yolov8-conversion",
-                )
-            )
-            continue
-        if consumer_kind == BACKEND_WORKER_CONSUMER_YOLO11_CONVERSION:
-            consumers.append(
-                Yolo11ConversionQueueWorker(
-                    session_factory=resources.session_factory,
-                    dataset_storage=resources.dataset_storage,
-                    queue_backend=resources.queue_backend,
-                    worker_id=f"{resources.worker_id_prefix}-yolo11-conversion",
-                )
-            )
-            continue
-        if consumer_kind == BACKEND_WORKER_CONSUMER_YOLO26_CONVERSION:
-            consumers.append(
-                Yolo26ConversionQueueWorker(
-                    session_factory=resources.session_factory,
-                    dataset_storage=resources.dataset_storage,
-                    queue_backend=resources.queue_backend,
-                    worker_id=f"{resources.worker_id_prefix}-yolo26-conversion",
-                )
-            )
-            continue
-        if consumer_kind == BACKEND_WORKER_CONSUMER_YOLOX_EVALUATION:
-            consumers.append(
-                YoloXEvaluationQueueWorker(
-                    session_factory=resources.session_factory,
-                    dataset_storage=resources.dataset_storage,
-                    queue_backend=resources.queue_backend,
-                    worker_id=f"{resources.worker_id_prefix}-yolox-evaluation",
-                )
-            )
-            continue
-        if consumer_kind == BACKEND_WORKER_CONSUMER_YOLOX_INFERENCE:
-            consumers.append(
-                YoloXInferenceQueueWorker(
-                    session_factory=resources.session_factory,
-                    dataset_storage=resources.dataset_storage,
-                    queue_backend=resources.queue_backend,
-                    async_inference_request_timeout_seconds=(
-                        resources.async_inference_request_timeout_seconds
-                    ),
-                    worker_id=f"{resources.worker_id_prefix}-yolox-inference",
-                )
-            )
-            continue
-        if consumer_kind in (
-            BACKEND_WORKER_CONSUMER_CLASSIFICATION_INFERENCE,
-            BACKEND_WORKER_CONSUMER_SEGMENTATION_INFERENCE,
-            BACKEND_WORKER_CONSUMER_POSE_INFERENCE,
-            BACKEND_WORKER_CONSUMER_OBB_INFERENCE,
-        ):
-            consumers.append(
-                YoloXInferenceQueueWorker(
-                    session_factory=resources.session_factory,
-                    dataset_storage=resources.dataset_storage,
-                    queue_backend=resources.queue_backend,
-                    worker_id=f"{resources.worker_id_prefix}-{consumer_kind}",
-                )
-            )
-            continue
-        if consumer_kind == BACKEND_WORKER_CONSUMER_CLASSIFICATION_TRAINING:
-            consumers.append(
-                ClassificationTrainingQueueWorker(
-                    session_factory=resources.session_factory,
-                    dataset_storage=resources.dataset_storage,
-                    queue_backend=resources.queue_backend,
-                    worker_id=f"{resources.worker_id_prefix}-classification-training",
-                )
-            )
-            continue
-        if consumer_kind == BACKEND_WORKER_CONSUMER_SEGMENTATION_TRAINING:
-            consumers.append(
-                SegmentationTrainingQueueWorker(
-                    session_factory=resources.session_factory,
-                    dataset_storage=resources.dataset_storage,
-                    queue_backend=resources.queue_backend,
-                    worker_id=f"{resources.worker_id_prefix}-segmentation-training",
-                )
-            )
-            continue
-        if consumer_kind == BACKEND_WORKER_CONSUMER_POSE_TRAINING:
-            consumers.append(
-                PoseTrainingQueueWorker(
-                    session_factory=resources.session_factory,
-                    dataset_storage=resources.dataset_storage,
-                    queue_backend=resources.queue_backend,
-                    worker_id=f"{resources.worker_id_prefix}-pose-training",
-                )
-            )
-            continue
-        if consumer_kind == BACKEND_WORKER_CONSUMER_OBB_TRAINING:
-            consumers.append(
-                ObbTrainingQueueWorker(
-                    session_factory=resources.session_factory,
-                    dataset_storage=resources.dataset_storage,
-                    queue_backend=resources.queue_backend,
-                    worker_id=f"{resources.worker_id_prefix}-obb-training",
-                )
-            )
-            continue
-        if consumer_kind == BACKEND_WORKER_CONSUMER_RFDETR_TRAINING:
-            consumers.append(
-                RfdetrTrainingQueueWorker(
-                    session_factory=resources.session_factory,
-                    dataset_storage=resources.dataset_storage,
-                    queue_backend=resources.queue_backend,
-                    worker_id=f"{resources.worker_id_prefix}-rfdetr-training",
-                )
-            )
+        if consumer_kind in _DYNAMIC_INFERENCE_KINDS:
+            consumers.append(_dynamic_inference_factory(resources, consumer_kind))
             continue
         raise ServiceConfigurationError(
             "发现未支持的后台任务消费者类型",

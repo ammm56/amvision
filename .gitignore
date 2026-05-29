@@ -240,3 +240,9 @@ frontend/web-ui/public/runtime-config.json
 frontend/web-ui/public/runtime-config.local.json
 frontend/web-ui/playwright-report/
 frontend/web-ui/test-results/
+
+# Alembic（迁移脚本入 git，缓存文件不入）
+backend/alembic/versions/__pycache__/
+
+# .qwen 本地配置（技能和设置入 git，但备份文件不入）
+.qwen/settings.json.orig

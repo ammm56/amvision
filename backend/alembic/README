@@ -1,0 +1,44 @@
+amvision 数据库迁移目录
+
+本目录由 Alembic 管理，用于跟踪数据库 schema 的版本演进。
+位于 backend/ 下，因为数据库迁移是后端基础设施的一部分。
+
+## 目录结构
+
+- `alembic.ini` — 迁移配置文件（位于 backend/ 根目录）
+- `alembic/env.py` — 迁移环境配置，导入项目 ORM 实体模型
+- `alembic/script.py.mako` — 迁移脚本模板
+- `alembic/versions/` — 迁移脚本目录，每个文件代表一次 schema 变更
+
+## 常用命令
+
+运行 alembic 命令时需从 backend/ 目录执行：
+
+```bash
+cd backend
+
+# 查看当前数据库版本
+alembic current
+
+# 查看迁移历史
+alembic history
+
+# 升级到最新版本
+alembic upgrade head
+
+# 生成新迁移（自动检测 schema 变更）
+alembic revision --autogenerate -m "描述本次变更"
+
+# 回退一个版本
+alembic downgrade -1
+
+# 标记已有数据库为最新基线（跳过实际执行）
+alembic stamp head
+```
+
+## 注意事项
+
+- 迁移脚本必须纳入 git 版本控制
+- 数据库文件本身（`data/amvision.db`）不入 git
+- 对于已通过 `create_all()` 创建表结构的数据库，使用 `alembic stamp head` 标记基线
+- alembic.ini 使用 UTF-8 编码（alembic 的 compat.py 已修改为 encoding="utf-8"）
