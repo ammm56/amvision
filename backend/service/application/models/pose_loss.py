@@ -1,6 +1,7 @@
 """Pose（关键点检测）损失计算模块。
 
 复用 detection 的分类/框/DFL 损失，并增加关键点位置损失和可见性损失。
+支持 Pose26 的 RLE（Residual Log-likelihood Estimation）损失。
 """
 
 from __future__ import annotations
@@ -20,22 +21,24 @@ def compute_pose_loss(
     box_loss_weight: float = 7.5,
     dfl_loss_weight: float = 1.5,
     kpt_loss_weight: float = 12.0,
+    rle_loss_weight: float = 1.0,
     assign_topk: int = 10,
     assign_alpha: float = 0.5,
     assign_beta: float = 6.0,
 ) -> dict[str, Any]:
-    """计算 Pose 完整损失（分类 + 框 + DFL + 关键点位置 + 关键点可见性）。
+    """计算 Pose 完整损失（分类 + 框 + DFL + 关键点位置 + 关键点可见性 + RLE）。
 
     参数：
     - model：YOLO 模型（model.model[-1] 为 Pose head）。
-    - raw_outputs：训练态原始输出 dict（boxes/scores/kpts/feats）。
+    - raw_outputs：训练态原始输出 dict（boxes/scores/kpts/feats，Pose26 还有 kpts_sigma）。
     - batch_targets：每个元素包含 boxes_xyxy(N,4)、category_indexes(N,)、
       keypoints(N, K*3)（可选）。
     - num_classes：类别数。
     - kpt_shape：(num_keypoints, dim)，默认 (17, 3)。
+    - rle_loss_weight：RLE 损失权重（仅 Pose26 使用）。
 
     返回：
-    - dict 包含 loss、class_loss、box_loss、dfl_loss、kpt_loss。
+    - dict 包含 loss、class_loss、box_loss、dfl_loss、kpt_loss、rle_loss（Pose26）。
     """
     from backend.service.application.models.yolo_primary_detection_training import (
         _make_anchors,
@@ -50,6 +53,9 @@ def compute_pose_loss(
     reg_max = int(pose_head.reg_max)
     nk = kpt_shape[0]
     kpt_dim = kpt_shape[1]
+    
+    # 检测是否为 Pose26（有 flow_model 属性）
+    is_pose26 = hasattr(pose_head, "flow_model") and pose_head.flow_model is not None
 
     # 先复用 detection 解码（boxes + class_logits + anchor_points 等）
     prediction_bundle = _decode_detection_training_predictions(
@@ -72,12 +78,21 @@ def compute_pose_loss(
         pred_kpts = raw_kpts.permute(0, 2, 1).contiguous()  # (bs, total_anchors, nk*kpt_dim)
     else:
         pred_kpts = None
+    
+    # Pose26: 解码 sigma 预测 (bs, total_anchors, nk * 2)
+    pred_kpts_sigma = None
+    if is_pose26:
+        raw_kpts_sigma = raw_outputs.get("kpts_sigma")
+        if raw_kpts_sigma is not None:
+            # 原始 kpts_sigma shape: (bs, nk * 2, total_anchors)
+            pred_kpts_sigma = raw_kpts_sigma.permute(0, 2, 1).contiguous()  # (bs, total_anchors, nk*2)
 
     bs = class_logits.shape[0]
     total_class_loss = class_logits.new_zeros(())
     total_box_loss = class_logits.new_zeros(())
     total_dfl_loss = class_logits.new_zeros(())
     total_kpt_loss = class_logits.new_zeros(())
+    total_rle_loss = class_logits.new_zeros(()) if is_pose26 else None
     total_foreground = 0
     total_target_score = class_logits.new_zeros(())
 
@@ -170,9 +185,13 @@ def compute_pose_loss(
                     # 关键点坐标预测：从 anchor 偏移解码
                     fg_strides = fg_stride.view(-1, 1)
                     fg_anchors = fg_anchor_pts * fg_strides
-                    # 预测关键点 = anchor + offset * stride * 2 (sigmoid 映射)
+                    
+                    # Pose26 使用 anchor + offset * stride，普通 Pose 使用 anchor + offset * stride * 2 (sigmoid 映射)
                     pred_xy = pred_kpts_reshaped[..., :2]  # (M, nk, 2)
-                    decoded_kpts_xy = fg_anchors.unsqueeze(1) + pred_xy * fg_strides.unsqueeze(1) * 2.0
+                    if is_pose26:
+                        decoded_kpts_xy = fg_anchors.unsqueeze(1) + pred_xy * fg_strides.unsqueeze(1)
+                    else:
+                        decoded_kpts_xy = fg_anchors.unsqueeze(1) + pred_xy * fg_strides.unsqueeze(1) * 2.0
 
                     # GT 关键点坐标
                     gt_xy = gt_kpts_reshaped[..., :2]  # (M, nk, 2)
@@ -192,6 +211,25 @@ def compute_pose_loss(
                     )
                     vis_count = vis_mask.sum().clamp_min(1.0)
                     total_kpt_loss = total_kpt_loss + kpt_pos_loss / vis_count
+                    
+                    # Pose26: RLE 损失
+                    if is_pose26 and pred_kpts_sigma is not None and total_rle_loss is not None:
+                        fg_pred_sigma = pred_kpts_sigma[bi][fg_mask]  # (M, nk*2)
+                        fg_pred_sigma_reshaped = fg_pred_sigma.view(num_fg, nk, 2)  # (M, nk, 2)
+                        
+                        # 计算归一化残差误差
+                        kpt_error = (decoded_kpts_xy - gt_xy) / (fg_pred_sigma_reshaped.sigmoid() + 1e-6)
+                        
+                        # 对每个可见关键点计算 RLE 损失
+                        for i in range(num_fg):
+                            for j in range(nk):
+                                if vis_mask[i, j, 0] > 0:
+                                    error_ij = kpt_error[i, j]  # (2,)
+                                    log_prob = pose_head.flow_model.log_prob(error_ij.unsqueeze(0))  # (1,)
+                                    sigma_ij = fg_pred_sigma_reshaped[i, j]  # (2,)
+                                    log_sigma = torch.log(sigma_ij.sigmoid() + 1e-6)
+                                    rle_loss_ij = log_sigma - log_prob
+                                    total_rle_loss = total_rle_loss + rle_loss_ij.sum()
 
                 total_foreground += int(fg_mask.sum().item())
                 total_target_score = total_target_score + quality_scores.sum()
@@ -207,6 +245,11 @@ def compute_pose_loss(
     box_loss = total_box_loss / fg_norm
     dfl_loss = total_dfl_loss / fg_norm
     kpt_loss = total_kpt_loss / fg_norm
+    
+    # Pose26: RLE 损失归一化
+    rle_loss = None
+    if is_pose26 and total_rle_loss is not None:
+        rle_loss = total_rle_loss / fg_norm
 
     total_loss = (
         class_loss * class_loss_weight
@@ -214,10 +257,21 @@ def compute_pose_loss(
         + dfl_loss * dfl_loss_weight
         + kpt_loss * kpt_loss_weight
     )
-    return {
+    
+    # Pose26: 加入 RLE 损失
+    if is_pose26 and rle_loss is not None:
+        total_loss = total_loss + rle_loss * rle_loss_weight
+    
+    result = {
         "loss": total_loss,
         "class_loss": class_loss,
         "box_loss": box_loss,
         "dfl_loss": dfl_loss,
         "kpt_loss": kpt_loss,
     }
+    
+    # Pose26: 返回 RLE 损失
+    if is_pose26 and rle_loss is not None:
+        result["rle_loss"] = rle_loss
+    
+    return result

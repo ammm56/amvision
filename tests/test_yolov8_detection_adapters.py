@@ -332,12 +332,12 @@ def _write_completed_dataset_export_files(dataset_storage: LocalDatasetStorage) 
 
     train_annotation = {
         "images": [{"id": 1, "file_name": "sample-train.jpg", "width": 64, "height": 64}],
-        "annotations": [{"id": 1, "image_id": 1, "category_id": 0, "bbox": [18, 12, 22, 24]}],
+        "annotations": [{"id": 1, "image_id": 1, "category_id": 0, "bbox": [18, 12, 22, 24], "iscrowd": 0, "area": 528}],
         "categories": [{"id": 0, "name": "part"}],
     }
     val_annotation = {
         "images": [{"id": 2, "file_name": "sample-val.jpg", "width": 64, "height": 64}],
-        "annotations": [{"id": 2, "image_id": 2, "category_id": 0, "bbox": [16, 10, 20, 22]}],
+        "annotations": [{"id": 2, "image_id": 2, "category_id": 0, "bbox": [16, 10, 20, 22], "iscrowd": 0, "area": 440}],
         "categories": [{"id": 0, "name": "part"}],
     }
     dataset_storage.write_json(train_annotation_key, train_annotation)

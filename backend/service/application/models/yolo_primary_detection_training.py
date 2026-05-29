@@ -346,6 +346,30 @@ def run_yolo_primary_detection_training(
         model_scale=request.model_scale,
         num_classes=len(category_names),
     )
+    
+    # 检测模型是否启用端到端训练
+    is_end2end = getattr(model, "end2end", False)
+    
+    # 端到端训练的权重调度器
+    e2e_o2m_weight = 0.8  # one2many 初始权重
+    e2e_o2o_weight = 0.2  # one2one 初始权重
+    e2e_o2m_initial = 0.8
+    e2e_o2m_final = 0.1
+    
+    def update_e2e_weights(epoch: int, total_epochs: int) -> None:
+        """更新端到端训练的分支权重。
+        
+        训练初期 one2many 主导（提供充足梯度），
+        训练末期 one2one 主导（确保推理精度）。
+        """
+        nonlocal e2e_o2m_weight, e2e_o2o_weight
+        if total_epochs <= 1:
+            progress = 1.0
+        else:
+            progress = epoch / (total_epochs - 1)
+        e2e_o2m_weight = e2e_o2m_initial + (e2e_o2m_final - e2e_o2m_initial) * progress
+        e2e_o2o_weight = 1.0 - e2e_o2m_weight
+    
     warm_start_summary = {
         "enabled": False,
         "source_model_version_id": None,
@@ -478,9 +502,16 @@ def run_yolo_primary_detection_training(
     global_iteration = resume_epoch * max(1, (len(train_samples) + batch_size - 1) // batch_size)
 
     for epoch in range(resume_epoch + 1, max_epochs + 1):
+        # 更新端到端训练权重
+        if is_end2end:
+            update_e2e_weights(epoch - 1, max_epochs)
+        
         shuffled_samples = list(train_samples)
         random.shuffle(shuffled_samples)
         epoch_losses = {"loss": 0.0, "class_loss": 0.0, "box_loss": 0.0, "dfl_loss": 0.0}
+        if is_end2end:
+            epoch_losses["one2many_loss"] = 0.0
+            epoch_losses["one2one_loss"] = 0.0
         max_iterations = max(1, (len(shuffled_samples) + batch_size - 1) // batch_size)
         model.train()
 
@@ -495,20 +526,42 @@ def run_yolo_primary_detection_training(
             )
             optimizer.zero_grad(set_to_none=True)
             with autocast_context():
-                raw_outputs = _unwrap_detection_outputs(model(images))
-                loss_components = _compute_detection_loss(
-                    imports=imports,
-                    model=model,
-                    raw_outputs=raw_outputs,
-                    batch_targets=batch_targets,
-                    num_classes=len(category_names),
-                    class_loss_weight=class_loss_weight,
-                    box_loss_weight=box_loss_weight,
-                    dfl_loss_weight=dfl_loss_weight,
-                    assign_topk=assign_topk,
-                    assign_alpha=assign_alpha,
-                    assign_beta=assign_beta,
-                )
+                model_outputs = model(images)
+                
+                if is_end2end:
+                    # 端到端训练：使用双分支损失
+                    e2e_outputs = _unwrap_e2e_detection_outputs(model_outputs)
+                    loss_components = _compute_e2e_detection_loss(
+                        imports=imports,
+                        model=model,
+                        raw_outputs=e2e_outputs,
+                        batch_targets=batch_targets,
+                        num_classes=len(category_names),
+                        class_loss_weight=class_loss_weight,
+                        box_loss_weight=box_loss_weight,
+                        dfl_loss_weight=dfl_loss_weight,
+                        assign_topk=assign_topk,
+                        assign_alpha=assign_alpha,
+                        assign_beta=assign_beta,
+                        e2e_o2m_weight=e2e_o2m_weight,
+                        e2e_o2o_weight=e2e_o2o_weight,
+                    )
+                else:
+                    # 标准训练：使用单分支损失
+                    raw_outputs = _unwrap_detection_outputs(model_outputs)
+                    loss_components = _compute_detection_loss(
+                        imports=imports,
+                        model=model,
+                        raw_outputs=raw_outputs,
+                        batch_targets=batch_targets,
+                        num_classes=len(category_names),
+                        class_loss_weight=class_loss_weight,
+                        box_loss_weight=box_loss_weight,
+                        dfl_loss_weight=dfl_loss_weight,
+                        assign_topk=assign_topk,
+                        assign_alpha=assign_alpha,
+                        assign_beta=assign_beta,
+                    )
                 loss = loss_components["loss"]
             scaler.scale(loss).backward()
             scaler.unscale_(optimizer)
@@ -518,9 +571,22 @@ def run_yolo_primary_detection_training(
             scaler.update()
 
             for key in epoch_losses:
-                epoch_losses[key] += float(loss_components[key].detach().item())
+                if key in loss_components:
+                    epoch_losses[key] += float(loss_components[key].detach().item())
 
             if request.batch_callback is not None:
+                train_metrics_batch = {
+                    "loss": float(loss_components["loss"].detach().item()),
+                    "class_loss": float(loss_components["class_loss"].detach().item()),
+                    "box_loss": float(loss_components["box_loss"].detach().item()),
+                    "dfl_loss": float(loss_components["dfl_loss"].detach().item()),
+                }
+                if is_end2end:
+                    train_metrics_batch["one2many_loss"] = float(loss_components["one2many_loss"].detach().item())
+                    train_metrics_batch["one2one_loss"] = float(loss_components["one2one_loss"].detach().item())
+                    train_metrics_batch["e2e_o2m_weight"] = e2e_o2m_weight
+                    train_metrics_batch["e2e_o2o_weight"] = e2e_o2o_weight
+                
                 request.batch_callback(
                     YoloPrimaryTrainingBatchProgress(
                         epoch=epoch,
@@ -531,12 +597,7 @@ def run_yolo_primary_detection_training(
                         total_iterations=total_iterations,
                         input_size=input_size,
                         learning_rate=float(optimizer.param_groups[0]["lr"]),
-                        train_metrics={
-                            "loss": float(loss_components["loss"].detach().item()),
-                            "class_loss": float(loss_components["class_loss"].detach().item()),
-                            "box_loss": float(loss_components["box_loss"].detach().item()),
-                            "dfl_loss": float(loss_components["dfl_loss"].detach().item()),
-                        },
+                        train_metrics=train_metrics_batch,
                     )
                 )
 
@@ -1532,6 +1593,24 @@ def _unwrap_detection_outputs(outputs: Any) -> dict[str, Any]:
     raise ServiceConfigurationError("当前 YOLO detection 训练输出结构不合法")
 
 
+def _unwrap_e2e_detection_outputs(outputs: Any) -> tuple[dict[str, Any], dict[str, Any]]:
+    """把端到端检测训练输出拆分为 one2many 和 one2one 两个分支。
+
+    Returns:
+        (one2many_outputs, one2one_outputs): 两个分支的原始输出字典。
+    """
+
+    if not isinstance(outputs, dict):
+        raise ServiceConfigurationError("端到端训练输出必须是字典")
+    one2many = outputs.get("one2many")
+    one2one = outputs.get("one2one")
+    if not isinstance(one2many, dict) or "boxes" not in one2many or "scores" not in one2many:
+        raise ServiceConfigurationError("端到端训练输出缺少有效的 one2many 分支")
+    if not isinstance(one2one, dict) or "boxes" not in one2one or "scores" not in one2one:
+        raise ServiceConfigurationError("端到端训练输出缺少有效的 one2one 分支")
+    return one2many, one2one
+
+
 def _compute_detection_loss(
     *,
     imports: _TrainingImports,
@@ -1545,8 +1624,13 @@ def _compute_detection_loss(
     assign_topk: int,
     assign_alpha: float,
     assign_beta: float,
+    assign_topk2: int | None = None,
 ) -> dict[str, Any]:
-    """按真实检测目标计算分类、框回归和 DFL 损失。"""
+    """按真实检测目标计算分类、框回归和 DFL 损失。
+
+    Args:
+        assign_topk2: 可选的二次精选参数，用于 E2E 训练的 one2one 分支。
+    """
 
     torch = imports.torch
     detect_head = model.model[-1]
@@ -1597,6 +1681,7 @@ def _compute_detection_loss(
                 topk=assign_topk,
                 alpha=assign_alpha,
                 beta=assign_beta,
+                topk2=assign_topk2,
             )
             if int(assignment["foreground_mask"].sum().item()) > 0:
                 foreground_mask = assignment["foreground_mask"]
@@ -1660,6 +1745,89 @@ def _compute_detection_loss(
         "class_loss": class_loss,
         "box_loss": box_loss,
         "dfl_loss": dfl_loss,
+    }
+
+
+def _compute_e2e_detection_loss(
+    *,
+    imports: _TrainingImports,
+    model: Any,
+    raw_outputs: tuple[dict[str, Any], dict[str, Any]],
+    batch_targets: tuple[_PreparedTrainingTarget, ...],
+    num_classes: int,
+    class_loss_weight: float,
+    box_loss_weight: float,
+    dfl_loss_weight: float,
+    assign_topk: int,
+    assign_alpha: float,
+    assign_beta: float,
+    e2e_o2m_weight: float,
+    e2e_o2o_weight: float,
+    e2e_o2o_topk: int = 7,
+    e2e_o2o_topk2: int = 1,
+) -> dict[str, Any]:
+    """计算端到端检测训练的双分支加权损失。
+
+    E2E 训练同时优化两个分支：
+    - one2many: 使用标准 TAL (topk=10) 分配，提供丰富的梯度信号
+    - one2one: 使用精选 TAL (topk=7, topk2=1) 分配，生成高质量一对一标签用于推理
+
+    损失通过可学习的权重调度器加权求和：
+    total_loss = o2m_weight * one2many_loss + o2o_weight * one2one_loss
+
+    权重在训练过程中动态调整：
+    - 初期: o2m_weight=0.8, o2o_weight=0.2 (one2many 主导，提供充足梯度)
+    - 末期: o2m_weight=0.1, o2o_weight=0.9 (one2one 主导，确保推理精度)
+    """
+    one2many_outputs, one2one_outputs = raw_outputs
+
+    # 计算 one2many 分支损失（标准 TAL，topk=10）
+    one2many_loss_components = _compute_detection_loss(
+        imports=imports,
+        model=model,
+        raw_outputs=one2many_outputs,
+        batch_targets=batch_targets,
+        num_classes=num_classes,
+        class_loss_weight=class_loss_weight,
+        box_loss_weight=box_loss_weight,
+        dfl_loss_weight=dfl_loss_weight,
+        assign_topk=assign_topk,
+        assign_alpha=assign_alpha,
+        assign_beta=assign_beta,
+    )
+
+    # 计算 one2one 分支损失（精选 TAL，topk=7, topk2=1）
+    one2one_loss_components = _compute_detection_loss(
+        imports=imports,
+        model=model,
+        raw_outputs=one2one_outputs,
+        batch_targets=batch_targets,
+        num_classes=num_classes,
+        class_loss_weight=class_loss_weight,
+        box_loss_weight=box_loss_weight,
+        dfl_loss_weight=dfl_loss_weight,
+        assign_topk=e2e_o2o_topk,
+        assign_alpha=assign_alpha,
+        assign_beta=assign_beta,
+        assign_topk2=e2e_o2o_topk2,
+    )
+
+    # 加权求和
+    total_loss = (
+        e2e_o2m_weight * one2many_loss_components["loss"]
+        + e2e_o2o_weight * one2one_loss_components["loss"]
+    )
+
+    # 返回组合损失和两个分支的详细指标
+    return {
+        "loss": total_loss,
+        "class_loss": one2one_loss_components["class_loss"],  # 日志只记录 one2one
+        "box_loss": one2one_loss_components["box_loss"],
+        "dfl_loss": one2one_loss_components["dfl_loss"],
+        "one2many_loss": one2many_loss_components["loss"],
+        "one2one_loss": one2one_loss_components["loss"],
+        "e2e_o2m_weight": e2e_o2m_weight,
+        "e2e_o2o_weight": e2e_o2o_weight,
     }
 
 
@@ -1771,8 +1939,15 @@ def _assign_detection_targets(
     topk: int,
     alpha: float,
     beta: float,
+    topk2: int | None = None,
 ) -> dict[str, Any]:
-    """按 task-aligned 规则为当前图片分配正样本 anchor。"""
+    """按 task-aligned 规则为当前图片分配正样本 anchor。
+
+    Args:
+        topk: 每个 gt 初始选择的候选 anchor 数量。
+        topk2: 可选的二次精选参数。如果提供且 topk2 != topk，则在初始 topk 选择后
+               进一步精选到 topk2 个 anchor，用于生成更高质量的一对一标签。
+    """
 
     num_anchors = int(pred_boxes.shape[0])
     num_gt = int(gt_boxes.shape[0])
@@ -1828,6 +2003,32 @@ def _assign_detection_targets(
                 alignment_metric[gt_index, fallback_index],
                 alignment_metric.new_tensor(1e-4),
             )
+
+    # 如果提供了 topk2 且与 topk 不同，执行二次精选
+    # 这是 E2E 训练中 one2one 分支的关键：从 topk 个候选中精选出 topk2 个最佳匹配
+    if topk2 is not None and topk2 != topk:
+        # 使用当前的 alignment_metric（已经过候选筛选）进行二次精选
+        refined_metric = alignment_metric * candidate_mask.to(alignment_metric.dtype)
+        refined_topk = min(max(1, topk2), num_anchors)
+        # 对每个 gt 重新做 topk2 选择
+        refined_candidate_mask = torch_module.zeros_like(candidate_mask)
+        for gt_index in range(num_gt):
+            gt_refined_metric = refined_metric[gt_index]
+            valid_indices = torch_module.nonzero(gt_refined_metric > 0, as_tuple=False).squeeze(1)
+            if int(valid_indices.numel()) == 0:
+                # 没有有效候选，保持原候选
+                refined_candidate_mask[gt_index] = candidate_mask[gt_index]
+                continue
+            refined_count = min(refined_topk, int(valid_indices.numel()))
+            refined_values, refined_indices = torch_module.topk(gt_refined_metric, k=refined_count)
+            valid_refined = refined_values > 0
+            if bool(valid_refined.any()):
+                refined_candidate_mask[gt_index, refined_indices[valid_refined]] = True
+            else:
+                refined_candidate_mask[gt_index] = candidate_mask[gt_index]
+        candidate_mask = refined_candidate_mask
+        # 更新 alignment_metric 以反映二次精选后的结果
+        alignment_metric = alignment_metric * candidate_mask.to(alignment_metric.dtype)
 
     matched_metric = alignment_metric * candidate_mask.to(alignment_metric.dtype)
     quality_scores, assigned_gt_indices = matched_metric.max(dim=0)

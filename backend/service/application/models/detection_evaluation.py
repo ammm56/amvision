@@ -42,6 +42,9 @@ class DetectionEvaluationResult:
     duration_seconds: float
     map50: float
     map50_95: float
+    mean_precision: float = 0.0
+    mean_recall: float = 0.0
+    mean_f1: float = 0.0
     per_class_metrics: list[dict[str, object]] = field(default_factory=list)
     report_payload: dict[str, object] = field(default_factory=dict)
     detections_payload: list[dict[str, object]] = field(default_factory=list)
@@ -141,6 +144,8 @@ def run_detection_evaluation(
 
     ap_at_50_list: list[float] = []
     ap_at_all_list: list[float] = []
+    precision_list: list[float] = []
+    recall_list: list[float] = []
     per_class: list[dict[str, object]] = []
 
     for cat_id in all_class_ids:
@@ -157,8 +162,16 @@ def run_detection_evaluation(
         cat_ap_all = [_compute_ap(cat_gt, cat_pred, iou_threshold=t) for t in iou_thresholds]
         cat_ap_mean = sum(cat_ap_all) / max(len(cat_ap_all), 1)
 
+        # 计算单类别 precision/recall/F1（IoU=0.5）
+        cat_metrics = _compute_precision_recall_f1(cat_gt, cat_pred, iou_threshold=0.5)
+        cat_precision = cat_metrics["precision"]
+        cat_recall = cat_metrics["recall"]
+        cat_f1 = cat_metrics["f1"]
+
         ap_at_50_list.append(cat_ap50)
         ap_at_all_list.extend(cat_ap_all)
+        precision_list.append(cat_precision)
+        recall_list.append(cat_recall)
 
         name = label_names[cat_id] if 0 <= cat_id < len(label_names) else str(cat_id)
         per_class.append({
@@ -168,10 +181,16 @@ def run_detection_evaluation(
             "pred_count": len(cat_pred),
             "ap50": round(cat_ap50, 6),
             "ap50_95": round(cat_ap_mean, 6),
+            "precision": round(cat_precision, 6),
+            "recall": round(cat_recall, 6),
+            "f1": round(cat_f1, 6),
         })
 
     map50 = sum(ap_at_50_list) / max(len(ap_at_50_list), 1) if ap_at_50_list else 0.0
     map50_95 = sum(ap_at_all_list) / max(len(ap_at_all_list), 1) if ap_at_all_list else 0.0
+    mean_precision = sum(precision_list) / max(len(precision_list), 1) if precision_list else 0.0
+    mean_recall = sum(recall_list) / max(len(recall_list), 1) if recall_list else 0.0
+    mean_f1 = (2 * mean_precision * mean_recall / (mean_precision + mean_recall)) if (mean_precision + mean_recall) > 0 else 0.0
 
     report = {
         "task_type": "detection",
@@ -181,6 +200,9 @@ def run_detection_evaluation(
         "duration_seconds": round(duration, 3),
         "map50": round(map50, 6),
         "map50_95": round(map50_95, 6),
+        "mean_precision": round(mean_precision, 6),
+        "mean_recall": round(mean_recall, 6),
+        "mean_f1": round(mean_f1, 6),
         "score_threshold": request.score_threshold,
         "nms_threshold": request.nms_threshold,
         "per_class_metrics": per_class,
@@ -189,6 +211,7 @@ def run_detection_evaluation(
     return DetectionEvaluationResult(
         split_name=split_name, sample_count=total_images, duration_seconds=duration,
         map50=map50, map50_95=map50_95,
+        mean_precision=mean_precision, mean_recall=mean_recall, mean_f1=mean_f1,
         per_class_metrics=per_class, report_payload=report,
         detections_payload=predictions_out,
     )
@@ -247,9 +270,14 @@ def _compute_ap(
     pred_list: list[dict],
     iou_threshold: float = 0.5,
 ) -> float:
-    """计算单类别在指定 IoU 阈值下的 AP。
+    """计算单类别在指定 IoU 阈值下的 AP（101 点插值法）。
 
-    使用贪心匹配：按置信度降序排列预测，每个预测匹配 IoU 最高且未被匹配的 GT。
+    遵循 COCO 评估标准：
+    1. 按置信度降序排列预测
+    2. 贪心匹配每个预测到 IoU 最高且未被匹配的 GT
+    3. 构建 precision-recall 曲线
+    4. 在 101 个等间距 recall 阈值 [0.00, 0.01, ..., 1.00] 上插值 precision
+    5. AP = 插值 precision 的均值
     """
     if not gt_list:
         return 0.0
@@ -261,7 +289,6 @@ def _compute_ap(
     for g in gt_list:
         gt_by_image.setdefault(g["image_id"], []).append(g)
 
-    matched_gt: set[int] = set()  # (image_id, gt_index) 用唯一 id 标识
     gt_id_counter = 0
     gt_id_map: dict[int, dict[int, int]] = {}
     for g in gt_list:
@@ -272,11 +299,111 @@ def _compute_ap(
         gt_id_map[img_id][gt_idx] = gt_id_counter
         gt_id_counter += 1
 
+    total_gt = len(gt_list)
+    matched_gt: set[int] = set()
+
+    # 按 score 降序遍历预测，逐步构建 PR 曲线
+    tp_cumsum: list[int] = []
+    fp_cumsum: list[int] = []
+    tp_count = 0
+    fp_count = 0
+
+    for pred in pred_list:
+        img_id = pred["image_id"]
+        img_gt = gt_by_image.get(img_id, [])
+        best_iou = 0.0
+        best_gt_idx = -1
+
+        for gt_idx, gt in enumerate(img_gt):
+            gid = gt_id_map[img_id][gt_idx]
+            if gid in matched_gt:
+                continue
+            iou = _box_iou(pred["bbox_xyxy"], gt["bbox_xyxy"])
+            if iou > best_iou:
+                best_iou = iou
+                best_gt_idx = gt_idx
+
+        if best_iou >= iou_threshold and best_gt_idx >= 0:
+            tp_count += 1
+            gid = gt_id_map[img_id][best_gt_idx]
+            matched_gt.add(gid)
+        else:
+            fp_count += 1
+
+        tp_cumsum.append(tp_count)
+        fp_cumsum.append(fp_count)
+
+    if not tp_cumsum:
+        return 0.0
+
+    # 构建 precision-recall 曲线
+    n_det = len(tp_cumsum)
+    precisions: list[float] = []
+    recalls: list[float] = []
+    for i in range(n_det):
+        precision_i = tp_cumsum[i] / max(tp_cumsum[i] + fp_cumsum[i], 1)
+        recall_i = tp_cumsum[i] / max(total_gt, 1)
+        precisions.append(precision_i)
+        recalls.append(recall_i)
+
+    # 101 点插值法（COCO 标准）
+    # 对每个 recall 阈值 r，找到 recall >= r 的所有点中的最大 precision
+    interpolated_precisions: list[float] = []
+    for r_threshold_i in range(101):
+        r_threshold = r_threshold_i / 100.0
+        # 找到所有 recall >= r_threshold 的点中的最大 precision
+        max_precision = 0.0
+        for i in range(n_det):
+            if recalls[i] >= r_threshold and precisions[i] > max_precision:
+                max_precision = precisions[i]
+        interpolated_precisions.append(max_precision)
+
+    # AP = 101 个插值 precision 的均值
+    return sum(interpolated_precisions) / 101.0
+
+
+def _compute_precision_recall_f1(
+    gt_list: list[dict],
+    pred_list: list[dict],
+    iou_threshold: float = 0.5,
+) -> dict[str, float]:
+    """计算单类别在指定 IoU 阈值下的 Precision、Recall、F1。
+
+    参数：
+    - gt_list: ground truth 列表，每个元素包含 image_id 和 bbox_xyxy
+    - pred_list: 预测列表，每个元素包含 image_id、bbox_xyxy 和 score（已按 score 降序排列）
+    - iou_threshold: IoU 匹配阈值
+
+    返回：
+    - dict 包含 precision、recall、f1 三个指标
+    """
+    if not gt_list:
+        return {"precision": 0.0, "recall": 0.0, "f1": 0.0}
+    if not pred_list:
+        return {"precision": 0.0, "recall": 0.0, "f1": 0.0}
+
+    # 按 image_id 分组 GT
+    gt_by_image: dict[int, list[dict]] = {}
+    for g in gt_list:
+        gt_by_image.setdefault(g["image_id"], []).append(g)
+
+    gt_id_counter = 0
+    gt_id_map: dict[int, dict[int, int]] = {}
+    for g in gt_list:
+        img_id = g["image_id"]
+        if img_id not in gt_id_map:
+            gt_id_map[img_id] = {}
+        gt_idx = len(gt_id_map[img_id])
+        gt_id_map[img_id][gt_idx] = gt_id_counter
+        gt_id_counter += 1
+
+    total_gt = len(gt_list)
+    matched_gt: set[int] = set()
+
+    # 贪心匹配
     tp = 0
     fp = 0
-    total_gt = len(gt_list)
 
-    # pred_list 已按 score 降序排列
     for pred in pred_list:
         img_id = pred["image_id"]
         img_gt = gt_by_image.get(img_id, [])
@@ -299,9 +426,12 @@ def _compute_ap(
         else:
             fp += 1
 
+    fn = total_gt - tp
     precision = tp / max(tp + fp, 1)
-    recall = tp / max(total_gt, 1)
-    return precision * recall
+    recall = tp / max(tp + fn, 1)
+    f1 = (2 * precision * recall / (precision + recall)) if (precision + recall) > 0 else 0.0
+
+    return {"precision": precision, "recall": recall, "f1": f1}
 
 
 def _box_iou(box1: tuple, box2: tuple) -> float:

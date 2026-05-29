@@ -117,6 +117,9 @@ class DetectionEvaluationTaskResult:
     result_package_object_key: str | None
     map50: float
     map50_95: float
+    mean_precision: float
+    mean_recall: float
+    mean_f1: float
     sample_count: int
     report_summary: dict[str, object] = field(default_factory=dict)
 
@@ -257,11 +260,15 @@ class SqlAlchemyDetectionEvaluationTaskService:
             report_object_key=report_key, detections_object_key=detections_key,
             result_package_object_key=package_key,
             map50=eval_result.map50, map50_95=eval_result.map50_95,
+            mean_precision=eval_result.mean_precision, mean_recall=eval_result.mean_recall,
+            mean_f1=eval_result.mean_f1,
             sample_count=eval_result.sample_count,
             report_summary={
                 "model_type": runtime_target.model_type, "split_name": eval_result.split_name,
                 "sample_count": eval_result.sample_count, "map50": eval_result.map50,
                 "map50_95": eval_result.map50_95, "duration_seconds": eval_result.duration_seconds,
+                "mean_precision": eval_result.mean_precision, "mean_recall": eval_result.mean_recall,
+                "mean_f1": eval_result.mean_f1,
                 "per_class_metrics": eval_result.per_class_metrics,
             },
         )
@@ -274,6 +281,8 @@ class SqlAlchemyDetectionEvaluationTaskService:
                          "output_object_prefix": output_prefix, "report_object_key": report_key,
                          "detections_object_key": detections_key, "result_package_object_key": package_key,
                          "map50": eval_result.map50, "map50_95": eval_result.map50_95,
+                         "mean_precision": eval_result.mean_precision, "mean_recall": eval_result.mean_recall,
+                         "mean_f1": eval_result.mean_f1,
                          "sample_count": eval_result.sample_count,
                      }},
         ))
@@ -364,6 +373,9 @@ class SqlAlchemyDetectionEvaluationTaskService:
             detections_object_key=str(result.get("detections_object_key", "")),
             result_package_object_key=result.get("result_package_object_key"),
             map50=float(result.get("map50", 0.0)), map50_95=float(result.get("map50_95", 0.0)),
+            mean_precision=float(result.get("mean_precision", 0.0)),
+            mean_recall=float(result.get("mean_recall", 0.0)),
+            mean_f1=float(result.get("mean_f1", 0.0)),
             sample_count=int(result.get("sample_count", 0)),
         )
 

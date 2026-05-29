@@ -207,16 +207,34 @@ class PyTorchYoloPrimaryRuntimeSession:
             prediction_tensor=outputs,
             np_module=self.imports.np,
         )
-        detections = _build_yolo_primary_detection_records(
-            np_module=self.imports.np,
-            prediction_array=prediction_array,
-            labels=self.runtime_target.labels,
-            score_threshold=request.score_threshold,
-            nms_threshold=nms_threshold,
-            resize_ratio=resize_ratio,
-            image_width=image_width,
-            image_height=image_height,
-        )
+        
+        # 检测是否为端到端模型（推理时输出已经是 one2one 分支，不需要 NMS）
+        is_end2end = getattr(self.model, "end2end", False)
+        
+        if is_end2end:
+            # 端到端模型：使用 top-k 选择替代 NMS
+            detections = _build_yolo_primary_detection_records_topk(
+                np_module=self.imports.np,
+                prediction_array=prediction_array,
+                labels=self.runtime_target.labels,
+                score_threshold=request.score_threshold,
+                max_detections=300,  # YOLO26 默认 top-k=300
+                resize_ratio=resize_ratio,
+                image_width=image_width,
+                image_height=image_height,
+            )
+        else:
+            # 标准模型：使用 NMS
+            detections = _build_yolo_primary_detection_records(
+                np_module=self.imports.np,
+                prediction_array=prediction_array,
+                labels=self.runtime_target.labels,
+                score_threshold=request.score_threshold,
+                nms_threshold=nms_threshold,
+                resize_ratio=resize_ratio,
+                image_width=image_width,
+                image_height=image_height,
+            )
         postprocess_ms = measure_stage_elapsed_ms(
             imports=self.imports,
             device_name=self.device_name,
@@ -973,6 +991,97 @@ def _build_yolo_primary_detection_records(
             )
         )
     detections.sort(key=lambda item: item.score, reverse=True)
+    return tuple(detections)
+
+
+def _build_yolo_primary_detection_records_topk(
+    *,
+    np_module: Any,
+    prediction_array: Any,
+    labels: tuple[str, ...],
+    score_threshold: float,
+    max_detections: int,
+    resize_ratio: float,
+    image_width: int,
+    image_height: int,
+) -> tuple[DetectionPredictionDetection, ...]:
+    """把端到端模型输出数组转换成平台 detection 记录（top-k 替代 NMS）。
+
+    端到端模型（如 YOLO26）在推理时使用 one2one 分支，该分支已经通过
+    一对一标签分配保证了预测的唯一性，因此不需要 NMS，只需按分数
+    选取 top-k 个最高置信度的检测。
+    """
+
+    normalized_prediction = np_module.asarray(prediction_array, dtype=np_module.float32)
+    if normalized_prediction.ndim == 2:
+        normalized_prediction = np_module.expand_dims(normalized_prediction, axis=0)
+    if normalized_prediction.ndim < 3:
+        raise InvalidRequestError(
+            "YOLO 主线推理输出维度不合法",
+            details={"shape": list(normalized_prediction.shape)},
+        )
+
+    num_classes = len(labels)
+    if int(normalized_prediction.shape[2]) < 4 + num_classes:
+        raise InvalidRequestError(
+            "YOLO 主线推理输出通道数不足",
+            details={
+                "channel_count": int(normalized_prediction.shape[2]),
+                "required_channel_count": 4 + num_classes,
+            },
+        )
+
+    # 只处理第一张图（batch_size=1）
+    image_prediction = normalized_prediction[0]
+    boxes = image_prediction[:, :4]
+    class_scores = image_prediction[:, 4 : 4 + num_classes]
+
+    if int(boxes.shape[0]) <= 0:
+        return ()
+
+    # 计算每个预测的最佳类别和分数
+    best_scores = np_module.max(class_scores, axis=1)
+    best_class_ids = np_module.argmax(class_scores, axis=1).astype(np_module.int32, copy=False)
+
+    # 阈值过滤
+    keep_mask = best_scores >= score_threshold
+    boxes = boxes[keep_mask]
+    best_scores = best_scores[keep_mask]
+    best_class_ids = best_class_ids[keep_mask]
+
+    if int(boxes.shape[0]) <= 0:
+        return ()
+
+    # Top-k 选择（替代 NMS）
+    num_candidates = int(boxes.shape[0])
+    actual_k = min(max_detections, num_candidates)
+    topk_indices = np_module.argsort(best_scores)[::-1][:actual_k]
+
+    # 构建检测记录
+    detections: list[DetectionPredictionDetection] = []
+    for idx in topk_indices:
+        bbox = boxes[idx]
+        score = float(best_scores[idx])
+        class_id = int(best_class_ids[idx])
+
+        # 缩放回原始图像坐标
+        scaled_bbox = bbox / max(resize_ratio, 1e-8)
+        x1 = float(max(0.0, min(float(scaled_bbox[0]), float(image_width))))
+        y1 = float(max(0.0, min(float(scaled_bbox[1]), float(image_height))))
+        x2 = float(max(0.0, min(float(scaled_bbox[2]), float(image_width))))
+        y2 = float(max(0.0, min(float(scaled_bbox[3]), float(image_height))))
+
+        class_name = labels[class_id] if 0 <= class_id < len(labels) else None
+        detections.append(
+            DetectionPredictionDetection(
+                bbox_xyxy=(round(x1, 4), round(y1, 4), round(x2, 4), round(y2, 4)),
+                score=round(score, 6),
+                class_id=class_id,
+                class_name=class_name,
+            )
+        )
+
+    # 已经按分数排序（argsort 降序）
     return tuple(detections)
 
 
