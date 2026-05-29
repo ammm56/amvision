@@ -97,6 +97,7 @@ WebSocket 资源流的统一消息结构、控制事件和重连规则见 [docs/
 | GET | /api/v1/projects/{project_id}/files/content | workflows:read + models:read | 直接输出一个 Project 公开文件命名空间中的对象文件内容，适用于图片预览和结果文件下载。 |
 | POST | /api/v1/datasets/imports | datasets:write | 上传 zip，创建 DatasetImport 和关联 TaskRecord，并提交到本地队列。 |
 | GET | /api/v1/datasets/imports/{dataset_import_id} | datasets:read | 查询单条导入记录详情、校验报告和关联 DatasetVersion。 |
+| DELETE | /api/v1/datasets/imports/{dataset_import_id} | datasets:write | 删除一个已完成或已失败的 DatasetImport 记录，并清理关联文件目录。 |
 | GET | /api/v1/datasets/{dataset_id}/imports | datasets:read | 查询某个 Dataset 下的导入记录列表。 |
 | GET | /api/v1/datasets/export-formats | datasets:read | 返回当前公开的数据集导出格式合同，包括 supported、implemented 和 default_format。 |
 | POST | /api/v1/datasets/exports | datasets:write | 为指定 DatasetVersion 创建 DatasetExport 资源和关联 TaskRecord，并提交到本地队列。 |
@@ -117,6 +118,38 @@ WebSocket 资源流的统一消息结构、控制事件和重连规则见 [docs/
 | GET | /api/v1/models/detection/training-tasks/{task_id}/train-metrics | tasks:read | 读取当前 detection 训练任务最新的 train-metrics.json 内容。 |
 | GET | /api/v1/models/detection/training-tasks/{task_id}/output-files | tasks:read | 列出当前 detection 训练任务公开输出文件状态。 |
 | GET | /api/v1/models/detection/training-tasks/{task_id}/output-files/{file_name} | tasks:read | 读取单个 detection 训练输出文件的状态、object_key 和可内联 payload。 |
+| POST | /api/v1/models/classification/training-tasks | datasets:read + tasks:write | 按统一 classification 控制面创建 YOLOv8、YOLO11、YOLO26 分类训练任务。 |
+| GET | /api/v1/models/classification/training-tasks | tasks:read | 按 Project、模型分类和状态列出 classification 训练任务。 |
+| GET | /api/v1/models/classification/training-tasks/{task_id} | tasks:read | 查询单条 classification 训练任务详情。 |
+| POST | /api/v1/models/classification/training-tasks/{task_id}/save | tasks:write | 为 running 的 classification 训练任务登记一次手动保存请求。 |
+| POST | /api/v1/models/classification/training-tasks/{task_id}/pause | tasks:write | 为 running 的 classification 训练任务请求暂停。 |
+| POST | /api/v1/models/classification/training-tasks/{task_id}/terminate | tasks:write | 请求终止一个 queued、running 或 paused 的 classification 训练任务。 |
+| POST | /api/v1/models/classification/training-tasks/{task_id}/resume | tasks:write | 把 paused 的 classification 训练任务重新入队。 |
+| DELETE | /api/v1/models/classification/training-tasks/{task_id} | tasks:write | 删除一个已经停止且允许清理的 classification 训练任务。 |
+| POST | /api/v1/models/segmentation/training-tasks | datasets:read + tasks:write | 按统一 segmentation 控制面创建 YOLOv8、YOLO11、YOLO26 分割训练任务。 |
+| GET | /api/v1/models/segmentation/training-tasks | tasks:read | 按 Project、模型分类和状态列出 segmentation 训练任务。 |
+| GET | /api/v1/models/segmentation/training-tasks/{task_id} | tasks:read | 查询单条 segmentation 训练任务详情。 |
+| POST | /api/v1/models/segmentation/training-tasks/{task_id}/save | tasks:write | 为 running 的 segmentation 训练任务登记一次手动保存请求。 |
+| POST | /api/v1/models/segmentation/training-tasks/{task_id}/pause | tasks:write | 为 running 的 segmentation 训练任务请求暂停。 |
+| POST | /api/v1/models/segmentation/training-tasks/{task_id}/terminate | tasks:write | 请求终止一个 queued、running 或 paused 的 segmentation 训练任务。 |
+| POST | /api/v1/models/segmentation/training-tasks/{task_id}/resume | tasks:write | 把 paused 的 segmentation 训练任务重新入队。 |
+| DELETE | /api/v1/models/segmentation/training-tasks/{task_id} | tasks:write | 删除一个已经停止且允许清理的 segmentation 训练任务。 |
+| POST | /api/v1/models/pose/training-tasks | datasets:read + tasks:write | 按统一 pose 控制面创建 YOLOv8、YOLO11、YOLO26 姿态估计训练任务。 |
+| GET | /api/v1/models/pose/training-tasks | tasks:read | 按 Project、模型分类和状态列出 pose 训练任务。 |
+| GET | /api/v1/models/pose/training-tasks/{task_id} | tasks:read | 查询单条 pose 训练任务详情。 |
+| POST | /api/v1/models/pose/training-tasks/{task_id}/save | tasks:write | 为 running 的 pose 训练任务登记一次手动保存请求。 |
+| POST | /api/v1/models/pose/training-tasks/{task_id}/pause | tasks:write | 为 running 的 pose 训练任务请求暂停。 |
+| POST | /api/v1/models/pose/training-tasks/{task_id}/terminate | tasks:write | 请求终止一个 queued、running 或 paused 的 pose 训练任务。 |
+| POST | /api/v1/models/pose/training-tasks/{task_id}/resume | tasks:write | 把 paused 的 pose 训练任务重新入队。 |
+| DELETE | /api/v1/models/pose/training-tasks/{task_id} | tasks:write | 删除一个已经停止且允许清理的 pose 训练任务。 |
+| POST | /api/v1/models/obb/training-tasks | datasets:read + tasks:write | 按统一 obb 控制面创建 YOLOv8、YOLO11、YOLO26 旋转框训练任务。 |
+| GET | /api/v1/models/obb/training-tasks | tasks:read | 按 Project、模型分类和状态列出 obb 训练任务。 |
+| GET | /api/v1/models/obb/training-tasks/{task_id} | tasks:read | 查询单条 obb 训练任务详情。 |
+| POST | /api/v1/models/obb/training-tasks/{task_id}/save | tasks:write | 为 running 的 obb 训练任务登记一次手动保存请求。 |
+| POST | /api/v1/models/obb/training-tasks/{task_id}/pause | tasks:write | 为 running 的 obb 训练任务请求暂停。 |
+| POST | /api/v1/models/obb/training-tasks/{task_id}/terminate | tasks:write | 请求终止一个 queued、running 或 paused 的 obb 训练任务。 |
+| POST | /api/v1/models/obb/training-tasks/{task_id}/resume | tasks:write | 把 paused 的 obb 训练任务重新入队。 |
+| DELETE | /api/v1/models/obb/training-tasks/{task_id} | tasks:write | 删除一个已经停止且允许清理的 obb 训练任务。 |
 | POST | /api/v1/models/yolox/training-tasks | datasets:read + tasks:write | 以 DatasetExport 为唯一输入边界创建 YOLOX 训练任务。 |
 | GET | /api/v1/models/platform-base | models:read | 列出平台基础模型及其可用 ModelVersion 摘要。 |
 | GET | /api/v1/models/platform-base/{model_id} | models:read | 查询单个平台基础模型详情、版本文件和构建文件。 |
@@ -499,6 +532,14 @@ WebSocket 资源流的统一消息结构、控制事件和重连规则见 [docs/
 
 - 返回导入详情、识别结果、校验报告、metadata 和关联 DatasetVersion
 - 当前详情响应会公开 task_id，便于从导入记录跳转到 tasks API
+
+### DELETE /api/v1/datasets/imports/{dataset_import_id}
+
+- 需要 datasets:write
+- 成功状态码：204 No Content
+- 只有 completed 或 failed 状态的导入记录可以删除；其他状态返回 400
+- 删除时会一并清理关联的 package_path 和 staging_path 文件目录
+- 删除后数据库记录同步移除，不可恢复
 
 ### GET /api/v1/datasets/{dataset_id}/imports
 
@@ -1417,6 +1458,72 @@ WebSocket 资源流的统一消息结构、控制事件和重连规则见 [docs/
 - `summary`、`train-metrics`、`validation-metrics` 通过 `payload` 返回 JSON 内容
 - `labels` 通过 `text_content` 和 `lines` 返回文本内容
 - `best-checkpoint`、`latest-checkpoint` 当前只返回文件元数据，不直接返回二进制内容
+
+### 非 Detection 训练任务端点说明
+
+classification、segmentation、pose 和 obb 四种任务类型各自提供与 detection 训练任务对齐的 7 个管理端点。下面以 classification 为例统一说明，其他三种任务类型的端点结构和语义完全一致，只需将路径中的 `classification` 替换为对应的 `segmentation`、`pose` 或 `obb`。
+
+### POST /api/v1/models/classification/training-tasks
+
+- 需要同时具备 datasets:read 和 tasks:write
+- 当前支持创建 YOLOv8、YOLO11、YOLO26 分类训练任务
+- 请求体字段：project_id、dataset_export_id、model_name（yolov8/yolo11/yolo26）、model_scale、epochs、batch_size、image_size、display_name、metadata
+- 响应字段：task_id、status、queue_name、queue_task_id、source_model_version_id（如有）
+
+### GET /api/v1/models/classification/training-tasks
+
+- 需要 tasks:read
+- 按 Project、模型分类和状态列出 classification 训练任务
+- 支持查询参数：project_id、state、limit
+
+### GET /api/v1/models/classification/training-tasks/{task_id}
+
+- 需要 tasks:read
+- 返回单条 classification 训练任务的详情和事件流
+
+### POST /api/v1/models/classification/training-tasks/{task_id}/save
+
+- 需要 tasks:write
+- 为 running 的 classification 训练任务登记一次手动保存请求
+
+### POST /api/v1/models/classification/training-tasks/{task_id}/pause
+
+- 需要 tasks:write
+- 为 running 的 classification 训练任务请求暂停
+
+### POST /api/v1/models/classification/training-tasks/{task_id}/terminate
+
+- 需要 tasks:write
+- 请求终止一个 queued、running 或 paused 的 classification 训练任务
+
+### POST /api/v1/models/classification/training-tasks/{task_id}/resume
+
+- 需要 tasks:write
+- 把 paused 的 classification 训练任务重新入队，基于 latest checkpoint 恢复训练
+- 成功状态码：202 Accepted
+
+### DELETE /api/v1/models/classification/training-tasks/{task_id}
+
+- 需要 tasks:write
+- 成功状态码：204 No Content
+- 删除一个已经停止且允许清理的 classification 训练任务
+
+### segmentation / pose / obb 训练任务端点
+
+以下端点与上述 classification 端点结构和语义完全一致：
+
+- `POST/GET /api/v1/models/segmentation/training-tasks` — 分割训练任务创建与列表
+- `GET /api/v1/models/segmentation/training-tasks/{task_id}` — 分割训练任务详情
+- `POST .../segmentation/training-tasks/{task_id}/save|pause|terminate|resume` — 分割训练管理
+- `DELETE /api/v1/models/segmentation/training-tasks/{task_id}` — 删除分割训练任务
+- `POST/GET /api/v1/models/pose/training-tasks` — 姿态估计训练任务创建与列表
+- `GET /api/v1/models/pose/training-tasks/{task_id}` — 姿态估计训练任务详情
+- `POST .../pose/training-tasks/{task_id}/save|pause|terminate|resume` — 姿态估计训练管理
+- `DELETE /api/v1/models/pose/training-tasks/{task_id}` — 删除姿态估计训练任务
+- `POST/GET /api/v1/models/obb/training-tasks` — 旋转框训练任务创建与列表
+- `GET /api/v1/models/obb/training-tasks/{task_id}` — 旋转框训练任务详情
+- `POST .../obb/training-tasks/{task_id}/save|pause|terminate|resume` — 旋转框训练管理
+- `DELETE /api/v1/models/obb/training-tasks/{task_id}` — 删除旋转框训练任务
 
 ## workflow 资源组
 

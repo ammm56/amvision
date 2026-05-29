@@ -115,7 +115,7 @@ def test_yolo_primary_model_services_and_runtime_resolvers_preserve_model_type(
             project_id="project-1",
             training_task_id=f"training-{model_type}-1",
             model_name=model_type,
-            model_scale="n",
+            model_scale="nano",
             dataset_version_id=f"dataset-version-{model_type}-1",
             checkpoint_file_id=f"{model_type}-checkpoint-file-1",
             checkpoint_file_uri=checkpoint_uri,

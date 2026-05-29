@@ -302,6 +302,29 @@ class SqlAlchemyTaskService:
             )
         )
 
+    def update_task_metadata(self, task_id: str, metadata: dict[str, object]) -> TaskRecord:
+        """整体替换指定任务的 metadata 字段并持久化。
+
+        参数：
+        - task_id：任务 id。
+        - metadata：新的完整 metadata 字典。
+
+        返回：
+        - 更新后的 TaskRecord。
+        """
+
+        with self._open_unit_of_work() as unit_of_work:
+            task_record = unit_of_work.tasks.get_task(task_id)
+            if task_record is None:
+                raise ResourceNotFoundError(
+                    "找不到指定的任务",
+                    details={"task_id": task_id},
+                )
+            updated_task = replace(task_record, metadata=dict(metadata))
+            unit_of_work.tasks.save_task(updated_task)
+            unit_of_work.commit()
+        return updated_task
+
     def delete_task(self, task_id: str) -> None:
         """删除一条任务记录及其关联尝试、事件。
 

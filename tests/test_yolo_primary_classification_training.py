@@ -59,7 +59,7 @@ def test_classification_training_runs_one_epoch():
         dataset_storage=storage,
         manifest_payload=manifest,
         model_type="yolov8",
-        model_scale="n",
+        model_scale="nano",
         batch_size=2,
         max_epochs=1,
         evaluation_interval=1,

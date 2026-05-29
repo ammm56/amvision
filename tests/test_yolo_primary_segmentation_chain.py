@@ -231,7 +231,7 @@ def _seed_segmentation_model_version(
     source_model = build_yolo_primary_model(
         model_type="yolov8",
         task_type="segmentation",
-        model_scale="n",
+        model_scale="nano",
         num_classes=3,
     )
     torch.save({"model_state_dict": source_model.state_dict()}, checkpoint_path)
@@ -243,7 +243,7 @@ def _seed_segmentation_model_version(
             project_id="project-1",
             training_task_id="training-yolov8-segmentation-source-1",
             model_name="yolov8-segmenter",
-            model_scale="n",
+            model_scale="nano",
             task_type="segmentation",
             dataset_version_id="dataset-version-yolov8-segmentation-source-1",
             checkpoint_file_id="checkpoint-file-yolov8-segmentation-source-1",

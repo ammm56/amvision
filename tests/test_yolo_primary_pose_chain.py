@@ -11,7 +11,7 @@ from backend.service.application.runtime.yolo_primary_pose_predictor import _bui
 
 def test_pose_model_can_build_and_forward():
     """验证 pose 模型可以构建并完成前向推理。"""
-    model = build_yolo_primary_model(model_type="yolov8", task_type="pose", model_scale="n", num_classes=1)
+    model = build_yolo_primary_model(model_type="yolov8", task_type="pose", model_scale="nano", num_classes=1)
     model.eval()
     with torch.no_grad():
         output = model(torch.randn(1, 3, 256, 256))
@@ -20,7 +20,7 @@ def test_pose_model_can_build_and_forward():
 
 def test_pose26_model_can_build_and_forward():
     """验证 Pose26 模型可以构建并完成前向推理。"""
-    model = build_yolo_primary_model(model_type="yolo26", task_type="pose", model_scale="n", num_classes=1)
+    model = build_yolo_primary_model(model_type="yolo26", task_type="pose", model_scale="nano", num_classes=1)
     model.eval()
     with torch.no_grad():
         output = model(torch.randn(1, 3, 256, 256))
@@ -29,7 +29,7 @@ def test_pose26_model_can_build_and_forward():
 
 def test_segment26_model_can_build_and_forward():
     """验证 Segment26 模型可以构建并完成前向推理。"""
-    model = build_yolo_primary_model(model_type="yolo26", task_type="segmentation", model_scale="n", num_classes=1)
+    model = build_yolo_primary_model(model_type="yolo26", task_type="segmentation", model_scale="nano", num_classes=1)
     model.eval()
     with torch.no_grad():
         output = model(torch.randn(1, 3, 256, 256))

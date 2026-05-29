@@ -19,7 +19,7 @@ def test_yolov8_detection_model_forward_returns_detection_tensor() -> None:
 
     model = build_yolo_primary_detection_model(
         model_type="yolov8",
-        model_scale="n",
+        model_scale="nano",
         num_classes=2,
     )
     model.eval()
@@ -36,14 +36,14 @@ def test_yolov8_detection_model_can_reload_project_checkpoint(tmp_path: Path) ->
     checkpoint_path = tmp_path / "yolov8-project-native.pt"
     source_model = build_yolo_primary_detection_model(
         model_type="yolov8",
-        model_scale="n",
+        model_scale="nano",
         num_classes=1,
     )
     torch.save({"model_state_dict": source_model.state_dict()}, checkpoint_path)
 
     target_model = build_yolo_primary_detection_model(
         model_type="yolov8",
-        model_scale="n",
+        model_scale="nano",
         num_classes=1,
     )
     load_summary = load_yolo_primary_checkpoint(
@@ -62,14 +62,14 @@ def test_yolov8_checkpoint_loader_tolerates_class_head_shape_mismatch(tmp_path: 
     checkpoint_path = tmp_path / "yolov8-class-mismatch.pt"
     source_model = build_yolo_primary_detection_model(
         model_type="yolov8",
-        model_scale="n",
+        model_scale="nano",
         num_classes=2,
     )
     torch.save({"model_state_dict": source_model.state_dict()}, checkpoint_path)
 
     target_model = build_yolo_primary_detection_model(
         model_type="yolov8",
-        model_scale="n",
+        model_scale="nano",
         num_classes=1,
     )
     load_summary = load_yolo_primary_checkpoint(
@@ -88,7 +88,7 @@ def test_yolo11_detection_model_forward_returns_detection_tensor() -> None:
 
     model = build_yolo_primary_detection_model(
         model_type="yolo11",
-        model_scale="n",
+        model_scale="nano",
         num_classes=2,
     )
     model.eval()
@@ -104,7 +104,7 @@ def test_yolo26_detection_model_forward_returns_detection_tensor() -> None:
 
     model = build_yolo_primary_detection_model(
         model_type="yolo26",
-        model_scale="n",
+        model_scale="nano",
         num_classes=2,
     )
     model.eval()
@@ -121,7 +121,7 @@ def test_yolo11_segmentation_model_forward_returns_prediction_and_proto() -> Non
     model = build_yolo_primary_model(
         model_type="yolo11",
         task_type="segmentation",
-        model_scale="n",
+        model_scale="nano",
         num_classes=2,
     )
     model.eval()
@@ -140,7 +140,7 @@ def test_yolo26_classification_model_forward_returns_probabilities_and_logits() 
     model = build_yolo_primary_model(
         model_type="yolo26",
         task_type="classification",
-        model_scale="n",
+        model_scale="nano",
         num_classes=3,
     )
     model.eval()

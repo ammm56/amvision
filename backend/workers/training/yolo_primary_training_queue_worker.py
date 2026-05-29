@@ -146,6 +146,6 @@ def _read_model_type(payload: dict | str) -> str:
     if isinstance(payload, str):
         payload = json.loads(payload)
     model_type = str(payload.get("model_type", payload.get("model_scale", "yolov8")))
-    if not model_type or model_type in ("n", "s", "m", "l", "x", "nano"):
+    if not model_type or model_type in ("s", "m", "l", "x", "nano"):
         return "yolov8"
     return model_type

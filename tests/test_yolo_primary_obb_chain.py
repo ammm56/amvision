@@ -12,7 +12,7 @@ from backend.service.application.runtime.yolo_primary_obb_predictor import _buil
 def test_obb_model_can_build_and_forward():
     """验证 obb 模型可以构建并完成前向推理。"""
     overrides = {"ne": 1}
-    model = build_yolo_primary_model(model_type="yolov8", task_type="obb", model_scale="n", num_classes=1, model_config_overrides=overrides)
+    model = build_yolo_primary_model(model_type="yolov8", task_type="obb", model_scale="nano", num_classes=1, model_config_overrides=overrides)
     model.eval()
     with torch.no_grad():
         output = model(torch.randn(1, 3, 256, 256))

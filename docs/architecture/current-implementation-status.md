@@ -17,12 +17,35 @@
 
 - 以 YOLOX 为中心的训练 -> 人工验证 -> 数据集级评估 -> 转换 -> DeploymentInstance 发布 -> 同步 / 异步推理接口闭环已经打通。
 - backend-service 当前承担 REST / WebSocket 控制面和 deployment process supervisor，全部队列消费者已经收敛到独立 worker profile。
-- 当前公开 REST v1 已覆盖 auth、本地用户与权限管理、datasets、dataset-exports、models、detection training tasks、detection validation sessions、deployment-instances、inference-tasks，以及 yolox training tasks、validation-sessions、conversion-tasks、evaluation-tasks、projects 目录与对象读取、workflow runtime 资源和 tasks。
+- 当前公开 REST v1 已覆盖 auth、本地用户与权限管理、datasets、dataset-exports、models、detection training tasks、classification/segmentation/pose/obb training tasks、detection validation sessions、deployment-instances、inference-tasks，以及 yolox training tasks、validation-sessions、conversion-tasks、evaluation-tasks、projects 目录与对象读取、workflow runtime 资源和 tasks。
 - workflow 公开资源面已经拆成 preview-runs、execution-policies、app-runtimes、runs 和 trigger-sources；当前开始把状态集合、snapshot 路径和 preview cleanup 规则收敛到共享 contracts 语义，避免 route、service、maintenance 和文档继续各写一份。
 - 当前公开 WebSocket 已覆盖 auth、system、tasks、workflows.preview-runs、workflows.runs、workflows.app-runtimes、deployments 和 projects 八类资源流；统一的路由分层、重连规则和项目级聚合流边界已整理到 [websocket-architecture.md](websocket-architecture.md)。
 - backend-service 当前已经补齐本地前端接入所需的 CORS、hybrid auth、Project 目录接口和 Project 内对象读取接口；主要工作台列表接口已经统一到 offset/limit + 响应头分页规则。
 - backend-service 当前已经补齐本地用户、权限范围、session/refresh token、长期调用 user token 和 auth.events 审计流；在线 provider 只保留目录发现与后续扩展边界。
 - 当前代码形态仍然是“模块化单体 + 本地队列 + 本地对象存储 + 独立 deployment 子进程”。下一步重点应转向拓扑收敛、运行时硬化和平台泛化，而不是继续补 YOLOX 基础闭环缺口。
+
+## 本轮更新（P0 + P1-8 + P3-14 + P3-15）已落地事项
+
+### P0 修复
+
+- RF-DETR detection 训练路由已从支持列表移除（链路不完整，待 P1-5 完整接入）。
+- 非 Detection 训练管理 API 已补齐：classification/segmentation/pose/obb 各有 list/detail/save/pause/terminate/resume/delete 7 个端点。
+- OBB 训练损失已从占位 MSE 替换为完整实现：probiou + 旋转框 TAL + DFL + 角度损失（`backend/service/application/models/obb_loss.py`）。
+- Pose 训练损失已从占位 MSE 替换为完整实现：detection 损失 + 关键点位置损失 + 可见性 mask（`backend/service/application/models/pose_loss.py`）。
+- model_scale 命名统一：全部 YOLO11/YOLO26 配置和默认值从 `"n"` 改为 `"nano"`。
+
+### P1-8 Bootstrap 重构
+
+- `build_runtime` 中 5 种 task_type 的 deployment supervisor 构建从 ~150 行重复代码重构为参数化工厂函数。
+- `start_runtime`/`stop_runtime` 从逐字段 if-else 改为 `iter_all_deployment_supervisors()` 迭代。
+
+### P3-14 非 Detection 转换路由修复
+
+- classification/segmentation/pose/obb 转换路由从使用缺少 planner 的基类改为使用正确的模型专属服务类（`SqlAlchemyYoloV8/11/26ConversionTaskService`）。
+
+### P3-15 数据集导入删除 API
+
+- 新增 `DELETE /api/v1/datasets/imports/{dataset_import_id}` 端点，支持删除 completed/failed 状态的导入记录并清理关联文件。
 
 ## 当前整体框架
 
@@ -31,7 +54,7 @@
 - FastAPI 应用入口位于 `backend/service/api/app.py`，负责装配 settings、数据库会话、本地对象存储、本地队列、中间件、异常处理、REST 路由和 WebSocket 路由。
 - backend-service settings 位于 `backend/service/settings.py`，当前已经统一管理 CORS、auth mode、本地 auth TTL、auth provider 目录、静态 token 和 Project 目录配置。
 - 启动编排位于 `backend/service/api/bootstrap.py`，负责在应用生命周期内初始化 SessionFactory、LocalDatasetStorage、LocalFileQueueBackend 和 deployment process supervisor。
-- REST v1 路由汇总位于 `backend/service/api/rest/v1/router.py`，当前已经挂载 auth、system、projects、workflows、workflow runtime、datasets、dataset-exports、models、detection-training-tasks、detection-validation-sessions、deployment-instances、inference-tasks、yolox-training-tasks、validation-sessions、conversion-tasks、evaluation-tasks 和 tasks。
+- REST v1 路由汇总位于 `backend/service/api/rest/v1/router.py`，当前已经挂载 auth、system、projects、workflows、workflow runtime、datasets、dataset-exports、models、detection-training-tasks、classification-training-tasks、segmentation-training-tasks、pose-training-tasks、obb-training-tasks、detection-validation-sessions、deployment-instances、inference-tasks、yolox-training-tasks、validation-sessions、conversion-tasks、evaluation-tasks 和 tasks。
 - REST v1 列表分页辅助函数位于 `backend/service/api/rest/v1/pagination.py`，当前用于 projects、workflow templates、template versions、applications、execution-policies、preview-runs、app-runtimes 和 trigger-sources。
 - WebSocket 路由位于 `backend/service/api/ws/router.py`，当前已经公开 auth、system、tasks、workflow preview-runs、workflow runs、workflow app-runtimes、deployments 和 projects 聚合流入口。
 

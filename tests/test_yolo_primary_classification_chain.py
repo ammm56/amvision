@@ -229,7 +229,7 @@ def _seed_classification_model_version(
     source_model = build_yolo_primary_model(
         model_type="yolov8",
         task_type="classification",
-        model_scale="n",
+        model_scale="nano",
         num_classes=3,
     )
     torch.save({"model_state_dict": source_model.state_dict()}, checkpoint_path)
@@ -241,7 +241,7 @@ def _seed_classification_model_version(
             project_id="project-1",
             training_task_id="training-yolov8-classification-source-1",
             model_name="yolov8-classifier",
-            model_scale="n",
+            model_scale="nano",
             task_type="classification",
             dataset_version_id="dataset-version-yolov8-classification-source-1",
             checkpoint_file_id="checkpoint-file-yolov8-classification-source-1",

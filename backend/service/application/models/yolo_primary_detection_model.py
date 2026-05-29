@@ -56,7 +56,7 @@ YOLO11_DETECTION_MODEL_CONFIG: dict[str, object] = {
     "reg_max": 16,
     "strides": (8, 16, 32),
     "scales": {
-        "n": (0.50, 0.25, 1024),
+        "nano": (0.50, 0.25, 1024),
         "s": (0.50, 0.50, 1024),
         "m": (0.50, 1.00, 512),
         "l": (1.00, 1.00, 512),
@@ -97,7 +97,7 @@ YOLO26_DETECTION_MODEL_CONFIG: dict[str, object] = {
     "end2end": True,
     "strides": (8, 16, 32),
     "scales": {
-        "n": (0.50, 0.25, 1024),
+        "nano": (0.50, 0.25, 1024),
         "s": (0.50, 0.50, 1024),
         "m": (0.50, 1.00, 512),
         "l": (1.00, 1.00, 512),

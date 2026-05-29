@@ -126,6 +126,23 @@ class SqlAlchemyDatasetImportRepository:
 
         return tuple(self._to_domain(record) for record in records)
 
+    def delete_dataset_import(self, dataset_import_id: str) -> None:
+        """删除一个 DatasetImport。
+
+        参数：
+        - dataset_import_id：要删除的 DatasetImport id。
+        """
+
+        try:
+            record = self.session.get(DatasetImportRecord, dataset_import_id)
+            if record is not None:
+                self.session.delete(record)
+        except SQLAlchemyError as error:
+            raise PersistenceOperationError(
+                "删除 DatasetImport 失败",
+                details={"error_type": error.__class__.__name__},
+            ) from error
+
     def _to_record(self, dataset_import: DatasetImport) -> DatasetImportRecord:
         """把领域对象转换为 ORM 实体。
 

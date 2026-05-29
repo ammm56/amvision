@@ -194,7 +194,7 @@ class SqlAlchemyYoloPrimaryClassificationTrainingTaskService:
                 dataset_storage=self.dataset_storage,
                 manifest_payload=manifest_payload,
                 model_type=model_type,
-                model_scale=str(payload.get("model_scale", "n")),
+                model_scale=str(payload.get("model_scale", "nano")),
                 batch_size=int(payload.get("batch_size") or 16),
                 max_epochs=int(payload.get("max_epochs") or 30),
                 evaluation_interval=eval_interval,
@@ -258,6 +258,8 @@ class SqlAlchemyYoloPrimaryClassificationTrainingTaskService:
         else:
             control = {"pause_requested": True}
         metadata[YOLO_PRIMARY_CLASSIFICATION_TRAINING_CONTROL_METADATA_KEY] = control
+        task_service = SqlAlchemyTaskService(session_factory=self.session_factory)
+        task_service.update_task_metadata(task_record.task_id, metadata)
 
     def request_training_terminate(self, task_record: TaskRecord) -> None:
         """请求分类训练终止。"""
@@ -269,3 +271,5 @@ class SqlAlchemyYoloPrimaryClassificationTrainingTaskService:
         else:
             control = {"terminate_requested": True}
         metadata[YOLO_PRIMARY_CLASSIFICATION_TRAINING_CONTROL_METADATA_KEY] = control
+        task_service = SqlAlchemyTaskService(session_factory=self.session_factory)
+        task_service.update_task_metadata(task_record.task_id, metadata)

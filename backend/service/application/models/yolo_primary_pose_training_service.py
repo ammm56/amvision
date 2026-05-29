@@ -18,6 +18,7 @@ from backend.service.infrastructure.object_store.local_dataset_storage import Lo
 
 POSE_TRAINING_TASK_KIND = "yolo-primary-pose-training"
 POSE_TRAINING_QUEUE_NAME = "yolo-primary-pose-trainings"
+POSE_TRAINING_CONTROL_METADATA_KEY = "pose_training_control"
 
 class SqlAlchemyPoseTrainingTaskService:
     def __init__(self, *, session_factory: SessionFactory, queue_backend: QueueBackend, dataset_storage: LocalDatasetStorage):
@@ -45,9 +46,31 @@ class SqlAlchemyPoseTrainingTaskService:
         op = f"task-runs/{task_record.task_id}"
         def on_sp(sv): self.ds.write_bytes(f"{op}/latest-checkpoint.pt", sv.latest_checkpoint_bytes)
         try:
-            result = run_yolo_primary_pose_training(YoloPrimaryPoseTrainingExecutionRequest(dataset_storage=self.ds, manifest_payload=manifest, model_type=model_type, model_scale=str(p.get("model_scale", "n")), batch_size=int(p.get("batch_size") or 1), max_epochs=int(p.get("max_epochs") or 1), evaluation_interval=int(p.get("evaluation_interval") or 5), input_size=isz, precision=str(p.get("precision") or "fp32"), extra_options=p.get("extra_options", {}), savepoint_callback=on_sp))
+            result = run_yolo_primary_pose_training(YoloPrimaryPoseTrainingExecutionRequest(dataset_storage=self.ds, manifest_payload=manifest, model_type=model_type, model_scale=str(p.get("model_scale", "nano")), batch_size=int(p.get("batch_size") or 1), max_epochs=int(p.get("max_epochs") or 1), evaluation_interval=int(p.get("evaluation_interval") or 5), input_size=isz, precision=str(p.get("precision") or "fp32"), extra_options=p.get("extra_options", {}), savepoint_callback=on_sp))
         except YoloPrimaryPoseTrainingTerminatedError: return {"status": "terminated"}
         except YoloPrimaryPoseTrainingPausedError: return {"status": "paused"}
         self.ds.write_json(f"{op}/output-files/train-metrics.json", result.metrics_payload)
         self.ds.write_json(f"{op}/output-files/labels.json", {"labels": list(result.labels)})
         return {"status": "completed", "task_id": task_record.task_id}
+
+    def request_training_save(self, task_record: TaskRecord) -> None:
+        """请求 pose 训练保存 checkpoint。"""
+        self._set_control_flag(task_record, "save_requested", True)
+
+    def request_training_pause(self, task_record: TaskRecord) -> None:
+        """请求 pose 训练暂停。"""
+        self._set_control_flag(task_record, "pause_requested", True)
+
+    def request_training_terminate(self, task_record: TaskRecord) -> None:
+        """请求 pose 训练终止。"""
+        self._set_control_flag(task_record, "terminate_requested", True)
+
+    def _set_control_flag(self, task_record: TaskRecord, flag: str, value: bool) -> None:
+        metadata = dict(task_record.metadata) if task_record.metadata else {}
+        control = metadata.get(POSE_TRAINING_CONTROL_METADATA_KEY)
+        if not isinstance(control, dict):
+            control = {}
+        control[flag] = value
+        metadata[POSE_TRAINING_CONTROL_METADATA_KEY] = control
+        task_service = SqlAlchemyTaskService(session_factory=self.sf)
+        task_service.update_task_metadata(task_record.task_id, metadata)
