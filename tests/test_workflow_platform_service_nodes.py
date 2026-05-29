@@ -24,8 +24,14 @@ from backend.service.application.models.yolo_primary_classification_evaluation_t
 from backend.service.application.models.yolo_primary_classification_training_service import (
     YoloPrimaryClassificationTrainingTaskRequest,
 )
+from backend.service.application.models.rfdetr_training_service import (
+    RfdetrTrainingTaskRequest,
+)
 from backend.service.application.conversions.yolo_primary_conversion_task_service import (
     YoloPrimaryConversionTaskRequest,
+)
+from backend.service.application.conversions.rfdetr_conversion_task_service import (
+    RfdetrConversionTaskRequest,
 )
 from backend.service.application.deployments.detection_deployment_service import (
     DetectionDeploymentInstanceCreateRequest,
@@ -146,6 +152,106 @@ def test_conversion_service_node_routes_to_platform_conversion_service(
     }
     assert isinstance(captured["request"], YoloPrimaryConversionTaskRequest)
     assert captured["display_name"] == "segmentation conversion"
+
+
+def test_training_service_node_routes_rfdetr_detection_to_platform_training_service(
+    monkeypatch,
+) -> None:
+    """显式 rfdetr detection 时，训练节点应构造 RF-DETR 正式请求。"""
+
+    captured: dict[str, object] = {}
+
+    class _FakeTrainingService:
+        def submit_training_task(self, request, *, created_by=None, **kwargs):
+            captured["request"] = request
+            captured["created_by"] = created_by
+            captured["submit_kwargs"] = kwargs
+            return {"task_id": "task-rfdetr-training-1", "status": "queued"}
+
+    def _build_training_task_service(self, *, task_type=None, model_type="yolox"):
+        captured["service_kwargs"] = {"task_type": task_type, "model_type": model_type}
+        return _FakeTrainingService()
+
+    monkeypatch.setattr(
+        WorkflowServiceNodeRuntimeContext,
+        "build_training_task_service",
+        _build_training_task_service,
+    )
+
+    request = WorkflowNodeExecutionRequest(
+        node_id="training-node-rfdetr",
+        node_definition=training_node.CORE_NODE_SPEC.node_definition,
+        parameters={
+            "task_type": "detection",
+            "model_type": "rfdetr",
+            "project_id": "project-1",
+            "dataset_export_id": "dataset-export-1",
+            "recipe_id": "recipe-1",
+            "model_scale": "nano",
+            "output_model_name": "rfdetr-model",
+            "display_name": "rfdetr training",
+        },
+        runtime_context=WorkflowServiceNodeRuntimeContext(
+            session_factory=object(),
+            dataset_storage=object(),
+        ),
+    )
+
+    result = training_node._yolox_training_submit_handler(request)
+
+    assert result["body"]["task_id"] == "task-rfdetr-training-1"
+    assert captured["service_kwargs"] == {"task_type": "detection", "model_type": "rfdetr"}
+    assert isinstance(captured["request"], RfdetrTrainingTaskRequest)
+    assert captured["submit_kwargs"] == {"display_name": "rfdetr training"}
+
+
+def test_conversion_service_node_routes_rfdetr_detection_to_platform_conversion_service(
+    monkeypatch,
+) -> None:
+    """显式 rfdetr detection 时，转换节点应构造 RF-DETR 正式请求。"""
+
+    captured: dict[str, object] = {}
+
+    class _FakeConversionService:
+        def submit_conversion_task(self, request, *, created_by=None, display_name=""):
+            captured["request"] = request
+            captured["created_by"] = created_by
+            captured["display_name"] = display_name
+            return {"task_id": "task-rfdetr-conversion-1", "status": "queued"}
+
+    def _build_conversion_task_service(self, *, task_type=None, model_type="yolox"):
+        captured["service_kwargs"] = {"task_type": task_type, "model_type": model_type}
+        return _FakeConversionService()
+
+    monkeypatch.setattr(
+        WorkflowServiceNodeRuntimeContext,
+        "build_conversion_task_service",
+        _build_conversion_task_service,
+    )
+
+    request = WorkflowNodeExecutionRequest(
+        node_id="conversion-node-rfdetr",
+        node_definition=conversion_node.CORE_NODE_SPEC.node_definition,
+        parameters={
+            "task_type": "detection",
+            "model_type": "rfdetr",
+            "project_id": "project-1",
+            "source_model_version_id": "model-version-1",
+            "target_formats": ["onnx"],
+            "display_name": "rfdetr conversion",
+        },
+        runtime_context=WorkflowServiceNodeRuntimeContext(
+            session_factory=object(),
+            dataset_storage=object(),
+        ),
+    )
+
+    result = conversion_node._yolox_conversion_submit_handler(request)
+
+    assert result["body"]["task_id"] == "task-rfdetr-conversion-1"
+    assert captured["service_kwargs"] == {"task_type": "detection", "model_type": "rfdetr"}
+    assert isinstance(captured["request"], RfdetrConversionTaskRequest)
+    assert captured["display_name"] == "rfdetr conversion"
 
 
 def test_validation_service_node_routes_to_platform_validation_service(

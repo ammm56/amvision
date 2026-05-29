@@ -104,9 +104,12 @@ _DETECTION_BACKEND_REGISTRATIONS: Final[dict[str, DetectionBackendRegistration]]
         display_name="RF-DETR",
         status=DETECTION_BACKEND_STATUS_ACTIVE,
         features=DetectionBackendFeatureSet(
-            conversion=True, inference=True, deployment=True,
+            training=True,
+            conversion=True,
+            inference=True,
+            deployment=True,
         ),
-        notes="模型登记、转换规划、PyTorch 推理与 deployment 外壳已接通；训练后端待实现。",
+        notes="模型登记、统一 detection 训练/转换控制面、PyTorch 推理与 deployment 外壳已接通。",
     ),
 }
 

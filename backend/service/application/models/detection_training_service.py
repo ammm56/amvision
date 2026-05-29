@@ -20,19 +20,25 @@ from backend.service.application.models.yolov8_training_service import (
     SqlAlchemyYoloV8TrainingTaskService,
     YoloV8TrainingTaskRequest,
 )
+from backend.service.application.models.rfdetr_training_service import (
+    RFDETR_TRAINING_TASK_KIND,
+    RfdetrTrainingTaskRequest,
+    SqlAlchemyRfdetrTrainingTaskService,
+)
 from backend.service.application.models.yolox_training_service import (
     YOLOX_TRAINING_TASK_KIND,
     SqlAlchemyYoloXTrainingTaskService,
     YoloXTrainingTaskRequest,
 )
 
-_SUPPORTED_DETECTION_MODEL_TYPES = ("yolox", "yolov8", "yolo11", "yolo26")
+_SUPPORTED_DETECTION_MODEL_TYPES = ("yolox", "yolov8", "yolo11", "yolo26", "rfdetr")
 
 _TRAINING_SERVICE_BY_MODEL_TYPE: dict[str, tuple[type, type]] = {
     "yolox": (SqlAlchemyYoloXTrainingTaskService, YoloXTrainingTaskRequest),
     "yolov8": (SqlAlchemyYoloV8TrainingTaskService, YoloV8TrainingTaskRequest),
     "yolo11": (SqlAlchemyYolo11TrainingTaskService, Yolo11TrainingTaskRequest),
     "yolo26": (SqlAlchemyYolo26TrainingTaskService, Yolo26TrainingTaskRequest),
+    "rfdetr": (SqlAlchemyRfdetrTrainingTaskService, RfdetrTrainingTaskRequest),
 }
 
 
@@ -41,6 +47,7 @@ _TRAINING_TASK_KIND_BY_MODEL_TYPE: dict[str, str] = {
     "yolov8": YOLOV8_TRAINING_TASK_KIND,
     "yolo11": YOLO11_TRAINING_TASK_KIND,
     "yolo26": YOLO26_TRAINING_TASK_KIND,
+    "rfdetr": RFDETR_TRAINING_TASK_KIND,
 }
 
 

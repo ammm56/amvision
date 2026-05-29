@@ -8,6 +8,9 @@ from backend.queue import LocalFileQueueBackend, LocalFileQueueSettings
 from backend.service.application.conversions.yolo11_conversion_task_service import (
     SqlAlchemyYolo11ConversionTaskService,
 )
+from backend.service.application.conversions.rfdetr_conversion_task_service import (
+    SqlAlchemyRfdetrConversionTaskService,
+)
 from backend.service.application.models.classification_validation_session_service import (
     LocalClassificationValidationSessionService,
 )
@@ -22,6 +25,9 @@ from backend.service.application.models.yolo_primary_classification_training_ser
 )
 from backend.service.application.models.yolo_primary_pose_training_service import (
     SqlAlchemyYoloPrimaryPoseTrainingTaskService,
+)
+from backend.service.application.models.rfdetr_training_service import (
+    SqlAlchemyRfdetrTrainingTaskService,
 )
 from backend.service.application.models.yolox_training_service import (
     SqlAlchemyYoloXTrainingTaskService,
@@ -61,11 +67,22 @@ def test_workflow_runtime_can_build_platform_services_by_task_type(tmp_path: Pat
         SqlAlchemyYoloPrimaryPoseTrainingTaskService,
     )
     assert isinstance(
+        runtime_context.build_training_task_service(task_type="detection", model_type="rfdetr"),
+        SqlAlchemyRfdetrTrainingTaskService,
+    )
+    assert isinstance(
         runtime_context.build_conversion_task_service(
             task_type="classification",
             model_type="yolo11",
         ),
         SqlAlchemyYolo11ConversionTaskService,
+    )
+    assert isinstance(
+        runtime_context.build_conversion_task_service(
+            task_type="detection",
+            model_type="rfdetr",
+        ),
+        SqlAlchemyRfdetrConversionTaskService,
     )
     assert isinstance(
         runtime_context.build_validation_session_service(task_type="classification"),

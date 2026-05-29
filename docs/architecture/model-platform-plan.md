@@ -50,7 +50,8 @@
 
 ### RF-DETR 状态
 
-- RF-DETR detection 训练路由暂不可用（链路不完整，待完整接入），推理可用（PyTorch + ONNX）。
+- RF-DETR detection 已并入统一 detection 训练/转换控制面，当前正式主链已覆盖训练、转换、推理和 deployment。
+- RF-DETR segmentation 当前只保留模型分类预登记，训练、转换、推理和 deployment 还未接通正式 project-native 实现。
 
 ### 非 Detection 转换路由
 

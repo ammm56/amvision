@@ -106,7 +106,7 @@ WebSocket 资源流的统一消息结构、控制事件和重连规则见 [docs/
 | POST | /api/v1/datasets/exports/{dataset_export_id}/package | datasets:write | 为已完成的 DatasetExport 生成可下载 zip 包。 |
 | GET | /api/v1/datasets/exports/{dataset_export_id}/download | datasets:read | 下载 DatasetExport 的 zip 包；当下载包不存在时会同步生成。 |
 | GET | /api/v1/datasets/exports/{dataset_export_id}/manifest | datasets:read | 下载 DatasetExport 的 manifest 文件。 |
-| POST | /api/v1/models/detection/training-tasks | datasets:read + tasks:write | 按统一 detection 控制面创建 YOLOX、YOLOv8、YOLO11、YOLO26 训练任务。 |
+| POST | /api/v1/models/detection/training-tasks | datasets:read + tasks:write | 按统一 detection 控制面创建 YOLOX、YOLOv8、YOLO11、YOLO26、RF-DETR 训练任务。 |
 | GET | /api/v1/models/detection/training-tasks | tasks:read | 按 Project、模型分类、DatasetExport 边界和状态列出 detection 训练任务。 |
 | GET | /api/v1/models/detection/training-tasks/{task_id} | tasks:read | 查询单条 detection 训练任务详情和事件流。 |
 | POST | /api/v1/models/detection/training-tasks/{task_id}/save | tasks:write | 为 running 的 detection 训练任务登记一次手动保存请求。 |

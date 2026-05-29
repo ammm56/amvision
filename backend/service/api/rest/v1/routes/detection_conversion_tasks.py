@@ -37,6 +37,11 @@ from backend.service.application.conversions.yolov8_conversion_task_service impo
     SqlAlchemyYoloV8ConversionTaskService,
     YoloV8ConversionTaskRequest,
 )
+from backend.service.application.conversions.rfdetr_conversion_task_service import (
+    RFDETR_CONVERSION_TASK_KIND,
+    RfdetrConversionTaskRequest,
+    SqlAlchemyRfdetrConversionTaskService,
+)
 from backend.service.application.conversions.yolox_conversion_task_service import (
     YOLOX_CONVERSION_TASK_KIND,
     SqlAlchemyYoloXConversionTaskService,
@@ -63,12 +68,14 @@ _DETECTION_CONVERSION_SERVICE_BY_MODEL_TYPE = {
     "yolov8": (SqlAlchemyYoloV8ConversionTaskService, YoloV8ConversionTaskRequest),
     "yolo11": (SqlAlchemyYolo11ConversionTaskService, Yolo11ConversionTaskRequest),
     "yolo26": (SqlAlchemyYolo26ConversionTaskService, Yolo26ConversionTaskRequest),
+    "rfdetr": (SqlAlchemyRfdetrConversionTaskService, RfdetrConversionTaskRequest),
 }
 _DETECTION_CONVERSION_TASK_KIND_BY_MODEL_TYPE = {
     "yolox": YOLOX_CONVERSION_TASK_KIND,
     "yolov8": YOLOV8_CONVERSION_TASK_KIND,
     "yolo11": YOLO11_CONVERSION_TASK_KIND,
     "yolo26": YOLO26_CONVERSION_TASK_KIND,
+    "rfdetr": RFDETR_CONVERSION_TASK_KIND,
 }
 _DETECTION_CONVERSION_MODEL_TYPE_BY_TASK_KIND = {
     task_kind: model_type
@@ -80,7 +87,7 @@ class DetectionConversionTaskCreateRequestBody(BaseModel):
     """描述 detection conversion 任务创建请求体。"""
 
     project_id: str = Field(description="所属 Project id")
-    model_type: str = Field(description="模型分类；当前支持 yolox、yolov8、yolo11、yolo26")
+    model_type: str = Field(description="模型分类；当前支持 yolox、yolov8、yolo11、yolo26、rfdetr")
     source_model_version_id: str = Field(description="来源 ModelVersion id")
     runtime_profile_id: str | None = Field(default=None, description="可选 RuntimeProfile id")
     extra_options: dict[str, object] = Field(default_factory=dict, description="附加转换选项")
@@ -447,7 +454,7 @@ def _normalize_detection_conversion_model_type(value: str) -> str:
     normalized_value = value.strip().lower()
     if normalized_value not in _DETECTION_CONVERSION_SERVICE_BY_MODEL_TYPE:
         raise InvalidRequestError(
-            "当前 detection conversion 仅支持 yolox、yolov8、yolo11、yolo26",
+            "当前 detection conversion 仅支持 yolox、yolov8、yolo11、yolo26、rfdetr",
             details={"model_type": value},
         )
     return normalized_value

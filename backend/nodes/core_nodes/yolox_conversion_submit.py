@@ -31,6 +31,9 @@ from backend.nodes.core_nodes._service_node_support import (
 from backend.service.application.conversions.yolo_primary_conversion_task_service import (
     YoloPrimaryConversionTaskRequest,
 )
+from backend.service.application.conversions.rfdetr_conversion_task_service import (
+    RfdetrConversionTaskRequest,
+)
 from backend.service.application.conversions.yolox_conversion_task_service import (
     YoloXConversionTaskRequest,
 )
@@ -54,7 +57,7 @@ def _yolox_conversion_submit_handler(request: WorkflowNodeExecutionRequest) -> d
     requested_task_type = get_optional_platform_task_type(request)
     requested_model_type = get_optional_platform_model_type(
         request,
-        supported_model_types=("yolox", "yolov8", "yolo11", "yolo26"),
+        supported_model_types=("yolox", "yolov8", "yolo11", "yolo26", "rfdetr"),
     )
     use_platform_routing = should_use_platform_service_routing(
         task_type=requested_task_type,
@@ -82,11 +85,12 @@ def _yolox_conversion_submit_handler(request: WorkflowNodeExecutionRequest) -> d
         requested_model_type,
         task_type=task_type,
     )
-    request_cls = (
-        YoloXConversionTaskRequest
-        if task_type == DETECTION_TASK_TYPE and model_type == "yolox"
-        else YoloPrimaryConversionTaskRequest
-    )
+    if task_type == DETECTION_TASK_TYPE and model_type == "yolox":
+        request_cls = YoloXConversionTaskRequest
+    elif task_type == DETECTION_TASK_TYPE and model_type == "rfdetr":
+        request_cls = RfdetrConversionTaskRequest
+    else:
+        request_cls = YoloPrimaryConversionTaskRequest
     submission = runtime_context.build_conversion_task_service(
         task_type=task_type,
         model_type=model_type,
@@ -133,7 +137,7 @@ CORE_NODE_SPEC = CoreNodeSpec(
                 "task_type": {"type": "string", "enum": list(WORKFLOW_SERVICE_TASK_TYPES)},
                 "model_type": {
                     "type": "string",
-                    "enum": ["yolox", "yolov8", "yolo11", "yolo26"],
+                    "enum": ["yolox", "yolov8", "yolo11", "yolo26", "rfdetr"],
                 },
                 "project_id": {"type": "string"},
                 "source_model_version_id": {"type": "string"},

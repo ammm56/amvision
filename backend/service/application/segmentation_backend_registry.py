@@ -85,9 +85,9 @@ _SEGMENTATION_BACKEND_REGISTRATIONS: Final[dict[str, SegmentationBackendRegistra
     "rfdetr": SegmentationBackendRegistration(
         model_type="rfdetr",
         display_name="RF-DETR Segmentation",
-        status=SEGMENTATION_BACKEND_STATUS_ACTIVE,
-        features=SegmentationBackendFeatureSet(inference=True, deployment=True),
-        notes="模型登记、部署入口已接通；训练与转换后端待实现。",
+        status=SEGMENTATION_BACKEND_STATUS_REGISTERED,
+        features=SegmentationBackendFeatureSet(),
+        notes="只保留模型分类预登记；训练、转换、推理与 deployment 还未接通正式 project-native 实现。",
     ),
 }
 

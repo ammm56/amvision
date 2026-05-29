@@ -8,6 +8,9 @@ from backend.service.application.deployments.segmentation_deployment_service imp
     SqlAlchemySegmentationDeploymentService,
 )
 from backend.service.application.errors import InvalidRequestError
+from backend.service.application.segmentation_backend_registry import (
+    get_segmentation_backend_registration,
+)
 from backend.service.domain.tasks.detection_task_specs import DetectionInferenceTaskSpec
 from backend.service.application.models.yolox_inference_task_service import (
     YOLOX_INFERENCE_TASK_KIND as SEGMENTATION_INFERENCE_TASK_KIND,
@@ -51,6 +54,9 @@ class SqlAlchemySegmentationInferenceTaskService(SqlAlchemyYoloXInferenceTaskSer
         created_by: str | None = None,
         display_name: str = "",
     ) -> SegmentationInferenceTaskSubmission:
+        self._validate_resolved_model_type(
+            deployment_instance_id=request.deployment_instance_id,
+        )
         self._validate_requested_model_type(
             deployment_instance_id=request.deployment_instance_id,
             requested_model_type=request.model_type,
@@ -72,6 +78,20 @@ class SqlAlchemySegmentationInferenceTaskService(SqlAlchemyYoloXInferenceTaskSer
             raise InvalidRequestError(
                 "请求中的 model_type 与 DeploymentInstance 绑定模型不匹配",
                 details={"deployment_instance_id": deployment_instance_id, "requested_model_type": normalized, "resolved_model_type": process_config.runtime_target.model_type},
+            )
+
+    def _validate_resolved_model_type(self, *, deployment_instance_id: str) -> None:
+        """按 deployment 绑定模型分类校验 segmentation 推理能力是否已正式接通。"""
+
+        process_config = self._build_deployment_service().resolve_process_config(deployment_instance_id)
+        registration = get_segmentation_backend_registration(process_config.runtime_target.model_type)
+        if registration is None or registration.features.inference is not True:
+            raise InvalidRequestError(
+                "当前 segmentation 推理尚未接通指定模型分类",
+                details={
+                    "deployment_instance_id": deployment_instance_id,
+                    "model_type": process_config.runtime_target.model_type,
+                },
             )
 
 

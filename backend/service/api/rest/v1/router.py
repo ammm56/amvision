@@ -32,7 +32,6 @@ from backend.service.api.rest.v1.routes.pose_evaluation_tasks import pose_evalua
 from backend.service.api.rest.v1.routes.pose_inference_tasks import pose_inference_tasks_router
 from backend.service.api.rest.v1.routes.pose_training_tasks import pose_training_tasks_router
 from backend.service.api.rest.v1.routes.pose_validation_sessions import pose_validation_sessions_router
-from backend.service.api.rest.v1.routes.rfdetr_conversion_tasks import rfdetr_conversion_tasks_router
 from backend.service.api.rest.v1.routes.obb_conversion_tasks import obb_conversion_tasks_router
 from backend.service.api.rest.v1.routes.obb_deployments import obb_deployments_router
 from backend.service.api.rest.v1.routes.obb_evaluation_tasks import obb_evaluation_tasks_router
@@ -89,7 +88,6 @@ api_v1_router.include_router(pose_training_tasks_router)
 api_v1_router.include_router(pose_conversion_tasks_router)
 api_v1_router.include_router(pose_validation_sessions_router)
 api_v1_router.include_router(pose_evaluation_tasks_router)
-api_v1_router.include_router(rfdetr_conversion_tasks_router)
 api_v1_router.include_router(obb_deployments_router)
 api_v1_router.include_router(obb_inference_tasks_router)
 api_v1_router.include_router(obb_training_tasks_router)

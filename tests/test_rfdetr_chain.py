@@ -18,6 +18,8 @@ def test_rfdetr_backend_registration():
     reg = get_detection_backend_registration("rfdetr")
     assert reg is not None
     assert reg.display_name == "RF-DETR"
+    assert reg.features.training is True
+    assert reg.features.conversion is True
     assert reg.features.inference is True
     assert reg.features.deployment is True
 
@@ -25,6 +27,8 @@ def test_rfdetr_imports():
     """验证所有 RF-DETR 模块可以被导入。"""
     from backend.service.application.models.rfdetr_model import RfdetrModel, RfdetrPostProcess
     from backend.service.application.models.rfdetr_model_service import SqlAlchemyRfdetrModelService
+    from backend.service.application.models.rfdetr_training_service import SqlAlchemyRfdetrTrainingTaskService
+    from backend.service.application.conversions.rfdetr_conversion_task_service import SqlAlchemyRfdetrConversionTaskService
     from backend.service.application.runtime.rfdetr_predictor import PyTorchRfdetrRuntimeSession
     from backend.service.application.runtime.rfdetr_runtime_target import SqlAlchemyRfdetrRuntimeTargetResolver
     from backend.service.application.conversions.rfdetr_conversion_planner import DefaultRfdetrConversionPlanner

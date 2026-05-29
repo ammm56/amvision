@@ -74,7 +74,7 @@ def _yolox_training_submit_handler(request: WorkflowNodeExecutionRequest) -> dic
     requested_task_type = get_optional_platform_task_type(request)
     requested_model_type = get_optional_platform_model_type(
         request,
-        supported_model_types=("yolox", "yolov8", "yolo11", "yolo26"),
+        supported_model_types=("yolox", "yolov8", "yolo11", "yolo26", "rfdetr"),
     )
     use_platform_routing = should_use_platform_service_routing(
         task_type=requested_task_type,
@@ -212,7 +212,7 @@ CORE_NODE_SPEC = CoreNodeSpec(
                 "task_type": {"type": "string", "enum": list(WORKFLOW_SERVICE_TASK_TYPES)},
                 "model_type": {
                     "type": "string",
-                    "enum": ["yolox", "yolov8", "yolo11", "yolo26"],
+                    "enum": ["yolox", "yolov8", "yolo11", "yolo26", "rfdetr"],
                 },
                 "project_id": {"type": "string"},
                 "dataset_export_id": {"type": "string"},

@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timezone
+import zipfile
 from typing import Any
 
 from backend.queue import QueueBackend
@@ -15,6 +17,9 @@ from backend.service.application.conversions.yolo26_conversion_task_service impo
 )
 from backend.service.application.conversions.yolov8_conversion_task_service import (
     SqlAlchemyYoloV8ConversionTaskService,
+)
+from backend.service.application.conversions.rfdetr_conversion_task_service import (
+    SqlAlchemyRfdetrConversionTaskService,
 )
 from backend.service.application.conversions.yolox_conversion_task_service import (
     SqlAlchemyYoloXConversionTaskService,
@@ -88,6 +93,9 @@ from backend.service.application.models.yolo_primary_segmentation_training_servi
 from backend.service.application.models.yolov8_training_service import (
     SqlAlchemyYoloV8TrainingTaskService,
 )
+from backend.service.application.models.rfdetr_training_service import (
+    SqlAlchemyRfdetrTrainingTaskService,
+)
 from backend.service.application.models.yolox_async_inference_gateway import (
     YoloXAsyncInferenceGatewayDispatcherRegistry,
 )
@@ -122,11 +130,19 @@ _DETECTION_TRAINING_SERVICE_BY_MODEL_TYPE: dict[str, type] = {
     "yolov8": SqlAlchemyYoloV8TrainingTaskService,
     "yolo11": SqlAlchemyYolo11TrainingTaskService,
     "yolo26": SqlAlchemyYolo26TrainingTaskService,
+    "rfdetr": SqlAlchemyRfdetrTrainingTaskService,
 }
 _YOLO_PRIMARY_CONVERSION_SERVICE_BY_MODEL_TYPE: dict[str, type] = {
     "yolov8": SqlAlchemyYoloV8ConversionTaskService,
     "yolo11": SqlAlchemyYolo11ConversionTaskService,
     "yolo26": SqlAlchemyYolo26ConversionTaskService,
+}
+_DETECTION_CONVERSION_SERVICE_BY_MODEL_TYPE: dict[str, type] = {
+    "yolox": SqlAlchemyYoloXConversionTaskService,
+    "yolov8": SqlAlchemyYoloV8ConversionTaskService,
+    "yolo11": SqlAlchemyYolo11ConversionTaskService,
+    "yolo26": SqlAlchemyYolo26ConversionTaskService,
+    "rfdetr": SqlAlchemyRfdetrConversionTaskService,
 }
 _TRAINING_SERVICE_BY_TASK_TYPE: dict[str, type] = {
     CLASSIFICATION_TASK_TYPE: SqlAlchemyYoloPrimaryClassificationTrainingTaskService,
@@ -338,6 +354,81 @@ class WorkflowServiceNodeRuntimeContext:
             queue_backend=self.require_queue_backend(),
         )
 
+    def package_evaluation_result(
+        self,
+        *,
+        task_id: str,
+        task_type: str | None = None,
+        rebuild: bool = False,
+        package_object_key: str | None = None,
+    ) -> Any:
+        """按任务分类生成或复用评估结果包。"""
+
+        if task_type is None:
+            return self.build_evaluation_task_service().package_evaluation_result(
+                task_id,
+                rebuild=rebuild,
+                package_object_key=package_object_key,
+            )
+        normalized_task_type = self._normalize_task_type(task_type)
+        task_record = self.build_task_service().get_task(task_id).task
+        expected_task_kind = {
+            DETECTION_TASK_TYPE: "detection-evaluation",
+            CLASSIFICATION_TASK_TYPE: "classification-evaluation",
+            SEGMENTATION_TASK_TYPE: "segmentation-evaluation",
+            POSE_TASK_TYPE: "pose-evaluation",
+            OBB_TASK_TYPE: "obb-evaluation",
+        }[normalized_task_type]
+        if task_record.task_kind != expected_task_kind:
+            raise ServiceConfigurationError(
+                "当前评估任务与指定 task_type 不匹配",
+                details={
+                    "task_id": task_id,
+                    "task_type": normalized_task_type,
+                    "task_kind": task_record.task_kind,
+                },
+            )
+        result_payload = dict(task_record.result or {})
+        report_object_key = self._require_result_object_key(
+            result_payload,
+            key="report_object_key",
+            task_id=task_id,
+        )
+        secondary_object_key = self._require_result_object_key(
+            result_payload,
+            key="detections_object_key"
+            if normalized_task_type == DETECTION_TASK_TYPE
+            else "predictions_object_key",
+            task_id=task_id,
+        )
+        resolved_package_object_key = (
+            package_object_key.strip()
+            if isinstance(package_object_key, str) and package_object_key.strip()
+            else None
+        )
+        if resolved_package_object_key is None:
+            resolved_package_object_key = (
+                self._read_optional_payload_str(result_payload, "result_package_object_key")
+                or self._build_default_evaluation_package_key(result_payload, task_id=task_id)
+            )
+        package_path = self.dataset_storage.resolve(resolved_package_object_key)
+        if rebuild or not package_path.is_file():
+            package_path.parent.mkdir(parents=True, exist_ok=True)
+            with zipfile.ZipFile(package_path, mode="w", compression=zipfile.ZIP_DEFLATED) as archive:
+                archive.write(self.dataset_storage.resolve(report_object_key), arcname="report.json")
+                archive.write(
+                    self.dataset_storage.resolve(secondary_object_key),
+                    arcname="detections.json" if normalized_task_type == DETECTION_TASK_TYPE else "predictions.json",
+                )
+        stat = package_path.stat()
+        return WorkflowEvaluationTaskPackage(
+            task_id=task_id,
+            package_object_key=resolved_package_object_key,
+            package_file_name=package_path.name,
+            package_size=int(stat.st_size),
+            packaged_at=datetime.fromtimestamp(stat.st_mtime, timezone.utc).isoformat(),
+        )
+
     def build_deployment_service(self) -> SqlAlchemyDetectionDeploymentService:
         """构造 DeploymentInstance service。"""
 
@@ -424,10 +515,9 @@ class WorkflowServiceNodeRuntimeContext:
         """按模型分类解析 detection 转换 service。"""
 
         normalized_model_type = self._normalize_model_type(model_type)
-        if normalized_model_type == "yolox":
-            return SqlAlchemyYoloXConversionTaskService
-        if normalized_model_type in _YOLO_PRIMARY_CONVERSION_SERVICE_BY_MODEL_TYPE:
-            return _YOLO_PRIMARY_CONVERSION_SERVICE_BY_MODEL_TYPE[normalized_model_type]
+        service_cls = _DETECTION_CONVERSION_SERVICE_BY_MODEL_TYPE.get(normalized_model_type)
+        if service_cls is not None:
+            return service_cls
         raise ServiceConfigurationError(
             "当前 workflow 运行时尚未接通指定 detection 模型分类的转换服务",
             details={"task_type": DETECTION_TASK_TYPE, "model_type": normalized_model_type},
@@ -455,9 +545,58 @@ class WorkflowServiceNodeRuntimeContext:
         """把模型分类名称规范化为当前平台公开值。"""
 
         normalized = model_type.strip().lower()
-        if normalized in {"yolox", "yolov8", "yolo11", "yolo26"}:
+        if normalized in {"yolox", "yolov8", "yolo11", "yolo26", "rfdetr"}:
             return normalized
         raise ServiceConfigurationError(
             "当前 workflow 运行时不支持指定模型分类",
             details={"model_type": model_type},
         )
+
+    def _require_result_object_key(
+        self,
+        result_payload: dict[str, object],
+        *,
+        key: str,
+        task_id: str,
+    ) -> str:
+        """从评估任务结果中读取必填 object key。"""
+
+        value = self._read_optional_payload_str(result_payload, key)
+        if value is None:
+            raise ServiceConfigurationError(
+                "当前评估任务缺少结果文件键",
+                details={"task_id": task_id, "key": key},
+            )
+        return value
+
+    def _build_default_evaluation_package_key(
+        self,
+        result_payload: dict[str, object],
+        *,
+        task_id: str,
+    ) -> str:
+        """按标准输出目录构造评估结果包默认 object key。"""
+
+        output_object_prefix = self._read_optional_payload_str(result_payload, "output_object_prefix")
+        if output_object_prefix is None:
+            output_object_prefix = f"task-runs/evaluation/{task_id}"
+        return f"{output_object_prefix}/artifacts/packages/result-package.zip"
+
+    def _read_optional_payload_str(self, payload: dict[str, object], key: str) -> str | None:
+        """从任务结果中读取可选字符串字段。"""
+
+        value = payload.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+        return None
+
+
+@dataclass(frozen=True)
+class WorkflowEvaluationTaskPackage:
+    """描述 workflow service node 侧的评估结果包输出。"""
+
+    task_id: str
+    package_object_key: str
+    package_file_name: str
+    package_size: int
+    packaged_at: str

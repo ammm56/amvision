@@ -9,6 +9,11 @@ from backend.contracts.workflows.workflow_graph import (
     NodePortDefinition,
 )
 from backend.nodes.core_nodes._base import CoreNodeSpec
+from backend.nodes.core_nodes._platform_service_node_support import (
+    WORKFLOW_SERVICE_TASK_TYPES,
+    get_optional_platform_task_type,
+    resolve_platform_task_type,
+)
 from backend.nodes.core_nodes._service_node_support import (
     build_response_body_output,
     get_optional_bool_parameter,
@@ -35,13 +40,19 @@ def _yolox_evaluation_package_handler(request: WorkflowNodeExecutionRequest) -> 
     runtime_context = require_workflow_service_node_runtime(request)
     task_id = require_str_parameter(request, "task_id")
     cleanup_on_completion = get_optional_bool_parameter(request, "cleanup_on_completion") is True
+    requested_task_type = get_optional_platform_task_type(request)
+    task_type = resolve_platform_task_type(
+        requested_task_type,
+        default_task_type="detection",
+    ) if requested_task_type is not None else None
     package_object_key = _resolve_package_object_key(
         request,
         task_id=task_id,
         cleanup_on_completion=cleanup_on_completion,
     )
-    package = runtime_context.build_evaluation_task_service().package_evaluation_result(
-        task_id,
+    package = runtime_context.package_evaluation_result(
+        task_id=task_id,
+        task_type=task_type,
         rebuild=get_optional_bool_parameter(request, "rebuild") is True,
         package_object_key=package_object_key,
     )
@@ -85,10 +96,10 @@ def _resolve_package_object_key(
 CORE_NODE_SPEC = CoreNodeSpec(
     node_definition=NodeDefinition(
         node_type_id="core.service.yolox-evaluation.package",
-        display_name="Package YOLOX Evaluation Result",
+        display_name="Package Evaluation Result",
         category="service.model.evaluation",
         description=(
-            "为一个已完成的 YOLOX evaluation task 生成或复用 zip 结果包；"
+            "兼容旧 YOLOX 节点名，同时支持按 task_type 为已完成 evaluation task 生成或复用 zip 结果包；"
             "cleanup_on_completion 只会登记当前 workflow 执行期的临时对象清理，不影响原有 HTTP API 输出文件。"
         ),
         implementation_kind=NODE_IMPLEMENTATION_CORE,
@@ -111,6 +122,7 @@ CORE_NODE_SPEC = CoreNodeSpec(
         parameter_schema={
             "type": "object",
             "properties": {
+                "task_type": {"type": "string", "enum": list(WORKFLOW_SERVICE_TASK_TYPES)},
                 "task_id": {"type": "string"},
                 "rebuild": {"type": "boolean"},
                 "package_object_key": {

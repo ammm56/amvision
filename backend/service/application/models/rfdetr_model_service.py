@@ -12,7 +12,6 @@ from backend.service.domain.files.detection_model_file_types import YOLOV8_DETEC
 from backend.service.domain.models.rfdetr_model_spec import (
     RFDETR_DEFAULT_DATASET_FORMAT,
     RFDETR_DETECTION_SCALES,
-    RFDETR_SEGMENTATION_SCALES,
     RFDETR_SUPPORTED_BUILD_FORMATS,
     RFDETR_SUPPORTED_TASKS,
 )
@@ -28,7 +27,7 @@ class RfdetrModelSpec:
     def __init__(self) -> None:
         self.model_name = "rfdetr"
         self.supported_tasks = RFDETR_SUPPORTED_TASKS
-        self.supported_scales = RFDETR_DETECTION_SCALES + RFDETR_SEGMENTATION_SCALES
+        self.supported_scales = RFDETR_DETECTION_SCALES
         self.supported_build_formats = RFDETR_SUPPORTED_BUILD_FORMATS
         self.default_dataset_format = RFDETR_DEFAULT_DATASET_FORMAT
 

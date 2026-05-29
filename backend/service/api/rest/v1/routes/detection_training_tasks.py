@@ -49,6 +49,11 @@ from backend.service.application.models.yolov8_training_service import (
     SqlAlchemyYoloV8TrainingTaskService,
     YoloV8TrainingTaskRequest,
 )
+from backend.service.application.models.rfdetr_training_service import (
+    RFDETR_TRAINING_TASK_KIND,
+    RfdetrTrainingTaskRequest,
+    SqlAlchemyRfdetrTrainingTaskService,
+)
 from backend.service.application.models.yolox_training_service import (
     YOLOX_TRAINING_TASK_KIND,
     SqlAlchemyYoloXTrainingTaskService,
@@ -67,13 +72,14 @@ _DETECTION_TRAINING_SERVICE_BY_MODEL_TYPE = {
     "yolov8": (SqlAlchemyYoloV8TrainingTaskService, YoloV8TrainingTaskRequest),
     "yolo11": (SqlAlchemyYolo11TrainingTaskService, Yolo11TrainingTaskRequest),
     "yolo26": (SqlAlchemyYolo26TrainingTaskService, Yolo26TrainingTaskRequest),
+    "rfdetr": (SqlAlchemyRfdetrTrainingTaskService, RfdetrTrainingTaskRequest),
 }
 _DETECTION_TRAINING_TASK_KIND_BY_MODEL_TYPE = {
     "yolox": YOLOX_TRAINING_TASK_KIND,
     "yolov8": YOLOV8_TRAINING_TASK_KIND,
     "yolo11": YOLO11_TRAINING_TASK_KIND,
     "yolo26": YOLO26_TRAINING_TASK_KIND,
-    "rfdetr": "rfdetr-training",
+    "rfdetr": RFDETR_TRAINING_TASK_KIND,
 }
 _DETECTION_TRAINING_MODEL_TYPE_BY_TASK_KIND = {
     task_kind: model_type
@@ -85,7 +91,7 @@ class DetectionTrainingTaskCreateRequestBody(BaseModel):
     """描述 detection 训练任务创建请求体。"""
 
     project_id: str = Field(description="所属 Project id")
-    model_type: str = Field(description="模型分类；当前支持 yolox、yolov8、yolo11、yolo26")
+    model_type: str = Field(description="模型分类；当前支持 yolox、yolov8、yolo11、yolo26、rfdetr")
     dataset_export_id: str | None = Field(default=None, description="训练输入使用的 DatasetExport id")
     dataset_export_manifest_key: str | None = Field(default=None, description="训练输入使用的导出 manifest object key")
     recipe_id: str = Field(description="训练 recipe id")
@@ -159,10 +165,6 @@ def create_detection_training_task(
         )
     model_type = _normalize_detection_training_model_type(body.model_type)
 
-    # RF-DETR 使用独立的训练路径（无 service 类，直接入队）
-    if model_type == "rfdetr":
-        return _create_rfdetr_training_task(body, principal, session_factory, queue_backend)
-
     service_cls, request_cls = _DETECTION_TRAINING_SERVICE_BY_MODEL_TYPE[model_type]
     service = service_cls(
         session_factory=session_factory,
@@ -199,92 +201,6 @@ def create_detection_training_task(
         dataset_version_id=submission.dataset_version_id,
         format_id=submission.format_id,
     )
-
-
-def _create_rfdetr_training_task(
-    body: DetectionTrainingTaskCreateRequestBody,
-    principal: AuthenticatedPrincipal,
-    session_factory: SessionFactory,
-    queue_backend: LocalFileQueueBackend,
-) -> DetectionTrainingTaskSubmissionResponse:
-    """为 RF-DETR 创建训练任务（直接入队，无 service 类）。"""
-    from backend.service.application.tasks.task_service import CreateTaskRequest, SqlAlchemyTaskService
-
-    # 解析 DatasetExport
-    dataset_export_id = body.dataset_export_id
-    dataset_export_manifest_key = body.dataset_export_manifest_key
-    dataset_version_id = ""
-    format_id = "coco-detection-v1"
-
-    if dataset_export_id:
-        from backend.service.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
-        uow = SqlAlchemyUnitOfWork(session_factory.create_session())
-        try:
-            export = uow.dataset_exports.get_dataset_export(dataset_export_id)
-            if export:
-                dataset_export_manifest_key = export.manifest_object_key
-                dataset_version_id = export.dataset_version_id
-                format_id = export.format_id
-        finally:
-            uow.close()
-    elif dataset_export_manifest_key:
-        from backend.service.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
-        uow = SqlAlchemyUnitOfWork(session_factory.create_session())
-        try:
-            export = uow.dataset_exports.get_dataset_export_by_manifest_object_key(dataset_export_manifest_key)
-            if export:
-                dataset_export_id = export.dataset_export_id
-                dataset_version_id = export.dataset_version_id
-                format_id = export.format_id
-        finally:
-            uow.close()
-
-    task_service = SqlAlchemyTaskService(session_factory)
-    task = task_service.create_task(CreateTaskRequest(
-        project_id=body.project_id,
-        task_kind="rfdetr-training",
-        display_name=body.display_name or body.output_model_name,
-        created_by=principal.principal_id,
-        metadata={
-            "model_type": "rfdetr",
-            "model_scale": body.model_scale,
-            "output_model_name": body.output_model_name,
-            "dataset_export_id": dataset_export_id or "",
-            "dataset_export_manifest_key": dataset_export_manifest_key or "",
-        },
-    ))
-
-    # 入队
-    queue_task_id = queue_backend.enqueue(
-        queue_name="rfdetr-trainings",
-        payload={
-            "task_id": task.task_id,
-            "project_id": body.project_id,
-            "model_scale": body.model_scale,
-            "output_model_name": body.output_model_name,
-            "dataset_export_id": dataset_export_id or "",
-            "dataset_export_manifest_key": dataset_export_manifest_key or "",
-            "recipe_id": body.recipe_id,
-            "max_epochs": body.max_epochs,
-            "batch_size": body.batch_size,
-            "input_size": list(body.input_size) if body.input_size else [384, 384],
-            "precision": body.precision or "fp32",
-            "extra_options": dict(body.extra_options),
-        },
-    )
-
-    return DetectionTrainingTaskSubmissionResponse(
-        task_id=task.task_id,
-        status="queued",
-        queue_name="rfdetr-trainings",
-        queue_task_id=queue_task_id,
-        model_type="rfdetr",
-        dataset_export_id=dataset_export_id or "",
-        dataset_export_manifest_key=dataset_export_manifest_key or "",
-        dataset_version_id=dataset_version_id,
-        format_id=format_id,
-    )
-
 
 @detection_training_tasks_router.get(
     "/detection/training-tasks",
@@ -625,7 +541,7 @@ def _normalize_detection_training_model_type(value: str) -> str:
     normalized_value = value.strip().lower()
     if normalized_value not in _DETECTION_TRAINING_SERVICE_BY_MODEL_TYPE:
         raise InvalidRequestError(
-            "当前 detection training 仅支持 yolox、yolov8、yolo11、yolo26",
+            "当前 detection training 仅支持 yolox、yolov8、yolo11、yolo26、rfdetr",
             details={"model_type": value},
         )
     return normalized_value

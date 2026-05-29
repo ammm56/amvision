@@ -86,9 +86,17 @@ class SqlAlchemySegmentationDeploymentService(SqlAlchemyYoloXDeploymentService):
 
     def _resolve_create_target(self, request: SegmentationDeploymentInstanceCreateRequest) -> RuntimeTargetSnapshot:
         normalized_model_type = _require_model_type(request.model_type)
+        registration = get_segmentation_backend_registration(normalized_model_type)
+        if registration is None or registration.features.deployment is not True:
+            raise ServiceConfigurationError(
+                "当前 segmentation deployment 尚未接通指定模型分类",
+                details={
+                    "model_type": normalized_model_type,
+                    "display_name": registration.display_name if registration is not None else None,
+                },
+            )
         resolver_cls = _RUNTIME_TARGET_RESOLVER_BY_MODEL_TYPE.get(normalized_model_type)
         if resolver_cls is None:
-            registration = get_segmentation_backend_registration(normalized_model_type)
             raise ServiceConfigurationError(
                 "当前 segmentation deployment 尚未接通指定模型分类",
                 details={

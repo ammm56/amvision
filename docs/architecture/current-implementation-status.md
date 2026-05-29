@@ -28,7 +28,8 @@
 
 ### P0 修复
 
-- RF-DETR detection 训练路由已从支持列表移除（链路不完整，待 P1-5 完整接入）。
+- RF-DETR detection 已并入统一 detection 训练/转换控制面；`/models/detection/...` 正式主链现在覆盖 `yolox / yolov8 / yolo11 / yolo26 / rfdetr`。
+- RF-DETR segmentation 当前只保留模型分类预登记；训练、转换、推理与 deployment 还未接通正式 project-native 实现，对外不再按“已可用”描述。
 - 非 Detection 训练管理 API 已补齐：classification/segmentation/pose/obb 各有 list/detail/save/pause/terminate/resume/delete 7 个端点。
 - OBB 训练损失已从占位 MSE 替换为完整实现：probiou + 旋转框 TAL + DFL + 角度损失（`backend/service/application/models/obb_loss.py`）。
 - Pose 训练损失已从占位 MSE 替换为完整实现：detection 损失 + 关键点位置损失 + 可见性 mask（`backend/service/application/models/pose_loss.py`）。
@@ -69,7 +70,7 @@
 
 - DatasetExport 是训练和评估的正式执行边界，不直接让训练或评估逻辑读取原始 DatasetVersion 目录结构。
 - TrainingTask 负责把训练结果登记为 ModelVersion，并关联 checkpoint、summary、metrics、labels 等输出文件。
-- `/models/detection/training-tasks` 当前已经成为 detection 训练的正式公开主链，统一覆盖 `yolox / yolov8 / yolo11 / yolo26` 四类模型的创建、查询、save、pause、resume、terminate 和输出文件读取。
+- `/models/detection/training-tasks` 当前已经成为 detection 训练的正式公开主链，统一覆盖 `yolox / yolov8 / yolo11 / yolo26 / rfdetr` 五类模型的创建、查询、save、pause、resume、terminate 和输出文件读取。
 - ValidationSession 用于训练后的单图人工验证，解决“模型看起来是否正确”的快速抽样检查。
 - EvaluationTask 负责基于 DatasetExport 做数据集级回归评估，输出 report、detections 和可选 result-package。
 - ConversionTask 负责把 ModelVersion 转成一个或多个 ModelBuild，形成正式部署输入。
