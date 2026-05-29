@@ -14,11 +14,11 @@ from backend.service.application.errors import InvalidRequestError, ServiceConfi
 from backend.service.application.models.yolo_primary_model_configs import build_yolo_primary_model
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 
-_POSE_IMPL_MODE = "yolo-primary-pose"
+YOLO_PRIMARY_POSE_IMPLEMENTATION_MODE = "yolo-primary-pose"
 _POSE_DEF_INPUT_SIZE = (640, 640)
 _POSE_DEF_BS = 4
 _POSE_DEF_EPOCHS = 50
-_POSE_DEF_EVAL_INTERVAL = 5
+YOLO_PRIMARY_POSE_DEFAULT_EVALUATION_INTERVAL = 5
 _POSE_DEF_ASSIGN_TOPK = 10
 _POSE_DEF_CLS_W = 0.5
 _POSE_DEF_BOX_W = 7.5
@@ -104,7 +104,7 @@ class YoloPrimaryPoseTrainingExecutionRequest:
     model_scale: str
     batch_size: int = _POSE_DEF_BS
     max_epochs: int = _POSE_DEF_EPOCHS
-    evaluation_interval: int = _POSE_DEF_EVAL_INTERVAL
+    evaluation_interval: int = YOLO_PRIMARY_POSE_DEFAULT_EVALUATION_INTERVAL
     input_size: tuple[int, int] | None = None
     precision: str = "fp32"
     resume_checkpoint_path: Path | None = None

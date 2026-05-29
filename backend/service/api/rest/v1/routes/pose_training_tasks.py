@@ -23,7 +23,10 @@ from backend.service.api.rest.v1.routes.non_detection_training_management import
     resume_training_task,
 )
 from backend.service.application.errors import InvalidRequestError, PermissionDeniedError
-from backend.service.application.models.yolo_primary_pose_training_service import SqlAlchemyPoseTrainingTaskService
+from backend.service.application.models.yolo_primary_pose_training_service import (
+    SqlAlchemyYoloPrimaryPoseTrainingTaskService,
+    YoloPrimaryPoseTrainingTaskRequest,
+)
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 
@@ -41,6 +44,7 @@ class PoseTrainingTaskCreateRequestBody(BaseModel):
     recipe_id: str = Field(default="default", description="训练 recipe id")
     model_scale: str = Field(description="模型 scale")
     output_model_name: str = Field(description="输出模型名")
+    evaluation_interval: int | None = Field(default=None, ge=1, description="每隔多少轮执行一次验证")
     max_epochs: int | None = Field(default=None, ge=1, description="最大训练轮数")
     batch_size: int | None = Field(default=None, ge=1, description="batch size")
     input_size: tuple[int, int] | None = Field(default=None, description="训练输入尺寸")
@@ -74,14 +78,28 @@ def create_pose_training_task(
     mt = body.model_type.strip().lower()
     if mt not in _SUPPORTED_POSE_MODEL_TYPES:
         raise InvalidRequestError("pose 训练不支持该模型分类", details={"model_type": mt, "supported": list(_SUPPORTED_POSE_MODEL_TYPES)})
-    svc = SqlAlchemyPoseTrainingTaskService(session_factory=session_factory, queue_backend=queue_backend, dataset_storage=dataset_storage)
-    r = svc.submit(
-        project_id=body.project_id, recipe_id=body.recipe_id, model_scale=body.model_scale,
-        output_model_name=body.output_model_name, dataset_export_id=body.dataset_export_id,
-        dataset_export_manifest_key=body.dataset_export_manifest_key,
-        max_epochs=body.max_epochs, batch_size=body.batch_size,
-        input_size=body.input_size, precision=body.precision,
-        extra_options=dict(body.extra_options), display_name=body.display_name,
+    svc = SqlAlchemyYoloPrimaryPoseTrainingTaskService(
+        session_factory=session_factory,
+        queue_backend=queue_backend,
+        dataset_storage=dataset_storage,
+    )
+    r = svc.submit_training_task(
+        YoloPrimaryPoseTrainingTaskRequest(
+            project_id=body.project_id,
+            recipe_id=body.recipe_id,
+            model_type=mt,
+            model_scale=body.model_scale,
+            output_model_name=body.output_model_name,
+            dataset_export_id=body.dataset_export_id,
+            dataset_export_manifest_key=body.dataset_export_manifest_key,
+            evaluation_interval=body.evaluation_interval,
+            max_epochs=body.max_epochs,
+            batch_size=body.batch_size,
+            input_size=body.input_size,
+            precision=body.precision,
+            extra_options=dict(body.extra_options),
+            display_name=body.display_name,
+        ),
         created_by=principal.principal_id,
     )
     return PoseTrainingTaskSubmissionResponse(

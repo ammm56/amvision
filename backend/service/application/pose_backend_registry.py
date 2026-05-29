@@ -27,14 +27,14 @@ class PoseBackendRegistration:
 
 _POSE_BACKEND_REGISTRATIONS: Final[dict[str, PoseBackendRegistration]] = {
     "yolov8": PoseBackendRegistration(model_type="yolov8", display_name="YOLOv8 Pose", status=POSE_BACKEND_STATUS_ACTIVE,
-        features=PoseBackendFeatureSet(conversion=True, inference=True, deployment=True),
-        notes="模型登记、转换链、四后端推理与 deployment 已接通；训练未接通。"),
+        features=PoseBackendFeatureSet(training=True, conversion=True, inference=True, deployment=True),
+        notes="模型登记、训练结果回写、转换链、四后端推理与 deployment 已接通。"),
     "yolo11": PoseBackendRegistration(model_type="yolo11", display_name="YOLO11 Pose", status=POSE_BACKEND_STATUS_ACTIVE,
-        features=PoseBackendFeatureSet(conversion=True, inference=True, deployment=True),
-        notes="共享结构与四后端推理已接通。"),
+        features=PoseBackendFeatureSet(training=True, conversion=True, inference=True, deployment=True),
+        notes="共享结构、训练结果回写与四后端推理已接通。"),
     "yolo26": PoseBackendRegistration(model_type="yolo26", display_name="YOLO26 Pose", status=POSE_BACKEND_STATUS_ACTIVE,
-        features=PoseBackendFeatureSet(conversion=True, inference=True, deployment=True),
-        notes="共享结构与四后端推理已接通。"),
+        features=PoseBackendFeatureSet(training=True, conversion=True, inference=True, deployment=True),
+        notes="共享结构、训练结果回写与四后端推理已接通。"),
 }
 
 def list_pose_backend_registrations() -> tuple[PoseBackendRegistration, ...]:

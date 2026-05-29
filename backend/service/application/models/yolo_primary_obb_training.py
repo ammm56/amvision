@@ -15,11 +15,11 @@ from backend.service.application.models.yolo_primary_model_configs import build_
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 
 
-_OBB_IMPL_MODE = "yolo-primary-obb"
+YOLO_PRIMARY_OBB_IMPLEMENTATION_MODE = "yolo-primary-obb"
 _OBB_DEF_INPUT = (640, 640)
 _OBB_DEF_BS = 4
 _OBB_DEF_EP = 50
-_OBB_DEF_EI = 5
+YOLO_PRIMARY_OBB_DEFAULT_EVALUATION_INTERVAL = 5
 
 
 @dataclass(frozen=True)
@@ -86,7 +86,7 @@ class YoloPrimaryObbTrainingExecutionRequest:
     model_scale: str
     batch_size: int = _OBB_DEF_BS
     max_epochs: int = _OBB_DEF_EP
-    evaluation_interval: int = _OBB_DEF_EI
+    evaluation_interval: int = YOLO_PRIMARY_OBB_DEFAULT_EVALUATION_INTERVAL
     input_size: tuple[int, int] | None = None
     precision: str = "fp32"
     resume_checkpoint_path: Path | None = None

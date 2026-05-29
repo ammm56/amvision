@@ -27,14 +27,14 @@ class ObbBackendRegistration:
 
 _OBB_BACKEND_REGISTRATIONS: Final[dict[str, ObbBackendRegistration]] = {
     "yolov8": ObbBackendRegistration(model_type="yolov8", display_name="YOLOv8 OBB", status=OBB_BACKEND_STATUS_ACTIVE,
-        features=ObbBackendFeatureSet(conversion=True, inference=True, deployment=True),
-        notes="模型登记、转换链、四后端推理与 deployment 已接通；训练未接通。"),
+        features=ObbBackendFeatureSet(training=True, conversion=True, inference=True, deployment=True),
+        notes="模型登记、训练结果回写、转换链、四后端推理与 deployment 已接通。"),
     "yolo11": ObbBackendRegistration(model_type="yolo11", display_name="YOLO11 OBB", status=OBB_BACKEND_STATUS_ACTIVE,
-        features=ObbBackendFeatureSet(conversion=True, inference=True, deployment=True),
-        notes="共享结构与四后端推理已接通。"),
+        features=ObbBackendFeatureSet(training=True, conversion=True, inference=True, deployment=True),
+        notes="共享结构、训练结果回写与四后端推理已接通。"),
     "yolo26": ObbBackendRegistration(model_type="yolo26", display_name="YOLO26 OBB", status=OBB_BACKEND_STATUS_ACTIVE,
-        features=ObbBackendFeatureSet(conversion=True, inference=True, deployment=True),
-        notes="共享结构与四后端推理已接通。"),
+        features=ObbBackendFeatureSet(training=True, conversion=True, inference=True, deployment=True),
+        notes="共享结构、训练结果回写与四后端推理已接通。"),
 }
 
 def list_obb_backend_registrations() -> tuple[ObbBackendRegistration, ...]:

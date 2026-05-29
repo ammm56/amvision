@@ -20,7 +20,7 @@ from backend.service.application.models.yolo_primary_segmentation_training_servi
     YOLO_PRIMARY_SEGMENTATION_TRAINING_TASK_KIND,
 )
 from backend.service.application.models.yolo_primary_pose_training_service import (
-    SqlAlchemyPoseTrainingTaskService,
+    SqlAlchemyYoloPrimaryPoseTrainingTaskService,
     POSE_TRAINING_TASK_KIND,
 )
 from backend.service.application.models.yolo_primary_obb_training_service import (
@@ -36,7 +36,7 @@ from backend.service.infrastructure.object_store.local_dataset_storage import Lo
 _TASK_KIND_TO_SERVICE: dict[str, type] = {
     YOLO_PRIMARY_CLASSIFICATION_TRAINING_TASK_KIND: SqlAlchemyYoloPrimaryClassificationTrainingTaskService,
     YOLO_PRIMARY_SEGMENTATION_TRAINING_TASK_KIND: SqlAlchemyYoloPrimarySegmentationTrainingTaskService,
-    POSE_TRAINING_TASK_KIND: SqlAlchemyPoseTrainingTaskService,
+    POSE_TRAINING_TASK_KIND: SqlAlchemyYoloPrimaryPoseTrainingTaskService,
     OBB_TRAINING_TASK_KIND: SqlAlchemyYoloPrimaryObbTrainingTaskService,
 }
 
@@ -87,7 +87,7 @@ class SqlAlchemyYoloPrimaryTrainerRunner:
                 model_type = str(payload.get("model_type", "yolov8"))
             else:
                 model_type = "yolov8"
-            if not model_type or model_type in ("s", "m", "l", "x", "nano"):
+            if not model_type or model_type in ("n", "nano", "tiny", "s", "m", "l", "x", "xx"):
                 model_type = "yolov8"
 
         # 获取对应的训练服务
@@ -98,7 +98,7 @@ class SqlAlchemyYoloPrimaryTrainerRunner:
             kind_map = {
                 "classification": SqlAlchemyYoloPrimaryClassificationTrainingTaskService,
                 "segmentation": SqlAlchemyYoloPrimarySegmentationTrainingTaskService,
-                "pose": SqlAlchemyPoseTrainingTaskService,
+                "pose": SqlAlchemyYoloPrimaryPoseTrainingTaskService,
                 "obb": SqlAlchemyYoloPrimaryObbTrainingTaskService,
             }
             service_cls = kind_map.get(task_type)

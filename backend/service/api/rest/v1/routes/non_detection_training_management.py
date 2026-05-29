@@ -26,7 +26,7 @@ from backend.service.application.models.yolo_primary_segmentation_training_servi
 from backend.service.application.models.yolo_primary_pose_training_service import (
     POSE_TRAINING_QUEUE_NAME,
     POSE_TRAINING_TASK_KIND,
-    SqlAlchemyPoseTrainingTaskService,
+    SqlAlchemyYoloPrimaryPoseTrainingTaskService,
 )
 from backend.service.application.models.yolo_primary_obb_training_service import (
     OBB_TRAINING_QUEUE_NAME,
@@ -321,7 +321,7 @@ def _build_service_for_task(
     if kind == YOLO_PRIMARY_SEGMENTATION_TRAINING_TASK_KIND:
         return SqlAlchemyYoloPrimarySegmentationTrainingTaskService(session_factory=session_factory, queue_backend=queue_backend, dataset_storage=dataset_storage)
     if kind == POSE_TRAINING_TASK_KIND:
-        return SqlAlchemyPoseTrainingTaskService(session_factory=session_factory, queue_backend=queue_backend, dataset_storage=dataset_storage)
+        return SqlAlchemyYoloPrimaryPoseTrainingTaskService(session_factory=session_factory, queue_backend=queue_backend, dataset_storage=dataset_storage)
     if kind == OBB_TRAINING_TASK_KIND:
         return SqlAlchemyYoloPrimaryObbTrainingTaskService(session_factory=session_factory, queue_backend=queue_backend, dataset_storage=dataset_storage)
     raise InvalidRequestError("不支持的训练任务类型", details={"task_kind": kind})

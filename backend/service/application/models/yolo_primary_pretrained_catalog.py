@@ -5,8 +5,8 @@
     {root}/{model_type}/{task_type}/{scale}/{variant}/checkpoints/{file}.pt
 
 示例：
-    models/pretrained/yolov8/detection/n/default/manifest.json
-    models/pretrained/yolov8/detection/n/default/checkpoints/yolov8n.pt
+    models/pretrained/yolov8/detection/nano/default/manifest.json
+    models/pretrained/yolov8/detection/nano/default/checkpoints/yolov8n.pt
 """
 
 from __future__ import annotations
