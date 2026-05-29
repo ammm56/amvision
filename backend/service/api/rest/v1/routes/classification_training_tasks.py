@@ -96,6 +96,7 @@ def create_classification_training_task(
         max_epochs=body.max_epochs, batch_size=body.batch_size,
         input_size=body.input_size, precision=body.precision,
         extra_options=dict(body.extra_options), display_name=body.display_name,
+        model_type=n,
     ), created_by=principal.principal_id)
     return ClassificationTrainingTaskSubmissionResponse(
         task_id=result["task_id"], status=result["status"],

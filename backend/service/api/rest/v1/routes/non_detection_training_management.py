@@ -245,8 +245,20 @@ def resume_training_task(
     queue_name = _TASK_KIND_TO_QUEUE_NAME.get(task.task_kind)
     if queue_name is None:
         raise InvalidRequestError("找不到对应的训练队列", details={"task_kind": task.task_kind})
-    qtid = queue_backend.submit_task(queue_name, json_payload={"task_id": task.task_id, "task_kind": task.task_kind, "model_type": _resolve_model_type_from_metadata(task)})
-    return TrainingTaskSubmissionResponse(task_id=task.task_id, status="queued", queue_name=queue_name, queue_task_id=qtid)
+    queue_task = queue_backend.enqueue(
+        queue_name=queue_name,
+        payload={
+            "task_id": task.task_id,
+            "task_kind": task.task_kind,
+            "model_type": _resolve_model_type_from_metadata(task),
+        },
+    )
+    return TrainingTaskSubmissionResponse(
+        task_id=task.task_id,
+        status="queued",
+        queue_name=queue_name,
+        queue_task_id=queue_task.task_id,
+    )
 
 
 def delete_training_task(

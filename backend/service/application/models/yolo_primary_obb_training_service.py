@@ -59,7 +59,7 @@ class SqlAlchemyYoloPrimaryObbTrainingTaskService:
             created_by=created_by, display_name=request.display_name or request.output_model_name,
             metadata={"model_scale": request.model_scale, "output_model_name": request.output_model_name, "task_type": OBB_TASK_TYPE},
         ))
-        qtid = self.queue_backend.submit_task(OBB_TRAINING_QUEUE_NAME, json_payload={
+        queue_task = self.queue_backend.enqueue(queue_name=OBB_TRAINING_QUEUE_NAME, payload={
             "task_id": task.task_id, "task_kind": OBB_TRAINING_TASK_KIND,
             "project_id": request.project_id, "recipe_id": request.recipe_id,
             "model_scale": request.model_scale, "output_model_name": request.output_model_name,
@@ -69,7 +69,7 @@ class SqlAlchemyYoloPrimaryObbTrainingTaskService:
             "input_size": list(request.input_size) if request.input_size else None,
             "precision": request.precision, "extra_options": request.extra_options,
         })
-        return {"task_id": task.task_id, "status": task.status, "queue_name": OBB_TRAINING_QUEUE_NAME, "queue_task_id": qtid}
+        return {"task_id": task.task_id, "status": task.status, "queue_name": OBB_TRAINING_QUEUE_NAME, "queue_task_id": queue_task.task_id}
 
     def process_training_task(self, task_record: TaskRecord, *, model_type: str) -> dict[str, object]:
         """执行 OBB 训练工作负载。"""

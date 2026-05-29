@@ -27,8 +27,8 @@ class SqlAlchemyPoseTrainingTaskService:
     def submit(self, *, project_id, recipe_id, model_scale, output_model_name, dataset_export_id=None, dataset_export_manifest_key=None, max_epochs=None, batch_size=None, input_size=None, precision=None, extra_options=None, display_name="", created_by=None):
         ts = SqlAlchemyTaskService(session_factory=self.sf)
         t = ts.create_task(CreateTaskRequest(task_kind=POSE_TRAINING_TASK_KIND, project_id=project_id, created_by=created_by, display_name=display_name or output_model_name, metadata={"model_scale": model_scale, "output_model_name": output_model_name, "task_type": POSE_TASK_TYPE}))
-        qid = self.qb.submit_task(POSE_TRAINING_QUEUE_NAME, json_payload={"task_id": t.task_id, "task_kind": POSE_TRAINING_TASK_KIND, "project_id": project_id, "recipe_id": recipe_id, "model_scale": model_scale, "output_model_name": output_model_name, "dataset_export_id": dataset_export_id, "dataset_export_manifest_key": dataset_export_manifest_key, "max_epochs": max_epochs, "batch_size": batch_size, "input_size": list(input_size) if input_size else None, "precision": precision, "extra_options": extra_options or {}})
-        return {"task_id": t.task_id, "status": t.status, "queue_name": POSE_TRAINING_QUEUE_NAME, "queue_task_id": qid}
+        queue_task = self.qb.enqueue(queue_name=POSE_TRAINING_QUEUE_NAME, payload={"task_id": t.task_id, "task_kind": POSE_TRAINING_TASK_KIND, "project_id": project_id, "recipe_id": recipe_id, "model_scale": model_scale, "output_model_name": output_model_name, "dataset_export_id": dataset_export_id, "dataset_export_manifest_key": dataset_export_manifest_key, "max_epochs": max_epochs, "batch_size": batch_size, "input_size": list(input_size) if input_size else None, "precision": precision, "extra_options": extra_options or {}})
+        return {"task_id": t.task_id, "status": t.status, "queue_name": POSE_TRAINING_QUEUE_NAME, "queue_task_id": queue_task.task_id}
 
     def process(self, task_record: TaskRecord, *, model_type: str):
         meta = task_record.metadata or {}; p = meta.get("queue_payload", {})
