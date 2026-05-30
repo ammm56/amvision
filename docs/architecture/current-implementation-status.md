@@ -29,7 +29,7 @@
 ### P0 修复
 
 - RF-DETR detection 已并入统一 detection 训练/转换控制面；`/models/detection/...` 正式主链现在覆盖 `yolox / yolov8 / yolo11 / yolo26 / rfdetr`。
-- RF-DETR segmentation 已接通 project-native 模型、训练、ONNX 转换、PyTorch/ONNXRuntime 推理与 deployment 主链；当前运行时矩阵先收敛到 `pytorch + onnxruntime`。
+- RF-DETR segmentation 已接通 project-native 模型、训练、ONNX 转换、DeploymentInstance 主链与端到端 smoke；当前正式任务链已验证 `training -> conversion -> deployment -> onnxruntime infer`，运行时已补到 `pytorch / onnxruntime / openvino / tensorrt` 四后端 session。
 - 非 Detection 训练管理 API 已补齐：classification/segmentation/pose/obb 各有 list/detail/save/pause/terminate/resume/delete 7 个端点。
 - OBB 训练损失已从占位 MSE 替换为完整实现：probiou + 旋转框 TAL + DFL + 角度损失（`backend/service/application/models/obb_loss.py`）。
 - Pose 训练损失已从占位 MSE 替换为完整实现：detection 损失 + 关键点位置损失 + 可见性 mask（`backend/service/application/models/pose_loss.py`）。

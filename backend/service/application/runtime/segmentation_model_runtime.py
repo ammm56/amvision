@@ -30,7 +30,9 @@ from backend.service.application.runtime.yolov8_segmentation_predictor import (
 )
 from backend.service.application.runtime.rfdetr_segmentation_predictor import (
     OnnxRuntimeRfdetrSegmentationRuntimeSession,
+    OpenVINORfdetrSegmentationRuntimeSession,
     PyTorchRfdetrSegmentationRuntimeSession,
+    TensorRTRfdetrSegmentationRuntimeSession,
 )
 from backend.service.application.runtime.yolox_runtime_target import RuntimeTargetSnapshot
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
@@ -236,13 +238,24 @@ def _load_rfdetr_segmentation_session(
 ) -> SegmentationModelRuntimeSession:
     """按 runtime backend 加载 RF-DETR segmentation 会话。"""
 
-    del pinned_output_buffer_enabled, pinned_output_buffer_max_bytes
     if runtime_target.runtime_backend == "pytorch":
         return PyTorchRfdetrSegmentationRuntimeSession.load(dataset_storage=dataset_storage, runtime_target=runtime_target)
     if runtime_target.runtime_backend == "onnxruntime":
         return OnnxRuntimeRfdetrSegmentationRuntimeSession.load(
             dataset_storage=dataset_storage,
             runtime_target=runtime_target,
+        )
+    if runtime_target.runtime_backend == "openvino":
+        return OpenVINORfdetrSegmentationRuntimeSession.load(
+            dataset_storage=dataset_storage,
+            runtime_target=runtime_target,
+        )
+    if runtime_target.runtime_backend == "tensorrt":
+        return TensorRTRfdetrSegmentationRuntimeSession.load(
+            dataset_storage=dataset_storage,
+            runtime_target=runtime_target,
+            pinned_output_buffer_enabled=pinned_output_buffer_enabled,
+            pinned_output_buffer_max_bytes=pinned_output_buffer_max_bytes,
         )
     raise ValueError(f"unsupported rfdetr segmentation backend: {runtime_target.runtime_backend}")
 

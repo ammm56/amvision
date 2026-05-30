@@ -34,7 +34,7 @@ segmentation_deployments_router = APIRouter(prefix="/models", tags=["models"])
 
 class SegmentationDeploymentInstanceCreateRequestBody(BaseModel):
     project_id: str = Field(description="所属 Project id")
-    model_type: str = Field(description="模型分类；支持 yolov8、yolo11、yolo26")
+    model_type: str = Field(description="模型分类；支持 yolov8、yolo11、yolo26、rfdetr")
     model_version_id: str | None = Field(default=None)
     model_build_id: str | None = Field(default=None)
     runtime_profile_id: str | None = Field(default=None)

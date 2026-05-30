@@ -82,8 +82,8 @@ def _hungarian_match(pred_logits: torch.Tensor, pred_boxes: torch.Tensor, target
         if nt == 0: indices.append((torch.tensor([], dtype=torch.long), torch.tensor([], dtype=torch.long))); continue
         out_prob = pred_logits[bi, :, :nc].sigmoid()
         cost_class = -out_prob[:, [c for c in tgt["class_ids"]]].cpu()
-        tgt_boxes_norm = torch.tensor(tgt["boxes"], dtype=torch.float32).unsqueeze(0)
-        cost_bbox = torch.cdist(pred_boxes[bi].cpu(), tgt_boxes_norm, p=1).squeeze(1)
+        tgt_boxes_norm = torch.tensor(tgt["boxes"], dtype=torch.float32)
+        cost_bbox = torch.cdist(pred_boxes[bi].cpu(), tgt_boxes_norm, p=1)
         cost_giou = -_compute_pairwise_giou(pred_boxes[bi].cpu(), torch.tensor(tgt["boxes"], dtype=torch.float32))
         C = cls_cost * cost_class + bbox_cost * cost_bbox + giou_cost * cost_giou
         pi, ti = linear_sum_assignment(C.numpy())
