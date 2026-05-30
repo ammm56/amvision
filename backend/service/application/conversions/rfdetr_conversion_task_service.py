@@ -4,9 +4,23 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from uuid import uuid4
 
 from backend.queue import QueueBackend
-from backend.service.application.backends import ConversionBackend, ConversionBackendRunRequest
+from backend.service.application.backends import (
+    ConversionBackend,
+    ConversionBackendRunRequest,
+    DetectionConversionPlanStep,
+)
+from backend.service.application.conversions.rfdetr_conversion_planner import (
+    DefaultRfdetrConversionPlanner,
+)
+from backend.service.application.conversions.yolox_conversion_planner import (
+    YoloXConversionPlan,
+    YoloXConversionPlanningRequest,
+    deserialize_yolox_conversion_plan,
+    serialize_yolox_conversion_plan,
+)
 from backend.service.application.conversions.yolox_conversion_task_service import (
     YoloXBuildRegistration as RfdetrBuildRegistration,
     YoloXConversionResultSnapshot as RfdetrConversionResultSnapshot,
@@ -16,11 +30,19 @@ from backend.service.application.errors import (
     ResourceNotFoundError,
     ServiceConfigurationError,
 )
-from backend.service.application.models.rfdetr_model_service import SqlAlchemyRfdetrModelService
+from backend.service.application.models.detection_operation_rules import (
+    DetectionConversionOutputFiles,
+    build_detection_conversion_report_summary,
+)
+from backend.service.application.models.rfdetr_model_service import (
+    SqlAlchemyRfdetrModelService,
+)
 from backend.service.application.runtime.rfdetr_runtime_target import (
     SqlAlchemyRfdetrRuntimeTargetResolver,
 )
-from backend.service.application.runtime.yolox_runtime_target import RuntimeTargetResolveRequest
+from backend.service.application.runtime.yolox_runtime_target import (
+    RuntimeTargetResolveRequest,
+)
 from backend.service.application.tasks.task_service import (
     AppendTaskEventRequest,
     CreateTaskRequest,
@@ -33,11 +55,17 @@ from backend.service.infrastructure.object_store.local_dataset_storage import (
 from backend.workers.conversion.rfdetr_conversion_runner import (
     LocalRfdetrConversionRunner,
 )
+from backend.workers.conversion.yolox_conversion_runner import (
+    _resolve_openvino_ir_build_precision,
+    _resolve_tensorrt_engine_build_precision,
+)
 
 
 RFDETR_CONVERSION_TASK_KIND = "rfdetr-conversion"
 RFDETR_CONVERSION_QUEUE_NAME = "rfdetr-conversions"
-_RFDETR_EXECUTABLE_TARGET_FORMATS = frozenset({"onnx", "onnx-optimized"})
+_RFDETR_EXECUTABLE_TARGET_FORMATS = frozenset(
+    {"onnx", "onnx-optimized", "openvino-ir", "tensorrt-engine"}
+)
 _RFDETR_SUPPORTED_TASK_TYPES = frozenset({"detection", "segmentation"})
 
 
@@ -83,6 +111,7 @@ class SqlAlchemyRfdetrConversionTaskService:
         session_factory: SessionFactory,
         dataset_storage: LocalDatasetStorage | None = None,
         queue_backend: QueueBackend | None = None,
+        planner: object | None = None,
         conversion_runner: ConversionBackend | None = None,
     ) -> None:
         """初始化 RF-DETR 转换任务服务。"""
@@ -90,6 +119,7 @@ class SqlAlchemyRfdetrConversionTaskService:
         self.session_factory = session_factory
         self.dataset_storage = dataset_storage
         self.queue_backend = queue_backend
+        self.planner = planner or DefaultRfdetrConversionPlanner()
         self.conversion_runner = conversion_runner
         self.task_service = SqlAlchemyTaskService(session_factory)
 
@@ -102,6 +132,7 @@ class SqlAlchemyRfdetrConversionTaskService:
     ) -> RfdetrConversionTaskSubmission:
         """创建并入队一条 RF-DETR 转换任务。"""
 
+        self._validate_request(request)
         queue_backend = self._require_queue_backend()
         normalized_task_type = self._normalize_task_type(request.task_type)
         source_model_version_id = self._resolve_source_model_version_id(request)
@@ -111,36 +142,17 @@ class SqlAlchemyRfdetrConversionTaskService:
             source_model_version_id=source_model_version_id,
             task_type=normalized_task_type,
         )
-        precision = str(
-            request.extra_options.get("precision")
-            or source_runtime_target.runtime_precision
-            or "fp32"
-        )
-        input_size = list(source_runtime_target.input_size or (384, 384))
-        checkpoint_object_key = (
-            source_runtime_target.checkpoint_storage_uri
-            or source_runtime_target.runtime_artifact_storage_uri
-        )
-        if checkpoint_object_key is None or not checkpoint_object_key.strip():
-            raise InvalidRequestError(
-                "RF-DETR 转换来源缺少 checkpoint 产物",
-                details={"source_model_version_id": source_model_version_id},
+        plan = self.planner.build_plan(
+            YoloXConversionPlanningRequest(
+                project_id=request.project_id,
+                source_model_version_id=source_model_version_id,
+                target_formats=target_formats,
+                task_type=normalized_task_type,
+                runtime_profile_id=request.runtime_profile_id,
+                metadata=dict(request.extra_options),
             )
-
-        queue_payload = {
-            "project_id": request.project_id,
-            "source_model_version_id": source_model_version_id,
-            "checkpoint_object_key": checkpoint_object_key,
-            "target_formats": list(target_formats),
-            "precision": precision,
-            "model_scale": source_runtime_target.model_scale,
-            "num_classes": len(source_runtime_target.labels),
-            "input_size": input_size,
-            "runtime_profile_id": request.runtime_profile_id,
-            "extra_options": dict(request.extra_options),
-            "model_type": self.model_type,
-            "task_type": normalized_task_type,
-        }
+        )
+        self._validate_executable_targets(plan.target_formats)
         created_task = self.task_service.create_task(
             CreateTaskRequest(
                 project_id=request.project_id,
@@ -148,23 +160,22 @@ class SqlAlchemyRfdetrConversionTaskService:
                 display_name=display_name.strip()
                 or f"rfdetr {normalized_task_type} conversion {source_model_version_id}",
                 created_by=created_by,
-                task_spec={
-                    "project_id": request.project_id,
-                    "source_model_version_id": source_model_version_id,
-                    "target_formats": list(target_formats),
-                    "runtime_profile_id": request.runtime_profile_id,
-                    "extra_options": dict(request.extra_options),
-                    "task_type": normalized_task_type,
-                    "model_type": self.model_type,
-                },
+                task_spec=_serialize_task_spec(
+                    project_id=request.project_id,
+                    source_model_version_id=source_model_version_id,
+                    target_formats=plan.target_formats,
+                    runtime_profile_id=request.runtime_profile_id,
+                    task_type=normalized_task_type,
+                    extra_options=dict(request.extra_options),
+                    planned_steps=tuple(serialize_yolox_conversion_plan(plan)["steps"]),
+                ),
                 worker_pool=self.task_kind,
                 metadata={
                     "model_type": self.model_type,
                     "task_type": normalized_task_type,
                     "source_model_version_id": source_model_version_id,
-                    "target_formats": list(target_formats),
+                    "target_formats": list(plan.target_formats),
                     "runtime_profile_id": request.runtime_profile_id,
-                    "queue_payload": queue_payload,
                 },
             )
         )
@@ -175,7 +186,7 @@ class SqlAlchemyRfdetrConversionTaskService:
                 metadata={
                     "project_id": request.project_id,
                     "source_model_version_id": source_model_version_id,
-                    "target_formats": list(target_formats),
+                    "target_formats": list(plan.target_formats),
                     "model_type": self.model_type,
                     "task_type": normalized_task_type,
                 },
@@ -192,7 +203,7 @@ class SqlAlchemyRfdetrConversionTaskService:
                         "progress": {"stage": "failed"},
                         "result": {
                             "source_model_version_id": source_model_version_id,
-                            "target_formats": list(target_formats),
+                            "target_formats": list(plan.target_formats),
                             "task_type": normalized_task_type,
                         },
                     },
@@ -219,8 +230,8 @@ class SqlAlchemyRfdetrConversionTaskService:
             queue_name=self.queue_name,
             queue_task_id=queue_task.task_id,
             source_model_version_id=source_model_version_id,
-            target_formats=target_formats,
-            task_type=normalized_task_type,
+            target_formats=plan.target_formats,
+            task_type=source_runtime_target.task_type,
         )
 
     def process_conversion_task(self, task_id: str) -> dict[str, object]:
@@ -243,23 +254,35 @@ class SqlAlchemyRfdetrConversionTaskService:
         if task_record.state == "succeeded" and task_record.result:
             return dict(task_record.result)
 
-        payload = self._read_queue_payload(task_record)
-        source_model_version_id = self._read_required_str(
-            payload,
-            "source_model_version_id",
-        )
-        normalized_task_type = self._normalize_task_type(payload.get("task_type"))
-        target_formats = self._resolve_target_formats_from_payload(payload)
+        request = self._build_request_from_task_record(task_record)
+        plan = self._read_plan_from_task_record(task_record)
+        self._validate_executable_targets(plan.target_formats)
         source_runtime_target = self._resolve_source_runtime_target(
-            project_id=task_record.project_id,
-            source_model_version_id=source_model_version_id,
-            task_type=normalized_task_type,
+            project_id=request.project_id,
+            source_model_version_id=request.source_model_version_id or "",
+            task_type=self._normalize_task_type(request.task_type),
         )
+        if (
+            source_runtime_target.checkpoint_path is None
+            or source_runtime_target.checkpoint_storage_uri is None
+        ):
+            raise ServiceConfigurationError(
+                "当前来源 ModelVersion 缺少 checkpoint 文件，不能执行转换",
+                details={
+                    "source_model_version_id": request.source_model_version_id,
+                    "task_type": request.task_type,
+                },
+            )
+
         attempt_no = max(1, task_record.current_attempt_no + 1)
-        output_object_prefix = f"task-runs/{task_id}/conversions"
-        report_object_key = (
-            f"{output_object_prefix}/artifacts/reports/conversion-report.json"
+        output_object_prefix = self._build_output_object_prefix(task_id)
+        output_files = DetectionConversionOutputFiles(
+            output_object_prefix=output_object_prefix,
+            plan_object_key=f"{output_object_prefix}/artifacts/reports/conversion-plan.json",
+            report_object_key=f"{output_object_prefix}/artifacts/reports/conversion-report.json",
         )
+        plan_object_key = output_files.plan_object_key
+        report_object_key = output_files.report_object_key
         self.task_service.append_task_event(
             AppendTaskEventRequest(
                 task_id=task_id,
@@ -269,42 +292,69 @@ class SqlAlchemyRfdetrConversionTaskService:
                     "state": "running",
                     "started_at": self._now_iso(),
                     "attempt_no": attempt_no,
-                    "progress": {"stage": "converting", "percent": 10.0},
+                    "progress": {"stage": "planning", "percent": 5.0},
                 },
             )
         )
+        dataset_storage.write_json(plan_object_key, serialize_yolox_conversion_plan(plan))
 
         try:
             run_result = conversion_runner.run_conversion(
                 ConversionBackendRunRequest(
                     conversion_task_id=task_id,
                     source_runtime_target=source_runtime_target,
-                    target_formats=target_formats,
-                    plan_steps=(),
+                    target_formats=plan.target_formats,
+                    plan_steps=self._build_backend_plan_steps(plan),
                     output_object_prefix=output_object_prefix,
                     model_type=self.model_type,
-                    task_type=normalized_task_type,
+                    task_type=request.task_type,
                     metadata={
-                        "project_id": task_record.project_id,
-                        "runtime_profile_id": payload.get("runtime_profile_id"),
-                        "checkpoint_object_key": payload.get("checkpoint_object_key"),
-                        "precision": payload.get("precision", "fp32"),
-                        "model_scale": payload.get("model_scale", "nano"),
-                        "num_classes": payload.get("num_classes", 0),
-                        "input_size": payload.get("input_size", [384, 384]),
-                        "task_type": normalized_task_type,
-                        **dict(payload.get("extra_options") or {}),
+                        "project_id": request.project_id,
+                        "runtime_profile_id": request.runtime_profile_id,
+                        **dict(request.extra_options),
                     },
                 )
             )
             build_summaries = self._register_conversion_outputs(
-                project_id=task_record.project_id,
-                source_model_version_id=source_model_version_id,
-                runtime_profile_id=self._read_optional_str(payload, "runtime_profile_id"),
+                project_id=request.project_id,
+                source_model_version_id=request.source_model_version_id or "",
+                runtime_profile_id=request.runtime_profile_id,
                 conversion_task_id=task_id,
-                task_type=normalized_task_type,
+                task_type=request.task_type,
                 outputs=run_result.outputs,
             )
+            report_summary = build_detection_conversion_report_summary(
+                phase=str(run_result.metadata.get("phase") or "phase-1-onnx"),
+                source_model_version_id=source_runtime_target.model_version_id,
+                source_checkpoint_uri=source_runtime_target.checkpoint_storage_uri,
+                model_name=source_runtime_target.model_name,
+                model_scale=source_runtime_target.model_scale,
+                input_size=source_runtime_target.input_size,
+                label_count=len(source_runtime_target.labels),
+                requested_target_formats=request.target_formats,
+                planned_target_formats=plan.target_formats,
+                executed_step_kinds=tuple(
+                    run_result.metadata.get("executed_step_kinds", ())
+                ),
+                conversion_options=dict(
+                    run_result.metadata.get("conversion_options", {})
+                ),
+                validation_summary=dict(
+                    run_result.metadata.get("validation_summary", {})
+                ),
+                outputs=tuple(
+                    {
+                        "target_format": item.target_format,
+                        "object_uri": item.object_uri,
+                        "file_type": item.file_type,
+                        "metadata": dict(item.metadata),
+                    }
+                    for item in run_result.outputs
+                ),
+                builds=tuple(build_summaries),
+                output_files=output_files,
+            )
+            dataset_storage.write_json(report_object_key, report_summary)
         except Exception as error:
             self.task_service.append_task_event(
                 AppendTaskEventRequest(
@@ -318,38 +368,19 @@ class SqlAlchemyRfdetrConversionTaskService:
                         "error_message": str(error),
                         "progress": {"stage": "failed", "percent": 100.0},
                         "result": {
-                            "source_model_version_id": source_model_version_id,
+                            "source_model_version_id": request.source_model_version_id,
                             "output_object_prefix": output_object_prefix,
+                            "plan_object_key": plan_object_key,
                             "report_object_key": report_object_key,
-                            "requested_target_formats": list(target_formats),
-                            "task_type": normalized_task_type,
+                            "requested_target_formats": list(request.target_formats),
+                            "task_type": request.task_type,
+                            "model_build_id": None,
                         },
                     },
                 )
             )
             raise
 
-        report_payload = {
-            "conversion_task_id": task_id,
-            "model_type": self.model_type,
-            "task_type": normalized_task_type,
-            "source_model_version_id": source_model_version_id,
-            "requested_target_formats": list(target_formats),
-            "produced_formats": [
-                item.target_format for item in run_result.outputs
-            ],
-            "outputs": [
-                {
-                    "target_format": item.target_format,
-                    "object_uri": item.object_uri,
-                    "file_type": item.file_type,
-                    "metadata": dict(item.metadata or {}),
-                }
-                for item in run_result.outputs
-            ],
-            "builds": build_summaries,
-        }
-        dataset_storage.write_json(report_object_key, report_payload)
         primary_model_build_id = (
             build_summaries[0]["model_build_id"] if build_summaries else None
         )
@@ -359,16 +390,16 @@ class SqlAlchemyRfdetrConversionTaskService:
             "attempt_no": attempt_no,
             "progress": {"stage": "succeeded", "percent": 100.0},
             "result": {
-                "source_model_version_id": source_model_version_id,
+                "source_model_version_id": request.source_model_version_id,
                 "output_object_prefix": output_object_prefix,
+                "plan_object_key": plan_object_key,
                 "report_object_key": report_object_key,
-                "requested_target_formats": list(target_formats),
-                "produced_formats": [
-                    item.target_format for item in run_result.outputs
-                ],
+                "requested_target_formats": list(request.target_formats),
+                "produced_formats": [item["build_format"] for item in build_summaries],
                 "model_build_id": primary_model_build_id,
                 "builds": build_summaries,
-                "task_type": normalized_task_type,
+                "report_summary": report_summary,
+                "task_type": request.task_type,
             },
         }
         self.task_service.append_task_event(
@@ -445,8 +476,8 @@ class SqlAlchemyRfdetrConversionTaskService:
     ) -> list[dict[str, object]]:
         model_service = SqlAlchemyRfdetrModelService(self.session_factory)
         build_summaries: list[dict[str, object]] = []
-        for index, output in enumerate(outputs):
-            build_file_id = f"{conversion_task_id}-build-{index + 1}"
+        for output in outputs:
+            build_file_id = self._next_id("model-file")
             model_build_id = model_service.register_build(
                 RfdetrBuildRegistration(
                     project_id=project_id,
@@ -514,7 +545,11 @@ class SqlAlchemyRfdetrConversionTaskService:
             for item in request.target_formats
             if isinstance(item, str) and item.strip()
         )
-        if not target_formats and isinstance(request.target_format, str) and request.target_format.strip():
+        if (
+            not target_formats
+            and isinstance(request.target_format, str)
+            and request.target_format.strip()
+        ):
             target_formats = (request.target_format.strip(),)
         if not target_formats:
             raise InvalidRequestError("target_formats 至少需要一个有效目标格式")
@@ -525,7 +560,7 @@ class SqlAlchemyRfdetrConversionTaskService:
         ]
         if unsupported:
             raise InvalidRequestError(
-                "RF-DETR 当前只支持 onnx 和 onnx-optimized 转换",
+                "RF-DETR 当前只支持 onnx、onnx-optimized、openvino-ir 和 tensorrt-engine 转换",
                 details={
                     "unsupported_target_formats": unsupported,
                     "supported_target_formats": sorted(
@@ -534,24 +569,6 @@ class SqlAlchemyRfdetrConversionTaskService:
                 },
             )
         return target_formats
-
-    def _resolve_target_formats_from_payload(
-        self,
-        payload: dict[str, object],
-    ) -> tuple[str, ...]:
-        raw = payload.get("target_formats")
-        if isinstance(raw, list):
-            target_formats = tuple(
-                item.strip()
-                for item in raw
-                if isinstance(item, str) and item.strip()
-            )
-            if target_formats:
-                return target_formats
-        target_format = self._read_optional_str(payload, "target_format")
-        if target_format is not None:
-            return (target_format,)
-        raise InvalidRequestError("当前转换任务缺少 target_formats")
 
     def _normalize_task_type(self, task_type: object) -> str:
         normalized_task_type = str(task_type or "detection").strip().lower()
@@ -604,6 +621,72 @@ class SqlAlchemyRfdetrConversionTaskService:
             )
         return runtime_target
 
+    def _build_request_from_task_record(
+        self,
+        task_record,
+    ) -> RfdetrConversionTaskRequest:
+        task_spec = _deserialize_task_spec(task_record.task_spec)
+        if task_spec is not None:
+            return RfdetrConversionTaskRequest(
+                project_id=task_spec["project_id"],
+                source_model_version_id=task_spec["source_model_version_id"],
+                target_formats=task_spec["target_formats"],
+                runtime_profile_id=task_spec["runtime_profile_id"],
+                extra_options=dict(task_spec["extra_options"]),
+                model_type=self.model_type,
+                task_type=task_spec["task_type"],
+            )
+        payload = self._read_queue_payload(task_record)
+        return RfdetrConversionTaskRequest(
+            project_id=self._read_required_str(payload, "project_id"),
+            source_model_version_id=self._read_required_str(
+                payload,
+                "source_model_version_id",
+            ),
+            target_formats=self._resolve_target_formats_from_payload(payload),
+            runtime_profile_id=self._read_optional_str(payload, "runtime_profile_id"),
+            extra_options=dict(payload.get("extra_options") or {}),
+            model_type=self.model_type,
+            task_type=self._normalize_task_type(payload.get("task_type")),
+        )
+
+    def _read_plan_from_task_record(self, task_record) -> YoloXConversionPlan:
+        task_spec = _deserialize_task_spec(task_record.task_spec)
+        if task_spec is not None:
+            return deserialize_yolox_conversion_plan(
+                {
+                    "source_model_version_id": task_spec["source_model_version_id"],
+                    "target_formats": list(task_spec["target_formats"]),
+                    "steps": list(task_spec["planned_steps"]),
+                }
+            )
+        request = self._build_request_from_task_record(task_record)
+        return self.planner.build_plan(
+            YoloXConversionPlanningRequest(
+                project_id=request.project_id,
+                source_model_version_id=request.source_model_version_id or "",
+                target_formats=request.target_formats,
+                task_type=request.task_type,
+                runtime_profile_id=request.runtime_profile_id,
+                metadata=dict(request.extra_options),
+            )
+        )
+
+    def _build_backend_plan_steps(
+        self,
+        plan: YoloXConversionPlan,
+    ) -> tuple[DetectionConversionPlanStep, ...]:
+        return tuple(
+            DetectionConversionPlanStep(
+                kind=step.kind,
+                source_format=step.source_format,
+                target_format=step.target_format,
+                required_file_type=step.required_file_type,
+                produced_file_type=step.produced_file_type,
+            )
+            for step in plan.steps
+        )
+
     def _read_queue_payload(self, task_record) -> dict[str, object]:
         metadata = dict(task_record.metadata) if task_record.metadata else {}
         queue_payload = metadata.get("queue_payload")
@@ -629,6 +712,43 @@ class SqlAlchemyRfdetrConversionTaskService:
             raise InvalidRequestError(f"转换任务缺少 {key}")
         return value
 
+    def _resolve_target_formats_from_payload(
+        self,
+        payload: dict[str, object],
+    ) -> tuple[str, ...]:
+        raw = payload.get("target_formats")
+        if isinstance(raw, list | tuple):
+            target_formats = tuple(
+                item.strip()
+                for item in raw
+                if isinstance(item, str) and item.strip()
+            )
+            if target_formats:
+                return target_formats
+        target_format = self._read_optional_str(payload, "target_format")
+        if target_format is not None:
+            return (target_format,)
+        raise InvalidRequestError("当前转换任务缺少 target_formats")
+
+    def _validate_request(self, request: RfdetrConversionTaskRequest) -> None:
+        if not request.project_id.strip():
+            raise InvalidRequestError("project_id 不能为空")
+        target_formats = self._resolve_target_formats(request)
+        if "openvino-ir" in target_formats:
+            _resolve_openvino_ir_build_precision(dict(request.extra_options))
+        if "tensorrt-engine" in target_formats:
+            _resolve_tensorrt_engine_build_precision(dict(request.extra_options))
+
+    def _validate_executable_targets(self, target_formats: tuple[str, ...]) -> None:
+        unsupported_formats = [
+            item for item in target_formats if item not in _RFDETR_EXECUTABLE_TARGET_FORMATS
+        ]
+        if unsupported_formats:
+            raise InvalidRequestError(
+                "当前 RF-DETR conversion runner 仅支持 onnx、onnx-optimized、openvino-ir 与 tensorrt-engine",
+                details={"unsupported_target_formats": unsupported_formats},
+            )
+
     def _require_queue_backend(self) -> QueueBackend:
         """返回提交转换任务必需的队列后端。"""
 
@@ -651,6 +771,18 @@ class SqlAlchemyRfdetrConversionTaskService:
         return LocalRfdetrConversionRunner(dataset_storage=self._require_dataset_storage())
 
     @staticmethod
+    def _build_output_object_prefix(task_id: str) -> str:
+        """构建 RF-DETR 转换任务输出目录前缀。"""
+
+        return f"task-runs/conversion/{task_id}"
+
+    @staticmethod
+    def _next_id(prefix: str) -> str:
+        """生成稳定前缀的唯一标识。"""
+
+        return f"{prefix}-{uuid4().hex}"
+
+    @staticmethod
     def _now_iso() -> str:
         return datetime.now(timezone.utc).isoformat()
 
@@ -662,3 +794,64 @@ def _read_optional_payload_str(payload: dict[str, object], key: str) -> str | No
     if isinstance(value, str) and value.strip():
         return value.strip()
     return None
+
+
+def _serialize_task_spec(
+    *,
+    project_id: str,
+    source_model_version_id: str,
+    target_formats: tuple[str, ...],
+    runtime_profile_id: str | None,
+    task_type: str,
+    extra_options: dict[str, object],
+    planned_steps: tuple[dict[str, object], ...],
+) -> dict[str, object]:
+    """把 RF-DETR 转换任务规格序列化为 TaskRecord.task_spec。"""
+
+    return {
+        "project_id": project_id,
+        "source_model_version_id": source_model_version_id,
+        "target_formats": list(target_formats),
+        "runtime_profile_id": runtime_profile_id,
+        "task_type": task_type,
+        "planned_steps": list(planned_steps),
+        "extra_options": dict(extra_options),
+    }
+
+
+def _deserialize_task_spec(payload: dict[str, object]) -> dict[str, object] | None:
+    """从 TaskRecord.task_spec 恢复 RF-DETR 转换任务规格。"""
+
+    if not isinstance(payload, dict):
+        return None
+    raw_project_id = payload.get("project_id")
+    raw_source_model_version_id = payload.get("source_model_version_id")
+    raw_target_formats = payload.get("target_formats")
+    raw_planned_steps = payload.get("planned_steps")
+    raw_task_type = payload.get("task_type")
+    if (
+        not isinstance(raw_project_id, str)
+        or not raw_project_id.strip()
+        or not isinstance(raw_source_model_version_id, str)
+        or not raw_source_model_version_id.strip()
+        or not isinstance(raw_target_formats, list)
+        or not isinstance(raw_planned_steps, list)
+        or not isinstance(raw_task_type, str)
+        or not raw_task_type.strip()
+    ):
+        return None
+    return {
+        "project_id": raw_project_id.strip(),
+        "source_model_version_id": raw_source_model_version_id.strip(),
+        "target_formats": tuple(
+            item for item in raw_target_formats if isinstance(item, str) and item.strip()
+        ),
+        "runtime_profile_id": _read_optional_payload_str(payload, "runtime_profile_id"),
+        "task_type": raw_task_type.strip().lower(),
+        "planned_steps": tuple(
+            item for item in raw_planned_steps if isinstance(item, dict)
+        ),
+        "extra_options": dict(payload.get("extra_options"))
+        if isinstance(payload.get("extra_options"), dict)
+        else {},
+    }

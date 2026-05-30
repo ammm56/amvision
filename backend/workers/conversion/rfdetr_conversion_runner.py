@@ -1,6 +1,8 @@
-"""RF-DETR 转换执行器（项目内实现）。"""
+"""RF-DETR 转换 worker 接口与 ONNX/OpenVINO/TensorRT 实现。"""
 
 from __future__ import annotations
+
+from typing import Any
 
 import torch
 
@@ -10,152 +12,388 @@ from backend.service.application.backends import (
     ConversionBackendRunRequest,
     ConversionBackendRunResult,
 )
-from backend.service.application.errors import ServiceError
+from backend.service.application.errors import (
+    InvalidRequestError,
+    ServiceConfigurationError,
+    ServiceError,
+)
 from backend.service.application.models.rfdetr_model import build_rfdetr_model
+from backend.service.application.models.rfdetr_model_service import (
+    RFDETR_DETECTION_FILE_TYPES,
+)
 from backend.service.application.models.rfdetr_segmentation_model import (
     build_rfdetr_segmentation_model,
 )
-from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
+from backend.service.infrastructure.object_store.local_dataset_storage import (
+    LocalDatasetStorage,
+)
+from backend.workers.conversion.yolox_conversion_runner import (
+    LocalYoloXConversionRunner,
+    _build_conversion_options_metadata,
+    _build_output_base_name,
+    _import_onnx_dependencies,
+    _resolve_conversion_phase,
+    _resolve_openvino_ir_build_precision,
+    _resolve_tensorrt_engine_build_precision,
+    _summarize_numeric_validation,
+)
 
 
-# RF-DETR 转换输出文件类型
-RFDETR_ONNX_FILE = "rfdetr-onnx-model"
-RFDETR_ONNX_OPTIMIZED_FILE = "rfdetr-onnx-optimized-model"
+RfdetrConversionRunRequest = ConversionBackendRunRequest
+RfdetrConversionOutput = ConversionBackendOutput
+RfdetrConversionRunResult = ConversionBackendRunResult
+RfdetrConversionRunner = ConversionBackend
+
+RFDETR_ONNX_FILE = RFDETR_DETECTION_FILE_TYPES.onnx_file_type
+RFDETR_ONNX_OPTIMIZED_FILE = RFDETR_DETECTION_FILE_TYPES.onnx_optimized_file_type
+RFDETR_OPENVINO_IR_FILE = RFDETR_DETECTION_FILE_TYPES.openvino_ir_file_type
+RFDETR_TENSORRT_ENGINE_FILE = RFDETR_DETECTION_FILE_TYPES.tensorrt_engine_file_type
 
 
-class LocalRfdetrConversionRunner(ConversionBackend):
-    """本地 RF-DETR 转换执行器。
-
-    实现 ConversionBackend 协议，支持 RF-DETR 模型的 ONNX 导出。
-    """
+class LocalRfdetrConversionRunner(LocalYoloXConversionRunner, ConversionBackend):
+    """本地 RF-DETR 转换执行器。"""
 
     def __init__(self, *, dataset_storage: LocalDatasetStorage) -> None:
-        """初始化 RF-DETR 转换执行器。
+        """初始化 RF-DETR 转换执行器。"""
 
-        参数：
-        - dataset_storage：本地文件存储服务。
-        """
-        self.dataset_storage = dataset_storage
+        super().__init__(dataset_storage=dataset_storage)
 
-    def run_conversion(self, request: ConversionBackendRunRequest) -> ConversionBackendRunResult:
-        """执行 RF-DETR 模型转换。
+    def run_conversion(
+        self,
+        request: RfdetrConversionRunRequest,
+    ) -> RfdetrConversionRunResult:
+        """执行 RF-DETR ONNX/OpenVINO/TensorRT 转换链。"""
 
-        参数：
-        - request：转换执行请求，metadata 中需包含：
-          - checkpoint_object_key：checkpoint 文件路径
-          - model_scale：模型 scale（默认 nano）
-          - num_classes：类别数（默认 80）
-          - input_size：输入尺寸（默认 [384, 384]）
-
-        返回：
-        - ConversionBackendRunResult：转换结果，包含输出文件列表。
-        """
+        if not request.plan_steps:
+            raise InvalidRequestError("转换计划 steps 不能为空")
         metadata = dict(request.metadata or {})
-
-        checkpoint_key = metadata.get("checkpoint_object_key")
-        if not checkpoint_key:
-            raise ServiceError("RF-DETR 转换缺少 checkpoint_object_key")
-
-        target_formats = tuple(
-            item
-            for item in request.target_formats
-            if isinstance(item, str) and item
-        )
-        target_format = target_formats[0] if target_formats else metadata.get("target_format", "onnx")
-        precision = metadata.get("precision", "fp32")
-        model_scale = metadata.get("model_scale", "nano")
-        num_classes = int(metadata.get("num_classes", 80))
-        input_size = metadata.get("input_size", [384, 384])
-        task_type = str(metadata.get("task_type") or request.task_type or "detection").strip().lower()
-
-        if isinstance(input_size, (list, tuple)) and len(input_size) == 2:
-            input_h, input_w = int(input_size[0]), int(input_size[1])
-        else:
-            input_h, input_w = 384, 384
-
-        # 加载 checkpoint
-        checkpoint_path = self.dataset_storage.resolve(checkpoint_key)
-        if not checkpoint_path.is_file():
-            raise ServiceError(f"checkpoint 文件不存在: {checkpoint_key}")
-
-        checkpoint = torch.load(str(checkpoint_path), map_location="cpu", weights_only=False)
-        state_dict = checkpoint.get("model_state_dict", checkpoint)
-
-        # 构建模型
-        if task_type == "segmentation":
-            model = build_rfdetr_segmentation_model(
-                model_scale=model_scale,
-                num_classes=num_classes,
+        task_type = str(
+            metadata.get("task_type") or request.task_type or "detection"
+        ).strip().lower()
+        if task_type not in {"detection", "segmentation"}:
+            raise InvalidRequestError(
+                "RF-DETR 当前不支持指定任务分类的转换执行",
+                details={"task_type": task_type},
             )
-        else:
-            model = build_rfdetr_model(model_scale=model_scale, num_classes=num_classes)
+
+        runtime_target = request.source_runtime_target
+        checkpoint_path = runtime_target.checkpoint_path
+        if checkpoint_path is None or not checkpoint_path.is_file():
+            raise ServiceError("RF-DETR 转换缺少可读取的 checkpoint 文件")
+
+        checkpoint = torch.load(
+            str(checkpoint_path),
+            map_location="cpu",
+            weights_only=False,
+        )
+        state_dict = checkpoint.get("model_state_dict", checkpoint)
+        num_classes = len(runtime_target.labels)
+        model_scale = runtime_target.model_scale or "nano"
+        model = _build_rfdetr_model(task_type=task_type, model_scale=model_scale, num_classes=num_classes)
         model.load_state_dict(state_dict, strict=False)
+        model.to("cpu")
         model.eval()
 
-        outputs: list[ConversionBackendOutput] = []
+        input_height, input_width = _resolve_input_size(runtime_target.input_size)
+        dummy_input = torch.randn(1, 3, input_height, input_width, dtype=torch.float32)
+        onnx_module, onnxruntime_module, onnx_simplify = _import_onnx_dependencies()
+        base_name = _build_output_base_name(runtime_target)
+        onnx_object_key = (
+            f"{request.output_object_prefix}/artifacts/builds/{base_name}.onnx"
+        )
+        optimized_object_key = (
+            f"{request.output_object_prefix}/artifacts/builds/{base_name}.optimized.onnx"
+        )
+        openvino_object_key = (
+            f"{request.output_object_prefix}/artifacts/builds/{base_name}.openvino.xml"
+        )
+        tensorrt_object_key = (
+            f"{request.output_object_prefix}/artifacts/builds/{base_name}.tensorrt.engine"
+        )
+        openvino_ir_build_precision = _resolve_openvino_ir_build_precision(metadata)
+        tensorrt_engine_build_precision = _resolve_tensorrt_engine_build_precision(
+            metadata
+        )
+        output_names = _resolve_export_output_names(task_type)
+        executed_step_kinds: list[str] = []
+        validation_summary: dict[str, object] = {}
+        onnx_output: RfdetrConversionOutput | None = None
+        optimized_output: RfdetrConversionOutput | None = None
+        openvino_output: RfdetrConversionOutput | None = None
+        tensorrt_output: RfdetrConversionOutput | None = None
 
-        if target_format in ("onnx", "onnx-optimized"):
-            onnx_key = f"{request.output_object_prefix}/artifacts/builds/rfdetr-{model_scale}.onnx"
-            onnx_path = self.dataset_storage.resolve(onnx_key)
-            onnx_path.parent.mkdir(parents=True, exist_ok=True)
-
-            dummy_input = torch.randn(1, 3, input_h, input_w)
-            torch.onnx.export(
-                model,
-                dummy_input,
-                str(onnx_path),
-                opset_version=17,
-                input_names=["image"],
-                output_names=(
-                    ["pred_logits", "pred_boxes", "pred_masks"]
-                    if task_type == "segmentation"
-                    else ["pred_logits", "pred_boxes"]
-                ),
-                dynamic_axes={
-                    "image": {0: "batch"},
-                    "pred_logits": {0: "batch"},
-                    "pred_boxes": {0: "batch"},
-                    **({"pred_masks": {0: "batch"}} if task_type == "segmentation" else {}),
-                },
+        for step in request.plan_steps:
+            executed_step_kinds.append(step.kind)
+            if step.kind == "export-onnx":
+                export_summary = self._export_onnx(
+                    model=model,
+                    dummy_input=dummy_input,
+                    output_object_key=onnx_object_key,
+                    output_names=output_names,
+                )
+                onnx_output = RfdetrConversionOutput(
+                    target_format="onnx",
+                    object_uri=onnx_object_key,
+                    file_type=RFDETR_ONNX_FILE,
+                    metadata=export_summary,
+                )
+                continue
+            if step.kind == "validate-onnx":
+                validation_summary = self._validate_onnx(
+                    model=model,
+                    dummy_input=dummy_input,
+                    onnx_object_key=onnx_object_key,
+                    onnx_module=onnx_module,
+                    onnxruntime_module=onnxruntime_module,
+                    output_names=output_names,
+                )
+                if onnx_output is not None:
+                    onnx_output = RfdetrConversionOutput(
+                        target_format=onnx_output.target_format,
+                        object_uri=onnx_output.object_uri,
+                        file_type=onnx_output.file_type,
+                        metadata={
+                            **onnx_output.metadata,
+                            "validation_summary": validation_summary,
+                        },
+                    )
+                continue
+            if step.kind == "optimize-onnx":
+                if onnx_output is None:
+                    raise ServiceConfigurationError("optimize-onnx 缺少 export-onnx 输出")
+                optimize_summary = self._optimize_onnx(
+                    source_object_key=onnx_object_key,
+                    output_object_key=optimized_object_key,
+                    onnx_module=onnx_module,
+                    onnx_simplify=onnx_simplify,
+                )
+                optimized_output = RfdetrConversionOutput(
+                    target_format="onnx-optimized",
+                    object_uri=optimized_object_key,
+                    file_type=RFDETR_ONNX_OPTIMIZED_FILE,
+                    metadata={
+                        **optimize_summary,
+                        "validation_summary": validation_summary,
+                        "source_object_uri": onnx_object_key,
+                    },
+                )
+                continue
+            if step.kind == "build-openvino-ir":
+                if optimized_output is None:
+                    raise ServiceConfigurationError(
+                        "build-openvino-ir 缺少 optimize-onnx 输出"
+                    )
+                build_summary = self._build_openvino_ir(
+                    source_object_key=optimized_object_key,
+                    output_object_key=openvino_object_key,
+                    build_precision=openvino_ir_build_precision,
+                )
+                openvino_output = RfdetrConversionOutput(
+                    target_format="openvino-ir",
+                    object_uri=openvino_object_key,
+                    file_type=RFDETR_OPENVINO_IR_FILE,
+                    metadata={
+                        **build_summary,
+                        "validation_summary": validation_summary,
+                        "source_object_uri": optimized_object_key,
+                    },
+                )
+                continue
+            if step.kind == "build-tensorrt-engine":
+                if optimized_output is None:
+                    raise ServiceConfigurationError(
+                        "build-tensorrt-engine 缺少 optimize-onnx 输出"
+                    )
+                build_summary = self._build_tensorrt_engine(
+                    source_object_key=optimized_object_key,
+                    output_object_key=tensorrt_object_key,
+                    build_precision=tensorrt_engine_build_precision,
+                )
+                tensorrt_output = RfdetrConversionOutput(
+                    target_format="tensorrt-engine",
+                    object_uri=tensorrt_object_key,
+                    file_type=RFDETR_TENSORRT_ENGINE_FILE,
+                    metadata={
+                        **build_summary,
+                        "validation_summary": validation_summary,
+                        "source_object_uri": optimized_object_key,
+                    },
+                )
+                continue
+            raise InvalidRequestError(
+                "当前 RF-DETR conversion runner 不支持指定步骤",
+                details={"step_kind": step.kind, "task_type": task_type},
             )
 
-            file_type = RFDETR_ONNX_OPTIMIZED_FILE if target_format == "onnx-optimized" else RFDETR_ONNX_FILE
-            outputs.append(ConversionBackendOutput(
-                target_format=target_format,
-                object_uri=onnx_key,
-                file_type=file_type,
-                metadata={
-                    "precision": precision,
-                    "model_scale": model_scale,
-                    "num_classes": num_classes,
-                    "input_size": [input_h, input_w],
-                    "task_type": task_type,
-                },
-            ))
-        else:
-            raise ServiceError(f"RF-DETR 暂不支持转换格式: {target_format}")
-
-        # 写入转换报告
-        report_key = f"{request.output_object_prefix}/artifacts/conversion-report.json"
-        report = {
-            "conversion_task_id": request.conversion_task_id,
-            "model_type": "rfdetr",
-            "task_type": task_type,
-            "model_scale": model_scale,
-            "num_classes": num_classes,
-            "input_size": [input_h, input_w],
-            "outputs": [
-                {"target_format": o.target_format, "object_uri": o.object_uri, "file_type": o.file_type}
-                for o in outputs
-            ],
-        }
-        self.dataset_storage.write_json(report_key, report)
-
-        return ConversionBackendRunResult(
+        outputs: list[RfdetrConversionOutput] = []
+        if onnx_output is not None:
+            outputs.append(onnx_output)
+        if optimized_output is not None:
+            outputs.append(optimized_output)
+        if openvino_output is not None:
+            outputs.append(openvino_output)
+        if tensorrt_output is not None:
+            outputs.append(tensorrt_output)
+        return RfdetrConversionRunResult(
             conversion_task_id=request.conversion_task_id,
             outputs=tuple(outputs),
             metadata={
-                "report_object_key": report_key,
-                "produced_formats": [o.target_format for o in outputs],
+                "phase": _resolve_conversion_phase(request.target_formats),
+                "executed_step_kinds": executed_step_kinds,
+                "validation_summary": validation_summary,
+                "conversion_options": _build_conversion_options_metadata(
+                    target_formats=request.target_formats,
+                    openvino_ir_build_precision=openvino_ir_build_precision,
+                    tensorrt_engine_build_precision=tensorrt_engine_build_precision,
+                ),
             },
         )
+
+    def _export_onnx(
+        self,
+        *,
+        model: Any,
+        dummy_input: torch.Tensor,
+        output_object_key: str,
+        output_names: tuple[str, ...],
+    ) -> dict[str, object]:
+        """把 RF-DETR checkpoint 导出为 ONNX。"""
+
+        output_path = self.dataset_storage.resolve(output_object_key)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        dynamic_axes = {
+            "image": {0: "batch"},
+            **{output_name: {0: "batch"} for output_name in output_names},
+        }
+        with torch.no_grad():
+            torch.onnx.export(
+                model,
+                dummy_input,
+                str(output_path),
+                export_params=True,
+                opset_version=17,
+                do_constant_folding=True,
+                input_names=["image"],
+                output_names=list(output_names),
+                dynamic_axes=dynamic_axes,
+            )
+        return {
+            "stage": "export-onnx",
+            "object_uri": output_object_key,
+            "opset_version": 17,
+            "input_size": [int(dummy_input.shape[-2]), int(dummy_input.shape[-1])],
+            "exporter_mode": "legacy-torch-onnx-export",
+            "output_names": list(output_names),
+        }
+
+    def _validate_onnx(
+        self,
+        *,
+        model: Any,
+        dummy_input: torch.Tensor,
+        onnx_object_key: str,
+        onnx_module: object,
+        onnxruntime_module: object,
+        output_names: tuple[str, ...],
+    ) -> dict[str, object]:
+        """执行 RF-DETR ONNX 合法性与数值校验。"""
+
+        onnx_path = self.dataset_storage.resolve(onnx_object_key)
+        onnx_model = onnx_module.load(str(onnx_path))
+        onnx_module.checker.check_model(onnx_model)
+
+        with torch.no_grad():
+            torch_outputs = _extract_torch_outputs(
+                model_outputs=model(dummy_input),
+                output_names=output_names,
+            )
+        ort_session = onnxruntime_module.InferenceSession(
+            str(onnx_path),
+            providers=["CPUExecutionProvider"],
+        )
+        ort_outputs = ort_session.run(
+            list(output_names),
+            {ort_session.get_inputs()[0].name: dummy_input.detach().cpu().numpy()},
+        )
+        summary = _summarize_numeric_validation(
+            np_module=__import__("numpy"),
+            torch_outputs=torch_outputs,
+            ort_outputs=ort_outputs,
+        )
+        if not bool(summary["allclose"]):
+            raise ServiceConfigurationError(
+                "RF-DETR ONNX 数值校验失败",
+                details=dict(summary),
+            )
+        return summary
+
+
+def _build_rfdetr_model(
+    *,
+    task_type: str,
+    model_scale: str,
+    num_classes: int,
+) -> Any:
+    """按任务分类构建 RF-DETR project-native 模型。"""
+
+    if task_type == "segmentation":
+        return build_rfdetr_segmentation_model(
+            model_scale=model_scale,
+            num_classes=num_classes,
+        )
+    return build_rfdetr_model(model_scale=model_scale, num_classes=num_classes)
+
+
+def _resolve_input_size(input_size: tuple[int, int]) -> tuple[int, int]:
+    """把 runtime target 的输入尺寸规整为稳定二元组。"""
+
+    if len(input_size) == 2:
+        return int(input_size[0]), int(input_size[1])
+    return 384, 384
+
+
+def _resolve_export_output_names(task_type: str) -> tuple[str, ...]:
+    """按任务分类返回 RF-DETR 导出输出名。"""
+
+    if task_type == "segmentation":
+        return ("pred_logits", "pred_boxes", "pred_masks")
+    return ("pred_logits", "pred_boxes")
+
+
+def _extract_torch_outputs(
+    *,
+    model_outputs: object,
+    output_names: tuple[str, ...],
+) -> list[object]:
+    """按导出输出名顺序提取 PyTorch 原始输出。"""
+
+    if isinstance(model_outputs, dict):
+        normalized_outputs: list[object] = []
+        for output_name in output_names:
+            output_tensor = model_outputs.get(output_name)
+            if output_tensor is None or not hasattr(output_tensor, "detach"):
+                raise ServiceConfigurationError(
+                    "RF-DETR 模型输出缺少 ONNX 校验所需字段",
+                    details={
+                        "output_name": output_name,
+                        "available_output_names": sorted(model_outputs.keys()),
+                    },
+                )
+            normalized_outputs.append(output_tensor.detach().cpu().numpy())
+        return normalized_outputs
+    if isinstance(model_outputs, (list, tuple)):
+        normalized_outputs: list[object] = []
+        for output_tensor in model_outputs:
+            if hasattr(output_tensor, "detach"):
+                normalized_outputs.append(output_tensor.detach().cpu().numpy())
+        if len(normalized_outputs) == len(output_names):
+            return normalized_outputs
+    if hasattr(model_outputs, "detach") and len(output_names) == 1:
+        return [model_outputs.detach().cpu().numpy()]
+    raise ServiceConfigurationError(
+        "当前 RF-DETR 模型输出格式不受支持",
+        details={
+            "output_type": model_outputs.__class__.__name__,
+            "expected_output_names": list(output_names),
+        },
+    )
