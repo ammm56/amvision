@@ -28,10 +28,10 @@ segmentation_validation_sessions_router = APIRouter(prefix="/models", tags=["mod
 
 class SegmentationValidationSessionCreateRequestBody(BaseModel):
     project_id: str = Field(description="所属 Project id")
-    model_type: str = Field(description="模型分类；支持 yolov8、yolo11、yolo26")
+    model_type: str = Field(description="模型分类；支持 yolov8、yolo11、yolo26、rfdetr")
     model_version_id: str = Field(description="ModelVersion id")
     runtime_profile_id: str | None = Field(default=None)
-    runtime_backend: str | None = Field(default=None)
+    runtime_backend: str | None = Field(default=None, description="支持 pytorch、onnxruntime、openvino、tensorrt")
     device_name: str | None = Field(default=None)
     score_threshold: float | None = Field(default=None, ge=0.0, le=1.0)
     mask_threshold: float | None = Field(default=None, ge=0.0, le=1.0)
@@ -84,6 +84,7 @@ class SegmentationValidationSessionDetailResponse(BaseModel):
     model_scale: str
     source_kind: str
     status: str
+    model_build_id: str | None = None
     runtime_profile_id: str | None = None
     runtime_backend: str
     device_name: str
@@ -93,8 +94,11 @@ class SegmentationValidationSessionDetailResponse(BaseModel):
     save_result_image: bool
     input_size: tuple[int, int]
     labels: list[str] = Field(default_factory=list)
-    checkpoint_file_id: str
-    checkpoint_storage_uri: str
+    runtime_artifact_file_id: str
+    runtime_artifact_storage_uri: str
+    runtime_artifact_file_type: str
+    checkpoint_file_id: str | None = None
+    checkpoint_storage_uri: str | None = None
     extra_options: dict[str, object] = Field(default_factory=dict)
     created_at: str
     updated_at: str
@@ -199,10 +203,14 @@ def _build_session_response(v: SegmentationValidationSessionView) -> Segmentatio
         session_id=v.session_id, project_id=v.project_id, model_type=v.model_type,
         model_id=v.model_id, model_version_id=v.model_version_id, model_name=v.model_name,
         model_scale=v.model_scale, source_kind=v.source_kind, status=v.status,
+        model_build_id=v.model_build_id,
         runtime_profile_id=v.runtime_profile_id, runtime_backend=v.runtime_backend,
         device_name=v.device_name, runtime_precision=v.runtime_precision,
         score_threshold=v.score_threshold, mask_threshold=v.mask_threshold,
         save_result_image=v.save_result_image, input_size=v.input_size, labels=list(v.labels),
+        runtime_artifact_file_id=v.runtime_artifact_file_id,
+        runtime_artifact_storage_uri=v.runtime_artifact_storage_uri,
+        runtime_artifact_file_type=v.runtime_artifact_file_type,
         checkpoint_file_id=v.checkpoint_file_id, checkpoint_storage_uri=v.checkpoint_storage_uri,
         extra_options=dict(v.extra_options), created_at=v.created_at, updated_at=v.updated_at,
         created_by=v.created_by, last_prediction=_build_summary_response(v.last_prediction),

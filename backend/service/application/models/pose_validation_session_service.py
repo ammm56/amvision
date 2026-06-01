@@ -32,6 +32,8 @@ from backend.service.application.runtime.yolov8_runtime_target import (
 from backend.service.application.runtime.yolox_runtime_target import (
     RuntimeTargetResolveRequest,
     RuntimeTargetSnapshot,
+    normalize_device_name as normalize_runtime_target_device_name,
+    normalize_runtime_backend as normalize_runtime_target_backend,
     resolve_local_file_path,
     resolve_runtime_precision,
 )
@@ -42,6 +44,7 @@ from backend.service.infrastructure.object_store.local_dataset_storage import Lo
 
 _VALIDATION_SESSION_STATUS_READY = "ready"
 _VALIDATION_RUNTIME_BACKEND = "pytorch"
+_SUPPORTED_VALIDATION_RUNTIME_BACKENDS = frozenset({"pytorch", "onnxruntime", "openvino", "tensorrt"})
 _DEFAULT_SCORE_THRESHOLD = 0.3
 _DEFAULT_KEYPOINT_CONFIDENCE_THRESHOLD = 0.3
 _DEFAULT_INPUT_SIZE = (640, 640)
@@ -103,6 +106,7 @@ class PoseValidationSessionView:
     model_scale: str
     source_kind: str
     status: str
+    model_build_id: str | None
     runtime_profile_id: str | None
     runtime_backend: str
     device_name: str
@@ -112,8 +116,11 @@ class PoseValidationSessionView:
     save_result_image: bool
     input_size: tuple[int, int]
     labels: tuple[str, ...]
-    checkpoint_file_id: str
-    checkpoint_storage_uri: str
+    runtime_artifact_file_id: str
+    runtime_artifact_storage_uri: str
+    runtime_artifact_file_type: str
+    checkpoint_file_id: str | None
+    checkpoint_storage_uri: str | None
     extra_options: dict[str, object]
     created_at: str
     updated_at: str
@@ -164,6 +171,7 @@ class LocalPoseValidationSessionService:
         created_by: str | None,
     ) -> PoseValidationSessionView:
         normalized_model_type = _normalize_model_type(request.model_type)
+        normalized_runtime_backend = _normalize_runtime_backend(request.runtime_backend)
         resolver = _build_runtime_target_resolver(
             model_type=normalized_model_type,
             session_factory=self.session_factory,
@@ -174,8 +182,11 @@ class LocalPoseValidationSessionService:
                 project_id=request.project_id,
                 model_version_id=request.model_version_id,
                 runtime_profile_id=request.runtime_profile_id,
-                runtime_backend=_normalize_runtime_backend(request.runtime_backend),
-                device_name=_normalize_optional_str(request.device_name) or "cpu",
+                runtime_backend=normalized_runtime_backend,
+                device_name=_normalize_device_name(
+                    request.device_name,
+                    runtime_backend=normalized_runtime_backend,
+                ),
             )
         )
         if runtime_target.model_type != normalized_model_type:
@@ -190,8 +201,9 @@ class LocalPoseValidationSessionService:
 
         score_threshold = _resolve_probability(request.score_threshold, default=_DEFAULT_SCORE_THRESHOLD)
         keypoint_confidence_threshold = _resolve_probability(request.keypoint_confidence_threshold, default=_DEFAULT_KEYPOINT_CONFIDENCE_THRESHOLD)
-        checkpoint_file_id = _require_non_empty_str(runtime_target.checkpoint_file_id, field_name="checkpoint_file_id")
-        checkpoint_storage_uri = _require_non_empty_str(runtime_target.checkpoint_storage_uri, field_name="checkpoint_storage_uri")
+        runtime_artifact_file_id = _require_non_empty_str(runtime_target.runtime_artifact_file_id, field_name="runtime_artifact_file_id")
+        runtime_artifact_storage_uri = _require_non_empty_str(runtime_target.runtime_artifact_storage_uri, field_name="runtime_artifact_storage_uri")
+        runtime_artifact_file_type = _require_non_empty_str(runtime_target.runtime_artifact_file_type, field_name="runtime_artifact_file_type")
         session_id = f"validation-session-{uuid4().hex}"
         now = _now_isoformat()
         session = PoseValidationSessionView(
@@ -204,6 +216,7 @@ class LocalPoseValidationSessionService:
             model_scale=runtime_target.model_scale,
             source_kind=runtime_target.source_kind,
             status=_VALIDATION_SESSION_STATUS_READY,
+            model_build_id=runtime_target.model_build_id,
             runtime_profile_id=runtime_target.runtime_profile_id,
             runtime_backend=runtime_target.runtime_backend,
             device_name=runtime_target.device_name,
@@ -213,8 +226,11 @@ class LocalPoseValidationSessionService:
             save_result_image=bool(request.save_result_image),
             input_size=runtime_target.input_size,
             labels=runtime_target.labels,
-            checkpoint_file_id=checkpoint_file_id,
-            checkpoint_storage_uri=checkpoint_storage_uri,
+            runtime_artifact_file_id=runtime_artifact_file_id,
+            runtime_artifact_storage_uri=runtime_artifact_storage_uri,
+            runtime_artifact_file_type=runtime_artifact_file_type,
+            checkpoint_file_id=_normalize_optional_str(runtime_target.checkpoint_file_id),
+            checkpoint_storage_uri=_normalize_optional_str(runtime_target.checkpoint_storage_uri),
             extra_options=_normalize_extra_options(request.extra_options),
             created_at=now,
             updated_at=now,
@@ -392,17 +408,24 @@ def _build_runtime_target_from_session(
     session: PoseValidationSessionView,
     dataset_storage: LocalDatasetStorage,
 ) -> RuntimeTargetSnapshot:
-    checkpoint_path = resolve_local_file_path(
+    runtime_artifact_path = resolve_local_file_path(
         dataset_storage=dataset_storage,
-        storage_uri=session.checkpoint_storage_uri,
-        field_name="checkpoint_storage_uri",
+        storage_uri=session.runtime_artifact_storage_uri,
+        field_name="runtime_artifact_storage_uri",
     )
+    checkpoint_path = None
+    if session.checkpoint_storage_uri is not None:
+        checkpoint_path = resolve_local_file_path(
+            dataset_storage=dataset_storage,
+            storage_uri=session.checkpoint_storage_uri,
+            field_name="checkpoint_storage_uri",
+        )
     return RuntimeTargetSnapshot(
         project_id=session.project_id,
         model_id=session.model_id,
         model_type=session.model_type,
         model_version_id=session.model_version_id,
-        model_build_id=None,
+        model_build_id=session.model_build_id,
         model_name=session.model_name,
         model_scale=session.model_scale,
         task_type=POSE_TASK_TYPE,
@@ -413,10 +436,10 @@ def _build_runtime_target_from_session(
         runtime_precision=session.runtime_precision,
         input_size=session.input_size,
         labels=session.labels,
-        runtime_artifact_file_id=session.checkpoint_file_id,
-        runtime_artifact_storage_uri=session.checkpoint_storage_uri,
-        runtime_artifact_path=checkpoint_path,
-        runtime_artifact_file_type="pytorch-checkpoint",
+        runtime_artifact_file_id=session.runtime_artifact_file_id,
+        runtime_artifact_storage_uri=session.runtime_artifact_storage_uri,
+        runtime_artifact_path=runtime_artifact_path,
+        runtime_artifact_file_type=session.runtime_artifact_file_type,
         checkpoint_file_id=session.checkpoint_file_id,
         checkpoint_storage_uri=session.checkpoint_storage_uri,
         checkpoint_path=checkpoint_path,
@@ -461,6 +484,7 @@ def _serialize_session(session: PoseValidationSessionView) -> dict[str, object]:
         "model_scale": session.model_scale,
         "source_kind": session.source_kind,
         "status": session.status,
+        "model_build_id": session.model_build_id,
         "runtime_profile_id": session.runtime_profile_id,
         "runtime_backend": session.runtime_backend,
         "device_name": session.device_name,
@@ -470,6 +494,9 @@ def _serialize_session(session: PoseValidationSessionView) -> dict[str, object]:
         "save_result_image": session.save_result_image,
         "input_size": [session.input_size[0], session.input_size[1]],
         "labels": list(session.labels),
+        "runtime_artifact_file_id": session.runtime_artifact_file_id,
+        "runtime_artifact_storage_uri": session.runtime_artifact_storage_uri,
+        "runtime_artifact_file_type": session.runtime_artifact_file_type,
         "checkpoint_file_id": session.checkpoint_file_id,
         "checkpoint_storage_uri": session.checkpoint_storage_uri,
         "extra_options": dict(session.extra_options),
@@ -502,6 +529,9 @@ def _build_session_from_payload(payload: dict[str, object]) -> PoseValidationSes
     runtime_backend = _require_payload_str(payload, "runtime_backend")
     device_name = _require_payload_str(payload, "device_name")
     model_type = _read_payload_optional_str(payload, "model_type") or "yolov8"
+    runtime_artifact_file_id = _read_payload_optional_str(payload, "runtime_artifact_file_id") or _require_payload_str(payload, "checkpoint_file_id")
+    runtime_artifact_storage_uri = _read_payload_optional_str(payload, "runtime_artifact_storage_uri") or _require_payload_str(payload, "checkpoint_storage_uri")
+    runtime_artifact_file_type = _read_payload_optional_str(payload, "runtime_artifact_file_type") or "pytorch-checkpoint"
     return PoseValidationSessionView(
         session_id=_require_payload_str(payload, "session_id"),
         project_id=_require_payload_str(payload, "project_id"),
@@ -512,6 +542,7 @@ def _build_session_from_payload(payload: dict[str, object]) -> PoseValidationSes
         model_scale=_require_payload_str(payload, "model_scale"),
         source_kind=_require_payload_str(payload, "source_kind"),
         status=_require_payload_str(payload, "status"),
+        model_build_id=_read_payload_optional_str(payload, "model_build_id"),
         runtime_profile_id=_read_payload_optional_str(payload, "runtime_profile_id"),
         runtime_backend=runtime_backend,
         device_name=device_name,
@@ -525,8 +556,11 @@ def _build_session_from_payload(payload: dict[str, object]) -> PoseValidationSes
         save_result_image=bool(payload.get("save_result_image", True)),
         input_size=(int(raw_input_size[0]), int(raw_input_size[1])),
         labels=tuple(_read_str_list(payload.get("labels"))),
-        checkpoint_file_id=_require_payload_str(payload, "checkpoint_file_id"),
-        checkpoint_storage_uri=_require_payload_str(payload, "checkpoint_storage_uri"),
+        runtime_artifact_file_id=runtime_artifact_file_id,
+        runtime_artifact_storage_uri=runtime_artifact_storage_uri,
+        runtime_artifact_file_type=runtime_artifact_file_type,
+        checkpoint_file_id=_read_payload_optional_str(payload, "checkpoint_file_id"),
+        checkpoint_storage_uri=_read_payload_optional_str(payload, "checkpoint_storage_uri"),
         extra_options=_normalize_extra_options(payload.get("extra_options")),
         created_at=_require_payload_str(payload, "created_at"),
         updated_at=_require_payload_str(payload, "updated_at"),
@@ -569,13 +603,25 @@ def _normalize_model_type(model_type: str | None) -> str:
 
 
 def _normalize_runtime_backend(runtime_backend: str | None) -> str:
-    normalized = _normalize_optional_str(runtime_backend) or _VALIDATION_RUNTIME_BACKEND
-    if normalized != _VALIDATION_RUNTIME_BACKEND:
+    normalized = normalize_runtime_target_backend(
+        _normalize_optional_str(runtime_backend) or _VALIDATION_RUNTIME_BACKEND
+    )
+    if normalized not in _SUPPORTED_VALIDATION_RUNTIME_BACKENDS:
         raise InvalidRequestError(
-            "当前 pose validation session 仅支持 pytorch runtime_backend",
-            details={"runtime_backend": normalized},
+            "当前 pose validation session 不支持指定 runtime_backend",
+            details={
+                "runtime_backend": normalized,
+                "supported_runtime_backends": sorted(_SUPPORTED_VALIDATION_RUNTIME_BACKENDS),
+            },
         )
     return normalized
+
+
+def _normalize_device_name(device_name: str | None, *, runtime_backend: str) -> str:
+    return normalize_runtime_target_device_name(
+        _normalize_optional_str(device_name),
+        runtime_backend=runtime_backend,
+    )
 
 
 def _normalize_extra_options(extra_options: object) -> dict[str, object]:

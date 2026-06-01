@@ -30,7 +30,7 @@ class ClassificationValidationSessionCreateRequestBody(BaseModel):
     model_type: str = Field(description="模型分类；当前支持 yolov8、yolo11、yolo26")
     model_version_id: str = Field(description="验证使用的 ModelVersion id")
     runtime_profile_id: str | None = Field(default=None, description="可选 runtime profile id；当前仅回传")
-    runtime_backend: str | None = Field(default=None, description="可选 runtime backend；当前仅支持 pytorch")
+    runtime_backend: str | None = Field(default=None, description="可选 runtime backend；支持 pytorch、onnxruntime、openvino、tensorrt")
     device_name: str | None = Field(default=None, description="可选 device 名称")
     top_k: int = Field(default=5, ge=1, description="默认返回 top-k 分类结果")
     save_result_image: bool = Field(default=True, description="默认是否输出预览图")
@@ -80,6 +80,7 @@ class ClassificationValidationSessionDetailResponse(BaseModel):
     model_scale: str = Field(description="模型 scale")
     source_kind: str = Field(description="ModelVersion 来源类型")
     status: str = Field(description="当前 session 状态")
+    model_build_id: str | None = Field(default=None, description="当前运行使用的 ModelBuild id；直接使用 checkpoint 时为空")
     runtime_profile_id: str | None = Field(default=None, description="runtime profile id")
     runtime_backend: str = Field(description="运行时 backend 名称")
     device_name: str = Field(description="默认 device 名称")
@@ -88,8 +89,11 @@ class ClassificationValidationSessionDetailResponse(BaseModel):
     save_result_image: bool = Field(description="默认是否输出预览图")
     input_size: tuple[int, int] = Field(description="推理输入尺寸")
     labels: list[str] = Field(default_factory=list, description="类别列表")
-    checkpoint_file_id: str = Field(description="checkpoint 文件 id")
-    checkpoint_storage_uri: str = Field(description="checkpoint 文件存储 URI")
+    runtime_artifact_file_id: str = Field(description="当前运行实际加载的模型文件 id")
+    runtime_artifact_storage_uri: str = Field(description="当前运行实际加载的模型文件存储 URI")
+    runtime_artifact_file_type: str = Field(description="当前运行实际加载的模型文件类型")
+    checkpoint_file_id: str | None = Field(default=None, description="来源 checkpoint 文件 id；非训练输出时可为空")
+    checkpoint_storage_uri: str | None = Field(default=None, description="来源 checkpoint 文件存储 URI；非训练输出时可为空")
     extra_options: dict[str, object] = Field(default_factory=dict, description="附加运行时选项")
     created_at: str = Field(description="创建时间")
     updated_at: str = Field(description="最近更新时间")
@@ -220,6 +224,7 @@ def _build_session_response(session_view: ClassificationValidationSessionView) -
         model_scale=session_view.model_scale,
         source_kind=session_view.source_kind,
         status=session_view.status,
+        model_build_id=session_view.model_build_id,
         runtime_profile_id=session_view.runtime_profile_id,
         runtime_backend=session_view.runtime_backend,
         device_name=session_view.device_name,
@@ -228,6 +233,9 @@ def _build_session_response(session_view: ClassificationValidationSessionView) -
         save_result_image=session_view.save_result_image,
         input_size=session_view.input_size,
         labels=list(session_view.labels),
+        runtime_artifact_file_id=session_view.runtime_artifact_file_id,
+        runtime_artifact_storage_uri=session_view.runtime_artifact_storage_uri,
+        runtime_artifact_file_type=session_view.runtime_artifact_file_type,
         checkpoint_file_id=session_view.checkpoint_file_id,
         checkpoint_storage_uri=session_view.checkpoint_storage_uri,
         extra_options=dict(session_view.extra_options),
