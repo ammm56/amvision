@@ -3,11 +3,12 @@
   "id": "yoloe.open-vocab-nodes",
   "version": "0.1.0",
   "displayName": "YOLOE Open Vocabulary Nodes",
-  "description": "提供 YOLOE 文本提示、视觉提示和 prompt-free 检测节点骨架。",
+  "description": "提供 YOLOE 文本提示、视觉提示和 prompt-free 开放词汇检测与分割节点。",
   "category": "custom-node-pack",
   "capabilities": [
     "pipeline.node",
     "vision.detection",
+    "vision.segmentation",
     "vision.open-vocabulary",
     "prompt.text",
     "prompt.visual"
@@ -28,10 +29,13 @@
   "enabledByDefault": false,
   "customNodeCatalogPath": "workflow/catalog.json",
   "metadata": {
-    "phase": "scaffold",
+    "phase": "partial-implementation",
     "notes": [
-      "第一阶段只提供 custom node 骨架，不直接并入核心模型主链。",
-      "YOLOE 权重从 data/files/models/pretrained/yoloe 下读取。"
+      "第一阶段作为 custom node 扩展能力接入，不直接并入核心模型主链。",
+      "YOLOE 权重从 data/files/models/pretrained/yoloe 下读取。",
+      "本地 text-encoders 资产目录和 tokenizer 规则已固定，后续 project-native YOLOE runtime 会直接读取这些本地资产。",
+      "当前 pack 已完成资产规范、manifest 规则、输入输出 contract，并且不会回退到已安装官方包或 projectsrc 参考代码执行推理。",
+      "prompt-free-detect、text-prompt-detect、visual-prompt-detect 的 project-native runtime 已接通；visual prompt 第一阶段仅支持 box prompt。"
     ]
   }
 }

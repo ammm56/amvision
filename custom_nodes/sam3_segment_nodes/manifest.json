@@ -1,0 +1,39 @@
+{
+  "format_id": "amvision.node-pack-manifest.v1",
+  "id": "sam3.segment-nodes",
+  "version": "0.1.0",
+  "displayName": "SAM3 Segment Nodes",
+  "description": "提供 SAM3 交互分割与语义分割 custom node。",
+  "category": "custom-node-pack",
+  "capabilities": [
+    "pipeline.node",
+    "vision.segmentation",
+    "prompt.visual",
+    "prompt.text"
+  ],
+  "permissionScopes": [
+    "objectstore.read.ref"
+  ],
+  "entrypoints": {
+    "backend": "custom_nodes.sam3_segment_nodes.backend.entry:register"
+  },
+  "compatibility": {
+    "api": ">=0.1 <1.0",
+    "runtime": ">=3.12"
+  },
+  "timeout": {
+    "defaultSeconds": 120
+  },
+  "enabledByDefault": false,
+  "customNodeCatalogPath": "workflow/catalog.json",
+  "metadata": {
+    "phase": "partial-implementation",
+    "notes": [
+      "第一阶段作为 custom node 扩展能力接入，不直接并入核心模型主链。",
+      "SAM3 权重从 data/files/models/pretrained/sam3 下读取。",
+      "interactive-segment 已接通 project-native runtime，直接读取本地 sam3.pt，不回退到已安装官方包或 projectsrc 参考代码。",
+      "interactive-segment 第一阶段只支持 box 与 point prompt，并输出 regions.v1。",
+      "semantic-segment 已接通 project-native runtime，第一阶段只支持 text-prompts.v1，并输出 regions.v1。"
+    ]
+  }
+}

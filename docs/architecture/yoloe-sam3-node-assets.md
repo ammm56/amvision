@@ -18,6 +18,13 @@
 - workflow app 改造
 - 核心模型主链的训练、转换、发布接入
 
+## 当前状态说明
+
+- `YOLOE` 与 `SAM3` 这部分文档当前先固定资产目录、`manifest.json` 规则和节点输入输出 contract。
+- `projectsrc/` 只作为参考源码面，不参与运行时。
+- `YOLOE` 当前不会回退到已安装官方包或 `projectsrc` 参考代码执行推理；`prompt-free`、`text-prompt`、`visual-prompt` 三条 project-native runtime 已经接通，后续只继续扩能力面。
+- `SAM3` 当前已经接通 `interactive-segment` 和 `semantic-segment` 的 project-native runtime，直接读取本地 `sam3.pt` 执行单图分割；其中 `interactive` 第一阶段支持 `box / point`，`semantic` 第一阶段支持 `text-prompts.v1`。
+
 ## 适用范围
 
 - `custom_nodes/yoloe_open_vocab_nodes`
@@ -30,8 +37,9 @@
 - `YOLOE` 和 `SAM3` 第一阶段都应作为 `custom node` 扩展能力接入，不直接并入当前核心模型主链。
 - 大权重和附属模型资产继续统一放在 `data/files/models/pretrained/` 下，不放进 `custom_nodes/`。
 - `YOLOE` 第一阶段先使用官方 segmentation 权重接 open vocabulary detection 节点，`SAM3` 第一阶段先只开 image segmentation。
+- `YOLOE text-prompt` 第一阶段默认文本编码器固定为本地 `mobileclip_blt.ts`，并复用本地 `CLIP` tokenizer/BPE 资产。
 - `YOLOE` 和 `SAM3` 在 workflow 中的第一阶段运行形态应为：`WorkflowAppRuntime` 进程内按需首次加载并缓存，runtime 停止时释放；不是每次调用重新加载，也不是一开始就做成正式 `DeploymentInstance` 常驻服务。
-- `YOLOE` 第一阶段节点输出继续复用 `detections.v1`；`SAM3` 输出应使用新的 `regions.v1`，不要硬塞进 `detections.v1`。
+- `YOLOE` 第一阶段节点同时输出 `detections.v1` 和 `regions.v1`；`SAM3` 输出也应使用 `regions.v1`，不要硬塞进 `detections.v1`。
 
 ## 参考实现来源
 
@@ -55,7 +63,7 @@
 - 与现有 `YOLOv8/11/26` 有结构血缘关系，但不是当前核心 detection 主链里的同层正式模型分类。
 - `text prompt`、`visual prompt`、`prompt-free` 是节点运行模式，不是三套独立平台模型分类。
 - 官方当前提供的是 `-seg` 权重，它本质上是 open-vocabulary instance segmentation 模型。
-- 第一阶段 custom node 先把它作为 detection 节点使用，直接复用 bbox 结果，先不把 mask 输出开放到平台正式 contract。
+- 第一阶段 custom node 先同时开放 detection 与 region 输出，既保留 bbox 结果，也把 mask/region 结果纳入正式 contract。
 - 第一阶段不直接接训练、转换、`DeploymentInstance` 主链。
 
 #### 为什么目录放在 segmentation，而节点先做 detection 输出
@@ -63,11 +71,11 @@
 - 目录的 `task_type` 表达的是权重本身的真实属性，不是第一阶段节点的输出形式。
 - 官方 `YOLOE` 预训练权重文件名就是 `*-seg.pt` / `*-seg-pf.pt`，对应的是 open-vocabulary instance segmentation 权重。
 - 这些权重在一次前向里同时包含 bbox、score、label，以及可继续扩展使用的 mask 相关能力。
-- 第一阶段 custom node 先只开放 detection 风格输出，也就是 `detections.v1`，因为当前平台先需要稳定的文本提示、视觉提示和 prompt-free 检测节点。
+- 第一阶段 custom node 同时开放 detection 风格输出 `detections.v1` 与 region 风格输出 `regions.v1`，因为当前平台既需要稳定的开放词汇检测链，也需要把 segmentation 权重的原生结果接进节点边界。
 - 因此：
   - 磁盘资产目录保持 `yoloe/segmentation/...`
-  - 节点输出 contract 第一阶段仍然可以是 `detections.v1`
-- 不能因为当前节点先只输出 bbox，就把官方 segmentation 权重误记成 detection 目录；那样会在后续开放 mask 输出、补 `regions.v1` 或继续做 `YOLOE segmentation` 节点时造成理解混乱。
+  - 节点输出 contract 第一阶段同时提供 `detections.v1` 和 `regions.v1`
+- 不能因为节点要兼容 detection 下游，就把官方 segmentation 权重误记成 detection 目录；那样会在后续扩充分割能力时造成理解混乱。
 
 ### SAM3
 
@@ -97,6 +105,32 @@
   - `xx`
 - 不再引入旧的 `n`。
 
+### 共享文本编码器资产
+
+`YOLOE text-prompt` 和 `SAM3` 第一阶段都应复用本地 `text-encoders` 资产目录，不再依赖外部 `clip` 或 `mobileclip` Python 包的在线安装和在线下载逻辑。
+
+推荐目录如下：
+
+```text
+data/files/models/pretrained/
+└─ text-encoders/
+   ├─ clip/
+   │  ├─ tokenizer/
+   │  │  └─ bpe_simple_vocab_16e6.txt.gz
+   │  └─ vit-b-32/
+   │     └─ ViT-B-32.pt
+   └─ mobileclip/
+      └─ blt/
+         └─ mobileclip_blt.ts
+```
+
+说明：
+
+- `bpe_simple_vocab_16e6.txt.gz` 是共享 tokenizer 资产，`YOLOE text-prompt` 和 `SAM3` 都会使用。
+- `mobileclip_blt.ts` 是 `YOLOE text-prompt` 第一阶段默认文本编码器。
+- `ViT-B-32.pt` 当前不是 `YOLOE text-prompt` 默认链路的硬依赖，但作为后续支持 `clip:ViT-B/32` 的预留资产保留在本地目录中。
+- `simple_tokenizer.py` 这类加载与编码逻辑属于项目代码，不属于磁盘模型资产。
+
 ## 官方权重名与项目目录的关系
 
 - `YOLOE` 官方文档直接提供权重文件，例如：
@@ -116,6 +150,8 @@
 - `YOLOE default`
 - `YOLOE prompt-free`
 - `SAM3 default`
+- `YOLOE visual-prompt` 第一阶段只支持 `box` prompt，`point / polygon / mask` 放到后续阶段再逐步开放；但分割结果输出已经接通。
+- 当前 `YOLOE prompt-free`、`YOLOE text-prompt`、`YOLOE visual-prompt` 都已经接通 project-native runtime；其中 `YOLOE visual-prompt` 第一阶段仅开放 box prompt。
 
 ## 第一阶段目录规则
 
@@ -160,7 +196,7 @@ data/files/models/pretrained/
 - `v8-default` 和 `11-default` 供文本提示、视觉提示节点共用。
 - `v8-prompt-free`、`11-prompt-free`、`26-prompt-free` 对应真正不同的 prompt-free 权重。
 - `YOLOE` 的官方权重是 segmentation 权重。
-- 第一阶段节点仍先输出 `detections.v1`，原因是当前扩展节点主线先落文本提示、视觉提示和 prompt-free 检测。
+- 第一阶段节点同时输出 `detections.v1` 和 `regions.v1`，这样既能直接接现有 detection 下游，也不会丢掉 segmentation 权重的原生 region 能力。
 - 后续如果开放 `YOLOE` 的 mask 输出，同一批权重目录可以继续复用，不需要再换一套资产规范。
 - 后续如果补 `m / l / x` 等其他官方权重，继续沿同一规则扩展，不另起新目录规范。
 
@@ -348,13 +384,13 @@ data/files/models/pretrained/
 
 - `custom.yoloe.text-prompt-detect`
   - 输入：`image-ref.v1`、`text-prompts.v1`
-  - 输出：`detections.v1`、`value.v1`
+  - 输出：`detections.v1`、`regions.v1`、`value.v1`
 - `custom.yoloe.visual-prompt-detect`
   - 输入：`image-ref.v1`、`image-ref.v1(prompt_image)`、`prompt-regions.v1`
-  - 输出：`detections.v1`、`value.v1`
+  - 输出：`detections.v1`、`regions.v1`、`value.v1`
 - `custom.yoloe.prompt-free-detect`
   - 输入：`image-ref.v1`
-  - 输出：`detections.v1`、`value.v1`
+  - 输出：`detections.v1`、`regions.v1`、`value.v1`
 
 ### SAM3
 
@@ -364,6 +400,13 @@ data/files/models/pretrained/
 - `custom.sam3.interactive-segment`
   - 输入：`image-ref.v1`、`prompt-regions.v1`
   - 输出：`regions.v1`、`value.v1`
+
+说明：
+
+- `interactive-segment` 当前已经接通 project-native runtime。
+- 第一阶段只支持 `box` 与 `point` prompt。
+- `semantic-segment` 当前也已接通 project-native runtime。
+- `semantic-segment` 第一阶段只支持 `text-prompts.v1`，不支持 negative prompt。
 
 ## 运行形态约定
 
