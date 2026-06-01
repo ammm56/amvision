@@ -9,6 +9,9 @@ from pathlib import Path
 from typing import Any
 
 from backend.maintenance.bootstrap import BackendMaintenanceBootstrap, BackendMaintenanceRuntime
+from backend.maintenance.extension_pretrained_manifests import (
+    sync_extension_pretrained_manifests,
+)
 from backend.maintenance.release_assembly import ReleaseAssemblyRequest, assemble_release
 from backend.contracts.workflows.resource_semantics import (
     WORKFLOW_PREVIEW_RUN_CLEANUP_COMMAND,
@@ -48,6 +51,7 @@ def build_argument_parser() -> argparse.ArgumentParser:
             "show-config",
             "validate-layout",
             "assemble-release",
+            "sync-extension-pretrained-manifests",
             WORKFLOW_PREVIEW_RUN_CLEANUP_COMMAND,
             WORKFLOW_RUNTIME_STORAGE_CLEANUP_COMMAND,
         ),
@@ -220,6 +224,14 @@ def run_command(
             "worker_profiles": list(result.worker_profile_ids),
             "generated_worker_launchers": [str(path) for path in result.generated_worker_launchers],
             "placeholder_dirs": [str(path) for path in result.placeholder_dirs],
+        }
+    if command == "sync-extension-pretrained-manifests":
+        result = sync_extension_pretrained_manifests()
+        return {
+            "command": command,
+            "moved_legacy_yoloe_root": result.moved_legacy_yoloe_root,
+            "written_manifest_paths": [str(path) for path in result.written_manifest_paths],
+            "warnings": list(result.warnings),
         }
     if command == WORKFLOW_PREVIEW_RUN_CLEANUP_COMMAND:
         return cleanup_expired_preview_runs(

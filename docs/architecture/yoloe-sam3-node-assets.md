@@ -29,9 +29,9 @@
 
 - `YOLOE` 和 `SAM3` 第一阶段都应作为 `custom node` 扩展能力接入，不直接并入当前核心模型主链。
 - 大权重和附属模型资产继续统一放在 `data/files/models/pretrained/` 下，不放进 `custom_nodes/`。
-- `YOLOE` 第一阶段先只开 open vocabulary detection，`SAM3` 第一阶段先只开 image segmentation。
+- `YOLOE` 第一阶段先使用官方 segmentation 权重接 open vocabulary detection 节点，`SAM3` 第一阶段先只开 image segmentation。
 - `YOLOE` 和 `SAM3` 在 workflow 中的第一阶段运行形态应为：`WorkflowAppRuntime` 进程内按需首次加载并缓存，runtime 停止时释放；不是每次调用重新加载，也不是一开始就做成正式 `DeploymentInstance` 常驻服务。
-- `YOLOE` 输出继续复用 `detections.v1`；`SAM3` 输出应使用新的 `regions.v1`，不要硬塞进 `detections.v1`。
+- `YOLOE` 第一阶段节点输出继续复用 `detections.v1`；`SAM3` 输出应使用新的 `regions.v1`，不要硬塞进 `detections.v1`。
 
 ## 参考实现来源
 
@@ -54,7 +54,20 @@
 
 - 与现有 `YOLOv8/11/26` 有结构血缘关系，但不是当前核心 detection 主链里的同层正式模型分类。
 - `text prompt`、`visual prompt`、`prompt-free` 是节点运行模式，不是三套独立平台模型分类。
+- 官方当前提供的是 `-seg` 权重，它本质上是 open-vocabulary instance segmentation 模型。
+- 第一阶段 custom node 先把它作为 detection 节点使用，直接复用 bbox 结果，先不把 mask 输出开放到平台正式 contract。
 - 第一阶段不直接接训练、转换、`DeploymentInstance` 主链。
+
+#### 为什么目录放在 segmentation，而节点先做 detection 输出
+
+- 目录的 `task_type` 表达的是权重本身的真实属性，不是第一阶段节点的输出形式。
+- 官方 `YOLOE` 预训练权重文件名就是 `*-seg.pt` / `*-seg-pf.pt`，对应的是 open-vocabulary instance segmentation 权重。
+- 这些权重在一次前向里同时包含 bbox、score、label，以及可继续扩展使用的 mask 相关能力。
+- 第一阶段 custom node 先只开放 detection 风格输出，也就是 `detections.v1`，因为当前平台先需要稳定的文本提示、视觉提示和 prompt-free 检测节点。
+- 因此：
+  - 磁盘资产目录保持 `yoloe/segmentation/...`
+  - 节点输出 contract 第一阶段仍然可以是 `detections.v1`
+- 不能因为当前节点先只输出 bbox，就把官方 segmentation 权重误记成 detection 目录；那样会在后续开放 mask 输出、补 `regions.v1` 或继续做 `YOLOE segmentation` 节点时造成理解混乱。
 
 ### SAM3
 
@@ -66,6 +79,7 @@
 
 - 所有大权重、tokenizer、embedding 缓存和配置文件都放在 `data/files/models/pretrained/` 下。
 - `custom_nodes/` 目录只放节点包源码、catalog、schema 和文档，不放大权重。
+- `data/files/models/pretrained/` 属于本地数据目录，仓库只保留生成规则和维护命令，不把大权重和生成产物纳入源码提交。
 - 目录规则保持和项目现有预训练模型目录一致：
 
 ```text
@@ -112,7 +126,7 @@
 ```text
 data/files/models/pretrained/
 └─ yoloe/
-   └─ detection/
+   └─ segmentation/
       ├─ s/
       │  ├─ v8-default/
       │  │  ├─ manifest.json
@@ -145,7 +159,9 @@ data/files/models/pretrained/
 
 - `v8-default` 和 `11-default` 供文本提示、视觉提示节点共用。
 - `v8-prompt-free`、`11-prompt-free`、`26-prompt-free` 对应真正不同的 prompt-free 权重。
-- 虽然官方文件名里带 `-seg`，但第一阶段在本项目里仍先按 open vocabulary detection 节点使用。
+- `YOLOE` 的官方权重是 segmentation 权重。
+- 第一阶段节点仍先输出 `detections.v1`，原因是当前扩展节点主线先落文本提示、视觉提示和 prompt-free 检测。
+- 后续如果开放 `YOLOE` 的 mask 输出，同一批权重目录可以继续复用，不需要再换一套资产规范。
 - 后续如果补 `m / l / x` 等其他官方权重，继续沿同一规则扩展，不另起新目录规范。
 
 ### SAM3
@@ -188,7 +204,7 @@ data/files/models/pretrained/
 | --- | --- |
 | `model_name` | 预训练模型家族名，例如 `yoloe-v8`、`yoloe-11`、`yoloe-26`、`sam3` |
 | `model_scale` | 项目统一 scale，例如 `nano`、`s`、`l` |
-| `task_type` | 第一阶段分别固定为 `detection` 或 `segmentation` |
+| `task_type` | `YOLOE` 与 `SAM3` 第一阶段都固定写 `segmentation` |
 | `model_version_id` | 预训练目录的稳定 `ModelVersion` id |
 | `checkpoint_file_id` | 预训练 checkpoint 的稳定文件 id |
 | `checkpoint_path` | 相对 `manifest.json` 的 checkpoint 路径 |
@@ -204,9 +220,9 @@ data/files/models/pretrained/
 {
   "model_name": "yoloe-v8",
   "model_scale": "s",
-  "task_type": "detection",
-  "model_version_id": "mv-pretrained-yoloe-v8-detection-s",
-  "checkpoint_file_id": "mf-pretrained-yoloe-v8-detection-s-checkpoint",
+  "task_type": "segmentation",
+  "model_version_id": "mv-pretrained-yoloe-v8-segmentation-s",
+  "checkpoint_file_id": "mf-pretrained-yoloe-v8-segmentation-s-checkpoint",
   "checkpoint_path": "checkpoints/yoloe-v8s-seg.pt",
   "metadata": {
     "catalog_name": "v8-default",
@@ -243,6 +259,7 @@ data/files/models/pretrained/
 - 当前核心平台自动扫描并登记的预训练目录仍然是 `yolox / yolov8 / yolo11 / yolo26 / rfdetr`。
 - `YOLOE` 和 `SAM3` 第一阶段只是 custom node 使用的中心化磁盘资产，不进入当前核心模型自动登记链。
 - 也就是说，本文件定义的是“节点运行时如何找权重”，不是“当前平台把它们当正式核心模型分类管理”。
+- 如果需要批量校验和重生这两类目录的 `manifest.json`，统一通过 `python -m backend.maintenance.main sync-extension-pretrained-manifests` 执行。
 
 ## 第一阶段 payload contract
 

@@ -17,6 +17,7 @@ BACKEND_MODULES: tuple[str, ...] = (
     "backend.contracts.nodes.node_pack_manifest",
     "backend.contracts.workflows.workflow_graph",
     "backend.maintenance.bootstrap",
+    "backend.maintenance.extension_pretrained_manifests",
     "backend.maintenance.settings",
     "backend.nodes.core_catalog",
     "backend.nodes.core_nodes",

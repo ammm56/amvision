@@ -28,20 +28,10 @@ def test_yoloe_node_pack_manifest_and_catalog_are_valid() -> None:
 
 
 def test_yoloe_and_sam3_pretrained_manifest_skeletons_are_present() -> None:
-    """验证 YOLOE 与 SAM3 预训练目录骨架已按约定创建。"""
+    """验证 YOLOE 与 SAM3 资产说明已经挂到架构入口。"""
 
-    manifest_paths = (
-        REPO_ROOT / "data" / "files" / "models" / "pretrained" / "yoloe" / "detection" / "s" / "v8-default" / "manifest.json",
-        REPO_ROOT / "data" / "files" / "models" / "pretrained" / "yoloe" / "detection" / "s" / "v8-prompt-free" / "manifest.json",
-        REPO_ROOT / "data" / "files" / "models" / "pretrained" / "yoloe" / "detection" / "s" / "11-default" / "manifest.json",
-        REPO_ROOT / "data" / "files" / "models" / "pretrained" / "yoloe" / "detection" / "s" / "11-prompt-free" / "manifest.json",
-        REPO_ROOT / "data" / "files" / "models" / "pretrained" / "yoloe" / "detection" / "nano" / "26-default" / "manifest.json",
-        REPO_ROOT / "data" / "files" / "models" / "pretrained" / "yoloe" / "detection" / "nano" / "26-prompt-free" / "manifest.json",
-        REPO_ROOT / "data" / "files" / "models" / "pretrained" / "sam3" / "segmentation" / "l" / "default" / "manifest.json",
-    )
+    docs_readme = (REPO_ROOT / "docs" / "README.md").read_text(encoding="utf-8")
+    architecture_readme = (REPO_ROOT / "docs" / "architecture" / "README.md").read_text(encoding="utf-8")
 
-    for manifest_path in manifest_paths:
-        payload = json.loads(manifest_path.read_text(encoding="utf-8"))
-        assert isinstance(payload, dict)
-        assert isinstance(payload.get("checkpoint_path"), str)
-        assert (manifest_path.parent / "checkpoints" / ".gitkeep").is_file()
+    assert "yoloe-sam3-node-assets.md" in docs_readme
+    assert "yoloe-sam3-node-assets.md" in architecture_readme
