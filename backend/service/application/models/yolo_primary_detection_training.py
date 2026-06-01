@@ -40,6 +40,16 @@ YOLO_PRIMARY_DEFAULT_ASSIGN_ALPHA = 0.5
 YOLO_PRIMARY_DEFAULT_ASSIGN_BETA = 6.0
 YOLO_PRIMARY_DEFAULT_MIN_LR_RATIO = 0.01
 YOLO_PRIMARY_DEFAULT_GRAD_CLIP_NORM = 10.0
+YOLO_PRIMARY_DEFAULT_FLIP_PROB = 0.0
+YOLO_PRIMARY_DEFAULT_HSV_PROB = 0.0
+YOLO_PRIMARY_DEFAULT_MOSAIC_PROB = 0.0
+YOLO_PRIMARY_DEFAULT_MIXUP_PROB = 0.0
+YOLO_PRIMARY_DEFAULT_ENABLE_MIXUP = False
+YOLO_PRIMARY_DEFAULT_AFFINE_DEGREES = 10.0
+YOLO_PRIMARY_DEFAULT_AFFINE_TRANSLATE = 0.1
+YOLO_PRIMARY_DEFAULT_AFFINE_SHEAR = 2.0
+YOLO_PRIMARY_DEFAULT_MOSAIC_SCALE = (0.1, 2.0)
+YOLO_PRIMARY_DEFAULT_MIXUP_SCALE = (0.5, 1.5)
 
 
 @dataclass(frozen=True)
@@ -203,6 +213,22 @@ class _PreparedTrainingTarget:
 
 
 @dataclass(frozen=True)
+class _DetectionAugmentationOptions:
+    """描述 detection 训练阶段启用的数据增强参数。"""
+
+    flip_prob: float
+    hsv_prob: float
+    mosaic_prob: float
+    mixup_prob: float
+    enable_mixup: bool
+    degrees: float
+    translate: float
+    shear: float
+    mosaic_scale: tuple[float, float]
+    mixup_scale: tuple[float, float]
+
+
+@dataclass(frozen=True)
 class _LoadedResumeState:
     """描述从 latest checkpoint 解析出的恢复训练状态。"""
 
@@ -339,6 +365,7 @@ def run_yolo_primary_detection_training(
         "grad_clip_norm",
         default=YOLO_PRIMARY_DEFAULT_GRAD_CLIP_NORM,
     )
+    augmentation_options = _resolve_detection_augmentation_options(extra_options)
     validation_split_name = validation_split.name if validation_split is not None else None
 
     model = build_yolo_primary_detection_model(
@@ -523,6 +550,9 @@ def run_yolo_primary_detection_training(
                 input_size=input_size,
                 device=device,
                 runtime_precision=runtime_precision,
+                augment_training=True,
+                available_samples=tuple(shuffled_samples),
+                augmentation_options=augmentation_options,
             )
             optimizer.zero_grad(set_to_none=True)
             with autocast_context():
@@ -702,6 +732,9 @@ def run_yolo_primary_detection_training(
             evaluated_epochs=tuple(evaluated_epochs),
             warm_start_summary=warm_start_summary,
             implementation_mode=request.implementation_mode,
+            augmentation_options=_serialize_detection_augmentation_options(
+                augmentation_options
+            ),
             best_metric_name=best_metric_name,
             best_metric_value=candidate_best_metric_value,
             best_checkpoint_state=previous_best_checkpoint_state,
@@ -860,6 +893,9 @@ def run_yolo_primary_detection_training(
         "gradient_control": {
             "grad_clip_norm": grad_clip_norm,
         },
+        "augmentation": _serialize_detection_augmentation_options(
+            augmentation_options
+        ),
     }
     return YoloPrimaryDetectionTrainingExecutionResult(
         checkpoint_bytes=best_checkpoint_bytes,
@@ -1533,6 +1569,9 @@ def _build_training_batch(
     input_size: tuple[int, int],
     device: str,
     runtime_precision: str,
+    augment_training: bool = False,
+    available_samples: tuple[_ResolvedTrainingSample, ...] | None = None,
+    augmentation_options: _DetectionAugmentationOptions | None = None,
 ) -> tuple[Any, tuple[_PreparedTrainingTarget, ...]]:
     """把一组样本拼成训练 batch。"""
 
@@ -1540,37 +1579,40 @@ def _build_training_batch(
     torch = imports.torch
     image_tensors: list[Any] = []
     prepared_targets: list[_PreparedTrainingTarget] = []
+    resolved_available_samples = (
+        available_samples
+        if available_samples is not None and len(available_samples) > 0
+        else tuple(samples)
+    )
+    resolved_augmentation_options = (
+        augmentation_options
+        if augmentation_options is not None
+        else _resolve_detection_augmentation_options({})
+    )
     for sample in samples:
-        image = imports.cv2.imread(str(sample.image_path), imports.cv2.IMREAD_COLOR)
-        if image is None:
-            raise InvalidRequestError(
-                "训练样本图片无法读取",
-                details={"image_path": str(sample.image_path)},
+        if augment_training:
+            prepared_image, resized_boxes, resized_categories = _prepare_augmented_detection_sample(
+                imports=imports,
+                primary_sample=sample,
+                available_samples=resolved_available_samples,
+                input_size=input_size,
+                augmentation_options=resolved_augmentation_options,
             )
-        resized = imports.cv2.resize(image, (input_size[1], input_size[0]), interpolation=imports.cv2.INTER_LINEAR)
-        rgb_image = imports.cv2.cvtColor(resized, imports.cv2.COLOR_BGR2RGB)
+        else:
+            prepared_image, resized_boxes, resized_categories = _prepare_detection_sample_without_augmentation(
+                imports=imports,
+                sample=sample,
+                input_size=input_size,
+            )
+        rgb_image = imports.cv2.cvtColor(prepared_image, imports.cv2.COLOR_BGR2RGB)
         image_array = rgb_image.astype(np_module.float32) / 255.0
         image_array = np_module.transpose(image_array, (2, 0, 1))
         image_tensors.append(torch.from_numpy(image_array))
-        scale_x = float(input_size[1]) / max(1.0, float(sample.image_width))
-        scale_y = float(input_size[0]) / max(1.0, float(sample.image_height))
-        resized_boxes: list[tuple[float, float, float, float]] = []
-        resized_categories: list[int] = []
-        for annotation in sample.annotations:
-            x1, y1, x2, y2 = annotation.bbox_xyxy
-            resized_x1 = max(0.0, min(x1 * scale_x, float(input_size[1])))
-            resized_y1 = max(0.0, min(y1 * scale_y, float(input_size[0])))
-            resized_x2 = max(0.0, min(x2 * scale_x, float(input_size[1])))
-            resized_y2 = max(0.0, min(y2 * scale_y, float(input_size[0])))
-            if resized_x2 <= resized_x1 or resized_y2 <= resized_y1:
-                continue
-            resized_boxes.append((resized_x1, resized_y1, resized_x2, resized_y2))
-            resized_categories.append(annotation.category_index)
         prepared_targets.append(
             _PreparedTrainingTarget(
                 image_id=sample.image_id,
-                image_width=sample.image_width,
-                image_height=sample.image_height,
+                image_width=(input_size[1] if augment_training else sample.image_width),
+                image_height=(input_size[0] if augment_training else sample.image_height),
                 boxes_xyxy=tuple(resized_boxes),
                 category_indexes=tuple(resized_categories),
             )
@@ -1579,6 +1621,477 @@ def _build_training_batch(
     if runtime_precision == "fp16":
         images = images.half()
     return images, tuple(prepared_targets)
+
+
+def _prepare_detection_sample_without_augmentation(
+    *,
+    imports: _TrainingImports,
+    sample: _ResolvedTrainingSample,
+    input_size: tuple[int, int],
+) -> tuple[Any, list[tuple[float, float, float, float]], list[int]]:
+    """按当前正式输入尺寸直接缩放单张 detection 训练样本。"""
+
+    image = _load_training_image_array(imports=imports, sample=sample)
+    return _resize_detection_sample_to_size(
+        imports=imports,
+        image=image,
+        annotations=sample.annotations,
+        output_size=input_size,
+    )
+
+
+def _prepare_augmented_detection_sample(
+    *,
+    imports: _TrainingImports,
+    primary_sample: _ResolvedTrainingSample,
+    available_samples: tuple[_ResolvedTrainingSample, ...],
+    input_size: tuple[int, int],
+    augmentation_options: _DetectionAugmentationOptions,
+) -> tuple[Any, list[tuple[float, float, float, float]], list[int]]:
+    """构造启用增强后的 detection 训练样本。"""
+
+    if (
+        augmentation_options.mosaic_prob > 0.0
+        and random.random() < augmentation_options.mosaic_prob
+    ):
+        image, boxes_xyxy, category_indexes = _build_mosaic_detection_sample(
+            imports=imports,
+            primary_sample=primary_sample,
+            available_samples=available_samples,
+            input_size=input_size,
+            augmentation_options=augmentation_options,
+        )
+    else:
+        image, boxes_xyxy, category_indexes = _prepare_detection_sample_without_augmentation(
+            imports=imports,
+            sample=primary_sample,
+            input_size=input_size,
+        )
+
+    if (
+        augmentation_options.enable_mixup
+        and augmentation_options.mixup_prob > 0.0
+        and random.random() < augmentation_options.mixup_prob
+    ):
+        mixup_source_sample = random.choice(available_samples)
+        if (
+            augmentation_options.mosaic_prob > 0.0
+            and random.random() < augmentation_options.mosaic_prob
+        ):
+            mixup_image, mixup_boxes, mixup_categories = _build_mosaic_detection_sample(
+                imports=imports,
+                primary_sample=mixup_source_sample,
+                available_samples=available_samples,
+                input_size=input_size,
+                augmentation_options=augmentation_options,
+            )
+        else:
+            mixup_image, mixup_boxes, mixup_categories = _build_scaled_mixup_sample(
+                imports=imports,
+                sample=mixup_source_sample,
+                input_size=input_size,
+                scale_range=augmentation_options.mixup_scale,
+            )
+        image = _apply_mixup(
+            np_module=imports.np,
+            image=image,
+            other_image=mixup_image,
+        )
+        boxes_xyxy.extend(mixup_boxes)
+        category_indexes.extend(mixup_categories)
+
+    image = _apply_random_hsv(
+        imports=imports,
+        image=image,
+        hsv_prob=augmentation_options.hsv_prob,
+    )
+    image, boxes_xyxy = _apply_random_flip(
+        image=image,
+        boxes_xyxy=boxes_xyxy,
+        flip_prob=augmentation_options.flip_prob,
+        output_size=input_size,
+    )
+    image, boxes_xyxy = _apply_random_affine(
+        imports=imports,
+        image=image,
+        boxes_xyxy=boxes_xyxy,
+        output_size=input_size,
+        degrees=augmentation_options.degrees,
+        translate=augmentation_options.translate,
+        shear=augmentation_options.shear,
+    )
+    filtered_boxes, filtered_categories = _filter_training_boxes(
+        boxes_xyxy=boxes_xyxy,
+        category_indexes=category_indexes,
+        output_size=input_size,
+    )
+    return image, filtered_boxes, filtered_categories
+
+
+def _build_mosaic_detection_sample(
+    *,
+    imports: _TrainingImports,
+    primary_sample: _ResolvedTrainingSample,
+    available_samples: tuple[_ResolvedTrainingSample, ...],
+    input_size: tuple[int, int],
+    augmentation_options: _DetectionAugmentationOptions,
+) -> tuple[Any, list[tuple[float, float, float, float]], list[int]]:
+    """构造一张 2x2 Mosaic detection 样本。"""
+
+    np_module = imports.np
+    output_height, output_width = int(input_size[0]), int(input_size[1])
+    top_height = output_height // 2
+    left_width = output_width // 2
+    placements = (
+        (0, 0, top_height, left_width),
+        (0, left_width, top_height, output_width - left_width),
+        (top_height, 0, output_height - top_height, left_width),
+        (top_height, left_width, output_height - top_height, output_width - left_width),
+    )
+    canvas = np_module.full((output_height, output_width, 3), 114, dtype=np_module.uint8)
+    boxes_xyxy: list[tuple[float, float, float, float]] = []
+    category_indexes: list[int] = []
+    selected_samples = [primary_sample]
+    if available_samples:
+        selected_samples.extend(random.choice(available_samples) for _ in range(3))
+    else:
+        selected_samples.extend(primary_sample for _ in range(3))
+
+    for sample, (top, left, cell_height, cell_width) in zip(
+        selected_samples,
+        placements,
+        strict=True,
+    ):
+        scale_gain = random.uniform(
+            augmentation_options.mosaic_scale[0],
+            augmentation_options.mosaic_scale[1],
+        )
+        cell_image, cell_boxes, cell_categories = _build_scaled_cell_sample(
+            imports=imports,
+            sample=sample,
+            output_size=(cell_height, cell_width),
+            scale_gain=scale_gain,
+        )
+        canvas[top : top + cell_height, left : left + cell_width] = cell_image
+        for box in cell_boxes:
+            boxes_xyxy.append(
+                (
+                    float(box[0] + left),
+                    float(box[1] + top),
+                    float(box[2] + left),
+                    float(box[3] + top),
+                )
+            )
+        category_indexes.extend(cell_categories)
+    return canvas, boxes_xyxy, category_indexes
+
+
+def _build_scaled_mixup_sample(
+    *,
+    imports: _TrainingImports,
+    sample: _ResolvedTrainingSample,
+    input_size: tuple[int, int],
+    scale_range: tuple[float, float],
+) -> tuple[Any, list[tuple[float, float, float, float]], list[int]]:
+    """构造 MixUp 使用的缩放样本。"""
+
+    scale_gain = random.uniform(scale_range[0], scale_range[1])
+    return _build_scaled_cell_sample(
+        imports=imports,
+        sample=sample,
+        output_size=input_size,
+        scale_gain=scale_gain,
+    )
+
+
+def _build_scaled_cell_sample(
+    *,
+    imports: _TrainingImports,
+    sample: _ResolvedTrainingSample,
+    output_size: tuple[int, int],
+    scale_gain: float,
+) -> tuple[Any, list[tuple[float, float, float, float]], list[int]]:
+    """把样本按随机缩放后裁剪/填充到指定画布尺寸。"""
+
+    np_module = imports.np
+    image = _load_training_image_array(imports=imports, sample=sample)
+    output_height, output_width = int(output_size[0]), int(output_size[1])
+    source_height, source_width = int(image.shape[0]), int(image.shape[1])
+    if source_height <= 0 or source_width <= 0:
+        raise InvalidRequestError("训练样本图片尺寸不合法")
+    base_scale = min(
+        float(output_width) / max(1.0, float(source_width)),
+        float(output_height) / max(1.0, float(source_height)),
+    )
+    resized_scale = max(1e-6, base_scale * max(0.01, float(scale_gain)))
+    resized_width = max(1, int(round(source_width * resized_scale)))
+    resized_height = max(1, int(round(source_height * resized_scale)))
+    resized_image = imports.cv2.resize(
+        image,
+        (resized_width, resized_height),
+        interpolation=imports.cv2.INTER_LINEAR,
+    )
+    canvas = np_module.full((output_height, output_width, 3), 114, dtype=np_module.uint8)
+
+    if resized_width > output_width:
+        source_x = random.randint(0, resized_width - output_width)
+        target_x = 0
+        copy_width = output_width
+    else:
+        source_x = 0
+        target_x = random.randint(0, output_width - resized_width)
+        copy_width = resized_width
+    if resized_height > output_height:
+        source_y = random.randint(0, resized_height - output_height)
+        target_y = 0
+        copy_height = output_height
+    else:
+        source_y = 0
+        target_y = random.randint(0, output_height - resized_height)
+        copy_height = resized_height
+    canvas[
+        target_y : target_y + copy_height,
+        target_x : target_x + copy_width,
+    ] = resized_image[
+        source_y : source_y + copy_height,
+        source_x : source_x + copy_width,
+    ]
+
+    boxes_xyxy: list[tuple[float, float, float, float]] = []
+    category_indexes: list[int] = []
+    for annotation in sample.annotations:
+        scaled_x1 = float(annotation.bbox_xyxy[0]) * resized_scale - float(source_x) + float(target_x)
+        scaled_y1 = float(annotation.bbox_xyxy[1]) * resized_scale - float(source_y) + float(target_y)
+        scaled_x2 = float(annotation.bbox_xyxy[2]) * resized_scale - float(source_x) + float(target_x)
+        scaled_y2 = float(annotation.bbox_xyxy[3]) * resized_scale - float(source_y) + float(target_y)
+        clipped_box = _clip_box_xyxy(
+            box_xyxy=(scaled_x1, scaled_y1, scaled_x2, scaled_y2),
+            output_size=output_size,
+        )
+        if clipped_box is None:
+            continue
+        boxes_xyxy.append(clipped_box)
+        category_indexes.append(annotation.category_index)
+    return canvas, boxes_xyxy, category_indexes
+
+
+def _resize_detection_sample_to_size(
+    *,
+    imports: _TrainingImports,
+    image: Any,
+    annotations: tuple[_ResolvedTrainingAnnotation, ...],
+    output_size: tuple[int, int],
+) -> tuple[Any, list[tuple[float, float, float, float]], list[int]]:
+    """把单张样本直接缩放到目标尺寸。"""
+
+    output_height, output_width = int(output_size[0]), int(output_size[1])
+    resized = imports.cv2.resize(
+        image,
+        (output_width, output_height),
+        interpolation=imports.cv2.INTER_LINEAR,
+    )
+    scale_x = float(output_width) / max(1.0, float(image.shape[1]))
+    scale_y = float(output_height) / max(1.0, float(image.shape[0]))
+    boxes_xyxy: list[tuple[float, float, float, float]] = []
+    category_indexes: list[int] = []
+    for annotation in annotations:
+        clipped_box = _clip_box_xyxy(
+            box_xyxy=(
+                float(annotation.bbox_xyxy[0]) * scale_x,
+                float(annotation.bbox_xyxy[1]) * scale_y,
+                float(annotation.bbox_xyxy[2]) * scale_x,
+                float(annotation.bbox_xyxy[3]) * scale_y,
+            ),
+            output_size=output_size,
+        )
+        if clipped_box is None:
+            continue
+        boxes_xyxy.append(clipped_box)
+        category_indexes.append(annotation.category_index)
+    return resized, boxes_xyxy, category_indexes
+
+
+def _load_training_image_array(
+    *,
+    imports: _TrainingImports,
+    sample: _ResolvedTrainingSample,
+) -> Any:
+    """读取单张训练样本图片。"""
+
+    image = imports.cv2.imread(str(sample.image_path), imports.cv2.IMREAD_COLOR)
+    if image is None:
+        raise InvalidRequestError(
+            "训练样本图片无法读取",
+            details={"image_path": str(sample.image_path)},
+        )
+    return image
+
+
+def _apply_mixup(
+    *,
+    np_module: Any,
+    image: Any,
+    other_image: Any,
+) -> Any:
+    """把两张同尺寸图片按固定权重混合。"""
+
+    mixed = (
+        image.astype(np_module.float32) * 0.5
+        + other_image.astype(np_module.float32) * 0.5
+    )
+    return mixed.clip(0.0, 255.0).astype(np_module.uint8)
+
+
+def _apply_random_hsv(
+    *,
+    imports: _TrainingImports,
+    image: Any,
+    hsv_prob: float,
+) -> Any:
+    """按概率执行随机 HSV 抖动。"""
+
+    if hsv_prob <= 0.0 or random.random() >= hsv_prob:
+        return image
+    hsv_image = imports.cv2.cvtColor(image, imports.cv2.COLOR_BGR2HSV).astype(
+        imports.np.float32
+    )
+    hue_gain = 1.0 + random.uniform(-0.015, 0.015)
+    saturation_gain = 1.0 + random.uniform(-0.7, 0.7)
+    value_gain = 1.0 + random.uniform(-0.4, 0.4)
+    hsv_image[..., 0] = (hsv_image[..., 0] * hue_gain) % 180.0
+    hsv_image[..., 1] = imports.np.clip(hsv_image[..., 1] * saturation_gain, 0.0, 255.0)
+    hsv_image[..., 2] = imports.np.clip(hsv_image[..., 2] * value_gain, 0.0, 255.0)
+    return imports.cv2.cvtColor(
+        hsv_image.astype(imports.np.uint8),
+        imports.cv2.COLOR_HSV2BGR,
+    )
+
+
+def _apply_random_flip(
+    *,
+    image: Any,
+    boxes_xyxy: list[tuple[float, float, float, float]],
+    flip_prob: float,
+    output_size: tuple[int, int],
+) -> tuple[Any, list[tuple[float, float, float, float]]]:
+    """按概率执行随机水平翻转。"""
+
+    if flip_prob <= 0.0 or random.random() >= flip_prob:
+        return image, boxes_xyxy
+    output_width = float(output_size[1])
+    flipped_image = image[:, ::-1].copy()
+    flipped_boxes: list[tuple[float, float, float, float]] = []
+    for x1, y1, x2, y2 in boxes_xyxy:
+        flipped_boxes.append((output_width - x2, y1, output_width - x1, y2))
+    return flipped_image, flipped_boxes
+
+
+def _apply_random_affine(
+    *,
+    imports: _TrainingImports,
+    image: Any,
+    boxes_xyxy: list[tuple[float, float, float, float]],
+    output_size: tuple[int, int],
+    degrees: float,
+    translate: float,
+    shear: float,
+) -> tuple[Any, list[tuple[float, float, float, float]]]:
+    """执行随机仿射增强，并同步变换 bbox。"""
+
+    if degrees <= 0.0 and translate <= 0.0 and shear <= 0.0:
+        return image, boxes_xyxy
+    output_height, output_width = int(output_size[0]), int(output_size[1])
+    center = (float(output_width) / 2.0, float(output_height) / 2.0)
+    rotation_matrix = imports.cv2.getRotationMatrix2D(
+        center,
+        random.uniform(-degrees, degrees) if degrees > 0.0 else 0.0,
+        1.0,
+    )
+    affine_matrix = imports.np.eye(3, dtype=imports.np.float32)
+    affine_matrix[:2, :] = rotation_matrix
+    shear_x = math.tan(math.radians(random.uniform(-shear, shear))) if shear > 0.0 else 0.0
+    shear_y = math.tan(math.radians(random.uniform(-shear, shear))) if shear > 0.0 else 0.0
+    shear_matrix = imports.np.array(
+        [[1.0, shear_x, 0.0], [shear_y, 1.0, 0.0], [0.0, 0.0, 1.0]],
+        dtype=imports.np.float32,
+    )
+    translate_x = random.uniform(-translate, translate) * float(output_width) if translate > 0.0 else 0.0
+    translate_y = random.uniform(-translate, translate) * float(output_height) if translate > 0.0 else 0.0
+    translate_matrix = imports.np.array(
+        [[1.0, 0.0, translate_x], [0.0, 1.0, translate_y], [0.0, 0.0, 1.0]],
+        dtype=imports.np.float32,
+    )
+    composed_matrix = translate_matrix @ shear_matrix @ affine_matrix
+    warped_image = imports.cv2.warpAffine(
+        image,
+        composed_matrix[:2],
+        (output_width, output_height),
+        flags=imports.cv2.INTER_LINEAR,
+        borderValue=(114, 114, 114),
+    )
+    if not boxes_xyxy:
+        return warped_image, boxes_xyxy
+
+    transformed_boxes: list[tuple[float, float, float, float]] = []
+    for box_xyxy in boxes_xyxy:
+        corners = imports.np.array(
+            [
+                [box_xyxy[0], box_xyxy[1], 1.0],
+                [box_xyxy[2], box_xyxy[1], 1.0],
+                [box_xyxy[2], box_xyxy[3], 1.0],
+                [box_xyxy[0], box_xyxy[3], 1.0],
+            ],
+            dtype=imports.np.float32,
+        )
+        transformed_corners = corners @ composed_matrix.T
+        clipped_box = _clip_box_xyxy(
+            box_xyxy=(
+                float(transformed_corners[:, 0].min()),
+                float(transformed_corners[:, 1].min()),
+                float(transformed_corners[:, 0].max()),
+                float(transformed_corners[:, 1].max()),
+            ),
+            output_size=output_size,
+        )
+        if clipped_box is not None:
+            transformed_boxes.append(clipped_box)
+    return warped_image, transformed_boxes
+
+
+def _filter_training_boxes(
+    *,
+    boxes_xyxy: list[tuple[float, float, float, float]],
+    category_indexes: list[int],
+    output_size: tuple[int, int],
+) -> tuple[list[tuple[float, float, float, float]], list[int]]:
+    """过滤增强后退化或越界的训练框。"""
+
+    filtered_boxes: list[tuple[float, float, float, float]] = []
+    filtered_categories: list[int] = []
+    for box_xyxy, category_index in zip(boxes_xyxy, category_indexes, strict=False):
+        clipped_box = _clip_box_xyxy(box_xyxy=box_xyxy, output_size=output_size)
+        if clipped_box is None:
+            continue
+        filtered_boxes.append(clipped_box)
+        filtered_categories.append(int(category_index))
+    return filtered_boxes, filtered_categories
+
+
+def _clip_box_xyxy(
+    *,
+    box_xyxy: tuple[float, float, float, float],
+    output_size: tuple[int, int],
+) -> tuple[float, float, float, float] | None:
+    """把 bbox 裁剪到图像范围内。"""
+
+    output_height, output_width = float(output_size[0]), float(output_size[1])
+    x1 = max(0.0, min(float(box_xyxy[0]), output_width))
+    y1 = max(0.0, min(float(box_xyxy[1]), output_height))
+    x2 = max(0.0, min(float(box_xyxy[2]), output_width))
+    y2 = max(0.0, min(float(box_xyxy[3]), output_height))
+    if x2 <= x1 or y2 <= y1:
+        return None
+    return (x1, y1, x2, y2)
 
 
 def _unwrap_detection_outputs(outputs: Any) -> dict[str, Any]:
@@ -1883,7 +2396,7 @@ def _evaluate_detection_model(
         confidence_threshold=confidence_threshold,
         nms_threshold=nms_threshold,
     )
-    return {
+    evaluation_summary = {
         "loss": round(float(validation_losses.get("loss", 0.0)), 6),
         "class_loss": round(float(validation_losses.get("class_loss", 0.0)), 6),
         "box_loss": round(float(validation_losses.get("box_loss", 0.0)), 6),
@@ -1892,6 +2405,17 @@ def _evaluate_detection_model(
         "map50_95": round(float(validation_map.get("map50_95", 0.0)), 6),
         "sample_count": len(samples),
     }
+    if "one2many_loss" in validation_losses:
+        evaluation_summary["one2many_loss"] = round(
+            float(validation_losses.get("one2many_loss", 0.0)),
+            6,
+        )
+    if "one2one_loss" in validation_losses:
+        evaluation_summary["one2one_loss"] = round(
+            float(validation_losses.get("one2one_loss", 0.0)),
+            6,
+        )
+    return evaluation_summary
 
 
 def _decode_detection_training_predictions(
@@ -2196,6 +2720,10 @@ def _evaluate_detection_validation_losses(
     model.train()
     batch_norm_states = _freeze_batch_norm_modules(imports=imports, model=model)
     epoch_totals = {"loss": 0.0, "class_loss": 0.0, "box_loss": 0.0, "dfl_loss": 0.0}
+    is_end2end = bool(getattr(model, "end2end", False))
+    if is_end2end:
+        epoch_totals["one2many_loss"] = 0.0
+        epoch_totals["one2one_loss"] = 0.0
     batch_count = 0
     try:
         with torch.no_grad():
@@ -2206,22 +2734,41 @@ def _evaluate_detection_validation_losses(
                     input_size=input_size,
                     device=device,
                     runtime_precision=runtime_precision,
+                    augment_training=False,
                 )
                 with autocast_context():
-                    raw_outputs = _unwrap_detection_outputs(model(images))
-                    loss_components = _compute_detection_loss(
-                        imports=imports,
-                        model=model,
-                        raw_outputs=raw_outputs,
-                        batch_targets=batch_targets,
-                        num_classes=num_classes,
-                        class_loss_weight=class_loss_weight,
-                        box_loss_weight=box_loss_weight,
-                        dfl_loss_weight=dfl_loss_weight,
-                        assign_topk=assign_topk,
-                        assign_alpha=assign_alpha,
-                        assign_beta=assign_beta,
-                    )
+                    model_outputs = model(images)
+                    if is_end2end:
+                        loss_components = _compute_e2e_detection_loss(
+                            imports=imports,
+                            model=model,
+                            raw_outputs=_unwrap_e2e_detection_outputs(model_outputs),
+                            batch_targets=batch_targets,
+                            num_classes=num_classes,
+                            class_loss_weight=class_loss_weight,
+                            box_loss_weight=box_loss_weight,
+                            dfl_loss_weight=dfl_loss_weight,
+                            assign_topk=assign_topk,
+                            assign_alpha=assign_alpha,
+                            assign_beta=assign_beta,
+                            e2e_o2m_weight=0.1,
+                            e2e_o2o_weight=0.9,
+                        )
+                    else:
+                        raw_outputs = _unwrap_detection_outputs(model_outputs)
+                        loss_components = _compute_detection_loss(
+                            imports=imports,
+                            model=model,
+                            raw_outputs=raw_outputs,
+                            batch_targets=batch_targets,
+                            num_classes=num_classes,
+                            class_loss_weight=class_loss_weight,
+                            box_loss_weight=box_loss_weight,
+                            dfl_loss_weight=dfl_loss_weight,
+                            assign_topk=assign_topk,
+                            assign_alpha=assign_alpha,
+                            assign_beta=assign_beta,
+                        )
                 batch_count += 1
                 for metric_name in epoch_totals:
                     epoch_totals[metric_name] += float(loss_components[metric_name].detach().item())
@@ -2270,6 +2817,7 @@ def _evaluate_validation_map(
                     input_size=input_size,
                     device=device,
                     runtime_precision=runtime_precision,
+                    augment_training=False,
                 )
                 prediction_tensor = model(images)
                 detections.extend(
@@ -2521,6 +3069,7 @@ def _build_checkpoint_state(
     evaluated_epochs: tuple[int, ...],
     warm_start_summary: dict[str, object],
     implementation_mode: str,
+    augmentation_options: dict[str, object] | None,
     best_metric_name: str,
     best_metric_value: float | None,
     best_checkpoint_state: dict[str, object] | None,
@@ -2559,6 +3108,7 @@ def _build_checkpoint_state(
         "evaluated_epochs": list(evaluated_epochs),
         "warm_start": warm_start_summary,
         "implementation_mode": implementation_mode,
+        "augmentation": dict(augmentation_options or {}),
         "best_metric_name": best_metric_name,
         "best_metric_value": best_metric_value,
         "best_checkpoint_state": best_checkpoint_state,
@@ -2599,6 +3149,7 @@ def _build_checkpoint_bytes(
     evaluated_epochs: tuple[int, ...],
     warm_start_summary: dict[str, object],
     implementation_mode: str,
+    augmentation_options: dict[str, object] | None,
     best_metric_name: str,
     best_metric_value: float | None,
     best_checkpoint_state: dict[str, object] | None,
@@ -2637,6 +3188,7 @@ def _build_checkpoint_bytes(
         evaluated_epochs=evaluated_epochs,
         warm_start_summary=warm_start_summary,
         implementation_mode=implementation_mode,
+        augmentation_options=augmentation_options,
         best_metric_name=best_metric_name,
         best_metric_value=best_metric_value,
         best_checkpoint_state=best_checkpoint_state,
@@ -2690,6 +3242,23 @@ def _read_float_option(
     return float(value)
 
 
+def _read_bool_option(
+    extra_options: dict[str, object],
+    key: str,
+    *,
+    default: bool,
+) -> bool:
+    """从 extra_options 里读取布尔配置。"""
+
+    value = extra_options.get(key, default)
+    if not isinstance(value, bool):
+        raise InvalidRequestError(
+            "训练 extra_options 中的布尔配置不合法",
+            details={"option_key": key, "value": value},
+        )
+    return bool(value)
+
+
 def _read_int_option(
     extra_options: dict[str, object],
     key: str,
@@ -2705,3 +3274,136 @@ def _read_int_option(
             details={"option_key": key, "value": value},
         )
     return int(value)
+
+
+def _read_float_pair_option(
+    extra_options: dict[str, object],
+    key: str,
+    *,
+    default: tuple[float, float],
+) -> tuple[float, float]:
+    """从 extra_options 里读取长度为 2 的浮点区间。"""
+
+    value = extra_options.get(key, default)
+    if not isinstance(value, list | tuple) or len(value) != 2:
+        raise InvalidRequestError(
+            "训练 extra_options 中的区间配置不合法",
+            details={"option_key": key, "value": value},
+        )
+    left, right = value
+    if not isinstance(left, int | float) or not isinstance(right, int | float):
+        raise InvalidRequestError(
+            "训练 extra_options 中的区间配置不合法",
+            details={"option_key": key, "value": value},
+        )
+    left_value = float(left)
+    right_value = float(right)
+    if left_value <= 0.0 or right_value <= 0.0:
+        raise InvalidRequestError(
+            "训练 extra_options 中的区间配置必须为正数",
+            details={"option_key": key, "value": value},
+        )
+    if left_value > right_value:
+        left_value, right_value = right_value, left_value
+    return (left_value, right_value)
+
+
+def _resolve_detection_augmentation_options(
+    extra_options: dict[str, object],
+) -> _DetectionAugmentationOptions:
+    """把 detection 训练增强相关 extra_options 解析为稳定配置。"""
+
+    return _DetectionAugmentationOptions(
+        flip_prob=_clamp_probability(
+            _read_float_option(
+                extra_options,
+                "flip_prob",
+                default=YOLO_PRIMARY_DEFAULT_FLIP_PROB,
+            )
+        ),
+        hsv_prob=_clamp_probability(
+            _read_float_option(
+                extra_options,
+                "hsv_prob",
+                default=YOLO_PRIMARY_DEFAULT_HSV_PROB,
+            )
+        ),
+        mosaic_prob=_clamp_probability(
+            _read_float_option(
+                extra_options,
+                "mosaic_prob",
+                default=YOLO_PRIMARY_DEFAULT_MOSAIC_PROB,
+            )
+        ),
+        mixup_prob=_clamp_probability(
+            _read_float_option(
+                extra_options,
+                "mixup_prob",
+                default=YOLO_PRIMARY_DEFAULT_MIXUP_PROB,
+            )
+        ),
+        enable_mixup=_read_bool_option(
+            extra_options,
+            "enable_mixup",
+            default=YOLO_PRIMARY_DEFAULT_ENABLE_MIXUP,
+        ),
+        degrees=max(
+            0.0,
+            _read_float_option(
+                extra_options,
+                "degrees",
+                default=YOLO_PRIMARY_DEFAULT_AFFINE_DEGREES,
+            ),
+        ),
+        translate=max(
+            0.0,
+            _read_float_option(
+                extra_options,
+                "translate",
+                default=YOLO_PRIMARY_DEFAULT_AFFINE_TRANSLATE,
+            ),
+        ),
+        shear=max(
+            0.0,
+            _read_float_option(
+                extra_options,
+                "shear",
+                default=YOLO_PRIMARY_DEFAULT_AFFINE_SHEAR,
+            ),
+        ),
+        mosaic_scale=_read_float_pair_option(
+            extra_options,
+            "mosaic_scale",
+            default=YOLO_PRIMARY_DEFAULT_MOSAIC_SCALE,
+        ),
+        mixup_scale=_read_float_pair_option(
+            extra_options,
+            "mixup_scale",
+            default=YOLO_PRIMARY_DEFAULT_MIXUP_SCALE,
+        ),
+    )
+
+
+def _serialize_detection_augmentation_options(
+    options: _DetectionAugmentationOptions,
+) -> dict[str, object]:
+    """把 detection 增强配置转换为可写入结果和 checkpoint 的字典。"""
+
+    return {
+        "flip_prob": options.flip_prob,
+        "hsv_prob": options.hsv_prob,
+        "mosaic_prob": options.mosaic_prob,
+        "mixup_prob": options.mixup_prob,
+        "enable_mixup": options.enable_mixup,
+        "degrees": options.degrees,
+        "translate": options.translate,
+        "shear": options.shear,
+        "mosaic_scale": list(options.mosaic_scale),
+        "mixup_scale": list(options.mixup_scale),
+    }
+
+
+def _clamp_probability(value: float) -> float:
+    """把概率值裁剪到 [0, 1]。"""
+
+    return max(0.0, min(1.0, float(value)))
