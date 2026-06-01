@@ -14,6 +14,11 @@ import torch
 from backend.service.application.models.yolo_primary_detection_model import (
     build_yolo_primary_detection_model,
 )
+from backend.service.application.models.detection_postprocess import (
+    DETECTION_POSTPROCESS_MODE_END2END_TOPK,
+    DETECTION_POSTPROCESS_MODE_NMS,
+    postprocess_detection_prediction_array,
+)
 from backend.service.application.models.yolo_primary_detection_training import (
     _PreparedTrainingTarget,
     _ResolvedTrainingAnnotation,
@@ -22,6 +27,9 @@ from backend.service.application.models.yolo_primary_detection_training import (
     _compute_e2e_detection_loss,
     _resolve_detection_augmentation_options,
     _unwrap_e2e_detection_outputs,
+)
+from backend.service.application.runtime.yolo_primary_predictor import (
+    _resolve_yolo_primary_postprocess_strategy,
 )
 
 
@@ -161,6 +169,58 @@ def test_yolo26_e2e_loss_path_runs_with_dual_branch_outputs() -> None:
     assert torch.isfinite(loss_components["dfl_loss"]).item() is True
     assert torch.isfinite(loss_components["one2many_loss"]).item() is True
     assert torch.isfinite(loss_components["one2one_loss"]).item() is True
+
+
+def test_postprocess_detection_prediction_array_end2end_topk_keeps_duplicate_boxes() -> None:
+    """验证 end-to-end detection 后处理会使用 top-k，而不是通用 NMS。"""
+
+    prediction_array = np.array(
+        [
+            [
+                [10.0, 10.0, 30.0, 30.0, 0.95, 0.05],
+                [10.0, 10.0, 30.0, 30.0, 0.90, 0.10],
+                [11.0, 11.0, 31.0, 31.0, 0.85, 0.15],
+            ]
+        ],
+        dtype=np.float32,
+    )
+
+    nms_results = postprocess_detection_prediction_array(
+        prediction_array=prediction_array,
+        np_module=np,
+        num_classes=2,
+        score_threshold=0.1,
+        nms_threshold=0.5,
+        postprocess_mode=DETECTION_POSTPROCESS_MODE_NMS,
+    )
+    topk_results = postprocess_detection_prediction_array(
+        prediction_array=prediction_array,
+        np_module=np,
+        num_classes=2,
+        score_threshold=0.1,
+        nms_threshold=0.5,
+        postprocess_mode=DETECTION_POSTPROCESS_MODE_END2END_TOPK,
+        max_detections=3,
+    )
+
+    assert nms_results[0] is not None
+    assert topk_results[0] is not None
+    assert len(nms_results[0].scores) == 1
+    assert len(topk_results[0].scores) == 3
+    assert list(topk_results[0].scores) == pytest.approx([0.95, 0.9, 0.85])
+
+
+def test_yolo26_runtime_postprocess_strategy_uses_end2end_topk() -> None:
+    """验证 YOLO26 detection runtime 会走 end-to-end top-k 后处理。"""
+
+    assert _resolve_yolo_primary_postprocess_strategy(model_type="yolo26") == (
+        DETECTION_POSTPROCESS_MODE_END2END_TOPK,
+        300,
+    )
+    assert _resolve_yolo_primary_postprocess_strategy(model_type="yolov8") == (
+        DETECTION_POSTPROCESS_MODE_NMS,
+        None,
+    )
 
 
 def _write_detection_sample(

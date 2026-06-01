@@ -2,14 +2,22 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from time import perf_counter
 from typing import Any
 
 from backend.service.application.errors import InvalidRequestError, ServiceConfigurationError
+from backend.service.application.models.detection_postprocess import (
+    DEFAULT_END2END_MAX_DETECTIONS,
+    DETECTION_POSTPROCESS_MODE_END2END_TOPK,
+    DETECTION_POSTPROCESS_MODE_NMS,
+    postprocess_detection_prediction_array,
+)
 from backend.service.application.models.yolo_primary_detection_model import (
     build_yolo_primary_detection_model,
     load_yolo_primary_checkpoint,
+)
+from backend.service.application.models.yolo_primary_model_configs import (
+    get_yolo_primary_model_config,
 )
 from backend.service.application.models.yolo_primary_detection_training import (
     _require_training_imports,
@@ -63,15 +71,6 @@ from backend.service.application.runtime.yolox_runtime_target import (
     describe_runtime_execution_mode,
 )
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
-
-
-@dataclass(frozen=True)
-class _YoloV8PostprocessResult:
-    """描述单张图片经过后处理后的候选结果。"""
-
-    boxes_xyxy: Any
-    scores: Any
-    class_ids: Any
 
 
 class PyTorchYoloPrimaryRuntimeSession:
@@ -208,33 +207,22 @@ class PyTorchYoloPrimaryRuntimeSession:
             np_module=self.imports.np,
         )
         
-        # 检测是否为端到端模型（推理时输出已经是 one2one 分支，不需要 NMS）
-        is_end2end = getattr(self.model, "end2end", False)
-        
-        if is_end2end:
-            # 端到端模型：使用 top-k 选择替代 NMS
-            detections = _build_yolo_primary_detection_records_topk(
-                np_module=self.imports.np,
-                prediction_array=prediction_array,
-                labels=self.runtime_target.labels,
-                score_threshold=request.score_threshold,
-                max_detections=300,  # YOLO26 默认 top-k=300
-                resize_ratio=resize_ratio,
-                image_width=image_width,
-                image_height=image_height,
-            )
-        else:
-            # 标准模型：使用 NMS
-            detections = _build_yolo_primary_detection_records(
-                np_module=self.imports.np,
-                prediction_array=prediction_array,
-                labels=self.runtime_target.labels,
-                score_threshold=request.score_threshold,
-                nms_threshold=nms_threshold,
-                resize_ratio=resize_ratio,
-                image_width=image_width,
-                image_height=image_height,
-            )
+        postprocess_mode, max_detections = _resolve_yolo_primary_postprocess_strategy(
+            model_type=self.runtime_target.model_type,
+            is_end2end=bool(getattr(self.model, "end2end", False)),
+        )
+        detections = _build_yolo_primary_detection_records(
+            np_module=self.imports.np,
+            prediction_array=prediction_array,
+            labels=self.runtime_target.labels,
+            score_threshold=request.score_threshold,
+            nms_threshold=nms_threshold,
+            resize_ratio=resize_ratio,
+            image_width=image_width,
+            image_height=image_height,
+            postprocess_mode=postprocess_mode,
+            max_detections=max_detections,
+        )
         postprocess_ms = measure_stage_elapsed_ms(
             imports=self.imports,
             device_name=self.device_name,
@@ -280,7 +268,13 @@ class PyTorchYoloPrimaryRuntimeSession:
                         device_name=self.device_name,
                     ),
                     "score_threshold": request.score_threshold,
-                    "nms_threshold": nms_threshold,
+                    "nms_threshold": (
+                        nms_threshold
+                        if postprocess_mode == DETECTION_POSTPROCESS_MODE_NMS
+                        else None
+                    ),
+                    "postprocess_mode": postprocess_mode,
+                    "max_detections": max_detections,
                     "class_count": len(self.runtime_target.labels),
                     "decode_ms": decode_ms,
                     "preprocess_ms": preprocess_ms,
@@ -393,6 +387,9 @@ class OnnxRuntimeYoloPrimaryRuntimeSession:
 
         postprocess_started_at = perf_counter()
         prediction_array = normalize_onnxruntime_outputs(outputs=outputs, imports=self.imports)
+        postprocess_mode, max_detections = _resolve_yolo_primary_postprocess_strategy(
+            model_type=self.runtime_target.model_type,
+        )
         detections = _build_yolo_primary_detection_records(
             np_module=self.imports.np,
             prediction_array=prediction_array,
@@ -402,6 +399,8 @@ class OnnxRuntimeYoloPrimaryRuntimeSession:
             resize_ratio=resize_ratio,
             image_width=image_width,
             image_height=image_height,
+            postprocess_mode=postprocess_mode,
+            max_detections=max_detections,
         )
         postprocess_ms = round((perf_counter() - postprocess_started_at) * 1000, 3)
         latency_ms = decode_ms + preprocess_ms + infer_ms + postprocess_ms
@@ -444,7 +443,13 @@ class OnnxRuntimeYoloPrimaryRuntimeSession:
                         device_name=self.device_name,
                     ),
                     "score_threshold": request.score_threshold,
-                    "nms_threshold": nms_threshold,
+                    "nms_threshold": (
+                        nms_threshold
+                        if postprocess_mode == DETECTION_POSTPROCESS_MODE_NMS
+                        else None
+                    ),
+                    "postprocess_mode": postprocess_mode,
+                    "max_detections": max_detections,
                     "class_count": len(self.runtime_target.labels),
                     "decode_ms": decode_ms,
                     "preprocess_ms": preprocess_ms,
@@ -556,6 +561,9 @@ class OpenVINOYoloPrimaryRuntimeSession(OpenVINODetectionRuntimeSessionBase):
             output_name=self.output_name,
             imports=self.imports,
         )
+        postprocess_mode, max_detections = _resolve_yolo_primary_postprocess_strategy(
+            model_type=self.runtime_target.model_type,
+        )
         detections = _build_yolo_primary_detection_records(
             np_module=self.imports.np,
             prediction_array=prediction_array,
@@ -565,6 +573,8 @@ class OpenVINOYoloPrimaryRuntimeSession(OpenVINODetectionRuntimeSessionBase):
             resize_ratio=resize_ratio,
             image_width=image_width,
             image_height=image_height,
+            postprocess_mode=postprocess_mode,
+            max_detections=max_detections,
         )
         postprocess_ms = round((perf_counter() - postprocess_started_at) * 1000, 3)
         latency_ms = decode_ms + preprocess_ms + infer_ms + postprocess_ms
@@ -607,7 +617,13 @@ class OpenVINOYoloPrimaryRuntimeSession(OpenVINODetectionRuntimeSessionBase):
                         device_name=self.device_name,
                     ),
                     "score_threshold": request.score_threshold,
-                    "nms_threshold": nms_threshold,
+                    "nms_threshold": (
+                        nms_threshold
+                        if postprocess_mode == DETECTION_POSTPROCESS_MODE_NMS
+                        else None
+                    ),
+                    "postprocess_mode": postprocess_mode,
+                    "max_detections": max_detections,
                     "class_count": len(self.runtime_target.labels),
                     "decode_ms": decode_ms,
                     "preprocess_ms": preprocess_ms,
@@ -878,6 +894,9 @@ class TensorRTYoloPrimaryRuntimeSession(TensorRTDetectionRuntimeSessionBase):
             output_array=output_array,
             imports=self.imports,
         )
+        postprocess_mode, max_detections = _resolve_yolo_primary_postprocess_strategy(
+            model_type=self.runtime_target.model_type,
+        )
         detections = _build_yolo_primary_detection_records(
             np_module=self.imports.np,
             prediction_array=prediction_array,
@@ -887,6 +906,8 @@ class TensorRTYoloPrimaryRuntimeSession(TensorRTDetectionRuntimeSessionBase):
             resize_ratio=resize_ratio,
             image_width=image_width,
             image_height=image_height,
+            postprocess_mode=postprocess_mode,
+            max_detections=max_detections,
         )
         postprocess_ms = round((perf_counter() - postprocess_started_at) * 1000, 3)
         latency_ms = decode_ms + preprocess_ms + infer_ms + postprocess_ms
@@ -929,7 +950,13 @@ class TensorRTYoloPrimaryRuntimeSession(TensorRTDetectionRuntimeSessionBase):
                         device_name=self.device_name,
                     ),
                     "score_threshold": request.score_threshold,
-                    "nms_threshold": nms_threshold,
+                    "nms_threshold": (
+                        nms_threshold
+                        if postprocess_mode == DETECTION_POSTPROCESS_MODE_NMS
+                        else None
+                    ),
+                    "postprocess_mode": postprocess_mode,
+                    "max_detections": max_detections,
                     "class_count": len(self.runtime_target.labels),
                     "decode_ms": decode_ms,
                     "preprocess_ms": preprocess_ms,
@@ -952,15 +979,19 @@ def _build_yolo_primary_detection_records(
     resize_ratio: float,
     image_width: int,
     image_height: int,
+    postprocess_mode: str = DETECTION_POSTPROCESS_MODE_NMS,
+    max_detections: int | None = None,
 ) -> tuple[DetectionPredictionDetection, ...]:
     """把 YOLO 主线输出数组转换成平台 detection 记录。"""
 
-    postprocess_results = _postprocess_yolo_primary_prediction_array(
+    postprocess_results = postprocess_detection_prediction_array(
         prediction_array=prediction_array,
         np_module=np_module,
         num_classes=len(labels),
         score_threshold=score_threshold,
         nms_threshold=nms_threshold,
+        postprocess_mode=postprocess_mode,
+        max_detections=max_detections,
     )
     if not postprocess_results:
         return ()
@@ -990,162 +1021,28 @@ def _build_yolo_primary_detection_records(
                 class_name=class_name,
             )
         )
-    detections.sort(key=lambda item: item.score, reverse=True)
+    if postprocess_mode == DETECTION_POSTPROCESS_MODE_NMS:
+        detections.sort(key=lambda item: item.score, reverse=True)
     return tuple(detections)
 
 
-def _build_yolo_primary_detection_records_topk(
+def _resolve_yolo_primary_postprocess_strategy(
     *,
-    np_module: Any,
-    prediction_array: Any,
-    labels: tuple[str, ...],
-    score_threshold: float,
-    max_detections: int,
-    resize_ratio: float,
-    image_width: int,
-    image_height: int,
-) -> tuple[DetectionPredictionDetection, ...]:
-    """把端到端模型输出数组转换成平台 detection 记录（top-k 替代 NMS）。
+    model_type: str,
+    is_end2end: bool | None = None,
+) -> tuple[str, int | None]:
+    """解析当前 YOLO 主线模型应使用的 detection 后处理策略。"""
 
-    端到端模型（如 YOLO26）在推理时使用 one2one 分支，该分支已经通过
-    一对一标签分配保证了预测的唯一性，因此不需要 NMS，只需按分数
-    选取 top-k 个最高置信度的检测。
-    """
-
-    normalized_prediction = np_module.asarray(prediction_array, dtype=np_module.float32)
-    if normalized_prediction.ndim == 2:
-        normalized_prediction = np_module.expand_dims(normalized_prediction, axis=0)
-    if normalized_prediction.ndim < 3:
-        raise InvalidRequestError(
-            "YOLO 主线推理输出维度不合法",
-            details={"shape": list(normalized_prediction.shape)},
+    if is_end2end is None:
+        resolved_model_type = _require_primary_model_type(model_type, "YOLO primary")
+        model_config = get_yolo_primary_model_config(
+            model_type=resolved_model_type,
+            task_type="detection",
         )
-
-    num_classes = len(labels)
-    if int(normalized_prediction.shape[2]) < 4 + num_classes:
-        raise InvalidRequestError(
-            "YOLO 主线推理输出通道数不足",
-            details={
-                "channel_count": int(normalized_prediction.shape[2]),
-                "required_channel_count": 4 + num_classes,
-            },
-        )
-
-    # 只处理第一张图（batch_size=1）
-    image_prediction = normalized_prediction[0]
-    boxes = image_prediction[:, :4]
-    class_scores = image_prediction[:, 4 : 4 + num_classes]
-
-    if int(boxes.shape[0]) <= 0:
-        return ()
-
-    # 计算每个预测的最佳类别和分数
-    best_scores = np_module.max(class_scores, axis=1)
-    best_class_ids = np_module.argmax(class_scores, axis=1).astype(np_module.int32, copy=False)
-
-    # 阈值过滤
-    keep_mask = best_scores >= score_threshold
-    boxes = boxes[keep_mask]
-    best_scores = best_scores[keep_mask]
-    best_class_ids = best_class_ids[keep_mask]
-
-    if int(boxes.shape[0]) <= 0:
-        return ()
-
-    # Top-k 选择（替代 NMS）
-    num_candidates = int(boxes.shape[0])
-    actual_k = min(max_detections, num_candidates)
-    topk_indices = np_module.argsort(best_scores)[::-1][:actual_k]
-
-    # 构建检测记录
-    detections: list[DetectionPredictionDetection] = []
-    for idx in topk_indices:
-        bbox = boxes[idx]
-        score = float(best_scores[idx])
-        class_id = int(best_class_ids[idx])
-
-        # 缩放回原始图像坐标
-        scaled_bbox = bbox / max(resize_ratio, 1e-8)
-        x1 = float(max(0.0, min(float(scaled_bbox[0]), float(image_width))))
-        y1 = float(max(0.0, min(float(scaled_bbox[1]), float(image_height))))
-        x2 = float(max(0.0, min(float(scaled_bbox[2]), float(image_width))))
-        y2 = float(max(0.0, min(float(scaled_bbox[3]), float(image_height))))
-
-        class_name = labels[class_id] if 0 <= class_id < len(labels) else None
-        detections.append(
-            DetectionPredictionDetection(
-                bbox_xyxy=(round(x1, 4), round(y1, 4), round(x2, 4), round(y2, 4)),
-                score=round(score, 6),
-                class_id=class_id,
-                class_name=class_name,
-            )
-        )
-
-    # 已经按分数排序（argsort 降序）
-    return tuple(detections)
-
-
-def _postprocess_yolo_primary_prediction_array(
-    *,
-    prediction_array: Any,
-    np_module: Any,
-    num_classes: int,
-    score_threshold: float,
-    nms_threshold: float,
-) -> list[_YoloV8PostprocessResult | None]:
-    """执行 YOLO 主线输出的阈值过滤与 NMS。"""
-
-    normalized_prediction = np_module.asarray(prediction_array, dtype=np_module.float32)
-    if normalized_prediction.ndim == 2:
-        normalized_prediction = np_module.expand_dims(normalized_prediction, axis=0)
-    if normalized_prediction.ndim < 3:
-        raise InvalidRequestError(
-            "YOLO 主线推理输出维度不合法",
-            details={"shape": list(normalized_prediction.shape)},
-        )
-    if int(normalized_prediction.shape[2]) < 4 + num_classes:
-        raise InvalidRequestError(
-            "YOLO 主线推理输出通道数不足",
-            details={
-                "channel_count": int(normalized_prediction.shape[2]),
-                "required_channel_count": 4 + num_classes,
-            },
-        )
-
-    results: list[_YoloV8PostprocessResult | None] = []
-    for image_prediction in normalized_prediction:
-        boxes = image_prediction[:, :4]
-        class_scores = image_prediction[:, 4 : 4 + num_classes]
-        if int(boxes.shape[0]) <= 0:
-            results.append(None)
-            continue
-        best_scores = np_module.max(class_scores, axis=1)
-        best_class_ids = np_module.argmax(class_scores, axis=1).astype(np_module.int32, copy=False)
-        keep_mask = best_scores >= score_threshold
-        boxes = boxes[keep_mask]
-        best_scores = best_scores[keep_mask]
-        best_class_ids = best_class_ids[keep_mask]
-        if int(boxes.shape[0]) <= 0:
-            results.append(None)
-            continue
-        keep_indices = batched_nms_indices(
-            boxes=boxes,
-            scores=best_scores,
-            class_ids=best_class_ids,
-            nms_threshold=nms_threshold,
-            np_module=np_module,
-        )
-        if int(keep_indices.size) <= 0:
-            results.append(None)
-            continue
-        results.append(
-            _YoloV8PostprocessResult(
-                boxes_xyxy=boxes[keep_indices],
-                scores=best_scores[keep_indices],
-                class_ids=best_class_ids[keep_indices],
-            )
-        )
-    return results
+        is_end2end = bool(model_config.get("end2end", False))
+    if is_end2end:
+        return DETECTION_POSTPROCESS_MODE_END2END_TOPK, DEFAULT_END2END_MAX_DETECTIONS
+    return DETECTION_POSTPROCESS_MODE_NMS, None
 
 
 def _require_primary_model_type(model_type: str, model_label: str) -> str:

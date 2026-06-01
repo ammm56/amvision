@@ -118,6 +118,38 @@ WebSocket 资源流的统一消息结构、控制事件和重连规则见 [docs/
 | GET | /api/v1/models/detection/training-tasks/{task_id}/train-metrics | tasks:read | 读取当前 detection 训练任务最新的 train-metrics.json 内容。 |
 | GET | /api/v1/models/detection/training-tasks/{task_id}/output-files | tasks:read | 列出当前 detection 训练任务公开输出文件状态。 |
 | GET | /api/v1/models/detection/training-tasks/{task_id}/output-files/{file_name} | tasks:read | 读取单个 detection 训练输出文件的状态、object_key 和可内联 payload。 |
+
+### POST /api/v1/models/detection/training-tasks
+
+- 需要同时具备 `datasets:read` 和 `tasks:write`
+- `extra_options` 当前已经在 Swagger/OpenAPI 中展开 detection 训练公开字段，重点包括：
+  - `learning_rate`
+  - `weight_decay`
+  - `class_loss_weight`
+  - `box_loss_weight`
+  - `dfl_loss_weight`
+  - `flip_prob`
+  - `hsv_prob`
+  - `mosaic_prob`
+  - `mixup_prob`
+  - `enable_mixup`
+  - `degrees`
+  - `translate`
+  - `shear`
+  - `mosaic_scale`
+  - `mixup_scale`
+  - `evaluation_confidence_threshold`
+  - `evaluation_nms_threshold`
+  - `assign_topk`
+  - `assign_alpha`
+  - `assign_beta`
+  - `min_lr_ratio`
+  - `grad_clip_norm`
+- 统一 detection 控制面仍允许透传 backend 专用 `extra_options` 字段；当前 OpenAPI 只把平台已经正式化的公开字段展开说明。
+- 训练任务完成后，`summary.training_config` 当前会同时保存：
+  - `extra_options`：请求时显式传入的原始字段
+  - `resolved_extra_options`：训练真正生效的默认值与解析结果
+- 对 `YOLO26` 这类 end-to-end detection 模型，验证与推理摘要当前会显式写出 `evaluation_postprocess_mode=end2end-topk`；此时 `evaluation_nms_threshold` 仅保留为请求配置字段，不再作为实际后处理路径生效。
 | POST | /api/v1/models/classification/training-tasks | datasets:read + tasks:write | 按统一 classification 控制面创建 YOLOv8、YOLO11、YOLO26 分类训练任务。 |
 | GET | /api/v1/models/classification/training-tasks | tasks:read | 按 Project、模型分类和状态列出 classification 训练任务。 |
 | GET | /api/v1/models/classification/training-tasks/{task_id} | tasks:read | 查询单条 classification 训练任务详情。 |

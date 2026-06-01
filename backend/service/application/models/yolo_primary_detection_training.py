@@ -13,6 +13,12 @@ from pathlib import Path
 from typing import Any
 
 from backend.service.application.errors import InvalidRequestError, ServiceConfigurationError
+from backend.service.application.models.detection_postprocess import (
+    DEFAULT_END2END_MAX_DETECTIONS,
+    DETECTION_POSTPROCESS_MODE_END2END_TOPK,
+    DETECTION_POSTPROCESS_MODE_NMS,
+    postprocess_detection_prediction_array,
+)
 from backend.service.application.models.yolo_detection_model import (
     _dist2bbox_xyxy,
     _make_anchors,
@@ -21,7 +27,6 @@ from backend.service.application.models.yolo_primary_detection_model import (
     build_yolo_primary_detection_model,
     load_yolo_primary_checkpoint,
 )
-from backend.service.application.runtime.detection_runtime_support import batched_nms_indices
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 
 
@@ -813,6 +818,17 @@ def run_yolo_primary_detection_training(
     if validation_split is None and best_metric_value == float("inf"):
         best_metric_value = 0.0
 
+    evaluation_postprocess_mode = (
+        DETECTION_POSTPROCESS_MODE_END2END_TOPK
+        if is_end2end
+        else DETECTION_POSTPROCESS_MODE_NMS
+    )
+    evaluation_max_detections = (
+        DEFAULT_END2END_MAX_DETECTIONS
+        if evaluation_postprocess_mode == DETECTION_POSTPROCESS_MODE_END2END_TOPK
+        else None
+    )
+
     validation_metrics_payload = {
         "enabled": validation_split is not None and bool(validation_samples),
         "evaluation_interval": evaluation_interval,
@@ -822,7 +838,17 @@ def run_yolo_primary_detection_training(
             evaluation_confidence_threshold if validation_split is not None and bool(validation_samples) else None
         ),
         "nms_threshold": (
-            evaluation_nms_threshold if validation_split is not None and bool(validation_samples) else None
+            evaluation_nms_threshold
+            if validation_split is not None
+            and bool(validation_samples)
+            and evaluation_postprocess_mode == DETECTION_POSTPROCESS_MODE_NMS
+            else None
+        ),
+        "postprocess_mode": (
+            evaluation_postprocess_mode if validation_split is not None and bool(validation_samples) else None
+        ),
+        "max_detections": (
+            evaluation_max_detections if validation_split is not None and bool(validation_samples) else None
         ),
         "best_metric_name": best_metric_name if validation_split is not None and bool(validation_samples) else None,
         "best_metric_value": (
@@ -876,9 +902,13 @@ def run_yolo_primary_detection_training(
             ),
             "nms_threshold": (
                 evaluation_nms_threshold
-                if validation_split is not None and bool(validation_samples)
+                if validation_split is not None
+                and bool(validation_samples)
+                and evaluation_postprocess_mode == DETECTION_POSTPROCESS_MODE_NMS
                 else None
             ),
+            "postprocess_mode": evaluation_postprocess_mode,
+            "max_detections": evaluation_max_detections,
         },
         "loss_weights": {
             "class_loss_weight": class_loss_weight,
@@ -2808,6 +2838,16 @@ def _evaluate_validation_map(
     previous_training_mode = bool(model.training)
     model.eval()
     detections: list[dict[str, object]] = []
+    evaluation_postprocess_mode = (
+        DETECTION_POSTPROCESS_MODE_END2END_TOPK
+        if bool(getattr(model, "end2end", False))
+        else DETECTION_POSTPROCESS_MODE_NMS
+    )
+    evaluation_max_detections = (
+        DEFAULT_END2END_MAX_DETECTIONS
+        if evaluation_postprocess_mode == DETECTION_POSTPROCESS_MODE_END2END_TOPK
+        else None
+    )
     try:
         with torch.no_grad():
             for batch_samples in _iter_batches(list(samples), batch_size):
@@ -2829,6 +2869,8 @@ def _evaluate_validation_map(
                         category_ids=category_ids,
                         confidence_threshold=confidence_threshold,
                         nms_threshold=nms_threshold,
+                        postprocess_mode=evaluation_postprocess_mode,
+                        max_detections=evaluation_max_detections,
                     )
                 )
     finally:
@@ -2862,17 +2904,21 @@ def _convert_primary_predictions_to_coco_detections(
     category_ids: tuple[int, ...],
     confidence_threshold: float,
     nms_threshold: float,
+    postprocess_mode: str = DETECTION_POSTPROCESS_MODE_NMS,
+    max_detections: int | None = None,
 ) -> list[dict[str, object]]:
     """把主线 detection 预测结果转换为 COCO detection 列表。"""
 
     np_module = imports.np
     prediction_array = prediction_tensor.detach().cpu().numpy()
-    postprocess_results = _postprocess_yolo_primary_prediction_array(
+    postprocess_results = postprocess_detection_prediction_array(
         prediction_array=prediction_array,
         np_module=np_module,
         num_classes=len(category_ids),
         score_threshold=confidence_threshold,
         nms_threshold=nms_threshold,
+        postprocess_mode=postprocess_mode,
+        max_detections=max_detections,
     )
     detections: list[dict[str, object]] = []
     for batch_index, result in enumerate(postprocess_results):
@@ -2882,9 +2928,9 @@ def _convert_primary_predictions_to_coco_detections(
         scale_x = float(input_size[1]) / max(1.0, float(target.image_width))
         scale_y = float(input_size[0]) / max(1.0, float(target.image_height))
         for bbox, score, class_id in zip(
-            result["boxes_xyxy"],
-            result["scores"],
-            result["class_ids"],
+            result.boxes_xyxy,
+            result.scores,
+            result.class_ids,
             strict=True,
         ):
             x1 = max(0.0, min(float(bbox[0]) / scale_x, float(target.image_width)))
@@ -2905,69 +2951,6 @@ def _convert_primary_predictions_to_coco_detections(
                 }
             )
     return detections
-
-
-def _postprocess_yolo_primary_prediction_array(
-    *,
-    prediction_array: Any,
-    np_module: Any,
-    num_classes: int,
-    score_threshold: float,
-    nms_threshold: float,
-) -> list[dict[str, Any] | None]:
-    """执行主线 detection 输出的阈值过滤与 NMS。"""
-
-    normalized_prediction = np_module.asarray(prediction_array, dtype=np_module.float32)
-    if normalized_prediction.ndim == 2:
-        normalized_prediction = np_module.expand_dims(normalized_prediction, axis=0)
-    if normalized_prediction.ndim < 3:
-        raise InvalidRequestError(
-            "YOLO 主线推理输出维度不合法",
-            details={"shape": list(normalized_prediction.shape)},
-        )
-    if int(normalized_prediction.shape[2]) < 4 + num_classes:
-        raise InvalidRequestError(
-            "YOLO 主线推理输出通道数不足",
-            details={
-                "channel_count": int(normalized_prediction.shape[2]),
-                "required_channel_count": 4 + num_classes,
-            },
-        )
-
-    results: list[dict[str, Any] | None] = []
-    for image_prediction in normalized_prediction:
-        boxes = image_prediction[:, :4]
-        class_scores = image_prediction[:, 4 : 4 + num_classes]
-        if int(boxes.shape[0]) <= 0:
-            results.append(None)
-            continue
-        best_scores = np_module.max(class_scores, axis=1)
-        best_class_ids = np_module.argmax(class_scores, axis=1).astype(np_module.int32, copy=False)
-        keep_mask = best_scores >= score_threshold
-        boxes = boxes[keep_mask]
-        best_scores = best_scores[keep_mask]
-        best_class_ids = best_class_ids[keep_mask]
-        if int(boxes.shape[0]) <= 0:
-            results.append(None)
-            continue
-        keep_indices = batched_nms_indices(
-            boxes=boxes,
-            scores=best_scores,
-            class_ids=best_class_ids,
-            nms_threshold=nms_threshold,
-            np_module=np_module,
-        )
-        if int(keep_indices.size) <= 0:
-            results.append(None)
-            continue
-        results.append(
-            {
-                "boxes_xyxy": boxes[keep_indices],
-                "scores": best_scores[keep_indices],
-                "class_ids": best_class_ids[keep_indices],
-            }
-        )
-    return results
 
 
 def _load_coco_ground_truth_silently(

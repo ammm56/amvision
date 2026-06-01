@@ -1527,6 +1527,9 @@ class SqlAlchemyYoloPrimaryTrainingTaskService:
             validation_summary=validation_summary,
             warm_start_summary=dict(execution_result.warm_start_summary),
         )
+        summary["training_config"]["resolved_extra_options"] = _build_resolved_detection_extra_options_payload(
+            metrics_payload=execution_result.metrics_payload,
+        )
         summary["metrics_payload"] = execution_result.metrics_payload
         summary["validation_metrics_payload"] = execution_result.validation_metrics_payload
         return summary
@@ -1926,6 +1929,47 @@ class SqlAlchemyYoloPrimaryTrainingTaskService:
         """返回当前 UTC 时间的 ISO 字符串。"""
 
         return datetime.now(timezone.utc).isoformat()
+
+
+def _build_resolved_detection_extra_options_payload(
+    *,
+    metrics_payload: dict[str, object],
+) -> dict[str, object]:
+    """把训练执行过程里的有效 detection 配置整理成稳定摘要。"""
+
+    optimizer_summary = dict(metrics_payload.get("optimizer") or {})
+    scheduler_summary = dict(metrics_payload.get("scheduler") or {})
+    evaluation_summary = dict(metrics_payload.get("evaluation") or {})
+    loss_weight_summary = dict(metrics_payload.get("loss_weights") or {})
+    assignment_summary = dict(metrics_payload.get("assignment") or {})
+    gradient_summary = dict(metrics_payload.get("gradient_control") or {})
+    augmentation_summary = dict(metrics_payload.get("augmentation") or {})
+    return {
+        "learning_rate": optimizer_summary.get("learning_rate"),
+        "weight_decay": optimizer_summary.get("weight_decay"),
+        "class_loss_weight": loss_weight_summary.get("class_loss_weight"),
+        "box_loss_weight": loss_weight_summary.get("box_loss_weight"),
+        "dfl_loss_weight": loss_weight_summary.get("dfl_loss_weight"),
+        "evaluation_confidence_threshold": evaluation_summary.get("confidence_threshold"),
+        "evaluation_nms_threshold": evaluation_summary.get("nms_threshold"),
+        "evaluation_postprocess_mode": evaluation_summary.get("postprocess_mode"),
+        "evaluation_max_detections": evaluation_summary.get("max_detections"),
+        "assign_topk": assignment_summary.get("assign_topk"),
+        "assign_alpha": assignment_summary.get("assign_alpha"),
+        "assign_beta": assignment_summary.get("assign_beta"),
+        "min_lr_ratio": scheduler_summary.get("min_lr_ratio"),
+        "grad_clip_norm": gradient_summary.get("grad_clip_norm"),
+        "flip_prob": augmentation_summary.get("flip_prob"),
+        "hsv_prob": augmentation_summary.get("hsv_prob"),
+        "mosaic_prob": augmentation_summary.get("mosaic_prob"),
+        "mixup_prob": augmentation_summary.get("mixup_prob"),
+        "enable_mixup": augmentation_summary.get("enable_mixup"),
+        "degrees": augmentation_summary.get("degrees"),
+        "translate": augmentation_summary.get("translate"),
+        "shear": augmentation_summary.get("shear"),
+        "mosaic_scale": augmentation_summary.get("mosaic_scale"),
+        "mixup_scale": augmentation_summary.get("mixup_scale"),
+    }
 
 
 def _require_hook_value(hook_name: str, value: object, *, model_label: str) -> Any:

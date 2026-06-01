@@ -159,6 +159,7 @@ BACKEND_MODULES: tuple[str, ...] = (
     "backend.service.application.models.detection_inference_payloads",
     "backend.service.application.models.detection_inference_task_service",
     "backend.service.application.models.detection_async_inference_gateway",
+    "backend.service.application.models.detection_postprocess",
     "backend.service.application.runtime.detection_model_runtime",
     "backend.service.application.runtime.detection_runtime_contracts",
     "backend.service.application.runtime.detection_runtime_support",
