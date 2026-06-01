@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import gc
 from pathlib import Path
 
 import cv2
@@ -247,6 +248,199 @@ def test_rfdetr_segmentation_runtime_registry_routes_openvino_and_tensorrt(
     assert tensorrt_session["pinned_output_buffer_enabled"] is True
     assert tensorrt_session["pinned_output_buffer_max_bytes"] == 4096
     assert captured_calls == [("openvino", "openvino"), ("tensorrt", "tensorrt")]
+
+
+def test_rfdetr_segmentation_openvino_real_toolchain_smoke(
+    tmp_path: Path,
+) -> None:
+    """验证 RF-DETR segmentation 可通过真实 OpenVINO 工具链完成转换并进入部署推理。"""
+
+    pytest.importorskip("onnx")
+    pytest.importorskip("onnxruntime")
+    pytest.importorskip("onnxsim")
+    pytest.importorskip("openvino")
+
+    execution_result = _run_rfdetr_segmentation_real_toolchain_smoke(
+        tmp_path=tmp_path,
+        target_format="openvino-ir",
+        conversion_extra_options={"openvino_ir_precision": "fp32"},
+        runtime_backend="openvino",
+        device_name="cpu",
+        runtime_precision="fp32",
+    )
+
+    assert execution_result.runtime_session_info.backend_name == "openvino"
+    assert execution_result.image_width == 64
+    assert execution_result.image_height == 64
+    assert len(execution_result.instances) == 1
+
+
+def test_rfdetr_segmentation_tensorrt_real_toolchain_smoke(
+    tmp_path: Path,
+) -> None:
+    """验证 RF-DETR segmentation 可通过真实 TensorRT 工具链完成转换并进入部署推理。"""
+
+    pytest.importorskip("onnx")
+    pytest.importorskip("onnxruntime")
+    pytest.importorskip("onnxsim")
+    pytest.importorskip("tensorrt")
+    pytest.importorskip("cuda")
+
+    import torch
+
+    if not torch.cuda.is_available():
+        pytest.skip("当前环境没有可用 CUDA device，跳过 TensorRT 真实 smoke")
+
+    execution_result = _run_rfdetr_segmentation_real_toolchain_smoke(
+        tmp_path=tmp_path,
+        target_format="tensorrt-engine",
+        conversion_extra_options={"tensorrt_engine_precision": "fp32"},
+        runtime_backend="tensorrt",
+        device_name="cuda:0",
+        runtime_precision="fp32",
+    )
+
+    assert execution_result.runtime_session_info.backend_name == "tensorrt"
+    assert execution_result.image_width == 64
+    assert execution_result.image_height == 64
+    assert len(execution_result.instances) == 1
+    assert (
+        execution_result.runtime_session_info.metadata["engine_output_names"]
+        == [
+            "pred_logits",
+            "pred_boxes",
+            "pred_masks",
+            "input.352",
+            "input.388",
+            "2920",
+            "3021",
+            "3137",
+        ]
+    )
+
+
+def _run_rfdetr_segmentation_real_toolchain_smoke(
+    *,
+    tmp_path: Path,
+    target_format: str,
+    conversion_extra_options: dict[str, object],
+    runtime_backend: str,
+    device_name: str,
+    runtime_precision: str,
+):
+    """执行 RF-DETR segmentation 真实工具链 smoke，并返回最终推理结果。"""
+
+    session_factory = _create_session_factory()
+    dataset_storage = _create_dataset_storage(tmp_path)
+    queue_backend = _create_queue_backend(tmp_path)
+    _seed_rfdetr_segmentation_dataset_export(
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+        dataset_export_id=f"rfdetr-seg-real-{target_format}",
+    )
+
+    training_service = SqlAlchemyRfdetrSegmentationTrainingTaskService(
+        session_factory=session_factory,
+        queue_backend=queue_backend,
+        dataset_storage=dataset_storage,
+    )
+    training_submission = training_service.submit_training_task(
+        RfdetrSegmentationTrainingTaskRequest(
+            project_id="project-1",
+            recipe_id=f"recipe-rfdetr-seg-real-{target_format}",
+            model_type="rfdetr",
+            model_scale="nano",
+            output_model_name=f"rfdetr-seg-real-{target_format}",
+            dataset_export_id=f"rfdetr-seg-real-{target_format}",
+            max_epochs=1,
+            batch_size=1,
+            input_size=(64, 64),
+            precision="fp32",
+            extra_options={
+                "device": "cpu",
+                "learning_rate": 1e-4,
+                "evaluation_interval": 1,
+            },
+        )
+    )
+    claimed_training_queue_task = queue_backend.claim_next(
+        queue_name=training_submission["queue_name"],
+        worker_id=f"rfdetr-seg-real-training-{target_format}",
+    )
+    assert claimed_training_queue_task is not None
+
+    task_service = SqlAlchemyTaskService(session_factory=session_factory)
+    training_task_record = task_service.get_task(training_submission["task_id"]).task
+    training_result = training_service.process_training_task(
+        training_task_record,
+        model_type="rfdetr",
+    )
+    assert task_service.get_task(training_submission["task_id"]).task.state == "succeeded"
+
+    conversion_service = SqlAlchemyRfdetrConversionTaskService(
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+        queue_backend=queue_backend,
+    )
+    conversion_submission = conversion_service.submit_conversion_task(
+        RfdetrConversionTaskRequest(
+            project_id="project-1",
+            source_model_version_id=str(training_result["model_version_id"]),
+            target_formats=(target_format,),
+            task_type="segmentation",
+            extra_options=dict(conversion_extra_options),
+        )
+    )
+    claimed_conversion_queue_task = queue_backend.claim_next(
+        queue_name=conversion_submission.queue_name,
+        worker_id=f"rfdetr-seg-real-conversion-{target_format}",
+    )
+    assert claimed_conversion_queue_task is not None
+
+    conversion_result = conversion_service.process_conversion_task(
+        conversion_submission.task_id
+    )
+    assert task_service.get_task(conversion_submission.task_id).task.state == "succeeded"
+    target_build = next(
+        build
+        for build in conversion_result["builds"]
+        if build["build_format"] == target_format
+    )
+
+    deployment_service = SqlAlchemySegmentationDeploymentService(
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+    )
+    deployment_view = deployment_service.create_deployment_instance(
+        SegmentationDeploymentInstanceCreateRequest(
+            project_id="project-1",
+            model_type="rfdetr",
+            model_build_id=str(target_build["model_build_id"]),
+            runtime_backend=runtime_backend,
+            device_name=device_name,
+            runtime_precision=runtime_precision,
+            display_name=f"rfdetr segmentation {target_format} real smoke",
+        ),
+        created_by="smoke-test",
+    )
+    process_config = deployment_service.resolve_process_config(
+        deployment_view.deployment_instance_id
+    )
+    runtime_session = DefaultSegmentationModelRuntime().load_session(
+        dataset_storage=dataset_storage,
+        runtime_target=process_config.runtime_target,
+    )
+    execution_result = runtime_session.predict(
+        SegmentationPredictionRequest(
+            score_threshold=0.01,
+            mask_threshold=0.5,
+            save_result_image=False,
+            input_image_bytes=_build_test_image_bytes(),
+        )
+    )
+    del runtime_session
+    gc.collect()
+    return execution_result
 
 
 def _build_runtime_target_snapshot(

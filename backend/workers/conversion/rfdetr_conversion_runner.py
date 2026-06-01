@@ -261,10 +261,6 @@ class LocalRfdetrConversionRunner(LocalYoloXConversionRunner, ConversionBackend)
 
         output_path = self.dataset_storage.resolve(output_object_key)
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        dynamic_axes = {
-            "image": {0: "batch"},
-            **{output_name: {0: "batch"} for output_name in output_names},
-        }
         with torch.no_grad():
             torch.onnx.export(
                 model,
@@ -275,7 +271,6 @@ class LocalRfdetrConversionRunner(LocalYoloXConversionRunner, ConversionBackend)
                 do_constant_folding=True,
                 input_names=["image"],
                 output_names=list(output_names),
-                dynamic_axes=dynamic_axes,
             )
         return {
             "stage": "export-onnx",

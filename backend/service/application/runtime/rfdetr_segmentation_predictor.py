@@ -643,8 +643,10 @@ class TensorRTRfdetrSegmentationRuntimeSession:
         context: Any,
         device_name: str,
         input_name: str,
+        all_output_names: tuple[str, ...],
         output_names: tuple[str, ...],
         input_dtype_name: str,
+        all_output_dtype_names: tuple[str, ...],
         output_dtype_names: tuple[str, ...],
         stream: Any,
         execute_start_event: Any,
@@ -662,8 +664,10 @@ class TensorRTRfdetrSegmentationRuntimeSession:
         self.context = context
         self.device_name = device_name
         self.input_name = input_name
+        self.all_output_names = all_output_names
         self.output_names = output_names
         self.input_dtype_name = input_dtype_name
+        self.all_output_dtype_names = all_output_dtype_names
         self.output_dtype_names = output_dtype_names
         self.stream = stream
         self.execute_start_event = execute_start_event
@@ -795,11 +799,20 @@ class TensorRTRfdetrSegmentationRuntimeSession:
             context=context,
             device_name=device_name,
             input_name=input_name,
+            all_output_names=all_output_names,
             output_names=output_names,
             input_dtype_name=resolve_tensorrt_dtype_name(
                 tensorrt_module=tensorrt_module,
                 tensor_dtype=engine.get_tensor_dtype(input_name),
                 fallback="float32",
+            ),
+            all_output_dtype_names=tuple(
+                resolve_tensorrt_dtype_name(
+                    tensorrt_module=tensorrt_module,
+                    tensor_dtype=engine.get_tensor_dtype(name),
+                    fallback="float32",
+                )
+                for name in all_output_names
             ),
             output_dtype_names=tuple(
                 resolve_tensorrt_dtype_name(
@@ -838,7 +851,7 @@ class TensorRTRfdetrSegmentationRuntimeSession:
 
         input_device_ptr: int | None = None
         output_device_ptrs: list[int] = []
-        output_arrays: list[Any] = []
+        output_arrays_by_name: dict[str, Any] = {}
         infer_started_at = perf_counter()
         try:
             ensure_cuda_success(
@@ -887,7 +900,7 @@ class TensorRTRfdetrSegmentationRuntimeSession:
                     details={"input_name": self.input_name},
                 )
 
-            for index, output_name in enumerate(self.output_names):
+            for index, output_name in enumerate(self.all_output_names):
                 resolved_shape = normalize_tensor_shape(self.context.get_tensor_shape(output_name))
                 if any(dim < 0 for dim in resolved_shape):
                     raise ServiceConfigurationError(
@@ -896,10 +909,10 @@ class TensorRTRfdetrSegmentationRuntimeSession:
                     )
                 output_dtype = resolve_numpy_dtype(
                     np_module=imports.np,
-                    dtype_name=self.output_dtype_names[index],
+                    dtype_name=self.all_output_dtype_names[index],
                 )
                 output_array = imports.np.empty(resolved_shape, dtype=output_dtype)
-                output_arrays.append(output_array)
+                output_arrays_by_name[output_name] = output_array
                 output_device_ptr = ensure_cuda_success(
                     imports.cudart.cudaMalloc(int(output_array.nbytes)),
                     operation_name="TensorRT RF-DETR segmentation 分配输出显存",
@@ -927,12 +940,12 @@ class TensorRTRfdetrSegmentationRuntimeSession:
                 operation_name="TensorRT RF-DETR segmentation 记录执行终点 event",
                 details={"device_name": self.device_name},
             )
-            for output_name, output_device_ptr, output_array in zip(
-                self.output_names,
+            for output_name, output_device_ptr in zip(
+                self.all_output_names,
                 output_device_ptrs,
-                output_arrays,
                 strict=True,
             ):
+                output_array = output_arrays_by_name[output_name]
                 ensure_cuda_success(
                     imports.cudart.cudaMemcpyAsync(
                         int(output_array.ctypes.data),
@@ -972,9 +985,9 @@ class TensorRTRfdetrSegmentationRuntimeSession:
             torch_module=imports.torch,
             postprocess_model=self.postprocess_model,
             raw_outputs={
-                "pred_logits": output_arrays[0],
-                "pred_boxes": output_arrays[1],
-                "pred_masks": output_arrays[2],
+                "pred_logits": output_arrays_by_name[self.output_names[0]],
+                "pred_boxes": output_arrays_by_name[self.output_names[1]],
+                "pred_masks": output_arrays_by_name[self.output_names[2]],
             },
             image_height=int(image.shape[0]),
             image_width=int(image.shape[1]),
@@ -1012,11 +1025,13 @@ class TensorRTRfdetrSegmentationRuntimeSession:
                 ),
                 output_specs=tuple(
                     SegmentationRuntimeTensorSpec(
-                        name=self.output_names[index],
-                        shape=tuple(int(item) for item in output_array.shape),
+                        name=output_name,
+                        shape=tuple(
+                            int(item) for item in output_arrays_by_name[output_name].shape
+                        ),
                         dtype=self.output_dtype_names[index],
                     )
-                    for index, output_array in enumerate(output_arrays)
+                    for index, output_name in enumerate(self.output_names)
                 ),
                 metadata={
                     "model_type": "rfdetr",
@@ -1031,6 +1046,7 @@ class TensorRTRfdetrSegmentationRuntimeSession:
                     "infer_ms": infer_ms,
                     "infer_execute_gpu_ms": infer_execute_gpu_ms,
                     "postprocess_ms": postprocess_ms,
+                    "engine_output_names": list(self.all_output_names),
                     "output_names": list(self.output_names),
                 },
             ),
@@ -1221,7 +1237,7 @@ def _as_preview_detection(instance: SegmentationPredictionInstance) -> dict[str,
     }
 
 
-def _list_tensorrt_output_names(*, engine: Any, tensorrt_module: Any) -> list[str]:
+def _list_tensorrt_output_names(engine: Any, *, tensorrt_module: Any) -> list[str]:
     names: list[str] = []
     for index in range(int(engine.num_io_tensors)):
         name = engine.get_tensor_name(index)
