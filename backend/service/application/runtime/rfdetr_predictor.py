@@ -1,72 +1,214 @@
 """RF-DETR 单图推理实现。"""
 
 from __future__ import annotations
+
 from time import perf_counter
 from typing import Any
 
-from backend.service.application.errors import InvalidRequestError, ServiceConfigurationError
-from backend.service.application.models.rfdetr_model import RfdetrModel, build_rfdetr_model
+from backend.service.application.errors import (
+    InvalidRequestError,
+    ServiceConfigurationError,
+)
+from backend.service.application.models.rfdetr_model import build_rfdetr_model
 from backend.service.application.runtime.detection_runtime_contracts import (
-    DetectionPredictionDetection, DetectionPredictionExecutionResult,
-    DetectionPredictionRequest, DetectionRuntimeSessionInfo, DetectionRuntimeTensorSpec,
+    DetectionPredictionDetection,
+    DetectionPredictionExecutionResult,
+    DetectionPredictionRequest,
+    DetectionRuntimeSessionInfo,
+    DetectionRuntimeTensorSpec,
 )
 from backend.service.application.runtime.detection_runtime_support import (
-    load_prediction_image, render_preview_image,
-    import_onnxruntime_module, resolve_onnxruntime_providers, require_inference_imports,
+    build_openvino_compile_properties,
+    ensure_cuda_success,
+    get_tensorrt_logger,
+    import_onnxruntime_module,
+    import_openvino_module,
+    import_tensorrt_module,
+    load_prediction_image,
+    measure_cuda_event_elapsed_ms,
+    normalize_tensor_shape,
+    render_preview_image,
+    require_cuda_inference_imports,
+    resolve_cuda_device_index,
+    resolve_cuda_runtime_device_name,
+    resolve_execution_device_name,
+    resolve_numpy_dtype,
+    resolve_onnxruntime_providers,
+    resolve_openvino_compiled_runtime_precision,
+    resolve_openvino_device_name,
+    resolve_openvino_port_name,
+    resolve_tensorrt_dtype_name,
+    resolve_tensorrt_io_tensor_name,
 )
-from backend.service.application.runtime.yolox_runtime_target import RuntimeTargetSnapshot, describe_runtime_execution_mode
-from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
+from backend.service.application.runtime.yolox_runtime_target import (
+    RuntimeTargetSnapshot,
+    describe_runtime_execution_mode,
+)
+from backend.service.infrastructure.object_store.local_dataset_storage import (
+    LocalDatasetStorage,
+)
 
-_RF_INPUT_SIZES = {"nano": 384, "s": 512, "m": 576, "l": 704}
+
+_RF_INPUT_SIZES = {
+    "nano": 384,
+    "s": 512,
+    "m": 576,
+    "l": 704,
+}
 
 
 class PyTorchRfdetrRuntimeSession:
     """已经加载完成并可重复推理的 PyTorch RF-DETR 会话。"""
 
-    model_type = "rfdetr"; model_label = "RF-DETR"; task_type = "detection"
+    model_type = "rfdetr"
+    model_label = "RF-DETR"
+    task_type = "detection"
 
-    def __init__(self, *, dataset_storage, runtime_target, imports, model, device_name, runtime_precision, input_size):
-        self.dataset_storage = dataset_storage; self.runtime_target = runtime_target; self.imports = imports
-        self.model = model; self.device_name = device_name; self.runtime_precision = runtime_precision; self.input_size = input_size
+    def __init__(
+        self,
+        *,
+        dataset_storage: LocalDatasetStorage,
+        runtime_target: RuntimeTargetSnapshot,
+        imports: Any,
+        model: Any,
+        device_name: str,
+        runtime_precision: str,
+        input_size: tuple[int, int],
+    ) -> None:
+        self.dataset_storage = dataset_storage
+        self.runtime_target = runtime_target
+        self.imports = imports
+        self.model = model
+        self.device_name = device_name
+        self.runtime_precision = runtime_precision
+        self.input_size = input_size
 
     @classmethod
-    def load(cls, *, dataset_storage: LocalDatasetStorage, runtime_target: RuntimeTargetSnapshot) -> "PyTorchRfdetrRuntimeSession":
+    def load(
+        cls,
+        *,
+        dataset_storage: LocalDatasetStorage,
+        runtime_target: RuntimeTargetSnapshot,
+    ) -> "PyTorchRfdetrRuntimeSession":
         if runtime_target.runtime_backend != "pytorch":
-            raise InvalidRequestError("RF-DETR predictor 仅支持 pytorch", details={"runtime_backend": runtime_target.runtime_backend})
-        import cv2, numpy as np, torch
-        imp = type("_I", (), {"cv2": cv2, "np": np, "torch": torch})()
-        input_size = _RF_INPUT_SIZES.get(runtime_target.model_scale, 384)
-        model = build_rfdetr_model(model_scale=runtime_target.model_scale, num_classes=len(runtime_target.labels), pretrained_path=str(runtime_target.runtime_artifact_path) if runtime_target.runtime_artifact_path else None)
-        dn = runtime_target.device_name or "cpu"
-        if dn == "cuda" and torch.cuda.is_available(): dn = "cuda:0"
-        model.to(dn); model.eval()
-        return cls(dataset_storage=dataset_storage, runtime_target=runtime_target, imports=imp, model=model, device_name=dn, runtime_precision=runtime_target.runtime_precision or "fp32", input_size=(input_size, input_size))
+            raise InvalidRequestError(
+                "RF-DETR predictor 仅支持 pytorch",
+                details={"runtime_backend": runtime_target.runtime_backend},
+            )
+
+        import cv2
+        import numpy as np
+        import torch
+
+        imports = type(
+            "_RfdetrPredictorImports",
+            (),
+            {"cv2": cv2, "np": np, "torch": torch},
+        )()
+        model = build_rfdetr_model(
+            model_scale=runtime_target.model_scale,
+            num_classes=len(runtime_target.labels),
+            pretrained_path=(
+                str(runtime_target.runtime_artifact_path)
+                if runtime_target.runtime_artifact_path
+                else None
+            ),
+        )
+        device_name = resolve_execution_device_name(
+            torch_module=torch,
+            requested_device_name=runtime_target.device_name or "cpu",
+        )
+        model.to(device_name)
+        model.eval()
+        return cls(
+            dataset_storage=dataset_storage,
+            runtime_target=runtime_target,
+            imports=imports,
+            model=model,
+            device_name=device_name,
+            runtime_precision=runtime_target.runtime_precision or "fp32",
+            input_size=_resolve_input_size(runtime_target),
+        )
 
     def predict(self, request: DetectionPredictionRequest) -> DetectionPredictionExecutionResult:
-        return _predict(self, request, is_onnx=False)
+        return _predict_pytorch(self, request)
 
 
 class OnnxRuntimeRfdetrRuntimeSession:
-    """已经加载完成并可重复推理的 ONNX RF-DETR 会话。"""
+    """已经加载完成并可重复推理的 ONNX Runtime RF-DETR 会话。"""
 
-    model_type = "rfdetr"; model_label = "RF-DETR"; task_type = "detection"
+    model_type = "rfdetr"
+    model_label = "RF-DETR"
+    task_type = "detection"
 
-    def __init__(self, *, dataset_storage, runtime_target, imports, session, device_name, input_name, output_names, input_size):
-        self.dataset_storage = dataset_storage; self.runtime_target = runtime_target; self.imports = imports
-        self.session = session; self.device_name = device_name; self.input_name = input_name
-        self.output_names = output_names; self.input_size = input_size
+    def __init__(
+        self,
+        *,
+        dataset_storage: LocalDatasetStorage,
+        runtime_target: RuntimeTargetSnapshot,
+        imports: Any,
+        session: Any,
+        device_name: str,
+        input_name: str,
+        output_names: tuple[str, str],
+        postprocess_model: Any,
+        input_size: tuple[int, int],
+    ) -> None:
+        self.dataset_storage = dataset_storage
+        self.runtime_target = runtime_target
+        self.imports = imports
+        self.session = session
+        self.device_name = device_name
+        self.input_name = input_name
+        self.output_names = output_names
+        self.postprocess_model = postprocess_model
+        self.input_size = input_size
 
     @classmethod
-    def load(cls, *, dataset_storage: LocalDatasetStorage, runtime_target: RuntimeTargetSnapshot) -> "OnnxRuntimeRfdetrRuntimeSession":
+    def load(
+        cls,
+        *,
+        dataset_storage: LocalDatasetStorage,
+        runtime_target: RuntimeTargetSnapshot,
+    ) -> "OnnxRuntimeRfdetrRuntimeSession":
         if runtime_target.runtime_backend != "onnxruntime":
-            raise InvalidRequestError("RF-DETR predictor 仅支持 onnxruntime", details={"runtime_backend": runtime_target.runtime_backend})
-        import cv2, numpy as np, torch
-        imp = type("_I", (), {"cv2": cv2, "np": np, "torch": torch})()
+            raise InvalidRequestError(
+                "RF-DETR predictor 仅支持 onnxruntime",
+                details={"runtime_backend": runtime_target.runtime_backend},
+            )
+
+        import cv2
+        import numpy as np
+        import torch
+
+        imports = type(
+            "_RfdetrOnnxPredictorImports",
+            (),
+            {"cv2": cv2, "np": np, "torch": torch},
+        )()
         onnxruntime_module = import_onnxruntime_module()
-        providers = resolve_onnxruntime_providers(onnxruntime_module=onnxruntime_module, requested_device_name=runtime_target.device_name)
-        session = onnxruntime_module.InferenceSession(str(runtime_target.runtime_artifact_path), providers=providers)
-        input_size = _RF_INPUT_SIZES.get(runtime_target.model_scale, 384)
-        return cls(dataset_storage=dataset_storage, runtime_target=runtime_target, imports=imp, session=session, device_name=runtime_target.device_name, input_name=session.get_inputs()[0].name, output_names=tuple(o.name for o in session.get_outputs()), input_size=(input_size, input_size))
+        providers = resolve_onnxruntime_providers(
+            onnxruntime_module=onnxruntime_module,
+            requested_device_name=runtime_target.device_name,
+        )
+        session = onnxruntime_module.InferenceSession(
+            str(runtime_target.runtime_artifact_path),
+            providers=providers,
+        )
+        output_names = _resolve_rfdetr_output_names(
+            tuple(item.name for item in session.get_outputs()),
+        )
+        return cls(
+            dataset_storage=dataset_storage,
+            runtime_target=runtime_target,
+            imports=imports,
+            session=session,
+            device_name=runtime_target.device_name or "cpu",
+            input_name=session.get_inputs()[0].name,
+            output_names=output_names,
+            postprocess_model=_build_postprocess_model(runtime_target),
+            input_size=_resolve_input_size(runtime_target),
+        )
 
     def predict(self, request: DetectionPredictionRequest) -> DetectionPredictionExecutionResult:
         return _predict_onnx(self, request)
@@ -75,31 +217,97 @@ class OnnxRuntimeRfdetrRuntimeSession:
 class OpenVINORfdetrRuntimeSession:
     """已经加载完成并可重复推理的 OpenVINO RF-DETR 会话。"""
 
-    model_type = "rfdetr"; model_label = "RF-DETR"; task_type = "detection"
+    model_type = "rfdetr"
+    model_label = "RF-DETR"
+    task_type = "detection"
 
-    def __init__(self, *, dataset_storage, runtime_target, imports, session, device_name, input_name, output_names, input_size, compiled_device_name, compiled_runtime_precision):
-        self.dataset_storage = dataset_storage; self.runtime_target = runtime_target; self.imports = imports
-        self.session = session; self.device_name = device_name; self.input_name = input_name
-        self.output_names = output_names; self.input_size = input_size
-        self.compiled_device_name = compiled_device_name; self.compiled_runtime_precision = compiled_runtime_precision
+    def __init__(
+        self,
+        *,
+        dataset_storage: LocalDatasetStorage,
+        runtime_target: RuntimeTargetSnapshot,
+        imports: Any,
+        session: Any,
+        device_name: str,
+        input_name: str,
+        output_names: tuple[str, str],
+        compiled_device_name: str,
+        compiled_runtime_precision: str,
+        postprocess_model: Any,
+        input_size: tuple[int, int],
+    ) -> None:
+        self.dataset_storage = dataset_storage
+        self.runtime_target = runtime_target
+        self.imports = imports
+        self.session = session
+        self.device_name = device_name
+        self.input_name = input_name
+        self.output_names = output_names
+        self.compiled_device_name = compiled_device_name
+        self.compiled_runtime_precision = compiled_runtime_precision
+        self.postprocess_model = postprocess_model
+        self.input_size = input_size
 
     @classmethod
-    def load(cls, *, dataset_storage: LocalDatasetStorage, runtime_target: RuntimeTargetSnapshot) -> "OpenVINORfdetrRuntimeSession":
+    def load(
+        cls,
+        *,
+        dataset_storage: LocalDatasetStorage,
+        runtime_target: RuntimeTargetSnapshot,
+    ) -> "OpenVINORfdetrRuntimeSession":
         if runtime_target.runtime_backend != "openvino":
-            raise InvalidRequestError("RF-DETR predictor 仅支持 openvino", details={"runtime_backend": runtime_target.runtime_backend})
-        import cv2, numpy as np, torch
-        imp = type("_I", (), {"cv2": cv2, "np": np, "torch": torch})()
-        openvino = _import_openvino_module()
-        core = openvino.Core()
-        compiled_device_name = runtime_target.device_name or "CPU"
-        compile_properties = {}
-        if runtime_target.runtime_precision == "fp16" and compiled_device_name in ("GPU", "NPU"):
-            compile_properties["INFERENCE_PRECISION_HINT"] = "FP16"
-        session = core.compile_model(str(runtime_target.runtime_artifact_path), compiled_device_name, compile_properties)
-        input_size = _RF_INPUT_SIZES.get(runtime_target.model_scale, 384)
-        input_name = session.input(0).get_any_name()
-        output_names = tuple(session.output(i).get_any_name() for i in range(len(session.outputs)))
-        return cls(dataset_storage=dataset_storage, runtime_target=runtime_target, imports=imp, session=session, device_name=runtime_target.device_name, input_name=input_name, output_names=output_names, input_size=(input_size, input_size), compiled_device_name=compiled_device_name, compiled_runtime_precision=runtime_target.runtime_precision or "fp32")
+            raise InvalidRequestError(
+                "RF-DETR predictor 仅支持 openvino",
+                details={"runtime_backend": runtime_target.runtime_backend},
+            )
+
+        import cv2
+        import numpy as np
+        import torch
+
+        imports = type(
+            "_RfdetrOpenVinoPredictorImports",
+            (),
+            {"cv2": cv2, "np": np, "torch": torch},
+        )()
+        openvino_module = import_openvino_module()
+        compiled_device_name = resolve_openvino_device_name(
+            requested_device_name=runtime_target.device_name,
+        )
+        compile_properties = build_openvino_compile_properties(
+            openvino_module=openvino_module,
+            runtime_precision=runtime_target.runtime_precision,
+            requested_device_name=runtime_target.device_name,
+        )
+        session = openvino_module.Core().compile_model(
+            str(runtime_target.runtime_artifact_path),
+            compiled_device_name,
+            compile_properties,
+        )
+        input_name = resolve_openvino_port_name(session.input(0), fallback="images")
+        output_names = _resolve_rfdetr_output_names(
+            tuple(
+                resolve_openvino_port_name(session.output(index), fallback=f"output-{index}")
+                for index in range(len(session.outputs))
+            )
+        )
+        return cls(
+            dataset_storage=dataset_storage,
+            runtime_target=runtime_target,
+            imports=imports,
+            session=session,
+            device_name=runtime_target.device_name or compiled_device_name,
+            input_name=input_name,
+            output_names=output_names,
+            compiled_device_name=compiled_device_name,
+            compiled_runtime_precision=resolve_openvino_compiled_runtime_precision(
+                requested_runtime_precision=runtime_target.runtime_precision,
+                compile_properties=compile_properties,
+                fallback="fp32",
+            ),
+            postprocess_model=_build_postprocess_model(runtime_target),
+            input_size=_resolve_input_size(runtime_target),
+        )
 
     def predict(self, request: DetectionPredictionRequest) -> DetectionPredictionExecutionResult:
         return _predict_openvino(self, request)
@@ -108,189 +316,861 @@ class OpenVINORfdetrRuntimeSession:
 class TensorRTRfdetrRuntimeSession:
     """已经加载完成并可重复推理的 TensorRT RF-DETR 会话。"""
 
-    model_type = "rfdetr"; model_label = "RF-DETR"; task_type = "detection"
+    model_type = "rfdetr"
+    model_label = "RF-DETR"
+    task_type = "detection"
 
-    def __init__(self, *, dataset_storage, runtime_target, imports, engine, context, device_name, input_name, output_names, input_size, input_bindings, output_bindings):
-        self.dataset_storage = dataset_storage; self.runtime_target = runtime_target; self.imports = imports
-        self.engine = engine; self.context = context; self.device_name = device_name
-        self.input_name = input_name; self.output_names = output_names; self.input_size = input_size
-        self.input_bindings = input_bindings; self.output_bindings = output_bindings
+    def __init__(
+        self,
+        *,
+        dataset_storage: LocalDatasetStorage,
+        runtime_target: RuntimeTargetSnapshot,
+        imports: Any,
+        tensorrt_module: Any,
+        logger: Any,
+        runtime: Any,
+        engine: Any,
+        context: Any,
+        device_name: str,
+        input_name: str,
+        all_output_names: tuple[str, ...],
+        output_names: tuple[str, str],
+        input_dtype_name: str,
+        all_output_dtype_names: tuple[str, ...],
+        output_dtype_names: tuple[str, str],
+        stream: Any,
+        execute_start_event: Any,
+        execute_end_event: Any,
+        postprocess_model: Any,
+        input_size: tuple[int, int],
+    ) -> None:
+        self.dataset_storage = dataset_storage
+        self.runtime_target = runtime_target
+        self.imports = imports
+        self.tensorrt_module = tensorrt_module
+        self.logger = logger
+        self.runtime = runtime
+        self.engine = engine
+        self.context = context
+        self.device_name = device_name
+        self.input_name = input_name
+        self.all_output_names = all_output_names
+        self.output_names = output_names
+        self.input_dtype_name = input_dtype_name
+        self.all_output_dtype_names = all_output_dtype_names
+        self.output_dtype_names = output_dtype_names
+        self.stream = stream
+        self.execute_start_event = execute_start_event
+        self.execute_end_event = execute_end_event
+        self.postprocess_model = postprocess_model
+        self.input_size = input_size
+
+    def __del__(self) -> None:
+        try:
+            ensure_cuda_success(
+                self.imports.cudart.cudaSetDevice(resolve_cuda_device_index(self.device_name)),
+                operation_name="TensorRT RF-DETR runtime 释放前绑定 CUDA device",
+                details={"device_name": self.device_name},
+            )
+        except Exception:
+            return
+        for event_name in ("execute_start_event", "execute_end_event"):
+            event = getattr(self, event_name, None)
+            if event is not None:
+                try:
+                    self.imports.cudart.cudaEventDestroy(event)
+                except Exception:
+                    pass
+        stream = getattr(self, "stream", None)
+        if stream is not None:
+            try:
+                self.imports.cudart.cudaStreamDestroy(stream)
+            except Exception:
+                pass
 
     @classmethod
-    def load(cls, *, dataset_storage: LocalDatasetStorage, runtime_target: RuntimeTargetSnapshot) -> "TensorRTRfdetrRuntimeSession":
+    def load(
+        cls,
+        *,
+        dataset_storage: LocalDatasetStorage,
+        runtime_target: RuntimeTargetSnapshot,
+    ) -> "TensorRTRfdetrRuntimeSession":
         if runtime_target.runtime_backend != "tensorrt":
-            raise InvalidRequestError("RF-DETR predictor 仅支持 tensorrt", details={"runtime_backend": runtime_target.runtime_backend})
-        import cv2, numpy as np, torch, pycuda.driver as cuda
-        imp = type("_I", (), {"cv2": cv2, "np": np, "torch": torch, "cuda": cuda})()
-        tensorrt = _import_tensorrt_module()
-        cuda.init()
-        device_name = runtime_target.device_name or "cuda:0"
-        device_idx = int(device_name.split(":")[-1]) if ":" in device_name else 0
-        cuda.Device(device_idx).make_context()
-        with open(str(runtime_target.runtime_artifact_path), "rb") as f:
-            engine_data = f.read()
-        runtime = tensorrt.Runtime(tensorrt.Logger(tensorrt.Logger.WARNING))
-        engine = runtime.deserialize_cuda_engine(engine_data)
+            raise InvalidRequestError(
+                "RF-DETR predictor 仅支持 tensorrt",
+                details={"runtime_backend": runtime_target.runtime_backend},
+            )
+
+        import torch
+
+        cuda_imports = require_cuda_inference_imports()
+        tensorrt_module = import_tensorrt_module()
+        device_name = resolve_cuda_runtime_device_name(
+            cudart_module=cuda_imports.cudart,
+            requested_device_name=runtime_target.device_name,
+        )
+        ensure_cuda_success(
+            cuda_imports.cudart.cudaSetDevice(resolve_cuda_device_index(device_name)),
+            operation_name="TensorRT RF-DETR runtime 切换 CUDA device",
+            details={"device_name": device_name},
+        )
+        logger = get_tensorrt_logger(
+            tensorrt_module=tensorrt_module,
+            severity=tensorrt_module.Logger.WARNING,
+        )
+        runtime = tensorrt_module.Runtime(logger)
+        engine = runtime.deserialize_cuda_engine(runtime_target.runtime_artifact_path.read_bytes())
         if engine is None:
-            raise ServiceConfigurationError("TensorRT engine 反序列化失败", details={"path": str(runtime_target.runtime_artifact_path)})
+            raise ServiceConfigurationError(
+                "TensorRT RF-DETR engine 反序列化失败",
+                details={"model_build_id": runtime_target.model_build_id},
+            )
         context = engine.create_execution_context()
-        input_size = _RF_INPUT_SIZES.get(runtime_target.model_scale, 384)
-        input_name = None
-        output_names = []
-        input_bindings = {}
-        output_bindings = {}
-        for i in range(engine.num_io_tensors):
-            name = engine.get_tensor_name(i)
-            mode = engine.get_tensor_mode(i)
-            shape = tuple(engine.get_tensor_shape(name))
-            dtype = tensorrt.nptype(engine.get_tensor_dtype(name))
-            if mode == tensorrt.TensorIOMode.INPUT:
-                input_name = name
-                input_bindings[name] = {"shape": shape, "dtype": dtype}
-            else:
-                output_names.append(name)
-                output_bindings[name] = {"shape": shape, "dtype": dtype}
-        return cls(dataset_storage=dataset_storage, runtime_target=runtime_target, imports=imp, engine=engine, context=context, device_name=device_name, input_name=input_name or "image", output_names=tuple(output_names), input_size=(input_size, input_size), input_bindings=input_bindings, output_bindings=output_bindings)
+        if context is None:
+            raise ServiceConfigurationError(
+                "TensorRT RF-DETR engine 无法创建 execution context",
+                details={"model_build_id": runtime_target.model_build_id},
+            )
+        stream = ensure_cuda_success(
+            cuda_imports.cudart.cudaStreamCreate(),
+            operation_name="TensorRT RF-DETR runtime 创建 CUDA stream",
+            details={"device_name": device_name},
+        )[0]
+        execute_start_event = ensure_cuda_success(
+            cuda_imports.cudart.cudaEventCreate(),
+            operation_name="TensorRT RF-DETR runtime 创建执行起点 event",
+            details={"device_name": device_name},
+        )[0]
+        execute_end_event = ensure_cuda_success(
+            cuda_imports.cudart.cudaEventCreate(),
+            operation_name="TensorRT RF-DETR runtime 创建执行终点 event",
+            details={"device_name": device_name},
+        )[0]
+        input_name = resolve_tensorrt_io_tensor_name(
+            engine=engine,
+            tensorrt_module=tensorrt_module,
+            io_mode=tensorrt_module.TensorIOMode.INPUT,
+            fallback="images",
+        )
+        all_output_names = tuple(
+            _list_tensorrt_output_names(engine, tensorrt_module=tensorrt_module)
+        )
+        if len(all_output_names) < 2:
+            raise ServiceConfigurationError(
+                "TensorRT RF-DETR engine 输出数量不足",
+                details={"output_count": len(all_output_names)},
+            )
+        output_names = _resolve_rfdetr_output_names(all_output_names)
+        imports = type(
+            "_RfdetrTensorRTPredictorImports",
+            (),
+            {
+                "cv2": cuda_imports.cv2,
+                "np": cuda_imports.np,
+                "cudart": cuda_imports.cudart,
+                "torch": torch,
+            },
+        )()
+        return cls(
+            dataset_storage=dataset_storage,
+            runtime_target=runtime_target,
+            imports=imports,
+            tensorrt_module=tensorrt_module,
+            logger=logger,
+            runtime=runtime,
+            engine=engine,
+            context=context,
+            device_name=device_name,
+            input_name=input_name,
+            all_output_names=all_output_names,
+            output_names=output_names,
+            input_dtype_name=resolve_tensorrt_dtype_name(
+                tensorrt_module=tensorrt_module,
+                tensor_dtype=engine.get_tensor_dtype(input_name),
+                fallback="float32",
+            ),
+            all_output_dtype_names=tuple(
+                resolve_tensorrt_dtype_name(
+                    tensorrt_module=tensorrt_module,
+                    tensor_dtype=engine.get_tensor_dtype(name),
+                    fallback="float32",
+                )
+                for name in all_output_names
+            ),
+            output_dtype_names=tuple(
+                resolve_tensorrt_dtype_name(
+                    tensorrt_module=tensorrt_module,
+                    tensor_dtype=engine.get_tensor_dtype(name),
+                    fallback="float32",
+                )
+                for name in output_names
+            ),
+            stream=stream,
+            execute_start_event=execute_start_event,
+            execute_end_event=execute_end_event,
+            postprocess_model=_build_postprocess_model(runtime_target),
+            input_size=_resolve_input_size(runtime_target),
+        )
 
     def predict(self, request: DetectionPredictionRequest) -> DetectionPredictionExecutionResult:
         return _predict_tensorrt(self, request)
 
 
-def _predict(session_obj, request, is_onnx=False):
-    imp = session_obj.imports; t0 = perf_counter()
-    image = load_prediction_image(cv2_module=imp.cv2, np_module=imp.np, dataset_storage=session_obj.dataset_storage, request=request)
-    dms = round((perf_counter() - t0) * 1000, 3)
-    t1 = perf_counter(); ih, iw = session_obj.input_size
-    resized = imp.cv2.resize(image, (iw, ih), interpolation=imp.cv2.INTER_LINEAR)
-    tensor = resized[:, :, ::-1].transpose(2, 0, 1).astype(imp.np.float32) / 255.0
-    tensor = imp.torch.from_numpy(tensor).unsqueeze(0).to(session_obj.device_name)
-    pms = round((perf_counter() - t1) * 1000, 3)
-    t2 = perf_counter()
-    with imp.torch.no_grad(): outputs = session_obj.model(tensor)
-    ims = round((perf_counter() - t2) * 1000, 3)
-    t3 = perf_counter(); ts = imp.torch.tensor([[float(image.shape[0]), float(image.shape[1])]], device=session_obj.device_name)
-    proc = session_obj.model.postprocess(outputs, ts)
-    dets = _build_detections(proc, session_obj.runtime_target.labels, request.score_threshold)
-    pms2 = round((perf_counter() - t3) * 1000, 3); lat = dms + pms + ims + pms2
-    preview = None
-    if request.save_result_image and dets: preview = render_preview_image(cv2_module=imp.cv2, image=image, detections=dets)
-    return DetectionPredictionExecutionResult(detections=dets, latency_ms=round(lat, 3), image_width=int(image.shape[1]), image_height=int(image.shape[0]), preview_image_bytes=preview, runtime_session_info=DetectionRuntimeSessionInfo(backend_name=session_obj.runtime_target.runtime_backend, model_uri=session_obj.runtime_target.runtime_artifact_storage_uri, device_name=session_obj.device_name, input_spec=DetectionRuntimeTensorSpec(name="images", shape=(1, 3, ih, iw), dtype="float32"), output_specs=(DetectionRuntimeTensorSpec(name="predictions", shape=(1, 300, 4), dtype="float32"),), metadata={"model_type": "rfdetr", "model_scale": session_obj.runtime_target.model_scale, "decode_ms": dms, "preprocess_ms": pms, "infer_ms": ims, "postprocess_ms": pms2}))
+def _predict_pytorch(
+    session_obj: PyTorchRfdetrRuntimeSession,
+    request: DetectionPredictionRequest,
+) -> DetectionPredictionExecutionResult:
+    imports = session_obj.imports
+    image, decode_ms = _load_runtime_input_image(
+        cv2_module=imports.cv2,
+        np_module=imports.np,
+        dataset_storage=session_obj.dataset_storage,
+        request=request,
+    )
+    input_array, preprocess_ms = _build_input_array(
+        cv2_module=imports.cv2,
+        np_module=imports.np,
+        image=image,
+        input_size=session_obj.input_size,
+    )
+    input_tensor = imports.torch.from_numpy(input_array).to(session_obj.device_name)
+    input_tensor = input_tensor.float()
+    if (
+        session_obj.runtime_precision == "fp16"
+        and session_obj.device_name.startswith("cuda")
+    ):
+        input_tensor = input_tensor.half()
+
+    infer_started_at = perf_counter()
+    with imports.torch.no_grad():
+        raw_outputs = session_obj.model(input_tensor)
+    infer_ms = round((perf_counter() - infer_started_at) * 1000, 3)
+
+    processed, postprocess_ms = _postprocess_rfdetr_outputs(
+        torch_module=imports.torch,
+        postprocess_model=session_obj.model,
+        raw_outputs=raw_outputs,
+        image_height=int(image.shape[0]),
+        image_width=int(image.shape[1]),
+    )
+    detections = _build_detections(
+        processed=processed,
+        labels=session_obj.runtime_target.labels,
+        score_threshold=request.score_threshold,
+    )
+    return _build_prediction_result(
+        session_obj=session_obj,
+        image=image,
+        detections=detections,
+        request=request,
+        decode_ms=decode_ms,
+        preprocess_ms=preprocess_ms,
+        infer_ms=infer_ms,
+        postprocess_ms=postprocess_ms,
+        input_name="images",
+        output_specs=(
+            DetectionRuntimeTensorSpec(
+                name="pred_logits",
+                shape=tuple(int(item) for item in raw_outputs["pred_logits"].shape),
+                dtype="float16" if session_obj.runtime_precision == "fp16" else "float32",
+            ),
+            DetectionRuntimeTensorSpec(
+                name="pred_boxes",
+                shape=tuple(int(item) for item in raw_outputs["pred_boxes"].shape),
+                dtype="float16" if session_obj.runtime_precision == "fp16" else "float32",
+            ),
+        ),
+        metadata={
+            "model_type": "rfdetr",
+            "model_scale": session_obj.runtime_target.model_scale,
+            "runtime_execution_mode": describe_runtime_execution_mode(
+                runtime_backend="pytorch",
+                runtime_precision=session_obj.runtime_precision,
+                device_name=session_obj.device_name,
+            ),
+        },
+    )
 
 
-def _predict_onnx(session_obj, request):
-    imp = session_obj.imports; t0 = perf_counter()
-    image = load_prediction_image(cv2_module=imp.cv2, np_module=imp.np, dataset_storage=session_obj.dataset_storage, request=request)
-    dms = round((perf_counter() - t0) * 1000, 3)
-    t1 = perf_counter(); ih, iw = session_obj.input_size
-    resized = imp.cv2.resize(image, (iw, ih), interpolation=imp.cv2.INTER_LINEAR)
-    tensor = resized[:, :, ::-1].transpose(2, 0, 1).astype(imp.np.float32) / 255.0
-    tensor = imp.np.expand_dims(tensor, axis=0)
-    pms = round((perf_counter() - t1) * 1000, 3)
-    t2 = perf_counter(); onnx_outputs = session_obj.session.run(list(session_obj.output_names), {session_obj.input_name: tensor})
-    ims = round((perf_counter() - t2) * 1000, 3)
-    t3 = perf_counter(); ts = imp.torch.tensor([[float(image.shape[0]), float(image.shape[1])]])
-    pred_logits = imp.torch.from_numpy(onnx_outputs[0]) if onnx_outputs else imp.torch.zeros(1, 300, 91)
-    pred_boxes = imp.torch.from_numpy(onnx_outputs[1]) if len(onnx_outputs) > 1 else imp.torch.zeros(1, 300, 4)
-    outputs = {"pred_logits": pred_logits, "pred_boxes": pred_boxes}
-    model = build_rfdetr_model(model_scale=session_obj.runtime_target.model_scale, num_classes=len(session_obj.runtime_target.labels))
-    model.to("cpu"); model.eval()
-    proc = model.postprocess(outputs, ts)
-    dets = _build_detections(proc, session_obj.runtime_target.labels, request.score_threshold)
-    pms2 = round((perf_counter() - t3) * 1000, 3); lat = dms + pms + ims + pms2
-    preview = None
-    if request.save_result_image and dets: preview = render_preview_image(cv2_module=imp.cv2, image=image, detections=dets)
-    return DetectionPredictionExecutionResult(detections=dets, latency_ms=round(lat, 3), image_width=int(image.shape[1]), image_height=int(image.shape[0]), preview_image_bytes=preview, runtime_session_info=DetectionRuntimeSessionInfo(backend_name=session_obj.runtime_target.runtime_backend, model_uri=session_obj.runtime_target.runtime_artifact_storage_uri, device_name=session_obj.device_name, input_spec=DetectionRuntimeTensorSpec(name=session_obj.input_name, shape=(1, 3, ih, iw), dtype="float32"), output_specs=(DetectionRuntimeTensorSpec(name=session_obj.output_names[0] if session_obj.output_names else "predictions", shape=(1, 300, 4), dtype="float32"),), metadata={"model_type": "rfdetr", "decode_ms": dms, "preprocess_ms": pms, "infer_ms": ims, "postprocess_ms": pms2}))
+def _predict_onnx(
+    session_obj: OnnxRuntimeRfdetrRuntimeSession,
+    request: DetectionPredictionRequest,
+) -> DetectionPredictionExecutionResult:
+    imports = session_obj.imports
+    image, decode_ms = _load_runtime_input_image(
+        cv2_module=imports.cv2,
+        np_module=imports.np,
+        dataset_storage=session_obj.dataset_storage,
+        request=request,
+    )
+    input_array, preprocess_ms = _build_input_array(
+        cv2_module=imports.cv2,
+        np_module=imports.np,
+        image=image,
+        input_size=session_obj.input_size,
+    )
+
+    infer_started_at = perf_counter()
+    raw_outputs = session_obj.session.run(
+        list(session_obj.output_names),
+        {session_obj.input_name: input_array},
+    )
+    infer_ms = round((perf_counter() - infer_started_at) * 1000, 3)
+
+    processed, postprocess_ms = _postprocess_rfdetr_outputs(
+        torch_module=imports.torch,
+        postprocess_model=session_obj.postprocess_model,
+        raw_outputs={
+            "pred_logits": raw_outputs[0],
+            "pred_boxes": raw_outputs[1],
+        },
+        image_height=int(image.shape[0]),
+        image_width=int(image.shape[1]),
+    )
+    detections = _build_detections(
+        processed=processed,
+        labels=session_obj.runtime_target.labels,
+        score_threshold=request.score_threshold,
+    )
+    return _build_prediction_result(
+        session_obj=session_obj,
+        image=image,
+        detections=detections,
+        request=request,
+        decode_ms=decode_ms,
+        preprocess_ms=preprocess_ms,
+        infer_ms=infer_ms,
+        postprocess_ms=postprocess_ms,
+        input_name=session_obj.input_name,
+        output_specs=tuple(
+            DetectionRuntimeTensorSpec(
+                name=output_name,
+                shape=tuple(int(item) for item in output_array.shape),
+                dtype="float32",
+            )
+            for output_name, output_array in zip(
+                session_obj.output_names,
+                raw_outputs,
+                strict=True,
+            )
+        ),
+        metadata={
+            "model_type": "rfdetr",
+            "model_scale": session_obj.runtime_target.model_scale,
+            "runtime_execution_mode": describe_runtime_execution_mode(
+                runtime_backend="onnxruntime",
+                runtime_precision="fp32",
+                device_name=session_obj.device_name,
+            ),
+            "provider_names": list(session_obj.session.get_providers()),
+            "output_names": list(session_obj.output_names),
+        },
+    )
 
 
-def _predict_openvino(session_obj, request):
-    imp = session_obj.imports; t0 = perf_counter()
-    image = load_prediction_image(cv2_module=imp.cv2, np_module=imp.np, dataset_storage=session_obj.dataset_storage, request=request)
-    dms = round((perf_counter() - t0) * 1000, 3)
-    t1 = perf_counter(); ih, iw = session_obj.input_size
-    resized = imp.cv2.resize(image, (iw, ih), interpolation=imp.cv2.INTER_LINEAR)
-    tensor = resized[:, :, ::-1].transpose(2, 0, 1).astype(imp.np.float32) / 255.0
-    tensor = imp.np.expand_dims(tensor, axis=0)
-    pms = round((perf_counter() - t1) * 1000, 3)
-    t2 = perf_counter()
-    ov_outputs = session_obj.session({session_obj.input_name: tensor})
-    ims = round((perf_counter() - t2) * 1000, 3)
-    t3 = perf_counter(); ts = imp.torch.tensor([[float(image.shape[0]), float(image.shape[1])]])
-    pred_logits = imp.torch.from_numpy(ov_outputs[session_obj.output_names[0]]) if session_obj.output_names else imp.torch.zeros(1, 300, 91)
-    pred_boxes = imp.torch.from_numpy(ov_outputs[session_obj.output_names[1]]) if len(session_obj.output_names) > 1 else imp.torch.zeros(1, 300, 4)
-    outputs = {"pred_logits": pred_logits, "pred_boxes": pred_boxes}
-    model = build_rfdetr_model(model_scale=session_obj.runtime_target.model_scale, num_classes=len(session_obj.runtime_target.labels))
-    model.to("cpu"); model.eval()
-    proc = model.postprocess(outputs, ts)
-    dets = _build_detections(proc, session_obj.runtime_target.labels, request.score_threshold)
-    pms2 = round((perf_counter() - t3) * 1000, 3); lat = dms + pms + ims + pms2
-    preview = None
-    if request.save_result_image and dets: preview = render_preview_image(cv2_module=imp.cv2, image=image, detections=dets)
-    return DetectionPredictionExecutionResult(detections=dets, latency_ms=round(lat, 3), image_width=int(image.shape[1]), image_height=int(image.shape[0]), preview_image_bytes=preview, runtime_session_info=DetectionRuntimeSessionInfo(backend_name=session_obj.runtime_target.runtime_backend, model_uri=session_obj.runtime_target.runtime_artifact_storage_uri, device_name=session_obj.device_name, input_spec=DetectionRuntimeTensorSpec(name=session_obj.input_name, shape=(1, 3, ih, iw), dtype="float32"), output_specs=(DetectionRuntimeTensorSpec(name=session_obj.output_names[0] if session_obj.output_names else "predictions", shape=(1, 300, 4), dtype="float32"),), metadata={"model_type": "rfdetr", "compiled_device_name": session_obj.compiled_device_name, "compiled_runtime_precision": session_obj.compiled_runtime_precision, "decode_ms": dms, "preprocess_ms": pms, "infer_ms": ims, "postprocess_ms": pms2}))
+def _predict_openvino(
+    session_obj: OpenVINORfdetrRuntimeSession,
+    request: DetectionPredictionRequest,
+) -> DetectionPredictionExecutionResult:
+    imports = session_obj.imports
+    image, decode_ms = _load_runtime_input_image(
+        cv2_module=imports.cv2,
+        np_module=imports.np,
+        dataset_storage=session_obj.dataset_storage,
+        request=request,
+    )
+    input_array, preprocess_ms = _build_input_array(
+        cv2_module=imports.cv2,
+        np_module=imports.np,
+        image=image,
+        input_size=session_obj.input_size,
+    )
+
+    infer_started_at = perf_counter()
+    raw_outputs = session_obj.session({session_obj.input_name: input_array})
+    infer_ms = round((perf_counter() - infer_started_at) * 1000, 3)
+
+    processed, postprocess_ms = _postprocess_rfdetr_outputs(
+        torch_module=imports.torch,
+        postprocess_model=session_obj.postprocess_model,
+        raw_outputs={
+            "pred_logits": raw_outputs[session_obj.output_names[0]],
+            "pred_boxes": raw_outputs[session_obj.output_names[1]],
+        },
+        image_height=int(image.shape[0]),
+        image_width=int(image.shape[1]),
+    )
+    detections = _build_detections(
+        processed=processed,
+        labels=session_obj.runtime_target.labels,
+        score_threshold=request.score_threshold,
+    )
+    return _build_prediction_result(
+        session_obj=session_obj,
+        image=image,
+        detections=detections,
+        request=request,
+        decode_ms=decode_ms,
+        preprocess_ms=preprocess_ms,
+        infer_ms=infer_ms,
+        postprocess_ms=postprocess_ms,
+        input_name=session_obj.input_name,
+        output_specs=tuple(
+            DetectionRuntimeTensorSpec(
+                name=output_name,
+                shape=tuple(int(item) for item in raw_outputs[output_name].shape),
+                dtype="float32",
+            )
+            for output_name in session_obj.output_names
+        ),
+        metadata={
+            "model_type": "rfdetr",
+            "model_scale": session_obj.runtime_target.model_scale,
+            "runtime_execution_mode": describe_runtime_execution_mode(
+                runtime_backend="openvino",
+                runtime_precision=session_obj.compiled_runtime_precision,
+                device_name=session_obj.device_name,
+            ),
+            "compiled_device_name": session_obj.compiled_device_name,
+            "compiled_runtime_precision": session_obj.compiled_runtime_precision,
+            "output_names": list(session_obj.output_names),
+        },
+    )
 
 
-def _predict_tensorrt(session_obj, request):
-    imp = session_obj.imports; t0 = perf_counter()
-    image = load_prediction_image(cv2_module=imp.cv2, np_module=imp.np, dataset_storage=session_obj.dataset_storage, request=request)
-    dms = round((perf_counter() - t0) * 1000, 3)
-    t1 = perf_counter(); ih, iw = session_obj.input_size
-    resized = imp.cv2.resize(image, (iw, ih), interpolation=imp.cv2.INTER_LINEAR)
-    tensor = resized[:, :, ::-1].transpose(2, 0, 1).astype(imp.np.float32) / 255.0
-    tensor = imp.np.expand_dims(tensor, axis=0).astype(imp.np.float32)
-    pms = round((perf_counter() - t1) * 1000, 3)
-    t2 = perf_counter()
-    input_info = session_obj.input_bindings[session_obj.input_name]
-    d_input = imp.cuda.mem_alloc(tensor.nbytes)
-    imp.cuda.memcpy_htod(d_input, tensor)
-    session_obj.context.set_tensor_address(session_obj.input_name, int(d_input))
-    output_buffers = {}
-    d_outputs = {}
-    for name, info in session_obj.output_bindings.items():
-        size = int(imp.np.prod(info["shape"])) * imp.np.dtype(info["dtype"]).itemsize
-        d_output = imp.cuda.mem_alloc(size)
-        d_outputs[name] = d_output
-        output_buffers[name] = imp.np.empty(info["shape"], dtype=info["dtype"])
-        session_obj.context.set_tensor_address(name, int(d_output))
-    session_obj.context.execute_async_v3(imp.cuda.Stream().handle)
-    for name, d_output in d_outputs.items():
-        imp.cuda.memcpy_dtoh(output_buffers[name], d_output)
-    ims = round((perf_counter() - t2) * 1000, 3)
-    t3 = perf_counter(); ts = imp.torch.tensor([[float(image.shape[0]), float(image.shape[1])]])
-    pred_logits = imp.torch.from_numpy(output_buffers[session_obj.output_names[0]]) if session_obj.output_names else imp.torch.zeros(1, 300, 91)
-    pred_boxes = imp.torch.from_numpy(output_buffers[session_obj.output_names[1]]) if len(session_obj.output_names) > 1 else imp.torch.zeros(1, 300, 4)
-    outputs = {"pred_logits": pred_logits, "pred_boxes": pred_boxes}
-    model = build_rfdetr_model(model_scale=session_obj.runtime_target.model_scale, num_classes=len(session_obj.runtime_target.labels))
-    model.to("cpu"); model.eval()
-    proc = model.postprocess(outputs, ts)
-    dets = _build_detections(proc, session_obj.runtime_target.labels, request.score_threshold)
-    pms2 = round((perf_counter() - t3) * 1000, 3); lat = dms + pms + ims + pms2
-    preview = None
-    if request.save_result_image and dets: preview = render_preview_image(cv2_module=imp.cv2, image=image, detections=dets)
-    return DetectionPredictionExecutionResult(detections=dets, latency_ms=round(lat, 3), image_width=int(image.shape[1]), image_height=int(image.shape[0]), preview_image_bytes=preview, runtime_session_info=DetectionRuntimeSessionInfo(backend_name=session_obj.runtime_target.runtime_backend, model_uri=session_obj.runtime_target.runtime_artifact_storage_uri, device_name=session_obj.device_name, input_spec=DetectionRuntimeTensorSpec(name=session_obj.input_name, shape=(1, 3, ih, iw), dtype="float32"), output_specs=(DetectionRuntimeTensorSpec(name=session_obj.output_names[0] if session_obj.output_names else "predictions", shape=(1, 300, 4), dtype="float32"),), metadata={"model_type": "rfdetr", "decode_ms": dms, "preprocess_ms": pms, "infer_ms": ims, "postprocess_ms": pms2}))
+def _predict_tensorrt(
+    session_obj: TensorRTRfdetrRuntimeSession,
+    request: DetectionPredictionRequest,
+) -> DetectionPredictionExecutionResult:
+    imports = session_obj.imports
+    image, decode_ms = _load_runtime_input_image(
+        cv2_module=imports.cv2,
+        np_module=imports.np,
+        dataset_storage=session_obj.dataset_storage,
+        request=request,
+    )
+    input_array, preprocess_ms = _build_input_array(
+        cv2_module=imports.cv2,
+        np_module=imports.np,
+        image=image,
+        input_size=session_obj.input_size,
+    )
+    input_array = input_array.astype(
+        resolve_numpy_dtype(np_module=imports.np, dtype_name=session_obj.input_dtype_name),
+        copy=False,
+    )
+    requested_input_shape = tuple(int(dim) for dim in input_array.shape)
 
-
-def _build_detections(proc: dict, labels: tuple[str, ...], thr: float) -> tuple[DetectionPredictionDetection, ...]:
-    scores = proc.get("scores"); cids = proc.get("labels"); boxes = proc.get("boxes_xyxy")
-    if scores is None or cids is None or boxes is None: return ()
-    r = []
-    for i in range(min(int(scores.shape[0]), int(scores.shape[1]))):
-        s = float(scores[0, i])
-        if s < thr: continue
-        c = int(cids[0, i])
-        r.append(DetectionPredictionDetection(bbox_xyxy=(round(float(boxes[0, i, 0]), 4), round(float(boxes[0, i, 1]), 4), round(float(boxes[0, i, 2]), 4), round(float(boxes[0, i, 3]), 4)), score=round(s, 6), class_id=c, class_name=labels[c] if 0 <= c < len(labels) else None))
-    return tuple(r)
-
-
-def _import_openvino_module():
+    input_device_ptr: int | None = None
+    output_device_ptrs: list[int] = []
+    output_arrays_by_name: dict[str, Any] = {}
+    infer_started_at = perf_counter()
     try:
-        import openvino
-        return openvino
-    except ImportError as e:
-        raise ServiceConfigurationError("OpenVINO 未安装或不可用", details={"error": str(e)})
+        ensure_cuda_success(
+            imports.cudart.cudaSetDevice(resolve_cuda_device_index(session_obj.device_name)),
+            operation_name="TensorRT RF-DETR runtime 绑定 CUDA device",
+            details={"device_name": session_obj.device_name},
+        )
+        engine_input_shape = normalize_tensor_shape(
+            session_obj.engine.get_tensor_shape(session_obj.input_name)
+        )
+        if any(dim < 0 for dim in engine_input_shape):
+            if (
+                session_obj.context.set_input_shape(
+                    session_obj.input_name,
+                    requested_input_shape,
+                )
+                is not True
+            ):
+                raise ServiceConfigurationError(
+                    "TensorRT RF-DETR execution context 设置输入 shape 失败",
+                    details={
+                        "input_name": session_obj.input_name,
+                        "requested_input_shape": list(requested_input_shape),
+                    },
+                )
+        elif engine_input_shape != requested_input_shape:
+            raise InvalidRequestError(
+                "TensorRT RF-DETR 输入尺寸与 engine 不匹配",
+                details={
+                    "expected_input_shape": list(engine_input_shape),
+                    "actual_input_shape": list(requested_input_shape),
+                },
+            )
+
+        input_device_ptr = ensure_cuda_success(
+            imports.cudart.cudaMalloc(int(input_array.nbytes)),
+            operation_name="TensorRT RF-DETR 分配输入显存",
+            details={"byte_size": int(input_array.nbytes)},
+        )[0]
+        ensure_cuda_success(
+            imports.cudart.cudaMemcpyAsync(
+                input_device_ptr,
+                int(input_array.ctypes.data),
+                int(input_array.nbytes),
+                imports.cudart.cudaMemcpyKind.cudaMemcpyHostToDevice,
+                session_obj.stream,
+            ),
+            operation_name="TensorRT RF-DETR 拷贝输入到显存",
+            details={"byte_size": int(input_array.nbytes)},
+        )
+        if (
+            session_obj.context.set_tensor_address(
+                session_obj.input_name,
+                int(input_device_ptr),
+            )
+            is not True
+        ):
+            raise ServiceConfigurationError(
+                "TensorRT RF-DETR execution context 绑定输入张量失败",
+                details={"input_name": session_obj.input_name},
+            )
+
+        for index, output_name in enumerate(session_obj.all_output_names):
+            resolved_shape = normalize_tensor_shape(
+                session_obj.context.get_tensor_shape(output_name)
+            )
+            if any(dim < 0 for dim in resolved_shape):
+                raise ServiceConfigurationError(
+                    "TensorRT RF-DETR 输出 shape 尚未解析完成",
+                    details={"output_name": output_name, "shape": list(resolved_shape)},
+                )
+            output_array = imports.np.empty(
+                resolved_shape,
+                dtype=resolve_numpy_dtype(
+                    np_module=imports.np,
+                    dtype_name=session_obj.all_output_dtype_names[index],
+                ),
+            )
+            output_arrays_by_name[output_name] = output_array
+            output_device_ptr = ensure_cuda_success(
+                imports.cudart.cudaMalloc(int(output_array.nbytes)),
+                operation_name="TensorRT RF-DETR 分配输出显存",
+                details={"output_name": output_name, "byte_size": int(output_array.nbytes)},
+            )[0]
+            output_device_ptrs.append(output_device_ptr)
+            if (
+                session_obj.context.set_tensor_address(output_name, int(output_device_ptr))
+                is not True
+            ):
+                raise ServiceConfigurationError(
+                    "TensorRT RF-DETR execution context 绑定输出张量失败",
+                    details={"output_name": output_name},
+                )
+
+        ensure_cuda_success(
+            imports.cudart.cudaEventRecord(
+                session_obj.execute_start_event,
+                session_obj.stream,
+            ),
+            operation_name="TensorRT RF-DETR 记录执行起点 event",
+            details={"device_name": session_obj.device_name},
+        )
+        if session_obj.context.execute_async_v3(stream_handle=session_obj.stream) is not True:
+            raise ServiceConfigurationError(
+                "TensorRT RF-DETR execution context 执行推理失败",
+                details={"model_build_id": session_obj.runtime_target.model_build_id},
+            )
+        ensure_cuda_success(
+            imports.cudart.cudaEventRecord(
+                session_obj.execute_end_event,
+                session_obj.stream,
+            ),
+            operation_name="TensorRT RF-DETR 记录执行终点 event",
+            details={"device_name": session_obj.device_name},
+        )
+        for output_name, output_device_ptr in zip(
+            session_obj.all_output_names,
+            output_device_ptrs,
+            strict=True,
+        ):
+            output_array = output_arrays_by_name[output_name]
+            ensure_cuda_success(
+                imports.cudart.cudaMemcpyAsync(
+                    int(output_array.ctypes.data),
+                    output_device_ptr,
+                    int(output_array.nbytes),
+                    imports.cudart.cudaMemcpyKind.cudaMemcpyDeviceToHost,
+                    session_obj.stream,
+                ),
+                operation_name="TensorRT RF-DETR 拷贝输出到主存",
+                details={"output_name": output_name, "byte_size": int(output_array.nbytes)},
+            )
+        ensure_cuda_success(
+            imports.cudart.cudaStreamSynchronize(session_obj.stream),
+            operation_name="TensorRT RF-DETR 同步 CUDA stream",
+            details={"device_name": session_obj.device_name},
+        )
+        infer_execute_gpu_ms = measure_cuda_event_elapsed_ms(
+            cudart_module=imports.cudart,
+            start_event=session_obj.execute_start_event,
+            end_event=session_obj.execute_end_event,
+            device_name=session_obj.device_name,
+        )
+    finally:
+        if input_device_ptr is not None:
+            try:
+                imports.cudart.cudaFree(input_device_ptr)
+            except Exception:
+                pass
+        for output_device_ptr in output_device_ptrs:
+            try:
+                imports.cudart.cudaFree(output_device_ptr)
+            except Exception:
+                pass
+    infer_ms = round((perf_counter() - infer_started_at) * 1000, 3)
+
+    processed, postprocess_ms = _postprocess_rfdetr_outputs(
+        torch_module=imports.torch,
+        postprocess_model=session_obj.postprocess_model,
+        raw_outputs={
+            "pred_logits": output_arrays_by_name[session_obj.output_names[0]],
+            "pred_boxes": output_arrays_by_name[session_obj.output_names[1]],
+        },
+        image_height=int(image.shape[0]),
+        image_width=int(image.shape[1]),
+    )
+    detections = _build_detections(
+        processed=processed,
+        labels=session_obj.runtime_target.labels,
+        score_threshold=request.score_threshold,
+    )
+    return _build_prediction_result(
+        session_obj=session_obj,
+        image=image,
+        detections=detections,
+        request=request,
+        decode_ms=decode_ms,
+        preprocess_ms=preprocess_ms,
+        infer_ms=infer_ms,
+        postprocess_ms=postprocess_ms,
+        input_name=session_obj.input_name,
+        output_specs=tuple(
+            DetectionRuntimeTensorSpec(
+                name=output_name,
+                shape=tuple(int(item) for item in output_arrays_by_name[output_name].shape),
+                dtype=session_obj.output_dtype_names[index],
+            )
+            for index, output_name in enumerate(session_obj.output_names)
+        ),
+        metadata={
+            "model_type": "rfdetr",
+            "model_scale": session_obj.runtime_target.model_scale,
+            "runtime_execution_mode": describe_runtime_execution_mode(
+                runtime_backend="tensorrt",
+                runtime_precision=session_obj.runtime_target.runtime_precision or "fp32",
+                device_name=session_obj.device_name,
+            ),
+            "infer_execute_gpu_ms": infer_execute_gpu_ms,
+            "engine_output_names": list(session_obj.all_output_names),
+            "output_names": list(session_obj.output_names),
+        },
+    )
 
 
-def _import_tensorrt_module():
-    try:
-        import tensorrt
-        return tensorrt
-    except ImportError as e:
-        raise ServiceConfigurationError("TensorRT 未安装或不可用", details={"error": str(e)})
+def _build_prediction_result(
+    *,
+    session_obj: Any,
+    image: Any,
+    detections: tuple[DetectionPredictionDetection, ...],
+    request: DetectionPredictionRequest,
+    decode_ms: float,
+    preprocess_ms: float,
+    infer_ms: float,
+    postprocess_ms: float,
+    input_name: str,
+    output_specs: tuple[DetectionRuntimeTensorSpec, ...],
+    metadata: dict[str, object],
+) -> DetectionPredictionExecutionResult:
+    preview_image_bytes = None
+    if request.save_result_image and detections:
+        preview_image_bytes = render_preview_image(
+            cv2_module=session_obj.imports.cv2,
+            image=image,
+            detections=detections,
+        )
+    input_height, input_width = session_obj.input_size
+    return DetectionPredictionExecutionResult(
+        detections=detections,
+        latency_ms=round(decode_ms + preprocess_ms + infer_ms + postprocess_ms, 3),
+        image_width=int(image.shape[1]),
+        image_height=int(image.shape[0]),
+        preview_image_bytes=preview_image_bytes,
+        runtime_session_info=DetectionRuntimeSessionInfo(
+            backend_name=session_obj.runtime_target.runtime_backend,
+            model_uri=session_obj.runtime_target.runtime_artifact_storage_uri,
+            device_name=session_obj.device_name,
+            input_spec=DetectionRuntimeTensorSpec(
+                name=input_name,
+                shape=(1, 3, input_height, input_width),
+                dtype=getattr(session_obj, "input_dtype_name", "float32"),
+            ),
+            output_specs=output_specs,
+            metadata={
+                **metadata,
+                "decode_ms": decode_ms,
+                "preprocess_ms": preprocess_ms,
+                "infer_ms": infer_ms,
+                "postprocess_ms": postprocess_ms,
+            },
+        ),
+    )
+
+
+def _resolve_input_size(runtime_target: RuntimeTargetSnapshot) -> tuple[int, int]:
+    if (
+        isinstance(runtime_target.input_size, tuple)
+        and len(runtime_target.input_size) == 2
+        and int(runtime_target.input_size[0]) > 0
+        and int(runtime_target.input_size[1]) > 0
+    ):
+        return (int(runtime_target.input_size[0]), int(runtime_target.input_size[1]))
+    input_edge = _RF_INPUT_SIZES.get(runtime_target.model_scale, 384)
+    return (input_edge, input_edge)
+
+
+def _build_postprocess_model(runtime_target: RuntimeTargetSnapshot) -> Any:
+    model = build_rfdetr_model(
+        model_scale=runtime_target.model_scale,
+        num_classes=len(runtime_target.labels),
+    )
+    model.to("cpu")
+    model.eval()
+    return model
+
+
+def _load_runtime_input_image(
+    *,
+    cv2_module: Any,
+    np_module: Any,
+    dataset_storage: LocalDatasetStorage,
+    request: DetectionPredictionRequest,
+) -> tuple[Any, float]:
+    decode_started_at = perf_counter()
+    image = load_prediction_image(
+        cv2_module=cv2_module,
+        np_module=np_module,
+        dataset_storage=dataset_storage,
+        request=request,
+    )
+    decode_ms = round((perf_counter() - decode_started_at) * 1000, 3)
+    return image, decode_ms
+
+
+def _build_input_array(
+    *,
+    cv2_module: Any,
+    np_module: Any,
+    image: Any,
+    input_size: tuple[int, int],
+) -> tuple[Any, float]:
+    preprocess_started_at = perf_counter()
+    input_height, input_width = input_size
+    resized_image = cv2_module.resize(
+        image,
+        (input_width, input_height),
+        interpolation=cv2_module.INTER_LINEAR,
+    )
+    input_array = resized_image[:, :, ::-1].transpose(2, 0, 1).astype(np_module.float32)
+    input_array = input_array / 255.0
+    input_array = np_module.expand_dims(input_array, axis=0)
+    preprocess_ms = round((perf_counter() - preprocess_started_at) * 1000, 3)
+    return input_array, preprocess_ms
+
+
+def _postprocess_rfdetr_outputs(
+    *,
+    torch_module: Any,
+    postprocess_model: Any,
+    raw_outputs: dict[str, Any],
+    image_height: int,
+    image_width: int,
+) -> tuple[dict[str, Any], float]:
+    postprocess_started_at = perf_counter()
+    processed = postprocess_model.postprocess(
+        {
+            "pred_logits": _as_torch_tensor(
+                torch_module=torch_module,
+                value=raw_outputs["pred_logits"],
+            ),
+            "pred_boxes": _as_torch_tensor(
+                torch_module=torch_module,
+                value=raw_outputs["pred_boxes"],
+            ),
+        },
+        torch_module.tensor(
+            [[float(image_height), float(image_width)]],
+            dtype=torch_module.float32,
+        ),
+    )
+    postprocess_ms = round((perf_counter() - postprocess_started_at) * 1000, 3)
+    return processed, postprocess_ms
+
+
+def _as_torch_tensor(*, torch_module: Any, value: Any) -> Any:
+    if isinstance(value, torch_module.Tensor):
+        return value.detach().cpu().float()
+    return torch_module.from_numpy(value).float()
+
+
+def _build_detections(
+    *,
+    processed: dict[str, Any],
+    labels: tuple[str, ...],
+    score_threshold: float,
+) -> tuple[DetectionPredictionDetection, ...]:
+    scores = processed.get("scores")
+    class_ids = processed.get("labels")
+    boxes_xyxy = processed.get("boxes_xyxy")
+    if scores is None or class_ids is None or boxes_xyxy is None:
+        return ()
+    detections: list[DetectionPredictionDetection] = []
+    for index in range(min(int(scores.shape[0]), int(scores.shape[1]))):
+        score = float(scores[0, index])
+        if score < score_threshold:
+            continue
+        class_id = int(class_ids[0, index])
+        detections.append(
+            DetectionPredictionDetection(
+                bbox_xyxy=(
+                    round(float(boxes_xyxy[0, index, 0]), 4),
+                    round(float(boxes_xyxy[0, index, 1]), 4),
+                    round(float(boxes_xyxy[0, index, 2]), 4),
+                    round(float(boxes_xyxy[0, index, 3]), 4),
+                ),
+                score=round(score, 6),
+                class_id=class_id,
+                class_name=labels[class_id] if 0 <= class_id < len(labels) else None,
+            )
+        )
+    return tuple(detections)
+
+
+def _list_tensorrt_output_names(engine: Any, *, tensorrt_module: Any) -> list[str]:
+    names: list[str] = []
+    for index in range(int(engine.num_io_tensors)):
+        name = engine.get_tensor_name(index)
+        if engine.get_tensor_mode(name) == tensorrt_module.TensorIOMode.OUTPUT:
+            names.append(name)
+    return names
+
+
+def _resolve_rfdetr_output_names(output_names: tuple[str, ...]) -> tuple[str, str]:
+    preferred_names = ("pred_logits", "pred_boxes")
+    resolved_names: list[str] = []
+    remaining_names = list(output_names)
+    for preferred_name in preferred_names:
+        if preferred_name in remaining_names:
+            resolved_names.append(preferred_name)
+            remaining_names.remove(preferred_name)
+    if len(resolved_names) == 2:
+        return tuple(resolved_names)  # type: ignore[return-value]
+    for output_name in output_names:
+        if output_name not in resolved_names:
+            resolved_names.append(output_name)
+        if len(resolved_names) == 2:
+            return tuple(resolved_names)  # type: ignore[return-value]
+    raise ServiceConfigurationError(
+        "RF-DETR 推理输出数量不足",
+        details={"output_names": list(output_names)},
+    )

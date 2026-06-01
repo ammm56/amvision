@@ -72,3 +72,146 @@ def test_rfdetr_imports():
     from backend.service.application.runtime.rfdetr_runtime_target import SqlAlchemyRfdetrRuntimeTargetResolver
     from backend.service.application.conversions.rfdetr_conversion_planner import DefaultRfdetrConversionPlanner
     from backend.service.domain.models.rfdetr_model_spec import RFDETR_DETECTION_SCALES
+
+
+def test_rfdetr_tensorrt_runtime_load_uses_cuda_python(monkeypatch, tmp_path):
+    """验证 RF-DETR TensorRT detection runtime 通过 cuda-python 辅助层加载。"""
+
+    import numpy as np
+
+    from backend.service.application.runtime import rfdetr_predictor as predictor_module
+    from backend.service.application.runtime.yolox_runtime_target import RuntimeTargetSnapshot
+    from backend.service.infrastructure.object_store.local_dataset_storage import (
+        DatasetStorageSettings,
+        LocalDatasetStorage,
+    )
+
+    artifact_path = tmp_path / "model.engine"
+    artifact_path.write_bytes(b"fake-rfdetr-engine")
+    dataset_storage = LocalDatasetStorage(
+        DatasetStorageSettings(root_dir=str(tmp_path / "dataset-storage"))
+    )
+
+    class _FakeCudaRuntime:
+        class cudaMemcpyKind:
+            cudaMemcpyHostToDevice = 1
+            cudaMemcpyDeviceToHost = 2
+
+        def cudaSetDevice(self, index):
+            return (0,)
+
+        def cudaStreamCreate(self):
+            return (0, object())
+
+        def cudaEventCreate(self):
+            return (0, object())
+
+    class _FakeLogger:
+        WARNING = 1
+
+        def __init__(self, severity):
+            self.severity = severity
+
+    class _FakeTensorIOMode:
+        INPUT = "input"
+        OUTPUT = "output"
+
+    class _FakeEngine:
+        num_io_tensors = 3
+
+        def create_execution_context(self):
+            return object()
+
+        def get_tensor_name(self, index):
+            return ("images", "pred_logits", "pred_boxes")[index]
+
+        def get_tensor_mode(self, name):
+            if name == "images":
+                return _FakeTensorIOMode.INPUT
+            return _FakeTensorIOMode.OUTPUT
+
+        def get_tensor_dtype(self, name):
+            return _FakeTensorRT.float32
+
+    class _FakeRuntime:
+        def __init__(self, logger):
+            self.logger = logger
+
+        def deserialize_cuda_engine(self, payload):
+            assert payload == b"fake-rfdetr-engine"
+            return _FakeEngine()
+
+    class _FakeTensorRT:
+        Logger = _FakeLogger
+        Runtime = _FakeRuntime
+        TensorIOMode = _FakeTensorIOMode
+        float32 = "float32"
+        float16 = "float16"
+        int32 = "int32"
+
+    fake_cudart = _FakeCudaRuntime()
+    fake_cuda_imports = type(
+        "_FakeCudaImports",
+        (),
+        {"cv2": object(), "np": np, "cudart": fake_cudart},
+    )()
+
+    monkeypatch.setattr(
+        predictor_module,
+        "require_cuda_inference_imports",
+        lambda: fake_cuda_imports,
+    )
+    monkeypatch.setattr(
+        predictor_module,
+        "import_tensorrt_module",
+        lambda: _FakeTensorRT,
+    )
+    monkeypatch.setattr(
+        predictor_module,
+        "get_tensorrt_logger",
+        lambda **kwargs: _FakeLogger(_FakeLogger.WARNING),
+    )
+    monkeypatch.setattr(
+        predictor_module,
+        "resolve_cuda_runtime_device_name",
+        lambda **kwargs: "cuda:0",
+    )
+    monkeypatch.setattr(
+        predictor_module,
+        "_build_postprocess_model",
+        lambda runtime_target: object(),
+    )
+
+    session = predictor_module.TensorRTRfdetrRuntimeSession.load(
+        dataset_storage=dataset_storage,
+        runtime_target=RuntimeTargetSnapshot(
+            project_id="project-1",
+            model_id="model-rfdetr-1",
+            model_version_id="model-version-rfdetr-1",
+            model_build_id="model-build-rfdetr-1",
+            model_name="rfdetr",
+            model_scale="nano",
+            task_type="detection",
+            source_kind="training-output",
+            runtime_profile_id=None,
+            runtime_backend="tensorrt",
+            device_name="cuda:0",
+            runtime_precision="fp32",
+            input_size=(64, 64),
+            labels=("a", "b"),
+            runtime_artifact_file_id="artifact-file-rfdetr-1",
+            runtime_artifact_storage_uri="artifacts/model.engine",
+            runtime_artifact_path=artifact_path,
+            runtime_artifact_file_type="tensorrt-engine",
+            checkpoint_file_id="checkpoint-file-rfdetr-1",
+            checkpoint_storage_uri="artifacts/checkpoint.pt",
+            checkpoint_path=artifact_path,
+            labels_storage_uri="artifacts/labels.txt",
+            model_type="rfdetr",
+        ),
+    )
+
+    assert session.imports.cudart is fake_cudart
+    assert session.device_name == "cuda:0"
+    assert session.input_name == "images"
+    assert session.output_names == ("pred_logits", "pred_boxes")
