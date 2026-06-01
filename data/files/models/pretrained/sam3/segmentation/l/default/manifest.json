@@ -1,0 +1,15 @@
+{
+  "model_name": "sam3",
+  "model_scale": "l",
+  "task_type": "segmentation",
+  "model_version_id": "mv-pretrained-sam3-segmentation-l",
+  "checkpoint_file_id": "mf-pretrained-sam3-segmentation-l-checkpoint",
+  "checkpoint_path": "checkpoints/sam3.pt",
+  "metadata": {
+    "catalog_name": "default",
+    "entry_name": "default",
+    "source": "local-pretrained",
+    "upstream_weight_name": "sam3.pt",
+    "upstream_mode": "default"
+  }
+}

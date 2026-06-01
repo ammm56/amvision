@@ -1,0 +1,15 @@
+{
+  "model_name": "yoloe-v8",
+  "model_scale": "s",
+  "task_type": "detection",
+  "model_version_id": "mv-pretrained-yoloe-v8-detection-s-prompt-free",
+  "checkpoint_file_id": "mf-pretrained-yoloe-v8-detection-s-prompt-free-checkpoint",
+  "checkpoint_path": "checkpoints/yoloe-v8s-seg-pf.pt",
+  "metadata": {
+    "catalog_name": "v8-prompt-free",
+    "entry_name": "v8-prompt-free",
+    "source": "local-pretrained",
+    "upstream_weight_name": "yoloe-v8s-seg-pf.pt",
+    "upstream_mode": "prompt-free"
+  }
+}

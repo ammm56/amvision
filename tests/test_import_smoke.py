@@ -262,6 +262,7 @@ BACKEND_MODULES: tuple[str, ...] = (
     "backend.workers.training.yolov8_training_queue_worker",
     "backend.workers.training.yolox_trainer_runner",
     "backend.workers.training.yolox_training_queue_worker",
+    "custom_nodes.yoloe_open_vocab_nodes.backend.entry",
 )
 
 

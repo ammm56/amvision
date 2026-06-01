@@ -1,0 +1,37 @@
+{
+  "format_id": "amvision.node-pack-manifest.v1",
+  "id": "yoloe.open-vocab-nodes",
+  "version": "0.1.0",
+  "displayName": "YOLOE Open Vocabulary Nodes",
+  "description": "提供 YOLOE 文本提示、视觉提示和 prompt-free 检测节点骨架。",
+  "category": "custom-node-pack",
+  "capabilities": [
+    "pipeline.node",
+    "vision.detection",
+    "vision.open-vocabulary",
+    "prompt.text",
+    "prompt.visual"
+  ],
+  "permissionScopes": [
+    "objectstore.read.ref"
+  ],
+  "entrypoints": {
+    "backend": "custom_nodes.yoloe_open_vocab_nodes.backend.entry:register"
+  },
+  "compatibility": {
+    "api": ">=0.1 <1.0",
+    "runtime": ">=3.12"
+  },
+  "timeout": {
+    "defaultSeconds": 120
+  },
+  "enabledByDefault": false,
+  "customNodeCatalogPath": "workflow/catalog.json",
+  "metadata": {
+    "phase": "scaffold",
+    "notes": [
+      "第一阶段只提供 custom node 骨架，不直接并入核心模型主链。",
+      "YOLOE 权重从 data/files/models/pretrained/yoloe 下读取。"
+    ]
+  }
+}

@@ -1,0 +1,470 @@
+{
+  "format_id": "amvision.custom-node-catalog.v1",
+  "payload_contracts": [
+    {
+      "format_id": "amvision.workflow-payload-contract.v1",
+      "payload_type_id": "text-prompts.v1",
+      "display_name": "Text Prompts",
+      "transport_kind": "inline-json",
+      "json_schema": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "prompt_id": {
+                  "type": "string"
+                },
+                "text": {
+                  "type": "string"
+                },
+                "display_name": {
+                  "type": "string"
+                },
+                "language": {
+                  "type": "string"
+                },
+                "negative": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "prompt_id",
+                "text"
+              ]
+            }
+          }
+        },
+        "required": [
+          "items"
+        ]
+      },
+      "artifact_kinds": [],
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.workflow-payload-contract.v1",
+      "payload_type_id": "prompt-regions.v1",
+      "display_name": "Prompt Regions",
+      "transport_kind": "inline-json",
+      "json_schema": {
+        "type": "object",
+        "properties": {
+          "source_image": {
+            "type": "object"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "prompt_id": {
+                  "type": "string"
+                },
+                "prompt_kind": {
+                  "type": "string",
+                  "enum": [
+                    "point",
+                    "box",
+                    "polygon",
+                    "mask"
+                  ]
+                },
+                "point_xy": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 2,
+                  "maxItems": 2
+                },
+                "point_label": {
+                  "type": "string",
+                  "enum": [
+                    "positive",
+                    "negative"
+                  ]
+                },
+                "bbox_xyxy": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 4,
+                  "maxItems": 4
+                },
+                "polygon_xy": {
+                  "type": "array",
+                  "items": {
+                    "type": "array",
+                    "items": {
+                      "type": "number"
+                    },
+                    "minItems": 2,
+                    "maxItems": 2
+                  }
+                },
+                "mask_image": {
+                  "type": "object"
+                }
+              },
+              "required": [
+                "prompt_id",
+                "prompt_kind"
+              ]
+            }
+          }
+        },
+        "required": [
+          "items"
+        ]
+      },
+      "artifact_kinds": [],
+      "metadata": {}
+    }
+  ],
+  "node_definitions": [
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.yoloe.text-prompt-detect",
+      "display_name": "YOLOE Text Prompt Detect",
+      "category": "yoloe.detection",
+      "description": "通过 YOLOE 和文本提示执行开放词汇检测。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "prompts",
+          "display_name": "Prompts",
+          "payload_type_id": "text-prompts.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "detections",
+          "display_name": "Detections",
+          "payload_type_id": "detections.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "summary",
+          "display_name": "Summary",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "model_family": {
+            "type": "string",
+            "enum": [
+              "v8",
+              "11",
+              "26"
+            ]
+          },
+          "model_scale": {
+            "type": "string",
+            "enum": [
+              "nano",
+              "tiny",
+              "s",
+              "m",
+              "l",
+              "x",
+              "xx"
+            ]
+          },
+          "confidence_threshold": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "iou_threshold": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "max_detections": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "device": {
+            "type": "string"
+          },
+          "precision": {
+            "type": "string",
+            "enum": [
+              "fp32",
+              "fp16",
+              "bf16"
+            ]
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "vision.detection",
+        "vision.open-vocabulary",
+        "prompt.text"
+      ],
+      "runtime_requirements": {
+        "python_packages": []
+      },
+      "node_pack_id": "yoloe.open-vocab-nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {
+        "phase": "scaffold"
+      }
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.yoloe.visual-prompt-detect",
+      "display_name": "YOLOE Visual Prompt Detect",
+      "category": "yoloe.detection",
+      "description": "通过 YOLOE、参考图和区域提示执行开放词汇检测。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "prompt_image",
+          "display_name": "Prompt Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "prompts",
+          "display_name": "Prompts",
+          "payload_type_id": "prompt-regions.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "detections",
+          "display_name": "Detections",
+          "payload_type_id": "detections.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "summary",
+          "display_name": "Summary",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "model_family": {
+            "type": "string",
+            "enum": [
+              "v8",
+              "11",
+              "26"
+            ]
+          },
+          "model_scale": {
+            "type": "string",
+            "enum": [
+              "nano",
+              "tiny",
+              "s",
+              "m",
+              "l",
+              "x",
+              "xx"
+            ]
+          },
+          "confidence_threshold": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "iou_threshold": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "max_detections": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "device": {
+            "type": "string"
+          },
+          "precision": {
+            "type": "string",
+            "enum": [
+              "fp32",
+              "fp16",
+              "bf16"
+            ]
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "vision.detection",
+        "vision.open-vocabulary",
+        "prompt.visual"
+      ],
+      "runtime_requirements": {
+        "python_packages": []
+      },
+      "node_pack_id": "yoloe.open-vocab-nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {
+        "phase": "scaffold"
+      }
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.yoloe.prompt-free-detect",
+      "display_name": "YOLOE Prompt Free Detect",
+      "category": "yoloe.detection",
+      "description": "通过 prompt-free YOLOE 权重执行开放词汇检测。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "detections",
+          "display_name": "Detections",
+          "payload_type_id": "detections.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "summary",
+          "display_name": "Summary",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "model_family": {
+            "type": "string",
+            "enum": [
+              "v8",
+              "11",
+              "26"
+            ]
+          },
+          "model_scale": {
+            "type": "string",
+            "enum": [
+              "nano",
+              "tiny",
+              "s",
+              "m",
+              "l",
+              "x",
+              "xx"
+            ]
+          },
+          "confidence_threshold": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "iou_threshold": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "max_detections": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "device": {
+            "type": "string"
+          },
+          "precision": {
+            "type": "string",
+            "enum": [
+              "fp32",
+              "fp16",
+              "bf16"
+            ]
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "vision.detection",
+        "vision.open-vocabulary",
+        "prompt.free"
+      ],
+      "runtime_requirements": {
+        "python_packages": []
+      },
+      "node_pack_id": "yoloe.open-vocab-nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {
+        "phase": "scaffold"
+      }
+    }
+  ],
+  "metadata": {}
+}
