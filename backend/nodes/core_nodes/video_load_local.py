@@ -12,7 +12,8 @@ from backend.nodes.core_nodes._base import CoreNodeSpec
 from backend.nodes.core_nodes._logic_node_support import build_value_payload
 from backend.nodes.video_runtime_support import (
     build_local_video_payload,
-    probe_video_metadata,
+    probe_video_metadata_with_backend,
+    read_video_tool_summary,
     resolve_video_path_from_request,
 )
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
@@ -22,13 +23,16 @@ def _video_load_local_handler(request: WorkflowNodeExecutionRequest) -> dict[str
     """从本地磁盘读取视频路径并返回 video-ref。"""
 
     video_path = resolve_video_path_from_request(request)
-    metadata = probe_video_metadata(video_path)
+    metadata, probe_backend = probe_video_metadata_with_backend(video_path)
     video_payload = build_local_video_payload(local_path=str(video_path), metadata=metadata)
+    tool_summary = read_video_tool_summary()
     return {
         "video": video_payload,
         "summary": build_value_payload(
             {
                 "local_path": str(video_path),
+                "probe_backend": probe_backend,
+                **tool_summary,
                 "frame_count": metadata["frame_count"],
                 "fps": metadata["fps"],
                 "width": metadata["width"],

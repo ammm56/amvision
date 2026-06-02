@@ -241,8 +241,11 @@ frontend/web-ui/public/runtime-config.local.json
 frontend/web-ui/playwright-report/
 frontend/web-ui/test-results/
 
-# Alembic 缓存
+# Alembic
 backend/alembic/versions/__pycache__/
 
-# .qwen 本地生成目录
+# .qwen
 .qwen/
+
+# third_party
+runtimes/third_party/

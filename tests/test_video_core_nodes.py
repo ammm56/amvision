@@ -14,7 +14,9 @@ from backend.nodes.core_nodes.video_load_local import _video_load_local_handler
 from backend.nodes.video_runtime_support import (
     VIDEO_TRANSPORT_LOCAL_PATH,
     probe_video_metadata,
+    probe_video_metadata_with_backend,
     require_video_payload,
+    resolve_video_tool_path,
 )
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 
@@ -45,6 +47,7 @@ def test_video_load_local_handler_returns_video_ref_and_summary(tmp_path: Path) 
     """验证本地视频载入节点会返回探测后的 video-ref。"""
 
     video_path = _build_test_video_file(tmp_path / "sample.avi", frame_count=4)
+    ffprobe_path = resolve_video_tool_path("ffprobe")
 
     output = _video_load_local_handler(
         WorkflowNodeExecutionRequest(
@@ -60,6 +63,9 @@ def test_video_load_local_handler_returns_video_ref_and_summary(tmp_path: Path) 
     assert output["video"]["local_path"] == str(video_path.resolve())
     assert output["video"]["frame_count"] == 4
     assert output["summary"]["value"]["frame_count"] == 4
+    assert output["summary"]["value"]["ffprobe_path"] == (str(ffprobe_path) if ffprobe_path is not None else None)
+    if ffprobe_path is not None:
+        assert output["summary"]["value"]["probe_backend"] == "ffprobe"
 
 
 def test_video_decode_frames_handler_returns_frame_window_with_memory_images(tmp_path: Path) -> None:
@@ -67,6 +73,7 @@ def test_video_decode_frames_handler_returns_frame_window_with_memory_images(tmp
 
     video_path = _build_test_video_file(tmp_path / "sample.avi", frame_count=5)
     metadata = probe_video_metadata(video_path)
+    ffmpeg_path = resolve_video_tool_path("ffmpeg")
     image_registry = ExecutionImageRegistry()
 
     output = _video_decode_frames_handler(
@@ -96,6 +103,22 @@ def test_video_decode_frames_handler_returns_frame_window_with_memory_images(tmp
     assert first_frame["image"]["width"] == metadata["width"]
     assert first_frame["image"]["height"] == metadata["height"]
     assert output["summary"]["value"]["decoded_count"] == 3
+    assert output["summary"]["value"]["ffmpeg_path"] == (str(ffmpeg_path) if ffmpeg_path is not None else None)
+    if ffmpeg_path is not None:
+        assert output["summary"]["value"]["decode_backend"] == "ffmpeg"
+
+
+def test_probe_video_metadata_prefers_ffprobe_when_available(tmp_path: Path) -> None:
+    """验证元数据探测在可用时优先走 ffprobe。"""
+
+    video_path = _build_test_video_file(tmp_path / "sample.avi", frame_count=3)
+    ffprobe_path = resolve_video_tool_path("ffprobe")
+
+    metadata, backend_name = probe_video_metadata_with_backend(video_path)
+
+    assert metadata["frame_count"] == 3
+    if ffprobe_path is not None:
+        assert backend_name == "ffprobe"
 
 
 def _build_test_video_file(video_path: Path, *, frame_count: int) -> Path:

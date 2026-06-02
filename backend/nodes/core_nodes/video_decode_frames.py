@@ -2,10 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Any
-
-import cv2
-
 from backend.contracts.workflows.workflow_graph import (
     NODE_IMPLEMENTATION_CORE,
     NODE_RUNTIME_PYTHON_CALLABLE,
@@ -15,7 +11,12 @@ from backend.contracts.workflows.workflow_graph import (
 from backend.nodes.core_nodes._base import CoreNodeSpec
 from backend.nodes.core_nodes._logic_node_support import build_value_payload
 from backend.nodes.runtime_support import register_image_bytes
-from backend.nodes.video_runtime_support import require_video_payload, resolve_video_source_path
+from backend.nodes.video_runtime_support import (
+    decode_video_frames_with_backend,
+    read_video_tool_summary,
+    require_video_payload,
+    resolve_video_source_path,
+)
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 
@@ -41,50 +42,32 @@ def _video_decode_frames_handler(request: WorkflowNodeExecutionRequest) -> dict[
             details={"node_id": request.node_id, "start_frame": start_frame, "end_frame": end_frame},
         )
 
-    capture = cv2.VideoCapture(str(video_path))
-    if not capture.isOpened():
-        raise InvalidRequestError(
-            "无法打开指定视频文件",
-            details={"node_id": request.node_id, "video_path": str(video_path)},
+    fps = float(video_payload.get("fps") or 0.0)
+    decoded_frames, decode_backend = decode_video_frames_with_backend(
+        video_path,
+        start_frame=start_frame,
+        end_frame=end_frame,
+        step=step,
+        max_frames=max_frames,
+        encode_format=encode_format,
+        fps_hint=fps,
+    )
+    frame_items: list[dict[str, Any]] = []
+    for decoded_frame in decoded_frames:
+        image_payload = register_image_bytes(
+            request,
+            content=bytes(decoded_frame["content"]),
+            media_type=str(decoded_frame["media_type"]),
+            width=int(decoded_frame["width"]),
+            height=int(decoded_frame["height"]),
         )
-    try:
-        fps = float(capture.get(cv2.CAP_PROP_FPS) or 0.0)
-        frame_items: list[dict[str, Any]] = []
-        for frame_index in range(start_frame, end_frame + 1, step):
-            if len(frame_items) >= max_frames:
-                break
-            capture.set(cv2.CAP_PROP_POS_FRAMES, frame_index)
-            success, frame = capture.read()
-            if not success or frame is None:
-                raise InvalidRequestError(
-                    "视频帧解码失败",
-                    details={"node_id": request.node_id, "video_path": str(video_path), "frame_index": frame_index},
-                )
-            file_suffix = ".png" if encode_format == "png" else ".jpg"
-            media_type = "image/png" if encode_format == "png" else "image/jpeg"
-            encode_success, encoded = cv2.imencode(file_suffix, frame)
-            if not encode_success:
-                raise InvalidRequestError(
-                    "视频帧编码失败",
-                    details={"node_id": request.node_id, "video_path": str(video_path), "frame_index": frame_index},
-                )
-            image_payload = register_image_bytes(
-                request,
-                content=encoded.tobytes(),
-                media_type=media_type,
-                width=int(frame.shape[1]),
-                height=int(frame.shape[0]),
-            )
-            timestamp_ms = float((frame_index / fps) * 1000.0) if fps > 0 else 0.0
-            frame_items.append(
-                {
-                    "frame_index": frame_index,
-                    "timestamp_ms": timestamp_ms,
-                    "image": image_payload,
-                }
-            )
-    finally:
-        capture.release()
+        frame_items.append(
+            {
+                "frame_index": int(decoded_frame["frame_index"]),
+                "timestamp_ms": float(decoded_frame["timestamp_ms"]),
+                "image": image_payload,
+            }
+        )
 
     frame_window = {
         "source_video": video_payload,
@@ -98,6 +81,8 @@ def _video_decode_frames_handler(request: WorkflowNodeExecutionRequest) -> dict[
         "summary": build_value_payload(
             {
                 "video_path": str(video_path),
+                "decode_backend": decode_backend,
+                **read_video_tool_summary(),
                 "decoded_count": len(frame_items),
                 "start_frame": start_frame,
                 "end_frame": end_frame,

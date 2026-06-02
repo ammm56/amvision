@@ -100,6 +100,7 @@ release/
 - 默认配置模板与运行时 manifest
 - 默认 custom_nodes 目录与可选节点包资产
 - 启动器与维护工具
+- 如启用正式视频工作流能力，还应包含目标平台对应的 `ffmpeg/ffprobe` 工具目录
 
 ## 发布包不默认包含的内容
 
@@ -108,14 +109,78 @@ release/
 - 操作系统级通信中间件
 - 现场专有证书、密钥和客户定制配置
 
+## 视频工具运行时约定
+
+### 工具归属
+
+- `ffmpeg/ffprobe` 属于应用运行时工具链，不属于模型资产目录，也不属于业务数据目录。
+- 因此它们不应放在 `data/` 下，不应与 `models/`、`datasets/` 或 `maintenance` 数据目录混放。
+
+### 仓库侧目录约定
+
+建议在仓库中按平台维护运行时来源目录：
+
+```text
+runtimes/
+└─ third_party/
+   └─ ffmpeg/
+      ├─ windows-x64/
+      │  └─ bin/
+      │     ├─ ffmpeg.exe
+      │     ├─ ffprobe.exe
+      │     └─ *.dll
+      └─ linux-x64/
+         └─ bin/
+            ├─ ffmpeg
+            └─ ffprobe
+```
+
+说明：
+
+- Windows 下项目正式调用入口应是 `ffmpeg.exe` 和 `ffprobe.exe`。
+- `.dll` 只是这些可执行文件的运行时依赖，应与 `exe` 放在同目录，不直接作为项目调用入口。
+- Linux 下使用对应可执行文件，不单独暴露 `.so` 作为 workflow 级概念。
+
+### 发布包目录约定
+
+面向目标平台的发布目录建议包含：
+
+```text
+release/
+└─ full/
+   └─ tools/
+      └─ ffmpeg/
+         └─ bin/
+            ├─ ffmpeg.exe / ffmpeg
+            ├─ ffprobe.exe / ffprobe
+            └─ 相关 dll（Windows）
+```
+
+说明：
+
+- 最终交付包通常只携带目标平台所需的一套 `ffmpeg` 工具。
+- 不建议在单个最终交付包中长期混放 Windows 与 Linux 两套二进制。
+
+### 查找优先级
+
+后续运行时代码查找 `ffmpeg/ffprobe` 时，建议按如下顺序：
+
+1. 显式配置路径
+2. 发布目录 `tools/ffmpeg/bin/`
+3. 仓库 `runtimes/third_party/ffmpeg/<platform>/bin/`
+4. 系统 `PATH` 中的可执行文件（仅 fallback）
+
+系统 `PATH` 不应成为默认部署前提，只能作为诊断或临时兼容路径。
+
 ## 打包流水线建议
 
 1. 从 conda 开发环境导出可审核的依赖基线
 2. 生成面向 bundled Python 的依赖集合和兼容性 manifest
 3. 收敛 backend、frontend、custom_nodes 和默认配置
-4. 生成服务、worker 和维护脚本的统一入口
-5. 通过 `assemble-release` 生成 `full` 发布目录
-6. 执行最小启动验证、节点目录扫描和接口健康检查
+4. 收敛目标平台的 `ffmpeg/ffprobe` 等运行时工具目录
+5. 生成服务、worker 和维护脚本的统一入口
+6. 通过 `assemble-release` 生成 `full` 发布目录
+7. 执行最小启动验证、节点目录扫描和接口健康检查
 
 ## 当前装配结果
 
