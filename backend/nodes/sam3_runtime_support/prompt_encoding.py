@@ -49,6 +49,7 @@ def build_sam3_interactive_prompt_tensors(
     mask_prompt_width: int | None = None,
     mask_prompt_height: int | None = None,
     device: torch.device | str = "cpu",
+    prompt_mask_dtype: torch.dtype = torch.float32,
 ) -> PreparedSam3InteractivePrompts:
     """把当前阶段交互 prompt 转换为 tracker 需要的张量。"""
 
@@ -111,6 +112,7 @@ def build_sam3_interactive_prompt_tensors(
                     width=mask_prompt_width,
                     height=mask_prompt_height,
                     device=device,
+                    dtype=prompt_mask_dtype,
                 )
             )
             contains_dense_mask_prompt = True
@@ -159,6 +161,7 @@ def _build_resized_prompt_mask_tensor(
     width: int,
     height: int,
     device: torch.device | str,
+    dtype: torch.dtype,
 ) -> torch.Tensor:
     """把源图分辨率 prompt mask 规整为 PromptEncoder 所需大小。"""
 
@@ -167,4 +170,4 @@ def _build_resized_prompt_mask_tensor(
         raise ValueError(f"prompt_mask 期望二维数组，实际得到 {tuple(mask_tensor.shape)}")
     mask_tensor = (mask_tensor > 0).to(dtype=torch.float32).unsqueeze(0).unsqueeze(0)
     resized_mask = F.interpolate(mask_tensor, size=(height, width), mode="nearest")
-    return resized_mask
+    return resized_mask.to(dtype=dtype)

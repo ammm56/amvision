@@ -25,6 +25,12 @@ D:/software/anaconda3/envs/amvision/python.exe -m pytest --basetemp .tmp/pytest 
 D:/software/anaconda3/envs/amvision/python.exe -m pytest --basetemp .tmp/pytest tests/integration/test_yoloe_sam3_extended_soak_benchmark.py -q -s
 ```
 
+视频 memory-attention 基线执行命令：
+
+```powershell
+D:/software/anaconda3/envs/amvision/python.exe -m pytest --basetemp .tmp/pytest tests/integration/test_sam3_video_memory_attention_benchmark.py -q -s
+```
+
 ## 当前测试覆盖
 
 - `YOLOE text-prompt` CPU 长时重复推理、会话驻留与内存漂移
@@ -32,6 +38,7 @@ D:/software/anaconda3/envs/amvision/python.exe -m pytest --basetemp .tmp/pytest 
 - `YOLOE text-prompt` CUDA 长时重复推理与显存漂移
 - `SAM3 semantic-segment` CUDA 长时重复推理与显存漂移
 - 异常预训练目录失败后的恢复 smoke
+- `SAM3 video-interactive-segment(memory-attention-tracker)` 长窗口 + 多对象复合场景 CPU/GPU 显式 benchmark
 
 当前测试阈值：
 
@@ -125,3 +132,35 @@ D:/software/anaconda3/envs/amvision/python.exe -m pytest --basetemp .tmp/pytest 
 1. 在目标机器类型发生变化时，重新执行本文件并更新基线。
 2. 在继续扩大默认启用范围前，优先补 workflow app 侧接入说明、排障手册和视频/多帧扩展边界说明。
 3. 如果后面再扩到多帧、视频或更高分辨率资产，再单独新增对应的 integration soak 文件，而不是继续把更多场景塞进现有基础基线文件。
+
+## `SAM3 video-interactive memory-attention` 基线
+
+### 说明
+
+- 本轮基线只覆盖 `memory-attention-tracker` 的复合场景：
+  - 更长窗口
+  - 更多对象数
+- 由于 CPU 成本明显高于单图链，当前先固定为：
+  - `1` 次 warm run
+  - `1` 次显式测量
+- 该文件仍然只在显式指定路径时执行，不进入默认回归。
+
+### 当前执行场景
+
+- 视频窗口：`6` 帧
+- 分辨率：`192 x 144`
+- 对象数：`4`
+- tracking mode：`memory-attention-tracker`
+
+### 当前结果
+
+| benchmark | 平台 | 窗口/对象 | 迭代数 | avg(ms) | 漂移 | 当前判断 |
+| --- | --- | --- | ---: | ---: | --- | --- |
+| sam3-video-interactive-attention-cpu-extended | CPU | `6 frames / 4 objects` | 1 | 123,844.313 | `32.03 MB` | 稳定，CPU 明显较重，但漂移远低于阈值 |
+| sam3-video-interactive-attention-cuda-extended | CUDA | `6 frames / 4 objects` | 1 | 3,245.492 | `allocated drift = 0` | 稳定，reserved 增长后趋于平台化 |
+
+### 当前结论
+
+- `memory-attention-tracker` 当前已经补了真实本地视频链 benchmark，不再只停留在单图或单元测试层面。
+- CPU 复合场景耗时明显高于 `memory-prototype-state`，因此仍更适合复杂任务按需启用，而不是替代默认模式。
+- CUDA 路径当前 `allocated drift = 0`，说明本轮补的 prompt dtype 修复后，显存驻留没有出现持续增长信号。

@@ -38,3 +38,7 @@ D:/software/anaconda3/envs/amvision/python.exe -m pytest tests/integration/test_
 ```powershell
 D:/software/anaconda3/envs/amvision/python.exe -m pytest tests/integration/test_sam3_video_workflow_closure.py -q
 ```
+
+```powershell
+D:/software/anaconda3/envs/amvision/python.exe -m pytest tests/integration/test_sam3_video_memory_attention_benchmark.py -q -s
+```

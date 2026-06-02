@@ -43,7 +43,7 @@
 - workflow core nodes 已新增 SAHI 大图切片推理节点 `core.model.sahi-inference`；当前节点复用已发布 detection deployment 主链完成切片推理、坐标回映射和 `nms / nmm / none` 三种重叠合并，不绕开 DeploymentInstance 与 PublishedInferenceGateway 正式边界。
 - `YOLOE` custom node 当前已接通 project-native runtime：`prompt-free-detect`、`text-prompt-detect`、`visual-prompt-detect` 都直接读取本地 `yoloe` 预训练权重，输出 `detections.v1 + regions.v1`；`text-prompt` 支持按 `prompt_id` 聚合 positive/negative 文本，`visual-prompt` 支持 `box / point / polygon / mask` 以及同一 `prompt_id` 下混合视觉提示。
 - `SAM3` custom node 当前已接通 project-native runtime：`interactive-segment` 直接读取本地 `sam3.pt`，支持 `box / point / polygon / mask` 四类几何提示；`semantic-segment` 直接读取本地 `sam3.pt` 的 detector 分支，支持按 `prompt_id` 聚合 positive/negative 文本提示并输出 `regions.v1`；`video-interactive-segment` 当前直接复用 `frame-window.v1` 与单图 interactive runtime，按 `prompt_id` 稳定映射 `track_id`，默认走 `memory-prototype-state` 并输出 `tracks.v1`，也已提供基于跨帧 token memory 的 `memory-attention-tracker` 可选模式；`video-semantic-segment` 当前会把共享 `text-prompts.v1` 跨帧执行在 `frame-window.v1` 上，并继续以 `prompt_id` 作为稳定 `track_id` 输出 `tracks.v1`。
-- `SAM3 video-interactive-segment` 当前已经补了三类定向回归：更长窗口、更大位移和更多对象数；同时也已补 `memory-attention-tracker` 的常规回归与真实本地 smoke。轻量逻辑回归放在 `tests/`，真实本地 `sam3.pt` 的视频链 smoke 放在 `tests/integration/`，继续保持显式执行。
+- `SAM3 video-interactive-segment` 当前已经补了三类定向回归：更长窗口、更大位移和更多对象数；同时也已补 `memory-attention-tracker` 的常规回归、真实本地 smoke、显式视频闭环 integration，以及长窗口/多对象复合场景 benchmark。轻量逻辑回归放在 `tests/`，真实本地 `sam3.pt` 的视频链 smoke 与 benchmark 放在 `tests/integration/`，继续保持显式执行。
 - 视频 workflow 的通用结果节点当前已补到 `core.vision.tracks-filter`、`core.vision.tracks-to-regions`、`core.io.video-overlay-render` 和 `core.io.video-save`，已经可以先在通用层完成时序结果筛选、按帧拆分、结果渲染和重新编码保存。
 - 视频 workflow 的通用预览与交互辅助节点当前已补到 `core.io.frame-window-preview`、`core.output.video-body` 与 `core.logic.value-field-extract`；配合既有 `core.logic.payload-to-value`、`core.io.table-preview`、`core.io.value-preview`，当前已经能把视频帧窗口、跟踪结果、分帧 regions 和最终保存视频分别接到 workflow editor 的缩略预览、调试表格和正式响应播放器。
 
@@ -78,7 +78,7 @@
 - `YOLOE / SAM3` 在 workflow app 侧的接入顺序、`metadata.phase` / `enabledByDefault` 解释和现场排障路径，当前已经单独整理到 [yoloe-sam3-workflow-app-operations.md](yoloe-sam3-workflow-app-operations.md)。
 - `YOLOE / SAM3` 预训练资产统一从 `data/files/models/pretrained/` 读取：`YOLOE` 使用本地 segmentation 权重与 `text-encoders` 资产，`SAM3` 使用本地 `sam3.pt`。
 - 当前 `YOLOE / SAM3` 都已经补了定向稳定性回归：多 prompt 组合、本地资产 smoke、异常预训练目录、空提示/非法提示、CPU 会话缓存复用。
-- 当前 `YOLOE / SAM3` 已在目标机器上补了显式 CPU/GPU soak / benchmark 基线与 1 轮更长时长/更大图尺寸扩展 soak，结果记录见 [yoloe-sam3-soak-baseline.md](yoloe-sam3-soak-baseline.md)；相关测试文件位于 `tests/integration/`，默认不参与常规收集。
+- 当前 `YOLOE / SAM3` 已在目标机器上补了显式 CPU/GPU soak / benchmark 基线与 1 轮更长时长/更大图尺寸扩展 soak；`SAM3 video-interactive memory-attention` 也已补 1 轮长窗口/多对象复合场景 benchmark。结果记录见 [yoloe-sam3-soak-baseline.md](yoloe-sam3-soak-baseline.md)；相关测试文件位于 `tests/integration/`，默认不参与常规收集。
 - 当前 `YOLOE / SAM3` 已补显式 `WorkflowAppRuntime` 接入 smoke：测试会临时把 pack 置为 `enabledByDefault = false`，再覆盖 `disable -> enable -> create -> start -> invoke -> stop` 最小 runtime 闭环；相关测试文件位于 `tests/integration/test_yoloe_sam3_workflow_app_runtime_smoke.py`。
 
 ### 后台执行与 runtime 面

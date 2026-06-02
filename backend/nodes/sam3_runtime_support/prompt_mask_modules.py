@@ -21,6 +21,10 @@ class PositionEmbeddingRandom(nn.Module):
         self.register_buffer("positional_encoding_gaussian_matrix", scale * torch.randn((2, num_pos_feats)))
 
     def _pe_encoding(self, coords: torch.Tensor) -> torch.Tensor:
+        coords = coords.to(
+            device=self.positional_encoding_gaussian_matrix.device,
+            dtype=self.positional_encoding_gaussian_matrix.dtype,
+        )
         coords = 2.0 * coords - 1.0
         coords = coords @ self.positional_encoding_gaussian_matrix
         coords = 2.0 * math.pi * coords

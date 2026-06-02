@@ -340,6 +340,7 @@ class Sam3InteractiveRuntimeSession:
                 mask_prompt_width=frame_context.mask_prompt_width,
                 mask_prompt_height=frame_context.mask_prompt_height,
                 device=self.model.no_mem_embed.device,
+                prompt_mask_dtype=self.runtime_torch_dtype,
             )
             item_mask_logits, _item_iou_scores, item_final_scores = self.model.predict_mask_logits(
                 features=frame_context.features,
