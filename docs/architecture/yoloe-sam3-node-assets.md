@@ -424,6 +424,93 @@ data/files/models/pretrained/
 - 当前阶段直接复用 `frame-window.v1`，逐帧执行 interactive 分割，并输出 `tracks.v1`。
 - 当前 `track_id` 继续稳定映射为 `prompt_id`；默认策略已升级为 `memory-prototype-state`，同时保留 `stateful-mask-propagation` 与 `shared-prompts-across-window` 兼容模式。
 
+### SAM3 使用建议
+
+`SAM3` 当前的单帧与多帧能力是分层存在的，实际编排时应按任务复杂度选择，而不是默认一律走最重模式。
+
+#### 1. 单帧任务优先使用 `interactive-segment`
+
+适用情况：
+
+- 只需要处理单张图
+- 只需要对一张大图中的某个目标做交互分割
+- workflow 中只是偶尔从视频窗口里抽一帧做人机交互修正
+
+优点：
+
+- 最简单
+- 推理链最短
+- 调试最直接
+
+#### 2. 短窗口或变化很小的视频，可直接使用 `video-interactive-segment + shared-prompts-across-window`
+
+适用情况：
+
+- 每帧变化很小
+- 相机基本固定
+- 只是想把同一组 prompt 在窗口内逐帧重复执行
+
+优点：
+
+- 行为最接近“把单帧节点批量套到多帧上”
+- 易理解、易排障
+
+限制：
+
+- 不利用历史状态
+- 遮挡和形变下更容易丢目标
+
+#### 3. 中等复杂度视频，可使用 `stateful-mask-propagation`
+
+适用情况：
+
+- 目标有连续位移
+- 需要把上一帧 mask 当作下一帧提示
+- 但还不需要更复杂的对象记忆
+
+优点：
+
+- 比 shared prompt 更稳
+- 成本比更完整记忆跟踪低
+
+限制：
+
+- 更依赖上一帧轮廓
+- 遮挡、形变和大位移下仍然容易漂移
+
+#### 4. 当前默认推荐模式是 `memory-prototype-state`
+
+适用情况：
+
+- 目标存在中大位移
+- 外观有一定变化
+- 需要在多帧里更稳地延续同一个对象
+
+当前实现：
+
+- 保存对象原型特征
+- 保存最近若干帧 low-res mask 历史
+- 在当前帧特征上生成 memory prompt，再驱动分割
+
+优点：
+
+- 明显强于 shared prompt 和单纯 mask 回灌
+- 仍然保持 project-native、可控和可调试
+
+#### 5. 后续如果还要继续增强，才进入完整 `memory attention tracker`
+
+适用情况：
+
+- 长时跟踪
+- 遮挡后重现
+- 多目标并行且变化复杂
+- 需要更接近 upstream 视频版 `SAM3` 的底层时序能力
+
+说明：
+
+- 这一层还没有完全实现
+- 当前 `memory-prototype-state` 是完整 `memory attention tracker` 之前的可用增强层
+
 ## 运行形态约定
 
 ### preview run

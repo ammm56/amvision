@@ -25,6 +25,7 @@
 - backend-service 当前已经补齐本地用户、权限范围、session/refresh token、长期调用 user token 和 auth.events 审计流；在线 provider 只保留目录发现与后续扩展边界。
 - `YOLOE / SAM3` 当前已经不是骨架：两者都已接通 project-native custom node runtime，不依赖 `projectsrc/` 或已安装官方包执行推理；其中 `YOLOE` 已覆盖 `prompt-free / text-prompt / visual-prompt` 三条节点链，`SAM3` 已覆盖 `interactive-segment / semantic-segment / video-interactive-segment` 三条节点链。
 - `YOLOE text-prompt` 当前支持同一 `prompt_id` 下 positive / negative 文本组合；`YOLOE visual-prompt` 当前支持 `box / point / polygon / mask` 四类提示及同一 `prompt_id` 下混合提示聚合。`SAM3 interactive-segment` 当前支持 `box / point / polygon / mask`；`SAM3 semantic-segment` 当前支持同一 `prompt_id` 下 grouped positive / negative 文本提示；`SAM3 video-interactive-segment` 当前支持 `frame-window.v1 + prompt-regions.v1 -> tracks.v1` 的 `memory-prototype-state` 多帧链，并保留 `stateful-mask-propagation` 与 shared prompt 兼容模式。
+- `SAM3` 当前的实际使用也已经分层明确：简单任务可直接使用单帧 `interactive-segment`；短窗口或变化小的视频可使用 `shared-prompts-across-window`；中等复杂度视频可使用 `stateful-mask-propagation`；更复杂的多帧跟踪当前默认推荐 `memory-prototype-state`。更完整的底层 `memory attention tracker` 仍属于后续增强目标。
 - 当前代码形态仍然是“模块化单体 + 本地队列 + 本地对象存储 + 独立 deployment 子进程”。下一步重点应转向拓扑收敛、运行时硬化和平台泛化，而不是继续补 YOLOX 基础闭环缺口。
 
 ## 本轮更新（P0 + P1-8 + P3-14 + P3-15）已落地事项

@@ -378,6 +378,29 @@ release/
 - 当前已不再只是 shared prompt 或单纯上一帧 mask 回灌；现在会维护对象原型和最近若干帧 mask 历史，并在当前帧特征上生成 memory prompt
 - 当前仍未实现完整底层 memory attention tracker 全能力
 
+### `SAM3` 视频模式选择建议
+
+当前 `SAM3` 视频线不是只有一种固定强度，而是按复杂度逐层增强：
+
+1. `interactive-segment`
+- 适合单帧、抽帧、人工修正和最小交互链
+
+2. `video-interactive-segment + shared-prompts-across-window`
+- 适合短窗口、变化很小、希望直接复用同一组 prompt 的场景
+
+3. `video-interactive-segment + stateful-mask-propagation`
+- 适合连续位移但形变不大、希望把上一帧 mask 延续到下一帧的场景
+
+4. `video-interactive-segment + memory-prototype-state`
+- 当前默认推荐模式
+- 适合更复杂的位移、遮挡前后延续和一定程度的外观变化
+
+5. 完整 `memory attention tracker`
+- 后续增强目标
+- 适合更长时序、更复杂目标变化和更强的多目标视频跟踪
+
+workflow 编排时应根据任务实际复杂度选择，不必默认一律走最重模式；简单任务优先使用更轻的单帧或 shared prompt 版本，复杂任务再逐步切到更强的状态跟踪模式。
+
 ### 不应该属于 `SAM3` pack 的部分
 
 - 本地视频载入
