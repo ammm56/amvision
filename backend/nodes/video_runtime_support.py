@@ -13,8 +13,10 @@ import tempfile
 from typing import Any
 
 import cv2
+import numpy as np
 
 from backend.nodes.core_nodes._logic_node_support import require_value_payload
+from backend.nodes.runtime_support import require_image_payload
 from backend.service.application.errors import InvalidRequestError, ServiceConfigurationError
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
@@ -96,6 +98,70 @@ def require_video_payload(payload: object) -> dict[str, object]:
             normalized_payload.pop(field_name, None)
         else:
             normalized_payload[field_name] = normalized_value
+    return normalized_payload
+
+
+def require_frame_window_payload(
+    payload: object,
+    *,
+    node_id: str,
+    field_name: str = "frames",
+    allow_empty: bool = False,
+) -> dict[str, object]:
+    """校验 frame-window.v1 payload 并返回规范化结果。"""
+
+    if not isinstance(payload, dict):
+        raise InvalidRequestError(
+            f"{field_name} payload 必须是对象",
+            details={"node_id": node_id},
+        )
+    raw_items = payload.get("items")
+    if not isinstance(raw_items, list) or (not raw_items and not allow_empty):
+        expected_text = "数组" if allow_empty else "非空数组"
+        raise InvalidRequestError(
+            f"{field_name}.items 必须是{expected_text}",
+            details={"node_id": node_id},
+        )
+    normalized_items: list[dict[str, object]] = []
+    for item_index, raw_item in enumerate(raw_items, start=1):
+        if not isinstance(raw_item, dict):
+            raise InvalidRequestError(
+                f"{field_name}.items 的每一项都必须是对象",
+                details={"node_id": node_id, "item_index": item_index},
+            )
+        frame_index = raw_item.get("frame_index")
+        timestamp_ms = raw_item.get("timestamp_ms")
+        if isinstance(frame_index, bool) or not isinstance(frame_index, int) or frame_index < 0:
+            raise InvalidRequestError(
+                f"{field_name}.items.frame_index 必须是非负整数",
+                details={"node_id": node_id, "item_index": item_index, "frame_index": frame_index},
+            )
+        if (
+            isinstance(timestamp_ms, bool)
+            or not isinstance(timestamp_ms, (int, float))
+            or float(timestamp_ms) < 0
+        ):
+            raise InvalidRequestError(
+                f"{field_name}.items.timestamp_ms 必须是非负数",
+                details={"node_id": node_id, "item_index": item_index, "timestamp_ms": timestamp_ms},
+            )
+        normalized_items.append(
+            {
+                "frame_index": frame_index,
+                "timestamp_ms": float(timestamp_ms),
+                "image": require_image_payload(raw_item.get("image")),
+            }
+        )
+    normalized_payload: dict[str, object] = {
+        "count": len(normalized_items),
+        "items": tuple(normalized_items),
+    }
+    if payload.get("source_video") is not None:
+        normalized_payload["source_video"] = require_video_payload(payload.get("source_video"))
+    else:
+        normalized_payload["source_video"] = None
+    normalized_payload["window_start_index"] = normalized_items[0]["frame_index"] if normalized_items else 0
+    normalized_payload["window_end_index"] = normalized_items[-1]["frame_index"] if normalized_items else 0
     return normalized_payload
 
 
@@ -185,6 +251,48 @@ def decode_video_frames_with_backend(
         ),
         "opencv",
     )
+
+
+def encode_video_frames_with_backend(
+    *,
+    frame_items: list[dict[str, Any]],
+    output_path: Path,
+    fps: float,
+    container: str,
+) -> str:
+    """把帧序列编码为视频文件，并返回实际使用的后端。"""
+
+    if not frame_items:
+        raise InvalidRequestError("video-save 要求至少包含一帧")
+    if fps <= 0:
+        raise InvalidRequestError("video-save 要求 fps 必须大于 0")
+    normalized_container = container.strip().lower()
+    if normalized_container not in {"mp4", "avi"}:
+        raise InvalidRequestError(
+            "video-save 当前仅支持 mp4 或 avi 容器",
+            details={"container": container},
+        )
+
+    ffmpeg_path = resolve_video_tool_path(VIDEO_TOOL_FFMPEG)
+    if ffmpeg_path is not None:
+        try:
+            _encode_video_frames_with_ffmpeg(
+                frame_items=frame_items,
+                output_path=output_path,
+                fps=fps,
+                container=normalized_container,
+                ffmpeg_path=ffmpeg_path,
+            )
+            return VIDEO_TOOL_FFMPEG
+        except Exception:
+            pass
+    _encode_video_frames_with_opencv(
+        frame_items=frame_items,
+        output_path=output_path,
+        fps=fps,
+        container=normalized_container,
+    )
+    return "opencv"
 
 
 def read_video_tool_summary() -> dict[str, object]:
@@ -411,6 +519,93 @@ def _decode_video_frames_with_opencv(
     return frame_items
 
 
+def _encode_video_frames_with_ffmpeg(
+    *,
+    frame_items: list[dict[str, Any]],
+    output_path: Path,
+    fps: float,
+    container: str,
+    ffmpeg_path: Path,
+) -> None:
+    """通过 ffmpeg 把帧序列编码为视频。"""
+
+    with tempfile.TemporaryDirectory(prefix="amvision-video-encode-") as temp_dir:
+        temp_dir_path = Path(temp_dir)
+        for frame_offset, frame_item in enumerate(frame_items, start=1):
+            frame_matrix = _decode_video_frame_content(content=bytes(frame_item["content"]))
+            output_file = temp_dir_path / f"frame_{frame_offset:06d}.png"
+            encode_success, encoded_png = cv2.imencode(".png", frame_matrix)
+            if encode_success is not True:
+                raise InvalidRequestError(
+                    "video-save 在 ffmpeg 输入准备阶段无法编码 PNG 帧",
+                    details={"frame_offset": frame_offset},
+                )
+            output_file.write_bytes(encoded_png.tobytes())
+
+        command = [
+            str(ffmpeg_path),
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-y",
+            "-framerate",
+            f"{float(fps):.6f}",
+            "-i",
+            str(temp_dir_path / "frame_%06d.png"),
+            "-an",
+        ]
+        if container == "avi":
+            command.extend(["-c:v", "mjpeg"])
+        else:
+            command.extend(["-c:v", "mpeg4", "-pix_fmt", "yuv420p"])
+        command.append(str(output_path))
+        _run_video_tool_command(
+            command,
+            error_title="ffmpeg 视频编码失败",
+            details={"output_path": str(output_path), "tool_path": str(ffmpeg_path)},
+        )
+
+
+def _encode_video_frames_with_opencv(
+    *,
+    frame_items: list[dict[str, Any]],
+    output_path: Path,
+    fps: float,
+    container: str,
+) -> None:
+    """通过 OpenCV 把帧序列编码为视频。"""
+
+    first_frame = _decode_video_frame_content(content=bytes(frame_items[0]["content"]))
+    frame_width = int(first_frame.shape[1])
+    frame_height = int(first_frame.shape[0])
+    fourcc = cv2.VideoWriter_fourcc(*("MJPG" if container == "avi" else "mp4v"))
+    writer = cv2.VideoWriter(str(output_path), fourcc, float(fps), (frame_width, frame_height))
+    if writer.isOpened() is not True:
+        raise InvalidRequestError(
+            "OpenCV 无法创建目标视频文件",
+            details={"output_path": str(output_path), "fps": fps, "container": container},
+        )
+    try:
+        for frame_item in frame_items:
+            frame_matrix = _decode_video_frame_content(content=bytes(frame_item["content"]))
+            if int(frame_matrix.shape[1]) != frame_width or int(frame_matrix.shape[0]) != frame_height:
+                frame_matrix = cv2.resize(frame_matrix, (frame_width, frame_height), interpolation=cv2.INTER_LINEAR)
+            writer.write(frame_matrix)
+    finally:
+        writer.release()
+
+
+def _decode_video_frame_content(*, content: bytes) -> Any:
+    """把单帧图片字节解码为 OpenCV 矩阵。"""
+
+    if not content:
+        raise InvalidRequestError("视频帧图片字节不能为空")
+    decoded_frame = cv2.imdecode(np.frombuffer(content, dtype=np.uint8), cv2.IMREAD_COLOR)
+    if decoded_frame is None:
+        raise InvalidRequestError("无法解码视频帧图片字节")
+    return decoded_frame
+
+
 def build_local_video_payload(*, local_path: str, metadata: dict[str, object] | None = None) -> dict[str, object]:
     """构建 local-path 形式的 video-ref payload。"""
 
@@ -425,6 +620,47 @@ def build_local_video_payload(*, local_path: str, metadata: dict[str, object] | 
             if field_name in metadata and metadata[field_name] is not None:
                 payload[field_name] = metadata[field_name]
     return require_video_payload(payload)
+
+
+def build_storage_video_payload(*, object_key: str, metadata: dict[str, object] | None = None) -> dict[str, object]:
+    """构建 storage 形式的 video-ref payload。"""
+
+    normalized_object_key = object_key.strip() if isinstance(object_key, str) else ""
+    if not normalized_object_key:
+        raise InvalidRequestError("storage video-ref payload 要求 object_key 不能为空")
+    payload: dict[str, object] = {
+        "transport_kind": VIDEO_TRANSPORT_STORAGE,
+        "object_key": normalized_object_key,
+        "media_type": infer_video_media_type(normalized_object_key),
+    }
+    if metadata:
+        for field_name in ("frame_count", "fps", "width", "height", "duration_ms"):
+            if field_name in metadata and metadata[field_name] is not None:
+                payload[field_name] = metadata[field_name]
+    return require_video_payload(payload)
+
+
+def build_runtime_video_object_key(
+    request: WorkflowNodeExecutionRequest,
+    *,
+    source_video_payload: dict[str, object] | None,
+    variant_name: str,
+    output_extension: str,
+) -> str:
+    """基于当前执行上下文生成视频 object key。"""
+
+    workflow_run_id = str(request.execution_metadata.get("workflow_run_id") or "default-run")
+    source_stem = "video"
+    if source_video_payload is not None:
+        normalized_source_video = require_video_payload(source_video_payload)
+        source_reference = normalized_source_video.get("object_key") or normalized_source_video.get("local_path")
+        if isinstance(source_reference, str) and source_reference.strip():
+            source_stem = Path(source_reference).stem or source_stem
+    normalized_variant_name = variant_name.strip().replace(" ", "-") or "output"
+    return (
+        f"workflows/runtime/{workflow_run_id}/{request.node_id}/"
+        f"{source_stem}-{normalized_variant_name}{output_extension}"
+    )
 
 
 def resolve_video_path_from_request(

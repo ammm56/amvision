@@ -36,7 +36,7 @@
       "interactive-segment 已接通 project-native runtime，直接读取本地 sam3.pt，不回退到已安装官方包或 projectsrc 参考代码。",
       "interactive-segment 当前阶段支持 box、point、polygon、mask prompt，并输出 regions.v1。",
       "semantic-segment 已接通 project-native runtime，支持按 prompt_id 聚合的 positive/negative text-prompts.v1，并输出 regions.v1。",
-      "video-interactive-segment 当前已接通 frame-window.v1 -> tracks.v1 的第一阶段 project-native runtime，当前使用 shared prompt across window 和 prompt_id 作为稳定 track_id。"
+      "video-interactive-segment 当前已接通 frame-window.v1 -> tracks.v1 的 project-native runtime，默认使用 stateful mask propagation，并继续以 prompt_id 作为稳定 track_id。"
     ]
   }
 }

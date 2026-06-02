@@ -10,7 +10,7 @@ from backend.contracts.workflows.workflow_graph import (
 )
 from backend.nodes.core_nodes._base import CoreNodeSpec
 from backend.nodes.core_nodes._logic_node_support import build_value_payload, require_value_payload
-from backend.nodes.runtime_support import require_image_payload
+from backend.nodes.video_runtime_support import require_frame_window_payload
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 
@@ -18,7 +18,7 @@ from backend.service.application.workflows.graph_executor import WorkflowNodeExe
 def _video_frame_window_item_get_handler(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
     """按索引从 frame-window.v1 中读取单帧 image-ref 和元数据。"""
 
-    frame_window_payload = _require_frame_window_payload(request.input_values.get("frames"), node_id=request.node_id)
+    frame_window_payload = require_frame_window_payload(request.input_values.get("frames"), node_id=request.node_id)
     resolved_index = _resolve_index(request)
     allow_negative = _read_optional_bool(request.parameters.get("allow_negative"), default=True)
     normalized_index = resolved_index
@@ -46,65 +46,6 @@ def _video_frame_window_item_get_handler(request: WorkflowNodeExecutionRequest) 
             "size": len(items),
         },
     )
-
-
-def _require_frame_window_payload(payload: object, *, node_id: str) -> dict[str, object]:
-    """校验 frame-window.v1 payload 并返回规范化结果。"""
-
-    if not isinstance(payload, dict):
-        raise InvalidRequestError(
-            "frame-window-item-get 节点要求 frames payload 必须是对象",
-            details={"node_id": node_id},
-        )
-    raw_items = payload.get("items")
-    if not isinstance(raw_items, list) or not raw_items:
-        raise InvalidRequestError(
-            "frame-window-item-get 节点要求 frames.items 必须是非空数组",
-            details={"node_id": node_id},
-        )
-    normalized_items: list[dict[str, object]] = []
-    for item_index, raw_item in enumerate(raw_items, start=1):
-        if not isinstance(raw_item, dict):
-            raise InvalidRequestError(
-                "frame-window-item-get 节点要求每个 frames.items 都必须是对象",
-                details={"node_id": node_id, "item_index": item_index},
-            )
-        frame_index = raw_item.get("frame_index")
-        timestamp_ms = raw_item.get("timestamp_ms")
-        if isinstance(frame_index, bool) or not isinstance(frame_index, int) or frame_index < 0:
-            raise InvalidRequestError(
-                "frame-window-item-get 节点要求每个 frames.items.frame_index 都必须是非负整数",
-                details={"node_id": node_id, "item_index": item_index, "frame_index": frame_index},
-            )
-        if (
-            isinstance(timestamp_ms, bool)
-            or not isinstance(timestamp_ms, (int, float))
-            or float(timestamp_ms) < 0
-        ):
-            raise InvalidRequestError(
-                "frame-window-item-get 节点要求每个 frames.items.timestamp_ms 都必须是非负数",
-                details={"node_id": node_id, "item_index": item_index, "timestamp_ms": timestamp_ms},
-            )
-        try:
-            normalized_image = require_image_payload(raw_item.get("image"))
-        except InvalidRequestError as exc:
-            raise InvalidRequestError(
-                "frame-window-item-get 节点要求每个 frames.items.image 都必须是有效 image-ref",
-                details={"node_id": node_id, "item_index": item_index, **(exc.details or {})},
-            ) from exc
-        normalized_items.append(
-            {
-                "frame_index": frame_index,
-                "timestamp_ms": float(timestamp_ms),
-                "image": normalized_image,
-            }
-        )
-    return {
-        "items": tuple(normalized_items),
-        "source_video": payload.get("source_video"),
-    }
-
-
 def _resolve_index(request: WorkflowNodeExecutionRequest) -> int:
     """从输入端口或参数读取索引。"""
 

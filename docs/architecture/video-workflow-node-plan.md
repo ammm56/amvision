@@ -369,13 +369,13 @@ release/
 - `SAM3` 专用的多帧状态管理
 - `SAM3` 专用 memory / tracker 状态逻辑
 
-当前已落地的第一阶段实现：
+当前已落地的实现：
 
 - `custom.sam3.video-interactive-segment`
 - 输入：`frame-window.v1 + prompt-regions.v1`
 - 输出：`tracks.v1`
-- 当前策略：shared prompt across window，`track_id` 先稳定映射为 `prompt_id`
-- 当前仍未实现完整的多帧 memory/state 传播与视频 tracker 全能力
+- 当前默认策略：stateful mask propagation，`track_id` 继续稳定映射为 `prompt_id`
+- 当前仍未实现完整底层 memory/state 传播与视频 tracker 全能力
 
 ### 不应该属于 `SAM3` pack 的部分
 
@@ -430,6 +430,14 @@ release/
 8. 引入 `tracks.v1` 正式输出
 9. 再补 `tracks-filter / tracks-to-regions / video-overlay-render / video-save`
 
+### 第 4 批
+
+10. 实现 `core.vision.tracks-filter`
+11. 实现 `core.vision.tracks-to-regions`
+12. 实现 `core.io.video-overlay-render`
+13. 实现 `core.io.video-save`
+14. 再把 `SAM3 video-interactive-segment` 从当前 stateful mask propagation 版升级到更完整的底层 memory/state 版
+
 ## 当前这轮代码实现范围
 
 当前这轮先实现：
@@ -441,15 +449,17 @@ release/
 5. `core.io.video-decode-frames`
 6. `core.io.frame-window-item-get`
 7. `custom.sam3.video-interactive-segment` 第一阶段版本
+8. `core.vision.tracks-filter`
+9. `core.vision.tracks-to-regions`
+10. `core.io.video-overlay-render`
+11. `core.io.video-save`
 
 当前这轮暂不实现：
 
 1. `SAM3` 视频/多帧的完整 memory tracker / 多帧传播全能力
-2. `tracks-filter / tracks-to-regions / video-overlay-render / video-save`
 
 ## 下一步
 
-- 先完成当前这轮的 contract 与 core 节点实现
-- 跑定向回归
-- 再继续把 `SAM3` 视频/多帧从 shared prompt 版扩到完整 memory/state 版
-- 之后补 `tracks-filter / tracks-to-regions / video-overlay-render / video-save`
+- 先继续把 `SAM3` 视频/多帧从当前 stateful mask propagation 版扩到完整底层 memory/state 版
+- 再补视频结果预览、导出和更长时长时序回归
+- 再评估是否需要补 `video-body / video-preview` 这类调试和交互节点

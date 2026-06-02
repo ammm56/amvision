@@ -14,12 +14,14 @@ from custom_nodes.sam3_segment_nodes.backend.nodes import video_interactive_segm
 def test_video_interactive_segment_returns_tracks_and_summary(monkeypatch) -> None:
     """验证 video-interactive 节点会返回 tracks 与 summary。"""
 
-    captured: dict[str, object] = {"predict_calls": 0}
+    captured: dict[str, object] = {"predict_calls": 0, "prompt_history": []}
 
     class _FakeSession:
         def predict(self, *, image_bytes: bytes, prompt_items):
             captured["predict_calls"] = int(captured["predict_calls"]) + 1
-            captured["prompt_items"] = prompt_items
+            cast_history = list(captured["prompt_history"])
+            cast_history.append(prompt_items)
+            captured["prompt_history"] = cast_history
             return SimpleNamespace(
                 regions=(
                     SimpleNamespace(
@@ -93,7 +95,14 @@ def test_video_interactive_segment_returns_tracks_and_summary(monkeypatch) -> No
     assert output["summary"]["processed_frame_count"] == 2
     assert output["summary"]["unique_track_count"] == 1
     assert output["summary"]["track_ids"] == ["track-1"]
-    assert output["summary"]["frame_prompt_mode"] == "shared-prompts-across-window"
+    assert output["summary"]["frame_prompt_mode"] == "stateful-mask-propagation"
+    assert output["summary"]["propagated_prompt_counts"] == [0, 1]
+    prompt_history = captured["prompt_history"]
+    assert len(prompt_history) == 2
+    assert prompt_history[0][0].prompt_kind == "box"
+    assert prompt_history[1][0].prompt_kind == "mask"
+    assert output["tracks"]["items"][0]["state"] == "seeded"
+    assert output["tracks"]["items"][1]["state"] == "propagated"
 
 
 def test_video_interactive_segment_runs_project_native_smoke() -> None:
@@ -126,7 +135,93 @@ def test_video_interactive_segment_runs_project_native_smoke() -> None:
     assert output["summary"]["inference_mode"] == "video-interactive-segment"
     assert output["summary"]["processed_frame_count"] == 2
     assert output["summary"]["postprocess_profile"] == "sam3-default-v2"
+    assert output["summary"]["frame_prompt_mode"] == "stateful-mask-propagation"
     assert output["tracks"]["count"] >= 1
+
+
+def test_video_interactive_segment_supports_explicit_shared_prompt_mode(monkeypatch) -> None:
+    """验证 video-interactive 节点允许显式回退到 shared prompt 模式。"""
+
+    captured: dict[str, object] = {"prompt_history": []}
+
+    class _FakeSession:
+        def predict(self, *, image_bytes: bytes, prompt_items):
+            cast_history = list(captured["prompt_history"])
+            cast_history.append(prompt_items)
+            captured["prompt_history"] = cast_history
+            return SimpleNamespace(
+                regions=(
+                    SimpleNamespace(
+                        region_id="region-1",
+                        score=0.88,
+                        class_id=0,
+                        class_name="tracked-object",
+                        bbox_xyxy=(8.0, 12.0, 44.0, 52.0),
+                        polygon_xy=((8.0, 12.0), (44.0, 12.0), (44.0, 52.0), (8.0, 52.0)),
+                        area=1440,
+                        prompt_id="track-1",
+                        source_prompt_text=None,
+                        source_prompt_positive_texts=None,
+                        source_prompt_negative_texts=None,
+                        mask_png_bytes=_build_test_png_bytes(width=64, height=64),
+                        mask_width=64,
+                        mask_height=64,
+                    ),
+                ),
+                summary={
+                    "project_native": True,
+                    "model_scale": "l",
+                    "variant_name": "default",
+                    "checkpoint_path": "fake-sam3.pt",
+                    "device": "cpu",
+                    "precision": "fp32",
+                    "prompt_count": 1,
+                    "prompt_kinds": ["box"],
+                    "region_count": 1,
+                    "inference_mode": "interactive-segment",
+                    "postprocess_profile": "sam3-default-v2",
+                },
+            )
+
+    monkeypatch.setattr(
+        video_interactive_segment,
+        "get_or_create_sam3_interactive_runtime_session",
+        lambda **_: _FakeSession(),
+    )
+
+    frame_window_payload, image_registry = _build_test_frame_window_payload(frame_count=2, width=96, height=72)
+    request = WorkflowNodeExecutionRequest(
+        node_id="node-sam3-video-interactive-shared",
+        node_definition=SimpleNamespace(node_type_id=video_interactive_segment.NODE_TYPE_ID),
+        parameters={
+            "model_scale": "l",
+            "device": "cpu",
+            "precision": "fp32",
+            "tracking_mode": "shared-prompts-across-window",
+        },
+        input_values={
+            "frames": frame_window_payload,
+            "prompts": {
+                "items": [
+                    {
+                        "prompt_id": "track-1",
+                        "prompt_kind": "box",
+                        "display_name": "Tracked ROI",
+                        "bbox_xyxy": [8, 12, 44, 52],
+                    }
+                ]
+            },
+        },
+        execution_metadata={"execution_image_registry": image_registry},
+    )
+
+    output = video_interactive_segment.handle_node(request)
+
+    assert output["summary"]["frame_prompt_mode"] == "shared-prompts-across-window"
+    assert output["summary"]["propagated_prompt_counts"] == [0, 0]
+    prompt_history = captured["prompt_history"]
+    assert prompt_history[0][0].prompt_kind == "box"
+    assert prompt_history[1][0].prompt_kind == "box"
 
 
 def _build_test_frame_window_payload(

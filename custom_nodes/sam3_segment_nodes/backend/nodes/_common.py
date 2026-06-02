@@ -648,7 +648,11 @@ def build_tracks_payload(
     for frame_prediction in frame_predictions:
         frame_index = int(frame_prediction["frame_index"])
         timestamp_ms = float(frame_prediction["timestamp_ms"])
-        for region in frame_prediction["regions"]:
+        region_states = frame_prediction.get("region_states")
+        for region_index, region in enumerate(frame_prediction["regions"]):
+            region_state = None
+            if isinstance(region_states, (list, tuple)) and region_index < len(region_states):
+                region_state = str(region_states[region_index])
             normalized_item = {
                 "track_id": str(region.prompt_id),
                 "frame_index": frame_index,
@@ -659,7 +663,7 @@ def build_tracks_payload(
                 "bbox_xyxy": list(region.bbox_xyxy),
                 "polygon_xy": [list(point) for point in region.polygon_xy],
                 "region_id": str(region.region_id),
-                "state": "tracked",
+                "state": region_state or "tracked",
                 "prompt_id": str(region.prompt_id),
                 "area": int(region.area),
             }
@@ -732,6 +736,8 @@ def build_video_interactive_summary_payload(
     prompt_items: tuple[Sam3InteractivePromptItem, ...],
     frame_items: tuple[Sam3FrameWindowItem, ...],
     frame_predictions: tuple[dict[str, object], ...],
+    tracking_mode: str,
+    propagated_prompt_counts: tuple[int, ...] = (),
 ) -> dict[str, object]:
     """构建 video-interactive 节点 summary。"""
 
@@ -759,7 +765,8 @@ def build_video_interactive_summary_payload(
         "track_count": total_region_count,
         "unique_track_count": len(unique_track_ids),
         "track_ids": unique_track_ids,
-        "frame_prompt_mode": "shared-prompts-across-window",
+        "frame_prompt_mode": tracking_mode,
+        "propagated_prompt_counts": list(propagated_prompt_counts),
     }
 
 
