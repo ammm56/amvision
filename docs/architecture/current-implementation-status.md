@@ -26,6 +26,7 @@
 - `YOLOE / SAM3` 当前已经不是骨架：两者都已接通 project-native custom node runtime，不依赖 `projectsrc/` 或已安装官方包执行推理；其中 `YOLOE` 已覆盖 `prompt-free / text-prompt / visual-prompt` 三条节点链，`SAM3` 已覆盖 `interactive-segment / semantic-segment / video-interactive-segment` 三条节点链。
 - `YOLOE text-prompt` 当前支持同一 `prompt_id` 下 positive / negative 文本组合；`YOLOE visual-prompt` 当前支持 `box / point / polygon / mask` 四类提示及同一 `prompt_id` 下混合提示聚合。`SAM3 interactive-segment` 当前支持 `box / point / polygon / mask`；`SAM3 semantic-segment` 当前支持同一 `prompt_id` 下 grouped positive / negative 文本提示；`SAM3 video-interactive-segment` 当前支持 `frame-window.v1 + prompt-regions.v1 -> tracks.v1` 的 `memory-prototype-state` 多帧链，并保留 `stateful-mask-propagation` 与 shared prompt 兼容模式。
 - `SAM3` 当前的实际使用也已经分层明确：简单任务可直接使用单帧 `interactive-segment`；短窗口或变化小的视频可使用 `shared-prompts-across-window`；中等复杂度视频可使用 `stateful-mask-propagation`；更复杂的多帧跟踪当前默认推荐 `memory-prototype-state`。更完整的底层 `memory attention tracker` 仍属于后续增强目标。
+- 视频 workflow 的使用面当前也已经补到可直接预览和调试：`core.io.frame-window-preview` 会把 `frame-window.v1` 转成 `gallery-preview`；`core.logic.payload-to-value + core.logic.value-field-extract` 可以把 `tracks.v1 / regions.v1 / frame-window.v1 / video-ref.v1` 顺畅桥接到现有 `table-preview / value-preview`；`core.output.video-body` 则负责把最终 `video-ref.v1` 转成正式可播放 `response-body.v1`。
 - 当前代码形态仍然是“模块化单体 + 本地队列 + 本地对象存储 + 独立 deployment 子进程”。下一步重点应转向拓扑收敛、运行时硬化和平台泛化，而不是继续补 YOLOX 基础闭环缺口。
 
 ## 本轮更新（P0 + P1-8 + P3-14 + P3-15）已落地事项
@@ -41,7 +42,9 @@
 - workflow core nodes 已新增 SAHI 大图切片推理节点 `core.model.sahi-inference`；当前节点复用已发布 detection deployment 主链完成切片推理、坐标回映射和 `nms / nmm / none` 三种重叠合并，不绕开 DeploymentInstance 与 PublishedInferenceGateway 正式边界。
 - `YOLOE` custom node 当前已接通 project-native runtime：`prompt-free-detect`、`text-prompt-detect`、`visual-prompt-detect` 都直接读取本地 `yoloe` 预训练权重，输出 `detections.v1 + regions.v1`；`text-prompt` 支持按 `prompt_id` 聚合 positive/negative 文本，`visual-prompt` 支持 `box / point / polygon / mask` 以及同一 `prompt_id` 下混合视觉提示。
 - `SAM3` custom node 当前已接通 project-native runtime：`interactive-segment` 直接读取本地 `sam3.pt`，支持 `box / point / polygon / mask` 四类几何提示；`semantic-segment` 直接读取本地 `sam3.pt` 的 detector 分支，支持按 `prompt_id` 聚合 positive/negative 文本提示并输出 `regions.v1`；`video-interactive-segment` 当前直接复用 `frame-window.v1` 与单图 interactive runtime，按 `prompt_id` 稳定映射 `track_id`，默认走 `memory-prototype-state` 并输出 `tracks.v1`。
+- `SAM3 video-interactive-segment` 当前已经补了三类定向回归：更长窗口、更大位移和更多对象数；轻量逻辑回归放在 `tests/`，真实本地 `sam3.pt` 的视频链 smoke 放在 `tests/integration/`，继续保持显式执行。
 - 视频 workflow 的通用结果节点当前已补到 `core.vision.tracks-filter`、`core.vision.tracks-to-regions`、`core.io.video-overlay-render` 和 `core.io.video-save`，已经可以先在通用层完成时序结果筛选、按帧拆分、结果渲染和重新编码保存。
+- 视频 workflow 的通用预览与交互辅助节点当前已补到 `core.io.frame-window-preview`、`core.output.video-body` 与 `core.logic.value-field-extract`；配合既有 `core.logic.payload-to-value`、`core.io.table-preview`、`core.io.value-preview`，当前已经能把视频帧窗口、跟踪结果、分帧 regions 和最终保存视频分别接到 workflow editor 的缩略预览、调试表格和正式响应播放器。
 
 ### P1-8 Bootstrap 重构
 

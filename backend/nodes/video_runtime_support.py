@@ -19,11 +19,17 @@ from backend.nodes.core_nodes._logic_node_support import require_value_payload
 from backend.nodes.runtime_support import require_image_payload
 from backend.service.application.errors import InvalidRequestError, ServiceConfigurationError
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
+from backend.service.application.workflows.execution_cleanup import register_dataset_storage_object_cleanup
+from backend.service.application.workflows.preview_display_outputs import (
+    build_preview_run_artifact_object_key,
+    read_preview_run_id,
+)
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 
 
 VIDEO_TRANSPORT_LOCAL_PATH = "local-path"
 VIDEO_TRANSPORT_STORAGE = "storage"
+RESPONSE_VIDEO_TRANSPORT_STORAGE_REF = "storage-ref"
 VIDEO_TOOL_FFMPEG = "ffmpeg"
 VIDEO_TOOL_FFPROBE = "ffprobe"
 _APP_ROOT_DIR = Path(__file__).resolve().parents[2]
@@ -640,6 +646,78 @@ def build_storage_video_payload(*, object_key: str, metadata: dict[str, object] 
     return require_video_payload(payload)
 
 
+def build_response_video_payload(
+    request: WorkflowNodeExecutionRequest,
+    *,
+    video_payload: object,
+    object_key: str | None = None,
+    variant_name: str = "response-video",
+    overwrite: bool = True,
+) -> dict[str, object]:
+    """把内部 video-ref payload 转换成对外 JSON 安全的视频响应结构。"""
+
+    stored_payload = materialize_video_storage_payload(
+        request,
+        source_payload=video_payload,
+        object_key=object_key,
+        overwrite=overwrite,
+        variant_name=variant_name,
+    )
+    response_video: dict[str, object] = {
+        "transport_kind": RESPONSE_VIDEO_TRANSPORT_STORAGE_REF,
+        "object_key": str(stored_payload["object_key"]),
+        "media_type": str(stored_payload["media_type"]),
+    }
+    for field_name in ("frame_count", "fps", "width", "height", "duration_ms"):
+        if stored_payload.get(field_name) is not None:
+            response_video[field_name] = stored_payload[field_name]
+    return response_video
+
+
+def materialize_video_storage_payload(
+    request: WorkflowNodeExecutionRequest,
+    *,
+    source_payload: object,
+    object_key: str | None,
+    overwrite: bool,
+    variant_name: str,
+) -> dict[str, object]:
+    """确保 video-ref 已落到 ObjectStore，并返回 storage 形式 payload。"""
+
+    normalized_source_payload = require_video_payload(source_payload)
+    source_object_key = _normalize_optional_text(normalized_source_payload.get("object_key"))
+    if (
+        object_key is None
+        and normalized_source_payload["transport_kind"] == VIDEO_TRANSPORT_STORAGE
+        and source_object_key is not None
+    ):
+        return build_storage_video_payload(object_key=source_object_key, metadata=normalized_source_payload)
+
+    target_object_key = object_key or _build_default_video_target_object_key(
+        request,
+        normalized_source_payload=normalized_source_payload,
+        variant_name=variant_name,
+    )
+    if source_object_key is not None and target_object_key == source_object_key:
+        return build_storage_video_payload(object_key=target_object_key, metadata=normalized_source_payload)
+
+    dataset_storage = require_dataset_storage(request)
+    target_path = dataset_storage.resolve(target_object_key)
+    if target_path.exists() and not overwrite:
+        raise InvalidRequestError(
+            "视频保存目标已存在，且当前节点未允许覆盖",
+            details={"node_id": request.node_id, "object_key": target_object_key},
+        )
+    source_path = resolve_video_source_path(request, video_payload=normalized_source_payload)
+    dataset_storage.copy_file(source_path, target_object_key)
+    _register_temporary_runtime_video_cleanup(
+        request,
+        object_key=target_object_key,
+        was_generated=object_key is None,
+    )
+    return build_storage_video_payload(object_key=target_object_key, metadata=normalized_source_payload)
+
+
 def build_runtime_video_object_key(
     request: WorkflowNodeExecutionRequest,
     *,
@@ -711,6 +789,79 @@ def require_dataset_storage(request: WorkflowNodeExecutionRequest) -> LocalDatas
     return dataset_storage
 
 
+def _build_default_video_target_object_key(
+    request: WorkflowNodeExecutionRequest,
+    *,
+    normalized_source_payload: dict[str, object],
+    variant_name: str,
+) -> str:
+    """按当前执行上下文为视频生成默认 object key。"""
+
+    source_object_key = _normalize_optional_text(normalized_source_payload.get("object_key"))
+    media_type = str(normalized_source_payload.get("media_type") or "video/mp4")
+    preview_run_id = read_preview_run_id(request.execution_metadata)
+    if preview_run_id is not None:
+        return build_preview_run_artifact_object_key(
+            preview_run_id=preview_run_id,
+            node_id=request.node_id,
+            artifact_name=variant_name,
+            media_type=media_type,
+        )
+
+    output_extension = _infer_video_file_extension_from_media_type(media_type)
+    if source_object_key is not None:
+        source_reference_payload: dict[str, object] | None = {
+            "transport_kind": VIDEO_TRANSPORT_STORAGE,
+            "object_key": source_object_key,
+            "media_type": media_type,
+        }
+    else:
+        local_path = _normalize_optional_text(normalized_source_payload.get("local_path")) or "video.mp4"
+        source_reference_payload = {
+            "transport_kind": VIDEO_TRANSPORT_LOCAL_PATH,
+            "local_path": local_path,
+            "media_type": media_type,
+        }
+    return build_runtime_video_object_key(
+        request,
+        source_video_payload=source_reference_payload,
+        variant_name=variant_name,
+        output_extension=output_extension,
+    )
+
+
+def _register_temporary_runtime_video_cleanup(
+    request: WorkflowNodeExecutionRequest,
+    *,
+    object_key: str,
+    was_generated: bool,
+) -> None:
+    """为自动生成的视频 object key 登记执行结束后的临时清理。"""
+
+    if not was_generated:
+        return
+    normalized_object_key = _normalize_optional_text(object_key)
+    if normalized_object_key is None:
+        return
+    if not _is_temporary_runtime_video_object_key(request, object_key=normalized_object_key):
+        return
+    register_dataset_storage_object_cleanup(
+        request.execution_metadata,
+        object_key=normalized_object_key,
+    )
+
+
+def _is_temporary_runtime_video_object_key(
+    request: WorkflowNodeExecutionRequest,
+    *,
+    object_key: str,
+) -> bool:
+    """判断视频 object key 是否属于当前 workflow run 的临时目录。"""
+
+    workflow_run_id = str(request.execution_metadata.get("workflow_run_id") or "default-run")
+    return object_key.startswith(f"workflows/runtime/{workflow_run_id}/")
+
+
 def _iter_video_tool_candidates(tool_name: str) -> list[Path]:
     """构造视频工具候选路径列表。"""
 
@@ -767,6 +918,15 @@ def _tool_file_name(tool_name: str) -> str:
     if sys.platform.startswith("win"):
         return f"{tool_name}.exe"
     return tool_name
+
+
+def _infer_video_file_extension_from_media_type(media_type: str) -> str:
+    """根据媒体类型推断视频文件扩展名。"""
+
+    guessed_extension = mimetypes.guess_extension(media_type.strip()) if isinstance(media_type, str) else None
+    if isinstance(guessed_extension, str) and guessed_extension:
+        return guessed_extension
+    return ".mp4"
 
 
 def _run_video_tool_command(
@@ -856,3 +1016,12 @@ def _normalize_optional_non_negative_number(value: object) -> float | None:
             return None
         return parsed_value if parsed_value >= 0 else None
     return None
+
+
+def _normalize_optional_text(value: object) -> str | None:
+    """规范化可选文本字段。"""
+
+    if not isinstance(value, str):
+        return None
+    normalized_value = value.strip()
+    return normalized_value or None

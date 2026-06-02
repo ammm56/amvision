@@ -30,7 +30,7 @@ def _payload_to_value_handler(request: WorkflowNodeExecutionRequest) -> dict[str
     if value_payload is not None:
         candidate_values.append(("value", require_value_payload(value_payload, field_name="value")["value"]))
 
-    for port_name in ("body", "detections"):
+    for port_name in ("body", "detections", "video", "frames", "tracks", "regions"):
         raw_payload = request.input_values.get(port_name)
         if raw_payload is None:
             continue
@@ -43,7 +43,7 @@ def _payload_to_value_handler(request: WorkflowNodeExecutionRequest) -> dict[str
 
     if not candidate_values:
         raise InvalidRequestError(
-            "payload-to-value 节点至少需要连接一个 value、body 或 detections 输入",
+            "payload-to-value 节点至少需要连接一个 value、body、detections、video、frames、tracks 或 regions 输入",
             details={"node_id": request.node_id},
         )
     if len(candidate_values) > 1:
@@ -60,7 +60,7 @@ CORE_NODE_SPEC = CoreNodeSpec(
         node_type_id="core.logic.payload-to-value",
         display_name="Payload To Value",
         category="logic.transform",
-        description="把 value、response-body 或 detections 这类结构化结果包装成 value.v1，供 object-create、response-envelope 和 value-preview 继续组合或预览。",
+        description="把 value、response-body、detections、video、frame-window、tracks 或 regions 这类结构化结果包装成 value.v1，供 object-create、value-field-extract、response-envelope 和 value-preview 继续组合或预览。",
         implementation_kind=NODE_IMPLEMENTATION_CORE,
         runtime_kind=NODE_RUNTIME_PYTHON_CALLABLE,
         input_ports=(
@@ -80,6 +80,30 @@ CORE_NODE_SPEC = CoreNodeSpec(
                 name="detections",
                 display_name="Detections",
                 payload_type_id="detections.v1",
+                required=False,
+            ),
+            NodePortDefinition(
+                name="video",
+                display_name="Video",
+                payload_type_id="video-ref.v1",
+                required=False,
+            ),
+            NodePortDefinition(
+                name="frames",
+                display_name="Frames",
+                payload_type_id="frame-window.v1",
+                required=False,
+            ),
+            NodePortDefinition(
+                name="tracks",
+                display_name="Tracks",
+                payload_type_id="tracks.v1",
+                required=False,
+            ),
+            NodePortDefinition(
+                name="regions",
+                display_name="Regions",
+                payload_type_id="regions.v1",
                 required=False,
             ),
         ),

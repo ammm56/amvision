@@ -313,6 +313,39 @@ def test_sam3_video_memory_tracker_updates_track_state_from_region() -> None:
     assert track_state.last_frame_index == 3
 
 
+def test_sam3_video_memory_tracker_supports_large_displacement() -> None:
+    """验证对象大位移时 memory prompt 会跟着特征相似区域迁移。"""
+
+    prepared_image = preprocess_sam3_image(_build_test_png_bytes(width=64, height=64))
+    feature_map = torch.zeros((1, 2, 8, 8), dtype=torch.float32)
+    feature_map[:, 1, :, :] = 1.0
+    feature_map[:, 0, 5:8, 5:8] = 4.0
+    feature_map[:, 1, 5:8, 5:8] = 0.0
+    track_state = Sam3VideoTrackState(
+        prompt_id="track-shift",
+        display_name="shifted-object",
+        feature_prototype=torch.tensor([1.0, 0.0], dtype=torch.float32),
+        low_res_mask_history=[],
+    )
+    frame_context = Sam3InteractiveFrameContext(
+        prepared_image=prepared_image,
+        features={"image_embed": feature_map, "high_res_feats": [], "low_res_feature_map": feature_map},
+        low_res_feature_map=feature_map,
+        mask_prompt_width=32,
+        mask_prompt_height=32,
+    )
+
+    memory_prompt = build_memory_prompt_mask(
+        frame_context=frame_context,
+        track_state=track_state,
+    )
+
+    ys, xs = np.nonzero(memory_prompt.prompt_mask)
+    assert len(xs) > 0
+    assert float(xs.mean()) > 32.0
+    assert float(ys.mean()) > 32.0
+
+
 def _encode_mask_png_for_test(binary_mask: np.ndarray) -> bytes:
     """把测试二值 mask 编码成 PNG。"""
 

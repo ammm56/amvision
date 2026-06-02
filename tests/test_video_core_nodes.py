@@ -12,7 +12,9 @@ from backend.nodes.core_catalog import get_core_workflow_payload_contracts
 from backend.nodes.core_nodes.tracks_filter import _tracks_filter_handler
 from backend.nodes.core_nodes.tracks_to_regions import _tracks_to_regions_handler
 from backend.nodes.core_nodes.video_decode_frames import _video_decode_frames_handler
+from backend.nodes.core_nodes.video_body import _video_body_handler
 from backend.nodes.core_nodes.video_frame_window_item_get import _video_frame_window_item_get_handler
+from backend.nodes.core_nodes.frame_window_preview import _frame_window_preview_handler
 from backend.nodes.core_nodes.video_load_local import _video_load_local_handler
 from backend.nodes.core_nodes.video_overlay_render import _video_overlay_render_handler
 from backend.nodes.core_nodes.video_save import _video_save_handler
@@ -159,6 +161,88 @@ def test_video_frame_window_item_get_returns_selected_frame_and_meta(tmp_path: P
     assert output["frame_meta"]["value"]["timestamp_ms"] >= 0
     assert output["frame_meta"]["value"]["selected_index"] == 2
     assert output["frame_meta"]["value"]["source_video"]["transport_kind"] == VIDEO_TRANSPORT_LOCAL_PATH
+
+
+def test_frame_window_preview_handler_returns_gallery_preview_body(tmp_path: Path) -> None:
+    """验证 frame-window-preview 会把帧窗口整理成 gallery-preview body。"""
+
+    video_path = _build_test_video_file(tmp_path / "sample.avi", frame_count=5)
+    metadata = probe_video_metadata(video_path)
+    image_registry = ExecutionImageRegistry()
+    decoded_output = _video_decode_frames_handler(
+        WorkflowNodeExecutionRequest(
+            node_id="video-decode",
+            node_definition=object(),
+            parameters={"start_frame": 0, "end_frame": 4, "step": 1, "max_frames": 8, "encode_format": "png"},
+            input_values={
+                "video": {
+                    "transport_kind": VIDEO_TRANSPORT_LOCAL_PATH,
+                    "local_path": str(video_path),
+                    "media_type": "video/x-msvideo",
+                    **metadata,
+                }
+            },
+            execution_metadata={"execution_image_registry": image_registry},
+        )
+    )
+
+    output = _frame_window_preview_handler(
+        WorkflowNodeExecutionRequest(
+            node_id="frame-window-preview",
+            node_definition=object(),
+            parameters={"title": "Decoded Frames", "sample_mode": "uniform", "max_items": 3},
+            input_values={"frames": decoded_output["frames"]},
+            execution_metadata={"execution_image_registry": image_registry},
+        )
+    )
+
+    body = output["body"]
+    assert body["type"] == "gallery-preview"
+    assert body["title"] == "Decoded Frames"
+    assert body["total_count"] == 5
+    assert body["sample_count"] == 3
+    assert len(body["items"]) == 3
+    assert body["items"][0]["frame_index"] == 0
+    assert body["items"][-1]["frame_index"] == 4
+    assert body["items"][0]["image"]["transport_kind"] == "inline-base64"
+
+
+def test_video_body_handler_returns_storage_ref_response_body(tmp_path: Path) -> None:
+    """验证 video-body 会把 video-ref 转成正式可播放响应结构。"""
+
+    video_path = _build_test_video_file(tmp_path / "sample.avi", frame_count=4)
+    dataset_storage = LocalDatasetStorage(DatasetStorageSettings(root_dir=str(tmp_path / "dataset-storage")))
+
+    output = _video_body_handler(
+        WorkflowNodeExecutionRequest(
+            node_id="video-body",
+            node_definition=object(),
+            parameters={"title": "Saved Video"},
+            input_values={
+                "video": {
+                    "transport_kind": VIDEO_TRANSPORT_LOCAL_PATH,
+                    "local_path": str(video_path),
+                    "media_type": "video/x-msvideo",
+                    "frame_count": 4,
+                    "fps": 5.0,
+                    "width": 48,
+                    "height": 32,
+                    "duration_ms": 800.0,
+                }
+            },
+            execution_metadata={
+                "dataset_storage": dataset_storage,
+                "workflow_run_id": "run-video-body",
+            },
+        )
+    )
+
+    body = output["body"]
+    assert body["type"] == "video"
+    assert body["title"] == "Saved Video"
+    assert body["video"]["transport_kind"] == "storage-ref"
+    assert body["video"]["object_key"].startswith("workflows/runtime/run-video-body/video-body/")
+    assert dataset_storage.resolve(body["video"]["object_key"]).is_file() is True
 
 
 def test_probe_video_metadata_prefers_ffprobe_when_available(tmp_path: Path) -> None:

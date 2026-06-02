@@ -36,6 +36,35 @@
       </div>
     </section>
 
+    <section v-if="displayVideos.length" class="runtime-body-viewer__group">
+      <div class="runtime-body-viewer__group-heading">
+        <div>
+          <p class="runtime-body-viewer__kicker">Videos</p>
+          <h3>视频结果</h3>
+        </div>
+        <span>{{ displayVideos.length }} item{{ displayVideos.length > 1 ? 's' : '' }}</span>
+      </div>
+      <div class="runtime-body-viewer__image-grid">
+        <article v-for="video in displayVideos" :key="video.path" class="runtime-body-viewer__image-card">
+          <div class="runtime-body-viewer__video-preview">
+            <video v-if="video.src" :src="video.src" controls preload="metadata" />
+            <div v-else class="runtime-body-viewer__image-empty">当前视频结果没有可用的 object key，无法直接播放。</div>
+          </div>
+          <div class="runtime-body-viewer__image-meta">
+            <strong>{{ video.title }}</strong>
+            <span>{{ video.path }}</span>
+            <span>{{ video.transportKind }} / {{ video.mediaType || 'unknown' }}</span>
+            <span>{{ video.objectKey || 'missing-object-key' }}</span>
+            <span>
+              {{ video.width ?? '-' }} x {{ video.height ?? '-' }}
+              · {{ video.fps ?? '-' }} fps
+              · {{ video.frameCount ?? '-' }} frames
+            </span>
+          </div>
+        </article>
+      </div>
+    </section>
+
     <section v-if="primaryJsonText" class="runtime-body-viewer__group">
       <div class="runtime-body-viewer__group-heading">
         <div>
@@ -82,6 +111,17 @@ interface ResponseImagePayload {
   height?: number
 }
 
+interface ResponseVideoPayload {
+  transport_kind: string
+  media_type: string
+  object_key?: string
+  width?: number
+  height?: number
+  fps?: number
+  frame_count?: number
+  duration_ms?: number
+}
+
 interface RuntimeViewerImageSource {
   title: string
   path: string
@@ -97,6 +137,23 @@ interface RuntimeViewerImage extends RuntimeViewerImageSource {
   src: string | null
 }
 
+interface RuntimeViewerVideoSource {
+  title: string
+  path: string
+  transportKind: string
+  mediaType: string | null
+  objectKey: string | null
+  width: number | null
+  height: number | null
+  fps: number | null
+  frameCount: number | null
+  durationMs: number | null
+}
+
+interface RuntimeViewerVideo extends RuntimeViewerVideoSource {
+  src: string | null
+}
+
 interface SummaryItem {
   label: string
   value: string
@@ -109,6 +166,7 @@ const props = defineProps<{
 }>()
 
 const displayImages = ref<RuntimeViewerImage[]>([])
+const displayVideos = ref<RuntimeViewerVideo[]>([])
 const activeImage = ref<{
   title: string
   src: string | null
@@ -134,6 +192,7 @@ const summaryItems = computed<SummaryItem[]>(() => {
     { label: 'status', value: props.statusCode === null ? '-' : String(props.statusCode) },
     { label: 'body type', value: bodyType.value },
     { label: 'images', value: String(displayImages.value.length) },
+    { label: 'videos', value: String(displayVideos.value.length) },
   ]
   const body = props.body
   if (isRecord(body) && body.code !== undefined) items.push({ label: 'code', value: String(body.code) })
@@ -174,6 +233,7 @@ watch(
     activeImage.value = null
     revokeObjectUrls()
     const imageSources = collectResponseImages(props.body)
+    const videoSources = collectResponseVideos(props.body)
     const nextImages: RuntimeViewerImage[] = []
     for (const imageSource of imageSources) {
       let src = buildInlineImageSrc(imageSource.mediaType, imageSource.imageBase64)
@@ -187,6 +247,19 @@ watch(
       }
       nextImages.push({ ...imageSource, src })
     }
+    const nextVideos: RuntimeViewerVideo[] = []
+    for (const videoSource of videoSources) {
+      let src: string | null = null
+      if (videoSource.objectKey && props.projectId.trim()) {
+        try {
+          src = await createProjectFileObjectUrl(props.projectId.trim(), videoSource.objectKey)
+          objectUrls.add(src)
+        } catch {
+          src = null
+        }
+      }
+      nextVideos.push({ ...videoSource, src })
+    }
     if (loadId !== latestLoadId) {
       nextImages.forEach((image) => {
         if (image.src && objectUrls.has(image.src)) {
@@ -194,9 +267,16 @@ watch(
           objectUrls.delete(image.src)
         }
       })
+      nextVideos.forEach((video) => {
+        if (video.src && objectUrls.has(video.src)) {
+          URL.revokeObjectURL(video.src)
+          objectUrls.delete(video.src)
+        }
+      })
       return
     }
     displayImages.value = nextImages
+    displayVideos.value = nextVideos
   },
   { immediate: true, deep: true },
 )
@@ -223,6 +303,15 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isResponseImagePayload(value: unknown): value is ResponseImagePayload {
   return isRecord(value) && typeof value.transport_kind === 'string' && typeof value.media_type === 'string'
+}
+
+function isResponseVideoPayload(value: unknown): value is ResponseVideoPayload {
+  return (
+    isRecord(value) &&
+    typeof value.transport_kind === 'string' &&
+    typeof value.media_type === 'string' &&
+    (value.object_key === undefined || typeof value.object_key === 'string')
+  )
 }
 
 function buildInlineImageSrc(mediaType: string | null, imageBase64: string | null): string | null {
@@ -254,6 +343,7 @@ function transformViewerJsonValue(value: unknown): unknown {
 function buildBodySummary(body: Record<string, unknown>): Record<string, unknown> | null {
   const summary = { ...body }
   if (typeof summary.type === 'string' && summary.type === 'image') delete summary.image
+  if (typeof summary.type === 'string' && summary.type === 'video') delete summary.video
   if (Object.keys(summary).length === 0) return null
   return summary
 }
@@ -275,6 +365,23 @@ function collectResponseImages(value: unknown, path = 'body'): RuntimeViewerImag
   return Object.entries(value).flatMap(([key, item]) => collectResponseImages(item, `${path}.${key}`))
 }
 
+function collectResponseVideos(value: unknown, path = 'body'): RuntimeViewerVideoSource[] {
+  if (Array.isArray(value)) {
+    return value.flatMap((item, index) => collectResponseVideos(item, `${path}[${index}]`))
+  }
+  if (!isRecord(value)) return []
+
+  const wrapperType = typeof value.type === 'string' ? value.type : null
+  if ((wrapperType === 'video' || wrapperType === 'video-preview') && isResponseVideoPayload(value.video)) {
+    return [buildViewerVideoSource(path, value, value.video)]
+  }
+  if (isResponseVideoPayload(value)) {
+    return [buildViewerVideoSource(path, null, value)]
+  }
+
+  return Object.entries(value).flatMap(([key, item]) => collectResponseVideos(item, `${path}.${key}`))
+}
+
 function buildViewerImageSource(
   path: string,
   wrapper: Record<string, unknown> | null,
@@ -294,6 +401,30 @@ function buildViewerImageSource(
     height: normalizeOptionalNumber(image.height),
     objectKey: typeof image.object_key === 'string' && image.object_key.trim() ? image.object_key : null,
     imageBase64: typeof image.image_base64 === 'string' && image.image_base64 ? image.image_base64 : null,
+  }
+}
+
+function buildViewerVideoSource(
+  path: string,
+  wrapper: Record<string, unknown> | null,
+  video: ResponseVideoPayload,
+): RuntimeViewerVideoSource {
+  const pathLabel = path.replace(/^body\.?/, '') || 'body'
+  const title =
+    (wrapper && typeof wrapper.title === 'string' && wrapper.title.trim()) ||
+    pathLabel.split('.').at(-1)?.replace(/\[(\d+)\]/g, ' $1') ||
+    'video'
+  return {
+    title,
+    path: pathLabel,
+    transportKind: video.transport_kind,
+    mediaType: typeof video.media_type === 'string' ? video.media_type : null,
+    objectKey: typeof video.object_key === 'string' && video.object_key.trim() ? video.object_key : null,
+    width: normalizeOptionalNumber(video.width),
+    height: normalizeOptionalNumber(video.height),
+    fps: normalizeOptionalNumber(video.fps),
+    frameCount: normalizeOptionalNumber(video.frame_count),
+    durationMs: normalizeOptionalNumber(video.duration_ms),
   }
 }
 
@@ -398,6 +529,21 @@ onUnmounted(() => {
   width: 100%;
   height: 100%;
   object-fit: contain;
+}
+
+.runtime-body-viewer__video-preview {
+  display: grid;
+  min-height: 180px;
+  border-radius: 12px;
+  overflow: hidden;
+  background: linear-gradient(135deg, rgba(148, 163, 184, 0.12), rgba(15, 23, 42, 0.08));
+}
+
+.runtime-body-viewer__video-preview video {
+  width: 100%;
+  height: 100%;
+  min-height: 180px;
+  background: #000;
 }
 
 .runtime-body-viewer__image-empty {
