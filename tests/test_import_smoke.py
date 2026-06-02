@@ -287,6 +287,7 @@ BACKEND_MODULES: tuple[str, ...] = (
     "custom_nodes.sam3_segment_nodes.backend.nodes._project_native_runtime",
     "custom_nodes.sam3_segment_nodes.backend.nodes.interactive_segment",
     "custom_nodes.sam3_segment_nodes.backend.nodes.semantic_segment",
+    "custom_nodes.sam3_segment_nodes.backend.nodes.video_interactive_segment",
 )
 
 

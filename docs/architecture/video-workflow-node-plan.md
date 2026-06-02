@@ -369,6 +369,14 @@ release/
 - `SAM3` 专用的多帧状态管理
 - `SAM3` 专用 memory / tracker 状态逻辑
 
+当前已落地的第一阶段实现：
+
+- `custom.sam3.video-interactive-segment`
+- 输入：`frame-window.v1 + prompt-regions.v1`
+- 输出：`tracks.v1`
+- 当前策略：shared prompt across window，`track_id` 先稳定映射为 `prompt_id`
+- 当前仍未实现完整的多帧 memory/state 传播与视频 tracker 全能力
+
 ### 不应该属于 `SAM3` pack 的部分
 
 - 本地视频载入
@@ -432,16 +440,16 @@ release/
 4. `core.io.video-load-local`
 5. `core.io.video-decode-frames`
 6. `core.io.frame-window-item-get`
+7. `custom.sam3.video-interactive-segment` 第一阶段版本
 
 当前这轮暂不实现：
 
-1. `SAM3` 视频/多帧节点
-2. `tracks.v1` 的真实跟踪生成节点
-3. 视频 overlay / save 节点
+1. `SAM3` 视频/多帧的完整 memory tracker / 多帧传播全能力
+2. `tracks-filter / tracks-to-regions / video-overlay-render / video-save`
 
 ## 下一步
 
 - 先完成当前这轮的 contract 与 core 节点实现
 - 跑定向回归
-- 再开始 `SAM3` 视频/多帧 project-native runtime
+- 再继续把 `SAM3` 视频/多帧从 shared prompt 版扩到完整 memory/state 版
 - 之后补 `tracks-filter / tracks-to-regions / video-overlay-render / video-save`

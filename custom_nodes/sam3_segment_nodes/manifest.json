@@ -3,11 +3,13 @@
   "id": "sam3.segment-nodes",
   "version": "0.1.0",
   "displayName": "SAM3 Segment Nodes",
-  "description": "提供 SAM3 交互分割与语义分割 custom node。",
+  "description": "提供 SAM3 交互分割、语义分割和视频交互分割 custom node。",
   "category": "custom-node-pack",
   "capabilities": [
     "pipeline.node",
     "vision.segmentation",
+    "vision.tracking",
+    "video.processing",
     "prompt.visual",
     "prompt.text"
   ],
@@ -33,7 +35,8 @@
       "SAM3 权重从 data/files/models/pretrained/sam3 下读取。",
       "interactive-segment 已接通 project-native runtime，直接读取本地 sam3.pt，不回退到已安装官方包或 projectsrc 参考代码。",
       "interactive-segment 当前阶段支持 box、point、polygon、mask prompt，并输出 regions.v1。",
-      "semantic-segment 已接通 project-native runtime，支持按 prompt_id 聚合的 positive/negative text-prompts.v1，并输出 regions.v1。"
+      "semantic-segment 已接通 project-native runtime，支持按 prompt_id 聚合的 positive/negative text-prompts.v1，并输出 regions.v1。",
+      "video-interactive-segment 当前已接通 frame-window.v1 -> tracks.v1 的第一阶段 project-native runtime，当前使用 shared prompt across window 和 prompt_id 作为稳定 track_id。"
     ]
   }
 }

@@ -399,6 +399,105 @@
       "metadata": {
         "phase": "implemented"
       }
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.sam3.video-interactive-segment",
+      "display_name": "SAM3 Video Interactive Segment",
+      "category": "sam3.video",
+      "description": "通过 SAM3 和几何提示对 frame-window.v1 执行多帧交互分割，并输出 tracks.v1。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "input_ports": [
+        {
+          "name": "frames",
+          "display_name": "Frames",
+          "payload_type_id": "frame-window.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "prompts",
+          "display_name": "Prompts",
+          "payload_type_id": "prompt-regions.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "tracks",
+          "display_name": "Tracks",
+          "payload_type_id": "tracks.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "summary",
+          "display_name": "Summary",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "model_scale": {
+            "type": "string",
+            "enum": [
+              "nano",
+              "tiny",
+              "s",
+              "m",
+              "l",
+              "x",
+              "xx"
+            ]
+          },
+          "device": {
+            "type": "string"
+          },
+          "precision": {
+            "type": "string",
+            "enum": [
+              "fp32",
+              "fp16",
+              "bf16"
+            ]
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "vision.segmentation",
+        "vision.tracking",
+        "prompt.visual",
+        "video.processing"
+      ],
+      "runtime_requirements": {
+        "python_packages": []
+      },
+      "node_pack_id": "sam3.segment-nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {
+        "phase": "implemented",
+        "supported_prompt_kinds": [
+          "box",
+          "point",
+          "polygon",
+          "mask"
+        ],
+        "track_strategy": "prompt-id-shared-across-window"
+      }
     }
   ],
   "metadata": {}

@@ -85,6 +85,18 @@ class Sam3InteractivePromptItem:
 
 
 @dataclass(frozen=True)
+class Sam3FrameWindowItem:
+    """描述一帧已解码完成的视频帧。"""
+
+    frame_index: int
+    timestamp_ms: float
+    image_payload: dict[str, object]
+    image_bytes: bytes
+    width: int
+    height: int
+
+
+@dataclass(frozen=True)
 class Sam3PretrainedVariant:
     """描述一个 SAM3 预训练权重目录。"""
 
@@ -363,6 +375,75 @@ def read_interactive_prompt_items(
     return tuple(prompt_items)
 
 
+def read_frame_window_items(
+    payload: object,
+    *,
+    request: WorkflowNodeExecutionRequest,
+) -> tuple[Sam3FrameWindowItem, ...]:
+    """把 frame-window.v1 payload 规范化为可直接推理的帧列表。"""
+
+    if not isinstance(payload, dict):
+        raise InvalidRequestError("SAM3 视频交互分割节点要求 frames payload 必须是对象")
+    raw_items = payload.get("items")
+    if not isinstance(raw_items, list) or not raw_items:
+        raise InvalidRequestError("SAM3 视频交互分割节点要求 frames.items 必须是非空数组")
+
+    normalized_items: list[Sam3FrameWindowItem] = []
+    expected_frame_size: tuple[int, int] | None = None
+    for item_index, raw_item in enumerate(raw_items, start=1):
+        if not isinstance(raw_item, dict):
+            raise InvalidRequestError(
+                "SAM3 视频交互分割节点要求每个 frames.items 都必须是对象",
+                details={"item_index": item_index},
+            )
+        frame_index = raw_item.get("frame_index")
+        timestamp_ms = raw_item.get("timestamp_ms")
+        if isinstance(frame_index, bool) or not isinstance(frame_index, int) or frame_index < 0:
+            raise InvalidRequestError(
+                "SAM3 视频交互分割节点要求每个 frames.items.frame_index 都必须是非负整数",
+                details={"item_index": item_index, "frame_index": frame_index},
+            )
+        if isinstance(timestamp_ms, bool) or not isinstance(timestamp_ms, (int, float)) or float(timestamp_ms) < 0:
+            raise InvalidRequestError(
+                "SAM3 视频交互分割节点要求每个 frames.items.timestamp_ms 都必须是非负数",
+                details={"item_index": item_index, "timestamp_ms": timestamp_ms},
+            )
+        image_payload, image_bytes = load_image_bytes_from_payload(
+            request,
+            image_payload=raw_item.get("image"),
+        )
+        source_width, source_height = _resolve_source_image_size(
+            source_image_payload=image_payload,
+            source_image_bytes=image_bytes,
+        )
+        current_frame_size = (source_width, source_height)
+        if expected_frame_size is None:
+            expected_frame_size = current_frame_size
+        elif expected_frame_size != current_frame_size:
+            raise InvalidRequestError(
+                "SAM3 视频交互分割节点当前阶段要求 frame-window 中所有帧尺寸一致",
+                details={
+                    "expected_width": expected_frame_size[0],
+                    "expected_height": expected_frame_size[1],
+                    "actual_width": current_frame_size[0],
+                    "actual_height": current_frame_size[1],
+                    "item_index": item_index,
+                    "frame_index": frame_index,
+                },
+            )
+        normalized_items.append(
+            Sam3FrameWindowItem(
+                frame_index=frame_index,
+                timestamp_ms=float(timestamp_ms),
+                image_payload=image_payload,
+                image_bytes=image_bytes,
+                width=source_width,
+                height=source_height,
+            )
+        )
+    return tuple(normalized_items)
+
+
 def read_image_bytes(request: WorkflowNodeExecutionRequest, *, input_name: str = "image") -> tuple[dict[str, object], bytes]:
     """读取节点图片输入。"""
 
@@ -555,6 +636,54 @@ def build_regions_payload(
     }
 
 
+def build_tracks_payload(
+    request: WorkflowNodeExecutionRequest,
+    *,
+    source_video: object,
+    frame_predictions: tuple[dict[str, object], ...],
+) -> dict[str, object]:
+    """把多帧 region 结果转换成 workflow tracks.v1 payload。"""
+
+    track_items: list[dict[str, object]] = []
+    for frame_prediction in frame_predictions:
+        frame_index = int(frame_prediction["frame_index"])
+        timestamp_ms = float(frame_prediction["timestamp_ms"])
+        for region in frame_prediction["regions"]:
+            normalized_item = {
+                "track_id": str(region.prompt_id),
+                "frame_index": frame_index,
+                "timestamp_ms": timestamp_ms,
+                "score": float(region.score),
+                "class_id": int(region.class_id),
+                "class_name": str(region.class_name),
+                "bbox_xyxy": list(region.bbox_xyxy),
+                "polygon_xy": [list(point) for point in region.polygon_xy],
+                "region_id": str(region.region_id),
+                "state": "tracked",
+                "prompt_id": str(region.prompt_id),
+                "area": int(region.area),
+            }
+            if region.source_prompt_text is not None:
+                normalized_item["source_prompt_text"] = region.source_prompt_text
+            if region.source_prompt_positive_texts is not None:
+                normalized_item["source_prompt_positive_texts"] = list(region.source_prompt_positive_texts)
+            if region.source_prompt_negative_texts is not None:
+                normalized_item["source_prompt_negative_texts"] = list(region.source_prompt_negative_texts)
+            normalized_item["mask_image"] = register_image_bytes(
+                request,
+                content=region.mask_png_bytes,
+                media_type="image/png",
+                width=region.mask_width,
+                height=region.mask_height,
+            )
+            track_items.append(normalized_item)
+    return {
+        "source_video": source_video if isinstance(source_video, dict) else {},
+        "count": len(track_items),
+        "items": track_items,
+    }
+
+
 def build_interactive_summary_payload(
     *,
     prediction: object,
@@ -594,6 +723,43 @@ def build_semantic_summary_payload(
         ],
         "source_image": build_source_image_summary_payload(image_payload),
         "prompt_ids": [group.prompt_id for group in normalized_prompt_groups],
+    }
+
+
+def build_video_interactive_summary_payload(
+    *,
+    source_video: object,
+    prompt_items: tuple[Sam3InteractivePromptItem, ...],
+    frame_items: tuple[Sam3FrameWindowItem, ...],
+    frame_predictions: tuple[dict[str, object], ...],
+) -> dict[str, object]:
+    """构建 video-interactive 节点 summary。"""
+
+    if not frame_predictions:
+        raise InvalidRequestError("SAM3 video-interactive summary 构建要求至少包含一帧预测结果")
+    first_summary = dict(frame_predictions[0]["summary"])
+    unique_track_ids = sorted(
+        {
+            str(region.prompt_id)
+            for frame_prediction in frame_predictions
+            for region in frame_prediction["regions"]
+        }
+    )
+    total_region_count = sum(len(frame_prediction["regions"]) for frame_prediction in frame_predictions)
+    prompt_kinds = sorted({item.prompt_kind for item in prompt_items})
+    return {
+        **first_summary,
+        "inference_mode": "video-interactive-segment",
+        "source_video": source_video if isinstance(source_video, dict) else {},
+        "prompt_ids": [item.prompt_id for item in prompt_items],
+        "prompt_count": len(prompt_items),
+        "prompt_kinds": prompt_kinds,
+        "processed_frame_count": len(frame_items),
+        "frame_indices": [item.frame_index for item in frame_items],
+        "track_count": total_region_count,
+        "unique_track_count": len(unique_track_ids),
+        "track_ids": unique_track_ids,
+        "frame_prompt_mode": "shared-prompts-across-window",
     }
 
 
@@ -678,11 +844,14 @@ def raise_not_implemented(
 
 
 __all__ = [
+    "Sam3FrameWindowItem",
     "Sam3InteractivePromptItem",
     "Sam3PretrainedVariant",
     "Sam3TextPromptItem",
     "Sam3TextPromptGroup",
     "build_interactive_summary_payload",
+    "build_tracks_payload",
+    "build_video_interactive_summary_payload",
     "build_semantic_summary_payload",
     "build_regions_payload",
     "build_source_image_summary_payload",
@@ -693,6 +862,7 @@ __all__ = [
     "normalize_model_scale",
     "normalize_precision",
     "raise_not_implemented",
+    "read_frame_window_items",
     "read_image_bytes",
     "read_interactive_prompt_items",
     "read_text_prompt_items",
