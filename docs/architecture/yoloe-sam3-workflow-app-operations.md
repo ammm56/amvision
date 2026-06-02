@@ -197,6 +197,7 @@ D:/software/anaconda3/envs/amvision/python.exe -m pytest tests/integration/test_
 
 - `YOLOE text-prompt` 的受控启用与 `WorkflowAppRuntime` invoke
 - `SAM3 semantic-segment` 的受控启用与 `WorkflowAppRuntime` invoke
+- `SAM3 video-semantic-segment` 的受控启用与 `WorkflowAppRuntime` invoke
 - pack 默认关闭、node-catalog 过滤、显式 enable、runtime start/stop 这条正式控制链
 
 ## 当前建议的上线策略

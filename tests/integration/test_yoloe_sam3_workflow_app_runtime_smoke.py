@@ -7,7 +7,9 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Iterator
 
+import cv2
 from fastapi.testclient import TestClient
+import numpy as np
 from PIL import Image, ImageDraw
 
 from backend.contracts.workflows.workflow_graph import (
@@ -16,11 +18,15 @@ from backend.contracts.workflows.workflow_graph import (
     FlowTemplateReference,
     WorkflowGraphInput,
     WorkflowGraphNode,
+    WorkflowGraphEdge,
     WorkflowGraphOutput,
     WorkflowGraphTemplate,
 )
+from backend.nodes.core_nodes.video_load_local import _video_load_local_handler
+from backend.nodes.core_nodes._logic_node_support import build_value_payload
 from backend.service.api.app import create_app
 from backend.service.application.local_buffers import LocalBufferBrokerSettings
+from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 from backend.service.application.workflows.workflow_service import LocalWorkflowJsonService
 from backend.service.settings import (
     BackendServiceCustomNodesConfig,
@@ -241,6 +247,107 @@ def test_sam3_semantic_workflow_app_runtime_controlled_enable_smoke(tmp_path: Pa
     assert summary_payload["prompt_group_count"] == 2
     assert summary_payload["positive_prompt_count"] == 2
     assert summary_payload["negative_prompt_count"] == 2
+
+
+def test_sam3_video_semantic_workflow_app_runtime_controlled_enable_smoke(tmp_path: Path) -> None:
+    """验证 SAM3 video-semantic-segment 可以按受控启用路径进入 WorkflowAppRuntime。"""
+
+    with _temporary_pack_default_enabled(
+        {
+            _YOLOE_MANIFEST_PATH: False,
+            _SAM3_MANIFEST_PATH: False,
+        }
+    ):
+        client, session_factory, dataset_storage = _create_runtime_api_client(
+            tmp_path,
+            database_name="workflow-app-runtime-sam3-video-semantic-smoke.db",
+        )
+        headers = build_test_headers(scopes="workflows:read,workflows:write")
+        local_video_path = _write_test_video_file(tmp_path / "sam3-video-semantic-smoke.avi")
+        request_video = _build_local_video_payload_for_workflow(local_video_path)
+
+        try:
+            with client:
+                _assert_pack_catalog_disabled(
+                    client=client,
+                    headers=headers,
+                    node_pack_id="sam3.segment-nodes",
+                )
+                _enable_pack_and_assert_loaded(
+                    client=client,
+                    headers=headers,
+                    node_pack_id="sam3.segment-nodes",
+                )
+                _assert_pack_catalog_enabled(
+                    client=client,
+                    headers=headers,
+                    node_pack_id="sam3.segment-nodes",
+                    expected_node_type_ids=("custom.sam3.video-semantic-segment",),
+                )
+
+                workflow_service = LocalWorkflowJsonService(
+                    dataset_storage=dataset_storage,
+                    node_catalog_registry=client.app.state.node_catalog_registry,
+                )
+                workflow_service.save_template(
+                    project_id=_PROJECT_ID,
+                    template=_build_sam3_video_semantic_template(),
+                )
+                workflow_service.save_application(
+                    project_id=_PROJECT_ID,
+                    application=_build_sam3_video_semantic_application(),
+                )
+
+                workflow_runtime_id = _create_and_start_runtime(
+                    client=client,
+                    headers=headers,
+                    application_id="sam3-video-semantic-smoke-app",
+                    display_name="SAM3 Video Semantic Smoke Runtime",
+                )
+                health_response = client.get(
+                    f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/health",
+                    headers=headers,
+                )
+                invoke_response = client.post(
+                    f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/invoke",
+                    headers=headers,
+                    json={
+                        "input_bindings": {
+                            "request_video": request_video,
+                            "request_prompts": _build_text_prompts_payload(),
+                        },
+                        "execution_metadata": {
+                            "scenario": "sam3-video-semantic-workflow-app-runtime-smoke",
+                            "trigger_source": "sync-api",
+                        },
+                    },
+                )
+                stop_response = client.post(
+                    f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/stop",
+                    headers=headers,
+                )
+        finally:
+            session_factory.engine.dispose()
+
+    assert health_response.status_code == 200
+    assert health_response.json()["observed_state"] == "running"
+    assert invoke_response.status_code == 200
+    assert stop_response.status_code == 200
+    assert stop_response.json()["observed_state"] == "stopped"
+
+    payload = invoke_response.json()
+    assert payload["state"] == "succeeded"
+    assert set(payload["outputs"]) == {"tracks", "summary"}
+    assert payload["outputs"]["tracks"]["count"] == len(payload["outputs"]["tracks"]["items"])
+
+    summary_payload = payload["outputs"]["summary"]
+    assert summary_payload["project_native"] is True
+    assert summary_payload["inference_mode"] == "video-semantic-segment"
+    assert summary_payload["frame_prompt_mode"] == "shared-text-prompts-across-window"
+    assert summary_payload["prompt_group_count"] == 2
+    assert summary_payload["positive_prompt_count"] == 2
+    assert summary_payload["negative_prompt_count"] == 2
+    assert summary_payload["processed_frame_count"] >= 1
 
 
 def _create_runtime_api_client(
@@ -595,6 +702,124 @@ def _build_sam3_semantic_application() -> FlowApplication:
     )
 
 
+def _build_sam3_video_semantic_template() -> WorkflowGraphTemplate:
+    """构造 SAM3 video-semantic-segment 的最小 workflow 模板。"""
+
+    return WorkflowGraphTemplate(
+        template_id="sam3-video-semantic-smoke-template",
+        template_version="1.0.0",
+        display_name="SAM3 Video Semantic Smoke Template",
+        nodes=(
+            WorkflowGraphNode(
+                node_id="video_decode",
+                node_type_id="core.io.video-decode-frames",
+                parameters={
+                    "start_frame": 0,
+                    "end_frame": 3,
+                    "step": 1,
+                    "max_frames": 4,
+                    "encode_format": "png",
+                },
+            ),
+            WorkflowGraphNode(
+                node_id="sam3_video_semantic",
+                node_type_id="custom.sam3.video-semantic-segment",
+                parameters={
+                    "model_scale": "l",
+                    "device": "cpu",
+                    "precision": "fp32",
+                },
+            ),
+        ),
+        edges=(
+            WorkflowGraphEdge(
+                edge_id="decode-to-video-semantic",
+                source_node_id="video_decode",
+                source_port="frames",
+                target_node_id="sam3_video_semantic",
+                target_port="frames",
+            ),
+        ),
+        template_inputs=(
+            WorkflowGraphInput(
+                input_id="request_video",
+                display_name="Request Video",
+                payload_type_id="video-ref.v1",
+                target_node_id="video_decode",
+                target_port="video",
+            ),
+            WorkflowGraphInput(
+                input_id="request_prompts",
+                display_name="Request Prompts",
+                payload_type_id="text-prompts.v1",
+                target_node_id="sam3_video_semantic",
+                target_port="prompts",
+            ),
+        ),
+        template_outputs=(
+            WorkflowGraphOutput(
+                output_id="tracks",
+                display_name="Tracks",
+                payload_type_id="tracks.v1",
+                source_node_id="sam3_video_semantic",
+                source_port="tracks",
+            ),
+            WorkflowGraphOutput(
+                output_id="summary",
+                display_name="Summary",
+                payload_type_id="value.v1",
+                source_node_id="sam3_video_semantic",
+                source_port="summary",
+            ),
+        ),
+    )
+
+
+def _build_sam3_video_semantic_application() -> FlowApplication:
+    """构造 SAM3 video-semantic-segment 的最小流程应用。"""
+
+    return FlowApplication(
+        application_id="sam3-video-semantic-smoke-app",
+        display_name="SAM3 Video Semantic Smoke App",
+        template_ref=FlowTemplateReference(
+            template_id="sam3-video-semantic-smoke-template",
+            template_version="1.0.0",
+            source_kind="json-file",
+            source_uri="placeholder",
+        ),
+        bindings=(
+            FlowApplicationBinding(
+                binding_id="request_video",
+                direction="input",
+                template_port_id="request_video",
+                binding_kind="workflow-execute-input",
+                config={"payload_type_id": "video-ref.v1"},
+            ),
+            FlowApplicationBinding(
+                binding_id="request_prompts",
+                direction="input",
+                template_port_id="request_prompts",
+                binding_kind="workflow-execute-input",
+                config={"payload_type_id": "text-prompts.v1"},
+            ),
+            FlowApplicationBinding(
+                binding_id="tracks",
+                direction="output",
+                template_port_id="tracks",
+                binding_kind="workflow-execute-output",
+                config={"payload_type_id": "tracks.v1"},
+            ),
+            FlowApplicationBinding(
+                binding_id="summary",
+                direction="output",
+                template_port_id="summary",
+                binding_kind="workflow-execute-output",
+                config={"payload_type_id": "value.v1"},
+            ),
+        ),
+    )
+
+
 def _build_text_prompts_payload() -> dict[str, object]:
     """构造同时包含 positive / negative 的 grouped text-prompts.v1 输入。"""
 
@@ -631,6 +856,43 @@ def _write_test_image(dataset_storage: object, *, object_key: str) -> str:
 
     dataset_storage.write_bytes(object_key, _build_test_png_bytes())
     return object_key
+
+
+def _build_local_video_payload_for_workflow(local_video_path: Path) -> dict[str, object]:
+    """通过 core 节点构造可直接作为 workflow 输入的视频 payload。"""
+
+    output = _video_load_local_handler(
+        WorkflowNodeExecutionRequest(
+            node_id="video-load-local-fixture",
+            node_definition=object(),
+            parameters={"local_path": str(local_video_path)},
+            input_values={"path": build_value_payload(str(local_video_path))},
+            execution_metadata={},
+        )
+    )
+    return dict(output["video"])
+
+
+def _write_test_video_file(video_path: Path, *, frame_count: int = 4, width: int = 160, height: int = 112) -> Path:
+    """写入一段本地测试视频。"""
+
+    video_path.parent.mkdir(parents=True, exist_ok=True)
+    writer = cv2.VideoWriter(
+        str(video_path),
+        cv2.VideoWriter_fourcc(*"MJPG"),
+        5.0,
+        (width, height),
+    )
+    if not writer.isOpened():
+        raise RuntimeError(f"无法创建测试视频: {video_path}")
+    for frame_index in range(frame_count):
+        frame = np.full((height, width, 3), 235, dtype=np.uint8)
+        x_offset = 12 + frame_index * 16
+        cv2.rectangle(frame, (x_offset, 20), (x_offset + 42, 82), (30, 30, 30), thickness=-1)
+        cv2.circle(frame, (width - 32 - frame_index * 6, 48 + frame_index * 4), 14, (50, 160, 70), thickness=-1)
+        writer.write(frame)
+    writer.release()
+    return video_path.resolve()
 
 
 def _build_test_png_bytes() -> bytes:
