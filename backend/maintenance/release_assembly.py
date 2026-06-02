@@ -26,6 +26,7 @@ SOURCE_LAUNCHERS_DIR = REPOSITORY_ROOT / "runtimes" / "launchers"
 SOURCE_FULL_LAUNCHERS_DIR = SOURCE_LAUNCHERS_DIR / "full"
 SOURCE_RELEASE_PROFILES_DIR = REPOSITORY_ROOT / "runtimes" / "manifests" / "release-profiles"
 SOURCE_WORKER_PROFILES_DIR = REPOSITORY_ROOT / "runtimes" / "manifests" / "worker-profiles"
+SOURCE_FFMPEG_RUNTIME_DIR = REPOSITORY_ROOT / "runtimes" / "third_party" / "ffmpeg"
 
 
 @dataclass(frozen=True)
@@ -309,6 +310,11 @@ def _copy_runtime_assets(release_dir: Path) -> None:
     _copy_directory_tree(
         SOURCE_CUSTOM_NODES_DIR,
         release_dir / "custom_nodes",
+        ignore=_ignore_custom_nodes_copy,
+    )
+    _copy_directory_tree(
+        SOURCE_FFMPEG_RUNTIME_DIR,
+        release_dir / "tools" / "ffmpeg",
         ignore=_ignore_custom_nodes_copy,
     )
 

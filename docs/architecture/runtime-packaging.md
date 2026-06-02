@@ -69,7 +69,7 @@ release/
 
 - 当前后端功能面已经可用，开发环境仍以 `python -m uvicorn backend.service.api.app:app --host 127.0.0.1 --port 8000` 这类直接启动方式为主。
 - `backend.maintenance.main assemble-release` 当前会生成 `release/full/` 目录，复制完整 backend 代码、配置、launcher、manifest，并把仓库根目录的 `requirements.txt` 复制到发行目录。
-- 当前 release 组装会保留并回迁现有发行目录里的 `python/`，也会把 `frontend/web-ui/dist/` 复制到发行目录里的 `frontend/`，并补齐 `runtime-config.json`。
+- 当前 release 组装会保留并回迁现有发行目录里的 `python/`，也会把 `frontend/web-ui/dist/` 复制到发行目录里的 `frontend/`，补齐 `runtime-config.json`，并把 `runtimes/third_party/ffmpeg/` 复制到发行目录里的 `tools/ffmpeg/`。
 - 只有显式提供 bundled Python 来源目录时，当前才会重建 `python/`；如果发行目录原本没有 `python/`，则会退回空目录占位模式。
 
 ## 启动器设计
@@ -100,7 +100,7 @@ release/
 - 默认配置模板与运行时 manifest
 - 默认 custom_nodes 目录与可选节点包资产
 - 启动器与维护工具
-- 如启用正式视频工作流能力，还应包含目标平台对应的 `ffmpeg/ffprobe` 工具目录
+- 当前 full 发布目录已经包含 `tools/ffmpeg/`；如后续继续细化发布形态，再按目标平台裁剪 `ffmpeg/ffprobe` 工具目录
 
 ## 发布包不默认包含的内容
 
@@ -158,8 +158,8 @@ release/
 
 说明：
 
-- 最终交付包通常只携带目标平台所需的一套 `ffmpeg` 工具。
-- 不建议在单个最终交付包中长期混放 Windows 与 Linux 两套二进制。
+- 当前仓库的 `assemble-release` 会先复制整个 `runtimes/third_party/ffmpeg/` 目录到 `release/full/tools/ffmpeg/`，确保开发和验收阶段可以直接闭环。
+- 后续如需更严格的平台裁剪，再按目标平台只保留一套 `ffmpeg` 工具。
 
 ### 查找优先级
 

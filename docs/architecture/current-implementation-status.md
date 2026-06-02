@@ -137,6 +137,7 @@
 - 当前仓库已经提供 `backend.maintenance.main`、Python launchers、bat/sh wrapper、worker profile manifest，以及 `assemble-release` 命令来生成单一 `full` 发行目录。
 - 当前 release 组装会复制完整项目代码和仓库根目录的 `requirements.txt`，不做源码裁剪，也不再维护多套运行时依赖配置。
 - 当前标准 maintenance 配置已经接通前端 dist 目录；`assemble-release` 会复制 `frontend/web-ui/dist/` 到发行目录里的 `frontend/`，补齐 `runtime-config.json`，并在覆盖发布时保留现有 `python/` 目录。
+- 当前 `assemble-release` 也已把 `runtimes/third_party/ffmpeg/` 复制到发行目录里的 `tools/ffmpeg/`，`validate-layout` 现已把这层一并纳入发布目录检查。
 
 ## 下一步建议
 
@@ -155,7 +156,7 @@
 - 以现有 YOLOX 链路为样板，继续抽象 `ModelRuntime`、`TrainingBackend`、`ConversionBackend` 和节点扩展边界，让 YOLOX 成为平台里的第一个完整实现，而不是唯一实现。
 - 把更多 runtime 相关差异从具体路由和 YOLOX 细节里继续抽离到稳定接口。
 
-### 4. 完成工程化交付面
+### 4. 继续硬化工程化交付面
 
-- 把同目录 Python 运行时、前端构建产物和 `custom_nodes` 资产真正纳入 `assemble-release`，让 `release/full/` 能直接成为完整可交付目录。
-- 补充运行日志、指标、排障和部署手册，让已完成的链路能够稳定交付给 `full` 发布目录及其后续手工派生变体。
+- 当前 `assemble-release` 已把同目录 Python 运行时占位/回迁、前端构建产物、`custom_nodes` 资产和 `ffmpeg/ffprobe` 工具目录纳入 `release/full/`。
+- 下一步重点应转向发布目录的更细粒度验收、日志/指标/排障补充，以及 `full` 目录向现场派生变体时的裁剪规范。

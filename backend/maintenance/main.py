@@ -160,6 +160,9 @@ def run_command(
                     "app_backend": (app_root / "app" / "backend",),
                     "app_requirements": (app_root / "app" / "requirements.txt",),
                     "custom_nodes": (app_root / "custom_nodes",),
+                    "ffmpeg_tools": (
+                        app_root / "tools" / "ffmpeg",
+                    ),
                     "frontend_index": (app_root / "frontend" / "index.html",),
                     "frontend_runtime_config": (
                         app_root / "frontend" / "runtime-config.json",

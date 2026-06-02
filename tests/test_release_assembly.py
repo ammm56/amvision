@@ -43,6 +43,8 @@ def test_assemble_release_materializes_full_layout(
     assert (release_dir / "custom_nodes" / "opencv_basic_nodes" / "manifest.json").is_file()
     assert (release_dir / "custom_nodes" / "_scaffold" / "README.md").is_file()
     assert not (release_dir / "custom_nodes" / "__pycache__").exists()
+    assert (release_dir / "tools" / "ffmpeg" / "windows-x64" / "ffmpeg.exe").is_file()
+    assert (release_dir / "tools" / "ffmpeg" / "linux-x64" / "ffprobe").is_file()
     assert (release_dir / "frontend" / "index.html").is_file()
     assert (release_dir / "frontend" / "runtime-config.json").is_file()
     assert (release_dir / "python").is_dir()
@@ -250,3 +252,12 @@ def _patch_release_runtime_asset_sources(
         "SOURCE_FRONTEND_RUNTIME_CONFIG_LOCAL_FILE",
         tmp_path / "runtime-config.local.json",
     )
+
+    source_ffmpeg_runtime_dir = tmp_path / "source-ffmpeg"
+    (source_ffmpeg_runtime_dir / "windows-x64").mkdir(parents=True, exist_ok=True)
+    (source_ffmpeg_runtime_dir / "linux-x64").mkdir(parents=True, exist_ok=True)
+    (source_ffmpeg_runtime_dir / "windows-x64" / "ffmpeg.exe").write_text("ffmpeg", encoding="utf-8")
+    (source_ffmpeg_runtime_dir / "windows-x64" / "ffprobe.exe").write_text("ffprobe", encoding="utf-8")
+    (source_ffmpeg_runtime_dir / "linux-x64" / "ffmpeg").write_text("ffmpeg", encoding="utf-8")
+    (source_ffmpeg_runtime_dir / "linux-x64" / "ffprobe").write_text("ffprobe", encoding="utf-8")
+    monkeypatch.setattr(release_assembly, "SOURCE_FFMPEG_RUNTIME_DIR", source_ffmpeg_runtime_dir)

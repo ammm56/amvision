@@ -13,7 +13,7 @@
 ## 当前推荐顺序
 
 1. 在仓库根目录执行 `assemble-release`
-2. 确认 `release/full/python/`、`release/full/frontend/` 和 `release/full/frontend/runtime-config.json` 已经生成
+2. 确认 `release/full/python/`、`release/full/frontend/`、`release/full/frontend/runtime-config.json` 和 `release/full/tools/ffmpeg/` 已经生成
 3. 在 `release/full/` 根目录执行一键启动脚本
 4. 检查 health、OpenAPI 文档、前端静态资源和最小任务 smoke test
 
@@ -30,6 +30,7 @@ python -m backend.maintenance.main assemble-release --profile-id full --release-
 - 如果 `release/full/python/` 原本不存在，且本次也没有显式提供 bundled Python 来源目录，发布目录只会生成空的 `python/` 占位目录
 - 发布目录会复制 `frontend/web-ui/dist/`，并确保 `release/full/frontend/runtime-config.json` 存在
 - 发布目录会复制 `custom_nodes/` 作为 workflow app 运行资源
+- 发布目录会复制 `runtimes/third_party/ffmpeg/` 到 `release/full/tools/ffmpeg/`
 - 数据库文件、workflow templates/applications、预训练模型、数据集文件和其他开发数据不会随包复制；发布后的 `data/` 目录默认保持空目录
 - 其他由发布流程生成的目录和脚本仍会按当前代码重新生成
 
