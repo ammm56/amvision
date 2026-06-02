@@ -7,6 +7,7 @@ from custom_nodes.sam3_segment_nodes.backend.nodes._common import (
     build_regions_payload,
     build_semantic_summary_payload,
     get_or_create_sam3_semantic_runtime_session,
+    merge_text_prompt_items,
     normalize_device,
     normalize_model_scale,
     normalize_precision,
@@ -24,6 +25,7 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
 
     image_payload, image_bytes = read_image_bytes(request, input_name="image")
     prompt_items = read_text_prompt_items(request.input_values.get("prompts"))
+    prompt_groups = merge_text_prompt_items(prompt_items)
     model_scale = normalize_model_scale(request.parameters.get("model_scale"))
     device = normalize_device(request.parameters.get("device"))
     precision = normalize_precision(request.parameters.get("precision"))
@@ -32,7 +34,7 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
         device=device,
         precision=precision,
     )
-    prediction = runtime_session.predict(image_bytes=image_bytes, prompt_items=prompt_items)
+    prediction = runtime_session.predict(image_bytes=image_bytes, prompt_items=prompt_groups)
     return {
         "regions": build_regions_payload(
             request,
@@ -43,5 +45,6 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
             prediction=prediction,
             image_payload=image_payload,
             prompt_items=prompt_items,
+            prompt_groups=prompt_groups,
         ),
     }

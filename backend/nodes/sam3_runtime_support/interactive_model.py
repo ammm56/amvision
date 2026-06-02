@@ -15,7 +15,13 @@ from backend.service.application.runtime.detection_runtime_support import (
 
 from .checkpoint_loader import build_sam3_interactive_state_dict, load_sam3_checkpoint_branches
 from .image_preprocess import PreparedSam3Image, preprocess_sam3_image
-from .mask_postprocess import Sam3RegionItem, postprocess_sam3_interactive_masks
+from .mask_postprocess import (
+    DEFAULT_MASK_THRESHOLD,
+    DEFAULT_POLYGON_SIMPLIFY_RATIO,
+    DEFAULT_STABILITY_OFFSET,
+    Sam3RegionItem,
+    postprocess_sam3_interactive_masks,
+)
 from .prompt_encoding import PreparedSam3InteractivePrompts, build_sam3_interactive_prompt_tensors
 from .prompt_mask_modules import PromptEncoder, SAM2MaskDecoder, SAM2TwoWayTransformer
 from .vision_backbone import PositionEmbeddingSine, SAM3VisualBackbone, Sam3DualViTDetNeck, ViT
@@ -185,15 +191,24 @@ class Sam3InteractiveImageModel(nn.Module):
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """运行 prompt encoder + mask decoder，输出低分辨率 mask logits 与得分。"""
 
-        point_inputs = (prompts.point_coords, prompts.point_labels)
+        point_inputs = None
+        if prompts.point_coords is not None and prompts.point_labels is not None:
+            point_inputs = (prompts.point_coords, prompts.point_labels)
         sparse_embeddings, dense_embeddings = self.sam_prompt_encoder(
             points=point_inputs,
             boxes=None,
-            masks=None,
+            masks=prompts.prompt_masks,
         )
         image_embed = features["image_embed"]
         high_res_feats = features["high_res_feats"]
-        batched_mode = prompts.point_coords.shape[0] > 1
+        batch_size = (
+            prompts.point_coords.shape[0]
+            if prompts.point_coords is not None
+            else prompts.prompt_masks.shape[0]
+            if prompts.prompt_masks is not None
+            else 1
+        )
+        batched_mode = batch_size > 1
         mask_logits, iou_scores, sam_tokens_out, object_score_logits = self.sam_mask_decoder(
             image_embeddings=image_embed,
             image_pe=self.sam_prompt_encoder.get_dense_pe(),
@@ -281,15 +296,28 @@ class Sam3InteractiveRuntimeSession:
             scale_y=prepared_image.scale_y,
         )
         features = self.model.extract_interactive_features(prepared_image)
-        prompts = build_sam3_interactive_prompt_tensors(
-            prompt_items,
-            source_width=prepared_image.original_width,
-            source_height=prepared_image.original_height,
-            target_width=prepared_image.target_width,
-            target_height=prepared_image.target_height,
-            device=self.model.no_mem_embed.device,
-        )
-        mask_logits, _iou_scores, final_scores = self.model.predict_mask_logits(features=features, prompts=prompts)
+        mask_prompt_height, mask_prompt_width = self.model.sam_prompt_encoder.mask_input_size
+        mask_logits_list: list[torch.Tensor] = []
+        final_scores_list: list[torch.Tensor] = []
+        for prompt_item in prompt_items:
+            prompts = build_sam3_interactive_prompt_tensors(
+                (prompt_item,),
+                source_width=prepared_image.original_width,
+                source_height=prepared_image.original_height,
+                target_width=prepared_image.target_width,
+                target_height=prepared_image.target_height,
+                mask_prompt_width=mask_prompt_width,
+                mask_prompt_height=mask_prompt_height,
+                device=self.model.no_mem_embed.device,
+            )
+            item_mask_logits, _item_iou_scores, item_final_scores = self.model.predict_mask_logits(
+                features=features,
+                prompts=prompts,
+            )
+            mask_logits_list.append(item_mask_logits)
+            final_scores_list.append(item_final_scores.reshape(-1))
+        mask_logits = torch.cat(mask_logits_list, dim=0)
+        final_scores = torch.cat(final_scores_list, dim=0)
         region_items = postprocess_sam3_interactive_masks(
             mask_logits,
             source_width=prepared_image.original_width,
@@ -309,6 +337,10 @@ class Sam3InteractiveRuntimeSession:
             "prompt_kinds": prompt_kinds,
             "region_count": len(region_items),
             "inference_mode": "interactive-segment",
+            "postprocess_profile": "sam3-default-v2",
+            "mask_threshold": DEFAULT_MASK_THRESHOLD,
+            "stability_offset": DEFAULT_STABILITY_OFFSET,
+            "polygon_simplify_ratio": DEFAULT_POLYGON_SIMPLIFY_RATIO,
         }
         return Sam3InteractivePrediction(regions=tuple(region_items), summary=summary)
 

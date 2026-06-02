@@ -27,6 +27,7 @@ from backend.service.application.runtime.detection_runtime_support import (
     preprocess_image,
     resolve_execution_device_name,
 )
+from custom_nodes.yoloe_open_vocab_nodes.backend.nodes._common import merge_text_prompt_items
 
 
 @dataclass(frozen=True)
@@ -1374,6 +1375,8 @@ class YoloePromptFreeRuntimeSession:
 class YoloeTextPromptRuntimeSession:
     """可重复执行的 project-native YOLOE text-prompt 推理会话。"""
 
+    NEGATIVE_PROMPT_WEIGHT = 0.5
+
     def __init__(
         self,
         *,
@@ -1479,13 +1482,42 @@ class YoloeTextPromptRuntimeSession:
         if self.precision == "fp16":
             input_tensor = input_tensor.half()
 
-        prompt_texts = [str(item.text) for item in prompts]
-        prompt_display_names = {index: str(item.display_name) for index, item in enumerate(prompts)}
-        prompt_id_map = {index: str(item.prompt_id) for index, item in enumerate(prompts)}
-        source_text_map = {index: str(item.text) for index, item in enumerate(prompts)}
+        prompt_groups = merge_text_prompt_items(prompts)
+        prompt_texts: list[str] = []
+        prompt_text_offsets: list[tuple[int, int, int]] = []
+        prompt_display_names: dict[int, str] = {}
+        prompt_id_map: dict[int, str] = {}
+        source_text_map: dict[int, str] = {}
+        positive_text_map: dict[int, tuple[str, ...]] = {}
+        negative_text_map: dict[int, tuple[str, ...]] = {}
+        for index, group in enumerate(prompt_groups):
+            prompt_display_names[index] = str(group.display_name)
+            prompt_id_map[index] = str(group.prompt_id)
+            positive_text_map[index] = tuple(group.positive_texts)
+            negative_text_map[index] = tuple(group.negative_texts)
+            source_text_map[index] = _build_group_source_prompt_text(group)
+            positive_start = len(prompt_texts)
+            prompt_texts.extend(group.positive_texts)
+            negative_start = len(prompt_texts)
+            prompt_texts.extend(group.negative_texts)
+            prompt_text_offsets.append(
+                (
+                    positive_start,
+                    len(group.positive_texts),
+                    len(group.negative_texts),
+                )
+            )
+
+        if not prompt_texts:
+            raise InvalidRequestError("YOLOE text-prompt 节点要求至少包含一条 positive 文本提示")
         tokens = self.text_encoder.tokenize(prompt_texts)
         text_features = self.text_encoder.encode_text(tokens).to(dtype=input_tensor.dtype)
-        class_embeddings = self.model.model[-1].get_tpe(text_features.unsqueeze(0))
+        grouped_text_features = _build_grouped_text_features(
+            text_features=text_features,
+            prompt_text_offsets=tuple(prompt_text_offsets),
+            negative_prompt_weight=self.NEGATIVE_PROMPT_WEIGHT,
+        )
+        class_embeddings = self.model.model[-1].get_tpe(grouped_text_features.unsqueeze(0))
         if class_embeddings is None:
             raise InvalidRequestError("YOLOE text-prompt 无法生成类别 embedding")
 
@@ -1510,10 +1542,14 @@ class YoloeTextPromptRuntimeSession:
             class_id = int(item["class_id"])
             item["prompt_id"] = prompt_id_map.get(class_id)
             item["source_prompt_text"] = source_text_map.get(class_id)
+            item["source_prompt_positive_texts"] = list(positive_text_map.get(class_id, ()))
+            item["source_prompt_negative_texts"] = list(negative_text_map.get(class_id, ()))
         for item in regions:
             class_id = int(item["class_id"])
             item["prompt_id"] = prompt_id_map.get(class_id)
             item["source_prompt_text"] = source_text_map.get(class_id)
+            item["source_prompt_positive_texts"] = list(positive_text_map.get(class_id, ()))
+            item["source_prompt_negative_texts"] = list(negative_text_map.get(class_id, ()))
 
         summary = {
             "model_family": self.variant.model_family,
@@ -1521,7 +1557,11 @@ class YoloeTextPromptRuntimeSession:
             "variant_name": self.variant.variant_name,
             "checkpoint_path": str(self.variant.checkpoint_path),
             "task_type": self.variant.task_type,
-            "prompt_count": len(prompts),
+            "prompt_count": len(prompt_groups),
+            "prompt_item_count": len(prompts),
+            "prompt_group_count": len(prompt_groups),
+            "positive_prompt_count": sum(len(group.positive_texts) for group in prompt_groups),
+            "negative_prompt_count": sum(len(group.negative_texts) for group in prompt_groups),
             "detection_count": len(detections),
             "region_count": len(regions),
             "device": self.device_name,
@@ -1532,6 +1572,17 @@ class YoloeTextPromptRuntimeSession:
             "prompt_free": False,
             "inference_mode": "text-prompt",
             "text_encoder": "mobileclip/blt",
+            "negative_prompt_weight": self.NEGATIVE_PROMPT_WEIGHT,
+            "prompt_groups": [
+                {
+                    "prompt_id": group.prompt_id,
+                    "display_name": group.display_name,
+                    "positive_texts": list(group.positive_texts),
+                    "negative_texts": list(group.negative_texts),
+                    "languages": list(group.languages),
+                }
+                for group in prompt_groups
+            ],
             "project_native": True,
         }
         return ProjectNativeYoloePrediction(
@@ -1539,6 +1590,45 @@ class YoloeTextPromptRuntimeSession:
             regions=tuple(regions),
             summary=summary,
         )
+
+
+def _build_grouped_text_features(
+    *,
+    text_features: torch.Tensor,
+    prompt_text_offsets: tuple[tuple[int, int, int], ...],
+    negative_prompt_weight: float,
+) -> torch.Tensor:
+    """按 prompt 组聚合文本特征，并把负文本作为抑制项并入类别原型。"""
+
+    grouped_features: list[torch.Tensor] = []
+    for positive_start, positive_count, negative_count in prompt_text_offsets:
+        positive_end = positive_start + positive_count
+        positive_features = text_features[positive_start:positive_end]
+        if int(positive_features.shape[0]) <= 0:
+            raise InvalidRequestError("YOLOE text-prompt 组内缺少 positive 文本特征")
+        positive_feature = F.normalize(positive_features.mean(dim=0, keepdim=False), dim=0, p=2)
+        if negative_count > 0:
+            negative_start = positive_end
+            negative_end = negative_start + negative_count
+            negative_features = text_features[negative_start:negative_end]
+            negative_feature = F.normalize(negative_features.mean(dim=0, keepdim=False), dim=0, p=2)
+            positive_feature = F.normalize(
+                positive_feature - float(negative_prompt_weight) * negative_feature,
+                dim=0,
+                p=2,
+            )
+        grouped_features.append(positive_feature)
+    return torch.stack(grouped_features, dim=0)
+
+
+def _build_group_source_prompt_text(group: Any) -> str:
+    """为检测结果和 region 结果构造可追溯的文本组合摘要。"""
+
+    positive_segment = " | ".join(str(item) for item in group.positive_texts)
+    if not group.negative_texts:
+        return positive_segment
+    negative_segment = " | ".join(f"!{item}" for item in group.negative_texts)
+    return f"{positive_segment} || {negative_segment}"
 
 
 class YoloeVisualPromptRuntimeSession:
@@ -1663,9 +1753,12 @@ class YoloeVisualPromptRuntimeSession:
 
         visual_prompt_tensor = _build_visual_prompt_tensor(
             torch_module=self.imports.torch,
+            np_module=self.imports.np,
             prompts=prompts,
             input_size=self.input_size,
             resize_ratio=prompt_resize_ratio,
+            prompt_image_width=int(prompt_image.shape[1]),
+            prompt_image_height=int(prompt_image.shape[0]),
             device_name=self.device_name,
             dtype=prompt_input_tensor.dtype,
         )
@@ -1703,6 +1796,25 @@ class YoloeVisualPromptRuntimeSession:
         for item in regions:
             class_id = int(item["class_id"])
             item["prompt_id"] = prompt_id_map.get(class_id)
+        visual_prompt_kinds = tuple(
+            sorted(
+                {
+                    str(kind)
+                    for item in prompts
+                    for kind in (
+                        tuple(getattr(item, "prompt_kinds", ())) or (str(getattr(item, "prompt_kind", "mixed")),)
+                    )
+                }
+            )
+        )
+        prompt_item_count = sum(max(1, int(getattr(item, "raw_item_count", 1))) for item in prompts)
+        prompt_kind_counts: dict[str, int] = {}
+        for item in prompts:
+            normalized_prompt_kinds = tuple(getattr(item, "prompt_kinds", ())) or (
+                str(getattr(item, "prompt_kind", "mixed")),
+            )
+            for prompt_kind in normalized_prompt_kinds:
+                prompt_kind_counts[str(prompt_kind)] = int(prompt_kind_counts.get(str(prompt_kind), 0)) + 1
 
         summary = {
             "model_family": self.variant.model_family,
@@ -1711,6 +1823,8 @@ class YoloeVisualPromptRuntimeSession:
             "checkpoint_path": str(self.variant.checkpoint_path),
             "task_type": self.variant.task_type,
             "prompt_count": len(prompts),
+            "prompt_item_count": int(prompt_item_count),
+            "prompt_group_count": len(prompts),
             "detection_count": len(detections),
             "region_count": len(regions),
             "device": self.device_name,
@@ -1720,7 +1834,40 @@ class YoloeVisualPromptRuntimeSession:
             "max_detections": int(max_detections),
             "prompt_free": False,
             "inference_mode": "visual-prompt",
-            "visual_prompt_kind": "box",
+            "visual_prompt_kinds": list(visual_prompt_kinds),
+            "visual_prompt_kind": visual_prompt_kinds[0] if len(visual_prompt_kinds) == 1 else "mixed",
+            "prompt_kind_counts": prompt_kind_counts,
+            "prompt_groups": [
+                {
+                    "prompt_id": str(getattr(item, "prompt_id", "")),
+                    "display_name": str(getattr(item, "display_name", "") or getattr(item, "prompt_id", "")),
+                    "prompt_kind": str(getattr(item, "prompt_kind", "mixed")),
+                    "prompt_kinds": list(tuple(getattr(item, "prompt_kinds", ())) or (str(getattr(item, "prompt_kind", "mixed")),)),
+                    "raw_item_count": max(1, int(getattr(item, "raw_item_count", 1))),
+                    **(
+                        {"bbox_xyxy": [float(value) for value in getattr(item, "bbox_xyxy", ())]}
+                        if getattr(item, "bbox_xyxy", None) is not None
+                        else {}
+                    ),
+                    **(
+                        {"point_xy": [float(value) for value in getattr(item, "point_xy", ())]}
+                        if getattr(item, "point_xy", None) is not None
+                        else {}
+                    ),
+                    **(
+                        {"point_label": str(getattr(item, "point_label"))}
+                        if getattr(item, "point_label", None) is not None
+                        else {}
+                    ),
+                    **(
+                        {"polygon_xy": [[float(value) for value in point] for point in getattr(item, "polygon_xy", ())]}
+                        if getattr(item, "polygon_xy", None) is not None
+                        else {}
+                    ),
+                    **({"has_prompt_mask": True} if getattr(item, "prompt_mask", None) is not None else {}),
+                }
+                for item in prompts
+            ],
             "project_native": True,
         }
         return ProjectNativeYoloePrediction(
@@ -1773,36 +1920,107 @@ def _extract_visual_prompt_embeddings(
 def _build_visual_prompt_tensor(
     *,
     torch_module: Any,
+    np_module: Any,
     prompts: tuple[Any, ...],
     input_size: tuple[int, int],
     resize_ratio: float,
+    prompt_image_width: int,
+    prompt_image_height: int,
     device_name: str,
     dtype: torch.dtype,
 ) -> torch.Tensor:
-    """把第一阶段 box prompt 转成 SAVPE 可消费的视觉提示张量。"""
+    """把多种视觉提示统一转成 SAVPE 可消费的视觉提示张量。"""
 
     input_height, input_width = (int(input_size[0]), int(input_size[1]))
     visual_height = max(1, input_height // 8)
     visual_width = max(1, input_width // 8)
-    visual_tensor = torch_module.zeros(
-        (1, len(prompts), visual_height, visual_width),
+    full_resolution_tensor = torch_module.zeros(
+        (1, len(prompts), input_height, input_width),
         device=device_name,
         dtype=dtype,
     )
     for index, item in enumerate(prompts):
-        x1_value, y1_value, x2_value, y2_value = item.bbox_xyxy
-        scaled_x1 = max(0.0, min(float(input_width), float(x1_value) * float(resize_ratio)))
-        scaled_y1 = max(0.0, min(float(input_height), float(y1_value) * float(resize_ratio)))
-        scaled_x2 = max(0.0, min(float(input_width), float(x2_value) * float(resize_ratio)))
-        scaled_y2 = max(0.0, min(float(input_height), float(y2_value) * float(resize_ratio)))
-        if scaled_x2 <= scaled_x1 or scaled_y2 <= scaled_y1:
+        prompt_mask = _build_visual_prompt_mask(
+            np_module=np_module,
+            item=item,
+            prompt_image_width=prompt_image_width,
+            prompt_image_height=prompt_image_height,
+        )
+        if prompt_mask is None or int(np_module.count_nonzero(prompt_mask)) <= 0:
             continue
-        visual_x1 = max(0, min(visual_width, int(np.floor(scaled_x1 / 8.0))))
-        visual_y1 = max(0, min(visual_height, int(np.floor(scaled_y1 / 8.0))))
-        visual_x2 = max(visual_x1 + 1, min(visual_width, int(np.ceil(scaled_x2 / 8.0))))
-        visual_y2 = max(visual_y1 + 1, min(visual_height, int(np.ceil(scaled_y2 / 8.0))))
-        visual_tensor[0, index, visual_y1:visual_y2, visual_x1:visual_x2] = 1
+        prompt_tensor = torch_module.from_numpy(
+            np_module.asarray(prompt_mask, dtype=np_module.float32),
+        ).to(device=device_name, dtype=dtype)
+        resized_width = max(1, min(input_width, int(round(prompt_image_width * float(resize_ratio)))))
+        resized_height = max(1, min(input_height, int(round(prompt_image_height * float(resize_ratio)))))
+        prompt_tensor = F.interpolate(
+            prompt_tensor.unsqueeze(0).unsqueeze(0),
+            size=(resized_height, resized_width),
+            mode="nearest",
+        )[0, 0]
+        full_resolution_tensor[0, index, :resized_height, :resized_width] = prompt_tensor
+    visual_tensor = F.max_pool2d(full_resolution_tensor, kernel_size=8, stride=8)
+    if int(visual_tensor.shape[-2]) != visual_height or int(visual_tensor.shape[-1]) != visual_width:
+        visual_tensor = F.interpolate(
+            visual_tensor,
+            size=(visual_height, visual_width),
+            mode="nearest",
+        )
     return visual_tensor
+
+
+def _build_visual_prompt_mask(
+    *,
+    np_module: Any,
+    item: Any,
+    prompt_image_width: int,
+    prompt_image_height: int,
+) -> Any:
+    """把单条视觉提示转换成参考图尺寸的二值 mask。"""
+
+    prompt_mask = np_module.zeros((int(prompt_image_height), int(prompt_image_width)), dtype=np_module.uint8)
+    if getattr(item, "prompt_mask", None) is not None:
+        normalized_prompt_mask = np_module.asarray(item.prompt_mask, dtype=np_module.uint8)
+        if normalized_prompt_mask.ndim != 2:
+            return prompt_mask
+        if (
+            int(normalized_prompt_mask.shape[0]) != int(prompt_image_height)
+            or int(normalized_prompt_mask.shape[1]) != int(prompt_image_width)
+        ):
+            raise InvalidRequestError(
+                "YOLOE visual prompt mask 尺寸与 prompt_image 不一致",
+                details={
+                    "prompt_kind": getattr(item, "prompt_kind", None),
+                    "prompt_mask_shape": [
+                        int(normalized_prompt_mask.shape[0]),
+                        int(normalized_prompt_mask.shape[1]),
+                    ],
+                    "prompt_image_size": [int(prompt_image_width), int(prompt_image_height)],
+                },
+            )
+        return (normalized_prompt_mask > 0).astype(np_module.uint8)
+    if getattr(item, "prompt_kind", "") == "box" and getattr(item, "bbox_xyxy", None) is not None:
+        x1_value, y1_value, x2_value, y2_value = item.bbox_xyxy
+        x1_index = max(0, min(int(prompt_image_width), int(np.floor(float(x1_value)))))
+        y1_index = max(0, min(int(prompt_image_height), int(np.floor(float(y1_value)))))
+        x2_index = max(x1_index + 1, min(int(prompt_image_width), int(np.ceil(float(x2_value)))))
+        y2_index = max(y1_index + 1, min(int(prompt_image_height), int(np.ceil(float(y2_value)))))
+        if x2_index <= x1_index or y2_index <= y1_index:
+            return prompt_mask
+        prompt_mask[y1_index:y2_index, x1_index:x2_index] = 1
+        return prompt_mask
+    if getattr(item, "prompt_kind", "") == "point" and getattr(item, "point_xy", None) is not None:
+        point_x_value, point_y_value = item.point_xy
+        point_x_index = max(0, min(int(prompt_image_width) - 1, int(round(float(point_x_value)))))
+        point_y_index = max(0, min(int(prompt_image_height) - 1, int(round(float(point_y_value)))))
+        radius = max(1, int(round(min(prompt_image_width, prompt_image_height) / 64.0)))
+        x1_index = max(0, point_x_index - radius)
+        y1_index = max(0, point_y_index - radius)
+        x2_index = min(int(prompt_image_width), point_x_index + radius + 1)
+        y2_index = min(int(prompt_image_height), point_y_index + radius + 1)
+        prompt_mask[y1_index:y2_index, x1_index:x2_index] = 1
+        return prompt_mask
+    return prompt_mask
 
 
 def _decode_runtime_image(cv2_module: Any, np_module: Any, image_bytes: bytes) -> Any:

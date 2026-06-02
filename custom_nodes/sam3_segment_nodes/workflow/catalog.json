@@ -304,7 +304,9 @@
         "phase": "partial-implementation",
         "supported_prompt_kinds": [
           "box",
-          "point"
+          "point",
+          "polygon",
+          "mask"
         ]
       }
     },

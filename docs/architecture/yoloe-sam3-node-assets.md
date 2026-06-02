@@ -23,7 +23,7 @@
 - `YOLOE` 与 `SAM3` 这部分文档当前先固定资产目录、`manifest.json` 规则和节点输入输出 contract。
 - `projectsrc/` 只作为参考源码面，不参与运行时。
 - `YOLOE` 当前不会回退到已安装官方包或 `projectsrc` 参考代码执行推理；`prompt-free`、`text-prompt`、`visual-prompt` 三条 project-native runtime 已经接通，后续只继续扩能力面。
-- `SAM3` 当前已经接通 `interactive-segment` 和 `semantic-segment` 的 project-native runtime，直接读取本地 `sam3.pt` 执行单图分割；其中 `interactive` 第一阶段支持 `box / point`，`semantic` 第一阶段支持 `text-prompts.v1`。
+- `SAM3` 当前已经接通 `interactive-segment` 和 `semantic-segment` 的 project-native runtime，直接读取本地 `sam3.pt` 执行单图分割；其中 `interactive` 当前阶段支持 `box / point / polygon / mask`，`semantic` 当前支持按 `prompt_id` 聚合的 positive/negative `text-prompts.v1`。
 
 ## 适用范围
 
@@ -38,7 +38,8 @@
 - 大权重和附属模型资产继续统一放在 `data/files/models/pretrained/` 下，不放进 `custom_nodes/`。
 - `YOLOE` 第一阶段先使用官方 segmentation 权重接 open vocabulary detection 节点，`SAM3` 第一阶段先只开 image segmentation。
 - `YOLOE text-prompt` 第一阶段默认文本编码器固定为本地 `mobileclip_blt.ts`，并复用本地 `CLIP` tokenizer/BPE 资产。
-- `YOLOE` 和 `SAM3` 在 workflow 中的第一阶段运行形态应为：`WorkflowAppRuntime` 进程内按需首次加载并缓存，runtime 停止时释放；不是每次调用重新加载，也不是一开始就做成正式 `DeploymentInstance` 常驻服务。
+- `YOLOE text-prompt` 当前支持同一 `prompt_id` 下多条 positive/negative 文本组合，运行时会先按 `prompt_id` 聚合，再生成单个类别原型。
+- `YOLOE` 和 `SAM3` 在 workflow 中的第一阶段运行形态应为：`WorkflowAppRuntime` 进程内按需首次加载并缓存，runtime 停止时释放；不是每次调用重新加载，也不是一开始就做成正式 `DeploymentInstance` 常驻服务。当前 `YOLOE / SAM3` 都已经补了 CPU 会话缓存复用回归。
 - `YOLOE` 第一阶段节点同时输出 `detections.v1` 和 `regions.v1`；`SAM3` 输出也应使用 `regions.v1`，不要硬塞进 `detections.v1`。
 
 ## 参考实现来源
@@ -150,8 +151,7 @@ data/files/models/pretrained/
 - `YOLOE default`
 - `YOLOE prompt-free`
 - `SAM3 default`
-- `YOLOE visual-prompt` 第一阶段只支持 `box` prompt，`point / polygon / mask` 放到后续阶段再逐步开放；但分割结果输出已经接通。
-- 当前 `YOLOE prompt-free`、`YOLOE text-prompt`、`YOLOE visual-prompt` 都已经接通 project-native runtime；其中 `YOLOE visual-prompt` 第一阶段仅开放 box prompt。
+- 当前 `YOLOE prompt-free`、`YOLOE text-prompt`、`YOLOE visual-prompt` 都已经接通 project-native runtime；`YOLOE visual-prompt` 当前已开放 `box / point / polygon / mask` 四类提示，并支持同一 `prompt_id` 下混合多种视觉提示后合并成一个 prompt 原型。
 
 ## 第一阶段目录规则
 
@@ -323,6 +323,14 @@ data/files/models/pretrained/
   - `language`
   - `negative`
 
+运行时约定：
+
+- 同一 `prompt_id` 可出现多条记录。
+- `negative=false` 的文本会作为 positive 文本集合。
+- `negative=true` 的文本会作为 negative 文本集合。
+- `YOLOE text-prompt` 会先按 `prompt_id` 聚合，再把 positive 文本均值作为主方向，并把 negative 文本作为抑制项并入同一个类别原型。
+- `SAM3 semantic-segment` 当前也采用同样的 grouped positive/negative 语义：同一 `prompt_id` 至少要有一条 positive 文本，negative 文本会作为抑制项并入同一个语义原型。
+
 ### prompt-regions.v1
 
 用途：
@@ -404,9 +412,9 @@ data/files/models/pretrained/
 说明：
 
 - `interactive-segment` 当前已经接通 project-native runtime。
-- 第一阶段只支持 `box` 与 `point` prompt。
+- 当前阶段支持 `box`、`point`、`polygon`、`mask` prompt。
 - `semantic-segment` 当前也已接通 project-native runtime。
-- `semantic-segment` 第一阶段只支持 `text-prompts.v1`，不支持 negative prompt。
+- `semantic-segment` 当前支持按 `prompt_id` 聚合的 `text-prompts.v1`，同组内可混合 positive/negative 文本。
 
 ## 运行形态约定
 

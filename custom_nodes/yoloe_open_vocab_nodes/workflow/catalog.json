@@ -468,7 +468,10 @@
       "metadata": {
         "phase": "implemented",
         "supported_prompt_kinds": [
-          "box"
+          "box",
+          "point",
+          "polygon",
+          "mask"
         ]
       }
     },

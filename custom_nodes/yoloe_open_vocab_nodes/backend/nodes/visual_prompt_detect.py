@@ -27,7 +27,12 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
 
     image_payload, image_bytes = read_image_bytes(request, input_name="image")
     prompt_image_payload, prompt_image_bytes = read_image_bytes(request, input_name="prompt_image")
-    prompt_items = read_visual_prompt_items(request.input_values.get("prompts"))
+    prompt_items = read_visual_prompt_items(
+        request.input_values.get("prompts"),
+        request=request,
+        prompt_image_payload=prompt_image_payload,
+        prompt_image_bytes=prompt_image_bytes,
+    )
     model_family = normalize_model_family(request.parameters.get("model_family"))
     model_scale = normalize_model_scale(request.parameters.get("model_scale"))
     confidence_threshold = normalize_confidence_threshold(request.parameters.get("confidence_threshold"))

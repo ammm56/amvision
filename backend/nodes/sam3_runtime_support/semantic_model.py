@@ -17,7 +17,13 @@ from backend.service.application.runtime.detection_runtime_support import (
 
 from .checkpoint_loader import build_sam3_semantic_state_dict, load_sam3_checkpoint_branches
 from .image_preprocess import PreparedSam3Image, preprocess_sam3_image
-from .mask_postprocess import Sam3RegionItem, postprocess_sam3_interactive_masks
+from .mask_postprocess import (
+    DEFAULT_MASK_THRESHOLD,
+    DEFAULT_POLYGON_SIMPLIFY_RATIO,
+    DEFAULT_STABILITY_OFFSET,
+    Sam3RegionItem,
+    postprocess_sam3_interactive_masks,
+)
 from .vision_backbone import PositionEmbeddingSine, SAM3VisualBackbone, Sam3DualViTDetNeck, ViT
 
 
@@ -443,6 +449,8 @@ def build_sam3_semantic_image_model(
 class Sam3SemanticRuntimeSession:
     """封装单图 semantic 推理的可复用会话。"""
 
+    NEGATIVE_PROMPT_WEIGHT = 0.5
+
     def __init__(
         self,
         *,
@@ -485,10 +493,38 @@ class Sam3SemanticRuntimeSession:
             scale_y=prepared_image.scale_y,
         )
         backbone_out = self.model.forward_image(prepared_image.image_tensor)
-        prompt_texts = [str(item.text) for item in prompt_items]
+        prompt_groups = tuple(prompt_items)
+        prompt_texts: list[str] = []
+        prompt_text_offsets: list[tuple[int, int, int]] = []
+        prompt_display_names: list[str] = []
+        source_prompt_texts: list[str] = []
+        positive_text_map: list[tuple[str, ...]] = []
+        negative_text_map: list[tuple[str, ...]] = []
+        prompt_group_languages: list[tuple[str, ...]] = []
+        for group in prompt_groups:
+            positive_texts = tuple(str(item) for item in getattr(group, "positive_texts", ()))
+            negative_texts = tuple(str(item) for item in getattr(group, "negative_texts", ()))
+            if not positive_texts:
+                raise InvalidRequestError("SAM3 semantic-segment 至少需要一条 positive 文本提示")
+            positive_start = len(prompt_texts)
+            prompt_texts.extend(positive_texts)
+            negative_start = len(prompt_texts)
+            prompt_texts.extend(negative_texts)
+            prompt_text_offsets.append((positive_start, len(positive_texts), len(negative_texts)))
+            prompt_display_names.append(str(getattr(group, "display_name", "") or getattr(group, "prompt_id", "")))
+            source_prompt_texts.append(_build_group_source_prompt_text(positive_texts, negative_texts))
+            positive_text_map.append(positive_texts)
+            negative_text_map.append(negative_texts)
+            prompt_group_languages.append(tuple(str(item) for item in getattr(group, "languages", ()) if str(item)))
         prompt_padding_mask, prompt_tokens = self.model.encode_text(prompt_texts)
         prompt_padding_mask = prompt_padding_mask.to(self.model.segmentation_head.semantic_seg_head.weight.device)
         prompt_tokens = prompt_tokens.to(device=self.model.segmentation_head.semantic_seg_head.weight.device, dtype=self.runtime_torch_dtype)
+        prompt_padding_mask, prompt_tokens = _build_grouped_prompt_tokens(
+            prompt_padding_mask=prompt_padding_mask,
+            prompt_tokens=prompt_tokens,
+            prompt_text_offsets=tuple(prompt_text_offsets),
+            negative_prompt_weight=self.NEGATIVE_PROMPT_WEIGHT,
+        )
         semantic_logits = self.model.predict_semantic_logits(
             backbone_out=backbone_out,
             prompt_tokens=prompt_tokens,
@@ -507,13 +543,101 @@ class Sam3SemanticRuntimeSession:
             "checkpoint_path": str(self.checkpoint_path),
             "device": self.device_name,
             "precision": "fp16" if self.runtime_torch_dtype == torch.float16 else "bf16" if self.runtime_torch_dtype == torch.bfloat16 else "fp32",
-            "prompt_count": len(prompt_items),
-            "prompt_texts": prompt_texts,
+            "prompt_count": len(prompt_groups),
+            "prompt_item_count": len(prompt_texts),
+            "prompt_group_count": len(prompt_groups),
+            "positive_prompt_count": sum(len(item) for item in positive_text_map),
+            "negative_prompt_count": sum(len(item) for item in negative_text_map),
+            "negative_prompt_weight": self.NEGATIVE_PROMPT_WEIGHT,
+            "prompt_texts": source_prompt_texts,
             "region_count": len(region_items),
             "inference_mode": "semantic-segment",
             "text_encoder": "checkpoint-language-backbone",
+            "postprocess_profile": "sam3-default-v2",
+            "mask_threshold": DEFAULT_MASK_THRESHOLD,
+            "stability_offset": DEFAULT_STABILITY_OFFSET,
+            "polygon_simplify_ratio": DEFAULT_POLYGON_SIMPLIFY_RATIO,
+            "prompt_groups": [
+                {
+                    "prompt_id": str(getattr(group, "prompt_id", "")),
+                    "display_name": prompt_display_names[index],
+                    "positive_texts": list(positive_text_map[index]),
+                    "negative_texts": list(negative_text_map[index]),
+                    "languages": list(prompt_group_languages[index]),
+                }
+                for index, group in enumerate(prompt_groups)
+            ],
         }
         return Sam3SemanticPrediction(regions=tuple(region_items), summary=summary)
+
+
+def _build_grouped_prompt_tokens(
+    *,
+    prompt_padding_mask: torch.Tensor,
+    prompt_tokens: torch.Tensor,
+    prompt_text_offsets: tuple[tuple[int, int, int], ...],
+    negative_prompt_weight: float,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """按 prompt 组聚合 token-level text memory，并把负提示作为抑制项并入。"""
+
+    prompt_tokens_batch_first = prompt_tokens.transpose(0, 1).contiguous()
+    grouped_padding_masks: list[torch.Tensor] = []
+    grouped_prompt_tokens: list[torch.Tensor] = []
+    for positive_start, positive_count, negative_count in prompt_text_offsets:
+        positive_end = positive_start + positive_count
+        positive_padding_mask = prompt_padding_mask[positive_start:positive_end]
+        positive_prompt_tokens = prompt_tokens_batch_first[positive_start:positive_end]
+        group_padding_mask, group_prompt_tokens = _average_group_prompt_tokens(
+            prompt_padding_mask=positive_padding_mask,
+            prompt_tokens=positive_prompt_tokens,
+        )
+        if negative_count > 0:
+            negative_start = positive_end
+            negative_end = negative_start + negative_count
+            negative_padding_mask = prompt_padding_mask[negative_start:negative_end]
+            negative_prompt_tokens = prompt_tokens_batch_first[negative_start:negative_end]
+            _negative_group_padding_mask, negative_group_prompt_tokens = _average_group_prompt_tokens(
+                prompt_padding_mask=negative_padding_mask,
+                prompt_tokens=negative_prompt_tokens,
+            )
+            group_prompt_tokens = group_prompt_tokens - float(negative_prompt_weight) * negative_group_prompt_tokens
+            group_prompt_tokens = F.normalize(group_prompt_tokens, dim=-1, p=2)
+            group_prompt_tokens[group_padding_mask] = 0.0
+        grouped_padding_masks.append(group_padding_mask)
+        grouped_prompt_tokens.append(group_prompt_tokens)
+    return (
+        torch.stack(grouped_padding_masks, dim=0).contiguous(),
+        torch.stack(grouped_prompt_tokens, dim=0).transpose(0, 1).contiguous(),
+    )
+
+
+def _average_group_prompt_tokens(
+    *,
+    prompt_padding_mask: torch.Tensor,
+    prompt_tokens: torch.Tensor,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """对同组文本提示的 token-level memory 做按有效位置平均。"""
+
+    valid_mask = (~prompt_padding_mask).to(prompt_tokens.dtype)[..., None]
+    valid_count = valid_mask.sum(dim=0)
+    group_padding_mask = valid_count.squeeze(-1) <= 0
+    normalized_valid_count = torch.clamp(valid_count, min=1.0)
+    averaged_prompt_tokens = (prompt_tokens * valid_mask).sum(dim=0) / normalized_valid_count
+    averaged_prompt_tokens[group_padding_mask] = 0.0
+    return group_padding_mask, averaged_prompt_tokens
+
+
+def _build_group_source_prompt_text(
+    positive_texts: tuple[str, ...],
+    negative_texts: tuple[str, ...],
+) -> str:
+    """为 semantic 结果构造可追溯的文本组合摘要。"""
+
+    positive_segment = " | ".join(str(item) for item in positive_texts)
+    if not negative_texts:
+        return positive_segment
+    negative_segment = " | ".join(f"!{item}" for item in negative_texts)
+    return f"{positive_segment} || {negative_segment}"
 
 
 __all__ = [

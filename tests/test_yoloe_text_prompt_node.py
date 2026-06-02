@@ -15,6 +15,7 @@ from custom_nodes.yoloe_open_vocab_nodes.backend.nodes import text_prompt_detect
 from custom_nodes.yoloe_open_vocab_nodes.backend.nodes._common import (
     YoloeTextPromptPrediction,
     get_or_create_yoloe_text_prompt_runtime_session,
+    merge_text_prompt_items,
     resolve_yoloe_pretrained_variant,
 )
 
@@ -167,51 +168,29 @@ def test_text_prompt_detect_returns_detection_payload_and_summary(monkeypatch) -
     assert output["regions"]["count"] == 1
     assert output["regions"]["items"][0]["class_name"] == "缺陷A"
     assert output["summary"]["prompt_count"] == 1
+    assert output["summary"]["prompt_items"][0]["negative"] is False
     assert output["summary"]["source_image"]["transport_kind"] == "memory"
 
 
-def test_text_prompt_detect_rejects_negative_prompt() -> None:
-    """验证第一阶段文本提示节点会拒绝 negative prompt。"""
+def test_merge_text_prompt_items_supports_positive_and_negative_groups() -> None:
+    """验证文本提示支持按 prompt_id 聚合正负文本。"""
 
-    image_bytes = _build_test_png_bytes()
-    image_registry = ExecutionImageRegistry()
-    registered_image = image_registry.register_image_bytes(
-        content=image_bytes,
-        media_type="image/png",
-        width=32,
-        height=32,
-        created_by_node_id="fixture",
-    )
-    request = WorkflowNodeExecutionRequest(
-        node_id="node-negative",
-        node_definition=SimpleNamespace(node_type_id=text_prompt_detect.NODE_TYPE_ID),
-        parameters={"model_family": "v8", "model_scale": "s"},
-        input_values={
-            "image": build_memory_image_payload(
-                image_handle=registered_image.image_handle,
-                media_type="image/png",
-                width=32,
-                height=32,
-            ),
-            "prompts": {
-                "items": [
-                    {
-                        "prompt_id": "prompt-1",
-                        "text": "defect-a",
-                        "negative": True,
-                    }
-                ]
-            },
-        },
-        execution_metadata={"execution_image_registry": image_registry},
+    prompt_groups = merge_text_prompt_items(
+        (
+            SimpleNamespace(prompt_id="prompt-1", text="person", display_name="person", negative=False, language=None),
+            SimpleNamespace(prompt_id="prompt-1", text="human", display_name="person", negative=False, language="en"),
+            SimpleNamespace(prompt_id="prompt-1", text="background", display_name="person", negative=True, language="en"),
+            SimpleNamespace(prompt_id="prompt-2", text="car", display_name="car", negative=False, language=None),
+        )
     )
 
-    try:
-        text_prompt_detect.handle_node(request)
-    except Exception as exc:
-        assert "negative prompt" in str(exc)
-    else:  # pragma: no cover - 测试要求必须抛错
-        raise AssertionError("expected YOLOE negative prompt validation error")
+    assert len(prompt_groups) == 2
+    assert prompt_groups[0].prompt_id == "prompt-1"
+    assert prompt_groups[0].positive_texts == ("person", "human")
+    assert prompt_groups[0].negative_texts == ("background",)
+    assert prompt_groups[1].prompt_id == "prompt-2"
+    assert prompt_groups[1].positive_texts == ("car",)
+    assert prompt_groups[1].negative_texts == ()
 
 
 def test_local_text_encoder_assets_can_be_loaded() -> None:
@@ -253,7 +232,44 @@ def test_text_prompt_runtime_session_runs_project_native_smoke() -> None:
     assert prediction.summary["prompt_free"] is False
     assert prediction.summary["variant_name"] == "v8-default"
     assert prediction.summary["prompt_count"] == 2
+    assert prediction.summary["prompt_item_count"] == 2
     assert prediction.summary["text_encoder"] == "mobileclip/blt"
+    assert isinstance(prediction.detections, tuple)
+    assert isinstance(prediction.regions, tuple)
+
+
+def test_text_prompt_runtime_session_runs_project_native_smoke_with_grouped_negative_prompts() -> None:
+    """验证 text-prompt runtime 支持同一 prompt_id 下的正负文本组合。"""
+
+    runtime_session = get_or_create_yoloe_text_prompt_runtime_session(
+        model_family="v8",
+        model_scale="s",
+        device="cpu",
+        precision="fp32",
+    )
+    prediction = runtime_session.predict(
+        image_bytes=_build_test_png_bytes(),
+        prompts=(
+            SimpleNamespace(prompt_id="prompt-1", text="person", display_name="person", negative=False, language=None),
+            SimpleNamespace(prompt_id="prompt-1", text="human", display_name="person", negative=False, language="en"),
+            SimpleNamespace(prompt_id="prompt-1", text="background", display_name="person", negative=True, language="en"),
+            SimpleNamespace(prompt_id="prompt-2", text="car", display_name="car", negative=False, language=None),
+        ),
+        confidence_threshold=0.25,
+        iou_threshold=0.7,
+        max_detections=5,
+    )
+
+    assert prediction.summary["project_native"] is True
+    assert prediction.summary["prompt_count"] == 2
+    assert prediction.summary["prompt_item_count"] == 4
+    assert prediction.summary["prompt_group_count"] == 2
+    assert prediction.summary["positive_prompt_count"] == 3
+    assert prediction.summary["negative_prompt_count"] == 1
+    assert prediction.summary["negative_prompt_weight"] == 0.5
+    assert prediction.summary["prompt_groups"][0]["prompt_id"] == "prompt-1"
+    assert prediction.summary["prompt_groups"][0]["positive_texts"] == ["person", "human"]
+    assert prediction.summary["prompt_groups"][0]["negative_texts"] == ["background"]
     assert isinstance(prediction.detections, tuple)
     assert isinstance(prediction.regions, tuple)
 

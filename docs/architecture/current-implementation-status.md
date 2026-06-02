@@ -2,7 +2,7 @@
 
 ## 文档目的
 
-本文档用于同步当前主干已经落地的整体框架、主要代码落点、YOLOX 端到端能力范围和下一步收敛重点。
+本文档用于同步当前主干已经落地的整体框架、主要代码落点、YOLOX 端到端能力范围、`YOLOE / SAM3` custom node 现状，以及下一步收敛重点。
 
 本文档补充 [system-overview.md](system-overview.md) 的长期架构视角，重点回答“当前代码已经做到哪里”。
 
@@ -10,6 +10,7 @@
 
 - backend-service、BackgroundTaskManager、deployment process supervisor 的当前装配方式
 - YOLOX 训练、人工验证、评估、转换、部署和推理的已落地链路
+- `YOLOE / SAM3` project-native custom node 的当前能力边界
 - 当前公开 REST / WebSocket 资源面与主要运行时矩阵
 - 下一步优先补强事项
 
@@ -22,6 +23,8 @@
 - 当前公开 WebSocket 已覆盖 auth、system、tasks、workflows.preview-runs、workflows.runs、workflows.app-runtimes、deployments 和 projects 八类资源流；统一的路由分层、重连规则和项目级聚合流边界已整理到 [websocket-architecture.md](websocket-architecture.md)。
 - backend-service 当前已经补齐本地前端接入所需的 CORS、hybrid auth、Project 目录接口和 Project 内对象读取接口；主要工作台列表接口已经统一到 offset/limit + 响应头分页规则。
 - backend-service 当前已经补齐本地用户、权限范围、session/refresh token、长期调用 user token 和 auth.events 审计流；在线 provider 只保留目录发现与后续扩展边界。
+- `YOLOE / SAM3` 当前已经不是骨架：两者都已接通 project-native custom node runtime，不依赖 `projectsrc/` 或已安装官方包执行推理；其中 `YOLOE` 已覆盖 `prompt-free / text-prompt / visual-prompt` 三条节点链，`SAM3` 已覆盖 `interactive-segment / semantic-segment` 两条节点链。
+- `YOLOE text-prompt` 当前支持同一 `prompt_id` 下 positive / negative 文本组合；`YOLOE visual-prompt` 当前支持 `box / point / polygon / mask` 四类提示及同一 `prompt_id` 下混合提示聚合。`SAM3 interactive-segment` 当前支持 `box / point / polygon / mask`；`SAM3 semantic-segment` 当前支持同一 `prompt_id` 下 grouped positive / negative 文本提示。
 - 当前代码形态仍然是“模块化单体 + 本地队列 + 本地对象存储 + 独立 deployment 子进程”。下一步重点应转向拓扑收敛、运行时硬化和平台泛化，而不是继续补 YOLOX 基础闭环缺口。
 
 ## 本轮更新（P0 + P1-8 + P3-14 + P3-15）已落地事项
@@ -35,6 +38,8 @@
 - Pose 训练损失已从占位 MSE 替换为完整实现：detection 损失 + 关键点位置损失 + 可见性 mask（`backend/service/application/models/pose_loss.py`）。
 - model_scale 命名统一：全部 YOLO11/YOLO26 配置和默认值从 `"n"` 改为 `"nano"`。
 - workflow core nodes 已新增 SAHI 大图切片推理节点 `core.model.sahi-inference`；当前节点复用已发布 detection deployment 主链完成切片推理、坐标回映射和 `nms / nmm / none` 三种重叠合并，不绕开 DeploymentInstance 与 PublishedInferenceGateway 正式边界。
+- `YOLOE` custom node 当前已接通 project-native runtime：`prompt-free-detect`、`text-prompt-detect`、`visual-prompt-detect` 都直接读取本地 `yoloe` 预训练权重，输出 `detections.v1 + regions.v1`；`text-prompt` 支持按 `prompt_id` 聚合 positive/negative 文本，`visual-prompt` 支持 `box / point / polygon / mask` 以及同一 `prompt_id` 下混合视觉提示。
+- `SAM3` custom node 当前已接通 project-native runtime：`interactive-segment` 直接读取本地 `sam3.pt`，支持 `box / point / polygon / mask` 四类几何提示；`semantic-segment` 直接读取本地 `sam3.pt` 的 detector 分支，支持按 `prompt_id` 聚合 positive/negative 文本提示并输出 `regions.v1`。
 
 ### P1-8 Bootstrap 重构
 
@@ -59,6 +64,14 @@
 - REST v1 路由汇总位于 `backend/service/api/rest/v1/router.py`，当前已经挂载 auth、system、projects、workflows、workflow runtime、datasets、dataset-exports、models、detection-training-tasks、classification-training-tasks、segmentation-training-tasks、pose-training-tasks、obb-training-tasks、detection-validation-sessions、classification-validation-sessions、segmentation-validation-sessions、pose-validation-sessions、obb-validation-sessions、deployment-instances、inference-tasks、yolox-training-tasks、validation-sessions、conversion-tasks、evaluation-tasks 和 tasks。
 - REST v1 列表分页辅助函数位于 `backend/service/api/rest/v1/pagination.py`，当前用于 projects、workflow templates、template versions、applications、execution-policies、preview-runs、app-runtimes 和 trigger-sources。
 - WebSocket 路由位于 `backend/service/api/ws/router.py`，当前已经公开 auth、system、tasks、workflow preview-runs、workflow runs、workflow app-runtimes、deployments 和 projects 聚合流入口。
+
+### custom node 扩展面
+
+- `custom_nodes/yoloe_open_vocab_nodes/` 当前已经具备完整 pack 骨架、catalog、project-native runtime、真实本地资产 smoke 和 grouped prompt summary；默认仍保持 `enabledByDefault = false`，继续作为受控扩展能力使用。
+- `custom_nodes/sam3_segment_nodes/` 当前已经具备完整 pack 骨架、catalog、project-native runtime、真实本地资产 smoke 和共享后处理增强；默认仍保持 `enabledByDefault = false`，继续作为受控扩展能力使用。
+- `YOLOE / SAM3` 预训练资产统一从 `data/files/models/pretrained/` 读取：`YOLOE` 使用本地 segmentation 权重与 `text-encoders` 资产，`SAM3` 使用本地 `sam3.pt`。
+- 当前 `YOLOE / SAM3` 都已经补了定向稳定性回归：多 prompt 组合、本地资产 smoke、异常预训练目录、空提示/非法提示、CPU 会话缓存复用。
+- 当前 `YOLOE / SAM3` 已在目标机器上补了显式 CPU/GPU soak / benchmark 基线，结果记录见 [yoloe-sam3-soak-baseline.md](yoloe-sam3-soak-baseline.md)；该测试文件位于 `tests/integration/`，默认不参与常规收集。
 
 ### 后台执行与 runtime 面
 
@@ -99,6 +112,12 @@
 - 当前 deployment 已真实接通 `openvino fp32 auto/cpu/gpu/npu + fp16 gpu/npu`。
 - 当前 deployment 已真实接通 `tensorrt fp32/fp16 cuda`。
 - 当前每个 DeploymentInstance 在 sync 和 async 两个通道上各自拥有独立的 deployment 子进程监督单元，不共享会话池。
+
+### custom node 运行时
+
+- `YOLOE` 和 `SAM3` 当前都不走 `DeploymentInstance` 主链，而是在 `WorkflowAppRuntime` 进程内按需首次加载并缓存；当前缓存 key 已稳定覆盖 checkpoint、device 和 precision。
+- `YOLOE` 文本提示默认复用本地 `mobileclip_blt.ts + bpe_simple_vocab_16e6.txt.gz`；`SAM3 semantic` 复用项目内 tokenizer 代码与 checkpoint 自带语言骨干，不依赖在线下载或 Hugging Face snapshot。
+- 当前 `YOLOE / SAM3` 的 smoke 重点覆盖本地 project-native 推理链、输出 contract 与缓存复用，尚未进入 workflow app、长期发布服务或多机部署形态收口。
 
 ## 当前实现细节中需要明确的事实
 

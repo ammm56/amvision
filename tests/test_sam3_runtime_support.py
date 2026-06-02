@@ -6,6 +6,7 @@ from dataclasses import dataclass
 import io
 from pathlib import Path
 
+import numpy as np
 from PIL import Image
 import torch
 
@@ -42,6 +43,7 @@ class _PromptItem:
     bbox_xyxy: tuple[float, float, float, float] | None = None
     point_xy: tuple[float, float] | None = None
     point_label: str | None = None
+    prompt_mask: np.ndarray | None = None
 
 
 def _build_test_png_bytes(width: int = 64, height: int = 32) -> bytes:
@@ -106,8 +108,71 @@ def test_build_sam3_interactive_prompt_tensors_supports_box_and_point() -> None:
 
     assert tuple(prepared_prompts.point_coords.shape) == (2, 2, 2)
     assert tuple(prepared_prompts.point_labels.shape) == (2, 2)
+    assert prepared_prompts.prompt_masks is None
     assert prepared_prompts.point_labels[0].tolist() == [2, 3]
     assert prepared_prompts.point_labels[1].tolist() == [0, -1]
+
+
+def test_build_sam3_interactive_prompt_tensors_supports_polygon_mask_prompt() -> None:
+    """验证 polygon prompt 会编码成 PromptEncoder 可消费的 dense mask。"""
+
+    polygon_mask = np.zeros((32, 48), dtype=np.uint8)
+    polygon_mask[8:24, 10:36] = 1
+    prompt_items = (
+        _PromptItem(
+            prompt_id="poly-1",
+            prompt_kind="polygon",
+            display_name="polygon",
+            prompt_mask=polygon_mask,
+        ),
+    )
+
+    prepared_prompts = build_sam3_interactive_prompt_tensors(
+        prompt_items,
+        source_width=48,
+        source_height=32,
+        target_width=1008,
+        target_height=1008,
+        mask_prompt_width=288,
+        mask_prompt_height=288,
+    )
+
+    assert prepared_prompts.point_coords is None
+    assert prepared_prompts.point_labels is None
+    assert prepared_prompts.prompt_masks is not None
+    assert tuple(prepared_prompts.prompt_masks.shape) == (1, 1, 288, 288)
+    assert float(prepared_prompts.prompt_masks.sum().item()) > 0.0
+
+
+def test_build_sam3_interactive_prompt_tensors_supports_mask_prompt() -> None:
+    """验证 mask prompt 也会编码成 PromptEncoder 可消费的 dense mask。"""
+
+    prompt_mask = np.zeros((30, 40), dtype=np.uint8)
+    prompt_mask[6:26, 8:32] = 1
+    prompt_items = (
+        _PromptItem(
+            prompt_id="mask-1",
+            prompt_kind="mask",
+            display_name="mask",
+            prompt_mask=prompt_mask,
+        ),
+    )
+
+    prepared_prompts = build_sam3_interactive_prompt_tensors(
+        prompt_items,
+        source_width=40,
+        source_height=30,
+        target_width=1008,
+        target_height=1008,
+        mask_prompt_width=288,
+        mask_prompt_height=288,
+    )
+
+    assert prepared_prompts.point_coords is None
+    assert prepared_prompts.point_labels is None
+    assert prepared_prompts.prompt_masks is not None
+    assert tuple(prepared_prompts.prompt_masks.shape) == (1, 1, 288, 288)
+    assert float(prepared_prompts.prompt_masks.sum().item()) > 0.0
 
 
 def test_postprocess_sam3_interactive_masks_builds_regions() -> None:
@@ -139,3 +204,34 @@ def test_postprocess_sam3_interactive_masks_builds_regions() -> None:
     assert region.mask_width == 64
     assert region.mask_height == 64
     assert region.mask_png_bytes.startswith(b"\x89PNG\r\n\x1a\n")
+    assert 0.0 <= region.score <= 1.0
+
+
+def test_postprocess_sam3_interactive_masks_filters_small_components() -> None:
+    """验证后处理会过滤掉面积过小的碎片连通域。"""
+
+    mask_logits = torch.full((1, 1, 16, 16), fill_value=-2.0, dtype=torch.float32)
+    mask_logits[0, 0, 4:8, 5:9] = 3.0
+    mask_logits[0, 0, 0, 0] = 3.0
+    prompt_items = (
+        _PromptItem(
+            prompt_id="box-1",
+            prompt_kind="box",
+            display_name="target-box",
+            bbox_xyxy=(0.0, 0.0, 15.0, 15.0),
+        ),
+    )
+
+    region_items = postprocess_sam3_interactive_masks(
+        mask_logits,
+        source_width=16,
+        source_height=16,
+        prompt_items=prompt_items,
+        min_component_area=4,
+        min_region_area=4,
+    )
+
+    assert len(region_items) == 1
+    region = region_items[0]
+    assert region.area == 16
+    assert region.bbox_xyxy == (5.0, 4.0, 8.0, 7.0)
