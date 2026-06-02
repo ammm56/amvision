@@ -463,6 +463,7 @@ release/
 - 输出：`tracks.v1`
 - 当前策略：`shared-text-prompts-across-window`
 - 当前按 `prompt_id` 稳定映射 `track_id`，并沿用单帧 `semantic-segment` 的 grouped positive/negative 文本语义与后处理规则
+- 更强的 `stateful-semantic-propagation` 和后续 `memory-prototype` 风格 semantic 视频模式当前仍未实现，也不是当前主线的硬阻塞项
 
 ### `SAM3` 视频模式选择建议
 
@@ -495,6 +496,41 @@ release/
 - `max_memory_tokens_per_entry = 256`
 
 workflow 编排时应根据任务实际复杂度选择，不必默认一律走最重模式；简单任务优先使用更轻的单帧或 shared prompt 版本，复杂任务再逐步切到更强的状态跟踪模式。
+
+### `video-semantic-segment` 的使用建议
+
+当前 `video-semantic-segment` 更适合下面两类用途：
+
+1. 视频复盘中的语义区域逐帧观察
+- 使用同一组文本提示跨帧执行
+- 更适合“看结果是否稳定、区域是否大体正确”的场景
+
+2. 轻量连续区域分析
+- 例如工件表面某类区域在短窗口中的大体覆盖情况
+- 当前 shared-text 策略通常已经够用
+
+当前不建议默认把 `video-semantic-segment` 往更复杂时序模式推进，除非现场已经明确存在下面需求：
+
+- 同一语义区域跨帧必须尽量平滑，不能明显抖动
+- 结果需要继续用于面积、覆盖率、连续性或趋势分析
+- 区域在轻微遮挡、亮度变化或位移下仍希望保持稳定延续
+
+典型工业场景：
+
+- 点胶覆盖区域连续监控
+- 涂层、焊缝、密封条、液面等连续工艺区域分割
+- 需要跨帧稳定面积统计的语义区域
+
+后续若要继续增强，建议顺序是：
+
+1. `stateful-semantic-propagation`
+- 先用上一帧 region 或 mask 延续当前帧语义区域
+- 这是更贴近工业现场、也更容易解释的第一步
+
+2. `memory-prototype` 风格 semantic 视频模式
+- 只在 `stateful-semantic-propagation` 仍然不够时再考虑
+
+如果现场主要还是单帧判定或视频回放辅助，那么当前阶段继续保持 `shared-text-prompts-across-window` 即可，不必为了“更强”而默认加深时序复杂度。
 
 ### 不应该属于 `SAM3` pack 的部分
 

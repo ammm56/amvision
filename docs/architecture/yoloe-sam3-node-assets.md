@@ -25,7 +25,7 @@ workflow app 侧的接入顺序、目标机器启用/禁用和运维排障，见
 - `YOLOE` 与 `SAM3` 这部分文档当前先固定资产目录、`manifest.json` 规则和节点输入输出 contract。
 - `projectsrc/` 只作为参考源码面，不参与运行时。
 - `YOLOE` 当前不会回退到已安装官方包或 `projectsrc` 参考代码执行推理；`prompt-free`、`text-prompt`、`visual-prompt` 三条 project-native runtime 已经接通，后续只继续扩能力面。
-- `SAM3` 当前已经接通 `interactive-segment`、`semantic-segment`、`video-interactive-segment` 和 `video-semantic-segment` 的 project-native runtime，直接读取本地 `sam3.pt` 执行单图或多帧分割；其中 `interactive` 当前阶段支持 `box / point / polygon / mask`，`semantic` 当前支持按 `prompt_id` 聚合的 positive/negative `text-prompts.v1`，`video-interactive` 当前默认使用 `memory-prototype-state` 多帧跟踪并输出 `tracks.v1`，同时也已提供更重的 `memory-attention-tracker` 可选模式，`video-semantic` 当前使用共享 `text-prompts.v1` 跨帧执行语义分割并输出 `tracks.v1`。
+- `SAM3` 当前已经接通 `interactive-segment`、`semantic-segment`、`video-interactive-segment` 和 `video-semantic-segment` 的 project-native runtime，直接读取本地 `sam3.pt` 执行单图或多帧分割；其中 `interactive` 当前阶段支持 `box / point / polygon / mask`，`semantic` 当前支持按 `prompt_id` 聚合的 positive/negative `text-prompts.v1`，`video-interactive` 当前默认使用 `memory-prototype-state` 多帧跟踪并输出 `tracks.v1`，同时也已提供更重的 `memory-attention-tracker` 可选模式，`video-semantic` 当前使用共享 `text-prompts.v1` 跨帧执行语义分割并输出 `tracks.v1`。更强的 `stateful-semantic-propagation` 与后续 `memory-prototype` 风格语义视频模式当前仍处于预留规划，不是当前阶段的硬阻塞能力。
 
 ## 适用范围
 
@@ -545,6 +545,38 @@ data/files/models/pretrained/
 - 遮挡后重现
 - 更长窗口和更大位移
 - 多目标跟踪调试
+
+### `video-semantic-segment` 当前边界与后续增强
+
+当前 `video-semantic-segment` 只提供：
+
+- `shared-text-prompts-across-window`
+
+这表示：
+
+- 同一组 `text-prompts.v1` 会直接作用到整个 `frame-window.v1`
+- 当前不会自动把上一帧 region 或 mask 作为下一帧语义状态继续传播
+- 当前更偏向“逐帧共享同一组语义提示”的稳定实现，而不是完整时序语义 tracker
+
+这条边界是有意保留的。当前现场以单帧判定和视频复盘为主时，`shared-text-prompts-across-window` 通常已经够用，也更容易解释和排障。
+
+后续如果现场明确需要“语义区域跨帧稳定性”，再考虑按下面顺序增强：
+
+1. `stateful-semantic-propagation`
+- 基于上一帧 region 或 mask，把语义区域延续到下一帧
+- 适合中等复杂度的视频语义稳定任务
+
+2. `memory-prototype` 风格 semantic 视频模式
+- 再进一步为语义目标维护跨帧 prototype / state
+- 只在 `stateful-semantic-propagation` 仍不足时才考虑
+
+典型工业场景：
+
+- 点胶区域连续覆盖监控
+- 涂层、涂胶、焊缝、密封条等连续工艺区域分割
+- 液面、料面、泡沫区域等需要跨帧稳定面积统计的场景
+
+如果现场主要还是单帧抓拍、单张复盘或只是用视频做结果回放，则当前不必优先实现 `stateful-semantic-propagation`。
 
 ## 运行形态约定
 
