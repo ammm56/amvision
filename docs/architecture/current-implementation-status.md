@@ -71,7 +71,7 @@
 - `custom_nodes/sam3_segment_nodes/` 当前已经具备完整 pack 骨架、catalog、project-native runtime、真实本地资产 smoke 和共享后处理增强；默认仍保持 `enabledByDefault = false`，继续作为受控扩展能力使用。
 - `YOLOE / SAM3` 预训练资产统一从 `data/files/models/pretrained/` 读取：`YOLOE` 使用本地 segmentation 权重与 `text-encoders` 资产，`SAM3` 使用本地 `sam3.pt`。
 - 当前 `YOLOE / SAM3` 都已经补了定向稳定性回归：多 prompt 组合、本地资产 smoke、异常预训练目录、空提示/非法提示、CPU 会话缓存复用。
-- 当前 `YOLOE / SAM3` 已在目标机器上补了显式 CPU/GPU soak / benchmark 基线，结果记录见 [yoloe-sam3-soak-baseline.md](yoloe-sam3-soak-baseline.md)；该测试文件位于 `tests/integration/`，默认不参与常规收集。
+- 当前 `YOLOE / SAM3` 已在目标机器上补了显式 CPU/GPU soak / benchmark 基线与 1 轮更长时长/更大图尺寸扩展 soak，结果记录见 [yoloe-sam3-soak-baseline.md](yoloe-sam3-soak-baseline.md)；相关测试文件位于 `tests/integration/`，默认不参与常规收集。
 
 ### 后台执行与 runtime 面
 

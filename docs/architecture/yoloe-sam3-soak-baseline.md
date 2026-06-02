@@ -13,10 +13,16 @@
 - 默认 `pytest` 与 `pytest tests` 不收集本文件
 - 基线来源：修复 Windows 进程内存读取实现后的 3 轮完整执行结果
 
-执行命令：
+基础基线执行命令：
 
 ```powershell
 D:/software/anaconda3/envs/amvision/python.exe -m pytest --basetemp .tmp/pytest tests/integration/test_yoloe_sam3_soak_benchmark.py -q -s
+```
+
+扩展基线执行命令：
+
+```powershell
+D:/software/anaconda3/envs/amvision/python.exe -m pytest --basetemp .tmp/pytest tests/integration/test_yoloe_sam3_extended_soak_benchmark.py -q -s
 ```
 
 ## 当前测试覆盖
@@ -33,6 +39,13 @@ D:/software/anaconda3/envs/amvision/python.exe -m pytest --basetemp .tmp/pytest 
 - GPU 显存漂移上限：`768 MB`
 - CPU soak 迭代数：`6`
 - GPU soak 迭代数：`4`
+
+扩展 soak 当前使用：
+
+- CPU soak 迭代数：`10`
+- GPU soak 迭代数：`6`
+- YOLOE 更大图尺寸：`640 x 448`
+- SAM3 更大图尺寸：`768 x 512`
 
 ## 基线结果
 
@@ -85,8 +98,30 @@ D:/software/anaconda3/envs/amvision/python.exe -m pytest --basetemp .tmp/pytest 
 - 两条 CUDA 基线都表现为 `allocated drift = 0`；`reserved` 增长后趋于固定平台，更符合 allocator cache 预热，而不是持续泄漏。
 - 以当前基线看，`YOLOE / SAM3` 已经具备继续向“更接近正式可用”阶段收口的条件，但仍建议保持 `enabledByDefault = false`，先继续以受控本地能力使用。
 
+## 扩展 soak 结果
+
+### 说明
+
+- 扩展 soak 使用更大的输入图尺寸和更长的迭代数，只执行 1 轮。
+- 目标仍然是检查会话驻留、重复推理与内存/显存平台化趋势，不作为精度 benchmark。
+
+### 扩展结果
+
+| benchmark | 平台 | 图尺寸 | 迭代数 | avg(ms) | 漂移 | 当前判断 |
+| --- | --- | --- | ---: | ---: | --- | --- |
+| yoloe-text-prompt-cpu-extended | CPU | `640 x 448` | 10 | 545.326 | `6.70 MB` | 稳定，较基础基线变慢但漂移仍很小 |
+| sam3-semantic-cpu-extended | CPU | `768 x 512` | 10 | 27,461.713 | `82.68 MB` | 稳定，耗时增加但漂移仍低于阈值 |
+| yoloe-text-prompt-cuda-extended | CUDA | `640 x 448` | 6 | 296.693 | `allocated drift = 0` | 稳定，峰值波动可接受 |
+| sam3-semantic-cuda-extended | CUDA | `768 x 512` | 6 | 555.471 | `allocated drift = 0` | 稳定，reserved 增长后趋于平台化 |
+
+### 扩展结论
+
+- `YOLOE text-prompt` 在更大图尺寸和更长迭代下仍保持较小 CPU 内存漂移，CUDA `allocated` 仍为 `0 drift`。
+- `SAM3 semantic-segment` 在更大图尺寸下 CPU 平均耗时上升到约 `27.5 s`，但内存漂移没有放大到阈值附近；CUDA 仍表现为 `allocated drift = 0`。
+- 以当前基础基线和扩展基线共同判断，`YOLOE / SAM3` 的本地会话驻留和重复推理稳定性已达到“可以继续考虑从 `partial-implementation` 向更接近正式可用阶段收口”的程度。
+
 ## 建议下一步
 
 1. 在目标机器类型发生变化时，重新执行本文件并更新基线。
-2. 在准备把 `YOLOE / SAM3` 从 `partial-implementation` 继续收口前，再补 1 轮更长时长或更大图像尺寸的 soak。
-3. 在开启更大能力面前，优先补 workflow app 侧的受控接入说明和排障手册，而不是先扩多帧或视频。
+2. 在准备把 `YOLOE / SAM3` 从 `partial-implementation` 继续收口前，优先补 workflow app 侧的受控接入说明和排障手册。
+3. 如果后面再扩到多帧、视频或更高分辨率资产，再单独新增对应的 integration soak 文件，而不是继续把更多场景塞进现有基础基线文件。
