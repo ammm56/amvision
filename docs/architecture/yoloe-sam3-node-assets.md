@@ -18,6 +18,8 @@
 - workflow app 改造
 - 核心模型主链的训练、转换、发布接入
 
+workflow app 侧的受控启用、目标机器接入顺序和运维排障，见 [yoloe-sam3-workflow-app-operations.md](yoloe-sam3-workflow-app-operations.md)。
+
 ## 当前状态说明
 
 - `YOLOE` 与 `SAM3` 这部分文档当前先固定资产目录、`manifest.json` 规则和节点输入输出 contract。
