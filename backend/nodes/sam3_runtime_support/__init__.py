@@ -8,6 +8,7 @@ from .checkpoint_loader import (
 )
 from .image_preprocess import PreparedSam3Image, preprocess_sam3_image
 from .interactive_model import (
+    Sam3InteractiveFrameContext,
     Sam3InteractiveImageModel,
     Sam3InteractivePrediction,
     Sam3InteractiveRuntimeSession,
@@ -28,6 +29,12 @@ from .mask_postprocess import Sam3RegionItem, postprocess_sam3_interactive_masks
 from .nn_common import DropPath, LayerNorm2d, LayerScale, MLP, MLPBlock, clone_module_list, get_1d_sine_pe, inverse_sigmoid, xywh2xyxy
 from .prompt_mask_modules import PromptEncoder, SAM2MaskDecoder, SAM2TwoWayTransformer
 from .prompt_encoding import PreparedSam3InteractivePrompts, build_sam3_interactive_prompt_tensors
+from .video_memory_tracker import (
+    Sam3MemoryPromptBuildResult,
+    Sam3VideoTrackState,
+    build_memory_prompt_mask,
+    update_track_state_from_region,
+)
 from .vision_backbone import PositionEmbeddingSine, SAM3VisualBackbone, Sam3DualViTDetNeck, ViT
 
 __all__ = [
@@ -38,15 +45,18 @@ __all__ = [
     "MLPBlock",
     "PreparedSam3Image",
     "PreparedSam3InteractivePrompts",
+    "Sam3InteractiveFrameContext",
     "Sam3InteractiveImageFeatures",
     "Sam3InteractiveImageModel",
     "Sam3InteractiveMemoryEntry",
     "Sam3InteractivePrediction",
     "Sam3InteractiveRuntimeSession",
     "Sam3InteractiveState",
+    "Sam3MemoryPromptBuildResult",
     "Sam3SemanticImageModel",
     "Sam3SemanticPrediction",
     "Sam3SemanticRuntimeSession",
+    "Sam3VideoTrackState",
     "Sam3CheckpointBranches",
     "Sam3RegionItem",
     "PromptEncoder",
@@ -61,11 +71,13 @@ __all__ = [
     "build_sam3_interactive_image_model",
     "build_sam3_semantic_image_model",
     "clone_module_list",
+    "build_memory_prompt_mask",
     "get_1d_sine_pe",
     "inverse_sigmoid",
     "load_sam3_checkpoint_branches",
     "load_sam3_checkpoint_state_dict",
     "postprocess_sam3_interactive_masks",
     "preprocess_sam3_image",
+    "update_track_state_from_region",
     "xywh2xyxy",
 ]

@@ -11,11 +11,16 @@ from PIL import Image
 import torch
 
 from backend.nodes.sam3_runtime_support import (
+    Sam3InteractiveFrameContext,
+    Sam3RegionItem,
+    Sam3VideoTrackState,
     build_sam3_interactive_prompt_tensors,
+    build_memory_prompt_mask,
     build_sam3_interactive_state_dict,
     load_sam3_checkpoint_branches,
     postprocess_sam3_interactive_masks,
     preprocess_sam3_image,
+    update_track_state_from_region,
 )
 
 
@@ -235,3 +240,82 @@ def test_postprocess_sam3_interactive_masks_filters_small_components() -> None:
     region = region_items[0]
     assert region.area == 16
     assert region.bbox_xyxy == (5.0, 4.0, 8.0, 7.0)
+
+
+def test_sam3_video_memory_tracker_builds_prompt_from_state() -> None:
+    """验证视频 memory tracker 会基于对象状态生成新的 prompt mask。"""
+
+    frame_context = Sam3InteractiveFrameContext(
+        prepared_image=preprocess_sam3_image(_build_test_png_bytes(width=64, height=32)),
+        features={"image_embed": torch.ones((1, 8, 8, 8), dtype=torch.float32), "high_res_feats": [], "low_res_feature_map": torch.ones((1, 8, 8, 8), dtype=torch.float32)},
+        low_res_feature_map=torch.ones((1, 8, 8, 8), dtype=torch.float32),
+        mask_prompt_width=32,
+        mask_prompt_height=32,
+    )
+    low_res_mask = torch.zeros((8, 8), dtype=torch.float32)
+    low_res_mask[2:6, 2:6] = 1.0
+    track_state = Sam3VideoTrackState(
+        prompt_id="track-1",
+        display_name="tracked",
+        feature_prototype=torch.ones((8,), dtype=torch.float32),
+        low_res_mask_history=[low_res_mask],
+    )
+
+    memory_prompt = build_memory_prompt_mask(
+        frame_context=frame_context,
+        track_state=track_state,
+    )
+
+    assert memory_prompt.history_length == 1
+    assert memory_prompt.prototype_ready is True
+    assert memory_prompt.prompt_mask.shape == (32, 64)
+    assert int(memory_prompt.prompt_mask.sum()) > 0
+
+
+def test_sam3_video_memory_tracker_updates_track_state_from_region() -> None:
+    """验证视频 memory tracker 会用当前帧 region 更新状态。"""
+
+    prepared_image = preprocess_sam3_image(_build_test_png_bytes(width=48, height=40))
+    frame_context = Sam3InteractiveFrameContext(
+        prepared_image=prepared_image,
+        features={"image_embed": torch.ones((1, 8, 8, 8), dtype=torch.float32), "high_res_feats": [], "low_res_feature_map": torch.ones((1, 8, 8, 8), dtype=torch.float32)},
+        low_res_feature_map=torch.ones((1, 8, 8, 8), dtype=torch.float32),
+        mask_prompt_width=32,
+        mask_prompt_height=32,
+    )
+    region_mask = np.zeros((40, 48), dtype=np.uint8)
+    region_mask[10:28, 12:30] = 1
+    region = Sam3RegionItem(
+        region_id="region-1",
+        score=0.92,
+        class_id=0,
+        class_name="tracked",
+        bbox_xyxy=(12.0, 10.0, 29.0, 27.0),
+        polygon_xy=((12.0, 10.0), (29.0, 10.0), (29.0, 27.0), (12.0, 27.0)),
+        area=int(region_mask.sum()),
+        prompt_id="track-1",
+        mask_png_bytes=_encode_mask_png_for_test(region_mask),
+        mask_width=48,
+        mask_height=40,
+    )
+    track_state = Sam3VideoTrackState(prompt_id="track-1", display_name="tracked")
+
+    update_track_state_from_region(
+        track_state=track_state,
+        frame_context=frame_context,
+        region=region,
+        frame_index=3,
+    )
+
+    assert track_state.feature_prototype is not None
+    assert len(track_state.low_res_mask_history) == 1
+    assert track_state.last_score == 0.92
+    assert track_state.last_frame_index == 3
+
+
+def _encode_mask_png_for_test(binary_mask: np.ndarray) -> bytes:
+    """把测试二值 mask 编码成 PNG。"""
+
+    buffer = io.BytesIO()
+    Image.fromarray((binary_mask > 0).astype(np.uint8) * 255, mode="L").save(buffer, format="PNG")
+    return buffer.getvalue()

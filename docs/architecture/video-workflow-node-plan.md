@@ -374,8 +374,9 @@ release/
 - `custom.sam3.video-interactive-segment`
 - 输入：`frame-window.v1 + prompt-regions.v1`
 - 输出：`tracks.v1`
-- 当前默认策略：stateful mask propagation，`track_id` 继续稳定映射为 `prompt_id`
-- 当前仍未实现完整底层 memory/state 传播与视频 tracker 全能力
+- 当前默认策略：`memory-prototype-state`，`track_id` 继续稳定映射为 `prompt_id`
+- 当前已不再只是 shared prompt 或单纯上一帧 mask 回灌；现在会维护对象原型和最近若干帧 mask 历史，并在当前帧特征上生成 memory prompt
+- 当前仍未实现完整底层 memory attention tracker 全能力
 
 ### 不应该属于 `SAM3` pack 的部分
 
@@ -436,7 +437,7 @@ release/
 11. 实现 `core.vision.tracks-to-regions`
 12. 实现 `core.io.video-overlay-render`
 13. 实现 `core.io.video-save`
-14. 再把 `SAM3 video-interactive-segment` 从当前 stateful mask propagation 版升级到更完整的底层 memory/state 版
+14. 再把 `SAM3 video-interactive-segment` 从当前 `memory-prototype-state` 版继续升级到更完整的底层 memory attention / state 版
 
 ## 当前这轮代码实现范围
 
@@ -456,10 +457,10 @@ release/
 
 当前这轮暂不实现：
 
-1. `SAM3` 视频/多帧的完整 memory tracker / 多帧传播全能力
+1. `SAM3` 视频/多帧的完整 memory attention tracker / 多帧传播全能力
 
 ## 下一步
 
-- 先继续把 `SAM3` 视频/多帧从当前 stateful mask propagation 版扩到完整底层 memory/state 版
+- 先继续把 `SAM3` 视频/多帧从当前 `memory-prototype-state` 版扩到完整底层 memory attention / state 版
 - 再补视频结果预览、导出和更长时长时序回归
 - 再评估是否需要补 `video-body / video-preview` 这类调试和交互节点

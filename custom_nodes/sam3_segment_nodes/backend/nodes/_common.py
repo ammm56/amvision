@@ -738,6 +738,8 @@ def build_video_interactive_summary_payload(
     frame_predictions: tuple[dict[str, object], ...],
     tracking_mode: str,
     propagated_prompt_counts: tuple[int, ...] = (),
+    memory_track_history_lengths: dict[str, int] | None = None,
+    memory_similarity_peaks: tuple[dict[str, float], ...] = (),
 ) -> dict[str, object]:
     """构建 video-interactive 节点 summary。"""
 
@@ -753,7 +755,7 @@ def build_video_interactive_summary_payload(
     )
     total_region_count = sum(len(frame_prediction["regions"]) for frame_prediction in frame_predictions)
     prompt_kinds = sorted({item.prompt_kind for item in prompt_items})
-    return {
+    summary_payload = {
         **first_summary,
         "inference_mode": "video-interactive-segment",
         "source_video": source_video if isinstance(source_video, dict) else {},
@@ -768,6 +770,18 @@ def build_video_interactive_summary_payload(
         "frame_prompt_mode": tracking_mode,
         "propagated_prompt_counts": list(propagated_prompt_counts),
     }
+    if memory_track_history_lengths:
+        summary_payload["memory_track_history_lengths"] = {
+            str(prompt_id): int(history_length)
+            for prompt_id, history_length in memory_track_history_lengths.items()
+        }
+        summary_payload["memory_tracked_prompt_count"] = len(memory_track_history_lengths)
+    if memory_similarity_peaks:
+        summary_payload["memory_similarity_peaks"] = [
+            {str(prompt_id): float(similarity_peak) for prompt_id, similarity_peak in frame_peaks.items()}
+            for frame_peaks in memory_similarity_peaks
+        ]
+    return summary_payload
 
 
 def get_or_create_sam3_interactive_runtime_session(

@@ -5,6 +5,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 from PIL import Image
+import torch
 
 from backend.nodes import ExecutionImageRegistry, build_memory_image_payload
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
@@ -17,7 +18,10 @@ def test_video_interactive_segment_returns_tracks_and_summary(monkeypatch) -> No
     captured: dict[str, object] = {"predict_calls": 0, "prompt_history": []}
 
     class _FakeSession:
-        def predict(self, *, image_bytes: bytes, prompt_items):
+        def prepare_frame_context(self, *, image_bytes: bytes):
+            return _build_fake_frame_context(width=96, height=72)
+
+        def predict_from_frame_context(self, *, frame_context, prompt_items):
             captured["predict_calls"] = int(captured["predict_calls"]) + 1
             cast_history = list(captured["prompt_history"])
             cast_history.append(prompt_items)
@@ -95,8 +99,10 @@ def test_video_interactive_segment_returns_tracks_and_summary(monkeypatch) -> No
     assert output["summary"]["processed_frame_count"] == 2
     assert output["summary"]["unique_track_count"] == 1
     assert output["summary"]["track_ids"] == ["track-1"]
-    assert output["summary"]["frame_prompt_mode"] == "stateful-mask-propagation"
+    assert output["summary"]["frame_prompt_mode"] == "memory-prototype-state"
     assert output["summary"]["propagated_prompt_counts"] == [0, 1]
+    assert output["summary"]["memory_tracked_prompt_count"] == 1
+    assert output["summary"]["memory_track_history_lengths"]["track-1"] == 2
     prompt_history = captured["prompt_history"]
     assert len(prompt_history) == 2
     assert prompt_history[0][0].prompt_kind == "box"
@@ -135,7 +141,7 @@ def test_video_interactive_segment_runs_project_native_smoke() -> None:
     assert output["summary"]["inference_mode"] == "video-interactive-segment"
     assert output["summary"]["processed_frame_count"] == 2
     assert output["summary"]["postprocess_profile"] == "sam3-default-v2"
-    assert output["summary"]["frame_prompt_mode"] == "stateful-mask-propagation"
+    assert output["summary"]["frame_prompt_mode"] == "memory-prototype-state"
     assert output["tracks"]["count"] >= 1
 
 
@@ -145,7 +151,10 @@ def test_video_interactive_segment_supports_explicit_shared_prompt_mode(monkeypa
     captured: dict[str, object] = {"prompt_history": []}
 
     class _FakeSession:
-        def predict(self, *, image_bytes: bytes, prompt_items):
+        def prepare_frame_context(self, *, image_bytes: bytes):
+            return _build_fake_frame_context(width=96, height=72)
+
+        def predict_from_frame_context(self, *, frame_context, prompt_items):
             cast_history = list(captured["prompt_history"])
             cast_history.append(prompt_items)
             captured["prompt_history"] = cast_history
@@ -222,6 +231,18 @@ def test_video_interactive_segment_supports_explicit_shared_prompt_mode(monkeypa
     prompt_history = captured["prompt_history"]
     assert prompt_history[0][0].prompt_kind == "box"
     assert prompt_history[1][0].prompt_kind == "box"
+
+
+def _build_fake_frame_context(*, width: int, height: int):
+    """构造满足视频 memory/state 跟踪测试的假帧上下文。"""
+
+    return SimpleNamespace(
+        prepared_image=SimpleNamespace(
+            original_width=width,
+            original_height=height,
+        ),
+        low_res_feature_map=torch.ones((1, 8, 8, 8), dtype=torch.float32),
+    )
 
 
 def _build_test_frame_window_payload(

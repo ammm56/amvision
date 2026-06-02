@@ -25,7 +25,7 @@ workflow app 侧的接入顺序、目标机器启用/禁用和运维排障，见
 - `YOLOE` 与 `SAM3` 这部分文档当前先固定资产目录、`manifest.json` 规则和节点输入输出 contract。
 - `projectsrc/` 只作为参考源码面，不参与运行时。
 - `YOLOE` 当前不会回退到已安装官方包或 `projectsrc` 参考代码执行推理；`prompt-free`、`text-prompt`、`visual-prompt` 三条 project-native runtime 已经接通，后续只继续扩能力面。
-- `SAM3` 当前已经接通 `interactive-segment`、`semantic-segment` 和 `video-interactive-segment` 的 project-native runtime，直接读取本地 `sam3.pt` 执行单图或多帧分割；其中 `interactive` 当前阶段支持 `box / point / polygon / mask`，`semantic` 当前支持按 `prompt_id` 聚合的 positive/negative `text-prompts.v1`，`video-interactive` 当前默认使用 stateful mask propagation 并输出 `tracks.v1`。
+- `SAM3` 当前已经接通 `interactive-segment`、`semantic-segment` 和 `video-interactive-segment` 的 project-native runtime，直接读取本地 `sam3.pt` 执行单图或多帧分割；其中 `interactive` 当前阶段支持 `box / point / polygon / mask`，`semantic` 当前支持按 `prompt_id` 聚合的 positive/negative `text-prompts.v1`，`video-interactive` 当前默认使用 `memory-prototype-state` 多帧跟踪并输出 `tracks.v1`。
 
 ## 适用范围
 
@@ -422,7 +422,7 @@ data/files/models/pretrained/
 - `semantic-segment` 当前支持按 `prompt_id` 聚合的 `text-prompts.v1`，同组内可混合 positive/negative 文本。
 - `video-interactive-segment` 当前已接通 project-native runtime。
 - 当前阶段直接复用 `frame-window.v1`，逐帧执行 interactive 分割，并输出 `tracks.v1`。
-- 当前 `track_id` 继续稳定映射为 `prompt_id`；默认策略已升级为 stateful mask propagation，同时保留 `shared-prompts-across-window` 兼容模式。
+- 当前 `track_id` 继续稳定映射为 `prompt_id`；默认策略已升级为 `memory-prototype-state`，同时保留 `stateful-mask-propagation` 与 `shared-prompts-across-window` 兼容模式。
 
 ## 运行形态约定
 
@@ -448,7 +448,7 @@ data/files/models/pretrained/
 - 不把 `YOLOE` 和 `SAM3` 并入当前核心模型训练、转换、`DeploymentInstance` 主链
 - 不做 workflow app 文档或旧模板修补
 - 不在节点中内置预览、overlay 或 debug 叠图逻辑
-- 不实现 `SAM3` 视频/多帧的完整底层 memory attention tracker、直播流和多帧传播全能力；当前先实现 `video-interactive-segment` 的 stateful mask propagation 版本
+- 不实现 `SAM3` 视频/多帧的完整底层 memory attention tracker、直播流和多帧传播全能力；当前先实现 `video-interactive-segment` 的 project-native `memory-prototype-state` 版本
 - 不在第一阶段接 `YOLOE segmentation`
 
 ## 后续实现顺序

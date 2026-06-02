@@ -35,6 +35,17 @@ class Sam3InteractivePrediction:
     summary: dict[str, object]
 
 
+@dataclass(frozen=True)
+class Sam3InteractiveFrameContext:
+    """描述一帧已完成预处理与特征提取的 interactive 推理上下文。"""
+
+    prepared_image: PreparedSam3Image
+    features: dict[str, object]
+    low_res_feature_map: torch.Tensor
+    mask_prompt_width: int
+    mask_prompt_height: int
+
+
 def _resolve_runtime_torch_dtype(*, device_name: str, precision: str) -> torch.dtype:
     """把节点参数 precision 解析成实际运行 dtype。"""
 
@@ -181,6 +192,7 @@ class Sam3InteractiveImageModel(nn.Module):
         return {
             "image_embed": feature_maps[-1],
             "high_res_feats": feature_maps[:-1],
+            "low_res_feature_map": feature_maps[-1],
         }
 
     def predict_mask_logits(
@@ -276,12 +288,13 @@ class Sam3InteractiveRuntimeSession:
         )
 
     @torch.inference_mode()
-    def predict(
+    def prepare_frame_context(
         self,
         *,
         image_bytes: bytes,
-        prompt_items: tuple[object, ...],
-    ) -> Sam3InteractivePrediction:
+    ) -> Sam3InteractiveFrameContext:
+        """预处理图片并提取可复用的单帧 interactive 特征。"""
+
         prepared_image = preprocess_sam3_image(
             image_bytes,
             precision="fp16" if self.runtime_torch_dtype == torch.float16 else "bf16" if self.runtime_torch_dtype == torch.bfloat16 else "fp32",
@@ -297,6 +310,24 @@ class Sam3InteractiveRuntimeSession:
         )
         features = self.model.extract_interactive_features(prepared_image)
         mask_prompt_height, mask_prompt_width = self.model.sam_prompt_encoder.mask_input_size
+        return Sam3InteractiveFrameContext(
+            prepared_image=prepared_image,
+            features=features,
+            low_res_feature_map=features["low_res_feature_map"],
+            mask_prompt_width=mask_prompt_width,
+            mask_prompt_height=mask_prompt_height,
+        )
+
+    @torch.inference_mode()
+    def predict_from_frame_context(
+        self,
+        *,
+        frame_context: Sam3InteractiveFrameContext,
+        prompt_items: tuple[object, ...],
+    ) -> Sam3InteractivePrediction:
+        """复用已提取的单帧特征执行 interactive prompt 推理。"""
+
+        prepared_image = frame_context.prepared_image
         mask_logits_list: list[torch.Tensor] = []
         final_scores_list: list[torch.Tensor] = []
         for prompt_item in prompt_items:
@@ -306,12 +337,12 @@ class Sam3InteractiveRuntimeSession:
                 source_height=prepared_image.original_height,
                 target_width=prepared_image.target_width,
                 target_height=prepared_image.target_height,
-                mask_prompt_width=mask_prompt_width,
-                mask_prompt_height=mask_prompt_height,
+                mask_prompt_width=frame_context.mask_prompt_width,
+                mask_prompt_height=frame_context.mask_prompt_height,
                 device=self.model.no_mem_embed.device,
             )
             item_mask_logits, _item_iou_scores, item_final_scores = self.model.predict_mask_logits(
-                features=features,
+                features=frame_context.features,
                 prompts=prompts,
             )
             mask_logits_list.append(item_mask_logits)
@@ -344,8 +375,24 @@ class Sam3InteractiveRuntimeSession:
         }
         return Sam3InteractivePrediction(regions=tuple(region_items), summary=summary)
 
+    @torch.inference_mode()
+    def predict(
+        self,
+        *,
+        image_bytes: bytes,
+        prompt_items: tuple[object, ...],
+    ) -> Sam3InteractivePrediction:
+        """兼容旧接口：内部自动预处理并完成 interactive 推理。"""
+
+        frame_context = self.prepare_frame_context(image_bytes=image_bytes)
+        return self.predict_from_frame_context(
+            frame_context=frame_context,
+            prompt_items=prompt_items,
+        )
+
 
 __all__ = [
+    "Sam3InteractiveFrameContext",
     "Sam3InteractiveImageModel",
     "Sam3InteractivePrediction",
     "Sam3InteractiveRuntimeSession",
