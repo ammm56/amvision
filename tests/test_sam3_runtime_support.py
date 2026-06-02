@@ -9,17 +9,22 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 import torch
+import torch.nn.functional as F
 
 from backend.nodes.sam3_runtime_support import (
+    Sam3VideoAttentionMemoryEntry,
+    Sam3VideoAttentionTrackState,
     Sam3InteractiveFrameContext,
     Sam3RegionItem,
     Sam3VideoTrackState,
+    build_memory_attention_prompt_mask,
     build_sam3_interactive_prompt_tensors,
     build_memory_prompt_mask,
     build_sam3_interactive_state_dict,
     load_sam3_checkpoint_branches,
     postprocess_sam3_interactive_masks,
     preprocess_sam3_image,
+    update_attention_track_state_from_region,
     update_track_state_from_region,
 )
 
@@ -336,6 +341,130 @@ def test_sam3_video_memory_tracker_supports_large_displacement() -> None:
     )
 
     memory_prompt = build_memory_prompt_mask(
+        frame_context=frame_context,
+        track_state=track_state,
+    )
+
+    ys, xs = np.nonzero(memory_prompt.prompt_mask)
+    assert len(xs) > 0
+    assert float(xs.mean()) > 32.0
+    assert float(ys.mean()) > 32.0
+
+
+def test_sam3_video_memory_attention_tracker_builds_prompt_from_state() -> None:
+    """验证 memory-attention tracker 会基于对象 token memory 生成 prompt mask。"""
+
+    frame_context = Sam3InteractiveFrameContext(
+        prepared_image=preprocess_sam3_image(_build_test_png_bytes(width=64, height=32)),
+        features={"image_embed": torch.ones((1, 8, 8, 8), dtype=torch.float32), "high_res_feats": [], "low_res_feature_map": torch.ones((1, 8, 8, 8), dtype=torch.float32)},
+        low_res_feature_map=torch.ones((1, 8, 8, 8), dtype=torch.float32),
+        mask_prompt_width=32,
+        mask_prompt_height=32,
+    )
+    low_res_mask = torch.zeros((8, 8), dtype=torch.float32)
+    low_res_mask[1:5, 2:6] = 1.0
+    object_tokens = torch.ones((12, 8), dtype=torch.float32)
+    track_state = Sam3VideoAttentionTrackState(
+        prompt_id="track-attention-1",
+        display_name="tracked",
+    )
+    track_state.memory_entries.append(
+        video_memory_attention_entry := Sam3VideoAttentionMemoryEntry(
+            object_tokens=object_tokens,
+            low_res_mask=low_res_mask,
+            score=0.88,
+            frame_index=0,
+        )
+    )
+    track_state.feature_prototype = torch.ones((8,), dtype=torch.float32)
+
+    memory_prompt = build_memory_attention_prompt_mask(
+        frame_context=frame_context,
+        track_state=track_state,
+    )
+
+    assert video_memory_attention_entry.frame_index == 0
+    assert memory_prompt.history_length == 1
+    assert memory_prompt.memory_entry_count == 1
+    assert memory_prompt.prototype_ready is True
+    assert memory_prompt.prompt_mask.shape == (32, 64)
+    assert int(memory_prompt.prompt_mask.sum()) > 0
+
+
+def test_sam3_video_memory_attention_tracker_updates_track_state_from_region() -> None:
+    """验证 memory-attention tracker 会写入对象 token memory。"""
+
+    prepared_image = preprocess_sam3_image(_build_test_png_bytes(width=48, height=40))
+    feature_map = torch.ones((1, 8, 8, 8), dtype=torch.float32)
+    frame_context = Sam3InteractiveFrameContext(
+        prepared_image=prepared_image,
+        features={"image_embed": feature_map, "high_res_feats": [], "low_res_feature_map": feature_map},
+        low_res_feature_map=feature_map,
+        mask_prompt_width=32,
+        mask_prompt_height=32,
+    )
+    region_mask = np.zeros((40, 48), dtype=np.uint8)
+    region_mask[10:28, 12:30] = 1
+    region = Sam3RegionItem(
+        region_id="region-att-1",
+        score=0.93,
+        class_id=0,
+        class_name="tracked",
+        bbox_xyxy=(12.0, 10.0, 29.0, 27.0),
+        polygon_xy=((12.0, 10.0), (29.0, 10.0), (29.0, 27.0), (12.0, 27.0)),
+        area=int(region_mask.sum()),
+        prompt_id="track-attention-1",
+        mask_png_bytes=_encode_mask_png_for_test(region_mask),
+        mask_width=48,
+        mask_height=40,
+    )
+    track_state = Sam3VideoAttentionTrackState(prompt_id="track-attention-1", display_name="tracked")
+
+    update_attention_track_state_from_region(
+        track_state=track_state,
+        frame_context=frame_context,
+        region=region,
+        frame_index=5,
+    )
+
+    assert track_state.feature_prototype is not None
+    assert len(track_state.memory_entries) == 1
+    assert track_state.memory_entries[0].object_tokens.ndim == 2
+    assert track_state.last_score == 0.93
+    assert track_state.last_frame_index == 5
+
+
+def test_sam3_video_memory_attention_tracker_supports_large_displacement() -> None:
+    """验证 memory-attention tracker 在大位移下仍能把 prompt 迁移到目标区域。"""
+
+    prepared_image = preprocess_sam3_image(_build_test_png_bytes(width=64, height=64))
+    feature_map = torch.zeros((1, 2, 8, 8), dtype=torch.float32)
+    feature_map[:, 1, :, :] = 1.0
+    feature_map[:, 0, 5:8, 5:8] = 4.0
+    feature_map[:, 1, 5:8, 5:8] = 0.0
+    track_state = Sam3VideoAttentionTrackState(
+        prompt_id="track-attention-shift",
+        display_name="shifted-object",
+    )
+    track_state.feature_prototype = torch.tensor([1.0, 0.0], dtype=torch.float32)
+    track_state.memory_entries.append(
+        Sam3VideoAttentionMemoryEntry(
+            object_tokens=F.normalize(torch.tensor([[1.0, 0.0], [1.0, 0.0]], dtype=torch.float32), dim=1),
+            low_res_mask=torch.zeros((8, 8), dtype=torch.float32),
+            score=0.9,
+            frame_index=0,
+        )
+    )
+    track_state.memory_entries[0].low_res_mask[5:8, 5:8] = 1.0
+    frame_context = Sam3InteractiveFrameContext(
+        prepared_image=prepared_image,
+        features={"image_embed": feature_map, "high_res_feats": [], "low_res_feature_map": feature_map},
+        low_res_feature_map=feature_map,
+        mask_prompt_width=32,
+        mask_prompt_height=32,
+    )
+
+    memory_prompt = build_memory_attention_prompt_mask(
         frame_context=frame_context,
         track_state=track_state,
     )

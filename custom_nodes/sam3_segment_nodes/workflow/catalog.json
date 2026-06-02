@@ -202,6 +202,15 @@
               "fp16",
               "bf16"
             ]
+          },
+          "tracking_mode": {
+            "type": "string",
+            "enum": [
+              "memory-prototype-state",
+              "memory-attention-tracker",
+              "stateful-mask-propagation",
+              "shared-prompts-across-window"
+            ]
           }
         }
       },
@@ -508,10 +517,11 @@
         "default_tracking_mode": "memory-prototype-state",
         "tracking_modes": [
           "memory-prototype-state",
+          "memory-attention-tracker",
           "stateful-mask-propagation",
           "shared-prompts-across-window"
         ],
-        "track_strategy": "prompt-id-memory-prototype-state"
+        "track_strategy": "prompt-id-memory-capable-tracking"
       }
     }
   ],

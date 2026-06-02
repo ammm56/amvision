@@ -369,6 +369,112 @@ def test_video_interactive_segment_memory_mode_supports_multiple_objects(monkeyp
         assert tuple(item.prompt_kind for item in prompt_items) == ("mask", "mask")
 
 
+def test_video_interactive_segment_supports_explicit_memory_attention_mode(monkeypatch) -> None:
+    """验证 video-interactive 节点允许显式切到 memory-attention-tracker。"""
+
+    captured: dict[str, object] = {"prompt_history": []}
+
+    class _FakeSession:
+        def prepare_frame_context(self, *, image_bytes: bytes):
+            return _build_fake_frame_context(width=104, height=76)
+
+        def predict_from_frame_context(self, *, frame_context, prompt_items):
+            cast_history = list(captured["prompt_history"])
+            cast_history.append(prompt_items)
+            captured["prompt_history"] = cast_history
+            return SimpleNamespace(
+                regions=(
+                    _build_fake_region(
+                        prompt_id="track-1",
+                        class_name="attention-track",
+                    ),
+                ),
+                summary=_build_fake_summary(),
+            )
+
+    monkeypatch.setattr(
+        video_interactive_segment,
+        "get_or_create_sam3_interactive_runtime_session",
+        lambda **_: _FakeSession(),
+    )
+
+    frame_window_payload, image_registry = _build_test_frame_window_payload(frame_count=3, width=104, height=76)
+    request = WorkflowNodeExecutionRequest(
+        node_id="node-sam3-video-interactive-attention",
+        node_definition=SimpleNamespace(node_type_id=video_interactive_segment.NODE_TYPE_ID),
+        parameters={
+            "model_scale": "l",
+            "device": "cpu",
+            "precision": "fp32",
+            "tracking_mode": "memory-attention-tracker",
+        },
+        input_values={
+            "frames": frame_window_payload,
+            "prompts": {
+                "items": [
+                    {
+                        "prompt_id": "track-1",
+                        "prompt_kind": "box",
+                        "display_name": "Tracked ROI",
+                        "bbox_xyxy": [8, 12, 44, 52],
+                    }
+                ]
+            },
+        },
+        execution_metadata={"execution_image_registry": image_registry},
+    )
+
+    output = video_interactive_segment.handle_node(request)
+
+    assert output["summary"]["frame_prompt_mode"] == "memory-attention-tracker"
+    assert output["summary"]["propagated_prompt_counts"] == [0, 1, 1]
+    assert output["summary"]["memory_tracked_prompt_count"] == 1
+    assert output["summary"]["memory_track_history_lengths"]["track-1"] == 3
+    assert "memory_attention_peaks" in output["summary"]
+    prompt_history = captured["prompt_history"]
+    assert prompt_history[0][0].prompt_kind == "box"
+    assert prompt_history[1][0].prompt_kind == "mask"
+    assert prompt_history[2][0].prompt_kind == "mask"
+
+
+def test_video_interactive_segment_memory_attention_runs_project_native_smoke() -> None:
+    """验证 video-interactive 节点可以加载本地 memory-attention-tracker 模式。"""
+
+    frame_window_payload, image_registry = _build_test_frame_window_payload(frame_count=2, width=128, height=96)
+    request = WorkflowNodeExecutionRequest(
+        node_id="node-sam3-video-attention-real-smoke",
+        node_definition=SimpleNamespace(node_type_id=video_interactive_segment.NODE_TYPE_ID),
+        parameters={
+            "model_scale": "l",
+            "device": "cpu",
+            "precision": "fp32",
+            "tracking_mode": "memory-attention-tracker",
+        },
+        input_values={
+            "frames": frame_window_payload,
+            "prompts": {
+                "items": [
+                    {
+                        "prompt_id": "box-1",
+                        "prompt_kind": "box",
+                        "display_name": "测试框",
+                        "bbox_xyxy": [24, 20, 96, 76],
+                    }
+                ]
+            },
+        },
+        execution_metadata={"execution_image_registry": image_registry},
+    )
+
+    output = video_interactive_segment.handle_node(request)
+
+    assert output["summary"]["project_native"] is True
+    assert output["summary"]["inference_mode"] == "video-interactive-segment"
+    assert output["summary"]["processed_frame_count"] == 2
+    assert output["summary"]["frame_prompt_mode"] == "memory-attention-tracker"
+    assert output["tracks"]["count"] >= 1
+
+
 def _build_fake_frame_context(*, width: int, height: int):
     """构造满足视频 memory/state 跟踪测试的假帧上下文。"""
 

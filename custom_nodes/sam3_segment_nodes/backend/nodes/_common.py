@@ -740,6 +740,7 @@ def build_video_interactive_summary_payload(
     propagated_prompt_counts: tuple[int, ...] = (),
     memory_track_history_lengths: dict[str, int] | None = None,
     memory_similarity_peaks: tuple[dict[str, float], ...] = (),
+    memory_attention_peaks: tuple[dict[str, float], ...] = (),
 ) -> dict[str, object]:
     """构建 video-interactive 节点 summary。"""
 
@@ -780,6 +781,11 @@ def build_video_interactive_summary_payload(
         summary_payload["memory_similarity_peaks"] = [
             {str(prompt_id): float(similarity_peak) for prompt_id, similarity_peak in frame_peaks.items()}
             for frame_peaks in memory_similarity_peaks
+        ]
+    if memory_attention_peaks:
+        summary_payload["memory_attention_peaks"] = [
+            {str(prompt_id): float(attention_peak) for prompt_id, attention_peak in frame_peaks.items()}
+            for frame_peaks in memory_attention_peaks
         ]
     return summary_payload
 

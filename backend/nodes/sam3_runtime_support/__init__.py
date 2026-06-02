@@ -35,6 +35,13 @@ from .video_memory_tracker import (
     build_memory_prompt_mask,
     update_track_state_from_region,
 )
+from .video_memory_attention_tracker import (
+    Sam3MemoryAttentionPromptBuildResult,
+    Sam3VideoAttentionMemoryEntry,
+    Sam3VideoAttentionTrackState,
+    build_memory_attention_prompt_mask,
+    update_attention_track_state_from_region,
+)
 from .vision_backbone import PositionEmbeddingSine, SAM3VisualBackbone, Sam3DualViTDetNeck, ViT
 
 __all__ = [
@@ -52,7 +59,10 @@ __all__ = [
     "Sam3InteractivePrediction",
     "Sam3InteractiveRuntimeSession",
     "Sam3InteractiveState",
+    "Sam3MemoryAttentionPromptBuildResult",
     "Sam3MemoryPromptBuildResult",
+    "Sam3VideoAttentionMemoryEntry",
+    "Sam3VideoAttentionTrackState",
     "Sam3SemanticImageModel",
     "Sam3SemanticPrediction",
     "Sam3SemanticRuntimeSession",
@@ -72,12 +82,14 @@ __all__ = [
     "build_sam3_semantic_image_model",
     "clone_module_list",
     "build_memory_prompt_mask",
+    "build_memory_attention_prompt_mask",
     "get_1d_sine_pe",
     "inverse_sigmoid",
     "load_sam3_checkpoint_branches",
     "load_sam3_checkpoint_state_dict",
     "postprocess_sam3_interactive_masks",
     "preprocess_sam3_image",
+    "update_attention_track_state_from_region",
     "update_track_state_from_region",
     "xywh2xyxy",
 ]

@@ -8,8 +8,11 @@ import numpy as np
 from PIL import Image
 
 from backend.nodes.sam3_runtime_support import (
+    Sam3VideoAttentionTrackState,
     Sam3VideoTrackState,
+    build_memory_attention_prompt_mask,
     build_memory_prompt_mask,
+    update_attention_track_state_from_region,
     update_track_state_from_region,
 )
 from backend.service.application.errors import InvalidRequestError
@@ -29,6 +32,7 @@ from custom_nodes.sam3_segment_nodes.backend.nodes._common import (
 
 NODE_TYPE_ID = "custom.sam3.video-interactive-segment"
 TRACKING_MODE_MEMORY = "memory-prototype-state"
+TRACKING_MODE_MEMORY_ATTENTION = "memory-attention-tracker"
 TRACKING_MODE_SHARED = "shared-prompts-across-window"
 TRACKING_MODE_STATEFUL = "stateful-mask-propagation"
 
@@ -58,14 +62,17 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
     frame_predictions: list[dict[str, object]] = []
     tracked_region_state: dict[str, object] = {}
     tracked_memory_state: dict[str, Sam3VideoTrackState] = {}
+    tracked_attention_state: dict[str, Sam3VideoAttentionTrackState] = {}
     propagated_prompt_counts: list[int] = []
     memory_similarity_peaks: list[dict[str, float]] = []
+    memory_attention_peaks: list[dict[str, float]] = []
     for frame_item in frame_items:
         frame_context = runtime_session.prepare_frame_context(image_bytes=frame_item.image_bytes)
-        active_prompt_items, propagated_prompt_ids, frame_similarity_peaks = _build_frame_prompt_items(
+        active_prompt_items, propagated_prompt_ids, frame_similarity_peaks, frame_attention_peaks = _build_frame_prompt_items(
             base_prompt_items=prompt_items,
             tracked_region_state=tracked_region_state,
             tracked_memory_state=tracked_memory_state,
+            tracked_attention_state=tracked_attention_state,
             tracking_mode=tracking_mode,
             frame_width=frame_item.width,
             frame_height=frame_item.height,
@@ -73,6 +80,7 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
         )
         propagated_prompt_counts.append(len(propagated_prompt_ids))
         memory_similarity_peaks.append(frame_similarity_peaks)
+        memory_attention_peaks.append(frame_attention_peaks)
         prediction = runtime_session.predict_from_frame_context(
             frame_context=frame_context,
             prompt_items=active_prompt_items,
@@ -80,6 +88,14 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
         if tracking_mode == TRACKING_MODE_MEMORY:
             _update_memory_track_states(
                 tracked_memory_state=tracked_memory_state,
+                active_prompt_items=active_prompt_items,
+                prediction_regions=prediction.regions,
+                frame_context=frame_context,
+                frame_index=frame_item.frame_index,
+            )
+        elif tracking_mode == TRACKING_MODE_MEMORY_ATTENTION:
+            _update_attention_track_states(
+                tracked_attention_state=tracked_attention_state,
                 active_prompt_items=active_prompt_items,
                 prediction_regions=prediction.regions,
                 frame_context=frame_context,
@@ -129,9 +145,12 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
             memory_track_history_lengths=(
                 {prompt_id: len(track_state.low_res_mask_history) for prompt_id, track_state in tracked_memory_state.items()}
                 if tracked_memory_state
+                else {prompt_id: len(track_state.memory_entries) for prompt_id, track_state in tracked_attention_state.items()}
+                if tracked_attention_state
                 else None
             ),
             memory_similarity_peaks=tuple(memory_similarity_peaks),
+            memory_attention_peaks=tuple(memory_attention_peaks),
         ),
     }
 
@@ -144,7 +163,7 @@ def _resolve_tracking_mode(raw_value: object) -> str:
     if not isinstance(raw_value, str):
         raise InvalidRequestError("SAM3 video-interactive-segment 的 tracking_mode 必须是字符串")
     normalized_value = raw_value.strip().lower()
-    if normalized_value not in {TRACKING_MODE_MEMORY, TRACKING_MODE_SHARED, TRACKING_MODE_STATEFUL}:
+    if normalized_value not in {TRACKING_MODE_MEMORY, TRACKING_MODE_MEMORY_ATTENTION, TRACKING_MODE_SHARED, TRACKING_MODE_STATEFUL}:
         raise InvalidRequestError(
             "不支持的 SAM3 video-interactive tracking_mode",
             details={"tracking_mode": raw_value},
@@ -157,16 +176,17 @@ def _build_frame_prompt_items(
     base_prompt_items: tuple[Sam3InteractivePromptItem, ...],
     tracked_region_state: dict[str, object],
     tracked_memory_state: dict[str, Sam3VideoTrackState],
+    tracked_attention_state: dict[str, Sam3VideoAttentionTrackState],
     tracking_mode: str,
     frame_width: int,
     frame_height: int,
     frame_context,
-) -> tuple[tuple[Sam3InteractivePromptItem, ...], set[str], dict[str, float]]:
+) -> tuple[tuple[Sam3InteractivePromptItem, ...], set[str], dict[str, float], dict[str, float]]:
     """基于上一帧状态构造当前帧提示。"""
 
     if tracking_mode == TRACKING_MODE_SHARED or not tracked_region_state:
         if tracking_mode == TRACKING_MODE_SHARED:
-            return base_prompt_items, set(), {}
+            return base_prompt_items, set(), {}, {}
     if tracking_mode == TRACKING_MODE_MEMORY:
         active_prompt_items: list[Sam3InteractivePromptItem] = []
         propagated_prompt_ids: set[str] = set()
@@ -190,9 +210,33 @@ def _build_frame_prompt_items(
             )
             propagated_prompt_ids.add(prompt_item.prompt_id)
             similarity_peaks[prompt_item.prompt_id] = memory_prompt.similarity_peak
-        return tuple(active_prompt_items), propagated_prompt_ids, similarity_peaks
+        return tuple(active_prompt_items), propagated_prompt_ids, similarity_peaks, {}
+    if tracking_mode == TRACKING_MODE_MEMORY_ATTENTION:
+        active_prompt_items = []
+        propagated_prompt_ids = set()
+        attention_peaks: dict[str, float] = {}
+        for prompt_item in base_prompt_items:
+            track_state = tracked_attention_state.get(prompt_item.prompt_id)
+            if track_state is None or not track_state.memory_entries:
+                active_prompt_items.append(prompt_item)
+                continue
+            memory_prompt = build_memory_attention_prompt_mask(
+                frame_context=frame_context,
+                track_state=track_state,
+            )
+            active_prompt_items.append(
+                Sam3InteractivePromptItem(
+                    prompt_id=prompt_item.prompt_id,
+                    prompt_kind="mask",
+                    display_name=prompt_item.display_name,
+                    prompt_mask=memory_prompt.prompt_mask,
+                )
+            )
+            propagated_prompt_ids.add(prompt_item.prompt_id)
+            attention_peaks[prompt_item.prompt_id] = memory_prompt.attention_peak
+        return tuple(active_prompt_items), propagated_prompt_ids, {}, attention_peaks
     if tracking_mode == TRACKING_MODE_SHARED or not tracked_region_state:
-        return base_prompt_items, set(), {}
+        return base_prompt_items, set(), {}, {}
     active_prompt_items: list[Sam3InteractivePromptItem] = []
     propagated_prompt_ids: set[str] = set()
     for prompt_item in base_prompt_items:
@@ -213,7 +257,7 @@ def _build_frame_prompt_items(
             )
         )
         propagated_prompt_ids.add(prompt_item.prompt_id)
-    return tuple(active_prompt_items), propagated_prompt_ids, {}
+    return tuple(active_prompt_items), propagated_prompt_ids, {}, {}
 
 
 def _update_memory_track_states(
@@ -239,6 +283,36 @@ def _update_memory_track_states(
             )
             tracked_memory_state[prompt_id] = track_state
         update_track_state_from_region(
+            track_state=track_state,
+            frame_context=frame_context,
+            region=region,
+            frame_index=frame_index,
+        )
+
+
+def _update_attention_track_states(
+    *,
+    tracked_attention_state: dict[str, Sam3VideoAttentionTrackState],
+    active_prompt_items: tuple[Sam3InteractivePromptItem, ...],
+    prediction_regions: tuple[object, ...],
+    frame_context,
+    frame_index: int,
+) -> None:
+    """用当前帧预测结果更新 memory-attention 跟踪状态。"""
+
+    prompt_name_map = {item.prompt_id: item.display_name for item in active_prompt_items}
+    for region in prediction_regions:
+        prompt_id = str(getattr(region, "prompt_id", "") or "")
+        if not prompt_id:
+            continue
+        track_state = tracked_attention_state.get(prompt_id)
+        if track_state is None:
+            track_state = Sam3VideoAttentionTrackState(
+                prompt_id=prompt_id,
+                display_name=prompt_name_map.get(prompt_id, prompt_id),
+            )
+            tracked_attention_state[prompt_id] = track_state
+        update_attention_track_state_from_region(
             track_state=track_state,
             frame_context=frame_context,
             region=region,

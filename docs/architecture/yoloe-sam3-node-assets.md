@@ -25,7 +25,7 @@ workflow app 侧的接入顺序、目标机器启用/禁用和运维排障，见
 - `YOLOE` 与 `SAM3` 这部分文档当前先固定资产目录、`manifest.json` 规则和节点输入输出 contract。
 - `projectsrc/` 只作为参考源码面，不参与运行时。
 - `YOLOE` 当前不会回退到已安装官方包或 `projectsrc` 参考代码执行推理；`prompt-free`、`text-prompt`、`visual-prompt` 三条 project-native runtime 已经接通，后续只继续扩能力面。
-- `SAM3` 当前已经接通 `interactive-segment`、`semantic-segment`、`video-interactive-segment` 和 `video-semantic-segment` 的 project-native runtime，直接读取本地 `sam3.pt` 执行单图或多帧分割；其中 `interactive` 当前阶段支持 `box / point / polygon / mask`，`semantic` 当前支持按 `prompt_id` 聚合的 positive/negative `text-prompts.v1`，`video-interactive` 当前默认使用 `memory-prototype-state` 多帧跟踪并输出 `tracks.v1`，`video-semantic` 当前使用共享 `text-prompts.v1` 跨帧执行语义分割并输出 `tracks.v1`。
+- `SAM3` 当前已经接通 `interactive-segment`、`semantic-segment`、`video-interactive-segment` 和 `video-semantic-segment` 的 project-native runtime，直接读取本地 `sam3.pt` 执行单图或多帧分割；其中 `interactive` 当前阶段支持 `box / point / polygon / mask`，`semantic` 当前支持按 `prompt_id` 聚合的 positive/negative `text-prompts.v1`，`video-interactive` 当前默认使用 `memory-prototype-state` 多帧跟踪并输出 `tracks.v1`，同时也已提供更重的 `memory-attention-tracker` 可选模式，`video-semantic` 当前使用共享 `text-prompts.v1` 跨帧执行语义分割并输出 `tracks.v1`。
 
 ## 适用范围
 
@@ -38,7 +38,7 @@ workflow app 侧的接入顺序、目标机器启用/禁用和运维排障，见
 
 - `YOLOE` 和 `SAM3` 第一阶段都应作为 `custom node` 扩展能力接入，不直接并入当前核心模型主链。
 - 大权重和附属模型资产继续统一放在 `data/files/models/pretrained/` 下，不放进 `custom_nodes/`。
-- `YOLOE` 第一阶段先使用官方 segmentation 权重接 open vocabulary detection 节点，`SAM3` 第一阶段先只开 image segmentation。
+- `YOLOE` 第一阶段先使用官方 segmentation 权重接 open vocabulary detection 节点，`SAM3` 第一阶段先从 image segmentation 起步，当前已扩到 video segmentation / tracking，但仍保持 custom node 边界。
 - `YOLOE text-prompt` 第一阶段默认文本编码器固定为本地 `mobileclip_blt.ts`，并复用本地 `CLIP` tokenizer/BPE 资产。
 - `YOLOE text-prompt` 当前支持同一 `prompt_id` 下多条 positive/negative 文本组合，运行时会先按 `prompt_id` 聚合，再生成单个类别原型。
 - `YOLOE` 和 `SAM3` 在 workflow 中的第一阶段运行形态应为：`WorkflowAppRuntime` 进程内按需首次加载并缓存，runtime 停止时释放；不是每次调用重新加载，也不是一开始就做成正式 `DeploymentInstance` 常驻服务。当前 `YOLOE / SAM3` 都已经补了 CPU 会话缓存复用回归。
@@ -422,7 +422,7 @@ data/files/models/pretrained/
 - `semantic-segment` 当前支持按 `prompt_id` 聚合的 `text-prompts.v1`，同组内可混合 positive/negative 文本。
 - `video-interactive-segment` 当前已接通 project-native runtime。
 - 当前阶段直接复用 `frame-window.v1`，逐帧执行 interactive 分割，并输出 `tracks.v1`。
-- 当前 `track_id` 继续稳定映射为 `prompt_id`；默认策略已升级为 `memory-prototype-state`，同时保留 `stateful-mask-propagation` 与 `shared-prompts-across-window` 兼容模式。
+- 当前 `track_id` 继续稳定映射为 `prompt_id`；默认策略已升级为 `memory-prototype-state`，同时保留 `memory-attention-tracker`、`stateful-mask-propagation` 与 `shared-prompts-across-window` 可选模式。
 
 ### SAM3 使用建议
 
@@ -497,7 +497,7 @@ data/files/models/pretrained/
 - 明显强于 shared prompt 和单纯 mask 回灌
 - 仍然保持 project-native、可控和可调试
 
-#### 5. 后续如果还要继续增强，才进入完整 `memory attention tracker`
+#### 5. 更复杂的视频跟踪，可切到 `memory-attention-tracker`
 
 适用情况：
 
@@ -508,8 +508,9 @@ data/files/models/pretrained/
 
 说明：
 
-- 这一层还没有完全实现
-- 当前 `memory-prototype-state` 是完整 `memory attention tracker` 之前的可用增强层
+- 当前实现会为对象保存跨帧 token memory、mask history 和 prototype，再在当前帧低分辨率特征上做 attention 风格的对象检索
+- 相比 `memory-prototype-state`，这一层更适合更长窗口、更大位移和更复杂遮挡
+- 代价是推理更重、调参与回归成本更高，只有在默认模式不足时再选用
 
 ## 运行形态约定
 
@@ -535,7 +536,7 @@ data/files/models/pretrained/
 - 不把 `YOLOE` 和 `SAM3` 并入当前核心模型训练、转换、`DeploymentInstance` 主链
 - 不做 workflow app 文档或旧模板修补
 - 不在节点中内置预览、overlay 或 debug 叠图逻辑
-- 不实现 `SAM3` 视频/多帧的完整底层 memory attention tracker、直播流和多帧传播全能力；当前先实现 `video-interactive-segment` 的 project-native `memory-prototype-state` 版本
+- 不实现 upstream 全量视频 tracker、直播流和多帧传播全能力；当前先提供 `memory-prototype-state` 默认模式与 project-native `memory-attention-tracker` 可选增强模式
 - 不在第一阶段接 `YOLOE segmentation`
 
 ## 后续实现顺序

@@ -46,6 +46,8 @@ BACKEND_MODULES: tuple[str, ...] = (
     "backend.nodes.sam3_runtime_support.mask_postprocess",
     "backend.nodes.sam3_runtime_support.nn_common",
     "backend.nodes.sam3_runtime_support.semantic_model",
+    "backend.nodes.sam3_runtime_support.video_memory_attention_tracker",
+    "backend.nodes.sam3_runtime_support.video_tracker_common",
     "backend.nodes.sam3_runtime_support.vision_backbone",
     "backend.nodes.runtime_support",
     "backend.nodes.video_runtime_support",
