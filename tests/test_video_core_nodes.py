@@ -10,6 +10,7 @@ import numpy as np
 from backend.nodes import ExecutionImageRegistry
 from backend.nodes.core_catalog import get_core_workflow_payload_contracts
 from backend.nodes.core_nodes.video_decode_frames import _video_decode_frames_handler
+from backend.nodes.core_nodes.video_frame_window_item_get import _video_frame_window_item_get_handler
 from backend.nodes.core_nodes.video_load_local import _video_load_local_handler
 from backend.nodes.video_runtime_support import (
     VIDEO_TRANSPORT_LOCAL_PATH,
@@ -106,6 +107,47 @@ def test_video_decode_frames_handler_returns_frame_window_with_memory_images(tmp
     assert output["summary"]["value"]["ffmpeg_path"] == (str(ffmpeg_path) if ffmpeg_path is not None else None)
     if ffmpeg_path is not None:
         assert output["summary"]["value"]["decode_backend"] == "ffmpeg"
+
+
+def test_video_frame_window_item_get_returns_selected_frame_and_meta(tmp_path: Path) -> None:
+    """验证 frame-window-item-get 会返回单帧 image-ref 与帧元数据。"""
+
+    video_path = _build_test_video_file(tmp_path / "sample.avi", frame_count=5)
+    metadata = probe_video_metadata(video_path)
+    image_registry = ExecutionImageRegistry()
+
+    decoded_output = _video_decode_frames_handler(
+        WorkflowNodeExecutionRequest(
+            node_id="video-decode",
+            node_definition=object(),
+            parameters={"start_frame": 1, "end_frame": 3, "step": 1, "max_frames": 8, "encode_format": "png"},
+            input_values={
+                "video": {
+                    "transport_kind": VIDEO_TRANSPORT_LOCAL_PATH,
+                    "local_path": str(video_path),
+                    "media_type": "video/x-msvideo",
+                    **metadata,
+                }
+            },
+            execution_metadata={"execution_image_registry": image_registry},
+        )
+    )
+
+    output = _video_frame_window_item_get_handler(
+        WorkflowNodeExecutionRequest(
+            node_id="frame-get",
+            node_definition=object(),
+            parameters={"index": -1, "allow_negative": True},
+            input_values={"frames": decoded_output["frames"]},
+            execution_metadata={},
+        )
+    )
+
+    assert output["image"]["transport_kind"] == "memory"
+    assert output["frame_meta"]["value"]["frame_index"] == 3
+    assert output["frame_meta"]["value"]["timestamp_ms"] >= 0
+    assert output["frame_meta"]["value"]["selected_index"] == 2
+    assert output["frame_meta"]["value"]["source_video"]["transport_kind"] == VIDEO_TRANSPORT_LOCAL_PATH
 
 
 def test_probe_video_metadata_prefers_ffprobe_when_available(tmp_path: Path) -> None:

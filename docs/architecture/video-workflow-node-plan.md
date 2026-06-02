@@ -431,17 +431,17 @@ release/
 3. `tracks.v1`
 4. `core.io.video-load-local`
 5. `core.io.video-decode-frames`
+6. `core.io.frame-window-item-get`
 
 当前这轮暂不实现：
 
-1. `core.io.frame-window-item-get`
-2. `SAM3` 视频/多帧节点
-3. `tracks.v1` 的真实跟踪生成节点
-4. 视频 overlay / save 节点
+1. `SAM3` 视频/多帧节点
+2. `tracks.v1` 的真实跟踪生成节点
+3. 视频 overlay / save 节点
 
 ## 下一步
 
 - 先完成当前这轮的 contract 与 core 节点实现
 - 跑定向回归
-- 再开始 `core.io.frame-window-item-get`
-- 之后再进 `SAM3` 视频/多帧 project-native runtime
+- 再开始 `SAM3` 视频/多帧 project-native runtime
+- 之后补 `tracks-filter / tracks-to-regions / video-overlay-render / video-save`

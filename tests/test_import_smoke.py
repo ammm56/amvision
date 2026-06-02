@@ -23,6 +23,7 @@ BACKEND_MODULES: tuple[str, ...] = (
     "backend.nodes.core_nodes",
     "backend.nodes.core_nodes._platform_service_node_support",
     "backend.nodes.core_nodes.sahi_inference",
+    "backend.nodes.core_nodes.video_frame_window_item_get",
     "backend.nodes.core_runtime_handlers",
     "backend.nodes.local_node_pack_loader",
     "backend.nodes.node_catalog_registry",
