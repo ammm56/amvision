@@ -235,6 +235,101 @@ def get_core_workflow_payload_contracts() -> tuple[WorkflowPayloadContract, ...]
             artifact_kinds=("image",),
         ),
         WorkflowPayloadContract(
+            payload_type_id="video-ref.v1",
+            display_name="Video Reference",
+            transport_kind="inline-json",
+            json_schema={
+                "type": "object",
+                "properties": {
+                    "transport_kind": {
+                        "type": "string",
+                        "enum": ["local-path", "storage"],
+                    },
+                    "local_path": {"type": "string"},
+                    "object_key": {"type": "string"},
+                    "media_type": {"type": "string"},
+                    "frame_count": {"type": "integer", "minimum": 0},
+                    "fps": {"type": "number", "minimum": 0},
+                    "width": {"type": "integer", "minimum": 0},
+                    "height": {"type": "integer", "minimum": 0},
+                    "duration_ms": {"type": "number", "minimum": 0},
+                },
+                "required": ["transport_kind", "media_type"],
+                "oneOf": [
+                    {
+                        "properties": {"transport_kind": {"const": "local-path"}},
+                        "required": ["local_path"],
+                    },
+                    {
+                        "properties": {"transport_kind": {"const": "storage"}},
+                        "required": ["object_key"],
+                    },
+                ],
+            },
+            artifact_kinds=("video",),
+        ),
+        WorkflowPayloadContract(
+            payload_type_id="frame-window.v1",
+            display_name="Frame Window",
+            transport_kind="inline-json",
+            json_schema={
+                "type": "object",
+                "properties": {
+                    "source_video": {"type": "object"},
+                    "count": {"type": "integer", "minimum": 0},
+                    "window_start_index": {"type": "integer", "minimum": 0},
+                    "window_end_index": {"type": "integer", "minimum": 0},
+                    "items": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "frame_index": {"type": "integer", "minimum": 0},
+                                "timestamp_ms": {"type": "number", "minimum": 0},
+                                "image": {"type": "object"},
+                            },
+                            "required": ["frame_index", "timestamp_ms", "image"],
+                        },
+                    },
+                },
+                "required": ["count", "items"],
+            },
+            artifact_kinds=("video-frame-window",),
+        ),
+        WorkflowPayloadContract(
+            payload_type_id="tracks.v1",
+            display_name="Tracks",
+            transport_kind="inline-json",
+            json_schema={
+                "type": "object",
+                "properties": {
+                    "source_video": {"type": "object"},
+                    "count": {"type": "integer", "minimum": 0},
+                    "items": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "track_id": {"type": "string"},
+                                "frame_index": {"type": "integer", "minimum": 0},
+                                "timestamp_ms": {"type": "number", "minimum": 0},
+                                "score": {"type": "number"},
+                                "class_id": {"type": "integer"},
+                                "class_name": {"type": "string"},
+                                "bbox_xyxy": {"type": "array"},
+                                "polygon_xy": {"type": "array"},
+                                "mask_image": {"type": "object"},
+                                "region_id": {"type": "string"},
+                                "state": {"type": "string"},
+                            },
+                            "required": ["track_id", "frame_index", "score"],
+                        },
+                    },
+                },
+                "required": ["count", "items"],
+            },
+        ),
+        WorkflowPayloadContract(
             payload_type_id="detections.v1",
             display_name="Detection Result",
             transport_kind="inline-json",

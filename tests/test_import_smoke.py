@@ -39,6 +39,7 @@ BACKEND_MODULES: tuple[str, ...] = (
     "backend.nodes.sam3_runtime_support.semantic_model",
     "backend.nodes.sam3_runtime_support.vision_backbone",
     "backend.nodes.runtime_support",
+    "backend.nodes.video_runtime_support",
     "backend.nodes.text_encoder_runtime_support",
     "backend.queue.local_file_queue",
     "backend.service.api.app",
