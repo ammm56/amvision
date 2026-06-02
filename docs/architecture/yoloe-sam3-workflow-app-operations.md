@@ -200,6 +200,28 @@ D:/software/anaconda3/envs/amvision/python.exe -m pytest tests/integration/test_
 - `SAM3 video-semantic-segment` 的受控启用与 `WorkflowAppRuntime` invoke
 - pack 默认关闭、node-catalog 过滤、显式 enable、runtime start/stop 这条正式控制链
 
+### 8. `SAM3 memory-attention` 现场样例 workflow
+
+当前已经提供一套可直接保存为 template/application 的源 JSON：
+
+- `docs/examples/workflows/sam3_video_memory_attention_review.template.json`
+- `docs/examples/workflows/sam3_video_memory_attention_review.application.json`
+
+推荐输入：
+
+- `request_video_path`
+  - `value.v1`
+  - 示例：`{"value":"D:/cases/line-a/review.mp4"}`
+- `request_prompts`
+  - `prompt-regions.v1`
+  - 可直接输入 `box / point / polygon / mask`
+
+推荐先用这套样例做现场验证，再根据视频复杂度调整：
+
+- 简单任务：改成 `memory-prototype-state`
+- 更轻任务：改成 `stateful-mask-propagation`
+- 最轻短窗口：改成 `shared-prompts-across-window`
+
 ## 当前建议的上线策略
 
 ### 建议策略

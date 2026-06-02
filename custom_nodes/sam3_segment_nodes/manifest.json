@@ -37,6 +37,8 @@
       "interactive-segment 当前阶段支持 box、point、polygon、mask prompt，并输出 regions.v1。",
       "semantic-segment 已接通 project-native runtime，支持按 prompt_id 聚合的 positive/negative text-prompts.v1，并输出 regions.v1。",
       "video-interactive-segment 当前已接通 frame-window.v1 -> tracks.v1 的 project-native runtime，默认使用 memory-prototype-state 多帧跟踪，并继续以 prompt_id 作为稳定 track_id；当前也已提供更重的 memory-attention-tracker 可选模式，同时保留 stateful-mask-propagation 与 shared-prompts-across-window 兼容模式。",
+      "video-interactive-segment 当前已把 history_limit、prototype_momentum、attention_temperature、prototype_blend_weight、max_memory_tokens_per_entry 正式开放到节点参数面，供现场按视频复杂度调优。",
+      "docs/examples/workflows/sam3_video_memory_attention_review.template.json 提供了本地视频 -> decode -> memory-attention -> overlay -> save -> video-body 的现场样例 workflow。",
       "video-semantic-segment 当前已接通 frame-window.v1 + text-prompts.v1 -> tracks.v1 的 project-native runtime，默认使用 shared-text-prompts-across-window，并继续以 prompt_id 作为稳定 track_id。"
     ]
   }

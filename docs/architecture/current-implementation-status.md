@@ -28,6 +28,7 @@
 - `SAM3` 当前的实际使用也已经分层明确：简单任务可直接使用单帧 `interactive-segment`；短窗口或变化小的视频可使用 `shared-prompts-across-window`；中等复杂度视频可使用 `stateful-mask-propagation`；更复杂的多帧跟踪当前默认推荐 `memory-prototype-state`；更长窗口、更大位移或更复杂遮挡场景可按需切到 `memory-attention-tracker`。
 - `YOLOE / SAM3` 当前不仅有单图 smoke、soak 和 `WorkflowAppRuntime` 受控接入验证；`SAM3 video-semantic-segment` 当前也已经补了 `WorkflowAppRuntime` 受控接入 smoke，以及“本地视频 -> decode -> video-semantic/video-interactive -> overlay -> save -> video-body” 两条显式 integration 闭环。
 - 视频 workflow 的使用面当前也已经补到可直接预览和调试：`core.io.frame-window-preview` 会把 `frame-window.v1` 转成 `gallery-preview`；`core.logic.payload-to-value + core.logic.value-field-extract` 可以把 `tracks.v1 / regions.v1 / frame-window.v1 / video-ref.v1` 顺畅桥接到现有 `table-preview / value-preview`；`core.output.video-body` 则负责把最终 `video-ref.v1` 转成正式可播放 `response-body.v1`。
+- `SAM3 video-interactive-segment(memory-attention-tracker)` 当前已经把 `history_limit / prototype_momentum / attention_temperature / prototype_blend_weight / max_memory_tokens_per_entry` 正式开放到节点参数面，并提供现场样例 workflow：`docs/examples/workflows/sam3_video_memory_attention_review.template.json`。
 - 当前代码形态仍然是“模块化单体 + 本地队列 + 本地对象存储 + 独立 deployment 子进程”。下一步重点应转向拓扑收敛、运行时硬化和平台泛化，而不是继续补 YOLOX 基础闭环缺口。
 
 ## 本轮更新（P0 + P1-8 + P3-14 + P3-15）已落地事项

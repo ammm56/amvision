@@ -512,6 +512,40 @@ data/files/models/pretrained/
 - 相比 `memory-prototype-state`，这一层更适合更长窗口、更大位移和更复杂遮挡
 - 代价是推理更重、调参与回归成本更高，只有在默认模式不足时再选用
 
+推荐参数面：
+
+- `history_limit`
+  - 控制跨帧保留多少条历史记忆
+  - 默认留空时当前模式使用 `6`
+- `prototype_momentum`
+  - 控制对象 prototype 的平滑程度
+  - 现场常用范围：`0.65 ~ 0.8`
+- `attention_temperature`
+  - 控制 attention 响应的尖锐程度
+  - 现场常用范围：`0.08 ~ 0.18`
+- `prototype_blend_weight`
+  - 控制 prototype 相似图和 token memory 的融合强度
+  - 现场常用范围：`0.25 ~ 0.45`
+- `max_memory_tokens_per_entry`
+  - 控制每帧最多保留多少对象 token
+  - 现场常用范围：`128 ~ 384`
+
+现场样例 workflow：
+
+- [docs/examples/workflows/sam3_video_memory_attention_review.template.json](../examples/workflows/sam3_video_memory_attention_review.template.json)
+- [docs/examples/workflows/sam3_video_memory_attention_review.application.json](../examples/workflows/sam3_video_memory_attention_review.application.json)
+
+这套样例固定使用：
+
+- `video-load-local -> video-decode-frames -> custom.sam3.video-interactive-segment(memory-attention-tracker) -> tracks-filter -> video-overlay-render -> video-save -> video-body`
+
+适用情况：
+
+- 本地磁盘视频复盘
+- 遮挡后重现
+- 更长窗口和更大位移
+- 多目标跟踪调试
+
 ## 运行形态约定
 
 ### preview run

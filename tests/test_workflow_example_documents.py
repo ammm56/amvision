@@ -156,6 +156,56 @@ def test_barcode_result_display_example_documents_are_valid() -> None:
     assert [binding.binding_id for binding in application.bindings] == ["request_image", "http_response"]
 
 
+def test_sam3_video_memory_attention_review_example_documents_are_valid() -> None:
+    """验证 SAM3 memory-attention 视频样例模板与应用可以通过当前合同校验。"""
+
+    example_dir = Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
+    template_path = example_dir / "sam3_video_memory_attention_review.template.json"
+    application_path = example_dir / "sam3_video_memory_attention_review.application.json"
+    template = WorkflowGraphTemplate.model_validate(json.loads(template_path.read_text(encoding="utf-8")))
+    application = FlowApplication.model_validate(json.loads(application_path.read_text(encoding="utf-8")))
+
+    custom_nodes_root = Path(__file__).resolve().parents[1] / "custom_nodes"
+    node_pack_loader = LocalNodePackLoader(custom_nodes_root)
+    node_pack_loader.refresh()
+    registry = NodeCatalogRegistry(node_pack_loader=node_pack_loader)
+    validate_workflow_graph_template(
+        template=template,
+        node_definitions=registry.get_workflow_node_definitions(),
+    )
+    validate_flow_application_bindings(template=template, application=application)
+
+    assert [node.node_id for node in template.nodes] == [
+        "video_load_local",
+        "decode_frames",
+        "segment_video",
+        "filter_tracks",
+        "render_overlay",
+        "save_video",
+        "video_body",
+    ]
+    assert template.nodes[2].parameters["tracking_mode"] == "memory-attention-tracker"
+    assert template.nodes[2].parameters["history_limit"] == 6
+    assert template.nodes[2].parameters["prototype_momentum"] == 0.72
+    assert template.nodes[2].parameters["attention_temperature"] == 0.12
+    assert template.nodes[2].parameters["prototype_blend_weight"] == 0.35
+    assert template.nodes[2].parameters["max_memory_tokens_per_entry"] == 256
+    assert template.metadata["example_kind"] == "sam3-video-memory-attention-review"
+    assert template.metadata["tracking_mode"] == "memory-attention-tracker"
+    assert template.metadata["node_groups"]["tracking"] == ["segment_video", "filter_tracks"]
+    assert application.template_ref.source_uri == (
+        "docs/examples/workflows/sam3_video_memory_attention_review.template.json"
+    )
+    assert application.runtime_mode == "python-json-workflow"
+    assert [binding.binding_id for binding in application.bindings] == [
+        "request_video_path",
+        "request_prompts",
+        "preview_body",
+        "tracks",
+        "summary",
+    ]
+
+
 def test_opencv_process_save_image_example_documents_are_valid() -> None:
     """验证 OpenCV 处理并保存图片示例模板与应用可以通过当前合同校验。"""
 

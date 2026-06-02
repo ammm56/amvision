@@ -741,6 +741,7 @@ def build_video_interactive_summary_payload(
     memory_track_history_lengths: dict[str, int] | None = None,
     memory_similarity_peaks: tuple[dict[str, float], ...] = (),
     memory_attention_peaks: tuple[dict[str, float], ...] = (),
+    tracking_config: dict[str, object] | None = None,
 ) -> dict[str, object]:
     """构建 video-interactive 节点 summary。"""
 
@@ -771,6 +772,8 @@ def build_video_interactive_summary_payload(
         "frame_prompt_mode": tracking_mode,
         "propagated_prompt_counts": list(propagated_prompt_counts),
     }
+    if tracking_config:
+        summary_payload["tracking_config"] = dict(tracking_config)
     if memory_track_history_lengths:
         summary_payload["memory_track_history_lengths"] = {
             str(prompt_id): int(history_length)

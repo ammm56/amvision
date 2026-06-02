@@ -202,15 +202,6 @@
               "fp16",
               "bf16"
             ]
-          },
-          "tracking_mode": {
-            "type": "string",
-            "enum": [
-              "memory-prototype-state",
-              "memory-attention-tracker",
-              "stateful-mask-propagation",
-              "shared-prompts-across-window"
-            ]
           }
         }
       },
@@ -307,10 +298,132 @@
               "fp16",
               "bf16"
             ]
+          },
+          "tracking_mode": {
+            "type": "string",
+            "title": "视频跟踪模式",
+            "description": "shared 适合短窗口重复提示，stateful 适合上一帧 mask 延续，memory-prototype-state 适合作为默认中高强度模式，memory-attention-tracker 适合更长窗口、更大位移和复杂遮挡。",
+            "enum": [
+              "memory-prototype-state",
+              "memory-attention-tracker",
+              "stateful-mask-propagation",
+              "shared-prompts-across-window"
+            ],
+            "default": "memory-prototype-state"
+          },
+          "history_limit": {
+            "type": "integer",
+            "title": "历史长度",
+            "description": "memory-prototype-state 和 memory-attention-tracker 共用的跨帧历史长度。留空时默认按模式选择：memory-prototype-state=4，memory-attention-tracker=6。",
+            "minimum": 1
+          },
+          "prototype_momentum": {
+            "type": "number",
+            "title": "原型动量",
+            "description": "控制对象 prototype 的历史平滑程度。越大越稳定，越小越快跟随外观变化。",
+            "minimum": 0,
+            "maximum": 1,
+            "default": 0.7
+          },
+          "attention_temperature": {
+            "type": "number",
+            "title": "注意力温度",
+            "description": "仅 memory-attention-tracker 生效。越小越强调尖锐匹配，越大越平滑。",
+            "exclusiveMinimum": 0,
+            "default": 0.12
+          },
+          "prototype_blend_weight": {
+            "type": "number",
+            "title": "原型混合权重",
+            "description": "仅 memory-attention-tracker 生效。控制 prototype 相似图对最终 memory prompt 的影响强度。",
+            "minimum": 0,
+            "maximum": 1,
+            "default": 0.35
+          },
+          "max_memory_tokens_per_entry": {
+            "type": "integer",
+            "title": "单帧记忆 token 上限",
+            "description": "仅 memory-attention-tracker 生效。单帧目标区域可保留的 memory token 数量上限。",
+            "minimum": 1,
+            "default": 256
           }
         }
       },
-      "parameter_ui_schema": null,
+      "parameter_ui_schema": {
+        "groups": [
+          {
+            "group_id": "runtime",
+            "display_name": "运行时",
+            "order": 0
+          },
+          {
+            "group_id": "tracking_basic",
+            "display_name": "跟踪基础",
+            "order": 1
+          },
+          {
+            "group_id": "tracking_advanced",
+            "display_name": "跟踪高级",
+            "order": 2
+          }
+        ],
+        "fields": [
+          {
+            "parameter_name": "model_scale",
+            "display_name": "模型 Scale",
+            "group_id": "runtime",
+            "order": 0
+          },
+          {
+            "parameter_name": "device",
+            "display_name": "运行设备",
+            "group_id": "runtime",
+            "order": 1
+          },
+          {
+            "parameter_name": "precision",
+            "display_name": "运行精度",
+            "group_id": "runtime",
+            "order": 2
+          },
+          {
+            "parameter_name": "tracking_mode",
+            "display_name": "视频跟踪模式",
+            "group_id": "tracking_basic",
+            "order": 10
+          },
+          {
+            "parameter_name": "history_limit",
+            "display_name": "历史长度",
+            "group_id": "tracking_basic",
+            "order": 11
+          },
+          {
+            "parameter_name": "prototype_momentum",
+            "display_name": "原型动量",
+            "group_id": "tracking_basic",
+            "order": 12
+          },
+          {
+            "parameter_name": "attention_temperature",
+            "display_name": "注意力温度",
+            "group_id": "tracking_advanced",
+            "order": 20
+          },
+          {
+            "parameter_name": "prototype_blend_weight",
+            "display_name": "原型混合权重",
+            "group_id": "tracking_advanced",
+            "order": 21
+          },
+          {
+            "parameter_name": "max_memory_tokens_per_entry",
+            "display_name": "单帧记忆 Token 上限",
+            "group_id": "tracking_advanced",
+            "order": 22
+          }
+        ]
+      },
       "capability_tags": [
         "vision.segmentation",
         "prompt.text"
@@ -521,7 +634,9 @@
           "stateful-mask-propagation",
           "shared-prompts-across-window"
         ],
-        "track_strategy": "prompt-id-memory-capable-tracking"
+        "track_strategy": "prompt-id-memory-capable-tracking",
+        "recommended_scene": "本地视频复盘、长窗口、多目标与复杂遮挡跟踪",
+        "example_template_source_uri": "docs/examples/workflows/sam3_video_memory_attention_review.template.json"
       }
     }
   ],

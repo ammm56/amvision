@@ -35,6 +35,12 @@ TRACKING_MODE_MEMORY = "memory-prototype-state"
 TRACKING_MODE_MEMORY_ATTENTION = "memory-attention-tracker"
 TRACKING_MODE_SHARED = "shared-prompts-across-window"
 TRACKING_MODE_STATEFUL = "stateful-mask-propagation"
+DEFAULT_MEMORY_HISTORY_LIMIT = 4
+DEFAULT_MEMORY_ATTENTION_HISTORY_LIMIT = 6
+DEFAULT_PROTOTYPE_MOMENTUM = 0.7
+DEFAULT_ATTENTION_TEMPERATURE = 0.12
+DEFAULT_PROTOTYPE_BLEND_WEIGHT = 0.35
+DEFAULT_MAX_MEMORY_TOKENS_PER_ENTRY = 256
 
 
 def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
@@ -50,6 +56,30 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
         source_image_bytes=first_frame.image_bytes,
     )
     tracking_mode = _resolve_tracking_mode(request.parameters.get("tracking_mode"))
+    history_limit = _resolve_history_limit(
+        request.parameters.get("history_limit"),
+        tracking_mode=tracking_mode,
+    )
+    prototype_momentum = _resolve_ratio_parameter(
+        request.parameters.get("prototype_momentum"),
+        field_name="prototype_momentum",
+        default=DEFAULT_PROTOTYPE_MOMENTUM,
+    )
+    attention_temperature = _resolve_positive_float_parameter(
+        request.parameters.get("attention_temperature"),
+        field_name="attention_temperature",
+        default=DEFAULT_ATTENTION_TEMPERATURE,
+    )
+    prototype_blend_weight = _resolve_ratio_parameter(
+        request.parameters.get("prototype_blend_weight"),
+        field_name="prototype_blend_weight",
+        default=DEFAULT_PROTOTYPE_BLEND_WEIGHT,
+    )
+    max_memory_tokens_per_entry = _resolve_positive_int_parameter(
+        request.parameters.get("max_memory_tokens_per_entry"),
+        field_name="max_memory_tokens_per_entry",
+        default=DEFAULT_MAX_MEMORY_TOKENS_PER_ENTRY,
+    )
     model_scale = normalize_model_scale(request.parameters.get("model_scale"))
     device = normalize_device(request.parameters.get("device"))
     precision = normalize_precision(request.parameters.get("precision"))
@@ -77,6 +107,8 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
             frame_width=frame_item.width,
             frame_height=frame_item.height,
             frame_context=frame_context,
+            attention_temperature=attention_temperature,
+            prototype_blend_weight=prototype_blend_weight,
         )
         propagated_prompt_counts.append(len(propagated_prompt_ids))
         memory_similarity_peaks.append(frame_similarity_peaks)
@@ -92,6 +124,8 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
                 prediction_regions=prediction.regions,
                 frame_context=frame_context,
                 frame_index=frame_item.frame_index,
+                history_limit=history_limit,
+                prototype_momentum=prototype_momentum,
             )
         elif tracking_mode == TRACKING_MODE_MEMORY_ATTENTION:
             _update_attention_track_states(
@@ -100,6 +134,9 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
                 prediction_regions=prediction.regions,
                 frame_context=frame_context,
                 frame_index=frame_item.frame_index,
+                history_limit=history_limit,
+                prototype_momentum=prototype_momentum,
+                max_memory_tokens_per_entry=max_memory_tokens_per_entry,
             )
         elif tracking_mode == TRACKING_MODE_STATEFUL:
             current_prompt_ids = {item.prompt_id for item in active_prompt_items}
@@ -151,6 +188,14 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
             ),
             memory_similarity_peaks=tuple(memory_similarity_peaks),
             memory_attention_peaks=tuple(memory_attention_peaks),
+            tracking_config=_build_tracking_config_summary(
+                tracking_mode=tracking_mode,
+                history_limit=history_limit,
+                prototype_momentum=prototype_momentum,
+                attention_temperature=attention_temperature,
+                prototype_blend_weight=prototype_blend_weight,
+                max_memory_tokens_per_entry=max_memory_tokens_per_entry,
+            ),
         ),
     }
 
@@ -181,6 +226,8 @@ def _build_frame_prompt_items(
     frame_width: int,
     frame_height: int,
     frame_context,
+    attention_temperature: float,
+    prototype_blend_weight: float,
 ) -> tuple[tuple[Sam3InteractivePromptItem, ...], set[str], dict[str, float], dict[str, float]]:
     """基于上一帧状态构造当前帧提示。"""
 
@@ -223,6 +270,8 @@ def _build_frame_prompt_items(
             memory_prompt = build_memory_attention_prompt_mask(
                 frame_context=frame_context,
                 track_state=track_state,
+                attention_temperature=attention_temperature,
+                prototype_blend_weight=prototype_blend_weight,
             )
             active_prompt_items.append(
                 Sam3InteractivePromptItem(
@@ -267,6 +316,8 @@ def _update_memory_track_states(
     prediction_regions: tuple[object, ...],
     frame_context,
     frame_index: int,
+    history_limit: int,
+    prototype_momentum: float,
 ) -> None:
     """用当前帧预测结果更新 memory/state 跟踪状态。"""
 
@@ -287,6 +338,8 @@ def _update_memory_track_states(
             frame_context=frame_context,
             region=region,
             frame_index=frame_index,
+            history_limit=history_limit,
+            prototype_momentum=prototype_momentum,
         )
 
 
@@ -297,6 +350,9 @@ def _update_attention_track_states(
     prediction_regions: tuple[object, ...],
     frame_context,
     frame_index: int,
+    history_limit: int,
+    prototype_momentum: float,
+    max_memory_tokens_per_entry: int,
 ) -> None:
     """用当前帧预测结果更新 memory-attention 跟踪状态。"""
 
@@ -317,6 +373,9 @@ def _update_attention_track_states(
             frame_context=frame_context,
             region=region,
             frame_index=frame_index,
+            history_limit=history_limit,
+            prototype_momentum=prototype_momentum,
+            max_memory_tokens_per_entry=max_memory_tokens_per_entry,
         )
 
 
@@ -336,3 +395,87 @@ def _find_region_by_prompt_id(regions: tuple[object, ...], prompt_id: str) -> ob
         if str(getattr(region, "prompt_id", "")) == prompt_id:
             return region
     return None
+
+
+def _resolve_history_limit(raw_value: object, *, tracking_mode: str) -> int:
+    """读取跨帧历史长度。"""
+
+    default_value = (
+        DEFAULT_MEMORY_ATTENTION_HISTORY_LIMIT
+        if tracking_mode == TRACKING_MODE_MEMORY_ATTENTION
+        else DEFAULT_MEMORY_HISTORY_LIMIT
+    )
+    return _resolve_positive_int_parameter(
+        raw_value,
+        field_name="history_limit",
+        default=default_value,
+    )
+
+
+def _resolve_positive_int_parameter(raw_value: object, *, field_name: str, default: int) -> int:
+    """读取正整数参数。"""
+
+    if raw_value is None:
+        return int(default)
+    if isinstance(raw_value, bool) or not isinstance(raw_value, int) or raw_value <= 0:
+        raise InvalidRequestError(
+            f"SAM3 video-interactive-segment 的 {field_name} 必须是正整数",
+            details={field_name: raw_value},
+        )
+    return int(raw_value)
+
+
+def _resolve_positive_float_parameter(raw_value: object, *, field_name: str, default: float) -> float:
+    """读取正浮点参数。"""
+
+    if raw_value is None:
+        return float(default)
+    if isinstance(raw_value, bool) or not isinstance(raw_value, (int, float)) or float(raw_value) <= 0.0:
+        raise InvalidRequestError(
+            f"SAM3 video-interactive-segment 的 {field_name} 必须是大于 0 的数值",
+            details={field_name: raw_value},
+        )
+    return float(raw_value)
+
+
+def _resolve_ratio_parameter(raw_value: object, *, field_name: str, default: float) -> float:
+    """读取 0 到 1 区间参数。"""
+
+    if raw_value is None:
+        return float(default)
+    if isinstance(raw_value, bool) or not isinstance(raw_value, (int, float)):
+        raise InvalidRequestError(
+            f"SAM3 video-interactive-segment 的 {field_name} 必须是 0 到 1 之间的数值",
+            details={field_name: raw_value},
+        )
+    normalized_value = float(raw_value)
+    if normalized_value < 0.0 or normalized_value > 1.0:
+        raise InvalidRequestError(
+            f"SAM3 video-interactive-segment 的 {field_name} 必须是 0 到 1 之间的数值",
+            details={field_name: raw_value},
+        )
+    return normalized_value
+
+
+def _build_tracking_config_summary(
+    *,
+    tracking_mode: str,
+    history_limit: int,
+    prototype_momentum: float,
+    attention_temperature: float,
+    prototype_blend_weight: float,
+    max_memory_tokens_per_entry: int,
+) -> dict[str, object]:
+    """构建写入 summary 的 tracking 配置摘要。"""
+
+    summary = {
+        "tracking_mode": tracking_mode,
+    }
+    if tracking_mode in {TRACKING_MODE_MEMORY, TRACKING_MODE_MEMORY_ATTENTION}:
+        summary["history_limit"] = int(history_limit)
+        summary["prototype_momentum"] = float(prototype_momentum)
+    if tracking_mode == TRACKING_MODE_MEMORY_ATTENTION:
+        summary["attention_temperature"] = float(attention_temperature)
+        summary["prototype_blend_weight"] = float(prototype_blend_weight)
+        summary["max_memory_tokens_per_entry"] = int(max_memory_tokens_per_entry)
+    return summary

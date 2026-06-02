@@ -407,6 +407,11 @@ def test_video_interactive_segment_supports_explicit_memory_attention_mode(monke
             "device": "cpu",
             "precision": "fp32",
             "tracking_mode": "memory-attention-tracker",
+            "history_limit": 8,
+            "prototype_momentum": 0.62,
+            "attention_temperature": 0.18,
+            "prototype_blend_weight": 0.4,
+            "max_memory_tokens_per_entry": 192,
         },
         input_values={
             "frames": frame_window_payload,
@@ -431,6 +436,14 @@ def test_video_interactive_segment_supports_explicit_memory_attention_mode(monke
     assert output["summary"]["memory_tracked_prompt_count"] == 1
     assert output["summary"]["memory_track_history_lengths"]["track-1"] == 3
     assert "memory_attention_peaks" in output["summary"]
+    assert output["summary"]["tracking_config"] == {
+        "tracking_mode": "memory-attention-tracker",
+        "history_limit": 8,
+        "prototype_momentum": 0.62,
+        "attention_temperature": 0.18,
+        "prototype_blend_weight": 0.4,
+        "max_memory_tokens_per_entry": 192,
+    }
     prompt_history = captured["prompt_history"]
     assert prompt_history[0][0].prompt_kind == "box"
     assert prompt_history[1][0].prompt_kind == "mask"

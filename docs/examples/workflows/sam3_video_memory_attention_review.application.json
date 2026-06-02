@@ -1,0 +1,76 @@
+{
+  "format_id": "amvision.flow-application.v1",
+  "application_id": "sam3-video-memory-attention-review-app",
+  "display_name": "SAM3 Video Memory Attention Review App",
+  "description": "用于现场本地视频复盘的 SAM3 video-interactive memory-attention 样例 app。输入本地视频路径和 prompt-regions，输出可播放视频、tracks 与 summary。",
+  "template_ref": {
+    "template_id": "sam3-video-memory-attention-review-template",
+    "template_version": "1.0.0",
+    "source_kind": "json-file",
+    "source_uri": "docs/examples/workflows/sam3_video_memory_attention_review.template.json"
+  },
+  "runtime_mode": "python-json-workflow",
+  "bindings": [
+    {
+      "binding_id": "request_video_path",
+      "direction": "input",
+      "template_port_id": "request_video_path",
+      "binding_kind": "workflow-execute-input",
+      "config": {
+        "payload_type_id": "value.v1",
+        "content_type": "application/json"
+      },
+      "metadata": {
+        "payload_type_id": "value.v1"
+      }
+    },
+    {
+      "binding_id": "request_prompts",
+      "direction": "input",
+      "template_port_id": "request_prompts",
+      "binding_kind": "workflow-execute-input",
+      "config": {
+        "payload_type_id": "prompt-regions.v1",
+        "content_type": "application/json"
+      },
+      "metadata": {
+        "payload_type_id": "prompt-regions.v1"
+      }
+    },
+    {
+      "binding_id": "preview_body",
+      "direction": "output",
+      "template_port_id": "preview_body",
+      "binding_kind": "workflow-execute-output",
+      "config": {
+        "payload_type_id": "response-body.v1"
+      },
+      "metadata": {}
+    },
+    {
+      "binding_id": "tracks",
+      "direction": "output",
+      "template_port_id": "tracks",
+      "binding_kind": "workflow-execute-output",
+      "config": {
+        "payload_type_id": "tracks.v1"
+      },
+      "metadata": {}
+    },
+    {
+      "binding_id": "summary",
+      "direction": "output",
+      "template_port_id": "summary",
+      "binding_kind": "workflow-execute-output",
+      "config": {
+        "payload_type_id": "value.v1"
+      },
+      "metadata": {}
+    }
+  ],
+  "metadata": {
+    "example_kind": "sam3-video-memory-attention-review",
+    "tracking_mode": "memory-attention-tracker",
+    "intended_saved_object_key": "workflows/projects/{project_id}/applications/sam3-video-memory-attention-review-app/application.json"
+  }
+}
