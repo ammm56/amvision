@@ -301,7 +301,7 @@
       "node_pack_id": "sam3.segment-nodes",
       "node_pack_version": "0.1.0",
       "metadata": {
-        "phase": "partial-implementation",
+        "phase": "implemented",
         "supported_prompt_kinds": [
           "box",
           "point",
@@ -397,7 +397,7 @@
       "node_pack_id": "sam3.segment-nodes",
       "node_pack_version": "0.1.0",
       "metadata": {
-        "phase": "partial-implementation"
+        "phase": "implemented"
       }
     }
   ],

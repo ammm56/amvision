@@ -18,7 +18,7 @@
 - workflow app 改造
 - 核心模型主链的训练、转换、发布接入
 
-workflow app 侧的受控启用、目标机器接入顺序和运维排障，见 [yoloe-sam3-workflow-app-operations.md](yoloe-sam3-workflow-app-operations.md)。
+workflow app 侧的接入顺序、目标机器启用/禁用和运维排障，见 [yoloe-sam3-workflow-app-operations.md](yoloe-sam3-workflow-app-operations.md)。
 
 ## 当前状态说明
 

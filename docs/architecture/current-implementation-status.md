@@ -67,12 +67,13 @@
 
 ### custom node 扩展面
 
-- `custom_nodes/yoloe_open_vocab_nodes/` 当前已经具备完整 pack 骨架、catalog、project-native runtime、真实本地资产 smoke 和 grouped prompt summary；默认仍保持 `enabledByDefault = false`，继续作为受控扩展能力使用。
-- `custom_nodes/sam3_segment_nodes/` 当前已经具备完整 pack 骨架、catalog、project-native runtime、真实本地资产 smoke 和共享后处理增强；默认仍保持 `enabledByDefault = false`，继续作为受控扩展能力使用。
-- `YOLOE / SAM3` 在 workflow app 侧的受控接入顺序、`metadata.phase` / `enabledByDefault` 解释和现场排障路径，当前已经单独整理到 [yoloe-sam3-workflow-app-operations.md](yoloe-sam3-workflow-app-operations.md)。
+- `custom_nodes/yoloe_open_vocab_nodes/` 当前已经具备完整 pack 骨架、catalog、project-native runtime、真实本地资产 smoke 和 grouped prompt summary；pack `metadata.phase` 已收口到 `implemented`，并默认启用。
+- `custom_nodes/sam3_segment_nodes/` 当前已经具备完整 pack 骨架、catalog、project-native runtime、真实本地资产 smoke 和共享后处理增强；pack 与节点定义的 `metadata.phase` 都已收口到 `implemented`，并默认启用。
+- `YOLOE / SAM3` 在 workflow app 侧的接入顺序、`metadata.phase` / `enabledByDefault` 解释和现场排障路径，当前已经单独整理到 [yoloe-sam3-workflow-app-operations.md](yoloe-sam3-workflow-app-operations.md)。
 - `YOLOE / SAM3` 预训练资产统一从 `data/files/models/pretrained/` 读取：`YOLOE` 使用本地 segmentation 权重与 `text-encoders` 资产，`SAM3` 使用本地 `sam3.pt`。
 - 当前 `YOLOE / SAM3` 都已经补了定向稳定性回归：多 prompt 组合、本地资产 smoke、异常预训练目录、空提示/非法提示、CPU 会话缓存复用。
 - 当前 `YOLOE / SAM3` 已在目标机器上补了显式 CPU/GPU soak / benchmark 基线与 1 轮更长时长/更大图尺寸扩展 soak，结果记录见 [yoloe-sam3-soak-baseline.md](yoloe-sam3-soak-baseline.md)；相关测试文件位于 `tests/integration/`，默认不参与常规收集。
+- 当前 `YOLOE / SAM3` 已补显式 `WorkflowAppRuntime` 接入 smoke：测试会临时把 pack 置为 `enabledByDefault = false`，再覆盖 `disable -> enable -> create -> start -> invoke -> stop` 最小 runtime 闭环；相关测试文件位于 `tests/integration/test_yoloe_sam3_workflow_app_runtime_smoke.py`。
 
 ### 后台执行与 runtime 面
 
@@ -118,7 +119,7 @@
 
 - `YOLOE` 和 `SAM3` 当前都不走 `DeploymentInstance` 主链，而是在 `WorkflowAppRuntime` 进程内按需首次加载并缓存；当前缓存 key 已稳定覆盖 checkpoint、device 和 precision。
 - `YOLOE` 文本提示默认复用本地 `mobileclip_blt.ts + bpe_simple_vocab_16e6.txt.gz`；`SAM3 semantic` 复用项目内 tokenizer 代码与 checkpoint 自带语言骨干，不依赖在线下载或 Hugging Face snapshot。
-- 当前 `YOLOE / SAM3` 的 smoke 重点覆盖本地 project-native 推理链、输出 contract 与缓存复用，尚未进入 workflow app、长期发布服务或多机部署形态收口。
+- 当前 `YOLOE / SAM3` 的 smoke 已覆盖本地 project-native 推理链、输出 contract、缓存复用，以及 `WorkflowAppRuntime` 的 `disable -> enable -> invoke` 最小闭环；当前已经进入默认启用，但仍未进入长期发布服务或多机部署形态收口。
 
 ## 当前实现细节中需要明确的事实
 

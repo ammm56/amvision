@@ -26,10 +26,10 @@
   "timeout": {
     "defaultSeconds": 120
   },
-  "enabledByDefault": false,
+  "enabledByDefault": true,
   "customNodeCatalogPath": "workflow/catalog.json",
   "metadata": {
-    "phase": "partial-implementation",
+    "phase": "implemented",
     "notes": [
       "第一阶段作为 custom node 扩展能力接入，不直接并入核心模型主链。",
       "YOLOE 权重从 data/files/models/pretrained/yoloe 下读取。",

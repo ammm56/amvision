@@ -96,7 +96,7 @@ D:/software/anaconda3/envs/amvision/python.exe -m pytest --basetemp .tmp/pytest 
 - `YOLOE text-prompt` 在 CPU 和 CUDA 上都表现稳定，长时重复推理没有出现明显内存泄漏信号。
 - `SAM3 semantic-segment` 在 CPU 上耗时明显更高，但 3 轮结果波动较小，内存漂移稳定落在 `114 MB` 左右，仍明显低于测试阈值。
 - 两条 CUDA 基线都表现为 `allocated drift = 0`；`reserved` 增长后趋于固定平台，更符合 allocator cache 预热，而不是持续泄漏。
-- 以当前基线看，`YOLOE / SAM3` 已经具备继续向“更接近正式可用”阶段收口的条件，但仍建议保持 `enabledByDefault = false`，先继续以受控本地能力使用。
+- 以当前基线看，`YOLOE / SAM3` 已经具备继续向“更接近正式可用”阶段收口的条件；pack `metadata.phase` 与默认启用策略都已经具备继续收口的基础。
 
 ## 扩展 soak 结果
 
@@ -118,10 +118,10 @@ D:/software/anaconda3/envs/amvision/python.exe -m pytest --basetemp .tmp/pytest 
 
 - `YOLOE text-prompt` 在更大图尺寸和更长迭代下仍保持较小 CPU 内存漂移，CUDA `allocated` 仍为 `0 drift`。
 - `SAM3 semantic-segment` 在更大图尺寸下 CPU 平均耗时上升到约 `27.5 s`，但内存漂移没有放大到阈值附近；CUDA 仍表现为 `allocated drift = 0`。
-- 以当前基础基线和扩展基线共同判断，`YOLOE / SAM3` 的本地会话驻留和重复推理稳定性已达到“可以继续考虑从 `partial-implementation` 向更接近正式可用阶段收口”的程度。
+- 以当前基础基线和扩展基线共同判断，`YOLOE / SAM3` 的本地会话驻留和重复推理稳定性已达到“可以继续向更接近正式可用阶段收口”的程度。
 
 ## 建议下一步
 
 1. 在目标机器类型发生变化时，重新执行本文件并更新基线。
-2. 在准备把 `YOLOE / SAM3` 从 `partial-implementation` 继续收口前，优先补 workflow app 侧的受控接入说明和排障手册。
+2. 在继续扩大默认启用范围前，优先补 workflow app 侧接入说明、排障手册和视频/多帧扩展边界说明。
 3. 如果后面再扩到多帧、视频或更高分辨率资产，再单独新增对应的 integration soak 文件，而不是继续把更多场景塞进现有基础基线文件。

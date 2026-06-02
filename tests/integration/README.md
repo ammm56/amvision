@@ -26,3 +26,7 @@ D:/software/anaconda3/envs/amvision/python.exe -m pytest tests/integration/test_
 ```powershell
 D:/software/anaconda3/envs/amvision/python.exe -m pytest tests/integration/test_yoloe_sam3_extended_soak_benchmark.py -q
 ```
+
+```powershell
+D:/software/anaconda3/envs/amvision/python.exe -m pytest tests/integration/test_yoloe_sam3_workflow_app_runtime_smoke.py -q
+```

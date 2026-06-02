@@ -15,7 +15,7 @@
 - [docs/architecture/yolo-model-plan.md](yolo-model-plan.md)：YOLO 系列模型的参考源码边界、层级关系、任务分类拆分、模型分类适配和进入顺序
 - [docs/architecture/model-workflow-boundaries.md](model-workflow-boundaries.md)：模型接入、数据集、部署长期运行服务、workflow app 和 TriggerSource 之间的正式边界
 - [docs/architecture/yoloe-sam3-node-assets.md](yoloe-sam3-node-assets.md)：YOLOE 与 SAM3 作为 custom node 扩展时的磁盘资产规则、manifest.json 字段和 payload contract 约定
-- [docs/architecture/yoloe-sam3-workflow-app-operations.md](yoloe-sam3-workflow-app-operations.md)：YOLOE 与 SAM3 在 WorkflowAppRuntime 中的受控启用、接入顺序、观测入口、排障路径，以及 `metadata.phase` / `enabledByDefault` 的当前建议
+- [docs/architecture/yoloe-sam3-workflow-app-operations.md](yoloe-sam3-workflow-app-operations.md)：YOLOE 与 SAM3 在 WorkflowAppRuntime 中的默认启用策略、接入顺序、观测入口、排障路径，以及 `metadata.phase` / `enabledByDefault` 的当前建议
 - [docs/architecture/yoloe-sam3-soak-baseline.md](yoloe-sam3-soak-baseline.md)：YOLOE 与 SAM3 本地 CPU/GPU soak / benchmark 的显式执行方式、目标机器基线结果和当前稳定性判断
 - [docs/architecture/websocket-architecture.md](websocket-architecture.md)：WebSocket 子系统的职责边界、版本化路由、事件流组织和重连规则
 - [docs/architecture/execution-sequences.md](execution-sequences.md)：训练、转换、部署推理和 workflow execute 四条关键调用顺序图

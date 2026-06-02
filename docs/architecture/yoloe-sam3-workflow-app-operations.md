@@ -1,8 +1,8 @@
-# YOLOE / SAM3 WorkflowApp 受控接入与排障
+# YOLOE / SAM3 WorkflowApp 接入与排障
 
 ## 文档目的
 
-本文档用于说明 `YOLOE / SAM3` custom node 在 `WorkflowAppRuntime` 中的受控接入方式、启用步骤、观测入口和常见排障路径。
+本文档用于说明 `YOLOE / SAM3` custom node 在 `WorkflowAppRuntime` 中的接入方式、启用/禁用步骤、观测入口和常见排障路径。
 
 本文档不讨论：
 
@@ -21,12 +21,9 @@
 ## 当前结论
 
 - `YOLOE / SAM3` 当前都已经接通 project-native runtime，并且本地 smoke、稳定性回归、CPU/GPU soak 基线都已补齐。
-- 当前最稳的上线策略不是“默认启用”，而是“受控启用”：
-  - pack manifest 继续保持 `enabledByDefault = false`
-  - 通过 workflow node-pack 管理接口在目标机器上显式启用
-  - 先进入 preview / app-runtime 的受控接入，再决定是否扩大启用范围
-- 当前 `YOLOE` 的节点定义 metadata 已经是 `implemented`，但 pack manifest 仍保持 `partial-implementation`。
-- 当前 `SAM3` 的节点定义 metadata 和 pack manifest 都仍保持 `partial-implementation`。
+- 当前 `YOLOE / SAM3` 还额外补了显式 `WorkflowAppRuntime` 接入 smoke；测试会临时把 pack 置为 `enabledByDefault = false`，再覆盖 `disable -> enable -> save application -> create/start runtime -> invoke -> stop` 最小闭环。
+- 当前 `YOLOE / SAM3` 的 pack manifest 与节点定义 `metadata.phase` 都已收口到 `implemented`。
+- 当前仓库默认把 `YOLOE / SAM3` 作为已启用节点能力提供；接入重点不再是“仓库默认关闭”，而是“目标机器仍要先校验本地模型资产和 workflow 接入路径”。
 
 ## 三个容易混淆的字段
 
@@ -47,10 +44,10 @@
 - 决定目标环境里是否默认把该 pack 当作已启用能力。
 - 这是实际生效的加载开关，不只是说明文字。
 
-当前建议：
+当前状态：
 
-- `YOLOE / SAM3` 继续保持 `false`
-- 在目标机器上通过 `/api/v1/workflows/node-packs/{node_pack_id}/enable` 显式启用
+- `YOLOE / SAM3` 当前都已经改成 `true`
+- 如果某台目标机器不希望暴露这批能力，仍可通过 `/api/v1/workflows/node-packs/{node_pack_id}/disable` 显式禁用
 
 ### pack manifest 的 `metadata.phase`
 
@@ -85,20 +82,20 @@
 
 - 便于区分“pack 里有些节点已经做完，但整个 pack 还未完全收口”的情况。
 
-## 为什么当前建议“implemented + 默认不启用”
+## 为什么当前选择“implemented + 默认启用”
 
-对 `YOLOE / SAM3` 这类重资产、受控扩展型 node pack，更稳的策略是：
+对 `YOLOE / SAM3` 这类重资产扩展型 node pack，当前已经满足：
 
-- 可以先把能力做完整
-- 可以先把节点定义做到 `implemented`
-- 但 pack 默认不自动启用
+- 第一阶段目标能力已经做完整
+- pack 与节点定义都已收口到 `implemented`
+- pack 默认自动启用，但模型会话仍保持按需首次加载
 
 这样做的好处：
 
-- 不会在所有环境自动加载大模型资产
-- 不会要求所有现场机器默认具备这套扩展能力
-- 可以先在指定项目、指定机器、指定 workflow app 上做受控上线
-- 出问题时只影响已经显式启用的目标环境
+- workflow editor、preview 和 app-runtime 默认就能看到这批节点
+- 不需要再为每台标准目标机器重复执行 enable
+- 即使默认启用，模型权重也不会在服务启动时全量加载，仍是节点首次执行时按需载入
+- 如果个别环境不需要这批节点，仍可通过 disable API 快速关闭
 
 ## WorkflowApp 受控接入步骤
 
@@ -130,17 +127,19 @@
 - custom node catalog 是否可读
 - 是否存在最近 loader 错误
 
-### 3. 在目标机器上显式启用 pack
+### 3. 必要时启用或禁用 pack
 
 接口：
 
 - `POST /api/v1/workflows/node-packs/yoloe.open-vocab-nodes/enable`
 - `POST /api/v1/workflows/node-packs/sam3.segment-nodes/enable`
+- `POST /api/v1/workflows/node-packs/yoloe.open-vocab-nodes/disable`
+- `POST /api/v1/workflows/node-packs/sam3.segment-nodes/disable`
 
 说明：
 
 - 当前接口本质上是修改 JSON manifest 里的 `enabledByDefault`，然后刷新 loader。
-- 这是目标机器上的运维动作，不要求把仓库里的 manifest 默认改成 `true`。
+- 当前仓库默认已经启用；这些接口主要用于目标机器上的覆写、恢复和排障，而不是首次开通。
 
 ### 4. 刷新 loader 并确认节点目录
 
@@ -182,20 +181,37 @@
 - `heartbeat_at`
 - `loaded_snapshot_fingerprint`
 
+### 7. 显式执行 WorkflowAppRuntime 受控接入 smoke
+
+当前已经提供一条不参与默认 pytest 收集的显式 integration 测试：
+
+- `tests/integration/test_yoloe_sam3_workflow_app_runtime_smoke.py`
+
+建议只在目标机器上手动执行：
+
+```powershell
+D:/software/anaconda3/envs/amvision/python.exe -m pytest tests/integration/test_yoloe_sam3_workflow_app_runtime_smoke.py -q
+```
+
+当前 smoke 重点覆盖：
+
+- `YOLOE text-prompt` 的受控启用与 `WorkflowAppRuntime` invoke
+- `SAM3 semantic-segment` 的受控启用与 `WorkflowAppRuntime` invoke
+- pack 默认关闭、node-catalog 过滤、显式 enable、runtime start/stop 这条正式控制链
+
 ## 当前建议的上线策略
 
 ### 建议策略
 
-- 仓库 manifest 默认保持 `enabledByDefault = false`
-- 在目标机器通过 node-pack API 显式启用
-- 先限制在少量 workflow app 或指定 Project 内使用
+- 仓库 manifest 默认保持 `enabledByDefault = true`
+- 目标机器先校验本地模型资产，再做 preview 和单 runtime 验证
+- 如果某台机器暂时不需要这批节点，再通过 node-pack API 显式禁用
 - 先通过 preview 与单 runtime 验证，再扩大范围
 
 ### 当前不建议的策略
 
-- 直接把 pack manifest 改成默认启用后全环境分发
-- 一上来就把 `YOLOE / SAM3` 作为所有 workflow 的默认节点能力
 - 在没有本地资产校验和 runtime 观察的情况下直接接入现场生产图
+- 在未确认目标机器资源边界前，直接让所有 workflow 依赖这批节点
 
 ## 常见问题与排障
 
@@ -203,9 +219,9 @@
 
 优先检查：
 
-- pack manifest 的 `enabledByDefault` 是否还是 `false`
-- 是否已经执行 `enable` 或 `reload`
-- `GET /api/v1/workflows/node-pack-status` 里该 pack 的 `enabled` 是否为 `true`
+- pack manifest 的 `enabledByDefault` 是否被本机改成了 `false`
+- 是否已经执行 `enable` / `disable` / `reload`
+- `GET /api/v1/workflows/node-pack-status` 里该 pack 的 `enabled` 是否符合预期
 - `issues` 或 `logs` 中是否存在 manifest/catalog 错误
 
 ### 2. `enable` 接口失败
@@ -289,29 +305,17 @@
 4. 确认本地资产目录
 5. 必要时先停 runtime，再重启
 
-## 当前阶段是否应该把 pack `metadata.phase` 改成 `implemented`
+## 当前阶段是否已经把 pack `metadata.phase` 收口到 `implemented`
 
-### 已满足
+### 当前状态
 
 - `YOLOE / SAM3` 都已经接通 project-native runtime
-- 本地 smoke 已补齐
-- CPU/GPU soak 基线已补齐
-- 更长时长/更大图尺寸扩展 soak 已补齐
-- workflow app 受控接入说明和排障手册已经落地
-
-### 仍建议再补 1 步
-
-- 最好再补一条明确针对 `WorkflowAppRuntime` 的端到端受控接入 smoke
-
-原因：
-
-- 当前 `YOLOE / SAM3` 的节点级 runtime 已稳定
-- 但 pack 级 `phase` 更像“整个受控上线面是否封账”
-- 如果能再补 1 条 app-runtime 级 smoke，再把 pack manifest 的 `metadata.phase` 改成 `implemented` 会更稳
+- 本地 smoke、稳定性回归、CPU/GPU soak 和扩展 soak 已补齐
+- `WorkflowAppRuntime` 显式接入 smoke 已补齐
+- pack manifest 与节点定义的 `metadata.phase` 当前都已经收口到 `implemented`
 
 ## 当前建议
 
-- 现在先不改 `enabledByDefault`
-- 继续保持受控启用
-- `metadata.phase` 可以进入“准备收口”状态
-- 如果下一步补完 app-runtime 级受控接入 smoke，就可以正式把 `YOLOE / SAM3` 的 pack manifest `metadata.phase` 从 `partial-implementation` 收到 `implemented`
+- 仓库默认保持 `enabledByDefault = true`
+- 目标机器继续以“先校验资产、再 preview、再 app-runtime”的方式接入
+- 如果某些环境不适合默认暴露这批能力，可用 disable API 做本机覆写
