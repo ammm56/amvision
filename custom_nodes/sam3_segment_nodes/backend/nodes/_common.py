@@ -383,29 +383,29 @@ def read_frame_window_items(
     """把 frame-window.v1 payload 规范化为可直接推理的帧列表。"""
 
     if not isinstance(payload, dict):
-        raise InvalidRequestError("SAM3 视频交互分割节点要求 frames payload 必须是对象")
+        raise InvalidRequestError("SAM3 视频分割节点要求 frames payload 必须是对象")
     raw_items = payload.get("items")
     if not isinstance(raw_items, list) or not raw_items:
-        raise InvalidRequestError("SAM3 视频交互分割节点要求 frames.items 必须是非空数组")
+        raise InvalidRequestError("SAM3 视频分割节点要求 frames.items 必须是非空数组")
 
     normalized_items: list[Sam3FrameWindowItem] = []
     expected_frame_size: tuple[int, int] | None = None
     for item_index, raw_item in enumerate(raw_items, start=1):
         if not isinstance(raw_item, dict):
             raise InvalidRequestError(
-                "SAM3 视频交互分割节点要求每个 frames.items 都必须是对象",
+                "SAM3 视频分割节点要求每个 frames.items 都必须是对象",
                 details={"item_index": item_index},
             )
         frame_index = raw_item.get("frame_index")
         timestamp_ms = raw_item.get("timestamp_ms")
         if isinstance(frame_index, bool) or not isinstance(frame_index, int) or frame_index < 0:
             raise InvalidRequestError(
-                "SAM3 视频交互分割节点要求每个 frames.items.frame_index 都必须是非负整数",
+                "SAM3 视频分割节点要求每个 frames.items.frame_index 都必须是非负整数",
                 details={"item_index": item_index, "frame_index": frame_index},
             )
         if isinstance(timestamp_ms, bool) or not isinstance(timestamp_ms, (int, float)) or float(timestamp_ms) < 0:
             raise InvalidRequestError(
-                "SAM3 视频交互分割节点要求每个 frames.items.timestamp_ms 都必须是非负数",
+                "SAM3 视频分割节点要求每个 frames.items.timestamp_ms 都必须是非负数",
                 details={"item_index": item_index, "timestamp_ms": timestamp_ms},
             )
         image_payload, image_bytes = load_image_bytes_from_payload(
@@ -421,7 +421,7 @@ def read_frame_window_items(
             expected_frame_size = current_frame_size
         elif expected_frame_size != current_frame_size:
             raise InvalidRequestError(
-                "SAM3 视频交互分割节点当前阶段要求 frame-window 中所有帧尺寸一致",
+                "SAM3 视频分割节点当前阶段要求 frame-window 中所有帧尺寸一致",
                 details={
                     "expected_width": expected_frame_size[0],
                     "expected_height": expected_frame_size[1],
@@ -784,6 +784,53 @@ def build_video_interactive_summary_payload(
     return summary_payload
 
 
+def build_video_semantic_summary_payload(
+    *,
+    source_video: object,
+    prompt_items: tuple[Sam3TextPromptItem, ...],
+    prompt_groups: tuple[Sam3TextPromptGroup, ...],
+    frame_items: tuple[Sam3FrameWindowItem, ...],
+    frame_predictions: tuple[dict[str, object], ...],
+) -> dict[str, object]:
+    """构建 video-semantic 节点 summary。"""
+
+    if not frame_predictions:
+        raise InvalidRequestError("SAM3 video-semantic summary 构建要求至少包含一帧预测结果")
+    first_summary = dict(frame_predictions[0]["summary"])
+    unique_track_ids = sorted(
+        {
+            str(region.prompt_id)
+            for frame_prediction in frame_predictions
+            for region in frame_prediction["regions"]
+        }
+    )
+    total_region_count = sum(len(frame_prediction["regions"]) for frame_prediction in frame_predictions)
+    frame_region_counts = [len(frame_prediction["regions"]) for frame_prediction in frame_predictions]
+    return {
+        **first_summary,
+        "inference_mode": "video-semantic-segment",
+        "source_video": source_video if isinstance(source_video, dict) else {},
+        "prompt_items": [
+            {
+                "prompt_id": item.prompt_id,
+                "text": item.text,
+                "display_name": item.display_name,
+                "negative": item.negative,
+                **({"language": item.language} if item.language is not None else {}),
+            }
+            for item in prompt_items
+        ],
+        "prompt_ids": [group.prompt_id for group in prompt_groups],
+        "processed_frame_count": len(frame_items),
+        "frame_indices": [item.frame_index for item in frame_items],
+        "track_count": total_region_count,
+        "unique_track_count": len(unique_track_ids),
+        "track_ids": unique_track_ids,
+        "frame_prompt_mode": "shared-text-prompts-across-window",
+        "frame_region_counts": frame_region_counts,
+    }
+
+
 def get_or_create_sam3_interactive_runtime_session(
     *,
     model_scale: str,
@@ -873,6 +920,7 @@ __all__ = [
     "build_interactive_summary_payload",
     "build_tracks_payload",
     "build_video_interactive_summary_payload",
+    "build_video_semantic_summary_payload",
     "build_semantic_summary_payload",
     "build_regions_payload",
     "build_source_image_summary_payload",

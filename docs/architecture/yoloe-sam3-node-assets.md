@@ -25,7 +25,7 @@ workflow app 侧的接入顺序、目标机器启用/禁用和运维排障，见
 - `YOLOE` 与 `SAM3` 这部分文档当前先固定资产目录、`manifest.json` 规则和节点输入输出 contract。
 - `projectsrc/` 只作为参考源码面，不参与运行时。
 - `YOLOE` 当前不会回退到已安装官方包或 `projectsrc` 参考代码执行推理；`prompt-free`、`text-prompt`、`visual-prompt` 三条 project-native runtime 已经接通，后续只继续扩能力面。
-- `SAM3` 当前已经接通 `interactive-segment`、`semantic-segment` 和 `video-interactive-segment` 的 project-native runtime，直接读取本地 `sam3.pt` 执行单图或多帧分割；其中 `interactive` 当前阶段支持 `box / point / polygon / mask`，`semantic` 当前支持按 `prompt_id` 聚合的 positive/negative `text-prompts.v1`，`video-interactive` 当前默认使用 `memory-prototype-state` 多帧跟踪并输出 `tracks.v1`。
+- `SAM3` 当前已经接通 `interactive-segment`、`semantic-segment`、`video-interactive-segment` 和 `video-semantic-segment` 的 project-native runtime，直接读取本地 `sam3.pt` 执行单图或多帧分割；其中 `interactive` 当前阶段支持 `box / point / polygon / mask`，`semantic` 当前支持按 `prompt_id` 聚合的 positive/negative `text-prompts.v1`，`video-interactive` 当前默认使用 `memory-prototype-state` 多帧跟踪并输出 `tracks.v1`，`video-semantic` 当前使用共享 `text-prompts.v1` 跨帧执行语义分割并输出 `tracks.v1`。
 
 ## 适用范围
 

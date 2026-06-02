@@ -458,6 +458,11 @@ release/
 - 当前已不再只是 shared prompt 或单纯上一帧 mask 回灌；现在会维护对象原型和最近若干帧 mask 历史，并在当前帧特征上生成 memory prompt
 - 当前仍未实现完整底层 memory attention tracker 全能力
 - 当前已经补了更长窗口、更大位移和更多对象数的定向回归；默认轻量逻辑测试放在 `tests/`，真实本地 `sam3.pt` 的视频链 smoke 放在 `tests/integration/`，继续保持显式执行
+- `custom.sam3.video-semantic-segment`
+- 输入：`frame-window.v1 + text-prompts.v1`
+- 输出：`tracks.v1`
+- 当前策略：`shared-text-prompts-across-window`
+- 当前按 `prompt_id` 稳定映射 `track_id`，并沿用单帧 `semantic-segment` 的 grouped positive/negative 文本语义与后处理规则
 
 ### `SAM3` 视频模式选择建议
 
