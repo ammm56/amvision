@@ -407,6 +407,40 @@ def get_core_workflow_payload_contracts() -> tuple[WorkflowPayloadContract, ...]
             },
         ),
         WorkflowPayloadContract(
+            payload_type_id="roi.v1",
+            display_name="Region Of Interest",
+            transport_kind="inline-json",
+            json_schema={
+                "type": "object",
+                "properties": {
+                    "roi_id": {"type": "string"},
+                    "display_name": {"type": "string"},
+                    "roi_kind": {
+                        "type": "string",
+                        "enum": ["bbox", "polygon"],
+                    },
+                    "bbox_xyxy": {
+                        "type": "array",
+                        "items": {"type": "number"},
+                        "minItems": 4,
+                        "maxItems": 4,
+                    },
+                    "polygon_xy": {
+                        "type": "array",
+                        "items": {
+                            "type": "array",
+                            "items": {"type": "number"},
+                            "minItems": 2,
+                            "maxItems": 2,
+                        },
+                    },
+                    "area": {"type": "integer", "minimum": 0},
+                    "source_image": {"type": "object"},
+                },
+                "required": ["roi_id", "roi_kind", "bbox_xyxy", "polygon_xy", "area"],
+            },
+        ),
+        WorkflowPayloadContract(
             payload_type_id="detections.v1",
             display_name="Detection Result",
             transport_kind="inline-json",

@@ -42,3 +42,7 @@ def test_core_payload_contracts_include_image_base64_and_local_buffer_image_refs
         "frame",
     ]
     assert "source_image" in image_refs_contract.json_schema["properties"]
+
+    roi_contract = payload_contracts["roi.v1"]
+    assert roi_contract.transport_kind == "inline-json"
+    assert roi_contract.json_schema["required"] == ["roi_id", "roi_kind", "bbox_xyxy", "polygon_xy", "area"]

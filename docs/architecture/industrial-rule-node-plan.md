@@ -6,6 +6,12 @@
 
 当前项目主线以单帧判定、现场本地部署、流程编排和结果可回传为主。后续继续扩展节点时，优先补工业语义节点，不优先继续加深更重的视频模型能力。
 
+当前状态：
+
+- 第 1 批 `core.vision.regions-*` 已接通
+- 第 2 批 `ROI / coverage / overlap` 当前已接通 `roi-create / regions-intersection-metrics / regions-coverage-check / regions-inside-check / regions-offset-check`
+- 第 3 批连续性原子指标和第 4 批工业判定/结果回传/输入接入仍是后续主线
+
 ## 适用边界
 
 - 优先面向单帧工业判定
