@@ -32,6 +32,7 @@
 - 从工业场景角度看，当前视频能力已经覆盖“单帧判定、视频复盘、交互跟踪、语义区域观察”的主线；后续更值得继续补的是现场明确需要的稳定性增强、规则判定和协议回传，而不是默认把所有视频链都推到最重模式。
 - 对当前以单帧判定为主的工业现场，下一批最值得补的是 `core.vision.regions-*`、ROI/coverage、`core.rule.*`、`result-record` 和本地单图/目录输入节点；分批清单已整理到 [industrial-rule-node-plan.md](industrial-rule-node-plan.md)。
 - 当前工业规则节点已经开始进入实现：第 1 批 `core.vision.regions-filter / regions-select-best / regions-count / regions-area-sum / regions-area-ratio / regions-bbox-metrics / regions-score-summary` 已接通；第 2 批 `core.vision.roi-create / regions-intersection-metrics / regions-coverage-check / regions-inside-check / regions-offset-check` 也已接通，已经可以先完成单帧面积、占比、覆盖率、落位和越界这条工业判定前置链。
+- 第 4 批工业判定最小闭环当前也已开始进入实现：`core.rule.threshold-check / presence-check / ok-ng-decision` 与 `core.output.result-record` 已接通，当前已经可以把面积、覆盖率、落位、越界这类前置指标进一步收成 `OK / NG` 和统一结果对象。
 - 当前代码形态仍然是“模块化单体 + 本地队列 + 本地对象存储 + 独立 deployment 子进程”。下一步重点应转向拓扑收敛、运行时硬化和平台泛化，而不是继续补 YOLOX 基础闭环缺口。
 
 ## 本轮更新（P0 + P1-8 + P3-14 + P3-15）已落地事项

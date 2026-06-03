@@ -441,6 +441,29 @@ def get_core_workflow_payload_contracts() -> tuple[WorkflowPayloadContract, ...]
             },
         ),
         WorkflowPayloadContract(
+            payload_type_id="result-record.v1",
+            display_name="Inspection Result Record",
+            transport_kind="inline-json",
+            json_schema={
+                "type": "object",
+                "properties": {
+                    "ok_ng": {
+                        "type": "string",
+                        "enum": ["OK", "NG"],
+                    },
+                    "ok": {"type": "boolean"},
+                    "reason": {"type": "string"},
+                    "metrics": {},
+                    "conditions": {},
+                    "alarm": {"type": "object"},
+                    "image": {"type": "object"},
+                    "video": {"type": "object"},
+                    "metadata": {"type": "object"},
+                },
+                "required": ["ok_ng", "ok"],
+            },
+        ),
+        WorkflowPayloadContract(
             payload_type_id="detections.v1",
             display_name="Detection Result",
             transport_kind="inline-json",
