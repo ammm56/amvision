@@ -30,6 +30,7 @@
 - 视频 workflow 的使用面当前也已经补到可直接预览和调试：`core.io.frame-window-preview` 会把 `frame-window.v1` 转成 `gallery-preview`；`core.logic.payload-to-value + core.logic.value-field-extract` 可以把 `tracks.v1 / regions.v1 / frame-window.v1 / video-ref.v1` 顺畅桥接到现有 `table-preview / value-preview`；`core.output.video-body` 则负责把最终 `video-ref.v1` 转成正式可播放 `response-body.v1`。
 - `SAM3 video-interactive-segment(memory-attention-tracker)` 当前已经把 `history_limit / prototype_momentum / attention_temperature / prototype_blend_weight / max_memory_tokens_per_entry` 正式开放到节点参数面，并提供现场样例 workflow：`docs/examples/workflows/sam3_video_memory_attention_review.template.json`。
 - 从工业场景角度看，当前视频能力已经覆盖“单帧判定、视频复盘、交互跟踪、语义区域观察”的主线；后续更值得继续补的是现场明确需要的稳定性增强、规则判定和协议回传，而不是默认把所有视频链都推到最重模式。
+- 对当前以单帧判定为主的工业现场，下一批最值得补的是 `core.vision.regions-*`、ROI/coverage、`core.rule.*`、`result-record` 和本地单图/目录输入节点；分批清单已整理到 [industrial-rule-node-plan.md](industrial-rule-node-plan.md)。
 - 当前代码形态仍然是“模块化单体 + 本地队列 + 本地对象存储 + 独立 deployment 子进程”。下一步重点应转向拓扑收敛、运行时硬化和平台泛化，而不是继续补 YOLOX 基础闭环缺口。
 
 ## 本轮更新（P0 + P1-8 + P3-14 + P3-15）已落地事项
