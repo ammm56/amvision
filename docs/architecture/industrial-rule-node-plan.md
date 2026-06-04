@@ -212,14 +212,6 @@
 - 作用：统计空洞数量
 - 现场场景：涂层空洞、填充缺口、密封不连续
 
-#### core.vision.region-gap-check
-
-- 放置位置：`core`
-- 输入：`regions.v1`
-- 输出：`boolean.v1`、`value.v1(metrics)`
-- 作用：判断是否存在明显断裂或缺口
-- 现场场景：焊缝断开、胶线断胶、长条区域中断
-
 #### core.vision.region-span-metrics
 
 - 放置位置：`core`
@@ -227,6 +219,14 @@
 - 输出：`value.v1`
 - 作用：输出主方向长度、厚度、跨度和细长度
 - 现场场景：焊缝长度、胶线厚度、涂布跨度
+
+#### core.vision.region-gap-check
+
+- 放置位置：`core`
+- 输入：`regions.v1`
+- 输出：`boolean.v1`、`value.v1(metrics)`
+- 作用：判断是否存在明显断裂或缺口
+- 现场场景：焊缝断开、胶线断胶、长条区域中断
 
 #### core.vision.region-continuity-score
 
@@ -241,8 +241,8 @@
 1. `region-component-count`
 2. `region-largest-component-ratio`
 3. `region-hole-count`
-4. `region-span-metrics`
-5. `region-gap-check`
+4. `region-gap-check`
+5. `region-span-metrics`
 6. `region-continuity-score`
 
 当前状态：
@@ -250,9 +250,9 @@
 - 已实现 `region-component-count`
 - 已实现 `region-largest-component-ratio`
 - 已实现 `region-hole-count`
-- 待实现 `region-span-metrics`
-- 待实现 `region-gap-check`
-- 待实现 `region-continuity-score`
+- 已实现 `region-gap-check`
+- 已实现 `region-span-metrics`
+- 已实现 `region-continuity-score`
 
 ## 第 4 批：工业判定 / 结果回传 / 输入接入节点
 

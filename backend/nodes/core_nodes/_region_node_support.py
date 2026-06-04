@@ -234,6 +234,7 @@ def compute_regions_integrity_metrics(
         )
         mask_area = int(np.count_nonzero(region_mask))
         component_areas = _compute_component_areas(region_mask)
+        hole_areas = _compute_hole_areas(region_mask)
         largest_component_area = component_areas[0] if component_areas else 0
         largest_component_ratio = float(largest_component_area / mask_area) if mask_area > 0 else 0.0
         metrics_items.append(
@@ -251,7 +252,48 @@ def compute_regions_integrity_metrics(
                 "component_areas": component_areas,
                 "largest_component_area": largest_component_area,
                 "largest_component_ratio": largest_component_ratio,
-                "hole_count": _compute_hole_count(region_mask),
+                "hole_count": len(hole_areas),
+                "hole_areas": hole_areas,
+            }
+        )
+    return {
+        "count": len(metrics_items),
+        "image_width": image_width,
+        "image_height": image_height,
+        "items": metrics_items,
+    }
+
+
+def compute_regions_span_metrics(
+    request: WorkflowNodeExecutionRequest,
+    *,
+    regions_payload: dict[str, object],
+) -> dict[str, object]:
+    """计算 regions.v1 的跨度、主方向和细长度等量测指标。"""
+
+    image_width, image_height = resolve_region_canvas_size(request, regions_payload=regions_payload)
+    metrics_items: list[dict[str, object]] = []
+    for region_item in regions_payload["items"]:
+        region_mask = build_region_binary_mask(
+            request,
+            region_item=region_item,
+            image_width=image_width,
+            image_height=image_height,
+        )
+        mask_area = int(np.count_nonzero(region_mask))
+        span_metrics = _compute_span_metrics(region_mask)
+        metrics_items.append(
+            {
+                "region_id": str(region_item["region_id"]),
+                "class_id": _normalize_optional_int(region_item.get("class_id")),
+                "class_name": _normalize_optional_text(region_item.get("class_name")),
+                "prompt_id": _normalize_optional_text(region_item.get("prompt_id")),
+                "track_id": _normalize_optional_text(region_item.get("track_id")),
+                "state": _normalize_optional_text(region_item.get("state")),
+                "score": float(region_item["score"]),
+                "declared_area": int(region_item["area"]),
+                "mask_area": mask_area,
+                **span_metrics,
             }
         )
     return {
@@ -478,11 +520,85 @@ def _compute_component_areas(mask_matrix: np.ndarray) -> list[int]:
 def _compute_hole_count(mask_matrix: np.ndarray) -> int:
     """计算二值前景中的空洞数量。"""
 
+    return len(_compute_hole_areas(mask_matrix))
+
+
+def _compute_hole_areas(mask_matrix: np.ndarray) -> list[int]:
+    """计算空洞面积列表，按面积从大到小排序。"""
+
     binary_mask = (mask_matrix > 0).astype(np.uint8)
     padded_mask = np.pad(binary_mask, pad_width=1, mode="constant", constant_values=0)
     background_mask = (padded_mask == 0).astype(np.uint8)
-    label_count, _labels = cv2.connectedComponents(background_mask, connectivity=8)
-    return max(0, int(label_count) - 2)
+    label_count, labels, stats, _centroids = cv2.connectedComponentsWithStats(background_mask, connectivity=8)
+    hole_areas = [
+        int(stats[label_index, cv2.CC_STAT_AREA])
+        for label_index in range(1, label_count)
+        if int(stats[label_index, cv2.CC_STAT_AREA]) > 0 and not _touches_outer_border(labels == label_index)
+    ]
+    hole_areas.sort(reverse=True)
+    return hole_areas
+
+
+def _touches_outer_border(label_mask: np.ndarray) -> bool:
+    """判断一个背景连通域是否接触外边界。"""
+
+    return bool(
+        np.any(label_mask[0, :])
+        or np.any(label_mask[-1, :])
+        or np.any(label_mask[:, 0])
+        or np.any(label_mask[:, -1])
+    )
+
+
+def _compute_span_metrics(mask_matrix: np.ndarray) -> dict[str, object]:
+    """计算单个二值区域的跨度、方向和细长度。"""
+
+    foreground_points = np.column_stack(np.nonzero(mask_matrix > 0))
+    if foreground_points.size <= 0:
+        return {
+            "x_span_pixels": 0,
+            "y_span_pixels": 0,
+            "long_span_pixels": 0.0,
+            "short_span_pixels": 0.0,
+            "elongation_ratio": None,
+            "orientation_deg": None,
+            "axis_aligned_fill_ratio": None,
+        }
+    y_values = foreground_points[:, 0]
+    x_values = foreground_points[:, 1]
+    x_span_pixels = int(np.max(x_values) - np.min(x_values) + 1)
+    y_span_pixels = int(np.max(y_values) - np.min(y_values) + 1)
+    if foreground_points.shape[0] == 1:
+        long_span_pixels = 1.0
+        short_span_pixels = 1.0
+        orientation_deg = 0.0
+    else:
+        point_cloud = np.column_stack((x_values.astype(np.float32), y_values.astype(np.float32)))
+        _center, size, angle = cv2.minAreaRect(point_cloud)
+        width_value = max(1.0, float(size[0]))
+        height_value = max(1.0, float(size[1]))
+        if width_value >= height_value:
+            long_span_pixels = width_value
+            short_span_pixels = height_value
+            orientation_deg = float(angle)
+        else:
+            long_span_pixels = height_value
+            short_span_pixels = width_value
+            orientation_deg = float(angle + 90.0)
+        orientation_deg = float(orientation_deg % 180.0)
+        if orientation_deg >= 90.0:
+            orientation_deg -= 180.0
+    axis_aligned_area = max(1, x_span_pixels * y_span_pixels)
+    elongation_ratio = float(long_span_pixels / short_span_pixels) if short_span_pixels > 0 else None
+    return {
+        "x_span_pixels": x_span_pixels,
+        "y_span_pixels": y_span_pixels,
+        "long_span_pixels": float(long_span_pixels),
+        "short_span_pixels": float(short_span_pixels),
+        "elongation_ratio": elongation_ratio,
+        "orientation_deg": orientation_deg,
+        "axis_aligned_fill_ratio": float(int(foreground_points.shape[0]) / axis_aligned_area),
+    }
 
 
 def _normalize_optional_int(raw_value: object) -> int | None:
@@ -512,6 +628,7 @@ __all__ = [
     "build_regions_payload",
     "build_score_summary",
     "compute_regions_integrity_metrics",
+    "compute_regions_span_metrics",
     "compute_region_bbox_metrics",
     "derive_region_canvas_size",
     "filter_region_items",
