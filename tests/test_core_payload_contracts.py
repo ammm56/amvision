@@ -50,3 +50,7 @@ def test_core_payload_contracts_include_image_base64_and_local_buffer_image_refs
     result_record_contract = payload_contracts["result-record.v1"]
     assert result_record_contract.transport_kind == "inline-json"
     assert result_record_contract.json_schema["required"] == ["ok_ng", "ok"]
+
+    alarm_record_contract = payload_contracts["alarm-record.v1"]
+    assert alarm_record_contract.transport_kind == "inline-json"
+    assert alarm_record_contract.json_schema["required"] == ["active", "level", "message"]

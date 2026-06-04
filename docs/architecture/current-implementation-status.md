@@ -33,6 +33,8 @@
 - 对当前以单帧判定为主的工业现场，下一批最值得补的是 `core.vision.regions-*`、ROI/coverage、`core.rule.*`、`result-record` 和本地单图/目录输入节点；分批清单已整理到 [industrial-rule-node-plan.md](industrial-rule-node-plan.md)。
 - 当前工业规则节点已经开始进入实现：第 1 批 `core.vision.regions-filter / regions-select-best / regions-count / regions-area-sum / regions-area-ratio / regions-bbox-metrics / regions-score-summary` 已接通；第 2 批 `core.vision.roi-create / regions-intersection-metrics / regions-coverage-check / regions-inside-check / regions-offset-check` 也已接通，已经可以先完成单帧面积、占比、覆盖率、落位和越界这条工业判定前置链。
 - 第 4 批工业判定最小闭环当前也已开始进入实现：`core.rule.threshold-check / presence-check / ok-ng-decision` 与 `core.output.result-record` 已接通，当前已经可以把面积、覆盖率、落位、越界这类前置指标进一步收成 `OK / NG` 和统一结果对象。
+- 本地单帧工业输入输出闭环当前也已开始接通：`core.io.image-load-local / directory-scan` 与 `core.output.json-save-local / http-post` 已补齐，当前已经可以把“本地图像输入 -> 区域规则 -> OK/NG -> 本地 JSON 落盘或 HTTP 回传”这条现场最常见单帧判定链先闭起来。
+- 第 4 批工业规则节点当前又往前收了一层：`core.rule.range-check`、`core.output.alarm-record`、`core.output.csv-append-local`、`core.io.image-list-local`、`core.io.directory-batch-window` 已补齐，当前已经可以把“目录扫描 -> 批次切片 -> 本地图像批量载入 -> 规则判定 -> OK/NG / 报警对象 -> JSON / CSV / HTTP 回传”这条更贴现场的小批量单帧链先收起来。
 - 当前代码形态仍然是“模块化单体 + 本地队列 + 本地对象存储 + 独立 deployment 子进程”。下一步重点应转向拓扑收敛、运行时硬化和平台泛化，而不是继续补 YOLOX 基础闭环缺口。
 
 ## 本轮更新（P0 + P1-8 + P3-14 + P3-15）已落地事项

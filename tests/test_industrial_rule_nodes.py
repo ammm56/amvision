@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 from backend.nodes.core_catalog import get_core_workflow_payload_contracts
+from backend.nodes.core_nodes.alarm_record import _alarm_record_handler
 from backend.nodes.core_nodes.ok_ng_decision import _ok_ng_decision_handler
 from backend.nodes.core_nodes.presence_check import _presence_check_handler
+from backend.nodes.core_nodes.range_check import _range_check_handler
 from backend.nodes.core_nodes.result_record import _result_record_handler
 from backend.nodes.core_nodes.threshold_check import _threshold_check_handler
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
@@ -16,6 +18,7 @@ def test_core_catalog_contains_result_record_payload_contract() -> None:
     payload_type_ids = {contract.payload_type_id for contract in get_core_workflow_payload_contracts()}
 
     assert "result-record.v1" in payload_type_ids
+    assert "alarm-record.v1" in payload_type_ids
 
 
 def test_threshold_check_handler_compares_numeric_value() -> None:
@@ -128,3 +131,46 @@ def test_result_record_handler_builds_result_payload() -> None:
     assert result_payload["metrics"]["area_ratio"] == 0.18
     assert result_payload["metadata"]["station_id"] == "line-a-01"
     assert result_payload["image"]["transport_kind"] == "memory"
+
+
+def test_range_check_handler_validates_numeric_range() -> None:
+    """验证范围判断节点会输出布尔结果和范围指标。"""
+
+    output = _range_check_handler(
+        WorkflowNodeExecutionRequest(
+            node_id="range-check",
+            node_definition=object(),
+            parameters={"min_value": 0.2, "max_value": 0.5},
+            input_values={"value": {"value": 0.33}},
+            execution_metadata={},
+        )
+    )
+
+    assert output["result"]["value"] is True
+    assert output["metrics"]["value"]["min_value"] == 0.2
+    assert output["metrics"]["value"]["max_value"] == 0.5
+
+
+def test_alarm_record_handler_builds_alarm_payload() -> None:
+    """验证报警对象节点会输出统一 alarm-record.v1。"""
+
+    output = _alarm_record_handler(
+        WorkflowNodeExecutionRequest(
+            node_id="alarm-record",
+            node_definition=object(),
+            parameters={"alarm_level": "critical", "alarm_code": "GLUE-LOW"},
+            input_values={
+                "active": {"value": True},
+                "message": {"value": "coverage below threshold"},
+                "metrics": {"value": {"coverage_ratio": 0.12}},
+            },
+            execution_metadata={},
+        )
+    )
+
+    alarm_payload = output["alarm"]
+    assert alarm_payload["active"] is True
+    assert alarm_payload["level"] == "critical"
+    assert alarm_payload["code"] == "GLUE-LOW"
+    assert alarm_payload["message"] == "coverage below threshold"
+    assert alarm_payload["metrics"]["coverage_ratio"] == 0.12

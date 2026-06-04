@@ -464,6 +464,28 @@ def get_core_workflow_payload_contracts() -> tuple[WorkflowPayloadContract, ...]
             },
         ),
         WorkflowPayloadContract(
+            payload_type_id="alarm-record.v1",
+            display_name="Inspection Alarm Record",
+            transport_kind="inline-json",
+            json_schema={
+                "type": "object",
+                "properties": {
+                    "active": {"type": "boolean"},
+                    "level": {
+                        "type": "string",
+                        "enum": ["info", "warning", "error", "critical"],
+                    },
+                    "code": {"type": "string"},
+                    "message": {"type": "string"},
+                    "metrics": {},
+                    "metadata": {"type": "object"},
+                    "image": {"type": "object"},
+                    "video": {"type": "object"},
+                },
+                "required": ["active", "level", "message"],
+            },
+        ),
+        WorkflowPayloadContract(
             payload_type_id="detections.v1",
             display_name="Detection Result",
             transport_kind="inline-json",
