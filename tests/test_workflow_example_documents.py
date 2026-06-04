@@ -206,6 +206,103 @@ def test_sam3_video_memory_attention_review_example_documents_are_valid() -> Non
     ]
 
 
+@pytest.mark.parametrize(
+    ("example_name", "expected_example_kind", "expected_node_ids", "expected_binding_ids"),
+    [
+        (
+            "industrial_single_frame_sealant_quality_gate",
+            "industrial-single-frame-sealant-quality-gate",
+            [
+                "request_image_path_input",
+                "load_image",
+                "filter_regions",
+                "area_ratio",
+                "continuity_score",
+                "gap_check",
+                "presence_check",
+                "area_ratio_check",
+                "metadata_object",
+                "metrics_object",
+                "process_decision",
+                "alarm_condition",
+                "save_result_json",
+                "append_result_csv",
+            ],
+            [
+                "request_image_path",
+                "request_regions",
+                "inspection_result",
+                "inspection_alarm",
+                "decision_summary",
+                "json_summary",
+                "csv_summary",
+            ],
+        ),
+        (
+            "industrial_single_frame_glue_roi_callback",
+            "industrial-single-frame-glue-roi-callback",
+            [
+                "request_image_path_input",
+                "load_image",
+                "filter_regions",
+                "create_roi",
+                "coverage_check",
+                "offset_check",
+                "intersection_metrics",
+                "metadata_object",
+                "metrics_object",
+                "process_decision",
+                "alarm_condition",
+                "save_result_json",
+                "append_result_csv",
+                "callback_result",
+            ],
+            [
+                "request_image_path",
+                "request_regions",
+                "inspection_result",
+                "inspection_alarm",
+                "decision_summary",
+                "json_summary",
+                "csv_summary",
+                "callback_response",
+            ],
+        ),
+    ],
+)
+def test_industrial_single_frame_example_documents_are_valid(
+    example_name: str,
+    expected_example_kind: str,
+    expected_node_ids: list[str],
+    expected_binding_ids: list[str],
+) -> None:
+    """验证工业单帧规则样例模板与应用可以通过当前合同校验。"""
+
+    example_dir = Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
+    template_path = example_dir / f"{example_name}.template.json"
+    application_path = example_dir / f"{example_name}.application.json"
+    template = WorkflowGraphTemplate.model_validate(json.loads(template_path.read_text(encoding="utf-8")))
+    application = FlowApplication.model_validate(json.loads(application_path.read_text(encoding="utf-8")))
+
+    registry = NodeCatalogRegistry()
+    validate_workflow_graph_template(
+        template=template,
+        node_definitions=registry.get_workflow_node_definitions(),
+    )
+    validate_flow_application_bindings(template=template, application=application)
+
+    assert [node.node_id for node in template.nodes] == expected_node_ids
+    assert template.metadata["example_kind"] == expected_example_kind
+    assert template.metadata["focus"] == "single-frame-industrial-rule-chain"
+    assert template.template_inputs[0].input_id == "request_image_path"
+    assert template.template_inputs[0].payload_type_id == "value.v1"
+    assert template.template_inputs[1].input_id == "request_regions"
+    assert template.template_inputs[1].payload_type_id == "regions.v1"
+    assert application.template_ref.source_uri == f"docs/examples/workflows/{example_name}.template.json"
+    assert application.runtime_mode == "python-json-workflow"
+    assert [binding.binding_id for binding in application.bindings] == expected_binding_ids
+
+
 def test_opencv_process_save_image_example_documents_are_valid() -> None:
     """验证 OpenCV 处理并保存图片示例模板与应用可以通过当前合同校验。"""
 

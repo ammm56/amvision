@@ -61,3 +61,88 @@ ZeroMQ TriggerSource 示例不把机器相关的 `path`、`offset` 和 `broker_e
 - 复杂遮挡、长窗口、大位移、多目标复盘，直接用这套样例
 - 简单任务先把 `tracking_mode` 改成 `memory-prototype-state`
 - 更轻场景再继续降到 `stateful-mask-propagation` 或 `shared-prompts-across-window`
+
+## 工业单帧规则样例
+
+- `industrial_single_frame_sealant_quality_gate.template.json`
+- `industrial_single_frame_sealant_quality_gate.application.json`
+- `industrial_single_frame_glue_roi_callback.template.json`
+- `industrial_single_frame_glue_roi_callback.application.json`
+
+这两组样例都聚焦“单图输入 -> 规则判定 -> `process-decision` -> 结果回传”，不把相机、PLC 或特定模型耦合进模板本体。默认假设上游模型或外部系统已经产出 `regions.v1`，当前模板专注于工业规则和现场结果链。
+
+### industrial_single_frame_sealant_quality_gate
+
+链路固定为：
+
+- `template-input.value`
+- `image-load-local`
+- `regions-filter`
+- `regions-area-ratio`
+- `region-continuity-score`
+- `region-gap-check`
+- `presence-check`
+- `range-check`
+- `process-decision`
+- `alarm-condition`
+- `json-save-local`
+- `csv-append-local`
+
+输入约定：
+
+- `request_image_path`：`value.v1`
+  - 示例：`{"value":"D:/cases/line-a/frame-001.png"}`
+- `request_regions`：`regions.v1`
+  - 由上游检测/分割节点或外部系统提供
+
+输出约定：
+
+- `inspection_result`：`result-record.v1`
+- `inspection_alarm`：`alarm-record.v1`
+- `decision_summary`：`value.v1`
+- `json_summary`：`value.v1`
+- `csv_summary`：`value.v1`
+
+适用场景：
+
+- 密封胶/胶线单帧质量门
+- 需要同时看数量、面积占比和连续性
+- 现场先做本地 JSON/CSV 归档，不急着接外部回调
+
+### industrial_single_frame_glue_roi_callback
+
+链路固定为：
+
+- `template-input.value`
+- `image-load-local`
+- `regions-filter`
+- `roi-create`
+- `regions-coverage-check`
+- `regions-offset-check`
+- `regions-intersection-metrics`
+- `process-decision`
+- `alarm-condition`
+- `json-save-local`
+- `csv-append-local`
+- `http-post`
+
+输入约定：
+
+- `request_image_path`：`value.v1`
+  - 示例：`{"value":"D:/cases/line-b/frame-021.png"}`
+- `request_regions`：`regions.v1`
+  - 由上游检测/分割节点或外部系统提供
+
+输出约定：
+
+- `inspection_result`：`result-record.v1`
+- `inspection_alarm`：`alarm-record.v1`
+- `decision_summary`：`value.v1`
+- `json_summary`：`value.v1`
+- `csv_summary`：`value.v1`
+- `callback_response`：`value.v1`
+
+注意事项：
+
+- 模板里的 `roi-create` 默认写的是固定工位 ROI，现场落地时通常需要先按设备画面尺寸调整 `bbox_xyxy`
+- `http-post.url` 当前是示例回调地址，导入后应先改成现场真实接口，再执行
