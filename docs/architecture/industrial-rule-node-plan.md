@@ -10,11 +10,12 @@
 
 - 第 1 批 `core.vision.regions-*` 已接通
 - 第 2 批 `ROI / coverage / overlap` 当前已接通 `roi-create / regions-intersection-metrics / regions-coverage-check / regions-inside-check / regions-offset-check`
-- 第 3 批当前已先接通 `region-component-count / region-largest-component-ratio / region-hole-count`
-- 第 4 批最小闭环当前已接通 `threshold-check / presence-check / ok-ng-decision / result-record`
-- 第 4 批里的本地结果回传与输入接入当前已继续接通 `json-save-local / http-post / image-load-local / directory-scan`
-- 第 4 批当前已进一步接通 `range-check / alarm-record / csv-append-local / image-list-local / directory-batch-window`
-- 第 3 批里的 `region-gap-check / region-span-metrics / region-continuity-score` 与第 4 批剩余结果回传/输入接入节点仍是后续主线
+- 第 3 批可解释完整性指标首轮已全部接通：`region-component-count / region-largest-component-ratio / region-hole-count / region-gap-check / region-span-metrics / region-continuity-score`
+- 第 4 批工业判定节点当前已接通 `threshold-check / range-check / presence-check / ok-ng-decision / alarm-condition / process-decision`
+- 第 4 批结果回传节点当前已接通 `result-record / alarm-record / json-save-local / csv-append-local / http-post`
+- 第 4 批输入接入节点当前已接通 `image-load-local / image-list-local / directory-scan / directory-batch-window`
+- 工业单帧规则样例当前已补到 `docs/examples/workflows/industrial_single_frame_sealant_quality_gate.*` 与 `industrial_single_frame_glue_roi_callback.*`
+- 当前仍待收口的主要缺口已经不再是大块能力面，而是少数残留节点、样例闭环和现场易用性优化
 
 ## 适用边界
 
@@ -412,15 +413,13 @@
 
 ## 当前优先级判断
 
-按工业单帧判定真实价值排序，当前最值得先落地的是：
+按工业单帧判定真实价值排序，当前最值得继续收口的是：
 
-1. `regions-filter / regions-count / regions-area-sum / regions-select-best`
-2. `roi-create / regions-intersection-metrics / coverage / inside / offset`
-3. `threshold-check / presence-check / ok-ng-decision / result-record`
-4. `image-load-local / directory-scan`
-5. `component / hole / gap / continuity`
-6. `json / csv / http / webhook` 结果回传
-7. 更重的视频语义稳定增强
+1. 第 4 批剩余缺口收口，优先处理 `webhook-post` 是否保留为独立节点
+2. 工业单帧 workflow 样例继续往“更接近现场使用”收一层，例如补一条带上游 `regions.v1` 产出说明或显式 runtime 闭环
+3. `roi-create`、批量输入和结果回传的参数面继续做易用性优化，优先补动态 ROI、批次推进和结果字段规范化
+4. 继续补少量重点测试和文档，不把耗时长链放入默认测试
+5. 更重的视频语义稳定增强继续保持后置，不作为当前工业单帧主线优先项
 
 ## 当前明确不优先的方向
 
@@ -429,9 +428,16 @@
 - 不优先继续深挖 `video-semantic` 时序增强
 - 不把相机、RTSP、采集卡、PLC、MES 专有接入直接塞进 `core`
 
+## 当前剩余缺口
+
+- `core.output.webhook-post` 当前仍只存在于规划中，仓库里还没有对应节点实现；需要决定是保留为 `http-post` 的轻包装节点，还是直接从规划里移除，统一使用 `http-post`
+- 当前工业单帧样例默认假设上游已经提供 `regions.v1`，还没有补一条“本地图像输入 + 上游模型结果接入说明 + 规则判定 + 结果回传”的更完整现场闭环说明
+- `roi-create` 当前以固定参数创建 ROI 为主，还没有把运行时 `value.v1` 动态 ROI 输入收成正式能力
+- 当前批量输入链已经有 `directory-scan -> directory-batch-window -> image-list-local`，但还没有补更贴现场的批次推进约定与使用说明
+
 ## 下一步执行顺序
 
-1. 先完成第 1 批 `core.vision.regions-*`
-2. 再进入第 2 批 ROI / coverage / overlap
-3. 然后补第 4 批里最小可用的 `core.rule.* + result-record + image-load-local`
-4. 最后再回到连续性与完整性指标
+1. 先决定并收口 `webhook-post`，避免第 4 批在规划上一直处于“看起来未完成”的状态
+2. 再补一条更贴现场的工业单帧闭环说明或 workflow 样例，把上游 `regions.v1` 来源和下游 JSON / CSV / HTTP 回传链说明清楚
+3. 然后收 `roi-create` 的动态输入和批量输入使用面，让目录扫描和 ROI 调整更顺手
+4. 最后再看是否需要继续扩更多工业规则原子节点，而不是直接跳去更重的视频能力
