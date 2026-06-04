@@ -10,10 +10,11 @@
 
 - 第 1 批 `core.vision.regions-*` 已接通
 - 第 2 批 `ROI / coverage / overlap` 当前已接通 `roi-create / regions-intersection-metrics / regions-coverage-check / regions-inside-check / regions-offset-check`
+- 第 3 批当前已先接通 `region-component-count / region-largest-component-ratio / region-hole-count`
 - 第 4 批最小闭环当前已接通 `threshold-check / presence-check / ok-ng-decision / result-record`
 - 第 4 批里的本地结果回传与输入接入当前已继续接通 `json-save-local / http-post / image-load-local / directory-scan`
 - 第 4 批当前已进一步接通 `range-check / alarm-record / csv-append-local / image-list-local / directory-batch-window`
-- 第 3 批连续性原子指标与第 4 批剩余结果回传/输入接入节点仍是后续主线
+- 第 3 批里的 `region-gap-check / region-span-metrics / region-continuity-score` 与第 4 批剩余结果回传/输入接入节点仍是后续主线
 
 ## 适用边界
 
@@ -243,6 +244,15 @@
 4. `region-span-metrics`
 5. `region-gap-check`
 6. `region-continuity-score`
+
+当前状态：
+
+- 已实现 `region-component-count`
+- 已实现 `region-largest-component-ratio`
+- 已实现 `region-hole-count`
+- 待实现 `region-span-metrics`
+- 待实现 `region-gap-check`
+- 待实现 `region-continuity-score`
 
 ## 第 4 批：工业判定 / 结果回传 / 输入接入节点
 
