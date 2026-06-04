@@ -395,6 +395,9 @@
   - `presence-check`
   - `ok-ng-decision`
   - `result-record`
+- 工业语义封装进一步补齐：
+  - `alarm-condition`
+  - `process-decision`
 - 本地输入与现场回传闭环：
   - `image-load-local`
   - `directory-scan`

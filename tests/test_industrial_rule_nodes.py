@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 from backend.nodes.core_catalog import get_core_workflow_payload_contracts
+from backend.nodes.core_nodes.alarm_condition import _alarm_condition_handler
 from backend.nodes.core_nodes.alarm_record import _alarm_record_handler
 from backend.nodes.core_nodes.ok_ng_decision import _ok_ng_decision_handler
 from backend.nodes.core_nodes.presence_check import _presence_check_handler
+from backend.nodes.core_nodes.process_decision import _process_decision_handler
 from backend.nodes.core_nodes.range_check import _range_check_handler
 from backend.nodes.core_nodes.result_record import _result_record_handler
 from backend.nodes.core_nodes.threshold_check import _threshold_check_handler
@@ -113,6 +115,11 @@ def test_result_record_handler_builds_result_payload() -> None:
                 "conditions": {"value": [{"name": "coverage", "passed": True}]},
                 "reason": {"value": "coverage pass"},
                 "metadata": {"value": {"station_id": "line-a-01"}},
+                "alarm": {
+                    "active": False,
+                    "level": "info",
+                    "message": "inspection normal",
+                },
                 "image": {
                     "transport_kind": "memory",
                     "image_handle": "image-a",
@@ -130,6 +137,7 @@ def test_result_record_handler_builds_result_payload() -> None:
     assert result_payload["ok"] is True
     assert result_payload["metrics"]["area_ratio"] == 0.18
     assert result_payload["metadata"]["station_id"] == "line-a-01"
+    assert result_payload["alarm"]["active"] is False
     assert result_payload["image"]["transport_kind"] == "memory"
 
 
@@ -174,3 +182,69 @@ def test_alarm_record_handler_builds_alarm_payload() -> None:
     assert alarm_payload["code"] == "GLUE-LOW"
     assert alarm_payload["message"] == "coverage below threshold"
     assert alarm_payload["metrics"]["coverage_ratio"] == 0.12
+
+
+def test_alarm_condition_handler_builds_alarm_from_failed_rule() -> None:
+    """验证报警条件节点可把规则失败直接收成报警对象。"""
+
+    output = _alarm_condition_handler(
+        WorkflowNodeExecutionRequest(
+            node_id="alarm-condition",
+            node_definition=object(),
+            parameters={
+                "trigger_when": "condition-false",
+                "alarm_level": "error",
+                "alarm_code": "COVERAGE-LOW",
+                "alarm_message": "coverage below threshold",
+                "clear_message": "coverage restored",
+            },
+            input_values={
+                "condition": {"value": False},
+                "metrics": {"value": {"coverage_ratio": 0.12}},
+            },
+            execution_metadata={},
+        )
+    )
+
+    assert output["active"]["value"] is True
+    assert output["alarm"]["active"] is True
+    assert output["alarm"]["level"] == "error"
+    assert output["alarm"]["code"] == "COVERAGE-LOW"
+    assert output["alarm"]["message"] == "coverage below threshold"
+
+
+def test_process_decision_handler_builds_result_record_from_conditions() -> None:
+    """验证工艺判定节点可直接把多路条件收成结果对象。"""
+
+    output = _process_decision_handler(
+        WorkflowNodeExecutionRequest(
+            node_id="process-decision",
+            node_definition=object(),
+            parameters={
+                "mode": "all",
+                "condition_names": ["coverage", "continuity"],
+                "ng_reason": "continuity failed",
+            },
+            input_values={
+                "conditions": ({"value": True}, {"value": False}),
+                "metrics": {"value": {"coverage_ratio": 0.91, "continuity_score": 0.42}},
+                "alarm": {
+                    "active": True,
+                    "level": "warning",
+                    "message": "continuity below target",
+                    "code": "CONT-LOW",
+                },
+            },
+            execution_metadata={},
+        )
+    )
+
+    result_payload = output["result"]
+    assert output["decision"]["value"] == "NG"
+    assert output["ok"]["value"] is False
+    assert result_payload["ok_ng"] == "NG"
+    assert result_payload["reason"] == "continuity failed"
+    assert result_payload["conditions"][0]["name"] == "coverage"
+    assert result_payload["conditions"][1]["passed"] is False
+    assert result_payload["alarm"]["code"] == "CONT-LOW"
+    assert output["summary"]["value"]["failed_condition_names"] == ["continuity"]
