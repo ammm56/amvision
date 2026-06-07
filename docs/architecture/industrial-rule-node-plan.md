@@ -14,7 +14,8 @@
 - 第 4 批工业判定节点当前已接通 `threshold-check / range-check / presence-check / ok-ng-decision / alarm-condition / process-decision`
 - 第 4 批结果回传节点当前已接通 `result-record / alarm-record / json-save-local / csv-append-local / http-post`
 - 第 4 批输入接入节点当前已接通 `image-load-local / image-list-local / directory-scan / directory-batch-window`
-- 工业单帧规则样例当前已补到 `docs/examples/workflows/industrial_single_frame_sealant_quality_gate.*` 与 `industrial_single_frame_glue_roi_callback.*`
+- `core.vision.detections-to-regions` 当前已接通，可把 deployment detection 或其他 `detections.v1` 结果桥接进现有工业规则链
+- 工业单帧规则样例当前已补到 `docs/examples/workflows/industrial_single_frame_sealant_quality_gate.*`、`industrial_single_frame_glue_roi_callback.*` 与 `industrial_single_frame_yolox_position_gate.*`
 - 当前仍待收口的主要缺口已经不再是大块能力面，而是少数残留节点、样例闭环和现场易用性优化
 
 ## 适用边界
@@ -337,15 +338,8 @@
 
 - 放置位置：`core`
 - 输入：`result-record.v1 / alarm-record.v1 / value.v1`
-- 输出：`http-response.v1` 或 `value.v1(summary)`
+- 输出：`value.v1(summary)`
 - 作用：通用 HTTP 结果回传
-
-#### core.output.webhook-post
-
-- 放置位置：`core`
-- 输入：`result-record.v1 / alarm-record.v1 / value.v1`
-- 输出：`http-response.v1` 或 `value.v1(summary)`
-- 作用：Webhook 回调
 
 ### 输入接入节点
 
@@ -415,11 +409,10 @@
 
 按工业单帧判定真实价值排序，当前最值得继续收口的是：
 
-1. 第 4 批剩余缺口收口，优先处理 `webhook-post` 是否保留为独立节点
-2. 工业单帧 workflow 样例继续往“更接近现场使用”收一层，例如补一条带上游 `regions.v1` 产出说明或显式 runtime 闭环
-3. `roi-create`、批量输入和结果回传的参数面继续做易用性优化，优先补动态 ROI、批次推进和结果字段规范化
-4. 继续补少量重点测试和文档，不把耗时长链放入默认测试
-5. 更重的视频语义稳定增强继续保持后置，不作为当前工业单帧主线优先项
+1. 工业单帧 workflow 样例继续往“更接近现场使用”收一层，例如补更多换型、多 ROI 或小批量现场模板
+2. `roi-create`、批量输入和结果回传的参数面继续做易用性优化，优先补多边形 ROI 样例、批次推进和结果字段规范化
+3. 继续补少量重点测试和文档，不把耗时长链放入默认测试
+4. 更重的视频语义稳定增强继续保持后置，不作为当前工业单帧主线优先项
 
 ## 当前明确不优先的方向
 
@@ -430,14 +423,14 @@
 
 ## 当前剩余缺口
 
-- `core.output.webhook-post` 当前仍只存在于规划中，仓库里还没有对应节点实现；需要决定是保留为 `http-post` 的轻包装节点，还是直接从规划里移除，统一使用 `http-post`
-- 当前工业单帧样例默认假设上游已经提供 `regions.v1`，还没有补一条“本地图像输入 + 上游模型结果接入说明 + 规则判定 + 结果回传”的更完整现场闭环说明
-- `roi-create` 当前以固定参数创建 ROI 为主，还没有把运行时 `value.v1` 动态 ROI 输入收成正式能力
+- 当前工业单帧样例虽然已经有 checked-in 的“YOLOX detection -> detections-to-regions -> 工业规则链”模板，但还没有覆盖更多模型来源和更多规则组合
+- `roi-create` 虽然已支持运行时 `value.v1` 动态 ROI，但当前仓库里还没有覆盖更多多边形 ROI 和现场换型配置的样例
 - 当前批量输入链已经有 `directory-scan -> directory-batch-window -> image-list-local`，但还没有补更贴现场的批次推进约定与使用说明
+- 当前 detection 结果虽然已可通过 `core.vision.detections-to-regions` 进入规则链，但还没有继续往前补更细的 detection 调试与适配辅助节点
 
 ## 下一步执行顺序
 
-1. 先决定并收口 `webhook-post`，避免第 4 批在规划上一直处于“看起来未完成”的状态
-2. 再补一条更贴现场的工业单帧闭环说明或 workflow 样例，把上游 `regions.v1` 来源和下游 JSON / CSV / HTTP 回传链说明清楚
-3. 然后收 `roi-create` 的动态输入和批量输入使用面，让目录扫描和 ROI 调整更顺手
+1. 先继续收 `roi-create` 的多边形 ROI / 换型配置样例和批量输入使用面，让目录扫描和 ROI 调整更顺手
+2. 再补目录批处理更贴现场的推进约定和去重约定，以及是否需要更多 detection 调试与适配辅助节点
+3. 然后再看是否需要补 `detections.v1` 的过滤、选择或调试节点，继续把 detection 到规则链的使用面打磨顺
 4. 最后再看是否需要继续扩更多工业规则原子节点，而不是直接跳去更重的视频能力

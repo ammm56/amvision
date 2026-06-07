@@ -1,13 +1,18 @@
 {
   "format_id": "amvision.workflow-graph-template.v1",
-  "template_id": "industrial-single-frame-glue-roi-callback-template",
-  "template_version": "1.1.0",
-  "display_name": "Industrial Single Frame Glue ROI Callback",
-  "description": "面向工业单帧现场的 ROI 规则样例。输入本地图像路径、上游 regions.v1，以及可选的运行时 ROI 配置；执行固定或动态 ROI 覆盖率和偏移检查，最后输出 OK/NG、报警对象、本地归档摘要和 HTTP 回传摘要。",
+  "template_id": "industrial-single-frame-yolox-position-gate-template",
+  "template_version": "1.0.0",
+  "display_name": "Industrial Single Frame YOLOX Position Gate",
+  "description": "面向工业单帧现场的检测到规则闭环样例。输入本地图像路径、已发布 deployment 请求，以及可选的运行时 ROI；先执行 YOLOX 检测，再把 detections.v1 转成 regions.v1，最后完成存在性、落位和偏移门判定，并输出结构化结果与本地归档摘要。",
   "nodes": [
     {
       "node_id": "request_image_path_input",
       "node_type_id": "core.io.template-input.value",
+      "parameters": {}
+    },
+    {
+      "node_id": "deployment_request_input",
+      "node_type_id": "core.io.template-input.object",
       "parameters": {}
     },
     {
@@ -16,13 +21,38 @@
       "parameters": {}
     },
     {
+      "node_id": "detect",
+      "node_type_id": "core.model.yolox-detection",
+      "parameters": {
+        "auto_start_process": true,
+        "score_threshold": 0.4,
+        "save_result_image": false,
+        "return_preview_image_base64": false
+      }
+    },
+    {
+      "node_id": "detections_to_regions",
+      "node_type_id": "core.vision.detections-to-regions",
+      "parameters": {
+        "region_id_prefix": "det",
+        "class_id_default": -1
+      }
+    },
+    {
       "node_id": "filter_regions",
       "node_type_id": "core.vision.regions-filter",
       "parameters": {
         "class_names": [
-          "glue"
+          "part"
         ],
-        "min_score": 0.6
+        "min_score": 0.55
+      }
+    },
+    {
+      "node_id": "select_best_region",
+      "node_type_id": "core.vision.regions-select-best",
+      "parameters": {
+        "strategy": "largest-area"
       }
     },
     {
@@ -30,21 +60,22 @@
       "node_type_id": "core.vision.roi-create",
       "parameters": {
         "roi_kind": "bbox",
-        "roi_id": "glue-roi",
-        "display_name": "Glue ROI",
+        "roi_id": "position-roi",
+        "display_name": "Position ROI",
         "bbox_xyxy": [
-          200,
-          150,
-          1080,
-          620
+          220,
+          140,
+          1040,
+          640
         ]
       }
     },
     {
-      "node_id": "coverage_check",
-      "node_type_id": "core.vision.regions-coverage-check",
+      "node_id": "inside_check",
+      "node_type_id": "core.vision.regions-inside-check",
       "parameters": {
-        "min_ratio": 0.9
+        "match_mode": "all",
+        "min_inside_ratio": 0.95
       }
     },
     {
@@ -52,24 +83,28 @@
       "node_type_id": "core.vision.regions-offset-check",
       "parameters": {
         "strategy": "largest-area",
-        "max_distance_pixels": 18.0
+        "max_distance_pixels": 28.0
       }
     },
     {
-      "node_id": "intersection_metrics",
-      "node_type_id": "core.vision.regions-intersection-metrics",
-      "parameters": {}
+      "node_id": "presence_check",
+      "node_type_id": "core.rule.presence-check",
+      "parameters": {
+        "min_count": 1,
+        "max_count": 1
+      }
     },
     {
       "node_id": "metadata_object",
       "node_type_id": "core.logic.object-create",
       "parameters": {
         "keys": [
-          "image_path"
+          "image_path",
+          "deployment_request"
         ],
         "fields": {
-          "inspection_kind": "glue-roi-callback",
-          "station_id": "line-b-02"
+          "inspection_kind": "yolox-position-gate",
+          "station_id": "line-c-01"
         }
       }
     },
@@ -78,9 +113,11 @@
       "node_type_id": "core.logic.object-create",
       "parameters": {
         "keys": [
-          "intersection_metrics",
+          "convert_summary",
+          "filter_summary",
+          "inside_metrics",
           "offset_metrics",
-          "filter_summary"
+          "presence_metrics"
         ]
       }
     },
@@ -90,11 +127,12 @@
       "parameters": {
         "mode": "all",
         "condition_names": [
-          "coverage",
+          "presence",
+          "inside",
           "offset"
         ],
-        "ok_reason": "glue roi process gate passed",
-        "ng_reason": "glue roi process gate failed"
+        "ok_reason": "yolox position gate passed",
+        "ng_reason": "yolox position gate failed"
       }
     },
     {
@@ -103,16 +141,16 @@
       "parameters": {
         "trigger_when": "condition-false",
         "alarm_level": "error",
-        "alarm_code": "GLUE-ROI-NG",
-        "alarm_message": "glue roi process gate failed",
-        "clear_message": "glue roi process gate passed"
+        "alarm_code": "YOLOX-POS-NG",
+        "alarm_message": "yolox position gate failed",
+        "clear_message": "yolox position gate passed"
       }
     },
     {
       "node_id": "save_result_json",
       "node_type_id": "core.output.json-save-local",
       "parameters": {
-        "local_path": "{workflow_app_result_dir}/glue-roi/result-{timestamp}.json",
+        "local_path": "{workflow_app_result_dir}/yolox-position-gate/result-{timestamp}.json",
         "overwrite": true,
         "indent": 2
       }
@@ -121,17 +159,7 @@
       "node_id": "append_result_csv",
       "node_type_id": "core.output.csv-append-local",
       "parameters": {
-        "local_path": "{workflow_app_result_dir}/glue-roi/history.csv"
-      }
-    },
-    {
-      "node_id": "callback_result",
-      "node_type_id": "core.output.http-post",
-      "parameters": {
-        "url": "http://127.0.0.1:18080/inspection/result",
-        "method": "POST",
-        "timeout_seconds": 3.0,
-        "require_success": false
+        "local_path": "{workflow_app_result_dir}/yolox-position-gate/history.csv"
       }
     }
   ],
@@ -151,29 +179,71 @@
       "target_port": "values"
     },
     {
-      "edge_id": "edge-load-image-create-roi",
+      "edge_id": "edge-deployment-request-detect",
+      "source_node_id": "deployment_request_input",
+      "source_port": "value",
+      "target_node_id": "detect",
+      "target_port": "request"
+    },
+    {
+      "edge_id": "edge-deployment-request-metadata",
+      "source_node_id": "deployment_request_input",
+      "source_port": "value",
+      "target_node_id": "metadata_object",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-load-image-detect",
       "source_node_id": "load_image",
       "source_port": "image",
-      "target_node_id": "create_roi",
+      "target_node_id": "detect",
       "target_port": "image"
     },
     {
-      "edge_id": "edge-filter-coverage-regions",
-      "source_node_id": "filter_regions",
+      "edge_id": "edge-detect-convert-detections",
+      "source_node_id": "detect",
+      "source_port": "detections",
+      "target_node_id": "detections_to_regions",
+      "target_port": "detections"
+    },
+    {
+      "edge_id": "edge-load-image-convert-image",
+      "source_node_id": "load_image",
+      "source_port": "image",
+      "target_node_id": "detections_to_regions",
+      "target_port": "image"
+    },
+    {
+      "edge_id": "edge-convert-filter-regions",
+      "source_node_id": "detections_to_regions",
       "source_port": "regions",
-      "target_node_id": "coverage_check",
+      "target_node_id": "filter_regions",
       "target_port": "regions"
     },
     {
-      "edge_id": "edge-create-roi-coverage-roi",
+      "edge_id": "edge-filter-select-best",
+      "source_node_id": "filter_regions",
+      "source_port": "regions",
+      "target_node_id": "select_best_region",
+      "target_port": "regions"
+    },
+    {
+      "edge_id": "edge-select-best-inside-regions",
+      "source_node_id": "select_best_region",
+      "source_port": "regions",
+      "target_node_id": "inside_check",
+      "target_port": "regions"
+    },
+    {
+      "edge_id": "edge-create-roi-inside-roi",
       "source_node_id": "create_roi",
       "source_port": "roi",
-      "target_node_id": "coverage_check",
+      "target_node_id": "inside_check",
       "target_port": "roi"
     },
     {
-      "edge_id": "edge-filter-offset-regions",
-      "source_node_id": "filter_regions",
+      "edge_id": "edge-select-best-offset-regions",
+      "source_node_id": "select_best_region",
       "source_port": "regions",
       "target_node_id": "offset_check",
       "target_port": "regions"
@@ -186,23 +256,30 @@
       "target_port": "roi"
     },
     {
-      "edge_id": "edge-filter-intersection-regions",
+      "edge_id": "edge-filter-presence-regions",
       "source_node_id": "filter_regions",
       "source_port": "regions",
-      "target_node_id": "intersection_metrics",
+      "target_node_id": "presence_check",
       "target_port": "regions"
     },
     {
-      "edge_id": "edge-create-roi-intersection-roi",
-      "source_node_id": "create_roi",
-      "source_port": "roi",
-      "target_node_id": "intersection_metrics",
-      "target_port": "roi"
+      "edge_id": "edge-convert-summary-metrics",
+      "source_node_id": "detections_to_regions",
+      "source_port": "summary",
+      "target_node_id": "metrics_object",
+      "target_port": "values"
     },
     {
-      "edge_id": "edge-intersection-metrics-object",
-      "source_node_id": "intersection_metrics",
-      "source_port": "value",
+      "edge_id": "edge-filter-summary-metrics",
+      "source_node_id": "filter_regions",
+      "source_port": "summary",
+      "target_node_id": "metrics_object",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-inside-metrics-object",
+      "source_node_id": "inside_check",
+      "source_port": "metrics",
       "target_node_id": "metrics_object",
       "target_port": "values"
     },
@@ -214,15 +291,22 @@
       "target_port": "values"
     },
     {
-      "edge_id": "edge-filter-summary-metrics-object",
-      "source_node_id": "filter_regions",
-      "source_port": "summary",
+      "edge_id": "edge-presence-metrics-object",
+      "source_node_id": "presence_check",
+      "source_port": "metrics",
       "target_node_id": "metrics_object",
       "target_port": "values"
     },
     {
-      "edge_id": "edge-coverage-process",
-      "source_node_id": "coverage_check",
+      "edge_id": "edge-presence-process",
+      "source_node_id": "presence_check",
+      "source_port": "result",
+      "target_node_id": "process_decision",
+      "target_port": "conditions"
+    },
+    {
+      "edge_id": "edge-inside-process",
+      "source_node_id": "inside_check",
       "source_port": "result",
       "target_node_id": "process_decision",
       "target_port": "conditions"
@@ -282,13 +366,6 @@
       "source_port": "result",
       "target_node_id": "append_result_csv",
       "target_port": "result"
-    },
-    {
-      "edge_id": "edge-process-http-callback",
-      "source_node_id": "process_decision",
-      "source_port": "result",
-      "target_node_id": "callback_result",
-      "target_port": "result"
     }
   ],
   "template_inputs": [
@@ -300,11 +377,11 @@
       "target_port": "payload"
     },
     {
-      "input_id": "request_regions",
-      "display_name": "Request Regions",
-      "payload_type_id": "regions.v1",
-      "target_node_id": "filter_regions",
-      "target_port": "regions"
+      "input_id": "deployment_request",
+      "display_name": "Deployment Request",
+      "payload_type_id": "value.v1",
+      "target_node_id": "deployment_request_input",
+      "target_port": "payload"
     },
     {
       "input_id": "request_roi",
@@ -316,6 +393,20 @@
     }
   ],
   "template_outputs": [
+    {
+      "output_id": "model_detections",
+      "display_name": "Model Detections",
+      "payload_type_id": "detections.v1",
+      "source_node_id": "detect",
+      "source_port": "detections"
+    },
+    {
+      "output_id": "model_regions",
+      "display_name": "Model Regions",
+      "payload_type_id": "regions.v1",
+      "source_node_id": "detections_to_regions",
+      "source_port": "regions"
+    },
     {
       "output_id": "inspection_result",
       "display_name": "Inspection Result",
@@ -350,31 +441,30 @@
       "payload_type_id": "value.v1",
       "source_node_id": "append_result_csv",
       "source_port": "summary"
-    },
-    {
-      "output_id": "callback_response",
-      "display_name": "Callback Response",
-      "payload_type_id": "value.v1",
-      "source_node_id": "callback_result",
-      "source_port": "response"
     }
   ],
   "metadata": {
-    "example_kind": "industrial-single-frame-glue-roi-callback",
-    "focus": "single-frame-industrial-rule-chain",
-    "callback_url_edit_required": true,
+    "example_kind": "industrial-single-frame-yolox-position-gate",
+    "focus": "single-frame-industrial-detection-rule-chain",
+    "uses_existing_deployment_instance": true,
     "dynamic_roi_input_binding": "request_roi",
     "node_groups": {
       "input": [
         "request_image_path_input",
-        "load_image",
-        "filter_regions"
+        "deployment_request_input",
+        "load_image"
+      ],
+      "model_and_bridge": [
+        "detect",
+        "detections_to_regions",
+        "filter_regions",
+        "select_best_region"
       ],
       "roi_and_rules": [
         "create_roi",
-        "coverage_check",
+        "inside_check",
         "offset_check",
-        "intersection_metrics"
+        "presence_check"
       ],
       "decision_and_alarm": [
         "metadata_object",
@@ -384,8 +474,7 @@
       ],
       "output": [
         "save_result_json",
-        "append_result_csv",
-        "callback_result"
+        "append_result_csv"
       ]
     }
   }

@@ -20,11 +20,19 @@ from backend.nodes.node_catalog_registry import NodeCatalogRegistry
 def test_yolox_deployment_detection_lifecycle_example_documents_are_valid() -> None:
     """验证 deployment lifecycle 示例模板与应用可以通过当前合同校验。"""
 
-    example_dir = Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
+    example_dir = (
+        Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
+    )
     template_path = example_dir / "yolox_deployment_detection_lifecycle.template.json"
-    application_path = example_dir / "yolox_deployment_detection_lifecycle.application.json"
-    template = WorkflowGraphTemplate.model_validate(json.loads(template_path.read_text(encoding="utf-8")))
-    application = FlowApplication.model_validate(json.loads(application_path.read_text(encoding="utf-8")))
+    application_path = (
+        example_dir / "yolox_deployment_detection_lifecycle.application.json"
+    )
+    template = WorkflowGraphTemplate.model_validate(
+        json.loads(template_path.read_text(encoding="utf-8"))
+    )
+    application = FlowApplication.model_validate(
+        json.loads(application_path.read_text(encoding="utf-8"))
+    )
 
     registry = NodeCatalogRegistry()
     validate_workflow_graph_template(
@@ -45,7 +53,12 @@ def test_yolox_deployment_detection_lifecycle_example_documents_are_valid() -> N
     assert template.metadata["example_kind"] == "deployment-control-detection-lifecycle"
     assert template.metadata["uses_existing_deployment_instance"] is True
     assert template.metadata["node_groups"]["input"] == ["decode_request_image"]
-    assert template.metadata["node_groups"]["deployment_control"] == ["start", "warmup", "health", "stop"]
+    assert template.metadata["node_groups"]["deployment_control"] == [
+        "start",
+        "warmup",
+        "health",
+        "stop",
+    ]
     assert [edge.edge_id for edge in template.edges] == [
         "edge-decode-detect-image",
         "edge-start-warmup-dependency",
@@ -60,7 +73,9 @@ def test_yolox_deployment_detection_lifecycle_example_documents_are_valid() -> N
     assert application.template_ref.source_uri == (
         "docs/examples/workflows/yolox_deployment_detection_lifecycle.template.json"
     )
-    assert application.metadata["example_kind"] == "deployment-control-detection-lifecycle"
+    assert (
+        application.metadata["example_kind"] == "deployment-control-detection-lifecycle"
+    )
     assert application.bindings[0].config["payload_type_id"] == "image-base64.v1"
     assert [binding.binding_id for binding in application.bindings] == [
         "request_image",
@@ -75,11 +90,19 @@ def test_yolox_deployment_detection_lifecycle_example_documents_are_valid() -> N
 def test_yolox_deployment_sync_infer_health_example_documents_are_valid() -> None:
     """验证 deployment sync infer health 示例模板与应用可以通过当前合同校验。"""
 
-    example_dir = Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
+    example_dir = (
+        Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
+    )
     template_path = example_dir / "yolox_deployment_sync_infer_health.template.json"
-    application_path = example_dir / "yolox_deployment_sync_infer_health.application.json"
-    template = WorkflowGraphTemplate.model_validate(json.loads(template_path.read_text(encoding="utf-8")))
-    application = FlowApplication.model_validate(json.loads(application_path.read_text(encoding="utf-8")))
+    application_path = (
+        example_dir / "yolox_deployment_sync_infer_health.application.json"
+    )
+    template = WorkflowGraphTemplate.model_validate(
+        json.loads(template_path.read_text(encoding="utf-8"))
+    )
+    application = FlowApplication.model_validate(
+        json.loads(application_path.read_text(encoding="utf-8"))
+    )
 
     registry = NodeCatalogRegistry()
     validate_workflow_graph_template(
@@ -100,8 +123,15 @@ def test_yolox_deployment_sync_infer_health_example_documents_are_valid() -> Non
     assert template.metadata["example_kind"] == "deployment-sync-infer-health"
     assert template.metadata["deployment_instance_id_binding"] == "deployment_request"
     assert template.metadata["uses_existing_deployment_instance"] is True
-    assert template.metadata["node_groups"]["input"] == ["decode_request_image", "deployment_request_input"]
-    assert template.metadata["node_groups"]["deployment_control"] == ["start", "warmup", "health"]
+    assert template.metadata["node_groups"]["input"] == [
+        "decode_request_image",
+        "deployment_request_input",
+    ]
+    assert template.metadata["node_groups"]["deployment_control"] == [
+        "start",
+        "warmup",
+        "health",
+    ]
     assert application.template_ref.source_uri == (
         "docs/examples/workflows/yolox_deployment_sync_infer_health.template.json"
     )
@@ -119,11 +149,17 @@ def test_yolox_deployment_sync_infer_health_example_documents_are_valid() -> Non
 def test_barcode_result_display_example_documents_are_valid() -> None:
     """验证 barcode 结果展示示例模板与应用可以通过当前合同校验。"""
 
-    example_dir = Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
+    example_dir = (
+        Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
+    )
     template_path = example_dir / "barcode_result_display.template.json"
     application_path = example_dir / "barcode_result_display.application.json"
-    template = WorkflowGraphTemplate.model_validate(json.loads(template_path.read_text(encoding="utf-8")))
-    application = FlowApplication.model_validate(json.loads(application_path.read_text(encoding="utf-8")))
+    template = WorkflowGraphTemplate.model_validate(
+        json.loads(template_path.read_text(encoding="utf-8"))
+    )
+    application = FlowApplication.model_validate(
+        json.loads(application_path.read_text(encoding="utf-8"))
+    )
 
     custom_nodes_root = Path(__file__).resolve().parents[1] / "custom_nodes"
     node_pack_loader = LocalNodePackLoader(custom_nodes_root)
@@ -150,20 +186,34 @@ def test_barcode_result_display_example_documents_are_valid() -> None:
         "extract_image",
         "build_image_preview_value",
     ]
-    assert application.template_ref.source_uri == "docs/examples/workflows/barcode_result_display.template.json"
+    assert (
+        application.template_ref.source_uri
+        == "docs/examples/workflows/barcode_result_display.template.json"
+    )
     assert application.runtime_mode == "python-json-workflow"
     assert application.bindings[0].metadata["payload_type_id"] == "image-base64.v1"
-    assert [binding.binding_id for binding in application.bindings] == ["request_image", "http_response"]
+    assert [binding.binding_id for binding in application.bindings] == [
+        "request_image",
+        "http_response",
+    ]
 
 
 def test_sam3_video_memory_attention_review_example_documents_are_valid() -> None:
     """验证 SAM3 memory-attention 视频样例模板与应用可以通过当前合同校验。"""
 
-    example_dir = Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
+    example_dir = (
+        Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
+    )
     template_path = example_dir / "sam3_video_memory_attention_review.template.json"
-    application_path = example_dir / "sam3_video_memory_attention_review.application.json"
-    template = WorkflowGraphTemplate.model_validate(json.loads(template_path.read_text(encoding="utf-8")))
-    application = FlowApplication.model_validate(json.loads(application_path.read_text(encoding="utf-8")))
+    application_path = (
+        example_dir / "sam3_video_memory_attention_review.application.json"
+    )
+    template = WorkflowGraphTemplate.model_validate(
+        json.loads(template_path.read_text(encoding="utf-8"))
+    )
+    application = FlowApplication.model_validate(
+        json.loads(application_path.read_text(encoding="utf-8"))
+    )
 
     custom_nodes_root = Path(__file__).resolve().parents[1] / "custom_nodes"
     node_pack_loader = LocalNodePackLoader(custom_nodes_root)
@@ -192,7 +242,10 @@ def test_sam3_video_memory_attention_review_example_documents_are_valid() -> Non
     assert template.nodes[2].parameters["max_memory_tokens_per_entry"] == 256
     assert template.metadata["example_kind"] == "sam3-video-memory-attention-review"
     assert template.metadata["tracking_mode"] == "memory-attention-tracker"
-    assert template.metadata["node_groups"]["tracking"] == ["segment_video", "filter_tracks"]
+    assert template.metadata["node_groups"]["tracking"] == [
+        "segment_video",
+        "filter_tracks",
+    ]
     assert application.template_ref.source_uri == (
         "docs/examples/workflows/sam3_video_memory_attention_review.template.json"
     )
@@ -207,7 +260,13 @@ def test_sam3_video_memory_attention_review_example_documents_are_valid() -> Non
 
 
 @pytest.mark.parametrize(
-    ("example_name", "expected_example_kind", "expected_node_ids", "expected_binding_ids"),
+    (
+        "example_name",
+        "expected_example_kind",
+        "expected_node_ids",
+        "expected_input_ids",
+        "expected_binding_ids",
+    ),
     [
         (
             "industrial_single_frame_sealant_quality_gate",
@@ -227,6 +286,10 @@ def test_sam3_video_memory_attention_review_example_documents_are_valid() -> Non
                 "alarm_condition",
                 "save_result_json",
                 "append_result_csv",
+            ],
+            [
+                "request_image_path",
+                "request_regions",
             ],
             [
                 "request_image_path",
@@ -260,6 +323,12 @@ def test_sam3_video_memory_attention_review_example_documents_are_valid() -> Non
             [
                 "request_image_path",
                 "request_regions",
+                "request_roi",
+            ],
+            [
+                "request_image_path",
+                "request_regions",
+                "request_roi",
                 "inspection_result",
                 "inspection_alarm",
                 "decision_summary",
@@ -274,15 +343,22 @@ def test_industrial_single_frame_example_documents_are_valid(
     example_name: str,
     expected_example_kind: str,
     expected_node_ids: list[str],
+    expected_input_ids: list[str],
     expected_binding_ids: list[str],
 ) -> None:
     """验证工业单帧规则样例模板与应用可以通过当前合同校验。"""
 
-    example_dir = Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
+    example_dir = (
+        Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
+    )
     template_path = example_dir / f"{example_name}.template.json"
     application_path = example_dir / f"{example_name}.application.json"
-    template = WorkflowGraphTemplate.model_validate(json.loads(template_path.read_text(encoding="utf-8")))
-    application = FlowApplication.model_validate(json.loads(application_path.read_text(encoding="utf-8")))
+    template = WorkflowGraphTemplate.model_validate(
+        json.loads(template_path.read_text(encoding="utf-8"))
+    )
+    application = FlowApplication.model_validate(
+        json.loads(application_path.read_text(encoding="utf-8"))
+    )
 
     registry = NodeCatalogRegistry()
     validate_workflow_graph_template(
@@ -294,23 +370,124 @@ def test_industrial_single_frame_example_documents_are_valid(
     assert [node.node_id for node in template.nodes] == expected_node_ids
     assert template.metadata["example_kind"] == expected_example_kind
     assert template.metadata["focus"] == "single-frame-industrial-rule-chain"
-    assert template.template_inputs[0].input_id == "request_image_path"
+    assert [
+        template_input.input_id for template_input in template.template_inputs
+    ] == expected_input_ids
     assert template.template_inputs[0].payload_type_id == "value.v1"
-    assert template.template_inputs[1].input_id == "request_regions"
     assert template.template_inputs[1].payload_type_id == "regions.v1"
-    assert application.template_ref.source_uri == f"docs/examples/workflows/{example_name}.template.json"
+    if example_name == "industrial_single_frame_glue_roi_callback":
+        assert template.template_inputs[2].payload_type_id == "value.v1"
+        assert template.template_inputs[2].required is False
+        assert template.metadata["dynamic_roi_input_binding"] == "request_roi"
+    assert (
+        application.template_ref.source_uri
+        == f"docs/examples/workflows/{example_name}.template.json"
+    )
     assert application.runtime_mode == "python-json-workflow"
-    assert [binding.binding_id for binding in application.bindings] == expected_binding_ids
+    assert [
+        binding.binding_id for binding in application.bindings
+    ] == expected_binding_ids
+    if example_name == "industrial_single_frame_glue_roi_callback":
+        assert application.bindings[2].required is False
+        assert application.bindings[2].metadata["payload_type_id"] == "value.v1"
+
+
+def test_industrial_single_frame_yolox_position_gate_documents_are_valid() -> None:
+    """验证 YOLOX 检测到工业规则链样例模板与应用可以通过当前合同校验。"""
+
+    example_dir = (
+        Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
+    )
+    template_path = (
+        example_dir / "industrial_single_frame_yolox_position_gate.template.json"
+    )
+    application_path = (
+        example_dir / "industrial_single_frame_yolox_position_gate.application.json"
+    )
+    template = WorkflowGraphTemplate.model_validate(
+        json.loads(template_path.read_text(encoding="utf-8"))
+    )
+    application = FlowApplication.model_validate(
+        json.loads(application_path.read_text(encoding="utf-8"))
+    )
+
+    registry = NodeCatalogRegistry()
+    validate_workflow_graph_template(
+        template=template,
+        node_definitions=registry.get_workflow_node_definitions(),
+    )
+    validate_flow_application_bindings(template=template, application=application)
+
+    assert [node.node_id for node in template.nodes] == [
+        "request_image_path_input",
+        "deployment_request_input",
+        "load_image",
+        "detect",
+        "detections_to_regions",
+        "filter_regions",
+        "select_best_region",
+        "create_roi",
+        "inside_check",
+        "offset_check",
+        "presence_check",
+        "metadata_object",
+        "metrics_object",
+        "process_decision",
+        "alarm_condition",
+        "save_result_json",
+        "append_result_csv",
+    ]
+    assert (
+        template.metadata["example_kind"]
+        == "industrial-single-frame-yolox-position-gate"
+    )
+    assert template.metadata["focus"] == "single-frame-industrial-detection-rule-chain"
+    assert template.metadata["uses_existing_deployment_instance"] is True
+    assert template.metadata["dynamic_roi_input_binding"] == "request_roi"
+    assert [template_input.input_id for template_input in template.template_inputs] == [
+        "request_image_path",
+        "deployment_request",
+        "request_roi",
+    ]
+    assert template.template_inputs[0].payload_type_id == "value.v1"
+    assert template.template_inputs[1].payload_type_id == "value.v1"
+    assert template.template_inputs[2].payload_type_id == "value.v1"
+    assert template.template_inputs[2].required is False
+    assert application.template_ref.source_uri == (
+        "docs/examples/workflows/industrial_single_frame_yolox_position_gate.template.json"
+    )
+    assert application.runtime_mode == "python-json-workflow"
+    assert [binding.binding_id for binding in application.bindings] == [
+        "request_image_path",
+        "deployment_request",
+        "request_roi",
+        "model_detections",
+        "model_regions",
+        "inspection_result",
+        "inspection_alarm",
+        "decision_summary",
+        "json_summary",
+        "csv_summary",
+    ]
+    assert application.bindings[2].required is False
+    assert application.bindings[3].config["payload_type_id"] == "detections.v1"
+    assert application.bindings[4].config["payload_type_id"] == "regions.v1"
 
 
 def test_opencv_process_save_image_example_documents_are_valid() -> None:
     """验证 OpenCV 处理并保存图片示例模板与应用可以通过当前合同校验。"""
 
-    example_dir = Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
+    example_dir = (
+        Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
+    )
     template_path = example_dir / "opencv_process_save_image.template.json"
     application_path = example_dir / "opencv_process_save_image.application.json"
-    template = WorkflowGraphTemplate.model_validate(json.loads(template_path.read_text(encoding="utf-8")))
-    application = FlowApplication.model_validate(json.loads(application_path.read_text(encoding="utf-8")))
+    template = WorkflowGraphTemplate.model_validate(
+        json.loads(template_path.read_text(encoding="utf-8"))
+    )
+    application = FlowApplication.model_validate(
+        json.loads(application_path.read_text(encoding="utf-8"))
+    )
 
     custom_nodes_root = Path(__file__).resolve().parents[1] / "custom_nodes"
     node_pack_loader = LocalNodePackLoader(custom_nodes_root)
@@ -337,19 +514,33 @@ def test_opencv_process_save_image_example_documents_are_valid() -> None:
         "threshold_image",
         "edge_image",
     ]
-    assert application.template_ref.source_uri == "docs/examples/workflows/opencv_process_save_image.template.json"
+    assert (
+        application.template_ref.source_uri
+        == "docs/examples/workflows/opencv_process_save_image.template.json"
+    )
     assert application.runtime_mode == "python-json-workflow"
-    assert [binding.binding_id for binding in application.bindings] == ["request_image", "http_response"]
+    assert [binding.binding_id for binding in application.bindings] == [
+        "request_image",
+        "http_response",
+    ]
 
 
 def test_yolox_deployment_infer_opencv_health_example_documents_are_valid() -> None:
     """验证 deployment infer + opencv + health 示例模板与应用可以通过当前合同校验。"""
 
-    example_dir = Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
+    example_dir = (
+        Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
+    )
     template_path = example_dir / "yolox_deployment_infer_opencv_health.template.json"
-    application_path = example_dir / "yolox_deployment_infer_opencv_health.application.json"
-    template = WorkflowGraphTemplate.model_validate(json.loads(template_path.read_text(encoding="utf-8")))
-    application = FlowApplication.model_validate(json.loads(application_path.read_text(encoding="utf-8")))
+    application_path = (
+        example_dir / "yolox_deployment_infer_opencv_health.application.json"
+    )
+    template = WorkflowGraphTemplate.model_validate(
+        json.loads(template_path.read_text(encoding="utf-8"))
+    )
+    application = FlowApplication.model_validate(
+        json.loads(application_path.read_text(encoding="utf-8"))
+    )
 
     custom_nodes_root = Path(__file__).resolve().parents[1] / "custom_nodes"
     node_pack_loader = LocalNodePackLoader(custom_nodes_root)
@@ -370,7 +561,10 @@ def test_yolox_deployment_infer_opencv_health_example_documents_are_valid() -> N
     ]
     assert template.metadata["example_kind"] == "deployment-infer-opencv-health"
     assert template.metadata["deployment_instance_id_binding"] == "deployment_request"
-    assert template.metadata["node_groups"]["input"] == ["decode_request_image", "deployment_request_input"]
+    assert template.metadata["node_groups"]["input"] == [
+        "decode_request_image",
+        "deployment_request_input",
+    ]
     assert template.metadata["node_groups"]["deployment"] == ["health", "detect"]
     assert application.template_ref.source_uri == (
         "docs/examples/workflows/yolox_deployment_infer_opencv_health.template.json"
@@ -384,12 +578,22 @@ def test_yolox_deployment_infer_opencv_health_example_documents_are_valid() -> N
 
 
 @pytest.mark.parametrize(
-    ("example_name", "expected_example_kind", "expected_binding_ids", "expected_input_nodes"),
+    (
+        "example_name",
+        "expected_example_kind",
+        "expected_binding_ids",
+        "expected_input_nodes",
+    ),
     [
         (
             "yolox_deployment_infer_opencv_health_zeromq",
             "deployment-infer-opencv-health-zeromq",
-            ["request_image_base64", "request_image_ref", "deployment_request", "http_response"],
+            [
+                "request_image_base64",
+                "request_image_ref",
+                "deployment_request",
+                "http_response",
+            ],
             [
                 "encode_request_image_ref",
                 "resolve_request_image",
@@ -417,11 +621,17 @@ def test_zeromq_image_ref_example_documents_are_valid(
 ) -> None:
     """验证 ZeroMQ image-ref 示例模板与应用可以通过当前合同校验。"""
 
-    example_dir = Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
+    example_dir = (
+        Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
+    )
     template_path = example_dir / f"{example_name}.template.json"
     application_path = example_dir / f"{example_name}.application.json"
-    template = WorkflowGraphTemplate.model_validate(json.loads(template_path.read_text(encoding="utf-8")))
-    application = FlowApplication.model_validate(json.loads(application_path.read_text(encoding="utf-8")))
+    template = WorkflowGraphTemplate.model_validate(
+        json.loads(template_path.read_text(encoding="utf-8"))
+    )
+    application = FlowApplication.model_validate(
+        json.loads(application_path.read_text(encoding="utf-8"))
+    )
 
     custom_nodes_root = Path(__file__).resolve().parents[1] / "custom_nodes"
     node_pack_loader = LocalNodePackLoader(custom_nodes_root)
@@ -447,7 +657,10 @@ def test_zeromq_image_ref_example_documents_are_valid(
     assert template.metadata["example_kind"] == expected_example_kind
     assert template.metadata["trigger_source_input"] == "zeromq"
     assert template.metadata["node_groups"]["input"] == expected_input_nodes
-    assert application.template_ref.source_uri == f"docs/examples/workflows/{example_name}.template.json"
+    assert (
+        application.template_ref.source_uri
+        == f"docs/examples/workflows/{example_name}.template.json"
+    )
     assert application.runtime_mode == "python-json-workflow"
     assert application.bindings[0].binding_kind == "api-request"
     assert application.bindings[0].required is False
@@ -455,17 +668,25 @@ def test_zeromq_image_ref_example_documents_are_valid(
     assert application.bindings[1].binding_kind == "trigger-source-input"
     assert application.bindings[1].required is False
     assert application.bindings[1].metadata["payload_type_id"] == "image-ref.v1"
-    assert [binding.binding_id for binding in application.bindings] == expected_binding_ids
+    assert [
+        binding.binding_id for binding in application.bindings
+    ] == expected_binding_ids
 
 
 def test_yolox_deployment_qr_crop_remap_example_documents_are_valid() -> None:
     """验证 deployment qr crop remap 示例模板与应用可以通过当前合同校验。"""
 
-    example_dir = Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
+    example_dir = (
+        Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
+    )
     template_path = example_dir / "yolox_deployment_qr_crop_remap.template.json"
     application_path = example_dir / "yolox_deployment_qr_crop_remap.application.json"
-    template = WorkflowGraphTemplate.model_validate(json.loads(template_path.read_text(encoding="utf-8")))
-    application = FlowApplication.model_validate(json.loads(application_path.read_text(encoding="utf-8")))
+    template = WorkflowGraphTemplate.model_validate(
+        json.loads(template_path.read_text(encoding="utf-8"))
+    )
+    application = FlowApplication.model_validate(
+        json.loads(application_path.read_text(encoding="utf-8"))
+    )
 
     custom_nodes_root = Path(__file__).resolve().parents[1] / "custom_nodes"
     node_pack_loader = LocalNodePackLoader(custom_nodes_root)
@@ -486,7 +707,10 @@ def test_yolox_deployment_qr_crop_remap_example_documents_are_valid() -> None:
     ]
     assert template.metadata["example_kind"] == "deployment-qr-crop-remap"
     assert template.metadata["deployment_instance_id_binding"] == "deployment_request"
-    assert template.metadata["node_groups"]["input"] == ["decode_request_image", "deployment_request_input"]
+    assert template.metadata["node_groups"]["input"] == [
+        "decode_request_image",
+        "deployment_request_input",
+    ]
     assert template.metadata["node_groups"]["barcode"] == [
         "decode_qr_crops",
         "draw_results",
@@ -506,11 +730,17 @@ def test_yolox_deployment_qr_crop_remap_example_documents_are_valid() -> None:
 def test_yolox_end_to_end_qr_crop_remap_example_documents_are_valid() -> None:
     """验证第一类完整端到端正式示例模板与应用可以通过当前合同校验。"""
 
-    example_dir = Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
+    example_dir = (
+        Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
+    )
     template_path = example_dir / "yolox_end_to_end_qr_crop_remap.template.json"
     application_path = example_dir / "yolox_end_to_end_qr_crop_remap.application.json"
-    template = WorkflowGraphTemplate.model_validate(json.loads(template_path.read_text(encoding="utf-8")))
-    application = FlowApplication.model_validate(json.loads(application_path.read_text(encoding="utf-8")))
+    template = WorkflowGraphTemplate.model_validate(
+        json.loads(template_path.read_text(encoding="utf-8"))
+    )
+    application = FlowApplication.model_validate(
+        json.loads(application_path.read_text(encoding="utf-8"))
+    )
 
     custom_nodes_root = Path(__file__).resolve().parents[1] / "custom_nodes"
     node_pack_loader = LocalNodePackLoader(custom_nodes_root)
@@ -540,27 +770,55 @@ def test_yolox_end_to_end_qr_crop_remap_example_documents_are_valid() -> None:
     assert template.nodes[6].parameters["path"] == "result.dataset_version_id"
     assert template.nodes[3].parameters["fields"]["include_events"] is False
     default_warm_start_node = next(
-        node for node in template.nodes if node.node_id == "resolve_default_training_warm_start_model_version_id"
+        node
+        for node in template.nodes
+        if node.node_id == "resolve_default_training_warm_start_model_version_id"
     )
     assert default_warm_start_node.node_type_id == "core.logic.match-case"
     assert default_warm_start_node.parameters["default_value"] is None
     default_warm_start_request_node = next(
-        node for node in template.nodes if node.node_id == "build_training_default_warm_start_request"
+        node
+        for node in template.nodes
+        if node.node_id == "build_training_default_warm_start_request"
     )
-    assert default_warm_start_request_node.parameters["keys"] == ["warm_start_model_version_id"]
-    pretrained_case_m_node = next(node for node in template.nodes if node.node_id == "build_training_pretrained_case_m")
-    assert pretrained_case_m_node.parameters["fields"]["condition"]["path"] == "model_scale"
+    assert default_warm_start_request_node.parameters["keys"] == [
+        "warm_start_model_version_id"
+    ]
+    pretrained_case_m_node = next(
+        node
+        for node in template.nodes
+        if node.node_id == "build_training_pretrained_case_m"
+    )
+    assert (
+        pretrained_case_m_node.parameters["fields"]["condition"]["path"]
+        == "model_scale"
+    )
     assert pretrained_case_m_node.parameters["fields"]["condition"]["right"] == "m"
-    assert pretrained_case_m_node.parameters["fields"]["then"] == "model-version-pretrained-yolox-m"
-    conversion_builds_node = next(node for node in template.nodes if node.node_id == "extract_conversion_builds")
+    assert (
+        pretrained_case_m_node.parameters["fields"]["then"]
+        == "model-version-pretrained-yolox-m"
+    )
+    conversion_builds_node = next(
+        node for node in template.nodes if node.node_id == "extract_conversion_builds"
+    )
     assert conversion_builds_node.parameters["path"] == "result.builds"
-    conversion_filter_node = next(node for node in template.nodes if node.node_id == "filter_conversion_tensorrt_builds")
+    conversion_filter_node = next(
+        node
+        for node in template.nodes
+        if node.node_id == "filter_conversion_tensorrt_builds"
+    )
     assert conversion_filter_node.parameters["condition"]["path"] == "build_format"
     assert conversion_filter_node.parameters["condition"]["right"] == "tensorrt-engine"
-    conversion_build_id_node = next(node for node in template.nodes if node.node_id == "extract_conversion_model_build_id")
+    conversion_build_id_node = next(
+        node
+        for node in template.nodes
+        if node.node_id == "extract_conversion_model_build_id"
+    )
     assert conversion_build_id_node.node_type_id == "core.logic.list-item-get"
     assert conversion_build_id_node.parameters["index"] == 0
-    deployment_create_node = next(node for node in template.nodes if node.node_id == "create_deployment")
+    deployment_create_node = next(
+        node for node in template.nodes if node.node_id == "create_deployment"
+    )
     assert deployment_create_node.parameters["cleanup_on_completion"] is True
     assert template.metadata["example_kind"] == "yolox-end-to-end-qr-crop-remap"
     assert template.metadata["deployment_cleanup_policy"] == "delete_on_completion"
@@ -610,11 +868,17 @@ def test_yolox_end_to_end_qr_crop_remap_example_documents_are_valid() -> None:
 def test_dataset_export_package_example_documents_are_valid() -> None:
     """验证 dataset export package 示例模板与应用可以通过当前合同校验。"""
 
-    example_dir = Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
+    example_dir = (
+        Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
+    )
     template_path = example_dir / "dataset_export_package.template.json"
     application_path = example_dir / "dataset_export_package.application.json"
-    template = WorkflowGraphTemplate.model_validate(json.loads(template_path.read_text(encoding="utf-8")))
-    application = FlowApplication.model_validate(json.loads(application_path.read_text(encoding="utf-8")))
+    template = WorkflowGraphTemplate.model_validate(
+        json.loads(template_path.read_text(encoding="utf-8"))
+    )
+    application = FlowApplication.model_validate(
+        json.loads(application_path.read_text(encoding="utf-8"))
+    )
 
     registry = NodeCatalogRegistry()
     validate_workflow_graph_template(
@@ -630,19 +894,31 @@ def test_dataset_export_package_example_documents_are_valid() -> None:
     assert template.nodes[1].parameters["cleanup_on_completion"] is False
     assert template.metadata["example_kind"] == "dataset-export-package"
     assert template.metadata["cleanup_mode"] == "explicit-node-parameter"
-    assert application.template_ref.source_uri == "docs/examples/workflows/dataset_export_package.template.json"
+    assert (
+        application.template_ref.source_uri
+        == "docs/examples/workflows/dataset_export_package.template.json"
+    )
     assert application.runtime_mode == "python-json-workflow"
-    assert [binding.binding_id for binding in application.bindings] == ["request_payload", "package_body"]
+    assert [binding.binding_id for binding in application.bindings] == [
+        "request_payload",
+        "package_body",
+    ]
 
 
 def test_yolox_evaluation_package_example_documents_are_valid() -> None:
     """验证 YOLOX evaluation package 示例模板与应用可以通过当前合同校验。"""
 
-    example_dir = Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
+    example_dir = (
+        Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
+    )
     template_path = example_dir / "yolox_evaluation_package.template.json"
     application_path = example_dir / "yolox_evaluation_package.application.json"
-    template = WorkflowGraphTemplate.model_validate(json.loads(template_path.read_text(encoding="utf-8")))
-    application = FlowApplication.model_validate(json.loads(application_path.read_text(encoding="utf-8")))
+    template = WorkflowGraphTemplate.model_validate(
+        json.loads(template_path.read_text(encoding="utf-8"))
+    )
+    application = FlowApplication.model_validate(
+        json.loads(application_path.read_text(encoding="utf-8"))
+    )
 
     registry = NodeCatalogRegistry()
     validate_workflow_graph_template(
@@ -669,7 +945,10 @@ def test_yolox_evaluation_package_example_documents_are_valid() -> None:
     assert template.metadata["example_kind"] == "yolox-evaluation-package"
     assert template.metadata["package_cleanup_policy"] == "delete_on_completion"
     assert template.metadata["submission_result_package_mode"] == "disabled_in_submit"
-    assert application.template_ref.source_uri == "docs/examples/workflows/yolox_evaluation_package.template.json"
+    assert (
+        application.template_ref.source_uri
+        == "docs/examples/workflows/yolox_evaluation_package.template.json"
+    )
     assert application.runtime_mode == "python-json-workflow"
     assert [binding.binding_id for binding in application.bindings] == [
         "request_payload",
@@ -680,7 +959,12 @@ def test_yolox_evaluation_package_example_documents_are_valid() -> None:
 
 
 @pytest.mark.parametrize(
-    ("example_name", "expected_example_kind", "expected_node_type_id", "expected_binding_ids"),
+    (
+        "example_name",
+        "expected_example_kind",
+        "expected_node_type_id",
+        "expected_binding_ids",
+    ),
     [
         pytest.param(
             "dataset_import_upload",
@@ -727,11 +1011,17 @@ def test_submit_and_import_example_documents_are_valid(
 ) -> None:
     """验证 DatasetImport 与 submit family 正式示例可以通过当前合同校验。"""
 
-    example_dir = Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
+    example_dir = (
+        Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
+    )
     template_path = example_dir / f"{example_name}.template.json"
     application_path = example_dir / f"{example_name}.application.json"
-    template = WorkflowGraphTemplate.model_validate(json.loads(template_path.read_text(encoding="utf-8")))
-    application = FlowApplication.model_validate(json.loads(application_path.read_text(encoding="utf-8")))
+    template = WorkflowGraphTemplate.model_validate(
+        json.loads(template_path.read_text(encoding="utf-8"))
+    )
+    application = FlowApplication.model_validate(
+        json.loads(application_path.read_text(encoding="utf-8"))
+    )
 
     registry = NodeCatalogRegistry()
     validate_workflow_graph_template(
@@ -740,9 +1030,17 @@ def test_submit_and_import_example_documents_are_valid(
     )
     validate_flow_application_bindings(template=template, application=application)
 
-    assert [node.node_type_id for node in template.nodes] == ["core.io.template-input.object", expected_node_type_id]
+    assert [node.node_type_id for node in template.nodes] == [
+        "core.io.template-input.object",
+        expected_node_type_id,
+    ]
     assert template.metadata["example_kind"] == expected_example_kind
     assert template.metadata["dynamic_request_binding_id"] == "request_payload"
-    assert application.template_ref.source_uri == f"docs/examples/workflows/{example_name}.template.json"
+    assert (
+        application.template_ref.source_uri
+        == f"docs/examples/workflows/{example_name}.template.json"
+    )
     assert application.runtime_mode == "python-json-workflow"
-    assert [binding.binding_id for binding in application.bindings] == expected_binding_ids
+    assert [
+        binding.binding_id for binding in application.bindings
+    ] == expected_binding_ids

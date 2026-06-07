@@ -30,6 +30,7 @@ BACKEND_MODULES: tuple[str, ...] = (
     "backend.nodes.core_nodes.csv_append_local",
     "backend.nodes.core_nodes.directory_batch_window",
     "backend.nodes.core_nodes.directory_scan",
+    "backend.nodes.core_nodes.detections_to_regions",
     "backend.nodes.core_nodes.frame_window_preview",
     "backend.nodes.core_nodes.http_post",
     "backend.nodes.core_nodes.image_load_local",
