@@ -15,7 +15,12 @@
 - 第 4 批结果回传节点当前已接通 `result-record / alarm-record / json-save-local / csv-append-local / http-post`
 - 第 4 批输入接入节点当前已接通 `image-load-local / image-list-local / directory-scan / directory-batch-window`
 - `core.vision.detections-to-regions` 当前已接通，可把 deployment detection 或其他 `detections.v1` 结果桥接进现有工业规则链
-- 工业单帧规则样例当前已补到 `docs/examples/workflows/industrial_single_frame_sealant_quality_gate.*`、`industrial_single_frame_glue_roi_callback.*` 与 `industrial_single_frame_yolox_position_gate.*`
+- `core.vision.segments-to-regions` 当前也已接通，可把外部或中间节点输出的 `segments.v1(mask / polygon / bbox)` 结果桥接进现有工业规则链
+- `core.logic.value-to-segments / value-to-regions` 当前也已接通，可把目录批处理或列表循环中的逐项 `value.v1` 恢复回标准 `segments.v1 / regions.v1`
+- `core.io.directory-scan` 当前也已支持 `min_stable_age_seconds` 与 `dedupe_by`，`core.io.directory-batch-window` 当前已支持运行时 `start_index / batch_size / cursor` 输入，更适合现场批次推进
+- `core.io.json-load-local` 与 `core.io.directory-poll-window` 当前也已接通，可把“本地 cursor JSON 恢复 + 当前无新文件时 has_work=false + 批次 cursor 再落盘”这层目录轮询守护语义独立出来
+- 工业单帧规则样例当前已补到 `docs/examples/workflows/industrial_single_frame_sealant_quality_gate.*`、`industrial_single_frame_segments_continuity_gate.*`、`industrial_single_frame_glue_roi_callback.*`、`industrial_single_frame_glue_polygon_roi_changeover.*` 与 `industrial_single_frame_yolox_position_gate.*`
+- 工业本地批量输入样例当前已补到 `docs/examples/workflows/industrial_local_directory_batch_input.*`、`industrial_local_directory_batch_segments_continuity_gate.*`、`industrial_local_directory_batch_regions_continuity_gate.*`、`industrial_local_directory_batch_yolox_position_gate.*` 与 `industrial_local_directory_polling_cursor_guard.*`
 - 当前仍待收口的主要缺口已经不再是大块能力面，而是少数残留节点、样例闭环和现场易用性优化
 
 ## 适用边界
@@ -38,6 +43,7 @@
 ### 优先复用的 payload
 
 - `regions.v1`
+- `segments.v1`
 - `image-ref.v1`
 - `image-refs.v1`
 - `value.v1`
@@ -57,6 +63,7 @@
 
 说明：
 - `directory-scan` 第一阶段先输出 `value.v1` 文件记录列表，不急着单独引入 `file-list.v1`
+- `segments.v1` 当前主要作为桥接输入，用于 `core.vision.segments-to-regions` 把 mask / polygon / bbox 分割结果统一收进 `regions.v1`
 
 ## 第 1 批：core.vision.regions-* 基础结果统计节点
 
@@ -423,14 +430,14 @@
 
 ## 当前剩余缺口
 
-- 当前工业单帧样例虽然已经有 checked-in 的“YOLOX detection -> detections-to-regions -> 工业规则链”模板，但还没有覆盖更多模型来源和更多规则组合
+- 当前工业单帧样例虽然已经有 checked-in 的“segments.v1 -> segments-to-regions -> 工业规则链”和“YOLOX detection -> detections-to-regions -> 工业规则链”模板，但还没有覆盖更多模型来源和更多规则组合
 - `roi-create` 虽然已支持运行时 `value.v1` 动态 ROI，但当前仓库里还没有覆盖更多多边形 ROI 和现场换型配置的样例
-- 当前批量输入链已经有 `directory-scan -> directory-batch-window -> image-list-local`，但还没有补更贴现场的批次推进约定与使用说明
-- 当前 detection 结果虽然已可通过 `core.vision.detections-to-regions` 进入规则链，但还没有继续往前补更细的 detection 调试与适配辅助节点
+- 当前批量输入链已经不只停在输入准备：`directory-scan -> directory-batch-window -> for-each -> image-load-local -> yolox-detection -> 工业规则链 -> csv/json 归档`，以及 `directory-scan -> directory-batch-window -> for-each -> value-to-segments / value-to-regions -> 工业规则链 -> csv/json 归档` 这两类 checked-in 主线都已补通；目录轮询守护这一层当前也已有 `json-load-local -> directory-poll-window -> json-save-local` 的 checked-in 样例，当前更值得继续收口的是目录游标长期策略、归档字段规范，以及更贴现场的接入说明
+- 当前 detection / segmentation 结果虽然已可通过 `core.vision.detections-to-regions` 与 `core.vision.segments-to-regions` 进入规则链，但还没有继续往前补更细的调试与适配辅助节点
 
 ## 下一步执行顺序
 
-1. 先继续收 `roi-create` 的多边形 ROI / 换型配置样例和批量输入使用面，让目录扫描和 ROI 调整更顺手
-2. 再补目录批处理更贴现场的推进约定和去重约定，以及是否需要更多 detection 调试与适配辅助节点
-3. 然后再看是否需要补 `detections.v1` 的过滤、选择或调试节点，继续把 detection 到规则链的使用面打磨顺
+1. 先继续收目录推进语义和现场易用性，例如目录游标长期策略、文件稳定落地约定、批次归档字段规范与目录轮询触发接入说明
+2. 再看是否需要补更多 detection / segmentation 调试与适配辅助节点，把模型结果到规则链的使用面继续打磨顺
+3. 然后再评估规则结果对象、JSON/CSV 字段规范和目录批次归档结构是否需要进一步收口
 4. 最后再看是否需要继续扩更多工业规则原子节点，而不是直接跳去更重的视频能力

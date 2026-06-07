@@ -1,0 +1,119 @@
+{
+  "format_id": "amvision.flow-application.v1",
+  "application_id": "industrial-single-frame-glue-polygon-roi-changeover-app",
+  "display_name": "Industrial Single Frame Glue Polygon ROI Changeover App",
+  "description": "用于工业单帧现场的多边形 ROI 换型样例 app。输入本地图像路径、regions.v1，以及可选的运行时 ROI；输出结果对象、报警对象、本地归档摘要和 HTTP 回传摘要。",
+  "template_ref": {
+    "template_id": "industrial-single-frame-glue-polygon-roi-changeover-template",
+    "template_version": "1.0.0",
+    "source_kind": "json-file",
+    "source_uri": "docs/examples/workflows/industrial_single_frame_glue_polygon_roi_changeover.template.json"
+  },
+  "runtime_mode": "python-json-workflow",
+  "bindings": [
+    {
+      "binding_id": "request_image_path",
+      "direction": "input",
+      "template_port_id": "request_image_path",
+      "binding_kind": "workflow-execute-input",
+      "config": {
+        "payload_type_id": "value.v1",
+        "content_type": "application/json"
+      },
+      "metadata": {
+        "payload_type_id": "value.v1"
+      }
+    },
+    {
+      "binding_id": "request_regions",
+      "direction": "input",
+      "template_port_id": "request_regions",
+      "binding_kind": "workflow-execute-input",
+      "config": {
+        "payload_type_id": "regions.v1",
+        "content_type": "application/json"
+      },
+      "metadata": {
+        "payload_type_id": "regions.v1"
+      }
+    },
+    {
+      "binding_id": "request_roi",
+      "direction": "input",
+      "template_port_id": "request_roi",
+      "binding_kind": "workflow-execute-input",
+      "required": false,
+      "config": {
+        "payload_type_id": "value.v1",
+        "content_type": "application/json"
+      },
+      "metadata": {
+        "payload_type_id": "value.v1"
+      }
+    },
+    {
+      "binding_id": "inspection_result",
+      "direction": "output",
+      "template_port_id": "inspection_result",
+      "binding_kind": "workflow-execute-output",
+      "config": {
+        "payload_type_id": "result-record.v1"
+      },
+      "metadata": {}
+    },
+    {
+      "binding_id": "inspection_alarm",
+      "direction": "output",
+      "template_port_id": "inspection_alarm",
+      "binding_kind": "workflow-execute-output",
+      "config": {
+        "payload_type_id": "alarm-record.v1"
+      },
+      "metadata": {}
+    },
+    {
+      "binding_id": "decision_summary",
+      "direction": "output",
+      "template_port_id": "decision_summary",
+      "binding_kind": "workflow-execute-output",
+      "config": {
+        "payload_type_id": "value.v1"
+      },
+      "metadata": {}
+    },
+    {
+      "binding_id": "json_summary",
+      "direction": "output",
+      "template_port_id": "json_summary",
+      "binding_kind": "workflow-execute-output",
+      "config": {
+        "payload_type_id": "value.v1"
+      },
+      "metadata": {}
+    },
+    {
+      "binding_id": "csv_summary",
+      "direction": "output",
+      "template_port_id": "csv_summary",
+      "binding_kind": "workflow-execute-output",
+      "config": {
+        "payload_type_id": "value.v1"
+      },
+      "metadata": {}
+    },
+    {
+      "binding_id": "callback_response",
+      "direction": "output",
+      "template_port_id": "callback_response",
+      "binding_kind": "workflow-execute-output",
+      "config": {
+        "payload_type_id": "value.v1"
+      },
+      "metadata": {}
+    }
+  ],
+  "metadata": {
+    "example_kind": "industrial-single-frame-glue-polygon-roi-changeover",
+    "intended_saved_object_key": "workflows/projects/{project_id}/applications/industrial-single-frame-glue-polygon-roi-changeover-app/application.json"
+  }
+}

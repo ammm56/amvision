@@ -79,6 +79,29 @@ def resolve_local_output_file_path(
 ) -> Path:
     """从节点参数或 value 输入解析本地输出文件路径。"""
 
+    resolved_path = resolve_local_path_value_from_request(
+        request,
+        parameter_name=parameter_name,
+        input_name=input_name,
+        description=description,
+    )
+    if resolved_path.exists() and not overwrite:
+        raise InvalidRequestError(
+            f"{description}已存在，且当前节点未允许覆盖",
+            details={"node_id": request.node_id, "local_path": str(resolved_path)},
+        )
+    return resolved_path
+
+
+def resolve_local_path_value_from_request(
+    request: WorkflowNodeExecutionRequest,
+    *,
+    parameter_name: str,
+    input_name: str = "path",
+    description: str,
+) -> Path:
+    """从节点参数或 value 输入解析本地路径值，但不检查路径是否已存在。"""
+
     raw_value = _read_optional_path_input(request, input_name=input_name)
     if raw_value is None:
         raw_value = request.parameters.get(parameter_name)
@@ -88,11 +111,6 @@ def resolve_local_output_file_path(
             details={"node_id": request.node_id, "parameter_name": parameter_name},
         )
     resolved_path = Path(raw_value.strip()).expanduser().resolve()
-    if resolved_path.exists() and not overwrite:
-        raise InvalidRequestError(
-            f"{description}已存在，且当前节点未允许覆盖",
-            details={"node_id": request.node_id, "local_path": str(resolved_path)},
-        )
     return resolved_path
 
 
@@ -169,6 +187,7 @@ def build_directory_file_record(file_path: Path) -> dict[str, object]:
         "file_name": file_path.name,
         "extension": file_path.suffix.lower(),
         "size_bytes": stat_result.st_size,
+        "modified_time_epoch_ms": int(round(stat_result.st_mtime * 1000)),
         "modified_time_iso": _build_iso_timestamp(stat_result.st_mtime),
     }
 

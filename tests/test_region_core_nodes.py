@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import cv2
+import numpy as np
+
 from backend.nodes.core_catalog import get_core_workflow_payload_contracts
 from backend.nodes.core_nodes.detections_to_regions import (
     _detections_to_regions_handler,
@@ -20,6 +23,13 @@ from backend.nodes.core_nodes.regions_intersection_metrics import (
 )
 from backend.nodes.core_nodes.regions_offset_check import _regions_offset_check_handler
 from backend.nodes.core_nodes.roi_create import _roi_create_handler
+from backend.nodes.core_nodes.segments_to_regions import _segments_to_regions_handler
+from backend.nodes.core_nodes.value_to_regions import _value_to_regions_handler
+from backend.nodes.core_nodes.value_to_segments import _value_to_segments_handler
+from backend.nodes.runtime_support import (
+    ExecutionImageRegistry,
+    build_memory_image_payload,
+)
 from backend.service.application.workflows.graph_executor import (
     WorkflowNodeExecutionRequest,
 )
@@ -188,6 +198,240 @@ def test_detections_to_regions_handler_applies_default_class_fields() -> None:
     assert region_item["class_id"] == 9
     assert region_item["class_name"] == "unknown-part"
     assert output["summary"]["value"]["class_distribution"] == {"unknown-part": 1}
+
+
+def test_segments_to_regions_handler_converts_polygon_segments() -> None:
+    """验证 segments-to-regions 可把 polygon segment 转成标准 regions.v1。"""
+
+    output = _segments_to_regions_handler(
+        WorkflowNodeExecutionRequest(
+            node_id="segments-to-regions",
+            node_definition=object(),
+            parameters={},
+            input_values={
+                "segments": {
+                    "source_image": {
+                        "transport_kind": "memory",
+                        "image_handle": "image-seg-poly",
+                        "media_type": "image/png",
+                        "width": 24,
+                        "height": 16,
+                    },
+                    "selected_frame_index": 3,
+                    "items": [
+                        {
+                            "segment_id": "seg-poly-1",
+                            "score": 0.86,
+                            "class_id": 7,
+                            "class_name": "sealant",
+                            "polygon_xy": [
+                                [2.0, 3.0],
+                                [10.0, 3.0],
+                                [10.0, 9.0],
+                                [2.0, 9.0],
+                            ],
+                        }
+                    ],
+                }
+            },
+            execution_metadata={},
+        )
+    )
+
+    region_item = output["regions"]["items"][0]
+    assert output["regions"]["selected_frame_index"] == 3
+    assert region_item["region_id"] == "seg-poly-1"
+    assert region_item["class_name"] == "sealant"
+    assert region_item["bbox_xyxy"] == [2.0, 3.0, 10.0, 9.0]
+    assert region_item["polygon_xy"] == [
+        [2.0, 3.0],
+        [10.0, 3.0],
+        [10.0, 9.0],
+        [2.0, 9.0],
+    ]
+    assert region_item["area"] == 48
+    assert output["summary"]["value"]["geometry_source_counts"] == {"polygon": 1}
+
+
+def test_segments_to_regions_handler_converts_mask_segments() -> None:
+    """验证 segments-to-regions 可把 mask segment 转成标准 regions.v1。"""
+
+    image_registry = ExecutionImageRegistry()
+    mask_matrix = np.zeros((10, 12), dtype=np.uint8)
+    mask_matrix[1:4, 2:5] = 1
+    mask_matrix[6:8, 7:11] = 1
+
+    output = _segments_to_regions_handler(
+        WorkflowNodeExecutionRequest(
+            node_id="segments-to-regions",
+            node_definition=object(),
+            parameters={},
+            input_values={
+                "segments": {
+                    "source_image": {
+                        "transport_kind": "memory",
+                        "image_handle": "image-seg-mask",
+                        "media_type": "image/png",
+                        "width": 12,
+                        "height": 10,
+                    },
+                    "items": [
+                        {
+                            "segment_id": "seg-mask-1",
+                            "score": 0.94,
+                            "class_id": 2,
+                            "class_name": "glue",
+                            "mask_image": _build_mask_image_payload(
+                                image_registry,
+                                mask_matrix,
+                            ),
+                        }
+                    ],
+                }
+            },
+            execution_metadata={"execution_image_registry": image_registry},
+        )
+    )
+
+    region_item = output["regions"]["items"][0]
+    assert region_item["region_id"] == "seg-mask-1"
+    assert region_item["bbox_xyxy"] == [2.0, 1.0, 11.0, 8.0]
+    assert region_item["area"] == int(np.count_nonzero(mask_matrix))
+    assert isinstance(region_item["mask_image"], dict)
+    assert len(region_item["polygon_xy"]) >= 3
+    assert output["summary"]["value"]["geometry_source_counts"] == {"mask-image": 1}
+    assert output["summary"]["value"]["fragmented_mask_segment_count"] == 1
+    assert output["summary"]["value"]["fragmented_mask_region_ids"] == ["seg-mask-1"]
+
+
+def test_segments_to_regions_handler_supports_bbox_fallback_and_defaults() -> None:
+    """验证 segments-to-regions 支持 bbox fallback 和缺省类别字段。"""
+
+    output = _segments_to_regions_handler(
+        WorkflowNodeExecutionRequest(
+            node_id="segments-to-regions",
+            node_definition=object(),
+            parameters={
+                "region_id_prefix": "region",
+                "class_id_default": 8,
+                "class_name_default": "unknown-segment",
+            },
+            input_values={
+                "segments": {
+                    "items": [
+                        {
+                            "bbox_xyxy": [4.0, 5.0, 9.0, 11.0],
+                            "score": 0.72,
+                        }
+                    ]
+                }
+            },
+            execution_metadata={},
+        )
+    )
+
+    region_item = output["regions"]["items"][0]
+    assert region_item["region_id"] == "region-1"
+    assert region_item["class_id"] == 8
+    assert region_item["class_name"] == "unknown-segment"
+    assert region_item["polygon_xy"] == [
+        [4.0, 5.0],
+        [9.0, 5.0],
+        [9.0, 11.0],
+        [4.0, 11.0],
+    ]
+    assert region_item["area"] == 30
+    assert output["summary"]["value"]["geometry_source_counts"] == {"bbox": 1}
+
+
+def test_value_to_segments_handler_restores_typed_segments_payload() -> None:
+    """验证 value-to-segments 可把 value.v1 中的逐项 segments 恢复为正式 payload。"""
+
+    output = _value_to_segments_handler(
+        WorkflowNodeExecutionRequest(
+            node_id="value-to-segments",
+            node_definition=object(),
+            parameters={},
+            input_values={
+                "value": {
+                    "value": {
+                        "items": [
+                            {
+                                "segment_id": "seg-1",
+                                "score": 0.88,
+                                "polygon_xy": [
+                                    [1.0, 1.0],
+                                    [5.0, 1.0],
+                                    [5.0, 4.0],
+                                    [1.0, 4.0],
+                                ],
+                            }
+                        ]
+                    }
+                },
+                "image": {
+                    "transport_kind": "memory",
+                    "image_handle": "image-seg-bridge",
+                    "media_type": "image/png",
+                    "width": 8,
+                    "height": 6,
+                },
+            },
+            execution_metadata={},
+        )
+    )
+
+    assert output["segments"]["count"] == 1
+    assert output["segments"]["source_image"]["transport_kind"] == "memory"
+    assert output["segments"]["items"][0]["segment_id"] == "seg-1"
+    assert output["summary"]["value"]["source_image_attached"] is True
+
+
+def test_value_to_regions_handler_restores_typed_regions_payload() -> None:
+    """验证 value-to-regions 可把 value.v1 中的逐项 regions 恢复为正式 payload。"""
+
+    output = _value_to_regions_handler(
+        WorkflowNodeExecutionRequest(
+            node_id="value-to-regions",
+            node_definition=object(),
+            parameters={},
+            input_values={
+                "value": {
+                    "value": {
+                        "items": [
+                            {
+                                "region_id": "region-bridge-1",
+                                "score": 0.93,
+                                "class_id": 2,
+                                "class_name": "sealant",
+                                "bbox_xyxy": [2.0, 2.0, 6.0, 5.0],
+                                "polygon_xy": [
+                                    [2.0, 2.0],
+                                    [6.0, 2.0],
+                                    [6.0, 5.0],
+                                    [2.0, 5.0],
+                                ],
+                                "area": 12,
+                            }
+                        ]
+                    }
+                },
+                "image": {
+                    "transport_kind": "memory",
+                    "image_handle": "image-region-bridge",
+                    "media_type": "image/png",
+                    "width": 10,
+                    "height": 8,
+                },
+            },
+            execution_metadata={},
+        )
+    )
+
+    assert output["regions"]["count"] == 1
+    assert output["regions"]["source_image"]["transport_kind"] == "memory"
+    assert output["regions"]["items"][0]["region_id"] == "region-bridge-1"
+    assert output["summary"]["value"]["source_image_attached"] is True
 
 
 def test_roi_create_bbox_handler_returns_roi_payload() -> None:
@@ -406,3 +650,26 @@ def _build_roi_payload() -> dict[str, object]:
         "polygon_xy": [[0.0, 0.0], [10.0, 0.0], [10.0, 10.0], [0.0, 10.0]],
         "area": 100,
     }
+
+
+def _build_mask_image_payload(
+    image_registry: ExecutionImageRegistry,
+    mask_matrix: np.ndarray,
+) -> dict[str, object]:
+    """把测试 mask 编码成 memory image-ref payload。"""
+
+    success, encoded = cv2.imencode(".png", (mask_matrix.astype(np.uint8) * 255))
+    assert success is True
+    entry = image_registry.register_image_bytes(
+        content=encoded.tobytes(),
+        media_type="image/png",
+        width=int(mask_matrix.shape[1]),
+        height=int(mask_matrix.shape[0]),
+        created_by_node_id="fixture",
+    )
+    return build_memory_image_payload(
+        image_handle=entry.image_handle,
+        media_type="image/png",
+        width=int(mask_matrix.shape[1]),
+        height=int(mask_matrix.shape[0]),
+    )

@@ -1,4 +1,4 @@
-"""目录文件批次窗口节点。"""
+"""目录轮询友好的批次窗口节点。"""
 
 from __future__ import annotations
 
@@ -15,16 +15,19 @@ from backend.nodes.core_nodes._directory_window_node_support import (
     resolve_window_start_index,
 )
 from backend.nodes.core_nodes._local_io_node_support import require_file_record_list
-from backend.service.application.errors import InvalidRequestError
+from backend.nodes.core_nodes._logic_node_support import build_boolean_payload
 from backend.service.application.workflows.graph_executor import (
     WorkflowNodeExecutionRequest,
 )
 
 
-def _directory_batch_window_handler(
+NODE_NAME = "directory-poll-window"
+
+
+def _directory_poll_window_handler(
     request: WorkflowNodeExecutionRequest,
 ) -> dict[str, object]:
-    """从目录扫描结果中切出一个批次窗口。"""
+    """从目录扫描结果中解析一段轮询友好的批次窗口。"""
 
     file_records = require_file_record_list(
         request.input_values.get("files"),
@@ -34,41 +37,89 @@ def _directory_batch_window_handler(
     batch_size = read_batch_size(
         input_payload=request.input_values.get("batch_size"),
         parameter_value=request.parameters.get("batch_size"),
-        node_name="directory-batch-window",
+        node_name=NODE_NAME,
     )
     start_resolution = resolve_window_start_index(
         request=request,
         file_records=file_records,
-        node_name="directory-batch-window",
+        node_name=NODE_NAME,
     )
     start_index = int(start_resolution["start_index"])
     total_count = len(file_records)
     if total_count == 0:
-        raise InvalidRequestError("directory-batch-window 当前没有可处理文件")
+        return _build_poll_response(
+            file_records=(),
+            total_count=0,
+            start_index=0,
+            end_index=0,
+            batch_size=batch_size,
+            start_source=str(start_resolution["start_source"]),
+            no_work_reason="no-files",
+            cursor_anchor_path=_read_optional_str_value(start_resolution.get("cursor_last_path")),
+            cursor_anchor_found=_read_optional_bool_value(start_resolution.get("cursor_anchor_found")),
+        )
     if start_index >= total_count:
-        raise InvalidRequestError(
-            "directory-batch-window 的 start_index 超出文件数量范围",
-            details={"start_index": start_index, "total_count": total_count},
+        no_work_reason = "start-index-at-end"
+        if start_index > total_count:
+            no_work_reason = "start-index-out-of-range"
+        if str(start_resolution["start_source"]).startswith("cursor."):
+            no_work_reason = "no-new-files"
+        return _build_poll_response(
+            file_records=(),
+            total_count=total_count,
+            start_index=min(start_index, total_count),
+            end_index=min(start_index, total_count),
+            batch_size=batch_size,
+            start_source=str(start_resolution["start_source"]),
+            no_work_reason=no_work_reason,
+            cursor_anchor_path=_read_optional_str_value(start_resolution.get("cursor_last_path")),
+            cursor_anchor_found=_read_optional_bool_value(start_resolution.get("cursor_anchor_found")),
         )
     end_index = min(start_index + batch_size, total_count)
     batch_records = file_records[start_index:end_index]
-    return build_window_response(
+    return _build_poll_response(
         file_records=batch_records,
         total_count=total_count,
         start_index=start_index,
         end_index=end_index,
         batch_size=batch_size,
         start_source=str(start_resolution["start_source"]),
-        empty_reason=None,
         no_work_reason=None,
-        cursor_anchor_path=_read_optional_str_value(
-            start_resolution.get("cursor_last_path")
-        ),
-        cursor_anchor_found=_read_optional_bool_value(
-            start_resolution.get("cursor_anchor_found")
-        ),
-        has_work=True,
+        cursor_anchor_path=_read_optional_str_value(start_resolution.get("cursor_last_path")),
+        cursor_anchor_found=_read_optional_bool_value(start_resolution.get("cursor_anchor_found")),
     )
+
+
+def _build_poll_response(
+    *,
+    file_records: tuple[dict[str, object], ...] | list[dict[str, object]],
+    total_count: int,
+    start_index: int,
+    end_index: int,
+    batch_size: int,
+    start_source: str,
+    no_work_reason: str | None,
+    cursor_anchor_path: str | None,
+    cursor_anchor_found: bool | None,
+) -> dict[str, object]:
+    """构造目录轮询窗口输出。"""
+
+    has_work = len(file_records) > 0
+    output = build_window_response(
+        file_records=file_records,
+        total_count=total_count,
+        start_index=start_index,
+        end_index=end_index,
+        batch_size=batch_size,
+        start_source=start_source,
+        empty_reason=no_work_reason if not has_work else None,
+        no_work_reason=no_work_reason,
+        cursor_anchor_path=cursor_anchor_path,
+        cursor_anchor_found=cursor_anchor_found,
+        has_work=has_work,
+    )
+    output["has_work"] = build_boolean_payload(has_work)
+    return output
 
 
 def _read_optional_str_value(raw_value: object) -> str | None:
@@ -89,10 +140,10 @@ def _read_optional_bool_value(raw_value: object) -> bool | None:
 
 CORE_NODE_SPEC = CoreNodeSpec(
     node_definition=NodeDefinition(
-        node_type_id="core.io.directory-batch-window",
-        display_name="Directory Batch Window",
+        node_type_id="core.io.directory-poll-window",
+        display_name="Directory Poll Window",
         category="io.input",
-        description="从目录扫描得到的文件记录列表中切出一个批次窗口，支持运行时 start_index / batch_size 输入，供本地图像批处理链复用。",
+        description="从目录扫描结果中解析轮询友好的批次窗口；当当前没有新文件时返回 has_work=false 和空 files，而不是直接报错，适合外部定时调度或目录轮询守护。",
         implementation_kind=NODE_IMPLEMENTATION_CORE,
         runtime_kind=NODE_RUNTIME_PYTHON_CALLABLE,
         input_ports=(
@@ -136,6 +187,11 @@ CORE_NODE_SPEC = CoreNodeSpec(
                 display_name="Cursor",
                 payload_type_id="value.v1",
             ),
+            NodePortDefinition(
+                name="has_work",
+                display_name="Has Work",
+                payload_type_id="boolean.v1",
+            ),
         ),
         parameter_schema={
             "type": "object",
@@ -149,7 +205,7 @@ CORE_NODE_SPEC = CoreNodeSpec(
                 "batch_size": {"type": "integer", "title": "批次大小", "minimum": 1},
             },
         },
-        capability_tags=("io.input", "inspection.batch-input", "filesystem.window"),
+        capability_tags=("io.input", "inspection.batch-input", "filesystem.poll"),
     ),
-    handler=_directory_batch_window_handler,
+    handler=_directory_poll_window_handler,
 )

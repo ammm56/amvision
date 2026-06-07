@@ -1,0 +1,201 @@
+{
+  "format_id": "amvision.flow-application.v1",
+  "application_id": "industrial-local-directory-batch-yolox-position-gate-app",
+  "display_name": "Industrial Local Directory Batch YOLOX Position Gate App",
+  "description": "用于工业本地目录小批量检测判定的正式样例 app。输入目录路径、批次窗口、批次 cursor、deployment 请求和可选 ROI；输出批次文件、逐图判定结果列表、下一步可继续使用的 cursor、批次摘要和 JSON 归档摘要。",
+  "template_ref": {
+    "template_id": "industrial-local-directory-batch-yolox-position-gate-template",
+    "template_version": "1.0.0",
+    "source_kind": "json-file",
+    "source_uri": "docs/examples/workflows/industrial_local_directory_batch_yolox_position_gate.template.json"
+  },
+  "runtime_mode": "python-json-workflow",
+  "bindings": [
+    {
+      "binding_id": "request_directory_path",
+      "direction": "input",
+      "template_port_id": "request_directory_path",
+      "binding_kind": "workflow-execute-input",
+      "config": {
+        "payload_type_id": "value.v1",
+        "content_type": "application/json"
+      },
+      "metadata": {
+        "payload_type_id": "value.v1"
+      }
+    },
+    {
+      "binding_id": "request_batch_start_index",
+      "direction": "input",
+      "template_port_id": "request_batch_start_index",
+      "binding_kind": "workflow-execute-input",
+      "required": false,
+      "config": {
+        "payload_type_id": "value.v1",
+        "content_type": "application/json"
+      },
+      "metadata": {
+        "payload_type_id": "value.v1"
+      }
+    },
+    {
+      "binding_id": "request_batch_size",
+      "direction": "input",
+      "template_port_id": "request_batch_size",
+      "binding_kind": "workflow-execute-input",
+      "required": false,
+      "config": {
+        "payload_type_id": "value.v1",
+        "content_type": "application/json"
+      },
+      "metadata": {
+        "payload_type_id": "value.v1"
+      }
+    },
+    {
+      "binding_id": "request_batch_cursor",
+      "direction": "input",
+      "template_port_id": "request_batch_cursor",
+      "binding_kind": "workflow-execute-input",
+      "required": false,
+      "config": {
+        "payload_type_id": "value.v1",
+        "content_type": "application/json"
+      },
+      "metadata": {
+        "payload_type_id": "value.v1"
+      }
+    },
+    {
+      "binding_id": "deployment_request",
+      "direction": "input",
+      "template_port_id": "deployment_request",
+      "binding_kind": "workflow-execute-input",
+      "config": {
+        "payload_type_id": "value.v1",
+        "content_type": "application/json"
+      },
+      "metadata": {
+        "payload_type_id": "value.v1"
+      }
+    },
+    {
+      "binding_id": "request_roi",
+      "direction": "input",
+      "template_port_id": "request_roi",
+      "binding_kind": "workflow-execute-input",
+      "required": false,
+      "config": {
+        "payload_type_id": "value.v1",
+        "content_type": "application/json"
+      },
+      "metadata": {
+        "payload_type_id": "value.v1"
+      }
+    },
+    {
+      "binding_id": "batch_files",
+      "direction": "output",
+      "template_port_id": "batch_files",
+      "binding_kind": "workflow-execute-output",
+      "config": {
+        "payload_type_id": "value.v1"
+      },
+      "metadata": {}
+    },
+    {
+      "binding_id": "inspection_results",
+      "direction": "output",
+      "template_port_id": "inspection_results",
+      "binding_kind": "workflow-execute-output",
+      "config": {
+        "payload_type_id": "value.v1"
+      },
+      "metadata": {}
+    },
+    {
+      "binding_id": "inspection_result_count",
+      "direction": "output",
+      "template_port_id": "inspection_result_count",
+      "binding_kind": "workflow-execute-output",
+      "config": {
+        "payload_type_id": "value.v1"
+      },
+      "metadata": {}
+    },
+    {
+      "binding_id": "terminated_early",
+      "direction": "output",
+      "template_port_id": "terminated_early",
+      "binding_kind": "workflow-execute-output",
+      "config": {
+        "payload_type_id": "boolean.v1"
+      },
+      "metadata": {}
+    },
+    {
+      "binding_id": "termination_reason",
+      "direction": "output",
+      "template_port_id": "termination_reason",
+      "binding_kind": "workflow-execute-output",
+      "config": {
+        "payload_type_id": "value.v1"
+      },
+      "metadata": {}
+    },
+    {
+      "binding_id": "scan_summary",
+      "direction": "output",
+      "template_port_id": "scan_summary",
+      "binding_kind": "workflow-execute-output",
+      "config": {
+        "payload_type_id": "value.v1"
+      },
+      "metadata": {}
+    },
+    {
+      "binding_id": "window_summary",
+      "direction": "output",
+      "template_port_id": "window_summary",
+      "binding_kind": "workflow-execute-output",
+      "config": {
+        "payload_type_id": "value.v1"
+      },
+      "metadata": {}
+    },
+    {
+      "binding_id": "batch_cursor",
+      "direction": "output",
+      "template_port_id": "batch_cursor",
+      "binding_kind": "workflow-execute-output",
+      "config": {
+        "payload_type_id": "value.v1"
+      },
+      "metadata": {}
+    },
+    {
+      "binding_id": "batch_summary",
+      "direction": "output",
+      "template_port_id": "batch_summary",
+      "binding_kind": "workflow-execute-output",
+      "config": {
+        "payload_type_id": "value.v1"
+      },
+      "metadata": {}
+    },
+    {
+      "binding_id": "json_summary",
+      "direction": "output",
+      "template_port_id": "json_summary",
+      "binding_kind": "workflow-execute-output",
+      "config": {
+        "payload_type_id": "value.v1"
+      },
+      "metadata": {}
+    }
+  ],
+  "metadata": {
+    "example_kind": "industrial-local-directory-batch-yolox-position-gate",
+    "intended_saved_object_key": "workflows/projects/{project_id}/applications/industrial-local-directory-batch-yolox-position-gate-app/application.json"
+  }
+}

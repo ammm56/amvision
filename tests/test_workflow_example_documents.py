@@ -337,6 +337,42 @@ def test_sam3_video_memory_attention_review_example_documents_are_valid() -> Non
                 "callback_response",
             ],
         ),
+        (
+            "industrial_single_frame_glue_polygon_roi_changeover",
+            "industrial-single-frame-glue-polygon-roi-changeover",
+            [
+                "request_image_path_input",
+                "load_image",
+                "filter_regions",
+                "create_roi",
+                "coverage_check",
+                "inside_check",
+                "intersection_metrics",
+                "metadata_object",
+                "metrics_object",
+                "process_decision",
+                "alarm_condition",
+                "save_result_json",
+                "append_result_csv",
+                "callback_result",
+            ],
+            [
+                "request_image_path",
+                "request_regions",
+                "request_roi",
+            ],
+            [
+                "request_image_path",
+                "request_regions",
+                "request_roi",
+                "inspection_result",
+                "inspection_alarm",
+                "decision_summary",
+                "json_summary",
+                "csv_summary",
+                "callback_response",
+            ],
+        ),
     ],
 )
 def test_industrial_single_frame_example_documents_are_valid(
@@ -375,7 +411,10 @@ def test_industrial_single_frame_example_documents_are_valid(
     ] == expected_input_ids
     assert template.template_inputs[0].payload_type_id == "value.v1"
     assert template.template_inputs[1].payload_type_id == "regions.v1"
-    if example_name == "industrial_single_frame_glue_roi_callback":
+    if example_name in {
+        "industrial_single_frame_glue_roi_callback",
+        "industrial_single_frame_glue_polygon_roi_changeover",
+    }:
         assert template.template_inputs[2].payload_type_id == "value.v1"
         assert template.template_inputs[2].required is False
         assert template.metadata["dynamic_roi_input_binding"] == "request_roi"
@@ -387,7 +426,10 @@ def test_industrial_single_frame_example_documents_are_valid(
     assert [
         binding.binding_id for binding in application.bindings
     ] == expected_binding_ids
-    if example_name == "industrial_single_frame_glue_roi_callback":
+    if example_name in {
+        "industrial_single_frame_glue_roi_callback",
+        "industrial_single_frame_glue_polygon_roi_changeover",
+    }:
         assert application.bindings[2].required is False
         assert application.bindings[2].metadata["payload_type_id"] == "value.v1"
 
@@ -472,6 +514,558 @@ def test_industrial_single_frame_yolox_position_gate_documents_are_valid() -> No
     assert application.bindings[2].required is False
     assert application.bindings[3].config["payload_type_id"] == "detections.v1"
     assert application.bindings[4].config["payload_type_id"] == "regions.v1"
+
+
+def test_industrial_single_frame_segments_continuity_gate_documents_are_valid() -> None:
+    """验证 segments 到工业规则链样例模板与应用可以通过当前合同校验。"""
+
+    example_dir = (
+        Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
+    )
+    template_path = (
+        example_dir / "industrial_single_frame_segments_continuity_gate.template.json"
+    )
+    application_path = (
+        example_dir
+        / "industrial_single_frame_segments_continuity_gate.application.json"
+    )
+    template = WorkflowGraphTemplate.model_validate(
+        json.loads(template_path.read_text(encoding="utf-8"))
+    )
+    application = FlowApplication.model_validate(
+        json.loads(application_path.read_text(encoding="utf-8"))
+    )
+
+    registry = NodeCatalogRegistry()
+    validate_workflow_graph_template(
+        template=template,
+        node_definitions=registry.get_workflow_node_definitions(),
+    )
+    validate_flow_application_bindings(template=template, application=application)
+
+    assert [node.node_id for node in template.nodes] == [
+        "request_image_path_input",
+        "load_image",
+        "segments_to_regions",
+        "filter_regions",
+        "area_ratio",
+        "continuity_score",
+        "gap_check",
+        "presence_check",
+        "area_ratio_check",
+        "metadata_object",
+        "metrics_object",
+        "process_decision",
+        "alarm_condition",
+        "save_result_json",
+        "append_result_csv",
+    ]
+    assert (
+        template.metadata["example_kind"]
+        == "industrial-single-frame-segments-continuity-gate"
+    )
+    assert (
+        template.metadata["focus"] == "single-frame-industrial-segmentation-rule-chain"
+    )
+    assert [template_input.input_id for template_input in template.template_inputs] == [
+        "request_image_path",
+        "request_segments",
+    ]
+    assert template.template_inputs[0].payload_type_id == "value.v1"
+    assert template.template_inputs[1].payload_type_id == "segments.v1"
+    assert application.template_ref.source_uri == (
+        "docs/examples/workflows/industrial_single_frame_segments_continuity_gate.template.json"
+    )
+    assert application.runtime_mode == "python-json-workflow"
+    assert [binding.binding_id for binding in application.bindings] == [
+        "request_image_path",
+        "request_segments",
+        "normalized_regions",
+        "inspection_result",
+        "inspection_alarm",
+        "decision_summary",
+        "json_summary",
+        "csv_summary",
+    ]
+    assert application.bindings[1].config["payload_type_id"] == "segments.v1"
+    assert application.bindings[2].config["payload_type_id"] == "regions.v1"
+
+
+def test_industrial_local_directory_batch_input_documents_are_valid() -> None:
+    """验证工业本地目录批量输入样例模板与应用可以通过当前合同校验。"""
+
+    example_dir = (
+        Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
+    )
+    template_path = example_dir / "industrial_local_directory_batch_input.template.json"
+    application_path = (
+        example_dir / "industrial_local_directory_batch_input.application.json"
+    )
+    template = WorkflowGraphTemplate.model_validate(
+        json.loads(template_path.read_text(encoding="utf-8"))
+    )
+    application = FlowApplication.model_validate(
+        json.loads(application_path.read_text(encoding="utf-8"))
+    )
+
+    registry = NodeCatalogRegistry()
+    validate_workflow_graph_template(
+        template=template,
+        node_definitions=registry.get_workflow_node_definitions(),
+    )
+    validate_flow_application_bindings(template=template, application=application)
+
+    assert [node.node_id for node in template.nodes] == [
+        "request_directory_path_input",
+        "scan_directory",
+        "batch_window",
+        "load_images",
+        "summary_object",
+    ]
+    assert template.metadata["example_kind"] == "industrial-local-directory-batch-input"
+    assert template.metadata["focus"] == "local-batch-industrial-input-prep"
+    assert (
+        template.metadata["dynamic_batch_start_binding"] == "request_batch_start_index"
+    )
+    assert template.metadata["dynamic_batch_size_binding"] == "request_batch_size"
+    assert template.metadata["dynamic_batch_cursor_binding"] == "request_batch_cursor"
+    assert [template_input.input_id for template_input in template.template_inputs] == [
+        "request_directory_path",
+        "request_batch_start_index",
+        "request_batch_size",
+        "request_batch_cursor",
+    ]
+    assert template.template_inputs[0].payload_type_id == "value.v1"
+    assert template.template_inputs[1].payload_type_id == "value.v1"
+    assert template.template_inputs[1].required is False
+    assert template.template_inputs[2].payload_type_id == "value.v1"
+    assert template.template_inputs[2].required is False
+    assert template.template_inputs[3].payload_type_id == "value.v1"
+    assert template.template_inputs[3].required is False
+    assert application.template_ref.source_uri == (
+        "docs/examples/workflows/industrial_local_directory_batch_input.template.json"
+    )
+    assert application.runtime_mode == "python-json-workflow"
+    assert [binding.binding_id for binding in application.bindings] == [
+        "request_directory_path",
+        "request_batch_start_index",
+        "request_batch_size",
+        "request_batch_cursor",
+        "batch_files",
+        "batch_images",
+        "scan_summary",
+        "batch_cursor",
+        "batch_summary",
+    ]
+    assert application.bindings[1].required is False
+    assert application.bindings[2].required is False
+    assert application.bindings[3].required is False
+    assert application.bindings[5].config["payload_type_id"] == "image-refs.v1"
+
+
+def test_industrial_local_directory_polling_cursor_guard_documents_are_valid() -> None:
+    """验证工业目录轮询 cursor 守护样例模板与应用可以通过当前合同校验。"""
+
+    example_dir = (
+        Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
+    )
+    template_path = (
+        example_dir / "industrial_local_directory_polling_cursor_guard.template.json"
+    )
+    application_path = (
+        example_dir
+        / "industrial_local_directory_polling_cursor_guard.application.json"
+    )
+    template = WorkflowGraphTemplate.model_validate(
+        json.loads(template_path.read_text(encoding="utf-8"))
+    )
+    application = FlowApplication.model_validate(
+        json.loads(application_path.read_text(encoding="utf-8"))
+    )
+
+    registry = NodeCatalogRegistry()
+    validate_workflow_graph_template(
+        template=template,
+        node_definitions=registry.get_workflow_node_definitions(),
+    )
+    validate_flow_application_bindings(template=template, application=application)
+
+    assert [node.node_id for node in template.nodes] == [
+        "request_directory_path_input",
+        "load_cursor_state",
+        "scan_directory",
+        "poll_window",
+        "batch_archive_object",
+        "save_cursor_state",
+        "save_batch_archive",
+    ]
+    assert template.nodes[2].parameters["sort_by"] == "modified_time"
+    assert template.nodes[2].parameters["descending"] is False
+    assert template.metadata["example_kind"] == (
+        "industrial-local-directory-polling-cursor-guard"
+    )
+    assert template.metadata["focus"] == "local-directory-polling-guard"
+    assert template.metadata["uses_persisted_local_cursor"] is True
+    assert template.metadata["dynamic_batch_size_binding"] == "request_batch_size"
+    assert [template_input.input_id for template_input in template.template_inputs] == [
+        "request_directory_path",
+        "request_batch_size",
+    ]
+    assert template.template_inputs[0].payload_type_id == "value.v1"
+    assert template.template_inputs[1].payload_type_id == "value.v1"
+    assert template.template_inputs[1].required is False
+    assert application.template_ref.source_uri == (
+        "docs/examples/workflows/industrial_local_directory_polling_cursor_guard.template.json"
+    )
+    assert application.runtime_mode == "python-json-workflow"
+    assert [binding.binding_id for binding in application.bindings] == [
+        "request_directory_path",
+        "request_batch_size",
+        "has_work",
+        "batch_files",
+        "scan_summary",
+        "poll_summary",
+        "batch_cursor",
+        "cursor_state",
+        "cursor_load_summary",
+        "cursor_save_summary",
+        "batch_archive",
+        "archive_summary",
+    ]
+    assert application.bindings[1].required is False
+    assert application.bindings[2].config["payload_type_id"] == "boolean.v1"
+
+
+def test_industrial_local_directory_batch_yolox_position_gate_documents_are_valid() -> (
+    None
+):
+    """验证工业目录批处理检测闭环样例模板与应用可以通过当前合同校验。"""
+
+    example_dir = (
+        Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
+    )
+    template_path = (
+        example_dir / "industrial_local_directory_batch_yolox_position_gate.template.json"
+    )
+    application_path = (
+        example_dir
+        / "industrial_local_directory_batch_yolox_position_gate.application.json"
+    )
+    template = WorkflowGraphTemplate.model_validate(
+        json.loads(template_path.read_text(encoding="utf-8"))
+    )
+    application = FlowApplication.model_validate(
+        json.loads(application_path.read_text(encoding="utf-8"))
+    )
+
+    registry = NodeCatalogRegistry()
+    validate_workflow_graph_template(
+        template=template,
+        node_definitions=registry.get_workflow_node_definitions(),
+    )
+    validate_flow_application_bindings(template=template, application=application)
+
+    assert [node.node_id for node in template.nodes] == [
+        "request_directory_path_input",
+        "deployment_request_input",
+        "scan_directory",
+        "batch_window",
+        "create_roi",
+        "iterate_batch",
+        "get_current_file_record",
+        "get_current_file_index",
+        "extract_current_file_path",
+        "load_image",
+        "detect",
+        "detections_to_regions",
+        "filter_regions",
+        "select_best_region",
+        "inside_check",
+        "offset_check",
+        "presence_check",
+        "metadata_object",
+        "metrics_object",
+        "process_decision",
+        "append_result_csv",
+        "batch_summary_object",
+        "save_batch_json",
+    ]
+    assert (
+        template.metadata["example_kind"]
+        == "industrial-local-directory-batch-yolox-position-gate"
+    )
+    assert template.metadata["focus"] == "local-batch-industrial-detection-rule-chain"
+    assert template.metadata["uses_existing_deployment_instance"] is True
+    assert (
+        template.metadata["dynamic_batch_start_binding"] == "request_batch_start_index"
+    )
+    assert template.metadata["dynamic_batch_size_binding"] == "request_batch_size"
+    assert template.metadata["dynamic_batch_cursor_binding"] == "request_batch_cursor"
+    assert template.metadata["dynamic_roi_input_binding"] == "request_roi"
+    assert [template_input.input_id for template_input in template.template_inputs] == [
+        "request_directory_path",
+        "request_batch_start_index",
+        "request_batch_size",
+        "request_batch_cursor",
+        "deployment_request",
+        "request_roi",
+    ]
+    assert template.template_inputs[0].payload_type_id == "value.v1"
+    assert template.template_inputs[1].payload_type_id == "value.v1"
+    assert template.template_inputs[1].required is False
+    assert template.template_inputs[2].payload_type_id == "value.v1"
+    assert template.template_inputs[2].required is False
+    assert template.template_inputs[3].payload_type_id == "value.v1"
+    assert template.template_inputs[3].required is False
+    assert template.template_inputs[4].payload_type_id == "value.v1"
+    assert template.template_inputs[5].payload_type_id == "value.v1"
+    assert template.template_inputs[5].required is False
+    assert application.template_ref.source_uri == (
+        "docs/examples/workflows/industrial_local_directory_batch_yolox_position_gate.template.json"
+    )
+    assert application.runtime_mode == "python-json-workflow"
+    assert [binding.binding_id for binding in application.bindings] == [
+        "request_directory_path",
+        "request_batch_start_index",
+        "request_batch_size",
+        "request_batch_cursor",
+        "deployment_request",
+        "request_roi",
+        "batch_files",
+        "inspection_results",
+        "inspection_result_count",
+        "terminated_early",
+        "termination_reason",
+        "scan_summary",
+        "window_summary",
+        "batch_cursor",
+        "batch_summary",
+        "json_summary",
+    ]
+    assert application.bindings[1].required is False
+    assert application.bindings[2].required is False
+    assert application.bindings[3].required is False
+    assert application.bindings[5].required is False
+    assert application.bindings[9].config["payload_type_id"] == "boolean.v1"
+
+
+def test_industrial_local_directory_batch_segments_continuity_gate_documents_are_valid() -> (
+    None
+):
+    """验证工业目录批处理分割闭环样例模板与应用可以通过当前合同校验。"""
+
+    example_dir = (
+        Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
+    )
+    template_path = (
+        example_dir
+        / "industrial_local_directory_batch_segments_continuity_gate.template.json"
+    )
+    application_path = (
+        example_dir
+        / "industrial_local_directory_batch_segments_continuity_gate.application.json"
+    )
+    template = WorkflowGraphTemplate.model_validate(
+        json.loads(template_path.read_text(encoding="utf-8"))
+    )
+    application = FlowApplication.model_validate(
+        json.loads(application_path.read_text(encoding="utf-8"))
+    )
+
+    registry = NodeCatalogRegistry()
+    validate_workflow_graph_template(
+        template=template,
+        node_definitions=registry.get_workflow_node_definitions(),
+    )
+    validate_flow_application_bindings(template=template, application=application)
+
+    assert [node.node_id for node in template.nodes] == [
+        "request_directory_path_input",
+        "scan_directory",
+        "batch_window",
+        "iterate_batch",
+        "get_current_file_record",
+        "get_current_file_index",
+        "extract_current_file_path",
+        "load_image",
+        "get_current_segments_value",
+        "value_to_segments",
+        "segments_to_regions",
+        "filter_regions",
+        "area_ratio",
+        "continuity_score",
+        "gap_check",
+        "presence_check",
+        "area_ratio_check",
+        "metadata_object",
+        "metrics_object",
+        "process_decision",
+        "append_result_csv",
+        "batch_summary_object",
+        "save_batch_json",
+    ]
+    assert (
+        template.metadata["example_kind"]
+        == "industrial-local-directory-batch-segments-continuity-gate"
+    )
+    assert template.metadata["focus"] == "local-batch-industrial-segmentation-rule-chain"
+    assert (
+        template.metadata["dynamic_batch_start_binding"] == "request_batch_start_index"
+    )
+    assert template.metadata["dynamic_batch_size_binding"] == "request_batch_size"
+    assert template.metadata["dynamic_batch_cursor_binding"] == "request_batch_cursor"
+    assert template.metadata["batch_segments_items_binding"] == "request_segments_items"
+    assert [template_input.input_id for template_input in template.template_inputs] == [
+        "request_directory_path",
+        "request_batch_start_index",
+        "request_batch_size",
+        "request_batch_cursor",
+        "request_segments_items",
+    ]
+    assert [template_input.payload_type_id for template_input in template.template_inputs] == [
+        "value.v1",
+        "value.v1",
+        "value.v1",
+        "value.v1",
+        "value.v1",
+    ]
+    assert template.template_inputs[1].required is False
+    assert template.template_inputs[2].required is False
+    assert template.template_inputs[3].required is False
+    assert application.template_ref.source_uri == (
+        "docs/examples/workflows/industrial_local_directory_batch_segments_continuity_gate.template.json"
+    )
+    assert application.runtime_mode == "python-json-workflow"
+    assert [binding.binding_id for binding in application.bindings] == [
+        "request_directory_path",
+        "request_batch_start_index",
+        "request_batch_size",
+        "request_batch_cursor",
+        "request_segments_items",
+        "batch_files",
+        "inspection_results",
+        "inspection_result_count",
+        "terminated_early",
+        "termination_reason",
+        "scan_summary",
+        "window_summary",
+        "batch_cursor",
+        "batch_summary",
+        "json_summary",
+    ]
+    assert application.bindings[1].required is False
+    assert application.bindings[2].required is False
+    assert application.bindings[3].required is False
+    assert application.bindings[8].config["payload_type_id"] == "boolean.v1"
+
+
+def test_industrial_local_directory_batch_regions_continuity_gate_documents_are_valid() -> (
+    None
+):
+    """验证工业目录批处理 regions 闭环样例模板与应用可以通过当前合同校验。"""
+
+    example_dir = (
+        Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
+    )
+    template_path = (
+        example_dir
+        / "industrial_local_directory_batch_regions_continuity_gate.template.json"
+    )
+    application_path = (
+        example_dir
+        / "industrial_local_directory_batch_regions_continuity_gate.application.json"
+    )
+    template = WorkflowGraphTemplate.model_validate(
+        json.loads(template_path.read_text(encoding="utf-8"))
+    )
+    application = FlowApplication.model_validate(
+        json.loads(application_path.read_text(encoding="utf-8"))
+    )
+
+    registry = NodeCatalogRegistry()
+    validate_workflow_graph_template(
+        template=template,
+        node_definitions=registry.get_workflow_node_definitions(),
+    )
+    validate_flow_application_bindings(template=template, application=application)
+
+    assert [node.node_id for node in template.nodes] == [
+        "request_directory_path_input",
+        "scan_directory",
+        "batch_window",
+        "iterate_batch",
+        "get_current_file_record",
+        "get_current_file_index",
+        "extract_current_file_path",
+        "load_image",
+        "get_current_regions_value",
+        "value_to_regions",
+        "filter_regions",
+        "area_ratio",
+        "continuity_score",
+        "gap_check",
+        "presence_check",
+        "area_ratio_check",
+        "metadata_object",
+        "metrics_object",
+        "process_decision",
+        "append_result_csv",
+        "batch_summary_object",
+        "save_batch_json",
+    ]
+    assert (
+        template.metadata["example_kind"]
+        == "industrial-local-directory-batch-regions-continuity-gate"
+    )
+    assert template.metadata["focus"] == "local-batch-industrial-regions-rule-chain"
+    assert (
+        template.metadata["dynamic_batch_start_binding"] == "request_batch_start_index"
+    )
+    assert template.metadata["dynamic_batch_size_binding"] == "request_batch_size"
+    assert template.metadata["dynamic_batch_cursor_binding"] == "request_batch_cursor"
+    assert template.metadata["batch_regions_items_binding"] == "request_regions_items"
+    assert [template_input.input_id for template_input in template.template_inputs] == [
+        "request_directory_path",
+        "request_batch_start_index",
+        "request_batch_size",
+        "request_batch_cursor",
+        "request_regions_items",
+    ]
+    assert [template_input.payload_type_id for template_input in template.template_inputs] == [
+        "value.v1",
+        "value.v1",
+        "value.v1",
+        "value.v1",
+        "value.v1",
+    ]
+    assert template.template_inputs[1].required is False
+    assert template.template_inputs[2].required is False
+    assert template.template_inputs[3].required is False
+    assert application.template_ref.source_uri == (
+        "docs/examples/workflows/industrial_local_directory_batch_regions_continuity_gate.template.json"
+    )
+    assert application.runtime_mode == "python-json-workflow"
+    assert [binding.binding_id for binding in application.bindings] == [
+        "request_directory_path",
+        "request_batch_start_index",
+        "request_batch_size",
+        "request_batch_cursor",
+        "request_regions_items",
+        "batch_files",
+        "inspection_results",
+        "inspection_result_count",
+        "terminated_early",
+        "termination_reason",
+        "scan_summary",
+        "window_summary",
+        "batch_cursor",
+        "batch_summary",
+        "json_summary",
+    ]
+    assert application.bindings[1].required is False
+    assert application.bindings[2].required is False
+    assert application.bindings[3].required is False
+    assert application.bindings[8].config["payload_type_id"] == "boolean.v1"
 
 
 def test_opencv_process_save_image_example_documents_are_valid() -> None:

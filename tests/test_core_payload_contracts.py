@@ -5,12 +5,13 @@ from __future__ import annotations
 from backend.nodes.core_catalog import get_core_workflow_payload_contracts
 
 
-def test_core_payload_contracts_include_image_base64_and_local_buffer_image_refs() -> None:
+def test_core_payload_contracts_include_image_base64_and_local_buffer_image_refs() -> (
+    None
+):
     """验证 core payload contracts 已收敛到 base64 输入和 LocalBufferBroker 图片引用。"""
 
     payload_contracts = {
-        item.payload_type_id: item
-        for item in get_core_workflow_payload_contracts()
+        item.payload_type_id: item for item in get_core_workflow_payload_contracts()
     }
 
     assert "image-base64.v1" in payload_contracts
@@ -45,7 +46,13 @@ def test_core_payload_contracts_include_image_base64_and_local_buffer_image_refs
 
     roi_contract = payload_contracts["roi.v1"]
     assert roi_contract.transport_kind == "inline-json"
-    assert roi_contract.json_schema["required"] == ["roi_id", "roi_kind", "bbox_xyxy", "polygon_xy", "area"]
+    assert roi_contract.json_schema["required"] == [
+        "roi_id",
+        "roi_kind",
+        "bbox_xyxy",
+        "polygon_xy",
+        "area",
+    ]
 
     result_record_contract = payload_contracts["result-record.v1"]
     assert result_record_contract.transport_kind == "inline-json"
@@ -53,4 +60,12 @@ def test_core_payload_contracts_include_image_base64_and_local_buffer_image_refs
 
     alarm_record_contract = payload_contracts["alarm-record.v1"]
     assert alarm_record_contract.transport_kind == "inline-json"
-    assert alarm_record_contract.json_schema["required"] == ["active", "level", "message"]
+    assert alarm_record_contract.json_schema["required"] == [
+        "active",
+        "level",
+        "message",
+    ]
+
+    segments_contract = payload_contracts["segments.v1"]
+    assert segments_contract.transport_kind == "inline-json"
+    assert segments_contract.json_schema["required"] == ["items"]

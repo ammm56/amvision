@@ -4,7 +4,10 @@ from __future__ import annotations
 
 from functools import lru_cache
 
-from backend.contracts.workflows.workflow_graph import NodeDefinition, WorkflowPayloadContract
+from backend.contracts.workflows.workflow_graph import (
+    NodeDefinition,
+    WorkflowPayloadContract,
+)
 from backend.nodes.core_nodes import get_core_node_specs
 
 
@@ -341,6 +344,63 @@ def get_core_workflow_payload_contracts() -> tuple[WorkflowPayloadContract, ...]
             },
         ),
         WorkflowPayloadContract(
+            payload_type_id="segments.v1",
+            display_name="Segments",
+            transport_kind="inline-json",
+            json_schema={
+                "type": "object",
+                "properties": {
+                    "source_image": {"type": "object"},
+                    "count": {"type": "integer", "minimum": 0},
+                    "selected_frame_index": {"type": "integer", "minimum": 0},
+                    "items": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "segment_id": {"type": "string"},
+                                "score": {"type": "number"},
+                                "class_id": {"type": "integer"},
+                                "class_name": {"type": "string"},
+                                "bbox_xyxy": {
+                                    "type": "array",
+                                    "items": {"type": "number"},
+                                    "minItems": 4,
+                                    "maxItems": 4,
+                                },
+                                "polygon_xy": {
+                                    "type": "array",
+                                    "items": {
+                                        "type": "array",
+                                        "items": {"type": "number"},
+                                        "minItems": 2,
+                                        "maxItems": 2,
+                                    },
+                                },
+                                "mask_image": {"type": "object"},
+                                "prompt_id": {"type": "string"},
+                                "source_prompt_text": {"type": "string"},
+                                "source_prompt_positive_texts": {
+                                    "type": "array",
+                                    "items": {"type": "string"},
+                                },
+                                "source_prompt_negative_texts": {
+                                    "type": "array",
+                                    "items": {"type": "string"},
+                                },
+                                "track_id": {"type": "string"},
+                                "frame_index": {"type": "integer", "minimum": 0},
+                                "timestamp_ms": {"type": "number", "minimum": 0},
+                                "state": {"type": "string"},
+                            },
+                            "required": ["score"],
+                        },
+                    },
+                },
+                "required": ["items"],
+            },
+        ),
+        WorkflowPayloadContract(
             payload_type_id="regions.v1",
             display_name="Regions",
             transport_kind="inline-json",
@@ -538,4 +598,6 @@ def get_core_workflow_node_definitions() -> tuple[NodeDefinition, ...]:
     - tuple[NodeDefinition, ...]：从 core_nodes 目录扫描得到的 NodeDefinition 列表。
     """
 
-    return tuple(core_node_spec.node_definition for core_node_spec in get_core_node_specs())
+    return tuple(
+        core_node_spec.node_definition for core_node_spec in get_core_node_specs()
+    )
