@@ -499,5 +499,365 @@
     },
     "artifact_kinds": [],
     "metadata": {}
+  },
+  {
+    "format_id": "amvision.workflow-payload-contract.v1",
+    "payload_type_id": "lines.v1",
+    "display_name": "Line Result",
+    "transport_kind": "inline-json",
+    "json_schema": {
+      "type": "object",
+      "properties": {
+        "source_image": {
+          "type": "object",
+          "properties": {
+            "transport_kind": {
+              "type": "string",
+              "enum": [
+                "memory",
+                "storage",
+                "buffer",
+                "frame"
+              ]
+            },
+            "object_key": {
+              "type": "string"
+            },
+            "image_handle": {
+              "type": "string"
+            },
+            "buffer_ref": {
+              "type": "object"
+            },
+            "frame_ref": {
+              "type": "object"
+            },
+            "width": {
+              "type": "integer"
+            },
+            "height": {
+              "type": "integer"
+            },
+            "media_type": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "transport_kind",
+            "media_type"
+          ],
+          "oneOf": [
+            {
+              "properties": {
+                "transport_kind": {
+                  "const": "storage"
+                }
+              },
+              "required": [
+                "object_key"
+              ]
+            },
+            {
+              "properties": {
+                "transport_kind": {
+                  "const": "memory"
+                }
+              },
+              "required": [
+                "image_handle"
+              ]
+            },
+            {
+              "properties": {
+                "transport_kind": {
+                  "const": "buffer"
+                }
+              },
+              "required": [
+                "buffer_ref"
+              ]
+            },
+            {
+              "properties": {
+                "transport_kind": {
+                  "const": "frame"
+                }
+              },
+              "required": [
+                "frame_ref"
+              ]
+            }
+          ]
+        },
+        "source_object_key": {
+          "type": "string"
+        },
+        "count": {
+          "type": "integer"
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "line_index": {
+                "type": "integer"
+              },
+              "start_xy": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 2,
+                "maxItems": 2
+              },
+              "end_xy": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 2,
+                "maxItems": 2
+              },
+              "dx_pixels": {
+                "type": "number"
+              },
+              "dy_pixels": {
+                "type": "number"
+              },
+              "length_pixels": {
+                "type": "number"
+              },
+              "angle_deg": {
+                "type": "number"
+              },
+              "midpoint_xy": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 2,
+                "maxItems": 2
+              },
+              "midpoint_x": {
+                "type": "number"
+              },
+              "midpoint_y": {
+                "type": "number"
+              },
+              "bbox_xyxy": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 4,
+                "maxItems": 4
+              },
+              "contour_index": {
+                "type": "integer"
+              },
+              "point_count": {
+                "type": "integer"
+              },
+              "origin_xy": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 2,
+                "maxItems": 2
+              },
+              "direction_xy": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 2,
+                "maxItems": 2
+              }
+            },
+            "required": [
+              "line_index",
+              "start_xy",
+              "end_xy",
+              "length_pixels",
+              "angle_deg"
+            ]
+          }
+        }
+      },
+      "required": [
+        "items"
+      ]
+    },
+    "artifact_kinds": [],
+    "metadata": {}
+  },
+  {
+    "format_id": "amvision.workflow-payload-contract.v1",
+    "payload_type_id": "circles.v1",
+    "display_name": "Circle Result",
+    "transport_kind": "inline-json",
+    "json_schema": {
+      "type": "object",
+      "properties": {
+        "source_image": {
+          "type": "object",
+          "properties": {
+            "transport_kind": {
+              "type": "string",
+              "enum": [
+                "memory",
+                "storage",
+                "buffer",
+                "frame"
+              ]
+            },
+            "object_key": {
+              "type": "string"
+            },
+            "image_handle": {
+              "type": "string"
+            },
+            "buffer_ref": {
+              "type": "object"
+            },
+            "frame_ref": {
+              "type": "object"
+            },
+            "width": {
+              "type": "integer"
+            },
+            "height": {
+              "type": "integer"
+            },
+            "media_type": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "transport_kind",
+            "media_type"
+          ],
+          "oneOf": [
+            {
+              "properties": {
+                "transport_kind": {
+                  "const": "storage"
+                }
+              },
+              "required": [
+                "object_key"
+              ]
+            },
+            {
+              "properties": {
+                "transport_kind": {
+                  "const": "memory"
+                }
+              },
+              "required": [
+                "image_handle"
+              ]
+            },
+            {
+              "properties": {
+                "transport_kind": {
+                  "const": "buffer"
+                }
+              },
+              "required": [
+                "buffer_ref"
+              ]
+            },
+            {
+              "properties": {
+                "transport_kind": {
+                  "const": "frame"
+                }
+              },
+              "required": [
+                "frame_ref"
+              ]
+            }
+          ]
+        },
+        "source_object_key": {
+          "type": "string"
+        },
+        "count": {
+          "type": "integer"
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "circle_index": {
+                "type": "integer"
+              },
+              "center_xy": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 2,
+                "maxItems": 2
+              },
+              "center_x": {
+                "type": "number"
+              },
+              "center_y": {
+                "type": "number"
+              },
+              "radius": {
+                "type": "number"
+              },
+              "diameter": {
+                "type": "number"
+              },
+              "area": {
+                "type": "number"
+              },
+              "circumference": {
+                "type": "number"
+              },
+              "bbox_xyxy": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 4,
+                "maxItems": 4
+              },
+              "contour_index": {
+                "type": "integer"
+              },
+              "point_count": {
+                "type": "integer"
+              },
+              "contour_area": {
+                "type": "number"
+              },
+              "fill_ratio": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "circle_index",
+              "center_xy",
+              "radius",
+              "diameter",
+              "area"
+            ]
+          }
+        }
+      },
+      "required": [
+        "items"
+      ]
+    },
+    "artifact_kinds": [],
+    "metadata": {}
   }
 ]

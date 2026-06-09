@@ -54,6 +54,18 @@ from custom_nodes.opencv_basic_nodes.backend.nodes.grayscale import (
     NODE_TYPE_ID as GRAYSCALE_NODE_TYPE_ID,
     handle_node as grayscale_handler,
 )
+from custom_nodes.opencv_basic_nodes.backend.nodes.fit_line import (
+    NODE_TYPE_ID as FIT_LINE_NODE_TYPE_ID,
+    handle_node as fit_line_handler,
+)
+from custom_nodes.opencv_basic_nodes.backend.nodes.hough_circles import (
+    NODE_TYPE_ID as HOUGH_CIRCLES_NODE_TYPE_ID,
+    handle_node as hough_circles_handler,
+)
+from custom_nodes.opencv_basic_nodes.backend.nodes.hough_lines import (
+    NODE_TYPE_ID as HOUGH_LINES_NODE_TYPE_ID,
+    handle_node as hough_lines_handler,
+)
 from custom_nodes.opencv_basic_nodes.backend.nodes.image_diff import (
     NODE_TYPE_ID as IMAGE_DIFF_NODE_TYPE_ID,
     handle_node as image_diff_handler,
@@ -65,6 +77,10 @@ from custom_nodes.opencv_basic_nodes.backend.nodes.measure import (
 from custom_nodes.opencv_basic_nodes.backend.nodes.min_area_rect import (
     NODE_TYPE_ID as MIN_AREA_RECT_NODE_TYPE_ID,
     handle_node as min_area_rect_handler,
+)
+from custom_nodes.opencv_basic_nodes.backend.nodes.min_enclosing_circle import (
+    NODE_TYPE_ID as MIN_ENCLOSING_CIRCLE_NODE_TYPE_ID,
+    handle_node as min_enclosing_circle_handler,
 )
 from custom_nodes.opencv_basic_nodes.backend.nodes.morphology import (
     NODE_TYPE_ID as MORPHOLOGY_NODE_TYPE_ID,
@@ -96,11 +112,15 @@ NODE_HANDLERS = (
     (CROP_EXPORT_NODE_TYPE_ID, crop_export_handler),
     (GALLERY_PREVIEW_NODE_TYPE_ID, gallery_preview_handler),
     (GRAYSCALE_NODE_TYPE_ID, grayscale_handler),
+    (FIT_LINE_NODE_TYPE_ID, fit_line_handler),
+    (HOUGH_LINES_NODE_TYPE_ID, hough_lines_handler),
+    (HOUGH_CIRCLES_NODE_TYPE_ID, hough_circles_handler),
     (RESIZE_NODE_TYPE_ID, resize_handler),
     (ADAPTIVE_THRESHOLD_NODE_TYPE_ID, adaptive_threshold_handler),
     (OTSU_THRESHOLD_NODE_TYPE_ID, otsu_threshold_handler),
     (CONTOUR_FILTER_NODE_TYPE_ID, contour_filter_handler),
     (MIN_AREA_RECT_NODE_TYPE_ID, min_area_rect_handler),
+    (MIN_ENCLOSING_CIRCLE_NODE_TYPE_ID, min_enclosing_circle_handler),
     (CONTOURS_TO_REGIONS_NODE_TYPE_ID, contours_to_regions_handler),
     (IMAGE_DIFF_NODE_TYPE_ID, image_diff_handler),
     (ABSDIFF_THRESHOLD_NODE_TYPE_ID, absdiff_threshold_handler),

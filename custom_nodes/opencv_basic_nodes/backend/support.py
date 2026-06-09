@@ -297,6 +297,44 @@ def build_contours_payload(
     return payload
 
 
+def build_lines_payload(
+    *,
+    items: list[dict[str, object]],
+    source_image: object | None,
+    source_object_key: str | None,
+) -> dict[str, object]:
+    """构建规范化后的 lines.v1 payload。"""
+
+    payload: dict[str, object] = {
+        "items": [dict(item) for item in items],
+        "count": len(items),
+    }
+    if isinstance(source_image, dict):
+        payload["source_image"] = require_image_payload(source_image)
+    if isinstance(source_object_key, str) and source_object_key:
+        payload["source_object_key"] = source_object_key
+    return payload
+
+
+def build_circles_payload(
+    *,
+    items: list[dict[str, object]],
+    source_image: object | None,
+    source_object_key: str | None,
+) -> dict[str, object]:
+    """构建规范化后的 circles.v1 payload。"""
+
+    payload: dict[str, object] = {
+        "items": [dict(item) for item in items],
+        "count": len(items),
+    }
+    if isinstance(source_image, dict):
+        payload["source_image"] = require_image_payload(source_image)
+    if isinstance(source_object_key, str) and source_object_key:
+        payload["source_object_key"] = source_object_key
+    return payload
+
+
 def resolve_contours_source_image(
     *,
     contours_payload: dict[str, object],

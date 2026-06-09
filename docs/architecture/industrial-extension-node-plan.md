@@ -812,8 +812,8 @@ PLC 能力也应至少拆成两类：
 - `custom.opencv.laplacian`
 - `custom.opencv.hough-lines`
 - `custom.opencv.hough-circles`
-- `custom.opencv.fit-line`
-- `custom.opencv.min-enclosing-circle`
+- `custom.opencv.fit-line`（已实现）
+- `custom.opencv.min-enclosing-circle`（已实现）
 
 ### 轮廓与形状
 
@@ -905,7 +905,7 @@ PLC 能力也应至少拆成两类：
 - `custom.camera.usb_uvc_nodes`
 - `custom.plc.modbus_tcp_nodes`
 - `custom.opencv.grayscale / resize / adaptive-threshold / otsu-threshold`（已实现）
-- `custom.opencv.hough-lines / hough-circles`
+- `custom.opencv.hough-lines / hough-circles`（已实现）
 - `custom.opencv.contour-filter / min-area-rect / contours-to-regions`（已实现）
 - `custom.opencv.connected-components / image-diff / absdiff-threshold`（已实现）
 - `core.vision.reference-diff-metrics`（已实现）

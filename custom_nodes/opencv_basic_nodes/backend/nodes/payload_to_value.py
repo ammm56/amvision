@@ -21,7 +21,7 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
     """
 
     candidate_values: list[tuple[str, dict[str, object]]] = []
-    for port_name in ("contours", "measurements", "rotated_rects"):
+    for port_name in ("contours", "measurements", "rotated_rects", "lines", "circles"):
         raw_payload = request.input_values.get(port_name)
         if raw_payload is None:
             continue
@@ -34,7 +34,7 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
 
     if not candidate_values:
         raise InvalidRequestError(
-            "opencv payload-to-value 节点至少需要连接 contours、measurements 或 rotated_rects 输入",
+            "opencv payload-to-value 节点至少需要连接 contours、measurements、rotated_rects、lines 或 circles 输入",
             details={"node_id": request.node_id},
         )
     if len(candidate_values) > 1:
