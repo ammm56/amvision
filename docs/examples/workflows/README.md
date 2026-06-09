@@ -207,12 +207,16 @@ ZeroMQ TriggerSource 示例不把机器相关的 `path`、`offset` 和 `broker_e
 - `industrial_single_frame_glue_roi_callback.application.json`
 - `industrial_single_frame_glue_polygon_roi_changeover.template.json`
 - `industrial_single_frame_glue_polygon_roi_changeover.application.json`
+- `industrial_single_frame_regions_overlay_review.template.json`
+- `industrial_single_frame_regions_overlay_review.application.json`
 - `industrial_single_frame_yolox_position_gate.template.json`
 - `industrial_single_frame_yolox_position_gate.application.json`
 - `industrial_single_frame_line_pair_measure_gate.template.json`
 - `industrial_single_frame_line_pair_measure_gate.application.json`
 - `industrial_single_frame_circle_concentricity_gate.template.json`
 - `industrial_single_frame_circle_concentricity_gate.application.json`
+- `industrial_single_frame_segments_overlay_review.template.json`
+- `industrial_single_frame_segments_overlay_review.application.json`
 - `industrial_local_directory_batch_input.template.json`
 - `industrial_local_directory_batch_input.application.json`
 - `industrial_local_directory_batch_segments_continuity_gate.template.json`
@@ -224,7 +228,7 @@ ZeroMQ TriggerSource 示例不把机器相关的 `path`、`offset` 和 `broker_e
 - `industrial_local_directory_polling_cursor_guard.template.json`
 - `industrial_local_directory_polling_cursor_guard.application.json`
 
-前两组样例聚焦“单图输入 -> 规则判定 -> `process-decision` -> 结果回传”，不把相机、PLC 或特定模型耦合进模板本体。`industrial_single_frame_segments_continuity_gate` 则把“分割输出 -> `segments.v1` -> `regions.v1` -> 工业规则链”这层也一起接通；`industrial_single_frame_yolox_position_gate` 对应把“检测输出 -> `detections.v1` -> `regions.v1` -> 工业规则链”这层接通；`industrial_single_frame_glue_polygon_roi_changeover` 进一步演示多边形 ROI 的换型和现场回调；`industrial_single_frame_line_pair_measure_gate` 与 `industrial_single_frame_circle_concentricity_gate` 则把传统 OpenCV 几何量测这层收成 checked-in 现场模板，分别覆盖双边线槽宽/平行度和双圆孔径/同心度/圆度；`industrial_local_directory_batch_input` 把本地文件夹小批量输入这层单独收成可复用模板；`industrial_local_directory_batch_segments_continuity_gate` 与 `industrial_local_directory_batch_regions_continuity_gate` 则把“目录批次 -> 分割/区域结果 -> 连续性规则链 -> CSV / JSON 归档”两类上游入口接到同一套批次骨架；`industrial_local_directory_batch_yolox_position_gate` 继续把这条目录批次输入主线真正接到“逐图检测 -> 规则判定 -> CSV 持续归档 -> 批次 JSON 汇总”的现场闭环；`industrial_local_directory_polling_cursor_guard` 则把“目录轮询守护 / cursor 落盘恢复 / 批次归档 JSON”这层独立收成可复用状态模板。
+前两组样例聚焦“单图输入 -> 规则判定 -> `process-decision` -> 结果回传”，不把相机、PLC 或特定模型耦合进模板本体。`industrial_single_frame_segments_continuity_gate` 则把“分割输出 -> `segments.v1` -> `regions.v1` -> 工业规则链”这层也一起接通；`industrial_single_frame_regions_overlay_review` 与 `industrial_single_frame_segments_overlay_review` 进一步把 `draw-roi / mask-overlay` 这层 checked-in，分别覆盖“上游已是标准 `regions.v1`”和“上游仍是 `segments.v1` 需要先桥接”的两种现场复核入口；`industrial_single_frame_yolox_position_gate` 对应把“检测输出 -> `detections.v1` -> `regions.v1` -> 工业规则链”这层接通；`industrial_single_frame_glue_polygon_roi_changeover` 进一步演示多边形 ROI 的换型和现场回调；`industrial_single_frame_line_pair_measure_gate` 与 `industrial_single_frame_circle_concentricity_gate` 则把传统 OpenCV 几何量测这层收成 checked-in 现场模板，分别覆盖双边线槽宽/平行度和双圆孔径/同心度/圆度；`industrial_local_directory_batch_input` 把本地文件夹小批量输入这层单独收成可复用模板；`industrial_local_directory_batch_segments_continuity_gate` 与 `industrial_local_directory_batch_regions_continuity_gate` 则把“目录批次 -> 分割/区域结果 -> 连续性规则链 -> CSV / JSON 归档”两类上游入口接到同一套批次骨架；`industrial_local_directory_batch_yolox_position_gate` 继续把这条目录批次输入主线真正接到“逐图检测 -> 规则判定 -> CSV 持续归档 -> 批次 JSON 汇总”的现场闭环；`industrial_local_directory_polling_cursor_guard` 则把“目录轮询守护 / cursor 落盘恢复 / 批次归档 JSON”这层独立收成可复用状态模板。
 
 上游 `regions.v1` 的典型来源：
 
@@ -237,6 +241,8 @@ ZeroMQ TriggerSource 示例不把机器相关的 `path`、`offset` 和 `broker_e
 当前已发布 deployment detection 主链默认输出的是 `detections.v1`；如果现场规则链消费的是 `regions.v1`，当前推荐先接 `core.vision.detections-to-regions` 再进入工业规则节点。
 
 如果上游拿到的是分割结果而不是 bbox 检测，当前推荐直接使用 `regions.v1`；只有在上游结果仍是独立 `mask / polygon / bbox` 组合、还没有收成 `regions.v1` 时，才需要先接 `core.vision.segments-to-regions`。
+
+如果现场当前主要需求不是“直接出规则门限”，而是“先把区域和 ROI 依据画出来给工艺或设备人员复核”，当前推荐优先使用 `industrial_single_frame_regions_overlay_review` 或 `industrial_single_frame_segments_overlay_review` 这两条 overlay 样例，再按现场需要继续接 JSON/CSV/HTTP 回传。
 
 ### industrial_single_frame_sealant_quality_gate
 
@@ -322,6 +328,91 @@ ZeroMQ TriggerSource 示例不把机器相关的 `path`、`offset` 和 `broker_e
 - 该样例会先把 `segments.v1` 统一桥接为 `regions.v1`，再进入现有连续性规则链；这是当前分割结果接工业规则的推荐接法
 - 模板里显式把 `load_image.image` 接到 `segments-to-regions.image`，这样即使上游 `segments.v1` 本身未附带 `source_image`，桥接后的 `regions.v1` 也会带上来源图像
 - 如果上游已经直接给出标准 `regions.v1`，则更适合直接复用 `industrial_single_frame_sealant_quality_gate`
+
+### industrial_single_frame_regions_overlay_review
+
+链路固定为：
+
+- `template-input.value`
+- `image-load-local`
+- `regions-filter`
+- `roi-create`
+- `draw-roi`
+- `mask-overlay`
+- `presence-check`
+- `regions-inside-check`
+- `process-decision`
+
+输入约定：
+
+- `request_image_path`：`value.v1`
+  - 示例：`{"value":"D:/cases/review/frame-031.png"}`
+- `request_regions`：`regions.v1`
+  - 适合直接接 YOLOE、SAM3 或外部系统已经标准化好的区域结果
+- `request_roi`：`value.v1`
+  - 可选；未提供时回退到模板内默认多边形 ROI
+
+输出约定：
+
+- `filtered_regions`：`regions.v1`
+- `effective_roi`：`roi.v1`
+- `review_overlay_image`：`image-ref.v1`
+- `inspection_result`：`result-record.v1`
+- `decision_summary`：`value.v1`
+
+适用场景：
+
+- 上游已经直接输出标准 `regions.v1`
+- 现场需要先把 ROI 和区域叠加回原图，再做最小 OK/NG 复核
+- 需要把 overlay 图直接挂进 `result-record`，给人工复核或外部系统继续使用
+
+注意事项：
+
+- 这条样例会把 `mask-overlay.image` 直接接到 `process-decision.image`，所以输出的 `inspection_result` 会携带最终复核图引用
+- 该样例默认使用多边形 ROI，更适合不规则工位或换型边界复核
+
+### industrial_single_frame_segments_overlay_review
+
+链路固定为：
+
+- `template-input.value`
+- `image-load-local`
+- `segments-to-regions`
+- `regions-filter`
+- `roi-create`
+- `draw-roi`
+- `mask-overlay`
+- `presence-check`
+- `regions-coverage-check`
+- `process-decision`
+
+输入约定：
+
+- `request_image_path`：`value.v1`
+  - 示例：`{"value":"D:/cases/review/frame-seg-012.png"}`
+- `request_segments`：`segments.v1`
+  - 适合上游仍输出 `mask / polygon / bbox` 分割结果、还未先规整成 `regions.v1` 的场景
+- `request_roi`：`value.v1`
+  - 可选；未提供时回退到模板内默认矩形 ROI
+
+输出约定：
+
+- `normalized_regions`：`regions.v1`
+- `effective_roi`：`roi.v1`
+- `review_overlay_image`：`image-ref.v1`
+- `inspection_result`：`result-record.v1`
+- `decision_summary`：`value.v1`
+
+适用场景：
+
+- SAM3、YOLOE 分割链或外部分割模块先给出 `segments.v1`
+- 需要先桥接成标准 `regions.v1`，再统一复核和挂接工业规则链
+- 需要一条 checked-in 的“segments -> overlay -> result-record” 现场模板
+
+注意事项：
+
+- 模板里显式把 `load_image.image` 接到 `segments-to-regions.image`，这样标准化后的 `regions.v1` 会带上来源图像
+- 这条样例默认用矩形 ROI + coverage 作为最小复核语义，现场也可以继续替换成 inside/offset 或更完整的规则链
 
 ### industrial_single_frame_glue_roi_callback
 

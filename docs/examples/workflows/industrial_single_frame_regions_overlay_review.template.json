@@ -1,0 +1,351 @@
+{
+  "format_id": "amvision.workflow-graph-template.v1",
+  "template_id": "industrial-single-frame-regions-overlay-review-template",
+  "template_version": "1.0.0",
+  "display_name": "Industrial Single Frame Regions Overlay Review",
+  "description": "面向工业单帧现场的 regions 复核样例。输入本地图像路径、上游标准 regions.v1，以及可选的运行时 ROI；先过滤候选区域，再把 ROI 和区域覆盖层叠加回原图，最后输出复核图、有效 ROI、过滤后 regions 和带图像引用的 result-record。",
+  "nodes": [
+    {
+      "node_id": "request_image_path_input",
+      "node_type_id": "core.io.template-input.value",
+      "parameters": {}
+    },
+    {
+      "node_id": "load_image",
+      "node_type_id": "core.io.image-load-local",
+      "parameters": {}
+    },
+    {
+      "node_id": "filter_regions",
+      "node_type_id": "core.vision.regions-filter",
+      "parameters": {
+        "min_score": 0.6
+      }
+    },
+    {
+      "node_id": "create_roi",
+      "node_type_id": "core.vision.roi-create",
+      "parameters": {
+        "roi_kind": "polygon",
+        "roi_id": "review-roi",
+        "display_name": "Review ROI",
+        "polygon_xy": [
+          [
+            180,
+            200
+          ],
+          [
+            380,
+            150
+          ],
+          [
+            1020,
+            170
+          ],
+          [
+            1110,
+            620
+          ],
+          [
+            260,
+            660
+          ]
+        ]
+      }
+    },
+    {
+      "node_id": "draw_roi",
+      "node_type_id": "custom.opencv.draw-roi",
+      "parameters": {
+        "fill_alpha": 0.18,
+        "draw_bbox": false
+      }
+    },
+    {
+      "node_id": "overlay_regions",
+      "node_type_id": "custom.opencv.mask-overlay",
+      "parameters": {
+        "mask_alpha": 0.35,
+        "draw_masks": true,
+        "draw_polygons": true,
+        "draw_boxes": true,
+        "draw_labels": true
+      }
+    },
+    {
+      "node_id": "presence_check",
+      "node_type_id": "core.rule.presence-check",
+      "parameters": {
+        "min_count": 1
+      }
+    },
+    {
+      "node_id": "inside_check",
+      "node_type_id": "core.vision.regions-inside-check",
+      "parameters": {
+        "match_mode": "any",
+        "min_inside_ratio": 0.9
+      }
+    },
+    {
+      "node_id": "metadata_object",
+      "node_type_id": "core.logic.object-create",
+      "parameters": {
+        "keys": [
+          "image_path"
+        ],
+        "fields": {
+          "inspection_kind": "regions-overlay-review",
+          "station_id": "review-line-01",
+          "review_mode": "regions-with-dynamic-roi"
+        }
+      }
+    },
+    {
+      "node_id": "metrics_object",
+      "node_type_id": "core.logic.object-create",
+      "parameters": {
+        "keys": [
+          "filter_summary",
+          "presence_metrics",
+          "inside_metrics",
+          "roi_summary"
+        ]
+      }
+    },
+    {
+      "node_id": "process_decision",
+      "node_type_id": "core.rule.process-decision",
+      "parameters": {
+        "mode": "all",
+        "condition_names": [
+          "presence",
+          "inside"
+        ],
+        "ok_reason": "regions overlay review passed",
+        "ng_reason": "regions overlay review failed"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "edge_id": "edge-request-image-path-load-image",
+      "source_node_id": "request_image_path_input",
+      "source_port": "value",
+      "target_node_id": "load_image",
+      "target_port": "path"
+    },
+    {
+      "edge_id": "edge-request-image-path-metadata",
+      "source_node_id": "request_image_path_input",
+      "source_port": "value",
+      "target_node_id": "metadata_object",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-load-image-create-roi",
+      "source_node_id": "load_image",
+      "source_port": "image",
+      "target_node_id": "create_roi",
+      "target_port": "image"
+    },
+    {
+      "edge_id": "edge-load-image-draw-roi-image",
+      "source_node_id": "load_image",
+      "source_port": "image",
+      "target_node_id": "draw_roi",
+      "target_port": "image"
+    },
+    {
+      "edge_id": "edge-create-roi-draw-roi-roi",
+      "source_node_id": "create_roi",
+      "source_port": "roi",
+      "target_node_id": "draw_roi",
+      "target_port": "roi"
+    },
+    {
+      "edge_id": "edge-draw-roi-overlay-image",
+      "source_node_id": "draw_roi",
+      "source_port": "image",
+      "target_node_id": "overlay_regions",
+      "target_port": "image"
+    },
+    {
+      "edge_id": "edge-filter-overlay-regions",
+      "source_node_id": "filter_regions",
+      "source_port": "regions",
+      "target_node_id": "overlay_regions",
+      "target_port": "regions"
+    },
+    {
+      "edge_id": "edge-filter-presence-regions",
+      "source_node_id": "filter_regions",
+      "source_port": "regions",
+      "target_node_id": "presence_check",
+      "target_port": "regions"
+    },
+    {
+      "edge_id": "edge-filter-inside-regions",
+      "source_node_id": "filter_regions",
+      "source_port": "regions",
+      "target_node_id": "inside_check",
+      "target_port": "regions"
+    },
+    {
+      "edge_id": "edge-create-roi-inside-roi",
+      "source_node_id": "create_roi",
+      "source_port": "roi",
+      "target_node_id": "inside_check",
+      "target_port": "roi"
+    },
+    {
+      "edge_id": "edge-filter-summary-metrics",
+      "source_node_id": "filter_regions",
+      "source_port": "summary",
+      "target_node_id": "metrics_object",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-presence-metrics-object",
+      "source_node_id": "presence_check",
+      "source_port": "metrics",
+      "target_node_id": "metrics_object",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-inside-metrics-object",
+      "source_node_id": "inside_check",
+      "source_port": "metrics",
+      "target_node_id": "metrics_object",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-roi-summary-metrics-object",
+      "source_node_id": "create_roi",
+      "source_port": "summary",
+      "target_node_id": "metrics_object",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-presence-process",
+      "source_node_id": "presence_check",
+      "source_port": "result",
+      "target_node_id": "process_decision",
+      "target_port": "conditions"
+    },
+    {
+      "edge_id": "edge-inside-process",
+      "source_node_id": "inside_check",
+      "source_port": "result",
+      "target_node_id": "process_decision",
+      "target_port": "conditions"
+    },
+    {
+      "edge_id": "edge-metrics-process",
+      "source_node_id": "metrics_object",
+      "source_port": "value",
+      "target_node_id": "process_decision",
+      "target_port": "metrics"
+    },
+    {
+      "edge_id": "edge-metadata-process",
+      "source_node_id": "metadata_object",
+      "source_port": "value",
+      "target_node_id": "process_decision",
+      "target_port": "metadata"
+    },
+    {
+      "edge_id": "edge-overlay-image-process",
+      "source_node_id": "overlay_regions",
+      "source_port": "image",
+      "target_node_id": "process_decision",
+      "target_port": "image"
+    }
+  ],
+  "template_inputs": [
+    {
+      "input_id": "request_image_path",
+      "display_name": "Request Image Path",
+      "payload_type_id": "value.v1",
+      "target_node_id": "request_image_path_input",
+      "target_port": "payload"
+    },
+    {
+      "input_id": "request_regions",
+      "display_name": "Request Regions",
+      "payload_type_id": "regions.v1",
+      "target_node_id": "filter_regions",
+      "target_port": "regions"
+    },
+    {
+      "input_id": "request_roi",
+      "display_name": "Request ROI",
+      "payload_type_id": "value.v1",
+      "target_node_id": "create_roi",
+      "target_port": "value",
+      "required": false
+    }
+  ],
+  "template_outputs": [
+    {
+      "output_id": "filtered_regions",
+      "display_name": "Filtered Regions",
+      "payload_type_id": "regions.v1",
+      "source_node_id": "filter_regions",
+      "source_port": "regions"
+    },
+    {
+      "output_id": "effective_roi",
+      "display_name": "Effective ROI",
+      "payload_type_id": "roi.v1",
+      "source_node_id": "create_roi",
+      "source_port": "roi"
+    },
+    {
+      "output_id": "review_overlay_image",
+      "display_name": "Review Overlay Image",
+      "payload_type_id": "image-ref.v1",
+      "source_node_id": "overlay_regions",
+      "source_port": "image"
+    },
+    {
+      "output_id": "inspection_result",
+      "display_name": "Inspection Result",
+      "payload_type_id": "result-record.v1",
+      "source_node_id": "process_decision",
+      "source_port": "result"
+    },
+    {
+      "output_id": "decision_summary",
+      "display_name": "Decision Summary",
+      "payload_type_id": "value.v1",
+      "source_node_id": "process_decision",
+      "source_port": "summary"
+    }
+  ],
+  "metadata": {
+    "example_kind": "industrial-single-frame-regions-overlay-review",
+    "focus": "single-frame-industrial-regions-overlay-review",
+    "dynamic_roi_input_binding": "request_roi",
+    "default_roi_kind": "polygon",
+    "node_groups": {
+      "input": [
+        "request_image_path_input",
+        "load_image",
+        "filter_regions",
+        "create_roi"
+      ],
+      "overlay": [
+        "draw_roi",
+        "overlay_regions"
+      ],
+      "review": [
+        "presence_check",
+        "inside_check",
+        "metadata_object",
+        "metrics_object",
+        "process_decision"
+      ]
+    }
+  }
+}

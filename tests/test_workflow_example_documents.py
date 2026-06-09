@@ -947,6 +947,130 @@ def test_industrial_single_frame_segments_continuity_gate_documents_are_valid() 
     assert application.bindings[2].config["payload_type_id"] == "regions.v1"
 
 
+@pytest.mark.parametrize(
+    (
+        "example_name",
+        "expected_example_kind",
+        "expected_focus",
+        "expected_node_ids",
+        "expected_input_ids",
+        "expected_binding_ids",
+    ),
+    [
+        (
+            "industrial_single_frame_regions_overlay_review",
+            "industrial-single-frame-regions-overlay-review",
+            "single-frame-industrial-regions-overlay-review",
+            [
+                "request_image_path_input",
+                "load_image",
+                "filter_regions",
+                "create_roi",
+                "draw_roi",
+                "overlay_regions",
+                "presence_check",
+                "inside_check",
+                "metadata_object",
+                "metrics_object",
+                "process_decision",
+            ],
+            ["request_image_path", "request_regions", "request_roi"],
+            [
+                "request_image_path",
+                "request_regions",
+                "request_roi",
+                "filtered_regions",
+                "effective_roi",
+                "review_overlay_image",
+                "inspection_result",
+                "decision_summary",
+            ],
+        ),
+        (
+            "industrial_single_frame_segments_overlay_review",
+            "industrial-single-frame-segments-overlay-review",
+            "single-frame-industrial-segments-overlay-review",
+            [
+                "request_image_path_input",
+                "load_image",
+                "segments_to_regions",
+                "filter_regions",
+                "create_roi",
+                "draw_roi",
+                "overlay_regions",
+                "presence_check",
+                "coverage_check",
+                "metadata_object",
+                "metrics_object",
+                "process_decision",
+            ],
+            ["request_image_path", "request_segments", "request_roi"],
+            [
+                "request_image_path",
+                "request_segments",
+                "request_roi",
+                "normalized_regions",
+                "effective_roi",
+                "review_overlay_image",
+                "inspection_result",
+                "decision_summary",
+            ],
+        ),
+    ],
+)
+def test_industrial_single_frame_overlay_review_documents_are_valid(
+    example_name: str,
+    expected_example_kind: str,
+    expected_focus: str,
+    expected_node_ids: list[str],
+    expected_input_ids: list[str],
+    expected_binding_ids: list[str],
+) -> None:
+    """验证工业单帧 overlay 复核样例模板与应用可以通过当前合同校验。"""
+
+    example_dir = (
+        Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
+    )
+    template_path = example_dir / f"{example_name}.template.json"
+    application_path = example_dir / f"{example_name}.application.json"
+    template = WorkflowGraphTemplate.model_validate(
+        json.loads(template_path.read_text(encoding="utf-8"))
+    )
+    application = FlowApplication.model_validate(
+        json.loads(application_path.read_text(encoding="utf-8"))
+    )
+
+    custom_nodes_root = Path(__file__).resolve().parents[1] / "custom_nodes"
+    node_pack_loader = LocalNodePackLoader(custom_nodes_root)
+    node_pack_loader.refresh()
+    registry = NodeCatalogRegistry(node_pack_loader=node_pack_loader)
+    validate_workflow_graph_template(
+        template=template,
+        node_definitions=registry.get_workflow_node_definitions(),
+    )
+    validate_flow_application_bindings(template=template, application=application)
+
+    assert [node.node_id for node in template.nodes] == expected_node_ids
+    assert template.metadata["example_kind"] == expected_example_kind
+    assert template.metadata["focus"] == expected_focus
+    assert template.metadata["dynamic_roi_input_binding"] == "request_roi"
+    assert [
+        template_input.input_id for template_input in template.template_inputs
+    ] == expected_input_ids
+    assert template.template_inputs[0].payload_type_id == "value.v1"
+    assert template.template_inputs[2].payload_type_id == "value.v1"
+    assert template.template_inputs[2].required is False
+    assert (
+        application.template_ref.source_uri
+        == f"docs/examples/workflows/{example_name}.template.json"
+    )
+    assert application.runtime_mode == "python-json-workflow"
+    assert [binding.binding_id for binding in application.bindings] == expected_binding_ids
+    assert application.bindings[2].required is False
+    assert application.bindings[2].metadata["payload_type_id"] == "value.v1"
+    assert application.bindings[5].config["payload_type_id"] == "image-ref.v1"
+
+
 def test_industrial_local_directory_batch_input_documents_are_valid() -> None:
     """验证工业本地目录批量输入样例模板与应用可以通过当前合同校验。"""
 
