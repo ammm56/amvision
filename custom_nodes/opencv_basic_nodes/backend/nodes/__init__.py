@@ -38,6 +38,10 @@ from custom_nodes.opencv_basic_nodes.backend.nodes.connected_components import (
     NODE_TYPE_ID as CONNECTED_COMPONENTS_NODE_TYPE_ID,
     handle_node as connected_components_handler,
 )
+from custom_nodes.opencv_basic_nodes.backend.nodes.concentricity_metrics import (
+    NODE_TYPE_ID as CONCENTRICITY_METRICS_NODE_TYPE_ID,
+    handle_node as concentricity_metrics_handler,
+)
 from custom_nodes.opencv_basic_nodes.backend.nodes.crop_export import (
     NODE_TYPE_ID as CROP_EXPORT_NODE_TYPE_ID,
     handle_node as crop_export_handler,
@@ -98,9 +102,17 @@ from custom_nodes.opencv_basic_nodes.backend.nodes.otsu_threshold import (
     NODE_TYPE_ID as OTSU_THRESHOLD_NODE_TYPE_ID,
     handle_node as otsu_threshold_handler,
 )
+from custom_nodes.opencv_basic_nodes.backend.nodes.parallelism_metrics import (
+    NODE_TYPE_ID as PARALLELISM_METRICS_NODE_TYPE_ID,
+    handle_node as parallelism_metrics_handler,
+)
 from custom_nodes.opencv_basic_nodes.backend.nodes.payload_to_value import (
     NODE_TYPE_ID as PAYLOAD_TO_VALUE_NODE_TYPE_ID,
     handle_node as payload_to_value_handler,
+)
+from custom_nodes.opencv_basic_nodes.backend.nodes.point_distance import (
+    NODE_TYPE_ID as POINT_DISTANCE_NODE_TYPE_ID,
+    handle_node as point_distance_handler,
 )
 from custom_nodes.opencv_basic_nodes.backend.nodes.point_to_line_distance import (
     NODE_TYPE_ID as POINT_TO_LINE_DISTANCE_NODE_TYPE_ID,
@@ -109,6 +121,10 @@ from custom_nodes.opencv_basic_nodes.backend.nodes.point_to_line_distance import
 from custom_nodes.opencv_basic_nodes.backend.nodes.resize import (
     NODE_TYPE_ID as RESIZE_NODE_TYPE_ID,
     handle_node as resize_handler,
+)
+from custom_nodes.opencv_basic_nodes.backend.nodes.slot_width import (
+    NODE_TYPE_ID as SLOT_WIDTH_NODE_TYPE_ID,
+    handle_node as slot_width_handler,
 )
 
 
@@ -119,10 +135,13 @@ NODE_HANDLERS = (
     (MORPHOLOGY_NODE_TYPE_ID, morphology_handler),
     (CANNY_NODE_TYPE_ID, canny_handler),
     (CIRCLE_DIAMETER_NODE_TYPE_ID, circle_diameter_handler),
+    (CONCENTRICITY_METRICS_NODE_TYPE_ID, concentricity_metrics_handler),
     (CONTOUR_NODE_TYPE_ID, contour_handler),
     (LINE_ANGLE_NODE_TYPE_ID, line_angle_handler),
     (MEASURE_NODE_TYPE_ID, measure_handler),
+    (PARALLELISM_METRICS_NODE_TYPE_ID, parallelism_metrics_handler),
     (PAYLOAD_TO_VALUE_NODE_TYPE_ID, payload_to_value_handler),
+    (POINT_DISTANCE_NODE_TYPE_ID, point_distance_handler),
     (POINT_TO_LINE_DISTANCE_NODE_TYPE_ID, point_to_line_distance_handler),
     (CROP_EXPORT_NODE_TYPE_ID, crop_export_handler),
     (GALLERY_PREVIEW_NODE_TYPE_ID, gallery_preview_handler),
@@ -140,6 +159,7 @@ NODE_HANDLERS = (
     (IMAGE_DIFF_NODE_TYPE_ID, image_diff_handler),
     (ABSDIFF_THRESHOLD_NODE_TYPE_ID, absdiff_threshold_handler),
     (CONNECTED_COMPONENTS_NODE_TYPE_ID, connected_components_handler),
+    (SLOT_WIDTH_NODE_TYPE_ID, slot_width_handler),
 )
 
 

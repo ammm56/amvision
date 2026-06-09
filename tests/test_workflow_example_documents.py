@@ -752,6 +752,126 @@ def test_industrial_single_frame_yolox_position_gate_documents_are_valid() -> No
     assert application.bindings[4].config["payload_type_id"] == "regions.v1"
 
 
+@pytest.mark.parametrize(
+    (
+        "example_name",
+        "expected_example_kind",
+        "expected_focus",
+        "expected_node_ids",
+    ),
+    [
+        (
+            "industrial_single_frame_line_pair_measure_gate",
+            "industrial-single-frame-line-pair-measure-gate",
+            "single-frame-industrial-geometry-line-chain",
+            [
+                "request_image_path_input",
+                "load_image",
+                "otsu",
+                "contour",
+                "fit_lines",
+                "lines_to_value",
+                "extract_line_1_midpoint",
+                "extract_line_2_midpoint",
+                "measure_midpoint_distance",
+                "measure_parallelism",
+                "measure_slot_width",
+                "slot_width_check",
+                "parallelism_check",
+                "metadata_object",
+                "metrics_object",
+                "process_decision",
+                "alarm_condition",
+                "save_result_json",
+                "append_result_csv",
+            ],
+        ),
+        (
+            "industrial_single_frame_circle_concentricity_gate",
+            "industrial-single-frame-circle-concentricity-gate",
+            "single-frame-industrial-geometry-circle-chain",
+            [
+                "request_image_path_input",
+                "load_image",
+                "otsu",
+                "contour",
+                "filter_contours",
+                "fit_circles",
+                "measure_diameter",
+                "measure_concentricity",
+                "contours_to_regions",
+                "circularity_check",
+                "diameter_check",
+                "concentricity_check",
+                "metadata_object",
+                "metrics_object",
+                "process_decision",
+                "alarm_condition",
+                "save_result_json",
+                "append_result_csv",
+            ],
+        ),
+    ],
+)
+def test_industrial_single_frame_geometry_gate_documents_are_valid(
+    example_name: str,
+    expected_example_kind: str,
+    expected_focus: str,
+    expected_node_ids: list[str],
+) -> None:
+    """验证工业单帧几何量测样例模板与应用可以通过当前合同校验。"""
+
+    example_dir = (
+        Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
+    )
+    template_path = example_dir / f"{example_name}.template.json"
+    application_path = example_dir / f"{example_name}.application.json"
+    template = WorkflowGraphTemplate.model_validate(
+        json.loads(template_path.read_text(encoding="utf-8"))
+    )
+    application = FlowApplication.model_validate(
+        json.loads(application_path.read_text(encoding="utf-8"))
+    )
+
+    custom_nodes_root = Path(__file__).resolve().parents[1] / "custom_nodes"
+    node_pack_loader = LocalNodePackLoader(custom_nodes_root)
+    node_pack_loader.refresh()
+    registry = NodeCatalogRegistry(node_pack_loader=node_pack_loader)
+    validate_workflow_graph_template(
+        template=template,
+        node_definitions=registry.get_workflow_node_definitions(),
+    )
+    validate_flow_application_bindings(template=template, application=application)
+
+    assert [node.node_id for node in template.nodes] == expected_node_ids
+    assert template.metadata["example_kind"] == expected_example_kind
+    assert template.metadata["focus"] == expected_focus
+    assert [template_input.input_id for template_input in template.template_inputs] == [
+        "request_image_path"
+    ]
+    assert template.template_inputs[0].payload_type_id == "value.v1"
+    assert [template_output.output_id for template_output in template.template_outputs] == [
+        "inspection_result",
+        "inspection_alarm",
+        "decision_summary",
+        "json_summary",
+        "csv_summary",
+    ]
+    assert (
+        application.template_ref.source_uri
+        == f"docs/examples/workflows/{example_name}.template.json"
+    )
+    assert application.runtime_mode == "python-json-workflow"
+    assert [binding.binding_id for binding in application.bindings] == [
+        "request_image_path",
+        "inspection_result",
+        "inspection_alarm",
+        "decision_summary",
+        "json_summary",
+        "csv_summary",
+    ]
+
+
 def test_industrial_single_frame_segments_continuity_gate_documents_are_valid() -> None:
     """验证 segments 到工业规则链样例模板与应用可以通过当前合同校验。"""
 

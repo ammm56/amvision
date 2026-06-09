@@ -1241,6 +1241,101 @@
     },
     {
       "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.concentricity-metrics",
+      "display_name": "Concentricity Metrics",
+      "category": "opencv.measurement",
+      "description": "计算两圆之间的中心偏移和半径差，适合同心孔、轴套和圆环装配检查。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "input_ports": [
+        {
+          "name": "circles",
+          "display_name": "Circles",
+          "payload_type_id": "circles.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "value",
+          "display_name": "Value",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "summary",
+          "display_name": "Summary",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "circle_a_strategy": {
+            "type": "string",
+            "enum": [
+              "first",
+              "largest",
+              "smallest",
+              "circle-index"
+            ]
+          },
+          "circle_a_index": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "circle_b_strategy": {
+            "type": "string",
+            "enum": [
+              "first",
+              "largest",
+              "smallest",
+              "circle-index"
+            ]
+          },
+          "circle_b_index": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "output_metric": {
+            "type": "string",
+            "enum": [
+              "center_distance_pixels",
+              "normalized_center_offset",
+              "radius_delta_pixels",
+              "diameter_delta_pixels"
+            ]
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.measurement",
+        "vision.geometry",
+        "inspection.concentricity"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.basic-nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
       "node_type_id": "custom.opencv.connected-components",
       "display_name": "Connected Components",
       "category": "opencv.analysis",
@@ -2957,6 +3052,101 @@
     },
     {
       "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.parallelism-metrics",
+      "display_name": "Parallelism Metrics",
+      "category": "opencv.measurement",
+      "description": "计算两条直线的角度差和相对偏移，适合导轨、边线和平行边装配检查。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "input_ports": [
+        {
+          "name": "lines",
+          "display_name": "Lines",
+          "payload_type_id": "lines.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "value",
+          "display_name": "Value",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "summary",
+          "display_name": "Summary",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "line_a_strategy": {
+            "type": "string",
+            "enum": [
+              "first",
+              "longest",
+              "shortest",
+              "line-index"
+            ]
+          },
+          "line_a_index": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "line_b_strategy": {
+            "type": "string",
+            "enum": [
+              "first",
+              "longest",
+              "shortest",
+              "line-index"
+            ]
+          },
+          "line_b_index": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "output_metric": {
+            "type": "string",
+            "enum": [
+              "delta_angle_deg",
+              "abs_delta_angle_deg",
+              "midpoint_offset_pixels",
+              "mean_endpoint_offset_pixels"
+            ]
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.measurement",
+        "vision.geometry",
+        "inspection.parallelism"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.basic-nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
       "node_type_id": "custom.opencv.payload-to-value",
       "display_name": "OpenCV Payload To Value",
       "category": "opencv.transform",
@@ -3114,6 +3304,84 @@
     },
     {
       "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.point-distance",
+      "display_name": "Point Distance",
+      "category": "opencv.measurement",
+      "description": "计算两点之间的欧氏距离、曼哈顿距离和坐标差，适合中心距、孔距和装配偏移量测。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "input_ports": [
+        {
+          "name": "point_a",
+          "display_name": "Point A",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "point_b",
+          "display_name": "Point B",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "value",
+          "display_name": "Value",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "summary",
+          "display_name": "Summary",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "output_metric": {
+            "type": "string",
+            "enum": [
+              "distance_pixels",
+              "manhattan_distance_pixels",
+              "dx_pixels",
+              "dy_pixels"
+            ]
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.measurement",
+        "vision.geometry",
+        "inspection.distance"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.basic-nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
       "node_type_id": "custom.opencv.point-to-line-distance",
       "display_name": "Point To Line Distance",
       "category": "opencv.measurement",
@@ -3261,6 +3529,101 @@
       "capability_tags": [
         "opencv.resize",
         "vision.filter"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.basic-nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.slot-width",
+      "display_name": "Slot Width",
+      "category": "opencv.measurement",
+      "description": "计算两条边线之间的槽宽，适合卡槽、导轨间隙和双边距量测。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "input_ports": [
+        {
+          "name": "lines",
+          "display_name": "Lines",
+          "payload_type_id": "lines.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "value",
+          "display_name": "Value",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "summary",
+          "display_name": "Summary",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "line_a_strategy": {
+            "type": "string",
+            "enum": [
+              "first",
+              "longest",
+              "shortest",
+              "line-index"
+            ]
+          },
+          "line_a_index": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "line_b_strategy": {
+            "type": "string",
+            "enum": [
+              "first",
+              "longest",
+              "shortest",
+              "line-index"
+            ]
+          },
+          "line_b_index": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "output_metric": {
+            "type": "string",
+            "enum": [
+              "mean_width_pixels",
+              "min_width_pixels",
+              "max_width_pixels",
+              "midpoint_width_pixels"
+            ]
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.measurement",
+        "vision.geometry",
+        "inspection.slot-width"
       ],
       "runtime_requirements": {
         "python_packages": [

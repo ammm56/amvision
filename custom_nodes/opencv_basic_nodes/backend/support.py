@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from pathlib import PurePosixPath
 from typing import Any
 
@@ -471,6 +472,101 @@ def select_circle_item(
                 return dict(item)
         raise InvalidRequestError("指定的 circle_index 不存在", details={"circle_index": circle_index})
     raise InvalidRequestError("circle_strategy 不在支持的列表中")
+
+
+def normalize_line_angle_deg(angle_deg: object) -> float:
+    """把直线方向角规整到 [-90, 90) 区间。"""
+
+    angle_value = require_number(angle_deg, field_name="angle_deg")
+    normalized_value = float(angle_value % 180.0)
+    if normalized_value >= 90.0:
+        normalized_value -= 180.0
+    return normalized_value
+
+
+def compute_line_angle_delta_deg(*, angle_a_deg: object, angle_b_deg: object) -> float:
+    """计算两条无方向直线之间的最小夹角差。"""
+
+    normalized_a = normalize_line_angle_deg(angle_a_deg)
+    normalized_b = normalize_line_angle_deg(angle_b_deg)
+    delta_value = float(normalized_b - normalized_a)
+    while delta_value < -90.0:
+        delta_value += 180.0
+    while delta_value >= 90.0:
+        delta_value -= 180.0
+    return delta_value
+
+
+def measure_point_distance(*, point_a_xy: tuple[float, float], point_b_xy: tuple[float, float]) -> dict[str, float]:
+    """计算两点之间的欧氏距离和坐标差。"""
+
+    point_a_x, point_a_y = point_a_xy
+    point_b_x, point_b_y = point_b_xy
+    dx_pixels = float(point_b_x - point_a_x)
+    dy_pixels = float(point_b_y - point_a_y)
+    distance_pixels = float(math.hypot(dx_pixels, dy_pixels))
+    manhattan_distance_pixels = float(abs(dx_pixels) + abs(dy_pixels))
+    midpoint_x = float((point_a_x + point_b_x) / 2.0)
+    midpoint_y = float((point_a_y + point_b_y) / 2.0)
+    return {
+        "dx_pixels": dx_pixels,
+        "dy_pixels": dy_pixels,
+        "distance_pixels": distance_pixels,
+        "manhattan_distance_pixels": manhattan_distance_pixels,
+        "midpoint_x": midpoint_x,
+        "midpoint_y": midpoint_y,
+    }
+
+
+def measure_point_to_line(*, point_xy: tuple[float, float], line_item: dict[str, object]) -> dict[str, float]:
+    """计算单点到无限延长直线的投影和距离。"""
+
+    point_x, point_y = point_xy
+    start_x, start_y = normalize_point_xy(line_item.get("start_xy"), field_name="start_xy")
+    end_x, end_y = normalize_point_xy(line_item.get("end_xy"), field_name="end_xy")
+    line_dx = float(end_x - start_x)
+    line_dy = float(end_y - start_y)
+    line_length_pixels = float(math.hypot(line_dx, line_dy))
+    if line_length_pixels <= 0:
+        raise InvalidRequestError("选中的 line 长度必须大于 0")
+    relative_dx = float(point_x - start_x)
+    relative_dy = float(point_y - start_y)
+    signed_distance_pixels = float((relative_dx * line_dy - relative_dy * line_dx) / line_length_pixels)
+    distance_pixels = float(abs(signed_distance_pixels))
+    projection_ratio = float((relative_dx * line_dx + relative_dy * line_dy) / (line_length_pixels * line_length_pixels))
+    projection_x = float(start_x + projection_ratio * line_dx)
+    projection_y = float(start_y + projection_ratio * line_dy)
+    return {
+        "distance_pixels": distance_pixels,
+        "signed_distance_pixels": signed_distance_pixels,
+        "projection_ratio": projection_ratio,
+        "projection_x": projection_x,
+        "projection_y": projection_y,
+        "line_length_pixels": line_length_pixels,
+        "line_dx": line_dx,
+        "line_dy": line_dy,
+    }
+
+
+def extract_point_from_value(raw_value: object, *, field_name: str) -> tuple[float, float]:
+    """从常见 value.v1 形状中解析单个点坐标。"""
+
+    if isinstance(raw_value, (list, tuple)):
+        return normalize_point_xy(raw_value, field_name=field_name)
+    if isinstance(raw_value, dict):
+        if "point_xy" in raw_value:
+            return normalize_point_xy(raw_value.get("point_xy"), field_name=f"{field_name}.point_xy")
+        if "center_xy" in raw_value:
+            return normalize_point_xy(raw_value.get("center_xy"), field_name=f"{field_name}.center_xy")
+        if "midpoint_xy" in raw_value:
+            return normalize_point_xy(raw_value.get("midpoint_xy"), field_name=f"{field_name}.midpoint_xy")
+        if "x" in raw_value and "y" in raw_value:
+            point_x = require_number(raw_value.get("x"), field_name=f"{field_name}.x")
+            point_y = require_number(raw_value.get("y"), field_name=f"{field_name}.y")
+            return point_x, point_y
+    raise InvalidRequestError(
+        f"{field_name} 输入必须是 [x, y]、{{point_xy:[x,y]}}、{{center_xy:[x,y]}}、{{midpoint_xy:[x,y]}} 或 {{x, y}}"
+    )
 
 
 def resolve_contours_source_image(

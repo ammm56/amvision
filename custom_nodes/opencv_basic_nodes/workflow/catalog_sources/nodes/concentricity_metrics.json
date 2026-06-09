@@ -1,0 +1,81 @@
+{
+  "format_id": "amvision.node-definition.v1",
+  "node_type_id": "custom.opencv.concentricity-metrics",
+  "display_name": "Concentricity Metrics",
+  "category": "opencv.measurement",
+  "description": "计算两圆之间的中心偏移和半径差，适合同心孔、轴套和圆环装配检查。",
+  "implementation_kind": "custom-node",
+  "runtime_kind": "python-callable",
+  "input_ports": [
+    {
+      "name": "circles",
+      "display_name": "Circles",
+      "payload_type_id": "circles.v1"
+    }
+  ],
+  "output_ports": [
+    {
+      "name": "value",
+      "display_name": "Value",
+      "payload_type_id": "value.v1"
+    },
+    {
+      "name": "summary",
+      "display_name": "Summary",
+      "payload_type_id": "value.v1"
+    }
+  ],
+  "parameter_schema": {
+    "type": "object",
+    "properties": {
+      "circle_a_strategy": {
+        "type": "string",
+        "enum": [
+          "first",
+          "largest",
+          "smallest",
+          "circle-index"
+        ]
+      },
+      "circle_a_index": {
+        "type": "integer",
+        "minimum": 1
+      },
+      "circle_b_strategy": {
+        "type": "string",
+        "enum": [
+          "first",
+          "largest",
+          "smallest",
+          "circle-index"
+        ]
+      },
+      "circle_b_index": {
+        "type": "integer",
+        "minimum": 1
+      },
+      "output_metric": {
+        "type": "string",
+        "enum": [
+          "center_distance_pixels",
+          "normalized_center_offset",
+          "radius_delta_pixels",
+          "diameter_delta_pixels"
+        ]
+      }
+    }
+  },
+  "capability_tags": [
+    "opencv.measurement",
+    "vision.geometry",
+    "inspection.concentricity"
+  ],
+  "runtime_requirements": {
+    "python_packages": [
+      "opencv-python",
+      "numpy"
+    ]
+  },
+  "node_pack_id": "opencv.basic-nodes",
+  "node_pack_version": "0.1.0"
+}

@@ -430,6 +430,103 @@ def compute_regions_linearity_metrics(
     }
 
 
+def compute_regions_circularity_metrics(
+    request: WorkflowNodeExecutionRequest,
+    *,
+    regions_payload: dict[str, object],
+) -> dict[str, object]:
+    """计算 regions.v1 的圆度、圆填充率和外接圆派生指标。"""
+
+    image_width, image_height = resolve_region_canvas_size(request, regions_payload=regions_payload)
+    metrics_items: list[dict[str, object]] = []
+    for region_item in regions_payload["items"]:
+        region_mask = build_region_binary_mask(
+            request,
+            region_item=region_item,
+            image_width=image_width,
+            image_height=image_height,
+        )
+        binary_mask = (region_mask > 0).astype(np.uint8)
+        mask_area = int(np.count_nonzero(binary_mask))
+        component_count = len(_compute_component_areas(binary_mask))
+        if mask_area <= 0:
+            metrics_items.append(
+                {
+                    "region_id": str(region_item["region_id"]),
+                    "class_id": _normalize_optional_int(region_item.get("class_id")),
+                    "class_name": _normalize_optional_text(region_item.get("class_name")),
+                    "prompt_id": _normalize_optional_text(region_item.get("prompt_id")),
+                    "track_id": _normalize_optional_text(region_item.get("track_id")),
+                    "state": _normalize_optional_text(region_item.get("state")),
+                    "score": float(region_item["score"]),
+                    "declared_area": int(region_item["area"]),
+                    "mask_area": 0,
+                    "component_count": component_count,
+                    "perimeter_pixels": 0.0,
+                    "circularity": None,
+                    "equivalent_diameter_pixels": None,
+                    "axis_bbox_aspect_ratio": None,
+                    "min_enclosing_circle_radius": None,
+                    "min_enclosing_circle_fill_ratio": None,
+                }
+            )
+            continue
+
+        contours, _hierarchy = cv2.findContours(binary_mask, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_SIMPLE)
+        perimeter_pixels = float(
+            sum(float(cv2.arcLength(contour, True)) for contour in contours if contour is not None and len(contour) >= 2)
+        )
+        foreground_points = np.column_stack(np.nonzero(binary_mask > 0))
+        point_cloud = np.column_stack(
+            (foreground_points[:, 1].astype(np.float32), foreground_points[:, 0].astype(np.float32))
+        )
+        x_span_pixels = int(np.max(foreground_points[:, 1]) - np.min(foreground_points[:, 1]) + 1)
+        y_span_pixels = int(np.max(foreground_points[:, 0]) - np.min(foreground_points[:, 0]) + 1)
+        axis_bbox_aspect_ratio = float(x_span_pixels / y_span_pixels) if y_span_pixels > 0 else None
+        equivalent_diameter_pixels = float(math.sqrt((4.0 * mask_area) / math.pi))
+        if point_cloud.shape[0] >= 2:
+            (_center_x, _center_y), min_enclosing_circle_radius = cv2.minEnclosingCircle(point_cloud)
+            min_enclosing_circle_radius = float(min_enclosing_circle_radius)
+        else:
+            min_enclosing_circle_radius = 0.0
+        min_enclosing_circle_area = float(math.pi * min_enclosing_circle_radius * min_enclosing_circle_radius)
+        min_enclosing_circle_fill_ratio = (
+            float(mask_area / min_enclosing_circle_area) if min_enclosing_circle_area > 0 else None
+        )
+        circularity = None
+        if perimeter_pixels > 0:
+            circularity_value = float((4.0 * math.pi * mask_area) / (perimeter_pixels * perimeter_pixels))
+            circularity = min(1.0, max(0.0, circularity_value))
+        metrics_items.append(
+            {
+                "region_id": str(region_item["region_id"]),
+                "class_id": _normalize_optional_int(region_item.get("class_id")),
+                "class_name": _normalize_optional_text(region_item.get("class_name")),
+                "prompt_id": _normalize_optional_text(region_item.get("prompt_id")),
+                "track_id": _normalize_optional_text(region_item.get("track_id")),
+                "state": _normalize_optional_text(region_item.get("state")),
+                "score": float(region_item["score"]),
+                "declared_area": int(region_item["area"]),
+                "mask_area": mask_area,
+                "component_count": component_count,
+                "perimeter_pixels": round(perimeter_pixels, 4),
+                "circularity": round(circularity, 6) if circularity is not None else None,
+                "equivalent_diameter_pixels": round(equivalent_diameter_pixels, 4),
+                "axis_bbox_aspect_ratio": round(axis_bbox_aspect_ratio, 6) if axis_bbox_aspect_ratio is not None else None,
+                "min_enclosing_circle_radius": round(min_enclosing_circle_radius, 4),
+                "min_enclosing_circle_fill_ratio": round(min_enclosing_circle_fill_ratio, 6)
+                if min_enclosing_circle_fill_ratio is not None
+                else None,
+            }
+        )
+    return {
+        "count": len(metrics_items),
+        "image_width": image_width,
+        "image_height": image_height,
+        "items": metrics_items,
+    }
+
+
 def compute_region_bbox_metrics(region_item: dict[str, object]) -> dict[str, object]:
     """计算单个 region 的 bbox 派生指标。"""
 
@@ -754,6 +851,7 @@ __all__ = [
     "build_regions_payload",
     "build_score_summary",
     "compute_regions_integrity_metrics",
+    "compute_regions_circularity_metrics",
     "compute_regions_linearity_metrics",
     "compute_regions_span_metrics",
     "compute_region_bbox_metrics",

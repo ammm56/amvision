@@ -652,7 +652,7 @@ PLC 能力也应至少拆成两类：
 - `core.vision.edge-break-check`
 - `core.vision.edge-profile-gap-check`
 - `core.vision.linearity-check`（已实现）
-- `core.vision.circularity-check`
+- `core.vision.circularity-check`（已实现）
 - `core.vision.hole-pattern-check`
 - `core.vision.corner-missing-check`
 
@@ -866,13 +866,13 @@ PLC 能力也应至少拆成两类：
 建议节点：
 
 - `custom.opencv.caliper-edge`
-- `custom.opencv.point-distance`
+- `custom.opencv.point-distance`（已实现）
 - `custom.opencv.point-to-line-distance`（已实现）
 - `custom.opencv.line-angle`（已实现）
 - `custom.opencv.circle-diameter`（已实现）
-- `custom.opencv.slot-width`
-- `custom.opencv.parallelism-metrics`
-- `custom.opencv.concentricity-metrics`
+- `custom.opencv.slot-width`（已实现）
+- `custom.opencv.parallelism-metrics`（已实现）
+- `custom.opencv.concentricity-metrics`（已实现）
 
 说明：
 
@@ -918,6 +918,7 @@ PLC 能力也应至少拆成两类：
 - `custom.opencv.caliper-edge`
 - `core.vision.edge-break-check`
 - `core.vision.linearity-check`（已实现）
+- `core.vision.circularity-check`（已实现）
 - `core.vision.multi-part-presence-check`
 - `custom.anomaly.model_nodes`
 
@@ -930,7 +931,6 @@ PLC 能力也应至少拆成两类：
 - `custom.camera.framegrabber_nodes`
 - `custom.opencv.undistort / perspective-transform / remap`
 - `custom.opencv.orb-match / homography-estimate`
-- `custom.opencv.parallelism-metrics / concentricity-metrics`
 - `trigger-source` 中的 `directory-poll / filesystem-watch / modbus-poll-trigger / s7-poll-trigger`
 
 ## 当前建议

@@ -209,6 +209,10 @@ ZeroMQ TriggerSource 示例不把机器相关的 `path`、`offset` 和 `broker_e
 - `industrial_single_frame_glue_polygon_roi_changeover.application.json`
 - `industrial_single_frame_yolox_position_gate.template.json`
 - `industrial_single_frame_yolox_position_gate.application.json`
+- `industrial_single_frame_line_pair_measure_gate.template.json`
+- `industrial_single_frame_line_pair_measure_gate.application.json`
+- `industrial_single_frame_circle_concentricity_gate.template.json`
+- `industrial_single_frame_circle_concentricity_gate.application.json`
 - `industrial_local_directory_batch_input.template.json`
 - `industrial_local_directory_batch_input.application.json`
 - `industrial_local_directory_batch_segments_continuity_gate.template.json`
@@ -220,7 +224,7 @@ ZeroMQ TriggerSource 示例不把机器相关的 `path`、`offset` 和 `broker_e
 - `industrial_local_directory_polling_cursor_guard.template.json`
 - `industrial_local_directory_polling_cursor_guard.application.json`
 
-前两组样例聚焦“单图输入 -> 规则判定 -> `process-decision` -> 结果回传”，不把相机、PLC 或特定模型耦合进模板本体。`industrial_single_frame_segments_continuity_gate` 则把“分割输出 -> `segments.v1` -> `regions.v1` -> 工业规则链”这层也一起接通；`industrial_single_frame_yolox_position_gate` 对应把“检测输出 -> `detections.v1` -> `regions.v1` -> 工业规则链”这层接通；`industrial_single_frame_glue_polygon_roi_changeover` 进一步演示多边形 ROI 的换型和现场回调；`industrial_local_directory_batch_input` 把本地文件夹小批量输入这层单独收成可复用模板；`industrial_local_directory_batch_segments_continuity_gate` 与 `industrial_local_directory_batch_regions_continuity_gate` 则把“目录批次 -> 分割/区域结果 -> 连续性规则链 -> CSV / JSON 归档”两类上游入口接到同一套批次骨架；`industrial_local_directory_batch_yolox_position_gate` 继续把这条目录批次输入主线真正接到“逐图检测 -> 规则判定 -> CSV 持续归档 -> 批次 JSON 汇总”的现场闭环；`industrial_local_directory_polling_cursor_guard` 则把“目录轮询守护 / cursor 落盘恢复 / 批次归档 JSON”这层独立收成可复用状态模板。
+前两组样例聚焦“单图输入 -> 规则判定 -> `process-decision` -> 结果回传”，不把相机、PLC 或特定模型耦合进模板本体。`industrial_single_frame_segments_continuity_gate` 则把“分割输出 -> `segments.v1` -> `regions.v1` -> 工业规则链”这层也一起接通；`industrial_single_frame_yolox_position_gate` 对应把“检测输出 -> `detections.v1` -> `regions.v1` -> 工业规则链”这层接通；`industrial_single_frame_glue_polygon_roi_changeover` 进一步演示多边形 ROI 的换型和现场回调；`industrial_single_frame_line_pair_measure_gate` 与 `industrial_single_frame_circle_concentricity_gate` 则把传统 OpenCV 几何量测这层收成 checked-in 现场模板，分别覆盖双边线槽宽/平行度和双圆孔径/同心度/圆度；`industrial_local_directory_batch_input` 把本地文件夹小批量输入这层单独收成可复用模板；`industrial_local_directory_batch_segments_continuity_gate` 与 `industrial_local_directory_batch_regions_continuity_gate` 则把“目录批次 -> 分割/区域结果 -> 连续性规则链 -> CSV / JSON 归档”两类上游入口接到同一套批次骨架；`industrial_local_directory_batch_yolox_position_gate` 继续把这条目录批次输入主线真正接到“逐图检测 -> 规则判定 -> CSV 持续归档 -> 批次 JSON 汇总”的现场闭环；`industrial_local_directory_polling_cursor_guard` 则把“目录轮询守护 / cursor 落盘恢复 / 批次归档 JSON”这层独立收成可复用状态模板。
 
 上游 `regions.v1` 的典型来源：
 
@@ -460,6 +464,96 @@ ZeroMQ TriggerSource 示例不把机器相关的 `path`、`offset` 和 `broker_e
 - 该样例使用的是 `core.model.yolox-detection`，因此要求 `deployment_request.value` 至少包含 `deployment_instance_id`
 - 该样例先把 `detections.v1` 转成 `regions.v1`，再进入 `presence / inside / offset` 规则链；这是当前 deployment detection 接工业规则的推荐接法
 - 如果现场使用的不是 YOLOX，而是其他能输出 `detections.v1` 的模型节点，同样可以复用 `core.vision.detections-to-regions` 和后面的规则链
+
+### industrial_single_frame_line_pair_measure_gate
+
+链路固定为：
+
+- `template-input.value`
+- `image-load-local`
+- `otsu-threshold`
+- `contour`
+- `fit-line`
+- `payload-to-value`
+- `value-field-extract`
+- `point-distance`
+- `parallelism-metrics`
+- `slot-width`
+- `range-check`
+- `process-decision`
+- `alarm-condition`
+- `json-save-local`
+- `csv-append-local`
+
+输入约定：
+
+- `request_image_path`：`value.v1`
+  - 示例：`{"value":"D:/cases/line-geometry/frame-001.png"}`
+
+输出约定：
+
+- `inspection_result`：`result-record.v1`
+- `inspection_alarm`：`alarm-record.v1`
+- `decision_summary`：`value.v1`
+- `json_summary`：`value.v1`
+- `csv_summary`：`value.v1`
+
+适用场景：
+
+- 双边线槽宽量测
+- 导轨、边线、夹爪口宽的平行度检查
+- 希望把传统几何量测直接收成统一 OK/NG 结果对象
+
+注意事项：
+
+- 该样例默认假设图里能稳定提取两条主边线，因此 `fit-line` 采用 `length_pixels` 降序，后续 `parallelism-metrics / slot-width` 默认拿最长与最短两条线
+- `measure_midpoint_distance` 主要用于把两条边线的中点间距一并放进结果指标，便于现场排障和人工复核
+- 如果现场更适合检测斜边或竖边，可直接改 `parallelism_check` 阈值，而不用改节点协议
+
+### industrial_single_frame_circle_concentricity_gate
+
+链路固定为：
+
+- `template-input.value`
+- `image-load-local`
+- `otsu-threshold`
+- `contour`
+- `contour-filter`
+- `min-enclosing-circle`
+- `circle-diameter`
+- `concentricity-metrics`
+- `contours-to-regions`
+- `circularity-check`
+- `range-check`
+- `process-decision`
+- `alarm-condition`
+- `json-save-local`
+- `csv-append-local`
+
+输入约定：
+
+- `request_image_path`：`value.v1`
+  - 示例：`{"value":"D:/cases/circle-geometry/frame-015.png"}`
+
+输出约定：
+
+- `inspection_result`：`result-record.v1`
+- `inspection_alarm`：`alarm-record.v1`
+- `decision_summary`：`value.v1`
+- `json_summary`：`value.v1`
+- `csv_summary`：`value.v1`
+
+适用场景：
+
+- 双圆孔、轴套、垫片、圆环的孔径和同心度检查
+- 需要把传统圆度判断直接纳入统一工业规则链
+- 需要一条 checked-in 的“图像输入 -> 双圆量测 -> OK/NG”正式模板
+
+注意事项：
+
+- 该样例通过 `contour-filter(limit=2)` 把轮廓数先收成两条主轮廓，再分别接 `min-enclosing-circle` 和 `contours-to-regions`
+- `measure_diameter` 默认读取较小圆的直径，适合更常见的内孔量测；如果现场要看外圆，直接把 `circle_strategy` 改成 `largest`
+- `circularity-check` 当前同时看 `min_circularity` 和 `min_fill_ratio`，比只看单个圆度值更稳，适合现场抑制边缘缺口或明显非圆形轮廓
 
 ## 工业本地批量输入样例
 
