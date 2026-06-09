@@ -1,0 +1,125 @@
+{
+  "format_id": "amvision.workflow-graph-template.v1",
+  "template_id": "camera-usb-uvc-enumerate-capture-preview-template",
+  "template_version": "1.0.0",
+  "display_name": "Camera USB/UVC Enumerate Capture Preview",
+  "description": "面向 USB / UVC 相机首轮联调的最小样例。先探测当前机器上的可用设备，再按同一份 request 配置直接抓取单帧，并输出结构化枚举结果、标准 image-ref 和可预览图片 body。",
+  "nodes": [
+    {
+      "node_id": "request_camera_config_input",
+      "node_type_id": "core.io.template-input.value",
+      "parameters": {}
+    },
+    {
+      "node_id": "enumerate_devices",
+      "node_type_id": "custom.camera.usb.enumerate-devices",
+      "parameters": {
+        "start_index": 0,
+        "device_count": 6,
+        "backend_preference": "any",
+        "probe_frame": true,
+        "warmup_frame_count": 1
+      }
+    },
+    {
+      "node_id": "capture_frame",
+      "node_type_id": "custom.camera.usb.capture-frame",
+      "parameters": {
+        "device_index": 0,
+        "backend_preference": "any",
+        "width": 1280,
+        "height": 720,
+        "warmup_frame_count": 2,
+        "retry_read_count": 3,
+        "output_format": "png"
+      }
+    },
+    {
+      "node_id": "capture_preview_body",
+      "node_type_id": "core.output.image-body",
+      "parameters": {
+        "title": "USB/UVC Capture Preview",
+        "response_transport_mode": "inline-base64"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "edge_id": "edge-request-config-enumerate",
+      "source_node_id": "request_camera_config_input",
+      "source_port": "value",
+      "target_node_id": "enumerate_devices",
+      "target_port": "request"
+    },
+    {
+      "edge_id": "edge-request-config-capture",
+      "source_node_id": "request_camera_config_input",
+      "source_port": "value",
+      "target_node_id": "capture_frame",
+      "target_port": "request"
+    },
+    {
+      "edge_id": "edge-capture-preview-body",
+      "source_node_id": "capture_frame",
+      "source_port": "image",
+      "target_node_id": "capture_preview_body",
+      "target_port": "image"
+    }
+  ],
+  "template_inputs": [
+    {
+      "input_id": "request_camera_config",
+      "display_name": "Request Camera Config",
+      "payload_type_id": "value.v1",
+      "target_node_id": "request_camera_config_input",
+      "target_port": "payload"
+    }
+  ],
+  "template_outputs": [
+    {
+      "output_id": "enumeration_result",
+      "display_name": "Enumeration Result",
+      "payload_type_id": "value.v1",
+      "source_node_id": "enumerate_devices",
+      "source_port": "result"
+    },
+    {
+      "output_id": "captured_image",
+      "display_name": "Captured Image",
+      "payload_type_id": "image-ref.v1",
+      "source_node_id": "capture_frame",
+      "source_port": "image"
+    },
+    {
+      "output_id": "preview_body",
+      "display_name": "Preview Body",
+      "payload_type_id": "response-body.v1",
+      "source_node_id": "capture_preview_body",
+      "source_port": "body"
+    },
+    {
+      "output_id": "capture_summary",
+      "display_name": "Capture Summary",
+      "payload_type_id": "value.v1",
+      "source_node_id": "capture_frame",
+      "source_port": "summary"
+    }
+  ],
+  "metadata": {
+    "example_kind": "camera-usb-uvc-enumerate-capture-preview",
+    "focus": "usb-uvc-enumerate-and-direct-capture",
+    "transport": "usb-uvc",
+    "node_groups": {
+      "input": [
+        "request_camera_config_input"
+      ],
+      "enumerate": [
+        "enumerate_devices"
+      ],
+      "capture": [
+        "capture_frame",
+        "capture_preview_body"
+      ]
+    }
+  }
+}

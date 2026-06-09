@@ -259,6 +259,215 @@ def test_sam3_video_memory_attention_review_example_documents_are_valid() -> Non
     ]
 
 
+def test_camera_usb_uvc_enumerate_capture_preview_example_documents_are_valid() -> None:
+    """验证 USB/UVC 枚举直采样例模板与应用可以通过当前合同校验。"""
+
+    example_dir = (
+        Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
+    )
+    template_path = example_dir / "camera_usb_uvc_enumerate_capture_preview.template.json"
+    application_path = (
+        example_dir / "camera_usb_uvc_enumerate_capture_preview.application.json"
+    )
+    template = WorkflowGraphTemplate.model_validate(
+        json.loads(template_path.read_text(encoding="utf-8"))
+    )
+    application = FlowApplication.model_validate(
+        json.loads(application_path.read_text(encoding="utf-8"))
+    )
+
+    custom_nodes_root = Path(__file__).resolve().parents[1] / "custom_nodes"
+    node_pack_loader = LocalNodePackLoader(custom_nodes_root)
+    node_pack_loader.refresh()
+    registry = NodeCatalogRegistry(node_pack_loader=node_pack_loader)
+    validate_workflow_graph_template(
+        template=template,
+        node_definitions=registry.get_workflow_node_definitions(),
+    )
+    validate_flow_application_bindings(template=template, application=application)
+
+    assert [node.node_id for node in template.nodes] == [
+        "request_camera_config_input",
+        "enumerate_devices",
+        "capture_frame",
+        "capture_preview_body",
+    ]
+    assert template.nodes[1].parameters["probe_frame"] is True
+    assert template.nodes[2].parameters["output_format"] == "png"
+    assert template.metadata["example_kind"] == "camera-usb-uvc-enumerate-capture-preview"
+    assert template.metadata["focus"] == "usb-uvc-enumerate-and-direct-capture"
+    assert [template_input.input_id for template_input in template.template_inputs] == [
+        "request_camera_config"
+    ]
+    assert [template_output.output_id for template_output in template.template_outputs] == [
+        "enumeration_result",
+        "captured_image",
+        "preview_body",
+        "capture_summary",
+    ]
+    assert application.template_ref.source_uri == (
+        "docs/examples/workflows/camera_usb_uvc_enumerate_capture_preview.template.json"
+    )
+    assert application.runtime_mode == "python-json-workflow"
+    assert [binding.binding_id for binding in application.bindings] == [
+        "request_camera_config",
+        "enumeration_result",
+        "captured_image",
+        "preview_body",
+        "capture_summary",
+    ]
+
+
+def test_camera_usb_uvc_session_single_frame_review_example_documents_are_valid() -> (
+    None
+):
+    """验证 USB/UVC 会话型单帧样例模板与应用可以通过当前合同校验。"""
+
+    example_dir = (
+        Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
+    )
+    template_path = example_dir / "camera_usb_uvc_session_single_frame_review.template.json"
+    application_path = (
+        example_dir / "camera_usb_uvc_session_single_frame_review.application.json"
+    )
+    template = WorkflowGraphTemplate.model_validate(
+        json.loads(template_path.read_text(encoding="utf-8"))
+    )
+    application = FlowApplication.model_validate(
+        json.loads(application_path.read_text(encoding="utf-8"))
+    )
+
+    custom_nodes_root = Path(__file__).resolve().parents[1] / "custom_nodes"
+    node_pack_loader = LocalNodePackLoader(custom_nodes_root)
+    node_pack_loader.refresh()
+    registry = NodeCatalogRegistry(node_pack_loader=node_pack_loader)
+    validate_workflow_graph_template(
+        template=template,
+        node_definitions=registry.get_workflow_node_definitions(),
+    )
+    validate_flow_application_bindings(template=template, application=application)
+
+    assert [node.node_id for node in template.nodes] == [
+        "request_session_config_input",
+        "open_device",
+        "set_parameters",
+        "get_parameters",
+        "read_latest_frame",
+        "capture_preview_body",
+        "close_device",
+    ]
+    assert template.nodes[1].parameters["probe_frame"] is False
+    assert template.nodes[2].parameters["verify_after_set"] is True
+    assert template.nodes[4].parameters["output_format"] == "png"
+    assert template.metadata["example_kind"] == "camera-usb-uvc-session-single-frame-review"
+    assert template.metadata["focus"] == "usb-uvc-session-single-frame-and-parameter-review"
+    assert [template_input.input_id for template_input in template.template_inputs] == [
+        "request_session_config",
+        "request_set_parameters",
+        "request_parameter_query",
+    ]
+    assert template.template_inputs[1].required is False
+    assert template.template_inputs[2].required is False
+    assert [template_output.output_id for template_output in template.template_outputs] == [
+        "open_session_summary",
+        "set_result",
+        "parameter_result",
+        "captured_image",
+        "preview_body",
+        "capture_summary",
+        "close_result",
+    ]
+    assert application.template_ref.source_uri == (
+        "docs/examples/workflows/camera_usb_uvc_session_single_frame_review.template.json"
+    )
+    assert application.runtime_mode == "python-json-workflow"
+    assert [binding.binding_id for binding in application.bindings] == [
+        "request_session_config",
+        "request_set_parameters",
+        "request_parameter_query",
+        "open_session_summary",
+        "set_result",
+        "parameter_result",
+        "captured_image",
+        "preview_body",
+        "capture_summary",
+        "close_result",
+    ]
+    assert application.bindings[1].required is False
+    assert application.bindings[2].required is False
+
+
+def test_camera_usb_uvc_stream_window_preview_example_documents_are_valid() -> None:
+    """验证 USB/UVC 流窗口预览样例模板与应用可以通过当前合同校验。"""
+
+    example_dir = (
+        Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
+    )
+    template_path = example_dir / "camera_usb_uvc_stream_window_preview.template.json"
+    application_path = (
+        example_dir / "camera_usb_uvc_stream_window_preview.application.json"
+    )
+    template = WorkflowGraphTemplate.model_validate(
+        json.loads(template_path.read_text(encoding="utf-8"))
+    )
+    application = FlowApplication.model_validate(
+        json.loads(application_path.read_text(encoding="utf-8"))
+    )
+
+    custom_nodes_root = Path(__file__).resolve().parents[1] / "custom_nodes"
+    node_pack_loader = LocalNodePackLoader(custom_nodes_root)
+    node_pack_loader.refresh()
+    registry = NodeCatalogRegistry(node_pack_loader=node_pack_loader)
+    validate_workflow_graph_template(
+        template=template,
+        node_definitions=registry.get_workflow_node_definitions(),
+    )
+    validate_flow_application_bindings(template=template, application=application)
+
+    assert [node.node_id for node in template.nodes] == [
+        "request_stream_config_input",
+        "open_device",
+        "start_stream",
+        "get_stream_state",
+        "read_window",
+        "frame_window_preview",
+        "close_device",
+    ]
+    assert template.nodes[2].parameters["buffer_capacity"] == 12
+    assert template.nodes[4].parameters["sample_mode"] == "uniform"
+    assert template.nodes[5].parameters["response_transport_mode"] == "inline-base64"
+    assert template.metadata["example_kind"] == "camera-usb-uvc-stream-window-preview"
+    assert template.metadata["focus"] == "usb-uvc-stream-window-preview"
+    assert [template_input.input_id for template_input in template.template_inputs] == [
+        "request_session_config",
+        "request_stream_config",
+    ]
+    assert [template_output.output_id for template_output in template.template_outputs] == [
+        "open_session_summary",
+        "stream_start_summary",
+        "stream_state",
+        "frames",
+        "preview_body",
+        "window_summary",
+        "close_result",
+    ]
+    assert application.template_ref.source_uri == (
+        "docs/examples/workflows/camera_usb_uvc_stream_window_preview.template.json"
+    )
+    assert application.runtime_mode == "python-json-workflow"
+    assert [binding.binding_id for binding in application.bindings] == [
+        "request_session_config",
+        "request_stream_config",
+        "open_session_summary",
+        "stream_start_summary",
+        "stream_state",
+        "frames",
+        "preview_body",
+        "window_summary",
+        "close_result",
+    ]
+
+
 @pytest.mark.parametrize(
     (
         "example_name",

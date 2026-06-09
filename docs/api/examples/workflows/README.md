@@ -9,6 +9,7 @@
 - `06-*`、`07-*`：独立的 TriggerSource / ZeroMQ 调试示例，同一个 workflow app 同时发布 HTTP `image-base64.v1` 和 ZeroMQ `image-ref.v1` 输入，在与 `04-*`、`05-*` 一致的本地调试链路上额外验证双入口和图级显式转换。
 - `08-*`：独立的 TriggerSource / PLC 调试示例，聚焦 `plc-register -> workflow app runtime -> result-record -> http-post` 这条现场回传链。
 - `09-*`：独立的 TriggerSource / directory-watch 调试示例，聚焦“目录事件 -> 工业目录批次检测 workflow app”的现场接法。
+- 当前 `directory-poll` TriggerSource 的后端适配器已经实现，但仓库里还没有与 `09-*` 对等的一套 checked-in API 调试样例；现阶段仅有节点级 `industrial_local_directory_polling_cursor_guard.*` 工作流模板用于目录轮询守护语义说明。
 - 后续完整示例按 `10-*`、`11-*` 继续新增。
 
 ## 每个示例目录的文件

@@ -112,6 +112,7 @@
 - 当前前三批节点已收口为 `custom.camera.usb.enumerate-devices`、`custom.camera.usb.capture-frame`、`custom.camera.usb.open-device`、`custom.camera.usb.start-stream`、`custom.camera.usb.read-window`、`custom.camera.usb.read-latest-frame`、`custom.camera.usb.get-parameter`、`custom.camera.usb.set-parameter` 与 `custom.camera.usb.close-device`
 - 当前实现边界保持在项目内 `OpenCV VideoCapture` 适配层，不依赖厂商 SDK、`projectsrc/` 目录或额外 Python 相机包
 - 当前已经支持会话型单帧重复采图、基础参数控制与后台采流窗口读取；后续重点转向更细参数族、目录/触发源接入与非 UVC 相机层
+- 当前也已补出第一批 checked-in workflow 样例：`camera_usb_uvc_enumerate_capture_preview.*`、`camera_usb_uvc_session_single_frame_review.*` 与 `camera_usb_uvc_stream_window_preview.*`，用于分别验证“枚举与直采”“会话调参与单帧复核”“后台采流与窗口预览”三条最短使用面
 
 ### 二、PLC
 

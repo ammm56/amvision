@@ -62,6 +62,133 @@ ZeroMQ TriggerSource 示例不把机器相关的 `path`、`offset` 和 `broker_e
 - 简单任务先把 `tracking_mode` 改成 `memory-prototype-state`
 - 更轻场景再继续降到 `stateful-mask-propagation` 或 `shared-prompts-across-window`
 
+## USB / UVC 相机样例
+
+- `camera_usb_uvc_enumerate_capture_preview.template.json`
+- `camera_usb_uvc_enumerate_capture_preview.application.json`
+- `camera_usb_uvc_session_single_frame_review.template.json`
+- `camera_usb_uvc_session_single_frame_review.application.json`
+- `camera_usb_uvc_stream_window_preview.template.json`
+- `camera_usb_uvc_stream_window_preview.application.json`
+
+这三组样例面向 `custom.camera.usb.*` 这批节点的第一轮现场调试，不直接耦合检测模型或工业规则链，而是先把“能枚举、能抓图、能调参、能读窗口、能预览”这条相机主线单独收稳。
+
+### camera_usb_uvc_enumerate_capture_preview
+
+链路固定为：
+
+- `template-input.value(request_camera_config)`
+- `custom.camera.usb.enumerate-devices`
+- `custom.camera.usb.capture-frame`
+- `image-body`
+
+输入约定：
+
+- `request_camera_config`：`value.v1`
+  - 示例：`{"value":{"device_index":0,"device_count":4,"backend_preference":"msmf","width":1280,"height":720,"output_format":"png"}}`
+
+输出约定：
+
+- `enumeration_result`：`value.v1`
+- `captured_image`：`image-ref.v1`
+- `preview_body`：`response-body.v1`
+- `capture_summary`：`value.v1`
+
+适用场景：
+
+- 首次确认当前机器是否能看到 USB / UVC 相机
+- 需要一条 checked-in 的“枚举 -> 单帧直采 -> 预览”最短链路
+- 现场先排查 backend、分辨率和抓图是否正常，还不准备进入会话调参
+
+注意事项：
+
+- 该样例把同一份 `request_camera_config` 同时喂给 `enumerate-devices` 和 `capture-frame`；两边只会读取自己需要的字段，额外字段会被忽略
+- 如果现场只想快速看一眼是否能出图，保留默认参数即可；如果需要固定 backend，优先改 `backend_preference`
+
+### camera_usb_uvc_session_single_frame_review
+
+链路固定为：
+
+- `template-input.value(request_session_config)`
+- `custom.camera.usb.open-device`
+- `custom.camera.usb.set-parameter`
+- `custom.camera.usb.get-parameter`
+- `custom.camera.usb.read-latest-frame`
+- `image-body`
+- `custom.camera.usb.close-device`
+
+输入约定：
+
+- `request_session_config`：`value.v1`
+  - 示例：`{"value":{"device_index":0,"backend_preference":"msmf","width":1280,"height":720,"fps":30.0,"output_format":"png"}}`
+- `request_set_parameters`：`value.v1`
+  - 可选；示例：`{"value":{"parameter_values":{"width":1920,"height":1080,"fps":10.0},"verify_after_set":true}}`
+- `request_parameter_query`：`value.v1`
+  - 可选；示例：`{"value":{"parameter_names":["width","height","fps","backend_name","requested_width","requested_height","requested_fps"]}}`
+
+输出约定：
+
+- `open_session_summary`：`value.v1`
+- `set_result`：`value.v1`
+- `parameter_result`：`value.v1`
+- `captured_image`：`image-ref.v1`
+- `preview_body`：`response-body.v1`
+- `capture_summary`：`value.v1`
+- `close_result`：`value.v1`
+
+适用场景：
+
+- 现场需要先固定分辨率、帧率，再验证会话型单帧重复采图
+- 想看“请求参数”和“当前观测参数”是否一致
+- 需要一条 checked-in 的“open -> set/get -> read -> close”正式模板
+
+注意事项：
+
+- `request_set_parameters` 和 `request_parameter_query` 当前都是可选；不传时会回退到模板内默认参数
+- `read-latest-frame` 会沿用 `request_session_config` 里的读帧相关字段，因此同一个请求体里可以同时写 `device_index`、`fps` 和 `output_format`
+- 这条样例更适合排查会话边界、参数写入和单帧稳定性，不适合长时间连续采流
+
+### camera_usb_uvc_stream_window_preview
+
+链路固定为：
+
+- `custom.camera.usb.open-device`
+- `template-input.value(request_stream_config)`
+- `custom.camera.usb.start-stream`
+- `custom.camera.usb.get-parameter`
+- `custom.camera.usb.read-window`
+- `frame-window-preview`
+- `custom.camera.usb.close-device`
+
+输入约定：
+
+- `request_session_config`：`value.v1`
+  - 示例：`{"value":{"device_index":0,"backend_preference":"msmf","width":1280,"height":720,"fps":15.0}}`
+- `request_stream_config`：`value.v1`
+  - 示例：`{"value":{"buffer_capacity":12,"target_fps":10.0,"max_frames":6,"wait_for_min_frames":3,"wait_timeout_seconds":1.0,"sample_mode":"uniform"}}`
+
+输出约定：
+
+- `open_session_summary`：`value.v1`
+- `stream_start_summary`：`value.v1`
+- `stream_state`：`value.v1`
+- `frames`：`frame-window.v1`
+- `preview_body`：`response-body.v1`
+- `window_summary`：`value.v1`
+- `close_result`：`value.v1`
+
+适用场景：
+
+- 需要先验证后台采流线程、缓冲和 `frame-window.v1` 是否正常
+- 想把 USB / UVC 相机直接接到现有多帧预览、SAM3 视频分割或后续视频链
+- 需要一条 checked-in 的“open -> start-stream -> read-window -> preview -> close”正式模板
+
+注意事项：
+
+- `get-parameter` 当前会显式读出 `stream_active / stream_buffer_count / stream_last_frame_index` 这些流状态字段，便于现场判断流线程是否真的在跑
+- 该样例输出的是 `frame-window.v1` 和 gallery-preview body，不会自动保存视频文件；如果现场后续要进视频归档，可继续接 `video-save`
+- `request_stream_config` 当前是必填，是为了把 `start-stream` 和 `read-window` 这两层运行时参数显式暴露出来；如果只想沿用模板默认值，可传 `{"value":{}}`
+
 ## PLC / Modbus 等待样例
 
 - `plc_modbus_wait_status_word_ready_mask.template.json`

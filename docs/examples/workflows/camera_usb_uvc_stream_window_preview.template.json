@@ -1,0 +1,215 @@
+{
+  "format_id": "amvision.workflow-graph-template.v1",
+  "template_id": "camera-usb-uvc-stream-window-preview-template",
+  "template_version": "1.0.0",
+  "display_name": "Camera USB/UVC Stream Window Preview",
+  "description": "面向 USB / UVC 相机后台采流联调的样例。打开会话后启动流线程，查询当前流状态，再读取一段标准 frame-window.v1 并输出 gallery-preview body，最后显式关闭会话。",
+  "nodes": [
+    {
+      "node_id": "request_stream_config_input",
+      "node_type_id": "core.io.template-input.value",
+      "parameters": {}
+    },
+    {
+      "node_id": "open_device",
+      "node_type_id": "custom.camera.usb.open-device",
+      "parameters": {
+        "device_index": 0,
+        "backend_preference": "any",
+        "width": 1280,
+        "height": 720,
+        "fps": 15.0,
+        "probe_frame": false
+      }
+    },
+    {
+      "node_id": "start_stream",
+      "node_type_id": "custom.camera.usb.start-stream",
+      "parameters": {
+        "buffer_capacity": 12,
+        "failure_retry_delay_ms": 50
+      }
+    },
+    {
+      "node_id": "get_stream_state",
+      "node_type_id": "custom.camera.usb.get-parameter",
+      "parameters": {
+        "parameter_names": [
+          "backend_name",
+          "stream_active",
+          "stream_worker_alive",
+          "stream_buffer_capacity",
+          "stream_buffer_count",
+          "stream_last_frame_index",
+          "stream_last_timestamp_ms",
+          "successful_reads_total"
+        ]
+      }
+    },
+    {
+      "node_id": "read_window",
+      "node_type_id": "custom.camera.usb.read-window",
+      "parameters": {
+        "max_frames": 6,
+        "sample_mode": "uniform",
+        "wait_for_min_frames": 3,
+        "wait_timeout_seconds": 1.0,
+        "output_format": "png"
+      }
+    },
+    {
+      "node_id": "frame_window_preview",
+      "node_type_id": "core.io.frame-window-preview",
+      "parameters": {
+        "title": "USB/UVC Stream Window Preview",
+        "sample_mode": "uniform",
+        "max_items": 6,
+        "response_transport_mode": "inline-base64"
+      }
+    },
+    {
+      "node_id": "close_device",
+      "node_type_id": "custom.camera.usb.close-device",
+      "parameters": {}
+    }
+  ],
+  "edges": [
+    {
+      "edge_id": "edge-request-stream-config-start",
+      "source_node_id": "request_stream_config_input",
+      "source_port": "value",
+      "target_node_id": "start_stream",
+      "target_port": "request"
+    },
+    {
+      "edge_id": "edge-request-stream-config-read-window",
+      "source_node_id": "request_stream_config_input",
+      "source_port": "value",
+      "target_node_id": "read_window",
+      "target_port": "request"
+    },
+    {
+      "edge_id": "edge-open-start-session",
+      "source_node_id": "open_device",
+      "source_port": "session",
+      "target_node_id": "start_stream",
+      "target_port": "session"
+    },
+    {
+      "edge_id": "edge-start-get-stream-state",
+      "source_node_id": "start_stream",
+      "source_port": "session",
+      "target_node_id": "get_stream_state",
+      "target_port": "session"
+    },
+    {
+      "edge_id": "edge-get-state-read-window",
+      "source_node_id": "get_stream_state",
+      "source_port": "session",
+      "target_node_id": "read_window",
+      "target_port": "session"
+    },
+    {
+      "edge_id": "edge-read-window-preview",
+      "source_node_id": "read_window",
+      "source_port": "frames",
+      "target_node_id": "frame_window_preview",
+      "target_port": "frames"
+    },
+    {
+      "edge_id": "edge-read-window-close",
+      "source_node_id": "read_window",
+      "source_port": "session",
+      "target_node_id": "close_device",
+      "target_port": "session"
+    }
+  ],
+  "template_inputs": [
+    {
+      "input_id": "request_session_config",
+      "display_name": "Request Session Config",
+      "payload_type_id": "value.v1",
+      "target_node_id": "open_device",
+      "target_port": "request"
+    },
+    {
+      "input_id": "request_stream_config",
+      "display_name": "Request Stream Config",
+      "payload_type_id": "value.v1",
+      "target_node_id": "request_stream_config_input",
+      "target_port": "payload"
+    }
+  ],
+  "template_outputs": [
+    {
+      "output_id": "open_session_summary",
+      "display_name": "Open Session Summary",
+      "payload_type_id": "value.v1",
+      "source_node_id": "open_device",
+      "source_port": "summary"
+    },
+    {
+      "output_id": "stream_start_summary",
+      "display_name": "Stream Start Summary",
+      "payload_type_id": "value.v1",
+      "source_node_id": "start_stream",
+      "source_port": "summary"
+    },
+    {
+      "output_id": "stream_state",
+      "display_name": "Stream State",
+      "payload_type_id": "value.v1",
+      "source_node_id": "get_stream_state",
+      "source_port": "result"
+    },
+    {
+      "output_id": "frames",
+      "display_name": "Frames",
+      "payload_type_id": "frame-window.v1",
+      "source_node_id": "read_window",
+      "source_port": "frames"
+    },
+    {
+      "output_id": "preview_body",
+      "display_name": "Preview Body",
+      "payload_type_id": "response-body.v1",
+      "source_node_id": "frame_window_preview",
+      "source_port": "body"
+    },
+    {
+      "output_id": "window_summary",
+      "display_name": "Window Summary",
+      "payload_type_id": "value.v1",
+      "source_node_id": "read_window",
+      "source_port": "summary"
+    },
+    {
+      "output_id": "close_result",
+      "display_name": "Close Result",
+      "payload_type_id": "value.v1",
+      "source_node_id": "close_device",
+      "source_port": "result"
+    }
+  ],
+  "metadata": {
+    "example_kind": "camera-usb-uvc-stream-window-preview",
+    "focus": "usb-uvc-stream-window-preview",
+    "transport": "usb-uvc",
+    "stream_config_binding": "request_stream_config",
+    "node_groups": {
+      "session": [
+        "open_device",
+        "close_device"
+      ],
+      "stream": [
+        "request_stream_config_input",
+        "start_stream",
+        "get_stream_state",
+        "read_window"
+      ],
+      "preview": [
+        "frame_window_preview"
+      ]
+    }
+  }
+}

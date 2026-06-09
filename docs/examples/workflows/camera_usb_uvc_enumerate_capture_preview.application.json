@@ -1,0 +1,72 @@
+{
+  "format_id": "amvision.flow-application.v1",
+  "application_id": "camera-usb-uvc-enumerate-capture-preview-app",
+  "display_name": "Camera USB/UVC Enumerate Capture Preview App",
+  "description": "用于 USB / UVC 相机首轮联调的最小 app。输入一份 request 配置，输出设备枚举结果、单帧图像、预览 body 和采图摘要。",
+  "template_ref": {
+    "template_id": "camera-usb-uvc-enumerate-capture-preview-template",
+    "template_version": "1.0.0",
+    "source_kind": "json-file",
+    "source_uri": "docs/examples/workflows/camera_usb_uvc_enumerate_capture_preview.template.json"
+  },
+  "runtime_mode": "python-json-workflow",
+  "bindings": [
+    {
+      "binding_id": "request_camera_config",
+      "direction": "input",
+      "template_port_id": "request_camera_config",
+      "binding_kind": "workflow-execute-input",
+      "config": {
+        "payload_type_id": "value.v1",
+        "content_type": "application/json"
+      },
+      "metadata": {
+        "payload_type_id": "value.v1"
+      }
+    },
+    {
+      "binding_id": "enumeration_result",
+      "direction": "output",
+      "template_port_id": "enumeration_result",
+      "binding_kind": "workflow-execute-output",
+      "config": {
+        "payload_type_id": "value.v1"
+      },
+      "metadata": {}
+    },
+    {
+      "binding_id": "captured_image",
+      "direction": "output",
+      "template_port_id": "captured_image",
+      "binding_kind": "workflow-execute-output",
+      "config": {
+        "payload_type_id": "image-ref.v1"
+      },
+      "metadata": {}
+    },
+    {
+      "binding_id": "preview_body",
+      "direction": "output",
+      "template_port_id": "preview_body",
+      "binding_kind": "workflow-execute-output",
+      "config": {
+        "payload_type_id": "response-body.v1"
+      },
+      "metadata": {}
+    },
+    {
+      "binding_id": "capture_summary",
+      "direction": "output",
+      "template_port_id": "capture_summary",
+      "binding_kind": "workflow-execute-output",
+      "config": {
+        "payload_type_id": "value.v1"
+      },
+      "metadata": {}
+    }
+  ],
+  "metadata": {
+    "example_kind": "camera-usb-uvc-enumerate-capture-preview",
+    "intended_saved_object_key": "workflows/projects/{project_id}/applications/camera-usb-uvc-enumerate-capture-preview-app/application.json"
+  }
+}
