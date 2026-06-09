@@ -1,0 +1,102 @@
+{
+  "format_id": "amvision.node-definition.v1",
+  "node_type_id": "custom.camera.usb.get-parameter",
+  "display_name": "Get USB/UVC Parameter",
+  "category": "camera.usb",
+  "description": "读取当前 USB / UVC 相机会话的常用参数与观测信息，适合现场调参和排障。",
+  "implementation_kind": "custom-node",
+  "runtime_kind": "python-callable",
+  "input_ports": [
+    {
+      "name": "session",
+      "display_name": "Session",
+      "payload_type_id": "camera-session.v1"
+    },
+    {
+      "name": "request",
+      "display_name": "Request",
+      "payload_type_id": "value.v1",
+      "required": false
+    }
+  ],
+  "output_ports": [
+    {
+      "name": "session",
+      "display_name": "Session",
+      "payload_type_id": "camera-session.v1"
+    },
+    {
+      "name": "result",
+      "display_name": "Result",
+      "payload_type_id": "value.v1"
+    }
+  ],
+  "parameter_schema": {
+    "type": "object",
+    "properties": {
+      "parameter_names": {
+        "type": "array",
+        "title": "Parameter Names",
+        "items": {
+          "type": "string",
+          "enum": [
+            "auto_focus",
+            "backend_name",
+            "backend_preference",
+            "brightness",
+            "buffer_size",
+            "contrast",
+            "device_index",
+            "device_path",
+            "exposure",
+            "focus",
+            "fps",
+            "gain",
+            "gamma",
+            "height",
+            "hue",
+            "last_frame_channels",
+            "last_frame_height",
+            "last_frame_width",
+            "last_read_at",
+            "opened_at",
+            "requested_fps",
+            "requested_height",
+            "requested_width",
+            "saturation",
+            "session_handle",
+            "sharpness",
+            "source_kind",
+            "successful_reads_total",
+            "temperature",
+            "width",
+            "zoom"
+          ]
+        },
+        "default": [
+          "width",
+          "height",
+          "fps",
+          "backend_name"
+        ],
+        "minItems": 1
+      }
+    }
+  },
+  "capability_tags": [
+    "integration.camera",
+    "integration.camera.usb-uvc",
+    "vision.device.parameters"
+  ],
+  "runtime_requirements": {
+    "python_packages": [
+      "opencv-python",
+      "numpy"
+    ]
+  },
+  "node_pack_id": "camera.usb-uvc-nodes",
+  "node_pack_version": "0.1.0",
+  "metadata": {
+    "phase": "implemented"
+  }
+}

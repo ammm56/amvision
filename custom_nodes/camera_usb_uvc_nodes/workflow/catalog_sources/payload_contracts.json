@@ -1,2 +1,82 @@
-[]
-
+[
+  {
+    "format_id": "amvision.workflow-payload-contract.v1",
+    "payload_type_id": "camera-session.v1",
+    "display_name": "USB UVC Camera Session",
+    "transport_kind": "inline-json",
+    "json_schema": {
+      "type": "object",
+      "properties": {
+        "transport": {
+          "type": "string",
+          "const": "usb-uvc"
+        },
+        "session_handle": {
+          "type": "string"
+        },
+        "source_kind": {
+          "type": "string",
+          "enum": [
+            "device-index",
+            "device-path"
+          ]
+        },
+        "device_index": {
+          "type": "integer"
+        },
+        "device_path": {
+          "type": "string"
+        },
+        "backend_preference": {
+          "type": "string",
+          "enum": [
+            "any",
+            "dshow",
+            "msmf",
+            "v4l2",
+            "gstreamer"
+          ]
+        },
+        "backend_name": {
+          "type": "string"
+        },
+        "opened_at": {
+          "type": "string"
+        },
+        "requested_width": {
+          "type": "integer"
+        },
+        "requested_height": {
+          "type": "integer"
+        },
+        "requested_fps": {
+          "type": "number"
+        },
+        "successful_reads_total": {
+          "type": "integer"
+        },
+        "last_read_at": {
+          "type": "string"
+        },
+        "last_frame_width": {
+          "type": "integer"
+        },
+        "last_frame_height": {
+          "type": "integer"
+        },
+        "last_frame_channels": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "transport",
+        "session_handle",
+        "source_kind",
+        "backend_preference",
+        "opened_at"
+      ]
+    },
+    "artifact_kinds": [],
+    "metadata": {}
+  }
+]

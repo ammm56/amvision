@@ -1,6 +1,87 @@
 {
   "format_id": "amvision.custom-node-catalog.v1",
-  "payload_contracts": [],
+  "payload_contracts": [
+    {
+      "format_id": "amvision.workflow-payload-contract.v1",
+      "payload_type_id": "camera-session.v1",
+      "display_name": "USB UVC Camera Session",
+      "transport_kind": "inline-json",
+      "json_schema": {
+        "type": "object",
+        "properties": {
+          "transport": {
+            "type": "string",
+            "const": "usb-uvc"
+          },
+          "session_handle": {
+            "type": "string"
+          },
+          "source_kind": {
+            "type": "string",
+            "enum": [
+              "device-index",
+              "device-path"
+            ]
+          },
+          "device_index": {
+            "type": "integer"
+          },
+          "device_path": {
+            "type": "string"
+          },
+          "backend_preference": {
+            "type": "string",
+            "enum": [
+              "any",
+              "dshow",
+              "msmf",
+              "v4l2",
+              "gstreamer"
+            ]
+          },
+          "backend_name": {
+            "type": "string"
+          },
+          "opened_at": {
+            "type": "string"
+          },
+          "requested_width": {
+            "type": "integer"
+          },
+          "requested_height": {
+            "type": "integer"
+          },
+          "requested_fps": {
+            "type": "number"
+          },
+          "successful_reads_total": {
+            "type": "integer"
+          },
+          "last_read_at": {
+            "type": "string"
+          },
+          "last_frame_width": {
+            "type": "integer"
+          },
+          "last_frame_height": {
+            "type": "integer"
+          },
+          "last_frame_channels": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "transport",
+          "session_handle",
+          "source_kind",
+          "backend_preference",
+          "opened_at"
+        ]
+      },
+      "artifact_kinds": [],
+      "metadata": {}
+    }
+  ],
   "node_definitions": [
     {
       "format_id": "amvision.node-definition.v1",
@@ -140,6 +221,58 @@
     },
     {
       "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.camera.usb.close-device",
+      "display_name": "Close USB/UVC Device",
+      "category": "camera.usb",
+      "description": "关闭一个已打开的 USB / UVC 相机会话，释放采集句柄。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "input_ports": [
+        {
+          "name": "session",
+          "display_name": "Session",
+          "payload_type_id": "camera-session.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "result",
+          "display_name": "Result",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {}
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "integration.camera",
+        "integration.camera.usb-uvc",
+        "vision.device.session"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "camera.usb-uvc-nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {
+        "phase": "implemented"
+      }
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
       "node_type_id": "custom.camera.usb.enumerate-devices",
       "display_name": "Enumerate USB/UVC Devices",
       "category": "camera.usb",
@@ -225,6 +358,447 @@
       "metadata": {
         "phase": "implemented"
       }
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.camera.usb.get-parameter",
+      "display_name": "Get USB/UVC Parameter",
+      "category": "camera.usb",
+      "description": "读取当前 USB / UVC 相机会话的常用参数与观测信息，适合现场调参和排障。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "input_ports": [
+        {
+          "name": "session",
+          "display_name": "Session",
+          "payload_type_id": "camera-session.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "request",
+          "display_name": "Request",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": false,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "session",
+          "display_name": "Session",
+          "payload_type_id": "camera-session.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "result",
+          "display_name": "Result",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "parameter_names": {
+            "type": "array",
+            "title": "Parameter Names",
+            "items": {
+              "type": "string",
+              "enum": [
+                "auto_focus",
+                "backend_name",
+                "backend_preference",
+                "brightness",
+                "buffer_size",
+                "contrast",
+                "device_index",
+                "device_path",
+                "exposure",
+                "focus",
+                "fps",
+                "gain",
+                "gamma",
+                "height",
+                "hue",
+                "last_frame_channels",
+                "last_frame_height",
+                "last_frame_width",
+                "last_read_at",
+                "opened_at",
+                "requested_fps",
+                "requested_height",
+                "requested_width",
+                "saturation",
+                "session_handle",
+                "sharpness",
+                "source_kind",
+                "successful_reads_total",
+                "temperature",
+                "width",
+                "zoom"
+              ]
+            },
+            "default": [
+              "width",
+              "height",
+              "fps",
+              "backend_name"
+            ],
+            "minItems": 1
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "integration.camera",
+        "integration.camera.usb-uvc",
+        "vision.device.parameters"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "camera.usb-uvc-nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {
+        "phase": "implemented"
+      }
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.camera.usb.open-device",
+      "display_name": "Open USB/UVC Device",
+      "category": "camera.usb",
+      "description": "打开一个可跨节点复用的 USB / UVC 相机会话，适合现场单帧重复采图和参数调整链路。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "input_ports": [
+        {
+          "name": "request",
+          "display_name": "Request",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": false,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "session",
+          "display_name": "Session",
+          "payload_type_id": "camera-session.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "summary",
+          "display_name": "Summary",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "device_index": {
+            "type": "integer",
+            "title": "Device Index",
+            "default": 0,
+            "minimum": 0
+          },
+          "device_path": {
+            "type": "string",
+            "title": "Device Path"
+          },
+          "backend_preference": {
+            "type": "string",
+            "title": "Backend Preference",
+            "default": "any",
+            "enum": [
+              "any",
+              "dshow",
+              "msmf",
+              "v4l2",
+              "gstreamer"
+            ]
+          },
+          "width": {
+            "type": "integer",
+            "title": "Width",
+            "minimum": 1
+          },
+          "height": {
+            "type": "integer",
+            "title": "Height",
+            "minimum": 1
+          },
+          "fps": {
+            "type": "number",
+            "title": "FPS",
+            "exclusiveMinimum": 0
+          },
+          "probe_frame": {
+            "type": "boolean",
+            "title": "Probe Frame",
+            "default": true
+          },
+          "warmup_frame_count": {
+            "type": "integer",
+            "title": "Warmup Frame Count",
+            "default": 1,
+            "minimum": 0
+          },
+          "retry_read_count": {
+            "type": "integer",
+            "title": "Retry Read Count",
+            "default": 1,
+            "minimum": 1
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "integration.camera",
+        "integration.camera.usb-uvc",
+        "vision.device.session"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "camera.usb-uvc-nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {
+        "phase": "implemented"
+      }
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.camera.usb.read-latest-frame",
+      "display_name": "Read Latest USB/UVC Frame",
+      "category": "camera.usb",
+      "description": "从已打开的 USB / UVC 相机会话读取最新单帧，适合单次 workflow invoke 内重复采图。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "input_ports": [
+        {
+          "name": "session",
+          "display_name": "Session",
+          "payload_type_id": "camera-session.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "request",
+          "display_name": "Request",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": false,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "session",
+          "display_name": "Session",
+          "payload_type_id": "camera-session.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "summary",
+          "display_name": "Summary",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "warmup_frame_count": {
+            "type": "integer",
+            "title": "Warmup Frame Count",
+            "default": 0,
+            "minimum": 0
+          },
+          "retry_read_count": {
+            "type": "integer",
+            "title": "Retry Read Count",
+            "default": 3,
+            "minimum": 1
+          },
+          "output_format": {
+            "type": "string",
+            "title": "Output Format",
+            "default": "png",
+            "enum": [
+              "png",
+              "jpeg"
+            ]
+          },
+          "jpeg_quality": {
+            "type": "integer",
+            "title": "JPEG Quality",
+            "default": 95,
+            "minimum": 1,
+            "maximum": 100
+          },
+          "output_object_key": {
+            "type": "string",
+            "title": "Output Object Key"
+          },
+          "overwrite": {
+            "type": "boolean",
+            "title": "Overwrite",
+            "default": true
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "integration.camera",
+        "integration.camera.usb-uvc",
+        "vision.image.capture"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "camera.usb-uvc-nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {
+        "phase": "implemented"
+      }
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.camera.usb.set-parameter",
+      "display_name": "Set USB/UVC Parameter",
+      "category": "camera.usb",
+      "description": "写入当前 USB / UVC 相机会话的常用参数，适合现场分辨率、帧率和曝光类调参。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "input_ports": [
+        {
+          "name": "session",
+          "display_name": "Session",
+          "payload_type_id": "camera-session.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "request",
+          "display_name": "Request",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": false,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "session",
+          "display_name": "Session",
+          "payload_type_id": "camera-session.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "result",
+          "display_name": "Result",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "parameter_values": {
+            "type": "object",
+            "title": "Parameter Values",
+            "additionalProperties": {
+              "oneOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "boolean"
+                }
+              ]
+            }
+          },
+          "verify_after_set": {
+            "type": "boolean",
+            "title": "Verify After Set",
+            "default": true
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "integration.camera",
+        "integration.camera.usb-uvc",
+        "vision.device.parameters"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "camera.usb-uvc-nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {
+        "phase": "implemented"
+      }
     }
   ],
   "metadata": {
@@ -236,7 +810,12 @@
     ],
     "features": [
       "enumerate-devices",
-      "capture-frame"
+      "capture-frame",
+      "open-device",
+      "read-latest-frame",
+      "get-parameter",
+      "set-parameter",
+      "close-device"
     ]
   }
 }

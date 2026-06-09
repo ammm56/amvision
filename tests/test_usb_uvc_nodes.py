@@ -16,7 +16,15 @@ from backend.service.infrastructure.object_store.local_dataset_storage import (
     LocalDatasetStorage,
 )
 from custom_nodes.camera_usb_uvc_nodes.backend import support as camera_support
-from custom_nodes.camera_usb_uvc_nodes.backend.nodes import capture_frame, enumerate_devices
+from custom_nodes.camera_usb_uvc_nodes.backend.nodes import (
+    capture_frame,
+    close_device,
+    enumerate_devices,
+    get_parameter,
+    open_device,
+    read_latest_frame,
+    set_parameter,
+)
 
 
 class _FakeEncodedImage:
@@ -42,6 +50,19 @@ class _FakeCv2Module:
     CAP_PROP_FRAME_WIDTH = 3
     CAP_PROP_FRAME_HEIGHT = 4
     CAP_PROP_FPS = 5
+    CAP_PROP_BRIGHTNESS = 10
+    CAP_PROP_CONTRAST = 11
+    CAP_PROP_SATURATION = 12
+    CAP_PROP_HUE = 13
+    CAP_PROP_GAIN = 14
+    CAP_PROP_EXPOSURE = 15
+    CAP_PROP_GAMMA = 16
+    CAP_PROP_TEMPERATURE = 17
+    CAP_PROP_SHARPNESS = 18
+    CAP_PROP_FOCUS = 19
+    CAP_PROP_ZOOM = 20
+    CAP_PROP_BUFFERSIZE = 21
+    CAP_PROP_AUTOFOCUS = 22
     IMWRITE_JPEG_QUALITY = 1
 
     @staticmethod
@@ -108,6 +129,10 @@ class _FakeCapture:
         """返回当前 backend 名称。"""
 
         return self._backend_name
+
+
+class _RuntimeScope:
+    """模拟可跨 invoke 复用的 runtime_context。"""
 
 
 def test_enumerate_devices_node_returns_detected_cameras(monkeypatch) -> None:
@@ -286,6 +311,213 @@ def test_capture_frame_node_raises_when_camera_cannot_open(monkeypatch) -> None:
                 node_definition=SimpleNamespace(node_type_id=capture_frame.NODE_TYPE_ID),
                 parameters={"device_index": 0},
                 input_values={},
+            )
+        )
+
+
+def test_usb_camera_session_nodes_reuse_runtime_scoped_session(monkeypatch) -> None:
+    """验证 open/read/get/set/close 可以复用同一 runtime_context 中的会话。"""
+
+    frame = np.zeros((72, 96, 3), dtype=np.uint8)
+    capture = _FakeCapture(
+        frames=[(True, frame), (True, frame), (True, frame)],
+        backend_name="DSHOW",
+    )
+    runtime_scope = _RuntimeScope()
+    created_sources: list[tuple[int | str, int]] = []
+
+    monkeypatch.setattr(camera_support, "require_opencv_imports", lambda: (_FakeCv2Module, np))
+
+    def _create_capture(*, source, api_preference):
+        created_sources.append((source, api_preference))
+        return capture
+
+    monkeypatch.setattr(camera_support, "create_video_capture", _create_capture)
+
+    open_output = open_device.handle_node(
+        WorkflowNodeExecutionRequest(
+            node_id="open-camera-node",
+            node_definition=SimpleNamespace(node_type_id=open_device.NODE_TYPE_ID),
+            parameters={
+                "device_index": 3,
+                "backend_preference": "dshow",
+                "width": 640,
+                "height": 360,
+                "fps": 25.0,
+                "probe_frame": False,
+            },
+            input_values={},
+            runtime_context=runtime_scope,
+        )
+    )
+    opened_session = open_output["session"]
+
+    set_output = set_parameter.handle_node(
+        WorkflowNodeExecutionRequest(
+            node_id="set-camera-parameter-node",
+            node_definition=SimpleNamespace(node_type_id=set_parameter.NODE_TYPE_ID),
+            parameters={
+                "parameter_values": {
+                    "width": 800,
+                    "height": 600,
+                    "fps": 20.0,
+                }
+            },
+            input_values={"session": opened_session},
+            runtime_context=runtime_scope,
+        )
+    )
+    updated_session = set_output["session"]
+    set_result = set_output["result"]["value"]
+
+    get_output = get_parameter.handle_node(
+        WorkflowNodeExecutionRequest(
+            node_id="get-camera-parameter-node",
+            node_definition=SimpleNamespace(node_type_id=get_parameter.NODE_TYPE_ID),
+            parameters={
+                "parameter_names": ["width", "height", "fps", "backend_name", "requested_width"]
+            },
+            input_values={"session": updated_session},
+            runtime_context=runtime_scope,
+        )
+    )
+    get_result = get_output["result"]["value"]
+
+    image_registry = ExecutionImageRegistry()
+    read_output = read_latest_frame.handle_node(
+        WorkflowNodeExecutionRequest(
+            node_id="read-camera-frame-node",
+            node_definition=SimpleNamespace(node_type_id=read_latest_frame.NODE_TYPE_ID),
+            parameters={
+                "warmup_frame_count": 0,
+                "retry_read_count": 1,
+                "output_format": "png",
+            },
+            input_values={"session": updated_session},
+            execution_metadata={"execution_image_registry": image_registry},
+            runtime_context=runtime_scope,
+        )
+    )
+    read_session = read_output["session"]
+    read_summary = read_output["summary"]["value"]
+
+    close_output = close_device.handle_node(
+        WorkflowNodeExecutionRequest(
+            node_id="close-camera-node",
+            node_definition=SimpleNamespace(node_type_id=close_device.NODE_TYPE_ID),
+            parameters={},
+            input_values={"session": read_session},
+            runtime_context=runtime_scope,
+        )
+    )
+    close_result = close_output["result"]["value"]
+
+    assert created_sources == [(3, _FakeCv2Module.CAP_DSHOW)]
+    assert opened_session["session_handle"].startswith("usb-camera-session-")
+    assert opened_session["device_index"] == 3
+    assert opened_session["requested_width"] == 640
+    assert set_result["requested_values"] == {"width": 800, "height": 600, "fps": 20.0}
+    assert set_result["observed_values"] == {"width": 800, "height": 600, "fps": 20.0}
+    assert updated_session["requested_width"] == 800
+    assert updated_session["requested_height"] == 600
+    assert updated_session["requested_fps"] == 20.0
+    assert get_result["values"]["width"] == 800
+    assert get_result["values"]["height"] == 600
+    assert get_result["values"]["fps"] == 20.0
+    assert get_result["values"]["backend_name"] == "DSHOW"
+    assert get_result["values"]["requested_width"] == 800
+    assert read_output["image"]["transport_kind"] == "memory"
+    assert image_registry.read_bytes(str(read_output["image"]["image_handle"])).startswith(b"\x89PNG\r\n\x1a\n")
+    assert read_summary["frame_width"] == 96
+    assert read_summary["frame_height"] == 72
+    assert read_summary["successful_reads_total"] == 1
+    assert read_session["successful_reads_total"] == 1
+    assert close_result["closed"] is True
+    assert close_result["session_handle"] == opened_session["session_handle"]
+    assert capture.released is True
+
+
+def test_usb_camera_session_nodes_support_execution_scoped_registry(monkeypatch) -> None:
+    """验证没有 runtime_context 时，也能在同一 execution_metadata 内复用会话。"""
+
+    frame = np.zeros((40, 50, 3), dtype=np.uint8)
+    capture = _FakeCapture(frames=[(True, frame)])
+    execution_metadata: dict[str, object] = {"execution_image_registry": ExecutionImageRegistry()}
+
+    monkeypatch.setattr(camera_support, "require_opencv_imports", lambda: (_FakeCv2Module, np))
+    monkeypatch.setattr(camera_support, "create_video_capture", lambda *, source, api_preference: capture)
+
+    opened_session = open_device.handle_node(
+        WorkflowNodeExecutionRequest(
+            node_id="open-camera-execution-scope-node",
+            node_definition=SimpleNamespace(node_type_id=open_device.NODE_TYPE_ID),
+            parameters={"device_index": 0, "probe_frame": False},
+            input_values={},
+            execution_metadata=execution_metadata,
+        )
+    )["session"]
+
+    read_output = read_latest_frame.handle_node(
+        WorkflowNodeExecutionRequest(
+            node_id="read-camera-execution-scope-node",
+            node_definition=SimpleNamespace(node_type_id=read_latest_frame.NODE_TYPE_ID),
+            parameters={"retry_read_count": 1},
+            input_values={"session": opened_session},
+            execution_metadata=execution_metadata,
+        )
+    )
+
+    close_output = close_device.handle_node(
+        WorkflowNodeExecutionRequest(
+            node_id="close-camera-execution-scope-node",
+            node_definition=SimpleNamespace(node_type_id=close_device.NODE_TYPE_ID),
+            parameters={},
+            input_values={"session": read_output["session"]},
+            execution_metadata=execution_metadata,
+        )
+    )
+
+    assert read_output["summary"]["value"]["successful_reads_total"] == 1
+    assert close_output["result"]["value"]["closed"] is True
+    assert capture.released is True
+
+
+def test_read_latest_frame_raises_after_session_closed(monkeypatch) -> None:
+    """验证相机会话关闭后再次读帧会返回明确错误。"""
+
+    capture = _FakeCapture()
+    runtime_scope = _RuntimeScope()
+
+    monkeypatch.setattr(camera_support, "require_opencv_imports", lambda: (_FakeCv2Module, np))
+    monkeypatch.setattr(camera_support, "create_video_capture", lambda *, source, api_preference: capture)
+
+    opened_session = open_device.handle_node(
+        WorkflowNodeExecutionRequest(
+            node_id="open-camera-close-then-read-node",
+            node_definition=SimpleNamespace(node_type_id=open_device.NODE_TYPE_ID),
+            parameters={"device_index": 1, "probe_frame": False},
+            input_values={},
+            runtime_context=runtime_scope,
+        )
+    )["session"]
+    close_device.handle_node(
+        WorkflowNodeExecutionRequest(
+            node_id="close-camera-before-read-node",
+            node_definition=SimpleNamespace(node_type_id=close_device.NODE_TYPE_ID),
+            parameters={},
+            input_values={"session": opened_session},
+            runtime_context=runtime_scope,
+        )
+    )
+
+    with pytest.raises(InvalidRequestError, match="相机会话不存在或已关闭"):
+        read_latest_frame.handle_node(
+            WorkflowNodeExecutionRequest(
+                node_id="read-camera-after-close-node",
+                node_definition=SimpleNamespace(node_type_id=read_latest_frame.NODE_TYPE_ID),
+                parameters={"retry_read_count": 1},
+                input_values={"session": opened_session},
+                runtime_context=runtime_scope,
             )
         )
 

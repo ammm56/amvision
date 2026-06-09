@@ -7,7 +7,11 @@
   ],
   "features": [
     "enumerate-devices",
-    "capture-frame"
+    "capture-frame",
+    "open-device",
+    "read-latest-frame",
+    "get-parameter",
+    "set-parameter",
+    "close-device"
   ]
 }
-
