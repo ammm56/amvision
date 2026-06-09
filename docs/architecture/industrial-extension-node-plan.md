@@ -931,7 +931,7 @@ PLC 能力也应至少拆成两类：
 - `custom.camera.framegrabber_nodes`
 - `custom.opencv.undistort / perspective-transform / remap`
 - `custom.opencv.orb-match / homography-estimate`
-- `trigger-source` 中的 `directory-poll / filesystem-watch / modbus-poll-trigger / s7-poll-trigger`
+- `trigger-source` 中的 `directory-poll / directory-watch / modbus-poll-trigger / s7-poll-trigger`
 
 ## 当前建议
 

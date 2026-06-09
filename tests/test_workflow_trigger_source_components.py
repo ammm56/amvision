@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import time
 from dataclasses import dataclass
+from pathlib import Path
 from types import SimpleNamespace
 from uuid import uuid4
 
@@ -35,6 +36,9 @@ from backend.service.domain.workflows.workflow_trigger_source_records import (
 from backend.service.infrastructure.integrations.modbus import (
     ModbusBitsReadResponse,
     PlcRegisterTriggerAdapter,
+)
+from backend.service.infrastructure.integrations.directory import (
+    DirectoryPollTriggerAdapter,
 )
 from backend.service.infrastructure.integrations.zeromq import ZeroMqTriggerAdapter
 
@@ -429,6 +433,149 @@ def test_plc_register_trigger_adapter_rejects_sync_submit_mode() -> None:
             event_handler=TriggerSourceSupervisor(
                 adapters={
                     "plc-register": _FakeProtocolAdapter(adapter_kind="plc-register")
+                },
+                workflow_submitter=_FakeWorkflowSubmitter(),
+            ),
+        )
+
+    assert error_info.value.details["submit_mode"] == "sync"
+
+
+def test_directory_poll_trigger_adapter_polls_new_files_and_writes_checkpoint(
+    tmp_path: Path,
+) -> None:
+    """验证 directory-poll adapter 会扫描新文件、提交事件并落 checkpoint。"""
+
+    incoming_dir = tmp_path / "incoming"
+    incoming_dir.mkdir()
+    first_file = incoming_dir / "sample-a.png"
+    first_file.write_bytes(b"image-a")
+
+    trigger_source = _build_trigger_source(
+        trigger_kind="directory-poll",
+        input_binding_mapping={"request_batch": {"source": "payload.files"}},
+        transport_config={
+            "directory_path": str(incoming_dir),
+            "scan_interval_seconds": 0.05,
+            "batch_size": 2,
+            "min_stable_age_seconds": 0.0,
+            "extensions": ["png"],
+        },
+    )
+    adapter = DirectoryPollTriggerAdapter(dataset_storage_root_dir=str(tmp_path / "data"))
+    submitter = _FakeWorkflowSubmitter()
+    supervisor = TriggerSourceSupervisor(
+        adapters={
+            "directory-poll": _FakeProtocolAdapter(adapter_kind="directory-poll")
+        },
+        workflow_submitter=submitter,
+    )
+
+    adapter.start(trigger_source=trigger_source, event_handler=supervisor)
+    try:
+        deadline = time.monotonic() + 2.0
+        while time.monotonic() < deadline and submitter.last_request is None:
+            time.sleep(0.01)
+        time.sleep(0.15)
+        health = adapter.get_health(trigger_source_id="trigger-source-1")
+    finally:
+        adapter.stop(trigger_source_id="trigger-source-1")
+
+    assert submitter.last_request is not None
+    payload = submitter.last_request.trigger_event.payload
+    assert payload["file_count"] == 1
+    assert payload["files"][0]["file_name"] == "sample-a.png"
+    assert payload["primary_file_path"] == str(first_file.resolve())
+    assert health["running"] is True
+    assert health["submitted_count"] == 1
+    assert Path(health["checkpoint_path"]).is_file()
+
+
+def test_directory_poll_trigger_adapter_uses_checkpoint_to_avoid_reprocessing(
+    tmp_path: Path,
+) -> None:
+    """验证 directory-poll adapter 重启后不会重复处理已记录文件。"""
+
+    incoming_dir = tmp_path / "incoming"
+    incoming_dir.mkdir()
+    first_file = incoming_dir / "sample-a.png"
+    first_file.write_bytes(b"image-a")
+
+    trigger_source = _build_trigger_source(
+        trigger_kind="directory-poll",
+        input_binding_mapping={"request_batch": {"source": "payload.files"}},
+        transport_config={
+            "directory_path": str(incoming_dir),
+            "scan_interval_seconds": 0.05,
+            "batch_size": 1,
+            "min_stable_age_seconds": 0.0,
+            "extensions": ["png"],
+        },
+    )
+    first_adapter = DirectoryPollTriggerAdapter(
+        dataset_storage_root_dir=str(tmp_path / "data")
+    )
+    first_submitter = _FakeWorkflowSubmitter()
+    first_supervisor = TriggerSourceSupervisor(
+        adapters={
+            "directory-poll": _FakeProtocolAdapter(adapter_kind="directory-poll")
+        },
+        workflow_submitter=first_submitter,
+    )
+
+    first_adapter.start(trigger_source=trigger_source, event_handler=first_supervisor)
+    try:
+        deadline = time.monotonic() + 2.0
+        while time.monotonic() < deadline and first_submitter.last_request is None:
+            time.sleep(0.01)
+    finally:
+        first_adapter.stop(trigger_source_id="trigger-source-1")
+
+    assert first_submitter.last_request is not None
+
+    second_adapter = DirectoryPollTriggerAdapter(
+        dataset_storage_root_dir=str(tmp_path / "data")
+    )
+    second_submitter = _FakeWorkflowSubmitter()
+    second_supervisor = TriggerSourceSupervisor(
+        adapters={
+            "directory-poll": _FakeProtocolAdapter(adapter_kind="directory-poll")
+        },
+        workflow_submitter=second_submitter,
+    )
+
+    second_adapter.start(trigger_source=trigger_source, event_handler=second_supervisor)
+    try:
+        time.sleep(0.2)
+        health = second_adapter.get_health(trigger_source_id="trigger-source-1")
+    finally:
+        second_adapter.stop(trigger_source_id="trigger-source-1")
+
+    assert second_submitter.last_request is None
+    assert health["known_identity_count"] == 1
+    assert health["submitted_count"] == 0
+
+
+def test_directory_poll_trigger_adapter_rejects_sync_submit_mode(
+    tmp_path: Path,
+) -> None:
+    """验证 directory-poll adapter 当前拒绝 sync submit_mode。"""
+
+    incoming_dir = tmp_path / "incoming"
+    incoming_dir.mkdir()
+    trigger_source = _build_trigger_source(
+        trigger_kind="directory-poll",
+        submit_mode="sync",
+        transport_config={"directory_path": str(incoming_dir)},
+    )
+    adapter = DirectoryPollTriggerAdapter(dataset_storage_root_dir=str(tmp_path / "data"))
+
+    with pytest.raises(InvalidRequestError) as error_info:
+        adapter.start(
+            trigger_source=trigger_source,
+            event_handler=TriggerSourceSupervisor(
+                adapters={
+                    "directory-poll": _FakeProtocolAdapter(adapter_kind="directory-poll")
                 },
                 workflow_submitter=_FakeWorkflowSubmitter(),
             ),

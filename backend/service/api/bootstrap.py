@@ -82,6 +82,9 @@ from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.integrations.modbus import (
     PlcRegisterTriggerAdapter,
 )
+from backend.service.infrastructure.integrations.directory import (
+    DirectoryPollTriggerAdapter,
+)
 from backend.service.infrastructure.integrations.zeromq import ZeroMqTriggerAdapter
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     LocalDatasetStorage,
@@ -503,6 +506,9 @@ class BackendServiceBootstrap(
         )
         trigger_source_supervisor = TriggerSourceSupervisor(
             adapters={
+                "directory-poll": DirectoryPollTriggerAdapter(
+                    dataset_storage_root_dir=str(dataset_storage.root_dir)
+                ),
                 "plc-register": PlcRegisterTriggerAdapter(),
                 "zeromq-topic": ZeroMqTriggerAdapter(
                     local_buffer_writer=local_buffer_broker_supervisor

@@ -488,11 +488,11 @@
 
 #### P1：目录触发
 
-- `directory-poll`
-  - 作用：按固定周期触发某个 WorkflowAppRuntime，并把目录路径、批次大小和必要上下文注入输入 binding
-  - 原因：当前已有 `directory-poll-window` 样例，但仍需要由外部手工调用；还没有正式常驻目录轮询触发器
-- `filesystem-watch`
-  - 作用：基于文件创建、改名或稳定落地事件触发 WorkflowRun
+- 当前这一项已实现：`directory-poll`
+  - 作用：按固定周期扫描目录中新到达且已稳定落地的文件，并把 batch 文件列表、扫描摘要和批次上下文提交到 WorkflowAppRuntime
+  - 当前状态：已支持本地 checkpoint 恢复、扩展名筛选、稳定期过滤和 async submit
+- `directory-watch`
+  - 作用：基于目录创建、改名进入或稳定落地事件触发 WorkflowRun
   - 原因：有些现场更适合“文件一落地就触发”，而不是固定时间轮询
 
 #### P2：协议触发扩展
@@ -535,14 +535,14 @@
 5. `core.output.workflow-result`
 6. `core.output.batch-result-summary`
 7. `directory-poll` trigger-source
-8. `filesystem-watch` trigger-source
+8. `directory-watch` trigger-source
 9. 再按现场项目需要，选择 `custom.camera.* / custom.video.* / custom.protocol.* / custom.output.*`
 
-以上第 1 到第 6 项当前已实现，后续顺序自然顺延到第 7 项开始。
+以上第 1 到第 7 项当前已实现，后续顺序自然顺延到第 8 项开始。
 
 ## 下一步执行顺序
 
-1. 先转到 `directory-poll / filesystem-watch` 这类 trigger-source，把目录批处理从“可手工调用”继续收成“可常驻触发”
+1. 先转到 `directory-watch` 这类 trigger-source，把目录批处理从“周期轮询入口”继续收成“事件驱动入口”
 2. 再看是否需要补更多 detection / segmentation 调试与适配辅助节点，把模型结果到规则链的使用面继续打磨顺
 3. 然后再评估统一结果对象、JSON/CSV 字段规范和目录批次归档结构是否需要进一步收口
 4. 最后再看是否需要继续扩更多工业规则原子节点，而不是直接跳去更重的视频能力

@@ -27,6 +27,8 @@ if TYPE_CHECKING:
 
 
 _TRIGGER_KINDS = {
+    "directory-poll",
+    "directory-watch",
     "plc-register",
     "mqtt-topic",
     "zeromq-topic",

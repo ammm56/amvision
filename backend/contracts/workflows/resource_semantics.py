@@ -21,6 +21,8 @@ WorkflowRunState = Literal[
 ]
 WorkflowExecutionPolicyKind = Literal["preview-default", "runtime-default"]
 WorkflowTriggerKind = Literal[
+    "directory-poll",
+    "directory-watch",
     "plc-register",
     "mqtt-topic",
     "zeromq-topic",
@@ -84,6 +86,8 @@ WORKFLOW_EXECUTION_POLICY_KINDS: tuple[WorkflowExecutionPolicyKind, ...] = (
 )
 
 WORKFLOW_TRIGGER_KINDS: tuple[WorkflowTriggerKind, ...] = (
+    "directory-poll",
+    "directory-watch",
     "plc-register",
     "mqtt-topic",
     "zeromq-topic",
@@ -115,6 +119,7 @@ WORKFLOW_TRIGGER_RESULT_STATES: tuple[WorkflowTriggerResultState, ...] = (
 
 WORKFLOW_RUN_STORAGE_ROOT = "workflows/runtime"
 WORKFLOW_RUNTIME_STORAGE_ROOT = "workflows/runtime/app-runtimes"
+WORKFLOW_TRIGGER_SOURCE_STORAGE_ROOT = "workflows/runtime/trigger-sources"
 
 
 def build_workflow_preview_run_storage_dir(preview_run_id: str) -> str:
@@ -194,6 +199,12 @@ def build_workflow_app_runtime_events_object_key(workflow_runtime_id: str) -> st
     """返回单个 app runtime 事件文件的 object key。"""
 
     return build_workflow_app_runtime_snapshot_object_key(workflow_runtime_id, "events.json")
+
+
+def build_workflow_trigger_source_storage_dir(trigger_source_id: str) -> str:
+    """返回单个 TriggerSource 的运行状态根目录。"""
+
+    return f"{WORKFLOW_TRIGGER_SOURCE_STORAGE_ROOT}/{trigger_source_id}"
 
 
 def build_workflow_run_storage_dir(workflow_run_id: str) -> str:
