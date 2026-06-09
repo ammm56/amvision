@@ -4,7 +4,7 @@
 
 本文档用于收口 workflow 外部触发入口的资源边界、第一阶段已实现接口和后续协议 adapter 开发边界。
 
-第一阶段已经提供 TriggerSource 合同、持久化、协议中立 mapper/submitter/result dispatcher、REST 管理控制面、TriggerSourceSupervisor，以及 `zeromq-topic`、`plc-register` 与 `directory-poll` 三类已接入 adapter。ZeroMQ adapter 已支持 multipart envelope + content 到 BufferRef payload 的转换、REP 监听骨架、REST enable/disable 启停和 backend-service 启动时恢复 enabled trigger source；`plc-register` 当前已接入 `modbus-tcp + polling + async submit` 最小链路，支持寄存器轮询、条件匹配和 runtime 内部异步提交；`directory-poll` 当前已接入本地目录周期扫描、文件稳定期过滤、batch 提交和本地 checkpoint 恢复。MQTT、gRPC、IO、`directory-watch` 和传感器 adapter 仍未接入。
+第一阶段已经提供 TriggerSource 合同、持久化、协议中立 mapper/submitter/result dispatcher、REST 管理控制面、TriggerSourceSupervisor，以及 `zeromq-topic`、`plc-register`、`directory-poll` 与 `directory-watch` 四类已接入 adapter。ZeroMQ adapter 已支持 multipart envelope + content 到 BufferRef payload 的转换、REP 监听骨架、REST enable/disable 启停和 backend-service 启动时恢复 enabled trigger source；`plc-register` 当前已接入 `modbus-tcp + polling + async submit` 最小链路，支持寄存器轮询、条件匹配和 runtime 内部异步提交；`directory-poll` 当前已接入本地目录周期扫描、文件稳定期过滤、batch 提交和本地 checkpoint 恢复；`directory-watch` 当前已接入本地目录事件监听、稳定期过滤、batch 提交和本地 checkpoint 去重恢复，并支持 `force_polling=true` 的受控事件探测模式。MQTT、gRPC、IO 和传感器 adapter 仍未接入。
 
 ## 当前边界
 
@@ -12,7 +12,7 @@
 - 当前已经提供 `/api/v1/workflows/trigger-sources` 管理 API，用于创建、查询、启用、停用和读取 health。
 - 04/05 保持为 HTTP base64 workflow app 调试示例；06/07 单独保存同 app HTTP base64 + ZeroMQ image-ref 调试示例，避免把两类入口混在同一目录中。
 - TriggerSource 只提交协议原生输入，不负责把 `image-ref.v1` 主动转换成 `image-base64.v1`，也不负责补出本地图片、相机帧或其他节点级输入。
-- 当前已接入 ZeroMQ、第一阶段 PLC 和 `directory-poll`；后续 `directory-watch`、MQTT、gRPC、IO 变化、传感器读取、schedule 和 Webhook 触发，可以继续扩展为 WorkflowTriggerSource。
+- 当前已接入 ZeroMQ、第一阶段 PLC、`directory-poll` 和 `directory-watch`；后续 MQTT、gRPC、IO 变化、传感器读取、schedule 和 Webhook 触发，可以继续扩展为 WorkflowTriggerSource。
 - 面向设备上位机、MES、采集程序和调试脚本的外部调用方 SDK 规划见 [docs/api/trigger-source-sdks.md](trigger-source-sdks.md)。
 - 传感器读数、阈值越界、状态翻转和采样结果本身就是物理世界进入 workflow 的直接触发入口，不应只被视为运行中节点的附属输入。
 - 外部触发入口与节点图本身分层：触发源负责监听、过滤、去重和创建 WorkflowRun；runtime 负责执行。
@@ -386,7 +386,7 @@ http-response 输出或 WorkflowRun outputs
 - 版本前缀：/api/v1
 - 资源分组：/workflows
 - 资源路径：/api/v1/workflows/trigger-sources
-- 当前状态：第一阶段 REST 管理控制面已实现；ZeroMQ adapter 已接入 backend-service lifecycle，其他协议 adapter 尚未接入
+- 当前状态：第一阶段 REST 管理控制面已实现；`zeromq-topic`、`plc-register`、`directory-poll` 与 `directory-watch` 四类 adapter 已接入 backend-service lifecycle，其他协议 adapter 尚未接入
 
 ## 鉴权草案
 
@@ -453,7 +453,7 @@ http-response 输出或 WorkflowRun outputs
 - submit_mode 是逐条 trigger source 的配置项，不由 trigger_kind 硬编码决定。
 - 表中的推荐搭配用于表达默认取向，不限制现场按具体延时、幂等、回执和上位系统要求改成 sync。
 - 当某类触发入口被配置为 sync 时，应额外确认调用方连接时长、超时策略和失败回传语义都能稳定承受同步等待。
-- 当前实现里 `directory-poll` 与 `plc-register` 已显式限制为 `submit_mode = async`；如果请求体传入 `sync`，enable 时会返回明确错误。
+- 当前实现里 `directory-poll`、`directory-watch` 与 `plc-register` 已显式限制为 `submit_mode = async`；如果请求体传入 `sync`，enable 时会返回明确错误。
 
 ## 回执与幂等建议
 

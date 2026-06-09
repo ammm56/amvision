@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from pathlib import PurePosixPath
 from typing import Literal
 
 from backend.contracts.workflows import build_workflow_trigger_source_storage_dir
@@ -37,6 +38,19 @@ class DirectoryPollTriggerConfig:
     persist_checkpoint: bool
 
 
+@dataclass(frozen=True)
+class DirectoryWatchTriggerConfig:
+    """描述 directory-watch TriggerSource 的最终运行配置。"""
+
+    scan_config: DirectoryPollTriggerConfig
+    watch_debounce_ms: int
+    watch_step_ms: int
+    watch_timeout_ms: int
+    force_polling: bool | None
+    poll_delay_ms: int
+    ignore_permission_denied: bool
+
+
 def parse_directory_poll_trigger_config(
     *,
     trigger_source: WorkflowTriggerSource,
@@ -52,6 +66,7 @@ def parse_directory_poll_trigger_config(
     checkpoint_path = _build_default_checkpoint_path(
         dataset_storage_root_dir=dataset_storage_root_dir,
         trigger_source_id=trigger_source.trigger_source_id,
+        checkpoint_file_name="directory-poll-checkpoint.json",
     )
     return DirectoryPollTriggerConfig(
         directory_path=directory_path,
@@ -97,6 +112,70 @@ def parse_directory_poll_trigger_config(
         persist_checkpoint=_read_bool(
             transport_config.get("persist_checkpoint"),
             "transport_config.persist_checkpoint",
+            default_value=True,
+        ),
+    )
+
+
+def parse_directory_watch_trigger_config(
+    *,
+    trigger_source: WorkflowTriggerSource,
+    dataset_storage_root_dir: Path,
+) -> DirectoryWatchTriggerConfig:
+    """把 TriggerSource 配置解析为目录监听运行配置。"""
+
+    transport_config = dict(trigger_source.transport_config)
+    base_scan_config = parse_directory_poll_trigger_config(
+        trigger_source=trigger_source,
+        dataset_storage_root_dir=dataset_storage_root_dir,
+    )
+    scan_config = DirectoryPollTriggerConfig(
+        directory_path=base_scan_config.directory_path,
+        recursive=base_scan_config.recursive,
+        include_hidden=base_scan_config.include_hidden,
+        glob_pattern=base_scan_config.glob_pattern,
+        extensions=base_scan_config.extensions,
+        sort_by=base_scan_config.sort_by,
+        descending=base_scan_config.descending,
+        dedupe_by=base_scan_config.dedupe_by,
+        batch_size=base_scan_config.batch_size,
+        scan_interval_seconds=base_scan_config.scan_interval_seconds,
+        min_stable_age_seconds=base_scan_config.min_stable_age_seconds,
+        checkpoint_path=build_directory_watch_checkpoint_path(
+            dataset_storage_root_dir=dataset_storage_root_dir,
+            trigger_source_id=trigger_source.trigger_source_id,
+        ),
+        persist_checkpoint=base_scan_config.persist_checkpoint,
+    )
+    return DirectoryWatchTriggerConfig(
+        scan_config=scan_config,
+        watch_debounce_ms=_read_positive_int(
+            transport_config.get("watch_debounce_ms"),
+            "transport_config.watch_debounce_ms",
+            default_value=200,
+        ),
+        watch_step_ms=_read_positive_int(
+            transport_config.get("watch_step_ms"),
+            "transport_config.watch_step_ms",
+            default_value=50,
+        ),
+        watch_timeout_ms=_read_positive_int(
+            transport_config.get("watch_timeout_ms"),
+            "transport_config.watch_timeout_ms",
+            default_value=500,
+        ),
+        force_polling=_read_optional_bool(
+            transport_config.get("force_polling"),
+            "transport_config.force_polling",
+        ),
+        poll_delay_ms=_read_positive_int(
+            transport_config.get("poll_delay_ms"),
+            "transport_config.poll_delay_ms",
+            default_value=300,
+        ),
+        ignore_permission_denied=_read_bool(
+            transport_config.get("ignore_permission_denied"),
+            "transport_config.ignore_permission_denied",
             default_value=True,
         ),
     )
@@ -183,21 +262,61 @@ def build_checkpoint_path(
     return _build_default_checkpoint_path(
         dataset_storage_root_dir=dataset_storage_root_dir,
         trigger_source_id=trigger_source_id,
+        checkpoint_file_name="directory-poll-checkpoint.json",
     )
+
+
+def build_directory_watch_checkpoint_path(
+    dataset_storage_root_dir: Path,
+    trigger_source_id: str,
+) -> Path:
+    """构造 directory-watch 默认 checkpoint 文件路径。"""
+
+    return _build_default_checkpoint_path(
+        dataset_storage_root_dir=dataset_storage_root_dir,
+        trigger_source_id=trigger_source_id,
+        checkpoint_file_name="directory-watch-checkpoint.json",
+    )
+
+
+def matches_directory_candidate_path(
+    file_path: Path,
+    *,
+    directory_path: Path,
+    recursive: bool,
+    include_hidden: bool,
+    glob_pattern: str,
+    extensions: tuple[str, ...],
+) -> bool:
+    """判断一个路径是否满足目录触发配置的静态筛选条件。"""
+
+    try:
+        normalized_path = file_path.resolve()
+        relative_path = normalized_path.relative_to(directory_path)
+    except ValueError:
+        return False
+    if not recursive and len(relative_path.parts) > 1:
+        return False
+    if not include_hidden and any(part.startswith(".") for part in relative_path.parts):
+        return False
+    if extensions and normalized_path.suffix.lower() not in extensions:
+        return False
+    return PurePosixPath(relative_path.as_posix()).match(glob_pattern)
 
 
 def _build_default_checkpoint_path(
     *,
     dataset_storage_root_dir: Path,
     trigger_source_id: str,
+    checkpoint_file_name: str,
 ) -> Path:
-    """构造目录轮询默认 checkpoint 路径。"""
+    """构造目录 TriggerSource 默认 checkpoint 路径。"""
 
     return (
         dataset_storage_root_dir
         / build_workflow_trigger_source_storage_dir(trigger_source_id)
         / "state"
-        / "directory-poll-checkpoint.json"
+        / checkpoint_file_name
     ).resolve()
 
 
@@ -213,12 +332,14 @@ def _list_directory_files(config: DirectoryPollTriggerConfig) -> list[Path]:
     for file_path in path_iterable:
         if not file_path.is_file():
             continue
-        if not config.include_hidden and any(
-            part.startswith(".")
-            for part in file_path.relative_to(config.directory_path).parts
+        if not matches_directory_candidate_path(
+            file_path,
+            directory_path=config.directory_path,
+            recursive=config.recursive,
+            include_hidden=config.include_hidden,
+            glob_pattern=config.glob_pattern,
+            extensions=config.extensions,
         ):
-            continue
-        if config.extensions and file_path.suffix.lower() not in config.extensions:
             continue
         file_paths.append(file_path.resolve())
     return file_paths
@@ -370,6 +491,16 @@ def _read_bool(raw_value: object, field_name: str, *, default_value: bool) -> bo
 
     if raw_value is None:
         return default_value
+    if not isinstance(raw_value, bool):
+        raise InvalidRequestError(f"{field_name} 必须是布尔值")
+    return raw_value
+
+
+def _read_optional_bool(raw_value: object, field_name: str) -> bool | None:
+    """读取可选布尔配置。"""
+
+    if raw_value is None:
+        return None
     if not isinstance(raw_value, bool):
         raise InvalidRequestError(f"{field_name} 必须是布尔值")
     return raw_value

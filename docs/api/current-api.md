@@ -1571,7 +1571,7 @@ classification、segmentation、pose 和 obb 四种任务类型各自提供与 d
 
 ## workflow 资源组
 
-当前 workflow runtime 公开接口描述的是 HTTP 控制面下的正式执行路径。WorkflowTriggerSource 第一阶段已经提供管理控制面，并已接入 `zeromq-topic`、`plc-register` 与 `directory-poll` 三类 adapter：ZeroMQ 负责本地高速图片/消息入口，`plc-register` 当前提供 `modbus-tcp + polling + async submit` 最小链路，`directory-poll` 当前提供本地目录周期扫描、文件稳定期过滤、batch 提交和 checkpoint 恢复。04/05 继续用于 HTTP JSON invoke，06/07 单独用于同 app HTTP base64 + ZeroMQ image-ref 双入口调试。TriggerSource 只提交协议原生输入，不负责跨 payload type 转换；如果同一 app 需要同时接 HTTP base64 和 ZeroMQ image-ref，应通过图里的显式 binding 或转换节点处理。后续 `directory-watch`、MQTT、gRPC、IO 变化等协议 adapter 仍统一映射到 WorkflowRun，触发入口说明见 [docs/api/workflow-trigger-sources.md](workflow-trigger-sources.md)。
+当前 workflow runtime 公开接口描述的是 HTTP 控制面下的正式执行路径。WorkflowTriggerSource 第一阶段已经提供管理控制面，并已接入 `zeromq-topic`、`plc-register`、`directory-poll` 与 `directory-watch` 四类 adapter：ZeroMQ 负责本地高速图片/消息入口，`plc-register` 当前提供 `modbus-tcp + polling + async submit` 最小链路，`directory-poll` 当前提供本地目录周期扫描、文件稳定期过滤、batch 提交和 checkpoint 恢复，`directory-watch` 当前提供本地目录事件监听、稳定期过滤、batch 提交和 checkpoint 去重恢复。04/05 继续用于 HTTP JSON invoke，06/07 单独用于同 app HTTP base64 + ZeroMQ image-ref 双入口调试。TriggerSource 只提交协议原生输入，不负责跨 payload type 转换；如果同一 app 需要同时接 HTTP base64 和 ZeroMQ image-ref，应通过图里的显式 binding 或转换节点处理。后续 MQTT、gRPC、IO 变化等协议 adapter 仍统一映射到 WorkflowRun，触发入口说明见 [docs/api/workflow-trigger-sources.md](workflow-trigger-sources.md)。
 
 ### POST /api/v1/workflows/templates/validate
 
@@ -1895,7 +1895,7 @@ classification、segmentation、pose 和 obb 四种任务类型各自提供与 d
 - 06 调试请求体见 `docs/api/examples/workflows/06-yolox-deployment-infer-opencv-health-zeromq-image-ref/trigger-source.create.request.json`
 - 07 调试请求体见 `docs/api/examples/workflows/07-opencv-process-save-image-zeromq-image-ref/trigger-source.create.request.json`
 - PLC Modbus TCP 示例请求体见 `docs/api/examples/workflows/08-plc-register-modbus-tcp-async-result-record/trigger-source.create.request.json`
-- 当前已接入的 adapter 为 `zeromq-topic`、`plc-register` 与 `directory-poll`；其中 `plc-register` 第一阶段只支持 `transport_config.driver = modbus-tcp`、后台 polling 和 `submit_mode = async`，`directory-poll` 第一阶段只支持本地目录轮询和 `submit_mode = async`
+- 当前已接入的 adapter 为 `zeromq-topic`、`plc-register`、`directory-poll` 与 `directory-watch`；其中 `plc-register` 第一阶段只支持 `transport_config.driver = modbus-tcp`、后台 polling 和 `submit_mode = async`，`directory-poll` 第一阶段只支持本地目录轮询和 `submit_mode = async`，`directory-watch` 第一阶段只支持本地目录事件监听和 `submit_mode = async`
 - ZeroMQ 数据面不经过该 REST API 发送图片；图片 bytes 由 C# SDK 通过 ZeroMQ multipart 发送到已启用的 TriggerSource
 - 成功状态码：201 Created
 - 当前响应返回 WorkflowTriggerSource 合同，包括 desired_state、observed_state、health_summary、created_at 和 updated_at

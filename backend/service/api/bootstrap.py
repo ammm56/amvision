@@ -84,6 +84,7 @@ from backend.service.infrastructure.integrations.modbus import (
 )
 from backend.service.infrastructure.integrations.directory import (
     DirectoryPollTriggerAdapter,
+    DirectoryWatchTriggerAdapter,
 )
 from backend.service.infrastructure.integrations.zeromq import ZeroMqTriggerAdapter
 from backend.service.infrastructure.object_store.local_dataset_storage import (
@@ -507,6 +508,9 @@ class BackendServiceBootstrap(
         trigger_source_supervisor = TriggerSourceSupervisor(
             adapters={
                 "directory-poll": DirectoryPollTriggerAdapter(
+                    dataset_storage_root_dir=str(dataset_storage.root_dir)
+                ),
+                "directory-watch": DirectoryWatchTriggerAdapter(
                     dataset_storage_root_dir=str(dataset_storage.root_dir)
                 ),
                 "plc-register": PlcRegisterTriggerAdapter(),

@@ -436,7 +436,7 @@
 
 - 当前工业单帧样例虽然已经有 checked-in 的“segments.v1 -> segments-to-regions -> 工业规则链”和“YOLOX detection -> detections-to-regions -> 工业规则链”模板，但还没有覆盖更多模型来源和更多规则组合
 - `roi-create` 虽然已支持运行时 `value.v1` 动态 ROI，但当前仓库里还没有覆盖更多多边形 ROI 和现场换型配置的样例
-- 当前批量输入链已经不只停在输入准备：`directory-scan -> directory-batch-window -> for-each -> image-load-local -> yolox-detection -> 工业规则链 -> csv/json 归档`，以及 `directory-scan -> directory-batch-window -> for-each -> value-to-segments / value-to-regions -> 工业规则链 -> csv/json 归档` 这两类 checked-in 主线都已补通；目录轮询守护这一层当前也已有 `json-load-local -> directory-poll-window -> json-save-local` 的 checked-in 样例。目录游标规整、推进与批次归档首轮也已接通，当前更值得继续收口的是批次结果摘要、目录触发、文件归档规范，以及更贴现场的接入说明
+- 当前批量输入链已经不只停在输入准备：`directory-scan -> directory-batch-window -> for-each -> image-load-local -> yolox-detection -> 工业规则链 -> csv/json 归档`，以及 `directory-scan -> directory-batch-window -> for-each -> value-to-segments / value-to-regions -> 工业规则链 -> csv/json 归档` 这两类 checked-in 主线都已补通；目录轮询守护这一层当前也已有 `json-load-local -> directory-poll-window -> json-save-local` 的 checked-in 样例。目录游标规整、推进与批次归档首轮也已接通，目录 TriggerSource 这一层当前也已补到 `directory-poll + directory-watch` 两条正式入口；当前更值得继续收口的是批次结果摘要、目录触发现场样例、文件归档规范，以及更贴现场的接入说明
 - 当前 detection / segmentation 结果虽然已可通过 `core.vision.detections-to-regions` 与 `core.vision.segments-to-regions` 进入规则链，但还没有继续往前补更细的调试与适配辅助节点
 
 ## 未实现正式待办
@@ -491,9 +491,9 @@
 - 当前这一项已实现：`directory-poll`
   - 作用：按固定周期扫描目录中新到达且已稳定落地的文件，并把 batch 文件列表、扫描摘要和批次上下文提交到 WorkflowAppRuntime
   - 当前状态：已支持本地 checkpoint 恢复、扩展名筛选、稳定期过滤和 async submit
-- `directory-watch`
-  - 作用：基于目录创建、改名进入或稳定落地事件触发 WorkflowRun
-  - 原因：有些现场更适合“文件一落地就触发”，而不是固定时间轮询
+- 当前这一项也已实现：`directory-watch`
+  - 作用：基于目录创建、修改或稳定落地事件触发 WorkflowRun
+  - 当前状态：已支持本地 checkpoint 去重恢复、稳定期过滤、batch 提交、`force_polling=true` 受控事件探测和 async submit
 
 #### P2：协议触发扩展
 
@@ -538,11 +538,11 @@
 8. `directory-watch` trigger-source
 9. 再按现场项目需要，选择 `custom.camera.* / custom.video.* / custom.protocol.* / custom.output.*`
 
-以上第 1 到第 7 项当前已实现，后续顺序自然顺延到第 8 项开始。
+以上第 1 到第 8 项当前已实现，后续顺序自然顺延到第 9 项开始。
 
 ## 下一步执行顺序
 
-1. 先转到 `directory-watch` 这类 trigger-source，把目录批处理从“周期轮询入口”继续收成“事件驱动入口”
+1. 先补一条更贴现场的 `directory-watch` checked-in workflow 样例，把“目录事件触发 -> 批次输入 -> 规则链 -> 归档/回传”明确成正式模板
 2. 再看是否需要补更多 detection / segmentation 调试与适配辅助节点，把模型结果到规则链的使用面继续打磨顺
 3. 然后再评估统一结果对象、JSON/CSV 字段规范和目录批次归档结构是否需要进一步收口
 4. 最后再看是否需要继续扩更多工业规则原子节点，而不是直接跳去更重的视频能力

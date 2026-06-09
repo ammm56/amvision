@@ -506,6 +506,90 @@ def test_workflow_trigger_source_api_controls_directory_poll_adapter(
     assert disable_payload["health_summary"]["adapter_running"] is False
 
 
+def test_workflow_trigger_source_api_controls_directory_watch_adapter(
+    tmp_path: Path,
+) -> None:
+    """验证 TriggerSource 管理 API 可以启停 directory-watch adapter。"""
+
+    incoming_dir = tmp_path / "incoming"
+    incoming_dir.mkdir()
+    context = create_api_test_context(
+        tmp_path,
+        database_name="workflow-trigger-sources-directory-watch.db",
+        enable_local_buffer_broker=False,
+    )
+    headers = build_test_headers(scopes="workflows:read,workflows:write")
+    try:
+        with context.client:
+            _save_runtime(context.session_factory, observed_state="running")
+            create_response = context.client.post(
+                "/api/v1/workflows/trigger-sources",
+                headers=headers,
+                json={
+                    "trigger_source_id": "directory-watch-trigger-1",
+                    "project_id": "project-1",
+                    "display_name": "Directory Watch Trigger",
+                    "trigger_kind": "directory-watch",
+                    "workflow_runtime_id": "workflow-runtime-1",
+                    "submit_mode": "async",
+                    "transport_config": {
+                        "directory_path": str(incoming_dir),
+                        "batch_size": 1,
+                        "min_stable_age_seconds": 0.0,
+                        "extensions": ["png"],
+                        "force_polling": True,
+                        "poll_delay_ms": 20,
+                        "watch_timeout_ms": 100,
+                    },
+                    "input_binding_mapping": {
+                        "request_batch": {"source": "payload.files_value"},
+                    },
+                    "result_mapping": {
+                        "result_binding": "workflow_result",
+                        "result_mode": "accepted-then-query",
+                    },
+                },
+            )
+            enable_response = context.client.post(
+                "/api/v1/workflows/trigger-sources/directory-watch-trigger-1/enable",
+                headers=headers,
+            )
+            health_response = context.client.get(
+                "/api/v1/workflows/trigger-sources/directory-watch-trigger-1/health",
+                headers=headers,
+            )
+            disable_response = context.client.post(
+                "/api/v1/workflows/trigger-sources/directory-watch-trigger-1/disable",
+                headers=headers,
+            )
+    finally:
+        context.session_factory.engine.dispose()
+
+    assert create_response.status_code == 201
+
+    assert enable_response.status_code == 200
+    enable_payload = enable_response.json()
+    assert enable_payload["enabled"] is True
+    assert enable_payload["observed_state"] == "running"
+    assert enable_payload["health_summary"]["adapter_configured"] is True
+    assert enable_payload["health_summary"]["adapter_running"] is True
+
+    assert health_response.status_code == 200
+    health_payload = health_response.json()
+    assert health_payload["observed_state"] == "running"
+    assert health_payload["health_summary"]["adapter_running"] is True
+    assert (
+        health_payload["health_summary"]["supervisor"]["adapter_health"]["adapter_kind"]
+        == "directory-watch"
+    )
+
+    assert disable_response.status_code == 200
+    disable_payload = disable_response.json()
+    assert disable_payload["enabled"] is False
+    assert disable_payload["desired_state"] == "stopped"
+    assert disable_payload["health_summary"]["adapter_running"] is False
+
+
 def _save_runtime(session_factory: SessionFactory, *, observed_state: str) -> None:
     """保存测试使用的 WorkflowAppRuntime。
 

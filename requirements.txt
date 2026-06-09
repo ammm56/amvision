@@ -49,6 +49,7 @@ zxing-cpp>=3.0,<4
 
 # 图触发调用层依赖
 pyzmq>=27.1.0,<30
+watchfiles>=1.2,<2
 
 # 可选
 psutil>=7.2.2,<8
