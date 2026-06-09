@@ -70,8 +70,12 @@ ZeroMQ TriggerSource 示例不把机器相关的 `path`、`offset` 和 `broker_e
 - `camera_usb_uvc_session_single_frame_review.application.json`
 - `camera_usb_uvc_stream_window_preview.template.json`
 - `camera_usb_uvc_stream_window_preview.application.json`
+- `industrial_single_frame_usb_uvc_yolox_position_gate.template.json`
+- `industrial_single_frame_usb_uvc_yolox_position_gate.application.json`
+- `industrial_single_frame_usb_uvc_sam3_semantic_continuity_gate.template.json`
+- `industrial_single_frame_usb_uvc_sam3_semantic_continuity_gate.application.json`
 
-这三组样例面向 `custom.camera.usb.*` 这批节点的第一轮现场调试，不直接耦合检测模型或工业规则链，而是先把“能枚举、能抓图、能调参、能读窗口、能预览”这条相机主线单独收稳。
+前 3 组样例面向 `custom.camera.usb.*` 这批节点的第一轮现场调试，不直接耦合检测模型或工业规则链，而是先把“能枚举、能抓图、能调参、能读窗口、能预览”这条相机主线单独收稳。后 2 组样例则继续把相机输入直接接到工业单帧“检测/分割 -> 规则判定 -> result-record”主线，分别覆盖 YOLOX 检测位置门和 SAM3 语义分割连续性门。
 
 ### camera_usb_uvc_enumerate_capture_preview
 
@@ -188,6 +192,120 @@ ZeroMQ TriggerSource 示例不把机器相关的 `path`、`offset` 和 `broker_e
 - `get-parameter` 当前会显式读出 `stream_active / stream_buffer_count / stream_last_frame_index` 这些流状态字段，便于现场判断流线程是否真的在跑
 - 该样例输出的是 `frame-window.v1` 和 gallery-preview body，不会自动保存视频文件；如果现场后续要进视频归档，可继续接 `video-save`
 - `request_stream_config` 当前是必填，是为了把 `start-stream` 和 `read-window` 这两层运行时参数显式暴露出来；如果只想沿用模板默认值，可传 `{"value":{}}`
+
+### industrial_single_frame_usb_uvc_yolox_position_gate
+
+链路固定为：
+
+- `template-input.value(request_camera_config)`
+- `template-input.object(deployment_request)`
+- `custom.camera.usb.capture-frame`
+- `core.model.yolox-detection`
+- `custom.opencv.draw-detections`
+- `core.vision.detections-to-regions`
+- `regions-filter`
+- `regions-select-best`
+- `roi-create`
+- `draw-roi`
+- `regions-inside-check`
+- `regions-offset-check`
+- `presence-check`
+- `process-decision`
+- `alarm-condition`
+- `json-save-local`
+- `csv-append-local`
+
+输入约定：
+
+- `request_camera_config`：`value.v1`
+  - 示例：`{"value":{"device_index":0,"backend_preference":"msmf","width":1280,"height":720,"fps":15.0,"output_format":"png"}}`
+- `deployment_request`：`value.v1`
+  - 示例：`{"value":{"deployment_instance_id":"deploy-yolox-line-01"}}`
+- `request_roi`：`value.v1`
+  - 可选；未提供时回退到模板内默认矩形 ROI
+
+输出约定：
+
+- `captured_image`：`image-ref.v1`
+- `capture_summary`：`value.v1`
+- `model_detections`：`detections.v1`
+- `model_regions`：`regions.v1`
+- `effective_roi`：`roi.v1`
+- `review_overlay_image`：`image-ref.v1`
+- `inspection_result`：`result-record.v1`
+- `inspection_alarm`：`alarm-record.v1`
+- `decision_summary`：`value.v1`
+- `json_summary`：`value.v1`
+- `csv_summary`：`value.v1`
+
+适用场景：
+
+- 现场已经有 USB / UVC 相机，但不想再走“先保存本地图片再读回”的绕路
+- 工位核心是“有没有、位置是否偏、是否越界”这类单帧检测判定
+- 需要在 `result-record` 里同时保留相机采图摘要和复核叠加图
+
+注意事项：
+
+- 这条样例仍然复用已发布的 YOLOX deployment 主链，因此 `deployment_request` 需要提供有效 deployment 实例
+- `capture_summary` 已并入 metrics，便于现场同时排查抓图参数和判定结果
+- 如果规则链消费的是 `regions.v1`，这条样例已经在图内显式接好 `detections-to-regions`
+
+### industrial_single_frame_usb_uvc_sam3_semantic_continuity_gate
+
+链路固定为：
+
+- `template-input.value(request_camera_config)`
+- `custom.camera.usb.capture-frame`
+- `custom.sam3.semantic-segment`
+- `regions-filter`
+- `roi-create`
+- `draw-roi`
+- `mask-overlay`
+- `regions-area-ratio`
+- `region-continuity-score`
+- `region-gap-check`
+- `presence-check`
+- `regions-coverage-check`
+- `range-check`
+- `process-decision`
+- `alarm-condition`
+- `json-save-local`
+- `csv-append-local`
+
+输入约定：
+
+- `request_camera_config`：`value.v1`
+  - 示例：`{"value":{"device_index":0,"backend_preference":"msmf","width":1280,"height":720,"fps":15.0,"output_format":"png"}}`
+- `request_prompts`：`text-prompts.v1`
+  - 示例：同现有 `industrial_single_frame_sam3_semantic_overlay_review` 的文本提示合同
+- `request_roi`：`value.v1`
+  - 可选；未提供时回退到模板内默认矩形 ROI
+
+输出约定：
+
+- `captured_image`：`image-ref.v1`
+- `capture_summary`：`value.v1`
+- `model_regions`：`regions.v1`
+- `filtered_regions`：`regions.v1`
+- `effective_roi`：`roi.v1`
+- `review_overlay_image`：`image-ref.v1`
+- `inspection_result`：`result-record.v1`
+- `inspection_alarm`：`alarm-record.v1`
+- `decision_summary`：`value.v1`
+- `json_summary`：`value.v1`
+- `csv_summary`：`value.v1`
+
+适用场景：
+
+- 现场更关心涂布、胶线、覆盖区域这类分割语义，而不是单纯 bbox 检测
+- 需要直接看覆盖率、面积占比和连续性，而不是只看模型输出原图
+- 希望把 USB / UVC 相机直采图直接接到 SAM3 语义分割和工业规则节点
+
+注意事项：
+
+- 这条样例把 `capture-frame.summary`、`segment.summary` 和连续性原子指标都并进了统一 metrics，便于现场追溯
+- `gap_check.result` 当前直接作为 continuity 条件进入 `process-decision`，`continuity_score` 主要用于解释性指标输出
+- 如果现场暂时只想看分割覆盖效果、不急着走 JSON / CSV 归档，可以先参考这条模板，把输出面裁剪成 `review_overlay_image + inspection_result`
 
 ## PLC / Modbus 等待样例
 
@@ -342,6 +460,8 @@ ZeroMQ TriggerSource 示例不把机器相关的 `path`、`offset` 和 `broker_e
 - `industrial_single_frame_yoloe_visual_overlay_review.application.json`
 - `industrial_single_frame_yolox_position_gate.template.json`
 - `industrial_single_frame_yolox_position_gate.application.json`
+- `industrial_single_frame_usb_uvc_yolox_position_gate.template.json`
+- `industrial_single_frame_usb_uvc_yolox_position_gate.application.json`
 - `industrial_single_frame_line_pair_measure_gate.template.json`
 - `industrial_single_frame_line_pair_measure_gate.application.json`
 - `industrial_single_frame_circle_concentricity_gate.template.json`
@@ -350,6 +470,8 @@ ZeroMQ TriggerSource 示例不把机器相关的 `path`、`offset` 和 `broker_e
 - `industrial_single_frame_segments_overlay_review.application.json`
 - `industrial_single_frame_sam3_semantic_overlay_review.template.json`
 - `industrial_single_frame_sam3_semantic_overlay_review.application.json`
+- `industrial_single_frame_usb_uvc_sam3_semantic_continuity_gate.template.json`
+- `industrial_single_frame_usb_uvc_sam3_semantic_continuity_gate.application.json`
 - `industrial_single_frame_sam3_interactive_overlay_review.template.json`
 - `industrial_single_frame_sam3_interactive_overlay_review.application.json`
 - `industrial_local_directory_batch_input.template.json`
@@ -365,7 +487,7 @@ ZeroMQ TriggerSource 示例不把机器相关的 `path`、`offset` 和 `broker_e
 - `industrial_local_directory_polling_cursor_guard.template.json`
 - `industrial_local_directory_polling_cursor_guard.application.json`
 
-前两组样例聚焦“单图输入 -> 规则判定 -> `process-decision` -> 结果回传”，不把相机、PLC 或特定模型耦合进模板本体。`industrial_single_frame_segments_continuity_gate` 则把“分割输出 -> `segments.v1` -> `regions.v1` -> 工业规则链”这层也一起接通；`industrial_single_frame_regions_overlay_review` 与 `industrial_single_frame_segments_overlay_review` 进一步把 `draw-roi / mask-overlay` 这层 checked-in，分别覆盖“上游已是标准 `regions.v1`”和“上游仍是 `segments.v1` 需要先桥接”的两种现场复核入口；`industrial_single_frame_yoloe_text_overlay_review`、`industrial_single_frame_yoloe_visual_overlay_review`、`industrial_single_frame_sam3_semantic_overlay_review` 与 `industrial_single_frame_sam3_interactive_overlay_review` 则继续把这条 overlay 复核链直接前移到 YOLOE / SAM3 节点本身，分别覆盖“文本开放词汇检测”“视觉提示检测”“文本语义分割”和“交互分割”四类本项目自带上游；`industrial_single_frame_yolox_position_gate` 对应把“检测输出 -> `detections.v1` -> `regions.v1` -> 工业规则链”这层接通；`industrial_single_frame_glue_polygon_roi_changeover` 进一步演示多边形 ROI 的换型和现场回调；`industrial_single_frame_line_pair_measure_gate` 与 `industrial_single_frame_circle_concentricity_gate` 则把传统 OpenCV 几何量测这层收成 checked-in 现场模板，分别覆盖双边线槽宽/平行度和双圆孔径/同心度/圆度；`industrial_local_directory_batch_input` 把本地文件夹小批量输入这层单独收成可复用模板；`industrial_local_directory_batch_segments_continuity_gate` 与 `industrial_local_directory_batch_regions_continuity_gate` 则把“目录批次 -> 分割/区域结果 -> 连续性规则链 -> CSV / JSON 归档”两类上游入口接到同一套批次骨架；`industrial_local_directory_batch_yolox_position_gate` 继续把这条目录批次输入主线真正接到“逐图检测 -> 规则判定 -> CSV 持续归档 -> 批次 JSON 汇总”的现场闭环；`industrial_local_directory_watch_yolox_position_gate` 再把 `directory-watch` TriggerSource 标准化后的 `payload / event` 直接接进同一条检测与规则批次骨架，覆盖“目录变化触发 -> 批次检测 -> 结构化归档 / 回传”这类更贴现场守护式接入；`industrial_local_directory_polling_cursor_guard` 则把“目录轮询守护 / cursor 落盘恢复 / 批次归档 JSON”这层独立收成可复用状态模板。
+前两组样例聚焦“单图输入 -> 规则判定 -> `process-decision` -> 结果回传”，不把相机、PLC 或特定模型耦合进模板本体。`industrial_single_frame_segments_continuity_gate` 则把“分割输出 -> `segments.v1` -> `regions.v1` -> 工业规则链”这层也一起接通；`industrial_single_frame_regions_overlay_review` 与 `industrial_single_frame_segments_overlay_review` 进一步把 `draw-roi / mask-overlay` 这层 checked-in，分别覆盖“上游已是标准 `regions.v1`”和“上游仍是 `segments.v1` 需要先桥接”的两种现场复核入口；`industrial_single_frame_yoloe_text_overlay_review`、`industrial_single_frame_yoloe_visual_overlay_review`、`industrial_single_frame_sam3_semantic_overlay_review` 与 `industrial_single_frame_sam3_interactive_overlay_review` 则继续把这条 overlay 复核链直接前移到 YOLOE / SAM3 节点本身，分别覆盖“文本开放词汇检测”“视觉提示检测”“文本语义分割”和“交互分割”四类本项目自带上游；`industrial_single_frame_yolox_position_gate` 对应把“检测输出 -> `detections.v1` -> `regions.v1` -> 工业规则链”这层接通；`industrial_single_frame_usb_uvc_yolox_position_gate` 与 `industrial_single_frame_usb_uvc_sam3_semantic_continuity_gate` 则继续把同一条工业规则链前移到 USB / UVC 相机直采入口，分别覆盖“相机单帧检测位置门”和“相机单帧分割连续性门”两类更贴现场联机调试的主线；`industrial_single_frame_glue_polygon_roi_changeover` 进一步演示多边形 ROI 的换型和现场回调；`industrial_single_frame_line_pair_measure_gate` 与 `industrial_single_frame_circle_concentricity_gate` 则把传统 OpenCV 几何量测这层收成 checked-in 现场模板，分别覆盖双边线槽宽/平行度和双圆孔径/同心度/圆度；`industrial_local_directory_batch_input` 把本地文件夹小批量输入这层单独收成可复用模板；`industrial_local_directory_batch_segments_continuity_gate` 与 `industrial_local_directory_batch_regions_continuity_gate` 则把“目录批次 -> 分割/区域结果 -> 连续性规则链 -> CSV / JSON 归档”两类上游入口接到同一套批次骨架；`industrial_local_directory_batch_yolox_position_gate` 继续把这条目录批次输入主线真正接到“逐图检测 -> 规则判定 -> CSV 持续归档 -> 批次 JSON 汇总”的现场闭环；`industrial_local_directory_watch_yolox_position_gate` 再把 `directory-watch` TriggerSource 标准化后的 `payload / event` 直接接进同一条检测与规则批次骨架，覆盖“目录变化触发 -> 批次检测 -> 结构化归档 / 回传”这类更贴现场守护式接入；`industrial_local_directory_polling_cursor_guard` 则把“目录轮询守护 / cursor 落盘恢复 / 批次归档 JSON”这层独立收成可复用状态模板。
 
 上游 `regions.v1` 的典型来源：
 
