@@ -886,9 +886,9 @@ PLC 能力也应至少拆成两类：
 - `custom.opencv.draw-contours`（已实现）
 - `custom.opencv.draw-lines`（已实现）
 - `custom.opencv.draw-circles`（已实现）
-- `custom.opencv.draw-roi`
+- `custom.opencv.draw-roi`（已实现）
 - `custom.opencv.draw-measurements`（已实现）
-- `custom.opencv.mask-overlay`
+- `custom.opencv.mask-overlay`（已实现）
 - `custom.opencv.heatmap-preview`
 
 说明：
