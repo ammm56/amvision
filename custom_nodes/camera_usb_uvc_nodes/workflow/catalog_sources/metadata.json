@@ -1,0 +1,13 @@
+{
+  "phase": "partial-implementation",
+  "families": [
+    "camera",
+    "usb",
+    "uvc"
+  ],
+  "features": [
+    "enumerate-devices",
+    "capture-frame"
+  ]
+}
+

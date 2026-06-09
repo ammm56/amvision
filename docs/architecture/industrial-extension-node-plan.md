@@ -18,6 +18,7 @@
 
 当前仓库已经有几类 custom node pack：
 
+- `camera_usb_uvc_nodes`
 - `yoloe_open_vocab_nodes`
 - `sam3_segment_nodes`
 - `opencv_basic_nodes`
@@ -104,6 +105,13 @@
 - USB / UVC 是最低门槛、最容易先打通现场单帧采图的一层
 - 其他工业相机层都明显依赖具体现场设备、SDK 安装和参数语义
 - 当前应先把“能采、能调、能接 workflow”这条最短主线做稳
+
+当前已落地：
+
+- `custom_nodes/camera_usb_uvc_nodes/` 已作为第一层相机 custom node pack 落地，并默认启用
+- 当前第一批节点已收口为 `custom.camera.usb.enumerate-devices` 与 `custom.camera.usb.capture-frame`
+- 当前实现边界保持在项目内 `OpenCV VideoCapture` 适配层，不依赖厂商 SDK、`projectsrc/` 目录或额外 Python 相机包
+- 当前仍未继续扩到长期会话与参数控制节点，`open-device / start-stream / read-latest-frame / close-device / get-parameter / set-parameter` 保持为下一阶段
 
 ### 二、PLC
 
@@ -247,9 +255,9 @@
 
 建议节点：
 
-- `custom.camera.usb.enumerate-devices`
+- `custom.camera.usb.enumerate-devices`（已实现）
 - `custom.camera.usb.open-device`
-- `custom.camera.usb.capture-frame`
+- `custom.camera.usb.capture-frame`（已实现）
 - `custom.camera.usb.start-stream`
 - `custom.camera.usb.read-latest-frame`
 - `custom.camera.usb.close-device`
@@ -262,6 +270,7 @@
 - 适合现场调试、开发验证、轻量单帧判定
 - 不应假设它能覆盖所有工业相机场景
 - 当前阶段实现时，先以这一层为唯一默认相机方向
+- 当前已先把“枚举设备 -> 采集单帧 -> 输出标准 `image-ref.v1`”这条最短主线收通
 
 ### 第二层：RTSP / 网络视频流
 
@@ -902,7 +911,7 @@ PLC 能力也应至少拆成两类：
 
 ### 第一阶段
 
-- `custom.camera.usb_uvc_nodes`
+- `custom.camera.usb_uvc_nodes`（第一批已实现：`enumerate-devices / capture-frame`）
 - `custom.plc.modbus_tcp_nodes`
 - `custom.opencv.grayscale / resize / adaptive-threshold / otsu-threshold`（已实现）
 - `custom.opencv.hough-lines / hough-circles`（已实现）

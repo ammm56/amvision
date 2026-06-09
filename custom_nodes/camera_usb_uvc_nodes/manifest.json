@@ -1,0 +1,38 @@
+{
+  "format_id": "amvision.node-pack-manifest.v1",
+  "id": "camera.usb-uvc-nodes",
+  "version": "0.1.0",
+  "displayName": "USB UVC Camera Nodes",
+  "description": "提供第一批面向 USB / UVC 相机的枚举与单帧采集节点，作为工业现场相机接入的第一层正式 custom node 实现。",
+  "category": "custom-node-pack",
+  "capabilities": [
+    "pipeline.node",
+    "integration.camera",
+    "integration.camera.usb-uvc",
+    "vision.image-input"
+  ],
+  "permissionScopes": [
+    "objectstore.write.ref"
+  ],
+  "entrypoints": {
+    "backend": "custom_nodes.camera_usb_uvc_nodes.backend.entry:register"
+  },
+  "compatibility": {
+    "api": ">=0.1 <1.0",
+    "runtime": ">=3.12"
+  },
+  "timeout": {
+    "defaultSeconds": 30
+  },
+  "enabledByDefault": true,
+  "customNodeCatalogPath": "workflow/catalog.json",
+  "metadata": {
+    "phase": "partial-implementation",
+    "notes": [
+      "当前 pack 只落第一批 USB / UVC 单帧主线：enumerate-devices 与 capture-frame。",
+      "实现边界保持在项目内 OpenCV VideoCapture 适配层，不依赖厂商 SDK 或 projectsrc 目录。",
+      "后续 open-device / start-stream / read-latest-frame / set-parameter 等长期会话节点继续在同一 pack 内扩展。"
+    ]
+  }
+}
+
