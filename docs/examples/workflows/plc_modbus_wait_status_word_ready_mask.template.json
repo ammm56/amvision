@@ -1,0 +1,137 @@
+{
+  "format_id": "amvision.workflow-graph-template.v1",
+  "template_id": "plc-modbus-wait-status-word-ready-mask-template",
+  "template_version": "1.0.0",
+  "display_name": "PLC Modbus Wait Status Word Ready Mask",
+  "description": "面向工业现场状态字放行的 Modbus TCP wait-condition 样例。输入运行时连接与点位配置，持续轮询状态字，直到 ready 掩码要求的全部位都置位后再放行，并把结果归档到本地 JSON。",
+  "nodes": [
+    {
+      "node_id": "request_wait_config_input",
+      "node_type_id": "core.io.template-input.value",
+      "parameters": {}
+    },
+    {
+      "node_id": "wait_status_word_ready",
+      "node_type_id": "custom.plc.modbus.wait-condition",
+      "parameters": {
+        "host": "127.0.0.1",
+        "port": 502,
+        "unit_id": 1,
+        "timeout_seconds": 1.0,
+        "register_address": "400101",
+        "data_type": "uint16",
+        "operator": "bitmask_all_set",
+        "expected_value": 5,
+        "poll_interval_ms": 100,
+        "wait_timeout_seconds": null,
+        "stable_match_count": 2
+      }
+    },
+    {
+      "node_id": "archive_object",
+      "node_type_id": "core.logic.object-create",
+      "parameters": {
+        "keys": [
+          "wait_config",
+          "wait_result"
+        ],
+        "fields": {
+          "example_kind": "plc-modbus-wait-status-word-ready-mask",
+          "description": "wait until all required ready bits are set",
+          "default_mask_decimal": 5,
+          "default_mask_hex": "0x0005"
+        }
+      }
+    },
+    {
+      "node_id": "save_archive_json",
+      "node_type_id": "core.output.json-save-local",
+      "parameters": {
+        "local_path": "{workflow_app_result_dir}/plc-modbus-wait-status-word-ready-mask/result-{timestamp}.json",
+        "overwrite": true,
+        "indent": 2
+      }
+    }
+  ],
+  "edges": [
+    {
+      "edge_id": "edge-request-wait-config",
+      "source_node_id": "request_wait_config_input",
+      "source_port": "value",
+      "target_node_id": "wait_status_word_ready",
+      "target_port": "request"
+    },
+    {
+      "edge_id": "edge-request-archive",
+      "source_node_id": "request_wait_config_input",
+      "source_port": "value",
+      "target_node_id": "archive_object",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-wait-result-archive",
+      "source_node_id": "wait_status_word_ready",
+      "source_port": "result",
+      "target_node_id": "archive_object",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-archive-save",
+      "source_node_id": "archive_object",
+      "source_port": "value",
+      "target_node_id": "save_archive_json",
+      "target_port": "value"
+    }
+  ],
+  "template_inputs": [
+    {
+      "input_id": "request_wait_config",
+      "display_name": "Request Wait Config",
+      "payload_type_id": "value.v1",
+      "target_node_id": "request_wait_config_input",
+      "target_port": "payload"
+    }
+  ],
+  "template_outputs": [
+    {
+      "output_id": "wait_result",
+      "display_name": "Wait Result",
+      "payload_type_id": "value.v1",
+      "source_node_id": "wait_status_word_ready",
+      "source_port": "result"
+    },
+    {
+      "output_id": "archive",
+      "display_name": "Archive",
+      "payload_type_id": "value.v1",
+      "source_node_id": "archive_object",
+      "source_port": "value"
+    },
+    {
+      "output_id": "json_summary",
+      "display_name": "JSON Summary",
+      "payload_type_id": "value.v1",
+      "source_node_id": "save_archive_json",
+      "source_port": "summary"
+    }
+  ],
+  "metadata": {
+    "example_kind": "plc-modbus-wait-status-word-ready-mask",
+    "focus": "plc-modbus-wait-status-word-mask",
+    "mask_operator": "bitmask_all_set",
+    "default_mask_decimal": 5,
+    "default_mask_hex": "0x0005",
+    "node_groups": {
+      "input": [
+        "request_wait_config_input"
+      ],
+      "wait": [
+        "wait_status_word_ready"
+      ],
+      "archive": [
+        "archive_object",
+        "save_archive_json"
+      ]
+    }
+  }
+}

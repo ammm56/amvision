@@ -6,6 +6,8 @@
 
 当前项目主线以单帧判定、现场本地部署、流程编排和结果可回传为主。后续继续扩展节点时，优先补工业语义节点，不优先继续加深更重的视频模型能力。
 
+相机、PLC、工业缺陷扩展节点和 OpenCV 常用算子这类更广义的工业扩展规划，现已单独整理到 [industrial-extension-node-plan.md](industrial-extension-node-plan.md)，避免把规则节点主线和现场扩展体系混在同一份文档里。
+
 当前状态：
 
 - 第 1 批 `core.vision.regions-*` 已接通
@@ -434,6 +436,123 @@
 - `roi-create` 虽然已支持运行时 `value.v1` 动态 ROI，但当前仓库里还没有覆盖更多多边形 ROI 和现场换型配置的样例
 - 当前批量输入链已经不只停在输入准备：`directory-scan -> directory-batch-window -> for-each -> image-load-local -> yolox-detection -> 工业规则链 -> csv/json 归档`，以及 `directory-scan -> directory-batch-window -> for-each -> value-to-segments / value-to-regions -> 工业规则链 -> csv/json 归档` 这两类 checked-in 主线都已补通；目录轮询守护这一层当前也已有 `json-load-local -> directory-poll-window -> json-save-local` 的 checked-in 样例，当前更值得继续收口的是目录游标长期策略、归档字段规范，以及更贴现场的接入说明
 - 当前 detection / segmentation 结果虽然已可通过 `core.vision.detections-to-regions` 与 `core.vision.segments-to-regions` 进入规则链，但还没有继续往前补更细的调试与适配辅助节点
+
+## 未实现正式待办
+
+这一节只列当前还未实现、但已经比较明确值得继续补的节点或适配层，并按 `core / custom / trigger-source / output-integration` 四层分开。
+
+说明：
+
+- `core` 只放模型无关、协议无关、无硬件依赖的通用节点
+- `custom` 放设备、厂商 SDK、现场环境差异较大的 workflow 节点
+- `trigger-source` 不是普通 workflow 节点，而是 runtime 外部触发适配层
+- `output-integration` 重点是结果回传和外部系统交付，不等同于当前已经实现的通用 `json-save-local / csv-append-local / http-post`
+
+### 一、core 层待办
+
+#### P1：目录推进与批次归档收口
+
+- `core.io.directory-cursor-normalize`
+  - 作用：把本地 JSON、运行时输入或默认值统一规整为稳定 cursor 对象，补齐 `last_path / next_start_index / completed / no_work_reason` 这类字段
+  - 原因：当前 cursor 主要靠 `value.v1 + 约定字段` 表达，已经能用，但还没有专门的规整节点
+  - 配套建议：后续可视情况增加 `directory-cursor.v1`
+- `core.io.directory-cursor-advance`
+  - 作用：根据当前 `directory-batch-window` 或 `directory-poll-window` 的输出，统一生成下一步 cursor
+  - 原因：当前 cursor 推进主要散在窗口节点 summary/cursor 中，后续如果要支持 reset、重扫、回退和跳过策略，最好独立出来
+- `core.output.batch-record`
+  - 作用：把 `scan_summary / window_summary / batch_cursor / batch_files / inspection_results` 统一收成标准批次归档对象
+  - 原因：当前批次归档主要靠 `object-create + json-save-local` 组合完成，能用，但还没有正式规范化节点
+  - 配套建议：后续可视情况增加 `batch-record.v1`
+- `core.io.batch-files-relocate`
+  - 作用：把当前批次文件按规则移动或复制到 `processed / archive / failed / quarantine` 目录
+  - 原因：当前目录批处理主线已经能“读、判定、归档 JSON/CSV”，但还不能把已处理文件正式归档到现场约定目录
+  - 说明：这类节点需要额外谨慎处理覆盖、重名、幂等和失败回滚
+
+#### P2：模型结果到规则链的辅助收口
+
+- `core.vision.batch-items-align-check`
+  - 作用：检查 `batch_files` 与 `request_segments_items / request_regions_items` 是否一一对齐，并输出可读摘要
+  - 原因：当前目录批处理分割样例默认按索引对齐，没有自动回配或显式校验节点
+- `core.vision.regions-debug-summary`
+  - 作用：输出 `class_name / prompt_id / area / score / source kind` 这类更适合现场排障的摘要对象
+  - 原因：当前已有 `regions-score-summary` 等指标，但还缺一个更偏“上游结果调试”的统一摘要节点
+
+### 二、custom 层待办
+
+#### P2：现场输入与设备桥接
+
+- `custom.camera.capture-frame`
+  - 作用：从本地相机或采集卡抓取单帧，输出 `image-ref.v1`
+  - 原因：当前工业主线仍以本地图像和本地目录输入为主，还没有正式相机接入节点
+- `custom.video.rtsp-read-frame`
+  - 作用：从 RTSP 或等价流地址读取一帧或一小段窗口，输出 `image-ref.v1` 或 `frame-window.v1`
+  - 原因：当前视频链更偏本地文件输入，还没有把现场流输入纳入 workflow 节点面
+- `custom.protocol.plc-read-write`
+  - 作用：读写 PLC 或设备网关中的少量状态、寄存器和值对象
+  - 原因：工业场景最终常常要和工位信号联动，但这类能力不应进入 core
+- `custom.protocol.mes-request-context`
+  - 作用：读取工单、批号、工位号、产品型号等上下文对象，供规则链和结果回传使用
+  - 原因：当前流程里虽可用 `value.v1` 手工传上下文，但还没有更贴现场的接入节点
+
+### 三、trigger-source 层待办
+
+这一层不是普通节点，而是 runtime 外部触发适配器；当前 `zeromq-topic` 已经存在，因此这里只列尚未补齐的触发类型。
+
+#### P1：目录触发
+
+- `directory-poll`
+  - 作用：按固定周期触发某个 WorkflowAppRuntime，并把目录路径、批次大小和必要上下文注入输入 binding
+  - 原因：当前已有 `directory-poll-window` 样例，但仍需要由外部手工调用；还没有正式常驻目录轮询触发器
+- `filesystem-watch`
+  - 作用：基于文件创建、改名或稳定落地事件触发 WorkflowRun
+  - 原因：有些现场更适合“文件一落地就触发”，而不是固定时间轮询
+
+#### P2：协议触发扩展
+
+- `http-webhook`
+  - 作用：接收外部系统推送的路径、工单或图像引用，再映射到 workflow 输入
+  - 原因：当前公开的 invoke 能力更偏主动调用，还没有专门的 webhook 触发资源
+- `mqtt-topic`
+  - 作用：订阅现场消息总线中的事件，再映射到 WorkflowRun
+  - 原因：部分现场会通过边缘网关或消息中间件转发状态变化，不适合塞进普通 workflow 节点
+
+### 四、output-integration 层待办
+
+#### P1：统一结果对象与交付边界
+
+- `core.output.workflow-result`
+  - 作用：把 `status / code / message / data / metrics / files / trace_id` 收成统一交付对象
+  - 原因：当前 `http-post` 能回传 JSON，但现场触发、协议桥接和统一结果调度仍缺少一个更正式的中间结果对象
+  - 说明：这项虽然命名落在 `core.output.*`，但职责属于 output-integration 收口层
+- `core.output.batch-result-summary`
+  - 作用：把一批 `result-record.v1` 收成 `ok_count / ng_count / alarm_count / pass_ratio / batch_reason_summary`
+  - 原因：当前已有单条 `result-record`，但目录批处理完成后还缺标准批次结果摘要节点
+
+#### P2：现场协议回传
+
+- `custom.output.mes-http-post`
+  - 作用：把统一结果对象按 MES 或上位机接口约定重组后回传
+  - 原因：当前只有通用 `http-post`，还没有面向现场业务字段的包装节点
+- `custom.output.plc-signal-write`
+  - 作用：把 `OK / NG / alarm / ack-needed` 之类结果写回 PLC、IO 网关或设备代理
+  - 原因：工业现场常见的最终动作不是保存 JSON，而是写状态位或报码
+- `custom.output.local-db-upsert`
+  - 作用：把结果写入本地 SQLite/MySQL/PostgreSQL 表，用于工作站追溯和统计
+  - 原因：当前已有 JSON/CSV，本地数据库归档还没有正式节点
+
+## 当前建议的实现顺序
+
+按工业现场主线，当前最自然的正式顺序是：
+
+1. `core.io.directory-cursor-normalize`
+2. `core.io.directory-cursor-advance`
+3. `core.output.batch-record`
+4. `core.io.batch-files-relocate`
+5. `core.output.workflow-result`
+6. `core.output.batch-result-summary`
+7. `directory-poll` trigger-source
+8. `filesystem-watch` trigger-source
+9. 再按现场项目需要，选择 `custom.camera.* / custom.video.* / custom.protocol.* / custom.output.*`
 
 ## 下一步执行顺序
 

@@ -1,0 +1,132 @@
+{
+  "format_id": "amvision.node-definition.v1",
+  "node_type_id": "custom.plc.modbus.write-value",
+  "display_name": "Write Modbus Value",
+  "category": "integration.plc",
+  "description": "按 PLC 常见逻辑地址直接写入单个 Modbus 值，统一覆盖 coil 与 holding register 的现场写值入口。",
+  "implementation_kind": "custom-node",
+  "runtime_kind": "python-callable",
+  "input_ports": [
+    {
+      "name": "request",
+      "display_name": "Request",
+      "payload_type_id": "value.v1",
+      "required": false
+    }
+  ],
+  "output_ports": [
+    {
+      "name": "result",
+      "display_name": "Result",
+      "payload_type_id": "value.v1"
+    }
+  ],
+  "parameter_schema": {
+    "type": "object",
+    "properties": {
+      "host": {
+        "type": "string",
+        "title": "Host"
+      },
+      "port": {
+        "type": "integer",
+        "title": "Port",
+        "default": 502,
+        "minimum": 1,
+        "maximum": 65535
+      },
+      "unit_id": {
+        "type": "integer",
+        "title": "Unit ID",
+        "default": 1,
+        "minimum": 1,
+        "maximum": 255
+      },
+      "timeout_seconds": {
+        "type": "number",
+        "title": "Timeout Seconds",
+        "default": 3.0,
+        "exclusiveMinimum": 0
+      },
+      "retries": {
+        "type": "integer",
+        "title": "Retries",
+        "default": 1,
+        "minimum": 0
+      },
+      "register_address": {
+        "type": "string",
+        "title": "Register Address",
+        "examples": [
+          "00001",
+          "400001"
+        ]
+      },
+      "data_type": {
+        "type": "string",
+        "title": "Data Type",
+        "enum": [
+          "bool",
+          "uint8",
+          "int8",
+          "uint16",
+          "int16",
+          "uint32",
+          "int32",
+          "uint64",
+          "int64",
+          "float",
+          "double",
+          "string"
+        ]
+      },
+      "value": {
+        "title": "Value"
+      },
+      "word_order": {
+        "type": "string",
+        "title": "Word Order",
+        "default": "big",
+        "enum": [
+          "big",
+          "little"
+        ]
+      },
+      "byte_position": {
+        "type": "string",
+        "title": "Byte Position",
+        "default": "low",
+        "enum": [
+          "low",
+          "high"
+        ]
+      },
+      "string_length": {
+        "type": "integer",
+        "title": "String Length(Bytes)",
+        "minimum": 1
+      },
+      "string_encoding": {
+        "type": "string",
+        "title": "String Encoding",
+        "default": "utf-8"
+      }
+    },
+    "required": [
+      "host",
+      "register_address",
+      "data_type",
+      "value"
+    ]
+  },
+  "capability_tags": [
+    "integration.plc",
+    "integration.modbus.write",
+    "integration.modbus.generic-write"
+  ],
+  "runtime_requirements": {
+    "python_packages": []
+  },
+  "node_pack_id": "plc.modbus-tcp-nodes",
+  "node_pack_version": "0.1.0"
+}

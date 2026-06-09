@@ -263,6 +263,92 @@ def test_sam3_video_memory_attention_review_example_documents_are_valid() -> Non
     (
         "example_name",
         "expected_example_kind",
+        "expected_wait_node_id",
+        "expected_mask_operator",
+        "expected_mask_decimal",
+    ),
+    [
+        (
+            "plc_modbus_wait_status_word_ready_mask",
+            "plc-modbus-wait-status-word-ready-mask",
+            "wait_status_word_ready",
+            "bitmask_all_set",
+            5,
+        ),
+        (
+            "plc_modbus_wait_status_word_alarm_mask",
+            "plc-modbus-wait-status-word-alarm-mask",
+            "wait_status_word_alarm",
+            "bitmask_any_set",
+            48,
+        ),
+    ],
+)
+def test_plc_modbus_wait_status_word_example_documents_are_valid(
+    example_name: str,
+    expected_example_kind: str,
+    expected_wait_node_id: str,
+    expected_mask_operator: str,
+    expected_mask_decimal: int,
+) -> None:
+    """验证 PLC Modbus 状态字 wait-condition 样例模板与应用可以通过当前合同校验。"""
+
+    example_dir = (
+        Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
+    )
+    template_path = example_dir / f"{example_name}.template.json"
+    application_path = example_dir / f"{example_name}.application.json"
+    template = WorkflowGraphTemplate.model_validate(
+        json.loads(template_path.read_text(encoding="utf-8"))
+    )
+    application = FlowApplication.model_validate(
+        json.loads(application_path.read_text(encoding="utf-8"))
+    )
+
+    custom_nodes_root = Path(__file__).resolve().parents[1] / "custom_nodes"
+    node_pack_loader = LocalNodePackLoader(custom_nodes_root)
+    node_pack_loader.refresh()
+    registry = NodeCatalogRegistry(node_pack_loader=node_pack_loader)
+    validate_workflow_graph_template(
+        template=template,
+        node_definitions=registry.get_workflow_node_definitions(),
+    )
+    validate_flow_application_bindings(template=template, application=application)
+
+    assert [node.node_id for node in template.nodes] == [
+        "request_wait_config_input",
+        expected_wait_node_id,
+        "archive_object",
+        "save_archive_json",
+    ]
+    assert template.nodes[1].parameters["data_type"] == "uint16"
+    assert template.nodes[1].parameters["operator"] == expected_mask_operator
+    assert template.nodes[1].parameters["expected_value"] == expected_mask_decimal
+    assert template.nodes[1].parameters["wait_timeout_seconds"] is None
+    assert template.metadata["example_kind"] == expected_example_kind
+    assert template.metadata["focus"] == "plc-modbus-wait-status-word-mask"
+    assert template.metadata["mask_operator"] == expected_mask_operator
+    assert template.metadata["default_mask_decimal"] == expected_mask_decimal
+    assert [template_input.input_id for template_input in template.template_inputs] == [
+        "request_wait_config"
+    ]
+    assert template.template_inputs[0].payload_type_id == "value.v1"
+    assert application.template_ref.source_uri == (
+        f"docs/examples/workflows/{example_name}.template.json"
+    )
+    assert application.runtime_mode == "python-json-workflow"
+    assert [binding.binding_id for binding in application.bindings] == [
+        "request_wait_config",
+        "wait_result",
+        "archive",
+        "json_summary",
+    ]
+
+
+@pytest.mark.parametrize(
+    (
+        "example_name",
+        "expected_example_kind",
         "expected_node_ids",
         "expected_input_ids",
         "expected_binding_ids",

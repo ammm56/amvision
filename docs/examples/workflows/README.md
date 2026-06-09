@@ -62,6 +62,38 @@ ZeroMQ TriggerSource 示例不把机器相关的 `path`、`offset` 和 `broker_e
 - 简单任务先把 `tracking_mode` 改成 `memory-prototype-state`
 - 更轻场景再继续降到 `stateful-mask-propagation` 或 `shared-prompts-across-window`
 
+## PLC / Modbus 等待样例
+
+- `plc_modbus_wait_status_word_ready_mask.template.json`
+- `plc_modbus_wait_status_word_ready_mask.application.json`
+- `plc_modbus_wait_status_word_alarm_mask.template.json`
+- `plc_modbus_wait_status_word_alarm_mask.application.json`
+
+这两组样例聚焦 `custom.plc.modbus.wait-condition` 的现场用法，默认都走状态字地址语义：
+
+- `ready_mask`：用 `bitmask_all_set` 等待全部 ready 位都置位
+- `alarm_mask`：用 `bitmask_any_set` 等待任一报警位命中
+
+输入约定：
+
+- `request_wait_config`：`value.v1`
+  - 示例：
+    `{"value":{"host":"192.168.10.20","unit_id":1,"register_address":"400101","data_type":"uint16","expected_value":5}}`
+
+输出约定：
+
+- `wait_result`：`value.v1`
+- `archive`：`value.v1`
+- `json_summary`：`value.v1`
+
+推荐使用方式：
+
+- 现场已有 PLC 地址表时，直接改 `register_address`
+- 状态字位定义已知时，直接改 `expected_value`
+- 需要更稳放行时，提高 `stable_match_count`
+- `wait_timeout_seconds = null` 表示无限等待；当前 checked-in 样例默认就用这套语义
+- 如果只是调试链路或想避免长时间阻塞，把 `wait_timeout_seconds` 改回显式秒数
+
 ## 工业单帧规则样例
 
 - `industrial_single_frame_sealant_quality_gate.template.json`

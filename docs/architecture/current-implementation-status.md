@@ -40,6 +40,9 @@
 - `core.io.directory-scan` 当前也已补齐更贴现场的目录输入语义：支持 `min_stable_age_seconds` 文件稳定期过滤、`dedupe_by` 去重策略和更完整的扫描摘要；`core.io.directory-batch-window` 已支持运行时 `start_index / batch_size / cursor` 输入，用于表达“当前批次窗口 + 下一步 cursor”这类推进语义，并继续沿用严格报错边界；`core.io.directory-poll-window` 与 `core.io.json-load-local` 当前也已接通，用于“本地 JSON cursor 恢复 + 当前无新文件时返回 has_work=false”的目录轮询守护语义。
 - 第 3 批可解释完整性指标当前已接通完整首轮：`core.vision.region-component-count / region-largest-component-ratio / region-hole-count / region-gap-check / region-span-metrics / region-continuity-score` 已接通，当前已经可以把分割或检测得到的 `regions.v1` 进一步收成“碎片数量 / 主体完整度 / 空洞数量 / 是否明显断裂 / 长轴短轴跨度 / 连续性分数”这类更贴工艺解释和量测的原子指标。
 - 工业 workflow 示例当前也已经补到更贴现场的使用说明：`industrial_single_frame_sealant_quality_gate.*`、`industrial_single_frame_segments_continuity_gate.*`、`industrial_single_frame_glue_roi_callback.*`、`industrial_single_frame_glue_polygon_roi_changeover.*`、`industrial_single_frame_yolox_position_gate.*`、`industrial_local_directory_batch_input.*`、`industrial_local_directory_batch_segments_continuity_gate.*`、`industrial_local_directory_batch_regions_continuity_gate.*`、`industrial_local_directory_batch_yolox_position_gate.*` 与 `industrial_local_directory_polling_cursor_guard.*` 已接通文档测试；其中 `segments_continuity_gate` 当前把“分割输出 `segments.v1` -> `segments-to-regions` -> 连续性规则链”这条正式闭环补通，`glue_polygon_roi_changeover` 当前把多边形 ROI 换型这层 checked-in，`yolox_position_gate` 则把“已发布 detection deployment -> detections.v1 -> regions.v1 -> presence / inside / offset 工业规则链”这条正式闭环补通，`industrial_local_directory_batch_input` 把“目录扫描 -> 批次窗口 -> 图片载入”的现场小批量输入准备样例单独收成模板，`industrial_local_directory_batch_segments_continuity_gate` 与 `industrial_local_directory_batch_regions_continuity_gate` 则把“目录批次 -> segments.v1 / regions.v1 -> 连续性规则链 -> CSV / JSON 归档”两类分割上游入口正式接到同一套批处理骨架，`industrial_local_directory_batch_yolox_position_gate` 把目录批次主线正式接到“逐图检测 -> 规则判定 -> CSV 持续归档 -> 批次 JSON 汇总”的闭环，而 `industrial_local_directory_polling_cursor_guard` 则把“目录轮询守护 / cursor 落盘恢复 / 批次归档 JSON”这层独立收口。
+- 当前仍未实现、但已经明确值得继续补的待办，现已按 `core / custom / trigger-source / output-integration` 四层收口到 [industrial-rule-node-plan.md](industrial-rule-node-plan.md) 的“未实现正式待办”一节，便于后续按层次推进，而不是继续把工业需求混成一个大列表。
+- 对更广义的工业扩展面，当前也已单独补出 [industrial-extension-node-plan.md](industrial-extension-node-plan.md)，把相机连接方式分层、PLC 协议分层、工业缺陷核心节点和 OpenCV 常用算子路线单独收口，避免继续把这些需求都挤进单帧规则文档里。
+- 该扩展规划当前也已进一步收口到更贴近实际落地的阶段边界：相机先默认实现 `USB / UVC` 一层，PLC 先默认实现 `Modbus TCP` 一层；工业缺陷 / 异常能力则拆成 `core 原子指标`、`custom.opencv 传统流程` 和后续 `custom.anomaly 深度学习模型` 三层推进，避免把完整缺陷流程直接塞进 core。
 - 当前代码形态仍然是“模块化单体 + 本地队列 + 本地对象存储 + 独立 deployment 子进程”。下一步重点应转向拓扑收敛、运行时硬化和平台泛化，而不是继续补 YOLOX 基础闭环缺口。
 
 ## 本轮更新（P0 + P1-8 + P3-14 + P3-15）已落地事项
@@ -87,11 +90,14 @@
 
 - `custom_nodes/yoloe_open_vocab_nodes/` 当前已经具备完整 pack 骨架、catalog、project-native runtime、真实本地资产 smoke 和 grouped prompt summary；pack `metadata.phase` 已收口到 `implemented`，并默认启用。
 - `custom_nodes/sam3_segment_nodes/` 当前已经具备完整 pack 骨架、catalog、project-native runtime、真实本地资产 smoke、共享后处理增强和第一阶段视频多帧节点；pack 与节点定义的 `metadata.phase` 都已收口到 `implemented`，并默认启用。
+- `custom_nodes/plc_modbus_tcp_nodes/` 当前已经作为第一层 PLC custom node pack 落地，默认启用；对外节点面已收口为 `read-value / write-value / wait-condition` 三个通用节点，直接按 `0xxxx / 1xxxx / 3xxxx / 4xxxx` 地址语义覆盖工业现场最基础的 Modbus TCP 主动读写与等待条件主线。当前 `data_type` 已覆盖 `bool / uint8 / int8 / uint16 / int16 / uint32 / int32 / uint64 / int64 / float / double / string`，`wait-condition` 还已支持 `wait_timeout_seconds = null` 表示无限等待。
 - `YOLOE / SAM3` 在 workflow app 侧的接入顺序、`metadata.phase` / `enabledByDefault` 解释和现场排障路径，当前已经单独整理到 [yoloe-sam3-workflow-app-operations.md](yoloe-sam3-workflow-app-operations.md)。
 - `YOLOE / SAM3` 预训练资产统一从 `data/files/models/pretrained/` 读取：`YOLOE` 使用本地 segmentation 权重与 `text-encoders` 资产，`SAM3` 使用本地 `sam3.pt`。
 - 当前 `YOLOE / SAM3` 都已经补了定向稳定性回归：多 prompt 组合、本地资产 smoke、异常预训练目录、空提示/非法提示、CPU 会话缓存复用。
 - 当前 `YOLOE / SAM3` 已在目标机器上补了显式 CPU/GPU soak / benchmark 基线与 1 轮更长时长/更大图尺寸扩展 soak；`SAM3 video-interactive memory-attention` 也已补 1 轮长窗口/多对象复合场景 benchmark。结果记录见 [yoloe-sam3-soak-baseline.md](yoloe-sam3-soak-baseline.md)；相关测试文件位于 `tests/integration/`，默认不参与常规收集。
 - 当前 `YOLOE / SAM3` 已补显式 `WorkflowAppRuntime` 接入 smoke：测试会临时把 pack 置为 `enabledByDefault = false`，再覆盖 `disable -> enable -> create -> start -> invoke -> stop` 最小 runtime 闭环；相关测试文件位于 `tests/integration/test_yoloe_sam3_workflow_app_runtime_smoke.py`。
+- `custom_nodes/plc_modbus_tcp_nodes/` 当前 pack 已切到项目内最小 Modbus TCP runtime，不依赖 `projectsrc/` 目录或额外第三方 Python 包直接运行；当前还没有继续扩到 S7 / MC / OPC UA，也没有把 PLC 轮询守护混进普通 workflow 节点。
+- `docs/examples/workflows/` 当前也已补两条更贴现场的 Modbus wait 样例：`plc_modbus_wait_status_word_ready_mask.*` 用 `bitmask_all_set` 等待 ready 状态字全部置位，`plc_modbus_wait_status_word_alarm_mask.*` 用 `bitmask_any_set` 等待任一报警位命中，便于现场直接按地址和 mask 改造。
 
 ### 后台执行与 runtime 面
 

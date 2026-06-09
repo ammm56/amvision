@@ -1,0 +1,39 @@
+{
+  "format_id": "amvision.node-pack-manifest.v1",
+  "id": "plc.modbus-tcp-nodes",
+  "version": "0.1.0",
+  "displayName": "PLC Modbus TCP Nodes",
+  "description": "提供面向工业现场的 Modbus TCP 通用读值、写值和等待条件节点，作为 PLC 协议第一层正式 custom node 实现。",
+  "category": "custom-node-pack",
+  "capabilities": [
+    "pipeline.node",
+    "integration.plc",
+    "integration.modbus",
+    "integration.report"
+  ],
+  "permissionScopes": [
+    "integration.endpoint.invoke",
+    "integration.plc.modbus.read",
+    "integration.plc.modbus.write"
+  ],
+  "entrypoints": {
+    "backend": "custom_nodes.plc_modbus_tcp_nodes.backend.entry:register"
+  },
+  "compatibility": {
+    "api": ">=0.1 <1.0",
+    "runtime": ">=3.12"
+  },
+  "timeout": {
+    "defaultSeconds": 60
+  },
+  "enabledByDefault": true,
+  "customNodeCatalogPath": "workflow/catalog.json",
+  "metadata": {
+    "phase": "implemented",
+    "notes": [
+      "当前 pack 使用项目内最小 Modbus TCP runtime，不依赖额外第三方 Python 包执行读写。",
+      "对外节点面收口为 read-value / write-value / wait-condition 三个通用节点，直接按 0xxxx / 1xxxx / 3xxxx / 4xxxx 地址语义接现场点位。",
+      "当前 pack 只覆盖第一层 Modbus TCP 主线，不混入 S7、MC、OPC UA 等其他 PLC 协议。"
+    ]
+  }
+}

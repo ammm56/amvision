@@ -210,3 +210,4 @@ custom_nodes/
 - [docs/architecture/workflow-json-contracts.md](workflow-json-contracts.md)
 - [docs/architecture/system-overview.md](system-overview.md)
 - [docs/architecture/project-structure.md](project-structure.md)
+- [docs/architecture/industrial-extension-node-plan.md](industrial-extension-node-plan.md)
