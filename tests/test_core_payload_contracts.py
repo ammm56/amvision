@@ -66,6 +66,14 @@ def test_core_payload_contracts_include_image_base64_and_local_buffer_image_refs
         "message",
     ]
 
+    workflow_result_contract = payload_contracts["workflow-result.v1"]
+    assert workflow_result_contract.transport_kind == "inline-json"
+    assert workflow_result_contract.json_schema["required"] == [
+        "status",
+        "code",
+        "message",
+    ]
+
     segments_contract = payload_contracts["segments.v1"]
     assert segments_contract.transport_kind == "inline-json"
     assert segments_contract.json_schema["required"] == ["items"]

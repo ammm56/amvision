@@ -21,6 +21,8 @@
 - `core.logic.value-to-segments / value-to-regions` 当前也已接通，可把目录批处理或列表循环中的逐项 `value.v1` 恢复回标准 `segments.v1 / regions.v1`
 - `core.io.directory-scan` 当前也已支持 `min_stable_age_seconds` 与 `dedupe_by`，`core.io.directory-batch-window` 当前已支持运行时 `start_index / batch_size / cursor` 输入，更适合现场批次推进
 - `core.io.json-load-local` 与 `core.io.directory-poll-window` 当前也已接通，可把“本地 cursor JSON 恢复 + 当前无新文件时 has_work=false + 批次 cursor 再落盘”这层目录轮询守护语义独立出来
+- `core.io.directory-cursor-normalize / directory-cursor-advance / core.output.batch-record / core.io.batch-files-relocate` 当前也已接通，目录游标规整、窗口推进、批次归档对象和批次文件归档这 4 层已不再需要继续靠 `object-create + 手工字段约定` 拼装；其中 `batch-files-relocate` 当前首版默认 `copy + rename`，并已支持 `move / overwrite / skip / preserve_subdirectories / dry_run`
+- `core.output.workflow-result / core.output.batch-result-summary` 当前也已接通，统一 workflow 交付对象和批次结果摘要都已从零散 `value.v1` 字段拼装里收出来，后续 trigger-source / 结果回传可以直接复用这两个中间结果对象
 - 工业单帧规则样例当前已补到 `docs/examples/workflows/industrial_single_frame_sealant_quality_gate.*`、`industrial_single_frame_segments_continuity_gate.*`、`industrial_single_frame_glue_roi_callback.*`、`industrial_single_frame_glue_polygon_roi_changeover.*` 与 `industrial_single_frame_yolox_position_gate.*`
 - 工业本地批量输入样例当前已补到 `docs/examples/workflows/industrial_local_directory_batch_input.*`、`industrial_local_directory_batch_segments_continuity_gate.*`、`industrial_local_directory_batch_regions_continuity_gate.*`、`industrial_local_directory_batch_yolox_position_gate.*` 与 `industrial_local_directory_polling_cursor_guard.*`
 - 当前仍待收口的主要缺口已经不再是大块能力面，而是少数残留节点、样例闭环和现场易用性优化
@@ -434,7 +436,7 @@
 
 - 当前工业单帧样例虽然已经有 checked-in 的“segments.v1 -> segments-to-regions -> 工业规则链”和“YOLOX detection -> detections-to-regions -> 工业规则链”模板，但还没有覆盖更多模型来源和更多规则组合
 - `roi-create` 虽然已支持运行时 `value.v1` 动态 ROI，但当前仓库里还没有覆盖更多多边形 ROI 和现场换型配置的样例
-- 当前批量输入链已经不只停在输入准备：`directory-scan -> directory-batch-window -> for-each -> image-load-local -> yolox-detection -> 工业规则链 -> csv/json 归档`，以及 `directory-scan -> directory-batch-window -> for-each -> value-to-segments / value-to-regions -> 工业规则链 -> csv/json 归档` 这两类 checked-in 主线都已补通；目录轮询守护这一层当前也已有 `json-load-local -> directory-poll-window -> json-save-local` 的 checked-in 样例，当前更值得继续收口的是目录游标长期策略、归档字段规范，以及更贴现场的接入说明
+- 当前批量输入链已经不只停在输入准备：`directory-scan -> directory-batch-window -> for-each -> image-load-local -> yolox-detection -> 工业规则链 -> csv/json 归档`，以及 `directory-scan -> directory-batch-window -> for-each -> value-to-segments / value-to-regions -> 工业规则链 -> csv/json 归档` 这两类 checked-in 主线都已补通；目录轮询守护这一层当前也已有 `json-load-local -> directory-poll-window -> json-save-local` 的 checked-in 样例。目录游标规整、推进与批次归档首轮也已接通，当前更值得继续收口的是批次结果摘要、目录触发、文件归档规范，以及更贴现场的接入说明
 - 当前 detection / segmentation 结果虽然已可通过 `core.vision.detections-to-regions` 与 `core.vision.segments-to-regions` 进入规则链，但还没有继续往前补更细的调试与适配辅助节点
 
 ## 未实现正式待办
@@ -450,23 +452,9 @@
 
 ### 一、core 层待办
 
-#### P1：目录推进与批次归档收口
+#### P1：目录批处理剩余收口
 
-- `core.io.directory-cursor-normalize`
-  - 作用：把本地 JSON、运行时输入或默认值统一规整为稳定 cursor 对象，补齐 `last_path / next_start_index / completed / no_work_reason` 这类字段
-  - 原因：当前 cursor 主要靠 `value.v1 + 约定字段` 表达，已经能用，但还没有专门的规整节点
-  - 配套建议：后续可视情况增加 `directory-cursor.v1`
-- `core.io.directory-cursor-advance`
-  - 作用：根据当前 `directory-batch-window` 或 `directory-poll-window` 的输出，统一生成下一步 cursor
-  - 原因：当前 cursor 推进主要散在窗口节点 summary/cursor 中，后续如果要支持 reset、重扫、回退和跳过策略，最好独立出来
-- `core.output.batch-record`
-  - 作用：把 `scan_summary / window_summary / batch_cursor / batch_files / inspection_results` 统一收成标准批次归档对象
-  - 原因：当前批次归档主要靠 `object-create + json-save-local` 组合完成，能用，但还没有正式规范化节点
-  - 配套建议：后续可视情况增加 `batch-record.v1`
-- `core.io.batch-files-relocate`
-  - 作用：把当前批次文件按规则移动或复制到 `processed / archive / failed / quarantine` 目录
-  - 原因：当前目录批处理主线已经能“读、判定、归档 JSON/CSV”，但还不能把已处理文件正式归档到现场约定目录
-  - 说明：这类节点需要额外谨慎处理覆盖、重名、幂等和失败回滚
+- 当前这一组已全部实现，`core` 层没有新的 P1 目录批处理缺口；后续自然转到 trigger-source 常驻触发和更贴现场的结果交付
 
 #### P2：模型结果到规则链的辅助收口
 
@@ -520,13 +508,9 @@
 
 #### P1：统一结果对象与交付边界
 
-- `core.output.workflow-result`
-  - 作用：把 `status / code / message / data / metrics / files / trace_id` 收成统一交付对象
-  - 原因：当前 `http-post` 能回传 JSON，但现场触发、协议桥接和统一结果调度仍缺少一个更正式的中间结果对象
-  - 说明：这项虽然命名落在 `core.output.*`，但职责属于 output-integration 收口层
-- `core.output.batch-result-summary`
-  - 作用：把一批 `result-record.v1` 收成 `ok_count / ng_count / alarm_count / pass_ratio / batch_reason_summary`
-  - 原因：当前已有单条 `result-record`，但目录批处理完成后还缺标准批次结果摘要节点
+- 当前这一项已实现：`core.output.workflow-result`
+  - 作用：把 `status / code / message / data / metrics / files / trace_id / event_id` 收成统一 `workflow-result.v1`
+  - 当前状态：已可与 `result-record / batch-record / http-post / trigger-source` 结果调度链对接
 
 #### P2：现场协议回传
 
@@ -554,9 +538,11 @@
 8. `filesystem-watch` trigger-source
 9. 再按现场项目需要，选择 `custom.camera.* / custom.video.* / custom.protocol.* / custom.output.*`
 
+以上第 1 到第 6 项当前已实现，后续顺序自然顺延到第 7 项开始。
+
 ## 下一步执行顺序
 
-1. 先继续收目录推进语义和现场易用性，例如目录游标长期策略、文件稳定落地约定、批次归档字段规范与目录轮询触发接入说明
+1. 先转到 `directory-poll / filesystem-watch` 这类 trigger-source，把目录批处理从“可手工调用”继续收成“可常驻触发”
 2. 再看是否需要补更多 detection / segmentation 调试与适配辅助节点，把模型结果到规则链的使用面继续打磨顺
-3. 然后再评估规则结果对象、JSON/CSV 字段规范和目录批次归档结构是否需要进一步收口
+3. 然后再评估统一结果对象、JSON/CSV 字段规范和目录批次归档结构是否需要进一步收口
 4. 最后再看是否需要继续扩更多工业规则原子节点，而不是直接跳去更重的视频能力

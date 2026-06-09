@@ -21,6 +21,7 @@ def test_core_catalog_contains_result_record_payload_contract() -> None:
 
     assert "result-record.v1" in payload_type_ids
     assert "alarm-record.v1" in payload_type_ids
+    assert "workflow-result.v1" in payload_type_ids
 
 
 def test_threshold_check_handler_compares_numeric_value() -> None:

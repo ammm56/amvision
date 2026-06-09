@@ -13,6 +13,19 @@ import pytest
 from PIL import Image
 
 from backend.nodes.core_nodes.csv_append_local import _csv_append_local_handler
+from backend.nodes.core_nodes.batch_files_relocate import (
+    _batch_files_relocate_handler,
+)
+from backend.nodes.core_nodes.batch_record import _batch_record_handler
+from backend.nodes.core_nodes.batch_result_summary import (
+    _batch_result_summary_handler,
+)
+from backend.nodes.core_nodes.directory_cursor_advance import (
+    _directory_cursor_advance_handler,
+)
+from backend.nodes.core_nodes.directory_cursor_normalize import (
+    _directory_cursor_normalize_handler,
+)
 from backend.nodes.core_nodes.directory_batch_window import (
     _directory_batch_window_handler,
 )
@@ -25,6 +38,7 @@ from backend.nodes.core_nodes.image_load_local import _image_load_local_handler
 from backend.nodes.core_nodes.image_list_local import _image_list_local_handler
 from backend.nodes.core_nodes.json_load_local import _json_load_local_handler
 from backend.nodes.core_nodes.json_save_local import _json_save_local_handler
+from backend.nodes.core_nodes.workflow_result import _workflow_result_handler
 from backend.nodes.runtime_support import require_execution_image_registry
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.workflows.graph_executor import (
@@ -430,6 +444,301 @@ def test_directory_poll_window_handler_returns_next_batch_when_new_files_exist()
     assert [item["file_name"] for item in batch_files] == ["b.png", "c.png"]
     assert output["summary"]["value"]["no_work_reason"] is None
     assert output["cursor"]["value"]["last_path"] == str(Path("W:/tmp/c.png").resolve())
+
+
+def test_directory_cursor_normalize_handler_normalizes_summary_cursor() -> None:
+    """验证目录游标规范化节点可直接读取 window summary 中的 cursor。"""
+
+    output = _directory_cursor_normalize_handler(
+        WorkflowNodeExecutionRequest(
+            node_id="directory-cursor-normalize",
+            node_definition=object(),
+            parameters={},
+            input_values={
+                "cursor": {
+                    "value": {
+                        "start_index": 1,
+                        "window_first_path": "W:/tmp/b.png",
+                        "cursor": {
+                            "next_start_index": 3,
+                            "count": 2,
+                            "last_path": "W:/tmp/c.png",
+                            "has_next": False,
+                        },
+                    }
+                }
+            },
+            execution_metadata={},
+        )
+    )
+
+    cursor_value = output["cursor"]["value"]
+    assert cursor_value["start_index"] == 0
+    assert cursor_value["next_start_index"] == 3
+    assert cursor_value["count"] == 2
+    assert cursor_value["last_path"] == str(Path("W:/tmp/c.png").resolve())
+    assert output["summary"]["value"]["source"] == "input.cursor.cursor"
+
+
+def test_directory_cursor_normalize_handler_uses_default_value() -> None:
+    """验证目录游标规范化节点可回退默认值。"""
+
+    output = _directory_cursor_normalize_handler(
+        WorkflowNodeExecutionRequest(
+            node_id="directory-cursor-normalize",
+            node_definition=object(),
+            parameters={
+                "default_value": {"next_start_index": 4, "last_path": "W:/tmp/d.png"},
+                "default_batch_size": 2,
+            },
+            input_values={},
+            execution_metadata={},
+        )
+    )
+
+    cursor_value = output["cursor"]["value"]
+    assert cursor_value["next_start_index"] == 4
+    assert cursor_value["batch_size"] == 2
+    assert cursor_value["last_path"] == str(Path("W:/tmp/d.png").resolve())
+
+
+def test_directory_cursor_advance_handler_merges_previous_and_window_cursor() -> None:
+    """验证目录游标推进节点会基于 window cursor 生成下一版 cursor。"""
+
+    output = _directory_cursor_advance_handler(
+        WorkflowNodeExecutionRequest(
+            node_id="directory-cursor-advance",
+            node_definition=object(),
+            parameters={},
+            input_values={
+                "cursor": {
+                    "value": {"next_start_index": 1, "last_path": "W:/tmp/a.png", "completed": False}
+                },
+                "window_cursor": {
+                    "value": {
+                        "start_index": 1,
+                        "end_index": 3,
+                        "next_start_index": 3,
+                        "count": 2,
+                        "batch_size": 2,
+                        "total_count": 3,
+                        "has_next": False,
+                        "completed": True,
+                        "last_path": "W:/tmp/c.png",
+                        "has_work": True,
+                        "empty": False,
+                    }
+                },
+            },
+            execution_metadata={},
+        )
+    )
+
+    cursor_value = output["cursor"]["value"]
+    assert cursor_value["next_start_index"] == 3
+    assert cursor_value["last_path"] == str(Path("W:/tmp/c.png").resolve())
+    assert cursor_value["completed"] is True
+    assert output["summary"]["value"]["advanced"] is True
+    assert output["summary"]["value"]["advanced_count"] == 2
+
+
+def test_batch_record_handler_builds_batch_archive_object() -> None:
+    """验证批次归档节点会统一组装 batch record。"""
+
+    output = _batch_record_handler(
+        WorkflowNodeExecutionRequest(
+            node_id="batch-record",
+            node_definition=object(),
+            parameters={"record_kind": "inspection-batch"},
+            input_values={
+                "scan_summary": {"value": {"directory_path": "W:/tmp", "count": 3}},
+                "window_summary": {"value": {"count": 2, "has_next": True}},
+                "cursor": {"value": {"next_start_index": 2, "last_path": "W:/tmp/b.png"}},
+                "files": {
+                    "value": [
+                        {"path": "W:/tmp/a.png", "file_name": "a.png"},
+                        {"path": "W:/tmp/b.png", "file_name": "b.png"},
+                    ]
+                },
+                "inspection_results": {
+                    "value": [
+                        {"ok_ng": "OK", "ok": True, "reason": "ok"},
+                        {
+                            "ok_ng": "NG",
+                            "ok": False,
+                            "reason": "coverage low",
+                            "alarm": {
+                                "active": True,
+                                "level": "warning",
+                                "message": "coverage low",
+                            },
+                        },
+                    ]
+                },
+            },
+            execution_metadata={},
+        )
+    )
+
+    record_value = output["record"]["value"]
+    assert record_value["record_kind"] == "inspection-batch"
+    assert len(record_value["batch_files"]) == 2
+    assert record_value["inspection_result_summary"]["count"] == 2
+    assert record_value["inspection_result_summary"]["ok_count"] == 1
+    assert record_value["inspection_result_summary"]["ng_count"] == 1
+    assert record_value["inspection_result_summary"]["alarm_count"] == 1
+
+
+def test_batch_files_relocate_handler_copies_files_and_returns_mappings(
+    tmp_path: Path,
+) -> None:
+    """验证批次文件归档节点会复制文件并输出目标映射。"""
+
+    source_directory = tmp_path / "incoming"
+    target_directory = tmp_path / "archive"
+    source_directory.mkdir()
+    first_file = source_directory / "a.png"
+    second_file = source_directory / "nested" / "b.png"
+    second_file.parent.mkdir()
+    first_file.write_bytes(b"a")
+    second_file.write_bytes(b"bb")
+
+    output = _batch_files_relocate_handler(
+        WorkflowNodeExecutionRequest(
+            node_id="batch-files-relocate",
+            node_definition=object(),
+            parameters={
+                "target_directory": str(target_directory),
+                "mode": "copy",
+                "preserve_subdirectories": True,
+            },
+            input_values={
+                "files": {
+                    "value": [
+                        {"path": str(first_file)},
+                        {"path": str(second_file)},
+                    ]
+                }
+            },
+            execution_metadata={},
+        )
+    )
+
+    relocated_files = output["files"]["value"]
+    mapping_items = output["mappings"]["value"]
+    assert len(relocated_files) == 2
+    assert len(mapping_items) == 2
+    assert (target_directory / "a.png").is_file()
+    assert (target_directory / "nested" / "b.png").is_file()
+    assert output["summary"]["value"]["relocated_count"] == 2
+    assert output["summary"]["value"]["mode"] == "copy"
+
+
+def test_workflow_result_handler_builds_workflow_result_from_execution_metadata() -> None:
+    """验证统一 workflow 结果节点会输出 workflow-result.v1。"""
+
+    output = _workflow_result_handler(
+        WorkflowNodeExecutionRequest(
+            node_id="workflow-result",
+            node_definition=object(),
+            parameters={"status": "accepted", "code": 202},
+            input_values={
+                "result": {"ok_ng": "OK", "ok": True, "reason": "ok"},
+                "metrics": {"value": {"elapsed_ms": 18.5}},
+                "files": {"value": [{"path": "W:/archive/result.json"}]},
+            },
+            execution_metadata={
+                "trace_id": "trace-001",
+                "trigger_event_id": "event-001",
+            },
+        )
+    )
+
+    workflow_result = output["workflow_result"]
+    assert workflow_result["status"] == "accepted"
+    assert workflow_result["code"] == 202
+    assert workflow_result["message"] == "accepted"
+    assert workflow_result["trace_id"] == "trace-001"
+    assert workflow_result["event_id"] == "event-001"
+    assert workflow_result["data"]["ok_ng"] == "OK"
+    assert output["summary"]["value"]["data_source"] == "input.result"
+
+
+def test_batch_result_summary_handler_aggregates_record_and_direct_results() -> None:
+    """验证批次结果摘要节点会汇总 record 内结果和直连结果。"""
+
+    output = _batch_result_summary_handler(
+        WorkflowNodeExecutionRequest(
+            node_id="batch-result-summary",
+            node_definition=object(),
+            parameters={},
+            input_values={
+                "record": {
+                    "value": {
+                        "inspection_results": [
+                            {"ok_ng": "OK", "ok": True, "reason": "ok"},
+                            {"ok_ng": "NG", "ok": False, "reason": "coverage low"},
+                        ]
+                    }
+                },
+                "inspection_result": (
+                    {
+                        "ok_ng": "NG",
+                        "ok": False,
+                        "reason": "coverage low",
+                        "alarm": {
+                            "active": True,
+                            "level": "warning",
+                            "message": "coverage low",
+                        },
+                    },
+                ),
+            },
+            execution_metadata={},
+        )
+    )
+
+    summary_value = output["summary"]["value"]
+    assert summary_value["count"] == 3
+    assert summary_value["ok_count"] == 1
+    assert summary_value["ng_count"] == 2
+    assert summary_value["alarm_count"] == 1
+    assert summary_value["summary_source"] == "computed"
+    assert summary_value["batch_reason_summary"][0] == {
+        "reason": "coverage low",
+        "count": 2,
+    }
+
+
+def test_batch_result_summary_handler_uses_precomputed_summary_when_record_has_no_items() -> None:
+    """验证批次结果摘要节点可复用 batch-record 中已有的预计算摘要。"""
+
+    output = _batch_result_summary_handler(
+        WorkflowNodeExecutionRequest(
+            node_id="batch-result-summary",
+            node_definition=object(),
+            parameters={},
+            input_values={
+                "record": {
+                    "value": {
+                        "inspection_result_summary": {
+                            "count": 4,
+                            "ok_count": 3,
+                            "ng_count": 1,
+                            "alarm_count": 1,
+                            "pass_ratio": 0.75,
+                        }
+                    }
+                }
+            },
+            execution_metadata={},
+        )
+    )
+
+    summary_value = output["summary"]["value"]
+    assert summary_value["count"] == 4
+    assert summary_value["used_precomputed_summary"] is True
+    assert summary_value["summary_source"] == "record.inspection_result_summary"
 
 
 def test_json_load_local_handler_reads_valid_json_file(tmp_path: Path) -> None:

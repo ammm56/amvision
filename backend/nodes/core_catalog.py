@@ -587,6 +587,29 @@ def get_core_workflow_payload_contracts() -> tuple[WorkflowPayloadContract, ...]
                 "required": ["status_code", "body"],
             },
         ),
+        WorkflowPayloadContract(
+            payload_type_id="workflow-result.v1",
+            display_name="Workflow Result",
+            transport_kind="inline-json",
+            json_schema={
+                "type": "object",
+                "properties": {
+                    "status": {
+                        "type": "string",
+                        "enum": ["succeeded", "failed", "accepted", "partial"],
+                    },
+                    "code": {"type": "integer"},
+                    "message": {"type": "string"},
+                    "data": {},
+                    "metrics": {},
+                    "files": {},
+                    "trace_id": {"type": "string"},
+                    "event_id": {"type": "string"},
+                    "metadata": {"type": "object"},
+                },
+                "required": ["status", "code", "message"],
+            },
+        ),
     )
 
 
