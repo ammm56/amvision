@@ -6,6 +6,10 @@ from custom_nodes.opencv_basic_nodes.backend.nodes.adaptive_threshold import (
     NODE_TYPE_ID as ADAPTIVE_THRESHOLD_NODE_TYPE_ID,
     handle_node as adaptive_threshold_handler,
 )
+from custom_nodes.opencv_basic_nodes.backend.nodes.absdiff_threshold import (
+    NODE_TYPE_ID as ABSDIFF_THRESHOLD_NODE_TYPE_ID,
+    handle_node as absdiff_threshold_handler,
+)
 from custom_nodes.opencv_basic_nodes.backend.nodes.binary_threshold import (
     NODE_TYPE_ID as BINARY_THRESHOLD_NODE_TYPE_ID,
     handle_node as binary_threshold_handler,
@@ -26,6 +30,10 @@ from custom_nodes.opencv_basic_nodes.backend.nodes.contours_to_regions import (
     NODE_TYPE_ID as CONTOURS_TO_REGIONS_NODE_TYPE_ID,
     handle_node as contours_to_regions_handler,
 )
+from custom_nodes.opencv_basic_nodes.backend.nodes.connected_components import (
+    NODE_TYPE_ID as CONNECTED_COMPONENTS_NODE_TYPE_ID,
+    handle_node as connected_components_handler,
+)
 from custom_nodes.opencv_basic_nodes.backend.nodes.crop_export import (
     NODE_TYPE_ID as CROP_EXPORT_NODE_TYPE_ID,
     handle_node as crop_export_handler,
@@ -45,6 +53,10 @@ from custom_nodes.opencv_basic_nodes.backend.nodes.gaussian_blur import (
 from custom_nodes.opencv_basic_nodes.backend.nodes.grayscale import (
     NODE_TYPE_ID as GRAYSCALE_NODE_TYPE_ID,
     handle_node as grayscale_handler,
+)
+from custom_nodes.opencv_basic_nodes.backend.nodes.image_diff import (
+    NODE_TYPE_ID as IMAGE_DIFF_NODE_TYPE_ID,
+    handle_node as image_diff_handler,
 )
 from custom_nodes.opencv_basic_nodes.backend.nodes.measure import (
     NODE_TYPE_ID as MEASURE_NODE_TYPE_ID,
@@ -90,6 +102,9 @@ NODE_HANDLERS = (
     (CONTOUR_FILTER_NODE_TYPE_ID, contour_filter_handler),
     (MIN_AREA_RECT_NODE_TYPE_ID, min_area_rect_handler),
     (CONTOURS_TO_REGIONS_NODE_TYPE_ID, contours_to_regions_handler),
+    (IMAGE_DIFF_NODE_TYPE_ID, image_diff_handler),
+    (ABSDIFF_THRESHOLD_NODE_TYPE_ID, absdiff_threshold_handler),
+    (CONNECTED_COMPONENTS_NODE_TYPE_ID, connected_components_handler),
 )
 
 

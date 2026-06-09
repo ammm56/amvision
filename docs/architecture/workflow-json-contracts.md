@@ -188,13 +188,13 @@ OpenCV 节点不应直接写死在推理 runtime 里，而应通过 custom-node 
 当前 opencv.basic-nodes 已落地的节点族：
 
 - opencv.render：draw-detections
-- opencv.filter：gaussian-blur、binary-threshold、morphology、canny、grayscale、resize、adaptive-threshold、otsu-threshold
-- opencv.analysis：contour、measure、contour-filter、min-area-rect
+- opencv.filter：gaussian-blur、binary-threshold、morphology、canny、grayscale、resize、adaptive-threshold、otsu-threshold、absdiff-threshold
+- opencv.analysis：contour、measure、contour-filter、min-area-rect、image-diff、connected-components
 - opencv.transform：payload-to-value、contours-to-regions
 - opencv.io：crop-export
 - opencv.preview：gallery-preview
 
-其中 contour 输出 `contours.v1`，measure 输出 `measurements.v1`，min-area-rect 输出 `rotated-rects.v1`，contours-to-regions 输出 `regions.v1`，gallery-preview 输出 `response-body.v1`，可继续接到 core.output.http-response 或既有工业规则链。
+其中 contour 输出 `contours.v1`，measure 输出 `measurements.v1`，min-area-rect 输出 `rotated-rects.v1`，contours-to-regions 输出 `regions.v1`，connected-components 也直接输出 `regions.v1`，gallery-preview 输出 `response-body.v1`；而 `image-diff -> absdiff-threshold -> connected-components` 已经可以形成一条完整的传统差异检测上游链，继续接到 `core.output.http-response` 或既有工业规则链。
 
 这些节点统一通过 NodeDefinition 声明 runtime_requirements，例如：
 

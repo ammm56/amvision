@@ -556,6 +556,17 @@ def normalize_binary_threshold_mode(value: object, *, cv2_module: Any) -> int:
     raise InvalidRequestError("threshold_type 仅支持 binary 或 binary-inv")
 
 
+def normalize_image_diff_mode(value: object) -> str:
+    """规范化 image-diff 的输出模式。"""
+
+    if not isinstance(value, str) or not value.strip():
+        raise InvalidRequestError("diff_mode 必须是非空字符串")
+    normalized_value = value.strip().lower()
+    if normalized_value not in {"grayscale", "color"}:
+        raise InvalidRequestError("diff_mode 仅支持 grayscale 或 color")
+    return normalized_value
+
+
 def normalize_adaptive_threshold_method(value: object, *, cv2_module: Any) -> int:
     """把 adaptive threshold method 解析为 OpenCV 常量。"""
 
@@ -567,6 +578,15 @@ def normalize_adaptive_threshold_method(value: object, *, cv2_module: Any) -> in
     if normalized_value == "gaussian":
         return cv2_module.ADAPTIVE_THRESH_GAUSSIAN_C
     raise InvalidRequestError("adaptive_method 仅支持 mean 或 gaussian")
+
+
+def normalize_connected_components_connectivity(value: object) -> int:
+    """规范化 connected-components 的 connectivity。"""
+
+    connectivity = require_positive_int(value, field_name="connectivity")
+    if connectivity not in {4, 8}:
+        raise InvalidRequestError("connectivity 只能是 4 或 8")
+    return connectivity
 
 
 def resolve_morphology_operation(operation_name: str, *, cv2_module: Any) -> int:

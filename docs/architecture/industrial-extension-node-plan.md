@@ -40,6 +40,9 @@
 - `contour-filter`
 - `min-area-rect`
 - `contours-to-regions`
+- `image-diff`
+- `absdiff-threshold`
+- `connected-components`
 - `draw-detections`
 - `crop-export`
 - `gallery-preview`
@@ -56,6 +59,18 @@
 - `custom.opencv.contours-to-regions`
 
 其中 `min-area-rect` 当前新增 `rotated-rects.v1` 结构化 payload，`payload-to-value` 也已支持把它包装回 `value.v1` 继续参与响应拼装或调试预览。
+
+其中第二批更贴缺陷/差异流程的原子节点当前也已接通：
+
+- `custom.opencv.image-diff`
+- `custom.opencv.absdiff-threshold`
+- `custom.opencv.connected-components`
+
+当前已经可以直接接成：
+
+- `reference image -> image-diff -> absdiff-threshold -> connected-components -> regions.v1`
+
+其中 `connected-components` 当前会为每个 component 生成 `mask_image`，避免后续继续接面积、完整性、空洞或差异规则链时丢失真实前景几何。
 
 这套能力还远不足以覆盖工业现场常见的传统机器视觉处理。当前缺的不是“有没有 OpenCV 节点”，而是：
 
@@ -892,7 +907,7 @@ PLC 能力也应至少拆成两类：
 - `custom.opencv.grayscale / resize / adaptive-threshold / otsu-threshold`（已实现）
 - `custom.opencv.hough-lines / hough-circles`
 - `custom.opencv.contour-filter / min-area-rect / contours-to-regions`（已实现）
-- `custom.opencv.connected-components / image-diff / absdiff-threshold`
+- `custom.opencv.connected-components / image-diff / absdiff-threshold`（已实现）
 - `core.vision.reference-diff-metrics`
 - `core.vision.foreign-object-check`
 - `core.vision.surface-uniformity-check`
