@@ -1,4 +1,4 @@
-"""项目内最小 Modbus TCP client 实现。"""
+"""共享 Modbus TCP transport 实现。"""
 
 from __future__ import annotations
 
@@ -85,7 +85,7 @@ _T = TypeVar("_T")
 
 
 class ProjectModbusTcpClient:
-    """只覆盖当前 pack 所需功能的同步 Modbus TCP client。"""
+    """只覆盖当前项目所需功能的同步 Modbus TCP client。"""
 
     def __init__(
         self,

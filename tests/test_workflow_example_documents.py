@@ -420,6 +420,81 @@ def test_plc_modbus_wait_ready_ack_callback_example_documents_are_valid() -> Non
     ]
 
 
+def test_plc_register_modbus_tcp_async_result_record_example_documents_are_valid() -> None:
+    """验证 plc-register TriggerSource 回传样例模板与应用可以通过当前合同校验。"""
+
+    example_dir = (
+        Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
+    )
+    template_path = example_dir / "plc_register_modbus_tcp_async_result_record.template.json"
+    application_path = example_dir / "plc_register_modbus_tcp_async_result_record.application.json"
+    template = WorkflowGraphTemplate.model_validate(
+        json.loads(template_path.read_text(encoding="utf-8"))
+    )
+    application = FlowApplication.model_validate(
+        json.loads(application_path.read_text(encoding="utf-8"))
+    )
+
+    registry = NodeCatalogRegistry()
+    validate_workflow_graph_template(
+        template=template,
+        node_definitions=registry.get_workflow_node_definitions(),
+    )
+    validate_flow_application_bindings(template=template, application=application)
+
+    assert [node.node_id for node in template.nodes] == [
+        "wrap_trigger_payload",
+        "wrap_trigger_event",
+        "extract_event_matched",
+        "compare_event_matched",
+        "extract_observed_value",
+        "extract_previous_observed_value",
+        "extract_sequence_id",
+        "decide_result",
+        "build_result_metrics",
+        "build_result_metadata",
+        "inspection_alarm",
+        "inspection_result",
+        "callback_result",
+    ]
+    assert template.nodes[0].node_type_id == "core.logic.payload-to-value"
+    assert template.nodes[1].node_type_id == "core.logic.payload-to-value"
+    assert template.nodes[3].parameters["right_value"] is True
+    assert template.nodes[10].parameters["alarm_code"] == "PLC-REGISTER-NG"
+    assert template.nodes[12].parameters["url"] == "http://127.0.0.1:18080/plc/register/result"
+    assert template.metadata["example_kind"] == "plc-register-modbus-tcp-async-result-record"
+    assert template.metadata["focus"] == "plc-register-trigger-result-callback"
+    assert template.metadata["trigger_source_kind"] == "plc-register"
+    assert [template_input.input_id for template_input in template.template_inputs] == [
+        "request_trigger_payload",
+        "request_trigger_event",
+    ]
+    assert [template_input.payload_type_id for template_input in template.template_inputs] == [
+        "response-body.v1",
+        "response-body.v1",
+    ]
+    assert [template_output.output_id for template_output in template.template_outputs] == [
+        "inspection_result",
+        "inspection_alarm",
+        "decision_summary",
+        "callback_response",
+    ]
+    assert application.template_ref.source_uri == (
+        "docs/examples/workflows/plc_register_modbus_tcp_async_result_record.template.json"
+    )
+    assert application.runtime_mode == "python-json-workflow"
+    assert [binding.binding_id for binding in application.bindings] == [
+        "request_trigger_payload",
+        "request_trigger_event",
+        "inspection_result",
+        "inspection_alarm",
+        "decision_summary",
+        "callback_response",
+    ]
+    assert application.bindings[0].metadata["source_path"] == "payload"
+    assert application.bindings[1].metadata["source_path"] == "event"
+
+
 @pytest.mark.parametrize(
     (
         "example_name",

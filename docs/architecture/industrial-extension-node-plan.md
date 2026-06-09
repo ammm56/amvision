@@ -450,6 +450,100 @@ PLC 能力也应至少拆成两类：
 - `s7-poll-trigger`
 - `mc-poll-trigger`
 
+### Modbus TCP trigger-source 当前进度与后续待办
+
+当前判断：
+
+- `modbus tcp trigger-source` 值得做，而且是 PLC 这条线最自然的下一步
+- 这一层不应做成普通 workflow 节点，而应落到 `WorkflowTriggerSource + ProtocolAdapter` 体系
+- 触发源负责常驻轮询、边沿判定、去抖、幂等与创建 `WorkflowRun`
+- workflow 图继续负责后续业务逻辑，例如写 ack、写 OK/NG、`result-record` 和 `http-post`
+
+当前边界：
+
+- `custom_nodes/plc_modbus_tcp_nodes/` 继续只承载 workflow 内主动读写与等待条件
+- `backend/service/infrastructure/integrations/modbus/` 承载共享 Modbus TCP transport
+- 当前 `plc-register` trigger-source adapter 已直接复用共享 transport，不反向依赖 custom node pack
+
+第一阶段已收口为：
+
+- `trigger_kind = plc-register`
+- `transport_config.driver = modbus-tcp`
+- 地址语义统一使用 `0xxxx / 1xxxx / 3xxxx / 4xxxx`
+- 第一阶段只支持 polling，不同时引入 S7 / MC / OPC UA / 厂商 SDK
+- 第一阶段默认 `submit_mode = async`
+- workflow 完成后的 PLC 回写、HTTP 回传、JSON/CSV 归档继续放在图里，不塞进 adapter
+
+建议事件配置形状：
+
+- `transport_config`
+  - `driver`
+  - `host`
+  - `port`
+  - `unit_id`
+  - `register_address`
+  - `data_type`
+  - `word_order`
+  - `byte_position`
+  - `timeout_seconds`
+  - `retries`
+  - `poll_interval_ms`
+  - `reconnect_interval_ms`
+- `match_rule`
+  - `operator`
+  - `expected_value`
+  - `stable_match_count`
+  - `trigger_mode`
+  - `cooldown_ms`
+  - `emit_initial_match`
+
+建议标准化后的原始事件 payload：
+
+- `observed_value`
+- `previous_observed_value`
+- `matched`
+- `register_address`
+- `address_family`
+- `data_type`
+- `host`
+- `port`
+- `unit_id`
+- `occurred_at`
+- `sequence_id`
+- `response_meta`
+
+当前已落地能力：
+
+- `plc-register` 在未注册 adapter 时，`enable` 会显式失败，不再静默停留在“已启用但未运行”的暧昧状态
+- `PlcRegisterTriggerAdapter` 已注册到 `TriggerSourceSupervisor`
+- 当前已实现 `modbus-tcp + polling + async submit`
+- 当前已补最小 adapter 组件测试，以及 `enable / disable / health` API 测试
+
+实施状态：
+
+1. 抽共享 transport
+   - 已完成；Modbus TCP 低层 client 已从 custom node pack 抽到 backend shared integration 层
+2. 收控制面行为
+   - 已完成；`plc-register` 在未注册 adapter 时，`enable` 会显式失败，而不是静默停留在“已启用但未运行”的暧昧状态
+3. 落 `PlcRegisterTriggerAdapter`
+   - 已完成第一阶段：已注册到 `TriggerSourceSupervisor`，当前只做 polling + async submit
+4. 补输入映射与结果样例
+   - 已完成 checked-in 正式样例；当前已提供 `plc-register` 的 TriggerSource 请求样例，以及 `plc-register -> workflow app runtime -> result-record / http-post` 的完整 workflow app 示例
+5. 补最小测试
+   - 已完成；当前已覆盖 adapter 组件测试、`enable / disable / health` API 测试，以及触发事件标准化与 input binding 映射测试
+
+后续待办：
+
+- 继续扩 `plc-register` 的现场语义，例如多地址监听、更多边沿/状态模式和更细的健康观测字段
+- 继续规划 `modbus tcp trigger-source` 之外的协议类型，例如 S7 / MC / OPC UA，但保持分协议拆层，不混成一个大 adapter
+
+暂不建议先做的内容：
+
+- 不先做 `sync-reply` PLC trigger-source
+- 不先做多个 PLC 协议共用一个大 adapter
+- 不先把 workflow 内 `wait-condition` 改造成常驻 listener
+- 不先把 PLC 结果回写塞进 TriggerSource 结果分发层
+
 ## 工业瑕疵 / 异常检测仍欠缺的核心节点
 
 当前已有一批 `regions-*`、`roi-*`、`continuity-*` 节点，但对工业缺陷与异常检测来说，还缺少更贴现场的一层。

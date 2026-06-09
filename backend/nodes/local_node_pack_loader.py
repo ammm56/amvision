@@ -104,7 +104,7 @@ class LocalNodePackLoader:
 
         self._catalog_snapshot = NodeCatalogSnapshot(
             node_pack_manifests=tuple(node_pack_manifests),
-            payload_contracts=tuple(payload_contracts),
+            payload_contracts=_merge_payload_contracts(payload_contracts),
             node_definitions=tuple(node_definitions),
         )
         self._last_refresh_at = _utc_now()
@@ -803,3 +803,24 @@ def _utc_now() -> str:
     """返回 ISO 8601 UTC 时间字符串。"""
 
     return datetime.now(UTC).isoformat()
+
+
+def _merge_payload_contracts(
+    payload_contracts: list[WorkflowPayloadContract],
+) -> tuple[WorkflowPayloadContract, ...]:
+    """合并多个节点包收集到的 payload contract。"""
+
+    merged_contracts: list[WorkflowPayloadContract] = []
+    contract_index: dict[str, WorkflowPayloadContract] = {}
+    for contract in payload_contracts:
+        existing_contract = contract_index.get(contract.payload_type_id)
+        if existing_contract is None:
+            contract_index[contract.payload_type_id] = contract
+            merged_contracts.append(contract)
+            continue
+        if existing_contract.model_dump(mode="json") != contract.model_dump(mode="json"):
+            raise ServiceConfigurationError(
+                "发现重复且定义不一致的 payload contract",
+                details={"payload_type_id": contract.payload_type_id},
+            )
+    return tuple(merged_contracts)

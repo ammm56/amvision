@@ -53,6 +53,9 @@ TRIGGER_SOURCE_API_EXAMPLE_FOLDERS = {
     "opencv_process_save_image_zeromq_image_ref": Path(
         "07-opencv-process-save-image-zeromq-image-ref"
     ),
+    "plc_register_modbus_tcp_async_result_record": Path(
+        "08-plc-register-modbus-tcp-async-result-record"
+    ),
 }
 
 ALL_WORKFLOW_API_EXAMPLE_FOLDERS = {
@@ -72,6 +75,9 @@ WORKFLOW_POSTMAN_COLLECTIONS = {
     ),
     "07-opencv-process-save-image-zeromq-image-ref": (
         "07-opencv-process-save-image-zeromq-image-ref.postman_collection.json"
+    ),
+    "08-plc-register-modbus-tcp-async-result-record": (
+        "08-plc-register-modbus-tcp-async-result-record.postman_collection.json"
     ),
 }
 
@@ -107,6 +113,17 @@ TRIGGER_SOURCE_WORKFLOW_REQUEST_NAMES = {
     "Delete TriggerSource",
     "Stop App Runtime",
 }
+
+
+def _build_trigger_source_workflow_request_names(
+    invoke_request_name: str,
+) -> set[str]:
+    """构造 TriggerSource collection 的标准请求名集合。"""
+
+    request_names = set(TRIGGER_SOURCE_WORKFLOW_REQUEST_NAMES)
+    request_names.remove("Invoke App Runtime (HTTP Base64)")
+    request_names.add(invoke_request_name)
+    return request_names
 
 
 def _api_workflow_example_dir(example_name: str) -> Path:
@@ -768,6 +785,62 @@ def test_trigger_source_create_examples_keep_protocol_native_input_boundary(
     )
 
 
+def test_plc_register_trigger_source_api_examples_are_valid() -> None:
+    """验证 08 plc-register TriggerSource API 示例已经补齐完整本地调试链路。"""
+
+    example_name = "plc_register_modbus_tcp_async_result_record"
+    application = FlowApplication.model_validate(
+        json.loads(
+            (
+                DOCS_WORKFLOW_EXAMPLE_DIR / "plc_register_modbus_tcp_async_result_record.application.json"
+            ).read_text(encoding="utf-8")
+        )
+    )
+    create_request = _read_api_workflow_example(example_name, "app-runtime.create.request.json")
+    preview_run_request = _read_api_workflow_example(example_name, "preview-run.request.json")
+    invoke_request = _read_api_workflow_example(example_name, "app-runtime.invoke.request.json")
+    run_create_request = _read_api_workflow_example(example_name, "app-runtime.run.create.request.json")
+    trigger_source_request = _read_api_workflow_example(example_name, "trigger-source.create.request.json")
+
+    assert application.application_id == "plc-register-modbus-tcp-async-result-record-app"
+    assert application.metadata["example_kind"] == "plc-register-modbus-tcp-async-result-record"
+    assert application.metadata["trigger_source_input"] == "plc-register"
+    assert create_request["application_id"] == application.application_id
+    assert create_request["metadata"]["example_kind"] == "plc-register-modbus-tcp-async-result-record"
+    assert create_request["metadata"]["trigger_source_input"] == "plc-register"
+
+    input_binding_ids = {binding.binding_id for binding in application.bindings if binding.direction == "input"}
+    assert input_binding_ids == {"request_trigger_payload", "request_trigger_event"}
+    assert set(preview_run_request["input_bindings"]) == input_binding_ids
+    assert set(invoke_request["input_bindings"]) == input_binding_ids
+    assert set(run_create_request["input_bindings"]) == input_binding_ids
+    assert preview_run_request["application_ref"] == {"application_id": application.application_id}
+    assert preview_run_request["execution_metadata"]["trigger_source"] == "editor-preview"
+    assert preview_run_request["timeout_seconds"] == 30
+    assert invoke_request["execution_metadata"]["scenario"] == "plc-register-modbus-tcp-async-result-record"
+    assert invoke_request["execution_metadata"]["trigger_source"] == "sync-api"
+    assert run_create_request["execution_metadata"]["scenario"] == "plc-register-modbus-tcp-async-result-record"
+    assert run_create_request["execution_metadata"]["trigger_source"] == "async-api"
+    assert invoke_request["input_bindings"]["request_trigger_payload"]["matched"] is True
+    assert invoke_request["input_bindings"]["request_trigger_event"]["trigger_kind"] == "plc-register"
+
+    assert trigger_source_request["trigger_source_id"] == "plc-trigger-source-08"
+    assert trigger_source_request["metadata"]["example_kind"] == "plc-register-modbus-tcp-async-result-record"
+    assert trigger_source_request["default_execution_metadata"]["scenario"] == (
+        "plc-register-modbus-tcp-async-result-record"
+    )
+    assert trigger_source_request["default_execution_metadata"]["trigger_source"] == "plc-register"
+    assert set(trigger_source_request["input_binding_mapping"]) == input_binding_ids
+    assert trigger_source_request["input_binding_mapping"]["request_trigger_payload"]["source"] == "payload"
+    assert trigger_source_request["input_binding_mapping"]["request_trigger_event"]["source"] == "event"
+    assert all(
+        binding_payload["payload_type_id"] == "response-body.v1"
+        for binding_payload in trigger_source_request["input_binding_mapping"].values()
+    )
+    assert trigger_source_request["result_mapping"]["result_binding"] == "inspection_result"
+    assert trigger_source_request["result_mapping"]["result_mode"] == "accepted-then-query"
+
+
 def test_workflow_api_end_to_end_qr_crop_remap_app_runtime_examples_are_valid() -> None:
     """验证第一类完整端到端正式 app 的 create 与 invoke API 示例请求体。"""
 
@@ -889,10 +962,12 @@ def test_workflow_postman_directory_contains_ordered_formal_workflow_collections
         assert collection_dir in readme_text
     assert "06-yolox-deployment-infer-opencv-health-zeromq-image-ref" in readme_text
     assert "07-opencv-process-save-image-zeromq-image-ref" in readme_text
+    assert "08-plc-register-modbus-tcp-async-result-record" in readme_text
     assert "Create Preview Run / Get Preview Run" in readme_text
     assert "Create Workflow Run / Get Workflow Run" in readme_text
     assert "Create TriggerSource / Enable / Health / Disable" in readme_text
     assert "Invoke App Runtime (HTTP Base64)" in readme_text
+    assert "Invoke App Runtime (Synthetic Event)" in readme_text
     assert "image-ref.v1" in readme_text
     assert "image-base64.v1" in readme_text
     assert "buffer_ref" in readme_text
@@ -921,8 +996,10 @@ def test_workflow_api_examples_are_classified_by_numbered_directories() -> None:
         "05-opencv-process-save-image",
         "06-yolox-deployment-infer-opencv-health-zeromq-image-ref",
         "07-opencv-process-save-image-zeromq-image-ref",
+        "08-plc-register-modbus-tcp-async-result-record",
     ]
     assert "同一个 workflow app 同时发布 HTTP `image-base64.v1` 和 ZeroMQ `image-ref.v1` 输入" in readme_text
+    assert "独立的 TriggerSource / PLC 调试示例" in readme_text
     assert "已接入 LocalBufferBroker direct mmap 数据面和 PublishedInferenceGateway 事件 dispatcher" in readme_text
     assert "BufferRef" in readme_text
     assert "FrameRef" in readme_text
@@ -955,6 +1032,9 @@ def test_workflow_api_examples_are_classified_by_numbered_directories() -> None:
         "expected_application_id",
         "expected_example_kind",
         "expected_invoke_binding_ids",
+        "expected_trigger_source_id",
+        "expected_trigger_source_input",
+        "expected_invoke_request_name",
     ),
     [
         pytest.param(
@@ -964,6 +1044,9 @@ def test_workflow_api_examples_are_classified_by_numbered_directories() -> None:
             "yolox-deployment-infer-opencv-health-zeromq-app",
             "deployment-infer-opencv-health-zeromq",
             {"request_image_base64", "deployment_request"},
+            "zeromq-trigger-source-06",
+            "zeromq",
+            "Invoke App Runtime (HTTP Base64)",
             id="06-zeromq-trigger-source",
         ),
         pytest.param(
@@ -973,7 +1056,22 @@ def test_workflow_api_examples_are_classified_by_numbered_directories() -> None:
             "opencv-process-save-image-zeromq-app",
             "opencv-process-save-image-zeromq",
             {"request_image_base64"},
+            "zeromq-trigger-source-07",
+            "zeromq",
+            "Invoke App Runtime (HTTP Base64)",
             id="07-zeromq-trigger-source",
+        ),
+        pytest.param(
+            "08-plc-register-modbus-tcp-async-result-record",
+            "08-plc-register-modbus-tcp-async-result-record.postman_collection.json",
+            "plc_register_modbus_tcp_async_result_record",
+            "plc-register-modbus-tcp-async-result-record-app",
+            "plc-register-modbus-tcp-async-result-record",
+            {"request_trigger_payload", "request_trigger_event"},
+            "plc-trigger-source-08",
+            "plc-register",
+            "Invoke App Runtime (Synthetic Event)",
+            id="08-plc-trigger-source",
         ),
     ],
 )
@@ -984,8 +1082,11 @@ def test_trigger_source_postman_collections_include_runtime_prepare_steps(
     expected_application_id: str,
     expected_example_kind: str,
     expected_invoke_binding_ids: set[str],
+    expected_trigger_source_id: str,
+    expected_trigger_source_input: str,
+    expected_invoke_request_name: str,
 ) -> None:
-    """验证 06/07 TriggerSource Postman collection 已补齐完整本地调试链路。"""
+    """验证 TriggerSource Postman collection 已补齐完整本地调试链路。"""
 
     collection_path = POSTMAN_WORKFLOW_DIR / collection_dir / collection_name
     collection_payload = json.loads(collection_path.read_text(encoding="utf-8"))
@@ -996,18 +1097,18 @@ def test_trigger_source_postman_collections_include_runtime_prepare_steps(
     save_application_body = json.loads(request_payloads["Save Application"])
     create_preview_body = json.loads(request_payloads["Create Preview Run"])
     create_runtime_body = json.loads(request_payloads["Create App Runtime"])
-    invoke_body = json.loads(request_payloads["Invoke App Runtime (HTTP Base64)"])
+    invoke_body = json.loads(request_payloads[expected_invoke_request_name])
     create_run_body = json.loads(request_payloads["Create Workflow Run"])
     create_trigger_source_body = json.loads(request_payloads["Create TriggerSource"])
     get_preview_request = _find_postman_request(collection_payload["item"], "Get Preview Run")
     get_run_request = _find_postman_request(collection_payload["item"], "Get Workflow Run")
     delete_trigger_source_request = _find_postman_request(collection_payload["item"], "Delete TriggerSource")
 
-    assert request_names == TRIGGER_SOURCE_WORKFLOW_REQUEST_NAMES
+    assert request_names == _build_trigger_source_workflow_request_names(expected_invoke_request_name)
     assert variables["previewRunId"] == ""
     assert variables["workflowRuntimeId"] == ""
     assert variables["workflowRunId"] == ""
-    assert variables["triggerSourceId"].startswith("zeromq-trigger-source-")
+    assert variables["triggerSourceId"] == expected_trigger_source_id
     assert save_template_body == _read_api_workflow_example(example_name, "save-template.request.json")
     assert save_application_body == _read_api_workflow_example(example_name, "save-application.request.json")
     assert create_preview_body == _read_api_workflow_example(example_name, "preview-run.request.json")
@@ -1015,15 +1116,19 @@ def test_trigger_source_postman_collections_include_runtime_prepare_steps(
     assert create_runtime_body["application_id"] == expected_application_id
     assert create_runtime_body == _read_api_workflow_example(example_name, "app-runtime.create.request.json")
     assert create_runtime_body["metadata"]["example_kind"] == expected_example_kind
-    assert create_runtime_body["metadata"]["trigger_source_input"] == "zeromq"
+    assert create_runtime_body["metadata"]["trigger_source_input"] == expected_trigger_source_input
     assert set(invoke_body["input_bindings"]) == expected_invoke_binding_ids
     assert invoke_body == _read_api_workflow_example(example_name, "app-runtime.invoke.request.json")
     assert create_run_body == _read_api_workflow_example(example_name, "app-runtime.run.create.request.json")
     assert get_run_request["url"]["raw"] == "{{baseUrl}}/api/v1/workflows/runs/{{workflowRunId}}"
     assert create_trigger_source_body == _read_api_workflow_example(example_name, "trigger-source.create.request.json")
     assert delete_trigger_source_request["url"]["raw"] == "{{baseUrl}}/api/v1/workflows/trigger-sources/{{triggerSourceId}}"
-    assert invoke_body["input_bindings"]["request_image_base64"]["media_type"] == "image/png"
     assert invoke_body["execution_metadata"]["trigger_source"] == "sync-api"
+    if expected_trigger_source_input == "zeromq":
+        assert invoke_body["input_bindings"]["request_image_base64"]["media_type"] == "image/png"
+    else:
+        assert invoke_body["input_bindings"]["request_trigger_payload"]["matched"] is True
+        assert invoke_body["input_bindings"]["request_trigger_event"]["trigger_kind"] == "plc-register"
 
 
 def test_local_buffer_broker_architecture_document_is_indexed() -> None:

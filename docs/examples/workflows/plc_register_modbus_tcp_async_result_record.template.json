@@ -1,0 +1,347 @@
+{
+  "format_id": "amvision.workflow-graph-template.v1",
+  "template_id": "plc-register-modbus-tcp-async-result-record-template",
+  "template_version": "1.0.0",
+  "display_name": "PLC Register Modbus TCP Async Result Record",
+  "description": "面向 plc-register TriggerSource 的现场回传样例。TriggerSource 负责常驻轮询与匹配，workflow app 只接收标准化后的寄存器事件，收成统一 result-record，再回传到 HTTP 接口。",
+  "nodes": [
+    {
+      "node_id": "wrap_trigger_payload",
+      "node_type_id": "core.logic.payload-to-value",
+      "parameters": {}
+    },
+    {
+      "node_id": "wrap_trigger_event",
+      "node_type_id": "core.logic.payload-to-value",
+      "parameters": {}
+    },
+    {
+      "node_id": "extract_event_matched",
+      "node_type_id": "core.logic.value-field-extract",
+      "parameters": {
+        "path": "matched"
+      }
+    },
+    {
+      "node_id": "compare_event_matched",
+      "node_type_id": "core.logic.compare",
+      "parameters": {
+        "operator": "eq",
+        "right_value": true
+      }
+    },
+    {
+      "node_id": "extract_observed_value",
+      "node_type_id": "core.logic.value-field-extract",
+      "parameters": {
+        "path": "observed_value"
+      }
+    },
+    {
+      "node_id": "extract_previous_observed_value",
+      "node_type_id": "core.logic.value-field-extract",
+      "parameters": {
+        "path": "previous_observed_value"
+      }
+    },
+    {
+      "node_id": "extract_sequence_id",
+      "node_type_id": "core.logic.value-field-extract",
+      "parameters": {
+        "path": "sequence_id"
+      }
+    },
+    {
+      "node_id": "decide_result",
+      "node_type_id": "core.rule.ok-ng-decision",
+      "parameters": {
+        "mode": "all"
+      }
+    },
+    {
+      "node_id": "build_result_metrics",
+      "node_type_id": "core.logic.object-create",
+      "parameters": {
+        "keys": [
+          "observed_value",
+          "previous_observed_value",
+          "sequence_id",
+          "matched"
+        ],
+        "fields": {
+          "example_kind": "plc-register-modbus-tcp-async-result-record",
+          "evaluation_source": "plc-register-trigger-source"
+        }
+      }
+    },
+    {
+      "node_id": "build_result_metadata",
+      "node_type_id": "core.logic.object-create",
+      "parameters": {
+        "keys": [
+          "trigger_payload",
+          "trigger_event"
+        ],
+        "fields": {
+          "example_kind": "plc-register-modbus-tcp-async-result-record",
+          "station_id": "line-a-01",
+          "line_id": "line-a",
+          "trigger_kind": "plc-register",
+          "callback_url": "http://127.0.0.1:18080/plc/register/result"
+        }
+      }
+    },
+    {
+      "node_id": "inspection_alarm",
+      "node_type_id": "core.rule.alarm-condition",
+      "parameters": {
+        "trigger_when": "condition-false",
+        "alarm_level": "error",
+        "alarm_code": "PLC-REGISTER-NG",
+        "alarm_message": "plc register trigger event validation failed",
+        "clear_message": "plc register trigger event accepted"
+      }
+    },
+    {
+      "node_id": "inspection_result",
+      "node_type_id": "core.output.result-record",
+      "parameters": {}
+    },
+    {
+      "node_id": "callback_result",
+      "node_type_id": "core.output.http-post",
+      "parameters": {
+        "url": "http://127.0.0.1:18080/plc/register/result",
+        "method": "POST",
+        "timeout_seconds": 3.0,
+        "require_success": false,
+        "headers": {
+          "X-Amvision-Example": "plc-register-modbus-tcp-async-result-record"
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "edge_id": "edge-wrap-trigger-payload-extract-matched",
+      "source_node_id": "wrap_trigger_payload",
+      "source_port": "value",
+      "target_node_id": "extract_event_matched",
+      "target_port": "value"
+    },
+    {
+      "edge_id": "edge-wrap-trigger-payload-extract-observed",
+      "source_node_id": "wrap_trigger_payload",
+      "source_port": "value",
+      "target_node_id": "extract_observed_value",
+      "target_port": "value"
+    },
+    {
+      "edge_id": "edge-wrap-trigger-payload-extract-previous-observed",
+      "source_node_id": "wrap_trigger_payload",
+      "source_port": "value",
+      "target_node_id": "extract_previous_observed_value",
+      "target_port": "value"
+    },
+    {
+      "edge_id": "edge-wrap-trigger-payload-extract-sequence",
+      "source_node_id": "wrap_trigger_payload",
+      "source_port": "value",
+      "target_node_id": "extract_sequence_id",
+      "target_port": "value"
+    },
+    {
+      "edge_id": "edge-extract-matched-compare",
+      "source_node_id": "extract_event_matched",
+      "source_port": "value",
+      "target_node_id": "compare_event_matched",
+      "target_port": "left"
+    },
+    {
+      "edge_id": "edge-compare-matched-decide-result",
+      "source_node_id": "compare_event_matched",
+      "source_port": "result",
+      "target_node_id": "decide_result",
+      "target_port": "conditions"
+    },
+    {
+      "edge_id": "edge-observed-value-build-metrics",
+      "source_node_id": "extract_observed_value",
+      "source_port": "value",
+      "target_node_id": "build_result_metrics",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-previous-observed-build-metrics",
+      "source_node_id": "extract_previous_observed_value",
+      "source_port": "value",
+      "target_node_id": "build_result_metrics",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-sequence-build-metrics",
+      "source_node_id": "extract_sequence_id",
+      "source_port": "value",
+      "target_node_id": "build_result_metrics",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-matched-build-metrics",
+      "source_node_id": "extract_event_matched",
+      "source_port": "value",
+      "target_node_id": "build_result_metrics",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-wrap-trigger-payload-build-metadata",
+      "source_node_id": "wrap_trigger_payload",
+      "source_port": "value",
+      "target_node_id": "build_result_metadata",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-wrap-trigger-event-build-metadata",
+      "source_node_id": "wrap_trigger_event",
+      "source_port": "value",
+      "target_node_id": "build_result_metadata",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-compare-matched-alarm",
+      "source_node_id": "compare_event_matched",
+      "source_port": "result",
+      "target_node_id": "inspection_alarm",
+      "target_port": "condition"
+    },
+    {
+      "edge_id": "edge-build-metrics-alarm",
+      "source_node_id": "build_result_metrics",
+      "source_port": "value",
+      "target_node_id": "inspection_alarm",
+      "target_port": "metrics"
+    },
+    {
+      "edge_id": "edge-build-metadata-alarm",
+      "source_node_id": "build_result_metadata",
+      "source_port": "value",
+      "target_node_id": "inspection_alarm",
+      "target_port": "metadata"
+    },
+    {
+      "edge_id": "edge-decide-result-inspection-decision",
+      "source_node_id": "decide_result",
+      "source_port": "decision",
+      "target_node_id": "inspection_result",
+      "target_port": "decision"
+    },
+    {
+      "edge_id": "edge-decide-summary-inspection-conditions",
+      "source_node_id": "decide_result",
+      "source_port": "summary",
+      "target_node_id": "inspection_result",
+      "target_port": "conditions"
+    },
+    {
+      "edge_id": "edge-build-metrics-inspection-metrics",
+      "source_node_id": "build_result_metrics",
+      "source_port": "value",
+      "target_node_id": "inspection_result",
+      "target_port": "metrics"
+    },
+    {
+      "edge_id": "edge-build-metadata-inspection-metadata",
+      "source_node_id": "build_result_metadata",
+      "source_port": "value",
+      "target_node_id": "inspection_result",
+      "target_port": "metadata"
+    },
+    {
+      "edge_id": "edge-inspection-alarm-inspection-result",
+      "source_node_id": "inspection_alarm",
+      "source_port": "alarm",
+      "target_node_id": "inspection_result",
+      "target_port": "alarm"
+    },
+    {
+      "edge_id": "edge-inspection-result-callback",
+      "source_node_id": "inspection_result",
+      "source_port": "result",
+      "target_node_id": "callback_result",
+      "target_port": "result"
+    }
+  ],
+  "template_inputs": [
+    {
+      "input_id": "request_trigger_payload",
+      "display_name": "Request Trigger Payload",
+      "payload_type_id": "response-body.v1",
+      "target_node_id": "wrap_trigger_payload",
+      "target_port": "body"
+    },
+    {
+      "input_id": "request_trigger_event",
+      "display_name": "Request Trigger Event",
+      "payload_type_id": "response-body.v1",
+      "target_node_id": "wrap_trigger_event",
+      "target_port": "body"
+    }
+  ],
+  "template_outputs": [
+    {
+      "output_id": "inspection_result",
+      "display_name": "Inspection Result",
+      "payload_type_id": "result-record.v1",
+      "source_node_id": "inspection_result",
+      "source_port": "result"
+    },
+    {
+      "output_id": "inspection_alarm",
+      "display_name": "Inspection Alarm",
+      "payload_type_id": "alarm-record.v1",
+      "source_node_id": "inspection_alarm",
+      "source_port": "alarm"
+    },
+    {
+      "output_id": "decision_summary",
+      "display_name": "Decision Summary",
+      "payload_type_id": "value.v1",
+      "source_node_id": "decide_result",
+      "source_port": "summary"
+    },
+    {
+      "output_id": "callback_response",
+      "display_name": "Callback Response",
+      "payload_type_id": "value.v1",
+      "source_node_id": "callback_result",
+      "source_port": "response"
+    }
+  ],
+  "metadata": {
+    "example_kind": "plc-register-modbus-tcp-async-result-record",
+    "focus": "plc-register-trigger-result-callback",
+    "trigger_source_kind": "plc-register",
+    "callback_url_edit_required": true,
+    "input_boundary_note": "TriggerSource 当前只负责映射原始 payload/event 对象；workflow 内使用 payload-to-value 显式桥接为 value.v1。",
+    "node_groups": {
+      "input": [
+        "wrap_trigger_payload",
+        "wrap_trigger_event"
+      ],
+      "evaluation": [
+        "extract_event_matched",
+        "compare_event_matched",
+        "extract_observed_value",
+        "extract_previous_observed_value",
+        "extract_sequence_id",
+        "decide_result",
+        "build_result_metrics",
+        "build_result_metadata",
+        "inspection_alarm",
+        "inspection_result"
+      ],
+      "output": [
+        "callback_result"
+      ]
+    }
+  }
+}

@@ -1,0 +1,60 @@
+{
+  "trigger_source_id": "plc-trigger-source-08",
+  "project_id": "project-1",
+  "display_name": "PLC TriggerSource 08 Modbus TCP Async Result Record",
+  "trigger_kind": "plc-register",
+  "workflow_runtime_id": "{{workflowRuntimeId}}",
+  "submit_mode": "async",
+  "enabled": false,
+  "transport_config": {
+    "driver": "modbus-tcp",
+    "host": "192.168.1.10",
+    "port": 502,
+    "unit_id": 1,
+    "register_address": "400101",
+    "data_type": "uint16",
+    "word_order": "big",
+    "byte_position": "low",
+    "timeout_seconds": 1.0,
+    "retries": 1,
+    "poll_interval_ms": 200,
+    "reconnect_interval_ms": 1000
+  },
+  "match_rule": {
+    "operator": "bitmask_all_set",
+    "expected_value": 5,
+    "stable_match_count": 2,
+    "trigger_mode": "enter-match",
+    "cooldown_ms": 200,
+    "emit_initial_match": false
+  },
+  "input_binding_mapping": {
+    "request_trigger_payload": {
+      "source": "payload",
+      "payload_type_id": "response-body.v1"
+    },
+    "request_trigger_event": {
+      "source": "event",
+      "payload_type_id": "response-body.v1"
+    }
+  },
+  "result_mapping": {
+    "result_binding": "inspection_result",
+    "result_mode": "accepted-then-query"
+  },
+  "default_execution_metadata": {
+    "scenario": "plc-register-modbus-tcp-async-result-record",
+    "trigger_source": "plc-register",
+    "trace_level": "none",
+    "retain_trace_enabled": false,
+    "retain_node_records_enabled": false
+  },
+  "ack_policy": "ack-after-run-created",
+  "result_mode": "accepted-then-query",
+  "debounce_window_ms": 0,
+  "idempotency_key_path": "payload.sequence_id",
+  "metadata": {
+    "example_kind": "plc-register-modbus-tcp-async-result-record",
+    "line_id": "line-a"
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "input_bindings": {
+    "request_trigger_payload": {
+      "matched": true,
+      "observed_value": 5,
+      "previous_observed_value": 1,
+      "register_address": "400101",
+      "address_family": "holding_register",
+      "data_type": "uint16",
+      "host": "192.168.10.20",
+      "port": 502,
+      "unit_id": 1,
+      "sequence_id": 12,
+      "response_meta": {
+        "function_code": 3,
+        "register_count": 1
+      }
+    },
+    "request_trigger_event": {
+      "trigger_source_id": "plc-trigger-source-08",
+      "trigger_kind": "plc-register",
+      "event_id": "plc-line-a-event-000012",
+      "occurred_at": "2026-06-09T09:00:00Z",
+      "idempotency_key": "12"
+    }
+  },
+  "execution_metadata": {
+    "scenario": "plc-register-modbus-tcp-async-result-record",
+    "trigger_source": "async-api"
+  }
+}

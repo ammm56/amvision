@@ -32,6 +32,10 @@ from backend.service.domain.workflows.workflow_runtime_records import WorkflowRu
 from backend.service.domain.workflows.workflow_trigger_source_records import (
     WorkflowTriggerSource,
 )
+from backend.service.infrastructure.integrations.modbus import (
+    ModbusBitsReadResponse,
+    PlcRegisterTriggerAdapter,
+)
 from backend.service.infrastructure.integrations.zeromq import ZeroMqTriggerAdapter
 
 
@@ -314,12 +318,132 @@ def test_zeromq_trigger_adapter_serves_req_rep_message() -> None:
     assert adapter_health["submitted_count"] == 1
 
 
+def test_plc_register_trigger_adapter_polls_and_submits_event(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """验证 PLC trigger adapter 可以轮询寄存器并提交标准化事件。"""
+
+    class _MatchedCoilClient:
+        """测试用匹配成功的 Modbus client。"""
+
+        def __init__(self, host: str, *, port: int, timeout: float, retries: int) -> None:
+            """记录连接参数。"""
+
+            self.host = host
+            self.port = port
+            self.timeout = timeout
+            self.retries = retries
+
+        def close(self) -> None:
+            """关闭测试 client。"""
+
+        def read_coils(
+            self,
+            address: int,
+            *,
+            count: int,
+            device_id: int,
+        ) -> ModbusBitsReadResponse:
+            """返回固定命中的 coil 响应。"""
+
+            return ModbusBitsReadResponse(
+                bits=[True],
+                address=address,
+                count=count,
+                dev_id=device_id,
+                transaction_id=1,
+                function_code=1,
+                retries=0,
+            )
+
+    monkeypatch.setattr(
+        "backend.service.infrastructure.integrations.modbus.plc_register_trigger_adapter.ProjectModbusTcpClient",
+        _MatchedCoilClient,
+    )
+
+    trigger_source = _build_trigger_source(
+        trigger_kind="plc-register",
+        input_binding_mapping={"request_signal": {"source": "payload.observed_value"}},
+        transport_config={
+            "driver": "modbus-tcp",
+            "host": "127.0.0.1",
+            "port": 502,
+            "unit_id": 1,
+            "register_address": "00001",
+            "data_type": "bool",
+            "poll_interval_ms": 20,
+            "reconnect_interval_ms": 20,
+        },
+        match_rule={
+            "operator": "eq",
+            "expected_value": True,
+            "stable_match_count": 1,
+            "trigger_mode": "enter-match",
+            "emit_initial_match": True,
+        },
+    )
+    adapter = PlcRegisterTriggerAdapter()
+    submitter = _FakeWorkflowSubmitter()
+    supervisor = TriggerSourceSupervisor(
+        adapters={"plc-register": _FakeProtocolAdapter(adapter_kind="plc-register")},
+        workflow_submitter=submitter,
+    )
+
+    adapter.start(trigger_source=trigger_source, event_handler=supervisor)
+    try:
+        deadline = time.monotonic() + 2.0
+        while time.monotonic() < deadline and submitter.last_request is None:
+            time.sleep(0.01)
+        health = adapter.get_health(trigger_source_id="trigger-source-1")
+    finally:
+        adapter.stop(trigger_source_id="trigger-source-1")
+
+    assert submitter.last_request is not None
+    assert submitter.last_request.trigger_event.payload["observed_value"] is True
+    assert submitter.last_request.trigger_event.payload["register_address"] == "00001"
+    assert submitter.last_request.trigger_event.payload["sequence_id"] == 1
+    assert health["running"] is True
+    assert health["match_count"] == 1
+    assert health["submitted_count"] == 1
+
+
+def test_plc_register_trigger_adapter_rejects_sync_submit_mode() -> None:
+    """验证 PLC trigger adapter 当前拒绝 sync submit_mode。"""
+
+    trigger_source = _build_trigger_source(
+        trigger_kind="plc-register",
+        submit_mode="sync",
+        transport_config={
+            "driver": "modbus-tcp",
+            "host": "127.0.0.1",
+            "register_address": "00001",
+            "data_type": "bool",
+        },
+        match_rule={"operator": "eq", "expected_value": True},
+    )
+    adapter = PlcRegisterTriggerAdapter()
+
+    with pytest.raises(InvalidRequestError) as error_info:
+        adapter.start(
+            trigger_source=trigger_source,
+            event_handler=TriggerSourceSupervisor(
+                adapters={
+                    "plc-register": _FakeProtocolAdapter(adapter_kind="plc-register")
+                },
+                workflow_submitter=_FakeWorkflowSubmitter(),
+            ),
+        )
+
+    assert error_info.value.details["submit_mode"] == "sync"
+
+
 def _build_trigger_source(
     *,
     trigger_kind: str = "http-api",
     submit_mode: str = "async",
     input_binding_mapping: dict[str, object] | None = None,
     transport_config: dict[str, object] | None = None,
+    match_rule: dict[str, object] | None = None,
 ) -> WorkflowTriggerSource:
     """构建测试使用的 WorkflowTriggerSource。"""
 
@@ -331,6 +455,7 @@ def _build_trigger_source(
         workflow_runtime_id="workflow-runtime-1",
         submit_mode=submit_mode,
         transport_config=dict(transport_config or {}),
+        match_rule=dict(match_rule or {}),
         input_binding_mapping=input_binding_mapping
         or {
             "request_image": {"source": "payload.request.image"},

@@ -79,6 +79,9 @@ from backend.service.application.runtime.yolox_deployment_process_supervisor imp
 from backend.service.application.runtime.yolox_predictor import YoloXPredictionRequest
 from backend.service.infrastructure.db.schema import initialize_database_schema
 from backend.service.infrastructure.db.session import SessionFactory
+from backend.service.infrastructure.integrations.modbus import (
+    PlcRegisterTriggerAdapter,
+)
 from backend.service.infrastructure.integrations.zeromq import ZeroMqTriggerAdapter
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     LocalDatasetStorage,
@@ -500,6 +503,7 @@ class BackendServiceBootstrap(
         )
         trigger_source_supervisor = TriggerSourceSupervisor(
             adapters={
+                "plc-register": PlcRegisterTriggerAdapter(),
                 "zeromq-topic": ZeroMqTriggerAdapter(
                     local_buffer_writer=local_buffer_broker_supervisor
                 )

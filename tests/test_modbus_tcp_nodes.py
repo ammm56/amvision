@@ -8,15 +8,15 @@ import pytest
 
 from backend.service.application.errors import OperationTimeoutError
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
+from backend.service.infrastructure.integrations.modbus import (
+    ModbusBitsReadResponse,
+    ModbusRegistersReadResponse,
+    ModbusWriteResponse,
+)
 from custom_nodes.plc_modbus_tcp_nodes.backend.nodes import (
     read_value,
     wait_condition,
     write_value,
-)
-from custom_nodes.plc_modbus_tcp_nodes.backend.nodes._modbus_tcp import (
-    ModbusBitsReadResponse,
-    ModbusRegistersReadResponse,
-    ModbusWriteResponse,
 )
 import custom_nodes.plc_modbus_tcp_nodes.backend.nodes._runtime as modbus_runtime
 

@@ -19,7 +19,7 @@ from backend.service.application.errors import (
     ServiceError,
 )
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
-from custom_nodes.plc_modbus_tcp_nodes.backend.nodes._modbus_tcp import (
+from backend.service.infrastructure.integrations.modbus import (
     ModbusBitsReadResponse,
     ModbusRegistersReadResponse,
     ModbusTcpConnectionError,

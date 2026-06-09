@@ -145,6 +145,58 @@ ZeroMQ TriggerSource 示例不把机器相关的 `path`、`offset` 和 `broker_e
 - `build_ack_write_request` 会把 `wait_result` 注入写入请求对象里的 `wait_context` 字段，主要作用是显式建立“先等后写”的执行依赖，同时便于后续排障追踪
 - `http-post.url` 当前是示例回调地址，导入后应先改成现场真实接口，再执行
 
+## PLC TriggerSource 回传样例
+
+- `plc_register_modbus_tcp_async_result_record.template.json`
+- `plc_register_modbus_tcp_async_result_record.application.json`
+
+这组样例聚焦 `plc-register` TriggerSource 的正式使用面，不再让 workflow 内节点自己轮询 PLC：
+
+- TriggerSource 负责 `modbus-tcp + polling + match_rule + async submit`
+- workflow app 只接收标准化后的寄存器事件
+- 图内把事件收成 `result-record`，再通过 `http-post` 回传到现场系统
+
+### plc_register_modbus_tcp_async_result_record
+
+链路固定为：
+
+- `payload-to-value(request_trigger_payload)`
+- `payload-to-value(request_trigger_event)`
+- `value-field-extract`
+- `compare`
+- `ok-ng-decision`
+- `alarm-condition`
+- `result-record`
+- `http-post`
+
+输入约定：
+
+- `request_trigger_payload`：`response-body.v1`
+  - 来自 `plc-register` 的 `payload`
+  - 示例：`{"matched":true,"observed_value":5,"register_address":"400101","sequence_id":12}`
+- `request_trigger_event`：`response-body.v1`
+  - 来自标准化后的 `event`
+  - 示例：`{"trigger_source_id":"plc-trigger-source-08","event_id":"plc-line-a-event-000012","occurred_at":"2026-06-09T09:00:00Z"}`
+
+输出约定：
+
+- `inspection_result`：`result-record.v1`
+- `inspection_alarm`：`alarm-record.v1`
+- `decision_summary`：`value.v1`
+- `callback_response`：`value.v1`
+
+适用场景：
+
+- PLC 位或状态字命中后，直接触发一条正式 workflow，再把结果回传给 MES、上位机或现场服务
+- 希望把 TriggerSource 的轮询职责和 workflow 图内的业务处理职责明确拆开
+- 需要一条 checked-in 的 `plc-register -> workflow app runtime -> result-record -> http-post` 正式样例
+
+注意事项：
+
+- 这条样例当前故意把两个输入都定义成 `response-body.v1`，再在图内用 `payload-to-value` 显式桥接；原因是 TriggerSource 的 `input_binding_mapping` 当前只负责读取原始 `payload / event` 对象，不会自动包成 `value.v1`
+- 如果后续 TriggerSource 层补了“按目标 payload_type_id 自动包装”的能力，这条样例可以再收敛回直接使用 `value.v1` 输入
+- `http-post.url` 当前是示例回调地址，导入后应先改成现场真实接口，再执行
+
 ## 工业单帧规则样例
 
 - `industrial_single_frame_sealant_quality_gate.template.json`
