@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import time
 from types import SimpleNamespace
 
 import numpy as np
@@ -22,8 +23,10 @@ from custom_nodes.camera_usb_uvc_nodes.backend.nodes import (
     enumerate_devices,
     get_parameter,
     open_device,
+    read_window,
     read_latest_frame,
     set_parameter,
+    start_stream,
 )
 
 
@@ -479,6 +482,134 @@ def test_usb_camera_session_nodes_support_execution_scoped_registry(monkeypatch)
 
     assert read_output["summary"]["value"]["successful_reads_total"] == 1
     assert close_output["result"]["value"]["closed"] is True
+    assert capture.released is True
+
+
+def test_usb_camera_stream_nodes_produce_frame_window_and_reuse_buffer(monkeypatch) -> None:
+    """验证 start-stream / read-window / read-latest-frame 能围绕同一流缓冲协同工作。"""
+
+    frames = [np.zeros((36, 48, 3), dtype=np.uint8) for _ in range(6)]
+    capture = _FakeCapture(frames=[(True, frame) for frame in frames])
+    runtime_scope = _RuntimeScope()
+    image_registry = ExecutionImageRegistry()
+
+    monkeypatch.setattr(camera_support, "require_opencv_imports", lambda: (_FakeCv2Module, np))
+    monkeypatch.setattr(camera_support, "create_video_capture", lambda *, source, api_preference: capture)
+
+    opened_session = open_device.handle_node(
+        WorkflowNodeExecutionRequest(
+            node_id="open-camera-stream-node",
+            node_definition=SimpleNamespace(node_type_id=open_device.NODE_TYPE_ID),
+            parameters={"device_index": 0, "probe_frame": False},
+            input_values={},
+            runtime_context=runtime_scope,
+        )
+    )["session"]
+
+    started_output = start_stream.handle_node(
+        WorkflowNodeExecutionRequest(
+            node_id="start-camera-stream-node",
+            node_definition=SimpleNamespace(node_type_id=start_stream.NODE_TYPE_ID),
+            parameters={
+                "buffer_capacity": 4,
+                "failure_retry_delay_ms": 5,
+            },
+            input_values={"session": opened_session},
+            runtime_context=runtime_scope,
+        )
+    )
+    started_session = started_output["session"]
+    started_summary = started_output["summary"]["value"]
+
+    def _stream_is_ready() -> bool:
+        stream_values = get_parameter.handle_node(
+            WorkflowNodeExecutionRequest(
+                node_id="get-camera-stream-state-node",
+                node_definition=SimpleNamespace(node_type_id=get_parameter.NODE_TYPE_ID),
+                parameters={
+                    "parameter_names": [
+                        "stream_active",
+                        "stream_worker_alive",
+                        "stream_buffer_count",
+                        "stream_last_frame_index",
+                        "successful_reads_total",
+                    ]
+                },
+                input_values={"session": started_session},
+                runtime_context=runtime_scope,
+            )
+        )["result"]["value"]["values"]
+        return (
+            stream_values["stream_active"] is True
+            and stream_values["stream_worker_alive"] is True
+            and stream_values["stream_buffer_count"] == 4
+            and stream_values["stream_last_frame_index"] == 5
+            and stream_values["successful_reads_total"] >= 6
+        )
+
+    deadline = time.monotonic() + 1.0
+    while time.monotonic() < deadline and not _stream_is_ready():
+        time.sleep(0.01)
+    assert _stream_is_ready() is True
+
+    read_output = read_latest_frame.handle_node(
+        WorkflowNodeExecutionRequest(
+            node_id="read-camera-stream-latest-node",
+            node_definition=SimpleNamespace(node_type_id=read_latest_frame.NODE_TYPE_ID),
+            parameters={"output_format": "png"},
+            input_values={"session": started_session},
+            execution_metadata={"execution_image_registry": image_registry},
+            runtime_context=runtime_scope,
+        )
+    )
+    read_summary = read_output["summary"]["value"]
+    assert read_summary["from_stream_buffer"] is True
+    assert read_summary["successful_reads"] == 0
+    assert image_registry.read_bytes(str(read_output["image"]["image_handle"])).startswith(b"\x89PNG\r\n\x1a\n")
+
+    frame_window_output = read_window.handle_node(
+        WorkflowNodeExecutionRequest(
+            node_id="read-camera-window-node",
+            node_definition=SimpleNamespace(node_type_id=read_window.NODE_TYPE_ID),
+            parameters={
+                "max_frames": 3,
+                "sample_mode": "head",
+                "wait_for_min_frames": 3,
+                "wait_timeout_seconds": 0.1,
+                "output_format": "png",
+            },
+            input_values={"session": started_session},
+            execution_metadata={"execution_image_registry": image_registry},
+            runtime_context=runtime_scope,
+        )
+    )
+
+    frames_payload = frame_window_output["frames"]
+    frame_summary = frame_window_output["summary"]["value"]
+    assert started_summary["started"] is True
+    assert started_summary["already_active"] is False
+    assert frames_payload["count"] == 3
+    assert frames_payload["window_start_index"] == 2
+    assert frames_payload["window_end_index"] == 4
+    assert [item["frame_index"] for item in frames_payload["items"]] == [2, 3, 4]
+    assert frame_summary["sample_mode"] == "head"
+    assert frame_summary["frame_indexes"] == [2, 3, 4]
+    assert frame_window_output["session"]["stream_buffer_count"] == 4
+    for item in frames_payload["items"]:
+        assert image_registry.read_bytes(str(item["image"]["image_handle"])).startswith(b"\x89PNG\r\n\x1a\n")
+
+    close_output = close_device.handle_node(
+        WorkflowNodeExecutionRequest(
+            node_id="close-camera-stream-node",
+            node_definition=SimpleNamespace(node_type_id=close_device.NODE_TYPE_ID),
+            parameters={},
+            input_values={"session": frame_window_output["session"]},
+            runtime_context=runtime_scope,
+        )
+    )
+
+    assert close_output["result"]["value"]["closed"] is True
+    assert close_output["result"]["value"]["stream_was_active"] is True
     assert capture.released is True
 
 

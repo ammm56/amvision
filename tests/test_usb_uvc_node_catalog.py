@@ -40,6 +40,8 @@ def test_repository_usb_uvc_node_pack_is_enabled_by_default() -> None:
         "custom.camera.usb.enumerate-devices",
         "custom.camera.usb.capture-frame",
         "custom.camera.usb.open-device",
+        "custom.camera.usb.start-stream",
+        "custom.camera.usb.read-window",
         "custom.camera.usb.read-latest-frame",
         "custom.camera.usb.get-parameter",
         "custom.camera.usb.set-parameter",

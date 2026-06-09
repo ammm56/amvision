@@ -9,6 +9,8 @@
     "enumerate-devices",
     "capture-frame",
     "open-device",
+    "start-stream",
+    "read-window",
     "read-latest-frame",
     "get-parameter",
     "set-parameter",

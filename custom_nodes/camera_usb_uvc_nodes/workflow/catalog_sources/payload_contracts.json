@@ -66,6 +66,36 @@
         },
         "last_frame_channels": {
           "type": "integer"
+        },
+        "stream_active": {
+          "type": "boolean"
+        },
+        "stream_worker_alive": {
+          "type": "boolean"
+        },
+        "stream_started_at": {
+          "type": "string"
+        },
+        "stream_buffer_capacity": {
+          "type": "integer"
+        },
+        "stream_buffer_count": {
+          "type": "integer"
+        },
+        "stream_target_fps": {
+          "type": "number"
+        },
+        "stream_failure_retry_delay_ms": {
+          "type": "integer"
+        },
+        "stream_last_frame_index": {
+          "type": "integer"
+        },
+        "stream_last_timestamp_ms": {
+          "type": "number"
+        },
+        "stream_last_error": {
+          "type": "string"
         }
       },
       "required": [

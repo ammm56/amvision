@@ -68,6 +68,36 @@
           },
           "last_frame_channels": {
             "type": "integer"
+          },
+          "stream_active": {
+            "type": "boolean"
+          },
+          "stream_worker_alive": {
+            "type": "boolean"
+          },
+          "stream_started_at": {
+            "type": "string"
+          },
+          "stream_buffer_capacity": {
+            "type": "integer"
+          },
+          "stream_buffer_count": {
+            "type": "integer"
+          },
+          "stream_target_fps": {
+            "type": "number"
+          },
+          "stream_failure_retry_delay_ms": {
+            "type": "integer"
+          },
+          "stream_last_frame_index": {
+            "type": "integer"
+          },
+          "stream_last_timestamp_ms": {
+            "type": "number"
+          },
+          "stream_last_error": {
+            "type": "string"
           }
         },
         "required": [
@@ -712,6 +742,130 @@
     },
     {
       "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.camera.usb.read-window",
+      "display_name": "Read USB/UVC Window",
+      "category": "camera.usb",
+      "description": "从已启动采流的 USB / UVC 相机会话缓冲中读取一段 frame-window.v1，供视频预览、时序分割和后续视频链复用。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "input_ports": [
+        {
+          "name": "session",
+          "display_name": "Session",
+          "payload_type_id": "camera-session.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "request",
+          "display_name": "Request",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": false,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "session",
+          "display_name": "Session",
+          "payload_type_id": "camera-session.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "frames",
+          "display_name": "Frames",
+          "payload_type_id": "frame-window.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "summary",
+          "display_name": "Summary",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "max_frames": {
+            "type": "integer",
+            "title": "Max Frames",
+            "default": 8,
+            "minimum": 1
+          },
+          "sample_mode": {
+            "type": "string",
+            "title": "Sample Mode",
+            "default": "tail",
+            "enum": [
+              "tail",
+              "head",
+              "uniform"
+            ]
+          },
+          "wait_for_min_frames": {
+            "type": "integer",
+            "title": "Wait For Min Frames",
+            "default": 1,
+            "minimum": 1
+          },
+          "wait_timeout_seconds": {
+            "type": "number",
+            "title": "Wait Timeout Seconds",
+            "default": 1.0,
+            "minimum": 0
+          },
+          "output_format": {
+            "type": "string",
+            "title": "Output Format",
+            "default": "png",
+            "enum": [
+              "png",
+              "jpeg"
+            ]
+          },
+          "jpeg_quality": {
+            "type": "integer",
+            "title": "JPEG Quality",
+            "default": 95,
+            "minimum": 1,
+            "maximum": 100
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "integration.camera",
+        "integration.camera.usb-uvc",
+        "vision.video.window"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "camera.usb-uvc-nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {
+        "phase": "implemented"
+      }
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
       "node_type_id": "custom.camera.usb.set-parameter",
       "display_name": "Set USB/UVC Parameter",
       "category": "camera.usb",
@@ -799,6 +953,99 @@
       "metadata": {
         "phase": "implemented"
       }
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.camera.usb.start-stream",
+      "display_name": "Start USB/UVC Stream",
+      "category": "camera.usb",
+      "description": "为已打开的 USB / UVC 相机会话启动后台采流线程，并把帧缓冲为后续视频窗口读取做准备。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "input_ports": [
+        {
+          "name": "session",
+          "display_name": "Session",
+          "payload_type_id": "camera-session.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "request",
+          "display_name": "Request",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": false,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "session",
+          "display_name": "Session",
+          "payload_type_id": "camera-session.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "summary",
+          "display_name": "Summary",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "buffer_capacity": {
+            "type": "integer",
+            "title": "Buffer Capacity",
+            "default": 16,
+            "minimum": 1
+          },
+          "target_fps": {
+            "type": "number",
+            "title": "Target FPS",
+            "exclusiveMinimum": 0
+          },
+          "failure_retry_delay_ms": {
+            "type": "integer",
+            "title": "Failure Retry Delay (ms)",
+            "default": 50,
+            "minimum": 0
+          },
+          "restart_if_active": {
+            "type": "boolean",
+            "title": "Restart If Active",
+            "default": false
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "integration.camera",
+        "integration.camera.usb-uvc",
+        "vision.video.stream"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "camera.usb-uvc-nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {
+        "phase": "implemented"
+      }
     }
   ],
   "metadata": {
@@ -812,6 +1059,8 @@
       "enumerate-devices",
       "capture-frame",
       "open-device",
+      "start-stream",
+      "read-window",
       "read-latest-frame",
       "get-parameter",
       "set-parameter",

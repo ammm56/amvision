@@ -109,9 +109,9 @@
 当前已落地：
 
 - `custom_nodes/camera_usb_uvc_nodes/` 已作为第一层相机 custom node pack 落地，并默认启用
-- 当前前两批节点已收口为 `custom.camera.usb.enumerate-devices`、`custom.camera.usb.capture-frame`、`custom.camera.usb.open-device`、`custom.camera.usb.read-latest-frame`、`custom.camera.usb.get-parameter`、`custom.camera.usb.set-parameter` 与 `custom.camera.usb.close-device`
+- 当前前三批节点已收口为 `custom.camera.usb.enumerate-devices`、`custom.camera.usb.capture-frame`、`custom.camera.usb.open-device`、`custom.camera.usb.start-stream`、`custom.camera.usb.read-window`、`custom.camera.usb.read-latest-frame`、`custom.camera.usb.get-parameter`、`custom.camera.usb.set-parameter` 与 `custom.camera.usb.close-device`
 - 当前实现边界保持在项目内 `OpenCV VideoCapture` 适配层，不依赖厂商 SDK、`projectsrc/` 目录或额外 Python 相机包
-- 当前已经支持会话型单帧重复采图与基础参数控制；后台流式 `start-stream`、更持续的 `read-window` 和更细参数族仍保留为下一阶段
+- 当前已经支持会话型单帧重复采图、基础参数控制与后台采流窗口读取；后续重点转向更细参数族、目录/触发源接入与非 UVC 相机层
 
 ### 二、PLC
 
@@ -258,8 +258,9 @@
 - `custom.camera.usb.enumerate-devices`（已实现）
 - `custom.camera.usb.open-device`（已实现）
 - `custom.camera.usb.capture-frame`（已实现）
-- `custom.camera.usb.start-stream`
+- `custom.camera.usb.start-stream`（已实现）
 - `custom.camera.usb.read-latest-frame`（已实现）
+- `custom.camera.usb.read-window`（已实现）
 - `custom.camera.usb.close-device`（已实现）
 - `custom.camera.usb.get-parameter`（已实现）
 - `custom.camera.usb.set-parameter`（已实现）
@@ -911,7 +912,7 @@ PLC 能力也应至少拆成两类：
 
 ### 第一阶段
 
-- `custom.camera.usb_uvc_nodes`（前两批已实现：`enumerate-devices / capture-frame / open-device / read-latest-frame / get-parameter / set-parameter / close-device`）
+- `custom.camera.usb_uvc_nodes`（前三批已实现：`enumerate-devices / capture-frame / open-device / start-stream / read-window / read-latest-frame / get-parameter / set-parameter / close-device`）
 - `custom.plc.modbus_tcp_nodes`
 - `custom.opencv.grayscale / resize / adaptive-threshold / otsu-threshold`（已实现）
 - `custom.opencv.hough-lines / hough-circles`（已实现）

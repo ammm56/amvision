@@ -16,18 +16,19 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
     cv2_module, _ = support.require_opencv_imports()
     _session_payload, session_entry = support.require_camera_session_entry(request)
     config = support.resolve_session_read_config(request)
-    frame, successful_reads = support.read_last_frame(
-        session_entry.capture,
-        warmup_frame_count=config.warmup_frame_count,
-        retry_read_count=config.retry_read_count,
-        node_id=request.node_id,
-        source_details={"session_handle": session_entry.session_handle},
+    frame, successful_reads, from_stream_buffer = support.read_camera_session_latest_frame(
+        request,
+        entry=session_entry,
+        config=config,
     )
-    frame_width, frame_height, channels = support.update_camera_session_read_state(
-        session_entry,
-        frame=frame,
-        successful_reads=successful_reads,
-    )
+    if from_stream_buffer:
+        frame_width, frame_height, channels = support.get_frame_dimensions(frame)
+    else:
+        frame_width, frame_height, channels = support.update_camera_session_read_state(
+            session_entry,
+            frame=frame,
+            successful_reads=successful_reads,
+        )
     encoded_frame, media_type = support.encode_frame_bytes(
         frame=frame,
         output_format=config.output_format,
@@ -53,6 +54,7 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
             "frame_width": frame_width,
             "frame_height": frame_height,
             "channels": channels,
+            "from_stream_buffer": from_stream_buffer,
             "output_format": config.output_format,
             "media_type": media_type,
             "transport_kind": image_payload.get("transport_kind"),

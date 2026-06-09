@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+from collections import deque
 import math
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from threading import Lock
+from threading import Condition, Event, Lock, RLock, Thread
+from time import monotonic
 from typing import Any
 from uuid import uuid4
 from weakref import WeakKeyDictionary
@@ -23,6 +25,7 @@ BACKEND_PREFERENCE_VALUES: tuple[str, ...] = (
     "gstreamer",
 )
 OUTPUT_FORMAT_VALUES: tuple[str, ...] = ("png", "jpeg")
+STREAM_SAMPLE_MODE_VALUES: tuple[str, ...] = ("tail", "head", "uniform")
 CAMERA_SESSION_REGISTRY_METADATA_KEY = "usb_camera_session_registry"
 
 
@@ -72,6 +75,16 @@ CAMERA_PARAMETER_NAME_VALUES: tuple[str, ...] = tuple(
             "last_frame_width",
             "last_frame_height",
             "last_frame_channels",
+            "stream_active",
+            "stream_worker_alive",
+            "stream_started_at",
+            "stream_buffer_capacity",
+            "stream_buffer_count",
+            "stream_target_fps",
+            "stream_failure_retry_delay_ms",
+            "stream_last_frame_index",
+            "stream_last_timestamp_ms",
+            "stream_last_error",
         )
     )
 )
@@ -168,6 +181,28 @@ class UsbCameraSessionReadConfig:
 
 
 @dataclass(frozen=True)
+class UsbCameraStartStreamConfig:
+    """描述 start-stream 节点的最终运行配置。"""
+
+    buffer_capacity: int
+    target_fps: float | None
+    failure_retry_delay_ms: int
+    restart_if_active: bool
+
+
+@dataclass(frozen=True)
+class UsbCameraReadWindowConfig:
+    """描述 read-window 节点的最终运行配置。"""
+
+    max_frames: int
+    sample_mode: str
+    wait_for_min_frames: int
+    wait_timeout_seconds: float
+    output_format: str
+    jpeg_quality: int
+
+
+@dataclass(frozen=True)
 class UsbCameraGetParametersConfig:
     """描述 get-parameter 节点的最终运行配置。"""
 
@@ -180,6 +215,19 @@ class UsbCameraSetParametersConfig:
 
     parameter_values: dict[str, object]
     verify_after_set: bool
+
+
+@dataclass
+class UsbCameraBufferedFrame:
+    """描述一帧保存在内存环形缓冲中的图像。"""
+
+    frame_index: int
+    timestamp_ms: float
+    frame: object
+    width: int
+    height: int
+    channels: int
+    captured_at: str
 
 
 @dataclass
@@ -203,6 +251,26 @@ class UsbCameraSessionEntry:
     last_frame_width: int | None = None
     last_frame_height: int | None = None
     last_frame_channels: int | None = None
+    capture_lock: RLock = field(default_factory=RLock, repr=False)
+    stream_state_lock: RLock = field(default_factory=RLock, repr=False)
+    stream_condition: Condition = field(init=False, repr=False)
+    stream_thread: Thread | None = field(default=None, repr=False)
+    stream_stop_event: Event | None = field(default=None, repr=False)
+    stream_buffer: deque[UsbCameraBufferedFrame] = field(default_factory=deque, repr=False)
+    stream_active: bool = False
+    stream_started_at: str | None = None
+    stream_started_monotonic: float | None = None
+    stream_buffer_capacity: int = 0
+    stream_target_fps: float | None = None
+    stream_failure_retry_delay_ms: int = 50
+    stream_last_frame_index: int | None = None
+    stream_last_timestamp_ms: float | None = None
+    stream_last_error: str | None = None
+
+    def __post_init__(self) -> None:
+        """初始化与流线程共享的条件变量。"""
+
+        self.stream_condition = Condition(self.stream_state_lock)
 
 
 @dataclass
@@ -240,6 +308,7 @@ class UsbCameraSessionRegistry:
             entries = tuple(self._entries.values())
             self._entries.clear()
         for entry in entries:
+            stop_camera_session_stream(entry, clear_buffer=True)
             safe_release_capture(entry.capture)
 
 
@@ -438,6 +507,82 @@ def resolve_get_parameters_config(request: WorkflowNodeExecutionRequest) -> UsbC
     )
     return UsbCameraGetParametersConfig(
         parameter_names=tuple(require_parameter_name_list(raw_parameter_names))
+    )
+
+
+def resolve_start_stream_config(request: WorkflowNodeExecutionRequest) -> UsbCameraStartStreamConfig:
+    """从节点参数与可选 request 输入解析 start-stream 配置。"""
+
+    request_override = require_optional_request_object(request.input_values.get("request"))
+    target_fps_value = request_override.get("target_fps", request.parameters.get("target_fps"))
+    return UsbCameraStartStreamConfig(
+        buffer_capacity=require_positive_int(
+            request_override.get("buffer_capacity", request.parameters.get("buffer_capacity", 16)),
+            field_name="buffer_capacity",
+        ),
+        target_fps=require_optional_positive_float(target_fps_value, field_name="target_fps"),
+        failure_retry_delay_ms=require_non_negative_int(
+            request_override.get(
+                "failure_retry_delay_ms",
+                request.parameters.get("failure_retry_delay_ms", 50),
+            ),
+            field_name="failure_retry_delay_ms",
+        ),
+        restart_if_active=require_bool(
+            request_override.get(
+                "restart_if_active",
+                request.parameters.get("restart_if_active", False),
+            ),
+            field_name="restart_if_active",
+        ),
+    )
+
+
+def resolve_read_window_config(request: WorkflowNodeExecutionRequest) -> UsbCameraReadWindowConfig:
+    """从节点参数与可选 request 输入解析 read-window 配置。"""
+
+    request_override = require_optional_request_object(request.input_values.get("request"))
+    sample_mode = require_string(
+        request_override.get("sample_mode", request.parameters.get("sample_mode", "tail")),
+        field_name="sample_mode",
+    ).lower()
+    if sample_mode not in STREAM_SAMPLE_MODE_VALUES:
+        raise InvalidRequestError(
+            "sample_mode 不在支持列表中",
+            details={"allowed_values": list(STREAM_SAMPLE_MODE_VALUES)},
+        )
+    wait_timeout_raw = request_override.get(
+        "wait_timeout_seconds",
+        request.parameters.get("wait_timeout_seconds", 1.0),
+    )
+    return UsbCameraReadWindowConfig(
+        max_frames=require_positive_int(
+            request_override.get("max_frames", request.parameters.get("max_frames", 8)),
+            field_name="max_frames",
+        ),
+        sample_mode=sample_mode,
+        wait_for_min_frames=require_positive_int(
+            request_override.get(
+                "wait_for_min_frames",
+                request.parameters.get("wait_for_min_frames", 1),
+            ),
+            field_name="wait_for_min_frames",
+        ),
+        wait_timeout_seconds=float(
+            require_positive_or_zero_number(
+                wait_timeout_raw,
+                field_name="wait_timeout_seconds",
+            )
+        ),
+        output_format=resolve_output_format(
+            request_override.get("output_format", request.parameters.get("output_format", "png"))
+        ),
+        jpeg_quality=require_uint8_range(
+            request_override.get("jpeg_quality", request.parameters.get("jpeg_quality", 95)),
+            field_name="jpeg_quality",
+            minimum=1,
+            maximum=100,
+        ),
     )
 
 
@@ -643,6 +788,376 @@ def build_captured_image_payload(
     )
 
 
+def start_camera_session_stream(
+    entry: UsbCameraSessionEntry,
+    *,
+    config: UsbCameraStartStreamConfig,
+) -> dict[str, object]:
+    """启动或重启当前相机会话的后台采流线程。"""
+
+    was_active = is_camera_session_stream_active(entry)
+    if was_active and not config.restart_if_active:
+        summary = build_camera_session_summary(entry, operation="start_stream")
+        summary["started"] = False
+        summary["already_active"] = True
+        return summary
+
+    if was_active:
+        stop_camera_session_stream(entry, clear_buffer=True)
+
+    stop_event = Event()
+    thread = Thread(
+        target=_camera_session_stream_worker,
+        kwargs={
+            "entry": entry,
+            "stop_event": stop_event,
+        },
+        daemon=True,
+        name=f"usb-camera-stream-{entry.session_handle}",
+    )
+    with entry.stream_condition:
+        entry.stream_buffer_capacity = config.buffer_capacity
+        entry.stream_buffer = deque(maxlen=config.buffer_capacity)
+        entry.stream_target_fps = config.target_fps
+        entry.stream_failure_retry_delay_ms = config.failure_retry_delay_ms
+        entry.stream_started_at = _now_isoformat()
+        entry.stream_started_monotonic = monotonic()
+        entry.stream_last_frame_index = None
+        entry.stream_last_timestamp_ms = None
+        entry.stream_last_error = None
+        entry.stream_stop_event = stop_event
+        entry.stream_thread = thread
+        entry.stream_active = True
+        entry.stream_condition.notify_all()
+    thread.start()
+
+    summary = build_camera_session_summary(entry, operation="start_stream")
+    summary["started"] = True
+    summary["already_active"] = False
+    summary["restarted"] = was_active
+    return summary
+
+
+def stop_camera_session_stream(
+    entry: UsbCameraSessionEntry,
+    *,
+    clear_buffer: bool,
+) -> bool:
+    """停止当前相机会话的后台采流线程。"""
+
+    with entry.stream_condition:
+        stop_event = entry.stream_stop_event
+        thread = entry.stream_thread
+        was_active = bool(
+            entry.stream_active
+            or (thread is not None and thread.is_alive())
+            or stop_event is not None
+        )
+        entry.stream_stop_event = None
+        entry.stream_thread = None
+        entry.stream_active = False
+        entry.stream_condition.notify_all()
+
+    if stop_event is not None:
+        stop_event.set()
+    if thread is not None and thread.is_alive():
+        thread.join(timeout=2.0)
+
+    with entry.stream_condition:
+        if clear_buffer:
+            entry.stream_buffer.clear()
+        entry.stream_condition.notify_all()
+    return was_active
+
+
+def is_camera_session_stream_active(entry: UsbCameraSessionEntry) -> bool:
+    """判断当前会话的后台采流线程是否仍处于活动状态。"""
+
+    with entry.stream_condition:
+        thread = entry.stream_thread
+        stop_event = entry.stream_stop_event
+        is_active = bool(
+            entry.stream_active
+            and thread is not None
+            and thread.is_alive()
+            and stop_event is not None
+            and not stop_event.is_set()
+        )
+        if not is_active and entry.stream_active:
+            entry.stream_active = False
+        return is_active
+
+
+def read_camera_session_latest_frame(
+    request: WorkflowNodeExecutionRequest,
+    *,
+    entry: UsbCameraSessionEntry,
+    config: UsbCameraSessionReadConfig,
+) -> tuple[Any, int, bool]:
+    """优先从流缓冲读取最新一帧；没有缓冲时再直接读 capture。"""
+
+    buffered_frame = get_camera_session_latest_buffered_frame(entry)
+    if buffered_frame is not None:
+        return buffered_frame.frame, 0, True
+
+    with entry.capture_lock:
+        frame, successful_reads = read_last_frame(
+            entry.capture,
+            warmup_frame_count=config.warmup_frame_count,
+            retry_read_count=config.retry_read_count,
+            node_id=request.node_id,
+            source_details={"session_handle": entry.session_handle},
+        )
+    return frame, successful_reads, False
+
+
+def read_camera_session_window(
+    request: WorkflowNodeExecutionRequest,
+    *,
+    entry: UsbCameraSessionEntry,
+    config: UsbCameraReadWindowConfig,
+    cv2_module: Any,
+) -> tuple[dict[str, object], dict[str, object]]:
+    """从当前采流缓冲中读取一段 frame-window.v1。"""
+
+    if not is_camera_session_stream_active(entry):
+        raise InvalidRequestError(
+            "read-window 需要先启动 start-stream",
+            details={"node_id": request.node_id, "session_handle": entry.session_handle},
+        )
+
+    buffered_frames = wait_for_camera_session_frames(
+        entry,
+        min_frames=config.wait_for_min_frames,
+        timeout_seconds=config.wait_timeout_seconds,
+    )
+    selected_frames = select_camera_buffered_frames(
+        buffered_frames,
+        max_frames=config.max_frames,
+        sample_mode=config.sample_mode,
+    )
+    if not selected_frames:
+        raise InvalidRequestError(
+            "当前相机会话缓冲中没有可读取的视频帧",
+            details={"node_id": request.node_id, "session_handle": entry.session_handle},
+        )
+
+    frame_items: list[dict[str, object]] = []
+    for buffered_frame in selected_frames:
+        encoded_frame, media_type = encode_frame_bytes(
+            frame=buffered_frame.frame,
+            output_format=config.output_format,
+            jpeg_quality=config.jpeg_quality,
+            cv2_module=cv2_module,
+        )
+        image_payload = register_image_bytes(
+            request,
+            content=encoded_frame,
+            media_type=media_type,
+            width=buffered_frame.width,
+            height=buffered_frame.height,
+        )
+        frame_items.append(
+            {
+                "frame_index": buffered_frame.frame_index,
+                "timestamp_ms": round(float(buffered_frame.timestamp_ms), 4),
+                "image": image_payload,
+            }
+        )
+
+    frame_window_payload = {
+        "count": len(frame_items),
+        "window_start_index": frame_items[0]["frame_index"],
+        "window_end_index": frame_items[-1]["frame_index"],
+        "items": frame_items,
+    }
+    summary = build_camera_session_summary(entry, operation="read_window")
+    summary.update(
+        {
+            "sample_mode": config.sample_mode,
+            "count": len(frame_items),
+            "wait_for_min_frames": config.wait_for_min_frames,
+            "wait_timeout_seconds": round(float(config.wait_timeout_seconds), 4),
+            "output_format": config.output_format,
+            "frame_indexes": [item["frame_index"] for item in frame_items],
+            "timestamp_range_ms": [
+                frame_items[0]["timestamp_ms"],
+                frame_items[-1]["timestamp_ms"],
+            ],
+        }
+    )
+    return frame_window_payload, summary
+
+
+def get_camera_session_latest_buffered_frame(
+    entry: UsbCameraSessionEntry,
+) -> UsbCameraBufferedFrame | None:
+    """返回缓冲中最新的一帧拷贝。"""
+
+    with entry.stream_condition:
+        if not entry.stream_buffer:
+            return None
+        return _copy_buffered_frame(entry.stream_buffer[-1])
+
+
+def wait_for_camera_session_frames(
+    entry: UsbCameraSessionEntry,
+    *,
+    min_frames: int,
+    timeout_seconds: float,
+) -> list[UsbCameraBufferedFrame]:
+    """等待缓冲至少达到指定帧数，并返回当前缓冲快照。"""
+
+    deadline = monotonic() + timeout_seconds
+    with entry.stream_condition:
+        while len(entry.stream_buffer) < min_frames:
+            thread = entry.stream_thread
+            stop_event = entry.stream_stop_event
+            if (
+                thread is None
+                or not thread.is_alive()
+                or stop_event is None
+                or stop_event.is_set()
+            ):
+                break
+            remaining = deadline - monotonic()
+            if remaining <= 0:
+                break
+            entry.stream_condition.wait(timeout=remaining)
+
+        buffered_frames = [_copy_buffered_frame(item) for item in entry.stream_buffer]
+
+    if len(buffered_frames) < min_frames:
+        raise InvalidRequestError(
+            "等待相机采流缓冲超时，未能拿到足够帧数",
+            details={
+                "session_handle": entry.session_handle,
+                "required_frame_count": min_frames,
+                "available_frame_count": len(buffered_frames),
+                "timeout_seconds": round(float(timeout_seconds), 4),
+            },
+        )
+    return buffered_frames
+
+
+def select_camera_buffered_frames(
+    buffered_frames: list[UsbCameraBufferedFrame],
+    *,
+    max_frames: int,
+    sample_mode: str,
+) -> list[UsbCameraBufferedFrame]:
+    """按指定采样策略从缓冲快照中选出一段帧窗口。"""
+
+    if len(buffered_frames) <= max_frames:
+        return buffered_frames
+    if sample_mode == "head":
+        return buffered_frames[:max_frames]
+    if sample_mode == "tail":
+        return buffered_frames[-max_frames:]
+
+    if max_frames == 1:
+        return [buffered_frames[-1]]
+
+    selected_indices: list[int] = []
+    max_index = len(buffered_frames) - 1
+    step = max_index / float(max_frames - 1)
+    for index in range(max_frames):
+        candidate_index = int(round(step * index))
+        if selected_indices and candidate_index <= selected_indices[-1]:
+            candidate_index = min(max_index, selected_indices[-1] + 1)
+        selected_indices.append(candidate_index)
+    return [buffered_frames[index] for index in selected_indices]
+
+
+def _camera_session_stream_worker(
+    *,
+    entry: UsbCameraSessionEntry,
+    stop_event: Event,
+) -> None:
+    """后台线程持续从 OpenCV capture 读取图像帧并写入环形缓冲。"""
+
+    target_interval_seconds = (
+        1.0 / float(entry.stream_target_fps)
+        if entry.stream_target_fps is not None and entry.stream_target_fps > 0
+        else None
+    )
+    retry_delay_seconds = max(0.0, float(entry.stream_failure_retry_delay_ms) / 1000.0)
+    try:
+        while not stop_event.is_set():
+            read_started = monotonic()
+            with entry.capture_lock:
+                success, frame = entry.capture.read()
+            if success is True and frame is not None:
+                cloned_frame = _clone_frame(frame)
+                frame_width, frame_height, channels = update_camera_session_read_state(
+                    entry,
+                    frame=cloned_frame,
+                    successful_reads=1,
+                )
+                with entry.stream_condition:
+                    started_monotonic = entry.stream_started_monotonic or read_started
+                    frame_index = 0 if entry.stream_last_frame_index is None else entry.stream_last_frame_index + 1
+                    timestamp_ms = max(0.0, (read_started - started_monotonic) * 1000.0)
+                    entry.stream_last_frame_index = frame_index
+                    entry.stream_last_timestamp_ms = timestamp_ms
+                    entry.stream_last_error = None
+                    entry.stream_buffer.append(
+                        UsbCameraBufferedFrame(
+                            frame_index=frame_index,
+                            timestamp_ms=timestamp_ms,
+                            frame=cloned_frame,
+                            width=frame_width,
+                            height=frame_height,
+                            channels=channels,
+                            captured_at=entry.last_read_at or _now_isoformat(),
+                        )
+                    )
+                    entry.stream_condition.notify_all()
+                if target_interval_seconds is not None:
+                    elapsed_seconds = monotonic() - read_started
+                    remaining_seconds = target_interval_seconds - elapsed_seconds
+                    if remaining_seconds > 0 and stop_event.wait(remaining_seconds):
+                        break
+                continue
+
+            with entry.stream_condition:
+                entry.stream_last_error = "read_failed"
+                entry.stream_condition.notify_all()
+            if stop_event.wait(retry_delay_seconds):
+                break
+    finally:
+        with entry.stream_condition:
+            if entry.stream_stop_event is stop_event:
+                entry.stream_active = False
+            entry.stream_condition.notify_all()
+
+
+def _copy_buffered_frame(buffered_frame: UsbCameraBufferedFrame) -> UsbCameraBufferedFrame:
+    """复制缓冲帧，避免把内部可变对象直接暴露到外部调用方。"""
+
+    return UsbCameraBufferedFrame(
+        frame_index=buffered_frame.frame_index,
+        timestamp_ms=buffered_frame.timestamp_ms,
+        frame=_clone_frame(buffered_frame.frame),
+        width=buffered_frame.width,
+        height=buffered_frame.height,
+        channels=buffered_frame.channels,
+        captured_at=buffered_frame.captured_at,
+    )
+
+
+def _clone_frame(frame: object) -> object:
+    """尽量复制单帧对象，避免底层缓冲复用影响上层。"""
+
+    frame_copy = getattr(frame, "copy", None)
+    if callable(frame_copy):
+        try:
+            return frame_copy()
+        except Exception:  # pragma: no cover - 第三方数组实现异常防御
+            return frame
+    return frame
+
+
 def resolve_camera_session_registry(request: WorkflowNodeExecutionRequest) -> UsbCameraSessionRegistry:
     """按运行时范围返回当前 USB / UVC 相机会话 registry。"""
 
@@ -764,6 +1279,16 @@ def require_camera_session_payload(payload: object) -> dict[str, object]:
         "last_frame_width",
         "last_frame_height",
         "last_frame_channels",
+        "stream_active",
+        "stream_worker_alive",
+        "stream_started_at",
+        "stream_buffer_capacity",
+        "stream_buffer_count",
+        "stream_target_fps",
+        "stream_failure_retry_delay_ms",
+        "stream_last_frame_index",
+        "stream_last_timestamp_ms",
+        "stream_last_error",
     ):
         if key in payload:
             normalized_payload[key] = normalize_json_safe_value(payload[key])
@@ -809,8 +1334,11 @@ def close_camera_session(
             }
         )
 
+    stream_was_active = is_camera_session_stream_active(entry)
+    stop_camera_session_stream(entry, clear_buffer=True)
     summary = build_camera_session_summary(entry, operation="close_device")
     summary["closed"] = True
+    summary["stream_was_active"] = stream_was_active
     safe_release_capture(entry.capture)
     return build_value_payload(summary)
 
@@ -846,6 +1374,7 @@ def build_camera_session_payload(entry: UsbCameraSessionEntry) -> dict[str, obje
         payload["last_frame_height"] = entry.last_frame_height
     if entry.last_frame_channels is not None:
         payload["last_frame_channels"] = entry.last_frame_channels
+    payload.update(_build_camera_session_stream_state_payload(entry))
     return payload
 
 
@@ -881,7 +1410,38 @@ def build_camera_session_summary(entry: UsbCameraSessionEntry, *, operation: str
         summary["last_frame_height"] = entry.last_frame_height
     if entry.last_frame_channels is not None:
         summary["last_frame_channels"] = entry.last_frame_channels
+    summary.update(_build_camera_session_stream_state_payload(entry))
     return summary
+
+
+def _build_camera_session_stream_state_payload(entry: UsbCameraSessionEntry) -> dict[str, object]:
+    """构造对外可见的流状态字段。"""
+
+    with entry.stream_condition:
+        stream_state: dict[str, object] = {
+            "stream_active": bool(
+                entry.stream_active
+                and entry.stream_thread is not None
+                and entry.stream_thread.is_alive()
+                and entry.stream_stop_event is not None
+                and not entry.stream_stop_event.is_set()
+            ),
+            "stream_worker_alive": bool(entry.stream_thread is not None and entry.stream_thread.is_alive()),
+            "stream_buffer_count": len(entry.stream_buffer),
+            "stream_buffer_capacity": entry.stream_buffer_capacity,
+            "stream_failure_retry_delay_ms": entry.stream_failure_retry_delay_ms,
+        }
+        if entry.stream_started_at is not None:
+            stream_state["stream_started_at"] = entry.stream_started_at
+        if entry.stream_target_fps is not None:
+            stream_state["stream_target_fps"] = round(float(entry.stream_target_fps), 4)
+        if entry.stream_last_frame_index is not None:
+            stream_state["stream_last_frame_index"] = entry.stream_last_frame_index
+        if entry.stream_last_timestamp_ms is not None:
+            stream_state["stream_last_timestamp_ms"] = round(float(entry.stream_last_timestamp_ms), 4)
+        if entry.stream_last_error is not None:
+            stream_state["stream_last_error"] = entry.stream_last_error
+        return stream_state
 
 
 def update_camera_session_read_state(
@@ -904,18 +1464,19 @@ def update_camera_session_read_state(
 def read_session_capture_observation(entry: UsbCameraSessionEntry, *, cv2_module: Any) -> dict[str, object]:
     """读取当前相机会话可观测到的宽高和帧率。"""
 
-    observed_width = read_capture_property(
-        entry.capture,
-        property_id=int(cv2_module.CAP_PROP_FRAME_WIDTH),
-    )
-    observed_height = read_capture_property(
-        entry.capture,
-        property_id=int(cv2_module.CAP_PROP_FRAME_HEIGHT),
-    )
-    observed_fps = read_capture_property(
-        entry.capture,
-        property_id=int(cv2_module.CAP_PROP_FPS),
-    )
+    with entry.capture_lock:
+        observed_width = read_capture_property(
+            entry.capture,
+            property_id=int(cv2_module.CAP_PROP_FRAME_WIDTH),
+        )
+        observed_height = read_capture_property(
+            entry.capture,
+            property_id=int(cv2_module.CAP_PROP_FRAME_HEIGHT),
+        )
+        observed_fps = read_capture_property(
+            entry.capture,
+            property_id=int(cv2_module.CAP_PROP_FPS),
+        )
     observation: dict[str, object] = {}
     if observed_width is not None:
         observation["observed_width"] = int(round(observed_width))
@@ -964,7 +1525,8 @@ def read_camera_session_parameter(
     if normalized_parameter_name == "backend_preference":
         return entry.backend_preference
     if normalized_parameter_name == "backend_name":
-        return entry.backend_name or get_capture_backend_name(entry.capture)
+        with entry.capture_lock:
+            return entry.backend_name or get_capture_backend_name(entry.capture)
     if normalized_parameter_name == "requested_width":
         return entry.requested_width
     if normalized_parameter_name == "requested_height":
@@ -983,6 +1545,26 @@ def read_camera_session_parameter(
         return entry.last_frame_height
     if normalized_parameter_name == "last_frame_channels":
         return entry.last_frame_channels
+    if normalized_parameter_name == "stream_active":
+        return _build_camera_session_stream_state_payload(entry)["stream_active"]
+    if normalized_parameter_name == "stream_worker_alive":
+        return _build_camera_session_stream_state_payload(entry)["stream_worker_alive"]
+    if normalized_parameter_name == "stream_started_at":
+        return _build_camera_session_stream_state_payload(entry).get("stream_started_at")
+    if normalized_parameter_name == "stream_buffer_capacity":
+        return _build_camera_session_stream_state_payload(entry)["stream_buffer_capacity"]
+    if normalized_parameter_name == "stream_buffer_count":
+        return _build_camera_session_stream_state_payload(entry)["stream_buffer_count"]
+    if normalized_parameter_name == "stream_target_fps":
+        return _build_camera_session_stream_state_payload(entry).get("stream_target_fps")
+    if normalized_parameter_name == "stream_failure_retry_delay_ms":
+        return _build_camera_session_stream_state_payload(entry)["stream_failure_retry_delay_ms"]
+    if normalized_parameter_name == "stream_last_frame_index":
+        return _build_camera_session_stream_state_payload(entry).get("stream_last_frame_index")
+    if normalized_parameter_name == "stream_last_timestamp_ms":
+        return _build_camera_session_stream_state_payload(entry).get("stream_last_timestamp_ms")
+    if normalized_parameter_name == "stream_last_error":
+        return _build_camera_session_stream_state_payload(entry).get("stream_last_error")
 
     parameter_spec = CAMERA_PARAMETER_SPECS[normalized_parameter_name]
     property_id = require_camera_property_id(
@@ -990,7 +1572,8 @@ def read_camera_session_parameter(
         parameter_spec=parameter_spec,
         cv2_module=cv2_module,
     )
-    raw_value = read_capture_property(entry.capture, property_id=property_id)
+    with entry.capture_lock:
+        raw_value = read_capture_property(entry.capture, property_id=property_id)
     return normalize_camera_parameter_output(
         raw_value,
         value_kind=parameter_spec.value_kind,
@@ -1034,7 +1617,8 @@ def set_camera_session_parameter_values(
             value_kind=parameter_spec.value_kind,
             parameter_name=normalized_parameter_name,
         )
-        _safe_capture_set(entry.capture, property_id=property_id, value=normalized_write_value)
+        with entry.capture_lock:
+            _safe_capture_set(entry.capture, property_id=property_id, value=normalized_write_value)
         requested_values[normalized_parameter_name] = normalize_camera_parameter_output(
             normalized_write_value,
             value_kind=parameter_spec.value_kind,
