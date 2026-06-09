@@ -209,6 +209,10 @@ ZeroMQ TriggerSource 示例不把机器相关的 `path`、`offset` 和 `broker_e
 - `industrial_single_frame_glue_polygon_roi_changeover.application.json`
 - `industrial_single_frame_regions_overlay_review.template.json`
 - `industrial_single_frame_regions_overlay_review.application.json`
+- `industrial_single_frame_yoloe_text_overlay_review.template.json`
+- `industrial_single_frame_yoloe_text_overlay_review.application.json`
+- `industrial_single_frame_yoloe_visual_overlay_review.template.json`
+- `industrial_single_frame_yoloe_visual_overlay_review.application.json`
 - `industrial_single_frame_yolox_position_gate.template.json`
 - `industrial_single_frame_yolox_position_gate.application.json`
 - `industrial_single_frame_line_pair_measure_gate.template.json`
@@ -217,6 +221,10 @@ ZeroMQ TriggerSource 示例不把机器相关的 `path`、`offset` 和 `broker_e
 - `industrial_single_frame_circle_concentricity_gate.application.json`
 - `industrial_single_frame_segments_overlay_review.template.json`
 - `industrial_single_frame_segments_overlay_review.application.json`
+- `industrial_single_frame_sam3_semantic_overlay_review.template.json`
+- `industrial_single_frame_sam3_semantic_overlay_review.application.json`
+- `industrial_single_frame_sam3_interactive_overlay_review.template.json`
+- `industrial_single_frame_sam3_interactive_overlay_review.application.json`
 - `industrial_local_directory_batch_input.template.json`
 - `industrial_local_directory_batch_input.application.json`
 - `industrial_local_directory_batch_segments_continuity_gate.template.json`
@@ -228,7 +236,7 @@ ZeroMQ TriggerSource 示例不把机器相关的 `path`、`offset` 和 `broker_e
 - `industrial_local_directory_polling_cursor_guard.template.json`
 - `industrial_local_directory_polling_cursor_guard.application.json`
 
-前两组样例聚焦“单图输入 -> 规则判定 -> `process-decision` -> 结果回传”，不把相机、PLC 或特定模型耦合进模板本体。`industrial_single_frame_segments_continuity_gate` 则把“分割输出 -> `segments.v1` -> `regions.v1` -> 工业规则链”这层也一起接通；`industrial_single_frame_regions_overlay_review` 与 `industrial_single_frame_segments_overlay_review` 进一步把 `draw-roi / mask-overlay` 这层 checked-in，分别覆盖“上游已是标准 `regions.v1`”和“上游仍是 `segments.v1` 需要先桥接”的两种现场复核入口；`industrial_single_frame_yolox_position_gate` 对应把“检测输出 -> `detections.v1` -> `regions.v1` -> 工业规则链”这层接通；`industrial_single_frame_glue_polygon_roi_changeover` 进一步演示多边形 ROI 的换型和现场回调；`industrial_single_frame_line_pair_measure_gate` 与 `industrial_single_frame_circle_concentricity_gate` 则把传统 OpenCV 几何量测这层收成 checked-in 现场模板，分别覆盖双边线槽宽/平行度和双圆孔径/同心度/圆度；`industrial_local_directory_batch_input` 把本地文件夹小批量输入这层单独收成可复用模板；`industrial_local_directory_batch_segments_continuity_gate` 与 `industrial_local_directory_batch_regions_continuity_gate` 则把“目录批次 -> 分割/区域结果 -> 连续性规则链 -> CSV / JSON 归档”两类上游入口接到同一套批次骨架；`industrial_local_directory_batch_yolox_position_gate` 继续把这条目录批次输入主线真正接到“逐图检测 -> 规则判定 -> CSV 持续归档 -> 批次 JSON 汇总”的现场闭环；`industrial_local_directory_polling_cursor_guard` 则把“目录轮询守护 / cursor 落盘恢复 / 批次归档 JSON”这层独立收成可复用状态模板。
+前两组样例聚焦“单图输入 -> 规则判定 -> `process-decision` -> 结果回传”，不把相机、PLC 或特定模型耦合进模板本体。`industrial_single_frame_segments_continuity_gate` 则把“分割输出 -> `segments.v1` -> `regions.v1` -> 工业规则链”这层也一起接通；`industrial_single_frame_regions_overlay_review` 与 `industrial_single_frame_segments_overlay_review` 进一步把 `draw-roi / mask-overlay` 这层 checked-in，分别覆盖“上游已是标准 `regions.v1`”和“上游仍是 `segments.v1` 需要先桥接”的两种现场复核入口；`industrial_single_frame_yoloe_text_overlay_review`、`industrial_single_frame_yoloe_visual_overlay_review`、`industrial_single_frame_sam3_semantic_overlay_review` 与 `industrial_single_frame_sam3_interactive_overlay_review` 则继续把这条 overlay 复核链直接前移到 YOLOE / SAM3 节点本身，分别覆盖“文本开放词汇检测”“视觉提示检测”“文本语义分割”和“交互分割”四类本项目自带上游；`industrial_single_frame_yolox_position_gate` 对应把“检测输出 -> `detections.v1` -> `regions.v1` -> 工业规则链”这层接通；`industrial_single_frame_glue_polygon_roi_changeover` 进一步演示多边形 ROI 的换型和现场回调；`industrial_single_frame_line_pair_measure_gate` 与 `industrial_single_frame_circle_concentricity_gate` 则把传统 OpenCV 几何量测这层收成 checked-in 现场模板，分别覆盖双边线槽宽/平行度和双圆孔径/同心度/圆度；`industrial_local_directory_batch_input` 把本地文件夹小批量输入这层单独收成可复用模板；`industrial_local_directory_batch_segments_continuity_gate` 与 `industrial_local_directory_batch_regions_continuity_gate` 则把“目录批次 -> 分割/区域结果 -> 连续性规则链 -> CSV / JSON 归档”两类上游入口接到同一套批次骨架；`industrial_local_directory_batch_yolox_position_gate` 继续把这条目录批次输入主线真正接到“逐图检测 -> 规则判定 -> CSV 持续归档 -> 批次 JSON 汇总”的现场闭环；`industrial_local_directory_polling_cursor_guard` 则把“目录轮询守护 / cursor 落盘恢复 / 批次归档 JSON”这层独立收成可复用状态模板。
 
 上游 `regions.v1` 的典型来源：
 
@@ -243,6 +251,8 @@ ZeroMQ TriggerSource 示例不把机器相关的 `path`、`offset` 和 `broker_e
 如果上游拿到的是分割结果而不是 bbox 检测，当前推荐直接使用 `regions.v1`；只有在上游结果仍是独立 `mask / polygon / bbox` 组合、还没有收成 `regions.v1` 时，才需要先接 `core.vision.segments-to-regions`。
 
 如果现场当前主要需求不是“直接出规则门限”，而是“先把区域和 ROI 依据画出来给工艺或设备人员复核”，当前推荐优先使用 `industrial_single_frame_regions_overlay_review` 或 `industrial_single_frame_segments_overlay_review` 这两条 overlay 样例，再按现场需要继续接 JSON/CSV/HTTP 回传。
+
+如果现场已经明确要直接走本项目自带的开放词汇模型或分割模型，而不是先由外部系统喂 `regions.v1 / segments.v1`，当前推荐优先使用 `industrial_single_frame_yoloe_text_overlay_review`、`industrial_single_frame_yoloe_visual_overlay_review`、`industrial_single_frame_sam3_semantic_overlay_review` 或 `industrial_single_frame_sam3_interactive_overlay_review`，按实际提示类型选择即可。
 
 ### industrial_single_frame_sealant_quality_gate
 
@@ -413,6 +423,189 @@ ZeroMQ TriggerSource 示例不把机器相关的 `path`、`offset` 和 `broker_e
 
 - 模板里显式把 `load_image.image` 接到 `segments-to-regions.image`，这样标准化后的 `regions.v1` 会带上来源图像
 - 这条样例默认用矩形 ROI + coverage 作为最小复核语义，现场也可以继续替换成 inside/offset 或更完整的规则链
+
+### industrial_single_frame_yoloe_text_overlay_review
+
+链路固定为：
+
+- `template-input.value`
+- `image-load-local`
+- `custom.yoloe.text-prompt-detect`
+- `regions-filter`
+- `roi-create`
+- `draw-roi`
+- `mask-overlay`
+- `presence-check`
+- `regions-inside-check`
+- `process-decision`
+
+输入约定：
+
+- `request_image_path`：`value.v1`
+  - 示例：`{"value":"D:/cases/yoloe/frame-021.png"}`
+- `request_prompts`：`text-prompts.v1`
+  - 示例：`{"items":[{"prompt_id":"target","display_name":"Target","text":"glue bead"}]}`
+- `request_roi`：`value.v1`
+  - 可选；未提供时回退到模板内默认多边形 ROI
+
+输出约定：
+
+- `model_detections`：`detections.v1`
+- `model_regions`：`regions.v1`
+- `filtered_regions`：`regions.v1`
+- `effective_roi`：`roi.v1`
+- `review_overlay_image`：`image-ref.v1`
+- `inspection_result`：`result-record.v1`
+- `decision_summary`：`value.v1`
+
+适用场景：
+
+- 已经明确要直接使用 YOLOE 文本提示检测
+- 希望把文本提示检测结果直接叠加回原图做现场复核
+- 需要同时保留 `detections.v1` 和标准 `regions.v1` 两种输出面
+
+注意事项：
+
+- `request_prompts` 应使用标准 `text-prompts.v1`；同一 `prompt_id` 可以带多条 positive/negative 文本
+- 这条样例当前默认走文本提示，不演示 visual-prompt 或 prompt-free 变体；如果现场需要这两类入口，可复用同一 overlay 骨架替换上游节点
+
+### industrial_single_frame_yoloe_visual_overlay_review
+
+链路固定为：
+
+- `template-input.value`
+- `image-load-local`
+- `image-load-local(prompt_image)`
+- `custom.yoloe.visual-prompt-detect`
+- `regions-filter`
+- `roi-create`
+- `draw-roi`
+- `mask-overlay`
+- `presence-check`
+- `regions-inside-check`
+- `process-decision`
+
+输入约定：
+
+- `request_image_path`：`value.v1`
+  - 示例：`{"value":"D:/cases/yoloe/frame-021.png"}`
+- `request_prompt_image_path`：`value.v1`
+  - 示例：`{"value":"D:/cases/yoloe/prompt-template-01.png"}`
+- `request_prompts`：`prompt-regions.v1`
+  - 示例：`{"items":[{"prompt_id":"target","display_name":"Target","prompt_kind":"box","bbox_xyxy":[120,80,280,240]}]}`
+- `request_roi`：`value.v1`
+  - 可选；未提供时回退到模板内默认多边形 ROI
+
+输出约定：
+
+- `model_detections`：`detections.v1`
+- `model_regions`：`regions.v1`
+- `filtered_regions`：`regions.v1`
+- `effective_roi`：`roi.v1`
+- `review_overlay_image`：`image-ref.v1`
+- `inspection_result`：`result-record.v1`
+- `decision_summary`：`value.v1`
+
+适用场景：
+
+- 已经明确要直接使用 YOLOE visual-prompt 检测
+- 现场已有参考样张、模板图或 exemplar 图，需要从提示图中圈定目标外观
+- 希望把视觉提示检测结果直接叠加回原图做复核，同时保留 `detections.v1` 与标准 `regions.v1`
+
+注意事项：
+
+- `request_prompts` 使用标准 `prompt-regions.v1`；其中坐标语义对应 `request_prompt_image_path` 指向的提示参考图，而不是目标检测图
+- `prompt-regions.v1` 当前支持 `box / point / polygon / mask`，同一 `prompt_id` 也可以混合多类提示
+- 这条样例默认使用 `presence + inside` 做最小复核语义，更适合“找到了没有、是否落在工位内”这类检测型场景
+
+### industrial_single_frame_sam3_semantic_overlay_review
+
+链路固定为：
+
+- `template-input.value`
+- `image-load-local`
+- `custom.sam3.semantic-segment`
+- `regions-filter`
+- `roi-create`
+- `draw-roi`
+- `mask-overlay`
+- `presence-check`
+- `regions-coverage-check`
+- `process-decision`
+
+输入约定：
+
+- `request_image_path`：`value.v1`
+  - 示例：`{"value":"D:/cases/sam3/frame-014.png"}`
+- `request_prompts`：`text-prompts.v1`
+  - 示例：`{"items":[{"prompt_id":"defect","display_name":"Defect","text":"surface defect"},{"prompt_id":"defect","display_name":"Defect","text":"background","negative":true}]}`
+- `request_roi`：`value.v1`
+  - 可选；未提供时回退到模板内默认矩形 ROI
+
+输出约定：
+
+- `model_regions`：`regions.v1`
+- `filtered_regions`：`regions.v1`
+- `effective_roi`：`roi.v1`
+- `review_overlay_image`：`image-ref.v1`
+- `inspection_result`：`result-record.v1`
+- `decision_summary`：`value.v1`
+
+适用场景：
+
+- 已经明确要直接使用 SAM3 文本语义分割
+- 需要把分割 mask 直接叠加回原图做缺陷、涂层或覆盖面复核
+- 希望输出仍统一收成 `regions.v1`，继续接既有工业规则链
+
+注意事项：
+
+- 这条样例默认使用 `presence + coverage` 作为最小复核语义，更适合分割覆盖类场景
+- `request_prompts` 同样使用标准 `text-prompts.v1`，支持同一 `prompt_id` 下的正负文本组合
+
+### industrial_single_frame_sam3_interactive_overlay_review
+
+链路固定为：
+
+- `template-input.value`
+- `image-load-local`
+- `custom.sam3.interactive-segment`
+- `regions-filter`
+- `roi-create`
+- `draw-roi`
+- `mask-overlay`
+- `presence-check`
+- `regions-coverage-check`
+- `process-decision`
+
+输入约定：
+
+- `request_image_path`：`value.v1`
+  - 示例：`{"value":"D:/cases/sam3/frame-014.png"}`
+- `request_prompts`：`prompt-regions.v1`
+  - 示例：`{"items":[{"prompt_id":"target","display_name":"Target","prompt_kind":"box","bbox_xyxy":[260,180,860,620]}]}`
+- `request_roi`：`value.v1`
+  - 可选；未提供时回退到模板内默认矩形 ROI
+
+输出约定：
+
+- `model_regions`：`regions.v1`
+- `filtered_regions`：`regions.v1`
+- `effective_roi`：`roi.v1`
+- `review_overlay_image`：`image-ref.v1`
+- `inspection_result`：`result-record.v1`
+- `decision_summary`：`value.v1`
+
+适用场景：
+
+- 已经明确要直接使用 SAM3 interactive segmentation
+- 现场需要人工或上游流程给一个 box / point / polygon / mask 提示，再把分割结果叠加回原图复核
+- 希望交互分割输出继续统一收成 `regions.v1`，直接接既有工业规则链
+
+注意事项：
+
+- `request_prompts` 使用标准 `prompt-regions.v1`；这里的提示坐标语义对应当前待分割图像本身，而不是额外参考图
+- 这条样例默认使用 `presence + coverage` 作为最小复核语义，更适合区域覆盖、缺陷圈定或工艺面复核
+- 如果现场更关心“是否越界/是否落位”，可以直接把 `coverage-check` 替换成 `inside-check` 或 `offset-check`
 
 ### industrial_single_frame_glue_roi_callback
 

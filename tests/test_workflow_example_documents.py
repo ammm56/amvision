@@ -1071,6 +1071,302 @@ def test_industrial_single_frame_overlay_review_documents_are_valid(
     assert application.bindings[5].config["payload_type_id"] == "image-ref.v1"
 
 
+@pytest.mark.parametrize(
+    (
+        "example_name",
+        "expected_example_kind",
+        "expected_focus",
+        "expected_node_ids",
+        "expected_binding_ids",
+        "expected_has_detections_output",
+    ),
+    [
+        (
+            "industrial_single_frame_yoloe_text_overlay_review",
+            "industrial-single-frame-yoloe-text-overlay-review",
+            "single-frame-industrial-yoloe-overlay-review",
+            [
+                "request_image_path_input",
+                "load_image",
+                "detect",
+                "filter_regions",
+                "create_roi",
+                "draw_roi",
+                "overlay_regions",
+                "presence_check",
+                "inside_check",
+                "metadata_object",
+                "metrics_object",
+                "process_decision",
+            ],
+            [
+                "request_image_path",
+                "request_prompts",
+                "request_roi",
+                "model_detections",
+                "model_regions",
+                "filtered_regions",
+                "effective_roi",
+                "review_overlay_image",
+                "inspection_result",
+                "decision_summary",
+            ],
+            True,
+        ),
+        (
+            "industrial_single_frame_sam3_semantic_overlay_review",
+            "industrial-single-frame-sam3-semantic-overlay-review",
+            "single-frame-industrial-sam3-overlay-review",
+            [
+                "request_image_path_input",
+                "load_image",
+                "segment",
+                "filter_regions",
+                "create_roi",
+                "draw_roi",
+                "overlay_regions",
+                "presence_check",
+                "coverage_check",
+                "metadata_object",
+                "metrics_object",
+                "process_decision",
+            ],
+            [
+                "request_image_path",
+                "request_prompts",
+                "request_roi",
+                "model_regions",
+                "filtered_regions",
+                "effective_roi",
+                "review_overlay_image",
+                "inspection_result",
+                "decision_summary",
+            ],
+            False,
+        ),
+    ],
+)
+def test_industrial_single_frame_native_model_overlay_review_documents_are_valid(
+    example_name: str,
+    expected_example_kind: str,
+    expected_focus: str,
+    expected_node_ids: list[str],
+    expected_binding_ids: list[str],
+    expected_has_detections_output: bool,
+) -> None:
+    """验证 YOLOE / SAM3 单帧直连 overlay 复核样例模板与应用可以通过当前合同校验。"""
+
+    example_dir = (
+        Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
+    )
+    template_path = example_dir / f"{example_name}.template.json"
+    application_path = example_dir / f"{example_name}.application.json"
+    template = WorkflowGraphTemplate.model_validate(
+        json.loads(template_path.read_text(encoding="utf-8"))
+    )
+    application = FlowApplication.model_validate(
+        json.loads(application_path.read_text(encoding="utf-8"))
+    )
+
+    custom_nodes_root = Path(__file__).resolve().parents[1] / "custom_nodes"
+    node_pack_loader = LocalNodePackLoader(custom_nodes_root)
+    node_pack_loader.refresh()
+    registry = NodeCatalogRegistry(node_pack_loader=node_pack_loader)
+    validate_workflow_graph_template(
+        template=template,
+        node_definitions=registry.get_workflow_node_definitions(),
+    )
+    validate_flow_application_bindings(template=template, application=application)
+
+    assert [node.node_id for node in template.nodes] == expected_node_ids
+    assert template.metadata["example_kind"] == expected_example_kind
+    assert template.metadata["focus"] == expected_focus
+    assert template.metadata["dynamic_roi_input_binding"] == "request_roi"
+    assert [template_input.input_id for template_input in template.template_inputs] == [
+        "request_image_path",
+        "request_prompts",
+        "request_roi",
+    ]
+    assert template.template_inputs[0].payload_type_id == "value.v1"
+    assert template.template_inputs[1].payload_type_id == "text-prompts.v1"
+    assert template.template_inputs[2].payload_type_id == "value.v1"
+    assert template.template_inputs[2].required is False
+    assert (
+        application.template_ref.source_uri
+        == f"docs/examples/workflows/{example_name}.template.json"
+    )
+    assert application.runtime_mode == "python-json-workflow"
+    assert [binding.binding_id for binding in application.bindings] == expected_binding_ids
+    assert application.bindings[1].metadata["payload_type_id"] == "text-prompts.v1"
+    assert application.bindings[2].required is False
+    if expected_has_detections_output:
+        assert application.bindings[3].config["payload_type_id"] == "detections.v1"
+        assert application.bindings[7].config["payload_type_id"] == "image-ref.v1"
+    else:
+        assert application.bindings[3].config["payload_type_id"] == "regions.v1"
+        assert application.bindings[6].config["payload_type_id"] == "image-ref.v1"
+
+
+@pytest.mark.parametrize(
+    (
+        "example_name",
+        "expected_example_kind",
+        "expected_focus",
+        "expected_node_ids",
+        "expected_input_ids",
+        "expected_input_payload_types",
+        "expected_binding_ids",
+        "expected_optional_binding_index",
+        "expected_overlay_binding_index",
+        "expected_detections_binding_index",
+    ),
+    [
+        (
+            "industrial_single_frame_yoloe_visual_overlay_review",
+            "industrial-single-frame-yoloe-visual-overlay-review",
+            "single-frame-industrial-yoloe-visual-overlay-review",
+            [
+                "request_image_path_input",
+                "request_prompt_image_path_input",
+                "load_image",
+                "load_prompt_image",
+                "detect",
+                "filter_regions",
+                "create_roi",
+                "draw_roi",
+                "overlay_regions",
+                "presence_check",
+                "inside_check",
+                "metadata_object",
+                "metrics_object",
+                "process_decision",
+            ],
+            [
+                "request_image_path",
+                "request_prompt_image_path",
+                "request_prompts",
+                "request_roi",
+            ],
+            ["value.v1", "value.v1", "prompt-regions.v1", "value.v1"],
+            [
+                "request_image_path",
+                "request_prompt_image_path",
+                "request_prompts",
+                "request_roi",
+                "model_detections",
+                "model_regions",
+                "filtered_regions",
+                "effective_roi",
+                "review_overlay_image",
+                "inspection_result",
+                "decision_summary",
+            ],
+            3,
+            8,
+            4,
+        ),
+        (
+            "industrial_single_frame_sam3_interactive_overlay_review",
+            "industrial-single-frame-sam3-interactive-overlay-review",
+            "single-frame-industrial-sam3-interactive-overlay-review",
+            [
+                "request_image_path_input",
+                "load_image",
+                "segment",
+                "filter_regions",
+                "create_roi",
+                "draw_roi",
+                "overlay_regions",
+                "presence_check",
+                "coverage_check",
+                "metadata_object",
+                "metrics_object",
+                "process_decision",
+            ],
+            [
+                "request_image_path",
+                "request_prompts",
+                "request_roi",
+            ],
+            ["value.v1", "prompt-regions.v1", "value.v1"],
+            [
+                "request_image_path",
+                "request_prompts",
+                "request_roi",
+                "model_regions",
+                "filtered_regions",
+                "effective_roi",
+                "review_overlay_image",
+                "inspection_result",
+                "decision_summary",
+            ],
+            2,
+            6,
+            None,
+        ),
+    ],
+)
+def test_industrial_single_frame_prompt_region_native_model_overlay_review_documents_are_valid(
+    example_name: str,
+    expected_example_kind: str,
+    expected_focus: str,
+    expected_node_ids: list[str],
+    expected_input_ids: list[str],
+    expected_input_payload_types: list[str],
+    expected_binding_ids: list[str],
+    expected_optional_binding_index: int,
+    expected_overlay_binding_index: int,
+    expected_detections_binding_index: int | None,
+) -> None:
+    """验证 prompt-regions 直连的 YOLOE / SAM3 overlay 复核样例模板与应用可以通过当前合同校验。"""
+
+    example_dir = (
+        Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
+    )
+    template_path = example_dir / f"{example_name}.template.json"
+    application_path = example_dir / f"{example_name}.application.json"
+    template = WorkflowGraphTemplate.model_validate(
+        json.loads(template_path.read_text(encoding="utf-8"))
+    )
+    application = FlowApplication.model_validate(
+        json.loads(application_path.read_text(encoding="utf-8"))
+    )
+
+    custom_nodes_root = Path(__file__).resolve().parents[1] / "custom_nodes"
+    node_pack_loader = LocalNodePackLoader(custom_nodes_root)
+    node_pack_loader.refresh()
+    registry = NodeCatalogRegistry(node_pack_loader=node_pack_loader)
+    validate_workflow_graph_template(
+        template=template,
+        node_definitions=registry.get_workflow_node_definitions(),
+    )
+    validate_flow_application_bindings(template=template, application=application)
+
+    assert [node.node_id for node in template.nodes] == expected_node_ids
+    assert template.metadata["example_kind"] == expected_example_kind
+    assert template.metadata["focus"] == expected_focus
+    assert template.metadata["dynamic_roi_input_binding"] == "request_roi"
+    assert [template_input.input_id for template_input in template.template_inputs] == expected_input_ids
+    assert [
+        template_input.payload_type_id for template_input in template.template_inputs
+    ] == expected_input_payload_types
+    assert template.template_inputs[-1].required is False
+    assert (
+        application.template_ref.source_uri
+        == f"docs/examples/workflows/{example_name}.template.json"
+    )
+    assert application.runtime_mode == "python-json-workflow"
+    assert [binding.binding_id for binding in application.bindings] == expected_binding_ids
+    assert application.bindings[expected_optional_binding_index].required is False
+    assert application.bindings[expected_optional_binding_index].metadata["payload_type_id"] == "value.v1"
+    assert application.bindings[expected_overlay_binding_index].config["payload_type_id"] == "image-ref.v1"
+    if expected_detections_binding_index is not None:
+        assert (
+            application.bindings[expected_detections_binding_index].config["payload_type_id"]
+            == "detections.v1"
+        )
+
+
 def test_industrial_local_directory_batch_input_documents_are_valid() -> None:
     """验证工业本地目录批量输入样例模板与应用可以通过当前合同校验。"""
 
