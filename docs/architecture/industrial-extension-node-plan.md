@@ -381,7 +381,15 @@ PLC 也必须按协议族和设备边界分层，不能只写“PLC 节点”。
 - 当前 `read-value / write-value` 直接按 `00001 / 10001 / 30001 / 400001` 这类逻辑地址语义接点位，不再要求 workflow 侧先区分 coils / input registers / holding registers
 - 当前 `data_type` 已补齐到 `bool / uint8 / int8 / uint16 / int16 / uint32 / int32 / uint64 / int64 / float / double / string`
 - `wait-condition` 当前适合等待 ready 位、确认位、状态字或阈值条件；`wait_timeout_seconds = null` 表示无限等待，但真正长期常驻监听仍应归到后续 TriggerSource 类实现，不承担 TriggerSource 常驻守护职责
-- 当前仓库已补两条 checked-in 状态字位掩码样例：`plc_modbus_wait_status_word_ready_mask.*` 与 `plc_modbus_wait_status_word_alarm_mask.*`
+- 当前仓库已补三条 checked-in Modbus 样例：`plc_modbus_wait_status_word_ready_mask.*`、`plc_modbus_wait_status_word_alarm_mask.*`，以及把 `wait-condition -> write-value -> result-record -> http-post` 串成现场握手回传闭环的 `plc_modbus_wait_ready_ack_callback.*`
+
+`wait-condition` 使用边界建议：
+
+| 方式 | 当前支持状态 | 典型设置 | 适用场景 | 边界 |
+| --- | --- | --- | --- | --- |
+| 有限等待 | 已实现 | `wait_timeout_seconds = 5 ~ 300` | 调试联机、有限节拍放行、需要超时即报错的设备确认 | 仍属于一次 workflow 调用里的同步等待，不负责后台常驻监听 |
+| 无限等待 | 已实现 | `wait_timeout_seconds = null` | 人工上料确认、换型确认、上游工位节拍不固定但本次流程必须等放行 | 适合“等到满足再继续”，但不适合做长期守护或统一事件源 |
+| TriggerSource 常驻监听 | 未来规划 | 由 TriggerSource 自身的轮询周期、去抖、事件投递策略控制 | PLC 位变化主动触发 workflow、长期驻留、统一监听多个地址或设备 | 不应继续塞进普通 `wait-condition` 节点，否则普通 workflow 与守护型集成边界会混乱 |
 
 ### 第二层：Siemens S7
 

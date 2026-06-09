@@ -97,7 +97,7 @@
 - 当前 `YOLOE / SAM3` 已在目标机器上补了显式 CPU/GPU soak / benchmark 基线与 1 轮更长时长/更大图尺寸扩展 soak；`SAM3 video-interactive memory-attention` 也已补 1 轮长窗口/多对象复合场景 benchmark。结果记录见 [yoloe-sam3-soak-baseline.md](yoloe-sam3-soak-baseline.md)；相关测试文件位于 `tests/integration/`，默认不参与常规收集。
 - 当前 `YOLOE / SAM3` 已补显式 `WorkflowAppRuntime` 接入 smoke：测试会临时把 pack 置为 `enabledByDefault = false`，再覆盖 `disable -> enable -> create -> start -> invoke -> stop` 最小 runtime 闭环；相关测试文件位于 `tests/integration/test_yoloe_sam3_workflow_app_runtime_smoke.py`。
 - `custom_nodes/plc_modbus_tcp_nodes/` 当前 pack 已切到项目内最小 Modbus TCP runtime，不依赖 `projectsrc/` 目录或额外第三方 Python 包直接运行；当前还没有继续扩到 S7 / MC / OPC UA，也没有把 PLC 轮询守护混进普通 workflow 节点。
-- `docs/examples/workflows/` 当前也已补两条更贴现场的 Modbus wait 样例：`plc_modbus_wait_status_word_ready_mask.*` 用 `bitmask_all_set` 等待 ready 状态字全部置位，`plc_modbus_wait_status_word_alarm_mask.*` 用 `bitmask_any_set` 等待任一报警位命中，便于现场直接按地址和 mask 改造。
+- `docs/examples/workflows/` 当前也已补三条更贴现场的 Modbus 样例：`plc_modbus_wait_status_word_ready_mask.*` 用 `bitmask_all_set` 等待 ready 状态字全部置位，`plc_modbus_wait_status_word_alarm_mask.*` 用 `bitmask_any_set` 等待任一报警位命中，`plc_modbus_wait_ready_ack_callback.*` 则把 `wait-condition -> write-value -> result-record -> http-post` 串成一条更贴现场的握手回传闭环。
 
 ### 后台执行与 runtime 面
 

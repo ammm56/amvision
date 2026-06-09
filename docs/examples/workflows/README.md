@@ -68,11 +68,14 @@ ZeroMQ TriggerSource 示例不把机器相关的 `path`、`offset` 和 `broker_e
 - `plc_modbus_wait_status_word_ready_mask.application.json`
 - `plc_modbus_wait_status_word_alarm_mask.template.json`
 - `plc_modbus_wait_status_word_alarm_mask.application.json`
+- `plc_modbus_wait_ready_ack_callback.template.json`
+- `plc_modbus_wait_ready_ack_callback.application.json`
 
-这两组样例聚焦 `custom.plc.modbus.wait-condition` 的现场用法，默认都走状态字地址语义：
+这三组样例聚焦 `custom.plc.modbus.wait-condition` 的现场用法，前两组默认都走状态字地址语义：
 
 - `ready_mask`：用 `bitmask_all_set` 等待全部 ready 位都置位
 - `alarm_mask`：用 `bitmask_any_set` 等待任一报警位命中
+- `ready_ack_callback`：先等待 ready，再写入 ack，最后把统一 `result-record` 回传到 HTTP 接口
 
 输入约定：
 
@@ -93,6 +96,54 @@ ZeroMQ TriggerSource 示例不把机器相关的 `path`、`offset` 和 `broker_e
 - 需要更稳放行时，提高 `stable_match_count`
 - `wait_timeout_seconds = null` 表示无限等待；当前 checked-in 样例默认就用这套语义
 - 如果只是调试链路或想避免长时间阻塞，把 `wait_timeout_seconds` 改回显式秒数
+
+现场选择建议：
+
+| 使用方式 | 参数设置 | 适用场景 | 注意事项 |
+| --- | --- | --- | --- |
+| 有限等待 | `wait_timeout_seconds = 5 ~ 300` 这类显式秒数 | 调试联机、设备应答本来就应在有限时间内完成、需要快速失败并报警的工位 | 最适合首轮联调和排障；超时后 workflow 会直接报错，便于外层收集异常 |
+| 无限等待 | `wait_timeout_seconds = null` | 产线节拍不固定、需要等上游设备放行、人工上料或换型确认这类“等到条件满足再继续”的场景 | 当前节点会一直阻塞到条件满足，更适合单次调用里的现场等待；不适合作为长期后台守护 |
+| 未来 TriggerSource | 不再由普通 workflow 节点参数控制 | 需要常驻监听 PLC 位、状态字、上升沿事件，再自动触发后续 workflow 的场景 | 这类需求后续应放到 `trigger-source` 类实现，和当前 `wait-condition` 区分开，避免把普通流程节点变成常驻轮询器 |
+
+### plc_modbus_wait_ready_ack_callback
+
+链路固定为：
+
+- `template-input.value(request_wait_config)`
+- `template-input.value(request_ack_write_config)`
+- `custom.plc.modbus.wait-condition`
+- `custom.plc.modbus.write-value`
+- `core.rule.ok-ng-decision`
+- `core.output.result-record`
+- `core.output.http-post`
+
+输入约定：
+
+- `request_wait_config`：`value.v1`
+  - 示例：`{"value":{"host":"192.168.10.20","unit_id":1,"register_address":"400101","data_type":"uint16","expected_value":5}}`
+- `request_ack_write_config`：`value.v1`
+  - 示例：`{"value":{"host":"192.168.10.20","unit_id":1,"register_address":"00021","data_type":"bool","value":true}}`
+
+输出约定：
+
+- `wait_result`：`value.v1`
+- `ack_write_result`：`value.v1`
+- `inspection_result`：`result-record.v1`
+- `decision_summary`：`value.v1`
+- `callback_response`：`value.v1`
+
+适用场景：
+
+- 上游 PLC 或工站先给 ready 状态字，当前流程等到满足后再写一个 ack 位
+- 需要把一次握手闭环收成统一 `result-record`，再回传给 MES、上位机或现场服务
+- 希望保留有限等待语义，ready 长时间不到就让 workflow 直接失败并交给外层报警
+
+注意事项：
+
+- 该样例默认使用 `wait_timeout_seconds = 60.0`，用于演示“有限等待 + 成功回传”这类更贴现场的闭环；如果现场更适合一直等放行，可改成 `null`
+- `write-value` 默认写的是 `00021` 的 `bool = true` 确认位；如果现场要求写 holding register 或不同数据类型，直接改 `request_ack_write_config`
+- `build_ack_write_request` 会把 `wait_result` 注入写入请求对象里的 `wait_context` 字段，主要作用是显式建立“先等后写”的执行依赖，同时便于后续排障追踪
+- `http-post.url` 当前是示例回调地址，导入后应先改成现场真实接口，再执行
 
 ## 工业单帧规则样例
 

@@ -345,6 +345,81 @@ def test_plc_modbus_wait_status_word_example_documents_are_valid(
     ]
 
 
+def test_plc_modbus_wait_ready_ack_callback_example_documents_are_valid() -> None:
+    """验证 PLC Modbus ready -> ack -> callback 样例模板与应用可以通过当前合同校验。"""
+
+    example_dir = (
+        Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
+    )
+    template_path = example_dir / "plc_modbus_wait_ready_ack_callback.template.json"
+    application_path = example_dir / "plc_modbus_wait_ready_ack_callback.application.json"
+    template = WorkflowGraphTemplate.model_validate(
+        json.loads(template_path.read_text(encoding="utf-8"))
+    )
+    application = FlowApplication.model_validate(
+        json.loads(application_path.read_text(encoding="utf-8"))
+    )
+
+    custom_nodes_root = Path(__file__).resolve().parents[1] / "custom_nodes"
+    node_pack_loader = LocalNodePackLoader(custom_nodes_root)
+    node_pack_loader.refresh()
+    registry = NodeCatalogRegistry(node_pack_loader=node_pack_loader)
+    validate_workflow_graph_template(
+        template=template,
+        node_definitions=registry.get_workflow_node_definitions(),
+    )
+    validate_flow_application_bindings(template=template, application=application)
+
+    assert [node.node_id for node in template.nodes] == [
+        "request_wait_config_input",
+        "request_ack_write_config_input",
+        "wait_status_word_ready",
+        "build_ack_write_request",
+        "write_ack_signal",
+        "extract_wait_matched",
+        "compare_wait_matched",
+        "decide_result",
+        "build_result_metrics",
+        "build_result_metadata",
+        "inspection_result",
+        "callback_result",
+    ]
+    assert template.nodes[2].parameters["data_type"] == "uint16"
+    assert template.nodes[2].parameters["operator"] == "bitmask_all_set"
+    assert template.nodes[2].parameters["expected_value"] == 5
+    assert template.nodes[2].parameters["wait_timeout_seconds"] == 60.0
+    assert template.nodes[4].parameters["data_type"] == "bool"
+    assert template.nodes[4].parameters["value"] is True
+    assert template.nodes[6].parameters["right_value"] is True
+    assert template.nodes[11].parameters["url"] == "http://127.0.0.1:18080/plc/modbus/handshake-result"
+    assert template.metadata["example_kind"] == "plc-modbus-wait-ready-ack-callback"
+    assert template.metadata["focus"] == "plc-modbus-handshake-callback"
+    assert [template_input.input_id for template_input in template.template_inputs] == [
+        "request_wait_config",
+        "request_ack_write_config",
+    ]
+    assert [template_output.output_id for template_output in template.template_outputs] == [
+        "wait_result",
+        "ack_write_result",
+        "inspection_result",
+        "decision_summary",
+        "callback_response",
+    ]
+    assert application.template_ref.source_uri == (
+        "docs/examples/workflows/plc_modbus_wait_ready_ack_callback.template.json"
+    )
+    assert application.runtime_mode == "python-json-workflow"
+    assert [binding.binding_id for binding in application.bindings] == [
+        "request_wait_config",
+        "request_ack_write_config",
+        "wait_result",
+        "ack_write_result",
+        "inspection_result",
+        "decision_summary",
+        "callback_response",
+    ]
+
+
 @pytest.mark.parametrize(
     (
         "example_name",
