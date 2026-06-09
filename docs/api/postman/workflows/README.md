@@ -13,8 +13,9 @@
 7. `06-yolox-deployment-infer-opencv-health-zeromq-image-ref/`：第六类同 app HTTP base64 + ZeroMQ image-ref YOLOX 推理链路。
 8. `07-opencv-process-save-image-zeromq-image-ref/`：第七类同 app HTTP base64 + ZeroMQ image-ref OpenCV 处理链路。
 9. `08-plc-register-modbus-tcp-async-result-record/`：第八类 `plc-register` Modbus TCP polling + async submit + result-record / http-post 回传链路。
+10. `09-industrial-local-directory-watch-yolox-position-gate/`：第九类 `directory-watch` 目录事件监听 + 静态 deployment_request 注入 + 工业 YOLOX 位置门控链路。
 
-后续完整 workflow app 示例按 `09-*`、`10-*` 继续添加。
+后续完整 workflow app 示例按 `10-*`、`11-*` 继续添加。
 
 ## 每个 collection 的调用面
 
@@ -28,7 +29,7 @@
 - Create Workflow Run / Get Workflow Run：覆盖正式生产入口的异步 run 创建和结果回查。
 - Stop App Runtime：结束本次 runtime 调试。
 
-`06-*`、`07-*`、`08-*` collection 在上述完整本地调试链路之外，再额外覆盖 TriggerSource 控制面和协议入口验证：
+`06-*`、`07-*`、`08-*`、`09-*` collection 在上述完整本地调试链路之外，再额外覆盖 TriggerSource 控制面和协议入口验证：
 
 - Invoke App Runtime (HTTP Base64)：验证同一个 runtime 的 HTTP base64 输入通道。
 - Invoke App Runtime (Synthetic Event)：验证同一个 runtime 的 synthetic trigger event 输入通道。
@@ -46,9 +47,11 @@
 - 对于 `02-*`、`03-*`、`04-*` 这类依赖已有 deployment 的 collection，`Create Preview Run` 主要用于校验编排绑定和输入形状。preview run 仍保持独立 snapshot 子进程，不直接复用 backend-service 父进程中的 deployment supervisor 状态；当前主干已接入 LocalBufferBroker direct mmap 数据面和 PublishedInferenceGateway 事件 dispatcher，推理节点会通过 BufferRef / FrameRef 调用 backend-service 持有的长期运行 deployment worker。目标 deployment 仍需提前通过 sync/start 或 sync/warmup 启动，或者在节点参数中显式允许 `auto_start_process`。
 - `06-*`、`07-*` collection 和 `04-*`、`05-*` HTTP collection 分开维护，避免把已验证 HTTP 调试路径和 ZeroMQ TriggerSource 调试路径混在同一目录中；06/07 仍保留完整本地 Save Template / Preview Run / Runtime / Workflow Run 调试链路，其中 HTTP invoke 只是用于验证同一 app 的双入口，不替代 04/05 的独立 HTTP 调试目录。
 - `08-*` collection 不再验证 HTTP 图片双入口，而是验证 `plc-register` 的事件输入边界；direct invoke 使用 synthetic event payload，只用于本地复现同一条业务处理链，不替代真实 PLC TriggerSource 常驻监听。
+- `09-*` collection 继续沿用 synthetic event 调试方式，但重点变成 `directory-watch` 的目录批次 payload/event 输入边界，以及静态 `deployment_request` 如何从 TriggerSource 直接注入到 workflow app；真实目录监听仍以 enable 后的 TriggerSource 常驻线程为准。
+- `09-*` 的具体导入变量、改值位置和推荐联调顺序见 [docs/api/postman/workflows/09-industrial-local-directory-watch-yolox-position-gate/README.md](09-industrial-local-directory-watch-yolox-position-gate/README.md)。
 - FrameRef/BufferRef 的固定请求体需要由本地 adapter 在运行时生成，因此 `06-*`、`07-*` collection 仍不直接发送图片 bytes；图片数据面继续使用 C# SDK 或其他后续 SDK。
 - TriggerSource 只负责提交协议原生输入，不替 workflow 图做 `image-ref -> image-base64`、本地磁盘读图或相机取帧。需要这些能力时，应通过图中的显式节点或 custom node 实现。
-- 当前 `plc-register` 的 `input_binding_mapping` 还不会自动把 `payload / event` 原始对象包装成 `value.v1`；因此 `08-*` collection 对应的 workflow app 显式使用 `response-body.v1 -> payload-to-value` 做图内桥接。
+- 当前 `plc-register` 和 `directory-watch` 的 `input_binding_mapping` 还不会自动把 `payload / event` 原始对象包装成 `value.v1`；因此 `08-*`、`09-*` collection 对应的 workflow app 都显式使用 `response-body.v1 -> payload-to-value` 做图内桥接。
 - `workflow-execute-output` 类型的输出会直接出现在 `outputs[binding_id]`；`http-response` 类型的输出会出现在 `outputs[binding_id] = {"status_code": 200, "body": {...}}`。
 - 项目目录读取、Project 文件 metadata/content，以及模板/应用/runtime 主列表的 offset/limit 分页示例统一收口到 [docs/api/postman/workflow-runtime.postman_collection.json](../workflow-runtime.postman_collection.json)。分场景 collection 继续只保留最短业务链路，不重复铺通用控制面请求。
 - `05-*`、`07-*` 这类保存图片场景的默认模板已经切到 `projects/{project_id}/results/workflow-applications/{application_id}/runs/{workflow_run_id}/...` 结果域，因此后续可以直接接入 Project 结果读取面。旧模板如果仍写 `workflow-apps/...`，当前运行时继续兼容，但不再作为默认示例。

@@ -1,0 +1,489 @@
+{
+  "info": {
+    "_postman_id": "amvision-workflow-09",
+    "name": "amvision workflow 09 industrial local directory watch yolox position gate",
+    "description": "第九类 directory-watch TriggerSource 调试 collection。directory-watch 负责目录事件监听、稳定期过滤和 batch 提交；workflow app 只接收标准化目录批次 payload 与 event，并通过静态 deployment_request 驱动 YOLOX 工业位置门控链。直接 Invoke 的请求体使用 synthetic trigger event payload，用于本地调试同一条业务链。",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://127.0.0.1:8000"
+    },
+    {
+      "key": "projectId",
+      "value": "project-1"
+    },
+    {
+      "key": "previewRunId",
+      "value": ""
+    },
+    {
+      "key": "workflowRuntimeId",
+      "value": ""
+    },
+    {
+      "key": "workflowRunId",
+      "value": ""
+    },
+    {
+      "key": "triggerSourceId",
+      "value": "directory-watch-trigger-source-09"
+    },
+    {
+      "key": "deploymentInstanceId",
+      "value": "deployment-instance-1"
+    },
+    {
+      "key": "accessToken",
+      "value": "amvision-default-user-token"
+    }
+  ],
+  "item": [
+    {
+      "name": "Save Template",
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/projects/{{projectId}}/templates/industrial-local-directory-watch-yolox-position-gate-template/versions/1.0.0"
+        },
+        "description": "保存 industrial_local_directory_watch_yolox_position_gate 的 workflow template。",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"template\": {\n    \"format_id\": \"amvision.workflow-graph-template.v1\",\n    \"template_id\": \"industrial-local-directory-watch-yolox-position-gate-template\",\n    \"template_version\": \"1.0.0\",\n    \"display_name\": \"Industrial Local Directory Watch YOLOX Position Gate\",\n    \"description\": \"面向工业现场本地目录事件触发的检测到规则闭环样例。输入 directory-watch TriggerSource 标准化后的 payload 与 event、已发布 deployment 请求，以及可选运行时 ROI；按触发批次逐图执行 YOLOX 检测，桥接为 regions.v1 后完成存在性、落位和偏移判定，并把单图结果持续追加到 CSV，再把整个批次收成统一 batch-record、JSON 归档和 HTTP 回传。\",\n    \"nodes\": [\n      {\n        \"node_id\": \"wrap_trigger_payload\",\n        \"node_type_id\": \"core.logic.payload-to-value\",\n        \"parameters\": {}\n      },\n      {\n        \"node_id\": \"wrap_trigger_event\",\n        \"node_type_id\": \"core.logic.payload-to-value\",\n        \"parameters\": {}\n      },\n      {\n        \"node_id\": \"deployment_request_input\",\n        \"node_type_id\": \"core.io.template-input.object\",\n        \"parameters\": {}\n      },\n      {\n        \"node_id\": \"extract_batch_files\",\n        \"node_type_id\": \"core.logic.value-field-extract\",\n        \"parameters\": {\n          \"path\": \"files\"\n        }\n      },\n      {\n        \"node_id\": \"extract_batch_id\",\n        \"node_type_id\": \"core.logic.value-field-extract\",\n        \"parameters\": {\n          \"path\": \"batch_id\"\n        }\n      },\n      {\n        \"node_id\": \"extract_scan_summary\",\n        \"node_type_id\": \"core.logic.value-field-extract\",\n        \"parameters\": {\n          \"path\": \"scan_summary\"\n        }\n      },\n      {\n        \"node_id\": \"extract_directory_path\",\n        \"node_type_id\": \"core.logic.value-field-extract\",\n        \"parameters\": {\n          \"path\": \"directory_path\"\n        }\n      },\n      {\n        \"node_id\": \"create_roi\",\n        \"node_type_id\": \"core.vision.roi-create\",\n        \"parameters\": {\n          \"roi_kind\": \"bbox\",\n          \"roi_id\": \"watch-position-roi\",\n          \"display_name\": \"Directory Watch Position ROI\",\n          \"bbox_xyxy\": [\n            220,\n            140,\n            1040,\n            640\n          ]\n        }\n      },\n      {\n        \"node_id\": \"iterate_batch\",\n        \"node_type_id\": \"core.logic.for-each\",\n        \"parameters\": {\n          \"body_node_ids\": [\n            \"get_current_file_record\",\n            \"get_current_file_index\",\n            \"extract_current_file_path\",\n            \"load_image\",\n            \"detect\",\n            \"detections_to_regions\",\n            \"filter_regions\",\n            \"select_best_region\",\n            \"inside_check\",\n            \"offset_check\",\n            \"presence_check\",\n            \"item_metadata_object\",\n            \"item_metrics_object\",\n            \"process_decision\",\n            \"append_result_csv\"\n          ],\n          \"result_node_id\": \"process_decision\",\n          \"result_port\": \"result\",\n          \"item_variable_name\": \"file_record\",\n          \"index_variable_name\": \"file_index\"\n        }\n      },\n      {\n        \"node_id\": \"get_current_file_record\",\n        \"node_type_id\": \"core.logic.variable.get\",\n        \"parameters\": {\n          \"name\": \"file_record\"\n        }\n      },\n      {\n        \"node_id\": \"get_current_file_index\",\n        \"node_type_id\": \"core.logic.variable.get\",\n        \"parameters\": {\n          \"name\": \"file_index\"\n        }\n      },\n      {\n        \"node_id\": \"extract_current_file_path\",\n        \"node_type_id\": \"core.logic.value-field-extract\",\n        \"parameters\": {\n          \"path\": \"path\"\n        }\n      },\n      {\n        \"node_id\": \"load_image\",\n        \"node_type_id\": \"core.io.image-load-local\",\n        \"parameters\": {}\n      },\n      {\n        \"node_id\": \"detect\",\n        \"node_type_id\": \"core.model.yolox-detection\",\n        \"parameters\": {\n          \"auto_start_process\": true,\n          \"score_threshold\": 0.4,\n          \"save_result_image\": false,\n          \"return_preview_image_base64\": false\n        }\n      },\n      {\n        \"node_id\": \"detections_to_regions\",\n        \"node_type_id\": \"core.vision.detections-to-regions\",\n        \"parameters\": {\n          \"region_id_prefix\": \"det\",\n          \"class_id_default\": -1\n        }\n      },\n      {\n        \"node_id\": \"filter_regions\",\n        \"node_type_id\": \"core.vision.regions-filter\",\n        \"parameters\": {\n          \"class_names\": [\n            \"part\"\n          ],\n          \"min_score\": 0.55\n        }\n      },\n      {\n        \"node_id\": \"select_best_region\",\n        \"node_type_id\": \"core.vision.regions-select-best\",\n        \"parameters\": {\n          \"strategy\": \"largest-area\"\n        }\n      },\n      {\n        \"node_id\": \"inside_check\",\n        \"node_type_id\": \"core.vision.regions-inside-check\",\n        \"parameters\": {\n          \"match_mode\": \"all\",\n          \"min_inside_ratio\": 0.95\n        }\n      },\n      {\n        \"node_id\": \"offset_check\",\n        \"node_type_id\": \"core.vision.regions-offset-check\",\n        \"parameters\": {\n          \"strategy\": \"largest-area\",\n          \"max_distance_pixels\": 28.0\n        }\n      },\n      {\n        \"node_id\": \"presence_check\",\n        \"node_type_id\": \"core.rule.presence-check\",\n        \"parameters\": {\n          \"min_count\": 1,\n          \"max_count\": 1\n        }\n      },\n      {\n        \"node_id\": \"item_metadata_object\",\n        \"node_type_id\": \"core.logic.object-create\",\n        \"parameters\": {\n          \"keys\": [\n            \"file_record\",\n            \"file_index\",\n            \"deployment_request\",\n            \"trigger_event\",\n            \"batch_id\"\n          ],\n          \"fields\": {\n            \"inspection_kind\": \"yolox-position-gate-directory-watch\",\n            \"station_id\": \"line-c-01\",\n            \"trigger_kind\": \"directory-watch\"\n          }\n        }\n      },\n      {\n        \"node_id\": \"item_metrics_object\",\n        \"node_type_id\": \"core.logic.object-create\",\n        \"parameters\": {\n          \"keys\": [\n            \"convert_summary\",\n            \"filter_summary\",\n            \"inside_metrics\",\n            \"offset_metrics\",\n            \"presence_metrics\"\n          ]\n        }\n      },\n      {\n        \"node_id\": \"process_decision\",\n        \"node_type_id\": \"core.rule.process-decision\",\n        \"parameters\": {\n          \"mode\": \"all\",\n          \"condition_names\": [\n            \"presence\",\n            \"inside\",\n            \"offset\"\n          ],\n          \"ok_reason\": \"directory watch yolox position gate passed\",\n          \"ng_reason\": \"directory watch yolox position gate failed\"\n        }\n      },\n      {\n        \"node_id\": \"append_result_csv\",\n        \"node_type_id\": \"core.output.csv-append-local\",\n        \"parameters\": {\n          \"local_path\": \"{workflow_app_result_dir}/industrial-local-directory-watch-yolox-position-gate/history.csv\"\n        }\n      },\n      {\n        \"node_id\": \"batch_metadata_object\",\n        \"node_type_id\": \"core.logic.object-create\",\n        \"parameters\": {\n          \"keys\": [\n            \"trigger_event\",\n            \"deployment_request\",\n            \"batch_id\",\n            \"directory_path\"\n          ],\n          \"fields\": {\n            \"example_kind\": \"industrial-local-directory-watch-yolox-position-gate\",\n            \"trigger_source_kind\": \"directory-watch\",\n            \"inspection_kind\": \"yolox-position-gate-directory-watch\",\n            \"station_id\": \"line-c-01\",\n            \"callback_url\": \"http://127.0.0.1:18080/directory-watch/yolox-position-batch-result\"\n          }\n        }\n      },\n      {\n        \"node_id\": \"batch_record\",\n        \"node_type_id\": \"core.output.batch-record\",\n        \"parameters\": {\n          \"record_kind\": \"directory-watch-batch-record\",\n          \"include_result_summary\": true\n        }\n      },\n      {\n        \"node_id\": \"batch_result_summary\",\n        \"node_type_id\": \"core.output.batch-result-summary\",\n        \"parameters\": {}\n      },\n      {\n        \"node_id\": \"save_batch_json\",\n        \"node_type_id\": \"core.output.json-save-local\",\n        \"parameters\": {\n          \"local_path\": \"{workflow_app_result_dir}/industrial-local-directory-watch-yolox-position-gate/result-{timestamp}.json\",\n          \"overwrite\": true,\n          \"indent\": 2\n        }\n      },\n      {\n        \"node_id\": \"callback_result\",\n        \"node_type_id\": \"core.output.http-post\",\n        \"parameters\": {\n          \"url\": \"http://127.0.0.1:18080/directory-watch/yolox-position-batch-result\",\n          \"method\": \"POST\",\n          \"timeout_seconds\": 3.0,\n          \"require_success\": false,\n          \"headers\": {\n            \"X-Amvision-Example\": \"industrial-local-directory-watch-yolox-position-gate\"\n          }\n        }\n      }\n    ],\n    \"edges\": [\n      {\n        \"edge_id\": \"edge-wrap-trigger-payload-extract-files\",\n        \"source_node_id\": \"wrap_trigger_payload\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"extract_batch_files\",\n        \"target_port\": \"value\"\n      },\n      {\n        \"edge_id\": \"edge-wrap-trigger-payload-extract-batch-id\",\n        \"source_node_id\": \"wrap_trigger_payload\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"extract_batch_id\",\n        \"target_port\": \"value\"\n      },\n      {\n        \"edge_id\": \"edge-wrap-trigger-payload-extract-scan-summary\",\n        \"source_node_id\": \"wrap_trigger_payload\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"extract_scan_summary\",\n        \"target_port\": \"value\"\n      },\n      {\n        \"edge_id\": \"edge-wrap-trigger-payload-extract-directory-path\",\n        \"source_node_id\": \"wrap_trigger_payload\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"extract_directory_path\",\n        \"target_port\": \"value\"\n      },\n      {\n        \"edge_id\": \"edge-extract-batch-files-iterate-batch\",\n        \"source_node_id\": \"extract_batch_files\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"iterate_batch\",\n        \"target_port\": \"items\"\n      },\n      {\n        \"edge_id\": \"edge-current-file-record-path\",\n        \"source_node_id\": \"get_current_file_record\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"extract_current_file_path\",\n        \"target_port\": \"value\"\n      },\n      {\n        \"edge_id\": \"edge-current-file-path-load-image\",\n        \"source_node_id\": \"extract_current_file_path\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"load_image\",\n        \"target_port\": \"path\"\n      },\n      {\n        \"edge_id\": \"edge-deployment-request-detect\",\n        \"source_node_id\": \"deployment_request_input\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"detect\",\n        \"target_port\": \"request\"\n      },\n      {\n        \"edge_id\": \"edge-load-image-detect\",\n        \"source_node_id\": \"load_image\",\n        \"source_port\": \"image\",\n        \"target_node_id\": \"detect\",\n        \"target_port\": \"image\"\n      },\n      {\n        \"edge_id\": \"edge-detect-convert-detections\",\n        \"source_node_id\": \"detect\",\n        \"source_port\": \"detections\",\n        \"target_node_id\": \"detections_to_regions\",\n        \"target_port\": \"detections\"\n      },\n      {\n        \"edge_id\": \"edge-load-image-convert-image\",\n        \"source_node_id\": \"load_image\",\n        \"source_port\": \"image\",\n        \"target_node_id\": \"detections_to_regions\",\n        \"target_port\": \"image\"\n      },\n      {\n        \"edge_id\": \"edge-convert-filter-regions\",\n        \"source_node_id\": \"detections_to_regions\",\n        \"source_port\": \"regions\",\n        \"target_node_id\": \"filter_regions\",\n        \"target_port\": \"regions\"\n      },\n      {\n        \"edge_id\": \"edge-filter-select-best\",\n        \"source_node_id\": \"filter_regions\",\n        \"source_port\": \"regions\",\n        \"target_node_id\": \"select_best_region\",\n        \"target_port\": \"regions\"\n      },\n      {\n        \"edge_id\": \"edge-select-best-inside-regions\",\n        \"source_node_id\": \"select_best_region\",\n        \"source_port\": \"regions\",\n        \"target_node_id\": \"inside_check\",\n        \"target_port\": \"regions\"\n      },\n      {\n        \"edge_id\": \"edge-create-roi-inside-roi\",\n        \"source_node_id\": \"create_roi\",\n        \"source_port\": \"roi\",\n        \"target_node_id\": \"inside_check\",\n        \"target_port\": \"roi\"\n      },\n      {\n        \"edge_id\": \"edge-select-best-offset-regions\",\n        \"source_node_id\": \"select_best_region\",\n        \"source_port\": \"regions\",\n        \"target_node_id\": \"offset_check\",\n        \"target_port\": \"regions\"\n      },\n      {\n        \"edge_id\": \"edge-create-roi-offset-roi\",\n        \"source_node_id\": \"create_roi\",\n        \"source_port\": \"roi\",\n        \"target_node_id\": \"offset_check\",\n        \"target_port\": \"roi\"\n      },\n      {\n        \"edge_id\": \"edge-filter-presence-regions\",\n        \"source_node_id\": \"filter_regions\",\n        \"source_port\": \"regions\",\n        \"target_node_id\": \"presence_check\",\n        \"target_port\": \"regions\"\n      },\n      {\n        \"edge_id\": \"edge-current-file-record-item-metadata\",\n        \"source_node_id\": \"get_current_file_record\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"item_metadata_object\",\n        \"target_port\": \"values\"\n      },\n      {\n        \"edge_id\": \"edge-current-file-index-item-metadata\",\n        \"source_node_id\": \"get_current_file_index\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"item_metadata_object\",\n        \"target_port\": \"values\"\n      },\n      {\n        \"edge_id\": \"edge-deployment-request-item-metadata\",\n        \"source_node_id\": \"deployment_request_input\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"item_metadata_object\",\n        \"target_port\": \"values\"\n      },\n      {\n        \"edge_id\": \"edge-wrap-trigger-event-item-metadata\",\n        \"source_node_id\": \"wrap_trigger_event\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"item_metadata_object\",\n        \"target_port\": \"values\"\n      },\n      {\n        \"edge_id\": \"edge-batch-id-item-metadata\",\n        \"source_node_id\": \"extract_batch_id\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"item_metadata_object\",\n        \"target_port\": \"values\"\n      },\n      {\n        \"edge_id\": \"edge-convert-summary-item-metrics\",\n        \"source_node_id\": \"detections_to_regions\",\n        \"source_port\": \"summary\",\n        \"target_node_id\": \"item_metrics_object\",\n        \"target_port\": \"values\"\n      },\n      {\n        \"edge_id\": \"edge-filter-summary-item-metrics\",\n        \"source_node_id\": \"filter_regions\",\n        \"source_port\": \"summary\",\n        \"target_node_id\": \"item_metrics_object\",\n        \"target_port\": \"values\"\n      },\n      {\n        \"edge_id\": \"edge-inside-metrics-item-metrics\",\n        \"source_node_id\": \"inside_check\",\n        \"source_port\": \"metrics\",\n        \"target_node_id\": \"item_metrics_object\",\n        \"target_port\": \"values\"\n      },\n      {\n        \"edge_id\": \"edge-offset-metrics-item-metrics\",\n        \"source_node_id\": \"offset_check\",\n        \"source_port\": \"metrics\",\n        \"target_node_id\": \"item_metrics_object\",\n        \"target_port\": \"values\"\n      },\n      {\n        \"edge_id\": \"edge-presence-metrics-item-metrics\",\n        \"source_node_id\": \"presence_check\",\n        \"source_port\": \"metrics\",\n        \"target_node_id\": \"item_metrics_object\",\n        \"target_port\": \"values\"\n      },\n      {\n        \"edge_id\": \"edge-presence-process\",\n        \"source_node_id\": \"presence_check\",\n        \"source_port\": \"result\",\n        \"target_node_id\": \"process_decision\",\n        \"target_port\": \"conditions\"\n      },\n      {\n        \"edge_id\": \"edge-inside-process\",\n        \"source_node_id\": \"inside_check\",\n        \"source_port\": \"result\",\n        \"target_node_id\": \"process_decision\",\n        \"target_port\": \"conditions\"\n      },\n      {\n        \"edge_id\": \"edge-offset-process\",\n        \"source_node_id\": \"offset_check\",\n        \"source_port\": \"result\",\n        \"target_node_id\": \"process_decision\",\n        \"target_port\": \"conditions\"\n      },\n      {\n        \"edge_id\": \"edge-item-metrics-process\",\n        \"source_node_id\": \"item_metrics_object\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"process_decision\",\n        \"target_port\": \"metrics\"\n      },\n      {\n        \"edge_id\": \"edge-item-metadata-process\",\n        \"source_node_id\": \"item_metadata_object\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"process_decision\",\n        \"target_port\": \"metadata\"\n      },\n      {\n        \"edge_id\": \"edge-load-image-process-image\",\n        \"source_node_id\": \"load_image\",\n        \"source_port\": \"image\",\n        \"target_node_id\": \"process_decision\",\n        \"target_port\": \"image\"\n      },\n      {\n        \"edge_id\": \"edge-process-append-csv\",\n        \"source_node_id\": \"process_decision\",\n        \"source_port\": \"result\",\n        \"target_node_id\": \"append_result_csv\",\n        \"target_port\": \"result\"\n      },\n      {\n        \"edge_id\": \"edge-wrap-trigger-event-batch-metadata\",\n        \"source_node_id\": \"wrap_trigger_event\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"batch_metadata_object\",\n        \"target_port\": \"values\"\n      },\n      {\n        \"edge_id\": \"edge-deployment-request-batch-metadata\",\n        \"source_node_id\": \"deployment_request_input\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"batch_metadata_object\",\n        \"target_port\": \"values\"\n      },\n      {\n        \"edge_id\": \"edge-batch-id-batch-metadata\",\n        \"source_node_id\": \"extract_batch_id\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"batch_metadata_object\",\n        \"target_port\": \"values\"\n      },\n      {\n        \"edge_id\": \"edge-directory-path-batch-metadata\",\n        \"source_node_id\": \"extract_directory_path\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"batch_metadata_object\",\n        \"target_port\": \"values\"\n      },\n      {\n        \"edge_id\": \"edge-batch-id-batch-record\",\n        \"source_node_id\": \"extract_batch_id\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"batch_record\",\n        \"target_port\": \"record_id\"\n      },\n      {\n        \"edge_id\": \"edge-scan-summary-batch-record\",\n        \"source_node_id\": \"extract_scan_summary\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"batch_record\",\n        \"target_port\": \"scan_summary\"\n      },\n      {\n        \"edge_id\": \"edge-extract-batch-files-batch-record\",\n        \"source_node_id\": \"extract_batch_files\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"batch_record\",\n        \"target_port\": \"files\"\n      },\n      {\n        \"edge_id\": \"edge-iterate-results-batch-record\",\n        \"source_node_id\": \"iterate_batch\",\n        \"source_port\": \"results\",\n        \"target_node_id\": \"batch_record\",\n        \"target_port\": \"inspection_results\"\n      },\n      {\n        \"edge_id\": \"edge-batch-metadata-batch-record\",\n        \"source_node_id\": \"batch_metadata_object\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"batch_record\",\n        \"target_port\": \"metadata\"\n      },\n      {\n        \"edge_id\": \"edge-batch-record-summary\",\n        \"source_node_id\": \"batch_record\",\n        \"source_port\": \"record\",\n        \"target_node_id\": \"batch_result_summary\",\n        \"target_port\": \"record\"\n      },\n      {\n        \"edge_id\": \"edge-batch-record-save-json\",\n        \"source_node_id\": \"batch_record\",\n        \"source_port\": \"record\",\n        \"target_node_id\": \"save_batch_json\",\n        \"target_port\": \"value\"\n      },\n      {\n        \"edge_id\": \"edge-batch-record-callback\",\n        \"source_node_id\": \"batch_record\",\n        \"source_port\": \"record\",\n        \"target_node_id\": \"callback_result\",\n        \"target_port\": \"value\"\n      }\n    ],\n    \"template_inputs\": [\n      {\n        \"input_id\": \"request_trigger_payload\",\n        \"display_name\": \"Request Trigger Payload\",\n        \"payload_type_id\": \"response-body.v1\",\n        \"target_node_id\": \"wrap_trigger_payload\",\n        \"target_port\": \"body\"\n      },\n      {\n        \"input_id\": \"request_trigger_event\",\n        \"display_name\": \"Request Trigger Event\",\n        \"payload_type_id\": \"response-body.v1\",\n        \"target_node_id\": \"wrap_trigger_event\",\n        \"target_port\": \"body\"\n      },\n      {\n        \"input_id\": \"deployment_request\",\n        \"display_name\": \"Deployment Request\",\n        \"payload_type_id\": \"value.v1\",\n        \"target_node_id\": \"deployment_request_input\",\n        \"target_port\": \"payload\"\n      },\n      {\n        \"input_id\": \"request_roi\",\n        \"display_name\": \"Request ROI\",\n        \"payload_type_id\": \"value.v1\",\n        \"target_node_id\": \"create_roi\",\n        \"target_port\": \"value\",\n        \"required\": false\n      }\n    ],\n    \"template_outputs\": [\n      {\n        \"output_id\": \"batch_files\",\n        \"display_name\": \"Batch Files\",\n        \"payload_type_id\": \"value.v1\",\n        \"source_node_id\": \"extract_batch_files\",\n        \"source_port\": \"value\"\n      },\n      {\n        \"output_id\": \"inspection_results\",\n        \"display_name\": \"Inspection Results\",\n        \"payload_type_id\": \"value.v1\",\n        \"source_node_id\": \"iterate_batch\",\n        \"source_port\": \"results\"\n      },\n      {\n        \"output_id\": \"inspection_result_count\",\n        \"display_name\": \"Inspection Result Count\",\n        \"payload_type_id\": \"value.v1\",\n        \"source_node_id\": \"iterate_batch\",\n        \"source_port\": \"count\"\n      },\n      {\n        \"output_id\": \"terminated_early\",\n        \"display_name\": \"Terminated Early\",\n        \"payload_type_id\": \"boolean.v1\",\n        \"source_node_id\": \"iterate_batch\",\n        \"source_port\": \"terminated_early\"\n      },\n      {\n        \"output_id\": \"termination_reason\",\n        \"display_name\": \"Termination Reason\",\n        \"payload_type_id\": \"value.v1\",\n        \"source_node_id\": \"iterate_batch\",\n        \"source_port\": \"termination_reason\"\n      },\n      {\n        \"output_id\": \"batch_record\",\n        \"display_name\": \"Batch Record\",\n        \"payload_type_id\": \"value.v1\",\n        \"source_node_id\": \"batch_record\",\n        \"source_port\": \"record\"\n      },\n      {\n        \"output_id\": \"batch_result_summary\",\n        \"display_name\": \"Batch Result Summary\",\n        \"payload_type_id\": \"value.v1\",\n        \"source_node_id\": \"batch_result_summary\",\n        \"source_port\": \"summary\"\n      },\n      {\n        \"output_id\": \"json_summary\",\n        \"display_name\": \"JSON Save Summary\",\n        \"payload_type_id\": \"value.v1\",\n        \"source_node_id\": \"save_batch_json\",\n        \"source_port\": \"summary\"\n      },\n      {\n        \"output_id\": \"callback_response\",\n        \"display_name\": \"Callback Response\",\n        \"payload_type_id\": \"value.v1\",\n        \"source_node_id\": \"callback_result\",\n        \"source_port\": \"response\"\n      }\n    ],\n    \"metadata\": {\n      \"example_kind\": \"industrial-local-directory-watch-yolox-position-gate\",\n      \"focus\": \"directory-watch-trigger-industrial-detection-rule-chain\",\n      \"trigger_source_kind\": \"directory-watch\",\n      \"uses_existing_deployment_instance\": true,\n      \"dynamic_roi_input_binding\": \"request_roi\",\n      \"callback_url_edit_required\": true,\n      \"input_boundary_note\": \"TriggerSource 当前只负责映射原始 payload/event 对象；workflow 内使用 payload-to-value 显式桥接，并从 payload.files 读取当前批次文件记录。\",\n      \"node_groups\": {\n        \"input\": [\n          \"wrap_trigger_payload\",\n          \"wrap_trigger_event\",\n          \"deployment_request_input\"\n        ],\n        \"trigger_batch\": [\n          \"extract_batch_files\",\n          \"extract_batch_id\",\n          \"extract_scan_summary\",\n          \"extract_directory_path\",\n          \"create_roi\"\n        ],\n        \"loop_body\": [\n          \"get_current_file_record\",\n          \"get_current_file_index\",\n          \"extract_current_file_path\",\n          \"load_image\",\n          \"detect\",\n          \"detections_to_regions\",\n          \"filter_regions\",\n          \"select_best_region\",\n          \"inside_check\",\n          \"offset_check\",\n          \"presence_check\",\n          \"item_metadata_object\",\n          \"item_metrics_object\",\n          \"process_decision\",\n          \"append_result_csv\"\n        ],\n        \"batch_output\": [\n          \"iterate_batch\",\n          \"batch_metadata_object\",\n          \"batch_record\",\n          \"batch_result_summary\",\n          \"save_batch_json\",\n          \"callback_result\"\n        ]\n      }\n    }\n  }\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Save Application",
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/projects/{{projectId}}/applications/industrial-local-directory-watch-yolox-position-gate-app"
+        },
+        "description": "保存 industrial_local_directory_watch_yolox_position_gate 的 FlowApplication。",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"application\": {\n    \"format_id\": \"amvision.flow-application.v1\",\n    \"application_id\": \"industrial-local-directory-watch-yolox-position-gate-app\",\n    \"display_name\": \"Industrial Local Directory Watch YOLOX Position Gate App\",\n    \"description\": \"用于工业本地目录事件触发检测判定的正式样例 app。输入 directory-watch TriggerSource 标准化后的 payload 与 event、deployment 请求和可选 ROI；输出触发批次文件、逐图判定结果列表、批次归档对象、批次摘要，以及 JSON 归档摘要和 HTTP 回传摘要。\",\n    \"template_ref\": {\n      \"template_id\": \"industrial-local-directory-watch-yolox-position-gate-template\",\n      \"template_version\": \"1.0.0\",\n      \"source_kind\": \"json-file\",\n      \"source_uri\": \"docs/examples/workflows/industrial_local_directory_watch_yolox_position_gate.template.json\"\n    },\n    \"runtime_mode\": \"python-json-workflow\",\n    \"bindings\": [\n      {\n        \"binding_id\": \"request_trigger_payload\",\n        \"direction\": \"input\",\n        \"template_port_id\": \"request_trigger_payload\",\n        \"binding_kind\": \"trigger-source-input\",\n        \"config\": {\n          \"payload_type_id\": \"response-body.v1\",\n          \"content_type\": \"application/json\"\n        },\n        \"metadata\": {\n          \"payload_type_id\": \"response-body.v1\",\n          \"trigger_kind\": \"directory-watch\",\n          \"source_path\": \"payload\"\n        }\n      },\n      {\n        \"binding_id\": \"request_trigger_event\",\n        \"direction\": \"input\",\n        \"template_port_id\": \"request_trigger_event\",\n        \"binding_kind\": \"trigger-source-input\",\n        \"config\": {\n          \"payload_type_id\": \"response-body.v1\",\n          \"content_type\": \"application/json\"\n        },\n        \"metadata\": {\n          \"payload_type_id\": \"response-body.v1\",\n          \"trigger_kind\": \"directory-watch\",\n          \"source_path\": \"event\"\n        }\n      },\n      {\n        \"binding_id\": \"deployment_request\",\n        \"direction\": \"input\",\n        \"template_port_id\": \"deployment_request\",\n        \"binding_kind\": \"workflow-execute-input\",\n        \"config\": {\n          \"payload_type_id\": \"value.v1\",\n          \"content_type\": \"application/json\"\n        },\n        \"metadata\": {\n          \"payload_type_id\": \"value.v1\"\n        }\n      },\n      {\n        \"binding_id\": \"request_roi\",\n        \"direction\": \"input\",\n        \"template_port_id\": \"request_roi\",\n        \"binding_kind\": \"workflow-execute-input\",\n        \"required\": false,\n        \"config\": {\n          \"payload_type_id\": \"value.v1\",\n          \"content_type\": \"application/json\"\n        },\n        \"metadata\": {\n          \"payload_type_id\": \"value.v1\"\n        }\n      },\n      {\n        \"binding_id\": \"batch_files\",\n        \"direction\": \"output\",\n        \"template_port_id\": \"batch_files\",\n        \"binding_kind\": \"workflow-execute-output\",\n        \"config\": {\n          \"payload_type_id\": \"value.v1\"\n        },\n        \"metadata\": {}\n      },\n      {\n        \"binding_id\": \"inspection_results\",\n        \"direction\": \"output\",\n        \"template_port_id\": \"inspection_results\",\n        \"binding_kind\": \"workflow-execute-output\",\n        \"config\": {\n          \"payload_type_id\": \"value.v1\"\n        },\n        \"metadata\": {}\n      },\n      {\n        \"binding_id\": \"inspection_result_count\",\n        \"direction\": \"output\",\n        \"template_port_id\": \"inspection_result_count\",\n        \"binding_kind\": \"workflow-execute-output\",\n        \"config\": {\n          \"payload_type_id\": \"value.v1\"\n        },\n        \"metadata\": {}\n      },\n      {\n        \"binding_id\": \"terminated_early\",\n        \"direction\": \"output\",\n        \"template_port_id\": \"terminated_early\",\n        \"binding_kind\": \"workflow-execute-output\",\n        \"config\": {\n          \"payload_type_id\": \"boolean.v1\"\n        },\n        \"metadata\": {}\n      },\n      {\n        \"binding_id\": \"termination_reason\",\n        \"direction\": \"output\",\n        \"template_port_id\": \"termination_reason\",\n        \"binding_kind\": \"workflow-execute-output\",\n        \"config\": {\n          \"payload_type_id\": \"value.v1\"\n        },\n        \"metadata\": {}\n      },\n      {\n        \"binding_id\": \"batch_record\",\n        \"direction\": \"output\",\n        \"template_port_id\": \"batch_record\",\n        \"binding_kind\": \"workflow-execute-output\",\n        \"config\": {\n          \"payload_type_id\": \"value.v1\"\n        },\n        \"metadata\": {}\n      },\n      {\n        \"binding_id\": \"batch_result_summary\",\n        \"direction\": \"output\",\n        \"template_port_id\": \"batch_result_summary\",\n        \"binding_kind\": \"workflow-execute-output\",\n        \"config\": {\n          \"payload_type_id\": \"value.v1\"\n        },\n        \"metadata\": {}\n      },\n      {\n        \"binding_id\": \"json_summary\",\n        \"direction\": \"output\",\n        \"template_port_id\": \"json_summary\",\n        \"binding_kind\": \"workflow-execute-output\",\n        \"config\": {\n          \"payload_type_id\": \"value.v1\"\n        },\n        \"metadata\": {}\n      },\n      {\n        \"binding_id\": \"callback_response\",\n        \"direction\": \"output\",\n        \"template_port_id\": \"callback_response\",\n        \"binding_kind\": \"workflow-execute-output\",\n        \"config\": {\n          \"payload_type_id\": \"value.v1\"\n        },\n        \"metadata\": {}\n      }\n    ],\n    \"metadata\": {\n      \"example_kind\": \"industrial-local-directory-watch-yolox-position-gate\",\n      \"intended_saved_object_key\": \"workflows/projects/{project_id}/applications/industrial-local-directory-watch-yolox-position-gate-app/application.json\",\n      \"trigger_source_input\": \"directory-watch\",\n      \"trigger_payload_binding\": \"request_trigger_payload\",\n      \"trigger_event_binding\": \"request_trigger_event\"\n    }\n  }\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Create Preview Run",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/preview-runs"
+        },
+        "description": "创建 industrial_local_directory_watch_yolox_position_gate 的编辑态 preview run。这里直接用 synthetic directory-watch payload 和 event 做本地调试，不需要真实目录监听常驻线程。",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"project_id\": \"project-1\",\n  \"application_ref\": {\n    \"application_id\": \"industrial-local-directory-watch-yolox-position-gate-app\"\n  },\n  \"input_bindings\": {\n    \"request_trigger_payload\": {\n      \"directory_path\": \"D:/cases/line-c/incoming\",\n      \"files\": [\n        {\n          \"path\": \"D:/cases/line-c/incoming/frame-0001.png\",\n          \"file_name\": \"frame-0001.png\",\n          \"extension\": \".png\",\n          \"size_bytes\": 524288,\n          \"modified_time_epoch_ms\": 1780997400000,\n          \"modified_time_iso\": \"2026-06-09T09:30:00Z\"\n        },\n        {\n          \"path\": \"D:/cases/line-c/incoming/frame-0002.png\",\n          \"file_name\": \"frame-0002.png\",\n          \"extension\": \".png\",\n          \"size_bytes\": 523904,\n          \"modified_time_epoch_ms\": 1780997401000,\n          \"modified_time_iso\": \"2026-06-09T09:30:01Z\"\n        }\n      ],\n      \"file_paths\": [\n        \"D:/cases/line-c/incoming/frame-0001.png\",\n        \"D:/cases/line-c/incoming/frame-0002.png\"\n      ],\n      \"file_count\": 2,\n      \"primary_file\": {\n        \"path\": \"D:/cases/line-c/incoming/frame-0001.png\",\n        \"file_name\": \"frame-0001.png\",\n        \"extension\": \".png\",\n        \"size_bytes\": 524288,\n        \"modified_time_epoch_ms\": 1780997400000,\n        \"modified_time_iso\": \"2026-06-09T09:30:00Z\"\n      },\n      \"primary_file_path\": \"D:/cases/line-c/incoming/frame-0001.png\",\n      \"scan_summary\": {\n        \"directory_path\": \"D:/cases/line-c/incoming\",\n        \"raw_count\": 2,\n        \"visible_count\": 2,\n        \"recursive\": false,\n        \"include_hidden\": false,\n        \"glob_pattern\": \"*\",\n        \"extensions\": [\n          \".png\",\n          \".jpg\",\n          \".jpeg\"\n        ],\n        \"sort_by\": \"modified_time\",\n        \"descending\": false,\n        \"dedupe_by\": \"path\",\n        \"batch_size\": 4,\n        \"scan_interval_seconds\": 1.0,\n        \"min_stable_age_seconds\": 1.0,\n        \"unstable_skipped_count\": 0,\n        \"deduped_count\": 0,\n        \"ready_count\": 2,\n        \"pending_path_count\": 2,\n        \"emitted_batch_file_count\": 2,\n        \"sequence_id\": 1,\n        \"watch_debounce_ms\": 300\n      },\n      \"sequence_id\": 1,\n      \"batch_id\": \"directory-watch-trigger-source-09:1\"\n    },\n    \"request_trigger_event\": {\n      \"trigger_source_id\": \"directory-watch-trigger-source-09\",\n      \"trigger_kind\": \"directory-watch\",\n      \"event_id\": \"directory-watch-directory-watch-trigger-source-09-1\",\n      \"occurred_at\": \"2026-06-09T09:30:02Z\",\n      \"idempotency_key\": \"directory-watch-trigger-source-09:1\"\n    },\n    \"deployment_request\": {\n      \"value\": {\n        \"deployment_instance_id\": \"{{deploymentInstanceId}}\"\n      }\n    }\n  },\n  \"execution_metadata\": {\n    \"marker\": \"postman-workflow-example-documents-preview\",\n    \"example_name\": \"industrial_local_directory_watch_yolox_position_gate\",\n    \"scenario\": \"industrial-local-directory-watch-yolox-position-gate\",\n    \"trigger_source\": \"editor-preview\"\n  },\n  \"timeout_seconds\": 30\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "response": [],
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(201);",
+              "const body = pm.response.json();",
+              "if (body.preview_run_id) {",
+              "  pm.collectionVariables.set('previewRunId', body.preview_run_id);",
+              "}"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Get Preview Run",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/preview-runs/{{previewRunId}}"
+        },
+        "description": "读取上一步 preview run 的 outputs 和 node_records。"
+      },
+      "response": []
+    },
+    {
+      "name": "Create App Runtime",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/app-runtimes"
+        },
+        "description": "创建 directory-watch TriggerSource 使用的正式 runtime。",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"project_id\": \"project-1\",\n  \"application_id\": \"industrial-local-directory-watch-yolox-position-gate-app\",\n  \"display_name\": \"Industrial Local Directory Watch YOLOX Position Gate Runtime\",\n  \"metadata\": {\n    \"example_kind\": \"industrial-local-directory-watch-yolox-position-gate\",\n    \"trigger_source_input\": \"directory-watch\"\n  }\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "response": [],
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(201);",
+              "const body = pm.response.json();",
+              "if (body.workflow_runtime_id) {",
+              "  pm.collectionVariables.set('workflowRuntimeId', body.workflow_runtime_id);",
+              "}"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Start App Runtime",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/app-runtimes/{{workflowRuntimeId}}/start"
+        },
+        "description": "启动正式 runtime。"
+      },
+      "response": []
+    },
+    {
+      "name": "Get App Runtime Health",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/app-runtimes/{{workflowRuntimeId}}/health"
+        },
+        "description": "确认 runtime 已经处于 running。"
+      },
+      "response": []
+    },
+    {
+      "name": "Invoke App Runtime (Synthetic Event)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/app-runtimes/{{workflowRuntimeId}}/invoke"
+        },
+        "description": "直接用 synthetic directory-watch 事件调用同一个 runtime，验证业务处理链本身和静态 deployment_request 绑定。",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"input_bindings\": {\n    \"request_trigger_payload\": {\n      \"directory_path\": \"D:/cases/line-c/incoming\",\n      \"files\": [\n        {\n          \"path\": \"D:/cases/line-c/incoming/frame-0001.png\",\n          \"file_name\": \"frame-0001.png\",\n          \"extension\": \".png\",\n          \"size_bytes\": 524288,\n          \"modified_time_epoch_ms\": 1780997400000,\n          \"modified_time_iso\": \"2026-06-09T09:30:00Z\"\n        },\n        {\n          \"path\": \"D:/cases/line-c/incoming/frame-0002.png\",\n          \"file_name\": \"frame-0002.png\",\n          \"extension\": \".png\",\n          \"size_bytes\": 523904,\n          \"modified_time_epoch_ms\": 1780997401000,\n          \"modified_time_iso\": \"2026-06-09T09:30:01Z\"\n        }\n      ],\n      \"file_paths\": [\n        \"D:/cases/line-c/incoming/frame-0001.png\",\n        \"D:/cases/line-c/incoming/frame-0002.png\"\n      ],\n      \"file_count\": 2,\n      \"primary_file\": {\n        \"path\": \"D:/cases/line-c/incoming/frame-0001.png\",\n        \"file_name\": \"frame-0001.png\",\n        \"extension\": \".png\",\n        \"size_bytes\": 524288,\n        \"modified_time_epoch_ms\": 1780997400000,\n        \"modified_time_iso\": \"2026-06-09T09:30:00Z\"\n      },\n      \"primary_file_path\": \"D:/cases/line-c/incoming/frame-0001.png\",\n      \"scan_summary\": {\n        \"directory_path\": \"D:/cases/line-c/incoming\",\n        \"raw_count\": 2,\n        \"visible_count\": 2,\n        \"recursive\": false,\n        \"include_hidden\": false,\n        \"glob_pattern\": \"*\",\n        \"extensions\": [\n          \".png\",\n          \".jpg\",\n          \".jpeg\"\n        ],\n        \"sort_by\": \"modified_time\",\n        \"descending\": false,\n        \"dedupe_by\": \"path\",\n        \"batch_size\": 4,\n        \"scan_interval_seconds\": 1.0,\n        \"min_stable_age_seconds\": 1.0,\n        \"unstable_skipped_count\": 0,\n        \"deduped_count\": 0,\n        \"ready_count\": 2,\n        \"pending_path_count\": 2,\n        \"emitted_batch_file_count\": 2,\n        \"sequence_id\": 1,\n        \"watch_debounce_ms\": 300\n      },\n      \"sequence_id\": 1,\n      \"batch_id\": \"directory-watch-trigger-source-09:1\"\n    },\n    \"request_trigger_event\": {\n      \"trigger_source_id\": \"directory-watch-trigger-source-09\",\n      \"trigger_kind\": \"directory-watch\",\n      \"event_id\": \"directory-watch-directory-watch-trigger-source-09-1\",\n      \"occurred_at\": \"2026-06-09T09:30:02Z\",\n      \"idempotency_key\": \"directory-watch-trigger-source-09:1\"\n    },\n    \"deployment_request\": {\n      \"value\": {\n        \"deployment_instance_id\": \"{{deploymentInstanceId}}\"\n      }\n    }\n  },\n  \"execution_metadata\": {\n    \"scenario\": \"industrial-local-directory-watch-yolox-position-gate\",\n    \"trigger_source\": \"sync-api\"\n  }\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "response": [],
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const body = pm.response.json();",
+              "if (body.workflow_run_id) {",
+              "  pm.collectionVariables.set('workflowRunId', body.workflow_run_id);",
+              "}"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Create Workflow Run",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/app-runtimes/{{workflowRuntimeId}}/runs"
+        },
+        "description": "创建同一条 directory-watch 目录事件处理链的正式 async workflow run。",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"input_bindings\": {\n    \"request_trigger_payload\": {\n      \"directory_path\": \"D:/cases/line-c/incoming\",\n      \"files\": [\n        {\n          \"path\": \"D:/cases/line-c/incoming/frame-0001.png\",\n          \"file_name\": \"frame-0001.png\",\n          \"extension\": \".png\",\n          \"size_bytes\": 524288,\n          \"modified_time_epoch_ms\": 1780997400000,\n          \"modified_time_iso\": \"2026-06-09T09:30:00Z\"\n        },\n        {\n          \"path\": \"D:/cases/line-c/incoming/frame-0002.png\",\n          \"file_name\": \"frame-0002.png\",\n          \"extension\": \".png\",\n          \"size_bytes\": 523904,\n          \"modified_time_epoch_ms\": 1780997401000,\n          \"modified_time_iso\": \"2026-06-09T09:30:01Z\"\n        }\n      ],\n      \"file_paths\": [\n        \"D:/cases/line-c/incoming/frame-0001.png\",\n        \"D:/cases/line-c/incoming/frame-0002.png\"\n      ],\n      \"file_count\": 2,\n      \"primary_file\": {\n        \"path\": \"D:/cases/line-c/incoming/frame-0001.png\",\n        \"file_name\": \"frame-0001.png\",\n        \"extension\": \".png\",\n        \"size_bytes\": 524288,\n        \"modified_time_epoch_ms\": 1780997400000,\n        \"modified_time_iso\": \"2026-06-09T09:30:00Z\"\n      },\n      \"primary_file_path\": \"D:/cases/line-c/incoming/frame-0001.png\",\n      \"scan_summary\": {\n        \"directory_path\": \"D:/cases/line-c/incoming\",\n        \"raw_count\": 2,\n        \"visible_count\": 2,\n        \"recursive\": false,\n        \"include_hidden\": false,\n        \"glob_pattern\": \"*\",\n        \"extensions\": [\n          \".png\",\n          \".jpg\",\n          \".jpeg\"\n        ],\n        \"sort_by\": \"modified_time\",\n        \"descending\": false,\n        \"dedupe_by\": \"path\",\n        \"batch_size\": 4,\n        \"scan_interval_seconds\": 1.0,\n        \"min_stable_age_seconds\": 1.0,\n        \"unstable_skipped_count\": 0,\n        \"deduped_count\": 0,\n        \"ready_count\": 2,\n        \"pending_path_count\": 2,\n        \"emitted_batch_file_count\": 2,\n        \"sequence_id\": 1,\n        \"watch_debounce_ms\": 300\n      },\n      \"sequence_id\": 1,\n      \"batch_id\": \"directory-watch-trigger-source-09:1\"\n    },\n    \"request_trigger_event\": {\n      \"trigger_source_id\": \"directory-watch-trigger-source-09\",\n      \"trigger_kind\": \"directory-watch\",\n      \"event_id\": \"directory-watch-directory-watch-trigger-source-09-1\",\n      \"occurred_at\": \"2026-06-09T09:30:02Z\",\n      \"idempotency_key\": \"directory-watch-trigger-source-09:1\"\n    },\n    \"deployment_request\": {\n      \"value\": {\n        \"deployment_instance_id\": \"{{deploymentInstanceId}}\"\n      }\n    }\n  },\n  \"execution_metadata\": {\n    \"scenario\": \"industrial-local-directory-watch-yolox-position-gate\",\n    \"trigger_source\": \"async-api\"\n  }\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "response": [],
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(201);",
+              "const body = pm.response.json();",
+              "if (body.workflow_run_id) {",
+              "  pm.collectionVariables.set('workflowRunId', body.workflow_run_id);",
+              "}"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Get Workflow Run",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/runs/{{workflowRunId}}"
+        },
+        "description": "读取上一步正式 WorkflowRun 的状态、outputs 和事件摘要。"
+      },
+      "response": []
+    },
+    {
+      "name": "Create TriggerSource",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/trigger-sources"
+        },
+        "description": "创建 directory-watch TriggerSource。当前请求体同时演示原始 payload/event 映射和静态 deployment_request 注入。",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"trigger_source_id\": \"directory-watch-trigger-source-09\",\n  \"project_id\": \"project-1\",\n  \"display_name\": \"Directory Watch TriggerSource 09 Industrial YOLOX Position Gate\",\n  \"trigger_kind\": \"directory-watch\",\n  \"workflow_runtime_id\": \"{{workflowRuntimeId}}\",\n  \"submit_mode\": \"async\",\n  \"enabled\": false,\n  \"transport_config\": {\n    \"directory_path\": \"D:/cases/line-c/incoming\",\n    \"recursive\": false,\n    \"include_hidden\": false,\n    \"glob_pattern\": \"*\",\n    \"extensions\": [\n      \"png\",\n      \"jpg\",\n      \"jpeg\"\n    ],\n    \"sort_by\": \"modified_time\",\n    \"descending\": false,\n    \"dedupe_by\": \"path\",\n    \"batch_size\": 4,\n    \"min_stable_age_seconds\": 1.0,\n    \"persist_checkpoint\": true,\n    \"watch_debounce_ms\": 300,\n    \"watch_step_ms\": 50,\n    \"watch_timeout_ms\": 1000,\n    \"force_polling\": true,\n    \"poll_delay_ms\": 200,\n    \"ignore_permission_denied\": true\n  },\n  \"input_binding_mapping\": {\n    \"request_trigger_payload\": {\n      \"source\": \"payload\",\n      \"payload_type_id\": \"response-body.v1\"\n    },\n    \"request_trigger_event\": {\n      \"source\": \"event\",\n      \"payload_type_id\": \"response-body.v1\"\n    },\n    \"deployment_request\": {\n      \"value\": {\n        \"value\": {\n          \"deployment_instance_id\": \"{{deploymentInstanceId}}\"\n        }\n      },\n      \"payload_type_id\": \"value.v1\"\n    }\n  },\n  \"result_mapping\": {\n    \"result_binding\": \"batch_record\",\n    \"result_mode\": \"accepted-then-query\"\n  },\n  \"default_execution_metadata\": {\n    \"scenario\": \"industrial-local-directory-watch-yolox-position-gate\",\n    \"trigger_source\": \"directory-watch\",\n    \"trace_level\": \"none\",\n    \"retain_trace_enabled\": false,\n    \"retain_node_records_enabled\": false\n  },\n  \"ack_policy\": \"ack-after-run-created\",\n  \"result_mode\": \"accepted-then-query\",\n  \"debounce_window_ms\": 0,\n  \"idempotency_key_path\": \"payload.batch_id\",\n  \"metadata\": {\n    \"example_kind\": \"industrial-local-directory-watch-yolox-position-gate\",\n    \"station_id\": \"line-c-01\",\n    \"line_id\": \"line-c\"\n  }\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Enable TriggerSource",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/trigger-sources/{{triggerSourceId}}/enable"
+        },
+        "description": "启动 directory-watch adapter。"
+      },
+      "response": []
+    },
+    {
+      "name": "Get TriggerSource Health",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/trigger-sources/{{triggerSourceId}}/health"
+        },
+        "description": "读取 directory-watch TriggerSource 的 health，重点关注 adapter_running、checkpoint_path 和 known_identity_count。"
+      },
+      "response": []
+    },
+    {
+      "name": "Disable TriggerSource",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/trigger-sources/{{triggerSourceId}}/disable"
+        },
+        "description": "停用 directory-watch TriggerSource。"
+      },
+      "response": []
+    },
+    {
+      "name": "Delete TriggerSource",
+      "request": {
+        "method": "DELETE",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/trigger-sources/{{triggerSourceId}}"
+        },
+        "description": "删除当前 TriggerSource；如果需要重新绑定新的 runtime、deployment 或目录路径，可在这一步后重新执行 Create TriggerSource。"
+      },
+      "response": []
+    },
+    {
+      "name": "Stop App Runtime",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/app-runtimes/{{workflowRuntimeId}}/stop"
+        },
+        "description": "结束本次 runtime 调试。"
+      },
+      "response": []
+    }
+  ]
+}
