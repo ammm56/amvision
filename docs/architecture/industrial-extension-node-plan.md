@@ -96,6 +96,7 @@
 - 当前对外节点面已收口为 `read-value / write-value / wait-condition`
 - 当前 pack 已切到项目内最小 Modbus TCP runtime，不依赖 `projectsrc/` 目录或额外第三方 Python 包直接执行
 - 当前仍只覆盖 workflow 内主动读写与等待条件，不包含常驻轮询 trigger-source、S7、MC、OPC UA 或厂商 PLC SDK 语义
+- 当前已额外整理一份现场联调短清单：[plc-modbus-field-debug-checklist.md](plc-modbus-field-debug-checklist.md)
 
 ### 三、工业缺陷 / 异常检测
 
