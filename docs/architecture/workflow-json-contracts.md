@@ -190,11 +190,14 @@ OpenCV 节点不应直接写死在推理 runtime 里，而应通过 custom-node 
 - opencv.render：draw-detections
 - opencv.filter：gaussian-blur、binary-threshold、morphology、canny、grayscale、resize、adaptive-threshold、otsu-threshold、absdiff-threshold
 - opencv.analysis：contour、measure、contour-filter、min-area-rect、min-enclosing-circle、fit-line、image-diff、connected-components、hough-lines、hough-circles
+- opencv.measurement：point-to-line-distance、line-angle、circle-diameter
 - opencv.transform：payload-to-value、contours-to-regions
 - opencv.io：crop-export
 - opencv.preview：gallery-preview
 
 其中 contour 输出 `contours.v1`，measure 输出 `measurements.v1`，min-area-rect 输出 `rotated-rects.v1`，`hough-lines` 与 `fit-line` 统一输出 `lines.v1`，`hough-circles` 与 `min-enclosing-circle` 统一输出 `circles.v1`，contours-to-regions 输出 `regions.v1`，connected-components 也直接输出 `regions.v1`，gallery-preview 输出 `response-body.v1`；而 `image-diff -> absdiff-threshold -> connected-components` 已经可以形成一条完整的传统差异检测上游链，继续接到 `core.output.http-response` 或既有工业规则链。
+
+`point-to-line-distance / line-angle / circle-diameter` 当前则直接输出可进规则链的 `value.v1 + summary(value.v1)`，适合继续接 `threshold-check / range-check / process-decision`。
 
 这些节点统一通过 NodeDefinition 声明 runtime_requirements，例如：
 

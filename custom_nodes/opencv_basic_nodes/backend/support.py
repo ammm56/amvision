@@ -335,6 +335,144 @@ def build_circles_payload(
     return payload
 
 
+def require_lines_payload(payload: object) -> dict[str, object]:
+    """校验并规范化 lines.v1 payload。"""
+
+    if not isinstance(payload, dict):
+        raise InvalidRequestError("当前节点要求 lines payload 必须是对象")
+    raw_items = payload.get("items")
+    if not isinstance(raw_items, list):
+        raise InvalidRequestError("当前节点要求 lines.items 必须是数组")
+
+    normalized_items: list[dict[str, object]] = []
+    for index, item in enumerate(raw_items, start=1):
+        if not isinstance(item, dict):
+            raise InvalidRequestError("当前节点要求每个 line item 必须是对象")
+        line_index = item.get("line_index", index)
+        if isinstance(line_index, bool) or not isinstance(line_index, int):
+            raise InvalidRequestError("当前节点要求 line_index 必须是整数")
+        normalized_item = dict(item)
+        normalized_item["line_index"] = int(line_index)
+        normalized_item["start_xy"] = list(normalize_point_xy(item.get("start_xy"), field_name="start_xy"))
+        normalized_item["end_xy"] = list(normalize_point_xy(item.get("end_xy"), field_name="end_xy"))
+        normalized_item["length_pixels"] = require_number(item.get("length_pixels"), field_name="length_pixels")
+        normalized_item["angle_deg"] = require_number(item.get("angle_deg"), field_name="angle_deg")
+        if "midpoint_xy" in item:
+            normalized_item["midpoint_xy"] = list(normalize_point_xy(item.get("midpoint_xy"), field_name="midpoint_xy"))
+        if "bbox_xyxy" in item:
+            normalized_item["bbox_xyxy"] = list(normalize_bbox_number(item.get("bbox_xyxy"), field_name="bbox_xyxy"))
+        normalized_items.append(normalized_item)
+
+    normalized_payload = dict(payload)
+    normalized_payload["items"] = normalized_items
+    normalized_payload["count"] = int(payload.get("count", len(normalized_items)))
+    source_image = payload.get("source_image")
+    if isinstance(source_image, dict):
+        normalized_payload["source_image"] = require_image_payload(source_image)
+    resolved_source_object_key = normalized_payload.get("source_object_key")
+    if not isinstance(resolved_source_object_key, str) or not resolved_source_object_key:
+        normalized_source_image = normalized_payload.get("source_image")
+        if isinstance(normalized_source_image, dict):
+            source_object_key = normalized_source_image.get("object_key")
+            if isinstance(source_object_key, str) and source_object_key:
+                normalized_payload["source_object_key"] = source_object_key
+    return normalized_payload
+
+
+def require_circles_payload(payload: object) -> dict[str, object]:
+    """校验并规范化 circles.v1 payload。"""
+
+    if not isinstance(payload, dict):
+        raise InvalidRequestError("当前节点要求 circles payload 必须是对象")
+    raw_items = payload.get("items")
+    if not isinstance(raw_items, list):
+        raise InvalidRequestError("当前节点要求 circles.items 必须是数组")
+
+    normalized_items: list[dict[str, object]] = []
+    for index, item in enumerate(raw_items, start=1):
+        if not isinstance(item, dict):
+            raise InvalidRequestError("当前节点要求每个 circle item 必须是对象")
+        circle_index = item.get("circle_index", index)
+        if isinstance(circle_index, bool) or not isinstance(circle_index, int):
+            raise InvalidRequestError("当前节点要求 circle_index 必须是整数")
+        normalized_item = dict(item)
+        normalized_item["circle_index"] = int(circle_index)
+        normalized_item["center_xy"] = list(normalize_point_xy(item.get("center_xy"), field_name="center_xy"))
+        normalized_item["radius"] = require_number(item.get("radius"), field_name="radius")
+        normalized_item["diameter"] = require_number(item.get("diameter"), field_name="diameter")
+        normalized_item["area"] = require_number(item.get("area"), field_name="area")
+        if "bbox_xyxy" in item:
+            normalized_item["bbox_xyxy"] = list(normalize_bbox_number(item.get("bbox_xyxy"), field_name="bbox_xyxy"))
+        normalized_items.append(normalized_item)
+
+    normalized_payload = dict(payload)
+    normalized_payload["items"] = normalized_items
+    normalized_payload["count"] = int(payload.get("count", len(normalized_items)))
+    source_image = payload.get("source_image")
+    if isinstance(source_image, dict):
+        normalized_payload["source_image"] = require_image_payload(source_image)
+    resolved_source_object_key = normalized_payload.get("source_object_key")
+    if not isinstance(resolved_source_object_key, str) or not resolved_source_object_key:
+        normalized_source_image = normalized_payload.get("source_image")
+        if isinstance(normalized_source_image, dict):
+            source_object_key = normalized_source_image.get("object_key")
+            if isinstance(source_object_key, str) and source_object_key:
+                normalized_payload["source_object_key"] = source_object_key
+    return normalized_payload
+
+
+def select_line_item(
+    items: list[dict[str, object]],
+    *,
+    strategy: str,
+    line_index: int | None,
+) -> dict[str, object]:
+    """按策略选择一条 line item。"""
+
+    if not items:
+        raise InvalidRequestError("lines payload 不能为空")
+    if strategy == "first":
+        return dict(items[0])
+    if strategy == "longest":
+        return dict(max(items, key=lambda item: float(item["length_pixels"])))
+    if strategy == "shortest":
+        return dict(min(items, key=lambda item: float(item["length_pixels"])))
+    if strategy == "line-index":
+        if line_index is None:
+            raise InvalidRequestError("line_strategy 为 line-index 时必须提供 line_index")
+        for item in items:
+            if int(item["line_index"]) == line_index:
+                return dict(item)
+        raise InvalidRequestError("指定的 line_index 不存在", details={"line_index": line_index})
+    raise InvalidRequestError("line_strategy 不在支持的列表中")
+
+
+def select_circle_item(
+    items: list[dict[str, object]],
+    *,
+    strategy: str,
+    circle_index: int | None,
+) -> dict[str, object]:
+    """按策略选择一条 circle item。"""
+
+    if not items:
+        raise InvalidRequestError("circles payload 不能为空")
+    if strategy == "first":
+        return dict(items[0])
+    if strategy == "largest":
+        return dict(max(items, key=lambda item: float(item["radius"])))
+    if strategy == "smallest":
+        return dict(min(items, key=lambda item: float(item["radius"])))
+    if strategy == "circle-index":
+        if circle_index is None:
+            raise InvalidRequestError("circle_strategy 为 circle-index 时必须提供 circle_index")
+        for item in items:
+            if int(item["circle_index"]) == circle_index:
+                return dict(item)
+        raise InvalidRequestError("指定的 circle_index 不存在", details={"circle_index": circle_index})
+    raise InvalidRequestError("circle_strategy 不在支持的列表中")
+
+
 def resolve_contours_source_image(
     *,
     contours_payload: dict[str, object],
@@ -364,6 +502,28 @@ def normalize_bbox(raw_bbox: object) -> tuple[int, int, int, int]:
         raise InvalidRequestError("bbox_xyxy 至少包含四个坐标")
     x1, y1, x2, y2 = raw_bbox[:4]
     return int(round(float(x1))), int(round(float(y1))), int(round(float(x2))), int(round(float(y2)))
+
+
+def normalize_bbox_number(raw_bbox: object, *, field_name: str) -> tuple[float, float, float, float]:
+    """把 bbox 规范化为数值 xyxy 坐标。"""
+
+    if not isinstance(raw_bbox, (list, tuple)) or len(raw_bbox) < 4:
+        raise InvalidRequestError(f"{field_name} 至少包含四个坐标")
+    x1_value = require_number(raw_bbox[0], field_name=f"{field_name}[0]")
+    y1_value = require_number(raw_bbox[1], field_name=f"{field_name}[1]")
+    x2_value = require_number(raw_bbox[2], field_name=f"{field_name}[2]")
+    y2_value = require_number(raw_bbox[3], field_name=f"{field_name}[3]")
+    return x1_value, y1_value, x2_value, y2_value
+
+
+def normalize_point_xy(raw_value: object, *, field_name: str) -> tuple[float, float]:
+    """把点坐标规范化为数值 x/y。"""
+
+    if not isinstance(raw_value, (list, tuple)) or len(raw_value) < 2:
+        raise InvalidRequestError(f"{field_name} 必须包含两个坐标")
+    point_x = require_number(raw_value[0], field_name=f"{field_name}[0]")
+    point_y = require_number(raw_value[1], field_name=f"{field_name}[1]")
+    return point_x, point_y
 
 
 def build_detection_label(*, item: dict[str, object], draw_scores: bool) -> str:

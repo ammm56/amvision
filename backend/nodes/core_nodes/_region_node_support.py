@@ -304,6 +304,132 @@ def compute_regions_span_metrics(
     }
 
 
+def compute_regions_linearity_metrics(
+    request: WorkflowNodeExecutionRequest,
+    *,
+    regions_payload: dict[str, object],
+) -> dict[str, object]:
+    """计算 regions.v1 的拟合直线偏差指标。"""
+
+    image_width, image_height = resolve_region_canvas_size(request, regions_payload=regions_payload)
+    metrics_items: list[dict[str, object]] = []
+    for region_item in regions_payload["items"]:
+        region_mask = build_region_binary_mask(
+            request,
+            region_item=region_item,
+            image_width=image_width,
+            image_height=image_height,
+        )
+        foreground_points = np.column_stack(np.nonzero(region_mask > 0))
+        mask_area = int(np.count_nonzero(region_mask))
+        if foreground_points.size <= 0:
+            metrics_items.append(
+                {
+                    "region_id": str(region_item["region_id"]),
+                    "class_id": _normalize_optional_int(region_item.get("class_id")),
+                    "class_name": _normalize_optional_text(region_item.get("class_name")),
+                    "prompt_id": _normalize_optional_text(region_item.get("prompt_id")),
+                    "track_id": _normalize_optional_text(region_item.get("track_id")),
+                    "state": _normalize_optional_text(region_item.get("state")),
+                    "score": float(region_item["score"]),
+                    "declared_area": int(region_item["area"]),
+                    "mask_area": mask_area,
+                    "point_count": 0,
+                    "line_length_pixels": 0.0,
+                    "angle_deg": None,
+                    "mean_distance_pixels": None,
+                    "rms_distance_pixels": None,
+                    "max_distance_pixels": None,
+                    "mean_distance_ratio": None,
+                    "rms_distance_ratio": None,
+                    "max_distance_ratio": None,
+                }
+            )
+            continue
+        point_cloud = np.column_stack((foreground_points[:, 1].astype(np.float32), foreground_points[:, 0].astype(np.float32)))
+        if point_cloud.shape[0] < 2:
+            metrics_items.append(
+                {
+                    "region_id": str(region_item["region_id"]),
+                    "class_id": _normalize_optional_int(region_item.get("class_id")),
+                    "class_name": _normalize_optional_text(region_item.get("class_name")),
+                    "prompt_id": _normalize_optional_text(region_item.get("prompt_id")),
+                    "track_id": _normalize_optional_text(region_item.get("track_id")),
+                    "state": _normalize_optional_text(region_item.get("state")),
+                    "score": float(region_item["score"]),
+                    "declared_area": int(region_item["area"]),
+                    "mask_area": mask_area,
+                    "point_count": int(point_cloud.shape[0]),
+                    "line_length_pixels": 0.0,
+                    "angle_deg": None,
+                    "mean_distance_pixels": None,
+                    "rms_distance_pixels": None,
+                    "max_distance_pixels": None,
+                    "mean_distance_ratio": None,
+                    "rms_distance_ratio": None,
+                    "max_distance_ratio": None,
+                }
+            )
+            continue
+        fit_result = cv2.fitLine(point_cloud, distType=cv2.DIST_L2, param=0, reps=0.01, aeps=0.01)
+        direction_x = float(fit_result[0][0])
+        direction_y = float(fit_result[1][0])
+        origin_x = float(fit_result[2][0])
+        origin_y = float(fit_result[3][0])
+        relative_points = point_cloud - np.array([origin_x, origin_y], dtype=np.float32)
+        direction_vector = np.array([direction_x, direction_y], dtype=np.float32)
+        direction_norm = float(np.linalg.norm(direction_vector))
+        if direction_norm <= 0:
+            direction_norm = 1.0
+        projection_values = relative_points @ direction_vector
+        min_projection = float(np.min(projection_values))
+        max_projection = float(np.max(projection_values))
+        line_length_pixels = float(max_projection - min_projection)
+        signed_cross_values = relative_points[:, 0] * direction_y - relative_points[:, 1] * direction_x
+        distance_values = np.abs(signed_cross_values) / direction_norm
+        mean_distance_pixels = float(np.mean(distance_values))
+        rms_distance_pixels = float(np.sqrt(np.mean(np.square(distance_values))))
+        max_distance_pixels = float(np.max(distance_values))
+        angle_deg = float(math.degrees(math.atan2(direction_y, direction_x)))
+        angle_deg = float(angle_deg % 180.0)
+        if angle_deg >= 90.0:
+            angle_deg -= 180.0
+        metrics_items.append(
+            {
+                "region_id": str(region_item["region_id"]),
+                "class_id": _normalize_optional_int(region_item.get("class_id")),
+                "class_name": _normalize_optional_text(region_item.get("class_name")),
+                "prompt_id": _normalize_optional_text(region_item.get("prompt_id")),
+                "track_id": _normalize_optional_text(region_item.get("track_id")),
+                "state": _normalize_optional_text(region_item.get("state")),
+                "score": float(region_item["score"]),
+                "declared_area": int(region_item["area"]),
+                "mask_area": mask_area,
+                "point_count": int(point_cloud.shape[0]),
+                "line_length_pixels": round(line_length_pixels, 4),
+                "angle_deg": round(angle_deg, 4),
+                "mean_distance_pixels": round(mean_distance_pixels, 4),
+                "rms_distance_pixels": round(rms_distance_pixels, 4),
+                "max_distance_pixels": round(max_distance_pixels, 4),
+                "mean_distance_ratio": round(float(mean_distance_pixels / line_length_pixels), 6)
+                if line_length_pixels > 0
+                else None,
+                "rms_distance_ratio": round(float(rms_distance_pixels / line_length_pixels), 6)
+                if line_length_pixels > 0
+                else None,
+                "max_distance_ratio": round(float(max_distance_pixels / line_length_pixels), 6)
+                if line_length_pixels > 0
+                else None,
+            }
+        )
+    return {
+        "count": len(metrics_items),
+        "image_width": image_width,
+        "image_height": image_height,
+        "items": metrics_items,
+    }
+
+
 def compute_region_bbox_metrics(region_item: dict[str, object]) -> dict[str, object]:
     """计算单个 region 的 bbox 派生指标。"""
 
@@ -628,6 +754,7 @@ __all__ = [
     "build_regions_payload",
     "build_score_summary",
     "compute_regions_integrity_metrics",
+    "compute_regions_linearity_metrics",
     "compute_regions_span_metrics",
     "compute_region_bbox_metrics",
     "derive_region_canvas_size",

@@ -1159,6 +1159,88 @@
     },
     {
       "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.circle-diameter",
+      "display_name": "Circle Diameter",
+      "category": "opencv.measurement",
+      "description": "读取选中圆的直径、半径、面积或周长，适合孔径、圆形工件和圆斑量测。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "input_ports": [
+        {
+          "name": "circles",
+          "display_name": "Circles",
+          "payload_type_id": "circles.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "value",
+          "display_name": "Value",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "summary",
+          "display_name": "Summary",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "circle_strategy": {
+            "type": "string",
+            "enum": [
+              "first",
+              "largest",
+              "smallest",
+              "circle-index"
+            ]
+          },
+          "circle_index": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "output_metric": {
+            "type": "string",
+            "enum": [
+              "diameter",
+              "radius",
+              "area",
+              "circumference"
+            ]
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.measurement",
+        "vision.geometry",
+        "inspection.diameter"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.basic-nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
       "node_type_id": "custom.opencv.connected-components",
       "display_name": "Connected Components",
       "category": "opencv.analysis",
@@ -2419,6 +2501,90 @@
     },
     {
       "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.line-angle",
+      "display_name": "Line Angle",
+      "category": "opencv.measurement",
+      "description": "读取选中直线的方向角或相对参考角度的偏差，适合做角度姿态和装配方向量测。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "input_ports": [
+        {
+          "name": "lines",
+          "display_name": "Lines",
+          "payload_type_id": "lines.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "value",
+          "display_name": "Value",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "summary",
+          "display_name": "Summary",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "line_strategy": {
+            "type": "string",
+            "enum": [
+              "first",
+              "longest",
+              "shortest",
+              "line-index"
+            ]
+          },
+          "line_index": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "reference_angle_deg": {
+            "type": "number"
+          },
+          "output_metric": {
+            "type": "string",
+            "enum": [
+              "angle_deg",
+              "abs_angle_deg",
+              "delta_angle_deg"
+            ]
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.measurement",
+        "vision.geometry",
+        "inspection.angle"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.basic-nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
       "node_type_id": "custom.opencv.measure",
       "display_name": "Measure",
       "category": "opencv.analysis",
@@ -2945,6 +3111,95 @@
           }
         }
       }
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.point-to-line-distance",
+      "display_name": "Point To Line Distance",
+      "category": "opencv.measurement",
+      "description": "读取单个点到选中直线的距离，适合做中心点偏移、边缘偏移和装配位置量测。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "input_ports": [
+        {
+          "name": "lines",
+          "display_name": "Lines",
+          "payload_type_id": "lines.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "point",
+          "display_name": "Point",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "value",
+          "display_name": "Value",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "summary",
+          "display_name": "Summary",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "line_strategy": {
+            "type": "string",
+            "enum": [
+              "first",
+              "longest",
+              "shortest",
+              "line-index"
+            ]
+          },
+          "line_index": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "output_metric": {
+            "type": "string",
+            "enum": [
+              "distance_pixels",
+              "signed_distance_pixels"
+            ]
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.measurement",
+        "vision.geometry",
+        "inspection.offset"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.basic-nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {}
     },
     {
       "format_id": "amvision.node-definition.v1",

@@ -651,7 +651,7 @@ PLC 能力也应至少拆成两类：
 
 - `core.vision.edge-break-check`
 - `core.vision.edge-profile-gap-check`
-- `core.vision.linearity-check`
+- `core.vision.linearity-check`（已实现）
 - `core.vision.circularity-check`
 - `core.vision.hole-pattern-check`
 - `core.vision.corner-missing-check`
@@ -867,9 +867,9 @@ PLC 能力也应至少拆成两类：
 
 - `custom.opencv.caliper-edge`
 - `custom.opencv.point-distance`
-- `custom.opencv.point-to-line-distance`
-- `custom.opencv.line-angle`
-- `custom.opencv.circle-diameter`
+- `custom.opencv.point-to-line-distance`（已实现）
+- `custom.opencv.line-angle`（已实现）
+- `custom.opencv.circle-diameter`（已实现）
 - `custom.opencv.slot-width`
 - `custom.opencv.parallelism-metrics`
 - `custom.opencv.concentricity-metrics`
@@ -917,7 +917,7 @@ PLC 能力也应至少拆成两类：
 - `custom.opencv.template-match`
 - `custom.opencv.caliper-edge`
 - `core.vision.edge-break-check`
-- `core.vision.linearity-check`
+- `core.vision.linearity-check`（已实现）
 - `core.vision.multi-part-presence-check`
 - `custom.anomaly.model_nodes`
 

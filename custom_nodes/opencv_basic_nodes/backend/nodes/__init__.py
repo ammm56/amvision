@@ -18,6 +18,10 @@ from custom_nodes.opencv_basic_nodes.backend.nodes.canny import (
     NODE_TYPE_ID as CANNY_NODE_TYPE_ID,
     handle_node as canny_handler,
 )
+from custom_nodes.opencv_basic_nodes.backend.nodes.circle_diameter import (
+    NODE_TYPE_ID as CIRCLE_DIAMETER_NODE_TYPE_ID,
+    handle_node as circle_diameter_handler,
+)
 from custom_nodes.opencv_basic_nodes.backend.nodes.contour import (
     NODE_TYPE_ID as CONTOUR_NODE_TYPE_ID,
     handle_node as contour_handler,
@@ -70,6 +74,10 @@ from custom_nodes.opencv_basic_nodes.backend.nodes.image_diff import (
     NODE_TYPE_ID as IMAGE_DIFF_NODE_TYPE_ID,
     handle_node as image_diff_handler,
 )
+from custom_nodes.opencv_basic_nodes.backend.nodes.line_angle import (
+    NODE_TYPE_ID as LINE_ANGLE_NODE_TYPE_ID,
+    handle_node as line_angle_handler,
+)
 from custom_nodes.opencv_basic_nodes.backend.nodes.measure import (
     NODE_TYPE_ID as MEASURE_NODE_TYPE_ID,
     handle_node as measure_handler,
@@ -94,6 +102,10 @@ from custom_nodes.opencv_basic_nodes.backend.nodes.payload_to_value import (
     NODE_TYPE_ID as PAYLOAD_TO_VALUE_NODE_TYPE_ID,
     handle_node as payload_to_value_handler,
 )
+from custom_nodes.opencv_basic_nodes.backend.nodes.point_to_line_distance import (
+    NODE_TYPE_ID as POINT_TO_LINE_DISTANCE_NODE_TYPE_ID,
+    handle_node as point_to_line_distance_handler,
+)
 from custom_nodes.opencv_basic_nodes.backend.nodes.resize import (
     NODE_TYPE_ID as RESIZE_NODE_TYPE_ID,
     handle_node as resize_handler,
@@ -106,9 +118,12 @@ NODE_HANDLERS = (
     (BINARY_THRESHOLD_NODE_TYPE_ID, binary_threshold_handler),
     (MORPHOLOGY_NODE_TYPE_ID, morphology_handler),
     (CANNY_NODE_TYPE_ID, canny_handler),
+    (CIRCLE_DIAMETER_NODE_TYPE_ID, circle_diameter_handler),
     (CONTOUR_NODE_TYPE_ID, contour_handler),
+    (LINE_ANGLE_NODE_TYPE_ID, line_angle_handler),
     (MEASURE_NODE_TYPE_ID, measure_handler),
     (PAYLOAD_TO_VALUE_NODE_TYPE_ID, payload_to_value_handler),
+    (POINT_TO_LINE_DISTANCE_NODE_TYPE_ID, point_to_line_distance_handler),
     (CROP_EXPORT_NODE_TYPE_ID, crop_export_handler),
     (GALLERY_PREVIEW_NODE_TYPE_ID, gallery_preview_handler),
     (GRAYSCALE_NODE_TYPE_ID, grayscale_handler),
