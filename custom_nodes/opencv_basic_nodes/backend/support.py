@@ -126,6 +126,24 @@ def build_output_image_payload(
     )
 
 
+def encode_png_image_bytes(
+    request: object,
+    *,
+    image_matrix: Any,
+    error_message: str,
+) -> bytes:
+    """把 OpenCV matrix 编码为 PNG 字节。"""
+
+    cv2_module, _ = require_opencv_imports()
+    success, encoded_image = cv2_module.imencode(".png", image_matrix)
+    if success is not True:
+        raise ServiceConfigurationError(
+            error_message,
+            details={"node_id": getattr(request, "node_id", "")},
+        )
+    return encoded_image.tobytes()
+
+
 def require_dataset_path(request: object, object_key: str):
     """把 object key 解析为本地绝对路径。
 
@@ -219,22 +237,22 @@ def require_contours_payload(payload: object) -> dict[str, object]:
     """
 
     if not isinstance(payload, dict):
-        raise InvalidRequestError("measure 节点要求 contours payload 必须是对象")
+        raise InvalidRequestError("当前节点要求 contours payload 必须是对象")
     raw_items = payload.get("items")
     if not isinstance(raw_items, list):
-        raise InvalidRequestError("measure 节点要求 contours.items 必须是数组")
+        raise InvalidRequestError("当前节点要求 contours.items 必须是数组")
 
     normalized_items: list[dict[str, object]] = []
     for index, item in enumerate(raw_items, start=1):
         if not isinstance(item, dict):
-            raise InvalidRequestError("measure 节点要求每个 contour item 必须是对象")
+            raise InvalidRequestError("当前节点要求每个 contour item 必须是对象")
         raw_points = item.get("points")
         if not isinstance(raw_points, list) or len(raw_points) < 3:
-            raise InvalidRequestError("measure 节点要求 contour.points 至少包含三个点")
+            raise InvalidRequestError("当前节点要求 contour.points 至少包含三个点")
         normalized_points: list[list[int]] = []
         for point in raw_points:
             if not isinstance(point, (list, tuple)) or len(point) < 2:
-                raise InvalidRequestError("measure 节点要求 contour.points 中的每个点必须包含 x 与 y")
+                raise InvalidRequestError("当前节点要求 contour.points 中的每个点必须包含 x 与 y")
             point_x, point_y = point[:2]
             normalized_points.append([int(round(float(point_x))), int(round(float(point_y)))])
         normalized_item = dict(item)
@@ -258,6 +276,40 @@ def require_contours_payload(payload: object) -> dict[str, object]:
             if isinstance(source_object_key, str) and source_object_key:
                 normalized_payload["source_object_key"] = source_object_key
     return normalized_payload
+
+
+def build_contours_payload(
+    *,
+    items: list[dict[str, object]],
+    source_image: object | None,
+    source_object_key: str | None,
+) -> dict[str, object]:
+    """构建规范化后的 contours.v1 payload。"""
+
+    payload: dict[str, object] = {
+        "items": [dict(item) for item in items],
+        "count": len(items),
+    }
+    if isinstance(source_image, dict):
+        payload["source_image"] = require_image_payload(source_image)
+    if isinstance(source_object_key, str) and source_object_key:
+        payload["source_object_key"] = source_object_key
+    return payload
+
+
+def resolve_contours_source_image(
+    *,
+    contours_payload: dict[str, object],
+    image_payload: object | None,
+) -> dict[str, object] | None:
+    """优先读取显式 image 输入，否则回退到 contours.source_image。"""
+
+    if image_payload is not None:
+        return require_image_payload(image_payload)
+    source_image = contours_payload.get("source_image")
+    if isinstance(source_image, dict):
+        return require_image_payload(source_image)
+    return None
 
 
 def normalize_bbox(raw_bbox: object) -> tuple[int, int, int, int]:
@@ -314,6 +366,14 @@ def require_positive_int(value: object, *, field_name: str) -> int:
     return normalized_value
 
 
+def require_number(value: object, *, field_name: str) -> float:
+    """把输入值解析为数值。"""
+
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise InvalidRequestError(f"{field_name} 必须是数值")
+    return float(value)
+
+
 def require_non_negative_float(value: object, *, field_name: str) -> float:
     """把输入值解析为非负浮点数。
 
@@ -362,6 +422,15 @@ def normalize_odd_kernel_size(value: object) -> int:
     if kernel_size % 2 == 0:
         raise InvalidRequestError("kernel_size 必须是奇数")
     return kernel_size
+
+
+def normalize_adaptive_block_size(value: object) -> int:
+    """把 adaptive-threshold 的 block size 规范化为大于等于 3 的奇数。"""
+
+    block_size = normalize_odd_kernel_size(value)
+    if block_size < 3:
+        raise InvalidRequestError("block_size 必须是大于等于 3 的奇数")
+    return block_size
 
 
 def normalize_morphology_operation(value: object) -> str:
@@ -455,6 +524,51 @@ def normalize_kernel_shape(value: object, *, cv2_module: Any) -> int:
     raise InvalidRequestError("shape 不在支持的 morphology 形状列表中")
 
 
+def normalize_resize_interpolation(value: object, *, cv2_module: Any) -> int:
+    """把 resize interpolation 解析为 OpenCV 常量。"""
+
+    if not isinstance(value, str) or not value.strip():
+        raise InvalidRequestError("interpolation 必须是非空字符串")
+    normalized_value = value.strip().lower()
+    if normalized_value == "nearest":
+        return cv2_module.INTER_NEAREST
+    if normalized_value == "linear":
+        return cv2_module.INTER_LINEAR
+    if normalized_value == "area":
+        return cv2_module.INTER_AREA
+    if normalized_value == "cubic":
+        return cv2_module.INTER_CUBIC
+    if normalized_value == "lanczos4":
+        return cv2_module.INTER_LANCZOS4
+    raise InvalidRequestError("interpolation 不在支持的 resize interpolation 列表中")
+
+
+def normalize_binary_threshold_mode(value: object, *, cv2_module: Any) -> int:
+    """把二值 threshold mode 解析为 OpenCV 常量。"""
+
+    if not isinstance(value, str) or not value.strip():
+        raise InvalidRequestError("threshold_type 必须是非空字符串")
+    normalized_value = value.strip().lower()
+    if normalized_value == "binary":
+        return cv2_module.THRESH_BINARY
+    if normalized_value == "binary-inv":
+        return cv2_module.THRESH_BINARY_INV
+    raise InvalidRequestError("threshold_type 仅支持 binary 或 binary-inv")
+
+
+def normalize_adaptive_threshold_method(value: object, *, cv2_module: Any) -> int:
+    """把 adaptive threshold method 解析为 OpenCV 常量。"""
+
+    if not isinstance(value, str) or not value.strip():
+        raise InvalidRequestError("adaptive_method 必须是非空字符串")
+    normalized_value = value.strip().lower()
+    if normalized_value == "mean":
+        return cv2_module.ADAPTIVE_THRESH_MEAN_C
+    if normalized_value == "gaussian":
+        return cv2_module.ADAPTIVE_THRESH_GAUSSIAN_C
+    raise InvalidRequestError("adaptive_method 仅支持 mean 或 gaussian")
+
+
 def resolve_morphology_operation(operation_name: str, *, cv2_module: Any) -> int:
     """把 morphology 操作名称解析为 OpenCV 常量。
 
@@ -510,6 +624,72 @@ def require_non_negative_int(value: object, *, field_name: str) -> int:
     if normalized_value < 0:
         raise InvalidRequestError(f"{field_name} 不能小于 0")
     return normalized_value
+
+
+def contour_points_to_matrix(*, points: list[list[int]], np_module: Any):
+    """把 contour 点集转换为 OpenCV contour matrix。"""
+
+    if not points:
+        raise InvalidRequestError("contour.points 不能为空")
+    return np_module.array(points, dtype=np_module.int32).reshape((-1, 1, 2))
+
+
+def compute_contour_metrics_from_points(
+    *,
+    points: list[list[int]],
+    cv2_module: Any,
+    np_module: Any,
+) -> dict[str, object]:
+    """根据 contour 点集计算面积、bbox、周长等基础度量。"""
+
+    contour_matrix = contour_points_to_matrix(points=points, np_module=np_module)
+    bbox_x, bbox_y, bbox_width, bbox_height = cv2_module.boundingRect(contour_matrix)
+    bbox_xyxy = [
+        int(bbox_x),
+        int(bbox_y),
+        int(bbox_x + bbox_width),
+        int(bbox_y + bbox_height),
+    ]
+    area = round(float(cv2_module.contourArea(contour_matrix)), 4)
+    perimeter = round(float(cv2_module.arcLength(contour_matrix, True)), 4)
+    center_x = round((float(bbox_xyxy[0]) + float(bbox_xyxy[2])) / 2.0, 4)
+    center_y = round((float(bbox_xyxy[1]) + float(bbox_xyxy[3])) / 2.0, 4)
+    aspect_ratio = round(float(bbox_width / bbox_height), 4) if bbox_height > 0 else 0.0
+    return {
+        "bbox_xyxy": bbox_xyxy,
+        "width": int(bbox_width),
+        "height": int(bbox_height),
+        "area": area,
+        "perimeter": perimeter,
+        "center_xy": [center_x, center_y],
+        "aspect_ratio": aspect_ratio,
+    }
+
+
+def build_contour_item_from_cv_contour(
+    *,
+    contour: Any,
+    contour_index: int,
+    cv2_module: Any,
+    np_module: Any,
+) -> dict[str, object] | None:
+    """把 OpenCV contour 转为结构化 contour item。"""
+
+    point_pairs = contour.reshape(-1, 2)
+    contour_points = [[int(point_x), int(point_y)] for point_x, point_y in point_pairs.tolist()]
+    if len(contour_points) < 3:
+        return None
+    contour_metrics = compute_contour_metrics_from_points(
+        points=contour_points,
+        cv2_module=cv2_module,
+        np_module=np_module,
+    )
+    return {
+        "contour_index": int(contour_index),
+        "point_count": len(contour_points),
+        "bbox_xyxy": list(contour_metrics["bbox_xyxy"]),
+        "points": contour_points,
+    }
 
 
 def normalize_optional_output_dir(value: object) -> str | None:

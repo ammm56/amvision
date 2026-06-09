@@ -1,1 +1,96 @@
 """OpenCV 基础节点模块集合。"""
+
+from __future__ import annotations
+
+from custom_nodes.opencv_basic_nodes.backend.nodes.adaptive_threshold import (
+    NODE_TYPE_ID as ADAPTIVE_THRESHOLD_NODE_TYPE_ID,
+    handle_node as adaptive_threshold_handler,
+)
+from custom_nodes.opencv_basic_nodes.backend.nodes.binary_threshold import (
+    NODE_TYPE_ID as BINARY_THRESHOLD_NODE_TYPE_ID,
+    handle_node as binary_threshold_handler,
+)
+from custom_nodes.opencv_basic_nodes.backend.nodes.canny import (
+    NODE_TYPE_ID as CANNY_NODE_TYPE_ID,
+    handle_node as canny_handler,
+)
+from custom_nodes.opencv_basic_nodes.backend.nodes.contour import (
+    NODE_TYPE_ID as CONTOUR_NODE_TYPE_ID,
+    handle_node as contour_handler,
+)
+from custom_nodes.opencv_basic_nodes.backend.nodes.contour_filter import (
+    NODE_TYPE_ID as CONTOUR_FILTER_NODE_TYPE_ID,
+    handle_node as contour_filter_handler,
+)
+from custom_nodes.opencv_basic_nodes.backend.nodes.contours_to_regions import (
+    NODE_TYPE_ID as CONTOURS_TO_REGIONS_NODE_TYPE_ID,
+    handle_node as contours_to_regions_handler,
+)
+from custom_nodes.opencv_basic_nodes.backend.nodes.crop_export import (
+    NODE_TYPE_ID as CROP_EXPORT_NODE_TYPE_ID,
+    handle_node as crop_export_handler,
+)
+from custom_nodes.opencv_basic_nodes.backend.nodes.draw_detections import (
+    NODE_TYPE_ID as DRAW_DETECTIONS_NODE_TYPE_ID,
+    handle_node as draw_detections_handler,
+)
+from custom_nodes.opencv_basic_nodes.backend.nodes.gallery_preview import (
+    NODE_TYPE_ID as GALLERY_PREVIEW_NODE_TYPE_ID,
+    handle_node as gallery_preview_handler,
+)
+from custom_nodes.opencv_basic_nodes.backend.nodes.gaussian_blur import (
+    NODE_TYPE_ID as GAUSSIAN_BLUR_NODE_TYPE_ID,
+    handle_node as gaussian_blur_handler,
+)
+from custom_nodes.opencv_basic_nodes.backend.nodes.grayscale import (
+    NODE_TYPE_ID as GRAYSCALE_NODE_TYPE_ID,
+    handle_node as grayscale_handler,
+)
+from custom_nodes.opencv_basic_nodes.backend.nodes.measure import (
+    NODE_TYPE_ID as MEASURE_NODE_TYPE_ID,
+    handle_node as measure_handler,
+)
+from custom_nodes.opencv_basic_nodes.backend.nodes.min_area_rect import (
+    NODE_TYPE_ID as MIN_AREA_RECT_NODE_TYPE_ID,
+    handle_node as min_area_rect_handler,
+)
+from custom_nodes.opencv_basic_nodes.backend.nodes.morphology import (
+    NODE_TYPE_ID as MORPHOLOGY_NODE_TYPE_ID,
+    handle_node as morphology_handler,
+)
+from custom_nodes.opencv_basic_nodes.backend.nodes.otsu_threshold import (
+    NODE_TYPE_ID as OTSU_THRESHOLD_NODE_TYPE_ID,
+    handle_node as otsu_threshold_handler,
+)
+from custom_nodes.opencv_basic_nodes.backend.nodes.payload_to_value import (
+    NODE_TYPE_ID as PAYLOAD_TO_VALUE_NODE_TYPE_ID,
+    handle_node as payload_to_value_handler,
+)
+from custom_nodes.opencv_basic_nodes.backend.nodes.resize import (
+    NODE_TYPE_ID as RESIZE_NODE_TYPE_ID,
+    handle_node as resize_handler,
+)
+
+
+NODE_HANDLERS = (
+    (DRAW_DETECTIONS_NODE_TYPE_ID, draw_detections_handler),
+    (GAUSSIAN_BLUR_NODE_TYPE_ID, gaussian_blur_handler),
+    (BINARY_THRESHOLD_NODE_TYPE_ID, binary_threshold_handler),
+    (MORPHOLOGY_NODE_TYPE_ID, morphology_handler),
+    (CANNY_NODE_TYPE_ID, canny_handler),
+    (CONTOUR_NODE_TYPE_ID, contour_handler),
+    (MEASURE_NODE_TYPE_ID, measure_handler),
+    (PAYLOAD_TO_VALUE_NODE_TYPE_ID, payload_to_value_handler),
+    (CROP_EXPORT_NODE_TYPE_ID, crop_export_handler),
+    (GALLERY_PREVIEW_NODE_TYPE_ID, gallery_preview_handler),
+    (GRAYSCALE_NODE_TYPE_ID, grayscale_handler),
+    (RESIZE_NODE_TYPE_ID, resize_handler),
+    (ADAPTIVE_THRESHOLD_NODE_TYPE_ID, adaptive_threshold_handler),
+    (OTSU_THRESHOLD_NODE_TYPE_ID, otsu_threshold_handler),
+    (CONTOUR_FILTER_NODE_TYPE_ID, contour_filter_handler),
+    (MIN_AREA_RECT_NODE_TYPE_ID, min_area_rect_handler),
+    (CONTOURS_TO_REGIONS_NODE_TYPE_ID, contours_to_regions_handler),
+)
+
+
+__all__ = ["NODE_HANDLERS"]

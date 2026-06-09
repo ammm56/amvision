@@ -312,9 +312,277 @@
       },
       "artifact_kinds": [],
       "metadata": {}
+    },
+    {
+      "format_id": "amvision.workflow-payload-contract.v1",
+      "payload_type_id": "rotated-rects.v1",
+      "display_name": "Rotated Rect Result",
+      "transport_kind": "inline-json",
+      "json_schema": {
+        "type": "object",
+        "properties": {
+          "source_image": {
+            "type": "object",
+            "properties": {
+              "transport_kind": {
+                "type": "string",
+                "enum": [
+                  "memory",
+                  "storage",
+                  "buffer",
+                  "frame"
+                ]
+              },
+              "object_key": {
+                "type": "string"
+              },
+              "image_handle": {
+                "type": "string"
+              },
+              "buffer_ref": {
+                "type": "object"
+              },
+              "frame_ref": {
+                "type": "object"
+              },
+              "width": {
+                "type": "integer"
+              },
+              "height": {
+                "type": "integer"
+              },
+              "media_type": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "transport_kind",
+              "media_type"
+            ],
+            "oneOf": [
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "storage"
+                  }
+                },
+                "required": [
+                  "object_key"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "memory"
+                  }
+                },
+                "required": [
+                  "image_handle"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "buffer"
+                  }
+                },
+                "required": [
+                  "buffer_ref"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "frame"
+                  }
+                },
+                "required": [
+                  "frame_ref"
+                ]
+              }
+            ]
+          },
+          "source_object_key": {
+            "type": "string"
+          },
+          "count": {
+            "type": "integer"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "contour_index": {
+                  "type": "integer"
+                },
+                "point_count": {
+                  "type": "integer"
+                },
+                "center_xy": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 2,
+                  "maxItems": 2
+                },
+                "size_wh": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 2,
+                  "maxItems": 2
+                },
+                "width": {
+                  "type": "number"
+                },
+                "height": {
+                  "type": "number"
+                },
+                "long_side": {
+                  "type": "number"
+                },
+                "short_side": {
+                  "type": "number"
+                },
+                "angle_deg": {
+                  "type": "number"
+                },
+                "bbox_xyxy": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 4,
+                  "maxItems": 4
+                },
+                "box_points": {
+                  "type": "array",
+                  "items": {
+                    "type": "array",
+                    "items": {
+                      "type": "number"
+                    },
+                    "minItems": 2,
+                    "maxItems": 2
+                  },
+                  "minItems": 4,
+                  "maxItems": 4
+                },
+                "contour_area": {
+                  "type": "number"
+                },
+                "rect_area": {
+                  "type": "number"
+                },
+                "fill_ratio": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "contour_index",
+                "center_xy",
+                "size_wh",
+                "long_side",
+                "short_side",
+                "angle_deg",
+                "box_points",
+                "contour_area",
+                "rect_area"
+              ]
+            }
+          }
+        },
+        "required": [
+          "items"
+        ]
+      },
+      "artifact_kinds": [],
+      "metadata": {}
     }
   ],
   "node_definitions": [
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.adaptive-threshold",
+      "display_name": "Adaptive Threshold",
+      "category": "opencv.filter",
+      "description": "对输入灰度图执行 adaptive threshold，适合光照不均或背景变化明显的二值化场景。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "max_value": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 255
+          },
+          "adaptive_method": {
+            "type": "string",
+            "enum": [
+              "mean",
+              "gaussian"
+            ]
+          },
+          "threshold_type": {
+            "type": "string",
+            "enum": [
+              "binary",
+              "binary-inv"
+            ]
+          },
+          "block_size": {
+            "type": "integer",
+            "minimum": 3
+          },
+          "c_value": {
+            "type": "number"
+          },
+          "output_object_key": {
+            "type": "string"
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.adaptive-threshold",
+        "vision.filter"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.basic-nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {}
+    },
     {
       "format_id": "amvision.node-definition.v1",
       "node_type_id": "custom.opencv.binary-threshold",
@@ -519,6 +787,201 @@
       "capability_tags": [
         "opencv.contour",
         "vision.analysis"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.basic-nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.contour-filter",
+      "display_name": "Contour Filter",
+      "category": "opencv.analysis",
+      "description": "按面积、宽高、点数和排序规则筛选 contour 集合。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "input_ports": [
+        {
+          "name": "contours",
+          "display_name": "Contours",
+          "payload_type_id": "contours.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "contours",
+          "display_name": "Contours",
+          "payload_type_id": "contours.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "summary",
+          "display_name": "Summary",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "min_area": {
+            "type": "number",
+            "minimum": 0
+          },
+          "max_area": {
+            "type": "number",
+            "minimum": 0
+          },
+          "min_width": {
+            "type": "number",
+            "minimum": 0
+          },
+          "max_width": {
+            "type": "number",
+            "minimum": 0
+          },
+          "min_height": {
+            "type": "number",
+            "minimum": 0
+          },
+          "max_height": {
+            "type": "number",
+            "minimum": 0
+          },
+          "min_point_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "max_point_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "sort_by": {
+            "type": "string",
+            "enum": [
+              "contour_index",
+              "point_count",
+              "area",
+              "width",
+              "height",
+              "perimeter"
+            ]
+          },
+          "descending": {
+            "type": "boolean"
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.contour-filter",
+        "vision.analysis"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.basic-nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.contours-to-regions",
+      "display_name": "Contours To Regions",
+      "category": "opencv.transform",
+      "description": "把 contours.v1 规整成标准 regions.v1，便于继续接工业规则和 ROI/连续性节点。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "input_ports": [
+        {
+          "name": "contours",
+          "display_name": "Contours",
+          "payload_type_id": "contours.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": false,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "regions",
+          "display_name": "Regions",
+          "payload_type_id": "regions.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "summary",
+          "display_name": "Summary",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "region_id_prefix": {
+            "type": "string",
+            "default": "ctr"
+          },
+          "class_id_default": {
+            "type": "integer",
+            "default": -1
+          },
+          "class_name_default": {
+            "type": "string",
+            "default": "contour"
+          },
+          "score_default": {
+            "type": "number",
+            "minimum": 0,
+            "default": 1.0
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.contours-to-regions",
+        "vision.region",
+        "vision.bridge"
       ],
       "runtime_requirements": {
         "python_packages": [
@@ -977,6 +1440,59 @@
     },
     {
       "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.grayscale",
+      "display_name": "Grayscale",
+      "category": "opencv.filter",
+      "description": "把输入图片转为灰度图。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "output_object_key": {
+            "type": "string"
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.grayscale",
+        "vision.filter"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.basic-nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
       "node_type_id": "custom.opencv.measure",
       "display_name": "Measure",
       "category": "opencv.analysis",
@@ -1030,6 +1546,85 @@
       "parameter_ui_schema": null,
       "capability_tags": [
         "opencv.measure",
+        "vision.analysis"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.basic-nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.min-area-rect",
+      "display_name": "Min Area Rect",
+      "category": "opencv.analysis",
+      "description": "对 contour 集合计算最小外接旋转矩形，并输出结构化 rotated-rects.v1。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "input_ports": [
+        {
+          "name": "contours",
+          "display_name": "Contours",
+          "payload_type_id": "contours.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "rotated_rects",
+          "display_name": "Rotated Rects",
+          "payload_type_id": "rotated-rects.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "summary",
+          "display_name": "Summary",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "sort_by": {
+            "type": "string",
+            "enum": [
+              "contour_index",
+              "contour_area",
+              "rect_area",
+              "long_side",
+              "short_side",
+              "angle_deg",
+              "fill_ratio"
+            ]
+          },
+          "descending": {
+            "type": "boolean"
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.min-area-rect",
+        "vision.geometry",
         "vision.analysis"
       ],
       "runtime_requirements": {
@@ -1125,10 +1720,75 @@
     },
     {
       "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.otsu-threshold",
+      "display_name": "Otsu Threshold",
+      "category": "opencv.filter",
+      "description": "对输入灰度图执行 Otsu 自动阈值分割。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "max_value": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 255
+          },
+          "threshold_type": {
+            "type": "string",
+            "enum": [
+              "binary",
+              "binary-inv"
+            ]
+          },
+          "output_object_key": {
+            "type": "string"
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.otsu-threshold",
+        "vision.filter"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.basic-nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
       "node_type_id": "custom.opencv.payload-to-value",
       "display_name": "OpenCV Payload To Value",
       "category": "opencv.transform",
-      "description": "把 contours.v1 或 measurements.v1 包装成 value.v1，供 object-create、response-envelope 和 value-preview 继续组合或预览。",
+      "description": "把 contours.v1、measurements.v1 或 rotated-rects.v1 包装成 value.v1，供 object-create、response-envelope 和 value-preview 继续组合或预览。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
       "input_ports": [
@@ -1168,6 +1828,26 @@
               "description": {
                 "zh-CN": "待包装的 measurement 结果。",
                 "en-US": "Measurement result to wrap as value.v1."
+              }
+            }
+          }
+        },
+        {
+          "name": "rotated_rects",
+          "display_name": "Rotated Rects",
+          "payload_type_id": "rotated-rects.v1",
+          "description": "待包装的 rotated-rects 结果。",
+          "required": false,
+          "multiple": false,
+          "metadata": {
+            "i18n": {
+              "display_name": {
+                "zh-CN": "旋转矩形结果",
+                "en-US": "Rotated Rects"
+              },
+              "description": {
+                "zh-CN": "待包装的 rotated-rects 结果。",
+                "en-US": "Rotated-rects result to wrap as value.v1."
               }
             }
           }
@@ -1214,11 +1894,82 @@
             "en-US": "OpenCV Payload To Value"
           },
           "description": {
-            "zh-CN": "把 contours.v1 或 measurements.v1 包装成 value.v1，便于继续组合 JSON 响应或统一做 JSON 预览。",
-            "en-US": "Wrap contours.v1 or measurements.v1 as value.v1 so the result can be composed into JSON responses or previewed as JSON."
+            "zh-CN": "把 contours.v1、measurements.v1 或 rotated-rects.v1 包装成 value.v1，便于继续组合 JSON 响应或统一做 JSON 预览。",
+            "en-US": "Wrap contours.v1, measurements.v1, or rotated-rects.v1 as value.v1 so the result can be composed into JSON responses or previewed as JSON."
           }
         }
       }
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.resize",
+      "display_name": "Resize",
+      "category": "opencv.filter",
+      "description": "按目标宽高缩放输入图片；当仅提供一个边时按原始比例推导另一边。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "width": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "height": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "interpolation": {
+            "type": "string",
+            "enum": [
+              "nearest",
+              "linear",
+              "area",
+              "cubic",
+              "lanczos4"
+            ]
+          },
+          "output_object_key": {
+            "type": "string"
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.resize",
+        "vision.filter"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.basic-nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {}
     }
   ],
   "metadata": {}

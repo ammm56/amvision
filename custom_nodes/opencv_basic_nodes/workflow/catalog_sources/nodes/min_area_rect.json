@@ -1,0 +1,65 @@
+{
+  "format_id": "amvision.node-definition.v1",
+  "node_type_id": "custom.opencv.min-area-rect",
+  "display_name": "Min Area Rect",
+  "category": "opencv.analysis",
+  "description": "对 contour 集合计算最小外接旋转矩形，并输出结构化 rotated-rects.v1。",
+  "implementation_kind": "custom-node",
+  "runtime_kind": "python-callable",
+  "input_ports": [
+    {
+      "name": "contours",
+      "display_name": "Contours",
+      "payload_type_id": "contours.v1"
+    }
+  ],
+  "output_ports": [
+    {
+      "name": "rotated_rects",
+      "display_name": "Rotated Rects",
+      "payload_type_id": "rotated-rects.v1"
+    },
+    {
+      "name": "summary",
+      "display_name": "Summary",
+      "payload_type_id": "value.v1"
+    }
+  ],
+  "parameter_schema": {
+    "type": "object",
+    "properties": {
+      "sort_by": {
+        "type": "string",
+        "enum": [
+          "contour_index",
+          "contour_area",
+          "rect_area",
+          "long_side",
+          "short_side",
+          "angle_deg",
+          "fill_ratio"
+        ]
+      },
+      "descending": {
+        "type": "boolean"
+      },
+      "limit": {
+        "type": "integer",
+        "minimum": 1
+      }
+    }
+  },
+  "capability_tags": [
+    "opencv.min-area-rect",
+    "vision.geometry",
+    "vision.analysis"
+  ],
+  "runtime_requirements": {
+    "python_packages": [
+      "opencv-python",
+      "numpy"
+    ]
+  },
+  "node_pack_id": "opencv.basic-nodes",
+  "node_pack_version": "0.1.0"
+}

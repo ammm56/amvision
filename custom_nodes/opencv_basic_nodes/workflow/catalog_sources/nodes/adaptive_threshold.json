@@ -1,0 +1,69 @@
+{
+  "format_id": "amvision.node-definition.v1",
+  "node_type_id": "custom.opencv.adaptive-threshold",
+  "display_name": "Adaptive Threshold",
+  "category": "opencv.filter",
+  "description": "对输入灰度图执行 adaptive threshold，适合光照不均或背景变化明显的二值化场景。",
+  "implementation_kind": "custom-node",
+  "runtime_kind": "python-callable",
+  "input_ports": [
+    {
+      "name": "image",
+      "display_name": "Image",
+      "payload_type_id": "image-ref.v1"
+    }
+  ],
+  "output_ports": [
+    {
+      "name": "image",
+      "display_name": "Image",
+      "payload_type_id": "image-ref.v1"
+    }
+  ],
+  "parameter_schema": {
+    "type": "object",
+    "properties": {
+      "max_value": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 255
+      },
+      "adaptive_method": {
+        "type": "string",
+        "enum": [
+          "mean",
+          "gaussian"
+        ]
+      },
+      "threshold_type": {
+        "type": "string",
+        "enum": [
+          "binary",
+          "binary-inv"
+        ]
+      },
+      "block_size": {
+        "type": "integer",
+        "minimum": 3
+      },
+      "c_value": {
+        "type": "number"
+      },
+      "output_object_key": {
+        "type": "string"
+      }
+    }
+  },
+  "capability_tags": [
+    "opencv.adaptive-threshold",
+    "vision.filter"
+  ],
+  "runtime_requirements": {
+    "python_packages": [
+      "opencv-python",
+      "numpy"
+    ]
+  },
+  "node_pack_id": "opencv.basic-nodes",
+  "node_pack_version": "0.1.0"
+}

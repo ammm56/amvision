@@ -33,9 +33,29 @@
 - `measure`
 - `gaussian-blur`
 - `morphology`
+- `grayscale`
+- `resize`
+- `adaptive-threshold`
+- `otsu-threshold`
+- `contour-filter`
+- `min-area-rect`
+- `contours-to-regions`
 - `draw-detections`
 - `crop-export`
 - `gallery-preview`
+- `payload-to-value`
+
+其中第一批更贴工业现场的传统视觉补强当前已接通：
+
+- `custom.opencv.grayscale`
+- `custom.opencv.resize`
+- `custom.opencv.adaptive-threshold`
+- `custom.opencv.otsu-threshold`
+- `custom.opencv.contour-filter`
+- `custom.opencv.min-area-rect`
+- `custom.opencv.contours-to-regions`
+
+其中 `min-area-rect` 当前新增 `rotated-rects.v1` 结构化 payload，`payload-to-value` 也已支持把它包装回 `value.v1` 继续参与响应拼装或调试预览。
 
 这套能力还远不足以覆盖工业现场常见的传统机器视觉处理。当前缺的不是“有没有 OpenCV 节点”，而是：
 
@@ -869,9 +889,9 @@ PLC 能力也应至少拆成两类：
 
 - `custom.camera.usb_uvc_nodes`
 - `custom.plc.modbus_tcp_nodes`
-- `custom.opencv.grayscale / resize / adaptive-threshold / otsu-threshold`
+- `custom.opencv.grayscale / resize / adaptive-threshold / otsu-threshold`（已实现）
 - `custom.opencv.hough-lines / hough-circles`
-- `custom.opencv.contour-filter / min-area-rect / contours-to-regions`
+- `custom.opencv.contour-filter / min-area-rect / contours-to-regions`（已实现）
 - `custom.opencv.connected-components / image-diff / absdiff-threshold`
 - `core.vision.reference-diff-metrics`
 - `core.vision.foreign-object-check`

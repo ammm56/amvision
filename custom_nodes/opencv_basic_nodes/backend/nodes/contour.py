@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 from custom_nodes.opencv_basic_nodes.backend.support import (
+    build_contour_item_from_cv_contour,
+    build_contours_payload,
     load_image_matrix,
     normalize_contour_approximation,
     normalize_contour_retrieval_mode,
@@ -20,7 +22,7 @@ NODE_TYPE_ID = "custom.opencv.contour"
 def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
     """对输入图片执行 contour 提取，并输出结构化 contour 集合。"""
 
-    cv2_module, _ = require_opencv_imports()
+    cv2_module, np_module = require_opencv_imports()
     image_payload, image_object_key, image_matrix = load_image_matrix(
         request,
         imdecode_flags=cv2_module.IMREAD_GRAYSCALE,
@@ -57,32 +59,22 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
         contour_area = float(cv2_module.contourArea(contour))
         if contour_area < min_area:
             continue
-        point_pairs = contour.reshape(-1, 2)
-        contour_points = [[int(point_x), int(point_y)] for point_x, point_y in point_pairs.tolist()]
-        if len(contour_points) < 3:
-            continue
-        bbox_x, bbox_y, bbox_width, bbox_height = cv2_module.boundingRect(contour)
-        contour_items.append(
-            {
-                "contour_index": len(contour_items) + 1,
-                "point_count": len(contour_points),
-                "bbox_xyxy": [
-                    int(bbox_x),
-                    int(bbox_y),
-                    int(bbox_x + bbox_width),
-                    int(bbox_y + bbox_height),
-                ],
-                "points": contour_points,
-            }
+        contour_item = build_contour_item_from_cv_contour(
+            contour=contour,
+            contour_index=len(contour_items) + 1,
+            cv2_module=cv2_module,
+            np_module=np_module,
         )
+        if contour_item is None:
+            continue
+        contour_items.append(contour_item)
         if max_contours is not None and len(contour_items) >= max_contours:
             break
 
     return {
-        "contours": {
-            "items": contour_items,
-            "count": len(contour_items),
-            "source_image": dict(image_payload),
-            **({"source_object_key": image_object_key} if image_object_key is not None else {}),
-        }
+        "contours": build_contours_payload(
+            items=contour_items,
+            source_image=image_payload,
+            source_object_key=image_object_key,
+        )
     }

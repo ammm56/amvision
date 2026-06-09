@@ -19,7 +19,7 @@ def test_opencv_basic_node_catalog_builder_matches_checked_in_catalog() -> None:
     assert actual_catalog_payload == expected_catalog_payload
     _assert_source_image_schema_supports_local_buffer_refs(
         catalog_payload=actual_catalog_payload,
-        payload_type_ids={"contours.v1", "measurements.v1"},
+        payload_type_ids={"contours.v1", "measurements.v1", "rotated-rects.v1"},
     )
 
 

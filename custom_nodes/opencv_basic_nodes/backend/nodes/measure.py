@@ -7,6 +7,7 @@ from typing import Any
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 from custom_nodes.opencv_basic_nodes.backend.support import (
+    compute_contour_metrics_from_points,
     require_contours_payload,
     require_opencv_imports,
     require_positive_int,
@@ -46,26 +47,21 @@ def _build_measurement_item(*, contour_item: dict[str, object], cv2_module: Any,
     - dict[str, object]：单个 contour 的度量结果。
     """
 
-    contour_points = contour_item["points"]
-    contour_matrix = np_module.array(contour_points, dtype=np_module.int32).reshape((-1, 1, 2))
-    bbox_xyxy = list(contour_item["bbox_xyxy"])
-    bbox_width = max(0, int(bbox_xyxy[2]) - int(bbox_xyxy[0]))
-    bbox_height = max(0, int(bbox_xyxy[3]) - int(bbox_xyxy[1]))
-    area = round(float(cv2_module.contourArea(contour_matrix)), 4)
-    perimeter = round(float(cv2_module.arcLength(contour_matrix, True)), 4)
-    center_x = round((float(bbox_xyxy[0]) + float(bbox_xyxy[2])) / 2.0, 4)
-    center_y = round((float(bbox_xyxy[1]) + float(bbox_xyxy[3])) / 2.0, 4)
-    aspect_ratio = round(float(bbox_width / bbox_height), 4) if bbox_height > 0 else 0.0
+    contour_metrics = compute_contour_metrics_from_points(
+        points=contour_item["points"],
+        cv2_module=cv2_module,
+        np_module=np_module,
+    )
     return {
         "contour_index": int(contour_item["contour_index"]),
         "point_count": int(contour_item["point_count"]),
-        "bbox_xyxy": bbox_xyxy,
-        "width": bbox_width,
-        "height": bbox_height,
-        "area": area,
-        "perimeter": perimeter,
-        "center_xy": [center_x, center_y],
-        "aspect_ratio": aspect_ratio,
+        "bbox_xyxy": list(contour_metrics["bbox_xyxy"]),
+        "width": int(contour_metrics["width"]),
+        "height": int(contour_metrics["height"]),
+        "area": float(contour_metrics["area"]),
+        "perimeter": float(contour_metrics["perimeter"]),
+        "center_xy": list(contour_metrics["center_xy"]),
+        "aspect_ratio": float(contour_metrics["aspect_ratio"]),
     }
 
 
