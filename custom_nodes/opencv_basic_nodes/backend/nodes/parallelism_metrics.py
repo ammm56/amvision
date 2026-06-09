@@ -132,6 +132,25 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
                 "line_a_length_pixels": round(float(selected_line_a["length_pixels"]), 4),
                 "line_b_length_pixels": round(float(selected_line_b["length_pixels"]), 4),
                 "midpoint_center_distance_pixels": round(float(midpoint_distance["distance_pixels"]), 4),
+                "line_a_midpoint_xy": [
+                    round(float(_resolve_line_midpoint_xy(selected_line_a)[0]), 4),
+                    round(float(_resolve_line_midpoint_xy(selected_line_a)[1]), 4),
+                ],
+                "line_b_start_xy": [round(float(line_b_start_xy[0]), 4), round(float(line_b_start_xy[1]), 4)],
+                "line_b_end_xy": [round(float(line_b_end_xy[0]), 4), round(float(line_b_end_xy[1]), 4)],
+                "line_b_midpoint_xy": [round(float(line_b_midpoint_xy[0]), 4), round(float(line_b_midpoint_xy[1]), 4)],
+                "start_projection_xy": [
+                    round(float(start_offset["projection_x"]), 4),
+                    round(float(start_offset["projection_y"]), 4),
+                ],
+                "end_projection_xy": [
+                    round(float(end_offset["projection_x"]), 4),
+                    round(float(end_offset["projection_y"]), 4),
+                ],
+                "midpoint_projection_xy": [
+                    round(float(midpoint_offset["projection_x"]), 4),
+                    round(float(midpoint_offset["projection_y"]), 4),
+                ],
             }
         ),
     }

@@ -50,6 +50,22 @@ from custom_nodes.opencv_basic_nodes.backend.nodes.draw_detections import (
     NODE_TYPE_ID as DRAW_DETECTIONS_NODE_TYPE_ID,
     handle_node as draw_detections_handler,
 )
+from custom_nodes.opencv_basic_nodes.backend.nodes.draw_circles import (
+    NODE_TYPE_ID as DRAW_CIRCLES_NODE_TYPE_ID,
+    handle_node as draw_circles_handler,
+)
+from custom_nodes.opencv_basic_nodes.backend.nodes.draw_contours import (
+    NODE_TYPE_ID as DRAW_CONTOURS_NODE_TYPE_ID,
+    handle_node as draw_contours_handler,
+)
+from custom_nodes.opencv_basic_nodes.backend.nodes.draw_lines import (
+    NODE_TYPE_ID as DRAW_LINES_NODE_TYPE_ID,
+    handle_node as draw_lines_handler,
+)
+from custom_nodes.opencv_basic_nodes.backend.nodes.draw_measurements import (
+    NODE_TYPE_ID as DRAW_MEASUREMENTS_NODE_TYPE_ID,
+    handle_node as draw_measurements_handler,
+)
 from custom_nodes.opencv_basic_nodes.backend.nodes.gallery_preview import (
     NODE_TYPE_ID as GALLERY_PREVIEW_NODE_TYPE_ID,
     handle_node as gallery_preview_handler,
@@ -130,6 +146,10 @@ from custom_nodes.opencv_basic_nodes.backend.nodes.slot_width import (
 
 NODE_HANDLERS = (
     (DRAW_DETECTIONS_NODE_TYPE_ID, draw_detections_handler),
+    (DRAW_CIRCLES_NODE_TYPE_ID, draw_circles_handler),
+    (DRAW_CONTOURS_NODE_TYPE_ID, draw_contours_handler),
+    (DRAW_LINES_NODE_TYPE_ID, draw_lines_handler),
+    (DRAW_MEASUREMENTS_NODE_TYPE_ID, draw_measurements_handler),
     (GAUSSIAN_BLUR_NODE_TYPE_ID, gaussian_blur_handler),
     (BINARY_THRESHOLD_NODE_TYPE_ID, binary_threshold_handler),
     (MORPHOLOGY_NODE_TYPE_ID, morphology_handler),

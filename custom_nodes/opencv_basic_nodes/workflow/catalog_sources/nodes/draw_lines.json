@@ -1,0 +1,80 @@
+{
+  "format_id": "amvision.node-definition.v1",
+  "node_type_id": "custom.opencv.draw-lines",
+  "display_name": "Draw Lines",
+  "category": "opencv.render",
+  "description": "通过 OpenCV 把 lines.v1 结果绘制到图片上，适合直线检测、拟合直线和边线量测调试。",
+  "implementation_kind": "custom-node",
+  "runtime_kind": "python-callable",
+  "input_ports": [
+    {
+      "name": "image",
+      "display_name": "Image",
+      "payload_type_id": "image-ref.v1"
+    },
+    {
+      "name": "lines",
+      "display_name": "Lines",
+      "payload_type_id": "lines.v1"
+    }
+  ],
+  "output_ports": [
+    {
+      "name": "image",
+      "display_name": "Image",
+      "payload_type_id": "image-ref.v1"
+    }
+  ],
+  "parameter_schema": {
+    "type": "object",
+    "properties": {
+      "line_thickness": {
+        "type": "integer",
+        "minimum": 1,
+        "default": 2
+      },
+      "point_radius": {
+        "type": "integer",
+        "minimum": 1,
+        "default": 3
+      },
+      "font_scale": {
+        "type": "number",
+        "minimum": 0,
+        "default": 0.5
+      },
+      "draw_indices": {
+        "type": "boolean",
+        "default": true
+      },
+      "draw_angle": {
+        "type": "boolean",
+        "default": true
+      },
+      "draw_length": {
+        "type": "boolean",
+        "default": true
+      },
+      "draw_midpoint": {
+        "type": "boolean",
+        "default": true
+      },
+      "output_object_key": {
+        "type": "string"
+      }
+    }
+  },
+  "capability_tags": [
+    "opencv.draw",
+    "vision.render",
+    "vision.geometry"
+  ],
+  "runtime_requirements": {
+    "python_packages": [
+      "opencv-python",
+      "numpy"
+    ]
+  },
+  "node_pack_id": "opencv.basic-nodes",
+  "node_pack_version": "0.1.0"
+}

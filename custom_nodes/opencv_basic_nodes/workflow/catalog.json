@@ -1874,6 +1874,181 @@
     },
     {
       "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.draw-circles",
+      "display_name": "Draw Circles",
+      "category": "opencv.render",
+      "description": "通过 OpenCV 把 circles.v1 结果绘制到图片上，适合圆检测、孔径量测和同心度调试。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "circles",
+          "display_name": "Circles",
+          "payload_type_id": "circles.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "line_thickness": {
+            "type": "integer",
+            "minimum": 1,
+            "default": 2
+          },
+          "point_radius": {
+            "type": "integer",
+            "minimum": 1,
+            "default": 3
+          },
+          "font_scale": {
+            "type": "number",
+            "minimum": 0,
+            "default": 0.5
+          },
+          "draw_indices": {
+            "type": "boolean",
+            "default": true
+          },
+          "draw_radius": {
+            "type": "boolean",
+            "default": false
+          },
+          "draw_diameter": {
+            "type": "boolean",
+            "default": true
+          },
+          "draw_center": {
+            "type": "boolean",
+            "default": true
+          },
+          "output_object_key": {
+            "type": "string"
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.draw",
+        "vision.render",
+        "vision.geometry"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.basic-nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.draw-contours",
+      "display_name": "Draw Contours",
+      "category": "opencv.render",
+      "description": "通过 OpenCV 把 contours.v1 结果绘制到图片上，适合轮廓调试和规则依据复核。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "contours",
+          "display_name": "Contours",
+          "payload_type_id": "contours.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "line_thickness": {
+            "type": "integer",
+            "minimum": 1,
+            "default": 2
+          },
+          "font_scale": {
+            "type": "number",
+            "minimum": 0,
+            "default": 0.5
+          },
+          "draw_indices": {
+            "type": "boolean",
+            "default": true
+          },
+          "draw_bbox": {
+            "type": "boolean",
+            "default": false
+          },
+          "output_object_key": {
+            "type": "string"
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.draw",
+        "vision.render",
+        "vision.contour.debug"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.basic-nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
       "node_type_id": "custom.opencv.draw-detections",
       "display_name": "Draw Detections",
       "category": "opencv.render",
@@ -2035,6 +2210,182 @@
           }
         }
       }
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.draw-lines",
+      "display_name": "Draw Lines",
+      "category": "opencv.render",
+      "description": "通过 OpenCV 把 lines.v1 结果绘制到图片上，适合直线检测、拟合直线和边线量测调试。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "lines",
+          "display_name": "Lines",
+          "payload_type_id": "lines.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "line_thickness": {
+            "type": "integer",
+            "minimum": 1,
+            "default": 2
+          },
+          "point_radius": {
+            "type": "integer",
+            "minimum": 1,
+            "default": 3
+          },
+          "font_scale": {
+            "type": "number",
+            "minimum": 0,
+            "default": 0.5
+          },
+          "draw_indices": {
+            "type": "boolean",
+            "default": true
+          },
+          "draw_angle": {
+            "type": "boolean",
+            "default": true
+          },
+          "draw_length": {
+            "type": "boolean",
+            "default": true
+          },
+          "draw_midpoint": {
+            "type": "boolean",
+            "default": true
+          },
+          "output_object_key": {
+            "type": "string"
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.draw",
+        "vision.render",
+        "vision.geometry"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.basic-nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.draw-measurements",
+      "display_name": "Draw Measurements",
+      "category": "opencv.render",
+      "description": "通过 OpenCV 把通用量测 summary 绘制到图片上，适合距离、偏移、槽宽和同心度依据复核。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "measurement",
+          "display_name": "Measurement",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "line_thickness": {
+            "type": "integer",
+            "minimum": 1,
+            "default": 2
+          },
+          "point_radius": {
+            "type": "integer",
+            "minimum": 1,
+            "default": 4
+          },
+          "font_scale": {
+            "type": "number",
+            "minimum": 0,
+            "default": 0.5
+          },
+          "draw_labels": {
+            "type": "boolean",
+            "default": true
+          },
+          "output_object_key": {
+            "type": "string"
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.draw",
+        "vision.render",
+        "inspection.measurement.visualize"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.basic-nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {}
     },
     {
       "format_id": "amvision.node-definition.v1",

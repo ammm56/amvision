@@ -883,11 +883,11 @@ PLC 能力也应至少拆成两类：
 
 建议节点：
 
-- `custom.opencv.draw-contours`
-- `custom.opencv.draw-lines`
-- `custom.opencv.draw-circles`
+- `custom.opencv.draw-contours`（已实现）
+- `custom.opencv.draw-lines`（已实现）
+- `custom.opencv.draw-circles`（已实现）
 - `custom.opencv.draw-roi`
-- `custom.opencv.draw-measurements`
+- `custom.opencv.draw-measurements`（已实现）
 - `custom.opencv.mask-overlay`
 - `custom.opencv.heatmap-preview`
 
