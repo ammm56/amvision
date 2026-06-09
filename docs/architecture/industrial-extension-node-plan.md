@@ -908,9 +908,9 @@ PLC 能力也应至少拆成两类：
 - `custom.opencv.hough-lines / hough-circles`
 - `custom.opencv.contour-filter / min-area-rect / contours-to-regions`（已实现）
 - `custom.opencv.connected-components / image-diff / absdiff-threshold`（已实现）
-- `core.vision.reference-diff-metrics`
-- `core.vision.foreign-object-check`
-- `core.vision.surface-uniformity-check`
+- `core.vision.reference-diff-metrics`（已实现）
+- `core.vision.foreign-object-check`（已实现）
+- `core.vision.surface-uniformity-check`（已实现）
 
 ### 第二阶段
 
