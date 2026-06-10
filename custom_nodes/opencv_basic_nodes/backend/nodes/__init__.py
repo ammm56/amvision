@@ -18,6 +18,10 @@ from custom_nodes.opencv_basic_nodes.backend.nodes.canny import (
     NODE_TYPE_ID as CANNY_NODE_TYPE_ID,
     handle_node as canny_handler,
 )
+from custom_nodes.opencv_basic_nodes.backend.nodes.caliper_edge import (
+    NODE_TYPE_ID as CALIPER_EDGE_NODE_TYPE_ID,
+    handle_node as caliper_edge_handler,
+)
 from custom_nodes.opencv_basic_nodes.backend.nodes.circle_diameter import (
     NODE_TYPE_ID as CIRCLE_DIAMETER_NODE_TYPE_ID,
     handle_node as circle_diameter_handler,
@@ -168,6 +172,7 @@ NODE_HANDLERS = (
     (BINARY_THRESHOLD_NODE_TYPE_ID, binary_threshold_handler),
     (MORPHOLOGY_NODE_TYPE_ID, morphology_handler),
     (CANNY_NODE_TYPE_ID, canny_handler),
+    (CALIPER_EDGE_NODE_TYPE_ID, caliper_edge_handler),
     (CIRCLE_DIAMETER_NODE_TYPE_ID, circle_diameter_handler),
     (CONCENTRICITY_METRICS_NODE_TYPE_ID, concentricity_metrics_handler),
     (CONTOUR_NODE_TYPE_ID, contour_handler),

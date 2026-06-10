@@ -831,7 +831,7 @@ PLC 能力也应至少拆成两类：
 
 建议节点：
 
-- `core.vision.edge-break-check`
+- `core.vision.edge-break-check`（已实现）
 - `core.vision.edge-profile-gap-check`
 - `core.vision.linearity-check`（已实现）
 - `core.vision.circularity-check`（已实现）
@@ -851,7 +851,7 @@ PLC 能力也应至少拆成两类：
 
 建议节点：
 
-- `core.vision.multi-part-presence-check`
+- `core.vision.multi-part-presence-check`（已实现）
 - `core.vision.pair-offset-check`
 - `core.vision.reference-mark-align-check`
 - `core.vision.spacing-check`
@@ -1047,7 +1047,7 @@ PLC 能力也应至少拆成两类：
 
 建议节点：
 
-- `custom.opencv.caliper-edge`
+- `custom.opencv.caliper-edge`（已实现）
 - `custom.opencv.point-distance`（已实现）
 - `custom.opencv.point-to-line-distance`（已实现）
 - `custom.opencv.line-angle`（已实现）
@@ -1097,11 +1097,11 @@ PLC 能力也应至少拆成两类：
 ### 第二阶段
 
 - `custom.opencv.template-match`（已实现）
-- `custom.opencv.caliper-edge`
-- `core.vision.edge-break-check`
+- `custom.opencv.caliper-edge`（已实现）
+- `core.vision.edge-break-check`（已实现）
 - `core.vision.linearity-check`（已实现）
 - `core.vision.circularity-check`（已实现）
-- `core.vision.multi-part-presence-check`
+- `core.vision.multi-part-presence-check`（已实现）
 - `custom.anomaly.model_nodes`
 
 ### 第三阶段
