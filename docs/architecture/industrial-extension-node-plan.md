@@ -45,11 +45,16 @@
 - `otsu-threshold`
 - `invert`
 - `contour-filter`
+- `contour-approx`
 - `min-area-rect`
+- `convex-hull`
+- `fit-ellipse`
 - `contours-to-regions`
 - `image-diff`
 - `absdiff-threshold`
 - `connected-components`
+- `fill-holes`
+- `distance-transform`
 - `rotation-correct`
 - `draw-detections`
 - `crop-export`
@@ -91,6 +96,16 @@
 - `reference image -> image-diff -> absdiff-threshold -> connected-components -> regions.v1`
 
 其中 `connected-components` 当前会为每个 component 生成 `mask_image`，避免后续继续接面积、完整性、空洞或差异规则链时丢失真实前景几何。
+
+其中第二优先级的形状与形态补强层当前也已接通：
+
+- `custom.opencv.contour-approx`
+- `custom.opencv.convex-hull`
+- `custom.opencv.fit-ellipse`
+- `custom.opencv.fill-holes`
+- `custom.opencv.distance-transform`
+
+这组节点当前已经可以把“轮廓精修、外形包络、椭圆拟合、孔洞填充、距离场预览”这条中间层收起来，继续服务孔位、椭圆件、涂布完整性和空腔/中心性分析。
 
 这套能力还远不足以覆盖工业现场常见的传统机器视觉处理。当前缺的不是“有没有 OpenCV 节点”，而是：
 
@@ -866,6 +881,18 @@ PLC 能力也应至少拆成两类：
 - 圆度异常
 - 轮廓变形
 
+当前这组里已经进一步落地：
+
+- `core.vision.defect-cluster-count`
+- `core.vision.defect-largest-cluster-ratio`
+- `core.vision.defect-density`
+- `core.vision.edge-profile-gap-check`
+
+其中：
+
+- `defect-cluster-* / defect-density` 当前统一复用 `regions.v1 + 可选 roi.v1`，更适合承接 `connected-components`、参考图差异或分割缺陷结果
+- `edge-profile-gap-check` 当前提供显式 `horizontal / vertical` profile 语义，适合工位方向已知时，比完全依赖区域主方向的 `edge-break-check` 更稳定
+
 ### 第四组：装配 / 位置关系类节点
 
 建议节点：
@@ -1107,6 +1134,7 @@ PLC 能力也应至少拆成两类：
 - `custom.plc.modbus_tcp_nodes`（主动读写 / wait-condition / write-result-signals 已实现）
 - `custom.opencv.grayscale / resize / adaptive-threshold / otsu-threshold`（已实现）
 - `custom.opencv.crop / normalize / clahe / median-blur / bilateral-filter / invert / rotation-correct`（已实现）
+- `custom.opencv.contour-approx / convex-hull / fit-ellipse / fill-holes / distance-transform`（已实现）
 - `custom.opencv.hough-lines / hough-circles`（已实现）
 - `custom.opencv.contour-filter / min-area-rect / contours-to-regions`（已实现）
 - `custom.opencv.connected-components / image-diff / absdiff-threshold`（已实现）

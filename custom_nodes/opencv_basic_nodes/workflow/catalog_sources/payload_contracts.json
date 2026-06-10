@@ -859,5 +859,203 @@
     },
     "artifact_kinds": [],
     "metadata": {}
+  },
+  {
+    "format_id": "amvision.workflow-payload-contract.v1",
+    "payload_type_id": "ellipses.v1",
+    "display_name": "Ellipse Result",
+    "transport_kind": "inline-json",
+    "json_schema": {
+      "type": "object",
+      "properties": {
+        "source_image": {
+          "type": "object",
+          "properties": {
+            "transport_kind": {
+              "type": "string",
+              "enum": [
+                "memory",
+                "storage",
+                "buffer",
+                "frame"
+              ]
+            },
+            "object_key": {
+              "type": "string"
+            },
+            "image_handle": {
+              "type": "string"
+            },
+            "buffer_ref": {
+              "type": "object"
+            },
+            "frame_ref": {
+              "type": "object"
+            },
+            "width": {
+              "type": "integer"
+            },
+            "height": {
+              "type": "integer"
+            },
+            "media_type": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "transport_kind",
+            "media_type"
+          ],
+          "oneOf": [
+            {
+              "properties": {
+                "transport_kind": {
+                  "const": "storage"
+                }
+              },
+              "required": [
+                "object_key"
+              ]
+            },
+            {
+              "properties": {
+                "transport_kind": {
+                  "const": "memory"
+                }
+              },
+              "required": [
+                "image_handle"
+              ]
+            },
+            {
+              "properties": {
+                "transport_kind": {
+                  "const": "buffer"
+                }
+              },
+              "required": [
+                "buffer_ref"
+              ]
+            },
+            {
+              "properties": {
+                "transport_kind": {
+                  "const": "frame"
+                }
+              },
+              "required": [
+                "frame_ref"
+              ]
+            }
+          ]
+        },
+        "source_object_key": {
+          "type": "string"
+        },
+        "count": {
+          "type": "integer"
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "ellipse_index": {
+                "type": "integer"
+              },
+              "contour_index": {
+                "type": "integer"
+              },
+              "point_count": {
+                "type": "integer"
+              },
+              "center_xy": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 2,
+                "maxItems": 2
+              },
+              "center_x": {
+                "type": "number"
+              },
+              "center_y": {
+                "type": "number"
+              },
+              "size_wh": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 2,
+                "maxItems": 2
+              },
+              "width": {
+                "type": "number"
+              },
+              "height": {
+                "type": "number"
+              },
+              "major_axis": {
+                "type": "number"
+              },
+              "minor_axis": {
+                "type": "number"
+              },
+              "angle_deg": {
+                "type": "number"
+              },
+              "bbox_xyxy": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 4,
+                "maxItems": 4
+              },
+              "box_points": {
+                "type": "array",
+                "items": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 2,
+                  "maxItems": 2
+                },
+                "minItems": 4,
+                "maxItems": 4
+              },
+              "area": {
+                "type": "number"
+              },
+              "perimeter": {
+                "type": "number"
+              },
+              "contour_area": {
+                "type": "number"
+              },
+              "fill_ratio": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "ellipse_index",
+              "center_xy",
+              "major_axis",
+              "minor_axis",
+              "angle_deg",
+              "area"
+            ]
+          }
+        }
+      },
+      "required": [
+        "items"
+      ]
+    },
+    "artifact_kinds": [],
+    "metadata": {}
   }
 ]

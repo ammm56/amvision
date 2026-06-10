@@ -1,0 +1,67 @@
+{
+  "format_id": "amvision.node-definition.v1",
+  "node_type_id": "custom.opencv.fit-ellipse",
+  "display_name": "Fit Ellipse",
+  "category": "opencv.analysis",
+  "description": "对 contour 集合执行椭圆拟合，并输出结构化 ellipses.v1，适合孔位、椭圆件、压装位和圆孔变形检查。",
+  "implementation_kind": "custom-node",
+  "runtime_kind": "python-callable",
+  "input_ports": [
+    {
+      "name": "contours",
+      "display_name": "Contours",
+      "payload_type_id": "contours.v1"
+    }
+  ],
+  "output_ports": [
+    {
+      "name": "ellipses",
+      "display_name": "Ellipses",
+      "payload_type_id": "ellipses.v1"
+    },
+    {
+      "name": "summary",
+      "display_name": "Summary",
+      "payload_type_id": "value.v1"
+    }
+  ],
+  "parameter_schema": {
+    "type": "object",
+    "properties": {
+      "sort_by": {
+        "type": "string",
+        "enum": [
+          "ellipse_index",
+          "contour_index",
+          "major_axis",
+          "minor_axis",
+          "area",
+          "fill_ratio",
+          "angle_deg",
+          "center_x",
+          "center_y"
+        ]
+      },
+      "descending": {
+        "type": "boolean"
+      },
+      "limit": {
+        "type": "integer",
+        "minimum": 1
+      }
+    }
+  },
+  "capability_tags": [
+    "opencv.fit-ellipse",
+    "vision.geometry",
+    "inspection.ellipse"
+  ],
+  "runtime_requirements": {
+    "python_packages": [
+      "opencv-python",
+      "numpy"
+    ]
+  },
+  "node_pack_id": "opencv.basic-nodes",
+  "node_pack_version": "0.1.0"
+}

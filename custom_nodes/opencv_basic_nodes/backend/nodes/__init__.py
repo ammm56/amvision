@@ -50,9 +50,17 @@ from custom_nodes.opencv_basic_nodes.backend.nodes.connected_components import (
     NODE_TYPE_ID as CONNECTED_COMPONENTS_NODE_TYPE_ID,
     handle_node as connected_components_handler,
 )
+from custom_nodes.opencv_basic_nodes.backend.nodes.contour_approx import (
+    NODE_TYPE_ID as CONTOUR_APPROX_NODE_TYPE_ID,
+    handle_node as contour_approx_handler,
+)
 from custom_nodes.opencv_basic_nodes.backend.nodes.concentricity_metrics import (
     NODE_TYPE_ID as CONCENTRICITY_METRICS_NODE_TYPE_ID,
     handle_node as concentricity_metrics_handler,
+)
+from custom_nodes.opencv_basic_nodes.backend.nodes.convex_hull import (
+    NODE_TYPE_ID as CONVEX_HULL_NODE_TYPE_ID,
+    handle_node as convex_hull_handler,
 )
 from custom_nodes.opencv_basic_nodes.backend.nodes.crop_export import (
     NODE_TYPE_ID as CROP_EXPORT_NODE_TYPE_ID,
@@ -86,9 +94,21 @@ from custom_nodes.opencv_basic_nodes.backend.nodes.draw_roi import (
     NODE_TYPE_ID as DRAW_ROI_NODE_TYPE_ID,
     handle_node as draw_roi_handler,
 )
+from custom_nodes.opencv_basic_nodes.backend.nodes.distance_transform import (
+    NODE_TYPE_ID as DISTANCE_TRANSFORM_NODE_TYPE_ID,
+    handle_node as distance_transform_handler,
+)
+from custom_nodes.opencv_basic_nodes.backend.nodes.fill_holes import (
+    NODE_TYPE_ID as FILL_HOLES_NODE_TYPE_ID,
+    handle_node as fill_holes_handler,
+)
 from custom_nodes.opencv_basic_nodes.backend.nodes.gallery_preview import (
     NODE_TYPE_ID as GALLERY_PREVIEW_NODE_TYPE_ID,
     handle_node as gallery_preview_handler,
+)
+from custom_nodes.opencv_basic_nodes.backend.nodes.fit_ellipse import (
+    NODE_TYPE_ID as FIT_ELLIPSE_NODE_TYPE_ID,
+    handle_node as fit_ellipse_handler,
 )
 from custom_nodes.opencv_basic_nodes.backend.nodes.gaussian_blur import (
     NODE_TYPE_ID as GAUSSIAN_BLUR_NODE_TYPE_ID,
@@ -207,6 +227,8 @@ NODE_HANDLERS = (
     (CIRCLE_DIAMETER_NODE_TYPE_ID, circle_diameter_handler),
     (CONCENTRICITY_METRICS_NODE_TYPE_ID, concentricity_metrics_handler),
     (CONTOUR_NODE_TYPE_ID, contour_handler),
+    (CONTOUR_APPROX_NODE_TYPE_ID, contour_approx_handler),
+    (CONVEX_HULL_NODE_TYPE_ID, convex_hull_handler),
     (LINE_ANGLE_NODE_TYPE_ID, line_angle_handler),
     (MEASURE_NODE_TYPE_ID, measure_handler),
     (PARALLELISM_METRICS_NODE_TYPE_ID, parallelism_metrics_handler),
@@ -214,7 +236,10 @@ NODE_HANDLERS = (
     (POINT_DISTANCE_NODE_TYPE_ID, point_distance_handler),
     (POINT_TO_LINE_DISTANCE_NODE_TYPE_ID, point_to_line_distance_handler),
     (CROP_EXPORT_NODE_TYPE_ID, crop_export_handler),
+    (DISTANCE_TRANSFORM_NODE_TYPE_ID, distance_transform_handler),
+    (FILL_HOLES_NODE_TYPE_ID, fill_holes_handler),
     (GALLERY_PREVIEW_NODE_TYPE_ID, gallery_preview_handler),
+    (FIT_ELLIPSE_NODE_TYPE_ID, fit_ellipse_handler),
     (GRAYSCALE_NODE_TYPE_ID, grayscale_handler),
     (FIT_LINE_NODE_TYPE_ID, fit_line_handler),
     (HOUGH_LINES_NODE_TYPE_ID, hough_lines_handler),

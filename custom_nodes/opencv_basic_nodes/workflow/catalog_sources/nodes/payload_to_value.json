@@ -3,7 +3,7 @@
   "node_type_id": "custom.opencv.payload-to-value",
   "display_name": "OpenCV Payload To Value",
   "category": "opencv.transform",
-  "description": "把 contours.v1、measurements.v1、rotated-rects.v1、lines.v1 或 circles.v1 包装成 value.v1，供 object-create、response-envelope 和 value-preview 继续组合或预览。",
+  "description": "把 contours.v1、measurements.v1、rotated-rects.v1、lines.v1、circles.v1 或 ellipses.v1 包装成 value.v1，供 object-create、response-envelope 和 value-preview 继续组合或预览。",
   "implementation_kind": "custom-node",
   "runtime_kind": "python-callable",
   "input_ports": [
@@ -101,6 +101,25 @@
           }
         }
       }
+    },
+    {
+      "name": "ellipses",
+      "display_name": "Ellipses",
+      "payload_type_id": "ellipses.v1",
+      "required": false,
+      "description": "待包装的 ellipses 结果。",
+      "metadata": {
+        "i18n": {
+          "display_name": {
+            "zh-CN": "椭圆结果",
+            "en-US": "Ellipses"
+          },
+          "description": {
+            "zh-CN": "待包装的 ellipses 结果。",
+            "en-US": "Ellipses result to wrap as value.v1."
+          }
+        }
+      }
     }
   ],
   "output_ports": [
@@ -138,8 +157,8 @@
         "en-US": "OpenCV Payload To Value"
       },
       "description": {
-        "zh-CN": "把 contours.v1、measurements.v1、rotated-rects.v1、lines.v1 或 circles.v1 包装成 value.v1，便于继续组合 JSON 响应或统一做 JSON 预览。",
-        "en-US": "Wrap contours.v1, measurements.v1, rotated-rects.v1, lines.v1, or circles.v1 as value.v1 so the result can be composed into JSON responses or previewed as JSON."
+        "zh-CN": "把 contours.v1、measurements.v1、rotated-rects.v1、lines.v1、circles.v1 或 ellipses.v1 包装成 value.v1，便于继续组合 JSON 响应或统一做 JSON 预览。",
+        "en-US": "Wrap contours.v1, measurements.v1, rotated-rects.v1, lines.v1, circles.v1, or ellipses.v1 as value.v1 so the result can be composed into JSON responses or previewed as JSON."
       }
     }
   },
