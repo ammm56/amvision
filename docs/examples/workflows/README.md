@@ -450,6 +450,10 @@ ZeroMQ TriggerSource 示例不把机器相关的 `path`、`offset` 和 `broker_e
 - `industrial_single_frame_segments_continuity_gate.application.json`
 - `industrial_single_frame_glue_roi_callback.template.json`
 - `industrial_single_frame_glue_roi_callback.application.json`
+- `industrial_single_frame_glue_roi_modbus_callback.template.json`
+- `industrial_single_frame_glue_roi_modbus_callback.application.json`
+- `industrial_single_frame_glue_roi_modbus_callback_strict.template.json`
+- `industrial_single_frame_glue_roi_modbus_callback_strict.application.json`
 - `industrial_single_frame_glue_polygon_roi_changeover.template.json`
 - `industrial_single_frame_glue_polygon_roi_changeover.application.json`
 - `industrial_single_frame_regions_overlay_review.template.json`
@@ -900,6 +904,114 @@ ZeroMQ TriggerSource 示例不把机器相关的 `path`、`offset` 和 `broker_e
 - `request_roi.value` 当前直接使用 ROI 对象，建议传 `roi_kind / roi_id / bbox_xyxy` 或 `roi_kind / roi_id / polygon_xy`
 - `http-post.url` 当前是示例回调地址，导入后应先改成现场真实接口，再执行
 - `http-post` 的输出是 `value.v1` 摘要，不是 `http-response.v1`；摘要里会带 `ok / status_code / headers / body_json 或 body_text`
+
+### industrial_single_frame_glue_roi_modbus_callback
+
+链路固定为：
+
+- `template-input.value`
+- `image-load-local`
+- `regions-filter`
+- `roi-create`
+- `regions-coverage-check`
+- `regions-offset-check`
+- `regions-intersection-metrics`
+- `process-decision`
+- `alarm-condition`
+- `custom.plc.modbus.write-result-signals`
+- `json-save-local`
+- `csv-append-local`
+- `http-post`
+
+输入约定：
+
+- `request_image_path`：`value.v1`
+  - 示例：`{"value":"D:/cases/line-b/frame-021.png"}`
+- `request_regions`：`regions.v1`
+  - 由上游检测/分割节点或外部系统提供
+- `request_roi`：`value.v1`
+  - 可选；未提供时回退到模板内 `create_roi` 的默认 ROI 参数
+  - 示例：`{"value":{"roi_id":"line-b-roi","bbox_xyxy":[240,160,1120,640]}}`
+- `request_signal_write`：`value.v1`
+  - 可选；用于运行时覆盖 Modbus 结果回写配置
+  - 示例：`{"value":{"host":"192.168.10.20","unit_id":1,"signal_values":{"result_code":17},"disabled_signals":["alarm_active"]}}`
+
+输出约定：
+
+- `inspection_result`：`result-record.v1`
+- `inspection_alarm`：`alarm-record.v1`
+- `signal_write_summary`：`value.v1`
+- `decision_summary`：`value.v1`
+- `json_summary`：`value.v1`
+- `csv_summary`：`value.v1`
+- `callback_response`：`value.v1`
+
+适用场景：
+
+- 现场规则判定完成后，不只是保存 JSON 或 HTTP 回传，还需要把 `OK / NG / alarm_active / result_code` 同步写回 PLC
+- 上游已经能提供标准 `regions.v1`，希望把“规则判定 -> PLC 回写 -> 归档/回传”收成一条 checked-in 模板
+- 需要把 ROI 换型和 Modbus 结果码都保留为运行时输入，而不是改模板源码
+
+注意事项：
+
+- 这条样例当前用 `request_signal_write` 直接覆盖 `write-result-signals.request`，适合按工位、班次或配方动态下发 `host / unit_id / signal_values / disabled_signals`
+- 模板内默认把 `ok / ng / alarm_active` 写到 `00031 / 00032 / 00033`，把 `result_code` 写到 `400121`；导入后应先按现场地址表修改
+- `signal_write_summary` 是 `value.v1` 摘要，里面会保留 `written_items / skipped_items / failed_items`，便于现场排障
+- 当前这条模板把 PLC 回写、JSON、CSV 和 HTTP 回传都挂在同一份 `process-decision.result` 后面，适合现场先把结果交付链跑通；如果后续要求“PLC 成功回写后才允许再回调 HTTP”，再单独补更严格的顺序版模板
+
+### industrial_single_frame_glue_roi_modbus_callback_strict
+
+链路固定为：
+
+- `template-input.value`
+- `image-load-local`
+- `regions-filter`
+- `roi-create`
+- `regions-coverage-check`
+- `regions-offset-check`
+- `regions-intersection-metrics`
+- `process-decision`
+- `alarm-condition`
+- `custom.plc.modbus.write-result-signals`
+- `object-create(build_callback_payload)`
+- `http-post`
+- `json-save-local`
+- `csv-append-local`
+
+输入约定：
+
+- `request_image_path`：`value.v1`
+  - 示例：`{"value":"D:/cases/line-b/frame-021.png"}`
+- `request_regions`：`regions.v1`
+  - 由上游检测/分割节点或外部系统提供
+- `request_roi`：`value.v1`
+  - 可选；未提供时回退到模板内 `create_roi` 的默认 ROI 参数
+- `request_signal_write`：`value.v1`
+  - 可选；用于运行时覆盖 Modbus 结果回写配置
+  - 示例：`{"value":{"host":"192.168.10.20","unit_id":1,"signal_values":{"result_code":17},"disabled_signals":["alarm_active"]}}`
+
+输出约定：
+
+- `inspection_result`：`result-record.v1`
+- `inspection_alarm`：`alarm-record.v1`
+- `signal_write_summary`：`value.v1`
+- `callback_payload`：`value.v1`
+- `decision_summary`：`value.v1`
+- `json_summary`：`value.v1`
+- `csv_summary`：`value.v1`
+- `callback_response`：`value.v1`
+
+适用场景：
+
+- 现场明确要求“先 PLC 回写成功，再发 HTTP 回调”
+- HTTP 回调方更关注一次交付的过程摘要，而不是只接收原始 `result-record`
+- 希望保留 `signal_write_summary` 作为显式上游依赖，让流程顺序在图上更直观
+
+注意事项：
+
+- 这条模板的 `http-post` 不再直接发送 `result-record`，而是发送 `build_callback_payload` 拼出来的 `value.v1` 对象；里面包含 `decision_summary / alarm_summary / signal_write_summary / metadata`
+- 因为 `callback_result` 显式依赖 `build_callback_payload`，而 `build_callback_payload` 又依赖 `signal_write_summary`，所以这条图天然表达了“先回写 PLC，再发 HTTP”
+- 如果现场回调接口必须直接吃 `result-record` 形状，当前更适合先用上一条 fan-out 版模板；后续如果确实要“严格顺序 + 原始 result-record 直发”，再补专门的桥接节点或输入面
 
 ### industrial_single_frame_glue_polygon_roi_changeover
 

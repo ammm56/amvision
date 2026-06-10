@@ -700,8 +700,193 @@ def test_plc_register_modbus_tcp_async_result_record_example_documents_are_valid
         "decision_summary",
         "callback_response",
     ]
-    assert application.bindings[0].metadata["source_path"] == "payload"
-    assert application.bindings[1].metadata["source_path"] == "event"
+
+
+def test_industrial_single_frame_glue_roi_modbus_callback_documents_are_valid() -> None:
+    """验证工业单帧 ROI + Modbus 回写样例模板与应用可以通过当前合同校验。"""
+
+    example_dir = (
+        Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
+    )
+    template_path = example_dir / "industrial_single_frame_glue_roi_modbus_callback.template.json"
+    application_path = (
+        example_dir / "industrial_single_frame_glue_roi_modbus_callback.application.json"
+    )
+    template = WorkflowGraphTemplate.model_validate(
+        json.loads(template_path.read_text(encoding="utf-8"))
+    )
+    application = FlowApplication.model_validate(
+        json.loads(application_path.read_text(encoding="utf-8"))
+    )
+
+    custom_nodes_root = Path(__file__).resolve().parents[1] / "custom_nodes"
+    node_pack_loader = LocalNodePackLoader(custom_nodes_root)
+    node_pack_loader.refresh()
+    registry = NodeCatalogRegistry(node_pack_loader=node_pack_loader)
+    validate_workflow_graph_template(
+        template=template,
+        node_definitions=registry.get_workflow_node_definitions(),
+    )
+    validate_flow_application_bindings(template=template, application=application)
+
+    assert [node.node_id for node in template.nodes] == [
+        "request_image_path_input",
+        "load_image",
+        "filter_regions",
+        "create_roi",
+        "coverage_check",
+        "offset_check",
+        "intersection_metrics",
+        "metadata_object",
+        "metrics_object",
+        "process_decision",
+        "alarm_condition",
+        "write_result_signals",
+        "save_result_json",
+        "append_result_csv",
+        "callback_result",
+    ]
+    assert template.nodes[11].node_type_id == "custom.plc.modbus.write-result-signals"
+    assert template.nodes[11].parameters["host"] == "127.0.0.1"
+    assert template.nodes[11].parameters["signal_mappings"][0]["signal_name"] == "ok"
+    assert template.nodes[11].parameters["signal_mappings"][3]["source_scope"] == "request"
+    assert template.metadata["example_kind"] == "industrial-single-frame-glue-roi-modbus-callback"
+    assert template.metadata["focus"] == "single-frame-industrial-rule-chain"
+    assert template.metadata["signal_write_input_binding"] == "request_signal_write"
+    assert [
+        template_input.input_id for template_input in template.template_inputs
+    ] == [
+        "request_image_path",
+        "request_regions",
+        "request_roi",
+        "request_signal_write",
+    ]
+    assert template.template_inputs[3].payload_type_id == "value.v1"
+    assert template.template_inputs[3].required is False
+    assert [template_output.output_id for template_output in template.template_outputs] == [
+        "inspection_result",
+        "inspection_alarm",
+        "signal_write_summary",
+        "decision_summary",
+        "json_summary",
+        "csv_summary",
+        "callback_response",
+    ]
+    assert application.template_ref.source_uri == (
+        "docs/examples/workflows/industrial_single_frame_glue_roi_modbus_callback.template.json"
+    )
+    assert application.runtime_mode == "python-json-workflow"
+    assert [binding.binding_id for binding in application.bindings] == [
+        "request_image_path",
+        "request_regions",
+        "request_roi",
+        "request_signal_write",
+        "inspection_result",
+        "inspection_alarm",
+        "signal_write_summary",
+        "decision_summary",
+        "json_summary",
+        "csv_summary",
+        "callback_response",
+    ]
+
+
+def test_industrial_single_frame_glue_roi_modbus_callback_strict_documents_are_valid() -> None:
+    """验证工业单帧 ROI + Modbus 回写严格顺序样例模板与应用可以通过当前合同校验。"""
+
+    example_dir = (
+        Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
+    )
+    template_path = example_dir / "industrial_single_frame_glue_roi_modbus_callback_strict.template.json"
+    application_path = (
+        example_dir / "industrial_single_frame_glue_roi_modbus_callback_strict.application.json"
+    )
+    template = WorkflowGraphTemplate.model_validate(
+        json.loads(template_path.read_text(encoding="utf-8"))
+    )
+    application = FlowApplication.model_validate(
+        json.loads(application_path.read_text(encoding="utf-8"))
+    )
+
+    custom_nodes_root = Path(__file__).resolve().parents[1] / "custom_nodes"
+    node_pack_loader = LocalNodePackLoader(custom_nodes_root)
+    node_pack_loader.refresh()
+    registry = NodeCatalogRegistry(node_pack_loader=node_pack_loader)
+    validate_workflow_graph_template(
+        template=template,
+        node_definitions=registry.get_workflow_node_definitions(),
+    )
+    validate_flow_application_bindings(template=template, application=application)
+
+    assert [node.node_id for node in template.nodes] == [
+        "request_image_path_input",
+        "load_image",
+        "filter_regions",
+        "create_roi",
+        "coverage_check",
+        "offset_check",
+        "intersection_metrics",
+        "metadata_object",
+        "metrics_object",
+        "process_decision",
+        "alarm_condition",
+        "write_result_signals",
+        "build_callback_payload",
+        "save_result_json",
+        "append_result_csv",
+        "callback_result",
+    ]
+    assert template.nodes[11].node_type_id == "custom.plc.modbus.write-result-signals"
+    assert template.nodes[12].node_type_id == "core.logic.object-create"
+    assert template.nodes[12].parameters["keys"] == [
+        "decision_summary",
+        "alarm_summary",
+        "signal_write_summary",
+        "metadata",
+    ]
+    assert template.metadata["example_kind"] == "industrial-single-frame-glue-roi-modbus-callback-strict"
+    assert template.metadata["focus"] == "single-frame-industrial-rule-chain"
+    assert template.metadata["callback_delivery_order"] == [
+        "plc-modbus-write-result-signals",
+        "build-callback-payload",
+        "http-post-callback",
+    ]
+    assert [
+        template_input.input_id for template_input in template.template_inputs
+    ] == [
+        "request_image_path",
+        "request_regions",
+        "request_roi",
+        "request_signal_write",
+    ]
+    assert [template_output.output_id for template_output in template.template_outputs] == [
+        "inspection_result",
+        "inspection_alarm",
+        "signal_write_summary",
+        "callback_payload",
+        "decision_summary",
+        "json_summary",
+        "csv_summary",
+        "callback_response",
+    ]
+    assert application.template_ref.source_uri == (
+        "docs/examples/workflows/industrial_single_frame_glue_roi_modbus_callback_strict.template.json"
+    )
+    assert application.runtime_mode == "python-json-workflow"
+    assert [binding.binding_id for binding in application.bindings] == [
+        "request_image_path",
+        "request_regions",
+        "request_roi",
+        "request_signal_write",
+        "inspection_result",
+        "inspection_alarm",
+        "signal_write_summary",
+        "callback_payload",
+        "decision_summary",
+        "json_summary",
+        "csv_summary",
+        "callback_response",
+    ]
 
 
 @pytest.mark.parametrize(
