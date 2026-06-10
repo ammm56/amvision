@@ -7,6 +7,7 @@
   "features": [
     "read",
     "write",
-    "wait-condition"
+    "wait-condition",
+    "write-result-signals"
   ]
 }

@@ -40,4 +40,5 @@ def test_repository_modbus_tcp_node_pack_is_enabled_by_default() -> None:
         "custom.plc.modbus.read-value",
         "custom.plc.modbus.write-value",
         "custom.plc.modbus.wait-condition",
+        "custom.plc.modbus.write-result-signals",
     }.issubset(loaded_node_type_ids)

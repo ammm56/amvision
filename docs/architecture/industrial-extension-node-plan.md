@@ -138,7 +138,7 @@
 当前已落地：
 
 - `custom_nodes/plc_modbus_tcp_nodes/` 已作为默认启用的第一层 PLC custom node pack 落地
-- 当前对外节点面已收口为 `read-value / write-value / wait-condition`
+- 当前对外节点面已收口为 `read-value / write-value / wait-condition / write-result-signals`
 - 当前 pack 已切到项目内最小 Modbus TCP runtime，不依赖 `projectsrc/` 目录或额外第三方 Python 包直接执行
 - 当前仍只覆盖 workflow 内主动读写与等待条件，不包含常驻轮询 trigger-source、S7、MC、OPC UA 或厂商 PLC SDK 语义
 - 当前已额外整理一份现场联调短清单：[plc-modbus-field-debug-checklist.md](plc-modbus-field-debug-checklist.md)
@@ -421,6 +421,7 @@ PLC 也必须按协议族和设备边界分层，不能只写“PLC 节点”。
 - `custom.plc.modbus.read-value`
 - `custom.plc.modbus.write-value`
 - `custom.plc.modbus.wait-condition`
+- `custom.plc.modbus.write-result-signals`
 
 当前实现说明：
 
@@ -430,6 +431,174 @@ PLC 也必须按协议族和设备边界分层，不能只写“PLC 节点”。
 - 当前 `data_type` 已补齐到 `bool / uint8 / int8 / uint16 / int16 / uint32 / int32 / uint64 / int64 / float / double / string`
 - `wait-condition` 当前适合等待 ready 位、确认位、状态字或阈值条件；`wait_timeout_seconds = null` 表示无限等待，但真正长期常驻监听仍应归到后续 TriggerSource 类实现，不承担 TriggerSource 常驻守护职责
 - 当前仓库已补三条 checked-in Modbus 样例：`plc_modbus_wait_status_word_ready_mask.*`、`plc_modbus_wait_status_word_alarm_mask.*`，以及把 `wait-condition -> write-value -> result-record -> http-post` 串成现场握手回传闭环的 `plc_modbus_wait_ready_ack_callback.*`
+
+### Modbus 结果回写节点设计
+
+建议节点：
+
+- `custom.plc.modbus.write-result-signals`
+
+定位：
+
+- 放在 `custom_nodes/plc_modbus_tcp_nodes/`
+- 继续复用现有 shared Modbus TCP transport 与 `write-value` 的地址、数据类型和编码语义
+- 第一阶段只做 Modbus TCP 结果回写，不抽象成“通用 PLC 输出节点”
+- 后续如果需要 S7 / MC / OPC UA 回写，分别在对应协议 pack 中做同型节点
+
+目标场景：
+
+- 把 `result-record.v1` 中的 `OK / NG / reason / metrics / alarm`
+- 或 `alarm-record.v1` 中的 `active / level / code / message`
+- 映射成 PLC 现场可消费的线圈位、状态字、结果码或简短文本
+
+建议输入端口：
+
+- `result`
+  - 类型：`result-record.v1`
+  - 必填
+  - 作用：主结果对象来源
+- `alarm`
+  - 类型：`alarm-record.v1`
+  - 选填
+  - 作用：当报警对象独立存在时，直接作为附加信号来源
+- `request`
+  - 类型：`value.v1`
+  - 选填
+  - 作用：运行时覆盖 host、port、unit_id、部分信号字面值或信号映射启停，不单独创造第二套节点协议
+
+建议输出端口：
+
+- `result`
+  - 类型：`value.v1`
+  - 作用：返回本次写回摘要，供后续 `result-record / http-post / json-save-local` 继续归档或排障
+
+建议输出摘要字段：
+
+- `transport`
+- `operation`
+- `host`
+- `port`
+- `unit_id`
+- `mapping_count`
+- `written_count`
+- `skipped_count`
+- `failed_count`
+- `written_items`
+- `skipped_items`
+- `failed_items`
+- `request_source`
+
+其中：
+
+- `written_items` 建议至少记录 `signal_name / register_address / data_type / value`
+- `skipped_items` 建议记录 `signal_name / reason`
+- `failed_items` 建议记录 `signal_name / register_address / error`
+
+建议参数面：
+
+- `host`
+- `port`
+- `unit_id`
+- `timeout_seconds`
+- `retries`
+- `continue_on_error`
+- `default_word_order`
+- `default_byte_position`
+- `default_string_encoding`
+- `signal_mappings`
+
+设计原则：
+
+- `host / port / unit_id / timeout_seconds / retries` 继续沿用现有 `read-value / write-value` 语义
+- `continue_on_error = false` 作为默认值，更贴现场“写关键结果失败就显式报错”的预期
+- 仅在确有需求时再通过 `request` 做运行时覆盖，不把静态配置和动态输入混成难以排障的一层
+
+`signal_mappings` 建议结构：
+
+- `signal_name`
+  - 例如 `ok`、`ng`、`alarm_active`、`alarm_code`、`result_code`、`reason_text`
+- `enabled`
+  - 是否启用该映射
+- `source_scope`
+  - 建议枚举：`result`、`alarm`、`request`、`literal`
+- `source_path`
+  - 例如 `ok`、`ok_ng`、`reason`、`metrics.coverage_ratio`、`conditions.coverage_ok`、`code`
+- `register_address`
+  - 直接使用 `00001 / 10001 / 30001 / 400001` 这类逻辑地址
+- `data_type`
+  - 继续复用 `bool / uint8 / int8 / uint16 / int16 / uint32 / int32 / uint64 / int64 / float / double / string`
+- `literal_value`
+  - 仅 `source_scope = literal` 时使用
+- `true_value`
+  - 布尔值或 `OK/NG` 状态映射到寄存器数值时使用
+- `false_value`
+  - 与 `true_value` 成对出现
+- `word_order`
+- `byte_position`
+- `string_length`
+- `string_encoding`
+- `skip_when_missing`
+  - 当源值不存在时是否跳过；建议默认 `true`
+
+`source_scope + source_path` 建议约定：
+
+- `result + ok`
+  - 读取 `result-record.v1.ok`
+- `result + ok_ng`
+  - 读取 `result-record.v1.ok_ng`
+- `result + reason`
+  - 读取 `result-record.v1.reason`
+- `result + metrics.coverage_ratio`
+  - 读取 `result-record.v1.metrics.coverage_ratio`
+- `result + conditions.coverage_ok`
+  - 读取 `result-record.v1.conditions.coverage_ok`
+- `result + alarm.active`
+  - 读取 `result-record.v1.alarm.active`
+- `alarm + code`
+  - 读取独立 `alarm-record.v1.code`
+- `request + signal_values.result_code`
+  - 读取运行时覆盖值，例如上游把站点内码先收成 `value.v1`
+
+地址映射建议：
+
+- 线圈位或简单握手位，优先写 `0xxxx`
+  - 例如 `ok`、`ng`、`alarm_active`、`ack_needed`
+- 数值型结果码、批号片段、简短状态字，优先写 `4xxxx`
+  - 例如 `result_code`、`alarm_code`、`product_code`
+- 只读输入类地址 `1xxxx / 3xxxx` 不作为默认结果回写目标；如果现场确有特殊网关语义，再由配置显式放开
+
+建议的第一阶段典型映射：
+
+- `ok -> 00001(bool)`
+- `ng -> 00002(bool)`
+- `alarm_active -> 00003(bool)`
+- `ack_needed -> 00004(bool)`
+- `result_code -> 400001(uint16 或 string)`
+- `alarm_code -> 400011(uint16 或 string)`
+- `reason_text -> 400021(string)`
+
+运行时覆盖建议：
+
+- `request.host / request.port / request.unit_id`
+  - 覆盖连接目标
+- `request.signal_values.<signal_name>`
+  - 覆盖单个信号最终写入值
+- `request.disabled_signals`
+  - 临时跳过部分映射
+
+第一阶段不建议支持：
+
+- 不做任意表达式求值
+- 不做一次节点里跨多个 PLC 协议写回
+- 不做自动清零所有未映射位
+- 不做“推断现场寄存器布局”的隐式逻辑
+
+失败策略建议：
+
+- 默认按 `signal_mappings` 顺序串行写入，便于现场抓包与排障
+- 任一关键写入失败时，默认抛错并中断，除非显式开启 `continue_on_error`
+- 对 `skip_when_missing = true` 的映射，源值不存在时记入 `skipped_items`，但不算失败
+- 输出摘要里必须保留每个 signal 的写入结果，避免只返回一个总成功/失败布尔值
 
 `wait-condition` 使用边界建议：
 
@@ -509,7 +678,7 @@ PLC 能力也应至少拆成两类：
 
 当前边界：
 
-- `custom_nodes/plc_modbus_tcp_nodes/` 继续只承载 workflow 内主动读写与等待条件
+- `custom_nodes/plc_modbus_tcp_nodes/` 继续只承载 workflow 内主动读写、等待条件与结果回写
 - `backend/service/infrastructure/integrations/modbus/` 承载共享 Modbus TCP transport
 - 当前 `plc-register` trigger-source adapter 已直接复用共享 transport，不反向依赖 custom node pack
 
@@ -582,6 +751,7 @@ PLC 能力也应至少拆成两类：
 
 后续待办：
 
+- `custom.plc.modbus.write-result-signals` 已完成第一阶段骨架与最小运行时，当前已可把 `result-record / alarm-record -> Modbus coils / registers` 这条结果回写主线接通；后续更自然的是补 checked-in workflow 样例与现场联调说明
 - 继续扩 `plc-register` 的现场语义，例如多地址监听、更多边沿/状态模式和更细的健康观测字段
 - 继续规划 `modbus tcp trigger-source` 之外的协议类型，例如 S7 / MC / OPC UA，但保持分协议拆层，不混成一个大 adapter
 
@@ -915,7 +1085,7 @@ PLC 能力也应至少拆成两类：
 ### 第一阶段
 
 - `custom.camera.usb_uvc_nodes`（前三批已实现：`enumerate-devices / capture-frame / open-device / start-stream / read-window / read-latest-frame / get-parameter / set-parameter / close-device`）
-- `custom.plc.modbus_tcp_nodes`
+- `custom.plc.modbus_tcp_nodes`（主动读写 / wait-condition / write-result-signals 已实现）
 - `custom.opencv.grayscale / resize / adaptive-threshold / otsu-threshold`（已实现）
 - `custom.opencv.hough-lines / hough-circles`（已实现）
 - `custom.opencv.contour-filter / min-area-rect / contours-to-regions`（已实现）

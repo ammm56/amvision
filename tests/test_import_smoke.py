@@ -340,6 +340,7 @@ BACKEND_MODULES: tuple[str, ...] = (
     "custom_nodes.plc_modbus_tcp_nodes.backend.nodes._runtime",
     "custom_nodes.plc_modbus_tcp_nodes.backend.nodes.read_value",
     "custom_nodes.plc_modbus_tcp_nodes.backend.nodes.wait_condition",
+    "custom_nodes.plc_modbus_tcp_nodes.backend.nodes.write_result_signals",
     "custom_nodes.plc_modbus_tcp_nodes.backend.nodes.write_value",
     "custom_nodes.camera_usb_uvc_nodes.backend.entry",
     "custom_nodes.camera_usb_uvc_nodes.backend.support",

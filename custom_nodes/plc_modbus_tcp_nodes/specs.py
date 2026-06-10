@@ -9,9 +9,11 @@ NODE_PACK_VERSION = "0.1.0"
 READ_VALUE_NODE_TYPE_ID = "custom.plc.modbus.read-value"
 WRITE_VALUE_NODE_TYPE_ID = "custom.plc.modbus.write-value"
 WAIT_CONDITION_NODE_TYPE_ID = "custom.plc.modbus.wait-condition"
+WRITE_RESULT_SIGNALS_NODE_TYPE_ID = "custom.plc.modbus.write-result-signals"
 
 ALL_NODE_TYPE_IDS: tuple[str, ...] = (
     READ_VALUE_NODE_TYPE_ID,
     WRITE_VALUE_NODE_TYPE_ID,
     WAIT_CONDITION_NODE_TYPE_ID,
+    WRITE_RESULT_SIGNALS_NODE_TYPE_ID,
 )

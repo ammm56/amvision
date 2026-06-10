@@ -469,22 +469,26 @@
 
 #### P2：现场输入与设备桥接
 
-- `custom.camera.capture-frame`
-  - 作用：从本地相机或采集卡抓取单帧，输出 `image-ref.v1`
-  - 原因：当前工业主线仍以本地图像和本地目录输入为主，还没有正式相机接入节点
 - `custom.video.rtsp-read-frame`
   - 作用：从 RTSP 或等价流地址读取一帧或一小段窗口，输出 `image-ref.v1` 或 `frame-window.v1`
   - 原因：当前视频链更偏本地文件输入，还没有把现场流输入纳入 workflow 节点面
-- `custom.protocol.plc-read-write`
-  - 作用：读写 PLC 或设备网关中的少量状态、寄存器和值对象
-  - 原因：工业场景最终常常要和工位信号联动，但这类能力不应进入 core
 - `custom.protocol.mes-request-context`
   - 作用：读取工单、批号、工位号、产品型号等上下文对象，供规则链和结果回传使用
   - 原因：当前流程里虽可用 `value.v1` 手工传上下文，但还没有更贴现场的接入节点
 
+说明：
+
+- USB/UVC 相机抓帧这条主线已经由 `custom.camera.usb.capture-frame` 等节点落地，不再把“泛化 capture-frame”继续挂成未实现待办
+- PLC 主动读写这条主线已经由 `custom.plc.modbus.read-value / write-value / wait-condition` 落地；后续继续扩时，按协议 pack 细分，不再回到“generic plc-read-write”表述
+
 ### 三、trigger-source 层待办
 
-这一层不是普通节点，而是 runtime 外部触发适配器；当前 `zeromq-topic` 已经存在，因此这里只列尚未补齐的触发类型。
+这一层不是普通节点，而是 runtime 外部触发适配器；当前 `zeromq-topic`、`directory-poll`、`directory-watch` 与 `plc-register(modbus-tcp + polling)` 都已经存在，因此这里只列尚未补齐或只完成第一阶段的触发类型。
+
+当前边界说明：
+
+- 当前已经具备 WorkflowAppRuntime 的主动 HTTP 调用入口，可通过 `invoke / invoke/upload` 直接提交 workflow 输入
+- 因此“HTTP 触发”当前不是主缺口；真正还没做的是“被动 webhook 资源”这类固定回调入口、签名校验、幂等键和冷却控制语义
 
 #### P1：目录触发
 
@@ -497,9 +501,9 @@
 
 #### P2：协议触发扩展
 
-- `http-webhook`
-  - 作用：接收外部系统推送的路径、工单或图像引用，再映射到 workflow 输入
-  - 原因：当前公开的 invoke 能力更偏主动调用，还没有专门的 webhook 触发资源
+- `http-webhook-trigger`
+  - 作用：接收外部系统被动推送的路径、工单或图像引用，再映射到 workflow 输入
+  - 原因：当前主动 `invoke` 已可满足大量集成场景；只有确实需要“固定 URL 被动接收 + 签名/幂等/限流”时，才需要单独的 webhook TriggerSource 资源
 - `mqtt-topic`
   - 作用：订阅现场消息总线中的事件，再映射到 WorkflowRun
   - 原因：部分现场会通过边缘网关或消息中间件转发状态变化，不适合塞进普通 workflow 节点
@@ -515,14 +519,14 @@
 #### P2：现场协议回传
 
 - `custom.output.mes-http-post`
-  - 作用：把统一结果对象按 MES 或上位机接口约定重组后回传
-  - 原因：当前只有通用 `http-post`，还没有面向现场业务字段的包装节点
-- `custom.output.plc-signal-write`
-  - 作用：把 `OK / NG / alarm / ack-needed` 之类结果写回 PLC、IO 网关或设备代理
-  - 原因：工业现场常见的最终动作不是保存 JSON，而是写状态位或报码
+  - 作用：在现有 `http-post` 之上补一层面向 MES / 上位机常见接口的受限包装，把 `result-record / workflow-result / batch-result-summary` 重组为更贴现场的请求体
+  - 原因：现场 MES 接口千差万别，第一阶段不做“万能 MES 适配器”，只做 `method / url / headers / query / body_template / field_mapping` 这类显式可配置的基础层；厂商或项目专有接口继续通过后续 custom pack 扩展
+- `custom.plc.modbus.write-result-signals`
+  - 作用：把 `OK / NG / alarm / ack-needed / result-code` 等结果写回 Modbus TCP 的 coils 或 holding registers
+  - 原因：工业现场常见的最终动作不是保存 JSON，而是写状态位或报码；这一层必须先与当前 Modbus TCP pack 对齐，而不是抽象成“通用 PLC 信号写入”
 - `custom.output.local-db-upsert`
-  - 作用：把结果写入本地 SQLite/MySQL/PostgreSQL 表，用于工作站追溯和统计
-  - 原因：当前已有 JSON/CSV，本地数据库归档还没有正式节点
+  - 作用：把结果写入本地 SQLite/MySQL/PostgreSQL 中已知结构的结果表，用于工作站追溯和统计
+  - 原因：当前已有 JSON/CSV，本地数据库归档还没有正式节点；第一阶段不做任意 SQL 或任意表结构自动推断，而是要求显式表名、唯一键和字段映射
 
 ## 当前建议的实现顺序
 
@@ -536,13 +540,15 @@
 6. `core.output.batch-result-summary`
 7. `directory-poll` trigger-source
 8. `directory-watch` trigger-source
-9. 再按现场项目需要，选择 `custom.camera.* / custom.video.* / custom.protocol.* / custom.output.*`
+9. 先按当前现场主线收 `custom.plc.modbus.write-result-signals`
+10. 再补 `custom.output.mes-http-post / custom.output.local-db-upsert` 这类受限结果交付层
+11. 最后按项目需要选择 `custom.video.* / custom.protocol.* / 更多协议 pack`
 
 以上第 1 到第 8 项当前已实现，后续顺序自然顺延到第 9 项开始。
 
 ## 下一步执行顺序
 
-1. 先补一条更贴现场的 `directory-watch` checked-in workflow 样例，把“目录事件触发 -> 批次输入 -> 规则链 -> 归档/回传”明确成正式模板
-2. 再看是否需要补更多 detection / segmentation 调试与适配辅助节点，把模型结果到规则链的使用面继续打磨顺
-3. 然后再评估统一结果对象、JSON/CSV 字段规范和目录批次归档结构是否需要进一步收口
-4. 最后再看是否需要继续扩更多工业规则原子节点，而不是直接跳去更重的视频能力
+1. 先把 `custom.plc.modbus.write-result-signals` 的输入输出、地址映射和失败策略细化清楚，再开始实现
+2. 然后收 `custom.output.mes-http-post / custom.output.local-db-upsert` 的第一阶段边界，明确只做受限通用层，不做项目专有万能适配
+3. 再补一条更贴现场的“模型输出 -> 规则判定 -> PLC 回写 / HTTP 回传 / JSON/CSV 归档”正式样例，把工业单帧主线收成可直接联调的模板
+4. 最后再看是否需要继续补更多 detection / segmentation 调试与适配辅助节点，而不是回头扩更重的视频能力
