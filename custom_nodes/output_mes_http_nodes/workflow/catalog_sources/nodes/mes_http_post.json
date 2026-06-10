@@ -1,0 +1,245 @@
+{
+  "format_id": "amvision.node-definition.v1",
+  "node_type_id": "custom.output.mes-http-post",
+  "display_name": "MES HTTP Post",
+  "category": "integration.output",
+  "description": "把 result-record、workflow-result 或批次摘要按受限映射规则封装为 HTTP JSON 请求，适合第一阶段 MES / 上位机结果回传。",
+  "implementation_kind": "custom-node",
+  "runtime_kind": "python-callable",
+  "input_ports": [
+    {
+      "name": "result",
+      "display_name": "Result",
+      "payload_type_id": "result-record.v1",
+      "required": false
+    },
+    {
+      "name": "workflow_result",
+      "display_name": "Workflow Result",
+      "payload_type_id": "workflow-result.v1",
+      "required": false
+    },
+    {
+      "name": "summary",
+      "display_name": "Summary",
+      "payload_type_id": "value.v1",
+      "required": false
+    },
+    {
+      "name": "request",
+      "display_name": "Request",
+      "payload_type_id": "value.v1",
+      "required": false
+    }
+  ],
+  "output_ports": [
+    {
+      "name": "response",
+      "display_name": "Response",
+      "payload_type_id": "value.v1"
+    },
+    {
+      "name": "prepared_request",
+      "display_name": "Prepared Request",
+      "payload_type_id": "value.v1"
+    }
+  ],
+  "parameter_schema": {
+    "type": "object",
+    "properties": {
+      "url": {
+        "type": "string",
+        "title": "URL"
+      },
+      "method": {
+        "type": "string",
+        "title": "Method",
+        "enum": [
+          "POST",
+          "PUT"
+        ],
+        "default": "POST"
+      },
+      "timeout_seconds": {
+        "type": "number",
+        "title": "Timeout Seconds",
+        "default": 5.0,
+        "exclusiveMinimum": 0
+      },
+      "require_success": {
+        "type": "boolean",
+        "title": "Require Success",
+        "default": true
+      },
+      "headers": {
+        "type": "object",
+        "title": "Headers",
+        "additionalProperties": {
+          "type": [
+            "string",
+            "number",
+            "boolean"
+          ]
+        }
+      },
+      "auth_kind": {
+        "type": "string",
+        "title": "Auth Kind",
+        "enum": [
+          "none",
+          "bearer_token",
+          "header_static"
+        ],
+        "default": "none"
+      },
+      "auth_token": {
+        "type": "string",
+        "title": "Auth Token"
+      },
+      "auth_header_name": {
+        "type": "string",
+        "title": "Auth Header Name"
+      },
+      "query_template": {
+        "type": "object",
+        "title": "Query Template",
+        "additionalProperties": true
+      },
+      "query_mappings": {
+        "type": "array",
+        "title": "Query Mappings",
+        "items": {
+          "type": "object",
+          "properties": {
+            "target_name": {
+              "type": "string",
+              "title": "Target Name"
+            },
+            "source_kind": {
+              "type": "string",
+              "title": "Source Kind",
+              "enum": [
+                "result",
+                "workflow_result",
+                "summary",
+                "request",
+                "literal"
+              ]
+            },
+            "source_path": {
+              "type": "string",
+              "title": "Source Path"
+            },
+            "literal_value": {
+              "title": "Literal Value"
+            },
+            "on_missing": {
+              "type": "string",
+              "title": "On Missing",
+              "enum": [
+                "error",
+                "skip",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "target_name",
+            "source_kind"
+          ]
+        }
+      },
+      "body_mode": {
+        "type": "string",
+        "title": "Body Mode",
+        "enum": [
+          "json_object",
+          "json_envelope"
+        ],
+        "default": "json_object"
+      },
+      "body_template": {
+        "type": "object",
+        "title": "Body Template",
+        "additionalProperties": true
+      },
+      "field_mappings": {
+        "type": "array",
+        "title": "Field Mappings",
+        "items": {
+          "type": "object",
+          "properties": {
+            "target_path": {
+              "type": "string",
+              "title": "Target Path"
+            },
+            "source_kind": {
+              "type": "string",
+              "title": "Source Kind",
+              "enum": [
+                "result",
+                "workflow_result",
+                "summary",
+                "request",
+                "literal"
+              ]
+            },
+            "source_path": {
+              "type": "string",
+              "title": "Source Path"
+            },
+            "literal_value": {
+              "title": "Literal Value"
+            },
+            "on_missing": {
+              "type": "string",
+              "title": "On Missing",
+              "enum": [
+                "error",
+                "skip",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "target_path",
+            "source_kind"
+          ]
+        }
+      },
+      "on_missing": {
+        "type": "string",
+        "title": "On Missing",
+        "enum": [
+          "error",
+          "skip",
+          "null"
+        ],
+        "default": "error"
+      },
+      "static_fields": {
+        "type": "object",
+        "title": "Static Fields",
+        "additionalProperties": true
+      }
+    },
+    "required": [
+      "url"
+    ]
+  },
+  "capability_tags": [
+    "integration.output",
+    "integration.http",
+    "integration.mes.http-post"
+  ],
+  "runtime_requirements": {
+    "python_packages": [
+      "httpx"
+    ]
+  },
+  "node_pack_id": "output.mes-http-nodes",
+  "node_pack_version": "0.1.0",
+  "metadata": {
+    "phase": "implemented"
+  }
+}

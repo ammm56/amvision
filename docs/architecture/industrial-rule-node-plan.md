@@ -519,8 +519,133 @@
 #### P2：现场协议回传
 
 - `custom.output.mes-http-post`
-  - 作用：在现有 `http-post` 之上补一层面向 MES / 上位机常见接口的受限包装，把 `result-record / workflow-result / batch-result-summary` 重组为更贴现场的请求体
-  - 原因：现场 MES 接口千差万别，第一阶段不做“万能 MES 适配器”，只做 `method / url / headers / query / body_template / field_mapping` 这类显式可配置的基础层；厂商或项目专有接口继续通过后续 custom pack 扩展
+  - 放置位置：`custom`
+  - 作用：在现有 `core.output.http-post` 之上补一层面向 MES / 上位机常见接口的受限包装，把 `result-record / workflow-result / core.output.batch-result-summary` 输出的 `summary(value)` 重组为更贴现场的请求体
+  - 原因：现场 MES 接口千差万别，这一层不适合塞进 `core.output.*`；第一阶段只做受限通用层，不做“万能 MES 适配器”，厂商或项目专有接口继续通过后续 custom pack 扩展
+  - 建议形态：单独 custom pack，建议后续放在 `custom_nodes/output_mes_http_nodes/` 或等价目录，不与通用 `core.output.http-post` 混写
+  - 当前状态：第一阶段 pack / specs / catalog / runtime 已落地，当前已支持 `result-record.v1 / workflow-result.v1 / summary(value.v1) + request(value.v1)` 的受限 JSON 回传，以及 `prepared_request` 调试输出
+
+第一阶段输入输出契约：
+
+- 输入端口：
+  - `result`：`result-record.v1`，可选
+  - `workflow_result`：`workflow-result.v1`，可选
+  - `summary`：`value.v1`，可选
+    - 说明：这里的 `summary` 主要对接 `core.output.batch-result-summary` 的输出；当前不是单独的 `batch-result-summary.v1` payload
+  - `request`：`value.v1`，可选
+    - 说明：用于补充工单号、批次号、设备号、工位号、人工确认结果、外部请求上下文和运行时覆盖字段
+- 输入约束：
+  - `result / workflow_result / summary` 三者中，第一阶段要求“最多一个主业务输入”
+  - `request` 只能作为补充上下文或运行时覆盖，不作为默认主业务输入
+  - 当主业务输入缺失，或三者同时提供多个时，节点直接报错，不做隐式优先级猜测
+- 输出端口：
+  - `response`：`value.v1`
+    - 作用：沿用 `core.output.http-post` 风格，输出 `ok / status_code / headers / body_json 或 body_text / url / method`
+  - `prepared_request`：`value.v1`
+    - 作用：输出实际组装后的 `method / url / query / headers / body` 调试摘要，用于现场排障和 workflow 预览
+    - 约束：敏感字段如 `Authorization`、token、password 必须脱敏，不直接回显明文
+
+第一阶段主业务输入的推荐语义：
+
+- `result-record.v1`
+  - 适合单帧判定、OK/NG、报警和工艺规则结果回传
+  - 典型取值路径：`ok_ng`、`reason`、`metrics.*`、`conditions.*`、`alarm.active`、`alarm.code`、`metadata.*`
+- `workflow-result.v1`
+  - 适合把整条 workflow 的统一交付结果回传给 MES、上位机或中间网关
+  - 典型取值路径：`status`、`code`、`message`、`data`、`metrics`、`files`、`trace_id`、`event_id`、`metadata`
+- `summary(value.v1)`
+  - 适合目录批次、小批量归档和班次级摘要回传
+  - 典型来源：`core.output.batch-result-summary`
+  - 典型取值路径：`ok_count`、`ng_count`、`alarm_count`、`pass_ratio`、`summary_source`、`record_result_count`
+- `request(value.v1)`
+  - 适合补充站点现场上下文
+  - 典型取值路径：`work_order_id`、`lot_id`、`station_id`、`device_id`、`operator_id`、`part_no`、`line_id`
+
+第一阶段受限参数面：
+
+- `url`
+  - 必填，目标接口地址
+- `method`
+  - 仅支持 `POST / PUT`
+  - 第一阶段先不开放 `PATCH / DELETE / GET`
+- `timeout_seconds`
+  - 请求超时秒数
+- `require_success`
+  - 是否把非 `2xx` 状态码视为失败
+- `headers`
+  - 静态请求头对象
+  - 第一阶段只做静态 header，不做任意脚本拼装
+- `auth_kind`
+  - 仅支持 `none / bearer_token / header_static`
+  - `bearer_token` 统一写入 `Authorization: Bearer ...`
+  - `header_static` 用于少数现场约定的固定 header 鉴权
+- `auth_token`
+  - 与 `auth_kind` 配套使用
+- `auth_header_name`
+  - 仅在 `header_static` 下生效
+- `query_template`
+  - 可选静态 query 对象
+- `query_mappings`
+  - 把 `result / workflow_result / summary / request / literal` 中的字段映射到 query 参数
+- `body_mode`
+  - 仅支持 `json_object / json_envelope`
+  - `json_object`：直接生成 JSON 对象作为请求体
+  - `json_envelope`：把业务字段写入统一 envelope，对接常见 `code / message / data` 或 `site / line / payload` 风格
+- `body_template`
+  - 静态 JSON 对象骨架
+  - 只允许对象结构，不允许字符串模板、Jinja 或脚本执行
+- `field_mappings`
+  - 把 `result / workflow_result / summary / request / literal` 中的字段映射到 `body_template` 的目标路径
+  - 每条映射至少包含：
+    - `target_path`
+    - `source_kind`
+  - 当 `source_kind != literal` 时，要求提供 `source_path`
+  - 当 `source_kind = literal` 时，使用 `literal_value`
+- `on_missing`
+  - 节点级默认缺失策略，第一阶段仅支持 `error / skip / null`
+  - 每条 `field_mapping / query_mapping` 可选单独覆盖；未提供时回落到节点级默认值
+- `static_fields`
+  - 写死到请求体中的固定字段，适合固定站点码、工艺号、设备别名等
+
+第一阶段字段映射规则：
+
+- `source_kind` 仅支持 `result / workflow_result / summary / request / literal`
+- `target_path` 使用点路径表达对象写入位置，例如 `payload.metrics.coverage_ratio`
+- `source_path` 使用点路径表达源对象读取位置，例如 `metrics.coverage_ratio`
+- 第一阶段只支持对象字段路径，不支持数组切片、表达式、条件语句和自定义函数
+- `query_mappings` 与 `field_mappings` 共享同一套 `source_kind / source_path / literal_value / on_missing` 规则
+- 当 `body_mode = json_envelope` 时，建议通过 `body_template` 明确 envelope 结构，例如：
+  - `{"site": "", "line": "", "payload": {}}`
+  - 再通过 `field_mappings` 把业务结果写入 `payload.*`
+
+第一阶段失败与排障边界：
+
+- 主业务输入缺失或冲突时直接失败
+- `url / method / auth_kind / body_mode / field_mappings` 参数非法时直接失败
+- 字段映射失败时默认按 `on_missing = error` 处理
+- HTTP 返回非 `2xx` 时，默认按 `require_success = true` 失败
+- 第一阶段不内置自动重试、回退地址、幂等队列或本地补偿；这些属于上层 orchestration 或后续扩展能力
+- `prepared_request` 应作为第一层现场排障入口，优先帮助确认：
+  - 业务字段是否映射到了对的位置
+  - 站点上下文字段是否带齐
+  - 是否用了错误的 URL、header 或 envelope 结构
+
+第一阶段明确不做：
+
+- 不做厂商专有 MES SDK
+- 不做任意 Python / Jinja / JavaScript 模板执行
+- 不做 XML / SOAP / multipart / form-data
+- 不做多步登录、会话保持、cookie 编排和复杂签名流程
+- 不做任意 SQL、任意数据库写入或文件上传
+- 不做自动字段猜测、自动 schema 发现或“给个接口就自己适配”
+- 不做项目专有强绑定字段名；专有格式留给后续 custom pack
+
+第一阶段最贴现场的典型场景：
+
+- 单帧判定完成后，把 `result-record.v1` 按现场接口格式回传给上位机或 MES
+- 目录批次完成后，把 `core.output.batch-result-summary` 的 `summary(value.v1)` 回传给批次统计接口
+- 把 `workflow-result.v1` 连同 `request` 中的工单号、站点号、设备号一起封装后回传给中间网关
+
 - `custom.plc.modbus.write-result-signals`
   - 作用：把 `OK / NG / alarm / ack-needed / result-code` 等结果写回 Modbus TCP 的 coils 或 holding registers
   - 原因：工业现场常见的最终动作不是保存 JSON，而是写状态位或报码；这一层必须先与当前 Modbus TCP pack 对齐，而不是抽象成“通用 PLC 信号写入”
@@ -541,14 +666,15 @@
 7. `directory-poll` trigger-source
 8. `directory-watch` trigger-source
 9. 先按当前现场主线收 `custom.plc.modbus.write-result-signals`
-10. 再补 `custom.output.mes-http-post / custom.output.local-db-upsert` 这类受限结果交付层
-11. 最后按项目需要选择 `custom.video.* / custom.protocol.* / 更多协议 pack`
+10. `custom.output.mes-http-post` 的第一阶段受限契约
+11. 再收 `custom.output.local-db-upsert` 的第一阶段受限契约
+12. 最后按项目需要选择 `custom.video.* / custom.protocol.* / 更多协议 pack`
 
-以上第 1 到第 8 项当前已实现，后续顺序自然顺延到第 9 项开始。
+以上第 1 到第 10 项当前已实现，后续顺序自然顺延到第 11 项开始。
 
 ## 下一步执行顺序
 
-1. 先把 `custom.plc.modbus.write-result-signals` 的输入输出、地址映射和失败策略细化清楚，再开始实现
-2. 然后收 `custom.output.mes-http-post / custom.output.local-db-upsert` 的第一阶段边界，明确只做受限通用层，不做项目专有万能适配
-3. 再补一条更贴现场的“模型输出 -> 规则判定 -> PLC 回写 / HTTP 回传 / JSON/CSV 归档”正式样例，把工业单帧主线收成可直接联调的模板
+1. 先收 `custom.output.local-db-upsert` 的第一阶段边界，明确只做受限通用层，不做项目专有万能适配
+2. 再补一条更贴现场的“模型输出 -> 规则判定 -> MES HTTP / PLC 回写 / JSON/CSV 归档”正式样例，把工业单帧主线收成可直接联调的模板
+3. 然后再决定是否需要把 `mes-http-post` 继续往更细的站点 envelope、签名或 header 策略扩一层，而不是一开始就做成万能接口节点
 4. 最后再看是否需要继续补更多 detection / segmentation 调试与适配辅助节点，而不是回头扩更重的视频能力
