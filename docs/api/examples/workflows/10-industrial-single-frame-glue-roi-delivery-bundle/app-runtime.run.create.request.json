@@ -1,0 +1,81 @@
+{
+  "input_bindings": {
+    "request_image_path": {
+      "value": "D:/cases/line-b/frame-021.png"
+    },
+    "request_regions": {
+      "count": 1,
+      "items": [
+        {
+          "region_id": "glue-001",
+          "score": 0.97,
+          "class_id": 1,
+          "class_name": "glue",
+          "bbox_xyxy": [
+            240,
+            180,
+            1010,
+            610
+          ],
+          "polygon_xy": [
+            [
+              240,
+              180
+            ],
+            [
+              1010,
+              180
+            ],
+            [
+              1010,
+              610
+            ],
+            [
+              240,
+              610
+            ]
+          ],
+          "area": 331100
+        }
+      ]
+    },
+    "request_roi": {
+      "value": {
+        "roi_id": "line-b-roi",
+        "roi_kind": "bbox",
+        "display_name": "Line B ROI",
+        "bbox_xyxy": [
+          220,
+          160,
+          1040,
+          640
+        ]
+      }
+    },
+    "request_delivery_context": {
+      "value": {
+        "record_id": "line-b-20260610-0001",
+        "work_order_id": "WO-1001",
+        "station_id": "line-b-02",
+        "line_id": "line-b",
+        "trace_id": "trace-0001"
+      }
+    },
+    "request_signal_write": {
+      "value": {
+        "host": "192.168.10.20",
+        "unit_id": 1,
+        "signal_values": {
+          "result_code": 17
+        },
+        "disabled_signals": [
+          "alarm_active"
+        ]
+      }
+    }
+  },
+  "execution_metadata": {
+    "scenario": "industrial-single-frame-glue-roi-delivery-bundle",
+    "trigger_source": "async-api"
+  }
+}

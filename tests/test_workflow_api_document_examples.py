@@ -13,6 +13,7 @@ from backend.contracts.workflows.workflow_graph import (
     validate_flow_application_bindings,
     validate_workflow_graph_template,
 )
+from backend.nodes.local_node_pack_loader import LocalNodePackLoader
 from backend.nodes.node_catalog_registry import NodeCatalogRegistry
 
 
@@ -44,6 +45,9 @@ WORKFLOW_API_EXAMPLE_FOLDERS = {
     "yolox_deployment_qr_crop_remap": Path("03-yolox-deployment-qr-crop-remap"),
     "yolox_deployment_infer_opencv_health": Path("04-yolox-deployment-infer-opencv-health"),
     "opencv_process_save_image": Path("05-opencv-process-save-image"),
+    "industrial_single_frame_glue_roi_delivery_bundle": Path(
+        "10-industrial-single-frame-glue-roi-delivery-bundle"
+    ),
 }
 
 TRIGGER_SOURCE_API_EXAMPLE_FOLDERS = {
@@ -84,6 +88,9 @@ WORKFLOW_POSTMAN_COLLECTIONS = {
     ),
     "09-industrial-local-directory-watch-yolox-position-gate": (
         "09-industrial-local-directory-watch-yolox-position-gate.postman_collection.json"
+    ),
+    "10-industrial-single-frame-glue-roi-delivery-bundle": (
+        "10-industrial-single-frame-glue-roi-delivery-bundle.postman_collection.json"
     ),
 }
 
@@ -1124,6 +1131,75 @@ def test_workflow_api_end_to_end_qr_crop_remap_app_runtime_examples_are_valid() 
     assert run_create_request["timeout_seconds"] == 43200
 
 
+def test_workflow_api_industrial_single_frame_glue_roi_delivery_bundle_requests_are_valid() -> None:
+    """验证第十类工业单帧交付 workflow API 示例请求体已经收成正式联调入口。"""
+
+    example_name = "industrial_single_frame_glue_roi_delivery_bundle"
+    template_request = _read_api_workflow_example(example_name, "save-template.request.json")
+    application_request = _read_api_workflow_example(example_name, "save-application.request.json")
+    preview_run_request = _read_api_workflow_example(example_name, "preview-run.request.json")
+    create_request = _read_api_workflow_example(example_name, "app-runtime.create.request.json")
+    invoke_request = _read_api_workflow_example(example_name, "app-runtime.invoke.request.json")
+    run_create_request = _read_api_workflow_example(example_name, "app-runtime.run.create.request.json")
+
+    template = WorkflowGraphTemplate.model_validate(template_request["template"])
+    application = FlowApplication.model_validate(application_request["application"])
+
+    custom_nodes_root = REPO_ROOT / "custom_nodes"
+    node_pack_loader = LocalNodePackLoader(custom_nodes_root)
+    node_pack_loader.refresh()
+    registry = NodeCatalogRegistry(node_pack_loader=node_pack_loader)
+    validate_workflow_graph_template(
+        template=template,
+        node_definitions=registry.get_workflow_node_definitions(),
+    )
+    validate_flow_application_bindings(template=template, application=application)
+
+    assert application.application_id == "industrial-single-frame-glue-roi-delivery-bundle-app"
+    assert template.metadata["example_kind"] == "industrial-single-frame-glue-roi-delivery-bundle"
+    assert application.metadata["example_kind"] == "industrial-single-frame-glue-roi-delivery-bundle"
+    assert create_request["application_id"] == application.application_id
+    assert create_request["metadata"]["example_kind"] == "industrial-single-frame-glue-roi-delivery-bundle"
+    assert create_request["metadata"]["delivery_mode"] == "plc-json-csv-mes-local-db"
+    assert "request_timeout_seconds" not in create_request
+
+    assert preview_run_request["application_ref"] == {"application_id": application.application_id}
+    assert set(preview_run_request["input_bindings"]) == {
+        "request_image_path",
+        "request_regions",
+        "request_roi",
+        "request_delivery_context",
+        "request_signal_write",
+    }
+    assert preview_run_request["input_bindings"]["request_regions"]["items"][0]["class_name"] == "glue"
+    assert preview_run_request["input_bindings"]["request_delivery_context"]["value"]["record_id"] == (
+        "line-b-20260610-0001"
+    )
+    assert preview_run_request["execution_metadata"]["example_name"] == example_name
+    assert preview_run_request["execution_metadata"]["scenario"] == (
+        "industrial-single-frame-glue-roi-delivery-bundle"
+    )
+    assert preview_run_request["execution_metadata"]["trigger_source"] == "editor-preview"
+    assert preview_run_request["timeout_seconds"] == 30
+
+    assert invoke_request["input_bindings"]["request_signal_write"]["value"]["signal_values"]["result_code"] == 17
+    assert invoke_request["execution_metadata"]["scenario"] == "industrial-single-frame-glue-roi-delivery-bundle"
+    assert invoke_request["execution_metadata"]["trigger_source"] == "sync-api"
+    assert run_create_request["execution_metadata"]["scenario"] == (
+        "industrial-single-frame-glue-roi-delivery-bundle"
+    )
+    assert run_create_request["execution_metadata"]["trigger_source"] == "async-api"
+
+    readme_text = (
+        POSTMAN_WORKFLOW_DIR / "10-industrial-single-frame-glue-roi-delivery-bundle" / "README.md"
+    ).read_text(encoding="utf-8")
+    assert "signal_write_summary" in readme_text
+    assert "json_summary" in readme_text
+    assert "csv_summary" in readme_text
+    assert "mes_prepared_request" in readme_text
+    assert "local_db_prepared_row" in readme_text
+
+
 def test_workflow_postman_directory_contains_ordered_formal_workflow_collections() -> None:
     """验证 workflow Postman 调试目录已按编号子目录分类。"""
 
@@ -1142,6 +1218,7 @@ def test_workflow_postman_directory_contains_ordered_formal_workflow_collections
     assert "07-opencv-process-save-image-zeromq-image-ref" in readme_text
     assert "08-plc-register-modbus-tcp-async-result-record" in readme_text
     assert "09-industrial-local-directory-watch-yolox-position-gate" in readme_text
+    assert "10-industrial-single-frame-glue-roi-delivery-bundle" in readme_text
     assert "Create Preview Run / Get Preview Run" in readme_text
     assert "Create Workflow Run / Get Workflow Run" in readme_text
     assert "Create TriggerSource / Enable / Health / Disable" in readme_text
@@ -1177,10 +1254,12 @@ def test_workflow_api_examples_are_classified_by_numbered_directories() -> None:
         "07-opencv-process-save-image-zeromq-image-ref",
         "08-plc-register-modbus-tcp-async-result-record",
         "09-industrial-local-directory-watch-yolox-position-gate",
+        "10-industrial-single-frame-glue-roi-delivery-bundle",
     ]
     assert "同一个 workflow app 同时发布 HTTP `image-base64.v1` 和 ZeroMQ `image-ref.v1` 输入" in readme_text
     assert "独立的 TriggerSource / PLC 调试示例" in readme_text
     assert "独立的 TriggerSource / directory-watch 调试示例" in readme_text
+    assert "正式的工业单帧交付示例" in readme_text
     assert "已接入 LocalBufferBroker direct mmap 数据面和 PublishedInferenceGateway 事件 dispatcher" in readme_text
     assert "BufferRef" in readme_text
     assert "FrameRef" in readme_text
@@ -1508,6 +1587,13 @@ def test_workflow_example_documents_postman_collection_contains_remaining_debug_
             "opencv_process_save_image",
             False,
             id="workflow-05-opencv-save-image",
+        ),
+        pytest.param(
+            "10-industrial-single-frame-glue-roi-delivery-bundle",
+            "10-industrial-single-frame-glue-roi-delivery-bundle.postman_collection.json",
+            "industrial_single_frame_glue_roi_delivery_bundle",
+            False,
+            id="workflow-10-industrial-delivery-bundle",
         ),
     ],
 )

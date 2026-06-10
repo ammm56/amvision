@@ -14,8 +14,9 @@
 8. `07-opencv-process-save-image-zeromq-image-ref/`：第七类同 app HTTP base64 + ZeroMQ image-ref OpenCV 处理链路。
 9. `08-plc-register-modbus-tcp-async-result-record/`：第八类 `plc-register` Modbus TCP polling + async submit + result-record / http-post 回传链路。
 10. `09-industrial-local-directory-watch-yolox-position-gate/`：第九类 `directory-watch` 目录事件监听 + 静态 deployment_request 注入 + 工业 YOLOX 位置门控链路。
+11. `10-industrial-single-frame-glue-roi-delivery-bundle/`：第十类工业单帧 `regions.v1 + ROI + delivery context` 结果交付链，覆盖 PLC 信号写入、JSON/CSV 归档、MES 请求准备和 local-db upsert。
 
-后续完整 workflow app 示例按 `10-*`、`11-*` 继续添加。
+后续完整 workflow app 示例按 `11-*`、`12-*` 继续添加。
 
 ## 每个 collection 的调用面
 
@@ -49,6 +50,8 @@
 - `08-*` collection 不再验证 HTTP 图片双入口，而是验证 `plc-register` 的事件输入边界；direct invoke 使用 synthetic event payload，只用于本地复现同一条业务处理链，不替代真实 PLC TriggerSource 常驻监听。
 - `09-*` collection 继续沿用 synthetic event 调试方式，但重点变成 `directory-watch` 的目录批次 payload/event 输入边界，以及静态 `deployment_request` 如何从 TriggerSource 直接注入到 workflow app；真实目录监听仍以 enable 后的 TriggerSource 常驻线程为准。
 - `09-*` 的具体导入变量、改值位置和推荐联调顺序见 [docs/api/postman/workflows/09-industrial-local-directory-watch-yolox-position-gate/README.md](09-industrial-local-directory-watch-yolox-position-gate/README.md)。
+- `10-*` collection 回到标准 HTTP workflow app 调试面，但把现场最常见的结果交付出口收进同一条链：同一个 runtime 中既能做 ROI/规则判定，也能同步准备 PLC/JSON/CSV/MES/local-db 结果对象。
+- `10-*` 的具体导入变量、改值位置和推荐联调顺序见 [docs/api/postman/workflows/10-industrial-single-frame-glue-roi-delivery-bundle/README.md](10-industrial-single-frame-glue-roi-delivery-bundle/README.md)。
 - FrameRef/BufferRef 的固定请求体需要由本地 adapter 在运行时生成，因此 `06-*`、`07-*` collection 仍不直接发送图片 bytes；图片数据面继续使用 C# SDK 或其他后续 SDK。
 - TriggerSource 只负责提交协议原生输入，不替 workflow 图做 `image-ref -> image-base64`、本地磁盘读图或相机取帧。需要这些能力时，应通过图中的显式节点或 custom node 实现。
 - 当前 `plc-register` 和 `directory-watch` 的 `input_binding_mapping` 还不会自动把 `payload / event` 原始对象包装成 `value.v1`；因此 `08-*`、`09-*` collection 对应的 workflow app 都显式使用 `response-body.v1 -> payload-to-value` 做图内桥接。

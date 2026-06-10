@@ -9,20 +9,24 @@
 - `06-*`、`07-*`：独立的 TriggerSource / ZeroMQ 调试示例，同一个 workflow app 同时发布 HTTP `image-base64.v1` 和 ZeroMQ `image-ref.v1` 输入，在与 `04-*`、`05-*` 一致的本地调试链路上额外验证双入口和图级显式转换。
 - `08-*`：独立的 TriggerSource / PLC 调试示例，聚焦 `plc-register -> workflow app runtime -> result-record -> http-post` 这条现场回传链。
 - `09-*`：独立的 TriggerSource / directory-watch 调试示例，聚焦“目录事件 -> 工业目录批次检测 workflow app”的现场接法。
+- `10-*`：正式的工业单帧交付示例，聚焦 `regions.v1 + ROI + delivery context -> process-decision -> PLC/JSON/CSV/MES/local-db` 这条现场结果交付链。
 - 当前 `directory-poll` TriggerSource 的后端适配器已经实现，但仓库里还没有与 `09-*` 对等的一套 checked-in API 调试样例；现阶段仅有节点级 `industrial_local_directory_polling_cursor_guard.*` 工作流模板用于目录轮询守护语义说明。
-- 后续完整示例按 `10-*`、`11-*` 继续新增。
+- 后续完整示例按 `11-*`、`12-*` 继续新增。
 
 ## 每个示例目录的文件
 
 - `00-*` 到 `05-*` 目录包含：`save-template.request.json`、`save-application.request.json`、`preview-run.request.json`、`app-runtime.create.request.json`、`app-runtime.invoke.request.json`、`app-runtime.run.create.request.json`。
 - `06-*`、`07-*`、`08-*` 目录包含：`save-template.request.json`、`save-application.request.json`、`preview-run.request.json`、`app-runtime.create.request.json`、`app-runtime.invoke.request.json`、`app-runtime.run.create.request.json`、`trigger-source.create.request.json`。
 - `09-*` 目录包含：`save-template.request.json`、`save-application.request.json`、`preview-run.request.json`、`app-runtime.create.request.json`、`app-runtime.invoke.request.json`、`app-runtime.run.create.request.json`、`trigger-source.create.request.json`。
+- `10-*` 目录包含：`save-template.request.json`、`save-application.request.json`、`preview-run.request.json`、`app-runtime.create.request.json`、`app-runtime.invoke.request.json`、`app-runtime.run.create.request.json`。
 
 `06-*`、`07-*`、`08-*`、`09-*` 不是只保留 TriggerSource 特例接口；Save Template、Save Application、Preview Run、Create App Runtime、Invoke App Runtime 和 Create Workflow Run 仍然完整保留，TriggerSource 请求只是额外增加的协议入口调试步骤。
 
 `09-*` 当前仍然复用已经 checked-in 的 `docs/examples/workflows/industrial_local_directory_watch_yolox_position_gate.template.json` 与 `industrial_local_directory_watch_yolox_position_gate.application.json` 作为上游源，但为了和其他正式场景保持一致，也继续补齐 `save-template.request.json` 与 `save-application.request.json`。这样 Postman collection、API 请求体示例和 checked-in workflow 源 JSON 可以沿同一套完整调试链路收口。
 
 `09-*` 的实际导入变量、改值位置和推荐联调顺序见 [docs/api/postman/workflows/09-industrial-local-directory-watch-yolox-position-gate/README.md](../../postman/workflows/09-industrial-local-directory-watch-yolox-position-gate/README.md)。
+
+`10-*` 的实际导入变量、改值位置和推荐联调顺序见 [docs/api/postman/workflows/10-industrial-single-frame-glue-roi-delivery-bundle/README.md](../../postman/workflows/10-industrial-single-frame-glue-roi-delivery-bundle/README.md)。
 
 `dataset-package.v1` 的 preview 示例使用 JSON 内联 base64 `package_bytes` 表达小型 zip 包；正式 runtime invoke/run 示例会保留 `content_type: multipart/form-data`、`input_bindings_json` 和 `files` 字段，实际 Postman 调用使用对应 collection 中的 form-data。
 
