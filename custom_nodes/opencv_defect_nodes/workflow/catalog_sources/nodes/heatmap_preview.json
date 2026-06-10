@@ -1,0 +1,82 @@
+{
+  "format_id": "amvision.node-definition.v1",
+  "node_type_id": "custom.opencv.heatmap-preview",
+  "display_name": "Heatmap Preview",
+  "category": "opencv.render",
+  "description": "把差异图、距离图或边缘强度图映射为伪彩色热力图，支持可选底图叠加，适合现场调试异常强度分布。",
+  "implementation_kind": "custom-node",
+  "runtime_kind": "python-callable",
+  "input_ports": [
+    {
+      "name": "image",
+      "display_name": "Image",
+      "payload_type_id": "image-ref.v1"
+    },
+    {
+      "name": "base_image",
+      "display_name": "Base Image",
+      "payload_type_id": "image-ref.v1",
+      "required": false
+    }
+  ],
+  "output_ports": [
+    {
+      "name": "image",
+      "display_name": "Image",
+      "payload_type_id": "image-ref.v1"
+    },
+    {
+      "name": "summary",
+      "display_name": "Summary",
+      "payload_type_id": "value.v1"
+    }
+  ],
+  "parameter_schema": {
+    "type": "object",
+    "properties": {
+      "colormap": {
+        "type": "string",
+        "enum": [
+          "turbo",
+          "jet",
+          "hot",
+          "inferno",
+          "viridis",
+          "magma",
+          "plasma"
+        ],
+        "default": "turbo"
+      },
+      "normalize_mode": {
+        "type": "string",
+        "enum": [
+          "minmax",
+          "none"
+        ],
+        "default": "minmax"
+      },
+      "blend_alpha": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 1,
+        "default": 0.55
+      },
+      "output_object_key": {
+        "type": "string"
+      }
+    }
+  },
+  "capability_tags": [
+    "opencv.heatmap",
+    "vision.render",
+    "inspection.defect.visualize"
+  ],
+  "runtime_requirements": {
+    "python_packages": [
+      "opencv-python",
+      "numpy"
+    ]
+  },
+  "node_pack_id": "opencv.defect-nodes",
+  "node_pack_version": "0.1.0"
+}

@@ -17,11 +17,16 @@ def test_opencv_geometry_node_catalog_builder_matches_checked_in_catalog() -> No
     actual_catalog_payload = build_custom_node_catalog_payload(workflow_dir=workflow_dir)
 
     assert actual_catalog_payload == expected_catalog_payload
-    assert actual_catalog_payload["payload_contracts"] == []
+    assert {item["payload_type_id"] for item in actual_catalog_payload["payload_contracts"]} >= {
+        "local-features.v1",
+        "feature-matches.v1",
+        "planar-transform.v1",
+    }
     assert {item["node_type_id"] for item in actual_catalog_payload["node_definitions"]} == {
         "custom.opencv.rotation-correct",
         "custom.opencv.perspective-transform",
         "custom.opencv.affine-transform",
+        "custom.opencv.planar-transform-bridge",
         "custom.opencv.undistort",
         "custom.opencv.remap",
     }

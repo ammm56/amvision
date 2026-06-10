@@ -472,6 +472,8 @@ ZeroMQ TriggerSource 示例不把机器相关的 `path`、`offset` 和 `broker_e
 - `industrial_single_frame_line_pair_measure_gate.application.json`
 - `industrial_single_frame_calibrated_template_edge_gate.template.json`
 - `industrial_single_frame_calibrated_template_edge_gate.application.json`
+- `industrial_single_frame_calibrated_orb_bridged_template_edge_gate.template.json`
+- `industrial_single_frame_calibrated_orb_bridged_template_edge_gate.application.json`
 - `industrial_single_frame_reference_diff_defect_gate.template.json`
 - `industrial_single_frame_reference_diff_defect_gate.application.json`
 - `industrial_single_frame_sobel_laplacian_edge_gap_gate.template.json`
@@ -501,7 +503,7 @@ ZeroMQ TriggerSource 示例不把机器相关的 `path`、`offset` 和 `broker_e
 - `industrial_local_directory_polling_cursor_guard.template.json`
 - `industrial_local_directory_polling_cursor_guard.application.json`
 
-前两组样例聚焦“单图输入 -> 规则判定 -> `process-decision` -> 结果回传”，不把相机、PLC 或特定模型耦合进模板本体。`industrial_single_frame_segments_continuity_gate` 则把“分割输出 -> `segments.v1` -> `regions.v1` -> 工业规则链”这层也一起接通；`industrial_single_frame_regions_overlay_review` 与 `industrial_single_frame_segments_overlay_review` 进一步把 `draw-roi / mask-overlay` 这层 checked-in，分别覆盖“上游已是标准 `regions.v1`”和“上游仍是 `segments.v1` 需要先桥接”的两种现场复核入口；`industrial_single_frame_yoloe_text_overlay_review`、`industrial_single_frame_yoloe_visual_overlay_review`、`industrial_single_frame_sam3_semantic_overlay_review` 与 `industrial_single_frame_sam3_interactive_overlay_review` 则继续把这条 overlay 复核链直接前移到 YOLOE / SAM3 节点本身，分别覆盖“文本开放词汇检测”“视觉提示检测”“文本语义分割”和“交互分割”四类本项目自带上游；`industrial_single_frame_yolox_position_gate` 对应把“检测输出 -> `detections.v1` -> `regions.v1` -> 工业规则链”这层接通；`industrial_single_frame_usb_uvc_yolox_position_gate` 与 `industrial_single_frame_usb_uvc_sam3_semantic_continuity_gate` 则继续把同一条工业规则链前移到 USB / UVC 相机直采入口，分别覆盖“相机单帧检测位置门”和“相机单帧分割连续性门”两类更贴现场联机调试的主线；`industrial_single_frame_glue_roi_delivery_bundle` 继续把这条工业主线往结果交付面收口，覆盖“PLC 回写 + JSON/CSV 归档 + MES HTTP + Local DB”同图闭环；`industrial_single_frame_glue_polygon_roi_changeover` 进一步演示多边形 ROI 的换型和现场回调；`industrial_single_frame_line_pair_measure_gate`、`industrial_single_frame_calibrated_template_edge_gate`、`industrial_single_frame_reference_diff_defect_gate`、`industrial_single_frame_sobel_laplacian_edge_gap_gate` 与 `industrial_single_frame_circle_concentricity_gate` 则把传统 OpenCV 量测、参考图差异、边缘预增强和标定对位这层收成 checked-in 现场模板，分别覆盖双边线槽宽/平行度、本地 JSON 标定矫正后的 template-match + caliper-edge 定位门、`image-diff -> absdiff-threshold -> connected-components -> 工业规则链` 的参考图缺陷门、`sobel/laplacian -> contour -> edge-profile-gap / edge-break` 的边线完整性门，以及双圆孔径/同心度/圆度；`industrial_local_directory_batch_input` 把本地文件夹小批量输入这层单独收成可复用模板；`industrial_local_directory_batch_segments_continuity_gate` 与 `industrial_local_directory_batch_regions_continuity_gate` 则把“目录批次 -> 分割/区域结果 -> 连续性规则链 -> CSV / JSON 归档”两类上游入口接到同一套批次骨架；`industrial_local_directory_batch_yolox_position_gate` 继续把这条目录批次输入主线真正接到“逐图检测 -> 规则判定 -> CSV 持续归档 -> 批次 JSON 汇总”的现场闭环；`industrial_local_directory_poll_yolox_position_gate` 与 `industrial_local_directory_watch_yolox_position_gate` 则分别把 `directory-poll`、`directory-watch` TriggerSource 标准化后的 `payload / event` 直接接进同一条检测与规则批次骨架，覆盖“固定周期轮询触发”和“目录变化触发”两类更贴现场的守护式接入；`industrial_local_directory_polling_cursor_guard` 则把“目录轮询守护 / cursor 落盘恢复 / 批次归档 JSON”这层独立收成可复用状态模板。
+前两组样例聚焦“单图输入 -> 规则判定 -> `process-decision` -> 结果回传”，不把相机、PLC 或特定模型耦合进模板本体。`industrial_single_frame_segments_continuity_gate` 则把“分割输出 -> `segments.v1` -> `regions.v1` -> 工业规则链”这层也一起接通；`industrial_single_frame_regions_overlay_review` 与 `industrial_single_frame_segments_overlay_review` 进一步把 `draw-roi / mask-overlay` 这层 checked-in，分别覆盖“上游已是标准 `regions.v1`”和“上游仍是 `segments.v1` 需要先桥接”的两种现场复核入口；`industrial_single_frame_yoloe_text_overlay_review`、`industrial_single_frame_yoloe_visual_overlay_review`、`industrial_single_frame_sam3_semantic_overlay_review` 与 `industrial_single_frame_sam3_interactive_overlay_review` 则继续把这条 overlay 复核链直接前移到 YOLOE / SAM3 节点本身，分别覆盖“文本开放词汇检测”“视觉提示检测”“文本语义分割”和“交互分割”四类本项目自带上游；`industrial_single_frame_yolox_position_gate` 对应把“检测输出 -> `detections.v1` -> `regions.v1` -> 工业规则链”这层接通；`industrial_single_frame_usb_uvc_yolox_position_gate` 与 `industrial_single_frame_usb_uvc_sam3_semantic_continuity_gate` 则继续把同一条工业规则链前移到 USB / UVC 相机直采入口，分别覆盖“相机单帧检测位置门”和“相机单帧分割连续性门”两类更贴现场联机调试的主线；`industrial_single_frame_glue_roi_delivery_bundle` 继续把这条工业主线往结果交付面收口，覆盖“PLC 回写 + JSON/CSV 归档 + MES HTTP + Local DB”同图闭环；`industrial_single_frame_glue_polygon_roi_changeover` 进一步演示多边形 ROI 的换型和现场回调；`industrial_single_frame_line_pair_measure_gate`、`industrial_single_frame_calibrated_template_edge_gate`、`industrial_single_frame_calibrated_orb_homography_gate`、`industrial_single_frame_calibrated_orb_bridged_template_edge_gate`、`industrial_single_frame_reference_diff_defect_gate`、`industrial_single_frame_sobel_laplacian_edge_gap_gate` 与 `industrial_single_frame_circle_concentricity_gate` 则把传统 OpenCV 量测、参考图差异、边缘预增强和标定对位这层收成 checked-in 现场模板，分别覆盖双边线槽宽/平行度、本地 JSON 标定矫正后的 template-match + caliper-edge 定位门、本地 JSON 标定矫正后的 ORB + homography 参考对位门、本地 JSON 标定矫正后的 ORB -> bridge -> template-match + caliper-edge + ROI 规则门、`image-diff -> absdiff-threshold -> connected-components -> 工业规则链` 的参考图缺陷门、`sobel/laplacian -> contour -> edge-profile-gap / edge-break` 的边线完整性门，以及双圆孔径/同心度/圆度；`industrial_local_directory_batch_input` 把本地文件夹小批量输入这层单独收成可复用模板；`industrial_local_directory_batch_segments_continuity_gate` 与 `industrial_local_directory_batch_regions_continuity_gate` 则把“目录批次 -> 分割/区域结果 -> 连续性规则链 -> CSV / JSON 归档”两类上游入口接到同一套批次骨架；`industrial_local_directory_batch_yolox_position_gate` 继续把这条目录批次输入主线真正接到“逐图检测 -> 规则判定 -> CSV 持续归档 -> 批次 JSON 汇总”的现场闭环；`industrial_local_directory_poll_yolox_position_gate` 与 `industrial_local_directory_watch_yolox_position_gate` 则分别把 `directory-poll`、`directory-watch` TriggerSource 标准化后的 `payload / event` 直接接进同一条检测与规则批次骨架，覆盖“固定周期轮询触发”和“目录变化触发”两类更贴现场的守护式接入；`industrial_local_directory_polling_cursor_guard` 则把“目录轮询守护 / cursor 落盘恢复 / 批次归档 JSON”这层独立收成可复用状态模板。
 
 上游 `regions.v1` 的典型来源：
 
@@ -1290,6 +1292,144 @@ ZeroMQ TriggerSource 示例不把机器相关的 `path`、`offset` 和 `broker_e
 - `load_undistort_config` 与 `load_remap_mapping` 默认都要求本地 JSON 文件存在且内容有效，样例故意不加回退分支，便于现场尽早暴露资产问题
 - `template-match` 与 `caliper-edge` 在同一张校正图上并联执行：前者负责定位与存在性，后者负责边强度基准，两路结果再统一进入 `process-decision`
 - 如果现场位姿变化很小、治具稳定，这条链通常比 ORB / homography 更容易调；只有当模板匹配明显不够稳时，才建议继续推进 ORB 那一条更重的配准链
+
+### industrial_single_frame_calibrated_orb_homography_gate
+
+链路固定为：
+
+- `template-input.value(image_path)`
+- `template-input.value(reference_image_path)`
+- `template-input.value(undistort_config_path)`
+- `template-input.value(remap_mapping_path)`
+- `json-load-local`
+- `undistort`
+- `remap`
+- `roi-create`
+- `orb-keypoints(current)`
+- `orb-keypoints(reference)`
+- `orb-match`
+- `homography-estimate`
+- `planar-transform-bridge`
+- `value-field-extract`
+- `threshold-check`
+- `range-check`
+- `process-decision`
+- `alarm-condition`
+- `json-save-local`
+- `csv-append-local`
+
+输入约定：
+
+- `request_image_path`：`value.v1`
+  - 示例：`{"value":"D:/cases/alignment/frame-021.png"}`
+- `request_reference_image_path`：`value.v1`
+  - 示例：`{"value":"D:/cases/alignment/reference-golden.png"}`
+- `request_undistort_config_path`：`value.v1`
+  - 示例：`{"value":"D:/cases/alignment/calibration/undistort.json"}`
+- `request_remap_mapping_path`：`value.v1`
+  - 示例：`{"value":"D:/cases/alignment/calibration/remap.json"}`
+- `request_roi`：`value.v1`
+  - 可选；未提供时回退到模板内默认矩形 ROI
+
+输出约定：
+
+- `current_aligned_image`：`image-ref.v1`
+- `reference_aligned_image`：`image-ref.v1`
+- `current_features`：`local-features.v1`
+- `reference_features`：`local-features.v1`
+- `feature_matches`：`feature-matches.v1`
+- `planar_transform`：`planar-transform.v1`
+- `reference_frame_current_image`：`image-ref.v1`
+- `reference_frame_alignment_roi`：`roi.v1`
+- `inspection_result`：`result-record.v1`
+- `inspection_alarm`：`alarm-record.v1`
+- `decision_summary`：`value.v1`
+- `json_summary`：`value.v1`
+- `csv_summary`：`value.v1`
+
+适用场景：
+
+- 本地镜头标定和 remap 已准备好，但 template-match 对旋转、缩放或局部视角变化不够稳
+- 需要显式暴露特征点、匹配关系和 homography 指标，方便现场人工复核
+- 希望把“校正 -> ORB 特征 -> 匹配 -> homography -> 参考帧 warp / ROI 对位 -> OK/NG”这条更重参考对位链 checked-in 成正式模板
+
+注意事项：
+
+- 这条样例现在已经通过 `planar-transform-bridge` 把 `homography-estimate` 的结构化结果显式桥接到“当前图 warp 到参考帧”和“ROI 投影到参考帧”这两条使用面
+- `reference_frame_current_image` 默认直接采用 `source-a-to-source-b` 方向，按 transform 里的目标图尺寸输出，更适合继续接 template-match、caliper-edge、draw-roi 或后续规则链
+- `reference_frame_alignment_roi` 输出始终是 `roi_kind=polygon`，避免把透视后的四边形默默降回轴对齐 bbox
+- 如果现场位姿变化小、反光强或纹理较弱，通常仍应优先用 `industrial_single_frame_calibrated_template_edge_gate` 这条更直白的模板链
+
+### industrial_single_frame_calibrated_orb_bridged_template_edge_gate
+
+链路固定为：
+
+- `template-input.value(image_path)`
+- `template-input.value(reference_image_path)`
+- `template-input.value(template_image_path)`
+- `template-input.value(undistort_config_path)`
+- `template-input.value(remap_mapping_path)`
+- `json-load-local`
+- `undistort`
+- `remap`
+- `roi-create`
+- `orb-keypoints(current)`
+- `orb-keypoints(reference)`
+- `orb-match`
+- `homography-estimate`
+- `planar-transform-bridge`
+- `template-match`
+- `caliper-edge`
+- `inside-check`
+- `offset-check`
+- `presence-check`
+- `threshold-check`
+- `process-decision`
+- `alarm-condition`
+- `json-save-local`
+- `csv-append-local`
+
+输入约定：
+
+- `request_image_path`：`value.v1`
+  - 示例：`{"value":"D:/cases/alignment/frame-021.png"}`
+- `request_reference_image_path`：`value.v1`
+  - 示例：`{"value":"D:/cases/alignment/reference-golden.png"}`
+- `request_template_image_path`：`value.v1`
+  - 示例：`{"value":"D:/cases/alignment/reference-mark-template.png"}`
+- `request_undistort_config_path`：`value.v1`
+  - 示例：`{"value":"D:/cases/alignment/calibration/undistort.json"}`
+- `request_remap_mapping_path`：`value.v1`
+  - 示例：`{"value":"D:/cases/alignment/calibration/remap.json"}`
+- `request_roi`：`value.v1`
+  - 可选；未提供时回退到模板内默认矩形 ROI
+
+输出约定：
+
+- `current_aligned_image`：`image-ref.v1`
+- `reference_aligned_image`：`image-ref.v1`
+- `reference_frame_current_image`：`image-ref.v1`
+- `reference_frame_alignment_roi`：`roi.v1`
+- `matched_regions`：`regions.v1`
+- `caliper_lines`：`lines.v1`
+- `planar_transform`：`planar-transform.v1`
+- `inspection_result`：`result-record.v1`
+- `inspection_alarm`：`alarm-record.v1`
+- `decision_summary`：`value.v1`
+- `json_summary`：`value.v1`
+- `csv_summary`：`value.v1`
+
+适用场景：
+
+- 先靠 ORB / homography 做较重的参考对位，再把当前图桥接到参考帧继续执行模板定位、边缘强度和 ROI 规则门
+- 需要验证 `planar-transform-bridge` 不只是“能输出 warp”，而是真能继续接工业判定主线
+- template-match 在原始图上不够稳，但在桥接后的参考帧坐标系里已经足够稳定
+
+注意事项：
+
+- 这条样例把 `homography` 质量门和下游 `template-match / caliper-edge / ROI` 规则门一起保留，避免只看桥接后的单一路径
+- `reference_frame_current_image` 和 `reference_frame_alignment_roi` 是这条样例的关键中间产物，后续也适合继续接 `draw-roi`、`mask-overlay` 或更多量测节点
+- 如果现场位姿变化其实很小，仍建议先用 `industrial_single_frame_calibrated_template_edge_gate`，只有模板链不稳时再切到这条更重的参考对位方案
 
 ### industrial_single_frame_reference_diff_defect_gate
 

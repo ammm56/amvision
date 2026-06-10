@@ -11,6 +11,9 @@ from backend.contracts.nodes.node_pack_manifest import (
 )
 from backend.contracts.workflows.workflow_graph import validate_node_definition_catalog
 from backend.nodes.core_catalog import get_core_workflow_payload_contracts
+from custom_nodes._opencv_shared.workflow.payload_contracts import (
+    load_shared_opencv_payload_contracts_payload,
+)
 
 
 def get_workflow_dir() -> Path:
@@ -42,21 +45,6 @@ def build_custom_node_catalog_document(*, workflow_dir: Path | None = None) -> C
     """从 workflow/catalog_sources 构造完整目录文档。"""
 
     resolved_workflow_dir = workflow_dir or get_workflow_dir()
-    catalog_sources_dir = get_catalog_sources_dir(workflow_dir=resolved_workflow_dir)
-    payload_contracts_path = catalog_sources_dir / "payload_contracts.json"
-    metadata_path = catalog_sources_dir / "metadata.json"
-
-    payload_contracts_payload = _load_json_document(payload_contracts_path)
-    if not isinstance(payload_contracts_payload, list):
-        raise ValueError("payload_contracts.json 必须是数组")
-
-    metadata_payload: dict[str, object] = {}
-    if metadata_path.is_file():
-        raw_metadata_payload = _load_json_document(metadata_path)
-        if not isinstance(raw_metadata_payload, dict):
-            raise ValueError("metadata.json 必须是对象")
-        metadata_payload = raw_metadata_payload
-
     node_definitions_payload: list[dict[str, object]] = []
     for node_file_path in sorted(get_node_sources_dir(workflow_dir=resolved_workflow_dir).glob("*.json")):
         node_payload = _load_json_document(node_file_path)
@@ -67,9 +55,8 @@ def build_custom_node_catalog_document(*, workflow_dir: Path | None = None) -> C
     catalog_document = CustomNodeCatalogDocument.model_validate(
         {
             "format_id": CUSTOM_NODE_CATALOG_FORMAT,
-            "payload_contracts": payload_contracts_payload,
+            "payload_contracts": load_shared_opencv_payload_contracts_payload(),
             "node_definitions": node_definitions_payload,
-            "metadata": metadata_payload,
         }
     )
     validate_node_definition_catalog(

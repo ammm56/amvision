@@ -1358,19 +1358,131 @@ def test_industrial_single_frame_calibrated_template_edge_gate_documents_are_val
         template_input.payload_type_id for template_input in template.template_inputs
     ] == ["value.v1", "value.v1", "value.v1", "value.v1", "value.v1"]
     assert template.template_inputs[4].required is False
+
+
+def test_industrial_single_frame_calibrated_orb_homography_gate_documents_are_valid() -> (
+    None
+):
+    """验证本地标定 ORB + homography 工业样例模板与应用可以通过当前合同校验。"""
+
+    example_dir = (
+        Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
+    )
+    template_path = (
+        example_dir
+        / "industrial_single_frame_calibrated_orb_homography_gate.template.json"
+    )
+    application_path = (
+        example_dir
+        / "industrial_single_frame_calibrated_orb_homography_gate.application.json"
+    )
+    template = WorkflowGraphTemplate.model_validate(
+        json.loads(template_path.read_text(encoding="utf-8"))
+    )
+    application = FlowApplication.model_validate(
+        json.loads(application_path.read_text(encoding="utf-8"))
+    )
+
+    custom_nodes_root = Path(__file__).resolve().parents[1] / "custom_nodes"
+    node_pack_loader = LocalNodePackLoader(custom_nodes_root)
+    node_pack_loader.refresh()
+    registry = NodeCatalogRegistry(node_pack_loader=node_pack_loader)
+    validate_workflow_graph_template(
+        template=template,
+        node_definitions=registry.get_workflow_node_definitions(),
+    )
+    validate_flow_application_bindings(template=template, application=application)
+
+    assert [node.node_id for node in template.nodes] == [
+        "request_image_path_input",
+        "request_reference_image_path_input",
+        "request_undistort_config_path_input",
+        "request_remap_mapping_path_input",
+        "load_image",
+        "load_reference_image",
+        "load_undistort_config",
+        "load_remap_mapping",
+        "undistort_current",
+        "undistort_reference",
+        "remap_current",
+        "remap_reference",
+        "create_roi",
+        "orb_current",
+        "orb_reference",
+        "orb_match",
+        "homography_estimate",
+        "bridge_current_to_reference",
+        "extract_inlier_count",
+        "extract_inlier_ratio",
+        "extract_reprojection_error",
+        "inlier_count_check",
+        "inlier_ratio_check",
+        "reprojection_error_check",
+        "metadata_object",
+        "metrics_object",
+        "process_decision",
+        "alarm_condition",
+        "save_result_json",
+        "append_result_csv",
+    ]
+    assert (
+        template.metadata["example_kind"]
+        == "industrial-single-frame-calibrated-orb-homography-gate"
+    )
+    assert (
+        template.metadata["focus"]
+        == "single-frame-industrial-opencv-orb-alignment-rule-chain"
+    )
+    assert template.metadata["dynamic_roi_input_binding"] == "request_roi"
+    assert template.metadata["local_json_input_bindings"] == [
+        "request_undistort_config_path",
+        "request_remap_mapping_path",
+    ]
+    assert template.metadata["planar_transform_bridge_applied"] is True
+    assert [template_input.input_id for template_input in template.template_inputs] == [
+        "request_image_path",
+        "request_reference_image_path",
+        "request_undistort_config_path",
+        "request_remap_mapping_path",
+        "request_roi",
+    ]
+    assert [
+        template_input.payload_type_id for template_input in template.template_inputs
+    ] == ["value.v1", "value.v1", "value.v1", "value.v1", "value.v1"]
+    assert template.template_inputs[4].required is False
+    assert [template_output.output_id for template_output in template.template_outputs] == [
+        "current_aligned_image",
+        "reference_aligned_image",
+        "current_features",
+        "reference_features",
+        "feature_matches",
+        "planar_transform",
+        "reference_frame_current_image",
+        "reference_frame_alignment_roi",
+        "inspection_result",
+        "inspection_alarm",
+        "decision_summary",
+        "json_summary",
+        "csv_summary",
+    ]
     assert application.template_ref.source_uri == (
-        "docs/examples/workflows/industrial_single_frame_calibrated_template_edge_gate.template.json"
+        "docs/examples/workflows/industrial_single_frame_calibrated_orb_homography_gate.template.json"
     )
     assert application.runtime_mode == "python-json-workflow"
     assert [binding.binding_id for binding in application.bindings] == [
         "request_image_path",
-        "request_template_image_path",
+        "request_reference_image_path",
         "request_undistort_config_path",
         "request_remap_mapping_path",
         "request_roi",
-        "aligned_image",
-        "matched_regions",
-        "caliper_lines",
+        "current_aligned_image",
+        "reference_aligned_image",
+        "current_features",
+        "reference_features",
+        "feature_matches",
+        "planar_transform",
+        "reference_frame_current_image",
+        "reference_frame_alignment_roi",
         "inspection_result",
         "inspection_alarm",
         "decision_summary",
@@ -1378,9 +1490,160 @@ def test_industrial_single_frame_calibrated_template_edge_gate_documents_are_val
         "csv_summary",
     ]
     assert application.bindings[4].required is False
-    assert application.bindings[5].config["payload_type_id"] == "image-ref.v1"
-    assert application.bindings[6].config["payload_type_id"] == "regions.v1"
-    assert application.bindings[7].config["payload_type_id"] == "lines.v1"
+    assert application.bindings[7].config["payload_type_id"] == "local-features.v1"
+    assert application.bindings[8].config["payload_type_id"] == "local-features.v1"
+    assert application.bindings[9].config["payload_type_id"] == "feature-matches.v1"
+    assert application.bindings[10].config["payload_type_id"] == "planar-transform.v1"
+    assert application.bindings[11].config["payload_type_id"] == "image-ref.v1"
+    assert application.bindings[12].config["payload_type_id"] == "roi.v1"
+
+
+def test_industrial_single_frame_calibrated_orb_bridged_template_edge_gate_documents_are_valid() -> (
+    None
+):
+    """验证 ORB bridge 后继续接模板/边缘规则链的工业样例模板与应用可以通过当前合同校验。"""
+
+    example_dir = (
+        Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
+    )
+    template_path = (
+        example_dir
+        / "industrial_single_frame_calibrated_orb_bridged_template_edge_gate.template.json"
+    )
+    application_path = (
+        example_dir
+        / "industrial_single_frame_calibrated_orb_bridged_template_edge_gate.application.json"
+    )
+    template = WorkflowGraphTemplate.model_validate(
+        json.loads(template_path.read_text(encoding="utf-8"))
+    )
+    application = FlowApplication.model_validate(
+        json.loads(application_path.read_text(encoding="utf-8"))
+    )
+
+    custom_nodes_root = Path(__file__).resolve().parents[1] / "custom_nodes"
+    node_pack_loader = LocalNodePackLoader(custom_nodes_root)
+    node_pack_loader.refresh()
+    registry = NodeCatalogRegistry(node_pack_loader=node_pack_loader)
+    validate_workflow_graph_template(
+        template=template,
+        node_definitions=registry.get_workflow_node_definitions(),
+    )
+    validate_flow_application_bindings(template=template, application=application)
+
+    assert [node.node_id for node in template.nodes] == [
+        "request_image_path_input",
+        "request_reference_image_path_input",
+        "request_template_image_path_input",
+        "request_undistort_config_path_input",
+        "request_remap_mapping_path_input",
+        "load_image",
+        "load_reference_image",
+        "load_template_image",
+        "load_undistort_config",
+        "load_remap_mapping",
+        "undistort_current",
+        "undistort_reference",
+        "remap_current",
+        "remap_reference",
+        "create_roi",
+        "orb_current",
+        "orb_reference",
+        "orb_match",
+        "homography_estimate",
+        "bridge_current_to_reference",
+        "extract_inlier_count",
+        "extract_inlier_ratio",
+        "extract_reprojection_error",
+        "inlier_count_check",
+        "inlier_ratio_check",
+        "reprojection_error_check",
+        "template_match",
+        "select_best_region",
+        "caliper_edge",
+        "extract_edge_strength",
+        "inside_check",
+        "offset_check",
+        "presence_check",
+        "edge_strength_check",
+        "metadata_object",
+        "metrics_object",
+        "process_decision",
+        "alarm_condition",
+        "save_result_json",
+        "append_result_csv",
+    ]
+    assert (
+        template.metadata["example_kind"]
+        == "industrial-single-frame-calibrated-orb-bridged-template-edge-gate"
+    )
+    assert (
+        template.metadata["focus"]
+        == "single-frame-industrial-opencv-orb-bridged-template-edge-rule-chain"
+    )
+    assert template.metadata["dynamic_roi_input_binding"] == "request_roi"
+    assert template.metadata["planar_transform_bridge_applied"] is True
+    assert template.metadata["downstream_reference_frame_rule_chain"] is True
+    assert template.metadata["local_json_input_bindings"] == [
+        "request_undistort_config_path",
+        "request_remap_mapping_path",
+    ]
+    assert [template_input.input_id for template_input in template.template_inputs] == [
+        "request_image_path",
+        "request_reference_image_path",
+        "request_template_image_path",
+        "request_undistort_config_path",
+        "request_remap_mapping_path",
+        "request_roi",
+    ]
+    assert [
+        template_input.payload_type_id for template_input in template.template_inputs
+    ] == ["value.v1", "value.v1", "value.v1", "value.v1", "value.v1", "value.v1"]
+    assert template.template_inputs[5].required is False
+    assert [template_output.output_id for template_output in template.template_outputs] == [
+        "current_aligned_image",
+        "reference_aligned_image",
+        "reference_frame_current_image",
+        "reference_frame_alignment_roi",
+        "matched_regions",
+        "caliper_lines",
+        "planar_transform",
+        "inspection_result",
+        "inspection_alarm",
+        "decision_summary",
+        "json_summary",
+        "csv_summary",
+    ]
+    assert application.template_ref.source_uri == (
+        "docs/examples/workflows/industrial_single_frame_calibrated_orb_bridged_template_edge_gate.template.json"
+    )
+    assert application.runtime_mode == "python-json-workflow"
+    assert [binding.binding_id for binding in application.bindings] == [
+        "request_image_path",
+        "request_reference_image_path",
+        "request_template_image_path",
+        "request_undistort_config_path",
+        "request_remap_mapping_path",
+        "request_roi",
+        "current_aligned_image",
+        "reference_aligned_image",
+        "reference_frame_current_image",
+        "reference_frame_alignment_roi",
+        "matched_regions",
+        "caliper_lines",
+        "planar_transform",
+        "inspection_result",
+        "inspection_alarm",
+        "decision_summary",
+        "json_summary",
+        "csv_summary",
+    ]
+    assert application.bindings[5].required is False
+    assert application.bindings[8].config["payload_type_id"] == "image-ref.v1"
+    assert application.bindings[9].config["payload_type_id"] == "roi.v1"
+    assert application.bindings[10].config["payload_type_id"] == "regions.v1"
+    assert application.bindings[11].config["payload_type_id"] == "lines.v1"
+    assert application.bindings[12].config["payload_type_id"] == "planar-transform.v1"
 
 
 def test_industrial_single_frame_reference_diff_defect_gate_documents_are_valid() -> (

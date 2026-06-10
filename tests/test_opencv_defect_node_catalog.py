@@ -27,6 +27,9 @@ def test_opencv_defect_node_catalog_builder_matches_checked_in_catalog() -> None
         "custom.opencv.connected-components",
         "custom.opencv.fill-holes",
         "custom.opencv.distance-transform",
+        "custom.opencv.heatmap-preview",
+        "custom.opencv.watershed",
+        "custom.opencv.skeletonize",
     }
     assert {item["node_pack_id"] for item in actual_catalog_payload["node_definitions"]} == {
         "opencv.defect-nodes"

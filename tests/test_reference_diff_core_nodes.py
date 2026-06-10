@@ -4,10 +4,13 @@ from __future__ import annotations
 
 import cv2
 import numpy as np
+import pytest
 
 from backend.nodes.core_nodes.foreign_object_check import _foreign_object_check_handler
+from backend.nodes.core_nodes.foreground_change_ratio import _foreground_change_ratio_handler
 from backend.nodes.core_nodes.reference_diff_metrics import _reference_diff_metrics_handler
 from backend.nodes.core_nodes.surface_uniformity_check import _surface_uniformity_check_handler
+from backend.nodes.core_nodes.surface_uniformity_metrics import _surface_uniformity_metrics_handler
 from backend.nodes.runtime_support import ExecutionImageRegistry, build_memory_image_payload
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 
@@ -66,6 +69,28 @@ def test_foreign_object_check_defaults_to_strict_presence_gate() -> None:
     assert output["metrics"]["value"]["failure_reasons"] == ["too-many-foreign-objects"]
 
 
+def test_foreground_change_ratio_returns_roi_scoped_union_ratio() -> None:
+    """验证 foreground-change-ratio 会直接输出 ROI 作用域内的前景变化占比。"""
+
+    image_registry = ExecutionImageRegistry()
+    regions_payload = _build_diff_regions_payload(image_registry)
+
+    output = _foreground_change_ratio_handler(
+        WorkflowNodeExecutionRequest(
+            node_id="foreground-change-ratio",
+            node_definition=object(),
+            parameters={},
+            input_values={
+                "regions": regions_payload,
+                "roi": _build_roi_payload(),
+            },
+            execution_metadata={"execution_image_registry": image_registry},
+        )
+    )
+
+    assert output["value"]["value"] == pytest.approx(0.25)
+
+
 def test_surface_uniformity_check_supports_ratio_thresholds() -> None:
     """验证 surface-uniformity-check 可按比例阈值放宽表面异常判定。"""
 
@@ -92,6 +117,36 @@ def test_surface_uniformity_check_supports_ratio_thresholds() -> None:
     assert output["result"]["value"] is True
     assert output["metrics"]["value"]["failure_reasons"] == []
     assert output["metrics"]["value"]["avg_diff_area_ratio"] == 0.25
+
+
+def test_surface_uniformity_metrics_returns_density_and_cluster_shape_metrics() -> None:
+    """验证 surface-uniformity-metrics 会输出覆盖率、密度和聚集度字段。"""
+
+    image_registry = ExecutionImageRegistry()
+    regions_payload = _build_diff_regions_payload(image_registry)
+
+    output = _surface_uniformity_metrics_handler(
+        WorkflowNodeExecutionRequest(
+            node_id="surface-uniformity-metrics",
+            node_definition=object(),
+            parameters={},
+            input_values={
+                "regions": regions_payload,
+            },
+            execution_metadata={"execution_image_registry": image_registry},
+        )
+    )
+
+    metrics_value = output["value"]["value"]
+    assert metrics_value["scope_kind"] == "image"
+    assert metrics_value["coverage_ratio"] == pytest.approx(13.0 / 120.0)
+    assert metrics_value["sum_effective_area_ratio"] == pytest.approx(13.0 / 120.0)
+    assert metrics_value["cluster_count_per_10k_pixels"] == pytest.approx(2.0 / 120.0 * 10000.0)
+    assert metrics_value["largest_cluster_share_of_diff"] == pytest.approx(9.0 / 13.0)
+    assert metrics_value["overlap_ratio"] == 0.0
+    assert metrics_value["cluster_area_stddev"] == pytest.approx(2.5)
+    assert metrics_value["cluster_area_stddev_ratio"] == pytest.approx(2.5 / 120.0)
+    assert metrics_value["cluster_area_cv"] == pytest.approx(2.5 / 6.5)
 
 
 def _build_diff_regions_payload(image_registry: ExecutionImageRegistry) -> dict[str, object]:

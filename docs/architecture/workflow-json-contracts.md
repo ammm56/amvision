@@ -222,9 +222,9 @@ OpenCV 节点不应直接写死在推理 runtime 里，而应通过 custom-node 
 
 而 `opencv.geometry-nodes` 当前承载：
 
-- opencv.geometry：rotation-correct、perspective-transform、affine-transform、undistort、remap
+- opencv.geometry：rotation-correct、perspective-transform、affine-transform、undistort、remap、planar-transform-bridge
 
-其中 `opencv.shape-nodes` 负责 `contour -> contours.v1`、`min-area-rect -> rotated-rects.v1`、`hough-lines / fit-line -> lines.v1`、`hough-circles / min-enclosing-circle -> circles.v1` 与 `contours-to-regions -> regions.v1` 这条结构化几何抽取主线；`opencv.defect-nodes` 中的 `connected-components` 也直接输出 `regions.v1`，`gallery-preview` 输出 `response-body.v1`；`opencv.matching-nodes` 当前则负责 `orb-keypoints -> local-features.v1`、`orb-match -> feature-matches.v1` 与 `homography-estimate -> planar-transform.v1` 这条更重的参考对位链；而 `image-diff -> absdiff-threshold -> connected-components` 已经可以形成一条完整的传统差异检测上游链，继续接到 `core.output.http-response` 或既有工业规则链。当前这组 OpenCV 自定义 payload contract 也已统一收进 `custom_nodes/_opencv_shared/workflow/payload_contracts.json`，由多个 pack 共享生成并在运行时按相同定义去重合并。
+其中 `opencv.shape-nodes` 负责 `contour -> contours.v1`、`min-area-rect -> rotated-rects.v1`、`hough-lines / fit-line -> lines.v1`、`hough-circles / min-enclosing-circle -> circles.v1` 与 `contours-to-regions -> regions.v1` 这条结构化几何抽取主线；`opencv.defect-nodes` 中的 `connected-components` 也直接输出 `regions.v1`，`gallery-preview` 输出 `response-body.v1`；`opencv.matching-nodes` 当前则负责 `orb-keypoints -> local-features.v1`、`orb-match -> feature-matches.v1` 与 `homography-estimate -> planar-transform.v1` 这条更重的参考对位链；`opencv.geometry-nodes` 则继续通过 `planar-transform-bridge` 把 `planar-transform.v1` 显式桥接回 `image-ref.v1 / roi.v1`，便于继续接量测、模板定位和 ROI 规则链；而 `image-diff -> absdiff-threshold -> connected-components` 已经可以形成一条完整的传统差异检测上游链，继续接到 `core.output.http-response` 或既有工业规则链。当前这组 OpenCV 自定义 payload contract 也已统一收进 `custom_nodes/_opencv_shared/workflow/payload_contracts.json`，由多个 pack 共享生成并在运行时按相同定义去重合并。
 
 `point-distance / point-to-line-distance / line-angle / circle-diameter / parallelism-metrics / concentricity-metrics / slot-width` 当前则直接输出可进规则链的 `value.v1 + summary(value.v1)`，适合继续接 `threshold-check / range-check / process-decision`。`draw-contours / draw-lines / draw-circles / draw-roi / draw-measurements / mask-overlay` 则统一输出 `image-ref.v1`，用于把轮廓、直线、圆、ROI、分割覆盖层和量测依据直接画回原图做现场调试。
 
