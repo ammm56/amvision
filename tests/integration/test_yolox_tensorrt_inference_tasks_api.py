@@ -69,10 +69,11 @@ def test_tensorrt_inference_task_runs_through_real_async_deployment_process(
     try:
         with client:
             deployment_response = client.post(
-                "/api/v1/models/yolox/deployment-instances",
+                "/api/v1/models/detection/deployment-instances",
                 headers=_build_model_headers(),
                 json={
                     "project_id": "project-1",
+                    "model_type": "yolox",
                     "model_build_id": model_build_id,
                     "runtime_backend": "tensorrt",
                     "runtime_precision": runtime_precision,
@@ -91,17 +92,18 @@ def test_tensorrt_inference_task_runs_through_real_async_deployment_process(
             assert deployment_payload["runtime_execution_mode"] == f"tensorrt:{runtime_precision}:cuda:0"
 
             async_start_response = client.post(
-                f"/api/v1/models/yolox/deployment-instances/{deployment_instance_id}/async/start",
+                f"/api/v1/models/detection/deployment-instances/{deployment_instance_id}/async/start",
                 headers=_build_model_headers(),
             )
             assert async_start_response.status_code == 200
             assert async_start_response.json()["process_state"] == "running"
 
             create_response = client.post(
-                "/api/v1/models/yolox/inference-tasks",
+                "/api/v1/models/detection/inference-tasks",
                 headers=_build_inference_headers(),
                 json={
                     "project_id": "project-1",
+                    "model_type": "yolox",
                     "deployment_instance_id": deployment_instance_id,
                     "input_uri": "runtime-inputs/inference-image.png",
                     "score_threshold": 0.1,
@@ -125,7 +127,7 @@ def test_tensorrt_inference_task_runs_through_real_async_deployment_process(
             assert runtime_target_snapshot["runtime_artifact_storage_uri"].endswith("constant-model.engine")
 
             pending_result_response = client.get(
-                f"/api/v1/models/yolox/inference-tasks/{task_id}/result",
+                f"/api/v1/models/detection/inference-tasks/{task_id}/result",
                 headers=_build_task_headers(),
             )
             assert pending_result_response.status_code == 200
@@ -134,7 +136,7 @@ def test_tensorrt_inference_task_runs_through_real_async_deployment_process(
             assert worker.run_once() is True
 
             detail_response = client.get(
-                f"/api/v1/models/yolox/inference-tasks/{task_id}",
+                f"/api/v1/models/detection/inference-tasks/{task_id}",
                 headers=_build_task_headers(),
             )
             assert detail_response.status_code == 200
@@ -147,7 +149,7 @@ def test_tensorrt_inference_task_runs_through_real_async_deployment_process(
             assert detail_payload["latency_ms"] is not None
 
             result_response = client.get(
-                f"/api/v1/models/yolox/inference-tasks/{task_id}/result",
+                f"/api/v1/models/detection/inference-tasks/{task_id}/result",
                 headers=_build_task_headers(),
             )
             assert result_response.status_code == 200
@@ -501,3 +503,4 @@ def _build_task_headers() -> dict[str, str]:
     """
 
     return build_test_headers(scopes="tasks:read")
+

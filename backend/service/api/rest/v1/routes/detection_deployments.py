@@ -30,7 +30,7 @@ from backend.service.application.deployments.detection_deployment_service import
     DetectionDeploymentInstanceCreateRequest,
     SqlAlchemyDetectionDeploymentService,
 )
-from backend.service.application.errors import PermissionDeniedError
+from backend.service.application.errors import InvalidRequestError, PermissionDeniedError
 from backend.service.application.models.detection_async_inference_gateway import (
     DetectionAsyncInferenceGatewayDispatcherRegistry,
 )
@@ -346,6 +346,30 @@ def get_detection_sync_deployment_health(
 
 
 @detection_deployments_router.post(
+    "/detection/deployment-instances/{deployment_instance_id}/sync/reset",
+    response_model=DetectionDeploymentRuntimeHealthResponse,
+)
+def reset_detection_sync_deployment(
+    deployment_instance_id: str,
+    principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("models:read", "models:write"))],
+    session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
+    dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
+    supervisor: Annotated[DeploymentProcessSupervisor, Depends(get_detection_sync_deployment_process_supervisor)],
+) -> DetectionDeploymentRuntimeHealthResponse:
+    """重置一个 detection sync deployment 推理实例池。"""
+
+    return _run_detection_process_health_action(
+        deployment_instance_id=deployment_instance_id,
+        principal=principal,
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+        supervisor=supervisor,
+        runtime_mode="sync",
+        action="reset",
+    )
+
+
+@detection_deployments_router.post(
     "/detection/deployment-instances/{deployment_instance_id}/async/start",
     response_model=DetectionDeploymentProcessStatusResponse,
 )
@@ -472,4 +496,28 @@ def get_detection_async_deployment_health(
         gateway_dispatcher_registry=gateway_dispatcher_registry,
         runtime_mode="async",
         action="health",
+    )
+
+
+@detection_deployments_router.post(
+    "/detection/deployment-instances/{deployment_instance_id}/async/reset",
+    response_model=DetectionDeploymentRuntimeHealthResponse,
+)
+def reset_detection_async_deployment(
+    deployment_instance_id: str,
+    principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("models:read", "models:write"))],
+    session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
+    dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
+    supervisor: Annotated[DeploymentProcessSupervisor, Depends(get_detection_async_deployment_process_supervisor)],
+) -> DetectionDeploymentRuntimeHealthResponse:
+    """重置一个 detection async deployment 推理实例池。"""
+
+    return _run_detection_process_health_action(
+        deployment_instance_id=deployment_instance_id,
+        principal=principal,
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+        supervisor=supervisor,
+        runtime_mode="async",
+        action="reset",
     )

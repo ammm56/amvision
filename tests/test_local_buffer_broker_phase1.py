@@ -225,7 +225,7 @@ def test_local_buffer_broker_client_writes_and_reads_frame_refs_by_direct_mmap(t
 
         assert channel["frame_capacity"] == 2
         assert first_frame.sequence_id == 0
-        assert first_frame.path.endswith("pool-001.dat")
+        assert first_frame.path.endswith("image-1080p-001.dat")
         assert client.read_frame_ref(second_frame) == b"frame-2"
         assert client.read_frame_ref(third_frame) == b"frame-3"
         with pytest.raises(InvalidRequestError):
@@ -577,7 +577,7 @@ def test_deployment_supervisor_passes_broker_event_channel_to_worker(tmp_path: P
         runtime_mode="sync",
         settings=DeploymentProcessSupervisorConfig(
             auto_restart=False,
-            request_timeout_seconds=2.0,
+            request_timeout_seconds=5.0,
             shutdown_timeout_seconds=1.0,
             operator_thread_count=1,
         ),

@@ -182,30 +182,30 @@ WebSocket 资源流的统一消息结构、控制事件和重连规则见 [docs/
 | POST | /api/v1/models/obb/training-tasks/{task_id}/terminate | tasks:write | 请求终止一个 queued、running 或 paused 的 obb 训练任务。 |
 | POST | /api/v1/models/obb/training-tasks/{task_id}/resume | tasks:write | 把 paused 的 obb 训练任务重新入队。 |
 | DELETE | /api/v1/models/obb/training-tasks/{task_id} | tasks:write | 删除一个已经停止且允许清理的 obb 训练任务。 |
-| POST | /api/v1/models/yolox/training-tasks | datasets:read + tasks:write | 以 DatasetExport 为唯一输入边界创建 YOLOX 训练任务。 |
+| POST | /api/v1/models/detection/training-tasks | datasets:read + tasks:write | 以 DatasetExport 为唯一输入边界创建 detection 训练任务。 |
 | GET | /api/v1/models/platform-base | models:read | 列出平台基础模型及其可用 ModelVersion 摘要。 |
 | GET | /api/v1/models/platform-base/{model_id} | models:read | 查询单个平台基础模型详情、版本文件和构建文件。 |
-| POST | /api/v1/models/yolox/conversion-tasks/onnx | models:read + tasks:write | 以训练产出的 source ModelVersion 创建 ONNX conversion 任务。 |
-| POST | /api/v1/models/yolox/conversion-tasks/onnx-optimized | models:read + tasks:write | 创建 optimized ONNX conversion 任务。 |
-| POST | /api/v1/models/yolox/conversion-tasks/openvino-ir-fp32 | models:read + tasks:write | 创建 OpenVINO IR FP32 conversion 任务。 |
-| POST | /api/v1/models/yolox/conversion-tasks/openvino-ir-fp16 | models:read + tasks:write | 创建 OpenVINO IR FP16 conversion 任务。 |
-| POST | /api/v1/models/yolox/conversion-tasks/tensorrt-engine-fp32 | models:read + tasks:write | 创建 TensorRT Engine FP32 conversion 任务。 |
-| POST | /api/v1/models/yolox/conversion-tasks/tensorrt-engine-fp16 | models:read + tasks:write | 创建 TensorRT Engine FP16 conversion 任务。 |
-| GET | /api/v1/models/yolox/conversion-tasks | tasks:read | 按 Project、来源版本和状态列出 YOLOX conversion 任务。 |
-| GET | /api/v1/models/yolox/conversion-tasks/{task_id} | tasks:read | 查询单条 YOLOX conversion 任务详情和事件流。 |
-| GET | /api/v1/models/yolox/conversion-tasks/{task_id}/result | tasks:read | 查询 YOLOX conversion 结果文件状态与当前转换摘要。 |
-| GET | /api/v1/models/yolox/training-tasks | tasks:read | 按 Project、DatasetExport 边界和状态列出 YOLOX 训练任务。 |
-| GET | /api/v1/models/yolox/training-tasks/{task_id} | tasks:read | 查询单条 YOLOX 训练任务详情和事件流。 |
-| POST | /api/v1/models/yolox/training-tasks/{task_id}/save | tasks:write | 为 running 的 YOLOX 训练任务登记一次手动保存请求。 |
-| POST | /api/v1/models/yolox/training-tasks/{task_id}/pause | tasks:write | 为 running 的 YOLOX 训练任务请求暂停，并在下一轮边界先保存 latest checkpoint。 |
-| POST | /api/v1/models/yolox/training-tasks/{task_id}/resume | tasks:write | 把 paused 的 YOLOX 训练任务重新入队，并基于 latest checkpoint 恢复训练。 |
-| POST | /api/v1/models/yolox/training-tasks/{task_id}/terminate | tasks:write | 请求终止一个 queued、running 或 paused 的 YOLOX 训练任务。 |
-| DELETE | /api/v1/models/yolox/training-tasks/{task_id} | tasks:write | 删除一个已经停止且允许清理的 YOLOX 训练任务。 |
-| POST | /api/v1/models/yolox/training-tasks/{task_id}/register-model-version | tasks:write + models:write | 调试时手动重登记当前 latest checkpoint 对应的固定 latest ModelVersion，并回写到训练详情。 |
-| GET | /api/v1/models/yolox/training-tasks/{task_id}/validation-metrics | tasks:read | 读取当前训练任务最新的 validation-metrics.json 内容。 |
-| GET | /api/v1/models/yolox/training-tasks/{task_id}/train-metrics | tasks:read | 读取当前训练任务最新的 train-metrics.json 内容。 |
-| GET | /api/v1/models/yolox/training-tasks/{task_id}/output-files | tasks:read | 列出当前训练任务公开输出文件状态。 |
-| GET | /api/v1/models/yolox/training-tasks/{task_id}/output-files/{file_name} | tasks:read | 读取单个训练输出文件的状态、object_key 和可内联 payload。 |
+| POST | /api/v1/models/detection/conversion-tasks/onnx | models:read + tasks:write | 以训练产出的 source ModelVersion 创建 ONNX conversion 任务。 |
+| POST | /api/v1/models/detection/conversion-tasks/onnx-optimized | models:read + tasks:write | 创建 optimized ONNX conversion 任务。 |
+| POST | /api/v1/models/detection/conversion-tasks/openvino-ir-fp32 | models:read + tasks:write | 创建 OpenVINO IR FP32 conversion 任务。 |
+| POST | /api/v1/models/detection/conversion-tasks/openvino-ir-fp16 | models:read + tasks:write | 创建 OpenVINO IR FP16 conversion 任务。 |
+| POST | /api/v1/models/detection/conversion-tasks/tensorrt-engine-fp32 | models:read + tasks:write | 创建 TensorRT Engine FP32 conversion 任务。 |
+| POST | /api/v1/models/detection/conversion-tasks/tensorrt-engine-fp16 | models:read + tasks:write | 创建 TensorRT Engine FP16 conversion 任务。 |
+| GET | /api/v1/models/detection/conversion-tasks | tasks:read | 按 Project、来源版本和状态列出 detection conversion 任务。 |
+| GET | /api/v1/models/detection/conversion-tasks/{task_id} | tasks:read | 查询单条 detection conversion 任务详情和事件流。 |
+| GET | /api/v1/models/detection/conversion-tasks/{task_id}/result | tasks:read | 查询 detection conversion 结果文件状态与当前转换摘要。 |
+| GET | /api/v1/models/detection/training-tasks | tasks:read | 按 Project、DatasetExport 边界和状态列出 detection 训练任务。 |
+| GET | /api/v1/models/detection/training-tasks/{task_id} | tasks:read | 查询单条 detection 训练任务详情和事件流。 |
+| POST | /api/v1/models/detection/training-tasks/{task_id}/save | tasks:write | 为 running 的 detection 训练任务登记一次手动保存请求。 |
+| POST | /api/v1/models/detection/training-tasks/{task_id}/pause | tasks:write | 为 running 的 detection 训练任务请求暂停，并在下一轮边界先保存 latest checkpoint。 |
+| POST | /api/v1/models/detection/training-tasks/{task_id}/resume | tasks:write | 把 paused 的 detection 训练任务重新入队，并基于 latest checkpoint 恢复训练。 |
+| POST | /api/v1/models/detection/training-tasks/{task_id}/terminate | tasks:write | 请求终止一个 queued、running 或 paused 的 detection 训练任务。 |
+| DELETE | /api/v1/models/detection/training-tasks/{task_id} | tasks:write | 删除一个已经停止且允许清理的 detection 训练任务。 |
+| POST | /api/v1/models/detection/training-tasks/{task_id}/register-model-version | tasks:write + models:write | 调试时手动重登记当前 latest checkpoint 对应的固定 latest ModelVersion，并回写到训练详情。 |
+| GET | /api/v1/models/detection/training-tasks/{task_id}/validation-metrics | tasks:read | 读取当前训练任务最新的 validation-metrics.json 内容。 |
+| GET | /api/v1/models/detection/training-tasks/{task_id}/train-metrics | tasks:read | 读取当前训练任务最新的 train-metrics.json 内容。 |
+| GET | /api/v1/models/detection/training-tasks/{task_id}/output-files | tasks:read | 列出当前训练任务公开输出文件状态。 |
+| GET | /api/v1/models/detection/training-tasks/{task_id}/output-files/{file_name} | tasks:read | 读取单个训练输出文件的状态、object_key 和可内联 payload。 |
 | POST | /api/v1/models/detection/validation-sessions | models:read | 为指定 detection 模型分类与 ModelVersion 创建一个训练后单图人工验证 session；支持 pytorch、onnxruntime、openvino、tensorrt。 |
 | GET | /api/v1/models/detection/validation-sessions/{session_id} | models:read | 读取单条 detection validation session 当前详情。 |
 | POST | /api/v1/models/detection/validation-sessions/{session_id}/predict | models:read | 对 detection validation session 执行一次单图预测，并返回 raw-result 与 preview 引用。 |
@@ -221,35 +221,35 @@ WebSocket 资源流的统一消息结构、控制事件和重连规则见 [docs/
 | POST | /api/v1/models/obb/validation-sessions | models:read | 为指定 obb 模型分类与 ModelVersion 创建一个训练后单图人工验证 session；支持 pytorch、onnxruntime、openvino、tensorrt。 |
 | GET | /api/v1/models/obb/validation-sessions/{session_id} | models:read | 读取单条 obb validation session 当前详情。 |
 | POST | /api/v1/models/obb/validation-sessions/{session_id}/predict | models:read | 对 obb validation session 执行一次单图预测，并返回 raw-result 与 preview 引用。 |
-| POST | /api/v1/models/yolox/validation-sessions | models:read | 创建一个训练后单图人工验证 session。 |
-| GET | /api/v1/models/yolox/validation-sessions/{session_id} | models:read | 读取单条 validation session 当前详情。 |
-| POST | /api/v1/models/yolox/validation-sessions/{session_id}/predict | models:read | 对 validation session 执行一次单图预测，并返回 raw-result 与 preview 引用。 |
-| POST | /api/v1/models/yolox/evaluation-tasks | datasets:read + models:read + tasks:write | 以 DatasetExport 和 ModelVersion 创建数据集级回归评估任务。 |
-| GET | /api/v1/models/yolox/evaluation-tasks | tasks:read | 按 Project、DatasetExport、ModelVersion 和状态列出 YOLOX 评估任务。 |
-| GET | /api/v1/models/yolox/evaluation-tasks/{task_id} | tasks:read | 查询单条 YOLOX 评估任务详情和事件流。 |
-| GET | /api/v1/models/yolox/evaluation-tasks/{task_id}/report | tasks:read | 读取当前 YOLOX 评估报告。 |
-| GET | /api/v1/models/yolox/evaluation-tasks/{task_id}/output-files | tasks:read | 列出当前 YOLOX 评估输出文件状态。 |
-| POST | /api/v1/models/yolox/deployment-instances | models:read + models:write | 创建一个最小 YOLOX DeploymentInstance。 |
-| GET | /api/v1/models/yolox/deployment-instances | models:read | 按 Project、ModelVersion、ModelBuild 和状态列出 DeploymentInstance。 |
-| GET | /api/v1/models/yolox/deployment-instances/{deployment_instance_id} | models:read | 读取单条 DeploymentInstance 详情。 |
-| GET | /api/v1/models/yolox/deployment-instances/{deployment_instance_id}/events | models:read | 读取一条 deployment 生命周期事件列表；支持 after_sequence、runtime_mode 和 limit。 |
-| POST | /api/v1/models/yolox/deployment-instances/{deployment_instance_id}/sync/start | models:read + models:write | 启动指定 deployment 的同步推理子进程。 |
-| GET | /api/v1/models/yolox/deployment-instances/{deployment_instance_id}/sync/status | models:read | 查询指定 deployment 的同步推理进程状态。 |
-| POST | /api/v1/models/yolox/deployment-instances/{deployment_instance_id}/sync/stop | models:read + models:write | 停止指定 deployment 的同步推理子进程。 |
-| POST | /api/v1/models/yolox/deployment-instances/{deployment_instance_id}/sync/warmup | models:read + models:write | 启动并预热指定 deployment 的同步推理实例池。 |
-| GET | /api/v1/models/yolox/deployment-instances/{deployment_instance_id}/sync/health | models:read | 读取指定 deployment 的同步 runtime pool 健康视图。 |
-| POST | /api/v1/models/yolox/deployment-instances/{deployment_instance_id}/sync/reset | models:read + models:write | 重置指定 deployment 的同步推理实例池。 |
-| POST | /api/v1/models/yolox/deployment-instances/{deployment_instance_id}/async/start | models:read + models:write | 启动指定 deployment 的异步推理子进程。 |
-| GET | /api/v1/models/yolox/deployment-instances/{deployment_instance_id}/async/status | models:read | 查询指定 deployment 的异步推理进程状态。 |
-| POST | /api/v1/models/yolox/deployment-instances/{deployment_instance_id}/async/stop | models:read + models:write | 停止指定 deployment 的异步推理子进程。 |
-| POST | /api/v1/models/yolox/deployment-instances/{deployment_instance_id}/async/warmup | models:read + models:write | 启动并预热指定 deployment 的异步推理实例池。 |
-| GET | /api/v1/models/yolox/deployment-instances/{deployment_instance_id}/async/health | models:read | 读取指定 deployment 的异步 runtime pool 健康视图。 |
-| POST | /api/v1/models/yolox/deployment-instances/{deployment_instance_id}/async/reset | models:read + models:write | 重置指定 deployment 的异步推理实例池。 |
-| POST | /api/v1/models/yolox/deployment-instances/{deployment_instance_id}/infer | models:read | 通过同步 deployment 进程直接执行一次推理并返回结果。 |
-| POST | /api/v1/models/yolox/inference-tasks | models:read + tasks:write | 为已启动 async deployment 创建一条正式推理任务。 |
-| GET | /api/v1/models/yolox/inference-tasks | tasks:read | 按 Project、DeploymentInstance 和状态列出 YOLOX 推理任务。 |
-| GET | /api/v1/models/yolox/inference-tasks/{task_id} | tasks:read | 查询单条 YOLOX 推理任务详情和事件流。 |
-| GET | /api/v1/models/yolox/inference-tasks/{task_id}/result | tasks:read | 读取当前 YOLOX 推理结果文件状态和 payload。 |
+| POST | /api/v1/models/detection/validation-sessions | models:read | 创建一个训练后单图人工验证 session。 |
+| GET | /api/v1/models/detection/validation-sessions/{session_id} | models:read | 读取单条 validation session 当前详情。 |
+| POST | /api/v1/models/detection/validation-sessions/{session_id}/predict | models:read | 对 validation session 执行一次单图预测，并返回 raw-result 与 preview 引用。 |
+| POST | /api/v1/models/detection/evaluation-tasks | datasets:read + models:read + tasks:write | 以 DatasetExport 和 ModelVersion 创建数据集级回归评估任务。 |
+| GET | /api/v1/models/detection/evaluation-tasks | tasks:read | 按 Project、DatasetExport、ModelVersion 和状态列出 detection 评估任务。 |
+| GET | /api/v1/models/detection/evaluation-tasks/{task_id} | tasks:read | 查询单条 detection 评估任务详情和事件流。 |
+| GET | /api/v1/models/detection/evaluation-tasks/{task_id}/report | tasks:read | 读取当前 detection 评估报告。 |
+| GET | /api/v1/models/detection/evaluation-tasks/{task_id}/output-files | tasks:read | 列出当前 detection 评估输出文件状态。 |
+| POST | /api/v1/models/detection/deployment-instances | models:read + models:write | 创建一个最小 detection DeploymentInstance。 |
+| GET | /api/v1/models/detection/deployment-instances | models:read | 按 Project、ModelVersion、ModelBuild 和状态列出 DeploymentInstance。 |
+| GET | /api/v1/models/detection/deployment-instances/{deployment_instance_id} | models:read | 读取单条 DeploymentInstance 详情。 |
+| GET | /api/v1/models/detection/deployment-instances/{deployment_instance_id}/events | models:read | 读取一条 deployment 生命周期事件列表；支持 after_sequence、runtime_mode 和 limit。 |
+| POST | /api/v1/models/detection/deployment-instances/{deployment_instance_id}/sync/start | models:read + models:write | 启动指定 deployment 的同步推理子进程。 |
+| GET | /api/v1/models/detection/deployment-instances/{deployment_instance_id}/sync/status | models:read | 查询指定 deployment 的同步推理进程状态。 |
+| POST | /api/v1/models/detection/deployment-instances/{deployment_instance_id}/sync/stop | models:read + models:write | 停止指定 deployment 的同步推理子进程。 |
+| POST | /api/v1/models/detection/deployment-instances/{deployment_instance_id}/sync/warmup | models:read + models:write | 启动并预热指定 deployment 的同步推理实例池。 |
+| GET | /api/v1/models/detection/deployment-instances/{deployment_instance_id}/sync/health | models:read | 读取指定 deployment 的同步 runtime pool 健康视图。 |
+| POST | /api/v1/models/detection/deployment-instances/{deployment_instance_id}/sync/reset | models:read + models:write | 重置指定 deployment 的同步推理实例池。 |
+| POST | /api/v1/models/detection/deployment-instances/{deployment_instance_id}/async/start | models:read + models:write | 启动指定 deployment 的异步推理子进程。 |
+| GET | /api/v1/models/detection/deployment-instances/{deployment_instance_id}/async/status | models:read | 查询指定 deployment 的异步推理进程状态。 |
+| POST | /api/v1/models/detection/deployment-instances/{deployment_instance_id}/async/stop | models:read + models:write | 停止指定 deployment 的异步推理子进程。 |
+| POST | /api/v1/models/detection/deployment-instances/{deployment_instance_id}/async/warmup | models:read + models:write | 启动并预热指定 deployment 的异步推理实例池。 |
+| GET | /api/v1/models/detection/deployment-instances/{deployment_instance_id}/async/health | models:read | 读取指定 deployment 的异步 runtime pool 健康视图。 |
+| POST | /api/v1/models/detection/deployment-instances/{deployment_instance_id}/async/reset | models:read + models:write | 重置指定 deployment 的异步推理实例池。 |
+| POST | /api/v1/models/detection/deployment-instances/{deployment_instance_id}/infer | models:read | 通过同步 deployment 进程直接执行一次推理并返回结果。 |
+| POST | /api/v1/models/detection/inference-tasks | models:read + tasks:write | 为已启动 async deployment 创建一条正式推理任务。 |
+| GET | /api/v1/models/detection/inference-tasks | tasks:read | 按 Project、DeploymentInstance 和状态列出 detection 推理任务。 |
+| GET | /api/v1/models/detection/inference-tasks/{task_id} | tasks:read | 查询单条 detection 推理任务详情和事件流。 |
+| GET | /api/v1/models/detection/inference-tasks/{task_id}/result | tasks:read | 读取当前 detection 推理结果文件状态和 payload。 |
 | GET | /api/v1/workflows/node-catalog | workflows:read | 读取 workflow 节点目录快照，并支持按分类、节点包、payload 类型和关键词过滤。 |
 | GET | /api/v1/workflows/node-pack-status | workflows:read | 读取本地 node pack loader 状态，包含已加载、加载失败、禁用、manifest 问题、来源路径、加载时间和最近日志。 |
 | POST | /api/v1/workflows/node-packs/reload | workflows:write | 重新扫描本地 node pack，并刷新 workflow node runtime registry。 |
@@ -716,7 +716,7 @@ WebSocket 资源流的统一消息结构、控制事件和重连规则见 [docs/
 - versions 当前会继续展开 files，便于前端直接显示 checkpoint、manifest 和其他附属文件来源
 - 如果 model_id 对应的是 Project 内模型或不存在，当前接口返回 404
 
-### POST /api/v1/models/yolox/conversion-tasks/onnx
+### POST /api/v1/models/detection/conversion-tasks/onnx
 
 - 需要同时具备 models:read 和 tasks:write
 - 转换链顺序图与常见失败分支见 [docs/architecture/execution-sequences.md](../architecture/execution-sequences.md)。
@@ -743,41 +743,41 @@ WebSocket 资源流的统一消息结构、控制事件和重连规则见 [docs/
   - source_model_version_id
   - target_formats
 
-### POST /api/v1/models/yolox/conversion-tasks/onnx-optimized
+### POST /api/v1/models/detection/conversion-tasks/onnx-optimized
 
 - 需要同时具备 models:read 和 tasks:write
 - 当前请求体字段与 `onnx` 创建接口一致
 - 当前接口固定创建 `onnx-optimized` 目标的 conversion task，内部仍会先产出中间 `onnx`
 
-### POST /api/v1/models/yolox/conversion-tasks/openvino-ir-fp32
+### POST /api/v1/models/detection/conversion-tasks/openvino-ir-fp32
 
 - 需要同时具备 models:read 和 tasks:write
 - 当前请求体字段与 `onnx` 创建接口一致
 - 当前接口固定创建 `openvino-ir` 目标的 conversion task，并把 OpenVINO IR 构建策略固化为 `fp32`
 - 当前接口会先产出 `onnx` 与 `onnx-optimized`，再生成未压缩权重的 xml/bin 形式 OpenVINO IR
 
-### POST /api/v1/models/yolox/conversion-tasks/openvino-ir-fp16
+### POST /api/v1/models/detection/conversion-tasks/openvino-ir-fp16
 
 - 需要同时具备 models:read 和 tasks:write
 - 当前请求体字段与 `onnx` 创建接口一致
 - 当前接口固定创建 `openvino-ir` 目标的 conversion task，并把 OpenVINO IR 构建策略固化为 `fp16`
 - 当前接口会先产出 `onnx` 与 `onnx-optimized`，再生成压缩为 fp16 权重的 xml/bin 形式 OpenVINO IR
 
-### POST /api/v1/models/yolox/conversion-tasks/tensorrt-engine-fp32
+### POST /api/v1/models/detection/conversion-tasks/tensorrt-engine-fp32
 
 - 需要同时具备 models:read 和 tasks:write
 - 当前请求体字段与 `onnx` 创建接口一致
 - 当前接口固定创建 `tensorrt-engine` 目标的 conversion task，并把 TensorRT engine 构建策略固化为 `fp32`
 - 当前接口会先产出 `onnx` 与 `onnx-optimized`，再通过 TensorRT Python API 生成 fp32 engine
 
-### POST /api/v1/models/yolox/conversion-tasks/tensorrt-engine-fp16
+### POST /api/v1/models/detection/conversion-tasks/tensorrt-engine-fp16
 
 - 需要同时具备 models:read 和 tasks:write
 - 当前请求体字段与 `onnx` 创建接口一致
 - 当前接口固定创建 `tensorrt-engine` 目标的 conversion task，并把 TensorRT engine 构建策略固化为 `fp16`
 - 当前接口会先产出 `onnx` 与 `onnx-optimized`，再在 TensorRT builder 上打开 fp16 flag 生成 engine
 
-### GET /api/v1/models/yolox/conversion-tasks
+### GET /api/v1/models/detection/conversion-tasks
 
 - 需要 tasks:read
 - 当前支持的查询参数：
@@ -801,15 +801,15 @@ WebSocket 资源流的统一消息结构、控制事件和重连规则见 [docs/
   - builds
   - report_summary
 
-### GET /api/v1/models/yolox/conversion-tasks/{task_id}
+### GET /api/v1/models/detection/conversion-tasks/{task_id}
 
 - 需要 tasks:read
 - 默认 include_events=false
 - 默认返回轻量详情，不带 events；仅在 include_events=true 时返回历史事件列表
-- 返回单条 YOLOX conversion 任务详情，包括 task_spec、events、builds 和 report_summary
+- 返回单条 detection conversion 任务详情，包括 task_spec、events、builds 和 report_summary
 - 当前 progress 会在执行期回写 `stage` 和 `percent`
 
-### GET /api/v1/models/yolox/conversion-tasks/{task_id}/result
+### GET /api/v1/models/detection/conversion-tasks/{task_id}/result
 
 - 需要 tasks:read
 - 返回当前转换任务最新的 conversion-report.json 内容
@@ -817,7 +817,7 @@ WebSocket 资源流的统一消息结构、控制事件和重连规则见 [docs/
 - 当结果文件尚未生成时，接口返回 `file_status=pending` 和空 `payload`
 - 当任务已经结束但结果文件缺失时，接口返回 404
 
-### POST /api/v1/models/yolox/evaluation-tasks
+### POST /api/v1/models/detection/evaluation-tasks
 
 - 需要同时具备 datasets:read、models:read 和 tasks:write
 - 当前请求体允许显式指定：
@@ -843,7 +843,7 @@ WebSocket 资源流的统一消息结构、控制事件和重连规则见 [docs/
   - format_id
   - model_version_id
 
-### GET /api/v1/models/yolox/evaluation-tasks
+### GET /api/v1/models/detection/evaluation-tasks
 
 - 需要 tasks:read
 - 当前支持的查询参数：
@@ -873,15 +873,15 @@ WebSocket 资源流的统一消息结构、控制事件和重连规则见 [docs/
   - map50_95
   - report_summary
 
-### GET /api/v1/models/yolox/evaluation-tasks/{task_id}
+### GET /api/v1/models/detection/evaluation-tasks/{task_id}
 
 - 需要 tasks:read
 - 默认 include_events=false
 - 默认返回轻量详情，不带 events；仅在 include_events=true 时返回历史事件列表
-- 返回单条 YOLOX 评估任务详情，包括 task_spec、events、report_summary 和结果文件 object key
+- 返回单条 detection 评估任务详情，包括 task_spec、events、report_summary 和结果文件 object key
 - 当前 progress 会在执行期回写 `stage` 和 `percent`
 
-### GET /api/v1/models/yolox/evaluation-tasks/{task_id}/report
+### GET /api/v1/models/detection/evaluation-tasks/{task_id}/report
 
 - 需要 tasks:read
 - 返回当前评估任务最新的 evaluation-report.json 内容
@@ -889,14 +889,14 @@ WebSocket 资源流的统一消息结构、控制事件和重连规则见 [docs/
 - 当评估文件尚未生成时，接口返回 `file_status=pending` 和空 `payload`
 - 当任务已经结束但 report 文件缺失时，接口返回 404
 
-### GET /api/v1/models/yolox/evaluation-tasks/{task_id}/output-files
+### GET /api/v1/models/detection/evaluation-tasks/{task_id}/output-files
 
 - 需要 tasks:read
 - 当前统一列出 `report`、`detections` 和 `result-package` 这 3 个评估输出文件
 - `save_result_package=false` 且任务完成时，`result-package` 会以 `file_status=skipped` 返回
 - 每个条目都会返回 `file_name`、`file_kind`、`file_status`、`task_state`、`object_key`、`size_bytes` 和 `updated_at`
 
-### POST /api/v1/models/yolox/deployment-instances
+### POST /api/v1/models/detection/deployment-instances
 
 - 需要 models:read 和 models:write
 - 当前请求体允许显式指定：
@@ -942,7 +942,7 @@ WebSocket 资源流的统一消息结构、控制事件和重连规则见 [docs/
   - labels
   - status
 
-### GET /api/v1/models/yolox/deployment-instances
+### GET /api/v1/models/detection/deployment-instances
 
 - 需要 models:read
 - 当前支持的查询参数：
@@ -953,12 +953,12 @@ WebSocket 资源流的统一消息结构、控制事件和重连规则见 [docs/
   - limit
 - 当前列表返回最小 DeploymentInstance 摘要，不暴露 checkpoint 路径
 
-### GET /api/v1/models/yolox/deployment-instances/{deployment_instance_id}
+### GET /api/v1/models/detection/deployment-instances/{deployment_instance_id}
 
 - 需要 models:read
 - 返回单条 DeploymentInstance 详情，包括绑定的模型、运行时、输入尺寸和 labels
 
-### GET /api/v1/models/yolox/deployment-instances/{deployment_instance_id}/events
+### GET /api/v1/models/detection/deployment-instances/{deployment_instance_id}/events
 
 - 需要 models:read
 - 当前支持的查询参数：
@@ -968,7 +968,7 @@ WebSocket 资源流的统一消息结构、控制事件和重连规则见 [docs/
 - 返回 deployment 进程历史事件列表
 - 当前稳定事件类型覆盖 start、stop、warmup、health、crash、restart 等过程事件
 
-### POST /api/v1/models/yolox/deployment-instances/{deployment_instance_id}/sync/start
+### POST /api/v1/models/detection/deployment-instances/{deployment_instance_id}/sync/start
 
 - 需要 models:read 和 models:write
 - 显式启动指定 deployment 的同步推理子进程
@@ -986,17 +986,17 @@ WebSocket 资源流的统一消息结构、控制事件和重连规则见 [docs/
   - last_error
   - instance_count
 
-### GET /api/v1/models/yolox/deployment-instances/{deployment_instance_id}/sync/status
+### GET /api/v1/models/detection/deployment-instances/{deployment_instance_id}/sync/status
 
 - 需要 models:read
 - 返回指定 deployment 当前同步推理子进程的监督状态
 
-### POST /api/v1/models/yolox/deployment-instances/{deployment_instance_id}/sync/stop
+### POST /api/v1/models/detection/deployment-instances/{deployment_instance_id}/sync/stop
 
 - 需要 models:read 和 models:write
 - 显式停止指定 deployment 的同步推理子进程
 
-### POST /api/v1/models/yolox/deployment-instances/{deployment_instance_id}/sync/warmup
+### POST /api/v1/models/detection/deployment-instances/{deployment_instance_id}/sync/warmup
 
 - 需要 models:read 和 models:write
 - 显式启动并预热指定 deployment 的所有同步推理实例
@@ -1035,7 +1035,7 @@ WebSocket 资源流的统一消息结构、控制事件和重连规则见 [docs/
   - keep_warm.error_count_rollover_count
   - keep_warm.last_error
 
-### GET /api/v1/models/yolox/deployment-instances/{deployment_instance_id}/sync/health
+### GET /api/v1/models/detection/deployment-instances/{deployment_instance_id}/sync/health
 
 - 需要 models:read
 - 返回指定 deployment 当前同步推理子进程及实例池的详细健康视图
@@ -1055,7 +1055,7 @@ WebSocket 资源流的统一消息结构、控制事件和重连规则见 [docs/
   - keep_warm.error_count_rollover_count：error_count 已发生的 rollover 次数；当 error_count 达到 JavaScript 安全整数上限后，下一次失败会把 error_count 置为 1，并把这个字段加 1
   - keep_warm.last_error：最近一次 keep-warm 失败错误
 
-### POST /api/v1/models/yolox/deployment-instances/{deployment_instance_id}/sync/reset
+### POST /api/v1/models/detection/deployment-instances/{deployment_instance_id}/sync/reset
 
 - 需要 models:read 和 models:write
 - 重置指定 deployment 的同步推理实例池
@@ -1086,22 +1086,22 @@ WebSocket 资源流的统一消息结构、控制事件和重连规则见 [docs/
   - keep_warm.error_count_rollover_count
   - keep_warm.last_error
 
-### POST /api/v1/models/yolox/deployment-instances/{deployment_instance_id}/async/start
+### POST /api/v1/models/detection/deployment-instances/{deployment_instance_id}/async/start
 
 - 需要 models:read 和 models:write
 - 显式启动指定 deployment 的异步推理子进程
 
-### GET /api/v1/models/yolox/deployment-instances/{deployment_instance_id}/async/status
+### GET /api/v1/models/detection/deployment-instances/{deployment_instance_id}/async/status
 
 - 需要 models:read
 - 返回指定 deployment 当前异步推理子进程的监督状态
 
-### POST /api/v1/models/yolox/deployment-instances/{deployment_instance_id}/async/stop
+### POST /api/v1/models/detection/deployment-instances/{deployment_instance_id}/async/stop
 
 - 需要 models:read 和 models:write
 - 显式停止指定 deployment 的异步推理子进程
 
-### POST /api/v1/models/yolox/deployment-instances/{deployment_instance_id}/async/warmup
+### POST /api/v1/models/detection/deployment-instances/{deployment_instance_id}/async/warmup
 
 - 需要 models:read 和 models:write
 - 显式启动并预热指定 deployment 的所有异步推理实例
@@ -1109,13 +1109,13 @@ WebSocket 资源流的统一消息结构、控制事件和重连规则见 [docs/
 - 当 `metadata.deployment_process.keep_warm_enabled=true` 时，warmup 完成后会激活 keep-warm 后台线程；首次真实推理成功后也会激活同一机制
 - 当前响应会返回与 sync/warmup 相同的 keep_warm 状态字段，以及 `pinned_output_total_bytes`，可直接判断 keep-warm 是否启用、是否激活，以及当前已加载 session 持有的 pinned output 总量
 
-### GET /api/v1/models/yolox/deployment-instances/{deployment_instance_id}/async/health
+### GET /api/v1/models/detection/deployment-instances/{deployment_instance_id}/async/health
 
 - 需要 models:read
 - 返回指定 deployment 当前异步推理子进程及实例池的详细健康视图
 - 当前响应会额外返回与 sync/health 相同的 keep_warm 状态字段和 `pinned_output_total_bytes`，可直接判断 keep-warm 是否启用、是否激活，以及当前已加载 session 持有的 pinned output 总量
 
-### POST /api/v1/models/yolox/deployment-instances/{deployment_instance_id}/async/reset
+### POST /api/v1/models/detection/deployment-instances/{deployment_instance_id}/async/reset
 
 - 需要 models:read 和 models:write
 - 重置指定 deployment 的异步推理实例池
@@ -1146,7 +1146,7 @@ WebSocket 资源流的统一消息结构、控制事件和重连规则见 [docs/
   - keep_warm.error_count_rollover_count
   - keep_warm.last_error
 
-### POST /api/v1/models/yolox/deployment-instances/{deployment_instance_id}/infer
+### POST /api/v1/models/detection/deployment-instances/{deployment_instance_id}/infer
 
 - 需要 models:read
 - 这是同步直返推理接口；当前只使用 deployment 的同步推理子进程，并按 instance 简单轮转执行
@@ -1196,7 +1196,7 @@ WebSocket 资源流的统一消息结构、控制事件和重连规则见 [docs/
   - preview_image_base64
   - runtime_session_info
 
-### POST /api/v1/models/yolox/inference-tasks
+### POST /api/v1/models/detection/inference-tasks
 
 - 需要 models:read 和 tasks:write
 - 当前请求体允许显式指定：
@@ -1230,7 +1230,7 @@ WebSocket 资源流的统一消息结构、控制事件和重连规则见 [docs/
   - input_uri
   - input_source_kind
 
-### GET /api/v1/models/yolox/inference-tasks
+### GET /api/v1/models/detection/inference-tasks
 
 - 需要 tasks:read
 - 当前支持的查询参数：
@@ -1258,14 +1258,14 @@ WebSocket 资源流的统一消息结构、控制事件和重连规则见 [docs/
   - latency_ms
   - result_summary
 
-### GET /api/v1/models/yolox/inference-tasks/{task_id}
+### GET /api/v1/models/detection/inference-tasks/{task_id}
 
 - 需要 tasks:read
 - 默认 include_events=false
 - 默认返回轻量详情，不带 events；仅在 include_events=true 时返回历史事件列表
-- 返回单条 YOLOX 推理任务详情，包括 task_spec、events、result_summary 和结果文件 object key
+- 返回单条 detection 推理任务详情，包括 task_spec、events、result_summary 和结果文件 object key
 
-### GET /api/v1/models/yolox/inference-tasks/{task_id}/result
+### GET /api/v1/models/detection/inference-tasks/{task_id}/result
 
 - 需要 tasks:read
 - 返回当前推理任务最新的 raw-result.json 内容
@@ -1274,7 +1274,7 @@ WebSocket 资源流的统一消息结构、控制事件和重连规则见 [docs/
 - 当结果文件尚未生成时，接口返回 `file_status=pending` 和空 `payload`
 - 当任务已经结束但结果文件缺失时，接口返回 404
 
-### POST /api/v1/models/yolox/validation-sessions
+### POST /api/v1/models/detection/validation-sessions
 
 - 需要 models:read
 - 当前请求体允许显式指定：
@@ -1309,14 +1309,14 @@ WebSocket 资源流的统一消息结构、控制事件和重连规则见 [docs/
   - labels_storage_uri
   - last_prediction
 
-### GET /api/v1/models/yolox/validation-sessions/{session_id}
+### GET /api/v1/models/detection/validation-sessions/{session_id}
 
 - 需要 models:read
 - 返回单条 validation session 当前详情
 - 当前 session 状态持久化在本地文件中，服务重启后仍可读取
 - last_prediction 会在至少执行过一次 predict 后回填 prediction_id、raw_result_uri、preview_image_uri、latency_ms 和 detection_count
 
-### POST /api/v1/models/yolox/validation-sessions/{session_id}/predict
+### POST /api/v1/models/detection/validation-sessions/{session_id}/predict
 
 - 需要 models:read
 - 当前请求体允许显式指定：
@@ -1343,7 +1343,7 @@ WebSocket 资源流的统一消息结构、控制事件和重连规则见 [docs/
   - image_width
   - image_height
 
-### POST /api/v1/models/yolox/training-tasks
+### POST /api/v1/models/detection/training-tasks
 
 - 需要同时具备 datasets:read 和 tasks:write
 - 训练链顺序图与常见失败分支见 [docs/architecture/execution-sequences.md](../architecture/execution-sequences.md)。
@@ -1386,7 +1386,7 @@ WebSocket 资源流的统一消息结构、控制事件和重连规则见 [docs/
   - dataset_version_id
   - format_id
 
-### GET /api/v1/models/yolox/training-tasks
+### GET /api/v1/models/detection/training-tasks
 
 - 需要 tasks:read
 - 当前支持的查询参数：
@@ -1417,12 +1417,12 @@ WebSocket 资源流的统一消息结构、控制事件和重连规则见 [docs/
   - summary_object_key
 - running 阶段的 output_object_prefix 和 validation_metrics_object_key 都会直接出现在顶层响应，任务推进期间还会逐 epoch 回写 progress。
 
-### GET /api/v1/models/yolox/training-tasks/{task_id}
+### GET /api/v1/models/detection/training-tasks/{task_id}
 
 - 需要 tasks:read
 - 默认 include_events=false
 - 默认返回轻量详情，不带 events；仅在 include_events=true 时返回历史事件列表
-- 返回单条 YOLOX 训练任务详情，包括 task_spec、events、训练结果文件 object key、顶层 `model_version_id`、`latest_checkpoint_model_version_id`、training_summary，以及正式训练控制字段 `available_actions` 与 `control_status`
+- 返回单条 detection 训练任务详情，包括 task_spec、events、训练结果文件 object key、顶层 `model_version_id`、`latest_checkpoint_model_version_id`、training_summary，以及正式训练控制字段 `available_actions` 与 `control_status`
 - 如果训练尚未完成，并且已经在 `save` 或 `pause` 的 epoch 边界成功落盘 latest checkpoint，顶层 `model_version_id` 和 `training_summary.model_version_id` 会自动指向当前 latest checkpoint 的固定版本 id
 - 如果训练已经完成，顶层 `model_version_id` 继续表示自动登记的 best checkpoint 版本，`latest_checkpoint_model_version_id` 表示 save/pause 自动登记或调试接口手动重登记的 latest checkpoint 版本；两者语义不同，不会互相覆盖
 - training_summary 当前会同时公开训练运行设备、precision、GPU 数量、evaluation_interval、output_files、validation 摘要和 warm_start 摘要
@@ -1430,39 +1430,39 @@ WebSocket 资源流的统一消息结构、控制事件和重连规则见 [docs/
 - 当前 events 会包含逐 epoch 的 progress 事件，task.progress 会同步维护 epoch、max_epochs、evaluation_interval、validation_ran、evaluated_epochs、最佳指标和当前轮指标快照
 - 当前 running 阶段会继续按 epoch 增量写 train-metrics.json；如果当前轮执行了真实验证评估，也会同步刷新 validation-metrics.json
 - checkpoint 仍然只会在 save、pause 或训练完成时写到磁盘
-- 如果 task_id 不属于 YOLOX 训练任务，当前接口返回 404
+- 如果 task_id 不属于 detection 训练任务，当前接口返回 404
 
-### POST /api/v1/models/yolox/training-tasks/{task_id}/save
+### POST /api/v1/models/detection/training-tasks/{task_id}/save
 
 - 需要 tasks:write
 - 只允许 running 状态调用
 - 服务会在下一个 epoch 边界把 latest checkpoint 落盘，补齐 labels.txt，并追加 checkpoint saved 事件
 
-### POST /api/v1/models/yolox/training-tasks/{task_id}/pause
+### POST /api/v1/models/detection/training-tasks/{task_id}/pause
 
 - 需要 tasks:write
 - 只允许 running 状态调用
 - 服务会在下一个 epoch 边界先保存 latest checkpoint、补齐 labels.txt，再把任务状态切到 paused
 
-### POST /api/v1/models/yolox/training-tasks/{task_id}/resume
+### POST /api/v1/models/detection/training-tasks/{task_id}/resume
 
 - 需要 tasks:write
 - 只允许 paused 状态调用
 - 接口会复用同一个 task_id，把任务重新放回队列，并基于 latest checkpoint 恢复 optimizer、epoch 和最佳指标状态
 
-### POST /api/v1/models/yolox/training-tasks/{task_id}/terminate
+### POST /api/v1/models/detection/training-tasks/{task_id}/terminate
 
 - 需要 tasks:write
 - 允许 queued、running 和 paused 状态调用
 - queued 或 paused 状态会直接把任务切到 cancelled；running 状态会先登记 `control_status.status=terminate_requested`，在下一个 epoch 边界结束训练
 
-### DELETE /api/v1/models/yolox/training-tasks/{task_id}
+### DELETE /api/v1/models/detection/training-tasks/{task_id}
 
 - 需要 tasks:write
 - 只允许已经停止的训练任务调用
 - 当前会额外校验任务已经不在队列待执行，并且训练输出目录没有被已登记 ModelVersion 引用；满足条件时才会真正删除任务记录和可安全清理的输出目录
 
-### POST /api/v1/models/yolox/training-tasks/{task_id}/register-model-version
+### POST /api/v1/models/detection/training-tasks/{task_id}/register-model-version
 
 - 需要 tasks:write 和 models:write
 - 当前要求任务已经产生 latest checkpoint；正常链路里，`save` 或 `pause` 会在下一个 epoch 边界自动完成这次版本登记
@@ -1471,7 +1471,7 @@ WebSocket 资源流的统一消息结构、控制事件和重连规则见 [docs/
 - 当前接口返回训练任务详情，而不是单独的登记回执对象
 - 当前训练任务原本的 `checkpoint_object_key` 仍保持“训练最佳 checkpoint”的语义，不会因为手动登记 latest checkpoint 而被覆盖
 
-### GET /api/v1/models/yolox/training-tasks/{task_id}/validation-metrics
+### GET /api/v1/models/detection/training-tasks/{task_id}/validation-metrics
 
 - 需要 tasks:read
 - 返回当前训练任务最新的 validation-metrics.json 内容
@@ -1479,7 +1479,7 @@ WebSocket 资源流的统一消息结构、控制事件和重连规则见 [docs/
 - 当训练已经跑到真实评估轮时，接口会返回最新一次增量写出的 validation-metrics.json
 - 当验证文件尚未生成时，接口返回 `file_status=pending` 和空 `payload`；任务已经结束但文件缺失时返回 404
 
-### GET /api/v1/models/yolox/training-tasks/{task_id}/train-metrics
+### GET /api/v1/models/detection/training-tasks/{task_id}/train-metrics
 
 - 需要 tasks:read
 - 返回当前训练任务最新的 train-metrics.json 内容
@@ -1487,7 +1487,7 @@ WebSocket 资源流的统一消息结构、控制事件和重连规则见 [docs/
 - 当前 train-metrics.json 会按 epoch 增量写出，running 或 paused 阶段也可以直接读取最近一轮快照
 - 当训练指标文件尚未生成时，当前接口不会返回 404，而是返回 `file_status=pending` 和空 `payload`
 
-### GET /api/v1/models/yolox/training-tasks/{task_id}/output-files
+### GET /api/v1/models/detection/training-tasks/{task_id}/output-files
 
 - 需要 tasks:read
 - 统一列出 `train-metrics`、`validation-metrics`、`summary`、`labels`、`best-checkpoint`、`latest-checkpoint` 这 6 个训练输出文件
@@ -1495,7 +1495,7 @@ WebSocket 资源流的统一消息结构、控制事件和重连规则见 [docs/
 - `latest-checkpoint` 仍然主要在 save、pause 或训练完成后进入 `ready`
 - 每个条目都会返回 `file_name`、`file_kind`、`file_status`、`task_state`、`object_key`、`size_bytes` 和 `updated_at`
 
-### GET /api/v1/models/yolox/training-tasks/{task_id}/output-files/{file_name}
+### GET /api/v1/models/detection/training-tasks/{task_id}/output-files/{file_name}
 
 - 需要 tasks:read
 - 统一读取单个训练输出文件
@@ -2120,7 +2120,7 @@ workflow preview-run、run、app-runtime 和 deployment 四类事件流当前都
 
 连接成功后会先收到一条 deployments.connected 事件，随后按当前筛选条件持续推送 deployment 事件。
 
-当前实现使用 service_event_bus 分发实时事件，并使用 `GET /api/v1/models/yolox/deployment-instances/{deployment_instance_id}/events` 对应的 `events.json` 提供历史回放。
+当前实现使用 service_event_bus 分发实时事件，并使用 `GET /api/v1/models/detection/deployment-instances/{deployment_instance_id}/events` 对应的 `events.json` 提供历史回放。
 
 ### /ws/v1/projects/events
 
@@ -2163,9 +2163,9 @@ workflow preview-run、run、app-runtime 和 deployment 四类事件流当前都
 - 资源视角：GET /api/v1/datasets/exports/{dataset_export_id}、GET /api/v1/datasets/{dataset_id}/versions/{dataset_version_id}/exports
 - 任务视角：GET /api/v1/tasks/{task_id}、GET /api/v1/tasks/{task_id}/events、/ws/v1/tasks/events?task_id=...
 
-当前 YOLOX training 创建流程也已经开始正式挂接 DatasetExport：
+当前 detection training 创建流程也已经开始正式挂接 DatasetExport：
 
-1. POST /api/v1/models/yolox/training-tasks 接收 dataset_export_id 或 dataset_export_manifest_key
+1. POST /api/v1/models/detection/training-tasks 接收 dataset_export_id 或 dataset_export_manifest_key
 2. 服务先把它们解析到同一个完成态 DatasetExport
 3. 再把 manifest_object_key 写入训练任务的 task_spec
 4. 最终创建 TaskRecord 并入队到 yolox-trainings

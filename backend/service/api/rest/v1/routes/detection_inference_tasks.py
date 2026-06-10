@@ -71,7 +71,7 @@ class DetectionInferenceTaskCreateRequestBody(BaseModel):
 
     project_id: str = Field(description="所属 Project id")
     deployment_instance_id: str = Field(description="执行推理使用的 DeploymentInstance id")
-    model_type: str = Field(description="模型分类；需与 DeploymentInstance 绑定模型一致")
+    model_type: str | None = Field(default=None, description="模型分类；提供时需与 DeploymentInstance 绑定模型一致")
     input_file_id: str | None = Field(default=None, description="Project 公开文件 id；与 input_uri、image_base64、input_image 四选一")
     input_uri: str | None = Field(default=None, description="输入图片 URI 或 object key")
     image_base64: str | None = Field(default=None, description="直接提交的 base64 图片内容")
@@ -86,7 +86,7 @@ class DetectionInferenceTaskCreateRequestBody(BaseModel):
 class DetectionDirectInferenceRequestBody(BaseModel):
     """描述 detection 同步直返推理请求体。"""
 
-    model_type: str = Field(description="模型分类；需与 DeploymentInstance 绑定模型一致")
+    model_type: str | None = Field(default=None, description="模型分类；提供时需与 DeploymentInstance 绑定模型一致")
     input_file_id: str | None = Field(default=None, description="Project 公开文件 id；与 input_uri、image_base64、input_image 四选一")
     input_uri: str | None = Field(default=None, description="输入图片 URI 或 object key")
     image_base64: str | None = Field(default=None, description="直接提交的 base64 图片内容")
@@ -433,12 +433,14 @@ def get_detection_inference_task_result(
 
 def _ensure_model_type_matches(
     *,
-    requested_model_type: str,
+    requested_model_type: str | None,
     resolved_model_type: str,
     deployment_instance_id: str,
 ) -> None:
     """校验请求中的模型分类与 DeploymentInstance 绑定模型一致。"""
 
+    if requested_model_type is None or not requested_model_type.strip():
+        return
     normalized_requested_model_type = requested_model_type.strip().lower()
     if normalized_requested_model_type != resolved_model_type:
         raise InvalidRequestError(

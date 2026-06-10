@@ -34,10 +34,11 @@ def test_create_list_and_get_yolox_deployment_instance(tmp_path: Path) -> None:
     try:
         with client:
             create_response = client.post(
-                "/api/v1/models/yolox/deployment-instances",
+                "/api/v1/models/detection/deployment-instances",
                 headers=_build_headers(),
                 json={
                     "project_id": "project-1",
+                    "model_type": "yolox",
                     "model_version_id": model_version_id,
                     "runtime_backend": "pytorch",
                     "device_name": "cpu",
@@ -61,7 +62,7 @@ def test_create_list_and_get_yolox_deployment_instance(tmp_path: Path) -> None:
             assert payload["labels"] == ["bolt"]
 
             list_response = client.get(
-                "/api/v1/models/yolox/deployment-instances?project_id=project-1",
+                "/api/v1/models/detection/deployment-instances?project_id=project-1",
                 headers=_build_headers(),
             )
             assert list_response.status_code == 200
@@ -70,7 +71,7 @@ def test_create_list_and_get_yolox_deployment_instance(tmp_path: Path) -> None:
             assert list_payload[0]["deployment_instance_id"] == deployment_instance_id
 
             detail_response = client.get(
-                f"/api/v1/models/yolox/deployment-instances/{deployment_instance_id}",
+                f"/api/v1/models/detection/deployment-instances/{deployment_instance_id}",
                 headers=_build_headers(),
             )
             assert detail_response.status_code == 200
@@ -79,7 +80,8 @@ def test_create_list_and_get_yolox_deployment_instance(tmp_path: Path) -> None:
             assert detail_payload["model_name"] == "yolox-nano-deployment"
             assert detail_payload["status"] == "active"
             assert detail_payload["instance_count"] == 3
-            assert detail_payload["metadata"] == {}
+            assert isinstance(detail_payload["metadata"], dict)
+            assert detail_payload["metadata"]["runtime_summary"]["model_type"] == "yolox"
 
         session = session_factory.create_session()
         try:
@@ -112,10 +114,11 @@ def test_yolox_deployment_events_api_and_websocket_stream_live_events(tmp_path: 
     try:
         with client:
             create_response = client.post(
-                "/api/v1/models/yolox/deployment-instances",
+                "/api/v1/models/detection/deployment-instances",
                 headers=_build_headers(),
                 json={
                     "project_id": "project-1",
+                    "model_type": "yolox",
                     "model_version_id": model_version_id,
                     "display_name": "deployment events runtime",
                 },
@@ -124,7 +127,7 @@ def test_yolox_deployment_events_api_and_websocket_stream_live_events(tmp_path: 
             deployment_instance_id = create_response.json()["deployment_instance_id"]
 
             sync_start_response = client.post(
-                f"/api/v1/models/yolox/deployment-instances/{deployment_instance_id}/sync/start",
+                f"/api/v1/models/detection/deployment-instances/{deployment_instance_id}/sync/start",
                 headers=_build_headers(),
             )
             assert sync_start_response.status_code == 200
@@ -132,7 +135,7 @@ def test_yolox_deployment_events_api_and_websocket_stream_live_events(tmp_path: 
             assert "sequence" not in sync_start_response.json()
 
             warmup_response = client.post(
-                f"/api/v1/models/yolox/deployment-instances/{deployment_instance_id}/sync/warmup",
+                f"/api/v1/models/detection/deployment-instances/{deployment_instance_id}/sync/warmup",
                 headers=_build_headers(),
             )
             assert warmup_response.status_code == 200
@@ -140,11 +143,11 @@ def test_yolox_deployment_events_api_and_websocket_stream_live_events(tmp_path: 
             assert "sequence" not in warmup_response.json()
 
             events_response = client.get(
-                f"/api/v1/models/yolox/deployment-instances/{deployment_instance_id}/events",
+                f"/api/v1/models/detection/deployment-instances/{deployment_instance_id}/events",
                 headers=_build_headers(),
             )
             limited_events_response = client.get(
-                f"/api/v1/models/yolox/deployment-instances/{deployment_instance_id}/events?limit=1",
+                f"/api/v1/models/detection/deployment-instances/{deployment_instance_id}/events?limit=1",
                 headers=_build_headers(),
             )
             assert events_response.status_code == 200
@@ -167,7 +170,7 @@ def test_yolox_deployment_events_api_and_websocket_stream_live_events(tmp_path: 
                 assert connected_message["payload"]["filters"]["runtime_mode"] == "async"
 
                 async_start_response = client.post(
-                    f"/api/v1/models/yolox/deployment-instances/{deployment_instance_id}/async/start",
+                    f"/api/v1/models/detection/deployment-instances/{deployment_instance_id}/async/start",
                     headers=_build_headers(),
                 )
                 assert async_start_response.status_code == 200
@@ -181,7 +184,7 @@ def test_yolox_deployment_events_api_and_websocket_stream_live_events(tmp_path: 
                 assert "process_state" in live_event["payload"]
 
             async_events_response = client.get(
-                f"/api/v1/models/yolox/deployment-instances/{deployment_instance_id}/events?runtime_mode=async",
+                f"/api/v1/models/detection/deployment-instances/{deployment_instance_id}/events?runtime_mode=async",
                 headers=_build_headers(),
             )
             assert async_events_response.status_code == 200
@@ -201,10 +204,11 @@ def test_yolox_deployment_event_replay_does_not_depend_on_supervisor_instances(t
     try:
         with client:
             create_response = client.post(
-                "/api/v1/models/yolox/deployment-instances",
+                "/api/v1/models/detection/deployment-instances",
                 headers=_build_headers(),
                 json={
                     "project_id": "project-1",
+                    "model_type": "yolox",
                     "model_version_id": model_version_id,
                     "display_name": "deployment replay runtime",
                 },
@@ -213,7 +217,7 @@ def test_yolox_deployment_event_replay_does_not_depend_on_supervisor_instances(t
             deployment_instance_id = create_response.json()["deployment_instance_id"]
 
             async_start_response = client.post(
-                f"/api/v1/models/yolox/deployment-instances/{deployment_instance_id}/async/start",
+                f"/api/v1/models/detection/deployment-instances/{deployment_instance_id}/async/start",
                 headers=_build_headers(),
             )
             assert async_start_response.status_code == 200
@@ -222,7 +226,7 @@ def test_yolox_deployment_event_replay_does_not_depend_on_supervisor_instances(t
             client.app.state.yolox_async_deployment_process_supervisor = object()
 
             async_events_response = client.get(
-                f"/api/v1/models/yolox/deployment-instances/{deployment_instance_id}/events?runtime_mode=async",
+                f"/api/v1/models/detection/deployment-instances/{deployment_instance_id}/events?runtime_mode=async",
                 headers=_build_headers(),
             )
             assert async_events_response.status_code == 200
@@ -264,10 +268,11 @@ def test_create_yolox_deployment_instance_uses_model_build_snapshot(tmp_path: Pa
     try:
         with client:
             create_response = client.post(
-                "/api/v1/models/yolox/deployment-instances",
+                "/api/v1/models/detection/deployment-instances",
                 headers=_build_headers(),
                 json={
                     "project_id": "project-1",
+                    "model_type": "yolox",
                     "model_build_id": model_build_id,
                     "display_name": "yolox onnx deployment",
                 },
@@ -327,10 +332,11 @@ def test_create_openvino_deployment_instance_allows_fp16_on_gpu_or_npu(
     try:
         with client:
             create_response = client.post(
-                "/api/v1/models/yolox/deployment-instances",
+                "/api/v1/models/detection/deployment-instances",
                 headers=_build_headers(),
                 json={
                     "project_id": "project-1",
+                    "model_type": "yolox",
                     "model_build_id": model_build_id,
                     "runtime_backend": "openvino",
                     "runtime_precision": "fp16",
@@ -386,10 +392,11 @@ def test_create_openvino_deployment_instance_rejects_fp16_on_auto_or_cpu(
     try:
         with client:
             create_response = client.post(
-                "/api/v1/models/yolox/deployment-instances",
+                "/api/v1/models/detection/deployment-instances",
                 headers=_build_headers(),
                 json={
                     "project_id": "project-1",
+                    "model_type": "yolox",
                     "model_build_id": model_build_id,
                     "runtime_backend": "openvino",
                     "runtime_precision": "fp16",
@@ -432,10 +439,11 @@ def test_create_tensorrt_deployment_instance_defaults_to_engine_precision(
     try:
         with client:
             create_response = client.post(
-                "/api/v1/models/yolox/deployment-instances",
+                "/api/v1/models/detection/deployment-instances",
                 headers=_build_headers(),
                 json={
                     "project_id": "project-1",
+                    "model_type": "yolox",
                     "model_build_id": model_build_id,
                     "runtime_backend": "tensorrt",
                     "display_name": "yolox tensorrt fp16 deployment",
@@ -488,10 +496,11 @@ def test_create_tensorrt_deployment_instance_rejects_precision_mismatch(
     try:
         with client:
             create_response = client.post(
-                "/api/v1/models/yolox/deployment-instances",
+                "/api/v1/models/detection/deployment-instances",
                 headers=_build_headers(),
                 json={
                     "project_id": "project-1",
+                    "model_type": "yolox",
                     "model_build_id": model_build_id,
                     "runtime_backend": "tensorrt",
                     "runtime_precision": "fp32",
@@ -529,10 +538,11 @@ def test_sync_and_async_runtime_pools_are_isolated(
     try:
         with client:
             create_response = client.post(
-                "/api/v1/models/yolox/deployment-instances",
+                "/api/v1/models/detection/deployment-instances",
                 headers=_build_headers(),
                 json={
                     "project_id": "project-1",
+                    "model_type": "yolox",
                     "model_version_id": model_version_id,
                     "instance_count": 2,
                     "display_name": "managed deployment",
@@ -542,14 +552,14 @@ def test_sync_and_async_runtime_pools_are_isolated(
             deployment_instance_id = create_response.json()["deployment_instance_id"]
 
             sync_status_before_response = client.get(
-                f"/api/v1/models/yolox/deployment-instances/{deployment_instance_id}/sync/status",
+                f"/api/v1/models/detection/deployment-instances/{deployment_instance_id}/sync/status",
                 headers=_build_headers(),
             )
             assert sync_status_before_response.status_code == 200
             assert sync_status_before_response.json()["process_state"] == "stopped"
 
             sync_start_response = client.post(
-                f"/api/v1/models/yolox/deployment-instances/{deployment_instance_id}/sync/start",
+                f"/api/v1/models/detection/deployment-instances/{deployment_instance_id}/sync/start",
                 headers=_build_headers(),
             )
             assert sync_start_response.status_code == 200
@@ -561,7 +571,7 @@ def test_sync_and_async_runtime_pools_are_isolated(
             assert sync_start_payload["process_id"] is not None
 
             warmup_response = client.post(
-                f"/api/v1/models/yolox/deployment-instances/{deployment_instance_id}/sync/warmup",
+                f"/api/v1/models/detection/deployment-instances/{deployment_instance_id}/sync/warmup",
                 headers=_build_headers(),
             )
             assert warmup_response.status_code == 200
@@ -576,7 +586,7 @@ def test_sync_and_async_runtime_pools_are_isolated(
             assert len(sync_supervisor.load_calls) == 2
 
             health_response = client.get(
-                f"/api/v1/models/yolox/deployment-instances/{deployment_instance_id}/sync/health",
+                f"/api/v1/models/detection/deployment-instances/{deployment_instance_id}/sync/health",
                 headers=_build_headers(),
             )
             assert health_response.status_code == 200
@@ -585,7 +595,7 @@ def test_sync_and_async_runtime_pools_are_isolated(
             assert all(item["healthy"] is True for item in health_payload["instances"])
 
             infer_response = client.post(
-                f"/api/v1/models/yolox/deployment-instances/{deployment_instance_id}/infer",
+                f"/api/v1/models/detection/deployment-instances/{deployment_instance_id}/infer",
                 headers=build_test_headers(scopes="models:read"),
                 json={
                     "image_base64": "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAE0lEQVQIHWNk+M8ABIwM/xmAAAAREgIB9FemLQAAAABJRU5ErkJggg==",
@@ -595,7 +605,7 @@ def test_sync_and_async_runtime_pools_are_isolated(
             assert len(sync_supervisor.load_calls) == 2
 
             async_health_before_response = client.get(
-                f"/api/v1/models/yolox/deployment-instances/{deployment_instance_id}/async/health",
+                f"/api/v1/models/detection/deployment-instances/{deployment_instance_id}/async/health",
                 headers=_build_headers(),
             )
             assert async_health_before_response.status_code == 200
@@ -603,14 +613,14 @@ def test_sync_and_async_runtime_pools_are_isolated(
             assert async_health_before_response.json()["process_state"] == "stopped"
 
             async_start_response = client.post(
-                f"/api/v1/models/yolox/deployment-instances/{deployment_instance_id}/async/start",
+                f"/api/v1/models/detection/deployment-instances/{deployment_instance_id}/async/start",
                 headers=_build_headers(),
             )
             assert async_start_response.status_code == 200
             assert async_start_response.json()["process_state"] == "running"
 
             async_warmup_response = client.post(
-                f"/api/v1/models/yolox/deployment-instances/{deployment_instance_id}/async/warmup",
+                f"/api/v1/models/detection/deployment-instances/{deployment_instance_id}/async/warmup",
                 headers=_build_headers(),
             )
             assert async_warmup_response.status_code == 200
@@ -622,7 +632,7 @@ def test_sync_and_async_runtime_pools_are_isolated(
             assert len(async_supervisor.load_calls) == 2
 
             reset_response = client.post(
-                f"/api/v1/models/yolox/deployment-instances/{deployment_instance_id}/sync/reset",
+                f"/api/v1/models/detection/deployment-instances/{deployment_instance_id}/sync/reset",
                 headers=_build_headers(),
             )
             assert reset_response.status_code == 200
@@ -634,21 +644,21 @@ def test_sync_and_async_runtime_pools_are_isolated(
             assert all(item["warmed"] is False for item in reset_payload["instances"])
 
             health_after_reset_response = client.get(
-                f"/api/v1/models/yolox/deployment-instances/{deployment_instance_id}/sync/health",
+                f"/api/v1/models/detection/deployment-instances/{deployment_instance_id}/sync/health",
                 headers=_build_headers(),
             )
             assert health_after_reset_response.status_code == 200
             assert health_after_reset_response.json()["warmed_instance_count"] == 0
 
             async_health_after_sync_reset = client.get(
-                f"/api/v1/models/yolox/deployment-instances/{deployment_instance_id}/async/health",
+                f"/api/v1/models/detection/deployment-instances/{deployment_instance_id}/async/health",
                 headers=_build_headers(),
             )
             assert async_health_after_sync_reset.status_code == 200
             assert async_health_after_sync_reset.json()["warmed_instance_count"] == 2
 
             sync_stop_response = client.post(
-                f"/api/v1/models/yolox/deployment-instances/{deployment_instance_id}/sync/stop",
+                f"/api/v1/models/detection/deployment-instances/{deployment_instance_id}/sync/stop",
                 headers=_build_headers(),
             )
             assert sync_stop_response.status_code == 200
@@ -718,3 +728,5 @@ def _build_headers() -> dict[str, str]:
     """构建具备 deployment API 所需 scope 的测试请求头。"""
 
     return build_test_headers(scopes="models:read,models:write")
+
+

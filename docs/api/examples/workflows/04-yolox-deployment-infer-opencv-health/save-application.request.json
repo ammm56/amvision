@@ -17,7 +17,7 @@
         "template_port_id": "request_image",
         "binding_kind": "api-request",
         "config": {
-          "route": "/api/v1/workflow-apps/yolox/deployment/infer-opencv-health",
+          "route": "/api/v1/workflow-apps/detection/deployment/infer-opencv-health",
           "method": "POST"
         },
         "metadata": {

@@ -11,8 +11,10 @@ from backend.contracts.workflows.workflow_graph import (
 from backend.nodes.core_nodes._base import CoreNodeSpec
 from backend.nodes.core_nodes._platform_service_node_support import (
     WORKFLOW_SERVICE_TASK_TYPES,
+    get_optional_platform_model_type,
     get_optional_platform_task_type,
     resolve_platform_task_type,
+    resolve_platform_model_type,
     should_use_platform_service_routing,
 )
 from backend.nodes.core_nodes._service_node_support import (
@@ -89,10 +91,18 @@ def _model_evaluation_submit_handler(request: WorkflowNodeExecutionRequest) -> d
         requested_task_type,
         default_task_type=DETECTION_TASK_TYPE,
     )
+    requested_model_type = get_optional_platform_model_type(request)
     submission = runtime_context.build_evaluation_task_service(
         task_type=task_type,
     ).submit_evaluation_task(
-        _build_platform_evaluation_request(request, task_type=task_type),
+        _build_platform_evaluation_request(
+            request,
+            task_type=task_type,
+            model_type=resolve_platform_model_type(
+                requested_model_type,
+                task_type=task_type,
+            ),
+        ),
         created_by=resolve_created_by(request),
         display_name=resolve_display_name(request),
     )
@@ -103,6 +113,7 @@ def _build_platform_evaluation_request(
     request: WorkflowNodeExecutionRequest,
     *,
     task_type: str,
+    model_type: str,
 ) -> object:
     """按 task_type 构造正式评估请求。"""
 
@@ -119,6 +130,7 @@ def _build_platform_evaluation_request(
     if task_type == DETECTION_TASK_TYPE:
         return DetectionEvaluationTaskRequest(
             **common_kwargs,
+            model_type=model_type,
             score_threshold=get_optional_float_parameter(request, "score_threshold"),
             nms_threshold=get_optional_float_parameter(request, "nms_threshold"),
         )
@@ -171,6 +183,7 @@ CORE_NODE_SPEC = CoreNodeSpec(
             "type": "object",
             "properties": {
                 "task_type": {"type": "string", "enum": list(WORKFLOW_SERVICE_TASK_TYPES)},
+                "model_type": {"type": "string"},
                 "project_id": {"type": "string"},
                 "model_version_id": {"type": "string"},
                 "dataset_export_id": {"type": "string"},

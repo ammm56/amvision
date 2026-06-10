@@ -1,8 +1,8 @@
 {
   "info": {
     "_postman_id": "b0db9a90-95bc-4a01-b247-1ddb33e1a2a8",
-    "name": "amvision yolox training validation conversion evaluation inference api",
-    "description": "当前公开的 YOLOX training create/list/detail/save/pause/resume/terminate/delete/register-model-version/validation-metrics/train-metrics/output-files、validation-sessions create/detail/predict、conversion-tasks create/list/detail/result、evaluation-tasks create/list/detail/report/output-files，以及 deployment-instances create/list/detail/events、sync/async start/status/stop/warmup/health/reset、direct infer、inference-tasks create/list/detail/result 和 YOLOX 相关 workflow preview-runs sync/async 调试接口。本集合已经同步 fp16/fp32、CPU fallback 调试方式、latest checkpoint、validation metrics、output-files、training_summary、detail 响应里的 available_actions 与 control_status、save/pause 后自动登记 latest checkpoint 版本、terminate/delete 控制链，以及 latest checkpoint 与 completed best 的版本区分、训练完成后的单图人工验证闭环、source ModelVersion 到 ONNX/optimized ONNX/OpenVINO IR/TensorRT engine 的 conversion 主链、数据集级回归评估和结果包输出，以及 deployment_instance_id 驱动的正式推理链；当前 conversion 创建请求已按目标格式拆分，其中 OpenVINO IR 与 TensorRT engine 都已继续拆成 fp32 与 fp16 两种构建策略，deployment 发布模板也已按 PyTorch、ONNXRuntime、OpenVINO、TensorRT 拆分。当前 deployment 推理链要求先显式调用 start 或 warmup，再执行 infer 或 inference-task create；其中 async inference task 由 worker 通过 queue gateway 回调 backend-service 持有的 async deployment owner，workflow preview/runtime 里的推理示例仍走 PublishedInferenceGateway + sync deployment。Postman collection 已按 validation、conversion、evaluation、sync deployment、async deployment、sync inference、async inference task 分组，并把 input_uri、image_base64、multipart input_image 三种输入方式分别拆成独立调试请求；TensorRT deployment 模板已额外暴露 metadata.deployment_process 下的 warmup_dummy_inference_count、warmup_dummy_image_size、keep_warm_enabled、keep_warm_interval_seconds 变量，sync/async warmup 和 health 也会自动回填 keep_warm 的 enabled、activated、success_count、error_count、last_error，便于确认是否真的生效。默认建议把 includeEvents 设为 false，用于高频轮询调试；如果需要读取 deployment 生命周期历史，可直接使用本集合里的 Get YOLOX Deployment Events 请求。",
+    "name": "amvision detection task api (yolox examples)",
+    "description": "当前公开的统一 detection 任务接口调试集合，本集合示例统一使用 model_type=yolox。覆盖 training、validation-sessions、conversion-tasks、evaluation-tasks、deployment-instances、direct infer、inference-tasks，以及相关 workflow preview/runtime 调试链。集合内容已经同步 fp16/fp32、CPU fallback、latest checkpoint、validation metrics、output-files、latest checkpoint 与 completed best 的版本区分、训练后单图人工验证闭环、source ModelVersion 到 ONNX/optimized ONNX/OpenVINO IR/TensorRT engine 的 conversion 主链、数据集级回归评估和结果包输出，以及 deployment_instance_id 驱动的正式推理链。当前 detection 推理链要求先显式调用 start 或 warmup，再执行 infer 或 inference-task create；async inference task 由 worker 通过 queue gateway 回调 backend-service 持有的 async deployment owner，workflow preview/runtime 里的推理示例仍走 PublishedInferenceGateway + sync deployment。默认建议把 includeEvents 设为 false，用于高频轮询调试。",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "item": [
@@ -45,7 +45,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"dataset_export_id\": \"{{datasetExportId}}\",\n  \"dataset_export_manifest_key\": null,\n  \"recipe_id\": \"{{recipeId}}\",\n  \"model_scale\": \"{{modelScale}}\",\n  \"output_model_name\": \"{{outputModelName}}\",\n  \"warm_start_model_version_id\": null,\n  \"evaluation_interval\": {{evaluationInterval}},\n  \"max_epochs\": {{maxEpochs}},\n  \"batch_size\": {{batchSize}},\n  \"gpu_count\": {{gpuCount}},\n  \"precision\": \"{{precision}}\",\n  \"input_size\": [{{inputWidth}}, {{inputHeight}}],\n  \"extra_options\": {\n    \"seed\": 42,\n    \"num_workers\": 0,\n    \"flip_prob\": 0.0,\n    \"hsv_prob\": 0.0,\n    \"mosaic_prob\": 0.0,\n    \"mixup_prob\": 0.0,\n    \"enable_mixup\": false,\n    \"multiscale_range\": 0,\n    \"ema\": true\n  },\n  \"display_name\": \"{{displayName}}\"\n}",
+              "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"model_type\": \"yolox\",\n  \"dataset_export_id\": \"{{datasetExportId}}\",\n  \"dataset_export_manifest_key\": null,\n  \"recipe_id\": \"{{recipeId}}\",\n  \"model_scale\": \"{{modelScale}}\",\n  \"output_model_name\": \"{{outputModelName}}\",\n  \"warm_start_model_version_id\": null,\n  \"evaluation_interval\": {{evaluationInterval}},\n  \"max_epochs\": {{maxEpochs}},\n  \"batch_size\": {{batchSize}},\n  \"gpu_count\": {{gpuCount}},\n  \"precision\": \"{{precision}}\",\n  \"input_size\": [{{inputWidth}}, {{inputHeight}}],\n  \"extra_options\": {\n    \"seed\": 42,\n    \"num_workers\": 0,\n    \"flip_prob\": 0.0,\n    \"hsv_prob\": 0.0,\n    \"mosaic_prob\": 0.0,\n    \"mixup_prob\": 0.0,\n    \"enable_mixup\": false,\n    \"multiscale_range\": 0,\n    \"ema\": true\n  },\n  \"display_name\": \"{{displayName}}\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -53,7 +53,7 @@
               }
             },
             "url": {
-              "raw": "{{baseUrl}}/api/v1/models/yolox/training-tasks",
+              "raw": "{{baseUrl}}/api/v1/models/detection/training-tasks",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -61,7 +61,7 @@
                 "api",
                 "v1",
                 "models",
-                "yolox",
+                "detection",
                 "training-tasks"
               ]
             },
@@ -105,7 +105,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"dataset_export_id\": \"{{datasetExportId}}\",\n  \"dataset_export_manifest_key\": null,\n  \"recipe_id\": \"{{recipeId}}\",\n  \"model_scale\": \"{{modelScale}}\",\n  \"output_model_name\": \"{{outputModelName}}\",\n  \"warm_start_model_version_id\": null,\n  \"evaluation_interval\": {{evaluationInterval}},\n  \"max_epochs\": {{maxEpochs}},\n  \"batch_size\": {{batchSize}},\n  \"gpu_count\": {{gpuCount}},\n  \"precision\": \"{{precision}}\",\n  \"input_size\": [{{inputWidth}}, {{inputHeight}}],\n  \"extra_options\": {\n    \"seed\": 42,\n    \"num_workers\": 0,\n    \"flip_prob\": 0.5,\n    \"hsv_prob\": 1.0,\n    \"mosaic_prob\": 1.0,\n    \"enable_mixup\": true,\n    \"mixup_prob\": 1.0,\n    \"multiscale_range\": 5,\n    \"ema\": true\n  },\n  \"display_name\": \"{{displayName}}\"\n}",
+              "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"model_type\": \"yolox\",\n  \"dataset_export_id\": \"{{datasetExportId}}\",\n  \"dataset_export_manifest_key\": null,\n  \"recipe_id\": \"{{recipeId}}\",\n  \"model_scale\": \"{{modelScale}}\",\n  \"output_model_name\": \"{{outputModelName}}\",\n  \"warm_start_model_version_id\": null,\n  \"evaluation_interval\": {{evaluationInterval}},\n  \"max_epochs\": {{maxEpochs}},\n  \"batch_size\": {{batchSize}},\n  \"gpu_count\": {{gpuCount}},\n  \"precision\": \"{{precision}}\",\n  \"input_size\": [{{inputWidth}}, {{inputHeight}}],\n  \"extra_options\": {\n    \"seed\": 42,\n    \"num_workers\": 0,\n    \"flip_prob\": 0.5,\n    \"hsv_prob\": 1.0,\n    \"mosaic_prob\": 1.0,\n    \"enable_mixup\": true,\n    \"mixup_prob\": 1.0,\n    \"multiscale_range\": 5,\n    \"ema\": true\n  },\n  \"display_name\": \"{{displayName}}\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -113,7 +113,7 @@
               }
             },
             "url": {
-              "raw": "{{baseUrl}}/api/v1/models/yolox/training-tasks",
+              "raw": "{{baseUrl}}/api/v1/models/detection/training-tasks",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -121,7 +121,7 @@
                 "api",
                 "v1",
                 "models",
-                "yolox",
+                "detection",
                 "training-tasks"
               ]
             },
@@ -175,7 +175,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/v1/models/yolox/training-tasks?project_id={{projectId}}&dataset_export_id={{datasetExportId}}&limit={{trainingLimit}}",
+              "raw": "{{baseUrl}}/api/v1/models/detection/training-tasks?project_id={{projectId}}&dataset_export_id={{datasetExportId}}&limit={{trainingLimit}}",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -183,7 +183,7 @@
                 "api",
                 "v1",
                 "models",
-                "yolox",
+                "detection",
                 "training-tasks"
               ],
               "query": [
@@ -272,7 +272,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/v1/models/yolox/training-tasks/{{taskId}}?include_events={{includeEvents}}",
+              "raw": "{{baseUrl}}/api/v1/models/detection/training-tasks/{{taskId}}?include_events={{includeEvents}}",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -280,7 +280,7 @@
                 "api",
                 "v1",
                 "models",
-                "yolox",
+                "detection",
                 "training-tasks",
                 "{{taskId}}"
               ],
@@ -307,7 +307,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/v1/models/yolox/training-tasks/{{taskId}}/save",
+              "raw": "{{baseUrl}}/api/v1/models/detection/training-tasks/{{taskId}}/save",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -315,7 +315,7 @@
                 "api",
                 "v1",
                 "models",
-                "yolox",
+                "detection",
                 "training-tasks",
                 "{{taskId}}",
                 "save"
@@ -337,7 +337,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/v1/models/yolox/training-tasks/{{taskId}}/pause",
+              "raw": "{{baseUrl}}/api/v1/models/detection/training-tasks/{{taskId}}/pause",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -345,7 +345,7 @@
                 "api",
                 "v1",
                 "models",
-                "yolox",
+                "detection",
                 "training-tasks",
                 "{{taskId}}",
                 "pause"
@@ -367,7 +367,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/v1/models/yolox/training-tasks/{{taskId}}/resume",
+              "raw": "{{baseUrl}}/api/v1/models/detection/training-tasks/{{taskId}}/resume",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -375,7 +375,7 @@
                 "api",
                 "v1",
                 "models",
-                "yolox",
+                "detection",
                 "training-tasks",
                 "{{taskId}}",
                 "resume"
@@ -397,7 +397,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/v1/models/yolox/training-tasks/{{taskId}}/terminate",
+              "raw": "{{baseUrl}}/api/v1/models/detection/training-tasks/{{taskId}}/terminate",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -405,7 +405,7 @@
                 "api",
                 "v1",
                 "models",
-                "yolox",
+                "detection",
                 "training-tasks",
                 "{{taskId}}",
                 "terminate"
@@ -427,7 +427,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/v1/models/yolox/training-tasks/{{taskId}}",
+              "raw": "{{baseUrl}}/api/v1/models/detection/training-tasks/{{taskId}}",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -435,7 +435,7 @@
                 "api",
                 "v1",
                 "models",
-                "yolox",
+                "detection",
                 "training-tasks",
                 "{{taskId}}"
               ]
@@ -478,7 +478,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/v1/models/yolox/training-tasks/{{taskId}}/register-model-version",
+              "raw": "{{baseUrl}}/api/v1/models/detection/training-tasks/{{taskId}}/register-model-version",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -486,7 +486,7 @@
                 "api",
                 "v1",
                 "models",
-                "yolox",
+                "detection",
                 "training-tasks",
                 "{{taskId}}",
                 "register-model-version"
@@ -508,7 +508,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/v1/models/yolox/training-tasks/{{taskId}}/validation-metrics",
+              "raw": "{{baseUrl}}/api/v1/models/detection/training-tasks/{{taskId}}/validation-metrics",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -516,7 +516,7 @@
                 "api",
                 "v1",
                 "models",
-                "yolox",
+                "detection",
                 "training-tasks",
                 "{{taskId}}",
                 "validation-metrics"
@@ -538,7 +538,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/v1/models/yolox/training-tasks/{{taskId}}/train-metrics",
+              "raw": "{{baseUrl}}/api/v1/models/detection/training-tasks/{{taskId}}/train-metrics",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -546,7 +546,7 @@
                 "api",
                 "v1",
                 "models",
-                "yolox",
+                "detection",
                 "training-tasks",
                 "{{taskId}}",
                 "train-metrics"
@@ -568,7 +568,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/v1/models/yolox/training-tasks/{{taskId}}/output-files",
+              "raw": "{{baseUrl}}/api/v1/models/detection/training-tasks/{{taskId}}/output-files",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -576,7 +576,7 @@
                 "api",
                 "v1",
                 "models",
-                "yolox",
+                "detection",
                 "training-tasks",
                 "{{taskId}}",
                 "output-files"
@@ -598,7 +598,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/v1/models/yolox/training-tasks/{{taskId}}/output-files/{{outputFileName}}",
+              "raw": "{{baseUrl}}/api/v1/models/detection/training-tasks/{{taskId}}/output-files/{{outputFileName}}",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -606,7 +606,7 @@
                 "api",
                 "v1",
                 "models",
-                "yolox",
+                "detection",
                 "training-tasks",
                 "{{taskId}}",
                 "output-files",
@@ -769,7 +769,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"model_version_id\": \"{{validationModelVersionId}}\",\n  \"runtime_profile_id\": null,\n  \"runtime_backend\": \"pytorch\",\n  \"device_name\": \"cpu\",\n  \"score_threshold\": {{validationScoreThreshold}},\n  \"save_result_image\": {{validationSaveResultImage}},\n  \"extra_options\": {}\n}",
+              "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"model_type\": \"yolox\",\n  \"model_version_id\": \"{{validationModelVersionId}}\",\n  \"runtime_profile_id\": null,\n  \"runtime_backend\": \"pytorch\",\n  \"device_name\": \"cpu\",\n  \"score_threshold\": {{validationScoreThreshold}},\n  \"save_result_image\": {{validationSaveResultImage}},\n  \"extra_options\": {}\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -777,7 +777,7 @@
               }
             },
             "url": {
-              "raw": "{{baseUrl}}/api/v1/models/yolox/validation-sessions",
+              "raw": "{{baseUrl}}/api/v1/models/detection/validation-sessions",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -785,7 +785,7 @@
                 "api",
                 "v1",
                 "models",
-                "yolox",
+                "detection",
                 "validation-sessions"
               ]
             },
@@ -820,7 +820,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/v1/models/yolox/validation-sessions/{{validationSessionId}}",
+              "raw": "{{baseUrl}}/api/v1/models/detection/validation-sessions/{{validationSessionId}}",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -828,7 +828,7 @@
                 "api",
                 "v1",
                 "models",
-                "yolox",
+                "detection",
                 "validation-sessions",
                 "{{validationSessionId}}"
               ]
@@ -878,7 +878,7 @@
               }
             },
             "url": {
-              "raw": "{{baseUrl}}/api/v1/models/yolox/validation-sessions/{{validationSessionId}}/predict",
+              "raw": "{{baseUrl}}/api/v1/models/detection/validation-sessions/{{validationSessionId}}/predict",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -886,7 +886,7 @@
                 "api",
                 "v1",
                 "models",
-                "yolox",
+                "detection",
                 "validation-sessions",
                 "{{validationSessionId}}",
                 "predict"
@@ -937,7 +937,7 @@
               }
             },
             "url": {
-              "raw": "{{baseUrl}}/api/v1/models/yolox/validation-sessions/{{validationSessionId}}/predict",
+              "raw": "{{baseUrl}}/api/v1/models/detection/validation-sessions/{{validationSessionId}}/predict",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -945,7 +945,7 @@
                 "api",
                 "v1",
                 "models",
-                "yolox",
+                "detection",
                 "validation-sessions",
                 "{{validationSessionId}}",
                 "predict"
@@ -993,7 +993,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"source_model_version_id\": \"{{modelVersionId}}\",\n  \"runtime_profile_id\": null,\n  \"extra_options\": {},\n  \"display_name\": \"{{conversionDisplayName}} onnx\"\n}",
+              "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"model_type\": \"yolox\",\n  \"source_model_version_id\": \"{{modelVersionId}}\",\n  \"runtime_profile_id\": null,\n  \"extra_options\": {},\n  \"display_name\": \"{{conversionDisplayName}} onnx\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1001,7 +1001,7 @@
               }
             },
             "url": {
-              "raw": "{{baseUrl}}/api/v1/models/yolox/conversion-tasks/onnx",
+              "raw": "{{baseUrl}}/api/v1/models/detection/conversion-tasks/onnx",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -1009,7 +1009,7 @@
                 "api",
                 "v1",
                 "models",
-                "yolox",
+                "detection",
                 "conversion-tasks",
                 "onnx"
               ]
@@ -1051,7 +1051,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"source_model_version_id\": \"{{modelVersionId}}\",\n  \"runtime_profile_id\": null,\n  \"extra_options\": {},\n  \"display_name\": \"{{conversionDisplayName}} optimized-onnx\"\n}",
+              "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"model_type\": \"yolox\",\n  \"source_model_version_id\": \"{{modelVersionId}}\",\n  \"runtime_profile_id\": null,\n  \"extra_options\": {},\n  \"display_name\": \"{{conversionDisplayName}} optimized-onnx\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1059,7 +1059,7 @@
               }
             },
             "url": {
-              "raw": "{{baseUrl}}/api/v1/models/yolox/conversion-tasks/onnx-optimized",
+              "raw": "{{baseUrl}}/api/v1/models/detection/conversion-tasks/onnx-optimized",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -1067,7 +1067,7 @@
                 "api",
                 "v1",
                 "models",
-                "yolox",
+                "detection",
                 "conversion-tasks",
                 "onnx-optimized"
               ]
@@ -1109,7 +1109,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"source_model_version_id\": \"{{modelVersionId}}\",\n  \"runtime_profile_id\": null,\n  \"extra_options\": {},\n  \"display_name\": \"{{conversionDisplayName}} openvino-fp32\"\n}",
+              "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"model_type\": \"yolox\",\n  \"source_model_version_id\": \"{{modelVersionId}}\",\n  \"runtime_profile_id\": null,\n  \"extra_options\": {},\n  \"display_name\": \"{{conversionDisplayName}} openvino-fp32\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1117,7 +1117,7 @@
               }
             },
             "url": {
-              "raw": "{{baseUrl}}/api/v1/models/yolox/conversion-tasks/openvino-ir-fp32",
+              "raw": "{{baseUrl}}/api/v1/models/detection/conversion-tasks/openvino-ir-fp32",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -1125,7 +1125,7 @@
                 "api",
                 "v1",
                 "models",
-                "yolox",
+                "detection",
                 "conversion-tasks",
                 "openvino-ir-fp32"
               ]
@@ -1167,7 +1167,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"source_model_version_id\": \"{{modelVersionId}}\",\n  \"runtime_profile_id\": null,\n  \"extra_options\": {},\n  \"display_name\": \"{{conversionDisplayName}} openvino-fp16\"\n}",
+              "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"model_type\": \"yolox\",\n  \"source_model_version_id\": \"{{modelVersionId}}\",\n  \"runtime_profile_id\": null,\n  \"extra_options\": {},\n  \"display_name\": \"{{conversionDisplayName}} openvino-fp16\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1175,7 +1175,7 @@
               }
             },
             "url": {
-              "raw": "{{baseUrl}}/api/v1/models/yolox/conversion-tasks/openvino-ir-fp16",
+              "raw": "{{baseUrl}}/api/v1/models/detection/conversion-tasks/openvino-ir-fp16",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -1183,7 +1183,7 @@
                 "api",
                 "v1",
                 "models",
-                "yolox",
+                "detection",
                 "conversion-tasks",
                 "openvino-ir-fp16"
               ]
@@ -1225,7 +1225,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"source_model_version_id\": \"{{modelVersionId}}\",\n  \"runtime_profile_id\": null,\n  \"extra_options\": {},\n  \"display_name\": \"{{conversionDisplayName}} tensorrt-fp32\"\n}",
+              "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"model_type\": \"yolox\",\n  \"source_model_version_id\": \"{{modelVersionId}}\",\n  \"runtime_profile_id\": null,\n  \"extra_options\": {},\n  \"display_name\": \"{{conversionDisplayName}} tensorrt-fp32\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1233,7 +1233,7 @@
               }
             },
             "url": {
-              "raw": "{{baseUrl}}/api/v1/models/yolox/conversion-tasks/tensorrt-engine-fp32",
+              "raw": "{{baseUrl}}/api/v1/models/detection/conversion-tasks/tensorrt-engine-fp32",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -1241,7 +1241,7 @@
                 "api",
                 "v1",
                 "models",
-                "yolox",
+                "detection",
                 "conversion-tasks",
                 "tensorrt-engine-fp32"
               ]
@@ -1283,7 +1283,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"source_model_version_id\": \"{{modelVersionId}}\",\n  \"runtime_profile_id\": null,\n  \"extra_options\": {},\n  \"display_name\": \"{{conversionDisplayName}} tensorrt-fp16\"\n}",
+              "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"model_type\": \"yolox\",\n  \"source_model_version_id\": \"{{modelVersionId}}\",\n  \"runtime_profile_id\": null,\n  \"extra_options\": {},\n  \"display_name\": \"{{conversionDisplayName}} tensorrt-fp16\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1291,7 +1291,7 @@
               }
             },
             "url": {
-              "raw": "{{baseUrl}}/api/v1/models/yolox/conversion-tasks/tensorrt-engine-fp16",
+              "raw": "{{baseUrl}}/api/v1/models/detection/conversion-tasks/tensorrt-engine-fp16",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -1299,7 +1299,7 @@
                 "api",
                 "v1",
                 "models",
-                "yolox",
+                "detection",
                 "conversion-tasks",
                 "tensorrt-engine-fp16"
               ]
@@ -1357,7 +1357,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/v1/models/yolox/conversion-tasks?project_id={{projectId}}&source_model_version_id={{modelVersionId}}&limit={{conversionLimit}}",
+              "raw": "{{baseUrl}}/api/v1/models/detection/conversion-tasks?project_id={{projectId}}&source_model_version_id={{modelVersionId}}&limit={{conversionLimit}}",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -1365,7 +1365,7 @@
                 "api",
                 "v1",
                 "models",
-                "yolox",
+                "detection",
                 "conversion-tasks"
               ],
               "query": [
@@ -1447,7 +1447,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/v1/models/yolox/conversion-tasks/{{conversionTaskId}}?include_events={{includeEvents}}",
+              "raw": "{{baseUrl}}/api/v1/models/detection/conversion-tasks/{{conversionTaskId}}?include_events={{includeEvents}}",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -1455,7 +1455,7 @@
                 "api",
                 "v1",
                 "models",
-                "yolox",
+                "detection",
                 "conversion-tasks",
                 "{{conversionTaskId}}"
               ],
@@ -1482,7 +1482,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/v1/models/yolox/conversion-tasks/{{conversionTaskId}}/result",
+              "raw": "{{baseUrl}}/api/v1/models/detection/conversion-tasks/{{conversionTaskId}}/result",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -1490,7 +1490,7 @@
                 "api",
                 "v1",
                 "models",
-                "yolox",
+                "detection",
                 "conversion-tasks",
                 "{{conversionTaskId}}",
                 "result"
@@ -1539,7 +1539,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"model_version_id\": \"{{modelVersionId}}\",\n  \"dataset_export_id\": \"{{datasetExportId}}\",\n  \"dataset_export_manifest_key\": null,\n  \"score_threshold\": {{evaluationScoreThreshold}},\n  \"nms_threshold\": {{evaluationNmsThreshold}},\n  \"save_result_package\": {{evaluationSaveResultPackage}},\n  \"extra_options\": {\n    \"split_name\": \"val\"\n  },\n  \"display_name\": \"{{evaluationDisplayName}}\"\n}",
+              "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"model_type\": \"yolox\",\n  \"model_version_id\": \"{{modelVersionId}}\",\n  \"dataset_export_id\": \"{{datasetExportId}}\",\n  \"dataset_export_manifest_key\": null,\n  \"score_threshold\": {{evaluationScoreThreshold}},\n  \"nms_threshold\": {{evaluationNmsThreshold}},\n  \"save_result_package\": {{evaluationSaveResultPackage}},\n  \"extra_options\": {\n    \"split_name\": \"val\"\n  },\n  \"display_name\": \"{{evaluationDisplayName}}\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1547,7 +1547,7 @@
               }
             },
             "url": {
-              "raw": "{{baseUrl}}/api/v1/models/yolox/evaluation-tasks",
+              "raw": "{{baseUrl}}/api/v1/models/detection/evaluation-tasks",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -1555,7 +1555,7 @@
                 "api",
                 "v1",
                 "models",
-                "yolox",
+                "detection",
                 "evaluation-tasks"
               ]
             },
@@ -1575,7 +1575,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/v1/models/yolox/evaluation-tasks?project_id={{projectId}}&model_version_id={{modelVersionId}}&limit={{evaluationLimit}}",
+              "raw": "{{baseUrl}}/api/v1/models/detection/evaluation-tasks?project_id={{projectId}}&model_version_id={{modelVersionId}}&limit={{evaluationLimit}}",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -1583,7 +1583,7 @@
                 "api",
                 "v1",
                 "models",
-                "yolox",
+                "detection",
                 "evaluation-tasks"
               ],
               "query": [
@@ -1643,7 +1643,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/v1/models/yolox/evaluation-tasks/{{evaluationTaskId}}?include_events={{includeEvents}}",
+              "raw": "{{baseUrl}}/api/v1/models/detection/evaluation-tasks/{{evaluationTaskId}}?include_events={{includeEvents}}",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -1651,7 +1651,7 @@
                 "api",
                 "v1",
                 "models",
-                "yolox",
+                "detection",
                 "evaluation-tasks",
                 "{{evaluationTaskId}}"
               ],
@@ -1678,7 +1678,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/v1/models/yolox/evaluation-tasks/{{evaluationTaskId}}/report",
+              "raw": "{{baseUrl}}/api/v1/models/detection/evaluation-tasks/{{evaluationTaskId}}/report",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -1686,7 +1686,7 @@
                 "api",
                 "v1",
                 "models",
-                "yolox",
+                "detection",
                 "evaluation-tasks",
                 "{{evaluationTaskId}}",
                 "report"
@@ -1708,7 +1708,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/v1/models/yolox/evaluation-tasks/{{evaluationTaskId}}/output-files",
+              "raw": "{{baseUrl}}/api/v1/models/detection/evaluation-tasks/{{evaluationTaskId}}/output-files",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -1716,7 +1716,7 @@
                 "api",
                 "v1",
                 "models",
-                "yolox",
+                "detection",
                 "evaluation-tasks",
                 "{{evaluationTaskId}}",
                 "output-files"
@@ -1763,7 +1763,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"model_version_id\": \"{{modelVersionId}}\",\n  \"model_build_id\": null,\n  \"runtime_profile_id\": null,\n  \"runtime_backend\": \"pytorch\",\n  \"runtime_precision\": \"fp32\",\n  \"device_name\": \"cpu\",\n  \"instance_count\": {{deploymentInstanceCount}},\n  \"display_name\": \"{{deploymentDisplayName}} pytorch\",\n  \"metadata\": {}\n}",
+              "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"model_type\": \"yolox\",\n  \"model_version_id\": \"{{modelVersionId}}\",\n  \"model_build_id\": null,\n  \"runtime_profile_id\": null,\n  \"runtime_backend\": \"pytorch\",\n  \"runtime_precision\": \"fp32\",\n  \"device_name\": \"cpu\",\n  \"instance_count\": {{deploymentInstanceCount}},\n  \"display_name\": \"{{deploymentDisplayName}} pytorch\",\n  \"metadata\": {}\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1771,7 +1771,7 @@
               }
             },
             "url": {
-              "raw": "{{baseUrl}}/api/v1/models/yolox/deployment-instances",
+              "raw": "{{baseUrl}}/api/v1/models/detection/deployment-instances",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -1779,7 +1779,7 @@
                 "api",
                 "v1",
                 "models",
-                "yolox",
+                "detection",
                 "deployment-instances"
               ]
             },
@@ -1819,7 +1819,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"model_version_id\": null,\n  \"model_build_id\": \"{{onnxOptimizedModelBuildId}}\",\n  \"runtime_profile_id\": null,\n  \"runtime_backend\": \"onnxruntime\",\n  \"runtime_precision\": \"fp32\",\n  \"device_name\": \"cpu\",\n  \"instance_count\": {{deploymentInstanceCount}},\n  \"display_name\": \"{{deploymentDisplayName}} onnxruntime\",\n  \"metadata\": {}\n}",
+              "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"model_type\": \"yolox\",\n  \"model_version_id\": null,\n  \"model_build_id\": \"{{onnxOptimizedModelBuildId}}\",\n  \"runtime_profile_id\": null,\n  \"runtime_backend\": \"onnxruntime\",\n  \"runtime_precision\": \"fp32\",\n  \"device_name\": \"cpu\",\n  \"instance_count\": {{deploymentInstanceCount}},\n  \"display_name\": \"{{deploymentDisplayName}} onnxruntime\",\n  \"metadata\": {}\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1827,7 +1827,7 @@
               }
             },
             "url": {
-              "raw": "{{baseUrl}}/api/v1/models/yolox/deployment-instances",
+              "raw": "{{baseUrl}}/api/v1/models/detection/deployment-instances",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -1835,7 +1835,7 @@
                 "api",
                 "v1",
                 "models",
-                "yolox",
+                "detection",
                 "deployment-instances"
               ]
             },
@@ -1875,7 +1875,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"model_version_id\": null,\n  \"model_build_id\": \"{{openvinoIrModelBuildId}}\",\n  \"runtime_profile_id\": null,\n  \"runtime_backend\": \"openvino\",\n  \"runtime_precision\": \"fp32\",\n  \"device_name\": \"cpu\",\n  \"instance_count\": {{deploymentInstanceCount}},\n  \"display_name\": \"{{deploymentDisplayName}} openvino\",\n  \"metadata\": {}\n}",
+              "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"model_type\": \"yolox\",\n  \"model_version_id\": null,\n  \"model_build_id\": \"{{openvinoIrModelBuildId}}\",\n  \"runtime_profile_id\": null,\n  \"runtime_backend\": \"openvino\",\n  \"runtime_precision\": \"fp32\",\n  \"device_name\": \"cpu\",\n  \"instance_count\": {{deploymentInstanceCount}},\n  \"display_name\": \"{{deploymentDisplayName}} openvino\",\n  \"metadata\": {}\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1883,7 +1883,7 @@
               }
             },
             "url": {
-              "raw": "{{baseUrl}}/api/v1/models/yolox/deployment-instances",
+              "raw": "{{baseUrl}}/api/v1/models/detection/deployment-instances",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -1891,7 +1891,7 @@
                 "api",
                 "v1",
                 "models",
-                "yolox",
+                "detection",
                 "deployment-instances"
               ]
             },
@@ -1931,7 +1931,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"model_version_id\": null,\n  \"model_build_id\": \"{{openvinoIrFp16ModelBuildId}}\",\n  \"runtime_profile_id\": null,\n  \"runtime_backend\": \"openvino\",\n  \"runtime_precision\": \"fp16\",\n  \"device_name\": \"gpu\",\n  \"instance_count\": {{deploymentInstanceCount}},\n  \"display_name\": \"{{deploymentDisplayName}} openvino-gpu-fp16\",\n  \"metadata\": {}\n}",
+              "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"model_type\": \"yolox\",\n  \"model_version_id\": null,\n  \"model_build_id\": \"{{openvinoIrFp16ModelBuildId}}\",\n  \"runtime_profile_id\": null,\n  \"runtime_backend\": \"openvino\",\n  \"runtime_precision\": \"fp16\",\n  \"device_name\": \"gpu\",\n  \"instance_count\": {{deploymentInstanceCount}},\n  \"display_name\": \"{{deploymentDisplayName}} openvino-gpu-fp16\",\n  \"metadata\": {}\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1939,7 +1939,7 @@
               }
             },
             "url": {
-              "raw": "{{baseUrl}}/api/v1/models/yolox/deployment-instances",
+              "raw": "{{baseUrl}}/api/v1/models/detection/deployment-instances",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -1947,7 +1947,7 @@
                 "api",
                 "v1",
                 "models",
-                "yolox",
+                "detection",
                 "deployment-instances"
               ]
             },
@@ -1987,7 +1987,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"model_version_id\": null,\n  \"model_build_id\": \"{{openvinoIrFp16ModelBuildId}}\",\n  \"runtime_profile_id\": null,\n  \"runtime_backend\": \"openvino\",\n  \"runtime_precision\": \"fp16\",\n  \"device_name\": \"npu\",\n  \"instance_count\": {{deploymentInstanceCount}},\n  \"display_name\": \"{{deploymentDisplayName}} openvino-npu-fp16\",\n  \"metadata\": {}\n}",
+              "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"model_type\": \"yolox\",\n  \"model_version_id\": null,\n  \"model_build_id\": \"{{openvinoIrFp16ModelBuildId}}\",\n  \"runtime_profile_id\": null,\n  \"runtime_backend\": \"openvino\",\n  \"runtime_precision\": \"fp16\",\n  \"device_name\": \"npu\",\n  \"instance_count\": {{deploymentInstanceCount}},\n  \"display_name\": \"{{deploymentDisplayName}} openvino-npu-fp16\",\n  \"metadata\": {}\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1995,7 +1995,7 @@
               }
             },
             "url": {
-              "raw": "{{baseUrl}}/api/v1/models/yolox/deployment-instances",
+              "raw": "{{baseUrl}}/api/v1/models/detection/deployment-instances",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -2003,7 +2003,7 @@
                 "api",
                 "v1",
                 "models",
-                "yolox",
+                "detection",
                 "deployment-instances"
               ]
             },
@@ -2043,7 +2043,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"model_version_id\": null,\n  \"model_build_id\": \"{{tensorrtEngineFp32ModelBuildId}}\",\n  \"runtime_profile_id\": null,\n  \"runtime_backend\": \"tensorrt\",\n  \"runtime_precision\": \"fp32\",\n  \"device_name\": \"cuda\",\n  \"instance_count\": {{deploymentInstanceCount}},\n  \"display_name\": \"{{deploymentDisplayName}} tensorrt-fp32\",\n  \"metadata\": {\n    \"deployment_process\": {\n      \"warmup_dummy_inference_count\": {{deploymentWarmupDummyInferenceCount}},\n      \"warmup_dummy_image_size\": [{{deploymentWarmupDummyImageWidth}}, {{deploymentWarmupDummyImageHeight}}],\n      \"keep_warm_enabled\": {{deploymentKeepWarmEnabled}},\n      \"keep_warm_interval_seconds\": {{deploymentKeepWarmIntervalSeconds}},\n      \"tensorrt_pinned_output_buffer_enabled\": {{deploymentTensorrtFp32PinnedOutputBufferEnabled}},\n      \"tensorrt_pinned_output_buffer_max_bytes\": {{deploymentTensorrtFp32PinnedOutputBufferMaxBytes}}\n    }\n  }\n}",
+              "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"model_type\": \"yolox\",\n  \"model_version_id\": null,\n  \"model_build_id\": \"{{tensorrtEngineFp32ModelBuildId}}\",\n  \"runtime_profile_id\": null,\n  \"runtime_backend\": \"tensorrt\",\n  \"runtime_precision\": \"fp32\",\n  \"device_name\": \"cuda\",\n  \"instance_count\": {{deploymentInstanceCount}},\n  \"display_name\": \"{{deploymentDisplayName}} tensorrt-fp32\",\n  \"metadata\": {\n    \"deployment_process\": {\n      \"warmup_dummy_inference_count\": {{deploymentWarmupDummyInferenceCount}},\n      \"warmup_dummy_image_size\": [{{deploymentWarmupDummyImageWidth}}, {{deploymentWarmupDummyImageHeight}}],\n      \"keep_warm_enabled\": {{deploymentKeepWarmEnabled}},\n      \"keep_warm_interval_seconds\": {{deploymentKeepWarmIntervalSeconds}},\n      \"tensorrt_pinned_output_buffer_enabled\": {{deploymentTensorrtFp32PinnedOutputBufferEnabled}},\n      \"tensorrt_pinned_output_buffer_max_bytes\": {{deploymentTensorrtFp32PinnedOutputBufferMaxBytes}}\n    }\n  }\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -2051,7 +2051,7 @@
               }
             },
             "url": {
-              "raw": "{{baseUrl}}/api/v1/models/yolox/deployment-instances",
+              "raw": "{{baseUrl}}/api/v1/models/detection/deployment-instances",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -2059,7 +2059,7 @@
                 "api",
                 "v1",
                 "models",
-                "yolox",
+                "detection",
                 "deployment-instances"
               ]
             },
@@ -2099,7 +2099,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"model_version_id\": null,\n  \"model_build_id\": \"{{tensorrtEngineFp16ModelBuildId}}\",\n  \"runtime_profile_id\": null,\n  \"runtime_backend\": \"tensorrt\",\n  \"runtime_precision\": \"fp16\",\n  \"device_name\": \"cuda\",\n  \"instance_count\": {{deploymentInstanceCount}},\n  \"display_name\": \"{{deploymentDisplayName}} tensorrt-fp16\",\n  \"metadata\": {\n    \"deployment_process\": {\n      \"warmup_dummy_inference_count\": {{deploymentWarmupDummyInferenceCount}},\n      \"warmup_dummy_image_size\": [{{deploymentWarmupDummyImageWidth}}, {{deploymentWarmupDummyImageHeight}}],\n      \"keep_warm_enabled\": {{deploymentKeepWarmEnabled}},\n      \"keep_warm_interval_seconds\": {{deploymentKeepWarmIntervalSeconds}},\n      \"tensorrt_pinned_output_buffer_enabled\": {{deploymentTensorrtFp16PinnedOutputBufferEnabled}},\n      \"tensorrt_pinned_output_buffer_max_bytes\": {{deploymentTensorrtFp16PinnedOutputBufferMaxBytes}}\n    }\n  }\n}",
+              "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"model_type\": \"yolox\",\n  \"model_version_id\": null,\n  \"model_build_id\": \"{{tensorrtEngineFp16ModelBuildId}}\",\n  \"runtime_profile_id\": null,\n  \"runtime_backend\": \"tensorrt\",\n  \"runtime_precision\": \"fp16\",\n  \"device_name\": \"cuda\",\n  \"instance_count\": {{deploymentInstanceCount}},\n  \"display_name\": \"{{deploymentDisplayName}} tensorrt-fp16\",\n  \"metadata\": {\n    \"deployment_process\": {\n      \"warmup_dummy_inference_count\": {{deploymentWarmupDummyInferenceCount}},\n      \"warmup_dummy_image_size\": [{{deploymentWarmupDummyImageWidth}}, {{deploymentWarmupDummyImageHeight}}],\n      \"keep_warm_enabled\": {{deploymentKeepWarmEnabled}},\n      \"keep_warm_interval_seconds\": {{deploymentKeepWarmIntervalSeconds}},\n      \"tensorrt_pinned_output_buffer_enabled\": {{deploymentTensorrtFp16PinnedOutputBufferEnabled}},\n      \"tensorrt_pinned_output_buffer_max_bytes\": {{deploymentTensorrtFp16PinnedOutputBufferMaxBytes}}\n    }\n  }\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -2107,7 +2107,7 @@
               }
             },
             "url": {
-              "raw": "{{baseUrl}}/api/v1/models/yolox/deployment-instances",
+              "raw": "{{baseUrl}}/api/v1/models/detection/deployment-instances",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -2115,7 +2115,7 @@
                 "api",
                 "v1",
                 "models",
-                "yolox",
+                "detection",
                 "deployment-instances"
               ]
             },
@@ -2155,7 +2155,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"model_version_id\": null,\n  \"model_build_id\": \"{{tensorrtEngineModelBuildId}}\",\n  \"runtime_profile_id\": null,\n  \"runtime_backend\": \"tensorrt\",\n  \"runtime_precision\": \"{{deploymentTensorrtPresetRuntimePrecision}}\",\n  \"device_name\": \"cuda\",\n  \"instance_count\": {{deploymentInstanceCount}},\n  \"display_name\": \"{{deploymentDisplayName}} tensorrt-{{deploymentTensorrtPresetRuntimePrecision}}-small-output\",\n  \"metadata\": {\n    \"deployment_process\": {\n      \"warmup_dummy_inference_count\": {{deploymentWarmupDummyInferenceCount}},\n      \"warmup_dummy_image_size\": [{{deploymentWarmupDummyImageWidth}}, {{deploymentWarmupDummyImageHeight}}],\n      \"keep_warm_enabled\": {{deploymentKeepWarmEnabled}},\n      \"keep_warm_interval_seconds\": {{deploymentKeepWarmIntervalSeconds}},\n      \"tensorrt_pinned_output_buffer_enabled\": {{deploymentTensorrtSmallOutputPresetPinnedOutputBufferEnabled}},\n      \"tensorrt_pinned_output_buffer_max_bytes\": {{deploymentTensorrtSmallOutputPresetPinnedOutputBufferMaxBytes}}\n    }\n  }\n}",
+              "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"model_type\": \"yolox\",\n  \"model_version_id\": null,\n  \"model_build_id\": \"{{tensorrtEngineModelBuildId}}\",\n  \"runtime_profile_id\": null,\n  \"runtime_backend\": \"tensorrt\",\n  \"runtime_precision\": \"{{deploymentTensorrtPresetRuntimePrecision}}\",\n  \"device_name\": \"cuda\",\n  \"instance_count\": {{deploymentInstanceCount}},\n  \"display_name\": \"{{deploymentDisplayName}} tensorrt-{{deploymentTensorrtPresetRuntimePrecision}}-small-output\",\n  \"metadata\": {\n    \"deployment_process\": {\n      \"warmup_dummy_inference_count\": {{deploymentWarmupDummyInferenceCount}},\n      \"warmup_dummy_image_size\": [{{deploymentWarmupDummyImageWidth}}, {{deploymentWarmupDummyImageHeight}}],\n      \"keep_warm_enabled\": {{deploymentKeepWarmEnabled}},\n      \"keep_warm_interval_seconds\": {{deploymentKeepWarmIntervalSeconds}},\n      \"tensorrt_pinned_output_buffer_enabled\": {{deploymentTensorrtSmallOutputPresetPinnedOutputBufferEnabled}},\n      \"tensorrt_pinned_output_buffer_max_bytes\": {{deploymentTensorrtSmallOutputPresetPinnedOutputBufferMaxBytes}}\n    }\n  }\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -2163,7 +2163,7 @@
               }
             },
             "url": {
-              "raw": "{{baseUrl}}/api/v1/models/yolox/deployment-instances",
+              "raw": "{{baseUrl}}/api/v1/models/detection/deployment-instances",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -2171,7 +2171,7 @@
                 "api",
                 "v1",
                 "models",
-                "yolox",
+                "detection",
                 "deployment-instances"
               ]
             },
@@ -2211,7 +2211,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"model_version_id\": null,\n  \"model_build_id\": \"{{tensorrtEngineModelBuildId}}\",\n  \"runtime_profile_id\": null,\n  \"runtime_backend\": \"tensorrt\",\n  \"runtime_precision\": \"{{deploymentTensorrtPresetRuntimePrecision}}\",\n  \"device_name\": \"cuda\",\n  \"instance_count\": {{deploymentInstanceCount}},\n  \"display_name\": \"{{deploymentDisplayName}} tensorrt-{{deploymentTensorrtPresetRuntimePrecision}}-large-output\",\n  \"metadata\": {\n    \"deployment_process\": {\n      \"warmup_dummy_inference_count\": {{deploymentWarmupDummyInferenceCount}},\n      \"warmup_dummy_image_size\": [{{deploymentWarmupDummyImageWidth}}, {{deploymentWarmupDummyImageHeight}}],\n      \"keep_warm_enabled\": {{deploymentKeepWarmEnabled}},\n      \"keep_warm_interval_seconds\": {{deploymentKeepWarmIntervalSeconds}},\n      \"tensorrt_pinned_output_buffer_enabled\": {{deploymentTensorrtLargeOutputPresetPinnedOutputBufferEnabled}},\n      \"tensorrt_pinned_output_buffer_max_bytes\": {{deploymentTensorrtLargeOutputPresetPinnedOutputBufferMaxBytes}}\n    }\n  }\n}",
+              "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"model_type\": \"yolox\",\n  \"model_version_id\": null,\n  \"model_build_id\": \"{{tensorrtEngineModelBuildId}}\",\n  \"runtime_profile_id\": null,\n  \"runtime_backend\": \"tensorrt\",\n  \"runtime_precision\": \"{{deploymentTensorrtPresetRuntimePrecision}}\",\n  \"device_name\": \"cuda\",\n  \"instance_count\": {{deploymentInstanceCount}},\n  \"display_name\": \"{{deploymentDisplayName}} tensorrt-{{deploymentTensorrtPresetRuntimePrecision}}-large-output\",\n  \"metadata\": {\n    \"deployment_process\": {\n      \"warmup_dummy_inference_count\": {{deploymentWarmupDummyInferenceCount}},\n      \"warmup_dummy_image_size\": [{{deploymentWarmupDummyImageWidth}}, {{deploymentWarmupDummyImageHeight}}],\n      \"keep_warm_enabled\": {{deploymentKeepWarmEnabled}},\n      \"keep_warm_interval_seconds\": {{deploymentKeepWarmIntervalSeconds}},\n      \"tensorrt_pinned_output_buffer_enabled\": {{deploymentTensorrtLargeOutputPresetPinnedOutputBufferEnabled}},\n      \"tensorrt_pinned_output_buffer_max_bytes\": {{deploymentTensorrtLargeOutputPresetPinnedOutputBufferMaxBytes}}\n    }\n  }\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -2219,7 +2219,7 @@
               }
             },
             "url": {
-              "raw": "{{baseUrl}}/api/v1/models/yolox/deployment-instances",
+              "raw": "{{baseUrl}}/api/v1/models/detection/deployment-instances",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -2227,7 +2227,7 @@
                 "api",
                 "v1",
                 "models",
-                "yolox",
+                "detection",
                 "deployment-instances"
               ]
             },
@@ -2247,7 +2247,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/v1/models/yolox/deployment-instances?project_id={{projectId}}&limit={{deploymentLimit}}",
+              "raw": "{{baseUrl}}/api/v1/models/detection/deployment-instances?project_id={{projectId}}&limit={{deploymentLimit}}",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -2255,7 +2255,7 @@
                 "api",
                 "v1",
                 "models",
-                "yolox",
+                "detection",
                 "deployment-instances"
               ],
               "query": [
@@ -2309,7 +2309,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/v1/models/yolox/deployment-instances/{{deploymentInstanceId}}",
+              "raw": "{{baseUrl}}/api/v1/models/detection/deployment-instances/{{deploymentInstanceId}}",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -2317,7 +2317,7 @@
                 "api",
                 "v1",
                 "models",
-                "yolox",
+                "detection",
                 "deployment-instances",
                 "{{deploymentInstanceId}}"
               ]
@@ -2338,7 +2338,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/v1/models/yolox/deployment-instances/{{deploymentInstanceId}}/events?after_sequence={{deploymentEventAfterSequence}}&limit={{deploymentEventLimit}}",
+              "raw": "{{baseUrl}}/api/v1/models/detection/deployment-instances/{{deploymentInstanceId}}/events?after_sequence={{deploymentEventAfterSequence}}&limit={{deploymentEventLimit}}",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -2346,7 +2346,7 @@
                 "api",
                 "v1",
                 "models",
-                "yolox",
+                "detection",
                 "deployment-instances",
                 "{{deploymentInstanceId}}",
                 "events"
@@ -2404,7 +2404,7 @@
                   }
                 ],
                 "url": {
-                  "raw": "{{baseUrl}}/api/v1/models/yolox/deployment-instances/{{deploymentInstanceId}}/sync/start",
+                  "raw": "{{baseUrl}}/api/v1/models/detection/deployment-instances/{{deploymentInstanceId}}/sync/start",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -2412,7 +2412,7 @@
                     "api",
                     "v1",
                     "models",
-                    "yolox",
+                    "detection",
                     "deployment-instances",
                     "{{deploymentInstanceId}}",
                     "sync",
@@ -2453,7 +2453,7 @@
                   }
                 ],
                 "url": {
-                  "raw": "{{baseUrl}}/api/v1/models/yolox/deployment-instances/{{deploymentInstanceId}}/sync/status",
+                  "raw": "{{baseUrl}}/api/v1/models/detection/deployment-instances/{{deploymentInstanceId}}/sync/status",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -2461,7 +2461,7 @@
                     "api",
                     "v1",
                     "models",
-                    "yolox",
+                    "detection",
                     "deployment-instances",
                     "{{deploymentInstanceId}}",
                     "sync",
@@ -2515,7 +2515,7 @@
                   }
                 ],
                 "url": {
-                  "raw": "{{baseUrl}}/api/v1/models/yolox/deployment-instances/{{deploymentInstanceId}}/sync/warmup",
+                  "raw": "{{baseUrl}}/api/v1/models/detection/deployment-instances/{{deploymentInstanceId}}/sync/warmup",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -2523,7 +2523,7 @@
                     "api",
                     "v1",
                     "models",
-                    "yolox",
+                    "detection",
                     "deployment-instances",
                     "{{deploymentInstanceId}}",
                     "sync",
@@ -2577,7 +2577,7 @@
                   }
                 ],
                 "url": {
-                  "raw": "{{baseUrl}}/api/v1/models/yolox/deployment-instances/{{deploymentInstanceId}}/sync/health",
+                  "raw": "{{baseUrl}}/api/v1/models/detection/deployment-instances/{{deploymentInstanceId}}/sync/health",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -2585,7 +2585,7 @@
                     "api",
                     "v1",
                     "models",
-                    "yolox",
+                    "detection",
                     "deployment-instances",
                     "{{deploymentInstanceId}}",
                     "sync",
@@ -2639,7 +2639,7 @@
                   }
                 ],
                 "url": {
-                  "raw": "{{baseUrl}}/api/v1/models/yolox/deployment-instances/{{deploymentInstanceId}}/sync/reset",
+                  "raw": "{{baseUrl}}/api/v1/models/detection/deployment-instances/{{deploymentInstanceId}}/sync/reset",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -2647,7 +2647,7 @@
                     "api",
                     "v1",
                     "models",
-                    "yolox",
+                    "detection",
                     "deployment-instances",
                     "{{deploymentInstanceId}}",
                     "sync",
@@ -2698,7 +2698,7 @@
                   }
                 ],
                 "url": {
-                  "raw": "{{baseUrl}}/api/v1/models/yolox/deployment-instances/{{deploymentInstanceId}}/sync/stop",
+                  "raw": "{{baseUrl}}/api/v1/models/detection/deployment-instances/{{deploymentInstanceId}}/sync/stop",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -2706,7 +2706,7 @@
                     "api",
                     "v1",
                     "models",
-                    "yolox",
+                    "detection",
                     "deployment-instances",
                     "{{deploymentInstanceId}}",
                     "sync",
@@ -2752,7 +2752,7 @@
                   }
                 ],
                 "url": {
-                  "raw": "{{baseUrl}}/api/v1/models/yolox/deployment-instances/{{deploymentInstanceId}}/async/start",
+                  "raw": "{{baseUrl}}/api/v1/models/detection/deployment-instances/{{deploymentInstanceId}}/async/start",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -2760,7 +2760,7 @@
                     "api",
                     "v1",
                     "models",
-                    "yolox",
+                    "detection",
                     "deployment-instances",
                     "{{deploymentInstanceId}}",
                     "async",
@@ -2801,7 +2801,7 @@
                   }
                 ],
                 "url": {
-                  "raw": "{{baseUrl}}/api/v1/models/yolox/deployment-instances/{{deploymentInstanceId}}/async/status",
+                  "raw": "{{baseUrl}}/api/v1/models/detection/deployment-instances/{{deploymentInstanceId}}/async/status",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -2809,7 +2809,7 @@
                     "api",
                     "v1",
                     "models",
-                    "yolox",
+                    "detection",
                     "deployment-instances",
                     "{{deploymentInstanceId}}",
                     "async",
@@ -2863,7 +2863,7 @@
                   }
                 ],
                 "url": {
-                  "raw": "{{baseUrl}}/api/v1/models/yolox/deployment-instances/{{deploymentInstanceId}}/async/warmup",
+                  "raw": "{{baseUrl}}/api/v1/models/detection/deployment-instances/{{deploymentInstanceId}}/async/warmup",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -2871,7 +2871,7 @@
                     "api",
                     "v1",
                     "models",
-                    "yolox",
+                    "detection",
                     "deployment-instances",
                     "{{deploymentInstanceId}}",
                     "async",
@@ -2925,7 +2925,7 @@
                   }
                 ],
                 "url": {
-                  "raw": "{{baseUrl}}/api/v1/models/yolox/deployment-instances/{{deploymentInstanceId}}/async/health",
+                  "raw": "{{baseUrl}}/api/v1/models/detection/deployment-instances/{{deploymentInstanceId}}/async/health",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -2933,7 +2933,7 @@
                     "api",
                     "v1",
                     "models",
-                    "yolox",
+                    "detection",
                     "deployment-instances",
                     "{{deploymentInstanceId}}",
                     "async",
@@ -2987,7 +2987,7 @@
                   }
                 ],
                 "url": {
-                  "raw": "{{baseUrl}}/api/v1/models/yolox/deployment-instances/{{deploymentInstanceId}}/async/reset",
+                  "raw": "{{baseUrl}}/api/v1/models/detection/deployment-instances/{{deploymentInstanceId}}/async/reset",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -2995,7 +2995,7 @@
                     "api",
                     "v1",
                     "models",
-                    "yolox",
+                    "detection",
                     "deployment-instances",
                     "{{deploymentInstanceId}}",
                     "async",
@@ -3046,7 +3046,7 @@
                   }
                 ],
                 "url": {
-                  "raw": "{{baseUrl}}/api/v1/models/yolox/deployment-instances/{{deploymentInstanceId}}/async/stop",
+                  "raw": "{{baseUrl}}/api/v1/models/detection/deployment-instances/{{deploymentInstanceId}}/async/stop",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -3054,7 +3054,7 @@
                     "api",
                     "v1",
                     "models",
-                    "yolox",
+                    "detection",
                     "deployment-instances",
                     "{{deploymentInstanceId}}",
                     "async",
@@ -3117,7 +3117,7 @@
                   }
                 },
                 "url": {
-                  "raw": "{{baseUrl}}/api/v1/models/yolox/deployment-instances/{{deploymentInstanceId}}/infer",
+                  "raw": "{{baseUrl}}/api/v1/models/detection/deployment-instances/{{deploymentInstanceId}}/infer",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -3125,7 +3125,7 @@
                     "api",
                     "v1",
                     "models",
-                    "yolox",
+                    "detection",
                     "deployment-instances",
                     "{{deploymentInstanceId}}",
                     "infer"
@@ -3177,7 +3177,7 @@
                   }
                 },
                 "url": {
-                  "raw": "{{baseUrl}}/api/v1/models/yolox/deployment-instances/{{deploymentInstanceId}}/infer",
+                  "raw": "{{baseUrl}}/api/v1/models/detection/deployment-instances/{{deploymentInstanceId}}/infer",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -3185,7 +3185,7 @@
                     "api",
                     "v1",
                     "models",
-                    "yolox",
+                    "detection",
                     "deployment-instances",
                     "{{deploymentInstanceId}}",
                     "infer"
@@ -3237,7 +3237,7 @@
                   }
                 },
                 "url": {
-                  "raw": "{{baseUrl}}/api/v1/models/yolox/deployment-instances/{{deploymentInstanceId}}/infer",
+                  "raw": "{{baseUrl}}/api/v1/models/detection/deployment-instances/{{deploymentInstanceId}}/infer",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -3245,7 +3245,7 @@
                     "api",
                     "v1",
                     "models",
-                    "yolox",
+                    "detection",
                     "deployment-instances",
                     "{{deploymentInstanceId}}",
                     "infer"
@@ -3318,7 +3318,7 @@
                   ]
                 },
                 "url": {
-                  "raw": "{{baseUrl}}/api/v1/models/yolox/deployment-instances/{{deploymentInstanceId}}/infer",
+                  "raw": "{{baseUrl}}/api/v1/models/detection/deployment-instances/{{deploymentInstanceId}}/infer",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -3326,7 +3326,7 @@
                     "api",
                     "v1",
                     "models",
-                    "yolox",
+                    "detection",
                     "deployment-instances",
                     "{{deploymentInstanceId}}",
                     "infer"
@@ -3373,7 +3373,7 @@
                 ],
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"deployment_instance_id\": \"{{deploymentInstanceId}}\",\n  \"input_uri\": \"{{inferenceImageUri}}\",\n  \"score_threshold\": {{inferenceScoreThreshold}},\n  \"save_result_image\": {{inferenceSaveResultImage}},\n  \"return_preview_image_base64\": {{inferenceReturnPreviewImageBase64}},\n  \"extra_options\": {},\n  \"display_name\": \"{{inferenceDisplayName}}\"\n}",
+                  "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"model_type\": \"yolox\",\n  \"deployment_instance_id\": \"{{deploymentInstanceId}}\",\n  \"input_uri\": \"{{inferenceImageUri}}\",\n  \"score_threshold\": {{inferenceScoreThreshold}},\n  \"save_result_image\": {{inferenceSaveResultImage}},\n  \"return_preview_image_base64\": {{inferenceReturnPreviewImageBase64}},\n  \"extra_options\": {},\n  \"display_name\": \"{{inferenceDisplayName}}\"\n}",
                   "options": {
                     "raw": {
                       "language": "json"
@@ -3381,7 +3381,7 @@
                   }
                 },
                 "url": {
-                  "raw": "{{baseUrl}}/api/v1/models/yolox/inference-tasks",
+                  "raw": "{{baseUrl}}/api/v1/models/detection/inference-tasks",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -3389,7 +3389,7 @@
                     "api",
                     "v1",
                     "models",
-                    "yolox",
+                    "detection",
                     "inference-tasks"
                   ]
                 },
@@ -3429,7 +3429,7 @@
                 ],
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"deployment_instance_id\": \"{{deploymentInstanceId}}\",\n  \"input_file_id\": \"{{projectPublicFileId}}\",\n  \"score_threshold\": {{inferenceScoreThreshold}},\n  \"save_result_image\": {{inferenceSaveResultImage}},\n  \"return_preview_image_base64\": {{inferenceReturnPreviewImageBase64}},\n  \"extra_options\": {},\n  \"display_name\": \"{{inferenceDisplayName}}\"\n}",
+                  "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"model_type\": \"yolox\",\n  \"deployment_instance_id\": \"{{deploymentInstanceId}}\",\n  \"input_file_id\": \"{{projectPublicFileId}}\",\n  \"score_threshold\": {{inferenceScoreThreshold}},\n  \"save_result_image\": {{inferenceSaveResultImage}},\n  \"return_preview_image_base64\": {{inferenceReturnPreviewImageBase64}},\n  \"extra_options\": {},\n  \"display_name\": \"{{inferenceDisplayName}}\"\n}",
                   "options": {
                     "raw": {
                       "language": "json"
@@ -3437,7 +3437,7 @@
                   }
                 },
                 "url": {
-                  "raw": "{{baseUrl}}/api/v1/models/yolox/inference-tasks",
+                  "raw": "{{baseUrl}}/api/v1/models/detection/inference-tasks",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -3445,7 +3445,7 @@
                     "api",
                     "v1",
                     "models",
-                    "yolox",
+                    "detection",
                     "inference-tasks"
                   ]
                 },
@@ -3485,7 +3485,7 @@
                 ],
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"deployment_instance_id\": \"{{deploymentInstanceId}}\",\n  \"image_base64\": \"{{inferenceImageBase64}}\",\n  \"input_transport_mode\": \"{{inferenceInputTransportMode}}\",\n  \"score_threshold\": {{inferenceScoreThreshold}},\n  \"save_result_image\": {{inferenceSaveResultImage}},\n  \"return_preview_image_base64\": {{inferenceReturnPreviewImageBase64}},\n  \"extra_options\": {},\n  \"display_name\": \"{{inferenceDisplayName}}\"\n}",
+                  "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"model_type\": \"yolox\",\n  \"deployment_instance_id\": \"{{deploymentInstanceId}}\",\n  \"image_base64\": \"{{inferenceImageBase64}}\",\n  \"input_transport_mode\": \"{{inferenceInputTransportMode}}\",\n  \"score_threshold\": {{inferenceScoreThreshold}},\n  \"save_result_image\": {{inferenceSaveResultImage}},\n  \"return_preview_image_base64\": {{inferenceReturnPreviewImageBase64}},\n  \"extra_options\": {},\n  \"display_name\": \"{{inferenceDisplayName}}\"\n}",
                   "options": {
                     "raw": {
                       "language": "json"
@@ -3493,7 +3493,7 @@
                   }
                 },
                 "url": {
-                  "raw": "{{baseUrl}}/api/v1/models/yolox/inference-tasks",
+                  "raw": "{{baseUrl}}/api/v1/models/detection/inference-tasks",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -3501,7 +3501,7 @@
                     "api",
                     "v1",
                     "models",
-                    "yolox",
+                    "detection",
                     "inference-tasks"
                   ]
                 },
@@ -3585,7 +3585,7 @@
                   ]
                 },
                 "url": {
-                  "raw": "{{baseUrl}}/api/v1/models/yolox/inference-tasks",
+                  "raw": "{{baseUrl}}/api/v1/models/detection/inference-tasks",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -3593,7 +3593,7 @@
                     "api",
                     "v1",
                     "models",
-                    "yolox",
+                    "detection",
                     "inference-tasks"
                   ]
                 },
@@ -3613,7 +3613,7 @@
                   }
                 ],
                 "url": {
-                  "raw": "{{baseUrl}}/api/v1/models/yolox/inference-tasks?project_id={{projectId}}&limit={{inferenceLimit}}",
+                  "raw": "{{baseUrl}}/api/v1/models/detection/inference-tasks?project_id={{projectId}}&limit={{inferenceLimit}}",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -3621,7 +3621,7 @@
                     "api",
                     "v1",
                     "models",
-                    "yolox",
+                    "detection",
                     "inference-tasks"
                   ],
                   "query": [
@@ -3676,7 +3676,7 @@
                   }
                 ],
                 "url": {
-                  "raw": "{{baseUrl}}/api/v1/models/yolox/inference-tasks/{{inferenceTaskId}}?include_events={{includeEvents}}",
+                  "raw": "{{baseUrl}}/api/v1/models/detection/inference-tasks/{{inferenceTaskId}}?include_events={{includeEvents}}",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -3684,7 +3684,7 @@
                     "api",
                     "v1",
                     "models",
-                    "yolox",
+                    "detection",
                     "inference-tasks",
                     "{{inferenceTaskId}}"
                   ],
@@ -3695,7 +3695,7 @@
                     }
                   ]
                 },
-                  "description": "读取单条 async inference task 当前详情。默认建议把 includeEvents 保持为 false，只在需要完整历史事件流时再打开。任务完成后，detail 会直接返回 result_object_key、preview_image_object_key、detection_count 和 latency。"
+                "description": "读取单条 async inference task 当前详情。默认建议把 includeEvents 保持为 false，只在需要完整历史事件流时再打开。任务完成后，detail 会直接返回 result_object_key、preview_image_object_key、detection_count 和 latency。"
               },
               "response": []
             },
@@ -3711,7 +3711,7 @@
                   }
                 ],
                 "url": {
-                  "raw": "{{baseUrl}}/api/v1/models/yolox/inference-tasks/{{inferenceTaskId}}/result",
+                  "raw": "{{baseUrl}}/api/v1/models/detection/inference-tasks/{{inferenceTaskId}}/result",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -3719,7 +3719,7 @@
                     "api",
                     "v1",
                     "models",
-                    "yolox",
+                    "detection",
                     "inference-tasks",
                     "{{inferenceTaskId}}",
                     "result"

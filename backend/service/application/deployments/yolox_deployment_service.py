@@ -342,6 +342,7 @@ class SqlAlchemyYoloXDeploymentService:
         normalized_metadata = _normalize_metadata(metadata)
         normalized_metadata.pop(_RUNTIME_TARGET_SNAPSHOT_METADATA_KEY, None)
         normalized_metadata["runtime_summary"] = build_detection_deployment_runtime_summary(
+            model_type=runtime_target.model_type,
             model_version_id=runtime_target.model_version_id,
             model_build_id=runtime_target.model_build_id,
             model_name=runtime_target.model_name,

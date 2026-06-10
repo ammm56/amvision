@@ -122,6 +122,7 @@ def build_detection_inference_result_summary(
 
 def build_detection_deployment_runtime_summary(
     *,
+    model_type: str,
     model_version_id: str,
     model_build_id: str | None,
     model_name: str,
@@ -138,6 +139,7 @@ def build_detection_deployment_runtime_summary(
     """构建长期运行 deployment 的统一运行时摘要。"""
 
     return {
+        "model_type": model_type,
         "model_version_id": model_version_id,
         "model_build_id": model_build_id,
         "model_name": model_name,

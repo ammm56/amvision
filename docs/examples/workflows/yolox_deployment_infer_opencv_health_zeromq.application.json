@@ -17,7 +17,7 @@
       "binding_kind": "api-request",
       "required": false,
       "config": {
-        "route": "/api/v1/workflow-apps/yolox/deployment/infer-opencv-health-dual-input",
+        "route": "/api/v1/workflow-apps/detection/deployment/infer-opencv-health-dual-input",
         "method": "POST"
       },
       "metadata": {

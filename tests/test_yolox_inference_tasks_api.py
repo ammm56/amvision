@@ -78,10 +78,11 @@ def test_create_yolox_inference_task_and_read_result_after_worker(
     try:
         with client:
             deployment_response = client.post(
-                "/api/v1/models/yolox/deployment-instances",
+                "/api/v1/models/detection/deployment-instances",
                 headers=_build_model_headers(),
                 json={
                     "project_id": "project-1",
+                    "model_type": "yolox",
                     "model_version_id": model_version_id,
                     "runtime_backend": "pytorch",
                     "device_name": "cpu",
@@ -92,16 +93,17 @@ def test_create_yolox_inference_task_and_read_result_after_worker(
             deployment_instance_id = deployment_response.json()["deployment_instance_id"]
 
             async_start_response = client.post(
-                f"/api/v1/models/yolox/deployment-instances/{deployment_instance_id}/async/start",
+                f"/api/v1/models/detection/deployment-instances/{deployment_instance_id}/async/start",
                 headers=_build_model_headers(),
             )
             assert async_start_response.status_code == 200
 
             create_response = client.post(
-                "/api/v1/models/yolox/inference-tasks",
+                "/api/v1/models/detection/inference-tasks",
                 headers=_build_inference_headers(),
                 json={
                     "project_id": "project-1",
+                    "model_type": "yolox",
                     "deployment_instance_id": deployment_instance_id,
                     "input_uri": _PROJECT_INFERENCE_INPUT_URI,
                     "score_threshold": 0.2,
@@ -128,7 +130,7 @@ def test_create_yolox_inference_task_and_read_result_after_worker(
             )
 
             pending_result_response = client.get(
-                f"/api/v1/models/yolox/inference-tasks/{task_id}/result",
+                f"/api/v1/models/detection/inference-tasks/{task_id}/result",
                 headers=_build_task_headers(),
             )
             assert pending_result_response.status_code == 200
@@ -137,7 +139,7 @@ def test_create_yolox_inference_task_and_read_result_after_worker(
             assert worker.run_once() is True
 
             detail_response = client.get(
-                f"/api/v1/models/yolox/inference-tasks/{task_id}",
+                f"/api/v1/models/detection/inference-tasks/{task_id}",
                 headers=_build_task_headers(),
             )
             assert detail_response.status_code == 200
@@ -149,7 +151,7 @@ def test_create_yolox_inference_task_and_read_result_after_worker(
             assert detail_payload["latency_ms"] == 8.5
 
             result_response = client.get(
-                f"/api/v1/models/yolox/inference-tasks/{task_id}/result",
+                f"/api/v1/models/detection/inference-tasks/{task_id}/result",
                 headers=_build_task_headers(),
             )
             assert result_response.status_code == 200
@@ -218,10 +220,11 @@ def test_create_yolox_inference_task_accepts_public_project_file_id(
     try:
         with client:
             deployment_response = client.post(
-                "/api/v1/models/yolox/deployment-instances",
+                "/api/v1/models/detection/deployment-instances",
                 headers=_build_model_headers(),
                 json={
                     "project_id": "project-1",
+                    "model_type": "yolox",
                     "model_version_id": model_version_id,
                     "runtime_backend": "pytorch",
                     "device_name": "cpu",
@@ -232,16 +235,17 @@ def test_create_yolox_inference_task_accepts_public_project_file_id(
             deployment_instance_id = deployment_response.json()["deployment_instance_id"]
 
             async_start_response = client.post(
-                f"/api/v1/models/yolox/deployment-instances/{deployment_instance_id}/async/start",
+                f"/api/v1/models/detection/deployment-instances/{deployment_instance_id}/async/start",
                 headers=_build_model_headers(),
             )
             assert async_start_response.status_code == 200
 
             create_response = client.post(
-                "/api/v1/models/yolox/inference-tasks",
+                "/api/v1/models/detection/inference-tasks",
                 headers=_build_inference_headers(),
                 json={
                     "project_id": "project-1",
+                    "model_type": "yolox",
                     "deployment_instance_id": deployment_instance_id,
                     "input_file_id": input_file_id,
                 },
@@ -259,7 +263,7 @@ def test_create_yolox_inference_task_accepts_public_project_file_id(
             assert worker.run_once() is True
 
             result_response = client.get(
-                f"/api/v1/models/yolox/inference-tasks/{task_id}/result",
+                f"/api/v1/models/detection/inference-tasks/{task_id}/result",
                 headers=_build_task_headers(),
             )
 
@@ -293,10 +297,11 @@ def test_async_inference_task_accepts_base64_input(
     try:
         with client:
             deployment_response = client.post(
-                "/api/v1/models/yolox/deployment-instances",
+                "/api/v1/models/detection/deployment-instances",
                 headers=_build_model_headers(),
                 json={
                     "project_id": "project-1",
+                    "model_type": "yolox",
                     "model_version_id": model_version_id,
                     "display_name": "yolox inference base64 deployment",
                 },
@@ -305,16 +310,17 @@ def test_async_inference_task_accepts_base64_input(
             deployment_instance_id = deployment_response.json()["deployment_instance_id"]
 
             async_start_response = client.post(
-                f"/api/v1/models/yolox/deployment-instances/{deployment_instance_id}/async/start",
+                f"/api/v1/models/detection/deployment-instances/{deployment_instance_id}/async/start",
                 headers=_build_model_headers(),
             )
             assert async_start_response.status_code == 200
 
             create_response = client.post(
-                "/api/v1/models/yolox/inference-tasks",
+                "/api/v1/models/detection/inference-tasks",
                 headers=_build_inference_headers(),
                 json={
                     "project_id": "project-1",
+                    "model_type": "yolox",
                     "deployment_instance_id": deployment_instance_id,
                     "image_base64": _VALID_TEST_IMAGE_BASE64,
                 },
@@ -328,7 +334,7 @@ def test_async_inference_task_accepts_base64_input(
             assert worker.run_once() is True
 
             result_response = client.get(
-                f"/api/v1/models/yolox/inference-tasks/{task_id}/result",
+                f"/api/v1/models/detection/inference-tasks/{task_id}/result",
                 headers=_build_task_headers(),
             )
 
@@ -364,10 +370,11 @@ def test_async_inference_task_memory_transport_uses_in_memory_base64_bytes(
     try:
         with client:
             deployment_response = client.post(
-                "/api/v1/models/yolox/deployment-instances",
+                "/api/v1/models/detection/deployment-instances",
                 headers=_build_model_headers(),
                 json={
                     "project_id": "project-1",
+                    "model_type": "yolox",
                     "model_version_id": model_version_id,
                     "display_name": "yolox inference memory base64 deployment",
                     "metadata": {
@@ -384,16 +391,17 @@ def test_async_inference_task_memory_transport_uses_in_memory_base64_bytes(
             deployment_instance_id = deployment_response.json()["deployment_instance_id"]
 
             async_start_response = client.post(
-                f"/api/v1/models/yolox/deployment-instances/{deployment_instance_id}/async/start",
+                f"/api/v1/models/detection/deployment-instances/{deployment_instance_id}/async/start",
                 headers=_build_model_headers(),
             )
             assert async_start_response.status_code == 200
 
             create_response = client.post(
-                "/api/v1/models/yolox/inference-tasks",
+                "/api/v1/models/detection/inference-tasks",
                 headers=_build_inference_headers(),
                 json={
                     "project_id": "project-1",
+                    "model_type": "yolox",
                     "deployment_instance_id": deployment_instance_id,
                     "image_base64": _VALID_TEST_IMAGE_BASE64,
                     "input_transport_mode": "memory",
@@ -432,7 +440,7 @@ def test_async_inference_task_memory_transport_uses_in_memory_base64_bytes(
             assert worker.run_once() is True
 
             result_response = client.get(
-                f"/api/v1/models/yolox/inference-tasks/{task_id}/result",
+                f"/api/v1/models/detection/inference-tasks/{task_id}/result",
                 headers=_build_task_headers(),
             )
 
@@ -470,10 +478,11 @@ def test_async_inference_task_memory_transport_accepts_multipart_without_input_d
     try:
         with client:
             deployment_response = client.post(
-                "/api/v1/models/yolox/deployment-instances",
+                "/api/v1/models/detection/deployment-instances",
                 headers=_build_model_headers(),
                 json={
                     "project_id": "project-1",
+                    "model_type": "yolox",
                     "model_version_id": model_version_id,
                     "display_name": "yolox inference memory upload deployment",
                 },
@@ -482,16 +491,17 @@ def test_async_inference_task_memory_transport_accepts_multipart_without_input_d
             deployment_instance_id = deployment_response.json()["deployment_instance_id"]
 
             async_start_response = client.post(
-                f"/api/v1/models/yolox/deployment-instances/{deployment_instance_id}/async/start",
+                f"/api/v1/models/detection/deployment-instances/{deployment_instance_id}/async/start",
                 headers=_build_model_headers(),
             )
             assert async_start_response.status_code == 200
 
             create_response = client.post(
-                "/api/v1/models/yolox/inference-tasks",
+                "/api/v1/models/detection/inference-tasks",
                 headers=_build_inference_headers(),
                 data={
                     "project_id": "project-1",
+                    "model_type": "yolox",
                     "deployment_instance_id": deployment_instance_id,
                     "input_transport_mode": "memory",
                     "return_preview_image_base64": "true",
@@ -507,7 +517,7 @@ def test_async_inference_task_memory_transport_accepts_multipart_without_input_d
             assert worker.run_once() is True
 
             result_response = client.get(
-                f"/api/v1/models/yolox/inference-tasks/{task_id}/result",
+                f"/api/v1/models/detection/inference-tasks/{task_id}/result",
                 headers=_build_task_headers(),
             )
 
@@ -538,10 +548,11 @@ def test_direct_inference_accepts_base64_and_round_robins_instances(
     try:
         with client:
             deployment_response = client.post(
-                "/api/v1/models/yolox/deployment-instances",
+                "/api/v1/models/detection/deployment-instances",
                 headers=_build_model_headers(),
                 json={
                     "project_id": "project-1",
+                    "model_type": "yolox",
                     "model_version_id": model_version_id,
                     "instance_count": 2,
                     "display_name": "direct inference deployment",
@@ -553,14 +564,14 @@ def test_direct_inference_accepts_base64_and_round_robins_instances(
             assert deployment_payload["instance_count"] == 2
 
             start_response = client.post(
-                f"/api/v1/models/yolox/deployment-instances/{deployment_instance_id}/sync/start",
+                f"/api/v1/models/detection/deployment-instances/{deployment_instance_id}/sync/start",
                 headers=_build_model_headers(),
             )
             assert start_response.status_code == 200
 
             image_base64 = _VALID_TEST_IMAGE_BASE64
             response_1 = client.post(
-                f"/api/v1/models/yolox/deployment-instances/{deployment_instance_id}/infer",
+                f"/api/v1/models/detection/deployment-instances/{deployment_instance_id}/infer",
                 headers=_build_model_read_headers(),
                 json={
                     "image_base64": image_base64,
@@ -569,7 +580,7 @@ def test_direct_inference_accepts_base64_and_round_robins_instances(
                 },
             )
             response_2 = client.post(
-                f"/api/v1/models/yolox/deployment-instances/{deployment_instance_id}/infer",
+                f"/api/v1/models/detection/deployment-instances/{deployment_instance_id}/infer",
                 headers=_build_model_read_headers(),
                 json={
                     "image_base64": image_base64,
@@ -578,7 +589,7 @@ def test_direct_inference_accepts_base64_and_round_robins_instances(
                 },
             )
             response_3 = client.post(
-                f"/api/v1/models/yolox/deployment-instances/{deployment_instance_id}/infer",
+                f"/api/v1/models/detection/deployment-instances/{deployment_instance_id}/infer",
                 headers=_build_model_read_headers(),
                 json={
                     "image_base64": image_base64,
@@ -629,10 +640,11 @@ def test_direct_inference_accepts_public_project_file_id(tmp_path: Path) -> None
     try:
         with client:
             deployment_response = client.post(
-                "/api/v1/models/yolox/deployment-instances",
+                "/api/v1/models/detection/deployment-instances",
                 headers=_build_model_headers(),
                 json={
                     "project_id": "project-1",
+                    "model_type": "yolox",
                     "model_version_id": model_version_id,
                     "display_name": "direct inference file id deployment",
                 },
@@ -641,13 +653,13 @@ def test_direct_inference_accepts_public_project_file_id(tmp_path: Path) -> None
             deployment_instance_id = deployment_response.json()["deployment_instance_id"]
 
             start_response = client.post(
-                f"/api/v1/models/yolox/deployment-instances/{deployment_instance_id}/sync/start",
+                f"/api/v1/models/detection/deployment-instances/{deployment_instance_id}/sync/start",
                 headers=_build_model_headers(),
             )
             assert start_response.status_code == 200
 
             response = client.post(
-                f"/api/v1/models/yolox/deployment-instances/{deployment_instance_id}/infer",
+                f"/api/v1/models/detection/deployment-instances/{deployment_instance_id}/infer",
                 headers=_build_model_read_headers(),
                 json={"input_file_id": input_file_id},
             )
@@ -684,10 +696,11 @@ def test_direct_inference_memory_transport_uses_in_memory_base64_bytes(
     try:
         with client:
             deployment_response = client.post(
-                "/api/v1/models/yolox/deployment-instances",
+                "/api/v1/models/detection/deployment-instances",
                 headers=_build_model_headers(),
                 json={
                     "project_id": "project-1",
+                    "model_type": "yolox",
                     "model_version_id": model_version_id,
                     "display_name": "direct inference memory base64 deployment",
                 },
@@ -696,7 +709,7 @@ def test_direct_inference_memory_transport_uses_in_memory_base64_bytes(
             deployment_instance_id = deployment_response.json()["deployment_instance_id"]
 
             start_response = client.post(
-                f"/api/v1/models/yolox/deployment-instances/{deployment_instance_id}/sync/start",
+                f"/api/v1/models/detection/deployment-instances/{deployment_instance_id}/sync/start",
                 headers=_build_model_headers(),
             )
             assert start_response.status_code == 200
@@ -705,7 +718,7 @@ def test_direct_inference_memory_transport_uses_in_memory_base64_bytes(
             monkeypatch.setattr(dataset_storage, "write_json", fail_write_json)
 
             response = client.post(
-                f"/api/v1/models/yolox/deployment-instances/{deployment_instance_id}/infer",
+                f"/api/v1/models/detection/deployment-instances/{deployment_instance_id}/infer",
                 headers=_build_model_read_headers(),
                 json={
                     "image_base64": _VALID_TEST_IMAGE_BASE64,
@@ -739,10 +752,11 @@ def test_direct_inference_accepts_data_uri_and_rejects_invalid_image_without_bre
     try:
         with client:
             deployment_response = client.post(
-                "/api/v1/models/yolox/deployment-instances",
+                "/api/v1/models/detection/deployment-instances",
                 headers=_build_model_headers(),
                 json={
                     "project_id": "project-1",
+                    "model_type": "yolox",
                     "model_version_id": model_version_id,
                     "display_name": "data uri inference deployment",
                 },
@@ -751,20 +765,20 @@ def test_direct_inference_accepts_data_uri_and_rejects_invalid_image_without_bre
             deployment_instance_id = deployment_response.json()["deployment_instance_id"]
 
             start_response = client.post(
-                f"/api/v1/models/yolox/deployment-instances/{deployment_instance_id}/sync/start",
+                f"/api/v1/models/detection/deployment-instances/{deployment_instance_id}/sync/start",
                 headers=_build_model_headers(),
             )
             assert start_response.status_code == 200
 
             invalid_response = client.post(
-                f"/api/v1/models/yolox/deployment-instances/{deployment_instance_id}/infer",
+                f"/api/v1/models/detection/deployment-instances/{deployment_instance_id}/infer",
                 headers=_build_model_read_headers(),
                 json={
                     "image_base64": f"data:image/png;base64,{base64.b64encode(b'invalid-image-bytes').decode('ascii')}",
                 },
             )
             valid_response = client.post(
-                f"/api/v1/models/yolox/deployment-instances/{deployment_instance_id}/infer",
+                f"/api/v1/models/detection/deployment-instances/{deployment_instance_id}/infer",
                 headers=_build_model_read_headers(),
                 json={
                     "image_base64": f"data:image/png;base64,{_VALID_TEST_IMAGE_BASE64}",
@@ -807,10 +821,11 @@ def test_direct_inference_memory_transport_accepts_multipart_without_input_disk_
     try:
         with client:
             deployment_response = client.post(
-                "/api/v1/models/yolox/deployment-instances",
+                "/api/v1/models/detection/deployment-instances",
                 headers=_build_model_headers(),
                 json={
                     "project_id": "project-1",
+                    "model_type": "yolox",
                     "model_version_id": model_version_id,
                     "display_name": "direct inference memory multipart deployment",
                 },
@@ -819,7 +834,7 @@ def test_direct_inference_memory_transport_accepts_multipart_without_input_disk_
             deployment_instance_id = deployment_response.json()["deployment_instance_id"]
 
             start_response = client.post(
-                f"/api/v1/models/yolox/deployment-instances/{deployment_instance_id}/sync/start",
+                f"/api/v1/models/detection/deployment-instances/{deployment_instance_id}/sync/start",
                 headers=_build_model_headers(),
             )
             assert start_response.status_code == 200
@@ -828,7 +843,7 @@ def test_direct_inference_memory_transport_accepts_multipart_without_input_disk_
             monkeypatch.setattr(dataset_storage, "write_json", fail_write_json)
 
             response = client.post(
-                f"/api/v1/models/yolox/deployment-instances/{deployment_instance_id}/infer",
+                f"/api/v1/models/detection/deployment-instances/{deployment_instance_id}/infer",
                 headers=_build_model_read_headers(),
                 data={
                     "input_transport_mode": "memory",
@@ -862,10 +877,11 @@ def test_create_yolox_inference_task_requires_running_async_process(tmp_path: Pa
     try:
         with client:
             deployment_response = client.post(
-                "/api/v1/models/yolox/deployment-instances",
+                "/api/v1/models/detection/deployment-instances",
                 headers=_build_model_headers(),
                 json={
                     "project_id": "project-1",
+                    "model_type": "yolox",
                     "model_version_id": model_version_id,
                     "display_name": "async process required deployment",
                 },
@@ -874,10 +890,11 @@ def test_create_yolox_inference_task_requires_running_async_process(tmp_path: Pa
             deployment_instance_id = deployment_response.json()["deployment_instance_id"]
 
             create_response = client.post(
-                "/api/v1/models/yolox/inference-tasks",
+                "/api/v1/models/detection/inference-tasks",
                 headers=_build_inference_headers(),
                 json={
                     "project_id": "project-1",
+                    "model_type": "yolox",
                     "deployment_instance_id": deployment_instance_id,
                     "input_uri": _PROJECT_INFERENCE_INPUT_URI,
                 },
@@ -914,10 +931,11 @@ def test_async_inference_task_accepts_multipart_and_uses_async_runtime_pool(
     try:
         with client:
             deployment_response = client.post(
-                "/api/v1/models/yolox/deployment-instances",
+                "/api/v1/models/detection/deployment-instances",
                 headers=_build_model_headers(),
                 json={
                     "project_id": "project-1",
+                    "model_type": "yolox",
                     "model_version_id": model_version_id,
                     "display_name": "shared runtime pool deployment",
                 },
@@ -926,13 +944,13 @@ def test_async_inference_task_accepts_multipart_and_uses_async_runtime_pool(
             deployment_instance_id = deployment_response.json()["deployment_instance_id"]
 
             sync_start_response = client.post(
-                f"/api/v1/models/yolox/deployment-instances/{deployment_instance_id}/sync/start",
+                f"/api/v1/models/detection/deployment-instances/{deployment_instance_id}/sync/start",
                 headers=_build_model_headers(),
             )
             assert sync_start_response.status_code == 200
 
             warmup_response = client.post(
-                f"/api/v1/models/yolox/deployment-instances/{deployment_instance_id}/infer",
+                f"/api/v1/models/detection/deployment-instances/{deployment_instance_id}/infer",
                 headers=_build_model_read_headers(),
                 json={"image_base64": _VALID_TEST_IMAGE_BASE64},
             )
@@ -940,16 +958,17 @@ def test_async_inference_task_accepts_multipart_and_uses_async_runtime_pool(
             assert len(sync_supervisor.load_calls) == 1
 
             async_start_response = client.post(
-                f"/api/v1/models/yolox/deployment-instances/{deployment_instance_id}/async/start",
+                f"/api/v1/models/detection/deployment-instances/{deployment_instance_id}/async/start",
                 headers=_build_model_headers(),
             )
             assert async_start_response.status_code == 200
 
             create_response = client.post(
-                "/api/v1/models/yolox/inference-tasks",
+                "/api/v1/models/detection/inference-tasks",
                 headers=_build_inference_headers(),
                 data={
                     "project_id": "project-1",
+                    "model_type": "yolox",
                     "deployment_instance_id": deployment_instance_id,
                     "return_preview_image_base64": "true",
                 },
@@ -963,7 +982,7 @@ def test_async_inference_task_accepts_multipart_and_uses_async_runtime_pool(
             assert worker.run_once() is True
 
             result_response = client.get(
-                f"/api/v1/models/yolox/inference-tasks/{task_id}/result",
+                f"/api/v1/models/detection/inference-tasks/{task_id}/result",
                 headers=_build_task_headers(),
             )
 
@@ -988,10 +1007,11 @@ def test_direct_inference_rejects_multiple_input_sources(tmp_path: Path) -> None
     try:
         with client:
             deployment_response = client.post(
-                "/api/v1/models/yolox/deployment-instances",
+                "/api/v1/models/detection/deployment-instances",
                 headers=_build_model_headers(),
                 json={
                     "project_id": "project-1",
+                    "model_type": "yolox",
                     "model_version_id": model_version_id,
                 },
             )
@@ -999,7 +1019,7 @@ def test_direct_inference_rejects_multiple_input_sources(tmp_path: Path) -> None
             deployment_instance_id = deployment_response.json()["deployment_instance_id"]
 
             response = client.post(
-                f"/api/v1/models/yolox/deployment-instances/{deployment_instance_id}/infer",
+                f"/api/v1/models/detection/deployment-instances/{deployment_instance_id}/infer",
                 headers=_build_model_read_headers(),
                 json={
                     "input_uri": "projects/project-1/inputs/inference/image.jpg",
@@ -1073,3 +1093,4 @@ def _build_model_read_headers() -> dict[str, str]:
     """构建具备 models:read 的测试请求头。"""
 
     return build_test_headers(scopes="models:read")
+

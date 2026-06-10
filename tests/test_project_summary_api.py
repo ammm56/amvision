@@ -100,13 +100,14 @@ def test_project_summary_api_aggregates_workflow_and_deployment_counts(tmp_path:
             )
 
             create_deployment_response = client.post(
-                "/api/v1/models/yolox/deployment-instances",
-                headers=_build_headers(),
-                json={
-                    "project_id": "project-1",
-                    "model_version_id": model_version_id,
-                    "display_name": "Project Summary Deployment",
-                },
+                    "/api/v1/models/detection/deployment-instances",
+                    headers=_build_headers(),
+                    json={
+                        "project_id": "project-1",
+                        "model_type": "yolox",
+                        "model_version_id": model_version_id,
+                        "display_name": "Project Summary Deployment",
+                    },
             )
             assert create_deployment_response.status_code == 201
 
@@ -174,10 +175,11 @@ def test_projects_events_websocket_streams_summary_snapshot_and_live_updates(tmp
                 runtime_update_message = _receive_websocket_json_with_timeout(websocket)
 
                 create_deployment_response = client.post(
-                    "/api/v1/models/yolox/deployment-instances",
+                    "/api/v1/models/detection/deployment-instances",
                     headers=_build_headers(),
                     json={
                         "project_id": "project-1",
+                        "model_type": "yolox",
                         "model_version_id": model_version_id,
                         "display_name": "Project Events Deployment",
                     },
@@ -186,7 +188,7 @@ def test_projects_events_websocket_streams_summary_snapshot_and_live_updates(tmp
                 deployment_instance_id = create_deployment_response.json()["deployment_instance_id"]
 
                 start_deployment_response = client.post(
-                    f"/api/v1/models/yolox/deployment-instances/{deployment_instance_id}/sync/start",
+                    f"/api/v1/models/detection/deployment-instances/{deployment_instance_id}/sync/start",
                     headers=_build_headers(),
                 )
                 assert start_deployment_response.status_code == 200

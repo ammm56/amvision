@@ -42,7 +42,7 @@ sequenceDiagram
     participant Storage as LocalDatasetStorage
     participant ModelReg as ModelVersion 登记
 
-    Client->>API: POST /api/v1/models/yolox/training-tasks
+    Client->>API: POST /api/v1/models/detection/training-tasks
     API->>API: 校验 project scope 与请求体
     API->>TrainSvc: submit_training_task(request)
     TrainSvc->>TrainSvc: 解析 DatasetExport\n构建 task_spec
@@ -95,7 +95,7 @@ sequenceDiagram
     participant Worker as YoloXTrainingQueueWorker
     participant Proc as process_training_task
 
-    Client->>API: POST /api/v1/models/yolox/training-tasks
+    Client->>API: POST /api/v1/models/detection/training-tasks
     API->>TrainSvc: submit_training_task(request)
     alt DatasetExport / project scope / 请求体校验失败
         TrainSvc-->>API: InvalidRequestError
@@ -109,7 +109,7 @@ sequenceDiagram
         TrainSvc->>TaskSvc: append_task_event(state=failed)
         TaskSvc->>DB: 写 failed 事件并回写状态
         API-->>Client: 500
-        Client->>API: GET /api/v1/models/yolox/training-tasks/{task_id}
+        Client->>API: GET /api/v1/models/detection/training-tasks/{task_id}
         API-->>Client: failed + error_message
         Note over Client: 修复队列或配置后重新创建 training task
     else worker 执行阶段失败
@@ -122,7 +122,7 @@ sequenceDiagram
         Proc-->>Proc: exception
         Proc->>TaskSvc: append_task_event(state=failed, result=partial outputs)
         TaskSvc->>DB: 写 failed 事件并回写状态
-        Client->>API: GET /api/v1/models/yolox/training-tasks/{task_id}
+        Client->>API: GET /api/v1/models/detection/training-tasks/{task_id}
         API-->>Client: failed + progress + output_object_prefix
         Note over Client: 修复数据、warm start 权重或运行环境后重新提交新任务
     end
@@ -153,7 +153,7 @@ sequenceDiagram
     participant Storage as LocalDatasetStorage
     participant Script as OpenVINO/TensorRT 子进程脚本
 
-    Client->>API: POST /api/v1/models/yolox/conversion-tasks/*
+    Client->>API: POST /api/v1/models/detection/conversion-tasks/*
     API->>API: 校验 project scope
     API->>ConvSvc: submit_conversion_task(request)
     ConvSvc->>Planner: build_plan(source_model_version_id, target_formats)
@@ -219,7 +219,7 @@ sequenceDiagram
     participant Runner as LocalYoloXConversionRunner
     participant Script as OpenVINO/TensorRT 子进程脚本
 
-    Client->>API: POST /api/v1/models/yolox/conversion-tasks/*
+    Client->>API: POST /api/v1/models/detection/conversion-tasks/*
     API->>ConvSvc: submit_conversion_task(request)
     alt source ModelVersion / target format / planner 校验失败
         ConvSvc->>Planner: build_plan(...)
@@ -234,7 +234,7 @@ sequenceDiagram
         ConvSvc->>TaskSvc: append_task_event(state=failed)
         TaskSvc->>DB: 写 failed 事件并回写状态
         API-->>Client: 500
-        Client->>API: GET /api/v1/models/yolox/conversion-tasks/{task_id}
+        Client->>API: GET /api/v1/models/detection/conversion-tasks/{task_id}
         API-->>Client: failed + error_message
         Note over Client: 修复队列或配置后重新创建 conversion task
     else worker 构建阶段失败
@@ -251,7 +251,7 @@ sequenceDiagram
         Runner-->>Proc: exception
         Proc->>TaskSvc: append_task_event(state=failed, result=plan/report key)
         TaskSvc->>DB: 写 failed 事件并回写状态
-        Client->>API: GET /api/v1/models/yolox/conversion-tasks/{task_id}
+        Client->>API: GET /api/v1/models/detection/conversion-tasks/{task_id}
         API-->>Client: failed + plan_object_key + report_object_key
         Note over Client: 修复 OpenVINO、TensorRT 或来源 checkpoint 后重新创建 conversion task
     end
@@ -277,7 +277,7 @@ sequenceDiagram
     participant Storage as LocalDatasetStorage
     participant Pred as run_yolox_inference_task
 
-    Client->>API: POST /api/v1/models/yolox/deployment-instances/{id}/infer
+    Client->>API: POST /api/v1/models/detection/deployment-instances/{id}/infer
     API->>API: 读取 JSON/multipart\n校验主体可见性
     API->>DeploySvc: get_deployment_instance(id)
     DeploySvc->>DB: 读取 DeploymentInstance
@@ -324,7 +324,7 @@ sequenceDiagram
     participant SyncSup as DeploymentProcessSupervisor(sync)
     participant Child as deployment process worker
 
-    Client->>API: POST /api/v1/models/yolox/deployment-instances/{id}/infer
+    Client->>API: POST /api/v1/models/detection/deployment-instances/{id}/infer
     API->>DeploySvc: get_deployment_instance(id)
     alt DeploymentInstance 不存在或 project 不可见
         DeploySvc-->>API: 404 / 403

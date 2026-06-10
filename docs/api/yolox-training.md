@@ -1,17 +1,17 @@
-# YOLOX Training 接口文档
+# Detection Training 接口文档（YOLOX 示例）
 
 ## 文档目的
 
-本文档用于说明当前已经公开的 YOLOX training 创建、列表、详情、训练控制和训练输出读取接口，以及 DatasetExport 在训练创建链路中的输入边界语义。
+本文档用于说明当前已经公开的 detection training 创建、列表、详情、训练控制和训练输出读取接口，以及 DatasetExport 在训练创建链路中的输入边界语义。本文中的请求示例统一使用 `model_type=yolox`。
 
 当前这一版已经公开训练后全链路，并把训练输出文件目录、训练摘要、验证结果、评估结果、转换结果和部署推理接口作为正式查询面。
 
-当前仓库同时已经提供统一模型任务入口，例如 `POST /api/v1/models/detection/training-tasks`。本页只继续聚焦 YOLOX 专用路由；统一 detection / classification / segmentation / pose / obb 主入口，以 [docs/api/current-api.md](current-api.md) 为准。
+当前仓库已经把 detection 训练、验证、评估、转换、部署与推理统一到 `/api/v1/models/detection/*`。本页继续保留 YOLOX 作为示例模型族，用来说明统一 detection 控制面的字段和调用顺序；其他 detection 模型也走同一路由，通过 `model_type` 区分。
 
 ## 适用范围
 
-- YOLOX training 任务创建接口
-- YOLOX training 列表、详情与训练控制接口
+- detection training 任务创建接口（示例使用 `model_type=yolox`）
+- detection training 列表、详情与训练控制接口（示例使用 `model_type=yolox`）
 - 训练指标、验证指标和统一输出文件读取接口
 - dataset_export_id 与 manifest_object_key 的解析规则
 - 训练后验证、评估、转换、部署与推理链路
@@ -41,7 +41,7 @@
 
 ## 接口清单
 
-### POST /api/v1/models/yolox/training-tasks
+### POST /api/v1/models/detection/training-tasks
 
 创建一个以 DatasetExport 为唯一输入边界的 YOLOX 训练任务，并提交到 yolox-trainings 队列。
 
@@ -188,7 +188,7 @@ reference 风格增强示例：按需显式开启 Mosaic、MixUp 和动态尺寸
 }
 ```
 
-### GET /api/v1/models/yolox/training-tasks
+### GET /api/v1/models/detection/training-tasks
 
 按 Project 和 DatasetExport 边界列出当前可见的 YOLOX 训练任务。
 
@@ -212,7 +212,7 @@ reference 风格增强示例：按需显式开启 Mosaic、MixUp 和动态尺寸
 - 列表响应当前还会直接公开 gpu_count、precision、output_object_prefix、checkpoint_object_key、latest_checkpoint_object_key、metrics_object_key、validation_metrics_object_key、summary_object_key，便于训练卡片直接显示配置和输出文件入口。
 - output_object_prefix 在 running 阶段就会进入顶层响应，不再只存在于 metadata。
 
-### GET /api/v1/models/yolox/training-tasks/{task_id}
+### GET /api/v1/models/detection/training-tasks/{task_id}
 
 返回一条 YOLOX 训练任务详情。
 
@@ -252,7 +252,7 @@ reference 风格增强示例：按需显式开启 Mosaic、MixUp 和动态尺寸
 - 当前 progress 负载会带 stage、percent、epoch、max_epochs、evaluation_interval、validation_ran、evaluated_epochs、current_metric_name、current_metric_value、best_metric_name、best_metric_value、train_metrics、validation_metrics。
 - 当 validation_ran=true 时，validation_metrics 当前会同时携带 total_loss、iou_loss、conf_loss、cls_loss、map50、map50_95；当本轮未执行评估时，validation_metrics 会为空对象。
 
-### POST /api/v1/models/yolox/training-tasks/{task_id}/save
+### POST /api/v1/models/detection/training-tasks/{task_id}/save
 
 为 running 状态的训练任务追加一次手动保存请求。
 
@@ -271,7 +271,7 @@ reference 风格增强示例：按需显式开启 Mosaic、MixUp 和动态尺寸
   - 后续 `yolox training checkpoint saved` 事件
   - `latest-checkpoint` 输出文件进入 `ready`
 
-### POST /api/v1/models/yolox/training-tasks/{task_id}/pause
+### POST /api/v1/models/detection/training-tasks/{task_id}/pause
 
 为 running 状态的训练任务请求暂停。
 
@@ -291,7 +291,7 @@ reference 风格增强示例：按需显式开启 Mosaic、MixUp 和动态尺寸
   - 后续 `yolox training paused` 事件
   - detail 顶层 `state` 最终切到 `paused`
 
-### POST /api/v1/models/yolox/training-tasks/{task_id}/resume
+### POST /api/v1/models/detection/training-tasks/{task_id}/resume
 
 把一个 `paused` 状态的训练任务重新入队。
 
@@ -308,7 +308,7 @@ reference 风格增强示例：按需显式开启 Mosaic、MixUp 和动态尺寸
   - 接口层失败：例如任务不处于 `paused`、latest checkpoint 缺失、latest checkpoint 文件不存在。这类错误会直接返回 400。
   - worker 执行层失败：例如 latest checkpoint 损坏、resume checkpoint 内容与当前任务配置不一致。这类错误会先返回 200 并进入 `queued`，随后任务会在 worker 执行阶段进入 `failed`，并在 detail 的 `error_message` 中给出失败原因。
 
-### POST /api/v1/models/yolox/training-tasks/{task_id}/terminate
+### POST /api/v1/models/detection/training-tasks/{task_id}/terminate
 
 请求终止一个 `queued`、`running` 或 `paused` 状态的训练任务。
 
@@ -324,7 +324,7 @@ reference 风格增强示例：按需显式开启 Mosaic、MixUp 和动态尺寸
 - 对 running 任务调用成功后，任务通常仍暂时处于 `running`，并通过 `control_status.status=terminate_requested` 与 `control_status.pending_action=terminate` 表示请求已经登记。
 - 等待 worker 处理到下一轮边界后，任务会切到 `cancelled`，并追加 `yolox training terminated` 事件。
 
-### DELETE /api/v1/models/yolox/training-tasks/{task_id}
+### DELETE /api/v1/models/detection/training-tasks/{task_id}
 
 删除一个已经停止的训练任务。
 
@@ -340,7 +340,7 @@ reference 风格增强示例：按需显式开启 Mosaic、MixUp 和动态尺寸
 - 当前不会删除仍处于 `running` 的训练任务；应先调用 `terminate` 或等待训练自然结束。
 - 如果任务输出已经被 best checkpoint 或 latest checkpoint 的固定 ModelVersion 复用，训练目录不会被一起清理。
 
-### POST /api/v1/models/yolox/training-tasks/{task_id}/register-model-version
+### POST /api/v1/models/detection/training-tasks/{task_id}/register-model-version
 
 把当前训练任务已经落盘的 latest checkpoint 手动重登记为可复用的 ModelVersion。
 
@@ -441,8 +441,8 @@ reference 风格增强示例：按需显式开启 Mosaic、MixUp 和动态尺寸
 
 #### 推荐最小接入方案
 
-- 列表页：轮询 `GET /api/v1/models/yolox/training-tasks?project_id=...`
-- 详情页：轮询 `GET /api/v1/models/yolox/training-tasks/{task_id}?include_events=false`
+- 列表页：轮询 `GET /api/v1/models/detection/training-tasks?project_id=...`
+- 详情页：轮询 `GET /api/v1/models/detection/training-tasks/{task_id}?include_events=false`
 - 指标面板：
   - 只需要训练和验证 JSON 时，优先读 `train-metrics`、`validation-metrics`
   - 需要统一判断文件 readiness 时，优先读 `GET /output-files`
@@ -500,7 +500,7 @@ reference 风格增强示例：按需显式开启 Mosaic、MixUp 和动态尺寸
 - 当前还没有专门面向 latest checkpoint 的“人工验证”接口；暂停后的人工验证仍需外部系统直接消费输出文件或后续新增验证接口。
 - 当前也没有“停止训练 / 终止任务”接口；如果后续产品需要硬停止语义，应单独定义停止后的 checkpoint 与状态流转规则。
 
-### GET /api/v1/models/yolox/training-tasks/{task_id}/validation-metrics
+### GET /api/v1/models/detection/training-tasks/{task_id}/validation-metrics
 
 直接通过 HTTP 返回当前训练任务最新的 validation-metrics.json 内容，而不是要求调用方去磁盘上读取文件。
 
@@ -517,7 +517,7 @@ reference 风格增强示例：按需显式开启 Mosaic、MixUp 和动态尺寸
 - object_key：验证指标文件 object key；输出目录尚未确定时可能为空。
 - payload：验证指标文件正文；`pending` 时为空对象，`ready` 时内容与 validation-metrics.json 保持一致。
 
-### GET /api/v1/models/yolox/training-tasks/{task_id}/train-metrics
+### GET /api/v1/models/detection/training-tasks/{task_id}/train-metrics
 
 直接通过 HTTP 返回当前训练任务最新的 train-metrics.json 内容，而不是要求调用方去磁盘上读取文件。
 
@@ -534,7 +534,7 @@ reference 风格增强示例：按需显式开启 Mosaic、MixUp 和动态尺寸
 - object_key：训练指标文件 object key；输出目录尚未确定时可能为空。
 - payload：训练指标快照正文；`pending` 时为空对象，`ready` 时内容与 train-metrics.json 保持一致。
 
-### GET /api/v1/models/yolox/training-tasks/{task_id}/output-files
+### GET /api/v1/models/detection/training-tasks/{task_id}/output-files
 
 统一列出当前训练任务所有公开的训练输出文件读取入口。
 
@@ -554,7 +554,7 @@ reference 风格增强示例：按需显式开启 Mosaic、MixUp 和动态尺寸
 - object_key：对应训练输出文件的 object key。
 - size_bytes / updated_at：文件已经写出时返回的元数据。
 
-### GET /api/v1/models/yolox/training-tasks/{task_id}/output-files/{file_name}
+### GET /api/v1/models/detection/training-tasks/{task_id}/output-files/{file_name}
 
 读取单个训练输出文件的状态与可读内容。
 
@@ -649,17 +649,17 @@ reference 风格增强示例：按需显式开启 Mosaic、MixUp 和动态尺寸
 
 这一步的目标不是上线正式部署，而是让训练完成后的模型能被快速抽样验证，优先解决“这版模型看起来对不对”。当前已经公开以下资源组：
 
-- 资源组：`/api/v1/models/yolox/validation-sessions`
-- 创建接口：`POST /api/v1/models/yolox/validation-sessions`
-- 详情接口：`GET /api/v1/models/yolox/validation-sessions/{session_id}`
-- 预测接口：`POST /api/v1/models/yolox/validation-sessions/{session_id}/predict`
+- 资源组：`/api/v1/models/detection/validation-sessions`
+- 创建接口：`POST /api/v1/models/detection/validation-sessions`
+- 详情接口：`GET /api/v1/models/detection/validation-sessions/{session_id}`
+- 预测接口：`POST /api/v1/models/detection/validation-sessions/{session_id}/predict`
 
 #### 当前最短联调顺序
 
 - 训练尚未完成时：先 `pause` 或 `save`
 - 轮询训练详情，确认 `latest_checkpoint_object_key` 和 `latest_checkpoint_model_version_id` 已可用
 - 读取详情里的 `latest_checkpoint_model_version_id`；如果当前任务尚未完成，这个值会与顶层 `model_version_id` 相同
-- 调用 `POST /api/v1/models/yolox/validation-sessions` 创建人工验证 session
+- 调用 `POST /api/v1/models/detection/validation-sessions` 创建人工验证 session
 
 #### 当前创建请求字段
 
@@ -716,12 +716,12 @@ reference 风格增强示例：按需显式开启 Mosaic、MixUp 和动态尺寸
 
 这一步的目标是解决“这版模型相对上一版到底提升还是退化了”，它和在线推理解耦，当前已经公开以下资源组：
 
-- 资源组：`/api/v1/models/yolox/evaluation-tasks`
-- 创建接口：`POST /api/v1/models/yolox/evaluation-tasks`
-- 列表接口：`GET /api/v1/models/yolox/evaluation-tasks`
-- 详情接口：`GET /api/v1/models/yolox/evaluation-tasks/{task_id}`
-- 报告接口：`GET /api/v1/models/yolox/evaluation-tasks/{task_id}/report`
-- 输出文件接口：`GET /api/v1/models/yolox/evaluation-tasks/{task_id}/output-files`
+- 资源组：`/api/v1/models/detection/evaluation-tasks`
+- 创建接口：`POST /api/v1/models/detection/evaluation-tasks`
+- 列表接口：`GET /api/v1/models/detection/evaluation-tasks`
+- 详情接口：`GET /api/v1/models/detection/evaluation-tasks/{task_id}`
+- 报告接口：`GET /api/v1/models/detection/evaluation-tasks/{task_id}/report`
+- 输出文件接口：`GET /api/v1/models/detection/evaluation-tasks/{task_id}/output-files`
 
 #### 当前创建请求字段
 
@@ -777,16 +777,16 @@ reference 风格增强示例：按需显式开启 Mosaic、MixUp 和动态尺寸
 
 #### 当前 conversion 资源组
 
-- 资源组：`/api/v1/models/yolox/conversion-tasks`
-- 创建 ONNX 接口：`POST /api/v1/models/yolox/conversion-tasks/onnx`
-- 创建 optimized ONNX 接口：`POST /api/v1/models/yolox/conversion-tasks/onnx-optimized`
-- 创建 OpenVINO IR FP32 接口：`POST /api/v1/models/yolox/conversion-tasks/openvino-ir-fp32`
-- 创建 OpenVINO IR FP16 接口：`POST /api/v1/models/yolox/conversion-tasks/openvino-ir-fp16`
-- 创建 TensorRT Engine FP32 接口：`POST /api/v1/models/yolox/conversion-tasks/tensorrt-engine-fp32`
-- 创建 TensorRT Engine FP16 接口：`POST /api/v1/models/yolox/conversion-tasks/tensorrt-engine-fp16`
-- 列表接口：`GET /api/v1/models/yolox/conversion-tasks`
-- 详情接口：`GET /api/v1/models/yolox/conversion-tasks/{task_id}`
-- 结果接口：`GET /api/v1/models/yolox/conversion-tasks/{task_id}/result`
+- 资源组：`/api/v1/models/detection/conversion-tasks`
+- 创建 ONNX 接口：`POST /api/v1/models/detection/conversion-tasks/onnx`
+- 创建 optimized ONNX 接口：`POST /api/v1/models/detection/conversion-tasks/onnx-optimized`
+- 创建 OpenVINO IR FP32 接口：`POST /api/v1/models/detection/conversion-tasks/openvino-ir-fp32`
+- 创建 OpenVINO IR FP16 接口：`POST /api/v1/models/detection/conversion-tasks/openvino-ir-fp16`
+- 创建 TensorRT Engine FP32 接口：`POST /api/v1/models/detection/conversion-tasks/tensorrt-engine-fp32`
+- 创建 TensorRT Engine FP16 接口：`POST /api/v1/models/detection/conversion-tasks/tensorrt-engine-fp16`
+- 列表接口：`GET /api/v1/models/detection/conversion-tasks`
+- 详情接口：`GET /api/v1/models/detection/conversion-tasks/{task_id}`
+- 结果接口：`GET /api/v1/models/detection/conversion-tasks/{task_id}/result`
 
 #### 当前 conversion 创建请求字段
 
@@ -841,11 +841,11 @@ reference 风格增强示例：按需显式开启 Mosaic、MixUp 和动态尺寸
 
 #### 当前 deployment 资源组
 
-- 资源组：`/api/v1/models/yolox/deployment-instances`
-- 创建接口：`POST /api/v1/models/yolox/deployment-instances`
-- 列表接口：`GET /api/v1/models/yolox/deployment-instances`
-- 详情接口：`GET /api/v1/models/yolox/deployment-instances/{deployment_instance_id}`
-- 事件接口：`GET /api/v1/models/yolox/deployment-instances/{deployment_instance_id}/events`
+- 资源组：`/api/v1/models/detection/deployment-instances`
+- 创建接口：`POST /api/v1/models/detection/deployment-instances`
+- 列表接口：`GET /api/v1/models/detection/deployment-instances`
+- 详情接口：`GET /api/v1/models/detection/deployment-instances/{deployment_instance_id}`
+- 事件接口：`GET /api/v1/models/detection/deployment-instances/{deployment_instance_id}/events`
 - 实时事件流：`/ws/v1/deployments/events`
 
 #### 当前 deployment 创建请求字段
@@ -930,29 +930,29 @@ reference 风格增强示例：按需显式开启 Mosaic、MixUp 和动态尺寸
 
 #### 当前 inference 资源组
 
-- 资源组：`/api/v1/models/yolox/inference-tasks`
-- 创建接口：`POST /api/v1/models/yolox/inference-tasks`
-- 列表接口：`GET /api/v1/models/yolox/inference-tasks`
-- 详情接口：`GET /api/v1/models/yolox/inference-tasks/{task_id}`
-- 结果接口：`GET /api/v1/models/yolox/inference-tasks/{task_id}/result`
-- 同步直返接口：`POST /api/v1/models/yolox/deployment-instances/{deployment_instance_id}/infer`
-- 同步启动接口：`POST /api/v1/models/yolox/deployment-instances/{deployment_instance_id}/sync/start`
-- 事件读取接口：`GET /api/v1/models/yolox/deployment-instances/{deployment_instance_id}/events`
+- 资源组：`/api/v1/models/detection/inference-tasks`
+- 创建接口：`POST /api/v1/models/detection/inference-tasks`
+- 列表接口：`GET /api/v1/models/detection/inference-tasks`
+- 详情接口：`GET /api/v1/models/detection/inference-tasks/{task_id}`
+- 结果接口：`GET /api/v1/models/detection/inference-tasks/{task_id}/result`
+- 同步直返接口：`POST /api/v1/models/detection/deployment-instances/{deployment_instance_id}/infer`
+- 同步启动接口：`POST /api/v1/models/detection/deployment-instances/{deployment_instance_id}/sync/start`
+- 事件读取接口：`GET /api/v1/models/detection/deployment-instances/{deployment_instance_id}/events`
 - 实时事件流：`/ws/v1/deployments/events?deployment_instance_id=...`
-- 同步状态接口：`GET /api/v1/models/yolox/deployment-instances/{deployment_instance_id}/sync/status`
-- 同步停止接口：`POST /api/v1/models/yolox/deployment-instances/{deployment_instance_id}/sync/stop`
-- 同步预热接口：`POST /api/v1/models/yolox/deployment-instances/{deployment_instance_id}/sync/warmup`
-- 同步健康接口：`GET /api/v1/models/yolox/deployment-instances/{deployment_instance_id}/sync/health`
+- 同步状态接口：`GET /api/v1/models/detection/deployment-instances/{deployment_instance_id}/sync/status`
+- 同步停止接口：`POST /api/v1/models/detection/deployment-instances/{deployment_instance_id}/sync/stop`
+- 同步预热接口：`POST /api/v1/models/detection/deployment-instances/{deployment_instance_id}/sync/warmup`
+- 同步健康接口：`GET /api/v1/models/detection/deployment-instances/{deployment_instance_id}/sync/health`
 - 同步健康响应会额外返回 `pinned_output_total_bytes`、`restart_count_rollover_count` 和 `keep_warm.*`，用于确认当前已加载 session 的 pinned output 总量、长期累计计数是否发生 rollover，以及 keep-warm 是否启用、是否已激活、是否在后台静默失败
-- 同步重置接口：`POST /api/v1/models/yolox/deployment-instances/{deployment_instance_id}/sync/reset`
+- 同步重置接口：`POST /api/v1/models/detection/deployment-instances/{deployment_instance_id}/sync/reset`
 - 同步重置响应与同步健康接口使用同一组详细 health 字段；可直接观察 `restart_count_rollover_count`、`pinned_output_total_bytes` 和 `keep_warm.*`，并确认 reset 后 `keep_warm.activated=false`
-- 异步启动接口：`POST /api/v1/models/yolox/deployment-instances/{deployment_instance_id}/async/start`
-- 异步状态接口：`GET /api/v1/models/yolox/deployment-instances/{deployment_instance_id}/async/status`
-- 异步停止接口：`POST /api/v1/models/yolox/deployment-instances/{deployment_instance_id}/async/stop`
-- 异步预热接口：`POST /api/v1/models/yolox/deployment-instances/{deployment_instance_id}/async/warmup`
-- 异步健康接口：`GET /api/v1/models/yolox/deployment-instances/{deployment_instance_id}/async/health`
+- 异步启动接口：`POST /api/v1/models/detection/deployment-instances/{deployment_instance_id}/async/start`
+- 异步状态接口：`GET /api/v1/models/detection/deployment-instances/{deployment_instance_id}/async/status`
+- 异步停止接口：`POST /api/v1/models/detection/deployment-instances/{deployment_instance_id}/async/stop`
+- 异步预热接口：`POST /api/v1/models/detection/deployment-instances/{deployment_instance_id}/async/warmup`
+- 异步健康接口：`GET /api/v1/models/detection/deployment-instances/{deployment_instance_id}/async/health`
 - 异步健康响应会额外返回 `pinned_output_total_bytes`、`restart_count_rollover_count` 和 `keep_warm.*`，语义与同步健康接口一致
-- 异步重置接口：`POST /api/v1/models/yolox/deployment-instances/{deployment_instance_id}/async/reset`
+- 异步重置接口：`POST /api/v1/models/detection/deployment-instances/{deployment_instance_id}/async/reset`
 - 异步重置响应与异步健康接口使用同一组详细 health 字段；可直接观察 `restart_count_rollover_count`、`pinned_output_total_bytes` 和 `keep_warm.*`，并确认 reset 后 `keep_warm.activated=false`
 
 #### 当前 inference 创建请求字段

@@ -12,15 +12,15 @@ from backend.service.api.deps.auth import AuthenticatedPrincipal, require_scopes
 from backend.service.api.deps.db import get_session_factory
 from backend.service.api.deps.queue import get_queue_backend
 from backend.service.api.deps.storage import get_dataset_storage
-from backend.service.api.rest.v1.routes.yolox_conversion_tasks import (
+from backend.service.api.rest.v1.routes.detection_conversion_route_models import (
     OPENVINO_IR_PRECISION_OPTION_KEY,
     TENSORRT_ENGINE_PRECISION_OPTION_KEY,
-    YoloXConversionResultResponse,
-    YoloXConversionTaskDetailResponse,
-    YoloXConversionTaskSummaryResponse,
-    _build_yolox_conversion_result_response,
-    _build_yolox_conversion_task_detail_response,
-    _build_yolox_conversion_task_summary_response,
+    DetectionConversionResultResponse,
+    DetectionConversionTaskDetailResponse,
+    DetectionConversionTaskSummaryResponse,
+    build_detection_conversion_result_response,
+    build_detection_conversion_task_detail_response,
+    build_detection_conversion_task_summary_response,
 )
 from backend.service.application.conversions.yolo11_conversion_task_service import (
     YOLO11_CONVERSION_TASK_KIND,
@@ -104,23 +104,6 @@ class DetectionConversionTaskSubmissionResponse(BaseModel):
     model_type: str = Field(description="模型分类")
     source_model_version_id: str = Field(description="来源 ModelVersion id")
     target_formats: list[DetectionConversionTargetLiteral] = Field(description="固化后的目标格式列表")
-
-
-class DetectionConversionTaskSummaryResponse(YoloXConversionTaskSummaryResponse):
-    """描述 detection conversion 任务摘要响应。"""
-
-    model_type: str = Field(description="模型分类")
-
-
-class DetectionConversionTaskDetailResponse(DetectionConversionTaskSummaryResponse):
-    """描述 detection conversion 任务详情响应。"""
-
-    task_spec: dict[str, object] = Field(default_factory=dict, description="任务规格")
-    events: list[dict[str, object]] = Field(default_factory=list, description="任务事件列表")
-
-
-class DetectionConversionResultResponse(YoloXConversionResultResponse):
-    """描述 detection conversion 结果读取响应。"""
 
 
 @detection_conversion_tasks_router.post(
@@ -375,8 +358,7 @@ def get_detection_conversion_task_result(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
     ).read_conversion_result(task_id)
-    response = _build_yolox_conversion_result_response(task_id, result_snapshot)
-    return DetectionConversionResultResponse.model_validate(response.model_dump())
+    return build_detection_conversion_result_response(task_id, result_snapshot)
 
 
 def _submit_detection_conversion_task(
@@ -491,12 +473,9 @@ def _build_detection_conversion_task_summary_response(
 ) -> DetectionConversionTaskSummaryResponse:
     """把 detection conversion TaskRecord 转成摘要响应。"""
 
-    summary = _build_yolox_conversion_task_summary_response(task)
-    return DetectionConversionTaskSummaryResponse.model_validate(
-        {
-            **summary.model_dump(),
-            "model_type": _resolve_detection_conversion_model_type_from_task(task),
-        }
+    return build_detection_conversion_task_summary_response(
+        task,
+        model_type=_resolve_detection_conversion_model_type_from_task(task),
     )
 
 
@@ -506,12 +485,10 @@ def _build_detection_conversion_task_detail_response(
 ) -> DetectionConversionTaskDetailResponse:
     """把 detection conversion TaskRecord 转成详情响应。"""
 
-    detail = _build_yolox_conversion_task_detail_response(task, events)
-    return DetectionConversionTaskDetailResponse.model_validate(
-        {
-            **detail.model_dump(),
-            "model_type": _resolve_detection_conversion_model_type_from_task(task),
-        }
+    return build_detection_conversion_task_detail_response(
+        task,
+        events,
+        model_type=_resolve_detection_conversion_model_type_from_task(task),
     )
 
 

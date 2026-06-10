@@ -25,6 +25,7 @@ from backend.service.application.runtime.rfdetr_runtime_target import (
     SqlAlchemyRfdetrRuntimeTargetResolver,
 )
 from backend.service.application.runtime.runtime_target import (
+    RuntimeTargetResolveRequest,
     SqlAlchemyRuntimeTargetResolver,
 )
 from backend.service.application.tasks.task_service import (
@@ -80,6 +81,7 @@ class DetectionEvaluationTaskRequest:
     """描述一次 detection 评估任务创建请求。"""
 
     project_id: str
+    model_type: str
     model_version_id: str
     dataset_export_id: str | None = None
     dataset_export_manifest_key: str | None = None
@@ -98,7 +100,9 @@ class DetectionEvaluationTaskSubmission:
     queue_name: str
     queue_task_id: str
     dataset_export_id: str
+    dataset_export_manifest_key: str
     dataset_version_id: str
+    format_id: str
     model_version_id: str
 
 
@@ -109,7 +113,9 @@ class DetectionEvaluationTaskResult:
     task_id: str
     status: str
     dataset_export_id: str
+    dataset_export_manifest_key: str
     dataset_version_id: str
+    format_id: str
     model_version_id: str
     output_object_prefix: str
     report_object_key: str
@@ -122,6 +128,17 @@ class DetectionEvaluationTaskResult:
     mean_f1: float
     sample_count: int
     report_summary: dict[str, object] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class DetectionEvaluationTaskPackage:
+    """描述一次 detection 评估结果打包输出。"""
+
+    task_id: str
+    package_object_key: str
+    package_file_name: str
+    package_size: int
+    packaged_at: str
 
 
 class SqlAlchemyDetectionEvaluationTaskService:
@@ -149,13 +166,17 @@ class SqlAlchemyDetectionEvaluationTaskService:
         """创建并入队一条 detection 评估任务。"""
         if not request.project_id.strip():
             raise InvalidRequestError("project_id 不能为空")
+        if not request.model_type.strip():
+            raise InvalidRequestError("model_type 不能为空")
         if not request.model_version_id.strip():
             raise InvalidRequestError("model_version_id 不能为空")
         queue_backend = self._require_queue_backend()
         dataset_export = self._resolve_dataset_export(request)
+        runtime_target = self._resolve_runtime_target(request)
 
         task_spec = {
             "project_id": request.project_id,
+            "model_type": request.model_type,
             "model_version_id": request.model_version_id,
             "dataset_export_id": dataset_export.dataset_export_id,
             "dataset_export_manifest_key": dataset_export.manifest_object_key or "",
@@ -175,7 +196,9 @@ class SqlAlchemyDetectionEvaluationTaskService:
                 "dataset_export_id": dataset_export.dataset_export_id,
                 "dataset_export_manifest_key": dataset_export.manifest_object_key,
                 "dataset_version_id": dataset_export.dataset_version_id,
+                "format_id": dataset_export.format_id,
                 "model_version_id": request.model_version_id,
+                "model_type": runtime_target.model_type,
             },
         ))
         queue_task = queue_backend.enqueue(
@@ -184,7 +207,11 @@ class SqlAlchemyDetectionEvaluationTaskService:
             metadata={
                 "project_id": request.project_id,
                 "dataset_export_id": dataset_export.dataset_export_id,
+                "dataset_export_manifest_key": dataset_export.manifest_object_key,
+                "dataset_version_id": dataset_export.dataset_version_id,
+                "format_id": dataset_export.format_id,
                 "model_version_id": request.model_version_id,
+                "model_type": runtime_target.model_type,
             },
         )
         self.task_service.append_task_event(AppendTaskEventRequest(
@@ -196,7 +223,9 @@ class SqlAlchemyDetectionEvaluationTaskService:
             task_id=created_task.task_id, status="queued",
             queue_name=queue_task.queue_name, queue_task_id=queue_task.task_id,
             dataset_export_id=dataset_export.dataset_export_id,
+            dataset_export_manifest_key=dataset_export.manifest_object_key or "",
             dataset_version_id=dataset_export.dataset_version_id,
+            format_id=dataset_export.format_id,
             model_version_id=request.model_version_id,
         )
 
@@ -254,7 +283,9 @@ class SqlAlchemyDetectionEvaluationTaskService:
         task_result = DetectionEvaluationTaskResult(
             task_id=task_id, status="succeeded",
             dataset_export_id=dataset_export.dataset_export_id,
+            dataset_export_manifest_key=dataset_export.manifest_object_key or "",
             dataset_version_id=dataset_export.dataset_version_id,
+            format_id=dataset_export.format_id,
             model_version_id=request.model_version_id,
             output_object_prefix=output_prefix,
             report_object_key=report_key, detections_object_key=detections_key,
@@ -278,15 +309,65 @@ class SqlAlchemyDetectionEvaluationTaskService:
                      "attempt_no": attempt_no,
                      "progress": {"stage": "completed", "percent": 100.0, "sample_count": eval_result.sample_count},
                      "result": {
+                         "dataset_export_id": dataset_export.dataset_export_id,
+                         "dataset_export_manifest_key": dataset_export.manifest_object_key or "",
+                         "dataset_version_id": dataset_export.dataset_version_id,
+                         "format_id": dataset_export.format_id,
+                         "model_version_id": request.model_version_id,
                          "output_object_prefix": output_prefix, "report_object_key": report_key,
                          "detections_object_key": detections_key, "result_package_object_key": package_key,
                          "map50": eval_result.map50, "map50_95": eval_result.map50_95,
                          "mean_precision": eval_result.mean_precision, "mean_recall": eval_result.mean_recall,
                          "mean_f1": eval_result.mean_f1,
                          "sample_count": eval_result.sample_count,
+                         "report_summary": dict(task_result.report_summary),
                      }},
         ))
         return task_result
+
+    def package_evaluation_result(
+        self,
+        task_id: str,
+        *,
+        rebuild: bool = False,
+        package_object_key: str | None = None,
+    ) -> DetectionEvaluationTaskPackage:
+        """生成或复用一个 detection 评估结果 zip 包。"""
+
+        dataset_storage = self._require_dataset_storage()
+        task_record = self._require_evaluation_task(task_id)
+        result_payload = dict(task_record.result)
+        report_object_key = _require_result_object_key(
+            result_payload,
+            key="report_object_key",
+            task_id=task_id,
+        )
+        detections_object_key = _require_result_object_key(
+            result_payload,
+            key="detections_object_key",
+            task_id=task_id,
+        )
+        resolved_package_object_key = _normalize_optional_object_key(package_object_key)
+        if resolved_package_object_key is None:
+            resolved_package_object_key = (
+                _read_optional_payload_str(result_payload, "result_package_object_key")
+                or f"task-runs/evaluation/{task_id}/artifacts/packages/result-package.zip"
+            )
+        package_path = dataset_storage.resolve(resolved_package_object_key)
+        if rebuild or not package_path.is_file():
+            self._write_result_package(
+                resolved_package_object_key,
+                report_object_key,
+                detections_object_key,
+            )
+        stat = package_path.stat()
+        return DetectionEvaluationTaskPackage(
+            task_id=task_id,
+            package_object_key=resolved_package_object_key,
+            package_file_name=package_path.name,
+            package_size=int(stat.st_size),
+            packaged_at=datetime.fromtimestamp(stat.st_mtime, timezone.utc).isoformat(),
+        )
 
     # ── 内部辅助 ──
 
@@ -325,19 +406,17 @@ class SqlAlchemyDetectionEvaluationTaskService:
         return export
 
     def _resolve_runtime_target(self, request: DetectionEvaluationTaskRequest):
-        uow = SqlAlchemyUnitOfWork(self.session_factory.create_session())
-        try:
-            mv = uow.models.get_model_version(request.model_version_id)
-        finally:
-            uow.close()
-        if mv is None:
-            raise ResourceNotFoundError("找不到指定的 ModelVersion")
-        model_type = getattr(mv, "model_type", "yolov8")
-        resolver_cls = _get_detection_runtime_resolver(model_type)
+        requested_model_type = request.model_type.strip().lower()
+        resolver_cls = _get_detection_runtime_resolver(requested_model_type)
         return resolver_cls(
             session_factory=self.session_factory,
             dataset_storage=self._require_dataset_storage(),
-        ).resolve_target(request.model_version_id)
+        ).resolve_target(
+            RuntimeTargetResolveRequest(
+                project_id=request.project_id,
+                model_version_id=request.model_version_id,
+            )
+        )
 
     def _require_evaluation_task(self, task_id: str) -> TaskRecord:
         task_record = self.task_service.get_task(task_id).task
@@ -349,6 +428,7 @@ class SqlAlchemyDetectionEvaluationTaskService:
         spec = dict(task_record.task_spec)
         return DetectionEvaluationTaskRequest(
             project_id=str(spec.get("project_id", "")),
+            model_type=str(spec.get("model_type", "")),
             model_version_id=str(spec.get("model_version_id", "")),
             dataset_export_id=spec.get("dataset_export_id"),
             dataset_export_manifest_key=spec.get("dataset_export_manifest_key"),
@@ -366,7 +446,9 @@ class SqlAlchemyDetectionEvaluationTaskService:
         return DetectionEvaluationTaskResult(
             task_id=task_record.task_id, status=task_record.state,
             dataset_export_id=str(result.get("dataset_export_id", "")),
+            dataset_export_manifest_key=str(result.get("dataset_export_manifest_key", "")),
             dataset_version_id=str(result.get("dataset_version_id", "")),
+            format_id=str(result.get("format_id", "")),
             model_version_id=str(result.get("model_version_id", "")),
             output_object_prefix=str(result.get("output_object_prefix", "")),
             report_object_key=report_key,
@@ -386,3 +468,39 @@ class SqlAlchemyDetectionEvaluationTaskService:
         with zipfile.ZipFile(package_path, mode="w", compression=zipfile.ZIP_DEFLATED) as archive:
             archive.write(ds.resolve(report_key), arcname="report.json")
             archive.write(ds.resolve(detections_key), arcname="detections.json")
+
+
+def _read_optional_payload_str(payload: dict[str, object], key: str) -> str | None:
+    """从字典中读取可选非空字符串。"""
+
+    value = payload.get(key)
+    if not isinstance(value, str):
+        return None
+    normalized_value = value.strip()
+    return normalized_value or None
+
+
+def _normalize_optional_object_key(value: str | None) -> str | None:
+    """把可选 object key 归一化为非空字符串。"""
+
+    if not isinstance(value, str):
+        return None
+    normalized_value = value.strip()
+    return normalized_value or None
+
+
+def _require_result_object_key(
+    payload: dict[str, object],
+    *,
+    key: str,
+    task_id: str,
+) -> str:
+    """从结果负载中读取必需 object key。"""
+
+    object_key = _read_optional_payload_str(payload, key)
+    if object_key is None:
+        raise InvalidRequestError(
+            "当前评估任务缺少结果文件引用",
+            details={"task_id": task_id, "key": key},
+        )
+    return object_key

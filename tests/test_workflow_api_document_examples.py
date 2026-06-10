@@ -416,7 +416,7 @@ def test_yolox_training_postman_collection_contains_project_file_lookup_chain() 
     list_project_files_request = _find_postman_request(collection_payload["item"], "List Project Files")
     get_project_file_metadata_request = _find_postman_request(collection_payload["item"], "Get Project File Metadata")
 
-    assert collection_payload["info"]["name"] == "amvision yolox training validation conversion evaluation inference api"
+    assert collection_payload["info"]["name"] == "amvision detection task api (yolox examples)"
     assert "List Project Files" in request_names
     assert "Get Project File Metadata" in request_names
     assert "Predict YOLOX Validation Session By File ID" in request_names

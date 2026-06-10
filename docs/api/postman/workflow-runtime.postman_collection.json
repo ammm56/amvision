@@ -220,7 +220,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/v1/models/yolox/deployment-instances?project_id={{projectId}}&limit=20",
+              "raw": "{{baseUrl}}/api/v1/models/detection/deployment-instances?project_id={{projectId}}&limit=20",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -228,7 +228,7 @@
                 "api",
                 "v1",
                 "models",
-                "yolox",
+                "detection",
                 "deployment-instances"
               ],
               "query": [

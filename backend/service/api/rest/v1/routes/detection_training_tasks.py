@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, Query, Response, status
 from pydantic import BaseModel, ConfigDict, Field
@@ -22,16 +22,17 @@ from backend.service.api.rest.v1.routes.detection_output_files import (
     _parse_detection_training_output_file_name,
     _read_detection_training_output_file,
 )
-from backend.service.api.rest.v1.routes.yolox_training_tasks import (
-    YoloXTrainingTaskActionName,
-    YoloXTrainingTaskControlStatusResponse,
-    YoloXTrainingTaskEventResponse,
-    YoloXTrainingTaskSubmissionResponse,
-    YoloXTrainingTaskSummaryResponse,
-    _build_yolox_training_task_available_actions,
-    _build_yolox_training_task_control_status,
-    _build_yolox_training_task_event_response,
-    _build_yolox_training_task_summary_response,
+from backend.service.api.rest.v1.routes.detection_training_route_models import (
+    DetectionTrainingTaskActionName,
+    DetectionTrainingTaskControlStatusResponse,
+    DetectionTrainingTaskDetailResponse,
+    DetectionTrainingTaskEventResponse,
+    DetectionTrainingTaskSummaryResponse,
+    build_detection_training_task_available_actions,
+    build_detection_training_task_control_status,
+    build_detection_training_task_detail_response,
+    build_detection_training_task_event_response,
+    build_detection_training_task_summary_response,
 )
 from backend.service.application.errors import InvalidRequestError, ResourceNotFoundError
 from backend.service.application.models.yolo11_training_service import (
@@ -98,11 +99,14 @@ class DetectionTrainingTaskCreateRequestBody(BaseModel):
     model_scale: str = Field(description="训练目标的模型 scale")
     output_model_name: str = Field(description="训练后登记的模型名")
     warm_start_model_version_id: str | None = Field(default=None, description="warm start 使用的 ModelVersion id")
-    evaluation_interval: int | None = Field(default=None, ge=1, description="每隔多少轮执行一次真实验证评估")
+    evaluation_interval: int | None = Field(default=5, ge=1, description="每隔多少轮执行一次真实验证评估；未指定时默认 5")
     max_epochs: int | None = Field(default=None, description="最大训练轮数")
     batch_size: int | None = Field(default=None, description="batch size")
     gpu_count: int | None = Field(default=None, ge=1, description="请求参与训练的 GPU 数量")
-    precision: str | None = Field(default=None, description="请求使用的训练 precision")
+    precision: Literal["fp16", "fp32"] | None = Field(
+        default=None,
+        description="请求使用的训练 precision；未指定时由具体 detection training backend 解析默认值",
+    )
     input_size: tuple[int, int] | None = Field(default=None, description="训练输入尺寸")
     extra_options: "DetectionTrainingExtraOptionsRequest" = Field(
         default_factory=lambda: DetectionTrainingExtraOptionsRequest(),
@@ -195,29 +199,6 @@ class DetectionTrainingTaskSubmissionResponse(BaseModel):
     dataset_export_manifest_key: str = Field(description="解析后的导出 manifest object key")
     dataset_version_id: str = Field(description="导出来源的 DatasetVersion id")
     format_id: str = Field(description="训练使用的数据集导出格式 id")
-
-
-class DetectionTrainingTaskControlStatusResponse(YoloXTrainingTaskControlStatusResponse):
-    """描述 detection 训练任务正式控制状态。"""
-
-
-class DetectionTrainingTaskEventResponse(YoloXTrainingTaskEventResponse):
-    """描述 detection 训练任务事件响应。"""
-
-
-class DetectionTrainingTaskSummaryResponse(YoloXTrainingTaskSummaryResponse):
-    """描述 detection 训练任务摘要响应。"""
-
-    model_type: str = Field(description="模型分类")
-
-
-class DetectionTrainingTaskDetailResponse(DetectionTrainingTaskSummaryResponse):
-    """描述 detection 训练任务详情响应。"""
-
-    available_actions: list[YoloXTrainingTaskActionName] = Field(description="当前建议展示的训练控制动作列表")
-    control_status: DetectionTrainingTaskControlStatusResponse = Field(description="正式训练控制状态")
-    task_spec: dict[str, object] = Field(default_factory=dict, description="任务规格")
-    events: list[DetectionTrainingTaskEventResponse] = Field(default_factory=list, description="任务事件列表")
 
 
 @detection_training_tasks_router.post(
@@ -403,7 +384,7 @@ def request_detection_training_pause(
 
 @detection_training_tasks_router.post(
     "/detection/training-tasks/{task_id}/resume",
-    response_model=YoloXTrainingTaskSubmissionResponse,
+    response_model=DetectionTrainingTaskSubmissionResponse,
 )
 def resume_detection_training_task(
     task_id: str,
@@ -411,7 +392,7 @@ def resume_detection_training_task(
     session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
     dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
     queue_backend: Annotated[LocalFileQueueBackend, Depends(get_queue_backend)],
-) -> YoloXTrainingTaskSubmissionResponse:
+) -> DetectionTrainingTaskSubmissionResponse:
     """把一个 paused 的 detection 训练任务重新入队执行。"""
 
     task_detail = _require_visible_detection_training_task(
@@ -427,11 +408,12 @@ def resume_detection_training_task(
         queue_backend=queue_backend,
     )
     submission = service.resume_training_task(task_id, resumed_by=principal.principal_id)
-    return YoloXTrainingTaskSubmissionResponse(
+    return DetectionTrainingTaskSubmissionResponse(
         task_id=submission.task_id,
         status=submission.status,
         queue_name=submission.queue_name,
         queue_task_id=submission.queue_task_id,
+        model_type=_resolve_detection_training_model_type_from_task(task_detail.task),
         dataset_export_id=submission.dataset_export_id,
         dataset_export_manifest_key=submission.dataset_export_manifest_key,
         dataset_version_id=submission.dataset_version_id,
@@ -494,6 +476,44 @@ def delete_detection_training_task(
     )
     service.delete_training_task(task_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@detection_training_tasks_router.post(
+    "/detection/training-tasks/{task_id}/register-model-version",
+    response_model=DetectionTrainingTaskDetailResponse,
+)
+def register_detection_training_latest_checkpoint_model_version(
+    task_id: str,
+    principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("tasks:write", "models:write"))],
+    session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
+    dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
+) -> DetectionTrainingTaskDetailResponse:
+    """把当前训练任务 latest checkpoint 手动登记为一个新的 ModelVersion。"""
+
+    task_detail = _require_visible_detection_training_task(
+        principal=principal,
+        task_id=task_id,
+        session_factory=session_factory,
+        include_events=False,
+    )
+    model_type = _resolve_detection_training_model_type_from_task(task_detail.task)
+    if model_type != "yolox":
+        raise InvalidRequestError(
+            "当前模型分类尚未接通 latest checkpoint 手动登记",
+            details={"task_id": task_id, "model_type": model_type},
+        )
+    service = SqlAlchemyYoloXTrainingTaskService(
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+    )
+    updated_task_detail = service.register_latest_checkpoint_model_version(
+        task_id,
+        registered_by=principal.principal_id,
+    )
+    return _build_detection_training_task_detail_response(
+        updated_task_detail.task,
+        tuple(updated_task_detail.events),
+    )
 
 
 @detection_training_tasks_router.get(
@@ -653,12 +673,9 @@ def _build_detection_training_task_summary_response(
 ) -> DetectionTrainingTaskSummaryResponse:
     """把 detection 训练 TaskRecord 转成摘要响应。"""
 
-    summary = _build_yolox_training_task_summary_response(task)
-    return DetectionTrainingTaskSummaryResponse.model_validate(
-        {
-            **summary.model_dump(),
-            "model_type": _resolve_detection_training_model_type_from_task(task),
-        }
+    return build_detection_training_task_summary_response(
+        task,
+        model_type=_resolve_detection_training_model_type_from_task(task),
     )
 
 
@@ -667,17 +684,15 @@ def _build_detection_training_task_control_status(
 ) -> DetectionTrainingTaskControlStatusResponse:
     """把训练控制元数据归一成 detection 正式控制状态响应。"""
 
-    return DetectionTrainingTaskControlStatusResponse.model_validate(
-        _build_yolox_training_task_control_status(task).model_dump()
-    )
+    return build_detection_training_task_control_status(task)
 
 
 def _build_detection_training_task_available_actions(
     task: object,
-) -> list[YoloXTrainingTaskActionName]:
+) -> list[DetectionTrainingTaskActionName]:
     """根据当前任务状态构建 detection 建议展示的控制动作列表。"""
 
-    return _build_yolox_training_task_available_actions(task)
+    return build_detection_training_task_available_actions(task)
 
 
 def _build_detection_training_task_event_response(
@@ -685,8 +700,7 @@ def _build_detection_training_task_event_response(
 ) -> DetectionTrainingTaskEventResponse:
     """把训练任务事件转换为 detection 事件响应。"""
 
-    response = _build_yolox_training_task_event_response(event)
-    return DetectionTrainingTaskEventResponse.model_validate(response.model_dump())
+    return build_detection_training_task_event_response(event)
 
 
 def _build_detection_training_task_detail_response(
@@ -695,13 +709,10 @@ def _build_detection_training_task_detail_response(
 ) -> DetectionTrainingTaskDetailResponse:
     """把 detection 训练任务和事件转换为详情响应。"""
 
-    summary = _build_detection_training_task_summary_response(task)
-    return DetectionTrainingTaskDetailResponse(
-        **summary.model_dump(),
-        available_actions=_build_detection_training_task_available_actions(task),
-        control_status=_build_detection_training_task_control_status(task),
-        task_spec=dict(task.task_spec),
-        events=[_build_detection_training_task_event_response(event) for event in events],
+    return build_detection_training_task_detail_response(
+        task,
+        events,
+        model_type=_resolve_detection_training_model_type_from_task(task),
     )
 
 
