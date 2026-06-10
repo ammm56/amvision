@@ -40,8 +40,8 @@
 
 ## 当前实现状态入口
 
-- 当前主干已经打通以 YOLOX 为中心的训练、人工验证、数据集级评估、转换、DeploymentInstance 发布和同步 / 异步推理接口闭环。
-- 当前 backend-service 除了提供 REST / WebSocket 控制面，也会按配置托管 BackgroundTaskManager 和 deployment process supervisor。
+- 当前主干已经从 YOLOX 首条闭环扩展到多模型平台主线：YOLOX detection 仍是第一套完整参考实现，YOLOv8/YOLO11/YOLO26 已覆盖 detection/classification/segmentation/pose/obb 五类任务，RF-DETR 已覆盖 detection 与 segmentation 主链，YOLOE / SAM3 也已作为 project-native custom node 接入 workflow。
+- 当前 backend-service 主要承担 REST / WebSocket 控制面、workflow runtime / trigger-source 管理、LocalBufferBroker、PublishedInferenceGateway，以及 sync / async deployment process supervisor；默认不再托管队列消费者。
 - 当前已经落地的代码模块、运行时矩阵和下一步收敛重点见 [docs/architecture/current-implementation-status.md](current-implementation-status.md)。
 
 ## 最小框架视图

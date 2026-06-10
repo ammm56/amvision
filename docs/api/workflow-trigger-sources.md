@@ -53,7 +53,7 @@
 - 同一张图可以同时被 HTTP invoke、async run 和后续 trigger source 使用；区别只在输入从哪里来、以 sync 还是 async 提交，以及回执如何返回。
 - 如果同一张图既要接 HTTP base64，又要接 ZeroMQ image-ref，应在图里显式发布多个 binding，或增加转换节点把两条入口汇到共同下游节点，而不是把转换逻辑塞进 TriggerSource。
 
-常见图链路可以保持为：`request_image_base64` 和 `request_image_ref` 两条入口先在图里汇合，再进入 YOLOX detection 节点、OpenCV 后处理节点和 HTTP Response 输出节点。HTTP Response 输出节点的结果会出现在 `outputs["http_response"] = {"status_code": 200, "body": ...}`，由同步调用或触发源回执层决定是否直接返回给调用方。
+常见图链路可以保持为：`request_image_base64` 和 `request_image_ref` 两条入口先在图里汇合，再进入 detection deployment 节点、OpenCV 后处理节点和 HTTP Response 输出节点。HTTP Response 输出节点的结果会出现在 `outputs["http_response"] = {"status_code": 200, "body": ...}`，由同步调用或触发源回执层决定是否直接返回给调用方。
 
 ## 触发调用层总体框架
 

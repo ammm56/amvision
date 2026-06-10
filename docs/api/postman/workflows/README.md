@@ -31,7 +31,7 @@
 - Create Workflow Run / Get Workflow Run：覆盖正式生产入口的异步 run 创建和结果回查。
 - Stop App Runtime：结束本次 runtime 调试。
 
-`06-*`、`07-*`、`08-*`、`09-*` collection 在上述完整本地调试链路之外，再额外覆盖 TriggerSource 控制面和协议入口验证：
+`06-*`、`07-*`、`08-*`、`09-*`、`11-*` collection 在上述完整本地调试链路之外，再额外覆盖 TriggerSource 控制面和协议入口验证：
 
 - Invoke App Runtime (HTTP Base64)：验证同一个 runtime 的 HTTP base64 输入通道。
 - Invoke App Runtime (Synthetic Event)：验证同一个 runtime 的 synthetic trigger event 输入通道。

@@ -6,6 +6,8 @@
 
 当前这一版已经公开训练后全链路，并把训练输出文件目录、训练摘要、验证结果、评估结果、转换结果和部署推理接口作为正式查询面。
 
+当前仓库同时已经提供统一模型任务族入口，例如 `POST /api/v1/models/detection/training-tasks`。本页只继续聚焦 specialized YOLOX 路由；统一 detection / classification / segmentation / pose / obb 主入口，以 [docs/api/current-api.md](current-api.md) 为准。
+
 ## 适用范围
 
 - YOLOX training 任务创建接口
@@ -1035,7 +1037,7 @@ reference 风格增强示例：按需显式开启 Mosaic、MixUp 和动态尺寸
 - 当前同步 `/infer` 与异步 `inference-tasks` 使用同一套结果载荷字段
 - 当前同步 `/infer` 与异步 `inference-tasks` 已共用同一套输入归一化、`input_transport_mode` 和 `YoloXPredictionRequest` 构造逻辑；异步链额外通过 `yolox-ai-gw-{service_id}-{deployment_id}` 这类 deployment 专属队列把推理请求转回 backend-service 持有的 async deployment supervisor
 - 当前正式 HTTP inference 公开入口支持本地文件、Base64 和 multipart 上传；image-ref / local buffer 仍主要用于 workflow / published inference 这类进程间图片引用路径，不作为当前 REST inference task 的公开输入字段
-- 当前 workflow preview run、WorkflowAppRuntime 和已发布应用里的 YOLOX detection 节点，继续通过 `PublishedInferenceGateway` 命中 backend-service 持有的 sync deployment worker；这条路径不走公开 `inference-tasks` 接口，也不复用 async deployment 通道
+- 当前 workflow preview run、WorkflowAppRuntime 和已发布应用里的 detection deployment 节点，继续通过 `PublishedInferenceGateway` 命中 backend-service 持有的 sync deployment worker；这条路径不走公开 `inference-tasks` 接口，也不复用 async deployment 通道
 - 当前 inference 响应已经拆出 `decode_ms`、`preprocess_ms`、`infer_ms`、`postprocess_ms`、`serialize_ms`；其中 `latency_ms` 表示前四段总耗时，不包含 `serialize_ms`
 - 当前 `preview_image_base64` 仅在 `return_preview_image_base64=true` 时生成
 - 当前 `preview_image_object_key` 仅在 `save_result_image=true` 时生成

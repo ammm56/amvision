@@ -1628,7 +1628,7 @@ def test_trigger_source_postman_collections_include_runtime_prepare_steps(
 
 
 def test_local_buffer_broker_architecture_document_is_indexed() -> None:
-    """验证 LocalBufferBroker 架构规划已接入文档入口和通信边界说明。"""
+    """验证 LocalBufferBroker 架构文档已接入文档入口和通信边界说明。"""
 
     document_text = (ARCHITECTURE_DIR / "local-buffer-broker.md").read_text(encoding="utf-8")
     architecture_readme_text = (ARCHITECTURE_DIR / "README.md").read_text(encoding="utf-8")
@@ -1641,7 +1641,7 @@ def test_local_buffer_broker_architecture_document_is_indexed() -> None:
         encoding="utf-8"
     )
 
-    assert "# LocalBufferBroker 规划" in document_text
+    assert "# LocalBufferBroker 设计与实现状态" in document_text
     assert "Broker + mmap 文件池" in document_text
     assert "本机独立 companion process" in document_text
     assert "写入采用两阶段状态" in document_text

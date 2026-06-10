@@ -2,21 +2,22 @@
 
 ## 文档目的
 
-本文档用于同步当前主干已经落地的整体框架、主要代码落点、YOLOX 端到端能力范围、`YOLOE / SAM3` custom node 现状，以及下一步收敛重点。
+本文档用于同步当前主干已经落地的整体框架、主要代码落点、多模型平台能力、工业节点体系、`YOLOE / SAM3` custom node 现状，以及下一步收敛重点。
 
 本文档补充 [system-overview.md](system-overview.md) 的长期架构视角，重点回答“当前代码已经做到哪里”。
 
 ## 适用范围
 
-- backend-service、BackgroundTaskManager、deployment process supervisor 的当前装配方式
-- YOLOX 训练、人工验证、评估、转换、部署和推理的已落地链路
+- backend-service、workflow runtime、TriggerSourceSupervisor、deployment process supervisor 的当前装配方式
+- YOLOX、YOLOv8/YOLO11/YOLO26、RF-DETR、YOLOE / SAM3 与工业节点体系的已落地链路
 - `YOLOE / SAM3` project-native custom node 的当前能力边界
 - 当前公开 REST / WebSocket 资源面与主要运行时矩阵
 - 下一步优先补强事项
 
 ## 当前结论
 
-- 以 YOLOX 为中心的训练 -> 人工验证 -> 数据集级评估 -> 转换 -> DeploymentInstance 发布 -> 同步 / 异步推理接口闭环已经打通。
+- 以 YOLOX detection 为第一套参考实现的训练 -> 人工验证 -> 数据集级评估 -> 转换 -> DeploymentInstance 发布 -> 同步 / 异步推理接口闭环已经打通；YOLOv8/YOLO11/YOLO26 与 RF-DETR 也已经并入统一模型平台主链。
+- 当前模型平台已经不仅覆盖 detection：YOLOv8/YOLO11/YOLO26 已覆盖 detection/classification/segmentation/pose/obb 五类任务，RF-DETR 已覆盖 detection 与 segmentation，平台基础模型目录 seeder 也已覆盖 `yolox / yolov8 / yolo11 / yolo26 / rfdetr`。
 - backend-service 当前承担 REST / WebSocket 控制面和 deployment process supervisor，全部队列消费者已经收敛到独立 worker profile。
 - 当前公开 REST v1 已覆盖 auth、本地用户与权限管理、datasets、dataset-exports、models、detection training tasks、classification/segmentation/pose/obb training tasks、detection/classification/segmentation/pose/obb validation sessions、deployment-instances、inference-tasks，以及 yolox training tasks、validation-sessions、conversion-tasks、evaluation-tasks、projects 目录与对象读取、workflow runtime 资源和 tasks。
 - workflow 公开资源面已经拆成 preview-runs、execution-policies、app-runtimes、runs 和 trigger-sources；当前开始把状态集合、snapshot 路径和 preview cleanup 规则收敛到共享 contracts 语义，避免 route、service、maintenance 和文档继续各写一份。
@@ -123,8 +124,8 @@
 
 - 队列消费者分别落在 `backend/workers/datasets/`、`backend/workers/training/`、`backend/workers/conversion/`、`backend/workers/evaluation/` 和 `backend/workers/inference/`。
 - 当前独立 worker 已经支持通过 `config/backend-worker.json` 的 `task_manager.enabled_consumer_kinds` 统一装配六类消费者，也支持通过 `runtimes/manifests/worker-profiles/*.json` 以单一职责 profile 启动独立 worker。
-- deployment 运行时位于 `backend/service/application/runtime/`，当前由 `yolox_deployment_process_supervisor.py` 管理父进程监督、由 `yolox_deployment_process_worker.py` 管理子进程内模型会话、warmup、keep_warm 和健康状态。
-- runtime 适配与统一预测入口位于 `yolox_predictor.py`、`model_runtime.py`、`yolox_inference_runtime_pool.py` 和 `yolox_runtime_target.py`，用于把 pytorch、onnxruntime、openvino、tensorrt 收敛为统一推理契约。
+- deployment 运行时位于 `backend/service/application/runtime/`，虽然进程监督与子进程实现文件名仍保留 `yolox_deployment_process_supervisor.py` 与 `yolox_deployment_process_worker.py`，但当前职责已经是平台级 deployment process supervisor / worker，而不是只服务 YOLOX。
+- runtime 适配与统一预测入口当前已按任务类型拆开：`detection_model_runtime.py`、`classification_model_runtime.py`、`segmentation_model_runtime.py`、`pose_model_runtime.py` 和 `obb_model_runtime.py` 负责统一 runtime loader 注册；`yolox / yolov8 / yolo11 / yolo26 / rfdetr` 各自的 `*_predictor.py` 与 `*_runtime_target.py` 负责模型家族差异；`yolox_inference_runtime_pool.py` 继续承担 deployment 子进程内会话池与健康状态汇总。
 
 ### 关键对象与执行边界
 
@@ -164,6 +165,7 @@
 - `YOLOE` 和 `SAM3` 当前都不走 `DeploymentInstance` 主链，而是在 `WorkflowAppRuntime` 进程内按需首次加载并缓存；当前缓存 key 已稳定覆盖 checkpoint、device 和 precision。
 - `YOLOE` 文本提示默认复用本地 `mobileclip_blt.ts + bpe_simple_vocab_16e6.txt.gz`；`SAM3 semantic` 复用项目内 tokenizer 代码与 checkpoint 自带语言骨干，不依赖在线下载或 Hugging Face snapshot。
 - 当前 `YOLOE / SAM3` 的 smoke 已覆盖本地 project-native 推理链、输出 contract、缓存复用，以及 `WorkflowAppRuntime` 的 `disable -> enable -> invoke` 最小闭环；当前已经进入默认启用，但仍未进入长期发布服务或多机部署形态收口。
+- 文档、示例和 Postman 当前也已和代码主线同步校验：`tests/test_workflow_example_documents.py` 负责 checked-in workflow 源 JSON 合同，`tests/test_workflow_api_document_examples.py` 负责 API 请求体与 Postman 目录顺序合同；工业规则、OpenCV、Modbus、YOLOE 和 SAM3 的节点行为则分别由对应 `tests/test_*` 定向回归覆盖。
 
 ## 当前实现细节中需要明确的事实
 
@@ -190,10 +192,10 @@
 - 为 pytorch、onnxruntime、openvino、tensorrt 的已支持组合补齐最小 smoke test、精度回归和时延基线。
 - 把 conversion report、evaluation report 与 deployment benchmark 的字段进一步收敛成可比较、可回滚的统一结构。
 
-### 3. 从 YOLOX 闭环走向平台能力
+### 3. 继续压缩遗留 YOLOX 命名与平台外壳
 
-- 以现有 YOLOX 链路为样板，继续抽象 `ModelRuntime`、`TrainingBackend`、`ConversionBackend` 和节点扩展边界，让 YOLOX 成为平台里的第一个完整实现，而不是唯一实现。
-- 把更多 runtime 相关差异从具体路由和 YOLOX 细节里继续抽离到稳定接口。
+- 当前平台已经不是“YOLOX 之外都未接入”的阶段，后续重点应转向继续压缩遗留 `yolox_*` 文件名、helper 名和 specialized 路由带来的理解噪声。
+- 把更多 runtime、deployment 与 workflow service node 差异继续抽离到稳定接口，让现有多模型主链在命名、目录和文档上也与真实实现一致。
 
 ### 4. 继续硬化工程化交付面
 

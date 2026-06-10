@@ -13,7 +13,7 @@
 - 真实文件路径调试继续使用 `image-ref.v1` 的 `object_key` storage 引用。
 - `BufferRef` 和 `FrameRef` 是本机短期引用，依赖当前 LocalBufferBroker 的 mmap 文件、offset、broker_epoch 和 generation，不适合作为 checked-in 示例中的固定请求体。
 
-运行时链路已经按最新实现接入 LocalBufferBroker。`image-base64.v1` 进入 workflow 后会先变成 execution memory image-ref；YOLOX detection 节点在存在 broker writer 时会写入 LocalBufferBroker 并用 BufferRef 通过 PublishedInferenceGateway 调用已发布 deployment worker。OpenCV 和 Barcode/QR 自定义节点通过公共 `load_image_bytes` 读取图片，因此同一节点实现可以读取 memory、storage、buffer 和 frame 四类 image-ref。
+运行时链路已经按最新实现接入 LocalBufferBroker。`image-base64.v1` 进入 workflow 后会先变成 execution memory image-ref；图里的 detection deployment 节点在存在 broker writer 时会写入 LocalBufferBroker，并用 BufferRef 通过 PublishedInferenceGateway 调用已发布 deployment worker。OpenCV 和 Barcode/QR 自定义节点通过公共 `load_image_bytes` 读取图片，因此同一节点实现可以读取 memory、storage、buffer 和 frame 四类 image-ref。
 
 TriggerSource 只负责把协议原生输入映射到图的公开 input binding，不负责替后续节点做跨 payload type 转换。当前 `*_zeromq` 示例已经在图里显式增加多个 input binding，并加入 `image-ref -> image-base64` 转换节点后再接入后续节点。PLC、IO 或寄存器值触发只有数值输入时，也应由图内节点决定是否去读本地图片、抓取相机帧或构造后续图片输入。
 
@@ -101,7 +101,7 @@ ZeroMQ TriggerSource 示例不把机器相关的 `path`、`offset` 和 `broker_e
 适用场景：
 
 - 首次确认当前机器是否能看到 USB / UVC 相机
-- 需要一条 checked-in 的“枚举 -> 单帧直采 -> 预览”最短链路
+- 当前已提供 checked-in 的“枚举 -> 单帧直采 -> 预览”最短链路
 - 现场先排查 backend、分辨率和抓图是否正常，还不准备进入会话调参
 
 注意事项：
@@ -144,7 +144,7 @@ ZeroMQ TriggerSource 示例不把机器相关的 `path`、`offset` 和 `broker_e
 
 - 现场需要先固定分辨率、帧率，再验证会话型单帧重复采图
 - 想看“请求参数”和“当前观测参数”是否一致
-- 需要一条 checked-in 的“open -> set/get -> read -> close”正式模板
+- 当前已提供 checked-in 的“open -> set/get -> read -> close”正式模板
 
 注意事项：
 
@@ -185,7 +185,7 @@ ZeroMQ TriggerSource 示例不把机器相关的 `path`、`offset` 和 `broker_e
 
 - 需要先验证后台采流线程、缓冲和 `frame-window.v1` 是否正常
 - 想把 USB / UVC 相机直接接到现有多帧预览、SAM3 视频分割或后续视频链
-- 需要一条 checked-in 的“open -> start-stream -> read-window -> preview -> close”正式模板
+- 当前已提供 checked-in 的“open -> start-stream -> read-window -> preview -> close”正式模板
 
 注意事项：
 
@@ -434,7 +434,7 @@ ZeroMQ TriggerSource 示例不把机器相关的 `path`、`offset` 和 `broker_e
 
 - PLC 位或状态字命中后，直接触发一条正式 workflow，再把结果回传给 MES、上位机或现场服务
 - 希望把 TriggerSource 的轮询职责和 workflow 图内的业务处理职责明确拆开
-- 需要一条 checked-in 的 `plc-register -> workflow app runtime -> result-record -> http-post` 正式样例
+- 当前已提供 checked-in 的 `plc-register -> workflow app runtime -> result-record -> http-post` 正式样例
 
 注意事项：
 
@@ -602,7 +602,7 @@ ZeroMQ TriggerSource 示例不把机器相关的 `path`、`offset` 和 `broker_e
 
 - 胶线、涂层、焊缝等分割结果需要进一步做面积占比和连续性判定
 - 上游拿到的是 `mask / polygon / bbox` 分割结果，还没有先规整成 `regions.v1`
-- 需要一条 checked-in 的“分割输出 -> 工业规则链”正式样例
+- 当前已提供 checked-in 的“分割输出 -> 工业规则链”正式样例
 
 注意事项：
 
@@ -688,7 +688,7 @@ ZeroMQ TriggerSource 示例不把机器相关的 `path`、`offset` 和 `broker_e
 
 - SAM3、YOLOE 分割链或外部分割模块先给出 `segments.v1`
 - 需要先桥接成标准 `regions.v1`，再统一复核和挂接工业规则链
-- 需要一条 checked-in 的“segments -> overlay -> result-record” 现场模板
+- 当前已提供 checked-in 的“segments -> overlay -> result-record” 现场模板
 
 注意事项：
 
@@ -1082,7 +1082,7 @@ ZeroMQ TriggerSource 示例不把机器相关的 `path`、`offset` 和 `broker_e
 
 - 现场不只是要判 OK / NG，还要把同一份单帧结果同时交给 PLC、归档目录、MES 接口和本地追溯库
 - 希望保留“真正准备发送了什么 / 准备写入了什么”这层显式调试输出，而不是只看最终成败
-- 需要一条 checked-in 的“规则判定 -> 结果交付全链”正式模板，后续再按现场系统做裁剪
+- 当前已提供 checked-in 的“规则判定 -> 结果交付全链”正式模板，现场可再按系统侧约束裁剪
 
 注意事项：
 
@@ -1182,7 +1182,7 @@ ZeroMQ TriggerSource 示例不把机器相关的 `path`、`offset` 和 `broker_e
 适用场景：
 
 - 已有 published detection deployment，需要直接接工业落位/偏移/存在性规则
-- 需要一条 checked-in 的“模型输出 -> 规则判定”正式样例
+- 当前已提供 checked-in 的“模型输出 -> 规则判定”正式样例
 - 规则更偏 bbox 语义，不适合直接上连续性/空洞/断裂这类分割型指标
 
 注意事项：
@@ -1649,7 +1649,7 @@ ZeroMQ TriggerSource 示例不把机器相关的 `path`、`offset` 和 `broker_e
 
 - 双圆孔、轴套、垫片、圆环的孔径和同心度检查
 - 需要把传统圆度判断直接纳入统一工业规则链
-- 需要一条 checked-in 的“图像输入 -> 双圆量测 -> OK/NG”正式模板
+- 当前已提供 checked-in 的“图像输入 -> 双圆量测 -> OK/NG”正式模板
 
 注意事项：
 
@@ -1813,7 +1813,7 @@ ZeroMQ TriggerSource 示例不把机器相关的 `path`、`offset` 和 `broker_e
 
 - 上游给的是逐图 `segments.v1(mask / polygon / bbox)`，现场又希望统一走现有连续性规则链
 - 目录批次里的每张图都要做面积占比、断裂和连续性判断
-- 需要一条 checked-in 的“目录批次 -> 分割桥接 -> 工业规则链”正式样例
+- 当前已提供 checked-in 的“目录批次 -> 分割桥接 -> 工业规则链”正式样例
 
 注意事项：
 
@@ -1937,7 +1937,7 @@ ZeroMQ TriggerSource 示例不把机器相关的 `path`、`offset` 和 `broker_e
 
 - 本地目录持续来图，但现场先按小批次推进，不急着做目录轮询守护进程
 - 已有 published detection deployment，希望把目录批处理直接接到存在性、落位和偏移规则
-- 需要一条 checked-in 的“目录批次 -> 检测 -> 规则判定 -> CSV / JSON 归档”正式样例
+- 当前已提供 checked-in 的“目录批次 -> 检测 -> 规则判定 -> CSV / JSON 归档”正式样例
 
 注意事项：
 
@@ -2003,7 +2003,7 @@ ZeroMQ TriggerSource 示例不把机器相关的 `path`、`offset` 和 `broker_e
 
 - 现场已经准备把“目录新增/变更文件”作为正式触发源，而不是人工或外部调度去调用目录批处理 workflow
 - 已有 published detection deployment，希望目录触发后直接走存在性、落位和偏移判定
-- 需要一条 checked-in 的“directory-watch -> 检测 -> 规则判定 -> batch-record / JSON / HTTP 回传”正式样例
+- 当前已提供 checked-in 的“directory-watch -> 检测 -> 规则判定 -> batch-record / JSON / HTTP 回传”正式样例
 
 注意事项：
 

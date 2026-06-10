@@ -1398,7 +1398,7 @@ PLC 能力也应至少拆成两类：
 - `custom.plc.s7_nodes`
 - `custom.plc.mitsubishi_mc_nodes`
 - `custom.camera.framegrabber_nodes`
-- `custom.opencv.watershed / skeletonize / heatmap-preview`
+- `custom.opencv.watershed / skeletonize / heatmap-preview`（已实现；后续只需继续补更贴现场的 checked-in workflow 与交付样例）
 - `custom.anomaly.model_nodes`
 - `trigger-source` 中的 `modbus-poll-trigger / s7-poll-trigger`
 

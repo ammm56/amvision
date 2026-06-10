@@ -19,7 +19,7 @@
 
 ## 当前结论
 
-当前平台已经具备比较稳定的通用骨架，但模型执行层仍然主要围绕 YOLOX 展开。
+当前平台已经越过“只有 YOLOX”的阶段：YOLOX detection 仍然是第一套最完整的参考实现，但 YOLOv8/YOLO11/YOLO26 多任务链、RF-DETR detection/segmentation、统一 deployment/runtime、平台基础模型目录 seeder，以及 workflow service nodes 已经把模型执行层推进到真实的多模型平台阶段。当前更需要做的是继续收口通用接口、减少遗留 `yolox_*` 命名外壳，而不是再复制一套新实现。
 
 ### 已经比较通用的部分
 
@@ -30,11 +30,10 @@
 
 ### 仍然明显绑定 YOLOX 的部分
 
-- 训练任务服务、转换任务服务、推理任务服务当前仍以 `yolox_*` 为主，但 YOLOv8/11/26 的 5 种任务类型已各自拥有独立的训练服务和转换服务实现。
-- `ModelRuntime` 虽然已经出现通用命名，但当前请求和返回结构仍引用 YOLOX 预测对象。
-- deployment runtime pool、deployment supervisor、runtime target resolver 当前都主要服务 YOLOX，但 deployment supervisor 构建已重构为参数化工厂函数，支持 5 种 task_type。
-- workflow service node runtime 当前主要组装 YOLOX 相关 service。
-- worker consumer 注册表当前也主要按 YOLOX 训练、转换、评估、推理来声明消费者，但已扩展支持 YOLOv8/11/26 多任务类型的训练和转换消费者。
+- 历史命名上仍保留大量 `yolox_*` 模块名、队列名、runtime target 与 specialized route；这些外壳不再只服务 YOLOX，但名称仍会影响理解成本。
+- `ModelRuntime`、deployment supervisor 和 async inference gateway 已经具备通用分发能力，但部分请求/结果对象和目录命名仍带早期 detection/YOLOX 色彩。
+- workflow service node runtime 已经组装统一 detection / classification / segmentation / pose / obb 服务，以及 YOLOE / SAM3、PLC、目录触发、自定义输出等能力；但少数 service node id 与内部 helper 仍沿用早期 YOLOX 命名。
+- worker consumer 注册表仍主要沿用 `yolox-training / yolox-conversion / yolox-evaluation / yolox-inference` 这组队列 kind 命名；实际执行面已经承载更多模型类型。
 
 因此，下一步不应按“再复制一套 YOLOX 目录给下一个模型”的方式继续扩张，而应先把当前主干拆成稳定的通用层、任务分类层和模型分类适配层。
 

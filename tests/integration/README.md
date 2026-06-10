@@ -10,6 +10,7 @@
 - 常规开发阶段应优先补 `tests/` 下的快速逻辑测试，不应默认新增真实链路测试。
 - 只有在明确需要真实回归时，才在 `tests/integration/` 下新增或维护对应测试。
 - `tests/integration/` 也用于长时 soak / benchmark；这类测试只有显式指定文件路径时才执行。
+- `docs/examples/workflows/`、`docs/api/examples/workflows/` 与 Postman/样例 JSON 的合同校验，当前主要放在常规测试集里的 `tests/test_workflow_example_documents.py` 与 `tests/test_workflow_api_document_examples.py`；`tests/integration/` 只负责真实资产、真实 runtime、真实子进程和更重闭环。
 
 # 手动执行
 

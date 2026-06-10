@@ -6,7 +6,7 @@
 
 ## 当前文档
 
-- [docs/api/current-api.md](current-api.md)：当前已经公开的 REST API、WebSocket 入口、鉴权头、本地鉴权输入和任务事件订阅规则
+- [docs/api/current-api.md](current-api.md)：当前已经公开的 REST API、WebSocket 入口、鉴权头、本地鉴权输入、统一模型任务族、workflow runtime 与 TriggerSource 规则的权威总览
 - [docs/api/local-auth.md](local-auth.md)：本地用户、权限管理、session/refresh token、长期调用 user token、provider 目录和 auth.events 接口
 - [docs/api/projects.md](projects.md)：system/bootstrap、Project 初始化、Project 目录项、Project summary 和公开文件读取接口
 - [docs/architecture/websocket-architecture.md](../architecture/websocket-architecture.md)：当前 WebSocket 资源流、统一消息结构、控制事件和重连规则
@@ -22,8 +22,8 @@
 - [docs/api/communication-contracts.md](communication-contracts.md)：REST API、WebSocket、ZeroMQ 的职责拆分与事件规则边界
 - [docs/api/datasets-imports.md](datasets-imports.md)：DatasetImport 导入、详情查询、列表查询、task_id 关联和错误语义
 - [docs/api/datasets-exports.md](datasets-exports.md)：DatasetExport 创建、详情查询、package/download/manifest 和 training 输入边界
-- [docs/api/platform-base-models.md](platform-base-models.md)：平台基础模型列表、详情接口，以及 warm_start_model_version_id 的公开发现方式
-- [docs/api/yolox-training.md](yolox-training.md)：YOLOX training 创建、列表、详情、训练控制、指标与输出文件读取接口，以及 validation-sessions 人工验证、conversion-tasks 模型转换、evaluation-tasks 数据集级评估、deployment-instances 和 inference-tasks 正式推理接口
+- [docs/api/platform-base-models.md](platform-base-models.md)：平台基础模型列表、详情接口，以及 `warm_start_model_version_id` 的公开发现方式；当前目录登记已覆盖 YOLOX、YOLOv8/YOLO11/YOLO26 与 RF-DETR 预训练清单
+- [docs/api/yolox-training.md](yolox-training.md)：YOLOX specialized 路由的训练、验证、转换、评估、部署和推理接口说明；统一模型任务族的主入口仍以 [docs/api/current-api.md](current-api.md) 为准
 - [docs/api/examples/workflows/00-short-dev-examples/yolox_deployment_detection_lifecycle_real_path/save-template.request.json](examples/workflows/00-short-dev-examples/yolox_deployment_detection_lifecycle_real_path/save-template.request.json)：workflow template save 接口的真实路径 JSON 请求体示例
 - [docs/api/examples/workflows/00-short-dev-examples/yolox_deployment_detection_lifecycle_real_path/save-application.request.json](examples/workflows/00-short-dev-examples/yolox_deployment_detection_lifecycle_real_path/save-application.request.json)：FlowApplication save 接口的真实路径 JSON 请求体示例
 - [docs/api/examples/workflows/00-short-dev-examples/yolox_deployment_detection_lifecycle_real_path/preview-execution-policy.create.request.json](examples/workflows/00-short-dev-examples/yolox_deployment_detection_lifecycle_real_path/preview-execution-policy.create.request.json)：preview-default WorkflowExecutionPolicy create 接口的真实路径 JSON 请求体示例
@@ -45,6 +45,10 @@
 - [docs/api/postman/workflows/08-plc-register-modbus-tcp-async-result-record/08-plc-register-modbus-tcp-async-result-record.postman_collection.json](postman/workflows/08-plc-register-modbus-tcp-async-result-record/08-plc-register-modbus-tcp-async-result-record.postman_collection.json)：第八类 `plc-register` Modbus TCP polling + async submit + result-record / http-post 回传联调 collection
 - [docs/api/postman/workflows/09-industrial-local-directory-watch-yolox-position-gate/09-industrial-local-directory-watch-yolox-position-gate.postman_collection.json](postman/workflows/09-industrial-local-directory-watch-yolox-position-gate/09-industrial-local-directory-watch-yolox-position-gate.postman_collection.json)：第九类 `directory-watch` 目录事件监听 + 工业 YOLOX 位置门控联调 collection
 - [docs/api/postman/workflows/09-industrial-local-directory-watch-yolox-position-gate/README.md](postman/workflows/09-industrial-local-directory-watch-yolox-position-gate/README.md)：第九类 `directory-watch` TriggerSource collection 的变量说明、推荐联调顺序和现场排查重点
+- [docs/api/postman/workflows/10-industrial-single-frame-glue-roi-delivery-bundle/10-industrial-single-frame-glue-roi-delivery-bundle.postman_collection.json](postman/workflows/10-industrial-single-frame-glue-roi-delivery-bundle/10-industrial-single-frame-glue-roi-delivery-bundle.postman_collection.json)：第十类工业单帧规则判定 + PLC/JSON/CSV/MES/local-db 结果交付联调 collection
+- [docs/api/postman/workflows/10-industrial-single-frame-glue-roi-delivery-bundle/README.md](postman/workflows/10-industrial-single-frame-glue-roi-delivery-bundle/README.md)：第十类工业单帧结果交付 collection 的变量说明、联调顺序和现场落地说明
+- [docs/api/postman/workflows/11-industrial-local-directory-poll-yolox-position-gate/11-industrial-local-directory-poll-yolox-position-gate.postman_collection.json](postman/workflows/11-industrial-local-directory-poll-yolox-position-gate/11-industrial-local-directory-poll-yolox-position-gate.postman_collection.json)：第十一类 `directory-poll` 固定周期目录轮询 + 工业 YOLOX 位置门控联调 collection
+- [docs/api/postman/workflows/11-industrial-local-directory-poll-yolox-position-gate/README.md](postman/workflows/11-industrial-local-directory-poll-yolox-position-gate/README.md)：第十一类 `directory-poll` TriggerSource collection 的变量说明、推荐联调顺序和现场排查重点
 - [docs/api/postman/datasets-imports.postman_collection.json](postman/datasets-imports.postman_collection.json)：当前公开的 system/bootstrap、projects/bootstrap、Project 目录、DatasetImport、tasks 接口 Postman collection
 - [docs/api/postman/datasets-exports.postman_collection.json](postman/datasets-exports.postman_collection.json)：当前公开的 DatasetExport 格式合同、导出创建、详情、打包和下载接口 Postman collection
 - [docs/api/postman/platform-base-models.postman_collection.json](postman/platform-base-models.postman_collection.json)：当前公开的平台基础模型 list/detail 接口 Postman collection
