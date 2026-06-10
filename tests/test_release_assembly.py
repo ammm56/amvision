@@ -41,6 +41,11 @@ def test_assemble_release_materializes_full_layout(
     assert (release_dir / "stop-amvision-full.sh").is_file()
     assert (release_dir / "app" / "requirements.txt").is_file()
     assert (release_dir / "custom_nodes" / "opencv_basic_nodes" / "manifest.json").is_file()
+    assert (release_dir / "custom_nodes" / "opencv_geometry_nodes" / "manifest.json").is_file()
+    assert (release_dir / "custom_nodes" / "opencv_measurement_nodes" / "manifest.json").is_file()
+    assert (release_dir / "custom_nodes" / "opencv_shape_nodes" / "manifest.json").is_file()
+    assert (release_dir / "custom_nodes" / "opencv_defect_nodes" / "manifest.json").is_file()
+    assert (release_dir / "custom_nodes" / "_opencv_shared" / "backend" / "support.py").is_file()
     assert (release_dir / "custom_nodes" / "_scaffold" / "README.md").is_file()
     assert not (release_dir / "custom_nodes" / "__pycache__").exists()
     assert (release_dir / "tools" / "ffmpeg" / "windows-x64" / "ffmpeg.exe").is_file()
@@ -179,6 +184,11 @@ def test_assemble_release_preserves_existing_python_dir_when_overwriting(
     assert not stale_file.exists()
     assert (release_dir / "app" / "backend").is_dir()
     assert (release_dir / "custom_nodes" / "opencv_basic_nodes" / "manifest.json").is_file()
+    assert (release_dir / "custom_nodes" / "opencv_geometry_nodes" / "manifest.json").is_file()
+    assert (release_dir / "custom_nodes" / "opencv_measurement_nodes" / "manifest.json").is_file()
+    assert (release_dir / "custom_nodes" / "opencv_shape_nodes" / "manifest.json").is_file()
+    assert (release_dir / "custom_nodes" / "opencv_defect_nodes" / "manifest.json").is_file()
+    assert (release_dir / "custom_nodes" / "_opencv_shared" / "backend" / "support.py").is_file()
 
 
 def test_assemble_release_recovers_existing_python_dir_when_overwrite_fails(
@@ -218,6 +228,31 @@ def _patch_release_runtime_asset_sources(
     (source_custom_nodes_dir / "opencv_basic_nodes").mkdir(parents=True, exist_ok=True)
     (source_custom_nodes_dir / "opencv_basic_nodes" / "manifest.json").write_text(
         '{"id": "opencv.basic-nodes"}\n',
+        encoding="utf-8",
+    )
+    (source_custom_nodes_dir / "opencv_geometry_nodes").mkdir(parents=True, exist_ok=True)
+    (source_custom_nodes_dir / "opencv_geometry_nodes" / "manifest.json").write_text(
+        '{"id": "opencv.geometry-nodes"}\n',
+        encoding="utf-8",
+    )
+    (source_custom_nodes_dir / "opencv_measurement_nodes").mkdir(parents=True, exist_ok=True)
+    (source_custom_nodes_dir / "opencv_measurement_nodes" / "manifest.json").write_text(
+        '{"id": "opencv.measurement-nodes"}\n',
+        encoding="utf-8",
+    )
+    (source_custom_nodes_dir / "opencv_shape_nodes").mkdir(parents=True, exist_ok=True)
+    (source_custom_nodes_dir / "opencv_shape_nodes" / "manifest.json").write_text(
+        '{"id": "opencv.shape-nodes"}\n',
+        encoding="utf-8",
+    )
+    (source_custom_nodes_dir / "opencv_defect_nodes").mkdir(parents=True, exist_ok=True)
+    (source_custom_nodes_dir / "opencv_defect_nodes" / "manifest.json").write_text(
+        '{"id": "opencv.defect-nodes"}\n',
+        encoding="utf-8",
+    )
+    (source_custom_nodes_dir / "_opencv_shared" / "backend").mkdir(parents=True, exist_ok=True)
+    (source_custom_nodes_dir / "_opencv_shared" / "backend" / "support.py").write_text(
+        '"""shared"""\n',
         encoding="utf-8",
     )
     (source_custom_nodes_dir / "_scaffold").mkdir(parents=True, exist_ok=True)

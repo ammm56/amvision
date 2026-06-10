@@ -8,6 +8,9 @@ from pathlib import Path
 from backend.contracts.nodes.node_pack_manifest import CUSTOM_NODE_CATALOG_FORMAT, CustomNodeCatalogDocument
 from backend.contracts.workflows.workflow_graph import validate_node_definition_catalog
 from backend.nodes.core_catalog import get_core_workflow_payload_contracts
+from custom_nodes._opencv_shared.workflow.payload_contracts import (
+    load_shared_opencv_payload_contracts_payload,
+)
 
 
 def get_workflow_dir() -> Path:
@@ -58,11 +61,8 @@ def build_custom_node_catalog_document(*, workflow_dir: Path | None = None) -> C
     """
 
     catalog_sources_dir = get_catalog_sources_dir(workflow_dir=workflow_dir)
-    payload_contracts_path = catalog_sources_dir / "payload_contracts.json"
     node_sources_dir = catalog_sources_dir / "nodes"
-    payload_contracts_payload = _load_json_document(payload_contracts_path)
-    if not isinstance(payload_contracts_payload, list):
-        raise ValueError("payload_contracts.json 必须是数组")
+    payload_contracts_payload = load_shared_opencv_payload_contracts_payload()
 
     node_definitions_payload: list[object] = []
     for node_file_path in sorted(node_sources_dir.glob("*.json")):

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from custom_nodes.opencv_basic_nodes.backend.support import (
+from custom_nodes._opencv_shared.backend.support import (
     build_output_image_payload,
     encode_png_image_bytes,
     load_image_matrix,

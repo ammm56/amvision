@@ -3,7 +3,7 @@
   "id": "opencv.basic-nodes",
   "version": "0.1.0",
   "displayName": "OpenCV Basic Nodes",
-  "description": "提供一组 OpenCV 图片滤波、分析、导出与预览节点。",
+  "description": "提供一组 OpenCV 预处理、匹配、渲染、导出与预览节点。",
   "category": "custom-node-pack",
   "capabilities": [
     "pipeline.node",

@@ -1,0 +1,83 @@
+{
+  "format_id": "amvision.node-definition.v1",
+  "node_type_id": "custom.opencv.fit-line",
+  "display_name": "Fit Line",
+  "category": "opencv.analysis",
+  "description": "对 contour 集合执行拟合直线，并输出结构化 lines.v1。",
+  "implementation_kind": "custom-node",
+  "runtime_kind": "python-callable",
+  "input_ports": [
+    {
+      "name": "contours",
+      "display_name": "Contours",
+      "payload_type_id": "contours.v1"
+    }
+  ],
+  "output_ports": [
+    {
+      "name": "lines",
+      "display_name": "Lines",
+      "payload_type_id": "lines.v1"
+    },
+    {
+      "name": "summary",
+      "display_name": "Summary",
+      "payload_type_id": "value.v1"
+    }
+  ],
+  "parameter_schema": {
+    "type": "object",
+    "properties": {
+      "distance_type": {
+        "type": "string",
+        "enum": [
+          "l2",
+          "l1",
+          "l12",
+          "fair",
+          "welsch",
+          "huber"
+        ]
+      },
+      "reps": {
+        "type": "number",
+        "minimum": 0
+      },
+      "aeps": {
+        "type": "number",
+        "minimum": 0
+      },
+      "sort_by": {
+        "type": "string",
+        "enum": [
+          "line_index",
+          "contour_index",
+          "length_pixels",
+          "angle_deg",
+          "midpoint_x",
+          "midpoint_y"
+        ]
+      },
+      "descending": {
+        "type": "boolean"
+      },
+      "limit": {
+        "type": "integer",
+        "minimum": 1
+      }
+    }
+  },
+  "capability_tags": [
+    "opencv.fit-line",
+    "vision.geometry",
+    "vision.analysis"
+  ],
+  "runtime_requirements": {
+    "python_packages": [
+      "opencv-python",
+      "numpy"
+    ]
+  },
+  "node_pack_id": "opencv.shape-nodes",
+  "node_pack_version": "0.1.0"
+}

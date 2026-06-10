@@ -9,7 +9,7 @@ from backend.nodes.core_nodes._region_node_support import build_regions_payload
 from backend.nodes.core_nodes._roi_node_support import bbox_to_polygon_xy, require_roi_payload
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
-from custom_nodes.opencv_basic_nodes.backend.support import (
+from custom_nodes._opencv_shared.backend.support import (
     load_image_matrix,
     require_non_negative_float,
     require_opencv_imports,

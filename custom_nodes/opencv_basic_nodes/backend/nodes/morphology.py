@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from backend.service.application.errors import ServiceConfigurationError
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
-from custom_nodes.opencv_basic_nodes.backend.support import (
+from custom_nodes._opencv_shared.backend.support import (
     build_output_image_payload,
     load_image_matrix,
     normalize_kernel_shape,

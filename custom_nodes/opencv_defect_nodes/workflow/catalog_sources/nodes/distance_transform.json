@@ -1,0 +1,91 @@
+{
+  "format_id": "amvision.node-definition.v1",
+  "node_type_id": "custom.opencv.distance-transform",
+  "display_name": "Distance Transform",
+  "category": "opencv.filter",
+  "description": "对二值前景执行距离变换，并输出灰度预览图和距离摘要，适合胶线厚度趋势、孔腔中心性或骨架前置分析。",
+  "implementation_kind": "custom-node",
+  "runtime_kind": "python-callable",
+  "input_ports": [
+    {
+      "name": "image",
+      "display_name": "Image",
+      "payload_type_id": "image-ref.v1"
+    }
+  ],
+  "output_ports": [
+    {
+      "name": "image",
+      "display_name": "Image",
+      "payload_type_id": "image-ref.v1"
+    },
+    {
+      "name": "summary",
+      "display_name": "Summary",
+      "payload_type_id": "value.v1"
+    }
+  ],
+  "parameter_schema": {
+    "type": "object",
+    "properties": {
+      "foreground_threshold": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 255,
+        "default": 1
+      },
+      "distance_type": {
+        "type": "string",
+        "enum": [
+          "l1",
+          "l2",
+          "c"
+        ],
+        "default": "l2"
+      },
+      "mask_size": {
+        "oneOf": [
+          {
+            "type": "integer",
+            "enum": [
+              3,
+              5
+            ]
+          },
+          {
+            "type": "string",
+            "enum": [
+              "precise"
+            ]
+          }
+        ],
+        "default": 3
+      },
+      "normalize_output": {
+        "type": "boolean",
+        "default": true
+      },
+      "output_scale": {
+        "type": "number",
+        "minimum": 0,
+        "default": 1.0
+      },
+      "output_object_key": {
+        "type": "string"
+      }
+    }
+  },
+  "capability_tags": [
+    "opencv.distance-transform",
+    "vision.morphology",
+    "inspection.distance-map"
+  ],
+  "runtime_requirements": {
+    "python_packages": [
+      "opencv-python",
+      "numpy"
+    ]
+  },
+  "node_pack_id": "opencv.defect-nodes",
+  "node_pack_version": "0.1.0"
+}
