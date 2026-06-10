@@ -650,8 +650,163 @@
   - 作用：把 `OK / NG / alarm / ack-needed / result-code` 等结果写回 Modbus TCP 的 coils 或 holding registers
   - 原因：工业现场常见的最终动作不是保存 JSON，而是写状态位或报码；这一层必须先与当前 Modbus TCP pack 对齐，而不是抽象成“通用 PLC 信号写入”
 - `custom.output.local-db-upsert`
-  - 作用：把结果写入本地 SQLite/MySQL/PostgreSQL 中已知结构的结果表，用于工作站追溯和统计
+  - 放置位置：`custom`
+  - 作用：把结果写入本地 SQLite/MySQL/PostgreSQL 中已知结构的结果表，用于工作站追溯、统计和后续补传
   - 原因：当前已有 JSON/CSV，本地数据库归档还没有正式节点；第一阶段不做任意 SQL 或任意表结构自动推断，而是要求显式表名、唯一键和字段映射
+  - 当前状态：第一阶段 pack / specs / catalog / runtime 已落地，当前已支持 `result-record.v1 / workflow-result.v1 / summary(value.v1) + request(value.v1)` 的受限单表单行 upsert，以及 `prepared_row` 调试输出
+  - 推荐实现原则：
+    - 不暴露 `raw_sql / where_sql / set_sql / on_conflict_sql` 这类可执行 SQL 输入
+    - 不把数据库方言细节直接泄漏到 workflow 节点使用面
+    - 不直接复用平台主业务库中的聚合 Repository 去写现场自定义结果表
+    - 第一阶段建议使用 `SQLAlchemy 2` 受限实现：
+      - 连接与事务：`Engine / Session / transaction`
+      - 表结构访问：`MetaData + Table` 与受控 reflection
+      - upsert 语义：按 `SQLite / MySQL / PostgreSQL` 分别走 SQLAlchemy 方言能力，而不是手写原生 SQL 字符串
+    - 如果后续要写平台自有固定结果表，那是另一层正式 application/repository 能力，不等同于这个 custom integration 节点
+
+第一阶段输入输出契约：
+
+- 输入端口：
+  - `result`：`result-record.v1`，可选
+  - `workflow_result`：`workflow-result.v1`，可选
+  - `summary`：`value.v1`，可选
+    - 说明：这里的 `summary` 主要对接 `core.output.batch-result-summary` 的输出
+  - `request`：`value.v1`，可选
+    - 说明：用于补充工单号、批次号、设备号、站点号、班次号和运行时上下文
+- 输入约束：
+  - `result / workflow_result / summary` 三者中，第一阶段要求“最多一个主业务输入”
+  - `request` 只能作为补充上下文或运行时覆盖，不作为默认主业务输入
+  - 当主业务输入缺失，或三者同时提供多个时，节点直接报错，不做隐式优先级猜测
+- 输出端口：
+  - `result`：`value.v1`
+    - 作用：输出 `database_kind / table_name / key_columns / written_row / row_source / affected_row_count` 这类受限摘要
+    - 说明：第一阶段不承诺跨方言精确区分 `inserted` 还是 `updated`；统一按 `upsert attempted` 摘要返回
+  - `prepared_row`：`value.v1`
+    - 作用：输出最终组装后的单行记录对象，用于现场排障和 workflow 预览
+
+第一阶段主业务输入的推荐语义：
+
+- `result-record.v1`
+  - 适合单帧判定、OK/NG、报警、工艺规则结果归档
+  - 典型取值路径：`ok_ng`、`reason`、`metrics.*`、`conditions.*`、`alarm.active`、`alarm.code`、`metadata.*`
+- `workflow-result.v1`
+  - 适合把整条 workflow 的统一交付结果写入工作站结果表或批次状态表
+  - 典型取值路径：`status`、`code`、`message`、`data`、`metrics`、`files`、`trace_id`、`event_id`、`metadata`
+- `summary(value.v1)`
+  - 适合目录批次、小批量归档和班次级摘要入库
+  - 典型来源：`core.output.batch-result-summary`
+  - 典型取值路径：`ok_count`、`ng_count`、`alarm_count`、`pass_ratio`、`summary_source`、`record_result_count`
+- `request(value.v1)`
+  - 适合补充现场上下文
+  - 典型取值路径：`work_order_id`、`lot_id`、`station_id`、`device_id`、`operator_id`、`part_no`、`line_id`
+
+第一阶段受限参数面：
+
+- `database_url`
+  - 必填，使用 SQLAlchemy URL 形式描述目标数据库连接
+  - 第一阶段目标仍是本地工作站或现场已知数据库，不做云端托管 DB 编排
+- `table_name`
+  - 必填，目标表名
+- `schema_name`
+  - 可选，面向 PostgreSQL/MySQL 的 schema 或 database namespace
+- `key_columns`
+  - 必填，至少 1 个键列
+  - 用于表达“冲突目标 / 唯一键 / 主键”这层 upsert 语义
+- `row_template`
+  - 可选静态对象骨架
+- `column_mappings`
+  - 必填数组
+  - 把 `result / workflow_result / summary / request / literal` 中的字段映射到数据库列
+- `static_fields`
+  - 写死到记录行中的固定字段，适合站点码、设备别名、工艺号、线体编号
+- `on_missing`
+  - 节点级默认缺失策略，第一阶段仅支持 `error / skip / null`
+  - 每条 `column_mapping` 可单独覆盖
+- `update_columns`
+  - 可选，显式指定允许在冲突时更新的列
+  - 未提供时，默认使用“映射出的非键列”
+- `skip_if_no_update_columns`
+  - 可选布尔值
+  - 当一行只有键列、没有任何可更新列时，是否直接跳过而不是报错
+- `connect_timeout_seconds`
+  - 可选，数据库连接超时
+- `statement_timeout_seconds`
+  - 可选，单次写入语句超时
+- `echo_sql`
+  - 第一阶段不开放
+  - 原因：节点不应把 SQL 调试日志直接暴露成现场常用参数
+
+第一阶段字段映射规则：
+
+- `column_mappings` 每条至少包含：
+  - `column_name`
+  - `source_kind`
+- 当 `source_kind != literal` 时，要求提供 `source_path`
+- 当 `source_kind = literal` 时，使用 `literal_value`
+- `source_kind` 仅支持 `result / workflow_result / summary / request / literal`
+- `source_path` 使用点路径表达源对象读取位置，例如 `metrics.coverage_ratio`
+- 第一阶段只支持“列名 -> 单值”映射，不支持表达式、聚合函数、自定义 SQL 函数、条件语句或 join
+- 默认建议只写入标量、`null` 和 ISO-8601 文本时间值
+- 对象或数组值第一阶段不直接假定数据库列一定支持 JSON；需要时应先在上游节点展开、扁平化或显式转成字符串
+
+第一阶段数据库边界：
+
+- 每次节点执行只处理：
+  - 单条记录
+  - 单张表
+  - 单次事务
+- 目标表必须已存在
+- 第一阶段不支持：
+  - `create table`
+  - 自动迁移
+  - 自动加列
+  - 任意 DDL
+- 节点运行时应先校验：
+  - 目标表存在
+  - `key_columns` 存在
+  - `column_mappings / static_fields` 涉及的列存在
+- 平台主业务元数据库不应作为这个节点的默认写入目标
+- 如果确实要写平台自有结果表，应优先走正式 application/repository 方案，而不是复用这个 custom node
+
+第一阶段事务与实现边界：
+
+- 一个节点执行对应一个受控数据库事务
+- 写入失败时整条事务回滚
+- 不做跨节点分布式事务
+- 不做批量多行 upsert
+- 不做多表联动写入
+- 不做存储过程调用
+- 不做任意 SQL 执行
+- 实现上可以复用项目的 SQLAlchemy 基础设施风格，但不应把外部结果表硬塞进平台核心聚合 Repository
+
+第一阶段失败与排障边界：
+
+- 主业务输入缺失或冲突时直接失败
+- `database_url / table_name / key_columns / column_mappings` 参数非法时直接失败
+- 映射字段缺失时默认按 `on_missing = error` 处理
+- 目标表不存在、键列不存在、目标列不存在时直接失败
+- dialect 不支持当前受限 upsert 语义时直接失败，不自动降级成手写 SQL
+- `prepared_row` 应作为第一层现场排障入口，优先帮助确认：
+  - 行记录是否已经按预期组装
+  - 键列是否带齐
+  - 站点上下文字段是否带齐
+  - 是否把不适合入库的对象值直接送进了列映射
+
+第一阶段明确不做：
+
+- 不做 `raw_sql`
+- 不做任意 `select / update / delete / ddl`
+- 不做 join、子查询、表达式列或数据库函数模板
+- 不做任意表结构自动发现后“自己猜着写”
+- 不做批量多行写入
+- 不做平台主库业务聚合的通用写入口
+- 不做数据库驱动安装管理；依赖仍需在 `requirements.txt` 中显式声明
+
+第一阶段最贴现场的典型场景：
+
+- 把 `result-record.v1` 写入工作站的 `inspection_results` 结果表
+- 把 `workflow-result.v1` 写入批次状态表或站点回执表
+- 把 `summary(value.v1)` 写入班次统计表或目录批处理结果表
 
 ## 当前建议的实现顺序
 
@@ -666,15 +821,15 @@
 7. `directory-poll` trigger-source
 8. `directory-watch` trigger-source
 9. 先按当前现场主线收 `custom.plc.modbus.write-result-signals`
-10. `custom.output.mes-http-post` 的第一阶段受限契约
-11. 再收 `custom.output.local-db-upsert` 的第一阶段受限契约
+10. `custom.output.mes-http-post` 第一阶段实现
+11. `custom.output.local-db-upsert` 第一阶段实现
 12. 最后按项目需要选择 `custom.video.* / custom.protocol.* / 更多协议 pack`
 
-以上第 1 到第 10 项当前已实现，后续顺序自然顺延到第 11 项开始。
+以上第 1 到第 11 项当前已实现，后续顺序自然顺延到第 12 项开始。
 
 ## 下一步执行顺序
 
-1. 先收 `custom.output.local-db-upsert` 的第一阶段边界，明确只做受限通用层，不做项目专有万能适配
-2. 再补一条更贴现场的“模型输出 -> 规则判定 -> MES HTTP / PLC 回写 / JSON/CSV 归档”正式样例，把工业单帧主线收成可直接联调的模板
-3. 然后再决定是否需要把 `mes-http-post` 继续往更细的站点 envelope、签名或 header 策略扩一层，而不是一开始就做成万能接口节点
+1. 先补一条更贴现场的“模型输出 -> 规则判定 -> MES HTTP / PLC 回写 / JSON/CSV / Local DB 归档”正式样例，把工业单帧主线收成可直接联调的模板
+2. 然后再决定是否需要把 `mes-http-post` 继续往更细的站点 envelope、签名或 header 策略扩一层，而不是一开始就做成万能接口节点
+3. 再看 `local-db-upsert` 是否值得继续扩“多行批量写入 / 更细冲突策略 / JSON 列受控支持”，而不是回头放开可执行 SQL
 4. 最后再看是否需要继续补更多 detection / segmentation 调试与适配辅助节点，而不是回头扩更重的视频能力

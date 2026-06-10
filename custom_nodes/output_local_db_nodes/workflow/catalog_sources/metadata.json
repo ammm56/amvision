@@ -1,0 +1,12 @@
+{
+  "phase": "implemented",
+  "families": [
+    "local-db"
+  ],
+  "features": [
+    "row-upsert",
+    "result-record-archive",
+    "workflow-result-archive",
+    "prepared-row-preview"
+  ]
+}

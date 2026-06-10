@@ -1,0 +1,845 @@
+{
+  "format_id": "amvision.workflow-graph-template.v1",
+  "template_id": "industrial-single-frame-glue-roi-delivery-bundle-template",
+  "template_version": "1.0.0",
+  "display_name": "Industrial Single Frame Glue ROI Delivery Bundle",
+  "description": "面向工业单帧现场的 ROI 规则与结果交付全链样例。输入本地图像路径、上游 regions.v1，以及运行时交付上下文；执行覆盖率和偏移检查，把结果先写入 Modbus 点位，再完成本地 JSON/CSV 归档，最后把同一份 result-record 继续送到 MES HTTP 和本地数据库归档节点。",
+  "nodes": [
+    {
+      "node_id": "request_image_path_input",
+      "node_type_id": "core.io.template-input.value",
+      "parameters": {}
+    },
+    {
+      "node_id": "request_delivery_context_input",
+      "node_type_id": "core.io.template-input.value",
+      "parameters": {}
+    },
+    {
+      "node_id": "load_image",
+      "node_type_id": "core.io.image-load-local",
+      "parameters": {}
+    },
+    {
+      "node_id": "filter_regions",
+      "node_type_id": "core.vision.regions-filter",
+      "parameters": {
+        "class_names": [
+          "glue"
+        ],
+        "min_score": 0.6
+      }
+    },
+    {
+      "node_id": "create_roi",
+      "node_type_id": "core.vision.roi-create",
+      "parameters": {
+        "roi_kind": "bbox",
+        "roi_id": "glue-roi",
+        "display_name": "Glue ROI",
+        "bbox_xyxy": [
+          200,
+          150,
+          1080,
+          620
+        ]
+      }
+    },
+    {
+      "node_id": "coverage_check",
+      "node_type_id": "core.vision.regions-coverage-check",
+      "parameters": {
+        "min_ratio": 0.9
+      }
+    },
+    {
+      "node_id": "offset_check",
+      "node_type_id": "core.vision.regions-offset-check",
+      "parameters": {
+        "strategy": "largest-area",
+        "max_distance_pixels": 18.0
+      }
+    },
+    {
+      "node_id": "intersection_metrics",
+      "node_type_id": "core.vision.regions-intersection-metrics",
+      "parameters": {}
+    },
+    {
+      "node_id": "metadata_object",
+      "node_type_id": "core.logic.object-create",
+      "parameters": {
+        "keys": [
+          "image_path"
+        ],
+        "fields": {
+          "inspection_kind": "glue-roi-delivery-bundle",
+          "station_id": "line-b-02",
+          "result_signal_transport": "modbus-tcp",
+          "delivery_mode": "plc-json-csv-mes-local-db",
+          "mes_url": "http://127.0.0.1:18080/mes/inspection-result",
+          "database_target": "sqlite:///./data/workflow-results/glue-roi-delivery/inspection-results.sqlite3"
+        }
+      }
+    },
+    {
+      "node_id": "metrics_object",
+      "node_type_id": "core.logic.object-create",
+      "parameters": {
+        "keys": [
+          "intersection_metrics",
+          "offset_metrics",
+          "filter_summary"
+        ]
+      }
+    },
+    {
+      "node_id": "process_decision",
+      "node_type_id": "core.rule.process-decision",
+      "parameters": {
+        "mode": "all",
+        "condition_names": [
+          "coverage",
+          "offset"
+        ],
+        "ok_reason": "glue roi process gate passed",
+        "ng_reason": "glue roi process gate failed"
+      }
+    },
+    {
+      "node_id": "alarm_condition",
+      "node_type_id": "core.rule.alarm-condition",
+      "parameters": {
+        "trigger_when": "condition-false",
+        "alarm_level": "error",
+        "alarm_code": "GLUE-ROI-NG",
+        "alarm_message": "glue roi process gate failed",
+        "clear_message": "glue roi process gate passed"
+      }
+    },
+    {
+      "node_id": "write_result_signals",
+      "node_type_id": "custom.plc.modbus.write-result-signals",
+      "parameters": {
+        "host": "127.0.0.1",
+        "port": 502,
+        "unit_id": 1,
+        "timeout_seconds": 1.0,
+        "retries": 1,
+        "continue_on_error": false,
+        "default_word_order": "big",
+        "default_byte_position": "low",
+        "default_string_encoding": "utf-8",
+        "signal_mappings": [
+          {
+            "signal_name": "ok",
+            "source_scope": "result",
+            "source_path": "ok",
+            "register_address": "00031",
+            "data_type": "bool"
+          },
+          {
+            "signal_name": "ng",
+            "source_scope": "result",
+            "source_path": "ok",
+            "register_address": "00032",
+            "data_type": "bool",
+            "true_value": false,
+            "false_value": true
+          },
+          {
+            "signal_name": "alarm_active",
+            "source_scope": "alarm",
+            "source_path": "active",
+            "register_address": "00033",
+            "data_type": "bool",
+            "skip_when_missing": true
+          },
+          {
+            "signal_name": "result_code",
+            "source_scope": "request",
+            "source_path": "signal_values.result_code",
+            "register_address": "400121",
+            "data_type": "uint16",
+            "skip_when_missing": true
+          }
+        ]
+      }
+    },
+    {
+      "node_id": "save_result_json",
+      "node_type_id": "core.output.json-save-local",
+      "parameters": {
+        "local_path": "{workflow_app_result_dir}/glue-roi-delivery-bundle/result-{timestamp}.json",
+        "overwrite": true,
+        "indent": 2
+      }
+    },
+    {
+      "node_id": "append_result_csv",
+      "node_type_id": "core.output.csv-append-local",
+      "parameters": {
+        "local_path": "{workflow_app_result_dir}/glue-roi-delivery-bundle/history.csv"
+      }
+    },
+    {
+      "node_id": "build_delivery_context",
+      "node_type_id": "core.logic.object-create",
+      "parameters": {
+        "keys": [
+          "delivery_request",
+          "decision_summary",
+          "alarm_summary",
+          "signal_write_summary",
+          "json_summary",
+          "csv_summary",
+          "metadata"
+        ],
+        "fields": {
+          "example_kind": "industrial-single-frame-glue-roi-delivery-bundle",
+          "delivery_order": [
+            "plc-modbus-write-result-signals",
+            "json-save-local",
+            "csv-append-local",
+            "build-delivery-context",
+            "mes-http-post",
+            "local-db-upsert"
+          ],
+          "local_db_schema_sql": "docs/examples/workflows/industrial_single_frame_glue_roi_delivery_bundle.sqlite.sql"
+        }
+      }
+    },
+    {
+      "node_id": "mes_result_callback",
+      "node_type_id": "custom.output.mes-http-post",
+      "parameters": {
+        "url": "http://127.0.0.1:18080/mes/inspection-result",
+        "method": "POST",
+        "timeout_seconds": 3.0,
+        "require_success": false,
+        "headers": {
+          "X-Amvision-Example": "industrial-single-frame-glue-roi-delivery-bundle"
+        },
+        "query_template": {
+          "source": "workflow-example"
+        },
+        "query_mappings": [
+          {
+            "target_name": "record_id",
+            "source_kind": "request",
+            "source_path": "delivery_request.record_id"
+          },
+          {
+            "target_name": "station_id",
+            "source_kind": "request",
+            "source_path": "delivery_request.station_id",
+            "on_missing": "skip"
+          }
+        ],
+        "body_mode": "json_envelope",
+        "body_template": {
+          "payload": {}
+        },
+        "static_fields": {
+          "payload": {
+            "schema": "inspection-result.v1",
+            "source": "amvision-workflow"
+          }
+        },
+        "field_mappings": [
+          {
+            "target_path": "payload.record_id",
+            "source_kind": "request",
+            "source_path": "delivery_request.record_id"
+          },
+          {
+            "target_path": "payload.work_order_id",
+            "source_kind": "request",
+            "source_path": "delivery_request.work_order_id",
+            "on_missing": "null"
+          },
+          {
+            "target_path": "payload.station_id",
+            "source_kind": "request",
+            "source_path": "delivery_request.station_id",
+            "on_missing": "null"
+          },
+          {
+            "target_path": "payload.line_id",
+            "source_kind": "request",
+            "source_path": "delivery_request.line_id",
+            "on_missing": "null"
+          },
+          {
+            "target_path": "payload.trace_id",
+            "source_kind": "request",
+            "source_path": "delivery_request.trace_id",
+            "on_missing": "null"
+          },
+          {
+            "target_path": "payload.ok_ng",
+            "source_kind": "result",
+            "source_path": "ok_ng"
+          },
+          {
+            "target_path": "payload.reason",
+            "source_kind": "result",
+            "source_path": "reason",
+            "on_missing": "null"
+          },
+          {
+            "target_path": "payload.coverage_ratio",
+            "source_kind": "result",
+            "source_path": "metrics.intersection_metrics.roi_coverage_ratio",
+            "on_missing": "null"
+          },
+          {
+            "target_path": "payload.offset_distance_pixels",
+            "source_kind": "result",
+            "source_path": "metrics.offset_metrics.distance_pixels",
+            "on_missing": "null"
+          },
+          {
+            "target_path": "payload.alarm_active",
+            "source_kind": "request",
+            "source_path": "alarm_summary.alarm_active",
+            "on_missing": "null"
+          },
+          {
+            "target_path": "payload.signal_write_failed_count",
+            "source_kind": "request",
+            "source_path": "signal_write_summary.failed_count",
+            "on_missing": "null"
+          },
+          {
+            "target_path": "payload.json_result_path",
+            "source_kind": "request",
+            "source_path": "json_summary.local_path",
+            "on_missing": "null"
+          },
+          {
+            "target_path": "payload.csv_result_path",
+            "source_kind": "request",
+            "source_path": "csv_summary.local_path",
+            "on_missing": "null"
+          }
+        ]
+      }
+    },
+    {
+      "node_id": "archive_local_db",
+      "node_type_id": "custom.output.local-db-upsert",
+      "parameters": {
+        "database_url": "sqlite:///./data/workflow-results/glue-roi-delivery/inspection-results.sqlite3",
+        "table_name": "inspection_results",
+        "key_columns": [
+          "record_id"
+        ],
+        "column_mappings": [
+          {
+            "column_name": "record_id",
+            "source_kind": "request",
+            "source_path": "delivery_request.record_id"
+          },
+          {
+            "column_name": "work_order_id",
+            "source_kind": "request",
+            "source_path": "delivery_request.work_order_id",
+            "on_missing": "null"
+          },
+          {
+            "column_name": "station_id",
+            "source_kind": "request",
+            "source_path": "delivery_request.station_id",
+            "on_missing": "null"
+          },
+          {
+            "column_name": "line_id",
+            "source_kind": "request",
+            "source_path": "delivery_request.line_id",
+            "on_missing": "null"
+          },
+          {
+            "column_name": "trace_id",
+            "source_kind": "request",
+            "source_path": "delivery_request.trace_id",
+            "on_missing": "null"
+          },
+          {
+            "column_name": "ok_ng",
+            "source_kind": "result",
+            "source_path": "ok_ng"
+          },
+          {
+            "column_name": "ok",
+            "source_kind": "result",
+            "source_path": "ok"
+          },
+          {
+            "column_name": "reason",
+            "source_kind": "result",
+            "source_path": "reason",
+            "on_missing": "null"
+          },
+          {
+            "column_name": "coverage_ratio",
+            "source_kind": "result",
+            "source_path": "metrics.intersection_metrics.roi_coverage_ratio",
+            "on_missing": "null"
+          },
+          {
+            "column_name": "offset_distance_pixels",
+            "source_kind": "result",
+            "source_path": "metrics.offset_metrics.distance_pixels",
+            "on_missing": "null"
+          },
+          {
+            "column_name": "alarm_active",
+            "source_kind": "request",
+            "source_path": "alarm_summary.alarm_active",
+            "on_missing": "null"
+          },
+          {
+            "column_name": "signal_write_failed_count",
+            "source_kind": "request",
+            "source_path": "signal_write_summary.failed_count",
+            "on_missing": "null"
+          },
+          {
+            "column_name": "json_result_path",
+            "source_kind": "request",
+            "source_path": "json_summary.local_path",
+            "on_missing": "null"
+          },
+          {
+            "column_name": "csv_result_path",
+            "source_kind": "request",
+            "source_path": "csv_summary.local_path",
+            "on_missing": "null"
+          }
+        ],
+        "update_columns": [
+          "work_order_id",
+          "station_id",
+          "line_id",
+          "trace_id",
+          "ok_ng",
+          "ok",
+          "reason",
+          "coverage_ratio",
+          "offset_distance_pixels",
+          "alarm_active",
+          "signal_write_failed_count",
+          "json_result_path",
+          "csv_result_path"
+        ],
+        "connect_timeout_seconds": 3.0
+      }
+    }
+  ],
+  "edges": [
+    {
+      "edge_id": "edge-request-image-path-load-image",
+      "source_node_id": "request_image_path_input",
+      "source_port": "value",
+      "target_node_id": "load_image",
+      "target_port": "path"
+    },
+    {
+      "edge_id": "edge-request-image-path-metadata",
+      "source_node_id": "request_image_path_input",
+      "source_port": "value",
+      "target_node_id": "metadata_object",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-load-image-create-roi",
+      "source_node_id": "load_image",
+      "source_port": "image",
+      "target_node_id": "create_roi",
+      "target_port": "image"
+    },
+    {
+      "edge_id": "edge-filter-coverage-regions",
+      "source_node_id": "filter_regions",
+      "source_port": "regions",
+      "target_node_id": "coverage_check",
+      "target_port": "regions"
+    },
+    {
+      "edge_id": "edge-create-roi-coverage-roi",
+      "source_node_id": "create_roi",
+      "source_port": "roi",
+      "target_node_id": "coverage_check",
+      "target_port": "roi"
+    },
+    {
+      "edge_id": "edge-filter-offset-regions",
+      "source_node_id": "filter_regions",
+      "source_port": "regions",
+      "target_node_id": "offset_check",
+      "target_port": "regions"
+    },
+    {
+      "edge_id": "edge-create-roi-offset-roi",
+      "source_node_id": "create_roi",
+      "source_port": "roi",
+      "target_node_id": "offset_check",
+      "target_port": "roi"
+    },
+    {
+      "edge_id": "edge-filter-intersection-regions",
+      "source_node_id": "filter_regions",
+      "source_port": "regions",
+      "target_node_id": "intersection_metrics",
+      "target_port": "regions"
+    },
+    {
+      "edge_id": "edge-create-roi-intersection-roi",
+      "source_node_id": "create_roi",
+      "source_port": "roi",
+      "target_node_id": "intersection_metrics",
+      "target_port": "roi"
+    },
+    {
+      "edge_id": "edge-intersection-metrics-object",
+      "source_node_id": "intersection_metrics",
+      "source_port": "value",
+      "target_node_id": "metrics_object",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-offset-metrics-object",
+      "source_node_id": "offset_check",
+      "source_port": "metrics",
+      "target_node_id": "metrics_object",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-filter-summary-metrics-object",
+      "source_node_id": "filter_regions",
+      "source_port": "summary",
+      "target_node_id": "metrics_object",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-coverage-process",
+      "source_node_id": "coverage_check",
+      "source_port": "result",
+      "target_node_id": "process_decision",
+      "target_port": "conditions"
+    },
+    {
+      "edge_id": "edge-offset-process",
+      "source_node_id": "offset_check",
+      "source_port": "result",
+      "target_node_id": "process_decision",
+      "target_port": "conditions"
+    },
+    {
+      "edge_id": "edge-metrics-process",
+      "source_node_id": "metrics_object",
+      "source_port": "value",
+      "target_node_id": "process_decision",
+      "target_port": "metrics"
+    },
+    {
+      "edge_id": "edge-metadata-process",
+      "source_node_id": "metadata_object",
+      "source_port": "value",
+      "target_node_id": "process_decision",
+      "target_port": "metadata"
+    },
+    {
+      "edge_id": "edge-process-ok-alarm",
+      "source_node_id": "process_decision",
+      "source_port": "ok",
+      "target_node_id": "alarm_condition",
+      "target_port": "condition"
+    },
+    {
+      "edge_id": "edge-metrics-alarm",
+      "source_node_id": "metrics_object",
+      "source_port": "value",
+      "target_node_id": "alarm_condition",
+      "target_port": "metrics"
+    },
+    {
+      "edge_id": "edge-metadata-alarm",
+      "source_node_id": "metadata_object",
+      "source_port": "value",
+      "target_node_id": "alarm_condition",
+      "target_port": "metadata"
+    },
+    {
+      "edge_id": "edge-process-write-result-signals",
+      "source_node_id": "process_decision",
+      "source_port": "result",
+      "target_node_id": "write_result_signals",
+      "target_port": "result"
+    },
+    {
+      "edge_id": "edge-alarm-write-result-signals",
+      "source_node_id": "alarm_condition",
+      "source_port": "alarm",
+      "target_node_id": "write_result_signals",
+      "target_port": "alarm"
+    },
+    {
+      "edge_id": "edge-process-save-json",
+      "source_node_id": "process_decision",
+      "source_port": "result",
+      "target_node_id": "save_result_json",
+      "target_port": "result"
+    },
+    {
+      "edge_id": "edge-process-append-csv",
+      "source_node_id": "process_decision",
+      "source_port": "result",
+      "target_node_id": "append_result_csv",
+      "target_port": "result"
+    },
+    {
+      "edge_id": "edge-request-delivery-context-build",
+      "source_node_id": "request_delivery_context_input",
+      "source_port": "value",
+      "target_node_id": "build_delivery_context",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-process-summary-build-delivery-context",
+      "source_node_id": "process_decision",
+      "source_port": "summary",
+      "target_node_id": "build_delivery_context",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-alarm-summary-build-delivery-context",
+      "source_node_id": "alarm_condition",
+      "source_port": "summary",
+      "target_node_id": "build_delivery_context",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-signal-write-summary-build-delivery-context",
+      "source_node_id": "write_result_signals",
+      "source_port": "result",
+      "target_node_id": "build_delivery_context",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-json-summary-build-delivery-context",
+      "source_node_id": "save_result_json",
+      "source_port": "summary",
+      "target_node_id": "build_delivery_context",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-csv-summary-build-delivery-context",
+      "source_node_id": "append_result_csv",
+      "source_port": "summary",
+      "target_node_id": "build_delivery_context",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-metadata-build-delivery-context",
+      "source_node_id": "metadata_object",
+      "source_port": "value",
+      "target_node_id": "build_delivery_context",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-process-mes-result",
+      "source_node_id": "process_decision",
+      "source_port": "result",
+      "target_node_id": "mes_result_callback",
+      "target_port": "result"
+    },
+    {
+      "edge_id": "edge-delivery-context-mes-request",
+      "source_node_id": "build_delivery_context",
+      "source_port": "value",
+      "target_node_id": "mes_result_callback",
+      "target_port": "request"
+    },
+    {
+      "edge_id": "edge-process-local-db-result",
+      "source_node_id": "process_decision",
+      "source_port": "result",
+      "target_node_id": "archive_local_db",
+      "target_port": "result"
+    },
+    {
+      "edge_id": "edge-delivery-context-local-db-request",
+      "source_node_id": "build_delivery_context",
+      "source_port": "value",
+      "target_node_id": "archive_local_db",
+      "target_port": "request"
+    }
+  ],
+  "template_inputs": [
+    {
+      "input_id": "request_image_path",
+      "display_name": "Request Image Path",
+      "payload_type_id": "value.v1",
+      "target_node_id": "request_image_path_input",
+      "target_port": "payload"
+    },
+    {
+      "input_id": "request_regions",
+      "display_name": "Request Regions",
+      "payload_type_id": "regions.v1",
+      "target_node_id": "filter_regions",
+      "target_port": "regions"
+    },
+    {
+      "input_id": "request_roi",
+      "display_name": "Request ROI",
+      "payload_type_id": "value.v1",
+      "target_node_id": "create_roi",
+      "target_port": "value",
+      "required": false
+    },
+    {
+      "input_id": "request_delivery_context",
+      "display_name": "Request Delivery Context",
+      "payload_type_id": "value.v1",
+      "target_node_id": "request_delivery_context_input",
+      "target_port": "payload"
+    },
+    {
+      "input_id": "request_signal_write",
+      "display_name": "Request Signal Write",
+      "payload_type_id": "value.v1",
+      "target_node_id": "write_result_signals",
+      "target_port": "request",
+      "required": false
+    }
+  ],
+  "template_outputs": [
+    {
+      "output_id": "inspection_result",
+      "display_name": "Inspection Result",
+      "payload_type_id": "result-record.v1",
+      "source_node_id": "process_decision",
+      "source_port": "result"
+    },
+    {
+      "output_id": "inspection_alarm",
+      "display_name": "Inspection Alarm",
+      "payload_type_id": "alarm-record.v1",
+      "source_node_id": "alarm_condition",
+      "source_port": "alarm"
+    },
+    {
+      "output_id": "signal_write_summary",
+      "display_name": "Signal Write Summary",
+      "payload_type_id": "value.v1",
+      "source_node_id": "write_result_signals",
+      "source_port": "result"
+    },
+    {
+      "output_id": "delivery_context",
+      "display_name": "Delivery Context",
+      "payload_type_id": "value.v1",
+      "source_node_id": "build_delivery_context",
+      "source_port": "value"
+    },
+    {
+      "output_id": "mes_prepared_request",
+      "display_name": "MES Prepared Request",
+      "payload_type_id": "value.v1",
+      "source_node_id": "mes_result_callback",
+      "source_port": "prepared_request"
+    },
+    {
+      "output_id": "mes_response",
+      "display_name": "MES Response",
+      "payload_type_id": "value.v1",
+      "source_node_id": "mes_result_callback",
+      "source_port": "response"
+    },
+    {
+      "output_id": "local_db_prepared_row",
+      "display_name": "Local DB Prepared Row",
+      "payload_type_id": "value.v1",
+      "source_node_id": "archive_local_db",
+      "source_port": "prepared_row"
+    },
+    {
+      "output_id": "local_db_result",
+      "display_name": "Local DB Result",
+      "payload_type_id": "value.v1",
+      "source_node_id": "archive_local_db",
+      "source_port": "result"
+    },
+    {
+      "output_id": "decision_summary",
+      "display_name": "Decision Summary",
+      "payload_type_id": "value.v1",
+      "source_node_id": "process_decision",
+      "source_port": "summary"
+    },
+    {
+      "output_id": "json_summary",
+      "display_name": "JSON Save Summary",
+      "payload_type_id": "value.v1",
+      "source_node_id": "save_result_json",
+      "source_port": "summary"
+    },
+    {
+      "output_id": "csv_summary",
+      "display_name": "CSV Append Summary",
+      "payload_type_id": "value.v1",
+      "source_node_id": "append_result_csv",
+      "source_port": "summary"
+    }
+  ],
+  "metadata": {
+    "example_kind": "industrial-single-frame-glue-roi-delivery-bundle",
+    "focus": "single-frame-industrial-result-delivery",
+    "dynamic_roi_input_binding": "request_roi",
+    "signal_write_input_binding": "request_signal_write",
+    "delivery_context_input_binding": "request_delivery_context",
+    "result_signal_transport": "modbus-tcp",
+    "local_db_schema_sql": "docs/examples/workflows/industrial_single_frame_glue_roi_delivery_bundle.sqlite.sql",
+    "delivery_order": [
+      "plc-modbus-write-result-signals",
+      "json-save-local",
+      "csv-append-local",
+      "build-delivery-context",
+      "mes-http-post",
+      "local-db-upsert"
+    ],
+    "node_groups": {
+      "input": [
+        "request_image_path_input",
+        "request_delivery_context_input",
+        "load_image",
+        "filter_regions"
+      ],
+      "roi_and_rules": [
+        "create_roi",
+        "coverage_check",
+        "offset_check",
+        "intersection_metrics"
+      ],
+      "decision_and_alarm": [
+        "metadata_object",
+        "metrics_object",
+        "process_decision",
+        "alarm_condition"
+      ],
+      "archive_and_signal": [
+        "write_result_signals",
+        "save_result_json",
+        "append_result_csv"
+      ],
+      "delivery": [
+        "build_delivery_context",
+        "mes_result_callback",
+        "archive_local_db"
+      ]
+    }
+  }
+}

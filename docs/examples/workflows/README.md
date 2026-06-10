@@ -454,6 +454,8 @@ ZeroMQ TriggerSource 示例不把机器相关的 `path`、`offset` 和 `broker_e
 - `industrial_single_frame_glue_roi_modbus_callback.application.json`
 - `industrial_single_frame_glue_roi_modbus_callback_strict.template.json`
 - `industrial_single_frame_glue_roi_modbus_callback_strict.application.json`
+- `industrial_single_frame_glue_roi_delivery_bundle.template.json`
+- `industrial_single_frame_glue_roi_delivery_bundle.application.json`
 - `industrial_single_frame_glue_polygon_roi_changeover.template.json`
 - `industrial_single_frame_glue_polygon_roi_changeover.application.json`
 - `industrial_single_frame_regions_overlay_review.template.json`
@@ -491,7 +493,7 @@ ZeroMQ TriggerSource 示例不把机器相关的 `path`、`offset` 和 `broker_e
 - `industrial_local_directory_polling_cursor_guard.template.json`
 - `industrial_local_directory_polling_cursor_guard.application.json`
 
-前两组样例聚焦“单图输入 -> 规则判定 -> `process-decision` -> 结果回传”，不把相机、PLC 或特定模型耦合进模板本体。`industrial_single_frame_segments_continuity_gate` 则把“分割输出 -> `segments.v1` -> `regions.v1` -> 工业规则链”这层也一起接通；`industrial_single_frame_regions_overlay_review` 与 `industrial_single_frame_segments_overlay_review` 进一步把 `draw-roi / mask-overlay` 这层 checked-in，分别覆盖“上游已是标准 `regions.v1`”和“上游仍是 `segments.v1` 需要先桥接”的两种现场复核入口；`industrial_single_frame_yoloe_text_overlay_review`、`industrial_single_frame_yoloe_visual_overlay_review`、`industrial_single_frame_sam3_semantic_overlay_review` 与 `industrial_single_frame_sam3_interactive_overlay_review` 则继续把这条 overlay 复核链直接前移到 YOLOE / SAM3 节点本身，分别覆盖“文本开放词汇检测”“视觉提示检测”“文本语义分割”和“交互分割”四类本项目自带上游；`industrial_single_frame_yolox_position_gate` 对应把“检测输出 -> `detections.v1` -> `regions.v1` -> 工业规则链”这层接通；`industrial_single_frame_usb_uvc_yolox_position_gate` 与 `industrial_single_frame_usb_uvc_sam3_semantic_continuity_gate` 则继续把同一条工业规则链前移到 USB / UVC 相机直采入口，分别覆盖“相机单帧检测位置门”和“相机单帧分割连续性门”两类更贴现场联机调试的主线；`industrial_single_frame_glue_polygon_roi_changeover` 进一步演示多边形 ROI 的换型和现场回调；`industrial_single_frame_line_pair_measure_gate` 与 `industrial_single_frame_circle_concentricity_gate` 则把传统 OpenCV 几何量测这层收成 checked-in 现场模板，分别覆盖双边线槽宽/平行度和双圆孔径/同心度/圆度；`industrial_local_directory_batch_input` 把本地文件夹小批量输入这层单独收成可复用模板；`industrial_local_directory_batch_segments_continuity_gate` 与 `industrial_local_directory_batch_regions_continuity_gate` 则把“目录批次 -> 分割/区域结果 -> 连续性规则链 -> CSV / JSON 归档”两类上游入口接到同一套批次骨架；`industrial_local_directory_batch_yolox_position_gate` 继续把这条目录批次输入主线真正接到“逐图检测 -> 规则判定 -> CSV 持续归档 -> 批次 JSON 汇总”的现场闭环；`industrial_local_directory_watch_yolox_position_gate` 再把 `directory-watch` TriggerSource 标准化后的 `payload / event` 直接接进同一条检测与规则批次骨架，覆盖“目录变化触发 -> 批次检测 -> 结构化归档 / 回传”这类更贴现场守护式接入；`industrial_local_directory_polling_cursor_guard` 则把“目录轮询守护 / cursor 落盘恢复 / 批次归档 JSON”这层独立收成可复用状态模板。
+前两组样例聚焦“单图输入 -> 规则判定 -> `process-decision` -> 结果回传”，不把相机、PLC 或特定模型耦合进模板本体。`industrial_single_frame_segments_continuity_gate` 则把“分割输出 -> `segments.v1` -> `regions.v1` -> 工业规则链”这层也一起接通；`industrial_single_frame_regions_overlay_review` 与 `industrial_single_frame_segments_overlay_review` 进一步把 `draw-roi / mask-overlay` 这层 checked-in，分别覆盖“上游已是标准 `regions.v1`”和“上游仍是 `segments.v1` 需要先桥接”的两种现场复核入口；`industrial_single_frame_yoloe_text_overlay_review`、`industrial_single_frame_yoloe_visual_overlay_review`、`industrial_single_frame_sam3_semantic_overlay_review` 与 `industrial_single_frame_sam3_interactive_overlay_review` 则继续把这条 overlay 复核链直接前移到 YOLOE / SAM3 节点本身，分别覆盖“文本开放词汇检测”“视觉提示检测”“文本语义分割”和“交互分割”四类本项目自带上游；`industrial_single_frame_yolox_position_gate` 对应把“检测输出 -> `detections.v1` -> `regions.v1` -> 工业规则链”这层接通；`industrial_single_frame_usb_uvc_yolox_position_gate` 与 `industrial_single_frame_usb_uvc_sam3_semantic_continuity_gate` 则继续把同一条工业规则链前移到 USB / UVC 相机直采入口，分别覆盖“相机单帧检测位置门”和“相机单帧分割连续性门”两类更贴现场联机调试的主线；`industrial_single_frame_glue_roi_delivery_bundle` 继续把这条工业主线往结果交付面收口，覆盖“PLC 回写 + JSON/CSV 归档 + MES HTTP + Local DB”同图闭环；`industrial_single_frame_glue_polygon_roi_changeover` 进一步演示多边形 ROI 的换型和现场回调；`industrial_single_frame_line_pair_measure_gate` 与 `industrial_single_frame_circle_concentricity_gate` 则把传统 OpenCV 几何量测这层收成 checked-in 现场模板，分别覆盖双边线槽宽/平行度和双圆孔径/同心度/圆度；`industrial_local_directory_batch_input` 把本地文件夹小批量输入这层单独收成可复用模板；`industrial_local_directory_batch_segments_continuity_gate` 与 `industrial_local_directory_batch_regions_continuity_gate` 则把“目录批次 -> 分割/区域结果 -> 连续性规则链 -> CSV / JSON 归档”两类上游入口接到同一套批次骨架；`industrial_local_directory_batch_yolox_position_gate` 继续把这条目录批次输入主线真正接到“逐图检测 -> 规则判定 -> CSV 持续归档 -> 批次 JSON 汇总”的现场闭环；`industrial_local_directory_watch_yolox_position_gate` 再把 `directory-watch` TriggerSource 标准化后的 `payload / event` 直接接进同一条检测与规则批次骨架，覆盖“目录变化触发 -> 批次检测 -> 结构化归档 / 回传”这类更贴现场守护式接入；`industrial_local_directory_polling_cursor_guard` 则把“目录轮询守护 / cursor 落盘恢复 / 批次归档 JSON”这层独立收成可复用状态模板。
 
 上游 `regions.v1` 的典型来源：
 
@@ -1012,6 +1014,69 @@ ZeroMQ TriggerSource 示例不把机器相关的 `path`、`offset` 和 `broker_e
 - 这条模板的 `http-post` 不再直接发送 `result-record`，而是发送 `build_callback_payload` 拼出来的 `value.v1` 对象；里面包含 `decision_summary / alarm_summary / signal_write_summary / metadata`
 - 因为 `callback_result` 显式依赖 `build_callback_payload`，而 `build_callback_payload` 又依赖 `signal_write_summary`，所以这条图天然表达了“先回写 PLC，再发 HTTP”
 - 如果现场回调接口必须直接吃 `result-record` 形状，当前更适合先用上一条 fan-out 版模板；后续如果确实要“严格顺序 + 原始 result-record 直发”，再补专门的桥接节点或输入面
+
+### industrial_single_frame_glue_roi_delivery_bundle
+
+链路固定为：
+
+- `template-input.value`
+- `image-load-local`
+- `regions-filter`
+- `roi-create`
+- `regions-coverage-check`
+- `regions-offset-check`
+- `regions-intersection-metrics`
+- `process-decision`
+- `alarm-condition`
+- `custom.plc.modbus.write-result-signals`
+- `json-save-local`
+- `csv-append-local`
+- `object-create(build_delivery_context)`
+- `custom.output.mes-http-post`
+- `custom.output.local-db-upsert`
+
+输入约定：
+
+- `request_image_path`：`value.v1`
+  - 示例：`{"value":"D:/cases/line-b/frame-021.png"}`
+- `request_regions`：`regions.v1`
+  - 由上游检测/分割节点或外部系统提供
+- `request_roi`：`value.v1`
+  - 可选；未提供时回退到模板内 `create_roi` 的默认 ROI 参数
+- `request_delivery_context`：`value.v1`
+  - 必填；用于同时驱动 MES / Local DB 两侧交付上下文
+  - 示例：`{"value":{"record_id":"line-b-20260610-0001","work_order_id":"WO-1001","station_id":"line-b-02","line_id":"line-b","trace_id":"trace-0001"}}`
+- `request_signal_write`：`value.v1`
+  - 可选；用于运行时覆盖 Modbus 结果回写配置
+  - 示例：`{"value":{"host":"192.168.10.20","unit_id":1,"signal_values":{"result_code":17},"disabled_signals":["alarm_active"]}}`
+
+输出约定：
+
+- `inspection_result`：`result-record.v1`
+- `inspection_alarm`：`alarm-record.v1`
+- `signal_write_summary`：`value.v1`
+- `delivery_context`：`value.v1`
+- `mes_prepared_request`：`value.v1`
+- `mes_response`：`value.v1`
+- `local_db_prepared_row`：`value.v1`
+- `local_db_result`：`value.v1`
+- `decision_summary`：`value.v1`
+- `json_summary`：`value.v1`
+- `csv_summary`：`value.v1`
+
+适用场景：
+
+- 现场不只是要判 OK / NG，还要把同一份单帧结果同时交给 PLC、归档目录、MES 接口和本地追溯库
+- 希望保留“真正准备发送了什么 / 准备写入了什么”这层显式调试输出，而不是只看最终成败
+- 需要一条 checked-in 的“规则判定 -> 结果交付全链”正式模板，后续再按现场系统做裁剪
+
+注意事项：
+
+- `request_delivery_context.value.record_id` 当前既是 `custom.output.local-db-upsert` 的主键来源，也是 `custom.output.mes-http-post` 的查询参数/请求体字段，导入后建议先明确现场唯一键策略
+- `custom.output.local-db-upsert` 当前不会自动建表；导入并运行这条模板前，应先在目标 SQLite 文件上执行 [industrial_single_frame_glue_roi_delivery_bundle.sqlite.sql](/W:/workspace/codex/python/amvision/docs/examples/workflows/industrial_single_frame_glue_roi_delivery_bundle.sqlite.sql)
+- 模板默认的 SQLite 目标是 `sqlite:///./data/workflow-results/glue-roi-delivery/inspection-results.sqlite3`，MES 地址默认是 `http://127.0.0.1:18080/mes/inspection-result`；两者都只是样例值，导入后应先改成现场真实地址
+- `build_delivery_context` 会显式收集 `signal_write_summary / json_summary / csv_summary`，再把它们一起送给 MES / Local DB 节点，因此这条图天然表达了“先完成 PLC 回写和本地归档，再做对外/对库交付”
+- `mes_response` 仍然是 `value.v1` 摘要，不是原始 `http-response.v1`；`mes_prepared_request` 会保留 query/body/headers 预览，适合现场先核对映射是否正确
 
 ### industrial_single_frame_glue_polygon_roi_changeover
 
