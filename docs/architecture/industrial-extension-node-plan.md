@@ -853,9 +853,9 @@ PLC 能力也应至少拆成两类：
 
 - `core.vision.multi-part-presence-check`（已实现）
 - `core.vision.pair-offset-check`（已实现）
-- `core.vision.reference-mark-align-check`
-- `core.vision.spacing-check`
-- `core.vision.sequence-order-check`
+- `core.vision.reference-mark-align-check`（已实现）
+- `core.vision.spacing-check`（已实现）
+- `core.vision.sequence-order-check`（已实现）
 
 适用场景：
 
@@ -1103,6 +1103,9 @@ PLC 能力也应至少拆成两类：
 - `core.vision.circularity-check`（已实现）
 - `core.vision.multi-part-presence-check`（已实现）
 - `core.vision.pair-offset-check`（已实现）
+- `core.vision.reference-mark-align-check`（已实现）
+- `core.vision.spacing-check`（已实现）
+- `core.vision.sequence-order-check`（已实现）
 - `custom.anomaly.model_nodes`
 
 ### 第三阶段

@@ -831,6 +831,6 @@
 
 1. 现场交付面当前已经补到 `industrial_single_frame_glue_roi_delivery_bundle` 与 `industrial_local_directory_poll_yolox_position_gate` 两条正式样例；这一层先转入现场联调和使用说明收口
 2. [industrial-extension-node-plan.md](industrial-extension-node-plan.md) 第二阶段首轮传统视觉节点已接通：`custom.opencv.template-match / custom.opencv.caliper-edge / core.vision.edge-break-check / core.vision.multi-part-presence-check`
-3. 工业装配 / 位置关系类当前已先补上 `core.vision.pair-offset-check`，用于按 `source_selector / target_selector + expected_dx / expected_dy` 检查双零件相对装配偏移
-4. 下一步如果继续沿这条线推进，优先补 `core.vision.reference-mark-align-check / core.vision.spacing-check`
+3. 工业装配 / 位置关系类当前已先补上 `core.vision.pair-offset-check`、`core.vision.reference-mark-align-check`、`core.vision.spacing-check` 与 `core.vision.sequence-order-check`，分别用于检查双零件相对装配偏移、参考特征到标记特征的对位偏移、中心距/边间距超差，以及左右或上下方向的排列顺序；同类多目标场景当前也可直接使用 `leftmost / rightmost / topmost / bottommost` 选择策略
+4. 这一组装配 / 位置关系类首轮核心节点当前已收齐；如果继续沿这条线推进，更自然的是补 1 条 checked-in workflow 样例，把装配顺序与间距规则串成现场模板
 5. 更重的缺陷 / 异常模型层先继续留在 `custom.anomaly.model_nodes` 规划阶段
