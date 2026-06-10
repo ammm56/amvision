@@ -1,4 +1,4 @@
-"""视频 core 节点与 payload contract 测试。"""
+"""视频 core 节点与 payload 规则 测试。"""
 
 from __future__ import annotations
 
@@ -35,7 +35,7 @@ from backend.service.infrastructure.object_store.local_dataset_storage import (
 
 
 def test_core_catalog_contains_video_payload_contracts() -> None:
-    """验证 core catalog 已公开视频相关 payload contract。"""
+    """验证 core catalog 已公开视频相关 payload 规则。"""
 
     payload_type_ids = {contract.payload_type_id for contract in get_core_workflow_payload_contracts()}
 

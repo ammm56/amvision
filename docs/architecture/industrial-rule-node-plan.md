@@ -525,7 +525,7 @@
   - 建议形态：单独 custom pack，建议后续放在 `custom_nodes/output_mes_http_nodes/` 或等价目录，不与通用 `core.output.http-post` 混写
   - 当前状态：第一阶段 pack / specs / catalog / runtime 已落地，当前已支持 `result-record.v1 / workflow-result.v1 / summary(value.v1) + request(value.v1)` 的受限 JSON 回传，以及 `prepared_request` 调试输出
 
-第一阶段输入输出契约：
+第一阶段输入输出规则：
 
 - 输入端口：
   - `result`：`result-record.v1`，可选
@@ -664,7 +664,7 @@
       - upsert 语义：按 `SQLite / MySQL / PostgreSQL` 分别走 SQLAlchemy 方言能力，而不是手写原生 SQL 字符串
     - 如果后续要写平台自有固定结果表，那是另一层正式 application/repository 能力，不等同于这个 custom integration 节点
 
-第一阶段输入输出契约：
+第一阶段输入输出规则：
 
 - 输入端口：
   - `result`：`result-record.v1`，可选

@@ -646,7 +646,7 @@ class _SingleNodePackLoader:
         return ()
 
     def get_workflow_payload_contracts(self) -> tuple[WorkflowPayloadContract, ...]:
-        """返回空 payload contract 列表。"""
+        """返回空 payload 规则 列表。"""
 
         return ()
 

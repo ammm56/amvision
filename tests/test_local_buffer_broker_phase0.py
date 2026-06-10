@@ -1,4 +1,4 @@
-"""LocalBufferBroker 第 0 阶段合同与 mmap pool 测试。"""
+"""LocalBufferBroker 第 0 阶段规则与 mmap pool 测试。"""
 
 from __future__ import annotations
 

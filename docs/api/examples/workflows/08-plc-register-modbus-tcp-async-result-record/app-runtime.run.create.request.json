@@ -5,7 +5,7 @@
       "observed_value": 5,
       "previous_observed_value": 1,
       "register_address": "400101",
-      "address_family": "holding_register",
+      "register_area": "holding_register",
       "data_type": "uint16",
       "host": "192.168.10.20",
       "port": 502,

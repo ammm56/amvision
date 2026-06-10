@@ -311,7 +311,7 @@ def execute_write_result_signals_node(
                     "source_path": resolved_value.source_path,
                     "source_label": resolved_value.source_label,
                     "register_address": mapping.logical_address.raw_address,
-                    "address_family": mapping.logical_address.family,
+                    "register_area": mapping.logical_address.family,
                     "zero_based_address": mapping.logical_address.zero_based_address,
                     "data_type": mapping.data_type,
                     "value": resolved_value.value,
@@ -383,7 +383,7 @@ def execute_wait_condition_node(
                                 "port": config.read.connection.port,
                                 "unit_id": config.read.connection.unit_id,
                                 "register_address": config.read.logical_address.raw_address,
-                                "address_family": config.read.logical_address.family,
+                                "register_area": config.read.logical_address.family,
                                 "zero_based_address": config.read.logical_address.zero_based_address,
                                 "data_type": config.read.data_type,
                                 "operator": config.operator,
@@ -415,7 +415,7 @@ def execute_wait_condition_node(
                         "port": config.read.connection.port,
                         "unit_id": config.read.connection.unit_id,
                         "register_address": config.read.logical_address.raw_address,
-                        "address_family": config.read.logical_address.family,
+                        "register_area": config.read.logical_address.family,
                         "data_type": config.read.data_type,
                         "operator": config.operator,
                         "expected_value": config.expected_value,
@@ -1026,7 +1026,7 @@ def _perform_read_operation(
         "port": config.connection.port,
         "unit_id": config.connection.unit_id,
         "register_address": config.logical_address.raw_address,
-        "address_family": config.logical_address.family,
+        "register_area": config.logical_address.family,
         "zero_based_address": config.logical_address.zero_based_address,
         "data_type": config.data_type,
         "word_order": config.word_order,
@@ -1087,7 +1087,7 @@ def _perform_write_operation(
         "port": config.connection.port,
         "unit_id": config.connection.unit_id,
         "register_address": config.logical_address.raw_address,
-        "address_family": config.logical_address.family,
+        "register_area": config.logical_address.family,
         "zero_based_address": config.logical_address.zero_based_address,
         "data_type": config.data_type,
         "word_order": config.word_order,
@@ -1943,7 +1943,7 @@ def _validate_write_type_for_address(
     if logical_address.family != "holding_register":
         raise InvalidRequestError(
             f"{node_name} 当前只允许向 coil 或 holding register 写入",
-            details={"register_address": logical_address.raw_address, "address_family": logical_address.family},
+            details={"register_address": logical_address.raw_address, "register_area": logical_address.family},
         )
     if data_type == "bool":
         raise InvalidRequestError(

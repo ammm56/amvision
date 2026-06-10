@@ -4,7 +4,7 @@
 
 本文档只收口 workflow runtime 第一阶段真正要落代码的实现边界。
 
-本文档只保留三类内容：状态机、snapshot 规则、worker 消息合同。
+本文档只保留三类内容：状态机、snapshot 规则、worker 消息规则。
 
 第一阶段不展开 AI 控制面、不展开异步 runs、不保留旧 execute 兼容入口。
 
@@ -102,9 +102,9 @@
 - fingerprint 建议由 application snapshot JSON 和 template snapshot JSON 的稳定序列化结果生成。
 - health 响应至少返回当前 process 是否加载了 runtime 记录声明的 fingerprint。
 
-## Worker 消息合同
+## Worker 消息规则
 
-第一阶段只定义单实例同步链路，不定义异步 runs 队列对外合同。
+第一阶段只定义单实例同步链路，不定义异步 runs 队列对外规则。
 
 ### runtime worker 控制队列
 
@@ -168,7 +168,7 @@
 }
 ```
 
-### worker 响应合同
+### worker 响应规则
 
 #### runtime-state
 

@@ -98,7 +98,7 @@ def test_default_detection_model_runtime_routes_yolov8_to_yolov8_loader(
         ("tensorrt", "TensorRTYoloV8RuntimeSession"),
     ],
 )
-def test_default_detection_model_runtime_routes_yolov8_specialized_backends(
+def test_default_detection_model_runtime_routes_yolov8_专用_backends(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     runtime_backend: str,

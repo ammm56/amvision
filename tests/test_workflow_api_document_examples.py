@@ -158,7 +158,7 @@ def _read_api_workflow_example(example_name: str, file_name: str) -> dict[str, o
 
 
 def test_workflow_api_real_path_example_requests_are_valid() -> None:
-    """验证 workflow API 专页使用的真实路径 JSON 请求体可以通过当前合同校验。"""
+    """验证 workflow API 专页使用的真实路径 JSON 请求体可以通过当前规则校验。"""
 
     example_name = "yolox_deployment_detection_lifecycle_real_path"
     template_request = _read_api_workflow_example(example_name, "save-template.request.json")
@@ -433,7 +433,7 @@ def test_yolox_training_postman_collection_contains_project_file_lookup_chain() 
 
 
 def test_dataset_imports_postman_collection_uses_lightweight_task_detail() -> None:
-    """验证 datasets-imports Postman collection 已按轻量任务详情合同更新。"""
+    """验证 datasets-imports Postman collection 已按轻量任务详情规则更新。"""
 
     collection_path = (
         Path(__file__).resolve().parents[1]

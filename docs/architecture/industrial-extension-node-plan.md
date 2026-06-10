@@ -114,7 +114,7 @@
 其中前五轮 pack 拆分试点当前已落地：
 
 - 共享 backend helper 已从 `custom_nodes/opencv_basic_nodes/backend/support.py` 抽到 `custom_nodes/_opencv_shared/backend/support.py`
-- OpenCV custom payload contract 当前也已统一收进 `custom_nodes/_opencv_shared/workflow/payload_contracts.json`
+- OpenCV custom payload 规则 当前也已统一收进 `custom_nodes/_opencv_shared/workflow/payload_contracts.json`
 - `rotation-correct / perspective-transform / affine-transform / undistort / remap / planar-transform-bridge` 已正式迁入 `custom_nodes/opencv_geometry_nodes/`
 - `measure / caliper-edge / point-distance / point-to-line-distance / line-angle / circle-diameter / slot-width / parallelism-metrics / concentricity-metrics` 已正式迁入 `custom_nodes/opencv_measurement_nodes/`
 - `contour / contour-filter / contour-approx / convex-hull / min-area-rect / fit-ellipse / contours-to-regions / hough-lines / hough-circles / fit-line / min-enclosing-circle` 已正式迁入 `custom_nodes/opencv_shape_nodes/`
@@ -875,7 +875,7 @@ PLC 能力也应至少拆成两类：
 - `previous_observed_value`
 - `matched`
 - `register_address`
-- `address_family`
+- `register_area`
 - `data_type`
 - `host`
 - `port`
@@ -1155,7 +1155,7 @@ PLC 能力也应至少拆成两类：
 | `opencv.shape-nodes` | 已实现，第三步拆分试点已完成 | `contour / contour-filter / contour-approx / convex-hull / min-area-rect / fit-ellipse / contours-to-regions / hough-lines / hough-circles / fit-line / min-enclosing-circle` | 承载轮廓、线圆、形状拟合和从图像几何结果到结构化 payload 的抽取层。当前已由 shape pack checked-in catalog 与量测 workflow 样例共同收口。 |
 | `opencv.measurement-nodes` | 已实现，第二轮拆分试点已完成 | `measure / caliper-edge / point-distance / point-to-line-distance / line-angle / circle-diameter / slot-width / parallelism-metrics / concentricity-metrics` | 承载工业量测原语，避免和预处理或缺陷流程耦在同一 pack。当前已由 `line_pair_measure_gate / circle_concentricity_gate` 两条样例链收口。 |
 | `opencv.geometry-nodes` | 已实现，第一轮拆分试点已完成 | `rotation-correct / perspective-transform / affine-transform / undistort / remap / planar-transform-bridge` | 承载姿态、标定、坐标变换和几何矫正能力。当前已作为 pack 拆分试点落地，并补齐 `planar-transform.v1 -> image-ref.v1 / roi.v1` 这层受控桥接。 |
-| `opencv.matching-nodes` | 已实现，第五步拆分试点已完成 | `template-match / orb-keypoints / orb-match / homography-estimate` | 承载模板定位、局部特征匹配与平面对位链。当前 `template-match` 已从 `opencv.basic-nodes` 迁出，ORB / homography 也已落地，并补到 `local-features.v1 / feature-matches.v1 / planar-transform.v1` 三类共享 payload contract。 |
+| `opencv.matching-nodes` | 已实现，第五步拆分试点已完成 | `template-match / orb-keypoints / orb-match / homography-estimate` | 承载模板定位、局部特征匹配与平面对位链。当前 `template-match` 已从 `opencv.basic-nodes` 迁出，ORB / homography 也已落地，并补到 `local-features.v1 / feature-matches.v1 / planar-transform.v1` 三类共享 payload 规则。 |
 | `opencv.defect-nodes` | 已实现，第四步拆分试点已完成 | `image-diff / absdiff-threshold / connected-components / fill-holes / distance-transform / watershed / skeletonize / heatmap-preview` | 承载差异、缺陷、形态学后处理与缺陷调试预览链。当前已落地 `image-diff / absdiff-threshold / connected-components / fill-holes / distance-transform / heatmap-preview / watershed / skeletonize`。 |
 
 如果后续 `draw-* / overlay / preview` 这组节点继续明显增长，再考虑第二轮额外拆出 `opencv.render-nodes`。当前第一轮不需要先把问题拆得过细。

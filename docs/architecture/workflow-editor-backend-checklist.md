@@ -10,7 +10,7 @@
 
 - template：validate、save、get、list、version browse、delete version；列表和版本摘要已带 created_at、updated_at、created_by、updated_by
 - application：validate、save、get、list、delete；列表和详情已带 created_at、updated_at、created_by、updated_by，以及 template 一跳摘要
-- node catalog：统一读取 core node、custom node、payload contract 和 node pack manifest，支持按 category、node_pack_id、payload_type_id、q 过滤，并返回 palette_groups、parameter_ui_schema
+- node catalog：统一读取 core node、custom node、payload 规则和 node pack manifest，支持按 category、node_pack_id、payload_type_id、q 过滤，并返回 palette_groups、parameter_ui_schema
 - preview run：create、get、list、events、cancel、delete；create 支持 sync/async wait_mode，列表支持按 state、created_from、created_to 过滤
 - execution policy：create、list、get
 - app runtime：create、list、get、start、stop、restart、health、instances、sync invoke、async run create、get run、cancel run；响应已带 updated_by，以及 application/template 一跳摘要
@@ -35,7 +35,7 @@
 
 ## 当前已能支撑的前端第一阶段范围
 
-- 从 node catalog 拉取节点目录、端口定义、payload contract、parameter_schema、parameter_ui_schema 和 palette_groups，并支持节点面板筛选与搜索
+- 从 node catalog 拉取节点目录、端口定义、payload 规则、parameter_schema、parameter_ui_schema 和 palette_groups，并支持节点面板筛选与搜索
 - 保存和读取图模板与流程应用
 - 浏览同一模板的多版本
 - 复制 template version、复制 application，并直接读取 template 最新版本
@@ -67,7 +67,7 @@
 
 ### 5. parameter_ui_schema 扩展策略
 
-- 当前已形成“parameter_schema 推导 + parameter_ui_schema 显式覆盖”的稳定合同
+- 当前已形成“parameter_schema 推导 + parameter_ui_schema 显式覆盖”的稳定规则
 - 后续只继续补复杂节点的分组、枚举标签、隐藏字段和只读字段示例，不再回到前端自行猜测 schema 语义
 - 明确节点结果面板和端口预览需要的元数据是否进入 node catalog
 

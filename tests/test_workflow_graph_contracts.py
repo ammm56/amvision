@@ -1,4 +1,4 @@
-"""workflow graph 合同测试。"""
+"""workflow graph 规则测试。"""
 
 from __future__ import annotations
 
@@ -28,7 +28,7 @@ from backend.contracts.workflows.workflow_graph import (
 
 
 def _build_payload_contracts() -> tuple[WorkflowPayloadContract, ...]:
-    """构造测试使用的最小 payload contract 集合。"""
+    """构造测试使用的最小 payload 规则 集合。"""
 
     return (
         WorkflowPayloadContract(
@@ -255,7 +255,7 @@ def _build_graph_template() -> WorkflowGraphTemplate:
 
 
 def test_workflow_contracts_roundtrip_and_binding_validation() -> None:
-    """验证 payload contract、节点目录、图模板和流程应用可以稳定保存与加载。"""
+    """验证 payload 规则、节点目录、图模板和流程应用可以稳定保存与加载。"""
 
     payload_contracts = _build_payload_contracts()
     node_definitions = _build_node_definitions()

@@ -498,7 +498,7 @@ def _build_yoloe_text_prompt_template() -> WorkflowGraphTemplate:
                 node_id="yoloe_text",
                 node_type_id="custom.yoloe.text-prompt-detect",
                 parameters={
-                    "model_family": "v8",
+                    "model_series": "v8",
                     "model_scale": "s",
                     "confidence_threshold": 0.05,
                     "iou_threshold": 0.5,

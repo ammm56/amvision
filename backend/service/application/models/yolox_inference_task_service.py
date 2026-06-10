@@ -524,7 +524,7 @@ class SqlAlchemyYoloXInferenceTaskService:
         self,
         request: YoloXInferenceTaskRequest,
     ) -> YoloXNormalizedInferenceInput:
-        """根据提交请求构造统一输入合同。"""
+        """根据提交请求构造统一输入规则。"""
 
         input_transport_mode = self._normalize_input_transport_mode(request.input_transport_mode)
         if input_transport_mode == YOLOX_INFERENCE_INPUT_TRANSPORT_MEMORY:
@@ -624,7 +624,7 @@ class SqlAlchemyYoloXInferenceTaskService:
         self,
         task_record: TaskRecord,
     ) -> YoloXNormalizedInferenceInput:
-        """从 TaskRecord 反解析统一输入合同。"""
+        """从 TaskRecord 反解析统一输入规则。"""
 
         task_spec = dict(task_record.task_spec)
         normalized_input_payload = task_spec.get("normalized_input")
@@ -794,7 +794,7 @@ class SqlAlchemyYoloXInferenceTaskService:
         return_preview_image_base64: bool,
         extra_options: dict[str, object],
     ) -> YoloXPredictionRequest:
-        """把任务层统一输入合同折叠为 prediction request。"""
+        """把任务层统一输入规则折叠为 prediction request。"""
 
         return build_yolox_prediction_request(
             normalized_input=normalized_input,

@@ -28,7 +28,7 @@
 - 版本前缀：/api/v1
 - 资源分组：/workflows
 - 资源路径：/api/v1/workflows/execution-policies
-- 稳定合同：amvision.workflow-execution-policy.v1
+- 稳定规则：amvision.workflow-execution-policy.v1
 
 ## 鉴权规则
 

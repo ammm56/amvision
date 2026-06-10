@@ -11,7 +11,7 @@
 ## 适用范围
 
 - DatasetExport 创建接口
-- DatasetExport 格式合同接口
+- DatasetExport 格式规则接口
 - DatasetExport 详情查询接口
 - DatasetVersion 下的导出记录列表接口
 - DatasetExport 打包与下载接口
@@ -43,7 +43,7 @@
 ## 当前实现边界
 
 - 当前只支持 detection 类型 DatasetVersion
-- 当前已经公开独立的格式合同接口 `GET /api/v1/datasets/export-formats`，用于先读取 implemented_formats 和 default_format，再决定是否创建导出任务
+- 当前已经公开独立的格式规则接口 `GET /api/v1/datasets/export-formats`，用于先读取 implemented_formats 和 default_format，再决定是否创建导出任务
 - 当前已经正式实现并对外开放的 format_id：
   - coco-detection-v1
   - voc-detection-v1
@@ -55,7 +55,7 @@
 
 ### GET /api/v1/datasets/export-formats
 
-返回当前公开的数据集导出格式合同，用于前端、工作站或脚本在提交导出任务前先读取能力范围。
+返回当前公开的数据集导出格式规则，用于前端、工作站或脚本在提交导出任务前先读取能力范围。
 
 #### 成功响应要点
 

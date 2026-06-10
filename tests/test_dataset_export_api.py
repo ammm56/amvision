@@ -147,7 +147,7 @@ def test_create_dataset_export_supports_voc_format(tmp_path: Path) -> None:
 
 
 def test_dataset_export_format_catalog_only_exposes_implemented_formats(tmp_path: Path) -> None:
-    """验证导出格式合同接口只公开已实现格式。"""
+    """验证导出格式规则接口只公开已实现格式。"""
 
     client, session_factory, _, _ = _create_test_client(tmp_path)
     try:

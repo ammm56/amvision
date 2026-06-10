@@ -33,7 +33,7 @@ _OPENVINO_IR_BUILD_SCRIPT_FILE = "build_openvino_ir.py"
 _TENSORRT_ENGINE_BUILD_SCRIPT_FILE = "build_tensorrt_engine.py"
 
 
-# 沿用统一转换执行合同的 YOLOX 命名导出。
+# 沿用统一转换执行规则的 YOLOX 命名导出。
 YoloXConversionRunRequest = ConversionBackendRunRequest
 YoloXConversionOutput = ConversionBackendOutput
 YoloXConversionRunResult = ConversionBackendRunResult

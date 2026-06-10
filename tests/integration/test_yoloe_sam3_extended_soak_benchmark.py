@@ -32,13 +32,13 @@ def test_yoloe_text_prompt_cpu_extended_soak_benchmark() -> None:
     """验证 YOLOE text-prompt 在更大图尺寸与更长迭代下的 CPU 稳定性。"""
 
     session = get_or_create_yoloe_text_prompt_runtime_session(
-        model_family="v8",
+        model_series="v8",
         model_scale="s",
         device="cpu",
         precision="fp32",
     )
     repeated_session = get_or_create_yoloe_text_prompt_runtime_session(
-        model_family="v8",
+        model_series="v8",
         model_scale="s",
         device="cpu",
         precision="fp32",
@@ -148,13 +148,13 @@ def test_yoloe_text_prompt_cuda_extended_soak_benchmark() -> None:
     """验证 YOLOE text-prompt 在更大图尺寸与更长迭代下的 CUDA 稳定性。"""
 
     session = get_or_create_yoloe_text_prompt_runtime_session(
-        model_family="v8",
+        model_series="v8",
         model_scale="s",
         device="cuda",
         precision="fp16",
     )
     repeated_session = get_or_create_yoloe_text_prompt_runtime_session(
-        model_family="v8",
+        model_series="v8",
         model_scale="s",
         device="cuda",
         precision="fp16",

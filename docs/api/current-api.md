@@ -99,7 +99,7 @@ WebSocket 资源流的统一消息结构、控制事件和重连规则见 [docs/
 | GET | /api/v1/datasets/imports/{dataset_import_id} | datasets:read | 查询单条导入记录详情、校验报告和关联 DatasetVersion。 |
 | DELETE | /api/v1/datasets/imports/{dataset_import_id} | datasets:write | 删除一个已完成或已失败的 DatasetImport 记录，并清理关联文件目录。 |
 | GET | /api/v1/datasets/{dataset_id}/imports | datasets:read | 查询某个 Dataset 下的导入记录列表。 |
-| GET | /api/v1/datasets/export-formats | datasets:read | 返回当前公开的数据集导出格式合同，包括 supported、implemented 和 default_format。 |
+| GET | /api/v1/datasets/export-formats | datasets:read | 返回当前公开的数据集导出格式规则，包括 supported、implemented 和 default_format。 |
 | POST | /api/v1/datasets/exports | datasets:write | 为指定 DatasetVersion 创建 DatasetExport 资源和关联 TaskRecord，并提交到本地队列。 |
 | GET | /api/v1/datasets/exports/{dataset_export_id} | datasets:read | 查询单条导出记录详情，包括 manifest_object_key、export_path 和样本摘要。 |
 | GET | /api/v1/datasets/{dataset_id}/versions/{dataset_version_id}/exports | datasets:read | 查询某个 DatasetVersion 下的导出记录列表。 |
@@ -1804,7 +1804,7 @@ classification、segmentation、pose 和 obb 四种任务类型各自提供与 d
   - timeout_seconds，可选
 - 其他文件字段名必须等于 application 的 input binding_id
 - 当前 multipart 文件上传只支持 `dataset-package.v1` 输入绑定，不支持把图片文件直接作为 `request_image` 上传
-- 当前响应与 JSON `invoke` 一样返回完整 WorkflowRun 合同
+- 当前响应与 JSON `invoke` 一样返回完整 WorkflowRun 规则
 
 ### POST /api/v1/workflows/app-runtimes/{workflow_runtime_id}/runs
 
@@ -1833,7 +1833,7 @@ classification、segmentation、pose 和 obb 四种任务类型各自提供与 d
   - timeout_seconds，可选
 - 其他文件字段名必须等于 application 的 input binding_id
 - 当前 multipart 文件上传只支持 `dataset-package.v1` 输入绑定，不支持把图片文件直接作为 `request_image` 上传
-- 当前响应与 JSON `runs` 一样返回完整 WorkflowRun 合同
+- 当前响应与 JSON `runs` 一样返回完整 WorkflowRun 规则
 
 ### POST /api/v1/workflows/trigger-sources
 
@@ -1898,7 +1898,7 @@ classification、segmentation、pose 和 obb 四种任务类型各自提供与 d
 - 当前已接入的 adapter 为 `zeromq-topic`、`plc-register`、`directory-poll` 与 `directory-watch`；其中 `plc-register` 第一阶段只支持 `transport_config.driver = modbus-tcp`、后台 polling 和 `submit_mode = async`，`directory-poll` 第一阶段只支持本地目录轮询和 `submit_mode = async`，`directory-watch` 第一阶段只支持本地目录事件监听和 `submit_mode = async`
 - ZeroMQ 数据面不经过该 REST API 发送图片；图片 bytes 由 C# SDK 通过 ZeroMQ multipart 发送到已启用的 TriggerSource
 - 成功状态码：201 Created
-- 当前响应返回 WorkflowTriggerSource 合同，包括 desired_state、observed_state、health_summary、created_at 和 updated_at
+- 当前响应返回 WorkflowTriggerSource 规则，包括 desired_state、observed_state、health_summary、created_at 和 updated_at
 
 ### GET /api/v1/workflows/trigger-sources
 
@@ -1965,7 +1965,7 @@ classification、segmentation、pose 和 obb 四种任务类型各自提供与 d
   - after_sequence
   - limit
 - 返回 WorkflowRun 历史事件列表
-- 当前 WebSocket replay 与 live 事件 payload 与 REST 事件合同保持同层字段结构，不再额外包一层 `payload.data`
+- 当前 WebSocket replay 与 live 事件 payload 与 REST 事件规则保持同层字段结构，不再额外包一层 `payload.data`
 
 ## tasks 资源组
 
@@ -2029,7 +2029,7 @@ classification、segmentation、pose 和 obb 四种任务类型各自提供与 d
 | /ws/v1/deployments/events | models:read | 按 deployment_instance_id 订阅 deployment 实时事件。 |
 | /ws/v1/projects/events | workflows:read + models:read | 按 project_id 订阅项目级聚合 summary 快照与后续更新。 |
 
-workflow preview-run、run、app-runtime 和 deployment 四类事件流当前都已经把 WebSocket payload 与对应 REST 事件合同对齐，业务字段直接平铺在 `payload` 下，不再额外包一层 `payload.data`。
+workflow preview-run、run、app-runtime 和 deployment 四类事件流当前都已经把 WebSocket payload 与对应 REST 事件规则对齐，业务字段直接平铺在 `payload` 下，不再额外包一层 `payload.data`。
 
 ### /ws/v1/auth/events
 

@@ -18,7 +18,7 @@ def test_resolve_yoloe_pretrained_variant_reads_local_prompt_free_manifest() -> 
     """验证本地 YOLOE prompt-free manifest 可以被正确解析。"""
 
     variant = resolve_yoloe_pretrained_variant(
-        model_family="v8",
+        model_series="v8",
         model_scale="s",
         prompt_free=True,
     )
@@ -57,7 +57,7 @@ def test_prompt_free_detect_returns_detection_payload_and_summary(monkeypatch) -
                     },
                 ),
                 summary={
-                    "model_family": "v8",
+                    "model_series": "v8",
                     "model_scale": "s",
                     "variant_name": "v8-prompt-free",
                     "checkpoint_path": "fake-pf.pt",
@@ -87,9 +87,9 @@ def test_prompt_free_detect_returns_detection_payload_and_summary(monkeypatch) -
                 ),
             )
 
-    def _fake_get_or_create_session(*, model_family: str, model_scale: str, device: str, precision: str):
+    def _fake_get_or_create_session(*, model_series: str, model_scale: str, device: str, precision: str):
         captured["session_kwargs"] = {
-            "model_family": model_family,
+            "model_series": model_series,
             "model_scale": model_scale,
             "device": device,
             "precision": precision,
@@ -115,7 +115,7 @@ def test_prompt_free_detect_returns_detection_payload_and_summary(monkeypatch) -
         node_id="node-prompt-free",
         node_definition=SimpleNamespace(node_type_id=prompt_free_detect.NODE_TYPE_ID),
         parameters={
-            "model_family": "v8",
+            "model_series": "v8",
             "model_scale": "s",
             "confidence_threshold": 0.31,
             "iou_threshold": 0.55,
@@ -137,7 +137,7 @@ def test_prompt_free_detect_returns_detection_payload_and_summary(monkeypatch) -
     output = prompt_free_detect.handle_node(request)
 
     assert captured["session_kwargs"] == {
-        "model_family": "v8",
+        "model_series": "v8",
         "model_scale": "s",
         "device": "cpu",
         "precision": "fp32",
@@ -157,7 +157,7 @@ def test_prompt_free_runtime_session_runs_project_native_smoke() -> None:
     """验证 prompt-free 节点会加载本地 project-native runtime。"""
 
     runtime_session = get_or_create_yoloe_prompt_free_runtime_session(
-        model_family="v8",
+        model_series="v8",
         model_scale="s",
         device="cpu",
         precision="fp32",

@@ -15,7 +15,7 @@ class NodeCatalogSnapshot:
 
     字段：
     - node_pack_manifests：已发现的节点包 manifest 列表。
-    - payload_contracts：已注册的 payload contract 列表。
+    - payload_contracts：已注册的 payload 规则 列表。
     - node_definitions：已注册的 NodeDefinition 列表。
     """
 
@@ -157,7 +157,7 @@ class NodePackLoader(Protocol):
         ...
 
     def get_workflow_payload_contracts(self) -> tuple[WorkflowPayloadContract, ...]:
-        """返回已注册的 workflow payload contract 列表。"""
+        """返回已注册的 workflow payload 规则 列表。"""
 
         ...
 

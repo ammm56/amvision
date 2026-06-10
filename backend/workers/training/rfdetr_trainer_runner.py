@@ -16,7 +16,7 @@ from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 
 
-# 沿用统一训练执行合同的别名导出
+# 沿用统一训练执行规则的别名导出
 RfdetrTrainingRunRequest = TrainingBackendRunRequest
 RfdetrTrainingRunResult = TrainingBackendRunResult
 RfdetrTrainerRunner = TrainingBackend

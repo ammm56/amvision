@@ -152,7 +152,7 @@
 建议确认：
 
 - 节点定义已经进入 node catalog
-- payload contract 已经可见
+- payload 规则 已经可见
 - 节点数量和预期一致
 
 ### 5. 先走 preview，再进 app runtime
@@ -286,7 +286,7 @@ D:/software/anaconda3/envs/amvision/python.exe -m pytest tests/integration/test_
 
 处理方式：
 
-- 先对照 payload contract
+- 先对照 payload 规则
 - 再看节点返回的 `summary`
 - 当前 `YOLOE / SAM3` 已经有空提示、非法提示和异常目录回归，可以按这些边界排查
 

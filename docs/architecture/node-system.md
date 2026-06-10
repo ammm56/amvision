@@ -40,7 +40,7 @@
 - backend-service：发现 node pack、读取 manifest，并按 enabledByDefault 决定是否把 pack 纳入统一 NodeCatalogRegistry
 - workers：在运行时环境中执行 custom node 逻辑，处理节点输入输出规则
 - frontend/web-ui：读取统一节点目录、参数 schema 和分类信息，在节点编辑器与配置面板里渲染节点能力
-- contracts：放 node pack manifest、节点定义、payload contract 和输入输出 schema 的共用格式
+- contracts：放 node pack manifest、节点定义、payload 规则 和输入输出 schema 的共用格式
 - runtimes：放节点运行环境和依赖隔离边界
 - packaging：处理默认 custom_nodes、可选 node pack 资产和发布装配
 
@@ -164,7 +164,7 @@ custom_nodes/
 ### workers
 
 - 提供节点执行容器、错误收敛和超时控制
-- 确保 custom node 输入输出严格遵循 payload contract 与端口规则
+- 确保 custom node 输入输出严格遵循 payload 规则 与端口规则
 - 负责在任务执行过程中调用对应节点逻辑
 
 ### frontend/web-ui

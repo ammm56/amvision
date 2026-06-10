@@ -1,4 +1,4 @@
-"""YOLOX 历史命名的 detection 运行时契约别名。"""
+"""YOLOX 历史命名的 detection 运行时规则别名。"""
 
 from __future__ import annotations
 

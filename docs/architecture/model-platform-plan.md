@@ -30,7 +30,7 @@
 
 ### 仍然明显绑定 YOLOX 的部分
 
-- 历史命名上仍保留大量 `yolox_*` 模块名、队列名、runtime target 与 specialized route；这些外壳不再只服务 YOLOX，但名称仍会影响理解成本。
+- 历史命名上仍保留大量 `yolox_*` 模块名、队列名、runtime target 与 专用 route；这些外壳不再只服务 YOLOX，但名称仍会影响理解成本。
 - `ModelRuntime`、deployment supervisor 和 async inference gateway 已经具备通用分发能力，但部分请求/结果对象和目录命名仍带早期 detection/YOLOX 色彩。
 - workflow service node runtime 已经组装统一 detection / classification / segmentation / pose / obb 服务，以及 YOLOE / SAM3、PLC、目录触发、自定义输出等能力；但少数 service node id 与内部 helper 仍沿用早期 YOLOX 命名。
 - worker consumer 注册表仍主要沿用 `yolox-training / yolox-conversion / yolox-evaluation / yolox-inference` 这组队列 kind 命名；实际执行面已经承载更多模型类型。

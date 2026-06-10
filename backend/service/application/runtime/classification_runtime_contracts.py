@@ -1,4 +1,4 @@
-"""classification 推理公共契约。"""
+"""classification 推理公共规则。"""
 
 from __future__ import annotations
 

@@ -49,7 +49,7 @@ def test_visual_prompt_detect_returns_detection_payload_and_summary(monkeypatch)
                     },
                 ),
                 summary={
-                    "model_family": "v8",
+                    "model_series": "v8",
                     "model_scale": "s",
                     "variant_name": "v8-default",
                     "checkpoint_path": "fake.pt",
@@ -78,9 +78,9 @@ def test_visual_prompt_detect_returns_detection_payload_and_summary(monkeypatch)
                 ),
             )
 
-    def _fake_get_or_create_session(*, model_family: str, model_scale: str, device: str, precision: str):
+    def _fake_get_or_create_session(*, model_series: str, model_scale: str, device: str, precision: str):
         captured["session_kwargs"] = {
-            "model_family": model_family,
+            "model_series": model_series,
             "model_scale": model_scale,
             "device": device,
             "precision": precision,
@@ -98,7 +98,7 @@ def test_visual_prompt_detect_returns_detection_payload_and_summary(monkeypatch)
         node_id="node-1",
         node_definition=SimpleNamespace(node_type_id=visual_prompt_detect.NODE_TYPE_ID),
         parameters={
-            "model_family": "v8",
+            "model_series": "v8",
             "model_scale": "s",
             "confidence_threshold": 0.3,
             "iou_threshold": 0.6,
@@ -126,7 +126,7 @@ def test_visual_prompt_detect_returns_detection_payload_and_summary(monkeypatch)
     output = visual_prompt_detect.handle_node(request)
 
     assert captured["session_kwargs"] == {
-        "model_family": "v8",
+        "model_series": "v8",
         "model_scale": "s",
         "device": "cpu",
         "precision": "fp32",
@@ -146,7 +146,7 @@ def test_visual_prompt_detect_accepts_point_prompt(monkeypatch) -> None:
     request = WorkflowNodeExecutionRequest(
         node_id="node-point",
         node_definition=SimpleNamespace(node_type_id=visual_prompt_detect.NODE_TYPE_ID),
-        parameters={"model_family": "v8", "model_scale": "s"},
+        parameters={"model_series": "v8", "model_scale": "s"},
         input_values={
             "image": image_payload,
             "prompt_image": prompt_image_payload,
@@ -181,7 +181,7 @@ def test_visual_prompt_detect_accepts_polygon_prompt(monkeypatch) -> None:
     request = WorkflowNodeExecutionRequest(
         node_id="node-polygon",
         node_definition=SimpleNamespace(node_type_id=visual_prompt_detect.NODE_TYPE_ID),
-        parameters={"model_family": "v8", "model_scale": "s"},
+        parameters={"model_series": "v8", "model_scale": "s"},
         input_values={
             "image": image_payload,
             "prompt_image": prompt_image_payload,
@@ -216,7 +216,7 @@ def test_visual_prompt_detect_accepts_mask_prompt(monkeypatch) -> None:
     request = WorkflowNodeExecutionRequest(
         node_id="node-mask",
         node_definition=SimpleNamespace(node_type_id=visual_prompt_detect.NODE_TYPE_ID),
-        parameters={"model_family": "v8", "model_scale": "s"},
+        parameters={"model_series": "v8", "model_scale": "s"},
         input_values={
             "image": image_payload,
             "prompt_image": prompt_image_payload,
@@ -251,7 +251,7 @@ def test_visual_prompt_detect_merges_same_prompt_id_mixed_prompts(monkeypatch) -
     request = WorkflowNodeExecutionRequest(
         node_id="node-mixed",
         node_definition=SimpleNamespace(node_type_id=visual_prompt_detect.NODE_TYPE_ID),
-        parameters={"model_family": "v8", "model_scale": "s"},
+        parameters={"model_series": "v8", "model_scale": "s"},
         input_values={
             "image": image_payload,
             "prompt_image": prompt_image_payload,
@@ -368,7 +368,7 @@ def test_visual_prompt_runtime_session_is_not_backfilled_by_external_runtime() -
     """验证 visual-prompt 节点会加载本地 project-native runtime。"""
 
     runtime_session = get_or_create_yoloe_visual_prompt_runtime_session(
-        model_family="v8",
+        model_series="v8",
         model_scale="s",
         device="cpu",
         precision="fp32",
@@ -411,7 +411,7 @@ def test_visual_prompt_runtime_session_runs_project_native_smoke_for_extended_pr
     """验证 visual-prompt runtime 能用本地权重处理 point、polygon、mask。"""
 
     runtime_session = get_or_create_yoloe_visual_prompt_runtime_session(
-        model_family="v8",
+        model_series="v8",
         model_scale="s",
         device="cpu",
         precision="fp32",
@@ -476,7 +476,7 @@ def test_visual_prompt_runtime_session_runs_project_native_smoke_for_mixed_promp
     """验证聚合后的 mixed visual prompt 也能走本地权重链。"""
 
     runtime_session = get_or_create_yoloe_visual_prompt_runtime_session(
-        model_family="v8",
+        model_series="v8",
         model_scale="s",
         device="cpu",
         precision="fp32",
@@ -538,7 +538,7 @@ def _prepare_visual_prompt_capture(monkeypatch):
             return YoloeDetectionPrediction(
                 detections=(),
                 summary={
-                    "model_family": "v8",
+                    "model_series": "v8",
                     "model_scale": "s",
                     "variant_name": "v8-default",
                     "checkpoint_path": "fake.pt",

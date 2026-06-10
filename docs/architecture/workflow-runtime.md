@@ -108,9 +108,9 @@
 
 ## 资源总览
 
-当前实现已经先落了一版 workflow 资源合同，后续继续收口时需要统一遵守下面这几条：
+当前实现已经先落了一版 workflow 资源规则，后续继续收口时需要统一遵守下面这几条：
 
-- `WorkflowPreviewRun` 当前稳定状态集合为 `created`、`running`、`succeeded`、`failed`、`cancelled`、`timed_out`；当前已把 preview cancel 收口到公开控制面，但仍不把 `queued`、`expired` 混入合同。
+- `WorkflowPreviewRun` 当前稳定状态集合为 `created`、`running`、`succeeded`、`failed`、`cancelled`、`timed_out`；当前已把 preview cancel 收口到公开控制面，但仍不把 `queued`、`expired` 混入规则。
 - `WorkflowAppRuntime` 和 `TriggerSource` 的运行态当前统一使用 `stopped`、`starting`、`running`、`stopping`、`failed` 五态模型；两者的 `desired_state` 和 `observed_state` 应保持同一套语义。
 - `WorkflowRun` 当前稳定状态集合为 `created`、`queued`、`dispatching`、`running`、`succeeded`、`failed`、`cancelled`、`timed_out`。
 - `WorkflowExecutionPolicy` 当前只有 `preview-default` 和 `runtime-default` 两类，不在第一阶段继续引入更多 policy kind。

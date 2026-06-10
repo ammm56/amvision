@@ -24,7 +24,7 @@ def test_yoloe_resolve_pretrained_variant_rejects_missing_manifest(monkeypatch) 
 
     with pytest.raises(InvalidRequestError, match="manifest"):
         yoloe_common.resolve_yoloe_pretrained_variant(
-            model_family="v8",
+            model_series="v8",
             model_scale="s",
             prompt_free=False,
         )
@@ -74,13 +74,13 @@ def test_yoloe_text_runtime_session_reuses_cpu_cache() -> None:
     """验证 YOLOE text runtime 在 CPU 上会复用同一会话。"""
 
     session_a = yoloe_common.get_or_create_yoloe_text_prompt_runtime_session(
-        model_family="v8",
+        model_series="v8",
         model_scale="s",
         device="cpu",
         precision="fp32",
     )
     session_b = yoloe_common.get_or_create_yoloe_text_prompt_runtime_session(
-        model_family="v8",
+        model_series="v8",
         model_scale="s",
         device="cpu",
         precision="fp32",

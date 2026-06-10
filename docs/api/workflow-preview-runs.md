@@ -33,7 +33,7 @@
 - 版本前缀：/api/v1
 - 资源分组：/workflows
 - 资源路径：/api/v1/workflows/preview-runs
-- 稳定合同：amvision.workflow-preview-run.v1
+- 稳定规则：amvision.workflow-preview-run.v1
 
 ## 鉴权规则
 
@@ -95,7 +95,7 @@
 
 - Content-Type：application/json
 - 成功状态码：201 Created
-- 返回完整 WorkflowPreviewRun 合同；当 wait_mode=sync 时，`outputs`、`template_outputs` 和 `node_records` 直接带当前这次执行的原始结果
+- 返回完整 WorkflowPreviewRun 规则；当 wait_mode=sync 时，`outputs`、`template_outputs` 和 `node_records` 直接带当前这次执行的原始结果
 
 ### 请求体字段
 

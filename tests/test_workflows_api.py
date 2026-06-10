@@ -520,7 +520,7 @@ def test_workflow_node_pack_status_and_control_endpoints(tmp_path: Path) -> None
 
 
 def test_workflow_node_catalog_returns_effective_parameter_ui_schema(tmp_path: Path) -> None:
-    """验证节点目录接口会返回可直接渲染的参数 UI 合同。"""
+    """验证节点目录接口会返回可直接渲染的参数 UI 规则。"""
 
     client, session_factory, _ = _create_test_client(tmp_path)
 

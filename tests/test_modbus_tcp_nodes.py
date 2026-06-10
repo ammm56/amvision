@@ -93,7 +93,7 @@ def test_read_value_node_returns_typed_scalar(monkeypatch) -> None:
     assert captured["read_call"] == {"address": 0, "count": 1, "device_id": 3}
     assert output["result"]["value"]["transport"] == "modbus-tcp"
     assert output["result"]["value"]["operation"] == "read_value"
-    assert output["result"]["value"]["address_family"] == "holding_register"
+    assert output["result"]["value"]["register_area"] == "holding_register"
     assert output["result"]["value"]["zero_based_address"] == 0
     assert output["result"]["value"]["observed_value"] == 125
     assert output["result"]["value"]["response_meta"]["function_code"] == 3

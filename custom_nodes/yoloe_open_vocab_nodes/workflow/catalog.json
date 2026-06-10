@@ -189,7 +189,7 @@
       "parameter_schema": {
         "type": "object",
         "properties": {
-          "model_family": {
+          "model_series": {
             "type": "string",
             "enum": [
               "v8",
@@ -321,7 +321,7 @@
       "parameter_schema": {
         "type": "object",
         "properties": {
-          "model_family": {
+          "model_series": {
             "type": "string",
             "enum": [
               "v8",
@@ -441,7 +441,7 @@
       "parameter_schema": {
         "type": "object",
         "properties": {
-          "model_family": {
+          "model_series": {
             "type": "string",
             "enum": [
               "v8",

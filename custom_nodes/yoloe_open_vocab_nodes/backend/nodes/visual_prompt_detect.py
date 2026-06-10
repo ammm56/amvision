@@ -11,7 +11,7 @@ from custom_nodes.yoloe_open_vocab_nodes.backend.nodes._common import (
     normalize_device,
     normalize_iou_threshold,
     normalize_max_detections,
-    normalize_model_family,
+    normalize_model_series,
     normalize_model_scale,
     normalize_precision,
     read_image_bytes,
@@ -33,7 +33,7 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
         prompt_image_payload=prompt_image_payload,
         prompt_image_bytes=prompt_image_bytes,
     )
-    model_family = normalize_model_family(request.parameters.get("model_family"))
+    model_series = normalize_model_series(request.parameters.get("model_series"))
     model_scale = normalize_model_scale(request.parameters.get("model_scale"))
     confidence_threshold = normalize_confidence_threshold(request.parameters.get("confidence_threshold"))
     iou_threshold = normalize_iou_threshold(request.parameters.get("iou_threshold"))
@@ -42,7 +42,7 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
     precision = normalize_precision(request.parameters.get("precision"))
 
     runtime_session = get_or_create_yoloe_visual_prompt_runtime_session(
-        model_family=model_family,
+        model_series=model_series,
         model_scale=model_scale,
         device=device,
         precision=precision,

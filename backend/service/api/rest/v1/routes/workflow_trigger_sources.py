@@ -392,7 +392,7 @@ def _build_trigger_source_contract(
     *,
     request: Request,
 ) -> WorkflowTriggerSourceContract:
-    """把领域对象转换为 REST 合同。"""
+    """把领域对象转换为 REST 规则。"""
 
     runtime_summary = _try_build_runtime_reference_summary(
         request=request,

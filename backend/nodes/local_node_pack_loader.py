@@ -227,7 +227,7 @@ class LocalNodePackLoader:
         return self._catalog_snapshot.node_pack_manifests
 
     def get_workflow_payload_contracts(self) -> tuple[WorkflowPayloadContract, ...]:
-        """返回已注册的 workflow payload contract 列表。"""
+        """返回已注册的 workflow payload 规则 列表。"""
 
         return self._catalog_snapshot.payload_contracts
 
@@ -808,7 +808,7 @@ def _utc_now() -> str:
 def _merge_payload_contracts(
     payload_contracts: list[WorkflowPayloadContract],
 ) -> tuple[WorkflowPayloadContract, ...]:
-    """合并多个节点包收集到的 payload contract。"""
+    """合并多个节点包收集到的 payload 规则。"""
 
     merged_contracts: list[WorkflowPayloadContract] = []
     contract_index: dict[str, WorkflowPayloadContract] = {}
@@ -820,7 +820,7 @@ def _merge_payload_contracts(
             continue
         if existing_contract.model_dump(mode="json") != contract.model_dump(mode="json"):
             raise ServiceConfigurationError(
-                "发现重复且定义不一致的 payload contract",
+                "发现重复且定义不一致的 payload 规则",
                 details={"payload_type_id": contract.payload_type_id},
             )
     return tuple(merged_contracts)

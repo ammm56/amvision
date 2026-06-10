@@ -605,7 +605,7 @@
                 "validate"
               ]
             },
-            "description": "校验 workflow template 合同，复用 Save Workflow Template 的同一份请求体。"
+            "description": "校验 workflow template 规则，复用 Save Workflow Template 的同一份请求体。"
           },
           "response": []
         },

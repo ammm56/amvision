@@ -149,7 +149,7 @@
 
 - 平台基础模型接口本身不创建训练任务，也不修改模型内容。
 - 当前推荐流程是先调用 GET /api/v1/models/platform-base 或 GET /api/v1/models/platform-base/{model_id}，拿到 available_versions[].model_version_id。
-- 然后把这个 model_version_id 传给统一模型任务族的训练入口，例如 `POST /api/v1/models/detection/training-tasks`；如果现场仍在使用 specialized YOLOX 路由，也可以继续传给 `POST /api/v1/models/yolox/training-tasks`。
+- 然后把这个 model_version_id 传给统一模型任务入口的训练入口，例如 `POST /api/v1/models/detection/training-tasks`；如果现场仍在使用 专用 YOLOX 路由，也可以继续传给 `POST /api/v1/models/yolox/training-tasks`。
 
 ## 当前能力边界
 

@@ -1,4 +1,4 @@
-"""LocalBufferBroker buffer lease 合同。"""
+"""LocalBufferBroker buffer lease 规则。"""
 
 from __future__ import annotations
 

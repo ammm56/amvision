@@ -101,13 +101,13 @@ class DatasetExportPackageResponse(BaseModel):
 
 
 class DatasetExportFormatItemResponse(BaseModel):
-	"""描述单个已实现数据集导出格式的公开合同项。"""
+	"""描述单个已实现数据集导出格式的公开规则项。"""
 
 	format_id: str = Field(description="导出格式 id")
 
 
 class DatasetExportFormatCatalogResponse(BaseModel):
-	"""描述数据集导出格式公开能力合同。"""
+	"""描述数据集导出格式公开能力规则。"""
 
 	implemented_formats: list[str] = Field(default_factory=list, description="当前已实现并可用的格式")
 	default_format: str = Field(description="默认导出格式")
@@ -121,7 +121,7 @@ class DatasetExportFormatCatalogResponse(BaseModel):
 def get_dataset_export_format_catalog(
 	principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("datasets:read"))],
 ) -> DatasetExportFormatCatalogResponse:
-	"""返回当前公开的数据集导出格式合同。"""
+	"""返回当前公开的数据集导出格式规则。"""
 
 	return _build_dataset_export_format_catalog_response()
 
@@ -382,7 +382,7 @@ def _build_dataset_export_package_response(
 
 
 def _build_dataset_export_format_catalog_response() -> DatasetExportFormatCatalogResponse:
-	"""构造稳定的数据集导出格式能力合同响应。"""
+	"""构造稳定的数据集导出格式能力规则响应。"""
 
 	return DatasetExportFormatCatalogResponse(
 		implemented_formats=list(IMPLEMENTED_DATASET_EXPORT_FORMATS),

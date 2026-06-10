@@ -1,4 +1,4 @@
-"""workflow 示例文档的合同校验测试。"""
+"""workflow 示例文档的规则校验测试。"""
 
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ from backend.nodes.node_catalog_registry import NodeCatalogRegistry
 
 
 def test_yolox_deployment_detection_lifecycle_example_documents_are_valid() -> None:
-    """验证 deployment lifecycle 示例模板与应用可以通过当前合同校验。"""
+    """验证 deployment lifecycle 示例模板与应用可以通过当前规则校验。"""
 
     example_dir = (
         Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
@@ -88,7 +88,7 @@ def test_yolox_deployment_detection_lifecycle_example_documents_are_valid() -> N
 
 
 def test_yolox_deployment_sync_infer_health_example_documents_are_valid() -> None:
-    """验证 deployment sync infer health 示例模板与应用可以通过当前合同校验。"""
+    """验证 deployment sync infer health 示例模板与应用可以通过当前规则校验。"""
 
     example_dir = (
         Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
@@ -147,7 +147,7 @@ def test_yolox_deployment_sync_infer_health_example_documents_are_valid() -> Non
 
 
 def test_barcode_result_display_example_documents_are_valid() -> None:
-    """验证 barcode 结果展示示例模板与应用可以通过当前合同校验。"""
+    """验证 barcode 结果展示示例模板与应用可以通过当前规则校验。"""
 
     example_dir = (
         Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
@@ -199,7 +199,7 @@ def test_barcode_result_display_example_documents_are_valid() -> None:
 
 
 def test_sam3_video_memory_attention_review_example_documents_are_valid() -> None:
-    """验证 SAM3 memory-attention 视频样例模板与应用可以通过当前合同校验。"""
+    """验证 SAM3 memory-attention 视频样例模板与应用可以通过当前规则校验。"""
 
     example_dir = (
         Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
@@ -260,7 +260,7 @@ def test_sam3_video_memory_attention_review_example_documents_are_valid() -> Non
 
 
 def test_camera_usb_uvc_enumerate_capture_preview_example_documents_are_valid() -> None:
-    """验证 USB/UVC 枚举直采样例模板与应用可以通过当前合同校验。"""
+    """验证 USB/UVC 枚举直采样例模板与应用可以通过当前规则校验。"""
 
     example_dir = (
         Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
@@ -321,7 +321,7 @@ def test_camera_usb_uvc_enumerate_capture_preview_example_documents_are_valid() 
 def test_camera_usb_uvc_session_single_frame_review_example_documents_are_valid() -> (
     None
 ):
-    """验证 USB/UVC 会话型单帧样例模板与应用可以通过当前合同校验。"""
+    """验证 USB/UVC 会话型单帧样例模板与应用可以通过当前规则校验。"""
 
     example_dir = (
         Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
@@ -398,7 +398,7 @@ def test_camera_usb_uvc_session_single_frame_review_example_documents_are_valid(
 
 
 def test_camera_usb_uvc_stream_window_preview_example_documents_are_valid() -> None:
-    """验证 USB/UVC 流窗口预览样例模板与应用可以通过当前合同校验。"""
+    """验证 USB/UVC 流窗口预览样例模板与应用可以通过当前规则校验。"""
 
     example_dir = (
         Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
@@ -500,7 +500,7 @@ def test_plc_modbus_wait_status_word_example_documents_are_valid(
     expected_mask_operator: str,
     expected_mask_decimal: int,
 ) -> None:
-    """验证 PLC Modbus 状态字 wait-condition 样例模板与应用可以通过当前合同校验。"""
+    """验证 PLC Modbus 状态字 wait-condition 样例模板与应用可以通过当前规则校验。"""
 
     example_dir = (
         Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
@@ -555,7 +555,7 @@ def test_plc_modbus_wait_status_word_example_documents_are_valid(
 
 
 def test_plc_modbus_wait_ready_ack_callback_example_documents_are_valid() -> None:
-    """验证 PLC Modbus ready -> ack -> callback 样例模板与应用可以通过当前合同校验。"""
+    """验证 PLC Modbus ready -> ack -> callback 样例模板与应用可以通过当前规则校验。"""
 
     example_dir = (
         Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
@@ -630,7 +630,7 @@ def test_plc_modbus_wait_ready_ack_callback_example_documents_are_valid() -> Non
 
 
 def test_plc_register_modbus_tcp_async_result_record_example_documents_are_valid() -> None:
-    """验证 plc-register TriggerSource 回传样例模板与应用可以通过当前合同校验。"""
+    """验证 plc-register TriggerSource 回传样例模板与应用可以通过当前规则校验。"""
 
     example_dir = (
         Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
@@ -703,7 +703,7 @@ def test_plc_register_modbus_tcp_async_result_record_example_documents_are_valid
 
 
 def test_industrial_single_frame_glue_roi_modbus_callback_documents_are_valid() -> None:
-    """验证工业单帧 ROI + Modbus 回写样例模板与应用可以通过当前合同校验。"""
+    """验证工业单帧 ROI + Modbus 回写样例模板与应用可以通过当前规则校验。"""
 
     example_dir = (
         Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
@@ -792,7 +792,7 @@ def test_industrial_single_frame_glue_roi_modbus_callback_documents_are_valid() 
 
 
 def test_industrial_single_frame_glue_roi_modbus_callback_strict_documents_are_valid() -> None:
-    """验证工业单帧 ROI + Modbus 回写严格顺序样例模板与应用可以通过当前合同校验。"""
+    """验证工业单帧 ROI + Modbus 回写严格顺序样例模板与应用可以通过当前规则校验。"""
 
     example_dir = (
         Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
@@ -890,7 +890,7 @@ def test_industrial_single_frame_glue_roi_modbus_callback_strict_documents_are_v
 
 
 def test_industrial_single_frame_glue_roi_delivery_bundle_documents_are_valid() -> None:
-    """验证工业单帧 ROI 结果交付全链样例模板与应用可以通过当前合同校验。"""
+    """验证工业单帧 ROI 结果交付全链样例模板与应用可以通过当前规则校验。"""
 
     example_dir = (
         Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
@@ -1140,7 +1140,7 @@ def test_industrial_single_frame_example_documents_are_valid(
     expected_input_ids: list[str],
     expected_binding_ids: list[str],
 ) -> None:
-    """验证工业单帧规则样例模板与应用可以通过当前合同校验。"""
+    """验证工业单帧规则样例模板与应用可以通过当前规则校验。"""
 
     example_dir = (
         Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
@@ -1193,7 +1193,7 @@ def test_industrial_single_frame_example_documents_are_valid(
 
 
 def test_industrial_single_frame_yolox_position_gate_documents_are_valid() -> None:
-    """验证 YOLOX 检测到工业规则链样例模板与应用可以通过当前合同校验。"""
+    """验证 YOLOX 检测到工业规则链样例模板与应用可以通过当前规则校验。"""
 
     example_dir = (
         Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
@@ -1277,7 +1277,7 @@ def test_industrial_single_frame_yolox_position_gate_documents_are_valid() -> No
 def test_industrial_single_frame_calibrated_template_edge_gate_documents_are_valid() -> (
     None
 ):
-    """验证本地标定 template-match + caliper-edge 工业样例模板与应用可以通过当前合同校验。"""
+    """验证本地标定 template-match + caliper-edge 工业样例模板与应用可以通过当前规则校验。"""
 
     example_dir = (
         Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
@@ -1363,7 +1363,7 @@ def test_industrial_single_frame_calibrated_template_edge_gate_documents_are_val
 def test_industrial_single_frame_calibrated_orb_homography_gate_documents_are_valid() -> (
     None
 ):
-    """验证本地标定 ORB + homography 工业样例模板与应用可以通过当前合同校验。"""
+    """验证本地标定 ORB + homography 工业样例模板与应用可以通过当前规则校验。"""
 
     example_dir = (
         Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
@@ -1501,7 +1501,7 @@ def test_industrial_single_frame_calibrated_orb_homography_gate_documents_are_va
 def test_industrial_single_frame_calibrated_orb_bridged_template_edge_gate_documents_are_valid() -> (
     None
 ):
-    """验证 ORB bridge 后继续接模板/边缘规则链的工业样例模板与应用可以通过当前合同校验。"""
+    """验证 ORB bridge 后继续接模板/边缘规则链的工业样例模板与应用可以通过当前规则校验。"""
 
     example_dir = (
         Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
@@ -1649,7 +1649,7 @@ def test_industrial_single_frame_calibrated_orb_bridged_template_edge_gate_docum
 def test_industrial_single_frame_reference_diff_defect_gate_documents_are_valid() -> (
     None
 ):
-    """验证参考图差异缺陷工业样例模板与应用可以通过当前合同校验。"""
+    """验证参考图差异缺陷工业样例模板与应用可以通过当前规则校验。"""
 
     example_dir = (
         Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
@@ -1747,7 +1747,7 @@ def test_industrial_single_frame_reference_diff_defect_gate_documents_are_valid(
 def test_industrial_single_frame_reference_diff_watershed_surface_gate_documents_are_valid() -> (
     None
 ):
-    """验证参考图差异 + watershed 表面异常工业样例模板与应用可以通过当前合同校验。"""
+    """验证参考图差异 + watershed 表面异常工业样例模板与应用可以通过当前规则校验。"""
 
     example_dir = (
         Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
@@ -1855,7 +1855,7 @@ def test_industrial_single_frame_reference_diff_watershed_surface_gate_documents
 def test_industrial_single_frame_sobel_laplacian_edge_gap_gate_documents_are_valid() -> (
     None
 ):
-    """验证 sobel/laplacian 边线完整性工业样例模板与应用可以通过当前合同校验。"""
+    """验证 sobel/laplacian 边线完整性工业样例模板与应用可以通过当前规则校验。"""
 
     example_dir = (
         Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
@@ -1955,7 +1955,7 @@ def test_industrial_single_frame_sobel_laplacian_edge_gap_gate_documents_are_val
 def test_industrial_single_frame_usb_uvc_yolox_position_gate_documents_are_valid() -> (
     None
 ):
-    """验证 USB/UVC 相机直连 YOLOX 工业规则链样例模板与应用可以通过当前合同校验。"""
+    """验证 USB/UVC 相机直连 YOLOX 工业规则链样例模板与应用可以通过当前规则校验。"""
 
     example_dir = (
         Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
@@ -2132,7 +2132,7 @@ def test_industrial_single_frame_geometry_gate_documents_are_valid(
     expected_focus: str,
     expected_node_ids: list[str],
 ) -> None:
-    """验证工业单帧几何量测样例模板与应用可以通过当前合同校验。"""
+    """验证工业单帧几何量测样例模板与应用可以通过当前规则校验。"""
 
     example_dir = (
         Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
@@ -2186,7 +2186,7 @@ def test_industrial_single_frame_geometry_gate_documents_are_valid(
 
 
 def test_industrial_single_frame_segments_continuity_gate_documents_are_valid() -> None:
-    """验证 segments 到工业规则链样例模板与应用可以通过当前合同校验。"""
+    """验证 segments 到工业规则链样例模板与应用可以通过当前规则校验。"""
 
     example_dir = (
         Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
@@ -2263,7 +2263,7 @@ def test_industrial_single_frame_segments_continuity_gate_documents_are_valid() 
 def test_industrial_single_frame_usb_uvc_sam3_semantic_continuity_gate_documents_are_valid() -> (
     None
 ):
-    """验证 USB/UVC 相机直连 SAM3 工业分割规则链样例模板与应用可以通过当前合同校验。"""
+    """验证 USB/UVC 相机直连 SAM3 工业分割规则链样例模板与应用可以通过当前规则校验。"""
 
     example_dir = (
         Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
@@ -2453,7 +2453,7 @@ def test_industrial_single_frame_overlay_review_documents_are_valid(
     expected_input_ids: list[str],
     expected_binding_ids: list[str],
 ) -> None:
-    """验证工业单帧 overlay 复核样例模板与应用可以通过当前合同校验。"""
+    """验证工业单帧 overlay 复核样例模板与应用可以通过当前规则校验。"""
 
     example_dir = (
         Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
@@ -2581,7 +2581,7 @@ def test_industrial_single_frame_native_model_overlay_review_documents_are_valid
     expected_binding_ids: list[str],
     expected_has_detections_output: bool,
 ) -> None:
-    """验证 YOLOE / SAM3 单帧直连 overlay 复核样例模板与应用可以通过当前合同校验。"""
+    """验证 YOLOE / SAM3 单帧直连 overlay 复核样例模板与应用可以通过当前规则校验。"""
 
     example_dir = (
         Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
@@ -2745,7 +2745,7 @@ def test_industrial_single_frame_prompt_region_native_model_overlay_review_docum
     expected_overlay_binding_index: int,
     expected_detections_binding_index: int | None,
 ) -> None:
-    """验证 prompt-regions 直连的 YOLOE / SAM3 overlay 复核样例模板与应用可以通过当前合同校验。"""
+    """验证 prompt-regions 直连的 YOLOE / SAM3 overlay 复核样例模板与应用可以通过当前规则校验。"""
 
     example_dir = (
         Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
@@ -2795,7 +2795,7 @@ def test_industrial_single_frame_prompt_region_native_model_overlay_review_docum
 
 
 def test_industrial_local_directory_batch_input_documents_are_valid() -> None:
-    """验证工业本地目录批量输入样例模板与应用可以通过当前合同校验。"""
+    """验证工业本地目录批量输入样例模板与应用可以通过当前规则校验。"""
 
     example_dir = (
         Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
@@ -2867,7 +2867,7 @@ def test_industrial_local_directory_batch_input_documents_are_valid() -> None:
 
 
 def test_industrial_local_directory_polling_cursor_guard_documents_are_valid() -> None:
-    """验证工业目录轮询 cursor 守护样例模板与应用可以通过当前合同校验。"""
+    """验证工业目录轮询 cursor 守护样例模板与应用可以通过当前规则校验。"""
 
     example_dir = (
         Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
@@ -2942,7 +2942,7 @@ def test_industrial_local_directory_polling_cursor_guard_documents_are_valid() -
 def test_industrial_local_directory_batch_yolox_position_gate_documents_are_valid() -> (
     None
 ):
-    """验证工业目录批处理检测闭环样例模板与应用可以通过当前合同校验。"""
+    """验证工业目录批处理检测闭环样例模板与应用可以通过当前规则校验。"""
 
     example_dir = (
         Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
@@ -3055,7 +3055,7 @@ def test_industrial_local_directory_batch_yolox_position_gate_documents_are_vali
 def test_industrial_local_directory_watch_yolox_position_gate_documents_are_valid() -> (
     None
 ):
-    """验证工业目录监听触发检测闭环样例模板与应用可以通过当前合同校验。"""
+    """验证工业目录监听触发检测闭环样例模板与应用可以通过当前规则校验。"""
 
     example_dir = (
         Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
@@ -3176,7 +3176,7 @@ def test_industrial_local_directory_watch_yolox_position_gate_documents_are_vali
 def test_industrial_local_directory_poll_yolox_position_gate_documents_are_valid() -> (
     None
 ):
-    """验证工业目录轮询触发检测闭环样例模板与应用可以通过当前合同校验。"""
+    """验证工业目录轮询触发检测闭环样例模板与应用可以通过当前规则校验。"""
 
     example_dir = (
         Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
@@ -3297,7 +3297,7 @@ def test_industrial_local_directory_poll_yolox_position_gate_documents_are_valid
 def test_industrial_local_directory_batch_segments_continuity_gate_documents_are_valid() -> (
     None
 ):
-    """验证工业目录批处理分割闭环样例模板与应用可以通过当前合同校验。"""
+    """验证工业目录批处理分割闭环样例模板与应用可以通过当前规则校验。"""
 
     example_dir = (
         Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
@@ -3407,7 +3407,7 @@ def test_industrial_local_directory_batch_segments_continuity_gate_documents_are
 def test_industrial_local_directory_batch_regions_continuity_gate_documents_are_valid() -> (
     None
 ):
-    """验证工业目录批处理 regions 闭环样例模板与应用可以通过当前合同校验。"""
+    """验证工业目录批处理 regions 闭环样例模板与应用可以通过当前规则校验。"""
 
     example_dir = (
         Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
@@ -3514,7 +3514,7 @@ def test_industrial_local_directory_batch_regions_continuity_gate_documents_are_
 
 
 def test_opencv_process_save_image_example_documents_are_valid() -> None:
-    """验证 OpenCV 处理并保存图片示例模板与应用可以通过当前合同校验。"""
+    """验证 OpenCV 处理并保存图片示例模板与应用可以通过当前规则校验。"""
 
     example_dir = (
         Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
@@ -3565,7 +3565,7 @@ def test_opencv_process_save_image_example_documents_are_valid() -> None:
 
 
 def test_yolox_deployment_infer_opencv_health_example_documents_are_valid() -> None:
-    """验证 deployment infer + opencv + health 示例模板与应用可以通过当前合同校验。"""
+    """验证 deployment infer + opencv + health 示例模板与应用可以通过当前规则校验。"""
 
     example_dir = (
         Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
@@ -3658,7 +3658,7 @@ def test_zeromq_image_ref_example_documents_are_valid(
     expected_binding_ids: list[str],
     expected_input_nodes: list[str],
 ) -> None:
-    """验证 ZeroMQ image-ref 示例模板与应用可以通过当前合同校验。"""
+    """验证 ZeroMQ image-ref 示例模板与应用可以通过当前规则校验。"""
 
     example_dir = (
         Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
@@ -3713,7 +3713,7 @@ def test_zeromq_image_ref_example_documents_are_valid(
 
 
 def test_yolox_deployment_qr_crop_remap_example_documents_are_valid() -> None:
-    """验证 deployment qr crop remap 示例模板与应用可以通过当前合同校验。"""
+    """验证 deployment qr crop remap 示例模板与应用可以通过当前规则校验。"""
 
     example_dir = (
         Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
@@ -3767,7 +3767,7 @@ def test_yolox_deployment_qr_crop_remap_example_documents_are_valid() -> None:
 
 
 def test_yolox_end_to_end_qr_crop_remap_example_documents_are_valid() -> None:
-    """验证第一类完整端到端正式示例模板与应用可以通过当前合同校验。"""
+    """验证第一类完整端到端正式示例模板与应用可以通过当前规则校验。"""
 
     example_dir = (
         Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
@@ -3905,7 +3905,7 @@ def test_yolox_end_to_end_qr_crop_remap_example_documents_are_valid() -> None:
 
 
 def test_dataset_export_package_example_documents_are_valid() -> None:
-    """验证 dataset export package 示例模板与应用可以通过当前合同校验。"""
+    """验证 dataset export package 示例模板与应用可以通过当前规则校验。"""
 
     example_dir = (
         Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
@@ -3945,7 +3945,7 @@ def test_dataset_export_package_example_documents_are_valid() -> None:
 
 
 def test_yolox_evaluation_package_example_documents_are_valid() -> None:
-    """验证 YOLOX evaluation package 示例模板与应用可以通过当前合同校验。"""
+    """验证 YOLOX evaluation package 示例模板与应用可以通过当前规则校验。"""
 
     example_dir = (
         Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
@@ -4048,7 +4048,7 @@ def test_submit_and_import_example_documents_are_valid(
     expected_node_type_id: str,
     expected_binding_ids: list[str],
 ) -> None:
-    """验证 DatasetImport 与 submit family 正式示例可以通过当前合同校验。"""
+    """验证 DatasetImport 与 submit family 正式示例可以通过当前规则校验。"""
 
     example_dir = (
         Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"

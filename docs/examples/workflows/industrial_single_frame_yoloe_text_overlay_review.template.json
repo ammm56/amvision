@@ -19,7 +19,7 @@
       "node_id": "detect",
       "node_type_id": "custom.yoloe.text-prompt-detect",
       "parameters": {
-        "model_family": "11",
+        "model_series": "11",
         "model_scale": "s",
         "confidence_threshold": 0.25,
         "iou_threshold": 0.5,

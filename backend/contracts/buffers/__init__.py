@@ -1,4 +1,4 @@
-"""LocalBufferBroker buffer 合同导出。"""
+"""LocalBufferBroker buffer 规则导出。"""
 
 from backend.contracts.buffers.buffer_lease import BUFFER_LEASE_FORMAT, BufferLease
 from backend.contracts.buffers.buffer_ref import BUFFER_REF_FORMAT, BufferRef

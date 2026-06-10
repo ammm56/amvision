@@ -1345,7 +1345,7 @@ class YoloePromptFreeRuntimeSession:
             input_size=self.input_size,
         )
         summary = {
-            "model_family": self.variant.model_family,
+            "model_series": self.variant.model_series,
             "model_scale": self.variant.model_scale,
             "variant_name": self.variant.variant_name,
             "checkpoint_path": str(self.variant.checkpoint_path),
@@ -1552,7 +1552,7 @@ class YoloeTextPromptRuntimeSession:
             item["source_prompt_negative_texts"] = list(negative_text_map.get(class_id, ()))
 
         summary = {
-            "model_family": self.variant.model_family,
+            "model_series": self.variant.model_series,
             "model_scale": self.variant.model_scale,
             "variant_name": self.variant.variant_name,
             "checkpoint_path": str(self.variant.checkpoint_path),
@@ -1817,7 +1817,7 @@ class YoloeVisualPromptRuntimeSession:
                 prompt_kind_counts[str(prompt_kind)] = int(prompt_kind_counts.get(str(prompt_kind), 0)) + 1
 
         summary = {
-            "model_family": self.variant.model_family,
+            "model_series": self.variant.model_series,
             "model_scale": self.variant.model_scale,
             "variant_name": self.variant.variant_name,
             "checkpoint_path": str(self.variant.checkpoint_path),

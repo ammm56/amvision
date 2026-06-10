@@ -77,7 +77,7 @@ LocalBufferBroker
 
 LocalBufferBroker 在目标运行形态中是本机独立 companion process，由 backend-service 或本地启动器负责启动、健康检查和停止。它不是对外公开服务，也不是新的远程微服务；它只服务同一台机器上的 backend-service、workflow preview 子进程、WorkflowAppRuntime worker、DeploymentInstance 推理 worker 和受控本地 adapter。
 
-第 0 阶段已经在项目内实现合同模型、mmap pool 基础设施和本地 reader 接口，并稳定 BufferRef、FrameRef、BufferLease、槽位复用、generation 校验和 image-ref 解析规则。第 1 阶段已经把同一套 mmap pool 和 lease registry 包到 broker companion process 中，并把 workflow preview、WorkflowAppRuntime 和 deployment worker 接到 broker client。
+第 0 阶段已经在项目内实现规则模型、mmap pool 基础设施和本地 reader 接口，并稳定 BufferRef、FrameRef、BufferLease、槽位复用、generation 校验和 image-ref 解析规则。第 1 阶段已经把同一套 mmap pool 和 lease registry 包到 broker companion process 中，并把 workflow preview、WorkflowAppRuntime 和 deployment worker 接到 broker client。
 
 建议运行形态如下：
 
@@ -104,7 +104,7 @@ workflow preview process / workflow runtime worker / deployment worker / local a
 
 当前 broker + mmap 主链路已经可以在本机 backend-service 运行时使用，已完成的能力包括：
 
-- BufferRef、FrameRef、BufferLease 合同和 image-ref 解析规则。
+- BufferRef、FrameRef、BufferLease 规则和 image-ref 解析规则。
 - 固定槽位 file-backed mmap pool、两阶段写入、读取校验、release、release-owner 和 expire_leases。
 - LocalBufferBroker companion process、supervisor、client、父进程 response router 和周期性 expire loop。
 - 普通 BufferRef direct mmap 写读，以及最小 ring channel 的 FrameRef direct mmap 写读。

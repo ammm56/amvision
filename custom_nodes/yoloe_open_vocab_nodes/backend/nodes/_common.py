@@ -18,7 +18,7 @@ from backend.service.application.workflows.graph_executor import WorkflowNodeExe
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[4]
 YOLOE_PRETRAINED_ROOT = REPOSITORY_ROOT / "data" / "files" / "models" / "pretrained" / "yoloe" / "segmentation"
-SUPPORTED_MODEL_FAMILIES = frozenset({"v8", "11", "26"})
+SUPPORTED_MODEL_SERIES = frozenset({"v8", "11", "26"})
 SUPPORTED_MODEL_SCALES = frozenset({"nano", "tiny", "s", "m", "l", "x", "xx"})
 SUPPORTED_PRECISIONS = frozenset({"fp32", "fp16", "bf16"})
 DEFAULT_CONFIDENCE_THRESHOLD = 0.25
@@ -70,7 +70,7 @@ class YoloeVisualPromptItem:
 class YoloePretrainedVariant:
     """描述一个 YOLOE 预训练权重目录。"""
 
-    model_family: str
+    model_series: str
     model_scale: str
     prompt_free: bool
     variant_name: str
@@ -96,14 +96,14 @@ YoloeTextPromptPrediction = YoloeDetectionPrediction
 def raise_project_native_runtime_not_implemented(
     *,
     mode_name: str,
-    model_family: str,
+    model_series: str,
     model_scale: str,
     prompt_free: bool,
 ) -> None:
     """抛出统一的 project-native YOLOE runtime 未接通错误。"""
 
     variant = resolve_yoloe_pretrained_variant(
-        model_family=model_family,
+        model_series=model_series,
         model_scale=model_scale,
         prompt_free=prompt_free,
     )
@@ -111,7 +111,7 @@ def raise_project_native_runtime_not_implemented(
         f"YOLOE {mode_name} 的 project-native 推理实现尚未接通，当前节点不会回退到外部 Python 包或 projectsrc 参考代码",
         details={
             "mode_name": mode_name,
-            "model_family": variant.model_family,
+            "model_series": variant.model_series,
             "model_scale": variant.model_scale,
             "prompt_free": variant.prompt_free,
             "task_type": variant.task_type,
@@ -137,22 +137,22 @@ def raise_not_implemented(request: WorkflowNodeExecutionRequest, *, mode_name: s
 
 def resolve_yoloe_pretrained_variant(
     *,
-    model_family: str,
+    model_series: str,
     model_scale: str,
     prompt_free: bool,
 ) -> YoloePretrainedVariant:
-    """按 family/scale/variant 解析 YOLOE 预训练目录。"""
+    """按系列、尺寸和变体解析 YOLOE 预训练目录。"""
 
-    normalized_family = normalize_model_family(model_family)
+    normalized_series = normalize_model_series(model_series)
     normalized_scale = normalize_model_scale(model_scale)
-    variant_name = f"{normalized_family}-{'prompt-free' if prompt_free else 'default'}"
+    variant_name = f"{normalized_series}-{'prompt-free' if prompt_free else 'default'}"
     variant_dir = YOLOE_PRETRAINED_ROOT / normalized_scale / variant_name
     manifest_path = variant_dir / "manifest.json"
     if not manifest_path.is_file():
         raise InvalidRequestError(
             "找不到指定的 YOLOE 预训练 manifest",
             details={
-                "model_family": normalized_family,
+                "model_series": normalized_series,
                 "model_scale": normalized_scale,
                 "prompt_free": prompt_free,
                 "manifest_path": str(manifest_path),
@@ -182,13 +182,13 @@ def resolve_yoloe_pretrained_variant(
         )
     metadata = manifest_payload.get("metadata")
     return YoloePretrainedVariant(
-        model_family=normalized_family,
+        model_series=normalized_series,
         model_scale=normalized_scale,
         prompt_free=prompt_free,
         variant_name=variant_name,
         manifest_path=manifest_path,
         checkpoint_path=checkpoint_path,
-        model_name=str(manifest_payload.get("model_name") or f"yoloe-{normalized_family}"),
+        model_name=str(manifest_payload.get("model_name") or f"yoloe-{normalized_series}"),
         task_type=str(manifest_payload.get("task_type") or "segmentation"),
         metadata=dict(metadata) if isinstance(metadata, dict) else {},
     )
@@ -196,7 +196,7 @@ def resolve_yoloe_pretrained_variant(
 
 def get_or_create_yoloe_text_prompt_runtime_session(
     *,
-    model_family: str,
+    model_series: str,
     model_scale: str,
     device: str,
     precision: str,
@@ -206,7 +206,7 @@ def get_or_create_yoloe_text_prompt_runtime_session(
     normalized_device = normalize_device(device)
     normalized_precision = normalize_precision(precision)
     variant = resolve_yoloe_pretrained_variant(
-        model_family=model_family,
+        model_series=model_series,
         model_scale=model_scale,
         prompt_free=False,
     )
@@ -223,7 +223,7 @@ def get_or_create_yoloe_text_prompt_runtime_session(
 
 def get_or_create_yoloe_prompt_free_runtime_session(
     *,
-    model_family: str,
+    model_series: str,
     model_scale: str,
     device: str,
     precision: str,
@@ -233,7 +233,7 @@ def get_or_create_yoloe_prompt_free_runtime_session(
     normalized_device = normalize_device(device)
     normalized_precision = normalize_precision(precision)
     variant = resolve_yoloe_pretrained_variant(
-        model_family=model_family,
+        model_series=model_series,
         model_scale=model_scale,
         prompt_free=True,
     )
@@ -456,7 +456,7 @@ def build_prediction_summary(
     """构造统一的 YOLOE 推理摘要。"""
 
     summary = {
-        "model_family": variant.model_family,
+        "model_series": variant.model_series,
         "model_scale": variant.model_scale,
         "variant_name": variant.variant_name,
         "checkpoint_path": str(variant.checkpoint_path),
@@ -659,14 +659,14 @@ def read_image_bytes(request: WorkflowNodeExecutionRequest, *, input_name: str =
     return load_image_bytes(request, input_name=input_name)
 
 
-def normalize_model_family(value: object) -> str:
-    """规范化模型 family。"""
+def normalize_model_series(value: object) -> str:
+    """规范化模型系列。"""
 
     normalized_value = str(value or "").strip().lower()
-    if normalized_value not in SUPPORTED_MODEL_FAMILIES:
+    if normalized_value not in SUPPORTED_MODEL_SERIES:
         raise InvalidRequestError(
-            "YOLOE 节点要求 model_family 只能是 v8、11 或 26",
-            details={"model_family": value, "supported": sorted(SUPPORTED_MODEL_FAMILIES)},
+            "YOLOE 节点要求 model_series 只能是 v8、11 或 26",
+            details={"model_series": value, "supported": sorted(SUPPORTED_MODEL_SERIES)},
         )
     return normalized_value
 
@@ -1112,7 +1112,7 @@ def build_regions_payload(
 
 def get_or_create_yoloe_visual_prompt_runtime_session(
     *,
-    model_family: str,
+    model_series: str,
     model_scale: str,
     device: str,
     precision: str,
@@ -1122,7 +1122,7 @@ def get_or_create_yoloe_visual_prompt_runtime_session(
     normalized_device = normalize_device(device)
     normalized_precision = normalize_precision(precision)
     variant = resolve_yoloe_pretrained_variant(
-        model_family=model_family,
+        model_series=model_series,
         model_scale=model_scale,
         prompt_free=False,
     )
@@ -1159,7 +1159,7 @@ __all__ = [
     "normalize_device",
     "normalize_iou_threshold",
     "normalize_max_detections",
-    "normalize_model_family",
+    "normalize_model_series",
     "normalize_model_scale",
     "normalize_precision",
     "raise_not_implemented",

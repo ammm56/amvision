@@ -1,4 +1,4 @@
-"""segmentation 推理公共契约。"""
+"""segmentation 推理公共规则。"""
 
 from __future__ import annotations
 

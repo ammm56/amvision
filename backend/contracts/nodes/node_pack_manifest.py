@@ -1,4 +1,4 @@
-"""节点包 manifest 与自定义节点目录文件合同。"""
+"""节点包 manifest 与自定义节点目录文件规则。"""
 
 from __future__ import annotations
 
@@ -164,7 +164,7 @@ class CustomNodeCatalogDocument(BaseModel):
 
     字段：
     - format_id：当前自定义节点目录文件的格式版本。
-    - payload_contracts：节点包声明的 payload contract 列表。
+    - payload_contracts：节点包声明的 payload 规则 列表。
     - node_definitions：节点包声明的 NodeDefinition 列表。
     - metadata：附加元数据。
     """

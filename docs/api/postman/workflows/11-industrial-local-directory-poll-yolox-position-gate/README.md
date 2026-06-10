@@ -42,7 +42,7 @@
 - `Save Template`
 - `Save Application`
 
-这一步只验证保存路径、template/application 合同和图绑定关系。
+这一步只验证保存路径、template/application 规则和图绑定关系。
 
 ### 2. 先做图级干跑
 

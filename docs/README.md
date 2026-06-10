@@ -16,8 +16,8 @@
 - [docs/architecture/model-platform-plan.md](architecture/model-platform-plan.md) 汇总多模型平台化路线、任务分类拆分和各模型分类接入顺序
 - [docs/architecture/yolo-model-plan.md](architecture/yolo-model-plan.md) 汇总 YOLO 系列模型的参考源码边界、层级关系、任务分类拆分、模型分类适配和进入顺序
 - [docs/architecture/model-workflow-boundaries.md](architecture/model-workflow-boundaries.md) 汇总模型接入、数据集、部署长期运行服务、workflow app 和 TriggerSource 之间的正式边界
-- [docs/architecture/yoloe-sam3-node-assets.md](architecture/yoloe-sam3-node-assets.md) 汇总 YOLOE 与 SAM3 custom node 的磁盘资产规则、manifest.json 字段和 payload contract 约定
-- [docs/architecture/video-workflow-node-plan.md](architecture/video-workflow-node-plan.md) 汇总通用视频 payload contract、core 视频节点、SAM3 视频/多帧分层边界和实现顺序
+- [docs/architecture/yoloe-sam3-node-assets.md](architecture/yoloe-sam3-node-assets.md) 汇总 YOLOE 与 SAM3 custom node 的磁盘资产规则、manifest.json 字段和 payload 规则 约定
+- [docs/architecture/video-workflow-node-plan.md](architecture/video-workflow-node-plan.md) 汇总通用视频 payload 规则、core 视频节点、SAM3 视频/多帧分层边界和实现顺序
 - [docs/architecture/industrial-rule-node-plan.md](architecture/industrial-rule-node-plan.md) 汇总工业现场单帧判定优先的规则节点、结果回传节点和输入接入节点分批规划
 - [docs/architecture/industrial-extension-node-plan.md](architecture/industrial-extension-node-plan.md) 汇总工业扩展节点体系规划，重点细化相机、PLC、工业缺陷核心节点和 OpenCV 常用算子路线
 - [docs/architecture/plc-modbus-field-debug-checklist.md](architecture/plc-modbus-field-debug-checklist.md) 汇总当前 PLC Modbus 已实现能力、未实现能力和推荐现场联调顺序

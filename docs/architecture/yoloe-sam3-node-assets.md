@@ -9,7 +9,7 @@
 - 预训练模型和附属资产放在哪里
 - 目录层级和命名怎么定
 - `manifest.json` 至少要写什么
-- `custom node` 第一阶段应使用哪些 payload contract
+- `custom node` 第一阶段应使用哪些 payload 规则
 - preview run、`WorkflowAppRuntime` 和 `DeploymentInstance` 三种运行形态的关系
 
 本文档不展开：
@@ -299,9 +299,9 @@ data/files/models/pretrained/
 - 也就是说，本文件定义的是“节点运行时如何找权重”，不是“当前平台把它们当正式核心模型分类管理”。
 - 如果需要批量校验和重生这两类目录的 `manifest.json`，统一通过 `python -m backend.maintenance.main sync-extension-pretrained-manifests` 执行。
 
-## 第一阶段 payload contract
+## 第一阶段 payload 规则
 
-第一阶段先固定三种扩展 payload contract：
+第一阶段先固定三种扩展 payload 规则：
 
 - `text-prompts.v1`
 - `prompt-regions.v1`
@@ -607,7 +607,7 @@ data/files/models/pretrained/
 
 ## 后续实现顺序
 
-1. 固定本文件中的磁盘资产规则、`manifest.json` 字段和 payload contract
+1. 固定本文件中的磁盘资产规则、`manifest.json` 字段和 payload 规则
 2. 先做 `YOLOE custom node`
 3. 再做 `SAM3 custom node`
 4. 运行边界稳定后，再评估是否把某些固定变体提升为正式长期运行服务

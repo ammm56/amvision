@@ -1,4 +1,4 @@
-"""内建 core nodes 与 payload contract 目录。"""
+"""内建 core nodes 与 payload 规则 目录。"""
 
 from __future__ import annotations
 
@@ -13,10 +13,10 @@ from backend.nodes.core_nodes import get_core_node_specs
 
 @lru_cache(maxsize=1)
 def get_core_workflow_payload_contracts() -> tuple[WorkflowPayloadContract, ...]:
-    """返回 backend 内建的最小 payload contract 目录。
+    """返回 backend 内建的最小 payload 规则 目录。
 
     返回：
-    - tuple[WorkflowPayloadContract, ...]：内建 payload contract 列表。
+    - tuple[WorkflowPayloadContract, ...]：内建 payload 规则 列表。
     """
 
     return (

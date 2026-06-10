@@ -6,7 +6,7 @@
 
 当前这一版已经公开训练后全链路，并把训练输出文件目录、训练摘要、验证结果、评估结果、转换结果和部署推理接口作为正式查询面。
 
-当前仓库同时已经提供统一模型任务族入口，例如 `POST /api/v1/models/detection/training-tasks`。本页只继续聚焦 specialized YOLOX 路由；统一 detection / classification / segmentation / pose / obb 主入口，以 [docs/api/current-api.md](current-api.md) 为准。
+当前仓库同时已经提供统一模型任务入口，例如 `POST /api/v1/models/detection/training-tasks`。本页只继续聚焦 YOLOX 专用路由；统一 detection / classification / segmentation / pose / obb 主入口，以 [docs/api/current-api.md](current-api.md) 为准。
 
 ## 适用范围
 
@@ -1042,7 +1042,7 @@ reference 风格增强示例：按需显式开启 Mosaic、MixUp 和动态尺寸
 - 当前 `preview_image_base64` 仅在 `return_preview_image_base64=true` 时生成
 - 当前 `preview_image_object_key` 仅在 `save_result_image=true` 时生成
 - 当前 sync 和 async 已经提升为独立 deployment 进程监督单元；如果启动多个 backend-service 或 worker 进程，每个父进程仍只负责自己装配出来的监督器与子进程
-- 当前 formal inference 已经对外隐藏 checkpoint 路径，并已接通 `onnxruntime` 对 `onnx-optimized` ModelBuild、`openvino` 对 `openvino-ir` ModelBuild、`tensorrt` 对 `tensorrt-engine` ModelBuild 的真实消费
+- 当前 正式推理 已经对外隐藏 checkpoint 路径，并已接通 `onnxruntime` 对 `onnx-optimized` ModelBuild、`openvino` 对 `openvino-ir` ModelBuild、`tensorrt` 对 `tensorrt-engine` ModelBuild 的真实消费
 
 ### 当前下一步建议
 

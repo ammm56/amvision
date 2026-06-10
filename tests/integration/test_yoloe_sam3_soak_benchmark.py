@@ -38,13 +38,13 @@ def test_yoloe_text_prompt_cpu_soak_benchmark() -> None:
     """验证 YOLOE text-prompt 在 CPU 上的长时重复推理、缓存驻留和内存漂移。"""
 
     session = get_or_create_yoloe_text_prompt_runtime_session(
-        model_family="v8",
+        model_series="v8",
         model_scale="s",
         device="cpu",
         precision="fp32",
     )
     repeated_session = get_or_create_yoloe_text_prompt_runtime_session(
-        model_family="v8",
+        model_series="v8",
         model_scale="s",
         device="cpu",
         precision="fp32",
@@ -134,13 +134,13 @@ def test_yoloe_text_prompt_cuda_soak_benchmark() -> None:
     """验证 YOLOE text-prompt 在 CUDA 上的会话驻留、重复推理和显存漂移。"""
 
     session = get_or_create_yoloe_text_prompt_runtime_session(
-        model_family="v8",
+        model_series="v8",
         model_scale="s",
         device="cuda",
         precision="fp16",
     )
     repeated_session = get_or_create_yoloe_text_prompt_runtime_session(
-        model_family="v8",
+        model_series="v8",
         model_scale="s",
         device="cuda",
         precision="fp16",
@@ -224,12 +224,12 @@ def test_yoloe_sam3_asset_failure_recovery_smoke() -> None:
     """验证异常预训练目录失败后，恢复到真实本地资产仍可继续推理。"""
 
     with pytest.raises(InvalidRequestError, match="manifest"):
-        resolve_yoloe_pretrained_variant(model_family="v8", model_scale="xx", prompt_free=False)
+        resolve_yoloe_pretrained_variant(model_series="v8", model_scale="xx", prompt_free=False)
     with pytest.raises(InvalidRequestError, match="manifest"):
         resolve_sam3_pretrained_variant(model_scale="xx")
 
     yoloe_session = get_or_create_yoloe_text_prompt_runtime_session(
-        model_family="v8",
+        model_series="v8",
         model_scale="s",
         device="cpu",
         precision="fp32",

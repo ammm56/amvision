@@ -129,7 +129,7 @@ def build_yolox_prediction_request(
     return_preview_image_base64: bool,
     extra_options: dict[str, object],
 ) -> YoloXPredictionRequest:
-    """把统一输入合同转换为 runtime 侧 prediction request。
+    """把统一输入规则转换为 runtime 侧 prediction request。
 
     参数：
     - normalized_input：归一化后的统一输入对象。

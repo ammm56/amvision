@@ -277,7 +277,7 @@ ZeroMQ TriggerSource 示例不把机器相关的 `path`、`offset` 和 `broker_e
 - `request_camera_config`：`value.v1`
   - 示例：`{"value":{"device_index":0,"backend_preference":"msmf","width":1280,"height":720,"fps":15.0,"output_format":"png"}}`
 - `request_prompts`：`text-prompts.v1`
-  - 示例：同现有 `industrial_single_frame_sam3_semantic_overlay_review` 的文本提示合同
+  - 示例：同现有 `industrial_single_frame_sam3_semantic_overlay_review` 的文本提示规则
 - `request_roi`：`value.v1`
   - 可选；未提供时回退到模板内默认矩形 ROI
 
@@ -515,7 +515,7 @@ ZeroMQ TriggerSource 示例不把机器相关的 `path`、`offset` 和 `broker_e
 - `custom.sam3.*` 的 `interactive-segment / semantic-segment` 输出端口
 - `core.vision.segments-to-regions`，把外部或中间节点输出的 `segments.v1(mask / polygon / bbox)` 规整回 `regions.v1`
 - 视频链里的 `core.vision.tracks-to-regions`，把 `tracks.v1` 拆回单帧 `regions.v1`
-- 外部系统直接按标准 `regions.v1` 合同提交
+- 外部系统直接按标准 `regions.v1` 规则提交
 
 当前已发布 deployment detection 主链默认输出的是 `detections.v1`；如果现场规则链消费的是 `regions.v1`，当前推荐先接 `core.vision.detections-to-regions` 再进入工业规则节点。
 
