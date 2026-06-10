@@ -18,7 +18,7 @@ from backend.service.application.models.yolo_primary_segmentation_evaluation imp
 from backend.service.application.models.yolo_primary_classification_evaluation_task_service import (
     _get_runtime_resolver,
 )
-from backend.service.application.runtime.yolox_runtime_target import (
+from backend.service.application.runtime.runtime_target import (
     RuntimeTargetResolveRequest, RuntimeTargetSnapshot,
 )
 from backend.service.application.tasks.task_service import (

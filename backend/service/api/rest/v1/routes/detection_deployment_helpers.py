@@ -6,7 +6,7 @@ from backend.service.api.rest.v1.routes.yolox_deployments import (
     YoloXDeploymentInstanceResponse,
     YoloXDeploymentInstanceView,
     YoloXDeploymentProcessEventResponse,
-    YoloXDeploymentProcessStatusResponse,
+    DeploymentProcessStatusResponse,
     YoloXDeploymentRuntimeHealthResponse,
     _build_deployment_instance_response,
     _build_deployment_process_event_response,
@@ -20,7 +20,7 @@ class DetectionDeploymentInstanceResponse(YoloXDeploymentInstanceResponse):
     """描述 detection DeploymentInstance 摘要与详情响应。"""
 
 
-class DetectionDeploymentProcessStatusResponse(YoloXDeploymentProcessStatusResponse):
+class DetectionDeploymentProcessStatusResponse(DeploymentProcessStatusResponse):
     """描述 detection deployment 子进程监督状态。"""
 
 

@@ -108,8 +108,8 @@ from backend.service.application.models.yolox_training_service import (
 from backend.service.application.models.yolox_validation_session_service import (
     LocalYoloXValidationSessionService,
 )
-from backend.service.application.runtime.yolox_deployment_process_supervisor import (
-    YoloXDeploymentProcessSupervisor,
+from backend.service.application.runtime.deployment_process_supervisor import (
+    DeploymentProcessSupervisor,
 )
 from backend.service.application.tasks.task_service import SqlAlchemyTaskService
 from backend.service.domain.models.model_task_types import (
@@ -185,8 +185,8 @@ class WorkflowServiceNodeRuntimeContext:
     session_factory: SessionFactory
     dataset_storage: LocalDatasetStorage
     queue_backend: QueueBackend | None = None
-    yolox_sync_deployment_process_supervisor: YoloXDeploymentProcessSupervisor | None = None
-    yolox_async_deployment_process_supervisor: YoloXDeploymentProcessSupervisor | None = None
+    yolox_sync_deployment_process_supervisor: DeploymentProcessSupervisor | None = None
+    yolox_async_deployment_process_supervisor: DeploymentProcessSupervisor | None = None
     async_inference_service_id: str | None = None
     async_inference_gateway_dispatcher_registry: YoloXAsyncInferenceGatewayDispatcherRegistry | None = None
     local_buffer_reader: LocalBufferReader | None = None
@@ -465,21 +465,21 @@ class WorkflowServiceNodeRuntimeContext:
             raise ServiceConfigurationError("当前 workflow 运行时缺少 QueueBackend 上下文")
         return self.queue_backend
 
-    def require_sync_deployment_process_supervisor(self) -> YoloXDeploymentProcessSupervisor:
+    def require_sync_deployment_process_supervisor(self) -> DeploymentProcessSupervisor:
         """返回同步推理节点必需的 deployment supervisor。"""
 
         if self.yolox_sync_deployment_process_supervisor is None:
             raise ServiceConfigurationError("当前 workflow 运行时缺少同步 deployment supervisor")
         return self.yolox_sync_deployment_process_supervisor
 
-    def require_async_deployment_process_supervisor(self) -> YoloXDeploymentProcessSupervisor:
+    def require_async_deployment_process_supervisor(self) -> DeploymentProcessSupervisor:
         """返回异步推理任务节点必需的 deployment supervisor。"""
 
         if self.yolox_async_deployment_process_supervisor is None:
             raise ServiceConfigurationError("当前 workflow 运行时缺少异步 deployment supervisor")
         return self.yolox_async_deployment_process_supervisor
 
-    def require_deployment_process_supervisor(self, runtime_mode: str) -> YoloXDeploymentProcessSupervisor:
+    def require_deployment_process_supervisor(self, runtime_mode: str) -> DeploymentProcessSupervisor:
         """按 runtime_mode 返回对应的 deployment supervisor。"""
 
         normalized_runtime_mode = runtime_mode.strip().lower()

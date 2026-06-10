@@ -1,4 +1,4 @@
-"""YOLOX deployment status service node。"""
+"""deployment reset service node。"""
 
 from __future__ import annotations
 
@@ -9,21 +9,21 @@ from backend.contracts.workflows.workflow_graph import (
     NodePortDefinition,
 )
 from backend.nodes.core_nodes._base import CoreNodeSpec
-from backend.nodes.core_nodes._service_node_support import run_deployment_process_status_action
+from backend.nodes.core_nodes._service_node_support import run_deployment_process_health_action
 
 
-def _yolox_deployment_status_handler(request) -> dict[str, object]:
-    """读取指定 runtime_mode 的 deployment 进程状态。"""
+def _model_deployment_reset_handler(request) -> dict[str, object]:
+    """重置指定 runtime_mode 的 deployment 实例池状态。"""
 
-    return run_deployment_process_status_action(request, action="status")
+    return run_deployment_process_health_action(request, action="reset")
 
 
 CORE_NODE_SPEC = CoreNodeSpec(
     node_definition=NodeDefinition(
-        node_type_id="core.service.yolox-deployment.status",
-        display_name="Get YOLOX Deployment Status",
+        node_type_id="core.service.yolox-deployment.reset",
+        display_name="Reset YOLOX Deployment",
         category="service.model.deployment.control",
-        description="读取指定 sync 或 async 通道上的 deployment 进程状态。",
+        description="重置指定 sync 或 async 通道上的 deployment 实例池状态。",
         implementation_kind=NODE_IMPLEMENTATION_CORE,
         runtime_kind=NODE_RUNTIME_PYTHON_CALLABLE,
         input_ports=(
@@ -49,7 +49,7 @@ CORE_NODE_SPEC = CoreNodeSpec(
             },
             "required": ["deployment_instance_id", "runtime_mode"],
         },
-        capability_tags=("service.model.deployment", "runtime.observe", "runtime.status"),
+        capability_tags=("service.model.deployment", "runtime.control", "runtime.reset"),
     ),
-    handler=_yolox_deployment_status_handler,
+    handler=_model_deployment_reset_handler,
 )

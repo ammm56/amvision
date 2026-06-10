@@ -24,8 +24,8 @@ from backend.service.application.models.yolo_primary_classification_evaluation_t
 from backend.service.application.runtime.rfdetr_runtime_target import (
     SqlAlchemyRfdetrRuntimeTargetResolver,
 )
-from backend.service.application.runtime.yolox_runtime_target import (
-    SqlAlchemyYoloXRuntimeTargetResolver,
+from backend.service.application.runtime.runtime_target import (
+    SqlAlchemyRuntimeTargetResolver,
 )
 from backend.service.application.tasks.task_service import (
     AppendTaskEventRequest,
@@ -45,7 +45,7 @@ DETECTION_EVALUATION_QUEUE_NAME = "detection-evaluations"
 
 # 扩展 runtime resolver 映射，加入 yolox 和 rfdetr
 _EXTENDED_RUNTIME_RESOLVER_MAP = {
-    "yolox": SqlAlchemyYoloXRuntimeTargetResolver,
+    "yolox": SqlAlchemyRuntimeTargetResolver,
     "yolov8": _get_runtime_resolver.__module__.rsplit(".", 1)[0] and None,  # 延迟解析
     "yolo11": None,
     "yolo26": None,
@@ -60,7 +60,7 @@ def _get_detection_runtime_resolver(model_type: str):
     from backend.service.application.runtime.yolo26_runtime_target import SqlAlchemyYolo26RuntimeTargetResolver
 
     resolver_map = {
-        "yolox": SqlAlchemyYoloXRuntimeTargetResolver,
+        "yolox": SqlAlchemyRuntimeTargetResolver,
         "yolov8": SqlAlchemyYoloV8RuntimeTargetResolver,
         "yolo11": SqlAlchemyYolo11RuntimeTargetResolver,
         "yolo26": SqlAlchemyYolo26RuntimeTargetResolver,

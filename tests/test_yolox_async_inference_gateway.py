@@ -14,11 +14,11 @@ from backend.service.application.models.yolox_async_inference_gateway import (
     YoloXAsyncInferenceGatewayDispatcher,
     YoloXAsyncInferenceGatewayDispatcherRegistry,
 )
-from backend.service.application.runtime.yolox_deployment_process_supervisor import (
-    YoloXDeploymentProcessConfig,
+from backend.service.application.runtime.deployment_process_supervisor import (
+    DeploymentProcessConfig,
 )
 from backend.service.application.runtime.yolox_predictor import YoloXPredictionRequest
-from backend.service.application.runtime.yolox_runtime_target import RuntimeTargetSnapshot
+from backend.service.application.runtime.runtime_target import RuntimeTargetSnapshot
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     DatasetStorageSettings,
     LocalDatasetStorage,
@@ -37,7 +37,7 @@ def test_async_gateway_dispatcher_consumes_owner_deployment_queue(tmp_path: Path
         """记录被 dispatcher 转发的请求并返回最小成功载荷。"""
 
         captured_process_config = kwargs["process_config"]
-        assert isinstance(captured_process_config, YoloXDeploymentProcessConfig)
+        assert isinstance(captured_process_config, DeploymentProcessConfig)
         captured_deployment_ids.append(captured_process_config.deployment_instance_id)
         return {
             "instance_id": "deployment-instance-1:instance-0",
@@ -126,7 +126,7 @@ def test_async_gateway_routes_multiple_service_ids_independently(tmp_path: Path)
 
         def _execute(**kwargs: object) -> dict[str, object]:
             captured_process_config = kwargs["process_config"]
-            assert isinstance(captured_process_config, YoloXDeploymentProcessConfig)
+            assert isinstance(captured_process_config, DeploymentProcessConfig)
             captured_service_ids.append(service_id)
             return {
                 "instance_id": f"{service_id}:deployment-instance-1:instance-0",
@@ -206,7 +206,7 @@ def test_async_gateway_registry_routes_multiple_deployments_independently(tmp_pa
         """记录 registry dispatcher 转发的 deployment id 并返回最小成功载荷。"""
 
         captured_process_config = kwargs["process_config"]
-        assert isinstance(captured_process_config, YoloXDeploymentProcessConfig)
+        assert isinstance(captured_process_config, DeploymentProcessConfig)
         deployment_instance_id = captured_process_config.deployment_instance_id
         captured_deployment_ids.append(deployment_instance_id)
         return {
@@ -279,14 +279,14 @@ def _build_process_config(
     *,
     dataset_storage: LocalDatasetStorage,
     deployment_instance_id: str = "deployment-instance-1",
-) -> YoloXDeploymentProcessConfig:
+) -> DeploymentProcessConfig:
     """构造可被 gateway 反序列化的最小 process config。"""
 
     runtime_artifact_storage_uri = "models/model.onnx"
     labels_storage_uri = "models/labels.txt"
     dataset_storage.write_bytes(runtime_artifact_storage_uri, b"fake-model")
     dataset_storage.write_bytes(labels_storage_uri, b"barcode\n")
-    return YoloXDeploymentProcessConfig(
+    return DeploymentProcessConfig(
         deployment_instance_id=deployment_instance_id,
         project_id="project-1",
         instance_count=1,

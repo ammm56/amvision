@@ -29,8 +29,8 @@ from backend.service.application.models.obb_inference_task_service import (
     ObbInferenceTaskRequest,
     SqlAlchemyObbInferenceTaskService,
 )
-from backend.service.application.runtime.yolox_deployment_process_supervisor import (
-    YoloXDeploymentProcessSupervisor,
+from backend.service.application.runtime.deployment_process_supervisor import (
+    DeploymentProcessSupervisor,
 )
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
@@ -72,7 +72,7 @@ async def create_obb_inference_task(
     session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
     queue_backend: Annotated[LocalFileQueueBackend, Depends(get_queue_backend)],
     dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
-    deployment_process_supervisor: Annotated[YoloXDeploymentProcessSupervisor, Depends(get_obb_async_deployment_process_supervisor)],
+    deployment_process_supervisor: Annotated[DeploymentProcessSupervisor, Depends(get_obb_async_deployment_process_supervisor)],
     gateway_dispatcher_registry: Annotated[ObbAsyncInferenceGatewayDispatcherRegistry, Depends(get_obb_async_inference_gateway_dispatcher_registry)],
 ) -> ObbInferenceTaskSubmissionResponse:
     import json

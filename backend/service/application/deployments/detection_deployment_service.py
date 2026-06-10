@@ -24,10 +24,10 @@ from backend.service.application.runtime.yolo26_runtime_target import (
 from backend.service.application.runtime.yolov8_runtime_target import (
     SqlAlchemyYoloV8RuntimeTargetResolver,
 )
-from backend.service.application.runtime.yolox_runtime_target import (
+from backend.service.application.runtime.runtime_target import (
     RuntimeTargetResolveRequest,
     RuntimeTargetSnapshot,
-    SqlAlchemyYoloXRuntimeTargetResolver,
+    SqlAlchemyRuntimeTargetResolver,
 )
 
 
@@ -49,7 +49,7 @@ class DetectionDeploymentInstanceCreateRequest:
 
 
 _RUNTIME_TARGET_RESOLVER_BY_MODEL_TYPE: dict[str, type] = {
-    "yolox": SqlAlchemyYoloXRuntimeTargetResolver,
+    "yolox": SqlAlchemyRuntimeTargetResolver,
     "yolov8": SqlAlchemyYoloV8RuntimeTargetResolver,
     "yolo11": SqlAlchemyYolo11RuntimeTargetResolver,
     "yolo26": SqlAlchemyYolo26RuntimeTargetResolver,

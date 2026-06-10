@@ -55,8 +55,8 @@ from backend.service.application.models.detection_inference_task_service import 
 from backend.service.application.models.detection_async_inference_gateway import (
     DetectionAsyncInferenceGatewayDispatcherRegistry,
 )
-from backend.service.application.runtime.yolox_deployment_process_supervisor import (
-    YoloXDeploymentProcessSupervisor,
+from backend.service.application.runtime.deployment_process_supervisor import (
+    DeploymentProcessSupervisor,
 )
 from backend.service.application.tasks.task_service import SqlAlchemyTaskService, TaskQueryFilters
 from backend.service.infrastructure.db.session import SessionFactory
@@ -108,7 +108,7 @@ async def create_detection_inference_task(
     session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
     queue_backend: Annotated[LocalFileQueueBackend, Depends(get_queue_backend)],
     dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
-    deployment_process_supervisor: Annotated[YoloXDeploymentProcessSupervisor, Depends(get_detection_async_deployment_process_supervisor)],
+    deployment_process_supervisor: Annotated[DeploymentProcessSupervisor, Depends(get_detection_async_deployment_process_supervisor)],
     gateway_dispatcher_registry: Annotated[DetectionAsyncInferenceGatewayDispatcherRegistry, Depends(get_detection_async_inference_gateway_dispatcher_registry)],
 ) -> DetectionInferenceTaskSubmissionResponse:
     """创建一个正式 detection inference task。"""
@@ -206,7 +206,7 @@ async def infer_detection_deployment_instance(
     principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("models:read"))],
     session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
     dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
-    deployment_process_supervisor: Annotated[YoloXDeploymentProcessSupervisor, Depends(get_detection_sync_deployment_process_supervisor)],
+    deployment_process_supervisor: Annotated[DeploymentProcessSupervisor, Depends(get_detection_sync_deployment_process_supervisor)],
 ) -> DetectionInferencePayloadResponse:
     """直接执行一次同步 detection 推理并返回结果。"""
 

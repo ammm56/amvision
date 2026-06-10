@@ -14,7 +14,7 @@ from backend.service.application.models.yolox_detection_training import (
     _load_warm_start_checkpoint,
     _require_training_imports,
 )
-from backend.service.application.runtime.yolox_runtime_target import (
+from backend.service.application.runtime.runtime_target import (
     RuntimeTargetSnapshot,
     describe_runtime_execution_mode,
     resolve_local_file_path,

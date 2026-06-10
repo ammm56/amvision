@@ -22,8 +22,8 @@ from backend.service.application.deployments.classification_deployment_service i
     SqlAlchemyClassificationDeploymentService,
 )
 from backend.service.application.errors import PermissionDeniedError, ResourceNotFoundError, ServiceConfigurationError
-from backend.service.application.runtime.yolox_deployment_process_supervisor import (
-    YoloXDeploymentProcessSupervisor,
+from backend.service.application.runtime.deployment_process_supervisor import (
+    DeploymentProcessSupervisor,
 )
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
@@ -167,7 +167,7 @@ def sync_start_classification_deployment(
     principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("models:read", "models:write"))],
     session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
     dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
-    supervisor: Annotated[YoloXDeploymentProcessSupervisor, Depends(get_classification_sync_deployment_process_supervisor)],
+    supervisor: Annotated[DeploymentProcessSupervisor, Depends(get_classification_sync_deployment_process_supervisor)],
 ) -> dict[str, str]:
     _require_supervisor(supervisor)
     service = SqlAlchemyClassificationDeploymentService(
@@ -188,7 +188,7 @@ def sync_stop_classification_deployment(
     principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("models:read", "models:write"))],
     session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
     dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
-    supervisor: Annotated[YoloXDeploymentProcessSupervisor, Depends(get_classification_sync_deployment_process_supervisor)],
+    supervisor: Annotated[DeploymentProcessSupervisor, Depends(get_classification_sync_deployment_process_supervisor)],
 ) -> dict[str, str]:
     _require_supervisor(supervisor)
     service = SqlAlchemyClassificationDeploymentService(
@@ -209,7 +209,7 @@ def sync_health_classification_deployment(
     principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("models:read"))],
     session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
     dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
-    supervisor: Annotated[YoloXDeploymentProcessSupervisor, Depends(get_classification_sync_deployment_process_supervisor)],
+    supervisor: Annotated[DeploymentProcessSupervisor, Depends(get_classification_sync_deployment_process_supervisor)],
 ) -> dict[str, object]:
     _require_supervisor(supervisor)
     service = SqlAlchemyClassificationDeploymentService(
@@ -229,7 +229,7 @@ def _check_project_visible(
         raise PermissionDeniedError("当前主体无权访问该 Project", details={"project_id": getattr(view, "project_id", "")})
 
 
-def _require_supervisor(supervisor: YoloXDeploymentProcessSupervisor | None) -> YoloXDeploymentProcessSupervisor:
+def _require_supervisor(supervisor: DeploymentProcessSupervisor | None) -> DeploymentProcessSupervisor:
     if supervisor is None:
         raise ServiceConfigurationError("classification deployment process supervisor 未启动", details={"cause": "no-supervisor"})
     return supervisor

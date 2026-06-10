@@ -19,7 +19,7 @@ from backend.service.application.runtime.yolov8_obb_predictor import (
     OnnxRuntimeYoloV8ObbRuntimeSession, OpenVINOYoloV8ObbRuntimeSession,
     PyTorchYoloV8ObbRuntimeSession, TensorRTYoloV8ObbRuntimeSession,
 )
-from backend.service.application.runtime.yolox_runtime_target import RuntimeTargetSnapshot
+from backend.service.application.runtime.runtime_target import RuntimeTargetSnapshot
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 
 ObbRuntimeLoader = Callable[[LocalDatasetStorage, RuntimeTargetSnapshot, bool | None, int | None], "ObbModelRuntimeSession"]

@@ -30,17 +30,17 @@ from backend.service.application.models.yolox_inference_payloads import (
     serialize_yolox_inference_payload,
 )
 from backend.service.application.project_public_files import resolve_public_project_file_reference
-from backend.service.application.runtime.yolox_deployment_process_supervisor import (
-    YoloXDeploymentProcessConfig,
-    YoloXDeploymentProcessRuntimeBehavior,
-    YoloXDeploymentProcessSupervisor,
+from backend.service.application.runtime.deployment_process_supervisor import (
+    DeploymentProcessConfig,
+    DeploymentProcessRuntimeBehavior,
+    DeploymentProcessSupervisor,
 )
 from backend.service.application.runtime.yolox_predictor import (
     YoloXPredictionRequest,
     serialize_detection,
     serialize_runtime_session_info,
 )
-from backend.service.application.runtime.yolox_runtime_target import (
+from backend.service.application.runtime.runtime_target import (
     RuntimeTargetSnapshot,
     deserialize_runtime_target_snapshot,
     serialize_runtime_target_snapshot,
@@ -151,7 +151,7 @@ class SqlAlchemyYoloXInferenceTaskService:
         session_factory: SessionFactory,
         dataset_storage: LocalDatasetStorage | None = None,
         queue_backend: QueueBackend | None = None,
-        deployment_process_supervisor: YoloXDeploymentProcessSupervisor | None = None,
+        deployment_process_supervisor: DeploymentProcessSupervisor | None = None,
         async_inference_executor: YoloXAsyncInferenceExecutor | None = None,
         async_inference_gateway_dispatcher_registry: YoloXAsyncInferenceGatewayDispatcherRegistry | None = None,
     ) -> None:
@@ -501,7 +501,7 @@ class SqlAlchemyYoloXInferenceTaskService:
             raise ServiceConfigurationError("提交推理任务时缺少 queue backend")
         return self.queue_backend
 
-    def _require_deployment_process_supervisor(self) -> YoloXDeploymentProcessSupervisor:
+    def _require_deployment_process_supervisor(self) -> DeploymentProcessSupervisor:
         """返回处理推理任务必需的 deployment 进程监督器。"""
 
         if self.deployment_process_supervisor is None:
@@ -510,7 +510,7 @@ class SqlAlchemyYoloXInferenceTaskService:
 
     def _ensure_async_inference_gateway_dispatcher(
         self,
-        process_config: YoloXDeploymentProcessConfig,
+        process_config: DeploymentProcessConfig,
     ) -> None:
         """确保当前推理任务的 async gateway dispatcher 已经按 deployment 启动。"""
 
@@ -639,7 +639,7 @@ class SqlAlchemyYoloXInferenceTaskService:
         *,
         task_record: TaskRecord,
         dataset_storage: LocalDatasetStorage,
-    ) -> YoloXDeploymentProcessConfig:
+    ) -> DeploymentProcessConfig:
         """从 TaskRecord 的 task_spec 反解析 deployment 进程配置。"""
 
         task_spec = dict(task_record.task_spec)
@@ -648,7 +648,7 @@ class SqlAlchemyYoloXInferenceTaskService:
             dataset_storage=dataset_storage,
         )
         instance_count = self._read_optional_int(task_spec, "instance_count") or 1
-        return YoloXDeploymentProcessConfig(
+        return DeploymentProcessConfig(
             deployment_instance_id=self._require_str(task_spec, "deployment_instance_id"),
             runtime_target=runtime_target,
             project_id=self._read_optional_str(task_spec, "project_id") or "",
@@ -746,7 +746,7 @@ class SqlAlchemyYoloXInferenceTaskService:
     def _execute_inference(
         self,
         *,
-        process_config: YoloXDeploymentProcessConfig,
+        process_config: DeploymentProcessConfig,
         prediction_request: YoloXPredictionRequest,
         async_inference_owner_id: str,
         return_preview_image_base64: bool,
@@ -886,7 +886,7 @@ class SqlAlchemyYoloXInferenceTaskService:
 
 
 def _serialize_process_runtime_behavior(
-    runtime_behavior: YoloXDeploymentProcessRuntimeBehavior,
+    runtime_behavior: DeploymentProcessRuntimeBehavior,
 ) -> dict[str, object]:
     """把 deployment runtime behavior 序列化到任务快照。"""
 
@@ -903,11 +903,11 @@ def _serialize_process_runtime_behavior(
     }
 
 
-def _deserialize_process_runtime_behavior(payload: object) -> YoloXDeploymentProcessRuntimeBehavior:
+def _deserialize_process_runtime_behavior(payload: object) -> DeploymentProcessRuntimeBehavior:
     """从任务快照恢复 deployment runtime behavior。"""
 
     if not isinstance(payload, dict):
-        return YoloXDeploymentProcessRuntimeBehavior()
+        return DeploymentProcessRuntimeBehavior()
     warmup_dummy_image_size = payload.get("warmup_dummy_image_size")
     resolved_warmup_dummy_image_size = None
     if isinstance(warmup_dummy_image_size, list | tuple) and len(warmup_dummy_image_size) == 2:
@@ -915,7 +915,7 @@ def _deserialize_process_runtime_behavior(payload: object) -> YoloXDeploymentPro
             int(warmup_dummy_image_size[0]),
             int(warmup_dummy_image_size[1]),
         )
-    return YoloXDeploymentProcessRuntimeBehavior(
+    return DeploymentProcessRuntimeBehavior(
         warmup_dummy_inference_count=_read_optional_int_value(payload.get("warmup_dummy_inference_count")),
         warmup_dummy_image_size=resolved_warmup_dummy_image_size,
         keep_warm_enabled=_read_optional_bool_value(payload.get("keep_warm_enabled")),
@@ -965,8 +965,8 @@ def _read_optional_int_value(value: object) -> int | None:
 
 def run_yolox_inference_task(
     *,
-    deployment_process_supervisor: YoloXDeploymentProcessSupervisor,
-    process_config: YoloXDeploymentProcessConfig,
+    deployment_process_supervisor: DeploymentProcessSupervisor,
+    process_config: DeploymentProcessConfig,
     input_uri: str | None,
     input_image_bytes: bytes | None = None,
     input_image_payload: dict[str, object] | None = None,

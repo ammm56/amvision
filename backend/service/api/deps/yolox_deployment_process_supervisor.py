@@ -8,12 +8,12 @@ from backend.service.application.errors import ServiceConfigurationError
 from backend.service.application.models.yolox_async_inference_gateway import (
     YoloXAsyncInferenceGatewayDispatcherRegistry,
 )
-from backend.service.application.runtime.yolox_deployment_process_supervisor import (
-    YoloXDeploymentProcessSupervisor,
+from backend.service.application.runtime.deployment_process_supervisor import (
+    DeploymentProcessSupervisor,
 )
 
 
-def get_yolox_sync_deployment_process_supervisor(request: Request) -> YoloXDeploymentProcessSupervisor:
+def get_yolox_sync_deployment_process_supervisor(request: Request) -> DeploymentProcessSupervisor:
     """从 FastAPI 应用状态中读取同步 deployment 进程监督器。
 
     参数：
@@ -24,7 +24,7 @@ def get_yolox_sync_deployment_process_supervisor(request: Request) -> YoloXDeplo
     """
 
     supervisor = getattr(request.app.state, "yolox_sync_deployment_process_supervisor", None)
-    if not isinstance(supervisor, YoloXDeploymentProcessSupervisor):
+    if not isinstance(supervisor, DeploymentProcessSupervisor):
         raise ServiceConfigurationError(
             "当前服务尚未完成同步 deployment 进程监督器装配",
             details={"state_field": "yolox_sync_deployment_process_supervisor"},
@@ -32,7 +32,7 @@ def get_yolox_sync_deployment_process_supervisor(request: Request) -> YoloXDeplo
     return supervisor
 
 
-def get_yolox_async_deployment_process_supervisor(request: Request) -> YoloXDeploymentProcessSupervisor:
+def get_yolox_async_deployment_process_supervisor(request: Request) -> DeploymentProcessSupervisor:
     """从 FastAPI 应用状态中读取异步 deployment 进程监督器。
 
     参数：
@@ -43,7 +43,7 @@ def get_yolox_async_deployment_process_supervisor(request: Request) -> YoloXDepl
     """
 
     supervisor = getattr(request.app.state, "yolox_async_deployment_process_supervisor", None)
-    if not isinstance(supervisor, YoloXDeploymentProcessSupervisor):
+    if not isinstance(supervisor, DeploymentProcessSupervisor):
         raise ServiceConfigurationError(
             "当前服务尚未完成异步 deployment 进程监督器装配",
             details={"state_field": "yolox_async_deployment_process_supervisor"},

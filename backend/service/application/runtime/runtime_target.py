@@ -1,4 +1,4 @@
-"""YOLOX 运行时目标解析服务。"""
+"""模型运行时目标解析服务。"""
 
 from __future__ import annotations
 
@@ -228,7 +228,7 @@ def deserialize_runtime_target_snapshot(
     )
 
 
-class SqlAlchemyYoloXRuntimeTargetResolver:
+class SqlAlchemyRuntimeTargetResolver:
     """解析 ModelVersion 或 ModelBuild 对应的运行时快照。"""
 
     def __init__(

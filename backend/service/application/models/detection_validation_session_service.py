@@ -29,10 +29,10 @@ from backend.service.application.runtime.rfdetr_runtime_target import (
 from backend.service.application.runtime.yolov8_runtime_target import (
     SqlAlchemyYoloV8RuntimeTargetResolver,
 )
-from backend.service.application.runtime.yolox_runtime_target import (
+from backend.service.application.runtime.runtime_target import (
     RuntimeTargetResolveRequest,
     RuntimeTargetSnapshot,
-    SqlAlchemyYoloXRuntimeTargetResolver,
+    SqlAlchemyRuntimeTargetResolver,
     normalize_device_name as normalize_runtime_target_device_name,
     normalize_runtime_backend as normalize_runtime_target_backend,
     resolve_local_file_path,
@@ -473,11 +473,11 @@ def _build_runtime_target_resolver(
     model_type: str,
     session_factory: SessionFactory,
     dataset_storage: LocalDatasetStorage,
-) -> SqlAlchemyYoloXRuntimeTargetResolver:
+) -> SqlAlchemyRuntimeTargetResolver:
     """按模型分类构造 runtime target resolver。"""
 
     resolver_factory_map = {
-        "yolox": SqlAlchemyYoloXRuntimeTargetResolver,
+        "yolox": SqlAlchemyRuntimeTargetResolver,
         "yolov8": SqlAlchemyYoloV8RuntimeTargetResolver,
         "yolo11": SqlAlchemyYolo11RuntimeTargetResolver,
         "yolo26": SqlAlchemyYolo26RuntimeTargetResolver,

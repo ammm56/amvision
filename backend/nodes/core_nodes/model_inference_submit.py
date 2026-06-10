@@ -32,7 +32,7 @@ from backend.service.application.models.detection_inference_task_service import 
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 
 
-def _yolox_inference_submit_handler(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
+def _model_inference_submit_handler(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
     """调用正式 detection inference task 提交服务。"""
 
     runtime_context = require_workflow_service_node_runtime(request)
@@ -151,5 +151,5 @@ CORE_NODE_SPEC = CoreNodeSpec(
         capability_tags=("service.model.inference", "task.submit"),
         runtime_requirements={"deployment_process": "async"},
     ),
-    handler=_yolox_inference_submit_handler,
+    handler=_model_inference_submit_handler,
 )

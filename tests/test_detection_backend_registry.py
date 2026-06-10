@@ -14,7 +14,7 @@ import backend.service.application.runtime.yolov8_predictor as yolov8_predictor_
 from backend.service.application.runtime.detection_model_runtime import (
     DefaultDetectionModelRuntime,
 )
-from backend.service.application.runtime.yolox_runtime_target import (
+from backend.service.application.runtime.runtime_target import (
     RuntimeTargetSnapshot,
     deserialize_runtime_target_snapshot,
     serialize_runtime_target_snapshot,

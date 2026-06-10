@@ -10,7 +10,7 @@ from backend.service.application.runtime.yolox_predictor import (
     YoloXPredictionExecutionResult,
     YoloXPredictionRequest,
 )
-from backend.service.application.runtime.yolox_runtime_target import RuntimeTargetSnapshot
+from backend.service.application.runtime.runtime_target import RuntimeTargetSnapshot
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     DatasetStorageSettings,
     LocalDatasetStorage,

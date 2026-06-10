@@ -1,4 +1,4 @@
-"""YOLOX deployment stop service node。"""
+"""deployment health service node。"""
 
 from __future__ import annotations
 
@@ -9,21 +9,21 @@ from backend.contracts.workflows.workflow_graph import (
     NodePortDefinition,
 )
 from backend.nodes.core_nodes._base import CoreNodeSpec
-from backend.nodes.core_nodes._service_node_support import run_deployment_process_status_action
+from backend.nodes.core_nodes._service_node_support import run_deployment_process_health_action
 
 
-def _yolox_deployment_stop_handler(request) -> dict[str, object]:
-    """停止指定 runtime_mode 的 deployment 进程。"""
+def _model_deployment_health_handler(request) -> dict[str, object]:
+    """读取指定 runtime_mode 的 deployment 健康状态。"""
 
-    return run_deployment_process_status_action(request, action="stop")
+    return run_deployment_process_health_action(request, action="health")
 
 
 CORE_NODE_SPEC = CoreNodeSpec(
     node_definition=NodeDefinition(
-        node_type_id="core.service.yolox-deployment.stop",
-        display_name="Stop YOLOX Deployment",
+        node_type_id="core.service.yolox-deployment.health",
+        display_name="Get YOLOX Deployment Health",
         category="service.model.deployment.control",
-        description="停止指定 sync 或 async 通道上的 deployment 进程。",
+        description="读取指定 sync 或 async 通道上的 deployment 健康状态。",
         implementation_kind=NODE_IMPLEMENTATION_CORE,
         runtime_kind=NODE_RUNTIME_PYTHON_CALLABLE,
         input_ports=(
@@ -36,7 +36,7 @@ CORE_NODE_SPEC = CoreNodeSpec(
             NodePortDefinition(
                 name="dependency",
                 display_name="Dependency",
-                payload_type_id="response-body.v1",
+                payload_type_id="detections.v1",
                 required=False,
             ),
         ),
@@ -55,7 +55,7 @@ CORE_NODE_SPEC = CoreNodeSpec(
             },
             "required": ["deployment_instance_id", "runtime_mode"],
         },
-        capability_tags=("service.model.deployment", "runtime.control", "runtime.stop"),
+        capability_tags=("service.model.deployment", "runtime.observe", "runtime.health"),
     ),
-    handler=_yolox_deployment_stop_handler,
+    handler=_model_deployment_health_handler,
 )

@@ -124,8 +124,8 @@
 
 - 队列消费者分别落在 `backend/workers/datasets/`、`backend/workers/training/`、`backend/workers/conversion/`、`backend/workers/evaluation/` 和 `backend/workers/inference/`。
 - 当前独立 worker 已经支持通过 `config/backend-worker.json` 的 `task_manager.enabled_consumer_kinds` 统一装配六类消费者，也支持通过 `runtimes/manifests/worker-profiles/*.json` 以单一职责 profile 启动独立 worker。
-- deployment 运行时位于 `backend/service/application/runtime/`，虽然进程监督与子进程实现文件名仍保留 `yolox_deployment_process_supervisor.py` 与 `yolox_deployment_process_worker.py`，但当前职责已经是平台级 deployment process supervisor / worker，而不是只服务 YOLOX。
-- runtime 适配与统一预测入口当前已按任务类型拆开：`detection_model_runtime.py`、`classification_model_runtime.py`、`segmentation_model_runtime.py`、`pose_model_runtime.py` 和 `obb_model_runtime.py` 负责统一 runtime loader 注册；`yolox / yolov8 / yolo11 / yolo26 / rfdetr` 各自的 `*_predictor.py` 与 `*_runtime_target.py` 负责模型差异；`yolox_inference_runtime_pool.py` 继续承担 deployment 子进程内会话池与健康状态汇总。
+- deployment 运行时位于 `backend/service/application/runtime/`；当前通用外壳已经收口到 `deployment_process_supervisor.py`、`deployment_process_worker.py`、`deployment_runtime_pool.py` 与 `runtime_target.py`，职责是平台级 deployment process supervisor / worker，而不是只服务 YOLOX。
+- runtime 适配与统一预测入口当前已按任务类型拆开：`detection_model_runtime.py`、`classification_model_runtime.py`、`segmentation_model_runtime.py`、`pose_model_runtime.py` 和 `obb_model_runtime.py` 负责统一 runtime loader 注册；`yolox / yolov8 / yolo11 / yolo26 / rfdetr` 各自的 `*_predictor.py` 与 `*_runtime_target.py` 负责模型差异；`deployment_runtime_pool.py` 负责 deployment 子进程内会话池与健康状态汇总。
 
 ### 关键对象与执行边界
 

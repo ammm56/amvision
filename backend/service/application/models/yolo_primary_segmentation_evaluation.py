@@ -19,7 +19,7 @@ from backend.service.application.runtime.segmentation_model_runtime import (
 from backend.service.application.runtime.segmentation_runtime_contracts import (
     SegmentationPredictionRequest,
 )
-from backend.service.application.runtime.yolox_runtime_target import RuntimeTargetSnapshot
+from backend.service.application.runtime.runtime_target import RuntimeTargetSnapshot
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 
 

@@ -12,10 +12,10 @@ from backend.service.application.runtime.yolox_predictor import (
     PyTorchYoloXPredictor,
     YoloXPredictionRequest,
 )
-from backend.service.application.runtime.yolox_runtime_target import (
+from backend.service.application.runtime.runtime_target import (
     RuntimeTargetResolveRequest,
     RuntimeTargetSnapshot,
-    SqlAlchemyYoloXRuntimeTargetResolver,
+    SqlAlchemyRuntimeTargetResolver,
     resolve_local_file_path,
     resolve_runtime_precision,
 )
@@ -184,7 +184,7 @@ class LocalYoloXValidationSessionService:
     ) -> YoloXValidationSessionView:
         """创建一个新的 validation session。"""
 
-        runtime_target = SqlAlchemyYoloXRuntimeTargetResolver(
+        runtime_target = SqlAlchemyRuntimeTargetResolver(
             session_factory=self.session_factory,
             dataset_storage=self.dataset_storage,
         ).resolve_target(

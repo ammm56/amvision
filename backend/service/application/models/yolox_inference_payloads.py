@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.project_public_files import resolve_public_project_file_reference
 from backend.service.application.runtime.yolox_predictor import YoloXPredictionRequest
-from backend.service.application.runtime.yolox_runtime_target import RuntimeTargetSnapshot
+from backend.service.application.runtime.runtime_target import RuntimeTargetSnapshot
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 from backend.service.infrastructure.object_store.object_key_layout import build_runtime_input_object_key
 

@@ -41,8 +41,8 @@ from backend.service.application.models.yolox_inference_task_service import (
 from backend.service.application.models.yolox_async_inference_gateway import (
 	YoloXAsyncInferenceGatewayDispatcherRegistry,
 )
-from backend.service.application.runtime.yolox_deployment_process_supervisor import (
-	YoloXDeploymentProcessSupervisor,
+from backend.service.application.runtime.deployment_process_supervisor import (
+	DeploymentProcessSupervisor,
 )
 from backend.service.application.tasks.task_service import SqlAlchemyTaskService, TaskQueryFilters
 from backend.service.infrastructure.db.session import SessionFactory
@@ -223,7 +223,7 @@ async def create_yolox_inference_task(
 	session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
 	queue_backend: Annotated[LocalFileQueueBackend, Depends(get_queue_backend)],
 	dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
-	deployment_process_supervisor: Annotated[YoloXDeploymentProcessSupervisor, Depends(get_yolox_async_deployment_process_supervisor)],
+	deployment_process_supervisor: Annotated[DeploymentProcessSupervisor, Depends(get_yolox_async_deployment_process_supervisor)],
 	gateway_dispatcher_registry: Annotated[YoloXAsyncInferenceGatewayDispatcherRegistry, Depends(get_yolox_async_inference_gateway_dispatcher_registry)],
 ) -> YoloXInferenceTaskSubmissionResponse:
 	"""创建一个正式 YOLOX inference task。"""
@@ -310,7 +310,7 @@ async def infer_yolox_deployment_instance(
 	principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("models:read"))],
 	session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
 	dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
-	deployment_process_supervisor: Annotated[YoloXDeploymentProcessSupervisor, Depends(get_yolox_sync_deployment_process_supervisor)],
+	deployment_process_supervisor: Annotated[DeploymentProcessSupervisor, Depends(get_yolox_sync_deployment_process_supervisor)],
 ) -> YoloXInferencePayloadResponse:
 	"""直接执行一次同步 YOLOX 推理并返回结果。"""
 
@@ -555,7 +555,7 @@ def _ensure_visible_deployment(
 
 def _require_running_deployment_process(
 	*,
-	deployment_process_supervisor: YoloXDeploymentProcessSupervisor,
+	deployment_process_supervisor: DeploymentProcessSupervisor,
 	process_config,
 	runtime_mode: str,
 ) -> None:

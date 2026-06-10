@@ -1,4 +1,4 @@
-"""YOLOX 检测节点。"""
+"""deployment 检测节点。"""
 
 from __future__ import annotations
 
@@ -26,8 +26,8 @@ from backend.service.application.workflows.graph_executor import WorkflowNodeExe
 _DEFAULT_INFERENCE_SCORE_THRESHOLD = 0.3
 
 
-def _yolox_detection_handler(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
-    """通过 PublishedInferenceGateway 调用已发布 YOLOX 推理服务。"""
+def _deployment_detection_handler(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
+    """通过 PublishedInferenceGateway 调用已发布 detection 推理服务。"""
 
     request = overlay_parameters_from_object_input(request)
     runtime_context = require_workflow_service_node_runtime(request)
@@ -198,5 +198,5 @@ CORE_NODE_SPEC = CoreNodeSpec(
         capability_tags=("model.inference", "yolox.detection"),
         runtime_requirements={"deployment_process": "sync"},
     ),
-    handler=_yolox_detection_handler,
+    handler=_deployment_detection_handler,
 )

@@ -1,4 +1,4 @@
-"""YOLOX deployment 进程监督器行为测试。"""
+"""deployment 进程监督器行为测试。"""
 
 from __future__ import annotations
 
@@ -9,14 +9,14 @@ from time import monotonic, sleep
 
 import pytest
 
-from backend.service.application.errors import InvalidRequestError
-from backend.service.application.runtime.yolox_deployment_process_supervisor import (
-    YoloXDeploymentProcessConfig,
-    YoloXDeploymentProcessSupervisor,
+from backend.service.application.errors import InvalidRequestError, ServiceConfigurationError
+from backend.service.application.runtime.deployment_process_supervisor import (
+    DeploymentProcessConfig,
+    DeploymentProcessSupervisor,
 )
 from backend.service.application.runtime.yolox_predictor import YoloXPredictionRequest
 from backend.service.application.runtime.safe_counter import JSON_SAFE_INTEGER_MAX
-from backend.service.application.runtime.yolox_runtime_target import RuntimeTargetSnapshot
+from backend.service.application.runtime.runtime_target import RuntimeTargetSnapshot
 from backend.service.settings import BackendServiceDeploymentProcessSupervisorConfig
 
 
@@ -25,12 +25,12 @@ def test_deployment_process_supervisor_supports_lifecycle_and_auto_restart(tmp_p
 
     runtime_artifact_path = tmp_path / "runtime-artifact.onnx"
     runtime_artifact_path.write_bytes(b"fake-runtime-artifact")
-    config = YoloXDeploymentProcessConfig(
+    config = DeploymentProcessConfig(
         deployment_instance_id="deployment-instance-supervisor-1",
         runtime_target=_build_runtime_target(runtime_artifact_path),
         instance_count=2,
     )
-    supervisor = YoloXDeploymentProcessSupervisor(
+    supervisor = DeploymentProcessSupervisor(
         dataset_storage_root_dir=str(tmp_path),
         runtime_mode="sync",
         settings=BackendServiceDeploymentProcessSupervisorConfig(
@@ -40,7 +40,7 @@ def test_deployment_process_supervisor_supports_lifecycle_and_auto_restart(tmp_p
             shutdown_timeout_seconds=1.0,
             operator_thread_count=1,
         ),
-        worker_target=fake_yolox_deployment_process_worker,
+        worker_target=fake_deployment_process_worker,
     )
 
     supervisor.start()
@@ -54,7 +54,7 @@ def test_deployment_process_supervisor_supports_lifecycle_and_auto_restart(tmp_p
         assert started_status.desired_state == "running"
         assert started_status.process_id is not None
 
-        initial_health = supervisor.get_health(config)
+        initial_health = _wait_for_health(supervisor, config)
         assert initial_health.healthy_instance_count == 2
         assert initial_health.warmed_instance_count == 0
         assert initial_health.pinned_output_total_bytes == 0
@@ -100,6 +100,7 @@ def test_deployment_process_supervisor_supports_lifecycle_and_auto_restart(tmp_p
         assert restarted_status.restart_count_rollover_count == 1
         assert restarted_status.process_id is not None
         assert restarted_status.process_id != previous_process_id
+        _wait_for_health(supervisor, config)
 
         reset_health = supervisor.reset_deployment(config)
         assert reset_health.warmed_instance_count == 0
@@ -124,7 +125,7 @@ def test_deployment_process_supervisor_supports_lifecycle_and_auto_restart(tmp_p
         supervisor.stop()
 
 
-def fake_yolox_deployment_process_worker(
+def fake_deployment_process_worker(
     *,
     config,
     dataset_storage_root_dir: str,
@@ -239,7 +240,7 @@ def fake_yolox_deployment_process_worker(
 
 def _build_health_payload(
     *,
-    config: YoloXDeploymentProcessConfig,
+    config: DeploymentProcessConfig,
     warmed_instance_indexes: set[int],
 ) -> dict[str, object]:
     """构建 fake worker 返回的 health 负载。"""
@@ -294,8 +295,8 @@ def _build_runtime_target(runtime_artifact_path: Path) -> RuntimeTargetSnapshot:
 
 
 def _wait_for_running_restart(
-    supervisor: YoloXDeploymentProcessSupervisor,
-    config: YoloXDeploymentProcessConfig,
+    supervisor: DeploymentProcessSupervisor,
+    config: DeploymentProcessConfig,
     previous_process_id: int | None,
 ) -> object:
     """等待 supervisor 完成崩溃拉起。"""
@@ -307,3 +308,22 @@ def _wait_for_running_restart(
             return status
         sleep(0.05)
     raise AssertionError("deployment supervisor 未在预期时间内完成自动拉起")
+
+
+def _wait_for_health(
+    supervisor: DeploymentProcessSupervisor,
+    config: DeploymentProcessConfig,
+    *,
+    timeout_seconds: float = 5.0,
+) -> object:
+    """等待 deployment 子进程进入可响应 health 的状态。"""
+
+    deadline = monotonic() + timeout_seconds
+    last_error: Exception | None = None
+    while monotonic() < deadline:
+        try:
+            return supervisor.get_health(config)
+        except ServiceConfigurationError as error:
+            last_error = error
+            sleep(0.1)
+    raise AssertionError("deployment 进程未在预期时间内返回 health") from last_error

@@ -27,7 +27,7 @@ from backend.service.application.runtime.obb_runtime_contracts import (
     ObbPredictionExecutionResult, ObbPredictionInstance,
     ObbPredictionRequest, ObbRuntimeSessionInfo, ObbRuntimeTensorSpec,
 )
-from backend.service.application.runtime.yolox_runtime_target import RuntimeTargetSnapshot, describe_runtime_execution_mode
+from backend.service.application.runtime.runtime_target import RuntimeTargetSnapshot, describe_runtime_execution_mode
 from backend.service.settings import get_backend_service_settings
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 

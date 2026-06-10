@@ -37,12 +37,12 @@ from backend.service.application.local_buffers import (
     LocalBufferBrokerSettings,
 )
 from backend.service.application.runtime.deployment_process_settings import DeploymentProcessSupervisorConfig
-from backend.service.application.runtime.yolox_deployment_process_supervisor import (
-    YoloXDeploymentProcessConfig,
-    YoloXDeploymentProcessSupervisor,
+from backend.service.application.runtime.deployment_process_supervisor import (
+    DeploymentProcessConfig,
+    DeploymentProcessSupervisor,
 )
 from backend.service.application.runtime.yolox_predictor import YoloXPredictionRequest
-from backend.service.application.runtime.yolox_runtime_target import RuntimeTargetSnapshot
+from backend.service.application.runtime.runtime_target import RuntimeTargetSnapshot
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.workflows.execution_cleanup import register_local_buffer_lease_cleanup
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest, WorkflowNodeRuntimeRegistry
@@ -567,12 +567,12 @@ def test_deployment_supervisor_passes_broker_event_channel_to_worker(tmp_path: P
         response_queue=context.Queue(),
         request_timeout_seconds=1.0,
     )
-    process_config = YoloXDeploymentProcessConfig(
+    process_config = DeploymentProcessConfig(
         deployment_instance_id="deployment-with-broker",
         runtime_target=_build_runtime_target(runtime_artifact_path),
         instance_count=1,
     )
-    supervisor = YoloXDeploymentProcessSupervisor(
+    supervisor = DeploymentProcessSupervisor(
         dataset_storage_root_dir=str(tmp_path),
         runtime_mode="sync",
         settings=DeploymentProcessSupervisorConfig(
@@ -689,7 +689,7 @@ def _buffer_cleanup_probe_handler(request: WorkflowNodeExecutionRequest) -> dict
 
 def _fake_deployment_worker_records_broker_event_channel(
     *,
-    config: YoloXDeploymentProcessConfig,
+    config: DeploymentProcessConfig,
     dataset_storage_root_dir: str,
     request_queue: Any,
     response_queue: Any,

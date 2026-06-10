@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from backend.service.application.runtime.yolox_inference_runtime_pool import (
-    YoloXDeploymentRuntimePool,
-    YoloXDeploymentRuntimePoolConfig,
+from backend.service.application.runtime.deployment_runtime_pool import (
+    DeploymentRuntimePool,
+    DeploymentRuntimePoolConfig,
 )
 from backend.service.application.runtime.yolox_predictor import (
     YoloXPredictionRequest,
@@ -60,7 +60,7 @@ def test_runtime_pool_loads_tensorrt_session_once_and_reuses_warmed_instance(
         runtime_artifact_file_name="fake-model.engine",
         runtime_artifact_file_type=YOLOX_TENSORRT_ENGINE_FILE,
     )
-    config = YoloXDeploymentRuntimePoolConfig(
+    config = DeploymentRuntimePoolConfig(
         deployment_instance_id="deployment-instance-tensorrt-runtime-pool-1",
         runtime_target=runtime_target,
         instance_count=1,
@@ -74,7 +74,7 @@ def test_runtime_pool_loads_tensorrt_session_once_and_reuses_warmed_instance(
         execution_result=build_test_execution_result(runtime_target=runtime_target, output_dtype="float16")
     )
     load_requests: list[tuple[object, object, object, object]] = []
-    pool = YoloXDeploymentRuntimePool(
+    pool = DeploymentRuntimePool(
         dataset_storage=dataset_storage,
         model_runtime=build_recording_model_runtime(
             load_requests=load_requests,
@@ -116,7 +116,7 @@ def test_runtime_pool_health_reports_total_pinned_output_bytes(
         runtime_artifact_file_name="fake-model.engine",
         runtime_artifact_file_type=YOLOX_TENSORRT_ENGINE_FILE,
     )
-    config = YoloXDeploymentRuntimePoolConfig(
+    config = DeploymentRuntimePoolConfig(
         deployment_instance_id="deployment-instance-tensorrt-runtime-pool-health-1",
         runtime_target=runtime_target,
         instance_count=2,
@@ -127,7 +127,7 @@ def test_runtime_pool_health_reports_total_pinned_output_bytes(
         output_host_pinned_bytes=524288,
     )
     load_requests: list[tuple[object, object, object, object]] = []
-    pool = YoloXDeploymentRuntimePool(
+    pool = DeploymentRuntimePool(
         dataset_storage=dataset_storage,
         model_runtime=build_recording_model_runtime(
             load_requests=load_requests,

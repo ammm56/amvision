@@ -42,7 +42,7 @@ from backend.service.application.runtime.segmentation_runtime_contracts import (
     SegmentationRuntimeSessionInfo,
     SegmentationRuntimeTensorSpec,
 )
-from backend.service.application.runtime.yolox_runtime_target import (
+from backend.service.application.runtime.runtime_target import (
     RuntimeTargetSnapshot,
     describe_runtime_execution_mode,
 )

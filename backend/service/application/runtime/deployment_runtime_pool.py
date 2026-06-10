@@ -1,4 +1,4 @@
-"""YOLOX deployment runtime pool。"""
+"""deployment 运行时会话池。"""
 
 from __future__ import annotations
 
@@ -15,12 +15,12 @@ from backend.service.application.runtime.yolox_predictor import (
     YoloXPredictionExecutionResult,
     YoloXPredictionRequest,
 )
-from backend.service.application.runtime.yolox_runtime_target import RuntimeTargetSnapshot
+from backend.service.application.runtime.runtime_target import RuntimeTargetSnapshot
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 
 
 @dataclass(frozen=True)
-class YoloXDeploymentRuntimePoolConfig:
+class DeploymentRuntimePoolConfig:
     """描述一个 DeploymentInstance 的 runtime pool 配置。
 
     字段：
@@ -39,7 +39,7 @@ class YoloXDeploymentRuntimePoolConfig:
 
 
 @dataclass(frozen=True)
-class YoloXDeploymentRuntimePoolStatus:
+class DeploymentRuntimePoolStatus:
     """描述一个 DeploymentInstance 当前的 runtime pool 状态。
 
     字段：
@@ -56,7 +56,7 @@ class YoloXDeploymentRuntimePoolStatus:
 
 
 @dataclass(frozen=True)
-class YoloXDeploymentRuntimeInstanceHealth:
+class DeploymentRuntimeInstanceHealth:
     """描述单个推理实例的当前健康状态。
 
     字段：
@@ -75,7 +75,7 @@ class YoloXDeploymentRuntimeInstanceHealth:
 
 
 @dataclass(frozen=True)
-class YoloXDeploymentRuntimePoolHealth:
+class DeploymentRuntimePoolHealth:
     """描述 deployment runtime pool 的详细健康视图。
 
     字段：
@@ -92,11 +92,11 @@ class YoloXDeploymentRuntimePoolHealth:
     healthy_instance_count: int
     warmed_instance_count: int
     pinned_output_total_bytes: int
-    instances: tuple[YoloXDeploymentRuntimeInstanceHealth, ...]
+    instances: tuple[DeploymentRuntimeInstanceHealth, ...]
 
 
 @dataclass(frozen=True)
-class YoloXDeploymentRuntimeExecution:
+class DeploymentRuntimeExecution:
     """描述一次通过 runtime pool 执行的推理结果。
 
     字段：
@@ -126,13 +126,13 @@ class _InferenceInstanceState:
 class _DeploymentRuntimeState:
     """描述一个 DeploymentInstance 在内存中的实例池状态。"""
 
-    config: YoloXDeploymentRuntimePoolConfig
+    config: DeploymentRuntimePoolConfig
     instances: list[_InferenceInstanceState]
     next_instance_index: int = 0
     lock: Lock = field(default_factory=Lock, repr=False)
 
 
-class YoloXDeploymentRuntimePool:
+class DeploymentRuntimePool:
     """管理 DeploymentInstance 常驻推理实例的最小 runtime pool。"""
 
     def __init__(
@@ -153,19 +153,19 @@ class YoloXDeploymentRuntimePool:
         self._deployments: dict[str, _DeploymentRuntimeState] = {}
         self._lock = Lock()
 
-    def ensure_deployment(self, config: YoloXDeploymentRuntimePoolConfig) -> YoloXDeploymentRuntimePoolStatus:
+    def ensure_deployment(self, config: DeploymentRuntimePoolConfig) -> DeploymentRuntimePoolStatus:
         """确保指定 DeploymentInstance 的实例池已经初始化。"""
 
         state = self._ensure_state(config)
         return self._build_status(state)
 
-    def get_status(self, config: YoloXDeploymentRuntimePoolConfig) -> YoloXDeploymentRuntimePoolStatus:
+    def get_status(self, config: DeploymentRuntimePoolConfig) -> DeploymentRuntimePoolStatus:
         """返回指定 DeploymentInstance 当前的实例池状态。"""
 
         state = self._ensure_state(config)
         return self._build_status(state)
 
-    def warmup_deployment(self, config: YoloXDeploymentRuntimePoolConfig) -> YoloXDeploymentRuntimePoolStatus:
+    def warmup_deployment(self, config: DeploymentRuntimePoolConfig) -> DeploymentRuntimePoolStatus:
         """尝试预热指定 DeploymentInstance 的所有推理实例。"""
 
         state = self._ensure_state(config)
@@ -176,13 +176,13 @@ class YoloXDeploymentRuntimePool:
                 self._mark_instance_unhealthy(instance=instance, error=error)
         return self.get_status(config)
 
-    def get_health(self, config: YoloXDeploymentRuntimePoolConfig) -> YoloXDeploymentRuntimePoolHealth:
+    def get_health(self, config: DeploymentRuntimePoolConfig) -> DeploymentRuntimePoolHealth:
         """返回指定 DeploymentInstance 的详细健康视图。"""
 
         state = self._ensure_state(config)
         return self._build_health(state)
 
-    def reset_deployment(self, config: YoloXDeploymentRuntimePoolConfig) -> YoloXDeploymentRuntimePoolHealth:
+    def reset_deployment(self, config: DeploymentRuntimePoolConfig) -> DeploymentRuntimePoolHealth:
         """重置指定 DeploymentInstance 的常驻推理实例。"""
 
         state = self._ensure_state(config)
@@ -208,9 +208,9 @@ class YoloXDeploymentRuntimePool:
     def run_inference(
         self,
         *,
-        config: YoloXDeploymentRuntimePoolConfig,
+        config: DeploymentRuntimePoolConfig,
         request: YoloXPredictionRequest,
-    ) -> YoloXDeploymentRuntimeExecution:
+    ) -> DeploymentRuntimeExecution:
         """通过 runtime pool 执行一次推理请求。"""
 
         state = self._ensure_state(config)
@@ -220,7 +220,7 @@ class YoloXDeploymentRuntimePool:
             try:
                 session = self._ensure_instance_session(config=config, instance=instance)
                 execution_result = session.predict(request)
-                return YoloXDeploymentRuntimeExecution(
+                return DeploymentRuntimeExecution(
                     deployment_instance_id=config.deployment_instance_id,
                     instance_id=_build_instance_id(config.deployment_instance_id, instance.instance_index),
                     execution_result=execution_result,
@@ -241,7 +241,7 @@ class YoloXDeploymentRuntimePool:
             },
         )
 
-    def _ensure_state(self, config: YoloXDeploymentRuntimePoolConfig) -> _DeploymentRuntimeState:
+    def _ensure_state(self, config: DeploymentRuntimePoolConfig) -> _DeploymentRuntimeState:
         """读取或初始化指定 DeploymentInstance 的当前实例池状态。"""
 
         self._validate_config(config)
@@ -256,11 +256,11 @@ class YoloXDeploymentRuntimePool:
             return current_state
 
     @staticmethod
-    def _build_status(state: _DeploymentRuntimeState) -> YoloXDeploymentRuntimePoolStatus:
+    def _build_status(state: _DeploymentRuntimeState) -> DeploymentRuntimePoolStatus:
         """根据内部实例池状态构建公开状态响应。"""
 
-        health = YoloXDeploymentRuntimePool._build_health(state)
-        return YoloXDeploymentRuntimePoolStatus(
+        health = DeploymentRuntimePool._build_health(state)
+        return DeploymentRuntimePoolStatus(
             deployment_instance_id=health.deployment_instance_id,
             instance_count=health.instance_count,
             healthy_instance_count=health.healthy_instance_count,
@@ -268,20 +268,20 @@ class YoloXDeploymentRuntimePool:
         )
 
     @staticmethod
-    def _build_health(state: _DeploymentRuntimeState) -> YoloXDeploymentRuntimePoolHealth:
+    def _build_health(state: _DeploymentRuntimeState) -> DeploymentRuntimePoolHealth:
         """根据内部实例池状态构建详细健康视图。"""
 
         with state.lock:
             instance_states = tuple(state.instances)
-        instance_health: list[YoloXDeploymentRuntimeInstanceHealth] = []
+        instance_health: list[DeploymentRuntimeInstanceHealth] = []
         pinned_output_total_bytes = 0
         for instance in instance_states:
             with instance.lock:
-                pinned_output_total_bytes += YoloXDeploymentRuntimePool._read_session_pinned_output_bytes(
+                pinned_output_total_bytes += DeploymentRuntimePool._read_session_pinned_output_bytes(
                     instance.session
                 )
                 instance_health.append(
-                    YoloXDeploymentRuntimeInstanceHealth(
+                    DeploymentRuntimeInstanceHealth(
                         instance_id=_build_instance_id(state.config.deployment_instance_id, instance.instance_index),
                         healthy=instance.healthy,
                         warmed=instance.session is not None,
@@ -290,7 +290,7 @@ class YoloXDeploymentRuntimePool:
                     )
                 )
         health_items = tuple(instance_health)
-        return YoloXDeploymentRuntimePoolHealth(
+        return DeploymentRuntimePoolHealth(
             deployment_instance_id=state.config.deployment_instance_id,
             instance_count=state.config.instance_count,
             healthy_instance_count=sum(1 for instance in health_items if instance.healthy),
@@ -337,9 +337,9 @@ class YoloXDeploymentRuntimePool:
     def _ensure_instance_session(
         self,
         *,
-        config: YoloXDeploymentRuntimePoolConfig,
+        config: DeploymentRuntimePoolConfig,
         instance: _InferenceInstanceState,
-    ) -> ModelRuntimeSession:
+    ) -> DetectionModelRuntimeSession:
         """确保指定实例已经完成模型会话加载。"""
 
         with instance.lock:
@@ -376,7 +376,7 @@ class YoloXDeploymentRuntimePool:
             instance.last_error = str(error)
             instance.busy = False
 
-        YoloXDeploymentRuntimePool._close_session_if_supported(session_to_close)
+        DeploymentRuntimePool._close_session_if_supported(session_to_close)
 
     @staticmethod
     def _close_session_if_supported(session: object | None) -> None:
@@ -415,7 +415,7 @@ class YoloXDeploymentRuntimePool:
         return max(0, int(pinned_bytes))
 
     @staticmethod
-    def _validate_config(config: YoloXDeploymentRuntimePoolConfig) -> None:
+    def _validate_config(config: DeploymentRuntimePoolConfig) -> None:
         """校验 runtime pool 配置。"""
 
         if not config.deployment_instance_id.strip():
@@ -427,7 +427,7 @@ class YoloXDeploymentRuntimePool:
             )
 
 
-def _build_config_signature(config: YoloXDeploymentRuntimePoolConfig) -> tuple[object, ...]:
+def _build_config_signature(config: DeploymentRuntimePoolConfig) -> tuple[object, ...]:
     """把 runtime pool 配置转换为稳定比较签名。"""
 
     runtime_target = config.runtime_target

@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 from backend.service.application.models.yolo26_model_service import SqlAlchemyYolo26ModelService
-from backend.service.application.runtime.yolox_runtime_target import (
+from backend.service.application.runtime.runtime_target import (
     RuntimeTargetResolveRequest,
     RuntimeTargetSnapshot,
-    SqlAlchemyYoloXRuntimeTargetResolver,
+    SqlAlchemyRuntimeTargetResolver,
     describe_runtime_execution_mode,
     deserialize_runtime_target_snapshot,
     find_model_file,
@@ -29,7 +29,7 @@ from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 
 
-class SqlAlchemyYolo26RuntimeTargetResolver(SqlAlchemyYoloXRuntimeTargetResolver):
+class SqlAlchemyYolo26RuntimeTargetResolver(SqlAlchemyRuntimeTargetResolver):
     """复用共用解析链的 YOLO26 运行时快照解析器。"""
 
     def __init__(self, *, session_factory: SessionFactory, dataset_storage: LocalDatasetStorage) -> None:

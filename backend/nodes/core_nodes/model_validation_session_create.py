@@ -56,7 +56,7 @@ from backend.service.domain.models.model_task_types import (
 )
 
 
-def _yolox_validation_session_create_handler(
+def _model_validation_session_create_handler(
     request: WorkflowNodeExecutionRequest,
 ) -> dict[str, object]:
     """调用 validation session 创建服务，兼容旧 YOLOX 节点名并支持显式平台路由。"""
@@ -202,5 +202,5 @@ CORE_NODE_SPEC = CoreNodeSpec(
         },
         capability_tags=("service.model.validation", "resource.create"),
     ),
-    handler=_yolox_validation_session_create_handler,
+    handler=_model_validation_session_create_handler,
 )

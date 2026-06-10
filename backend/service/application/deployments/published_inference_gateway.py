@@ -14,8 +14,8 @@ from backend.nodes.runtime_support import (
     require_image_payload,
 )
 from backend.service.application.errors import InvalidRequestError, OperationTimeoutError, ServiceConfigurationError
-from backend.service.application.runtime.yolox_deployment_process_supervisor import (
-    YoloXDeploymentProcessSupervisor,
+from backend.service.application.runtime.deployment_process_supervisor import (
+    DeploymentProcessSupervisor,
 )
 from backend.service.application.runtime.yolox_predictor import (
     YoloXPredictionRequest,
@@ -120,7 +120,7 @@ class YoloXDeploymentPublishedInferenceGateway:
     """
 
     deployment_service: object
-    deployment_process_supervisor: YoloXDeploymentProcessSupervisor
+    deployment_process_supervisor: DeploymentProcessSupervisor
     runtime_mode: str = "sync"
 
     def infer(self, request: PublishedInferenceRequest) -> PublishedInferenceResult:

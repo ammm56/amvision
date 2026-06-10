@@ -7,7 +7,7 @@ from types import SimpleNamespace
 
 from backend.contracts.buffers import BufferRef
 from backend.nodes import ExecutionImageRegistry, build_memory_image_payload
-from backend.nodes.core_nodes.yolox_detection import _yolox_detection_handler
+from backend.nodes.core_nodes.deployment_detection import _deployment_detection_handler
 from backend.service.application.deployments import (
     PublishedInferenceGatewayClient,
     PublishedInferenceGatewayDispatcher,
@@ -16,7 +16,7 @@ from backend.service.application.deployments import (
     YoloXDeploymentPublishedInferenceGateway,
 )
 from backend.service.application.models.yolox_inference_task_service import run_yolox_inference_task
-from backend.service.application.runtime.yolox_deployment_process_supervisor import YoloXDeploymentProcessExecution
+from backend.service.application.runtime.deployment_process_supervisor import DeploymentProcessExecution
 from backend.service.application.runtime.yolox_predictor import (
     YoloXPredictionDetection,
     YoloXPredictionExecutionResult,
@@ -106,7 +106,7 @@ def test_yolox_detection_node_writes_memory_image_to_local_buffer_before_gateway
         published_inference_gateway=fake_gateway,
     )
 
-    output = _yolox_detection_handler(
+    output = _deployment_detection_handler(
         WorkflowNodeExecutionRequest(
             node_id="detect",
             node_definition=object(),
@@ -158,7 +158,7 @@ def test_yolox_detection_node_registers_local_buffer_lease_cleanup() -> None:
         "workflow_run_id": "run-1",
     }
 
-    _yolox_detection_handler(
+    _deployment_detection_handler(
         WorkflowNodeExecutionRequest(
             node_id="detect",
             node_definition=object(),
@@ -255,11 +255,11 @@ class _FakeDeploymentSupervisor:
         self.start_calls.append(config.deployment_instance_id)
         return self.get_status(config)
 
-    def run_inference(self, *, config: SimpleNamespace, request) -> YoloXDeploymentProcessExecution:
+    def run_inference(self, *, config: SimpleNamespace, request) -> DeploymentProcessExecution:
         """记录推理请求并返回固定结果。"""
 
         self.last_prediction_request = request
-        return YoloXDeploymentProcessExecution(
+        return DeploymentProcessExecution(
             deployment_instance_id=config.deployment_instance_id,
             instance_id="deployment-1:instance-0",
             execution_result=YoloXPredictionExecutionResult(

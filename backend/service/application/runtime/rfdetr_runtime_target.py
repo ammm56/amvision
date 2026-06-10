@@ -7,10 +7,10 @@ from backend.service.application.models.rfdetr_model_service import (
     SqlAlchemyRfdetrModelService,
     RFDETR_DETECTION_FILE_TYPES,
 )
-from backend.service.application.runtime.yolox_runtime_target import (
+from backend.service.application.runtime.runtime_target import (
     RuntimeTargetResolveRequest,
     RuntimeTargetSnapshot,
-    SqlAlchemyYoloXRuntimeTargetResolver,
+    SqlAlchemyRuntimeTargetResolver,
     describe_runtime_execution_mode,
     deserialize_runtime_target_snapshot,
     find_model_file,
@@ -33,7 +33,7 @@ from backend.service.infrastructure.object_store.local_dataset_storage import (
 )
 
 
-class SqlAlchemyRfdetrRuntimeTargetResolver(SqlAlchemyYoloXRuntimeTargetResolver):
+class SqlAlchemyRfdetrRuntimeTargetResolver(SqlAlchemyRuntimeTargetResolver):
     """复用共用解析链的 RF-DETR 运行时快照解析器。"""
 
     model_type = "rfdetr"

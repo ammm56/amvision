@@ -263,7 +263,7 @@ sequenceDiagram
 
 - REST 入口：[backend/service/api/rest/v1/routes/yolox_inference_tasks.py](../../backend/service/api/rest/v1/routes/yolox_inference_tasks.py)
 - Deployment 服务：[backend/service/application/deployments/yolox_deployment_service.py](../../backend/service/application/deployments/yolox_deployment_service.py)
-- 推理监督器：[backend/service/application/runtime/yolox_deployment_process_supervisor.py](../../backend/service/application/runtime/yolox_deployment_process_supervisor.py)
+- 推理监督器：[backend/service/application/runtime/deployment_process_supervisor.py](../../backend/service/application/runtime/deployment_process_supervisor.py)
 
 ```mermaid
 sequenceDiagram
@@ -272,7 +272,7 @@ sequenceDiagram
     participant API as infer_yolox_deployment_instance
     participant DeploySvc as SqlAlchemyYoloXDeploymentService
     participant DB as DeploymentInstance / metadata
-    participant SyncSup as YoloXDeploymentProcessSupervisor(sync)
+    participant SyncSup as DeploymentProcessSupervisor(sync)
     participant Child as deployment process worker
     participant Storage as LocalDatasetStorage
     participant Pred as run_yolox_inference_task
@@ -284,7 +284,7 @@ sequenceDiagram
     DB-->>DeploySvc: deployment view
     API->>DeploySvc: resolve_process_config(id)
     DeploySvc->>DB: 从 metadata 反序列化 runtime_target_snapshot
-    DeploySvc-->>API: YoloXDeploymentProcessConfig
+    DeploySvc-->>API: DeploymentProcessConfig
     API->>SyncSup: ensure_deployment(process_config)
     SyncSup-->>API: 仅登记配置，不自动启动
     API->>SyncSup: get_status(process_config)
@@ -298,7 +298,7 @@ sequenceDiagram
         SyncSup->>Child: 通过 request_queue 发送 infer 命令
         Child->>Child: 选择实例 / decode / preprocess / infer / postprocess
         Child-->>SyncSup: instance_id + detections + preview bytes + runtime info
-        SyncSup-->>Pred: YoloXDeploymentProcessExecution
+        SyncSup-->>Pred: DeploymentProcessExecution
         Pred-->>API: execution_result
         opt save_result_image 为 true
             API->>Storage: write preview.jpg
@@ -321,7 +321,7 @@ sequenceDiagram
     actor Client as 调用方
     participant API as infer_yolox_deployment_instance
     participant DeploySvc as SqlAlchemyYoloXDeploymentService
-    participant SyncSup as YoloXDeploymentProcessSupervisor(sync)
+    participant SyncSup as DeploymentProcessSupervisor(sync)
     participant Child as deployment process worker
 
     Client->>API: POST /api/v1/models/yolox/deployment-instances/{id}/infer

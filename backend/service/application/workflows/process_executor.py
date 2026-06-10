@@ -16,8 +16,8 @@ from backend.nodes.local_node_pack_loader import LocalNodePackLoader
 from backend.nodes.node_catalog_registry import NodeCatalogRegistry
 from backend.queue import LocalFileQueueBackend
 from backend.service.application.errors import InvalidRequestError, ServiceConfigurationError, ServiceError
-from backend.service.application.runtime.yolox_deployment_process_supervisor import (
-    YoloXDeploymentProcessSupervisor,
+from backend.service.application.runtime.deployment_process_supervisor import (
+    DeploymentProcessSupervisor,
 )
 from backend.service.application.workflows.graph_executor import (
     WorkflowGraphExecutor,
@@ -221,8 +221,8 @@ def run_workflow_application_process_worker(
     """workflow application 子进程入口。"""
 
     session_factory: SessionFactory | None = None
-    sync_supervisor: YoloXDeploymentProcessSupervisor | None = None
-    async_supervisor: YoloXDeploymentProcessSupervisor | None = None
+    sync_supervisor: DeploymentProcessSupervisor | None = None
+    async_supervisor: DeploymentProcessSupervisor | None = None
     try:
         settings = BackendServiceSettings.model_validate(settings_payload)
         session_factory = SessionFactory(settings.to_database_settings())
@@ -238,12 +238,12 @@ def run_workflow_application_process_worker(
         )
         runtime_registry_loader.refresh()
 
-        sync_supervisor = YoloXDeploymentProcessSupervisor(
+        sync_supervisor = DeploymentProcessSupervisor(
             dataset_storage_root_dir=str(dataset_storage.root_dir),
             runtime_mode="sync",
             settings=settings.deployment_process_supervisor,
         )
-        async_supervisor = YoloXDeploymentProcessSupervisor(
+        async_supervisor = DeploymentProcessSupervisor(
             dataset_storage_root_dir=str(dataset_storage.root_dir),
             runtime_mode="async",
             settings=settings.deployment_process_supervisor,

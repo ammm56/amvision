@@ -30,7 +30,7 @@ from backend.service.application.workflows.graph_executor import WorkflowNodeExe
 from backend.service.application.workflows.execution_cleanup import register_deployment_cleanup
 
 
-def _yolox_deployment_create_handler(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
+def _model_deployment_create_handler(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
     """调用正式 detection DeploymentInstance 创建服务。
 
     参数：
@@ -167,5 +167,5 @@ CORE_NODE_SPEC = CoreNodeSpec(
         },
         capability_tags=("service.model.deployment", "resource.create", "resource.control-plane"),
     ),
-    handler=_yolox_deployment_create_handler,
+    handler=_model_deployment_create_handler,
 )

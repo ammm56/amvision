@@ -11,7 +11,7 @@ from backend.service.application.obb_backend_registry import get_obb_backend_reg
 from backend.service.application.runtime.yolo11_runtime_target import SqlAlchemyYolo11RuntimeTargetResolver
 from backend.service.application.runtime.yolo26_runtime_target import SqlAlchemyYolo26RuntimeTargetResolver
 from backend.service.application.runtime.yolov8_runtime_target import SqlAlchemyYoloV8RuntimeTargetResolver
-from backend.service.application.runtime.yolox_runtime_target import RuntimeTargetResolveRequest, RuntimeTargetSnapshot
+from backend.service.application.runtime.runtime_target import RuntimeTargetResolveRequest, RuntimeTargetSnapshot
 
 @dataclass(frozen=True)
 class ObbDeploymentInstanceCreateRequest:

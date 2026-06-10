@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 
 from backend.service.application.runtime.obb_model_runtime import DefaultObbModelRuntime
 from backend.service.application.runtime.obb_runtime_contracts import ObbPredictionRequest
-from backend.service.application.runtime.yolox_runtime_target import RuntimeTargetSnapshot
+from backend.service.application.runtime.runtime_target import RuntimeTargetSnapshot
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 
 

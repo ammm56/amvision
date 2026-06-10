@@ -1,4 +1,4 @@
-"""YOLOX evaluation 结果包 service node。"""
+"""evaluation 结果包 service node。"""
 
 from __future__ import annotations
 
@@ -26,7 +26,7 @@ from backend.service.application.workflows.execution_cleanup import register_dat
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 
 
-def _yolox_evaluation_package_handler(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
+def _model_evaluation_package_handler(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
     """为已完成评估任务生成或复用结果包。
 
     参数：
@@ -138,5 +138,5 @@ CORE_NODE_SPEC = CoreNodeSpec(
         },
         capability_tags=("service.model.evaluation", "resource.package", "artifact.output"),
     ),
-    handler=_yolox_evaluation_package_handler,
+    handler=_model_evaluation_package_handler,
 )

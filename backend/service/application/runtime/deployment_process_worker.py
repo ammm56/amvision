@@ -1,4 +1,4 @@
-"""YOLOX deployment 子进程执行入口。"""
+"""deployment 子进程执行入口。"""
 
 from __future__ import annotations
 
@@ -20,9 +20,9 @@ from backend.service.application.local_buffers import LocalBufferBrokerClient, L
 from backend.service.application.runtime.deployment_process_settings import (
     DeploymentProcessSupervisorConfig,
 )
-from backend.service.application.runtime.yolox_inference_runtime_pool import (
-    YoloXDeploymentRuntimePool,
-    YoloXDeploymentRuntimePoolConfig,
+from backend.service.application.runtime.deployment_runtime_pool import (
+    DeploymentRuntimePool,
+    DeploymentRuntimePoolConfig,
 )
 from backend.service.application.runtime.safe_counter import (
     SafeCounterState,
@@ -120,7 +120,7 @@ class _LocalBufferBrokerRuntimeHealth:
     lock: Lock = field(default_factory=Lock, repr=False)
 
 
-def run_yolox_deployment_process_worker(
+def run_deployment_process_worker(
     *,
     config: Any,
     dataset_storage_root_dir: str,
@@ -148,8 +148,8 @@ def run_yolox_deployment_process_worker(
     dataset_storage = LocalDatasetStorage(
         DatasetStorageSettings(root_dir=dataset_storage_root_dir)
     )
-    runtime_pool = YoloXDeploymentRuntimePool(dataset_storage=dataset_storage)
-    runtime_pool_config = YoloXDeploymentRuntimePoolConfig(
+    runtime_pool = DeploymentRuntimePool(dataset_storage=dataset_storage)
+    runtime_pool_config = DeploymentRuntimePoolConfig(
         deployment_instance_id=config.deployment_instance_id,
         runtime_target=config.runtime_target,
         instance_count=config.instance_count,
@@ -359,8 +359,8 @@ def _run_inference_request(
     *,
     response_queue: Any,
     request_id: str,
-    runtime_pool: YoloXDeploymentRuntimePool,
-    runtime_pool_config: YoloXDeploymentRuntimePoolConfig,
+    runtime_pool: DeploymentRuntimePool,
+    runtime_pool_config: DeploymentRuntimePoolConfig,
     payload: dict[str, object],
     local_buffer_reader: LocalBufferBrokerClient | None,
     local_buffer_health: _LocalBufferBrokerRuntimeHealth,
@@ -596,8 +596,8 @@ def _build_dummy_inference_request(image_size: tuple[int, int]) -> YoloXPredicti
 
 def _run_dummy_warmup_passes(
     *,
-    runtime_pool: YoloXDeploymentRuntimePool,
-    runtime_pool_config: YoloXDeploymentRuntimePoolConfig,
+    runtime_pool: DeploymentRuntimePool,
+    runtime_pool_config: DeploymentRuntimePoolConfig,
     dummy_request: YoloXPredictionRequest,
     count: int,
 ) -> None:
@@ -619,8 +619,8 @@ def _run_dummy_warmup_passes(
 
 def _start_keep_warm_thread(
     *,
-    runtime_pool: YoloXDeploymentRuntimePool,
-    runtime_pool_config: YoloXDeploymentRuntimePoolConfig,
+    runtime_pool: DeploymentRuntimePool,
+    runtime_pool_config: DeploymentRuntimePoolConfig,
     dummy_request: YoloXPredictionRequest,
     behavior: _DeploymentWarmupBehavior,
 ) -> _KeepWarmState:
@@ -654,8 +654,8 @@ def _start_keep_warm_thread(
 
 def _run_keep_warm_loop(
     *,
-    runtime_pool: YoloXDeploymentRuntimePool,
-    runtime_pool_config: YoloXDeploymentRuntimePoolConfig,
+    runtime_pool: DeploymentRuntimePool,
+    runtime_pool_config: DeploymentRuntimePoolConfig,
     keep_warm_state: _KeepWarmState,
     behavior: _DeploymentWarmupBehavior,
 ) -> None:

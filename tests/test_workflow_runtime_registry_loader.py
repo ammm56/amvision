@@ -9,7 +9,7 @@ from types import SimpleNamespace
 
 import pytest
 
-import backend.nodes.core_nodes.yolox_inference_submit as yolox_inference_submit_node
+import backend.nodes.core_nodes.model_inference_submit as model_inference_submit_node
 from backend.contracts.workflows.workflow_graph import (
     WorkflowGraphEdge,
     WorkflowGraphInput,
@@ -1248,14 +1248,14 @@ def test_core_yolox_detection_node_accepts_memory_image_payload(
     assert fake_supervisor_calls["inference_kwargs"]["input_image_bytes"] == source_bytes
 
 
-def test_core_yolox_inference_submit_node_auto_starts_async_process(
+def test_core_model_inference_submit_node_auto_starts_async_process(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """验证异步推理提交节点在 workflow 内默认会自动拉起本地 async deployment 进程。"""
 
     assert (
-        yolox_inference_submit_node.CORE_NODE_SPEC.node_definition.node_type_id
+        model_inference_submit_node.CORE_NODE_SPEC.node_definition.node_type_id
         == "core.service.yolox-inference.submit"
     )
 

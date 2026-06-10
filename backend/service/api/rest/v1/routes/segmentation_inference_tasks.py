@@ -29,8 +29,8 @@ from backend.service.application.models.segmentation_inference_task_service impo
     SegmentationInferenceTaskRequest,
     SqlAlchemySegmentationInferenceTaskService,
 )
-from backend.service.application.runtime.yolox_deployment_process_supervisor import (
-    YoloXDeploymentProcessSupervisor,
+from backend.service.application.runtime.deployment_process_supervisor import (
+    DeploymentProcessSupervisor,
 )
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
@@ -73,7 +73,7 @@ async def create_segmentation_inference_task(
     session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
     queue_backend: Annotated[LocalFileQueueBackend, Depends(get_queue_backend)],
     dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
-    deployment_process_supervisor: Annotated[YoloXDeploymentProcessSupervisor, Depends(get_segmentation_async_deployment_process_supervisor)],
+    deployment_process_supervisor: Annotated[DeploymentProcessSupervisor, Depends(get_segmentation_async_deployment_process_supervisor)],
     gateway_dispatcher_registry: Annotated[SegmentationAsyncInferenceGatewayDispatcherRegistry, Depends(get_segmentation_async_inference_gateway_dispatcher_registry)],
 ) -> SegmentationInferenceTaskSubmissionResponse:
     import json

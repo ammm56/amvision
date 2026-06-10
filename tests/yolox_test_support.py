@@ -18,13 +18,13 @@ from backend.service.application.models.yolox_model_service import (
     YoloXBuildRegistration,
     YoloXTrainingOutputRegistration,
 )
-from backend.service.application.runtime.yolox_deployment_process_supervisor import (
-    YoloXDeploymentProcessConfig,
-    YoloXDeploymentProcessExecution,
-    YoloXDeploymentProcessHealth,
-    YoloXDeploymentProcessInstanceHealth,
-    YoloXDeploymentProcessStatus,
-    YoloXDeploymentProcessSupervisor,
+from backend.service.application.runtime.deployment_process_supervisor import (
+    DeploymentProcessConfig,
+    DeploymentProcessExecution,
+    DeploymentProcessHealth,
+    DeploymentProcessInstanceHealth,
+    DeploymentProcessStatus,
+    DeploymentProcessSupervisor,
 )
 from backend.service.application.runtime.yolox_predictor import (
     YoloXPredictionDetection,
@@ -254,7 +254,7 @@ def seed_yolox_model_build(
 class _FakeDeploymentProcessState:
     """描述 fake deployment 进程监督状态。"""
 
-    config: YoloXDeploymentProcessConfig
+    config: DeploymentProcessConfig
     desired_running: bool = False
     process_state: str = "stopped"
     process_id: int | None = None
@@ -265,7 +265,7 @@ class _FakeDeploymentProcessState:
     next_instance_index: int = 0
 
 
-class FakeDeploymentProcessSupervisor(YoloXDeploymentProcessSupervisor):
+class FakeDeploymentProcessSupervisor(DeploymentProcessSupervisor):
     """用于 API 测试的最小 fake deployment 进程监督器。"""
 
     def __init__(
@@ -293,13 +293,13 @@ class FakeDeploymentProcessSupervisor(YoloXDeploymentProcessSupervisor):
         self.load_calls: list[str] = []
         self.inference_requests: list[object] = []
 
-    def ensure_deployment(self, config: YoloXDeploymentProcessConfig) -> YoloXDeploymentProcessStatus:
+    def ensure_deployment(self, config: DeploymentProcessConfig) -> DeploymentProcessStatus:
         """确保指定 deployment 已经初始化到 fake 状态机中。"""
 
         state = self._ensure_state(config)
         return self._build_status(state)
 
-    def start_deployment(self, config: YoloXDeploymentProcessConfig) -> YoloXDeploymentProcessStatus:
+    def start_deployment(self, config: DeploymentProcessConfig) -> DeploymentProcessStatus:
         """把指定 deployment 标记为 running。"""
 
         state = self._ensure_state(config)
@@ -317,7 +317,7 @@ class FakeDeploymentProcessSupervisor(YoloXDeploymentProcessSupervisor):
             )
         return current_status
 
-    def stop_deployment(self, config: YoloXDeploymentProcessConfig) -> YoloXDeploymentProcessStatus:
+    def stop_deployment(self, config: DeploymentProcessConfig) -> DeploymentProcessStatus:
         """把指定 deployment 标记为 stopped。"""
 
         state = self._ensure_state(config)
@@ -334,7 +334,7 @@ class FakeDeploymentProcessSupervisor(YoloXDeploymentProcessSupervisor):
             )
         return current_status
 
-    def warmup_deployment(self, config: YoloXDeploymentProcessConfig) -> YoloXDeploymentProcessHealth:
+    def warmup_deployment(self, config: DeploymentProcessConfig) -> DeploymentProcessHealth:
         """把所有实例标记为 warmed。"""
 
         state = self._ensure_state(config)
@@ -349,17 +349,17 @@ class FakeDeploymentProcessSupervisor(YoloXDeploymentProcessSupervisor):
         )
         return health
 
-    def get_status(self, config: YoloXDeploymentProcessConfig) -> YoloXDeploymentProcessStatus:
+    def get_status(self, config: DeploymentProcessConfig) -> DeploymentProcessStatus:
         """返回指定 deployment 的 fake 进程状态。"""
 
         return self._build_status(self._ensure_state(config))
 
-    def get_health(self, config: YoloXDeploymentProcessConfig) -> YoloXDeploymentProcessHealth:
+    def get_health(self, config: DeploymentProcessConfig) -> DeploymentProcessHealth:
         """返回指定 deployment 的 fake 健康状态。"""
 
         return self._build_health(self._ensure_state(config))
 
-    def reset_deployment(self, config: YoloXDeploymentProcessConfig) -> YoloXDeploymentProcessHealth:
+    def reset_deployment(self, config: DeploymentProcessConfig) -> DeploymentProcessHealth:
         """清空 warmed 标记，模拟 reset。"""
 
         state = self._ensure_state(config)
@@ -374,7 +374,7 @@ class FakeDeploymentProcessSupervisor(YoloXDeploymentProcessSupervisor):
         )
         return health
 
-    def run_inference(self, *, config: YoloXDeploymentProcessConfig, request: object) -> YoloXDeploymentProcessExecution:
+    def run_inference(self, *, config: DeploymentProcessConfig, request: object) -> DeploymentProcessExecution:
         """执行一次 fake 推理，并返回固定结果。
 
         参数：
@@ -382,7 +382,7 @@ class FakeDeploymentProcessSupervisor(YoloXDeploymentProcessSupervisor):
         - request：推理请求对象。
 
         返回：
-        - YoloXDeploymentProcessExecution：固定 fake 推理结果。
+        - DeploymentProcessExecution：固定 fake 推理结果。
         """
 
         state = self._ensure_state(config)
@@ -396,7 +396,7 @@ class FakeDeploymentProcessSupervisor(YoloXDeploymentProcessSupervisor):
         request_input_uri = getattr(request, "input_uri", None)
         request_has_input_image_bytes = getattr(request, "input_image_bytes", None) is not None
         request_save_result_image = bool(getattr(request, "save_result_image", False))
-        return YoloXDeploymentProcessExecution(
+        return DeploymentProcessExecution(
             deployment_instance_id=config.deployment_instance_id,
             instance_id=instance_id,
             execution_result=YoloXPredictionExecutionResult(
@@ -432,7 +432,7 @@ class FakeDeploymentProcessSupervisor(YoloXDeploymentProcessSupervisor):
             ),
         )
 
-    def _ensure_state(self, config: YoloXDeploymentProcessConfig) -> _FakeDeploymentProcessState:
+    def _ensure_state(self, config: DeploymentProcessConfig) -> _FakeDeploymentProcessState:
         """返回 deployment 对应的 fake 状态对象。"""
 
         state = self._states.get(config.deployment_instance_id)
@@ -443,10 +443,10 @@ class FakeDeploymentProcessSupervisor(YoloXDeploymentProcessSupervisor):
             state.config = config
         return state
 
-    def _build_status(self, state: _FakeDeploymentProcessState) -> YoloXDeploymentProcessStatus:
+    def _build_status(self, state: _FakeDeploymentProcessState) -> DeploymentProcessStatus:
         """根据 fake 状态构建公开状态响应。"""
 
-        return YoloXDeploymentProcessStatus(
+        return DeploymentProcessStatus(
             deployment_instance_id=state.config.deployment_instance_id,
             runtime_mode=self.runtime_mode,
             instance_count=state.config.instance_count,
@@ -459,7 +459,7 @@ class FakeDeploymentProcessSupervisor(YoloXDeploymentProcessSupervisor):
             last_error=state.last_error,
         )
 
-    def _build_health(self, state: _FakeDeploymentProcessState) -> YoloXDeploymentProcessHealth:
+    def _build_health(self, state: _FakeDeploymentProcessState) -> DeploymentProcessHealth:
         """根据 fake 状态构建公开健康响应。"""
 
         instances = []
@@ -473,7 +473,7 @@ class FakeDeploymentProcessSupervisor(YoloXDeploymentProcessSupervisor):
             if warmed:
                 warmed_instance_count += 1
             instances.append(
-                YoloXDeploymentProcessInstanceHealth(
+                DeploymentProcessInstanceHealth(
                     instance_id=f"{state.config.deployment_instance_id}:instance-{instance_index}",
                     healthy=healthy,
                     warmed=warmed,
@@ -482,7 +482,7 @@ class FakeDeploymentProcessSupervisor(YoloXDeploymentProcessSupervisor):
                 )
             )
         status = self._build_status(state)
-        return YoloXDeploymentProcessHealth(
+        return DeploymentProcessHealth(
             deployment_instance_id=status.deployment_instance_id,
             runtime_mode=status.runtime_mode,
             instance_count=status.instance_count,

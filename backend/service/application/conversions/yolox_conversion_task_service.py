@@ -26,10 +26,10 @@ from backend.service.application.models.yolox_model_service import (
     SqlAlchemyYoloXModelService,
     YoloXBuildRegistration,
 )
-from backend.service.application.runtime.yolox_runtime_target import (
+from backend.service.application.runtime.runtime_target import (
     RuntimeTargetResolveRequest,
     RuntimeTargetSnapshot,
-    SqlAlchemyYoloXRuntimeTargetResolver,
+    SqlAlchemyRuntimeTargetResolver,
 )
 from backend.service.application.tasks.task_service import (
     AppendTaskEventRequest,
@@ -674,7 +674,7 @@ class SqlAlchemyYoloXConversionTaskService:
         """解析转换来源 ModelVersion 对应的 PyTorch runtime 快照。"""
 
         dataset_storage = self._require_dataset_storage()
-        resolver = SqlAlchemyYoloXRuntimeTargetResolver(
+        resolver = SqlAlchemyRuntimeTargetResolver(
             session_factory=self.session_factory,
             dataset_storage=dataset_storage,
         )

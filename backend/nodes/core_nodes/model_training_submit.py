@@ -66,7 +66,7 @@ _NON_DETECTION_TRAINING_REQUEST_BY_TASK_TYPE: dict[str, type] = {
 }
 
 
-def _yolox_training_submit_handler(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
+def _model_training_submit_handler(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
     """调用训练任务 service，兼容旧 YOLOX 节点参数并支持显式 task_type/model_type。"""
 
     request = overlay_parameters_from_object_input(request)
@@ -243,5 +243,5 @@ CORE_NODE_SPEC = CoreNodeSpec(
         },
         capability_tags=("service.model.training", "task.submit"),
     ),
-    handler=_yolox_training_submit_handler,
+    handler=_model_training_submit_handler,
 )

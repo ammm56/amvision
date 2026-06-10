@@ -25,12 +25,12 @@ from backend.service.application.models.yolox_async_inference_gateway import (
 	YoloXAsyncInferenceGatewayDispatcherRegistry,
 )
 from backend.service.application.runtime.deployment_event_source import YoloXDeploymentEventSource
-from backend.service.application.runtime.yolox_deployment_process_supervisor import (
-	YoloXDeploymentProcessHealth,
-	YoloXDeploymentProcessKeepWarmStatus,
-	YoloXDeploymentProcessInstanceHealth,
-	YoloXDeploymentProcessStatus,
-	YoloXDeploymentProcessSupervisor,
+from backend.service.application.runtime.deployment_process_supervisor import (
+	DeploymentProcessHealth,
+	DeploymentProcessKeepWarmStatus,
+	DeploymentProcessInstanceHealth,
+	DeploymentProcessStatus,
+	DeploymentProcessSupervisor,
 )
 from backend.service.application.runtime.deployment_events import YoloXDeploymentProcessEvent
 from backend.service.infrastructure.db.session import SessionFactory
@@ -83,7 +83,7 @@ class YoloXDeploymentInstanceResponse(BaseModel):
 	metadata: dict[str, object] = Field(default_factory=dict, description="附加元数据")
 
 
-class YoloXDeploymentRuntimeInstanceHealthResponse(BaseModel):
+class DeploymentRuntimeInstanceHealthResponse(BaseModel):
 	"""描述单个 deployment 推理实例的健康状态。"""
 
 	instance_id: str = Field(description="推理实例 id")
@@ -135,7 +135,7 @@ class YoloXDeploymentProcessKeepWarmResponse(BaseModel):
 	last_error: str | None = Field(default=None, description="最近一次 keep-warm 失败错误")
 
 
-class YoloXDeploymentProcessStatusResponse(BaseModel):
+class DeploymentProcessStatusResponse(BaseModel):
 	"""描述 deployment 子进程监督状态。
 
 	字段：
@@ -174,7 +174,7 @@ class YoloXDeploymentProcessStatusResponse(BaseModel):
 	instance_count: int = Field(description="实例数量")
 
 
-class YoloXDeploymentRuntimeHealthResponse(YoloXDeploymentProcessStatusResponse):
+class YoloXDeploymentRuntimeHealthResponse(DeploymentProcessStatusResponse):
 	"""描述 deployment 子进程与实例池的详细健康视图。
 
 	字段：
@@ -191,7 +191,7 @@ class YoloXDeploymentRuntimeHealthResponse(YoloXDeploymentProcessStatusResponse)
 	healthy_instance_count: int = Field(description="健康实例数量")
 	warmed_instance_count: int = Field(description="已预热实例数量")
 	pinned_output_total_bytes: int = Field(default=0, description="当前所有已加载 session 的 pinned output host buffer 总字节数")
-	instances: list[YoloXDeploymentRuntimeInstanceHealthResponse] = Field(default_factory=list, description="实例级健康状态列表")
+	instances: list[DeploymentRuntimeInstanceHealthResponse] = Field(default_factory=list, description="实例级健康状态列表")
 	keep_warm: YoloXDeploymentProcessKeepWarmResponse = Field(default_factory=YoloXDeploymentProcessKeepWarmResponse, description="keep-warm 运行状态")
 	local_buffer_broker: dict[str, object] = Field(default_factory=dict, description="LocalBufferBroker 接入状态、输入计数和最近错误")
 
@@ -350,15 +350,15 @@ def get_yolox_deployment_events(
 
 @yolox_deployments_router.post(
 	"/yolox/deployment-instances/{deployment_instance_id}/sync/start",
-	response_model=YoloXDeploymentProcessStatusResponse,
+	response_model=DeploymentProcessStatusResponse,
 )
 def start_yolox_sync_runtime(
 	deployment_instance_id: str,
 	principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("models:read", "models:write"))],
 	session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
 	dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
-	supervisor: Annotated[YoloXDeploymentProcessSupervisor, Depends(get_yolox_sync_deployment_process_supervisor)],
-) -> YoloXDeploymentProcessStatusResponse:
+	supervisor: Annotated[DeploymentProcessSupervisor, Depends(get_yolox_sync_deployment_process_supervisor)],
+) -> DeploymentProcessStatusResponse:
 	"""启动指定 deployment 的同步推理进程。"""
 
 	return _run_process_status_action(
@@ -374,15 +374,15 @@ def start_yolox_sync_runtime(
 
 @yolox_deployments_router.get(
 	"/yolox/deployment-instances/{deployment_instance_id}/sync/status",
-	response_model=YoloXDeploymentProcessStatusResponse,
+	response_model=DeploymentProcessStatusResponse,
 )
 def get_yolox_sync_runtime_status(
 	deployment_instance_id: str,
 	principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("models:read"))],
 	session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
 	dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
-	supervisor: Annotated[YoloXDeploymentProcessSupervisor, Depends(get_yolox_sync_deployment_process_supervisor)],
-) -> YoloXDeploymentProcessStatusResponse:
+	supervisor: Annotated[DeploymentProcessSupervisor, Depends(get_yolox_sync_deployment_process_supervisor)],
+) -> DeploymentProcessStatusResponse:
 	"""返回指定 deployment 的同步推理进程状态。"""
 
 	return _run_process_status_action(
@@ -398,15 +398,15 @@ def get_yolox_sync_runtime_status(
 
 @yolox_deployments_router.post(
 	"/yolox/deployment-instances/{deployment_instance_id}/sync/stop",
-	response_model=YoloXDeploymentProcessStatusResponse,
+	response_model=DeploymentProcessStatusResponse,
 )
 def stop_yolox_sync_runtime(
 	deployment_instance_id: str,
 	principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("models:read", "models:write"))],
 	session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
 	dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
-	supervisor: Annotated[YoloXDeploymentProcessSupervisor, Depends(get_yolox_sync_deployment_process_supervisor)],
-) -> YoloXDeploymentProcessStatusResponse:
+	supervisor: Annotated[DeploymentProcessSupervisor, Depends(get_yolox_sync_deployment_process_supervisor)],
+) -> DeploymentProcessStatusResponse:
 	"""停止指定 deployment 的同步推理进程。"""
 
 	return _run_process_status_action(
@@ -429,7 +429,7 @@ def warmup_yolox_sync_runtime(
 	principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("models:read", "models:write"))],
 	session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
 	dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
-	supervisor: Annotated[YoloXDeploymentProcessSupervisor, Depends(get_yolox_sync_deployment_process_supervisor)],
+	supervisor: Annotated[DeploymentProcessSupervisor, Depends(get_yolox_sync_deployment_process_supervisor)],
 ) -> YoloXDeploymentRuntimeHealthResponse:
 	"""显式预热指定 deployment 的所有同步推理实例。"""
 
@@ -453,7 +453,7 @@ def get_yolox_sync_runtime_health(
 	principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("models:read"))],
 	session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
 	dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
-	supervisor: Annotated[YoloXDeploymentProcessSupervisor, Depends(get_yolox_sync_deployment_process_supervisor)],
+	supervisor: Annotated[DeploymentProcessSupervisor, Depends(get_yolox_sync_deployment_process_supervisor)],
 ) -> YoloXDeploymentRuntimeHealthResponse:
 	"""返回指定 deployment 同步 runtime pool 的详细健康视图。"""
 
@@ -477,7 +477,7 @@ def reset_yolox_sync_runtime(
 	principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("models:read", "models:write"))],
 	session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
 	dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
-	supervisor: Annotated[YoloXDeploymentProcessSupervisor, Depends(get_yolox_sync_deployment_process_supervisor)],
+	supervisor: Annotated[DeploymentProcessSupervisor, Depends(get_yolox_sync_deployment_process_supervisor)],
 ) -> YoloXDeploymentRuntimeHealthResponse:
 	"""重置指定 deployment 的同步推理实例池。"""
 
@@ -494,16 +494,16 @@ def reset_yolox_sync_runtime(
 
 @yolox_deployments_router.post(
 	"/yolox/deployment-instances/{deployment_instance_id}/async/start",
-	response_model=YoloXDeploymentProcessStatusResponse,
+	response_model=DeploymentProcessStatusResponse,
 )
 def start_yolox_async_runtime(
 	deployment_instance_id: str,
 	principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("models:read", "models:write"))],
 	session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
 	dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
-	supervisor: Annotated[YoloXDeploymentProcessSupervisor, Depends(get_yolox_async_deployment_process_supervisor)],
+	supervisor: Annotated[DeploymentProcessSupervisor, Depends(get_yolox_async_deployment_process_supervisor)],
 	gateway_dispatcher_registry: Annotated[YoloXAsyncInferenceGatewayDispatcherRegistry, Depends(get_yolox_async_inference_gateway_dispatcher_registry)],
-) -> YoloXDeploymentProcessStatusResponse:
+) -> DeploymentProcessStatusResponse:
 	"""启动指定 deployment 的异步推理进程。"""
 
 	return _run_process_status_action(
@@ -520,15 +520,15 @@ def start_yolox_async_runtime(
 
 @yolox_deployments_router.get(
 	"/yolox/deployment-instances/{deployment_instance_id}/async/status",
-	response_model=YoloXDeploymentProcessStatusResponse,
+	response_model=DeploymentProcessStatusResponse,
 )
 def get_yolox_async_runtime_status(
 	deployment_instance_id: str,
 	principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("models:read"))],
 	session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
 	dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
-	supervisor: Annotated[YoloXDeploymentProcessSupervisor, Depends(get_yolox_async_deployment_process_supervisor)],
-) -> YoloXDeploymentProcessStatusResponse:
+	supervisor: Annotated[DeploymentProcessSupervisor, Depends(get_yolox_async_deployment_process_supervisor)],
+) -> DeploymentProcessStatusResponse:
 	"""返回指定 deployment 的异步推理进程状态。"""
 
 	return _run_process_status_action(
@@ -544,16 +544,16 @@ def get_yolox_async_runtime_status(
 
 @yolox_deployments_router.post(
 	"/yolox/deployment-instances/{deployment_instance_id}/async/stop",
-	response_model=YoloXDeploymentProcessStatusResponse,
+	response_model=DeploymentProcessStatusResponse,
 )
 def stop_yolox_async_runtime(
 	deployment_instance_id: str,
 	principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("models:read", "models:write"))],
 	session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
 	dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
-	supervisor: Annotated[YoloXDeploymentProcessSupervisor, Depends(get_yolox_async_deployment_process_supervisor)],
+	supervisor: Annotated[DeploymentProcessSupervisor, Depends(get_yolox_async_deployment_process_supervisor)],
 	gateway_dispatcher_registry: Annotated[YoloXAsyncInferenceGatewayDispatcherRegistry, Depends(get_yolox_async_inference_gateway_dispatcher_registry)],
-) -> YoloXDeploymentProcessStatusResponse:
+) -> DeploymentProcessStatusResponse:
 	"""停止指定 deployment 的异步推理进程。"""
 
 	return _run_process_status_action(
@@ -577,7 +577,7 @@ def warmup_yolox_async_runtime(
 	principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("models:read", "models:write"))],
 	session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
 	dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
-	supervisor: Annotated[YoloXDeploymentProcessSupervisor, Depends(get_yolox_async_deployment_process_supervisor)],
+	supervisor: Annotated[DeploymentProcessSupervisor, Depends(get_yolox_async_deployment_process_supervisor)],
 	gateway_dispatcher_registry: Annotated[YoloXAsyncInferenceGatewayDispatcherRegistry, Depends(get_yolox_async_inference_gateway_dispatcher_registry)],
 ) -> YoloXDeploymentRuntimeHealthResponse:
 	"""显式预热指定 deployment 的所有异步推理实例。"""
@@ -603,7 +603,7 @@ def get_yolox_async_runtime_health(
 	principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("models:read"))],
 	session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
 	dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
-	supervisor: Annotated[YoloXDeploymentProcessSupervisor, Depends(get_yolox_async_deployment_process_supervisor)],
+	supervisor: Annotated[DeploymentProcessSupervisor, Depends(get_yolox_async_deployment_process_supervisor)],
 ) -> YoloXDeploymentRuntimeHealthResponse:
 	"""返回指定 deployment 异步 runtime pool 的详细健康视图。"""
 
@@ -627,7 +627,7 @@ def reset_yolox_async_runtime(
 	principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("models:read", "models:write"))],
 	session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
 	dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
-	supervisor: Annotated[YoloXDeploymentProcessSupervisor, Depends(get_yolox_async_deployment_process_supervisor)],
+	supervisor: Annotated[DeploymentProcessSupervisor, Depends(get_yolox_async_deployment_process_supervisor)],
 ) -> YoloXDeploymentRuntimeHealthResponse:
 	"""重置指定 deployment 的异步推理实例池。"""
 
@@ -711,11 +711,11 @@ def _run_process_status_action(
 	principal: AuthenticatedPrincipal,
 	session_factory: SessionFactory,
 	dataset_storage: LocalDatasetStorage,
-	supervisor: YoloXDeploymentProcessSupervisor,
+	supervisor: DeploymentProcessSupervisor,
 	gateway_dispatcher_registry: YoloXAsyncInferenceGatewayDispatcherRegistry | None = None,
 	runtime_mode: str,
 	action: str,
-) -> YoloXDeploymentProcessStatusResponse:
+) -> DeploymentProcessStatusResponse:
 	"""执行指定通道的 deployment 进程状态动作。
 
 	返回的是当前状态快照，不包含历史事件列表。
@@ -747,7 +747,7 @@ def _run_process_health_action(
 	principal: AuthenticatedPrincipal,
 	session_factory: SessionFactory,
 	dataset_storage: LocalDatasetStorage,
-	supervisor: YoloXDeploymentProcessSupervisor,
+	supervisor: DeploymentProcessSupervisor,
 	gateway_dispatcher_registry: YoloXAsyncInferenceGatewayDispatcherRegistry | None = None,
 	runtime_mode: str,
 	action: str,
@@ -777,12 +777,12 @@ def _run_process_health_action(
 
 def _build_process_status_response(
 	view: YoloXDeploymentInstanceView,
-	process_status: YoloXDeploymentProcessStatus,
+	process_status: DeploymentProcessStatus,
 	runtime_mode: str,
-) -> YoloXDeploymentProcessStatusResponse:
+) -> DeploymentProcessStatusResponse:
 	"""把 deployment 视图与进程状态组合为状态响应。"""
 
-	return YoloXDeploymentProcessStatusResponse(
+	return DeploymentProcessStatusResponse(
 		deployment_instance_id=view.deployment_instance_id,
 		display_name=view.display_name,
 		runtime_mode=runtime_mode,
@@ -800,7 +800,7 @@ def _build_process_status_response(
 
 def _build_runtime_health_response(
 	view: YoloXDeploymentInstanceView,
-	process_health: YoloXDeploymentProcessHealth,
+	process_health: DeploymentProcessHealth,
 	runtime_mode: str,
 ) -> YoloXDeploymentRuntimeHealthResponse:
 	"""把 deployment 视图与进程健康状态组合为详细响应。"""
@@ -828,11 +828,11 @@ def _build_runtime_health_response(
 
 
 def _build_runtime_instance_health_response(
-	item: YoloXDeploymentProcessInstanceHealth,
-) -> YoloXDeploymentRuntimeInstanceHealthResponse:
+	item: DeploymentProcessInstanceHealth,
+) -> DeploymentRuntimeInstanceHealthResponse:
 	"""把 runtime 实例健康状态转换为 REST 响应。"""
 
-	return YoloXDeploymentRuntimeInstanceHealthResponse(
+	return DeploymentRuntimeInstanceHealthResponse(
 		instance_id=item.instance_id,
 		healthy=item.healthy,
 		warmed=item.warmed,
@@ -858,7 +858,7 @@ def _build_deployment_process_event_response(
 
 
 def _build_keep_warm_response(
-	item: YoloXDeploymentProcessKeepWarmStatus | None,
+	item: DeploymentProcessKeepWarmStatus | None,
 ) -> YoloXDeploymentProcessKeepWarmResponse:
 	"""把 keep-warm 状态转换为 REST 响应。"""
 

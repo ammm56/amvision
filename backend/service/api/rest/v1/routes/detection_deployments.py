@@ -34,8 +34,8 @@ from backend.service.application.errors import PermissionDeniedError
 from backend.service.application.models.detection_async_inference_gateway import (
     DetectionAsyncInferenceGatewayDispatcherRegistry,
 )
-from backend.service.application.runtime.yolox_deployment_process_supervisor import (
-    YoloXDeploymentProcessSupervisor,
+from backend.service.application.runtime.deployment_process_supervisor import (
+    DeploymentProcessSupervisor,
 )
 from backend.service.application.runtime.deployment_event_source import YoloXDeploymentEventSource
 from backend.service.infrastructure.db.session import SessionFactory
@@ -234,7 +234,7 @@ def start_detection_sync_deployment(
     principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("models:read", "models:write"))],
     session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
     dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
-    supervisor: Annotated[YoloXDeploymentProcessSupervisor, Depends(get_detection_sync_deployment_process_supervisor)],
+    supervisor: Annotated[DeploymentProcessSupervisor, Depends(get_detection_sync_deployment_process_supervisor)],
 ) -> DetectionDeploymentProcessStatusResponse:
     """启动一个 detection sync deployment 进程。"""
 
@@ -258,7 +258,7 @@ def stop_detection_sync_deployment(
     principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("models:read", "models:write"))],
     session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
     dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
-    supervisor: Annotated[YoloXDeploymentProcessSupervisor, Depends(get_detection_sync_deployment_process_supervisor)],
+    supervisor: Annotated[DeploymentProcessSupervisor, Depends(get_detection_sync_deployment_process_supervisor)],
 ) -> DetectionDeploymentProcessStatusResponse:
     """停止一个 detection sync deployment 进程。"""
 
@@ -282,7 +282,7 @@ def get_detection_sync_deployment_status(
     principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("models:read"))],
     session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
     dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
-    supervisor: Annotated[YoloXDeploymentProcessSupervisor, Depends(get_detection_sync_deployment_process_supervisor)],
+    supervisor: Annotated[DeploymentProcessSupervisor, Depends(get_detection_sync_deployment_process_supervisor)],
 ) -> DetectionDeploymentProcessStatusResponse:
     """读取一个 detection sync deployment 监督状态。"""
 
@@ -306,7 +306,7 @@ def warmup_detection_sync_deployment(
     principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("models:read", "models:write"))],
     session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
     dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
-    supervisor: Annotated[YoloXDeploymentProcessSupervisor, Depends(get_detection_sync_deployment_process_supervisor)],
+    supervisor: Annotated[DeploymentProcessSupervisor, Depends(get_detection_sync_deployment_process_supervisor)],
 ) -> DetectionDeploymentRuntimeHealthResponse:
     """执行一个 detection sync deployment warmup。"""
 
@@ -330,7 +330,7 @@ def get_detection_sync_deployment_health(
     principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("models:read"))],
     session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
     dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
-    supervisor: Annotated[YoloXDeploymentProcessSupervisor, Depends(get_detection_sync_deployment_process_supervisor)],
+    supervisor: Annotated[DeploymentProcessSupervisor, Depends(get_detection_sync_deployment_process_supervisor)],
 ) -> DetectionDeploymentRuntimeHealthResponse:
     """读取一个 detection sync deployment 健康状态。"""
 
@@ -354,7 +354,7 @@ def start_detection_async_deployment(
     principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("models:read", "models:write"))],
     session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
     dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
-    supervisor: Annotated[YoloXDeploymentProcessSupervisor, Depends(get_detection_async_deployment_process_supervisor)],
+    supervisor: Annotated[DeploymentProcessSupervisor, Depends(get_detection_async_deployment_process_supervisor)],
     gateway_dispatcher_registry: Annotated[DetectionAsyncInferenceGatewayDispatcherRegistry, Depends(get_detection_async_inference_gateway_dispatcher_registry)],
 ) -> DetectionDeploymentProcessStatusResponse:
     """启动一个 detection async deployment 进程。"""
@@ -380,7 +380,7 @@ def stop_detection_async_deployment(
     principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("models:read", "models:write"))],
     session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
     dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
-    supervisor: Annotated[YoloXDeploymentProcessSupervisor, Depends(get_detection_async_deployment_process_supervisor)],
+    supervisor: Annotated[DeploymentProcessSupervisor, Depends(get_detection_async_deployment_process_supervisor)],
     gateway_dispatcher_registry: Annotated[DetectionAsyncInferenceGatewayDispatcherRegistry, Depends(get_detection_async_inference_gateway_dispatcher_registry)],
 ) -> DetectionDeploymentProcessStatusResponse:
     """停止一个 detection async deployment 进程。"""
@@ -406,7 +406,7 @@ def get_detection_async_deployment_status(
     principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("models:read"))],
     session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
     dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
-    supervisor: Annotated[YoloXDeploymentProcessSupervisor, Depends(get_detection_async_deployment_process_supervisor)],
+    supervisor: Annotated[DeploymentProcessSupervisor, Depends(get_detection_async_deployment_process_supervisor)],
     gateway_dispatcher_registry: Annotated[DetectionAsyncInferenceGatewayDispatcherRegistry, Depends(get_detection_async_inference_gateway_dispatcher_registry)],
 ) -> DetectionDeploymentProcessStatusResponse:
     """读取一个 detection async deployment 监督状态。"""
@@ -432,7 +432,7 @@ def warmup_detection_async_deployment(
     principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("models:read", "models:write"))],
     session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
     dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
-    supervisor: Annotated[YoloXDeploymentProcessSupervisor, Depends(get_detection_async_deployment_process_supervisor)],
+    supervisor: Annotated[DeploymentProcessSupervisor, Depends(get_detection_async_deployment_process_supervisor)],
     gateway_dispatcher_registry: Annotated[DetectionAsyncInferenceGatewayDispatcherRegistry, Depends(get_detection_async_inference_gateway_dispatcher_registry)],
 ) -> DetectionDeploymentRuntimeHealthResponse:
     """执行一个 detection async deployment warmup。"""
@@ -458,7 +458,7 @@ def get_detection_async_deployment_health(
     principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("models:read"))],
     session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
     dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
-    supervisor: Annotated[YoloXDeploymentProcessSupervisor, Depends(get_detection_async_deployment_process_supervisor)],
+    supervisor: Annotated[DeploymentProcessSupervisor, Depends(get_detection_async_deployment_process_supervisor)],
     gateway_dispatcher_registry: Annotated[DetectionAsyncInferenceGatewayDispatcherRegistry, Depends(get_detection_async_inference_gateway_dispatcher_registry)],
 ) -> DetectionDeploymentRuntimeHealthResponse:
     """读取一个 detection async deployment 健康状态。"""

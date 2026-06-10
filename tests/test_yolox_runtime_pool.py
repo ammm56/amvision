@@ -7,9 +7,9 @@ from pathlib import Path
 import pytest
 
 from backend.service.application.errors import InvalidRequestError, ServiceConfigurationError
-from backend.service.application.runtime.yolox_inference_runtime_pool import (
-    YoloXDeploymentRuntimePool,
-    YoloXDeploymentRuntimePoolConfig,
+from backend.service.application.runtime.deployment_runtime_pool import (
+    DeploymentRuntimePool,
+    DeploymentRuntimePoolConfig,
 )
 from backend.service.application.runtime.yolox_predictor import (
     YoloXPredictionRequest,
@@ -39,7 +39,7 @@ def test_runtime_pool_loads_onnxruntime_session_once_and_reuses_warmed_instance(
         runtime_artifact_file_name="fake-model.optimized.onnx",
         runtime_artifact_file_type=YOLOX_ONNX_OPTIMIZED_FILE,
     )
-    config = YoloXDeploymentRuntimePoolConfig(
+    config = DeploymentRuntimePoolConfig(
         deployment_instance_id="deployment-instance-runtime-pool-1",
         runtime_target=runtime_target,
         instance_count=1,
@@ -53,7 +53,7 @@ def test_runtime_pool_loads_onnxruntime_session_once_and_reuses_warmed_instance(
         execution_result=build_test_execution_result(runtime_target=runtime_target)
     )
     load_requests: list[tuple[object, object, object, object]] = []
-    pool = YoloXDeploymentRuntimePool(
+    pool = DeploymentRuntimePool(
         dataset_storage=dataset_storage,
         model_runtime=build_recording_model_runtime(
             load_requests=load_requests,
@@ -95,7 +95,7 @@ def test_runtime_pool_marks_onnxruntime_instance_unhealthy_after_predict_failure
         runtime_artifact_file_name="fake-model.optimized.onnx",
         runtime_artifact_file_type=YOLOX_ONNX_OPTIMIZED_FILE,
     )
-    config = YoloXDeploymentRuntimePoolConfig(
+    config = DeploymentRuntimePoolConfig(
         deployment_instance_id="deployment-instance-runtime-pool-failure-1",
         runtime_target=runtime_target,
         instance_count=1,
@@ -106,7 +106,7 @@ def test_runtime_pool_marks_onnxruntime_instance_unhealthy_after_predict_failure
         input_image_bytes=b"fake-image-bytes",
     )
 
-    pool = YoloXDeploymentRuntimePool(
+    pool = DeploymentRuntimePool(
         dataset_storage=dataset_storage,
         model_runtime=build_failing_model_runtime(error_message="onnxruntime predict failed"),
     )
@@ -156,7 +156,7 @@ def test_runtime_pool_keeps_instance_healthy_after_invalid_request_failure(
         runtime_artifact_file_name="fake-model.optimized.onnx",
         runtime_artifact_file_type=YOLOX_ONNX_OPTIMIZED_FILE,
     )
-    config = YoloXDeploymentRuntimePoolConfig(
+    config = DeploymentRuntimePoolConfig(
         deployment_instance_id="deployment-instance-runtime-pool-invalid-request-1",
         runtime_target=runtime_target,
         instance_count=3,
@@ -168,7 +168,7 @@ def test_runtime_pool_keeps_instance_healthy_after_invalid_request_failure(
     )
     invalid_session = InvalidRequestPredictionSession()
     load_requests: list[tuple[object, object, object, object]] = []
-    pool = YoloXDeploymentRuntimePool(
+    pool = DeploymentRuntimePool(
         dataset_storage=dataset_storage,
         model_runtime=build_recording_model_runtime(
             load_requests=load_requests,

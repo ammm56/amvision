@@ -12,14 +12,14 @@ from backend.service.application.errors import InvalidRequestError, ResourceNotF
 from backend.service.application.models.detection_operation_rules import (
     build_detection_deployment_runtime_summary,
 )
-from backend.service.application.runtime.yolox_deployment_process_supervisor import (
-    YoloXDeploymentProcessConfig,
-    YoloXDeploymentProcessRuntimeBehavior,
+from backend.service.application.runtime.deployment_process_supervisor import (
+    DeploymentProcessConfig,
+    DeploymentProcessRuntimeBehavior,
 )
-from backend.service.application.runtime.yolox_runtime_target import (
+from backend.service.application.runtime.runtime_target import (
     RuntimeTargetResolveRequest,
     RuntimeTargetSnapshot,
-    SqlAlchemyYoloXRuntimeTargetResolver,
+    SqlAlchemyRuntimeTargetResolver,
     describe_runtime_execution_mode,
     deserialize_runtime_target_snapshot,
     serialize_runtime_target_snapshot,
@@ -241,11 +241,11 @@ class SqlAlchemyYoloXDeploymentService:
         deployment_instance = self._require_deployment_instance(deployment_instance_id)
         return self._resolve_target_from_instance(deployment_instance)
 
-    def resolve_process_config(self, deployment_instance_id: str) -> YoloXDeploymentProcessConfig:
+    def resolve_process_config(self, deployment_instance_id: str) -> DeploymentProcessConfig:
         """把 DeploymentInstance 解析为 deployment 进程配置。"""
 
         deployment_instance = self._require_deployment_instance(deployment_instance_id)
-        return YoloXDeploymentProcessConfig(
+        return DeploymentProcessConfig(
             deployment_instance_id=deployment_instance.deployment_instance_id,
             runtime_target=self._resolve_target_from_instance(deployment_instance),
             project_id=deployment_instance.project_id,
@@ -273,7 +273,7 @@ class SqlAlchemyYoloXDeploymentService:
     ) -> RuntimeTargetSnapshot:
         """根据创建请求解析 DeploymentInstance 对应的运行时快照。"""
 
-        return SqlAlchemyYoloXRuntimeTargetResolver(
+        return SqlAlchemyRuntimeTargetResolver(
             session_factory=self.session_factory,
             dataset_storage=self.dataset_storage,
         ).resolve_target(
@@ -439,7 +439,7 @@ def _validate_deployment_process_metadata(metadata: object) -> None:
     _resolve_process_runtime_behavior(metadata)
 
 
-def _resolve_process_runtime_behavior(metadata: object) -> YoloXDeploymentProcessRuntimeBehavior:
+def _resolve_process_runtime_behavior(metadata: object) -> DeploymentProcessRuntimeBehavior:
     """从 DeploymentInstance metadata 中提取预热与 keep-warm 覆盖配置。
 
     参数：
@@ -452,13 +452,13 @@ def _resolve_process_runtime_behavior(metadata: object) -> YoloXDeploymentProces
     normalized_metadata = _normalize_metadata(metadata)
     process_metadata = normalized_metadata.get(_DEPLOYMENT_PROCESS_METADATA_KEY)
     if process_metadata is None:
-        return YoloXDeploymentProcessRuntimeBehavior()
+        return DeploymentProcessRuntimeBehavior()
     if not isinstance(process_metadata, dict):
         raise InvalidRequestError(
             "metadata.deployment_process 必须是对象",
             details={"field": _DEPLOYMENT_PROCESS_METADATA_KEY},
         )
-    return YoloXDeploymentProcessRuntimeBehavior(
+    return DeploymentProcessRuntimeBehavior(
         warmup_dummy_inference_count=_read_optional_non_negative_int(
             process_metadata,
             "warmup_dummy_inference_count",

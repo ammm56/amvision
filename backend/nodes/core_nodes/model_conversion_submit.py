@@ -42,7 +42,7 @@ from backend.service.application.workflows.graph_executor import WorkflowNodeExe
 from backend.service.domain.models.model_task_types import DETECTION_TASK_TYPE
 
 
-def _yolox_conversion_submit_handler(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
+def _model_conversion_submit_handler(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
     """调用转换任务 service，兼容旧 YOLOX 节点名并支持显式平台路由。"""
 
     request = overlay_parameters_from_object_input(request)
@@ -157,5 +157,5 @@ CORE_NODE_SPEC = CoreNodeSpec(
         },
         capability_tags=("service.model.conversion", "task.submit"),
     ),
-    handler=_yolox_conversion_submit_handler,
+    handler=_model_conversion_submit_handler,
 )

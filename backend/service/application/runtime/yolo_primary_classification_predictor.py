@@ -47,7 +47,7 @@ from backend.service.application.runtime.detection_runtime_support import (
     resolve_tensorrt_dtype_name,
     resolve_tensorrt_io_tensor_name,
 )
-from backend.service.application.runtime.yolox_runtime_target import (
+from backend.service.application.runtime.runtime_target import (
     RuntimeTargetSnapshot,
     describe_runtime_execution_mode,
 )

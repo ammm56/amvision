@@ -1,4 +1,4 @@
-"""YOLOX deployment start service node。"""
+"""deployment start service node。"""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from backend.nodes.core_nodes._base import CoreNodeSpec
 from backend.nodes.core_nodes._service_node_support import run_deployment_process_status_action
 
 
-def _yolox_deployment_start_handler(request) -> dict[str, object]:
+def _model_deployment_start_handler(request) -> dict[str, object]:
     """启动指定 runtime_mode 的 deployment 进程。"""
 
     return run_deployment_process_status_action(request, action="start")
@@ -51,5 +51,5 @@ CORE_NODE_SPEC = CoreNodeSpec(
         },
         capability_tags=("service.model.deployment", "runtime.control", "runtime.start"),
     ),
-    handler=_yolox_deployment_start_handler,
+    handler=_model_deployment_start_handler,
 )

@@ -22,8 +22,8 @@ from backend.service.application.deployments.pose_deployment_service import (
     SqlAlchemyPoseDeploymentService,
 )
 from backend.service.application.errors import PermissionDeniedError, ResourceNotFoundError, ServiceConfigurationError
-from backend.service.application.runtime.yolox_deployment_process_supervisor import (
-    YoloXDeploymentProcessSupervisor,
+from backend.service.application.runtime.deployment_process_supervisor import (
+    DeploymentProcessSupervisor,
 )
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
@@ -135,7 +135,7 @@ def sync_start_pose_deployment(
     principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("models:read", "models:write"))],
     session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
     dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
-    supervisor: Annotated[YoloXDeploymentProcessSupervisor, Depends(get_pose_sync_deployment_process_supervisor)],
+    supervisor: Annotated[DeploymentProcessSupervisor, Depends(get_pose_sync_deployment_process_supervisor)],
 ) -> dict[str, str]:
     _require_sup(supervisor)
     service = SqlAlchemyPoseDeploymentService(session_factory=session_factory, dataset_storage=dataset_storage)
@@ -150,7 +150,7 @@ def sync_stop_pose_deployment(
     principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("models:read", "models:write"))],
     session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
     dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
-    supervisor: Annotated[YoloXDeploymentProcessSupervisor, Depends(get_pose_sync_deployment_process_supervisor)],
+    supervisor: Annotated[DeploymentProcessSupervisor, Depends(get_pose_sync_deployment_process_supervisor)],
 ) -> dict[str, str]:
     _require_sup(supervisor)
     service = SqlAlchemyPoseDeploymentService(session_factory=session_factory, dataset_storage=dataset_storage)
@@ -165,7 +165,7 @@ def sync_health_pose_deployment(
     principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("models:read"))],
     session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
     dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
-    supervisor: Annotated[YoloXDeploymentProcessSupervisor, Depends(get_pose_sync_deployment_process_supervisor)],
+    supervisor: Annotated[DeploymentProcessSupervisor, Depends(get_pose_sync_deployment_process_supervisor)],
 ) -> dict[str, object]:
     _require_sup(supervisor)
     service = SqlAlchemyPoseDeploymentService(session_factory=session_factory, dataset_storage=dataset_storage)
@@ -179,7 +179,7 @@ def _check_project(principal: AuthenticatedPrincipal, project_id: str) -> None:
         raise PermissionDeniedError("无权访问该 Project", details={"project_id": project_id})
 
 
-def _require_sup(s: YoloXDeploymentProcessSupervisor | None) -> YoloXDeploymentProcessSupervisor:
+def _require_sup(s: DeploymentProcessSupervisor | None) -> DeploymentProcessSupervisor:
     if s is None:
         raise ServiceConfigurationError("pose deployment supervisor 未启动", details={"cause": "no-supervisor"})
     return s

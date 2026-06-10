@@ -15,10 +15,10 @@ from backend.service.application.models.yolox_detection_evaluation import (
     YoloXDetectionEvaluationResult,
     run_yolox_detection_evaluation,
 )
-from backend.service.application.runtime.yolox_runtime_target import (
+from backend.service.application.runtime.runtime_target import (
     RuntimeTargetResolveRequest,
     RuntimeTargetSnapshot,
-    SqlAlchemyYoloXRuntimeTargetResolver,
+    SqlAlchemyRuntimeTargetResolver,
 )
 from backend.service.application.tasks.task_service import (
     AppendTaskEventRequest,
@@ -520,7 +520,7 @@ class SqlAlchemyYoloXEvaluationTaskService:
     def _resolve_runtime_target(self, request: YoloXEvaluationTaskRequest) -> RuntimeTargetSnapshot:
         """解析评估任务需要的运行时快照。"""
 
-        return SqlAlchemyYoloXRuntimeTargetResolver(
+        return SqlAlchemyRuntimeTargetResolver(
             session_factory=self.session_factory,
             dataset_storage=self._require_dataset_storage(),
         ).resolve_target(

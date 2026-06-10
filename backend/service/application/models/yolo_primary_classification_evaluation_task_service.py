@@ -20,10 +20,10 @@ from backend.service.application.models.yolo_primary_classification_evaluation i
     ClassificationEvaluationResult,
     run_yolo_primary_classification_evaluation,
 )
-from backend.service.application.runtime.yolox_runtime_target import (
+from backend.service.application.runtime.runtime_target import (
     RuntimeTargetResolveRequest,
     RuntimeTargetSnapshot,
-    SqlAlchemyYoloXRuntimeTargetResolver,
+    SqlAlchemyRuntimeTargetResolver,
 )
 from backend.service.application.tasks.task_service import (
     AppendTaskEventRequest,

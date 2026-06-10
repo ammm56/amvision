@@ -5,12 +5,12 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 from backend.nodes.core_nodes import (
-    yolox_conversion_submit as conversion_node,
-    yolox_deployment_create as deployment_create_node,
-    yolox_evaluation_submit as evaluation_node,
-    yolox_inference_submit as inference_node,
-    yolox_training_submit as training_node,
-    yolox_validation_session_create as validation_node,
+    model_conversion_submit as conversion_node,
+    model_deployment_create as deployment_create_node,
+    model_evaluation_submit as evaluation_node,
+    model_inference_submit as inference_node,
+    model_training_submit as training_node,
+    model_validation_session_create as validation_node,
 )
 from backend.service.application.models.detection_inference_task_service import (
     DetectionInferenceTaskRequest,
@@ -87,7 +87,7 @@ def test_training_service_node_routes_to_platform_training_service(
         ),
     )
 
-    result = training_node._yolox_training_submit_handler(request)
+    result = training_node._model_training_submit_handler(request)
 
     assert result["body"]["task_id"] == "task-training-1"
     assert captured["service_kwargs"] == {
@@ -143,7 +143,7 @@ def test_conversion_service_node_routes_to_platform_conversion_service(
         ),
     )
 
-    result = conversion_node._yolox_conversion_submit_handler(request)
+    result = conversion_node._model_conversion_submit_handler(request)
 
     assert result["body"]["task_id"] == "task-conversion-1"
     assert captured["service_kwargs"] == {
@@ -197,7 +197,7 @@ def test_training_service_node_routes_rfdetr_detection_to_platform_training_serv
         ),
     )
 
-    result = training_node._yolox_training_submit_handler(request)
+    result = training_node._model_training_submit_handler(request)
 
     assert result["body"]["task_id"] == "task-rfdetr-training-1"
     assert captured["service_kwargs"] == {"task_type": "detection", "model_type": "rfdetr"}
@@ -246,7 +246,7 @@ def test_conversion_service_node_routes_rfdetr_detection_to_platform_conversion_
         ),
     )
 
-    result = conversion_node._yolox_conversion_submit_handler(request)
+    result = conversion_node._model_conversion_submit_handler(request)
 
     assert result["body"]["task_id"] == "task-rfdetr-conversion-1"
     assert captured["service_kwargs"] == {"task_type": "detection", "model_type": "rfdetr"}
@@ -295,7 +295,7 @@ def test_validation_service_node_routes_to_platform_validation_service(
         ),
     )
 
-    result = validation_node._yolox_validation_session_create_handler(request)
+    result = validation_node._model_validation_session_create_handler(request)
 
     assert result["body"]["session_id"] == "validation-session-1"
     assert captured["service_kwargs"] == {"task_type": "pose"}
@@ -344,7 +344,7 @@ def test_evaluation_service_node_routes_to_platform_evaluation_service(
         ),
     )
 
-    result = evaluation_node._yolox_evaluation_submit_handler(request)
+    result = evaluation_node._model_evaluation_submit_handler(request)
 
     assert result["body"]["task_id"] == "task-evaluation-1"
     assert captured["service_kwargs"] == {"task_type": "classification"}
@@ -385,7 +385,7 @@ def test_deployment_create_node_uses_detection_request(
         ),
     )
 
-    result = deployment_create_node._yolox_deployment_create_handler(request)
+    result = deployment_create_node._model_deployment_create_handler(request)
 
     assert result["body"]["deployment_instance_id"] == "deployment-1"
     assert isinstance(captured["request"], DetectionDeploymentInstanceCreateRequest)
@@ -458,7 +458,7 @@ def test_inference_submit_node_uses_detection_request(
         ),
     )
 
-    result = inference_node._yolox_inference_submit_handler(request)
+    result = inference_node._model_inference_submit_handler(request)
 
     assert result["body"]["task_id"] == "task-inference-1"
     assert isinstance(captured["request"], DetectionInferenceTaskRequest)

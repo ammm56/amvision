@@ -25,7 +25,7 @@ from backend.service.application.errors import (
 from backend.service.application.models.detection_operation_rules import (
     DetectionConversionOutputFiles,
 )
-from backend.service.application.runtime.yolox_runtime_target import (
+from backend.service.application.runtime.runtime_target import (
     RuntimeTargetResolveRequest,
     RuntimeTargetSnapshot,
 )

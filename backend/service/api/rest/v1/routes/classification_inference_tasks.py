@@ -36,8 +36,8 @@ from backend.service.application.models.classification_inference_task_service im
     ClassificationInferenceTaskRequest,
     SqlAlchemyClassificationInferenceTaskService,
 )
-from backend.service.application.runtime.yolox_deployment_process_supervisor import (
-    YoloXDeploymentProcessSupervisor,
+from backend.service.application.runtime.deployment_process_supervisor import (
+    DeploymentProcessSupervisor,
 )
 from backend.service.application.tasks.task_service import SqlAlchemyTaskService, TaskQueryFilters
 from backend.service.infrastructure.db.session import SessionFactory
@@ -80,7 +80,7 @@ async def create_classification_inference_task(
     session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
     queue_backend: Annotated[LocalFileQueueBackend, Depends(get_queue_backend)],
     dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
-    deployment_process_supervisor: Annotated[YoloXDeploymentProcessSupervisor, Depends(get_classification_async_deployment_process_supervisor)],
+    deployment_process_supervisor: Annotated[DeploymentProcessSupervisor, Depends(get_classification_async_deployment_process_supervisor)],
     gateway_dispatcher_registry: Annotated[ClassificationAsyncInferenceGatewayDispatcherRegistry, Depends(get_classification_async_inference_gateway_dispatcher_registry)],
 ) -> ClassificationInferenceTaskSubmissionResponse:
     import json

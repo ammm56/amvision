@@ -1,4 +1,4 @@
-"""YOLOX deployment 进程监督器。"""
+"""deployment 进程监督器。"""
 
 from __future__ import annotations
 
@@ -33,21 +33,21 @@ from backend.service.application.runtime.safe_counter import (
     increment_safe_counter,
     normalize_safe_counter_value,
 )
-from backend.service.application.runtime.yolox_deployment_process_worker import (
-    run_yolox_deployment_process_worker,
+from backend.service.application.runtime.deployment_process_worker import (
+    run_deployment_process_worker,
 )
 from backend.service.application.runtime.yolox_predictor import (
     YoloXPredictionExecutionResult,
     YoloXPredictionRequest,
 )
-from backend.service.application.runtime.yolox_runtime_target import RuntimeTargetSnapshot
+from backend.service.application.runtime.runtime_target import RuntimeTargetSnapshot
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 from backend.workers.shared.yolox_runtime_contracts import RuntimeTensorSpec, YoloXRuntimeSessionInfo
 
 
 @dataclass(frozen=True)
-class YoloXDeploymentProcessRuntimeBehavior:
+class DeploymentProcessRuntimeBehavior:
     """描述 deployment 预热与 keep-warm 的覆盖配置。
 
     字段：
@@ -68,7 +68,7 @@ class YoloXDeploymentProcessRuntimeBehavior:
 
 
 @dataclass(frozen=True)
-class YoloXDeploymentProcessConfig:
+class DeploymentProcessConfig:
     """描述一个 deployment 进程的稳定配置。
 
     字段：
@@ -83,13 +83,13 @@ class YoloXDeploymentProcessConfig:
     runtime_target: RuntimeTargetSnapshot
     project_id: str = ""
     instance_count: int = 1
-    runtime_behavior: YoloXDeploymentProcessRuntimeBehavior = field(
-        default_factory=YoloXDeploymentProcessRuntimeBehavior
+    runtime_behavior: DeploymentProcessRuntimeBehavior = field(
+        default_factory=DeploymentProcessRuntimeBehavior
     )
 
 
 @dataclass(frozen=True)
-class YoloXDeploymentProcessStatus:
+class DeploymentProcessStatus:
     """描述 deployment 进程的当前监督状态。
 
     字段：
@@ -120,7 +120,7 @@ class YoloXDeploymentProcessStatus:
 
 
 @dataclass(frozen=True)
-class YoloXDeploymentProcessInstanceHealth:
+class DeploymentProcessInstanceHealth:
     """描述 deployment 子进程内单个推理实例的健康状态。"""
 
     instance_id: str
@@ -131,7 +131,7 @@ class YoloXDeploymentProcessInstanceHealth:
 
 
 @dataclass(frozen=True)
-class YoloXDeploymentProcessKeepWarmStatus:
+class DeploymentProcessKeepWarmStatus:
     """描述 deployment 子进程内 keep-warm 的当前状态。
 
     字段：
@@ -162,7 +162,7 @@ class YoloXDeploymentProcessKeepWarmStatus:
 
 
 @dataclass(frozen=True)
-class YoloXDeploymentProcessHealth:
+class DeploymentProcessHealth:
     """描述 deployment 进程与实例池的详细健康视图。
 
     字段：
@@ -199,13 +199,13 @@ class YoloXDeploymentProcessHealth:
     healthy_instance_count: int = 0
     warmed_instance_count: int = 0
     pinned_output_total_bytes: int = 0
-    instances: tuple[YoloXDeploymentProcessInstanceHealth, ...] = ()
-    keep_warm: YoloXDeploymentProcessKeepWarmStatus | None = None
+    instances: tuple[DeploymentProcessInstanceHealth, ...] = ()
+    keep_warm: DeploymentProcessKeepWarmStatus | None = None
     local_buffer_broker: dict[str, object] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
-class YoloXDeploymentProcessExecution:
+class DeploymentProcessExecution:
     """描述一次通过 deployment 子进程执行的推理结果。"""
 
     deployment_instance_id: str
@@ -226,7 +226,7 @@ class _PendingResponse:
 class _DeploymentProcessState:
     """描述单个 deployment 在父进程中的监督状态。"""
 
-    config: YoloXDeploymentProcessConfig
+    config: DeploymentProcessConfig
     desired_running: bool = False
     process: Any | None = None
     request_queue: Any | None = None
@@ -242,7 +242,7 @@ class _DeploymentProcessState:
     lock: Lock = field(default_factory=Lock, repr=False)
 
 
-class YoloXDeploymentProcessSupervisor:
+class DeploymentProcessSupervisor:
     """按 deployment 管理独立子进程，并负责崩溃自动拉起。"""
 
     def __init__(
@@ -256,7 +256,7 @@ class YoloXDeploymentProcessSupervisor:
         dataset_storage: LocalDatasetStorage | None = None,
         local_buffer_broker_event_channel: LocalBufferBrokerEventChannel | None = None,
         local_buffer_broker_event_channel_provider: Callable[[], LocalBufferBrokerEventChannel | None] | None = None,
-        worker_target: Callable[..., None] = run_yolox_deployment_process_worker,
+        worker_target: Callable[..., None] = run_deployment_process_worker,
     ) -> None:
         """初始化 deployment 进程监督器。
 
@@ -322,13 +322,13 @@ class YoloXDeploymentProcessSupervisor:
                 state.desired_running = False
                 self._stop_process_locked(state)
 
-    def ensure_deployment(self, config: YoloXDeploymentProcessConfig) -> YoloXDeploymentProcessStatus:
+    def ensure_deployment(self, config: DeploymentProcessConfig) -> DeploymentProcessStatus:
         """登记 deployment 配置但不主动启动子进程。"""
 
         state = self._ensure_state(config)
         return self._build_status(state)
 
-    def start_deployment(self, config: YoloXDeploymentProcessConfig) -> YoloXDeploymentProcessStatus:
+    def start_deployment(self, config: DeploymentProcessConfig) -> DeploymentProcessStatus:
         """显式启动指定 deployment 的子进程。"""
 
         state = self._ensure_state(config)
@@ -345,7 +345,7 @@ class YoloXDeploymentProcessSupervisor:
             )
         return current_status
 
-    def stop_deployment(self, config: YoloXDeploymentProcessConfig) -> YoloXDeploymentProcessStatus:
+    def stop_deployment(self, config: DeploymentProcessConfig) -> DeploymentProcessStatus:
         """显式停止指定 deployment 的子进程。"""
 
         state = self._ensure_state(config)
@@ -362,7 +362,7 @@ class YoloXDeploymentProcessSupervisor:
             )
         return current_status
 
-    def warmup_deployment(self, config: YoloXDeploymentProcessConfig) -> YoloXDeploymentProcessHealth:
+    def warmup_deployment(self, config: DeploymentProcessConfig) -> DeploymentProcessHealth:
         """显式启动并预热指定 deployment 子进程。"""
 
         state = self._ensure_state(config)
@@ -378,13 +378,13 @@ class YoloXDeploymentProcessSupervisor:
         )
         return health
 
-    def get_status(self, config: YoloXDeploymentProcessConfig) -> YoloXDeploymentProcessStatus:
+    def get_status(self, config: DeploymentProcessConfig) -> DeploymentProcessStatus:
         """返回指定 deployment 当前监督状态。"""
 
         state = self._ensure_state(config)
         return self._build_status(state)
 
-    def get_health(self, config: YoloXDeploymentProcessConfig) -> YoloXDeploymentProcessHealth:
+    def get_health(self, config: DeploymentProcessConfig) -> DeploymentProcessHealth:
         """返回指定 deployment 当前进程与实例健康视图。"""
 
         state = self._ensure_state(config)
@@ -393,7 +393,7 @@ class YoloXDeploymentProcessSupervisor:
         payload = self._send_request(state=state, action="health")
         return self._build_health(state, payload)
 
-    def reset_deployment(self, config: YoloXDeploymentProcessConfig) -> YoloXDeploymentProcessHealth:
+    def reset_deployment(self, config: DeploymentProcessConfig) -> DeploymentProcessHealth:
         """重置指定 deployment 子进程内的实例池。"""
 
         state = self._ensure_state(config)
@@ -426,9 +426,9 @@ class YoloXDeploymentProcessSupervisor:
     def run_inference(
         self,
         *,
-        config: YoloXDeploymentProcessConfig,
+        config: DeploymentProcessConfig,
         request: YoloXPredictionRequest,
-    ) -> YoloXDeploymentProcessExecution:
+    ) -> DeploymentProcessExecution:
         """通过 deployment 子进程执行一次推理请求。"""
 
         state = self._ensure_state(config)
@@ -446,7 +446,7 @@ class YoloXDeploymentProcessSupervisor:
             },
         )
         instance_id = _require_response_str(payload, "instance_id")
-        return YoloXDeploymentProcessExecution(
+        return DeploymentProcessExecution(
             deployment_instance_id=config.deployment_instance_id,
             instance_id=instance_id,
             execution_result=YoloXPredictionExecutionResult(
@@ -459,7 +459,7 @@ class YoloXDeploymentProcessSupervisor:
             ),
         )
 
-    def _ensure_state(self, config: YoloXDeploymentProcessConfig) -> _DeploymentProcessState:
+    def _ensure_state(self, config: DeploymentProcessConfig) -> _DeploymentProcessState:
         """读取或初始化指定 deployment 的监督状态。"""
 
         self._validate_config(config)
@@ -659,8 +659,8 @@ class YoloXDeploymentProcessSupervisor:
             with self._lock:
                 states = tuple(self._deployments.values())
             for state in states:
-                crashed_status: YoloXDeploymentProcessStatus | None = None
-                restarted_status: YoloXDeploymentProcessStatus | None = None
+                crashed_status: DeploymentProcessStatus | None = None
+                restarted_status: DeploymentProcessStatus | None = None
                 with state.lock:
                     process = state.process
                     if process is None:
@@ -703,7 +703,7 @@ class YoloXDeploymentProcessSupervisor:
             return self.local_buffer_broker_event_channel_provider()
         return self.local_buffer_broker_event_channel
 
-    def _build_status(self, state: _DeploymentProcessState) -> YoloXDeploymentProcessStatus:
+    def _build_status(self, state: _DeploymentProcessState) -> DeploymentProcessStatus:
         """根据内部监督状态构建公开 status 响应。"""
 
         with state.lock:
@@ -712,7 +712,7 @@ class YoloXDeploymentProcessSupervisor:
     def _build_status_from_locked_state(
         self,
         state: _DeploymentProcessState,
-    ) -> YoloXDeploymentProcessStatus:
+    ) -> DeploymentProcessStatus:
         """在持有状态锁时构建公开 status 响应。"""
 
         process = state.process
@@ -724,7 +724,7 @@ class YoloXDeploymentProcessSupervisor:
             process_state = "crashed"
         else:
             process_state = "stopped"
-        return YoloXDeploymentProcessStatus(
+        return DeploymentProcessStatus(
             deployment_instance_id=state.config.deployment_instance_id,
             runtime_mode=self.runtime_mode,
             instance_count=state.config.instance_count,
@@ -744,12 +744,12 @@ class YoloXDeploymentProcessSupervisor:
         self,
         state: _DeploymentProcessState,
         payload: dict[str, object] | None,
-    ) -> YoloXDeploymentProcessHealth:
+    ) -> DeploymentProcessHealth:
         """根据监督状态和子进程返回构建健康视图。"""
 
         status = self._build_status(state)
         if payload is None:
-            return YoloXDeploymentProcessHealth(
+            return DeploymentProcessHealth(
                 deployment_instance_id=status.deployment_instance_id,
                 runtime_mode=status.runtime_mode,
                 instance_count=status.instance_count,
@@ -768,7 +768,7 @@ class YoloXDeploymentProcessSupervisor:
         )
         instances_payload = payload.get("instances") if isinstance(payload.get("instances"), list) else []
         instances = tuple(
-            YoloXDeploymentProcessInstanceHealth(
+            DeploymentProcessInstanceHealth(
                 instance_id=str(item.get("instance_id") or ""),
                 healthy=bool(item.get("healthy") is True),
                 warmed=bool(item.get("warmed") is True),
@@ -779,7 +779,7 @@ class YoloXDeploymentProcessSupervisor:
             if isinstance(item, dict)
         )
         process_id = _read_response_optional_int(payload, "process_id") or status.process_id
-        return YoloXDeploymentProcessHealth(
+        return DeploymentProcessHealth(
             deployment_instance_id=status.deployment_instance_id,
             runtime_mode=status.runtime_mode,
             instance_count=status.instance_count,
@@ -800,7 +800,7 @@ class YoloXDeploymentProcessSupervisor:
         )
 
     @staticmethod
-    def _validate_config(config: YoloXDeploymentProcessConfig) -> None:
+    def _validate_config(config: DeploymentProcessConfig) -> None:
         """校验 deployment 进程配置。"""
 
         if not config.deployment_instance_id.strip():
@@ -813,8 +813,8 @@ class YoloXDeploymentProcessSupervisor:
 
     @staticmethod
     def _status_changed(
-        previous_status: YoloXDeploymentProcessStatus,
-        current_status: YoloXDeploymentProcessStatus,
+        previous_status: DeploymentProcessStatus,
+        current_status: DeploymentProcessStatus,
     ) -> bool:
         """判断 deployment 状态是否发生了需要记录的变化。"""
 
@@ -829,7 +829,7 @@ class YoloXDeploymentProcessSupervisor:
 
     def _record_deployment_status_event(
         self,
-        status: YoloXDeploymentProcessStatus,
+        status: DeploymentProcessStatus,
         *,
         event_type: str,
         message: str,
@@ -849,7 +849,7 @@ class YoloXDeploymentProcessSupervisor:
 
     def _record_deployment_health_event(
         self,
-        health: YoloXDeploymentProcessHealth,
+        health: DeploymentProcessHealth,
         *,
         event_type: str,
         message: str,
@@ -953,7 +953,7 @@ def _close_local_buffer_broker_event_channel(channel: LocalBufferBrokerEventChan
     LocalBufferBrokerClient(channel).close()
 
 
-def _build_config_signature(config: YoloXDeploymentProcessConfig) -> tuple[object, ...]:
+def _build_config_signature(config: DeploymentProcessConfig) -> tuple[object, ...]:
     """把 deployment 进程配置转换为稳定比较签名。"""
 
     runtime_target = config.runtime_target
@@ -984,7 +984,7 @@ def _now_isoformat() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
-def _build_status_event_payload(status: YoloXDeploymentProcessStatus) -> dict[str, object]:
+def _build_status_event_payload(status: DeploymentProcessStatus) -> dict[str, object]:
     """构造 deployment status 事件的标准 payload。"""
 
     payload: dict[str, object] = {
@@ -1005,12 +1005,12 @@ def _build_status_event_payload(status: YoloXDeploymentProcessStatus) -> dict[st
     return payload
 
 
-def _build_health_event_payload(health: YoloXDeploymentProcessHealth) -> dict[str, object]:
+def _build_health_event_payload(health: DeploymentProcessHealth) -> dict[str, object]:
     """构造 deployment health 事件的标准 payload。"""
 
     payload = {
         **_build_status_event_payload(
-            YoloXDeploymentProcessStatus(
+            DeploymentProcessStatus(
                 deployment_instance_id=health.deployment_instance_id,
                 runtime_mode=health.runtime_mode,
                 instance_count=health.instance_count,
@@ -1082,12 +1082,12 @@ def _deserialize_detections(payload: dict[str, object]) -> list[object]:
 
 def _deserialize_keep_warm_status(
     payload: dict[str, object] | None,
-) -> YoloXDeploymentProcessKeepWarmStatus | None:
+) -> DeploymentProcessKeepWarmStatus | None:
     """从子进程返回中反序列化 keep-warm 状态。"""
 
     if payload is None:
         return None
-    return YoloXDeploymentProcessKeepWarmStatus(
+    return DeploymentProcessKeepWarmStatus(
         enabled=bool(payload.get("enabled") is True),
         activated=bool(payload.get("activated") is True),
         paused=bool(payload.get("paused") is True),

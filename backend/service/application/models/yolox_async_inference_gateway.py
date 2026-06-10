@@ -11,12 +11,12 @@ from uuid import uuid4
 
 from backend.queue import QueueBackend, QueueMessage
 from backend.service.application.errors import InvalidRequestError, OperationTimeoutError, ServiceError
-from backend.service.application.runtime.yolox_deployment_process_supervisor import (
-    YoloXDeploymentProcessConfig,
-    YoloXDeploymentProcessRuntimeBehavior,
+from backend.service.application.runtime.deployment_process_supervisor import (
+    DeploymentProcessConfig,
+    DeploymentProcessRuntimeBehavior,
 )
 from backend.service.application.runtime.yolox_predictor import YoloXPredictionRequest
-from backend.service.application.runtime.yolox_runtime_target import (
+from backend.service.application.runtime.runtime_target import (
     deserialize_runtime_target_snapshot,
     serialize_runtime_target_snapshot,
 )
@@ -35,7 +35,7 @@ class YoloXAsyncInferenceExecutor(Protocol):
     def execute_inference(
         self,
         *,
-        process_config: YoloXDeploymentProcessConfig,
+        process_config: DeploymentProcessConfig,
         request: YoloXPredictionRequest,
         owner_id: str,
     ) -> dict[str, object]:
@@ -70,7 +70,7 @@ class QueueBackedYoloXAsyncInferenceClient:
     def execute_inference(
         self,
         *,
-        process_config: YoloXDeploymentProcessConfig,
+        process_config: DeploymentProcessConfig,
         request: YoloXPredictionRequest,
         owner_id: str,
     ) -> dict[str, object]:
@@ -573,7 +573,7 @@ def _deserialize_gateway_request(
     dataset_storage: LocalDatasetStorage,
     expected_owner_id: str,
     expected_deployment_instance_id: str,
-) -> tuple[str, str, YoloXDeploymentProcessConfig, YoloXPredictionRequest]:
+) -> tuple[str, str, DeploymentProcessConfig, YoloXPredictionRequest]:
     """把请求队列消息载荷恢复为执行所需对象。"""
 
     if not isinstance(payload, dict):
@@ -659,7 +659,7 @@ def _deserialize_gateway_response(
 
 
 def _serialize_process_config(
-    config: YoloXDeploymentProcessConfig,
+    config: DeploymentProcessConfig,
 ) -> dict[str, object]:
     """把 deployment 进程配置转换为可通过队列传递的字典。"""
 
@@ -676,7 +676,7 @@ def _deserialize_process_config(
     payload: object,
     *,
     dataset_storage: LocalDatasetStorage,
-) -> YoloXDeploymentProcessConfig:
+) -> DeploymentProcessConfig:
     """把队列载荷反解析为 deployment 进程配置。"""
 
     if not isinstance(payload, dict):
@@ -685,7 +685,7 @@ def _deserialize_process_config(
         payload=payload.get("runtime_target_snapshot"),
         dataset_storage=dataset_storage,
     )
-    return YoloXDeploymentProcessConfig(
+    return DeploymentProcessConfig(
         deployment_instance_id=_require_str(payload, "deployment_instance_id"),
         project_id=_read_optional_str(payload, "project_id") or "",
         instance_count=_read_required_int(payload, "instance_count"),
@@ -726,7 +726,7 @@ def _deserialize_prediction_request(payload: object) -> YoloXPredictionRequest:
 
 
 def _serialize_runtime_behavior(
-    runtime_behavior: YoloXDeploymentProcessRuntimeBehavior,
+    runtime_behavior: DeploymentProcessRuntimeBehavior,
 ) -> dict[str, object]:
     """把 runtime behavior 转换为可持久化字典。"""
 
@@ -745,11 +745,11 @@ def _serialize_runtime_behavior(
 
 def _deserialize_runtime_behavior(
     payload: object,
-) -> YoloXDeploymentProcessRuntimeBehavior:
+) -> DeploymentProcessRuntimeBehavior:
     """把持久化字典反解析为 runtime behavior。"""
 
     if payload is None:
-        return YoloXDeploymentProcessRuntimeBehavior()
+        return DeploymentProcessRuntimeBehavior()
     if not isinstance(payload, dict):
         raise InvalidRequestError("async inference gateway runtime_behavior 格式不合法")
     warmup_dummy_image_size = payload.get("warmup_dummy_image_size")
@@ -762,7 +762,7 @@ def _deserialize_runtime_behavior(
         )
     else:
         resolved_warmup_dummy_image_size = None
-    return YoloXDeploymentProcessRuntimeBehavior(
+    return DeploymentProcessRuntimeBehavior(
         warmup_dummy_inference_count=_read_optional_int(
             payload,
             "warmup_dummy_inference_count",

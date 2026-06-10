@@ -40,7 +40,7 @@ from backend.service.application.models.rfdetr_model_service import (
 from backend.service.application.runtime.rfdetr_runtime_target import (
     SqlAlchemyRfdetrRuntimeTargetResolver,
 )
-from backend.service.application.runtime.yolox_runtime_target import (
+from backend.service.application.runtime.runtime_target import (
     RuntimeTargetResolveRequest,
 )
 from backend.service.application.tasks.task_service import (

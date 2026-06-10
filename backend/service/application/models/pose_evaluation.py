@@ -8,7 +8,7 @@ from pathlib import Path
 
 from backend.service.application.runtime.pose_model_runtime import DefaultPoseModelRuntime
 from backend.service.application.runtime.pose_runtime_contracts import PosePredictionRequest
-from backend.service.application.runtime.yolox_runtime_target import RuntimeTargetSnapshot
+from backend.service.application.runtime.runtime_target import RuntimeTargetSnapshot
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 
 
