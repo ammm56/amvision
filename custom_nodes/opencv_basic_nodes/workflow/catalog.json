@@ -4167,6 +4167,127 @@
       "node_pack_id": "opencv.basic-nodes",
       "node_pack_version": "0.1.0",
       "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.template-match",
+      "display_name": "Template Match",
+      "category": "opencv.matching",
+      "description": "在输入图片中按模板匹配搜索重复结构位置，并输出标准 regions.v1 与摘要，适合基准定位、标签找位和治具 presence 检查。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "template_image",
+          "display_name": "Template Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "roi",
+          "display_name": "ROI",
+          "payload_type_id": "roi.v1",
+          "description": "",
+          "required": false,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "regions",
+          "display_name": "Regions",
+          "payload_type_id": "regions.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "summary",
+          "display_name": "Summary",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "method": {
+            "type": "string",
+            "enum": [
+              "ccoeff-normed",
+              "ccorr-normed",
+              "sqdiff-normed"
+            ],
+            "default": "ccoeff-normed"
+          },
+          "score_threshold": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "default": 0.8
+          },
+          "max_matches": {
+            "type": "integer",
+            "minimum": 1,
+            "default": 1
+          },
+          "nms_iou_threshold": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "default": 0.3
+          },
+          "convert_to_grayscale": {
+            "type": "boolean",
+            "default": true
+          },
+          "region_id_prefix": {
+            "type": "string",
+            "default": "tmpl"
+          },
+          "class_id_default": {
+            "type": "integer",
+            "default": -1
+          },
+          "class_name_default": {
+            "type": "string",
+            "default": "template-match"
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.template-match",
+        "vision.localization",
+        "vision.region",
+        "inspection.position"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.basic-nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {}
     }
   ],
   "metadata": {}

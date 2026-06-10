@@ -150,6 +150,10 @@ from custom_nodes.opencv_basic_nodes.backend.nodes.slot_width import (
     NODE_TYPE_ID as SLOT_WIDTH_NODE_TYPE_ID,
     handle_node as slot_width_handler,
 )
+from custom_nodes.opencv_basic_nodes.backend.nodes.template_match import (
+    NODE_TYPE_ID as TEMPLATE_MATCH_NODE_TYPE_ID,
+    handle_node as template_match_handler,
+)
 
 
 NODE_HANDLERS = (
@@ -190,6 +194,7 @@ NODE_HANDLERS = (
     (ABSDIFF_THRESHOLD_NODE_TYPE_ID, absdiff_threshold_handler),
     (CONNECTED_COMPONENTS_NODE_TYPE_ID, connected_components_handler),
     (SLOT_WIDTH_NODE_TYPE_ID, slot_width_handler),
+    (TEMPLATE_MATCH_NODE_TYPE_ID, template_match_handler),
 )
 
 

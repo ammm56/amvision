@@ -1022,7 +1022,7 @@ PLC 能力也应至少拆成两类：
 
 建议节点：
 
-- `custom.opencv.template-match`
+- `custom.opencv.template-match`（已实现）
 - `custom.opencv.orb-keypoints`
 - `custom.opencv.orb-match`
 - `custom.opencv.homography-estimate`
@@ -1096,7 +1096,7 @@ PLC 能力也应至少拆成两类：
 
 ### 第二阶段
 
-- `custom.opencv.template-match`
+- `custom.opencv.template-match`（已实现）
 - `custom.opencv.caliper-edge`
 - `core.vision.edge-break-check`
 - `core.vision.linearity-check`（已实现）
