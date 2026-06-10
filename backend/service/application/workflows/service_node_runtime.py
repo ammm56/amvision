@@ -96,8 +96,8 @@ from backend.service.application.models.yolov8_training_service import (
 from backend.service.application.models.rfdetr_training_service import (
     SqlAlchemyRfdetrTrainingTaskService,
 )
-from backend.service.application.models.yolox_async_inference_gateway import (
-    YoloXAsyncInferenceGatewayDispatcherRegistry,
+from backend.service.application.models.detection_async_inference_gateway import (
+    DetectionAsyncInferenceGatewayDispatcherRegistry,
 )
 from backend.service.application.models.yolox_evaluation_task_service import (
     SqlAlchemyYoloXEvaluationTaskService,
@@ -174,8 +174,8 @@ class WorkflowServiceNodeRuntimeContext:
     - session_factory：数据库会话工厂。
     - dataset_storage：本地文件存储服务。
     - queue_backend：任务队列后端；提交类 service node 需要。
-    - yolox_sync_deployment_process_supervisor：同步 deployment 监督器。
-    - yolox_async_deployment_process_supervisor：异步 deployment 监督器。
+    - detection_sync_deployment_process_supervisor：同步 deployment 监督器。
+    - detection_async_deployment_process_supervisor：异步 deployment 监督器。
     - async_inference_service_id：异步推理 gateway 稳定 service id。
     - async_inference_gateway_dispatcher_registry：按 deployment 管理 async gateway dispatcher 的 registry。
     - local_buffer_reader：读取 LocalBufferBroker 引用的 client。
@@ -185,10 +185,10 @@ class WorkflowServiceNodeRuntimeContext:
     session_factory: SessionFactory
     dataset_storage: LocalDatasetStorage
     queue_backend: QueueBackend | None = None
-    yolox_sync_deployment_process_supervisor: DeploymentProcessSupervisor | None = None
-    yolox_async_deployment_process_supervisor: DeploymentProcessSupervisor | None = None
+    detection_sync_deployment_process_supervisor: DeploymentProcessSupervisor | None = None
+    detection_async_deployment_process_supervisor: DeploymentProcessSupervisor | None = None
     async_inference_service_id: str | None = None
-    async_inference_gateway_dispatcher_registry: YoloXAsyncInferenceGatewayDispatcherRegistry | None = None
+    async_inference_gateway_dispatcher_registry: DetectionAsyncInferenceGatewayDispatcherRegistry | None = None
     local_buffer_reader: LocalBufferReader | None = None
     published_inference_gateway: PublishedInferenceGateway | None = None
 
@@ -468,16 +468,16 @@ class WorkflowServiceNodeRuntimeContext:
     def require_sync_deployment_process_supervisor(self) -> DeploymentProcessSupervisor:
         """返回同步推理节点必需的 deployment supervisor。"""
 
-        if self.yolox_sync_deployment_process_supervisor is None:
+        if self.detection_sync_deployment_process_supervisor is None:
             raise ServiceConfigurationError("当前 workflow 运行时缺少同步 deployment supervisor")
-        return self.yolox_sync_deployment_process_supervisor
+        return self.detection_sync_deployment_process_supervisor
 
     def require_async_deployment_process_supervisor(self) -> DeploymentProcessSupervisor:
         """返回异步推理任务节点必需的 deployment supervisor。"""
 
-        if self.yolox_async_deployment_process_supervisor is None:
+        if self.detection_async_deployment_process_supervisor is None:
             raise ServiceConfigurationError("当前 workflow 运行时缺少异步 deployment supervisor")
-        return self.yolox_async_deployment_process_supervisor
+        return self.detection_async_deployment_process_supervisor
 
     def require_deployment_process_supervisor(self, runtime_mode: str) -> DeploymentProcessSupervisor:
         """按 runtime_mode 返回对应的 deployment supervisor。"""

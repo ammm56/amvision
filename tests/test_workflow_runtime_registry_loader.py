@@ -688,7 +688,7 @@ def test_core_yolox_detection_node_uses_sync_runtime_context(
     runtime_context = WorkflowServiceNodeRuntimeContext(
         session_factory=object(),
         dataset_storage=dataset_storage,
-        yolox_sync_deployment_process_supervisor=_FakeSyncSupervisor(),
+        detection_sync_deployment_process_supervisor=_FakeSyncSupervisor(),
     )
     template = WorkflowGraphTemplate(
         template_id="yolox-detection-workflow",
@@ -830,7 +830,7 @@ def test_core_yolox_detection_node_accepts_dynamic_request_payload(
     runtime_context = WorkflowServiceNodeRuntimeContext(
         session_factory=object(),
         dataset_storage=dataset_storage,
-        yolox_sync_deployment_process_supervisor=_FakeSyncSupervisor(),
+        detection_sync_deployment_process_supervisor=_FakeSyncSupervisor(),
     )
     template = WorkflowGraphTemplate(
         template_id="yolox-detection-dynamic-workflow",
@@ -978,7 +978,7 @@ def test_core_yolox_detection_node_auto_starts_sync_process(
     runtime_context = WorkflowServiceNodeRuntimeContext(
         session_factory=object(),
         dataset_storage=dataset_storage,
-        yolox_sync_deployment_process_supervisor=_FakeSyncSupervisor(),
+        detection_sync_deployment_process_supervisor=_FakeSyncSupervisor(),
     )
     template = WorkflowGraphTemplate(
         template_id="yolox-detection-auto-start-workflow",
@@ -1183,7 +1183,7 @@ def test_core_yolox_detection_node_accepts_memory_image_payload(
     runtime_context = WorkflowServiceNodeRuntimeContext(
         session_factory=object(),
         dataset_storage=_create_dataset_storage(tmp_path),
-        yolox_sync_deployment_process_supervisor=_FakeSyncSupervisor(),
+        detection_sync_deployment_process_supervisor=_FakeSyncSupervisor(),
     )
     template = WorkflowGraphTemplate(
         template_id="yolox-detection-memory-workflow",
@@ -1343,7 +1343,7 @@ def test_core_model_inference_submit_node_auto_starts_async_process(
     runtime_context = WorkflowServiceNodeRuntimeContext(
         session_factory=object(),
         dataset_storage=dataset_storage,
-        yolox_async_deployment_process_supervisor=_FakeAsyncSupervisor(),
+        detection_async_deployment_process_supervisor=_FakeAsyncSupervisor(),
         async_inference_service_id="backend-service-main",
     )
     template = WorkflowGraphTemplate(
@@ -1584,8 +1584,8 @@ def test_core_yolox_deployment_lifecycle_nodes_drive_sync_supervisor(
     runtime_context = WorkflowServiceNodeRuntimeContext(
         session_factory=object(),
         dataset_storage=dataset_storage,
-        yolox_sync_deployment_process_supervisor=sync_supervisor,
-        yolox_async_deployment_process_supervisor=async_supervisor,
+        detection_sync_deployment_process_supervisor=sync_supervisor,
+        detection_async_deployment_process_supervisor=async_supervisor,
     )
     template = WorkflowGraphTemplate(
         template_id="yolox-deployment-lifecycle-sync-workflow",
@@ -1768,8 +1768,8 @@ def test_core_yolox_deployment_health_node_uses_async_supervisor(
     runtime_context = WorkflowServiceNodeRuntimeContext(
         session_factory=object(),
         dataset_storage=dataset_storage,
-        yolox_sync_deployment_process_supervisor=sync_supervisor,
-        yolox_async_deployment_process_supervisor=async_supervisor,
+        detection_sync_deployment_process_supervisor=sync_supervisor,
+        detection_async_deployment_process_supervisor=async_supervisor,
     )
     template = WorkflowGraphTemplate(
         template_id="yolox-deployment-health-async-workflow",

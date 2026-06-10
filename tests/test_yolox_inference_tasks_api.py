@@ -286,7 +286,7 @@ def test_async_inference_task_accepts_base64_input(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
     )
-    async_supervisor = client.app.state.yolox_async_deployment_process_supervisor
+    async_supervisor = client.app.state.detection_async_deployment_process_supervisor
     worker = YoloXInferenceQueueWorker(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
@@ -358,7 +358,7 @@ def test_async_inference_task_memory_transport_uses_in_memory_base64_bytes(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
     )
-    async_supervisor = client.app.state.yolox_async_deployment_process_supervisor
+    async_supervisor = client.app.state.detection_async_deployment_process_supervisor
     worker = YoloXInferenceQueueWorker(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
@@ -418,7 +418,7 @@ def test_async_inference_task_memory_transport_uses_in_memory_base64_bytes(
             assert task_detail.task.task_spec["input_transport_mode"] == "memory"
             assert (
                 task_detail.task.task_spec["async_inference_owner_id"]
-                == client.app.state.yolox_async_inference_service_id
+                == client.app.state.detection_async_inference_service_id
             )
             runtime_behavior = task_detail.task.task_spec["runtime_behavior"]
             assert runtime_behavior["keep_warm_enabled"] is True
@@ -466,7 +466,7 @@ def test_async_inference_task_memory_transport_accepts_multipart_without_input_d
         session_factory=session_factory,
         dataset_storage=dataset_storage,
     )
-    async_supervisor = client.app.state.yolox_async_deployment_process_supervisor
+    async_supervisor = client.app.state.detection_async_deployment_process_supervisor
     worker = YoloXInferenceQueueWorker(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
@@ -543,7 +543,7 @@ def test_direct_inference_accepts_base64_and_round_robins_instances(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
     )
-    sync_supervisor = client.app.state.yolox_sync_deployment_process_supervisor
+    sync_supervisor = client.app.state.detection_sync_deployment_process_supervisor
 
     try:
         with client:
@@ -629,7 +629,7 @@ def test_direct_inference_accepts_public_project_file_id(tmp_path: Path) -> None
         session_factory=session_factory,
         dataset_storage=dataset_storage,
     )
-    sync_supervisor = client.app.state.yolox_sync_deployment_process_supervisor
+    sync_supervisor = client.app.state.detection_sync_deployment_process_supervisor
     input_object_key = "projects/project-1/inputs/inference/direct-file-id.png"
     dataset_storage.write_bytes(input_object_key, _build_valid_test_image_bytes())
     input_file_id = build_public_project_file_id(
@@ -685,7 +685,7 @@ def test_direct_inference_memory_transport_uses_in_memory_base64_bytes(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
     )
-    sync_supervisor = client.app.state.yolox_sync_deployment_process_supervisor
+    sync_supervisor = client.app.state.detection_sync_deployment_process_supervisor
 
     def fail_write_bytes(*_args, **_kwargs):
         raise AssertionError("memory 模式不应写入输入或预览图片文件")
@@ -810,7 +810,7 @@ def test_direct_inference_memory_transport_accepts_multipart_without_input_disk_
         session_factory=session_factory,
         dataset_storage=dataset_storage,
     )
-    sync_supervisor = client.app.state.yolox_sync_deployment_process_supervisor
+    sync_supervisor = client.app.state.detection_sync_deployment_process_supervisor
 
     def fail_write_bytes(*_args, **_kwargs):
         raise AssertionError("memory 模式不应写入输入或预览图片文件")
@@ -918,8 +918,8 @@ def test_async_inference_task_accepts_multipart_and_uses_async_runtime_pool(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
     )
-    sync_supervisor = client.app.state.yolox_sync_deployment_process_supervisor
-    async_supervisor = client.app.state.yolox_async_deployment_process_supervisor
+    sync_supervisor = client.app.state.detection_sync_deployment_process_supervisor
+    async_supervisor = client.app.state.detection_async_deployment_process_supervisor
 
     worker = YoloXInferenceQueueWorker(
         session_factory=session_factory,

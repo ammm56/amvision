@@ -264,20 +264,20 @@ def _create_project_summary_test_client(
     )
 
     service_event_bus = getattr(application.state, "service_event_bus", None)
-    application.state.yolox_sync_deployment_process_supervisor = FakeDeploymentProcessSupervisor(
+    application.state.detection_sync_deployment_process_supervisor = FakeDeploymentProcessSupervisor(
         runtime_mode="sync",
         dataset_storage_root_dir=str(dataset_storage.root_dir),
         service_event_bus=service_event_bus,
     )
-    application.state.yolox_async_deployment_process_supervisor = FakeDeploymentProcessSupervisor(
+    application.state.detection_async_deployment_process_supervisor = FakeDeploymentProcessSupervisor(
         runtime_mode="async",
         dataset_storage_root_dir=str(dataset_storage.root_dir),
         service_event_bus=service_event_bus,
     )
-    application.state.yolox_sync_deployment_process_supervisor.session_factory = session_factory
-    application.state.yolox_sync_deployment_process_supervisor.dataset_storage = dataset_storage
-    application.state.yolox_async_deployment_process_supervisor.session_factory = session_factory
-    application.state.yolox_async_deployment_process_supervisor.dataset_storage = dataset_storage
+    application.state.detection_sync_deployment_process_supervisor.session_factory = session_factory
+    application.state.detection_sync_deployment_process_supervisor.dataset_storage = dataset_storage
+    application.state.detection_async_deployment_process_supervisor.session_factory = session_factory
+    application.state.detection_async_deployment_process_supervisor.dataset_storage = dataset_storage
     return TestClient(application), session_factory, dataset_storage
 
 

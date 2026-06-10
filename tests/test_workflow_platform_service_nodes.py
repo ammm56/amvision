@@ -453,7 +453,7 @@ def test_inference_submit_node_uses_detection_request(
         runtime_context=WorkflowServiceNodeRuntimeContext(
             session_factory=object(),
             dataset_storage=object(),
-            yolox_async_deployment_process_supervisor=_FakeAsyncSupervisor(),
+            detection_async_deployment_process_supervisor=_FakeAsyncSupervisor(),
             async_inference_service_id="workflow-service",
         ),
     )

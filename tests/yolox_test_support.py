@@ -10,8 +10,8 @@ import backend.service.application.models.yolox_inference_task_service as yolox_
 from backend.queue import LocalFileQueueBackend
 from backend.service.application.events import InMemoryServiceEventBus
 from backend.service.application.errors import InvalidRequestError
-from backend.service.application.models.yolox_async_inference_gateway import (
-    serialize_yolox_async_inference_execution_result,
+from backend.service.application.models.detection_async_inference_gateway import (
+    serialize_detection_async_inference_execution_result,
 )
 from backend.service.application.models.yolox_model_service import (
     SqlAlchemyYoloXModelService,
@@ -114,11 +114,11 @@ def create_yolox_api_test_context(
             dataset_storage_root_dir=str(context.dataset_storage.root_dir),
             service_event_bus=service_event_bus if isinstance(service_event_bus, InMemoryServiceEventBus) else None,
         )
-        context.client.app.state.yolox_sync_deployment_process_supervisor = sync_supervisor
-        context.client.app.state.yolox_async_deployment_process_supervisor = async_supervisor
+        context.client.app.state.detection_sync_deployment_process_supervisor = sync_supervisor
+        context.client.app.state.detection_async_deployment_process_supervisor = async_supervisor
         gateway_dispatcher_registry = getattr(
             context.client.app.state,
-            "yolox_async_inference_gateway_dispatcher_registry",
+            "detection_async_inference_gateway_dispatcher_registry",
             None,
         )
         if gateway_dispatcher_registry is not None:
@@ -532,6 +532,6 @@ def _build_fake_async_inference_gateway_handler(
             return_preview_image_base64=False,
             extra_options=dict(request.extra_options),
         )
-        return serialize_yolox_async_inference_execution_result(execution_result)
+        return serialize_detection_async_inference_execution_result(execution_result)
 
     return _execute

@@ -370,8 +370,8 @@ def _stop_registered_deployment_processes(
 
     cleanup_errors: list[dict[str, object]] = []
     for runtime_mode, supervisor in (
-        ("sync", runtime_context.yolox_sync_deployment_process_supervisor),
-        ("async", runtime_context.yolox_async_deployment_process_supervisor),
+        ("sync", runtime_context.detection_sync_deployment_process_supervisor),
+        ("async", runtime_context.detection_async_deployment_process_supervisor),
     ):
         if supervisor is None:
             continue
@@ -601,8 +601,8 @@ def run_workflow_snapshot_process_worker(
             session_factory=session_factory,
             dataset_storage=dataset_storage,
             queue_backend=queue_backend,
-            yolox_sync_deployment_process_supervisor=sync_supervisor,
-            yolox_async_deployment_process_supervisor=async_supervisor,
+            detection_sync_deployment_process_supervisor=sync_supervisor,
+            detection_async_deployment_process_supervisor=async_supervisor,
             local_buffer_reader=local_buffer_reader,
             published_inference_gateway=published_inference_gateway,
         )

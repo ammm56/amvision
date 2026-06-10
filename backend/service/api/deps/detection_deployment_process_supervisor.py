@@ -18,11 +18,11 @@ def get_detection_sync_deployment_process_supervisor(
 ) -> DeploymentProcessSupervisor:
     """从 FastAPI 应用状态中读取同步 detection deployment 进程监督器。"""
 
-    supervisor = getattr(request.app.state, "yolox_sync_deployment_process_supervisor", None)
+    supervisor = getattr(request.app.state, "detection_sync_deployment_process_supervisor", None)
     if not isinstance(supervisor, DeploymentProcessSupervisor):
         raise ServiceConfigurationError(
             "当前服务尚未完成同步 detection deployment 进程监督器装配",
-            details={"state_field": "yolox_sync_deployment_process_supervisor"},
+            details={"state_field": "detection_sync_deployment_process_supervisor"},
         )
     return supervisor
 
@@ -32,11 +32,11 @@ def get_detection_async_deployment_process_supervisor(
 ) -> DeploymentProcessSupervisor:
     """从 FastAPI 应用状态中读取异步 detection deployment 进程监督器。"""
 
-    supervisor = getattr(request.app.state, "yolox_async_deployment_process_supervisor", None)
+    supervisor = getattr(request.app.state, "detection_async_deployment_process_supervisor", None)
     if not isinstance(supervisor, DeploymentProcessSupervisor):
         raise ServiceConfigurationError(
             "当前服务尚未完成异步 detection deployment 进程监督器装配",
-            details={"state_field": "yolox_async_deployment_process_supervisor"},
+            details={"state_field": "detection_async_deployment_process_supervisor"},
         )
     return supervisor
 
@@ -48,12 +48,12 @@ def get_detection_async_inference_gateway_dispatcher_registry(
 
     registry = getattr(
         request.app.state,
-        "yolox_async_inference_gateway_dispatcher_registry",
+        "detection_async_inference_gateway_dispatcher_registry",
         None,
     )
     if not isinstance(registry, DetectionAsyncInferenceGatewayDispatcherRegistry):
         raise ServiceConfigurationError(
             "当前服务尚未完成 detection async inference gateway dispatcher registry 装配",
-            details={"state_field": "yolox_async_inference_gateway_dispatcher_registry"},
+            details={"state_field": "detection_async_inference_gateway_dispatcher_registry"},
         )
     return registry

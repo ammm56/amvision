@@ -343,7 +343,7 @@ def _resolve_detection_http_request_id(request: Request, *, prefix: str) -> str:
 def _read_detection_async_inference_service_id(request: Request) -> str | None:
     """读取当前 detection async inference service 稳定 id。"""
 
-    value = getattr(request.app.state, "yolox_async_inference_service_id", None)
+    value = getattr(request.app.state, "detection_async_inference_service_id", None)
     if isinstance(value, str) and value.strip():
         return value.strip()
     return None

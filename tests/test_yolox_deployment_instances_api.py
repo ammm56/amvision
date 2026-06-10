@@ -222,8 +222,8 @@ def test_yolox_deployment_event_replay_does_not_depend_on_supervisor_instances(t
             )
             assert async_start_response.status_code == 200
 
-            client.app.state.yolox_sync_deployment_process_supervisor = object()
-            client.app.state.yolox_async_deployment_process_supervisor = object()
+            client.app.state.detection_sync_deployment_process_supervisor = object()
+            client.app.state.detection_async_deployment_process_supervisor = object()
 
             async_events_response = client.get(
                 f"/api/v1/models/detection/deployment-instances/{deployment_instance_id}/events?runtime_mode=async",
@@ -532,8 +532,8 @@ def test_sync_and_async_runtime_pools_are_isolated(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
     )
-    sync_supervisor = client.app.state.yolox_sync_deployment_process_supervisor
-    async_supervisor = client.app.state.yolox_async_deployment_process_supervisor
+    sync_supervisor = client.app.state.detection_sync_deployment_process_supervisor
+    async_supervisor = client.app.state.detection_async_deployment_process_supervisor
 
     try:
         with client:

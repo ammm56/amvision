@@ -259,8 +259,8 @@ def run_workflow_application_process_worker(
             session_factory=session_factory,
             dataset_storage=dataset_storage,
             queue_backend=queue_backend,
-            yolox_sync_deployment_process_supervisor=sync_supervisor,
-            yolox_async_deployment_process_supervisor=async_supervisor,
+            detection_sync_deployment_process_supervisor=sync_supervisor,
+            detection_async_deployment_process_supervisor=async_supervisor,
         )
         execution_result = _execute_workflow_application(
             project_id=project_id,
