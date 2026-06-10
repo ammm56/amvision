@@ -1025,6 +1025,75 @@
     },
     {
       "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.bilateral-filter",
+      "display_name": "Bilateral Filter",
+      "category": "opencv.filter",
+      "description": "对输入图片执行双边滤波，在平滑噪声的同时尽量保留边缘，适合纹理较弱但轮廓边界仍需保真的场景。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "diameter": {
+            "type": "integer",
+            "minimum": 1,
+            "default": 9
+          },
+          "sigma_color": {
+            "type": "number",
+            "minimum": 0,
+            "default": 75.0
+          },
+          "sigma_space": {
+            "type": "number",
+            "minimum": 0,
+            "default": 75.0
+          },
+          "output_object_key": {
+            "type": "string"
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.bilateral-filter",
+        "vision.preprocess",
+        "inspection.edge-preserve"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.basic-nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
       "node_type_id": "custom.opencv.binary-threshold",
       "display_name": "Binary Threshold",
       "category": "opencv.filter",
@@ -1335,6 +1404,74 @@
         "opencv.measurement",
         "vision.geometry",
         "inspection.diameter"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.basic-nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.clahe",
+      "display_name": "CLAHE",
+      "category": "opencv.filter",
+      "description": "对输入图片执行 CLAHE 局部对比度增强，适合光照不稳、局部对比不足或表面纹理偏弱的工业图像预处理。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "clip_limit": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "default": 2.0
+          },
+          "tile_grid_size": {
+            "type": "integer",
+            "minimum": 1,
+            "default": 8
+          },
+          "apply_to_luminance": {
+            "type": "boolean",
+            "default": true
+          },
+          "output_object_key": {
+            "type": "string"
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.clahe",
+        "vision.preprocess",
+        "inspection.contrast"
       ],
       "runtime_requirements": {
         "python_packages": [
@@ -1817,6 +1954,97 @@
         "opencv.contours-to-regions",
         "vision.region",
         "vision.bridge"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.basic-nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.crop",
+      "display_name": "Crop",
+      "category": "opencv.filter",
+      "description": "按 ROI 或显式矩形参数裁剪输入图片，并输出裁剪摘要，适合先收紧工位窗口再进入后续差异、轮廓和量测规则链。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "roi",
+          "display_name": "ROI",
+          "payload_type_id": "roi.v1",
+          "description": "",
+          "required": false,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "summary",
+          "display_name": "Summary",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "x": {
+            "type": "number"
+          },
+          "y": {
+            "type": "number"
+          },
+          "width": {
+            "type": "number",
+            "exclusiveMinimum": 0
+          },
+          "height": {
+            "type": "number",
+            "exclusiveMinimum": 0
+          },
+          "padding": {
+            "type": "integer",
+            "minimum": 0,
+            "default": 0
+          },
+          "output_object_key": {
+            "type": "string"
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.crop",
+        "vision.preprocess",
+        "inspection.roi"
       ],
       "runtime_requirements": {
         "python_packages": [
@@ -3141,6 +3369,59 @@
     },
     {
       "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.invert",
+      "display_name": "Invert",
+      "category": "opencv.filter",
+      "description": "对输入图片执行按位反相，适合把暗前景/亮背景切换成后续阈值或轮廓流程更稳定的方向。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "output_object_key": {
+            "type": "string"
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.invert",
+        "vision.preprocess"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.basic-nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
       "node_type_id": "custom.opencv.line-angle",
       "display_name": "Line Angle",
       "category": "opencv.measurement",
@@ -3387,6 +3668,65 @@
     },
     {
       "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.median-blur",
+      "display_name": "Median Blur",
+      "category": "opencv.filter",
+      "description": "对输入图片执行中值滤波，适合去除椒盐噪声、小颗粒噪声和零散脏点，同时尽量保留边缘结构。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "kernel_size": {
+            "type": "integer",
+            "minimum": 1,
+            "default": 5
+          },
+          "output_object_key": {
+            "type": "string"
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.median-blur",
+        "vision.preprocess",
+        "inspection.noise-reduction"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.basic-nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
       "node_type_id": "custom.opencv.min-area-rect",
       "display_name": "Min Area Rect",
       "category": "opencv.analysis",
@@ -3614,6 +3954,71 @@
       "capability_tags": [
         "opencv.morphology",
         "vision.filter"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.basic-nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.normalize",
+      "display_name": "Normalize",
+      "category": "opencv.filter",
+      "description": "对输入图片执行 min-max 强度归一化，适合把不同亮度区间先规整到稳定范围，再进入阈值、差异和轮廓流程。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "alpha": {
+            "type": "number",
+            "default": 0.0
+          },
+          "beta": {
+            "type": "number",
+            "default": 255.0
+          },
+          "per_channel": {
+            "type": "boolean",
+            "default": false
+          },
+          "output_object_key": {
+            "type": "string"
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.normalize",
+        "vision.preprocess"
       ],
       "runtime_requirements": {
         "python_packages": [
@@ -4169,6 +4574,119 @@
       "capability_tags": [
         "opencv.resize",
         "vision.filter"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.basic-nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.rotation-correct",
+      "display_name": "Rotation Correct",
+      "category": "opencv.geometry",
+      "description": "按给定角度或上游 value.v1 输入对图片做旋转矫正，并输出摘要，适合先把工件姿态收正再进入后续 ROI、量测和规则链。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "angle",
+          "display_name": "Angle",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": false,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "summary",
+          "display_name": "Summary",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "angle_deg": {
+            "type": "number"
+          },
+          "angle_path": {
+            "type": "string"
+          },
+          "negate_angle": {
+            "type": "boolean"
+          },
+          "expand_canvas": {
+            "type": "boolean",
+            "default": false
+          },
+          "interpolation": {
+            "type": "string",
+            "enum": [
+              "nearest",
+              "linear",
+              "area",
+              "cubic",
+              "lanczos4"
+            ],
+            "default": "linear"
+          },
+          "border_mode": {
+            "type": "string",
+            "enum": [
+              "constant",
+              "replicate",
+              "reflect",
+              "reflect101",
+              "wrap"
+            ],
+            "default": "constant"
+          },
+          "border_value": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 255,
+            "default": 0
+          },
+          "output_object_key": {
+            "type": "string"
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.rotation-correct",
+        "vision.alignment",
+        "inspection.pose"
       ],
       "runtime_requirements": {
         "python_packages": [

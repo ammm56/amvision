@@ -18,9 +18,17 @@ from custom_nodes.opencv_basic_nodes.backend.nodes.canny import (
     NODE_TYPE_ID as CANNY_NODE_TYPE_ID,
     handle_node as canny_handler,
 )
+from custom_nodes.opencv_basic_nodes.backend.nodes.bilateral_filter import (
+    NODE_TYPE_ID as BILATERAL_FILTER_NODE_TYPE_ID,
+    handle_node as bilateral_filter_handler,
+)
 from custom_nodes.opencv_basic_nodes.backend.nodes.caliper_edge import (
     NODE_TYPE_ID as CALIPER_EDGE_NODE_TYPE_ID,
     handle_node as caliper_edge_handler,
+)
+from custom_nodes.opencv_basic_nodes.backend.nodes.clahe import (
+    NODE_TYPE_ID as CLAHE_NODE_TYPE_ID,
+    handle_node as clahe_handler,
 )
 from custom_nodes.opencv_basic_nodes.backend.nodes.circle_diameter import (
     NODE_TYPE_ID as CIRCLE_DIAMETER_NODE_TYPE_ID,
@@ -49,6 +57,10 @@ from custom_nodes.opencv_basic_nodes.backend.nodes.concentricity_metrics import 
 from custom_nodes.opencv_basic_nodes.backend.nodes.crop_export import (
     NODE_TYPE_ID as CROP_EXPORT_NODE_TYPE_ID,
     handle_node as crop_export_handler,
+)
+from custom_nodes.opencv_basic_nodes.backend.nodes.crop import (
+    NODE_TYPE_ID as CROP_NODE_TYPE_ID,
+    handle_node as crop_handler,
 )
 from custom_nodes.opencv_basic_nodes.backend.nodes.draw_detections import (
     NODE_TYPE_ID as DRAW_DETECTIONS_NODE_TYPE_ID,
@@ -102,6 +114,10 @@ from custom_nodes.opencv_basic_nodes.backend.nodes.image_diff import (
     NODE_TYPE_ID as IMAGE_DIFF_NODE_TYPE_ID,
     handle_node as image_diff_handler,
 )
+from custom_nodes.opencv_basic_nodes.backend.nodes.invert import (
+    NODE_TYPE_ID as INVERT_NODE_TYPE_ID,
+    handle_node as invert_handler,
+)
 from custom_nodes.opencv_basic_nodes.backend.nodes.line_angle import (
     NODE_TYPE_ID as LINE_ANGLE_NODE_TYPE_ID,
     handle_node as line_angle_handler,
@@ -109,6 +125,10 @@ from custom_nodes.opencv_basic_nodes.backend.nodes.line_angle import (
 from custom_nodes.opencv_basic_nodes.backend.nodes.measure import (
     NODE_TYPE_ID as MEASURE_NODE_TYPE_ID,
     handle_node as measure_handler,
+)
+from custom_nodes.opencv_basic_nodes.backend.nodes.median_blur import (
+    NODE_TYPE_ID as MEDIAN_BLUR_NODE_TYPE_ID,
+    handle_node as median_blur_handler,
 )
 from custom_nodes.opencv_basic_nodes.backend.nodes.min_area_rect import (
     NODE_TYPE_ID as MIN_AREA_RECT_NODE_TYPE_ID,
@@ -125,6 +145,10 @@ from custom_nodes.opencv_basic_nodes.backend.nodes.morphology import (
 from custom_nodes.opencv_basic_nodes.backend.nodes.mask_overlay import (
     NODE_TYPE_ID as MASK_OVERLAY_NODE_TYPE_ID,
     handle_node as mask_overlay_handler,
+)
+from custom_nodes.opencv_basic_nodes.backend.nodes.normalize import (
+    NODE_TYPE_ID as NORMALIZE_NODE_TYPE_ID,
+    handle_node as normalize_handler,
 )
 from custom_nodes.opencv_basic_nodes.backend.nodes.otsu_threshold import (
     NODE_TYPE_ID as OTSU_THRESHOLD_NODE_TYPE_ID,
@@ -150,6 +174,10 @@ from custom_nodes.opencv_basic_nodes.backend.nodes.resize import (
     NODE_TYPE_ID as RESIZE_NODE_TYPE_ID,
     handle_node as resize_handler,
 )
+from custom_nodes.opencv_basic_nodes.backend.nodes.rotation_correct import (
+    NODE_TYPE_ID as ROTATION_CORRECT_NODE_TYPE_ID,
+    handle_node as rotation_correct_handler,
+)
 from custom_nodes.opencv_basic_nodes.backend.nodes.slot_width import (
     NODE_TYPE_ID as SLOT_WIDTH_NODE_TYPE_ID,
     handle_node as slot_width_handler,
@@ -168,6 +196,9 @@ NODE_HANDLERS = (
     (DRAW_ROI_NODE_TYPE_ID, draw_roi_handler),
     (DRAW_MEASUREMENTS_NODE_TYPE_ID, draw_measurements_handler),
     (MASK_OVERLAY_NODE_TYPE_ID, mask_overlay_handler),
+    (BILATERAL_FILTER_NODE_TYPE_ID, bilateral_filter_handler),
+    (CLAHE_NODE_TYPE_ID, clahe_handler),
+    (CROP_NODE_TYPE_ID, crop_handler),
     (GAUSSIAN_BLUR_NODE_TYPE_ID, gaussian_blur_handler),
     (BINARY_THRESHOLD_NODE_TYPE_ID, binary_threshold_handler),
     (MORPHOLOGY_NODE_TYPE_ID, morphology_handler),
@@ -189,6 +220,9 @@ NODE_HANDLERS = (
     (HOUGH_LINES_NODE_TYPE_ID, hough_lines_handler),
     (HOUGH_CIRCLES_NODE_TYPE_ID, hough_circles_handler),
     (RESIZE_NODE_TYPE_ID, resize_handler),
+    (INVERT_NODE_TYPE_ID, invert_handler),
+    (MEDIAN_BLUR_NODE_TYPE_ID, median_blur_handler),
+    (NORMALIZE_NODE_TYPE_ID, normalize_handler),
     (ADAPTIVE_THRESHOLD_NODE_TYPE_ID, adaptive_threshold_handler),
     (OTSU_THRESHOLD_NODE_TYPE_ID, otsu_threshold_handler),
     (CONTOUR_FILTER_NODE_TYPE_ID, contour_filter_handler),
@@ -198,6 +232,7 @@ NODE_HANDLERS = (
     (IMAGE_DIFF_NODE_TYPE_ID, image_diff_handler),
     (ABSDIFF_THRESHOLD_NODE_TYPE_ID, absdiff_threshold_handler),
     (CONNECTED_COMPONENTS_NODE_TYPE_ID, connected_components_handler),
+    (ROTATION_CORRECT_NODE_TYPE_ID, rotation_correct_handler),
     (SLOT_WIDTH_NODE_TYPE_ID, slot_width_handler),
     (TEMPLATE_MATCH_NODE_TYPE_ID, template_match_handler),
 )

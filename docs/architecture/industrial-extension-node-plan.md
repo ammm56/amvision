@@ -36,14 +36,21 @@
 - `morphology`
 - `grayscale`
 - `resize`
+- `crop`
+- `normalize`
+- `clahe`
+- `median-blur`
+- `bilateral-filter`
 - `adaptive-threshold`
 - `otsu-threshold`
+- `invert`
 - `contour-filter`
 - `min-area-rect`
 - `contours-to-regions`
 - `image-diff`
 - `absdiff-threshold`
 - `connected-components`
+- `rotation-correct`
 - `draw-detections`
 - `crop-export`
 - `gallery-preview`
@@ -60,6 +67,18 @@
 - `custom.opencv.contours-to-regions`
 
 其中 `min-area-rect` 当前新增 `rotated-rects.v1` 结构化 payload，`payload-to-value` 也已支持把它包装回 `value.v1` 继续参与响应拼装或调试预览。
+
+其中当前最贴工业单帧现场的预处理与对齐基础层也已接通：
+
+- `custom.opencv.crop`
+- `custom.opencv.normalize`
+- `custom.opencv.clahe`
+- `custom.opencv.median-blur`
+- `custom.opencv.bilateral-filter`
+- `custom.opencv.invert`
+- `custom.opencv.rotation-correct`
+
+这组节点当前已经可以先把“ROI 收紧、亮度区间规整、局部对比增强、噪声抑制、黑白方向翻转、姿态矫正”这层前置链独立收起来，再接后续差异、轮廓、量测和工业规则节点。
 
 其中第二批更贴缺陷/差异流程的原子节点当前也已接通：
 
@@ -1087,6 +1106,7 @@ PLC 能力也应至少拆成两类：
 - `custom.camera.usb_uvc_nodes`（前三批已实现：`enumerate-devices / capture-frame / open-device / start-stream / read-window / read-latest-frame / get-parameter / set-parameter / close-device`）
 - `custom.plc.modbus_tcp_nodes`（主动读写 / wait-condition / write-result-signals 已实现）
 - `custom.opencv.grayscale / resize / adaptive-threshold / otsu-threshold`（已实现）
+- `custom.opencv.crop / normalize / clahe / median-blur / bilateral-filter / invert / rotation-correct`（已实现）
 - `custom.opencv.hough-lines / hough-circles`（已实现）
 - `custom.opencv.contour-filter / min-area-rect / contours-to-regions`（已实现）
 - `custom.opencv.connected-components / image-diff / absdiff-threshold`（已实现）
