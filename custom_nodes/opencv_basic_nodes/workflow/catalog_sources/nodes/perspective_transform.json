@@ -1,0 +1,104 @@
+{
+  "format_id": "amvision.node-definition.v1",
+  "node_type_id": "custom.opencv.perspective-transform",
+  "display_name": "Perspective Transform",
+  "category": "opencv.geometry",
+  "description": "按四点透视关系把输入图片矫正为规则矩形输出，支持直接使用 roi.v1 或固定 source_points，适合治具面矫正、标签拍扁和视角收正。",
+  "implementation_kind": "custom-node",
+  "runtime_kind": "python-callable",
+  "input_ports": [
+    {
+      "name": "image",
+      "display_name": "Image",
+      "payload_type_id": "image-ref.v1"
+    },
+    {
+      "name": "roi",
+      "display_name": "ROI",
+      "payload_type_id": "roi.v1",
+      "required": false
+    }
+  ],
+  "output_ports": [
+    {
+      "name": "image",
+      "display_name": "Image",
+      "payload_type_id": "image-ref.v1"
+    },
+    {
+      "name": "summary",
+      "display_name": "Summary",
+      "payload_type_id": "value.v1"
+    }
+  ],
+  "parameter_schema": {
+    "type": "object",
+    "properties": {
+      "source_points": {
+        "type": "array",
+        "minItems": 4,
+        "maxItems": 4,
+        "items": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "items": {
+            "type": "number"
+          }
+        }
+      },
+      "output_width": {
+        "type": "integer",
+        "minimum": 1
+      },
+      "output_height": {
+        "type": "integer",
+        "minimum": 1
+      },
+      "interpolation": {
+        "type": "string",
+        "enum": [
+          "nearest",
+          "linear",
+          "area",
+          "cubic",
+          "lanczos4"
+        ],
+        "default": "linear"
+      },
+      "border_mode": {
+        "type": "string",
+        "enum": [
+          "constant",
+          "replicate",
+          "reflect",
+          "reflect101",
+          "wrap"
+        ],
+        "default": "constant"
+      },
+      "border_value": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 255,
+        "default": 0
+      },
+      "output_object_key": {
+        "type": "string"
+      }
+    }
+  },
+  "capability_tags": [
+    "opencv.perspective-transform",
+    "vision.alignment",
+    "inspection.pose"
+  ],
+  "runtime_requirements": {
+    "python_packages": [
+      "opencv-python",
+      "numpy"
+    ]
+  },
+  "node_pack_id": "opencv.basic-nodes",
+  "node_pack_version": "0.1.0"
+}

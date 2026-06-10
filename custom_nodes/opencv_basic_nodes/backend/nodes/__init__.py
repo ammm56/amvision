@@ -178,6 +178,14 @@ from custom_nodes.opencv_basic_nodes.backend.nodes.parallelism_metrics import (
     NODE_TYPE_ID as PARALLELISM_METRICS_NODE_TYPE_ID,
     handle_node as parallelism_metrics_handler,
 )
+from custom_nodes.opencv_basic_nodes.backend.nodes.perspective_transform import (
+    NODE_TYPE_ID as PERSPECTIVE_TRANSFORM_NODE_TYPE_ID,
+    handle_node as perspective_transform_handler,
+)
+from custom_nodes.opencv_basic_nodes.backend.nodes.remap import (
+    NODE_TYPE_ID as REMAP_NODE_TYPE_ID,
+    handle_node as remap_handler,
+)
 from custom_nodes.opencv_basic_nodes.backend.nodes.payload_to_value import (
     NODE_TYPE_ID as PAYLOAD_TO_VALUE_NODE_TYPE_ID,
     handle_node as payload_to_value_handler,
@@ -206,6 +214,10 @@ from custom_nodes.opencv_basic_nodes.backend.nodes.template_match import (
     NODE_TYPE_ID as TEMPLATE_MATCH_NODE_TYPE_ID,
     handle_node as template_match_handler,
 )
+from custom_nodes.opencv_basic_nodes.backend.nodes.undistort import (
+    NODE_TYPE_ID as UNDISTORT_NODE_TYPE_ID,
+    handle_node as undistort_handler,
+)
 
 
 NODE_HANDLERS = (
@@ -232,9 +244,11 @@ NODE_HANDLERS = (
     (LINE_ANGLE_NODE_TYPE_ID, line_angle_handler),
     (MEASURE_NODE_TYPE_ID, measure_handler),
     (PARALLELISM_METRICS_NODE_TYPE_ID, parallelism_metrics_handler),
+    (PERSPECTIVE_TRANSFORM_NODE_TYPE_ID, perspective_transform_handler),
     (PAYLOAD_TO_VALUE_NODE_TYPE_ID, payload_to_value_handler),
     (POINT_DISTANCE_NODE_TYPE_ID, point_distance_handler),
     (POINT_TO_LINE_DISTANCE_NODE_TYPE_ID, point_to_line_distance_handler),
+    (REMAP_NODE_TYPE_ID, remap_handler),
     (CROP_EXPORT_NODE_TYPE_ID, crop_export_handler),
     (DISTANCE_TRANSFORM_NODE_TYPE_ID, distance_transform_handler),
     (FILL_HOLES_NODE_TYPE_ID, fill_holes_handler),
@@ -260,6 +274,7 @@ NODE_HANDLERS = (
     (ROTATION_CORRECT_NODE_TYPE_ID, rotation_correct_handler),
     (SLOT_WIDTH_NODE_TYPE_ID, slot_width_handler),
     (TEMPLATE_MATCH_NODE_TYPE_ID, template_match_handler),
+    (UNDISTORT_NODE_TYPE_ID, undistort_handler),
 )
 
 

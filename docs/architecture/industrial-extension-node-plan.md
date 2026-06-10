@@ -56,6 +56,9 @@
 - `fill-holes`
 - `distance-transform`
 - `rotation-correct`
+- `perspective-transform`
+- `undistort`
+- `remap`
 - `draw-detections`
 - `crop-export`
 - `gallery-preview`
@@ -82,8 +85,11 @@
 - `custom.opencv.bilateral-filter`
 - `custom.opencv.invert`
 - `custom.opencv.rotation-correct`
+- `custom.opencv.perspective-transform`
+- `custom.opencv.undistort`
+- `custom.opencv.remap`
 
-这组节点当前已经可以先把“ROI 收紧、亮度区间规整、局部对比增强、噪声抑制、黑白方向翻转、姿态矫正”这层前置链独立收起来，再接后续差异、轮廓、量测和工业规则节点。
+这组节点当前已经可以先把“ROI 收紧、亮度区间规整、局部对比增强、噪声抑制、黑白方向翻转、姿态矫正、透视面矫正、镜头畸变矫正和像素级几何重映射”这层前置链独立收起来，再接后续差异、轮廓、量测和工业规则节点。
 
 其中第二批更贴缺陷/差异流程的原子节点当前也已接通：
 
@@ -887,11 +893,15 @@ PLC 能力也应至少拆成两类：
 - `core.vision.defect-largest-cluster-ratio`
 - `core.vision.defect-density`
 - `core.vision.edge-profile-gap-check`
+- `core.vision.hole-pattern-check`
+- `core.vision.corner-missing-check`
 
 其中：
 
 - `defect-cluster-* / defect-density` 当前统一复用 `regions.v1 + 可选 roi.v1`，更适合承接 `connected-components`、参考图差异或分割缺陷结果
 - `edge-profile-gap-check` 当前提供显式 `horizontal / vertical` profile 语义，适合工位方向已知时，比完全依赖区域主方向的 `edge-break-check` 更稳定
+- `hole-pattern-check` 当前适合做孔列数量、节距和离轴偏差检查，可直接覆盖安装孔、定位孔和孔阵列换型的一层常见规则
+- `corner-missing-check` 当前适合做轴对齐零件的局部缺角检查，按目标角点窗口填充率输出更直白的 OK / NG 判定
 
 ### 第四组：装配 / 位置关系类节点
 
@@ -1058,10 +1068,10 @@ PLC 能力也应至少拆成两类：
 
 建议节点：
 
-- `custom.opencv.perspective-transform`
+- `custom.opencv.perspective-transform`（已实现）
 - `custom.opencv.affine-transform`
-- `custom.opencv.undistort`
-- `custom.opencv.remap`
+- `custom.opencv.undistort`（已实现）
+- `custom.opencv.remap`（已实现）
 - `custom.opencv.rotation-correct`
 
 ### 匹配与定位
@@ -1133,7 +1143,7 @@ PLC 能力也应至少拆成两类：
 - `custom.camera.usb_uvc_nodes`（前三批已实现：`enumerate-devices / capture-frame / open-device / start-stream / read-window / read-latest-frame / get-parameter / set-parameter / close-device`）
 - `custom.plc.modbus_tcp_nodes`（主动读写 / wait-condition / write-result-signals 已实现）
 - `custom.opencv.grayscale / resize / adaptive-threshold / otsu-threshold`（已实现）
-- `custom.opencv.crop / normalize / clahe / median-blur / bilateral-filter / invert / rotation-correct`（已实现）
+- `custom.opencv.crop / normalize / clahe / median-blur / bilateral-filter / invert / rotation-correct / perspective-transform / undistort / remap`（已实现）
 - `custom.opencv.contour-approx / convex-hull / fit-ellipse / fill-holes / distance-transform`（已实现）
 - `custom.opencv.hough-lines / hough-circles`（已实现）
 - `custom.opencv.contour-filter / min-area-rect / contours-to-regions`（已实现）
@@ -1163,7 +1173,6 @@ PLC 能力也应至少拆成两类：
 - `custom.plc.s7_nodes`
 - `custom.plc.mitsubishi_mc_nodes`
 - `custom.camera.framegrabber_nodes`
-- `custom.opencv.undistort / perspective-transform / remap`
 - `custom.opencv.orb-match / homography-estimate`
 - `trigger-source` 中的 `directory-poll / directory-watch / modbus-poll-trigger / s7-poll-trigger`
 
