@@ -852,7 +852,7 @@ PLC 能力也应至少拆成两类：
 建议节点：
 
 - `core.vision.multi-part-presence-check`（已实现）
-- `core.vision.pair-offset-check`
+- `core.vision.pair-offset-check`（已实现）
 - `core.vision.reference-mark-align-check`
 - `core.vision.spacing-check`
 - `core.vision.sequence-order-check`
@@ -1102,6 +1102,7 @@ PLC 能力也应至少拆成两类：
 - `core.vision.linearity-check`（已实现）
 - `core.vision.circularity-check`（已实现）
 - `core.vision.multi-part-presence-check`（已实现）
+- `core.vision.pair-offset-check`（已实现）
 - `custom.anomaly.model_nodes`
 
 ### 第三阶段
