@@ -1,0 +1,89 @@
+{
+  "format_id": "amvision.node-definition.v1",
+  "node_type_id": "custom.opencv.homography-estimate",
+  "display_name": "Homography Estimate",
+  "category": "opencv.matching",
+  "description": "根据局部特征匹配估计平面 homography 变换，并输出结构化 planar-transform.v1，适合复杂对位、参考板注册和视角有一定变化的单帧场景。",
+  "implementation_kind": "custom-node",
+  "runtime_kind": "python-callable",
+  "input_ports": [
+    {
+      "name": "matches",
+      "display_name": "Matches",
+      "payload_type_id": "feature-matches.v1"
+    },
+    {
+      "name": "features_a",
+      "display_name": "Features A",
+      "payload_type_id": "local-features.v1"
+    },
+    {
+      "name": "features_b",
+      "display_name": "Features B",
+      "payload_type_id": "local-features.v1"
+    }
+  ],
+  "output_ports": [
+    {
+      "name": "transform",
+      "display_name": "Transform",
+      "payload_type_id": "planar-transform.v1"
+    },
+    {
+      "name": "summary",
+      "display_name": "Summary",
+      "payload_type_id": "value.v1"
+    }
+  ],
+  "parameter_schema": {
+    "type": "object",
+    "properties": {
+      "method": {
+        "type": "string",
+        "enum": [
+          "ransac",
+          "lmeds"
+        ],
+        "default": "ransac"
+      },
+      "ransac_reprojection_threshold": {
+        "type": "number",
+        "exclusiveMinimum": 0,
+        "default": 3.0
+      },
+      "confidence": {
+        "type": "number",
+        "exclusiveMinimum": 0,
+        "exclusiveMaximum": 1,
+        "default": 0.995
+      },
+      "max_iters": {
+        "type": "integer",
+        "minimum": 1,
+        "default": 2000
+      },
+      "min_match_count": {
+        "type": "integer",
+        "minimum": 4,
+        "default": 4
+      },
+      "include_inverse_matrix": {
+        "type": "boolean",
+        "default": true
+      }
+    }
+  },
+  "capability_tags": [
+    "opencv.homography-estimate",
+    "vision.alignment",
+    "vision.matching"
+  ],
+  "runtime_requirements": {
+    "python_packages": [
+      "opencv-python",
+      "numpy"
+    ]
+  },
+  "node_pack_id": "opencv.matching-nodes",
+  "node_pack_version": "0.1.0"
+}

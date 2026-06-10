@@ -95,6 +95,6 @@
       "numpy"
     ]
   },
-  "node_pack_id": "opencv.basic-nodes",
+  "node_pack_id": "opencv.matching-nodes",
   "node_pack_version": "0.1.0"
 }

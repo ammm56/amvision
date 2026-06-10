@@ -187,11 +187,12 @@ OpenCV 节点不应直接写死在推理 runtime 里，而应通过 custom-node 
 
 当前 OpenCV custom node 已开始按多 pack 收口：
 
-- `opencv.basic-nodes`：预处理、匹配、渲染、桥接与导出主线
+- `opencv.basic-nodes`：预处理、渲染、桥接与导出主线
 - `opencv.defect-nodes`：差异、连通域与缺陷后处理主线
 - `opencv.shape-nodes`：轮廓、线圆、形状拟合与几何结果抽取主线
 - `opencv.measurement-nodes`：工业量测与几何判定前置主线
 - `opencv.geometry-nodes`：姿态矫正、标定与几何变换主线
+- `opencv.matching-nodes`：模板匹配、局部特征匹配与平面对位主线
 
 其中 `opencv.basic-nodes` 当前已落地的节点族：
 
@@ -200,6 +201,10 @@ OpenCV 节点不应直接写死在推理 runtime 里，而应通过 custom-node 
 - opencv.transform：payload-to-value
 - opencv.io：crop-export
 - opencv.preview：gallery-preview
+
+而 `opencv.matching-nodes` 当前承载：
+
+- opencv.matching：template-match、orb-keypoints、orb-match、homography-estimate
 
 而 `opencv.defect-nodes` 当前承载：
 
@@ -219,15 +224,15 @@ OpenCV 节点不应直接写死在推理 runtime 里，而应通过 custom-node 
 
 - opencv.geometry：rotation-correct、perspective-transform、affine-transform、undistort、remap
 
-其中 `opencv.shape-nodes` 负责 `contour -> contours.v1`、`min-area-rect -> rotated-rects.v1`、`hough-lines / fit-line -> lines.v1`、`hough-circles / min-enclosing-circle -> circles.v1` 与 `contours-to-regions -> regions.v1` 这条结构化几何抽取主线；`opencv.defect-nodes` 中的 `connected-components` 也直接输出 `regions.v1`，`gallery-preview` 输出 `response-body.v1`；而 `image-diff -> absdiff-threshold -> connected-components` 已经可以形成一条完整的传统差异检测上游链，继续接到 `core.output.http-response` 或既有工业规则链。当前这组 OpenCV 自定义 payload contract 也已统一收进 `custom_nodes/_opencv_shared/workflow/payload_contracts.json`，由多个 pack 共享生成并在运行时按相同定义去重合并。
+其中 `opencv.shape-nodes` 负责 `contour -> contours.v1`、`min-area-rect -> rotated-rects.v1`、`hough-lines / fit-line -> lines.v1`、`hough-circles / min-enclosing-circle -> circles.v1` 与 `contours-to-regions -> regions.v1` 这条结构化几何抽取主线；`opencv.defect-nodes` 中的 `connected-components` 也直接输出 `regions.v1`，`gallery-preview` 输出 `response-body.v1`；`opencv.matching-nodes` 当前则负责 `orb-keypoints -> local-features.v1`、`orb-match -> feature-matches.v1` 与 `homography-estimate -> planar-transform.v1` 这条更重的参考对位链；而 `image-diff -> absdiff-threshold -> connected-components` 已经可以形成一条完整的传统差异检测上游链，继续接到 `core.output.http-response` 或既有工业规则链。当前这组 OpenCV 自定义 payload contract 也已统一收进 `custom_nodes/_opencv_shared/workflow/payload_contracts.json`，由多个 pack 共享生成并在运行时按相同定义去重合并。
 
 `point-distance / point-to-line-distance / line-angle / circle-diameter / parallelism-metrics / concentricity-metrics / slot-width` 当前则直接输出可进规则链的 `value.v1 + summary(value.v1)`，适合继续接 `threshold-check / range-check / process-decision`。`draw-contours / draw-lines / draw-circles / draw-roi / draw-measurements / mask-overlay` 则统一输出 `image-ref.v1`，用于把轮廓、直线、圆、ROI、分割覆盖层和量测依据直接画回原图做现场调试。
 
 这些节点统一通过 NodeDefinition 声明 runtime_requirements，例如：
 
 - python_packages: [opencv-python, numpy]
-- node_pack_id: opencv.basic-nodes / opencv.defect-nodes / opencv.shape-nodes / opencv.measurement-nodes
-- capability_tags: [opencv.draw] / [opencv.defect] / [opencv.contour] / [opencv.measure]
+- node_pack_id: opencv.basic-nodes / opencv.defect-nodes / opencv.shape-nodes / opencv.measurement-nodes / opencv.geometry-nodes / opencv.matching-nodes
+- capability_tags: [opencv.draw] / [opencv.defect] / [opencv.contour] / [opencv.measure] / [opencv.geometry] / [opencv.matching]
 
 ## 最小 JSON 例子
 

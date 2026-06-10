@@ -1750,17 +1750,35 @@
   "node_definitions": [
     {
       "format_id": "amvision.node-definition.v1",
-      "node_type_id": "custom.opencv.contour",
-      "display_name": "Contour",
-      "category": "opencv.analysis",
-      "description": "对输入图片提取 contour，并输出结构化 contour 集合。",
+      "node_type_id": "custom.opencv.homography-estimate",
+      "display_name": "Homography Estimate",
+      "category": "opencv.matching",
+      "description": "根据局部特征匹配估计平面 homography 变换，并输出结构化 planar-transform.v1，适合复杂对位、参考板注册和视角有一定变化的单帧场景。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
       "input_ports": [
         {
-          "name": "image",
-          "display_name": "Image",
-          "payload_type_id": "image-ref.v1",
+          "name": "matches",
+          "display_name": "Matches",
+          "payload_type_id": "feature-matches.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "features_a",
+          "display_name": "Features A",
+          "payload_type_id": "local-features.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "features_b",
+          "display_name": "Features B",
+          "payload_type_id": "local-features.v1",
           "description": "",
           "required": true,
           "multiple": false,
@@ -1769,90 +1787,9 @@
       ],
       "output_ports": [
         {
-          "name": "contours",
-          "display_name": "Contours",
-          "payload_type_id": "contours.v1",
-          "description": "",
-          "required": true,
-          "multiple": false,
-          "metadata": {}
-        }
-      ],
-      "parameter_schema": {
-        "type": "object",
-        "properties": {
-          "threshold": {
-            "type": "integer",
-            "minimum": 0,
-            "maximum": 255
-          },
-          "retrieval_mode": {
-            "type": "string",
-            "enum": [
-              "external",
-              "list",
-              "tree",
-              "ccomp"
-            ]
-          },
-          "approximation": {
-            "type": "string",
-            "enum": [
-              "simple",
-              "none",
-              "tc89-l1",
-              "tc89-kcos"
-            ]
-          },
-          "min_area": {
-            "type": "number",
-            "minimum": 0
-          },
-          "max_contours": {
-            "type": "integer",
-            "minimum": 1
-          }
-        }
-      },
-      "parameter_ui_schema": null,
-      "capability_tags": [
-        "opencv.contour",
-        "vision.analysis"
-      ],
-      "runtime_requirements": {
-        "python_packages": [
-          "opencv-python",
-          "numpy"
-        ]
-      },
-      "node_pack_id": "opencv.shape-nodes",
-      "node_pack_version": "0.1.0",
-      "metadata": {}
-    },
-    {
-      "format_id": "amvision.node-definition.v1",
-      "node_type_id": "custom.opencv.contour-approx",
-      "display_name": "Contour Approx",
-      "category": "opencv.analysis",
-      "description": "对 contour 集合执行多边形近似，适合把毛刺边界先规整成更稳定的工艺轮廓或多边形骨架。",
-      "implementation_kind": "custom-node",
-      "runtime_kind": "python-callable",
-      "input_ports": [
-        {
-          "name": "contours",
-          "display_name": "Contours",
-          "payload_type_id": "contours.v1",
-          "description": "",
-          "required": true,
-          "multiple": false,
-          "metadata": {}
-        }
-      ],
-      "output_ports": [
-        {
-          "name": "contours",
-          "display_name": "Contours",
-          "payload_type_id": "contours.v1",
+          "name": "transform",
+          "display_name": "Transform",
+          "payload_type_id": "planar-transform.v1",
           "description": "",
           "required": true,
           "multiple": false,
@@ -1871,33 +1808,175 @@
       "parameter_schema": {
         "type": "object",
         "properties": {
-          "epsilon_mode": {
+          "method": {
             "type": "string",
             "enum": [
-              "perimeter-ratio",
-              "pixels"
+              "ransac",
+              "lmeds"
             ],
-            "default": "perimeter-ratio"
+            "default": "ransac"
           },
-          "epsilon_value": {
+          "ransac_reprojection_threshold": {
             "type": "number",
-            "minimum": 0
+            "exclusiveMinimum": 0,
+            "default": 3.0
           },
-          "closed": {
+          "confidence": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "exclusiveMaximum": 1,
+            "default": 0.995
+          },
+          "max_iters": {
+            "type": "integer",
+            "minimum": 1,
+            "default": 2000
+          },
+          "min_match_count": {
+            "type": "integer",
+            "minimum": 4,
+            "default": 4
+          },
+          "include_inverse_matrix": {
+            "type": "boolean",
+            "default": true
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.homography-estimate",
+        "vision.alignment",
+        "vision.matching"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.matching-nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.orb-keypoints",
+      "display_name": "ORB Keypoints",
+      "category": "opencv.matching",
+      "description": "对输入图片提取 ORB 局部特征点与二进制描述，适合在模板匹配不稳、存在旋转缩放或局部视角变化时做参考对位前处理。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "roi",
+          "display_name": "ROI",
+          "payload_type_id": "roi.v1",
+          "description": "",
+          "required": false,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "features",
+          "display_name": "Features",
+          "payload_type_id": "local-features.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "summary",
+          "display_name": "Summary",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "max_features": {
+            "type": "integer",
+            "minimum": 1,
+            "default": 500
+          },
+          "scale_factor": {
+            "type": "number",
+            "exclusiveMinimum": 1.0,
+            "default": 1.2
+          },
+          "level_count": {
+            "type": "integer",
+            "minimum": 1,
+            "default": 8
+          },
+          "edge_threshold": {
+            "type": "integer",
+            "minimum": 1,
+            "default": 31
+          },
+          "first_level": {
+            "type": "integer",
+            "minimum": 0,
+            "default": 0
+          },
+          "wta_k": {
+            "type": "integer",
+            "enum": [
+              2,
+              3,
+              4
+            ],
+            "default": 2
+          },
+          "score_type": {
+            "type": "string",
+            "enum": [
+              "harris",
+              "fast"
+            ],
+            "default": "harris"
+          },
+          "patch_size": {
+            "type": "integer",
+            "minimum": 1,
+            "default": 31
+          },
+          "fast_threshold": {
+            "type": "integer",
+            "minimum": 0,
+            "default": 20
+          },
+          "use_roi_mask": {
             "type": "boolean",
             "default": true
           },
-          "limit": {
-            "type": "integer",
-            "minimum": 1
+          "feature_id_prefix": {
+            "type": "string",
+            "default": "orb"
           }
         }
       },
       "parameter_ui_schema": null,
       "capability_tags": [
-        "opencv.contour-approx",
-        "vision.contour",
-        "vision.shape"
+        "opencv.orb-keypoints",
+        "vision.matching",
+        "vision.feature"
       ],
       "runtime_requirements": {
         "python_packages": [
@@ -1905,23 +1984,32 @@
           "numpy"
         ]
       },
-      "node_pack_id": "opencv.shape-nodes",
+      "node_pack_id": "opencv.matching-nodes",
       "node_pack_version": "0.1.0",
       "metadata": {}
     },
     {
       "format_id": "amvision.node-definition.v1",
-      "node_type_id": "custom.opencv.contour-filter",
-      "display_name": "Contour Filter",
-      "category": "opencv.analysis",
-      "description": "按面积、宽高、点数和排序规则筛选 contour 集合。",
+      "node_type_id": "custom.opencv.orb-match",
+      "display_name": "ORB Match",
+      "category": "opencv.matching",
+      "description": "对两组 ORB 描述执行暴力匹配与过滤，并输出显式 feature-matches.v1，便于人工查看匹配密度、距离分布和误匹配情况。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
       "input_ports": [
         {
-          "name": "contours",
-          "display_name": "Contours",
-          "payload_type_id": "contours.v1",
+          "name": "features_a",
+          "display_name": "Features A",
+          "payload_type_id": "local-features.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "features_b",
+          "display_name": "Features B",
+          "payload_type_id": "local-features.v1",
           "description": "",
           "required": true,
           "multiple": false,
@@ -1930,9 +2018,9 @@
       ],
       "output_ports": [
         {
-          "name": "contours",
-          "display_name": "Contours",
-          "payload_type_id": "contours.v1",
+          "name": "matches",
+          "display_name": "Matches",
+          "payload_type_id": "feature-matches.v1",
           "description": "",
           "required": true,
           "multiple": false,
@@ -1951,62 +2039,39 @@
       "parameter_schema": {
         "type": "object",
         "properties": {
-          "min_area": {
-            "type": "number",
-            "minimum": 0
-          },
-          "max_area": {
-            "type": "number",
-            "minimum": 0
-          },
-          "min_width": {
-            "type": "number",
-            "minimum": 0
-          },
-          "max_width": {
-            "type": "number",
-            "minimum": 0
-          },
-          "min_height": {
-            "type": "number",
-            "minimum": 0
-          },
-          "max_height": {
-            "type": "number",
-            "minimum": 0
-          },
-          "min_point_count": {
-            "type": "integer",
-            "minimum": 0
-          },
-          "max_point_count": {
-            "type": "integer",
-            "minimum": 0
-          },
-          "sort_by": {
+          "matcher_kind": {
             "type": "string",
             "enum": [
-              "contour_index",
-              "point_count",
-              "area",
-              "width",
-              "height",
-              "perimeter"
+              "bf-hamming",
+              "bf-hamming2"
             ]
           },
-          "descending": {
-            "type": "boolean"
+          "cross_check": {
+            "type": "boolean",
+            "default": false
           },
-          "limit": {
+          "ratio_test_threshold": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "exclusiveMaximum": 1,
+            "default": 0.75
+          },
+          "max_matches": {
             "type": "integer",
-            "minimum": 1
+            "minimum": 1,
+            "default": 100
+          },
+          "max_distance": {
+            "type": "number",
+            "minimum": 0
           }
         }
       },
       "parameter_ui_schema": null,
       "capability_tags": [
-        "opencv.contour-filter",
-        "vision.analysis"
+        "opencv.orb-match",
+        "vision.matching",
+        "vision.feature"
       ],
       "runtime_requirements": {
         "python_packages": [
@@ -2014,32 +2079,41 @@
           "numpy"
         ]
       },
-      "node_pack_id": "opencv.shape-nodes",
+      "node_pack_id": "opencv.matching-nodes",
       "node_pack_version": "0.1.0",
       "metadata": {}
     },
     {
       "format_id": "amvision.node-definition.v1",
-      "node_type_id": "custom.opencv.contours-to-regions",
-      "display_name": "Contours To Regions",
-      "category": "opencv.transform",
-      "description": "把 contours.v1 规整成标准 regions.v1，便于继续接工业规则和 ROI/连续性节点。",
+      "node_type_id": "custom.opencv.template-match",
+      "display_name": "Template Match",
+      "category": "opencv.matching",
+      "description": "在输入图片中按模板匹配搜索重复结构位置，并输出标准 regions.v1 与摘要，适合基准定位、标签找位和治具 presence 检查。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
       "input_ports": [
         {
-          "name": "contours",
-          "display_name": "Contours",
-          "payload_type_id": "contours.v1",
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
           "description": "",
           "required": true,
           "multiple": false,
           "metadata": {}
         },
         {
-          "name": "image",
-          "display_name": "Image",
+          "name": "template_image",
+          "display_name": "Template Image",
           "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "roi",
+          "display_name": "ROI",
+          "payload_type_id": "roi.v1",
           "description": "",
           "required": false,
           "multiple": false,
@@ -2069,9 +2143,39 @@
       "parameter_schema": {
         "type": "object",
         "properties": {
+          "method": {
+            "type": "string",
+            "enum": [
+              "ccoeff-normed",
+              "ccorr-normed",
+              "sqdiff-normed"
+            ],
+            "default": "ccoeff-normed"
+          },
+          "score_threshold": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "default": 0.8
+          },
+          "max_matches": {
+            "type": "integer",
+            "minimum": 1,
+            "default": 1
+          },
+          "nms_iou_threshold": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "default": 0.3
+          },
+          "convert_to_grayscale": {
+            "type": "boolean",
+            "default": true
+          },
           "region_id_prefix": {
             "type": "string",
-            "default": "ctr"
+            "default": "tmpl"
           },
           "class_id_default": {
             "type": "integer",
@@ -2079,20 +2183,16 @@
           },
           "class_name_default": {
             "type": "string",
-            "default": "contour"
-          },
-          "score_default": {
-            "type": "number",
-            "minimum": 0,
-            "default": 1.0
+            "default": "template-match"
           }
         }
       },
       "parameter_ui_schema": null,
       "capability_tags": [
-        "opencv.contours-to-regions",
+        "opencv.template-match",
+        "vision.localization",
         "vision.region",
-        "vision.bridge"
+        "inspection.position"
       ],
       "runtime_requirements": {
         "python_packages": [
@@ -2100,620 +2200,7 @@
           "numpy"
         ]
       },
-      "node_pack_id": "opencv.shape-nodes",
-      "node_pack_version": "0.1.0",
-      "metadata": {}
-    },
-    {
-      "format_id": "amvision.node-definition.v1",
-      "node_type_id": "custom.opencv.convex-hull",
-      "display_name": "Convex Hull",
-      "category": "opencv.analysis",
-      "description": "对 contour 集合计算凸包，适合先把凹陷、缺角或局部锯齿规整成更稳定的外形包络。",
-      "implementation_kind": "custom-node",
-      "runtime_kind": "python-callable",
-      "input_ports": [
-        {
-          "name": "contours",
-          "display_name": "Contours",
-          "payload_type_id": "contours.v1",
-          "description": "",
-          "required": true,
-          "multiple": false,
-          "metadata": {}
-        }
-      ],
-      "output_ports": [
-        {
-          "name": "contours",
-          "display_name": "Contours",
-          "payload_type_id": "contours.v1",
-          "description": "",
-          "required": true,
-          "multiple": false,
-          "metadata": {}
-        },
-        {
-          "name": "summary",
-          "display_name": "Summary",
-          "payload_type_id": "value.v1",
-          "description": "",
-          "required": true,
-          "multiple": false,
-          "metadata": {}
-        }
-      ],
-      "parameter_schema": {
-        "type": "object",
-        "properties": {
-          "sort_by": {
-            "type": "string",
-            "enum": [
-              "contour_index",
-              "contour_area",
-              "hull_area",
-              "solidity",
-              "point_count"
-            ]
-          },
-          "descending": {
-            "type": "boolean"
-          },
-          "limit": {
-            "type": "integer",
-            "minimum": 1
-          }
-        }
-      },
-      "parameter_ui_schema": null,
-      "capability_tags": [
-        "opencv.convex-hull",
-        "vision.contour",
-        "vision.shape"
-      ],
-      "runtime_requirements": {
-        "python_packages": [
-          "opencv-python",
-          "numpy"
-        ]
-      },
-      "node_pack_id": "opencv.shape-nodes",
-      "node_pack_version": "0.1.0",
-      "metadata": {}
-    },
-    {
-      "format_id": "amvision.node-definition.v1",
-      "node_type_id": "custom.opencv.fit-ellipse",
-      "display_name": "Fit Ellipse",
-      "category": "opencv.analysis",
-      "description": "对 contour 集合执行椭圆拟合，并输出结构化 ellipses.v1，适合孔位、椭圆件、压装位和圆孔变形检查。",
-      "implementation_kind": "custom-node",
-      "runtime_kind": "python-callable",
-      "input_ports": [
-        {
-          "name": "contours",
-          "display_name": "Contours",
-          "payload_type_id": "contours.v1",
-          "description": "",
-          "required": true,
-          "multiple": false,
-          "metadata": {}
-        }
-      ],
-      "output_ports": [
-        {
-          "name": "ellipses",
-          "display_name": "Ellipses",
-          "payload_type_id": "ellipses.v1",
-          "description": "",
-          "required": true,
-          "multiple": false,
-          "metadata": {}
-        },
-        {
-          "name": "summary",
-          "display_name": "Summary",
-          "payload_type_id": "value.v1",
-          "description": "",
-          "required": true,
-          "multiple": false,
-          "metadata": {}
-        }
-      ],
-      "parameter_schema": {
-        "type": "object",
-        "properties": {
-          "sort_by": {
-            "type": "string",
-            "enum": [
-              "ellipse_index",
-              "contour_index",
-              "major_axis",
-              "minor_axis",
-              "area",
-              "fill_ratio",
-              "angle_deg",
-              "center_x",
-              "center_y"
-            ]
-          },
-          "descending": {
-            "type": "boolean"
-          },
-          "limit": {
-            "type": "integer",
-            "minimum": 1
-          }
-        }
-      },
-      "parameter_ui_schema": null,
-      "capability_tags": [
-        "opencv.fit-ellipse",
-        "vision.geometry",
-        "inspection.ellipse"
-      ],
-      "runtime_requirements": {
-        "python_packages": [
-          "opencv-python",
-          "numpy"
-        ]
-      },
-      "node_pack_id": "opencv.shape-nodes",
-      "node_pack_version": "0.1.0",
-      "metadata": {}
-    },
-    {
-      "format_id": "amvision.node-definition.v1",
-      "node_type_id": "custom.opencv.fit-line",
-      "display_name": "Fit Line",
-      "category": "opencv.analysis",
-      "description": "对 contour 集合执行拟合直线，并输出结构化 lines.v1。",
-      "implementation_kind": "custom-node",
-      "runtime_kind": "python-callable",
-      "input_ports": [
-        {
-          "name": "contours",
-          "display_name": "Contours",
-          "payload_type_id": "contours.v1",
-          "description": "",
-          "required": true,
-          "multiple": false,
-          "metadata": {}
-        }
-      ],
-      "output_ports": [
-        {
-          "name": "lines",
-          "display_name": "Lines",
-          "payload_type_id": "lines.v1",
-          "description": "",
-          "required": true,
-          "multiple": false,
-          "metadata": {}
-        },
-        {
-          "name": "summary",
-          "display_name": "Summary",
-          "payload_type_id": "value.v1",
-          "description": "",
-          "required": true,
-          "multiple": false,
-          "metadata": {}
-        }
-      ],
-      "parameter_schema": {
-        "type": "object",
-        "properties": {
-          "distance_type": {
-            "type": "string",
-            "enum": [
-              "l2",
-              "l1",
-              "l12",
-              "fair",
-              "welsch",
-              "huber"
-            ]
-          },
-          "reps": {
-            "type": "number",
-            "minimum": 0
-          },
-          "aeps": {
-            "type": "number",
-            "minimum": 0
-          },
-          "sort_by": {
-            "type": "string",
-            "enum": [
-              "line_index",
-              "contour_index",
-              "length_pixels",
-              "angle_deg",
-              "midpoint_x",
-              "midpoint_y"
-            ]
-          },
-          "descending": {
-            "type": "boolean"
-          },
-          "limit": {
-            "type": "integer",
-            "minimum": 1
-          }
-        }
-      },
-      "parameter_ui_schema": null,
-      "capability_tags": [
-        "opencv.fit-line",
-        "vision.geometry",
-        "vision.analysis"
-      ],
-      "runtime_requirements": {
-        "python_packages": [
-          "opencv-python",
-          "numpy"
-        ]
-      },
-      "node_pack_id": "opencv.shape-nodes",
-      "node_pack_version": "0.1.0",
-      "metadata": {}
-    },
-    {
-      "format_id": "amvision.node-definition.v1",
-      "node_type_id": "custom.opencv.hough-circles",
-      "display_name": "Hough Circles",
-      "category": "opencv.analysis",
-      "description": "对输入图片执行 Hough 圆检测，并输出结构化 circles.v1。",
-      "implementation_kind": "custom-node",
-      "runtime_kind": "python-callable",
-      "input_ports": [
-        {
-          "name": "image",
-          "display_name": "Image",
-          "payload_type_id": "image-ref.v1",
-          "description": "",
-          "required": true,
-          "multiple": false,
-          "metadata": {}
-        }
-      ],
-      "output_ports": [
-        {
-          "name": "circles",
-          "display_name": "Circles",
-          "payload_type_id": "circles.v1",
-          "description": "",
-          "required": true,
-          "multiple": false,
-          "metadata": {}
-        },
-        {
-          "name": "summary",
-          "display_name": "Summary",
-          "payload_type_id": "value.v1",
-          "description": "",
-          "required": true,
-          "multiple": false,
-          "metadata": {}
-        }
-      ],
-      "parameter_schema": {
-        "type": "object",
-        "properties": {
-          "dp": {
-            "type": "number",
-            "minimum": 0
-          },
-          "min_dist": {
-            "type": "number",
-            "minimum": 0
-          },
-          "param1": {
-            "type": "number",
-            "minimum": 0
-          },
-          "param2": {
-            "type": "number",
-            "minimum": 0
-          },
-          "min_radius": {
-            "type": "integer",
-            "minimum": 0
-          },
-          "max_radius": {
-            "type": "integer",
-            "minimum": 0
-          },
-          "sort_by": {
-            "type": "string",
-            "enum": [
-              "circle_index",
-              "radius",
-              "diameter",
-              "area",
-              "center_x",
-              "center_y"
-            ]
-          },
-          "descending": {
-            "type": "boolean"
-          },
-          "limit": {
-            "type": "integer",
-            "minimum": 1
-          }
-        }
-      },
-      "parameter_ui_schema": null,
-      "capability_tags": [
-        "opencv.hough-circles",
-        "vision.geometry",
-        "vision.analysis"
-      ],
-      "runtime_requirements": {
-        "python_packages": [
-          "opencv-python",
-          "numpy"
-        ]
-      },
-      "node_pack_id": "opencv.shape-nodes",
-      "node_pack_version": "0.1.0",
-      "metadata": {}
-    },
-    {
-      "format_id": "amvision.node-definition.v1",
-      "node_type_id": "custom.opencv.hough-lines",
-      "display_name": "Hough Lines",
-      "category": "opencv.analysis",
-      "description": "对输入图片执行概率 Hough 直线检测，并输出结构化 lines.v1。",
-      "implementation_kind": "custom-node",
-      "runtime_kind": "python-callable",
-      "input_ports": [
-        {
-          "name": "image",
-          "display_name": "Image",
-          "payload_type_id": "image-ref.v1",
-          "description": "",
-          "required": true,
-          "multiple": false,
-          "metadata": {}
-        }
-      ],
-      "output_ports": [
-        {
-          "name": "lines",
-          "display_name": "Lines",
-          "payload_type_id": "lines.v1",
-          "description": "",
-          "required": true,
-          "multiple": false,
-          "metadata": {}
-        },
-        {
-          "name": "summary",
-          "display_name": "Summary",
-          "payload_type_id": "value.v1",
-          "description": "",
-          "required": true,
-          "multiple": false,
-          "metadata": {}
-        }
-      ],
-      "parameter_schema": {
-        "type": "object",
-        "properties": {
-          "rho_resolution": {
-            "type": "number",
-            "minimum": 0
-          },
-          "theta_step_deg": {
-            "type": "number",
-            "minimum": 0
-          },
-          "threshold": {
-            "type": "integer",
-            "minimum": 1
-          },
-          "min_line_length": {
-            "type": "number",
-            "minimum": 0
-          },
-          "max_line_gap": {
-            "type": "number",
-            "minimum": 0
-          },
-          "sort_by": {
-            "type": "string",
-            "enum": [
-              "line_index",
-              "length_pixels",
-              "angle_deg",
-              "midpoint_x",
-              "midpoint_y"
-            ]
-          },
-          "descending": {
-            "type": "boolean"
-          },
-          "limit": {
-            "type": "integer",
-            "minimum": 1
-          }
-        }
-      },
-      "parameter_ui_schema": null,
-      "capability_tags": [
-        "opencv.hough-lines",
-        "vision.geometry",
-        "vision.analysis"
-      ],
-      "runtime_requirements": {
-        "python_packages": [
-          "opencv-python",
-          "numpy"
-        ]
-      },
-      "node_pack_id": "opencv.shape-nodes",
-      "node_pack_version": "0.1.0",
-      "metadata": {}
-    },
-    {
-      "format_id": "amvision.node-definition.v1",
-      "node_type_id": "custom.opencv.min-area-rect",
-      "display_name": "Min Area Rect",
-      "category": "opencv.analysis",
-      "description": "对 contour 集合计算最小外接旋转矩形，并输出结构化 rotated-rects.v1。",
-      "implementation_kind": "custom-node",
-      "runtime_kind": "python-callable",
-      "input_ports": [
-        {
-          "name": "contours",
-          "display_name": "Contours",
-          "payload_type_id": "contours.v1",
-          "description": "",
-          "required": true,
-          "multiple": false,
-          "metadata": {}
-        }
-      ],
-      "output_ports": [
-        {
-          "name": "rotated_rects",
-          "display_name": "Rotated Rects",
-          "payload_type_id": "rotated-rects.v1",
-          "description": "",
-          "required": true,
-          "multiple": false,
-          "metadata": {}
-        },
-        {
-          "name": "summary",
-          "display_name": "Summary",
-          "payload_type_id": "value.v1",
-          "description": "",
-          "required": true,
-          "multiple": false,
-          "metadata": {}
-        }
-      ],
-      "parameter_schema": {
-        "type": "object",
-        "properties": {
-          "sort_by": {
-            "type": "string",
-            "enum": [
-              "contour_index",
-              "contour_area",
-              "rect_area",
-              "long_side",
-              "short_side",
-              "angle_deg",
-              "fill_ratio"
-            ]
-          },
-          "descending": {
-            "type": "boolean"
-          },
-          "limit": {
-            "type": "integer",
-            "minimum": 1
-          }
-        }
-      },
-      "parameter_ui_schema": null,
-      "capability_tags": [
-        "opencv.min-area-rect",
-        "vision.geometry",
-        "vision.analysis"
-      ],
-      "runtime_requirements": {
-        "python_packages": [
-          "opencv-python",
-          "numpy"
-        ]
-      },
-      "node_pack_id": "opencv.shape-nodes",
-      "node_pack_version": "0.1.0",
-      "metadata": {}
-    },
-    {
-      "format_id": "amvision.node-definition.v1",
-      "node_type_id": "custom.opencv.min-enclosing-circle",
-      "display_name": "Min Enclosing Circle",
-      "category": "opencv.analysis",
-      "description": "对 contour 集合计算最小外接圆，并输出结构化 circles.v1。",
-      "implementation_kind": "custom-node",
-      "runtime_kind": "python-callable",
-      "input_ports": [
-        {
-          "name": "contours",
-          "display_name": "Contours",
-          "payload_type_id": "contours.v1",
-          "description": "",
-          "required": true,
-          "multiple": false,
-          "metadata": {}
-        }
-      ],
-      "output_ports": [
-        {
-          "name": "circles",
-          "display_name": "Circles",
-          "payload_type_id": "circles.v1",
-          "description": "",
-          "required": true,
-          "multiple": false,
-          "metadata": {}
-        },
-        {
-          "name": "summary",
-          "display_name": "Summary",
-          "payload_type_id": "value.v1",
-          "description": "",
-          "required": true,
-          "multiple": false,
-          "metadata": {}
-        }
-      ],
-      "parameter_schema": {
-        "type": "object",
-        "properties": {
-          "sort_by": {
-            "type": "string",
-            "enum": [
-              "circle_index",
-              "contour_index",
-              "radius",
-              "diameter",
-              "area",
-              "fill_ratio",
-              "center_x",
-              "center_y"
-            ]
-          },
-          "descending": {
-            "type": "boolean"
-          },
-          "limit": {
-            "type": "integer",
-            "minimum": 1
-          }
-        }
-      },
-      "parameter_ui_schema": null,
-      "capability_tags": [
-        "opencv.min-enclosing-circle",
-        "vision.geometry",
-        "vision.analysis"
-      ],
-      "runtime_requirements": {
-        "python_packages": [
-          "opencv-python",
-          "numpy"
-        ]
-      },
-      "node_pack_id": "opencv.shape-nodes",
+      "node_pack_id": "opencv.matching-nodes",
       "node_pack_version": "0.1.0",
       "metadata": {}
     }

@@ -26,6 +26,7 @@
 - `opencv_shape_nodes`
 - `opencv_measurement_nodes`
 - `opencv_geometry_nodes`
+- `opencv_matching_nodes`
 - `barcode_display_nodes`
 - `barcode_protocol_nodes`
 - `plc_modbus_tcp_nodes`
@@ -48,7 +49,6 @@
 - `invert`
 - `sobel`
 - `laplacian`
-- `template-match`
 - `draw-detections`
 - `draw-contours`
 - `draw-lines`
@@ -102,9 +102,16 @@
 - `fit-line`
 - `min-enclosing-circle`
 
-当前 `custom_nodes/opencv_basic_nodes/` 的物理目录名仍是旧形态，但 manifest id 已经是 `opencv.basic-nodes`。经过前四轮试点拆分后，这个 pack 当前主要承载预处理、匹配与调试渲染几类能力，后续仍不适合继续把所有新节点都堆进同一个目录。
+其中 `opencv_matching_nodes` 当前已经有：
 
-其中前四轮 pack 拆分试点当前已落地：
+- `template-match`
+- `orb-keypoints`
+- `orb-match`
+- `homography-estimate`
+
+当前 `custom_nodes/opencv_basic_nodes/` 的物理目录名仍是旧形态，但 manifest id 已经是 `opencv.basic-nodes`。经过前五轮试点拆分后，这个 pack 当前主要承载预处理与调试渲染两类能力，后续仍不适合继续把所有新节点都堆进同一个目录。
+
+其中前五轮 pack 拆分试点当前已落地：
 
 - 共享 backend helper 已从 `custom_nodes/opencv_basic_nodes/backend/support.py` 抽到 `custom_nodes/_opencv_shared/backend/support.py`
 - OpenCV custom payload contract 当前也已统一收进 `custom_nodes/_opencv_shared/workflow/payload_contracts.json`
@@ -112,8 +119,9 @@
 - `measure / caliper-edge / point-distance / point-to-line-distance / line-angle / circle-diameter / slot-width / parallelism-metrics / concentricity-metrics` 已正式迁入 `custom_nodes/opencv_measurement_nodes/`
 - `contour / contour-filter / contour-approx / convex-hull / min-area-rect / fit-ellipse / contours-to-regions / hough-lines / hough-circles / fit-line / min-enclosing-circle` 已正式迁入 `custom_nodes/opencv_shape_nodes/`
 - `image-diff / absdiff-threshold / connected-components / fill-holes / distance-transform` 已正式迁入 `custom_nodes/opencv_defect_nodes/`
+- `template-match / orb-keypoints / orb-match / homography-estimate` 已正式迁入 `custom_nodes/opencv_matching_nodes/`
 - 公开 `node_type_id` 保持不变，当前仍统一使用 `custom.opencv.*`
-- checked-in 样例 `industrial_single_frame_calibrated_template_edge_gate.*`、`industrial_single_frame_line_pair_measure_gate.*` 与 `industrial_single_frame_circle_concentricity_gate.*` 继续作为这四轮拆分后的主线验证入口
+- checked-in 样例 `industrial_single_frame_calibrated_template_edge_gate.*`、`industrial_single_frame_line_pair_measure_gate.*` 与 `industrial_single_frame_circle_concentricity_gate.*` 继续作为拆包后的主线验证入口；`test_opencv_matching_nodes.py` 继续作为 ORB / homography 参考对位链的定向运行时回归入口
 
 其中第一批更贴工业现场的传统视觉补强当前已接通：
 
@@ -198,8 +206,11 @@
 其中匹配层当前也已接通：
 
 - `custom.opencv.template-match`
+- `custom.opencv.orb-keypoints`
+- `custom.opencv.orb-match`
+- `custom.opencv.homography-estimate`
 
-这组节点当前已经可以先把“参考定位”这层从量测链前面单独收起来，再继续衔接 `opencv.measurement-nodes` 与后续工业规则链。
+这组节点当前已经可以把“模板定位”和“局部特征参考对位”这两条定位链从量测链前面单独收起来，再继续衔接 `opencv.measurement-nodes` 与后续工业规则链。
 
 其中渲染、导出与桥接层当前也已接通：
 
@@ -1139,11 +1150,11 @@ PLC 能力也应至少拆成两类：
 
 | 目标 pack | 当前状态 | 建议收纳节点 | 说明 |
 | --- | --- | --- | --- |
-| `opencv.basic-nodes` | 已实现，仍待继续瘦身 | `grayscale / resize / crop / normalize / clahe / median-blur / bilateral-filter / gaussian-blur / adaptive-threshold / otsu-threshold / binary-threshold / invert / morphology / canny / sobel / laplacian / template-match / draw-detections / draw-contours / draw-lines / draw-circles / draw-roi / draw-measurements / mask-overlay / crop-export / gallery-preview / payload-to-value` | 承载基础预处理、模板匹配、通用调试渲染、桥接与导出。第一轮继续把 render / bridge 留在这里，不再额外增加新 pack。 |
+| `opencv.basic-nodes` | 已实现，仍待继续瘦身 | `grayscale / resize / crop / normalize / clahe / median-blur / bilateral-filter / gaussian-blur / adaptive-threshold / otsu-threshold / binary-threshold / invert / morphology / canny / sobel / laplacian / draw-detections / draw-contours / draw-lines / draw-circles / draw-roi / draw-measurements / mask-overlay / crop-export / gallery-preview / payload-to-value` | 承载基础预处理、通用调试渲染、桥接与导出。第一轮继续把 render / bridge 留在这里，不再额外增加新 pack。 |
 | `opencv.shape-nodes` | 已实现，第三步拆分试点已完成 | `contour / contour-filter / contour-approx / convex-hull / min-area-rect / fit-ellipse / contours-to-regions / hough-lines / hough-circles / fit-line / min-enclosing-circle` | 承载轮廓、线圆、形状拟合和从图像几何结果到结构化 payload 的抽取层。当前已由 shape pack checked-in catalog 与量测 workflow 样例共同收口。 |
 | `opencv.measurement-nodes` | 已实现，第二轮拆分试点已完成 | `measure / caliper-edge / point-distance / point-to-line-distance / line-angle / circle-diameter / slot-width / parallelism-metrics / concentricity-metrics` | 承载工业量测原语，避免和预处理或缺陷流程耦在同一 pack。当前已由 `line_pair_measure_gate / circle_concentricity_gate` 两条样例链收口。 |
 | `opencv.geometry-nodes` | 已实现，第一轮拆分试点已完成 | `rotation-correct / perspective-transform / affine-transform / undistort / remap` | 承载姿态、标定、坐标变换和几何矫正能力。当前已作为 pack 拆分试点落地。 |
-| `opencv.matching-nodes` | 规划中 | `template-match / orb-keypoints / orb-match / homography-estimate` | 承载定位与参考对位链。当前已落地 `template-match`，ORB / homography 仍保留规划。 |
+| `opencv.matching-nodes` | 已实现，第五步拆分试点已完成 | `template-match / orb-keypoints / orb-match / homography-estimate` | 承载模板定位、局部特征匹配与平面对位链。当前 `template-match` 已从 `opencv.basic-nodes` 迁出，ORB / homography 也已落地，并补到 `local-features.v1 / feature-matches.v1 / planar-transform.v1` 三类共享 payload contract。 |
 | `opencv.defect-nodes` | 已实现，第四步拆分试点已完成 | `image-diff / absdiff-threshold / connected-components / fill-holes / distance-transform / watershed / skeletonize / heatmap-preview` | 承载差异、缺陷、形态学后处理与缺陷调试预览链。当前已落地 `image-diff / absdiff-threshold / connected-components / fill-holes / distance-transform`。 |
 
 如果后续 `draw-* / overlay / preview` 这组节点继续明显增长，再考虑第二轮额外拆出 `opencv.render-nodes`。当前第一轮不需要先把问题拆得过细。
@@ -1202,9 +1213,9 @@ PLC 能力也应至少拆成两类：
 建议节点：
 
 - `custom.opencv.template-match`（已实现）
-- `custom.opencv.orb-keypoints`
-- `custom.opencv.orb-match`
-- `custom.opencv.homography-estimate`
+- `custom.opencv.orb-keypoints`（已实现）
+- `custom.opencv.orb-match`（已实现）
+- `custom.opencv.homography-estimate`（已实现）
 
 说明：
 
@@ -1279,12 +1290,12 @@ PLC 能力也应至少拆成两类：
 - 现场使用方式：
   - 适合复杂换型、参考板对位、视角有一定变化、单纯 bbox 模板匹配难以稳定覆盖的场景
 
-为什么现在不先做：
+为什么当前仍不建议默认先用：
 
 - 工业单帧主线当前大多数还是固定工位、小位姿扰动，`template-match + ROI + caliper-edge` 更直白、可解释、调参成本更低
 - ORB 对纹理、清晰度和反光更敏感，在低纹理、均匀表面或轻微虚焦场景下往往不如模板匹配稳
-- 这条链一旦进入实现，不只是 3 个节点，还要同时补 `local-features.v1 / feature-matches.v1 / planar-transform.v1` 这组新 payload 和相应调试预览
-- 因此当前更合理的顺序是先把本地标定定位模板和 `sobel / laplacian` 这类更贴现场的节点收稳，再决定是否推进 ORB
+- 这条链虽然已经实现，但仍额外引入 `local-features.v1 / feature-matches.v1 / planar-transform.v1` 这组 payload 和更多调试维度，现场理解成本天然高于 template-match
+- 因此当前更合理的默认顺序仍然是先用本地标定定位模板和 `sobel / laplacian` 这类更直白的链，只有在模板定位不稳时再切到 ORB
 
 ### 二值 / 分割 / 形态学增强
 
@@ -1361,6 +1372,7 @@ PLC 能力也应至少拆成两类：
 ### 第二阶段
 
 - `custom.opencv.template-match`（已实现）
+- `custom.opencv.orb-keypoints / orb-match / homography-estimate`（已实现）
 - `custom.opencv.caliper-edge`（已实现）
 - `custom.opencv.point-distance / point-to-line-distance / line-angle / circle-diameter / slot-width / parallelism-metrics / concentricity-metrics`（已实现）
 - `core.vision.edge-break-check`（已实现）
@@ -1383,7 +1395,6 @@ PLC 能力也应至少拆成两类：
 - `custom.plc.s7_nodes`
 - `custom.plc.mitsubishi_mc_nodes`
 - `custom.camera.framegrabber_nodes`
-- `custom.opencv.orb-keypoints / orb-match / homography-estimate`
 - `custom.opencv.watershed / skeletonize / heatmap-preview`
 - `custom.anomaly.model_nodes`
 - `trigger-source` 中的 `modbus-poll-trigger / s7-poll-trigger`

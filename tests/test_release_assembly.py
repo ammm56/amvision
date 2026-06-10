@@ -45,6 +45,7 @@ def test_assemble_release_materializes_full_layout(
     assert (release_dir / "custom_nodes" / "opencv_measurement_nodes" / "manifest.json").is_file()
     assert (release_dir / "custom_nodes" / "opencv_shape_nodes" / "manifest.json").is_file()
     assert (release_dir / "custom_nodes" / "opencv_defect_nodes" / "manifest.json").is_file()
+    assert (release_dir / "custom_nodes" / "opencv_matching_nodes" / "manifest.json").is_file()
     assert (release_dir / "custom_nodes" / "_opencv_shared" / "backend" / "support.py").is_file()
     assert (release_dir / "custom_nodes" / "_scaffold" / "README.md").is_file()
     assert not (release_dir / "custom_nodes" / "__pycache__").exists()
@@ -188,6 +189,7 @@ def test_assemble_release_preserves_existing_python_dir_when_overwriting(
     assert (release_dir / "custom_nodes" / "opencv_measurement_nodes" / "manifest.json").is_file()
     assert (release_dir / "custom_nodes" / "opencv_shape_nodes" / "manifest.json").is_file()
     assert (release_dir / "custom_nodes" / "opencv_defect_nodes" / "manifest.json").is_file()
+    assert (release_dir / "custom_nodes" / "opencv_matching_nodes" / "manifest.json").is_file()
     assert (release_dir / "custom_nodes" / "_opencv_shared" / "backend" / "support.py").is_file()
 
 
@@ -248,6 +250,11 @@ def _patch_release_runtime_asset_sources(
     (source_custom_nodes_dir / "opencv_defect_nodes").mkdir(parents=True, exist_ok=True)
     (source_custom_nodes_dir / "opencv_defect_nodes" / "manifest.json").write_text(
         '{"id": "opencv.defect-nodes"}\n',
+        encoding="utf-8",
+    )
+    (source_custom_nodes_dir / "opencv_matching_nodes").mkdir(parents=True, exist_ok=True)
+    (source_custom_nodes_dir / "opencv_matching_nodes" / "manifest.json").write_text(
+        '{"id": "opencv.matching-nodes"}\n',
         encoding="utf-8",
     )
     (source_custom_nodes_dir / "_opencv_shared" / "backend").mkdir(parents=True, exist_ok=True)

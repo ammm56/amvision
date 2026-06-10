@@ -1,23 +1,22 @@
 {
   "format_id": "amvision.node-pack-manifest.v1",
-  "id": "opencv.basic-nodes",
+  "id": "opencv.matching-nodes",
   "version": "0.1.0",
-  "displayName": "OpenCV Basic Nodes",
-  "description": "提供一组 OpenCV 预处理、渲染、导出与预览节点。",
+  "displayName": "OpenCV Matching Nodes",
+  "description": "提供一组 OpenCV 模板匹配、局部特征匹配与平面对位节点。",
   "category": "custom-node-pack",
   "capabilities": [
     "pipeline.node",
-    "vision.filter",
-    "vision.render",
     "vision.analysis",
-    "vision.preview"
+    "vision.localization",
+    "vision.alignment"
   ],
   "permissionScopes": [
     "objectstore.read.ref",
     "objectstore.write.ref"
   ],
   "entrypoints": {
-    "backend": "custom_nodes.opencv_basic_nodes.backend.entry:register"
+    "backend": "custom_nodes.opencv_matching_nodes.backend.entry:register"
   },
   "compatibility": {
     "api": ">=0.1 <1.0",

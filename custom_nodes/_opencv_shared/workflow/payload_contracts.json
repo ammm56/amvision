@@ -1057,5 +1057,691 @@
     },
     "artifact_kinds": [],
     "metadata": {}
+  },
+  {
+    "format_id": "amvision.workflow-payload-contract.v1",
+    "payload_type_id": "local-features.v1",
+    "display_name": "Local Feature Result",
+    "transport_kind": "inline-json",
+    "json_schema": {
+      "type": "object",
+      "properties": {
+        "source_image": {
+          "type": "object",
+          "properties": {
+            "transport_kind": {
+              "type": "string",
+              "enum": [
+                "memory",
+                "storage",
+                "buffer",
+                "frame"
+              ]
+            },
+            "object_key": {
+              "type": "string"
+            },
+            "image_handle": {
+              "type": "string"
+            },
+            "buffer_ref": {
+              "type": "object"
+            },
+            "frame_ref": {
+              "type": "object"
+            },
+            "width": {
+              "type": "integer"
+            },
+            "height": {
+              "type": "integer"
+            },
+            "media_type": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "transport_kind",
+            "media_type"
+          ],
+          "oneOf": [
+            {
+              "properties": {
+                "transport_kind": {
+                  "const": "storage"
+                }
+              },
+              "required": [
+                "object_key"
+              ]
+            },
+            {
+              "properties": {
+                "transport_kind": {
+                  "const": "memory"
+                }
+              },
+              "required": [
+                "image_handle"
+              ]
+            },
+            {
+              "properties": {
+                "transport_kind": {
+                  "const": "buffer"
+                }
+              },
+              "required": [
+                "buffer_ref"
+              ]
+            },
+            {
+              "properties": {
+                "transport_kind": {
+                  "const": "frame"
+                }
+              },
+              "required": [
+                "frame_ref"
+              ]
+            }
+          ]
+        },
+        "source_object_key": {
+          "type": "string"
+        },
+        "feature_extractor": {
+          "type": "string"
+        },
+        "descriptor_kind": {
+          "type": "string"
+        },
+        "descriptor_dtype": {
+          "type": "string"
+        },
+        "descriptor_norm": {
+          "type": "string"
+        },
+        "descriptor_length": {
+          "type": "integer"
+        },
+        "wta_k": {
+          "type": "integer"
+        },
+        "roi_id": {
+          "type": "string"
+        },
+        "roi_kind": {
+          "type": "string"
+        },
+        "roi_bbox_xyxy": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          },
+          "minItems": 4,
+          "maxItems": 4
+        },
+        "count": {
+          "type": "integer"
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "feature_id": {
+                "type": "string"
+              },
+              "feature_index": {
+                "type": "integer"
+              },
+              "x": {
+                "type": "number"
+              },
+              "y": {
+                "type": "number"
+              },
+              "point_xy": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 2,
+                "maxItems": 2
+              },
+              "size": {
+                "type": "number"
+              },
+              "angle_deg": {
+                "type": "number"
+              },
+              "response": {
+                "type": "number"
+              },
+              "octave": {
+                "type": "integer"
+              },
+              "class_id": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "feature_id",
+              "feature_index",
+              "x",
+              "y",
+              "point_xy",
+              "size",
+              "angle_deg",
+              "response",
+              "octave",
+              "class_id"
+            ]
+          }
+        },
+        "descriptors": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "integer"
+            }
+          }
+        }
+      },
+      "required": [
+        "feature_extractor",
+        "descriptor_kind",
+        "descriptor_dtype",
+        "descriptor_length",
+        "items",
+        "descriptors"
+      ]
+    },
+    "artifact_kinds": [],
+    "metadata": {}
+  },
+  {
+    "format_id": "amvision.workflow-payload-contract.v1",
+    "payload_type_id": "feature-matches.v1",
+    "display_name": "Feature Match Result",
+    "transport_kind": "inline-json",
+    "json_schema": {
+      "type": "object",
+      "properties": {
+        "source_a_image": {
+          "type": "object",
+          "properties": {
+            "transport_kind": {
+              "type": "string",
+              "enum": [
+                "memory",
+                "storage",
+                "buffer",
+                "frame"
+              ]
+            },
+            "object_key": {
+              "type": "string"
+            },
+            "image_handle": {
+              "type": "string"
+            },
+            "buffer_ref": {
+              "type": "object"
+            },
+            "frame_ref": {
+              "type": "object"
+            },
+            "width": {
+              "type": "integer"
+            },
+            "height": {
+              "type": "integer"
+            },
+            "media_type": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "transport_kind",
+            "media_type"
+          ],
+          "oneOf": [
+            {
+              "properties": {
+                "transport_kind": {
+                  "const": "storage"
+                }
+              },
+              "required": [
+                "object_key"
+              ]
+            },
+            {
+              "properties": {
+                "transport_kind": {
+                  "const": "memory"
+                }
+              },
+              "required": [
+                "image_handle"
+              ]
+            },
+            {
+              "properties": {
+                "transport_kind": {
+                  "const": "buffer"
+                }
+              },
+              "required": [
+                "buffer_ref"
+              ]
+            },
+            {
+              "properties": {
+                "transport_kind": {
+                  "const": "frame"
+                }
+              },
+              "required": [
+                "frame_ref"
+              ]
+            }
+          ]
+        },
+        "source_b_image": {
+          "type": "object",
+          "properties": {
+            "transport_kind": {
+              "type": "string",
+              "enum": [
+                "memory",
+                "storage",
+                "buffer",
+                "frame"
+              ]
+            },
+            "object_key": {
+              "type": "string"
+            },
+            "image_handle": {
+              "type": "string"
+            },
+            "buffer_ref": {
+              "type": "object"
+            },
+            "frame_ref": {
+              "type": "object"
+            },
+            "width": {
+              "type": "integer"
+            },
+            "height": {
+              "type": "integer"
+            },
+            "media_type": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "transport_kind",
+            "media_type"
+          ],
+          "oneOf": [
+            {
+              "properties": {
+                "transport_kind": {
+                  "const": "storage"
+                }
+              },
+              "required": [
+                "object_key"
+              ]
+            },
+            {
+              "properties": {
+                "transport_kind": {
+                  "const": "memory"
+                }
+              },
+              "required": [
+                "image_handle"
+              ]
+            },
+            {
+              "properties": {
+                "transport_kind": {
+                  "const": "buffer"
+                }
+              },
+              "required": [
+                "buffer_ref"
+              ]
+            },
+            {
+              "properties": {
+                "transport_kind": {
+                  "const": "frame"
+                }
+              },
+              "required": [
+                "frame_ref"
+              ]
+            }
+          ]
+        },
+        "source_a_object_key": {
+          "type": "string"
+        },
+        "source_b_object_key": {
+          "type": "string"
+        },
+        "matcher_kind": {
+          "type": "string"
+        },
+        "cross_check": {
+          "type": "boolean"
+        },
+        "ratio_test_threshold": {
+          "type": "number"
+        },
+        "count": {
+          "type": "integer"
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "match_id": {
+                "type": "string"
+              },
+              "query_feature_id": {
+                "type": "string"
+              },
+              "train_feature_id": {
+                "type": "string"
+              },
+              "query_index": {
+                "type": "integer"
+              },
+              "train_index": {
+                "type": "integer"
+              },
+              "distance": {
+                "type": "number"
+              },
+              "query_xy": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 2,
+                "maxItems": 2
+              },
+              "train_xy": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 2,
+                "maxItems": 2
+              }
+            },
+            "required": [
+              "match_id",
+              "query_feature_id",
+              "train_feature_id",
+              "query_index",
+              "train_index",
+              "distance",
+              "query_xy",
+              "train_xy"
+            ]
+          }
+        }
+      },
+      "required": [
+        "matcher_kind",
+        "cross_check",
+        "items"
+      ]
+    },
+    "artifact_kinds": [],
+    "metadata": {}
+  },
+  {
+    "format_id": "amvision.workflow-payload-contract.v1",
+    "payload_type_id": "planar-transform.v1",
+    "display_name": "Planar Transform Result",
+    "transport_kind": "inline-json",
+    "json_schema": {
+      "type": "object",
+      "properties": {
+        "source_a_image": {
+          "type": "object",
+          "properties": {
+            "transport_kind": {
+              "type": "string",
+              "enum": [
+                "memory",
+                "storage",
+                "buffer",
+                "frame"
+              ]
+            },
+            "object_key": {
+              "type": "string"
+            },
+            "image_handle": {
+              "type": "string"
+            },
+            "buffer_ref": {
+              "type": "object"
+            },
+            "frame_ref": {
+              "type": "object"
+            },
+            "width": {
+              "type": "integer"
+            },
+            "height": {
+              "type": "integer"
+            },
+            "media_type": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "transport_kind",
+            "media_type"
+          ],
+          "oneOf": [
+            {
+              "properties": {
+                "transport_kind": {
+                  "const": "storage"
+                }
+              },
+              "required": [
+                "object_key"
+              ]
+            },
+            {
+              "properties": {
+                "transport_kind": {
+                  "const": "memory"
+                }
+              },
+              "required": [
+                "image_handle"
+              ]
+            },
+            {
+              "properties": {
+                "transport_kind": {
+                  "const": "buffer"
+                }
+              },
+              "required": [
+                "buffer_ref"
+              ]
+            },
+            {
+              "properties": {
+                "transport_kind": {
+                  "const": "frame"
+                }
+              },
+              "required": [
+                "frame_ref"
+              ]
+            }
+          ]
+        },
+        "source_b_image": {
+          "type": "object",
+          "properties": {
+            "transport_kind": {
+              "type": "string",
+              "enum": [
+                "memory",
+                "storage",
+                "buffer",
+                "frame"
+              ]
+            },
+            "object_key": {
+              "type": "string"
+            },
+            "image_handle": {
+              "type": "string"
+            },
+            "buffer_ref": {
+              "type": "object"
+            },
+            "frame_ref": {
+              "type": "object"
+            },
+            "width": {
+              "type": "integer"
+            },
+            "height": {
+              "type": "integer"
+            },
+            "media_type": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "transport_kind",
+            "media_type"
+          ],
+          "oneOf": [
+            {
+              "properties": {
+                "transport_kind": {
+                  "const": "storage"
+                }
+              },
+              "required": [
+                "object_key"
+              ]
+            },
+            {
+              "properties": {
+                "transport_kind": {
+                  "const": "memory"
+                }
+              },
+              "required": [
+                "image_handle"
+              ]
+            },
+            {
+              "properties": {
+                "transport_kind": {
+                  "const": "buffer"
+                }
+              },
+              "required": [
+                "buffer_ref"
+              ]
+            },
+            {
+              "properties": {
+                "transport_kind": {
+                  "const": "frame"
+                }
+              },
+              "required": [
+                "frame_ref"
+              ]
+            }
+          ]
+        },
+        "source_a_object_key": {
+          "type": "string"
+        },
+        "source_b_object_key": {
+          "type": "string"
+        },
+        "transform_kind": {
+          "type": "string"
+        },
+        "matrix_3x3": {
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 3,
+          "items": {
+            "type": "array",
+            "minItems": 3,
+            "maxItems": 3,
+            "items": {
+              "type": "number"
+            }
+          }
+        },
+        "inverse_matrix_3x3": {
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 3,
+          "items": {
+            "type": "array",
+            "minItems": 3,
+            "maxItems": 3,
+            "items": {
+              "type": "number"
+            }
+          }
+        },
+        "match_count": {
+          "type": "integer"
+        },
+        "inlier_count": {
+          "type": "integer"
+        },
+        "inlier_match_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "reprojection_error": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "transform_kind",
+        "matrix_3x3",
+        "match_count",
+        "inlier_count",
+        "inlier_match_ids"
+      ]
+    },
+    "artifact_kinds": [],
+    "metadata": {}
   }
 ]

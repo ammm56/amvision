@@ -106,10 +106,6 @@ from custom_nodes.opencv_basic_nodes.backend.nodes.sobel import (
     NODE_TYPE_ID as SOBEL_NODE_TYPE_ID,
     handle_node as sobel_handler,
 )
-from custom_nodes.opencv_basic_nodes.backend.nodes.template_match import (
-    NODE_TYPE_ID as TEMPLATE_MATCH_NODE_TYPE_ID,
-    handle_node as template_match_handler,
-)
 
 
 NODE_HANDLERS = (
@@ -139,7 +135,6 @@ NODE_HANDLERS = (
     (ADAPTIVE_THRESHOLD_NODE_TYPE_ID, adaptive_threshold_handler),
     (OTSU_THRESHOLD_NODE_TYPE_ID, otsu_threshold_handler),
     (SOBEL_NODE_TYPE_ID, sobel_handler),
-    (TEMPLATE_MATCH_NODE_TYPE_ID, template_match_handler),
 )
 
 

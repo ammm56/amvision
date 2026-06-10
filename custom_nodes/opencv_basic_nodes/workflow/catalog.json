@@ -1059,6 +1059,692 @@
       },
       "artifact_kinds": [],
       "metadata": {}
+    },
+    {
+      "format_id": "amvision.workflow-payload-contract.v1",
+      "payload_type_id": "local-features.v1",
+      "display_name": "Local Feature Result",
+      "transport_kind": "inline-json",
+      "json_schema": {
+        "type": "object",
+        "properties": {
+          "source_image": {
+            "type": "object",
+            "properties": {
+              "transport_kind": {
+                "type": "string",
+                "enum": [
+                  "memory",
+                  "storage",
+                  "buffer",
+                  "frame"
+                ]
+              },
+              "object_key": {
+                "type": "string"
+              },
+              "image_handle": {
+                "type": "string"
+              },
+              "buffer_ref": {
+                "type": "object"
+              },
+              "frame_ref": {
+                "type": "object"
+              },
+              "width": {
+                "type": "integer"
+              },
+              "height": {
+                "type": "integer"
+              },
+              "media_type": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "transport_kind",
+              "media_type"
+            ],
+            "oneOf": [
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "storage"
+                  }
+                },
+                "required": [
+                  "object_key"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "memory"
+                  }
+                },
+                "required": [
+                  "image_handle"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "buffer"
+                  }
+                },
+                "required": [
+                  "buffer_ref"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "frame"
+                  }
+                },
+                "required": [
+                  "frame_ref"
+                ]
+              }
+            ]
+          },
+          "source_object_key": {
+            "type": "string"
+          },
+          "feature_extractor": {
+            "type": "string"
+          },
+          "descriptor_kind": {
+            "type": "string"
+          },
+          "descriptor_dtype": {
+            "type": "string"
+          },
+          "descriptor_norm": {
+            "type": "string"
+          },
+          "descriptor_length": {
+            "type": "integer"
+          },
+          "wta_k": {
+            "type": "integer"
+          },
+          "roi_id": {
+            "type": "string"
+          },
+          "roi_kind": {
+            "type": "string"
+          },
+          "roi_bbox_xyxy": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "minItems": 4,
+            "maxItems": 4
+          },
+          "count": {
+            "type": "integer"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "feature_id": {
+                  "type": "string"
+                },
+                "feature_index": {
+                  "type": "integer"
+                },
+                "x": {
+                  "type": "number"
+                },
+                "y": {
+                  "type": "number"
+                },
+                "point_xy": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 2,
+                  "maxItems": 2
+                },
+                "size": {
+                  "type": "number"
+                },
+                "angle_deg": {
+                  "type": "number"
+                },
+                "response": {
+                  "type": "number"
+                },
+                "octave": {
+                  "type": "integer"
+                },
+                "class_id": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "feature_id",
+                "feature_index",
+                "x",
+                "y",
+                "point_xy",
+                "size",
+                "angle_deg",
+                "response",
+                "octave",
+                "class_id"
+              ]
+            }
+          },
+          "descriptors": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "integer"
+              }
+            }
+          }
+        },
+        "required": [
+          "feature_extractor",
+          "descriptor_kind",
+          "descriptor_dtype",
+          "descriptor_length",
+          "items",
+          "descriptors"
+        ]
+      },
+      "artifact_kinds": [],
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.workflow-payload-contract.v1",
+      "payload_type_id": "feature-matches.v1",
+      "display_name": "Feature Match Result",
+      "transport_kind": "inline-json",
+      "json_schema": {
+        "type": "object",
+        "properties": {
+          "source_a_image": {
+            "type": "object",
+            "properties": {
+              "transport_kind": {
+                "type": "string",
+                "enum": [
+                  "memory",
+                  "storage",
+                  "buffer",
+                  "frame"
+                ]
+              },
+              "object_key": {
+                "type": "string"
+              },
+              "image_handle": {
+                "type": "string"
+              },
+              "buffer_ref": {
+                "type": "object"
+              },
+              "frame_ref": {
+                "type": "object"
+              },
+              "width": {
+                "type": "integer"
+              },
+              "height": {
+                "type": "integer"
+              },
+              "media_type": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "transport_kind",
+              "media_type"
+            ],
+            "oneOf": [
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "storage"
+                  }
+                },
+                "required": [
+                  "object_key"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "memory"
+                  }
+                },
+                "required": [
+                  "image_handle"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "buffer"
+                  }
+                },
+                "required": [
+                  "buffer_ref"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "frame"
+                  }
+                },
+                "required": [
+                  "frame_ref"
+                ]
+              }
+            ]
+          },
+          "source_b_image": {
+            "type": "object",
+            "properties": {
+              "transport_kind": {
+                "type": "string",
+                "enum": [
+                  "memory",
+                  "storage",
+                  "buffer",
+                  "frame"
+                ]
+              },
+              "object_key": {
+                "type": "string"
+              },
+              "image_handle": {
+                "type": "string"
+              },
+              "buffer_ref": {
+                "type": "object"
+              },
+              "frame_ref": {
+                "type": "object"
+              },
+              "width": {
+                "type": "integer"
+              },
+              "height": {
+                "type": "integer"
+              },
+              "media_type": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "transport_kind",
+              "media_type"
+            ],
+            "oneOf": [
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "storage"
+                  }
+                },
+                "required": [
+                  "object_key"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "memory"
+                  }
+                },
+                "required": [
+                  "image_handle"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "buffer"
+                  }
+                },
+                "required": [
+                  "buffer_ref"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "frame"
+                  }
+                },
+                "required": [
+                  "frame_ref"
+                ]
+              }
+            ]
+          },
+          "source_a_object_key": {
+            "type": "string"
+          },
+          "source_b_object_key": {
+            "type": "string"
+          },
+          "matcher_kind": {
+            "type": "string"
+          },
+          "cross_check": {
+            "type": "boolean"
+          },
+          "ratio_test_threshold": {
+            "type": "number"
+          },
+          "count": {
+            "type": "integer"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "match_id": {
+                  "type": "string"
+                },
+                "query_feature_id": {
+                  "type": "string"
+                },
+                "train_feature_id": {
+                  "type": "string"
+                },
+                "query_index": {
+                  "type": "integer"
+                },
+                "train_index": {
+                  "type": "integer"
+                },
+                "distance": {
+                  "type": "number"
+                },
+                "query_xy": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 2,
+                  "maxItems": 2
+                },
+                "train_xy": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 2,
+                  "maxItems": 2
+                }
+              },
+              "required": [
+                "match_id",
+                "query_feature_id",
+                "train_feature_id",
+                "query_index",
+                "train_index",
+                "distance",
+                "query_xy",
+                "train_xy"
+              ]
+            }
+          }
+        },
+        "required": [
+          "matcher_kind",
+          "cross_check",
+          "items"
+        ]
+      },
+      "artifact_kinds": [],
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.workflow-payload-contract.v1",
+      "payload_type_id": "planar-transform.v1",
+      "display_name": "Planar Transform Result",
+      "transport_kind": "inline-json",
+      "json_schema": {
+        "type": "object",
+        "properties": {
+          "source_a_image": {
+            "type": "object",
+            "properties": {
+              "transport_kind": {
+                "type": "string",
+                "enum": [
+                  "memory",
+                  "storage",
+                  "buffer",
+                  "frame"
+                ]
+              },
+              "object_key": {
+                "type": "string"
+              },
+              "image_handle": {
+                "type": "string"
+              },
+              "buffer_ref": {
+                "type": "object"
+              },
+              "frame_ref": {
+                "type": "object"
+              },
+              "width": {
+                "type": "integer"
+              },
+              "height": {
+                "type": "integer"
+              },
+              "media_type": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "transport_kind",
+              "media_type"
+            ],
+            "oneOf": [
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "storage"
+                  }
+                },
+                "required": [
+                  "object_key"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "memory"
+                  }
+                },
+                "required": [
+                  "image_handle"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "buffer"
+                  }
+                },
+                "required": [
+                  "buffer_ref"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "frame"
+                  }
+                },
+                "required": [
+                  "frame_ref"
+                ]
+              }
+            ]
+          },
+          "source_b_image": {
+            "type": "object",
+            "properties": {
+              "transport_kind": {
+                "type": "string",
+                "enum": [
+                  "memory",
+                  "storage",
+                  "buffer",
+                  "frame"
+                ]
+              },
+              "object_key": {
+                "type": "string"
+              },
+              "image_handle": {
+                "type": "string"
+              },
+              "buffer_ref": {
+                "type": "object"
+              },
+              "frame_ref": {
+                "type": "object"
+              },
+              "width": {
+                "type": "integer"
+              },
+              "height": {
+                "type": "integer"
+              },
+              "media_type": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "transport_kind",
+              "media_type"
+            ],
+            "oneOf": [
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "storage"
+                  }
+                },
+                "required": [
+                  "object_key"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "memory"
+                  }
+                },
+                "required": [
+                  "image_handle"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "buffer"
+                  }
+                },
+                "required": [
+                  "buffer_ref"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "frame"
+                  }
+                },
+                "required": [
+                  "frame_ref"
+                ]
+              }
+            ]
+          },
+          "source_a_object_key": {
+            "type": "string"
+          },
+          "source_b_object_key": {
+            "type": "string"
+          },
+          "transform_kind": {
+            "type": "string"
+          },
+          "matrix_3x3": {
+            "type": "array",
+            "minItems": 3,
+            "maxItems": 3,
+            "items": {
+              "type": "array",
+              "minItems": 3,
+              "maxItems": 3,
+              "items": {
+                "type": "number"
+              }
+            }
+          },
+          "inverse_matrix_3x3": {
+            "type": "array",
+            "minItems": 3,
+            "maxItems": 3,
+            "items": {
+              "type": "array",
+              "minItems": 3,
+              "maxItems": 3,
+              "items": {
+                "type": "number"
+              }
+            }
+          },
+          "match_count": {
+            "type": "integer"
+          },
+          "inlier_count": {
+            "type": "integer"
+          },
+          "inlier_match_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "reprojection_error": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "transform_kind",
+          "matrix_3x3",
+          "match_count",
+          "inlier_count",
+          "inlier_match_ids"
+        ]
+      },
+      "artifact_kinds": [],
+      "metadata": {}
     }
   ],
   "node_definitions": [
@@ -3275,127 +3961,6 @@
         "opencv.sobel",
         "vision.edge-enhance",
         "vision.preprocess"
-      ],
-      "runtime_requirements": {
-        "python_packages": [
-          "opencv-python",
-          "numpy"
-        ]
-      },
-      "node_pack_id": "opencv.basic-nodes",
-      "node_pack_version": "0.1.0",
-      "metadata": {}
-    },
-    {
-      "format_id": "amvision.node-definition.v1",
-      "node_type_id": "custom.opencv.template-match",
-      "display_name": "Template Match",
-      "category": "opencv.matching",
-      "description": "在输入图片中按模板匹配搜索重复结构位置，并输出标准 regions.v1 与摘要，适合基准定位、标签找位和治具 presence 检查。",
-      "implementation_kind": "custom-node",
-      "runtime_kind": "python-callable",
-      "input_ports": [
-        {
-          "name": "image",
-          "display_name": "Image",
-          "payload_type_id": "image-ref.v1",
-          "description": "",
-          "required": true,
-          "multiple": false,
-          "metadata": {}
-        },
-        {
-          "name": "template_image",
-          "display_name": "Template Image",
-          "payload_type_id": "image-ref.v1",
-          "description": "",
-          "required": true,
-          "multiple": false,
-          "metadata": {}
-        },
-        {
-          "name": "roi",
-          "display_name": "ROI",
-          "payload_type_id": "roi.v1",
-          "description": "",
-          "required": false,
-          "multiple": false,
-          "metadata": {}
-        }
-      ],
-      "output_ports": [
-        {
-          "name": "regions",
-          "display_name": "Regions",
-          "payload_type_id": "regions.v1",
-          "description": "",
-          "required": true,
-          "multiple": false,
-          "metadata": {}
-        },
-        {
-          "name": "summary",
-          "display_name": "Summary",
-          "payload_type_id": "value.v1",
-          "description": "",
-          "required": true,
-          "multiple": false,
-          "metadata": {}
-        }
-      ],
-      "parameter_schema": {
-        "type": "object",
-        "properties": {
-          "method": {
-            "type": "string",
-            "enum": [
-              "ccoeff-normed",
-              "ccorr-normed",
-              "sqdiff-normed"
-            ],
-            "default": "ccoeff-normed"
-          },
-          "score_threshold": {
-            "type": "number",
-            "minimum": 0,
-            "maximum": 1,
-            "default": 0.8
-          },
-          "max_matches": {
-            "type": "integer",
-            "minimum": 1,
-            "default": 1
-          },
-          "nms_iou_threshold": {
-            "type": "number",
-            "minimum": 0,
-            "maximum": 1,
-            "default": 0.3
-          },
-          "convert_to_grayscale": {
-            "type": "boolean",
-            "default": true
-          },
-          "region_id_prefix": {
-            "type": "string",
-            "default": "tmpl"
-          },
-          "class_id_default": {
-            "type": "integer",
-            "default": -1
-          },
-          "class_name_default": {
-            "type": "string",
-            "default": "template-match"
-          }
-        }
-      },
-      "parameter_ui_schema": null,
-      "capability_tags": [
-        "opencv.template-match",
-        "vision.localization",
-        "vision.region",
-        "inspection.position"
       ],
       "runtime_requirements": {
         "python_packages": [
