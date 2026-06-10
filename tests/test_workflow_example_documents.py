@@ -1744,6 +1744,114 @@ def test_industrial_single_frame_reference_diff_defect_gate_documents_are_valid(
     assert application.bindings[7].config["payload_type_id"] == "image-ref.v1"
 
 
+def test_industrial_single_frame_reference_diff_watershed_surface_gate_documents_are_valid() -> (
+    None
+):
+    """验证参考图差异 + watershed 表面异常工业样例模板与应用可以通过当前合同校验。"""
+
+    example_dir = (
+        Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
+    )
+    template_path = (
+        example_dir
+        / "industrial_single_frame_reference_diff_watershed_surface_gate.template.json"
+    )
+    application_path = (
+        example_dir
+        / "industrial_single_frame_reference_diff_watershed_surface_gate.application.json"
+    )
+    template = WorkflowGraphTemplate.model_validate(
+        json.loads(template_path.read_text(encoding="utf-8"))
+    )
+    application = FlowApplication.model_validate(
+        json.loads(application_path.read_text(encoding="utf-8"))
+    )
+
+    custom_nodes_root = Path(__file__).resolve().parents[1] / "custom_nodes"
+    node_pack_loader = LocalNodePackLoader(custom_nodes_root)
+    node_pack_loader.refresh()
+    registry = NodeCatalogRegistry(node_pack_loader=node_pack_loader)
+    validate_workflow_graph_template(
+        template=template,
+        node_definitions=registry.get_workflow_node_definitions(),
+    )
+    validate_flow_application_bindings(template=template, application=application)
+
+    assert [node.node_id for node in template.nodes] == [
+        "request_image_path_input",
+        "request_reference_image_path_input",
+        "load_image",
+        "load_reference_image",
+        "create_roi",
+        "crop_image",
+        "crop_reference_image",
+        "image_diff",
+        "diff_heatmap_preview",
+        "diff_threshold",
+        "watershed_split",
+        "connected_components",
+        "overlay_regions",
+        "surface_uniformity_metrics",
+        "foreground_change_ratio",
+        "extract_cluster_density",
+        "cluster_density_check",
+        "foreground_change_ratio_check",
+        "presence_check",
+        "metadata_object",
+        "metrics_object",
+        "process_decision",
+        "alarm_condition",
+        "save_result_json",
+        "append_result_csv",
+    ]
+    assert (
+        template.metadata["example_kind"]
+        == "industrial-single-frame-reference-diff-watershed-surface-gate"
+    )
+    assert (
+        template.metadata["focus"]
+        == "single-frame-industrial-reference-diff-watershed-surface-chain"
+    )
+    assert template.metadata["dynamic_roi_input_binding"] == "request_roi"
+    assert [template_input.input_id for template_input in template.template_inputs] == [
+        "request_image_path",
+        "request_reference_image_path",
+        "request_roi",
+    ]
+    assert [
+        template_input.payload_type_id for template_input in template.template_inputs
+    ] == ["value.v1", "value.v1", "value.v1"]
+    assert template.template_inputs[2].required is False
+    assert application.template_ref.source_uri == (
+        "docs/examples/workflows/industrial_single_frame_reference_diff_watershed_surface_gate.template.json"
+    )
+    assert application.runtime_mode == "python-json-workflow"
+    assert [binding.binding_id for binding in application.bindings] == [
+        "request_image_path",
+        "request_reference_image_path",
+        "request_roi",
+        "cropped_image",
+        "diff_image",
+        "diff_heatmap_image",
+        "threshold_image",
+        "watershed_image",
+        "defect_regions",
+        "surface_metrics",
+        "foreground_change_ratio",
+        "review_overlay_image",
+        "inspection_result",
+        "inspection_alarm",
+        "decision_summary",
+        "json_summary",
+        "csv_summary",
+    ]
+    assert application.bindings[2].required is False
+    assert application.bindings[5].config["payload_type_id"] == "image-ref.v1"
+    assert application.bindings[8].config["payload_type_id"] == "regions.v1"
+    assert application.bindings[9].config["payload_type_id"] == "value.v1"
+    assert application.bindings[10].config["payload_type_id"] == "value.v1"
+
+
 def test_industrial_single_frame_sobel_laplacian_edge_gap_gate_documents_are_valid() -> (
     None
 ):

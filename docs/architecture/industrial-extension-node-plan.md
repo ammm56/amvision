@@ -122,6 +122,7 @@
 - `template-match / orb-keypoints / orb-match / homography-estimate` 已正式迁入 `custom_nodes/opencv_matching_nodes/`
 - 公开 `node_type_id` 保持不变，当前仍统一使用 `custom.opencv.*`
 - checked-in 样例 `industrial_single_frame_calibrated_template_edge_gate.*`、`industrial_single_frame_calibrated_orb_homography_gate.*`、`industrial_single_frame_calibrated_orb_bridged_template_edge_gate.*`、`industrial_single_frame_line_pair_measure_gate.*` 与 `industrial_single_frame_circle_concentricity_gate.*` 继续作为拆包后的主线验证入口；`test_opencv_matching_nodes.py` 继续作为 ORB / homography 参考对位链的定向运行时回归入口
+- checked-in 样例 `industrial_single_frame_reference_diff_watershed_surface_gate.*` 当前也已补入验证入口，专门覆盖 `opencv.defect-nodes` 中 `heatmap-preview / watershed / connected-components` 到工业规则链的现场闭环。
 
 其中第一批更贴工业现场的传统视觉补强当前已接通：
 
