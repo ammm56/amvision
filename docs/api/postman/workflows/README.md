@@ -15,8 +15,9 @@
 9. `08-plc-register-modbus-tcp-async-result-record/`：第八类 `plc-register` Modbus TCP polling + async submit + result-record / http-post 回传链路。
 10. `09-industrial-local-directory-watch-yolox-position-gate/`：第九类 `directory-watch` 目录事件监听 + 静态 deployment_request 注入 + 工业 YOLOX 位置门控链路。
 11. `10-industrial-single-frame-glue-roi-delivery-bundle/`：第十类工业单帧 `regions.v1 + ROI + delivery context` 结果交付链，覆盖 PLC 信号写入、JSON/CSV 归档、MES 请求准备和 local-db upsert。
+12. `11-industrial-local-directory-poll-yolox-position-gate/`：第十一类 `directory-poll` 固定周期目录轮询 + 静态 deployment_request 注入 + 工业 YOLOX 位置门控链路。
 
-后续完整 workflow app 示例按 `11-*`、`12-*` 继续添加。
+后续完整 workflow app 示例按 `12-*`、`13-*` 继续添加。
 
 ## 每个 collection 的调用面
 
@@ -52,9 +53,12 @@
 - `09-*` 的具体导入变量、改值位置和推荐联调顺序见 [docs/api/postman/workflows/09-industrial-local-directory-watch-yolox-position-gate/README.md](09-industrial-local-directory-watch-yolox-position-gate/README.md)。
 - `10-*` collection 回到标准 HTTP workflow app 调试面，但把现场最常见的结果交付出口收进同一条链：同一个 runtime 中既能做 ROI/规则判定，也能同步准备 PLC/JSON/CSV/MES/local-db 结果对象。
 - `10-*` 的具体导入变量、改值位置和推荐联调顺序见 [docs/api/postman/workflows/10-industrial-single-frame-glue-roi-delivery-bundle/README.md](10-industrial-single-frame-glue-roi-delivery-bundle/README.md)。
+- `11-*` collection 与 `09-*` 一样保留完整 TriggerSource 调试链，但把入口语义换成固定周期轮询：重点变成 `directory-poll` 的扫描周期、稳定期、checkpoint 恢复，以及静态 `deployment_request` 如何接进同一条 YOLOX 规则链。
+- `11-*` 的具体导入变量、改值位置和推荐联调顺序见 [docs/api/postman/workflows/11-industrial-local-directory-poll-yolox-position-gate/README.md](11-industrial-local-directory-poll-yolox-position-gate/README.md)。
 - FrameRef/BufferRef 的固定请求体需要由本地 adapter 在运行时生成，因此 `06-*`、`07-*` collection 仍不直接发送图片 bytes；图片数据面继续使用 C# SDK 或其他后续 SDK。
 - TriggerSource 只负责提交协议原生输入，不替 workflow 图做 `image-ref -> image-base64`、本地磁盘读图或相机取帧。需要这些能力时，应通过图中的显式节点或 custom node 实现。
 - 当前 `plc-register` 和 `directory-watch` 的 `input_binding_mapping` 还不会自动把 `payload / event` 原始对象包装成 `value.v1`；因此 `08-*`、`09-*` collection 对应的 workflow app 都显式使用 `response-body.v1 -> payload-to-value` 做图内桥接。
+- 当前 `directory-poll` 也沿用同一条边界；因此 `11-*` collection 对应的 workflow app 也显式使用 `response-body.v1 -> payload-to-value` 做图内桥接，而不是把包装逻辑隐式塞进 TriggerSource。
 - `workflow-execute-output` 类型的输出会直接出现在 `outputs[binding_id]`；`http-response` 类型的输出会出现在 `outputs[binding_id] = {"status_code": 200, "body": {...}}`。
 - 项目目录读取、Project 文件 metadata/content，以及模板/应用/runtime 主列表的 offset/limit 分页示例统一收口到 [docs/api/postman/workflow-runtime.postman_collection.json](../workflow-runtime.postman_collection.json)。分场景 collection 继续只保留最短业务链路，不重复铺通用控制面请求。
 - `05-*`、`07-*` 这类保存图片场景的默认模板已经切到 `projects/{project_id}/results/workflow-applications/{application_id}/runs/{workflow_run_id}/...` 结果域，因此后续可以直接接入 Project 结果读取面。旧模板如果仍写 `workflow-apps/...`，当前运行时继续兼容，但不再作为默认示例。

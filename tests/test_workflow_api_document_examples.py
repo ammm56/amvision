@@ -63,6 +63,9 @@ TRIGGER_SOURCE_API_EXAMPLE_FOLDERS = {
     "industrial_local_directory_watch_yolox_position_gate": Path(
         "09-industrial-local-directory-watch-yolox-position-gate"
     ),
+    "industrial_local_directory_poll_yolox_position_gate": Path(
+        "11-industrial-local-directory-poll-yolox-position-gate"
+    ),
 }
 
 ALL_WORKFLOW_API_EXAMPLE_FOLDERS = {
@@ -91,6 +94,9 @@ WORKFLOW_POSTMAN_COLLECTIONS = {
     ),
     "10-industrial-single-frame-glue-roi-delivery-bundle": (
         "10-industrial-single-frame-glue-roi-delivery-bundle.postman_collection.json"
+    ),
+    "11-industrial-local-directory-poll-yolox-position-gate": (
+        "11-industrial-local-directory-poll-yolox-position-gate.postman_collection.json"
     ),
 }
 
@@ -1008,6 +1014,159 @@ def test_directory_watch_trigger_source_api_examples_are_valid() -> None:
     assert trigger_source_request["idempotency_key_path"] == "payload.batch_id"
 
 
+def test_directory_poll_trigger_source_api_examples_are_valid() -> None:
+    """验证 11 directory-poll TriggerSource 配置补充示例已经收成正式接法。"""
+
+    example_name = "industrial_local_directory_poll_yolox_position_gate"
+    save_template_request = _read_api_workflow_example(
+        example_name, "save-template.request.json"
+    )
+    save_application_request = _read_api_workflow_example(
+        example_name, "save-application.request.json"
+    )
+    template = json.loads(
+        (
+            DOCS_WORKFLOW_EXAMPLE_DIR
+            / "industrial_local_directory_poll_yolox_position_gate.template.json"
+        ).read_text(encoding="utf-8")
+    )
+    application_payload = json.loads(
+        (
+            DOCS_WORKFLOW_EXAMPLE_DIR
+            / "industrial_local_directory_poll_yolox_position_gate.application.json"
+        ).read_text(encoding="utf-8")
+    )
+    application = FlowApplication.model_validate(application_payload)
+    create_request = _read_api_workflow_example(
+        example_name,
+        "app-runtime.create.request.json"
+    )
+    preview_run_request = _read_api_workflow_example(
+        example_name,
+        "preview-run.request.json"
+    )
+    invoke_request = _read_api_workflow_example(
+        example_name,
+        "app-runtime.invoke.request.json"
+    )
+    run_create_request = _read_api_workflow_example(
+        example_name,
+        "app-runtime.run.create.request.json"
+    )
+    trigger_source_request = _read_api_workflow_example(
+        example_name,
+        "trigger-source.create.request.json"
+    )
+
+    assert save_template_request == {"template": template}
+    assert save_application_request == {"application": application_payload}
+    assert application.application_id == "industrial-local-directory-poll-yolox-position-gate-app"
+    assert (
+        application.metadata["example_kind"]
+        == "industrial-local-directory-poll-yolox-position-gate"
+    )
+    assert application.metadata["trigger_source_input"] == "directory-poll"
+    assert create_request["application_id"] == application.application_id
+    assert (
+        create_request["metadata"]["example_kind"]
+        == "industrial-local-directory-poll-yolox-position-gate"
+    )
+    assert create_request["metadata"]["trigger_source_input"] == "directory-poll"
+
+    input_binding_ids = {
+        binding.binding_id
+        for binding in application.bindings
+        if binding.direction == "input" and binding.required
+    }
+    assert input_binding_ids == {
+        "request_trigger_payload",
+        "request_trigger_event",
+        "deployment_request",
+    }
+    assert set(preview_run_request["input_bindings"]) == input_binding_ids
+    assert set(invoke_request["input_bindings"]) == input_binding_ids
+    assert set(run_create_request["input_bindings"]) == input_binding_ids
+    assert preview_run_request["application_ref"] == {
+        "application_id": application.application_id
+    }
+    assert preview_run_request["execution_metadata"]["trigger_source"] == "editor-preview"
+    assert preview_run_request["timeout_seconds"] == 30
+    assert (
+        preview_run_request["input_bindings"]["request_trigger_payload"]["batch_id"]
+        == "directory-poll-trigger-source-11:1"
+    )
+    assert (
+        invoke_request["execution_metadata"]["scenario"]
+        == "industrial-local-directory-poll-yolox-position-gate"
+    )
+    assert invoke_request["execution_metadata"]["trigger_source"] == "sync-api"
+    assert run_create_request["execution_metadata"]["trigger_source"] == "async-api"
+    assert (
+        invoke_request["input_bindings"]["request_trigger_event"]["trigger_kind"]
+        == "directory-poll"
+    )
+    assert (
+        invoke_request["input_bindings"]["deployment_request"]["value"][
+            "deployment_instance_id"
+        ]
+        == "{{deploymentInstanceId}}"
+    )
+
+    assert (
+        trigger_source_request["trigger_source_id"]
+        == "directory-poll-trigger-source-11"
+    )
+    assert (
+        trigger_source_request["metadata"]["example_kind"]
+        == "industrial-local-directory-poll-yolox-position-gate"
+    )
+    assert (
+        trigger_source_request["default_execution_metadata"]["scenario"]
+        == "industrial-local-directory-poll-yolox-position-gate"
+    )
+    assert (
+        trigger_source_request["default_execution_metadata"]["trigger_source"]
+        == "directory-poll"
+    )
+    assert set(trigger_source_request["input_binding_mapping"]) == {
+        "request_trigger_payload",
+        "request_trigger_event",
+        "deployment_request",
+    }
+    assert (
+        trigger_source_request["input_binding_mapping"]["request_trigger_payload"][
+            "source"
+        ]
+        == "payload"
+    )
+    assert (
+        trigger_source_request["input_binding_mapping"]["request_trigger_event"][
+            "source"
+        ]
+        == "event"
+    )
+    assert (
+        trigger_source_request["input_binding_mapping"]["deployment_request"][
+            "payload_type_id"
+        ]
+        == "value.v1"
+    )
+    assert (
+        trigger_source_request["input_binding_mapping"]["deployment_request"]["value"][
+            "value"
+        ]["deployment_instance_id"]
+        == "{{deploymentInstanceId}}"
+    )
+    assert trigger_source_request["result_mapping"]["result_binding"] == "batch_record"
+    assert trigger_source_request["result_mapping"]["result_mode"] == "accepted-then-query"
+    assert trigger_source_request["transport_config"]["scan_interval_seconds"] == 1.0
+    assert (
+        trigger_source_request["transport_config"]["min_stable_age_seconds"] == 1.0
+    )
+    assert "force_polling" not in trigger_source_request["transport_config"]
+    assert trigger_source_request["idempotency_key_path"] == "payload.batch_id"
+
+
 def test_directory_watch_trigger_source_document_indexes_formal_example() -> None:
     """验证 directory-watch 正式配置示例已经同步进入 TriggerSource 文档。"""
 
@@ -1024,6 +1183,12 @@ def test_directory_watch_trigger_source_document_indexes_formal_example() -> Non
     assert "idempotency_key_path\": \"payload.batch_id\"" in document_text
     assert "force_polling = true" in document_text
     assert "request_roi" in document_text
+    assert "11-industrial-local-directory-poll-yolox-position-gate" in document_text
+    assert (
+        "industrial_local_directory_poll_yolox_position_gate.application.json"
+        in document_text
+    )
+    assert "scan_interval_seconds" in document_text
 
 
 def test_workflow_api_end_to_end_qr_crop_remap_app_runtime_examples_are_valid() -> None:
@@ -1219,6 +1384,7 @@ def test_workflow_postman_directory_contains_ordered_formal_workflow_collections
     assert "08-plc-register-modbus-tcp-async-result-record" in readme_text
     assert "09-industrial-local-directory-watch-yolox-position-gate" in readme_text
     assert "10-industrial-single-frame-glue-roi-delivery-bundle" in readme_text
+    assert "11-industrial-local-directory-poll-yolox-position-gate" in readme_text
     assert "Create Preview Run / Get Preview Run" in readme_text
     assert "Create Workflow Run / Get Workflow Run" in readme_text
     assert "Create TriggerSource / Enable / Health / Disable" in readme_text
@@ -1255,10 +1421,12 @@ def test_workflow_api_examples_are_classified_by_numbered_directories() -> None:
         "08-plc-register-modbus-tcp-async-result-record",
         "09-industrial-local-directory-watch-yolox-position-gate",
         "10-industrial-single-frame-glue-roi-delivery-bundle",
+        "11-industrial-local-directory-poll-yolox-position-gate",
     ]
     assert "同一个 workflow app 同时发布 HTTP `image-base64.v1` 和 ZeroMQ `image-ref.v1` 输入" in readme_text
     assert "独立的 TriggerSource / PLC 调试示例" in readme_text
     assert "独立的 TriggerSource / directory-watch 调试示例" in readme_text
+    assert "独立的 TriggerSource / directory-poll 调试示例" in readme_text
     assert "正式的工业单帧交付示例" in readme_text
     assert "已接入 LocalBufferBroker direct mmap 数据面和 PublishedInferenceGateway 事件 dispatcher" in readme_text
     assert "BufferRef" in readme_text
@@ -1347,6 +1515,22 @@ def test_workflow_api_examples_are_classified_by_numbered_directories() -> None:
             "Invoke App Runtime (Synthetic Event)",
             id="09-directory-watch-trigger-source",
         ),
+        pytest.param(
+            "11-industrial-local-directory-poll-yolox-position-gate",
+            "11-industrial-local-directory-poll-yolox-position-gate.postman_collection.json",
+            "industrial_local_directory_poll_yolox_position_gate",
+            "industrial-local-directory-poll-yolox-position-gate-app",
+            "industrial-local-directory-poll-yolox-position-gate",
+            {
+                "request_trigger_payload",
+                "request_trigger_event",
+                "deployment_request",
+            },
+            "directory-poll-trigger-source-11",
+            "directory-poll",
+            "Invoke App Runtime (Synthetic Event)",
+            id="11-directory-poll-trigger-source",
+        ),
     ],
 )
 def test_trigger_source_postman_collections_include_runtime_prepare_steps(
@@ -1403,7 +1587,7 @@ def test_trigger_source_postman_collections_include_runtime_prepare_steps(
     elif expected_trigger_source_input == "plc-register":
         assert invoke_body["input_bindings"]["request_trigger_payload"]["matched"] is True
         assert invoke_body["input_bindings"]["request_trigger_event"]["trigger_kind"] == "plc-register"
-    else:
+    elif expected_trigger_source_input == "directory-watch":
         assert variables["deploymentInstanceId"] == "deployment-instance-1"
         assert invoke_body["input_bindings"]["request_trigger_payload"]["batch_id"] == (
             "directory-watch-trigger-source-09:1"
@@ -1418,6 +1602,29 @@ def test_trigger_source_postman_collections_include_runtime_prepare_steps(
             ]
             == "{{deploymentInstanceId}}"
         )
+    elif expected_trigger_source_input == "directory-poll":
+        assert variables["deploymentInstanceId"] == "deployment-instance-1"
+        assert invoke_body["input_bindings"]["request_trigger_payload"]["batch_id"] == (
+            "directory-poll-trigger-source-11:1"
+        )
+        assert (
+            invoke_body["input_bindings"]["request_trigger_payload"]["scan_summary"][
+                "new_candidate_count"
+            ]
+            == 2
+        )
+        assert (
+            invoke_body["input_bindings"]["request_trigger_event"]["trigger_kind"]
+            == "directory-poll"
+        )
+        assert (
+            invoke_body["input_bindings"]["deployment_request"]["value"][
+                "deployment_instance_id"
+            ]
+            == "{{deploymentInstanceId}}"
+        )
+    else:
+        raise AssertionError(f"未覆盖的 TriggerSource 输入类型: {expected_trigger_source_input}")
 
 
 def test_local_buffer_broker_architecture_document_is_indexed() -> None:

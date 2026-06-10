@@ -10,8 +10,8 @@
 - `08-*`：独立的 TriggerSource / PLC 调试示例，聚焦 `plc-register -> workflow app runtime -> result-record -> http-post` 这条现场回传链。
 - `09-*`：独立的 TriggerSource / directory-watch 调试示例，聚焦“目录事件 -> 工业目录批次检测 workflow app”的现场接法。
 - `10-*`：正式的工业单帧交付示例，聚焦 `regions.v1 + ROI + delivery context -> process-decision -> PLC/JSON/CSV/MES/local-db` 这条现场结果交付链。
-- 当前 `directory-poll` TriggerSource 的后端适配器已经实现，但仓库里还没有与 `09-*` 对等的一套 checked-in API 调试样例；现阶段仅有节点级 `industrial_local_directory_polling_cursor_guard.*` 工作流模板用于目录轮询守护语义说明。
-- 后续完整示例按 `11-*`、`12-*` 继续新增。
+- `11-*`：独立的 TriggerSource / directory-poll 调试示例，聚焦“固定周期目录轮询 -> 工业目录批次检测 workflow app”的现场接法，并把 `checkpoint + batch + callback` 这条正式链路收成 checked-in 调试入口。
+- 后续完整示例按 `12-*`、`13-*` 继续新增。
 
 ## 每个示例目录的文件
 
@@ -19,6 +19,7 @@
 - `06-*`、`07-*`、`08-*` 目录包含：`save-template.request.json`、`save-application.request.json`、`preview-run.request.json`、`app-runtime.create.request.json`、`app-runtime.invoke.request.json`、`app-runtime.run.create.request.json`、`trigger-source.create.request.json`。
 - `09-*` 目录包含：`save-template.request.json`、`save-application.request.json`、`preview-run.request.json`、`app-runtime.create.request.json`、`app-runtime.invoke.request.json`、`app-runtime.run.create.request.json`、`trigger-source.create.request.json`。
 - `10-*` 目录包含：`save-template.request.json`、`save-application.request.json`、`preview-run.request.json`、`app-runtime.create.request.json`、`app-runtime.invoke.request.json`、`app-runtime.run.create.request.json`。
+- `11-*` 目录包含：`save-template.request.json`、`save-application.request.json`、`preview-run.request.json`、`app-runtime.create.request.json`、`app-runtime.invoke.request.json`、`app-runtime.run.create.request.json`、`trigger-source.create.request.json`。
 
 `06-*`、`07-*`、`08-*`、`09-*` 不是只保留 TriggerSource 特例接口；Save Template、Save Application、Preview Run、Create App Runtime、Invoke App Runtime 和 Create Workflow Run 仍然完整保留，TriggerSource 请求只是额外增加的协议入口调试步骤。
 
@@ -27,6 +28,10 @@
 `09-*` 的实际导入变量、改值位置和推荐联调顺序见 [docs/api/postman/workflows/09-industrial-local-directory-watch-yolox-position-gate/README.md](../../postman/workflows/09-industrial-local-directory-watch-yolox-position-gate/README.md)。
 
 `10-*` 的实际导入变量、改值位置和推荐联调顺序见 [docs/api/postman/workflows/10-industrial-single-frame-glue-roi-delivery-bundle/README.md](../../postman/workflows/10-industrial-single-frame-glue-roi-delivery-bundle/README.md)。
+
+`11-*` 当前复用已经 checked-in 的 `docs/examples/workflows/industrial_local_directory_poll_yolox_position_gate.template.json` 与 `industrial_local_directory_poll_yolox_position_gate.application.json` 作为上游源，并把 `trigger-source.create.request.json`、synthetic preview/invoke/run 和正式 Postman 调试链一起补齐。这样 `directory-poll` 的正式配置样例、workflow 源 JSON 和调试请求体也能像 `09-*` 一样沿同一套链路收口。
+
+`11-*` 的实际导入变量、改值位置和推荐联调顺序见 [docs/api/postman/workflows/11-industrial-local-directory-poll-yolox-position-gate/README.md](../../postman/workflows/11-industrial-local-directory-poll-yolox-position-gate/README.md)。
 
 `dataset-package.v1` 的 preview 示例使用 JSON 内联 base64 `package_bytes` 表达小型 zip 包；正式 runtime invoke/run 示例会保留 `content_type: multipart/form-data`、`input_bindings_json` 和 `files` 字段，实际 Postman 调用使用对应 collection 中的 form-data。
 
@@ -41,6 +46,8 @@ TriggerSource 示例目录在完整本地调试链路之外额外描述协议入
 `08-*` 当前则显式保留另一条边界：`plc-register` 的 `input_binding_mapping` 目前只读取标准化后的 `payload / event` 原始对象，不会自动包装成 `value.v1`。因此该示例把 `request_trigger_payload` 与 `request_trigger_event` 定义为 `response-body.v1`，再在图内使用 `payload-to-value` 桥接为后续规则节点需要的 `value.v1`。
 
 `09-*` 当前沿用同一条边界：`directory-watch` 的 `input_binding_mapping` 仍然只负责把标准化后的 `payload / event` 原始对象映射到 workflow app 输入，不会自动补 `value.v1` 包装。因此目录监听示例继续把 `request_trigger_payload` 与 `request_trigger_event` 定义为 `response-body.v1`，并把固定 `deployment_instance_id` 通过 `input_binding_mapping.deployment_request.value` 静态注入到 workflow app。
+
+`11-*` 当前也沿用同一条边界：`directory-poll` 的 `input_binding_mapping` 仍然只负责把标准化后的 `payload / event` 原始对象映射到 workflow app 输入，不会自动补 `value.v1` 包装。因此目录轮询示例同样把 `request_trigger_payload` 与 `request_trigger_event` 定义为 `response-body.v1`，并把固定 `deployment_instance_id` 通过 `input_binding_mapping.deployment_request.value` 静态注入到 workflow app。
 
 第二到第五类 workflow 当前没有像第一类训练链路那样的 template 内动态默认请求拼装。`02-*`、`03-*`、`04-*` 的示例请求体只显式展示真实输入 `deployment_instance_id`，`05-*` 只显式展示 `request_image`；检测阈值、OpenCV 处理参数、health 摘要字段等固定值保留在 `save-template.request.json` 的节点参数中。
 

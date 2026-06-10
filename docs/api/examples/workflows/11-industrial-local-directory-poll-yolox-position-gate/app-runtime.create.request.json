@@ -1,0 +1,11 @@
+{
+  "project_id": "project-1",
+  "application_id": "industrial-local-directory-poll-yolox-position-gate-app",
+  "display_name": "Industrial Local Directory Poll YOLOX Position Gate Runtime",
+  "metadata": {
+    "example_kind": "industrial-local-directory-poll-yolox-position-gate",
+    "trigger_source_input": "directory-poll"
+  }
+}
+
+

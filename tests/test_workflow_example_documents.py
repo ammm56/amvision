@@ -2495,6 +2495,127 @@ def test_industrial_local_directory_watch_yolox_position_gate_documents_are_vali
     assert application.bindings[7].config["payload_type_id"] == "boolean.v1"
 
 
+def test_industrial_local_directory_poll_yolox_position_gate_documents_are_valid() -> (
+    None
+):
+    """验证工业目录轮询触发检测闭环样例模板与应用可以通过当前合同校验。"""
+
+    example_dir = (
+        Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
+    )
+    template_path = (
+        example_dir / "industrial_local_directory_poll_yolox_position_gate.template.json"
+    )
+    application_path = (
+        example_dir
+        / "industrial_local_directory_poll_yolox_position_gate.application.json"
+    )
+    template = WorkflowGraphTemplate.model_validate(
+        json.loads(template_path.read_text(encoding="utf-8"))
+    )
+    application = FlowApplication.model_validate(
+        json.loads(application_path.read_text(encoding="utf-8"))
+    )
+
+    registry = NodeCatalogRegistry()
+    validate_workflow_graph_template(
+        template=template,
+        node_definitions=registry.get_workflow_node_definitions(),
+    )
+    validate_flow_application_bindings(template=template, application=application)
+
+    assert [node.node_id for node in template.nodes] == [
+        "wrap_trigger_payload",
+        "wrap_trigger_event",
+        "deployment_request_input",
+        "extract_batch_files",
+        "extract_batch_id",
+        "extract_scan_summary",
+        "extract_directory_path",
+        "create_roi",
+        "iterate_batch",
+        "get_current_file_record",
+        "get_current_file_index",
+        "extract_current_file_path",
+        "load_image",
+        "detect",
+        "detections_to_regions",
+        "filter_regions",
+        "select_best_region",
+        "inside_check",
+        "offset_check",
+        "presence_check",
+        "item_metadata_object",
+        "item_metrics_object",
+        "process_decision",
+        "append_result_csv",
+        "batch_metadata_object",
+        "batch_record",
+        "batch_result_summary",
+        "save_batch_json",
+        "callback_result",
+    ]
+    assert (
+        template.metadata["example_kind"]
+        == "industrial-local-directory-poll-yolox-position-gate"
+    )
+    assert (
+        template.metadata["focus"]
+        == "directory-poll-trigger-industrial-detection-rule-chain"
+    )
+    assert template.metadata["trigger_source_kind"] == "directory-poll"
+    assert template.metadata["uses_existing_deployment_instance"] is True
+    assert template.metadata["dynamic_roi_input_binding"] == "request_roi"
+    assert template.metadata["callback_url_edit_required"] is True
+    assert [template_input.input_id for template_input in template.template_inputs] == [
+        "request_trigger_payload",
+        "request_trigger_event",
+        "deployment_request",
+        "request_roi",
+    ]
+    assert [template_input.payload_type_id for template_input in template.template_inputs] == [
+        "response-body.v1",
+        "response-body.v1",
+        "value.v1",
+        "value.v1",
+    ]
+    assert template.template_inputs[3].required is False
+    assert [template_output.output_id for template_output in template.template_outputs] == [
+        "batch_files",
+        "inspection_results",
+        "inspection_result_count",
+        "terminated_early",
+        "termination_reason",
+        "batch_record",
+        "batch_result_summary",
+        "json_summary",
+        "callback_response",
+    ]
+    assert application.template_ref.source_uri == (
+        "docs/examples/workflows/industrial_local_directory_poll_yolox_position_gate.template.json"
+    )
+    assert application.runtime_mode == "python-json-workflow"
+    assert [binding.binding_id for binding in application.bindings] == [
+        "request_trigger_payload",
+        "request_trigger_event",
+        "deployment_request",
+        "request_roi",
+        "batch_files",
+        "inspection_results",
+        "inspection_result_count",
+        "terminated_early",
+        "termination_reason",
+        "batch_record",
+        "batch_result_summary",
+        "json_summary",
+        "callback_response",
+    ]
+    assert application.bindings[0].metadata["source_path"] == "payload"
+    assert application.bindings[1].metadata["source_path"] == "event"
+    assert application.bindings[3].required is False
+    assert application.bindings[7].config["payload_type_id"] == "boolean.v1"
+
+
 def test_industrial_local_directory_batch_segments_continuity_gate_documents_are_valid() -> (
     None
 ):

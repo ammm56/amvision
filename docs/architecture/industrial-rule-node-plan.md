@@ -24,7 +24,7 @@
 - `core.io.directory-cursor-normalize / directory-cursor-advance / core.output.batch-record / core.io.batch-files-relocate` 当前也已接通，目录游标规整、窗口推进、批次归档对象和批次文件归档这 4 层已不再需要继续靠 `object-create + 手工字段约定` 拼装；其中 `batch-files-relocate` 当前首版默认 `copy + rename`，并已支持 `move / overwrite / skip / preserve_subdirectories / dry_run`
 - `core.output.workflow-result / core.output.batch-result-summary` 当前也已接通，统一 workflow 交付对象和批次结果摘要都已从零散 `value.v1` 字段拼装里收出来，后续 trigger-source / 结果回传可以直接复用这两个中间结果对象
 - 工业单帧规则样例当前已补到 `docs/examples/workflows/industrial_single_frame_sealant_quality_gate.*`、`industrial_single_frame_segments_continuity_gate.*`、`industrial_single_frame_glue_roi_callback.*`、`industrial_single_frame_glue_polygon_roi_changeover.*` 与 `industrial_single_frame_yolox_position_gate.*`
-- 工业本地批量输入样例当前已补到 `docs/examples/workflows/industrial_local_directory_batch_input.*`、`industrial_local_directory_batch_segments_continuity_gate.*`、`industrial_local_directory_batch_regions_continuity_gate.*`、`industrial_local_directory_batch_yolox_position_gate.*` 与 `industrial_local_directory_polling_cursor_guard.*`
+- 工业本地批量输入样例当前已补到 `docs/examples/workflows/industrial_local_directory_batch_input.*`、`industrial_local_directory_batch_segments_continuity_gate.*`、`industrial_local_directory_batch_regions_continuity_gate.*`、`industrial_local_directory_batch_yolox_position_gate.*`、`industrial_local_directory_poll_yolox_position_gate.*` 与 `industrial_local_directory_polling_cursor_guard.*`
 - 当前仍待收口的主要缺口已经不再是大块能力面，而是少数残留节点、样例闭环和现场易用性优化
 
 ## 适用边界
@@ -436,7 +436,7 @@
 
 - 当前工业单帧样例虽然已经有 checked-in 的“segments.v1 -> segments-to-regions -> 工业规则链”和“YOLOX detection -> detections-to-regions -> 工业规则链”模板，但还没有覆盖更多模型来源和更多规则组合
 - `roi-create` 虽然已支持运行时 `value.v1` 动态 ROI，但当前仓库里还没有覆盖更多多边形 ROI 和现场换型配置的样例
-- 当前批量输入链已经不只停在输入准备：`directory-scan -> directory-batch-window -> for-each -> image-load-local -> yolox-detection -> 工业规则链 -> csv/json 归档`，以及 `directory-scan -> directory-batch-window -> for-each -> value-to-segments / value-to-regions -> 工业规则链 -> csv/json 归档` 这两类 checked-in 主线都已补通；目录轮询守护这一层当前也已有 `json-load-local -> directory-poll-window -> json-save-local` 的 checked-in 样例。目录游标规整、推进与批次归档首轮也已接通，目录 TriggerSource 这一层当前也已补到 `directory-poll + directory-watch` 两条正式入口；当前更值得继续收口的是批次结果摘要、目录触发现场样例、文件归档规范，以及更贴现场的接入说明
+- 当前批量输入链已经不只停在输入准备：`directory-scan -> directory-batch-window -> for-each -> image-load-local -> yolox-detection -> 工业规则链 -> csv/json 归档`，以及 `directory-scan -> directory-batch-window -> for-each -> value-to-segments / value-to-regions -> 工业规则链 -> csv/json 归档` 这两类 checked-in 主线都已补通；目录轮询守护这一层当前也已有 `json-load-local -> directory-poll-window -> json-save-local` 的 checked-in 样例。目录游标规整、推进与批次归档首轮也已接通，目录 TriggerSource 这一层当前也已补到 `directory-poll + directory-watch` 两条正式入口，并分别补出 checked-in workflow 源 JSON、正式 API 请求体示例和 Postman collection；这条线当前可以先从“继续补样例”转向“按现场使用面联调 + 回到第二阶段传统视觉节点”。
 - 当前 detection / segmentation 结果虽然已可通过 `core.vision.detections-to-regions` 与 `core.vision.segments-to-regions` 进入规则链，但还没有继续往前补更细的调试与适配辅助节点
 
 ## 未实现正式待办
@@ -829,7 +829,8 @@
 
 ## 下一步执行顺序
 
-1. 先补一条更贴现场的“模型输出 -> 规则判定 -> MES HTTP / PLC 回写 / JSON/CSV / Local DB 归档”正式样例，把工业单帧主线收成可直接联调的模板
-2. 然后再决定是否需要把 `mes-http-post` 继续往更细的站点 envelope、签名或 header 策略扩一层，而不是一开始就做成万能接口节点
-3. 再看 `local-db-upsert` 是否值得继续扩“多行批量写入 / 更细冲突策略 / JSON 列受控支持”，而不是回头放开可执行 SQL
-4. 最后再看是否需要继续补更多 detection / segmentation 调试与适配辅助节点，而不是回头扩更重的视频能力
+1. 现场交付面当前已经补到 `industrial_single_frame_glue_roi_delivery_bundle` 与 `industrial_local_directory_poll_yolox_position_gate` 两条正式样例；这一层先转入现场联调和使用说明收口
+2. 下一步优先回到 [industrial-extension-node-plan.md](industrial-extension-node-plan.md) 的第二阶段传统视觉节点，先做 `custom.opencv.template-match`
+3. 然后继续 `custom.opencv.caliper-edge`
+4. 再补 `core.vision.edge-break-check`
+5. 最后补 `core.vision.multi-part-presence-check`

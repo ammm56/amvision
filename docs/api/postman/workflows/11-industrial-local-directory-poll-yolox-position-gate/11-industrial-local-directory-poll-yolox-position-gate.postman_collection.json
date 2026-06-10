@@ -1,0 +1,489 @@
+{
+  "info": {
+    "_postman_id": "amvision-workflow-11",
+    "name": "amvision workflow 11 industrial local directory poll yolox position gate",
+    "description": "第十一类 directory-poll TriggerSource 调试 collection。directory-poll 负责固定周期目录轮询、稳定期过滤、checkpoint 恢复和 batch 提交；workflow app 只接收标准化目录批次 payload 与 event，并通过静态 deployment_request 驱动 YOLOX 工业位置门控链。直接 Invoke 的请求体使用 synthetic trigger event payload，用于本地调试同一条业务链。",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://127.0.0.1:8000"
+    },
+    {
+      "key": "projectId",
+      "value": "project-1"
+    },
+    {
+      "key": "previewRunId",
+      "value": ""
+    },
+    {
+      "key": "workflowRuntimeId",
+      "value": ""
+    },
+    {
+      "key": "workflowRunId",
+      "value": ""
+    },
+    {
+      "key": "triggerSourceId",
+      "value": "directory-poll-trigger-source-11"
+    },
+    {
+      "key": "deploymentInstanceId",
+      "value": "deployment-instance-1"
+    },
+    {
+      "key": "accessToken",
+      "value": "amvision-default-user-token"
+    }
+  ],
+  "item": [
+    {
+      "name": "Save Template",
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/projects/{{projectId}}/templates/industrial-local-directory-poll-yolox-position-gate-template/versions/1.0.0"
+        },
+        "description": "保存 industrial_local_directory_poll_yolox_position_gate 的 workflow template。",
+        "body": {
+          "mode": "raw",
+          "raw": "{\r\n  \"template\": {\r\n    \"format_id\": \"amvision.workflow-graph-template.v1\",\r\n    \"template_id\": \"industrial-local-directory-poll-yolox-position-gate-template\",\r\n    \"template_version\": \"1.0.0\",\r\n    \"display_name\": \"Industrial Local Directory Poll YOLOX Position Gate\",\r\n    \"description\": \"面向工业现场本地目录事件触发的检测到规则闭环样例。输入 directory-poll TriggerSource 标准化后的 payload 与 event、已发布 deployment 请求，以及可选运行时 ROI；按触发批次逐图执行 YOLOX 检测，桥接为 regions.v1 后完成存在性、落位和偏移判定，并把单图结果持续追加到 CSV，再把整个批次收成统一 batch-record、JSON 归档和 HTTP 回传。\",\r\n    \"nodes\": [\r\n      {\r\n        \"node_id\": \"wrap_trigger_payload\",\r\n        \"node_type_id\": \"core.logic.payload-to-value\",\r\n        \"parameters\": {}\r\n      },\r\n      {\r\n        \"node_id\": \"wrap_trigger_event\",\r\n        \"node_type_id\": \"core.logic.payload-to-value\",\r\n        \"parameters\": {}\r\n      },\r\n      {\r\n        \"node_id\": \"deployment_request_input\",\r\n        \"node_type_id\": \"core.io.template-input.object\",\r\n        \"parameters\": {}\r\n      },\r\n      {\r\n        \"node_id\": \"extract_batch_files\",\r\n        \"node_type_id\": \"core.logic.value-field-extract\",\r\n        \"parameters\": {\r\n          \"path\": \"files\"\r\n        }\r\n      },\r\n      {\r\n        \"node_id\": \"extract_batch_id\",\r\n        \"node_type_id\": \"core.logic.value-field-extract\",\r\n        \"parameters\": {\r\n          \"path\": \"batch_id\"\r\n        }\r\n      },\r\n      {\r\n        \"node_id\": \"extract_scan_summary\",\r\n        \"node_type_id\": \"core.logic.value-field-extract\",\r\n        \"parameters\": {\r\n          \"path\": \"scan_summary\"\r\n        }\r\n      },\r\n      {\r\n        \"node_id\": \"extract_directory_path\",\r\n        \"node_type_id\": \"core.logic.value-field-extract\",\r\n        \"parameters\": {\r\n          \"path\": \"directory_path\"\r\n        }\r\n      },\r\n      {\r\n        \"node_id\": \"create_roi\",\r\n        \"node_type_id\": \"core.vision.roi-create\",\r\n        \"parameters\": {\r\n          \"roi_kind\": \"bbox\",\r\n          \"roi_id\": \"poll-position-roi\",\r\n          \"display_name\": \"Directory Poll Position ROI\",\r\n          \"bbox_xyxy\": [\r\n            220,\r\n            140,\r\n            1040,\r\n            640\r\n          ]\r\n        }\r\n      },\r\n      {\r\n        \"node_id\": \"iterate_batch\",\r\n        \"node_type_id\": \"core.logic.for-each\",\r\n        \"parameters\": {\r\n          \"body_node_ids\": [\r\n            \"get_current_file_record\",\r\n            \"get_current_file_index\",\r\n            \"extract_current_file_path\",\r\n            \"load_image\",\r\n            \"detect\",\r\n            \"detections_to_regions\",\r\n            \"filter_regions\",\r\n            \"select_best_region\",\r\n            \"inside_check\",\r\n            \"offset_check\",\r\n            \"presence_check\",\r\n            \"item_metadata_object\",\r\n            \"item_metrics_object\",\r\n            \"process_decision\",\r\n            \"append_result_csv\"\r\n          ],\r\n          \"result_node_id\": \"process_decision\",\r\n          \"result_port\": \"result\",\r\n          \"item_variable_name\": \"file_record\",\r\n          \"index_variable_name\": \"file_index\"\r\n        }\r\n      },\r\n      {\r\n        \"node_id\": \"get_current_file_record\",\r\n        \"node_type_id\": \"core.logic.variable.get\",\r\n        \"parameters\": {\r\n          \"name\": \"file_record\"\r\n        }\r\n      },\r\n      {\r\n        \"node_id\": \"get_current_file_index\",\r\n        \"node_type_id\": \"core.logic.variable.get\",\r\n        \"parameters\": {\r\n          \"name\": \"file_index\"\r\n        }\r\n      },\r\n      {\r\n        \"node_id\": \"extract_current_file_path\",\r\n        \"node_type_id\": \"core.logic.value-field-extract\",\r\n        \"parameters\": {\r\n          \"path\": \"path\"\r\n        }\r\n      },\r\n      {\r\n        \"node_id\": \"load_image\",\r\n        \"node_type_id\": \"core.io.image-load-local\",\r\n        \"parameters\": {}\r\n      },\r\n      {\r\n        \"node_id\": \"detect\",\r\n        \"node_type_id\": \"core.model.yolox-detection\",\r\n        \"parameters\": {\r\n          \"auto_start_process\": true,\r\n          \"score_threshold\": 0.4,\r\n          \"save_result_image\": false,\r\n          \"return_preview_image_base64\": false\r\n        }\r\n      },\r\n      {\r\n        \"node_id\": \"detections_to_regions\",\r\n        \"node_type_id\": \"core.vision.detections-to-regions\",\r\n        \"parameters\": {\r\n          \"region_id_prefix\": \"det\",\r\n          \"class_id_default\": -1\r\n        }\r\n      },\r\n      {\r\n        \"node_id\": \"filter_regions\",\r\n        \"node_type_id\": \"core.vision.regions-filter\",\r\n        \"parameters\": {\r\n          \"class_names\": [\r\n            \"part\"\r\n          ],\r\n          \"min_score\": 0.55\r\n        }\r\n      },\r\n      {\r\n        \"node_id\": \"select_best_region\",\r\n        \"node_type_id\": \"core.vision.regions-select-best\",\r\n        \"parameters\": {\r\n          \"strategy\": \"largest-area\"\r\n        }\r\n      },\r\n      {\r\n        \"node_id\": \"inside_check\",\r\n        \"node_type_id\": \"core.vision.regions-inside-check\",\r\n        \"parameters\": {\r\n          \"match_mode\": \"all\",\r\n          \"min_inside_ratio\": 0.95\r\n        }\r\n      },\r\n      {\r\n        \"node_id\": \"offset_check\",\r\n        \"node_type_id\": \"core.vision.regions-offset-check\",\r\n        \"parameters\": {\r\n          \"strategy\": \"largest-area\",\r\n          \"max_distance_pixels\": 28.0\r\n        }\r\n      },\r\n      {\r\n        \"node_id\": \"presence_check\",\r\n        \"node_type_id\": \"core.rule.presence-check\",\r\n        \"parameters\": {\r\n          \"min_count\": 1,\r\n          \"max_count\": 1\r\n        }\r\n      },\r\n      {\r\n        \"node_id\": \"item_metadata_object\",\r\n        \"node_type_id\": \"core.logic.object-create\",\r\n        \"parameters\": {\r\n          \"keys\": [\r\n            \"file_record\",\r\n            \"file_index\",\r\n            \"deployment_request\",\r\n            \"trigger_event\",\r\n            \"batch_id\"\r\n          ],\r\n          \"fields\": {\r\n            \"inspection_kind\": \"yolox-position-gate-directory-poll\",\r\n            \"station_id\": \"line-e-01\",\r\n            \"trigger_kind\": \"directory-poll\"\r\n          }\r\n        }\r\n      },\r\n      {\r\n        \"node_id\": \"item_metrics_object\",\r\n        \"node_type_id\": \"core.logic.object-create\",\r\n        \"parameters\": {\r\n          \"keys\": [\r\n            \"convert_summary\",\r\n            \"filter_summary\",\r\n            \"inside_metrics\",\r\n            \"offset_metrics\",\r\n            \"presence_metrics\"\r\n          ]\r\n        }\r\n      },\r\n      {\r\n        \"node_id\": \"process_decision\",\r\n        \"node_type_id\": \"core.rule.process-decision\",\r\n        \"parameters\": {\r\n          \"mode\": \"all\",\r\n          \"condition_names\": [\r\n            \"presence\",\r\n            \"inside\",\r\n            \"offset\"\r\n          ],\r\n          \"ok_reason\": \"directory poll yolox position gate passed\",\r\n          \"ng_reason\": \"directory poll yolox position gate failed\"\r\n        }\r\n      },\r\n      {\r\n        \"node_id\": \"append_result_csv\",\r\n        \"node_type_id\": \"core.output.csv-append-local\",\r\n        \"parameters\": {\r\n          \"local_path\": \"{workflow_app_result_dir}/industrial-local-directory-poll-yolox-position-gate/history.csv\"\r\n        }\r\n      },\r\n      {\r\n        \"node_id\": \"batch_metadata_object\",\r\n        \"node_type_id\": \"core.logic.object-create\",\r\n        \"parameters\": {\r\n          \"keys\": [\r\n            \"trigger_event\",\r\n            \"deployment_request\",\r\n            \"batch_id\",\r\n            \"directory_path\"\r\n          ],\r\n          \"fields\": {\r\n            \"example_kind\": \"industrial-local-directory-poll-yolox-position-gate\",\r\n            \"trigger_source_kind\": \"directory-poll\",\r\n            \"inspection_kind\": \"yolox-position-gate-directory-poll\",\r\n            \"station_id\": \"line-e-01\",\r\n            \"callback_url\": \"http://127.0.0.1:18080/directory-poll/yolox-position-batch-result\"\r\n          }\r\n        }\r\n      },\r\n      {\r\n        \"node_id\": \"batch_record\",\r\n        \"node_type_id\": \"core.output.batch-record\",\r\n        \"parameters\": {\r\n          \"record_kind\": \"directory-poll-batch-record\",\r\n          \"include_result_summary\": true\r\n        }\r\n      },\r\n      {\r\n        \"node_id\": \"batch_result_summary\",\r\n        \"node_type_id\": \"core.output.batch-result-summary\",\r\n        \"parameters\": {}\r\n      },\r\n      {\r\n        \"node_id\": \"save_batch_json\",\r\n        \"node_type_id\": \"core.output.json-save-local\",\r\n        \"parameters\": {\r\n          \"local_path\": \"{workflow_app_result_dir}/industrial-local-directory-poll-yolox-position-gate/result-{timestamp}.json\",\r\n          \"overwrite\": true,\r\n          \"indent\": 2\r\n        }\r\n      },\r\n      {\r\n        \"node_id\": \"callback_result\",\r\n        \"node_type_id\": \"core.output.http-post\",\r\n        \"parameters\": {\r\n          \"url\": \"http://127.0.0.1:18080/directory-poll/yolox-position-batch-result\",\r\n          \"method\": \"POST\",\r\n          \"timeout_seconds\": 3.0,\r\n          \"require_success\": false,\r\n          \"headers\": {\r\n            \"X-Amvision-Example\": \"industrial-local-directory-poll-yolox-position-gate\"\r\n          }\r\n        }\r\n      }\r\n    ],\r\n    \"edges\": [\r\n      {\r\n        \"edge_id\": \"edge-wrap-trigger-payload-extract-files\",\r\n        \"source_node_id\": \"wrap_trigger_payload\",\r\n        \"source_port\": \"value\",\r\n        \"target_node_id\": \"extract_batch_files\",\r\n        \"target_port\": \"value\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-wrap-trigger-payload-extract-batch-id\",\r\n        \"source_node_id\": \"wrap_trigger_payload\",\r\n        \"source_port\": \"value\",\r\n        \"target_node_id\": \"extract_batch_id\",\r\n        \"target_port\": \"value\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-wrap-trigger-payload-extract-scan-summary\",\r\n        \"source_node_id\": \"wrap_trigger_payload\",\r\n        \"source_port\": \"value\",\r\n        \"target_node_id\": \"extract_scan_summary\",\r\n        \"target_port\": \"value\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-wrap-trigger-payload-extract-directory-path\",\r\n        \"source_node_id\": \"wrap_trigger_payload\",\r\n        \"source_port\": \"value\",\r\n        \"target_node_id\": \"extract_directory_path\",\r\n        \"target_port\": \"value\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-extract-batch-files-iterate-batch\",\r\n        \"source_node_id\": \"extract_batch_files\",\r\n        \"source_port\": \"value\",\r\n        \"target_node_id\": \"iterate_batch\",\r\n        \"target_port\": \"items\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-current-file-record-path\",\r\n        \"source_node_id\": \"get_current_file_record\",\r\n        \"source_port\": \"value\",\r\n        \"target_node_id\": \"extract_current_file_path\",\r\n        \"target_port\": \"value\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-current-file-path-load-image\",\r\n        \"source_node_id\": \"extract_current_file_path\",\r\n        \"source_port\": \"value\",\r\n        \"target_node_id\": \"load_image\",\r\n        \"target_port\": \"path\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-deployment-request-detect\",\r\n        \"source_node_id\": \"deployment_request_input\",\r\n        \"source_port\": \"value\",\r\n        \"target_node_id\": \"detect\",\r\n        \"target_port\": \"request\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-load-image-detect\",\r\n        \"source_node_id\": \"load_image\",\r\n        \"source_port\": \"image\",\r\n        \"target_node_id\": \"detect\",\r\n        \"target_port\": \"image\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-detect-convert-detections\",\r\n        \"source_node_id\": \"detect\",\r\n        \"source_port\": \"detections\",\r\n        \"target_node_id\": \"detections_to_regions\",\r\n        \"target_port\": \"detections\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-load-image-convert-image\",\r\n        \"source_node_id\": \"load_image\",\r\n        \"source_port\": \"image\",\r\n        \"target_node_id\": \"detections_to_regions\",\r\n        \"target_port\": \"image\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-convert-filter-regions\",\r\n        \"source_node_id\": \"detections_to_regions\",\r\n        \"source_port\": \"regions\",\r\n        \"target_node_id\": \"filter_regions\",\r\n        \"target_port\": \"regions\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-filter-select-best\",\r\n        \"source_node_id\": \"filter_regions\",\r\n        \"source_port\": \"regions\",\r\n        \"target_node_id\": \"select_best_region\",\r\n        \"target_port\": \"regions\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-select-best-inside-regions\",\r\n        \"source_node_id\": \"select_best_region\",\r\n        \"source_port\": \"regions\",\r\n        \"target_node_id\": \"inside_check\",\r\n        \"target_port\": \"regions\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-create-roi-inside-roi\",\r\n        \"source_node_id\": \"create_roi\",\r\n        \"source_port\": \"roi\",\r\n        \"target_node_id\": \"inside_check\",\r\n        \"target_port\": \"roi\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-select-best-offset-regions\",\r\n        \"source_node_id\": \"select_best_region\",\r\n        \"source_port\": \"regions\",\r\n        \"target_node_id\": \"offset_check\",\r\n        \"target_port\": \"regions\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-create-roi-offset-roi\",\r\n        \"source_node_id\": \"create_roi\",\r\n        \"source_port\": \"roi\",\r\n        \"target_node_id\": \"offset_check\",\r\n        \"target_port\": \"roi\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-filter-presence-regions\",\r\n        \"source_node_id\": \"filter_regions\",\r\n        \"source_port\": \"regions\",\r\n        \"target_node_id\": \"presence_check\",\r\n        \"target_port\": \"regions\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-current-file-record-item-metadata\",\r\n        \"source_node_id\": \"get_current_file_record\",\r\n        \"source_port\": \"value\",\r\n        \"target_node_id\": \"item_metadata_object\",\r\n        \"target_port\": \"values\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-current-file-index-item-metadata\",\r\n        \"source_node_id\": \"get_current_file_index\",\r\n        \"source_port\": \"value\",\r\n        \"target_node_id\": \"item_metadata_object\",\r\n        \"target_port\": \"values\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-deployment-request-item-metadata\",\r\n        \"source_node_id\": \"deployment_request_input\",\r\n        \"source_port\": \"value\",\r\n        \"target_node_id\": \"item_metadata_object\",\r\n        \"target_port\": \"values\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-wrap-trigger-event-item-metadata\",\r\n        \"source_node_id\": \"wrap_trigger_event\",\r\n        \"source_port\": \"value\",\r\n        \"target_node_id\": \"item_metadata_object\",\r\n        \"target_port\": \"values\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-batch-id-item-metadata\",\r\n        \"source_node_id\": \"extract_batch_id\",\r\n        \"source_port\": \"value\",\r\n        \"target_node_id\": \"item_metadata_object\",\r\n        \"target_port\": \"values\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-convert-summary-item-metrics\",\r\n        \"source_node_id\": \"detections_to_regions\",\r\n        \"source_port\": \"summary\",\r\n        \"target_node_id\": \"item_metrics_object\",\r\n        \"target_port\": \"values\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-filter-summary-item-metrics\",\r\n        \"source_node_id\": \"filter_regions\",\r\n        \"source_port\": \"summary\",\r\n        \"target_node_id\": \"item_metrics_object\",\r\n        \"target_port\": \"values\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-inside-metrics-item-metrics\",\r\n        \"source_node_id\": \"inside_check\",\r\n        \"source_port\": \"metrics\",\r\n        \"target_node_id\": \"item_metrics_object\",\r\n        \"target_port\": \"values\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-offset-metrics-item-metrics\",\r\n        \"source_node_id\": \"offset_check\",\r\n        \"source_port\": \"metrics\",\r\n        \"target_node_id\": \"item_metrics_object\",\r\n        \"target_port\": \"values\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-presence-metrics-item-metrics\",\r\n        \"source_node_id\": \"presence_check\",\r\n        \"source_port\": \"metrics\",\r\n        \"target_node_id\": \"item_metrics_object\",\r\n        \"target_port\": \"values\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-presence-process\",\r\n        \"source_node_id\": \"presence_check\",\r\n        \"source_port\": \"result\",\r\n        \"target_node_id\": \"process_decision\",\r\n        \"target_port\": \"conditions\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-inside-process\",\r\n        \"source_node_id\": \"inside_check\",\r\n        \"source_port\": \"result\",\r\n        \"target_node_id\": \"process_decision\",\r\n        \"target_port\": \"conditions\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-offset-process\",\r\n        \"source_node_id\": \"offset_check\",\r\n        \"source_port\": \"result\",\r\n        \"target_node_id\": \"process_decision\",\r\n        \"target_port\": \"conditions\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-item-metrics-process\",\r\n        \"source_node_id\": \"item_metrics_object\",\r\n        \"source_port\": \"value\",\r\n        \"target_node_id\": \"process_decision\",\r\n        \"target_port\": \"metrics\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-item-metadata-process\",\r\n        \"source_node_id\": \"item_metadata_object\",\r\n        \"source_port\": \"value\",\r\n        \"target_node_id\": \"process_decision\",\r\n        \"target_port\": \"metadata\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-load-image-process-image\",\r\n        \"source_node_id\": \"load_image\",\r\n        \"source_port\": \"image\",\r\n        \"target_node_id\": \"process_decision\",\r\n        \"target_port\": \"image\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-process-append-csv\",\r\n        \"source_node_id\": \"process_decision\",\r\n        \"source_port\": \"result\",\r\n        \"target_node_id\": \"append_result_csv\",\r\n        \"target_port\": \"result\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-wrap-trigger-event-batch-metadata\",\r\n        \"source_node_id\": \"wrap_trigger_event\",\r\n        \"source_port\": \"value\",\r\n        \"target_node_id\": \"batch_metadata_object\",\r\n        \"target_port\": \"values\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-deployment-request-batch-metadata\",\r\n        \"source_node_id\": \"deployment_request_input\",\r\n        \"source_port\": \"value\",\r\n        \"target_node_id\": \"batch_metadata_object\",\r\n        \"target_port\": \"values\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-batch-id-batch-metadata\",\r\n        \"source_node_id\": \"extract_batch_id\",\r\n        \"source_port\": \"value\",\r\n        \"target_node_id\": \"batch_metadata_object\",\r\n        \"target_port\": \"values\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-directory-path-batch-metadata\",\r\n        \"source_node_id\": \"extract_directory_path\",\r\n        \"source_port\": \"value\",\r\n        \"target_node_id\": \"batch_metadata_object\",\r\n        \"target_port\": \"values\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-batch-id-batch-record\",\r\n        \"source_node_id\": \"extract_batch_id\",\r\n        \"source_port\": \"value\",\r\n        \"target_node_id\": \"batch_record\",\r\n        \"target_port\": \"record_id\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-scan-summary-batch-record\",\r\n        \"source_node_id\": \"extract_scan_summary\",\r\n        \"source_port\": \"value\",\r\n        \"target_node_id\": \"batch_record\",\r\n        \"target_port\": \"scan_summary\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-extract-batch-files-batch-record\",\r\n        \"source_node_id\": \"extract_batch_files\",\r\n        \"source_port\": \"value\",\r\n        \"target_node_id\": \"batch_record\",\r\n        \"target_port\": \"files\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-iterate-results-batch-record\",\r\n        \"source_node_id\": \"iterate_batch\",\r\n        \"source_port\": \"results\",\r\n        \"target_node_id\": \"batch_record\",\r\n        \"target_port\": \"inspection_results\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-batch-metadata-batch-record\",\r\n        \"source_node_id\": \"batch_metadata_object\",\r\n        \"source_port\": \"value\",\r\n        \"target_node_id\": \"batch_record\",\r\n        \"target_port\": \"metadata\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-batch-record-summary\",\r\n        \"source_node_id\": \"batch_record\",\r\n        \"source_port\": \"record\",\r\n        \"target_node_id\": \"batch_result_summary\",\r\n        \"target_port\": \"record\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-batch-record-save-json\",\r\n        \"source_node_id\": \"batch_record\",\r\n        \"source_port\": \"record\",\r\n        \"target_node_id\": \"save_batch_json\",\r\n        \"target_port\": \"value\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-batch-record-callback\",\r\n        \"source_node_id\": \"batch_record\",\r\n        \"source_port\": \"record\",\r\n        \"target_node_id\": \"callback_result\",\r\n        \"target_port\": \"value\"\r\n      }\r\n    ],\r\n    \"template_inputs\": [\r\n      {\r\n        \"input_id\": \"request_trigger_payload\",\r\n        \"display_name\": \"Request Trigger Payload\",\r\n        \"payload_type_id\": \"response-body.v1\",\r\n        \"target_node_id\": \"wrap_trigger_payload\",\r\n        \"target_port\": \"body\"\r\n      },\r\n      {\r\n        \"input_id\": \"request_trigger_event\",\r\n        \"display_name\": \"Request Trigger Event\",\r\n        \"payload_type_id\": \"response-body.v1\",\r\n        \"target_node_id\": \"wrap_trigger_event\",\r\n        \"target_port\": \"body\"\r\n      },\r\n      {\r\n        \"input_id\": \"deployment_request\",\r\n        \"display_name\": \"Deployment Request\",\r\n        \"payload_type_id\": \"value.v1\",\r\n        \"target_node_id\": \"deployment_request_input\",\r\n        \"target_port\": \"payload\"\r\n      },\r\n      {\r\n        \"input_id\": \"request_roi\",\r\n        \"display_name\": \"Request ROI\",\r\n        \"payload_type_id\": \"value.v1\",\r\n        \"target_node_id\": \"create_roi\",\r\n        \"target_port\": \"value\",\r\n        \"required\": false\r\n      }\r\n    ],\r\n    \"template_outputs\": [\r\n      {\r\n        \"output_id\": \"batch_files\",\r\n        \"display_name\": \"Batch Files\",\r\n        \"payload_type_id\": \"value.v1\",\r\n        \"source_node_id\": \"extract_batch_files\",\r\n        \"source_port\": \"value\"\r\n      },\r\n      {\r\n        \"output_id\": \"inspection_results\",\r\n        \"display_name\": \"Inspection Results\",\r\n        \"payload_type_id\": \"value.v1\",\r\n        \"source_node_id\": \"iterate_batch\",\r\n        \"source_port\": \"results\"\r\n      },\r\n      {\r\n        \"output_id\": \"inspection_result_count\",\r\n        \"display_name\": \"Inspection Result Count\",\r\n        \"payload_type_id\": \"value.v1\",\r\n        \"source_node_id\": \"iterate_batch\",\r\n        \"source_port\": \"count\"\r\n      },\r\n      {\r\n        \"output_id\": \"terminated_early\",\r\n        \"display_name\": \"Terminated Early\",\r\n        \"payload_type_id\": \"boolean.v1\",\r\n        \"source_node_id\": \"iterate_batch\",\r\n        \"source_port\": \"terminated_early\"\r\n      },\r\n      {\r\n        \"output_id\": \"termination_reason\",\r\n        \"display_name\": \"Termination Reason\",\r\n        \"payload_type_id\": \"value.v1\",\r\n        \"source_node_id\": \"iterate_batch\",\r\n        \"source_port\": \"termination_reason\"\r\n      },\r\n      {\r\n        \"output_id\": \"batch_record\",\r\n        \"display_name\": \"Batch Record\",\r\n        \"payload_type_id\": \"value.v1\",\r\n        \"source_node_id\": \"batch_record\",\r\n        \"source_port\": \"record\"\r\n      },\r\n      {\r\n        \"output_id\": \"batch_result_summary\",\r\n        \"display_name\": \"Batch Result Summary\",\r\n        \"payload_type_id\": \"value.v1\",\r\n        \"source_node_id\": \"batch_result_summary\",\r\n        \"source_port\": \"summary\"\r\n      },\r\n      {\r\n        \"output_id\": \"json_summary\",\r\n        \"display_name\": \"JSON Save Summary\",\r\n        \"payload_type_id\": \"value.v1\",\r\n        \"source_node_id\": \"save_batch_json\",\r\n        \"source_port\": \"summary\"\r\n      },\r\n      {\r\n        \"output_id\": \"callback_response\",\r\n        \"display_name\": \"Callback Response\",\r\n        \"payload_type_id\": \"value.v1\",\r\n        \"source_node_id\": \"callback_result\",\r\n        \"source_port\": \"response\"\r\n      }\r\n    ],\r\n    \"metadata\": {\r\n      \"example_kind\": \"industrial-local-directory-poll-yolox-position-gate\",\r\n      \"focus\": \"directory-poll-trigger-industrial-detection-rule-chain\",\r\n      \"trigger_source_kind\": \"directory-poll\",\r\n      \"uses_existing_deployment_instance\": true,\r\n      \"dynamic_roi_input_binding\": \"request_roi\",\r\n      \"callback_url_edit_required\": true,\r\n      \"input_boundary_note\": \"TriggerSource 当前只负责映射原始 payload/event 对象；workflow 内使用 payload-to-value 显式桥接，并从 payload.files 读取当前批次文件记录。\",\r\n      \"node_groups\": {\r\n        \"input\": [\r\n          \"wrap_trigger_payload\",\r\n          \"wrap_trigger_event\",\r\n          \"deployment_request_input\"\r\n        ],\r\n        \"trigger_batch\": [\r\n          \"extract_batch_files\",\r\n          \"extract_batch_id\",\r\n          \"extract_scan_summary\",\r\n          \"extract_directory_path\",\r\n          \"create_roi\"\r\n        ],\r\n        \"loop_body\": [\r\n          \"get_current_file_record\",\r\n          \"get_current_file_index\",\r\n          \"extract_current_file_path\",\r\n          \"load_image\",\r\n          \"detect\",\r\n          \"detections_to_regions\",\r\n          \"filter_regions\",\r\n          \"select_best_region\",\r\n          \"inside_check\",\r\n          \"offset_check\",\r\n          \"presence_check\",\r\n          \"item_metadata_object\",\r\n          \"item_metrics_object\",\r\n          \"process_decision\",\r\n          \"append_result_csv\"\r\n        ],\r\n        \"batch_output\": [\r\n          \"iterate_batch\",\r\n          \"batch_metadata_object\",\r\n          \"batch_record\",\r\n          \"batch_result_summary\",\r\n          \"save_batch_json\",\r\n          \"callback_result\"\r\n        ]\r\n      }\r\n    }\r\n  }\r\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Save Application",
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/projects/{{projectId}}/applications/industrial-local-directory-poll-yolox-position-gate-app"
+        },
+        "description": "保存 industrial_local_directory_poll_yolox_position_gate 的 FlowApplication。",
+        "body": {
+          "mode": "raw",
+          "raw": "{\r\n  \"application\": {\r\n    \"format_id\": \"amvision.flow-application.v1\",\r\n    \"application_id\": \"industrial-local-directory-poll-yolox-position-gate-app\",\r\n    \"display_name\": \"Industrial Local Directory Poll YOLOX Position Gate App\",\r\n    \"description\": \"用于工业本地目录事件触发检测判定的正式样例 app。输入 directory-poll TriggerSource 标准化后的 payload 与 event、deployment 请求和可选 ROI；输出触发批次文件、逐图判定结果列表、批次归档对象、批次摘要，以及 JSON 归档摘要和 HTTP 回传摘要。\",\r\n    \"template_ref\": {\r\n      \"template_id\": \"industrial-local-directory-poll-yolox-position-gate-template\",\r\n      \"template_version\": \"1.0.0\",\r\n      \"source_kind\": \"json-file\",\r\n      \"source_uri\": \"docs/examples/workflows/industrial_local_directory_poll_yolox_position_gate.template.json\"\r\n    },\r\n    \"runtime_mode\": \"python-json-workflow\",\r\n    \"bindings\": [\r\n      {\r\n        \"binding_id\": \"request_trigger_payload\",\r\n        \"direction\": \"input\",\r\n        \"template_port_id\": \"request_trigger_payload\",\r\n        \"binding_kind\": \"trigger-source-input\",\r\n        \"config\": {\r\n          \"payload_type_id\": \"response-body.v1\",\r\n          \"content_type\": \"application/json\"\r\n        },\r\n        \"metadata\": {\r\n          \"payload_type_id\": \"response-body.v1\",\r\n          \"trigger_kind\": \"directory-poll\",\r\n          \"source_path\": \"payload\"\r\n        }\r\n      },\r\n      {\r\n        \"binding_id\": \"request_trigger_event\",\r\n        \"direction\": \"input\",\r\n        \"template_port_id\": \"request_trigger_event\",\r\n        \"binding_kind\": \"trigger-source-input\",\r\n        \"config\": {\r\n          \"payload_type_id\": \"response-body.v1\",\r\n          \"content_type\": \"application/json\"\r\n        },\r\n        \"metadata\": {\r\n          \"payload_type_id\": \"response-body.v1\",\r\n          \"trigger_kind\": \"directory-poll\",\r\n          \"source_path\": \"event\"\r\n        }\r\n      },\r\n      {\r\n        \"binding_id\": \"deployment_request\",\r\n        \"direction\": \"input\",\r\n        \"template_port_id\": \"deployment_request\",\r\n        \"binding_kind\": \"workflow-execute-input\",\r\n        \"config\": {\r\n          \"payload_type_id\": \"value.v1\",\r\n          \"content_type\": \"application/json\"\r\n        },\r\n        \"metadata\": {\r\n          \"payload_type_id\": \"value.v1\"\r\n        }\r\n      },\r\n      {\r\n        \"binding_id\": \"request_roi\",\r\n        \"direction\": \"input\",\r\n        \"template_port_id\": \"request_roi\",\r\n        \"binding_kind\": \"workflow-execute-input\",\r\n        \"required\": false,\r\n        \"config\": {\r\n          \"payload_type_id\": \"value.v1\",\r\n          \"content_type\": \"application/json\"\r\n        },\r\n        \"metadata\": {\r\n          \"payload_type_id\": \"value.v1\"\r\n        }\r\n      },\r\n      {\r\n        \"binding_id\": \"batch_files\",\r\n        \"direction\": \"output\",\r\n        \"template_port_id\": \"batch_files\",\r\n        \"binding_kind\": \"workflow-execute-output\",\r\n        \"config\": {\r\n          \"payload_type_id\": \"value.v1\"\r\n        },\r\n        \"metadata\": {}\r\n      },\r\n      {\r\n        \"binding_id\": \"inspection_results\",\r\n        \"direction\": \"output\",\r\n        \"template_port_id\": \"inspection_results\",\r\n        \"binding_kind\": \"workflow-execute-output\",\r\n        \"config\": {\r\n          \"payload_type_id\": \"value.v1\"\r\n        },\r\n        \"metadata\": {}\r\n      },\r\n      {\r\n        \"binding_id\": \"inspection_result_count\",\r\n        \"direction\": \"output\",\r\n        \"template_port_id\": \"inspection_result_count\",\r\n        \"binding_kind\": \"workflow-execute-output\",\r\n        \"config\": {\r\n          \"payload_type_id\": \"value.v1\"\r\n        },\r\n        \"metadata\": {}\r\n      },\r\n      {\r\n        \"binding_id\": \"terminated_early\",\r\n        \"direction\": \"output\",\r\n        \"template_port_id\": \"terminated_early\",\r\n        \"binding_kind\": \"workflow-execute-output\",\r\n        \"config\": {\r\n          \"payload_type_id\": \"boolean.v1\"\r\n        },\r\n        \"metadata\": {}\r\n      },\r\n      {\r\n        \"binding_id\": \"termination_reason\",\r\n        \"direction\": \"output\",\r\n        \"template_port_id\": \"termination_reason\",\r\n        \"binding_kind\": \"workflow-execute-output\",\r\n        \"config\": {\r\n          \"payload_type_id\": \"value.v1\"\r\n        },\r\n        \"metadata\": {}\r\n      },\r\n      {\r\n        \"binding_id\": \"batch_record\",\r\n        \"direction\": \"output\",\r\n        \"template_port_id\": \"batch_record\",\r\n        \"binding_kind\": \"workflow-execute-output\",\r\n        \"config\": {\r\n          \"payload_type_id\": \"value.v1\"\r\n        },\r\n        \"metadata\": {}\r\n      },\r\n      {\r\n        \"binding_id\": \"batch_result_summary\",\r\n        \"direction\": \"output\",\r\n        \"template_port_id\": \"batch_result_summary\",\r\n        \"binding_kind\": \"workflow-execute-output\",\r\n        \"config\": {\r\n          \"payload_type_id\": \"value.v1\"\r\n        },\r\n        \"metadata\": {}\r\n      },\r\n      {\r\n        \"binding_id\": \"json_summary\",\r\n        \"direction\": \"output\",\r\n        \"template_port_id\": \"json_summary\",\r\n        \"binding_kind\": \"workflow-execute-output\",\r\n        \"config\": {\r\n          \"payload_type_id\": \"value.v1\"\r\n        },\r\n        \"metadata\": {}\r\n      },\r\n      {\r\n        \"binding_id\": \"callback_response\",\r\n        \"direction\": \"output\",\r\n        \"template_port_id\": \"callback_response\",\r\n        \"binding_kind\": \"workflow-execute-output\",\r\n        \"config\": {\r\n          \"payload_type_id\": \"value.v1\"\r\n        },\r\n        \"metadata\": {}\r\n      }\r\n    ],\r\n    \"metadata\": {\r\n      \"example_kind\": \"industrial-local-directory-poll-yolox-position-gate\",\r\n      \"intended_saved_object_key\": \"workflows/projects/{project_id}/applications/industrial-local-directory-poll-yolox-position-gate-app/application.json\",\r\n      \"trigger_source_input\": \"directory-poll\",\r\n      \"trigger_payload_binding\": \"request_trigger_payload\",\r\n      \"trigger_event_binding\": \"request_trigger_event\"\r\n    }\r\n  }\r\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Create Preview Run",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/preview-runs"
+        },
+        "description": "创建 industrial_local_directory_poll_yolox_position_gate 的编辑态 preview run。这里直接用 synthetic directory-poll payload 和 event 做本地调试，不需要真实目录监听常驻线程。",
+        "body": {
+          "mode": "raw",
+          "raw": "{\r\n    \"project_id\":  \"project-1\",\r\n    \"application_ref\":  {\r\n                            \"application_id\":  \"industrial-local-directory-poll-yolox-position-gate-app\"\r\n                        },\r\n    \"input_bindings\":  {\r\n                           \"request_trigger_payload\":  {\r\n                                                           \"directory_path\":  \"D:/cases/line-e/incoming\",\r\n                                                           \"files\":  [\r\n                                                                         {\r\n                                                                             \"path\":  \"D:/cases/line-e/incoming/frame-0001.png\",\r\n                                                                             \"file_name\":  \"frame-0001.png\",\r\n                                                                             \"extension\":  \".png\",\r\n                                                                             \"size_bytes\":  524288,\r\n                                                                             \"modified_time_epoch_ms\":  1780997400000,\r\n                                                                             \"modified_time_iso\":  \"2026-06-09T09:30:00Z\"\r\n                                                                         },\r\n                                                                         {\r\n                                                                             \"path\":  \"D:/cases/line-e/incoming/frame-0002.png\",\r\n                                                                             \"file_name\":  \"frame-0002.png\",\r\n                                                                             \"extension\":  \".png\",\r\n                                                                             \"size_bytes\":  523904,\r\n                                                                             \"modified_time_epoch_ms\":  1780997401000,\r\n                                                                             \"modified_time_iso\":  \"2026-06-09T09:30:01Z\"\r\n                                                                         }\r\n                                                                     ],\r\n                                                           \"file_paths\":  [\r\n                                                                              \"D:/cases/line-e/incoming/frame-0001.png\",\r\n                                                                              \"D:/cases/line-e/incoming/frame-0002.png\"\r\n                                                                          ],\r\n                                                           \"file_count\":  2,\r\n                                                           \"primary_file\":  {\r\n                                                                                \"path\":  \"D:/cases/line-e/incoming/frame-0001.png\",\r\n                                                                                \"file_name\":  \"frame-0001.png\",\r\n                                                                                \"extension\":  \".png\",\r\n                                                                                \"size_bytes\":  524288,\r\n                                                                                \"modified_time_epoch_ms\":  1780997400000,\r\n                                                                                \"modified_time_iso\":  \"2026-06-09T09:30:00Z\"\r\n                                                                            },\r\n                                                           \"primary_file_path\":  \"D:/cases/line-e/incoming/frame-0001.png\",\r\n                                                           \"scan_summary\":  {\r\n                                                                                \"directory_path\":  \"D:/cases/line-e/incoming\",\r\n                                                                                \"raw_count\":  2,\r\n                                                                                \"visible_count\":  2,\r\n                                                                                \"recursive\":  false,\r\n                                                                                \"include_hidden\":  false,\r\n                                                                                \"glob_pattern\":  \"*\",\r\n                                                                                \"extensions\":  [\r\n                                                                                                   \".png\",\r\n                                                                                                   \".jpg\",\r\n                                                                                                   \".jpeg\"\r\n                                                                                               ],\r\n                                                                                \"sort_by\":  \"modified_time\",\r\n                                                                                \"descending\":  false,\r\n                                                                                \"dedupe_by\":  \"path\",\r\n                                                                                \"batch_size\":  4,\r\n                                                                                \"scan_interval_seconds\":  1.0,\r\n                                                                                \"min_stable_age_seconds\":  1.0,\r\n                                                                                \"unstable_skipped_count\":  0,\r\n                                                                                \"deduped_count\":  0,\r\n                                                                                \"new_candidate_count\":  2,\r\n                                                                                \"emitted_batch_file_count\":  2,\r\n                                                                                \"sequence_id\":  1\r\n                                                                            },\r\n                                                           \"sequence_id\":  1,\r\n                                                           \"batch_id\":  \"directory-poll-trigger-source-11:1\"\r\n                                                       },\r\n                           \"request_trigger_event\":  {\r\n                                                         \"trigger_source_id\":  \"directory-poll-trigger-source-11\",\r\n                                                         \"trigger_kind\":  \"directory-poll\",\r\n                                                         \"event_id\":  \"directory-poll-directory-poll-trigger-source-11-1\",\r\n                                                         \"occurred_at\":  \"2026-06-09T09:30:02Z\",\r\n                                                         \"idempotency_key\":  \"directory-poll-trigger-source-11:1\"\r\n                                                     },\r\n                           \"deployment_request\":  {\r\n                                                      \"value\":  {\r\n                                                                    \"deployment_instance_id\":  \"{{deploymentInstanceId}}\"\r\n                                                                }\r\n                                                  }\r\n                       },\r\n    \"execution_metadata\":  {\r\n                               \"marker\":  \"postman-workflow-example-documents-preview\",\r\n                               \"example_name\":  \"industrial_local_directory_poll_yolox_position_gate\",\r\n                               \"scenario\":  \"industrial-local-directory-poll-yolox-position-gate\",\r\n                               \"trigger_source\":  \"editor-preview\"\r\n                           },\r\n    \"timeout_seconds\":  30\r\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "response": [],
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(201);",
+              "const body = pm.response.json();",
+              "if (body.preview_run_id) {",
+              "  pm.collectionVariables.set('previewRunId', body.preview_run_id);",
+              "}"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Get Preview Run",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/preview-runs/{{previewRunId}}"
+        },
+        "description": "读取上一步 preview run 的 outputs 和 node_records。"
+      },
+      "response": []
+    },
+    {
+      "name": "Create App Runtime",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/app-runtimes"
+        },
+        "description": "创建 directory-poll TriggerSource 使用的正式 runtime。",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"project_id\": \"project-1\",\n  \"application_id\": \"industrial-local-directory-poll-yolox-position-gate-app\",\n  \"display_name\": \"Industrial Local Directory Poll YOLOX Position Gate Runtime\",\n  \"metadata\": {\n    \"example_kind\": \"industrial-local-directory-poll-yolox-position-gate\",\n    \"trigger_source_input\": \"directory-poll\"\n  }\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "response": [],
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(201);",
+              "const body = pm.response.json();",
+              "if (body.workflow_runtime_id) {",
+              "  pm.collectionVariables.set('workflowRuntimeId', body.workflow_runtime_id);",
+              "}"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Start App Runtime",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/app-runtimes/{{workflowRuntimeId}}/start"
+        },
+        "description": "启动正式 runtime。"
+      },
+      "response": []
+    },
+    {
+      "name": "Get App Runtime Health",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/app-runtimes/{{workflowRuntimeId}}/health"
+        },
+        "description": "确认 runtime 已经处于 running。"
+      },
+      "response": []
+    },
+    {
+      "name": "Invoke App Runtime (Synthetic Event)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/app-runtimes/{{workflowRuntimeId}}/invoke"
+        },
+        "description": "直接用 synthetic directory-poll 事件调用同一个 runtime，验证业务处理链本身和静态 deployment_request 绑定。",
+        "body": {
+          "mode": "raw",
+          "raw": "{\r\n    \"input_bindings\":  {\r\n                           \"request_trigger_payload\":  {\r\n                                                           \"directory_path\":  \"D:/cases/line-e/incoming\",\r\n                                                           \"files\":  [\r\n                                                                         {\r\n                                                                             \"path\":  \"D:/cases/line-e/incoming/frame-0001.png\",\r\n                                                                             \"file_name\":  \"frame-0001.png\",\r\n                                                                             \"extension\":  \".png\",\r\n                                                                             \"size_bytes\":  524288,\r\n                                                                             \"modified_time_epoch_ms\":  1780997400000,\r\n                                                                             \"modified_time_iso\":  \"2026-06-09T09:30:00Z\"\r\n                                                                         },\r\n                                                                         {\r\n                                                                             \"path\":  \"D:/cases/line-e/incoming/frame-0002.png\",\r\n                                                                             \"file_name\":  \"frame-0002.png\",\r\n                                                                             \"extension\":  \".png\",\r\n                                                                             \"size_bytes\":  523904,\r\n                                                                             \"modified_time_epoch_ms\":  1780997401000,\r\n                                                                             \"modified_time_iso\":  \"2026-06-09T09:30:01Z\"\r\n                                                                         }\r\n                                                                     ],\r\n                                                           \"file_paths\":  [\r\n                                                                              \"D:/cases/line-e/incoming/frame-0001.png\",\r\n                                                                              \"D:/cases/line-e/incoming/frame-0002.png\"\r\n                                                                          ],\r\n                                                           \"file_count\":  2,\r\n                                                           \"primary_file\":  {\r\n                                                                                \"path\":  \"D:/cases/line-e/incoming/frame-0001.png\",\r\n                                                                                \"file_name\":  \"frame-0001.png\",\r\n                                                                                \"extension\":  \".png\",\r\n                                                                                \"size_bytes\":  524288,\r\n                                                                                \"modified_time_epoch_ms\":  1780997400000,\r\n                                                                                \"modified_time_iso\":  \"2026-06-09T09:30:00Z\"\r\n                                                                            },\r\n                                                           \"primary_file_path\":  \"D:/cases/line-e/incoming/frame-0001.png\",\r\n                                                           \"scan_summary\":  {\r\n                                                                                \"directory_path\":  \"D:/cases/line-e/incoming\",\r\n                                                                                \"raw_count\":  2,\r\n                                                                                \"visible_count\":  2,\r\n                                                                                \"recursive\":  false,\r\n                                                                                \"include_hidden\":  false,\r\n                                                                                \"glob_pattern\":  \"*\",\r\n                                                                                \"extensions\":  [\r\n                                                                                                   \".png\",\r\n                                                                                                   \".jpg\",\r\n                                                                                                   \".jpeg\"\r\n                                                                                               ],\r\n                                                                                \"sort_by\":  \"modified_time\",\r\n                                                                                \"descending\":  false,\r\n                                                                                \"dedupe_by\":  \"path\",\r\n                                                                                \"batch_size\":  4,\r\n                                                                                \"scan_interval_seconds\":  1.0,\r\n                                                                                \"min_stable_age_seconds\":  1.0,\r\n                                                                                \"unstable_skipped_count\":  0,\r\n                                                                                \"deduped_count\":  0,\r\n                                                                                \"new_candidate_count\":  2,\r\n                                                                                \"emitted_batch_file_count\":  2,\r\n                                                                                \"sequence_id\":  1\r\n                                                                            },\r\n                                                           \"sequence_id\":  1,\r\n                                                           \"batch_id\":  \"directory-poll-trigger-source-11:1\"\r\n                                                       },\r\n                           \"request_trigger_event\":  {\r\n                                                         \"trigger_source_id\":  \"directory-poll-trigger-source-11\",\r\n                                                         \"trigger_kind\":  \"directory-poll\",\r\n                                                         \"event_id\":  \"directory-poll-directory-poll-trigger-source-11-1\",\r\n                                                         \"occurred_at\":  \"2026-06-09T09:30:02Z\",\r\n                                                         \"idempotency_key\":  \"directory-poll-trigger-source-11:1\"\r\n                                                     },\r\n                           \"deployment_request\":  {\r\n                                                      \"value\":  {\r\n                                                                    \"deployment_instance_id\":  \"{{deploymentInstanceId}}\"\r\n                                                                }\r\n                                                  }\r\n                       },\r\n    \"execution_metadata\":  {\r\n                               \"scenario\":  \"industrial-local-directory-poll-yolox-position-gate\",\r\n                               \"trigger_source\":  \"sync-api\"\r\n                           }\r\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "response": [],
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const body = pm.response.json();",
+              "if (body.workflow_run_id) {",
+              "  pm.collectionVariables.set('workflowRunId', body.workflow_run_id);",
+              "}"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Create Workflow Run",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/app-runtimes/{{workflowRuntimeId}}/runs"
+        },
+        "description": "创建同一条 directory-poll 目录事件处理链的正式 async workflow run。",
+        "body": {
+          "mode": "raw",
+          "raw": "{\r\n    \"input_bindings\":  {\r\n                           \"request_trigger_payload\":  {\r\n                                                           \"directory_path\":  \"D:/cases/line-e/incoming\",\r\n                                                           \"files\":  [\r\n                                                                         {\r\n                                                                             \"path\":  \"D:/cases/line-e/incoming/frame-0001.png\",\r\n                                                                             \"file_name\":  \"frame-0001.png\",\r\n                                                                             \"extension\":  \".png\",\r\n                                                                             \"size_bytes\":  524288,\r\n                                                                             \"modified_time_epoch_ms\":  1780997400000,\r\n                                                                             \"modified_time_iso\":  \"2026-06-09T09:30:00Z\"\r\n                                                                         },\r\n                                                                         {\r\n                                                                             \"path\":  \"D:/cases/line-e/incoming/frame-0002.png\",\r\n                                                                             \"file_name\":  \"frame-0002.png\",\r\n                                                                             \"extension\":  \".png\",\r\n                                                                             \"size_bytes\":  523904,\r\n                                                                             \"modified_time_epoch_ms\":  1780997401000,\r\n                                                                             \"modified_time_iso\":  \"2026-06-09T09:30:01Z\"\r\n                                                                         }\r\n                                                                     ],\r\n                                                           \"file_paths\":  [\r\n                                                                              \"D:/cases/line-e/incoming/frame-0001.png\",\r\n                                                                              \"D:/cases/line-e/incoming/frame-0002.png\"\r\n                                                                          ],\r\n                                                           \"file_count\":  2,\r\n                                                           \"primary_file\":  {\r\n                                                                                \"path\":  \"D:/cases/line-e/incoming/frame-0001.png\",\r\n                                                                                \"file_name\":  \"frame-0001.png\",\r\n                                                                                \"extension\":  \".png\",\r\n                                                                                \"size_bytes\":  524288,\r\n                                                                                \"modified_time_epoch_ms\":  1780997400000,\r\n                                                                                \"modified_time_iso\":  \"2026-06-09T09:30:00Z\"\r\n                                                                            },\r\n                                                           \"primary_file_path\":  \"D:/cases/line-e/incoming/frame-0001.png\",\r\n                                                           \"scan_summary\":  {\r\n                                                                                \"directory_path\":  \"D:/cases/line-e/incoming\",\r\n                                                                                \"raw_count\":  2,\r\n                                                                                \"visible_count\":  2,\r\n                                                                                \"recursive\":  false,\r\n                                                                                \"include_hidden\":  false,\r\n                                                                                \"glob_pattern\":  \"*\",\r\n                                                                                \"extensions\":  [\r\n                                                                                                   \".png\",\r\n                                                                                                   \".jpg\",\r\n                                                                                                   \".jpeg\"\r\n                                                                                               ],\r\n                                                                                \"sort_by\":  \"modified_time\",\r\n                                                                                \"descending\":  false,\r\n                                                                                \"dedupe_by\":  \"path\",\r\n                                                                                \"batch_size\":  4,\r\n                                                                                \"scan_interval_seconds\":  1.0,\r\n                                                                                \"min_stable_age_seconds\":  1.0,\r\n                                                                                \"unstable_skipped_count\":  0,\r\n                                                                                \"deduped_count\":  0,\r\n                                                                                \"new_candidate_count\":  2,\r\n                                                                                \"emitted_batch_file_count\":  2,\r\n                                                                                \"sequence_id\":  1\r\n                                                                            },\r\n                                                           \"sequence_id\":  1,\r\n                                                           \"batch_id\":  \"directory-poll-trigger-source-11:1\"\r\n                                                       },\r\n                           \"request_trigger_event\":  {\r\n                                                         \"trigger_source_id\":  \"directory-poll-trigger-source-11\",\r\n                                                         \"trigger_kind\":  \"directory-poll\",\r\n                                                         \"event_id\":  \"directory-poll-directory-poll-trigger-source-11-1\",\r\n                                                         \"occurred_at\":  \"2026-06-09T09:30:02Z\",\r\n                                                         \"idempotency_key\":  \"directory-poll-trigger-source-11:1\"\r\n                                                     },\r\n                           \"deployment_request\":  {\r\n                                                      \"value\":  {\r\n                                                                    \"deployment_instance_id\":  \"{{deploymentInstanceId}}\"\r\n                                                                }\r\n                                                  }\r\n                       },\r\n    \"execution_metadata\":  {\r\n                               \"scenario\":  \"industrial-local-directory-poll-yolox-position-gate\",\r\n                               \"trigger_source\":  \"async-api\"\r\n                           }\r\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "response": [],
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(201);",
+              "const body = pm.response.json();",
+              "if (body.workflow_run_id) {",
+              "  pm.collectionVariables.set('workflowRunId', body.workflow_run_id);",
+              "}"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Get Workflow Run",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/runs/{{workflowRunId}}"
+        },
+        "description": "读取上一步正式 WorkflowRun 的状态、outputs 和事件摘要。"
+      },
+      "response": []
+    },
+    {
+      "name": "Create TriggerSource",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/trigger-sources"
+        },
+        "description": "创建 directory-poll TriggerSource。当前请求体同时演示原始 payload/event 映射和静态 deployment_request 注入。",
+        "body": {
+          "mode": "raw",
+          "raw": "{\r\n    \"trigger_source_id\":  \"directory-poll-trigger-source-11\",\r\n    \"project_id\":  \"project-1\",\r\n    \"display_name\":  \"Directory Poll TriggerSource 11 Industrial YOLOX Position Gate\",\r\n    \"trigger_kind\":  \"directory-poll\",\r\n    \"workflow_runtime_id\":  \"{{workflowRuntimeId}}\",\r\n    \"submit_mode\":  \"async\",\r\n    \"enabled\":  false,\r\n    \"transport_config\":  {\r\n                             \"directory_path\":  \"D:/cases/line-e/incoming\",\r\n                             \"recursive\":  false,\r\n                             \"include_hidden\":  false,\r\n                             \"glob_pattern\":  \"*\",\r\n                             \"extensions\":  [\r\n                                                \"png\",\r\n                                                \"jpg\",\r\n                                                \"jpeg\"\r\n                                            ],\r\n                             \"sort_by\":  \"modified_time\",\r\n                             \"descending\":  false,\r\n                             \"dedupe_by\":  \"path\",\r\n                             \"batch_size\":  4,\r\n                             \"scan_interval_seconds\":  1,\r\n                             \"min_stable_age_seconds\":  1.0,\r\n                             \"persist_checkpoint\":  true\r\n                         },\r\n    \"input_binding_mapping\":  {\r\n                                  \"request_trigger_payload\":  {\r\n                                                                  \"source\":  \"payload\",\r\n                                                                  \"payload_type_id\":  \"response-body.v1\"\r\n                                                              },\r\n                                  \"request_trigger_event\":  {\r\n                                                                \"source\":  \"event\",\r\n                                                                \"payload_type_id\":  \"response-body.v1\"\r\n                                                            },\r\n                                  \"deployment_request\":  {\r\n                                                             \"value\":  {\r\n                                                                           \"value\":  {\r\n                                                                                         \"deployment_instance_id\":  \"{{deploymentInstanceId}}\"\r\n                                                                                     }\r\n                                                                       },\r\n                                                             \"payload_type_id\":  \"value.v1\"\r\n                                                         }\r\n                              },\r\n    \"result_mapping\":  {\r\n                           \"result_binding\":  \"batch_record\",\r\n                           \"result_mode\":  \"accepted-then-query\"\r\n                       },\r\n    \"default_execution_metadata\":  {\r\n                                       \"scenario\":  \"industrial-local-directory-poll-yolox-position-gate\",\r\n                                       \"trigger_source\":  \"directory-poll\",\r\n                                       \"trace_level\":  \"none\",\r\n                                       \"retain_trace_enabled\":  false,\r\n                                       \"retain_node_records_enabled\":  false\r\n                                   },\r\n    \"ack_policy\":  \"ack-after-run-created\",\r\n    \"result_mode\":  \"accepted-then-query\",\r\n    \"debounce_window_ms\":  0,\r\n    \"idempotency_key_path\":  \"payload.batch_id\",\r\n    \"metadata\":  {\r\n                     \"example_kind\":  \"industrial-local-directory-poll-yolox-position-gate\",\r\n                     \"station_id\":  \"line-e-01\",\r\n                     \"line_id\":  \"line-e\"\r\n                 }\r\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Enable TriggerSource",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/trigger-sources/{{triggerSourceId}}/enable"
+        },
+        "description": "启动 directory-poll adapter。"
+      },
+      "response": []
+    },
+    {
+      "name": "Get TriggerSource Health",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/trigger-sources/{{triggerSourceId}}/health"
+        },
+        "description": "读取 directory-poll TriggerSource 的 health，重点关注 adapter_running、checkpoint_path 和 known_identity_count。"
+      },
+      "response": []
+    },
+    {
+      "name": "Disable TriggerSource",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/trigger-sources/{{triggerSourceId}}/disable"
+        },
+        "description": "停用 directory-poll TriggerSource。"
+      },
+      "response": []
+    },
+    {
+      "name": "Delete TriggerSource",
+      "request": {
+        "method": "DELETE",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/trigger-sources/{{triggerSourceId}}"
+        },
+        "description": "删除当前 TriggerSource；如果需要重新绑定新的 runtime、deployment 或目录路径，可在这一步后重新执行 Create TriggerSource。"
+      },
+      "response": []
+    },
+    {
+      "name": "Stop App Runtime",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/app-runtimes/{{workflowRuntimeId}}/stop"
+        },
+        "description": "结束本次 runtime 调试。"
+      },
+      "response": []
+    }
+  ]
+}
