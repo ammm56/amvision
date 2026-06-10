@@ -1274,6 +1274,215 @@ def test_industrial_single_frame_yolox_position_gate_documents_are_valid() -> No
     assert application.bindings[4].config["payload_type_id"] == "regions.v1"
 
 
+def test_industrial_single_frame_calibrated_template_edge_gate_documents_are_valid() -> (
+    None
+):
+    """验证本地标定 template-match + caliper-edge 工业样例模板与应用可以通过当前合同校验。"""
+
+    example_dir = (
+        Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
+    )
+    template_path = (
+        example_dir
+        / "industrial_single_frame_calibrated_template_edge_gate.template.json"
+    )
+    application_path = (
+        example_dir
+        / "industrial_single_frame_calibrated_template_edge_gate.application.json"
+    )
+    template = WorkflowGraphTemplate.model_validate(
+        json.loads(template_path.read_text(encoding="utf-8"))
+    )
+    application = FlowApplication.model_validate(
+        json.loads(application_path.read_text(encoding="utf-8"))
+    )
+
+    custom_nodes_root = Path(__file__).resolve().parents[1] / "custom_nodes"
+    node_pack_loader = LocalNodePackLoader(custom_nodes_root)
+    node_pack_loader.refresh()
+    registry = NodeCatalogRegistry(node_pack_loader=node_pack_loader)
+    validate_workflow_graph_template(
+        template=template,
+        node_definitions=registry.get_workflow_node_definitions(),
+    )
+    validate_flow_application_bindings(template=template, application=application)
+
+    assert [node.node_id for node in template.nodes] == [
+        "request_image_path_input",
+        "request_template_image_path_input",
+        "request_undistort_config_path_input",
+        "request_remap_mapping_path_input",
+        "load_image",
+        "load_template_image",
+        "load_undistort_config",
+        "load_remap_mapping",
+        "undistort",
+        "remap",
+        "create_roi",
+        "template_match",
+        "select_best_region",
+        "caliper_edge",
+        "extract_edge_strength",
+        "inside_check",
+        "offset_check",
+        "presence_check",
+        "edge_strength_check",
+        "metadata_object",
+        "metrics_object",
+        "process_decision",
+        "alarm_condition",
+        "save_result_json",
+        "append_result_csv",
+    ]
+    assert (
+        template.metadata["example_kind"]
+        == "industrial-single-frame-calibrated-template-edge-gate"
+    )
+    assert (
+        template.metadata["focus"]
+        == "single-frame-industrial-opencv-alignment-rule-chain"
+    )
+    assert template.metadata["dynamic_roi_input_binding"] == "request_roi"
+    assert template.metadata["local_json_input_bindings"] == [
+        "request_undistort_config_path",
+        "request_remap_mapping_path",
+    ]
+    assert [template_input.input_id for template_input in template.template_inputs] == [
+        "request_image_path",
+        "request_template_image_path",
+        "request_undistort_config_path",
+        "request_remap_mapping_path",
+        "request_roi",
+    ]
+    assert [
+        template_input.payload_type_id for template_input in template.template_inputs
+    ] == ["value.v1", "value.v1", "value.v1", "value.v1", "value.v1"]
+    assert template.template_inputs[4].required is False
+    assert application.template_ref.source_uri == (
+        "docs/examples/workflows/industrial_single_frame_calibrated_template_edge_gate.template.json"
+    )
+    assert application.runtime_mode == "python-json-workflow"
+    assert [binding.binding_id for binding in application.bindings] == [
+        "request_image_path",
+        "request_template_image_path",
+        "request_undistort_config_path",
+        "request_remap_mapping_path",
+        "request_roi",
+        "aligned_image",
+        "matched_regions",
+        "caliper_lines",
+        "inspection_result",
+        "inspection_alarm",
+        "decision_summary",
+        "json_summary",
+        "csv_summary",
+    ]
+    assert application.bindings[4].required is False
+    assert application.bindings[5].config["payload_type_id"] == "image-ref.v1"
+    assert application.bindings[6].config["payload_type_id"] == "regions.v1"
+    assert application.bindings[7].config["payload_type_id"] == "lines.v1"
+
+
+def test_industrial_single_frame_sobel_laplacian_edge_gap_gate_documents_are_valid() -> (
+    None
+):
+    """验证 sobel/laplacian 边线完整性工业样例模板与应用可以通过当前合同校验。"""
+
+    example_dir = (
+        Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
+    )
+    template_path = (
+        example_dir
+        / "industrial_single_frame_sobel_laplacian_edge_gap_gate.template.json"
+    )
+    application_path = (
+        example_dir
+        / "industrial_single_frame_sobel_laplacian_edge_gap_gate.application.json"
+    )
+    template = WorkflowGraphTemplate.model_validate(
+        json.loads(template_path.read_text(encoding="utf-8"))
+    )
+    application = FlowApplication.model_validate(
+        json.loads(application_path.read_text(encoding="utf-8"))
+    )
+
+    custom_nodes_root = Path(__file__).resolve().parents[1] / "custom_nodes"
+    node_pack_loader = LocalNodePackLoader(custom_nodes_root)
+    node_pack_loader.refresh()
+    registry = NodeCatalogRegistry(node_pack_loader=node_pack_loader)
+    validate_workflow_graph_template(
+        template=template,
+        node_definitions=registry.get_workflow_node_definitions(),
+    )
+    validate_flow_application_bindings(template=template, application=application)
+
+    assert [node.node_id for node in template.nodes] == [
+        "request_image_path_input",
+        "load_image",
+        "create_roi",
+        "crop_roi",
+        "sobel",
+        "laplacian",
+        "edge_threshold",
+        "contour",
+        "filter_contours",
+        "draw_review_contours",
+        "contours_to_regions",
+        "edge_profile_gap_check",
+        "edge_break_check",
+        "presence_check",
+        "edge_area_ratio",
+        "edge_area_ratio_check",
+        "extract_laplacian_mean_intensity",
+        "laplacian_intensity_check",
+        "metadata_object",
+        "metrics_object",
+        "process_decision",
+        "alarm_condition",
+        "save_result_json",
+        "append_result_csv",
+    ]
+    assert (
+        template.metadata["example_kind"]
+        == "industrial-single-frame-sobel-laplacian-edge-gap-gate"
+    )
+    assert (
+        template.metadata["focus"]
+        == "single-frame-industrial-opencv-edge-gap-chain"
+    )
+    assert template.metadata["dynamic_roi_input_binding"] == "request_roi"
+    assert [template_input.input_id for template_input in template.template_inputs] == [
+        "request_image_path",
+        "request_roi",
+    ]
+    assert [
+        template_input.payload_type_id for template_input in template.template_inputs
+    ] == ["value.v1", "value.v1"]
+    assert template.template_inputs[1].required is False
+    assert application.template_ref.source_uri == (
+        "docs/examples/workflows/industrial_single_frame_sobel_laplacian_edge_gap_gate.template.json"
+    )
+    assert application.runtime_mode == "python-json-workflow"
+    assert [binding.binding_id for binding in application.bindings] == [
+        "request_image_path",
+        "request_roi",
+        "cropped_image",
+        "sobel_edge_image",
+        "laplacian_edge_image",
+        "edge_regions",
+        "review_overlay_image",
+        "inspection_result",
+        "inspection_alarm",
+        "decision_summary",
+        "json_summary",
+        "csv_summary",
+    ]
+    assert application.bindings[1].required is False
+    assert application.bindings[2].config["payload_type_id"] == "image-ref.v1"
+    assert application.bindings[5].config["payload_type_id"] == "regions.v1"
+    assert application.bindings[6].config["payload_type_id"] == "image-ref.v1"
+
+
 def test_industrial_single_frame_usb_uvc_yolox_position_gate_documents_are_valid() -> (
     None
 ):

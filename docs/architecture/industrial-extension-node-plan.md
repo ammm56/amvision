@@ -57,12 +57,36 @@
 - `distance-transform`
 - `rotation-correct`
 - `perspective-transform`
+- `affine-transform`
 - `undistort`
 - `remap`
+- `hough-lines`
+- `hough-circles`
+- `fit-line`
+- `min-enclosing-circle`
+- `sobel`
+- `laplacian`
+- `template-match`
+- `caliper-edge`
+- `point-distance`
+- `point-to-line-distance`
+- `line-angle`
+- `circle-diameter`
+- `slot-width`
+- `parallelism-metrics`
+- `concentricity-metrics`
 - `draw-detections`
+- `draw-contours`
+- `draw-lines`
+- `draw-circles`
+- `draw-roi`
+- `draw-measurements`
+- `mask-overlay`
 - `crop-export`
 - `gallery-preview`
 - `payload-to-value`
+
+当前 `custom_nodes/opencv_basic_nodes/` 的物理目录名仍是旧形态，但 manifest id 已经是 `opencv.basic-nodes`。按真实实现宽度看，这个 pack 当前已经同时承载预处理、形状、几何、量测、匹配、缺陷与调试渲染几类能力，后续不适合继续把所有新节点都堆进同一个目录。
 
 其中第一批更贴工业现场的传统视觉补强当前已接通：
 
@@ -86,10 +110,11 @@
 - `custom.opencv.invert`
 - `custom.opencv.rotation-correct`
 - `custom.opencv.perspective-transform`
+- `custom.opencv.affine-transform`
 - `custom.opencv.undistort`
 - `custom.opencv.remap`
 
-这组节点当前已经可以先把“ROI 收紧、亮度区间规整、局部对比增强、噪声抑制、黑白方向翻转、姿态矫正、透视面矫正、镜头畸变矫正和像素级几何重映射”这层前置链独立收起来，再接后续差异、轮廓、量测和工业规则节点。
+这组节点当前已经可以先把“ROI 收紧、亮度区间规整、局部对比增强、噪声抑制、黑白方向翻转、姿态矫正、透视面矫正、仿射矫正、镜头畸变矫正和像素级几何重映射”这层前置链独立收起来，再接后续差异、轮廓、量测和工业规则节点。
 
 其中第二批更贴缺陷/差异流程的原子节点当前也已接通：
 
@@ -113,12 +138,52 @@
 
 这组节点当前已经可以把“轮廓精修、外形包络、椭圆拟合、孔洞填充、距离场预览”这条中间层收起来，继续服务孔位、椭圆件、涂布完整性和空腔/中心性分析。
 
-这套能力还远不足以覆盖工业现场常见的传统机器视觉处理。当前缺的不是“有没有 OpenCV 节点”，而是：
+其中边缘 / 线圆与边缘预增强层当前也已接通：
 
-- 节点分层还不清楚
+- `custom.opencv.sobel`
+- `custom.opencv.laplacian`
+- `custom.opencv.hough-lines`
+- `custom.opencv.hough-circles`
+- `custom.opencv.fit-line`
+- `custom.opencv.min-enclosing-circle`
+
+这组节点当前已经可以把“边缘预增强 -> 线 / 圆抽取 -> 结构化几何结果”这条链接通，继续服务边线完整性、孔位、圆度、边缘轮廓和定位辅助。
+
+其中定位与量测层当前也已接通：
+
+- `custom.opencv.template-match`
+- `custom.opencv.caliper-edge`
+- `custom.opencv.point-distance`
+- `custom.opencv.point-to-line-distance`
+- `custom.opencv.line-angle`
+- `custom.opencv.circle-diameter`
+- `custom.opencv.slot-width`
+- `custom.opencv.parallelism-metrics`
+- `custom.opencv.concentricity-metrics`
+
+这组节点当前已经可以把“参考定位、基准边量测、距离 / 角度 / 直径 / 槽宽 / 平行度 / 同心度”这条工业单帧量测主线单独收起来，再继续接 `core.rule.*` 与 `core.output.*`。
+
+其中渲染、导出与桥接层当前也已接通：
+
+- `custom.opencv.draw-contours`
+- `custom.opencv.draw-lines`
+- `custom.opencv.draw-circles`
+- `custom.opencv.draw-roi`
+- `custom.opencv.draw-measurements`
+- `custom.opencv.mask-overlay`
+- `custom.opencv.crop-export`
+- `custom.opencv.gallery-preview`
+- `custom.opencv.payload-to-value`
+
+这组节点当前已经可以把“现场调试复核、规则依据叠加、裁剪导出和结果桥接回通用响应体”这层使用面收起来。
+
+按当前真实状态看，这套能力已经能覆盖工业单帧现场一条较完整的传统机器视觉主线。当前更主要的问题不是“有没有 OpenCV 节点”，而是：
+
+- pack 边界与目录命名已经不再匹配真实能力宽度
+- 节点分层还需要从“一个大 pack”进一步收成稳定能力族
 - 相机与 PLC 这类现场接入没有按连接方式、协议族和厂商 SDK 分层
-- 工业缺陷 / 异常检测缺少一批更贴现场的核心原子节点
-- OpenCV 常用算子还停留在很基础的一小批
+- 工业缺陷 / 异常检测仍缺少更重的深层异常模型与少数形态学节点
+- 复杂配准、热力图预览和更重的异常处理链仍保留在后续规划中
 
 ## 当前阶段收口决策
 
@@ -837,7 +902,7 @@ PLC 能力也应至少拆成两类：
 - `core.cv.image-diff`
 - `core.cv.absdiff-threshold`
 - `core.cv.reference-align`
-- `core.vision.reference-diff-metrics`
+- `core.vision.reference-diff-metrics`（已实现）
 - `core.vision.foreground-change-ratio`
 
 适用场景：
@@ -853,11 +918,11 @@ PLC 能力也应至少拆成两类：
 建议节点：
 
 - `core.vision.surface-uniformity-metrics`
-- `core.vision.surface-uniformity-check`
-- `core.vision.foreign-object-check`
-- `core.vision.defect-cluster-count`
-- `core.vision.defect-largest-cluster-ratio`
-- `core.vision.defect-density`
+- `core.vision.surface-uniformity-check`（已实现）
+- `core.vision.foreign-object-check`（已实现）
+- `core.vision.defect-cluster-count`（已实现）
+- `core.vision.defect-largest-cluster-ratio`（已实现）
+- `core.vision.defect-density`（已实现）
 
 适用场景：
 
@@ -872,11 +937,11 @@ PLC 能力也应至少拆成两类：
 建议节点：
 
 - `core.vision.edge-break-check`（已实现）
-- `core.vision.edge-profile-gap-check`
+- `core.vision.edge-profile-gap-check`（已实现）
 - `core.vision.linearity-check`（已实现）
 - `core.vision.circularity-check`（已实现）
-- `core.vision.hole-pattern-check`
-- `core.vision.corner-missing-check`
+- `core.vision.hole-pattern-check`（已实现）
+- `core.vision.corner-missing-check`（已实现）
 
 适用场景：
 
@@ -956,7 +1021,8 @@ PLC 能力也应至少拆成两类：
 
 建议放在：
 
-- `custom.opencv.defect_nodes`
+- `custom_nodes/opencv_defect_nodes/`
+- 对外 pack id 使用 `opencv.defect-nodes`
 - 或按能力进一步拆成 `opencv.shape-nodes / opencv.measurement-nodes / opencv.matching-nodes`
 
 这一层适合承载：
@@ -1012,7 +1078,7 @@ PLC 能力也应至少拆成两类：
 
 ### 当前判断
 
-当前 `opencv_basic_nodes` 不是没有价值，但明显还只是“基础包”，离工业现场常用算子还差很多。
+当前 `opencv_basic_nodes` 不是没有价值，但按真实实现宽度看，它已经不再只是“基础包”。当前更明确的问题是：pack 名称、物理目录和实际能力边界已经不再一致，如果继续在同一个目录里无限加节点，后续 catalog、测试、文档和发布维护成本都会持续上升。
 
 建议后续不要只在现有 pack 上无限加节点，而是按能力族拆成几包：
 
@@ -1025,31 +1091,50 @@ PLC 能力也应至少拆成两类：
 
 这样比一个越来越大的 `opencv_basic_nodes` 更容易维护。
 
+第一轮拆分约束建议保持：
+
+- 第一轮先拆 pack 边界、manifest、catalog 与测试归属，不主动改现有 `custom.opencv.*` 的 `node_type_id`
+- 第一轮不直接打断现有 checked-in workflow、示例文档和上游引用路径
+- 调试渲染、bridge 与导出节点第一轮先继续留在 `opencv.basic-nodes`，避免为此额外再开一个 `render` pack
+
+### Pack 拆分映射表（第一版）
+
+| 目标 pack | 建议收纳节点 | 说明 |
+| --- | --- | --- |
+| `opencv.basic-nodes` | `grayscale / resize / crop / normalize / clahe / median-blur / bilateral-filter / gaussian-blur / adaptive-threshold / otsu-threshold / binary-threshold / invert / morphology / canny / sobel / laplacian / draw-detections / draw-contours / draw-lines / draw-circles / draw-roi / draw-measurements / mask-overlay / crop-export / gallery-preview / payload-to-value` | 承载基础预处理、阈值与边缘预增强、通用调试渲染、桥接与导出。第一轮继续把 render / bridge 留在这里，不再额外增加新 pack。 |
+| `opencv.shape-nodes` | `contour / contour-filter / contour-approx / convex-hull / min-area-rect / fit-ellipse / contours-to-regions / hough-lines / hough-circles / fit-line / min-enclosing-circle` | 承载轮廓、线圆、形状拟合和从图像几何结果到结构化 payload 的抽取层。 |
+| `opencv.measurement-nodes` | `measure / caliper-edge / point-distance / point-to-line-distance / line-angle / circle-diameter / slot-width / parallelism-metrics / concentricity-metrics` | 承载工业量测原语，避免和预处理或缺陷流程耦在同一 pack。 |
+| `opencv.geometry-nodes` | `rotation-correct / perspective-transform / affine-transform / undistort / remap` | 承载姿态、标定、坐标变换和几何矫正能力。 |
+| `opencv.matching-nodes` | `template-match / orb-keypoints / orb-match / homography-estimate` | 承载定位与参考对位链。当前已落地 `template-match`，ORB / homography 仍保留规划。 |
+| `opencv.defect-nodes` | `image-diff / absdiff-threshold / connected-components / fill-holes / distance-transform / watershed / skeletonize / heatmap-preview` | 承载差异、缺陷、形态学后处理与缺陷调试预览链。当前已落地 `image-diff / absdiff-threshold / connected-components / fill-holes / distance-transform`。 |
+
+如果后续 `draw-* / overlay / preview` 这组节点继续明显增长，再考虑第二轮额外拆出 `opencv.render-nodes`。当前第一轮不需要先把问题拆得过细。
+
 ### 第一批最值得继续补的 OpenCV 常用算子
 
 ### 图像预处理
 
 建议节点：
 
-- `custom.opencv.grayscale`
-- `custom.opencv.resize`
-- `custom.opencv.crop`
-- `custom.opencv.normalize`
-- `custom.opencv.clahe`
-- `custom.opencv.median-blur`
-- `custom.opencv.bilateral-filter`
-- `custom.opencv.adaptive-threshold`
-- `custom.opencv.otsu-threshold`
-- `custom.opencv.invert`
+- `custom.opencv.grayscale`（已实现）
+- `custom.opencv.resize`（已实现）
+- `custom.opencv.crop`（已实现）
+- `custom.opencv.normalize`（已实现）
+- `custom.opencv.clahe`（已实现）
+- `custom.opencv.median-blur`（已实现）
+- `custom.opencv.bilateral-filter`（已实现）
+- `custom.opencv.adaptive-threshold`（已实现）
+- `custom.opencv.otsu-threshold`（已实现）
+- `custom.opencv.invert`（已实现）
 
 ### 边缘与线条
 
 建议节点：
 
-- `custom.opencv.sobel`
-- `custom.opencv.laplacian`
-- `custom.opencv.hough-lines`
-- `custom.opencv.hough-circles`
+- `custom.opencv.sobel`（已实现）
+- `custom.opencv.laplacian`（已实现）
+- `custom.opencv.hough-lines`（已实现）
+- `custom.opencv.hough-circles`（已实现）
 - `custom.opencv.fit-line`（已实现）
 - `custom.opencv.min-enclosing-circle`（已实现）
 
@@ -1057,22 +1142,22 @@ PLC 能力也应至少拆成两类：
 
 建议节点：
 
-- `custom.opencv.contour-filter`
-- `custom.opencv.contour-approx`
-- `custom.opencv.convex-hull`
-- `custom.opencv.min-area-rect`
-- `custom.opencv.fit-ellipse`
-- `custom.opencv.contours-to-regions`
+- `custom.opencv.contour-filter`（已实现）
+- `custom.opencv.contour-approx`（已实现）
+- `custom.opencv.convex-hull`（已实现）
+- `custom.opencv.min-area-rect`（已实现）
+- `custom.opencv.fit-ellipse`（已实现）
+- `custom.opencv.contours-to-regions`（已实现）
 
 ### 几何与标定
 
 建议节点：
 
 - `custom.opencv.perspective-transform`（已实现）
-- `custom.opencv.affine-transform`
+- `custom.opencv.affine-transform`（已实现）
 - `custom.opencv.undistort`（已实现）
 - `custom.opencv.remap`（已实现）
-- `custom.opencv.rotation-correct`
+- `custom.opencv.rotation-correct`（已实现）
 
 ### 匹配与定位
 
@@ -1083,15 +1168,95 @@ PLC 能力也应至少拆成两类：
 - `custom.opencv.orb-match`
 - `custom.opencv.homography-estimate`
 
+说明：
+
+- 当前使用面已经先补出 checked-in 样例 `industrial_single_frame_calibrated_template_edge_gate.*`，把 `json-load-local -> undistort / remap -> template-match / caliper-edge -> 工业规则链` 这条更贴现场的本地标定定位主线先收稳
+- ORB / homography 这条链保留为第二层更重配准能力，不抢在 template-match、ROI 和 caliper-edge 前面
+
+#### ORB / Homography 项目内正式规格
+
+`custom.opencv.orb-keypoints`
+
+- 输入 payload：
+  - `image`：`image-ref.v1`
+  - `roi`：`roi.v1`，可选，只在指定搜索范围内提取局部特征
+- 输出 payload：
+  - `features`：`local-features.v1`
+  - `summary`：`value.v1`
+- `local-features.v1` 建议字段：
+  - `feature_extractor`：固定为 `orb`
+  - `descriptor_kind`：固定为 `orb`
+  - `descriptor_dtype`：`uint8`
+  - `descriptor_length`
+  - `items`：`feature_id / x / y / size / angle_deg / response / octave / class_id`
+  - `descriptors`：与 `items` 一一对应的二维整数数组
+  - `source_image`、`roi_id`
+- 节点边界：
+  - 只负责局部特征点检测和描述子提取
+  - 不负责特征匹配、几何变换估计、图像矫正、规则判定或可视化
+- 现场使用方式：
+  - 适合模板匹配不够稳、存在一定旋转缩放或局部视角变化时，先把参考图与现场图提取成可匹配特征
+
+`custom.opencv.orb-match`
+
+- 输入 payload：
+  - `features_a`：`local-features.v1`
+  - `features_b`：`local-features.v1`
+- 输出 payload：
+  - `matches`：`feature-matches.v1`
+  - `summary`：`value.v1`
+- `feature-matches.v1` 建议字段：
+  - `matcher_kind`：如 `bf-hamming`
+  - `cross_check`
+  - `items`：`match_id / query_feature_id / train_feature_id / query_index / train_index / distance / query_xy / train_xy`
+  - `source_a_image`、`source_b_image`
+- 节点边界：
+  - 只负责描述子匹配、比值过滤或交叉校验后的匹配结果整理
+  - 不负责从匹配直接推出 homography，也不直接输出 warp 后图片
+- 现场使用方式：
+  - 适合把“参考图特征”和“现场图特征”之间的候选对应关系先显式暴露出来，便于人工看匹配密度和误匹配情况
+
+`custom.opencv.homography-estimate`
+
+- 输入 payload：
+  - `matches`：`feature-matches.v1`
+  - `features_a`：`local-features.v1`
+  - `features_b`：`local-features.v1`
+- 输出 payload：
+  - `transform`：`planar-transform.v1`
+  - `summary`：`value.v1`
+- `planar-transform.v1` 建议字段：
+  - `transform_kind`：固定为 `homography`
+  - `matrix_3x3`
+  - `inverse_matrix_3x3`，可选
+  - `match_count`
+  - `inlier_count`
+  - `inlier_match_ids`
+  - `reprojection_error`
+  - `source_a_image`、`source_b_image`
+- 节点边界：
+  - 只负责根据匹配关系估计平面变换
+  - 不负责直接执行图像 warp；真正做几何矫正仍应交给 `perspective-transform` 或后续 `affine-transform`
+  - 不负责直接输出 OK/NG 规则结果
+- 现场使用方式：
+  - 适合复杂换型、参考板对位、视角有一定变化、单纯 bbox 模板匹配难以稳定覆盖的场景
+
+为什么现在不先做：
+
+- 工业单帧主线当前大多数还是固定工位、小位姿扰动，`template-match + ROI + caliper-edge` 更直白、可解释、调参成本更低
+- ORB 对纹理、清晰度和反光更敏感，在低纹理、均匀表面或轻微虚焦场景下往往不如模板匹配稳
+- 这条链一旦进入实现，不只是 3 个节点，还要同时补 `local-features.v1 / feature-matches.v1 / planar-transform.v1` 这组新 payload 和相应调试预览
+- 因此当前更合理的顺序是先把本地标定定位模板和 `sobel / laplacian` 这类更贴现场的节点收稳，再决定是否推进 ORB
+
 ### 二值 / 分割 / 形态学增强
 
 建议节点：
 
-- `custom.opencv.connected-components`
-- `custom.opencv.distance-transform`
+- `custom.opencv.connected-components`（已实现）
+- `custom.opencv.distance-transform`（已实现）
 - `custom.opencv.watershed`
 - `custom.opencv.skeletonize`
-- `custom.opencv.fill-holes`
+- `custom.opencv.fill-holes`（已实现）
 
 说明：
 
@@ -1143,9 +1308,11 @@ PLC 能力也应至少拆成两类：
 - `custom.camera.usb_uvc_nodes`（前三批已实现：`enumerate-devices / capture-frame / open-device / start-stream / read-window / read-latest-frame / get-parameter / set-parameter / close-device`）
 - `custom.plc.modbus_tcp_nodes`（主动读写 / wait-condition / write-result-signals 已实现）
 - `custom.opencv.grayscale / resize / adaptive-threshold / otsu-threshold`（已实现）
-- `custom.opencv.crop / normalize / clahe / median-blur / bilateral-filter / invert / rotation-correct / perspective-transform / undistort / remap`（已实现）
+- `custom.opencv.crop / normalize / clahe / median-blur / bilateral-filter / invert / rotation-correct / perspective-transform / affine-transform / undistort / remap`（已实现）
 - `custom.opencv.contour-approx / convex-hull / fit-ellipse / fill-holes / distance-transform`（已实现）
+- `custom.opencv.sobel / laplacian`（已实现）
 - `custom.opencv.hough-lines / hough-circles`（已实现）
+- `custom.opencv.fit-line / min-enclosing-circle`（已实现）
 - `custom.opencv.contour-filter / min-area-rect / contours-to-regions`（已实现）
 - `custom.opencv.connected-components / image-diff / absdiff-threshold`（已实现）
 - `core.vision.reference-diff-metrics`（已实现）
@@ -1156,9 +1323,13 @@ PLC 能力也应至少拆成两类：
 
 - `custom.opencv.template-match`（已实现）
 - `custom.opencv.caliper-edge`（已实现）
+- `custom.opencv.point-distance / point-to-line-distance / line-angle / circle-diameter / slot-width / parallelism-metrics / concentricity-metrics`（已实现）
 - `core.vision.edge-break-check`（已实现）
+- `core.vision.edge-profile-gap-check`（已实现）
 - `core.vision.linearity-check`（已实现）
 - `core.vision.circularity-check`（已实现）
+- `core.vision.defect-cluster-count / defect-largest-cluster-ratio / defect-density`（已实现）
+- `core.vision.hole-pattern-check / corner-missing-check`（已实现）
 - `core.vision.multi-part-presence-check`（已实现）
 - `core.vision.pair-offset-check`（已实现）
 - `core.vision.reference-mark-align-check`（已实现）
@@ -1173,8 +1344,10 @@ PLC 能力也应至少拆成两类：
 - `custom.plc.s7_nodes`
 - `custom.plc.mitsubishi_mc_nodes`
 - `custom.camera.framegrabber_nodes`
-- `custom.opencv.orb-match / homography-estimate`
-- `trigger-source` 中的 `directory-poll / directory-watch / modbus-poll-trigger / s7-poll-trigger`
+- `custom.opencv.orb-keypoints / orb-match / homography-estimate`
+- `custom.opencv.watershed / skeletonize / heatmap-preview`
+- `custom.anomaly.model_nodes`
+- `trigger-source` 中的 `modbus-poll-trigger / s7-poll-trigger`
 
 ## 当前建议
 

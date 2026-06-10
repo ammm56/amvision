@@ -6,6 +6,10 @@ from custom_nodes.opencv_basic_nodes.backend.nodes.adaptive_threshold import (
     NODE_TYPE_ID as ADAPTIVE_THRESHOLD_NODE_TYPE_ID,
     handle_node as adaptive_threshold_handler,
 )
+from custom_nodes.opencv_basic_nodes.backend.nodes.affine_transform import (
+    NODE_TYPE_ID as AFFINE_TRANSFORM_NODE_TYPE_ID,
+    handle_node as affine_transform_handler,
+)
 from custom_nodes.opencv_basic_nodes.backend.nodes.absdiff_threshold import (
     NODE_TYPE_ID as ABSDIFF_THRESHOLD_NODE_TYPE_ID,
     handle_node as absdiff_threshold_handler,
@@ -138,6 +142,10 @@ from custom_nodes.opencv_basic_nodes.backend.nodes.invert import (
     NODE_TYPE_ID as INVERT_NODE_TYPE_ID,
     handle_node as invert_handler,
 )
+from custom_nodes.opencv_basic_nodes.backend.nodes.laplacian import (
+    NODE_TYPE_ID as LAPLACIAN_NODE_TYPE_ID,
+    handle_node as laplacian_handler,
+)
 from custom_nodes.opencv_basic_nodes.backend.nodes.line_angle import (
     NODE_TYPE_ID as LINE_ANGLE_NODE_TYPE_ID,
     handle_node as line_angle_handler,
@@ -210,6 +218,10 @@ from custom_nodes.opencv_basic_nodes.backend.nodes.slot_width import (
     NODE_TYPE_ID as SLOT_WIDTH_NODE_TYPE_ID,
     handle_node as slot_width_handler,
 )
+from custom_nodes.opencv_basic_nodes.backend.nodes.sobel import (
+    NODE_TYPE_ID as SOBEL_NODE_TYPE_ID,
+    handle_node as sobel_handler,
+)
 from custom_nodes.opencv_basic_nodes.backend.nodes.template_match import (
     NODE_TYPE_ID as TEMPLATE_MATCH_NODE_TYPE_ID,
     handle_node as template_match_handler,
@@ -221,6 +233,7 @@ from custom_nodes.opencv_basic_nodes.backend.nodes.undistort import (
 
 
 NODE_HANDLERS = (
+    (AFFINE_TRANSFORM_NODE_TYPE_ID, affine_transform_handler),
     (DRAW_DETECTIONS_NODE_TYPE_ID, draw_detections_handler),
     (DRAW_CIRCLES_NODE_TYPE_ID, draw_circles_handler),
     (DRAW_CONTOURS_NODE_TYPE_ID, draw_contours_handler),
@@ -258,6 +271,7 @@ NODE_HANDLERS = (
     (FIT_LINE_NODE_TYPE_ID, fit_line_handler),
     (HOUGH_LINES_NODE_TYPE_ID, hough_lines_handler),
     (HOUGH_CIRCLES_NODE_TYPE_ID, hough_circles_handler),
+    (LAPLACIAN_NODE_TYPE_ID, laplacian_handler),
     (RESIZE_NODE_TYPE_ID, resize_handler),
     (INVERT_NODE_TYPE_ID, invert_handler),
     (MEDIAN_BLUR_NODE_TYPE_ID, median_blur_handler),
@@ -273,6 +287,7 @@ NODE_HANDLERS = (
     (CONNECTED_COMPONENTS_NODE_TYPE_ID, connected_components_handler),
     (ROTATION_CORRECT_NODE_TYPE_ID, rotation_correct_handler),
     (SLOT_WIDTH_NODE_TYPE_ID, slot_width_handler),
+    (SOBEL_NODE_TYPE_ID, sobel_handler),
     (TEMPLATE_MATCH_NODE_TYPE_ID, template_match_handler),
     (UNDISTORT_NODE_TYPE_ID, undistort_handler),
 )
