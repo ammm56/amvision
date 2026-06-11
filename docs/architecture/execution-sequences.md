@@ -23,7 +23,7 @@
 
 ## 训练链
 
-- REST 入口：[backend/service/api/rest/v1/routes/yolox_training_tasks.py](../../backend/service/api/rest/v1/routes/yolox_training_tasks.py)
+- REST 入口：[backend/service/api/rest/v1/routes/detection_training_tasks.py](../../backend/service/api/rest/v1/routes/detection_training_tasks.py)
 - 任务服务：[backend/service/application/models/yolox_training_service.py](../../backend/service/application/models/yolox_training_service.py)
 - worker 入口：[backend/workers/training/yolox_training_queue_worker.py](../../backend/workers/training/yolox_training_queue_worker.py)
 
@@ -31,7 +31,7 @@
 sequenceDiagram
     autonumber
     actor Client as 调用方
-    participant API as yolox_training_tasks.create_yolox_training_task
+    participant API as detection_training_tasks.create_detection_training_task
     participant TrainSvc as SqlAlchemyYoloXTrainingTaskService
     participant TaskSvc as SqlAlchemyTaskService
     participant DB as TaskRecord / TaskEvent
@@ -132,7 +132,7 @@ sequenceDiagram
 
 ## 转换链
 
-- REST 入口：[backend/service/api/rest/v1/routes/yolox_conversion_tasks.py](../../backend/service/api/rest/v1/routes/yolox_conversion_tasks.py)
+- REST 入口：[backend/service/api/rest/v1/routes/detection_conversion_tasks.py](../../backend/service/api/rest/v1/routes/detection_conversion_tasks.py)
 - 任务服务：[backend/service/application/conversions/yolox_conversion_task_service.py](../../backend/service/application/conversions/yolox_conversion_task_service.py)
 - worker 入口：[backend/workers/conversion/yolox_conversion_queue_worker.py](../../backend/workers/conversion/yolox_conversion_queue_worker.py)
 - 转换 runner：[backend/workers/conversion/yolox_conversion_runner.py](../../backend/workers/conversion/yolox_conversion_runner.py)
@@ -141,7 +141,7 @@ sequenceDiagram
 sequenceDiagram
     autonumber
     actor Client as 调用方
-    participant API as yolox_conversion_tasks._submit_yolox_conversion_task
+    participant API as detection_conversion_tasks._submit_detection_conversion_task
     participant ConvSvc as SqlAlchemyYoloXConversionTaskService
     participant Planner as DefaultYoloXConversionPlanner
     participant TaskSvc as SqlAlchemyTaskService
@@ -208,7 +208,7 @@ sequenceDiagram
 sequenceDiagram
     autonumber
     actor Client as 调用方
-    participant API as _submit_yolox_conversion_task
+    participant API as _submit_detection_conversion_task
     participant ConvSvc as SqlAlchemyYoloXConversionTaskService
     participant Planner as DefaultYoloXConversionPlanner
     participant TaskSvc as SqlAlchemyTaskService

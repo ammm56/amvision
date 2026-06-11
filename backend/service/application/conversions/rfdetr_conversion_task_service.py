@@ -21,9 +21,9 @@ from backend.service.application.conversions.yolox_conversion_planner import (
     deserialize_yolox_conversion_plan,
     serialize_yolox_conversion_plan,
 )
-from backend.service.application.conversions.yolox_conversion_task_service import (
-    ModelBuildRegistration as RfdetrBuildRegistration,
-    YoloXConversionResultSnapshot as RfdetrConversionResultSnapshot,
+from backend.service.application.conversions.detection_conversion_task_service import (
+    DetectionBuildRegistration as RfdetrBuildRegistration,
+    DetectionConversionResultSnapshot as RfdetrConversionResultSnapshot,
 )
 from backend.service.application.errors import (
     InvalidRequestError,

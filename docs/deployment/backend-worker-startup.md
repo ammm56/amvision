@@ -43,7 +43,7 @@
 - `dataset-export`
 - `yolox-training`
 - `yolox-conversion`
-- `yolox-evaluation`
+- `detection-evaluation`
 - `detection-inference`
 
 ## 当前 worker 拓扑约定

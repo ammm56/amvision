@@ -33,7 +33,7 @@
 - 历史命名上仍保留大量 `yolox_*` 模块名、队列名、runtime target 与 专用 route；这些外壳不再只服务 YOLOX，但名称仍会影响理解成本。
 - `ModelRuntime`、deployment supervisor 和 async inference gateway 已经具备通用分发能力，但部分请求/结果对象和目录命名仍带早期 detection/YOLOX 色彩。
 - workflow service node runtime 已经组装统一 detection / classification / segmentation / pose / obb 服务，以及 YOLOE / SAM3、PLC、目录触发、自定义输出等能力；但少数 service node id 与内部 helper 仍沿用早期 YOLOX 命名。
-- worker consumer 注册表里，detection 推理已经改成 `detection-inference`；训练、转换、评估这三组 detection 队列 kind 仍保留 `yolox-training / yolox-conversion / yolox-evaluation`，实际执行面已经承载更多模型类型，后续还需要继续统一命名。
+- worker consumer 注册表里，detection 推理和评估已经改成 `detection-inference / detection-evaluation`；当前 detection 训练和转换仍保留 `yolox-training / yolox-conversion`，因为这两层还直接对应 YOLOX 的任务服务、planner、runner 和 worker 实现边界，后续如果要继续统一命名，需要先把实现真正抽成共享层。
 
 因此，下一步不应按“再复制一套 YOLOX 目录给下一个模型”的方式继续扩张，而应先把当前主干拆成稳定的通用层、任务分类层和模型分类适配层。
 
