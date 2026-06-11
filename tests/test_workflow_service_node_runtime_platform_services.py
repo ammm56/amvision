@@ -23,6 +23,12 @@ from backend.service.application.models.detection_validation_session_service imp
 from backend.service.application.models.obb_evaluation_task_service import (
     SqlAlchemyObbEvaluationTaskService,
 )
+from backend.service.application.models.yolo_primary_classification_evaluation_task_service import (
+    SqlAlchemyYoloPrimaryClassificationEvaluationTaskService,
+)
+from backend.service.application.models.yolo_primary_segmentation_evaluation_task_service import (
+    SqlAlchemyYoloPrimarySegmentationEvaluationTaskService,
+)
 from backend.service.application.models.yolo_primary_classification_training_service import (
     SqlAlchemyYoloPrimaryClassificationTrainingTaskService,
 )
@@ -91,6 +97,14 @@ def test_workflow_runtime_can_build_platform_services_by_task_type(tmp_path: Pat
     assert isinstance(
         runtime_context.build_evaluation_task_service(task_type="detection"),
         SqlAlchemyDetectionEvaluationTaskService,
+    )
+    assert isinstance(
+        runtime_context.build_evaluation_task_service(task_type="classification"),
+        SqlAlchemyYoloPrimaryClassificationEvaluationTaskService,
+    )
+    assert isinstance(
+        runtime_context.build_evaluation_task_service(task_type="segmentation"),
+        SqlAlchemyYoloPrimarySegmentationEvaluationTaskService,
     )
     assert isinstance(
         runtime_context.build_evaluation_task_service(task_type="obb"),

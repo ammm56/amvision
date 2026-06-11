@@ -213,6 +213,7 @@ BACKEND_MODULES: tuple[str, ...] = (
     "backend.service.application.models.detection_operation_rules",
     "backend.service.application.models.detection_training_rules",
     "backend.service.application.models.detection_validation_session_service",
+    "backend.service.application.models.evaluation_runtime_target_resolvers",
     "backend.service.application.models.yolo11_detection_training",
     "backend.service.application.models.yolo11_model_service",
     "backend.service.application.models.yolo11_training_service",

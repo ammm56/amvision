@@ -15,8 +15,8 @@ from backend.service.api.deps.storage import get_dataset_storage
 from backend.service.application.errors import PermissionDeniedError
 from backend.service.application.models.yolo_primary_classification_evaluation_task_service import (
     CLASSIFICATION_EVALUATION_TASK_KIND,
-    SqlAlchemyClassificationEvaluationTaskService,
-    ClassificationEvaluationTaskRequest,
+    SqlAlchemyYoloPrimaryClassificationEvaluationTaskService,
+    YoloPrimaryClassificationEvaluationTaskRequest,
 )
 from backend.service.application.tasks.task_service import SqlAlchemyTaskService, TaskQueryFilters
 from backend.service.infrastructure.db.session import SessionFactory
@@ -81,9 +81,9 @@ def create_classification_evaluation_task(
     """创建 classification 评估任务。"""
     if principal.project_ids and body.project_id not in principal.project_ids:
         raise PermissionDeniedError("无权访问该 Project")
-    svc = SqlAlchemyClassificationEvaluationTaskService(session_factory=sf, dataset_storage=ds, queue_backend=qb)
+    svc = SqlAlchemyYoloPrimaryClassificationEvaluationTaskService(session_factory=sf, dataset_storage=ds, queue_backend=qb)
     r = svc.submit_evaluation_task(
-        ClassificationEvaluationTaskRequest(
+        YoloPrimaryClassificationEvaluationTaskRequest(
             project_id=body.project_id, model_version_id=body.model_version_id,
             dataset_export_id=body.dataset_export_id, dataset_export_manifest_key=body.dataset_export_manifest_key,
             top_k=body.top_k, save_result_package=body.save_result_package,

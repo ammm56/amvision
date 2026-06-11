@@ -13,20 +13,15 @@ from backend.queue import QueueBackend
 from backend.service.application.errors import (
     InvalidRequestError, ResourceNotFoundError, ServiceConfigurationError,
 )
+from backend.service.application.models.evaluation_runtime_target_resolvers import (
+    get_detection_evaluation_runtime_target_resolver,
+)
 from backend.service.application.models.detection_evaluation import (
     DetectionEvaluationRequest,
-    DetectionEvaluationResult,
     run_detection_evaluation,
-)
-from backend.service.application.models.yolo_primary_classification_evaluation_task_service import (
-    _get_runtime_resolver,
-)
-from backend.service.application.runtime.rfdetr_runtime_target import (
-    SqlAlchemyRfdetrRuntimeTargetResolver,
 )
 from backend.service.application.runtime.runtime_target import (
     RuntimeTargetResolveRequest,
-    SqlAlchemyRuntimeTargetResolver,
 )
 from backend.service.application.tasks.task_service import (
     AppendTaskEventRequest,
@@ -42,39 +37,6 @@ from backend.service.infrastructure.object_store.local_dataset_storage import Lo
 
 DETECTION_EVALUATION_TASK_KIND = "detection-evaluation"
 DETECTION_EVALUATION_QUEUE_NAME = "detection-evaluations"
-
-
-# 扩展 runtime resolver 映射，加入 yolox 和 rfdetr
-_EXTENDED_RUNTIME_RESOLVER_MAP = {
-    "yolox": SqlAlchemyRuntimeTargetResolver,
-    "yolov8": _get_runtime_resolver.__module__.rsplit(".", 1)[0] and None,  # 延迟解析
-    "yolo11": None,
-    "yolo26": None,
-    "rfdetr": SqlAlchemyRfdetrRuntimeTargetResolver,
-}
-
-
-def _get_detection_runtime_resolver(model_type: str):
-    """按 model_type 获取 runtime target resolver 类。"""
-    from backend.service.application.runtime.yolov8_runtime_target import SqlAlchemyYoloV8RuntimeTargetResolver
-    from backend.service.application.runtime.yolo11_runtime_target import SqlAlchemyYolo11RuntimeTargetResolver
-    from backend.service.application.runtime.yolo26_runtime_target import SqlAlchemyYolo26RuntimeTargetResolver
-
-    resolver_map = {
-        "yolox": SqlAlchemyRuntimeTargetResolver,
-        "yolov8": SqlAlchemyYoloV8RuntimeTargetResolver,
-        "yolo11": SqlAlchemyYolo11RuntimeTargetResolver,
-        "yolo26": SqlAlchemyYolo26RuntimeTargetResolver,
-        "rfdetr": SqlAlchemyRfdetrRuntimeTargetResolver,
-    }
-    resolver_cls = resolver_map.get(model_type)
-    if resolver_cls is None:
-        raise InvalidRequestError(
-            "detection 评估不支持该模型分类",
-            details={"model_type": model_type, "supported": list(resolver_map.keys())},
-        )
-    return resolver_cls
-
 
 @dataclass(frozen=True)
 class DetectionEvaluationTaskRequest:
@@ -407,7 +369,9 @@ class SqlAlchemyDetectionEvaluationTaskService:
 
     def _resolve_runtime_target(self, request: DetectionEvaluationTaskRequest):
         requested_model_type = request.model_type.strip().lower()
-        resolver_cls = _get_detection_runtime_resolver(requested_model_type)
+        resolver_cls = get_detection_evaluation_runtime_target_resolver(
+            requested_model_type
+        )
         return resolver_cls(
             session_factory=self.session_factory,
             dataset_storage=self._require_dataset_storage(),

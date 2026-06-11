@@ -42,6 +42,9 @@
 - 新增了 `backend/service/application/conversions/conversion_result_snapshot.py`
 - classification 和 segmentation 训练路由直接改为使用 `yolo_primary_*_training_service.py`
 - 删除了只做别名转发的 classification / segmentation 模型包装服务文件
+- classification / segmentation evaluation 共享链改为显式使用 `SqlAlchemyYoloPrimary*EvaluationTaskService`
+- evaluation runtime resolver 公共映射单独收到了 `evaluation_runtime_target_resolvers.py`
+- segmentation evaluation 已补上 `rfdetr` resolver 分发；pose / obb evaluation 去掉了误写的 `yolox` 支持残留
 - 保留了公开 task 路由 `backend/service/api/rest/v1/routes/detection_conversion_tasks.py`
 - 保留了 YOLOX 训练和转换 worker / task kind / queue name 的模型专属命名
 
@@ -67,6 +70,8 @@
 - `detection-inference`、`detection-evaluation` 继续保留为任务分类共享名，因为实现已经是真共享。
 - detection training 继续保留 `yolox-*`、`yolov8-*`、`yolo11-*`、`yolo26-*`、`rfdetr-*` 这些模型专属执行层命名。
 - classification / segmentation / pose / obb 这几条非 detection 训练链，已经直接收口到 `yolo_primary_*_training_service.py` 共享实现。
+- classification / segmentation evaluation 继续走 task-type 公开路由，但共享实现名明确写成 `yolo_primary_*`，避免把家族共享层误读成全平台通用层。
+- deployment 这一层当前没有发现只做转发的薄壳；`detection / classification / segmentation / pose / obb deployment service` 继续保留 task-type 公共服务命名。
 - `conversion` 相关层现在采用“三层分开”的写法：
   - 公开入口：`detection_conversion_tasks.py`
   - YOLO 家族共享层：`yolo_conversion_task_service_base.py`

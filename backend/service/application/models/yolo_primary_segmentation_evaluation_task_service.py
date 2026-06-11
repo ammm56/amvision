@@ -10,13 +10,12 @@ from backend.queue import QueueBackend
 from backend.service.application.errors import (
     InvalidRequestError, ResourceNotFoundError, ServiceConfigurationError,
 )
+from backend.service.application.models.evaluation_runtime_target_resolvers import (
+    get_segmentation_evaluation_runtime_target_resolver,
+)
 from backend.service.application.models.yolo_primary_segmentation_evaluation import (
     SegmentationEvaluationRequest,
-    SegmentationEvaluationResult,
     run_yolo_primary_segmentation_evaluation,
-)
-from backend.service.application.models.yolo_primary_classification_evaluation_task_service import (
-    _get_runtime_resolver,
 )
 from backend.service.application.runtime.runtime_target import (
     RuntimeTargetResolveRequest, RuntimeTargetSnapshot,
@@ -36,7 +35,7 @@ SEGMENTATION_EVALUATION_QUEUE_NAME = "segmentation-evaluations"
 
 
 @dataclass(frozen=True)
-class SegmentationEvaluationTaskRequest:
+class YoloPrimarySegmentationEvaluationTaskRequest:
     project_id: str
     model_version_id: str
     dataset_export_id: str | None = None
@@ -48,23 +47,36 @@ class SegmentationEvaluationTaskRequest:
 
 
 @dataclass(frozen=True)
-class SegmentationEvaluationTaskSubmission:
-    task_id: str; status: str; queue_name: str; queue_task_id: str
-    dataset_export_id: str; dataset_version_id: str; model_version_id: str
+class YoloPrimarySegmentationEvaluationTaskSubmission:
+    task_id: str
+    status: str
+    queue_name: str
+    queue_task_id: str
+    dataset_export_id: str
+    dataset_version_id: str
+    model_version_id: str
 
 
 @dataclass(frozen=True)
-class SegmentationEvaluationTaskResult:
-    task_id: str; status: str
-    dataset_export_id: str; dataset_version_id: str; model_version_id: str
-    output_object_prefix: str; report_object_key: str; predictions_object_key: str
+class YoloPrimarySegmentationEvaluationTaskResult:
+    task_id: str
+    status: str
+    dataset_export_id: str
+    dataset_version_id: str
+    model_version_id: str
+    output_object_prefix: str
+    report_object_key: str
+    predictions_object_key: str
     result_package_object_key: str | None
-    map50: float; map50_95: float; mask_map50: float; mask_map50_95: float
+    map50: float
+    map50_95: float
+    mask_map50: float
+    mask_map50_95: float
     sample_count: int
     report_summary: dict[str, object] = field(default_factory=dict)
 
 
-class SqlAlchemySegmentationEvaluationTaskService:
+class SqlAlchemyYoloPrimarySegmentationEvaluationTaskService:
     """管理 segmentation 评估任务的完整生命周期。"""
 
     def __init__(self, *, session_factory: SessionFactory, dataset_storage: LocalDatasetStorage | None = None, queue_backend: QueueBackend | None = None) -> None:
@@ -73,7 +85,13 @@ class SqlAlchemySegmentationEvaluationTaskService:
         self.queue_backend = queue_backend
         self.task_service = SqlAlchemyTaskService(session_factory)
 
-    def submit_evaluation_task(self, request: SegmentationEvaluationTaskRequest, *, created_by: str | None = None, display_name: str = "") -> SegmentationEvaluationTaskSubmission:
+    def submit_evaluation_task(
+        self,
+        request: YoloPrimarySegmentationEvaluationTaskRequest,
+        *,
+        created_by: str | None = None,
+        display_name: str = "",
+    ) -> YoloPrimarySegmentationEvaluationTaskSubmission:
         if not request.project_id.strip():
             raise InvalidRequestError("project_id 不能为空")
         if not request.model_version_id.strip():
@@ -99,12 +117,15 @@ class SqlAlchemySegmentationEvaluationTaskService:
         self.task_service.append_task_event(AppendTaskEventRequest(
             task_id=created_task.task_id, event_type="status", message="segmentation evaluation queued",
             payload={"state": "queued", "metadata": {"queue_name": queue_task.queue_name, "queue_task_id": queue_task.task_id}}))
-        return SegmentationEvaluationTaskSubmission(
+        return YoloPrimarySegmentationEvaluationTaskSubmission(
             task_id=created_task.task_id, status="queued", queue_name=queue_task.queue_name, queue_task_id=queue_task.task_id,
             dataset_export_id=dataset_export.dataset_export_id, dataset_version_id=dataset_export.dataset_version_id,
             model_version_id=request.model_version_id)
 
-    def process_evaluation_task(self, task_id: str) -> SegmentationEvaluationTaskResult:
+    def process_evaluation_task(
+        self,
+        task_id: str,
+    ) -> YoloPrimarySegmentationEvaluationTaskResult:
         dataset_storage = self._require_dataset_storage()
         task_record = self._require_evaluation_task(task_id)
         if task_record.state == "succeeded":
@@ -147,7 +168,7 @@ class SqlAlchemySegmentationEvaluationTaskService:
                          "progress": {"stage": "failed", "percent": 100.0}}))
             raise
 
-        task_result = SegmentationEvaluationTaskResult(
+        task_result = YoloPrimarySegmentationEvaluationTaskResult(
             task_id=task_id, status="succeeded",
             dataset_export_id=dataset_export.dataset_export_id, dataset_version_id=dataset_export.dataset_version_id,
             model_version_id=request.model_version_id, output_object_prefix=output_prefix,
@@ -178,7 +199,10 @@ class SqlAlchemySegmentationEvaluationTaskService:
             raise ServiceConfigurationError("提交评估任务时缺少 queue backend")
         return self.queue_backend
 
-    def _resolve_dataset_export(self, request: SegmentationEvaluationTaskRequest) -> DatasetExport:
+    def _resolve_dataset_export(
+        self,
+        request: YoloPrimarySegmentationEvaluationTaskRequest,
+    ) -> DatasetExport:
         export = None
         if request.dataset_export_id:
             uow = SqlAlchemyUnitOfWork(self.session_factory.create_session())
@@ -202,7 +226,10 @@ class SqlAlchemySegmentationEvaluationTaskService:
             raise InvalidRequestError("DatasetExport 缺少 manifest_object_key")
         return export
 
-    def _resolve_runtime_target(self, request: SegmentationEvaluationTaskRequest) -> RuntimeTargetSnapshot:
+    def _resolve_runtime_target(
+        self,
+        request: YoloPrimarySegmentationEvaluationTaskRequest,
+    ) -> RuntimeTargetSnapshot:
         uow = SqlAlchemyUnitOfWork(self.session_factory.create_session())
         try:
             mv = uow.models.get_model_version(request.model_version_id)
@@ -211,7 +238,7 @@ class SqlAlchemySegmentationEvaluationTaskService:
         if mv is None:
             raise ResourceNotFoundError("找不到指定的 ModelVersion")
         model_type = getattr(mv, "model_type", "yolov8")
-        resolver_cls = _get_runtime_resolver(model_type)
+        resolver_cls = get_segmentation_evaluation_runtime_target_resolver(model_type)
         return resolver_cls(session_factory=self.session_factory, dataset_storage=self._require_dataset_storage()).resolve_target(
             RuntimeTargetResolveRequest(project_id=request.project_id, model_version_id=request.model_version_id))
 
@@ -221,21 +248,27 @@ class SqlAlchemySegmentationEvaluationTaskService:
             raise InvalidRequestError("当前任务不是 segmentation 评估任务")
         return task_record
 
-    def _build_request_from_task_record(self, task_record: TaskRecord) -> SegmentationEvaluationTaskRequest:
+    def _build_request_from_task_record(
+        self,
+        task_record: TaskRecord,
+    ) -> YoloPrimarySegmentationEvaluationTaskRequest:
         spec = dict(task_record.task_spec)
-        return SegmentationEvaluationTaskRequest(
+        return YoloPrimarySegmentationEvaluationTaskRequest(
             project_id=str(spec.get("project_id", "")), model_version_id=str(spec.get("model_version_id", "")),
             dataset_export_id=spec.get("dataset_export_id"), dataset_export_manifest_key=spec.get("dataset_export_manifest_key"),
             score_threshold=spec.get("score_threshold"), mask_threshold=spec.get("mask_threshold"),
             save_result_package=spec.get("save_result_package", True) is not False,
             extra_options=dict(spec.get("extra_options", {})))
 
-    def _build_existing_result(self, task_record: TaskRecord) -> SegmentationEvaluationTaskResult | None:
+    def _build_existing_result(
+        self,
+        task_record: TaskRecord,
+    ) -> YoloPrimarySegmentationEvaluationTaskResult | None:
         result = dict(task_record.result)
         report_key = result.get("report_object_key")
         if not isinstance(report_key, str) or not report_key:
             return None
-        return SegmentationEvaluationTaskResult(
+        return YoloPrimarySegmentationEvaluationTaskResult(
             task_id=task_record.task_id, status=task_record.state,
             dataset_export_id=str(result.get("dataset_export_id", "")), dataset_version_id=str(result.get("dataset_version_id", "")),
             model_version_id=str(result.get("model_version_id", "")), output_object_prefix=str(result.get("output_object_prefix", "")),

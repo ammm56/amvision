@@ -39,16 +39,15 @@ from backend.service.application.models.pose_evaluation_task_service import (
     PoseEvaluationTaskRequest,
 )
 from backend.service.application.models.yolo_primary_classification_evaluation_task_service import (
-    ClassificationEvaluationTaskRequest,
+    YoloPrimaryClassificationEvaluationTaskRequest,
 )
 from backend.service.application.models.yolo_primary_segmentation_evaluation_task_service import (
-    SegmentationEvaluationTaskRequest,
+    YoloPrimarySegmentationEvaluationTaskRequest,
 )
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 from backend.service.domain.models.model_task_types import (
     CLASSIFICATION_TASK_TYPE,
     DETECTION_TASK_TYPE,
-    OBB_TASK_TYPE,
     POSE_TASK_TYPE,
     SEGMENTATION_TASK_TYPE,
 )
@@ -108,12 +107,12 @@ def _build_platform_evaluation_request(
             nms_threshold=get_optional_float_parameter(request, "nms_threshold"),
         )
     if task_type == CLASSIFICATION_TASK_TYPE:
-        return ClassificationEvaluationTaskRequest(
+        return YoloPrimaryClassificationEvaluationTaskRequest(
             **common_kwargs,
             top_k=get_optional_int_parameter(request, "top_k") or 5,
         )
     if task_type == SEGMENTATION_TASK_TYPE:
-        return SegmentationEvaluationTaskRequest(
+        return YoloPrimarySegmentationEvaluationTaskRequest(
             **common_kwargs,
             score_threshold=get_optional_float_parameter(request, "score_threshold"),
             mask_threshold=get_optional_float_parameter(request, "mask_threshold"),

@@ -15,15 +15,16 @@ from backend.service.application.errors import (
     ResourceNotFoundError,
     ServiceConfigurationError,
 )
+from backend.service.application.models.evaluation_runtime_target_resolvers import (
+    get_yolo_primary_evaluation_runtime_target_resolver,
+)
 from backend.service.application.models.yolo_primary_classification_evaluation import (
     ClassificationEvaluationRequest,
-    ClassificationEvaluationResult,
     run_yolo_primary_classification_evaluation,
 )
 from backend.service.application.runtime.runtime_target import (
     RuntimeTargetResolveRequest,
     RuntimeTargetSnapshot,
-    SqlAlchemyRuntimeTargetResolver,
 )
 from backend.service.application.tasks.task_service import (
     AppendTaskEventRequest,
@@ -42,7 +43,7 @@ CLASSIFICATION_EVALUATION_QUEUE_NAME = "classification-evaluations"
 
 
 @dataclass(frozen=True)
-class ClassificationEvaluationTaskRequest:
+class YoloPrimaryClassificationEvaluationTaskRequest:
     """描述一次 classification 评估任务创建请求。"""
 
     project_id: str
@@ -55,7 +56,7 @@ class ClassificationEvaluationTaskRequest:
 
 
 @dataclass(frozen=True)
-class ClassificationEvaluationTaskSubmission:
+class YoloPrimaryClassificationEvaluationTaskSubmission:
     """描述一次 classification 评估任务提交结果。"""
 
     task_id: str
@@ -68,7 +69,7 @@ class ClassificationEvaluationTaskSubmission:
 
 
 @dataclass(frozen=True)
-class ClassificationEvaluationTaskResult:
+class YoloPrimaryClassificationEvaluationTaskResult:
     """描述一次 classification 评估任务处理结果。"""
 
     task_id: str
@@ -86,30 +87,7 @@ class ClassificationEvaluationTaskResult:
     report_summary: dict[str, object] = field(default_factory=dict)
 
 
-_RUNTIME_RESOLVER_MAP: dict[str, type] = {}
-
-
-def _get_runtime_resolver(model_type: str) -> type:
-    """按 model_type 获取 runtime target resolver 类。"""
-    if not _RUNTIME_RESOLVER_MAP:
-        from backend.service.application.runtime.yolov8_runtime_target import SqlAlchemyYoloV8RuntimeTargetResolver
-        from backend.service.application.runtime.yolo11_runtime_target import SqlAlchemyYolo11RuntimeTargetResolver
-        from backend.service.application.runtime.yolo26_runtime_target import SqlAlchemyYolo26RuntimeTargetResolver
-        _RUNTIME_RESOLVER_MAP.update({
-            "yolov8": SqlAlchemyYoloV8RuntimeTargetResolver,
-            "yolo11": SqlAlchemyYolo11RuntimeTargetResolver,
-            "yolo26": SqlAlchemyYolo26RuntimeTargetResolver,
-        })
-    resolver_cls = _RUNTIME_RESOLVER_MAP.get(model_type)
-    if resolver_cls is None:
-        raise InvalidRequestError(
-            "classification 评估不支持该模型分类",
-            details={"model_type": model_type, "supported": list(_RUNTIME_RESOLVER_MAP.keys())},
-        )
-    return resolver_cls
-
-
-class SqlAlchemyClassificationEvaluationTaskService:
+class SqlAlchemyYoloPrimaryClassificationEvaluationTaskService:
     """管理 classification 评估任务的完整生命周期。"""
 
     def __init__(
@@ -126,11 +104,11 @@ class SqlAlchemyClassificationEvaluationTaskService:
 
     def submit_evaluation_task(
         self,
-        request: ClassificationEvaluationTaskRequest,
+        request: YoloPrimaryClassificationEvaluationTaskRequest,
         *,
         created_by: str | None = None,
         display_name: str = "",
-    ) -> ClassificationEvaluationTaskSubmission:
+    ) -> YoloPrimaryClassificationEvaluationTaskSubmission:
         """创建并入队一条 classification 评估任务。"""
         if not request.project_id.strip():
             raise InvalidRequestError("project_id 不能为空")
@@ -175,7 +153,7 @@ class SqlAlchemyClassificationEvaluationTaskService:
             message="classification evaluation queued",
             payload={"state": "queued", "metadata": {"queue_name": queue_task.queue_name, "queue_task_id": queue_task.task_id}},
         ))
-        return ClassificationEvaluationTaskSubmission(
+        return YoloPrimaryClassificationEvaluationTaskSubmission(
             task_id=created_task.task_id, status="queued",
             queue_name=queue_task.queue_name, queue_task_id=queue_task.task_id,
             dataset_export_id=dataset_export.dataset_export_id,
@@ -183,7 +161,10 @@ class SqlAlchemyClassificationEvaluationTaskService:
             model_version_id=request.model_version_id,
         )
 
-    def process_evaluation_task(self, task_id: str) -> ClassificationEvaluationTaskResult:
+    def process_evaluation_task(
+        self,
+        task_id: str,
+    ) -> YoloPrimaryClassificationEvaluationTaskResult:
         """执行一条已入队的 classification 评估任务。"""
         dataset_storage = self._require_dataset_storage()
         task_record = self._require_evaluation_task(task_id)
@@ -232,7 +213,7 @@ class SqlAlchemyClassificationEvaluationTaskService:
             ))
             raise
 
-        task_result = ClassificationEvaluationTaskResult(
+        task_result = YoloPrimaryClassificationEvaluationTaskResult(
             task_id=task_id, status="succeeded",
             dataset_export_id=dataset_export.dataset_export_id,
             dataset_version_id=dataset_export.dataset_version_id,
@@ -275,7 +256,10 @@ class SqlAlchemyClassificationEvaluationTaskService:
             raise ServiceConfigurationError("提交评估任务时缺少 queue backend")
         return self.queue_backend
 
-    def _resolve_dataset_export(self, request: ClassificationEvaluationTaskRequest) -> DatasetExport:
+    def _resolve_dataset_export(
+        self,
+        request: YoloPrimaryClassificationEvaluationTaskRequest,
+    ) -> DatasetExport:
         export = None
         if request.dataset_export_id:
             uow = SqlAlchemyUnitOfWork(self.session_factory.create_session())
@@ -299,7 +283,10 @@ class SqlAlchemyClassificationEvaluationTaskService:
             raise InvalidRequestError("DatasetExport 缺少 manifest_object_key")
         return export
 
-    def _resolve_runtime_target(self, request: ClassificationEvaluationTaskRequest) -> RuntimeTargetSnapshot:
+    def _resolve_runtime_target(
+        self,
+        request: YoloPrimaryClassificationEvaluationTaskRequest,
+    ) -> RuntimeTargetSnapshot:
         uow = SqlAlchemyUnitOfWork(self.session_factory.create_session())
         try:
             mv = uow.models.get_model_version(request.model_version_id)
@@ -308,7 +295,7 @@ class SqlAlchemyClassificationEvaluationTaskService:
         if mv is None:
             raise ResourceNotFoundError("找不到指定的 ModelVersion", details={"model_version_id": request.model_version_id})
         model_type = getattr(mv, "model_type", "yolov8")
-        resolver_cls = _get_runtime_resolver(model_type)
+        resolver_cls = get_yolo_primary_evaluation_runtime_target_resolver(model_type)
         return resolver_cls(
             session_factory=self.session_factory,
             dataset_storage=self._require_dataset_storage(),
@@ -322,9 +309,12 @@ class SqlAlchemyClassificationEvaluationTaskService:
             raise InvalidRequestError("当前任务不是 classification 评估任务", details={"task_id": task_id, "task_kind": task_record.task_kind})
         return task_record
 
-    def _build_request_from_task_record(self, task_record: TaskRecord) -> ClassificationEvaluationTaskRequest:
+    def _build_request_from_task_record(
+        self,
+        task_record: TaskRecord,
+    ) -> YoloPrimaryClassificationEvaluationTaskRequest:
         spec = dict(task_record.task_spec)
-        return ClassificationEvaluationTaskRequest(
+        return YoloPrimaryClassificationEvaluationTaskRequest(
             project_id=str(spec.get("project_id", "")),
             model_version_id=str(spec.get("model_version_id", "")),
             dataset_export_id=spec.get("dataset_export_id"),
@@ -334,12 +324,15 @@ class SqlAlchemyClassificationEvaluationTaskService:
             extra_options=dict(spec.get("extra_options", {})),
         )
 
-    def _build_existing_result(self, task_record: TaskRecord) -> ClassificationEvaluationTaskResult | None:
+    def _build_existing_result(
+        self,
+        task_record: TaskRecord,
+    ) -> YoloPrimaryClassificationEvaluationTaskResult | None:
         result = dict(task_record.result)
         report_key = result.get("report_object_key")
         if not isinstance(report_key, str) or not report_key:
             return None
-        return ClassificationEvaluationTaskResult(
+        return YoloPrimaryClassificationEvaluationTaskResult(
             task_id=task_record.task_id, status=task_record.state,
             dataset_export_id=str(result.get("dataset_export_id", "")),
             dataset_version_id=str(result.get("dataset_version_id", "")),

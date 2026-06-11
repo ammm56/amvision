@@ -15,8 +15,8 @@ from backend.service.api.deps.storage import get_dataset_storage
 from backend.service.application.errors import InvalidRequestError, PermissionDeniedError, ResourceNotFoundError
 from backend.service.application.models.yolo_primary_segmentation_evaluation_task_service import (
     SEGMENTATION_EVALUATION_TASK_KIND,
-    SqlAlchemySegmentationEvaluationTaskService,
-    SegmentationEvaluationTaskRequest,
+    SqlAlchemyYoloPrimarySegmentationEvaluationTaskService,
+    YoloPrimarySegmentationEvaluationTaskRequest,
 )
 from backend.service.application.tasks.task_service import SqlAlchemyTaskService, TaskQueryFilters
 from backend.service.infrastructure.db.session import SessionFactory
@@ -39,16 +39,28 @@ class SegmentationEvaluationCreateBody(BaseModel):
 
 
 class SegmentationEvaluationSubmissionResponse(BaseModel):
-    task_id: str; status: str; queue_name: str; queue_task_id: str
-    dataset_export_id: str; dataset_version_id: str; model_version_id: str
+    task_id: str
+    status: str
+    queue_name: str
+    queue_task_id: str
+    dataset_export_id: str
+    dataset_version_id: str
+    model_version_id: str
 
 
 class SegmentationEvaluationSummaryResponse(BaseModel):
-    task_id: str; display_name: str; project_id: str; state: str
-    created_at: str; started_at: str | None = None; finished_at: str | None = None
+    task_id: str
+    display_name: str
+    project_id: str
+    state: str
+    created_at: str
+    started_at: str | None = None
+    finished_at: str | None = None
     error_message: str | None = None
-    map50: float | None = None; map50_95: float | None = None
-    mask_map50: float | None = None; mask_map50_95: float | None = None
+    map50: float | None = None
+    map50_95: float | None = None
+    mask_map50: float | None = None
+    mask_map50_95: float | None = None
     sample_count: int | None = None
 
 
@@ -72,9 +84,9 @@ def create_segmentation_evaluation_task(
     """创建 segmentation 评估任务。"""
     if principal.project_ids and body.project_id not in principal.project_ids:
         raise PermissionDeniedError("无权访问该 Project")
-    svc = SqlAlchemySegmentationEvaluationTaskService(session_factory=sf, dataset_storage=ds, queue_backend=qb)
+    svc = SqlAlchemyYoloPrimarySegmentationEvaluationTaskService(session_factory=sf, dataset_storage=ds, queue_backend=qb)
     r = svc.submit_evaluation_task(
-        SegmentationEvaluationTaskRequest(
+        YoloPrimarySegmentationEvaluationTaskRequest(
             project_id=body.project_id, model_version_id=body.model_version_id,
             dataset_export_id=body.dataset_export_id, dataset_export_manifest_key=body.dataset_export_manifest_key,
             score_threshold=body.score_threshold, mask_threshold=body.mask_threshold,

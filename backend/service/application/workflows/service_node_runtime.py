@@ -73,7 +73,7 @@ from backend.service.application.models.yolo26_training_service import (
     SqlAlchemyYolo26TrainingTaskService,
 )
 from backend.service.application.models.yolo_primary_classification_evaluation_task_service import (
-    SqlAlchemyClassificationEvaluationTaskService,
+    SqlAlchemyYoloPrimaryClassificationEvaluationTaskService,
 )
 from backend.service.application.models.yolo_primary_classification_training_service import (
     SqlAlchemyYoloPrimaryClassificationTrainingTaskService,
@@ -85,7 +85,7 @@ from backend.service.application.models.yolo_primary_pose_training_service impor
     SqlAlchemyYoloPrimaryPoseTrainingTaskService,
 )
 from backend.service.application.models.yolo_primary_segmentation_evaluation_task_service import (
-    SqlAlchemySegmentationEvaluationTaskService,
+    SqlAlchemyYoloPrimarySegmentationEvaluationTaskService,
 )
 from backend.service.application.models.yolo_primary_segmentation_training_service import (
     SqlAlchemyYoloPrimarySegmentationTrainingTaskService,
@@ -153,8 +153,8 @@ _VALIDATION_SERVICE_BY_TASK_TYPE: dict[str, type] = {
 }
 _EVALUATION_SERVICE_BY_TASK_TYPE: dict[str, type] = {
     DETECTION_TASK_TYPE: SqlAlchemyDetectionEvaluationTaskService,
-    CLASSIFICATION_TASK_TYPE: SqlAlchemyClassificationEvaluationTaskService,
-    SEGMENTATION_TASK_TYPE: SqlAlchemySegmentationEvaluationTaskService,
+    CLASSIFICATION_TASK_TYPE: SqlAlchemyYoloPrimaryClassificationEvaluationTaskService,
+    SEGMENTATION_TASK_TYPE: SqlAlchemyYoloPrimarySegmentationEvaluationTaskService,
     POSE_TASK_TYPE: SqlAlchemyPoseEvaluationTaskService,
     OBB_TASK_TYPE: SqlAlchemyObbEvaluationTaskService,
 }

@@ -19,7 +19,7 @@ from backend.service.application.models.pose_validation_session_service import (
     PoseValidationSessionCreateRequest,
 )
 from backend.service.application.models.yolo_primary_classification_evaluation_task_service import (
-    ClassificationEvaluationTaskRequest,
+    YoloPrimaryClassificationEvaluationTaskRequest,
 )
 from backend.service.application.models.yolo_primary_classification_training_service import (
     YoloPrimaryClassificationTrainingTaskRequest,
@@ -348,7 +348,7 @@ def test_evaluation_service_node_routes_to_platform_evaluation_service(
 
     assert result["body"]["task_id"] == "task-evaluation-1"
     assert captured["service_kwargs"] == {"task_type": "classification"}
-    assert isinstance(captured["request"], ClassificationEvaluationTaskRequest)
+    assert isinstance(captured["request"], YoloPrimaryClassificationEvaluationTaskRequest)
     assert captured["request"].top_k == 3
 
 

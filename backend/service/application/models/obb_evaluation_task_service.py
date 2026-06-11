@@ -12,20 +12,17 @@ from backend.service.application.errors import (
     ResourceNotFoundError,
     ServiceConfigurationError,
 )
+from backend.service.application.models.evaluation_runtime_target_resolvers import (
+    get_yolo_primary_evaluation_runtime_target_resolver,
+)
 from backend.service.application.models.obb_evaluation import (
     ObbEvaluationRequest,
-    ObbEvaluationResult,
     run_obb_evaluation,
 )
-from backend.service.application.runtime.obb_model_runtime import DefaultObbModelRuntime
 from backend.service.application.runtime.runtime_target import (
     RuntimeTargetResolveRequest,
     RuntimeTargetSnapshot,
-    SqlAlchemyRuntimeTargetResolver,
 )
-from backend.service.application.runtime.yolov8_runtime_target import SqlAlchemyYoloV8RuntimeTargetResolver
-from backend.service.application.runtime.yolo11_runtime_target import SqlAlchemyYolo11RuntimeTargetResolver
-from backend.service.application.runtime.yolo26_runtime_target import SqlAlchemyYolo26RuntimeTargetResolver
 from backend.service.application.tasks.task_service import (
     AppendTaskEventRequest,
     CreateTaskRequest,
@@ -40,24 +37,6 @@ from backend.service.infrastructure.object_store.local_dataset_storage import Lo
 
 OBB_EVALUATION_TASK_KIND = "obb-evaluation"
 OBB_EVALUATION_QUEUE_NAME = "obb-evaluations"
-
-
-def _get_runtime_resolver(model_type: str):
-    """按 model_type 获取 runtime target resolver 类。"""
-    resolver_map = {
-        "yolox": SqlAlchemyRuntimeTargetResolver,
-        "yolov8": SqlAlchemyYoloV8RuntimeTargetResolver,
-        "yolo11": SqlAlchemyYolo11RuntimeTargetResolver,
-        "yolo26": SqlAlchemyYolo26RuntimeTargetResolver,
-    }
-    resolver_cls = resolver_map.get(model_type)
-    if resolver_cls is None:
-        raise InvalidRequestError(
-            "obb 评估不支持该模型分类",
-            details={"model_type": model_type, "supported": list(resolver_map.keys())},
-        )
-    return resolver_cls
-
 
 @dataclass(frozen=True)
 class ObbEvaluationTaskRequest:
@@ -268,7 +247,7 @@ class SqlAlchemyObbEvaluationTaskService:
         if mv is None:
             raise ResourceNotFoundError("找不到指定的 ModelVersion", details={"model_version_id": request.model_version_id})
         model_type = getattr(mv, "model_type", "yolov8")
-        resolver_cls = _get_runtime_resolver(model_type)
+        resolver_cls = get_yolo_primary_evaluation_runtime_target_resolver(model_type)
         return resolver_cls(session_factory=self.session_factory, dataset_storage=self._require_dataset_storage()).resolve_target(
             RuntimeTargetResolveRequest(project_id=request.project_id, model_version_id=request.model_version_id))
 
