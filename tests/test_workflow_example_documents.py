@@ -146,6 +146,108 @@ def test_detection_deployment_sync_infer_health_example_documents_are_valid() ->
     ]
 
 
+@pytest.mark.parametrize(
+    ("example_name", "expected_model_node_type_id", "expected_binding_ids", "expected_example_kind"),
+    [
+        (
+            "segmentation_deployment_sync_regions_gate",
+            "core.model.segmentation",
+            [
+                "request_image",
+                "deployment_request",
+                "model_segments",
+                "model_regions",
+                "inspection_result",
+                "decision_summary",
+            ],
+            "segmentation-deployment-sync-regions-gate",
+        ),
+        (
+            "classification_deployment_sync_class_gate",
+            "core.model.classification",
+            [
+                "request_image",
+                "deployment_request",
+                "model_categories",
+                "inspection_result",
+                "decision_summary",
+            ],
+            "classification-deployment-sync-class-gate",
+        ),
+        (
+            "pose_deployment_sync_presence_gate",
+            "core.model.pose",
+            [
+                "request_image",
+                "deployment_request",
+                "model_poses",
+                "inspection_result",
+                "decision_summary",
+            ],
+            "pose-deployment-sync-presence-gate",
+        ),
+        (
+            "obb_deployment_sync_angle_gate",
+            "core.model.obb",
+            [
+                "request_image",
+                "deployment_request",
+                "model_obbs",
+                "inspection_result",
+                "decision_summary",
+            ],
+            "obb-deployment-sync-angle-gate",
+        ),
+    ],
+)
+def test_task_native_direct_model_example_documents_are_valid(
+    *,
+    example_name: str,
+    expected_model_node_type_id: str,
+    expected_binding_ids: list[str],
+    expected_example_kind: str,
+) -> None:
+    """验证非 detection 直连模型样例模板与应用可以通过当前规则校验。"""
+
+    example_dir = (
+        Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
+    )
+    template_path = example_dir / f"{example_name}.template.json"
+    application_path = example_dir / f"{example_name}.application.json"
+    template = WorkflowGraphTemplate.model_validate(
+        json.loads(template_path.read_text(encoding="utf-8"))
+    )
+    application = FlowApplication.model_validate(
+        json.loads(application_path.read_text(encoding="utf-8"))
+    )
+
+    registry = NodeCatalogRegistry()
+    validate_workflow_graph_template(
+        template=template,
+        node_definitions=registry.get_workflow_node_definitions(),
+    )
+    validate_flow_application_bindings(template=template, application=application)
+
+    assert [port.input_id for port in template.template_inputs] == [
+        "request_image",
+        "deployment_request",
+    ]
+    assert template.nodes[0].node_id == "decode_request_image"
+    assert template.nodes[1].node_id == "deployment_request_input"
+    assert any(
+        node.node_type_id == expected_model_node_type_id
+        for node in template.nodes
+    )
+    assert template.metadata["example_kind"] == expected_example_kind
+    assert template.metadata["uses_existing_deployment_instance"] is True
+    assert template.metadata["deployment_instance_id_binding"] == "deployment_request"
+    assert application.template_ref.source_uri == (
+        f"docs/examples/workflows/{example_name}.template.json"
+    )
+    assert application.metadata["example_kind"] == expected_example_kind
+    assert [binding.binding_id for binding in application.bindings] == expected_binding_ids
+
+
 def test_barcode_result_display_example_documents_are_valid() -> None:
     """验证 barcode 结果展示示例模板与应用可以通过当前规则校验。"""
 

@@ -123,6 +123,59 @@ def test_detection_deployment_sync_infer_health_app_runtime_smoke_executes_in_ex
     assert execution_result.outputs["health_body"]["healthy_instance_count"] == 1
 
 
+@pytest.mark.parametrize(
+    ("example_name", "node_type_id"),
+    [
+        ("segmentation_deployment_sync_regions_gate", "core.model.segmentation"),
+        ("classification_deployment_sync_class_gate", "core.model.classification"),
+        ("pose_deployment_sync_presence_gate", "core.model.pose"),
+        ("obb_deployment_sync_angle_gate", "core.model.obb"),
+    ],
+)
+def test_task_native_direct_model_app_runtime_smoke_executes_and_returns_ok_result(
+    tmp_path: Path,
+    *,
+    example_name: str,
+    node_type_id: str,
+) -> None:
+    """验证非 detection 直连模型正式 app 可以完成最小规则判定闭环。"""
+
+    executor, workflow_service, _, runtime_registry = _build_example_runtime(
+        tmp_path,
+        database_name=f"workflow-formal-{example_name}.db",
+    )
+    _, application = _save_example_documents(
+        workflow_service,
+        example_name=example_name,
+    )
+
+    def _handler(request) -> dict[str, object]:
+        assert request.input_values["request"] == _build_deployment_request_payload()
+        return _build_task_native_direct_model_smoke_output(
+            node_type_id=node_type_id,
+            request=request,
+        )
+
+    _override_worker_task_handler(runtime_registry, node_type_id, _handler)
+
+    execution_result = executor.execute(
+        WorkflowApplicationExecutionRequest(
+            project_id="project-1",
+            application_id=application.application_id,
+            input_bindings={
+                "request_image": _build_image_base64_payload(build_valid_test_png_bytes()),
+                "deployment_request": _build_deployment_request_payload(),
+            },
+            execution_metadata={"scenario": f"smoke-{example_name}"},
+        )
+    )
+
+    _assert_task_native_direct_model_smoke_outputs(
+        example_name=example_name,
+        outputs=execution_result.outputs,
+    )
+
+
 def test_opencv_process_save_image_app_runtime_smoke_saves_unique_object_key(tmp_path: Path) -> None:
     """验证第五类正式 app 会真实保存图片，并生成带 workflow_run_id 与时间戳的 object key。"""
 
@@ -652,6 +705,177 @@ def test_detection_end_to_end_qr_crop_remap_app_runtime_cleans_up_created_deploy
 
     assert tracked_deployment_service.deleted_deployment_ids == ["deployment-instance-1"]
     assert tracked_deployment_service.list_saved_deployment_ids(project_id="project-1") == ()
+
+
+def _build_task_native_direct_model_smoke_output(
+    *,
+    node_type_id: str,
+    request,
+) -> dict[str, object]:
+    """构造非 detection 直连模型样例共用的 fake 输出。"""
+
+    source_image = (
+        dict(request.input_values["image"])
+        if isinstance(request.input_values.get("image"), dict)
+        else {}
+    )
+    if node_type_id == "core.model.segmentation":
+        return {
+            "segments": {
+                "source_image": {
+                    **source_image,
+                    "width": 64,
+                    "height": 64,
+                },
+                "count": 1,
+                "items": [
+                    {
+                        "segment_id": "segment-1",
+                        "score": 0.94,
+                        "class_id": 0,
+                        "class_name": "sealant",
+                        "bbox_xyxy": [10.0, 10.0, 42.0, 42.0],
+                        "polygon_xy": [
+                            [10.0, 10.0],
+                            [42.0, 10.0],
+                            [42.0, 42.0],
+                            [10.0, 42.0],
+                        ],
+                    }
+                ],
+                "image_width": 64,
+                "image_height": 64,
+                "latency_ms": 12.0,
+                "runtime_session_info": {"runtime_backend": "smoke"},
+                "metadata": {"scenario": "segmentation-smoke"},
+            }
+        }
+    if node_type_id == "core.model.classification":
+        return {
+            "categories": {
+                "source_image": source_image,
+                "count": 2,
+                "items": [
+                    {
+                        "class_id": 0,
+                        "class_name": "ok-part",
+                        "label": "ok-part",
+                        "score": 0.93,
+                    },
+                    {
+                        "class_id": 1,
+                        "class_name": "defect",
+                        "label": "defect",
+                        "score": 0.07,
+                    },
+                ],
+                "top_item": {
+                    "class_id": 0,
+                    "class_name": "ok-part",
+                    "label": "ok-part",
+                    "score": 0.93,
+                },
+                "image_width": 64,
+                "image_height": 64,
+                "latency_ms": 8.0,
+                "runtime_session_info": {"runtime_backend": "smoke"},
+                "metadata": {"scenario": "classification-smoke"},
+            }
+        }
+    if node_type_id == "core.model.pose":
+        return {
+            "poses": {
+                "source_image": source_image,
+                "count": 1,
+                "items": [
+                    {
+                        "pose_id": "pose-1",
+                        "score": 0.91,
+                        "class_id": 0,
+                        "class_name": "worker",
+                        "bbox_xyxy": [8.0, 6.0, 54.0, 60.0],
+                        "keypoints": [
+                            {"x": 16.0, "y": 18.0, "confidence": 0.94},
+                            {"x": 30.0, "y": 20.0, "confidence": 0.89},
+                        ],
+                        "kpt_shape": [2, 3],
+                    }
+                ],
+                "image_width": 64,
+                "image_height": 64,
+                "latency_ms": 11.0,
+                "runtime_session_info": {"runtime_backend": "smoke"},
+                "metadata": {"scenario": "pose-smoke"},
+            }
+        }
+    if node_type_id == "core.model.obb":
+        return {
+            "obbs": {
+                "source_image": source_image,
+                "count": 1,
+                "items": [
+                    {
+                        "obb_id": "obb-1",
+                        "score": 0.88,
+                        "class_id": 0,
+                        "class_name": "tray",
+                        "bbox_xyxy": [12.0, 14.0, 52.0, 50.0],
+                        "angle": 4.5,
+                    }
+                ],
+                "image_width": 64,
+                "image_height": 64,
+                "latency_ms": 10.0,
+                "runtime_session_info": {"runtime_backend": "smoke"},
+                "metadata": {"scenario": "obb-smoke"},
+            }
+        }
+    raise AssertionError(f"unexpected node_type_id: {node_type_id}")
+
+
+def _assert_task_native_direct_model_smoke_outputs(
+    *,
+    example_name: str,
+    outputs: dict[str, object],
+) -> None:
+    """校验非 detection 直连模型样例的关键输出。"""
+
+    inspection_result = outputs["inspection_result"]
+    decision_summary = outputs["decision_summary"]["value"]
+
+    assert inspection_result["ok_ng"] == "OK"
+    assert decision_summary["ok_ng"] == "OK"
+    assert decision_summary["passed_count"] == 2
+    assert decision_summary["failed_count"] == 0
+
+    if example_name == "segmentation_deployment_sync_regions_gate":
+        assert outputs["model_segments"]["items"][0]["class_name"] == "sealant"
+        assert outputs["model_regions"]["items"][0]["class_name"] == "sealant"
+        assert inspection_result["metadata"]["inspection_kind"] == "segmentation-regions-gate"
+        assert inspection_result["metrics"]["area_ratio"] == 0.25
+        return
+    if example_name == "classification_deployment_sync_class_gate":
+        assert outputs["model_categories"]["top_item"]["class_name"] == "ok-part"
+        assert inspection_result["metadata"]["inspection_kind"] == "classification-class-gate"
+        assert inspection_result["metrics"]["top_class_name"] == "ok-part"
+        assert inspection_result["metrics"]["top_score"] == 0.93
+        assert inspection_result["metrics"]["count"] == 2
+        return
+    if example_name == "pose_deployment_sync_presence_gate":
+        assert outputs["model_poses"]["items"][0]["class_name"] == "worker"
+        assert inspection_result["metadata"]["inspection_kind"] == "pose-presence-gate"
+        assert inspection_result["metrics"]["top_class_name"] == "worker"
+        assert inspection_result["metrics"]["top_score"] == 0.91
+        assert inspection_result["metrics"]["count"] == 1
+        return
+    if example_name == "obb_deployment_sync_angle_gate":
+        assert outputs["model_obbs"]["items"][0]["class_name"] == "tray"
+        assert inspection_result["metadata"]["inspection_kind"] == "obb-angle-gate"
+        assert inspection_result["metrics"]["top_class_name"] == "tray"
+        assert inspection_result["metrics"]["top_angle"] == 4.5
+        assert inspection_result["metrics"]["count"] == 1
+        return
+    raise AssertionError(f"unexpected example_name: {example_name}")
 
 
 def _build_example_runtime(
