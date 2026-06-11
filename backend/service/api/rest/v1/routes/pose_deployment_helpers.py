@@ -22,7 +22,7 @@ def build_pose_deployment_instance_response(instance: PoseDeploymentInstanceView
         "runtime_backend": instance.runtime_backend,
         "device_name": instance.device_name,
         "instance_count": instance.instance_count,
-        "process_status": instance.process_status,
+        "process_status": getattr(instance, "process_status", None),
         "metadata": dict(instance.metadata),
         "created_at": instance.created_at,
         "updated_at": instance.updated_at,

@@ -34,6 +34,7 @@ class ClassificationInferenceTaskRequest:
     input_transport_mode: str = "storage"
     input_image_bytes: bytes | None = None
     async_inference_owner_id: str | None = None
+    score_threshold: float | None = None
     top_k: int = 5
     save_result_image: bool = False
     return_preview_image_base64: bool = False

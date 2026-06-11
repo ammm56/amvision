@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from fastapi import Request
+
+from backend.service.application.errors import ServiceConfigurationError
 from backend.service.application.models.obb_async_inference_gateway import (
     ObbAsyncInferenceGatewayDispatcherRegistry,
 )
@@ -10,28 +13,47 @@ from backend.service.application.runtime.deployment_process_supervisor import (
 )
 
 
-async def get_obb_async_deployment_process_supervisor() -> DeploymentProcessSupervisor | None:
-    from backend.service.api.app import get_app_state
+def get_obb_async_deployment_process_supervisor(
+    request: Request,
+) -> DeploymentProcessSupervisor:
+    """从 FastAPI 应用状态中读取异步 obb deployment 进程监督器。"""
 
-    runtime = getattr(get_app_state(), "backend_service_runtime", None)
-    if runtime is not None:
-        return getattr(runtime, "obb_async_deployment_supervisor", None)
-    return None
-
-
-async def get_obb_sync_deployment_process_supervisor() -> DeploymentProcessSupervisor | None:
-    from backend.service.api.app import get_app_state
-
-    runtime = getattr(get_app_state(), "backend_service_runtime", None)
-    if runtime is not None:
-        return getattr(runtime, "obb_sync_deployment_supervisor", None)
-    return None
+    supervisor = getattr(request.app.state, "obb_async_deployment_process_supervisor", None)
+    if not isinstance(supervisor, DeploymentProcessSupervisor):
+        raise ServiceConfigurationError(
+            "当前服务尚未完成异步 obb deployment 进程监督器装配",
+            details={"state_field": "obb_async_deployment_process_supervisor"},
+        )
+    return supervisor
 
 
-async def get_obb_async_inference_gateway_dispatcher_registry() -> ObbAsyncInferenceGatewayDispatcherRegistry | None:
-    from backend.service.api.app import get_app_state
+def get_obb_sync_deployment_process_supervisor(
+    request: Request,
+) -> DeploymentProcessSupervisor:
+    """从 FastAPI 应用状态中读取同步 obb deployment 进程监督器。"""
 
-    runtime = getattr(get_app_state(), "backend_service_runtime", None)
-    if runtime is not None:
-        return getattr(runtime, "obb_async_inference_gateway_registry", None)
-    return None
+    supervisor = getattr(request.app.state, "obb_sync_deployment_process_supervisor", None)
+    if not isinstance(supervisor, DeploymentProcessSupervisor):
+        raise ServiceConfigurationError(
+            "当前服务尚未完成同步 obb deployment 进程监督器装配",
+            details={"state_field": "obb_sync_deployment_process_supervisor"},
+        )
+    return supervisor
+
+
+def get_obb_async_inference_gateway_dispatcher_registry(
+    request: Request,
+) -> ObbAsyncInferenceGatewayDispatcherRegistry:
+    """从 FastAPI 应用状态中读取 obb async inference gateway dispatcher registry。"""
+
+    registry = getattr(
+        request.app.state,
+        "obb_async_inference_gateway_dispatcher_registry",
+        None,
+    )
+    if not isinstance(registry, ObbAsyncInferenceGatewayDispatcherRegistry):
+        raise ServiceConfigurationError(
+            "当前服务尚未完成 obb async inference gateway dispatcher registry 装配",
+            details={"state_field": "obb_async_inference_gateway_dispatcher_registry"},
+        )
+    return registry

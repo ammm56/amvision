@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Request, status
@@ -10,22 +11,29 @@ from pydantic import BaseModel, Field
 from backend.queue import LocalFileQueueBackend
 from backend.service.api.deps.auth import AuthenticatedPrincipal, require_scopes
 from backend.service.api.deps.db import get_session_factory
-from backend.service.api.deps.queue import get_queue_backend
-from backend.service.api.deps.storage import get_dataset_storage
 from backend.service.api.deps.pose_deployment_process_supervisor import (
     get_pose_async_deployment_process_supervisor,
     get_pose_async_inference_gateway_dispatcher_registry,
-    get_pose_sync_deployment_process_supervisor,
+)
+from backend.service.api.deps.queue import get_queue_backend
+from backend.service.api.deps.storage import get_dataset_storage
+from backend.service.api.rest.v1.routes.deployment_runtime_helpers import (
+    ensure_requested_model_type_matches,
+    read_async_inference_service_id,
+    require_running_deployment_process,
+)
+from backend.service.application.deployments.pose_deployment_service import (
+    SqlAlchemyPoseDeploymentService,
 )
 from backend.service.application.errors import InvalidRequestError, PermissionDeniedError
 from backend.service.application.models.pose_async_inference_gateway import (
     PoseAsyncInferenceGatewayDispatcherRegistry,
 )
 from backend.service.application.models.pose_inference_payloads import (
+    PoseInferenceInputSource,
     normalize_pose_inference_input,
 )
 from backend.service.application.models.pose_inference_task_service import (
-    POSE_INFERENCE_TASK_KIND,
     PoseInferenceTaskRequest,
     SqlAlchemyPoseInferenceTaskService,
 )
@@ -57,9 +65,12 @@ class PoseInferenceTaskCreateRequestBody(BaseModel):
 
 class PoseInferenceTaskSubmissionResponse(BaseModel):
     task_id: str
-    task_kind: str
     status: str
-    created_at: str
+    queue_name: str
+    queue_task_id: str
+    deployment_instance_id: str
+    input_uri: str
+    input_source_kind: str
 
 
 @pose_inference_tasks_router.post(
@@ -76,43 +87,79 @@ async def create_pose_inference_task(
     deployment_process_supervisor: Annotated[DeploymentProcessSupervisor, Depends(get_pose_async_deployment_process_supervisor)],
     gateway_dispatcher_registry: Annotated[PoseAsyncInferenceGatewayDispatcherRegistry, Depends(get_pose_async_inference_gateway_dispatcher_registry)],
 ) -> PoseInferenceTaskSubmissionResponse:
-    import json
+    """创建一条 pose 异步推理任务。"""
 
     content_type = request.headers.get("content-type", "")
     if "multipart/form-data" in content_type:
         form = await request.form()
-        raw = form.get("payload")
-        payload = json.loads(raw) if isinstance(raw, str) else {}
+        raw_payload = form.get("payload")
+        payload = json.loads(raw_payload) if isinstance(raw_payload, str) else {}
     else:
         body_bytes = await request.body()
         payload = json.loads(body_bytes) if body_bytes else {}
 
     try:
         body = PoseInferenceTaskCreateRequestBody.model_validate(payload)
-    except Exception as e:
-        raise InvalidRequestError("pose 推理任务请求格式无效", details={"error": str(e)})
+    except Exception as error:
+        raise InvalidRequestError("pose 推理任务请求格式无效", details={"error": str(error)}) from error
 
     if principal.project_ids and body.project_id not in principal.project_ids:
         raise PermissionDeniedError("无权访问该 Project", details={"project_id": body.project_id})
 
+    deployment_service = SqlAlchemyPoseDeploymentService(
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+    )
+    deployment_view = deployment_service.get_deployment_instance(body.deployment_instance_id)
+    if deployment_view.project_id != body.project_id:
+        raise InvalidRequestError(
+            "deployment_instance_id 与 project_id 不匹配",
+            details={
+                "project_id": body.project_id,
+                "deployment_project_id": deployment_view.project_id,
+                "deployment_instance_id": body.deployment_instance_id,
+            },
+        )
+    process_config = deployment_service.resolve_process_config(body.deployment_instance_id)
+    ensure_requested_model_type_matches(
+        requested_model_type=body.model_type,
+        resolved_model_type=process_config.runtime_target.model_type,
+        deployment_instance_id=body.deployment_instance_id,
+    )
+    deployment_process_supervisor.ensure_deployment(process_config)
+    require_running_deployment_process(
+        deployment_process_supervisor=deployment_process_supervisor,
+        process_config=process_config,
+        runtime_mode="async",
+    )
     normalized = normalize_pose_inference_input(
         dataset_storage=dataset_storage,
-        input_file_id=body.input_file_id,
-        input_uri=body.input_uri,
-        image_base64=body.image_base64,
+        request_id=f"pose-inference-task-{body.deployment_instance_id}",
+        source=PoseInferenceInputSource(
+            input_file_id=body.input_file_id,
+            input_uri=body.input_uri,
+            image_base64=body.image_base64,
+        ),
         input_transport_mode=body.input_transport_mode,
+        expected_project_id=body.project_id,
     )
     submission = SqlAlchemyPoseInferenceTaskService(
-        session_factory=session_factory, queue_backend=queue_backend, dataset_storage=dataset_storage,
+        session_factory=session_factory,
+        queue_backend=queue_backend,
+        dataset_storage=dataset_storage,
         deployment_process_supervisor=deployment_process_supervisor,
-        gateway_dispatcher_registry=gateway_dispatcher_registry,
+        async_inference_gateway_dispatcher_registry=gateway_dispatcher_registry,
     ).submit_inference_task(
         PoseInferenceTaskRequest(
-            project_id=body.project_id, deployment_instance_id=body.deployment_instance_id,
-            model_type=body.model_type, input_file_id=normalized.input_file_id,
-            input_uri=normalized.input_uri, input_source_kind=normalized.input_source_kind,
+            project_id=body.project_id,
+            deployment_instance_id=body.deployment_instance_id,
+            model_type=body.model_type,
+            input_file_id=normalized.input_file_id,
+            input_uri=normalized.input_uri,
+            input_source_kind=normalized.input_source_kind,
             input_transport_mode=normalized.input_transport_mode,
             input_image_bytes=normalized.input_image_bytes,
+            async_inference_owner_id=read_async_inference_service_id(request, task_type="pose"),
             score_threshold=body.score_threshold,
             keypoint_confidence_threshold=body.keypoint_confidence_threshold,
             save_result_image=body.save_result_image,
@@ -123,6 +170,11 @@ async def create_pose_inference_task(
         display_name=body.display_name,
     )
     return PoseInferenceTaskSubmissionResponse(
-        task_id=submission.task_id, task_kind=submission.task_kind,
-        status=submission.status, created_at=submission.created_at,
+        task_id=submission.task_id,
+        status=submission.status,
+        queue_name=submission.queue_name,
+        queue_task_id=submission.queue_task_id,
+        deployment_instance_id=submission.deployment_instance_id,
+        input_uri=submission.input_uri,
+        input_source_kind=normalized.input_source_kind,
     )

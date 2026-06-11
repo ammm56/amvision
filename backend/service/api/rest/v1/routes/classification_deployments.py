@@ -8,20 +8,30 @@ from fastapi import APIRouter, Depends, Query, status
 from pydantic import BaseModel, Field
 
 from backend.service.api.deps.auth import AuthenticatedPrincipal, require_scopes
-from backend.service.api.deps.db import get_session_factory
 from backend.service.api.deps.classification_deployment_process_supervisor import (
     get_classification_async_deployment_process_supervisor,
+    get_classification_async_inference_gateway_dispatcher_registry,
     get_classification_sync_deployment_process_supervisor,
 )
+from backend.service.api.deps.db import get_session_factory
 from backend.service.api.deps.storage import get_dataset_storage
 from backend.service.api.rest.v1.routes.classification_deployment_helpers import (
     build_classification_deployment_instance_response,
+)
+from backend.service.api.rest.v1.routes.deployment_runtime_helpers import (
+    DeploymentProcessStatusResponse,
+    DeploymentRuntimeHealthResponse,
+    run_deployment_process_health_action,
+    run_deployment_process_status_action,
 )
 from backend.service.application.deployments.classification_deployment_service import (
     ClassificationDeploymentInstanceCreateRequest,
     SqlAlchemyClassificationDeploymentService,
 )
-from backend.service.application.errors import PermissionDeniedError, ResourceNotFoundError, ServiceConfigurationError
+from backend.service.application.errors import PermissionDeniedError
+from backend.service.application.models.classification_async_inference_gateway import (
+    ClassificationAsyncInferenceGatewayDispatcherRegistry,
+)
 from backend.service.application.runtime.deployment_process_supervisor import (
     DeploymentProcessSupervisor,
 )
@@ -79,11 +89,11 @@ def create_classification_deployment_instance(
     dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
 ) -> ClassificationDeploymentInstanceResponse:
     if principal.project_ids and body.project_id not in principal.project_ids:
-        raise PermissionDeniedError("当前主体无权访问该 Project", details={"project_id": body.project_id})
-    service = SqlAlchemyClassificationDeploymentService(
-        session_factory=session_factory,
-        dataset_storage=dataset_storage,
-    )
+        raise PermissionDeniedError(
+            "当前主体无权访问该 Project",
+            details={"project_id": body.project_id},
+        )
+    service = _build_classification_deployment_service(session_factory=session_factory, dataset_storage=dataset_storage)
     view = service.create_deployment_instance(
         ClassificationDeploymentInstanceCreateRequest(
             project_id=body.project_id,
@@ -120,10 +130,7 @@ def list_classification_deployment_instances(
 ) -> list[ClassificationDeploymentInstanceResponse]:
     if principal.project_ids and project_id is not None and project_id not in principal.project_ids:
         raise PermissionDeniedError("当前主体无权访问该 Project", details={"project_id": project_id})
-    service = SqlAlchemyClassificationDeploymentService(
-        session_factory=session_factory,
-        dataset_storage=dataset_storage,
-    )
+    service = _build_classification_deployment_service(session_factory=session_factory, dataset_storage=dataset_storage)
     views = service.list_deployment_instances(
         project_id=project_id or "",
         model_type=model_type,
@@ -145,91 +152,289 @@ def get_classification_deployment_instance(
     session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
     dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
 ) -> ClassificationDeploymentInstanceResponse:
-    service = SqlAlchemyClassificationDeploymentService(
-        session_factory=session_factory,
-        dataset_storage=dataset_storage,
-    )
-    try:
-        view = service.get_deployment_instance(deployment_instance_id)
-    except ResourceNotFoundError:
-        raise
-    if principal.project_ids and view.project_id not in principal.project_ids:
-        raise PermissionDeniedError("当前主体无权访问该 Project", details={"project_id": view.project_id})
+    service = _build_classification_deployment_service(session_factory=session_factory, dataset_storage=dataset_storage)
+    view = service.get_deployment_instance(deployment_instance_id)
+    _check_project_visible(principal, view.project_id)
     return build_classification_deployment_instance_response(view)
 
 
 @classification_deployments_router.post(
     "/classification/deployment-instances/{deployment_instance_id}/sync/start",
-    status_code=status.HTTP_200_OK,
+    response_model=DeploymentProcessStatusResponse,
 )
-def sync_start_classification_deployment(
+def start_classification_sync_deployment(
     deployment_instance_id: str,
     principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("models:read", "models:write"))],
     session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
     dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
     supervisor: Annotated[DeploymentProcessSupervisor, Depends(get_classification_sync_deployment_process_supervisor)],
-) -> dict[str, str]:
-    _require_supervisor(supervisor)
-    service = SqlAlchemyClassificationDeploymentService(
-        session_factory=session_factory,
-        dataset_storage=dataset_storage,
+) -> DeploymentProcessStatusResponse:
+    return run_deployment_process_status_action(
+        deployment_instance_id=deployment_instance_id,
+        principal=principal,
+        deployment_service=_build_classification_deployment_service(session_factory=session_factory, dataset_storage=dataset_storage),
+        supervisor=supervisor,
+        runtime_mode="sync",
+        action="start",
     )
-    _check_project_visible(principal, service.get_deployment_instance(deployment_instance_id))
-    supervisor.sync_start(deployment_instance_id)
-    return {"status": "started", "deployment_instance_id": deployment_instance_id}
 
 
 @classification_deployments_router.post(
     "/classification/deployment-instances/{deployment_instance_id}/sync/stop",
-    status_code=status.HTTP_200_OK,
+    response_model=DeploymentProcessStatusResponse,
 )
-def sync_stop_classification_deployment(
+def stop_classification_sync_deployment(
     deployment_instance_id: str,
     principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("models:read", "models:write"))],
     session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
     dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
     supervisor: Annotated[DeploymentProcessSupervisor, Depends(get_classification_sync_deployment_process_supervisor)],
-) -> dict[str, str]:
-    _require_supervisor(supervisor)
-    service = SqlAlchemyClassificationDeploymentService(
-        session_factory=session_factory,
-        dataset_storage=dataset_storage,
+) -> DeploymentProcessStatusResponse:
+    return run_deployment_process_status_action(
+        deployment_instance_id=deployment_instance_id,
+        principal=principal,
+        deployment_service=_build_classification_deployment_service(session_factory=session_factory, dataset_storage=dataset_storage),
+        supervisor=supervisor,
+        runtime_mode="sync",
+        action="stop",
     )
-    _check_project_visible(principal, service.get_deployment_instance(deployment_instance_id))
-    supervisor.sync_stop(deployment_instance_id)
-    return {"status": "stopped", "deployment_instance_id": deployment_instance_id}
 
 
-@classification_deployments_router.post(
-    "/classification/deployment-instances/{deployment_instance_id}/sync/health",
-    status_code=status.HTTP_200_OK,
+@classification_deployments_router.get(
+    "/classification/deployment-instances/{deployment_instance_id}/sync/status",
+    response_model=DeploymentProcessStatusResponse,
 )
-def sync_health_classification_deployment(
+def get_classification_sync_deployment_status(
     deployment_instance_id: str,
     principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("models:read"))],
     session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
     dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
     supervisor: Annotated[DeploymentProcessSupervisor, Depends(get_classification_sync_deployment_process_supervisor)],
-) -> dict[str, object]:
-    _require_supervisor(supervisor)
-    service = SqlAlchemyClassificationDeploymentService(
+) -> DeploymentProcessStatusResponse:
+    return run_deployment_process_status_action(
+        deployment_instance_id=deployment_instance_id,
+        principal=principal,
+        deployment_service=_build_classification_deployment_service(session_factory=session_factory, dataset_storage=dataset_storage),
+        supervisor=supervisor,
+        runtime_mode="sync",
+        action="status",
+    )
+
+
+@classification_deployments_router.post(
+    "/classification/deployment-instances/{deployment_instance_id}/sync/warmup",
+    response_model=DeploymentRuntimeHealthResponse,
+)
+def warmup_classification_sync_deployment(
+    deployment_instance_id: str,
+    principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("models:read", "models:write"))],
+    session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
+    dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
+    supervisor: Annotated[DeploymentProcessSupervisor, Depends(get_classification_sync_deployment_process_supervisor)],
+) -> DeploymentRuntimeHealthResponse:
+    return run_deployment_process_health_action(
+        deployment_instance_id=deployment_instance_id,
+        principal=principal,
+        deployment_service=_build_classification_deployment_service(session_factory=session_factory, dataset_storage=dataset_storage),
+        supervisor=supervisor,
+        runtime_mode="sync",
+        action="warmup",
+    )
+
+
+@classification_deployments_router.get(
+    "/classification/deployment-instances/{deployment_instance_id}/sync/health",
+    response_model=DeploymentRuntimeHealthResponse,
+)
+def get_classification_sync_deployment_health(
+    deployment_instance_id: str,
+    principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("models:read"))],
+    session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
+    dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
+    supervisor: Annotated[DeploymentProcessSupervisor, Depends(get_classification_sync_deployment_process_supervisor)],
+) -> DeploymentRuntimeHealthResponse:
+    return run_deployment_process_health_action(
+        deployment_instance_id=deployment_instance_id,
+        principal=principal,
+        deployment_service=_build_classification_deployment_service(session_factory=session_factory, dataset_storage=dataset_storage),
+        supervisor=supervisor,
+        runtime_mode="sync",
+        action="health",
+    )
+
+
+@classification_deployments_router.post(
+    "/classification/deployment-instances/{deployment_instance_id}/sync/reset",
+    response_model=DeploymentRuntimeHealthResponse,
+)
+def reset_classification_sync_deployment(
+    deployment_instance_id: str,
+    principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("models:read", "models:write"))],
+    session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
+    dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
+    supervisor: Annotated[DeploymentProcessSupervisor, Depends(get_classification_sync_deployment_process_supervisor)],
+) -> DeploymentRuntimeHealthResponse:
+    return run_deployment_process_health_action(
+        deployment_instance_id=deployment_instance_id,
+        principal=principal,
+        deployment_service=_build_classification_deployment_service(session_factory=session_factory, dataset_storage=dataset_storage),
+        supervisor=supervisor,
+        runtime_mode="sync",
+        action="reset",
+    )
+
+
+@classification_deployments_router.post(
+    "/classification/deployment-instances/{deployment_instance_id}/async/start",
+    response_model=DeploymentProcessStatusResponse,
+)
+def start_classification_async_deployment(
+    deployment_instance_id: str,
+    principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("models:read", "models:write"))],
+    session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
+    dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
+    supervisor: Annotated[DeploymentProcessSupervisor, Depends(get_classification_async_deployment_process_supervisor)],
+    gateway_dispatcher_registry: Annotated[ClassificationAsyncInferenceGatewayDispatcherRegistry, Depends(get_classification_async_inference_gateway_dispatcher_registry)],
+) -> DeploymentProcessStatusResponse:
+    return run_deployment_process_status_action(
+        deployment_instance_id=deployment_instance_id,
+        principal=principal,
+        deployment_service=_build_classification_deployment_service(session_factory=session_factory, dataset_storage=dataset_storage),
+        supervisor=supervisor,
+        gateway_dispatcher_registry=gateway_dispatcher_registry,
+        runtime_mode="async",
+        action="start",
+    )
+
+
+@classification_deployments_router.post(
+    "/classification/deployment-instances/{deployment_instance_id}/async/stop",
+    response_model=DeploymentProcessStatusResponse,
+)
+def stop_classification_async_deployment(
+    deployment_instance_id: str,
+    principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("models:read", "models:write"))],
+    session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
+    dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
+    supervisor: Annotated[DeploymentProcessSupervisor, Depends(get_classification_async_deployment_process_supervisor)],
+    gateway_dispatcher_registry: Annotated[ClassificationAsyncInferenceGatewayDispatcherRegistry, Depends(get_classification_async_inference_gateway_dispatcher_registry)],
+) -> DeploymentProcessStatusResponse:
+    return run_deployment_process_status_action(
+        deployment_instance_id=deployment_instance_id,
+        principal=principal,
+        deployment_service=_build_classification_deployment_service(session_factory=session_factory, dataset_storage=dataset_storage),
+        supervisor=supervisor,
+        gateway_dispatcher_registry=gateway_dispatcher_registry,
+        runtime_mode="async",
+        action="stop",
+    )
+
+
+@classification_deployments_router.get(
+    "/classification/deployment-instances/{deployment_instance_id}/async/status",
+    response_model=DeploymentProcessStatusResponse,
+)
+def get_classification_async_deployment_status(
+    deployment_instance_id: str,
+    principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("models:read"))],
+    session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
+    dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
+    supervisor: Annotated[DeploymentProcessSupervisor, Depends(get_classification_async_deployment_process_supervisor)],
+    gateway_dispatcher_registry: Annotated[ClassificationAsyncInferenceGatewayDispatcherRegistry, Depends(get_classification_async_inference_gateway_dispatcher_registry)],
+) -> DeploymentProcessStatusResponse:
+    return run_deployment_process_status_action(
+        deployment_instance_id=deployment_instance_id,
+        principal=principal,
+        deployment_service=_build_classification_deployment_service(session_factory=session_factory, dataset_storage=dataset_storage),
+        supervisor=supervisor,
+        gateway_dispatcher_registry=gateway_dispatcher_registry,
+        runtime_mode="async",
+        action="status",
+    )
+
+
+@classification_deployments_router.post(
+    "/classification/deployment-instances/{deployment_instance_id}/async/warmup",
+    response_model=DeploymentRuntimeHealthResponse,
+)
+def warmup_classification_async_deployment(
+    deployment_instance_id: str,
+    principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("models:read", "models:write"))],
+    session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
+    dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
+    supervisor: Annotated[DeploymentProcessSupervisor, Depends(get_classification_async_deployment_process_supervisor)],
+    gateway_dispatcher_registry: Annotated[ClassificationAsyncInferenceGatewayDispatcherRegistry, Depends(get_classification_async_inference_gateway_dispatcher_registry)],
+) -> DeploymentRuntimeHealthResponse:
+    return run_deployment_process_health_action(
+        deployment_instance_id=deployment_instance_id,
+        principal=principal,
+        deployment_service=_build_classification_deployment_service(session_factory=session_factory, dataset_storage=dataset_storage),
+        supervisor=supervisor,
+        gateway_dispatcher_registry=gateway_dispatcher_registry,
+        runtime_mode="async",
+        action="warmup",
+    )
+
+
+@classification_deployments_router.get(
+    "/classification/deployment-instances/{deployment_instance_id}/async/health",
+    response_model=DeploymentRuntimeHealthResponse,
+)
+def get_classification_async_deployment_health(
+    deployment_instance_id: str,
+    principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("models:read"))],
+    session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
+    dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
+    supervisor: Annotated[DeploymentProcessSupervisor, Depends(get_classification_async_deployment_process_supervisor)],
+    gateway_dispatcher_registry: Annotated[ClassificationAsyncInferenceGatewayDispatcherRegistry, Depends(get_classification_async_inference_gateway_dispatcher_registry)],
+) -> DeploymentRuntimeHealthResponse:
+    return run_deployment_process_health_action(
+        deployment_instance_id=deployment_instance_id,
+        principal=principal,
+        deployment_service=_build_classification_deployment_service(session_factory=session_factory, dataset_storage=dataset_storage),
+        supervisor=supervisor,
+        gateway_dispatcher_registry=gateway_dispatcher_registry,
+        runtime_mode="async",
+        action="health",
+    )
+
+
+@classification_deployments_router.post(
+    "/classification/deployment-instances/{deployment_instance_id}/async/reset",
+    response_model=DeploymentRuntimeHealthResponse,
+)
+def reset_classification_async_deployment(
+    deployment_instance_id: str,
+    principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("models:read", "models:write"))],
+    session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
+    dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
+    supervisor: Annotated[DeploymentProcessSupervisor, Depends(get_classification_async_deployment_process_supervisor)],
+) -> DeploymentRuntimeHealthResponse:
+    return run_deployment_process_health_action(
+        deployment_instance_id=deployment_instance_id,
+        principal=principal,
+        deployment_service=_build_classification_deployment_service(session_factory=session_factory, dataset_storage=dataset_storage),
+        supervisor=supervisor,
+        runtime_mode="async",
+        action="reset",
+    )
+
+
+def _build_classification_deployment_service(
+    *,
+    session_factory: SessionFactory,
+    dataset_storage: LocalDatasetStorage,
+) -> SqlAlchemyClassificationDeploymentService:
+    """构建 classification deployment 公共服务。"""
+
+    return SqlAlchemyClassificationDeploymentService(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
     )
-    _check_project_visible(principal, service.get_deployment_instance(deployment_instance_id))
-    report = supervisor.check_health(deployment_instance_id)
-    return {"deployment_instance_id": deployment_instance_id, "healthy": report.healthy, "details": report.details}
 
 
-def _check_project_visible(
-    principal: AuthenticatedPrincipal,
-    view: object,
-) -> None:
-    if principal.project_ids and getattr(view, "project_id", None) not in principal.project_ids:
-        raise PermissionDeniedError("当前主体无权访问该 Project", details={"project_id": getattr(view, "project_id", "")})
+def _check_project_visible(principal: AuthenticatedPrincipal, project_id: str) -> None:
+    """校验当前主体是否可以访问指定 Project。"""
 
-
-def _require_supervisor(supervisor: DeploymentProcessSupervisor | None) -> DeploymentProcessSupervisor:
-    if supervisor is None:
-        raise ServiceConfigurationError("classification deployment process supervisor 未启动", details={"cause": "no-supervisor"})
-    return supervisor
+    if principal.project_ids and project_id not in principal.project_ids:
+        raise PermissionDeniedError("当前主体无权访问该 Project", details={"project_id": project_id})

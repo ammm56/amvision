@@ -577,8 +577,14 @@ class BackendServiceBootstrap(
         - runtime：当前应用实例使用的运行时资源。
         """
 
+        application.state.backend_service_runtime = runtime
         application.state.backend_service_settings = runtime.settings
+        application.state.async_inference_service_id = runtime.async_inference_service_id
         application.state.detection_async_inference_service_id = runtime.async_inference_service_id
+        application.state.classification_async_inference_service_id = runtime.async_inference_service_id
+        application.state.segmentation_async_inference_service_id = runtime.async_inference_service_id
+        application.state.pose_async_inference_service_id = runtime.async_inference_service_id
+        application.state.obb_async_inference_service_id = runtime.async_inference_service_id
         application.state.session_factory = runtime.session_factory
         application.state.dataset_storage = runtime.dataset_storage
         application.state.queue_backend = runtime.queue_backend
@@ -608,6 +614,42 @@ class BackendServiceBootstrap(
         )
         application.state.detection_async_inference_gateway_dispatcher_registry = (
             runtime.detection_async_inference_gateway_dispatcher_registry
+        )
+        application.state.classification_sync_deployment_process_supervisor = (
+            runtime.classification_sync_deployment_supervisor
+        )
+        application.state.classification_async_deployment_process_supervisor = (
+            runtime.classification_async_deployment_supervisor
+        )
+        application.state.classification_async_inference_gateway_dispatcher_registry = (
+            runtime.classification_async_inference_gateway_registry
+        )
+        application.state.segmentation_sync_deployment_process_supervisor = (
+            runtime.segmentation_sync_deployment_supervisor
+        )
+        application.state.segmentation_async_deployment_process_supervisor = (
+            runtime.segmentation_async_deployment_supervisor
+        )
+        application.state.segmentation_async_inference_gateway_dispatcher_registry = (
+            runtime.segmentation_async_inference_gateway_registry
+        )
+        application.state.pose_sync_deployment_process_supervisor = (
+            runtime.pose_sync_deployment_supervisor
+        )
+        application.state.pose_async_deployment_process_supervisor = (
+            runtime.pose_async_deployment_supervisor
+        )
+        application.state.pose_async_inference_gateway_dispatcher_registry = (
+            runtime.pose_async_inference_gateway_registry
+        )
+        application.state.obb_sync_deployment_process_supervisor = (
+            runtime.obb_sync_deployment_supervisor
+        )
+        application.state.obb_async_deployment_process_supervisor = (
+            runtime.obb_async_deployment_supervisor
+        )
+        application.state.obb_async_inference_gateway_dispatcher_registry = (
+            runtime.obb_async_inference_gateway_registry
         )
         application.state.workflow_runtime_worker_manager = (
             runtime.workflow_runtime_worker_manager

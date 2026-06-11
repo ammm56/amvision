@@ -11,9 +11,16 @@ from backend.service.api.deps.auth import AuthenticatedPrincipal, require_scopes
 from backend.service.api.deps.db import get_session_factory
 from backend.service.api.deps.pose_deployment_process_supervisor import (
     get_pose_async_deployment_process_supervisor,
+    get_pose_async_inference_gateway_dispatcher_registry,
     get_pose_sync_deployment_process_supervisor,
 )
 from backend.service.api.deps.storage import get_dataset_storage
+from backend.service.api.rest.v1.routes.deployment_runtime_helpers import (
+    DeploymentProcessStatusResponse,
+    DeploymentRuntimeHealthResponse,
+    run_deployment_process_health_action,
+    run_deployment_process_status_action,
+)
 from backend.service.api.rest.v1.routes.pose_deployment_helpers import (
     build_pose_deployment_instance_response,
 )
@@ -21,7 +28,10 @@ from backend.service.application.deployments.pose_deployment_service import (
     PoseDeploymentInstanceCreateRequest,
     SqlAlchemyPoseDeploymentService,
 )
-from backend.service.application.errors import PermissionDeniedError, ResourceNotFoundError, ServiceConfigurationError
+from backend.service.application.errors import PermissionDeniedError
+from backend.service.application.models.pose_async_inference_gateway import (
+    PoseAsyncInferenceGatewayDispatcherRegistry,
+)
 from backend.service.application.runtime.deployment_process_supervisor import (
     DeploymentProcessSupervisor,
 )
@@ -77,14 +87,20 @@ def create_pose_deployment_instance(
     dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
 ) -> PoseDeploymentInstanceResponse:
     _check_project(principal, body.project_id)
-    service = SqlAlchemyPoseDeploymentService(session_factory=session_factory, dataset_storage=dataset_storage)
+    service = _build_pose_deployment_service(session_factory=session_factory, dataset_storage=dataset_storage)
     view = service.create_deployment_instance(
         PoseDeploymentInstanceCreateRequest(
-            project_id=body.project_id, model_type=body.model_type, model_version_id=body.model_version_id,
-            model_build_id=body.model_build_id, runtime_profile_id=body.runtime_profile_id,
-            runtime_backend=body.runtime_backend, runtime_precision=body.runtime_precision,
-            device_name=body.device_name, instance_count=body.instance_count,
-            display_name=body.display_name, metadata=dict(body.metadata),
+            project_id=body.project_id,
+            model_type=body.model_type,
+            model_version_id=body.model_version_id,
+            model_build_id=body.model_build_id,
+            runtime_profile_id=body.runtime_profile_id,
+            runtime_backend=body.runtime_backend,
+            runtime_precision=body.runtime_precision,
+            device_name=body.device_name,
+            instance_count=body.instance_count,
+            display_name=body.display_name,
+            metadata=dict(body.metadata),
         ),
         created_by=principal.principal_id,
     )
@@ -108,8 +124,15 @@ def list_pose_deployment_instances(
 ) -> list[PoseDeploymentInstanceResponse]:
     if principal.project_ids and project_id is not None and project_id not in principal.project_ids:
         raise PermissionDeniedError("无权访问该 Project", details={"project_id": project_id})
-    service = SqlAlchemyPoseDeploymentService(session_factory=session_factory, dataset_storage=dataset_storage)
-    views = service.list_deployment_instances(project_id=project_id or "", model_type=model_type, model_version_id=model_version_id, model_build_id=model_build_id, status=status_filter, limit=limit)
+    service = _build_pose_deployment_service(session_factory=session_factory, dataset_storage=dataset_storage)
+    views = service.list_deployment_instances(
+        project_id=project_id or "",
+        model_type=model_type,
+        model_version_id=model_version_id,
+        model_build_id=model_build_id,
+        status=status_filter,
+        limit=limit,
+    )
     return [build_pose_deployment_instance_response(v) for v in views]
 
 
@@ -123,63 +146,287 @@ def get_pose_deployment_instance(
     session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
     dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
 ) -> PoseDeploymentInstanceResponse:
-    service = SqlAlchemyPoseDeploymentService(session_factory=session_factory, dataset_storage=dataset_storage)
+    service = _build_pose_deployment_service(session_factory=session_factory, dataset_storage=dataset_storage)
     view = service.get_deployment_instance(deployment_instance_id)
     _check_project(principal, view.project_id)
     return build_pose_deployment_instance_response(view)
 
 
-@pose_deployments_router.post("/pose/deployment-instances/{deployment_instance_id}/sync/start")
-def sync_start_pose_deployment(
+@pose_deployments_router.post(
+    "/pose/deployment-instances/{deployment_instance_id}/sync/start",
+    response_model=DeploymentProcessStatusResponse,
+)
+def start_pose_sync_deployment(
     deployment_instance_id: str,
     principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("models:read", "models:write"))],
     session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
     dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
     supervisor: Annotated[DeploymentProcessSupervisor, Depends(get_pose_sync_deployment_process_supervisor)],
-) -> dict[str, str]:
-    _require_sup(supervisor)
-    service = SqlAlchemyPoseDeploymentService(session_factory=session_factory, dataset_storage=dataset_storage)
-    _check_project(principal, service.get_deployment_instance(deployment_instance_id).project_id)
-    supervisor.sync_start(deployment_instance_id)
-    return {"status": "started", "deployment_instance_id": deployment_instance_id}
+) -> DeploymentProcessStatusResponse:
+    return run_deployment_process_status_action(
+        deployment_instance_id=deployment_instance_id,
+        principal=principal,
+        deployment_service=_build_pose_deployment_service(session_factory=session_factory, dataset_storage=dataset_storage),
+        supervisor=supervisor,
+        runtime_mode="sync",
+        action="start",
+    )
 
 
-@pose_deployments_router.post("/pose/deployment-instances/{deployment_instance_id}/sync/stop")
-def sync_stop_pose_deployment(
+@pose_deployments_router.post(
+    "/pose/deployment-instances/{deployment_instance_id}/sync/stop",
+    response_model=DeploymentProcessStatusResponse,
+)
+def stop_pose_sync_deployment(
     deployment_instance_id: str,
     principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("models:read", "models:write"))],
     session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
     dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
     supervisor: Annotated[DeploymentProcessSupervisor, Depends(get_pose_sync_deployment_process_supervisor)],
-) -> dict[str, str]:
-    _require_sup(supervisor)
-    service = SqlAlchemyPoseDeploymentService(session_factory=session_factory, dataset_storage=dataset_storage)
-    _check_project(principal, service.get_deployment_instance(deployment_instance_id).project_id)
-    supervisor.sync_stop(deployment_instance_id)
-    return {"status": "stopped", "deployment_instance_id": deployment_instance_id}
+) -> DeploymentProcessStatusResponse:
+    return run_deployment_process_status_action(
+        deployment_instance_id=deployment_instance_id,
+        principal=principal,
+        deployment_service=_build_pose_deployment_service(session_factory=session_factory, dataset_storage=dataset_storage),
+        supervisor=supervisor,
+        runtime_mode="sync",
+        action="stop",
+    )
 
 
-@pose_deployments_router.post("/pose/deployment-instances/{deployment_instance_id}/sync/health")
-def sync_health_pose_deployment(
+@pose_deployments_router.get(
+    "/pose/deployment-instances/{deployment_instance_id}/sync/status",
+    response_model=DeploymentProcessStatusResponse,
+)
+def get_pose_sync_deployment_status(
     deployment_instance_id: str,
     principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("models:read"))],
     session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
     dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
     supervisor: Annotated[DeploymentProcessSupervisor, Depends(get_pose_sync_deployment_process_supervisor)],
-) -> dict[str, object]:
-    _require_sup(supervisor)
-    service = SqlAlchemyPoseDeploymentService(session_factory=session_factory, dataset_storage=dataset_storage)
-    _check_project(principal, service.get_deployment_instance(deployment_instance_id).project_id)
-    report = supervisor.check_health(deployment_instance_id)
-    return {"deployment_instance_id": deployment_instance_id, "healthy": report.healthy, "details": report.details}
+) -> DeploymentProcessStatusResponse:
+    return run_deployment_process_status_action(
+        deployment_instance_id=deployment_instance_id,
+        principal=principal,
+        deployment_service=_build_pose_deployment_service(session_factory=session_factory, dataset_storage=dataset_storage),
+        supervisor=supervisor,
+        runtime_mode="sync",
+        action="status",
+    )
+
+
+@pose_deployments_router.post(
+    "/pose/deployment-instances/{deployment_instance_id}/sync/warmup",
+    response_model=DeploymentRuntimeHealthResponse,
+)
+def warmup_pose_sync_deployment(
+    deployment_instance_id: str,
+    principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("models:read", "models:write"))],
+    session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
+    dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
+    supervisor: Annotated[DeploymentProcessSupervisor, Depends(get_pose_sync_deployment_process_supervisor)],
+) -> DeploymentRuntimeHealthResponse:
+    return run_deployment_process_health_action(
+        deployment_instance_id=deployment_instance_id,
+        principal=principal,
+        deployment_service=_build_pose_deployment_service(session_factory=session_factory, dataset_storage=dataset_storage),
+        supervisor=supervisor,
+        runtime_mode="sync",
+        action="warmup",
+    )
+
+
+@pose_deployments_router.get(
+    "/pose/deployment-instances/{deployment_instance_id}/sync/health",
+    response_model=DeploymentRuntimeHealthResponse,
+)
+def get_pose_sync_deployment_health(
+    deployment_instance_id: str,
+    principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("models:read"))],
+    session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
+    dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
+    supervisor: Annotated[DeploymentProcessSupervisor, Depends(get_pose_sync_deployment_process_supervisor)],
+) -> DeploymentRuntimeHealthResponse:
+    return run_deployment_process_health_action(
+        deployment_instance_id=deployment_instance_id,
+        principal=principal,
+        deployment_service=_build_pose_deployment_service(session_factory=session_factory, dataset_storage=dataset_storage),
+        supervisor=supervisor,
+        runtime_mode="sync",
+        action="health",
+    )
+
+
+@pose_deployments_router.post(
+    "/pose/deployment-instances/{deployment_instance_id}/sync/reset",
+    response_model=DeploymentRuntimeHealthResponse,
+)
+def reset_pose_sync_deployment(
+    deployment_instance_id: str,
+    principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("models:read", "models:write"))],
+    session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
+    dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
+    supervisor: Annotated[DeploymentProcessSupervisor, Depends(get_pose_sync_deployment_process_supervisor)],
+) -> DeploymentRuntimeHealthResponse:
+    return run_deployment_process_health_action(
+        deployment_instance_id=deployment_instance_id,
+        principal=principal,
+        deployment_service=_build_pose_deployment_service(session_factory=session_factory, dataset_storage=dataset_storage),
+        supervisor=supervisor,
+        runtime_mode="sync",
+        action="reset",
+    )
+
+
+@pose_deployments_router.post(
+    "/pose/deployment-instances/{deployment_instance_id}/async/start",
+    response_model=DeploymentProcessStatusResponse,
+)
+def start_pose_async_deployment(
+    deployment_instance_id: str,
+    principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("models:read", "models:write"))],
+    session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
+    dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
+    supervisor: Annotated[DeploymentProcessSupervisor, Depends(get_pose_async_deployment_process_supervisor)],
+    gateway_dispatcher_registry: Annotated[PoseAsyncInferenceGatewayDispatcherRegistry, Depends(get_pose_async_inference_gateway_dispatcher_registry)],
+) -> DeploymentProcessStatusResponse:
+    return run_deployment_process_status_action(
+        deployment_instance_id=deployment_instance_id,
+        principal=principal,
+        deployment_service=_build_pose_deployment_service(session_factory=session_factory, dataset_storage=dataset_storage),
+        supervisor=supervisor,
+        gateway_dispatcher_registry=gateway_dispatcher_registry,
+        runtime_mode="async",
+        action="start",
+    )
+
+
+@pose_deployments_router.post(
+    "/pose/deployment-instances/{deployment_instance_id}/async/stop",
+    response_model=DeploymentProcessStatusResponse,
+)
+def stop_pose_async_deployment(
+    deployment_instance_id: str,
+    principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("models:read", "models:write"))],
+    session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
+    dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
+    supervisor: Annotated[DeploymentProcessSupervisor, Depends(get_pose_async_deployment_process_supervisor)],
+    gateway_dispatcher_registry: Annotated[PoseAsyncInferenceGatewayDispatcherRegistry, Depends(get_pose_async_inference_gateway_dispatcher_registry)],
+) -> DeploymentProcessStatusResponse:
+    return run_deployment_process_status_action(
+        deployment_instance_id=deployment_instance_id,
+        principal=principal,
+        deployment_service=_build_pose_deployment_service(session_factory=session_factory, dataset_storage=dataset_storage),
+        supervisor=supervisor,
+        gateway_dispatcher_registry=gateway_dispatcher_registry,
+        runtime_mode="async",
+        action="stop",
+    )
+
+
+@pose_deployments_router.get(
+    "/pose/deployment-instances/{deployment_instance_id}/async/status",
+    response_model=DeploymentProcessStatusResponse,
+)
+def get_pose_async_deployment_status(
+    deployment_instance_id: str,
+    principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("models:read"))],
+    session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
+    dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
+    supervisor: Annotated[DeploymentProcessSupervisor, Depends(get_pose_async_deployment_process_supervisor)],
+    gateway_dispatcher_registry: Annotated[PoseAsyncInferenceGatewayDispatcherRegistry, Depends(get_pose_async_inference_gateway_dispatcher_registry)],
+) -> DeploymentProcessStatusResponse:
+    return run_deployment_process_status_action(
+        deployment_instance_id=deployment_instance_id,
+        principal=principal,
+        deployment_service=_build_pose_deployment_service(session_factory=session_factory, dataset_storage=dataset_storage),
+        supervisor=supervisor,
+        gateway_dispatcher_registry=gateway_dispatcher_registry,
+        runtime_mode="async",
+        action="status",
+    )
+
+
+@pose_deployments_router.post(
+    "/pose/deployment-instances/{deployment_instance_id}/async/warmup",
+    response_model=DeploymentRuntimeHealthResponse,
+)
+def warmup_pose_async_deployment(
+    deployment_instance_id: str,
+    principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("models:read", "models:write"))],
+    session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
+    dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
+    supervisor: Annotated[DeploymentProcessSupervisor, Depends(get_pose_async_deployment_process_supervisor)],
+    gateway_dispatcher_registry: Annotated[PoseAsyncInferenceGatewayDispatcherRegistry, Depends(get_pose_async_inference_gateway_dispatcher_registry)],
+) -> DeploymentRuntimeHealthResponse:
+    return run_deployment_process_health_action(
+        deployment_instance_id=deployment_instance_id,
+        principal=principal,
+        deployment_service=_build_pose_deployment_service(session_factory=session_factory, dataset_storage=dataset_storage),
+        supervisor=supervisor,
+        gateway_dispatcher_registry=gateway_dispatcher_registry,
+        runtime_mode="async",
+        action="warmup",
+    )
+
+
+@pose_deployments_router.get(
+    "/pose/deployment-instances/{deployment_instance_id}/async/health",
+    response_model=DeploymentRuntimeHealthResponse,
+)
+def get_pose_async_deployment_health(
+    deployment_instance_id: str,
+    principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("models:read"))],
+    session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
+    dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
+    supervisor: Annotated[DeploymentProcessSupervisor, Depends(get_pose_async_deployment_process_supervisor)],
+    gateway_dispatcher_registry: Annotated[PoseAsyncInferenceGatewayDispatcherRegistry, Depends(get_pose_async_inference_gateway_dispatcher_registry)],
+) -> DeploymentRuntimeHealthResponse:
+    return run_deployment_process_health_action(
+        deployment_instance_id=deployment_instance_id,
+        principal=principal,
+        deployment_service=_build_pose_deployment_service(session_factory=session_factory, dataset_storage=dataset_storage),
+        supervisor=supervisor,
+        gateway_dispatcher_registry=gateway_dispatcher_registry,
+        runtime_mode="async",
+        action="health",
+    )
+
+
+@pose_deployments_router.post(
+    "/pose/deployment-instances/{deployment_instance_id}/async/reset",
+    response_model=DeploymentRuntimeHealthResponse,
+)
+def reset_pose_async_deployment(
+    deployment_instance_id: str,
+    principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("models:read", "models:write"))],
+    session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
+    dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
+    supervisor: Annotated[DeploymentProcessSupervisor, Depends(get_pose_async_deployment_process_supervisor)],
+) -> DeploymentRuntimeHealthResponse:
+    return run_deployment_process_health_action(
+        deployment_instance_id=deployment_instance_id,
+        principal=principal,
+        deployment_service=_build_pose_deployment_service(session_factory=session_factory, dataset_storage=dataset_storage),
+        supervisor=supervisor,
+        runtime_mode="async",
+        action="reset",
+    )
+
+
+def _build_pose_deployment_service(
+    *,
+    session_factory: SessionFactory,
+    dataset_storage: LocalDatasetStorage,
+) -> SqlAlchemyPoseDeploymentService:
+    """构建 pose deployment 公共服务。"""
+
+    return SqlAlchemyPoseDeploymentService(
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+    )
 
 
 def _check_project(principal: AuthenticatedPrincipal, project_id: str) -> None:
     if principal.project_ids and project_id not in principal.project_ids:
         raise PermissionDeniedError("无权访问该 Project", details={"project_id": project_id})
-
-
-def _require_sup(s: DeploymentProcessSupervisor | None) -> DeploymentProcessSupervisor:
-    if s is None:
-        raise ServiceConfigurationError("pose deployment supervisor 未启动", details={"cause": "no-supervisor"})
-    return s

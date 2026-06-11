@@ -2,44 +2,44 @@
 
 from __future__ import annotations
 
-from time import perf_counter
+import json
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query, Request, status
+from fastapi import APIRouter, Depends, Request, status
 from pydantic import BaseModel, Field
 
 from backend.queue import LocalFileQueueBackend
 from backend.service.api.deps.auth import AuthenticatedPrincipal, require_scopes
+from backend.service.api.deps.classification_deployment_process_supervisor import (
+    get_classification_async_deployment_process_supervisor,
+    get_classification_async_inference_gateway_dispatcher_registry,
+)
 from backend.service.api.deps.db import get_session_factory
 from backend.service.api.deps.queue import get_queue_backend
 from backend.service.api.deps.storage import get_dataset_storage
-from backend.service.api.deps.classification_deployment_process_supervisor import (
-    get_classification_async_inference_gateway_dispatcher_registry,
-    get_classification_async_deployment_process_supervisor,
-    get_classification_sync_deployment_process_supervisor,
+from backend.service.api.rest.v1.routes.deployment_runtime_helpers import (
+    ensure_requested_model_type_matches,
+    read_async_inference_service_id,
+    require_running_deployment_process,
 )
 from backend.service.application.deployments.classification_deployment_service import (
     SqlAlchemyClassificationDeploymentService,
 )
-from backend.service.application.errors import InvalidRequestError, PermissionDeniedError, ResourceNotFoundError
+from backend.service.application.errors import InvalidRequestError, PermissionDeniedError
 from backend.service.application.models.classification_async_inference_gateway import (
     ClassificationAsyncInferenceGatewayDispatcherRegistry,
 )
 from backend.service.application.models.classification_inference_payloads import (
-    CLASSIFICATION_INFERENCE_INPUT_TRANSPORT_STORAGE,
-    build_classification_inference_payload,
+    ClassificationInferenceInputSource,
     normalize_classification_inference_input,
-    serialize_classification_inference_payload,
 )
 from backend.service.application.models.classification_inference_task_service import (
-    CLASSIFICATION_INFERENCE_TASK_KIND,
     ClassificationInferenceTaskRequest,
     SqlAlchemyClassificationInferenceTaskService,
 )
 from backend.service.application.runtime.deployment_process_supervisor import (
     DeploymentProcessSupervisor,
 )
-from backend.service.application.tasks.task_service import SqlAlchemyTaskService, TaskQueryFilters
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 
@@ -64,9 +64,12 @@ class ClassificationInferenceTaskCreateRequestBody(BaseModel):
 
 class ClassificationInferenceTaskSubmissionResponse(BaseModel):
     task_id: str = Field(description="任务 id")
-    task_kind: str = Field(description="任务种类")
     status: str = Field(description="当前状态")
-    created_at: str = Field(description="创建时间")
+    queue_name: str = Field(description="队列名称")
+    queue_task_id: str = Field(description="队列任务 id")
+    deployment_instance_id: str = Field(description="DeploymentInstance id")
+    input_uri: str = Field(description="标准化输入 URI")
+    input_source_kind: str = Field(description="输入来源类型")
 
 
 @classification_inference_tasks_router.post(
@@ -83,16 +86,13 @@ async def create_classification_inference_task(
     deployment_process_supervisor: Annotated[DeploymentProcessSupervisor, Depends(get_classification_async_deployment_process_supervisor)],
     gateway_dispatcher_registry: Annotated[ClassificationAsyncInferenceGatewayDispatcherRegistry, Depends(get_classification_async_inference_gateway_dispatcher_registry)],
 ) -> ClassificationInferenceTaskSubmissionResponse:
-    import json
+    """创建一条 classification 异步推理任务。"""
 
     content_type = request.headers.get("content-type", "")
     if "multipart/form-data" in content_type:
         form = await request.form()
         raw_payload = form.get("payload")
-        if isinstance(raw_payload, str):
-            payload = json.loads(raw_payload)
-        else:
-            payload = {}
+        payload = json.loads(raw_payload) if isinstance(raw_payload, str) else {}
     else:
         body_bytes = await request.body()
         payload = json.loads(body_bytes) if body_bytes else {}
@@ -100,24 +100,54 @@ async def create_classification_inference_task(
     try:
         body = ClassificationInferenceTaskCreateRequestBody.model_validate(payload)
     except Exception as error:
-        raise InvalidRequestError("classification 推理任务请求格式无效", details={"error": str(error)})
+        raise InvalidRequestError("classification 推理任务请求格式无效", details={"error": str(error)}) from error
 
     if principal.project_ids and body.project_id not in principal.project_ids:
         raise PermissionDeniedError("当前主体无权访问该 Project", details={"project_id": body.project_id})
 
+    deployment_service = SqlAlchemyClassificationDeploymentService(
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+    )
+    deployment_view = deployment_service.get_deployment_instance(body.deployment_instance_id)
+    if deployment_view.project_id != body.project_id:
+        raise InvalidRequestError(
+            "deployment_instance_id 与 project_id 不匹配",
+            details={
+                "project_id": body.project_id,
+                "deployment_project_id": deployment_view.project_id,
+                "deployment_instance_id": body.deployment_instance_id,
+            },
+        )
+    process_config = deployment_service.resolve_process_config(body.deployment_instance_id)
+    ensure_requested_model_type_matches(
+        requested_model_type=body.model_type,
+        resolved_model_type=process_config.runtime_target.model_type,
+        deployment_instance_id=body.deployment_instance_id,
+    )
+    deployment_process_supervisor.ensure_deployment(process_config)
+    require_running_deployment_process(
+        deployment_process_supervisor=deployment_process_supervisor,
+        process_config=process_config,
+        runtime_mode="async",
+    )
     normalized_input = normalize_classification_inference_input(
         dataset_storage=dataset_storage,
-        input_file_id=body.input_file_id,
-        input_uri=body.input_uri,
-        image_base64=body.image_base64,
+        request_id=f"classification-inference-task-{body.deployment_instance_id}",
+        source=ClassificationInferenceInputSource(
+            input_file_id=body.input_file_id,
+            input_uri=body.input_uri,
+            image_base64=body.image_base64,
+        ),
         input_transport_mode=body.input_transport_mode,
+        expected_project_id=body.project_id,
     )
     submission = SqlAlchemyClassificationInferenceTaskService(
         session_factory=session_factory,
         queue_backend=queue_backend,
         dataset_storage=dataset_storage,
         deployment_process_supervisor=deployment_process_supervisor,
-        gateway_dispatcher_registry=gateway_dispatcher_registry,
+        async_inference_gateway_dispatcher_registry=gateway_dispatcher_registry,
     ).submit_inference_task(
         ClassificationInferenceTaskRequest(
             project_id=body.project_id,
@@ -128,6 +158,7 @@ async def create_classification_inference_task(
             input_source_kind=normalized_input.input_source_kind,
             input_transport_mode=normalized_input.input_transport_mode,
             input_image_bytes=normalized_input.input_image_bytes,
+            async_inference_owner_id=read_async_inference_service_id(request, task_type="classification"),
             top_k=body.top_k,
             save_result_image=body.save_result_image,
             return_preview_image_base64=body.return_preview_image_base64,
@@ -138,7 +169,10 @@ async def create_classification_inference_task(
     )
     return ClassificationInferenceTaskSubmissionResponse(
         task_id=submission.task_id,
-        task_kind=submission.task_kind,
         status=submission.status,
-        created_at=submission.created_at,
+        queue_name=submission.queue_name,
+        queue_task_id=submission.queue_task_id,
+        deployment_instance_id=submission.deployment_instance_id,
+        input_uri=submission.input_uri,
+        input_source_kind=normalized_input.input_source_kind,
     )
