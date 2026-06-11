@@ -20,7 +20,7 @@ def _model_deployment_status_handler(request) -> dict[str, object]:
 
 CORE_NODE_SPEC = CoreNodeSpec(
     node_definition=NodeDefinition(
-        node_type_id="core.service.yolox-deployment.status",
+        node_type_id="core.service.detection-deployment.status",
         display_name="Get YOLOX Deployment Status",
         category="service.model.deployment.control",
         description="读取指定 sync 或 async 通道上的 deployment 进程状态。",
@@ -53,3 +53,4 @@ CORE_NODE_SPEC = CoreNodeSpec(
     ),
     handler=_model_deployment_status_handler,
 )
+

@@ -1,7 +1,7 @@
 {
   "info": {
     "_postman_id": "amvision-workflow-03",
-    "name": "amvision workflow 03 yolox deployment qr crop remap",
+    "name": "amvision workflow 03 detection deployment qr crop remap",
     "description": "第三类检测、AOI crop、二维码识别和原图回绘 workflow app 调试 collection。",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },

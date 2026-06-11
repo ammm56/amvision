@@ -320,7 +320,7 @@
       },
       {
         "node_id": "submit_training",
-        "node_type_id": "core.service.yolox-training.submit",
+        "node_type_id": "core.service.model-training.submit",
         "parameters": {}
       },
       {
@@ -418,7 +418,7 @@
       },
       {
         "node_id": "submit_evaluation",
-        "node_type_id": "core.service.yolox-evaluation.submit",
+        "node_type_id": "core.service.model-evaluation.submit",
         "parameters": {}
       },
       {
@@ -508,7 +508,7 @@
       },
       {
         "node_id": "submit_conversion",
-        "node_type_id": "core.service.yolox-conversion.submit",
+        "node_type_id": "core.service.model-conversion.submit",
         "parameters": {}
       },
       {
@@ -631,7 +631,7 @@
       },
       {
         "node_id": "create_deployment",
-        "node_type_id": "core.service.yolox-deployment.create",
+        "node_type_id": "core.service.detection-deployment.create",
         "parameters": {
           "cleanup_on_completion": true
         }
@@ -1936,3 +1936,4 @@
     }
   }
 }
+

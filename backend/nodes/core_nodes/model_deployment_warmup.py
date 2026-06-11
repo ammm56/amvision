@@ -20,7 +20,7 @@ def _model_deployment_warmup_handler(request) -> dict[str, object]:
 
 CORE_NODE_SPEC = CoreNodeSpec(
     node_definition=NodeDefinition(
-        node_type_id="core.service.yolox-deployment.warmup",
+        node_type_id="core.service.detection-deployment.warmup",
         display_name="Warmup YOLOX Deployment",
         category="service.model.deployment.control",
         description="预热指定 sync 或 async 通道上的 deployment 进程。",
@@ -59,3 +59,4 @@ CORE_NODE_SPEC = CoreNodeSpec(
     ),
     handler=_model_deployment_warmup_handler,
 )
+

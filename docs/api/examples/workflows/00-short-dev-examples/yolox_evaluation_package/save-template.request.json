@@ -31,7 +31,7 @@
       },
       {
         "node_id": "submit_evaluation",
-        "node_type_id": "core.service.yolox-evaluation.submit",
+        "node_type_id": "core.service.model-evaluation.submit",
         "parameters": {}
       },
       {
@@ -78,7 +78,7 @@
       },
       {
         "node_id": "package_result",
-        "node_type_id": "core.service.yolox-evaluation.package",
+        "node_type_id": "core.service.model-evaluation.package",
         "parameters": {
           "cleanup_on_completion": true
         }

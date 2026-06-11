@@ -17,7 +17,7 @@
     },
     {
       "node_id": "health",
-      "node_type_id": "core.service.yolox-deployment.health",
+      "node_type_id": "core.service.detection-deployment.health",
       "parameters": {
         "runtime_mode": "sync"
       },
@@ -349,3 +349,4 @@
     "deployment_instance_id_binding": "deployment_request"
   }
 }
+

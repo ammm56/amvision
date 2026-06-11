@@ -15,7 +15,9 @@ from backend.nodes.core_nodes._platform_service_node_support import (
     get_optional_platform_task_type,
     resolve_platform_model_type,
     resolve_platform_task_type,
-    should_use_platform_service_routing,
+)
+from backend.service.application.conversions.detection_conversion_task_service import (
+    DetectionConversionTaskRequest,
 )
 from backend.nodes.core_nodes._service_node_support import (
     build_response_body_output,
@@ -34,16 +36,13 @@ from backend.service.application.conversions.yolo_primary_conversion_task_servic
 from backend.service.application.conversions.rfdetr_conversion_task_service import (
     RfdetrConversionTaskRequest,
 )
-from backend.service.application.conversions.yolox_conversion_task_service import (
-    YoloXConversionTaskRequest,
-)
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 from backend.service.domain.models.model_task_types import DETECTION_TASK_TYPE
 
 
 def _model_conversion_submit_handler(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
-    """调用转换任务 service，兼容旧 YOLOX 节点名并支持显式平台路由。"""
+    """调用统一转换任务 service。"""
 
     request = overlay_parameters_from_object_input(request)
     runtime_context = require_workflow_service_node_runtime(request)
@@ -59,24 +58,6 @@ def _model_conversion_submit_handler(request: WorkflowNodeExecutionRequest) -> d
         request,
         supported_model_types=("yolox", "yolov8", "yolo11", "yolo26", "rfdetr"),
     )
-    use_platform_routing = should_use_platform_service_routing(
-        task_type=requested_task_type,
-        model_type=requested_model_type,
-    )
-    if not use_platform_routing:
-        submission = runtime_context.build_conversion_task_service().submit_conversion_task(
-            YoloXConversionTaskRequest(
-                project_id=require_str_parameter(request, "project_id"),
-                source_model_version_id=require_str_parameter(request, "source_model_version_id"),
-                target_formats=target_formats,
-                runtime_profile_id=get_optional_str_parameter(request, "runtime_profile_id"),
-                extra_options=get_optional_dict_parameter(request, "extra_options"),
-            ),
-            created_by=resolve_created_by(request),
-            display_name=resolve_display_name(request),
-        )
-        return build_response_body_output(submission)
-
     task_type = resolve_platform_task_type(
         requested_task_type,
         default_task_type=DETECTION_TASK_TYPE,
@@ -86,7 +67,7 @@ def _model_conversion_submit_handler(request: WorkflowNodeExecutionRequest) -> d
         task_type=task_type,
     )
     if task_type == DETECTION_TASK_TYPE and model_type == "yolox":
-        request_cls = YoloXConversionTaskRequest
+        request_cls = DetectionConversionTaskRequest
     elif task_type == DETECTION_TASK_TYPE and model_type == "rfdetr":
         request_cls = RfdetrConversionTaskRequest
     else:
@@ -110,10 +91,10 @@ def _model_conversion_submit_handler(request: WorkflowNodeExecutionRequest) -> d
 
 CORE_NODE_SPEC = CoreNodeSpec(
     node_definition=NodeDefinition(
-        node_type_id="core.service.yolox-conversion.submit",
+        node_type_id="core.service.model-conversion.submit",
         display_name="Submit Conversion",
         category="service.model.conversion",
-        description="兼容旧 YOLOX 节点名，同时支持按 task_type 和 model_type 提交正式转换任务。",
+        description="按统一 task_type 和 model_type 提交转换任务。",
         implementation_kind=NODE_IMPLEMENTATION_CORE,
         runtime_kind=NODE_RUNTIME_PYTHON_CALLABLE,
         input_ports=(

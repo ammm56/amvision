@@ -17,15 +17,15 @@ from backend.nodes.local_node_pack_loader import LocalNodePackLoader
 from backend.nodes.node_catalog_registry import NodeCatalogRegistry
 
 
-def test_yolox_deployment_detection_lifecycle_example_documents_are_valid() -> None:
+def test_detection_deployment_lifecycle_example_documents_are_valid() -> None:
     """验证 deployment lifecycle 示例模板与应用可以通过当前规则校验。"""
 
     example_dir = (
         Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
     )
-    template_path = example_dir / "yolox_deployment_detection_lifecycle.template.json"
+    template_path = example_dir / "detection_deployment_lifecycle.template.json"
     application_path = (
-        example_dir / "yolox_deployment_detection_lifecycle.application.json"
+        example_dir / "detection_deployment_lifecycle.application.json"
     )
     template = WorkflowGraphTemplate.model_validate(
         json.loads(template_path.read_text(encoding="utf-8"))
@@ -71,7 +71,7 @@ def test_yolox_deployment_detection_lifecycle_example_documents_are_valid() -> N
         "该示例通过显式 dependency 边表达 start -> warmup -> detection -> health -> stop。"
     )
     assert application.template_ref.source_uri == (
-        "docs/examples/workflows/yolox_deployment_detection_lifecycle.template.json"
+        "docs/examples/workflows/detection_deployment_lifecycle.template.json"
     )
     assert (
         application.metadata["example_kind"] == "deployment-control-detection-lifecycle"
@@ -87,15 +87,15 @@ def test_yolox_deployment_detection_lifecycle_example_documents_are_valid() -> N
     ]
 
 
-def test_yolox_deployment_sync_infer_health_example_documents_are_valid() -> None:
+def test_detection_deployment_sync_infer_health_example_documents_are_valid() -> None:
     """验证 deployment sync infer health 示例模板与应用可以通过当前规则校验。"""
 
     example_dir = (
         Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
     )
-    template_path = example_dir / "yolox_deployment_sync_infer_health.template.json"
+    template_path = example_dir / "detection_deployment_sync_infer_health.template.json"
     application_path = (
-        example_dir / "yolox_deployment_sync_infer_health.application.json"
+        example_dir / "detection_deployment_sync_infer_health.application.json"
     )
     template = WorkflowGraphTemplate.model_validate(
         json.loads(template_path.read_text(encoding="utf-8"))
@@ -133,7 +133,7 @@ def test_yolox_deployment_sync_infer_health_example_documents_are_valid() -> Non
         "health",
     ]
     assert application.template_ref.source_uri == (
-        "docs/examples/workflows/yolox_deployment_sync_infer_health.template.json"
+        "docs/examples/workflows/detection_deployment_sync_infer_health.template.json"
     )
     assert application.metadata["example_kind"] == "deployment-sync-infer-health"
     assert [binding.binding_id for binding in application.bindings] == [
@@ -1192,17 +1192,17 @@ def test_industrial_single_frame_example_documents_are_valid(
         assert application.bindings[2].metadata["payload_type_id"] == "value.v1"
 
 
-def test_industrial_single_frame_yolox_position_gate_documents_are_valid() -> None:
-    """验证 YOLOX 检测到工业规则链样例模板与应用可以通过当前规则校验。"""
+def test_industrial_single_frame_detection_position_gate_documents_are_valid() -> None:
+    """验证 detection 检测到工业规则链样例模板与应用可以通过当前规则校验。"""
 
     example_dir = (
         Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
     )
     template_path = (
-        example_dir / "industrial_single_frame_yolox_position_gate.template.json"
+        example_dir / "industrial_single_frame_detection_position_gate.template.json"
     )
     application_path = (
-        example_dir / "industrial_single_frame_yolox_position_gate.application.json"
+        example_dir / "industrial_single_frame_detection_position_gate.application.json"
     )
     template = WorkflowGraphTemplate.model_validate(
         json.loads(template_path.read_text(encoding="utf-8"))
@@ -1239,7 +1239,7 @@ def test_industrial_single_frame_yolox_position_gate_documents_are_valid() -> No
     ]
     assert (
         template.metadata["example_kind"]
-        == "industrial-single-frame-yolox-position-gate"
+        == "industrial-single-frame-detection-position-gate"
     )
     assert template.metadata["focus"] == "single-frame-industrial-detection-rule-chain"
     assert template.metadata["uses_existing_deployment_instance"] is True
@@ -1254,7 +1254,7 @@ def test_industrial_single_frame_yolox_position_gate_documents_are_valid() -> No
     assert template.template_inputs[2].payload_type_id == "value.v1"
     assert template.template_inputs[2].required is False
     assert application.template_ref.source_uri == (
-        "docs/examples/workflows/industrial_single_frame_yolox_position_gate.template.json"
+        "docs/examples/workflows/industrial_single_frame_detection_position_gate.template.json"
     )
     assert application.runtime_mode == "python-json-workflow"
     assert [binding.binding_id for binding in application.bindings] == [
@@ -1952,20 +1952,20 @@ def test_industrial_single_frame_sobel_laplacian_edge_gap_gate_documents_are_val
     assert application.bindings[6].config["payload_type_id"] == "image-ref.v1"
 
 
-def test_industrial_single_frame_usb_uvc_yolox_position_gate_documents_are_valid() -> (
+def test_industrial_single_frame_usb_uvc_detection_position_gate_documents_are_valid() -> (
     None
 ):
-    """验证 USB/UVC 相机直连 YOLOX 工业规则链样例模板与应用可以通过当前规则校验。"""
+    """验证 USB/UVC 相机直连 detection 工业规则链样例模板与应用可以通过当前规则校验。"""
 
     example_dir = (
         Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
     )
     template_path = (
-        example_dir / "industrial_single_frame_usb_uvc_yolox_position_gate.template.json"
+        example_dir / "industrial_single_frame_usb_uvc_detection_position_gate.template.json"
     )
     application_path = (
         example_dir
-        / "industrial_single_frame_usb_uvc_yolox_position_gate.application.json"
+        / "industrial_single_frame_usb_uvc_detection_position_gate.application.json"
     )
     template = WorkflowGraphTemplate.model_validate(
         json.loads(template_path.read_text(encoding="utf-8"))
@@ -2007,7 +2007,7 @@ def test_industrial_single_frame_usb_uvc_yolox_position_gate_documents_are_valid
     ]
     assert (
         template.metadata["example_kind"]
-        == "industrial-single-frame-usb-uvc-yolox-position-gate"
+        == "industrial-single-frame-usb-uvc-detection-position-gate"
     )
     assert (
         template.metadata["focus"]
@@ -2039,7 +2039,7 @@ def test_industrial_single_frame_usb_uvc_yolox_position_gate_documents_are_valid
         "csv_summary",
     ]
     assert application.template_ref.source_uri == (
-        "docs/examples/workflows/industrial_single_frame_usb_uvc_yolox_position_gate.template.json"
+        "docs/examples/workflows/industrial_single_frame_usb_uvc_detection_position_gate.template.json"
     )
     assert application.runtime_mode == "python-json-workflow"
     assert [binding.binding_id for binding in application.bindings] == [
@@ -2939,7 +2939,7 @@ def test_industrial_local_directory_polling_cursor_guard_documents_are_valid() -
     assert application.bindings[2].config["payload_type_id"] == "boolean.v1"
 
 
-def test_industrial_local_directory_batch_yolox_position_gate_documents_are_valid() -> (
+def test_industrial_local_directory_batch_detection_position_gate_documents_are_valid() -> (
     None
 ):
     """验证工业目录批处理检测闭环样例模板与应用可以通过当前规则校验。"""
@@ -2948,11 +2948,11 @@ def test_industrial_local_directory_batch_yolox_position_gate_documents_are_vali
         Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
     )
     template_path = (
-        example_dir / "industrial_local_directory_batch_yolox_position_gate.template.json"
+        example_dir / "industrial_local_directory_batch_detection_position_gate.template.json"
     )
     application_path = (
         example_dir
-        / "industrial_local_directory_batch_yolox_position_gate.application.json"
+        / "industrial_local_directory_batch_detection_position_gate.application.json"
     )
     template = WorkflowGraphTemplate.model_validate(
         json.loads(template_path.read_text(encoding="utf-8"))
@@ -2995,7 +2995,7 @@ def test_industrial_local_directory_batch_yolox_position_gate_documents_are_vali
     ]
     assert (
         template.metadata["example_kind"]
-        == "industrial-local-directory-batch-yolox-position-gate"
+        == "industrial-local-directory-batch-detection-position-gate"
     )
     assert template.metadata["focus"] == "local-batch-industrial-detection-rule-chain"
     assert template.metadata["uses_existing_deployment_instance"] is True
@@ -3024,7 +3024,7 @@ def test_industrial_local_directory_batch_yolox_position_gate_documents_are_vali
     assert template.template_inputs[5].payload_type_id == "value.v1"
     assert template.template_inputs[5].required is False
     assert application.template_ref.source_uri == (
-        "docs/examples/workflows/industrial_local_directory_batch_yolox_position_gate.template.json"
+        "docs/examples/workflows/industrial_local_directory_batch_detection_position_gate.template.json"
     )
     assert application.runtime_mode == "python-json-workflow"
     assert [binding.binding_id for binding in application.bindings] == [
@@ -3052,7 +3052,7 @@ def test_industrial_local_directory_batch_yolox_position_gate_documents_are_vali
     assert application.bindings[9].config["payload_type_id"] == "boolean.v1"
 
 
-def test_industrial_local_directory_watch_yolox_position_gate_documents_are_valid() -> (
+def test_industrial_local_directory_watch_detection_position_gate_documents_are_valid() -> (
     None
 ):
     """验证工业目录监听触发检测闭环样例模板与应用可以通过当前规则校验。"""
@@ -3061,11 +3061,11 @@ def test_industrial_local_directory_watch_yolox_position_gate_documents_are_vali
         Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
     )
     template_path = (
-        example_dir / "industrial_local_directory_watch_yolox_position_gate.template.json"
+        example_dir / "industrial_local_directory_watch_detection_position_gate.template.json"
     )
     application_path = (
         example_dir
-        / "industrial_local_directory_watch_yolox_position_gate.application.json"
+        / "industrial_local_directory_watch_detection_position_gate.application.json"
     )
     template = WorkflowGraphTemplate.model_validate(
         json.loads(template_path.read_text(encoding="utf-8"))
@@ -3114,7 +3114,7 @@ def test_industrial_local_directory_watch_yolox_position_gate_documents_are_vali
     ]
     assert (
         template.metadata["example_kind"]
-        == "industrial-local-directory-watch-yolox-position-gate"
+        == "industrial-local-directory-watch-detection-position-gate"
     )
     assert (
         template.metadata["focus"]
@@ -3149,7 +3149,7 @@ def test_industrial_local_directory_watch_yolox_position_gate_documents_are_vali
         "callback_response",
     ]
     assert application.template_ref.source_uri == (
-        "docs/examples/workflows/industrial_local_directory_watch_yolox_position_gate.template.json"
+        "docs/examples/workflows/industrial_local_directory_watch_detection_position_gate.template.json"
     )
     assert application.runtime_mode == "python-json-workflow"
     assert [binding.binding_id for binding in application.bindings] == [
@@ -3173,7 +3173,7 @@ def test_industrial_local_directory_watch_yolox_position_gate_documents_are_vali
     assert application.bindings[7].config["payload_type_id"] == "boolean.v1"
 
 
-def test_industrial_local_directory_poll_yolox_position_gate_documents_are_valid() -> (
+def test_industrial_local_directory_poll_detection_position_gate_documents_are_valid() -> (
     None
 ):
     """验证工业目录轮询触发检测闭环样例模板与应用可以通过当前规则校验。"""
@@ -3182,11 +3182,11 @@ def test_industrial_local_directory_poll_yolox_position_gate_documents_are_valid
         Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
     )
     template_path = (
-        example_dir / "industrial_local_directory_poll_yolox_position_gate.template.json"
+        example_dir / "industrial_local_directory_poll_detection_position_gate.template.json"
     )
     application_path = (
         example_dir
-        / "industrial_local_directory_poll_yolox_position_gate.application.json"
+        / "industrial_local_directory_poll_detection_position_gate.application.json"
     )
     template = WorkflowGraphTemplate.model_validate(
         json.loads(template_path.read_text(encoding="utf-8"))
@@ -3235,7 +3235,7 @@ def test_industrial_local_directory_poll_yolox_position_gate_documents_are_valid
     ]
     assert (
         template.metadata["example_kind"]
-        == "industrial-local-directory-poll-yolox-position-gate"
+        == "industrial-local-directory-poll-detection-position-gate"
     )
     assert (
         template.metadata["focus"]
@@ -3270,7 +3270,7 @@ def test_industrial_local_directory_poll_yolox_position_gate_documents_are_valid
         "callback_response",
     ]
     assert application.template_ref.source_uri == (
-        "docs/examples/workflows/industrial_local_directory_poll_yolox_position_gate.template.json"
+        "docs/examples/workflows/industrial_local_directory_poll_detection_position_gate.template.json"
     )
     assert application.runtime_mode == "python-json-workflow"
     assert [binding.binding_id for binding in application.bindings] == [
@@ -3564,15 +3564,15 @@ def test_opencv_process_save_image_example_documents_are_valid() -> None:
     ]
 
 
-def test_yolox_deployment_infer_opencv_health_example_documents_are_valid() -> None:
+def test_detection_deployment_infer_opencv_health_example_documents_are_valid() -> None:
     """验证 deployment infer + opencv + health 示例模板与应用可以通过当前规则校验。"""
 
     example_dir = (
         Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
     )
-    template_path = example_dir / "yolox_deployment_infer_opencv_health.template.json"
+    template_path = example_dir / "detection_deployment_infer_opencv_health.template.json"
     application_path = (
-        example_dir / "yolox_deployment_infer_opencv_health.application.json"
+        example_dir / "detection_deployment_infer_opencv_health.application.json"
     )
     template = WorkflowGraphTemplate.model_validate(
         json.loads(template_path.read_text(encoding="utf-8"))
@@ -3606,7 +3606,7 @@ def test_yolox_deployment_infer_opencv_health_example_documents_are_valid() -> N
     ]
     assert template.metadata["node_groups"]["deployment"] == ["health", "detect"]
     assert application.template_ref.source_uri == (
-        "docs/examples/workflows/yolox_deployment_infer_opencv_health.template.json"
+        "docs/examples/workflows/detection_deployment_infer_opencv_health.template.json"
     )
     assert application.runtime_mode == "python-json-workflow"
     assert [binding.binding_id for binding in application.bindings] == [
@@ -3625,7 +3625,7 @@ def test_yolox_deployment_infer_opencv_health_example_documents_are_valid() -> N
     ),
     [
         (
-            "yolox_deployment_infer_opencv_health_zeromq",
+                "detection_deployment_infer_opencv_health_zeromq",
             "deployment-infer-opencv-health-zeromq",
             [
                 "request_image_base64",
@@ -3712,14 +3712,14 @@ def test_zeromq_image_ref_example_documents_are_valid(
     ] == expected_binding_ids
 
 
-def test_yolox_deployment_qr_crop_remap_example_documents_are_valid() -> None:
+def test_detection_deployment_qr_crop_remap_example_documents_are_valid() -> None:
     """验证 deployment qr crop remap 示例模板与应用可以通过当前规则校验。"""
 
     example_dir = (
         Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
     )
-    template_path = example_dir / "yolox_deployment_qr_crop_remap.template.json"
-    application_path = example_dir / "yolox_deployment_qr_crop_remap.application.json"
+    template_path = example_dir / "detection_deployment_qr_crop_remap.template.json"
+    application_path = example_dir / "detection_deployment_qr_crop_remap.application.json"
     template = WorkflowGraphTemplate.model_validate(
         json.loads(template_path.read_text(encoding="utf-8"))
     )
@@ -3756,7 +3756,7 @@ def test_yolox_deployment_qr_crop_remap_example_documents_are_valid() -> None:
         "summary",
     ]
     assert application.template_ref.source_uri == (
-        "docs/examples/workflows/yolox_deployment_qr_crop_remap.template.json"
+        "docs/examples/workflows/detection_deployment_qr_crop_remap.template.json"
     )
     assert application.runtime_mode == "python-json-workflow"
     assert [binding.binding_id for binding in application.bindings] == [
@@ -4022,21 +4022,21 @@ def test_yolox_evaluation_package_example_documents_are_valid() -> None:
         pytest.param(
             "yolox_training_submit",
             "yolox-training-submit",
-            "core.service.yolox-training.submit",
+            "core.service.model-training.submit",
             ["request_payload", "submission_body"],
             id="yolox-training-submit",
         ),
         pytest.param(
             "yolox_evaluation_submit",
             "yolox-evaluation-submit",
-            "core.service.yolox-evaluation.submit",
+            "core.service.model-evaluation.submit",
             ["request_payload", "submission_body"],
             id="yolox-evaluation-submit",
         ),
         pytest.param(
             "yolox_conversion_submit",
             "yolox-conversion-submit",
-            "core.service.yolox-conversion.submit",
+            "core.service.model-conversion.submit",
             ["request_payload", "submission_body"],
             id="yolox-conversion-submit",
         ),

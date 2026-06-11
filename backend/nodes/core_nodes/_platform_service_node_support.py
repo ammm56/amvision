@@ -81,16 +81,6 @@ def get_optional_platform_model_type(
     return model_type
 
 
-def should_use_platform_service_routing(
-    *,
-    task_type: str | None,
-    model_type: str | None,
-) -> bool:
-    """判断当前节点是否应走显式平台 service 路由。"""
-
-    return task_type is not None or model_type is not None
-
-
 def resolve_platform_task_type(
     task_type: str | None,
     *,

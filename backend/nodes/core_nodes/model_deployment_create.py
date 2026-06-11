@@ -117,7 +117,7 @@ def _register_created_deployment_for_cleanup(
 
 CORE_NODE_SPEC = CoreNodeSpec(
     node_definition=NodeDefinition(
-        node_type_id="core.service.yolox-deployment.create",
+        node_type_id="core.service.detection-deployment.create",
         display_name="Create Deployment",
         category="service.model.deployment.resource",
         description="兼容旧 YOLOX 节点名，按正式 detection deployment API 参数创建 DeploymentInstance。",
@@ -169,3 +169,4 @@ CORE_NODE_SPEC = CoreNodeSpec(
     ),
     handler=_model_deployment_create_handler,
 )
+

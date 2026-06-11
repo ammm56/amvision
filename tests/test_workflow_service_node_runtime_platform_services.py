@@ -17,6 +17,9 @@ from backend.service.application.models.classification_validation_session_servic
 from backend.service.application.models.detection_evaluation_task_service import (
     SqlAlchemyDetectionEvaluationTaskService,
 )
+from backend.service.application.models.detection_validation_session_service import (
+    LocalDetectionValidationSessionService,
+)
 from backend.service.application.models.obb_evaluation_task_service import (
     SqlAlchemyObbEvaluationTaskService,
 )
@@ -31,9 +34,6 @@ from backend.service.application.models.rfdetr_training_service import (
 )
 from backend.service.application.models.yolox_training_service import (
     SqlAlchemyYoloXTrainingTaskService,
-)
-from backend.service.application.models.yolox_validation_session_service import (
-    LocalYoloXValidationSessionService,
 )
 from backend.service.application.workflows.service_node_runtime import (
     WorkflowServiceNodeRuntimeContext,
@@ -98,8 +98,8 @@ def test_workflow_runtime_can_build_platform_services_by_task_type(tmp_path: Pat
     )
 
 
-def test_workflow_runtime_preserves_legacy_yolox_defaults(tmp_path: Path) -> None:
-    """未显式指定 task_type 时仍应保持现有 YOLOX 节点兼容。"""
+def test_workflow_runtime_can_build_detection_platform_services(tmp_path: Path) -> None:
+    """显式 detection task_type 时应返回 detection 平台 service。"""
 
     session_factory = _create_session_factory()
     dataset_storage = _create_dataset_storage(tmp_path)
@@ -111,12 +111,12 @@ def test_workflow_runtime_preserves_legacy_yolox_defaults(tmp_path: Path) -> Non
     )
 
     assert isinstance(
-        runtime_context.build_training_task_service(),
+        runtime_context.build_training_task_service(task_type="detection"),
         SqlAlchemyYoloXTrainingTaskService,
     )
     assert isinstance(
-        runtime_context.build_validation_session_service(),
-        LocalYoloXValidationSessionService,
+        runtime_context.build_validation_session_service(task_type="detection"),
+        LocalDetectionValidationSessionService,
     )
 
 

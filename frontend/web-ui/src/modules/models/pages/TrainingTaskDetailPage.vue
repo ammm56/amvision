@@ -128,16 +128,16 @@ import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 
 import {
-  deleteYoloXTrainingTask,
-  getYoloXTrainingOutputFileDetail,
-  getYoloXTrainingTaskDetail,
-  listYoloXTrainingOutputFiles,
-  registerYoloXTrainingLatestCheckpoint,
-  requestYoloXTrainingTaskAction,
-  type YoloXTrainingOutputFileDetail,
-  type YoloXTrainingOutputFileSummary,
-  type YoloXTrainingTaskActionName,
-  type YoloXTrainingTaskDetail,
+  deleteDetectionTrainingTask,
+  getDetectionTrainingOutputFileDetail,
+  getDetectionTrainingTaskDetail,
+  listDetectionTrainingOutputFiles,
+  registerDetectionTrainingLatestCheckpoint,
+  requestDetectionTrainingTaskAction,
+  type DetectionTrainingOutputFileDetail,
+  type DetectionTrainingOutputFileSummary,
+  type DetectionTrainingTaskActionName,
+  type DetectionTrainingTaskDetail,
 } from '../services/model.service'
 import Button from '@/shared/ui/components/Button.vue'
 import EmptyState from '@/shared/ui/feedback/EmptyState.vue'
@@ -149,9 +149,9 @@ const route = useRoute()
 const router = useRouter()
 const { t } = useI18n()
 
-const task = ref<YoloXTrainingTaskDetail | null>(null)
-const outputFiles = ref<YoloXTrainingOutputFileSummary[]>([])
-const selectedOutputFile = ref<YoloXTrainingOutputFileDetail | null>(null)
+const task = ref<DetectionTrainingTaskDetail | null>(null)
+const outputFiles = ref<DetectionTrainingOutputFileSummary[]>([])
+const selectedOutputFile = ref<DetectionTrainingOutputFileDetail | null>(null)
 const loading = ref(false)
 const actionRunning = ref<string | null>(null)
 const errorMessage = ref<string | null>(null)
@@ -179,7 +179,7 @@ function statusTone(status: string | null | undefined): 'neutral' | 'success' | 
   return 'neutral'
 }
 
-function actionIcon(action: YoloXTrainingTaskActionName) {
+function actionIcon(action: DetectionTrainingTaskActionName) {
   if (action === 'save') return Save
   if (action === 'pause') return Pause
   if (action === 'resume') return Play
@@ -192,8 +192,8 @@ async function refreshPage(): Promise<void> {
   errorMessage.value = null
   try {
     const [taskDetail, files] = await Promise.all([
-      getYoloXTrainingTaskDetail(taskId.value),
-      listYoloXTrainingOutputFiles(taskId.value),
+      getDetectionTrainingTaskDetail(taskId.value),
+      listDetectionTrainingOutputFiles(taskId.value),
     ])
     task.value = taskDetail
     outputFiles.value = files
@@ -207,17 +207,17 @@ async function refreshPage(): Promise<void> {
   }
 }
 
-async function runAction(action: YoloXTrainingTaskActionName): Promise<void> {
+async function runAction(action: DetectionTrainingTaskActionName): Promise<void> {
   if (action === 'delete' && !window.confirm(t('trainingDetail.messages.confirmDelete'))) return
   actionRunning.value = action
   errorMessage.value = null
   try {
     if (action === 'delete') {
-      await deleteYoloXTrainingTask(taskId.value)
+      await deleteDetectionTrainingTask(taskId.value)
       await router.push('/models')
       return
     }
-    await requestYoloXTrainingTaskAction(taskId.value, action)
+    await requestDetectionTrainingTaskAction(taskId.value, action)
     await refreshPage()
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : t('trainingDetail.messages.actionFailed')
@@ -230,7 +230,7 @@ async function registerCheckpoint(): Promise<void> {
   actionRunning.value = 'register-model-version'
   errorMessage.value = null
   try {
-    task.value = await registerYoloXTrainingLatestCheckpoint(taskId.value)
+    task.value = await registerDetectionTrainingLatestCheckpoint(taskId.value)
     await refreshPage()
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : t('trainingDetail.messages.registerFailed')
@@ -242,7 +242,7 @@ async function registerCheckpoint(): Promise<void> {
 async function selectOutputFile(fileName: string): Promise<void> {
   errorMessage.value = null
   try {
-    selectedOutputFile.value = await getYoloXTrainingOutputFileDetail(taskId.value, fileName)
+    selectedOutputFile.value = await getDetectionTrainingOutputFileDetail(taskId.value, fileName)
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : t('trainingDetail.messages.outputFailed')
   }

@@ -213,18 +213,18 @@ import { HeartPulse, ListChecks, Play, RefreshCw, RotateCcw, Square, Zap } from 
 import { useI18n } from 'vue-i18n'
 
 import {
-  createYoloXDeployment,
-  listYoloXDeploymentEvents,
-  listYoloXDeployments,
-  runYoloXDeploymentHealthAction,
-  runYoloXDeploymentStatusAction,
+  createDetectionDeployment,
+  listDetectionDeploymentEvents,
+  listDetectionDeployments,
+  runDetectionDeploymentHealthAction,
+  runDetectionDeploymentStatusAction,
   type DeploymentHealthAction,
   type DeploymentRuntimeMode,
   type DeploymentStatusAction,
-  type YoloXDeploymentInstance,
-  type YoloXDeploymentProcessEvent,
-  type YoloXDeploymentProcessStatus,
-  type YoloXDeploymentRuntimeHealth,
+  type DetectionDeploymentInstance,
+  type DetectionDeploymentProcessEvent,
+  type DetectionDeploymentProcessStatus,
+  type DetectionDeploymentRuntimeHealth,
 } from '../services/deployment.service'
 import { useProjectStore } from '@/app/stores/project.store'
 import { useSessionStore } from '@/app/stores/session.store'
@@ -251,16 +251,16 @@ const runtimePrecisionOptions = [
   { label: 'fp16', value: 'fp16' },
 ]
 
-const deployments = ref<YoloXDeploymentInstance[]>([])
-const deploymentEvents = ref<YoloXDeploymentProcessEvent[]>([])
+const deployments = ref<DetectionDeploymentInstance[]>([])
+const deploymentEvents = ref<DetectionDeploymentProcessEvent[]>([])
 const loading = ref(false)
 const creating = ref(false)
 const eventsLoading = ref(false)
 const runningAction = ref<string | null>(null)
 const errorMessage = ref<string | null>(null)
-const lastCreatedDeployment = ref<YoloXDeploymentInstance | null>(null)
-const lastRuntimeStatus = ref<YoloXDeploymentProcessStatus | null>(null)
-const lastRuntimeHealth = ref<YoloXDeploymentRuntimeHealth | null>(null)
+const lastCreatedDeployment = ref<DetectionDeploymentInstance | null>(null)
+const lastRuntimeStatus = ref<DetectionDeploymentProcessStatus | null>(null)
+const lastRuntimeHealth = ref<DetectionDeploymentRuntimeHealth | null>(null)
 const selectedDeploymentId = ref('')
 
 const modelVersionId = ref('')
@@ -323,7 +323,7 @@ async function refreshPage(): Promise<void> {
   loading.value = true
   errorMessage.value = null
   try {
-    deployments.value = await listYoloXDeployments(selectedProjectId.value)
+    deployments.value = await listDetectionDeployments(selectedProjectId.value)
     if (!deployments.value.some((item) => item.deployment_instance_id === selectedDeploymentId.value)) {
       selectedDeploymentId.value = deployments.value[0]?.deployment_instance_id ?? ''
     }
@@ -348,7 +348,7 @@ async function loadDeploymentEvents(): Promise<void> {
   eventsLoading.value = true
   errorMessage.value = null
   try {
-    deploymentEvents.value = await listYoloXDeploymentEvents(selectedDeploymentId.value, runtimeMode.value)
+    deploymentEvents.value = await listDetectionDeploymentEvents(selectedDeploymentId.value, runtimeMode.value)
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : t('deploymentOps.messages.eventsFailed')
   } finally {
@@ -364,7 +364,7 @@ async function submitDeployment(): Promise<void> {
   creating.value = true
   errorMessage.value = null
   try {
-    lastCreatedDeployment.value = await createYoloXDeployment({
+    lastCreatedDeployment.value = await createDetectionDeployment({
       projectId: selectedProjectId.value,
       modelVersionId: modelVersionId.value.trim(),
       modelBuildId: modelBuildId.value.trim(),
@@ -389,7 +389,7 @@ async function runStatusAction(deploymentId: string, action: DeploymentStatusAct
   runningAction.value = `${deploymentId}:${runtimeMode.value}:${action}`
   errorMessage.value = null
   try {
-    lastRuntimeStatus.value = await runYoloXDeploymentStatusAction(deploymentId, runtimeMode.value, action)
+    lastRuntimeStatus.value = await runDetectionDeploymentStatusAction(deploymentId, runtimeMode.value, action)
     if (action !== 'status') {
       await refreshPage()
       return
@@ -407,7 +407,7 @@ async function runHealthAction(deploymentId: string, action: DeploymentHealthAct
   runningAction.value = `${deploymentId}:${runtimeMode.value}:${action}`
   errorMessage.value = null
   try {
-    lastRuntimeHealth.value = await runYoloXDeploymentHealthAction(deploymentId, runtimeMode.value, action)
+    lastRuntimeHealth.value = await runDetectionDeploymentHealthAction(deploymentId, runtimeMode.value, action)
     lastRuntimeStatus.value = lastRuntimeHealth.value
     await loadDeploymentEvents()
   } catch (error) {

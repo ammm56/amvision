@@ -29,7 +29,7 @@ SHORT_WORKFLOW_EXAMPLE_NAMES = [
     "dataset_export_submit",
     "dataset_import_upload",
     "yolox_conversion_submit",
-    "yolox_deployment_detection_lifecycle",
+    "detection_deployment_lifecycle",
     "yolox_evaluation_package",
     "yolox_evaluation_submit",
     "yolox_training_submit",
@@ -37,13 +37,13 @@ SHORT_WORKFLOW_EXAMPLE_NAMES = [
 
 WORKFLOW_API_EXAMPLE_FOLDERS = {
     **{example_name: Path("00-short-dev-examples") / example_name for example_name in SHORT_WORKFLOW_EXAMPLE_NAMES},
-    "yolox_deployment_detection_lifecycle_real_path": Path(
-        "00-short-dev-examples/yolox_deployment_detection_lifecycle_real_path"
+    "detection_deployment_lifecycle_real_path": Path(
+        "00-short-dev-examples/detection_deployment_lifecycle_real_path"
     ),
     "yolox_end_to_end_qr_crop_remap": Path("01-yolox-end-to-end-qr-crop-remap"),
-    "yolox_deployment_sync_infer_health": Path("02-yolox-deployment-sync-infer-health"),
-    "yolox_deployment_qr_crop_remap": Path("03-yolox-deployment-qr-crop-remap"),
-    "yolox_deployment_infer_opencv_health": Path("04-yolox-deployment-infer-opencv-health"),
+    "detection_deployment_sync_infer_health": Path("02-detection-deployment-sync-infer-health"),
+    "detection_deployment_qr_crop_remap": Path("03-detection-deployment-qr-crop-remap"),
+    "detection_deployment_infer_opencv_health": Path("04-detection-deployment-infer-opencv-health"),
     "opencv_process_save_image": Path("05-opencv-process-save-image"),
     "industrial_single_frame_glue_roi_delivery_bundle": Path(
         "10-industrial-single-frame-glue-roi-delivery-bundle"
@@ -51,8 +51,8 @@ WORKFLOW_API_EXAMPLE_FOLDERS = {
 }
 
 TRIGGER_SOURCE_API_EXAMPLE_FOLDERS = {
-    "yolox_deployment_infer_opencv_health_zeromq_image_ref": Path(
-        "06-yolox-deployment-infer-opencv-health-zeromq-image-ref"
+    "detection_deployment_infer_opencv_health_zeromq_image_ref": Path(
+        "06-detection-deployment-infer-opencv-health-zeromq-image-ref"
     ),
     "opencv_process_save_image_zeromq_image_ref": Path(
         "07-opencv-process-save-image-zeromq-image-ref"
@@ -60,11 +60,11 @@ TRIGGER_SOURCE_API_EXAMPLE_FOLDERS = {
     "plc_register_modbus_tcp_async_result_record": Path(
         "08-plc-register-modbus-tcp-async-result-record"
     ),
-    "industrial_local_directory_watch_yolox_position_gate": Path(
-        "09-industrial-local-directory-watch-yolox-position-gate"
+    "industrial_local_directory_watch_detection_position_gate": Path(
+        "09-industrial-local-directory-watch-detection-position-gate"
     ),
-    "industrial_local_directory_poll_yolox_position_gate": Path(
-        "11-industrial-local-directory-poll-yolox-position-gate"
+    "industrial_local_directory_poll_detection_position_gate": Path(
+        "11-industrial-local-directory-poll-detection-position-gate"
     ),
 }
 
@@ -76,12 +76,12 @@ ALL_WORKFLOW_API_EXAMPLE_FOLDERS = {
 WORKFLOW_POSTMAN_COLLECTIONS = {
     "00-short-dev-examples": "00-workflow-example-documents.postman_collection.json",
     "01-yolox-end-to-end-qr-crop-remap": "01-yolox-end-to-end-qr-crop-remap.postman_collection.json",
-    "02-yolox-deployment-sync-infer-health": "02-yolox-deployment-sync-infer-health.postman_collection.json",
-    "03-yolox-deployment-qr-crop-remap": "03-yolox-deployment-qr-crop-remap.postman_collection.json",
-    "04-yolox-deployment-infer-opencv-health": "04-yolox-deployment-infer-opencv-health.postman_collection.json",
+    "02-detection-deployment-sync-infer-health": "02-detection-deployment-sync-infer-health.postman_collection.json",
+    "03-detection-deployment-qr-crop-remap": "03-detection-deployment-qr-crop-remap.postman_collection.json",
+    "04-detection-deployment-infer-opencv-health": "04-detection-deployment-infer-opencv-health.postman_collection.json",
     "05-opencv-process-save-image": "05-opencv-process-save-image.postman_collection.json",
-    "06-yolox-deployment-infer-opencv-health-zeromq-image-ref": (
-        "06-yolox-deployment-infer-opencv-health-zeromq-image-ref.postman_collection.json"
+    "06-detection-deployment-infer-opencv-health-zeromq-image-ref": (
+        "06-detection-deployment-infer-opencv-health-zeromq-image-ref.postman_collection.json"
     ),
     "07-opencv-process-save-image-zeromq-image-ref": (
         "07-opencv-process-save-image-zeromq-image-ref.postman_collection.json"
@@ -89,14 +89,14 @@ WORKFLOW_POSTMAN_COLLECTIONS = {
     "08-plc-register-modbus-tcp-async-result-record": (
         "08-plc-register-modbus-tcp-async-result-record.postman_collection.json"
     ),
-    "09-industrial-local-directory-watch-yolox-position-gate": (
-        "09-industrial-local-directory-watch-yolox-position-gate.postman_collection.json"
+    "09-industrial-local-directory-watch-detection-position-gate": (
+        "09-industrial-local-directory-watch-detection-position-gate.postman_collection.json"
     ),
     "10-industrial-single-frame-glue-roi-delivery-bundle": (
         "10-industrial-single-frame-glue-roi-delivery-bundle.postman_collection.json"
     ),
-    "11-industrial-local-directory-poll-yolox-position-gate": (
-        "11-industrial-local-directory-poll-yolox-position-gate.postman_collection.json"
+    "11-industrial-local-directory-poll-detection-position-gate": (
+        "11-industrial-local-directory-poll-detection-position-gate.postman_collection.json"
     ),
 }
 
@@ -160,7 +160,7 @@ def _read_api_workflow_example(example_name: str, file_name: str) -> dict[str, o
 def test_workflow_api_real_path_example_requests_are_valid() -> None:
     """验证 workflow API 专页使用的真实路径 JSON 请求体可以通过当前规则校验。"""
 
-    example_name = "yolox_deployment_detection_lifecycle_real_path"
+    example_name = "detection_deployment_lifecycle_real_path"
     template_request = _read_api_workflow_example(example_name, "save-template.request.json")
     application_request = _read_api_workflow_example(example_name, "save-application.request.json")
     preview_run_request = _read_api_workflow_example(example_name, "preview-run.request.json")
@@ -194,7 +194,7 @@ def test_workflow_api_real_path_example_requests_are_valid() -> None:
     ]
     assert template.metadata["intended_saved_object_key"] == (
         "workflows/projects/project-1/templates/"
-        "yolox-deployment-detection-lifecycle-real-path/versions/1.0.0/template.json"
+        "detection-deployment-lifecycle-real-path/versions/1.0.0/template.json"
     )
     assert template.metadata["example_kind"] == "deployment-control-detection-lifecycle-real-path"
     assert template.metadata["execution_order_note"] == (
@@ -204,11 +204,11 @@ def test_workflow_api_real_path_example_requests_are_valid() -> None:
     assert template.metadata["node_groups"]["deployment_control"] == ["start", "warmup", "health", "stop"]
     assert application.template_ref.source_uri == (
         "workflows/projects/project-1/templates/"
-        "yolox-deployment-detection-lifecycle-real-path/versions/1.0.0/template.json"
+        "detection-deployment-lifecycle-real-path/versions/1.0.0/template.json"
     )
     assert application.metadata["intended_saved_object_key"] == (
         "workflows/projects/project-1/applications/"
-        "yolox-deployment-detection-lifecycle-real-path-app/application.json"
+        "detection-deployment-lifecycle-real-path-app/application.json"
     )
     assert application.metadata["example_kind"] == "deployment-control-detection-lifecycle-real-path"
     assert preview_execution_policy_request["execution_policy_id"] == "preview-default-policy"
@@ -237,10 +237,10 @@ def test_workflow_api_real_path_example_requests_are_valid() -> None:
 def test_workflow_api_short_lifecycle_template_request_matches_document() -> None:
     """验证短示例 lifecycle 的 save-template 请求体与示例文档保持一致。"""
 
-    example_name = "yolox_deployment_detection_lifecycle"
+    example_name = "detection_deployment_lifecycle"
     template_request = _read_api_workflow_example(example_name, "save-template.request.json")
     template_payload = json.loads(
-        (DOCS_WORKFLOW_EXAMPLE_DIR / "yolox_deployment_detection_lifecycle.template.json").read_text(
+        (DOCS_WORKFLOW_EXAMPLE_DIR / "detection_deployment_lifecycle.template.json").read_text(
             encoding="utf-8"
         )
     )
@@ -274,7 +274,7 @@ def test_workflow_postman_collection_contains_manual_test_sequence() -> None:
     assert collection_payload["info"]["name"] == "amvision workflow runtime api"
     assert "/api/v1/workflows/app-runtimes/{workflow_runtime_id}/invoke" in collection_payload["info"]["description"]
     assert "不自动生成专用 HTTP 路由" in collection_payload["info"]["description"]
-    assert "List YOLOX Deployment Instances" in request_names
+    assert "List Detection Deployment Instances" in request_names
     assert "Save Workflow Template" in request_names
     assert "Get Workflow Template" in request_names
     assert "Save Flow Application" in request_names
@@ -306,8 +306,8 @@ def test_workflow_postman_collection_contains_manual_test_sequence() -> None:
     assert "Create YOLOX Conversion Submit App Runtime" in request_names
     assert "Invoke YOLOX Conversion Submit App Runtime" in request_names
     assert variables["deploymentInstanceId"] == "replace-with-existing-deployment-instance-id"
-    assert variables["templateId"] == "yolox-deployment-detection-lifecycle-real-path"
-    assert variables["applicationId"] == "yolox-deployment-detection-lifecycle-real-path-app"
+    assert variables["templateId"] == "detection-deployment-lifecycle-real-path"
+    assert variables["applicationId"] == "detection-deployment-lifecycle-real-path-app"
     assert variables["previewExecutionPolicyId"] == "preview-default-policy"
     assert variables["runtimeExecutionPolicyId"] == "runtime-default-policy"
     assert "datasetImportWorkflowRuntimeId" in variables
@@ -585,8 +585,8 @@ def test_workflow_api_standard_app_runtime_examples_are_valid(
     ("example_name", "expected_application_id", "expected_example_kind", "uses_existing_deployment_instance"),
     [
         pytest.param(
-            "yolox_deployment_sync_infer_health",
-            "yolox-deployment-sync-infer-health-app",
+            "detection_deployment_sync_infer_health",
+            "detection-deployment-sync-infer-health-app",
             "deployment-sync-infer-health",
             True,
             id="deployment-sync-infer-health",
@@ -599,15 +599,15 @@ def test_workflow_api_standard_app_runtime_examples_are_valid(
             id="opencv-process-save-image",
         ),
         pytest.param(
-            "yolox_deployment_infer_opencv_health",
-            "yolox-deployment-infer-opencv-health-app",
+            "detection_deployment_infer_opencv_health",
+            "detection-deployment-infer-opencv-health-app",
             "deployment-infer-opencv-health",
             True,
             id="deployment-infer-opencv-health",
         ),
         pytest.param(
-            "yolox_deployment_qr_crop_remap",
-            "yolox-deployment-qr-crop-remap-app",
+            "detection_deployment_qr_crop_remap",
+            "detection-deployment-qr-crop-remap-app",
             "deployment-qr-crop-remap",
             True,
             id="deployment-qr-crop-remap",
@@ -669,9 +669,9 @@ def test_workflow_api_image_app_runtime_examples_are_valid(
     ("example_name", "application_file_name", "expected_application_id", "expected_example_kind"),
     [
         pytest.param(
-            "yolox_deployment_infer_opencv_health_zeromq_image_ref",
-            "yolox_deployment_infer_opencv_health_zeromq.application.json",
-            "yolox-deployment-infer-opencv-health-zeromq-app",
+            "detection_deployment_infer_opencv_health_zeromq_image_ref",
+            "detection_deployment_infer_opencv_health_zeromq.application.json",
+            "detection-deployment-infer-opencv-health-zeromq-app",
             "deployment-infer-opencv-health-zeromq",
             id="06-deployment-infer-opencv-health-zeromq",
         ),
@@ -704,7 +704,7 @@ def test_trigger_source_api_app_runtime_create_examples_are_valid(
     assert create_request["metadata"]["example_kind"] == expected_example_kind
     assert create_request["metadata"]["trigger_source_input"] == "zeromq"
     assert "request_timeout_seconds" not in create_request
-    if example_name == "yolox_deployment_infer_opencv_health_zeromq_image_ref":
+    if example_name == "detection_deployment_infer_opencv_health_zeromq_image_ref":
         assert create_request["metadata"]["uses_existing_deployment_instance"] is True
 
 
@@ -712,8 +712,8 @@ def test_trigger_source_api_app_runtime_create_examples_are_valid(
     ("example_name", "application_file_name", "expected_input_binding_ids"),
     [
         pytest.param(
-            "yolox_deployment_infer_opencv_health_zeromq_image_ref",
-            "yolox_deployment_infer_opencv_health_zeromq.application.json",
+            "detection_deployment_infer_opencv_health_zeromq_image_ref",
+            "detection_deployment_infer_opencv_health_zeromq.application.json",
             {"request_image_base64", "deployment_request"},
             id="06-http-base64-invoke",
         ),
@@ -766,7 +766,7 @@ def test_trigger_source_api_invoke_examples_target_http_base64_binding(
     ("example_name", "expected_trigger_source_id", "expected_example_kind", "expected_binding_ids"),
     [
         pytest.param(
-            "yolox_deployment_infer_opencv_health_zeromq_image_ref",
+            "detection_deployment_infer_opencv_health_zeromq_image_ref",
             "zeromq-trigger-source-06",
             "deployment-infer-opencv-health-zeromq",
             {"request_image_ref", "deployment_request"},
@@ -863,7 +863,7 @@ def test_plc_register_trigger_source_api_examples_are_valid() -> None:
 def test_directory_watch_trigger_source_api_examples_are_valid() -> None:
     """验证 09 directory-watch TriggerSource 配置补充示例已经收成正式接法。"""
 
-    example_name = "industrial_local_directory_watch_yolox_position_gate"
+    example_name = "industrial_local_directory_watch_detection_position_gate"
     save_template_request = _read_api_workflow_example(
         example_name, "save-template.request.json"
     )
@@ -873,13 +873,13 @@ def test_directory_watch_trigger_source_api_examples_are_valid() -> None:
     template = json.loads(
         (
             DOCS_WORKFLOW_EXAMPLE_DIR
-            / "industrial_local_directory_watch_yolox_position_gate.template.json"
+            / "industrial_local_directory_watch_detection_position_gate.template.json"
         ).read_text(encoding="utf-8")
     )
     application_payload = json.loads(
         (
             DOCS_WORKFLOW_EXAMPLE_DIR
-            / "industrial_local_directory_watch_yolox_position_gate.application.json"
+            / "industrial_local_directory_watch_detection_position_gate.application.json"
         ).read_text(encoding="utf-8")
     )
     application = FlowApplication.model_validate(
@@ -908,16 +908,16 @@ def test_directory_watch_trigger_source_api_examples_are_valid() -> None:
 
     assert save_template_request == {"template": template}
     assert save_application_request == {"application": application_payload}
-    assert application.application_id == "industrial-local-directory-watch-yolox-position-gate-app"
+    assert application.application_id == "industrial-local-directory-watch-detection-position-gate-app"
     assert (
         application.metadata["example_kind"]
-        == "industrial-local-directory-watch-yolox-position-gate"
+        == "industrial-local-directory-watch-detection-position-gate"
     )
     assert application.metadata["trigger_source_input"] == "directory-watch"
     assert create_request["application_id"] == application.application_id
     assert (
         create_request["metadata"]["example_kind"]
-        == "industrial-local-directory-watch-yolox-position-gate"
+        == "industrial-local-directory-watch-detection-position-gate"
     )
     assert create_request["metadata"]["trigger_source_input"] == "directory-watch"
 
@@ -945,7 +945,7 @@ def test_directory_watch_trigger_source_api_examples_are_valid() -> None:
     )
     assert (
         invoke_request["execution_metadata"]["scenario"]
-        == "industrial-local-directory-watch-yolox-position-gate"
+        == "industrial-local-directory-watch-detection-position-gate"
     )
     assert invoke_request["execution_metadata"]["trigger_source"] == "sync-api"
     assert run_create_request["execution_metadata"]["trigger_source"] == "async-api"
@@ -966,11 +966,11 @@ def test_directory_watch_trigger_source_api_examples_are_valid() -> None:
     )
     assert (
         trigger_source_request["metadata"]["example_kind"]
-        == "industrial-local-directory-watch-yolox-position-gate"
+        == "industrial-local-directory-watch-detection-position-gate"
     )
     assert (
         trigger_source_request["default_execution_metadata"]["scenario"]
-        == "industrial-local-directory-watch-yolox-position-gate"
+        == "industrial-local-directory-watch-detection-position-gate"
     )
     assert (
         trigger_source_request["default_execution_metadata"]["trigger_source"]
@@ -1017,7 +1017,7 @@ def test_directory_watch_trigger_source_api_examples_are_valid() -> None:
 def test_directory_poll_trigger_source_api_examples_are_valid() -> None:
     """验证 11 directory-poll TriggerSource 配置补充示例已经收成正式接法。"""
 
-    example_name = "industrial_local_directory_poll_yolox_position_gate"
+    example_name = "industrial_local_directory_poll_detection_position_gate"
     save_template_request = _read_api_workflow_example(
         example_name, "save-template.request.json"
     )
@@ -1027,13 +1027,13 @@ def test_directory_poll_trigger_source_api_examples_are_valid() -> None:
     template = json.loads(
         (
             DOCS_WORKFLOW_EXAMPLE_DIR
-            / "industrial_local_directory_poll_yolox_position_gate.template.json"
+            / "industrial_local_directory_poll_detection_position_gate.template.json"
         ).read_text(encoding="utf-8")
     )
     application_payload = json.loads(
         (
             DOCS_WORKFLOW_EXAMPLE_DIR
-            / "industrial_local_directory_poll_yolox_position_gate.application.json"
+            / "industrial_local_directory_poll_detection_position_gate.application.json"
         ).read_text(encoding="utf-8")
     )
     application = FlowApplication.model_validate(application_payload)
@@ -1060,16 +1060,16 @@ def test_directory_poll_trigger_source_api_examples_are_valid() -> None:
 
     assert save_template_request == {"template": template}
     assert save_application_request == {"application": application_payload}
-    assert application.application_id == "industrial-local-directory-poll-yolox-position-gate-app"
+    assert application.application_id == "industrial-local-directory-poll-detection-position-gate-app"
     assert (
         application.metadata["example_kind"]
-        == "industrial-local-directory-poll-yolox-position-gate"
+        == "industrial-local-directory-poll-detection-position-gate"
     )
     assert application.metadata["trigger_source_input"] == "directory-poll"
     assert create_request["application_id"] == application.application_id
     assert (
         create_request["metadata"]["example_kind"]
-        == "industrial-local-directory-poll-yolox-position-gate"
+        == "industrial-local-directory-poll-detection-position-gate"
     )
     assert create_request["metadata"]["trigger_source_input"] == "directory-poll"
 
@@ -1097,7 +1097,7 @@ def test_directory_poll_trigger_source_api_examples_are_valid() -> None:
     )
     assert (
         invoke_request["execution_metadata"]["scenario"]
-        == "industrial-local-directory-poll-yolox-position-gate"
+        == "industrial-local-directory-poll-detection-position-gate"
     )
     assert invoke_request["execution_metadata"]["trigger_source"] == "sync-api"
     assert run_create_request["execution_metadata"]["trigger_source"] == "async-api"
@@ -1118,11 +1118,11 @@ def test_directory_poll_trigger_source_api_examples_are_valid() -> None:
     )
     assert (
         trigger_source_request["metadata"]["example_kind"]
-        == "industrial-local-directory-poll-yolox-position-gate"
+        == "industrial-local-directory-poll-detection-position-gate"
     )
     assert (
         trigger_source_request["default_execution_metadata"]["scenario"]
-        == "industrial-local-directory-poll-yolox-position-gate"
+        == "industrial-local-directory-poll-detection-position-gate"
     )
     assert (
         trigger_source_request["default_execution_metadata"]["trigger_source"]
@@ -1174,18 +1174,18 @@ def test_directory_watch_trigger_source_document_indexes_formal_example() -> Non
         REPO_ROOT / "docs" / "api" / "workflow-trigger-sources.md"
     ).read_text(encoding="utf-8")
 
-    assert "09-industrial-local-directory-watch-yolox-position-gate" in document_text
+    assert "09-industrial-local-directory-watch-detection-position-gate" in document_text
     assert (
-        "industrial_local_directory_watch_yolox_position_gate.application.json"
+        "industrial_local_directory_watch_detection_position_gate.application.json"
         in document_text
     )
     assert "input_binding_mapping.deployment_request.value" in document_text
     assert "idempotency_key_path\": \"payload.batch_id\"" in document_text
     assert "force_polling = true" in document_text
     assert "request_roi" in document_text
-    assert "11-industrial-local-directory-poll-yolox-position-gate" in document_text
+    assert "11-industrial-local-directory-poll-detection-position-gate" in document_text
     assert (
-        "industrial_local_directory_poll_yolox_position_gate.application.json"
+        "industrial_local_directory_poll_detection_position_gate.application.json"
         in document_text
     )
     assert "scan_interval_seconds" in document_text
@@ -1379,12 +1379,12 @@ def test_workflow_postman_directory_contains_ordered_formal_workflow_collections
     readme_text = readme_path.read_text(encoding="utf-8")
     for collection_dir in collection_dirs:
         assert collection_dir in readme_text
-    assert "06-yolox-deployment-infer-opencv-health-zeromq-image-ref" in readme_text
+    assert "06-detection-deployment-infer-opencv-health-zeromq-image-ref" in readme_text
     assert "07-opencv-process-save-image-zeromq-image-ref" in readme_text
     assert "08-plc-register-modbus-tcp-async-result-record" in readme_text
-    assert "09-industrial-local-directory-watch-yolox-position-gate" in readme_text
+    assert "09-industrial-local-directory-watch-detection-position-gate" in readme_text
     assert "10-industrial-single-frame-glue-roi-delivery-bundle" in readme_text
-    assert "11-industrial-local-directory-poll-yolox-position-gate" in readme_text
+    assert "11-industrial-local-directory-poll-detection-position-gate" in readme_text
     assert "Create Preview Run / Get Preview Run" in readme_text
     assert "Create Workflow Run / Get Workflow Run" in readme_text
     assert "Create TriggerSource / Enable / Health / Disable" in readme_text
@@ -1412,16 +1412,16 @@ def test_workflow_api_examples_are_classified_by_numbered_directories() -> None:
     assert numbered_dirs == [
         "00-short-dev-examples",
         "01-yolox-end-to-end-qr-crop-remap",
-        "02-yolox-deployment-sync-infer-health",
-        "03-yolox-deployment-qr-crop-remap",
-        "04-yolox-deployment-infer-opencv-health",
+        "02-detection-deployment-sync-infer-health",
+        "03-detection-deployment-qr-crop-remap",
+        "04-detection-deployment-infer-opencv-health",
         "05-opencv-process-save-image",
-        "06-yolox-deployment-infer-opencv-health-zeromq-image-ref",
+        "06-detection-deployment-infer-opencv-health-zeromq-image-ref",
         "07-opencv-process-save-image-zeromq-image-ref",
         "08-plc-register-modbus-tcp-async-result-record",
-        "09-industrial-local-directory-watch-yolox-position-gate",
+        "09-industrial-local-directory-watch-detection-position-gate",
         "10-industrial-single-frame-glue-roi-delivery-bundle",
-        "11-industrial-local-directory-poll-yolox-position-gate",
+        "11-industrial-local-directory-poll-detection-position-gate",
     ]
     assert "同一个 workflow app 同时发布 HTTP `image-base64.v1` 和 ZeroMQ `image-ref.v1` 输入" in readme_text
     assert "独立的 TriggerSource / PLC 调试示例" in readme_text
@@ -1464,10 +1464,10 @@ def test_workflow_api_examples_are_classified_by_numbered_directories() -> None:
     ),
     [
         pytest.param(
-            "06-yolox-deployment-infer-opencv-health-zeromq-image-ref",
-            "06-yolox-deployment-infer-opencv-health-zeromq-image-ref.postman_collection.json",
-            "yolox_deployment_infer_opencv_health_zeromq_image_ref",
-            "yolox-deployment-infer-opencv-health-zeromq-app",
+            "06-detection-deployment-infer-opencv-health-zeromq-image-ref",
+            "06-detection-deployment-infer-opencv-health-zeromq-image-ref.postman_collection.json",
+            "detection_deployment_infer_opencv_health_zeromq_image_ref",
+            "detection-deployment-infer-opencv-health-zeromq-app",
             "deployment-infer-opencv-health-zeromq",
             {"request_image_base64", "deployment_request"},
             "zeromq-trigger-source-06",
@@ -1500,11 +1500,11 @@ def test_workflow_api_examples_are_classified_by_numbered_directories() -> None:
             id="08-plc-trigger-source",
         ),
         pytest.param(
-            "09-industrial-local-directory-watch-yolox-position-gate",
-            "09-industrial-local-directory-watch-yolox-position-gate.postman_collection.json",
-            "industrial_local_directory_watch_yolox_position_gate",
-            "industrial-local-directory-watch-yolox-position-gate-app",
-            "industrial-local-directory-watch-yolox-position-gate",
+            "09-industrial-local-directory-watch-detection-position-gate",
+            "09-industrial-local-directory-watch-detection-position-gate.postman_collection.json",
+            "industrial_local_directory_watch_detection_position_gate",
+            "industrial-local-directory-watch-detection-position-gate-app",
+            "industrial-local-directory-watch-detection-position-gate",
             {
                 "request_trigger_payload",
                 "request_trigger_event",
@@ -1516,11 +1516,11 @@ def test_workflow_api_examples_are_classified_by_numbered_directories() -> None:
             id="09-directory-watch-trigger-source",
         ),
         pytest.param(
-            "11-industrial-local-directory-poll-yolox-position-gate",
-            "11-industrial-local-directory-poll-yolox-position-gate.postman_collection.json",
-            "industrial_local_directory_poll_yolox_position_gate",
-            "industrial-local-directory-poll-yolox-position-gate-app",
-            "industrial-local-directory-poll-yolox-position-gate",
+            "11-industrial-local-directory-poll-detection-position-gate",
+            "11-industrial-local-directory-poll-detection-position-gate.postman_collection.json",
+            "industrial_local_directory_poll_detection_position_gate",
+            "industrial-local-directory-poll-detection-position-gate-app",
+            "industrial-local-directory-poll-detection-position-gate",
             {
                 "request_trigger_payload",
                 "request_trigger_event",
@@ -1680,9 +1680,9 @@ def test_workflow_example_documents_postman_collection_contains_remaining_debug_
     collection_payload = json.loads(postman_path.read_text(encoding="utf-8-sig"))
     excluded_formal_example_names = {
         "yolox_end_to_end_qr_crop_remap",
-        "yolox_deployment_sync_infer_health",
-        "yolox_deployment_qr_crop_remap",
-        "yolox_deployment_infer_opencv_health",
+        "detection_deployment_sync_infer_health",
+        "detection_deployment_qr_crop_remap",
+        "detection_deployment_infer_opencv_health",
         "opencv_process_save_image",
     }
     folder_names = [folder["name"] for folder in collection_payload["item"]]
@@ -1768,23 +1768,23 @@ def test_workflow_example_documents_postman_collection_contains_remaining_debug_
             id="workflow-01-end-to-end",
         ),
         pytest.param(
-            "02-yolox-deployment-sync-infer-health",
-            "02-yolox-deployment-sync-infer-health.postman_collection.json",
-            "yolox_deployment_sync_infer_health",
+            "02-detection-deployment-sync-infer-health",
+            "02-detection-deployment-sync-infer-health.postman_collection.json",
+            "detection_deployment_sync_infer_health",
             False,
             id="workflow-02-sync-infer-health",
         ),
         pytest.param(
-            "03-yolox-deployment-qr-crop-remap",
-            "03-yolox-deployment-qr-crop-remap.postman_collection.json",
-            "yolox_deployment_qr_crop_remap",
+            "03-detection-deployment-qr-crop-remap",
+            "03-detection-deployment-qr-crop-remap.postman_collection.json",
+            "detection_deployment_qr_crop_remap",
             False,
             id="workflow-03-qr-crop-remap",
         ),
         pytest.param(
-            "04-yolox-deployment-infer-opencv-health",
-            "04-yolox-deployment-infer-opencv-health.postman_collection.json",
-            "yolox_deployment_infer_opencv_health",
+            "04-detection-deployment-infer-opencv-health",
+            "04-detection-deployment-infer-opencv-health.postman_collection.json",
+            "detection_deployment_infer_opencv_health",
             False,
             id="workflow-04-infer-opencv-health",
         ),
@@ -1835,9 +1835,9 @@ def test_formal_workflow_postman_collections_match_api_examples(
     assert json.loads(request_payloads["Create App Runtime"]) == create_example
 
     if collection_dir in {
-        "02-yolox-deployment-sync-infer-health",
-        "03-yolox-deployment-qr-crop-remap",
-        "04-yolox-deployment-infer-opencv-health",
+        "02-detection-deployment-sync-infer-health",
+        "03-detection-deployment-qr-crop-remap",
+        "04-detection-deployment-infer-opencv-health",
     }:
         assert "已接入 LocalBufferBroker direct mmap 数据面和 PublishedInferenceGateway 事件 dispatcher" in create_preview_request["description"]
         assert "backend-service 持有的长期运行 deployment worker" in create_preview_request["description"]

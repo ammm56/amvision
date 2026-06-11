@@ -16,7 +16,6 @@ from backend.nodes.core_nodes._platform_service_node_support import (
     get_optional_platform_task_type,
     resolve_platform_model_type,
     resolve_platform_task_type,
-    should_use_platform_service_routing,
 )
 from backend.nodes.core_nodes._service_node_support import (
     build_response_body_output,
@@ -45,9 +44,6 @@ from backend.service.application.models.yolo_primary_pose_training_service impor
 from backend.service.application.models.yolo_primary_segmentation_training_service import (
     YoloPrimarySegmentationTrainingTaskRequest,
 )
-from backend.service.application.models.yolox_training_service import (
-    YoloXTrainingTaskRequest,
-)
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 from backend.service.domain.models.model_task_types import (
     CLASSIFICATION_TASK_TYPE,
@@ -67,7 +63,7 @@ _NON_DETECTION_TRAINING_REQUEST_BY_TASK_TYPE: dict[str, type] = {
 
 
 def _model_training_submit_handler(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
-    """调用训练任务 service，兼容旧 YOLOX 节点参数并支持显式 task_type/model_type。"""
+    """调用统一训练任务 service。"""
 
     request = overlay_parameters_from_object_input(request)
     runtime_context = require_workflow_service_node_runtime(request)
@@ -76,18 +72,6 @@ def _model_training_submit_handler(request: WorkflowNodeExecutionRequest) -> dic
         request,
         supported_model_types=("yolox", "yolov8", "yolo11", "yolo26", "rfdetr"),
     )
-    use_platform_routing = should_use_platform_service_routing(
-        task_type=requested_task_type,
-        model_type=requested_model_type,
-    )
-    if not use_platform_routing:
-        submission = runtime_context.build_training_task_service().submit_training_task(
-            _build_legacy_yolox_training_request(request),
-            created_by=resolve_created_by(request),
-            display_name=resolve_display_name(request),
-        )
-        return build_response_body_output(submission)
-
     task_type = resolve_platform_task_type(
         requested_task_type,
         default_task_type=DETECTION_TASK_TYPE,
@@ -111,29 +95,6 @@ def _model_training_submit_handler(request: WorkflowNodeExecutionRequest) -> dic
         **submit_kwargs,
     )
     return build_response_body_output(submission)
-
-
-def _build_legacy_yolox_training_request(
-    request: WorkflowNodeExecutionRequest,
-) -> YoloXTrainingTaskRequest:
-    """构造旧 YOLOX detection 训练请求。"""
-
-    return YoloXTrainingTaskRequest(
-        project_id=require_str_parameter(request, "project_id"),
-        recipe_id=require_str_parameter(request, "recipe_id"),
-        model_scale=require_str_parameter(request, "model_scale"),
-        output_model_name=require_str_parameter(request, "output_model_name"),
-        dataset_export_id=get_optional_str_parameter(request, "dataset_export_id"),
-        dataset_export_manifest_key=get_optional_str_parameter(request, "dataset_export_manifest_key"),
-        warm_start_model_version_id=get_optional_str_parameter(request, "warm_start_model_version_id"),
-        evaluation_interval=get_optional_int_parameter(request, "evaluation_interval"),
-        max_epochs=get_optional_int_parameter(request, "max_epochs"),
-        batch_size=get_optional_int_parameter(request, "batch_size"),
-        gpu_count=get_optional_int_parameter(request, "gpu_count"),
-        precision=get_optional_str_parameter(request, "precision"),
-        input_size=get_optional_int_pair_parameter(request, "input_size"),
-        extra_options=get_optional_dict_parameter(request, "extra_options"),
-    )
 
 
 def _build_platform_training_request(
@@ -185,10 +146,10 @@ def _build_platform_training_request(
 
 CORE_NODE_SPEC = CoreNodeSpec(
     node_definition=NodeDefinition(
-        node_type_id="core.service.yolox-training.submit",
+        node_type_id="core.service.model-training.submit",
         display_name="Submit Training",
         category="service.model.training",
-        description="兼容旧 YOLOX 节点名，同时支持按 task_type 和 model_type 提交正式训练任务。",
+        description="按统一 task_type 和 model_type 提交训练任务。",
         implementation_kind=NODE_IMPLEMENTATION_CORE,
         runtime_kind=NODE_RUNTIME_PYTHON_CALLABLE,
         input_ports=(

@@ -262,18 +262,18 @@ def test_runtime_registry_loader_registers_core_service_nodes(
     expected_node_type_ids = {
         "core.service.dataset-export.package",
         "core.service.dataset-export.submit",
-        "core.service.yolox-training.submit",
-        "core.service.yolox-conversion.submit",
-        "core.service.yolox-deployment.health",
-        "core.service.yolox-deployment.reset",
-        "core.service.yolox-deployment.start",
-        "core.service.yolox-deployment.status",
-        "core.service.yolox-deployment.stop",
-        "core.service.yolox-deployment.warmup",
-        "core.service.yolox-validation-session.create",
-        "core.service.yolox-evaluation.package",
-        "core.service.yolox-evaluation.submit",
-        "core.service.yolox-deployment.create",
+        "core.service.model-training.submit",
+        "core.service.model-conversion.submit",
+        "core.service.detection-deployment.health",
+        "core.service.detection-deployment.reset",
+        "core.service.detection-deployment.start",
+        "core.service.detection-deployment.status",
+        "core.service.detection-deployment.stop",
+        "core.service.detection-deployment.warmup",
+        "core.service.model-validation-session.create",
+        "core.service.model-evaluation.package",
+        "core.service.model-evaluation.submit",
+        "core.service.detection-deployment.create",
         "core.service.detection-inference.submit",
         "core.model.yolox-detection",
     }
@@ -281,7 +281,7 @@ def test_runtime_registry_loader_registers_core_service_nodes(
         node_definition = runtime_registry.get_node_definition(node_type_id)
         assert runtime_registry.has_registered_handler(node_definition=node_definition)
 
-    stop_node_definition = runtime_registry.get_node_definition("core.service.yolox-deployment.stop")
+    stop_node_definition = runtime_registry.get_node_definition("core.service.detection-deployment.stop")
     assert [port.name for port in stop_node_definition.input_ports] == ["request", "dependency"]
 
 
@@ -359,7 +359,7 @@ def test_core_training_service_node_uses_runtime_context(
     monkeypatch.setattr(
         WorkflowServiceNodeRuntimeContext,
         "build_training_task_service",
-        lambda self: _FakeTrainingService(),
+        lambda self, **kwargs: _FakeTrainingService(),
     )
 
     executor = WorkflowGraphExecutor(registry=runtime_registry_loader.get_runtime_registry())
@@ -374,7 +374,7 @@ def test_core_training_service_node_uses_runtime_context(
         nodes=(
             WorkflowGraphNode(
                 node_id="train",
-                node_type_id="core.service.yolox-training.submit",
+                node_type_id="core.service.model-training.submit",
                 parameters={
                     "project_id": "project-1",
                     "dataset_export_id": "dataset-export-1",
@@ -515,11 +515,11 @@ def test_core_dataset_export_package_service_node_uses_runtime_context_and_regis
     assert cleanup_items[0].resource_id == captured["package_object_key"]
 
 
-def test_core_yolox_evaluation_package_service_node_uses_runtime_context_and_registers_cleanup(
+def test_core_model_evaluation_package_service_node_uses_runtime_context_and_registers_cleanup(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """验证 core YOLOX evaluation package 节点会调用 task service，并登记临时 zip cleanup。"""
+    """验证 core model evaluation package 节点会调用 task service，并登记临时 zip cleanup。"""
 
     custom_nodes_root_dir = tmp_path / "custom_nodes"
     node_pack_loader = LocalNodePackLoader(custom_nodes_root_dir)
@@ -533,33 +533,32 @@ def test_core_yolox_evaluation_package_service_node_uses_runtime_context_and_reg
 
     captured: dict[str, object] = {}
 
-    class _FakeYoloXEvaluationTaskService:
-        """记录 evaluation package 调用参数并返回稳定结果的假 service。"""
+    def _fake_package_evaluation_result(
+        self,
+        *,
+        task_id: str,
+        task_type: str,
+        rebuild: bool = False,
+        package_object_key: str | None = None,
+    ) -> YoloXEvaluationTaskPackage:
+        """记录打包调用参数。"""
 
-        def package_evaluation_result(
-            self,
-            task_id: str,
-            *,
-            rebuild: bool = False,
-            package_object_key: str | None = None,
-        ) -> YoloXEvaluationTaskPackage:
-            """记录打包调用参数。"""
-
-            captured["task_id"] = task_id
-            captured["rebuild"] = rebuild
-            captured["package_object_key"] = package_object_key
-            return YoloXEvaluationTaskPackage(
-                task_id=task_id,
-                package_object_key=str(package_object_key),
-                package_file_name="yolox-evaluation-task-evaluation-1-result-package.zip",
-                package_size=512,
-                packaged_at="2026-05-09T00:00:00+00:00",
-            )
+        captured["task_id"] = task_id
+        captured["task_type"] = task_type
+        captured["rebuild"] = rebuild
+        captured["package_object_key"] = package_object_key
+        return YoloXEvaluationTaskPackage(
+            task_id=task_id,
+            package_object_key=str(package_object_key),
+            package_file_name="model-evaluation-task-evaluation-1-result-package.zip",
+            package_size=512,
+            packaged_at="2026-05-09T00:00:00+00:00",
+        )
 
     monkeypatch.setattr(
         WorkflowServiceNodeRuntimeContext,
-        "build_evaluation_task_service",
-        lambda self: _FakeYoloXEvaluationTaskService(),
+        "package_evaluation_result",
+        _fake_package_evaluation_result,
     )
 
     executor = WorkflowGraphExecutor(registry=runtime_registry_loader.get_runtime_registry())
@@ -569,13 +568,13 @@ def test_core_yolox_evaluation_package_service_node_uses_runtime_context_and_reg
     )
     execution_metadata: dict[str, object] = {"workflow_run_id": "run-1"}
     template = WorkflowGraphTemplate(
-        template_id="yolox-evaluation-package-workflow",
+        template_id="model-evaluation-package-workflow",
         template_version="1.0.0",
-        display_name="YOLOX Evaluation Package Workflow",
+        display_name="Model Evaluation Package Workflow",
         nodes=(
             WorkflowGraphNode(
                 node_id="package",
-                node_type_id="core.service.yolox-evaluation.package",
+                node_type_id="core.service.model-evaluation.package",
                 parameters={
                     "task_id": "task-evaluation-1",
                     "cleanup_on_completion": True,
@@ -603,10 +602,11 @@ def test_core_yolox_evaluation_package_service_node_uses_runtime_context_and_reg
     package_body = execution_result.outputs["package_body"]
     assert package_body["task_id"] == "task-evaluation-1"
     assert captured["task_id"] == "task-evaluation-1"
+    assert captured["task_type"] == "detection"
     assert captured["rebuild"] is False
     assert (
         captured["package_object_key"]
-        == "workflows/runtime/run-1/package/yolox-evaluation-task-evaluation-1-result-package.zip"
+        == "workflows/runtime/run-1/package/model-evaluation-task-evaluation-1-result-package.zip"
     )
     cleanup_items = list_registered_execution_cleanups(execution_metadata)
     assert len(cleanup_items) == 1
@@ -1413,7 +1413,7 @@ def test_core_model_inference_submit_node_auto_starts_async_process(
     assert fake_supervisor_calls["request"].async_inference_owner_id == "backend-service-main"
 
 
-def test_core_yolox_deployment_create_node_accepts_dynamic_request_payload(
+def test_core_detection_deployment_create_node_accepts_dynamic_request_payload(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1458,13 +1458,13 @@ def test_core_yolox_deployment_create_node_accepts_dynamic_request_payload(
         dataset_storage=_create_dataset_storage(tmp_path),
     )
     template = WorkflowGraphTemplate(
-        template_id="yolox-deployment-create-dynamic-workflow",
+        template_id="detection-deployment-create-dynamic-workflow",
         template_version="1.0.0",
-        display_name="YOLOX Deployment Create Dynamic Workflow",
+        display_name="Detection Deployment Create Dynamic Workflow",
         nodes=(
             WorkflowGraphNode(
                 node_id="create",
-                node_type_id="core.service.yolox-deployment.create",
+                node_type_id="core.service.detection-deployment.create",
                 parameters={},
             ),
         ),
@@ -1531,7 +1531,7 @@ def test_core_yolox_deployment_create_node_accepts_dynamic_request_payload(
     assert captured["created_by"] == "workflow-user"
 
 
-def test_core_yolox_deployment_lifecycle_nodes_drive_sync_supervisor(
+def test_core_detection_deployment_lifecycle_nodes_drive_sync_supervisor(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1588,13 +1588,13 @@ def test_core_yolox_deployment_lifecycle_nodes_drive_sync_supervisor(
         detection_async_deployment_process_supervisor=async_supervisor,
     )
     template = WorkflowGraphTemplate(
-        template_id="yolox-deployment-lifecycle-sync-workflow",
+        template_id="detection-deployment-lifecycle-sync-workflow",
         template_version="1.0.0",
-        display_name="YOLOX Deployment Lifecycle Sync Workflow",
+        display_name="Detection Deployment Lifecycle Sync Workflow",
         nodes=(
             WorkflowGraphNode(
                 node_id="start",
-                node_type_id="core.service.yolox-deployment.start",
+                node_type_id="core.service.detection-deployment.start",
                 parameters={
                     "deployment_instance_id": deployment_view.deployment_instance_id,
                     "runtime_mode": "sync",
@@ -1602,7 +1602,7 @@ def test_core_yolox_deployment_lifecycle_nodes_drive_sync_supervisor(
             ),
             WorkflowGraphNode(
                 node_id="status",
-                node_type_id="core.service.yolox-deployment.status",
+                node_type_id="core.service.detection-deployment.status",
                 parameters={
                     "deployment_instance_id": deployment_view.deployment_instance_id,
                     "runtime_mode": "sync",
@@ -1610,7 +1610,7 @@ def test_core_yolox_deployment_lifecycle_nodes_drive_sync_supervisor(
             ),
             WorkflowGraphNode(
                 node_id="warmup",
-                node_type_id="core.service.yolox-deployment.warmup",
+                node_type_id="core.service.detection-deployment.warmup",
                 parameters={
                     "deployment_instance_id": deployment_view.deployment_instance_id,
                     "runtime_mode": "sync",
@@ -1618,7 +1618,7 @@ def test_core_yolox_deployment_lifecycle_nodes_drive_sync_supervisor(
             ),
             WorkflowGraphNode(
                 node_id="health",
-                node_type_id="core.service.yolox-deployment.health",
+                node_type_id="core.service.detection-deployment.health",
                 parameters={
                     "deployment_instance_id": deployment_view.deployment_instance_id,
                     "runtime_mode": "sync",
@@ -1626,7 +1626,7 @@ def test_core_yolox_deployment_lifecycle_nodes_drive_sync_supervisor(
             ),
             WorkflowGraphNode(
                 node_id="reset",
-                node_type_id="core.service.yolox-deployment.reset",
+                node_type_id="core.service.detection-deployment.reset",
                 parameters={
                     "deployment_instance_id": deployment_view.deployment_instance_id,
                     "runtime_mode": "sync",
@@ -1634,7 +1634,7 @@ def test_core_yolox_deployment_lifecycle_nodes_drive_sync_supervisor(
             ),
             WorkflowGraphNode(
                 node_id="stop",
-                node_type_id="core.service.yolox-deployment.stop",
+                node_type_id="core.service.detection-deployment.stop",
                 parameters={
                     "deployment_instance_id": deployment_view.deployment_instance_id,
                     "runtime_mode": "sync",
@@ -1711,7 +1711,7 @@ def test_core_yolox_deployment_lifecycle_nodes_drive_sync_supervisor(
     assert async_supervisor.load_calls == []
 
 
-def test_core_yolox_deployment_health_node_uses_async_supervisor(
+def test_core_detection_deployment_health_node_uses_async_supervisor(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1778,7 +1778,7 @@ def test_core_yolox_deployment_health_node_uses_async_supervisor(
         nodes=(
             WorkflowGraphNode(
                 node_id="health",
-                node_type_id="core.service.yolox-deployment.health",
+                node_type_id="core.service.detection-deployment.health",
                 parameters={
                     "deployment_instance_id": deployment_view.deployment_instance_id,
                     "runtime_mode": "async",
@@ -3740,3 +3740,4 @@ def _build_fake_process_config(*, instance_count: int) -> SimpleNamespace:
         instance_count=instance_count,
         runtime_target=SimpleNamespace(runtime_artifact_storage_uri="artifacts/runtime/model.onnx"),
     )
+

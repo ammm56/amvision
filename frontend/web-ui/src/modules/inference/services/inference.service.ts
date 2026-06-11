@@ -1,13 +1,13 @@
 import { apiRequest } from '@/shared/api/http-client'
 
-export interface YoloXInferenceDetection {
+export interface DetectionInferenceDetection {
   bbox_xyxy: [number, number, number, number]
   score: number
   class_id: number
   class_name?: string | null
 }
 
-export interface YoloXInferencePayload {
+export interface DetectionInferencePayload {
   request_id: string
   inference_task_id?: string | null
   deployment_instance_id: string
@@ -30,14 +30,14 @@ export interface YoloXInferencePayload {
   postprocess_ms?: number | null
   serialize_ms?: number | null
   labels: string[]
-  detections: YoloXInferenceDetection[]
+  detections: DetectionInferenceDetection[]
   runtime_session_info: Record<string, unknown>
   preview_image_uri?: string | null
   preview_image_base64?: string | null
   result_object_key?: string | null
 }
 
-export interface YoloXInferenceTaskSubmission {
+export interface DetectionInferenceTaskSubmission {
   task_id: string
   status: string
   queue_name: string
@@ -47,7 +47,7 @@ export interface YoloXInferenceTaskSubmission {
   input_source_kind: string
 }
 
-export interface YoloXInferenceTaskSummary {
+export interface DetectionInferenceTaskSummary {
   task_id: string
   display_name: string
   project_id: string
@@ -79,14 +79,14 @@ export interface YoloXInferenceTaskSummary {
   result_summary: Record<string, unknown>
 }
 
-export interface YoloXInferenceTaskResult {
+export interface DetectionInferenceTaskResult {
   file_status: 'pending' | 'ready'
   task_state: string
   object_key?: string | null
   payload: Record<string, unknown>
 }
 
-export interface YoloXInferenceDebugInput {
+export interface DetectionInferenceDebugInput {
   projectId: string
   deploymentInstanceId: string
   inputFileId?: string
@@ -100,13 +100,13 @@ export interface YoloXInferenceDebugInput {
   displayName?: string
 }
 
-export interface YoloXInferenceTaskListInput {
+export interface DetectionInferenceTaskListInput {
   projectId: string
   deploymentInstanceId?: string
   limit?: number
 }
 
-function buildInferenceFormData(input: YoloXInferenceDebugInput, includeTaskFields: boolean): FormData {
+function buildInferenceFormData(input: DetectionInferenceDebugInput, includeTaskFields: boolean): FormData {
   const formData = new FormData()
   if (includeTaskFields) {
     formData.set('project_id', input.projectId)
@@ -125,22 +125,22 @@ function buildInferenceFormData(input: YoloXInferenceDebugInput, includeTaskFiel
   return formData
 }
 
-export async function inferYoloXDeployment(input: YoloXInferenceDebugInput): Promise<YoloXInferencePayload> {
-  return apiRequest<YoloXInferencePayload>(
+export async function inferDetectionDeployment(input: DetectionInferenceDebugInput): Promise<DetectionInferencePayload> {
+  return apiRequest<DetectionInferencePayload>(
     `/models/detection/deployment-instances/${encodeURIComponent(input.deploymentInstanceId)}/infer`,
     { method: 'POST', body: buildInferenceFormData(input, false) },
   )
 }
 
-export async function createYoloXInferenceTask(input: YoloXInferenceDebugInput): Promise<YoloXInferenceTaskSubmission> {
-  return apiRequest<YoloXInferenceTaskSubmission>('/models/detection/inference-tasks', {
+export async function createDetectionInferenceTask(input: DetectionInferenceDebugInput): Promise<DetectionInferenceTaskSubmission> {
+  return apiRequest<DetectionInferenceTaskSubmission>('/models/detection/inference-tasks', {
     method: 'POST',
     body: buildInferenceFormData(input, true),
   })
 }
 
-export async function listYoloXInferenceTasks(input: YoloXInferenceTaskListInput): Promise<YoloXInferenceTaskSummary[]> {
-  return apiRequest<YoloXInferenceTaskSummary[]>('/models/detection/inference-tasks', {
+export async function listDetectionInferenceTasks(input: DetectionInferenceTaskListInput): Promise<DetectionInferenceTaskSummary[]> {
+  return apiRequest<DetectionInferenceTaskSummary[]>('/models/detection/inference-tasks', {
     query: {
       project_id: input.projectId,
       deployment_instance_id: input.deploymentInstanceId,
@@ -149,6 +149,7 @@ export async function listYoloXInferenceTasks(input: YoloXInferenceTaskListInput
   })
 }
 
-export async function getYoloXInferenceTaskResult(taskId: string): Promise<YoloXInferenceTaskResult> {
-  return apiRequest<YoloXInferenceTaskResult>(`/models/detection/inference-tasks/${encodeURIComponent(taskId)}/result`)
+export async function getDetectionInferenceTaskResult(taskId: string): Promise<DetectionInferenceTaskResult> {
+  return apiRequest<DetectionInferenceTaskResult>(`/models/detection/inference-tasks/${encodeURIComponent(taskId)}/result`)
 }
+

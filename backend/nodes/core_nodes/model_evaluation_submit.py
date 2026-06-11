@@ -15,7 +15,6 @@ from backend.nodes.core_nodes._platform_service_node_support import (
     get_optional_platform_task_type,
     resolve_platform_task_type,
     resolve_platform_model_type,
-    should_use_platform_service_routing,
 )
 from backend.nodes.core_nodes._service_node_support import (
     build_response_body_output,
@@ -45,9 +44,6 @@ from backend.service.application.models.yolo_primary_classification_evaluation_t
 from backend.service.application.models.yolo_primary_segmentation_evaluation_task_service import (
     SegmentationEvaluationTaskRequest,
 )
-from backend.service.application.models.yolox_evaluation_task_service import (
-    YoloXEvaluationTaskRequest,
-)
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 from backend.service.domain.models.model_task_types import (
     CLASSIFICATION_TASK_TYPE,
@@ -59,34 +55,11 @@ from backend.service.domain.models.model_task_types import (
 
 
 def _model_evaluation_submit_handler(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
-    """调用评估任务 service，兼容旧 YOLOX 节点名并支持显式平台路由。"""
+    """调用统一评估任务 service。"""
 
     request = overlay_parameters_from_object_input(request)
     runtime_context = require_workflow_service_node_runtime(request)
     requested_task_type = get_optional_platform_task_type(request)
-    use_platform_routing = should_use_platform_service_routing(
-        task_type=requested_task_type,
-        model_type=None,
-    )
-    if not use_platform_routing:
-        submission = runtime_context.build_evaluation_task_service().submit_evaluation_task(
-            YoloXEvaluationTaskRequest(
-                project_id=require_str_parameter(request, "project_id"),
-                model_version_id=require_str_parameter(request, "model_version_id"),
-                dataset_export_id=get_optional_str_parameter(request, "dataset_export_id"),
-                dataset_export_manifest_key=get_optional_str_parameter(request, "dataset_export_manifest_key"),
-                score_threshold=get_optional_float_parameter(request, "score_threshold"),
-                nms_threshold=get_optional_float_parameter(request, "nms_threshold"),
-                save_result_package=get_optional_bool_parameter(request, "save_result_package")
-                if get_optional_bool_parameter(request, "save_result_package") is not None
-                else True,
-                extra_options=get_optional_dict_parameter(request, "extra_options"),
-            ),
-            created_by=resolve_created_by(request),
-            display_name=resolve_display_name(request),
-        )
-        return build_response_body_output(submission)
-
     task_type = resolve_platform_task_type(
         requested_task_type,
         default_task_type=DETECTION_TASK_TYPE,
@@ -158,10 +131,10 @@ def _build_platform_evaluation_request(
 
 CORE_NODE_SPEC = CoreNodeSpec(
     node_definition=NodeDefinition(
-        node_type_id="core.service.yolox-evaluation.submit",
+        node_type_id="core.service.model-evaluation.submit",
         display_name="Submit Evaluation",
         category="service.model.evaluation",
-        description="兼容旧 YOLOX 节点名，同时支持按 task_type 提交正式评估任务。",
+        description="按统一 task_type 提交评估任务。",
         implementation_kind=NODE_IMPLEMENTATION_CORE,
         runtime_kind=NODE_RUNTIME_PYTHON_CALLABLE,
         input_ports=(

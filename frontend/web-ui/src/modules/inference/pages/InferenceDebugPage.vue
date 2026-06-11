@@ -231,16 +231,16 @@ import { RouterLink } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 
 import {
-  createYoloXInferenceTask,
-  getYoloXInferenceTaskResult,
-  inferYoloXDeployment,
-  listYoloXInferenceTasks,
-  type YoloXInferencePayload,
-  type YoloXInferenceTaskResult,
-  type YoloXInferenceTaskSubmission,
-  type YoloXInferenceTaskSummary,
+  createDetectionInferenceTask,
+  getDetectionInferenceTaskResult,
+  inferDetectionDeployment,
+  listDetectionInferenceTasks,
+  type DetectionInferencePayload,
+  type DetectionInferenceTaskResult,
+  type DetectionInferenceTaskSubmission,
+  type DetectionInferenceTaskSummary,
 } from '../services/inference.service'
-import { listYoloXDeployments, type YoloXDeploymentInstance } from '@/modules/deployments/services/deployment.service'
+import { listDetectionDeployments, type DetectionDeploymentInstance } from '@/modules/deployments/services/deployment.service'
 import { useProjectStore } from '@/app/stores/project.store'
 import { useSessionStore } from '@/app/stores/session.store'
 import { formatSystemDateTime } from '@/shared/formatters/date-time'
@@ -257,7 +257,7 @@ const { t } = useI18n()
 
 type SelectValue = string | number | boolean | null
 
-const deployments = ref<YoloXDeploymentInstance[]>([])
+const deployments = ref<DetectionDeploymentInstance[]>([])
 const selectedDeploymentId = ref('')
 const loading = ref(false)
 const inferenceRunning = ref(false)
@@ -275,10 +275,10 @@ const saveResultImage = ref(true)
 const returnPreviewBase64 = ref(true)
 const displayName = ref('')
 
-const directInferenceResult = ref<YoloXInferencePayload | null>(null)
-const asyncInferenceSubmission = ref<YoloXInferenceTaskSubmission | null>(null)
-const inferenceTasks = ref<YoloXInferenceTaskSummary[]>([])
-const selectedInferenceTaskResult = ref<YoloXInferenceTaskResult | null>(null)
+const directInferenceResult = ref<DetectionInferencePayload | null>(null)
+const asyncInferenceSubmission = ref<DetectionInferenceTaskSubmission | null>(null)
+const inferenceTasks = ref<DetectionInferenceTaskSummary[]>([])
+const selectedInferenceTaskResult = ref<DetectionInferenceTaskResult | null>(null)
 const expandedInferenceTaskId = ref<string | null>(null)
 
 const selectedProjectId = computed(() => projectStore.selectedProjectId)
@@ -346,7 +346,7 @@ async function refreshPage(): Promise<void> {
   loading.value = true
   errorMessage.value = null
   try {
-    deployments.value = await listYoloXDeployments(selectedProjectId.value)
+    deployments.value = await listDetectionDeployments(selectedProjectId.value)
     if (!deployments.value.some((item) => item.deployment_instance_id === selectedDeploymentId.value)) {
       selectedDeploymentId.value = deployments.value[0]?.deployment_instance_id ?? ''
     }
@@ -384,7 +384,7 @@ async function loadInferenceTasks(): Promise<void> {
   inferenceTasksLoading.value = true
   errorMessage.value = null
   try {
-    inferenceTasks.value = await listYoloXInferenceTasks({
+    inferenceTasks.value = await listDetectionInferenceTasks({
       projectId: selectedProjectId.value,
       deploymentInstanceId: selectedDeploymentId.value,
       limit: 20,
@@ -405,7 +405,7 @@ async function runDirectInference(): Promise<void> {
   errorMessage.value = null
   try {
     directInferenceResult.value = null
-    directInferenceResult.value = await inferYoloXDeployment(buildInferenceInput())
+    directInferenceResult.value = await inferDetectionDeployment(buildInferenceInput())
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : t('inferenceOps.messages.inferenceFailed')
   } finally {
@@ -421,7 +421,7 @@ async function submitAsyncInferenceTask(): Promise<void> {
   inferenceRunning.value = true
   errorMessage.value = null
   try {
-    asyncInferenceSubmission.value = await createYoloXInferenceTask(buildInferenceInput())
+    asyncInferenceSubmission.value = await createDetectionInferenceTask(buildInferenceInput())
     await loadInferenceTasks()
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : t('inferenceOps.messages.inferenceFailed')
@@ -434,7 +434,7 @@ async function readInferenceTaskResult(taskId: string): Promise<void> {
   inferenceResultLoading.value = taskId
   errorMessage.value = null
   try {
-    selectedInferenceTaskResult.value = await getYoloXInferenceTaskResult(taskId)
+    selectedInferenceTaskResult.value = await getDetectionInferenceTaskResult(taskId)
     expandedInferenceTaskId.value = taskId
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : t('inferenceOps.messages.resultFailed')

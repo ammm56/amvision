@@ -99,14 +99,8 @@ from backend.service.application.models.rfdetr_training_service import (
 from backend.service.application.models.detection_async_inference_gateway import (
     DetectionAsyncInferenceGatewayDispatcherRegistry,
 )
-from backend.service.application.models.yolox_evaluation_task_service import (
-    SqlAlchemyYoloXEvaluationTaskService,
-)
 from backend.service.application.models.yolox_training_service import (
     SqlAlchemyYoloXTrainingTaskService,
-)
-from backend.service.application.models.yolox_validation_session_service import (
-    LocalYoloXValidationSessionService,
 )
 from backend.service.application.runtime.deployment_process_supervisor import (
     DeploymentProcessSupervisor,
@@ -195,22 +189,14 @@ class WorkflowServiceNodeRuntimeContext:
     def build_training_task_service(
         self,
         *,
-        task_type: str | None = None,
+        task_type: str,
         model_type: str = "yolox",
     ) -> Any:
         """构造训练任务 service。
 
         约定：
-        - 不传 task_type 时，返回现有 YOLOX detection 训练 service，保持当前核心节点兼容。
-        - 显式传 task_type 时，按任务分类返回正式平台 service。
+        - 按显式 task_type 返回正式平台 service。
         """
-
-        if task_type is None:
-            return SqlAlchemyYoloXTrainingTaskService(
-                session_factory=self.session_factory,
-                dataset_storage=self.dataset_storage,
-                queue_backend=self.require_queue_backend(),
-            )
 
         normalized_task_type = self._normalize_task_type(task_type)
         if normalized_task_type == DETECTION_TASK_TYPE:
@@ -231,22 +217,14 @@ class WorkflowServiceNodeRuntimeContext:
     def build_conversion_task_service(
         self,
         *,
-        task_type: str | None = None,
+        task_type: str,
         model_type: str = "yolox",
     ) -> Any:
         """构造转换任务 service。
 
         约定：
-        - 不传 task_type 时，返回现有 YOLOX detection 转换 service。
-        - 显式传 task_type 时，按任务分类和模型分类返回正式平台 service。
+        - 按显式 task_type 和 model_type 返回正式平台 service。
         """
-
-        if task_type is None:
-            return SqlAlchemyYoloXConversionTaskService(
-                session_factory=self.session_factory,
-                dataset_storage=self.dataset_storage,
-                queue_backend=self.require_queue_backend(),
-            )
 
         normalized_task_type = self._normalize_task_type(task_type)
         normalized_model_type = self._normalize_model_type(model_type)
@@ -270,19 +248,12 @@ class WorkflowServiceNodeRuntimeContext:
             queue_backend=self.require_queue_backend(),
         )
 
-    def build_validation_session_service(self, *, task_type: str | None = None) -> Any:
+    def build_validation_session_service(self, *, task_type: str) -> Any:
         """构造人工验证 session service。
 
         约定：
-        - 不传 task_type 时，返回现有 YOLOX validation service。
-        - 显式传 task_type 时，按任务分类返回正式平台 service。
+        - 按显式 task_type 返回正式平台 service。
         """
-
-        if task_type is None:
-            return LocalYoloXValidationSessionService(
-                session_factory=self.session_factory,
-                dataset_storage=self.dataset_storage,
-            )
 
         normalized_task_type = self._normalize_task_type(task_type)
         service_cls = _VALIDATION_SERVICE_BY_TASK_TYPE.get(normalized_task_type)
@@ -326,20 +297,12 @@ class WorkflowServiceNodeRuntimeContext:
 
         return SqlAlchemyTaskService(self.session_factory)
 
-    def build_evaluation_task_service(self, *, task_type: str | None = None) -> Any:
+    def build_evaluation_task_service(self, *, task_type: str) -> Any:
         """构造评估任务 service。
 
         约定：
-        - 不传 task_type 时，返回现有 YOLOX evaluation service。
-        - 显式传 task_type 时，按任务分类返回正式平台 service。
+        - 按显式 task_type 返回正式平台 service。
         """
-
-        if task_type is None:
-            return SqlAlchemyYoloXEvaluationTaskService(
-                session_factory=self.session_factory,
-                dataset_storage=self.dataset_storage,
-                queue_backend=self.require_queue_backend(),
-            )
 
         normalized_task_type = self._normalize_task_type(task_type)
         service_cls = _EVALUATION_SERVICE_BY_TASK_TYPE.get(normalized_task_type)
@@ -358,18 +321,12 @@ class WorkflowServiceNodeRuntimeContext:
         self,
         *,
         task_id: str,
-        task_type: str | None = None,
+        task_type: str,
         rebuild: bool = False,
         package_object_key: str | None = None,
     ) -> Any:
         """按任务分类生成或复用评估结果包。"""
 
-        if task_type is None:
-            return self.build_evaluation_task_service().package_evaluation_result(
-                task_id,
-                rebuild=rebuild,
-                package_object_key=package_object_key,
-            )
         normalized_task_type = self._normalize_task_type(task_type)
         task_record = self.build_task_service().get_task(task_id).task
         expected_task_kind = {

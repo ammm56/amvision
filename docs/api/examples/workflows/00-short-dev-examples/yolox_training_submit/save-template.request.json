@@ -13,7 +13,7 @@
       },
       {
         "node_id": "submit_training",
-        "node_type_id": "core.service.yolox-training.submit",
+        "node_type_id": "core.service.model-training.submit",
         "parameters": {}
       }
     ],

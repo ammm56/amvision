@@ -32,7 +32,7 @@ from tests.api_test_support import build_valid_test_png_bytes, create_test_runti
 from tests.test_workflow_barcode_protocol_nodes import _build_barcode_test_png_bytes
 
 
-def test_yolox_deployment_sync_infer_health_app_runtime_smoke_executes_in_explicit_order(
+def test_detection_deployment_sync_infer_health_app_runtime_smoke_executes_in_explicit_order(
     tmp_path: Path,
 ) -> None:
     """验证第二类正式 app 会按显式 edge 顺序完成 start、warmup、detect、health。"""
@@ -43,7 +43,7 @@ def test_yolox_deployment_sync_infer_health_app_runtime_smoke_executes_in_explic
     )
     _, application = _save_example_documents(
         workflow_service,
-        example_name="yolox_deployment_sync_infer_health",
+        example_name="detection_deployment_sync_infer_health",
     )
     call_order: list[str] = []
 
@@ -99,10 +99,10 @@ def test_yolox_deployment_sync_infer_health_app_runtime_smoke_executes_in_explic
             }
         }
 
-    _override_python_handler(runtime_registry, "core.service.yolox-deployment.start", _start_handler)
-    _override_python_handler(runtime_registry, "core.service.yolox-deployment.warmup", _warmup_handler)
+    _override_python_handler(runtime_registry, "core.service.detection-deployment.start", _start_handler)
+    _override_python_handler(runtime_registry, "core.service.detection-deployment.warmup", _warmup_handler)
     _override_worker_task_handler(runtime_registry, "core.model.yolox-detection", _detect_handler)
-    _override_python_handler(runtime_registry, "core.service.yolox-deployment.health", _health_handler)
+    _override_python_handler(runtime_registry, "core.service.detection-deployment.health", _health_handler)
 
     execution_result = executor.execute(
         WorkflowApplicationExecutionRequest(
@@ -168,7 +168,7 @@ def test_opencv_process_save_image_app_runtime_smoke_saves_unique_object_key(tmp
     assert dataset_storage.resolve(object_key).is_file()
 
 
-def test_yolox_deployment_infer_opencv_health_app_runtime_smoke_returns_health_summary(
+def test_detection_deployment_infer_opencv_health_app_runtime_smoke_returns_health_summary(
     tmp_path: Path,
 ) -> None:
     """验证第四类正式 app 会返回叠加图和 deployment health 摘要。"""
@@ -179,7 +179,7 @@ def test_yolox_deployment_infer_opencv_health_app_runtime_smoke_returns_health_s
     )
     _, application = _save_example_documents(
         workflow_service,
-        example_name="yolox_deployment_infer_opencv_health",
+        example_name="detection_deployment_infer_opencv_health",
     )
 
     def _health_handler(request) -> dict[str, object]:
@@ -209,7 +209,7 @@ def test_yolox_deployment_infer_opencv_health_app_runtime_smoke_returns_health_s
             }
         }
 
-    _override_python_handler(runtime_registry, "core.service.yolox-deployment.health", _health_handler)
+    _override_python_handler(runtime_registry, "core.service.detection-deployment.health", _health_handler)
     _override_worker_task_handler(runtime_registry, "core.model.yolox-detection", _detect_handler)
 
     execution_result = executor.execute(
@@ -238,7 +238,7 @@ def test_yolox_deployment_infer_opencv_health_app_runtime_smoke_returns_health_s
     assert response_data["annotated_image"]["media_type"] == "image/png"
 
 
-def test_yolox_deployment_infer_opencv_health_zeromq_app_runtime_smoke_returns_detections_and_image(
+def test_detection_deployment_infer_opencv_health_zeromq_app_runtime_smoke_returns_detections_and_image(
     tmp_path: Path,
 ) -> None:
     """验证第六类正式 app 会返回检测框列表和绘制后的 inline-base64 图片。"""
@@ -249,7 +249,7 @@ def test_yolox_deployment_infer_opencv_health_zeromq_app_runtime_smoke_returns_d
     )
     _, application = _save_example_documents(
         workflow_service,
-        example_name="yolox_deployment_infer_opencv_health_zeromq",
+        example_name="detection_deployment_infer_opencv_health_zeromq",
     )
 
     def _health_handler(request) -> dict[str, object]:
@@ -285,7 +285,7 @@ def test_yolox_deployment_infer_opencv_health_zeromq_app_runtime_smoke_returns_d
             }
         }
 
-    _override_python_handler(runtime_registry, "core.service.yolox-deployment.health", _health_handler)
+    _override_python_handler(runtime_registry, "core.service.detection-deployment.health", _health_handler)
     _override_worker_task_handler(runtime_registry, "core.model.yolox-detection", _detect_handler)
 
     execution_result = executor.execute(
@@ -318,7 +318,7 @@ def test_yolox_deployment_infer_opencv_health_zeromq_app_runtime_smoke_returns_d
     assert response_data["annotated_image"]["image_base64"]
 
 
-def test_yolox_deployment_qr_crop_remap_app_runtime_smoke_decodes_qr_from_real_crop(
+def test_detection_deployment_qr_crop_remap_app_runtime_smoke_decodes_qr_from_real_crop(
     tmp_path: Path,
 ) -> None:
     """验证第三类正式 app 会真实走 crop 导出和 QR remap 解码链。"""
@@ -329,7 +329,7 @@ def test_yolox_deployment_qr_crop_remap_app_runtime_smoke_decodes_qr_from_real_c
     )
     _, application = _save_example_documents(
         workflow_service,
-        example_name="yolox_deployment_qr_crop_remap",
+        example_name="detection_deployment_qr_crop_remap",
     )
 
     def _detect_handler(request) -> dict[str, object]:
@@ -509,9 +509,9 @@ def test_yolox_end_to_end_qr_crop_remap_app_runtime_smoke_returns_slim_stage_sum
 
     _override_python_handler(runtime_registry, "core.service.dataset-import.submit", _submit_import_handler)
     _override_python_handler(runtime_registry, "core.service.dataset-export.submit", _submit_export_handler)
-    _override_python_handler(runtime_registry, "core.service.yolox-training.submit", _submit_training_handler)
-    _override_python_handler(runtime_registry, "core.service.yolox-evaluation.submit", _submit_evaluation_handler)
-    _override_python_handler(runtime_registry, "core.service.yolox-conversion.submit", _submit_conversion_handler)
+    _override_python_handler(runtime_registry, "core.service.model-training.submit", _submit_training_handler)
+    _override_python_handler(runtime_registry, "core.service.model-evaluation.submit", _submit_evaluation_handler)
+    _override_python_handler(runtime_registry, "core.service.model-conversion.submit", _submit_conversion_handler)
     _override_python_handler(runtime_registry, "core.service.task.wait", _task_wait_handler)
     _override_worker_task_handler(runtime_registry, "core.model.yolox-detection", _detect_handler)
 
@@ -902,9 +902,9 @@ def _install_end_to_end_submit_chain_runtime_overrides(
 
     _override_python_handler(runtime_registry, "core.service.dataset-import.submit", _submit_import_handler)
     _override_python_handler(runtime_registry, "core.service.dataset-export.submit", _submit_export_handler)
-    _override_python_handler(runtime_registry, "core.service.yolox-training.submit", _submit_training_handler)
-    _override_python_handler(runtime_registry, "core.service.yolox-evaluation.submit", _submit_evaluation_handler)
-    _override_python_handler(runtime_registry, "core.service.yolox-conversion.submit", _submit_conversion_handler)
+    _override_python_handler(runtime_registry, "core.service.model-training.submit", _submit_training_handler)
+    _override_python_handler(runtime_registry, "core.service.model-evaluation.submit", _submit_evaluation_handler)
+    _override_python_handler(runtime_registry, "core.service.model-conversion.submit", _submit_conversion_handler)
     _override_python_handler(runtime_registry, "core.service.task.wait", _task_wait_handler)
     return waited_task_ids
 
@@ -1008,3 +1008,4 @@ class _TrackedDeploymentService(SqlAlchemyDeploymentInstanceService):
                 item.deployment_instance_id
                 for item in unit_of_work.deployments.list_deployment_instances(project_id)
             )
+

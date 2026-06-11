@@ -61,7 +61,7 @@ export interface PlatformBaseModelDetail extends PlatformBaseModelSummary {
   builds: PlatformBaseModelBuild[]
 }
 
-export interface YoloXTrainingTaskSubmissionResponse {
+export interface DetectionTrainingTaskSubmissionResponse {
   task_id: string
   status: string
   queue_name: string
@@ -72,7 +72,7 @@ export interface YoloXTrainingTaskSubmissionResponse {
   format_id: string
 }
 
-export interface YoloXTrainingTaskSummary {
+export interface DetectionTrainingTaskSummary {
   task_id: string
   display_name: string
   project_id: string
@@ -107,11 +107,11 @@ export interface YoloXTrainingTaskSummary {
   training_summary: Record<string, unknown>
 }
 
-export type YoloXTrainingTaskActionName = 'save' | 'pause' | 'resume' | 'terminate' | 'delete'
+export type DetectionTrainingTaskActionName = 'save' | 'pause' | 'resume' | 'terminate' | 'delete'
 
-export interface YoloXTrainingTaskControlStatus {
+export interface DetectionTrainingTaskControlStatus {
   status: string
-  pending_action?: YoloXTrainingTaskActionName | null
+  pending_action?: DetectionTrainingTaskActionName | null
   requested_at?: string | null
   requested_by?: string | null
   last_save_at?: string | null
@@ -124,7 +124,7 @@ export interface YoloXTrainingTaskControlStatus {
   resume_checkpoint_object_key?: string | null
 }
 
-export interface YoloXTrainingTaskEvent {
+export interface DetectionTrainingTaskEvent {
   event_id: string
   task_id: string
   attempt_id?: string | null
@@ -134,14 +134,14 @@ export interface YoloXTrainingTaskEvent {
   payload: Record<string, unknown>
 }
 
-export interface YoloXTrainingTaskDetail extends YoloXTrainingTaskSummary {
-  available_actions: YoloXTrainingTaskActionName[]
-  control_status: YoloXTrainingTaskControlStatus
+export interface DetectionTrainingTaskDetail extends DetectionTrainingTaskSummary {
+  available_actions: DetectionTrainingTaskActionName[]
+  control_status: DetectionTrainingTaskControlStatus
   task_spec: Record<string, unknown>
-  events: YoloXTrainingTaskEvent[]
+  events: DetectionTrainingTaskEvent[]
 }
 
-export interface YoloXTrainingOutputFileSummary {
+export interface DetectionTrainingOutputFileSummary {
   file_name: string
   file_kind: string
   file_status: string
@@ -151,13 +151,13 @@ export interface YoloXTrainingOutputFileSummary {
   updated_at?: string | null
 }
 
-export interface YoloXTrainingOutputFileDetail extends YoloXTrainingOutputFileSummary {
+export interface DetectionTrainingOutputFileDetail extends DetectionTrainingOutputFileSummary {
   payload: Record<string, unknown>
   text_content?: string | null
   lines: string[]
 }
 
-export interface YoloXTrainingTaskCreateInput {
+export interface DetectionTrainingTaskCreateInput {
   projectId: string
   datasetExportId?: string
   datasetExportManifestKey?: string
@@ -175,7 +175,7 @@ export interface YoloXTrainingTaskCreateInput {
   displayName?: string
 }
 
-export interface YoloXConversionBuildSummary {
+export interface DetectionConversionBuildSummary {
   model_build_id: string
   build_format: string
   build_file_id: string
@@ -183,7 +183,7 @@ export interface YoloXConversionBuildSummary {
   metadata: Record<string, unknown>
 }
 
-export interface YoloXConversionTaskSubmissionResponse {
+export interface DetectionConversionTaskSubmissionResponse {
   task_id: string
   status: string
   queue_name: string
@@ -192,7 +192,7 @@ export interface YoloXConversionTaskSubmissionResponse {
   target_formats: string[]
 }
 
-export interface YoloXConversionTaskSummary {
+export interface DetectionConversionTaskSummary {
   task_id: string
   display_name: string
   project_id: string
@@ -213,7 +213,7 @@ export interface YoloXConversionTaskSummary {
   output_object_prefix?: string | null
   requested_target_formats: string[]
   produced_formats: string[]
-  builds: YoloXConversionBuildSummary[]
+  builds: DetectionConversionBuildSummary[]
   report_summary: Record<string, unknown>
 }
 
@@ -225,7 +225,7 @@ export type ConversionTargetKey =
   | 'tensorrt-engine-fp32'
   | 'tensorrt-engine-fp16'
 
-export interface YoloXConversionTaskCreateInput {
+export interface DetectionConversionTaskCreateInput {
   projectId: string
   sourceModelVersionId: string
   target: ConversionTargetKey
@@ -250,8 +250,8 @@ export async function getPlatformBaseModelDetail(modelId: string): Promise<Platf
   return apiRequest<PlatformBaseModelDetail>(`/models/platform-base/${encodeURIComponent(modelId)}`)
 }
 
-export async function createYoloXTrainingTask(input: YoloXTrainingTaskCreateInput): Promise<YoloXTrainingTaskSubmissionResponse> {
-  return apiRequest<YoloXTrainingTaskSubmissionResponse>('/models/detection/training-tasks', {
+export async function createDetectionTrainingTask(input: DetectionTrainingTaskCreateInput): Promise<DetectionTrainingTaskSubmissionResponse> {
+  return apiRequest<DetectionTrainingTaskSubmissionResponse>('/models/detection/training-tasks', {
     method: 'POST',
     body: {
       project_id: input.projectId,
@@ -273,59 +273,59 @@ export async function createYoloXTrainingTask(input: YoloXTrainingTaskCreateInpu
   })
 }
 
-export async function listYoloXTrainingTasks(projectId: string): Promise<YoloXTrainingTaskSummary[]> {
-  return apiRequest<YoloXTrainingTaskSummary[]>('/models/detection/training-tasks', {
+export async function listDetectionTrainingTasks(projectId: string): Promise<DetectionTrainingTaskSummary[]> {
+  return apiRequest<DetectionTrainingTaskSummary[]>('/models/detection/training-tasks', {
     query: { project_id: projectId, limit: 100 },
   })
 }
 
-export async function getYoloXTrainingTaskDetail(taskId: string): Promise<YoloXTrainingTaskDetail> {
-  return apiRequest<YoloXTrainingTaskDetail>(`/models/detection/training-tasks/${encodeURIComponent(taskId)}`, {
+export async function getDetectionTrainingTaskDetail(taskId: string): Promise<DetectionTrainingTaskDetail> {
+  return apiRequest<DetectionTrainingTaskDetail>(`/models/detection/training-tasks/${encodeURIComponent(taskId)}`, {
     query: { include_events: true },
   })
 }
 
-export async function requestYoloXTrainingTaskAction(
+export async function requestDetectionTrainingTaskAction(
   taskId: string,
-  action: Exclude<YoloXTrainingTaskActionName, 'delete'>,
-): Promise<YoloXTrainingTaskDetail | YoloXTrainingTaskSubmissionResponse> {
-  return apiRequest<YoloXTrainingTaskDetail | YoloXTrainingTaskSubmissionResponse>(
+  action: Exclude<DetectionTrainingTaskActionName, 'delete'>,
+): Promise<DetectionTrainingTaskDetail | DetectionTrainingTaskSubmissionResponse> {
+  return apiRequest<DetectionTrainingTaskDetail | DetectionTrainingTaskSubmissionResponse>(
     `/models/detection/training-tasks/${encodeURIComponent(taskId)}/${action}`,
     { method: 'POST' },
   )
 }
 
-export async function deleteYoloXTrainingTask(taskId: string): Promise<void> {
+export async function deleteDetectionTrainingTask(taskId: string): Promise<void> {
   return apiRequest<void>(`/models/detection/training-tasks/${encodeURIComponent(taskId)}`, {
     method: 'DELETE',
     responseType: 'void',
   })
 }
 
-export async function registerYoloXTrainingLatestCheckpoint(taskId: string): Promise<YoloXTrainingTaskDetail> {
-  return apiRequest<YoloXTrainingTaskDetail>(
+export async function registerDetectionTrainingLatestCheckpoint(taskId: string): Promise<DetectionTrainingTaskDetail> {
+  return apiRequest<DetectionTrainingTaskDetail>(
     `/models/detection/training-tasks/${encodeURIComponent(taskId)}/register-model-version`,
     { method: 'POST' },
   )
 }
 
-export async function listYoloXTrainingOutputFiles(taskId: string): Promise<YoloXTrainingOutputFileSummary[]> {
-  return apiRequest<YoloXTrainingOutputFileSummary[]>(
+export async function listDetectionTrainingOutputFiles(taskId: string): Promise<DetectionTrainingOutputFileSummary[]> {
+  return apiRequest<DetectionTrainingOutputFileSummary[]>(
     `/models/detection/training-tasks/${encodeURIComponent(taskId)}/output-files`,
   )
 }
 
-export async function getYoloXTrainingOutputFileDetail(
+export async function getDetectionTrainingOutputFileDetail(
   taskId: string,
   fileName: string,
-): Promise<YoloXTrainingOutputFileDetail> {
-  return apiRequest<YoloXTrainingOutputFileDetail>(
+): Promise<DetectionTrainingOutputFileDetail> {
+  return apiRequest<DetectionTrainingOutputFileDetail>(
     `/models/detection/training-tasks/${encodeURIComponent(taskId)}/output-files/${encodeURIComponent(fileName)}`,
   )
 }
 
-export async function createYoloXConversionTask(input: YoloXConversionTaskCreateInput): Promise<YoloXConversionTaskSubmissionResponse> {
-  return apiRequest<YoloXConversionTaskSubmissionResponse>(conversionTargetPath[input.target], {
+export async function createDetectionConversionTask(input: DetectionConversionTaskCreateInput): Promise<DetectionConversionTaskSubmissionResponse> {
+  return apiRequest<DetectionConversionTaskSubmissionResponse>(conversionTargetPath[input.target], {
     method: 'POST',
     body: {
       project_id: input.projectId,
@@ -337,8 +337,9 @@ export async function createYoloXConversionTask(input: YoloXConversionTaskCreate
   })
 }
 
-export async function listYoloXConversionTasks(projectId: string): Promise<YoloXConversionTaskSummary[]> {
-  return apiRequest<YoloXConversionTaskSummary[]>('/models/detection/conversion-tasks', {
+export async function listDetectionConversionTasks(projectId: string): Promise<DetectionConversionTaskSummary[]> {
+  return apiRequest<DetectionConversionTaskSummary[]>('/models/detection/conversion-tasks', {
     query: { project_id: projectId, limit: 100 },
   })
 }
+

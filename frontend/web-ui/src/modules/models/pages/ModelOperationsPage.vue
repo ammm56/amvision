@@ -273,19 +273,19 @@ import { RouterLink } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 
 import {
-  createYoloXConversionTask,
-  createYoloXTrainingTask,
+  createDetectionConversionTask,
+  createDetectionTrainingTask,
   getPlatformBaseModelDetail,
   listPlatformBaseModels,
-  listYoloXConversionTasks,
-  listYoloXTrainingTasks,
+  listDetectionConversionTasks,
+  listDetectionTrainingTasks,
   type ConversionTargetKey,
   type PlatformBaseModelDetail,
   type PlatformBaseModelSummary,
-  type YoloXConversionTaskSummary,
-  type YoloXTrainingTaskSubmissionResponse,
-  type YoloXTrainingTaskSummary,
-  type YoloXConversionTaskSubmissionResponse,
+  type DetectionConversionTaskSummary,
+  type DetectionTrainingTaskSubmissionResponse,
+  type DetectionTrainingTaskSummary,
+  type DetectionConversionTaskSubmissionResponse,
 } from '../services/model.service'
 import { useProjectStore } from '@/app/stores/project.store'
 import { useSessionStore } from '@/app/stores/session.store'
@@ -327,14 +327,14 @@ const conversionTargetOptions = [
 
 const baseModels = ref<PlatformBaseModelSummary[]>([])
 const selectedModelDetail = ref<PlatformBaseModelDetail | null>(null)
-const trainingTasks = ref<YoloXTrainingTaskSummary[]>([])
-const conversionTasks = ref<YoloXConversionTaskSummary[]>([])
+const trainingTasks = ref<DetectionTrainingTaskSummary[]>([])
+const conversionTasks = ref<DetectionConversionTaskSummary[]>([])
 const loading = ref(false)
 const trainingSubmitting = ref(false)
 const conversionSubmitting = ref(false)
 const errorMessage = ref<string | null>(null)
-const lastTrainingSubmission = ref<YoloXTrainingTaskSubmissionResponse | null>(null)
-const lastConversionSubmission = ref<YoloXConversionTaskSubmissionResponse | null>(null)
+const lastTrainingSubmission = ref<DetectionTrainingTaskSubmissionResponse | null>(null)
+const lastConversionSubmission = ref<DetectionConversionTaskSubmissionResponse | null>(null)
 
 const trainingDatasetExportId = ref('')
 const trainingManifestKey = ref('')
@@ -404,8 +404,8 @@ async function refreshPage(): Promise<void> {
   try {
     const [models, training, conversion] = await Promise.all([
       listPlatformBaseModels(),
-      listYoloXTrainingTasks(selectedProjectId.value),
-      listYoloXConversionTasks(selectedProjectId.value),
+      listDetectionTrainingTasks(selectedProjectId.value),
+      listDetectionConversionTasks(selectedProjectId.value),
     ])
     baseModels.value = models
     trainingTasks.value = training
@@ -444,7 +444,7 @@ async function submitTraining(): Promise<void> {
   trainingSubmitting.value = true
   errorMessage.value = null
   try {
-    lastTrainingSubmission.value = await createYoloXTrainingTask({
+    lastTrainingSubmission.value = await createDetectionTrainingTask({
       projectId: selectedProjectId.value,
       datasetExportId: trainingDatasetExportId.value.trim(),
       datasetExportManifestKey: trainingManifestKey.value.trim(),
@@ -460,7 +460,7 @@ async function submitTraining(): Promise<void> {
       inputHeight: inputHeight.value,
       displayName: trainingDisplayName.value,
     })
-    trainingTasks.value = await listYoloXTrainingTasks(selectedProjectId.value)
+    trainingTasks.value = await listDetectionTrainingTasks(selectedProjectId.value)
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : t('modelOps.messages.submitTrainingFailed')
   } finally {
@@ -472,14 +472,14 @@ async function submitConversion(): Promise<void> {
   conversionSubmitting.value = true
   errorMessage.value = null
   try {
-    lastConversionSubmission.value = await createYoloXConversionTask({
+    lastConversionSubmission.value = await createDetectionConversionTask({
       projectId: selectedProjectId.value,
       sourceModelVersionId: conversionSourceModelVersionId.value.trim(),
       target: conversionTarget.value,
       runtimeProfileId: conversionRuntimeProfileId.value.trim(),
       displayName: conversionDisplayName.value,
     })
-    conversionTasks.value = await listYoloXConversionTasks(selectedProjectId.value)
+    conversionTasks.value = await listDetectionConversionTasks(selectedProjectId.value)
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : t('modelOps.messages.submitConversionFailed')
   } finally {

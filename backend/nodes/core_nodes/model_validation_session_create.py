@@ -15,7 +15,6 @@ from backend.nodes.core_nodes._platform_service_node_support import (
     get_optional_platform_task_type,
     resolve_platform_model_type,
     resolve_platform_task_type,
-    should_use_platform_service_routing,
 )
 from backend.nodes.core_nodes._service_node_support import (
     build_response_body_output,
@@ -43,9 +42,6 @@ from backend.service.application.models.pose_validation_session_service import (
 from backend.service.application.models.segmentation_validation_session_service import (
     SegmentationValidationSessionCreateRequest,
 )
-from backend.service.application.models.yolox_validation_session_service import (
-    YoloXValidationSessionCreateRequest,
-)
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 from backend.service.domain.models.model_task_types import (
     CLASSIFICATION_TASK_TYPE,
@@ -59,33 +55,11 @@ from backend.service.domain.models.model_task_types import (
 def _model_validation_session_create_handler(
     request: WorkflowNodeExecutionRequest,
 ) -> dict[str, object]:
-    """调用 validation session 创建服务，兼容旧 YOLOX 节点名并支持显式平台路由。"""
+    """调用统一 validation session 创建服务。"""
 
     runtime_context = require_workflow_service_node_runtime(request)
     requested_task_type = get_optional_platform_task_type(request)
     requested_model_type = get_optional_platform_model_type(request)
-    use_platform_routing = should_use_platform_service_routing(
-        task_type=requested_task_type,
-        model_type=requested_model_type,
-    )
-    if not use_platform_routing:
-        session_view = runtime_context.build_validation_session_service().create_session(
-            YoloXValidationSessionCreateRequest(
-                project_id=require_str_parameter(request, "project_id"),
-                model_version_id=require_str_parameter(request, "model_version_id"),
-                runtime_profile_id=get_optional_str_parameter(request, "runtime_profile_id"),
-                runtime_backend=get_optional_str_parameter(request, "runtime_backend"),
-                device_name=get_optional_str_parameter(request, "device_name"),
-                score_threshold=get_optional_float_parameter(request, "score_threshold"),
-                save_result_image=get_optional_bool_parameter(request, "save_result_image")
-                if get_optional_bool_parameter(request, "save_result_image") is not None
-                else True,
-                extra_options=get_optional_dict_parameter(request, "extra_options"),
-            ),
-            created_by=resolve_created_by(request),
-        )
-        return build_response_body_output(session_view)
-
     task_type = resolve_platform_task_type(
         requested_task_type,
         default_task_type=DETECTION_TASK_TYPE,
@@ -160,10 +134,10 @@ def _build_platform_validation_request(
 
 CORE_NODE_SPEC = CoreNodeSpec(
     node_definition=NodeDefinition(
-        node_type_id="core.service.yolox-validation-session.create",
+        node_type_id="core.service.model-validation-session.create",
         display_name="Create Validation Session",
         category="service.model.validation",
-        description="兼容旧 YOLOX 节点名，同时支持按 task_type 和 model_type 创建正式人工验证会话。",
+        description="按统一 task_type 和 model_type 创建人工验证会话。",
         implementation_kind=NODE_IMPLEMENTATION_CORE,
         runtime_kind=NODE_RUNTIME_PYTHON_CALLABLE,
         output_ports=(

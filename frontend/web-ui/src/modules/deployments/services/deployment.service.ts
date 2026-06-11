@@ -1,6 +1,6 @@
 import { apiRequest } from '@/shared/api/http-client'
 
-export interface YoloXDeploymentInstance {
+export interface DetectionDeploymentInstance {
   deployment_instance_id: string
   project_id: string
   display_name: string
@@ -26,7 +26,7 @@ export interface YoloXDeploymentInstance {
   metadata: Record<string, unknown>
 }
 
-export interface YoloXDeploymentCreateInput {
+export interface DetectionDeploymentCreateInput {
   projectId: string
   modelVersionId?: string
   modelBuildId?: string
@@ -38,7 +38,7 @@ export interface YoloXDeploymentCreateInput {
   displayName?: string
 }
 
-export interface YoloXDeploymentProcessStatus {
+export interface DetectionDeploymentProcessStatus {
   deployment_instance_id: string
   display_name: string
   runtime_mode: string
@@ -53,7 +53,7 @@ export interface YoloXDeploymentProcessStatus {
   instance_count: number
 }
 
-export interface YoloXDeploymentRuntimeHealth extends YoloXDeploymentProcessStatus {
+export interface DetectionDeploymentRuntimeHealth extends DetectionDeploymentProcessStatus {
   healthy_instance_count: number
   warmed_instance_count: number
   pinned_output_total_bytes: number
@@ -62,7 +62,7 @@ export interface YoloXDeploymentRuntimeHealth extends YoloXDeploymentProcessStat
   local_buffer_broker: Record<string, unknown>
 }
 
-export interface YoloXDeploymentProcessEvent {
+export interface DetectionDeploymentProcessEvent {
   deployment_instance_id: string
   runtime_mode: string
   sequence: number
@@ -76,14 +76,14 @@ export type DeploymentRuntimeMode = 'sync' | 'async'
 export type DeploymentStatusAction = 'start' | 'status' | 'stop'
 export type DeploymentHealthAction = 'warmup' | 'health' | 'reset'
 
-export async function listYoloXDeployments(projectId: string): Promise<YoloXDeploymentInstance[]> {
-  return apiRequest<YoloXDeploymentInstance[]>('/models/detection/deployment-instances', {
+export async function listDetectionDeployments(projectId: string): Promise<DetectionDeploymentInstance[]> {
+  return apiRequest<DetectionDeploymentInstance[]>('/models/detection/deployment-instances', {
     query: { project_id: projectId, limit: 100 },
   })
 }
 
-export async function createYoloXDeployment(input: YoloXDeploymentCreateInput): Promise<YoloXDeploymentInstance> {
-  return apiRequest<YoloXDeploymentInstance>('/models/detection/deployment-instances', {
+export async function createDetectionDeployment(input: DetectionDeploymentCreateInput): Promise<DetectionDeploymentInstance> {
+  return apiRequest<DetectionDeploymentInstance>('/models/detection/deployment-instances', {
     method: 'POST',
     body: {
       project_id: input.projectId,
@@ -100,34 +100,35 @@ export async function createYoloXDeployment(input: YoloXDeploymentCreateInput): 
   })
 }
 
-export async function runYoloXDeploymentStatusAction(
+export async function runDetectionDeploymentStatusAction(
   deploymentInstanceId: string,
   mode: DeploymentRuntimeMode,
   action: DeploymentStatusAction,
-): Promise<YoloXDeploymentProcessStatus> {
-  return apiRequest<YoloXDeploymentProcessStatus>(
+): Promise<DetectionDeploymentProcessStatus> {
+  return apiRequest<DetectionDeploymentProcessStatus>(
     `/models/detection/deployment-instances/${encodeURIComponent(deploymentInstanceId)}/${mode}/${action}`,
     { method: action === 'status' ? 'GET' : 'POST' },
   )
 }
 
-export async function runYoloXDeploymentHealthAction(
+export async function runDetectionDeploymentHealthAction(
   deploymentInstanceId: string,
   mode: DeploymentRuntimeMode,
   action: DeploymentHealthAction,
-): Promise<YoloXDeploymentRuntimeHealth> {
-  return apiRequest<YoloXDeploymentRuntimeHealth>(
+): Promise<DetectionDeploymentRuntimeHealth> {
+  return apiRequest<DetectionDeploymentRuntimeHealth>(
     `/models/detection/deployment-instances/${encodeURIComponent(deploymentInstanceId)}/${mode}/${action}`,
     { method: action === 'health' ? 'GET' : 'POST' },
   )
 }
 
-export async function listYoloXDeploymentEvents(
+export async function listDetectionDeploymentEvents(
   deploymentInstanceId: string,
   mode: DeploymentRuntimeMode,
-): Promise<YoloXDeploymentProcessEvent[]> {
-  return apiRequest<YoloXDeploymentProcessEvent[]>(
+): Promise<DetectionDeploymentProcessEvent[]> {
+  return apiRequest<DetectionDeploymentProcessEvent[]>(
     `/models/detection/deployment-instances/${encodeURIComponent(deploymentInstanceId)}/events`,
     { query: { runtime_mode: mode, limit: 100 } },
   )
 }
+
