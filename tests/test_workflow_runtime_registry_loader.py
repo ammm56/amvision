@@ -264,24 +264,24 @@ def test_runtime_registry_loader_registers_core_service_nodes(
         "core.service.dataset-export.submit",
         "core.service.model-training.submit",
         "core.service.model-conversion.submit",
-        "core.service.detection-deployment.health",
-        "core.service.detection-deployment.reset",
-        "core.service.detection-deployment.start",
-        "core.service.detection-deployment.status",
-        "core.service.detection-deployment.stop",
-        "core.service.detection-deployment.warmup",
+        "core.service.model-deployment.health",
+        "core.service.model-deployment.reset",
+        "core.service.model-deployment.start",
+        "core.service.model-deployment.status",
+        "core.service.model-deployment.stop",
+        "core.service.model-deployment.warmup",
         "core.service.model-validation-session.create",
         "core.service.model-evaluation.package",
         "core.service.model-evaluation.submit",
-        "core.service.detection-deployment.create",
-        "core.service.detection-inference.submit",
+        "core.service.model-deployment.create",
+        "core.service.model-inference.submit",
         "core.model.detection",
     }
     for node_type_id in expected_node_type_ids:
         node_definition = runtime_registry.get_node_definition(node_type_id)
         assert runtime_registry.has_registered_handler(node_definition=node_definition)
 
-    stop_node_definition = runtime_registry.get_node_definition("core.service.detection-deployment.stop")
+    stop_node_definition = runtime_registry.get_node_definition("core.service.model-deployment.stop")
     assert [port.name for port in stop_node_definition.input_ports] == ["request", "dependency"]
 
 
@@ -1256,7 +1256,7 @@ def test_core_model_inference_submit_node_auto_starts_async_process(
 
     assert (
         model_inference_submit_node.CORE_NODE_SPEC.node_definition.node_type_id
-        == "core.service.detection-inference.submit"
+        == "core.service.model-inference.submit"
     )
 
     custom_nodes_root_dir = tmp_path / "custom_nodes"
@@ -1354,7 +1354,7 @@ def test_core_model_inference_submit_node_auto_starts_async_process(
             WorkflowGraphNode(node_id="input", node_type_id="core.io.template-input.image"),
             WorkflowGraphNode(
                 node_id="infer",
-                node_type_id="core.service.detection-inference.submit",
+                node_type_id="core.service.model-inference.submit",
                 parameters={
                     "project_id": "project-1",
                     "deployment_instance_id": "deployment-instance-1",
@@ -1464,7 +1464,7 @@ def test_core_detection_deployment_create_node_accepts_dynamic_request_payload(
         nodes=(
             WorkflowGraphNode(
                 node_id="create",
-                node_type_id="core.service.detection-deployment.create",
+                node_type_id="core.service.model-deployment.create",
                 parameters={},
             ),
         ),
@@ -1594,7 +1594,7 @@ def test_core_detection_deployment_lifecycle_nodes_drive_sync_supervisor(
         nodes=(
             WorkflowGraphNode(
                 node_id="start",
-                node_type_id="core.service.detection-deployment.start",
+                node_type_id="core.service.model-deployment.start",
                 parameters={
                     "deployment_instance_id": deployment_view.deployment_instance_id,
                     "runtime_mode": "sync",
@@ -1602,7 +1602,7 @@ def test_core_detection_deployment_lifecycle_nodes_drive_sync_supervisor(
             ),
             WorkflowGraphNode(
                 node_id="status",
-                node_type_id="core.service.detection-deployment.status",
+                node_type_id="core.service.model-deployment.status",
                 parameters={
                     "deployment_instance_id": deployment_view.deployment_instance_id,
                     "runtime_mode": "sync",
@@ -1610,7 +1610,7 @@ def test_core_detection_deployment_lifecycle_nodes_drive_sync_supervisor(
             ),
             WorkflowGraphNode(
                 node_id="warmup",
-                node_type_id="core.service.detection-deployment.warmup",
+                node_type_id="core.service.model-deployment.warmup",
                 parameters={
                     "deployment_instance_id": deployment_view.deployment_instance_id,
                     "runtime_mode": "sync",
@@ -1618,7 +1618,7 @@ def test_core_detection_deployment_lifecycle_nodes_drive_sync_supervisor(
             ),
             WorkflowGraphNode(
                 node_id="health",
-                node_type_id="core.service.detection-deployment.health",
+                node_type_id="core.service.model-deployment.health",
                 parameters={
                     "deployment_instance_id": deployment_view.deployment_instance_id,
                     "runtime_mode": "sync",
@@ -1626,7 +1626,7 @@ def test_core_detection_deployment_lifecycle_nodes_drive_sync_supervisor(
             ),
             WorkflowGraphNode(
                 node_id="reset",
-                node_type_id="core.service.detection-deployment.reset",
+                node_type_id="core.service.model-deployment.reset",
                 parameters={
                     "deployment_instance_id": deployment_view.deployment_instance_id,
                     "runtime_mode": "sync",
@@ -1634,7 +1634,7 @@ def test_core_detection_deployment_lifecycle_nodes_drive_sync_supervisor(
             ),
             WorkflowGraphNode(
                 node_id="stop",
-                node_type_id="core.service.detection-deployment.stop",
+                node_type_id="core.service.model-deployment.stop",
                 parameters={
                     "deployment_instance_id": deployment_view.deployment_instance_id,
                     "runtime_mode": "sync",
@@ -1778,7 +1778,7 @@ def test_core_detection_deployment_health_node_uses_async_supervisor(
         nodes=(
             WorkflowGraphNode(
                 node_id="health",
-                node_type_id="core.service.detection-deployment.health",
+                node_type_id="core.service.model-deployment.health",
                 parameters={
                     "deployment_instance_id": deployment_view.deployment_instance_id,
                     "runtime_mode": "async",
@@ -3740,5 +3740,6 @@ def _build_fake_process_config(*, instance_count: int) -> SimpleNamespace:
         instance_count=instance_count,
         runtime_target=SimpleNamespace(runtime_artifact_storage_uri="artifacts/runtime/model.onnx"),
     )
+
 
 

@@ -99,10 +99,10 @@ def test_detection_deployment_sync_infer_health_app_runtime_smoke_executes_in_ex
             }
         }
 
-    _override_python_handler(runtime_registry, "core.service.detection-deployment.start", _start_handler)
-    _override_python_handler(runtime_registry, "core.service.detection-deployment.warmup", _warmup_handler)
+    _override_python_handler(runtime_registry, "core.service.model-deployment.start", _start_handler)
+    _override_python_handler(runtime_registry, "core.service.model-deployment.warmup", _warmup_handler)
     _override_worker_task_handler(runtime_registry, "core.model.detection", _detect_handler)
-    _override_python_handler(runtime_registry, "core.service.detection-deployment.health", _health_handler)
+    _override_python_handler(runtime_registry, "core.service.model-deployment.health", _health_handler)
 
     execution_result = executor.execute(
         WorkflowApplicationExecutionRequest(
@@ -209,7 +209,7 @@ def test_detection_deployment_infer_opencv_health_app_runtime_smoke_returns_heal
             }
         }
 
-    _override_python_handler(runtime_registry, "core.service.detection-deployment.health", _health_handler)
+    _override_python_handler(runtime_registry, "core.service.model-deployment.health", _health_handler)
     _override_worker_task_handler(runtime_registry, "core.model.detection", _detect_handler)
 
     execution_result = executor.execute(
@@ -285,7 +285,7 @@ def test_detection_deployment_infer_opencv_health_zeromq_app_runtime_smoke_retur
             }
         }
 
-    _override_python_handler(runtime_registry, "core.service.detection-deployment.health", _health_handler)
+    _override_python_handler(runtime_registry, "core.service.model-deployment.health", _health_handler)
     _override_worker_task_handler(runtime_registry, "core.model.detection", _detect_handler)
 
     execution_result = executor.execute(
@@ -1008,5 +1008,6 @@ class _TrackedDeploymentService(SqlAlchemyDeploymentInstanceService):
                 item.deployment_instance_id
                 for item in unit_of_work.deployments.list_deployment_instances(project_id)
             )
+
 
 

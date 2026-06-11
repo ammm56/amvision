@@ -11,8 +11,13 @@ from backend.contracts.workflows.workflow_graph import (
 from backend.nodes.core_nodes._base import CoreNodeSpec
 from backend.nodes.core_nodes._platform_service_node_support import (
     get_optional_platform_model_type,
+    get_optional_platform_task_type,
+    get_supported_platform_model_types,
+    resolve_platform_model_type,
+    resolve_platform_task_type,
 )
 from backend.nodes.core_nodes._service_node_support import (
+    build_service_node_deployment_service,
     build_response_body_output,
     get_optional_bool_parameter,
     get_optional_dict_parameter,
@@ -23,15 +28,28 @@ from backend.nodes.core_nodes._service_node_support import (
     require_workflow_service_node_runtime,
     resolve_created_by,
 )
+from backend.service.application.deployments.classification_deployment_service import (
+    ClassificationDeploymentInstanceCreateRequest,
+)
 from backend.service.application.deployments.detection_deployment_service import (
     DetectionDeploymentInstanceCreateRequest,
 )
+from backend.service.application.deployments.obb_deployment_service import (
+    ObbDeploymentInstanceCreateRequest,
+)
+from backend.service.application.deployments.pose_deployment_service import (
+    PoseDeploymentInstanceCreateRequest,
+)
+from backend.service.application.deployments.segmentation_deployment_service import (
+    SegmentationDeploymentInstanceCreateRequest,
+)
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 from backend.service.application.workflows.execution_cleanup import register_deployment_cleanup
+from backend.service.domain.models.model_task_types import DETECTION_TASK_TYPE
 
 
 def _model_deployment_create_handler(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
-    """调用正式 detection DeploymentInstance 创建服务。
+    """调用正式平台 deployment 创建服务。
 
     参数：
     - request：当前 workflow 节点执行请求。
@@ -42,14 +60,27 @@ def _model_deployment_create_handler(request: WorkflowNodeExecutionRequest) -> d
 
     request = overlay_parameters_from_object_input(request)
     runtime_context = require_workflow_service_node_runtime(request)
-    view = runtime_context.build_deployment_service().create_deployment_instance(
-        DetectionDeploymentInstanceCreateRequest(
+    task_type = resolve_platform_task_type(
+        get_optional_platform_task_type(request),
+        default_task_type=DETECTION_TASK_TYPE,
+    )
+    request_cls, default_model_type = _resolve_deployment_create_request_class(task_type)
+    model_type = resolve_platform_model_type(
+        get_optional_platform_model_type(
+            request,
+            supported_model_types=get_supported_platform_model_types(task_type),
+        ),
+        task_type=task_type,
+        default_detection_model_type=default_model_type,
+        default_yolo_primary_model_type=default_model_type,
+    )
+    view = build_service_node_deployment_service(
+        runtime_context,
+        task_type=task_type,
+    ).create_deployment_instance(
+        request_cls(
             project_id=require_str_parameter(request, "project_id"),
-            model_type=get_optional_platform_model_type(
-                request,
-                supported_model_types=("yolox", "yolov8", "yolo11", "yolo26", "rfdetr"),
-            )
-            or "yolox",
+            model_type=model_type,
             model_version_id=get_optional_str_parameter(request, "model_version_id"),
             model_build_id=get_optional_str_parameter(request, "model_build_id"),
             runtime_profile_id=get_optional_str_parameter(request, "runtime_profile_id"),
@@ -63,7 +94,11 @@ def _model_deployment_create_handler(request: WorkflowNodeExecutionRequest) -> d
         created_by=resolve_created_by(request),
     )
     if get_optional_bool_parameter(request, "cleanup_on_completion") is True:
-        _register_created_deployment_for_cleanup(request=request, view=view)
+        _register_created_deployment_for_cleanup(
+            request=request,
+            view=view,
+            task_type=task_type,
+        )
     return build_response_body_output(view)
 
 
@@ -94,6 +129,7 @@ def _register_created_deployment_for_cleanup(
     request: WorkflowNodeExecutionRequest,
     *,
     view: object,
+    task_type: str,
 ) -> None:
     """把当前创建出的 DeploymentInstance 登记为执行结束后清理。
 
@@ -112,15 +148,34 @@ def _register_created_deployment_for_cleanup(
     register_deployment_cleanup(
         request.execution_metadata,
         deployment_instance_id=raw_deployment_instance_id,
+        task_type=task_type,
     )
+
+
+def _resolve_deployment_create_request_class(
+    task_type: str,
+) -> tuple[type, str]:
+    """按 task_type 返回 deployment create request 类型与默认 model_type。"""
+
+    if task_type == DETECTION_TASK_TYPE:
+        return DetectionDeploymentInstanceCreateRequest, "yolox"
+    if task_type == "classification":
+        return ClassificationDeploymentInstanceCreateRequest, "yolov8"
+    if task_type == "segmentation":
+        return SegmentationDeploymentInstanceCreateRequest, "yolov8"
+    if task_type == "pose":
+        return PoseDeploymentInstanceCreateRequest, "yolov8"
+    if task_type == "obb":
+        return ObbDeploymentInstanceCreateRequest, "yolov8"
+    raise ValueError(f"unsupported task_type: {task_type}")
 
 
 CORE_NODE_SPEC = CoreNodeSpec(
     node_definition=NodeDefinition(
-        node_type_id="core.service.detection-deployment.create",
+        node_type_id="core.service.model-deployment.create",
         display_name="Create Deployment",
         category="service.model.deployment.resource",
-        description="兼容旧 YOLOX 节点名，按正式 detection deployment API 参数创建 DeploymentInstance。",
+        description="按 task_type 调用正式 deployment API 创建 DeploymentInstance。",
         implementation_kind=NODE_IMPLEMENTATION_CORE,
         runtime_kind=NODE_RUNTIME_PYTHON_CALLABLE,
         input_ports=(
@@ -141,6 +196,10 @@ CORE_NODE_SPEC = CoreNodeSpec(
         parameter_schema={
             "type": "object",
             "properties": {
+                "task_type": {
+                    "type": "string",
+                    "enum": ["detection", "classification", "segmentation", "pose", "obb"],
+                },
                 "model_type": {
                     "type": "string",
                     "enum": ["yolox", "yolov8", "yolo11", "yolo26", "rfdetr"],

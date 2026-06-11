@@ -18,7 +18,7 @@
       },
       {
         "node_id": "health",
-        "node_type_id": "core.service.detection-deployment.health",
+        "node_type_id": "core.service.model-deployment.health",
         "parameters": {
           "runtime_mode": "sync"
         },
@@ -351,5 +351,6 @@
     }
   }
 }
+
 
 

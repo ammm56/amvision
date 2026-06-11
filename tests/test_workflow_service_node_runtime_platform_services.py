@@ -4,6 +4,15 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from backend.service.application.deployments.classification_deployment_service import (
+    SqlAlchemyClassificationDeploymentService,
+)
+from backend.service.application.deployments.obb_deployment_service import (
+    SqlAlchemyObbDeploymentService,
+)
+from backend.service.application.deployments.segmentation_deployment_service import (
+    SqlAlchemySegmentationDeploymentService,
+)
 from backend.queue import LocalFileQueueBackend, LocalFileQueueSettings
 from backend.service.application.conversions.yolo11_conversion_task_service import (
     SqlAlchemyYolo11ConversionTaskService,
@@ -14,8 +23,14 @@ from backend.service.application.conversions.rfdetr_conversion_task_service impo
 from backend.service.application.models.classification_validation_session_service import (
     LocalClassificationValidationSessionService,
 )
+from backend.service.application.models.classification_inference_task_service import (
+    SqlAlchemyClassificationInferenceTaskService,
+)
 from backend.service.application.models.detection_evaluation_task_service import (
     SqlAlchemyDetectionEvaluationTaskService,
+)
+from backend.service.application.models.detection_inference_task_service import (
+    SqlAlchemyDetectionInferenceTaskService,
 )
 from backend.service.application.models.detection_validation_session_service import (
     LocalDetectionValidationSessionService,
@@ -23,11 +38,17 @@ from backend.service.application.models.detection_validation_session_service imp
 from backend.service.application.models.obb_evaluation_task_service import (
     SqlAlchemyObbEvaluationTaskService,
 )
+from backend.service.application.models.obb_inference_task_service import (
+    SqlAlchemyObbInferenceTaskService,
+)
 from backend.service.application.models.yolo_primary_classification_evaluation_task_service import (
     SqlAlchemyYoloPrimaryClassificationEvaluationTaskService,
 )
 from backend.service.application.models.yolo_primary_segmentation_evaluation_task_service import (
     SqlAlchemyYoloPrimarySegmentationEvaluationTaskService,
+)
+from backend.service.application.models.segmentation_inference_task_service import (
+    SqlAlchemySegmentationInferenceTaskService,
 )
 from backend.service.application.models.yolo_primary_classification_training_service import (
     SqlAlchemyYoloPrimaryClassificationTrainingTaskService,
@@ -110,6 +131,18 @@ def test_workflow_runtime_can_build_platform_services_by_task_type(tmp_path: Pat
         runtime_context.build_evaluation_task_service(task_type="obb"),
         SqlAlchemyObbEvaluationTaskService,
     )
+    assert isinstance(
+        runtime_context.build_deployment_service(task_type="classification"),
+        SqlAlchemyClassificationDeploymentService,
+    )
+    assert isinstance(
+        runtime_context.build_deployment_service(task_type="segmentation"),
+        SqlAlchemySegmentationDeploymentService,
+    )
+    assert isinstance(
+        runtime_context.build_deployment_service(task_type="obb"),
+        SqlAlchemyObbDeploymentService,
+    )
 
 
 def test_workflow_runtime_can_build_detection_platform_services(tmp_path: Path) -> None:
@@ -122,6 +155,10 @@ def test_workflow_runtime_can_build_detection_platform_services(tmp_path: Path) 
         session_factory=session_factory,
         dataset_storage=dataset_storage,
         queue_backend=queue_backend,
+        detection_async_deployment_process_supervisor=object(),
+        classification_async_deployment_process_supervisor=object(),
+        segmentation_async_deployment_process_supervisor=object(),
+        obb_async_deployment_process_supervisor=object(),
     )
 
     assert isinstance(
@@ -131,6 +168,22 @@ def test_workflow_runtime_can_build_detection_platform_services(tmp_path: Path) 
     assert isinstance(
         runtime_context.build_validation_session_service(task_type="detection"),
         LocalDetectionValidationSessionService,
+    )
+    assert isinstance(
+        runtime_context.build_inference_task_service(task_type="detection"),
+        SqlAlchemyDetectionInferenceTaskService,
+    )
+    assert isinstance(
+        runtime_context.build_inference_task_service(task_type="classification"),
+        SqlAlchemyClassificationInferenceTaskService,
+    )
+    assert isinstance(
+        runtime_context.build_inference_task_service(task_type="segmentation"),
+        SqlAlchemySegmentationInferenceTaskService,
+    )
+    assert isinstance(
+        runtime_context.build_inference_task_service(task_type="obb"),
+        SqlAlchemyObbInferenceTaskService,
     )
 
 

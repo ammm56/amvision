@@ -227,6 +227,7 @@ def register_deployment_cleanup(
     execution_metadata: dict[str, object],
     *,
     deployment_instance_id: str,
+    task_type: str | None = None,
 ) -> None:
     """登记执行结束后需要清理的 DeploymentInstance。
 
@@ -239,6 +240,7 @@ def register_deployment_cleanup(
         execution_metadata,
         resource_kind=WORKFLOW_EXECUTION_CLEANUP_KIND_DEPLOYMENT_INSTANCE,
         resource_id=deployment_instance_id,
+        metadata={"task_type": task_type} if isinstance(task_type, str) and task_type.strip() else None,
     )
 
 

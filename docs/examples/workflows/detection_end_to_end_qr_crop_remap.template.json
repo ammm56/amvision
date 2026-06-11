@@ -630,7 +630,7 @@
     },
     {
       "node_id": "create_deployment",
-      "node_type_id": "core.service.detection-deployment.create",
+      "node_type_id": "core.service.model-deployment.create",
       "parameters": {
         "cleanup_on_completion": true
       }
@@ -1934,5 +1934,6 @@
     }
   }
 }
+
 
 

@@ -13,7 +13,7 @@
       },
       {
         "node_id": "start",
-        "node_type_id": "core.service.detection-deployment.start",
+        "node_type_id": "core.service.model-deployment.start",
         "parameters": {
           "deployment_instance_id": "replace-with-existing-deployment-instance-id",
           "runtime_mode": "sync"
@@ -24,7 +24,7 @@
       },
       {
         "node_id": "warmup",
-        "node_type_id": "core.service.detection-deployment.warmup",
+        "node_type_id": "core.service.model-deployment.warmup",
         "parameters": {
           "deployment_instance_id": "replace-with-existing-deployment-instance-id",
           "runtime_mode": "sync"
@@ -49,7 +49,7 @@
       },
       {
         "node_id": "health",
-        "node_type_id": "core.service.detection-deployment.health",
+        "node_type_id": "core.service.model-deployment.health",
         "parameters": {
           "deployment_instance_id": "replace-with-existing-deployment-instance-id",
           "runtime_mode": "sync"
@@ -60,7 +60,7 @@
       },
       {
         "node_id": "stop",
-        "node_type_id": "core.service.detection-deployment.stop",
+        "node_type_id": "core.service.model-deployment.stop",
         "parameters": {
           "deployment_instance_id": "replace-with-existing-deployment-instance-id",
           "runtime_mode": "sync"
@@ -176,5 +176,6 @@
     }
   }
 }
+
 
 

@@ -93,7 +93,7 @@ FlowApplication 中 `bindings.config.route` 在现阶段主要用于描述绑定
 当前直接对接后端服务的 workflow 节点按语义分成两组：
 
 - 任务节点：按现有公开服务接口直接提交训练、转换、评估、导出、异步推理等后台任务。节点参数和 API 请求体保持同一组业务字段，真正的重任务执行仍交给独立 worker、queue backend 和后台任务管理器。
-- deployment 资源与控制节点：core.service.detection-deployment.create 负责创建 DeploymentInstance 资源；start、warmup、status、health、stop、reset 负责控制或观察已有 deployment 运行态。当前 execute API 会在 backend-service 当前运行时中执行这组节点，节点调用的仍是服务进程已有的 deployment supervisor，而不是 workflow-local supervisor。
+- deployment 资源与控制节点：core.service.model-deployment.create 负责创建 DeploymentInstance 资源；start、warmup、status、health、stop、reset 负责控制或观察已有 deployment 运行态。当前 execute API 会在 backend-service 当前运行时中执行这组节点，节点调用的仍是服务进程已有的 deployment supervisor，而不是 workflow-local supervisor。
 
 这组边界的目标是把 workflow 节点保持为“参数化的服务调用编排”，而不是让 workflow 执行器演变成另一套独立部署 runtime。
 
@@ -415,4 +415,5 @@ barcode.protocol-nodes 当前已经采用这套维护方式，并固定通过 cu
 1. 在节点编辑器里补齐 node group、分类和节点包版本展示。
 2. 把 custom_nodes 资产纳入发行装配与发布校验。
 3. 再把图执行结果接入现有任务状态流和现场端点绑定。
+
 

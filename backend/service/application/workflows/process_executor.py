@@ -20,7 +20,6 @@ from backend.service.application.runtime.deployment_process_supervisor import (
     DeploymentProcessSupervisor,
 )
 from backend.service.application.workflows.graph_executor import (
-    WorkflowGraphExecutor,
     WorkflowNodeExecutionRecord,
     WorkflowNodeRuntimeRegistry,
 )
@@ -261,6 +260,15 @@ def run_workflow_application_process_worker(
             queue_backend=queue_backend,
             detection_sync_deployment_process_supervisor=sync_supervisor,
             detection_async_deployment_process_supervisor=async_supervisor,
+            classification_sync_deployment_process_supervisor=sync_supervisor,
+            classification_async_deployment_process_supervisor=async_supervisor,
+            segmentation_sync_deployment_process_supervisor=sync_supervisor,
+            segmentation_async_deployment_process_supervisor=async_supervisor,
+            pose_sync_deployment_process_supervisor=sync_supervisor,
+            pose_async_deployment_process_supervisor=async_supervisor,
+            obb_sync_deployment_process_supervisor=sync_supervisor,
+            obb_async_deployment_process_supervisor=async_supervisor,
+            async_inference_service_id="workflow-local",
         )
         execution_result = _execute_workflow_application(
             project_id=project_id,

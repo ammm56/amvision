@@ -39,6 +39,13 @@ WORKFLOW_SERVICE_MODEL_SCALES: tuple[str, ...] = (
     "x",
     "xx",
 )
+WORKFLOW_SERVICE_MODEL_TYPES_BY_TASK_TYPE: dict[str, tuple[str, ...]] = {
+    DETECTION_TASK_TYPE: ("yolox", "yolov8", "yolo11", "yolo26", "rfdetr"),
+    CLASSIFICATION_TASK_TYPE: ("yolov8", "yolo11", "yolo26"),
+    SEGMENTATION_TASK_TYPE: ("yolov8", "yolo11", "yolo26", "rfdetr"),
+    POSE_TASK_TYPE: ("yolov8", "yolo11", "yolo26"),
+    OBB_TASK_TYPE: ("yolov8", "yolo11", "yolo26"),
+}
 
 
 def get_optional_platform_task_type(request: WorkflowNodeExecutionRequest) -> str | None:
@@ -105,3 +112,9 @@ def resolve_platform_model_type(
     if task_type == DETECTION_TASK_TYPE:
         return default_detection_model_type
     return default_yolo_primary_model_type
+
+
+def get_supported_platform_model_types(task_type: str) -> tuple[str, ...]:
+    """按 task_type 返回当前 workflow service node 允许的 model_type 列表。"""
+
+    return WORKFLOW_SERVICE_MODEL_TYPES_BY_TASK_TYPE.get(task_type, WORKFLOW_SERVICE_MODEL_TYPES)

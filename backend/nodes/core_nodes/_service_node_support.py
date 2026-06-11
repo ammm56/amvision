@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 from dataclasses import asdict, is_dataclass, replace
-from typing import Sequence
+from typing import Any, Sequence
 
 from backend.nodes.core_nodes._logic_node_support import require_value_payload
 from backend.nodes.runtime_support import resolve_image_input
-from backend.service.application.deployments.detection_deployment_service import (
-    DetectionDeploymentInstanceView,
+from backend.service.application.deployments.deployment_instance_service import (
+    DeploymentInstanceView,
 )
 from backend.service.application.errors import InvalidRequestError, ServiceConfigurationError
 from backend.service.application.runtime.deployment_process_supervisor import (
@@ -20,6 +20,13 @@ from backend.service.application.runtime.deployment_process_supervisor import (
 )
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 from backend.service.application.workflows.service_node_runtime import WorkflowServiceNodeRuntimeContext
+from backend.service.domain.models.model_task_types import (
+    CLASSIFICATION_TASK_TYPE,
+    DETECTION_TASK_TYPE,
+    OBB_TASK_TYPE,
+    POSE_TASK_TYPE,
+    SEGMENTATION_TASK_TYPE,
+)
 
 
 def require_workflow_service_node_runtime(
@@ -300,6 +307,64 @@ def require_runtime_mode_parameter(
     return runtime_mode
 
 
+def resolve_service_task_type_parameter(
+    request: WorkflowNodeExecutionRequest,
+    *,
+    default_task_type: str = DETECTION_TASK_TYPE,
+) -> str:
+    """读取并校验 service node 的 task_type 参数。"""
+
+    task_type = get_optional_str_parameter(request, "task_type") or default_task_type
+    normalized_task_type = task_type.strip().lower()
+    supported_task_types = {
+        DETECTION_TASK_TYPE,
+        CLASSIFICATION_TASK_TYPE,
+        SEGMENTATION_TASK_TYPE,
+        POSE_TASK_TYPE,
+        OBB_TASK_TYPE,
+    }
+    if normalized_task_type not in supported_task_types:
+        raise InvalidRequestError(
+            "task_type 不受当前 service node 支持",
+            details={
+                "node_id": request.node_id,
+                "task_type": task_type,
+                "supported": sorted(supported_task_types),
+            },
+        )
+    return normalized_task_type
+
+
+def build_service_node_deployment_service(
+    runtime_context: WorkflowServiceNodeRuntimeContext,
+    *,
+    task_type: str,
+) -> Any:
+    """按 task_type 调用 runtime_context.build_deployment_service。"""
+
+    try:
+        return runtime_context.build_deployment_service(task_type=task_type)
+    except TypeError as exc:
+        if "task_type" not in str(exc):
+            raise
+        return runtime_context.build_deployment_service()
+
+
+def build_service_node_inference_task_service(
+    runtime_context: WorkflowServiceNodeRuntimeContext,
+    *,
+    task_type: str,
+) -> Any:
+    """按 task_type 调用 runtime_context.build_inference_task_service。"""
+
+    try:
+        return runtime_context.build_inference_task_service(task_type=task_type)
+    except TypeError as exc:
+        if "task_type" not in str(exc):
+            raise
+        return runtime_context.build_inference_task_service()
+
+
 def require_running_deployment_process(
     *,
     deployment_process_supervisor: DeploymentProcessSupervisor,
@@ -358,12 +423,19 @@ def run_deployment_process_status_action(
 
     request = overlay_parameters_from_object_input(request)
     runtime_context = require_workflow_service_node_runtime(request)
-    deployment_service = runtime_context.build_deployment_service()
+    task_type = resolve_service_task_type_parameter(request)
+    deployment_service = build_service_node_deployment_service(
+        runtime_context,
+        task_type=task_type,
+    )
     deployment_instance_id = require_str_parameter(request, "deployment_instance_id")
     runtime_mode = require_runtime_mode_parameter(request)
     deployment_view = deployment_service.get_deployment_instance(deployment_instance_id)
     process_config = deployment_service.resolve_process_config(deployment_instance_id)
-    deployment_process_supervisor = runtime_context.require_deployment_process_supervisor(runtime_mode)
+    deployment_process_supervisor = runtime_context.require_deployment_process_supervisor(
+        task_type=task_type,
+        runtime_mode=runtime_mode,
+    )
     if action == "start":
         process_status = deployment_process_supervisor.start_deployment(process_config)
     elif action == "stop":
@@ -393,12 +465,19 @@ def run_deployment_process_health_action(
 
     request = overlay_parameters_from_object_input(request)
     runtime_context = require_workflow_service_node_runtime(request)
-    deployment_service = runtime_context.build_deployment_service()
+    task_type = resolve_service_task_type_parameter(request)
+    deployment_service = build_service_node_deployment_service(
+        runtime_context,
+        task_type=task_type,
+    )
     deployment_instance_id = require_str_parameter(request, "deployment_instance_id")
     runtime_mode = require_runtime_mode_parameter(request)
     deployment_view = deployment_service.get_deployment_instance(deployment_instance_id)
     process_config = deployment_service.resolve_process_config(deployment_instance_id)
-    deployment_process_supervisor = runtime_context.require_deployment_process_supervisor(runtime_mode)
+    deployment_process_supervisor = runtime_context.require_deployment_process_supervisor(
+        task_type=task_type,
+        runtime_mode=runtime_mode,
+    )
     if action == "warmup":
         process_health = deployment_process_supervisor.warmup_deployment(process_config)
     elif action == "reset":
@@ -421,7 +500,7 @@ def run_deployment_process_health_action(
 
 def _build_deployment_process_status_body(
     *,
-    deployment_view: DetectionDeploymentInstanceView,
+    deployment_view: DeploymentInstanceView,
     runtime_mode: str,
     process_status: DeploymentProcessStatus,
 ) -> dict[str, object]:
@@ -445,7 +524,7 @@ def _build_deployment_process_status_body(
 
 def _build_deployment_process_health_body(
     *,
-    deployment_view: DetectionDeploymentInstanceView,
+    deployment_view: DeploymentInstanceView,
     runtime_mode: str,
     process_health: DeploymentProcessHealth,
 ) -> dict[str, object]:

@@ -17,7 +17,7 @@
     },
     {
       "node_id": "start",
-      "node_type_id": "core.service.detection-deployment.start",
+      "node_type_id": "core.service.model-deployment.start",
       "parameters": {
         "runtime_mode": "sync"
       },
@@ -27,7 +27,7 @@
     },
     {
       "node_id": "warmup",
-      "node_type_id": "core.service.detection-deployment.warmup",
+      "node_type_id": "core.service.model-deployment.warmup",
       "parameters": {
         "runtime_mode": "sync"
       },
@@ -50,7 +50,7 @@
     },
     {
       "node_id": "health",
-      "node_type_id": "core.service.detection-deployment.health",
+      "node_type_id": "core.service.model-deployment.health",
       "parameters": {
         "runtime_mode": "sync"
       },
@@ -184,5 +184,6 @@
     "deployment_instance_id_binding": "deployment_request"
   }
 }
+
 
 

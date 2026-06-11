@@ -12,8 +12,11 @@ from backend.nodes.core_nodes import (
     model_training_submit as training_node,
     model_validation_session_create as validation_node,
 )
-from backend.service.application.models.detection_inference_task_service import (
-    DetectionInferenceTaskRequest,
+from backend.service.application.deployments.classification_deployment_service import (
+    ClassificationDeploymentInstanceCreateRequest,
+)
+from backend.service.application.models.segmentation_inference_task_service import (
+    SegmentationInferenceTaskRequest,
 )
 from backend.service.application.models.pose_validation_session_service import (
     PoseValidationSessionCreateRequest,
@@ -32,9 +35,6 @@ from backend.service.application.conversions.yolo_primary_conversion_task_servic
 )
 from backend.service.application.conversions.rfdetr_conversion_task_service import (
     RfdetrConversionTaskRequest,
-)
-from backend.service.application.deployments.detection_deployment_service import (
-    DetectionDeploymentInstanceCreateRequest,
 )
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 from backend.service.application.workflows.service_node_runtime import (
@@ -352,10 +352,10 @@ def test_evaluation_service_node_routes_to_platform_evaluation_service(
     assert captured["request"].top_k == 3
 
 
-def test_deployment_create_node_uses_detection_request(
+def test_deployment_create_node_uses_task_native_request(
     monkeypatch,
 ) -> None:
-    """deployment create 节点应使用 detection 公共创建请求。"""
+    """deployment create 节点应按 task_type 构造正式创建请求。"""
 
     captured: dict[str, object] = {}
 
@@ -368,13 +368,14 @@ def test_deployment_create_node_uses_detection_request(
     monkeypatch.setattr(
         WorkflowServiceNodeRuntimeContext,
         "build_deployment_service",
-        lambda self: _FakeDeploymentService(),
+        lambda self, *, task_type="detection": _FakeDeploymentService(),
     )
 
     request = WorkflowNodeExecutionRequest(
         node_id="deployment-node",
         node_definition=deployment_create_node.CORE_NODE_SPEC.node_definition,
         parameters={
+            "task_type": "classification",
             "project_id": "project-1",
             "model_version_id": "model-version-1",
             "model_type": "yolo11",
@@ -388,14 +389,14 @@ def test_deployment_create_node_uses_detection_request(
     result = deployment_create_node._model_deployment_create_handler(request)
 
     assert result["body"]["deployment_instance_id"] == "deployment-1"
-    assert isinstance(captured["request"], DetectionDeploymentInstanceCreateRequest)
+    assert isinstance(captured["request"], ClassificationDeploymentInstanceCreateRequest)
     assert captured["request"].model_type == "yolo11"
 
 
-def test_inference_submit_node_uses_detection_request(
+def test_inference_submit_node_uses_task_native_request(
     monkeypatch,
 ) -> None:
-    """inference submit 节点应使用 detection 公共推理请求。"""
+    """inference submit 节点应按 task_type 构造正式推理请求。"""
 
     captured: dict[str, object] = {}
 
@@ -433,22 +434,24 @@ def test_inference_submit_node_uses_detection_request(
     monkeypatch.setattr(
         WorkflowServiceNodeRuntimeContext,
         "build_deployment_service",
-        lambda self: _FakeDeploymentService(),
+        lambda self, *, task_type="detection": _FakeDeploymentService(),
     )
     monkeypatch.setattr(
         WorkflowServiceNodeRuntimeContext,
         "build_inference_task_service",
-        lambda self: _FakeInferenceService(),
+        lambda self, *, task_type="detection": _FakeInferenceService(),
     )
 
     request = WorkflowNodeExecutionRequest(
         node_id="inference-node",
         node_definition=inference_node.CORE_NODE_SPEC.node_definition,
         parameters={
+            "task_type": "segmentation",
             "project_id": "project-1",
             "deployment_instance_id": "deployment-1",
             "model_type": "yolo11",
             "input_uri": "inputs/source.jpg",
+            "mask_threshold": 0.45,
         },
         runtime_context=WorkflowServiceNodeRuntimeContext(
             session_factory=object(),
@@ -461,5 +464,6 @@ def test_inference_submit_node_uses_detection_request(
     result = inference_node._model_inference_submit_handler(request)
 
     assert result["body"]["task_id"] == "task-inference-1"
-    assert isinstance(captured["request"], DetectionInferenceTaskRequest)
+    assert isinstance(captured["request"], SegmentationInferenceTaskRequest)
     assert captured["request"].model_type == "yolo11"
+    assert captured["request"].mask_threshold == 0.45

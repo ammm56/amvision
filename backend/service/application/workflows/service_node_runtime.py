@@ -35,10 +35,25 @@ from backend.service.application.deployments import (
     DetectionDeploymentPublishedInferenceGateway,
     PublishedInferenceGateway,
 )
+from backend.service.application.deployments.classification_deployment_service import (
+    SqlAlchemyClassificationDeploymentService,
+)
 from backend.service.application.deployments.detection_deployment_service import (
     SqlAlchemyDetectionDeploymentService,
 )
+from backend.service.application.deployments.obb_deployment_service import (
+    SqlAlchemyObbDeploymentService,
+)
+from backend.service.application.deployments.pose_deployment_service import (
+    SqlAlchemyPoseDeploymentService,
+)
+from backend.service.application.deployments.segmentation_deployment_service import (
+    SqlAlchemySegmentationDeploymentService,
+)
 from backend.service.application.errors import ServiceConfigurationError
+from backend.service.application.models.classification_inference_task_service import (
+    SqlAlchemyClassificationInferenceTaskService,
+)
 from backend.service.application.models.classification_validation_session_service import (
     LocalClassificationValidationSessionService,
 )
@@ -54,14 +69,23 @@ from backend.service.application.models.detection_validation_session_service imp
 from backend.service.application.models.obb_evaluation_task_service import (
     SqlAlchemyObbEvaluationTaskService,
 )
+from backend.service.application.models.obb_inference_task_service import (
+    SqlAlchemyObbInferenceTaskService,
+)
 from backend.service.application.models.obb_validation_session_service import (
     LocalObbValidationSessionService,
 )
 from backend.service.application.models.pose_evaluation_task_service import (
     SqlAlchemyPoseEvaluationTaskService,
 )
+from backend.service.application.models.pose_inference_task_service import (
+    SqlAlchemyPoseInferenceTaskService,
+)
 from backend.service.application.models.pose_validation_session_service import (
     LocalPoseValidationSessionService,
+)
+from backend.service.application.models.segmentation_inference_task_service import (
+    SqlAlchemySegmentationInferenceTaskService,
 )
 from backend.service.application.models.segmentation_validation_session_service import (
     LocalSegmentationValidationSessionService,
@@ -158,6 +182,20 @@ _EVALUATION_SERVICE_BY_TASK_TYPE: dict[str, type] = {
     POSE_TASK_TYPE: SqlAlchemyPoseEvaluationTaskService,
     OBB_TASK_TYPE: SqlAlchemyObbEvaluationTaskService,
 }
+_DEPLOYMENT_SERVICE_BY_TASK_TYPE: dict[str, type] = {
+    DETECTION_TASK_TYPE: SqlAlchemyDetectionDeploymentService,
+    CLASSIFICATION_TASK_TYPE: SqlAlchemyClassificationDeploymentService,
+    SEGMENTATION_TASK_TYPE: SqlAlchemySegmentationDeploymentService,
+    POSE_TASK_TYPE: SqlAlchemyPoseDeploymentService,
+    OBB_TASK_TYPE: SqlAlchemyObbDeploymentService,
+}
+_INFERENCE_TASK_SERVICE_BY_TASK_TYPE: dict[str, type] = {
+    DETECTION_TASK_TYPE: SqlAlchemyDetectionInferenceTaskService,
+    CLASSIFICATION_TASK_TYPE: SqlAlchemyClassificationInferenceTaskService,
+    SEGMENTATION_TASK_TYPE: SqlAlchemySegmentationInferenceTaskService,
+    POSE_TASK_TYPE: SqlAlchemyPoseInferenceTaskService,
+    OBB_TASK_TYPE: SqlAlchemyObbInferenceTaskService,
+}
 
 
 @dataclass(frozen=True)
@@ -168,10 +206,10 @@ class WorkflowServiceNodeRuntimeContext:
     - session_factory：数据库会话工厂。
     - dataset_storage：本地文件存储服务。
     - queue_backend：任务队列后端；提交类 service node 需要。
-    - detection_sync_deployment_process_supervisor：同步 deployment 监督器。
-    - detection_async_deployment_process_supervisor：异步 deployment 监督器。
+    - *_sync_deployment_process_supervisor：按 task_type 划分的同步 deployment 监督器。
+    - *_async_deployment_process_supervisor：按 task_type 划分的异步 deployment 监督器。
     - async_inference_service_id：异步推理 gateway 稳定 service id。
-    - async_inference_gateway_dispatcher_registry：按 deployment 管理 async gateway dispatcher 的 registry。
+    - *_async_inference_gateway_dispatcher_registry：按 task_type 划分的 async gateway dispatcher registry。
     - local_buffer_reader：读取 LocalBufferBroker 引用的 client。
     - published_inference_gateway：调用已发布推理服务的稳定边界。
     """
@@ -181,8 +219,20 @@ class WorkflowServiceNodeRuntimeContext:
     queue_backend: QueueBackend | None = None
     detection_sync_deployment_process_supervisor: DeploymentProcessSupervisor | None = None
     detection_async_deployment_process_supervisor: DeploymentProcessSupervisor | None = None
+    classification_sync_deployment_process_supervisor: DeploymentProcessSupervisor | None = None
+    classification_async_deployment_process_supervisor: DeploymentProcessSupervisor | None = None
+    segmentation_sync_deployment_process_supervisor: DeploymentProcessSupervisor | None = None
+    segmentation_async_deployment_process_supervisor: DeploymentProcessSupervisor | None = None
+    pose_sync_deployment_process_supervisor: DeploymentProcessSupervisor | None = None
+    pose_async_deployment_process_supervisor: DeploymentProcessSupervisor | None = None
+    obb_sync_deployment_process_supervisor: DeploymentProcessSupervisor | None = None
+    obb_async_deployment_process_supervisor: DeploymentProcessSupervisor | None = None
     async_inference_service_id: str | None = None
     async_inference_gateway_dispatcher_registry: DetectionAsyncInferenceGatewayDispatcherRegistry | None = None
+    classification_async_inference_gateway_dispatcher_registry: Any | None = None
+    segmentation_async_inference_gateway_dispatcher_registry: Any | None = None
+    pose_async_inference_gateway_dispatcher_registry: Any | None = None
+    obb_async_inference_gateway_dispatcher_registry: Any | None = None
     local_buffer_reader: LocalBufferReader | None = None
     published_inference_gateway: PublishedInferenceGateway | None = None
 
@@ -386,10 +436,17 @@ class WorkflowServiceNodeRuntimeContext:
             packaged_at=datetime.fromtimestamp(stat.st_mtime, timezone.utc).isoformat(),
         )
 
-    def build_deployment_service(self) -> SqlAlchemyDetectionDeploymentService:
-        """构造 DeploymentInstance service。"""
+    def build_deployment_service(self, *, task_type: str = DETECTION_TASK_TYPE) -> Any:
+        """按 task_type 构造 DeploymentInstance service。"""
 
-        return SqlAlchemyDetectionDeploymentService(
+        normalized_task_type = self._normalize_task_type(task_type)
+        service_cls = _DEPLOYMENT_SERVICE_BY_TASK_TYPE.get(normalized_task_type)
+        if service_cls is None:
+            raise ServiceConfigurationError(
+                "当前 workflow 运行时不支持指定 deployment 任务分类",
+                details={"task_type": normalized_task_type},
+            )
+        return service_cls(
             session_factory=self.session_factory,
             dataset_storage=self.dataset_storage,
         )
@@ -400,19 +457,39 @@ class WorkflowServiceNodeRuntimeContext:
         if self.published_inference_gateway is not None:
             return self.published_inference_gateway
         return DetectionDeploymentPublishedInferenceGateway(
-            deployment_service=self.build_deployment_service(),
-            deployment_process_supervisor=self.require_sync_deployment_process_supervisor(),
+            deployment_service=self.build_deployment_service(task_type=DETECTION_TASK_TYPE),
+            deployment_process_supervisor=self.require_sync_deployment_process_supervisor(
+                task_type=DETECTION_TASK_TYPE
+            ),
         )
 
-    def build_inference_task_service(self) -> SqlAlchemyDetectionInferenceTaskService:
-        """构造正式推理任务 service。"""
+    def build_inference_task_service(self, *, task_type: str = DETECTION_TASK_TYPE) -> Any:
+        """按 task_type 构造正式推理任务 service。"""
 
-        return SqlAlchemyDetectionInferenceTaskService(
-            session_factory=self.session_factory,
-            dataset_storage=self.dataset_storage,
-            queue_backend=self.require_queue_backend(),
-            deployment_process_supervisor=self.require_async_deployment_process_supervisor(),
-            async_inference_gateway_dispatcher_registry=self.async_inference_gateway_dispatcher_registry,
+        normalized_task_type = self._normalize_task_type(task_type)
+        service_cls = _INFERENCE_TASK_SERVICE_BY_TASK_TYPE.get(normalized_task_type)
+        if service_cls is None:
+            raise ServiceConfigurationError(
+                "当前 workflow 运行时不支持指定推理任务分类",
+                details={"task_type": normalized_task_type},
+            )
+        service_kwargs: dict[str, object] = {
+            "session_factory": self.session_factory,
+            "dataset_storage": self.dataset_storage,
+            "queue_backend": self.require_queue_backend(),
+            "deployment_process_supervisor": self.require_async_deployment_process_supervisor(
+                task_type=normalized_task_type
+            ),
+        }
+        async_gateway_dispatcher_registry = self._resolve_async_inference_gateway_dispatcher_registry(
+            task_type=normalized_task_type
+        )
+        if async_gateway_dispatcher_registry is not None:
+            service_kwargs["async_inference_gateway_dispatcher_registry"] = (
+                async_gateway_dispatcher_registry
+            )
+        return service_cls(
+            **service_kwargs
         )
 
     def require_queue_backend(self) -> QueueBackend:
@@ -422,31 +499,66 @@ class WorkflowServiceNodeRuntimeContext:
             raise ServiceConfigurationError("当前 workflow 运行时缺少 QueueBackend 上下文")
         return self.queue_backend
 
-    def require_sync_deployment_process_supervisor(self) -> DeploymentProcessSupervisor:
-        """返回同步推理节点必需的 deployment supervisor。"""
+    def require_sync_deployment_process_supervisor(
+        self,
+        *,
+        task_type: str = DETECTION_TASK_TYPE,
+    ) -> DeploymentProcessSupervisor:
+        """返回指定 task_type 的同步 deployment supervisor。"""
 
-        if self.detection_sync_deployment_process_supervisor is None:
-            raise ServiceConfigurationError("当前 workflow 运行时缺少同步 deployment supervisor")
-        return self.detection_sync_deployment_process_supervisor
+        supervisor = self._resolve_deployment_process_supervisor(
+            task_type=task_type,
+            runtime_mode="sync",
+        )
+        if supervisor is None:
+            raise ServiceConfigurationError(
+                "当前 workflow 运行时缺少同步 deployment supervisor",
+                details={"task_type": self._normalize_task_type(task_type)},
+            )
+        return supervisor
 
-    def require_async_deployment_process_supervisor(self) -> DeploymentProcessSupervisor:
-        """返回异步推理任务节点必需的 deployment supervisor。"""
+    def require_async_deployment_process_supervisor(
+        self,
+        *,
+        task_type: str = DETECTION_TASK_TYPE,
+    ) -> DeploymentProcessSupervisor:
+        """返回指定 task_type 的异步 deployment supervisor。"""
 
-        if self.detection_async_deployment_process_supervisor is None:
-            raise ServiceConfigurationError("当前 workflow 运行时缺少异步 deployment supervisor")
-        return self.detection_async_deployment_process_supervisor
+        supervisor = self._resolve_deployment_process_supervisor(
+            task_type=task_type,
+            runtime_mode="async",
+        )
+        if supervisor is None:
+            raise ServiceConfigurationError(
+                "当前 workflow 运行时缺少异步 deployment supervisor",
+                details={"task_type": self._normalize_task_type(task_type)},
+            )
+        return supervisor
 
-    def require_deployment_process_supervisor(self, runtime_mode: str) -> DeploymentProcessSupervisor:
-        """按 runtime_mode 返回对应的 deployment supervisor。"""
+    def require_deployment_process_supervisor(
+        self,
+        *,
+        task_type: str = DETECTION_TASK_TYPE,
+        runtime_mode: str,
+    ) -> DeploymentProcessSupervisor:
+        """按 task_type 与 runtime_mode 返回对应的 deployment supervisor。"""
 
         normalized_runtime_mode = runtime_mode.strip().lower()
+        normalized_task_type = self._normalize_task_type(task_type)
         if normalized_runtime_mode == "sync":
-            return self.require_sync_deployment_process_supervisor()
+            return self.require_sync_deployment_process_supervisor(
+                task_type=normalized_task_type
+            )
         if normalized_runtime_mode == "async":
-            return self.require_async_deployment_process_supervisor()
+            return self.require_async_deployment_process_supervisor(
+                task_type=normalized_task_type
+            )
         raise ServiceConfigurationError(
             "当前 workflow 运行时不支持指定的 deployment runtime_mode",
-            details={"runtime_mode": runtime_mode},
+            details={
+                "task_type": normalized_task_type,
+                "runtime_mode": runtime_mode,
+            },
         )
 
     def require_local_buffer_reader(self) -> LocalBufferReader:
@@ -507,6 +619,49 @@ class WorkflowServiceNodeRuntimeContext:
         raise ServiceConfigurationError(
             "当前 workflow 运行时不支持指定模型分类",
             details={"model_type": model_type},
+        )
+
+    def _resolve_deployment_process_supervisor(
+        self,
+        *,
+        task_type: str,
+        runtime_mode: str,
+    ) -> DeploymentProcessSupervisor | None:
+        """按 task_type 与 runtime_mode 读取当前运行时持有的 deployment supervisor。"""
+
+        normalized_task_type = self._normalize_task_type(task_type)
+        normalized_runtime_mode = runtime_mode.strip().lower()
+        if normalized_runtime_mode not in {"sync", "async"}:
+            return None
+        supervisor = getattr(
+            self,
+            f"{normalized_task_type}_{normalized_runtime_mode}_deployment_process_supervisor",
+            None,
+        )
+        if supervisor is not None:
+            return supervisor
+        if normalized_task_type != DETECTION_TASK_TYPE:
+            return getattr(
+                self,
+                f"{DETECTION_TASK_TYPE}_{normalized_runtime_mode}_deployment_process_supervisor",
+                None,
+            )
+        return None
+
+    def _resolve_async_inference_gateway_dispatcher_registry(
+        self,
+        *,
+        task_type: str,
+    ) -> Any | None:
+        """按 task_type 读取 async inference gateway dispatcher registry。"""
+
+        normalized_task_type = self._normalize_task_type(task_type)
+        if normalized_task_type == DETECTION_TASK_TYPE:
+            return self.async_inference_gateway_dispatcher_registry
+        return getattr(
+            self,
+            f"{normalized_task_type}_async_inference_gateway_dispatcher_registry",
+            None,
         )
 
     def _require_result_object_key(
