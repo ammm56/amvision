@@ -240,7 +240,7 @@ type SelectValue = string | number | boolean | null
 
 const taskTypeOptions = [
   { label: 'detection', value: 'detection' },
-  { label: 'instance-segmentation', value: 'instance-segmentation' },
+  { label: 'segmentation', value: 'segmentation' },
   { label: 'semantic-segmentation', value: 'semantic-segmentation' },
   { label: 'pose', value: 'pose' },
 ]

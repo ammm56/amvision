@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-import backend.service.application.models.detection_inference_task_service as detection_inference_task_service_module
-
 from fastapi import FastAPI
 
 from backend.bootstrap.core import BootstrapStep, RuntimeBootstrap
@@ -27,10 +25,12 @@ from backend.service.application.local_buffers import LocalBufferBrokerProcessSu
 from backend.service.application.models.detection_async_inference_gateway import (
     DetectionAsyncInferenceGatewayDispatcherRegistry,
     normalize_detection_async_inference_owner_id,
-    serialize_detection_async_inference_execution_result,
 )
 from backend.service.application.models.classification_async_inference_gateway import (
     ClassificationAsyncInferenceGatewayDispatcherRegistry,
+)
+from backend.service.application.models.inference_gateway import (
+    serialize_async_inference_execution_result,
 )
 from backend.service.application.models.segmentation_async_inference_gateway import (
     SegmentationAsyncInferenceGatewayDispatcherRegistry,
@@ -75,9 +75,6 @@ from backend.service.application.workflows.runtime_registry_loader import (
 from backend.service.application.runtime.deployment_process_supervisor import (
     DeploymentProcessConfig,
     DeploymentProcessSupervisor,
-)
-from backend.service.application.runtime.detection_runtime_contracts import (
-    DetectionPredictionRequest,
 )
 from backend.service.infrastructure.db.schema import initialize_database_schema
 from backend.service.infrastructure.db.session import SessionFactory
@@ -152,7 +149,7 @@ def _build_inference_gateway_registry(
     registry_cls = _GATEWAY_REGISTRY_CLASSES[task_type]
     return registry_cls(
         queue_backend=queue_backend,
-        execution_handler=_build_detection_async_inference_gateway_execution_handler(
+        execution_handler=_build_async_inference_gateway_execution_handler(
             deployment_process_supervisor=async_deployment_supervisor,
         ),
         service_id=async_inference_service_id,
@@ -763,7 +760,7 @@ class BackendServiceBootstrap(
         return None
 
 
-def _build_detection_async_inference_gateway_execution_handler(
+def _build_async_inference_gateway_execution_handler(
     *,
     deployment_process_supervisor: DeploymentProcessSupervisor,
 ):
@@ -772,22 +769,18 @@ def _build_detection_async_inference_gateway_execution_handler(
     def _execute(
         *,
         process_config: DeploymentProcessConfig,
-        request: DetectionPredictionRequest,
+        request: object,
     ) -> dict[str, object]:
         """通过 backend-service 持有的 async deployment supervisor 执行一次推理。"""
 
-        execution_result = detection_inference_task_service_module.run_detection_inference_task(
-            deployment_process_supervisor=deployment_process_supervisor,
+        execution_result = deployment_process_supervisor.run_inference(
             process_config=process_config,
-            input_uri=request.input_uri,
-            input_image_bytes=request.input_image_bytes,
-            input_image_payload=request.input_image_payload,
-            score_threshold=request.score_threshold,
-            save_result_image=request.save_result_image,
-            return_preview_image_base64=False,
-            extra_options=dict(request.extra_options),
+            request=request,
         )
-        return serialize_detection_async_inference_execution_result(execution_result)
+        return serialize_async_inference_execution_result(
+            task_type=process_config.runtime_target.task_type,
+            result=execution_result,
+        )
 
     return _execute
 

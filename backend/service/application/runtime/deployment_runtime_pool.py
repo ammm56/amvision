@@ -6,16 +6,12 @@ from dataclasses import dataclass, field
 from threading import Lock
 
 from backend.service.application.errors import InvalidRequestError, ServiceConfigurationError
-from backend.service.application.runtime.detection_model_runtime import (
-    DefaultDetectionModelRuntime,
-    DetectionModelRuntime,
-    DetectionModelRuntimeSession,
-)
-from backend.service.application.runtime.detection_runtime_contracts import (
-    DetectionPredictionExecutionResult,
-    DetectionPredictionRequest,
-)
 from backend.service.application.runtime.runtime_target import RuntimeTargetSnapshot
+from backend.service.application.runtime.task_prediction_runtime import (
+    PredictionExecutionResult,
+    PredictionRequest,
+    load_runtime_session,
+)
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 
 
@@ -107,7 +103,7 @@ class DeploymentRuntimeExecution:
 
     deployment_instance_id: str
     instance_id: str
-    execution_result: DetectionPredictionExecutionResult
+    execution_result: PredictionExecutionResult
 
 
 @dataclass
@@ -115,7 +111,7 @@ class _InferenceInstanceState:
     """描述单个推理实例的内部运行时状态。"""
 
     instance_index: int
-    session: DetectionModelRuntimeSession | None = None
+    session: object | None = None
     healthy: bool = True
     busy: bool = False
     last_error: str | None = None
@@ -139,17 +135,17 @@ class DeploymentRuntimePool:
         self,
         *,
         dataset_storage: LocalDatasetStorage,
-        model_runtime: DetectionModelRuntime | None = None,
+        model_runtime: object | None = None,
     ) -> None:
         """初始化 runtime pool。
 
         参数：
         - dataset_storage：本地文件存储服务。
-        - model_runtime：可选模型运行时加载器；未提供时使用当前 detection 默认实现。
+        - model_runtime：可选模型运行时加载器；未提供时按 task_type 自动分发。
         """
 
         self.dataset_storage = dataset_storage
-        self.model_runtime = model_runtime or DefaultDetectionModelRuntime()
+        self.model_runtime = model_runtime
         self._deployments: dict[str, _DeploymentRuntimeState] = {}
         self._lock = Lock()
 
@@ -209,7 +205,7 @@ class DeploymentRuntimePool:
         self,
         *,
         config: DeploymentRuntimePoolConfig,
-        request: DetectionPredictionRequest,
+        request: PredictionRequest,
     ) -> DeploymentRuntimeExecution:
         """通过 runtime pool 执行一次推理请求。"""
 
@@ -339,22 +335,30 @@ class DeploymentRuntimePool:
         *,
         config: DeploymentRuntimePoolConfig,
         instance: _InferenceInstanceState,
-    ) -> DetectionModelRuntimeSession:
+    ) -> object:
         """确保指定实例已经完成模型会话加载。"""
 
         with instance.lock:
             if instance.session is not None:
                 return instance.session
             try:
-                instance.session = self.model_runtime.load_session(
-                    dataset_storage=self.dataset_storage,
-                    runtime_target=config.runtime_target,
-                    pinned_output_buffer_enabled=config.tensorrt_pinned_output_buffer_enabled,
-                    pinned_output_buffer_max_bytes=config.tensorrt_pinned_output_buffer_max_bytes,
-                )
+                if self.model_runtime is not None:
+                    instance.session = self.model_runtime.load_session(
+                        dataset_storage=self.dataset_storage,
+                        runtime_target=config.runtime_target,
+                        pinned_output_buffer_enabled=config.tensorrt_pinned_output_buffer_enabled,
+                        pinned_output_buffer_max_bytes=config.tensorrt_pinned_output_buffer_max_bytes,
+                    )
+                else:
+                    instance.session = load_runtime_session(
+                        dataset_storage=self.dataset_storage,
+                        runtime_target=config.runtime_target,
+                        pinned_output_buffer_enabled=config.tensorrt_pinned_output_buffer_enabled,
+                        pinned_output_buffer_max_bytes=config.tensorrt_pinned_output_buffer_max_bytes,
+                    )
             except ValueError as error:
                 raise InvalidRequestError(
-                    "当前 deployment runtime pool 仅支持 pytorch、onnxruntime、openvino 或 tensorrt backend",
+                    "当前 deployment runtime pool 收到了不支持的 runtime backend",
                     details={
                         "runtime_backend": config.runtime_target.runtime_backend,
                         "deployment_instance_id": config.deployment_instance_id,

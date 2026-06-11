@@ -234,12 +234,12 @@ export interface YoloXConversionTaskCreateInput {
 }
 
 const conversionTargetPath: Record<ConversionTargetKey, string> = {
-  onnx: '/models/yolox/conversion-tasks/onnx',
-  'onnx-optimized': '/models/yolox/conversion-tasks/onnx-optimized',
-  'openvino-ir-fp32': '/models/yolox/conversion-tasks/openvino-ir-fp32',
-  'openvino-ir-fp16': '/models/yolox/conversion-tasks/openvino-ir-fp16',
-  'tensorrt-engine-fp32': '/models/yolox/conversion-tasks/tensorrt-engine-fp32',
-  'tensorrt-engine-fp16': '/models/yolox/conversion-tasks/tensorrt-engine-fp16',
+  onnx: '/models/detection/conversion-tasks/onnx',
+  'onnx-optimized': '/models/detection/conversion-tasks/onnx-optimized',
+  'openvino-ir-fp32': '/models/detection/conversion-tasks/openvino-ir-fp32',
+  'openvino-ir-fp16': '/models/detection/conversion-tasks/openvino-ir-fp16',
+  'tensorrt-engine-fp32': '/models/detection/conversion-tasks/tensorrt-engine-fp32',
+  'tensorrt-engine-fp16': '/models/detection/conversion-tasks/tensorrt-engine-fp16',
 }
 
 export async function listPlatformBaseModels(): Promise<PlatformBaseModelSummary[]> {
@@ -251,7 +251,7 @@ export async function getPlatformBaseModelDetail(modelId: string): Promise<Platf
 }
 
 export async function createYoloXTrainingTask(input: YoloXTrainingTaskCreateInput): Promise<YoloXTrainingTaskSubmissionResponse> {
-  return apiRequest<YoloXTrainingTaskSubmissionResponse>('/models/yolox/training-tasks', {
+  return apiRequest<YoloXTrainingTaskSubmissionResponse>('/models/detection/training-tasks', {
     method: 'POST',
     body: {
       project_id: input.projectId,
@@ -274,13 +274,13 @@ export async function createYoloXTrainingTask(input: YoloXTrainingTaskCreateInpu
 }
 
 export async function listYoloXTrainingTasks(projectId: string): Promise<YoloXTrainingTaskSummary[]> {
-  return apiRequest<YoloXTrainingTaskSummary[]>('/models/yolox/training-tasks', {
+  return apiRequest<YoloXTrainingTaskSummary[]>('/models/detection/training-tasks', {
     query: { project_id: projectId, limit: 100 },
   })
 }
 
 export async function getYoloXTrainingTaskDetail(taskId: string): Promise<YoloXTrainingTaskDetail> {
-  return apiRequest<YoloXTrainingTaskDetail>(`/models/yolox/training-tasks/${encodeURIComponent(taskId)}`, {
+  return apiRequest<YoloXTrainingTaskDetail>(`/models/detection/training-tasks/${encodeURIComponent(taskId)}`, {
     query: { include_events: true },
   })
 }
@@ -290,13 +290,13 @@ export async function requestYoloXTrainingTaskAction(
   action: Exclude<YoloXTrainingTaskActionName, 'delete'>,
 ): Promise<YoloXTrainingTaskDetail | YoloXTrainingTaskSubmissionResponse> {
   return apiRequest<YoloXTrainingTaskDetail | YoloXTrainingTaskSubmissionResponse>(
-    `/models/yolox/training-tasks/${encodeURIComponent(taskId)}/${action}`,
+    `/models/detection/training-tasks/${encodeURIComponent(taskId)}/${action}`,
     { method: 'POST' },
   )
 }
 
 export async function deleteYoloXTrainingTask(taskId: string): Promise<void> {
-  return apiRequest<void>(`/models/yolox/training-tasks/${encodeURIComponent(taskId)}`, {
+  return apiRequest<void>(`/models/detection/training-tasks/${encodeURIComponent(taskId)}`, {
     method: 'DELETE',
     responseType: 'void',
   })
@@ -304,14 +304,14 @@ export async function deleteYoloXTrainingTask(taskId: string): Promise<void> {
 
 export async function registerYoloXTrainingLatestCheckpoint(taskId: string): Promise<YoloXTrainingTaskDetail> {
   return apiRequest<YoloXTrainingTaskDetail>(
-    `/models/yolox/training-tasks/${encodeURIComponent(taskId)}/register-model-version`,
+    `/models/detection/training-tasks/${encodeURIComponent(taskId)}/register-model-version`,
     { method: 'POST' },
   )
 }
 
 export async function listYoloXTrainingOutputFiles(taskId: string): Promise<YoloXTrainingOutputFileSummary[]> {
   return apiRequest<YoloXTrainingOutputFileSummary[]>(
-    `/models/yolox/training-tasks/${encodeURIComponent(taskId)}/output-files`,
+    `/models/detection/training-tasks/${encodeURIComponent(taskId)}/output-files`,
   )
 }
 
@@ -320,7 +320,7 @@ export async function getYoloXTrainingOutputFileDetail(
   fileName: string,
 ): Promise<YoloXTrainingOutputFileDetail> {
   return apiRequest<YoloXTrainingOutputFileDetail>(
-    `/models/yolox/training-tasks/${encodeURIComponent(taskId)}/output-files/${encodeURIComponent(fileName)}`,
+    `/models/detection/training-tasks/${encodeURIComponent(taskId)}/output-files/${encodeURIComponent(fileName)}`,
   )
 }
 
@@ -338,7 +338,7 @@ export async function createYoloXConversionTask(input: YoloXConversionTaskCreate
 }
 
 export async function listYoloXConversionTasks(projectId: string): Promise<YoloXConversionTaskSummary[]> {
-  return apiRequest<YoloXConversionTaskSummary[]>('/models/yolox/conversion-tasks', {
+  return apiRequest<YoloXConversionTaskSummary[]>('/models/detection/conversion-tasks', {
     query: { project_id: projectId, limit: 100 },
   })
 }

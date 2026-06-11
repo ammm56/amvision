@@ -793,18 +793,24 @@ class SqlAlchemyDetectionInferenceTaskService:
                 owner_id=async_inference_owner_id,
             )
             parsed_payload = deserialize_detection_async_inference_execution_result_payload(payload)
+            execution_result = parsed_payload["execution_result"]
             return DetectionInferenceExecutionResult(
                 instance_id=self._read_optional_str(parsed_payload, "instance_id"),
-                detections=self._read_detection_items(parsed_payload),
-                latency_ms=self._read_optional_float(parsed_payload, "latency_ms"),
-                image_width=self._read_optional_int(parsed_payload, "image_width") or 0,
-                image_height=self._read_optional_int(parsed_payload, "image_height") or 0,
+                detections=tuple(
+                    serialize_detection(item)
+                    for item in getattr(execution_result, "detections", ())
+                ),
+                latency_ms=getattr(execution_result, "latency_ms", None),
+                image_width=int(getattr(execution_result, "image_width", 0) or 0),
+                image_height=int(getattr(execution_result, "image_height", 0) or 0),
                 preview_image_bytes=(
-                    parsed_payload.get("preview_image_bytes")
-                    if isinstance(parsed_payload.get("preview_image_bytes"), bytes)
+                    getattr(execution_result, "preview_image_bytes", None)
+                    if isinstance(getattr(execution_result, "preview_image_bytes", None), bytes)
                     else None
                 ),
-                runtime_session_info=self._read_dict(parsed_payload, "runtime_session_info"),
+                runtime_session_info=serialize_runtime_session_info(
+                    getattr(execution_result, "runtime_session_info")
+                ),
             )
         return run_detection_inference_task(
             deployment_process_supervisor=self._require_deployment_process_supervisor(),

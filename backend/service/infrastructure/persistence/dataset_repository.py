@@ -155,7 +155,11 @@ class SqlAlchemyDatasetVersionRepository:
             dataset_version_id=record.dataset_version_id,
             dataset_id=record.dataset_id,
             project_id=record.project_id,
-            task_type=record.task_type,
+            task_type=(
+                "segmentation"
+                if record.task_type == "instance-segmentation"
+                else record.task_type
+            ),
             metadata=dict(record.metadata_json or {}),
             categories=tuple(
                 DatasetCategory(category_id=category.category_id, name=category.name)
@@ -214,7 +218,7 @@ class SqlAlchemyDatasetVersionRepository:
             )
         if isinstance(annotation, InstanceSegmentationAnnotation):
             return DatasetAnnotationRecord(
-                annotation_type="instance-segmentation",
+                annotation_type="segmentation",
                 bbox_x=annotation.bbox_xywh[0],
                 bbox_y=annotation.bbox_xywh[1],
                 bbox_w=annotation.bbox_xywh[2],
@@ -292,7 +296,7 @@ class SqlAlchemyDatasetVersionRepository:
             )
 
         bbox = self._require_bbox(annotation)
-        if annotation_type == "instance-segmentation":
+        if annotation_type in {"segmentation", "instance-segmentation"}:
             segmentation = (
                 annotation.segmentation_json
                 if isinstance(annotation.segmentation_json, list)

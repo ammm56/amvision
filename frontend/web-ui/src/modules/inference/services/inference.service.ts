@@ -127,20 +127,20 @@ function buildInferenceFormData(input: YoloXInferenceDebugInput, includeTaskFiel
 
 export async function inferYoloXDeployment(input: YoloXInferenceDebugInput): Promise<YoloXInferencePayload> {
   return apiRequest<YoloXInferencePayload>(
-    `/models/yolox/deployment-instances/${encodeURIComponent(input.deploymentInstanceId)}/infer`,
+    `/models/detection/deployment-instances/${encodeURIComponent(input.deploymentInstanceId)}/infer`,
     { method: 'POST', body: buildInferenceFormData(input, false) },
   )
 }
 
 export async function createYoloXInferenceTask(input: YoloXInferenceDebugInput): Promise<YoloXInferenceTaskSubmission> {
-  return apiRequest<YoloXInferenceTaskSubmission>('/models/yolox/inference-tasks', {
+  return apiRequest<YoloXInferenceTaskSubmission>('/models/detection/inference-tasks', {
     method: 'POST',
     body: buildInferenceFormData(input, true),
   })
 }
 
 export async function listYoloXInferenceTasks(input: YoloXInferenceTaskListInput): Promise<YoloXInferenceTaskSummary[]> {
-  return apiRequest<YoloXInferenceTaskSummary[]>('/models/yolox/inference-tasks', {
+  return apiRequest<YoloXInferenceTaskSummary[]>('/models/detection/inference-tasks', {
     query: {
       project_id: input.projectId,
       deployment_instance_id: input.deploymentInstanceId,
@@ -150,5 +150,5 @@ export async function listYoloXInferenceTasks(input: YoloXInferenceTaskListInput
 }
 
 export async function getYoloXInferenceTaskResult(taskId: string): Promise<YoloXInferenceTaskResult> {
-  return apiRequest<YoloXInferenceTaskResult>(`/models/yolox/inference-tasks/${encodeURIComponent(taskId)}/result`)
+  return apiRequest<YoloXInferenceTaskResult>(`/models/detection/inference-tasks/${encodeURIComponent(taskId)}/result`)
 }

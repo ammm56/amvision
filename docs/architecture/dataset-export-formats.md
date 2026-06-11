@@ -30,7 +30,7 @@
 
 ### yolo-instance-seg-v1
 
-- task type：instance-segmentation
+- task type：segmentation
 - 目录布局：images/{split}/、labels/{split}/、data.yaml
 - 主要内容：YOLO segmentation 标签文件
 - 适用模型：YOLOv8/11 segmentation
@@ -51,7 +51,7 @@
 
 ### coco-instance-seg-v1
 
-- task type：instance-segmentation
+- task type：segmentation
 - 目录布局：images/{split}/、annotations/instances_{split}.json
 - 主要内容：COCO instance segmentation json
 - 适用模型：实例分割训练后端
@@ -86,7 +86,7 @@
 
 ### sam-promptable-seg-v1
 
-- task type：instance-segmentation 或 prompt-driven segmentation
+- task type：segmentation 或 prompt-driven segmentation
 - 目录布局：images/{split}/、masks/{split}/、prompts/{split}.jsonl、classes.json
 - 主要内容：mask 加 prompt sidecar
 - 适用模型：SAM 相关微调和提示驱动分割流程
@@ -97,12 +97,12 @@
 | --- | --- | --- | --- | --- |
 | YOLOX | detection | coco-detection-v1 | yolo-detection-v1 | 默认优先 COCO detection，因为 YOLOX 训练接口更接近 COCO |
 | YOLOv8/11 | detection | yolo-detection-v1 | coco-detection-v1 | 默认优先原生 YOLO 目录格式 |
-| YOLOv8/11 | instance-segmentation | yolo-instance-seg-v1 | coco-instance-seg-v1 | 默认优先原生 YOLO segmentation 格式 |
+| YOLOv8/11 | segmentation | yolo-instance-seg-v1 | coco-instance-seg-v1 | 默认优先原生 YOLO segmentation 格式 |
 | YOLOv8/11 | pose | yolo-pose-v1 | coco-keypoints-v1 | 默认优先原生 YOLO pose 格式 |
 | YOLOv8/11/26 | classification | imagenet-classification-v1 | backend-specific classification manifest | 当前导出为 ImageNet 风格目录，同时保留 split annotation json |
 | YOLOv8/11/26 | obb | dota-obb-v1 | coco + angle / polygon manifest | 当前导出为 DOTA 四角点 polygon 风格 annotation json |
 | RT-DETR | detection | coco-detection-v1 | backend-specific detection manifest | 默认优先 COCO detection |
-| SAM | instance-segmentation | sam-promptable-seg-v1 | coco-instance-seg-v1 | 需要保留 prompt 信息时优先 sam-promptable-seg-v1 |
+| SAM | segmentation | sam-promptable-seg-v1 | coco-instance-seg-v1 | 需要保留 prompt 信息时优先 sam-promptable-seg-v1 |
 | SAM | semantic-segmentation | semantic-mask-dir-v1 | sam-promptable-seg-v1 | 语义分割链路优先 image+mask 目录格式 |
 
 ## 选择规则

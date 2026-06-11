@@ -28,9 +28,7 @@ from backend.workers.evaluation.yolo_primary_evaluation_queue_worker import (
     PoseEvaluationQueueWorker,
     ObbEvaluationQueueWorker,
 )
-from backend.workers.inference.detection_inference_queue_worker import (
-    DetectionInferenceQueueWorker,
-)
+from backend.workers.inference.inference_queue_worker import InferenceQueueWorker
 from backend.workers.settings import (
     BACKEND_WORKER_CONSUMER_CLASSIFICATION_EVALUATION,
     BACKEND_WORKER_CONSUMER_CLASSIFICATION_INFERENCE,
@@ -116,7 +114,8 @@ def _inference_factory(suffix: str) -> _ConsumerFactory:
     """构建推理 worker 工厂：额外传递 async_inference_request_timeout_seconds。"""
 
     def _factory(resources: BackgroundTaskConsumerResources) -> BackgroundTaskConsumer:
-        return DetectionInferenceQueueWorker(
+        return InferenceQueueWorker(
+            consumer_kind=BACKEND_WORKER_CONSUMER_DETECTION_INFERENCE,
             session_factory=resources.session_factory,
             dataset_storage=resources.dataset_storage,
             queue_backend=resources.queue_backend,
@@ -129,10 +128,12 @@ def _inference_factory(suffix: str) -> _ConsumerFactory:
 
 def _dynamic_inference_factory(resources: BackgroundTaskConsumerResources, consumer_kind: str) -> BackgroundTaskConsumer:
     """构建动态推理 worker 工厂：worker_id 使用 consumer_kind。"""
-    return DetectionInferenceQueueWorker(
+    return InferenceQueueWorker(
+        consumer_kind=consumer_kind,
         session_factory=resources.session_factory,
         dataset_storage=resources.dataset_storage,
         queue_backend=resources.queue_backend,
+        async_inference_request_timeout_seconds=resources.async_inference_request_timeout_seconds,
         worker_id=f"{resources.worker_id_prefix}-{consumer_kind}",
     )
 

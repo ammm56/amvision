@@ -29,12 +29,12 @@ from backend.service.application.runtime.safe_counter import (
     increment_safe_counter,
     snapshot_safe_counter,
 )
-from backend.service.application.runtime.detection_runtime_contracts import (
-    DetectionPredictionRequest,
-)
-from backend.service.application.runtime.detection_runtime_serialization import (
-    serialize_detection,
-    serialize_runtime_session_info,
+from backend.service.application.runtime.task_prediction_runtime import (
+    PredictionRequest,
+    build_dummy_prediction_request,
+    build_prediction_request_from_payload,
+    replace_prediction_request_inputs,
+    serialize_prediction_execution_result,
 )
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     DatasetStorageSettings,
@@ -80,7 +80,7 @@ class _KeepWarmState:
     - lock：并发更新内部计数的互斥锁。
     """
 
-    dummy_request: DetectionPredictionRequest
+    dummy_request: PredictionRequest
     stop_event: Event = field(default_factory=Event)
     pause_event: Event = field(default_factory=Event)
     idle_event: Event = field(default_factory=Event)
@@ -169,9 +169,13 @@ def run_deployment_process_worker(
     runtime_pool.ensure_deployment(runtime_pool_config)
     infer_slots = BoundedSemaphore(max(1, config.instance_count))
     behavior = _resolve_warmup_behavior(config=config, supervisor_settings=supervisor_settings)
-    dummy_request: DetectionPredictionRequest | None = None
+    task_type = getattr(config.runtime_target, "task_type", "detection")
+    dummy_request: PredictionRequest | None = None
     if behavior.warmup_dummy_inference_count > 0 or behavior.keep_warm_enabled:
-        dummy_request = _build_dummy_inference_request(behavior.warmup_dummy_image_size)
+        dummy_request = _build_dummy_inference_request(
+            task_type,
+            behavior.warmup_dummy_image_size,
+        )
     keep_warm_state: _KeepWarmState | None = None
     if behavior.keep_warm_enabled and dummy_request is not None:
         keep_warm_state = _start_keep_warm_thread(
@@ -383,21 +387,15 @@ def _run_inference_request(
             request=prediction_request,
         )
         inference_succeeded = True
+        task_type = getattr(runtime_pool_config.runtime_target, "task_type", "detection")
         _put_ok_response(
             response_queue=response_queue,
             request_id=request_id,
             payload={
                 "instance_id": execution.instance_id,
-                "detections": [
-                    serialize_detection(item)
-                    for item in execution.execution_result.detections
-                ],
-                "latency_ms": execution.execution_result.latency_ms,
-                "image_width": execution.execution_result.image_width,
-                "image_height": execution.execution_result.image_height,
-                "preview_image_bytes": execution.execution_result.preview_image_bytes,
-                "runtime_session_info": serialize_runtime_session_info(
-                    execution.execution_result.runtime_session_info
+                "execution_result": serialize_prediction_execution_result(
+                    task_type=task_type,
+                    execution_result=execution.execution_result,
                 ),
             },
         )
@@ -413,26 +411,27 @@ def _build_prediction_request(
     payload: dict[str, object],
     local_buffer_reader: LocalBufferBrokerClient | None,
     local_buffer_health: _LocalBufferBrokerRuntimeHealth,
-) -> DetectionPredictionRequest:
+) -> PredictionRequest:
     """把 deployment worker 控制 payload 转换为预测请求。"""
 
-    image_payload = _read_payload_dict(payload, "input_image_payload")
-    input_uri = _read_payload_optional_str(payload, "input_uri")
-    input_image_bytes = _read_payload_optional_bytes(payload, "input_image_bytes")
-    if image_payload:
-        resolved_uri, resolved_bytes = _resolve_input_image_payload(
-            image_payload=image_payload,
-            local_buffer_reader=local_buffer_reader,
-            local_buffer_health=local_buffer_health,
-        )
-        input_uri = resolved_uri
-        input_image_bytes = resolved_bytes
-    return DetectionPredictionRequest(
-        input_uri=input_uri,
-        input_image_bytes=input_image_bytes,
-        score_threshold=_require_payload_float(payload, "score_threshold"),
-        save_result_image=bool(payload.get("save_result_image") is True),
-        extra_options=_read_payload_dict(payload, "extra_options"),
+    task_type = _read_payload_optional_str(payload, "task_type") or "detection"
+    prediction_request = build_prediction_request_from_payload(
+        task_type=task_type,
+        payload=_read_payload_dict(payload, "prediction_request"),
+    )
+    image_payload = getattr(prediction_request, "input_image_payload", None)
+    if not isinstance(image_payload, dict) or not image_payload:
+        return prediction_request
+    resolved_uri, resolved_bytes = _resolve_input_image_payload(
+        image_payload=image_payload,
+        local_buffer_reader=local_buffer_reader,
+        local_buffer_health=local_buffer_health,
+    )
+    return replace_prediction_request_inputs(
+        request=prediction_request,
+        input_uri=resolved_uri,
+        input_image_bytes=resolved_bytes,
+        input_image_payload=None,
     )
 
 
@@ -566,7 +565,10 @@ def _resolve_warmup_behavior(
     )
 
 
-def _build_dummy_inference_request(image_size: tuple[int, int]) -> DetectionPredictionRequest:
+def _build_dummy_inference_request(
+    task_type: str,
+    image_size: tuple[int, int],
+) -> PredictionRequest:
     """构造一条最小图片的 dummy infer 请求。
 
     参数：
@@ -588,11 +590,9 @@ def _build_dummy_inference_request(image_size: tuple[int, int]) -> DetectionPred
             "生成 deployment dummy warmup 图片失败",
             details={"image_size": [width, height]},
         )
-    return DetectionPredictionRequest(
+    return build_dummy_prediction_request(
+        task_type=task_type,
         input_image_bytes=encoded.tobytes(),
-        score_threshold=0.3,
-        save_result_image=False,
-        extra_options={"internal_request_kind": "deployment_dummy_warmup"},
     )
 
 
@@ -600,7 +600,7 @@ def _run_dummy_warmup_passes(
     *,
     runtime_pool: DeploymentRuntimePool,
     runtime_pool_config: DeploymentRuntimePoolConfig,
-    dummy_request: DetectionPredictionRequest,
+    dummy_request: PredictionRequest,
     count: int,
 ) -> None:
     """按指定次数执行真实 dummy infer warmup。
@@ -623,7 +623,7 @@ def _start_keep_warm_thread(
     *,
     runtime_pool: DeploymentRuntimePool,
     runtime_pool_config: DeploymentRuntimePoolConfig,
-    dummy_request: DetectionPredictionRequest,
+    dummy_request: PredictionRequest,
     behavior: _DeploymentWarmupBehavior,
 ) -> _KeepWarmState:
     """启动 deployment keep-warm 后台线程。

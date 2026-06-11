@@ -42,7 +42,7 @@
 
 ## 当前实现边界
 
-- 当前已经支持 detection、instance-segmentation、pose、classification、obb 五类 DatasetVersion 导出
+- 当前已经支持 detection、segmentation、pose、classification、obb 五类 DatasetVersion 导出
 - 当前已经公开独立的格式规则接口 `GET /api/v1/datasets/export-formats`，用于先读取 implemented_formats 和 default_format，再决定是否创建导出任务
 - 当前已经正式实现并对外开放的 format_id：
   - coco-detection-v1

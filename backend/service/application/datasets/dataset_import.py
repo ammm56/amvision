@@ -520,9 +520,9 @@ class SqlAlchemyDatasetImportService:
             raise InvalidRequestError("当前导入接口只接受 zip 压缩包")
         if package_file is None and not request.package_bytes:
             raise InvalidRequestError("上传 zip 文件不能为空")
-        if request.task_type not in ("detection", "instance-segmentation", "pose", "classification", "obb", "semantic-segmentation"):
+        if request.task_type not in ("detection", "segmentation", "pose", "classification", "obb", "semantic-segmentation"):
             raise UnsupportedDatasetFormatError(
-                "当前导入接口支持 detection、instance-segmentation、pose、classification、obb、semantic-segmentation task type",
+                "当前导入接口支持 detection、segmentation、pose、classification、obb、semantic-segmentation task type",
                 details={"task_type": request.task_type},
             )
         if request.split_strategy not in (None, "auto", "train", "val", "test"):
@@ -875,9 +875,9 @@ class SqlAlchemyDatasetImportService:
         - 解析后的统一结果。
         """
 
-        if task_type not in {"detection", "instance-segmentation", "pose"}:
+        if task_type not in {"detection", "segmentation", "pose"}:
             raise InvalidRequestError(
-                "当前 COCO 导入只支持 detection、instance-segmentation、pose",
+                "当前 COCO 导入只支持 detection、segmentation、pose",
                 details={"task_type": task_type},
             )
 
@@ -2424,7 +2424,7 @@ def _build_annotation_for_task(
         key: value for key, value in annotation_payload.items()
         if key not in {"id", "image_id", "category_id", "bbox", "iscrowd", "area"}
     }
-    if task_type == "instance-segmentation":
+    if task_type == "segmentation":
         seg = annotation_payload.get("segmentation")
         return InstanceSegmentationAnnotation(
             annotation_id=annotation_id, category_id=category_id,

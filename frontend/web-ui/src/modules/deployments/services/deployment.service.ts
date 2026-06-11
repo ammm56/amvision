@@ -77,13 +77,13 @@ export type DeploymentStatusAction = 'start' | 'status' | 'stop'
 export type DeploymentHealthAction = 'warmup' | 'health' | 'reset'
 
 export async function listYoloXDeployments(projectId: string): Promise<YoloXDeploymentInstance[]> {
-  return apiRequest<YoloXDeploymentInstance[]>('/models/yolox/deployment-instances', {
+  return apiRequest<YoloXDeploymentInstance[]>('/models/detection/deployment-instances', {
     query: { project_id: projectId, limit: 100 },
   })
 }
 
 export async function createYoloXDeployment(input: YoloXDeploymentCreateInput): Promise<YoloXDeploymentInstance> {
-  return apiRequest<YoloXDeploymentInstance>('/models/yolox/deployment-instances', {
+  return apiRequest<YoloXDeploymentInstance>('/models/detection/deployment-instances', {
     method: 'POST',
     body: {
       project_id: input.projectId,
@@ -106,7 +106,7 @@ export async function runYoloXDeploymentStatusAction(
   action: DeploymentStatusAction,
 ): Promise<YoloXDeploymentProcessStatus> {
   return apiRequest<YoloXDeploymentProcessStatus>(
-    `/models/yolox/deployment-instances/${encodeURIComponent(deploymentInstanceId)}/${mode}/${action}`,
+    `/models/detection/deployment-instances/${encodeURIComponent(deploymentInstanceId)}/${mode}/${action}`,
     { method: action === 'status' ? 'GET' : 'POST' },
   )
 }
@@ -117,7 +117,7 @@ export async function runYoloXDeploymentHealthAction(
   action: DeploymentHealthAction,
 ): Promise<YoloXDeploymentRuntimeHealth> {
   return apiRequest<YoloXDeploymentRuntimeHealth>(
-    `/models/yolox/deployment-instances/${encodeURIComponent(deploymentInstanceId)}/${mode}/${action}`,
+    `/models/detection/deployment-instances/${encodeURIComponent(deploymentInstanceId)}/${mode}/${action}`,
     { method: action === 'health' ? 'GET' : 'POST' },
   )
 }
@@ -127,7 +127,7 @@ export async function listYoloXDeploymentEvents(
   mode: DeploymentRuntimeMode,
 ): Promise<YoloXDeploymentProcessEvent[]> {
   return apiRequest<YoloXDeploymentProcessEvent[]>(
-    `/models/yolox/deployment-instances/${encodeURIComponent(deploymentInstanceId)}/events`,
+    `/models/detection/deployment-instances/${encodeURIComponent(deploymentInstanceId)}/events`,
     { query: { runtime_mode: mode, limit: 100 } },
   )
 }

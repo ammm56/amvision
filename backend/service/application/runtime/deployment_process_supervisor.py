@@ -36,13 +36,11 @@ from backend.service.application.runtime.safe_counter import (
 from backend.service.application.runtime.deployment_process_worker import (
     run_deployment_process_worker,
 )
-from backend.service.application.runtime.detection_runtime_contracts import (
-    DetectionPredictionExecutionResult,
-    DetectionPredictionRequest,
-)
-from backend.service.application.runtime.detection_runtime_serialization import (
-    deserialize_detection_items,
-    deserialize_runtime_session_info,
+from backend.service.application.runtime.task_prediction_runtime import (
+    PredictionExecutionResult,
+    PredictionRequest,
+    deserialize_prediction_execution_result,
+    serialize_prediction_request,
 )
 from backend.service.application.runtime.runtime_target import RuntimeTargetSnapshot
 from backend.service.infrastructure.db.session import SessionFactory
@@ -213,7 +211,7 @@ class DeploymentProcessExecution:
 
     deployment_instance_id: str
     instance_id: str
-    execution_result: DetectionPredictionExecutionResult
+    execution_result: PredictionExecutionResult
 
 
 @dataclass
@@ -430,7 +428,7 @@ class DeploymentProcessSupervisor:
         self,
         *,
         config: DeploymentProcessConfig,
-        request: DetectionPredictionRequest,
+        request: PredictionRequest,
     ) -> DeploymentProcessExecution:
         """通过 deployment 子进程执行一次推理请求。"""
 
@@ -440,25 +438,20 @@ class DeploymentProcessSupervisor:
             state=state,
             action="infer",
             payload={
-                "input_uri": request.input_uri,
-                "input_image_bytes": request.input_image_bytes,
-                "input_image_payload": dict(request.input_image_payload or {}),
-                "score_threshold": request.score_threshold,
-                "save_result_image": request.save_result_image,
-                "extra_options": dict(request.extra_options),
+                "task_type": config.runtime_target.task_type,
+                "prediction_request": serialize_prediction_request(
+                    task_type=config.runtime_target.task_type,
+                    request=request,
+                ),
             },
         )
         instance_id = _require_response_str(payload, "instance_id")
         return DeploymentProcessExecution(
             deployment_instance_id=config.deployment_instance_id,
             instance_id=instance_id,
-            execution_result=DetectionPredictionExecutionResult(
-                detections=deserialize_detection_items(payload.get("detections")),
-                latency_ms=_read_response_optional_float(payload, "latency_ms"),
-                image_width=_require_response_int(payload, "image_width"),
-                image_height=_require_response_int(payload, "image_height"),
-                preview_image_bytes=_read_response_optional_bytes(payload, "preview_image_bytes"),
-                runtime_session_info=deserialize_runtime_session_info(payload.get("runtime_session_info")),
+            execution_result=deserialize_prediction_execution_result(
+                task_type=config.runtime_target.task_type,
+                payload=payload.get("execution_result"),
             ),
         )
 

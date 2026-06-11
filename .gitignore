@@ -28,6 +28,8 @@ share/python-wheels/
 .installed.cfg
 *.egg
 *.tmp
+*.tmp*
+.pytest_tmp/
 MANIFEST
 *.lscache
 

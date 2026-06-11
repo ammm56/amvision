@@ -7,7 +7,7 @@ from typing import Literal
 
 
 # 最小支持的数据集任务类型。
-DatasetTaskType = Literal["detection", "instance-segmentation", "semantic-segmentation", "pose", "classification", "obb"]
+DatasetTaskType = Literal["detection", "segmentation", "semantic-segmentation", "pose", "classification", "obb"]
 
 
 # 最小支持的数据集 split 名称。
@@ -17,7 +17,7 @@ DatasetSplitName = Literal["train", "val", "test"]
 # 当前内部使用的标注类型名称。
 DatasetAnnotationType = Literal[
     "detection",
-    "instance-segmentation",
+    "segmentation",
     "pose",
     "classification",
     "obb",
@@ -119,7 +119,7 @@ def get_dataset_annotation_type(annotation: DatasetAnnotation) -> DatasetAnnotat
     if isinstance(annotation, ObbAnnotation):
         return "obb"
     if isinstance(annotation, InstanceSegmentationAnnotation):
-        return "instance-segmentation"
+        return "segmentation"
     if isinstance(annotation, PoseAnnotation):
         return "pose"
     return "detection"
