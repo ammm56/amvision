@@ -19,7 +19,8 @@
       "node_id": "health",
       "node_type_id": "core.service.model-deployment.health",
       "parameters": {
-        "runtime_mode": "sync"
+        "runtime_mode": "sync",
+        "task_type": "detection"
       },
       "metadata": {
         "sequence_index": 1
@@ -349,6 +350,3 @@
     "deployment_instance_id_binding": "deployment_request"
   }
 }
-
-
-

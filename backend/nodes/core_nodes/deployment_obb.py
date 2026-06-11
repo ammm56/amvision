@@ -1,4 +1,4 @@
-"""deployment 检测节点。"""
+"""deployment OBB 节点。"""
 
 from __future__ import annotations
 
@@ -14,25 +14,48 @@ from backend.nodes.core_nodes._deployment_model_node_support import (
     run_direct_model_inference,
 )
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
-from backend.service.domain.models.model_task_types import DETECTION_TASK_TYPE
+from backend.service.domain.models.model_task_types import OBB_TASK_TYPE
 
 
-def _deployment_detection_handler(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
-    """通过 PublishedInferenceGateway 调用已发布 detection 推理服务。"""
+def _deployment_obb_handler(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
+    """通过 PublishedInferenceGateway 调用已发布 obb 推理服务。"""
 
-    inference_result, _ = run_direct_model_inference(
+    inference_result, source_image = run_direct_model_inference(
         request,
-        task_type=DETECTION_TASK_TYPE,
+        task_type=OBB_TASK_TYPE,
     )
-    return {"detections": {"items": list(inference_result.detections)}}
+    obb_items = []
+    for index, item in enumerate(inference_result.instances, start=1):
+        obb_items.append(
+            {
+                "obb_id": str(item.get("obb_id") or f"obb-{index}"),
+                "score": float(item.get("score") or 0.0),
+                "class_id": int(item.get("class_id") or 0),
+                "class_name": item.get("class_name"),
+                "bbox_xyxy": list(item.get("bbox_xyxy")) if isinstance(item.get("bbox_xyxy"), list) else [],
+                "angle": float(item["angle"]) if isinstance(item.get("angle"), int | float) else None,
+            }
+        )
+    return {
+        "obbs": {
+            "source_image": dict(source_image),
+            "count": len(obb_items),
+            "items": obb_items,
+            "image_width": inference_result.image_width,
+            "image_height": inference_result.image_height,
+            "latency_ms": inference_result.latency_ms,
+            "runtime_session_info": dict(inference_result.runtime_session_info),
+            "metadata": dict(inference_result.metadata),
+        }
+    }
 
 
 CORE_NODE_SPEC = CoreNodeSpec(
     node_definition=NodeDefinition(
-        node_type_id="core.model.detection",
-        display_name="Detection",
+        node_type_id="core.model.obb",
+        display_name="OBB",
         category="model.inference",
-        description="调用独立推理 worker 产出标准 detection 结果。",
+        description="调用独立推理 worker 产出标准 obb 结果。",
         implementation_kind=NODE_IMPLEMENTATION_CORE,
         runtime_kind=NODE_RUNTIME_WORKER_TASK,
         input_ports=(
@@ -56,9 +79,9 @@ CORE_NODE_SPEC = CoreNodeSpec(
         ),
         output_ports=(
             NodePortDefinition(
-                name="detections",
-                display_name="Detections",
-                payload_type_id="detections.v1",
+                name="obbs",
+                display_name="OBBs",
+                payload_type_id="obbs.v1",
             ),
         ),
         parameter_schema={
@@ -78,8 +101,8 @@ CORE_NODE_SPEC = CoreNodeSpec(
             },
             "required": ["deployment_instance_id"],
         },
-        capability_tags=("model.inference", "detection"),
+        capability_tags=("model.inference", "obb"),
         runtime_requirements={"deployment_process": "sync"},
     ),
-    handler=_deployment_detection_handler,
+    handler=_deployment_obb_handler,
 )

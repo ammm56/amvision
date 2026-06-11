@@ -48,7 +48,7 @@ CORE_NODE_SPEC = CoreNodeSpec(
                 "deployment_instance_id": {"type": "string"},
                 "runtime_mode": {"type": "string", "enum": ["sync", "async"]},
             },
-            "required": ["deployment_instance_id", "runtime_mode"],
+            "required": ["task_type", "deployment_instance_id", "runtime_mode"],
         },
         capability_tags=("service.model.deployment", "runtime.control", "runtime.reset"),
     ),

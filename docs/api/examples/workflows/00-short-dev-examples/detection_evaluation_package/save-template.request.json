@@ -32,7 +32,9 @@
       {
         "node_id": "submit_evaluation",
         "node_type_id": "core.service.model-evaluation.submit",
-        "parameters": {}
+        "parameters": {
+          "task_type": "detection"
+        }
       },
       {
         "node_id": "extract_evaluation_task_id",
@@ -80,7 +82,8 @@
         "node_id": "package_result",
         "node_type_id": "core.service.model-evaluation.package",
         "parameters": {
-          "cleanup_on_completion": true
+          "cleanup_on_completion": true,
+          "task_type": "detection"
         }
       }
     ],

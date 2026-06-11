@@ -15,11 +15,23 @@ from backend.service.api.seeders import BackendServiceSeeder, BackendServiceSeed
 from backend.service.application.auth.default_local_auth_seeder import DefaultLocalAuthSeeder
 from backend.service.application.events import InMemoryServiceEventBus
 from backend.service.application.deployments import (
-    DetectionDeploymentPublishedInferenceGateway,
     PublishedInferenceGateway,
+    TaskTypeDeploymentPublishedInferenceGateway,
 )
 from backend.service.application.deployments.detection_deployment_service import (
     SqlAlchemyDetectionDeploymentService,
+)
+from backend.service.application.deployments.classification_deployment_service import (
+    SqlAlchemyClassificationDeploymentService,
+)
+from backend.service.application.deployments.segmentation_deployment_service import (
+    SqlAlchemySegmentationDeploymentService,
+)
+from backend.service.application.deployments.pose_deployment_service import (
+    SqlAlchemyPoseDeploymentService,
+)
+from backend.service.application.deployments.obb_deployment_service import (
+    SqlAlchemyObbDeploymentService,
 )
 from backend.service.application.local_buffers import LocalBufferBrokerProcessSupervisor
 from backend.service.application.models.detection_async_inference_gateway import (
@@ -462,12 +474,36 @@ class BackendServiceBootstrap(
         (obb_sync_deployment_supervisor,
          obb_async_deployment_supervisor,
          obb_async_inference_gateway_registry) = _build_task_type_deployment_runtimes(task_type="obb", **_build_kw)
-        published_inference_gateway = DetectionDeploymentPublishedInferenceGateway(
-            deployment_service=SqlAlchemyDetectionDeploymentService(
-                session_factory=session_factory,
-                dataset_storage=dataset_storage,
-            ),
-            deployment_process_supervisor=detection_sync_deployment_process_supervisor,
+        published_inference_gateway = TaskTypeDeploymentPublishedInferenceGateway(
+            deployment_services_by_task_type={
+                "detection": SqlAlchemyDetectionDeploymentService(
+                    session_factory=session_factory,
+                    dataset_storage=dataset_storage,
+                ),
+                "classification": SqlAlchemyClassificationDeploymentService(
+                    session_factory=session_factory,
+                    dataset_storage=dataset_storage,
+                ),
+                "segmentation": SqlAlchemySegmentationDeploymentService(
+                    session_factory=session_factory,
+                    dataset_storage=dataset_storage,
+                ),
+                "pose": SqlAlchemyPoseDeploymentService(
+                    session_factory=session_factory,
+                    dataset_storage=dataset_storage,
+                ),
+                "obb": SqlAlchemyObbDeploymentService(
+                    session_factory=session_factory,
+                    dataset_storage=dataset_storage,
+                ),
+            },
+            deployment_process_supervisors_by_task_type={
+                "detection": detection_sync_deployment_process_supervisor,
+                "classification": classification_sync_deployment_supervisor,
+                "segmentation": segmentation_sync_deployment_supervisor,
+                "pose": pose_sync_deployment_supervisor,
+                "obb": obb_sync_deployment_supervisor,
+            },
         )
         background_task_manager_host = self._build_background_task_manager_host(
             settings=settings,

@@ -569,6 +569,121 @@ def get_core_workflow_payload_contracts() -> tuple[WorkflowPayloadContract, ...]
             },
         ),
         WorkflowPayloadContract(
+            payload_type_id="categories.v1",
+            display_name="Classification Categories",
+            transport_kind="inline-json",
+            json_schema={
+                "type": "object",
+                "properties": {
+                    "source_image": {"type": "object"},
+                    "count": {"type": "integer", "minimum": 0},
+                    "items": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "class_id": {"type": "integer"},
+                                "class_name": {"type": "string"},
+                                "probability": {"type": "number"},
+                                "logit": {"type": "number"},
+                            },
+                            "required": ["class_id", "probability"],
+                        },
+                    },
+                    "top_item": {"type": "object"},
+                    "image_width": {"type": "integer", "minimum": 0},
+                    "image_height": {"type": "integer", "minimum": 0},
+                    "latency_ms": {"type": "number", "minimum": 0},
+                    "runtime_session_info": {"type": "object"},
+                    "metadata": {"type": "object"},
+                },
+                "required": ["count", "items"],
+            },
+        ),
+        WorkflowPayloadContract(
+            payload_type_id="poses.v1",
+            display_name="Pose Instances",
+            transport_kind="inline-json",
+            json_schema={
+                "type": "object",
+                "properties": {
+                    "source_image": {"type": "object"},
+                    "count": {"type": "integer", "minimum": 0},
+                    "items": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "pose_id": {"type": "string"},
+                                "score": {"type": "number"},
+                                "class_id": {"type": "integer"},
+                                "class_name": {"type": "string"},
+                                "bbox_xyxy": {"type": "array"},
+                                "keypoints": {
+                                    "type": "array",
+                                    "items": {
+                                        "type": "object",
+                                        "properties": {
+                                            "x": {"type": "number"},
+                                            "y": {"type": "number"},
+                                            "confidence": {"type": "number"},
+                                        },
+                                        "required": ["x", "y"],
+                                    },
+                                },
+                                "kpt_shape": {
+                                    "type": "array",
+                                    "items": {"type": "integer"},
+                                    "minItems": 2,
+                                    "maxItems": 2,
+                                },
+                            },
+                            "required": ["pose_id", "score", "bbox_xyxy", "keypoints"],
+                        },
+                    },
+                    "image_width": {"type": "integer", "minimum": 0},
+                    "image_height": {"type": "integer", "minimum": 0},
+                    "latency_ms": {"type": "number", "minimum": 0},
+                    "runtime_session_info": {"type": "object"},
+                    "metadata": {"type": "object"},
+                },
+                "required": ["count", "items"],
+            },
+        ),
+        WorkflowPayloadContract(
+            payload_type_id="obbs.v1",
+            display_name="OBB Instances",
+            transport_kind="inline-json",
+            json_schema={
+                "type": "object",
+                "properties": {
+                    "source_image": {"type": "object"},
+                    "count": {"type": "integer", "minimum": 0},
+                    "items": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "obb_id": {"type": "string"},
+                                "score": {"type": "number"},
+                                "class_id": {"type": "integer"},
+                                "class_name": {"type": "string"},
+                                "bbox_xyxy": {"type": "array"},
+                                "angle": {"type": "number"},
+                            },
+                            "required": ["obb_id", "score", "bbox_xyxy"],
+                        },
+                    },
+                    "image_width": {"type": "integer", "minimum": 0},
+                    "image_height": {"type": "integer", "minimum": 0},
+                    "latency_ms": {"type": "number", "minimum": 0},
+                    "runtime_session_info": {"type": "object"},
+                    "metadata": {"type": "object"},
+                },
+                "required": ["count", "items"],
+            },
+        ),
+        WorkflowPayloadContract(
             payload_type_id="response-body.v1",
             display_name="Response Body",
             transport_kind="inline-json",

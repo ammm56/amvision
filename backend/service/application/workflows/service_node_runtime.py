@@ -32,8 +32,8 @@ from backend.service.application.datasets.dataset_export_delivery import (
     SqlAlchemyDatasetExportDeliveryService,
 )
 from backend.service.application.deployments import (
-    DetectionDeploymentPublishedInferenceGateway,
     PublishedInferenceGateway,
+    TaskTypeDeploymentPublishedInferenceGateway,
 )
 from backend.service.application.deployments.classification_deployment_service import (
     SqlAlchemyClassificationDeploymentService,
@@ -436,7 +436,7 @@ class WorkflowServiceNodeRuntimeContext:
             packaged_at=datetime.fromtimestamp(stat.st_mtime, timezone.utc).isoformat(),
         )
 
-    def build_deployment_service(self, *, task_type: str = DETECTION_TASK_TYPE) -> Any:
+    def build_deployment_service(self, *, task_type: str) -> Any:
         """按 task_type 构造 DeploymentInstance service。"""
 
         normalized_task_type = self._normalize_task_type(task_type)
@@ -456,14 +456,22 @@ class WorkflowServiceNodeRuntimeContext:
 
         if self.published_inference_gateway is not None:
             return self.published_inference_gateway
-        return DetectionDeploymentPublishedInferenceGateway(
-            deployment_service=self.build_deployment_service(task_type=DETECTION_TASK_TYPE),
-            deployment_process_supervisor=self.require_sync_deployment_process_supervisor(
-                task_type=DETECTION_TASK_TYPE
-            ),
+        deployment_services_by_task_type: dict[str, object] = {}
+        deployment_process_supervisors_by_task_type: dict[str, DeploymentProcessSupervisor] = {}
+        for task_type in _DEPLOYMENT_SERVICE_BY_TASK_TYPE:
+            try:
+                deployment_process_supervisors_by_task_type[task_type] = (
+                    self.require_sync_deployment_process_supervisor(task_type=task_type)
+                )
+            except ServiceConfigurationError:
+                continue
+            deployment_services_by_task_type[task_type] = self.build_deployment_service(task_type=task_type)
+        return TaskTypeDeploymentPublishedInferenceGateway(
+            deployment_services_by_task_type=deployment_services_by_task_type,
+            deployment_process_supervisors_by_task_type=deployment_process_supervisors_by_task_type,
         )
 
-    def build_inference_task_service(self, *, task_type: str = DETECTION_TASK_TYPE) -> Any:
+    def build_inference_task_service(self, *, task_type: str) -> Any:
         """按 task_type 构造正式推理任务 service。"""
 
         normalized_task_type = self._normalize_task_type(task_type)
@@ -502,7 +510,7 @@ class WorkflowServiceNodeRuntimeContext:
     def require_sync_deployment_process_supervisor(
         self,
         *,
-        task_type: str = DETECTION_TASK_TYPE,
+        task_type: str,
     ) -> DeploymentProcessSupervisor:
         """返回指定 task_type 的同步 deployment supervisor。"""
 
@@ -520,7 +528,7 @@ class WorkflowServiceNodeRuntimeContext:
     def require_async_deployment_process_supervisor(
         self,
         *,
-        task_type: str = DETECTION_TASK_TYPE,
+        task_type: str,
     ) -> DeploymentProcessSupervisor:
         """返回指定 task_type 的异步 deployment supervisor。"""
 
@@ -538,7 +546,7 @@ class WorkflowServiceNodeRuntimeContext:
     def require_deployment_process_supervisor(
         self,
         *,
-        task_type: str = DETECTION_TASK_TYPE,
+        task_type: str,
         runtime_mode: str,
     ) -> DeploymentProcessSupervisor:
         """按 task_type 与 runtime_mode 返回对应的 deployment supervisor。"""
@@ -638,15 +646,7 @@ class WorkflowServiceNodeRuntimeContext:
             f"{normalized_task_type}_{normalized_runtime_mode}_deployment_process_supervisor",
             None,
         )
-        if supervisor is not None:
-            return supervisor
-        if normalized_task_type != DETECTION_TASK_TYPE:
-            return getattr(
-                self,
-                f"{DETECTION_TASK_TYPE}_{normalized_runtime_mode}_deployment_process_supervisor",
-                None,
-            )
-        return None
+        return supervisor if supervisor is not None else None
 
     def _resolve_async_inference_gateway_dispatcher_registry(
         self,

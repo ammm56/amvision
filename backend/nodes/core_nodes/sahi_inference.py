@@ -29,6 +29,7 @@ from backend.nodes.runtime_support import load_image_bytes
 from backend.service.application.deployments import PublishedInferenceRequest
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
+from backend.service.domain.models.model_task_types import DETECTION_TASK_TYPE
 
 
 _DEFAULT_INFERENCE_SCORE_THRESHOLD = 0.3
@@ -118,6 +119,7 @@ def _sahi_inference_handler(request: WorkflowNodeExecutionRequest) -> dict[str, 
         slice_extra_options.setdefault("sahi_source_image_size", [image_width, image_height])
         inference_result = gateway.infer(
             PublishedInferenceRequest(
+                task_type=DETECTION_TASK_TYPE,
                 deployment_instance_id=deployment_instance_id,
                 image_payload={
                     "transport_kind": "memory",

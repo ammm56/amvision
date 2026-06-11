@@ -8,6 +8,7 @@ from backend.service.application.deployments.published_inference_gateway import 
     PublishedInferenceGatewayEventChannel,
     PublishedInferenceRequest,
     PublishedInferenceResult,
+    TaskTypeDeploymentPublishedInferenceGateway,
 )
 from backend.service.application.deployments.detection_deployment_binding import (
     DetectionDeploymentBinder,
@@ -26,4 +27,5 @@ __all__ = [
     "PublishedInferenceGatewayEventChannel",
     "PublishedInferenceRequest",
     "PublishedInferenceResult",
+    "TaskTypeDeploymentPublishedInferenceGateway",
 ]

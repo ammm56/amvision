@@ -12,9 +12,8 @@ from backend.nodes.core_nodes._base import CoreNodeSpec
 from backend.nodes.core_nodes._platform_service_node_support import (
     WORKFLOW_SERVICE_TASK_TYPES,
     get_optional_platform_model_type,
-    get_optional_platform_task_type,
+    require_platform_task_type,
     resolve_platform_model_type,
-    resolve_platform_task_type,
 )
 from backend.service.application.conversions.yolox_conversion_task_service import (
     YoloXConversionTaskRequest,
@@ -53,14 +52,10 @@ def _model_conversion_submit_handler(request: WorkflowNodeExecutionRequest) -> d
             details={"node_id": request.node_id, "parameter": "target_formats"},
         )
 
-    requested_task_type = get_optional_platform_task_type(request)
+    task_type = require_platform_task_type(request)
     requested_model_type = get_optional_platform_model_type(
         request,
         supported_model_types=("yolox", "yolov8", "yolo11", "yolo26", "rfdetr"),
-    )
-    task_type = resolve_platform_task_type(
-        requested_task_type,
-        default_task_type=DETECTION_TASK_TYPE,
     )
     model_type = resolve_platform_model_type(
         requested_model_type,
@@ -134,7 +129,7 @@ CORE_NODE_SPEC = CoreNodeSpec(
                 "display_name": {"type": "string"},
                 "created_by": {"type": "string"},
             },
-            "required": ["project_id", "source_model_version_id", "target_formats"],
+            "required": ["task_type", "project_id", "source_model_version_id", "target_formats"],
         },
         capability_tags=("service.model.conversion", "task.submit"),
     ),

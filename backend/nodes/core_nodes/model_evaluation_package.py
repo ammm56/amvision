@@ -11,8 +11,7 @@ from backend.contracts.workflows.workflow_graph import (
 from backend.nodes.core_nodes._base import CoreNodeSpec
 from backend.nodes.core_nodes._platform_service_node_support import (
     WORKFLOW_SERVICE_TASK_TYPES,
-    get_optional_platform_task_type,
-    resolve_platform_task_type,
+    require_platform_task_type,
 )
 from backend.nodes.core_nodes._service_node_support import (
     build_response_body_output,
@@ -40,11 +39,7 @@ def _model_evaluation_package_handler(request: WorkflowNodeExecutionRequest) -> 
     runtime_context = require_workflow_service_node_runtime(request)
     task_id = require_str_parameter(request, "task_id")
     cleanup_on_completion = get_optional_bool_parameter(request, "cleanup_on_completion") is True
-    requested_task_type = get_optional_platform_task_type(request)
-    task_type = resolve_platform_task_type(
-        requested_task_type,
-        default_task_type="detection",
-    )
+    task_type = require_platform_task_type(request)
     package_object_key = _resolve_package_object_key(
         request,
         task_id=task_id,
@@ -134,7 +129,7 @@ CORE_NODE_SPEC = CoreNodeSpec(
                     "description": "为 true 时把结果包登记为当前 workflow 临时对象，并在 workflow 结束时删除；默认不清理，也不影响 HTTP API 已有结果文件。",
                 },
             },
-            "required": ["task_id"],
+            "required": ["task_type", "task_id"],
         },
         capability_tags=("service.model.evaluation", "resource.package", "artifact.output"),
     ),

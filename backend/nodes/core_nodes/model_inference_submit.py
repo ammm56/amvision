@@ -11,9 +11,8 @@ from backend.contracts.workflows.workflow_graph import (
 from backend.nodes.core_nodes._base import CoreNodeSpec
 from backend.nodes.core_nodes._platform_service_node_support import (
     get_optional_platform_model_type,
-    get_optional_platform_task_type,
+    require_platform_task_type,
     get_supported_platform_model_types,
-    resolve_platform_task_type,
 )
 from backend.nodes.core_nodes._service_node_support import (
     build_service_node_deployment_service,
@@ -55,10 +54,7 @@ def _model_inference_submit_handler(request: WorkflowNodeExecutionRequest) -> di
     """调用正式平台 inference task 提交服务。"""
 
     runtime_context = require_workflow_service_node_runtime(request)
-    task_type = resolve_platform_task_type(
-        get_optional_platform_task_type(request),
-        default_task_type=DETECTION_TASK_TYPE,
-    )
+    task_type = require_platform_task_type(request)
     deployment_service = build_service_node_deployment_service(
         runtime_context,
         task_type=task_type,
@@ -238,7 +234,7 @@ CORE_NODE_SPEC = CoreNodeSpec(
                 "display_name": {"type": "string"},
                 "created_by": {"type": "string"},
             },
-            "required": ["project_id", "deployment_instance_id"],
+            "required": ["task_type", "project_id", "deployment_instance_id"],
         },
         capability_tags=("service.model.inference", "task.submit"),
         runtime_requirements={"deployment_process": "async"},

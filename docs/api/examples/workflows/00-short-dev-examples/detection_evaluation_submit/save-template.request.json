@@ -14,7 +14,9 @@
       {
         "node_id": "submit_evaluation",
         "node_type_id": "core.service.model-evaluation.submit",
-        "parameters": {}
+        "parameters": {
+          "task_type": "detection"
+        }
       }
     ],
     "edges": [

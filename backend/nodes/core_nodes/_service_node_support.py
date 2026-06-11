@@ -307,14 +307,17 @@ def require_runtime_mode_parameter(
     return runtime_mode
 
 
-def resolve_service_task_type_parameter(
+def require_service_task_type_parameter(
     request: WorkflowNodeExecutionRequest,
-    *,
-    default_task_type: str = DETECTION_TASK_TYPE,
 ) -> str:
-    """读取并校验 service node 的 task_type 参数。"""
+    """读取并校验 service node 的必填 task_type 参数。"""
 
-    task_type = get_optional_str_parameter(request, "task_type") or default_task_type
+    task_type = get_optional_str_parameter(request, "task_type")
+    if task_type is None:
+        raise InvalidRequestError(
+            "task_type 不能为空，service node 必须显式声明任务分类",
+            details={"node_id": request.node_id, "parameter": "task_type"},
+        )
     normalized_task_type = task_type.strip().lower()
     supported_task_types = {
         DETECTION_TASK_TYPE,
@@ -342,12 +345,7 @@ def build_service_node_deployment_service(
 ) -> Any:
     """按 task_type 调用 runtime_context.build_deployment_service。"""
 
-    try:
-        return runtime_context.build_deployment_service(task_type=task_type)
-    except TypeError as exc:
-        if "task_type" not in str(exc):
-            raise
-        return runtime_context.build_deployment_service()
+    return runtime_context.build_deployment_service(task_type=task_type)
 
 
 def build_service_node_inference_task_service(
@@ -357,12 +355,7 @@ def build_service_node_inference_task_service(
 ) -> Any:
     """按 task_type 调用 runtime_context.build_inference_task_service。"""
 
-    try:
-        return runtime_context.build_inference_task_service(task_type=task_type)
-    except TypeError as exc:
-        if "task_type" not in str(exc):
-            raise
-        return runtime_context.build_inference_task_service()
+    return runtime_context.build_inference_task_service(task_type=task_type)
 
 
 def require_running_deployment_process(
@@ -423,7 +416,7 @@ def run_deployment_process_status_action(
 
     request = overlay_parameters_from_object_input(request)
     runtime_context = require_workflow_service_node_runtime(request)
-    task_type = resolve_service_task_type_parameter(request)
+    task_type = require_service_task_type_parameter(request)
     deployment_service = build_service_node_deployment_service(
         runtime_context,
         task_type=task_type,
@@ -465,7 +458,7 @@ def run_deployment_process_health_action(
 
     request = overlay_parameters_from_object_input(request)
     runtime_context = require_workflow_service_node_runtime(request)
-    task_type = resolve_service_task_type_parameter(request)
+    task_type = require_service_task_type_parameter(request)
     deployment_service = build_service_node_deployment_service(
         runtime_context,
         task_type=task_type,

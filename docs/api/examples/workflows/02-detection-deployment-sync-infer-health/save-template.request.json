@@ -20,7 +20,8 @@
         "node_id": "start",
         "node_type_id": "core.service.model-deployment.start",
         "parameters": {
-          "runtime_mode": "sync"
+          "runtime_mode": "sync",
+          "task_type": "detection"
         },
         "metadata": {
           "sequence_index": 1
@@ -30,7 +31,8 @@
         "node_id": "warmup",
         "node_type_id": "core.service.model-deployment.warmup",
         "parameters": {
-          "runtime_mode": "sync"
+          "runtime_mode": "sync",
+          "task_type": "detection"
         },
         "metadata": {
           "sequence_index": 2
@@ -53,7 +55,8 @@
         "node_id": "health",
         "node_type_id": "core.service.model-deployment.health",
         "parameters": {
-          "runtime_mode": "sync"
+          "runtime_mode": "sync",
+          "task_type": "detection"
         },
         "metadata": {
           "sequence_index": 4
@@ -186,6 +189,3 @@
     }
   }
 }
-
-
-

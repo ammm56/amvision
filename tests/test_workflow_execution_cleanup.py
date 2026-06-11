@@ -37,7 +37,11 @@ def test_register_execution_cleanup_lists_generic_items_and_keeps_deployment_com
         resource_id="file-1",
         metadata={"bucket": "preview-cache"},
     )
-    register_deployment_cleanup(execution_metadata, deployment_instance_id=" deployment-1 ")
+    register_deployment_cleanup(
+        execution_metadata,
+        deployment_instance_id=" deployment-1 ",
+        task_type="detection",
+    )
     register_local_buffer_lease_cleanup(
         execution_metadata,
         lease_id=" lease-1 ",
@@ -55,7 +59,11 @@ def test_register_execution_cleanup_lists_generic_items_and_keeps_deployment_com
             "file-1",
             {"path": "artifacts/demo.txt", "bucket": "preview-cache"},
         ),
-        (WORKFLOW_EXECUTION_CLEANUP_KIND_DEPLOYMENT_INSTANCE, "deployment-1", {}),
+        (
+            WORKFLOW_EXECUTION_CLEANUP_KIND_DEPLOYMENT_INSTANCE,
+            "deployment-1",
+            {"task_type": "detection"},
+        ),
         (WORKFLOW_EXECUTION_CLEANUP_KIND_LOCAL_BUFFER_LEASE, "lease-1", {"pool_name": "image-small"}),
         (WORKFLOW_EXECUTION_CLEANUP_KIND_DEPLOYMENT_INSTANCE, "legacy-deployment-1", {}),
     ]

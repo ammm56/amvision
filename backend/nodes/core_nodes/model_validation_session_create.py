@@ -12,9 +12,8 @@ from backend.nodes.core_nodes._base import CoreNodeSpec
 from backend.nodes.core_nodes._platform_service_node_support import (
     WORKFLOW_SERVICE_TASK_TYPES,
     get_optional_platform_model_type,
-    get_optional_platform_task_type,
+    require_platform_task_type,
     resolve_platform_model_type,
-    resolve_platform_task_type,
 )
 from backend.nodes.core_nodes._service_node_support import (
     build_response_body_output,
@@ -46,7 +45,6 @@ from backend.service.application.workflows.graph_executor import WorkflowNodeExe
 from backend.service.domain.models.model_task_types import (
     CLASSIFICATION_TASK_TYPE,
     DETECTION_TASK_TYPE,
-    OBB_TASK_TYPE,
     POSE_TASK_TYPE,
     SEGMENTATION_TASK_TYPE,
 )
@@ -58,12 +56,8 @@ def _model_validation_session_create_handler(
     """调用统一 validation session 创建服务。"""
 
     runtime_context = require_workflow_service_node_runtime(request)
-    requested_task_type = get_optional_platform_task_type(request)
     requested_model_type = get_optional_platform_model_type(request)
-    task_type = resolve_platform_task_type(
-        requested_task_type,
-        default_task_type=DETECTION_TASK_TYPE,
-    )
+    task_type = require_platform_task_type(request)
     model_type = resolve_platform_model_type(
         requested_model_type,
         task_type=task_type,
@@ -172,7 +166,7 @@ CORE_NODE_SPEC = CoreNodeSpec(
                 "extra_options": {"type": "object"},
                 "created_by": {"type": "string"},
             },
-            "required": ["project_id", "model_version_id"],
+            "required": ["task_type", "project_id", "model_version_id"],
         },
         capability_tags=("service.model.validation", "resource.create"),
     ),

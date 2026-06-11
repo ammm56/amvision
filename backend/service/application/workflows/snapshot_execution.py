@@ -54,7 +54,6 @@ from backend.service.application.workflows.workflow_service import LocalWorkflow
 from backend.service.application.runtime.deployment_process_supervisor import (
     DeploymentProcessSupervisor,
 )
-from backend.service.domain.models.model_task_types import DETECTION_TASK_TYPE
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 from backend.service.settings import BackendServiceSettings
@@ -239,12 +238,7 @@ def _cleanup_registered_deployment(
     """
 
     task_type = _resolve_cleanup_task_type(cleanup)
-    try:
-        deployment_service = runtime_context.build_deployment_service(task_type=task_type)
-    except TypeError as exc:
-        if "task_type" not in str(exc):
-            raise
-        deployment_service = runtime_context.build_deployment_service()
+    deployment_service = runtime_context.build_deployment_service(task_type=task_type)
     deployment_instance_id = cleanup.resource_id
     cleanup_errors = _stop_registered_deployment_processes(
         runtime_context=runtime_context,
@@ -401,12 +395,18 @@ def _stop_registered_deployment_processes(
 
 
 def _resolve_cleanup_task_type(cleanup: WorkflowExecutionCleanupItem) -> str:
-    """读取清理项记录的 task_type，缺省回落到 detection。"""
+    """读取清理项记录的必填 task_type。"""
 
     raw_task_type = cleanup.metadata.get("task_type")
     if isinstance(raw_task_type, str) and raw_task_type.strip():
         return raw_task_type.strip().lower()
-    return DETECTION_TASK_TYPE
+    raise ServiceConfigurationError(
+        "workflow deployment cleanup 缺少 task_type",
+        details={
+            "resource_kind": cleanup.resource_kind,
+            "resource_id": cleanup.resource_id,
+        },
+    )
 
 
 class WorkflowSnapshotProcessExecutor:

@@ -14,6 +14,13 @@ from backend.nodes.runtime_support import (
     require_image_payload,
 )
 from backend.service.application.errors import InvalidRequestError, OperationTimeoutError, ServiceConfigurationError
+from backend.service.application.runtime.classification_runtime_contracts import (
+    ClassificationPredictionRequest,
+)
+from backend.service.application.runtime.classification_runtime_serialization import (
+    serialize_classification_category,
+    serialize_classification_runtime_session_info,
+)
 from backend.service.application.runtime.deployment_process_supervisor import (
     DeploymentProcessSupervisor,
 )
@@ -24,29 +31,61 @@ from backend.service.application.runtime.detection_runtime_serialization import 
     serialize_detection,
     serialize_runtime_session_info,
 )
+from backend.service.application.runtime.obb_runtime_contracts import (
+    ObbPredictionRequest,
+)
+from backend.service.application.runtime.obb_runtime_serialization import (
+    serialize_obb_instance,
+    serialize_obb_runtime_session_info,
+)
+from backend.service.application.runtime.pose_runtime_contracts import (
+    PosePredictionRequest,
+)
+from backend.service.application.runtime.pose_runtime_serialization import (
+    serialize_pose_instance,
+    serialize_pose_runtime_session_info,
+)
+from backend.service.application.runtime.segmentation_runtime_contracts import (
+    SegmentationPredictionRequest,
+)
+from backend.service.application.runtime.segmentation_runtime_serialization import (
+    serialize_segmentation_instance,
+    serialize_segmentation_runtime_session_info,
+)
+from backend.service.domain.models.model_task_types import (
+    CLASSIFICATION_TASK_TYPE,
+    DETECTION_TASK_TYPE,
+    OBB_TASK_TYPE,
+    POSE_TASK_TYPE,
+    SEGMENTATION_TASK_TYPE,
+)
+
+
+_SUPPORTED_TASK_TYPES: tuple[str, ...] = (
+    DETECTION_TASK_TYPE,
+    CLASSIFICATION_TASK_TYPE,
+    SEGMENTATION_TASK_TYPE,
+    POSE_TASK_TYPE,
+    OBB_TASK_TYPE,
+)
+_DEFAULT_SCORE_THRESHOLD = 0.3
+_DEFAULT_MASK_THRESHOLD = 0.5
+_DEFAULT_TOP_K = 5
+_DEFAULT_KEYPOINT_CONFIDENCE_THRESHOLD = 0.3
 
 
 @dataclass(frozen=True)
 class PublishedInferenceRequest:
-    """描述 workflow 节点调用已发布推理服务的一次请求。
+    """描述 workflow 节点调用已发布推理服务的一次请求。"""
 
-    字段：
-    - deployment_instance_id：目标 DeploymentInstance id。
-    - image_payload：image-ref payload，允许 storage、memory、buffer 或 frame。
-    - input_image_bytes：memory image-ref 无法跨进程传递时使用的图片字节兜底。
-    - score_threshold：检测置信度阈值。
-    - auto_start_process：目标 deployment worker 未运行时是否允许自动启动。
-    - runtime_mode：目标 deployment 运行通道；当前直接推理固定为 sync。
-    - save_result_image：是否生成结果预览图。
-    - return_preview_image_base64：是否直接返回预览图 base64。
-    - extra_options：附加推理参数。
-    - trace_id：链路追踪 id。
-    """
-
+    task_type: str
     deployment_instance_id: str
     image_payload: dict[str, object]
     input_image_bytes: bytes | None = None
-    score_threshold: float = 0.3
+    score_threshold: float | None = None
+    top_k: int | None = None
+    mask_threshold: float | None = None
+    keypoint_confidence_threshold: float | None = None
     auto_start_process: bool = False
     runtime_mode: str = "sync"
     save_result_image: bool = False
@@ -57,24 +96,17 @@ class PublishedInferenceRequest:
 
 @dataclass(frozen=True)
 class PublishedInferenceResult:
-    """描述已发布推理服务返回的标准结果。
+    """描述已发布推理服务返回的标准结果。"""
 
-    字段：
-    - deployment_instance_id：目标 DeploymentInstance id。
-    - detections：检测结果列表。
-    - latency_ms：推理耗时，单位为毫秒。
-    - image_width：输入图片宽度。
-    - image_height：输入图片高度。
-    - preview_image_payload：可选预览图 image-ref payload。
-    - runtime_session_info：运行时会话摘要。
-    - metadata：附加元数据。
-    """
-
+    task_type: str
     deployment_instance_id: str
-    detections: tuple[dict[str, object], ...]
     latency_ms: float | None
     image_width: int
     image_height: int
+    detections: tuple[dict[str, object], ...] = ()
+    categories: tuple[dict[str, object], ...] = ()
+    top_category: dict[str, object] | None = None
+    instances: tuple[dict[str, object], ...] = ()
     preview_image_payload: dict[str, object] | None = None
     runtime_session_info: dict[str, object] = field(default_factory=dict)
     metadata: dict[str, object] = field(default_factory=dict)
@@ -84,27 +116,14 @@ class PublishedInferenceGateway(Protocol):
     """定义 workflow 调用已发布推理服务的稳定边界。"""
 
     def infer(self, request: PublishedInferenceRequest) -> PublishedInferenceResult:
-        """执行一次已发布推理服务调用。
-
-        参数：
-        - request：推理请求。
-
-        返回：
-        - PublishedInferenceResult：标准推理结果。
-        """
+        """执行一次已发布推理服务调用。"""
 
         ...
 
 
 @dataclass(frozen=True)
 class PublishedInferenceGatewayEventChannel:
-    """描述父子进程之间的 PublishedInferenceGateway 事件通道。
-
-    字段：
-    - request_queue：子进程向父进程发送 gateway 事件的队列。
-    - response_queue：父进程向子进程返回 gateway 结果的队列。
-    - request_timeout_seconds：单次事件等待响应的最长秒数。
-    """
+    """描述父子进程之间的 PublishedInferenceGateway 事件通道。"""
 
     request_queue: Any
     response_queue: Any
@@ -112,58 +131,101 @@ class PublishedInferenceGatewayEventChannel:
 
 
 @dataclass(frozen=True)
-class DetectionDeploymentPublishedInferenceGateway:
-    """通过长期运行的 detection deployment worker 执行已发布推理。
+class TaskTypeDeploymentPublishedInferenceGateway:
+    """按 task_type 调用长期运行 deployment worker 的 PublishedInferenceGateway。"""
 
-    字段：
-    - deployment_service：解析 DeploymentInstance 与 process config 的 service。
-    - deployment_process_supervisor：backend-service 持有的 sync deployment supervisor。
-    - runtime_mode：当前 gateway 绑定的 deployment 通道；现阶段固定为 sync。
-    """
-
-    deployment_service: object
-    deployment_process_supervisor: DeploymentProcessSupervisor
+    deployment_services_by_task_type: dict[str, object]
+    deployment_process_supervisors_by_task_type: dict[str, DeploymentProcessSupervisor]
     runtime_mode: str = "sync"
 
     def infer(self, request: PublishedInferenceRequest) -> PublishedInferenceResult:
-        """执行一次已发布 detection 推理。"""
+        """执行一次已发布推理。"""
 
+        normalized_task_type = _normalize_task_type(request.task_type)
         normalized_runtime_mode = request.runtime_mode.strip().lower()
         if normalized_runtime_mode != self.runtime_mode:
             raise InvalidRequestError(
                 "PublishedInferenceGateway 当前只支持指定 deployment runtime_mode",
                 details={"runtime_mode": request.runtime_mode, "supported_runtime_mode": self.runtime_mode},
             )
-        process_config = self.deployment_service.resolve_process_config(request.deployment_instance_id)
-        self.deployment_process_supervisor.ensure_deployment(process_config)
-        self._ensure_running_process(process_config=process_config, auto_start_process=request.auto_start_process)
+        deployment_service = self._require_deployment_service(normalized_task_type)
+        deployment_process_supervisor = self._require_deployment_process_supervisor(normalized_task_type)
+        process_config = deployment_service.resolve_process_config(request.deployment_instance_id)
+        resolved_runtime_target = getattr(process_config, "runtime_target", None)
+        resolved_task_type = getattr(resolved_runtime_target, "task_type", None)
+        if isinstance(resolved_task_type, str) and resolved_task_type.strip():
+            normalized_resolved_task_type = _normalize_task_type(resolved_task_type)
+            if normalized_resolved_task_type != normalized_task_type:
+                raise InvalidRequestError(
+                    "当前 deployment_instance_id 与 task_type 不匹配",
+                    details={
+                        "deployment_instance_id": request.deployment_instance_id,
+                        "request_task_type": normalized_task_type,
+                        "deployment_task_type": normalized_resolved_task_type,
+                    },
+                )
+        deployment_process_supervisor.ensure_deployment(process_config)
+        self._ensure_running_process(
+            deployment_process_supervisor=deployment_process_supervisor,
+            process_config=process_config,
+            auto_start_process=request.auto_start_process,
+        )
         normalized_image_payload = require_image_payload(request.image_payload)
-        prediction_request = self._build_prediction_request(
+        prediction_request = _build_prediction_request(
+            task_type=normalized_task_type,
             request=request,
             normalized_image_payload=normalized_image_payload,
         )
-        execution = self.deployment_process_supervisor.run_inference(
+        execution = deployment_process_supervisor.run_inference(
             config=process_config,
             request=prediction_request,
         )
         execution_result = execution.execution_result
-        return PublishedInferenceResult(
+        return _build_published_inference_result(
+            task_type=normalized_task_type,
             deployment_instance_id=execution.deployment_instance_id,
-            detections=tuple(serialize_detection(item) for item in execution_result.detections),
-            latency_ms=execution_result.latency_ms,
-            image_width=execution_result.image_width,
-            image_height=execution_result.image_height,
-            runtime_session_info=serialize_runtime_session_info(execution_result.runtime_session_info),
-            metadata={"instance_id": execution.instance_id},
+            instance_id=execution.instance_id,
+            execution_result=execution_result,
         )
 
-    def _ensure_running_process(self, *, process_config: object, auto_start_process: bool) -> None:
+    def _require_deployment_service(self, task_type: str) -> object:
+        """按 task_type 读取 deployment service。"""
+
+        service = self.deployment_services_by_task_type.get(task_type)
+        if service is None:
+            raise ServiceConfigurationError(
+                "PublishedInferenceGateway 缺少指定 task_type 的 deployment service",
+                details={"task_type": task_type},
+            )
+        return service
+
+    def _require_deployment_process_supervisor(
+        self,
+        task_type: str,
+    ) -> DeploymentProcessSupervisor:
+        """按 task_type 读取同步 deployment supervisor。"""
+
+        supervisor = self.deployment_process_supervisors_by_task_type.get(task_type)
+        if supervisor is None:
+            raise ServiceConfigurationError(
+                "PublishedInferenceGateway 缺少指定 task_type 的 deployment supervisor",
+                details={"task_type": task_type},
+            )
+        return supervisor
+
+    def _ensure_running_process(
+        self,
+        *,
+        deployment_process_supervisor: DeploymentProcessSupervisor,
+        process_config: object,
+        auto_start_process: bool,
+    ) -> None:
         """确保目标 deployment worker 已运行。"""
 
-        status = self.deployment_process_supervisor.get_status(process_config)
+        status = deployment_process_supervisor.get_status(process_config)
         if status.process_state != "running" and auto_start_process:
-            self.deployment_process_supervisor.start_deployment(process_config)
-            status = self.deployment_process_supervisor.get_status(process_config)
+            deployment_process_supervisor.start_deployment(process_config)
+            status = deployment_process_supervisor.get_status(process_config)
         if status.process_state == "running":
             return
         raise InvalidRequestError(
@@ -176,35 +238,27 @@ class DetectionDeploymentPublishedInferenceGateway:
             },
         )
 
-    def _build_prediction_request(
+
+class DetectionDeploymentPublishedInferenceGateway(TaskTypeDeploymentPublishedInferenceGateway):
+    """兼容 detection-only 调用方式的 PublishedInferenceGateway 包装。"""
+
+    def __init__(
         self,
         *,
-        request: PublishedInferenceRequest,
-        normalized_image_payload: dict[str, object],
-    ) -> DetectionPredictionRequest:
-        """把 PublishedInferenceRequest 转换为 detection deployment worker 请求。"""
+        deployment_service: object,
+        deployment_process_supervisor: DeploymentProcessSupervisor,
+        runtime_mode: str = "sync",
+    ) -> None:
+        """初始化 detection-only gateway 包装。"""
 
-        transport_kind = str(normalized_image_payload.get("transport_kind") or "")
-        if transport_kind == IMAGE_TRANSPORT_MEMORY:
-            if request.input_image_bytes is None:
-                raise InvalidRequestError("memory image-ref 调用发布推理时缺少 input_image_bytes")
-            return DetectionPredictionRequest(
-                input_image_bytes=request.input_image_bytes,
-                score_threshold=request.score_threshold,
-                save_result_image=request.save_result_image or request.return_preview_image_base64,
-                extra_options=dict(request.extra_options),
-            )
-        input_uri = (
-            str(normalized_image_payload.get("object_key") or "")
-            if transport_kind == IMAGE_TRANSPORT_STORAGE
-            else None
-        )
-        return DetectionPredictionRequest(
-            input_uri=input_uri,
-            input_image_payload=dict(normalized_image_payload),
-            score_threshold=request.score_threshold,
-            save_result_image=request.save_result_image or request.return_preview_image_base64,
-            extra_options=dict(request.extra_options),
+        super().__init__(
+            deployment_services_by_task_type={
+                DETECTION_TASK_TYPE: deployment_service,
+            },
+            deployment_process_supervisors_by_task_type={
+                DETECTION_TASK_TYPE: deployment_process_supervisor,
+            },
+            runtime_mode=runtime_mode,
         )
 
 
@@ -212,11 +266,7 @@ class PublishedInferenceGatewayClient:
     """通过父进程事件 dispatcher 调用 PublishedInferenceGateway。"""
 
     def __init__(self, channel: PublishedInferenceGatewayEventChannel) -> None:
-        """初始化 gateway client。
-
-        参数：
-        - channel：父子进程之间的事件通道。
-        """
+        """初始化 gateway client。"""
 
         self.channel = channel
 
@@ -250,12 +300,7 @@ class PublishedInferenceGatewayDispatcher:
     """在 backend-service 父进程中处理子进程 gateway 事件。"""
 
     def __init__(self, *, channel: PublishedInferenceGatewayEventChannel, gateway: PublishedInferenceGateway) -> None:
-        """初始化事件 dispatcher。
-
-        参数：
-        - channel：父子进程之间的事件通道。
-        - gateway：父进程内直接调用的 PublishedInferenceGateway。
-        """
+        """初始化事件 dispatcher。"""
 
         self.channel = channel
         self.gateway = gateway
@@ -326,6 +371,215 @@ class PublishedInferenceGatewayDispatcher:
         raise InvalidRequestError("PublishedInferenceGateway 收到未知事件", details={"action": action})
 
 
+def _build_prediction_request(
+    *,
+    task_type: str,
+    request: PublishedInferenceRequest,
+    normalized_image_payload: dict[str, object],
+) -> DetectionPredictionRequest | ClassificationPredictionRequest | SegmentationPredictionRequest | PosePredictionRequest | ObbPredictionRequest:
+    """把 PublishedInferenceRequest 转换为 task-native prediction request。"""
+
+    transport_kind = str(normalized_image_payload.get("transport_kind") or "")
+    common_kwargs = _build_common_prediction_kwargs(
+        request=request,
+        normalized_image_payload=normalized_image_payload,
+        transport_kind=transport_kind,
+    )
+    if task_type == DETECTION_TASK_TYPE:
+        return DetectionPredictionRequest(
+            **common_kwargs,
+            score_threshold=_resolve_score_threshold(request.score_threshold),
+        )
+    if task_type == CLASSIFICATION_TASK_TYPE:
+        return ClassificationPredictionRequest(
+            **common_kwargs,
+            top_k=_resolve_top_k(request.top_k),
+        )
+    if task_type == SEGMENTATION_TASK_TYPE:
+        return SegmentationPredictionRequest(
+            **common_kwargs,
+            score_threshold=_resolve_score_threshold(request.score_threshold),
+            mask_threshold=_resolve_mask_threshold(request.mask_threshold),
+        )
+    if task_type == POSE_TASK_TYPE:
+        return PosePredictionRequest(
+            **common_kwargs,
+            score_threshold=_resolve_score_threshold(request.score_threshold),
+            keypoint_confidence_threshold=_resolve_keypoint_confidence_threshold(
+                request.keypoint_confidence_threshold
+            ),
+        )
+    if task_type == OBB_TASK_TYPE:
+        return ObbPredictionRequest(
+            **common_kwargs,
+            score_threshold=_resolve_score_threshold(request.score_threshold),
+        )
+    raise InvalidRequestError(
+        "PublishedInferenceGateway 当前不支持指定 task_type",
+        details={"task_type": task_type, "supported": list(_SUPPORTED_TASK_TYPES)},
+    )
+
+
+def _build_common_prediction_kwargs(
+    *,
+    request: PublishedInferenceRequest,
+    normalized_image_payload: dict[str, object],
+    transport_kind: str,
+) -> dict[str, object]:
+    """构造 task-native prediction request 的公共输入字段。"""
+
+    common_kwargs: dict[str, object] = {
+        "save_result_image": request.save_result_image or request.return_preview_image_base64,
+        "extra_options": dict(request.extra_options),
+    }
+    if transport_kind == IMAGE_TRANSPORT_MEMORY:
+        if request.input_image_bytes is None:
+            raise InvalidRequestError("memory image-ref 调用发布推理时缺少 input_image_bytes")
+        common_kwargs["input_image_bytes"] = request.input_image_bytes
+        return common_kwargs
+    if transport_kind == IMAGE_TRANSPORT_STORAGE:
+        common_kwargs["input_uri"] = str(normalized_image_payload.get("object_key") or "")
+        return common_kwargs
+    common_kwargs["input_image_payload"] = dict(normalized_image_payload)
+    return common_kwargs
+
+
+def _build_published_inference_result(
+    *,
+    task_type: str,
+    deployment_instance_id: str,
+    instance_id: str,
+    execution_result: object,
+) -> PublishedInferenceResult:
+    """把 task-native execution result 转成 PublishedInferenceResult。"""
+
+    common_kwargs = {
+        "task_type": task_type,
+        "deployment_instance_id": deployment_instance_id,
+        "latency_ms": getattr(execution_result, "latency_ms", None),
+        "image_width": int(getattr(execution_result, "image_width", 0) or 0),
+        "image_height": int(getattr(execution_result, "image_height", 0) or 0),
+        "metadata": {"instance_id": instance_id},
+    }
+    if task_type == DETECTION_TASK_TYPE:
+        return PublishedInferenceResult(
+            **common_kwargs,
+            detections=tuple(
+                serialize_detection(item)
+                for item in getattr(execution_result, "detections", ())
+            ),
+            runtime_session_info=serialize_runtime_session_info(
+                getattr(execution_result, "runtime_session_info")
+            ),
+        )
+    if task_type == CLASSIFICATION_TASK_TYPE:
+        top_category = getattr(execution_result, "top_category", None)
+        return PublishedInferenceResult(
+            **common_kwargs,
+            categories=tuple(
+                serialize_classification_category(item)
+                for item in getattr(execution_result, "categories", ())
+            ),
+            top_category=(
+                serialize_classification_category(top_category)
+                if top_category is not None
+                else None
+            ),
+            runtime_session_info=serialize_classification_runtime_session_info(
+                getattr(execution_result, "runtime_session_info")
+            ),
+        )
+    if task_type == SEGMENTATION_TASK_TYPE:
+        return PublishedInferenceResult(
+            **common_kwargs,
+            instances=tuple(
+                serialize_segmentation_instance(item)
+                for item in getattr(execution_result, "instances", ())
+            ),
+            runtime_session_info=serialize_segmentation_runtime_session_info(
+                getattr(execution_result, "runtime_session_info")
+            ),
+        )
+    if task_type == POSE_TASK_TYPE:
+        return PublishedInferenceResult(
+            **common_kwargs,
+            instances=tuple(
+                serialize_pose_instance(item)
+                for item in getattr(execution_result, "instances", ())
+            ),
+            runtime_session_info=serialize_pose_runtime_session_info(
+                getattr(execution_result, "runtime_session_info")
+            ),
+        )
+    if task_type == OBB_TASK_TYPE:
+        return PublishedInferenceResult(
+            **common_kwargs,
+            instances=tuple(
+                serialize_obb_instance(item)
+                for item in getattr(execution_result, "instances", ())
+            ),
+            runtime_session_info=serialize_obb_runtime_session_info(
+                getattr(execution_result, "runtime_session_info")
+            ),
+        )
+    raise InvalidRequestError(
+        "PublishedInferenceGateway 当前不支持指定 task_type",
+        details={"task_type": task_type, "supported": list(_SUPPORTED_TASK_TYPES)},
+    )
+
+
+def _normalize_task_type(task_type: object) -> str:
+    """把 task_type 规范化为受支持值。"""
+
+    if not isinstance(task_type, str) or not task_type.strip():
+        raise InvalidRequestError("PublishedInferenceRequest 缺少 task_type")
+    normalized_task_type = task_type.strip().lower()
+    if normalized_task_type not in _SUPPORTED_TASK_TYPES:
+        raise InvalidRequestError(
+            "PublishedInferenceRequest 的 task_type 不受支持",
+            details={"task_type": task_type, "supported": list(_SUPPORTED_TASK_TYPES)},
+        )
+    return normalized_task_type
+
+
+def _resolve_score_threshold(value: object) -> float:
+    """解析 score_threshold。"""
+
+    if isinstance(value, bool):
+        return _DEFAULT_SCORE_THRESHOLD
+    if isinstance(value, int | float):
+        return float(value)
+    return _DEFAULT_SCORE_THRESHOLD
+
+
+def _resolve_mask_threshold(value: object) -> float:
+    """解析 mask_threshold。"""
+
+    if isinstance(value, bool):
+        return _DEFAULT_MASK_THRESHOLD
+    if isinstance(value, int | float):
+        return float(value)
+    return _DEFAULT_MASK_THRESHOLD
+
+
+def _resolve_top_k(value: object) -> int:
+    """解析 top_k。"""
+
+    if isinstance(value, bool) or not isinstance(value, int):
+        return _DEFAULT_TOP_K
+    return max(1, int(value))
+
+
+def _resolve_keypoint_confidence_threshold(value: object) -> float:
+    """解析 keypoint_confidence_threshold。"""
+
+    if isinstance(value, bool):
+        return _DEFAULT_KEYPOINT_CONFIDENCE_THRESHOLD
+    if isinstance(value, int | float):
+        return float(value)
+    return _DEFAULT_KEYPOINT_CONFIDENCE_THRESHOLD
+
+
 def request_fallback_id(process_config: object) -> str:
     """读取 process_config 的兜底标识。"""
 
@@ -341,8 +595,11 @@ def _serialize_request(request: PublishedInferenceRequest) -> dict[str, object]:
 def _deserialize_request(payload: dict[str, object]) -> PublishedInferenceRequest:
     """从事件 payload 读取 PublishedInferenceRequest。"""
 
+    task_type = payload.get("task_type")
     deployment_instance_id = payload.get("deployment_instance_id")
     image_payload = payload.get("image_payload")
+    if not isinstance(task_type, str) or not task_type.strip():
+        raise InvalidRequestError("PublishedInferenceRequest 缺少 task_type")
     if not isinstance(deployment_instance_id, str) or not deployment_instance_id.strip():
         raise InvalidRequestError("PublishedInferenceRequest 缺少 deployment_instance_id")
     if not isinstance(image_payload, dict):
@@ -352,10 +609,26 @@ def _deserialize_request(payload: dict[str, object]) -> PublishedInferenceReques
         raise InvalidRequestError("PublishedInferenceRequest input_image_bytes 必须是 bytes")
     trace_id = payload.get("trace_id")
     return PublishedInferenceRequest(
+        task_type=_normalize_task_type(task_type),
         deployment_instance_id=deployment_instance_id.strip(),
         image_payload=dict(image_payload),
         input_image_bytes=input_image_bytes,
-        score_threshold=float(payload.get("score_threshold") or 0.3),
+        score_threshold=(
+            float(payload["score_threshold"])
+            if payload.get("score_threshold") is not None
+            else None
+        ),
+        top_k=int(payload["top_k"]) if payload.get("top_k") is not None else None,
+        mask_threshold=(
+            float(payload["mask_threshold"])
+            if payload.get("mask_threshold") is not None
+            else None
+        ),
+        keypoint_confidence_threshold=(
+            float(payload["keypoint_confidence_threshold"])
+            if payload.get("keypoint_confidence_threshold") is not None
+            else None
+        ),
         auto_start_process=bool(payload.get("auto_start_process") is True),
         runtime_mode=str(payload.get("runtime_mode") or "sync"),
         save_result_image=bool(payload.get("save_result_image") is True),
@@ -374,12 +647,17 @@ def _serialize_result(result: PublishedInferenceResult) -> dict[str, object]:
 def _deserialize_result(payload: dict[str, object]) -> PublishedInferenceResult:
     """从事件 payload 读取 PublishedInferenceResult。"""
 
+    top_category = payload.get("top_category")
     return PublishedInferenceResult(
+        task_type=_normalize_task_type(payload.get("task_type")),
         deployment_instance_id=str(payload.get("deployment_instance_id") or ""),
-        detections=tuple(dict(item) for item in payload.get("detections", ()) if isinstance(item, dict)),
         latency_ms=float(payload["latency_ms"]) if payload.get("latency_ms") is not None else None,
         image_width=int(payload.get("image_width") or 0),
         image_height=int(payload.get("image_height") or 0),
+        detections=tuple(dict(item) for item in payload.get("detections", ()) if isinstance(item, dict)),
+        categories=tuple(dict(item) for item in payload.get("categories", ()) if isinstance(item, dict)),
+        top_category=dict(top_category) if isinstance(top_category, dict) else None,
+        instances=tuple(dict(item) for item in payload.get("instances", ()) if isinstance(item, dict)),
         preview_image_payload=dict(payload["preview_image_payload"])
         if isinstance(payload.get("preview_image_payload"), dict)
         else None,

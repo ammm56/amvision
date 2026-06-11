@@ -59,6 +59,7 @@ def test_published_inference_gateway_client_calls_parent_supervisor_with_event_d
 
         result = client.infer(
             PublishedInferenceRequest(
+                task_type="detection",
                 deployment_instance_id="deployment-1",
                 image_payload={
                     "transport_kind": "buffer",
@@ -73,6 +74,7 @@ def test_published_inference_gateway_client_calls_parent_supervisor_with_event_d
         )
 
         assert result.detections[0]["class_name"] == "defect"
+        assert result.task_type == "detection"
         assert fake_supervisor.start_calls == ["deployment-1"]
         assert fake_supervisor.last_prediction_request is not None
         assert fake_supervisor.last_prediction_request.input_image_bytes is None
@@ -325,7 +327,8 @@ class _FakePublishedInferenceGateway:
                     "class_id": 0,
                     "class_name": "defect",
                 },
-            )
+            ),
+            task_type="detection",
         )
 
 

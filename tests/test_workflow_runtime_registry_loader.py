@@ -276,6 +276,10 @@ def test_runtime_registry_loader_registers_core_service_nodes(
         "core.service.model-deployment.create",
         "core.service.model-inference.submit",
         "core.model.detection",
+        "core.model.segmentation",
+        "core.model.classification",
+        "core.model.pose",
+        "core.model.obb",
     }
     for node_type_id in expected_node_type_ids:
         node_definition = runtime_registry.get_node_definition(node_type_id)
@@ -376,6 +380,7 @@ def test_core_training_service_node_uses_runtime_context(
                 node_id="train",
                 node_type_id="core.service.model-training.submit",
                 parameters={
+                    "task_type": "detection",
                     "project_id": "project-1",
                     "dataset_export_id": "dataset-export-1",
                     "recipe_id": "recipe-1",
@@ -576,6 +581,7 @@ def test_core_model_evaluation_package_service_node_uses_runtime_context_and_reg
                 node_id="package",
                 node_type_id="core.service.model-evaluation.package",
                 parameters={
+                    "task_type": "detection",
                     "task_id": "task-evaluation-1",
                     "cleanup_on_completion": True,
                 },
@@ -680,7 +686,7 @@ def test_core_yolox_detection_node_uses_sync_runtime_context(
     monkeypatch.setattr(
         WorkflowServiceNodeRuntimeContext,
         "build_deployment_service",
-        lambda self: _FakeDeploymentService(),
+        lambda self, **kwargs: _FakeDeploymentService(),
     )
     _install_fake_published_inference_gateway(monkeypatch, fake_supervisor_calls, class_name="defect")
 
@@ -750,6 +756,7 @@ def test_core_yolox_detection_node_uses_sync_runtime_context(
 
     detections = execution_result.outputs["detections"]
     assert detections["items"][0]["class_name"] == "defect"
+    assert fake_supervisor_calls["published_inference_request"].task_type == "detection"
     assert fake_supervisor_calls["inference_kwargs"]["input_uri"] == "inputs/source.jpg"
     assert fake_supervisor_calls["inference_kwargs"]["score_threshold"] == 0.42
     assert fake_supervisor_calls["ensure_config"].deployment_instance_id == "deployment-instance-1"
@@ -822,7 +829,7 @@ def test_core_yolox_detection_node_accepts_dynamic_request_payload(
     monkeypatch.setattr(
         WorkflowServiceNodeRuntimeContext,
         "build_deployment_service",
-        lambda self: _FakeDeploymentService(),
+        lambda self, **kwargs: _FakeDeploymentService(),
     )
     _install_fake_published_inference_gateway(monkeypatch, fake_supervisor_calls, class_name="qr-region")
 
@@ -893,6 +900,7 @@ def test_core_yolox_detection_node_accepts_dynamic_request_payload(
 
     detections = execution_result.outputs["detections"]
     assert detections["items"][0]["class_name"] == "qr-region"
+    assert fake_supervisor_calls["published_inference_request"].task_type == "detection"
     assert fake_supervisor_calls["resolved_deployment_instance_id"] == "deployment-instance-dynamic-1"
     assert fake_supervisor_calls["inference_kwargs"]["score_threshold"] == 0.55
 
@@ -970,7 +978,7 @@ def test_core_yolox_detection_node_auto_starts_sync_process(
     monkeypatch.setattr(
         WorkflowServiceNodeRuntimeContext,
         "build_deployment_service",
-        lambda self: _FakeDeploymentService(),
+        lambda self, **kwargs: _FakeDeploymentService(),
     )
     _install_fake_published_inference_gateway(monkeypatch, fake_supervisor_calls, class_name="defect")
 
@@ -1039,6 +1047,7 @@ def test_core_yolox_detection_node_auto_starts_sync_process(
     )
 
     assert execution_result.outputs["detections"]["items"][0]["class_name"] == "defect"
+    assert fake_supervisor_calls["published_inference_request"].task_type == "detection"
     assert fake_supervisor_calls["start_config"].deployment_instance_id == "deployment-instance-1"
 
 
@@ -1175,7 +1184,7 @@ def test_core_yolox_detection_node_accepts_memory_image_payload(
     monkeypatch.setattr(
         WorkflowServiceNodeRuntimeContext,
         "build_deployment_service",
-        lambda self: _FakeDeploymentService(),
+        lambda self, **kwargs: _FakeDeploymentService(),
     )
     _install_fake_published_inference_gateway(monkeypatch, fake_supervisor_calls, class_name="defect")
 
@@ -1244,8 +1253,175 @@ def test_core_yolox_detection_node_accepts_memory_image_payload(
     )
 
     assert execution_result.outputs["detections"]["items"][0]["class_name"] == "defect"
+    assert fake_supervisor_calls["published_inference_request"].task_type == "detection"
     assert fake_supervisor_calls["inference_kwargs"]["input_uri"] is None
     assert fake_supervisor_calls["inference_kwargs"]["input_image_bytes"] == source_bytes
+
+
+@pytest.mark.parametrize(
+    ("node_type_id", "output_id", "payload_type_id", "task_type", "parameters", "expected_checks"),
+    [
+        (
+            "core.model.segmentation",
+            "segments",
+            "segments.v1",
+            "segmentation",
+            {"deployment_instance_id": "deployment-instance-1", "mask_threshold": 0.61},
+            {
+                "count": 1,
+                "class_name": "sealant",
+                "mask_threshold": 0.61,
+            },
+        ),
+        (
+            "core.model.classification",
+            "categories",
+            "categories.v1",
+            "classification",
+            {"deployment_instance_id": "deployment-instance-1", "top_k": 3},
+            {
+                "count": 2,
+                "class_name": "good-part",
+                "top_k": 3,
+            },
+        ),
+        (
+            "core.model.pose",
+            "poses",
+            "poses.v1",
+            "pose",
+            {
+                "deployment_instance_id": "deployment-instance-1",
+                "score_threshold": 0.44,
+                "keypoint_confidence_threshold": 0.33,
+            },
+            {
+                "count": 1,
+                "class_name": "worker",
+                "score_threshold": 0.44,
+                "keypoint_confidence_threshold": 0.33,
+            },
+        ),
+        (
+            "core.model.obb",
+            "obbs",
+            "obbs.v1",
+            "obb",
+            {"deployment_instance_id": "deployment-instance-1", "score_threshold": 0.58},
+            {
+                "count": 1,
+                "class_name": "tray",
+                "score_threshold": 0.58,
+            },
+        ),
+    ],
+)
+def test_task_native_direct_model_nodes_use_explicit_task_type(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    node_type_id: str,
+    output_id: str,
+    payload_type_id: str,
+    task_type: str,
+    parameters: dict[str, object],
+    expected_checks: dict[str, object],
+) -> None:
+    """验证 task-native 直连模型节点会显式传递 task_type，并产出对应 payload。"""
+
+    custom_nodes_root_dir = tmp_path / "custom_nodes"
+    node_pack_loader = LocalNodePackLoader(custom_nodes_root_dir)
+    node_pack_loader.refresh()
+    node_catalog_registry = NodeCatalogRegistry(node_pack_loader=node_pack_loader)
+    runtime_registry_loader = WorkflowNodeRuntimeRegistryLoader(
+        node_catalog_registry=node_catalog_registry,
+        node_pack_loader=node_pack_loader,
+    )
+    dataset_storage = _create_dataset_storage(tmp_path)
+    dataset_storage.write_bytes("inputs/source.jpg", build_test_jpeg_bytes())
+    runtime_registry_loader.refresh()
+
+    calls: dict[str, object] = {}
+    _install_fake_published_inference_gateway(monkeypatch, calls, class_name=str(expected_checks["class_name"]))
+
+    executor = WorkflowGraphExecutor(registry=runtime_registry_loader.get_runtime_registry())
+    runtime_context = WorkflowServiceNodeRuntimeContext(
+        session_factory=object(),
+        dataset_storage=dataset_storage,
+    )
+    template = WorkflowGraphTemplate(
+        template_id=f"{task_type}-direct-model-workflow",
+        template_version="1.0.0",
+        display_name=f"{task_type.title()} Direct Model Workflow",
+        nodes=(
+            WorkflowGraphNode(node_id="input", node_type_id="core.io.template-input.image"),
+            WorkflowGraphNode(
+                node_id="model",
+                node_type_id=node_type_id,
+                parameters=parameters,
+            ),
+        ),
+        edges=(
+            WorkflowGraphEdge(
+                edge_id="edge-input-model",
+                source_node_id="input",
+                source_port="image",
+                target_node_id="model",
+                target_port="image",
+            ),
+        ),
+        template_inputs=(
+            WorkflowGraphInput(
+                input_id="request_image",
+                display_name="Request Image",
+                payload_type_id="image-ref.v1",
+                target_node_id="input",
+                target_port="payload",
+            ),
+        ),
+        template_outputs=(
+            WorkflowGraphOutput(
+                output_id=output_id,
+                display_name=output_id.title(),
+                payload_type_id=payload_type_id,
+                source_node_id="model",
+                source_port=output_id,
+            ),
+        ),
+    )
+
+    execution_result = executor.execute(
+        template=template,
+        input_values={
+            "request_image": {
+                "object_key": "inputs/source.jpg",
+                "width": 64,
+                "height": 64,
+                "media_type": "image/jpeg",
+            }
+        },
+        execution_metadata={"dataset_storage": dataset_storage},
+        runtime_context=runtime_context,
+    )
+
+    output_payload = execution_result.outputs[output_id]
+    assert output_payload["count"] == expected_checks["count"]
+    assert calls["published_inference_request"].task_type == task_type
+    if output_id == "categories":
+        assert output_payload["items"][0]["class_name"] == expected_checks["class_name"]
+        assert output_payload["top_item"]["class_name"] == expected_checks["class_name"]
+        assert calls["published_inference_request"].top_k == expected_checks["top_k"]
+    else:
+        assert output_payload["items"][0]["class_name"] == expected_checks["class_name"]
+    if "mask_threshold" in expected_checks:
+        assert calls["published_inference_request"].mask_threshold == expected_checks["mask_threshold"]
+    if "score_threshold" in expected_checks:
+        assert calls["published_inference_request"].score_threshold == expected_checks["score_threshold"]
+    if "keypoint_confidence_threshold" in expected_checks:
+        assert (
+            calls["published_inference_request"].keypoint_confidence_threshold
+            == expected_checks["keypoint_confidence_threshold"]
+        )
 
 
 def test_core_model_inference_submit_node_auto_starts_async_process(
@@ -1331,12 +1507,12 @@ def test_core_model_inference_submit_node_auto_starts_async_process(
     monkeypatch.setattr(
         WorkflowServiceNodeRuntimeContext,
         "build_deployment_service",
-        lambda self: _FakeDeploymentService(),
+        lambda self, **kwargs: _FakeDeploymentService(),
     )
     monkeypatch.setattr(
         WorkflowServiceNodeRuntimeContext,
         "build_inference_task_service",
-        lambda self: _FakeInferenceTaskService(),
+        lambda self, **kwargs: _FakeInferenceTaskService(),
     )
 
     executor = WorkflowGraphExecutor(registry=runtime_registry_loader.get_runtime_registry())
@@ -1356,6 +1532,7 @@ def test_core_model_inference_submit_node_auto_starts_async_process(
                 node_id="infer",
                 node_type_id="core.service.model-inference.submit",
                 parameters={
+                    "task_type": "detection",
                     "project_id": "project-1",
                     "deployment_instance_id": "deployment-instance-1",
                     "display_name": "workflow inference",
@@ -1449,7 +1626,7 @@ def test_core_detection_deployment_create_node_accepts_dynamic_request_payload(
     monkeypatch.setattr(
         WorkflowServiceNodeRuntimeContext,
         "build_deployment_service",
-        lambda self: _FakeDeploymentService(),
+        lambda self, **kwargs: _FakeDeploymentService(),
     )
 
     executor = WorkflowGraphExecutor(registry=runtime_registry_loader.get_runtime_registry())
@@ -1495,6 +1672,7 @@ def test_core_detection_deployment_create_node_accepts_dynamic_request_payload(
             "request_payload": {
                 "value": {
                     "project_id": "project-1",
+                    "task_type": "detection",
                     "model_build_id": "model-build-dynamic-1",
                     "runtime_backend": "tensorrt",
                     "runtime_precision": "fp16",
@@ -1577,7 +1755,7 @@ def test_core_detection_deployment_lifecycle_nodes_drive_sync_supervisor(
     monkeypatch.setattr(
         WorkflowServiceNodeRuntimeContext,
         "build_deployment_service",
-        lambda self: _FakeDeploymentService(),
+        lambda self, **kwargs: _FakeDeploymentService(),
     )
 
     executor = WorkflowGraphExecutor(registry=runtime_registry_loader.get_runtime_registry())
@@ -1596,6 +1774,7 @@ def test_core_detection_deployment_lifecycle_nodes_drive_sync_supervisor(
                 node_id="start",
                 node_type_id="core.service.model-deployment.start",
                 parameters={
+                    "task_type": "detection",
                     "deployment_instance_id": deployment_view.deployment_instance_id,
                     "runtime_mode": "sync",
                 },
@@ -1604,6 +1783,7 @@ def test_core_detection_deployment_lifecycle_nodes_drive_sync_supervisor(
                 node_id="status",
                 node_type_id="core.service.model-deployment.status",
                 parameters={
+                    "task_type": "detection",
                     "deployment_instance_id": deployment_view.deployment_instance_id,
                     "runtime_mode": "sync",
                 },
@@ -1612,6 +1792,7 @@ def test_core_detection_deployment_lifecycle_nodes_drive_sync_supervisor(
                 node_id="warmup",
                 node_type_id="core.service.model-deployment.warmup",
                 parameters={
+                    "task_type": "detection",
                     "deployment_instance_id": deployment_view.deployment_instance_id,
                     "runtime_mode": "sync",
                 },
@@ -1620,6 +1801,7 @@ def test_core_detection_deployment_lifecycle_nodes_drive_sync_supervisor(
                 node_id="health",
                 node_type_id="core.service.model-deployment.health",
                 parameters={
+                    "task_type": "detection",
                     "deployment_instance_id": deployment_view.deployment_instance_id,
                     "runtime_mode": "sync",
                 },
@@ -1628,6 +1810,7 @@ def test_core_detection_deployment_lifecycle_nodes_drive_sync_supervisor(
                 node_id="reset",
                 node_type_id="core.service.model-deployment.reset",
                 parameters={
+                    "task_type": "detection",
                     "deployment_instance_id": deployment_view.deployment_instance_id,
                     "runtime_mode": "sync",
                 },
@@ -1636,6 +1819,7 @@ def test_core_detection_deployment_lifecycle_nodes_drive_sync_supervisor(
                 node_id="stop",
                 node_type_id="core.service.model-deployment.stop",
                 parameters={
+                    "task_type": "detection",
                     "deployment_instance_id": deployment_view.deployment_instance_id,
                     "runtime_mode": "sync",
                 },
@@ -1761,7 +1945,7 @@ def test_core_detection_deployment_health_node_uses_async_supervisor(
     monkeypatch.setattr(
         WorkflowServiceNodeRuntimeContext,
         "build_deployment_service",
-        lambda self: _FakeAsyncDeploymentService(),
+        lambda self, **kwargs: _FakeAsyncDeploymentService(),
     )
 
     executor = WorkflowGraphExecutor(registry=runtime_registry_loader.get_runtime_registry())
@@ -1780,6 +1964,7 @@ def test_core_detection_deployment_health_node_uses_async_supervisor(
                 node_id="health",
                 node_type_id="core.service.model-deployment.health",
                 parameters={
+                    "task_type": "detection",
                     "deployment_instance_id": deployment_view.deployment_instance_id,
                     "runtime_mode": "async",
                 },
@@ -3660,7 +3845,7 @@ def _install_fake_published_inference_gateway(
         """记录 PublishedInferenceRequest 的测试 gateway。"""
 
         def infer(self, request):
-            """记录请求并返回固定 detection。"""
+            """记录请求并按 task_type 返回固定结果。"""
 
             calls["published_inference_request"] = request
             calls["resolved_deployment_instance_id"] = request.deployment_instance_id
@@ -3672,10 +3857,108 @@ def _install_fake_published_inference_gateway(
                 "input_image_bytes": request.input_image_bytes,
                 "input_image_payload": request.image_payload,
                 "score_threshold": request.score_threshold,
+                "top_k": request.top_k,
+                "mask_threshold": request.mask_threshold,
+                "keypoint_confidence_threshold": request.keypoint_confidence_threshold,
                 "save_result_image": request.save_result_image,
                 "extra_options": request.extra_options,
             }
+            if request.task_type == "classification":
+                return PublishedInferenceResult(
+                    task_type=request.task_type,
+                    deployment_instance_id=request.deployment_instance_id,
+                    categories=(
+                        {
+                            "class_id": 0,
+                            "class_name": class_name,
+                            "score": 0.98,
+                        },
+                        {
+                            "class_id": 1,
+                            "class_name": "other",
+                            "score": 0.12,
+                        },
+                    ),
+                    top_category={
+                        "class_id": 0,
+                        "class_name": class_name,
+                        "score": 0.98,
+                    },
+                    latency_ms=8.5,
+                    image_width=64,
+                    image_height=64,
+                    runtime_session_info={"backend_name": "fake"},
+                    metadata={"instance_id": "instance-1"},
+                )
+            if request.task_type == "segmentation":
+                return PublishedInferenceResult(
+                    task_type=request.task_type,
+                    deployment_instance_id=request.deployment_instance_id,
+                    instances=(
+                        {
+                            "segment_id": "segment-1",
+                            "bbox_xyxy": [4.0, 4.0, 24.0, 24.0],
+                            "score": 0.97,
+                            "class_id": 0,
+                            "class_name": class_name,
+                            "mask_area": 240.0,
+                            "segments": [
+                                [[4.0, 4.0], [24.0, 4.0], [24.0, 24.0], [4.0, 24.0]]
+                            ],
+                        },
+                    ),
+                    latency_ms=8.5,
+                    image_width=64,
+                    image_height=64,
+                    runtime_session_info={"backend_name": "fake"},
+                    metadata={"instance_id": "instance-1"},
+                )
+            if request.task_type == "pose":
+                return PublishedInferenceResult(
+                    task_type=request.task_type,
+                    deployment_instance_id=request.deployment_instance_id,
+                    instances=(
+                        {
+                            "pose_id": "pose-1",
+                            "bbox_xyxy": [4.0, 4.0, 24.0, 24.0],
+                            "score": 0.97,
+                            "class_id": 0,
+                            "class_name": class_name,
+                            "kpt_shape": [3, 3],
+                            "keypoints": [
+                                {"x": 6.0, "y": 7.0, "score": 0.99, "name": "head"},
+                                {"x": 14.0, "y": 16.0, "score": 0.91, "name": "waist"},
+                            ],
+                        },
+                    ),
+                    latency_ms=8.5,
+                    image_width=64,
+                    image_height=64,
+                    runtime_session_info={"backend_name": "fake"},
+                    metadata={"instance_id": "instance-1"},
+                )
+            if request.task_type == "obb":
+                return PublishedInferenceResult(
+                    task_type=request.task_type,
+                    deployment_instance_id=request.deployment_instance_id,
+                    instances=(
+                        {
+                            "obb_id": "obb-1",
+                            "bbox_xyxy": [4.0, 4.0, 24.0, 24.0],
+                            "score": 0.97,
+                            "class_id": 0,
+                            "class_name": class_name,
+                            "angle": 12.5,
+                        },
+                    ),
+                    latency_ms=8.5,
+                    image_width=64,
+                    image_height=64,
+                    runtime_session_info={"backend_name": "fake"},
+                    metadata={"instance_id": "instance-1"},
+                )
             return PublishedInferenceResult(
+                task_type=request.task_type,
                 deployment_instance_id=request.deployment_instance_id,
                 detections=(
                     {

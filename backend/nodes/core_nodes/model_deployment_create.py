@@ -11,10 +11,9 @@ from backend.contracts.workflows.workflow_graph import (
 from backend.nodes.core_nodes._base import CoreNodeSpec
 from backend.nodes.core_nodes._platform_service_node_support import (
     get_optional_platform_model_type,
-    get_optional_platform_task_type,
+    require_platform_task_type,
     get_supported_platform_model_types,
     resolve_platform_model_type,
-    resolve_platform_task_type,
 )
 from backend.nodes.core_nodes._service_node_support import (
     build_service_node_deployment_service,
@@ -60,10 +59,7 @@ def _model_deployment_create_handler(request: WorkflowNodeExecutionRequest) -> d
 
     request = overlay_parameters_from_object_input(request)
     runtime_context = require_workflow_service_node_runtime(request)
-    task_type = resolve_platform_task_type(
-        get_optional_platform_task_type(request),
-        default_task_type=DETECTION_TASK_TYPE,
-    )
+    task_type = require_platform_task_type(request)
     request_cls, default_model_type = _resolve_deployment_create_request_class(task_type)
     model_type = resolve_platform_model_type(
         get_optional_platform_model_type(
@@ -218,7 +214,7 @@ CORE_NODE_SPEC = CoreNodeSpec(
                 "cleanup_on_completion": {"type": "boolean"},
                 "created_by": {"type": "string"},
             },
-            "required": ["project_id"],
+            "required": ["task_type", "project_id"],
             "anyOf": [
                 {"required": ["model_version_id"]},
                 {"required": ["model_build_id"]}

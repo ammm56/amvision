@@ -13,7 +13,9 @@
     {
       "node_id": "submit_import",
       "node_type_id": "core.service.dataset-import.submit",
-      "parameters": {}
+      "parameters": {
+        "task_type": "detection"
+      }
     },
     {
       "node_id": "extract_import_task_id",
@@ -45,7 +47,7 @@
       "node_id": "extract_import_dataset_id",
       "node_type_id": "core.logic.field-extract",
       "parameters": {
-          "path": "task_spec.dataset_id"
+        "path": "task_spec.dataset_id"
       }
     },
     {
@@ -320,7 +322,9 @@
     {
       "node_id": "submit_training",
       "node_type_id": "core.service.model-training.submit",
-      "parameters": {}
+      "parameters": {
+        "task_type": "detection"
+      }
     },
     {
       "node_id": "extract_training_task_id",
@@ -418,7 +422,9 @@
     {
       "node_id": "submit_evaluation",
       "node_type_id": "core.service.model-evaluation.submit",
-      "parameters": {}
+      "parameters": {
+        "task_type": "detection"
+      }
     },
     {
       "node_id": "extract_evaluation_task_id",
@@ -508,7 +514,9 @@
     {
       "node_id": "submit_conversion",
       "node_type_id": "core.service.model-conversion.submit",
-      "parameters": {}
+      "parameters": {
+        "task_type": "detection"
+      }
     },
     {
       "node_id": "extract_conversion_task_id",
@@ -632,7 +640,8 @@
       "node_id": "create_deployment",
       "node_type_id": "core.service.model-deployment.create",
       "parameters": {
-        "cleanup_on_completion": true
+        "cleanup_on_completion": true,
+        "task_type": "detection"
       }
     },
     {
@@ -1881,15 +1890,15 @@
         "wait_export"
       ],
       "training": [
-          "build_training_pretrained_case_nano",
-          "build_training_pretrained_case_tiny",
-          "build_training_pretrained_case_s",
-          "build_training_pretrained_case_m",
-          "build_training_pretrained_case_l",
-          "build_training_pretrained_case_x",
-          "build_training_pretrained_cases",
-          "resolve_default_training_warm_start_model_version_id",
-          "build_training_default_warm_start_request",
+        "build_training_pretrained_case_nano",
+        "build_training_pretrained_case_tiny",
+        "build_training_pretrained_case_s",
+        "build_training_pretrained_case_m",
+        "build_training_pretrained_case_l",
+        "build_training_pretrained_case_x",
+        "build_training_pretrained_cases",
+        "resolve_default_training_warm_start_model_version_id",
+        "build_training_default_warm_start_request",
         "build_training_dynamic_request",
         "merge_training_request",
         "submit_training",
@@ -1934,6 +1943,3 @@
     }
   }
 }
-
-
-

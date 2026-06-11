@@ -66,6 +66,21 @@ def get_optional_platform_task_type(request: WorkflowNodeExecutionRequest) -> st
     return task_type
 
 
+def require_platform_task_type(request: WorkflowNodeExecutionRequest) -> str:
+    """读取并校验必填 task_type。"""
+
+    task_type = get_optional_platform_task_type(request)
+    if task_type is not None:
+        return task_type
+    raise InvalidRequestError(
+        "task_type 不能为空，workflow service node 必须显式声明任务分类",
+        details={
+            "node_id": request.node_id,
+            "supported": list(WORKFLOW_SERVICE_TASK_TYPES),
+        },
+    )
+
+
 def get_optional_platform_model_type(
     request: WorkflowNodeExecutionRequest,
     *,
@@ -86,16 +101,6 @@ def get_optional_platform_model_type(
             },
         )
     return model_type
-
-
-def resolve_platform_task_type(
-    task_type: str | None,
-    *,
-    default_task_type: str,
-) -> str:
-    """按节点默认值补齐 task_type。"""
-
-    return task_type or default_task_type
 
 
 def resolve_platform_model_type(
