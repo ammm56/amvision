@@ -1,4 +1,4 @@
-# Detection Training 接口文档（YOLOX 示例）
+# Detection Training 接口文档（历史文件名沿用 YOLOX）
 
 ## 文档目的
 
@@ -43,7 +43,9 @@
 
 ### POST /api/v1/models/detection/training-tasks
 
-创建一个以 DatasetExport 为唯一输入边界的 YOLOX 训练任务，并提交到 yolox-trainings 队列。
+创建一个以 DatasetExport 为唯一输入边界的 detection 训练任务，并提交到 detection 训练队列。
+
+当前响应里的 `queue_name` 字段仍会返回历史内部名 `yolox-trainings`，这是内部 worker kind 的保留值，不影响公开路由和调用方式。
 
 训练链顺序图与常见失败分支见 [docs/architecture/execution-sequences.md](../architecture/execution-sequences.md)。
 
@@ -190,7 +192,7 @@ reference 风格增强示例：按需显式开启 Mosaic、MixUp 和动态尺寸
 
 ### GET /api/v1/models/detection/training-tasks
 
-按 Project 和 DatasetExport 边界列出当前可见的 YOLOX 训练任务。
+按 Project 和 DatasetExport 边界列出当前可见的 detection 训练任务。
 
 #### 查询参数
 
@@ -214,7 +216,7 @@ reference 风格增强示例：按需显式开启 Mosaic、MixUp 和动态尺寸
 
 ### GET /api/v1/models/detection/training-tasks/{task_id}
 
-返回一条 YOLOX 训练任务详情。
+返回一条 detection 训练任务详情。
 
 #### 查询参数
 
@@ -761,7 +763,7 @@ reference 风格增强示例：按需显式开启 Mosaic、MixUp 和动态尺寸
 #### 当前实现边界
 
 - 当前最小评估链只支持 `coco-detection-v1` 导出输入
-- 当前评估执行复用本地 PyTorch checkpoint 和 YOLOX 最小 COCO mAP 评估逻辑
+- 当前评估执行复用本地 PyTorch checkpoint 和项目内 detection 最小 COCO mAP 评估逻辑
 - 当前 `per_class_metrics` 提供 `category_id`、`class_index`、`class_name`、`ground_truth_count`、`detection_count`、`ap50` 和 `ap50_95`
 - 当前 `result-package` 为 zip 文件，包含 `report.json` 和 `detections.json`
 - 当前 `save_result_package=false` 时仍会生成 report 和 detections，但不会写 zip 结果包
@@ -1049,7 +1051,7 @@ reference 风格增强示例：按需显式开启 Mosaic、MixUp 和动态尺寸
 1. 基于现有 `validation-sessions`、`evaluation-tasks` 和 deployment health 接口补齐前端 / 工作站的验证、评估和运维视图。
 2. 为当前已支持的 pytorch、onnxruntime、openvino、tensorrt 组合补齐 smoke test、精度回归和 benchmark 基线。
 3. 把独立 worker profile、release 组装流程和 bundled Python 目录一起打磨到交付级，避免训练/评估/推理链路虽然可用但发布方式仍依赖人工拼装。
-4. 在现有闭环稳定后，再继续扩展 RKNN 等新增目标格式或非 YOLOX 模型类型。
+4. 在现有闭环稳定后，再继续扩展 RKNN 等新增目标格式或更多 detection 模型类型。
 
 ## 当前能力边界
 

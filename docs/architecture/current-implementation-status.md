@@ -97,7 +97,7 @@
 - FastAPI 应用入口位于 `backend/service/api/app.py`，负责装配 settings、数据库会话、本地对象存储、本地队列、中间件、异常处理、REST 路由和 WebSocket 路由。
 - backend-service settings 位于 `backend/service/settings.py`，当前已经统一管理 CORS、auth mode、本地 auth TTL、auth provider 目录、静态 token 和 Project 目录配置。
 - 启动编排位于 `backend/service/api/bootstrap.py`，负责在应用生命周期内初始化 SessionFactory、LocalDatasetStorage、LocalFileQueueBackend 和 deployment process supervisor。
-- REST v1 路由汇总位于 `backend/service/api/rest/v1/router.py`，当前已经挂载 auth、system、projects、workflows、workflow runtime、datasets、dataset-exports、models、detection-training-tasks、classification-training-tasks、segmentation-training-tasks、pose-training-tasks、obb-training-tasks、detection-validation-sessions、classification-validation-sessions、segmentation-validation-sessions、pose-validation-sessions、obb-validation-sessions、deployment-instances、inference-tasks、yolox-training-tasks、validation-sessions、conversion-tasks、evaluation-tasks 和 tasks。
+- REST v1 路由汇总位于 `backend/service/api/rest/v1/router.py`，当前已经挂载 auth、system、projects、workflows、workflow runtime、datasets、dataset-exports、models、五类训练任务控制面、五类 validation session 控制面、统一 deployment 与 inference 控制面、conversion、evaluation 和 tasks；公开入口当前已经统一收口到 `/api/v1/models/{task_type}/...` 这条主线，不再把历史 `yolox-*` 路由名当成平台总览描述。
 - REST v1 列表分页辅助函数位于 `backend/service/api/rest/v1/pagination.py`，当前用于 projects、workflow templates、template versions、applications、execution-policies、preview-runs、app-runtimes 和 trigger-sources。
 - WebSocket 路由位于 `backend/service/api/ws/router.py`，当前已经公开 auth、system、tasks、workflow preview-runs、workflow runs、workflow app-runtimes、deployments 和 projects 聚合流入口。
 
@@ -165,7 +165,7 @@
 
 - 当前已经显式复跑一轮按 `model_type × task_type` 收口的轻量 smoke matrix：`tests/test_model_profiles.py`、`tests/test_yolov8_detection_model.py`、`tests/test_yolox_inference_tasks_api.py`、`tests/test_yolo_primary_classification_chain.py`、`tests/test_yolo_primary_segmentation_chain.py`、`tests/test_yolo_primary_pose_chain.py`、`tests/test_yolo_primary_obb_chain.py`、`tests/test_rfdetr_chain.py`、`tests/test_non_detection_training_result_registration.py`、`tests/test_non_detection_inference_api.py`、`tests/test_validation_runtime_backend_support.py`。
 - 这轮矩阵结果当前为 `78 passed`，覆盖了 detection、classification、segmentation、pose、obb 五类任务，以及 `yolox / yolov8 / yolo11 / yolo26 / rfdetr` 的当前主链组合。
-- 这轮回归同时确认了 `/models/{task_type}` 已经在控制面收平：non-detection 当前已经具备 task-native 的同步 `/infer`、异步任务创建/详情/结果读取，以及 deployment `sync/async` 的 `start / status / stop / warmup / reset` 最小动作。
+- 这轮回归同时确认了 `/models/{task_type}` 已经在控制面收平：non-detection 当前已经具备 task-native 的同步 `/infer`、异步任务创建/详情/结果读取，以及 deployment `sync/async` 的 `start / status / stop / warmup / reset` 最小动作；`tests/test_non_detection_inference_api.py` 当前已经显式覆盖 `classification / segmentation / pose / obb` 四类任务的 async 前检查、sync `/infer`、async result round-trip 和 deployment 控制基础链。
 
 ### custom node 运行时
 

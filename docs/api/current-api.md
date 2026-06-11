@@ -114,42 +114,11 @@ WebSocket 资源流的统一消息结构、控制事件和重连规则见 [docs/
 | POST | /api/v1/models/detection/training-tasks/{task_id}/resume | tasks:write | 把 paused 的 detection 训练任务重新入队，并基于 latest checkpoint 恢复训练。 |
 | POST | /api/v1/models/detection/training-tasks/{task_id}/terminate | tasks:write | 请求终止一个 queued、running 或 paused 的 detection 训练任务。 |
 | DELETE | /api/v1/models/detection/training-tasks/{task_id} | tasks:write | 删除一个已经停止且允许清理的 detection 训练任务。 |
+| POST | /api/v1/models/detection/training-tasks/{task_id}/register-model-version | tasks:write + models:write | 调试时手动重登记当前 latest checkpoint 对应的固定 latest ModelVersion，并回写到训练详情。 |
 | GET | /api/v1/models/detection/training-tasks/{task_id}/validation-metrics | tasks:read | 读取当前 detection 训练任务最新的 validation-metrics.json 内容。 |
 | GET | /api/v1/models/detection/training-tasks/{task_id}/train-metrics | tasks:read | 读取当前 detection 训练任务最新的 train-metrics.json 内容。 |
 | GET | /api/v1/models/detection/training-tasks/{task_id}/output-files | tasks:read | 列出当前 detection 训练任务公开输出文件状态。 |
 | GET | /api/v1/models/detection/training-tasks/{task_id}/output-files/{file_name} | tasks:read | 读取单个 detection 训练输出文件的状态、object_key 和可内联 payload。 |
-
-### POST /api/v1/models/detection/training-tasks
-
-- 需要同时具备 `datasets:read` 和 `tasks:write`
-- `extra_options` 当前已经在 Swagger/OpenAPI 中展开 detection 训练公开字段，重点包括：
-  - `learning_rate`
-  - `weight_decay`
-  - `class_loss_weight`
-  - `box_loss_weight`
-  - `dfl_loss_weight`
-  - `flip_prob`
-  - `hsv_prob`
-  - `mosaic_prob`
-  - `mixup_prob`
-  - `enable_mixup`
-  - `degrees`
-  - `translate`
-  - `shear`
-  - `mosaic_scale`
-  - `mixup_scale`
-  - `evaluation_confidence_threshold`
-  - `evaluation_nms_threshold`
-  - `assign_topk`
-  - `assign_alpha`
-  - `assign_beta`
-  - `min_lr_ratio`
-  - `grad_clip_norm`
-- 统一 detection 控制面仍允许透传 backend 专用 `extra_options` 字段；当前 OpenAPI 只把平台已经正式化的公开字段展开说明。
-- 训练任务完成后，`summary.training_config` 当前会同时保存：
-  - `extra_options`：请求时显式传入的原始字段
-  - `resolved_extra_options`：训练真正生效的默认值与解析结果
-- 对 `YOLO26` 这类 end-to-end detection 模型，验证与推理摘要当前会显式写出 `evaluation_postprocess_mode=end2end-topk`；此时 `evaluation_nms_threshold` 仅保留为请求配置字段，不再作为实际后处理路径生效。
 | POST | /api/v1/models/classification/training-tasks | datasets:read + tasks:write | 按统一 classification 控制面创建 YOLOv8、YOLO11、YOLO26 分类训练任务。 |
 | GET | /api/v1/models/classification/training-tasks | tasks:read | 按 Project、模型分类和状态列出 classification 训练任务。 |
 | GET | /api/v1/models/classification/training-tasks/{task_id} | tasks:read | 查询单条 classification 训练任务详情。 |
@@ -182,7 +151,6 @@ WebSocket 资源流的统一消息结构、控制事件和重连规则见 [docs/
 | POST | /api/v1/models/obb/training-tasks/{task_id}/terminate | tasks:write | 请求终止一个 queued、running 或 paused 的 obb 训练任务。 |
 | POST | /api/v1/models/obb/training-tasks/{task_id}/resume | tasks:write | 把 paused 的 obb 训练任务重新入队。 |
 | DELETE | /api/v1/models/obb/training-tasks/{task_id} | tasks:write | 删除一个已经停止且允许清理的 obb 训练任务。 |
-| POST | /api/v1/models/detection/training-tasks | datasets:read + tasks:write | 以 DatasetExport 为唯一输入边界创建 detection 训练任务。 |
 | GET | /api/v1/models/platform-base | models:read | 列出平台基础模型及其可用 ModelVersion 摘要。 |
 | GET | /api/v1/models/platform-base/{model_id} | models:read | 查询单个平台基础模型详情、版本文件和构建文件。 |
 | POST | /api/v1/models/detection/conversion-tasks/onnx | models:read + tasks:write | 以训练产出的 source ModelVersion 创建 ONNX conversion 任务。 |
@@ -194,18 +162,6 @@ WebSocket 资源流的统一消息结构、控制事件和重连规则见 [docs/
 | GET | /api/v1/models/detection/conversion-tasks | tasks:read | 按 Project、来源版本和状态列出 detection conversion 任务。 |
 | GET | /api/v1/models/detection/conversion-tasks/{task_id} | tasks:read | 查询单条 detection conversion 任务详情和事件流。 |
 | GET | /api/v1/models/detection/conversion-tasks/{task_id}/result | tasks:read | 查询 detection conversion 结果文件状态与当前转换摘要。 |
-| GET | /api/v1/models/detection/training-tasks | tasks:read | 按 Project、DatasetExport 边界和状态列出 detection 训练任务。 |
-| GET | /api/v1/models/detection/training-tasks/{task_id} | tasks:read | 查询单条 detection 训练任务详情和事件流。 |
-| POST | /api/v1/models/detection/training-tasks/{task_id}/save | tasks:write | 为 running 的 detection 训练任务登记一次手动保存请求。 |
-| POST | /api/v1/models/detection/training-tasks/{task_id}/pause | tasks:write | 为 running 的 detection 训练任务请求暂停，并在下一轮边界先保存 latest checkpoint。 |
-| POST | /api/v1/models/detection/training-tasks/{task_id}/resume | tasks:write | 把 paused 的 detection 训练任务重新入队，并基于 latest checkpoint 恢复训练。 |
-| POST | /api/v1/models/detection/training-tasks/{task_id}/terminate | tasks:write | 请求终止一个 queued、running 或 paused 的 detection 训练任务。 |
-| DELETE | /api/v1/models/detection/training-tasks/{task_id} | tasks:write | 删除一个已经停止且允许清理的 detection 训练任务。 |
-| POST | /api/v1/models/detection/training-tasks/{task_id}/register-model-version | tasks:write + models:write | 调试时手动重登记当前 latest checkpoint 对应的固定 latest ModelVersion，并回写到训练详情。 |
-| GET | /api/v1/models/detection/training-tasks/{task_id}/validation-metrics | tasks:read | 读取当前训练任务最新的 validation-metrics.json 内容。 |
-| GET | /api/v1/models/detection/training-tasks/{task_id}/train-metrics | tasks:read | 读取当前训练任务最新的 train-metrics.json 内容。 |
-| GET | /api/v1/models/detection/training-tasks/{task_id}/output-files | tasks:read | 列出当前训练任务公开输出文件状态。 |
-| GET | /api/v1/models/detection/training-tasks/{task_id}/output-files/{file_name} | tasks:read | 读取单个训练输出文件的状态、object_key 和可内联 payload。 |
 | POST | /api/v1/models/detection/validation-sessions | models:read | 为指定 detection 模型分类与 ModelVersion 创建一个训练后单图人工验证 session；支持 pytorch、onnxruntime、openvino、tensorrt。 |
 | GET | /api/v1/models/detection/validation-sessions/{session_id} | models:read | 读取单条 detection validation session 当前详情。 |
 | POST | /api/v1/models/detection/validation-sessions/{session_id}/predict | models:read | 对 detection validation session 执行一次单图预测，并返回 raw-result 与 preview 引用。 |
@@ -221,9 +177,6 @@ WebSocket 资源流的统一消息结构、控制事件和重连规则见 [docs/
 | POST | /api/v1/models/obb/validation-sessions | models:read | 为指定 obb 模型分类与 ModelVersion 创建一个训练后单图人工验证 session；支持 pytorch、onnxruntime、openvino、tensorrt。 |
 | GET | /api/v1/models/obb/validation-sessions/{session_id} | models:read | 读取单条 obb validation session 当前详情。 |
 | POST | /api/v1/models/obb/validation-sessions/{session_id}/predict | models:read | 对 obb validation session 执行一次单图预测，并返回 raw-result 与 preview 引用。 |
-| POST | /api/v1/models/detection/validation-sessions | models:read | 创建一个训练后单图人工验证 session。 |
-| GET | /api/v1/models/detection/validation-sessions/{session_id} | models:read | 读取单条 validation session 当前详情。 |
-| POST | /api/v1/models/detection/validation-sessions/{session_id}/predict | models:read | 对 validation session 执行一次单图预测，并返回 raw-result 与 preview 引用。 |
 | POST | /api/v1/models/detection/evaluation-tasks | datasets:read + models:read + tasks:write | 以 DatasetExport 和 ModelVersion 创建数据集级回归评估任务。 |
 | GET | /api/v1/models/detection/evaluation-tasks | tasks:read | 按 Project、DatasetExport、ModelVersion 和状态列出 detection 评估任务。 |
 | GET | /api/v1/models/detection/evaluation-tasks/{task_id} | tasks:read | 查询单条 detection 评估任务详情和事件流。 |
@@ -250,6 +203,26 @@ WebSocket 资源流的统一消息结构、控制事件和重连规则见 [docs/
 | GET | /api/v1/models/detection/inference-tasks | tasks:read | 按 Project、DeploymentInstance 和状态列出 detection 推理任务。 |
 | GET | /api/v1/models/detection/inference-tasks/{task_id} | tasks:read | 查询单条 detection 推理任务详情和事件流。 |
 | GET | /api/v1/models/detection/inference-tasks/{task_id}/result | tasks:read | 读取当前 detection 推理结果文件状态和 payload。 |
+| POST | /api/v1/models/{task_type}/deployment-instances | models:read + models:write | 创建一个非 detection DeploymentInstance；当前 task_type 支持 classification、segmentation、pose、obb。 |
+| GET | /api/v1/models/{task_type}/deployment-instances | models:read | 按 Project、ModelVersion、ModelBuild 和状态列出非 detection DeploymentInstance；当前 task_type 支持 classification、segmentation、pose、obb。 |
+| GET | /api/v1/models/{task_type}/deployment-instances/{deployment_instance_id} | models:read | 读取单条非 detection DeploymentInstance 详情；当前 task_type 支持 classification、segmentation、pose、obb。 |
+| POST | /api/v1/models/{task_type}/deployment-instances/{deployment_instance_id}/sync/start | models:read + models:write | 启动指定非 detection deployment 的同步推理子进程；当前 task_type 支持 classification、segmentation、pose、obb。 |
+| GET | /api/v1/models/{task_type}/deployment-instances/{deployment_instance_id}/sync/status | models:read | 查询指定非 detection deployment 的同步推理进程状态；当前 task_type 支持 classification、segmentation、pose、obb。 |
+| POST | /api/v1/models/{task_type}/deployment-instances/{deployment_instance_id}/sync/stop | models:read + models:write | 停止指定非 detection deployment 的同步推理子进程；当前 task_type 支持 classification、segmentation、pose、obb。 |
+| POST | /api/v1/models/{task_type}/deployment-instances/{deployment_instance_id}/sync/warmup | models:read + models:write | 启动并预热指定非 detection deployment 的同步推理实例池；当前 task_type 支持 classification、segmentation、pose、obb。 |
+| GET | /api/v1/models/{task_type}/deployment-instances/{deployment_instance_id}/sync/health | models:read | 读取指定非 detection deployment 的同步 runtime pool 健康视图；当前 task_type 支持 classification、segmentation、pose、obb。 |
+| POST | /api/v1/models/{task_type}/deployment-instances/{deployment_instance_id}/sync/reset | models:read + models:write | 重置指定非 detection deployment 的同步推理实例池；当前 task_type 支持 classification、segmentation、pose、obb。 |
+| POST | /api/v1/models/{task_type}/deployment-instances/{deployment_instance_id}/async/start | models:read + models:write | 启动指定非 detection deployment 的异步推理子进程；当前 task_type 支持 classification、segmentation、pose、obb。 |
+| GET | /api/v1/models/{task_type}/deployment-instances/{deployment_instance_id}/async/status | models:read | 查询指定非 detection deployment 的异步推理进程状态；当前 task_type 支持 classification、segmentation、pose、obb。 |
+| POST | /api/v1/models/{task_type}/deployment-instances/{deployment_instance_id}/async/stop | models:read + models:write | 停止指定非 detection deployment 的异步推理子进程；当前 task_type 支持 classification、segmentation、pose、obb。 |
+| POST | /api/v1/models/{task_type}/deployment-instances/{deployment_instance_id}/async/warmup | models:read + models:write | 启动并预热指定非 detection deployment 的异步推理实例池；当前 task_type 支持 classification、segmentation、pose、obb。 |
+| GET | /api/v1/models/{task_type}/deployment-instances/{deployment_instance_id}/async/health | models:read | 读取指定非 detection deployment 的异步 runtime pool 健康视图；当前 task_type 支持 classification、segmentation、pose、obb。 |
+| POST | /api/v1/models/{task_type}/deployment-instances/{deployment_instance_id}/async/reset | models:read + models:write | 重置指定非 detection deployment 的异步推理实例池；当前 task_type 支持 classification、segmentation、pose、obb。 |
+| POST | /api/v1/models/{task_type}/deployment-instances/{deployment_instance_id}/infer | models:read | 通过同步 deployment 进程直接执行一次非 detection 推理并返回结果；当前 task_type 支持 classification、segmentation、pose、obb。 |
+| POST | /api/v1/models/{task_type}/inference-tasks | models:read + tasks:write | 为已启动 async deployment 创建一条非 detection 正式推理任务；当前 task_type 支持 classification、segmentation、pose、obb。 |
+| GET | /api/v1/models/{task_type}/inference-tasks | tasks:read | 按 Project、DeploymentInstance 和状态列出非 detection 推理任务；当前 task_type 支持 classification、segmentation、pose、obb。 |
+| GET | /api/v1/models/{task_type}/inference-tasks/{task_id} | tasks:read | 查询单条非 detection 推理任务详情和事件流；当前 task_type 支持 classification、segmentation、pose、obb。 |
+| GET | /api/v1/models/{task_type}/inference-tasks/{task_id}/result | tasks:read | 读取当前非 detection 推理结果文件状态和 payload；当前 task_type 支持 classification、segmentation、pose、obb。 |
 | GET | /api/v1/workflows/node-catalog | workflows:read | 读取 workflow 节点目录快照，并支持按分类、节点包、payload 类型和关键词过滤。 |
 | GET | /api/v1/workflows/node-pack-status | workflows:read | 读取本地 node pack loader 状态，包含已加载、加载失败、禁用、manifest 问题、来源路径、加载时间和最近日志。 |
 | POST | /api/v1/workflows/node-packs/reload | workflows:write | 重新扫描本地 node pack，并刷新 workflow node runtime registry。 |
@@ -1283,6 +1256,36 @@ WebSocket 资源流的统一消息结构、控制事件和重连规则见 [docs/
 - 当结果文件尚未生成时，接口返回 `file_status=pending` 和空 `payload`
 - 当任务已经结束但结果文件缺失时，接口返回 404
 
+### non-detection deployment 与 inference 统一规则
+
+- 当前 `classification`、`segmentation`、`pose`、`obb` 四类任务都已经公开了完整的 deployment 与 inference 主链：
+  - `POST/GET /api/v1/models/{task_type}/deployment-instances`
+  - `GET /api/v1/models/{task_type}/deployment-instances/{deployment_instance_id}`
+  - `sync/async` 两套 `start / status / stop / warmup / health / reset`
+  - `POST /api/v1/models/{task_type}/deployment-instances/{deployment_instance_id}/infer`
+  - `POST/GET /api/v1/models/{task_type}/inference-tasks`
+  - `GET /api/v1/models/{task_type}/inference-tasks/{task_id}`
+  - `GET /api/v1/models/{task_type}/inference-tasks/{task_id}/result`
+- 当前这里的 `{task_type}` 只支持 `classification`、`segmentation`、`pose`、`obb`；不包含 `detection`
+- 当前 non-detection deployment 没有像 detection 一样单独公开 `/events` 历史回放接口；公开控制面以 create/list/detail、`sync/async` 状态动作，以及 inference task 详情/结果为主
+- 当前 non-detection 的同步 `/infer` 与异步 `inference-tasks` 继续沿用 detection 的统一输入规则：
+  - 支持 `application/json` 和 `multipart/form-data`
+  - 输入 one-of 规则保持一致：`input_file_id`、`input_uri`、`image_base64`、`input_image` 四者必须且只能提供一个
+  - 支持 `input_transport_mode=storage|memory`
+  - `memory` 模式下只允许 `image_base64` 或 `input_image`，不支持 `input_file_id`
+  - `memory` 模式不会写入临时输入文件，结果里的 `input_uri` 会返回 `memory://...` 虚拟 URI
+- 当前各 task type 的公开参数面差异如下：
+  - `classification`：`top_k`
+  - `segmentation`：`score_threshold`、`mask_threshold`
+  - `pose`：`score_threshold`、`keypoint_confidence_threshold`
+  - `obb`：`score_threshold`
+- 当前各 task type 的结果载荷形状差异如下：
+  - `classification`：返回 `categories`、`top_category`、`category_count`
+  - `segmentation`：返回 `instances`、`instance_count`，实例里包含 `segments`、`mask_area`
+  - `pose`：返回 `instances`、`instance_count`，实例里包含 `keypoints`、`kpt_shape`
+  - `obb`：返回 `instances`、`instance_count`，实例里包含 `angle`
+- 当前这层能力已经有显式回归覆盖，见 `tests/test_non_detection_inference_api.py`；该回归当前已经覆盖 `classification / segmentation / pose / obb` 四类任务的 async 前检查、sync `/infer`、async result round-trip 和 deployment 控制基础链
+
 ### POST /api/v1/models/detection/validation-sessions
 
 - 需要 models:read
@@ -1372,7 +1375,7 @@ WebSocket 资源流的统一消息结构、控制事件和重连规则见 [docs/
   - input_size
   - extra_options
   - display_name
-- 当前实现会先解析并校验 DatasetExport，再创建 TaskRecord，并提交到 yolox-trainings 队列
+- 当前实现会先解析并校验 DatasetExport，再创建 TaskRecord，并提交到 detection 训练队列
 - 当前公开 precision 字段只接受 fp16、fp32；未指定时默认 fp32。
 - 当前 input_size 未指定时，真实训练默认使用 [640, 640]。
 - 当前 Swagger/OpenAPI 已把 training create 的 extra_options 展开为具名字段，公开键包括 seed、num_workers、device、max_labels、flip_prob、hsv_prob、mosaic_prob、mixup_prob、enable_mixup、multiscale_range、ema、warmup_epochs、no_aug_epochs、min_lr_ratio、evaluation_confidence_threshold、evaluation_nms_threshold 等。
@@ -2177,16 +2180,15 @@ workflow preview-run、run、app-runtime 和 deployment 四类事件流当前都
 1. POST /api/v1/models/detection/training-tasks 接收 dataset_export_id 或 dataset_export_manifest_key
 2. 服务先把它们解析到同一个完成态 DatasetExport
 3. 再把 manifest_object_key 写入训练任务的 task_spec
-4. 最终创建 TaskRecord 并入队到 yolox-trainings
+4. 最终创建 TaskRecord 并入队到 detection 训练队列
 5. backend-service 生命周期托管的 training worker 或独立 backend-worker 会消费该任务，并把状态推进到 running 和 succeeded
 
 因此，当前训练创建链路的唯一输入边界不再是 DatasetVersion id，而是 DatasetExport 资源及其 manifest 文件。
 
 ## 当前未公开的资源面
 
-- 更通用的训练、验证、转换任务规格尚未公开为稳定 API
-- 更通用的训练、验证、转换任务规格尚未公开为稳定 API
-- 当前公开的是最小真实 YOLOX detection 训练闭环；平台级多模型训练、统一验证任务和更通用的训练编排仍未展开
+- 更通用的训练、验证、转换任务规格尚未完全拆成按任务类型独立的详细文档
+- 当前这里重点公开的是 detection 训练主链；classification、segmentation、pose、obb 的统一训练入口已经可用，但详细接口说明仍在继续补齐
 
 ## 相关文档
 

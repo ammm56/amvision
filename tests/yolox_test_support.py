@@ -26,11 +26,36 @@ from backend.service.application.runtime.deployment_process_supervisor import (
     DeploymentProcessStatus,
     DeploymentProcessSupervisor,
 )
+from backend.service.application.runtime.classification_runtime_contracts import (
+    ClassificationPredictionCategory,
+    ClassificationPredictionExecutionResult,
+    ClassificationRuntimeSessionInfo,
+    ClassificationRuntimeTensorSpec,
+)
+from backend.service.application.runtime.obb_runtime_contracts import (
+    ObbPredictionExecutionResult,
+    ObbPredictionInstance,
+    ObbRuntimeSessionInfo,
+    ObbRuntimeTensorSpec,
+)
+from backend.service.application.runtime.pose_runtime_contracts import (
+    PosePredictionExecutionResult,
+    PosePredictionInstance,
+    PosePredictionKeypoint,
+    PoseRuntimeSessionInfo,
+    PoseRuntimeTensorSpec,
+)
 from backend.service.application.runtime.detection_runtime_contracts import (
     DetectionPredictionDetection,
     DetectionPredictionExecutionResult,
     DetectionRuntimeSessionInfo,
     DetectionRuntimeTensorSpec,
+)
+from backend.service.application.runtime.segmentation_runtime_contracts import (
+    SegmentationPredictionExecutionResult,
+    SegmentationPredictionInstance,
+    SegmentationRuntimeSessionInfo,
+    SegmentationRuntimeTensorSpec,
 )
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
@@ -400,38 +425,250 @@ class FakeDeploymentProcessSupervisor(DeploymentProcessSupervisor):
         return DeploymentProcessExecution(
             deployment_instance_id=config.deployment_instance_id,
             instance_id=instance_id,
-            execution_result=DetectionPredictionExecutionResult(
-                detections=(
-                    DetectionPredictionDetection(
+            execution_result=self._build_execution_result(
+                config=config,
+                input_uri=request_input_uri,
+                has_input_image_bytes=request_has_input_image_bytes,
+                save_result_image=request_save_result_image,
+            ),
+        )
+
+    def _build_execution_result(
+        self,
+        *,
+        config: DeploymentProcessConfig,
+        input_uri: str | None,
+        has_input_image_bytes: bool,
+        save_result_image: bool,
+    ) -> object:
+        """按 task_type 构造对应的 fake 推理结果。"""
+
+        task_type = str(config.runtime_target.task_type or "").strip().lower()
+        metadata = {
+            "model_version_id": config.runtime_target.model_version_id,
+            "input_uri": input_uri,
+            "has_input_image_bytes": has_input_image_bytes,
+            "decode_ms": 0.8,
+            "preprocess_ms": 1.2,
+            "infer_ms": 6.1,
+            "postprocess_ms": 1.6,
+            "runtime_mode": self.runtime_mode,
+        }
+        preview_image_bytes = b"preview-jpg" if save_result_image else None
+        primary_label = self._resolve_label(config, 0, default="bolt")
+        secondary_label = self._resolve_label(config, 1, default="nut")
+
+        if task_type == "classification":
+            top_category = ClassificationPredictionCategory(
+                class_id=0,
+                probability=0.91,
+                class_name=primary_label,
+                logit=3.2,
+            )
+            return ClassificationPredictionExecutionResult(
+                categories=(
+                    top_category,
+                    ClassificationPredictionCategory(
+                        class_id=1,
+                        probability=0.09,
+                        class_name=secondary_label,
+                        logit=1.1,
+                    ),
+                ),
+                top_category=top_category,
+                latency_ms=9.7,
+                image_width=64,
+                image_height=64,
+                preview_image_bytes=preview_image_bytes,
+                runtime_session_info=ClassificationRuntimeSessionInfo(
+                    backend_name=config.runtime_target.runtime_backend,
+                    model_uri=config.runtime_target.runtime_artifact_storage_uri,
+                    device_name=config.runtime_target.device_name,
+                    input_spec=ClassificationRuntimeTensorSpec(
+                        name="images",
+                        shape=(1, 3, 64, 64),
+                        dtype="float32",
+                    ),
+                    output_spec=ClassificationRuntimeTensorSpec(
+                        name="probabilities",
+                        shape=(1, max(2, len(config.runtime_target.labels))),
+                        dtype="float32",
+                    ),
+                    metadata=metadata,
+                ),
+            )
+
+        if task_type == "segmentation":
+            return SegmentationPredictionExecutionResult(
+                instances=(
+                    SegmentationPredictionInstance(
                         bbox_xyxy=(6.0, 6.0, 24.0, 24.0),
                         score=0.88,
                         class_id=0,
-                        class_name="bolt",
+                        class_name=primary_label,
+                        segments=(
+                            (
+                                (6.0, 6.0),
+                                (24.0, 6.0),
+                                (24.0, 24.0),
+                                (6.0, 24.0),
+                            ),
+                        ),
+                        mask_area=324.0,
                     ),
                 ),
                 latency_ms=9.7,
                 image_width=64,
                 image_height=64,
-                preview_image_bytes=b"preview-jpg" if request_save_result_image else None,
-                runtime_session_info=DetectionRuntimeSessionInfo(
+                preview_image_bytes=preview_image_bytes,
+                runtime_session_info=SegmentationRuntimeSessionInfo(
                     backend_name=config.runtime_target.runtime_backend,
                     model_uri=config.runtime_target.runtime_artifact_storage_uri,
                     device_name=config.runtime_target.device_name,
-                    input_spec=DetectionRuntimeTensorSpec(name="images", shape=(1, 3, 64, 64), dtype="float32"),
-                    output_spec=DetectionRuntimeTensorSpec(name="detections", shape=(-1, 7), dtype="float32"),
-                    metadata={
-                        "model_version_id": config.runtime_target.model_version_id,
-                        "input_uri": request_input_uri,
-                        "has_input_image_bytes": request_has_input_image_bytes,
-                        "decode_ms": 0.8,
-                        "preprocess_ms": 1.2,
-                        "infer_ms": 6.1,
-                        "postprocess_ms": 1.6,
-                        "runtime_mode": self.runtime_mode,
-                    },
+                    input_spec=SegmentationRuntimeTensorSpec(
+                        name="images",
+                        shape=(1, 3, 64, 64),
+                        dtype="float32",
+                    ),
+                    output_specs=(
+                        SegmentationRuntimeTensorSpec(
+                            name="detections",
+                            shape=(-1, 6),
+                            dtype="float32",
+                        ),
+                        SegmentationRuntimeTensorSpec(
+                            name="masks",
+                            shape=(-1, 64, 64),
+                            dtype="float32",
+                        ),
+                    ),
+                    metadata=metadata,
+                ),
+            )
+
+        if task_type == "pose":
+            return PosePredictionExecutionResult(
+                instances=(
+                    PosePredictionInstance(
+                        bbox_xyxy=(6.0, 6.0, 24.0, 24.0),
+                        score=0.88,
+                        class_id=0,
+                        class_name=primary_label,
+                        keypoints=(
+                            PosePredictionKeypoint(x=10.0, y=12.0, confidence=0.95),
+                            PosePredictionKeypoint(x=18.0, y=20.0, confidence=0.9),
+                        ),
+                        kpt_shape=(17, 3),
+                    ),
+                ),
+                latency_ms=9.7,
+                image_width=64,
+                image_height=64,
+                preview_image_bytes=preview_image_bytes,
+                runtime_session_info=PoseRuntimeSessionInfo(
+                    backend_name=config.runtime_target.runtime_backend,
+                    model_uri=config.runtime_target.runtime_artifact_storage_uri,
+                    device_name=config.runtime_target.device_name,
+                    input_spec=PoseRuntimeTensorSpec(
+                        name="images",
+                        shape=(1, 3, 64, 64),
+                        dtype="float32",
+                    ),
+                    output_specs=(
+                        PoseRuntimeTensorSpec(
+                            name="detections",
+                            shape=(-1, 6),
+                            dtype="float32",
+                        ),
+                        PoseRuntimeTensorSpec(
+                            name="keypoints",
+                            shape=(-1, 17, 3),
+                            dtype="float32",
+                        ),
+                    ),
+                    metadata=metadata,
+                ),
+            )
+
+        if task_type == "obb":
+            return ObbPredictionExecutionResult(
+                instances=(
+                    ObbPredictionInstance(
+                        bbox_xyxy=(6.0, 6.0, 24.0, 24.0),
+                        score=0.88,
+                        class_id=0,
+                        class_name=primary_label,
+                        angle=12.5,
+                    ),
+                ),
+                latency_ms=9.7,
+                image_width=64,
+                image_height=64,
+                preview_image_bytes=preview_image_bytes,
+                runtime_session_info=ObbRuntimeSessionInfo(
+                    backend_name=config.runtime_target.runtime_backend,
+                    model_uri=config.runtime_target.runtime_artifact_storage_uri,
+                    device_name=config.runtime_target.device_name,
+                    input_spec=ObbRuntimeTensorSpec(
+                        name="images",
+                        shape=(1, 3, 64, 64),
+                        dtype="float32",
+                    ),
+                    output_specs=(
+                        ObbRuntimeTensorSpec(
+                            name="obb",
+                            shape=(-1, 7),
+                            dtype="float32",
+                        ),
+                    ),
+                    metadata=metadata,
+                ),
+            )
+
+        return DetectionPredictionExecutionResult(
+            detections=(
+                DetectionPredictionDetection(
+                    bbox_xyxy=(6.0, 6.0, 24.0, 24.0),
+                    score=0.88,
+                    class_id=0,
+                    class_name=primary_label,
                 ),
             ),
+            latency_ms=9.7,
+            image_width=64,
+            image_height=64,
+            preview_image_bytes=preview_image_bytes,
+            runtime_session_info=DetectionRuntimeSessionInfo(
+                backend_name=config.runtime_target.runtime_backend,
+                model_uri=config.runtime_target.runtime_artifact_storage_uri,
+                device_name=config.runtime_target.device_name,
+                input_spec=DetectionRuntimeTensorSpec(
+                    name="images",
+                    shape=(1, 3, 64, 64),
+                    dtype="float32",
+                ),
+                output_spec=DetectionRuntimeTensorSpec(
+                    name="detections",
+                    shape=(-1, 7),
+                    dtype="float32",
+                ),
+                metadata=metadata,
+            ),
         )
+
+    def _resolve_label(
+        self,
+        config: DeploymentProcessConfig,
+        index: int,
+        *,
+        default: str,
+    ) -> str:
+        """按索引读取 runtime target labels。"""
+
+        labels = tuple(config.runtime_target.labels)
+        if 0 <= index < len(labels) and isinstance(labels[index], str) and labels[index].strip():
+            return labels[index]
+        return default
 
     def _ensure_state(self, config: DeploymentProcessConfig) -> _FakeDeploymentProcessState:
         """返回 deployment 对应的 fake 状态对象。"""
