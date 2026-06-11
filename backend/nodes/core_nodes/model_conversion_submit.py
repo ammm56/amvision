@@ -16,8 +16,8 @@ from backend.nodes.core_nodes._platform_service_node_support import (
     resolve_platform_model_type,
     resolve_platform_task_type,
 )
-from backend.service.application.conversions.detection_conversion_task_service import (
-    DetectionConversionTaskRequest,
+from backend.service.application.conversions.yolox_conversion_task_service import (
+    YoloXConversionTaskRequest,
 )
 from backend.nodes.core_nodes._service_node_support import (
     build_response_body_output,
@@ -67,7 +67,7 @@ def _model_conversion_submit_handler(request: WorkflowNodeExecutionRequest) -> d
         task_type=task_type,
     )
     if task_type == DETECTION_TASK_TYPE and model_type == "yolox":
-        request_cls = DetectionConversionTaskRequest
+        request_cls = YoloXConversionTaskRequest
     elif task_type == DETECTION_TASK_TYPE and model_type == "rfdetr":
         request_cls = RfdetrConversionTaskRequest
     else:

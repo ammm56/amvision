@@ -21,9 +21,9 @@ from backend.service.application.deployments.segmentation_deployment_service imp
     SegmentationDeploymentInstanceCreateRequest,
     SqlAlchemySegmentationDeploymentService,
 )
-from backend.service.application.models.rfdetr_segmentation_training_service import (
-    RfdetrSegmentationTrainingTaskRequest,
-    SqlAlchemyRfdetrSegmentationTrainingTaskService,
+from backend.service.application.models.yolo_primary_segmentation_training_service import (
+    SqlAlchemyYoloPrimarySegmentationTrainingTaskService,
+    YoloPrimarySegmentationTrainingTaskRequest,
 )
 from backend.service.application.runtime.segmentation_model_runtime import (
     DefaultSegmentationModelRuntime,
@@ -63,13 +63,13 @@ def test_rfdetr_segmentation_training_conversion_and_deployment_task_smoke(
         dataset_export_id="rfdetr-seg-export-1",
     )
 
-    training_service = SqlAlchemyRfdetrSegmentationTrainingTaskService(
+    training_service = SqlAlchemyYoloPrimarySegmentationTrainingTaskService(
         session_factory=session_factory,
         queue_backend=queue_backend,
         dataset_storage=dataset_storage,
     )
     training_submission = training_service.submit_training_task(
-        RfdetrSegmentationTrainingTaskRequest(
+        YoloPrimarySegmentationTrainingTaskRequest(
             project_id="project-1",
             recipe_id="recipe-rfdetr-segmentation-smoke-1",
             model_type="rfdetr",
@@ -339,13 +339,13 @@ def _run_rfdetr_segmentation_real_toolchain_smoke(
         dataset_export_id=f"rfdetr-seg-real-{target_format}",
     )
 
-    training_service = SqlAlchemyRfdetrSegmentationTrainingTaskService(
+    training_service = SqlAlchemyYoloPrimarySegmentationTrainingTaskService(
         session_factory=session_factory,
         queue_backend=queue_backend,
         dataset_storage=dataset_storage,
     )
     training_submission = training_service.submit_training_task(
-        RfdetrSegmentationTrainingTaskRequest(
+        YoloPrimarySegmentationTrainingTaskRequest(
             project_id="project-1",
             recipe_id=f"recipe-rfdetr-seg-real-{target_format}",
             model_type="rfdetr",

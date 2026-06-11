@@ -24,29 +24,12 @@ from backend.service.api.rest.v1.routes.non_detection_training_management import
 from backend.service.application.errors import InvalidRequestError, PermissionDeniedError
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
-from backend.service.application.models.yolov8_segmentation_training_service import (
-    SqlAlchemyYoloV8SegmentationTrainingTaskService,
-    YoloV8SegmentationTrainingTaskRequest,
-)
-from backend.service.application.models.yolo11_segmentation_training_service import (
-    SqlAlchemyYolo11SegmentationTrainingTaskService,
-    Yolo11SegmentationTrainingTaskRequest,
-)
-from backend.service.application.models.yolo26_segmentation_training_service import (
-    SqlAlchemyYolo26SegmentationTrainingTaskService,
-    Yolo26SegmentationTrainingTaskRequest,
-)
-from backend.service.application.models.rfdetr_segmentation_training_service import (
-    SqlAlchemyRfdetrSegmentationTrainingTaskService,
-    RfdetrSegmentationTrainingTaskRequest,
+from backend.service.application.models.yolo_primary_segmentation_training_service import (
+    SqlAlchemyYoloPrimarySegmentationTrainingTaskService,
+    YoloPrimarySegmentationTrainingTaskRequest,
 )
 
-_SEG_SERVICE_MAP = {
-    "yolov8": (SqlAlchemyYoloV8SegmentationTrainingTaskService, YoloV8SegmentationTrainingTaskRequest),
-    "yolo11": (SqlAlchemyYolo11SegmentationTrainingTaskService, Yolo11SegmentationTrainingTaskRequest),
-    "yolo26": (SqlAlchemyYolo26SegmentationTrainingTaskService, Yolo26SegmentationTrainingTaskRequest),
-    "rfdetr": (SqlAlchemyRfdetrSegmentationTrainingTaskService, RfdetrSegmentationTrainingTaskRequest),
-}
+_SUPPORTED_SEGMENTATION_MODEL_TYPES = ("yolov8", "yolo11", "yolo26", "rfdetr")
 
 
 segmentation_training_tasks_router = APIRouter(prefix="/models", tags=["models"])
@@ -90,12 +73,17 @@ def create_segmentation_training_task(
     if principal.project_ids and body.project_id not in principal.project_ids:
         raise PermissionDeniedError("无权访问该 Project", details={"project_id": body.project_id})
     n = body.model_type.strip().lower()
-    entry = _SEG_SERVICE_MAP.get(n)
-    if entry is None:
-        raise InvalidRequestError("当前 segmentation 训练不支持指定模型分类", details={"model_type": n})
-    svc_cls, req_cls = entry
-    svc = svc_cls(session_factory=session_factory, queue_backend=queue_backend, dataset_storage=dataset_storage)
-    result = svc.submit_training_task(req_cls(
+    if n not in _SUPPORTED_SEGMENTATION_MODEL_TYPES:
+        raise InvalidRequestError(
+            "当前 segmentation 训练不支持指定模型分类",
+            details={"model_type": n, "supported": list(_SUPPORTED_SEGMENTATION_MODEL_TYPES)},
+        )
+    svc = SqlAlchemyYoloPrimarySegmentationTrainingTaskService(
+        session_factory=session_factory,
+        queue_backend=queue_backend,
+        dataset_storage=dataset_storage,
+    )
+    result = svc.submit_training_task(YoloPrimarySegmentationTrainingTaskRequest(
         project_id=body.project_id, recipe_id=body.recipe_id, model_scale=body.model_scale,
         output_model_name=body.output_model_name, dataset_export_id=body.dataset_export_id,
         dataset_export_manifest_key=body.dataset_export_manifest_key,

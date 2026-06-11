@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
-from backend.service.application.errors import ResourceNotFoundError
-from backend.service.application.conversions.detection_conversion_task_service import (
-    DetectionConversionResultSnapshot,
+from backend.service.application.conversions.conversion_result_snapshot import (
+    ConversionResultSnapshot,
 )
+from backend.service.application.errors import ResourceNotFoundError
 
 
 OPENVINO_IR_PRECISION_OPTION_KEY = "openvino_ir_precision"
@@ -172,7 +172,7 @@ def build_detection_conversion_task_detail_response(
 
 def build_detection_conversion_result_response(
     task_id: str,
-    result_snapshot: DetectionConversionResultSnapshot,
+    result_snapshot: ConversionResultSnapshot,
 ) -> DetectionConversionResultResponse:
     """把 conversion 结果快照转换为公开响应。"""
 

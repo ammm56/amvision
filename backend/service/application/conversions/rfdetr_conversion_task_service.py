@@ -21,9 +21,8 @@ from backend.service.application.conversions.yolox_conversion_planner import (
     deserialize_yolox_conversion_plan,
     serialize_yolox_conversion_plan,
 )
-from backend.service.application.conversions.detection_conversion_task_service import (
-    DetectionBuildRegistration as RfdetrBuildRegistration,
-    DetectionConversionResultSnapshot as RfdetrConversionResultSnapshot,
+from backend.service.application.conversions.conversion_result_snapshot import (
+    ConversionResultSnapshot as RfdetrConversionResultSnapshot,
 )
 from backend.service.application.errors import (
     InvalidRequestError,
@@ -33,6 +32,9 @@ from backend.service.application.errors import (
 from backend.service.application.models.detection_operation_rules import (
     DetectionConversionOutputFiles,
     build_detection_conversion_report_summary,
+)
+from backend.service.application.models.model_service import (
+    ModelBuildRegistration as RfdetrBuildRegistration,
 )
 from backend.service.application.models.rfdetr_model_service import (
     SqlAlchemyRfdetrModelService,

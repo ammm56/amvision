@@ -22,28 +22,16 @@ from backend.service.api.rest.v1.routes.non_detection_training_management import
     resume_training_task,
 )
 from backend.service.application.errors import InvalidRequestError, PermissionDeniedError
-from backend.service.application.models.yolov8_classification_training_service import (
-    SqlAlchemyYoloV8ClassificationTrainingTaskService,
-    YoloV8ClassificationTrainingTaskRequest,
-)
-from backend.service.application.models.yolo11_classification_training_service import (
-    SqlAlchemyYolo11ClassificationTrainingTaskService,
-    Yolo11ClassificationTrainingTaskRequest,
-)
-from backend.service.application.models.yolo26_classification_training_service import (
-    SqlAlchemyYolo26ClassificationTrainingTaskService,
-    Yolo26ClassificationTrainingTaskRequest,
+from backend.service.application.models.yolo_primary_classification_training_service import (
+    SqlAlchemyYoloPrimaryClassificationTrainingTaskService,
+    YoloPrimaryClassificationTrainingTaskRequest,
 )
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 
 classification_training_tasks_router = APIRouter(prefix="/models", tags=["models"])
 
-_CLS_SERVICE_MAP = {
-    "yolov8": (SqlAlchemyYoloV8ClassificationTrainingTaskService, YoloV8ClassificationTrainingTaskRequest),
-    "yolo11": (SqlAlchemyYolo11ClassificationTrainingTaskService, Yolo11ClassificationTrainingTaskRequest),
-    "yolo26": (SqlAlchemyYolo26ClassificationTrainingTaskService, Yolo26ClassificationTrainingTaskRequest),
-}
+_SUPPORTED_CLASSIFICATION_MODEL_TYPES = ("yolov8", "yolo11", "yolo26")
 
 
 class ClassificationTrainingTaskCreateRequestBody(BaseModel):
@@ -84,12 +72,17 @@ def create_classification_training_task(
     if principal.project_ids and body.project_id not in principal.project_ids:
         raise PermissionDeniedError("无权访问该 Project", details={"project_id": body.project_id})
     n = body.model_type.strip().lower()
-    entry = _CLS_SERVICE_MAP.get(n)
-    if entry is None:
-        raise InvalidRequestError("当前 classification 训练不支持指定模型分类", details={"model_type": n, "supported": list(_CLS_SERVICE_MAP.keys())})
-    svc_cls, req_cls = entry
-    svc = svc_cls(session_factory=session_factory, queue_backend=queue_backend, dataset_storage=dataset_storage)
-    result = svc.submit_training_task(req_cls(
+    if n not in _SUPPORTED_CLASSIFICATION_MODEL_TYPES:
+        raise InvalidRequestError(
+            "当前 classification 训练不支持指定模型分类",
+            details={"model_type": n, "supported": list(_SUPPORTED_CLASSIFICATION_MODEL_TYPES)},
+        )
+    svc = SqlAlchemyYoloPrimaryClassificationTrainingTaskService(
+        session_factory=session_factory,
+        queue_backend=queue_backend,
+        dataset_storage=dataset_storage,
+    )
+    result = svc.submit_training_task(YoloPrimaryClassificationTrainingTaskRequest(
         project_id=body.project_id, recipe_id=body.recipe_id, model_scale=body.model_scale,
         output_model_name=body.output_model_name, dataset_export_id=body.dataset_export_id,
         dataset_export_manifest_key=body.dataset_export_manifest_key,

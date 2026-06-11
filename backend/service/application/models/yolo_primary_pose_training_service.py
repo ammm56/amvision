@@ -875,6 +875,3 @@ class SqlAlchemyYoloPrimaryPoseTrainingTaskService:
         """返回当前 UTC 时间的 ISO 字符串。"""
 
         return datetime.now(timezone.utc).isoformat()
-
-
-SqlAlchemyPoseTrainingTaskService = SqlAlchemyYoloPrimaryPoseTrainingTaskService

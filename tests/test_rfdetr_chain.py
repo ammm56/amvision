@@ -62,7 +62,7 @@ def test_rfdetr_imports():
     from backend.service.application.models.rfdetr_model_service import SqlAlchemyRfdetrModelService
     from backend.service.application.models.rfdetr_segmentation_model import RfdetrSegmentationModel
     from backend.service.application.models.rfdetr_segmentation_training import run_rfdetr_segmentation_training
-    from backend.service.application.models.rfdetr_segmentation_training_service import SqlAlchemyRfdetrSegmentationTrainingTaskService
+    from backend.service.application.models.yolo_primary_segmentation_training_service import SqlAlchemyYoloPrimarySegmentationTrainingTaskService
     from backend.service.application.models.rfdetr_training_service import SqlAlchemyRfdetrTrainingTaskService
     from backend.service.application.conversions.rfdetr_conversion_task_service import SqlAlchemyRfdetrConversionTaskService
     from backend.service.application.runtime.rfdetr_predictor import PyTorchRfdetrRuntimeSession
@@ -72,6 +72,25 @@ def test_rfdetr_imports():
     from backend.service.application.runtime.rfdetr_runtime_target import SqlAlchemyRfdetrRuntimeTargetResolver
     from backend.service.application.conversions.rfdetr_conversion_planner import DefaultRfdetrConversionPlanner
     from backend.service.domain.models.rfdetr_model_spec import RFDETR_DETECTION_SCALES
+
+    assert all(
+        item is not None
+        for item in (
+            RfdetrModel,
+            RfdetrPostProcess,
+            SqlAlchemyRfdetrModelService,
+            RfdetrSegmentationModel,
+            run_rfdetr_segmentation_training,
+            SqlAlchemyYoloPrimarySegmentationTrainingTaskService,
+            SqlAlchemyRfdetrTrainingTaskService,
+            SqlAlchemyRfdetrConversionTaskService,
+            PyTorchRfdetrRuntimeSession,
+            PyTorchRfdetrSegmentationRuntimeSession,
+            SqlAlchemyRfdetrRuntimeTargetResolver,
+            DefaultRfdetrConversionPlanner,
+            RFDETR_DETECTION_SCALES,
+        )
+    )
 
 
 def test_rfdetr_tensorrt_runtime_load_uses_cuda_python(monkeypatch, tmp_path):
