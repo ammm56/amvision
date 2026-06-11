@@ -20,7 +20,7 @@
 - 当前模型平台已经不仅覆盖 detection：YOLOv8/YOLO11/YOLO26 已覆盖 detection/classification/segmentation/pose/obb 五类任务，RF-DETR 已覆盖 detection 与 segmentation，平台基础模型目录 seeder 也已覆盖 `yolox / yolov8 / yolo11 / yolo26 / rfdetr`。
 - 数据集导入导出矩阵当前也已从 detection-only 收平到多任务：导入已覆盖 `COCO / VOC / ImageNet classification / DOTA OBB`，导出已覆盖 `coco/voc/yolo detection`、`coco/yolo segmentation`、`coco/yolo pose`、`imagenet-classification-v1` 和 `dota-obb-v1`；`DatasetVersion` 注解与持久化当前统一使用 `segmentation`。
 - backend-service 当前承担 REST / WebSocket 控制面和 deployment process supervisor，全部队列消费者已经收敛到独立 worker profile。
-- 当前公开 REST v1 已覆盖 auth、本地用户与权限管理、datasets、dataset-exports、models、detection training tasks、classification/segmentation/pose/obb training tasks、detection/classification/segmentation/pose/obb validation sessions、deployment-instances、inference-tasks，以及 yolox training tasks、validation-sessions、conversion-tasks、evaluation-tasks、projects 目录与对象读取、workflow runtime 资源和 tasks。
+- 当前公开 REST v1 已覆盖 auth、本地用户与权限管理、datasets、dataset-exports、models、五类 training tasks、五类 validation sessions、deployment-instances、inference-tasks、conversion-tasks、evaluation-tasks、projects 目录与对象读取、workflow runtime 资源和 tasks；公开主链当前已经统一收口到 `/api/v1/models/{task_type}/...`。
 - workflow 公开资源面已经拆成 preview-runs、execution-policies、app-runtimes、runs 和 trigger-sources；当前开始把状态集合、snapshot 路径和 preview cleanup 规则收敛到共享 contracts 语义，避免 route、service、maintenance 和文档继续各写一份。
 - 当前公开 WebSocket 已覆盖 auth、system、tasks、workflows.preview-runs、workflows.runs、workflows.app-runtimes、deployments 和 projects 八类资源流；统一的路由分层、重连规则和项目级聚合流边界已整理到 [websocket-architecture.md](websocket-architecture.md)。
 - backend-service 当前已经补齐本地前端接入所需的 CORS、hybrid auth、Project 目录接口和 Project 内对象读取接口；主要工作台列表接口已经统一到 offset/limit + 响应头分页规则。

@@ -206,8 +206,8 @@
           "inside",
           "offset"
         ],
-        "ok_reason": "batch yolox position gate passed",
-        "ng_reason": "batch yolox position gate failed"
+        "ok_reason": "batch detection position gate passed",
+        "ng_reason": "batch detection position gate failed"
       }
     },
     {

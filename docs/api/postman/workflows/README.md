@@ -5,7 +5,7 @@
 ## 目录顺序
 
 1. `00-short-dev-examples/`：短链路、开发中、单节点或边界不明确的 workflow 示例。
-2. `01-yolox-end-to-end-qr-crop-remap/`：第一类完整导入、导出、训练、评估、转换、部署和 QR remap 链路。
+2. `01-yolox-end-to-end-qr-crop-remap/`：第一类完整导入、导出、训练、评估、转换、部署和 QR remap 链路；目录名暂沿用历史。
 3. `02-detection-deployment-sync-infer-health/`：第二类 start、warmup、sync infer 和 health 链路。
 4. `03-detection-deployment-qr-crop-remap/`：第三类检测、AOI crop、二维码识别和原图回绘链路。
 5. `04-detection-deployment-infer-opencv-health/`：第四类 sync infer、health 和 OpenCV 处理链路。
@@ -53,7 +53,7 @@
 - `09-*` 的具体导入变量、改值位置和推荐联调顺序见 [docs/api/postman/workflows/09-industrial-local-directory-watch-detection-position-gate/README.md](09-industrial-local-directory-watch-detection-position-gate/README.md)。
 - `10-*` collection 回到标准 HTTP workflow app 调试面，但把现场最常见的结果交付出口收进同一条链：同一个 runtime 中既能做 ROI/规则判定，也能同步准备 PLC/JSON/CSV/MES/local-db 结果对象。
 - `10-*` 的具体导入变量、改值位置和推荐联调顺序见 [docs/api/postman/workflows/10-industrial-single-frame-glue-roi-delivery-bundle/README.md](10-industrial-single-frame-glue-roi-delivery-bundle/README.md)。
-- `11-*` collection 与 `09-*` 一样保留完整 TriggerSource 调试链，但把入口语义换成固定周期轮询：重点变成 `directory-poll` 的扫描周期、稳定期、checkpoint 恢复，以及静态 `deployment_request` 如何接进同一条 YOLOX 规则链。
+- `11-*` collection 与 `09-*` 一样保留完整 TriggerSource 调试链，但把入口语义换成固定周期轮询：重点变成 `directory-poll` 的扫描周期、稳定期、checkpoint 恢复，以及静态 `deployment_request` 如何接进同一条 detection 规则链。
 - `11-*` 的具体导入变量、改值位置和推荐联调顺序见 [docs/api/postman/workflows/11-industrial-local-directory-poll-detection-position-gate/README.md](11-industrial-local-directory-poll-detection-position-gate/README.md)。
 - FrameRef/BufferRef 的固定请求体需要由本地 adapter 在运行时生成，因此 `06-*`、`07-*` collection 仍不直接发送图片 bytes；图片数据面继续使用 C# SDK 或其他后续 SDK。
 - TriggerSource 只负责提交协议原生输入，不替 workflow 图做 `image-ref -> image-base64`、本地磁盘读图或相机取帧。需要这些能力时，应通过图中的显式节点或 custom node 实现。

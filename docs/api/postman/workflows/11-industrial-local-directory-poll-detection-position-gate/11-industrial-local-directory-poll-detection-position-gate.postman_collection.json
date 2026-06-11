@@ -1,8 +1,8 @@
 {
   "info": {
     "_postman_id": "amvision-workflow-11",
-    "name": "amvision workflow 11 industrial local directory poll yolox position gate",
-    "description": "第十一类 directory-poll TriggerSource 调试 collection。directory-poll 负责固定周期目录轮询、稳定期过滤、checkpoint 恢复和 batch 提交；workflow app 只接收标准化目录批次 payload 与 event，并通过静态 deployment_request 驱动 YOLOX 工业位置门控链。直接 Invoke 的请求体使用 synthetic trigger event payload，用于本地调试同一条业务链。",
+    "name": "amvision workflow 11 industrial local directory poll detection position gate",
+    "description": "第十一类 directory-poll TriggerSource 调试 collection。directory-poll 负责固定周期目录轮询、稳定期过滤、checkpoint 恢复和 batch 提交；workflow app 只接收标准化目录批次 payload 与 event，并通过静态 deployment_request 驱动 detection 工业位置门控链。直接 Invoke 的请求体使用 synthetic trigger event payload，用于本地调试同一条业务链。",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [

@@ -1,16 +1,16 @@
 {
   "info": {
     "_postman_id": "b0db9a90-95bc-4a01-b247-1ddb33e1a2a8",
-    "name": "amvision detection task api (yolox examples)",
+    "name": "amvision detection task api",
     "description": "当前公开的统一 detection 任务接口调试集合，本集合示例统一使用 model_type=yolox。覆盖 training、validation-sessions、conversion-tasks、evaluation-tasks、deployment-instances、direct infer、inference-tasks，以及相关 workflow preview/runtime 调试链。集合内容已经同步 fp16/fp32、CPU fallback、latest checkpoint、validation metrics、output-files、latest checkpoint 与 completed best 的版本区分、训练后单图人工验证闭环、source ModelVersion 到 ONNX/optimized ONNX/OpenVINO IR/TensorRT engine 的 conversion 主链、数据集级回归评估和结果包输出，以及 deployment_instance_id 驱动的正式推理链。当前 detection 推理链要求先显式调用 start 或 warmup，再执行 infer 或 inference-task create；async inference task 由 worker 通过 queue gateway 回调 backend-service 持有的 async deployment owner，workflow preview/runtime 里的推理示例仍走 PublishedInferenceGateway + sync deployment。默认建议把 includeEvents 设为 false，用于高频轮询调试。",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "item": [
     {
-      "name": "YOLOX Training",
+      "name": "Detection Training",
       "item": [
         {
-          "name": "Create YOLOX Training Task - Default Lightweight",
+          "name": "Create Detection Training Task - Default Lightweight",
           "event": [
             {
               "listen": "test",
@@ -65,12 +65,12 @@
                 "training-tasks"
               ]
             },
-            "description": "默认轻量训练示例。以 DatasetExport 为唯一输入边界创建 YOLOX 训练任务，并保持固定尺寸与轻量数据链：flip_prob=0、hsv_prob=0、mosaic_prob=0、mixup_prob=0、enable_mixup=false、multiscale_range=0、ema=true。当前请求体已经同步 model_scale、evaluation_interval、gpu_count、precision、batch_size、max_epochs、input_size 和 warm_start_model_version_id；precision 当前只接受 fp16、fp32。若本机没有可用 GPU，可把 gpuCount 变量保留为 null，并按 CPU + fp32 跑最小调试。若需要 reference 风格增强训练，请直接使用下方单独拆出的 Create YOLOX Training Task - Reference Augmentation 请求。"
+            "description": "默认轻量训练示例。以 DatasetExport 为唯一输入边界创建 detection 训练任务，并保持固定尺寸与轻量数据链：flip_prob=0、hsv_prob=0、mosaic_prob=0、mixup_prob=0、enable_mixup=false、multiscale_range=0、ema=true。当前请求体已经同步 model_scale、evaluation_interval、gpu_count、precision、batch_size、max_epochs、input_size 和 warm_start_model_version_id；precision 当前只接受 fp16、fp32。若本机没有可用 GPU，可把 gpuCount 变量保留为 null，并按 CPU + fp32 跑最小调试。若需要 reference 风格增强训练，请直接使用下方单独拆出的 Create Detection Training Task - Reference Augmentation 请求。"
           },
           "response": []
         },
         {
-          "name": "Create YOLOX Training Task - Reference Augmentation",
+          "name": "Create Detection Training Task - Reference Augmentation",
           "event": [
             {
               "listen": "test",
@@ -130,7 +130,7 @@
           "response": []
         },
         {
-          "name": "List YOLOX Training Tasks",
+          "name": "List Detection Training Tasks",
           "event": [
             {
               "listen": "test",
@@ -216,12 +216,12 @@
                 }
               ]
             },
-            "description": "按 DatasetExport 边界列出 YOLOX 训练任务。当前 collection 已预留 state、created_by、dataset_export_manifest_key 和 limit 查询参数，并会自动回填 model_version_id、训练输出文件路径等常用变量。running 阶段如果任务已经开始，还会直接返回 validation_metrics_object_key，便于定位中间验证快照。"
+            "description": "按 DatasetExport 边界列出 detection 训练任务。当前 collection 已预留 state、created_by、dataset_export_manifest_key 和 limit 查询参数，并会自动回填 model_version_id、训练输出文件路径等常用变量。running 阶段如果任务已经开始，还会直接返回 validation_metrics_object_key，便于定位中间验证快照。"
           },
           "response": []
         },
         {
-          "name": "Get YOLOX Training Task Detail",
+          "name": "Get Detection Training Task Detail",
           "event": [
             {
               "listen": "test",
@@ -291,12 +291,12 @@
                 }
               ]
             },
-            "description": "查询单条 YOLOX 训练任务详情和事件流。详情响应已经同步 output_object_prefix、latest_checkpoint_object_key、validation_metrics_object_key、training_summary.output_files，以及正式训练控制字段 available_actions 和 control_status。高频轮询时建议把 includeEvents 设为 false；只有在确实需要完整事件流时再打开。running 阶段的 task.progress 当前会带 validation_ran、evaluated_epochs，以及评估轮的 map50、map50_95。"
+            "description": "查询单条 detection 训练任务详情和事件流。详情响应已经同步 output_object_prefix、latest_checkpoint_object_key、validation_metrics_object_key、training_summary.output_files，以及正式训练控制字段 available_actions 和 control_status。高频轮询时建议把 includeEvents 设为 false；只有在确实需要完整事件流时再打开。running 阶段的 task.progress 当前会带 validation_ran、evaluated_epochs，以及评估轮的 map50、map50_95。"
           },
           "response": []
         },
         {
-          "name": "Request YOLOX Training Save",
+          "name": "Request Detection Training Save",
           "request": {
             "method": "POST",
             "header": [
@@ -321,12 +321,12 @@
                 "save"
               ]
             },
-            "description": "为 running 状态的 YOLOX 训练任务登记一次手动保存请求。当前接口返回训练详情，而不是单独动作回执；调用成功后任务通常仍然保持 running，并通过 control_status.status=save_requested 表示请求已经登记。服务会在下一个 epoch 边界把 latest checkpoint 落盘，并自动创建或更新该训练任务固定的 latest checkpoint ModelVersion。"
+            "description": "为 running 状态的 detection 训练任务登记一次手动保存请求。当前接口返回训练详情，而不是单独动作回执；调用成功后任务通常仍然保持 running，并通过 control_status.status=save_requested 表示请求已经登记。服务会在下一个 epoch 边界把 latest checkpoint 落盘，并自动创建或更新该训练任务固定的 latest checkpoint ModelVersion。"
           },
           "response": []
         },
         {
-          "name": "Request YOLOX Training Pause",
+          "name": "Request Detection Training Pause",
           "request": {
             "method": "POST",
             "header": [
@@ -351,12 +351,12 @@
                 "pause"
               ]
             },
-            "description": "为 running 状态的 YOLOX 训练任务请求暂停。当前接口返回训练详情，而不是立即进入 paused；调用成功后通常先看到 control_status.status=pause_requested，真正暂停要等到下一个 epoch 边界。服务会先保存 latest checkpoint 并自动创建或更新固定的 latest checkpoint ModelVersion，再把任务状态切到 paused。"
+            "description": "为 running 状态的 detection 训练任务请求暂停。当前接口返回训练详情，而不是立即进入 paused；调用成功后通常先看到 control_status.status=pause_requested，真正暂停要等到下一个 epoch 边界。服务会先保存 latest checkpoint 并自动创建或更新固定的 latest checkpoint ModelVersion，再把任务状态切到 paused。"
           },
           "response": []
         },
         {
-          "name": "Resume YOLOX Training Task",
+          "name": "Resume Detection Training Task",
           "request": {
             "method": "POST",
             "header": [
@@ -381,12 +381,12 @@
                 "resume"
               ]
             },
-            "description": "把 paused 的 YOLOX 训练任务重新入队。当前接口返回 submission，而不是 detail；调用成功后应立刻重新请求 Get YOLOX Training Task Detail。服务会基于暂停时落盘的 latest checkpoint 恢复 optimizer、已完成 epoch 和最佳指标状态；如果 checkpoint 损坏或恢复配置不一致，任务可能会在后续 worker 执行阶段进入 failed。"
+            "description": "把 paused 的 detection 训练任务重新入队。当前接口返回 submission，而不是 detail；调用成功后应立刻重新请求 Get Detection Training Task Detail。服务会基于暂停时落盘的 latest checkpoint 恢复 optimizer、已完成 epoch 和最佳指标状态；如果 checkpoint 损坏或恢复配置不一致，任务可能会在后续 worker 执行阶段进入 failed。"
           },
           "response": []
         },
         {
-          "name": "Terminate YOLOX Training Task",
+          "name": "Terminate Detection Training Task",
           "request": {
             "method": "POST",
             "header": [
@@ -411,12 +411,12 @@
                 "terminate"
               ]
             },
-            "description": "请求终止一个 queued、running 或 paused 的 YOLOX 训练任务。当前接口返回训练详情；如果任务仍处于 running，调用成功后通常先看到 control_status.status=terminate_requested，真正切到 cancelled 要等到下一个 epoch 边界。"
+            "description": "请求终止一个 queued、running 或 paused 的 detection 训练任务。当前接口返回训练详情；如果任务仍处于 running，调用成功后通常先看到 control_status.status=terminate_requested，真正切到 cancelled 要等到下一个 epoch 边界。"
           },
           "response": []
         },
         {
-          "name": "Delete YOLOX Training Task",
+          "name": "Delete Detection Training Task",
           "request": {
             "method": "DELETE",
             "header": [
@@ -440,12 +440,12 @@
                 "{{taskId}}"
               ]
             },
-            "description": "删除一个已经停止的 YOLOX 训练任务。当前只有任务已经不再运行、也不再等待队列执行时才允许删除；如果训练输出已经被 ModelVersion 继续引用，服务只删除任务记录，不清理仍在复用的文件。"
+            "description": "删除一个已经停止的 detection 训练任务。当前只有任务已经不再运行、也不再等待队列执行时才允许删除；如果训练输出已经被 ModelVersion 继续引用，服务只删除任务记录，不清理仍在复用的文件。"
           },
           "response": []
         },
         {
-          "name": "Register YOLOX Latest Checkpoint Model Version",
+          "name": "Register Detection Latest Checkpoint Model Version",
           "event": [
             {
               "listen": "test",
@@ -497,7 +497,7 @@
           "response": []
         },
         {
-          "name": "Get YOLOX Training Validation Metrics",
+          "name": "Get Detection Training Validation Metrics",
           "request": {
             "method": "GET",
             "header": [
@@ -527,7 +527,7 @@
           "response": []
         },
         {
-          "name": "Get YOLOX Training Train Metrics",
+          "name": "Get Detection Training Train Metrics",
           "request": {
             "method": "GET",
             "header": [
@@ -557,7 +557,7 @@
           "response": []
         },
         {
-          "name": "List YOLOX Training Output Files",
+          "name": "List Detection Training Output Files",
           "request": {
             "method": "GET",
             "header": [
@@ -587,7 +587,7 @@
           "response": []
         },
         {
-          "name": "Get YOLOX Training Output File Detail",
+          "name": "Get Detection Training Output File Detail",
           "request": {
             "method": "GET",
             "header": [
@@ -734,10 +734,10 @@
       ]
     },
     {
-      "name": "YOLOX Validation Sessions",
+      "name": "Detection Validation Sessions",
       "item": [
         {
-          "name": "Create YOLOX Validation Session",
+          "name": "Create Detection Validation Session",
           "event": [
             {
               "listen": "test",
@@ -794,7 +794,7 @@
           "response": []
         },
         {
-          "name": "Get YOLOX Validation Session Detail",
+          "name": "Get Detection Validation Session Detail",
           "event": [
             {
               "listen": "test",
@@ -838,7 +838,7 @@
           "response": []
         },
         {
-          "name": "Predict YOLOX Validation Session",
+          "name": "Predict Detection Validation Session",
           "event": [
             {
               "listen": "test",
@@ -897,7 +897,7 @@
           "response": []
         },
         {
-          "name": "Predict YOLOX Validation Session By File ID",
+          "name": "Predict Detection Validation Session By File ID",
           "event": [
             {
               "listen": "test",
@@ -958,10 +958,10 @@
       ]
     },
     {
-      "name": "YOLOX Conversion Tasks",
+      "name": "Detection Conversion Tasks",
       "item": [
         {
-          "name": "Create YOLOX ONNX Conversion Task",
+          "name": "Create Detection ONNX Conversion Task",
           "event": [
             {
               "listen": "test",
@@ -1019,7 +1019,7 @@
           "response": []
         },
         {
-          "name": "Create YOLOX Optimized ONNX Conversion Task",
+          "name": "Create Detection Optimized ONNX Conversion Task",
           "event": [
             {
               "listen": "test",
@@ -1077,7 +1077,7 @@
           "response": []
         },
         {
-          "name": "Create YOLOX OpenVINO IR FP32 Conversion Task",
+          "name": "Create Detection OpenVINO IR FP32 Conversion Task",
           "event": [
             {
               "listen": "test",
@@ -1135,7 +1135,7 @@
           "response": []
         },
         {
-          "name": "Create YOLOX OpenVINO IR FP16 Conversion Task",
+          "name": "Create Detection OpenVINO IR FP16 Conversion Task",
           "event": [
             {
               "listen": "test",
@@ -1193,7 +1193,7 @@
           "response": []
         },
         {
-          "name": "Create YOLOX TensorRT Engine FP32 Conversion Task",
+          "name": "Create Detection TensorRT Engine FP32 Conversion Task",
           "event": [
             {
               "listen": "test",
@@ -1251,7 +1251,7 @@
           "response": []
         },
         {
-          "name": "Create YOLOX TensorRT Engine FP16 Conversion Task",
+          "name": "Create Detection TensorRT Engine FP16 Conversion Task",
           "event": [
             {
               "listen": "test",
@@ -1309,7 +1309,7 @@
           "response": []
         },
         {
-          "name": "List YOLOX Conversion Tasks",
+          "name": "List Detection Conversion Tasks",
           "event": [
             {
               "listen": "test",
@@ -1403,7 +1403,7 @@
           "response": []
         },
         {
-          "name": "Get YOLOX Conversion Task Detail",
+          "name": "Get Detection Conversion Task Detail",
           "event": [
             {
               "listen": "test",
@@ -1471,7 +1471,7 @@
           "response": []
         },
         {
-          "name": "Get YOLOX Conversion Result",
+          "name": "Get Detection Conversion Result",
           "request": {
             "method": "GET",
             "header": [
@@ -1503,10 +1503,10 @@
       ]
     },
     {
-      "name": "YOLOX Evaluation Tasks",
+      "name": "Detection Evaluation Tasks",
       "item": [
         {
-          "name": "Create YOLOX Evaluation Task",
+          "name": "Create Detection Evaluation Task",
           "event": [
             {
               "listen": "test",
@@ -1559,12 +1559,12 @@
                 "evaluation-tasks"
               ]
             },
-            "description": "创建一个用于数据集级回归验证的 YOLOX evaluation task。当前请求需要 datasets:read、models:read 和 tasks:write；最小实现沿 ModelVersion -> checkpoint 链路加载本地权重，并对 DatasetExport 指向的 COCO 导出执行离线 mAP 评估。"
+            "description": "创建一个用于数据集级回归验证的 detection evaluation task。当前请求需要 datasets:read、models:read 和 tasks:write；最小实现沿 ModelVersion -> checkpoint 链路加载本地权重，并对 DatasetExport 指向的 COCO 导出执行离线 mAP 评估。"
           },
           "response": []
         },
         {
-          "name": "List YOLOX Evaluation Tasks",
+          "name": "List Detection Evaluation Tasks",
           "request": {
             "method": "GET",
             "header": [
@@ -1616,7 +1616,7 @@
           "response": []
         },
         {
-          "name": "Get YOLOX Evaluation Task Detail",
+          "name": "Get Detection Evaluation Task Detail",
           "event": [
             {
               "listen": "test",
@@ -1667,7 +1667,7 @@
           "response": []
         },
         {
-          "name": "Get YOLOX Evaluation Report",
+          "name": "Get Detection Evaluation Report",
           "request": {
             "method": "GET",
             "header": [
@@ -1697,7 +1697,7 @@
           "response": []
         },
         {
-          "name": "List YOLOX Evaluation Output Files",
+          "name": "List Detection Evaluation Output Files",
           "request": {
             "method": "GET",
             "header": [
@@ -1732,7 +1732,7 @@
       "name": "Detection Deployment Instances",
       "item": [
         {
-          "name": "Create Detection Deployment Instance (YOLOX PyTorch)",
+          "name": "Create Detection Deployment Instance (PyTorch)",
           "event": [
             {
               "listen": "test",
@@ -1788,7 +1788,7 @@
           "response": []
         },
         {
-          "name": "Create Detection Deployment Instance (YOLOX ONNXRuntime)",
+          "name": "Create Detection Deployment Instance (ONNXRuntime)",
           "event": [
             {
               "listen": "test",
@@ -1844,7 +1844,7 @@
           "response": []
         },
         {
-          "name": "Create Detection Deployment Instance (YOLOX OpenVINO)",
+          "name": "Create Detection Deployment Instance (OpenVINO)",
           "event": [
             {
               "listen": "test",
@@ -1900,7 +1900,7 @@
           "response": []
         },
         {
-          "name": "Create Detection Deployment Instance (YOLOX OpenVINO GPU FP16)",
+          "name": "Create Detection Deployment Instance (OpenVINO GPU FP16)",
           "event": [
             {
               "listen": "test",
@@ -1956,7 +1956,7 @@
           "response": []
         },
         {
-          "name": "Create Detection Deployment Instance (YOLOX OpenVINO NPU FP16)",
+          "name": "Create Detection Deployment Instance (OpenVINO NPU FP16)",
           "event": [
             {
               "listen": "test",
@@ -2012,7 +2012,7 @@
           "response": []
         },
         {
-          "name": "Create Detection Deployment Instance (YOLOX TensorRT FP32)",
+          "name": "Create Detection Deployment Instance (TensorRT FP32)",
           "event": [
             {
               "listen": "test",
@@ -2063,12 +2063,12 @@
                 "deployment-instances"
               ]
             },
-            "description": "使用 fp32 TensorRT engine ModelBuild 创建一个 TensorRT DeploymentInstance，模板固定为 runtime_backend=tensorrt、runtime_precision=fp32、device_name=cuda。当前建议优先配合 {{tensorrtEngineFp32ModelBuildId}} 使用；metadata.deployment_process 会透传 keep-warm 和 TensorRT pinned output buffer 相关参数，其中 fp32 模板单独使用 deploymentTensorrtFp32PinnedOutputBufferEnabled 和 deploymentTensorrtFp32PinnedOutputBufferMaxBytes。collection variables 里已经补了两套明确 preset：小输出 deployment 预设使用 deploymentTensorrtSmallOutputPresetPinnedOutputBufferEnabled=true、deploymentTensorrtSmallOutputPresetPinnedOutputBufferMaxBytes=8388608；大输出 deployment 预设使用 deploymentTensorrtLargeOutputPresetPinnedOutputBufferEnabled=false、deploymentTensorrtLargeOutputPresetPinnedOutputBufferMaxBytes=0。需要直接按 preset 创建时，优先使用 Create Detection Deployment Instance (YOLOX TensorRT Small Output) 或 Create Detection Deployment Instance (YOLOX TensorRT Large Output)；当前 fp32 模板仍保留给固定精度场景。返回结果里的 device_name 会归一化为 cuda:0。"
+            "description": "使用 fp32 TensorRT engine ModelBuild 创建一个 TensorRT DeploymentInstance，模板固定为 runtime_backend=tensorrt、runtime_precision=fp32、device_name=cuda。当前建议优先配合 {{tensorrtEngineFp32ModelBuildId}} 使用；metadata.deployment_process 会透传 keep-warm 和 TensorRT pinned output buffer 相关参数，其中 fp32 模板单独使用 deploymentTensorrtFp32PinnedOutputBufferEnabled 和 deploymentTensorrtFp32PinnedOutputBufferMaxBytes。collection variables 里已经补了两套明确 preset：小输出 deployment 预设使用 deploymentTensorrtSmallOutputPresetPinnedOutputBufferEnabled=true、deploymentTensorrtSmallOutputPresetPinnedOutputBufferMaxBytes=8388608；大输出 deployment 预设使用 deploymentTensorrtLargeOutputPresetPinnedOutputBufferEnabled=false、deploymentTensorrtLargeOutputPresetPinnedOutputBufferMaxBytes=0。需要直接按 preset 创建时，优先使用 Create Detection Deployment Instance (TensorRT Small Output) 或 Create Detection Deployment Instance (TensorRT Large Output)；当前 fp32 模板仍保留给固定精度场景。返回结果里的 device_name 会归一化为 cuda:0。"
           },
           "response": []
         },
         {
-          "name": "Create Detection Deployment Instance (YOLOX TensorRT FP16)",
+          "name": "Create Detection Deployment Instance (TensorRT FP16)",
           "event": [
             {
               "listen": "test",
@@ -2119,12 +2119,12 @@
                 "deployment-instances"
               ]
             },
-            "description": "使用 fp16 TensorRT engine ModelBuild 创建一个 TensorRT DeploymentInstance，模板固定为 runtime_backend=tensorrt、runtime_precision=fp16、device_name=cuda。当前建议优先配合 {{tensorrtEngineFp16ModelBuildId}} 使用；请求里的 runtime_precision 必须与 engine build_precision 一致，metadata.deployment_process 会透传 keep-warm 和 TensorRT pinned output buffer 相关参数，其中 fp16 模板单独使用 deploymentTensorrtFp16PinnedOutputBufferEnabled 和 deploymentTensorrtFp16PinnedOutputBufferMaxBytes。collection variables 里已经补了两套明确 preset：小输出 deployment 预设使用 deploymentTensorrtSmallOutputPresetPinnedOutputBufferEnabled=true、deploymentTensorrtSmallOutputPresetPinnedOutputBufferMaxBytes=8388608；大输出 deployment 预设使用 deploymentTensorrtLargeOutputPresetPinnedOutputBufferEnabled=false、deploymentTensorrtLargeOutputPresetPinnedOutputBufferMaxBytes=0。需要直接按 preset 创建时，优先使用 Create Detection Deployment Instance (YOLOX TensorRT Small Output) 或 Create Detection Deployment Instance (YOLOX TensorRT Large Output)；当前 fp16 模板仍保留给固定精度场景。"
+            "description": "使用 fp16 TensorRT engine ModelBuild 创建一个 TensorRT DeploymentInstance，模板固定为 runtime_backend=tensorrt、runtime_precision=fp16、device_name=cuda。当前建议优先配合 {{tensorrtEngineFp16ModelBuildId}} 使用；请求里的 runtime_precision 必须与 engine build_precision 一致，metadata.deployment_process 会透传 keep-warm 和 TensorRT pinned output buffer 相关参数，其中 fp16 模板单独使用 deploymentTensorrtFp16PinnedOutputBufferEnabled 和 deploymentTensorrtFp16PinnedOutputBufferMaxBytes。collection variables 里已经补了两套明确 preset：小输出 deployment 预设使用 deploymentTensorrtSmallOutputPresetPinnedOutputBufferEnabled=true、deploymentTensorrtSmallOutputPresetPinnedOutputBufferMaxBytes=8388608；大输出 deployment 预设使用 deploymentTensorrtLargeOutputPresetPinnedOutputBufferEnabled=false、deploymentTensorrtLargeOutputPresetPinnedOutputBufferMaxBytes=0。需要直接按 preset 创建时，优先使用 Create Detection Deployment Instance (TensorRT Small Output) 或 Create Detection Deployment Instance (TensorRT Large Output)；当前 fp16 模板仍保留给固定精度场景。"
           },
           "response": []
         },
         {
-          "name": "Create Detection Deployment Instance (YOLOX TensorRT Small Output)",
+          "name": "Create Detection Deployment Instance (TensorRT Small Output)",
           "event": [
             {
               "listen": "test",
@@ -2180,7 +2180,7 @@
           "response": []
         },
         {
-          "name": "Create Detection Deployment Instance (YOLOX TensorRT Large Output)",
+          "name": "Create Detection Deployment Instance (TensorRT Large Output)",
           "event": [
             {
               "listen": "test",
@@ -2372,10 +2372,10 @@
           "response": []
         },
         {
-          "name": "YOLOX Sync Deployment Process",
+          "name": "Detection Sync Deployment Process",
           "item": [
             {
-              "name": "Start YOLOX Sync Deployment Process",
+              "name": "Start Detection Sync Deployment Process",
               "event": [
                 {
                   "listen": "test",
@@ -2424,7 +2424,7 @@
               "response": []
             },
             {
-              "name": "Get YOLOX Sync Deployment Status",
+              "name": "Get Detection Sync Deployment Status",
               "event": [
                 {
                   "listen": "test",
@@ -2473,7 +2473,7 @@
               "response": []
             },
             {
-              "name": "Warmup YOLOX Sync Deployment Process",
+              "name": "Warmup Detection Sync Deployment Process",
               "event": [
                 {
                   "listen": "test",
@@ -2535,7 +2535,7 @@
               "response": []
             },
             {
-              "name": "Get YOLOX Sync Deployment Health",
+              "name": "Get Detection Sync Deployment Health",
               "event": [
                 {
                   "listen": "test",
@@ -2597,7 +2597,7 @@
               "response": []
             },
             {
-              "name": "Reset YOLOX Sync Deployment Process",
+              "name": "Reset Detection Sync Deployment Process",
               "event": [
                 {
                   "listen": "test",
@@ -2659,7 +2659,7 @@
               "response": []
             },
             {
-              "name": "Stop YOLOX Sync Deployment Process",
+              "name": "Stop Detection Sync Deployment Process",
               "event": [
                 {
                   "listen": "test",
@@ -2720,10 +2720,10 @@
           ]
         },
         {
-          "name": "YOLOX Async Deployment Process",
+          "name": "Detection Async Deployment Process",
           "item": [
             {
-              "name": "Start YOLOX Async Deployment Process",
+              "name": "Start Detection Async Deployment Process",
               "event": [
                 {
                   "listen": "test",
@@ -2772,7 +2772,7 @@
               "response": []
             },
             {
-              "name": "Get YOLOX Async Deployment Status",
+              "name": "Get Detection Async Deployment Status",
               "event": [
                 {
                   "listen": "test",
@@ -2821,7 +2821,7 @@
               "response": []
             },
             {
-              "name": "Warmup YOLOX Async Deployment Process",
+              "name": "Warmup Detection Async Deployment Process",
               "event": [
                 {
                   "listen": "test",
@@ -2883,7 +2883,7 @@
               "response": []
             },
             {
-              "name": "Get YOLOX Async Deployment Health",
+              "name": "Get Detection Async Deployment Health",
               "event": [
                 {
                   "listen": "test",
@@ -2945,7 +2945,7 @@
               "response": []
             },
             {
-              "name": "Reset YOLOX Async Deployment Process",
+              "name": "Reset Detection Async Deployment Process",
               "event": [
                 {
                   "listen": "test",
@@ -3007,7 +3007,7 @@
               "response": []
             },
             {
-              "name": "Stop YOLOX Async Deployment Process",
+              "name": "Stop Detection Async Deployment Process",
               "event": [
                 {
                   "listen": "test",
@@ -3070,13 +3070,13 @@
       ]
     },
     {
-      "name": "YOLOX Inference Tasks",
+      "name": "Detection Inference Tasks",
       "item": [
         {
-          "name": "YOLOX Sync Direct Inference",
+          "name": "Detection Sync Direct Inference",
           "item": [
             {
-              "name": "Direct YOLOX Inference By URI",
+              "name": "Direct Detection Inference By URI",
               "event": [
                 {
                   "listen": "test",
@@ -3131,12 +3131,12 @@
                     "infer"
                   ]
                 },
-                "description": "直接执行一次同步 YOLOX 推理并返回结果，输入来源为 input_uri。调用前需要先让 sync deployment 子进程通过 sync/start 或 sync/warmup 进入 running。"
+                "description": "直接执行一次同步 detection 推理并返回结果，输入来源为 input_uri。调用前需要先让 sync deployment 子进程通过 sync/start 或 sync/warmup 进入 running。"
               },
               "response": []
             },
             {
-              "name": "Direct YOLOX Inference By File ID",
+              "name": "Direct Detection Inference By File ID",
               "event": [
                 {
                   "listen": "test",
@@ -3191,12 +3191,12 @@
                     "infer"
                   ]
                 },
-                "description": "直接执行一次同步 YOLOX 推理并返回结果，输入来源为 Project 公开文件 file_id。projectPublicFileId 可来自 /api/v1/projects/{project_id}/files 或 /files/metadata 的响应；使用 file_id 时不要再把 input_transport_mode 设为 memory。"
+                "description": "直接执行一次同步 detection 推理并返回结果，输入来源为 Project 公开文件 file_id。projectPublicFileId 可来自 /api/v1/projects/{project_id}/files 或 /files/metadata 的响应；使用 file_id 时不要再把 input_transport_mode 设为 memory。"
               },
               "response": []
             },
             {
-              "name": "Direct YOLOX Inference By Base64",
+              "name": "Direct Detection Inference By Base64",
               "event": [
                 {
                   "listen": "test",
@@ -3251,12 +3251,12 @@
                     "infer"
                   ]
                 },
-                "description": "直接执行一次同步 YOLOX 推理并返回结果，输入来源为 image_base64。请求体只保留这一个输入字段，便于单独调试 base64 上传路径。image_base64 既可以填纯 base64 内容，也可以改成 data:image/png;base64,{{inferenceImageBase64}} 这类 data URI；但 application/json 请求体里的字符串必须保持单行。默认增加 input_transport_mode={{inferenceInputTransportMode}}；当取值为 memory 时，请求图片不会写入临时输入目录，而是直接以内存字节进入 deployment 推理进程。"
+                "description": "直接执行一次同步 detection 推理并返回结果，输入来源为 image_base64。请求体只保留这一个输入字段，便于单独调试 base64 上传路径。image_base64 既可以填纯 base64 内容，也可以改成 data:image/png;base64,{{inferenceImageBase64}} 这类 data URI；但 application/json 请求体里的字符串必须保持单行。默认增加 input_transport_mode={{inferenceInputTransportMode}}；当取值为 memory 时，请求图片不会写入临时输入目录，而是直接以内存字节进入 deployment 推理进程。"
               },
               "response": []
             },
             {
-              "name": "Direct YOLOX Inference By Upload",
+              "name": "Direct Detection Inference By Upload",
               "event": [
                 {
                   "listen": "test",
@@ -3332,17 +3332,17 @@
                     "infer"
                   ]
                 },
-                "description": "直接执行一次同步 YOLOX 推理并返回结果，输入来源为 multipart/form-data 的 input_image 文件字段。不要再同时提交 input_uri 或 image_base64。默认增加 input_transport_mode={{inferenceInputTransportMode}}；当取值为 memory 时，请求图片不会写入临时输入目录，而是直接以内存字节进入 deployment 推理进程。"
+                "description": "直接执行一次同步 detection 推理并返回结果，输入来源为 multipart/form-data 的 input_image 文件字段。不要再同时提交 input_uri 或 image_base64。默认增加 input_transport_mode={{inferenceInputTransportMode}}；当取值为 memory 时，请求图片不会写入临时输入目录，而是直接以内存字节进入 deployment 推理进程。"
               },
               "response": []
             }
           ]
         },
         {
-          "name": "YOLOX Async Inference Tasks",
+          "name": "Detection Async Inference Tasks",
           "item": [
             {
-              "name": "Create YOLOX Inference Task By URI",
+              "name": "Create Detection Inference Task By URI",
               "event": [
                 {
                   "listen": "test",
@@ -3393,12 +3393,12 @@
                     "inference-tasks"
                   ]
                 },
-                "description": "创建一个正式 YOLOX inference task，输入来源为 input_uri。调用前需要先让 async deployment 子进程通过 async/start 或 async/warmup 进入 running，否则 create 会直接返回 invalid_request。"
+                "description": "创建一个正式 detection inference task，输入来源为 input_uri。调用前需要先让 async deployment 子进程通过 async/start 或 async/warmup 进入 running，否则 create 会直接返回 invalid_request。"
               },
               "response": []
             },
             {
-              "name": "Create YOLOX Inference Task By File ID",
+              "name": "Create Detection Inference Task By File ID",
               "event": [
                 {
                   "listen": "test",
@@ -3449,12 +3449,12 @@
                     "inference-tasks"
                   ]
                 },
-                "description": "创建一个正式 YOLOX inference task，输入来源为 Project 公开文件 file_id。projectPublicFileId 可来自 /api/v1/projects/{project_id}/files 或 /files/metadata 的响应。"
+                "description": "创建一个正式 detection inference task，输入来源为 Project 公开文件 file_id。projectPublicFileId 可来自 /api/v1/projects/{project_id}/files 或 /files/metadata 的响应。"
               },
               "response": []
             },
             {
-              "name": "Create YOLOX Inference Task By Base64",
+              "name": "Create Detection Inference Task By Base64",
               "event": [
                 {
                   "listen": "test",
@@ -3505,12 +3505,12 @@
                     "inference-tasks"
                   ]
                 },
-                "description": "创建一个正式 YOLOX inference task，输入来源为 image_base64。请求体只保留这一种输入方式，便于单独调试 base64 入队路径。image_base64 既可以填纯 base64 内容，也可以改成 data:image/png;base64,{{inferenceImageBase64}} 这类 data URI；但 application/json 请求体里的字符串必须保持单行。默认增加 input_transport_mode={{inferenceInputTransportMode}}；当取值为 memory 时，请求图片不会写入临时输入目录，而是会作为任务 normalized_input 固化，并由 worker 通过 queue IPC 转发到 async deployment 推理进程。"
+                "description": "创建一个正式 detection inference task，输入来源为 image_base64。请求体只保留这一种输入方式，便于单独调试 base64 入队路径。image_base64 既可以填纯 base64 内容，也可以改成 data:image/png;base64,{{inferenceImageBase64}} 这类 data URI；但 application/json 请求体里的字符串必须保持单行。默认增加 input_transport_mode={{inferenceInputTransportMode}}；当取值为 memory 时，请求图片不会写入临时输入目录，而是会作为任务 normalized_input 固化，并由 worker 通过 queue IPC 转发到 async deployment 推理进程。"
               },
               "response": []
             },
             {
-              "name": "Create YOLOX Inference Task By Upload",
+              "name": "Create Detection Inference Task By Upload",
               "event": [
                 {
                   "listen": "test",
@@ -3597,12 +3597,12 @@
                     "inference-tasks"
                   ]
                 },
-                "description": "创建一个正式 YOLOX inference task，输入来源为 multipart/form-data 的 input_image 文件字段。不要再同时提交 input_uri 或 image_base64。默认增加 input_transport_mode={{inferenceInputTransportMode}}；当取值为 memory 时，请求图片不会写入临时输入目录，而是会作为任务 normalized_input 固化，并由 worker 通过 queue IPC 转发到 async deployment 推理进程。"
+                "description": "创建一个正式 detection inference task，输入来源为 multipart/form-data 的 input_image 文件字段。不要再同时提交 input_uri 或 image_base64。默认增加 input_transport_mode={{inferenceInputTransportMode}}；当取值为 memory 时，请求图片不会写入临时输入目录，而是会作为任务 normalized_input 固化，并由 worker 通过 queue IPC 转发到 async deployment 推理进程。"
               },
               "response": []
             },
             {
-              "name": "List YOLOX Inference Tasks",
+              "name": "List Detection Inference Tasks",
               "request": {
                 "method": "GET",
                 "header": [
@@ -3650,7 +3650,7 @@
               "response": []
             },
             {
-              "name": "Get YOLOX Inference Task Detail",
+              "name": "Get Detection Inference Task Detail",
               "event": [
                 {
                   "listen": "test",
@@ -3700,7 +3700,7 @@
               "response": []
             },
             {
-              "name": "Get YOLOX Inference Result",
+              "name": "Get Detection Inference Result",
               "request": {
                 "method": "GET",
                 "header": [
@@ -3734,10 +3734,10 @@
       ]
     },
     {
-      "name": "YOLOX Workflow Preview Runs",
+      "name": "Detection Workflow Preview Runs",
       "item": [
         {
-          "name": "Create YOLOX Workflow Preview Run - Sync",
+          "name": "Create Detection Workflow Preview Run - Sync",
           "event": [
             {
               "listen": "test",
@@ -3787,12 +3787,12 @@
                 "preview-runs"
               ]
             },
-            "description": "用已保存的 FlowApplication 创建一次同步 preview run。workflowApplicationId 需要先指向一个已经保存的 YOLOX 相关 application；previewRunInputBindings 默认只放 request_image 示例，实际调试时需要按目标 application 的 binding_id 形状调整。"
+            "description": "用已保存的 FlowApplication 创建一次同步 preview run。workflowApplicationId 需要先指向一个已经保存的 detection 相关 application；previewRunInputBindings 默认只放 request_image 示例，实际调试时需要按目标 application 的 binding_id 形状调整。"
           },
           "response": []
         },
         {
-          "name": "Create YOLOX Workflow Preview Run - Async",
+          "name": "Create Detection Workflow Preview Run - Async",
           "event": [
             {
               "listen": "test",
@@ -3847,7 +3847,7 @@
           "response": []
         },
         {
-          "name": "Get YOLOX Workflow Preview Run",
+          "name": "Get Detection Workflow Preview Run",
           "request": {
             "method": "GET",
             "header": [
@@ -3875,7 +3875,7 @@
           "response": []
         },
         {
-          "name": "Get YOLOX Workflow Preview Run Events",
+          "name": "Get Detection Workflow Preview Run Events",
           "request": {
             "method": "GET",
             "header": [
@@ -3914,7 +3914,7 @@
           "response": []
         },
         {
-          "name": "Cancel YOLOX Workflow Preview Run",
+          "name": "Cancel Detection Workflow Preview Run",
           "request": {
             "method": "POST",
             "header": [
@@ -4040,7 +4040,7 @@
     },
     {
       "key": "displayName",
-      "value": "local yolox smoke"
+      "value": "local detection smoke"
     },
     {
       "key": "taskId",
@@ -4140,7 +4140,7 @@
     },
     {
       "key": "conversionDisplayName",
-      "value": "local yolox conversion"
+      "value": "local detection conversion"
     },
     {
       "key": "conversionState",
@@ -4212,7 +4212,7 @@
     },
     {
       "key": "evaluationDisplayName",
-      "value": "local yolox evaluation"
+      "value": "local detection evaluation"
     },
     {
       "key": "evaluationState",
@@ -4424,7 +4424,7 @@
     },
     {
       "key": "inferenceDisplayName",
-      "value": "local yolox inference"
+      "value": "local detection inference"
     },
     {
       "key": "inferenceState",

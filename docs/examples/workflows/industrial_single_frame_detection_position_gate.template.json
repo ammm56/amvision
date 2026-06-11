@@ -131,8 +131,8 @@
           "inside",
           "offset"
         ],
-        "ok_reason": "yolox position gate passed",
-        "ng_reason": "yolox position gate failed"
+        "ok_reason": "detection position gate passed",
+        "ng_reason": "detection position gate failed"
       }
     },
     {
@@ -142,8 +142,8 @@
         "trigger_when": "condition-false",
         "alarm_level": "error",
         "alarm_code": "DETECTION-POS-NG",
-        "alarm_message": "yolox position gate failed",
-        "clear_message": "yolox position gate passed"
+        "alarm_message": "detection position gate failed",
+        "clear_message": "detection position gate passed"
       }
     },
     {

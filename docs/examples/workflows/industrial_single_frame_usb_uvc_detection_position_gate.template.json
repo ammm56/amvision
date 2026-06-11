@@ -161,8 +161,8 @@
           "inside",
           "offset"
         ],
-        "ok_reason": "usb uvc yolox position gate passed",
-        "ng_reason": "usb uvc yolox position gate failed"
+        "ok_reason": "usb uvc detection position gate passed",
+        "ng_reason": "usb uvc detection position gate failed"
       }
     },
     {
@@ -172,8 +172,8 @@
         "trigger_when": "condition-false",
         "alarm_level": "error",
         "alarm_code": "USB-UVC-DETECTION-POS-NG",
-        "alarm_message": "usb uvc yolox position gate failed",
-        "clear_message": "usb uvc yolox position gate passed"
+        "alarm_message": "usb uvc detection position gate failed",
+        "clear_message": "usb uvc detection position gate passed"
       }
     },
     {
