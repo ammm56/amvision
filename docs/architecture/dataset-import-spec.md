@@ -1146,6 +1146,30 @@ versions/{dataset_version_id}/
 | 常见模型/后端 | YOLO pose, keypoint estimation pipelines |
 | 说明 | pose 除类别外还需要 keypoint schema 与 skeleton 定义，不能只靠 bbox 或类别表描述 |
 
+### classification
+
+| 项目 | 内容 |
+| --- | --- |
+| 任务类型 | classification |
+| 第一阶段导入格式 | ImageNet 风格 class directory |
+| 扩展导入格式 | custom classification manifest, CSV label list |
+| 第一阶段导出格式 | imagenet-classification-v1 |
+| 扩展导出格式 | backend-specific classification manifest |
+| 常见模型/后端 | YOLOv8/11/26 classification |
+| 说明 | 当前导出会同时保留 ImageNet 风格目录和 split annotation json，便于项目内训练/评估直接消费 |
+
+### obb
+
+| 项目 | 内容 |
+| --- | --- |
+| 任务类型 | obb |
+| 第一阶段导入格式 | DOTA OBB |
+| 扩展导入格式 | COCO + angle, YOLO OBB label |
+| 第一阶段导出格式 | dota-obb-v1 |
+| 扩展导出格式 | backend-specific obb manifest |
+| 常见模型/后端 | YOLOv8/11/26 obb |
+| 说明 | 当前统一内部表示会保留 axis-aligned bbox 和 polygon 四角点，不再把旋转框继续塞进 detection 专用结构 |
+
 ## 模型与数据集导出格式的关系
 
 - YOLO 系列通常直接消费 YOLO detection、YOLO segmentation、YOLO pose 数据集导出格式

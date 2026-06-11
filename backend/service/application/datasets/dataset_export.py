@@ -31,12 +31,30 @@ from backend.contracts.datasets.exports.coco_keypoints_export import (
     CocoKeypointsSplit,
 )
 from backend.contracts.datasets.exports.dataset_formats import (
+    DOTA_OBB_DATASET_FORMAT,
+    IMAGENET_CLASSIFICATION_DATASET_FORMAT,
     DatasetExportFormatId,
     IMPLEMENTED_DATASET_EXPORT_FORMATS,
     SUPPORTED_DATASET_EXPORT_FORMATS,
     YOLO_DETECTION_DATASET_FORMAT,
     YOLO_INSTANCE_SEGMENTATION_DATASET_FORMAT,
     YOLO_POSE_DATASET_FORMAT,
+)
+from backend.contracts.datasets.exports.dota_obb_export import (
+    DotaObbAnnotation,
+    DotaObbAnnotationPayload,
+    DotaObbCategory,
+    DotaObbExportManifest,
+    DotaObbImage,
+    DotaObbSplit,
+)
+from backend.contracts.datasets.exports.imagenet_classification_export import (
+    ImageNetClassificationAnnotation,
+    ImageNetClassificationAnnotationPayload,
+    ImageNetClassificationCategory,
+    ImageNetClassificationExportManifest,
+    ImageNetClassificationImage,
+    ImageNetClassificationSplit,
 )
 from backend.contracts.datasets.exports.yolo_export import (
     YoloDetectionExportManifest,
@@ -63,10 +81,12 @@ from backend.service.application.tasks.task_service import (
 )
 from backend.service.domain.datasets.dataset_export import DatasetExport
 from backend.service.domain.datasets.dataset_version import (
+    ClassificationAnnotation,
     DatasetCategory,
     DatasetSample,
     DatasetVersion,
     InstanceSegmentationAnnotation,
+    ObbAnnotation,
     PoseAnnotation,
 )
 from backend.service.domain.tasks.task_records import TaskEvent, TaskRecord
@@ -79,8 +99,23 @@ DATASET_EXPORT_TASK_KIND = "dataset-export"
 DATASET_EXPORT_QUEUE_NAME = "dataset-exports"
 
 
-DatasetExportFormatManifest = CocoDetectionExportManifest | VocDetectionExportManifest
-DatasetExportAnnotationPayload = CocoDetectionAnnotationPayload | VocDetectionAnnotationPayload
+DatasetExportFormatManifest = (
+    CocoDetectionExportManifest
+    | VocDetectionExportManifest
+    | ImageNetClassificationExportManifest
+    | DotaObbExportManifest
+    | YoloDetectionExportManifest
+    | YoloInstanceSegmentationExportManifest
+    | YoloPoseExportManifest
+    | CocoInstanceSegmentationExportManifest
+    | CocoKeypointsExportManifest
+)
+DatasetExportAnnotationPayload = (
+    CocoDetectionAnnotationPayload
+    | VocDetectionAnnotationPayload
+    | ImageNetClassificationAnnotationPayload
+    | DotaObbAnnotationPayload
+)
 
 
 @dataclass(frozen=True)
@@ -284,8 +319,13 @@ class SqlAlchemyDatasetExporter:
             raise NotImplementedError(
                 f"当前最小实现只落了 {IMPLEMENTED_DATASET_EXPORT_FORMATS}，其他格式已在支持列表中预留"
             )
-        if dataset_version.task_type != "detection" and dataset_version.task_type != "instance-segmentation" and dataset_version.task_type != "pose":
-            raise ValueError(f"当前导出不支持 task_type={dataset_version.task_type}，只支持 detection、instance-segmentation、pose")
+        if not _dataset_export_format_matches_task_type(
+            format_id=request.format_id,
+            task_type=dataset_version.task_type,
+        ):
+            raise ValueError(
+                f"导出格式 {request.format_id} 与 task_type={dataset_version.task_type} 不匹配"
+            )
 
         category_names = self._resolve_category_names(
             categories=dataset_version.categories,
@@ -503,16 +543,130 @@ class SqlAlchemyDatasetExporter:
                     split_samples=split_samples,
                 ),
             )
-
         if request.format_id == YOLO_DETECTION_DATASET_FORMAT:
-            yolo_splits = tuple(YoloExportSplit(name=split_name, image_root=f"{export_prefix}/images/{split_name}", label_root=f"{export_prefix}/labels/{split_name}", sample_count=len(samples)) for split_name, samples in split_samples)
-            return (YoloDetectionExportManifest(format_id=request.format_id, dataset_version_id=request.dataset_version_id, category_names=category_names, splits=yolo_splits, metadata=metadata), self._build_coco_detection_payloads(dataset_version=dataset_version, split_samples=split_samples))
+            yolo_splits = tuple(
+                YoloExportSplit(
+                    name=split_name,
+                    image_root=f"{export_prefix}/images/{split_name}",
+                    label_root=f"{export_prefix}/labels/{split_name}",
+                    sample_count=len(samples),
+                )
+                for split_name, samples in split_samples
+            )
+            return (
+                YoloDetectionExportManifest(
+                    format_id=request.format_id,
+                    dataset_version_id=request.dataset_version_id,
+                    category_names=category_names,
+                    splits=yolo_splits,
+                    metadata=metadata,
+                ),
+                self._build_coco_detection_payloads(
+                    dataset_version=dataset_version,
+                    split_samples=split_samples,
+                ),
+            )
         if request.format_id == YOLO_INSTANCE_SEGMENTATION_DATASET_FORMAT:
-            yolo_splits = tuple(YoloExportSplit(name=split_name, image_root=f"{export_prefix}/images/{split_name}", label_root=f"{export_prefix}/labels/{split_name}", sample_count=len(samples)) for split_name, samples in split_samples)
-            return (YoloInstanceSegmentationExportManifest(format_id=request.format_id, dataset_version_id=request.dataset_version_id, category_names=category_names, splits=yolo_splits, metadata=metadata), self._build_coco_detection_payloads(dataset_version=dataset_version, split_samples=split_samples))
+            yolo_splits = tuple(
+                YoloExportSplit(
+                    name=split_name,
+                    image_root=f"{export_prefix}/images/{split_name}",
+                    label_root=f"{export_prefix}/labels/{split_name}",
+                    sample_count=len(samples),
+                )
+                for split_name, samples in split_samples
+            )
+            return (
+                YoloInstanceSegmentationExportManifest(
+                    format_id=request.format_id,
+                    dataset_version_id=request.dataset_version_id,
+                    category_names=category_names,
+                    splits=yolo_splits,
+                    metadata=metadata,
+                ),
+                self._build_coco_detection_payloads(
+                    dataset_version=dataset_version,
+                    split_samples=split_samples,
+                ),
+            )
         if request.format_id == YOLO_POSE_DATASET_FORMAT:
-            yolo_splits = tuple(YoloExportSplit(name=split_name, image_root=f"{export_prefix}/images/{split_name}", label_root=f"{export_prefix}/labels/{split_name}", sample_count=len(samples)) for split_name, samples in split_samples)
-            return (YoloPoseExportManifest(format_id=request.format_id, dataset_version_id=request.dataset_version_id, category_names=category_names, splits=yolo_splits, metadata=metadata), self._build_coco_detection_payloads(dataset_version=dataset_version, split_samples=split_samples))
+            yolo_splits = tuple(
+                YoloExportSplit(
+                    name=split_name,
+                    image_root=f"{export_prefix}/images/{split_name}",
+                    label_root=f"{export_prefix}/labels/{split_name}",
+                    sample_count=len(samples),
+                )
+                for split_name, samples in split_samples
+            )
+            return (
+                YoloPoseExportManifest(
+                    format_id=request.format_id,
+                    dataset_version_id=request.dataset_version_id,
+                    category_names=category_names,
+                    splits=yolo_splits,
+                    metadata=metadata,
+                ),
+                self._build_coco_detection_payloads(
+                    dataset_version=dataset_version,
+                    split_samples=split_samples,
+                ),
+            )
+        if request.format_id == IMAGENET_CLASSIFICATION_DATASET_FORMAT:
+            classification_splits = tuple(
+                ImageNetClassificationSplit(
+                    name=split_name,
+                    image_root=f"{export_prefix}/{split_name}",
+                    annotation_file=f"{export_prefix}/annotations/{split_name}.json",
+                    sample_count=len(samples),
+                )
+                for split_name, samples in split_samples
+            )
+            categories = tuple(
+                ImageNetClassificationCategory(
+                    category_id=category.category_id,
+                    name=category.name,
+                )
+                for category in sorted(
+                    dataset_version.categories,
+                    key=lambda item: item.category_id,
+                )
+            )
+            return (
+                ImageNetClassificationExportManifest(
+                    dataset_version_id=request.dataset_version_id,
+                    category_names=category_names,
+                    categories=categories,
+                    splits=classification_splits,
+                    metadata=metadata,
+                ),
+                self._build_imagenet_classification_payloads(
+                    dataset_version=dataset_version,
+                    split_samples=split_samples,
+                ),
+            )
+        if request.format_id == DOTA_OBB_DATASET_FORMAT:
+            obb_splits = tuple(
+                DotaObbSplit(
+                    name=split_name,
+                    image_root=f"{export_prefix}/images/{split_name}",
+                    annotation_file=f"{export_prefix}/annotations/{split_name}.json",
+                    sample_count=len(samples),
+                )
+                for split_name, samples in split_samples
+            )
+            return (
+                DotaObbExportManifest(
+                    dataset_version_id=request.dataset_version_id,
+                    category_names=category_names,
+                    splits=obb_splits,
+                    metadata=metadata,
+                ),
+                self._build_dota_obb_payloads(
+                    dataset_version=dataset_version,
+                    split_samples=split_samples,
+                ),
+            )
 
         raise NotImplementedError(f"当前尚未实现导出格式: {request.format_id}")
 
@@ -687,6 +841,134 @@ class SqlAlchemyDatasetExporter:
 
         return payloads
 
+    def _build_imagenet_classification_payloads(
+        self,
+        *,
+        dataset_version: DatasetVersion,
+        split_samples: tuple[tuple[str, tuple[DatasetSample, ...]], ...],
+    ) -> dict[str, ImageNetClassificationAnnotationPayload]:
+        """构建每个 split 的 ImageNet 风格 classification payload。"""
+
+        categories = tuple(
+            ImageNetClassificationCategory(
+                category_id=category.category_id,
+                name=category.name,
+            )
+            for category in sorted(
+                dataset_version.categories,
+                key=lambda item: item.category_id,
+            )
+        )
+        category_map = {category.category_id: category.name for category in categories}
+        payloads: dict[str, ImageNetClassificationAnnotationPayload] = {}
+        for split_name, samples in split_samples:
+            images: list[ImageNetClassificationImage] = []
+            annotations: list[ImageNetClassificationAnnotation] = []
+            next_annotation_id = 1
+            for sample in samples:
+                sample_annotation = self._require_classification_annotation(sample)
+                class_name = category_map[sample_annotation.category_id]
+                relative_file_name = f"{class_name}/{sample.file_name}"
+                images.append(
+                    ImageNetClassificationImage(
+                        image_id=sample.image_id,
+                        file_name=relative_file_name,
+                        width=sample.width,
+                        height=sample.height,
+                    )
+                )
+                annotations.append(
+                    ImageNetClassificationAnnotation(
+                        annotation_id=next_annotation_id,
+                        image_id=sample.image_id,
+                        category_id=sample_annotation.category_id,
+                        metadata={
+                            **dict(sample_annotation.metadata),
+                            "class_name": class_name,
+                        },
+                    )
+                )
+                next_annotation_id += 1
+
+            payloads[split_name] = ImageNetClassificationAnnotationPayload(
+                split_name=split_name,
+                images=tuple(images),
+                annotations=tuple(annotations),
+                categories=categories,
+                info={
+                    "dataset_version_id": dataset_version.dataset_version_id,
+                    "dataset_id": dataset_version.dataset_id,
+                    "task_type": dataset_version.task_type,
+                },
+            )
+
+        return payloads
+
+    def _build_dota_obb_payloads(
+        self,
+        *,
+        dataset_version: DatasetVersion,
+        split_samples: tuple[tuple[str, tuple[DatasetSample, ...]], ...],
+    ) -> dict[str, DotaObbAnnotationPayload]:
+        """构建每个 split 的 DOTA 风格 OBB payload。"""
+
+        categories = tuple(
+            DotaObbCategory(
+                category_id=category.category_id,
+                name=category.name,
+            )
+            for category in sorted(
+                dataset_version.categories,
+                key=lambda item: item.category_id,
+            )
+        )
+        payloads: dict[str, DotaObbAnnotationPayload] = {}
+        for split_name, samples in split_samples:
+            images = tuple(
+                DotaObbImage(
+                    image_id=sample.image_id,
+                    file_name=sample.file_name,
+                    width=sample.width,
+                    height=sample.height,
+                )
+                for sample in samples
+            )
+            annotations: list[DotaObbAnnotation] = []
+            next_annotation_id = 1
+            for sample in samples:
+                for annotation in sample.annotations:
+                    if not isinstance(annotation, ObbAnnotation):
+                        continue
+                    polygon_xy = self._require_obb_polygon(annotation)
+                    bbox_x, bbox_y, bbox_w, bbox_h = annotation.bbox_xywh
+                    annotations.append(
+                        DotaObbAnnotation(
+                            annotation_id=next_annotation_id,
+                            image_id=sample.image_id,
+                            category_id=annotation.category_id,
+                            bbox_xywh=(bbox_x, bbox_y, bbox_w, bbox_h),
+                            polygon_xy=polygon_xy,
+                            area=annotation.area if annotation.area is not None else bbox_w * bbox_h,
+                            iscrowd=annotation.iscrowd,
+                            metadata=dict(annotation.metadata),
+                        )
+                    )
+                    next_annotation_id += 1
+
+            payloads[split_name] = DotaObbAnnotationPayload(
+                split_name=split_name,
+                images=images,
+                annotations=tuple(annotations),
+                categories=categories,
+                info={
+                    "dataset_version_id": dataset_version.dataset_version_id,
+                    "dataset_id": dataset_version.dataset_id,
+                    "task_type": dataset_version.task_type,
+                },
+            )
+
+        return payloads
+
     def _write_export_files(
         self,
         *,
@@ -739,6 +1021,22 @@ class SqlAlchemyDatasetExporter:
             )
             return
 
+        if export_result.format_id == IMAGENET_CLASSIFICATION_DATASET_FORMAT:
+            self._write_imagenet_classification_export_files(
+                dataset_version=dataset_version,
+                split_samples=split_samples,
+                export_result=export_result,
+            )
+            return
+
+        if export_result.format_id == DOTA_OBB_DATASET_FORMAT:
+            self._write_dota_obb_export_files(
+                dataset_version=dataset_version,
+                split_samples=split_samples,
+                export_result=export_result,
+            )
+            return
+
         if export_result.format_id in (YOLO_DETECTION_DATASET_FORMAT, YOLO_INSTANCE_SEGMENTATION_DATASET_FORMAT, YOLO_POSE_DATASET_FORMAT):
             self._write_yolo_export_files(dataset_version=dataset_version, split_samples=split_samples, export_result=export_result)
             return
@@ -771,6 +1069,80 @@ class SqlAlchemyDatasetExporter:
                     "id": category.category_id,
                     "name": category.name,
                     "supercategory": category.supercategory,
+                }
+                for category in payload.categories
+            ],
+        }
+
+    def _serialize_imagenet_classification_payload(
+        self,
+        payload: ImageNetClassificationAnnotationPayload,
+    ) -> dict[str, object]:
+        """把 classification payload 序列化为标准 JSON。"""
+
+        return {
+            "info": dict(payload.info),
+            "images": [
+                {
+                    "id": image.image_id,
+                    "file_name": image.file_name,
+                    "width": image.width,
+                    "height": image.height,
+                }
+                for image in payload.images
+            ],
+            "annotations": [
+                {
+                    "id": annotation.annotation_id,
+                    "image_id": annotation.image_id,
+                    "category_id": annotation.category_id,
+                    **dict(annotation.metadata),
+                }
+                for annotation in payload.annotations
+            ],
+            "categories": [
+                {
+                    "id": category.category_id,
+                    "name": category.name,
+                }
+                for category in payload.categories
+            ],
+        }
+
+    def _serialize_dota_obb_payload(
+        self,
+        payload: DotaObbAnnotationPayload,
+    ) -> dict[str, object]:
+        """把 DOTA 风格 OBB payload 序列化为标准 JSON。"""
+
+        return {
+            "info": dict(payload.info),
+            "images": [
+                {
+                    "id": image.image_id,
+                    "file_name": image.file_name,
+                    "width": image.width,
+                    "height": image.height,
+                }
+                for image in payload.images
+            ],
+            "annotations": [
+                {
+                    "id": annotation.annotation_id,
+                    "image_id": annotation.image_id,
+                    "category_id": annotation.category_id,
+                    "bbox": list(annotation.bbox_xywh),
+                    "poly": list(annotation.polygon_xy),
+                    "area": annotation.area,
+                    "iscrowd": annotation.iscrowd,
+                    **dict(annotation.metadata),
+                }
+                for annotation in payload.annotations
+            ],
+            "categories": [
+                {
+                    "id": category.category_id,
+                    "name": category.name,
                 }
                 for category in payload.categories
             ],
@@ -815,6 +1187,82 @@ class SqlAlchemyDatasetExporter:
                 self.dataset_storage.copy_relative_file(
                     source_relative_path,
                     f"{export_result.export_path}/JPEGImages/{self._build_voc_export_file_name(sample)}",
+                )
+
+    def _write_imagenet_classification_export_files(
+        self,
+        *,
+        dataset_version: DatasetVersion,
+        split_samples: tuple[tuple[str, tuple[DatasetSample, ...]], ...],
+        export_result: DatasetExportResult,
+    ) -> None:
+        """把 ImageNet 风格 classification 导出结果正式写入本地文件存储。"""
+
+        if self.dataset_storage is None or export_result.export_path is None:
+            return
+
+        self.dataset_storage.resolve(f"{export_result.export_path}/annotations").mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+        category_map = {
+            category.category_id: category.name
+            for category in sorted(
+                dataset_version.categories,
+                key=lambda item: item.category_id,
+            )
+        }
+        for split_name, payload in export_result.annotation_payloads_by_split.items():
+            if not isinstance(payload, ImageNetClassificationAnnotationPayload):
+                raise ValueError("classification 导出结果缺少有效的 annotation payload")
+            self.dataset_storage.write_json(
+                f"{export_result.export_path}/annotations/{split_name}.json",
+                self._serialize_imagenet_classification_payload(payload),
+            )
+
+        for split_name, samples in split_samples:
+            for sample in samples:
+                classification_annotation = self._require_classification_annotation(sample)
+                class_name = category_map[classification_annotation.category_id]
+                source_relative_path = self._build_version_image_relative_path(
+                    dataset_version=dataset_version,
+                    sample=sample,
+                )
+                self.dataset_storage.copy_relative_file(
+                    source_relative_path,
+                    f"{export_result.export_path}/{split_name}/{class_name}/{sample.file_name}",
+                )
+
+    def _write_dota_obb_export_files(
+        self,
+        *,
+        dataset_version: DatasetVersion,
+        split_samples: tuple[tuple[str, tuple[DatasetSample, ...]], ...],
+        export_result: DatasetExportResult,
+    ) -> None:
+        """把 DOTA 风格 OBB 导出结果正式写入本地文件存储。"""
+
+        if self.dataset_storage is None or export_result.export_path is None:
+            return
+
+        export_layout = self.dataset_storage.prepare_export_layout(export_result.export_path)
+        for split_name, payload in export_result.annotation_payloads_by_split.items():
+            if not isinstance(payload, DotaObbAnnotationPayload):
+                raise ValueError("OBB 导出结果缺少有效的 annotation payload")
+            self.dataset_storage.write_json(
+                f"{export_layout.annotations_dir}/{split_name}.json",
+                self._serialize_dota_obb_payload(payload),
+            )
+
+        for split_name, samples in split_samples:
+            for sample in samples:
+                source_relative_path = self._build_version_image_relative_path(
+                    dataset_version=dataset_version,
+                    sample=sample,
+                )
+                self.dataset_storage.copy_relative_file(
+                    source_relative_path,
+                    f"{export_layout.images_dir}/{split_name}/{sample.file_name}",
                 )
 
     def _serialize_voc_annotation_document(self, document: VocDetectionDocument) -> str:
@@ -897,6 +1345,31 @@ class SqlAlchemyDatasetExporter:
             return value
         return 3
 
+    def _require_classification_annotation(
+        self,
+        sample: DatasetSample,
+    ) -> ClassificationAnnotation:
+        """要求 classification 样本至少有一条类别标注。"""
+
+        for annotation in sample.annotations:
+            if isinstance(annotation, ClassificationAnnotation):
+                return annotation
+        raise ValueError(
+            f"classification 样本缺少类别标注: sample_id={sample.sample_id}"
+        )
+
+    def _require_obb_polygon(
+        self,
+        annotation: ObbAnnotation,
+    ) -> tuple[float, ...]:
+        """要求 OBB 标注具备四角点 polygon。"""
+
+        if annotation.polygon_xy is None or len(annotation.polygon_xy) != 8:
+            raise ValueError(
+                f"OBB 标注缺少合法 polygon: annotation_id={annotation.annotation_id}"
+            )
+        return tuple(float(value) for value in annotation.polygon_xy)
+
     def _build_version_image_relative_path(
         self,
         *,
@@ -933,6 +1406,8 @@ class SqlAlchemyDatasetExporter:
                 self.dataset_storage.copy_relative_file(source, f"{image_dir}/{sample.file_name}")
                 label_lines = []
                 for ann in sample.annotations:
+                    if not hasattr(ann, "bbox_xywh"):
+                        continue
                     x, y, w, h = ann.bbox_xywh
                     xc = (x + w / 2) / sample.width
                     yc = (y + h / 2) / sample.height
@@ -944,11 +1419,19 @@ class SqlAlchemyDatasetExporter:
                     nh = max(0.0, min(1.0, nh))
                     category_index = ann.category_id - 1 if ann.category_id >= 1 else 0
                     parts = [str(category_index), f"{xc:.6f}", f"{yc:.6f}", f"{nw:.6f}", f"{nh:.6f}"]
-                    if export_result.format_id == YOLO_POSE_DATASET_FORMAT and isinstance(ann.metadata.get("keypoints"), list):
-                        for val in ann.metadata["keypoints"]:
+                    if (
+                        export_result.format_id == YOLO_POSE_DATASET_FORMAT
+                        and isinstance(ann, PoseAnnotation)
+                        and isinstance(ann.keypoints, list)
+                    ):
+                        for val in ann.keypoints:
                             parts.append(f"{float(val):.6f}")
-                    elif export_result.format_id == YOLO_INSTANCE_SEGMENTATION_DATASET_FORMAT and isinstance(ann.metadata.get("segmentation"), list):
-                        for seg in ann.metadata["segmentation"]:
+                    elif (
+                        export_result.format_id == YOLO_INSTANCE_SEGMENTATION_DATASET_FORMAT
+                        and isinstance(ann, InstanceSegmentationAnnotation)
+                        and isinstance(ann.segmentation, list)
+                    ):
+                        for seg in ann.segmentation:
                             if isinstance(seg, list):
                                 for val in seg:
                                     parts.append(f"{float(val):.6f}")
@@ -977,6 +1460,27 @@ def _build_coco_annotation_entry(annotation: CocoDetectionAnnotation) -> dict[st
         if "num_keypoints" in meta:
             entry["num_keypoints"] = meta["num_keypoints"]
     return entry
+
+
+def _dataset_export_format_matches_task_type(
+    *,
+    format_id: str,
+    task_type: str,
+) -> bool:
+    """判断导出格式与 DatasetVersion.task_type 是否匹配。"""
+
+    format_to_task_types = {
+        COCO_DETECTION_DATASET_FORMAT: {"detection"},
+        VOC_DETECTION_DATASET_FORMAT: {"detection"},
+        YOLO_DETECTION_DATASET_FORMAT: {"detection"},
+        COCO_INSTANCE_SEGMENTATION_DATASET_FORMAT: {"instance-segmentation"},
+        YOLO_INSTANCE_SEGMENTATION_DATASET_FORMAT: {"instance-segmentation"},
+        COCO_KEYPOINTS_DATASET_FORMAT: {"pose"},
+        YOLO_POSE_DATASET_FORMAT: {"pose"},
+        IMAGENET_CLASSIFICATION_DATASET_FORMAT: {"classification"},
+        DOTA_OBB_DATASET_FORMAT: {"obb"},
+    }
+    return task_type in format_to_task_types.get(format_id, set())
 
 
 class SqlAlchemyDatasetExportTaskService:
@@ -1404,10 +1908,17 @@ class SqlAlchemyDatasetExportTaskService:
                 "请求中的 dataset_id 与 DatasetVersion 不一致",
                 details={"dataset_version_id": dataset_version.dataset_version_id},
             )
-        if dataset_version.task_type != "detection":
+        if not _dataset_export_format_matches_task_type(
+            format_id=request.format_id,
+            task_type=dataset_version.task_type,
+        ):
             raise InvalidRequestError(
-                "当前最小实现只支持 detection 类型的 DatasetVersion",
-                details={"dataset_version_id": dataset_version.dataset_version_id},
+                "当前导出格式与 DatasetVersion.task_type 不匹配",
+                details={
+                    "dataset_version_id": dataset_version.dataset_version_id,
+                    "format_id": request.format_id,
+                    "task_type": dataset_version.task_type,
+                },
             )
 
     def _require_dataset_export(self, dataset_export_id: str) -> DatasetExport:

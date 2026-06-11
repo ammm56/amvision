@@ -617,8 +617,17 @@ WebSocket 资源流的统一消息结构、控制事件和重连规则见 [docs/
 - 当前已经正式实现并对外开放的 format_id：
   - coco-detection-v1
   - voc-detection-v1
+  - yolo-detection-v1
+  - coco-instance-seg-v1
+  - yolo-instance-seg-v1
+  - coco-keypoints-v1
+  - yolo-pose-v1
+  - imagenet-classification-v1
+  - dota-obb-v1
 - 导入阶段可以兼容多种外部目录结构，但导出阶段始终按 format_id 收口为单一标准格式，不沿用原始导入包目录布局
 - 当前若 format_id=coco-detection-v1，则固定导出为 images/{split}/ 和 annotations/instances_{split}.json
+- 当前若 format_id=imagenet-classification-v1，则固定导出为 `{split}/{class_name}/`、`annotations/{split}.json` 和 `manifest.json`
+- 当前若 format_id=dota-obb-v1，则固定导出为 `images/{split}/`、`annotations/{split}.json` 和 `manifest.json`
 - 成功响应会同时返回：
   - dataset_export_id
   - task_id

@@ -2,11 +2,9 @@
 
 from __future__ import annotations
 
-import math
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
-from backend.service.application.runtime.obb_model_runtime import DefaultObbModelRuntime
 from backend.service.application.runtime.obb_runtime_contracts import ObbPredictionRequest
 from backend.service.application.runtime.runtime_target import RuntimeTargetSnapshot
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
@@ -49,9 +47,10 @@ def run_obb_evaluation(request: ObbEvaluationRequest) -> ObbEvaluationResult:
     started_at = datetime.now(timezone.utc)
 
     # 解析 manifest
-    images = {img["id"]: img for img in manifest.get("images", [])}
-    annotations = manifest.get("annotations", [])
-    categories = manifest.get("categories", [])
+    images, annotations, categories = _parse_obb_manifest_payload(
+        manifest=manifest,
+        dataset_storage=dataset_storage,
+    )
 
     # 按 image_id 分组 GT
     gt_by_image: dict[int, list[dict]] = {}
@@ -150,6 +149,94 @@ def run_obb_evaluation(request: ObbEvaluationRequest) -> ObbEvaluationResult:
         per_class_metrics=per_class_metrics,
         predictions_payload=all_preds,
     )
+
+
+def _parse_obb_manifest_payload(
+    *,
+    manifest: dict[str, object],
+    dataset_storage: LocalDatasetStorage,
+) -> tuple[dict[int, dict[str, object]], list[dict], list[dict]]:
+    """把 OBB manifest 解析为评估直接使用的 images/annotations/categories。"""
+
+    images_payload = manifest.get("images", [])
+    annotations_payload = manifest.get("annotations", [])
+    categories_payload = manifest.get("categories", [])
+    if (
+        isinstance(images_payload, list)
+        and isinstance(annotations_payload, list)
+        and isinstance(categories_payload, list)
+        and images_payload
+    ):
+        return (
+            {int(img["id"]): img for img in images_payload if isinstance(img, dict) and "id" in img},
+            [ann for ann in annotations_payload if isinstance(ann, dict)],
+            [cat for cat in categories_payload if isinstance(cat, dict)],
+        )
+
+    split_entries = manifest.get("splits", [])
+    if not isinstance(split_entries, list):
+        return {}, [], []
+
+    images: dict[int, dict[str, object]] = {}
+    annotations: list[dict] = []
+    categories_by_id: dict[int, dict] = {}
+    next_image_id = 1
+    next_annotation_id = 1
+    for split in split_entries:
+        if not isinstance(split, dict):
+            continue
+        image_root = str(split.get("image_root", ""))
+        annotation_file = str(split.get("annotation_file", ""))
+        if not annotation_file:
+            continue
+        payload = dataset_storage.read_json(annotation_file)
+        if not isinstance(payload, dict):
+            continue
+        local_categories = payload.get("categories", [])
+        if isinstance(local_categories, list):
+            for category in local_categories:
+                if not isinstance(category, dict):
+                    continue
+                category_id = int(category.get("id", -1))
+                if category_id >= 0:
+                    categories_by_id[category_id] = category
+
+        image_map: dict[int, int] = {}
+        local_images = payload.get("images", [])
+        if isinstance(local_images, list):
+            for image in local_images:
+                if not isinstance(image, dict):
+                    continue
+                local_image_id = int(image.get("id", -1))
+                images[next_image_id] = {
+                    "id": next_image_id,
+                    "file_name": f"{image_root}/{image.get('file_name', '')}",
+                    "width": image.get("width"),
+                    "height": image.get("height"),
+                }
+                image_map[local_image_id] = next_image_id
+                next_image_id += 1
+
+        local_annotations = payload.get("annotations", [])
+        if isinstance(local_annotations, list):
+            for annotation in local_annotations:
+                if not isinstance(annotation, dict):
+                    continue
+                local_image_id = int(annotation.get("image_id", -1))
+                global_image_id = image_map.get(local_image_id)
+                if global_image_id is None:
+                    continue
+                merged_annotation = dict(annotation)
+                merged_annotation["id"] = next_annotation_id
+                merged_annotation["image_id"] = global_image_id
+                next_annotation_id += 1
+                annotations.append(merged_annotation)
+
+    categories = [
+        categories_by_id[category_id]
+        for category_id in sorted(categories_by_id)
+    ]
+    return images, annotations, categories
 
 
 def _compute_obb_ap(gts: list[dict], preds: list[dict]) -> tuple[float, float]:

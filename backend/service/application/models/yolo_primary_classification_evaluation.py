@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field
-from typing import Any
 
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.runtime.classification_model_runtime import (
@@ -165,7 +164,11 @@ def _parse_classification_manifest(
 
     splits = manifest.get("splits", [])
     categories = manifest.get("categories", [])
-    label_names = tuple(str(c.get("name", c.get("id", ""))) for c in categories if isinstance(c, dict))
+    label_names = tuple(
+        str(c.get("name", c.get("id", "")))
+        for c in categories
+        if isinstance(c, dict)
+    )
 
     chosen_split: dict[str, object] | None = None
     for split in (splits or []):
@@ -188,6 +191,45 @@ def _parse_classification_manifest(
     annotations = chosen_split.get("annotations", [])
     if not isinstance(annotations, list):
         annotations = []
+    if not annotations:
+        annotation_file = str(chosen_split.get("annotation_file", ""))
+        if annotation_file:
+            ann_payload = dataset_storage.read_json(annotation_file)
+            if isinstance(ann_payload, dict):
+                if not label_names:
+                    payload_categories = ann_payload.get("categories", [])
+                    if isinstance(payload_categories, list):
+                        label_names = tuple(
+                            str(c.get("name", c.get("id", "")))
+                            for c in payload_categories
+                            if isinstance(c, dict)
+                        )
+                images = ann_payload.get("images", [])
+                image_map: dict[int, str] = {}
+                if isinstance(images, list):
+                    for image in images:
+                        if isinstance(image, dict):
+                            image_map[int(image.get("id", -1))] = str(
+                                image.get("file_name", "")
+                            )
+                payload_annotations = ann_payload.get("annotations", [])
+                if isinstance(payload_annotations, list):
+                    annotations = []
+                    for annotation in payload_annotations:
+                        if not isinstance(annotation, dict):
+                            continue
+                        image_id = int(annotation.get("image_id", -1))
+                        file_name = image_map.get(image_id, "")
+                        if not file_name:
+                            continue
+                        annotations.append(
+                            {
+                                "image_id": image_id,
+                                "file_name": file_name,
+                                "category_id": int(annotation.get("category_id", 0)),
+                                **dict(annotation),
+                            }
+                        )
 
     samples: list[dict[str, object]] = []
     for ann in annotations:

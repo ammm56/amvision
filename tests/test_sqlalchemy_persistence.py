@@ -7,10 +7,12 @@ from datetime import datetime, timezone
 from backend.service.application.auth.default_local_auth_seeder import DEFAULT_LOCAL_AUTH_USERNAME
 from backend.service.domain.datasets.dataset_import import DatasetImport
 from backend.service.domain.datasets.dataset_version import (
+    ClassificationAnnotation,
     DatasetCategory,
     DatasetSample,
     DatasetVersion,
     DetectionAnnotation,
+    ObbAnnotation,
 )
 from backend.service.domain.models.model_records import Model, ModelBuild, ModelVersion, PROJECT_MODEL_SCOPE
 from backend.service.domain.tasks.task_records import ResourceProfile, TaskAttempt, TaskEvent, TaskRecord
@@ -103,6 +105,80 @@ def test_dataset_import_repository_round_trip_persists_import_record() -> None:
 
     assert loaded_dataset_import == dataset_import
     assert listed_dataset_imports == (dataset_import,)
+
+
+def test_dataset_repository_round_trip_supports_classification_and_obb_annotations() -> None:
+    """验证 DatasetVersion 仓储支持 classification 与 obb 标注。"""
+
+    session_factory = _create_session_factory()
+    classification_version = DatasetVersion(
+        dataset_version_id="dataset-version-classification-1",
+        dataset_id="dataset-classification-1",
+        project_id="project-1",
+        task_type="classification",
+        categories=(
+            DatasetCategory(category_id=0, name="ok"),
+            DatasetCategory(category_id=1, name="ng"),
+        ),
+        samples=(
+            DatasetSample(
+                sample_id="sample-classification-1",
+                image_id=1,
+                file_name="part-1.jpg",
+                width=320,
+                height=240,
+                split="train",
+                annotations=(
+                    ClassificationAnnotation(
+                        annotation_id="annotation-classification-1",
+                        category_id=1,
+                        metadata={"source_class_name": "ng"},
+                    ),
+                ),
+            ),
+        ),
+    )
+    obb_version = DatasetVersion(
+        dataset_version_id="dataset-version-obb-1",
+        dataset_id="dataset-obb-1",
+        project_id="project-1",
+        task_type="obb",
+        categories=(DatasetCategory(category_id=0, name="ship"),),
+        samples=(
+            DatasetSample(
+                sample_id="sample-obb-1",
+                image_id=1,
+                file_name="ship-1.png",
+                width=640,
+                height=640,
+                split="train",
+                annotations=(
+                    ObbAnnotation(
+                        annotation_id="annotation-obb-1",
+                        category_id=0,
+                        bbox_xywh=(10.0, 20.0, 90.0, 110.0),
+                        polygon_xy=(10.0, 20.0, 100.0, 20.0, 100.0, 130.0, 10.0, 130.0),
+                        area=9900.0,
+                        metadata={"difficult": 0},
+                    ),
+                ),
+            ),
+        ),
+    )
+
+    with _create_unit_of_work(session_factory) as unit_of_work:
+        unit_of_work.datasets.save_dataset_version(classification_version)
+        unit_of_work.datasets.save_dataset_version(obb_version)
+        unit_of_work.commit()
+
+    with _create_unit_of_work(session_factory) as unit_of_work:
+        loaded_classification = unit_of_work.datasets.get_dataset_version(
+            "dataset-version-classification-1"
+        )
+        loaded_obb = unit_of_work.datasets.get_dataset_version("dataset-version-obb-1")
+
+    assert loaded_classification == classification_version
+    assert loaded_obb == obb_version
 
 
 def test_model_repository_round_trip_persists_model_lineage() -> None:

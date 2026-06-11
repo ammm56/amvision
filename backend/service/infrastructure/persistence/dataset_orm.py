@@ -66,15 +66,15 @@ class DatasetSampleRecord(Base):
     metadata_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
 
     dataset_version: Mapped[DatasetVersionRecord] = relationship(back_populates="samples")
-    annotations: Mapped[list[DetectionAnnotationRecord]] = relationship(
+    annotations: Mapped[list[DatasetAnnotationRecord]] = relationship(
         back_populates="sample",
         cascade="all, delete-orphan",
-        order_by="DetectionAnnotationRecord.annotation_id",
+        order_by="DatasetAnnotationRecord.annotation_id",
     )
 
 
-class DetectionAnnotationRecord(Base):
-    """映射 detection annotation 对象。"""
+class DatasetAnnotationRecord(Base):
+    """映射 DatasetVersion 中的统一 annotation 对象。"""
 
     __tablename__ = "dataset_detection_annotations"
 
@@ -83,11 +83,16 @@ class DetectionAnnotationRecord(Base):
         ForeignKey("dataset_samples.sample_id", ondelete="CASCADE"),
         index=True,
     )
+    annotation_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
     category_id: Mapped[int] = mapped_column(Integer)
-    bbox_x: Mapped[float] = mapped_column(Float)
-    bbox_y: Mapped[float] = mapped_column(Float)
-    bbox_w: Mapped[float] = mapped_column(Float)
-    bbox_h: Mapped[float] = mapped_column(Float)
+    bbox_x: Mapped[float | None] = mapped_column(Float, nullable=True)
+    bbox_y: Mapped[float | None] = mapped_column(Float, nullable=True)
+    bbox_w: Mapped[float | None] = mapped_column(Float, nullable=True)
+    bbox_h: Mapped[float | None] = mapped_column(Float, nullable=True)
+    segmentation_json: Mapped[Any | None] = mapped_column(JSON, nullable=True)
+    keypoints_json: Mapped[Any | None] = mapped_column(JSON, nullable=True)
+    num_keypoints: Mapped[int] = mapped_column(Integer, default=0)
+    polygon_xy_json: Mapped[Any | None] = mapped_column(JSON, nullable=True)
     iscrowd: Mapped[int] = mapped_column(Integer, default=0)
     area: Mapped[float | None] = mapped_column(Float, nullable=True)
     metadata_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)

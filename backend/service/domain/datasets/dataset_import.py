@@ -9,7 +9,7 @@ from backend.service.domain.datasets.dataset_version import DatasetTaskType
 
 
 # 当前支持的数据集导入格式类型。
-DatasetFormatType = Literal["coco", "voc"]
+DatasetFormatType = Literal["coco", "voc", "imagenet", "dota"]
 
 
 # 数据集导入记录的最小状态集合。
@@ -24,6 +24,7 @@ DatasetImportRequestedSplitStrategy = Literal["auto", "train", "val", "test"]
 DatasetImportResolvedSplitStrategy = Literal[
     "manifest-name",
     "image_sets",
+    "directory-name",
     "default-train",
     "forced-train",
     "forced-val",

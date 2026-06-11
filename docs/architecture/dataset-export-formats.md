@@ -63,6 +63,20 @@
 - 主要内容：COCO keypoints json
 - 适用模型：keypoint 训练后端
 
+### imagenet-classification-v1
+
+- task type：classification
+- 目录布局：{split}/{class_name}/、annotations/{split}.json、manifest.json
+- 主要内容：ImageNet 风格目录，加每个 split 的标准 annotation json
+- 适用模型：YOLOv8/11/26 classification
+
+### dota-obb-v1
+
+- task type：obb
+- 目录布局：images/{split}/、annotations/{split}.json、manifest.json
+- 主要内容：DOTA 四角点 polygon 风格 OBB annotation json
+- 适用模型：YOLOv8/11/26 obb
+
 ### semantic-mask-dir-v1
 
 - task type：semantic-segmentation
@@ -85,6 +99,8 @@
 | YOLOv8/11 | detection | yolo-detection-v1 | coco-detection-v1 | 默认优先原生 YOLO 目录格式 |
 | YOLOv8/11 | instance-segmentation | yolo-instance-seg-v1 | coco-instance-seg-v1 | 默认优先原生 YOLO segmentation 格式 |
 | YOLOv8/11 | pose | yolo-pose-v1 | coco-keypoints-v1 | 默认优先原生 YOLO pose 格式 |
+| YOLOv8/11/26 | classification | imagenet-classification-v1 | backend-specific classification manifest | 当前导出为 ImageNet 风格目录，同时保留 split annotation json |
+| YOLOv8/11/26 | obb | dota-obb-v1 | coco + angle / polygon manifest | 当前导出为 DOTA 四角点 polygon 风格 annotation json |
 | RT-DETR | detection | coco-detection-v1 | backend-specific detection manifest | 默认优先 COCO detection |
 | SAM | instance-segmentation | sam-promptable-seg-v1 | coco-instance-seg-v1 | 需要保留 prompt 信息时优先 sam-promptable-seg-v1 |
 | SAM | semantic-segmentation | semantic-mask-dir-v1 | sam-promptable-seg-v1 | 语义分割链路优先 image+mask 目录格式 |
@@ -97,9 +113,20 @@
 
 ## 当前实现状态
 
-- 架构层面已经把 detection、instance-segmentation、semantic-segmentation、pose 这几类格式都纳入支持范围
-- 当前代码层第一阶段只实现了 coco-detection-v1
-- 后续新增格式时，应继续沿用“DatasetVersion -> format id -> 导出目录和 annotation payload”这条主线扩展
+- 当前已经正式实现并公开：
+  - coco-detection-v1
+  - voc-detection-v1
+  - yolo-detection-v1
+  - coco-instance-seg-v1
+  - yolo-instance-seg-v1
+  - coco-keypoints-v1
+  - yolo-pose-v1
+  - imagenet-classification-v1
+  - dota-obb-v1
+- `imagenet-classification-v1` 当前导出为 ImageNet 风格目录，同时保留 `annotations/{split}.json` 和 `manifest.json`，便于项目内训练与评估链直接消费。
+- `dota-obb-v1` 当前导出为 split 级图片目录和 DOTA polygon 风格 annotation json，不再把 OBB 数据继续塞进 detection 语义。
+- semantic segmentation 相关 `semantic-mask-dir-v1 / sam-promptable-seg-v1` 仍停留在规划和格式预留阶段，还没有正式实现。
+- 后续新增格式时，继续沿用“DatasetVersion -> format id -> 导出目录和 annotation payload”这条主线扩展，不回退到模型私有脚本入口。
 
 ## 推荐后续文档
 

@@ -14,6 +14,8 @@ from typing import BinaryIO
 from uuid import uuid4
 from xml.etree import ElementTree
 
+from PIL import Image
+
 from backend.service.application.errors import (
     InvalidRequestError,
     ResourceNotFoundError,
@@ -30,13 +32,19 @@ from backend.service.domain.datasets.dataset_import import (
     DatasetImportRequestedSplitStrategy,
 )
 from backend.service.domain.datasets.dataset_version import (
+    ClassificationAnnotation,
     DatasetCategory,
     DatasetSample,
+    DatasetSplitName,
+    DatasetTaskType,
     DatasetVersion,
     DatasetAnnotation,
+    clone_dataset_annotation,
     DetectionAnnotation,
     InstanceSegmentationAnnotation,
+    ObbAnnotation,
     PoseAnnotation,
+    serialize_dataset_annotation,
 )
 from backend.service.domain.tasks.task_records import TaskEvent, TaskRecord
 from backend.service.infrastructure.db.session import SessionFactory
@@ -522,6 +530,16 @@ class SqlAlchemyDatasetImportService:
                 "split_strategy 只支持 auto、train、val、test",
                 details={"split_strategy": request.split_strategy},
             )
+        if request.format_type == "imagenet" and request.task_type != "classification":
+            raise InvalidRequestError(
+                "ImageNet 风格导入只支持 classification",
+                details={"task_type": request.task_type},
+            )
+        if request.format_type == "dota" and request.task_type != "obb":
+            raise InvalidRequestError(
+                "DOTA 风格导入只支持 obb",
+                details={"task_type": request.task_type},
+            )
 
     def _persist_package(
         self,
@@ -754,6 +772,7 @@ class SqlAlchemyDatasetImportService:
 
         if format_type == "coco":
             return self._parse_coco_detection(
+                task_type=request.task_type,
                 dataset_root=dataset_root,
                 split_strategy=request.split_strategy,
                 requested_class_map=request.class_map,
@@ -764,9 +783,23 @@ class SqlAlchemyDatasetImportService:
                 split_strategy=request.split_strategy,
                 requested_class_map=request.class_map,
             )
+        if format_type == "imagenet":
+            return self._parse_imagenet_classification(
+                task_type=request.task_type,
+                dataset_root=dataset_root,
+                split_strategy=request.split_strategy,
+                requested_class_map=request.class_map,
+            )
+        if format_type == "dota":
+            return self._parse_dota_obb(
+                task_type=request.task_type,
+                dataset_root=dataset_root,
+                split_strategy=request.split_strategy,
+                requested_class_map=request.class_map,
+            )
 
         raise UnsupportedDatasetFormatError(
-            "当前只支持 COCO detection 和 Pascal VOC detection",
+            "当前只支持 COCO、Pascal VOC、ImageNet classification 和 DOTA OBB",
             details={"format_type": format_type},
         )
 
@@ -794,6 +827,10 @@ class SqlAlchemyDatasetImportService:
         voc_images_dir = dataset_root / "JPEGImages"
         if voc_annotations_dir.is_dir() and voc_images_dir.is_dir() and any(voc_annotations_dir.glob("*.xml")):
             candidates.append("voc")
+        if self._looks_like_imagenet_dataset(dataset_root):
+            candidates.append("imagenet")
+        if self._looks_like_dota_dataset(dataset_root):
+            candidates.append("dota")
 
         if requested_format_type is not None:
             if requested_format_type not in candidates:
@@ -810,7 +847,7 @@ class SqlAlchemyDatasetImportService:
             return candidates[0]
         if not candidates:
             raise UnsupportedDatasetFormatError(
-                "当前只支持 COCO detection 和 Pascal VOC detection",
+                "当前只支持 COCO、Pascal VOC、ImageNet classification 和 DOTA OBB",
                 details={"dataset_root": str(dataset_root)},
             )
 
@@ -822,6 +859,7 @@ class SqlAlchemyDatasetImportService:
     def _parse_coco_detection(
         self,
         *,
+        task_type: DatasetTaskType,
         dataset_root: Path,
         split_strategy: str | None,
         requested_class_map: dict[str, str],
@@ -836,6 +874,12 @@ class SqlAlchemyDatasetImportService:
         返回：
         - 解析后的统一结果。
         """
+
+        if task_type not in {"detection", "instance-segmentation", "pose"}:
+            raise InvalidRequestError(
+                "当前 COCO 导入只支持 detection、instance-segmentation、pose",
+                details={"task_type": task_type},
+            )
 
         manifest_paths = self._collect_coco_manifest_paths(dataset_root)
         if not manifest_paths:
@@ -948,7 +992,7 @@ class SqlAlchemyDatasetImportService:
                     bbox_xywh = self._read_bbox_xywh(annotation_payload.get("bbox"))
                     annotations.append(
                         _build_annotation_for_task(
-                            task_type=request.task_type,
+                            task_type=task_type,
                             annotation_id=str(annotation_payload.get("id", f"coco-ann-{source_image_key}-{annotation_index}")),
                             category_id=category_id_map[source_category_id],
                             bbox_xywh=bbox_xywh,
@@ -981,7 +1025,7 @@ class SqlAlchemyDatasetImportService:
         split_counts = self._collect_split_counts(parsed_samples)
         return ParsedDatasetContent(
             format_type="coco",
-            task_type="detection",
+            task_type=task_type,
             image_root=self._common_path_prefix(image_refs),
             annotation_root=self._common_path_prefix(annotation_refs),
             manifest_file=manifest_files[0] if manifest_files else None,
@@ -995,7 +1039,7 @@ class SqlAlchemyDatasetImportService:
             detected_profile={
                 "detected_candidates": ["coco"],
                 "format_type": "coco",
-                "task_type": "detection",
+                "task_type": task_type,
                 "manifest_files": manifest_files,
                 "image_root": self._common_path_prefix(image_refs),
                 "annotation_root": self._common_path_prefix(annotation_refs),
@@ -1005,7 +1049,7 @@ class SqlAlchemyDatasetImportService:
             validation_report={
                 "status": "ok",
                 "format_type": "coco",
-                "task_type": "detection",
+                "task_type": task_type,
                 "category_count": len(categories),
                 "sample_count": len(parsed_samples),
                 "split_counts": split_counts,
@@ -1253,6 +1297,406 @@ class SqlAlchemyDatasetImportService:
             },
         )
 
+    def _parse_imagenet_classification(
+        self,
+        *,
+        task_type: DatasetTaskType,
+        dataset_root: Path,
+        split_strategy: str | None,
+        requested_class_map: dict[str, str],
+    ) -> ParsedDatasetContent:
+        """解析 ImageNet 风格 classification 数据集。"""
+
+        if task_type != "classification":
+            raise InvalidRequestError(
+                "ImageNet 风格导入只支持 classification",
+                details={"task_type": task_type},
+            )
+
+        forced_split = self._resolve_requested_split(split_strategy)
+        split_dirs = self._collect_imagenet_split_dirs(dataset_root)
+        if not split_dirs:
+            split_dirs = {forced_split or "train": dataset_root}
+
+        source_class_names: list[str] = []
+        raw_rows: list[dict[str, object]] = []
+        image_refs: list[str] = []
+        for split_name, split_dir in split_dirs.items():
+            for class_dir in sorted(
+                (candidate for candidate in split_dir.iterdir() if candidate.is_dir()),
+                key=lambda item: item.name.lower(),
+            ):
+                source_class_name = class_dir.name
+                mapped_class_name = requested_class_map.get(
+                    source_class_name,
+                    source_class_name,
+                )
+                if mapped_class_name not in source_class_names:
+                    source_class_names.append(mapped_class_name)
+                for image_path in sorted(
+                    (candidate for candidate in class_dir.iterdir() if self._is_image_file(candidate)),
+                    key=lambda item: item.name.lower(),
+                ):
+                    width, height = self._read_image_size(image_path)
+                    image_refs.append(self._relative_path(dataset_root, image_path))
+                    raw_rows.append(
+                        {
+                            "split": forced_split or split_name,
+                            "file_name": image_path.name,
+                            "width": width,
+                            "height": height,
+                            "class_name": mapped_class_name,
+                            "source_class_name": source_class_name,
+                            "source_image_path": image_path,
+                            "source_image_ref": self._relative_path(dataset_root, image_path),
+                        }
+                    )
+
+        if not raw_rows:
+            raise InvalidRequestError("ImageNet 风格数据集缺少可用图片文件")
+
+        categories = tuple(
+            DatasetCategory(category_id=category_index, name=category_name)
+            for category_index, category_name in enumerate(source_class_names)
+        )
+        category_id_map = {category.name: category.category_id for category in categories}
+        parsed_samples: list[ParsedDatasetSample] = []
+        for image_id_counter, sample_row in enumerate(raw_rows, start=1):
+            sample_split = str(sample_row["split"])
+            annotation = ClassificationAnnotation(
+                annotation_id=f"imagenet-ann-{image_id_counter}",
+                category_id=category_id_map[str(sample_row["class_name"])],
+                metadata={
+                    "source_class_name": str(sample_row["source_class_name"]),
+                },
+            )
+            parsed_samples.append(
+                ParsedDatasetSample(
+                    sample=DatasetSample(
+                        sample_id=f"sample-{sample_split}-{image_id_counter}",
+                        image_id=image_id_counter,
+                        file_name=str(sample_row["file_name"]),
+                        width=int(sample_row["width"]),
+                        height=int(sample_row["height"]),
+                        split=sample_split,
+                        annotations=(annotation,),
+                        metadata={
+                            "source_image_ref": str(sample_row["source_image_ref"]),
+                            "source_class_name": str(sample_row["source_class_name"]),
+                        },
+                    ),
+                    source_image_path=sample_row["source_image_path"],
+                    source_image_ref=str(sample_row["source_image_ref"]),
+                )
+            )
+
+        split_counts = self._collect_split_counts(parsed_samples)
+        effective_split_strategy = self._resolve_effective_split_strategy(
+            forced_split,
+            auto_strategy="directory-name" if self._collect_imagenet_split_dirs(dataset_root) else "default-train",
+        )
+        return ParsedDatasetContent(
+            format_type="imagenet",
+            task_type="classification",
+            image_root=self._common_path_prefix(image_refs),
+            annotation_root="",
+            manifest_file=None,
+            split_strategy=effective_split_strategy,
+            class_map={str(category.category_id): category.name for category in categories},
+            categories=categories,
+            samples=tuple(parsed_samples),
+            detected_profile={
+                "detected_candidates": ["imagenet"],
+                "format_type": "imagenet",
+                "task_type": "classification",
+                "annotation_root": "",
+                "image_root": self._common_path_prefix(image_refs),
+                "split_names": list(self._collect_split_names(parsed_samples)),
+                "split_counts": split_counts,
+            },
+            validation_report={
+                "status": "ok",
+                "format_type": "imagenet",
+                "task_type": "classification",
+                "category_count": len(categories),
+                "sample_count": len(parsed_samples),
+                "split_counts": split_counts,
+                "warnings": [],
+                "errors": [],
+            },
+        )
+
+    def _parse_dota_obb(
+        self,
+        *,
+        task_type: DatasetTaskType,
+        dataset_root: Path,
+        split_strategy: str | None,
+        requested_class_map: dict[str, str],
+    ) -> ParsedDatasetContent:
+        """解析 DOTA 风格 OBB 数据集。"""
+
+        if task_type != "obb":
+            raise InvalidRequestError(
+                "DOTA 风格导入只支持 obb",
+                details={"task_type": task_type},
+            )
+
+        forced_split = self._resolve_requested_split(split_strategy)
+        image_root = dataset_root / "images"
+        labels_root = dataset_root / "labels"
+        split_names = self._collect_dota_split_names(dataset_root)
+        if not split_names:
+            raise InvalidRequestError("DOTA 数据集缺少可用的 split 目录")
+
+        source_class_names: list[str] = []
+        raw_rows: list[dict[str, object]] = []
+        image_refs: list[str] = []
+        annotation_refs: list[str] = []
+        for detected_split_name in split_names:
+            sample_split = forced_split or detected_split_name
+            current_image_dir = image_root / detected_split_name
+            current_label_dir = self._resolve_dota_label_dir(
+                labels_root=labels_root,
+                split_name=detected_split_name,
+            )
+            for image_path in sorted(
+                (candidate for candidate in current_image_dir.iterdir() if self._is_image_file(candidate)),
+                key=lambda item: item.name.lower(),
+            ):
+                width, height = self._read_image_size(image_path)
+                label_path = current_label_dir / f"{image_path.stem}.txt"
+                image_refs.append(self._relative_path(dataset_root, image_path))
+                if label_path.is_file():
+                    annotation_refs.append(self._relative_path(dataset_root, label_path))
+                elif sample_split != "test":
+                    raise InvalidRequestError(
+                        "DOTA 训练/验证样本缺少对应 label 文件",
+                        details={"image_file": image_path.name},
+                    )
+
+                raw_annotations: list[dict[str, object]] = []
+                if label_path.is_file():
+                    for line_index, line in enumerate(
+                        label_path.read_text(encoding="utf-8").splitlines(),
+                        start=1,
+                    ):
+                        stripped = line.strip()
+                        if not stripped:
+                            continue
+                        parts = stripped.split()
+                        if len(parts) < 9:
+                            raise InvalidRequestError(
+                                "DOTA 标注行至少需要 9 列",
+                                details={
+                                    "label_file": self._relative_path(dataset_root, label_path),
+                                    "line_index": line_index,
+                                },
+                            )
+                        polygon_xy = tuple(float(value) for value in parts[:8])
+                        source_class_name = parts[8]
+                        mapped_class_name = requested_class_map.get(
+                            source_class_name,
+                            source_class_name,
+                        )
+                        if mapped_class_name not in source_class_names:
+                            source_class_names.append(mapped_class_name)
+                        raw_annotations.append(
+                            {
+                                "polygon_xy": polygon_xy,
+                                "class_name": mapped_class_name,
+                                "source_class_name": source_class_name,
+                                "difficult": int(parts[9]) if len(parts) >= 10 and parts[9].isdigit() else 0,
+                            }
+                        )
+
+                raw_rows.append(
+                    {
+                        "split": sample_split,
+                        "file_name": image_path.name,
+                        "width": width,
+                        "height": height,
+                        "source_image_path": image_path,
+                        "source_image_ref": self._relative_path(dataset_root, image_path),
+                        "raw_annotations": raw_annotations,
+                    }
+                )
+
+        categories = tuple(
+            DatasetCategory(category_id=category_index, name=category_name)
+            for category_index, category_name in enumerate(source_class_names)
+        )
+        category_id_map = {category.name: category.category_id for category in categories}
+        parsed_samples: list[ParsedDatasetSample] = []
+        for image_id_counter, sample_row in enumerate(raw_rows, start=1):
+            annotations: list[DatasetAnnotation] = []
+            for annotation_index, annotation_row in enumerate(
+                sample_row["raw_annotations"],
+                start=1,
+            ):
+                polygon_xy = tuple(annotation_row["polygon_xy"])
+                bbox_xywh = _build_bbox_from_polygon(polygon_xy)
+                annotations.append(
+                    ObbAnnotation(
+                        annotation_id=f"dota-ann-{image_id_counter}-{annotation_index}",
+                        category_id=category_id_map[str(annotation_row["class_name"])],
+                        bbox_xywh=bbox_xywh,
+                        polygon_xy=polygon_xy,
+                        area=_compute_polygon_area(polygon_xy),
+                        metadata={
+                            "difficult": int(annotation_row["difficult"]),
+                            "source_class_name": str(annotation_row["source_class_name"]),
+                        },
+                    )
+                )
+            sample_split = str(sample_row["split"])
+            parsed_samples.append(
+                ParsedDatasetSample(
+                    sample=DatasetSample(
+                        sample_id=f"sample-{sample_split}-{image_id_counter}",
+                        image_id=image_id_counter,
+                        file_name=str(sample_row["file_name"]),
+                        width=int(sample_row["width"]),
+                        height=int(sample_row["height"]),
+                        split=sample_split,
+                        annotations=tuple(annotations),
+                        metadata={
+                            "source_image_ref": str(sample_row["source_image_ref"]),
+                            "image_object_key": f"images/{sample_split}/{sample_row['file_name']}",
+                        },
+                    ),
+                    source_image_path=sample_row["source_image_path"],
+                    source_image_ref=str(sample_row["source_image_ref"]),
+                )
+            )
+
+        split_counts = self._collect_split_counts(parsed_samples)
+        return ParsedDatasetContent(
+            format_type="dota",
+            task_type="obb",
+            image_root=self._common_path_prefix(image_refs),
+            annotation_root=self._common_path_prefix(annotation_refs),
+            manifest_file=None,
+            split_strategy=self._resolve_effective_split_strategy(
+                forced_split,
+                auto_strategy="directory-name",
+            ),
+            class_map={str(category.category_id): category.name for category in categories},
+            categories=categories,
+            samples=tuple(parsed_samples),
+            detected_profile={
+                "detected_candidates": ["dota"],
+                "format_type": "dota",
+                "task_type": "obb",
+                "annotation_root": self._common_path_prefix(annotation_refs),
+                "image_root": self._common_path_prefix(image_refs),
+                "split_names": list(self._collect_split_names(parsed_samples)),
+                "split_counts": split_counts,
+            },
+            validation_report={
+                "status": "ok",
+                "format_type": "dota",
+                "task_type": "obb",
+                "category_count": len(categories),
+                "sample_count": len(parsed_samples),
+                "split_counts": split_counts,
+                "warnings": [],
+                "errors": [],
+            },
+        )
+
+    def _collect_imagenet_split_dirs(
+        self,
+        dataset_root: Path,
+    ) -> dict[DatasetSplitName, Path]:
+        """收集 ImageNet 风格数据集的 split 目录。"""
+
+        split_dirs: dict[DatasetSplitName, Path] = {}
+        for candidate_name in ("train", "val", "valid", "test"):
+            candidate_dir = dataset_root / candidate_name
+            if not candidate_dir.is_dir():
+                continue
+            normalized_split = self._normalize_split_name(
+                candidate_name,
+                default="train",
+            )
+            if self._looks_like_class_directory_root(candidate_dir):
+                split_dirs[normalized_split] = candidate_dir
+        return split_dirs
+
+    def _looks_like_imagenet_dataset(
+        self,
+        dataset_root: Path,
+    ) -> bool:
+        """判断当前目录是否像 ImageNet 风格 classification 数据集。"""
+
+        if self._collect_imagenet_split_dirs(dataset_root):
+            return True
+        if any((dataset_root / candidate_name).is_dir() for candidate_name in ("train", "val", "valid", "test")):
+            return False
+        return self._looks_like_class_directory_root(dataset_root)
+
+    def _looks_like_class_directory_root(
+        self,
+        root: Path,
+    ) -> bool:
+        """判断某个目录是否是 class_name/image.jpg 风格根目录。"""
+
+        class_dirs = [candidate for candidate in root.iterdir() if candidate.is_dir()]
+        if not class_dirs:
+            return False
+        for class_dir in class_dirs:
+            if any(self._is_image_file(candidate) for candidate in class_dir.iterdir()):
+                return True
+        return False
+
+    def _looks_like_dota_dataset(
+        self,
+        dataset_root: Path,
+    ) -> bool:
+        """判断当前目录是否像 DOTA 风格 OBB 数据集。"""
+
+        return bool(self._collect_dota_split_names(dataset_root))
+
+    def _collect_dota_split_names(
+        self,
+        dataset_root: Path,
+    ) -> tuple[DatasetSplitName, ...]:
+        """收集 DOTA 数据集中同时具备图片目录的 split 名称。"""
+
+        image_root = dataset_root / "images"
+        labels_root = dataset_root / "labels"
+        if not image_root.is_dir() or not labels_root.is_dir():
+            return ()
+
+        split_names: list[DatasetSplitName] = []
+        for candidate_name in ("train", "val", "test"):
+            current_image_dir = image_root / candidate_name
+            if not current_image_dir.is_dir():
+                continue
+            current_label_dir = self._resolve_dota_label_dir(
+                labels_root=labels_root,
+                split_name=candidate_name,
+            )
+            if candidate_name != "test" and not current_label_dir.is_dir():
+                continue
+            if any(self._is_image_file(candidate) for candidate in current_image_dir.iterdir()):
+                split_names.append(candidate_name)
+        return tuple(split_names)
+
+    def _resolve_dota_label_dir(
+        self,
+        *,
+        labels_root: Path,
+        split_name: str,
+    ) -> Path:
+        """解析 DOTA 某个 split 对应的 label 目录。"""
+
+        original_dir = labels_root / f"{split_name}_original"
+        if original_dir.is_dir():
+            return original_dir
+        return labels_root / split_name
+
     def _resolve_requested_split(
         self,
         split_strategy: DatasetImportRequestedSplitStrategy | None,
@@ -1333,14 +1777,7 @@ class SqlAlchemyDatasetImportService:
                     "image_object_key": image_object_key,
                     "source_image_ref": parsed_sample.source_image_ref,
                     "annotations": [
-                        {
-                            "annotation_id": annotation.annotation_id,
-                            "category_id": annotation.category_id,
-                            "bbox_xywh": list(annotation.bbox_xywh),
-                            "iscrowd": annotation.iscrowd,
-                            "area": annotation.area,
-                            "metadata": annotation.metadata,
-                        }
+                        serialize_dataset_annotation(annotation)
                         for annotation in sample.annotations
                     ],
                     "metadata": sample.metadata,
@@ -1388,17 +1825,13 @@ class SqlAlchemyDatasetImportService:
         next_annotation_index = 1
         for sample_index, parsed_sample in enumerate(parsed_content.samples, start=1):
             source_sample = parsed_sample.sample
-            scoped_annotations: list[DetectionAnnotation] = []
+            scoped_annotations: list[DatasetAnnotation] = []
             for annotation in source_sample.annotations:
                 scoped_annotations.append(
-                    DetectionAnnotation(
+                    clone_dataset_annotation(
+                        annotation,
                         annotation_id=f"ann-{dataset_version_id}-{next_annotation_index}",
-                        category_id=annotation.category_id,
-                        bbox_xywh=annotation.bbox_xywh,
-                        iscrowd=annotation.iscrowd,
-                        area=annotation.area,
-                        metadata={
-                            **annotation.metadata,
+                        metadata_updates={
                             "source_annotation_id": annotation.annotation_id,
                         },
                     )
@@ -1668,6 +2101,26 @@ class SqlAlchemyDatasetImportService:
 
         present_splits = {parsed_sample.sample.split for parsed_sample in parsed_samples}
         return tuple(split_name for split_name in ("train", "val", "test") if split_name in present_splits)
+
+    def _is_image_file(self, file_path: Path) -> bool:
+        """判断文件是否是常见图片格式。"""
+
+        return file_path.is_file() and file_path.suffix.lower() in {
+            ".jpg",
+            ".jpeg",
+            ".png",
+            ".bmp",
+            ".webp",
+            ".tif",
+            ".tiff",
+        }
+
+    def _read_image_size(self, image_path: Path) -> tuple[int, int]:
+        """读取图片宽高。"""
+
+        with Image.open(image_path) as image:
+            width, height = image.size
+        return int(width), int(height)
 
     def _common_path_prefix(self, relative_paths: list[str]) -> str:
         """计算一组相对路径的公共目录前缀。
@@ -1988,8 +2441,71 @@ def _build_annotation_for_task(
             keypoints=kp if isinstance(kp, list) else None,
             num_keypoints=nk, metadata=extra_meta,
         )
+    if task_type == "obb":
+        polygon_xy = _extract_obb_polygon(annotation_payload)
+        return ObbAnnotation(
+            annotation_id=annotation_id,
+            category_id=category_id,
+            bbox_xywh=bbox_xywh,
+            polygon_xy=polygon_xy,
+            iscrowd=iscrowd,
+            area=area,
+            metadata=extra_meta,
+        )
     return DetectionAnnotation(
         annotation_id=annotation_id, category_id=category_id,
         bbox_xywh=bbox_xywh, iscrowd=iscrowd, area=area,
         metadata=extra_meta,
     )
+
+
+def _extract_obb_polygon(
+    annotation_payload: dict[str, object],
+) -> tuple[float, ...] | None:
+    """从外部标注载荷中提取 OBB polygon。"""
+
+    polygon_payload = (
+        annotation_payload.get("poly")
+        or annotation_payload.get("polygon")
+    )
+    if isinstance(polygon_payload, list) and len(polygon_payload) == 8:
+        return tuple(float(value) for value in polygon_payload)
+    segmentation_payload = annotation_payload.get("segmentation")
+    if (
+        isinstance(segmentation_payload, list)
+        and len(segmentation_payload) == 1
+        and isinstance(segmentation_payload[0], list)
+        and len(segmentation_payload[0]) == 8
+    ):
+        return tuple(float(value) for value in segmentation_payload[0])
+    return None
+
+
+def _build_bbox_from_polygon(
+    polygon_xy: tuple[float, ...],
+) -> tuple[float, float, float, float]:
+    """根据 polygon 计算轴对齐 bbox。"""
+
+    xs = [float(polygon_xy[index]) for index in range(0, len(polygon_xy), 2)]
+    ys = [float(polygon_xy[index]) for index in range(1, len(polygon_xy), 2)]
+    min_x = min(xs)
+    max_x = max(xs)
+    min_y = min(ys)
+    max_y = max(ys)
+    return (min_x, min_y, max_x - min_x, max_y - min_y)
+
+
+def _compute_polygon_area(
+    polygon_xy: tuple[float, ...],
+) -> float:
+    """用鞋带公式计算 polygon 面积。"""
+
+    points = [
+        (float(polygon_xy[index]), float(polygon_xy[index + 1]))
+        for index in range(0, len(polygon_xy), 2)
+    ]
+    area = 0.0
+    for index, (x1, y1) in enumerate(points):
+        x2, y2 = points[(index + 1) % len(points)]
+        area += x1 * y2 - x2 * y1
+    return abs(area) / 2.0

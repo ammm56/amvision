@@ -14,6 +14,16 @@ DatasetTaskType = Literal["detection", "instance-segmentation", "semantic-segmen
 DatasetSplitName = Literal["train", "val", "test"]
 
 
+# 当前内部使用的标注类型名称。
+DatasetAnnotationType = Literal[
+    "detection",
+    "instance-segmentation",
+    "pose",
+    "classification",
+    "obb",
+]
+
+
 @dataclass(frozen=True)
 class DatasetCategory:
     """描述 DatasetVersion 中的单个类别。
@@ -66,7 +76,137 @@ class PoseAnnotation:
     metadata: dict[str, object] = field(default_factory=dict)
 
 
-DatasetAnnotation = DetectionAnnotation | InstanceSegmentationAnnotation | PoseAnnotation
+@dataclass(frozen=True)
+class ClassificationAnnotation:
+    """描述 classification 样本中的单个标注。
+
+    说明：
+    - classification 没有 bbox，多数情况下每个样本只会有一条类别标注。
+    """
+
+    annotation_id: str
+    category_id: int
+    metadata: dict[str, object] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class ObbAnnotation:
+    """描述 obb 样本中的单个标注。"""
+
+    annotation_id: str
+    category_id: int
+    bbox_xywh: tuple[float, float, float, float]
+    polygon_xy: tuple[float, ...] | None = None
+    iscrowd: int = 0
+    area: float | None = None
+    metadata: dict[str, object] = field(default_factory=dict)
+
+
+DatasetAnnotation = (
+    DetectionAnnotation
+    | InstanceSegmentationAnnotation
+    | PoseAnnotation
+    | ClassificationAnnotation
+    | ObbAnnotation
+)
+
+
+def get_dataset_annotation_type(annotation: DatasetAnnotation) -> DatasetAnnotationType:
+    """返回当前标注对象的内部类型名称。"""
+
+    if isinstance(annotation, ClassificationAnnotation):
+        return "classification"
+    if isinstance(annotation, ObbAnnotation):
+        return "obb"
+    if isinstance(annotation, InstanceSegmentationAnnotation):
+        return "instance-segmentation"
+    if isinstance(annotation, PoseAnnotation):
+        return "pose"
+    return "detection"
+
+
+def clone_dataset_annotation(
+    annotation: DatasetAnnotation,
+    *,
+    annotation_id: str,
+    metadata_updates: dict[str, object] | None = None,
+) -> DatasetAnnotation:
+    """复制一条标注，并替换 annotation_id 与附加 metadata。"""
+
+    merged_metadata = {
+        **dict(annotation.metadata),
+        **(metadata_updates or {}),
+    }
+    if isinstance(annotation, ClassificationAnnotation):
+        return ClassificationAnnotation(
+            annotation_id=annotation_id,
+            category_id=annotation.category_id,
+            metadata=merged_metadata,
+        )
+    if isinstance(annotation, ObbAnnotation):
+        return ObbAnnotation(
+            annotation_id=annotation_id,
+            category_id=annotation.category_id,
+            bbox_xywh=annotation.bbox_xywh,
+            polygon_xy=annotation.polygon_xy,
+            iscrowd=annotation.iscrowd,
+            area=annotation.area,
+            metadata=merged_metadata,
+        )
+    if isinstance(annotation, InstanceSegmentationAnnotation):
+        return InstanceSegmentationAnnotation(
+            annotation_id=annotation_id,
+            category_id=annotation.category_id,
+            bbox_xywh=annotation.bbox_xywh,
+            segmentation=annotation.segmentation,
+            iscrowd=annotation.iscrowd,
+            area=annotation.area,
+            metadata=merged_metadata,
+        )
+    if isinstance(annotation, PoseAnnotation):
+        return PoseAnnotation(
+            annotation_id=annotation_id,
+            category_id=annotation.category_id,
+            bbox_xywh=annotation.bbox_xywh,
+            keypoints=annotation.keypoints,
+            num_keypoints=annotation.num_keypoints,
+            iscrowd=annotation.iscrowd,
+            area=annotation.area,
+            metadata=merged_metadata,
+        )
+    return DetectionAnnotation(
+        annotation_id=annotation_id,
+        category_id=annotation.category_id,
+        bbox_xywh=annotation.bbox_xywh,
+        iscrowd=annotation.iscrowd,
+        area=annotation.area,
+        metadata=merged_metadata,
+    )
+
+
+def serialize_dataset_annotation(annotation: DatasetAnnotation) -> dict[str, object]:
+    """把内部标注对象序列化为稳定字典。"""
+
+    payload: dict[str, object] = {
+        "annotation_id": annotation.annotation_id,
+        "annotation_type": get_dataset_annotation_type(annotation),
+        "category_id": annotation.category_id,
+        "metadata": dict(annotation.metadata),
+    }
+    if isinstance(annotation, ClassificationAnnotation):
+        return payload
+
+    payload["bbox_xywh"] = list(annotation.bbox_xywh)
+    payload["iscrowd"] = annotation.iscrowd
+    payload["area"] = annotation.area
+    if isinstance(annotation, InstanceSegmentationAnnotation):
+        payload["segmentation"] = annotation.segmentation
+    elif isinstance(annotation, PoseAnnotation):
+        payload["keypoints"] = annotation.keypoints
+        payload["num_keypoints"] = annotation.num_keypoints
+    elif isinstance(annotation, ObbAnnotation):
+        payload["polygon_xy"] = list(annotation.polygon_xy) if annotation.polygon_xy is not None else None
+    return payload
 
 
 @dataclass(frozen=True)
@@ -80,7 +220,7 @@ class DatasetSample:
     - width：图片宽度。
     - height：图片高度。
     - split：样本所属 split。
-    - annotations：样本中的 detection 标注列表。
+    - annotations：样本中的统一标注列表。
     - metadata：附加元数据。
     """
 
