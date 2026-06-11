@@ -8,9 +8,12 @@ from uuid import uuid4
 
 from backend.service.application.errors import InvalidRequestError, ResourceNotFoundError
 from backend.service.application.project_public_files import resolve_public_project_file_reference
-from backend.service.application.runtime.yolox_predictor import (
+from backend.service.application.runtime.yolox_detection_runtime import (
     PyTorchYoloXPredictor,
     YoloXPredictionRequest,
+)
+from backend.service.application.runtime.detection_runtime_contracts import (
+    DetectionRuntimeSessionInfo,
 )
 from backend.service.application.runtime.runtime_target import (
     RuntimeTargetResolveRequest,
@@ -21,7 +24,6 @@ from backend.service.application.runtime.runtime_target import (
 )
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
-from backend.workers.shared.yolox_runtime_contracts import YoloXRuntimeSessionInfo
 
 
 _VALIDATION_SESSION_STATUS_READY = "ready"
@@ -147,7 +149,7 @@ class YoloXValidationPredictionView:
     image_width: int
     image_height: int
     labels: tuple[str, ...]
-    runtime_session_info: YoloXRuntimeSessionInfo
+    runtime_session_info: DetectionRuntimeSessionInfo
 
 
 @dataclass(frozen=True)
@@ -159,7 +161,7 @@ class _YoloXValidationPredictionExecution:
     image_width: int
     image_height: int
     preview_image_bytes: bytes | None
-    runtime_session_info: YoloXRuntimeSessionInfo
+    runtime_session_info: DetectionRuntimeSessionInfo
 
 
 class LocalYoloXValidationSessionService:
@@ -844,7 +846,7 @@ def _serialize_detection(detection: YoloXValidationDetection) -> dict[str, objec
     }
 
 
-def _serialize_runtime_session_info(session_info: YoloXRuntimeSessionInfo) -> dict[str, object]:
+def _serialize_runtime_session_info(session_info: DetectionRuntimeSessionInfo) -> dict[str, object]:
     """把 runtime session info 转换为 JSON 字典。"""
 
     return {

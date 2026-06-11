@@ -91,7 +91,7 @@ backend/
 │  │  ├─ datasets/
 │  │  │  └─ dataset_export.py
 │  │  ├─ models/
-│  │  │  └─ yolox_model_service.py
+│  │  │  └─ model_service.py
 │  │  ├─ conversions/
 │  │  │  └─ yolox_conversion_planner.py
 │  │  └─ deployments/
@@ -146,7 +146,7 @@ backend/
 - 当前训练和评估执行边界统一对齐 coco-detection-v1，生成稳定的类别顺序、样本 split、目录和 annotation payload
 - 不直接训练模型
 
-### backend/service/application/models/yolox_model_service.py
+### backend/service/application/models/model_service.py
 
 - 处理磁盘中预置的 YOLOX 预训练模型登记、训练输出登记和模型规格查询
 - 把训练输出转成 ModelVersion 和关联文件记录

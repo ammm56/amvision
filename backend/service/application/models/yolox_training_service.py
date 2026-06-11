@@ -34,9 +34,9 @@ from backend.service.application.models.detection_training_rules import (
     build_detection_training_summary_base,
     build_detection_validation_summary_payload,
 )
-from backend.service.application.models.yolox_model_service import (
-    SqlAlchemyYoloXModelService,
-    YoloXTrainingOutputRegistration,
+from backend.service.application.models.model_service import (
+    SqlAlchemyModelService,
+    TrainingOutputRegistration,
 )
 from backend.service.domain.models.model_task_types import DETECTION_TASK_TYPE
 from backend.service.domain.models.yolox_model_spec import DEFAULT_YOLOX_MODEL_SPEC, YoloXModelSpec
@@ -2113,9 +2113,9 @@ class SqlAlchemyYoloXTrainingTaskService:
         - 新登记的 ModelVersion id。
         """
 
-        model_service = SqlAlchemyYoloXModelService(session_factory=self.session_factory)
+        model_service = SqlAlchemyModelService(session_factory=self.session_factory)
         return model_service.register_training_output(
-            YoloXTrainingOutputRegistration(
+            TrainingOutputRegistration(
                 project_id=request.project_id,
                 training_task_id=task_record.task_id,
                 model_version_id=model_version_id,
@@ -2272,7 +2272,7 @@ class SqlAlchemyYoloXTrainingTaskService:
             return None
 
         dataset_storage = self._require_dataset_storage()
-        model_service = SqlAlchemyYoloXModelService(session_factory=self.session_factory)
+        model_service = SqlAlchemyModelService(session_factory=self.session_factory)
         model_version = model_service.get_model_version(request.warm_start_model_version_id)
         if model_version is None:
             raise ResourceNotFoundError(

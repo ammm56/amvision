@@ -12,7 +12,7 @@ from backend.service.application.conversions.yolox_conversion_task_service impor
     SqlAlchemyYoloXConversionTaskService,
     YoloXConversionTaskRequest,
 )
-from backend.service.application.models.yolox_model_service import SqlAlchemyYoloXModelService
+from backend.service.application.models.model_service import SqlAlchemyModelService
 from backend.service.application.tasks.task_service import SqlAlchemyTaskService
 from backend.service.domain.files.yolox_file_types import (
     YOLOX_ONNX_FILE,
@@ -135,7 +135,7 @@ def test_conversion_queue_worker_executes_supported_targets(
     assert report_payload["phase"] == expected_phase
     assert report_payload["conversion_options"] == expected_conversion_options
 
-    model_service = SqlAlchemyYoloXModelService(session_factory=session_factory)
+    model_service = SqlAlchemyModelService(session_factory=session_factory)
     for build_summary in result.builds:
         model_build = model_service.get_model_build(build_summary.model_build_id)
         assert model_build is not None

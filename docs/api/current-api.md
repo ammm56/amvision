@@ -1892,7 +1892,7 @@ classification、segmentation、pose 和 obb 四种任务类型各自提供与 d
 }
 ```
 
-- 06 调试请求体见 `docs/api/examples/workflows/06-yolox-deployment-infer-opencv-health-zeromq-image-ref/trigger-source.create.request.json`
+- 06 调试请求体见 `docs/api/examples/workflows/06-detection-deployment-infer-opencv-health-zeromq-image-ref/trigger-source.create.request.json`
 - 07 调试请求体见 `docs/api/examples/workflows/07-opencv-process-save-image-zeromq-image-ref/trigger-source.create.request.json`
 - PLC Modbus TCP 示例请求体见 `docs/api/examples/workflows/08-plc-register-modbus-tcp-async-result-record/trigger-source.create.request.json`
 - 当前已接入的 adapter 为 `zeromq-topic`、`plc-register`、`directory-poll` 与 `directory-watch`；其中 `plc-register` 第一阶段只支持 `transport_config.driver = modbus-tcp`、后台 polling 和 `submit_mode = async`，`directory-poll` 第一阶段只支持本地目录轮询和 `submit_mode = async`，`directory-watch` 第一阶段只支持本地目录事件监听和 `submit_mode = async`

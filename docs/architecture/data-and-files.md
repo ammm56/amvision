@@ -621,8 +621,8 @@ data/files/projects/{project_id}/datasets/{dataset_id}/versions/{dataset_version
 
 ### 预训练模型放哪里
 
-- 当前默认物理根目录是 data/files/models/pretrained/yolox
-- 推荐按 models/pretrained/yolox/{model_scale}/{entry_name} 分层，每个条目目录至少包含 manifest.json 和 checkpoints/{checkpoint_file}.pth
+- 当前默认物理根目录是 data/files/models/pretrained/yolox/detection
+- 推荐按 models/pretrained/yolox/detection/{model_scale}/{entry_name} 分层，每个条目目录至少包含 manifest.json 和 checkpoints/{checkpoint_file}.pth
 - 开发阶段当前直接以这套规范目录作为唯一物理落盘位置，不再保留根目录平铺权重副本
 - 可选附带 README.md、LICENSE、来源说明和下载说明等辅助文件，但这些文件不参与训练标签语义
 - manifest.json 当前至少应声明 model_name、model_scale、model_version_id、checkpoint_path；checkpoint_file_id、task_type、metadata 可选
@@ -634,12 +634,13 @@ data/files/projects/{project_id}/datasets/{dataset_id}/versions/{dataset_version
 
 ```text
 data/files/models/pretrained/yolox/
-	nano/
-		default/
-			manifest.json
-			checkpoints/
-				yolox_nano.pth
-			README.md
+	detection/
+		nano/
+			default/
+				manifest.json
+				checkpoints/
+					yolox_nano.pth
+				README.md
 ```
 
 #### manifest.json 最小示例

@@ -7,9 +7,9 @@ from dataclasses import dataclass, field
 from backend.service.application.segmentation_backend_registry import (
     get_segmentation_backend_registration,
 )
-from backend.service.application.deployments.yolox_deployment_service import (
-    SqlAlchemyYoloXDeploymentService,
-    YoloXDeploymentInstanceView as SegmentationDeploymentInstanceView,
+from backend.service.application.deployments.deployment_instance_service import (
+    DeploymentInstanceView as SegmentationDeploymentInstanceView,
+    SqlAlchemyDeploymentInstanceService,
 )
 from backend.service.application.errors import InvalidRequestError, ServiceConfigurationError
 from backend.service.application.runtime.yolo11_runtime_target import SqlAlchemyYolo11RuntimeTargetResolver
@@ -46,7 +46,7 @@ _RUNTIME_TARGET_RESOLVER_BY_MODEL_TYPE: dict[str, type] = {
 }
 
 
-class SqlAlchemySegmentationDeploymentService(SqlAlchemyYoloXDeploymentService):
+class SqlAlchemySegmentationDeploymentService(SqlAlchemyDeploymentInstanceService):
     """按模型分类分发 runtime target resolver 的 segmentation 部署服务。"""
 
     def create_deployment_instance(

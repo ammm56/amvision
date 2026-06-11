@@ -8,9 +8,9 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from backend.service.application.errors import InvalidRequestError, ServiceConfigurationError
-from backend.service.application.models.yolox_model_service import (
-    SqlAlchemyYoloXModelService,
-    YoloXPretrainedRegistrationRequest,
+from backend.service.application.models.model_service import (
+    PretrainedRegistrationRequest,
+    SqlAlchemyModelService,
 )
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 
@@ -18,7 +18,7 @@ if TYPE_CHECKING:
     from backend.service.api.bootstrap import BackendServiceRuntime
 
 
-YOLOX_PRETRAINED_CATALOG_ROOT = "models/pretrained/yolox"
+YOLOX_PRETRAINED_CATALOG_ROOT = "models/pretrained/yolox/detection"
 YOLOX_PRETRAINED_MANIFEST_FILE_NAME = "manifest.json"
 
 
@@ -64,14 +64,14 @@ class YoloXPretrainedModelCatalogSeeder:
         if not catalog_root.exists():
             return
 
-        model_service = SqlAlchemyYoloXModelService(session_factory=runtime.session_factory)
+        model_service = SqlAlchemyModelService(session_factory=runtime.session_factory)
         for manifest_path in sorted(catalog_root.rglob(YOLOX_PRETRAINED_MANIFEST_FILE_NAME)):
             entry = _load_pretrained_catalog_entry(
                 manifest_path=manifest_path,
                 dataset_storage=runtime.dataset_storage,
             )
             model_service.register_pretrained(
-                YoloXPretrainedRegistrationRequest(
+                PretrainedRegistrationRequest(
                     model_name=entry.model_name,
                     storage_uri=entry.checkpoint_storage_uri,
                     model_version_id=entry.model_version_id,

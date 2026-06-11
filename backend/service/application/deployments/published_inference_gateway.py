@@ -17,8 +17,10 @@ from backend.service.application.errors import InvalidRequestError, OperationTim
 from backend.service.application.runtime.deployment_process_supervisor import (
     DeploymentProcessSupervisor,
 )
-from backend.service.application.runtime.yolox_predictor import (
-    YoloXPredictionRequest,
+from backend.service.application.runtime.detection_runtime_contracts import (
+    DetectionPredictionRequest,
+)
+from backend.service.application.runtime.detection_runtime_serialization import (
     serialize_detection,
     serialize_runtime_session_info,
 )
@@ -110,8 +112,8 @@ class PublishedInferenceGatewayEventChannel:
 
 
 @dataclass(frozen=True)
-class YoloXDeploymentPublishedInferenceGateway:
-    """通过长期运行的 YOLOX deployment worker 执行已发布推理。
+class DetectionDeploymentPublishedInferenceGateway:
+    """通过长期运行的 detection deployment worker 执行已发布推理。
 
     字段：
     - deployment_service：解析 DeploymentInstance 与 process config 的 service。
@@ -124,7 +126,7 @@ class YoloXDeploymentPublishedInferenceGateway:
     runtime_mode: str = "sync"
 
     def infer(self, request: PublishedInferenceRequest) -> PublishedInferenceResult:
-        """执行一次已发布 YOLOX 推理。"""
+        """执行一次已发布 detection 推理。"""
 
         normalized_runtime_mode = request.runtime_mode.strip().lower()
         if normalized_runtime_mode != self.runtime_mode:
@@ -179,14 +181,14 @@ class YoloXDeploymentPublishedInferenceGateway:
         *,
         request: PublishedInferenceRequest,
         normalized_image_payload: dict[str, object],
-    ) -> YoloXPredictionRequest:
-        """把 PublishedInferenceRequest 转换为 YOLOX deployment worker 请求。"""
+    ) -> DetectionPredictionRequest:
+        """把 PublishedInferenceRequest 转换为 detection deployment worker 请求。"""
 
         transport_kind = str(normalized_image_payload.get("transport_kind") or "")
         if transport_kind == IMAGE_TRANSPORT_MEMORY:
             if request.input_image_bytes is None:
                 raise InvalidRequestError("memory image-ref 调用发布推理时缺少 input_image_bytes")
-            return YoloXPredictionRequest(
+            return DetectionPredictionRequest(
                 input_image_bytes=request.input_image_bytes,
                 score_threshold=request.score_threshold,
                 save_result_image=request.save_result_image or request.return_preview_image_base64,
@@ -197,18 +199,13 @@ class YoloXDeploymentPublishedInferenceGateway:
             if transport_kind == IMAGE_TRANSPORT_STORAGE
             else None
         )
-        return YoloXPredictionRequest(
+        return DetectionPredictionRequest(
             input_uri=input_uri,
             input_image_payload=dict(normalized_image_payload),
             score_threshold=request.score_threshold,
             save_result_image=request.save_result_image or request.return_preview_image_base64,
             extra_options=dict(request.extra_options),
         )
-
-
-@dataclass(frozen=True)
-class DetectionDeploymentPublishedInferenceGateway(YoloXDeploymentPublishedInferenceGateway):
-    """通过长期运行的 detection deployment worker 执行已发布推理。"""
 
 
 class PublishedInferenceGatewayClient:

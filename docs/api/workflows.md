@@ -71,15 +71,15 @@ workflow runtime 控制面当前已经公开 preview-runs、app-runtimes、runs�
 
 本文档配套的 deployment lifecycle detection 手工调试示例使用下面这组真实 object key：
 
-- template object key：workflows/projects/project-1/templates/yolox-deployment-detection-lifecycle-real-path/versions/1.0.0/template.json
-- application object key：workflows/projects/project-1/applications/yolox-deployment-detection-lifecycle-real-path-app/application.json
+- template object key：workflows/projects/project-1/templates/detection-deployment-lifecycle-real-path/versions/1.0.0/template.json
+- application object key：workflows/projects/project-1/applications/detection-deployment-lifecycle-real-path-app/application.json
 
 ## 独立 JSON 示例
 
 下面两份文件是可直接拷贝到 HTTP 客户端请求体中的独立 JSON 示例：
 
-- [docs/api/examples/workflows/00-short-dev-examples/yolox_deployment_detection_lifecycle_real_path/save-template.request.json](examples/workflows/00-short-dev-examples/yolox_deployment_detection_lifecycle_real_path/save-template.request.json)
-- [docs/api/examples/workflows/00-short-dev-examples/yolox_deployment_detection_lifecycle_real_path/save-application.request.json](examples/workflows/00-short-dev-examples/yolox_deployment_detection_lifecycle_real_path/save-application.request.json)
+- [docs/api/examples/workflows/00-short-dev-examples/detection_deployment_lifecycle_real_path/save-template.request.json](examples/workflows/00-short-dev-examples/detection_deployment_lifecycle_real_path/save-template.request.json)
+- [docs/api/examples/workflows/00-short-dev-examples/detection_deployment_lifecycle_real_path/save-application.request.json](examples/workflows/00-short-dev-examples/detection_deployment_lifecycle_real_path/save-application.request.json)
 
 上面这组 JSON 的特点是：
 
@@ -370,13 +370,13 @@ workflow runtime 控制面当前已经公开 preview-runs、app-runtimes、runs�
 
 ## 相关文件
 
-- [docs/api/examples/workflows/00-short-dev-examples/yolox_deployment_detection_lifecycle_real_path/save-template.request.json](examples/workflows/00-short-dev-examples/yolox_deployment_detection_lifecycle_real_path/save-template.request.json)
-- [docs/api/examples/workflows/00-short-dev-examples/yolox_deployment_detection_lifecycle_real_path/save-application.request.json](examples/workflows/00-short-dev-examples/yolox_deployment_detection_lifecycle_real_path/save-application.request.json)
-- [docs/api/examples/workflows/00-short-dev-examples/yolox_deployment_detection_lifecycle_real_path/preview-execution-policy.create.request.json](examples/workflows/00-short-dev-examples/yolox_deployment_detection_lifecycle_real_path/preview-execution-policy.create.request.json)
-- [docs/api/examples/workflows/00-short-dev-examples/yolox_deployment_detection_lifecycle_real_path/runtime-execution-policy.create.request.json](examples/workflows/00-short-dev-examples/yolox_deployment_detection_lifecycle_real_path/runtime-execution-policy.create.request.json)
-- [docs/api/examples/workflows/00-short-dev-examples/yolox_deployment_detection_lifecycle_real_path/preview-run.request.json](examples/workflows/00-short-dev-examples/yolox_deployment_detection_lifecycle_real_path/preview-run.request.json)
-- [docs/api/examples/workflows/00-short-dev-examples/yolox_deployment_detection_lifecycle_real_path/app-runtime.create.request.json](examples/workflows/00-short-dev-examples/yolox_deployment_detection_lifecycle_real_path/app-runtime.create.request.json)
-- [docs/api/examples/workflows/00-short-dev-examples/yolox_deployment_detection_lifecycle_real_path/app-runtime.invoke.request.json](examples/workflows/00-short-dev-examples/yolox_deployment_detection_lifecycle_real_path/app-runtime.invoke.request.json)
+- [docs/api/examples/workflows/00-short-dev-examples/detection_deployment_lifecycle_real_path/save-template.request.json](examples/workflows/00-short-dev-examples/detection_deployment_lifecycle_real_path/save-template.request.json)
+- [docs/api/examples/workflows/00-short-dev-examples/detection_deployment_lifecycle_real_path/save-application.request.json](examples/workflows/00-short-dev-examples/detection_deployment_lifecycle_real_path/save-application.request.json)
+- [docs/api/examples/workflows/00-short-dev-examples/detection_deployment_lifecycle_real_path/preview-execution-policy.create.request.json](examples/workflows/00-short-dev-examples/detection_deployment_lifecycle_real_path/preview-execution-policy.create.request.json)
+- [docs/api/examples/workflows/00-short-dev-examples/detection_deployment_lifecycle_real_path/runtime-execution-policy.create.request.json](examples/workflows/00-short-dev-examples/detection_deployment_lifecycle_real_path/runtime-execution-policy.create.request.json)
+- [docs/api/examples/workflows/00-short-dev-examples/detection_deployment_lifecycle_real_path/preview-run.request.json](examples/workflows/00-short-dev-examples/detection_deployment_lifecycle_real_path/preview-run.request.json)
+- [docs/api/examples/workflows/00-short-dev-examples/detection_deployment_lifecycle_real_path/app-runtime.create.request.json](examples/workflows/00-short-dev-examples/detection_deployment_lifecycle_real_path/app-runtime.create.request.json)
+- [docs/api/examples/workflows/00-short-dev-examples/detection_deployment_lifecycle_real_path/app-runtime.invoke.request.json](examples/workflows/00-short-dev-examples/detection_deployment_lifecycle_real_path/app-runtime.invoke.request.json)
 - [docs/api/postman/workflows/README.md](postman/workflows/README.md)
 - [docs/api/postman/workflow-runtime.postman_collection.json](postman/workflow-runtime.postman_collection.json)
 - [docs/api/current-api.md](current-api.md)

@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from backend.service.application.models.yolox_model_service import (
-    SqlAlchemyYoloXModelService,
-    YoloXBuildRegistration as RfdetrBuildRegistration,
-    YoloXPretrainedRegistrationRequest as RfdetrPretrainedRegistrationRequest,
-    YoloXTrainingOutputRegistration as RfdetrTrainingOutputRegistration,
+from backend.service.application.models.model_service import (
+    ModelBuildRegistration as RfdetrBuildRegistration,
+    PretrainedRegistrationRequest as RfdetrPretrainedRegistrationRequest,
+    SqlAlchemyModelService,
+    TrainingOutputRegistration as RfdetrTrainingOutputRegistration,
 )
 from backend.service.domain.files.detection_model_file_types import YOLOV8_DETECTION_FILE_TYPES
 from backend.service.domain.models.rfdetr_model_spec import (
@@ -53,7 +53,7 @@ class RfdetrModelSpec:
 DEFAULT_RFDETR_MODEL_SPEC = RfdetrModelSpec()
 
 
-class SqlAlchemyRfdetrModelService(SqlAlchemyYoloXModelService):
+class SqlAlchemyRfdetrModelService(SqlAlchemyModelService):
     """RF-DETR 模型服务。基于通用登记逻辑。"""
 
     def __init__(self, session_factory: SessionFactory, spec: RfdetrModelSpec | None = None) -> None:

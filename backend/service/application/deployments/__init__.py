@@ -8,7 +8,6 @@ from backend.service.application.deployments.published_inference_gateway import 
     PublishedInferenceGatewayEventChannel,
     PublishedInferenceRequest,
     PublishedInferenceResult,
-    YoloXDeploymentPublishedInferenceGateway,
 )
 
 __all__ = [
@@ -19,5 +18,4 @@ __all__ = [
     "PublishedInferenceGatewayEventChannel",
     "PublishedInferenceRequest",
     "PublishedInferenceResult",
-    "YoloXDeploymentPublishedInferenceGateway",
 ]

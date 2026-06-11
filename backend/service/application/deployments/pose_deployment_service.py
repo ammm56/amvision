@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 from dataclasses import dataclass, field
-from backend.service.application.deployments.yolox_deployment_service import (
-    SqlAlchemyYoloXDeploymentService,
-    YoloXDeploymentInstanceView as PoseDeploymentInstanceView,
+from backend.service.application.deployments.deployment_instance_service import (
+    DeploymentInstanceView as PoseDeploymentInstanceView,
+    SqlAlchemyDeploymentInstanceService,
 )
 from backend.service.application.errors import InvalidRequestError, ServiceConfigurationError
 from backend.service.application.pose_backend_registry import get_pose_backend_registration
@@ -33,7 +33,7 @@ _RUNTIME_TARGET_RESOLVER_BY_MODEL_TYPE = {
     "yolo26": SqlAlchemyYolo26RuntimeTargetResolver,
 }
 
-class SqlAlchemyPoseDeploymentService(SqlAlchemyYoloXDeploymentService):
+class SqlAlchemyPoseDeploymentService(SqlAlchemyDeploymentInstanceService):
     """按模型分类分发 runtime target resolver 的 pose 部署服务。"""
 
     def create_deployment_instance(self, request, *, created_by=None):

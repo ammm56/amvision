@@ -41,7 +41,7 @@ from backend.service.application.runtime.deployment_process_supervisor import (
     DeploymentProcessConfig,
     DeploymentProcessSupervisor,
 )
-from backend.service.application.runtime.yolox_predictor import YoloXPredictionRequest
+from backend.service.application.runtime.detection_runtime_contracts import DetectionPredictionRequest
 from backend.service.application.runtime.runtime_target import RuntimeTargetSnapshot
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.workflows.execution_cleanup import register_local_buffer_lease_cleanup
@@ -590,7 +590,7 @@ def test_deployment_supervisor_passes_broker_event_channel_to_worker(tmp_path: P
         supervisor.start_deployment(process_config)
         execution = supervisor.run_inference(
             config=process_config,
-            request=YoloXPredictionRequest(
+            request=DetectionPredictionRequest(
                 input_uri="runtime-inputs/image.jpg",
                 score_threshold=0.3,
                 save_result_image=False,

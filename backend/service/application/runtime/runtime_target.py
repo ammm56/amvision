@@ -12,7 +12,7 @@ from backend.service.domain.files.detection_model_file_types import (
     DetectionModelFileTypes,
     YOLOX_DETECTION_FILE_TYPES,
 )
-from backend.service.application.models.yolox_model_service import SqlAlchemyYoloXModelService
+from backend.service.application.models.model_service import SqlAlchemyModelService
 from backend.service.domain.files.model_file import ModelFile
 from backend.service.domain.models.model_task_types import DETECTION_TASK_TYPE
 from backend.service.infrastructure.db.session import SessionFactory
@@ -238,7 +238,7 @@ class SqlAlchemyRuntimeTargetResolver:
         dataset_storage: LocalDatasetStorage,
         file_types: DetectionModelFileTypes = YOLOX_DETECTION_FILE_TYPES,
         supported_task_types: tuple[str, ...] = (DETECTION_TASK_TYPE,),
-        model_service_factory: Callable[[SessionFactory], SqlAlchemyYoloXModelService] | None = None,
+        model_service_factory: Callable[[SessionFactory], SqlAlchemyModelService] | None = None,
     ) -> None:
         """初始化运行时快照解析服务。
 
@@ -258,7 +258,7 @@ class SqlAlchemyRuntimeTargetResolver:
             if isinstance(item, str) and item.strip()
         )
         self.model_service_factory = model_service_factory or (
-            lambda current_session_factory: SqlAlchemyYoloXModelService(
+            lambda current_session_factory: SqlAlchemyModelService(
                 session_factory=current_session_factory,
                 file_types=file_types,
             )

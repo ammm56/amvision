@@ -4,13 +4,13 @@ from __future__ import annotations
 
 from backend.service.application.conversions.yolox_conversion_task_service import (
     SqlAlchemyYoloXConversionTaskService as SqlAlchemyDetectionConversionTaskService,
-    YoloXBuildRegistration as DetectionBuildRegistration,
     YoloXConversionBuildSummary as DetectionConversionBuildSummary,
     YoloXConversionResultSnapshot as DetectionConversionResultSnapshot,
     YoloXConversionRunRequest as DetectionConversionRunRequest,
     YoloXConversionTaskRequest as DetectionConversionTaskRequest,
     YoloXConversionTaskResult as DetectionConversionTaskResult,
     YoloXConversionTaskSubmission as DetectionConversionTaskSubmission,
+    ModelBuildRegistration as DetectionBuildRegistration,
     _deserialize_task_spec as deserialize_detection_conversion_task_spec,
     _serialize_build_summary as serialize_detection_conversion_build_summary,
     _serialize_task_spec as serialize_detection_conversion_task_spec,
@@ -30,4 +30,3 @@ __all__ = [
     "serialize_detection_conversion_build_summary",
     "serialize_detection_conversion_task_spec",
 ]
-

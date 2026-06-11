@@ -22,7 +22,7 @@ from backend.service.application.runtime.deployment_process_settings import (
     DeploymentProcessSupervisorConfig,
 )
 from backend.service.application.runtime.deployment_events import (
-    YoloXDeploymentProcessEvent,
+    DetectionDeploymentProcessEvent,
     build_deployment_process_service_event,
     read_deployment_process_events,
     resolve_deployment_event_lock,
@@ -36,14 +36,17 @@ from backend.service.application.runtime.safe_counter import (
 from backend.service.application.runtime.deployment_process_worker import (
     run_deployment_process_worker,
 )
-from backend.service.application.runtime.yolox_predictor import (
-    YoloXPredictionExecutionResult,
-    YoloXPredictionRequest,
+from backend.service.application.runtime.detection_runtime_contracts import (
+    DetectionPredictionExecutionResult,
+    DetectionPredictionRequest,
+)
+from backend.service.application.runtime.detection_runtime_serialization import (
+    deserialize_detection_items,
+    deserialize_runtime_session_info,
 )
 from backend.service.application.runtime.runtime_target import RuntimeTargetSnapshot
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
-from backend.workers.shared.yolox_runtime_contracts import RuntimeTensorSpec, YoloXRuntimeSessionInfo
 
 
 @dataclass(frozen=True)
@@ -210,7 +213,7 @@ class DeploymentProcessExecution:
 
     deployment_instance_id: str
     instance_id: str
-    execution_result: YoloXPredictionExecutionResult
+    execution_result: DetectionPredictionExecutionResult
 
 
 @dataclass
@@ -413,7 +416,7 @@ class DeploymentProcessSupervisor:
         *,
         after_sequence: int | None = None,
         runtime_mode: str | None = None,
-    ) -> tuple[YoloXDeploymentProcessEvent, ...]:
+    ) -> tuple[DetectionDeploymentProcessEvent, ...]:
         """读取一个 deployment 的事件列表。"""
 
         return read_deployment_process_events(
@@ -427,7 +430,7 @@ class DeploymentProcessSupervisor:
         self,
         *,
         config: DeploymentProcessConfig,
-        request: YoloXPredictionRequest,
+        request: DetectionPredictionRequest,
     ) -> DeploymentProcessExecution:
         """通过 deployment 子进程执行一次推理请求。"""
 
@@ -449,13 +452,13 @@ class DeploymentProcessSupervisor:
         return DeploymentProcessExecution(
             deployment_instance_id=config.deployment_instance_id,
             instance_id=instance_id,
-            execution_result=YoloXPredictionExecutionResult(
-                detections=tuple(_deserialize_detections(payload)),
+            execution_result=DetectionPredictionExecutionResult(
+                detections=deserialize_detection_items(payload.get("detections")),
                 latency_ms=_read_response_optional_float(payload, "latency_ms"),
                 image_width=_require_response_int(payload, "image_width"),
                 image_height=_require_response_int(payload, "image_height"),
                 preview_image_bytes=_read_response_optional_bytes(payload, "preview_image_bytes"),
-                runtime_session_info=_deserialize_runtime_session_info(payload),
+                runtime_session_info=deserialize_runtime_session_info(payload.get("runtime_session_info")),
             ),
         )
 
@@ -834,7 +837,7 @@ class DeploymentProcessSupervisor:
         event_type: str,
         message: str,
         payload: dict[str, object] | None = None,
-    ) -> YoloXDeploymentProcessEvent:
+    ) -> DetectionDeploymentProcessEvent:
         """把 deployment status 变化写入事件回放并同步发布。"""
 
         return self._append_deployment_event(
@@ -854,7 +857,7 @@ class DeploymentProcessSupervisor:
         event_type: str,
         message: str,
         payload: dict[str, object] | None = None,
-    ) -> YoloXDeploymentProcessEvent:
+    ) -> DetectionDeploymentProcessEvent:
         """把 deployment health 快照写入事件回放并同步发布。"""
 
         return self._append_deployment_event(
@@ -874,7 +877,7 @@ class DeploymentProcessSupervisor:
         event_type: str,
         message: str,
         payload: dict[str, object] | None = None,
-    ) -> YoloXDeploymentProcessEvent:
+    ) -> DetectionDeploymentProcessEvent:
         """向 deployment 事件文件追加一条事件并发布到事件总线。"""
 
         event_lock = resolve_deployment_event_lock(deployment_instance_id)
@@ -885,7 +888,7 @@ class DeploymentProcessSupervisor:
                     deployment_instance_id=deployment_instance_id,
                 )
             )
-            event = YoloXDeploymentProcessEvent(
+            event = DetectionDeploymentProcessEvent(
                 deployment_instance_id=deployment_instance_id,
                 runtime_mode=self.runtime_mode,
                 sequence=len(existing_events) + 1,
@@ -905,7 +908,7 @@ class DeploymentProcessSupervisor:
         self._publish_project_summary_event(event)
         return event
 
-    def _publish_project_summary_event(self, event: YoloXDeploymentProcessEvent) -> None:
+    def _publish_project_summary_event(self, event: DetectionDeploymentProcessEvent) -> None:
         """按需为 deployment 生命周期事件发布项目级聚合更新。"""
 
         if not should_publish_project_summary_for_deployment_event(event.event_type):
@@ -1056,30 +1059,6 @@ def _build_health_event_payload(health: DeploymentProcessHealth) -> dict[str, ob
     return payload
 
 
-def _deserialize_detections(payload: dict[str, object]) -> list[object]:
-    """从子进程返回中反序列化 detection 列表。"""
-
-    from backend.service.application.runtime.yolox_predictor import YoloXPredictionDetection  # noqa: PLC0415
-
-    detections_payload = payload.get("detections") if isinstance(payload.get("detections"), list) else []
-    detections: list[YoloXPredictionDetection] = []
-    for item in detections_payload:
-        if not isinstance(item, dict):
-            continue
-        bbox = item.get("bbox_xyxy") if isinstance(item.get("bbox_xyxy"), list | tuple) else []
-        if len(bbox) != 4:
-            continue
-        detections.append(
-            YoloXPredictionDetection(
-                bbox_xyxy=(float(bbox[0]), float(bbox[1]), float(bbox[2]), float(bbox[3])),
-                score=float(item.get("score") or 0.0),
-                class_id=int(item.get("class_id") or 0),
-                class_name=str(item.get("class_name")) if item.get("class_name") is not None else None,
-            )
-        )
-    return detections
-
-
 def _deserialize_keep_warm_status(
     payload: dict[str, object] | None,
 ) -> DeploymentProcessKeepWarmStatus | None:
@@ -1100,31 +1079,6 @@ def _deserialize_keep_warm_status(
         error_count_rollover_count=int(payload.get("error_count_rollover_count") or 0),
         last_error=str(payload.get("last_error")) if payload.get("last_error") is not None else None,
     )
-
-
-def _deserialize_runtime_session_info(payload: dict[str, object]) -> YoloXRuntimeSessionInfo:
-    """从子进程返回中反序列化 runtime_session_info。"""
-
-    info_payload = payload.get("runtime_session_info") if isinstance(payload.get("runtime_session_info"), dict) else {}
-    input_spec_payload = info_payload.get("input_spec") if isinstance(info_payload.get("input_spec"), dict) else {}
-    output_spec_payload = info_payload.get("output_spec") if isinstance(info_payload.get("output_spec"), dict) else {}
-    return YoloXRuntimeSessionInfo(
-        backend_name=str(info_payload.get("backend_name") or ""),
-        model_uri=str(info_payload.get("model_uri") or ""),
-        device_name=str(info_payload.get("device_name") or ""),
-        input_spec=RuntimeTensorSpec(
-            name=str(input_spec_payload.get("name") or "images"),
-            shape=tuple(int(item) for item in input_spec_payload.get("shape", [])),
-            dtype=str(input_spec_payload.get("dtype") or "float32"),
-        ),
-        output_spec=RuntimeTensorSpec(
-            name=str(output_spec_payload.get("name") or "detections"),
-            shape=tuple(int(item) for item in output_spec_payload.get("shape", [])),
-            dtype=str(output_spec_payload.get("dtype") or "float32"),
-        ),
-        metadata=dict(info_payload.get("metadata")) if isinstance(info_payload.get("metadata"), dict) else {},
-    )
-
 
 def _require_response_str(payload: dict[str, object], key: str) -> str:
     """从子进程响应中读取必填字符串字段。"""

@@ -40,7 +40,7 @@ from backend.service.application.runtime.deployment_process_supervisor import (
 from backend.service.application.runtime.detection_runtime_contracts import (
     DetectionPredictionRequest,
 )
-from backend.service.application.runtime.yolox_predictor import (
+from backend.service.application.runtime.detection_runtime_serialization import (
     serialize_detection,
     serialize_runtime_session_info,
 )

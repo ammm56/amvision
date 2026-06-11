@@ -37,7 +37,7 @@ from backend.service.application.models.detection_async_inference_gateway import
 from backend.service.application.runtime.deployment_process_supervisor import (
     DeploymentProcessSupervisor,
 )
-from backend.service.application.runtime.deployment_event_source import YoloXDeploymentEventSource
+from backend.service.application.runtime.deployment_event_source import DetectionDeploymentEventSource
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 
@@ -192,7 +192,7 @@ def get_detection_deployment_events(
             "runtime_mode 仅支持 sync 或 async",
             details={"runtime_mode": runtime_mode},
         )
-    event_source = YoloXDeploymentEventSource(
+    event_source = DetectionDeploymentEventSource(
         dataset_storage_root_dir=str(dataset_storage.root_dir),
     )
     events = event_source.list_events(

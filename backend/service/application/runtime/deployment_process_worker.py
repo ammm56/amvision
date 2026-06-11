@@ -29,8 +29,10 @@ from backend.service.application.runtime.safe_counter import (
     increment_safe_counter,
     snapshot_safe_counter,
 )
-from backend.service.application.runtime.yolox_predictor import (
-    YoloXPredictionRequest,
+from backend.service.application.runtime.detection_runtime_contracts import (
+    DetectionPredictionRequest,
+)
+from backend.service.application.runtime.detection_runtime_serialization import (
     serialize_detection,
     serialize_runtime_session_info,
 )
@@ -78,7 +80,7 @@ class _KeepWarmState:
     - lock：并发更新内部计数的互斥锁。
     """
 
-    dummy_request: YoloXPredictionRequest
+    dummy_request: DetectionPredictionRequest
     stop_event: Event = field(default_factory=Event)
     pause_event: Event = field(default_factory=Event)
     idle_event: Event = field(default_factory=Event)
@@ -167,7 +169,7 @@ def run_deployment_process_worker(
     runtime_pool.ensure_deployment(runtime_pool_config)
     infer_slots = BoundedSemaphore(max(1, config.instance_count))
     behavior = _resolve_warmup_behavior(config=config, supervisor_settings=supervisor_settings)
-    dummy_request: YoloXPredictionRequest | None = None
+    dummy_request: DetectionPredictionRequest | None = None
     if behavior.warmup_dummy_inference_count > 0 or behavior.keep_warm_enabled:
         dummy_request = _build_dummy_inference_request(behavior.warmup_dummy_image_size)
     keep_warm_state: _KeepWarmState | None = None
@@ -411,7 +413,7 @@ def _build_prediction_request(
     payload: dict[str, object],
     local_buffer_reader: LocalBufferBrokerClient | None,
     local_buffer_health: _LocalBufferBrokerRuntimeHealth,
-) -> YoloXPredictionRequest:
+) -> DetectionPredictionRequest:
     """把 deployment worker 控制 payload 转换为预测请求。"""
 
     image_payload = _read_payload_dict(payload, "input_image_payload")
@@ -425,7 +427,7 @@ def _build_prediction_request(
         )
         input_uri = resolved_uri
         input_image_bytes = resolved_bytes
-    return YoloXPredictionRequest(
+    return DetectionPredictionRequest(
         input_uri=input_uri,
         input_image_bytes=input_image_bytes,
         score_threshold=_require_payload_float(payload, "score_threshold"),
@@ -564,7 +566,7 @@ def _resolve_warmup_behavior(
     )
 
 
-def _build_dummy_inference_request(image_size: tuple[int, int]) -> YoloXPredictionRequest:
+def _build_dummy_inference_request(image_size: tuple[int, int]) -> DetectionPredictionRequest:
     """构造一条最小图片的 dummy infer 请求。
 
     参数：
@@ -586,7 +588,7 @@ def _build_dummy_inference_request(image_size: tuple[int, int]) -> YoloXPredicti
             "生成 deployment dummy warmup 图片失败",
             details={"image_size": [width, height]},
         )
-    return YoloXPredictionRequest(
+    return DetectionPredictionRequest(
         input_image_bytes=encoded.tobytes(),
         score_threshold=0.3,
         save_result_image=False,
@@ -598,7 +600,7 @@ def _run_dummy_warmup_passes(
     *,
     runtime_pool: DeploymentRuntimePool,
     runtime_pool_config: DeploymentRuntimePoolConfig,
-    dummy_request: YoloXPredictionRequest,
+    dummy_request: DetectionPredictionRequest,
     count: int,
 ) -> None:
     """按指定次数执行真实 dummy infer warmup。
@@ -621,7 +623,7 @@ def _start_keep_warm_thread(
     *,
     runtime_pool: DeploymentRuntimePool,
     runtime_pool_config: DeploymentRuntimePoolConfig,
-    dummy_request: YoloXPredictionRequest,
+    dummy_request: DetectionPredictionRequest,
     behavior: _DeploymentWarmupBehavior,
 ) -> _KeepWarmState:
     """启动 deployment keep-warm 后台线程。

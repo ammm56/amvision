@@ -51,7 +51,7 @@
 - 当前列表只返回 scope_kind=platform-base 的 Model。
 - 当前列表不会混入任何 Project 内模型。
 - 当前平台基础模型的 project_id 固定为空，不再使用保留 Project 占位值表达平台语义。
-- 当前是否能看到某个模型族，取决于启动期 seeder 是否已从本地 `models/pretrained/yolox` 或 `models/pretrained/{yolov8,yolo11,yolo26,rfdetr}` 成功登记对应 manifest；接口本身不限定只返回 YOLOX。
+- 当前是否能看到某个模型族，取决于启动期 seeder 是否已从本地 `models/pretrained/yolox/detection` 或 `models/pretrained/{yolov8,yolo11,yolo26,rfdetr}` 成功登记对应 manifest；接口本身不限定只返回 YOLOX。
 
 #### 当前列表项重点字段
 
@@ -85,7 +85,7 @@
     "labels_file_id": null,
     "metadata": {
       "catalog_name": "default",
-      "catalog_manifest_object_key": "models/pretrained/yolox/nano/default/manifest.json",
+      "catalog_manifest_object_key": "models/pretrained/yolox/detection/nano/default/manifest.json",
       "source_kind": "pretrained-reference"
     },
     "version_count": 1,
@@ -102,12 +102,12 @@
         ],
         "metadata": {
           "catalog_name": "default",
-          "catalog_manifest_object_key": "models/pretrained/yolox/nano/default/manifest.json",
+          "catalog_manifest_object_key": "models/pretrained/yolox/detection/nano/default/manifest.json",
           "source_kind": "pretrained-reference"
         },
         "checkpoint_file_id": "model-file-pretrained-yolox-nano-checkpoint",
-        "checkpoint_storage_uri": "models/pretrained/yolox/nano/default/checkpoints/yolox_nano.pth",
-        "catalog_manifest_object_key": "models/pretrained/yolox/nano/default/manifest.json"
+        "checkpoint_storage_uri": "models/pretrained/yolox/detection/nano/default/checkpoints/yolox_nano.pth",
+        "catalog_manifest_object_key": "models/pretrained/yolox/detection/nano/default/manifest.json"
       }
     ]
   }

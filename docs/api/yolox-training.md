@@ -598,8 +598,8 @@ reference 风格增强示例：按需显式开启 Mosaic、MixUp 和动态尺寸
 
 ## 预训练模型磁盘目录约定
 
-- 当前 backend-service 启动时会自动扫描 data/files/models/pretrained/yolox 下的 manifest.json。
-- 推荐目录层次为 data/files/models/pretrained/yolox/{model_scale}/{entry_name}。
+- 当前 backend-service 启动时会自动扫描 data/files/models/pretrained/yolox/detection 下的 manifest.json。
+- 推荐目录层次为 data/files/models/pretrained/yolox/detection/{model_scale}/{entry_name}。
 - manifest.json 中的 model_version_id 是 warm_start_model_version_id 的稳定来源。
 - 预训练目录是平台级基础资产，不绑定具体 Project，也不应放数据集 labels 文件。
 - checkpoint_path 采用相对 manifest.json 的路径写法，服务启动时会自动登记为 ModelFile 引用。

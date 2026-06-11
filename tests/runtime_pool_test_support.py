@@ -5,18 +5,18 @@ from __future__ import annotations
 from pathlib import Path
 from types import SimpleNamespace
 
-from backend.service.application.runtime.yolox_predictor import (
-    YoloXPredictionDetection,
-    YoloXPredictionExecutionResult,
-    YoloXPredictionRequest,
+from backend.service.application.runtime.detection_runtime_contracts import (
+    DetectionPredictionDetection,
+    DetectionPredictionExecutionResult,
+    DetectionPredictionRequest,
+    DetectionRuntimeSessionInfo,
+    DetectionRuntimeTensorSpec,
 )
 from backend.service.application.runtime.runtime_target import RuntimeTargetSnapshot
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     DatasetStorageSettings,
     LocalDatasetStorage,
 )
-from backend.workers.shared.yolox_runtime_contracts import RuntimeTensorSpec, YoloXRuntimeSessionInfo
-
 
 def create_test_dataset_storage(tmp_path: Path) -> LocalDatasetStorage:
     """创建 runtime pool 逻辑测试使用的本地文件存储。
@@ -84,7 +84,7 @@ def build_test_execution_result(
     *,
     runtime_target: RuntimeTargetSnapshot,
     output_dtype: str = "float32",
-) -> YoloXPredictionExecutionResult:
+) -> DetectionPredictionExecutionResult:
     """构造 fake runtime session 返回的预测结果。
 
     参数：
@@ -92,12 +92,12 @@ def build_test_execution_result(
     - output_dtype：输出张量 dtype。
 
     返回：
-    - YoloXPredictionExecutionResult：固定预测结果。
+    - DetectionPredictionExecutionResult：固定预测结果。
     """
 
-    return YoloXPredictionExecutionResult(
+    return DetectionPredictionExecutionResult(
         detections=(
-            YoloXPredictionDetection(
+            DetectionPredictionDetection(
                 bbox_xyxy=(8.0, 8.0, 24.0, 24.0),
                 score=0.95,
                 class_id=0,
@@ -108,12 +108,12 @@ def build_test_execution_result(
         image_width=64,
         image_height=64,
         preview_image_bytes=None,
-        runtime_session_info=YoloXRuntimeSessionInfo(
+        runtime_session_info=DetectionRuntimeSessionInfo(
             backend_name=runtime_target.runtime_backend,
             model_uri=runtime_target.runtime_artifact_storage_uri,
             device_name=runtime_target.device_name,
-            input_spec=RuntimeTensorSpec(name="images", shape=(1, 3, 64, 64), dtype="float32"),
-            output_spec=RuntimeTensorSpec(name="predictions", shape=(1, 1, 6), dtype=output_dtype),
+            input_spec=DetectionRuntimeTensorSpec(name="images", shape=(1, 3, 64, 64), dtype="float32"),
+            output_spec=DetectionRuntimeTensorSpec(name="predictions", shape=(1, 1, 6), dtype=output_dtype),
             metadata={
                 "runtime_execution_mode": (
                     f"{runtime_target.runtime_backend}:{runtime_target.runtime_precision}:{runtime_target.device_name}"
@@ -127,7 +127,7 @@ def build_test_execution_result(
 class FakePredictionSession:
     """记录预测请求并返回固定结果的 fake runtime session。"""
 
-    def __init__(self, *, execution_result: YoloXPredictionExecutionResult) -> None:
+    def __init__(self, *, execution_result: DetectionPredictionExecutionResult) -> None:
         """初始化 fake runtime session。
 
         参数：
@@ -135,18 +135,18 @@ class FakePredictionSession:
         """
 
         self.execution_result = execution_result
-        self.requests: list[YoloXPredictionRequest] = []
+        self.requests: list[DetectionPredictionRequest] = []
         self.pinned_output_buffer_enabled: bool | None = None
         self.pinned_output_buffer_max_bytes: int | None = None
 
-    def predict(self, request: YoloXPredictionRequest) -> YoloXPredictionExecutionResult:
+    def predict(self, request: DetectionPredictionRequest) -> DetectionPredictionExecutionResult:
         """记录请求并返回固定执行结果。
 
         参数：
         - request：当前预测请求。
 
         返回：
-        - YoloXPredictionExecutionResult：固定执行结果。
+        - DetectionPredictionExecutionResult：固定执行结果。
         """
 
         self.requests.append(request)
@@ -167,7 +167,7 @@ class FailingPredictionSession:
         self.pinned_output_buffer_enabled: bool | None = None
         self.pinned_output_buffer_max_bytes: int | None = None
 
-    def predict(self, request: YoloXPredictionRequest) -> YoloXPredictionExecutionResult:
+    def predict(self, request: DetectionPredictionRequest) -> DetectionPredictionExecutionResult:
         """抛出固定错误，验证 runtime pool 的失败处理路径。
 
         参数：

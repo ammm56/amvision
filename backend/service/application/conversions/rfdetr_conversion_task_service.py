@@ -22,7 +22,7 @@ from backend.service.application.conversions.yolox_conversion_planner import (
     serialize_yolox_conversion_plan,
 )
 from backend.service.application.conversions.yolox_conversion_task_service import (
-    YoloXBuildRegistration as RfdetrBuildRegistration,
+    ModelBuildRegistration as RfdetrBuildRegistration,
     YoloXConversionResultSnapshot as RfdetrConversionResultSnapshot,
 )
 from backend.service.application.errors import (

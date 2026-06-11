@@ -8,9 +8,7 @@ from backend.service.application.runtime.deployment_runtime_pool import (
     DeploymentRuntimePool,
     DeploymentRuntimePoolConfig,
 )
-from backend.service.application.runtime.yolox_predictor import (
-    YoloXPredictionRequest,
-)
+from backend.service.application.runtime.detection_runtime_contracts import DetectionPredictionRequest
 from backend.service.domain.files.yolox_file_types import YOLOX_OPENVINO_IR_FILE
 from tests.runtime_pool_test_support import (
     FakePredictionSession,
@@ -40,7 +38,7 @@ def test_runtime_pool_loads_openvino_session_once_and_reuses_warmed_instance(
         runtime_target=runtime_target,
         instance_count=1,
     )
-    request = YoloXPredictionRequest(
+    request = DetectionPredictionRequest(
         score_threshold=0.1,
         save_result_image=False,
         input_image_bytes=b"fake-image-bytes",

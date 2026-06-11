@@ -1,0 +1,90 @@
+{
+  "project_id": "project-1",
+  "application_ref": {
+    "application_id": "industrial-local-directory-watch-detection-position-gate-app"
+  },
+  "input_bindings": {
+    "request_trigger_payload": {
+      "directory_path": "D:/cases/line-c/incoming",
+      "files": [
+        {
+          "path": "D:/cases/line-c/incoming/frame-0001.png",
+          "file_name": "frame-0001.png",
+          "extension": ".png",
+          "size_bytes": 524288,
+          "modified_time_epoch_ms": 1780997400000,
+          "modified_time_iso": "2026-06-09T09:30:00Z"
+        },
+        {
+          "path": "D:/cases/line-c/incoming/frame-0002.png",
+          "file_name": "frame-0002.png",
+          "extension": ".png",
+          "size_bytes": 523904,
+          "modified_time_epoch_ms": 1780997401000,
+          "modified_time_iso": "2026-06-09T09:30:01Z"
+        }
+      ],
+      "file_paths": [
+        "D:/cases/line-c/incoming/frame-0001.png",
+        "D:/cases/line-c/incoming/frame-0002.png"
+      ],
+      "file_count": 2,
+      "primary_file": {
+        "path": "D:/cases/line-c/incoming/frame-0001.png",
+        "file_name": "frame-0001.png",
+        "extension": ".png",
+        "size_bytes": 524288,
+        "modified_time_epoch_ms": 1780997400000,
+        "modified_time_iso": "2026-06-09T09:30:00Z"
+      },
+      "primary_file_path": "D:/cases/line-c/incoming/frame-0001.png",
+      "scan_summary": {
+        "directory_path": "D:/cases/line-c/incoming",
+        "raw_count": 2,
+        "visible_count": 2,
+        "recursive": false,
+        "include_hidden": false,
+        "glob_pattern": "*",
+        "extensions": [
+          ".png",
+          ".jpg",
+          ".jpeg"
+        ],
+        "sort_by": "modified_time",
+        "descending": false,
+        "dedupe_by": "path",
+        "batch_size": 4,
+        "scan_interval_seconds": 1.0,
+        "min_stable_age_seconds": 1.0,
+        "unstable_skipped_count": 0,
+        "deduped_count": 0,
+        "ready_count": 2,
+        "pending_path_count": 2,
+        "emitted_batch_file_count": 2,
+        "sequence_id": 1,
+        "watch_debounce_ms": 300
+      },
+      "sequence_id": 1,
+      "batch_id": "directory-watch-trigger-source-09:1"
+    },
+    "request_trigger_event": {
+      "trigger_source_id": "directory-watch-trigger-source-09",
+      "trigger_kind": "directory-watch",
+      "event_id": "directory-watch-directory-watch-trigger-source-09-1",
+      "occurred_at": "2026-06-09T09:30:02Z",
+      "idempotency_key": "directory-watch-trigger-source-09:1"
+    },
+    "deployment_request": {
+      "value": {
+        "deployment_instance_id": "{{deploymentInstanceId}}"
+      }
+    }
+  },
+  "execution_metadata": {
+    "marker": "postman-workflow-example-documents-preview",
+    "example_name": "industrial_local_directory_watch_detection_position_gate",
+    "scenario": "industrial-local-directory-watch-detection-position-gate",
+    "trigger_source": "editor-preview"
+  },
+  "timeout_seconds": 30
+}

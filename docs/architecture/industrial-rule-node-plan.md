@@ -23,8 +23,8 @@
 - `core.io.json-load-local` 与 `core.io.directory-poll-window` 当前也已接通，可把“本地 cursor JSON 恢复 + 当前无新文件时 has_work=false + 批次 cursor 再落盘”这层目录轮询守护语义独立出来
 - `core.io.directory-cursor-normalize / directory-cursor-advance / core.output.batch-record / core.io.batch-files-relocate` 当前也已接通，目录游标规整、窗口推进、批次归档对象和批次文件归档这 4 层已不再需要继续靠 `object-create + 手工字段约定` 拼装；其中 `batch-files-relocate` 当前首版默认 `copy + rename`，并已支持 `move / overwrite / skip / preserve_subdirectories / dry_run`
 - `core.output.workflow-result / core.output.batch-result-summary` 当前也已接通，统一 workflow 交付对象和批次结果摘要都已从零散 `value.v1` 字段拼装里收出来，后续 trigger-source / 结果回传可以直接复用这两个中间结果对象
-- 工业单帧规则样例当前已补到 `docs/examples/workflows/industrial_single_frame_sealant_quality_gate.*`、`industrial_single_frame_segments_continuity_gate.*`、`industrial_single_frame_glue_roi_callback.*`、`industrial_single_frame_glue_polygon_roi_changeover.*` 与 `industrial_single_frame_yolox_position_gate.*`
-- 工业本地批量输入样例当前已补到 `docs/examples/workflows/industrial_local_directory_batch_input.*`、`industrial_local_directory_batch_segments_continuity_gate.*`、`industrial_local_directory_batch_regions_continuity_gate.*`、`industrial_local_directory_batch_yolox_position_gate.*`、`industrial_local_directory_poll_yolox_position_gate.*` 与 `industrial_local_directory_polling_cursor_guard.*`
+- 工业单帧规则样例当前已补到 `docs/examples/workflows/industrial_single_frame_sealant_quality_gate.*`、`industrial_single_frame_segments_continuity_gate.*`、`industrial_single_frame_glue_roi_callback.*`、`industrial_single_frame_glue_polygon_roi_changeover.*` 与 `industrial_single_frame_detection_position_gate.*`
+- 工业本地批量输入样例当前已补到 `docs/examples/workflows/industrial_local_directory_batch_input.*`、`industrial_local_directory_batch_segments_continuity_gate.*`、`industrial_local_directory_batch_regions_continuity_gate.*`、`industrial_local_directory_batch_detection_position_gate.*`、`industrial_local_directory_poll_detection_position_gate.*` 与 `industrial_local_directory_polling_cursor_guard.*`
 - 当前仍待收口的主要缺口已经不再是大块能力面，而是少数残留节点、样例闭环和现场易用性优化
 
 ## 适用边界
@@ -829,7 +829,7 @@
 
 ## 下一步执行顺序
 
-1. 现场交付面当前已经补到 `industrial_single_frame_glue_roi_delivery_bundle` 与 `industrial_local_directory_poll_yolox_position_gate` 两条正式样例；这一层先转入现场联调和使用说明收口
+1. 现场交付面当前已经补到 `industrial_single_frame_glue_roi_delivery_bundle` 与 `industrial_local_directory_poll_detection_position_gate` 两条正式样例；这一层先转入现场联调和使用说明收口
 2. [industrial-extension-node-plan.md](industrial-extension-node-plan.md) 第二阶段首轮传统视觉节点已接通：`custom.opencv.template-match / custom.opencv.caliper-edge / core.vision.edge-break-check / core.vision.multi-part-presence-check`
 3. 工业装配 / 位置关系类当前已先补上 `core.vision.pair-offset-check`、`core.vision.reference-mark-align-check`、`core.vision.spacing-check` 与 `core.vision.sequence-order-check`，分别用于检查双零件相对装配偏移、参考特征到标记特征的对位偏移、中心距/边间距超差，以及左右或上下方向的排列顺序；同类多目标场景当前也可直接使用 `leftmost / rightmost / topmost / bottommost` 选择策略
 4. 这一组装配 / 位置关系类首轮核心节点当前已收齐；如果继续沿这条线推进，更自然的是补 1 条 checked-in workflow 样例，把装配顺序与间距规则串成现场模板

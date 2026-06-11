@@ -23,7 +23,7 @@ from backend.service.application.models.yolox_detection_training import (
     _build_checkpoint_state,
     _load_resume_checkpoint,
 )
-from backend.service.application.models.yolox_model_service import SqlAlchemyYoloXModelService
+from backend.service.application.models.model_service import SqlAlchemyModelService
 from backend.service.application.models.yolox_training_service import YOLOX_TRAINING_QUEUE_NAME
 from backend.service.application.tasks.task_service import AppendTaskEventRequest, SqlAlchemyTaskService
 from backend.service.domain.datasets.dataset_export import DatasetExport
@@ -1245,7 +1245,7 @@ def test_register_latest_checkpoint_model_version_for_paused_task(
         assert validation_session_response.status_code == 201
         assert validation_session_response.json()["labels"] == ["bolt"]
 
-        model_service = SqlAlchemyYoloXModelService(session_factory=session_factory)
+        model_service = SqlAlchemyModelService(session_factory=session_factory)
         model_version = model_service.get_model_version(payload["model_version_id"])
         assert model_version is not None
         assert model_version.training_task_id == task_id

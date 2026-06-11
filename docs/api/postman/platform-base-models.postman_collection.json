@@ -164,11 +164,11 @@
     },
     {
       "key": "checkpointStorageUri",
-      "value": "models/pretrained/yolox/nano/default/checkpoints/yolox_nano.pth"
+      "value": "models/pretrained/yolox/detection/nano/default/checkpoints/yolox_nano.pth"
     },
     {
       "key": "catalogManifestObjectKey",
-      "value": "models/pretrained/yolox/nano/default/manifest.json"
+      "value": "models/pretrained/yolox/detection/nano/default/manifest.json"
     },
     {
       "key": "accessToken",

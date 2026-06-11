@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from backend.service.application.errors import ServiceConfigurationError
-from backend.service.application.models.yolox_model_service import YoloXPretrainedRegistrationRequest
+from backend.service.application.models.model_service import PretrainedRegistrationRequest
 from backend.service.application.models.yolov8_model_service import SqlAlchemyYoloV8ModelService
 from backend.service.application.models.yolo11_model_service import SqlAlchemyYolo11ModelService
 from backend.service.application.models.yolo26_model_service import SqlAlchemyYolo26ModelService
@@ -87,7 +87,7 @@ class YoloPrimaryPretrainedModelCatalogSeeder:
                     model_type=model_type,
                 )
                 model_service.register_pretrained(
-                    YoloXPretrainedRegistrationRequest(
+                    PretrainedRegistrationRequest(
                         model_name=entry.model_name,
                         model_version_id=entry.model_version_id,
                         checkpoint_file_id=entry.checkpoint_file_id,

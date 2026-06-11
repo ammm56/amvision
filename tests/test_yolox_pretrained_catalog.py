@@ -10,7 +10,7 @@ from backend.service.application.models.pretrained_catalog import (
     YOLOX_PRETRAINED_CATALOG_ROOT,
     YoloXPretrainedModelCatalogSeeder,
 )
-from backend.service.application.models.yolox_model_service import SqlAlchemyYoloXModelService
+from backend.service.application.models.model_service import SqlAlchemyModelService
 from backend.service.domain.models.model_records import PLATFORM_BASE_MODEL_SCOPE
 from backend.service.infrastructure.db.session import DatabaseSettings, SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import DatasetStorageSettings, LocalDatasetStorage
@@ -59,7 +59,7 @@ def test_yolox_pretrained_catalog_seeder_registers_disk_models(tmp_path: Path) -
 
     YoloXPretrainedModelCatalogSeeder().seed(runtime)
 
-    model_service = SqlAlchemyYoloXModelService(session_factory=session_factory)
+    model_service = SqlAlchemyModelService(session_factory=session_factory)
     model_version = model_service.get_model_version("model-version-pretrained-yolox-nano")
     assert model_version is not None
     assert model_version.source_kind == "pretrained-reference"
@@ -71,10 +71,10 @@ def test_yolox_pretrained_catalog_seeder_registers_disk_models(tmp_path: Path) -
     checkpoint_file = next(file for file in model_files if file.file_type == "yolox-checkpoint")
     assert checkpoint_file.project_id is None
     assert checkpoint_file.storage_uri == (
-        "models/pretrained/yolox/nano/default/checkpoints/yolox_nano.pth"
+        "models/pretrained/yolox/detection/nano/default/checkpoints/yolox_nano.pth"
     )
     assert model_version.metadata["catalog_manifest_object_key"] == (
-        "models/pretrained/yolox/nano/default/manifest.json"
+        "models/pretrained/yolox/detection/nano/default/manifest.json"
     )
 
     session_factory.engine.dispose()

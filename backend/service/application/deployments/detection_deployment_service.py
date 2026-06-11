@@ -7,9 +7,9 @@ from dataclasses import dataclass, field
 from backend.service.application.detection_backend_registry import (
     get_detection_backend_registration,
 )
-from backend.service.application.deployments.yolox_deployment_service import (
-    SqlAlchemyYoloXDeploymentService,
-    YoloXDeploymentInstanceView as DetectionDeploymentInstanceView,
+from backend.service.application.deployments.deployment_instance_service import (
+    DeploymentInstanceView as DetectionDeploymentInstanceView,
+    SqlAlchemyDeploymentInstanceService,
 )
 from backend.service.application.errors import InvalidRequestError, ServiceConfigurationError
 from backend.service.application.runtime.rfdetr_runtime_target import (
@@ -57,7 +57,7 @@ _RUNTIME_TARGET_RESOLVER_BY_MODEL_TYPE: dict[str, type] = {
 }
 
 
-class SqlAlchemyDetectionDeploymentService(SqlAlchemyYoloXDeploymentService):
+class SqlAlchemyDetectionDeploymentService(SqlAlchemyDeploymentInstanceService):
     """按模型分类分发 runtime target resolver 的 detection 部署服务。"""
 
     def create_deployment_instance(

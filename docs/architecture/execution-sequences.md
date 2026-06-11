@@ -262,7 +262,7 @@ sequenceDiagram
 ## 部署推理链
 
 - REST 入口：[backend/service/api/rest/v1/routes/yolox_inference_tasks.py](../../backend/service/api/rest/v1/routes/yolox_inference_tasks.py)
-- Deployment 服务：[backend/service/application/deployments/yolox_deployment_service.py](../../backend/service/application/deployments/yolox_deployment_service.py)
+- Deployment 服务：[backend/service/application/deployments/deployment_instance_service.py](../../backend/service/application/deployments/deployment_instance_service.py)
 - 推理监督器：[backend/service/application/runtime/deployment_process_supervisor.py](../../backend/service/application/runtime/deployment_process_supervisor.py)
 
 ```mermaid
@@ -270,7 +270,7 @@ sequenceDiagram
     autonumber
     actor Client as 调用方
     participant API as infer_yolox_deployment_instance
-    participant DeploySvc as SqlAlchemyYoloXDeploymentService
+    participant DeploySvc as SqlAlchemyDeploymentInstanceService
     participant DB as DeploymentInstance / metadata
     participant SyncSup as DeploymentProcessSupervisor(sync)
     participant Child as deployment process worker
@@ -320,7 +320,7 @@ sequenceDiagram
     autonumber
     actor Client as 调用方
     participant API as infer_yolox_deployment_instance
-    participant DeploySvc as SqlAlchemyYoloXDeploymentService
+    participant DeploySvc as SqlAlchemyDeploymentInstanceService
     participant SyncSup as DeploymentProcessSupervisor(sync)
     participant Child as deployment process worker
 

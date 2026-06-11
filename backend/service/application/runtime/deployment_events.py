@@ -11,7 +11,7 @@ from backend.service.application.events import ServiceEvent
 
 
 @dataclass(frozen=True)
-class YoloXDeploymentProcessEvent:
+class DetectionDeploymentProcessEvent:
     """描述一条 deployment 进程生命周期或健康事件。"""
 
     deployment_instance_id: str
@@ -31,7 +31,7 @@ def build_deployment_events_object_key(deployment_instance_id: str) -> str:
     """返回指定 deployment 事件文件的相对 object key。"""
 
     normalized_deployment_instance_id = deployment_instance_id.strip()
-    return f"models/yolox/deployment-instances/{normalized_deployment_instance_id}/events.json"
+    return f"models/detection/deployment-instances/{normalized_deployment_instance_id}/events.json"
 
 
 def resolve_deployment_event_lock(deployment_instance_id: str) -> Lock:
@@ -53,7 +53,7 @@ def read_deployment_process_events(
     after_sequence: int | None = None,
     runtime_mode: str | None = None,
     limit: int | None = None,
-) -> tuple[YoloXDeploymentProcessEvent, ...]:
+) -> tuple[DetectionDeploymentProcessEvent, ...]:
     """从本地 object store 读取 deployment 事件列表。
 
     参数：
@@ -64,7 +64,7 @@ def read_deployment_process_events(
     - limit：可选返回条数上限；为空时返回全部命中的事件。
 
     返回：
-    - tuple[YoloXDeploymentProcessEvent, ...]：按 sequence 升序排列的事件列表。
+    - tuple[DetectionDeploymentProcessEvent, ...]：按 sequence 升序排列的事件列表。
     """
 
     if after_sequence is not None and after_sequence < 0:
@@ -85,7 +85,7 @@ def read_deployment_process_events(
     if not isinstance(payload, list):
         return ()
 
-    filtered_events: list[YoloXDeploymentProcessEvent] = []
+    filtered_events: list[DetectionDeploymentProcessEvent] = []
     normalized_runtime_mode = runtime_mode.strip() if isinstance(runtime_mode, str) else None
     for item in payload:
         if not isinstance(item, dict):
@@ -115,7 +115,7 @@ def read_deployment_process_events(
             continue
         payload_value = item.get("payload") if isinstance(item.get("payload"), dict) else {}
         filtered_events.append(
-            YoloXDeploymentProcessEvent(
+            DetectionDeploymentProcessEvent(
                 deployment_instance_id=deployment_instance_id,
                 runtime_mode=item_runtime_mode,
                 sequence=sequence,
@@ -135,7 +135,7 @@ def write_deployment_process_events(
     *,
     dataset_storage_root_dir: str,
     deployment_instance_id: str,
-    events: tuple[YoloXDeploymentProcessEvent, ...],
+    events: tuple[DetectionDeploymentProcessEvent, ...],
 ) -> None:
     """把 deployment 事件列表写回本地 object store。"""
 
@@ -163,7 +163,7 @@ def write_deployment_process_events(
 
 
 def build_deployment_process_service_event(
-    event: YoloXDeploymentProcessEvent,
+    event: DetectionDeploymentProcessEvent,
 ) -> ServiceEvent:
     """把 deployment 事件转换为统一 ServiceEvent。"""
 

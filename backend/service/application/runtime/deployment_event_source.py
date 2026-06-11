@@ -5,13 +5,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from backend.service.application.runtime.deployment_events import (
-    YoloXDeploymentProcessEvent,
+    DetectionDeploymentProcessEvent,
     read_deployment_process_events,
 )
 
 
 @dataclass(frozen=True)
-class YoloXDeploymentEventSource:
+class DetectionDeploymentEventSource:
     """描述 deployment 历史事件读取 helper。
 
     字段：
@@ -27,7 +27,7 @@ class YoloXDeploymentEventSource:
         after_sequence: int | None = None,
         runtime_mode: str | None = None,
         limit: int | None = None,
-    ) -> tuple[YoloXDeploymentProcessEvent, ...]:
+    ) -> tuple[DetectionDeploymentProcessEvent, ...]:
         """按 deployment id 读取历史事件列表。
 
         参数：
@@ -37,7 +37,7 @@ class YoloXDeploymentEventSource:
         - limit：可选返回条数上限；为空时返回全部命中的事件。
 
         返回：
-        - tuple[YoloXDeploymentProcessEvent, ...]：按序读取到的 deployment 历史事件。
+        - tuple[DetectionDeploymentProcessEvent, ...]：按序读取到的 deployment 历史事件。
         """
 
         return read_deployment_process_events(

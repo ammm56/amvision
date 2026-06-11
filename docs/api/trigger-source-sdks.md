@@ -153,7 +153,7 @@ sdks/
 │  ├─ examples/
 │  └─ tests/
 └─ examples/
-   ├─ 04-yolox-deployment-infer-opencv-health/
+   ├─ 04-detection-deployment-infer-opencv-health/
    └─ 05-opencv-process-save-image/
 ```
 

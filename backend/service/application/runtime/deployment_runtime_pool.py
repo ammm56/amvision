@@ -11,9 +11,9 @@ from backend.service.application.runtime.detection_model_runtime import (
     DetectionModelRuntime,
     DetectionModelRuntimeSession,
 )
-from backend.service.application.runtime.yolox_predictor import (
-    YoloXPredictionExecutionResult,
-    YoloXPredictionRequest,
+from backend.service.application.runtime.detection_runtime_contracts import (
+    DetectionPredictionExecutionResult,
+    DetectionPredictionRequest,
 )
 from backend.service.application.runtime.runtime_target import RuntimeTargetSnapshot
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
@@ -107,7 +107,7 @@ class DeploymentRuntimeExecution:
 
     deployment_instance_id: str
     instance_id: str
-    execution_result: YoloXPredictionExecutionResult
+    execution_result: DetectionPredictionExecutionResult
 
 
 @dataclass
@@ -209,7 +209,7 @@ class DeploymentRuntimePool:
         self,
         *,
         config: DeploymentRuntimePoolConfig,
-        request: YoloXPredictionRequest,
+        request: DetectionPredictionRequest,
     ) -> DeploymentRuntimeExecution:
         """通过 runtime pool 执行一次推理请求。"""
 

@@ -355,8 +355,8 @@ barcode.protocol-nodes 当前已经采用这套维护方式，并固定通过 cu
 
 一组可直接保存的最小 JSON 示例已放在下面两个文件：
 
-- [docs/examples/workflows/yolox_deployment_detection_lifecycle.template.json](../examples/workflows/yolox_deployment_detection_lifecycle.template.json)
-- [docs/examples/workflows/yolox_deployment_detection_lifecycle.application.json](../examples/workflows/yolox_deployment_detection_lifecycle.application.json)
+- [docs/examples/workflows/detection_deployment_lifecycle.template.json](../examples/workflows/detection_deployment_lifecycle.template.json)
+- [docs/examples/workflows/detection_deployment_lifecycle.application.json](../examples/workflows/detection_deployment_lifecycle.application.json)
 
 这组示例复用已有 deployment_instance_id，按 sync deployment 通道执行 start -> warmup -> detection -> health -> stop，并把 start、warmup、detections、health、stop 五个结果作为 template outputs 暴露给 FlowApplication。
 
@@ -383,11 +383,11 @@ barcode.protocol-nodes 当前已经采用这套维护方式，并固定通过 cu
 
 上面两份文件保持 contract 示例角色，继续使用 docs/examples 下的演示路径。面向真实 workflow object key 路径、真实 save、preview-run、app-runtime create 和 invoke 请求体，以及 Postman 手工测试的独立 JSON 示例，已另外放到下面这些文件：
 
-- [docs/api/examples/workflows/00-short-dev-examples/yolox_deployment_detection_lifecycle_real_path/save-template.request.json](../api/examples/workflows/00-short-dev-examples/yolox_deployment_detection_lifecycle_real_path/save-template.request.json)
-- [docs/api/examples/workflows/00-short-dev-examples/yolox_deployment_detection_lifecycle_real_path/save-application.request.json](../api/examples/workflows/00-short-dev-examples/yolox_deployment_detection_lifecycle_real_path/save-application.request.json)
-- [docs/api/examples/workflows/00-short-dev-examples/yolox_deployment_detection_lifecycle_real_path/preview-run.request.json](../api/examples/workflows/00-short-dev-examples/yolox_deployment_detection_lifecycle_real_path/preview-run.request.json)
-- [docs/api/examples/workflows/00-short-dev-examples/yolox_deployment_detection_lifecycle_real_path/app-runtime.create.request.json](../api/examples/workflows/00-short-dev-examples/yolox_deployment_detection_lifecycle_real_path/app-runtime.create.request.json)
-- [docs/api/examples/workflows/00-short-dev-examples/yolox_deployment_detection_lifecycle_real_path/app-runtime.invoke.request.json](../api/examples/workflows/00-short-dev-examples/yolox_deployment_detection_lifecycle_real_path/app-runtime.invoke.request.json)
+- [docs/api/examples/workflows/00-short-dev-examples/detection_deployment_lifecycle_real_path/save-template.request.json](../api/examples/workflows/00-short-dev-examples/detection_deployment_lifecycle_real_path/save-template.request.json)
+- [docs/api/examples/workflows/00-short-dev-examples/detection_deployment_lifecycle_real_path/save-application.request.json](../api/examples/workflows/00-short-dev-examples/detection_deployment_lifecycle_real_path/save-application.request.json)
+- [docs/api/examples/workflows/00-short-dev-examples/detection_deployment_lifecycle_real_path/preview-run.request.json](../api/examples/workflows/00-short-dev-examples/detection_deployment_lifecycle_real_path/preview-run.request.json)
+- [docs/api/examples/workflows/00-short-dev-examples/detection_deployment_lifecycle_real_path/app-runtime.create.request.json](../api/examples/workflows/00-short-dev-examples/detection_deployment_lifecycle_real_path/app-runtime.create.request.json)
+- [docs/api/examples/workflows/00-short-dev-examples/detection_deployment_lifecycle_real_path/app-runtime.invoke.request.json](../api/examples/workflows/00-short-dev-examples/detection_deployment_lifecycle_real_path/app-runtime.invoke.request.json)
 - [docs/api/workflows.md](../api/workflows.md)
 - [docs/api/postman/workflow-runtime.postman_collection.json](../api/postman/workflow-runtime.postman_collection.json)
 

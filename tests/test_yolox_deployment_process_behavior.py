@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from threading import Thread
 
-from backend.service.application.deployments.yolox_deployment_service import (
+from backend.service.application.deployments.deployment_instance_service import (
     _resolve_process_runtime_behavior,
 )
 from backend.service.application.runtime.deployment_process_supervisor import (
@@ -30,7 +30,7 @@ from backend.service.application.runtime.deployment_process_worker import (
 from backend.service.application.runtime.deployment_runtime_pool import (
     DeploymentRuntimePoolConfig,
 )
-from backend.service.application.runtime.yolox_predictor import YoloXPredictionRequest
+from backend.service.application.runtime.detection_runtime_contracts import DetectionPredictionRequest
 from backend.service.application.runtime.runtime_target import RuntimeTargetSnapshot
 from backend.service.settings import BackendServiceDeploymentProcessSupervisorConfig
 
@@ -54,13 +54,13 @@ class _FakeRuntimePool:
         self.stop_state = stop_state
         self.error_message = error_message
         self.call_count = 0
-        self.requests: list[YoloXPredictionRequest] = []
+        self.requests: list[DetectionPredictionRequest] = []
 
     def run_inference(
         self,
         *,
         config: DeploymentRuntimePoolConfig,
-        request: YoloXPredictionRequest,
+        request: DetectionPredictionRequest,
     ) -> None:
         """记录一次 fake 推理调用。
 
@@ -161,7 +161,7 @@ def test_run_dummy_warmup_passes_executes_requested_count(tmp_path: Path) -> Non
         runtime_target=_build_runtime_target(tmp_path),
         instance_count=1,
     )
-    dummy_request = YoloXPredictionRequest(
+    dummy_request = DetectionPredictionRequest(
         input_image_bytes=b"dummy-image-bytes",
         score_threshold=0.3,
         save_result_image=False,
@@ -183,7 +183,7 @@ def test_keep_warm_loop_runs_after_activation_and_stops_cleanly(tmp_path: Path) 
     """验证 keep-warm 线程激活后会执行 dummy infer，并能及时退出。"""
 
     keep_warm_state = _KeepWarmState(
-        dummy_request=YoloXPredictionRequest(
+        dummy_request=DetectionPredictionRequest(
             input_image_bytes=b"dummy-image-bytes",
             score_threshold=0.3,
             save_result_image=False,
@@ -231,7 +231,7 @@ def test_keep_warm_loop_rolls_success_counter_and_exposes_rollover_count(tmp_pat
     """验证 keep-warm 成功计数到达安全上限后会 rollover，并继续通过快照对外可观测。"""
 
     keep_warm_state = _KeepWarmState(
-        dummy_request=YoloXPredictionRequest(
+        dummy_request=DetectionPredictionRequest(
             input_image_bytes=b"dummy-image-bytes",
             score_threshold=0.3,
             save_result_image=False,
@@ -283,7 +283,7 @@ def test_snapshot_keep_warm_state_exposes_last_error(tmp_path: Path) -> None:
     """验证 keep-warm 状态快照会暴露最近一次失败错误。"""
 
     keep_warm_state = _KeepWarmState(
-        dummy_request=YoloXPredictionRequest(
+        dummy_request=DetectionPredictionRequest(
             input_image_bytes=b"dummy-image-bytes",
             score_threshold=0.3,
             save_result_image=False,

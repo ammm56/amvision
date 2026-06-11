@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from backend.service.application.models.yolox_model_service import (
-    SqlAlchemyYoloXModelService,
-    YoloXBuildRegistration as Yolo11BuildRegistration,
-    YoloXPretrainedRegistrationRequest as Yolo11PretrainedRegistrationRequest,
-    YoloXTrainingOutputRegistration as Yolo11TrainingOutputRegistration,
+from backend.service.application.models.model_service import (
+    ModelBuildRegistration as Yolo11BuildRegistration,
+    PretrainedRegistrationRequest as Yolo11PretrainedRegistrationRequest,
+    SqlAlchemyModelService,
+    TrainingOutputRegistration as Yolo11TrainingOutputRegistration,
 )
 from backend.service.domain.files.detection_model_file_types import YOLO11_DETECTION_FILE_TYPES
 from backend.service.domain.models.yolo11_model_spec import (
@@ -16,7 +16,7 @@ from backend.service.domain.models.yolo11_model_spec import (
 from backend.service.infrastructure.db.session import SessionFactory
 
 
-class SqlAlchemyYolo11ModelService(SqlAlchemyYoloXModelService):
+class SqlAlchemyYolo11ModelService(SqlAlchemyModelService):
     """基于通用登记逻辑的 YOLO11 模型服务。"""
 
     def __init__(

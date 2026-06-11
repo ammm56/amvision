@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from backend.service.application.runtime.yolox_predictor import (
+from backend.service.application.runtime.yolox_detection_runtime import (
     OpenVINOYoloXRuntimeSession as OpenVINODetectionRuntimeSessionBase,
     TensorRTYoloXRuntimeSession as TensorRTDetectionRuntimeSessionBase,
     _DEFAULT_NMS_THRESHOLD as DEFAULT_DETECTION_NMS_THRESHOLD,
@@ -78,4 +78,3 @@ __all__ = [
     "resolve_tensorrt_dtype_name",
     "resolve_tensorrt_io_tensor_name",
 ]
-

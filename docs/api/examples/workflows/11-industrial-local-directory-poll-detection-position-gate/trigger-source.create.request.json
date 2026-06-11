@@ -1,0 +1,66 @@
+{
+    "trigger_source_id":  "directory-poll-trigger-source-11",
+    "project_id":  "project-1",
+    "display_name":  "Directory Poll TriggerSource 11 Industrial Detection Position Gate",
+    "trigger_kind":  "directory-poll",
+    "workflow_runtime_id":  "{{workflowRuntimeId}}",
+    "submit_mode":  "async",
+    "enabled":  false,
+    "transport_config":  {
+                             "directory_path":  "D:/cases/line-e/incoming",
+                             "recursive":  false,
+                             "include_hidden":  false,
+                             "glob_pattern":  "*",
+                             "extensions":  [
+                                                "png",
+                                                "jpg",
+                                                "jpeg"
+                                            ],
+                             "sort_by":  "modified_time",
+                             "descending":  false,
+                             "dedupe_by":  "path",
+                             "batch_size":  4,
+                             "scan_interval_seconds":  1,
+                             "min_stable_age_seconds":  1.0,
+                             "persist_checkpoint":  true
+                         },
+    "input_binding_mapping":  {
+                                  "request_trigger_payload":  {
+                                                                  "source":  "payload",
+                                                                  "payload_type_id":  "response-body.v1"
+                                                              },
+                                  "request_trigger_event":  {
+                                                                "source":  "event",
+                                                                "payload_type_id":  "response-body.v1"
+                                                            },
+                                  "deployment_request":  {
+                                                             "value":  {
+                                                                           "value":  {
+                                                                                         "deployment_instance_id":  "{{deploymentInstanceId}}"
+                                                                                     }
+                                                                       },
+                                                             "payload_type_id":  "value.v1"
+                                                         }
+                              },
+    "result_mapping":  {
+                           "result_binding":  "batch_record",
+                           "result_mode":  "accepted-then-query"
+                       },
+    "default_execution_metadata":  {
+                                       "scenario":  "industrial-local-directory-poll-detection-position-gate",
+                                       "trigger_source":  "directory-poll",
+                                       "trace_level":  "none",
+                                       "retain_trace_enabled":  false,
+                                       "retain_node_records_enabled":  false
+                                   },
+    "ack_policy":  "ack-after-run-created",
+    "result_mode":  "accepted-then-query",
+    "debounce_window_ms":  0,
+    "idempotency_key_path":  "payload.batch_id",
+    "metadata":  {
+                     "example_kind":  "industrial-local-directory-poll-detection-position-gate",
+                     "station_id":  "line-e-01",
+                     "line_id":  "line-e"
+                 }
+}
+

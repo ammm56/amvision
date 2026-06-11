@@ -7,9 +7,9 @@ from dataclasses import dataclass, field
 from backend.service.application.classification_backend_registry import (
     get_classification_backend_registration,
 )
-from backend.service.application.deployments.yolox_deployment_service import (
-    SqlAlchemyYoloXDeploymentService,
-    YoloXDeploymentInstanceView as ClassificationDeploymentInstanceView,
+from backend.service.application.deployments.deployment_instance_service import (
+    DeploymentInstanceView as ClassificationDeploymentInstanceView,
+    SqlAlchemyDeploymentInstanceService,
 )
 from backend.service.application.errors import InvalidRequestError, ServiceConfigurationError
 from backend.service.application.runtime.yolo11_runtime_target import (
@@ -52,7 +52,7 @@ _RUNTIME_TARGET_RESOLVER_BY_MODEL_TYPE: dict[str, type] = {
 }
 
 
-class SqlAlchemyClassificationDeploymentService(SqlAlchemyYoloXDeploymentService):
+class SqlAlchemyClassificationDeploymentService(SqlAlchemyDeploymentInstanceService):
     """按模型分类分发 runtime target resolver 的 classification 部署服务。"""
 
     def create_deployment_instance(

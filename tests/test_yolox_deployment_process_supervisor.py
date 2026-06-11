@@ -14,7 +14,7 @@ from backend.service.application.runtime.deployment_process_supervisor import (
     DeploymentProcessConfig,
     DeploymentProcessSupervisor,
 )
-from backend.service.application.runtime.yolox_predictor import YoloXPredictionRequest
+from backend.service.application.runtime.detection_runtime_contracts import DetectionPredictionRequest
 from backend.service.application.runtime.safe_counter import JSON_SAFE_INTEGER_MAX
 from backend.service.application.runtime.runtime_target import RuntimeTargetSnapshot
 from backend.service.settings import BackendServiceDeploymentProcessSupervisorConfig
@@ -67,7 +67,7 @@ def test_deployment_process_supervisor_supports_lifecycle_and_auto_restart(tmp_p
 
         execution_1 = supervisor.run_inference(
             config=config,
-            request=YoloXPredictionRequest(
+            request=DetectionPredictionRequest(
                 input_uri="runtime-inputs/image-1.jpg",
                 score_threshold=0.3,
                 save_result_image=True,
@@ -76,7 +76,7 @@ def test_deployment_process_supervisor_supports_lifecycle_and_auto_restart(tmp_p
         )
         execution_2 = supervisor.run_inference(
             config=config,
-            request=YoloXPredictionRequest(
+            request=DetectionPredictionRequest(
                 input_uri="runtime-inputs/image-2.jpg",
                 score_threshold=0.3,
                 save_result_image=True,
@@ -114,7 +114,7 @@ def test_deployment_process_supervisor_supports_lifecycle_and_auto_restart(tmp_p
         with pytest.raises(InvalidRequestError):
             supervisor.run_inference(
                 config=config,
-                request=YoloXPredictionRequest(
+                request=DetectionPredictionRequest(
                     input_uri="runtime-inputs/image-3.jpg",
                     score_threshold=0.3,
                     save_result_image=False,

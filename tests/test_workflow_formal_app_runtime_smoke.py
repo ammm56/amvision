@@ -12,9 +12,9 @@ import pytest
 from backend.contracts.workflows.workflow_graph import FlowApplication, WorkflowGraphTemplate
 from backend.nodes.local_node_pack_loader import LocalNodePackLoader
 from backend.nodes.node_catalog_registry import NodeCatalogRegistry
-from backend.service.application.deployments.yolox_deployment_service import (
-    SqlAlchemyYoloXDeploymentService,
-    YoloXDeploymentInstanceView,
+from backend.service.application.deployments.deployment_instance_service import (
+    DeploymentInstanceView,
+    SqlAlchemyDeploymentInstanceService,
 )
 from backend.service.application.errors import ServiceConfigurationError
 from backend.service.domain.deployments.deployment_instance import DeploymentInstance
@@ -925,7 +925,7 @@ def _install_tracked_deployment_service(
     return tracked_service
 
 
-class _TrackedDeploymentService(SqlAlchemyYoloXDeploymentService):
+class _TrackedDeploymentService(SqlAlchemyDeploymentInstanceService):
     """用于 end-to-end cleanup 烟测的可跟踪 deployment service。"""
 
     def __init__(self, runtime_context: WorkflowServiceNodeRuntimeContext) -> None:
@@ -965,7 +965,7 @@ class _TrackedDeploymentService(SqlAlchemyYoloXDeploymentService):
         with self._open_unit_of_work() as unit_of_work:
             unit_of_work.deployments.save_deployment_instance(deployment_instance)
             unit_of_work.commit()
-        return YoloXDeploymentInstanceView(
+        return DeploymentInstanceView(
             deployment_instance_id=deployment_instance.deployment_instance_id,
             project_id=deployment_instance.project_id,
             display_name=deployment_instance.display_name,

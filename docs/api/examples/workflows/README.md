@@ -23,15 +23,15 @@
 
 `06-*`、`07-*`、`08-*`、`09-*` 不是只保留 TriggerSource 特例接口；Save Template、Save Application、Preview Run、Create App Runtime、Invoke App Runtime 和 Create Workflow Run 仍然完整保留，TriggerSource 请求只是额外增加的协议入口调试步骤。
 
-`09-*` 当前仍然复用已经 checked-in 的 `docs/examples/workflows/industrial_local_directory_watch_yolox_position_gate.template.json` 与 `industrial_local_directory_watch_yolox_position_gate.application.json` 作为上游源，但为了和其他正式场景保持一致，也继续补齐 `save-template.request.json` 与 `save-application.request.json`。这样 Postman collection、API 请求体示例和 checked-in workflow 源 JSON 可以沿同一套完整调试链路收口。
+`09-*` 当前仍然复用已经 checked-in 的 `docs/examples/workflows/industrial_local_directory_watch_detection_position_gate.template.json` 与 `industrial_local_directory_watch_detection_position_gate.application.json` 作为上游源，但为了和其他正式场景保持一致，也继续补齐 `save-template.request.json` 与 `save-application.request.json`。这样 Postman collection、API 请求体示例和 checked-in workflow 源 JSON 可以沿同一套完整调试链路收口。
 
-`09-*` 的实际导入变量、改值位置和推荐联调顺序见 [docs/api/postman/workflows/09-industrial-local-directory-watch-yolox-position-gate/README.md](../../postman/workflows/09-industrial-local-directory-watch-yolox-position-gate/README.md)。
+`09-*` 的实际导入变量、改值位置和推荐联调顺序见 [docs/api/postman/workflows/09-industrial-local-directory-watch-detection-position-gate/README.md](../../postman/workflows/09-industrial-local-directory-watch-detection-position-gate/README.md)。
 
 `10-*` 的实际导入变量、改值位置和推荐联调顺序见 [docs/api/postman/workflows/10-industrial-single-frame-glue-roi-delivery-bundle/README.md](../../postman/workflows/10-industrial-single-frame-glue-roi-delivery-bundle/README.md)。
 
-`11-*` 当前复用已经 checked-in 的 `docs/examples/workflows/industrial_local_directory_poll_yolox_position_gate.template.json` 与 `industrial_local_directory_poll_yolox_position_gate.application.json` 作为上游源，并把 `trigger-source.create.request.json`、synthetic preview/invoke/run 和正式 Postman 调试链一起补齐。这样 `directory-poll` 的正式配置样例、workflow 源 JSON 和调试请求体也能像 `09-*` 一样沿同一套链路收口。
+`11-*` 当前复用已经 checked-in 的 `docs/examples/workflows/industrial_local_directory_poll_detection_position_gate.template.json` 与 `industrial_local_directory_poll_detection_position_gate.application.json` 作为上游源，并把 `trigger-source.create.request.json`、synthetic preview/invoke/run 和正式 Postman 调试链一起补齐。这样 `directory-poll` 的正式配置样例、workflow 源 JSON 和调试请求体也能像 `09-*` 一样沿同一套链路收口。
 
-`11-*` 的实际导入变量、改值位置和推荐联调顺序见 [docs/api/postman/workflows/11-industrial-local-directory-poll-yolox-position-gate/README.md](../../postman/workflows/11-industrial-local-directory-poll-yolox-position-gate/README.md)。
+`11-*` 的实际导入变量、改值位置和推荐联调顺序见 [docs/api/postman/workflows/11-industrial-local-directory-poll-detection-position-gate/README.md](../../postman/workflows/11-industrial-local-directory-poll-detection-position-gate/README.md)。
 
 `dataset-package.v1` 的 preview 示例使用 JSON 内联 base64 `package_bytes` 表达小型 zip 包；正式 runtime invoke/run 示例会保留 `content_type: multipart/form-data`、`input_bindings_json` 和 `files` 字段，实际 Postman 调用使用对应 collection 中的 form-data。
 

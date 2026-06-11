@@ -9,19 +9,21 @@ from backend.contracts.buffers import BufferRef
 from backend.nodes import ExecutionImageRegistry, build_memory_image_payload
 from backend.nodes.core_nodes.deployment_detection import _deployment_detection_handler
 from backend.service.application.deployments import (
+    DetectionDeploymentPublishedInferenceGateway,
     PublishedInferenceGatewayClient,
     PublishedInferenceGatewayDispatcher,
     PublishedInferenceGatewayEventChannel,
     PublishedInferenceRequest,
-    YoloXDeploymentPublishedInferenceGateway,
 )
 from backend.service.application.models.detection_inference_task_service import (
     run_detection_inference_task,
 )
 from backend.service.application.runtime.deployment_process_supervisor import DeploymentProcessExecution
-from backend.service.application.runtime.yolox_predictor import (
-    YoloXPredictionDetection,
-    YoloXPredictionExecutionResult,
+from backend.service.application.runtime.detection_runtime_contracts import (
+    DetectionPredictionDetection,
+    DetectionPredictionExecutionResult,
+    DetectionRuntimeSessionInfo,
+    DetectionRuntimeTensorSpec,
 )
 from backend.service.application.workflows.execution_cleanup import (
     WORKFLOW_EXECUTION_CLEANUP_KIND_LOCAL_BUFFER_LEASE,
@@ -29,7 +31,6 @@ from backend.service.application.workflows.execution_cleanup import (
 )
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 from backend.service.application.workflows.service_node_runtime import WorkflowServiceNodeRuntimeContext
-from backend.workers.shared.yolox_runtime_contracts import RuntimeTensorSpec, YoloXRuntimeSessionInfo
 from tests.api_test_support import build_test_jpeg_bytes
 
 
@@ -38,7 +39,7 @@ def test_published_inference_gateway_client_calls_parent_supervisor_with_event_d
 
     context = multiprocessing.get_context("spawn")
     fake_supervisor = _FakeDeploymentSupervisor()
-    gateway = YoloXDeploymentPublishedInferenceGateway(
+    gateway = DetectionDeploymentPublishedInferenceGateway(
         deployment_service=_FakeDeploymentService(),
         deployment_process_supervisor=fake_supervisor,
     )
@@ -264,9 +265,9 @@ class _FakeDeploymentSupervisor:
         return DeploymentProcessExecution(
             deployment_instance_id=config.deployment_instance_id,
             instance_id="deployment-1:instance-0",
-            execution_result=YoloXPredictionExecutionResult(
+            execution_result=DetectionPredictionExecutionResult(
                 detections=(
-                    YoloXPredictionDetection(
+                    DetectionPredictionDetection(
                         bbox_xyxy=(4.0, 4.0, 24.0, 24.0),
                         score=0.97,
                         class_id=0,
@@ -343,13 +344,13 @@ def _build_buffer_ref(*, lease_id: str = "lease-1", media_type: str = "image/jpe
     )
 
 
-def _build_runtime_session_info() -> YoloXRuntimeSessionInfo:
+def _build_runtime_session_info() -> DetectionRuntimeSessionInfo:
     """构造测试 runtime session info。"""
 
-    return YoloXRuntimeSessionInfo(
+    return DetectionRuntimeSessionInfo(
         backend_name="fake",
         model_uri="models/model.onnx",
         device_name="cpu",
-        input_spec=RuntimeTensorSpec(name="images", shape=(1, 3, 64, 64), dtype="float32"),
-        output_spec=RuntimeTensorSpec(name="detections", shape=(1, 7), dtype="float32"),
+        input_spec=DetectionRuntimeTensorSpec(name="images", shape=(1, 3, 64, 64), dtype="float32"),
+        output_spec=DetectionRuntimeTensorSpec(name="detections", shape=(1, 7), dtype="float32"),
     )

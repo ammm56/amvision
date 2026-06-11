@@ -11,9 +11,7 @@ from backend.service.application.runtime.deployment_runtime_pool import (
     DeploymentRuntimePool,
     DeploymentRuntimePoolConfig,
 )
-from backend.service.application.runtime.yolox_predictor import (
-    YoloXPredictionRequest,
-)
+from backend.service.application.runtime.detection_runtime_contracts import DetectionPredictionRequest
 from backend.service.domain.files.yolox_file_types import YOLOX_ONNX_OPTIMIZED_FILE
 from tests.runtime_pool_test_support import (
     FakePredictionSession,
@@ -44,7 +42,7 @@ def test_runtime_pool_loads_onnxruntime_session_once_and_reuses_warmed_instance(
         runtime_target=runtime_target,
         instance_count=1,
     )
-    request = YoloXPredictionRequest(
+    request = DetectionPredictionRequest(
         score_threshold=0.1,
         save_result_image=False,
         input_image_bytes=b"fake-image-bytes",
@@ -100,7 +98,7 @@ def test_runtime_pool_marks_onnxruntime_instance_unhealthy_after_predict_failure
         runtime_target=runtime_target,
         instance_count=1,
     )
-    request = YoloXPredictionRequest(
+    request = DetectionPredictionRequest(
         score_threshold=0.1,
         save_result_image=False,
         input_image_bytes=b"fake-image-bytes",
@@ -136,9 +134,9 @@ def test_runtime_pool_keeps_instance_healthy_after_invalid_request_failure(
         def __init__(self) -> None:
             """初始化 invalid request fake session。"""
 
-            self.requests: list[YoloXPredictionRequest] = []
+            self.requests: list[DetectionPredictionRequest] = []
 
-        def predict(self, request: YoloXPredictionRequest):
+        def predict(self, request: DetectionPredictionRequest):
             """记录请求并抛出用户输入错误。"""
 
             self.requests.append(request)
@@ -161,7 +159,7 @@ def test_runtime_pool_keeps_instance_healthy_after_invalid_request_failure(
         runtime_target=runtime_target,
         instance_count=3,
     )
-    request = YoloXPredictionRequest(
+    request = DetectionPredictionRequest(
         score_threshold=0.1,
         save_result_image=False,
         input_image_bytes=b"broken-image-bytes",

@@ -22,9 +22,9 @@ from backend.service.application.models.detection_operation_rules import (
     DetectionConversionOutputFiles,
     build_detection_conversion_report_summary,
 )
-from backend.service.application.models.yolox_model_service import (
-    SqlAlchemyYoloXModelService,
-    YoloXBuildRegistration,
+from backend.service.application.models.model_service import (
+    ModelBuildRegistration,
+    SqlAlchemyModelService,
 )
 from backend.service.application.runtime.runtime_target import (
     RuntimeTargetResolveRequest,
@@ -587,12 +587,12 @@ class SqlAlchemyYoloXConversionTaskService:
     ) -> tuple[YoloXConversionBuildSummary, ...]:
         """把 runner 产出的 build 文件登记为 ModelBuild。"""
 
-        model_service = SqlAlchemyYoloXModelService(session_factory=self.session_factory)
+        model_service = SqlAlchemyModelService(session_factory=self.session_factory)
         build_summaries: list[YoloXConversionBuildSummary] = []
         for output in outputs:
             build_file_id = self._next_id("model-file")
             model_build_id = model_service.register_build(
-                YoloXBuildRegistration(
+                ModelBuildRegistration(
                     project_id=project_id,
                     source_model_version_id=source_model_version_id,
                     build_format=output.target_format,

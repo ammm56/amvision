@@ -13,10 +13,10 @@ from backend.service.application.errors import InvalidRequestError
 from backend.service.application.models.detection_async_inference_gateway import (
     serialize_detection_async_inference_execution_result,
 )
-from backend.service.application.models.yolox_model_service import (
-    SqlAlchemyYoloXModelService,
-    YoloXBuildRegistration,
-    YoloXTrainingOutputRegistration,
+from backend.service.application.models.model_service import (
+    ModelBuildRegistration,
+    SqlAlchemyModelService,
+    TrainingOutputRegistration,
 )
 from backend.service.application.runtime.deployment_process_supervisor import (
     DeploymentProcessConfig,
@@ -26,13 +26,14 @@ from backend.service.application.runtime.deployment_process_supervisor import (
     DeploymentProcessStatus,
     DeploymentProcessSupervisor,
 )
-from backend.service.application.runtime.yolox_predictor import (
-    YoloXPredictionDetection,
-    YoloXPredictionExecutionResult,
+from backend.service.application.runtime.detection_runtime_contracts import (
+    DetectionPredictionDetection,
+    DetectionPredictionExecutionResult,
+    DetectionRuntimeSessionInfo,
+    DetectionRuntimeTensorSpec,
 )
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
-from backend.workers.shared.yolox_runtime_contracts import RuntimeTensorSpec, YoloXRuntimeSessionInfo
 from tests.api_test_support import ApiTestContext, create_api_test_context, create_test_runtime
 
 
@@ -179,9 +180,9 @@ def seed_yolox_model_version(
     dataset_storage.write_bytes(checkpoint_uri, checkpoint_bytes)
     dataset_storage.write_text(labels_uri, "\n".join(labels) + "\n")
 
-    service = SqlAlchemyYoloXModelService(session_factory=session_factory)
+    service = SqlAlchemyModelService(session_factory=session_factory)
     return service.register_training_output(
-        YoloXTrainingOutputRegistration(
+        TrainingOutputRegistration(
             project_id=project_id,
             training_task_id=training_task_id,
             model_name=model_name,
@@ -236,9 +237,9 @@ def seed_yolox_model_build(
             resolved_build_uri = "projects/project-1/models/builds/build-1/yolox.tensorrt.engine"
     dataset_storage.write_bytes(resolved_build_uri, build_bytes)
 
-    service = SqlAlchemyYoloXModelService(session_factory=session_factory)
+    service = SqlAlchemyModelService(session_factory=session_factory)
     return service.register_build(
-        YoloXBuildRegistration(
+        ModelBuildRegistration(
             project_id=project_id,
             source_model_version_id=model_version_id,
             build_format=build_format,
@@ -399,9 +400,9 @@ class FakeDeploymentProcessSupervisor(DeploymentProcessSupervisor):
         return DeploymentProcessExecution(
             deployment_instance_id=config.deployment_instance_id,
             instance_id=instance_id,
-            execution_result=YoloXPredictionExecutionResult(
+            execution_result=DetectionPredictionExecutionResult(
                 detections=(
-                    YoloXPredictionDetection(
+                    DetectionPredictionDetection(
                         bbox_xyxy=(6.0, 6.0, 24.0, 24.0),
                         score=0.88,
                         class_id=0,
@@ -412,12 +413,12 @@ class FakeDeploymentProcessSupervisor(DeploymentProcessSupervisor):
                 image_width=64,
                 image_height=64,
                 preview_image_bytes=b"preview-jpg" if request_save_result_image else None,
-                runtime_session_info=YoloXRuntimeSessionInfo(
+                runtime_session_info=DetectionRuntimeSessionInfo(
                     backend_name=config.runtime_target.runtime_backend,
                     model_uri=config.runtime_target.runtime_artifact_storage_uri,
                     device_name=config.runtime_target.device_name,
-                    input_spec=RuntimeTensorSpec(name="images", shape=(1, 3, 64, 64), dtype="float32"),
-                    output_spec=RuntimeTensorSpec(name="detections", shape=(-1, 7), dtype="float32"),
+                    input_spec=DetectionRuntimeTensorSpec(name="images", shape=(1, 3, 64, 64), dtype="float32"),
+                    output_spec=DetectionRuntimeTensorSpec(name="detections", shape=(-1, 7), dtype="float32"),
                     metadata={
                         "model_version_id": config.runtime_target.model_version_id,
                         "input_uri": request_input_uri,

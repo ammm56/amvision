@@ -14,7 +14,7 @@ from backend.service.application.backends import (
     ConversionBackendRunResult,
 )
 from backend.service.application.errors import InvalidRequestError, ServiceConfigurationError
-from backend.service.application.runtime.yolox_predictor import PyTorchYoloXRuntimeSession
+from backend.service.application.runtime.yolox_detection_runtime import PyTorchYoloXRuntimeSession
 from backend.service.application.runtime.runtime_target import RuntimeTargetSnapshot
 from backend.service.domain.files.yolox_file_types import (
     YOLOX_ONNX_FILE,

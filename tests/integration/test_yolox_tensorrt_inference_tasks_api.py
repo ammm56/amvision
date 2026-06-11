@@ -12,10 +12,10 @@ import pytest
 
 from backend.queue import LocalFileQueueBackend, LocalFileQueueSettings
 from backend.service.api.app import create_app
-from backend.service.application.models.yolox_model_service import (
-    SqlAlchemyYoloXModelService,
-    YoloXBuildRegistration,
-    YoloXTrainingOutputRegistration,
+from backend.service.application.models.model_service import (
+    ModelBuildRegistration,
+    SqlAlchemyModelService,
+    TrainingOutputRegistration,
 )
 from backend.service.application.tasks.task_service import SqlAlchemyTaskService
 from backend.service.infrastructure.db.session import DatabaseSettings, SessionFactory
@@ -239,9 +239,9 @@ def _seed_model_version(
     dataset_storage.write_bytes(checkpoint_uri, b"placeholder-checkpoint")
     dataset_storage.write_text(labels_uri, "bolt\n")
 
-    service = SqlAlchemyYoloXModelService(session_factory=session_factory)
+    service = SqlAlchemyModelService(session_factory=session_factory)
     return service.register_training_output(
-        YoloXTrainingOutputRegistration(
+        TrainingOutputRegistration(
             project_id="project-1",
             training_task_id="training-tensorrt-inference-source-1",
             model_name="yolox-nano-tensorrt-inference",
@@ -293,9 +293,9 @@ def _seed_tensorrt_model_build(
         runtime_precision=runtime_precision,
     )
 
-    service = SqlAlchemyYoloXModelService(session_factory=session_factory)
+    service = SqlAlchemyModelService(session_factory=session_factory)
     return service.register_build(
-        YoloXBuildRegistration(
+        ModelBuildRegistration(
             project_id="project-1",
             source_model_version_id=model_version_id,
             build_format="tensorrt-engine",

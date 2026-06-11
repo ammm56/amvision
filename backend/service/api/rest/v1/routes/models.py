@@ -10,14 +10,14 @@ from pydantic import BaseModel, Field
 from backend.service.api.deps.auth import AuthenticatedPrincipal, require_scopes
 from backend.service.api.deps.db import get_session_factory
 from backend.service.application.errors import ResourceNotFoundError
-from backend.service.application.models.yolox_model_service import (
+from backend.service.application.models.model_service import (
     PlatformBaseModelBuildView,
     PlatformBaseModelDetailView,
     PlatformBaseModelFileView,
     PlatformBaseModelSummaryView,
     PlatformBaseModelVersionDetailView,
     PlatformBaseModelVersionSummaryView,
-    SqlAlchemyYoloXModelService,
+    SqlAlchemyModelService,
 )
 from backend.service.infrastructure.db.session import SessionFactory
 
@@ -177,7 +177,7 @@ def list_platform_base_models(
     """列出当前可见的平台基础模型。"""
 
     _ = principal
-    service = SqlAlchemyYoloXModelService(session_factory=session_factory)
+    service = SqlAlchemyModelService(session_factory=session_factory)
     models = service.list_platform_base_models(
         model_name=model_name,
         model_scale=model_scale,
@@ -199,7 +199,7 @@ def get_platform_base_model_detail(
     """按 id 返回单个平台基础模型详情。"""
 
     _ = principal
-    service = SqlAlchemyYoloXModelService(session_factory=session_factory)
+    service = SqlAlchemyModelService(session_factory=session_factory)
     model_detail = service.get_platform_base_model_detail(model_id)
     if model_detail is None:
         raise ResourceNotFoundError(
