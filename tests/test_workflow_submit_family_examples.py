@@ -99,7 +99,7 @@ from backend.service.infrastructure.object_store.local_dataset_storage import Da
             YoloXEvaluationTaskSubmission(
                 task_id="task-evaluation-1",
                 status="queued",
-                queue_name="yolox-evaluations",
+                queue_name="detection-evaluations",
                 queue_task_id="queue-evaluation-1",
                 dataset_export_id="replace-with-dataset-export-id",
                 dataset_export_manifest_key="exports/manifest.json",
@@ -242,7 +242,7 @@ def test_detection_evaluation_package_example_preview_run_waits_and_returns_pack
             return YoloXEvaluationTaskSubmission(
                 task_id="task-evaluation-1",
                 status="queued",
-                queue_name="yolox-evaluations",
+                queue_name="detection-evaluations",
                 queue_task_id="queue-evaluation-1",
                 dataset_export_id="dataset-export-1",
                 dataset_export_manifest_key="exports/manifest.json",

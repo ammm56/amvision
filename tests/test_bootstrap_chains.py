@@ -15,8 +15,8 @@ from backend.maintenance.settings import (
 from backend.workers.bootstrap import BackendWorkerBootstrap
 from backend.workers.main import build_background_task_manager
 from backend.workers.settings import (
+    BACKEND_WORKER_CONSUMER_DETECTION_EVALUATION,
     BACKEND_WORKER_CONSUMER_DETECTION_INFERENCE,
-    BACKEND_WORKER_CONSUMER_YOLOX_EVALUATION,
     BackendWorkerAppSettings,
     BackendWorkerDatasetStorageConfig,
     BackendWorkerDatabaseConfig,
@@ -52,7 +52,7 @@ def test_get_backend_worker_settings_reads_json_files_and_environment_overrides(
                 "task_manager": {
                     "enabled_consumer_kinds": [
                         "dataset-import",
-                        "yolox-evaluation",
+                        "detection-evaluation",
                         "detection-inference"
                     ],
                     "max_concurrent_tasks": 3,
@@ -88,7 +88,7 @@ def test_get_backend_worker_settings_reads_json_files_and_environment_overrides(
     assert settings.queue.root_dir == "./data/from-worker-queue-env"
     assert settings.task_manager.enabled_consumer_kinds == (
         "dataset-import",
-        "yolox-evaluation",
+        "detection-evaluation",
         "detection-inference",
     )
     assert settings.task_manager.max_concurrent_tasks == 4
@@ -145,7 +145,7 @@ def test_build_background_task_manager_respects_enabled_consumer_kinds(
         queue=BackendWorkerQueueConfig(root_dir=str(tmp_path / "queue-root")),
         task_manager=BackendWorkerTaskManagerConfig(
             enabled_consumer_kinds=(
-                BACKEND_WORKER_CONSUMER_YOLOX_EVALUATION,
+                BACKEND_WORKER_CONSUMER_DETECTION_EVALUATION,
                 BACKEND_WORKER_CONSUMER_DETECTION_INFERENCE,
             )
         ),
@@ -157,8 +157,8 @@ def test_build_background_task_manager_respects_enabled_consumer_kinds(
         manager = build_background_task_manager(runtime)
 
         assert [type(consumer).__name__ for consumer in manager.consumers] == [
-            "YoloXEvaluationQueueWorker",
-            "DetectionInferenceQueueWorker",
+            "DetectionEvaluationQueueWorker",
+            "InferenceQueueWorker",
         ]
     finally:
         runtime.session_factory.engine.dispose()

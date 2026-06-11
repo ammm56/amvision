@@ -32,7 +32,7 @@
       "yolov8-conversion",
       "yolo11-conversion",
       "yolo26-conversion",
-      "yolox-evaluation",
+      "detection-evaluation",
       "detection-inference"
     ],
     "max_concurrent_tasks": 2,

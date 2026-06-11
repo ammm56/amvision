@@ -20,7 +20,6 @@ from backend.workers.conversion.yolox_conversion_queue_worker import YoloXConver
 from backend.workers.conversion.rfdetr_conversion_queue_worker import RfdetrConversionQueueWorker
 from backend.workers.datasets.dataset_export_queue_worker import DatasetExportQueueWorker
 from backend.workers.datasets.dataset_import_queue_worker import DatasetImportQueueWorker
-from backend.workers.evaluation.yolox_evaluation_queue_worker import YoloXEvaluationQueueWorker
 from backend.workers.evaluation.yolo_primary_evaluation_queue_worker import (
     ClassificationEvaluationQueueWorker,
     SegmentationEvaluationQueueWorker,
@@ -54,7 +53,6 @@ from backend.workers.settings import (
     BACKEND_WORKER_CONSUMER_YOLOV8_TRAINING,
     BACKEND_WORKER_CONSUMER_YOLOV8_CONVERSION,
     BACKEND_WORKER_CONSUMER_YOLOX_CONVERSION,
-    BACKEND_WORKER_CONSUMER_YOLOX_EVALUATION,
     BACKEND_WORKER_CONSUMER_DETECTION_INFERENCE,
     BACKEND_WORKER_CONSUMER_YOLOX_TRAINING,
 )
@@ -147,7 +145,6 @@ _CONSUMER_FACTORIES: dict[str, _ConsumerFactory] = {
     # YOLOX
     BACKEND_WORKER_CONSUMER_YOLOX_TRAINING: _std_factory(YoloXTrainingQueueWorker, "yolox-training"),
     BACKEND_WORKER_CONSUMER_YOLOX_CONVERSION: _std_factory(YoloXConversionQueueWorker, "yolox-conversion"),
-    BACKEND_WORKER_CONSUMER_YOLOX_EVALUATION: _std_factory(YoloXEvaluationQueueWorker, "yolox-evaluation"),
     BACKEND_WORKER_CONSUMER_DETECTION_INFERENCE: _inference_factory("detection-inference"),
     # YOLOv8
     BACKEND_WORKER_CONSUMER_YOLOV8_TRAINING: _std_factory(YoloV8TrainingQueueWorker, "yolov8-training"),

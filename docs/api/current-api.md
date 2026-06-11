@@ -812,7 +812,7 @@ WebSocket 资源流的统一消息结构、控制事件和重连规则见 [docs/
   - save_result_package
   - extra_options
   - display_name
-- 当前实现会先解析 DatasetExport，再校验 ModelVersion 到 checkpoint、labels 的本地可读性，然后把任务放入 `yolox-evaluations` 队列
+- 当前实现会先解析 DatasetExport，再校验 ModelVersion 到 checkpoint、labels 的本地可读性，然后把任务放入 `detection-evaluations` 队列
 - 当前最小评估链只支持 `coco-detection-v1` 导出输入
 - 当前响应会返回：
   - task_id

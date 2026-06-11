@@ -353,9 +353,9 @@ def test_project_detail_summary_aggregates_dataset_io_and_model_runtime_slices(t
         unit_of_work.tasks.save_task(
             TaskRecord(
                 task_id="task-training-1",
-                task_kind="yolox-training",
+                task_kind="yolov8-training",
                 project_id="project-1",
-                display_name="train yolox-s",
+                display_name="train yolov8-s",
                 created_at=_now_isoformat(),
                 state="running",
             )
@@ -363,9 +363,9 @@ def test_project_detail_summary_aggregates_dataset_io_and_model_runtime_slices(t
         unit_of_work.tasks.save_task(
             TaskRecord(
                 task_id="task-evaluation-1",
-                task_kind="yolox-evaluation",
+                task_kind="detection-evaluation",
                 project_id="project-1",
-                display_name="evaluate yolox-s",
+                display_name="evaluate detection-s",
                 created_at=_now_isoformat(),
                 state="succeeded",
             )
@@ -373,11 +373,41 @@ def test_project_detail_summary_aggregates_dataset_io_and_model_runtime_slices(t
         unit_of_work.tasks.save_task(
             TaskRecord(
                 task_id="task-conversion-1",
-                task_kind="yolox-conversion",
+                task_kind="rfdetr-conversion",
                 project_id="project-1",
-                display_name="convert yolox-s",
+                display_name="convert rfdetr-s",
                 created_at=_now_isoformat(),
                 state="queued",
+            )
+        )
+        unit_of_work.tasks.save_task(
+            TaskRecord(
+                task_id="task-training-2",
+                task_kind="obb-training",
+                project_id="project-1",
+                display_name="train obb",
+                created_at=_now_isoformat(),
+                state="queued",
+            )
+        )
+        unit_of_work.tasks.save_task(
+            TaskRecord(
+                task_id="task-evaluation-2",
+                task_kind="segmentation-evaluation",
+                project_id="project-1",
+                display_name="evaluate segmentation",
+                created_at=_now_isoformat(),
+                state="failed",
+            )
+        )
+        unit_of_work.tasks.save_task(
+            TaskRecord(
+                task_id="task-conversion-2",
+                task_kind="yolo11-conversion",
+                project_id="project-1",
+                display_name="convert yolo11-s",
+                created_at=_now_isoformat(),
+                state="succeeded",
             )
         )
         unit_of_work.tasks.save_task(
@@ -410,12 +440,14 @@ def test_project_detail_summary_aggregates_dataset_io_and_model_runtime_slices(t
     assert summary["imports"]["status_counts"] == {"completed": 1}
     assert summary["exports"]["total"] == 1
     assert summary["exports"]["status_counts"] == {"running": 1}
-    assert summary["training"]["total"] == 1
-    assert summary["training"]["status_counts"] == {"running": 1}
+    assert summary["training"]["total"] == 2
+    assert summary["training"]["status_counts"] == {"queued": 1, "running": 1}
     assert summary["validation"]["total"] == 1
     assert summary["validation"]["status_counts"] == {"ready": 1}
-    assert summary["evaluation"]["status_counts"] == {"succeeded": 1}
-    assert summary["conversion"]["status_counts"] == {"queued": 1}
+    assert summary["evaluation"]["total"] == 2
+    assert summary["evaluation"]["status_counts"] == {"failed": 1, "succeeded": 1}
+    assert summary["conversion"]["total"] == 2
+    assert summary["conversion"]["status_counts"] == {"queued": 1, "succeeded": 1}
     assert summary["inference"]["status_counts"] == {"failed": 1}
 
 
