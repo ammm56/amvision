@@ -7,13 +7,15 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-import backend.service.application.models.yolox_inference_task_service as yolox_inference_task_service_module
+import backend.service.application.models.detection_inference_task_service as detection_inference_task_service_module
 from backend.queue import LocalFileQueueBackend
 from backend.service.application.tasks.task_service import SqlAlchemyTaskService
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 from backend.service.infrastructure.object_store.object_key_layout import build_public_project_file_id
-from backend.workers.inference.yolox_inference_queue_worker import YoloXInferenceQueueWorker
+from backend.workers.inference.detection_inference_queue_worker import (
+    DetectionInferenceQueueWorker,
+)
 from tests.api_test_support import build_test_headers, build_valid_test_png_bytes
 from tests.yolox_test_support import (
     create_yolox_api_test_context,
@@ -37,15 +39,15 @@ def test_create_yolox_inference_task_and_read_result_after_worker(
         dataset_storage=dataset_storage,
     )
     dataset_storage.write_bytes(_PROJECT_INFERENCE_INPUT_URI, b"fake-image")
-    worker = YoloXInferenceQueueWorker(
+    worker = DetectionInferenceQueueWorker(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
         queue_backend=queue_backend,
-        worker_id="test-yolox-inference-worker",
+        worker_id="test-detection-inference-worker",
     )
 
     def fake_run(**_kwargs):
-        return yolox_inference_task_service_module.YoloXInferenceExecutionResult(
+        return detection_inference_task_service_module.DetectionInferenceExecutionResult(
             instance_id="deployment-instance-test:instance-0",
             detections=(
                 {
@@ -70,8 +72,8 @@ def test_create_yolox_inference_task_and_read_result_after_worker(
         )
 
     monkeypatch.setattr(
-        yolox_inference_task_service_module,
-        "run_yolox_inference_task",
+        detection_inference_task_service_module,
+        "run_detection_inference_task",
         fake_run,
     )
 
@@ -124,7 +126,7 @@ def test_create_yolox_inference_task_and_read_result_after_worker(
                 raise AssertionError("worker 不应在执行阶段重新解析 deployment runtime target")
 
             monkeypatch.setattr(
-                yolox_inference_task_service_module.SqlAlchemyYoloXDeploymentService,
+                detection_inference_task_service_module.SqlAlchemyDetectionDeploymentService,
                 "resolve_inference_target",
                 fail_if_resolve_inference_target,
             )
@@ -163,8 +165,8 @@ def test_create_yolox_inference_task_and_read_result_after_worker(
             assert result_payload["payload"]["preview_image_uri"].endswith("preview.jpg")
 
         task_detail = SqlAlchemyTaskService(session_factory).get_task(task_id, include_events=True)
-        assert any(event.message == "yolox inference started" for event in task_detail.events)
-        assert any(event.message == "yolox inference completed" for event in task_detail.events)
+        assert any(event.message == "detection inference started" for event in task_detail.events)
+        assert any(event.message == "detection inference completed" for event in task_detail.events)
     finally:
         session_factory.engine.dispose()
 
@@ -186,15 +188,15 @@ def test_create_yolox_inference_task_accepts_public_project_file_id(
         project_id="project-1",
         object_key=input_object_key,
     )
-    worker = YoloXInferenceQueueWorker(
+    worker = DetectionInferenceQueueWorker(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
         queue_backend=queue_backend,
-        worker_id="test-yolox-inference-file-id-worker",
+        worker_id="test-detection-inference-file-id-worker",
     )
 
     def fake_run(**_kwargs):
-        return yolox_inference_task_service_module.YoloXInferenceExecutionResult(
+        return detection_inference_task_service_module.DetectionInferenceExecutionResult(
             instance_id="deployment-instance-test:instance-0",
             detections=(),
             latency_ms=7.5,
@@ -212,8 +214,8 @@ def test_create_yolox_inference_task_accepts_public_project_file_id(
         )
 
     monkeypatch.setattr(
-        yolox_inference_task_service_module,
-        "run_yolox_inference_task",
+        detection_inference_task_service_module,
+        "run_detection_inference_task",
         fake_run,
     )
 
@@ -287,11 +289,11 @@ def test_async_inference_task_accepts_base64_input(
         dataset_storage=dataset_storage,
     )
     async_supervisor = client.app.state.detection_async_deployment_process_supervisor
-    worker = YoloXInferenceQueueWorker(
+    worker = DetectionInferenceQueueWorker(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
         queue_backend=queue_backend,
-        worker_id="test-yolox-inference-base64-worker",
+        worker_id="test-detection-inference-base64-worker",
     )
 
     try:
@@ -359,11 +361,11 @@ def test_async_inference_task_memory_transport_uses_in_memory_base64_bytes(
         dataset_storage=dataset_storage,
     )
     async_supervisor = client.app.state.detection_async_deployment_process_supervisor
-    worker = YoloXInferenceQueueWorker(
+    worker = DetectionInferenceQueueWorker(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
         queue_backend=queue_backend,
-        worker_id="test-yolox-inference-memory-base64-worker",
+        worker_id="test-detection-inference-memory-base64-worker",
     )
     runtime_input_dir = dataset_storage.root_dir / "runtime" / "inputs" / "inference"
 
@@ -423,7 +425,7 @@ def test_async_inference_task_memory_transport_uses_in_memory_base64_bytes(
             runtime_behavior = task_detail.task.task_spec["runtime_behavior"]
             assert runtime_behavior["keep_warm_enabled"] is True
             assert runtime_behavior["keep_warm_interval_seconds"] == 0.1
-            restored_process_config = yolox_inference_task_service_module.SqlAlchemyYoloXInferenceTaskService(
+            restored_process_config = detection_inference_task_service_module.SqlAlchemyDetectionInferenceTaskService(
                 session_factory=session_factory,
                 dataset_storage=dataset_storage,
             )._build_process_config_from_task_record(
@@ -467,11 +469,11 @@ def test_async_inference_task_memory_transport_accepts_multipart_without_input_d
         dataset_storage=dataset_storage,
     )
     async_supervisor = client.app.state.detection_async_deployment_process_supervisor
-    worker = YoloXInferenceQueueWorker(
+    worker = DetectionInferenceQueueWorker(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
         queue_backend=queue_backend,
-        worker_id="test-yolox-inference-memory-upload-worker",
+        worker_id="test-detection-inference-memory-upload-worker",
     )
     runtime_input_dir = dataset_storage.root_dir / "runtime" / "inputs" / "inference"
 
@@ -921,7 +923,7 @@ def test_async_inference_task_accepts_multipart_and_uses_async_runtime_pool(
     sync_supervisor = client.app.state.detection_sync_deployment_process_supervisor
     async_supervisor = client.app.state.detection_async_deployment_process_supervisor
 
-    worker = YoloXInferenceQueueWorker(
+    worker = DetectionInferenceQueueWorker(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
         queue_backend=queue_backend,

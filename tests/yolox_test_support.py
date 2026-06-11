@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
-import backend.service.application.models.yolox_inference_task_service as yolox_inference_task_service_module
+import backend.service.application.models.detection_inference_task_service as detection_inference_task_service_module
 
 from backend.queue import LocalFileQueueBackend
 from backend.service.application.events import InMemoryServiceEventBus
@@ -522,7 +522,7 @@ def _build_fake_async_inference_gateway_handler(
     def _execute(*, process_config, request):
         """通过 fake async supervisor 执行一次 queue-backed 推理请求。"""
 
-        execution_result = yolox_inference_task_service_module.run_yolox_inference_task(
+        execution_result = detection_inference_task_service_module.run_detection_inference_task(
             deployment_process_supervisor=async_supervisor,
             process_config=process_config,
             input_uri=request.input_uri,

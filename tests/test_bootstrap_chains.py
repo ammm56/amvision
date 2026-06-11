@@ -15,6 +15,8 @@ from backend.maintenance.settings import (
 from backend.workers.bootstrap import BackendWorkerBootstrap
 from backend.workers.main import build_background_task_manager
 from backend.workers.settings import (
+    BACKEND_WORKER_CONSUMER_DETECTION_INFERENCE,
+    BACKEND_WORKER_CONSUMER_YOLOX_EVALUATION,
     BackendWorkerAppSettings,
     BackendWorkerDatasetStorageConfig,
     BackendWorkerDatabaseConfig,
@@ -22,8 +24,6 @@ from backend.workers.settings import (
     BackendWorkerTaskManagerConfig,
     BackendWorkerSettings,
     BackendWorkerWorkspaceConfig,
-    BACKEND_WORKER_CONSUMER_YOLOX_EVALUATION,
-    BACKEND_WORKER_CONSUMER_YOLOX_INFERENCE,
     get_backend_worker_settings,
 )
 
@@ -53,7 +53,7 @@ def test_get_backend_worker_settings_reads_json_files_and_environment_overrides(
                     "enabled_consumer_kinds": [
                         "dataset-import",
                         "yolox-evaluation",
-                        "yolox-inference"
+                        "detection-inference"
                     ],
                     "max_concurrent_tasks": 3,
                     "poll_interval_seconds": 2.5
@@ -89,7 +89,7 @@ def test_get_backend_worker_settings_reads_json_files_and_environment_overrides(
     assert settings.task_manager.enabled_consumer_kinds == (
         "dataset-import",
         "yolox-evaluation",
-        "yolox-inference",
+        "detection-inference",
     )
     assert settings.task_manager.max_concurrent_tasks == 4
     assert settings.task_manager.poll_interval_seconds == 2.5
@@ -146,7 +146,7 @@ def test_build_background_task_manager_respects_enabled_consumer_kinds(
         task_manager=BackendWorkerTaskManagerConfig(
             enabled_consumer_kinds=(
                 BACKEND_WORKER_CONSUMER_YOLOX_EVALUATION,
-                BACKEND_WORKER_CONSUMER_YOLOX_INFERENCE,
+                BACKEND_WORKER_CONSUMER_DETECTION_INFERENCE,
             )
         ),
     )
@@ -158,7 +158,7 @@ def test_build_background_task_manager_respects_enabled_consumer_kinds(
 
         assert [type(consumer).__name__ for consumer in manager.consumers] == [
             "YoloXEvaluationQueueWorker",
-            "YoloXInferenceQueueWorker",
+            "DetectionInferenceQueueWorker",
         ]
     finally:
         runtime.session_factory.engine.dispose()

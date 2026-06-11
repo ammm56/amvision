@@ -135,7 +135,7 @@
 - 如果 config 文件和环境变量都未提供，当前服务会回退到仓库默认值
 - `deployment_process_supervisor` 提供 deployment 子进程的默认 warmup、keep-warm 和 TensorRT 输出 host buffer 行为；DeploymentInstance 还可以通过 `metadata.deployment_process` 覆盖 `warmup_dummy_inference_count`、`warmup_dummy_image_size`、`keep_warm_enabled`、`keep_warm_interval_seconds`、`tensorrt_pinned_output_buffer_enabled` 和 `tensorrt_pinned_output_buffer_max_bytes`
 - `tensorrt_pinned_output_buffer_max_bytes` 用于限制单实例允许长期驻留的 pinned output host buffer 上限；当前超过阈值后会自动回退到 pageable memory，避免多 deployment、多实例场景下 pinned memory 累积过大
-- `async_inference_gateway.service_id` 是 async inference gateway 的稳定 owner id，会进入 inference task 的 `task_spec.async_inference_owner_id`；实际请求队列按 `service_id + deployment_instance_id` 构建为 `yolox-ai-gw-{service_id}-{deployment_id}`，其中 `deployment-instance-` 前缀会在队列名中省略。同一 backend-service 内的多个 async deployment 也会使用独立 gateway 队列和 dispatcher 线程；一次性响应队列使用 `yolox-ai-rsp-*`，响应被 worker 取走后会立即删除，TTL 清理只作为异常兜底
+- `async_inference_gateway.service_id` 是 async inference gateway 的稳定 owner id，会进入 inference task 的 `task_spec.async_inference_owner_id`；实际请求队列按 `service_id + deployment_instance_id` 构建为 `detection-ai-gw-{service_id}-{deployment_id}`，其中 `deployment-instance-` 前缀会在队列名中省略。同一 backend-service 内的多个 async deployment 也会使用独立 gateway 队列和 dispatcher 线程；一次性响应队列使用 `detection-ai-rsp-*`，响应被 worker 取走后会立即删除，TTL 清理只作为异常兜底
 
 ## 启动前要知道的事
 

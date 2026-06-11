@@ -23,8 +23,8 @@ from backend.nodes.node_catalog_registry import NodeCatalogRegistry
 from backend.service.application.datasets.dataset_export_delivery import DatasetExportPackage
 from backend.service.application.errors import ServiceConfigurationError
 from backend.service.application.models.yolox_evaluation_task_service import YoloXEvaluationTaskPackage
-from backend.service.application.models.yolox_inference_task_service import (
-    YoloXInferenceExecutionResult,
+from backend.service.application.models.detection_inference_task_service import (
+    DetectionInferenceExecutionResult,
 )
 from backend.service.application.deployments import PublishedInferenceResult
 from backend.service.application.models.yolox_training_service import (
@@ -274,7 +274,7 @@ def test_runtime_registry_loader_registers_core_service_nodes(
         "core.service.yolox-evaluation.package",
         "core.service.yolox-evaluation.submit",
         "core.service.yolox-deployment.create",
-        "core.service.yolox-inference.submit",
+        "core.service.detection-inference.submit",
         "core.model.yolox-detection",
     }
     for node_type_id in expected_node_type_ids:
@@ -660,7 +660,7 @@ def test_core_yolox_detection_node_uses_sync_runtime_context(
         """返回固定 detection 结果。"""
 
         fake_supervisor_calls["inference_kwargs"] = kwargs
-        return YoloXInferenceExecutionResult(
+        return DetectionInferenceExecutionResult(
             instance_id="instance-1",
             detections=(
                 {
@@ -802,7 +802,7 @@ def test_core_yolox_detection_node_accepts_dynamic_request_payload(
         """返回固定 detection 结果。"""
 
         fake_supervisor_calls["inference_kwargs"] = kwargs
-        return YoloXInferenceExecutionResult(
+        return DetectionInferenceExecutionResult(
             instance_id="instance-dynamic-1",
             detections=(
                 {
@@ -950,7 +950,7 @@ def test_core_yolox_detection_node_auto_starts_sync_process(
         """返回固定 detection 结果。"""
 
         fake_supervisor_calls["inference_kwargs"] = kwargs
-        return YoloXInferenceExecutionResult(
+        return DetectionInferenceExecutionResult(
             instance_id="instance-1",
             detections=(
                 {
@@ -1155,7 +1155,7 @@ def test_core_yolox_detection_node_accepts_memory_image_payload(
         """返回固定 detection 结果并记录输入参数。"""
 
         fake_supervisor_calls["inference_kwargs"] = kwargs
-        return YoloXInferenceExecutionResult(
+        return DetectionInferenceExecutionResult(
             instance_id="instance-1",
             detections=(
                 {
@@ -1256,7 +1256,7 @@ def test_core_model_inference_submit_node_auto_starts_async_process(
 
     assert (
         model_inference_submit_node.CORE_NODE_SPEC.node_definition.node_type_id
-        == "core.service.yolox-inference.submit"
+        == "core.service.detection-inference.submit"
     )
 
     custom_nodes_root_dir = tmp_path / "custom_nodes"
@@ -1322,7 +1322,7 @@ def test_core_model_inference_submit_node_auto_starts_async_process(
             return SimpleNamespace(
                 task_id="task-inference-1",
                 status="queued",
-                queue_name="yolox-inference",
+                queue_name="detection-inference",
                 queue_task_id="queue-inference-1",
                 deployment_instance_id=request.deployment_instance_id,
                 input_uri=request.input_uri,
@@ -1347,14 +1347,14 @@ def test_core_model_inference_submit_node_auto_starts_async_process(
         async_inference_service_id="backend-service-main",
     )
     template = WorkflowGraphTemplate(
-        template_id="yolox-inference-submit-auto-start-workflow",
+        template_id="detection-inference-submit-auto-start-workflow",
         template_version="1.0.0",
-        display_name="YOLOX Inference Submit Auto Start Workflow",
+        display_name="Detection Inference Submit Auto Start Workflow",
         nodes=(
             WorkflowGraphNode(node_id="input", node_type_id="core.io.template-input.image"),
             WorkflowGraphNode(
                 node_id="infer",
-                node_type_id="core.service.yolox-inference.submit",
+                node_type_id="core.service.detection-inference.submit",
                 parameters={
                     "project_id": "project-1",
                     "deployment_instance_id": "deployment-instance-1",

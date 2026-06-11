@@ -1,4 +1,4 @@
-"""YOLOX async inference gateway 队列路由测试。"""
+"""detection async inference gateway 队列路由测试。"""
 
 from __future__ import annotations
 
@@ -9,15 +9,17 @@ import pytest
 
 from backend.queue import LocalFileQueueBackend, LocalFileQueueSettings
 from backend.service.application.errors import InvalidRequestError
-from backend.service.application.models.yolox_async_inference_gateway import (
-    QueueBackedYoloXAsyncInferenceClient,
-    YoloXAsyncInferenceGatewayDispatcher,
-    YoloXAsyncInferenceGatewayDispatcherRegistry,
+from backend.service.application.models.detection_async_inference_gateway import (
+    DetectionAsyncInferenceGatewayDispatcher,
+    DetectionAsyncInferenceGatewayDispatcherRegistry,
+    QueueBackedDetectionAsyncInferenceClient,
 )
 from backend.service.application.runtime.deployment_process_supervisor import (
     DeploymentProcessConfig,
 )
-from backend.service.application.runtime.yolox_predictor import YoloXPredictionRequest
+from backend.service.application.runtime.detection_runtime_contracts import (
+    DetectionPredictionRequest,
+)
 from backend.service.application.runtime.runtime_target import RuntimeTargetSnapshot
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     DatasetStorageSettings,
@@ -49,7 +51,7 @@ def test_async_gateway_dispatcher_consumes_owner_deployment_queue(tmp_path: Path
             "runtime_session_info": {"runtime_backend": "onnxruntime"},
         }
 
-    dispatcher = YoloXAsyncInferenceGatewayDispatcher(
+    dispatcher = DetectionAsyncInferenceGatewayDispatcher(
         queue_backend=queue_backend,
         execution_handler=_execute,
         service_id="backend-service-owner-1",
@@ -60,7 +62,7 @@ def test_async_gateway_dispatcher_consumes_owner_deployment_queue(tmp_path: Path
     dispatcher.dataset_storage = dataset_storage
     dispatcher.start()
     try:
-        client = QueueBackedYoloXAsyncInferenceClient(
+        client = QueueBackedDetectionAsyncInferenceClient(
             queue_backend=queue_backend,
             request_timeout_seconds=2.0,
             response_poll_interval_seconds=0.01,
@@ -68,7 +70,7 @@ def test_async_gateway_dispatcher_consumes_owner_deployment_queue(tmp_path: Path
         )
         result = client.execute_inference(
             process_config=process_config,
-            request=YoloXPredictionRequest(
+            request=DetectionPredictionRequest(
                 input_image_bytes=b"fake-image",
                 score_threshold=0.3,
                 save_result_image=True,
@@ -80,9 +82,9 @@ def test_async_gateway_dispatcher_consumes_owner_deployment_queue(tmp_path: Path
 
     assert captured_deployment_ids == ["deployment-instance-1"]
     assert result["instance_id"] == "deployment-instance-1:instance-0"
-    assert not (tmp_path / "queue" / "yolox-async-inference-gateway").exists()
-    assert not list((tmp_path / "queue").glob("yolox-ai-rsp-*"))
-    assert dispatcher.request_queue_name == "yolox-ai-gw-backend-service-owner-1-1"
+    assert not (tmp_path / "queue" / "detection-async-inference-gateway").exists()
+    assert not list((tmp_path / "queue").glob("detection-ai-rsp-*"))
+    assert dispatcher.request_queue_name == "detection-ai-gw-backend-service-owner-1-1"
 
 
 def test_async_gateway_client_requires_owner_id(tmp_path: Path) -> None:
@@ -91,7 +93,7 @@ def test_async_gateway_client_requires_owner_id(tmp_path: Path) -> None:
     queue_backend = LocalFileQueueBackend(LocalFileQueueSettings(root_dir=str(tmp_path / "queue")))
     dataset_storage = LocalDatasetStorage(DatasetStorageSettings(root_dir=str(tmp_path / "files")))
     process_config = _build_process_config(dataset_storage=dataset_storage)
-    client = QueueBackedYoloXAsyncInferenceClient(
+    client = QueueBackedDetectionAsyncInferenceClient(
         queue_backend=queue_backend,
         request_timeout_seconds=0.1,
         response_poll_interval_seconds=0.01,
@@ -101,7 +103,7 @@ def test_async_gateway_client_requires_owner_id(tmp_path: Path) -> None:
     with pytest.raises(InvalidRequestError, match="owner_id"):
         client.execute_inference(
             process_config=process_config,
-            request=YoloXPredictionRequest(
+            request=DetectionPredictionRequest(
                 input_image_bytes=b"fake-image",
                 score_threshold=0.3,
                 save_result_image=True,
@@ -109,8 +111,8 @@ def test_async_gateway_client_requires_owner_id(tmp_path: Path) -> None:
             owner_id="",
         )
 
-    assert not (tmp_path / "queue" / "yolox-async-inference-gateway").exists()
-    assert not list((tmp_path / "queue").glob("yolox-ai-rsp-*"))
+    assert not (tmp_path / "queue" / "detection-async-inference-gateway").exists()
+    assert not list((tmp_path / "queue").glob("detection-ai-rsp-*"))
 
 
 def test_async_gateway_routes_multiple_service_ids_independently(tmp_path: Path) -> None:
@@ -140,7 +142,7 @@ def test_async_gateway_routes_multiple_service_ids_independently(tmp_path: Path)
 
         return _execute
 
-    dispatcher_a = YoloXAsyncInferenceGatewayDispatcher(
+    dispatcher_a = DetectionAsyncInferenceGatewayDispatcher(
         queue_backend=queue_backend,
         execution_handler=_build_execute("backend-service-a"),
         service_id="backend-service-a",
@@ -148,7 +150,7 @@ def test_async_gateway_routes_multiple_service_ids_independently(tmp_path: Path)
         poll_interval_seconds=0.01,
         response_queue_cleanup_interval_seconds=1000.0,
     )
-    dispatcher_b = YoloXAsyncInferenceGatewayDispatcher(
+    dispatcher_b = DetectionAsyncInferenceGatewayDispatcher(
         queue_backend=queue_backend,
         execution_handler=_build_execute("backend-service-b"),
         service_id="backend-service-b",
@@ -158,7 +160,7 @@ def test_async_gateway_routes_multiple_service_ids_independently(tmp_path: Path)
     )
     dispatcher_a.dataset_storage = dataset_storage
     dispatcher_b.dataset_storage = dataset_storage
-    client = QueueBackedYoloXAsyncInferenceClient(
+    client = QueueBackedDetectionAsyncInferenceClient(
         queue_backend=queue_backend,
         request_timeout_seconds=2.0,
         response_poll_interval_seconds=0.01,
@@ -169,7 +171,7 @@ def test_async_gateway_routes_multiple_service_ids_independently(tmp_path: Path)
     try:
         result_a = client.execute_inference(
             process_config=process_config,
-            request=YoloXPredictionRequest(
+            request=DetectionPredictionRequest(
                 input_image_bytes=b"a",
                 score_threshold=0.3,
                 save_result_image=False,
@@ -178,7 +180,7 @@ def test_async_gateway_routes_multiple_service_ids_independently(tmp_path: Path)
         )
         result_b = client.execute_inference(
             process_config=process_config,
-            request=YoloXPredictionRequest(
+            request=DetectionPredictionRequest(
                 input_image_bytes=b"b",
                 score_threshold=0.3,
                 save_result_image=False,
@@ -192,7 +194,7 @@ def test_async_gateway_routes_multiple_service_ids_independently(tmp_path: Path)
     assert result_a["instance_id"] == "backend-service-a:deployment-instance-1:instance-0"
     assert result_b["instance_id"] == "backend-service-b:deployment-instance-1:instance-0"
     assert captured_service_ids == ["backend-service-a", "backend-service-b"]
-    assert not list((tmp_path / "queue").glob("yolox-ai-rsp-*"))
+    assert not list((tmp_path / "queue").glob("detection-ai-rsp-*"))
 
 
 def test_async_gateway_registry_routes_multiple_deployments_independently(tmp_path: Path) -> None:
@@ -219,7 +221,7 @@ def test_async_gateway_registry_routes_multiple_deployments_independently(tmp_pa
             "runtime_session_info": {"runtime_backend": "onnxruntime"},
         }
 
-    registry = YoloXAsyncInferenceGatewayDispatcherRegistry(
+    registry = DetectionAsyncInferenceGatewayDispatcherRegistry(
         queue_backend=queue_backend,
         execution_handler=_execute,
         service_id="backend-service-main",
@@ -231,7 +233,7 @@ def test_async_gateway_registry_routes_multiple_deployments_independently(tmp_pa
     try:
         dispatcher_1 = registry.ensure_dispatcher_for_deployment("deployment-instance-1")
         dispatcher_2 = registry.ensure_dispatcher_for_deployment("deployment-instance-2")
-        client = QueueBackedYoloXAsyncInferenceClient(
+        client = QueueBackedDetectionAsyncInferenceClient(
             queue_backend=queue_backend,
             request_timeout_seconds=2.0,
             response_poll_interval_seconds=0.01,
@@ -242,7 +244,7 @@ def test_async_gateway_registry_routes_multiple_deployments_independently(tmp_pa
                 dataset_storage=dataset_storage,
                 deployment_instance_id="deployment-instance-1",
             ),
-            request=YoloXPredictionRequest(
+            request=DetectionPredictionRequest(
                 input_image_bytes=b"a",
                 score_threshold=0.3,
                 save_result_image=False,
@@ -254,7 +256,7 @@ def test_async_gateway_registry_routes_multiple_deployments_independently(tmp_pa
                 dataset_storage=dataset_storage,
                 deployment_instance_id="deployment-instance-2",
             ),
-            request=YoloXPredictionRequest(
+            request=DetectionPredictionRequest(
                 input_image_bytes=b"b",
                 score_threshold=0.3,
                 save_result_image=False,
@@ -267,12 +269,12 @@ def test_async_gateway_registry_routes_multiple_deployments_independently(tmp_pa
     assert dispatcher_1.request_queue_name != dispatcher_2.request_queue_name
     assert (tmp_path / "queue" / dispatcher_1.request_queue_name).is_dir()
     assert (tmp_path / "queue" / dispatcher_2.request_queue_name).is_dir()
-    assert dispatcher_1.request_queue_name == "yolox-ai-gw-backend-service-main-1"
-    assert dispatcher_2.request_queue_name == "yolox-ai-gw-backend-service-main-2"
+    assert dispatcher_1.request_queue_name == "detection-ai-gw-backend-service-main-1"
+    assert dispatcher_2.request_queue_name == "detection-ai-gw-backend-service-main-2"
     assert result_1["instance_id"] == "deployment-instance-1:instance-0"
     assert result_2["instance_id"] == "deployment-instance-2:instance-0"
     assert captured_deployment_ids == ["deployment-instance-1", "deployment-instance-2"]
-    assert not list((tmp_path / "queue").glob("yolox-ai-rsp-*"))
+    assert not list((tmp_path / "queue").glob("detection-ai-rsp-*"))
 
 
 def _build_process_config(

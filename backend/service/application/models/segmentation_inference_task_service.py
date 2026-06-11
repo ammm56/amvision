@@ -12,13 +12,13 @@ from backend.service.application.segmentation_backend_registry import (
     get_segmentation_backend_registration,
 )
 from backend.service.domain.tasks.detection_task_specs import DetectionInferenceTaskSpec
-from backend.service.application.models.yolox_inference_task_service import (
-    YOLOX_INFERENCE_TASK_KIND as SEGMENTATION_INFERENCE_TASK_KIND,
-    SqlAlchemyYoloXInferenceTaskService,
-    YoloXInferenceExecutionResult as SegmentationInferenceExecutionResult,
-    YoloXInferenceTaskResult as SegmentationInferenceTaskResult,
-    YoloXInferenceTaskSubmission as SegmentationInferenceTaskSubmission,
-    run_yolox_inference_task as run_segmentation_inference_task,
+from backend.service.application.models.detection_inference_task_service import (
+    DETECTION_INFERENCE_TASK_KIND as SEGMENTATION_INFERENCE_TASK_KIND,
+    DetectionInferenceExecutionResult as SegmentationInferenceExecutionResult,
+    DetectionInferenceTaskResult as SegmentationInferenceTaskResult,
+    DetectionInferenceTaskSubmission as SegmentationInferenceTaskSubmission,
+    SqlAlchemyDetectionInferenceTaskService,
+    run_detection_inference_task as run_segmentation_inference_task,
 )
 
 SEGMENTATION_INFERENCE_QUEUE_NAME = "segmentation-inferences"
@@ -42,7 +42,7 @@ class SegmentationInferenceTaskRequest:
     extra_options: dict[str, object] = field(default_factory=dict)
 
 
-class SqlAlchemySegmentationInferenceTaskService(SqlAlchemyYoloXInferenceTaskService):
+class SqlAlchemySegmentationInferenceTaskService(SqlAlchemyDetectionInferenceTaskService):
     """复用已验证 YOLOX 控制链的 segmentation 公共推理任务服务。"""
 
     task_spec_cls = DetectionInferenceTaskSpec

@@ -106,10 +106,10 @@ def _model_inference_submit_handler(request: WorkflowNodeExecutionRequest) -> di
 
 CORE_NODE_SPEC = CoreNodeSpec(
     node_definition=NodeDefinition(
-        node_type_id="core.service.yolox-inference.submit",
+        node_type_id="core.service.detection-inference.submit",
         display_name="Submit Inference",
         category="service.model.inference",
-        description="兼容旧 YOLOX 节点名，按正式 detection inference API 的公开参数提交推理任务。",
+        description="按统一 detection inference API 的公开参数提交推理任务。",
         implementation_kind=NODE_IMPLEMENTATION_CORE,
         runtime_kind=NODE_RUNTIME_PYTHON_CALLABLE,
         input_ports=(

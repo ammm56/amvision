@@ -25,7 +25,7 @@ _DATASET_IMPORT_TASK_KIND = "dataset-import"
 _YOLOX_TRAINING_TASK_KIND = "yolox-training"
 _YOLOX_EVALUATION_TASK_KIND = "yolox-evaluation"
 _YOLOX_CONVERSION_TASK_KIND = "yolox-conversion"
-_YOLOX_INFERENCE_TASK_KIND = "yolox-inference"
+_DETECTION_INFERENCE_TASK_KIND = "detection-inference"
 
 _SUPPORTED_PROJECT_SUMMARY_TOPICS = (
     PROJECT_SUMMARY_TOPIC_WORKFLOW_PREVIEW_RUNS,
@@ -214,7 +214,7 @@ class ProjectSummaryService:
             ),
             evaluation=_build_task_status_summary(tasks, _YOLOX_EVALUATION_TASK_KIND),
             conversion=_build_task_status_summary(tasks, _YOLOX_CONVERSION_TASK_KIND),
-            inference=_build_task_status_summary(tasks, _YOLOX_INFERENCE_TASK_KIND),
+            inference=_build_task_status_summary(tasks, _DETECTION_INFERENCE_TASK_KIND),
             workflows=ProjectWorkflowSummarySnapshot(
                 template_total=len(templates),
                 application_total=len(applications),

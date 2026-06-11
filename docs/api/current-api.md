@@ -1211,7 +1211,7 @@ WebSocket 资源流的统一消息结构、控制事件和重连规则见 [docs/
   - return_preview_image_base64
   - extra_options
   - display_name
-- 当前实现会先校验 `deployment_instance_id` 属于请求 Project，再按 one-of 规则把输入归一化后放入 `yolox-inferences` 队列
+- 当前实现会先校验 `deployment_instance_id` 属于请求 Project，再按 one-of 规则把输入归一化后放入 `detection-inferences` 队列
 - 当前支持 `application/json` 和 `multipart/form-data`
 - 输入 one-of 规则：`input_file_id`、`input_uri`、`image_base64`、`input_image` 四者必须且只能提供一个
 - `input_file_id` 现在支持 Project 公开文件 id；稳定来源可直接使用 GET /api/v1/projects/{project_id}/files 或 GET /api/v1/projects/{project_id}/files/metadata 返回的 `file_id`

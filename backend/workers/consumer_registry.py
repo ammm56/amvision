@@ -28,7 +28,9 @@ from backend.workers.evaluation.yolo_primary_evaluation_queue_worker import (
     PoseEvaluationQueueWorker,
     ObbEvaluationQueueWorker,
 )
-from backend.workers.inference.yolox_inference_queue_worker import YoloXInferenceQueueWorker
+from backend.workers.inference.detection_inference_queue_worker import (
+    DetectionInferenceQueueWorker,
+)
 from backend.workers.settings import (
     BACKEND_WORKER_CONSUMER_CLASSIFICATION_EVALUATION,
     BACKEND_WORKER_CONSUMER_CLASSIFICATION_INFERENCE,
@@ -55,7 +57,7 @@ from backend.workers.settings import (
     BACKEND_WORKER_CONSUMER_YOLOV8_CONVERSION,
     BACKEND_WORKER_CONSUMER_YOLOX_CONVERSION,
     BACKEND_WORKER_CONSUMER_YOLOX_EVALUATION,
-    BACKEND_WORKER_CONSUMER_YOLOX_INFERENCE,
+    BACKEND_WORKER_CONSUMER_DETECTION_INFERENCE,
     BACKEND_WORKER_CONSUMER_YOLOX_TRAINING,
 )
 from backend.workers.task_manager import BackgroundTaskConsumer
@@ -114,7 +116,7 @@ def _inference_factory(suffix: str) -> _ConsumerFactory:
     """构建推理 worker 工厂：额外传递 async_inference_request_timeout_seconds。"""
 
     def _factory(resources: BackgroundTaskConsumerResources) -> BackgroundTaskConsumer:
-        return YoloXInferenceQueueWorker(
+        return DetectionInferenceQueueWorker(
             session_factory=resources.session_factory,
             dataset_storage=resources.dataset_storage,
             queue_backend=resources.queue_backend,
@@ -127,7 +129,7 @@ def _inference_factory(suffix: str) -> _ConsumerFactory:
 
 def _dynamic_inference_factory(resources: BackgroundTaskConsumerResources, consumer_kind: str) -> BackgroundTaskConsumer:
     """构建动态推理 worker 工厂：worker_id 使用 consumer_kind。"""
-    return YoloXInferenceQueueWorker(
+    return DetectionInferenceQueueWorker(
         session_factory=resources.session_factory,
         dataset_storage=resources.dataset_storage,
         queue_backend=resources.queue_backend,
@@ -145,7 +147,7 @@ _CONSUMER_FACTORIES: dict[str, _ConsumerFactory] = {
     BACKEND_WORKER_CONSUMER_YOLOX_TRAINING: _std_factory(YoloXTrainingQueueWorker, "yolox-training"),
     BACKEND_WORKER_CONSUMER_YOLOX_CONVERSION: _std_factory(YoloXConversionQueueWorker, "yolox-conversion"),
     BACKEND_WORKER_CONSUMER_YOLOX_EVALUATION: _std_factory(YoloXEvaluationQueueWorker, "yolox-evaluation"),
-    BACKEND_WORKER_CONSUMER_YOLOX_INFERENCE: _inference_factory("yolox-inference"),
+    BACKEND_WORKER_CONSUMER_DETECTION_INFERENCE: _inference_factory("detection-inference"),
     # YOLOv8
     BACKEND_WORKER_CONSUMER_YOLOV8_TRAINING: _std_factory(YoloV8TrainingQueueWorker, "yolov8-training"),
     BACKEND_WORKER_CONSUMER_YOLOV8_CONVERSION: _std_factory(YoloV8ConversionQueueWorker, "yolov8-conversion"),

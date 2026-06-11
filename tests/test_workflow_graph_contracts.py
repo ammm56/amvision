@@ -140,7 +140,7 @@ def _build_node_definitions() -> tuple[NodeDefinition, ...]:
                 },
             },
             capability_tags=("model.inference", "yolox.detection"),
-            runtime_requirements={"worker_pool": "yolox-inference"},
+            runtime_requirements={"worker_pool": "detection-inference"},
         ),
         NodeDefinition(
             node_type_id="custom.opencv.draw-detections",

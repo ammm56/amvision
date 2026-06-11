@@ -74,7 +74,7 @@ def test_local_file_queue_cleans_response_queue_directories(tmp_path: Path) -> N
     """验证一次性响应队列目录超过保留期后会被整体清理。"""
 
     queue_backend = LocalFileQueueBackend(LocalFileQueueSettings(root_dir=str(tmp_path / "queue")))
-    response_queue_name = "yolox-ai-rsp-test"
+    response_queue_name = "detection-ai-rsp-test"
     response_task = queue_backend.enqueue(
         queue_name=response_queue_name,
         payload={"request_id": "request-1", "ok": True},
@@ -86,7 +86,7 @@ def test_local_file_queue_cleans_response_queue_directories(tmp_path: Path) -> N
     _age_path_tree(response_queue_dir, seconds=30.0)
 
     deleted_count = queue_backend.cleanup_queues_by_prefix(
-        queue_name_prefix="yolox-ai-rsp-",
+        queue_name_prefix="detection-ai-rsp-",
         retention_seconds=1.0,
     )
 
@@ -98,12 +98,12 @@ def test_local_file_queue_deletes_queue_directory(tmp_path: Path) -> None:
     """验证指定队列目录可以被显式删除。"""
 
     queue_backend = LocalFileQueueBackend(LocalFileQueueSettings(root_dir=str(tmp_path / "queue")))
-    queue_backend.enqueue(queue_name="yolox-ai-rsp-test", payload={"request_id": "request-1"})
+    queue_backend.enqueue(queue_name="detection-ai-rsp-test", payload={"request_id": "request-1"})
 
-    deleted = queue_backend.delete_queue(queue_name="yolox-ai-rsp-test")
+    deleted = queue_backend.delete_queue(queue_name="detection-ai-rsp-test")
 
     assert deleted is True
-    assert not (tmp_path / "queue" / "yolox-ai-rsp-test").exists()
+    assert not (tmp_path / "queue" / "detection-ai-rsp-test").exists()
 
 
 def _rewrite_queue_task_time(task_path: Path, *, leased_at: str) -> None:

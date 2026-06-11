@@ -383,7 +383,7 @@ def test_project_detail_summary_aggregates_dataset_io_and_model_runtime_slices(t
         unit_of_work.tasks.save_task(
             TaskRecord(
                 task_id="task-inference-1",
-                task_kind="yolox-inference",
+                task_kind="detection-inference",
                 project_id="project-1",
                 display_name="infer yolox-s",
                 created_at=_now_isoformat(),

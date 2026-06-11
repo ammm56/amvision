@@ -9,13 +9,13 @@ from backend.service.application.deployments.pose_deployment_service import (
 )
 from backend.service.application.errors import InvalidRequestError
 from backend.service.domain.tasks.detection_task_specs import DetectionInferenceTaskSpec
-from backend.service.application.models.yolox_inference_task_service import (
-    YOLOX_INFERENCE_TASK_KIND as POSE_INFERENCE_TASK_KIND,
-    SqlAlchemyYoloXInferenceTaskService,
-    YoloXInferenceExecutionResult as PoseInferenceExecutionResult,
-    YoloXInferenceTaskResult as PoseInferenceTaskResult,
-    YoloXInferenceTaskSubmission as PoseInferenceTaskSubmission,
-    run_yolox_inference_task as run_pose_inference_task,
+from backend.service.application.models.detection_inference_task_service import (
+    DETECTION_INFERENCE_TASK_KIND as POSE_INFERENCE_TASK_KIND,
+    DetectionInferenceExecutionResult as PoseInferenceExecutionResult,
+    DetectionInferenceTaskResult as PoseInferenceTaskResult,
+    DetectionInferenceTaskSubmission as PoseInferenceTaskSubmission,
+    SqlAlchemyDetectionInferenceTaskService,
+    run_detection_inference_task as run_pose_inference_task,
 )
 
 POSE_INFERENCE_QUEUE_NAME = "pose-inferences"
@@ -41,7 +41,7 @@ class PoseInferenceTaskRequest:
     extra_options: dict[str, object] = field(default_factory=dict)
 
 
-class SqlAlchemyPoseInferenceTaskService(SqlAlchemyYoloXInferenceTaskService):
+class SqlAlchemyPoseInferenceTaskService(SqlAlchemyDetectionInferenceTaskService):
     """复用已验证 YOLOX 控制链的 pose 公共推理任务服务。"""
 
     task_spec_cls = DetectionInferenceTaskSpec

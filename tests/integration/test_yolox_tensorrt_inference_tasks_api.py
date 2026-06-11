@@ -22,7 +22,9 @@ from backend.service.infrastructure.db.session import DatabaseSettings, SessionF
 from backend.service.infrastructure.object_store.local_dataset_storage import DatasetStorageSettings, LocalDatasetStorage
 from backend.service.infrastructure.persistence.base import Base
 from backend.service.settings import BackendServiceSettings, BackendServiceTaskManagerConfig
-from backend.workers.inference.yolox_inference_queue_worker import YoloXInferenceQueueWorker
+from backend.workers.inference.detection_inference_queue_worker import (
+    DetectionInferenceQueueWorker,
+)
 from tests.api_test_support import build_test_headers
 
 
@@ -59,11 +61,11 @@ def test_tensorrt_inference_task_runs_through_real_async_deployment_process(
         runtime_precision=runtime_precision,
     )
     dataset_storage.write_bytes("runtime-inputs/inference-image.png", _build_valid_test_image_bytes())
-    worker = YoloXInferenceQueueWorker(
+    worker = DetectionInferenceQueueWorker(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
         queue_backend=queue_backend,
-        worker_id=f"test-yolox-tensorrt-inference-worker-{runtime_precision}",
+        worker_id=f"test-detection-tensorrt-inference-worker-{runtime_precision}",
     )
 
     try:
@@ -174,7 +176,7 @@ def test_tensorrt_inference_task_runs_through_real_async_deployment_process(
             assert payload["runtime_session_info"]["metadata"]["compiled_runtime_precision"] == runtime_precision
 
         task_detail = SqlAlchemyTaskService(session_factory).get_task(task_id, include_events=True)
-        assert any(event.message == "yolox inference completed" for event in task_detail.events)
+        assert any(event.message == "detection inference completed" for event in task_detail.events)
     finally:
         session_factory.engine.dispose()
 

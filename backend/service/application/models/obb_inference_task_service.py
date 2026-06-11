@@ -9,13 +9,13 @@ from backend.service.application.deployments.obb_deployment_service import (
 )
 from backend.service.application.errors import InvalidRequestError
 from backend.service.domain.tasks.detection_task_specs import DetectionInferenceTaskSpec
-from backend.service.application.models.yolox_inference_task_service import (
-    YOLOX_INFERENCE_TASK_KIND as OBB_INFERENCE_TASK_KIND,
-    SqlAlchemyYoloXInferenceTaskService,
-    YoloXInferenceExecutionResult as ObbInferenceExecutionResult,
-    YoloXInferenceTaskResult as ObbInferenceTaskResult,
-    YoloXInferenceTaskSubmission as ObbInferenceTaskSubmission,
-    run_yolox_inference_task as run_obb_inference_task,
+from backend.service.application.models.detection_inference_task_service import (
+    DETECTION_INFERENCE_TASK_KIND as OBB_INFERENCE_TASK_KIND,
+    DetectionInferenceExecutionResult as ObbInferenceExecutionResult,
+    DetectionInferenceTaskResult as ObbInferenceTaskResult,
+    DetectionInferenceTaskSubmission as ObbInferenceTaskSubmission,
+    SqlAlchemyDetectionInferenceTaskService,
+    run_detection_inference_task as run_obb_inference_task,
 )
 
 OBB_INFERENCE_QUEUE_NAME = "obb-inferences"
@@ -40,7 +40,7 @@ class ObbInferenceTaskRequest:
     extra_options: dict[str, object] = field(default_factory=dict)
 
 
-class SqlAlchemyObbInferenceTaskService(SqlAlchemyYoloXInferenceTaskService):
+class SqlAlchemyObbInferenceTaskService(SqlAlchemyDetectionInferenceTaskService):
     """复用已验证 YOLOX 控制链的 obb 公共推理任务服务。"""
 
     task_spec_cls = DetectionInferenceTaskSpec

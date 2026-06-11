@@ -1035,7 +1035,7 @@ reference 风格增强示例：按需显式开启 Mosaic、MixUp 和动态尺寸
 - 当前 deployment create 允许绑定 `ModelVersion` 或 `ModelBuild`；其中 `pytorch`、`onnxruntime`、`openvino`、`tensorrt` 已接通真实 runtime
 - 当前 inference 执行通过 DeploymentInstance 解析运行时快照，并在 deployment 子进程内部复用常驻会话
 - 当前同步 `/infer` 与异步 `inference-tasks` 使用同一套结果载荷字段
-- 当前同步 `/infer` 与异步 `inference-tasks` 已共用同一套输入归一化、`input_transport_mode` 和 `YoloXPredictionRequest` 构造逻辑；异步链额外通过 `yolox-ai-gw-{service_id}-{deployment_id}` 这类 deployment 专属队列把推理请求转回 backend-service 持有的 async deployment supervisor
+- 当前同步 `/infer` 与异步 `inference-tasks` 已共用同一套输入归一化、`input_transport_mode` 和 `DetectionPredictionRequest` 构造逻辑；异步链额外通过 `detection-ai-gw-{service_id}-{deployment_id}` 这类 deployment 专属队列把推理请求转回 backend-service 持有的 async deployment supervisor
 - 当前正式 HTTP inference 公开入口支持本地文件、Base64 和 multipart 上传；image-ref / local buffer 仍主要用于 workflow / published inference 这类进程间图片引用路径，不作为当前 REST inference task 的公开输入字段
 - 当前 workflow preview run、WorkflowAppRuntime 和已发布应用里的 detection deployment 节点，继续通过 `PublishedInferenceGateway` 命中 backend-service 持有的 sync deployment worker；这条路径不走公开 `inference-tasks` 接口，也不复用 async deployment 通道
 - 当前 inference 响应已经拆出 `decode_ms`、`preprocess_ms`、`infer_ms`、`postprocess_ms`、`serialize_ms`；其中 `latency_ms` 表示前四段总耗时，不包含 `serialize_ms`

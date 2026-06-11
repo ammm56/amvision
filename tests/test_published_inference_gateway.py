@@ -15,7 +15,9 @@ from backend.service.application.deployments import (
     PublishedInferenceRequest,
     YoloXDeploymentPublishedInferenceGateway,
 )
-from backend.service.application.models.yolox_inference_task_service import run_yolox_inference_task
+from backend.service.application.models.detection_inference_task_service import (
+    run_detection_inference_task,
+)
 from backend.service.application.runtime.deployment_process_supervisor import DeploymentProcessExecution
 from backend.service.application.runtime.yolox_predictor import (
     YoloXPredictionDetection,
@@ -188,12 +190,12 @@ def test_yolox_detection_node_registers_local_buffer_lease_cleanup() -> None:
     assert cleanup_items[0].metadata == {"pool_name": "image-small"}
 
 
-def test_run_yolox_inference_task_preserves_input_image_payload() -> None:
+def test_run_detection_inference_task_preserves_input_image_payload() -> None:
     """验证统一推理执行入口不会丢掉跨进程图片载荷。"""
 
     fake_supervisor = _FakeDeploymentSupervisor()
 
-    run_yolox_inference_task(
+    run_detection_inference_task(
         deployment_process_supervisor=fake_supervisor,
         process_config=SimpleNamespace(deployment_instance_id="deployment-1"),
         input_uri=None,

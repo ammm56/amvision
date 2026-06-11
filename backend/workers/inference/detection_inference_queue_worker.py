@@ -1,23 +1,23 @@
-"""YOLOX 推理队列 worker。"""
+"""detection 推理队列 worker。"""
 
 from __future__ import annotations
 
 from backend.queue import QueueBackend, QueueMessage
 from backend.service.application.errors import InvalidRequestError, ServiceError
-from backend.service.application.models.yolox_async_inference_gateway import (
-    QueueBackedYoloXAsyncInferenceClient,
-    YoloXAsyncInferenceExecutor,
+from backend.service.application.models.detection_async_inference_gateway import (
+    DetectionAsyncInferenceExecutor,
+    QueueBackedDetectionAsyncInferenceClient,
 )
-from backend.service.application.models.yolox_inference_task_service import (
-    YOLOX_INFERENCE_QUEUE_NAME,
-    SqlAlchemyYoloXInferenceTaskService,
+from backend.service.application.models.detection_inference_task_service import (
+    DETECTION_INFERENCE_QUEUE_NAME,
+    SqlAlchemyDetectionInferenceTaskService,
 )
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 
 
-class YoloXInferenceQueueWorker:
-    """消费 yolox-inferences 队列任务的最小 worker。"""
+class DetectionInferenceQueueWorker:
+    """消费 detection-inferences 队列任务的最小 worker。"""
 
     def __init__(
         self,
@@ -25,16 +25,16 @@ class YoloXInferenceQueueWorker:
         session_factory: SessionFactory,
         dataset_storage: LocalDatasetStorage,
         queue_backend: QueueBackend,
-        async_inference_executor: YoloXAsyncInferenceExecutor | None = None,
+        async_inference_executor: DetectionAsyncInferenceExecutor | None = None,
         async_inference_request_timeout_seconds: float = 30.0,
-        worker_id: str = "yolox-inference-worker",
+        worker_id: str = "detection-inference-worker",
     ) -> None:
-        """初始化 YOLOX 推理队列 worker。"""
+        """初始化 detection 推理队列 worker。"""
 
         self.session_factory = session_factory
         self.dataset_storage = dataset_storage
         self.queue_backend = queue_backend
-        self.async_inference_executor = async_inference_executor or QueueBackedYoloXAsyncInferenceClient(
+        self.async_inference_executor = async_inference_executor or QueueBackedDetectionAsyncInferenceClient(
             queue_backend=queue_backend,
             request_timeout_seconds=async_inference_request_timeout_seconds,
             client_id=worker_id,
@@ -42,10 +42,10 @@ class YoloXInferenceQueueWorker:
         self.worker_id = worker_id
 
     def run_once(self) -> bool:
-        """消费并执行一条 YOLOX 推理队列任务。"""
+        """消费并执行一条 detection 推理队列任务。"""
 
         queue_task = self.queue_backend.claim_next(
-            queue_name=YOLOX_INFERENCE_QUEUE_NAME,
+            queue_name=DETECTION_INFERENCE_QUEUE_NAME,
             worker_id=self.worker_id,
         )
         if queue_task is None:
@@ -53,7 +53,7 @@ class YoloXInferenceQueueWorker:
 
         try:
             task_id = self._read_task_id(queue_task)
-            service = SqlAlchemyYoloXInferenceTaskService(
+            service = SqlAlchemyDetectionInferenceTaskService(
                 session_factory=self.session_factory,
                 dataset_storage=self.dataset_storage,
                 async_inference_executor=self.async_inference_executor,
