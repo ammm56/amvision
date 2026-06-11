@@ -630,7 +630,7 @@ def _build_template_payload() -> dict[str, object]:
             },
             {
                 "node_id": "detect",
-                "node_type_id": "core.model.yolox-detection",
+                "node_type_id": "core.model.detection",
                 "parameters": {"score_threshold": 0.3},
                 "ui_state": {"position": {"x": 280, "y": 60}},
                 "metadata": {},
@@ -822,3 +822,4 @@ def register(context):
         encoding="utf-8",
     )
     return tmp_path / "custom_nodes"
+

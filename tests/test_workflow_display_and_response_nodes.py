@@ -1018,7 +1018,7 @@ def _build_payload_composition_template() -> WorkflowGraphTemplate:
             ),
             WorkflowGraphInput(
                 input_id="yolox_detections",
-                display_name="YOLOX Detections",
+                display_name="Detections",
                 payload_type_id="detections.v1",
                 target_node_id="detections_as_value",
                 target_port="detections",
@@ -1350,3 +1350,4 @@ def _build_video_body_application() -> FlowApplication:
             ),
         ),
     )
+

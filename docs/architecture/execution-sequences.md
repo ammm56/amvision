@@ -269,7 +269,7 @@ sequenceDiagram
 sequenceDiagram
     autonumber
     actor Client as 调用方
-    participant API as infer_yolox_deployment_instance
+    participant API as infer_detection_deployment_instance
     participant DeploySvc as SqlAlchemyDeploymentInstanceService
     participant DB as DeploymentInstance / metadata
     participant SyncSup as DeploymentProcessSupervisor(sync)
@@ -319,7 +319,7 @@ sequenceDiagram
 sequenceDiagram
     autonumber
     actor Client as 调用方
-    participant API as infer_yolox_deployment_instance
+    participant API as infer_detection_deployment_instance
     participant DeploySvc as SqlAlchemyDeploymentInstanceService
     participant SyncSup as DeploymentProcessSupervisor(sync)
     participant Child as deployment process worker
@@ -468,3 +468,4 @@ workflow runtime 当前没有独立 TaskRecord；preview 和 sync invoke 的失�
 - [docs/architecture/backend-service.md](backend-service.md)
 - [docs/architecture/task-system.md](task-system.md)
 - [docs/architecture/workflow-json-contracts.md](workflow-json-contracts.md)
+

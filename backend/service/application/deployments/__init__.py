@@ -9,8 +9,16 @@ from backend.service.application.deployments.published_inference_gateway import 
     PublishedInferenceRequest,
     PublishedInferenceResult,
 )
+from backend.service.application.deployments.detection_deployment_binding import (
+    DetectionDeploymentBinder,
+    DetectionDeploymentBindingRequest,
+    DetectionDeploymentBindingResult,
+)
 
 __all__ = [
+    "DetectionDeploymentBinder",
+    "DetectionDeploymentBindingRequest",
+    "DetectionDeploymentBindingResult",
     "DetectionDeploymentPublishedInferenceGateway",
     "PublishedInferenceGateway",
     "PublishedInferenceGatewayClient",

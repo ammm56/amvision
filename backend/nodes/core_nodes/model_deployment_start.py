@@ -21,7 +21,7 @@ def _model_deployment_start_handler(request) -> dict[str, object]:
 CORE_NODE_SPEC = CoreNodeSpec(
     node_definition=NodeDefinition(
         node_type_id="core.service.detection-deployment.start",
-        display_name="Start YOLOX Deployment",
+        display_name="Start Detection Deployment",
         category="service.model.deployment.control",
         description="启动指定 sync 或 async 通道上的 deployment 进程。",
         implementation_kind=NODE_IMPLEMENTATION_CORE,

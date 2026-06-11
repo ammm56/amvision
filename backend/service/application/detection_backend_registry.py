@@ -141,3 +141,4 @@ def _normalize_model_type(model_type: str | None) -> str | None:
     if isinstance(model_type, str) and model_type.strip():
         return model_type.strip().lower()
     return None
+

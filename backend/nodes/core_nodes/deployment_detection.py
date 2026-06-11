@@ -151,8 +151,8 @@ def _read_optional_trace_id(request: WorkflowNodeExecutionRequest) -> str | None
 
 CORE_NODE_SPEC = CoreNodeSpec(
     node_definition=NodeDefinition(
-        node_type_id="core.model.yolox-detection",
-        display_name="YOLOX Detection",
+        node_type_id="core.model.detection",
+        display_name="Detection",
         category="model.inference",
         description="调用独立推理 worker 产出标准 detection 结果。",
         implementation_kind=NODE_IMPLEMENTATION_CORE,
@@ -195,7 +195,7 @@ CORE_NODE_SPEC = CoreNodeSpec(
             },
             "required": ["deployment_instance_id"],
         },
-        capability_tags=("model.inference", "yolox.detection"),
+        capability_tags=("model.inference", "detection"),
         runtime_requirements={"deployment_process": "sync"},
     ),
     handler=_deployment_detection_handler,

@@ -1,4 +1,4 @@
-"""YOLOX 部署绑定校验接口定义。"""
+"""detection 部署绑定校验接口定义。"""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from typing import Protocol
 
 
 @dataclass(frozen=True)
-class YoloXDeploymentBindingRequest:
+class DetectionDeploymentBindingRequest:
     """描述一次部署绑定校验请求。
 
     字段：
@@ -30,7 +30,7 @@ class YoloXDeploymentBindingRequest:
 
 
 @dataclass(frozen=True)
-class YoloXDeploymentBindingResult:
+class DetectionDeploymentBindingResult:
     """描述部署绑定校验结果。
 
     字段：
@@ -46,10 +46,12 @@ class YoloXDeploymentBindingResult:
     reasons: tuple[str, ...] = ()
 
 
-class YoloXDeploymentBinder(Protocol):
-    """校验 YOLOX build 能否绑定到指定部署实例。"""
+class DetectionDeploymentBinder(Protocol):
+    """校验 detection build 能否绑定到指定部署实例。"""
 
-    def validate_binding(self, request: YoloXDeploymentBindingRequest) -> YoloXDeploymentBindingResult:
+    def validate_binding(
+        self, request: DetectionDeploymentBindingRequest
+    ) -> DetectionDeploymentBindingResult:
         """执行部署绑定校验。
 
         参数：

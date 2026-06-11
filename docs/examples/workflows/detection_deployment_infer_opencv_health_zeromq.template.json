@@ -44,7 +44,7 @@
     },
     {
       "node_id": "detect",
-      "node_type_id": "core.model.yolox-detection",
+      "node_type_id": "core.model.detection",
       "parameters": {
         "auto_start_process": false,
         "score_threshold": 0.3,
@@ -408,3 +408,4 @@
     "trigger_source_input_binding": "request_image_ref"
   }
 }
+

@@ -275,7 +275,7 @@ def test_runtime_registry_loader_registers_core_service_nodes(
         "core.service.model-evaluation.submit",
         "core.service.detection-deployment.create",
         "core.service.detection-inference.submit",
-        "core.model.yolox-detection",
+        "core.model.detection",
     }
     for node_type_id in expected_node_type_ids:
         node_definition = runtime_registry.get_node_definition(node_type_id)
@@ -618,7 +618,7 @@ def test_core_yolox_detection_node_uses_sync_runtime_context(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """验证 core.model.yolox-detection 会通过同步 deployment runtime 执行推理。"""
+    """验证 core.model.detection 会通过同步 deployment runtime 执行推理。"""
 
     custom_nodes_root_dir = tmp_path / "custom_nodes"
     node_pack_loader = LocalNodePackLoader(custom_nodes_root_dir)
@@ -693,12 +693,12 @@ def test_core_yolox_detection_node_uses_sync_runtime_context(
     template = WorkflowGraphTemplate(
         template_id="yolox-detection-workflow",
         template_version="1.0.0",
-        display_name="YOLOX Detection Workflow",
+        display_name="Detection Workflow",
         nodes=(
             WorkflowGraphNode(node_id="input", node_type_id="core.io.template-input.image"),
             WorkflowGraphNode(
                 node_id="detect",
-                node_type_id="core.model.yolox-detection",
+                node_type_id="core.model.detection",
                 parameters={
                     "deployment_instance_id": "deployment-instance-1",
                     "score_threshold": 0.42,
@@ -759,7 +759,7 @@ def test_core_yolox_detection_node_accepts_dynamic_request_payload(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """验证 core.model.yolox-detection 可以从 request 输入读取动态 deployment_instance_id。"""
+    """验证 core.model.detection 可以从 request 输入读取动态 deployment_instance_id。"""
 
     custom_nodes_root_dir = tmp_path / "custom_nodes"
     node_pack_loader = LocalNodePackLoader(custom_nodes_root_dir)
@@ -835,11 +835,11 @@ def test_core_yolox_detection_node_accepts_dynamic_request_payload(
     template = WorkflowGraphTemplate(
         template_id="yolox-detection-dynamic-workflow",
         template_version="1.0.0",
-        display_name="YOLOX Detection Dynamic Workflow",
+        display_name="Detection Dynamic Workflow",
         nodes=(
             WorkflowGraphNode(
                 node_id="detect",
-                node_type_id="core.model.yolox-detection",
+                node_type_id="core.model.detection",
                 parameters={},
             ),
         ),
@@ -983,12 +983,12 @@ def test_core_yolox_detection_node_auto_starts_sync_process(
     template = WorkflowGraphTemplate(
         template_id="yolox-detection-auto-start-workflow",
         template_version="1.0.0",
-        display_name="YOLOX Detection Auto Start Workflow",
+        display_name="Detection Auto Start Workflow",
         nodes=(
             WorkflowGraphNode(node_id="input", node_type_id="core.io.template-input.image"),
             WorkflowGraphNode(
                 node_id="detect",
-                node_type_id="core.model.yolox-detection",
+                node_type_id="core.model.detection",
                 parameters={
                     "deployment_instance_id": "deployment-instance-1",
                     "score_threshold": 0.42,
@@ -1106,7 +1106,7 @@ def test_core_yolox_detection_node_accepts_memory_image_payload(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """验证 core.model.yolox-detection 在 memory image-ref 输入下会直接传递图片字节。"""
+    """验证 core.model.detection 在 memory image-ref 输入下会直接传递图片字节。"""
 
     custom_nodes_root_dir = tmp_path / "custom_nodes"
     node_pack_loader = LocalNodePackLoader(custom_nodes_root_dir)
@@ -1188,12 +1188,12 @@ def test_core_yolox_detection_node_accepts_memory_image_payload(
     template = WorkflowGraphTemplate(
         template_id="yolox-detection-memory-workflow",
         template_version="1.0.0",
-        display_name="YOLOX Detection Memory Workflow",
+        display_name="Detection Memory Workflow",
         nodes=(
             WorkflowGraphNode(node_id="input", node_type_id="core.io.template-input.image"),
             WorkflowGraphNode(
                 node_id="detect",
-                node_type_id="core.model.yolox-detection",
+                node_type_id="core.model.detection",
                 parameters={
                     "deployment_instance_id": "deployment-instance-1",
                     "score_threshold": 0.42,
@@ -1772,9 +1772,9 @@ def test_core_detection_deployment_health_node_uses_async_supervisor(
         detection_async_deployment_process_supervisor=async_supervisor,
     )
     template = WorkflowGraphTemplate(
-        template_id="yolox-deployment-health-async-workflow",
+        template_id="detection-deployment-health-async-workflow",
         template_version="1.0.0",
-        display_name="YOLOX Deployment Health Async Workflow",
+        display_name="Detection Deployment Health Async Workflow",
         nodes=(
             WorkflowGraphNode(
                 node_id="health",
@@ -3740,4 +3740,5 @@ def _build_fake_process_config(*, instance_count: int) -> SimpleNamespace:
         instance_count=instance_count,
         runtime_target=SimpleNamespace(runtime_artifact_storage_uri="artifacts/runtime/model.onnx"),
     )
+
 

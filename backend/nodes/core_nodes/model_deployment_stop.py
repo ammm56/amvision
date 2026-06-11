@@ -21,7 +21,7 @@ def _model_deployment_stop_handler(request) -> dict[str, object]:
 CORE_NODE_SPEC = CoreNodeSpec(
     node_definition=NodeDefinition(
         node_type_id="core.service.detection-deployment.stop",
-        display_name="Stop YOLOX Deployment",
+        display_name="Stop Detection Deployment",
         category="service.model.deployment.control",
         description="停止指定 sync 或 async 通道上的 deployment 进程。",
         implementation_kind=NODE_IMPLEMENTATION_CORE,

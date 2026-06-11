@@ -113,8 +113,8 @@ def _build_node_definitions() -> tuple[NodeDefinition, ...]:
             parameter_schema={"type": "object", "properties": {}},
         ),
         NodeDefinition(
-            node_type_id="core.model.yolox-detection",
-            display_name="YOLOX Detection",
+            node_type_id="core.model.detection",
+            display_name="Detection",
             category="model.inference",
             description="调用独立推理 worker 产出标准 detection 结果。",
             implementation_kind=NODE_IMPLEMENTATION_CORE,
@@ -139,7 +139,7 @@ def _build_node_definitions() -> tuple[NodeDefinition, ...]:
                     "score_threshold": {"type": "number", "minimum": 0, "maximum": 1}
                 },
             },
-            capability_tags=("model.inference", "yolox.detection"),
+            capability_tags=("model.inference", "detection"),
             runtime_requirements={"worker_pool": "detection-inference"},
         ),
         NodeDefinition(
@@ -199,7 +199,7 @@ def _build_graph_template() -> WorkflowGraphTemplate:
             ),
             WorkflowGraphNode(
                 node_id="detect",
-                node_type_id="core.model.yolox-detection",
+                node_type_id="core.model.detection",
                 parameters={"score_threshold": 0.3},
                 ui_state={"position": {"x": 280, "y": 60}},
             ),
@@ -374,3 +374,4 @@ def test_workflow_graph_template_rejects_cycles() -> None:
             template=cyclic_template,
             node_definitions=node_definitions,
         )
+

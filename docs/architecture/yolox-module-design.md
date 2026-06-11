@@ -95,7 +95,7 @@ backend/
 │  │  ├─ conversions/
 │  │  │  └─ yolox_conversion_planner.py
 │  │  └─ deployments/
-│  │     └─ yolox_deployment_binding.py
+│  │     └─ detection_deployment_binding.py
 │  └─ domain/
 │     ├─ models/
 │     │  └─ yolox_model_spec.py
@@ -158,7 +158,7 @@ backend/
 - 判断哪些转换链路可用，例如 ckpt -> onnx、onnx -> openvino-ir、onnx -> tensorrt-engine
 - 为 ConversionTask 生成稳定的执行规格
 
-### backend/service/application/deployments/yolox_deployment_binding.py
+### backend/service/application/deployments/detection_deployment_binding.py
 
 - 检查 DeploymentInstance 绑定的 YOLOX ModelBuild 是否与 RuntimeProfile 兼容
 - 检查输入尺寸、类别映射、设备能力和推理后端是否满足部署要求
@@ -298,3 +298,4 @@ backend/
 - [data-and-files.md](data-and-files.md)
 - [dataset-import-spec.md](dataset-import-spec.md)
 - [dataset-export-formats.md](dataset-export-formats.md)
+

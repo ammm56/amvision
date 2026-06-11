@@ -165,7 +165,7 @@ BACKEND_MODULES: tuple[str, ...] = (
     "backend.service.application.datasets.dataset_import",
     "backend.service.application.datasets.dataset_export",
     "backend.service.application.datasets.dataset_export_delivery",
-    "backend.service.application.deployments.yolox_deployment_binding",
+    "backend.service.application.deployments.detection_deployment_binding",
     "backend.service.application.deployments.detection_deployment_service",
     "backend.service.application.deployments.classification_deployment_service",
     "backend.service.application.deployments.segmentation_deployment_service",

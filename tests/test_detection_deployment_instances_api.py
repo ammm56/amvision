@@ -1,4 +1,4 @@
-"""YOLOX DeploymentInstance API 行为测试。"""
+"""Detection DeploymentInstance API 行为测试。"""
 
 from __future__ import annotations
 
@@ -23,7 +23,7 @@ from tests.yolox_test_support import (
 )
 
 
-def test_create_list_and_get_yolox_deployment_instance(tmp_path: Path) -> None:
+def test_create_list_and_get_detection_deployment_instance(tmp_path: Path) -> None:
     """验证 DeploymentInstance create、list 和 detail 可以闭环。"""
 
     client, session_factory, dataset_storage = _create_test_client(tmp_path)
@@ -103,7 +103,7 @@ def test_create_list_and_get_yolox_deployment_instance(tmp_path: Path) -> None:
         session_factory.engine.dispose()
 
 
-def test_yolox_deployment_events_api_and_websocket_stream_live_events(tmp_path: Path) -> None:
+def test_detection_deployment_events_api_and_websocket_stream_live_events(tmp_path: Path) -> None:
     """验证 deployment 事件支持历史读取并通过 WebSocket 推送实时事件。"""
 
     client, session_factory, dataset_storage = _create_test_client(tmp_path)
@@ -193,7 +193,7 @@ def test_yolox_deployment_events_api_and_websocket_stream_live_events(tmp_path: 
         session_factory.engine.dispose()
 
 
-def test_yolox_deployment_event_replay_does_not_depend_on_supervisor_instances(tmp_path: Path) -> None:
+def test_detection_deployment_event_replay_does_not_depend_on_supervisor_instances(tmp_path: Path) -> None:
     """验证 deployment 历史回放不依赖 sync 或 async supervisor 实例。"""
 
     client, session_factory, dataset_storage = _create_test_client(tmp_path)
@@ -252,7 +252,7 @@ def test_yolox_deployment_event_replay_does_not_depend_on_supervisor_instances(t
         session_factory.engine.dispose()
 
 
-def test_create_yolox_deployment_instance_uses_model_build_snapshot(tmp_path: Path) -> None:
+def test_create_detection_deployment_instance_uses_model_build_snapshot(tmp_path: Path) -> None:
     """验证 DeploymentInstance 绑定 ModelBuild 时会固化 build 文件快照。"""
 
     client, session_factory, dataset_storage = _create_test_client(tmp_path)

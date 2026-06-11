@@ -200,7 +200,7 @@ ZeroMQ TriggerSource 示例不把机器相关的 `path`、`offset` 和 `broker_e
 - `template-input.value(request_camera_config)`
 - `template-input.object(deployment_request)`
 - `custom.camera.usb.capture-frame`
-- `core.model.yolox-detection`
+- `core.model.detection`
 - `custom.opencv.draw-detections`
 - `core.vision.detections-to-regions`
 - `regions-filter`
@@ -1147,7 +1147,7 @@ ZeroMQ TriggerSource 示例不把机器相关的 `path`、`offset` 和 `broker_e
 - `template-input.value`
 - `template-input.object`
 - `image-load-local`
-- `core.model.yolox-detection`
+- `core.model.detection`
 - `core.vision.detections-to-regions`
 - `regions-filter`
 - `regions-select-best`
@@ -1187,7 +1187,7 @@ ZeroMQ TriggerSource 示例不把机器相关的 `path`、`offset` 和 `broker_e
 
 注意事项：
 
-- 该样例使用的是 `core.model.yolox-detection`，因此要求 `deployment_request.value` 至少包含 `deployment_instance_id`
+- 该样例使用的是 `core.model.detection`，因此要求 `deployment_request.value` 至少包含 `deployment_instance_id`
 - 该样例先把 `detections.v1` 转成 `regions.v1`，再进入 `presence / inside / offset` 规则链；这是当前 deployment detection 接工业规则的推荐接法
 - 如果现场使用的不是 YOLOX，而是其他能输出 `detections.v1` 的模型节点，同样可以复用 `core.vision.detections-to-regions` 和后面的规则链
 
@@ -1892,7 +1892,7 @@ ZeroMQ TriggerSource 示例不把机器相关的 `path`、`offset` 和 `broker_e
 - `roi-create`
 - `for-each`
 - `image-load-local`
-- `core.model.yolox-detection`
+- `core.model.detection`
 - `core.vision.detections-to-regions`
 - `regions-filter`
 - `regions-select-best`
@@ -1959,7 +1959,7 @@ ZeroMQ TriggerSource 示例不把机器相关的 `path`、`offset` 和 `broker_e
 - `roi-create`
 - `for-each`
 - `image-load-local`
-- `core.model.yolox-detection`
+- `core.model.detection`
 - `core.vision.detections-to-regions`
 - `regions-filter`
 - `regions-select-best`
@@ -2011,3 +2011,4 @@ ZeroMQ TriggerSource 示例不把机器相关的 `path`、`offset` 和 `broker_e
 - `deployment_request` 当前仍由 workflow execute 输入单独提供，适合把“触发源”和“具体 deployment 实例”分开管理；如果现场 deployment 固定，也可以由上层应用层在调用时填入固定对象
 - 该样例会把每张图的单图结果持续追加到固定 CSV，再把整批触发结果收成 `batch-record` 和一份 JSON；因此更适合“持续历史表 + 每批次归档对象”的现场归档方式
 - `http-post.url` 当前是示例回调地址，导入后应先改成现场真实接口，再执行
+

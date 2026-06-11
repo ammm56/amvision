@@ -1729,10 +1729,10 @@
       ]
     },
     {
-      "name": "YOLOX Deployment Instances",
+      "name": "Detection Deployment Instances",
       "item": [
         {
-          "name": "Create YOLOX PyTorch Deployment Instance",
+          "name": "Create Detection Deployment Instance (YOLOX PyTorch)",
           "event": [
             {
               "listen": "test",
@@ -1788,7 +1788,7 @@
           "response": []
         },
         {
-          "name": "Create YOLOX ONNXRuntime Deployment Instance",
+          "name": "Create Detection Deployment Instance (YOLOX ONNXRuntime)",
           "event": [
             {
               "listen": "test",
@@ -1844,7 +1844,7 @@
           "response": []
         },
         {
-          "name": "Create YOLOX OpenVINO Deployment Instance",
+          "name": "Create Detection Deployment Instance (YOLOX OpenVINO)",
           "event": [
             {
               "listen": "test",
@@ -1900,7 +1900,7 @@
           "response": []
         },
         {
-          "name": "Create YOLOX OpenVINO GPU FP16 Deployment Instance",
+          "name": "Create Detection Deployment Instance (YOLOX OpenVINO GPU FP16)",
           "event": [
             {
               "listen": "test",
@@ -1956,7 +1956,7 @@
           "response": []
         },
         {
-          "name": "Create YOLOX OpenVINO NPU FP16 Deployment Instance",
+          "name": "Create Detection Deployment Instance (YOLOX OpenVINO NPU FP16)",
           "event": [
             {
               "listen": "test",
@@ -2012,7 +2012,7 @@
           "response": []
         },
         {
-          "name": "Create YOLOX TensorRT FP32 Deployment Instance",
+          "name": "Create Detection Deployment Instance (YOLOX TensorRT FP32)",
           "event": [
             {
               "listen": "test",
@@ -2063,12 +2063,12 @@
                 "deployment-instances"
               ]
             },
-            "description": "使用 fp32 TensorRT engine ModelBuild 创建一个 TensorRT DeploymentInstance，模板固定为 runtime_backend=tensorrt、runtime_precision=fp32、device_name=cuda。当前建议优先配合 {{tensorrtEngineFp32ModelBuildId}} 使用；metadata.deployment_process 会透传 keep-warm 和 TensorRT pinned output buffer 相关参数，其中 fp32 模板单独使用 deploymentTensorrtFp32PinnedOutputBufferEnabled 和 deploymentTensorrtFp32PinnedOutputBufferMaxBytes。collection variables 里已经补了两套明确 preset：小输出 deployment 预设使用 deploymentTensorrtSmallOutputPresetPinnedOutputBufferEnabled=true、deploymentTensorrtSmallOutputPresetPinnedOutputBufferMaxBytes=8388608；大输出 deployment 预设使用 deploymentTensorrtLargeOutputPresetPinnedOutputBufferEnabled=false、deploymentTensorrtLargeOutputPresetPinnedOutputBufferMaxBytes=0。需要直接按 preset 创建时，优先使用 Create YOLOX TensorRT Small Output Deployment Instance 或 Create YOLOX TensorRT Large Output Deployment Instance；当前 fp32 模板仍保留给固定精度场景。返回结果里的 device_name 会归一化为 cuda:0。"
+            "description": "使用 fp32 TensorRT engine ModelBuild 创建一个 TensorRT DeploymentInstance，模板固定为 runtime_backend=tensorrt、runtime_precision=fp32、device_name=cuda。当前建议优先配合 {{tensorrtEngineFp32ModelBuildId}} 使用；metadata.deployment_process 会透传 keep-warm 和 TensorRT pinned output buffer 相关参数，其中 fp32 模板单独使用 deploymentTensorrtFp32PinnedOutputBufferEnabled 和 deploymentTensorrtFp32PinnedOutputBufferMaxBytes。collection variables 里已经补了两套明确 preset：小输出 deployment 预设使用 deploymentTensorrtSmallOutputPresetPinnedOutputBufferEnabled=true、deploymentTensorrtSmallOutputPresetPinnedOutputBufferMaxBytes=8388608；大输出 deployment 预设使用 deploymentTensorrtLargeOutputPresetPinnedOutputBufferEnabled=false、deploymentTensorrtLargeOutputPresetPinnedOutputBufferMaxBytes=0。需要直接按 preset 创建时，优先使用 Create Detection Deployment Instance (YOLOX TensorRT Small Output) 或 Create Detection Deployment Instance (YOLOX TensorRT Large Output)；当前 fp32 模板仍保留给固定精度场景。返回结果里的 device_name 会归一化为 cuda:0。"
           },
           "response": []
         },
         {
-          "name": "Create YOLOX TensorRT FP16 Deployment Instance",
+          "name": "Create Detection Deployment Instance (YOLOX TensorRT FP16)",
           "event": [
             {
               "listen": "test",
@@ -2119,12 +2119,12 @@
                 "deployment-instances"
               ]
             },
-            "description": "使用 fp16 TensorRT engine ModelBuild 创建一个 TensorRT DeploymentInstance，模板固定为 runtime_backend=tensorrt、runtime_precision=fp16、device_name=cuda。当前建议优先配合 {{tensorrtEngineFp16ModelBuildId}} 使用；请求里的 runtime_precision 必须与 engine build_precision 一致，metadata.deployment_process 会透传 keep-warm 和 TensorRT pinned output buffer 相关参数，其中 fp16 模板单独使用 deploymentTensorrtFp16PinnedOutputBufferEnabled 和 deploymentTensorrtFp16PinnedOutputBufferMaxBytes。collection variables 里已经补了两套明确 preset：小输出 deployment 预设使用 deploymentTensorrtSmallOutputPresetPinnedOutputBufferEnabled=true、deploymentTensorrtSmallOutputPresetPinnedOutputBufferMaxBytes=8388608；大输出 deployment 预设使用 deploymentTensorrtLargeOutputPresetPinnedOutputBufferEnabled=false、deploymentTensorrtLargeOutputPresetPinnedOutputBufferMaxBytes=0。需要直接按 preset 创建时，优先使用 Create YOLOX TensorRT Small Output Deployment Instance 或 Create YOLOX TensorRT Large Output Deployment Instance；当前 fp16 模板仍保留给固定精度场景。"
+            "description": "使用 fp16 TensorRT engine ModelBuild 创建一个 TensorRT DeploymentInstance，模板固定为 runtime_backend=tensorrt、runtime_precision=fp16、device_name=cuda。当前建议优先配合 {{tensorrtEngineFp16ModelBuildId}} 使用；请求里的 runtime_precision 必须与 engine build_precision 一致，metadata.deployment_process 会透传 keep-warm 和 TensorRT pinned output buffer 相关参数，其中 fp16 模板单独使用 deploymentTensorrtFp16PinnedOutputBufferEnabled 和 deploymentTensorrtFp16PinnedOutputBufferMaxBytes。collection variables 里已经补了两套明确 preset：小输出 deployment 预设使用 deploymentTensorrtSmallOutputPresetPinnedOutputBufferEnabled=true、deploymentTensorrtSmallOutputPresetPinnedOutputBufferMaxBytes=8388608；大输出 deployment 预设使用 deploymentTensorrtLargeOutputPresetPinnedOutputBufferEnabled=false、deploymentTensorrtLargeOutputPresetPinnedOutputBufferMaxBytes=0。需要直接按 preset 创建时，优先使用 Create Detection Deployment Instance (YOLOX TensorRT Small Output) 或 Create Detection Deployment Instance (YOLOX TensorRT Large Output)；当前 fp16 模板仍保留给固定精度场景。"
           },
           "response": []
         },
         {
-          "name": "Create YOLOX TensorRT Small Output Deployment Instance",
+          "name": "Create Detection Deployment Instance (YOLOX TensorRT Small Output)",
           "event": [
             {
               "listen": "test",
@@ -2180,7 +2180,7 @@
           "response": []
         },
         {
-          "name": "Create YOLOX TensorRT Large Output Deployment Instance",
+          "name": "Create Detection Deployment Instance (YOLOX TensorRT Large Output)",
           "event": [
             {
               "listen": "test",
@@ -2236,7 +2236,7 @@
           "response": []
         },
         {
-          "name": "List YOLOX Deployment Instances",
+          "name": "List Detection Deployment Instances",
           "request": {
             "method": "GET",
             "header": [
@@ -2284,7 +2284,7 @@
           "response": []
         },
         {
-          "name": "Get YOLOX Deployment Instance Detail",
+          "name": "Get Detection Deployment Instance Detail",
           "event": [
             {
               "listen": "test",
@@ -2327,7 +2327,7 @@
           "response": []
         },
         {
-          "name": "Get YOLOX Deployment Events",
+          "name": "Get Detection Deployment Events",
           "request": {
             "method": "GET",
             "header": [
@@ -4244,7 +4244,7 @@
     },
     {
       "key": "deploymentDisplayName",
-      "value": "local yolox deployment"
+      "value": "local detection deployment"
     },
     {
       "key": "deploymentStatus",
