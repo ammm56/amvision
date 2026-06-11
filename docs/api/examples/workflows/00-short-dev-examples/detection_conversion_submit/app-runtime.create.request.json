@@ -1,0 +1,8 @@
+{
+  "project_id": "project-1",
+  "application_id": "detection-conversion-submit-app",
+  "display_name": "Detection Conversion Submit Runtime",
+  "metadata": {
+    "example_kind": "detection-conversion-submit"
+  }
+}

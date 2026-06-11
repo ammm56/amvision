@@ -293,7 +293,7 @@ def test_package_yolox_evaluation_result_to_temporary_object_without_changing_ta
 
         package = service.package_evaluation_result(
             submission.task_id,
-            package_object_key="workflows/runtime/run-1/package/yolox-evaluation-package.zip",
+            package_object_key="workflows/runtime/run-1/package/detection-evaluation-package.zip",
         )
 
         package_path = dataset_storage.resolve(package.package_object_key)

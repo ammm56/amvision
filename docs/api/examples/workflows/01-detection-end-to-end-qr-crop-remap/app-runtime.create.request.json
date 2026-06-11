@@ -1,0 +1,10 @@
+{
+  "project_id": "project-1",
+  "application_id": "detection-end-to-end-qr-crop-remap-app",
+  "display_name": "Detection End-to-End QR Crop Remap Runtime",
+  "metadata": {
+    "example_kind": "detection-end-to-end-qr-crop-remap",
+    "transport_kind": "multipart-upload"
+  },
+  "request_timeout_seconds": 43200
+}

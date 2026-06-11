@@ -5,7 +5,7 @@
 ## 目录顺序
 
 1. `00-short-dev-examples/`：短链路、开发中、单节点或边界不明确的 workflow 示例。
-2. `01-yolox-end-to-end-qr-crop-remap/`：第一类完整导入、导出、训练、评估、转换、部署和 QR remap 链路；目录名暂沿用历史。
+2. `01-detection-end-to-end-qr-crop-remap/`：第一类完整导入、导出、训练、评估、转换、部署和 QR remap 链路；目录名暂沿用历史。
 3. `02-detection-deployment-sync-infer-health/`：第二类 start、warmup、sync infer 和 health 链路。
 4. `03-detection-deployment-qr-crop-remap/`：第三类检测、AOI crop、二维码识别和原图回绘链路。
 5. `04-detection-deployment-infer-opencv-health/`：第四类 sync infer、health 和 OpenCV 处理链路。

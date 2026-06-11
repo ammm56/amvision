@@ -3766,14 +3766,14 @@ def test_detection_deployment_qr_crop_remap_example_documents_are_valid() -> Non
     ]
 
 
-def test_yolox_end_to_end_qr_crop_remap_example_documents_are_valid() -> None:
+def test_detection_end_to_end_qr_crop_remap_example_documents_are_valid() -> None:
     """验证第一类完整端到端正式示例模板与应用可以通过当前规则校验。"""
 
     example_dir = (
         Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
     )
-    template_path = example_dir / "yolox_end_to_end_qr_crop_remap.template.json"
-    application_path = example_dir / "yolox_end_to_end_qr_crop_remap.application.json"
+    template_path = example_dir / "detection_end_to_end_qr_crop_remap.template.json"
+    application_path = example_dir / "detection_end_to_end_qr_crop_remap.application.json"
     template = WorkflowGraphTemplate.model_validate(
         json.loads(template_path.read_text(encoding="utf-8"))
     )
@@ -3859,7 +3859,7 @@ def test_yolox_end_to_end_qr_crop_remap_example_documents_are_valid() -> None:
         node for node in template.nodes if node.node_id == "create_deployment"
     )
     assert deployment_create_node.parameters["cleanup_on_completion"] is True
-    assert template.metadata["example_kind"] == "yolox-end-to-end-qr-crop-remap"
+    assert template.metadata["example_kind"] == "detection-end-to-end-qr-crop-remap"
     assert template.metadata["deployment_cleanup_policy"] == "delete_on_completion"
     assert template.metadata["node_groups"]["training"] == [
         "build_training_pretrained_case_nano",
@@ -3887,7 +3887,7 @@ def test_yolox_end_to_end_qr_crop_remap_example_documents_are_valid() -> None:
         "export_crops",
     ]
     assert application.template_ref.source_uri == (
-        "docs/examples/workflows/yolox_end_to_end_qr_crop_remap.template.json"
+        "docs/examples/workflows/detection_end_to_end_qr_crop_remap.template.json"
     )
     assert application.runtime_mode == "python-json-workflow"
     assert [binding.binding_id for binding in application.bindings] == [
@@ -3944,14 +3944,14 @@ def test_dataset_export_package_example_documents_are_valid() -> None:
     ]
 
 
-def test_yolox_evaluation_package_example_documents_are_valid() -> None:
+def test_detection_evaluation_package_example_documents_are_valid() -> None:
     """验证 YOLOX evaluation package 示例模板与应用可以通过当前规则校验。"""
 
     example_dir = (
         Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
     )
-    template_path = example_dir / "yolox_evaluation_package.template.json"
-    application_path = example_dir / "yolox_evaluation_package.application.json"
+    template_path = example_dir / "detection_evaluation_package.template.json"
+    application_path = example_dir / "detection_evaluation_package.application.json"
     template = WorkflowGraphTemplate.model_validate(
         json.loads(template_path.read_text(encoding="utf-8"))
     )
@@ -3981,12 +3981,12 @@ def test_yolox_evaluation_package_example_documents_are_valid() -> None:
     assert template.nodes[2].parameters["base"]["save_result_package"] is False
     assert template.nodes[5].parameters["fields"]["include_events"] is False
     assert template.nodes[9].parameters["cleanup_on_completion"] is True
-    assert template.metadata["example_kind"] == "yolox-evaluation-package"
+    assert template.metadata["example_kind"] == "detection-evaluation-package"
     assert template.metadata["package_cleanup_policy"] == "delete_on_completion"
     assert template.metadata["submission_result_package_mode"] == "disabled_in_submit"
     assert (
         application.template_ref.source_uri
-        == "docs/examples/workflows/yolox_evaluation_package.template.json"
+        == "docs/examples/workflows/detection_evaluation_package.template.json"
     )
     assert application.runtime_mode == "python-json-workflow"
     assert [binding.binding_id for binding in application.bindings] == [
@@ -4020,25 +4020,25 @@ def test_yolox_evaluation_package_example_documents_are_valid() -> None:
             id="dataset-export-submit",
         ),
         pytest.param(
-            "yolox_training_submit",
-            "yolox-training-submit",
+            "detection_training_submit",
+            "detection-training-submit",
             "core.service.model-training.submit",
             ["request_payload", "submission_body"],
-            id="yolox-training-submit",
+            id="detection-training-submit",
         ),
         pytest.param(
-            "yolox_evaluation_submit",
-            "yolox-evaluation-submit",
+            "detection_evaluation_submit",
+            "detection-evaluation-submit",
             "core.service.model-evaluation.submit",
             ["request_payload", "submission_body"],
-            id="yolox-evaluation-submit",
+            id="detection-evaluation-submit",
         ),
         pytest.param(
-            "yolox_conversion_submit",
-            "yolox-conversion-submit",
+            "detection_conversion_submit",
+            "detection-conversion-submit",
             "core.service.model-conversion.submit",
             ["request_payload", "submission_body"],
-            id="yolox-conversion-submit",
+            id="detection-conversion-submit",
         ),
     ],
 )

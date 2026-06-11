@@ -28,11 +28,11 @@ SHORT_WORKFLOW_EXAMPLE_NAMES = [
     "dataset_export_package",
     "dataset_export_submit",
     "dataset_import_upload",
-    "yolox_conversion_submit",
+    "detection_conversion_submit",
     "detection_deployment_lifecycle",
-    "yolox_evaluation_package",
-    "yolox_evaluation_submit",
-    "yolox_training_submit",
+    "detection_evaluation_package",
+    "detection_evaluation_submit",
+    "detection_training_submit",
 ]
 
 WORKFLOW_API_EXAMPLE_FOLDERS = {
@@ -40,7 +40,7 @@ WORKFLOW_API_EXAMPLE_FOLDERS = {
     "detection_deployment_lifecycle_real_path": Path(
         "00-short-dev-examples/detection_deployment_lifecycle_real_path"
     ),
-    "yolox_end_to_end_qr_crop_remap": Path("01-yolox-end-to-end-qr-crop-remap"),
+    "detection_end_to_end_qr_crop_remap": Path("01-detection-end-to-end-qr-crop-remap"),
     "detection_deployment_sync_infer_health": Path("02-detection-deployment-sync-infer-health"),
     "detection_deployment_qr_crop_remap": Path("03-detection-deployment-qr-crop-remap"),
     "detection_deployment_infer_opencv_health": Path("04-detection-deployment-infer-opencv-health"),
@@ -75,7 +75,7 @@ ALL_WORKFLOW_API_EXAMPLE_FOLDERS = {
 
 WORKFLOW_POSTMAN_COLLECTIONS = {
     "00-short-dev-examples": "00-workflow-example-documents.postman_collection.json",
-    "01-yolox-end-to-end-qr-crop-remap": "01-yolox-end-to-end-qr-crop-remap.postman_collection.json",
+    "01-detection-end-to-end-qr-crop-remap": "01-detection-end-to-end-qr-crop-remap.postman_collection.json",
     "02-detection-deployment-sync-infer-health": "02-detection-deployment-sync-infer-health.postman_collection.json",
     "03-detection-deployment-qr-crop-remap": "03-detection-deployment-qr-crop-remap.postman_collection.json",
     "04-detection-deployment-infer-opencv-health": "04-detection-deployment-infer-opencv-health.postman_collection.json",
@@ -297,14 +297,14 @@ def test_workflow_postman_collection_contains_manual_test_sequence() -> None:
     assert "Invoke Dataset Export Submit App Runtime" in request_names
     assert "Create Dataset Export Package App Runtime" in request_names
     assert "Invoke Dataset Export Package App Runtime" in request_names
-    assert "Create YOLOX Training Submit App Runtime" in request_names
-    assert "Invoke YOLOX Training Submit App Runtime" in request_names
-    assert "Create YOLOX Evaluation Submit App Runtime" in request_names
-    assert "Invoke YOLOX Evaluation Submit App Runtime" in request_names
-    assert "Create YOLOX Evaluation Package App Runtime" in request_names
-    assert "Invoke YOLOX Evaluation Package App Runtime" in request_names
-    assert "Create YOLOX Conversion Submit App Runtime" in request_names
-    assert "Invoke YOLOX Conversion Submit App Runtime" in request_names
+    assert "Create Detection Training Submit App Runtime" in request_names
+    assert "Invoke Detection Training Submit App Runtime" in request_names
+    assert "Create Detection Evaluation Submit App Runtime" in request_names
+    assert "Invoke Detection Evaluation Submit App Runtime" in request_names
+    assert "Create Detection Evaluation Package App Runtime" in request_names
+    assert "Invoke Detection Evaluation Package App Runtime" in request_names
+    assert "Create Detection Conversion Submit App Runtime" in request_names
+    assert "Invoke Detection Conversion Submit App Runtime" in request_names
     assert variables["deploymentInstanceId"] == "replace-with-existing-deployment-instance-id"
     assert variables["templateId"] == "detection-deployment-lifecycle-real-path"
     assert variables["applicationId"] == "detection-deployment-lifecycle-real-path-app"
@@ -313,10 +313,10 @@ def test_workflow_postman_collection_contains_manual_test_sequence() -> None:
     assert "datasetImportWorkflowRuntimeId" in variables
     assert "datasetExportWorkflowRuntimeId" in variables
     assert "datasetExportPackageWorkflowRuntimeId" in variables
-    assert "yoloxTrainingWorkflowRuntimeId" in variables
-    assert "yoloxEvaluationWorkflowRuntimeId" in variables
-    assert "yoloxEvaluationPackageWorkflowRuntimeId" in variables
-    assert "yoloxConversionWorkflowRuntimeId" in variables
+    assert "detectionTrainingWorkflowRuntimeId" in variables
+    assert "detectionEvaluationWorkflowRuntimeId" in variables
+    assert "detectionEvaluationPackageWorkflowRuntimeId" in variables
+    assert "detectionConversionWorkflowRuntimeId" in variables
 
     save_template_body = json.loads(request_payloads["Save Workflow Template"])
     save_application_body = json.loads(request_payloads["Save Flow Application"])
@@ -331,14 +331,14 @@ def test_workflow_postman_collection_contains_manual_test_sequence() -> None:
     dataset_export_invoke_body = json.loads(request_payloads["Invoke Dataset Export Submit App Runtime"])
     dataset_export_package_create_body = json.loads(request_payloads["Create Dataset Export Package App Runtime"])
     dataset_export_package_invoke_body = json.loads(request_payloads["Invoke Dataset Export Package App Runtime"])
-    training_create_body = json.loads(request_payloads["Create YOLOX Training Submit App Runtime"])
-    training_invoke_body = json.loads(request_payloads["Invoke YOLOX Training Submit App Runtime"])
-    evaluation_create_body = json.loads(request_payloads["Create YOLOX Evaluation Submit App Runtime"])
-    evaluation_invoke_body = json.loads(request_payloads["Invoke YOLOX Evaluation Submit App Runtime"])
-    evaluation_package_create_body = json.loads(request_payloads["Create YOLOX Evaluation Package App Runtime"])
-    evaluation_package_invoke_body = json.loads(request_payloads["Invoke YOLOX Evaluation Package App Runtime"])
-    conversion_create_body = json.loads(request_payloads["Create YOLOX Conversion Submit App Runtime"])
-    conversion_invoke_body = json.loads(request_payloads["Invoke YOLOX Conversion Submit App Runtime"])
+    training_create_body = json.loads(request_payloads["Create Detection Training Submit App Runtime"])
+    training_invoke_body = json.loads(request_payloads["Invoke Detection Training Submit App Runtime"])
+    evaluation_create_body = json.loads(request_payloads["Create Detection Evaluation Submit App Runtime"])
+    evaluation_invoke_body = json.loads(request_payloads["Invoke Detection Evaluation Submit App Runtime"])
+    evaluation_package_create_body = json.loads(request_payloads["Create Detection Evaluation Package App Runtime"])
+    evaluation_package_invoke_body = json.loads(request_payloads["Invoke Detection Evaluation Package App Runtime"])
+    conversion_create_body = json.loads(request_payloads["Create Detection Conversion Submit App Runtime"])
+    conversion_invoke_body = json.loads(request_payloads["Invoke Detection Conversion Submit App Runtime"])
     dataset_import_formdata = {
         item["key"]: item for item in formdata_payloads["Invoke Dataset Import Upload App Runtime"]
     }
@@ -377,18 +377,18 @@ def test_workflow_postman_collection_contains_manual_test_sequence() -> None:
     assert dataset_export_package_create_body["application_id"] == "dataset-export-package-app"
     assert dataset_export_package_invoke_body["execution_metadata"]["scenario"] == "dataset-export-package"
     assert dataset_export_package_invoke_body["input_bindings"]["request_payload"]["value"]["dataset_export_id"] == "dataset-export-1"
-    assert training_create_body["application_id"] == "yolox-training-submit-app"
-    assert training_invoke_body["execution_metadata"]["scenario"] == "yolox-training-submit"
+    assert training_create_body["application_id"] == "detection-training-submit-app"
+    assert training_invoke_body["execution_metadata"]["scenario"] == "detection-training-submit"
     assert training_invoke_body["input_bindings"]["request_payload"]["value"]["max_epochs"] == 3
-    assert evaluation_create_body["application_id"] == "yolox-evaluation-submit-app"
-    assert evaluation_invoke_body["execution_metadata"]["scenario"] == "yolox-evaluation-submit"
+    assert evaluation_create_body["application_id"] == "detection-evaluation-submit-app"
+    assert evaluation_invoke_body["execution_metadata"]["scenario"] == "detection-evaluation-submit"
     assert evaluation_invoke_body["input_bindings"]["request_payload"]["value"]["score_threshold"] == 0.25
-    assert evaluation_package_create_body["application_id"] == "yolox-evaluation-package-app"
-    assert evaluation_package_invoke_body["execution_metadata"]["scenario"] == "yolox-evaluation-package"
+    assert evaluation_package_create_body["application_id"] == "detection-evaluation-package-app"
+    assert evaluation_package_invoke_body["execution_metadata"]["scenario"] == "detection-evaluation-package"
     assert evaluation_package_invoke_body["input_bindings"]["request_payload"]["value"]["model_version_id"] == "model-version-1"
     assert "save_result_package" not in evaluation_package_invoke_body["input_bindings"]["request_payload"]["value"]
-    assert conversion_create_body["application_id"] == "yolox-conversion-submit-app"
-    assert conversion_invoke_body["execution_metadata"]["scenario"] == "yolox-conversion-submit"
+    assert conversion_create_body["application_id"] == "detection-conversion-submit-app"
+    assert conversion_invoke_body["execution_metadata"]["scenario"] == "detection-conversion-submit"
     assert conversion_invoke_body["input_bindings"]["request_payload"]["value"]["target_formats"] == [
         "onnx",
         "openvino-ir",
@@ -399,15 +399,15 @@ def test_workflow_postman_collection_contains_manual_test_sequence() -> None:
     assert dataset_import_execution_metadata["scenario"] == "dataset-import-upload"
 
 
-def test_yolox_training_postman_collection_contains_project_file_lookup_chain() -> None:
-    """验证 YOLOX Postman collection 已补齐 Project 公开文件 file_id 取值链。"""
+def test_detection_training_postman_collection_contains_project_file_lookup_chain() -> None:
+    """验证 detection Postman collection 已补齐 Project 公开文件 file_id 取值链。"""
 
     collection_path = (
         Path(__file__).resolve().parents[1]
         / "docs"
         / "api"
         / "postman"
-        / "yolox-training.postman_collection.json"
+        / "detection-training.postman_collection.json"
     )
     collection_payload = json.loads(collection_path.read_text(encoding="utf-8"))
     request_names = _collect_postman_request_names(collection_payload["item"])
@@ -416,18 +416,18 @@ def test_yolox_training_postman_collection_contains_project_file_lookup_chain() 
     list_project_files_request = _find_postman_request(collection_payload["item"], "List Project Files")
     get_project_file_metadata_request = _find_postman_request(collection_payload["item"], "Get Project File Metadata")
 
-    assert collection_payload["info"]["name"] == "amvision detection task api (yolox examples)"
+    assert collection_payload["info"]["name"] == "amvision detection task api"
     assert "List Project Files" in request_names
     assert "Get Project File Metadata" in request_names
-    assert "Predict YOLOX Validation Session By File ID" in request_names
-    assert "Direct YOLOX Inference By File ID" in request_names
-    assert "Create YOLOX Inference Task By File ID" in request_names
+    assert "Predict Detection Validation Session By File ID" in request_names
+    assert "Direct Detection Inference By File ID" in request_names
+    assert "Create Detection Inference Task By File ID" in request_names
     assert variables["projectFileObjectKey"] == "projects/project-1/inputs/validation/image-1.jpg"
     assert variables["projectFilesPrefix"] == "projects/project-1/inputs"
     assert "projectPublicFileId" in variables
-    assert request_payloads["Predict YOLOX Validation Session By File ID"].count("input_file_id") == 1
-    assert request_payloads["Direct YOLOX Inference By File ID"].count("input_file_id") == 1
-    assert request_payloads["Create YOLOX Inference Task By File ID"].count("input_file_id") == 1
+    assert request_payloads["Predict Detection Validation Session By File ID"].count("input_file_id") == 1
+    assert request_payloads["Direct Detection Inference By File ID"].count("input_file_id") == 1
+    assert request_payloads["Create Detection Inference Task By File ID"].count("input_file_id") == 1
     assert list_project_files_request["url"]["raw"] == "{{baseUrl}}/api/v1/projects/{{projectId}}/files?object_prefix={{projectFilesPrefix}}&offset={{listOffset}}&limit={{listLimit}}"
     assert get_project_file_metadata_request["url"]["raw"] == "{{baseUrl}}/api/v1/projects/{{projectId}}/files/metadata?object_key={{projectFileObjectKey}}"
 
@@ -508,28 +508,28 @@ def test_local_auth_postman_collection_describes_user_token_boundary() -> None:
             id="dataset-export-package",
         ),
         pytest.param(
-            "yolox_training_submit",
-            "yolox-training-submit-app",
-            "yolox-training-submit",
-            id="yolox-training-submit",
+            "detection_training_submit",
+            "detection-training-submit-app",
+            "detection-training-submit",
+            id="detection-training-submit",
         ),
         pytest.param(
-            "yolox_evaluation_submit",
-            "yolox-evaluation-submit-app",
-            "yolox-evaluation-submit",
-            id="yolox-evaluation-submit",
+            "detection_evaluation_submit",
+            "detection-evaluation-submit-app",
+            "detection-evaluation-submit",
+            id="detection-evaluation-submit",
         ),
         pytest.param(
-            "yolox_evaluation_package",
-            "yolox-evaluation-package-app",
-            "yolox-evaluation-package",
-            id="yolox-evaluation-package",
+            "detection_evaluation_package",
+            "detection-evaluation-package-app",
+            "detection-evaluation-package",
+            id="detection-evaluation-package",
         ),
         pytest.param(
-            "yolox_conversion_submit",
-            "yolox-conversion-submit-app",
-            "yolox-conversion-submit",
-            id="yolox-conversion-submit",
+            "detection_conversion_submit",
+            "detection-conversion-submit-app",
+            "detection-conversion-submit",
+            id="detection-conversion-submit",
         ),
     ],
 )
@@ -571,7 +571,7 @@ def test_workflow_api_standard_app_runtime_examples_are_valid(
     else:
         assert invoke_request["input_bindings"]["request_payload"]["value"]["project_id"] == "project-1"
 
-    if example_name == "yolox_evaluation_package":
+    if example_name == "detection_evaluation_package":
         assert invoke_request["input_bindings"]["request_payload"]["value"]["model_version_id"] == "model-version-1"
         assert "save_result_package" not in invoke_request["input_bindings"]["request_payload"]["value"]
 
@@ -1194,21 +1194,21 @@ def test_directory_watch_trigger_source_document_indexes_formal_example() -> Non
 def test_workflow_api_end_to_end_qr_crop_remap_app_runtime_examples_are_valid() -> None:
     """验证第一类完整端到端正式 app 的 create 与 invoke API 示例请求体。"""
 
-    template_request = _read_api_workflow_example("yolox_end_to_end_qr_crop_remap", "save-template.request.json")
+    template_request = _read_api_workflow_example("detection_end_to_end_qr_crop_remap", "save-template.request.json")
     application = FlowApplication.model_validate(
         json.loads(
-            (DOCS_WORKFLOW_EXAMPLE_DIR / "yolox_end_to_end_qr_crop_remap.application.json").read_text(
+            (DOCS_WORKFLOW_EXAMPLE_DIR / "detection_end_to_end_qr_crop_remap.application.json").read_text(
                 encoding="utf-8"
             )
         )
     )
-    example_name = "yolox_end_to_end_qr_crop_remap"
+    example_name = "detection_end_to_end_qr_crop_remap"
     create_request = _read_api_workflow_example(example_name, "app-runtime.create.request.json")
     invoke_request = _read_api_workflow_example(example_name, "app-runtime.invoke.request.json")
     run_create_request = _read_api_workflow_example(example_name, "app-runtime.run.create.request.json")
 
-    assert application.application_id == "yolox-end-to-end-qr-crop-remap-app"
-    assert application.metadata["example_kind"] == "yolox-end-to-end-qr-crop-remap"
+    assert application.application_id == "detection-end-to-end-qr-crop-remap-app"
+    assert application.metadata["example_kind"] == "detection-end-to-end-qr-crop-remap"
     assert template_request["template"]["nodes"][5]["node_id"] == "extract_import_dataset_id"
     assert template_request["template"]["nodes"][5]["parameters"]["path"] == "task_spec.dataset_id"
     default_warm_start_node = next(
@@ -1242,7 +1242,7 @@ def test_workflow_api_end_to_end_qr_crop_remap_app_runtime_examples_are_valid() 
     assert conversion_model_build_id_node["parameters"]["index"] == 0
     assert create_request["application_id"] == application.application_id
     assert "execution_policy_id" not in create_request
-    assert create_request["metadata"]["example_kind"] == "yolox-end-to-end-qr-crop-remap"
+    assert create_request["metadata"]["example_kind"] == "detection-end-to-end-qr-crop-remap"
     assert create_request["metadata"]["transport_kind"] == "multipart-upload"
     assert create_request["request_timeout_seconds"] == 43200
 
@@ -1289,8 +1289,8 @@ def test_workflow_api_end_to_end_qr_crop_remap_app_runtime_examples_are_valid() 
     assert input_bindings_json["request_image"]["media_type"] == "image/png"
     assert invoke_request["files"]["request_package"]["file_name"] == "barcodeqrcode.zip"
     assert invoke_request["files"]["request_package"]["content_type"] == "application/zip"
-    assert invoke_request["execution_metadata"]["scenario"] == "yolox-end-to-end-qr-crop-remap"
-    assert run_create_request["execution_metadata"]["scenario"] == "yolox-end-to-end-qr-crop-remap"
+    assert invoke_request["execution_metadata"]["scenario"] == "detection-end-to-end-qr-crop-remap"
+    assert run_create_request["execution_metadata"]["scenario"] == "detection-end-to-end-qr-crop-remap"
     assert run_create_request["execution_metadata"]["trigger_source"] == "async-api"
     assert invoke_request["timeout_seconds"] == 43200
     assert run_create_request["timeout_seconds"] == 43200
@@ -1411,7 +1411,7 @@ def test_workflow_api_examples_are_classified_by_numbered_directories() -> None:
     assert root_json_files == []
     assert numbered_dirs == [
         "00-short-dev-examples",
-        "01-yolox-end-to-end-qr-crop-remap",
+        "01-detection-end-to-end-qr-crop-remap",
         "02-detection-deployment-sync-infer-health",
         "03-detection-deployment-qr-crop-remap",
         "04-detection-deployment-infer-opencv-health",
@@ -1679,7 +1679,7 @@ def test_workflow_example_documents_postman_collection_contains_remaining_debug_
     )
     collection_payload = json.loads(postman_path.read_text(encoding="utf-8-sig"))
     excluded_formal_example_names = {
-        "yolox_end_to_end_qr_crop_remap",
+        "detection_end_to_end_qr_crop_remap",
         "detection_deployment_sync_infer_health",
         "detection_deployment_qr_crop_remap",
         "detection_deployment_infer_opencv_health",
@@ -1761,9 +1761,9 @@ def test_workflow_example_documents_postman_collection_contains_remaining_debug_
     ("collection_dir", "collection_name", "example_name", "multipart_invoke"),
     [
         pytest.param(
-            "01-yolox-end-to-end-qr-crop-remap",
-            "01-yolox-end-to-end-qr-crop-remap.postman_collection.json",
-            "yolox_end_to_end_qr_crop_remap",
+            "01-detection-end-to-end-qr-crop-remap",
+            "01-detection-end-to-end-qr-crop-remap.postman_collection.json",
+            "detection_end_to_end_qr_crop_remap",
             True,
             id="workflow-01-end-to-end",
         ),

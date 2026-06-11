@@ -378,7 +378,7 @@ def test_detection_deployment_qr_crop_remap_app_runtime_smoke_decodes_qr_from_re
     assert response_data["annotated_image"]["transport_kind"] == "inline-base64"
 
 
-def test_yolox_end_to_end_qr_crop_remap_app_runtime_smoke_returns_slim_stage_summaries_and_cleans_up_created_deployment(
+def test_detection_end_to_end_qr_crop_remap_app_runtime_smoke_returns_slim_stage_summaries_and_cleans_up_created_deployment(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -390,7 +390,7 @@ def test_yolox_end_to_end_qr_crop_remap_app_runtime_smoke_returns_slim_stage_sum
     )
     _, application = _save_example_documents(
         workflow_service,
-        example_name="yolox_end_to_end_qr_crop_remap",
+        example_name="detection_end_to_end_qr_crop_remap",
     )
     waited_task_ids: list[str] = []
     tracked_deployment_service = _install_tracked_deployment_service(
@@ -610,7 +610,7 @@ def test_yolox_end_to_end_qr_crop_remap_app_runtime_smoke_returns_slim_stage_sum
     assert tracked_deployment_service.list_saved_deployment_ids(project_id="project-1") == ()
 
 
-def test_yolox_end_to_end_qr_crop_remap_app_runtime_cleans_up_created_deployment_after_failure(
+def test_detection_end_to_end_qr_crop_remap_app_runtime_cleans_up_created_deployment_after_failure(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -622,7 +622,7 @@ def test_yolox_end_to_end_qr_crop_remap_app_runtime_cleans_up_created_deployment
     )
     _, application = _save_example_documents(
         workflow_service,
-        example_name="yolox_end_to_end_qr_crop_remap",
+        example_name="detection_end_to_end_qr_crop_remap",
     )
     tracked_deployment_service = _install_tracked_deployment_service(
         monkeypatch=monkeypatch,

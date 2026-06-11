@@ -316,7 +316,7 @@ src/workflows/workflow-editor/result-viewer/
 ### 3. 视觉平台主链路
 
 1. Datasets 导入、导出和 DatasetVersion 详情。
-2. YOLOX training 任务创建、详情、控制按钮和输出文件。
+2. detection training 任务创建、详情、控制按钮和输出文件。
 3. Validation、Evaluation、Conversion 和 Deployment 详情。
 4. Custom Nodes 只读目录和 node catalog。
 5. Workflow editor、PreviewRun、AppRuntime 和 WorkflowRun。
