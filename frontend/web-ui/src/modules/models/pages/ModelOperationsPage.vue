@@ -285,19 +285,19 @@ import { RouterLink } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 
 import {
-  createDetectionConversionTask,
-  createDetectionTrainingTask,
+  createModelConversionTask,
+  createModelTrainingTask,
   getPlatformBaseModelDetail,
   listPlatformBaseModels,
-  listDetectionConversionTasks,
-  listDetectionTrainingTasks,
+  listModelConversionTasks,
+  listModelTrainingTasks,
   type ConversionTargetKey,
   type PlatformBaseModelDetail,
   type PlatformBaseModelSummary,
-  type DetectionConversionTaskSummary,
-  type DetectionTrainingTaskSubmissionResponse,
-  type DetectionTrainingTaskSummary,
-  type DetectionConversionTaskSubmissionResponse,
+  type ModelConversionTaskSummary,
+  type ModelTrainingTaskSubmissionResponse,
+  type ModelTrainingTaskSummary,
+  type ModelConversionTaskSubmissionResponse,
   type ModelTaskType,
 } from '../services/model.service'
 import { useProjectStore } from '@/app/stores/project.store'
@@ -348,14 +348,14 @@ const conversionTargetOptions = [
 
 const baseModels = ref<PlatformBaseModelSummary[]>([])
 const selectedModelDetail = ref<PlatformBaseModelDetail | null>(null)
-const trainingTasks = ref<DetectionTrainingTaskSummary[]>([])
-const conversionTasks = ref<DetectionConversionTaskSummary[]>([])
+const trainingTasks = ref<ModelTrainingTaskSummary[]>([])
+const conversionTasks = ref<ModelConversionTaskSummary[]>([])
 const loading = ref(false)
 const trainingSubmitting = ref(false)
 const conversionSubmitting = ref(false)
 const errorMessage = ref<string | null>(null)
-const lastTrainingSubmission = ref<DetectionTrainingTaskSubmissionResponse | null>(null)
-const lastConversionSubmission = ref<DetectionConversionTaskSubmissionResponse | null>(null)
+const lastTrainingSubmission = ref<ModelTrainingTaskSubmissionResponse | null>(null)
+const lastConversionSubmission = ref<ModelConversionTaskSubmissionResponse | null>(null)
 
 const selectedTaskType = ref<ModelTaskType>('detection')
 const modelType = ref('')
@@ -435,8 +435,8 @@ async function refreshPage(): Promise<void> {
   try {
     const [models, training, conversion] = await Promise.all([
       listPlatformBaseModels(),
-      listDetectionTrainingTasks(selectedTaskType.value, selectedProjectId.value, modelType.value.trim()),
-      listDetectionConversionTasks(selectedTaskType.value, selectedProjectId.value, modelType.value.trim()),
+      listModelTrainingTasks(selectedTaskType.value, selectedProjectId.value, modelType.value.trim()),
+      listModelConversionTasks(selectedTaskType.value, selectedProjectId.value, modelType.value.trim()),
     ])
     baseModels.value = models
     trainingTasks.value = training
@@ -484,7 +484,7 @@ async function submitTraining(): Promise<void> {
   trainingSubmitting.value = true
   errorMessage.value = null
   try {
-    lastTrainingSubmission.value = await createDetectionTrainingTask({
+    lastTrainingSubmission.value = await createModelTrainingTask({
       taskType: selectedTaskType.value,
       projectId: selectedProjectId.value,
       modelType: modelType.value.trim(),
@@ -502,7 +502,7 @@ async function submitTraining(): Promise<void> {
       inputHeight: inputHeight.value,
       displayName: trainingDisplayName.value,
     })
-    trainingTasks.value = await listDetectionTrainingTasks(selectedTaskType.value, selectedProjectId.value, modelType.value.trim())
+    trainingTasks.value = await listModelTrainingTasks(selectedTaskType.value, selectedProjectId.value, modelType.value.trim())
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : t('modelOps.messages.submitTrainingFailed')
   } finally {
@@ -518,7 +518,7 @@ async function submitConversion(): Promise<void> {
   conversionSubmitting.value = true
   errorMessage.value = null
   try {
-    lastConversionSubmission.value = await createDetectionConversionTask({
+    lastConversionSubmission.value = await createModelConversionTask({
       taskType: selectedTaskType.value,
       projectId: selectedProjectId.value,
       modelType: modelType.value.trim(),
@@ -527,7 +527,7 @@ async function submitConversion(): Promise<void> {
       runtimeProfileId: conversionRuntimeProfileId.value.trim(),
       displayName: conversionDisplayName.value,
     })
-    conversionTasks.value = await listDetectionConversionTasks(selectedTaskType.value, selectedProjectId.value, modelType.value.trim())
+    conversionTasks.value = await listModelConversionTasks(selectedTaskType.value, selectedProjectId.value, modelType.value.trim())
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : t('modelOps.messages.submitConversionFailed')
   } finally {

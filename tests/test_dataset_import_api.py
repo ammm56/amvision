@@ -35,6 +35,7 @@ def test_import_dataset_zip_creates_coco_dataset_version(tmp_path: Path) -> None
                 data={
                     "project_id": "project-1",
                     "dataset_id": "dataset-1",
+                    "task_type": "detection",
                 },
                 files={
                     "package": ("coco-dataset.zip", _build_coco_zip_bytes(), "application/zip"),
@@ -123,6 +124,7 @@ def test_import_dataset_zip_creates_voc_dataset_version(tmp_path: Path) -> None:
                     "project_id": "project-1",
                     "dataset_id": "dataset-2",
                     "format_type": "voc",
+                    "task_type": "detection",
                 },
                 files={
                     "package": ("voc-dataset.zip", _build_voc_zip_bytes(), "application/zip"),
@@ -173,6 +175,7 @@ def test_import_dataset_zip_accepts_nested_voc_wrapper_dirs(tmp_path: Path) -> N
                     "project_id": "project-1",
                     "dataset_id": "dataset-3",
                     "format_type": "voc",
+                    "task_type": "detection",
                 },
                 files={
                     "package": (
@@ -217,6 +220,7 @@ def test_import_dataset_zip_accepts_roboflow_coco_split_layout(tmp_path: Path) -
                 data={
                     "project_id": "project-1",
                     "dataset_id": "dataset-roboflow-coco",
+                    "task_type": "detection",
                 },
                 files={
                     "package": (
@@ -364,6 +368,7 @@ def test_get_dataset_import_detail_returns_validation_report_and_version_relatio
                 data={
                     "project_id": "project-1",
                     "dataset_id": "dataset-1",
+                    "task_type": "detection",
                 },
                 files={
                     "package": ("coco-dataset.zip", _build_coco_zip_bytes(), "application/zip"),
@@ -423,6 +428,7 @@ def test_list_dataset_imports_returns_dataset_import_summaries(tmp_path: Path) -
                 data={
                     "project_id": "project-1",
                     "dataset_id": "dataset-1",
+                    "task_type": "detection",
                 },
                 files={
                     "package": ("coco-dataset.zip", _build_coco_zip_bytes(), "application/zip"),
@@ -473,6 +479,7 @@ def test_import_dataset_zip_forced_split_strategy_overrides_detected_split(tmp_p
                 data={
                     "project_id": "project-1",
                     "dataset_id": "dataset-4",
+                    "task_type": "detection",
                     "split_strategy": "val",
                 },
                 files={
@@ -515,6 +522,7 @@ def test_import_dataset_zip_rejects_invalid_split_strategy(tmp_path: Path) -> No
                 data={
                     "project_id": "project-1",
                     "dataset_id": "dataset-5",
+                    "task_type": "detection",
                     "split_strategy": "shadow",
                 },
                 files={
@@ -539,6 +547,7 @@ def test_import_dataset_zip_rejects_empty_package_before_enqueue(tmp_path: Path)
                 data={
                     "project_id": "project-1",
                     "dataset_id": "dataset-empty",
+                    "task_type": "detection",
                 },
                 files={
                     "package": ("dataset.zip", b"", "application/zip"),
@@ -575,6 +584,7 @@ def test_import_dataset_zip_rejects_non_zip_payload_before_enqueue(tmp_path: Pat
                 data={
                     "project_id": "project-1",
                     "dataset_id": "dataset-fake-zip",
+                    "task_type": "detection",
                 },
                 files={
                     "package": ("dataset.zip", b"not-a-zip", "application/zip"),
@@ -611,6 +621,7 @@ def test_import_dataset_zip_can_be_called_twice_for_same_dataset(tmp_path: Path)
                 data={
                     "project_id": "project-1",
                     "dataset_id": "dataset-repeat",
+                    "task_type": "detection",
                 },
                 files={
                     "package": ("coco-dataset.zip", _build_coco_zip_bytes(), "application/zip"),
@@ -622,6 +633,7 @@ def test_import_dataset_zip_can_be_called_twice_for_same_dataset(tmp_path: Path)
                 data={
                     "project_id": "project-1",
                     "dataset_id": "dataset-repeat",
+                    "task_type": "detection",
                 },
                 files={
                     "package": ("coco-dataset.zip", _build_coco_zip_bytes(), "application/zip"),
@@ -679,6 +691,7 @@ def test_background_task_manager_processes_multiple_dataset_import_tasks(
                 data={
                     "project_id": "project-1",
                     "dataset_id": "dataset-batch-1",
+                    "task_type": "detection",
                 },
                 files={
                     "package": ("coco-dataset.zip", _build_coco_zip_bytes(), "application/zip"),
@@ -690,6 +703,7 @@ def test_background_task_manager_processes_multiple_dataset_import_tasks(
                 data={
                     "project_id": "project-1",
                     "dataset_id": "dataset-batch-2",
+                    "task_type": "detection",
                 },
                 files={
                     "package": ("coco-dataset.zip", _build_coco_zip_bytes(), "application/zip"),
@@ -749,6 +763,7 @@ def test_import_dataset_zip_is_processed_by_independent_background_task_manager(
                 data={
                     "project_id": "project-1",
                     "dataset_id": "dataset-auto-1",
+                    "task_type": "detection",
                 },
                 files={
                     "package": ("coco-dataset.zip", _build_coco_zip_bytes(), "application/zip"),

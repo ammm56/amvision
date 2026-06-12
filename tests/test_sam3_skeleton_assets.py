@@ -24,4 +24,9 @@ def test_sam3_node_pack_manifest_and_catalog_are_valid() -> None:
     catalog = CustomNodeCatalogDocument.model_validate(catalog_payload)
 
     assert manifest.node_pack_id == "sam3.segment-nodes"
-    assert len(catalog.node_definitions) == 2
+    assert {node.node_type_id for node in catalog.node_definitions} == {
+        "custom.sam3.interactive-segment",
+        "custom.sam3.semantic-segment",
+        "custom.sam3.video-interactive-segment",
+        "custom.sam3.video-semantic-segment",
+    }

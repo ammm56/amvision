@@ -36,7 +36,9 @@
 - `release/full/python/python.exe` 可正常 import `torch / onnxruntime / openvino / tensorrt / cuda`。
 - `start_amvision_full.py` 可拉起 `backend-service` 与 `dataset-import / dataset-export / training / conversion / evaluation / inference` 六个 worker profile。
 - `/api/v1/system/health`、`/docs` 和 `/openapi.json` 均可访问；OpenAPI 中可见 `classification/conversion-tasks/{task_id}/result` 这类 non-detection conversion result 路由。
-- `stop-amvision-full.bat` 可清理 `logs/full-stack/runtime-state.json`。
+- `stop-amvision-full.bat` 可清理 `logs/full-stack/runtime-state.json`；当前 stop launcher 已改为停止失败时返回非 0，并保留状态文件用于排查，不再把“停止超时”伪装成成功。
+- 仓库侧已补 `tests/integration/test_release_full_stack_acceptance.py`，用于显式启动 `release/full`、检查 health/docs/OpenAPI/worker profile、陈旧状态文件恢复、组件日志文件、资源快照、短时驻留并调用 stop 脚本回收。默认驻留时间较短，长时 soak 需要单独设置 `AMVISION_RELEASE_FULL_SOAK_SECONDS`。
+- 每次 release/full integration 验收会在本次 `logs/<subdir>/resource-baseline.json` 写入初始和结束时的组件资源快照，字段包含 pid、线程数、RSS 内存和 CPU 时间，可作为后续现场基线的最小记录。
 
 ## 常见问题
 
@@ -113,10 +115,8 @@
 
 覆盖组合：
 
-- `classification + yolo11`
-- `segmentation + yolo26`
-- `pose + yolov8`
-- `obb + yolo26`
+- `YOLOv8 / YOLO11 / YOLO26`
+- `classification / segmentation / pose / obb`
 
 覆盖 backend：
 
@@ -124,7 +124,9 @@
 - `openvino`
 - `tensorrt`
 
-如果现场问题和这四类代表组合一致，先对照这条矩阵判断是：
+也就是当前覆盖 `3 × 4 × 3 = 36` 条 `conversion -> runtime predict` 组合。RF-DETR segmentation 不放在这条矩阵里，继续由 `tests/test_rfdetr_segmentation_task_smoke.py` 单独覆盖。
+
+如果现场问题和这条矩阵的组合一致，先对照测试判断是：
 
 - 现场机器驱动 / runtime 版本问题
 - 发布目录资产不完整
@@ -208,6 +210,25 @@ D:\software\anaconda3\envs\amvision\python.exe -m pytest --basetemp .tmp\pytest_
 
 ```powershell
 D:\software\anaconda3\envs\amvision\python.exe -m pytest --basetemp .tmp\pytest_tensorrt_matrix tests/integration/test_non_detection_runtime_backend_smoke_matrix.py -k tensorrt -q
+```
+
+完整 non-detection runtime backend matrix：
+
+```powershell
+D:\software\anaconda3\envs\amvision\python.exe -m pytest --basetemp .tmp\pytest_non_detection_full_matrix tests/integration/test_non_detection_runtime_backend_smoke_matrix.py -q
+```
+
+release/full 短时启停验收：
+
+```powershell
+D:\software\anaconda3\envs\amvision\python.exe -m pytest --basetemp .tmp\pytest_release_full_acceptance tests/integration/test_release_full_stack_acceptance.py -q
+```
+
+release/full 长时 soak 入口示例：
+
+```powershell
+$env:AMVISION_RELEASE_FULL_SOAK_SECONDS="600"
+D:\software\anaconda3\envs\amvision\python.exe -m pytest --basetemp .tmp\pytest_release_full_soak tests/integration/test_release_full_stack_acceptance.py -q
 ```
 
 `Windows + OpenVINO` 下如果临时目录句柄占用导致清理失败，优先换一个新的 `--basetemp`，不要直接把这种现象判断成模型主链错误。

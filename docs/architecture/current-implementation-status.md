@@ -171,8 +171,11 @@
 - 当前已经显式复跑一轮按 `model_type × task_type` 收口的轻量 smoke matrix：`tests/test_model_profiles.py`、`tests/test_yolov8_detection_model.py`、`tests/test_yolox_inference_tasks_api.py`、`tests/test_yolo_primary_classification_chain.py`、`tests/test_yolo_primary_segmentation_chain.py`、`tests/test_yolo_primary_pose_chain.py`、`tests/test_yolo_primary_obb_chain.py`、`tests/test_rfdetr_chain.py`、`tests/test_non_detection_training_result_registration.py`、`tests/test_non_detection_inference_api.py`、`tests/test_validation_runtime_backend_support.py`。
 - 这轮矩阵结果当前为 `78 passed`，覆盖了 detection、classification、segmentation、pose、obb 五类任务，以及 `yolox / yolov8 / yolo11 / yolo26 / rfdetr` 的当前主链组合。
 - 这轮回归同时确认了 `/models/{task_type}` 已经在控制面收平：non-detection 当前已经具备 task-native 的同步 `/infer`、异步任务创建/详情/结果读取，以及 deployment `sync/async` 的 `start / status / stop / warmup / reset` 最小动作；`tests/test_non_detection_inference_api.py` 当前已经显式覆盖 `classification / segmentation / pose / obb` 四类任务的 async 前检查、sync `/infer`、async result round-trip 和 deployment 控制基础链。
-- 在这轮基础回归之外，当前还已经补了一条显式 non-detection runtime backend matrix：`tests/integration/test_non_detection_runtime_backend_smoke_matrix.py`。这条 integration 已在 2026-06-12 真实跑通 `classification+yolo11`、`segmentation+yolo26`、`pose+yolov8`、`obb+yolo26` 在 `onnxruntime / openvino / tensorrt` 三类 runtime backend 下的 `conversion -> runtime predict` 闭环，结果为 `12 passed`。
-- 浏览器前端当前也已把 models / deployments / inference 三个调试页从 detection-only 路径改为显式 `task_type` 选择，并要求相关创建表单显式填写 `model_type`；训练任务详情页也已切到 `/models/{task_type}/training-tasks/{task_id}` 前端路由。当前 `output-files` 和 `register-model-version` 仍只在 detection 训练详情中显示，因为这两个调试端点当前只在 detection 训练控制面公开。本轮已通过 `frontend/web-ui` 的 `npm run build`。
+- 在这轮基础回归之外，当前还已经补了一条显式 non-detection training model_type matrix：`tests/test_non_detection_training_model_type_matrix.py`。这条快速回归已在 2026-06-12 跑通 `YOLOv8 / YOLO11 / YOLO26 × classification / segmentation / pose / obb` 的训练任务提交、队列分发、结果登记、模型文件登记和 `pytorch` runtime target 解析，结果为 `12 passed`。这条测试验证的是分发和登记边界，不把它写成“所有组合都做过长时间真实训练”。
+- 当前还已经扩展了显式 non-detection runtime backend matrix：`tests/integration/test_non_detection_runtime_backend_smoke_matrix.py`。这条 integration 已在 2026-06-12 真实跑通 `YOLOv8 / YOLO11 / YOLO26 × classification / segmentation / pose / obb × onnxruntime / openvino / tensorrt` 的 `conversion -> runtime predict` 闭环，结果为 `36 passed`。这条测试验证的是转换产物和 runtime 预测链，不等同于所有组合都做过长时间 deployment soak；RF-DETR segmentation 仍由 `tests/test_rfdetr_segmentation_task_smoke.py` 单独覆盖。
+- 浏览器前端当前也已把 models / deployments / inference 三个调试页从 detection-only 路径改为显式 `task_type` 选择，并要求相关创建表单显式填写 `model_type`；训练任务详情页也已切到 `/models/{task_type}/training-tasks/{task_id}` 前端路由。相关页面和 service 内部残留的 `Detection*` 历史类型、函数和 payload 命名也已收成 `Model* / Task*`，避免 task-aware 页面继续带 detection-only 误导。当前 `output-files` 和 `register-model-version` 仍只在 detection 训练详情中显示，因为这两个调试端点当前只在 detection 训练控制面公开。本轮已通过 `frontend/web-ui` 的 `npm run build`。
+- 本轮代码收口还补了一轮完整默认回归：2026-06-12 使用 `D:\software\anaconda3\envs\amvision\python.exe -m pytest --basetemp .tmp\pytest_full_default -q` 跑通 `1290 passed`。这轮结果验证的是默认测试集、轻量 API、节点、workflow 和运行时边界；其中 PyTorch 2.8 的 legacy ONNX exporter、tracer 和 `cuda.cudart` deprecation warning 当前属于已知非阻塞警告，不把它写成导出失败或功能缺口。
+- 本轮还针对收口改动补跑了 `ruff check`、前端 `npm run build`、YOLOX evaluation、validation runtime、async inference gateway、deployment supervisor、workflow executor、local buffer broker 等定点回归，并确认仓库代码里不再使用旧 `object-detection` task_type 值，前端 task-aware 模块里也不再保留历史 `Detection*` 类型和函数名。
 
 ### custom node 运行时
 
@@ -193,6 +196,7 @@
 - 当前 release 组装会复制完整项目代码和仓库根目录的 `requirements.txt`，不做源码裁剪，也不再维护多套运行时依赖配置。
 - 当前标准 maintenance 配置已经接通前端 dist 目录；`assemble-release` 会复制 `frontend/web-ui/dist/` 到发行目录里的 `frontend/`，补齐 `runtime-config.json`，并在覆盖发布时保留现有 `python/` 目录。
 - 当前 `assemble-release` 也已把 `runtimes/third_party/ffmpeg/` 复制到发行目录里的 `tools/ffmpeg/`，`validate-layout` 现已把这层一并纳入发布目录检查。
+- 当前仓库侧也已经补出 `release/full` 显式集成验收入口：`tests/integration/test_release_full_stack_acceptance.py` 会使用发布目录 Python 启动 `start_amvision_full.py`，检查陈旧状态文件恢复、health、docs、OpenAPI 关键路由、六类 worker profile 状态、组件日志、资源快照和短时驻留，再调用 `stop_amvision_full.py` 验证状态文件清理与进程回收。默认驻留时间较短，现场长时 soak 通过 `AMVISION_RELEASE_FULL_SOAK_SECONDS` 显式放大；stop launcher 当前已改为停止失败时返回非 0 并保留状态文件。
 
 ## 下一步建议
 
@@ -203,7 +207,7 @@
 
 ### 2. 补强运行时回归与 benchmark
 
-- 在当前 non-detection runtime backend matrix 已跑通后，下一步更值得继续补的是长期 soak、显存/内存基线和更贴现场组合的 benchmark，而不是再回到最小链路可用性验证。
+- 在当前 non-detection runtime backend matrix 已扩到 36 项并跑通后，下一步更值得继续补的是长期 soak、显存/内存基线和更贴现场组合的 benchmark，而不是再回到最小链路可用性验证。
 - 把 conversion report、evaluation report 与 deployment benchmark 的字段进一步收敛成可比较、可回滚的统一结构。
 
 ### 3. 继续压缩遗留 YOLOX 命名与平台外壳
@@ -214,5 +218,5 @@
 ### 4. 继续硬化工程化交付面
 
 - 当前 `assemble-release` 已把同目录 Python 运行时占位/回迁、前端构建产物、`custom_nodes` 资产和 `ffmpeg/ffprobe` 工具目录纳入 `release/full/`。
-- 2026-06-12 已完成一轮 `release/full` 基础目标机验收：重新执行 `assemble-release --profile-id full --release-root .\release --force` 后，发布目录保留现有 `python/`，`validate-layout` 通过，发布目录 Python 可正常 import `torch / onnxruntime / openvino / tensorrt / cuda`，`start_amvision_full.py` 一键启动可拉起 `backend-service` 和 6 个 worker profile，`/api/v1/system/health`、`/docs` 与 OpenAPI 新增 non-detection conversion result 路由均可访问，`stop-amvision-full.bat` 可清理运行状态文件。
-- 下一步重点应转向发布目录的更长时间 soak、资源占用记录、日志/指标/排障补充，以及 `full` 目录向现场派生变体时的裁剪规范。
+- 2026-06-12 已完成一轮 `release/full` 基础目标机验收：重新执行 `assemble-release --profile-id full --release-root .\release --force` 后，发布目录保留现有 `python/`，`validate-layout` 通过，发布目录 Python 可正常 import `torch / onnxruntime / openvino / tensorrt / cuda`，`start_amvision_full.py` 一键启动可拉起 `backend-service` 和 6 个 worker profile，`/api/v1/system/health`、`/docs` 与 OpenAPI 新增 non-detection conversion result 路由均可访问，`stop-amvision-full.bat` 可清理运行状态文件；这条验收现在也已固化为显式 integration 测试，并补了资源快照、日志文件、陈旧状态恢复和停止失败返回非 0 的检查。默认短时驻留，长时 soak 需要显式指定。
+- 下一步重点应转向发布目录的更长时间 soak、资源占用记录、日志/指标/排障补充，以及 `full` 目录向现场派生变体时的裁剪规范。这里不是“缺少启动验收入口”，而是还需要按目标机器和实际负载建立更长时间基线。

@@ -84,7 +84,7 @@ def test_async_gateway_dispatcher_consumes_owner_deployment_queue(tmp_path: Path
     assert result["instance_id"] == "deployment-instance-1:instance-0"
     assert not (tmp_path / "queue" / "detection-async-inference-gateway").exists()
     assert not list((tmp_path / "queue").glob("detection-ai-rsp-*"))
-    assert dispatcher.request_queue_name == "detection-ai-gw-backend-service-owner-1-1"
+    assert dispatcher.request_queue_name == "inference-gateway-backend-service-owner-1-1"
 
 
 def test_async_gateway_client_requires_owner_id(tmp_path: Path) -> None:
@@ -269,8 +269,8 @@ def test_async_gateway_registry_routes_multiple_deployments_independently(tmp_pa
     assert dispatcher_1.request_queue_name != dispatcher_2.request_queue_name
     assert (tmp_path / "queue" / dispatcher_1.request_queue_name).is_dir()
     assert (tmp_path / "queue" / dispatcher_2.request_queue_name).is_dir()
-    assert dispatcher_1.request_queue_name == "detection-ai-gw-backend-service-main-1"
-    assert dispatcher_2.request_queue_name == "detection-ai-gw-backend-service-main-2"
+    assert dispatcher_1.request_queue_name == "inference-gateway-backend-service-main-1"
+    assert dispatcher_2.request_queue_name == "inference-gateway-backend-service-main-2"
     assert result_1["instance_id"] == "deployment-instance-1:instance-0"
     assert result_2["instance_id"] == "deployment-instance-2:instance-0"
     assert captured_deployment_ids == ["deployment-instance-1", "deployment-instance-2"]
@@ -299,6 +299,7 @@ def _build_process_config(
             model_build_id="model-build-1",
             model_name="yolox-test",
             model_scale="nano",
+            model_type="yolox",
             task_type="detection",
             source_kind="training-output",
             runtime_profile_id=None,

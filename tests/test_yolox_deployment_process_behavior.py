@@ -380,6 +380,7 @@ def _build_runtime_target(tmp_path: Path) -> RuntimeTargetSnapshot:
         model_build_id="model-build-1",
         model_name="yolox-test",
         model_scale="nano",
+        model_type="yolox",
         task_type="detection",
         source_kind="training_output",
         runtime_profile_id=None,

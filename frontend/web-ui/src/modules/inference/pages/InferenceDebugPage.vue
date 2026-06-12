@@ -237,19 +237,19 @@ import { RouterLink } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 
 import {
-  createDetectionInferenceTask,
-  getDetectionInferenceTaskResult,
-  inferDetectionDeployment,
-  listDetectionInferenceTasks,
-  type DetectionInferencePayload,
-  type DetectionInferenceTaskResult,
-  type DetectionInferenceTaskSubmission,
-  type DetectionInferenceTaskSummary,
+  createTaskInferenceTask,
+  getTaskInferenceTaskResult,
+  inferTaskDeployment,
+  listTaskInferenceTasks,
+  type TaskInferencePayload,
+  type TaskInferenceTaskResult,
+  type TaskInferenceTaskSubmission,
+  type TaskInferenceTaskSummary,
 } from '../services/inference.service'
 import {
   listTaskDeployments,
-  type DetectionDeploymentInstance,
   type ModelTaskType,
+  type TaskDeploymentInstance,
 } from '@/modules/deployments/services/deployment.service'
 import { useProjectStore } from '@/app/stores/project.store'
 import { useSessionStore } from '@/app/stores/session.store'
@@ -275,7 +275,7 @@ const taskTypeOptions = [
   { label: 'obb', value: 'obb' },
 ]
 
-const deployments = ref<DetectionDeploymentInstance[]>([])
+const deployments = ref<TaskDeploymentInstance[]>([])
 const selectedDeploymentId = ref('')
 const selectedTaskType = ref<ModelTaskType>('detection')
 const loading = ref(false)
@@ -294,10 +294,10 @@ const saveResultImage = ref(true)
 const returnPreviewBase64 = ref(true)
 const displayName = ref('')
 
-const directInferenceResult = ref<DetectionInferencePayload | null>(null)
-const asyncInferenceSubmission = ref<DetectionInferenceTaskSubmission | null>(null)
-const inferenceTasks = ref<DetectionInferenceTaskSummary[]>([])
-const selectedInferenceTaskResult = ref<DetectionInferenceTaskResult | null>(null)
+const directInferenceResult = ref<TaskInferencePayload | null>(null)
+const asyncInferenceSubmission = ref<TaskInferenceTaskSubmission | null>(null)
+const inferenceTasks = ref<TaskInferenceTaskSummary[]>([])
+const selectedInferenceTaskResult = ref<TaskInferenceTaskResult | null>(null)
 const expandedInferenceTaskId = ref<string | null>(null)
 
 const selectedProjectId = computed(() => projectStore.selectedProjectId)
@@ -416,7 +416,7 @@ async function loadInferenceTasks(): Promise<void> {
   inferenceTasksLoading.value = true
   errorMessage.value = null
   try {
-    inferenceTasks.value = await listDetectionInferenceTasks({
+    inferenceTasks.value = await listTaskInferenceTasks({
       taskType: selectedTaskType.value,
       projectId: selectedProjectId.value,
       deploymentInstanceId: selectedDeploymentId.value,
@@ -438,7 +438,7 @@ async function runDirectInference(): Promise<void> {
   errorMessage.value = null
   try {
     directInferenceResult.value = null
-    directInferenceResult.value = await inferDetectionDeployment(buildInferenceInput())
+    directInferenceResult.value = await inferTaskDeployment(buildInferenceInput())
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : t('inferenceOps.messages.inferenceFailed')
   } finally {
@@ -454,7 +454,7 @@ async function submitAsyncInferenceTask(): Promise<void> {
   inferenceRunning.value = true
   errorMessage.value = null
   try {
-    asyncInferenceSubmission.value = await createDetectionInferenceTask(buildInferenceInput())
+    asyncInferenceSubmission.value = await createTaskInferenceTask(buildInferenceInput())
     await loadInferenceTasks()
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : t('inferenceOps.messages.inferenceFailed')
@@ -467,7 +467,7 @@ async function readInferenceTaskResult(taskId: string): Promise<void> {
   inferenceResultLoading.value = taskId
   errorMessage.value = null
   try {
-    selectedInferenceTaskResult.value = await getDetectionInferenceTaskResult(selectedTaskType.value, taskId)
+    selectedInferenceTaskResult.value = await getTaskInferenceTaskResult(selectedTaskType.value, taskId)
     expandedInferenceTaskId.value = taskId
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : t('inferenceOps.messages.resultFailed')

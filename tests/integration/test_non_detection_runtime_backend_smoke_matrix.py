@@ -68,54 +68,91 @@ class _NonDetectionSmokeSpec:
     input_size: tuple[int, int]
 
 
+_YOLO_PRIMARY_STACKS: dict[str, tuple[type, type, type, type, type]] = {
+    "yolov8": (
+        SqlAlchemyYoloV8ModelService,
+        DefaultYoloV8ConversionPlanner,
+        YoloV8ConversionPlanningRequest,
+        LocalYoloV8ConversionRunner,
+        SqlAlchemyYoloV8RuntimeTargetResolver,
+    ),
+    "yolo11": (
+        SqlAlchemyYolo11ModelService,
+        DefaultYolo11ConversionPlanner,
+        Yolo11ConversionPlanningRequest,
+        LocalYolo11ConversionRunner,
+        SqlAlchemyYolo11RuntimeTargetResolver,
+    ),
+    "yolo26": (
+        SqlAlchemyYolo26ModelService,
+        DefaultYolo26ConversionPlanner,
+        Yolo26ConversionPlanningRequest,
+        LocalYolo26ConversionRunner,
+        SqlAlchemyYolo26RuntimeTargetResolver,
+    ),
+}
+
+
+def _build_yolo_primary_smoke_spec(
+    *,
+    task_type: str,
+    model_type: str,
+    runtime_cls: type,
+    category_names: tuple[str, ...],
+) -> _NonDetectionSmokeSpec:
+    """按 YOLO 主线模型分类生成一条 non-detection smoke 规格。"""
+
+    stack = _YOLO_PRIMARY_STACKS[model_type]
+    return _NonDetectionSmokeSpec(
+        task_type=task_type,
+        model_type=model_type,
+        model_service_cls=stack[0],
+        planner_cls=stack[1],
+        planning_request_cls=stack[2],
+        conversion_runner_cls=stack[3],
+        runtime_resolver_cls=stack[4],
+        runtime_cls=runtime_cls,
+        category_names=category_names,
+        input_size=(64, 64),
+    )
+
+
 _SMOKE_SPECS = (
-    _NonDetectionSmokeSpec(
-        task_type="classification",
-        model_type="yolo11",
-        model_service_cls=SqlAlchemyYolo11ModelService,
-        planner_cls=DefaultYolo11ConversionPlanner,
-        planning_request_cls=Yolo11ConversionPlanningRequest,
-        conversion_runner_cls=LocalYolo11ConversionRunner,
-        runtime_resolver_cls=SqlAlchemyYolo11RuntimeTargetResolver,
-        runtime_cls=DefaultClassificationModelRuntime,
-        category_names=("ok", "ng", "rework"),
-        input_size=(64, 64),
+    *(
+        _build_yolo_primary_smoke_spec(
+            task_type="classification",
+            model_type=model_type,
+            runtime_cls=DefaultClassificationModelRuntime,
+            category_names=("ok", "ng", "rework"),
+        )
+        for model_type in ("yolov8", "yolo11", "yolo26")
     ),
-    _NonDetectionSmokeSpec(
-        task_type="segmentation",
-        model_type="yolo26",
-        model_service_cls=SqlAlchemyYolo26ModelService,
-        planner_cls=DefaultYolo26ConversionPlanner,
-        planning_request_cls=Yolo26ConversionPlanningRequest,
-        conversion_runner_cls=LocalYolo26ConversionRunner,
-        runtime_resolver_cls=SqlAlchemyYolo26RuntimeTargetResolver,
-        runtime_cls=DefaultSegmentationModelRuntime,
-        category_names=("part-a", "part-b", "part-c"),
-        input_size=(64, 64),
+    *(
+        _build_yolo_primary_smoke_spec(
+            task_type="segmentation",
+            model_type=model_type,
+            runtime_cls=DefaultSegmentationModelRuntime,
+            category_names=("part-a", "part-b", "part-c"),
+        )
+        for model_type in ("yolov8", "yolo11", "yolo26")
     ),
-    _NonDetectionSmokeSpec(
-        task_type="pose",
-        model_type="yolov8",
-        model_service_cls=SqlAlchemyYoloV8ModelService,
-        planner_cls=DefaultYoloV8ConversionPlanner,
-        planning_request_cls=YoloV8ConversionPlanningRequest,
-        conversion_runner_cls=LocalYoloV8ConversionRunner,
-        runtime_resolver_cls=SqlAlchemyYoloV8RuntimeTargetResolver,
-        runtime_cls=DefaultPoseModelRuntime,
-        category_names=("operator",),
-        input_size=(64, 64),
+    *(
+        _build_yolo_primary_smoke_spec(
+            task_type="pose",
+            model_type=model_type,
+            runtime_cls=DefaultPoseModelRuntime,
+            category_names=("operator",),
+        )
+        for model_type in ("yolov8", "yolo11", "yolo26")
     ),
-    _NonDetectionSmokeSpec(
-        task_type="obb",
-        model_type="yolo26",
-        model_service_cls=SqlAlchemyYolo26ModelService,
-        planner_cls=DefaultYolo26ConversionPlanner,
-        planning_request_cls=Yolo26ConversionPlanningRequest,
-        conversion_runner_cls=LocalYolo26ConversionRunner,
-        runtime_resolver_cls=SqlAlchemyYolo26RuntimeTargetResolver,
-        runtime_cls=DefaultObbModelRuntime,
-        category_names=("box",),
-        input_size=(64, 64),
+    *(
+        _build_yolo_primary_smoke_spec(
+            task_type="obb",
+            model_type=model_type,
+            runtime_cls=DefaultObbModelRuntime,
+            category_names=("box",),
+        )
+        for model_type in ("yolov8", "yolo11", "yolo26")
     ),
 )
 

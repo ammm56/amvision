@@ -128,16 +128,16 @@ import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 
 import {
-  deleteDetectionTrainingTask,
-  getDetectionTrainingOutputFileDetail,
-  getDetectionTrainingTaskDetail,
-  listDetectionTrainingOutputFiles,
-  registerDetectionTrainingLatestCheckpoint,
-  requestDetectionTrainingTaskAction,
-  type DetectionTrainingOutputFileDetail,
-  type DetectionTrainingOutputFileSummary,
-  type DetectionTrainingTaskActionName,
-  type DetectionTrainingTaskDetail,
+  deleteModelTrainingTask,
+  getModelTrainingOutputFileDetail,
+  getModelTrainingTaskDetail,
+  listModelTrainingOutputFiles,
+  registerModelTrainingLatestCheckpoint,
+  requestModelTrainingTaskAction,
+  type ModelTrainingOutputFileDetail,
+  type ModelTrainingOutputFileSummary,
+  type ModelTrainingTaskActionName,
+  type ModelTrainingTaskDetail,
   type ModelTaskType,
 } from '../services/model.service'
 import Button from '@/shared/ui/components/Button.vue'
@@ -150,9 +150,9 @@ const route = useRoute()
 const router = useRouter()
 const { t } = useI18n()
 
-const task = ref<DetectionTrainingTaskDetail | null>(null)
-const outputFiles = ref<DetectionTrainingOutputFileSummary[]>([])
-const selectedOutputFile = ref<DetectionTrainingOutputFileDetail | null>(null)
+const task = ref<ModelTrainingTaskDetail | null>(null)
+const outputFiles = ref<ModelTrainingOutputFileSummary[]>([])
+const selectedOutputFile = ref<ModelTrainingOutputFileDetail | null>(null)
 const loading = ref(false)
 const actionRunning = ref<string | null>(null)
 const errorMessage = ref<string | null>(null)
@@ -186,7 +186,7 @@ function statusTone(status: string | null | undefined): 'neutral' | 'success' | 
   return 'neutral'
 }
 
-function actionIcon(action: DetectionTrainingTaskActionName) {
+function actionIcon(action: ModelTrainingTaskActionName) {
   if (action === 'save') return Save
   if (action === 'pause') return Pause
   if (action === 'resume') return Play
@@ -204,8 +204,8 @@ async function refreshPage(): Promise<void> {
   errorMessage.value = null
   try {
     const [taskDetail, files] = await Promise.all([
-      getDetectionTrainingTaskDetail(currentTaskType, taskId.value),
-      currentTaskType === 'detection' ? listDetectionTrainingOutputFiles(currentTaskType, taskId.value) : Promise.resolve([]),
+      getModelTrainingTaskDetail(currentTaskType, taskId.value),
+      currentTaskType === 'detection' ? listModelTrainingOutputFiles(currentTaskType, taskId.value) : Promise.resolve([]),
     ])
     task.value = taskDetail
     outputFiles.value = files
@@ -219,7 +219,7 @@ async function refreshPage(): Promise<void> {
   }
 }
 
-async function runAction(action: DetectionTrainingTaskActionName): Promise<void> {
+async function runAction(action: ModelTrainingTaskActionName): Promise<void> {
   if (!taskType.value) {
     errorMessage.value = 'task_type 不能为空'
     return
@@ -230,11 +230,11 @@ async function runAction(action: DetectionTrainingTaskActionName): Promise<void>
   errorMessage.value = null
   try {
     if (action === 'delete') {
-      await deleteDetectionTrainingTask(currentTaskType, taskId.value)
+      await deleteModelTrainingTask(currentTaskType, taskId.value)
       await router.push('/models')
       return
     }
-    await requestDetectionTrainingTaskAction(currentTaskType, taskId.value, action)
+    await requestModelTrainingTaskAction(currentTaskType, taskId.value, action)
     await refreshPage()
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : t('trainingDetail.messages.actionFailed')
@@ -256,7 +256,7 @@ async function registerCheckpoint(): Promise<void> {
   actionRunning.value = 'register-model-version'
   errorMessage.value = null
   try {
-    task.value = await registerDetectionTrainingLatestCheckpoint(currentTaskType, taskId.value)
+    task.value = await registerModelTrainingLatestCheckpoint(currentTaskType, taskId.value)
     await refreshPage()
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : t('trainingDetail.messages.registerFailed')
@@ -276,7 +276,7 @@ async function selectOutputFile(fileName: string): Promise<void> {
   const currentTaskType = taskType.value
   errorMessage.value = null
   try {
-    selectedOutputFile.value = await getDetectionTrainingOutputFileDetail(currentTaskType, taskId.value, fileName)
+    selectedOutputFile.value = await getModelTrainingOutputFileDetail(currentTaskType, taskId.value, fileName)
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : t('trainingDetail.messages.outputFailed')
   }

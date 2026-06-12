@@ -6,6 +6,7 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
+from backend.contracts.datasets.exports.dataset_formats import IMPLEMENTED_DATASET_EXPORT_FORMATS
 from backend.service.api.app import create_app
 from backend.service.application.auth.default_local_auth_seeder import (
     DEFAULT_LOCAL_AUTH_TOKEN,
@@ -312,10 +313,9 @@ def test_system_bootstrap_aggregates_current_user_providers_projects_and_capabil
     assert payload["visible_projects"][0]["display_name"] == "Project One"
     assert payload["visible_projects"][0]["project_source"] == "configured"
     assert payload["capabilities"]["project_bootstrap_enabled"] is True
-    assert payload["capabilities"]["dataset_export"]["implemented_formats"] == [
-        "coco-detection-v1",
-        "voc-detection-v1",
-    ]
+    assert payload["capabilities"]["dataset_export"]["implemented_formats"] == list(
+        IMPLEMENTED_DATASET_EXPORT_FORMATS
+    )
     assert payload["capabilities"]["dataset_export"]["default_format"] == "coco-detection-v1"
     assert "workflows.preview-runs" in payload["capabilities"]["project_summary_topics"]
 

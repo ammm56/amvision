@@ -63,7 +63,7 @@ export interface PlatformBaseModelDetail extends PlatformBaseModelSummary {
   builds: PlatformBaseModelBuild[]
 }
 
-export interface DetectionTrainingTaskSubmissionResponse {
+export interface ModelTrainingTaskSubmissionResponse {
   task_id: string
   status: string
   queue_name: string
@@ -74,7 +74,7 @@ export interface DetectionTrainingTaskSubmissionResponse {
   format_id?: string | null
 }
 
-export interface DetectionTrainingTaskSummary {
+export interface ModelTrainingTaskSummary {
   task_id: string
   display_name: string
   project_id: string
@@ -109,11 +109,11 @@ export interface DetectionTrainingTaskSummary {
   training_summary: Record<string, unknown>
 }
 
-export type DetectionTrainingTaskActionName = 'save' | 'pause' | 'resume' | 'terminate' | 'delete'
+export type ModelTrainingTaskActionName = 'save' | 'pause' | 'resume' | 'terminate' | 'delete'
 
-export interface DetectionTrainingTaskControlStatus {
+export interface ModelTrainingTaskControlStatus {
   status: string
-  pending_action?: DetectionTrainingTaskActionName | null
+  pending_action?: ModelTrainingTaskActionName | null
   requested_at?: string | null
   requested_by?: string | null
   last_save_at?: string | null
@@ -126,7 +126,7 @@ export interface DetectionTrainingTaskControlStatus {
   resume_checkpoint_object_key?: string | null
 }
 
-export interface DetectionTrainingTaskEvent {
+export interface ModelTrainingTaskEvent {
   event_id: string
   task_id: string
   attempt_id?: string | null
@@ -136,14 +136,14 @@ export interface DetectionTrainingTaskEvent {
   payload: Record<string, unknown>
 }
 
-export interface DetectionTrainingTaskDetail extends DetectionTrainingTaskSummary {
-  available_actions: DetectionTrainingTaskActionName[]
-  control_status: DetectionTrainingTaskControlStatus
+export interface ModelTrainingTaskDetail extends ModelTrainingTaskSummary {
+  available_actions: ModelTrainingTaskActionName[]
+  control_status: ModelTrainingTaskControlStatus
   task_spec: Record<string, unknown>
-  events: DetectionTrainingTaskEvent[]
+  events: ModelTrainingTaskEvent[]
 }
 
-export interface DetectionTrainingOutputFileSummary {
+export interface ModelTrainingOutputFileSummary {
   file_name: string
   file_kind: string
   file_status: string
@@ -153,13 +153,13 @@ export interface DetectionTrainingOutputFileSummary {
   updated_at?: string | null
 }
 
-export interface DetectionTrainingOutputFileDetail extends DetectionTrainingOutputFileSummary {
+export interface ModelTrainingOutputFileDetail extends ModelTrainingOutputFileSummary {
   payload: Record<string, unknown>
   text_content?: string | null
   lines: string[]
 }
 
-export interface DetectionTrainingTaskCreateInput {
+export interface ModelTrainingTaskCreateInput {
   taskType: ModelTaskType
   projectId: string
   modelType: string
@@ -179,7 +179,7 @@ export interface DetectionTrainingTaskCreateInput {
   displayName?: string
 }
 
-export interface DetectionConversionBuildSummary {
+export interface ModelConversionBuildSummary {
   model_build_id: string
   build_format: string
   build_file_id: string
@@ -187,7 +187,7 @@ export interface DetectionConversionBuildSummary {
   metadata: Record<string, unknown>
 }
 
-export interface DetectionConversionTaskSubmissionResponse {
+export interface ModelConversionTaskSubmissionResponse {
   task_id: string
   status: string
   queue_name: string
@@ -198,7 +198,7 @@ export interface DetectionConversionTaskSubmissionResponse {
   target_formats: string[]
 }
 
-export interface DetectionConversionTaskSummary {
+export interface ModelConversionTaskSummary {
   task_id: string
   display_name: string
   project_id: string
@@ -221,7 +221,7 @@ export interface DetectionConversionTaskSummary {
   output_object_prefix?: string | null
   requested_target_formats: string[]
   produced_formats: string[]
-  builds: DetectionConversionBuildSummary[]
+  builds: ModelConversionBuildSummary[]
   report_summary: Record<string, unknown>
 }
 
@@ -233,7 +233,7 @@ export type ConversionTargetKey =
   | 'tensorrt-engine-fp32'
   | 'tensorrt-engine-fp16'
 
-export interface DetectionConversionTaskCreateInput {
+export interface ModelConversionTaskCreateInput {
   taskType: ModelTaskType
   projectId: string
   modelType: string
@@ -276,8 +276,8 @@ export async function getPlatformBaseModelDetail(modelId: string): Promise<Platf
   return apiRequest<PlatformBaseModelDetail>(`/models/platform-base/${encodeURIComponent(modelId)}`)
 }
 
-export async function createDetectionTrainingTask(input: DetectionTrainingTaskCreateInput): Promise<DetectionTrainingTaskSubmissionResponse> {
-  return apiRequest<DetectionTrainingTaskSubmissionResponse>(buildTrainingTaskPath(input.taskType), {
+export async function createModelTrainingTask(input: ModelTrainingTaskCreateInput): Promise<ModelTrainingTaskSubmissionResponse> {
+  return apiRequest<ModelTrainingTaskSubmissionResponse>(buildTrainingTaskPath(input.taskType), {
     method: 'POST',
     body: {
       project_id: input.projectId,
@@ -300,69 +300,69 @@ export async function createDetectionTrainingTask(input: DetectionTrainingTaskCr
   })
 }
 
-export async function listDetectionTrainingTasks(
+export async function listModelTrainingTasks(
   taskType: ModelTaskType,
   projectId: string,
   modelType?: string,
-): Promise<DetectionTrainingTaskSummary[]> {
-  return apiRequest<DetectionTrainingTaskSummary[]>(buildTrainingTaskPath(taskType), {
+): Promise<ModelTrainingTaskSummary[]> {
+  return apiRequest<ModelTrainingTaskSummary[]>(buildTrainingTaskPath(taskType), {
     query: { project_id: projectId, model_type: modelType || undefined, limit: 100 },
   })
 }
 
-export async function getDetectionTrainingTaskDetail(taskType: ModelTaskType, taskId: string): Promise<DetectionTrainingTaskDetail> {
-  return apiRequest<DetectionTrainingTaskDetail>(buildTrainingTaskPath(taskType, `/${encodeURIComponent(taskId)}`), {
+export async function getModelTrainingTaskDetail(taskType: ModelTaskType, taskId: string): Promise<ModelTrainingTaskDetail> {
+  return apiRequest<ModelTrainingTaskDetail>(buildTrainingTaskPath(taskType, `/${encodeURIComponent(taskId)}`), {
     query: { include_events: true },
   })
 }
 
-export async function requestDetectionTrainingTaskAction(
+export async function requestModelTrainingTaskAction(
   taskType: ModelTaskType,
   taskId: string,
-  action: Exclude<DetectionTrainingTaskActionName, 'delete'>,
-): Promise<DetectionTrainingTaskDetail | DetectionTrainingTaskSubmissionResponse> {
-  return apiRequest<DetectionTrainingTaskDetail | DetectionTrainingTaskSubmissionResponse>(
+  action: Exclude<ModelTrainingTaskActionName, 'delete'>,
+): Promise<ModelTrainingTaskDetail | ModelTrainingTaskSubmissionResponse> {
+  return apiRequest<ModelTrainingTaskDetail | ModelTrainingTaskSubmissionResponse>(
     buildTrainingTaskPath(taskType, `/${encodeURIComponent(taskId)}/${action}`),
     { method: 'POST' },
   )
 }
 
-export async function deleteDetectionTrainingTask(taskType: ModelTaskType, taskId: string): Promise<void> {
+export async function deleteModelTrainingTask(taskType: ModelTaskType, taskId: string): Promise<void> {
   return apiRequest<void>(buildTrainingTaskPath(taskType, `/${encodeURIComponent(taskId)}`), {
     method: 'DELETE',
     responseType: 'void',
   })
 }
 
-export async function registerDetectionTrainingLatestCheckpoint(taskType: ModelTaskType, taskId: string): Promise<DetectionTrainingTaskDetail> {
-  return apiRequest<DetectionTrainingTaskDetail>(
+export async function registerModelTrainingLatestCheckpoint(taskType: ModelTaskType, taskId: string): Promise<ModelTrainingTaskDetail> {
+  return apiRequest<ModelTrainingTaskDetail>(
     buildTrainingTaskPath(taskType, `/${encodeURIComponent(taskId)}/register-model-version`),
     { method: 'POST' },
   )
 }
 
-export async function listDetectionTrainingOutputFiles(taskType: ModelTaskType, taskId: string): Promise<DetectionTrainingOutputFileSummary[]> {
-  return apiRequest<DetectionTrainingOutputFileSummary[]>(
+export async function listModelTrainingOutputFiles(taskType: ModelTaskType, taskId: string): Promise<ModelTrainingOutputFileSummary[]> {
+  return apiRequest<ModelTrainingOutputFileSummary[]>(
     buildTrainingTaskPath(taskType, `/${encodeURIComponent(taskId)}/output-files`),
   )
 }
 
-export async function getDetectionTrainingOutputFileDetail(
+export async function getModelTrainingOutputFileDetail(
   taskType: ModelTaskType,
   taskId: string,
   fileName: string,
-): Promise<DetectionTrainingOutputFileDetail> {
-  return apiRequest<DetectionTrainingOutputFileDetail>(
+): Promise<ModelTrainingOutputFileDetail> {
+  return apiRequest<ModelTrainingOutputFileDetail>(
     buildTrainingTaskPath(taskType, `/${encodeURIComponent(taskId)}/output-files/${encodeURIComponent(fileName)}`),
   )
 }
 
-export async function createDetectionConversionTask(input: DetectionConversionTaskCreateInput): Promise<DetectionConversionTaskSubmissionResponse> {
+export async function createModelConversionTask(input: ModelConversionTaskCreateInput): Promise<ModelConversionTaskSubmissionResponse> {
   const targetRequest = buildConversionRequestTarget(input.target)
   const path = input.taskType === 'detection'
     ? detectionConversionTargetPath[input.target]
     : buildConversionTaskPath(input.taskType)
-  return apiRequest<DetectionConversionTaskSubmissionResponse>(path, {
+  return apiRequest<ModelConversionTaskSubmissionResponse>(path, {
     method: 'POST',
     body: {
       project_id: input.projectId,
@@ -376,12 +376,12 @@ export async function createDetectionConversionTask(input: DetectionConversionTa
   })
 }
 
-export async function listDetectionConversionTasks(
+export async function listModelConversionTasks(
   taskType: ModelTaskType,
   projectId: string,
   modelType?: string,
-): Promise<DetectionConversionTaskSummary[]> {
-  return apiRequest<DetectionConversionTaskSummary[]>(buildConversionTaskPath(taskType), {
+): Promise<ModelConversionTaskSummary[]> {
+  return apiRequest<ModelConversionTaskSummary[]>(buildConversionTaskPath(taskType), {
     query: { project_id: projectId, model_type: modelType || undefined, limit: 100 },
   })
 }

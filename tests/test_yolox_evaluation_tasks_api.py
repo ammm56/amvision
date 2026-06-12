@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from pathlib import Path
-import io
 import zipfile
 
 from fastapi.testclient import TestClient
 
+from backend.queue import LocalFileQueueBackend
 import backend.service.application.models.detection_evaluation_task_service as detection_evaluation_task_service_module
 from backend.service.application.models.detection_evaluation import DetectionEvaluationResult
 from backend.contracts.datasets.exports.coco_detection_export import COCO_DETECTION_DATASET_FORMAT
@@ -338,6 +338,7 @@ def _seed_completed_dataset_export(
         project_id="project-1",
         dataset_version_id=f"dataset-version-{dataset_export_id}",
         format_id=COCO_DETECTION_DATASET_FORMAT,
+        task_type="detection",
         status="completed",
         created_at=datetime.now(timezone.utc).isoformat(),
         task_id=f"task-{dataset_export_id}",

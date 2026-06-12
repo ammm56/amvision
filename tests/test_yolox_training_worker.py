@@ -814,6 +814,7 @@ def _seed_completed_dataset_export(
         project_id="project-1",
         dataset_version_id=f"dataset-version-{dataset_export_id}",
         format_id=COCO_DETECTION_DATASET_FORMAT,
+        task_type="detection",
         status="completed",
         created_at=datetime.now(timezone.utc).isoformat(),
         task_id=f"task-{dataset_export_id}",

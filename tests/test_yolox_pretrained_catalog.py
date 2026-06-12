@@ -43,10 +43,11 @@ def test_yolox_pretrained_catalog_seeder_registers_disk_models(tmp_path: Path) -
     checkpoint_path.write_bytes(b"pretrained-checkpoint")
     manifest_path.write_text(
         json.dumps(
-            {
-                "model_name": "yolox",
-                "model_scale": "nano",
-                "model_version_id": "model-version-pretrained-yolox-nano",
+                {
+                    "model_name": "yolox",
+                    "model_scale": "nano",
+                    "task_type": "detection",
+                    "model_version_id": "model-version-pretrained-yolox-nano",
                 "checkpoint_file_id": "model-file-pretrained-yolox-nano-checkpoint",
                 "checkpoint_path": "checkpoints/yolox_nano.pth",
                 "metadata": {"catalog_name": "default"},

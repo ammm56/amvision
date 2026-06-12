@@ -11,6 +11,8 @@
 - 只有在明确需要真实回归时，才在 `tests/integration/` 下新增或维护对应测试。
 - `tests/integration/` 也用于长时 soak / benchmark；这类测试只有显式指定文件路径时才执行。
 - `docs/examples/workflows/`、`docs/api/examples/workflows/` 与 Postman/样例 JSON 的规则校验，当前主要放在常规测试集里的 `tests/test_workflow_example_documents.py` 与 `tests/test_workflow_api_document_examples.py`；`tests/integration/` 只负责真实资产、真实 runtime、真实子进程和更重闭环。
+- 当前 non-detection runtime backend 矩阵会覆盖 YOLOv8、YOLO11、YOLO26 在 classification、segmentation、pose、obb 四类任务下的真实 conversion -> runtime predict；RF-DETR segmentation 保持在独立测试文件中验证。
+- `release/full` 真实启停验收也放在本目录，默认只做短时驻留；需要更长 soak 时通过环境变量显式调大时长。该测试会检查陈旧状态文件恢复、组件日志、资源快照和 stop 后进程回收，并在本次 logs 子目录写出 `resource-baseline.json`。
 
 # 手动执行
 
@@ -50,4 +52,16 @@ D:/software/anaconda3/envs/amvision/python.exe -m pytest --basetemp .tmp/pytest_
 
 ```powershell
 D:/software/anaconda3/envs/amvision/python.exe -m pytest --basetemp .tmp/pytest_tensorrt_matrix tests/integration/test_non_detection_runtime_backend_smoke_matrix.py -k tensorrt -q
+```
+
+```powershell
+D:/software/anaconda3/envs/amvision/python.exe -m pytest --basetemp .tmp/pytest_non_detection_full_matrix tests/integration/test_non_detection_runtime_backend_smoke_matrix.py -q
+```
+
+```powershell
+D:/software/anaconda3/envs/amvision/python.exe -m pytest --basetemp .tmp/pytest_release_full_acceptance tests/integration/test_release_full_stack_acceptance.py -q
+```
+
+```powershell
+$env:AMVISION_RELEASE_FULL_SOAK_SECONDS="600"; D:/software/anaconda3/envs/amvision/python.exe -m pytest --basetemp .tmp/pytest_release_full_soak tests/integration/test_release_full_stack_acceptance.py -q
 ```

@@ -2,7 +2,7 @@ import { apiRequest } from '@/shared/api/http-client'
 
 export type ModelTaskType = 'detection' | 'classification' | 'segmentation' | 'pose' | 'obb'
 
-export interface DetectionDeploymentInstance {
+export interface TaskDeploymentInstance {
   deployment_instance_id: string
   project_id: string
   display_name: string
@@ -28,7 +28,7 @@ export interface DetectionDeploymentInstance {
   metadata: Record<string, unknown>
 }
 
-export interface DetectionDeploymentCreateInput {
+export interface TaskDeploymentCreateInput {
   taskType: ModelTaskType
   projectId: string
   modelType: string
@@ -42,7 +42,7 @@ export interface DetectionDeploymentCreateInput {
   displayName?: string
 }
 
-export interface DetectionDeploymentProcessStatus {
+export interface TaskDeploymentProcessStatus {
   deployment_instance_id: string
   display_name: string
   runtime_mode: string
@@ -57,7 +57,7 @@ export interface DetectionDeploymentProcessStatus {
   instance_count: number
 }
 
-export interface DetectionDeploymentRuntimeHealth extends DetectionDeploymentProcessStatus {
+export interface TaskDeploymentRuntimeHealth extends TaskDeploymentProcessStatus {
   healthy_instance_count: number
   warmed_instance_count: number
   pinned_output_total_bytes: number
@@ -66,7 +66,7 @@ export interface DetectionDeploymentRuntimeHealth extends DetectionDeploymentPro
   local_buffer_broker: Record<string, unknown>
 }
 
-export interface DetectionDeploymentProcessEvent {
+export interface TaskDeploymentProcessEvent {
   deployment_instance_id: string
   runtime_mode: string
   sequence: number
@@ -84,14 +84,14 @@ function buildDeploymentPath(taskType: ModelTaskType, suffix = ''): string {
   return `/models/${taskType}/deployment-instances${suffix}`
 }
 
-export async function listTaskDeployments(taskType: ModelTaskType, projectId: string): Promise<DetectionDeploymentInstance[]> {
-  return apiRequest<DetectionDeploymentInstance[]>(buildDeploymentPath(taskType), {
+export async function listTaskDeployments(taskType: ModelTaskType, projectId: string): Promise<TaskDeploymentInstance[]> {
+  return apiRequest<TaskDeploymentInstance[]>(buildDeploymentPath(taskType), {
     query: { project_id: projectId, limit: 100 },
   })
 }
 
-export async function createTaskDeployment(input: DetectionDeploymentCreateInput): Promise<DetectionDeploymentInstance> {
-  return apiRequest<DetectionDeploymentInstance>(buildDeploymentPath(input.taskType), {
+export async function createTaskDeployment(input: TaskDeploymentCreateInput): Promise<TaskDeploymentInstance> {
+  return apiRequest<TaskDeploymentInstance>(buildDeploymentPath(input.taskType), {
     method: 'POST',
     body: {
       project_id: input.projectId,
@@ -114,8 +114,8 @@ export async function runTaskDeploymentStatusAction(
   deploymentInstanceId: string,
   mode: DeploymentRuntimeMode,
   action: DeploymentStatusAction,
-): Promise<DetectionDeploymentProcessStatus> {
-  return apiRequest<DetectionDeploymentProcessStatus>(
+): Promise<TaskDeploymentProcessStatus> {
+  return apiRequest<TaskDeploymentProcessStatus>(
     buildDeploymentPath(taskType, `/${encodeURIComponent(deploymentInstanceId)}/${mode}/${action}`),
     { method: action === 'status' ? 'GET' : 'POST' },
   )
@@ -126,8 +126,8 @@ export async function runTaskDeploymentHealthAction(
   deploymentInstanceId: string,
   mode: DeploymentRuntimeMode,
   action: DeploymentHealthAction,
-): Promise<DetectionDeploymentRuntimeHealth> {
-  return apiRequest<DetectionDeploymentRuntimeHealth>(
+): Promise<TaskDeploymentRuntimeHealth> {
+  return apiRequest<TaskDeploymentRuntimeHealth>(
     buildDeploymentPath(taskType, `/${encodeURIComponent(deploymentInstanceId)}/${mode}/${action}`),
     { method: action === 'health' ? 'GET' : 'POST' },
   )
@@ -137,8 +137,8 @@ export async function listTaskDeploymentEvents(
   taskType: ModelTaskType,
   deploymentInstanceId: string,
   mode: DeploymentRuntimeMode,
-): Promise<DetectionDeploymentProcessEvent[]> {
-  return apiRequest<DetectionDeploymentProcessEvent[]>(
+): Promise<TaskDeploymentProcessEvent[]> {
+  return apiRequest<TaskDeploymentProcessEvent[]>(
     buildDeploymentPath(taskType, `/${encodeURIComponent(deploymentInstanceId)}/events`),
     { query: { runtime_mode: mode, limit: 100 } },
   )

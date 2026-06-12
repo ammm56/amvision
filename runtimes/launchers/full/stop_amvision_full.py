@@ -17,7 +17,7 @@ LAUNCHERS_ROOT = Path(__file__).resolve().parent / "launchers"
 if str(LAUNCHERS_ROOT) not in sys.path:
     sys.path.insert(0, str(LAUNCHERS_ROOT))
 
-from common import is_pid_alive, resolve_app_root, resolve_path
+from common import is_pid_alive, resolve_app_root, resolve_path  # noqa: E402
 
 _ROOT_PROCESS_MIN_EXIT_WAIT_SECONDS = 15.0
 
@@ -43,7 +43,7 @@ def build_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--graceful-timeout-seconds",
         type=float,
-        default=5.0,
+        default=30.0,
         help="发送终止信号后等待进程退出的秒数",
     )
     return parser
@@ -231,6 +231,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"运行状态文件中没有可停止的进程，已清理：{state_file_path}", flush=True)
         return 0
 
+    failed_targets: list[tuple[str, int]] = []
     for component_name, pid, stop_mode in stop_targets:
         if not _pid_is_alive(pid):
             print(f"{component_name} 已经退出，pid={pid}", flush=True)
@@ -245,6 +246,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"已停止 {component_name}，pid={pid}", flush=True)
             continue
         print(f"停止 {component_name} 超时，pid={pid}", flush=True)
+        failed_targets.append((component_name, pid))
 
     if isinstance(root_pid, int):
         if not _pid_is_alive(root_pid):
@@ -267,6 +269,7 @@ def main(argv: list[str] | None = None) -> int:
                     print(f"已停止 full-stack-root，pid={root_pid}", flush=True)
                 else:
                     print(f"停止 full-stack-root 超时，pid={root_pid}", flush=True)
+                    failed_targets.append(("full-stack-root", root_pid))
         else:
             print(f"正在停止 full-stack-root，pid={root_pid}", flush=True)
             stopped = _stop_recorded_process(
@@ -278,6 +281,21 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"已停止 full-stack-root，pid={root_pid}", flush=True)
             else:
                 print(f"停止 full-stack-root 超时，pid={root_pid}", flush=True)
+                failed_targets.append(("full-stack-root", root_pid))
+
+    still_alive_targets = [
+        (component_name, pid)
+        for component_name, pid in failed_targets
+        if _pid_is_alive(pid)
+    ]
+    if still_alive_targets:
+        failed_text = ", ".join(f"{name}(pid={pid})" for name, pid in still_alive_targets)
+        print(
+            f"仍有进程未停止，保留运行状态文件以便继续排查：{failed_text}；"
+            f"state_file={state_file_path}",
+            flush=True,
+        )
+        return 2
 
     with contextlib.suppress(FileNotFoundError):
         state_file_path.unlink()

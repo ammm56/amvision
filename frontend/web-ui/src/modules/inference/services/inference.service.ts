@@ -1,14 +1,14 @@
 import { apiRequest } from '@/shared/api/http-client'
 import type { ModelTaskType } from '@/modules/deployments/services/deployment.service'
 
-export interface DetectionInferenceDetection {
+export interface TaskInferenceBoxItem {
   bbox_xyxy: [number, number, number, number]
   score: number
   class_id: number
   class_name?: string | null
 }
 
-export interface DetectionInferencePayload {
+export interface TaskInferencePayload {
   request_id: string
   inference_task_id?: string | null
   deployment_instance_id: string
@@ -31,14 +31,14 @@ export interface DetectionInferencePayload {
   postprocess_ms?: number | null
   serialize_ms?: number | null
   labels: string[]
-  detections: DetectionInferenceDetection[]
+  detections: TaskInferenceBoxItem[]
   runtime_session_info: Record<string, unknown>
   preview_image_uri?: string | null
   preview_image_base64?: string | null
   result_object_key?: string | null
 }
 
-export interface DetectionInferenceTaskSubmission {
+export interface TaskInferenceTaskSubmission {
   task_id: string
   status: string
   queue_name: string
@@ -48,7 +48,7 @@ export interface DetectionInferenceTaskSubmission {
   input_source_kind: string
 }
 
-export interface DetectionInferenceTaskSummary {
+export interface TaskInferenceTaskSummary {
   task_id: string
   display_name: string
   project_id: string
@@ -80,14 +80,14 @@ export interface DetectionInferenceTaskSummary {
   result_summary: Record<string, unknown>
 }
 
-export interface DetectionInferenceTaskResult {
+export interface TaskInferenceTaskResult {
   file_status: 'pending' | 'ready'
   task_state: string
   object_key?: string | null
   payload: Record<string, unknown>
 }
 
-export interface DetectionInferenceDebugInput {
+export interface TaskInferenceDebugInput {
   taskType: ModelTaskType
   projectId: string
   deploymentInstanceId: string
@@ -102,7 +102,7 @@ export interface DetectionInferenceDebugInput {
   displayName?: string
 }
 
-export interface DetectionInferenceTaskListInput {
+export interface TaskInferenceTaskListInput {
   taskType: ModelTaskType
   projectId: string
   deploymentInstanceId?: string
@@ -117,7 +117,7 @@ function buildDeploymentInferencePath(taskType: ModelTaskType, deploymentInstanc
   return `/models/${taskType}/deployment-instances/${encodeURIComponent(deploymentInstanceId)}/infer`
 }
 
-function buildInferenceFormData(input: DetectionInferenceDebugInput, includeTaskFields: boolean): FormData {
+function buildInferenceFormData(input: TaskInferenceDebugInput, includeTaskFields: boolean): FormData {
   const formData = new FormData()
   if (includeTaskFields) {
     formData.set('project_id', input.projectId)
@@ -136,22 +136,22 @@ function buildInferenceFormData(input: DetectionInferenceDebugInput, includeTask
   return formData
 }
 
-export async function inferDetectionDeployment(input: DetectionInferenceDebugInput): Promise<DetectionInferencePayload> {
-  return apiRequest<DetectionInferencePayload>(
+export async function inferTaskDeployment(input: TaskInferenceDebugInput): Promise<TaskInferencePayload> {
+  return apiRequest<TaskInferencePayload>(
     buildDeploymentInferencePath(input.taskType, input.deploymentInstanceId),
     { method: 'POST', body: buildInferenceFormData(input, false) },
   )
 }
 
-export async function createDetectionInferenceTask(input: DetectionInferenceDebugInput): Promise<DetectionInferenceTaskSubmission> {
-  return apiRequest<DetectionInferenceTaskSubmission>(buildInferenceTaskPath(input.taskType), {
+export async function createTaskInferenceTask(input: TaskInferenceDebugInput): Promise<TaskInferenceTaskSubmission> {
+  return apiRequest<TaskInferenceTaskSubmission>(buildInferenceTaskPath(input.taskType), {
     method: 'POST',
     body: buildInferenceFormData(input, true),
   })
 }
 
-export async function listDetectionInferenceTasks(input: DetectionInferenceTaskListInput): Promise<DetectionInferenceTaskSummary[]> {
-  return apiRequest<DetectionInferenceTaskSummary[]>(buildInferenceTaskPath(input.taskType), {
+export async function listTaskInferenceTasks(input: TaskInferenceTaskListInput): Promise<TaskInferenceTaskSummary[]> {
+  return apiRequest<TaskInferenceTaskSummary[]>(buildInferenceTaskPath(input.taskType), {
     query: {
       project_id: input.projectId,
       deployment_instance_id: input.deploymentInstanceId,
@@ -160,7 +160,7 @@ export async function listDetectionInferenceTasks(input: DetectionInferenceTaskL
   })
 }
 
-export async function getDetectionInferenceTaskResult(taskType: ModelTaskType, taskId: string): Promise<DetectionInferenceTaskResult> {
-  return apiRequest<DetectionInferenceTaskResult>(buildInferenceTaskPath(taskType, `/${encodeURIComponent(taskId)}/result`))
+export async function getTaskInferenceTaskResult(taskType: ModelTaskType, taskId: string): Promise<TaskInferenceTaskResult> {
+  return apiRequest<TaskInferenceTaskResult>(buildInferenceTaskPath(taskType, `/${encodeURIComponent(taskId)}/result`))
 }
 

@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
-from pathlib import PurePosixPath
+from pathlib import Path, PurePosixPath
+from typing import Any
+from urllib.parse import unquote, urlparse
 from uuid import uuid4
 
 from backend.service.application.errors import InvalidRequestError, ResourceNotFoundError
@@ -22,6 +24,7 @@ from backend.service.application.runtime.runtime_target import (
     resolve_local_file_path,
     resolve_runtime_precision,
 )
+from backend.service.domain.models.model_records import ModelFile, ModelVersion
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 
@@ -436,7 +439,8 @@ def _build_runtime_target_from_session(
         model_build_id=None,
         model_name=session.model_name,
         model_scale=session.model_scale,
-        task_type="object-detection",
+        model_type="yolox",
+        task_type="detection",
         source_kind=session.source_kind,
         runtime_profile_id=session.runtime_profile_id,
         runtime_backend=session.runtime_backend,

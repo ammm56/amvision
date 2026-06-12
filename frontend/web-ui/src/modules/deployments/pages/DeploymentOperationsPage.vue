@@ -229,11 +229,11 @@ import {
   type DeploymentHealthAction,
   type DeploymentRuntimeMode,
   type DeploymentStatusAction,
-  type DetectionDeploymentInstance,
-  type DetectionDeploymentProcessEvent,
-  type DetectionDeploymentProcessStatus,
-  type DetectionDeploymentRuntimeHealth,
   type ModelTaskType,
+  type TaskDeploymentInstance,
+  type TaskDeploymentProcessEvent,
+  type TaskDeploymentProcessStatus,
+  type TaskDeploymentRuntimeHealth,
 } from '../services/deployment.service'
 import { useProjectStore } from '@/app/stores/project.store'
 import { useSessionStore } from '@/app/stores/session.store'
@@ -268,16 +268,16 @@ const runtimePrecisionOptions = [
   { label: 'fp16', value: 'fp16' },
 ]
 
-const deployments = ref<DetectionDeploymentInstance[]>([])
-const deploymentEvents = ref<DetectionDeploymentProcessEvent[]>([])
+const deployments = ref<TaskDeploymentInstance[]>([])
+const deploymentEvents = ref<TaskDeploymentProcessEvent[]>([])
 const loading = ref(false)
 const creating = ref(false)
 const eventsLoading = ref(false)
 const runningAction = ref<string | null>(null)
 const errorMessage = ref<string | null>(null)
-const lastCreatedDeployment = ref<DetectionDeploymentInstance | null>(null)
-const lastRuntimeStatus = ref<DetectionDeploymentProcessStatus | null>(null)
-const lastRuntimeHealth = ref<DetectionDeploymentRuntimeHealth | null>(null)
+const lastCreatedDeployment = ref<TaskDeploymentInstance | null>(null)
+const lastRuntimeStatus = ref<TaskDeploymentProcessStatus | null>(null)
+const lastRuntimeHealth = ref<TaskDeploymentRuntimeHealth | null>(null)
 const selectedDeploymentId = ref('')
 const selectedTaskType = ref<ModelTaskType>('detection')
 

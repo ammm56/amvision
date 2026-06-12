@@ -73,7 +73,8 @@ def test_barcode_result_display_example_preview_run_returns_annotated_image_and_
     assert annotated_image["type"] == "image-preview"
     assert annotated_image["title"] == "Detected Barcode Image"
     assert annotated_image["image"]["transport_kind"] == "inline-base64"
-    assert annotated_image["image"]["image_base64_redacted"] is True
+    assert isinstance(annotated_image["image"]["image_base64"], str)
+    assert "image_base64_redacted" not in annotated_image["image"]
 
     result_table = response_data["result_table"]
     assert result_table["type"] == "table-preview"

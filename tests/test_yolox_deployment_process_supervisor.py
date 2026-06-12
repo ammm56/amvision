@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import os
 from pathlib import Path
 from queue import Empty
@@ -187,6 +188,11 @@ def fake_deployment_process_worker(
             )
             continue
         if action == "infer":
+            prediction_request = (
+                payload.get("prediction_request")
+                if isinstance(payload.get("prediction_request"), dict)
+                else {}
+            )
             instance_index = next_instance_index % config.instance_count
             next_instance_index += 1
             warmed_instance_indexes.add(instance_index)
@@ -196,28 +202,34 @@ def fake_deployment_process_worker(
                     "ok": True,
                     "payload": {
                         "instance_id": f"{config.deployment_instance_id}:instance-{instance_index}",
-                        "detections": [
-                            {
-                                "bbox_xyxy": [8.0, 10.0, 18.0, 22.0],
-                                "score": 0.91,
-                                "class_id": 0,
-                                "class_name": "bolt",
-                            }
-                        ],
-                        "latency_ms": 7.5,
-                        "image_width": 64,
-                        "image_height": 64,
-                        "preview_image_bytes": b"preview-jpg" if payload.get("save_result_image") else None,
-                        "runtime_session_info": {
-                            "backend_name": config.runtime_target.runtime_backend,
-                            "model_uri": config.runtime_target.runtime_artifact_storage_uri,
-                            "device_name": config.runtime_target.device_name,
-                            "input_spec": {"name": "images", "shape": [1, 3, 64, 64], "dtype": "float32"},
-                            "output_spec": {"name": "detections", "shape": [-1, 7], "dtype": "float32"},
-                            "metadata": {
-                                "model_version_id": config.runtime_target.model_version_id,
-                                "input_uri": payload.get("input_uri"),
-                                "worker_pid": os.getpid(),
+                        "execution_result": {
+                            "detections": [
+                                {
+                                    "bbox_xyxy": [8.0, 10.0, 18.0, 22.0],
+                                    "score": 0.91,
+                                    "class_id": 0,
+                                    "class_name": "bolt",
+                                }
+                            ],
+                            "latency_ms": 7.5,
+                            "image_width": 64,
+                            "image_height": 64,
+                            "preview_image_bytes_base64": (
+                                base64.b64encode(b"preview-jpg").decode("ascii")
+                                if prediction_request.get("save_result_image")
+                                else None
+                            ),
+                            "runtime_session_info": {
+                                "backend_name": config.runtime_target.runtime_backend,
+                                "model_uri": config.runtime_target.runtime_artifact_storage_uri,
+                                "device_name": config.runtime_target.device_name,
+                                "input_spec": {"name": "images", "shape": [1, 3, 64, 64], "dtype": "float32"},
+                                "output_spec": {"name": "detections", "shape": [-1, 7], "dtype": "float32"},
+                                "metadata": {
+                                    "model_version_id": config.runtime_target.model_version_id,
+                                    "input_uri": prediction_request.get("input_uri"),
+                                    "worker_pid": os.getpid(),
+                                },
                             },
                         },
                     },
@@ -275,6 +287,7 @@ def _build_runtime_target(runtime_artifact_path: Path) -> RuntimeTargetSnapshot:
         model_build_id=None,
         model_name="yolox-test",
         model_scale="nano",
+        model_type="yolox",
         task_type="detection",
         source_kind="training_output",
         runtime_profile_id=None,

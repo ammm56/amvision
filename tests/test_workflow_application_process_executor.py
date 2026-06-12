@@ -421,7 +421,7 @@ def test_workflow_preview_run_api_supports_async_events_and_wait_mode(tmp_path: 
                     "application_ref": {"application_id": "process-slow-app"},
                     "input_bindings": {"request_text": {"value": "hello preview async"}},
                     "execution_metadata": {"marker": "preview-async-events"},
-                    "timeout_seconds": 5,
+                    "timeout_seconds": 20,
                     "wait_mode": "async",
                 },
             )
@@ -508,7 +508,7 @@ def test_workflow_preview_run_events_websocket_streams_live_events(tmp_path: Pat
                     "application_ref": {"application_id": "process-slow-app"},
                     "input_bindings": {"request_text": {"value": "hello preview websocket"}},
                     "execution_metadata": {"marker": "preview-websocket"},
-                    "timeout_seconds": 5,
+                    "timeout_seconds": 20,
                     "wait_mode": "async",
                 },
             )
@@ -1701,7 +1701,8 @@ def test_workflow_execution_policy_api_creates_lists_and_applies_to_preview_and_
     assert runtime_payload["template_summary"]["template_id"] == "process-echo-template"
     assert runtime_payload["metadata"]["execution_policy"]["execution_policy_id"] == "runtime-default-policy"
     assert invoke_payload["requested_timeout_seconds"] == 7
-    assert invoke_payload["node_records"] == []
+    assert invoke_payload["node_records"]
+    assert {item["node_id"] for item in invoke_payload["node_records"]} >= {"echo"}
     assert invoke_payload["metadata"]["execution_policy"]["execution_policy_id"] == "runtime-default-policy"
     assert dataset_storage.read_json(preview_policy_snapshot_object_key)["execution_policy_id"] == "preview-default-policy"
     assert dataset_storage.read_json(runtime_policy_snapshot_object_key)["execution_policy_id"] == "runtime-default-policy"
