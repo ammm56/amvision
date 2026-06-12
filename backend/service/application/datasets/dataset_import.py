@@ -784,7 +784,11 @@ class SqlAlchemyDatasetImportService:
 
         extracted_root = self.dataset_storage.resolve(import_layout.extracted_path)
         dataset_root = self._unwrap_single_directory(extracted_root)
-        format_type = self._detect_format(dataset_root=dataset_root, requested_format_type=request.format_type)
+        format_type = self._detect_format(
+            dataset_root=dataset_root,
+            requested_format_type=request.format_type,
+            task_type=request.task_type,
+        )
 
         if format_type == "coco":
             return self._parse_coco_detection(
@@ -831,12 +835,14 @@ class SqlAlchemyDatasetImportService:
         *,
         dataset_root: Path,
         requested_format_type: DatasetFormatType | None,
+        task_type: DatasetImportTaskType,
     ) -> DatasetFormatType:
         """根据目录签名识别导入内容格式。
 
         参数：
         - dataset_root：解压后的数据集根目录。
         - requested_format_type：显式指定的格式类型。
+        - task_type：当前导入请求的任务类型。
 
         返回：
         - 识别出的格式类型。
@@ -846,9 +852,7 @@ class SqlAlchemyDatasetImportService:
         if self._collect_coco_manifest_paths(dataset_root):
             candidates.append("coco")
 
-        voc_annotations_dir = dataset_root / "Annotations"
-        voc_images_dir = dataset_root / "JPEGImages"
-        if voc_annotations_dir.is_dir() and voc_images_dir.is_dir() and any(voc_annotations_dir.glob("*.xml")):
+        if self._looks_like_voc_dataset(dataset_root):
             candidates.append("voc")
         if self._looks_like_yolo_dataset(dataset_root):
             candidates.append("yolo")
@@ -856,6 +860,11 @@ class SqlAlchemyDatasetImportService:
             candidates.append("imagenet")
         if self._looks_like_dota_dataset(dataset_root):
             candidates.append("dota")
+
+        supported_format_types = IMPLEMENTED_DATASET_IMPORT_FORMAT_TYPES_BY_TASK_TYPE[task_type]
+        supported_candidates = [
+            candidate for candidate in candidates if candidate in supported_format_types
+        ]
 
         if requested_format_type is not None:
             if requested_format_type not in candidates:
@@ -868,8 +877,17 @@ class SqlAlchemyDatasetImportService:
                 )
             return requested_format_type
 
-        if len(candidates) == 1:
-            return candidates[0]
+        if len(supported_candidates) == 1:
+            return supported_candidates[0]
+        if len(supported_candidates) > 1:
+            raise InvalidRequestError(
+                "导入包命中了多个候选格式，需要显式指定 format_type",
+                details={
+                    "task_type": task_type,
+                    "detected_candidates": supported_candidates,
+                    "supported_format_types": list(supported_format_types),
+                },
+            )
         if not candidates:
             raise UnsupportedDatasetFormatError(
                 "当前只支持 COCO、Pascal VOC、YOLO、ImageNet classification 和 DOTA OBB",
@@ -877,8 +895,26 @@ class SqlAlchemyDatasetImportService:
             )
 
         raise InvalidRequestError(
-            "导入包命中了多个候选格式，需要显式指定 format_type",
-            details={"detected_candidates": candidates},
+            "导入包识别结果与 task_type 不匹配",
+            details={
+                "task_type": task_type,
+                "detected_candidates": candidates,
+                "supported_format_types": list(supported_format_types),
+            },
+        )
+
+    def _looks_like_voc_dataset(
+        self,
+        dataset_root: Path,
+    ) -> bool:
+        """判断当前目录是否像 Pascal VOC detection 数据集。"""
+
+        voc_annotations_dir = dataset_root / "Annotations"
+        voc_images_dir = dataset_root / "JPEGImages"
+        return (
+            voc_annotations_dir.is_dir()
+            and voc_images_dir.is_dir()
+            and any(voc_annotations_dir.glob("*.xml"))
         )
 
     def _parse_coco_detection(
@@ -2842,6 +2878,8 @@ class SqlAlchemyDatasetImportService:
     ) -> bool:
         """判断当前目录是否像 ImageNet 风格 classification 数据集。"""
 
+        if self._looks_like_voc_dataset(dataset_root):
+            return False
         if self._collect_imagenet_split_dirs(dataset_root):
             return True
         if any((dataset_root / candidate_name).is_dir() for candidate_name in ("train", "val", "valid", "test")):
@@ -2856,6 +2894,18 @@ class SqlAlchemyDatasetImportService:
 
         class_dirs = [candidate for candidate in root.iterdir() if candidate.is_dir()]
         if not class_dirs:
+            return False
+        reserved_dir_names = {
+            "annotation",
+            "annotations",
+            "images",
+            "imagesets",
+            "jpegimages",
+            "labels",
+            "masks",
+            "segments",
+        }
+        if any(class_dir.name.lower() in reserved_dir_names for class_dir in class_dirs):
             return False
         for class_dir in class_dirs:
             if any(self._is_image_file(candidate) for candidate in class_dir.iterdir()):

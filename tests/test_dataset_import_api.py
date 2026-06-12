@@ -162,6 +162,47 @@ def test_import_dataset_zip_creates_voc_dataset_version(tmp_path: Path) -> None:
         session_factory.engine.dispose()
 
 
+def test_import_dataset_zip_auto_detects_voc_dataset_version(tmp_path: Path) -> None:
+    """验证自动识别不会把 Pascal VOC 误判成 classification 数据集。"""
+
+    client, session_factory, dataset_storage, queue_backend = _create_test_client(tmp_path)
+    try:
+        with client:
+            response = client.post(
+                "/api/v1/datasets/imports",
+                headers=_build_dataset_write_headers(),
+                data={
+                    "project_id": "project-1",
+                    "dataset_id": "dataset-voc-auto",
+                    "task_type": "detection",
+                },
+                files={
+                    "package": ("voc-auto-dataset.zip", _build_voc_zip_bytes(), "application/zip"),
+                },
+            )
+
+        assert response.status_code == 202
+        assert _run_import_worker_once(
+            session_factory=session_factory,
+            dataset_storage=dataset_storage,
+            queue_backend=queue_backend,
+        ) is True
+
+        payload = response.json()
+        dataset_import, dataset_version = _load_dataset_objects(
+            session_factory=session_factory,
+            dataset_import_id=payload["dataset_import_id"],
+        )
+
+        assert dataset_import is not None
+        assert dataset_import.status == "completed"
+        assert dataset_import.format_type == "voc"
+        assert dataset_import.detected_profile["format_type"] == "voc"
+        assert dataset_version is not None
+    finally:
+        session_factory.engine.dispose()
+
+
 def test_import_dataset_zip_accepts_nested_voc_wrapper_dirs(tmp_path: Path) -> None:
     """验证导入器可以识别带多层包裹目录和非整数标记的 Pascal VOC zip。"""
 
@@ -304,6 +345,155 @@ def test_import_dataset_zip_creates_imagenet_classification_dataset_version(tmp_
         assert dataset_version.task_type == "classification"
         assert dataset_version.samples[0].annotations[0].category_id in {0, 1}
         assert dataset_import.validation_report["task_type"] == "classification"
+    finally:
+        session_factory.engine.dispose()
+
+
+def test_import_dataset_zip_auto_detects_imagenet_classification_dataset_version(
+    tmp_path: Path,
+) -> None:
+    """验证自动识别仍可正确识别 ImageNet classification 数据集。"""
+
+    client, session_factory, dataset_storage, queue_backend = _create_test_client(tmp_path)
+    try:
+        with client:
+            response = client.post(
+                "/api/v1/datasets/imports",
+                headers=_build_dataset_write_headers(),
+                data={
+                    "project_id": "project-1",
+                    "dataset_id": "dataset-imagenet-auto",
+                    "task_type": "classification",
+                },
+                files={
+                    "package": (
+                        "imagenet-auto-dataset.zip",
+                        _build_imagenet_zip_bytes(),
+                        "application/zip",
+                    ),
+                },
+            )
+
+        assert response.status_code == 202
+        assert _run_import_worker_once(
+            session_factory=session_factory,
+            dataset_storage=dataset_storage,
+            queue_backend=queue_backend,
+        ) is True
+
+        payload = response.json()
+        dataset_import, dataset_version = _load_dataset_objects(
+            session_factory=session_factory,
+            dataset_import_id=payload["dataset_import_id"],
+        )
+        assert dataset_import is not None
+        assert dataset_import.status == "completed"
+        assert dataset_import.format_type == "imagenet"
+        assert dataset_import.detected_profile["format_type"] == "imagenet"
+        assert dataset_version is not None
+        assert dataset_version.task_type == "classification"
+    finally:
+        session_factory.engine.dispose()
+
+
+def test_import_dataset_zip_rejects_auto_detected_imagenet_for_detection_task(
+    tmp_path: Path,
+) -> None:
+    """验证 detection 自动识别不会接受 classification 数据集。"""
+
+    client, session_factory, dataset_storage, queue_backend = _create_test_client(tmp_path)
+    try:
+        with client:
+            response = client.post(
+                "/api/v1/datasets/imports",
+                headers=_build_dataset_write_headers(),
+                data={
+                    "project_id": "project-1",
+                    "dataset_id": "dataset-imagenet-as-detection",
+                    "task_type": "detection",
+                },
+                files={
+                    "package": (
+                        "imagenet-as-detection.zip",
+                        _build_imagenet_zip_bytes(),
+                        "application/zip",
+                    ),
+                },
+            )
+
+        assert response.status_code == 202
+        assert _run_import_worker_once(
+            session_factory=session_factory,
+            dataset_storage=dataset_storage,
+            queue_backend=queue_backend,
+        ) is True
+
+        payload = response.json()
+        dataset_import, dataset_version = _load_dataset_objects(
+            session_factory=session_factory,
+            dataset_import_id=payload["dataset_import_id"],
+        )
+        assert dataset_import is not None
+        assert dataset_import.status == "failed"
+        assert dataset_import.error_message == "导入包识别结果与 task_type 不匹配"
+        assert dataset_import.validation_report["status"] == "failed"
+        assert dataset_import.validation_report["error"]["details"] == {
+            "task_type": "detection",
+            "detected_candidates": ["imagenet"],
+            "supported_format_types": ["coco", "voc", "yolo"],
+        }
+        assert dataset_version is None
+    finally:
+        session_factory.engine.dispose()
+
+
+def test_import_dataset_zip_rejects_auto_detected_dota_for_detection_task(
+    tmp_path: Path,
+) -> None:
+    """验证 detection 自动识别不会接受 obb 数据集。"""
+
+    client, session_factory, dataset_storage, queue_backend = _create_test_client(tmp_path)
+    try:
+        with client:
+            response = client.post(
+                "/api/v1/datasets/imports",
+                headers=_build_dataset_write_headers(),
+                data={
+                    "project_id": "project-1",
+                    "dataset_id": "dataset-dota-as-detection",
+                    "task_type": "detection",
+                },
+                files={
+                    "package": (
+                        "dota-as-detection.zip",
+                        _build_dota_zip_bytes(),
+                        "application/zip",
+                    ),
+                },
+            )
+
+        assert response.status_code == 202
+        assert _run_import_worker_once(
+            session_factory=session_factory,
+            dataset_storage=dataset_storage,
+            queue_backend=queue_backend,
+        ) is True
+
+        payload = response.json()
+        dataset_import, dataset_version = _load_dataset_objects(
+            session_factory=session_factory,
+            dataset_import_id=payload["dataset_import_id"],
+        )
+        assert dataset_import is not None
+        assert dataset_import.status == "failed"
+        assert dataset_import.error_message == "导入包识别结果与 task_type 不匹配"
+        assert dataset_import.validation_report["status"] == "failed"
+        assert dataset_import.validation_report["error"]["details"] == {
+            "task_type": "detection",
+            "detected_candidates": ["dota"],
+            "supported_format_types": ["coco", "voc", "yolo"],
+        }
+        assert dataset_version is None
     finally:
         session_factory.engine.dispose()
 
