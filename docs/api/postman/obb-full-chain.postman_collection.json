@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "amvision-obb-full-chain",
     "name": "amvision obb-full-chain",
-    "description": "OBB 全链路 Postman 调试集合。覆盖 dataset import -> dataset export -> training -> validation -> evaluation -> conversion -> deployment -> infer -> workflow invoke。当前支持 modelType: yolov8, yolo11, yolo26。注意：docs/api/postman/workflows/12-15 仍然是 workflow/runtime 最小链，不替代这里的全生命周期调试集合。",
+    "description": "OBB 全链路 Postman 调试集合。覆盖 dataset import -> dataset export -> training -> validation -> evaluation -> conversion -> deployment -> infer -> workflow invoke。默认变量 datasetZipPath 指向本地调试数据包 data/files/postman-assets/obb-dota-min.zip；该目录不纳入 git。默认同时预置 modelType=yolo11、targetFormat=onnx、deploymentRuntimeBackend=onnxruntime。当前支持 modelType: yolov8, yolo11, yolo26。注意：docs/api/postman/workflows/12-15 仍然是 workflow/runtime 最小链，不替代这里的全生命周期调试集合。",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -20,19 +20,19 @@
     },
     {
       "key": "projectId",
-      "value": "project-1"
+      "value": "project-obb-demo"
     },
     {
       "key": "projectDisplayName",
-      "value": "OBB Full Chain Project"
+      "value": "OBB Full Chain Demo"
     },
     {
       "key": "projectDescription",
-      "value": "OBB dataset import/export/training/evaluation/conversion/deployment/workflow invoke full chain"
+      "value": "OBB full-chain debug with checked-in minimal DOTA zip"
     },
     {
       "key": "datasetId",
-      "value": "obb-dataset-1"
+      "value": "dataset-obb-demo"
     },
     {
       "key": "datasetImportId",
@@ -60,7 +60,7 @@
     },
     {
       "key": "datasetZipPath",
-      "value": ""
+      "value": "data/files/postman-assets/obb-dota-min.zip"
     },
     {
       "key": "exportFormatId",
@@ -72,7 +72,7 @@
     },
     {
       "key": "modelType",
-      "value": "yolov8"
+      "value": "yolo11"
     },
     {
       "key": "modelScale",
@@ -84,11 +84,11 @@
     },
     {
       "key": "outputModelName",
-      "value": "obb-full-chain-model"
+      "value": "obb-yolo11n-demo"
     },
     {
       "key": "trainingDisplayName",
-      "value": "OBB Full Chain Training"
+      "value": "OBB Demo Training"
     },
     {
       "key": "trainingTaskId",
@@ -112,11 +112,11 @@
     },
     {
       "key": "validationInputUri",
-      "value": "projects/{projectId}/inputs/obb-validation-sample.png"
+      "value": "__SET_BY_GET_DATASET_EXPORT_DETAIL__"
     },
     {
       "key": "evaluationDisplayName",
-      "value": "OBB Full Chain Evaluation"
+      "value": "OBB Demo Evaluation"
     },
     {
       "key": "evaluationTaskId",
@@ -136,7 +136,7 @@
     },
     {
       "key": "deploymentDisplayName",
-      "value": "OBB Full Chain Deployment"
+      "value": "OBB Demo Deployment"
     },
     {
       "key": "deploymentRuntimeBackend",
@@ -152,7 +152,7 @@
     },
     {
       "key": "inputImageBase64",
-      "value": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO5WZr8AAAAASUVORK5CYII="
+      "value": "iVBORw0KGgoAAAANSUhEUgAAAGAAAABgCAIAAABt+uBvAAACI0lEQVR4nO3cy1HDMBRA0Rs3QBEUQQdJByygA8qhB4qgBIqgCCoIiwSSyE5iW7/3uytro/GckbTwjLzZ7/cAsNu9Eo0a/p8+Pz86vofYhvNBGI0bkp0VRkkDo9MnjM47brEwutbpDAqjyS4O6TAaNyTjMEpKgQijyyaACKOzpoEIo7+uAhFGwG0gwuguEO6N7gPh22gWEI6N5gLh1WgBEC6NlgHhz2gxEM6M1gDhyWglEG6M1gPhw2iz3b5kTpG4/Hx/ZU5Yque39/xJslbQoWQdPTw+5c8ppwJAmDYqA8RoZ5kxKgaEUaOSQFg0KgyEOaPyQNgyqgKEIaNaQFgxqgiECaO6QOg3qg6EcqMWQGg2agSEWqN2QOg0agqEQqPWQGgz6gCEKqM+QOgx6gaEEqOeQGgw6gyEeKP+QMg2EgGEYCMpQEg1EgSESCNZQMgzEgeEMCOJQEgyEgqEGCO5QMgwEg2EACPpQPQ2UgBEVyMdQPQzUgNEJyNNQPQwUgZEcyN9QLQ1UglEQyOtQLQyUgxEEyPdQNQ3Ug9EZSMLQNQ0MgJENSM7QIyMitxfMwVEBaMCF+oElrjk/EPT2go6VPCuqE0gyhmZBaKQkWUgShgZByLbyD4QeUYugMgw8gLEWiNHQKwy8gXEciN3QCw08gjEEiOnQMw28gvEPCPXQMww8g7EPaMAgptGAXTsmlEAnZo0svlNOqc4g+6UrKMAmujc6BdDsCB75Jox3gAAAABJRU5ErkJggg=="
     },
     {
       "key": "inferenceTaskId",
@@ -260,7 +260,7 @@
                 "imports"
               ]
             },
-            "description": "OBB 数据集导入入口。这里只覆盖 dota -> obb 这一条正式链，导入完成后用下一条详情请求轮询直到 completed，并自动回填 datasetVersionId。",
+            "description": "OBB 正式导入入口。默认 file src 已指向本地调试包 data/files/postman-assets/obb-dota-min.zip，格式使用 dota + task_type=obb，适合直接验证 DOTA 风格最小链。",
             "body": {
               "mode": "formdata",
               "formdata": [
@@ -466,6 +466,9 @@
                   "  if (payload.dataset_version_id) {",
                   "    pm.collectionVariables.set('datasetVersionId', payload.dataset_version_id);",
                   "  }",
+                  "  if (payload.export_path) {",
+                  "    pm.collectionVariables.set('validationInputUri', payload.export_path + '/images/val/val-1.png');",
+                  "  }",
                   "}"
                 ]
               }
@@ -506,7 +509,7 @@
                 "training-tasks"
               ]
             },
-            "description": "OBB 训练入口。这里统一走 modelType 变量，方便在同一 task family 下切换模型。",
+            "description": "OBB 训练入口。默认预置 modelType=yolo11、modelScale=nano、batch_size=2、input_size=640x640、precision=fp32，用于当前仓库内最小联调样本。",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"model_type\": \"{{modelType}}\",\n  \"dataset_export_id\": \"{{datasetExportId}}\",\n  \"dataset_export_manifest_key\": \"{{datasetExportManifestKey}}\",\n  \"recipe_id\": \"{{recipeId}}\",\n  \"model_scale\": \"{{modelScale}}\",\n  \"output_model_name\": \"{{outputModelName}}\",\n  \"max_epochs\": 1,\n  \"batch_size\": 2,\n  \"input_size\": [\n    640,\n    640\n  ],\n  \"precision\": \"{{trainingPrecision}}\",\n  \"extra_options\": {},\n  \"display_name\": \"{{trainingDisplayName}}\",\n  \"evaluation_interval\": 1\n}",
@@ -706,7 +709,7 @@
                 "predict"
               ]
             },
-            "description": "执行单张 validation 预测。这里走 input_uri，因为 validation session 当前不接收 image_base64。",
+            "description": "执行单张 validation 预测。默认值会在 Get Dataset Export Detail 成功后，自动把 validationInputUri 回填到当前导出结果里的 val 样本图片。",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"input_uri\": \"{{validationInputUri}}\",\n  \"input_file_id\": null,\n  \"score_threshold\": 0.25,\n  \"save_result_image\": true,\n  \"extra_options\": {}\n}",
@@ -962,7 +965,7 @@
                 "deployment-instances"
               ]
             },
-            "description": "OBB deployment 默认绑定 conversion 产出的 modelBuildId，并使用 onnxruntime 作为 runtime_backend。",
+            "description": "OBB deployment 默认绑定 conversion 产出的 modelBuildId，并使用 onnxruntime + fp32 作为默认本地联调后端。",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"model_type\": \"{{modelType}}\",\n  \"model_version_id\": null,\n  \"model_build_id\": \"{{modelBuildId}}\",\n  \"runtime_profile_id\": null,\n  \"runtime_backend\": \"{{deploymentRuntimeBackend}}\",\n  \"runtime_precision\": \"{{runtimePrecision}}\",\n  \"device_name\": null,\n  \"instance_count\": 1,\n  \"display_name\": \"{{deploymentDisplayName}}\",\n  \"metadata\": {\n    \"source\": \"{{collectionSlug}}\"\n  }\n}",

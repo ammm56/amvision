@@ -61,6 +61,7 @@
 - [docs/api/postman/classification-full-chain.postman_collection.json](postman/classification-full-chain.postman_collection.json)：classification 全链路 Postman collection，覆盖 dataset import、dataset export、training、validation、evaluation、conversion、deployment、infer 和 workflow invoke；当前支持 `yolov8`、`yolo11`、`yolo26`
 - [docs/api/postman/pose-full-chain.postman_collection.json](postman/pose-full-chain.postman_collection.json)：pose 全链路 Postman collection，覆盖 dataset import、dataset export、training、validation、evaluation、conversion、deployment、infer 和 workflow invoke；当前支持 `yolov8`、`yolo11`、`yolo26`
 - [docs/api/postman/obb-full-chain.postman_collection.json](postman/obb-full-chain.postman_collection.json)：OBB 全链路 Postman collection，覆盖 dataset import、dataset export、training、validation、evaluation、conversion、deployment、infer 和 workflow invoke；当前支持 `yolov8`、`yolo11`、`yolo26`
+- [docs/api/postman/local-debug-assets.md](postman/local-debug-assets.md)：non-detection full-chain collection 本地调试数据包说明；默认路径使用 `data/files/postman-assets/`，不纳入 git
 - `docs/api/postman/workflows/12-*` 到 `15-*` 继续只表示 segmentation / classification / pose / OBB 的 workflow/runtime 使用面，不替代上面的全生命周期联调集合
 - [docs/architecture/backend-service.md](../architecture/backend-service.md)：FastAPI 应用分层、路由拆分、数据库会话、权限和中间件骨架
 

@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "amvision-segmentation-full-chain",
     "name": "amvision segmentation-full-chain",
-    "description": "Segmentation 全链路 Postman 调试集合。覆盖 dataset import -> dataset export -> training -> validation -> evaluation -> conversion -> deployment -> infer -> workflow invoke。当前支持 modelType: yolov8, yolo11, yolo26, rfdetr。注意：docs/api/postman/workflows/12-15 仍然是 workflow/runtime 最小链，不替代这里的全生命周期调试集合。",
+    "description": "Segmentation 全链路 Postman 调试集合。覆盖 dataset import -> dataset export -> training -> validation -> evaluation -> conversion -> deployment -> infer -> workflow invoke。默认变量 datasetZipPath 指向本地调试数据包 data/files/postman-assets/segmentation-coco-min.zip；该目录不纳入 git。默认同时预置 modelType=yolo11、targetFormat=onnx、deploymentRuntimeBackend=onnxruntime。当前支持 modelType: yolov8, yolo11, yolo26, rfdetr。注意：docs/api/postman/workflows/12-15 仍然是 workflow/runtime 最小链，不替代这里的全生命周期调试集合。",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -20,19 +20,19 @@
     },
     {
       "key": "projectId",
-      "value": "project-1"
+      "value": "project-segmentation-demo"
     },
     {
       "key": "projectDisplayName",
-      "value": "Segmentation Full Chain Project"
+      "value": "Segmentation Full Chain Demo"
     },
     {
       "key": "projectDescription",
-      "value": "Segmentation dataset import/export/training/evaluation/conversion/deployment/workflow invoke full chain"
+      "value": "Segmentation full-chain debug with checked-in minimal COCO segmentation zip"
     },
     {
       "key": "datasetId",
-      "value": "segmentation-dataset-1"
+      "value": "dataset-segmentation-demo"
     },
     {
       "key": "datasetImportId",
@@ -60,7 +60,7 @@
     },
     {
       "key": "datasetZipPath",
-      "value": ""
+      "value": "data/files/postman-assets/segmentation-coco-min.zip"
     },
     {
       "key": "exportFormatId",
@@ -72,7 +72,7 @@
     },
     {
       "key": "modelType",
-      "value": "yolov8"
+      "value": "yolo11"
     },
     {
       "key": "modelScale",
@@ -84,11 +84,11 @@
     },
     {
       "key": "outputModelName",
-      "value": "segmentation-full-chain-model"
+      "value": "segmentation-yolo11n-demo"
     },
     {
       "key": "trainingDisplayName",
-      "value": "Segmentation Full Chain Training"
+      "value": "Segmentation Demo Training"
     },
     {
       "key": "trainingTaskId",
@@ -112,11 +112,11 @@
     },
     {
       "key": "validationInputUri",
-      "value": "projects/{projectId}/inputs/segmentation-validation-sample.png"
+      "value": "__SET_BY_GET_DATASET_EXPORT_DETAIL__"
     },
     {
       "key": "evaluationDisplayName",
-      "value": "Segmentation Full Chain Evaluation"
+      "value": "Segmentation Demo Evaluation"
     },
     {
       "key": "evaluationTaskId",
@@ -136,7 +136,7 @@
     },
     {
       "key": "deploymentDisplayName",
-      "value": "Segmentation Full Chain Deployment"
+      "value": "Segmentation Demo Deployment"
     },
     {
       "key": "deploymentRuntimeBackend",
@@ -152,7 +152,7 @@
     },
     {
       "key": "inputImageBase64",
-      "value": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO5WZr8AAAAASUVORK5CYII="
+      "value": "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/2wBDAQgJCQwLDBgNDRgyIRwhMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjL/wAARCABAAEADASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwCWKKy+IGmpDDHb2fii0hCoiARxX8aDAAAwFcAfTA/u/c4eWKSCZ4Zo3jljYq6OMMpHBBB6GiKWSCZJoZHjljYMjocMpHIII6Gu7/0f4j2f/LK38WwR+yJqKKPyEgA/yPuer8Hp+X/APO+L1OBop8sUkEzwzRvHLGxV0cYZSOCCD0NMrUzCiiigAooooAKfFLJBMk0MjxyxsGR0OGUjkEEdDTKKAPqPi7XsJwP++/8A69VSCCQRgigEggg4Iq1xdr2E4H/ff/16+Z+L1PXKtFBBBIIwRRUAfPPiP/kaNX/6/Zv/AEM1mVp+I/8AkaNX/wCv2b/0M1mV9ND4V6I8mW7CiiirEfTNAJBBBwRRRXyx65a4u17CcD/vv/69VSCCQRgigEggg4Iq1xdr2E4H/ff/ANer+L1A+b/Ef/I0av8A9fs3/oZrMrU8SAjxTq4IwRezf+hmsuvpIfCvRHky3YUUUVQjT/4SPXf+g1qP/gU/+NH/AAkeu/8AQa1H/wACn/xrMoqOSPZfcPmfc0/+Ej13/oNaj/4FP/jSjxJroII1rUQR/wBPT/41l0U+SPZfcHM+533+j/Eez/5ZW/i2CP2RNRRR+QkAH+R9zhJYpIJnhmjeOWNiro4wykcEEHoaIpZIJkmhkeOWNgyOhwykcggjoa7v/R/iPZ/8srfxbBH7Imooo/ISAD/I+5Hwen5f8Av4/X8z/9k="
     },
     {
       "key": "inferenceTaskId",
@@ -260,7 +260,7 @@
                 "imports"
               ]
             },
-            "description": "Segmentation 数据集导入入口。这里只覆盖 coco -> segmentation 这一条正式链，导入完成后用下一条详情请求轮询直到 completed，并自动回填 datasetVersionId。",
+            "description": "Segmentation 正式导入入口。默认 file src 已指向本地调试包 data/files/postman-assets/segmentation-coco-min.zip，格式使用 coco + task_type=segmentation，导入后可直接接后续 export/train/eval/deploy 联调。",
             "body": {
               "mode": "formdata",
               "formdata": [
@@ -466,6 +466,9 @@
                   "  if (payload.dataset_version_id) {",
                   "    pm.collectionVariables.set('datasetVersionId', payload.dataset_version_id);",
                   "  }",
+                  "  if (payload.export_path) {",
+                  "    pm.collectionVariables.set('validationInputUri', payload.export_path + '/images/val/val-1.jpg');",
+                  "  }",
                   "}"
                 ]
               }
@@ -506,7 +509,7 @@
                 "training-tasks"
               ]
             },
-            "description": "Segmentation 训练入口。这里统一走 modelType 变量，方便在同一 task family 下切换模型。",
+            "description": "Segmentation 训练入口。默认预置 modelType=yolo11、modelScale=nano、batch_size=2、input_size=640x640、precision=fp32，用于当前仓库内最小联调样本。",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"model_type\": \"{{modelType}}\",\n  \"dataset_export_id\": \"{{datasetExportId}}\",\n  \"dataset_export_manifest_key\": \"{{datasetExportManifestKey}}\",\n  \"recipe_id\": \"{{recipeId}}\",\n  \"model_scale\": \"{{modelScale}}\",\n  \"output_model_name\": \"{{outputModelName}}\",\n  \"max_epochs\": 1,\n  \"batch_size\": 2,\n  \"input_size\": [\n    640,\n    640\n  ],\n  \"precision\": \"{{trainingPrecision}}\",\n  \"extra_options\": {},\n  \"display_name\": \"{{trainingDisplayName}}\"\n}",
@@ -706,7 +709,7 @@
                 "predict"
               ]
             },
-            "description": "执行单张 validation 预测。这里走 input_uri，因为 validation session 当前不接收 image_base64。",
+            "description": "执行单张 validation 预测。默认值会在 Get Dataset Export Detail 成功后，自动把 validationInputUri 回填到当前导出结果里的 val 样本图片。",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"input_uri\": \"{{validationInputUri}}\",\n  \"input_file_id\": null,\n  \"score_threshold\": 0.25,\n  \"mask_threshold\": 0.5,\n  \"save_result_image\": true,\n  \"extra_options\": {}\n}",
@@ -962,7 +965,7 @@
                 "deployment-instances"
               ]
             },
-            "description": "Segmentation deployment 默认绑定 conversion 产出的 modelBuildId，并使用 onnxruntime 作为 runtime_backend。",
+            "description": "Segmentation deployment 默认绑定 conversion 产出的 modelBuildId，并使用 onnxruntime + fp32 作为默认本地联调后端。",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"model_type\": \"{{modelType}}\",\n  \"model_version_id\": null,\n  \"model_build_id\": \"{{modelBuildId}}\",\n  \"runtime_profile_id\": null,\n  \"runtime_backend\": \"{{deploymentRuntimeBackend}}\",\n  \"runtime_precision\": \"{{runtimePrecision}}\",\n  \"device_name\": null,\n  \"instance_count\": 1,\n  \"display_name\": \"{{deploymentDisplayName}}\",\n  \"metadata\": {\n    \"source\": \"{{collectionSlug}}\"\n  }\n}",

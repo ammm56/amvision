@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "amvision-classification-full-chain",
     "name": "amvision classification-full-chain",
-    "description": "Classification 全链路 Postman 调试集合。覆盖 dataset import -> dataset export -> training -> validation -> evaluation -> conversion -> deployment -> infer -> workflow invoke。当前支持 modelType: yolov8, yolo11, yolo26。注意：docs/api/postman/workflows/12-15 仍然是 workflow/runtime 最小链，不替代这里的全生命周期调试集合。",
+    "description": "Classification 全链路 Postman 调试集合。覆盖 dataset import -> dataset export -> training -> validation -> evaluation -> conversion -> deployment -> infer -> workflow invoke。默认变量 datasetZipPath 指向本地调试数据包 data/files/postman-assets/classification-imagenet-min.zip；该目录不纳入 git。默认同时预置 modelType=yolo11、targetFormat=onnx、deploymentRuntimeBackend=onnxruntime。当前支持 modelType: yolov8, yolo11, yolo26。注意：docs/api/postman/workflows/12-15 仍然是 workflow/runtime 最小链，不替代这里的全生命周期调试集合。",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -20,19 +20,19 @@
     },
     {
       "key": "projectId",
-      "value": "project-1"
+      "value": "project-classification-demo"
     },
     {
       "key": "projectDisplayName",
-      "value": "Classification Full Chain Project"
+      "value": "Classification Full Chain Demo"
     },
     {
       "key": "projectDescription",
-      "value": "Classification dataset import/export/training/evaluation/conversion/deployment/workflow invoke full chain"
+      "value": "Classification full-chain debug with checked-in minimal ImageNet zip"
     },
     {
       "key": "datasetId",
-      "value": "classification-dataset-1"
+      "value": "dataset-classification-demo"
     },
     {
       "key": "datasetImportId",
@@ -60,7 +60,7 @@
     },
     {
       "key": "datasetZipPath",
-      "value": ""
+      "value": "data/files/postman-assets/classification-imagenet-min.zip"
     },
     {
       "key": "exportFormatId",
@@ -72,7 +72,7 @@
     },
     {
       "key": "modelType",
-      "value": "yolov8"
+      "value": "yolo11"
     },
     {
       "key": "modelScale",
@@ -84,11 +84,11 @@
     },
     {
       "key": "outputModelName",
-      "value": "classification-full-chain-model"
+      "value": "classification-yolo11n-demo"
     },
     {
       "key": "trainingDisplayName",
-      "value": "Classification Full Chain Training"
+      "value": "Classification Demo Training"
     },
     {
       "key": "trainingTaskId",
@@ -112,11 +112,11 @@
     },
     {
       "key": "validationInputUri",
-      "value": "projects/{projectId}/inputs/classification-validation-sample.png"
+      "value": "__SET_BY_GET_DATASET_EXPORT_DETAIL__"
     },
     {
       "key": "evaluationDisplayName",
-      "value": "Classification Full Chain Evaluation"
+      "value": "Classification Demo Evaluation"
     },
     {
       "key": "evaluationTaskId",
@@ -136,7 +136,7 @@
     },
     {
       "key": "deploymentDisplayName",
-      "value": "Classification Full Chain Deployment"
+      "value": "Classification Demo Deployment"
     },
     {
       "key": "deploymentRuntimeBackend",
@@ -152,7 +152,7 @@
     },
     {
       "key": "inputImageBase64",
-      "value": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO5WZr8AAAAASUVORK5CYII="
+      "value": "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/2wBDAQgJCQwLDBgNDRgyIRwhMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjL/wAARCADgAOADASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwD2P/iT+N/Dv/Pa1l/CSGQf+gsM/Qg9wefG/Efhy88N6iba5G+JsmGdRhZF/oR3Hb6EEnhzxHeeG9RFzbHfE2BNAxwsi/0I7Ht9CQfZP+JP438O/wDPa1l/CSGQf+gsM/Qg9wecNJrzObSovM8DorY8R+HLzw3qJtrkb4myYZ1GFkX+hHcdvoQTj1k1YwatowooopCCiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAK2PDniO88N6iLm2O+JsCaBjhZF/oR2Pb6Eg49FNOw07ao98/4k/jfw7/z2tZfwkhkH/oLDP0IPcHnxvxH4cvPDeom2uRvibJhnUYWRf6Edx2+hBJ4c8R3nhvURc2x3xNgTQMcLIv8AQjse30JB9k/4k/jfw7/z2tZfwkhkH/oLDP0IPcHnXSa8zfSovM8DorY8R+HLzw3qJtrkb4myYZ1GFkX+hHcdvoQTj1k1YwatowooopCCiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAK2PDniO88N6iLm2O+JsCaBjhZF/oR2Pb6Eg49FNOw07ao98/4k/jfw7/z2tZfwkhkH/oLDP0IPcHnxvxH4cvPDeom2uRvibJhnUYWRf6Edx2+hBJ4c8R3nhvURc2x3xNgTQMcLIv8AQjse30JB9k/4k/jfw7/z2tZfwkhkH/oLDP0IPcHnXSa8zfSovM8DorY8R+HLzw3qJtrkb4myYZ1GFkX+hHcdvoQTj1k1YwatowooopCCiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAK2PDniO88N6iLm2O+JsCaBjhZF/oR2Pb6Eg49FNOw07ao98/4k/jfw7/z2tZfwkhkH/oLDP0IPcHnxvxH4cvPDeom2uRvibJhnUYWRf6Edx2+hBJ4c8R3nhvURc2x3xNgTQMcLIv8AQjse30JB9++WVPb+VbaTXmdGlVeZ800V9GuhQ4P4Gm1nyGfsz50or6Loo5RezPnSivouijlD2Z86UV9F0UcoezPnSivouijlD2Z86UV9F0UcoezPnSivouvBfEH/ACMmqf8AX5L/AOhmk1YUo2M6iiipICiiigAooooAKKKKACiiigAooooAK+jUcocj8RXzlX0XVwNaZb+WVPb+VVnQocH8DQjlDkfiKs/LKnt/KtviOj4vUqUU50KHB/A02oMwooooAKKKKACiiigAooooAK8F8Qf8jJqn/X5L/wChmveq8F8Qf8jJqn/X5L/6GaiRnU2M6iiioMgooooAKKKKACiiigAooooAKKKKACvouvnSvouriaUwpyOUOR+IptFWalv5ZU9v5VWdChwfwNCOUOR+Iqz8sqe38qv4jT4vUqUU50KHB/A02oMwooooAKKKKACiiigArwXxB/yMmqf9fkv/AKGa96rwXxB/yMmqf9fkv/oZqJGdTYzqKKKgyCiiigAooooAKKKKACiiigAooooAK+i6+dK+i6uJpTCiiirNQpyOUOR+IptFAFv5ZU9v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"
     },
     {
       "key": "inferenceTaskId",
@@ -260,7 +260,7 @@
                 "imports"
               ]
             },
-            "description": "Classification 数据集导入入口。这里只覆盖 imagenet -> classification 这一条正式链，导入完成后用下一条详情请求轮询直到 completed，并自动回填 datasetVersionId。",
+            "description": "Classification 正式导入入口。默认 file src 已指向本地调试包 data/files/postman-assets/classification-imagenet-min.zip，格式使用 imagenet + task_type=classification，适合直接验证 ImageNet 风格最小链。",
             "body": {
               "mode": "formdata",
               "formdata": [
@@ -466,6 +466,9 @@
                   "  if (payload.dataset_version_id) {",
                   "    pm.collectionVariables.set('datasetVersionId', payload.dataset_version_id);",
                   "  }",
+                  "  if (payload.export_path) {",
+                  "    pm.collectionVariables.set('validationInputUri', payload.export_path + '/val/ng/ng-1.jpg');",
+                  "  }",
                   "}"
                 ]
               }
@@ -506,10 +509,10 @@
                 "training-tasks"
               ]
             },
-            "description": "Classification 训练入口。这里统一走 modelType 变量，方便在同一 task family 下切换模型。",
+            "description": "Classification 训练入口。默认预置 modelType=yolo11、modelScale=nano、batch_size=4、input_size=224x224、precision=fp32，用于当前仓库内最小联调样本。",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"model_type\": \"{{modelType}}\",\n  \"dataset_export_id\": \"{{datasetExportId}}\",\n  \"dataset_export_manifest_key\": \"{{datasetExportManifestKey}}\",\n  \"recipe_id\": \"{{recipeId}}\",\n  \"model_scale\": \"{{modelScale}}\",\n  \"output_model_name\": \"{{outputModelName}}\",\n  \"max_epochs\": 1,\n  \"batch_size\": 2,\n  \"input_size\": [\n    640,\n    640\n  ],\n  \"precision\": \"{{trainingPrecision}}\",\n  \"extra_options\": {},\n  \"display_name\": \"{{trainingDisplayName}}\"\n}",
+              "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"model_type\": \"{{modelType}}\",\n  \"dataset_export_id\": \"{{datasetExportId}}\",\n  \"dataset_export_manifest_key\": \"{{datasetExportManifestKey}}\",\n  \"recipe_id\": \"{{recipeId}}\",\n  \"model_scale\": \"{{modelScale}}\",\n  \"output_model_name\": \"{{outputModelName}}\",\n  \"max_epochs\": 1,\n  \"batch_size\": 4,\n  \"input_size\": [\n    224,\n    224\n  ],\n  \"precision\": \"{{trainingPrecision}}\",\n  \"extra_options\": {},\n  \"display_name\": \"{{trainingDisplayName}}\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -706,7 +709,7 @@
                 "predict"
               ]
             },
-            "description": "执行单张 validation 预测。这里走 input_uri，因为 validation session 当前不接收 image_base64。",
+            "description": "执行单张 validation 预测。默认值会在 Get Dataset Export Detail 成功后，自动把 validationInputUri 回填到当前导出结果里的 val 样本图片。",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"input_uri\": \"{{validationInputUri}}\",\n  \"input_file_id\": null,\n  \"top_k\": 5,\n  \"save_result_image\": true,\n  \"extra_options\": {}\n}",
@@ -962,7 +965,7 @@
                 "deployment-instances"
               ]
             },
-            "description": "Classification deployment 默认绑定 conversion 产出的 modelBuildId，并使用 onnxruntime 作为 runtime_backend。",
+            "description": "Classification deployment 默认绑定 conversion 产出的 modelBuildId，并使用 onnxruntime + fp32 作为默认本地联调后端。",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"model_type\": \"{{modelType}}\",\n  \"model_version_id\": null,\n  \"model_build_id\": \"{{modelBuildId}}\",\n  \"runtime_profile_id\": null,\n  \"runtime_backend\": \"{{deploymentRuntimeBackend}}\",\n  \"runtime_precision\": \"{{runtimePrecision}}\",\n  \"device_name\": null,\n  \"instance_count\": 1,\n  \"display_name\": \"{{deploymentDisplayName}}\",\n  \"metadata\": {\n    \"source\": \"{{collectionSlug}}\"\n  }\n}",
