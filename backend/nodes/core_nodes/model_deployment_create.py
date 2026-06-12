@@ -10,6 +10,9 @@ from backend.contracts.workflows.workflow_graph import (
 )
 from backend.nodes.core_nodes._base import CoreNodeSpec
 from backend.nodes.core_nodes._platform_service_node_support import (
+    build_platform_model_type_parameter_schema,
+    build_platform_task_model_type_schema_guards,
+    build_platform_task_type_parameter_schema,
     require_platform_model_type,
     require_platform_task_type,
     get_supported_platform_model_types,
@@ -186,14 +189,8 @@ CORE_NODE_SPEC = CoreNodeSpec(
         parameter_schema={
             "type": "object",
             "properties": {
-                "task_type": {
-                    "type": "string",
-                    "enum": ["detection", "classification", "segmentation", "pose", "obb"],
-                },
-                "model_type": {
-                    "type": "string",
-                    "enum": ["yolox", "yolov8", "yolo11", "yolo26", "rfdetr"],
-                },
+                "task_type": build_platform_task_type_parameter_schema(),
+                "model_type": build_platform_model_type_parameter_schema(),
                 "project_id": {"type": "string"},
                 "model_version_id": {"type": "string"},
                 "model_build_id": {"type": "string"},
@@ -213,6 +210,7 @@ CORE_NODE_SPEC = CoreNodeSpec(
                 {"required": ["model_version_id"]},
                 {"required": ["model_build_id"]}
             ],
+            "allOf": build_platform_task_model_type_schema_guards(),
         },
         capability_tags=("service.model.deployment", "resource.create", "resource.control-plane"),
     ),

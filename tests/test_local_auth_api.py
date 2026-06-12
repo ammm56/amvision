@@ -13,6 +13,9 @@ from backend.service.application.auth.default_local_auth_seeder import (
     DEFAULT_LOCAL_AUTH_USERNAME,
 )
 from backend.service.application.auth.local_auth_service import LocalAuthService, LocalAuthUserCreateRequest
+from backend.service.domain.models.platform_model_support import (
+    SUPPORTED_PLATFORM_MODEL_TYPES_BY_TASK_TYPE,
+)
 from backend.service.settings import (
     BackendServiceAuthConfig,
     BackendServiceAuthProviderConfig,
@@ -318,6 +321,10 @@ def test_system_bootstrap_aggregates_current_user_providers_projects_and_capabil
     )
     assert payload["capabilities"]["dataset_export"]["default_format"] == "coco-detection-v1"
     assert "workflows.preview-runs" in payload["capabilities"]["project_summary_topics"]
+    assert payload["capabilities"]["platform_model_types_by_task_type"] == {
+        task_type: list(model_types)
+        for task_type, model_types in SUPPORTED_PLATFORM_MODEL_TYPES_BY_TASK_TYPE.items()
+    }
 
 
 def test_default_local_auth_initializer_skips_non_empty_user_table(tmp_path: Path) -> None:

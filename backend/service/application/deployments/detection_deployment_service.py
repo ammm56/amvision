@@ -4,6 +4,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from backend.service.application.model_type_support import (
+    normalize_optional_platform_model_type,
+    require_supported_platform_model_type,
+)
 from backend.service.application.detection_backend_registry import (
     get_detection_backend_registration,
 )
@@ -29,6 +33,7 @@ from backend.service.application.runtime.runtime_target import (
     RuntimeTargetSnapshot,
     SqlAlchemyRuntimeTargetResolver,
 )
+from backend.service.domain.models.model_task_types import DETECTION_TASK_TYPE
 
 
 @dataclass(frozen=True)
@@ -146,15 +151,14 @@ class SqlAlchemyDetectionDeploymentService(SqlAlchemyDeploymentInstanceService):
 def _normalize_model_type(model_type: str | None) -> str | None:
     """把模型分类归一为小写非空字符串。"""
 
-    if isinstance(model_type, str) and model_type.strip():
-        return model_type.strip().lower()
-    return None
+    return normalize_optional_platform_model_type(model_type)
 
 
 def _require_model_type(model_type: str | None) -> str:
     """读取并校验 detection 模型分类。"""
 
-    normalized_model_type = _normalize_model_type(model_type)
-    if normalized_model_type is None:
-        raise InvalidRequestError("model_type 不能为空")
-    return normalized_model_type
+    return require_supported_platform_model_type(
+        task_type=DETECTION_TASK_TYPE,
+        model_type=model_type,
+        unsupported_message="当前 detection deployment 不支持指定模型分类",
+    )

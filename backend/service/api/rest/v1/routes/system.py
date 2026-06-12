@@ -34,6 +34,9 @@ from backend.service.api.rest.v1.routes.projects import (
 from backend.service.application.local_buffers import LocalBufferBrokerProcessSupervisor
 from backend.service.application.auth.provider_registry import AuthProviderRegistry
 from backend.service.application.project_summary import get_supported_project_summary_topics
+from backend.service.domain.models.platform_model_support import (
+    SUPPORTED_PLATFORM_MODEL_TYPES_BY_TASK_TYPE,
+)
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.settings import BackendServiceSettings
 from backend.contracts.datasets.exports.dataset_formats import IMPLEMENTED_DATASET_EXPORT_FORMATS
@@ -91,6 +94,10 @@ class SystemBootstrapCapabilitiesContract(BaseModel):
     project_bootstrap_enabled: bool = Field(description="是否支持 Project 初始化接口")
     dataset_export: DatasetExportCapabilityContract = Field(description="数据集导出格式能力")
     project_summary_topics: list[str] = Field(default_factory=list, description="projects.events 支持的 topic 列表")
+    platform_model_types_by_task_type: dict[str, list[str]] = Field(
+        default_factory=dict,
+        description="按 task_type 汇总的平台模型分类列表",
+    )
 
 
 class SystemBootstrapResponse(BaseModel):
@@ -196,6 +203,10 @@ def get_system_bootstrap(
                 default_format=IMPLEMENTED_DATASET_EXPORT_FORMATS[0],
             ),
             project_summary_topics=list(get_supported_project_summary_topics()),
+            platform_model_types_by_task_type={
+                task_type: list(model_types)
+                for task_type, model_types in SUPPORTED_PLATFORM_MODEL_TYPES_BY_TASK_TYPE.items()
+            },
         ),
     )
 

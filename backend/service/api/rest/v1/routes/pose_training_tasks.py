@@ -22,10 +22,15 @@ from backend.service.api.rest.v1.routes.non_detection_training_management import
     request_training_control,
     resume_training_task,
 )
-from backend.service.application.errors import InvalidRequestError, PermissionDeniedError
+from backend.service.application.errors import PermissionDeniedError
+from backend.service.application.model_type_support import require_supported_platform_model_type
 from backend.service.application.models.yolo_primary_pose_training_service import (
     SqlAlchemyYoloPrimaryPoseTrainingTaskService,
     YoloPrimaryPoseTrainingTaskRequest,
+)
+from backend.service.domain.models.model_task_types import POSE_TASK_TYPE
+from backend.service.domain.models.platform_model_support import (
+    build_platform_model_type_field_description,
 )
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
@@ -33,12 +38,9 @@ from backend.service.infrastructure.object_store.local_dataset_storage import Lo
 
 pose_training_tasks_router = APIRouter(prefix="/models", tags=["models"])
 
-_SUPPORTED_POSE_MODEL_TYPES = ("yolov8", "yolo11", "yolo26")
-
-
 class PoseTrainingTaskCreateRequestBody(BaseModel):
     project_id: str = Field(description="所属 Project id")
-    model_type: str = Field(description="模型分类；支持 yolov8、yolo11、yolo26")
+    model_type: str = Field(description=build_platform_model_type_field_description(POSE_TASK_TYPE))
     dataset_export_id: str | None = Field(default=None, description="DatasetExport id")
     dataset_export_manifest_key: str | None = Field(default=None, description="导出 manifest key")
     recipe_id: str = Field(default="default", description="训练 recipe id")
@@ -75,9 +77,11 @@ def create_pose_training_task(
     """创建一个 pose 训练任务。"""
     if principal.project_ids and body.project_id not in principal.project_ids:
         raise PermissionDeniedError("无权访问该 Project")
-    mt = body.model_type.strip().lower()
-    if mt not in _SUPPORTED_POSE_MODEL_TYPES:
-        raise InvalidRequestError("pose 训练不支持该模型分类", details={"model_type": mt, "supported": list(_SUPPORTED_POSE_MODEL_TYPES)})
+    mt = require_supported_platform_model_type(
+        task_type=POSE_TASK_TYPE,
+        model_type=body.model_type,
+        unsupported_message="pose 训练不支持该模型分类",
+    )
     svc = SqlAlchemyYoloPrimaryPoseTrainingTaskService(
         session_factory=session_factory,
         queue_backend=queue_backend,
@@ -112,11 +116,11 @@ def create_pose_training_task(
 
 
 @pose_training_tasks_router.get("/pose/training-tasks", response_model=list[TrainingTaskSummaryResponse])
-def list_pose_training_tasks(principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("tasks:read"))], session_factory: Annotated[SessionFactory, Depends(get_session_factory)], project_id: Annotated[str, Query(description="所属 Project id")], state: Annotated[str | None, Query()] = None, limit: Annotated[int, Query(ge=1, le=500)] = 100) -> list[TrainingTaskSummaryResponse]:
+def list_pose_training_tasks(principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("tasks:read"))], session_factory: Annotated[SessionFactory, Depends(get_session_factory)], project_id: Annotated[str, Query(description="所属 Project id")], model_type: Annotated[str | None, Query(description="模型分类")] = None, state: Annotated[str | None, Query()] = None, limit: Annotated[int, Query(ge=1, le=500)] = 100) -> list[TrainingTaskSummaryResponse]:
     """列出 pose 训练任务。"""
     if principal.project_ids and project_id not in principal.project_ids:
         raise PermissionDeniedError("无权访问该 Project")
-    return list_training_tasks(session_factory=session_factory, project_id=project_id, model_type="pose", state=state, limit=limit)
+    return list_training_tasks(session_factory=session_factory, project_id=project_id, task_type="pose", model_type=model_type, state=state, limit=limit)
 
 
 @pose_training_tasks_router.get("/pose/training-tasks/{task_id}", response_model=TrainingTaskDetailResponse)

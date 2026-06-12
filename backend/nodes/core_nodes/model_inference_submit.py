@@ -10,6 +10,9 @@ from backend.contracts.workflows.workflow_graph import (
 )
 from backend.nodes.core_nodes._base import CoreNodeSpec
 from backend.nodes.core_nodes._platform_service_node_support import (
+    build_platform_model_type_parameter_schema,
+    build_platform_task_model_type_schema_guards,
+    build_platform_task_type_parameter_schema,
     require_platform_model_type,
     require_platform_task_type,
     get_supported_platform_model_types,
@@ -211,16 +214,10 @@ CORE_NODE_SPEC = CoreNodeSpec(
         parameter_schema={
             "type": "object",
             "properties": {
-                "task_type": {
-                    "type": "string",
-                    "enum": ["detection", "classification", "segmentation", "pose", "obb"],
-                },
+                "task_type": build_platform_task_type_parameter_schema(),
                 "project_id": {"type": "string"},
                 "deployment_instance_id": {"type": "string"},
-                "model_type": {
-                    "type": "string",
-                    "enum": ["yolox", "yolov8", "yolo11", "yolo26", "rfdetr"],
-                },
+                "model_type": build_platform_model_type_parameter_schema(),
                 "input_file_id": {"type": "string"},
                 "input_uri": {"type": "string"},
                 "top_k": {"type": "integer", "minimum": 1},
@@ -235,6 +232,7 @@ CORE_NODE_SPEC = CoreNodeSpec(
                 "created_by": {"type": "string"},
             },
             "required": ["task_type", "model_type", "project_id", "deployment_instance_id"],
+            "allOf": build_platform_task_model_type_schema_guards(),
         },
         capability_tags=("service.model.inference", "task.submit"),
         runtime_requirements={"deployment_process": "async"},

@@ -47,7 +47,13 @@ from backend.service.application.conversions.yolox_conversion_task_service impor
     SqlAlchemyYoloXConversionTaskService,
     YoloXConversionTaskRequest,
 )
+from backend.service.domain.models.model_task_types import DETECTION_TASK_TYPE
+from backend.service.domain.models.platform_model_support import (
+    build_platform_model_type_field_description,
+    normalize_platform_model_type,
+)
 from backend.service.application.errors import InvalidRequestError, ResourceNotFoundError
+from backend.service.application.model_type_support import require_supported_platform_model_type
 from backend.service.application.tasks.task_service import SqlAlchemyTaskService, TaskQueryFilters
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
@@ -87,7 +93,7 @@ class DetectionConversionTaskCreateRequestBody(BaseModel):
     """描述 detection conversion 任务创建请求体。"""
 
     project_id: str = Field(description="所属 Project id")
-    model_type: str = Field(description="模型分类；当前支持 yolox、yolov8、yolo11、yolo26、rfdetr")
+    model_type: str = Field(description=build_platform_model_type_field_description(DETECTION_TASK_TYPE))
     source_model_version_id: str = Field(description="来源 ModelVersion id")
     runtime_profile_id: str | None = Field(default=None, description="可选 RuntimeProfile id")
     extra_options: dict[str, object] = Field(default_factory=dict, description="附加转换选项")
@@ -434,13 +440,11 @@ def _merge_fixed_detection_conversion_extra_options(
 def _normalize_detection_conversion_model_type(value: str) -> str:
     """把 detection conversion 模型分类归一化为正式值。"""
 
-    normalized_value = value.strip().lower()
-    if normalized_value not in _DETECTION_CONVERSION_SERVICE_BY_MODEL_TYPE:
-        raise InvalidRequestError(
-            "当前 detection conversion 仅支持 yolox、yolov8、yolo11、yolo26、rfdetr",
-            details={"model_type": value},
-        )
-    return normalized_value
+    return require_supported_platform_model_type(
+        task_type=DETECTION_TASK_TYPE,
+        model_type=value,
+        unsupported_message="当前 detection conversion 不支持指定模型分类",
+    )
 
 
 def _resolve_detection_conversion_task_kinds(model_type: str | None) -> tuple[str, ...]:
@@ -457,8 +461,9 @@ def _resolve_detection_conversion_model_type_from_task(task: object) -> str:
 
     metadata = dict(getattr(task, "metadata", {}))
     model_type = metadata.get("model_type")
-    if isinstance(model_type, str) and model_type.strip():
-        return model_type.strip().lower()
+    normalized_model_type = normalize_platform_model_type(model_type)
+    if normalized_model_type is not None:
+        return normalized_model_type
     task_kind = getattr(task, "task_kind", "")
     resolved_model_type = _DETECTION_CONVERSION_MODEL_TYPE_BY_TASK_KIND.get(str(task_kind))
     if resolved_model_type is None:

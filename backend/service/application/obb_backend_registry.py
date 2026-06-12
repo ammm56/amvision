@@ -4,6 +4,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Final
 from backend.service.domain.models.model_task_types import OBB_TASK_TYPE
+from backend.service.domain.models.platform_model_support import normalize_platform_model_type
 
 OBB_BACKEND_STATUS_ACTIVE: Final[str] = "active"
 OBB_BACKEND_STATUS_REGISTERED: Final[str] = "registered"
@@ -41,6 +42,7 @@ def list_obb_backend_registrations() -> tuple[ObbBackendRegistration, ...]:
     return tuple(_OBB_BACKEND_REGISTRATIONS.values())
 
 def get_obb_backend_registration(model_type: str) -> ObbBackendRegistration | None:
-    if isinstance(model_type, str) and model_type.strip():
-        return _OBB_BACKEND_REGISTRATIONS.get(model_type.strip().lower())
+    normalized_model_type = normalize_platform_model_type(model_type)
+    if normalized_model_type is not None:
+        return _OBB_BACKEND_REGISTRATIONS.get(normalized_model_type)
     return None

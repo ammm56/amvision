@@ -6,6 +6,9 @@ from time import perf_counter
 from typing import Any
 
 from backend.service.application.errors import InvalidRequestError, ServiceConfigurationError
+from backend.service.application.model_type_support import (
+    normalize_optional_platform_model_type,
+)
 from backend.service.application.models.detection_postprocess import (
     DEFAULT_END2END_MAX_DETECTIONS,
     DETECTION_POSTPROCESS_MODE_END2END_TOPK,
@@ -33,7 +36,6 @@ from backend.service.application.runtime.detection_runtime_support import (
     DEFAULT_DETECTION_NMS_THRESHOLD,
     OpenVINODetectionRuntimeSessionBase,
     TensorRTDetectionRuntimeSessionBase,
-    batched_nms_indices,
     build_openvino_compile_properties,
     enable_pytorch_cuda_inference_fast_path,
     ensure_cuda_success,
@@ -1048,7 +1050,7 @@ def _resolve_yolo_primary_postprocess_strategy(
 def _require_primary_model_type(model_type: str, model_label: str) -> str:
     """返回当前主线 predictor 允许使用的正式模型分类。"""
 
-    normalized_model_type = model_type.strip().lower()
+    normalized_model_type = normalize_optional_platform_model_type(model_type)
     if not normalized_model_type or normalized_model_type == "yolo-primary":
         raise ServiceConfigurationError(
             f"当前 {model_label} predictor 缺少正式 model_type 配置",

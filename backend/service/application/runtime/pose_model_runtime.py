@@ -6,6 +6,9 @@ from dataclasses import dataclass, field
 from typing import Callable, Protocol
 
 from backend.service.application.errors import ServiceConfigurationError
+from backend.service.application.model_type_support import (
+    normalize_optional_platform_model_type,
+)
 from backend.service.application.runtime.pose_runtime_contracts import (
     PosePredictionExecutionResult,
     PosePredictionRequest,
@@ -112,6 +115,4 @@ def _load_yolo26_pose_session(dataset_storage, runtime_target, pinned_output_buf
 
 
 def _normalize_model_type(model_type: str | None) -> str | None:
-    if isinstance(model_type, str) and model_type.strip():
-        return model_type.strip().lower()
-    return None
+    return normalize_optional_platform_model_type(model_type)

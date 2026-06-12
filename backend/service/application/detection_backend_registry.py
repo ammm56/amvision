@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from typing import Final
 
 from backend.service.domain.models.model_task_types import DETECTION_TASK_TYPE
+from backend.service.domain.models.platform_model_support import normalize_platform_model_type
 
 
 DETECTION_BACKEND_STATUS_ACTIVE: Final[str] = "active"
@@ -138,7 +139,5 @@ def has_detection_backend_registration(model_type: str) -> bool:
 def _normalize_model_type(model_type: str | None) -> str | None:
     """把模型分类名称归一为小写非空字符串。"""
 
-    if isinstance(model_type, str) and model_type.strip():
-        return model_type.strip().lower()
-    return None
+    return normalize_platform_model_type(model_type)
 

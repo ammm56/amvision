@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from time import perf_counter
-from typing import Any
 
 from backend.service.application.errors import InvalidRequestError, ServiceConfigurationError
+from backend.service.application.model_type_support import normalize_optional_platform_model_type
 from backend.service.application.models.yolo_primary_detection_model import load_yolo_primary_checkpoint
 from backend.service.application.models.yolo_primary_detection_training import _require_training_imports
 from backend.service.application.models.yolo_primary_model_configs import build_yolo_primary_model
@@ -27,9 +26,7 @@ from backend.service.application.runtime.obb_runtime_contracts import (
     ObbPredictionExecutionResult, ObbPredictionInstance,
     ObbPredictionRequest, ObbRuntimeSessionInfo, ObbRuntimeTensorSpec,
 )
-from backend.service.application.runtime.runtime_target import RuntimeTargetSnapshot, describe_runtime_execution_mode
 from backend.service.settings import get_backend_service_settings
-from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 
 
 _DEFAULT_NMS_THRESHOLD = 0.65
@@ -313,7 +310,6 @@ def _predict_pytorch(session, request):
     infer_ms = round((perf_counter() - infer_started_at) * 1000, 3)
     prediction_array = _normalize_pytorch_prediction(outputs, np_module=session.imports.np)
     instances = _build_obb_instances(np_module=session.imports.np, prediction_array=prediction_array, labels=session.runtime_target.labels, score_threshold=request.score_threshold, resize_ratio=resize_ratio, image_width=int(image.shape[1]), image_height=int(image.shape[0]))
-    postprocess_ms = round((perf_counter() - perf_counter()) * 0 + (perf_counter() - infer_started_at) * 0, 3)
     latency_ms = decode_ms + preprocess_ms + infer_ms
     preview_image_bytes = None
     if request.save_result_image:
@@ -518,7 +514,7 @@ def _as_preview_detection(instance):
 
 
 def _require_primary_model_type(model_type, model_label):
-    n = model_type.strip().lower()
+    n = normalize_optional_platform_model_type(model_type)
     if not n or n == "yolo-primary":
         raise ServiceConfigurationError(f"当前 {model_label} obb predictor 缺少正式 model_type 配置", details={"model_type": model_type})
     return n

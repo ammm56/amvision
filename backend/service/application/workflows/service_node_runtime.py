@@ -51,6 +51,12 @@ from backend.service.application.deployments.segmentation_deployment_service imp
     SqlAlchemySegmentationDeploymentService,
 )
 from backend.service.application.errors import ServiceConfigurationError
+from backend.service.application.model_type_support import (
+    normalize_optional_platform_model_type,
+)
+from backend.service.application.task_type_support import (
+    require_supported_platform_task_type,
+)
 from backend.service.application.models.classification_inference_task_service import (
     SqlAlchemyClassificationInferenceTaskService,
 )
@@ -136,6 +142,9 @@ from backend.service.domain.models.model_task_types import (
     OBB_TASK_TYPE,
     POSE_TASK_TYPE,
     SEGMENTATION_TASK_TYPE,
+)
+from backend.service.domain.models.platform_model_support import (
+    get_supported_platform_model_types,
 )
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import (
@@ -249,8 +258,12 @@ class WorkflowServiceNodeRuntimeContext:
         """
 
         normalized_task_type = self._normalize_task_type(task_type)
+        normalized_model_type = self._require_supported_model_type(
+            task_type=normalized_task_type,
+            model_type=model_type,
+        )
         if normalized_task_type == DETECTION_TASK_TYPE:
-            service_cls = self._resolve_detection_training_service(model_type)
+            service_cls = self._resolve_detection_training_service(normalized_model_type)
         else:
             service_cls = _TRAINING_SERVICE_BY_TASK_TYPE.get(normalized_task_type)
             if service_cls is None:
@@ -277,7 +290,10 @@ class WorkflowServiceNodeRuntimeContext:
         """
 
         normalized_task_type = self._normalize_task_type(task_type)
-        normalized_model_type = self._normalize_model_type(model_type)
+        normalized_model_type = self._require_supported_model_type(
+            task_type=normalized_task_type,
+            model_type=model_type,
+        )
         if normalized_task_type == DETECTION_TASK_TYPE:
             service_cls = self._resolve_detection_conversion_service(normalized_model_type)
         else:
@@ -579,54 +595,70 @@ class WorkflowServiceNodeRuntimeContext:
     def _resolve_detection_training_service(self, model_type: str) -> type:
         """按模型分类解析 detection 训练 service。"""
 
-        normalized_model_type = self._normalize_model_type(model_type)
-        service_cls = _DETECTION_TRAINING_SERVICE_BY_MODEL_TYPE.get(normalized_model_type)
+        service_cls = _DETECTION_TRAINING_SERVICE_BY_MODEL_TYPE.get(model_type)
         if service_cls is None:
             raise ServiceConfigurationError(
                 "当前 workflow 运行时尚未接通指定 detection 模型分类的训练服务",
-                details={"task_type": DETECTION_TASK_TYPE, "model_type": normalized_model_type},
+                details={"task_type": DETECTION_TASK_TYPE, "model_type": model_type},
             )
         return service_cls
 
     def _resolve_detection_conversion_service(self, model_type: str) -> type:
         """按模型分类解析 detection 转换 service。"""
 
-        normalized_model_type = self._normalize_model_type(model_type)
-        service_cls = _DETECTION_CONVERSION_SERVICE_BY_MODEL_TYPE.get(normalized_model_type)
+        service_cls = _DETECTION_CONVERSION_SERVICE_BY_MODEL_TYPE.get(model_type)
         if service_cls is not None:
             return service_cls
         raise ServiceConfigurationError(
             "当前 workflow 运行时尚未接通指定 detection 模型分类的转换服务",
-            details={"task_type": DETECTION_TASK_TYPE, "model_type": normalized_model_type},
+            details={"task_type": DETECTION_TASK_TYPE, "model_type": model_type},
         )
 
     def _normalize_task_type(self, task_type: str) -> str:
         """把任务分类名称规范化为受支持值。"""
 
-        normalized = task_type.strip().lower()
-        supported = {
-            DETECTION_TASK_TYPE,
-            CLASSIFICATION_TASK_TYPE,
-            SEGMENTATION_TASK_TYPE,
-            POSE_TASK_TYPE,
-            OBB_TASK_TYPE,
-        }
-        if normalized not in supported:
-            raise ServiceConfigurationError(
-                "当前 workflow 运行时不支持指定任务分类",
-                details={"task_type": task_type, "supported": sorted(supported)},
-            )
-        return normalized
+        return require_supported_platform_task_type(
+            task_type,
+            empty_message="当前 workflow 运行时缺少 task_type",
+            unsupported_message="当前 workflow 运行时不支持指定任务分类",
+            error_cls=ServiceConfigurationError,
+        )
 
     def _normalize_model_type(self, model_type: str) -> str:
         """把模型分类名称规范化为当前平台公开值。"""
 
-        normalized = model_type.strip().lower()
-        if normalized in {"yolox", "yolov8", "yolo11", "yolo26", "rfdetr"}:
+        normalized = normalize_optional_platform_model_type(model_type)
+        if normalized is None:
+            raise ServiceConfigurationError("当前 workflow 运行时缺少 model_type")
+        if normalized in get_supported_platform_model_types():
             return normalized
         raise ServiceConfigurationError(
             "当前 workflow 运行时不支持指定模型分类",
-            details={"model_type": model_type},
+            details={
+                "model_type": model_type,
+                "supported": list(get_supported_platform_model_types()),
+            },
+        )
+
+    def _require_supported_model_type(
+        self,
+        *,
+        task_type: str,
+        model_type: str,
+    ) -> str:
+        """校验指定 task_type 下的 model_type 是否受平台支持。"""
+
+        normalized_model_type = self._normalize_model_type(model_type)
+        supported_model_types = get_supported_platform_model_types(task_type)
+        if normalized_model_type in supported_model_types:
+            return normalized_model_type
+        raise ServiceConfigurationError(
+            "当前 workflow 运行时不支持指定模型分类",
+            details={
+                "task_type": task_type,
+                "model_type": normalized_model_type,
+                "supported": list(supported_model_types),
+            },
         )
 
     def _resolve_deployment_process_supervisor(

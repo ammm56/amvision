@@ -4,6 +4,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from backend.service.application.model_type_support import (
+    normalize_optional_platform_model_type,
+    require_supported_platform_model_type,
+)
 from backend.service.application.classification_backend_registry import (
     get_classification_backend_registration,
 )
@@ -24,8 +28,8 @@ from backend.service.application.runtime.yolov8_runtime_target import (
 from backend.service.application.runtime.runtime_target import (
     RuntimeTargetResolveRequest,
     RuntimeTargetSnapshot,
-    SqlAlchemyRuntimeTargetResolver,
 )
+from backend.service.domain.models.model_task_types import CLASSIFICATION_TASK_TYPE
 
 
 @dataclass(frozen=True)
@@ -133,13 +137,12 @@ class SqlAlchemyClassificationDeploymentService(SqlAlchemyDeploymentInstanceServ
 
 
 def _normalize_model_type(model_type: str | None) -> str | None:
-    if isinstance(model_type, str) and model_type.strip():
-        return model_type.strip().lower()
-    return None
+    return normalize_optional_platform_model_type(model_type)
 
 
 def _require_model_type(model_type: str | None) -> str:
-    normalized_model_type = _normalize_model_type(model_type)
-    if normalized_model_type is None:
-        raise InvalidRequestError("model_type 不能为空")
-    return normalized_model_type
+    return require_supported_platform_model_type(
+        task_type=CLASSIFICATION_TASK_TYPE,
+        model_type=model_type,
+        unsupported_message="当前 classification deployment 不支持指定模型分类",
+    )

@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from backend.service.application.errors import InvalidRequestError
+from backend.service.application.model_type_support import require_supported_platform_model_type
+from backend.service.domain.models.model_task_types import DETECTION_TASK_TYPE
 from backend.service.application.models.yolo11_training_service import (
     YOLO11_TRAINING_TASK_KIND,
     SqlAlchemyYolo11TrainingTaskService,
@@ -30,8 +32,6 @@ from backend.service.application.models.yolox_training_service import (
     SqlAlchemyYoloXTrainingTaskService,
     YoloXTrainingTaskRequest,
 )
-
-_SUPPORTED_DETECTION_MODEL_TYPES = ("yolox", "yolov8", "yolo11", "yolo26", "rfdetr")
 
 _TRAINING_SERVICE_BY_MODEL_TYPE: dict[str, tuple[type, type]] = {
     "yolox": (SqlAlchemyYoloXTrainingTaskService, YoloXTrainingTaskRequest),
@@ -75,21 +75,17 @@ class DetectionTrainingTaskRequest:
 def resolve_detection_training_service(model_type: str):
     """按模型分类解析 detection training task service 的构造参数。"""
 
-    normalized = _normalize_model_type(model_type)
-    if normalized is None:
-        raise InvalidRequestError("model_type 不能为空")
+    normalized = require_supported_platform_model_type(
+        task_type=DETECTION_TASK_TYPE,
+        model_type=model_type,
+        unsupported_message="当前 detection 训练尚未接通指定模型分类",
+    )
     entry = _TRAINING_SERVICE_BY_MODEL_TYPE.get(normalized)
     if entry is None:
         raise InvalidRequestError(
-            "当前 detection 训练尚未接通指定模型分类",
-            details={"model_type": normalized, "supported": list(_SUPPORTED_DETECTION_MODEL_TYPES)},
+            "当前 detection 训练服务映射缺失指定模型分类",
+            details={"model_type": normalized},
         )
     service_cls, request_cls = entry
     task_kind = _TRAINING_TASK_KIND_BY_MODEL_TYPE.get(normalized, "yolox-detection")
     return service_cls, request_cls, task_kind
-
-
-def _normalize_model_type(model_type: str | None) -> str | None:
-    if isinstance(model_type, str) and model_type.strip():
-        return model_type.strip().lower()
-    return None

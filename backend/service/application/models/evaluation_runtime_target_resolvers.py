@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from backend.service.application.errors import InvalidRequestError
+from backend.service.application.model_type_support import require_platform_model_type
 from backend.service.application.runtime.rfdetr_runtime_target import (
     SqlAlchemyRfdetrRuntimeTargetResolver,
 )
@@ -39,7 +40,7 @@ _DETECTION_EVALUATION_RUNTIME_TARGET_RESOLVER_BY_MODEL_TYPE: dict[str, type] = {
 def get_yolo_primary_evaluation_runtime_target_resolver(model_type: str) -> type:
     """按 model_type 返回 YOLO 主线评估使用的 resolver 类。"""
 
-    normalized_model_type = model_type.strip().lower()
+    normalized_model_type = require_platform_model_type(model_type)
     resolver_cls = _YOLO_PRIMARY_EVALUATION_RUNTIME_TARGET_RESOLVER_BY_MODEL_TYPE.get(
         normalized_model_type
     )
@@ -59,7 +60,7 @@ def get_yolo_primary_evaluation_runtime_target_resolver(model_type: str) -> type
 def get_segmentation_evaluation_runtime_target_resolver(model_type: str) -> type:
     """按 model_type 返回 segmentation 评估使用的 resolver 类。"""
 
-    normalized_model_type = model_type.strip().lower()
+    normalized_model_type = require_platform_model_type(model_type)
     resolver_cls = _SEGMENTATION_EVALUATION_RUNTIME_TARGET_RESOLVER_BY_MODEL_TYPE.get(
         normalized_model_type
     )
@@ -79,7 +80,7 @@ def get_segmentation_evaluation_runtime_target_resolver(model_type: str) -> type
 def get_detection_evaluation_runtime_target_resolver(model_type: str) -> type:
     """按 model_type 返回 detection 评估使用的 resolver 类。"""
 
-    normalized_model_type = model_type.strip().lower()
+    normalized_model_type = require_platform_model_type(model_type)
     resolver_cls = _DETECTION_EVALUATION_RUNTIME_TARGET_RESOLVER_BY_MODEL_TYPE.get(
         normalized_model_type
     )

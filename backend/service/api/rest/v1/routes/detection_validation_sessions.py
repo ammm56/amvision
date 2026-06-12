@@ -24,6 +24,8 @@ from backend.service.application.runtime.detection_runtime_contracts import (
     DetectionRuntimeSessionInfo,
     DetectionRuntimeTensorSpec,
 )
+from backend.service.domain.models.model_task_types import DETECTION_TASK_TYPE
+from backend.service.domain.models.platform_model_support import build_platform_model_type_field_description
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 
@@ -35,7 +37,7 @@ class DetectionValidationSessionCreateRequestBody(BaseModel):
     """描述 detection validation session 创建请求体。"""
 
     project_id: str = Field(description="所属 Project id")
-    model_type: str = Field(description="模型分类；当前支持 yolox、yolov8、yolo11、yolo26、rfdetr")
+    model_type: str = Field(description=build_platform_model_type_field_description(DETECTION_TASK_TYPE))
     model_version_id: str = Field(description="验证使用的 ModelVersion id")
     runtime_profile_id: str | None = Field(default=None, description="可选 runtime profile id；当前仅回传")
     runtime_backend: str | None = Field(default=None, description="可选 runtime backend；支持 pytorch、onnxruntime、openvino、tensorrt")

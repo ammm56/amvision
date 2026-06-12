@@ -6,6 +6,9 @@ from dataclasses import dataclass, field
 from typing import Callable, Protocol
 
 from backend.service.application.errors import ServiceConfigurationError
+from backend.service.application.model_type_support import (
+    normalize_optional_platform_model_type,
+)
 from backend.service.application.runtime.classification_runtime_contracts import (
     ClassificationPredictionExecutionResult,
     ClassificationPredictionRequest,
@@ -231,6 +234,4 @@ def _load_yolo26_classification_session(
 def _normalize_model_type(model_type: str | None) -> str | None:
     """把模型分类名称归一为小写非空字符串。"""
 
-    if isinstance(model_type, str) and model_type.strip():
-        return model_type.strip().lower()
-    return None
+    return normalize_optional_platform_model_type(model_type)

@@ -380,6 +380,21 @@ const conversionDisplayName = ref('')
 
 const canWriteTasks = computed(() => sessionStore.hasScopes(['tasks:write']))
 const selectedProjectId = computed(() => projectStore.selectedProjectId)
+const platformModelTypesByTaskType = computed<Record<string, string[]>>(() => {
+  const rawValue = sessionStore.bootstrap?.capabilities.platform_model_types_by_task_type
+  if (!rawValue || typeof rawValue !== 'object') {
+    return {}
+  }
+  const normalizedEntries = Object.entries(rawValue).map(([taskType, modelTypes]) => [
+    taskType,
+    Array.isArray(modelTypes)
+      ? modelTypes
+          .filter((modelType): modelType is string => typeof modelType === 'string')
+          .map((modelType) => modelType.toLowerCase())
+      : [],
+  ])
+  return Object.fromEntries(normalizedEntries)
+})
 
 const selectedModelAvailableVersions = computed(() => selectedModelDetail.value?.versions ?? selectedModelDetail.value?.available_versions ?? [])
 
@@ -398,7 +413,12 @@ function setPrecision(value: SelectValue): void {
 function setTaskType(value: SelectValue): void {
   const nextValue = selectValueToString(value)
   if (['detection', 'classification', 'segmentation', 'pose', 'obb'].includes(nextValue)) {
-    selectedTaskType.value = nextValue as ModelTaskType
+    const nextTaskType = nextValue as ModelTaskType
+    selectedTaskType.value = nextTaskType
+    selectedModelDetail.value = null
+    if (!isModelTypeSupportedForTask(nextTaskType, modelType.value)) {
+      modelType.value = ''
+    }
     void refreshPage()
   }
 }
@@ -433,14 +453,20 @@ async function refreshPage(): Promise<void> {
   loading.value = true
   errorMessage.value = null
   try {
+    const modelTypeFilter = resolveModelTypeFilter(selectedTaskType.value, modelType.value)
     const [models, training, conversion] = await Promise.all([
-      listPlatformBaseModels(),
-      listModelTrainingTasks(selectedTaskType.value, selectedProjectId.value, modelType.value.trim()),
-      listModelConversionTasks(selectedTaskType.value, selectedProjectId.value, modelType.value.trim()),
+      listPlatformBaseModels(selectedTaskType.value),
+      listModelTrainingTasks(selectedTaskType.value, selectedProjectId.value, modelTypeFilter),
+      listModelConversionTasks(selectedTaskType.value, selectedProjectId.value, modelTypeFilter),
     ])
     baseModels.value = models
     trainingTasks.value = training
     conversionTasks.value = conversion
+    const selectedModelId = selectedModelDetail.value?.model_id ?? null
+    const selectedModelStillVisible = selectedModelId !== null && models.some((model) => model.model_id === selectedModelId)
+    if (!selectedModelStillVisible) {
+      selectedModelDetail.value = null
+    }
     if (!selectedModelDetail.value && models[0]) {
       await selectBaseModel(models[0].model_id)
     }
@@ -462,6 +488,18 @@ async function selectBaseModel(modelId: string): Promise<void> {
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : t('modelOps.messages.detailFailed')
   }
+}
+
+function isModelTypeSupportedForTask(taskType: ModelTaskType, modelTypeValue: string): boolean {
+  const normalizedModelType = modelTypeValue.trim().toLowerCase()
+  if (!normalizedModelType) {
+    return false
+  }
+  return (platformModelTypesByTaskType.value[taskType] ?? []).includes(normalizedModelType)
+}
+
+function resolveModelTypeFilter(taskType: ModelTaskType, modelTypeValue: string): string | undefined {
+  return isModelTypeSupportedForTask(taskType, modelTypeValue) ? modelTypeValue.trim().toLowerCase() : undefined
 }
 
 function useVersionForTraining(modelVersionId: string): void {

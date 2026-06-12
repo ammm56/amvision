@@ -17,6 +17,14 @@ from backend.service.application.conversions.conversion_result_snapshot import (
     ConversionResultSnapshot,
 )
 from backend.service.application.errors import InvalidRequestError, ResourceNotFoundError
+from backend.service.application.model_type_support import (
+    normalize_optional_platform_model_type,
+    require_platform_model_type,
+)
+from backend.service.application.task_type_support import (
+    normalize_platform_task_type,
+    require_supported_platform_task_type,
+)
 from backend.service.application.tasks.task_service import SqlAlchemyTaskService, TaskQueryFilters
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
@@ -152,6 +160,7 @@ def create_task_conversion_router(
     - APIRouter：已经挂载 create/list/detail/result 的路由对象。
     """
 
+    task_type = require_supported_platform_task_type(task_type)
     router = APIRouter(prefix="/models", tags=["models"])
     supported_text = "、".join(sorted(service_entries))
 
@@ -522,11 +531,14 @@ def _normalize_model_type(
 ) -> str:
     """把模型分类归一化为当前 task_type 支持的正式值。"""
 
-    normalized_value = value.strip().lower()
+    normalized_value = require_platform_model_type(value)
     if normalized_value not in service_entries:
         raise InvalidRequestError(
             f"当前 {task_type} conversion 仅支持 {supported_text}",
-            details={"model_type": value},
+            details={
+                "model_type": normalized_value,
+                "supported": sorted(service_entries),
+            },
         )
     return normalized_value
 
@@ -560,9 +572,9 @@ def _resolve_model_type_from_task(
     """从 TaskRecord 中解析模型分类。"""
 
     metadata = dict(getattr(task, "metadata", {}) or {})
-    model_type = metadata.get("model_type")
-    if isinstance(model_type, str) and model_type.strip() in service_entries:
-        return model_type.strip().lower()
+    normalized_model_type = normalize_optional_platform_model_type(metadata.get("model_type"))
+    if normalized_model_type in service_entries:
+        return normalized_model_type
     task_kind = str(getattr(task, "task_kind", ""))
     for current_model_type, entry in service_entries.items():
         if entry.task_kind == task_kind:
@@ -626,9 +638,9 @@ def _read_task_type(task: object) -> str | None:
 
     for payload_name in ("metadata", "result", "task_spec"):
         payload = dict(getattr(task, payload_name, {}) or {})
-        value = payload.get("task_type")
-        if isinstance(value, str) and value.strip():
-            return value.strip().lower()
+        normalized_task_type = normalize_platform_task_type(payload.get("task_type"))
+        if normalized_task_type is not None:
+            return normalized_task_type
     return None
 
 

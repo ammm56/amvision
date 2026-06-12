@@ -11,6 +11,9 @@ from backend.service.application.deployments.detection_deployment_service import
     SqlAlchemyDetectionDeploymentService,
 )
 from backend.service.application.errors import InvalidRequestError, ServiceConfigurationError
+from backend.service.application.model_type_support import (
+    ensure_requested_platform_model_type_matches,
+)
 from backend.service.application.models.detection_operation_rules import (
     DetectionInferenceOutputFiles,
     build_detection_inference_result_summary,
@@ -504,21 +507,14 @@ class SqlAlchemyDetectionInferenceTaskService:
     ) -> None:
         """校验显式请求的模型分类与 deployment 绑定是否一致。"""
 
-        if not isinstance(requested_model_type, str) or not requested_model_type.strip():
-            return
         process_config = self._build_deployment_service().resolve_process_config(
             deployment_instance_id
         )
-        normalized_requested_model_type = requested_model_type.strip().lower()
-        if process_config.runtime_target.model_type != normalized_requested_model_type:
-            raise InvalidRequestError(
-                "请求中的 model_type 与 DeploymentInstance 绑定模型不匹配",
-                details={
-                    "deployment_instance_id": deployment_instance_id,
-                    "requested_model_type": normalized_requested_model_type,
-                    "resolved_model_type": process_config.runtime_target.model_type,
-                },
-            )
+        ensure_requested_platform_model_type_matches(
+            requested_model_type=requested_model_type,
+            resolved_model_type=process_config.runtime_target.model_type,
+            deployment_instance_id=deployment_instance_id,
+        )
 
     def _require_dataset_storage(self) -> LocalDatasetStorage:
         """返回处理推理任务必需的本地文件存储。"""

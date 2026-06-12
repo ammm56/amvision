@@ -11,7 +11,10 @@ from backend.contracts.workflows.workflow_graph import (
 from backend.nodes.core_nodes._base import CoreNodeSpec
 from backend.nodes.core_nodes._platform_service_node_support import (
     WORKFLOW_SERVICE_MODEL_SCALES,
-    WORKFLOW_SERVICE_TASK_TYPES,
+    build_platform_model_type_parameter_schema,
+    build_platform_task_model_type_schema_guards,
+    build_platform_task_type_parameter_schema,
+    get_supported_platform_model_types,
     require_platform_model_type,
     require_platform_task_type,
 )
@@ -68,7 +71,7 @@ def _model_training_submit_handler(request: WorkflowNodeExecutionRequest) -> dic
     task_type = require_platform_task_type(request)
     model_type = require_platform_model_type(
         request,
-        supported_model_types=("yolox", "yolov8", "yolo11", "yolo26", "rfdetr"),
+        supported_model_types=get_supported_platform_model_types(task_type),
     )
     service = runtime_context.build_training_task_service(
         task_type=task_type,
@@ -160,11 +163,8 @@ CORE_NODE_SPEC = CoreNodeSpec(
         parameter_schema={
             "type": "object",
             "properties": {
-                "task_type": {"type": "string", "enum": list(WORKFLOW_SERVICE_TASK_TYPES)},
-                "model_type": {
-                    "type": "string",
-                    "enum": ["yolox", "yolov8", "yolo11", "yolo26", "rfdetr"],
-                },
+                "task_type": build_platform_task_type_parameter_schema(),
+                "model_type": build_platform_model_type_parameter_schema(),
                 "project_id": {"type": "string"},
                 "dataset_export_id": {"type": "string"},
                 "dataset_export_manifest_key": {"type": "string"},
@@ -191,6 +191,7 @@ CORE_NODE_SPEC = CoreNodeSpec(
                 "created_by": {"type": "string"},
             },
             "required": ["task_type", "model_type", "project_id", "recipe_id", "model_scale", "output_model_name"],
+            "allOf": build_platform_task_model_type_schema_guards(),
         },
         capability_tags=("service.model.training", "task.submit"),
     ),

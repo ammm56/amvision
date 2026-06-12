@@ -7,6 +7,9 @@ from time import perf_counter
 from typing import Any
 
 from backend.service.application.errors import InvalidRequestError, ServiceConfigurationError
+from backend.service.application.model_type_support import (
+    normalize_optional_platform_model_type,
+)
 from backend.service.application.models.yolo_primary_detection_model import (
     load_yolo_primary_checkpoint,
 )
@@ -1565,7 +1568,7 @@ def _as_preview_detection(instance: SegmentationPredictionInstance):
 def _require_primary_model_type(model_type: str, model_label: str) -> str:
     """返回当前主线 predictor 允许使用的正式模型分类。"""
 
-    normalized_model_type = model_type.strip().lower()
+    normalized_model_type = normalize_optional_platform_model_type(model_type)
     if not normalized_model_type or normalized_model_type == "yolo-primary":
         raise ServiceConfigurationError(
             f"当前 {model_label} segmentation predictor 缺少正式 model_type 配置",

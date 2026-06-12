@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from typing import Final
 
 from backend.service.domain.models.model_task_types import SEGMENTATION_TASK_TYPE
+from backend.service.domain.models.platform_model_support import normalize_platform_model_type
 
 
 SEGMENTATION_BACKEND_STATUS_ACTIVE: Final[str] = "active"
@@ -113,6 +114,4 @@ def has_segmentation_backend_registration(model_type: str) -> bool:
 
 
 def _normalize_model_type(model_type: str | None) -> str | None:
-    if isinstance(model_type, str) and model_type.strip():
-        return model_type.strip().lower()
-    return None
+    return normalize_platform_model_type(model_type)

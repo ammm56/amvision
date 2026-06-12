@@ -8,6 +8,7 @@ from pathlib import PurePosixPath
 from uuid import uuid4
 
 from backend.service.application.errors import InvalidRequestError, ResourceNotFoundError
+from backend.service.application.model_type_support import require_supported_platform_model_type
 from backend.service.application.project_public_files import resolve_public_project_file_reference
 from backend.service.application.runtime.detection_model_runtime import (
     DefaultDetectionModelRuntime,
@@ -56,9 +57,6 @@ _VALIDATION_RUNTIME_BACKEND = "pytorch"
 _SUPPORTED_VALIDATION_RUNTIME_BACKENDS = frozenset({"pytorch", "onnxruntime", "openvino", "tensorrt"})
 _DEFAULT_SCORE_THRESHOLD = 0.3
 _DEFAULT_INPUT_SIZE = (640, 640)
-_SUPPORTED_DETECTION_MODEL_TYPES = ("yolox", "yolov8", "yolo11", "yolo26", "rfdetr")
-
-
 @dataclass(frozen=True)
 class DetectionValidationSessionCreateRequest:
     """描述一次 detection validation session 创建请求。"""
@@ -738,19 +736,12 @@ def _serialize_runtime_session_info(session_info: DetectionRuntimeSessionInfo) -
 def _normalize_model_type(model_type: str | None) -> str:
     """归一化 detection 模型分类。"""
 
-    normalized_model_type = _normalize_optional_str(model_type)
-    if normalized_model_type is None:
-        raise InvalidRequestError("model_type 不能为空")
-    normalized_model_type = normalized_model_type.lower()
-    if normalized_model_type not in _SUPPORTED_DETECTION_MODEL_TYPES:
-        raise InvalidRequestError(
-            "当前 detection validation session 不支持指定模型分类",
-            details={
-                "model_type": normalized_model_type,
-                "supported_model_types": list(_SUPPORTED_DETECTION_MODEL_TYPES),
-            },
-        )
-    return normalized_model_type
+    return require_supported_platform_model_type(
+        task_type=DETECTION_TASK_TYPE,
+        model_type=model_type,
+        unsupported_message="当前 detection validation session 不支持指定模型分类",
+        supported_details_key="supported_model_types",
+    )
 
 
 def _normalize_runtime_backend(runtime_backend: str | None) -> str:

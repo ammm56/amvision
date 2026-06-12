@@ -35,6 +35,10 @@ from backend.service.api.rest.v1.routes.detection_training_route_models import (
     build_detection_training_task_summary_response,
 )
 from backend.service.application.errors import InvalidRequestError, ResourceNotFoundError
+from backend.service.application.model_type_support import (
+    normalize_optional_platform_model_type,
+    require_supported_platform_model_type,
+)
 from backend.service.application.models.yolo11_training_service import (
     YOLO11_TRAINING_TASK_KIND,
     SqlAlchemyYolo11TrainingTaskService,
@@ -60,6 +64,10 @@ from backend.service.application.models.yolox_training_service import (
     SqlAlchemyYoloXTrainingTaskService,
     YoloXTrainingTaskRequest,
 )
+from backend.service.domain.models.model_task_types import DETECTION_TASK_TYPE
+from backend.service.domain.models.platform_model_support import (
+    build_platform_model_type_field_description,
+)
 from backend.service.application.tasks.task_service import SqlAlchemyTaskService, TaskQueryFilters
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
@@ -67,7 +75,6 @@ from backend.service.infrastructure.object_store.local_dataset_storage import Lo
 
 detection_training_tasks_router = APIRouter(prefix="/models", tags=["models"])
 
-_SUPPORTED_DETECTION_TRAINING_MODEL_TYPES = ("yolox", "yolov8", "yolo11", "yolo26", "rfdetr")
 _DETECTION_TRAINING_SERVICE_BY_MODEL_TYPE = {
     "yolox": (SqlAlchemyYoloXTrainingTaskService, YoloXTrainingTaskRequest),
     "yolov8": (SqlAlchemyYoloV8TrainingTaskService, YoloV8TrainingTaskRequest),
@@ -92,7 +99,7 @@ class DetectionTrainingTaskCreateRequestBody(BaseModel):
     """描述 detection 训练任务创建请求体。"""
 
     project_id: str = Field(description="所属 Project id")
-    model_type: str = Field(description="模型分类；当前支持 yolox、yolov8、yolo11、yolo26、rfdetr")
+    model_type: str = Field(description=build_platform_model_type_field_description(DETECTION_TASK_TYPE))
     dataset_export_id: str | None = Field(default=None, description="训练输入使用的 DatasetExport id")
     dataset_export_manifest_key: str | None = Field(default=None, description="训练输入使用的导出 manifest object key")
     recipe_id: str = Field(description="训练 recipe id")
@@ -633,13 +640,11 @@ def get_detection_training_output_file_detail(
 def _normalize_detection_training_model_type(value: str) -> str:
     """把 detection 训练模型分类归一化为正式值。"""
 
-    normalized_value = value.strip().lower()
-    if normalized_value not in _DETECTION_TRAINING_SERVICE_BY_MODEL_TYPE:
-        raise InvalidRequestError(
-            "当前 detection training 仅支持 yolox、yolov8、yolo11、yolo26、rfdetr",
-            details={"model_type": value},
-        )
-    return normalized_value
+    return require_supported_platform_model_type(
+        task_type=DETECTION_TASK_TYPE,
+        model_type=value,
+        unsupported_message="当前 detection training 不支持指定模型分类",
+    )
 
 
 def _resolve_detection_training_task_kinds(model_type: str | None) -> tuple[str, ...]:
@@ -655,9 +660,9 @@ def _resolve_detection_training_model_type_from_task(task: object) -> str:
     """从任务记录中解析 detection 训练模型分类。"""
 
     metadata = dict(getattr(task, "metadata", {}))
-    model_type = metadata.get("model_type")
-    if isinstance(model_type, str) and model_type.strip():
-        return model_type.strip().lower()
+    normalized_model_type = normalize_optional_platform_model_type(metadata.get("model_type"))
+    if normalized_model_type is not None:
+        return normalized_model_type
     task_kind = getattr(task, "task_kind", "")
     resolved_model_type = _DETECTION_TRAINING_MODEL_TYPE_BY_TASK_KIND.get(str(task_kind))
     if resolved_model_type is None:

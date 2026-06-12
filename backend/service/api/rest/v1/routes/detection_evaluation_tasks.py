@@ -27,10 +27,19 @@ from backend.service.api.rest.v1.routes.detection_output_files import (
     _read_detection_evaluation_report,
 )
 from backend.service.application.errors import InvalidRequestError, PermissionDeniedError, ResourceNotFoundError
+from backend.service.application.model_type_support import (
+    require_optional_supported_platform_model_type,
+    require_supported_platform_model_type,
+)
 from backend.service.application.models.detection_evaluation_task_service import (
     DETECTION_EVALUATION_TASK_KIND,
     DetectionEvaluationTaskRequest,
     SqlAlchemyDetectionEvaluationTaskService,
+)
+from backend.service.domain.models.model_task_types import DETECTION_TASK_TYPE
+from backend.service.domain.models.platform_model_support import (
+    build_platform_model_type_field_description,
+    normalize_platform_model_type,
 )
 from backend.service.application.tasks.task_service import SqlAlchemyTaskService, TaskQueryFilters
 from backend.service.infrastructure.db.session import SessionFactory
@@ -39,14 +48,11 @@ from backend.service.infrastructure.object_store.local_dataset_storage import Lo
 
 detection_evaluation_tasks_router = APIRouter(prefix="/models", tags=["models"])
 
-_SUPPORTED_DETECTION_EVALUATION_MODEL_TYPES = frozenset({"yolox", "yolov8", "yolo11", "yolo26", "rfdetr"})
-
-
 class DetectionEvaluationTaskCreateRequestBody(BaseModel):
     """描述 detection 数据集级评估任务创建请求体。"""
 
     project_id: str = Field(description="所属 Project id")
-    model_type: str = Field(description="模型分类；当前支持 yolox、yolov8、yolo11、yolo26、rfdetr")
+    model_type: str = Field(description=build_platform_model_type_field_description(DETECTION_TASK_TYPE))
     model_version_id: str = Field(description="待评估 ModelVersion id")
     dataset_export_id: str | None = Field(default=None, description="评估输入使用的 DatasetExport id")
     dataset_export_manifest_key: str | None = Field(default=None, description="评估输入使用的导出 manifest object key")
@@ -243,21 +249,21 @@ def list_detection_evaluation_output_files(
 def _normalize_detection_evaluation_model_type(model_type: str) -> str:
     """把模型分类归一化为 detection evaluation 正式值。"""
 
-    normalized_model_type = model_type.strip().lower()
-    if normalized_model_type not in _SUPPORTED_DETECTION_EVALUATION_MODEL_TYPES:
-        raise InvalidRequestError(
-            "当前 detection evaluation 仅支持 yolox、yolov8、yolo11、yolo26、rfdetr",
-            details={"model_type": model_type},
-        )
-    return normalized_model_type
+    return require_supported_platform_model_type(
+        task_type=DETECTION_TASK_TYPE,
+        model_type=model_type,
+        unsupported_message="当前 detection evaluation 不支持指定模型分类",
+    )
 
 
 def _normalize_optional_detection_evaluation_model_type(model_type: str | None) -> str | None:
     """把可选模型分类归一化为 detection evaluation 正式值。"""
 
-    if model_type is None:
-        return None
-    return _normalize_detection_evaluation_model_type(model_type)
+    return require_optional_supported_platform_model_type(
+        task_type=DETECTION_TASK_TYPE,
+        model_type=model_type,
+        unsupported_message="当前 detection evaluation 不支持指定模型分类",
+    )
 
 
 def _resolve_visible_project_ids(
@@ -298,15 +304,15 @@ def _resolve_detection_evaluation_model_type_from_task(task: object) -> str:
     """从任务记录中解析 detection 评估模型分类。"""
 
     metadata = dict(getattr(task, "metadata", {}))
-    model_type = metadata.get("model_type")
-    if isinstance(model_type, str) and model_type.strip():
-        return _normalize_detection_evaluation_model_type(model_type)
+    normalized_model_type = normalize_platform_model_type(metadata.get("model_type"))
+    if normalized_model_type is not None:
+        return _normalize_detection_evaluation_model_type(normalized_model_type)
     result = dict(getattr(task, "result", {}))
     report_summary = result.get("report_summary")
     if isinstance(report_summary, dict):
-        summary_model_type = report_summary.get("model_type")
-        if isinstance(summary_model_type, str) and summary_model_type.strip():
-            return _normalize_detection_evaluation_model_type(summary_model_type)
+        normalized_summary_model_type = normalize_platform_model_type(report_summary.get("model_type"))
+        if normalized_summary_model_type is not None:
+            return _normalize_detection_evaluation_model_type(normalized_summary_model_type)
     raise ResourceNotFoundError(
         "找不到指定的 detection 评估模型分类",
         details={"task_id": getattr(task, "task_id", None)},

@@ -18,6 +18,9 @@ from backend.service.api.deps.detection_deployment_process_supervisor import (
     get_detection_async_deployment_process_supervisor,
     get_detection_sync_deployment_process_supervisor,
 )
+from backend.service.api.rest.v1.routes.deployment_runtime_helpers import (
+    ensure_requested_model_type_matches,
+)
 from backend.service.api.rest.v1.routes.detection_inference_helpers import (
     DetectionInferencePayloadResponse,
     DetectionInferenceTaskDetailResponse,
@@ -141,7 +144,7 @@ async def create_detection_inference_task(
             },
         )
     process_config = deployment_service.resolve_process_config(body.deployment_instance_id)
-    _ensure_model_type_matches(
+    ensure_requested_model_type_matches(
         requested_model_type=body.model_type,
         resolved_model_type=process_config.runtime_target.model_type,
         deployment_instance_id=body.deployment_instance_id,
@@ -232,7 +235,7 @@ async def infer_detection_deployment_instance(
         deployment_instance_id=deployment_instance_id,
     )
     process_config = deployment_service.resolve_process_config(deployment_instance_id)
-    _ensure_model_type_matches(
+    ensure_requested_model_type_matches(
         requested_model_type=body.model_type,
         resolved_model_type=process_config.runtime_target.model_type,
         deployment_instance_id=deployment_instance_id,
@@ -429,30 +432,6 @@ def get_detection_inference_task_result(
         object_key=object_key,
         payload=dict(payload) if isinstance(payload, dict) else {},
     )
-
-
-def _ensure_model_type_matches(
-    *,
-    requested_model_type: str | None,
-    resolved_model_type: str,
-    deployment_instance_id: str,
-) -> None:
-    """校验请求中的模型分类与 DeploymentInstance 绑定模型一致。"""
-
-    if requested_model_type is None or not requested_model_type.strip():
-        return
-    normalized_requested_model_type = requested_model_type.strip().lower()
-    if normalized_requested_model_type != resolved_model_type:
-        raise InvalidRequestError(
-            "请求中的 model_type 与 DeploymentInstance 绑定模型不匹配",
-            details={
-                "deployment_instance_id": deployment_instance_id,
-                "requested_model_type": normalized_requested_model_type,
-                "resolved_model_type": resolved_model_type,
-            },
-        )
-
-
 def _require_visible_detection_inference_task(
     *,
     principal: AuthenticatedPrincipal,

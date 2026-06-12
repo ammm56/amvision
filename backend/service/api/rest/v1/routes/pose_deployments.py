@@ -32,6 +32,8 @@ from backend.service.application.errors import PermissionDeniedError
 from backend.service.application.models.pose_async_inference_gateway import (
     PoseAsyncInferenceGatewayDispatcherRegistry,
 )
+from backend.service.domain.models.model_task_types import POSE_TASK_TYPE
+from backend.service.domain.models.platform_model_support import build_platform_model_type_field_description
 from backend.service.application.runtime.deployment_process_supervisor import (
     DeploymentProcessSupervisor,
 )
@@ -44,7 +46,7 @@ pose_deployments_router = APIRouter(prefix="/models", tags=["models"])
 
 class PoseDeploymentInstanceCreateRequestBody(BaseModel):
     project_id: str = Field(description="所属 Project id")
-    model_type: str = Field(description="模型分类；支持 yolov8、yolo11、yolo26")
+    model_type: str = Field(description=build_platform_model_type_field_description(POSE_TASK_TYPE))
     model_version_id: str | None = Field(default=None)
     model_build_id: str | None = Field(default=None)
     runtime_profile_id: str | None = Field(default=None)

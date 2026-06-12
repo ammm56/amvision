@@ -8,15 +8,16 @@ from pathlib import PurePosixPath
 from uuid import uuid4
 
 from backend.service.application.errors import InvalidRequestError, ResourceNotFoundError
+from backend.service.application.model_type_support import require_supported_platform_model_type
 from backend.service.application.project_public_files import resolve_public_project_file_reference
 from backend.service.application.runtime.classification_model_runtime import (
     DefaultClassificationModelRuntime,
 )
 from backend.service.application.runtime.classification_runtime_contracts import (
     ClassificationPredictionCategory,
+    ClassificationPredictionExecutionResult,
     ClassificationPredictionRequest,
     ClassificationRuntimeSessionInfo,
-    ClassificationRuntimeTensorSpec,
 )
 from backend.service.application.runtime.yolo11_runtime_target import (
     SqlAlchemyYolo11RuntimeTargetResolver,
@@ -48,9 +49,6 @@ _VALIDATION_RUNTIME_BACKEND = "pytorch"
 _SUPPORTED_VALIDATION_RUNTIME_BACKENDS = frozenset({"pytorch", "onnxruntime", "openvino", "tensorrt"})
 _DEFAULT_TOP_K = 5
 _DEFAULT_INPUT_SIZE = (224, 224)
-_SUPPORTED_CLASSIFICATION_MODEL_TYPES = ("yolov8", "yolo11", "yolo26")
-
-
 @dataclass(frozen=True)
 class ClassificationValidationSessionCreateRequest:
     project_id: str
@@ -590,15 +588,12 @@ def _build_prediction_summary_from_payload(payload: object) -> ClassificationVal
 # -- helpers --
 
 def _normalize_model_type(model_type: str | None) -> str:
-    normalized = _normalize_optional_str(model_type)
-    if normalized is None:
-        raise InvalidRequestError("model_type 不能为空")
-    if normalized not in _SUPPORTED_CLASSIFICATION_MODEL_TYPES:
-        raise InvalidRequestError(
-            "当前 classification validation session 不支持指定模型分类",
-            details={"model_type": normalized, "supported_model_types": list(_SUPPORTED_CLASSIFICATION_MODEL_TYPES)},
-        )
-    return normalized
+    return require_supported_platform_model_type(
+        task_type=CLASSIFICATION_TASK_TYPE,
+        model_type=model_type,
+        unsupported_message="当前 classification validation session 不支持指定模型分类",
+        supported_details_key="supported_model_types",
+    )
 
 
 def _normalize_runtime_backend(runtime_backend: str | None) -> str:

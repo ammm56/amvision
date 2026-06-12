@@ -13,6 +13,7 @@ from backend.queue import QueueBackend
 from backend.service.application.errors import (
     InvalidRequestError, ResourceNotFoundError, ServiceConfigurationError,
 )
+from backend.service.application.model_type_support import require_supported_platform_model_type
 from backend.service.application.models.evaluation_runtime_target_resolvers import (
     get_detection_evaluation_runtime_target_resolver,
 )
@@ -29,6 +30,7 @@ from backend.service.application.tasks.task_service import (
     SqlAlchemyTaskService,
 )
 from backend.service.domain.datasets.dataset_export import DatasetExport
+from backend.service.domain.models.model_task_types import DETECTION_TASK_TYPE
 from backend.service.domain.tasks.task_records import TaskRecord
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
@@ -368,7 +370,11 @@ class SqlAlchemyDetectionEvaluationTaskService:
         return export
 
     def _resolve_runtime_target(self, request: DetectionEvaluationTaskRequest):
-        requested_model_type = request.model_type.strip().lower()
+        requested_model_type = require_supported_platform_model_type(
+            task_type=DETECTION_TASK_TYPE,
+            model_type=request.model_type,
+            unsupported_message="当前 detection evaluation 不支持指定模型分类",
+        )
         resolver_cls = get_detection_evaluation_runtime_target_resolver(
             requested_model_type
         )

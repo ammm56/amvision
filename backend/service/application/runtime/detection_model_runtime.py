@@ -9,6 +9,9 @@ from backend.service.application.detection_backend_registry import (
     get_detection_backend_registration,
 )
 from backend.service.application.errors import ServiceConfigurationError
+from backend.service.application.model_type_support import (
+    normalize_optional_platform_model_type,
+)
 from backend.service.application.runtime.yolo11_predictor import (
     OnnxRuntimeYolo11RuntimeSession,
     OpenVINOYolo11RuntimeSession,
@@ -314,6 +317,4 @@ def _load_rfdetr_detection_session(
 def _normalize_model_type(model_type: str | None) -> str | None:
     """把模型分类名称归一为小写非空字符串。"""
 
-    if isinstance(model_type, str) and model_type.strip():
-        return model_type.strip().lower()
-    return None
+    return normalize_optional_platform_model_type(model_type)

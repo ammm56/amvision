@@ -8,14 +8,13 @@ from pathlib import PurePosixPath
 from uuid import uuid4
 
 from backend.service.application.errors import InvalidRequestError, ResourceNotFoundError
+from backend.service.application.model_type_support import require_supported_platform_model_type
 from backend.service.application.project_public_files import resolve_public_project_file_reference
 from backend.service.application.runtime.segmentation_model_runtime import DefaultSegmentationModelRuntime
 from backend.service.application.runtime.segmentation_runtime_contracts import (
-    SegmentationPredictionExecutionResult,
     SegmentationPredictionInstance,
     SegmentationPredictionRequest,
     SegmentationRuntimeSessionInfo,
-    SegmentationRuntimeTensorSpec,
 )
 from backend.service.application.runtime.yolo11_runtime_target import SqlAlchemyYolo11RuntimeTargetResolver
 from backend.service.application.runtime.yolo26_runtime_target import SqlAlchemyYolo26RuntimeTargetResolver
@@ -40,9 +39,6 @@ _SUPPORTED_VALIDATION_RUNTIME_BACKENDS = frozenset({"pytorch", "onnxruntime", "o
 _DEFAULT_SCORE_THRESHOLD = 0.3
 _DEFAULT_MASK_THRESHOLD = 0.5
 _DEFAULT_INPUT_SIZE = (640, 640)
-_SUPPORTED_SEGMENTATION_MODEL_TYPES = ("yolov8", "yolo11", "yolo26", "rfdetr")
-
-
 @dataclass(frozen=True)
 class SegmentationValidationSessionCreateRequest:
     project_id: str
@@ -436,12 +432,12 @@ def _build_summary_from_payload(p: object) -> SegmentationValidationPredictionSu
 
 
 def _normalize_model_type(mt: str | None) -> str:
-    n = _normalize_optional_str(mt)
-    if n is None:
-        raise InvalidRequestError("model_type 不能为空")
-    if n not in _SUPPORTED_SEGMENTATION_MODEL_TYPES:
-        raise InvalidRequestError("当前 segmentation validation session 不支持指定模型分类", details={"model_type": n})
-    return n
+    return require_supported_platform_model_type(
+        task_type=SEGMENTATION_TASK_TYPE,
+        model_type=mt,
+        unsupported_message="当前 segmentation validation session 不支持指定模型分类",
+        supported_details_key="supported_model_types",
+    )
 
 
 def _normalize_runtime_backend(rb: str | None) -> str:

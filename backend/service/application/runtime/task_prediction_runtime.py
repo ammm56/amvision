@@ -6,6 +6,9 @@ from dataclasses import replace
 from typing import TypeAlias
 
 from backend.service.application.errors import InvalidRequestError, ServiceConfigurationError
+from backend.service.application.task_type_support import (
+    require_supported_platform_task_type,
+)
 from backend.service.application.runtime.classification_model_runtime import (
     DefaultClassificationModelRuntime,
 )
@@ -28,7 +31,6 @@ from backend.service.application.runtime.detection_runtime_contracts import (
     DetectionPredictionRequest,
 )
 from backend.service.application.runtime.detection_runtime_serialization import (
-    deserialize_detection,
     deserialize_detection_items,
     deserialize_runtime_session_info,
     serialize_detection,
@@ -40,7 +42,6 @@ from backend.service.application.runtime.obb_runtime_contracts import (
     ObbPredictionRequest,
 )
 from backend.service.application.runtime.obb_runtime_serialization import (
-    deserialize_obb_instance,
     deserialize_obb_instances,
     deserialize_obb_runtime_session_info,
     serialize_obb_instance,
@@ -52,7 +53,6 @@ from backend.service.application.runtime.pose_runtime_contracts import (
     PosePredictionRequest,
 )
 from backend.service.application.runtime.pose_runtime_serialization import (
-    deserialize_pose_instance,
     deserialize_pose_instances,
     deserialize_pose_runtime_session_info,
     serialize_pose_instance,
@@ -67,7 +67,6 @@ from backend.service.application.runtime.segmentation_runtime_contracts import (
     SegmentationPredictionRequest,
 )
 from backend.service.application.runtime.segmentation_runtime_serialization import (
-    deserialize_segmentation_instance,
     deserialize_segmentation_instances,
     deserialize_segmentation_runtime_session_info,
     serialize_segmentation_instance,
@@ -102,7 +101,11 @@ def load_runtime_session(
 ) -> object:
     """按 task_type 与 model_type 加载正式 runtime session。"""
 
-    task_type = _normalize_task_type(runtime_target.task_type)
+    task_type = require_supported_platform_task_type(
+        runtime_target.task_type,
+        empty_message="task_type 不能为空",
+        unsupported_message="当前 deployment runtime 尚未接通该 task_type",
+    )
     if task_type == "detection":
         return DefaultDetectionModelRuntime().load_session(
             dataset_storage=dataset_storage,
@@ -151,7 +154,11 @@ def build_prediction_request_from_payload(
 ) -> PredictionRequest:
     """从 worker payload 构造 task-native prediction request。"""
 
-    normalized_task_type = _normalize_task_type(task_type)
+    normalized_task_type = require_supported_platform_task_type(
+        task_type,
+        empty_message="task_type 不能为空",
+        unsupported_message="prediction request 缺少支持的 task_type",
+    )
     if normalized_task_type == "detection":
         return DetectionPredictionRequest(
             score_threshold=_read_required_float(payload, "score_threshold"),
@@ -215,7 +222,11 @@ def serialize_prediction_request(
 ) -> dict[str, object]:
     """把 task-native prediction request 转换为可跨进程传输的字典。"""
 
-    normalized_task_type = _normalize_task_type(task_type)
+    normalized_task_type = require_supported_platform_task_type(
+        task_type,
+        empty_message="task_type 不能为空",
+        unsupported_message="prediction request 缺少支持的 task_type",
+    )
     common_payload = {
         "save_result_image": bool(getattr(request, "save_result_image", False)),
         "input_uri": getattr(request, "input_uri", None),
@@ -285,7 +296,11 @@ def build_dummy_prediction_request(
     """构造 keep-warm 与 warmup 使用的最小 prediction request。"""
 
     extra_options = {"internal_request_kind": "deployment_dummy_warmup"}
-    normalized_task_type = _normalize_task_type(task_type)
+    normalized_task_type = require_supported_platform_task_type(
+        task_type,
+        empty_message="task_type 不能为空",
+        unsupported_message="dummy prediction request 缺少支持的 task_type",
+    )
     if normalized_task_type == "detection":
         return DetectionPredictionRequest(
             input_image_bytes=input_image_bytes,
@@ -336,7 +351,11 @@ def serialize_prediction_execution_result(
 ) -> dict[str, object]:
     """把 task-native execution result 转换为可跨进程传输的字典。"""
 
-    normalized_task_type = _normalize_task_type(task_type)
+    normalized_task_type = require_supported_platform_task_type(
+        task_type,
+        empty_message="task_type 不能为空",
+        unsupported_message="prediction execution result 缺少支持的 task_type",
+    )
     common_payload = {
         "latency_ms": execution_result.latency_ms,
         "image_width": execution_result.image_width,
@@ -417,7 +436,11 @@ def deserialize_prediction_execution_result(
 
     if not isinstance(payload, dict):
         raise InvalidRequestError("prediction execution result 格式不合法")
-    normalized_task_type = _normalize_task_type(task_type)
+    normalized_task_type = require_supported_platform_task_type(
+        task_type,
+        empty_message="task_type 不能为空",
+        unsupported_message="prediction execution result 缺少支持的 task_type",
+    )
     latency_ms = _read_optional_float(payload, "latency_ms")
     image_width = _read_required_int(payload, "image_width")
     image_height = _read_required_int(payload, "image_height")
@@ -482,14 +505,6 @@ def deserialize_prediction_execution_result(
         "prediction execution result 缺少支持的 task_type",
         details={"task_type": task_type},
     )
-
-
-def _normalize_task_type(task_type: object) -> str:
-    """把 task_type 规范化为非空小写字符串。"""
-
-    if isinstance(task_type, str) and task_type.strip():
-        return task_type.strip().lower()
-    raise InvalidRequestError("task_type 不能为空")
 
 
 def _read_optional_str(payload: dict[str, object], key: str) -> str | None:

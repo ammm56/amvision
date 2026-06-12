@@ -13,6 +13,10 @@ from backend.service.domain.models.model_task_types import (
     POSE_TASK_TYPE,
     SEGMENTATION_TASK_TYPE,
 )
+from backend.service.domain.models.platform_model_support import (
+    SUPPORTED_PLATFORM_MODEL_TYPES,
+    get_supported_platform_model_types as get_registered_platform_model_types,
+)
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 
 
@@ -23,13 +27,7 @@ WORKFLOW_SERVICE_TASK_TYPES: tuple[str, ...] = (
     POSE_TASK_TYPE,
     OBB_TASK_TYPE,
 )
-WORKFLOW_SERVICE_MODEL_TYPES: tuple[str, ...] = (
-    "yolox",
-    "yolov8",
-    "yolo11",
-    "yolo26",
-    "rfdetr",
-)
+WORKFLOW_SERVICE_MODEL_TYPES: tuple[str, ...] = SUPPORTED_PLATFORM_MODEL_TYPES
 WORKFLOW_SERVICE_MODEL_SCALES: tuple[str, ...] = (
     "nano",
     "tiny",
@@ -39,13 +37,6 @@ WORKFLOW_SERVICE_MODEL_SCALES: tuple[str, ...] = (
     "x",
     "xx",
 )
-WORKFLOW_SERVICE_MODEL_TYPES_BY_TASK_TYPE: dict[str, tuple[str, ...]] = {
-    DETECTION_TASK_TYPE: ("yolox", "yolov8", "yolo11", "yolo26", "rfdetr"),
-    CLASSIFICATION_TASK_TYPE: ("yolov8", "yolo11", "yolo26"),
-    SEGMENTATION_TASK_TYPE: ("yolov8", "yolo11", "yolo26", "rfdetr"),
-    POSE_TASK_TYPE: ("yolov8", "yolo11", "yolo26"),
-    OBB_TASK_TYPE: ("yolov8", "yolo11", "yolo26"),
-}
 
 
 def get_optional_platform_task_type(request: WorkflowNodeExecutionRequest) -> str | None:
@@ -128,4 +119,44 @@ def require_platform_model_type(
 def get_supported_platform_model_types(task_type: str) -> tuple[str, ...]:
     """按 task_type 返回当前 workflow service node 允许的 model_type 列表。"""
 
-    return WORKFLOW_SERVICE_MODEL_TYPES_BY_TASK_TYPE.get(task_type, WORKFLOW_SERVICE_MODEL_TYPES)
+    return get_registered_platform_model_types(task_type)
+
+
+def build_platform_task_type_parameter_schema() -> dict[str, object]:
+    """返回统一 task_type 参数 schema。"""
+
+    return {
+        "type": "string",
+        "enum": list(WORKFLOW_SERVICE_TASK_TYPES),
+    }
+
+
+def build_platform_model_type_parameter_schema(*, task_type: str | None = None) -> dict[str, object]:
+    """返回统一 model_type 参数 schema。"""
+
+    return {
+        "type": "string",
+        "enum": list(
+            WORKFLOW_SERVICE_MODEL_TYPES if task_type is None else get_supported_platform_model_types(task_type)
+        ),
+    }
+
+
+def build_platform_task_model_type_schema_guards() -> list[dict[str, object]]:
+    """返回 task_type -> model_type 的条件 schema。"""
+
+    return [
+        {
+            "if": {
+                "properties": {
+                    "task_type": {"const": task_type},
+                }
+            },
+            "then": {
+                "properties": {
+                    "model_type": build_platform_model_type_parameter_schema(task_type=task_type),
+                }
+            },
+        }
+        for task_type in WORKFLOW_SERVICE_TASK_TYPES
+    ]

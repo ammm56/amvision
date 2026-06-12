@@ -32,6 +32,8 @@ from backend.service.application.errors import PermissionDeniedError
 from backend.service.application.models.classification_async_inference_gateway import (
     ClassificationAsyncInferenceGatewayDispatcherRegistry,
 )
+from backend.service.domain.models.model_task_types import CLASSIFICATION_TASK_TYPE
+from backend.service.domain.models.platform_model_support import build_platform_model_type_field_description
 from backend.service.application.runtime.deployment_process_supervisor import (
     DeploymentProcessSupervisor,
 )
@@ -46,7 +48,7 @@ class ClassificationDeploymentInstanceCreateRequestBody(BaseModel):
     """描述 classification DeploymentInstance 创建请求体。"""
 
     project_id: str = Field(description="所属 Project id")
-    model_type: str = Field(description="模型分类；当前支持 yolov8、yolo11、yolo26")
+    model_type: str = Field(description=build_platform_model_type_field_description(CLASSIFICATION_TASK_TYPE))
     model_version_id: str | None = Field(default=None, description="直接绑定的 ModelVersion id")
     model_build_id: str | None = Field(default=None, description="直接绑定的 ModelBuild id")
     runtime_profile_id: str | None = Field(default=None, description="可选 RuntimeProfile id")

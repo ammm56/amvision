@@ -9,6 +9,9 @@ from pydantic import BaseModel, Field
 
 from backend.service.api.deps.auth import AuthenticatedPrincipal
 from backend.service.application.errors import InvalidRequestError, ResourceNotFoundError
+from backend.service.application.model_type_support import (
+    ensure_requested_platform_model_type_matches,
+)
 from backend.service.application.runtime.deployment_process_supervisor import (
     DeploymentProcessHealth,
     DeploymentProcessInstanceHealth,
@@ -95,18 +98,11 @@ def ensure_requested_model_type_matches(
 ) -> None:
     """校验请求中的模型分类与 DeploymentInstance 绑定模型一致。"""
 
-    if requested_model_type is None or not requested_model_type.strip():
-        return
-    normalized_requested_model_type = requested_model_type.strip().lower()
-    if normalized_requested_model_type != resolved_model_type:
-        raise InvalidRequestError(
-            "请求中的 model_type 与 DeploymentInstance 绑定模型不匹配",
-            details={
-                "deployment_instance_id": deployment_instance_id,
-                "requested_model_type": normalized_requested_model_type,
-                "resolved_model_type": resolved_model_type,
-            },
-        )
+    ensure_requested_platform_model_type_matches(
+        requested_model_type=requested_model_type,
+        resolved_model_type=resolved_model_type,
+        deployment_instance_id=deployment_instance_id,
+    )
 
 
 def require_running_deployment_process(

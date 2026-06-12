@@ -76,6 +76,8 @@ export interface ModelTrainingTaskSubmissionResponse {
 
 export interface ModelTrainingTaskSummary {
   task_id: string
+  task_type?: string | null
+  model_type?: string | null
   display_name: string
   project_id: string
   created_by?: string | null
@@ -268,8 +270,13 @@ function buildConversionRequestTarget(target: ConversionTargetKey): { targetForm
   return { targetFormats: [target], extraOptions: {} }
 }
 
-export async function listPlatformBaseModels(): Promise<PlatformBaseModelSummary[]> {
-  return apiRequest<PlatformBaseModelSummary[]>('/models/platform-base', { query: { limit: 100 } })
+export async function listPlatformBaseModels(taskType?: ModelTaskType): Promise<PlatformBaseModelSummary[]> {
+  return apiRequest<PlatformBaseModelSummary[]>('/models/platform-base', {
+    query: {
+      limit: 100,
+      task_type: taskType || undefined,
+    },
+  })
 }
 
 export async function getPlatformBaseModelDetail(modelId: string): Promise<PlatformBaseModelDetail> {
