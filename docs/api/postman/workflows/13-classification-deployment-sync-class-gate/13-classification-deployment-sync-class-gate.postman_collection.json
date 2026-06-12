@@ -1,0 +1,516 @@
+{
+  "info": {
+    "_postman_id": "amvision-workflow-13",
+    "name": "amvision workflow 13 classification deployment sync class gate",
+    "description": "第十三类 classification deployment 同步推理、top class 判定和最小工业规则联调 collection。",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://127.0.0.1:8000"
+    },
+    {
+      "key": "projectId",
+      "value": "project-1"
+    },
+    {
+      "key": "previewRunId",
+      "value": ""
+    },
+    {
+      "key": "workflowRuntimeId",
+      "value": ""
+    },
+    {
+      "key": "workflowRunId",
+      "value": ""
+    },
+    {
+      "key": "deploymentInstanceId",
+      "value": "replace-with-existing-deployment-instance-id"
+    },
+    {
+      "key": "datasetId",
+      "value": "dataset-1"
+    },
+    {
+      "key": "datasetVersionId",
+      "value": "dataset-version-1"
+    },
+    {
+      "key": "datasetExportId",
+      "value": "dataset-export-1"
+    },
+    {
+      "key": "modelVersionId",
+      "value": "model-version-1"
+    },
+    {
+      "key": "accessToken",
+      "value": "amvision-default-user-token"
+    }
+  ],
+  "item": [
+    {
+      "name": "Save Template",
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/projects/{{projectId}}/templates/classification-deployment-sync-class-gate-template/versions/1.0.0",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "workflows",
+            "projects",
+            "{{projectId}}",
+            "templates",
+            "classification-deployment-sync-class-gate-template",
+            "versions",
+            "1.0.0"
+          ]
+        },
+        "description": "保存 classification_deployment_sync_class_gate 的 workflow template。",
+        "body": {
+          "mode": "raw",
+          "raw": "{\r\n  \"template\": {\r\n    \"format_id\": \"amvision.workflow-graph-template.v1\",\r\n    \"template_id\": \"classification-deployment-sync-class-gate-template\",\r\n    \"template_version\": \"1.0.0\",\r\n    \"display_name\": \"Classification Deployment Sync Class Gate\",\r\n    \"description\": \"接收 base64 图片和已有 deployment 请求，直接执行 classification 推理，再基于 top class 与 top score 完成最小 OK/NG 判定。\",\r\n    \"nodes\": [\r\n      {\r\n        \"node_id\": \"decode_request_image\",\r\n        \"node_type_id\": \"core.io.image-base64-decode\",\r\n        \"parameters\": {}\r\n      },\r\n      {\r\n        \"node_id\": \"deployment_request_input\",\r\n        \"node_type_id\": \"core.io.template-input.object\",\r\n        \"parameters\": {}\r\n      },\r\n      {\r\n        \"node_id\": \"classify\",\r\n        \"node_type_id\": \"core.model.classification\",\r\n        \"parameters\": {\r\n          \"auto_start_process\": false,\r\n          \"top_k\": 3,\r\n          \"save_result_image\": false,\r\n          \"return_preview_image_base64\": false\r\n        }\r\n      },\r\n      {\r\n        \"node_id\": \"categories_value\",\r\n        \"node_type_id\": \"core.logic.payload-to-value\",\r\n        \"parameters\": {}\r\n      },\r\n      {\r\n        \"node_id\": \"extract_top_class_name\",\r\n        \"node_type_id\": \"core.logic.value-field-extract\",\r\n        \"parameters\": {\r\n          \"path\": \"top_item.class_name\"\r\n        }\r\n      },\r\n      {\r\n        \"node_id\": \"extract_top_score\",\r\n        \"node_type_id\": \"core.logic.value-field-extract\",\r\n        \"parameters\": {\r\n          \"path\": \"top_item.score\"\r\n        }\r\n      },\r\n      {\r\n        \"node_id\": \"extract_count\",\r\n        \"node_type_id\": \"core.logic.value-field-extract\",\r\n        \"parameters\": {\r\n          \"path\": \"count\"\r\n        }\r\n      },\r\n      {\r\n        \"node_id\": \"class_match\",\r\n        \"node_type_id\": \"core.logic.compare\",\r\n        \"parameters\": {\r\n          \"operator\": \"eq\",\r\n          \"right_value\": \"ok-part\"\r\n        }\r\n      },\r\n      {\r\n        \"node_id\": \"score_ok\",\r\n        \"node_type_id\": \"core.rule.threshold-check\",\r\n        \"parameters\": {\r\n          \"operator\": \"ge\",\r\n          \"threshold\": 0.8\r\n        }\r\n      },\r\n      {\r\n        \"node_id\": \"metadata_object\",\r\n        \"node_type_id\": \"core.logic.object-create\",\r\n        \"parameters\": {\r\n          \"keys\": [\r\n            \"deployment_request\"\r\n          ],\r\n          \"fields\": {\r\n            \"inspection_kind\": \"classification-class-gate\",\r\n            \"station_id\": \"line-cls-01\"\r\n          }\r\n        }\r\n      },\r\n      {\r\n        \"node_id\": \"metrics_object\",\r\n        \"node_type_id\": \"core.logic.object-create\",\r\n        \"parameters\": {\r\n          \"keys\": [\r\n            \"categories\",\r\n            \"top_class_name\",\r\n            \"top_score\",\r\n            \"count\"\r\n          ]\r\n        }\r\n      },\r\n      {\r\n        \"node_id\": \"process_decision\",\r\n        \"node_type_id\": \"core.rule.process-decision\",\r\n        \"parameters\": {\r\n          \"mode\": \"all\",\r\n          \"condition_names\": [\r\n            \"class_match\",\r\n            \"score\"\r\n          ],\r\n          \"ok_reason\": \"classification class gate passed\",\r\n          \"ng_reason\": \"classification class gate failed\"\r\n        }\r\n      }\r\n    ],\r\n    \"edges\": [\r\n      {\r\n        \"edge_id\": \"edge-decode-classify-image\",\r\n        \"source_node_id\": \"decode_request_image\",\r\n        \"source_port\": \"image\",\r\n        \"target_node_id\": \"classify\",\r\n        \"target_port\": \"image\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-deployment-request-classify\",\r\n        \"source_node_id\": \"deployment_request_input\",\r\n        \"source_port\": \"value\",\r\n        \"target_node_id\": \"classify\",\r\n        \"target_port\": \"request\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-classify-categories-value\",\r\n        \"source_node_id\": \"classify\",\r\n        \"source_port\": \"categories\",\r\n        \"target_node_id\": \"categories_value\",\r\n        \"target_port\": \"categories\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-categories-value-top-class\",\r\n        \"source_node_id\": \"categories_value\",\r\n        \"source_port\": \"value\",\r\n        \"target_node_id\": \"extract_top_class_name\",\r\n        \"target_port\": \"value\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-categories-value-top-score\",\r\n        \"source_node_id\": \"categories_value\",\r\n        \"source_port\": \"value\",\r\n        \"target_node_id\": \"extract_top_score\",\r\n        \"target_port\": \"value\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-categories-value-count\",\r\n        \"source_node_id\": \"categories_value\",\r\n        \"source_port\": \"value\",\r\n        \"target_node_id\": \"extract_count\",\r\n        \"target_port\": \"value\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-top-class-compare\",\r\n        \"source_node_id\": \"extract_top_class_name\",\r\n        \"source_port\": \"value\",\r\n        \"target_node_id\": \"class_match\",\r\n        \"target_port\": \"left\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-top-score-threshold\",\r\n        \"source_node_id\": \"extract_top_score\",\r\n        \"source_port\": \"value\",\r\n        \"target_node_id\": \"score_ok\",\r\n        \"target_port\": \"value\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-deployment-request-metadata\",\r\n        \"source_node_id\": \"deployment_request_input\",\r\n        \"source_port\": \"value\",\r\n        \"target_node_id\": \"metadata_object\",\r\n        \"target_port\": \"values\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-categories-value-metrics\",\r\n        \"source_node_id\": \"categories_value\",\r\n        \"source_port\": \"value\",\r\n        \"target_node_id\": \"metrics_object\",\r\n        \"target_port\": \"values\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-top-class-metrics\",\r\n        \"source_node_id\": \"extract_top_class_name\",\r\n        \"source_port\": \"value\",\r\n        \"target_node_id\": \"metrics_object\",\r\n        \"target_port\": \"values\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-top-score-metrics\",\r\n        \"source_node_id\": \"extract_top_score\",\r\n        \"source_port\": \"value\",\r\n        \"target_node_id\": \"metrics_object\",\r\n        \"target_port\": \"values\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-count-metrics\",\r\n        \"source_node_id\": \"extract_count\",\r\n        \"source_port\": \"value\",\r\n        \"target_node_id\": \"metrics_object\",\r\n        \"target_port\": \"values\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-class-match-process\",\r\n        \"source_node_id\": \"class_match\",\r\n        \"source_port\": \"result\",\r\n        \"target_node_id\": \"process_decision\",\r\n        \"target_port\": \"conditions\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-score-process\",\r\n        \"source_node_id\": \"score_ok\",\r\n        \"source_port\": \"result\",\r\n        \"target_node_id\": \"process_decision\",\r\n        \"target_port\": \"conditions\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-metrics-process\",\r\n        \"source_node_id\": \"metrics_object\",\r\n        \"source_port\": \"value\",\r\n        \"target_node_id\": \"process_decision\",\r\n        \"target_port\": \"metrics\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-metadata-process\",\r\n        \"source_node_id\": \"metadata_object\",\r\n        \"source_port\": \"value\",\r\n        \"target_node_id\": \"process_decision\",\r\n        \"target_port\": \"metadata\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-image-process\",\r\n        \"source_node_id\": \"decode_request_image\",\r\n        \"source_port\": \"image\",\r\n        \"target_node_id\": \"process_decision\",\r\n        \"target_port\": \"image\"\r\n      }\r\n    ],\r\n    \"template_inputs\": [\r\n      {\r\n        \"input_id\": \"request_image\",\r\n        \"display_name\": \"Request Image\",\r\n        \"payload_type_id\": \"image-base64.v1\",\r\n        \"target_node_id\": \"decode_request_image\",\r\n        \"target_port\": \"payload\"\r\n      },\r\n      {\r\n        \"input_id\": \"deployment_request\",\r\n        \"display_name\": \"Deployment Request\",\r\n        \"payload_type_id\": \"value.v1\",\r\n        \"target_node_id\": \"deployment_request_input\",\r\n        \"target_port\": \"payload\"\r\n      }\r\n    ],\r\n    \"template_outputs\": [\r\n      {\r\n        \"output_id\": \"model_categories\",\r\n        \"display_name\": \"Model Categories\",\r\n        \"payload_type_id\": \"categories.v1\",\r\n        \"source_node_id\": \"classify\",\r\n        \"source_port\": \"categories\"\r\n      },\r\n      {\r\n        \"output_id\": \"inspection_result\",\r\n        \"display_name\": \"Inspection Result\",\r\n        \"payload_type_id\": \"result-record.v1\",\r\n        \"source_node_id\": \"process_decision\",\r\n        \"source_port\": \"result\"\r\n      },\r\n      {\r\n        \"output_id\": \"decision_summary\",\r\n        \"display_name\": \"Decision Summary\",\r\n        \"payload_type_id\": \"value.v1\",\r\n        \"source_node_id\": \"process_decision\",\r\n        \"source_port\": \"summary\"\r\n      }\r\n    ],\r\n    \"metadata\": {\r\n      \"example_kind\": \"classification-deployment-sync-class-gate\",\r\n      \"uses_existing_deployment_instance\": true,\r\n      \"deployment_instance_id_binding\": \"deployment_request\",\r\n      \"node_groups\": {\r\n        \"input\": [\r\n          \"decode_request_image\",\r\n          \"deployment_request_input\"\r\n        ],\r\n        \"model_and_bridge\": [\r\n          \"classify\",\r\n          \"categories_value\",\r\n          \"extract_top_class_name\",\r\n          \"extract_top_score\",\r\n          \"extract_count\"\r\n        ],\r\n        \"rules\": [\r\n          \"class_match\",\r\n          \"score_ok\",\r\n          \"metadata_object\",\r\n          \"metrics_object\",\r\n          \"process_decision\"\r\n        ]\r\n      }\r\n    }\r\n  }\r\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Save Application",
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/projects/{{projectId}}/applications/classification-deployment-sync-class-gate-app",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "workflows",
+            "projects",
+            "{{projectId}}",
+            "applications",
+            "classification-deployment-sync-class-gate-app"
+          ]
+        },
+        "description": "保存 classification_deployment_sync_class_gate 的 FlowApplication。",
+        "body": {
+          "mode": "raw",
+          "raw": "{\r\n  \"application\": {\r\n    \"format_id\": \"amvision.flow-application.v1\",\r\n    \"application_id\": \"classification-deployment-sync-class-gate-app\",\r\n    \"display_name\": \"Classification Deployment Sync Class Gate App\",\r\n    \"template_ref\": {\r\n      \"template_id\": \"classification-deployment-sync-class-gate-template\",\r\n      \"template_version\": \"1.0.0\",\r\n      \"source_kind\": \"json-file\",\r\n      \"source_uri\": \"docs/examples/workflows/classification_deployment_sync_class_gate.template.json\",\r\n      \"metadata\": {}\r\n    },\r\n    \"runtime_mode\": \"python-json-workflow\",\r\n    \"description\": \"最小 FlowApplication 示例，使用 base64 图片驱动已有 classification deployment，并直接输出 top class 规则判定结果。\",\r\n    \"bindings\": [\r\n      {\r\n        \"binding_id\": \"request_image\",\r\n        \"direction\": \"input\",\r\n        \"template_port_id\": \"request_image\",\r\n        \"binding_kind\": \"workflow-execute-input\",\r\n        \"config\": {\r\n          \"payload_type_id\": \"image-base64.v1\",\r\n          \"content_type\": \"application/json\"\r\n        },\r\n        \"metadata\": {}\r\n      },\r\n      {\r\n        \"binding_id\": \"deployment_request\",\r\n        \"direction\": \"input\",\r\n        \"template_port_id\": \"deployment_request\",\r\n        \"binding_kind\": \"workflow-execute-input\",\r\n        \"config\": {\r\n          \"payload_type_id\": \"value.v1\",\r\n          \"content_type\": \"application/json\"\r\n        },\r\n        \"metadata\": {}\r\n      },\r\n      {\r\n        \"binding_id\": \"model_categories\",\r\n        \"direction\": \"output\",\r\n        \"template_port_id\": \"model_categories\",\r\n        \"binding_kind\": \"workflow-execute-output\",\r\n        \"config\": {\r\n          \"payload_type_id\": \"categories.v1\"\r\n        },\r\n        \"metadata\": {}\r\n      },\r\n      {\r\n        \"binding_id\": \"inspection_result\",\r\n        \"direction\": \"output\",\r\n        \"template_port_id\": \"inspection_result\",\r\n        \"binding_kind\": \"workflow-execute-output\",\r\n        \"config\": {\r\n          \"payload_type_id\": \"result-record.v1\"\r\n        },\r\n        \"metadata\": {}\r\n      },\r\n      {\r\n        \"binding_id\": \"decision_summary\",\r\n        \"direction\": \"output\",\r\n        \"template_port_id\": \"decision_summary\",\r\n        \"binding_kind\": \"workflow-execute-output\",\r\n        \"config\": {\r\n          \"payload_type_id\": \"value.v1\"\r\n        },\r\n        \"metadata\": {}\r\n      }\r\n    ],\r\n    \"metadata\": {\r\n      \"example_kind\": \"classification-deployment-sync-class-gate\",\r\n      \"uses_existing_deployment_instance\": true,\r\n      \"deployment_instance_id_binding\": \"deployment_request\"\r\n    }\r\n  }\r\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Create Preview Run",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/preview-runs",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "workflows",
+            "preview-runs"
+          ]
+        },
+        "description": "创建 classification_deployment_sync_class_gate 的编辑态 preview run。",
+        "body": {
+          "mode": "raw",
+          "raw": "{\r\n  \"project_id\": \"project-1\",\r\n  \"application_ref\": {\r\n    \"application_id\": \"classification-deployment-sync-class-gate-app\"\r\n  },\r\n  \"input_bindings\": {\r\n    \"request_image\": {\r\n      \"image_base64\": \"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO5WZr8AAAAASUVORK5CYII=\",\r\n      \"media_type\": \"image/png\"\r\n    },\r\n    \"deployment_request\": {\r\n      \"value\": {\r\n        \"deployment_instance_id\": \"{{deploymentInstanceId}}\"\r\n      }\r\n    }\r\n  },\r\n  \"execution_metadata\": {\r\n    \"marker\": \"postman-workflow-example-documents-preview\",\r\n    \"example_name\": \"classification_deployment_sync_class_gate\",\r\n    \"scenario\": \"classification-deployment-sync-class-gate\",\r\n    \"trigger_source\": \"editor-preview\"\r\n  },\r\n  \"timeout_seconds\": 30\r\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "response": [],
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(201);",
+              "const body = pm.response.json();",
+              "if (body.preview_run_id) {",
+              "  pm.collectionVariables.set('previewRunId', body.preview_run_id);",
+              "}"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Get Preview Run",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/preview-runs/{{previewRunId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "workflows",
+            "preview-runs",
+            "{{previewRunId}}"
+          ]
+        },
+        "description": "读取上一步 preview run 的 outputs 和 node_records。"
+      },
+      "response": []
+    },
+    {
+      "name": "Create App Runtime",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/app-runtimes",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "workflows",
+            "app-runtimes"
+          ]
+        },
+        "description": "创建保存后 app 的正式 runtime。",
+        "body": {
+          "mode": "raw",
+          "raw": "{\r\n  \"project_id\": \"project-1\",\r\n  \"application_id\": \"classification-deployment-sync-class-gate-app\",\r\n  \"display_name\": \"Classification Deployment Sync Class Gate Runtime\",\r\n  \"metadata\": {\r\n    \"example_kind\": \"classification-deployment-sync-class-gate\",\r\n    \"uses_existing_deployment_instance\": true\r\n  }\r\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "response": [],
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(201);",
+              "const body = pm.response.json();",
+              "if (body.workflow_runtime_id) {",
+              "  pm.collectionVariables.set('workflowRuntimeId', body.workflow_runtime_id);",
+              "}"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Start App Runtime",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/app-runtimes/{{workflowRuntimeId}}/start",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "workflows",
+            "app-runtimes",
+            "{{workflowRuntimeId}}",
+            "start"
+          ]
+        },
+        "description": "启动正式 app runtime。"
+      },
+      "response": []
+    },
+    {
+      "name": "Get App Runtime Health",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/app-runtimes/{{workflowRuntimeId}}/health",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "workflows",
+            "app-runtimes",
+            "{{workflowRuntimeId}}",
+            "health"
+          ]
+        },
+        "description": "读取正式 app runtime health。"
+      },
+      "response": []
+    },
+    {
+      "name": "Invoke App Runtime",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/app-runtimes/{{workflowRuntimeId}}/invoke",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "workflows",
+            "app-runtimes",
+            "{{workflowRuntimeId}}",
+            "invoke"
+          ]
+        },
+        "description": "同步调用正式 app runtime。",
+        "body": {
+          "mode": "raw",
+          "raw": "{\r\n  \"input_bindings\": {\r\n    \"request_image\": {\r\n      \"image_base64\": \"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO5WZr8AAAAASUVORK5CYII=\",\r\n      \"media_type\": \"image/png\"\r\n    },\r\n    \"deployment_request\": {\r\n      \"value\": {\r\n        \"deployment_instance_id\": \"{{deploymentInstanceId}}\"\r\n      }\r\n    }\r\n  },\r\n  \"execution_metadata\": {\r\n    \"scenario\": \"classification-deployment-sync-class-gate\",\r\n    \"trigger_source\": \"sync-api\"\r\n  }\r\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "response": [],
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const body = pm.response.json();",
+              "if (body.workflow_run_id) {",
+              "  pm.collectionVariables.set('workflowRunId', body.workflow_run_id);",
+              "}"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Create Workflow Run",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/app-runtimes/{{workflowRuntimeId}}/runs",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "workflows",
+            "app-runtimes",
+            "{{workflowRuntimeId}}",
+            "runs"
+          ]
+        },
+        "description": "创建正式 async workflow run。",
+        "body": {
+          "mode": "raw",
+          "raw": "{\r\n  \"input_bindings\": {\r\n    \"request_image\": {\r\n      \"image_base64\": \"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO5WZr8AAAAASUVORK5CYII=\",\r\n      \"media_type\": \"image/png\"\r\n    },\r\n    \"deployment_request\": {\r\n      \"value\": {\r\n        \"deployment_instance_id\": \"{{deploymentInstanceId}}\"\r\n      }\r\n    }\r\n  },\r\n  \"execution_metadata\": {\r\n    \"scenario\": \"classification-deployment-sync-class-gate\",\r\n    \"trigger_source\": \"async-api\"\r\n  }\r\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "response": [],
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(201);",
+              "const body = pm.response.json();",
+              "if (body.workflow_run_id) {",
+              "  pm.collectionVariables.set('workflowRunId', body.workflow_run_id);",
+              "}"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Get Workflow Run",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/runs/{{workflowRunId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "workflows",
+            "runs",
+            "{{workflowRunId}}"
+          ]
+        },
+        "description": "读取 invoke 或 async run 返回的 workflow_run_id。"
+      },
+      "response": []
+    },
+    {
+      "name": "Stop App Runtime",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/app-runtimes/{{workflowRuntimeId}}/stop",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "workflows",
+            "app-runtimes",
+            "{{workflowRuntimeId}}",
+            "stop"
+          ]
+        },
+        "description": "停止正式 app runtime。"
+      },
+      "response": []
+    }
+  ]
+}

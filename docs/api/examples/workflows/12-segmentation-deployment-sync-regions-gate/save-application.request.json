@@ -1,0 +1,85 @@
+{
+  "application": {
+    "format_id": "amvision.flow-application.v1",
+    "application_id": "segmentation-deployment-sync-regions-gate-app",
+    "display_name": "Segmentation Deployment Sync Regions Gate App",
+    "template_ref": {
+      "template_id": "segmentation-deployment-sync-regions-gate-template",
+      "template_version": "1.0.0",
+      "source_kind": "json-file",
+      "source_uri": "docs/examples/workflows/segmentation_deployment_sync_regions_gate.template.json",
+      "metadata": {}
+    },
+    "runtime_mode": "python-json-workflow",
+    "description": "最小 FlowApplication 示例，使用 base64 图片驱动已有 segmentation deployment，并直接输出 regions 规则判定结果。",
+    "bindings": [
+      {
+        "binding_id": "request_image",
+        "direction": "input",
+        "template_port_id": "request_image",
+        "binding_kind": "workflow-execute-input",
+        "config": {
+          "payload_type_id": "image-base64.v1",
+          "content_type": "application/json"
+        },
+        "metadata": {}
+      },
+      {
+        "binding_id": "deployment_request",
+        "direction": "input",
+        "template_port_id": "deployment_request",
+        "binding_kind": "workflow-execute-input",
+        "config": {
+          "payload_type_id": "value.v1",
+          "content_type": "application/json"
+        },
+        "metadata": {}
+      },
+      {
+        "binding_id": "model_segments",
+        "direction": "output",
+        "template_port_id": "model_segments",
+        "binding_kind": "workflow-execute-output",
+        "config": {
+          "payload_type_id": "segments.v1"
+        },
+        "metadata": {}
+      },
+      {
+        "binding_id": "model_regions",
+        "direction": "output",
+        "template_port_id": "model_regions",
+        "binding_kind": "workflow-execute-output",
+        "config": {
+          "payload_type_id": "regions.v1"
+        },
+        "metadata": {}
+      },
+      {
+        "binding_id": "inspection_result",
+        "direction": "output",
+        "template_port_id": "inspection_result",
+        "binding_kind": "workflow-execute-output",
+        "config": {
+          "payload_type_id": "result-record.v1"
+        },
+        "metadata": {}
+      },
+      {
+        "binding_id": "decision_summary",
+        "direction": "output",
+        "template_port_id": "decision_summary",
+        "binding_kind": "workflow-execute-output",
+        "config": {
+          "payload_type_id": "value.v1"
+        },
+        "metadata": {}
+      }
+    ],
+    "metadata": {
+      "example_kind": "segmentation-deployment-sync-regions-gate",
+      "uses_existing_deployment_instance": true,
+      "deployment_instance_id_binding": "deployment_request"
+    }
+  }
+}

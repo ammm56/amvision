@@ -1,0 +1,303 @@
+{
+  "template": {
+    "format_id": "amvision.workflow-graph-template.v1",
+    "template_id": "classification-deployment-sync-class-gate-template",
+    "template_version": "1.0.0",
+    "display_name": "Classification Deployment Sync Class Gate",
+    "description": "接收 base64 图片和已有 deployment 请求，直接执行 classification 推理，再基于 top class 与 top score 完成最小 OK/NG 判定。",
+    "nodes": [
+      {
+        "node_id": "decode_request_image",
+        "node_type_id": "core.io.image-base64-decode",
+        "parameters": {}
+      },
+      {
+        "node_id": "deployment_request_input",
+        "node_type_id": "core.io.template-input.object",
+        "parameters": {}
+      },
+      {
+        "node_id": "classify",
+        "node_type_id": "core.model.classification",
+        "parameters": {
+          "auto_start_process": false,
+          "top_k": 3,
+          "save_result_image": false,
+          "return_preview_image_base64": false
+        }
+      },
+      {
+        "node_id": "categories_value",
+        "node_type_id": "core.logic.payload-to-value",
+        "parameters": {}
+      },
+      {
+        "node_id": "extract_top_class_name",
+        "node_type_id": "core.logic.value-field-extract",
+        "parameters": {
+          "path": "top_item.class_name"
+        }
+      },
+      {
+        "node_id": "extract_top_score",
+        "node_type_id": "core.logic.value-field-extract",
+        "parameters": {
+          "path": "top_item.score"
+        }
+      },
+      {
+        "node_id": "extract_count",
+        "node_type_id": "core.logic.value-field-extract",
+        "parameters": {
+          "path": "count"
+        }
+      },
+      {
+        "node_id": "class_match",
+        "node_type_id": "core.logic.compare",
+        "parameters": {
+          "operator": "eq",
+          "right_value": "ok-part"
+        }
+      },
+      {
+        "node_id": "score_ok",
+        "node_type_id": "core.rule.threshold-check",
+        "parameters": {
+          "operator": "ge",
+          "threshold": 0.8
+        }
+      },
+      {
+        "node_id": "metadata_object",
+        "node_type_id": "core.logic.object-create",
+        "parameters": {
+          "keys": [
+            "deployment_request"
+          ],
+          "fields": {
+            "inspection_kind": "classification-class-gate",
+            "station_id": "line-cls-01"
+          }
+        }
+      },
+      {
+        "node_id": "metrics_object",
+        "node_type_id": "core.logic.object-create",
+        "parameters": {
+          "keys": [
+            "categories",
+            "top_class_name",
+            "top_score",
+            "count"
+          ]
+        }
+      },
+      {
+        "node_id": "process_decision",
+        "node_type_id": "core.rule.process-decision",
+        "parameters": {
+          "mode": "all",
+          "condition_names": [
+            "class_match",
+            "score"
+          ],
+          "ok_reason": "classification class gate passed",
+          "ng_reason": "classification class gate failed"
+        }
+      }
+    ],
+    "edges": [
+      {
+        "edge_id": "edge-decode-classify-image",
+        "source_node_id": "decode_request_image",
+        "source_port": "image",
+        "target_node_id": "classify",
+        "target_port": "image"
+      },
+      {
+        "edge_id": "edge-deployment-request-classify",
+        "source_node_id": "deployment_request_input",
+        "source_port": "value",
+        "target_node_id": "classify",
+        "target_port": "request"
+      },
+      {
+        "edge_id": "edge-classify-categories-value",
+        "source_node_id": "classify",
+        "source_port": "categories",
+        "target_node_id": "categories_value",
+        "target_port": "categories"
+      },
+      {
+        "edge_id": "edge-categories-value-top-class",
+        "source_node_id": "categories_value",
+        "source_port": "value",
+        "target_node_id": "extract_top_class_name",
+        "target_port": "value"
+      },
+      {
+        "edge_id": "edge-categories-value-top-score",
+        "source_node_id": "categories_value",
+        "source_port": "value",
+        "target_node_id": "extract_top_score",
+        "target_port": "value"
+      },
+      {
+        "edge_id": "edge-categories-value-count",
+        "source_node_id": "categories_value",
+        "source_port": "value",
+        "target_node_id": "extract_count",
+        "target_port": "value"
+      },
+      {
+        "edge_id": "edge-top-class-compare",
+        "source_node_id": "extract_top_class_name",
+        "source_port": "value",
+        "target_node_id": "class_match",
+        "target_port": "left"
+      },
+      {
+        "edge_id": "edge-top-score-threshold",
+        "source_node_id": "extract_top_score",
+        "source_port": "value",
+        "target_node_id": "score_ok",
+        "target_port": "value"
+      },
+      {
+        "edge_id": "edge-deployment-request-metadata",
+        "source_node_id": "deployment_request_input",
+        "source_port": "value",
+        "target_node_id": "metadata_object",
+        "target_port": "values"
+      },
+      {
+        "edge_id": "edge-categories-value-metrics",
+        "source_node_id": "categories_value",
+        "source_port": "value",
+        "target_node_id": "metrics_object",
+        "target_port": "values"
+      },
+      {
+        "edge_id": "edge-top-class-metrics",
+        "source_node_id": "extract_top_class_name",
+        "source_port": "value",
+        "target_node_id": "metrics_object",
+        "target_port": "values"
+      },
+      {
+        "edge_id": "edge-top-score-metrics",
+        "source_node_id": "extract_top_score",
+        "source_port": "value",
+        "target_node_id": "metrics_object",
+        "target_port": "values"
+      },
+      {
+        "edge_id": "edge-count-metrics",
+        "source_node_id": "extract_count",
+        "source_port": "value",
+        "target_node_id": "metrics_object",
+        "target_port": "values"
+      },
+      {
+        "edge_id": "edge-class-match-process",
+        "source_node_id": "class_match",
+        "source_port": "result",
+        "target_node_id": "process_decision",
+        "target_port": "conditions"
+      },
+      {
+        "edge_id": "edge-score-process",
+        "source_node_id": "score_ok",
+        "source_port": "result",
+        "target_node_id": "process_decision",
+        "target_port": "conditions"
+      },
+      {
+        "edge_id": "edge-metrics-process",
+        "source_node_id": "metrics_object",
+        "source_port": "value",
+        "target_node_id": "process_decision",
+        "target_port": "metrics"
+      },
+      {
+        "edge_id": "edge-metadata-process",
+        "source_node_id": "metadata_object",
+        "source_port": "value",
+        "target_node_id": "process_decision",
+        "target_port": "metadata"
+      },
+      {
+        "edge_id": "edge-image-process",
+        "source_node_id": "decode_request_image",
+        "source_port": "image",
+        "target_node_id": "process_decision",
+        "target_port": "image"
+      }
+    ],
+    "template_inputs": [
+      {
+        "input_id": "request_image",
+        "display_name": "Request Image",
+        "payload_type_id": "image-base64.v1",
+        "target_node_id": "decode_request_image",
+        "target_port": "payload"
+      },
+      {
+        "input_id": "deployment_request",
+        "display_name": "Deployment Request",
+        "payload_type_id": "value.v1",
+        "target_node_id": "deployment_request_input",
+        "target_port": "payload"
+      }
+    ],
+    "template_outputs": [
+      {
+        "output_id": "model_categories",
+        "display_name": "Model Categories",
+        "payload_type_id": "categories.v1",
+        "source_node_id": "classify",
+        "source_port": "categories"
+      },
+      {
+        "output_id": "inspection_result",
+        "display_name": "Inspection Result",
+        "payload_type_id": "result-record.v1",
+        "source_node_id": "process_decision",
+        "source_port": "result"
+      },
+      {
+        "output_id": "decision_summary",
+        "display_name": "Decision Summary",
+        "payload_type_id": "value.v1",
+        "source_node_id": "process_decision",
+        "source_port": "summary"
+      }
+    ],
+    "metadata": {
+      "example_kind": "classification-deployment-sync-class-gate",
+      "uses_existing_deployment_instance": true,
+      "deployment_instance_id_binding": "deployment_request",
+      "node_groups": {
+        "input": [
+          "decode_request_image",
+          "deployment_request_input"
+        ],
+        "model_and_bridge": [
+          "classify",
+          "categories_value",
+          "extract_top_class_name",
+          "extract_top_score",
+          "extract_count"
+        ],
+        "rules": [
+          "class_match",
+          "score_ok",
+          "metadata_object",
+          "metrics_object",
+          "process_decision"
+        ]
+      }
+    }
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "project_id": "project-1",
+  "application_id": "segmentation-deployment-sync-regions-gate-app",
+  "display_name": "Segmentation Deployment Sync Regions Gate Runtime",
+  "metadata": {
+    "example_kind": "segmentation-deployment-sync-regions-gate",
+    "uses_existing_deployment_instance": true
+  }
+}

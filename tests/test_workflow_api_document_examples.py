@@ -48,6 +48,18 @@ WORKFLOW_API_EXAMPLE_FOLDERS = {
     "industrial_single_frame_glue_roi_delivery_bundle": Path(
         "10-industrial-single-frame-glue-roi-delivery-bundle"
     ),
+    "segmentation_deployment_sync_regions_gate": Path(
+        "12-segmentation-deployment-sync-regions-gate"
+    ),
+    "classification_deployment_sync_class_gate": Path(
+        "13-classification-deployment-sync-class-gate"
+    ),
+    "pose_deployment_sync_presence_gate": Path(
+        "14-pose-deployment-sync-presence-gate"
+    ),
+    "obb_deployment_sync_angle_gate": Path(
+        "15-obb-deployment-sync-angle-gate"
+    ),
 }
 
 TRIGGER_SOURCE_API_EXAMPLE_FOLDERS = {
@@ -97,6 +109,18 @@ WORKFLOW_POSTMAN_COLLECTIONS = {
     ),
     "11-industrial-local-directory-poll-detection-position-gate": (
         "11-industrial-local-directory-poll-detection-position-gate.postman_collection.json"
+    ),
+    "12-segmentation-deployment-sync-regions-gate": (
+        "12-segmentation-deployment-sync-regions-gate.postman_collection.json"
+    ),
+    "13-classification-deployment-sync-class-gate": (
+        "13-classification-deployment-sync-class-gate.postman_collection.json"
+    ),
+    "14-pose-deployment-sync-presence-gate": (
+        "14-pose-deployment-sync-presence-gate.postman_collection.json"
+    ),
+    "15-obb-deployment-sync-angle-gate": (
+        "15-obb-deployment-sync-angle-gate.postman_collection.json"
     ),
 }
 
@@ -1385,6 +1409,10 @@ def test_workflow_postman_directory_contains_ordered_formal_workflow_collections
     assert "09-industrial-local-directory-watch-detection-position-gate" in readme_text
     assert "10-industrial-single-frame-glue-roi-delivery-bundle" in readme_text
     assert "11-industrial-local-directory-poll-detection-position-gate" in readme_text
+    assert "12-segmentation-deployment-sync-regions-gate" in readme_text
+    assert "13-classification-deployment-sync-class-gate" in readme_text
+    assert "14-pose-deployment-sync-presence-gate" in readme_text
+    assert "15-obb-deployment-sync-angle-gate" in readme_text
     assert "Create Preview Run / Get Preview Run" in readme_text
     assert "Create Workflow Run / Get Workflow Run" in readme_text
     assert "Create TriggerSource / Enable / Health / Disable" in readme_text
@@ -1422,6 +1450,10 @@ def test_workflow_api_examples_are_classified_by_numbered_directories() -> None:
         "09-industrial-local-directory-watch-detection-position-gate",
         "10-industrial-single-frame-glue-roi-delivery-bundle",
         "11-industrial-local-directory-poll-detection-position-gate",
+        "12-segmentation-deployment-sync-regions-gate",
+        "13-classification-deployment-sync-class-gate",
+        "14-pose-deployment-sync-presence-gate",
+        "15-obb-deployment-sync-angle-gate",
     ]
     assert "同一个 workflow app 同时发布 HTTP `image-base64.v1` 和 ZeroMQ `image-ref.v1` 输入" in readme_text
     assert "独立的 TriggerSource / PLC 调试示例" in readme_text
@@ -1801,6 +1833,34 @@ def test_workflow_example_documents_postman_collection_contains_remaining_debug_
             "industrial_single_frame_glue_roi_delivery_bundle",
             False,
             id="workflow-10-industrial-delivery-bundle",
+        ),
+        pytest.param(
+            "12-segmentation-deployment-sync-regions-gate",
+            "12-segmentation-deployment-sync-regions-gate.postman_collection.json",
+            "segmentation_deployment_sync_regions_gate",
+            False,
+            id="workflow-12-segmentation-direct-model",
+        ),
+        pytest.param(
+            "13-classification-deployment-sync-class-gate",
+            "13-classification-deployment-sync-class-gate.postman_collection.json",
+            "classification_deployment_sync_class_gate",
+            False,
+            id="workflow-13-classification-direct-model",
+        ),
+        pytest.param(
+            "14-pose-deployment-sync-presence-gate",
+            "14-pose-deployment-sync-presence-gate.postman_collection.json",
+            "pose_deployment_sync_presence_gate",
+            False,
+            id="workflow-14-pose-direct-model",
+        ),
+        pytest.param(
+            "15-obb-deployment-sync-angle-gate",
+            "15-obb-deployment-sync-angle-gate.postman_collection.json",
+            "obb_deployment_sync_angle_gate",
+            False,
+            id="workflow-15-obb-direct-model",
         ),
     ],
 )

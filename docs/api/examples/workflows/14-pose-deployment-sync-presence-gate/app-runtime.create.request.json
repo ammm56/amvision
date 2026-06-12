@@ -1,0 +1,9 @@
+{
+  "project_id": "project-1",
+  "application_id": "pose-deployment-sync-presence-gate-app",
+  "display_name": "Pose Deployment Sync Presence Gate Runtime",
+  "metadata": {
+    "example_kind": "pose-deployment-sync-presence-gate",
+    "uses_existing_deployment_instance": true
+  }
+}

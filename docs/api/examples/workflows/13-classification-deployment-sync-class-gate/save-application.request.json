@@ -1,0 +1,75 @@
+{
+  "application": {
+    "format_id": "amvision.flow-application.v1",
+    "application_id": "classification-deployment-sync-class-gate-app",
+    "display_name": "Classification Deployment Sync Class Gate App",
+    "template_ref": {
+      "template_id": "classification-deployment-sync-class-gate-template",
+      "template_version": "1.0.0",
+      "source_kind": "json-file",
+      "source_uri": "docs/examples/workflows/classification_deployment_sync_class_gate.template.json",
+      "metadata": {}
+    },
+    "runtime_mode": "python-json-workflow",
+    "description": "最小 FlowApplication 示例，使用 base64 图片驱动已有 classification deployment，并直接输出 top class 规则判定结果。",
+    "bindings": [
+      {
+        "binding_id": "request_image",
+        "direction": "input",
+        "template_port_id": "request_image",
+        "binding_kind": "workflow-execute-input",
+        "config": {
+          "payload_type_id": "image-base64.v1",
+          "content_type": "application/json"
+        },
+        "metadata": {}
+      },
+      {
+        "binding_id": "deployment_request",
+        "direction": "input",
+        "template_port_id": "deployment_request",
+        "binding_kind": "workflow-execute-input",
+        "config": {
+          "payload_type_id": "value.v1",
+          "content_type": "application/json"
+        },
+        "metadata": {}
+      },
+      {
+        "binding_id": "model_categories",
+        "direction": "output",
+        "template_port_id": "model_categories",
+        "binding_kind": "workflow-execute-output",
+        "config": {
+          "payload_type_id": "categories.v1"
+        },
+        "metadata": {}
+      },
+      {
+        "binding_id": "inspection_result",
+        "direction": "output",
+        "template_port_id": "inspection_result",
+        "binding_kind": "workflow-execute-output",
+        "config": {
+          "payload_type_id": "result-record.v1"
+        },
+        "metadata": {}
+      },
+      {
+        "binding_id": "decision_summary",
+        "direction": "output",
+        "template_port_id": "decision_summary",
+        "binding_kind": "workflow-execute-output",
+        "config": {
+          "payload_type_id": "value.v1"
+        },
+        "metadata": {}
+      }
+    ],
+    "metadata": {
+      "example_kind": "classification-deployment-sync-class-gate",
+      "uses_existing_deployment_instance": true,
+      "deployment_instance_id_binding": "deployment_request"
+    }
+  }
+}

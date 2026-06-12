@@ -1,0 +1,9 @@
+{
+  "project_id": "project-1",
+  "application_id": "classification-deployment-sync-class-gate-app",
+  "display_name": "Classification Deployment Sync Class Gate Runtime",
+  "metadata": {
+    "example_kind": "classification-deployment-sync-class-gate",
+    "uses_existing_deployment_instance": true
+  }
+}

@@ -16,8 +16,14 @@
 10. `09-industrial-local-directory-watch-detection-position-gate/`：第九类 `directory-watch` 目录事件监听 + 静态 deployment_request 注入 + 工业检测位置门控链路。
 11. `10-industrial-single-frame-glue-roi-delivery-bundle/`：第十类工业单帧 `regions.v1 + ROI + delivery context` 结果交付链，覆盖 PLC 信号写入、JSON/CSV 归档、MES 请求准备和 local-db upsert。
 12. `11-industrial-local-directory-poll-detection-position-gate/`：第十一类 `directory-poll` 固定周期目录轮询 + 静态 deployment_request 注入 + 工业检测位置门控链路。
+13. `12-segmentation-deployment-sync-regions-gate/`：第十二类 segmentation direct model 同步推理、`segments.v1 -> regions.v1` 桥接和最小工业规则链路。
+14. `13-classification-deployment-sync-class-gate/`：第十三类 classification direct model 同步推理、top class 判定和最小工业规则链路。
+15. `14-pose-deployment-sync-presence-gate/`：第十四类 pose direct model 同步推理、count/score presence 判定和最小工业规则链路。
+16. `15-obb-deployment-sync-angle-gate/`：第十五类 OBB direct model 同步推理、angle range 判定和最小工业规则链路。
 
-后续完整 workflow app 示例按 `12-*`、`13-*` 继续添加。
+后续完整 workflow app 示例按 `16-*`、`17-*` 继续添加。
+
+`12-*` 到 `15-*` 这 4 个目录只覆盖 workflow/runtime 使用面。dataset import、dataset export、training、validation、evaluation、conversion、deployment 和 infer 的整条生命周期调试，统一放在 `docs/api/postman/segmentation-full-chain.postman_collection.json`、`classification-full-chain.postman_collection.json`、`pose-full-chain.postman_collection.json`、`obb-full-chain.postman_collection.json`。
 
 ## 每个 collection 的调用面
 
@@ -55,6 +61,7 @@
 - `10-*` 的具体导入变量、改值位置和推荐联调顺序见 [docs/api/postman/workflows/10-industrial-single-frame-glue-roi-delivery-bundle/README.md](10-industrial-single-frame-glue-roi-delivery-bundle/README.md)。
 - `11-*` collection 与 `09-*` 一样保留完整 TriggerSource 调试链，但把入口语义换成固定周期轮询：重点变成 `directory-poll` 的扫描周期、稳定期、checkpoint 恢复，以及静态 `deployment_request` 如何接进同一条 detection 规则链。
 - `11-*` 的具体导入变量、改值位置和推荐联调顺序见 [docs/api/postman/workflows/11-industrial-local-directory-poll-detection-position-gate/README.md](11-industrial-local-directory-poll-detection-position-gate/README.md)。
+- `12-*` 到 `15-*` collection 回到标准 HTTP workflow app 调试面，不再引入 TriggerSource 或额外协议入口；目标是先把 segmentation / classification / pose / obb 这 4 类 non-detection direct model 的真实使用链和当前 API 调试入口收实。
 - FrameRef/BufferRef 的固定请求体需要由本地 adapter 在运行时生成，因此 `06-*`、`07-*` collection 仍不直接发送图片 bytes；图片数据面继续使用 C# SDK 或其他后续 SDK。
 - TriggerSource 只负责提交协议原生输入，不替 workflow 图做 `image-ref -> image-base64`、本地磁盘读图或相机取帧。需要这些能力时，应通过图中的显式节点或 custom node 实现。
 - 当前 `plc-register` 和 `directory-watch` 的 `input_binding_mapping` 还不会自动把 `payload / event` 原始对象包装成 `value.v1`；因此 `08-*`、`09-*` collection 对应的 workflow app 都显式使用 `response-body.v1 -> payload-to-value` 做图内桥接。

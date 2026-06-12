@@ -11,7 +11,13 @@
 - `09-*`：独立的 TriggerSource / directory-watch 调试示例，聚焦“目录事件 -> 工业目录批次检测 workflow app”的现场接法。
 - `10-*`：正式的工业单帧交付示例，聚焦 `regions.v1 + ROI + delivery context -> process-decision -> PLC/JSON/CSV/MES/local-db` 这条现场结果交付链。
 - `11-*`：独立的 TriggerSource / directory-poll 调试示例，聚焦“固定周期目录轮询 -> 工业目录批次检测 workflow app”的现场接法，并把 `checkpoint + batch + callback` 这条正式链路收成 checked-in 调试入口。
-- 后续完整示例按 `12-*`、`13-*` 继续新增。
+- `12-*`：正式的 segmentation direct model 调试示例，聚焦 `image-base64 -> core.model.segmentation -> segments-to-regions -> process-decision` 这条最小现场链。
+- `13-*`：正式的 classification direct model 调试示例，聚焦 `top class + top score -> process-decision` 这条最小现场链。
+- `14-*`：正式的 pose direct model 调试示例，聚焦 `count + top pose score -> process-decision` 这条最小现场链。
+- `15-*`：正式的 OBB direct model 调试示例，聚焦 `count + angle range -> process-decision` 这条最小现场链。
+- 后续完整示例按 `16-*`、`17-*` 继续新增。
+
+`12-*` 到 `15-*` 继续只保留 workflow/runtime 使用面的 checked-in 示例，不承接 dataset import、dataset export、training、validation、evaluation、conversion 和 deployment 全生命周期调试。对应的完整 API 联调入口统一放在 `docs/api/postman/*-full-chain.postman_collection.json`。
 
 ## 每个示例目录的文件
 
@@ -20,6 +26,7 @@
 - `09-*` 目录包含：`save-template.request.json`、`save-application.request.json`、`preview-run.request.json`、`app-runtime.create.request.json`、`app-runtime.invoke.request.json`、`app-runtime.run.create.request.json`、`trigger-source.create.request.json`。
 - `10-*` 目录包含：`save-template.request.json`、`save-application.request.json`、`preview-run.request.json`、`app-runtime.create.request.json`、`app-runtime.invoke.request.json`、`app-runtime.run.create.request.json`。
 - `11-*` 目录包含：`save-template.request.json`、`save-application.request.json`、`preview-run.request.json`、`app-runtime.create.request.json`、`app-runtime.invoke.request.json`、`app-runtime.run.create.request.json`、`trigger-source.create.request.json`。
+- `12-*` 到 `15-*` 目录包含：`save-template.request.json`、`save-application.request.json`、`preview-run.request.json`、`app-runtime.create.request.json`、`app-runtime.invoke.request.json`、`app-runtime.run.create.request.json`。
 
 `06-*`、`07-*`、`08-*`、`09-*` 不是只保留 TriggerSource 特例接口；Save Template、Save Application、Preview Run、Create App Runtime、Invoke App Runtime 和 Create Workflow Run 仍然完整保留，TriggerSource 请求只是额外增加的协议入口调试步骤。
 
