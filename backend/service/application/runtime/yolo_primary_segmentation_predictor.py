@@ -566,8 +566,12 @@ class OpenVINOYoloPrimarySegmentationRuntimeSession:
         outputs = self.session.infer_new_request({self.input_port: input_tensor})
         infer_ms = round((perf_counter() - infer_started_at) * 1000, 3)
 
-        raw_prediction = outputs.get(self.prediction_port) or outputs.get(self.output_names[0])
-        raw_proto = outputs.get(self.proto_port) or outputs.get(self.output_names[1])
+        raw_prediction = outputs.get(self.prediction_port)
+        if raw_prediction is None:
+            raw_prediction = outputs.get(self.output_names[0])
+        raw_proto = outputs.get(self.proto_port)
+        if raw_proto is None:
+            raw_proto = outputs.get(self.output_names[1])
         if raw_prediction is None or raw_proto is None:
             raise InvalidRequestError("openvino segmentation 推理输出缺少 prediction 或 proto")
 

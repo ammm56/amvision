@@ -33,7 +33,26 @@ def test_segment26_model_can_build_and_forward():
     model.eval()
     with torch.no_grad():
         output = model(torch.randn(1, 3, 256, 256))
-    assert output is not None
+    assert isinstance(output, tuple)
+    assert len(output) == 2
+    prediction, proto = output
+    assert prediction is not None
+    assert proto is not None
+    assert prediction.ndim == 3
+    assert proto.ndim == 4
+
+
+def test_segment26_model_training_output_contains_proto():
+    """验证 Segment26 训练态原始输出包含 proto。"""
+    model = build_yolo_primary_model(model_type="yolo26", task_type="segmentation", model_scale="nano", num_classes=1)
+    model.train()
+    output = model(torch.randn(1, 3, 256, 256))
+    assert isinstance(output, dict)
+    if "one2many" in output:
+        assert output["one2many"]["proto"] is not None
+        assert output["one2one"]["proto"] is not None
+        return
+    assert output["proto"] is not None
 
 
 def test_pose_prediction_array_postprocess():

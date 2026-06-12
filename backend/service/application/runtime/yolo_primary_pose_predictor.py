@@ -261,7 +261,9 @@ class OpenVINOYoloPrimaryPoseRuntimeSession:
         infer_started_at = perf_counter()
         outputs = self.session.infer_new_request({self.input_port: input_tensor})
         infer_ms = round((perf_counter() - infer_started_at) * 1000, 3)
-        raw_output = outputs.get(self.output_port) or outputs.get(self.output_name)
+        raw_output = outputs.get(self.output_port)
+        if raw_output is None:
+            raw_output = outputs.get(self.output_name)
         if raw_output is None and hasattr(outputs, "values"):
             values = tuple(outputs.values())
             raw_output = values[0] if values else None

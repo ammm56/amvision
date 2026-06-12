@@ -16,7 +16,7 @@
 ### 生产环境
 
 - [docs/deployment/production-environment.md](production-environment.md)：生产环境的 release 组装、目录职责、根目录一键启动和排障入口
-- [docs/deployment/runtime-profiles.md](runtime-profiles.md)：当前 `full` 发布目录、launcher 和默认 worker 拓扑
+- [docs/deployment/runtime-profiles.md](runtime-profiles.md)：当前 `full` 发布目录、launcher、默认 worker 拓扑、worker profile、日志和状态文件约定
 - [docs/deployment/bundled-python-deployment.md](bundled-python-deployment.md)：同目录 Python 运行时的安装、升级、回滚和验收方案
 - [docs/deployment/full-first-deploy-checklist.md](full-first-deploy-checklist.md)：`release/full/` 首次部署时的 layout、health、docs 和 smoke test 顺序
 

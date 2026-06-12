@@ -43,3 +43,11 @@ D:/software/anaconda3/envs/amvision/python.exe -m pytest tests/integration/test_
 ```powershell
 D:/software/anaconda3/envs/amvision/python.exe -m pytest tests/integration/test_sam3_video_memory_attention_benchmark.py -q -s
 ```
+
+```powershell
+D:/software/anaconda3/envs/amvision/python.exe -m pytest --basetemp .tmp/pytest_openvino_matrix tests/integration/test_non_detection_runtime_backend_smoke_matrix.py -k openvino -q
+```
+
+```powershell
+D:/software/anaconda3/envs/amvision/python.exe -m pytest --basetemp .tmp/pytest_tensorrt_matrix tests/integration/test_non_detection_runtime_backend_smoke_matrix.py -k tensorrt -q
+```

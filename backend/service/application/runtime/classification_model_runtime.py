@@ -137,8 +137,6 @@ def _load_yolov8_classification_session(
 ) -> ClassificationModelRuntimeSession:
     """按 runtime backend 加载当前已接通的 YOLOv8 classification 会话。"""
 
-    del pinned_output_buffer_enabled
-    del pinned_output_buffer_max_bytes
     if runtime_target.runtime_backend == "pytorch":
         return PyTorchYoloV8ClassificationRuntimeSession.load(
             dataset_storage=dataset_storage,
@@ -172,8 +170,6 @@ def _load_yolo11_classification_session(
 ) -> ClassificationModelRuntimeSession:
     """按 runtime backend 加载当前已接通的 YOLO11 classification 会话。"""
 
-    del pinned_output_buffer_enabled
-    del pinned_output_buffer_max_bytes
     if runtime_target.runtime_backend == "pytorch":
         return PyTorchYolo11ClassificationRuntimeSession.load(
             dataset_storage=dataset_storage,
@@ -207,8 +203,6 @@ def _load_yolo26_classification_session(
 ) -> ClassificationModelRuntimeSession:
     """按 runtime backend 加载当前已接通的 YOLO26 classification 会话。"""
 
-    del pinned_output_buffer_enabled
-    del pinned_output_buffer_max_bytes
     if runtime_target.runtime_backend == "pytorch":
         return PyTorchYolo26ClassificationRuntimeSession.load(
             dataset_storage=dataset_storage,

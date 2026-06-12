@@ -718,17 +718,35 @@ class Segment26(Segment):
     ) -> dict[str, torch.Tensor] | torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
         """执行分割头前向。训练时返回 raw dict，eval 时返回 (prediction, proto)。"""
 
+        if not isinstance(x, list | tuple) or len(x) != self.nl:
+            raise InvalidRequestError(
+                "Segment26 头收到的特征层数量不合法",
+                details={"expected_feature_count": self.nl},
+            )
+        proto_output = self.proto(tuple(x))
+        proto = proto_output[0] if isinstance(proto_output, tuple) else proto_output
+        semseg = proto_output[1] if isinstance(proto_output, tuple) else None
         raw_outputs = self._build_head_outputs(x, box_head=self.cv2, class_head=self.cv3, extra_head=self.cv4, extra_key="mask_coefficients", extra_channels=self.nm)
         if self.end2end:
             detached_inputs = [feature.detach() for feature in x]
             one2one_outputs = self._build_head_outputs(detached_inputs, box_head=self.one2one_cv2, class_head=self.one2one_cv3, extra_head=self.one2one_cv4, extra_key="mask_coefficients", extra_channels=self.nm)
             raw_outputs = {"one2many": raw_outputs, "one2one": one2one_outputs}
         if self.training:
+            if self.end2end:
+                raw_outputs["one2many"]["proto"] = proto
+                raw_outputs["one2one"]["proto"] = proto.detach()
+                if semseg is not None:
+                    raw_outputs["one2many"]["semseg"] = semseg
+                    raw_outputs["one2one"]["semseg"] = semseg.detach()
+            else:
+                raw_outputs["proto"] = proto
+                if semseg is not None:
+                    raw_outputs["semseg"] = semseg
             return raw_outputs
         inference_outputs = raw_outputs["one2one"] if self.end2end else raw_outputs
         prediction = self._build_inference_prediction(inference_outputs)
         prediction = torch.cat((prediction, inference_outputs["mask_coefficients"]), dim=1)
-        return prediction.transpose(1, 2).contiguous(), inference_outputs.get("proto")
+        return prediction.transpose(1, 2).contiguous(), proto
 
 
 class OBB(Detect):
@@ -800,7 +818,8 @@ class OBB(Detect):
         angle = self._decode_angle_logits(inference_outputs["angle"])
         anchor_points = _make_anchors(feature_maps=inference_outputs["feats"], strides=self.strides)[0]
         rbox = _dist2rbox(dfl_distances, angle, anchor_points=anchor_points)
-        prediction = torch.cat((rbox, inference_outputs["scores"]), dim=1)
+        class_scores = inference_outputs["scores"].sigmoid()
+        prediction = torch.cat((rbox, class_scores, angle), dim=1)
         return prediction.transpose(1, 2).contiguous()
 
     def _decode_angle_logits(self, angle_logits: torch.Tensor) -> torch.Tensor:

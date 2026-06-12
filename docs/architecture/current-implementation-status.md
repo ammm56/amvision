@@ -6,6 +6,8 @@
 
 本文档补充 [system-overview.md](system-overview.md) 的长期架构视角，重点回答“当前代码已经做到哪里”。
 
+更细的 `model_type × task_type × 导入/导出/训练/验证/评估/转换/部署/推理/workflow/前端` 正式矩阵，现单独整理在 [model-support-matrix.md](model-support-matrix.md)。
+
 ## 适用范围
 
 - backend-service、workflow runtime、TriggerSourceSupervisor、deployment process supervisor 的当前装配方式
@@ -125,6 +127,7 @@
 
 - 队列消费者分别落在 `backend/workers/datasets/`、`backend/workers/training/`、`backend/workers/conversion/`、`backend/workers/evaluation/` 和 `backend/workers/inference/`。
 - 当前独立 worker 已经支持通过 `config/backend-worker.json` 的 `task_manager.enabled_consumer_kinds` 统一装配六类消费者，也支持通过 `runtimes/manifests/worker-profiles/*.json` 以单一职责 profile 启动独立 worker。
+- 当前 `worker-profiles` 也已经按真实能力收平：`training` 覆盖 `yolox / yolov8 / yolo11 / yolo26 / rfdetr` detection 训练以及 `classification / segmentation / pose / obb` 训练；`conversion` 覆盖 `yolox / yolov8 / yolo11 / yolo26 / rfdetr`；`evaluation` 与 `inference` 都已经覆盖 `detection / classification / segmentation / pose / obb` 五类 task，不再停留在 detection-only 描述。
 - deployment 运行时位于 `backend/service/application/runtime/`；当前通用外壳已经收口到 `deployment_process_supervisor.py`、`deployment_process_worker.py`、`deployment_runtime_pool.py` 与 `runtime_target.py`，职责是平台级 deployment process supervisor / worker，而不是只服务 YOLOX。
 - runtime 适配与统一预测入口当前已按任务类型拆开：`detection_model_runtime.py`、`classification_model_runtime.py`、`segmentation_model_runtime.py`、`pose_model_runtime.py` 和 `obb_model_runtime.py` 负责统一 runtime loader 注册；`yolox / yolov8 / yolo11 / yolo26 / rfdetr` 各自的 `*_predictor.py` 与 `*_runtime_target.py` 负责模型差异；`deployment_runtime_pool.py` 负责 deployment 子进程内会话池与健康状态汇总。
 
@@ -166,6 +169,7 @@
 - 当前已经显式复跑一轮按 `model_type × task_type` 收口的轻量 smoke matrix：`tests/test_model_profiles.py`、`tests/test_yolov8_detection_model.py`、`tests/test_yolox_inference_tasks_api.py`、`tests/test_yolo_primary_classification_chain.py`、`tests/test_yolo_primary_segmentation_chain.py`、`tests/test_yolo_primary_pose_chain.py`、`tests/test_yolo_primary_obb_chain.py`、`tests/test_rfdetr_chain.py`、`tests/test_non_detection_training_result_registration.py`、`tests/test_non_detection_inference_api.py`、`tests/test_validation_runtime_backend_support.py`。
 - 这轮矩阵结果当前为 `78 passed`，覆盖了 detection、classification、segmentation、pose、obb 五类任务，以及 `yolox / yolov8 / yolo11 / yolo26 / rfdetr` 的当前主链组合。
 - 这轮回归同时确认了 `/models/{task_type}` 已经在控制面收平：non-detection 当前已经具备 task-native 的同步 `/infer`、异步任务创建/详情/结果读取，以及 deployment `sync/async` 的 `start / status / stop / warmup / reset` 最小动作；`tests/test_non_detection_inference_api.py` 当前已经显式覆盖 `classification / segmentation / pose / obb` 四类任务的 async 前检查、sync `/infer`、async result round-trip 和 deployment 控制基础链。
+- 在这轮基础回归之外，当前还已经补了一条显式 non-detection runtime backend matrix：`tests/integration/test_non_detection_runtime_backend_smoke_matrix.py`。这条 integration 当前已真实跑通 `classification+yolo11`、`segmentation+yolo26`、`pose+yolov8`、`obb+yolo26` 在 `onnxruntime / openvino / tensorrt` 三类 runtime backend 下的 `conversion -> runtime predict` 闭环。
 
 ### custom node 运行时
 
@@ -196,7 +200,7 @@
 
 ### 2. 补强运行时回归与 benchmark
 
-- 为 pytorch、onnxruntime、openvino、tensorrt 的已支持组合补齐最小 smoke test、精度回归和时延基线。
+- 在当前 non-detection runtime backend matrix 已跑通后，下一步更值得继续补的是长期 soak、显存/内存基线和更贴现场组合的 benchmark，而不是再回到最小链路可用性验证。
 - 把 conversion report、evaluation report 与 deployment benchmark 的字段进一步收敛成可比较、可回滚的统一结构。
 
 ### 3. 继续压缩遗留 YOLOX 命名与平台外壳

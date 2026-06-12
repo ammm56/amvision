@@ -1,9 +1,17 @@
 {
   "profile_id": "training",
   "display_name": "amvision training worker",
-  "description": "独立消费 YOLOX training 队列，负责训练任务编排、产物写回和状态同步。",
+  "description": "独立消费当前已接通的 detection、classification、segmentation、pose、obb 与 RF-DETR 训练队列，负责训练执行、产物写回和状态同步。",
   "enabled_consumer_kinds": [
-    "yolox-training"
+    "yolox-training",
+    "yolov8-training",
+    "yolo11-training",
+    "yolo26-training",
+    "rfdetr-training",
+    "classification-training",
+    "segmentation-training",
+    "pose-training",
+    "obb-training"
   ],
   "max_concurrent_tasks": 1,
   "poll_interval_seconds": 1.0

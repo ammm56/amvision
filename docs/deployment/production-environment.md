@@ -95,6 +95,7 @@ Linux 等价调用：
 - 发布目录结构：`runtime-profiles.md`
 - 同目录 Python 安装与替换：`bundled-python-deployment.md`
 - 首次部署验收：`full-first-deploy-checklist.md`
+- 现场日志与排障：`../operations/release-full-troubleshooting.md`
 
 ## 边界说明
 

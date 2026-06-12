@@ -1,9 +1,13 @@
 {
   "profile_id": "inference",
   "display_name": "amvision inference worker",
-  "description": "独立消费 detection inference 队列，并通过 async inference gateway 转发到 backend-service 持有的 async deployment。",
+  "description": "独立消费当前已接通的 detection、classification、segmentation、pose 与 obb inference 队列，并通过 async inference gateway 转发到 backend-service 持有的 async deployment。",
   "enabled_consumer_kinds": [
-    "detection-inference"
+    "detection-inference",
+    "classification-inference",
+    "segmentation-inference",
+    "pose-inference",
+    "obb-inference"
   ],
   "max_concurrent_tasks": 1,
   "poll_interval_seconds": 0.5

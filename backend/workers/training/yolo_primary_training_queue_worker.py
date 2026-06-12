@@ -43,7 +43,10 @@ class ClassificationTrainingQueueWorker:
 
     def run_once(self) -> bool:
         """消费并执行一条 classification 训练任务。"""
-        qt = self.queue_backend.claim_next(YOLO_PRIMARY_CLASSIFICATION_TRAINING_QUEUE_NAME, self.worker_id)
+        qt = self.queue_backend.claim_next(
+            queue_name=YOLO_PRIMARY_CLASSIFICATION_TRAINING_QUEUE_NAME,
+            worker_id=self.worker_id,
+        )
         if qt is None:
             return False
 
@@ -100,7 +103,10 @@ class SegmentationTrainingQueueWorker:
 
     def run_once(self) -> bool:
         """消费并执行一条 segmentation 训练任务。"""
-        qt = self.queue_backend.claim_next(YOLO_PRIMARY_SEGMENTATION_TRAINING_QUEUE_NAME, self.worker_id)
+        qt = self.queue_backend.claim_next(
+            queue_name=YOLO_PRIMARY_SEGMENTATION_TRAINING_QUEUE_NAME,
+            worker_id=self.worker_id,
+        )
         if qt is None:
             return False
 
@@ -157,7 +163,10 @@ class PoseTrainingQueueWorker:
 
     def run_once(self) -> bool:
         """消费并执行一条 pose 训练任务。"""
-        qt = self.queue_backend.claim_next(POSE_TRAINING_QUEUE_NAME, self.worker_id)
+        qt = self.queue_backend.claim_next(
+            queue_name=POSE_TRAINING_QUEUE_NAME,
+            worker_id=self.worker_id,
+        )
         if qt is None:
             return False
 
@@ -214,7 +223,10 @@ class ObbTrainingQueueWorker:
 
     def run_once(self) -> bool:
         """消费并执行一条 obb 训练任务。"""
-        qt = self.queue_backend.claim_next(OBB_TRAINING_QUEUE_NAME, self.worker_id)
+        qt = self.queue_backend.claim_next(
+            queue_name=OBB_TRAINING_QUEUE_NAME,
+            worker_id=self.worker_id,
+        )
         if qt is None:
             return False
 

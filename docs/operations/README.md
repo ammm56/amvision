@@ -7,3 +7,4 @@
 ## 当前文档
 
 - [docs/operations/yoloe-sam3-troubleshooting.md](yoloe-sam3-troubleshooting.md)：YOLOE 与 SAM3 custom node 的常见问题、检查顺序和快速入口
+- [docs/operations/release-full-troubleshooting.md](release-full-troubleshooting.md)：`release/full/` 的日志入口、worker profile 检查点和现场排障顺序

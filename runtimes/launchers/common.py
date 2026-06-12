@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import csv
 import json
 import os
 import subprocess
@@ -60,6 +61,67 @@ def json_env_value(value: object) -> str:
     """把复杂环境变量值序列化为 JSON 字符串。"""
 
     return json.dumps(value, ensure_ascii=False)
+
+
+def is_pid_alive(pid: int) -> bool:
+    """判断指定 pid 当前是否仍然存活。"""
+
+    if pid <= 0:
+        return False
+    if os.name == "nt":
+        return _is_windows_pid_alive(pid)
+    return _is_pid_alive_with_signal_check(pid)
+
+
+def _is_pid_alive_with_signal_check(pid: int) -> bool:
+    """用 `os.kill(pid, 0)` 风格的方式判断进程是否存活。"""
+
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    except OSError:
+        return False
+    return True
+
+
+def _is_windows_pid_alive(pid: int) -> bool:
+    """在 Windows 下用 `tasklist` 判断进程是否仍然存在。"""
+
+    try:
+        completed = subprocess.run(
+            [
+                "tasklist",
+                "/FI",
+                f"PID eq {pid}",
+                "/FO",
+                "CSV",
+                "/NH",
+            ],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            check=False,
+        )
+    except OSError:
+        return _is_pid_alive_with_signal_check(pid)
+
+    output_lines = [line.strip() for line in completed.stdout.splitlines() if line.strip()]
+    if not output_lines:
+        return False
+    first_line = output_lines[0]
+    if not first_line.startswith('"'):
+        return False
+    try:
+        first_row = next(csv.reader([first_line]))
+    except (StopIteration, csv.Error):
+        return False
+    if len(first_row) < 2:
+        return False
+    return first_row[1].strip() == str(pid)
 
 
 def run_python_module(

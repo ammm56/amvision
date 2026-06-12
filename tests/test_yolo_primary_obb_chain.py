@@ -17,6 +17,20 @@ def test_obb_model_can_build_and_forward():
     with torch.no_grad():
         output = model(torch.randn(1, 3, 256, 256))
     assert output is not None
+    assert output.ndim == 3
+    assert int(output.shape[2]) == 6
+
+
+def test_obb26_model_can_build_and_forward():
+    """验证 OBB26 模型推理输出包含 bbox、score 和 angle。"""
+    overrides = {"ne": 1}
+    model = build_yolo_primary_model(model_type="yolo26", task_type="obb", model_scale="nano", num_classes=1, model_config_overrides=overrides)
+    model.eval()
+    with torch.no_grad():
+        output = model(torch.randn(1, 3, 256, 256))
+    assert output is not None
+    assert output.ndim == 3
+    assert int(output.shape[2]) == 6
 
 
 def test_obb_prediction_array_postprocess():
