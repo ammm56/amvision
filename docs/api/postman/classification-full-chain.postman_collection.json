@@ -28,7 +28,7 @@
     },
     {
       "key": "projectDescription",
-      "value": "Classification full-chain debug with checked-in minimal ImageNet zip"
+      "value": "Classification full-chain debug with local minimal ImageNet zip"
     },
     {
       "key": "datasetId",

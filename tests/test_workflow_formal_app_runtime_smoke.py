@@ -475,8 +475,11 @@ def test_detection_end_to_end_qr_crop_remap_app_runtime_smoke_returns_slim_stage
         request_payload = request.input_values.get("request")
         request_value = request_payload.get("value") if isinstance(request_payload, dict) else None
         assert isinstance(request_value, dict)
-        assert request_value["model_scale"] == "s"
-        assert request_value["warm_start_model_version_id"] == "model-version-pretrained-yolox-s"
+        assert request_value["model_type"] == "yolo11"
+        assert request_value["recipe_id"] == "default"
+        assert request_value["model_scale"] == "m"
+        assert request_value["output_model_name"] == "barcodeqrcode-detector-m"
+        assert "warm_start_model_version_id" not in request_value
         return {"body": {"task_id": "task-training-1", "status": "queued"}}
 
     def _submit_evaluation_handler(request) -> dict[str, object]:
@@ -573,13 +576,14 @@ def test_detection_end_to_end_qr_crop_remap_app_runtime_smoke_returns_slim_stage
             project_id="project-1",
             application_id=application.application_id,
             input_bindings={
-                "import_request_payload": {
-                    "value": {
-                        "project_id": "project-1",
-                        "dataset_id": "dataset-1",
-                        "format_type": "coco",
-                    }
-                },
+                    "import_request_payload": {
+                        "value": {
+                            "project_id": "project-1",
+                            "dataset_id": "dataset-1",
+                            "format_type": "coco",
+                            "task_type": "detection",
+                        }
+                    },
                 "request_package": {
                     "package_file_name": "demo-dataset.zip",
                     "package_bytes": b"demo-zip",
@@ -588,8 +592,10 @@ def test_detection_end_to_end_qr_crop_remap_app_runtime_smoke_returns_slim_stage
                 "training_request_payload": {
                     "value": {
                         "project_id": "project-1",
-                        "recipe_id": "recipe-1",
-                        "model_scale": "s",
+                        "model_type": "yolo11",
+                        "recipe_id": "default",
+                        "model_scale": "m",
+                        "output_model_name": "barcodeqrcode-detector-m",
                     }
                 },
                 "evaluation_request_payload": {"value": {"project_id": "project-1", "score_threshold": 0.25}},
@@ -997,6 +1003,7 @@ def _build_end_to_end_input_bindings() -> dict[str, object]:
                 "project_id": "project-1",
                 "dataset_id": "dataset-1",
                 "format_type": "coco",
+                "task_type": "detection",
             }
         },
         "request_package": {
@@ -1007,8 +1014,10 @@ def _build_end_to_end_input_bindings() -> dict[str, object]:
         "training_request_payload": {
             "value": {
                 "project_id": "project-1",
-                "recipe_id": "recipe-1",
-                "model_scale": "s",
+                "model_type": "yolo11",
+                "recipe_id": "default",
+                "model_scale": "m",
+                "output_model_name": "barcodeqrcode-detector-m",
             }
         },
         "evaluation_request_payload": {"value": {"project_id": "project-1", "score_threshold": 0.25}},
@@ -1144,7 +1153,7 @@ def _install_tracked_deployment_service(
     monkeypatch.setattr(
         WorkflowServiceNodeRuntimeContext,
         "build_deployment_service",
-        lambda self: tracked_service,
+        lambda self, *, task_type: tracked_service,
     )
     return tracked_service
 

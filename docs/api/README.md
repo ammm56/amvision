@@ -24,6 +24,9 @@
 - [docs/api/datasets-exports.md](datasets-exports.md)：DatasetExport 创建、详情查询、package/download/manifest 和 training 输入边界
 - [docs/api/platform-base-models.md](platform-base-models.md)：平台基础模型列表、详情接口，以及 `warm_start_model_version_id` 的公开发现方式；当前目录登记已覆盖 YOLOX、YOLOv8/YOLO11/YOLO26 与 RF-DETR 预训练清单
 - [docs/api/detection-training.md](detection-training.md)：当前 detection 训练、验证、转换、评估、部署和推理详细说明文档，统一模型任务入口以 [docs/api/current-api.md](current-api.md) 为准
+
+### Workflow JSON 示例
+
 - [docs/api/examples/workflows/00-short-dev-examples/detection_deployment_lifecycle_real_path/save-template.request.json](examples/workflows/00-short-dev-examples/detection_deployment_lifecycle_real_path/save-template.request.json)：workflow template save 接口的真实路径 JSON 请求体示例
 - [docs/api/examples/workflows/00-short-dev-examples/detection_deployment_lifecycle_real_path/save-application.request.json](examples/workflows/00-short-dev-examples/detection_deployment_lifecycle_real_path/save-application.request.json)：FlowApplication save 接口的真实路径 JSON 请求体示例
 - [docs/api/examples/workflows/00-short-dev-examples/detection_deployment_lifecycle_real_path/preview-execution-policy.create.request.json](examples/workflows/00-short-dev-examples/detection_deployment_lifecycle_real_path/preview-execution-policy.create.request.json)：preview-default WorkflowExecutionPolicy create 接口的真实路径 JSON 请求体示例
@@ -31,11 +34,21 @@
 - [docs/api/examples/workflows/00-short-dev-examples/detection_deployment_lifecycle_real_path/preview-run.request.json](examples/workflows/00-short-dev-examples/detection_deployment_lifecycle_real_path/preview-run.request.json)：WorkflowPreviewRun create 接口的真实路径 JSON 请求体示例
 - [docs/api/examples/workflows/00-short-dev-examples/detection_deployment_lifecycle_real_path/app-runtime.create.request.json](examples/workflows/00-short-dev-examples/detection_deployment_lifecycle_real_path/app-runtime.create.request.json)：WorkflowAppRuntime create 接口的真实路径 JSON 请求体示例
 - [docs/api/examples/workflows/00-short-dev-examples/detection_deployment_lifecycle_real_path/app-runtime.invoke.request.json](examples/workflows/00-short-dev-examples/detection_deployment_lifecycle_real_path/app-runtime.invoke.request.json)：WorkflowRun sync invoke 接口的真实路径 JSON 请求体示例
+
+### Postman 调试入口
+
+根目录 `docs/api/postman/` 只放通用控制面和按 task_type 拆开的 full-chain collection。历史 `detection-training.postman_collection.json` 已由 `detection-full-chain.postman_collection.json` 取代；本地调试数据包统一放在 `data/files/postman-assets/`，不纳入 git。
+
+#### 通用控制面
+
 - [docs/api/postman/workflow-runtime.postman_collection.json](postman/workflow-runtime.postman_collection.json)：workflow runtime 通用控制面 Postman collection，覆盖 system/bootstrap、projects/bootstrap、projects 目录与文件读取、template/application save/get/list、execution-policies、preview-runs、app-runtimes、restart、instances、sync invoke、async runs 和 cancel 最小链路，并给主要列表请求补齐 offset/limit 示例
 - [docs/api/postman/local-auth.postman_collection.json](postman/local-auth.postman_collection.json)：本地用户、权限管理、session/refresh token 和长期调用 user token 的 Postman collection，覆盖 provider 目录、bootstrap、login、refresh、用户管理、密码重置、token 管理、system/me 和 system/bootstrap 调试链路
+
+#### Workflow 场景
+
 - [docs/api/postman/workflows/README.md](postman/workflows/README.md)：按正式 workflow 与 TriggerSource 场景拆分的调试目录说明，包含依赖关系、建议联调顺序和对应 collection 清单
 - [docs/api/postman/workflows/00-short-dev-examples/00-workflow-example-documents.postman_collection.json](postman/workflows/00-short-dev-examples/00-workflow-example-documents.postman_collection.json)：把 docs/examples/workflows 下现有 template/application 示例按目录分组的保存与读取调试 collection
-- [docs/api/postman/workflows/01-detection-end-to-end-qr-crop-remap/01-detection-end-to-end-qr-crop-remap.postman_collection.json](postman/workflows/01-detection-end-to-end-qr-crop-remap/01-detection-end-to-end-qr-crop-remap.postman_collection.json)：第一类完整导入、导出、训练、评估、转换、部署和 QR remap 联调 collection
+- [docs/api/postman/workflows/01-detection-end-to-end-qr-crop-remap/01-detection-end-to-end-qr-crop-remap.postman_collection.json](postman/workflows/01-detection-end-to-end-qr-crop-remap/01-detection-end-to-end-qr-crop-remap.postman_collection.json)：第一类检测 workflow 场景链，串起导入、导出、训练、评估、转换、部署和 QR remap；更适合作为 workflow 编排联调，不替代根目录 detection 全链路 collection
 - [docs/api/postman/workflows/02-detection-deployment-sync-infer-health/02-detection-deployment-sync-infer-health.postman_collection.json](postman/workflows/02-detection-deployment-sync-infer-health/02-detection-deployment-sync-infer-health.postman_collection.json)：第二类 start、warmup、sync infer、health 联调 collection
 - [docs/api/postman/workflows/03-detection-deployment-qr-crop-remap/03-detection-deployment-qr-crop-remap.postman_collection.json](postman/workflows/03-detection-deployment-qr-crop-remap/03-detection-deployment-qr-crop-remap.postman_collection.json)：第三类检测、AOI crop、二维码识别和原图回绘联调 collection
 - [docs/api/postman/workflows/04-detection-deployment-infer-opencv-health/04-detection-deployment-infer-opencv-health.postman_collection.json](postman/workflows/04-detection-deployment-infer-opencv-health/04-detection-deployment-infer-opencv-health.postman_collection.json)：第四类 sync infer、health 和 OpenCV 处理联调 collection
@@ -53,15 +66,18 @@
 - [docs/api/postman/workflows/13-classification-deployment-sync-class-gate/13-classification-deployment-sync-class-gate.postman_collection.json](postman/workflows/13-classification-deployment-sync-class-gate/13-classification-deployment-sync-class-gate.postman_collection.json)：第十三类 classification direct model 同步推理、top class 判定和最小工业规则联调 collection
 - [docs/api/postman/workflows/14-pose-deployment-sync-presence-gate/14-pose-deployment-sync-presence-gate.postman_collection.json](postman/workflows/14-pose-deployment-sync-presence-gate/14-pose-deployment-sync-presence-gate.postman_collection.json)：第十四类 pose direct model 同步推理、count/score presence 判定和最小工业规则联调 collection
 - [docs/api/postman/workflows/15-obb-deployment-sync-angle-gate/15-obb-deployment-sync-angle-gate.postman_collection.json](postman/workflows/15-obb-deployment-sync-angle-gate/15-obb-deployment-sync-angle-gate.postman_collection.json)：第十五类 OBB direct model 同步推理、angle range 判定和最小工业规则联调 collection
+
+#### 根目录全链路与模型入口
+
 - [docs/api/postman/datasets-imports.postman_collection.json](postman/datasets-imports.postman_collection.json)：当前公开的 system/bootstrap、projects/bootstrap、Project 目录、DatasetImport、tasks 接口 Postman collection
 - [docs/api/postman/datasets-exports.postman_collection.json](postman/datasets-exports.postman_collection.json)：当前公开的 DatasetExport 格式规则、导出创建、详情、打包和下载接口 Postman collection
 - [docs/api/postman/platform-base-models.postman_collection.json](postman/platform-base-models.postman_collection.json)：当前公开的平台基础模型 list/detail 接口 Postman collection
-- [docs/api/postman/detection-training.postman_collection.json](postman/detection-training.postman_collection.json)：当前 detection 训练、validation-sessions、conversion-tasks、evaluation-tasks、deployment-instances、deployment events、workflow preview-runs sync/async 调试入口和 inference-tasks 接口 Postman collection
+- [docs/api/postman/detection-full-chain.postman_collection.json](postman/detection-full-chain.postman_collection.json)：detection 全链路 Postman collection，覆盖 dataset import、dataset export、training、validation、evaluation、conversion、deployment、infer 和 workflow invoke；当前支持 `yolox`、`yolov8`、`yolo11`、`yolo26`、`rfdetr`
 - [docs/api/postman/segmentation-full-chain.postman_collection.json](postman/segmentation-full-chain.postman_collection.json)：segmentation 全链路 Postman collection，覆盖 dataset import、dataset export、training、validation、evaluation、conversion、deployment、infer 和 workflow invoke；当前支持 `yolov8`、`yolo11`、`yolo26`、`rfdetr`
 - [docs/api/postman/classification-full-chain.postman_collection.json](postman/classification-full-chain.postman_collection.json)：classification 全链路 Postman collection，覆盖 dataset import、dataset export、training、validation、evaluation、conversion、deployment、infer 和 workflow invoke；当前支持 `yolov8`、`yolo11`、`yolo26`
 - [docs/api/postman/pose-full-chain.postman_collection.json](postman/pose-full-chain.postman_collection.json)：pose 全链路 Postman collection，覆盖 dataset import、dataset export、training、validation、evaluation、conversion、deployment、infer 和 workflow invoke；当前支持 `yolov8`、`yolo11`、`yolo26`
 - [docs/api/postman/obb-full-chain.postman_collection.json](postman/obb-full-chain.postman_collection.json)：OBB 全链路 Postman collection，覆盖 dataset import、dataset export、training、validation、evaluation、conversion、deployment、infer 和 workflow invoke；当前支持 `yolov8`、`yolo11`、`yolo26`
-- [docs/api/postman/local-debug-assets.md](postman/local-debug-assets.md)：non-detection full-chain collection 本地调试数据包说明；默认路径使用 `data/files/postman-assets/`，不纳入 git
+- [docs/api/postman/local-debug-assets.md](postman/local-debug-assets.md)：full-chain collection 本地调试数据包说明；默认路径使用 `data/files/postman-assets/`，不纳入 git
 - `docs/api/postman/workflows/12-*` 到 `15-*` 继续只表示 segmentation / classification / pose / OBB 的 workflow/runtime 使用面，不替代上面的全生命周期联调集合
 - [docs/architecture/backend-service.md](../architecture/backend-service.md)：FastAPI 应用分层、路由拆分、数据库会话、权限和中间件骨架
 

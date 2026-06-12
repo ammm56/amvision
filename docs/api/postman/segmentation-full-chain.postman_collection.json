@@ -28,7 +28,7 @@
     },
     {
       "key": "projectDescription",
-      "value": "Segmentation full-chain debug with checked-in minimal COCO segmentation zip"
+      "value": "Segmentation full-chain debug with local minimal COCO segmentation zip"
     },
     {
       "key": "datasetId",

@@ -132,7 +132,7 @@
           "inspection_kind": "usb-uvc-detection-position-gate",
           "station_id": "camera-line-01",
           "input_kind": "usb-uvc-camera",
-          "model_kind": "yolox-detection"
+          "model_kind": "detection"
         }
       }
     },

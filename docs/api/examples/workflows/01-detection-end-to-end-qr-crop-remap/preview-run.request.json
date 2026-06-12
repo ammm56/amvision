@@ -8,7 +8,7 @@
       "value": {
         "project_id": "project-1",
         "dataset_id": "barcodeqrcode-dataset",
-        "format_type": "voc",
+        "format_type": "coco",
         "task_type": "detection"
       }
     },
@@ -21,9 +21,9 @@
     "training_request_payload": {
       "value": {
         "project_id": "project-1",
-        "recipe_id": "recipe-1",
+        "model_type": "yolo11",
+        "recipe_id": "default",
         "model_scale": "m",
-        "warm_start_model_version_id": "model-version-pretrained-yolox-m",
         "output_model_name": "barcodeqrcode-detector-m",
         "evaluation_interval": 5,
         "max_epochs": 6,
@@ -73,8 +73,8 @@
       "media_type": "image/png"
     },
     "request_package": {
-      "package_file_name": "barcodeqrcode.zip",
-      "package_bytes": "UEsDBBQAAAAIAPBhq1x+auFxJwAAACUAAAAKAAAAUkVBRE1FLnR4dCsoSi3LTC1XKEhMzk5MT1VIyy9SKM8vyk7LyS9XSK1IzC3ISeUCAFBLAQIUABQAAAAIAPBhq1x+auFxJwAAACUAAAAKAAAAAAAAAAAAAACAAQAAAABSRUFETUUudHh0UEsFBgAAAAABAAEAOAAAAE8AAAAAAA==",
+      "package_file_name": "detection-coco-min.zip",
+      "package_bytes": "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",
       "media_type": "application/zip"
     }
   },

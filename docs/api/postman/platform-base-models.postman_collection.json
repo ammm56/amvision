@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "6dd3e7df-c30b-41a2-9d9d-7e3f95d09a31",
     "name": "amvision platform base models api",
-    "description": "当前公开的平台基础模型 list/detail 接口。本集合用于查询 platform-base Model、可用 ModelVersion 摘要，以及 warm_start_model_version_id 的稳定来源。",
+    "description": "当前公开的平台基础模型 list/detail 接口。本集合用于查询 platform-base Model、可用 ModelVersion 摘要，以及 warm_start_model_version_id 的稳定来源；默认筛选变量不再预置到单一 YOLOX 示例，可按 yolox、yolov8、yolo11、yolo26、rfdetr 和 task_type 自行组合查询，也可直接给根目录 `*-full-chain.postman_collection.json` 的训练请求选 warm start 来源。",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "item": [
@@ -144,11 +144,11 @@
     },
     {
       "key": "modelName",
-      "value": "yolox"
+      "value": ""
     },
     {
       "key": "modelScale",
-      "value": "nano"
+      "value": ""
     },
     {
       "key": "taskType",
@@ -160,15 +160,15 @@
     },
     {
       "key": "modelVersionId",
-      "value": "model-version-pretrained-yolox-nano"
+      "value": ""
     },
     {
       "key": "checkpointStorageUri",
-      "value": "models/pretrained/yolox/detection/nano/default/checkpoints/yolox_nano.pth"
+      "value": ""
     },
     {
       "key": "catalogManifestObjectKey",
-      "value": "models/pretrained/yolox/detection/nano/default/manifest.json"
+      "value": ""
     },
     {
       "key": "accessToken",

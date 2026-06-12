@@ -1,7 +1,7 @@
 {
   "info": {
     "_postman_id": "8c5b24d5-8c8d-4bc2-9415-0e9db7c0e901",
-    "name": "amvision current api",
+    "name": "amvision dataset imports api",
     "description": "当前公开的 system/bootstrap、Project bootstrap/catalog/summary、DatasetImport 和 tasks 接口集合。默认 accessToken 变量已对齐空库首次启动 seed token amvision-default-user-token。",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },

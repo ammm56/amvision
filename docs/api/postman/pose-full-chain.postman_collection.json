@@ -28,7 +28,7 @@
     },
     {
       "key": "projectDescription",
-      "value": "Pose full-chain debug with checked-in minimal COCO keypoints zip"
+      "value": "Pose full-chain debug with local minimal COCO keypoints zip"
     },
     {
       "key": "datasetId",

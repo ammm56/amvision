@@ -5,7 +5,7 @@
       "value": {
         "project_id": "project-1",
         "dataset_id": "barcodeqrcode-dataset",
-        "format_type": "voc",
+        "format_type": "coco",
         "task_type": "detection"
       }
     },
@@ -18,9 +18,9 @@
     "training_request_payload": {
       "value": {
         "project_id": "project-1",
-        "recipe_id": "recipe-1",
+        "model_type": "yolo11",
+        "recipe_id": "default",
         "model_scale": "m",
-        "warm_start_model_version_id": "model-version-pretrained-yolox-m",
         "output_model_name": "barcodeqrcode-detector-m",
         "evaluation_interval": 5,
         "max_epochs": 6,
@@ -72,7 +72,7 @@
   },
   "files": {
     "request_package": {
-      "file_name": "barcodeqrcode.zip",
+      "file_name": "detection-coco-min.zip",
       "content_type": "application/zip"
     }
   },

@@ -423,15 +423,15 @@ def test_workflow_postman_collection_contains_manual_test_sequence() -> None:
     assert dataset_import_execution_metadata["scenario"] == "dataset-import-upload"
 
 
-def test_detection_training_postman_collection_contains_project_file_lookup_chain() -> None:
-    """验证 detection Postman collection 已补齐 Project 公开文件 file_id 取值链。"""
+def test_detection_full_chain_postman_collection_contains_project_file_lookup_chain() -> None:
+    """验证 detection full-chain Postman collection 已补齐 Project 公开文件 file_id 取值链。"""
 
     collection_path = (
         Path(__file__).resolve().parents[1]
         / "docs"
         / "api"
         / "postman"
-        / "detection-training.postman_collection.json"
+        / "detection-full-chain.postman_collection.json"
     )
     collection_payload = json.loads(collection_path.read_text(encoding="utf-8"))
     request_names = _collect_postman_request_names(collection_payload["item"])
@@ -440,14 +440,14 @@ def test_detection_training_postman_collection_contains_project_file_lookup_chai
     list_project_files_request = _find_postman_request(collection_payload["item"], "List Project Files")
     get_project_file_metadata_request = _find_postman_request(collection_payload["item"], "Get Project File Metadata")
 
-    assert collection_payload["info"]["name"] == "amvision detection task api"
+    assert collection_payload["info"]["name"] == "amvision detection-full-chain"
     assert "List Project Files" in request_names
     assert "Get Project File Metadata" in request_names
     assert "Predict Detection Validation Session By File ID" in request_names
     assert "Direct Detection Inference By File ID" in request_names
     assert "Create Detection Inference Task By File ID" in request_names
-    assert variables["projectFileObjectKey"] == "projects/project-1/inputs/validation/image-1.jpg"
-    assert variables["projectFilesPrefix"] == "projects/project-1/inputs"
+    assert variables["projectFileObjectKey"] == "projects/{{projectId}}/inputs/validation/image-1.jpg"
+    assert variables["projectFilesPrefix"] == "projects/{{projectId}}/inputs"
     assert "projectPublicFileId" in variables
     assert request_payloads["Predict Detection Validation Session By File ID"].count("input_file_id") == 1
     assert request_payloads["Direct Detection Inference By File ID"].count("input_file_id") == 1
@@ -470,7 +470,7 @@ def test_dataset_imports_postman_collection_uses_lightweight_task_detail() -> No
     request_names = _collect_postman_request_names(collection_payload["item"])
     get_task_detail_request = _find_postman_request(collection_payload["item"], "Get Task Detail")
 
-    assert collection_payload["info"]["name"] == "amvision current api"
+    assert collection_payload["info"]["name"] == "amvision dataset imports api"
     assert "Get System Bootstrap" in request_names
     assert "Bootstrap Project" in request_names
     assert "Create Dataset Import" in request_names
@@ -1235,19 +1235,14 @@ def test_workflow_api_end_to_end_qr_crop_remap_app_runtime_examples_are_valid() 
     assert application.metadata["example_kind"] == "detection-end-to-end-qr-crop-remap"
     assert template_request["template"]["nodes"][5]["node_id"] == "extract_import_dataset_id"
     assert template_request["template"]["nodes"][5]["parameters"]["path"] == "task_spec.dataset_id"
-    default_warm_start_node = next(
-        node
+    assert all(
+        node["node_id"] != "resolve_default_training_warm_start_model_version_id"
         for node in template_request["template"]["nodes"]
-        if node["node_id"] == "resolve_default_training_warm_start_model_version_id"
     )
-    assert default_warm_start_node["node_type_id"] == "core.logic.match-case"
-    assert default_warm_start_node["parameters"]["default_value"] is None
-    pretrained_case_m_node = next(
-        node for node in template_request["template"]["nodes"] if node["node_id"] == "build_training_pretrained_case_m"
+    submit_training_node = next(
+        node for node in template_request["template"]["nodes"] if node["node_id"] == "submit_training"
     )
-    assert pretrained_case_m_node["parameters"]["fields"]["condition"]["path"] == "model_scale"
-    assert pretrained_case_m_node["parameters"]["fields"]["condition"]["right"] == "m"
-    assert pretrained_case_m_node["parameters"]["fields"]["then"] == "model-version-pretrained-yolox-m"
+    assert submit_training_node["parameters"]["task_type"] == "detection"
     conversion_builds_node = next(
         node for node in template_request["template"]["nodes"] if node["node_id"] == "extract_conversion_builds"
     )
@@ -1287,13 +1282,14 @@ def test_workflow_api_end_to_end_qr_crop_remap_app_runtime_examples_are_valid() 
     assert invoke_request["content_type"] == "multipart/form-data"
     assert input_bindings_json["import_request_payload"]["value"]["project_id"] == "project-1"
     assert input_bindings_json["import_request_payload"]["value"]["dataset_id"] == "barcodeqrcode-dataset"
-    assert input_bindings_json["import_request_payload"]["value"]["format_type"] == "voc"
+    assert input_bindings_json["import_request_payload"]["value"]["format_type"] == "coco"
+    assert input_bindings_json["import_request_payload"]["value"]["task_type"] == "detection"
+    assert input_bindings_json["training_request_payload"]["value"]["model_type"] == "yolo11"
+    assert input_bindings_json["training_request_payload"]["value"]["recipe_id"] == "default"
     assert input_bindings_json["export_request_payload"]["value"]["format_id"] == "coco-detection-v1"
     assert input_bindings_json["training_request_payload"]["value"]["model_scale"] == "m"
-    assert (
-        input_bindings_json["training_request_payload"]["value"]["warm_start_model_version_id"]
-        == "model-version-pretrained-yolox-m"
-    )
+    assert input_bindings_json["training_request_payload"]["value"]["output_model_name"] == "barcodeqrcode-detector-m"
+    assert "warm_start_model_version_id" not in input_bindings_json["training_request_payload"]["value"]
     assert input_bindings_json["training_request_payload"]["value"]["evaluation_interval"] == 5
     assert input_bindings_json["training_request_payload"]["value"]["max_epochs"] == 6
     assert input_bindings_json["training_request_payload"]["value"]["batch_size"] == 8
@@ -1311,7 +1307,7 @@ def test_workflow_api_end_to_end_qr_crop_remap_app_runtime_examples_are_valid() 
     assert input_bindings_json["deployment_request_payload"]["value"]["keep_warm_enabled"] is True
     assert input_bindings_json["inference_request_payload"]["value"]["score_threshold"] == 0.3
     assert input_bindings_json["request_image"]["media_type"] == "image/png"
-    assert invoke_request["files"]["request_package"]["file_name"] == "barcodeqrcode.zip"
+    assert invoke_request["files"]["request_package"]["file_name"] == "detection-coco-min.zip"
     assert invoke_request["files"]["request_package"]["content_type"] == "application/zip"
     assert invoke_request["execution_metadata"]["scenario"] == "detection-end-to-end-qr-crop-remap"
     assert run_create_request["execution_metadata"]["scenario"] == "detection-end-to-end-qr-crop-remap"
@@ -1884,15 +1880,38 @@ def test_formal_workflow_postman_collections_match_api_examples(
     invoke_request = _find_postman_request(collection_payload["item"], "Invoke App Runtime")
     create_run_request = _find_postman_request(collection_payload["item"], "Create Workflow Run")
 
+    variable_entries = {item["key"]: item.get("value") for item in collection_payload["variable"]}
     assert collection_payload["variable"][0]["key"] == "baseUrl"
-    assert {item["key"] for item in collection_payload["variable"]} >= {
-        "deploymentInstanceId",
-        "workflowRuntimeId",
-        "workflowRunId",
-    }
+    if collection_dir == "01-detection-end-to-end-qr-crop-remap":
+        assert set(variable_entries) >= {
+            "workflowRuntimeId",
+            "workflowRunId",
+            "previewRunId",
+            "requestPackagePath",
+            "requestPackageFileName",
+            "modelType",
+            "modelScale",
+        }
+        assert variable_entries["requestPackagePath"] == "data/files/postman-assets/detection-coco-min.zip"
+        assert variable_entries["requestPackageFileName"] == "detection-coco-min.zip"
+    else:
+        assert set(variable_entries) >= {
+            "deploymentInstanceId",
+            "workflowRuntimeId",
+            "workflowRunId",
+        }
+    expected_create_example = create_example
+    if collection_dir == "01-detection-end-to-end-qr-crop-remap":
+        expected_create_example = _resolve_postman_variable_values(
+            json.loads(request_payloads["Create App Runtime"]),
+            variable_entries,
+        )
     assert request_names == COMPLETE_WORKFLOW_REQUEST_NAMES
     assert create_preview_request["url"]["raw"] == "{{baseUrl}}/api/v1/workflows/preview-runs"
-    assert json.loads(request_payloads["Create App Runtime"]) == create_example
+    if collection_dir == "01-detection-end-to-end-qr-crop-remap":
+        assert expected_create_example == create_example
+    else:
+        assert json.loads(request_payloads["Create App Runtime"]) == expected_create_example
 
     if collection_dir in {
         "02-detection-deployment-sync-infer-health",
@@ -1909,11 +1928,21 @@ def test_formal_workflow_postman_collections_match_api_examples(
         formdata_payload = {item["key"]: item for item in formdata_payloads["Invoke App Runtime"]}
         run_formdata_payload = {item["key"]: item for item in formdata_payloads["Create Workflow Run"]}
         assert formdata_payload["request_package"]["type"] == "file"
-        assert formdata_payload["request_package"]["src"] == "projectsrc/datasets/barcodeqrcode.zip"
-        assert json.loads(formdata_payload["input_bindings_json"]["value"]) == invoke_example["input_bindings_json"]
+        assert formdata_payload["request_package"]["src"] == "{{requestPackagePath}}"
+        invoke_formdata_input_bindings = json.loads(formdata_payload["input_bindings_json"]["value"])
+        run_formdata_input_bindings = json.loads(run_formdata_payload["input_bindings_json"]["value"])
+        if collection_dir == "01-detection-end-to-end-qr-crop-remap":
+            assert _resolve_postman_variable_values(invoke_formdata_input_bindings, variable_entries) == invoke_example[
+                "input_bindings_json"
+            ]
+            assert _resolve_postman_variable_values(run_formdata_input_bindings, variable_entries) == run_create_example[
+                "input_bindings_json"
+            ]
+        else:
+            assert invoke_formdata_input_bindings == invoke_example["input_bindings_json"]
+            assert run_formdata_input_bindings == run_create_example["input_bindings_json"]
         assert json.loads(formdata_payload["execution_metadata_json"]["value"]) == invoke_example["execution_metadata"]
         assert formdata_payload["timeout_seconds"]["value"] == str(invoke_example["timeout_seconds"])
-        assert json.loads(run_formdata_payload["input_bindings_json"]["value"]) == run_create_example["input_bindings_json"]
         assert json.loads(run_formdata_payload["execution_metadata_json"]["value"]) == run_create_example[
             "execution_metadata"
         ]
@@ -2012,3 +2041,22 @@ def _collect_postman_formdata_payloads(items: list[dict[str, object]]) -> dict[s
         if isinstance(child_items, list):
             payloads.update(_collect_postman_formdata_payloads(child_items))
     return payloads
+
+
+def _resolve_postman_variable_values(
+    value: object,
+    variables: dict[str, object],
+) -> object:
+    """把 Postman `{{variable}}` 默认值渲染成具体值，便于和 API 示例比对。"""
+
+    if isinstance(value, str) and value.startswith("{{") and value.endswith("}}"):
+        variable_name = value[2:-2]
+        return variables.get(variable_name, value)
+    if isinstance(value, list):
+        return [_resolve_postman_variable_values(item, variables) for item in value]
+    if isinstance(value, dict):
+        return {
+            key: _resolve_postman_variable_values(item, variables)
+            for key, item in value.items()
+        }
+    return value

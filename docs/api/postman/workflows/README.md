@@ -5,7 +5,7 @@
 ## 目录顺序
 
 1. `00-short-dev-examples/`：短链路、开发中、单节点或边界不明确的 workflow 示例。
-2. `01-detection-end-to-end-qr-crop-remap/`：第一类完整导入、导出、训练、评估、转换、部署和 QR remap 链路；目录名暂沿用历史。
+2. `01-detection-end-to-end-qr-crop-remap/`：第一类检测 workflow 场景链，串起导入、导出、训练、评估、转换、部署和 QR remap。
 3. `02-detection-deployment-sync-infer-health/`：第二类 start、warmup、sync infer 和 health 链路。
 4. `03-detection-deployment-qr-crop-remap/`：第三类检测、AOI crop、二维码识别和原图回绘链路。
 5. `04-detection-deployment-infer-opencv-health/`：第四类 sync infer、health 和 OpenCV 处理链路。
@@ -23,7 +23,7 @@
 
 后续完整 workflow app 示例按 `16-*`、`17-*` 继续添加。
 
-`12-*` 到 `15-*` 这 4 个目录只覆盖 workflow/runtime 使用面。dataset import、dataset export、training、validation、evaluation、conversion、deployment 和 infer 的整条生命周期调试，统一放在 `docs/api/postman/segmentation-full-chain.postman_collection.json`、`classification-full-chain.postman_collection.json`、`pose-full-chain.postman_collection.json`、`obb-full-chain.postman_collection.json`。
+`01-*` 到 `15-*` 这些目录只覆盖 workflow/runtime 场景面。dataset import、dataset export、training、validation、evaluation、conversion、deployment 和 infer 的整条生命周期调试，统一放在根目录 `docs/api/postman/detection-full-chain.postman_collection.json`、`segmentation-full-chain.postman_collection.json`、`classification-full-chain.postman_collection.json`、`pose-full-chain.postman_collection.json`、`obb-full-chain.postman_collection.json`。
 
 ## 每个 collection 的调用面
 
@@ -51,7 +51,7 @@
 - `image-ref.v1` 输入绑定通过 JSON invoke 传入，常见公开形状是 `{"object_key": "projects/{project_id}/inputs/source.jpg", "media_type": "image/png"}`。长期输入资产应进入 `projects/{project_id}/inputs/...`，请求期临时输入应进入 `runtime/inputs/{consumer}/{request_id}/...`。受控本地 adapter 或后续 TriggerSource 场景也可以携带 `buffer_ref` 或 `frame_ref`，但这类引用依赖本机 LocalBufferBroker 的短期 mmap 状态，不写入当前通用 Postman 请求体。
 - `image-base64.v1` 输入绑定通过 JSON invoke 传入，常见形状是 `{"image_base64": "<base64>", "media_type": "image/png"}`；也支持 `data:image/png;base64,...` 形式的单行字符串。
 - `dataset-package.v1` 在 preview run 中使用 JSON 内联 base64 `package_bytes` 表达小型 zip 包；正式 runtime invoke/run 通过 `/invoke/upload` 或 `/runs/upload` 传入，文件字段名必须等于 binding_id。当前 multipart 上传入口只支持这类 zip 包文件输入，不支持把图片文件直接作为 `request_image` 上传。
-- 对于 template 内可以根据上下文自动补齐的默认参数，collection 里的请求体仍优先显式展示关键值，便于排查问题；例如第一类 workflow 的 `training_request_payload.value.warm_start_model_version_id` 会直接写出预训练 model_version_id，而不是只保留 `model_scale`。
+- 对于 template 内可以根据上下文自动补齐的默认参数，collection 里的请求体仍优先显式展示关键值，便于排查问题；例如第一类 workflow 会直接写出 `training_request_payload.value.model_type`、`recipe_id` 和 `model_scale`，而不是只留一组模糊默认值。
 - 对于 `02-*`、`03-*`、`04-*` 这类依赖已有 deployment 的 collection，`Create Preview Run` 主要用于校验编排绑定和输入形状。preview run 仍保持独立 snapshot 子进程，不直接复用 backend-service 父进程中的 deployment supervisor 状态；当前主干已接入 LocalBufferBroker direct mmap 数据面和 PublishedInferenceGateway 事件 dispatcher，推理节点会通过 BufferRef / FrameRef 调用 backend-service 持有的长期运行 deployment worker。目标 deployment 仍需提前通过 sync/start 或 sync/warmup 启动，或者在节点参数中显式允许 `auto_start_process`。
 - `06-*`、`07-*` collection 和 `04-*`、`05-*` HTTP collection 分开维护，避免把已验证 HTTP 调试路径和 ZeroMQ TriggerSource 调试路径混在同一目录中；06/07 仍保留完整本地 Save Template / Preview Run / Runtime / Workflow Run 调试链路，其中 HTTP invoke 只是用于验证同一 app 的双入口，不替代 04/05 的独立 HTTP 调试目录。
 - `08-*` collection 不再验证 HTTP 图片双入口，而是验证 `plc-register` 的事件输入边界；direct invoke 使用 synthetic event payload，只用于本地复现同一条业务处理链，不替代真实 PLC TriggerSource 常驻监听。
@@ -68,5 +68,5 @@
 - 当前 `directory-poll` 也沿用同一条边界；因此 `11-*` collection 对应的 workflow app 也显式使用 `response-body.v1 -> payload-to-value` 做图内桥接，而不是把包装逻辑隐式塞进 TriggerSource。
 - `workflow-execute-output` 类型的输出会直接出现在 `outputs[binding_id]`；`http-response` 类型的输出会出现在 `outputs[binding_id] = {"status_code": 200, "body": {...}}`。
 - 项目目录读取、Project 文件 metadata/content，以及模板/应用/runtime 主列表的 offset/limit 分页示例统一收口到 [docs/api/postman/workflow-runtime.postman_collection.json](../workflow-runtime.postman_collection.json)。分场景 collection 继续只保留最短业务链路，不重复铺通用控制面请求。
-- `05-*`、`07-*` 这类保存图片场景的默认模板已经切到 `projects/{project_id}/results/workflow-applications/{application_id}/runs/{workflow_run_id}/...` 结果域，因此后续可以直接接入 Project 结果读取面。旧模板如果仍写 `workflow-apps/...`，当前运行时继续兼容，但不再作为默认示例。
-- 第一类 collection 的 request_package 默认指向 `projectsrc/datasets/barcodeqrcode.zip`，导入 Postman 后如路径不匹配，需要把文件字段指到该 zip 包的本地路径。
+- `05-*`、`07-*` 这类保存图片场景的默认模板已经切到 `projects/{project_id}/results/workflow-applications/{application_id}/runs/{workflow_run_id}/...` 结果域，因此后续可以直接接入 Project 结果读取面。
+- 第一类 collection 的 `request_package` 默认指向 `data/files/postman-assets/detection-coco-min.zip`；导入 Postman 后如本地路径不同，只需要改 `requestPackagePath` 变量即可。

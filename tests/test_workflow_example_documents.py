@@ -3910,35 +3910,25 @@ def test_detection_end_to_end_qr_crop_remap_example_documents_are_valid() -> Non
     assert template.nodes[5].parameters["path"] == "task_spec.dataset_id"
     assert template.nodes[6].parameters["path"] == "result.dataset_version_id"
     assert template.nodes[3].parameters["fields"]["include_events"] is False
-    default_warm_start_node = next(
-        node
+    assert all(
+        node.node_id
+        not in {
+            "build_training_pretrained_case_nano",
+            "build_training_pretrained_case_tiny",
+            "build_training_pretrained_case_s",
+            "build_training_pretrained_case_m",
+            "build_training_pretrained_case_l",
+            "build_training_pretrained_case_x",
+            "build_training_pretrained_cases",
+            "resolve_default_training_warm_start_model_version_id",
+            "build_training_default_warm_start_request",
+        }
         for node in template.nodes
-        if node.node_id == "resolve_default_training_warm_start_model_version_id"
     )
-    assert default_warm_start_node.node_type_id == "core.logic.match-case"
-    assert default_warm_start_node.parameters["default_value"] is None
-    default_warm_start_request_node = next(
-        node
-        for node in template.nodes
-        if node.node_id == "build_training_default_warm_start_request"
+    submit_training_node = next(
+        node for node in template.nodes if node.node_id == "submit_training"
     )
-    assert default_warm_start_request_node.parameters["keys"] == [
-        "warm_start_model_version_id"
-    ]
-    pretrained_case_m_node = next(
-        node
-        for node in template.nodes
-        if node.node_id == "build_training_pretrained_case_m"
-    )
-    assert (
-        pretrained_case_m_node.parameters["fields"]["condition"]["path"]
-        == "model_scale"
-    )
-    assert pretrained_case_m_node.parameters["fields"]["condition"]["right"] == "m"
-    assert (
-        pretrained_case_m_node.parameters["fields"]["then"]
-        == "model-version-pretrained-yolox-m"
-    )
+    assert submit_training_node.parameters["task_type"] == "detection"
     conversion_builds_node = next(
         node for node in template.nodes if node.node_id == "extract_conversion_builds"
     )
@@ -3964,15 +3954,6 @@ def test_detection_end_to_end_qr_crop_remap_example_documents_are_valid() -> Non
     assert template.metadata["example_kind"] == "detection-end-to-end-qr-crop-remap"
     assert template.metadata["deployment_cleanup_policy"] == "delete_on_completion"
     assert template.metadata["node_groups"]["training"] == [
-        "build_training_pretrained_case_nano",
-        "build_training_pretrained_case_tiny",
-        "build_training_pretrained_case_s",
-        "build_training_pretrained_case_m",
-        "build_training_pretrained_case_l",
-        "build_training_pretrained_case_x",
-        "build_training_pretrained_cases",
-        "resolve_default_training_warm_start_model_version_id",
-        "build_training_default_warm_start_request",
         "build_training_dynamic_request",
         "merge_training_request",
         "submit_training",
@@ -4047,7 +4028,7 @@ def test_dataset_export_package_example_documents_are_valid() -> None:
 
 
 def test_detection_evaluation_package_example_documents_are_valid() -> None:
-    """验证 YOLOX evaluation package 示例模板与应用可以通过当前规则校验。"""
+    """验证 detection evaluation package 示例模板与应用可以通过当前规则校验。"""
 
     example_dir = (
         Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"

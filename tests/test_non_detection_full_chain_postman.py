@@ -232,4 +232,5 @@ def test_non_detection_full_chain_readmes_point_to_root_collections() -> None:
     assert "docs/api/postman/local-debug-assets.md" in api_readme_text
     assert "data/files/postman-assets/" in api_readme_text
     assert "12-*` 到 `15-*` 继续只表示 segmentation / classification / pose / OBB 的 workflow/runtime 使用面" in api_readme_text
-    assert "12-*` 到 `15-*` 这 4 个目录只覆盖 workflow/runtime 使用面" in workflow_readme_text
+    assert "docs/api/postman/detection-full-chain.postman_collection.json" in workflow_readme_text
+    assert "`01-*` 到 `15-*` 这些目录只覆盖 workflow/runtime 场景面" in workflow_readme_text

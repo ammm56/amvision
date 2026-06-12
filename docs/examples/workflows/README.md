@@ -339,7 +339,7 @@ ZeroMQ TriggerSource 示例不把机器相关的 `path`、`offset` 和 `broker_e
 - `request_camera_config`：`value.v1`
   - 示例：`{"value":{"device_index":0,"backend_preference":"msmf","width":1280,"height":720,"fps":15.0,"output_format":"png"}}`
 - `deployment_request`：`value.v1`
-  - 示例：`{"value":{"deployment_instance_id":"deploy-yolox-line-01"}}`
+  - 示例：`{"value":{"deployment_instance_id":"deploy-detection-line-01"}}`
 - `request_roi`：`value.v1`
   - 可选；未提供时回退到模板内默认矩形 ROI
 
@@ -1308,7 +1308,7 @@ ZeroMQ TriggerSource 示例不把机器相关的 `path`、`offset` 和 `broker_e
 
 - 该样例使用的是 `core.model.detection`，因此要求 `deployment_request.value` 至少包含 `deployment_instance_id`
 - 该样例先把 `detections.v1` 转成 `regions.v1`，再进入 `presence / inside / offset` 规则链；这是当前 deployment detection 接工业规则的推荐接法
-- 如果现场使用的不是 YOLOX，而是其他能输出 `detections.v1` 的模型节点，同样可以复用 `core.vision.detections-to-regions` 和后面的规则链
+- 如果现场使用的是其他 detection 模型，只要能输出 `detections.v1`，同样可以复用 `core.vision.detections-to-regions` 和后面的规则链
 
 ### industrial_single_frame_line_pair_measure_gate
 
