@@ -13,9 +13,9 @@
 ## 当前推荐顺序
 
 1. 在仓库根目录执行 `assemble-release`
-2. 把 Python 手工放入 `release/full/python/`
+2. 确认 `release/full/python/`、`release/full/frontend/`、`release/full/frontend/runtime-config.json` 和 `release/full/tools/ffmpeg/` 已经生成
 3. 在 `release/full/` 根目录执行一键启动脚本
-4. 检查 health、OpenAPI 文档和最小任务 smoke test
+4. 检查 health、OpenAPI 文档、前端静态资源和最小任务 smoke test
 
 ## 发布命令
 
@@ -26,8 +26,11 @@ python -m backend.maintenance.main assemble-release --profile-id full --release-
 
 说明：
 
-- 如果 `release/full/python/` 已经存在，`assemble-release --force` 会保留这个目录及其中内容，不会在覆盖发布时删除它
+- `assemble-release --force` 会保留并回迁当前 `release/full/python/`，不会在覆盖发布时删除这个大体量目录
+- 如果 `release/full/python/` 原本不存在，且本次也没有显式提供 bundled Python 来源目录，发布目录只会生成空的 `python/` 占位目录
+- 发布目录会复制 `frontend/web-ui/dist/`，并确保 `release/full/frontend/runtime-config.json` 存在
 - 发布目录会复制 `custom_nodes/` 作为 workflow app 运行资源
+- 发布目录会复制 `runtimes/third_party/ffmpeg/` 到 `release/full/tools/ffmpeg/`
 - 数据库文件、workflow templates/applications、预训练模型、数据集文件和其他开发数据不会随包复制；发布后的 `data/` 目录默认保持空目录
 - 其他由发布流程生成的目录和脚本仍会按当前代码重新生成
 
@@ -92,6 +95,7 @@ Linux 等价调用：
 - 发布目录结构：`runtime-profiles.md`
 - 同目录 Python 安装与替换：`bundled-python-deployment.md`
 - 首次部署验收：`full-first-deploy-checklist.md`
+- 现场日志与排障：`../operations/release-full-troubleshooting.md`
 
 ## 边界说明
 

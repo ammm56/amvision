@@ -1,0 +1,12 @@
+{
+  "phase": "implemented",
+  "families": [
+    "mes-http"
+  ],
+  "features": [
+    "result-callback",
+    "workflow-result-callback",
+    "batch-summary-callback",
+    "prepared-request-preview"
+  ]
+}

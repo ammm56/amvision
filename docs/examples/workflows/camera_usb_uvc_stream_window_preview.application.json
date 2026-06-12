@@ -1,0 +1,115 @@
+{
+  "format_id": "amvision.flow-application.v1",
+  "application_id": "camera-usb-uvc-stream-window-preview-app",
+  "display_name": "Camera USB/UVC Stream Window Preview App",
+  "description": "用于 USB / UVC 相机后台采流联调的 app。输入会话配置和流配置，输出会话摘要、流状态、frame-window 预览和关闭结果。",
+  "template_ref": {
+    "template_id": "camera-usb-uvc-stream-window-preview-template",
+    "template_version": "1.0.0",
+    "source_kind": "json-file",
+    "source_uri": "docs/examples/workflows/camera_usb_uvc_stream_window_preview.template.json"
+  },
+  "runtime_mode": "python-json-workflow",
+  "bindings": [
+    {
+      "binding_id": "request_session_config",
+      "direction": "input",
+      "template_port_id": "request_session_config",
+      "binding_kind": "workflow-execute-input",
+      "config": {
+        "payload_type_id": "value.v1",
+        "content_type": "application/json"
+      },
+      "metadata": {
+        "payload_type_id": "value.v1"
+      }
+    },
+    {
+      "binding_id": "request_stream_config",
+      "direction": "input",
+      "template_port_id": "request_stream_config",
+      "binding_kind": "workflow-execute-input",
+      "config": {
+        "payload_type_id": "value.v1",
+        "content_type": "application/json"
+      },
+      "metadata": {
+        "payload_type_id": "value.v1"
+      }
+    },
+    {
+      "binding_id": "open_session_summary",
+      "direction": "output",
+      "template_port_id": "open_session_summary",
+      "binding_kind": "workflow-execute-output",
+      "config": {
+        "payload_type_id": "value.v1"
+      },
+      "metadata": {}
+    },
+    {
+      "binding_id": "stream_start_summary",
+      "direction": "output",
+      "template_port_id": "stream_start_summary",
+      "binding_kind": "workflow-execute-output",
+      "config": {
+        "payload_type_id": "value.v1"
+      },
+      "metadata": {}
+    },
+    {
+      "binding_id": "stream_state",
+      "direction": "output",
+      "template_port_id": "stream_state",
+      "binding_kind": "workflow-execute-output",
+      "config": {
+        "payload_type_id": "value.v1"
+      },
+      "metadata": {}
+    },
+    {
+      "binding_id": "frames",
+      "direction": "output",
+      "template_port_id": "frames",
+      "binding_kind": "workflow-execute-output",
+      "config": {
+        "payload_type_id": "frame-window.v1"
+      },
+      "metadata": {}
+    },
+    {
+      "binding_id": "preview_body",
+      "direction": "output",
+      "template_port_id": "preview_body",
+      "binding_kind": "workflow-execute-output",
+      "config": {
+        "payload_type_id": "response-body.v1"
+      },
+      "metadata": {}
+    },
+    {
+      "binding_id": "window_summary",
+      "direction": "output",
+      "template_port_id": "window_summary",
+      "binding_kind": "workflow-execute-output",
+      "config": {
+        "payload_type_id": "value.v1"
+      },
+      "metadata": {}
+    },
+    {
+      "binding_id": "close_result",
+      "direction": "output",
+      "template_port_id": "close_result",
+      "binding_kind": "workflow-execute-output",
+      "config": {
+        "payload_type_id": "value.v1"
+      },
+      "metadata": {}
+    }
+  ],
+  "metadata": {
+    "example_kind": "camera-usb-uvc-stream-window-preview",
+    "intended_saved_object_key": "workflows/projects/{project_id}/applications/camera-usb-uvc-stream-window-preview-app/application.json"
+  }
+}

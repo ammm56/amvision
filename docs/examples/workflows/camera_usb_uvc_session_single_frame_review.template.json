@@ -1,0 +1,227 @@
+{
+  "format_id": "amvision.workflow-graph-template.v1",
+  "template_id": "camera-usb-uvc-session-single-frame-review-template",
+  "template_version": "1.0.0",
+  "display_name": "Camera USB/UVC Session Single Frame Review",
+  "description": "面向 USB / UVC 相机会话型单帧联调的样例。先打开会话，再按可选 request 覆盖参数写入与查询，随后抓取单帧并输出预览 body，最后显式关闭会话。",
+  "nodes": [
+    {
+      "node_id": "request_session_config_input",
+      "node_type_id": "core.io.template-input.value",
+      "parameters": {}
+    },
+    {
+      "node_id": "open_device",
+      "node_type_id": "custom.camera.usb.open-device",
+      "parameters": {
+        "device_index": 0,
+        "backend_preference": "any",
+        "width": 1280,
+        "height": 720,
+        "fps": 30.0,
+        "probe_frame": false
+      }
+    },
+    {
+      "node_id": "set_parameters",
+      "node_type_id": "custom.camera.usb.set-parameter",
+      "parameters": {
+        "parameter_values": {
+          "width": 1280,
+          "height": 720,
+          "fps": 15.0
+        },
+        "verify_after_set": true
+      }
+    },
+    {
+      "node_id": "get_parameters",
+      "node_type_id": "custom.camera.usb.get-parameter",
+      "parameters": {
+        "parameter_names": [
+          "width",
+          "height",
+          "fps",
+          "backend_name",
+          "requested_width",
+          "requested_height",
+          "requested_fps",
+          "successful_reads_total"
+        ]
+      }
+    },
+    {
+      "node_id": "read_latest_frame",
+      "node_type_id": "custom.camera.usb.read-latest-frame",
+      "parameters": {
+        "warmup_frame_count": 0,
+        "retry_read_count": 1,
+        "output_format": "png"
+      }
+    },
+    {
+      "node_id": "capture_preview_body",
+      "node_type_id": "core.output.image-body",
+      "parameters": {
+        "title": "USB/UVC Session Frame",
+        "response_transport_mode": "inline-base64"
+      }
+    },
+    {
+      "node_id": "close_device",
+      "node_type_id": "custom.camera.usb.close-device",
+      "parameters": {}
+    }
+  ],
+  "edges": [
+    {
+      "edge_id": "edge-session-config-open",
+      "source_node_id": "request_session_config_input",
+      "source_port": "value",
+      "target_node_id": "open_device",
+      "target_port": "request"
+    },
+    {
+      "edge_id": "edge-open-set-session",
+      "source_node_id": "open_device",
+      "source_port": "session",
+      "target_node_id": "set_parameters",
+      "target_port": "session"
+    },
+    {
+      "edge_id": "edge-set-get-session",
+      "source_node_id": "set_parameters",
+      "source_port": "session",
+      "target_node_id": "get_parameters",
+      "target_port": "session"
+    },
+    {
+      "edge_id": "edge-get-read-session",
+      "source_node_id": "get_parameters",
+      "source_port": "session",
+      "target_node_id": "read_latest_frame",
+      "target_port": "session"
+    },
+    {
+      "edge_id": "edge-session-config-read-request",
+      "source_node_id": "request_session_config_input",
+      "source_port": "value",
+      "target_node_id": "read_latest_frame",
+      "target_port": "request"
+    },
+    {
+      "edge_id": "edge-read-preview-body",
+      "source_node_id": "read_latest_frame",
+      "source_port": "image",
+      "target_node_id": "capture_preview_body",
+      "target_port": "image"
+    },
+    {
+      "edge_id": "edge-read-close-session",
+      "source_node_id": "read_latest_frame",
+      "source_port": "session",
+      "target_node_id": "close_device",
+      "target_port": "session"
+    }
+  ],
+  "template_inputs": [
+    {
+      "input_id": "request_session_config",
+      "display_name": "Request Session Config",
+      "payload_type_id": "value.v1",
+      "target_node_id": "request_session_config_input",
+      "target_port": "payload"
+    },
+    {
+      "input_id": "request_set_parameters",
+      "display_name": "Request Set Parameters",
+      "payload_type_id": "value.v1",
+      "target_node_id": "set_parameters",
+      "target_port": "request",
+      "required": false
+    },
+    {
+      "input_id": "request_parameter_query",
+      "display_name": "Request Parameter Query",
+      "payload_type_id": "value.v1",
+      "target_node_id": "get_parameters",
+      "target_port": "request",
+      "required": false
+    }
+  ],
+  "template_outputs": [
+    {
+      "output_id": "open_session_summary",
+      "display_name": "Open Session Summary",
+      "payload_type_id": "value.v1",
+      "source_node_id": "open_device",
+      "source_port": "summary"
+    },
+    {
+      "output_id": "set_result",
+      "display_name": "Set Result",
+      "payload_type_id": "value.v1",
+      "source_node_id": "set_parameters",
+      "source_port": "result"
+    },
+    {
+      "output_id": "parameter_result",
+      "display_name": "Parameter Result",
+      "payload_type_id": "value.v1",
+      "source_node_id": "get_parameters",
+      "source_port": "result"
+    },
+    {
+      "output_id": "captured_image",
+      "display_name": "Captured Image",
+      "payload_type_id": "image-ref.v1",
+      "source_node_id": "read_latest_frame",
+      "source_port": "image"
+    },
+    {
+      "output_id": "preview_body",
+      "display_name": "Preview Body",
+      "payload_type_id": "response-body.v1",
+      "source_node_id": "capture_preview_body",
+      "source_port": "body"
+    },
+    {
+      "output_id": "capture_summary",
+      "display_name": "Capture Summary",
+      "payload_type_id": "value.v1",
+      "source_node_id": "read_latest_frame",
+      "source_port": "summary"
+    },
+    {
+      "output_id": "close_result",
+      "display_name": "Close Result",
+      "payload_type_id": "value.v1",
+      "source_node_id": "close_device",
+      "source_port": "result"
+    }
+  ],
+  "metadata": {
+    "example_kind": "camera-usb-uvc-session-single-frame-review",
+    "focus": "usb-uvc-session-single-frame-and-parameter-review",
+    "transport": "usb-uvc",
+    "optional_parameter_override_binding": "request_set_parameters",
+    "optional_parameter_query_binding": "request_parameter_query",
+    "node_groups": {
+      "input": [
+        "request_session_config_input"
+      ],
+      "session": [
+        "open_device",
+        "close_device"
+      ],
+      "parameter": [
+        "set_parameters",
+        "get_parameters"
+      ],
+      "capture": [
+        "read_latest_frame",
+        "capture_preview_body"
+      ]
+    }
+  }
+}

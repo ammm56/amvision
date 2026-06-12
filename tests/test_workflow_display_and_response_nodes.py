@@ -4,6 +4,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import cv2
+import numpy as np
+
 from backend.contracts.workflows.workflow_graph import (
     FlowApplication,
     FlowApplicationBinding,
@@ -208,6 +211,82 @@ def test_preview_run_image_refs_item_get_selects_single_image_ref(tmp_path: Path
     )
 
 
+def test_preview_run_frame_window_preview_formats_gallery_for_http_response(tmp_path: Path) -> None:
+    """验证 frame-window-preview 可以把帧窗口整理成 gallery-preview HTTP 响应。"""
+
+    service, _, _ = _build_runtime_service(tmp_path)
+    service.dataset_storage.write_bytes("inputs/frame-001.png", build_valid_test_png_bytes())
+    service.dataset_storage.write_bytes("inputs/frame-002.png", build_valid_test_png_bytes())
+    service.dataset_storage.write_bytes("inputs/frame-003.png", build_valid_test_png_bytes())
+
+    preview_run = service.create_preview_run(
+        WorkflowPreviewRunCreateRequest(
+            project_id="project-1",
+            application=_build_frame_window_preview_application(),
+            template=_build_frame_window_preview_template(),
+            input_bindings={
+                "frames": {
+                    "source_video": {
+                        "transport_kind": "local-path",
+                        "local_path": "W:/videos/demo.mp4",
+                        "media_type": "video/mp4",
+                        "frame_count": 3,
+                        "fps": 5.0,
+                        "width": 32,
+                        "height": 32,
+                        "duration_ms": 600.0,
+                    },
+                    "count": 3,
+                    "window_start_index": 0,
+                    "window_end_index": 2,
+                    "items": [
+                        {
+                            "frame_index": 0,
+                            "timestamp_ms": 0.0,
+                            "image": {
+                                "transport_kind": "storage",
+                                "object_key": "inputs/frame-001.png",
+                                "media_type": "image/png",
+                            },
+                        },
+                        {
+                            "frame_index": 1,
+                            "timestamp_ms": 200.0,
+                            "image": {
+                                "transport_kind": "storage",
+                                "object_key": "inputs/frame-002.png",
+                                "media_type": "image/png",
+                            },
+                        },
+                        {
+                            "frame_index": 2,
+                            "timestamp_ms": 400.0,
+                            "image": {
+                                "transport_kind": "storage",
+                                "object_key": "inputs/frame-003.png",
+                                "media_type": "image/png",
+                            },
+                        },
+                    ],
+                }
+            },
+        ),
+        created_by="workflow-user",
+    )
+
+    assert preview_run.state == "succeeded"
+    response_body = preview_run.outputs["http_response"]["body"]
+    assert response_body["type"] == "gallery-preview"
+    assert response_body["title"] == "Video Frames"
+    assert response_body["total_count"] == 3
+    assert len(response_body["items"]) == 2
+    assert response_body["items"][0]["frame_index"] == 0
+    assert response_body["items"][0]["image"]["transport_kind"] == "storage-ref"
+    assert response_body["items"][0]["image"]["object_key"].startswith(
+        f"workflows/runtime/preview-runs/{preview_run.preview_run_id}/artifacts/frame_window_preview/"
+    )
+
+
 def test_preview_run_image_body_returns_raw_inline_base64_but_persists_redacted(tmp_path: Path) -> None:
     """验证 image-body 在同步响应返回原始 base64，持久化结果继续脱敏。"""
 
@@ -243,6 +322,44 @@ def test_preview_run_image_body_returns_raw_inline_base64_but_persists_redacted(
     assert persisted_response_body["image"]["image_base64_redacted"] is True
     assert persisted_response_body["image"]["image_base64_char_length"] > 0
     assert "image_base64" not in persisted_response_body["image"]
+
+
+def test_preview_run_video_body_returns_playable_storage_ref_response(tmp_path: Path) -> None:
+    """验证 video-body 会把视频结果整理成可播放 response body。"""
+
+    service, _, _ = _build_runtime_service(tmp_path)
+    video_path = _build_small_test_video_file(tmp_path / "inputs" / "sample.avi", frame_count=4)
+
+    preview_run = service.create_preview_run(
+        WorkflowPreviewRunCreateRequest(
+            project_id="project-1",
+            application=_build_video_body_application(),
+            template=_build_video_body_template(),
+            input_bindings={
+                "request_video": {
+                    "transport_kind": "local-path",
+                    "local_path": str(video_path),
+                    "media_type": "video/x-msvideo",
+                    "frame_count": 4,
+                    "fps": 5.0,
+                    "width": 48,
+                    "height": 32,
+                    "duration_ms": 800.0,
+                }
+            },
+        ),
+        created_by="workflow-user",
+    )
+
+    assert preview_run.state == "succeeded"
+    response_body = preview_run.outputs["http_response"]["body"]
+    assert response_body["type"] == "video"
+    assert response_body["title"] == "Formal Video"
+    assert response_body["video"]["transport_kind"] == "storage-ref"
+    assert response_body["video"]["object_key"].startswith(
+        f"workflows/runtime/preview-runs/{preview_run.preview_run_id}/artifacts/video_body/"
+    )
+    assert service.dataset_storage.resolve(response_body["video"]["object_key"]).is_file() is True
 
 
 def test_preview_run_response_envelope_wraps_data_and_meta(tmp_path: Path) -> None:
@@ -315,6 +432,65 @@ def test_preview_run_response_envelope_can_compose_detections_and_preview_image_
     persisted_response_body = persisted_preview_run.outputs["http_response"]["body"]
     assert persisted_response_body["data"]["input_image_base64_redacted"] is True
     assert persisted_response_body["data"]["input_image_base64_char_length"] > 0
+
+
+def test_preview_run_tracks_can_bridge_to_table_preview_via_value_extract(tmp_path: Path) -> None:
+    """验证 tracks 可以经 payload-to-value 和 value-field-extract 接到 table-preview。"""
+
+    service, _, _ = _build_runtime_service(tmp_path)
+    preview_run = service.create_preview_run(
+        WorkflowPreviewRunCreateRequest(
+            project_id="project-1",
+            application=_build_tracks_table_preview_application(),
+            template=_build_tracks_table_preview_template(),
+            input_bindings={
+                "tracks": {
+                    "source_video": {
+                        "transport_kind": "local-path",
+                        "local_path": "W:/videos/demo.mp4",
+                        "media_type": "video/mp4",
+                    },
+                    "count": 2,
+                    "items": [
+                        {
+                            "track_id": "track-a",
+                            "frame_index": 5,
+                            "timestamp_ms": 1000.0,
+                            "score": 0.93,
+                            "class_id": 1,
+                            "class_name": "part-a",
+                            "bbox_xyxy": [4.0, 5.0, 20.0, 24.0],
+                            "polygon_xy": [[4.0, 5.0], [20.0, 5.0], [20.0, 24.0], [4.0, 24.0]],
+                            "area": 304,
+                            "state": "tracked",
+                        },
+                        {
+                            "track_id": "track-b",
+                            "frame_index": 6,
+                            "timestamp_ms": 1200.0,
+                            "score": 0.71,
+                            "class_id": 2,
+                            "class_name": "part-b",
+                            "bbox_xyxy": [10.0, 12.0, 28.0, 30.0],
+                            "polygon_xy": [[10.0, 12.0], [28.0, 12.0], [28.0, 30.0], [10.0, 30.0]],
+                            "area": 324,
+                            "state": "candidate",
+                        },
+                    ],
+                }
+            },
+        ),
+        created_by="workflow-user",
+    )
+
+    assert preview_run.state == "succeeded"
+    response_body = preview_run.outputs["http_response"]["body"]
+    assert response_body["type"] == "table-preview"
+    assert response_body["title"] == "Tracks Preview"
+    assert response_body["rows"] == [
+        {"track_id": "track-a", "frame_index": 5, "score": 0.93, "state": "tracked"},
+        {"track_id": "track-b", "frame_index": 6, "score": 0.71, "state": "candidate"},
+    ]
 
 
 def _build_table_preview_template() -> WorkflowGraphTemplate:
@@ -678,6 +854,87 @@ def _build_image_refs_item_get_application() -> FlowApplication:
     )
 
 
+def _build_frame_window_preview_template() -> WorkflowGraphTemplate:
+    """构造 frame-window-preview 的最小 workflow 模板。"""
+
+    return WorkflowGraphTemplate(
+        template_id="frame-window-preview-template",
+        template_version="1.0.0",
+        display_name="Frame Window Preview Template",
+        nodes=(
+            WorkflowGraphNode(
+                node_id="frame_window_preview",
+                node_type_id="core.io.frame-window-preview",
+                parameters={
+                    "title": "Video Frames",
+                    "sample_mode": "head",
+                    "max_items": 2,
+                    "response_transport_mode": "storage-ref",
+                },
+            ),
+            WorkflowGraphNode(node_id="response", node_type_id="core.output.http-response"),
+        ),
+        edges=(
+            WorkflowGraphEdge(
+                edge_id="edge-frame-window-preview-response",
+                source_node_id="frame_window_preview",
+                source_port="body",
+                target_node_id="response",
+                target_port="body",
+            ),
+        ),
+        template_inputs=(
+            WorkflowGraphInput(
+                input_id="frames",
+                display_name="Frames",
+                payload_type_id="frame-window.v1",
+                target_node_id="frame_window_preview",
+                target_port="frames",
+            ),
+        ),
+        template_outputs=(
+            WorkflowGraphOutput(
+                output_id="http_response",
+                display_name="HTTP Response",
+                payload_type_id="http-response.v1",
+                source_node_id="response",
+                source_port="response",
+            ),
+        ),
+    )
+
+
+def _build_frame_window_preview_application() -> FlowApplication:
+    """构造 frame-window-preview 的最小流程应用。"""
+
+    return FlowApplication(
+        application_id="frame-window-preview-app",
+        display_name="Frame Window Preview App",
+        template_ref=FlowTemplateReference(
+            template_id="frame-window-preview-template",
+            template_version="1.0.0",
+            source_kind="json-file",
+            source_uri="placeholder",
+        ),
+        bindings=(
+            FlowApplicationBinding(
+                binding_id="frames",
+                direction="input",
+                template_port_id="frames",
+                binding_kind="api-request",
+                config={"route": "/execute/frame-window-preview", "method": "POST"},
+            ),
+            FlowApplicationBinding(
+                binding_id="http_response",
+                direction="output",
+                template_port_id="http_response",
+                binding_kind="http-response",
+                config={"status_code": 200},
+            ),
+        ),
+    )
+
+
 def _build_payload_composition_template() -> WorkflowGraphTemplate:
     """构造 detections 与图片 base64 组合响应的模板。"""
 
@@ -761,7 +1018,7 @@ def _build_payload_composition_template() -> WorkflowGraphTemplate:
             ),
             WorkflowGraphInput(
                 input_id="yolox_detections",
-                display_name="YOLOX Detections",
+                display_name="Detections",
                 payload_type_id="detections.v1",
                 target_node_id="detections_as_value",
                 target_port="detections",
@@ -815,6 +1072,132 @@ def _build_payload_composition_application() -> FlowApplication:
             ),
         ),
     )
+
+
+def _build_tracks_table_preview_template() -> WorkflowGraphTemplate:
+    """构造 tracks -> table-preview 的最小 workflow 模板。"""
+
+    return WorkflowGraphTemplate(
+        template_id="tracks-table-preview-template",
+        template_version="1.0.0",
+        display_name="Tracks Table Preview Template",
+        nodes=(
+            WorkflowGraphNode(
+                node_id="tracks_to_value",
+                node_type_id="core.logic.payload-to-value",
+            ),
+            WorkflowGraphNode(
+                node_id="extract_items",
+                node_type_id="core.logic.value-field-extract",
+                parameters={"path": "items"},
+            ),
+            WorkflowGraphNode(
+                node_id="table_preview",
+                node_type_id="core.io.table-preview",
+                parameters={
+                    "title": "Tracks Preview",
+                    "columns": [
+                        {"key": "track_id", "label": "Track", "path": "track_id"},
+                        {"key": "frame_index", "label": "Frame", "path": "frame_index"},
+                        {"key": "score", "label": "Score", "path": "score"},
+                        {"key": "state", "label": "State", "path": "state"},
+                    ],
+                },
+            ),
+            WorkflowGraphNode(node_id="response", node_type_id="core.output.http-response"),
+        ),
+        edges=(
+            WorkflowGraphEdge(
+                edge_id="edge-tracks-value",
+                source_node_id="tracks_to_value",
+                source_port="value",
+                target_node_id="extract_items",
+                target_port="value",
+            ),
+            WorkflowGraphEdge(
+                edge_id="edge-items-preview",
+                source_node_id="extract_items",
+                source_port="value",
+                target_node_id="table_preview",
+                target_port="items",
+            ),
+            WorkflowGraphEdge(
+                edge_id="edge-tracks-table-response",
+                source_node_id="table_preview",
+                source_port="body",
+                target_node_id="response",
+                target_port="body",
+            ),
+        ),
+        template_inputs=(
+            WorkflowGraphInput(
+                input_id="tracks",
+                display_name="Tracks",
+                payload_type_id="tracks.v1",
+                target_node_id="tracks_to_value",
+                target_port="tracks",
+            ),
+        ),
+        template_outputs=(
+            WorkflowGraphOutput(
+                output_id="http_response",
+                display_name="HTTP Response",
+                payload_type_id="http-response.v1",
+                source_node_id="response",
+                source_port="response",
+            ),
+        ),
+    )
+
+
+def _build_tracks_table_preview_application() -> FlowApplication:
+    """构造 tracks -> table-preview 的最小流程应用。"""
+
+    return FlowApplication(
+        application_id="tracks-table-preview-app",
+        display_name="Tracks Table Preview App",
+        template_ref=FlowTemplateReference(
+            template_id="tracks-table-preview-template",
+            template_version="1.0.0",
+            source_kind="json-file",
+            source_uri="placeholder",
+        ),
+        bindings=(
+            FlowApplicationBinding(
+                binding_id="tracks",
+                direction="input",
+                template_port_id="tracks",
+                binding_kind="api-request",
+                config={"route": "/execute/tracks-table-preview", "method": "POST"},
+            ),
+            FlowApplicationBinding(
+                binding_id="http_response",
+                direction="output",
+                template_port_id="http_response",
+                binding_kind="http-response",
+                config={"status_code": 200},
+            ),
+        ),
+    )
+
+
+def _build_small_test_video_file(video_path: Path, *, frame_count: int) -> Path:
+    """构造测试用本地 AVI 视频文件。"""
+
+    video_path.parent.mkdir(parents=True, exist_ok=True)
+    writer = cv2.VideoWriter(
+        str(video_path),
+        cv2.VideoWriter_fourcc(*"MJPG"),
+        5.0,
+        (48, 32),
+    )
+    assert writer.isOpened() is True
+    for frame_index in range(frame_count):
+        frame = np.full((32, 48, 3), frame_index * 25, dtype=np.uint8)
+        writer.write(frame)
+    writer.release()
+    assert video_path.is_file() is True
+    return video_path.resolve()
 
 
 def _build_image_body_template() -> WorkflowGraphTemplate:
@@ -891,3 +1274,80 @@ def _build_image_body_application() -> FlowApplication:
             ),
         ),
     )
+
+
+def _build_video_body_template() -> WorkflowGraphTemplate:
+    """构造 video-body 的最小 workflow 模板。"""
+
+    return WorkflowGraphTemplate(
+        template_id="video-body-template",
+        template_version="1.0.0",
+        display_name="Video Body Template",
+        nodes=(
+            WorkflowGraphNode(
+                node_id="video_body",
+                node_type_id="core.output.video-body",
+                parameters={"title": "Formal Video"},
+            ),
+            WorkflowGraphNode(node_id="response", node_type_id="core.output.http-response"),
+        ),
+        edges=(
+            WorkflowGraphEdge(
+                edge_id="edge-video-body-response",
+                source_node_id="video_body",
+                source_port="body",
+                target_node_id="response",
+                target_port="body",
+            ),
+        ),
+        template_inputs=(
+            WorkflowGraphInput(
+                input_id="request_video",
+                display_name="Request Video",
+                payload_type_id="video-ref.v1",
+                target_node_id="video_body",
+                target_port="video",
+            ),
+        ),
+        template_outputs=(
+            WorkflowGraphOutput(
+                output_id="http_response",
+                display_name="HTTP Response",
+                payload_type_id="http-response.v1",
+                source_node_id="response",
+                source_port="response",
+            ),
+        ),
+    )
+
+
+def _build_video_body_application() -> FlowApplication:
+    """构造 video-body 的最小流程应用。"""
+
+    return FlowApplication(
+        application_id="video-body-app",
+        display_name="Video Body App",
+        template_ref=FlowTemplateReference(
+            template_id="video-body-template",
+            template_version="1.0.0",
+            source_kind="json-file",
+            source_uri="placeholder",
+        ),
+        bindings=(
+            FlowApplicationBinding(
+                binding_id="request_video",
+                direction="input",
+                template_port_id="request_video",
+                binding_kind="api-request",
+                config={"route": "/execute/video-body", "method": "POST"},
+            ),
+            FlowApplicationBinding(
+                binding_id="http_response",
+                direction="output",
+                template_port_id="http_response",
+                binding_kind="http-response",
+                config={"status_code": 200},
+            ),
+        ),
+    )
+

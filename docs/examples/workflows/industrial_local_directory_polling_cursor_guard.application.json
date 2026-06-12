@@ -1,0 +1,146 @@
+{
+  "format_id": "amvision.flow-application.v1",
+  "application_id": "industrial-local-directory-polling-cursor-guard-app",
+  "display_name": "Industrial Local Directory Polling Cursor Guard App",
+  "description": "用于工业本地目录轮询状态守护的正式样例 app。输入目录路径和可选批次大小；输出 has_work、待处理批次文件、当前 cursor、cursor 读写摘要与批次归档摘要。",
+  "template_ref": {
+    "template_id": "industrial-local-directory-polling-cursor-guard-template",
+    "template_version": "1.0.0",
+    "source_kind": "json-file",
+    "source_uri": "docs/examples/workflows/industrial_local_directory_polling_cursor_guard.template.json"
+  },
+  "runtime_mode": "python-json-workflow",
+  "bindings": [
+    {
+      "binding_id": "request_directory_path",
+      "direction": "input",
+      "template_port_id": "request_directory_path",
+      "binding_kind": "workflow-execute-input",
+      "config": {
+        "payload_type_id": "value.v1",
+        "content_type": "application/json"
+      },
+      "metadata": {
+        "payload_type_id": "value.v1"
+      }
+    },
+    {
+      "binding_id": "request_batch_size",
+      "direction": "input",
+      "template_port_id": "request_batch_size",
+      "binding_kind": "workflow-execute-input",
+      "required": false,
+      "config": {
+        "payload_type_id": "value.v1",
+        "content_type": "application/json"
+      },
+      "metadata": {
+        "payload_type_id": "value.v1"
+      }
+    },
+    {
+      "binding_id": "has_work",
+      "direction": "output",
+      "template_port_id": "has_work",
+      "binding_kind": "workflow-execute-output",
+      "config": {
+        "payload_type_id": "boolean.v1"
+      },
+      "metadata": {}
+    },
+    {
+      "binding_id": "batch_files",
+      "direction": "output",
+      "template_port_id": "batch_files",
+      "binding_kind": "workflow-execute-output",
+      "config": {
+        "payload_type_id": "value.v1"
+      },
+      "metadata": {}
+    },
+    {
+      "binding_id": "scan_summary",
+      "direction": "output",
+      "template_port_id": "scan_summary",
+      "binding_kind": "workflow-execute-output",
+      "config": {
+        "payload_type_id": "value.v1"
+      },
+      "metadata": {}
+    },
+    {
+      "binding_id": "poll_summary",
+      "direction": "output",
+      "template_port_id": "poll_summary",
+      "binding_kind": "workflow-execute-output",
+      "config": {
+        "payload_type_id": "value.v1"
+      },
+      "metadata": {}
+    },
+    {
+      "binding_id": "batch_cursor",
+      "direction": "output",
+      "template_port_id": "batch_cursor",
+      "binding_kind": "workflow-execute-output",
+      "config": {
+        "payload_type_id": "value.v1"
+      },
+      "metadata": {}
+    },
+    {
+      "binding_id": "cursor_state",
+      "direction": "output",
+      "template_port_id": "cursor_state",
+      "binding_kind": "workflow-execute-output",
+      "config": {
+        "payload_type_id": "value.v1"
+      },
+      "metadata": {}
+    },
+    {
+      "binding_id": "cursor_load_summary",
+      "direction": "output",
+      "template_port_id": "cursor_load_summary",
+      "binding_kind": "workflow-execute-output",
+      "config": {
+        "payload_type_id": "value.v1"
+      },
+      "metadata": {}
+    },
+    {
+      "binding_id": "cursor_save_summary",
+      "direction": "output",
+      "template_port_id": "cursor_save_summary",
+      "binding_kind": "workflow-execute-output",
+      "config": {
+        "payload_type_id": "value.v1"
+      },
+      "metadata": {}
+    },
+    {
+      "binding_id": "batch_archive",
+      "direction": "output",
+      "template_port_id": "batch_archive",
+      "binding_kind": "workflow-execute-output",
+      "config": {
+        "payload_type_id": "value.v1"
+      },
+      "metadata": {}
+    },
+    {
+      "binding_id": "archive_summary",
+      "direction": "output",
+      "template_port_id": "archive_summary",
+      "binding_kind": "workflow-execute-output",
+      "config": {
+        "payload_type_id": "value.v1"
+      },
+      "metadata": {}
+    }
+  ],
+  "metadata": {
+    "example_kind": "industrial-local-directory-polling-cursor-guard",
+    "intended_saved_object_key": "workflows/projects/{project_id}/applications/industrial-local-directory-polling-cursor-guard-app/application.json"
+  }
+}

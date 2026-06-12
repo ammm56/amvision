@@ -1,0 +1,109 @@
+"""YOLO26 训练队列 worker。"""
+
+from __future__ import annotations
+
+from backend.queue import QueueBackend, QueueMessage
+from backend.service.application.backends import TrainingBackend, TrainingBackendRunRequest
+from backend.service.application.errors import InvalidRequestError, ServiceError
+from backend.service.application.models.yolo26_training_service import YOLO26_TRAINING_QUEUE_NAME
+from backend.service.infrastructure.db.session import SessionFactory
+from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
+from backend.workers.training.yolo26_trainer_runner import SqlAlchemyYolo26TrainerRunner
+
+
+class Yolo26TrainingQueueWorker:
+    """消费 yolo26-trainings 队列任务的最小 worker。"""
+
+    def __init__(
+        self,
+        *,
+        session_factory: SessionFactory,
+        dataset_storage: LocalDatasetStorage,
+        queue_backend: QueueBackend,
+        training_backend: TrainingBackend | None = None,
+        worker_id: str = "yolo26-training-worker",
+    ) -> None:
+        """初始化 YOLO26 训练队列 worker。"""
+
+        self.session_factory = session_factory
+        self.dataset_storage = dataset_storage
+        self.queue_backend = queue_backend
+        self.training_backend = training_backend
+        self.worker_id = worker_id
+
+    def run_once(self) -> bool:
+        """消费并执行一条 YOLO26 训练队列任务。"""
+
+        queue_task = self.queue_backend.claim_next(
+            queue_name=YOLO26_TRAINING_QUEUE_NAME,
+            worker_id=self.worker_id,
+        )
+        if queue_task is None:
+            return False
+
+        try:
+            task_id = self._read_task_id(queue_task)
+            training_backend = self.training_backend or SqlAlchemyYolo26TrainerRunner(
+                session_factory=self.session_factory,
+                dataset_storage=self.dataset_storage,
+            )
+            run_result = training_backend.run_training(
+                TrainingBackendRunRequest(
+                    training_task_id=task_id,
+                    model_type="yolo26",
+                    task_type="detection",
+                    metadata={"queue_task_id": queue_task.task_id},
+                )
+            )
+        except ServiceError as error:
+            self.queue_backend.fail(
+                queue_task,
+                error_message=error.message,
+                metadata={
+                    "task_id": queue_task.payload.get("task_id"),
+                    "dataset_export_id": queue_task.metadata.get("dataset_export_id"),
+                },
+            )
+            return True
+        except Exception as error:
+            self.queue_backend.fail(
+                queue_task,
+                error_message=str(error),
+                metadata={
+                    "task_id": queue_task.payload.get("task_id"),
+                    "dataset_export_id": queue_task.metadata.get("dataset_export_id"),
+                    "error_type": error.__class__.__name__,
+                },
+            )
+            return True
+
+        self.queue_backend.complete(
+            queue_task,
+            metadata={
+                "task_id": run_result.training_task_id,
+                "status": run_result.status,
+                "dataset_export_id": run_result.dataset_export_id,
+                "dataset_export_manifest_key": run_result.dataset_export_manifest_key,
+                "dataset_version_id": run_result.dataset_version_id,
+                "format_id": run_result.format_id,
+                "output_object_prefix": run_result.output_object_prefix,
+                "checkpoint_object_key": run_result.checkpoint_object_key,
+                "latest_checkpoint_object_key": run_result.latest_checkpoint_object_key,
+                "labels_object_key": run_result.labels_object_key,
+                "metrics_object_key": run_result.metrics_object_key,
+                "validation_metrics_object_key": run_result.validation_metrics_object_key,
+                "summary_object_key": run_result.summary_object_key,
+            },
+        )
+        return True
+
+    def _read_task_id(self, queue_task: QueueMessage) -> str:
+        """从队列负载中读取训练任务 id。"""
+
+        task_id = queue_task.payload.get("task_id")
+        if not isinstance(task_id, str) or not task_id.strip():
+            raise InvalidRequestError(
+                "训练队列任务缺少 task_id",
+                details={"queue_task_id": queue_task.task_id},
+            )
+        return task_id

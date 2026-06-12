@@ -288,7 +288,7 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
     deploymentOps: {
       kicker: '部署',
       title: '模型部署实例',
-      description: '创建 YOLOX DeploymentInstance，并控制 sync 或 async 推理进程的启动、停止、预热和健康检查。',
+      description: '创建 Detection DeploymentInstance，并控制 sync 或 async 推理进程的启动、停止、预热和健康检查。',
       createKicker: 'Create',
       createTitle: '创建 DeploymentInstance',
       runtimeKicker: 'Runtime',
@@ -1269,7 +1269,7 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
     deploymentOps: {
       kicker: 'Deployments',
       title: 'Model Deployment Instances',
-      description: 'Create YOLOX DeploymentInstance records and control sync or async inference runtime start, stop, warmup, and health checks.',
+      description: 'Create Detection DeploymentInstance records and control sync or async inference runtime start, stop, warmup, and health checks.',
       createKicker: 'Create',
       createTitle: 'Create DeploymentInstance',
       runtimeKicker: 'Runtime',
@@ -2244,7 +2244,7 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
     deploymentOps: {
       kicker: 'デプロイ',
       title: 'モデル DeploymentInstance',
-      description: 'YOLOX DeploymentInstance を作成し、sync または async 推論ランタイムの起動、停止、warmup、health を操作します。',
+      description: 'Detection DeploymentInstance を作成し、sync または async 推論ランタイムの起動、停止、warmup、health を操作します。',
       createKicker: 'Create',
       createTitle: 'DeploymentInstance を作成',
       runtimeKicker: 'Runtime',
@@ -3219,7 +3219,7 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
     deploymentOps: {
       kicker: '배포',
       title: '모델 DeploymentInstance',
-      description: 'YOLOX DeploymentInstance 를 만들고 sync 또는 async 추론 런타임의 시작, 중지, warmup, health 를 제어합니다.',
+      description: 'Detection DeploymentInstance 를 만들고 sync 또는 async 추론 런타임의 시작, 중지, warmup, health 를 제어합니다.',
       createKicker: 'Create',
       createTitle: 'DeploymentInstance 생성',
       runtimeKicker: 'Runtime',

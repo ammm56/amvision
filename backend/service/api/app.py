@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from backend.queue import LocalFileQueueBackend
 from backend.service.api.bootstrap import BackendServiceBootstrap
@@ -40,6 +43,50 @@ def _register_cors_middleware(
         allow_methods=list(settings.cors.allow_methods),
         allow_headers=list(settings.cors.allow_headers),
         expose_headers=list(settings.cors.expose_headers),
+    )
+
+
+class FrontendStaticFiles(StaticFiles):
+    """为单页应用提供静态资源与路由回退。"""
+
+    async def get_response(self, path: str, scope):  # type: ignore[override]
+        """优先返回静态文件；未命中时对无扩展名路径回退到 index.html。"""
+
+        try:
+            return await super().get_response(path, scope)
+        except StarletteHTTPException as exc:
+            if exc.status_code != 404:
+                raise
+
+            request_path = Path(path)
+            if request_path.name and "." in request_path.name:
+                raise
+            return await super().get_response("index.html", scope)
+
+
+def _resolve_frontend_static_dir() -> Path | None:
+    """按当前工作目录解析可供 backend-service 托管的前端静态目录。"""
+
+    current_working_dir = Path.cwd().resolve()
+    for candidate_dir in (
+        current_working_dir / "frontend",
+        current_working_dir / "frontend" / "web-ui" / "dist",
+    ):
+        if (candidate_dir / "index.html").is_file():
+            return candidate_dir
+    return None
+
+
+def _register_frontend_static_files(application: FastAPI) -> None:
+    """在当前目录存在前端构建产物时挂载浏览器端静态资源。"""
+
+    frontend_static_dir = _resolve_frontend_static_dir()
+    if frontend_static_dir is None:
+        return
+    application.mount(
+        "/",
+        FrontendStaticFiles(directory=str(frontend_static_dir), html=True),
+        name="frontend",
     )
 
 
@@ -96,6 +143,7 @@ def create_app(
     register_exception_handlers(application)
     application.include_router(rest_router)
     application.include_router(ws_router)
+    _register_frontend_static_files(application)
 
     return application
 

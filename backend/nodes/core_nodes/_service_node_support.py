@@ -3,23 +3,30 @@
 from __future__ import annotations
 
 from dataclasses import asdict, is_dataclass, replace
-from typing import Sequence
+from typing import Any, Sequence
 
 from backend.nodes.core_nodes._logic_node_support import require_value_payload
 from backend.nodes.runtime_support import resolve_image_input
-from backend.service.application.deployments.yolox_deployment_service import (
-    YoloXDeploymentInstanceView,
+from backend.service.application.deployments.deployment_instance_service import (
+    DeploymentInstanceView,
 )
 from backend.service.application.errors import InvalidRequestError, ServiceConfigurationError
-from backend.service.application.runtime.yolox_deployment_process_supervisor import (
-    YoloXDeploymentProcessConfig,
-    YoloXDeploymentProcessHealth,
-    YoloXDeploymentProcessKeepWarmStatus,
-    YoloXDeploymentProcessStatus,
-    YoloXDeploymentProcessSupervisor,
+from backend.service.application.runtime.deployment_process_supervisor import (
+    DeploymentProcessConfig,
+    DeploymentProcessHealth,
+    DeploymentProcessKeepWarmStatus,
+    DeploymentProcessStatus,
+    DeploymentProcessSupervisor,
 )
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 from backend.service.application.workflows.service_node_runtime import WorkflowServiceNodeRuntimeContext
+from backend.service.domain.models.model_task_types import (
+    CLASSIFICATION_TASK_TYPE,
+    DETECTION_TASK_TYPE,
+    OBB_TASK_TYPE,
+    POSE_TASK_TYPE,
+    SEGMENTATION_TASK_TYPE,
+)
 
 
 def require_workflow_service_node_runtime(
@@ -300,10 +307,61 @@ def require_runtime_mode_parameter(
     return runtime_mode
 
 
+def require_service_task_type_parameter(
+    request: WorkflowNodeExecutionRequest,
+) -> str:
+    """读取并校验 service node 的必填 task_type 参数。"""
+
+    task_type = get_optional_str_parameter(request, "task_type")
+    if task_type is None:
+        raise InvalidRequestError(
+            "task_type 不能为空，service node 必须显式声明任务分类",
+            details={"node_id": request.node_id, "parameter": "task_type"},
+        )
+    normalized_task_type = task_type.strip().lower()
+    supported_task_types = {
+        DETECTION_TASK_TYPE,
+        CLASSIFICATION_TASK_TYPE,
+        SEGMENTATION_TASK_TYPE,
+        POSE_TASK_TYPE,
+        OBB_TASK_TYPE,
+    }
+    if normalized_task_type not in supported_task_types:
+        raise InvalidRequestError(
+            "task_type 不受当前 service node 支持",
+            details={
+                "node_id": request.node_id,
+                "task_type": task_type,
+                "supported": sorted(supported_task_types),
+            },
+        )
+    return normalized_task_type
+
+
+def build_service_node_deployment_service(
+    runtime_context: WorkflowServiceNodeRuntimeContext,
+    *,
+    task_type: str,
+) -> Any:
+    """按 task_type 调用 runtime_context.build_deployment_service。"""
+
+    return runtime_context.build_deployment_service(task_type=task_type)
+
+
+def build_service_node_inference_task_service(
+    runtime_context: WorkflowServiceNodeRuntimeContext,
+    *,
+    task_type: str,
+) -> Any:
+    """按 task_type 调用 runtime_context.build_inference_task_service。"""
+
+    return runtime_context.build_inference_task_service(task_type=task_type)
+
+
 def require_running_deployment_process(
     *,
-    deployment_process_supervisor: YoloXDeploymentProcessSupervisor,
-    process_config: YoloXDeploymentProcessConfig,
+    deployment_process_supervisor: DeploymentProcessSupervisor,
+    process_config: DeploymentProcessConfig,
     runtime_mode: str,
 ) -> None:
     """校验当前 deployment 子进程已经处于 running 状态。"""
@@ -324,8 +382,8 @@ def require_running_deployment_process(
 
 def ensure_running_deployment_process(
     *,
-    deployment_process_supervisor: YoloXDeploymentProcessSupervisor,
-    process_config: YoloXDeploymentProcessConfig,
+    deployment_process_supervisor: DeploymentProcessSupervisor,
+    process_config: DeploymentProcessConfig,
     runtime_mode: str,
     auto_start_process: bool,
 ) -> None:
@@ -358,12 +416,19 @@ def run_deployment_process_status_action(
 
     request = overlay_parameters_from_object_input(request)
     runtime_context = require_workflow_service_node_runtime(request)
-    deployment_service = runtime_context.build_deployment_service()
+    task_type = require_service_task_type_parameter(request)
+    deployment_service = build_service_node_deployment_service(
+        runtime_context,
+        task_type=task_type,
+    )
     deployment_instance_id = require_str_parameter(request, "deployment_instance_id")
     runtime_mode = require_runtime_mode_parameter(request)
     deployment_view = deployment_service.get_deployment_instance(deployment_instance_id)
     process_config = deployment_service.resolve_process_config(deployment_instance_id)
-    deployment_process_supervisor = runtime_context.require_deployment_process_supervisor(runtime_mode)
+    deployment_process_supervisor = runtime_context.require_deployment_process_supervisor(
+        task_type=task_type,
+        runtime_mode=runtime_mode,
+    )
     if action == "start":
         process_status = deployment_process_supervisor.start_deployment(process_config)
     elif action == "stop":
@@ -393,12 +458,19 @@ def run_deployment_process_health_action(
 
     request = overlay_parameters_from_object_input(request)
     runtime_context = require_workflow_service_node_runtime(request)
-    deployment_service = runtime_context.build_deployment_service()
+    task_type = require_service_task_type_parameter(request)
+    deployment_service = build_service_node_deployment_service(
+        runtime_context,
+        task_type=task_type,
+    )
     deployment_instance_id = require_str_parameter(request, "deployment_instance_id")
     runtime_mode = require_runtime_mode_parameter(request)
     deployment_view = deployment_service.get_deployment_instance(deployment_instance_id)
     process_config = deployment_service.resolve_process_config(deployment_instance_id)
-    deployment_process_supervisor = runtime_context.require_deployment_process_supervisor(runtime_mode)
+    deployment_process_supervisor = runtime_context.require_deployment_process_supervisor(
+        task_type=task_type,
+        runtime_mode=runtime_mode,
+    )
     if action == "warmup":
         process_health = deployment_process_supervisor.warmup_deployment(process_config)
     elif action == "reset":
@@ -421,9 +493,9 @@ def run_deployment_process_health_action(
 
 def _build_deployment_process_status_body(
     *,
-    deployment_view: YoloXDeploymentInstanceView,
+    deployment_view: DeploymentInstanceView,
     runtime_mode: str,
-    process_status: YoloXDeploymentProcessStatus,
+    process_status: DeploymentProcessStatus,
 ) -> dict[str, object]:
     """构建对齐 deployment status API 的 body。"""
 
@@ -445,9 +517,9 @@ def _build_deployment_process_status_body(
 
 def _build_deployment_process_health_body(
     *,
-    deployment_view: YoloXDeploymentInstanceView,
+    deployment_view: DeploymentInstanceView,
     runtime_mode: str,
-    process_health: YoloXDeploymentProcessHealth,
+    process_health: DeploymentProcessHealth,
 ) -> dict[str, object]:
     """构建对齐 deployment health API 的 body。"""
 
@@ -473,7 +545,7 @@ def _build_deployment_process_health_body(
 
 
 def _build_keep_warm_body(
-    keep_warm_status: YoloXDeploymentProcessKeepWarmStatus | None,
+    keep_warm_status: DeploymentProcessKeepWarmStatus | None,
 ) -> dict[str, object]:
     """构建 keep-warm 状态 body。"""
 

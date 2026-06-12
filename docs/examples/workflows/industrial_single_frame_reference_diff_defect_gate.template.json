@@ -1,0 +1,593 @@
+{
+  "format_id": "amvision.workflow-graph-template.v1",
+  "template_id": "industrial-single-frame-reference-diff-defect-gate-template",
+  "template_version": "1.0.0",
+  "display_name": "Industrial Single Frame Reference Diff Defect Gate",
+  "description": "面向工业单帧现场的参考图差异缺陷样例。输入本地图像路径、参考图路径和可选 ROI；先裁出工位区域，再执行 image-diff、absdiff-threshold 与 connected-components，最后收成 OK/NG、报警对象、本地归档摘要和复核叠加图。",
+  "nodes": [
+    {
+      "node_id": "request_image_path_input",
+      "node_type_id": "core.io.template-input.value",
+      "parameters": {}
+    },
+    {
+      "node_id": "request_reference_image_path_input",
+      "node_type_id": "core.io.template-input.value",
+      "parameters": {}
+    },
+    {
+      "node_id": "load_image",
+      "node_type_id": "core.io.image-load-local",
+      "parameters": {}
+    },
+    {
+      "node_id": "load_reference_image",
+      "node_type_id": "core.io.image-load-local",
+      "parameters": {}
+    },
+    {
+      "node_id": "create_roi",
+      "node_type_id": "core.vision.roi-create",
+      "parameters": {
+        "roi_kind": "bbox",
+        "roi_id": "reference-diff-roi",
+        "display_name": "Reference Diff ROI",
+        "bbox_xyxy": [
+          120,
+          120,
+          1120,
+          760
+        ]
+      }
+    },
+    {
+      "node_id": "crop_image",
+      "node_type_id": "custom.opencv.crop",
+      "parameters": {
+        "padding": 0
+      }
+    },
+    {
+      "node_id": "crop_reference_image",
+      "node_type_id": "custom.opencv.crop",
+      "parameters": {
+        "padding": 0
+      }
+    },
+    {
+      "node_id": "image_diff",
+      "node_type_id": "custom.opencv.image-diff",
+      "parameters": {
+        "diff_mode": "grayscale"
+      }
+    },
+    {
+      "node_id": "diff_threshold",
+      "node_type_id": "custom.opencv.absdiff-threshold",
+      "parameters": {
+        "threshold": 22,
+        "threshold_type": "binary"
+      }
+    },
+    {
+      "node_id": "connected_components",
+      "node_type_id": "custom.opencv.connected-components",
+      "parameters": {
+        "foreground_threshold": 0,
+        "connectivity": 8,
+        "min_area": 18.0,
+        "max_components": 12,
+        "region_id_prefix": "diff",
+        "class_id_default": 201,
+        "class_name_default": "reference-diff-defect",
+        "score_default": 1.0
+      }
+    },
+    {
+      "node_id": "overlay_regions",
+      "node_type_id": "custom.opencv.mask-overlay",
+      "parameters": {
+        "mask_alpha": 0.35,
+        "draw_masks": true,
+        "draw_polygons": true,
+        "draw_boxes": true,
+        "draw_labels": true
+      }
+    },
+    {
+      "node_id": "presence_check",
+      "node_type_id": "core.rule.presence-check",
+      "parameters": {
+        "min_count": 0,
+        "max_count": 4
+      }
+    },
+    {
+      "node_id": "defect_area_ratio",
+      "node_type_id": "core.vision.regions-area-ratio",
+      "parameters": {}
+    },
+    {
+      "node_id": "defect_area_ratio_check",
+      "node_type_id": "core.rule.range-check",
+      "parameters": {
+        "min_value": 0.0,
+        "max_value": 0.012,
+        "min_inclusive": true,
+        "max_inclusive": true
+      }
+    },
+    {
+      "node_id": "metadata_object",
+      "node_type_id": "core.logic.object-create",
+      "parameters": {
+        "keys": [
+          "image_path",
+          "reference_image_path"
+        ],
+        "fields": {
+          "inspection_kind": "reference-diff-defect-gate",
+          "station_id": "reference-diff-01",
+          "review_mode": "reference-image-vs-current-image"
+        }
+      }
+    },
+    {
+      "node_id": "metrics_object",
+      "node_type_id": "core.logic.object-create",
+      "parameters": {
+        "keys": [
+          "roi_summary",
+          "crop_image_summary",
+          "crop_reference_summary",
+          "diff_summary",
+          "threshold_summary",
+          "component_summary",
+          "presence_metrics",
+          "defect_area_ratio"
+        ]
+      }
+    },
+    {
+      "node_id": "process_decision",
+      "node_type_id": "core.rule.process-decision",
+      "parameters": {
+        "mode": "all",
+        "condition_names": [
+          "defect_count",
+          "defect_area"
+        ],
+        "ok_reason": "reference diff defect gate passed",
+        "ng_reason": "reference diff defect gate failed"
+      }
+    },
+    {
+      "node_id": "alarm_condition",
+      "node_type_id": "core.rule.alarm-condition",
+      "parameters": {
+        "trigger_when": "condition-false",
+        "alarm_level": "warning",
+        "alarm_code": "REFERENCE-DIFF-DEFECT-NG",
+        "alarm_message": "reference diff defect gate failed",
+        "clear_message": "reference diff defect gate passed"
+      }
+    },
+    {
+      "node_id": "save_result_json",
+      "node_type_id": "core.output.json-save-local",
+      "parameters": {
+        "local_path": "{workflow_app_result_dir}/reference-diff-defect/result-{timestamp}.json",
+        "overwrite": true,
+        "indent": 2
+      }
+    },
+    {
+      "node_id": "append_result_csv",
+      "node_type_id": "core.output.csv-append-local",
+      "parameters": {
+        "local_path": "{workflow_app_result_dir}/reference-diff-defect/history.csv"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "edge_id": "edge-request-image-path-load-image",
+      "source_node_id": "request_image_path_input",
+      "source_port": "value",
+      "target_node_id": "load_image",
+      "target_port": "path"
+    },
+    {
+      "edge_id": "edge-request-image-path-metadata",
+      "source_node_id": "request_image_path_input",
+      "source_port": "value",
+      "target_node_id": "metadata_object",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-request-reference-image-path-load-image",
+      "source_node_id": "request_reference_image_path_input",
+      "source_port": "value",
+      "target_node_id": "load_reference_image",
+      "target_port": "path"
+    },
+    {
+      "edge_id": "edge-request-reference-image-path-metadata",
+      "source_node_id": "request_reference_image_path_input",
+      "source_port": "value",
+      "target_node_id": "metadata_object",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-load-image-create-roi",
+      "source_node_id": "load_image",
+      "source_port": "image",
+      "target_node_id": "create_roi",
+      "target_port": "image"
+    },
+    {
+      "edge_id": "edge-load-image-crop-image",
+      "source_node_id": "load_image",
+      "source_port": "image",
+      "target_node_id": "crop_image",
+      "target_port": "image"
+    },
+    {
+      "edge_id": "edge-load-reference-image-crop-reference",
+      "source_node_id": "load_reference_image",
+      "source_port": "image",
+      "target_node_id": "crop_reference_image",
+      "target_port": "image"
+    },
+    {
+      "edge_id": "edge-create-roi-crop-image",
+      "source_node_id": "create_roi",
+      "source_port": "roi",
+      "target_node_id": "crop_image",
+      "target_port": "roi"
+    },
+    {
+      "edge_id": "edge-create-roi-crop-reference",
+      "source_node_id": "create_roi",
+      "source_port": "roi",
+      "target_node_id": "crop_reference_image",
+      "target_port": "roi"
+    },
+    {
+      "edge_id": "edge-crop-image-diff-image",
+      "source_node_id": "crop_image",
+      "source_port": "image",
+      "target_node_id": "image_diff",
+      "target_port": "image"
+    },
+    {
+      "edge_id": "edge-crop-reference-diff-reference",
+      "source_node_id": "crop_reference_image",
+      "source_port": "image",
+      "target_node_id": "image_diff",
+      "target_port": "reference_image"
+    },
+    {
+      "edge_id": "edge-diff-threshold",
+      "source_node_id": "image_diff",
+      "source_port": "image",
+      "target_node_id": "diff_threshold",
+      "target_port": "image"
+    },
+    {
+      "edge_id": "edge-threshold-components-image",
+      "source_node_id": "diff_threshold",
+      "source_port": "image",
+      "target_node_id": "connected_components",
+      "target_port": "image"
+    },
+    {
+      "edge_id": "edge-crop-image-components-source-image",
+      "source_node_id": "crop_image",
+      "source_port": "image",
+      "target_node_id": "connected_components",
+      "target_port": "source_image"
+    },
+    {
+      "edge_id": "edge-crop-image-overlay-image",
+      "source_node_id": "crop_image",
+      "source_port": "image",
+      "target_node_id": "overlay_regions",
+      "target_port": "image"
+    },
+    {
+      "edge_id": "edge-components-overlay-regions",
+      "source_node_id": "connected_components",
+      "source_port": "regions",
+      "target_node_id": "overlay_regions",
+      "target_port": "regions"
+    },
+    {
+      "edge_id": "edge-components-presence-regions",
+      "source_node_id": "connected_components",
+      "source_port": "regions",
+      "target_node_id": "presence_check",
+      "target_port": "regions"
+    },
+    {
+      "edge_id": "edge-components-area-ratio-regions",
+      "source_node_id": "connected_components",
+      "source_port": "regions",
+      "target_node_id": "defect_area_ratio",
+      "target_port": "regions"
+    },
+    {
+      "edge_id": "edge-crop-image-area-ratio-image",
+      "source_node_id": "crop_image",
+      "source_port": "image",
+      "target_node_id": "defect_area_ratio",
+      "target_port": "image"
+    },
+    {
+      "edge_id": "edge-defect-area-ratio-range-check",
+      "source_node_id": "defect_area_ratio",
+      "source_port": "value",
+      "target_node_id": "defect_area_ratio_check",
+      "target_port": "value"
+    },
+    {
+      "edge_id": "edge-roi-summary-metrics",
+      "source_node_id": "create_roi",
+      "source_port": "summary",
+      "target_node_id": "metrics_object",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-crop-image-summary-metrics",
+      "source_node_id": "crop_image",
+      "source_port": "summary",
+      "target_node_id": "metrics_object",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-crop-reference-summary-metrics",
+      "source_node_id": "crop_reference_image",
+      "source_port": "summary",
+      "target_node_id": "metrics_object",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-diff-summary-metrics",
+      "source_node_id": "image_diff",
+      "source_port": "summary",
+      "target_node_id": "metrics_object",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-threshold-summary-metrics",
+      "source_node_id": "diff_threshold",
+      "source_port": "summary",
+      "target_node_id": "metrics_object",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-components-summary-metrics",
+      "source_node_id": "connected_components",
+      "source_port": "summary",
+      "target_node_id": "metrics_object",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-presence-metrics-object",
+      "source_node_id": "presence_check",
+      "source_port": "metrics",
+      "target_node_id": "metrics_object",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-defect-area-ratio-metrics-object",
+      "source_node_id": "defect_area_ratio",
+      "source_port": "value",
+      "target_node_id": "metrics_object",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-presence-process",
+      "source_node_id": "presence_check",
+      "source_port": "result",
+      "target_node_id": "process_decision",
+      "target_port": "conditions"
+    },
+    {
+      "edge_id": "edge-defect-area-ratio-check-process",
+      "source_node_id": "defect_area_ratio_check",
+      "source_port": "result",
+      "target_node_id": "process_decision",
+      "target_port": "conditions"
+    },
+    {
+      "edge_id": "edge-metrics-process",
+      "source_node_id": "metrics_object",
+      "source_port": "value",
+      "target_node_id": "process_decision",
+      "target_port": "metrics"
+    },
+    {
+      "edge_id": "edge-metadata-process",
+      "source_node_id": "metadata_object",
+      "source_port": "value",
+      "target_node_id": "process_decision",
+      "target_port": "metadata"
+    },
+    {
+      "edge_id": "edge-overlay-process-image",
+      "source_node_id": "overlay_regions",
+      "source_port": "image",
+      "target_node_id": "process_decision",
+      "target_port": "image"
+    },
+    {
+      "edge_id": "edge-process-ok-alarm",
+      "source_node_id": "process_decision",
+      "source_port": "ok",
+      "target_node_id": "alarm_condition",
+      "target_port": "condition"
+    },
+    {
+      "edge_id": "edge-metrics-alarm",
+      "source_node_id": "metrics_object",
+      "source_port": "value",
+      "target_node_id": "alarm_condition",
+      "target_port": "metrics"
+    },
+    {
+      "edge_id": "edge-metadata-alarm",
+      "source_node_id": "metadata_object",
+      "source_port": "value",
+      "target_node_id": "alarm_condition",
+      "target_port": "metadata"
+    },
+    {
+      "edge_id": "edge-process-save-json",
+      "source_node_id": "process_decision",
+      "source_port": "result",
+      "target_node_id": "save_result_json",
+      "target_port": "result"
+    },
+    {
+      "edge_id": "edge-process-append-csv",
+      "source_node_id": "process_decision",
+      "source_port": "result",
+      "target_node_id": "append_result_csv",
+      "target_port": "result"
+    }
+  ],
+  "template_inputs": [
+    {
+      "input_id": "request_image_path",
+      "display_name": "Request Image Path",
+      "payload_type_id": "value.v1",
+      "target_node_id": "request_image_path_input",
+      "target_port": "payload"
+    },
+    {
+      "input_id": "request_reference_image_path",
+      "display_name": "Request Reference Image Path",
+      "payload_type_id": "value.v1",
+      "target_node_id": "request_reference_image_path_input",
+      "target_port": "payload"
+    },
+    {
+      "input_id": "request_roi",
+      "display_name": "Request ROI",
+      "payload_type_id": "value.v1",
+      "target_node_id": "create_roi",
+      "target_port": "value",
+      "required": false
+    }
+  ],
+  "template_outputs": [
+    {
+      "output_id": "cropped_image",
+      "display_name": "Cropped Image",
+      "payload_type_id": "image-ref.v1",
+      "source_node_id": "crop_image",
+      "source_port": "image"
+    },
+    {
+      "output_id": "diff_image",
+      "display_name": "Diff Image",
+      "payload_type_id": "image-ref.v1",
+      "source_node_id": "image_diff",
+      "source_port": "image"
+    },
+    {
+      "output_id": "threshold_image",
+      "display_name": "Threshold Image",
+      "payload_type_id": "image-ref.v1",
+      "source_node_id": "diff_threshold",
+      "source_port": "image"
+    },
+    {
+      "output_id": "defect_regions",
+      "display_name": "Defect Regions",
+      "payload_type_id": "regions.v1",
+      "source_node_id": "connected_components",
+      "source_port": "regions"
+    },
+    {
+      "output_id": "review_overlay_image",
+      "display_name": "Review Overlay Image",
+      "payload_type_id": "image-ref.v1",
+      "source_node_id": "overlay_regions",
+      "source_port": "image"
+    },
+    {
+      "output_id": "inspection_result",
+      "display_name": "Inspection Result",
+      "payload_type_id": "result-record.v1",
+      "source_node_id": "process_decision",
+      "source_port": "result"
+    },
+    {
+      "output_id": "inspection_alarm",
+      "display_name": "Inspection Alarm",
+      "payload_type_id": "alarm-record.v1",
+      "source_node_id": "alarm_condition",
+      "source_port": "alarm"
+    },
+    {
+      "output_id": "decision_summary",
+      "display_name": "Decision Summary",
+      "payload_type_id": "value.v1",
+      "source_node_id": "process_decision",
+      "source_port": "summary"
+    },
+    {
+      "output_id": "json_summary",
+      "display_name": "JSON Save Summary",
+      "payload_type_id": "value.v1",
+      "source_node_id": "save_result_json",
+      "source_port": "summary"
+    },
+    {
+      "output_id": "csv_summary",
+      "display_name": "CSV Append Summary",
+      "payload_type_id": "value.v1",
+      "source_node_id": "append_result_csv",
+      "source_port": "summary"
+    }
+  ],
+  "metadata": {
+    "example_kind": "industrial-single-frame-reference-diff-defect-gate",
+    "focus": "single-frame-industrial-reference-diff-defect-chain",
+    "dynamic_roi_input_binding": "request_roi",
+    "node_groups": {
+      "input": [
+        "request_image_path_input",
+        "request_reference_image_path_input",
+        "load_image",
+        "load_reference_image",
+        "create_roi",
+        "crop_image",
+        "crop_reference_image"
+      ],
+      "diff_chain": [
+        "image_diff",
+        "diff_threshold",
+        "connected_components",
+        "overlay_regions"
+      ],
+      "inspection_rules": [
+        "presence_check",
+        "defect_area_ratio",
+        "defect_area_ratio_check"
+      ],
+      "decision_and_alarm": [
+        "metadata_object",
+        "metrics_object",
+        "process_decision",
+        "alarm_condition"
+      ],
+      "output": [
+        "save_result_json",
+        "append_result_csv"
+      ]
+    }
+  }
+}

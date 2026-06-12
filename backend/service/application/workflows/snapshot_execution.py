@@ -51,8 +51,8 @@ from backend.service.application.workflows.runtime_payload_sanitizer import (
 from backend.service.application.workflows.runtime_registry_loader import WorkflowNodeRuntimeRegistryLoader
 from backend.service.application.workflows.service_node_runtime import WorkflowServiceNodeRuntimeContext
 from backend.service.application.workflows.workflow_service import LocalWorkflowJsonService
-from backend.service.application.runtime.yolox_deployment_process_supervisor import (
-    YoloXDeploymentProcessSupervisor,
+from backend.service.application.runtime.deployment_process_supervisor import (
+    DeploymentProcessSupervisor,
 )
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
@@ -237,12 +237,14 @@ def _cleanup_registered_deployment(
     - list[dict[str, object]]：stop 或 delete 阶段收集到的错误详情。
     """
 
-    deployment_service = runtime_context.build_deployment_service()
+    task_type = _resolve_cleanup_task_type(cleanup)
+    deployment_service = runtime_context.build_deployment_service(task_type=task_type)
     deployment_instance_id = cleanup.resource_id
     cleanup_errors = _stop_registered_deployment_processes(
         runtime_context=runtime_context,
         deployment_service=deployment_service,
         deployment_instance_id=deployment_instance_id,
+        task_type=task_type,
     )
     try:
         deployment_service.delete_deployment_instance(deployment_instance_id)
@@ -360,6 +362,7 @@ def _stop_registered_deployment_processes(
     runtime_context: WorkflowServiceNodeRuntimeContext,
     deployment_service: object,
     deployment_instance_id: str,
+    task_type: str,
 ) -> list[dict[str, object]]:
     """在删除 DeploymentInstance 前尽量停止当前运行时里的 deployment 子进程。"""
 
@@ -369,14 +372,14 @@ def _stop_registered_deployment_processes(
         return []
 
     cleanup_errors: list[dict[str, object]] = []
-    for runtime_mode, supervisor in (
-        ("sync", runtime_context.yolox_sync_deployment_process_supervisor),
-        ("async", runtime_context.yolox_async_deployment_process_supervisor),
-    ):
-        if supervisor is None:
-            continue
+    for runtime_mode in ("sync", "async"):
         try:
-            supervisor.stop_deployment(process_config)
+            runtime_context.require_deployment_process_supervisor(
+                task_type=task_type,
+                runtime_mode=runtime_mode,
+            ).stop_deployment(process_config)
+        except ServiceConfigurationError:
+            continue
         except ServiceError as exc:
             cleanup_errors.append(
                 {
@@ -389,6 +392,21 @@ def _stop_registered_deployment_processes(
                 }
             )
     return cleanup_errors
+
+
+def _resolve_cleanup_task_type(cleanup: WorkflowExecutionCleanupItem) -> str:
+    """读取清理项记录的必填 task_type。"""
+
+    raw_task_type = cleanup.metadata.get("task_type")
+    if isinstance(raw_task_type, str) and raw_task_type.strip():
+        return raw_task_type.strip().lower()
+    raise ServiceConfigurationError(
+        "workflow deployment cleanup 缺少 task_type",
+        details={
+            "resource_kind": cleanup.resource_kind,
+            "resource_id": cleanup.resource_id,
+        },
+    )
 
 
 class WorkflowSnapshotProcessExecutor:
@@ -566,8 +584,8 @@ def run_workflow_snapshot_process_worker(
     """workflow snapshot 子进程入口。"""
 
     session_factory: SessionFactory | None = None
-    sync_supervisor: YoloXDeploymentProcessSupervisor | None = None
-    async_supervisor: YoloXDeploymentProcessSupervisor | None = None
+    sync_supervisor: DeploymentProcessSupervisor | None = None
+    async_supervisor: DeploymentProcessSupervisor | None = None
     try:
         settings = BackendServiceSettings.model_validate(settings_payload)
         session_factory = SessionFactory(settings.to_database_settings())
@@ -583,13 +601,13 @@ def run_workflow_snapshot_process_worker(
             node_pack_loader=node_pack_loader,
         )
         runtime_registry_loader.refresh()
-        sync_supervisor = YoloXDeploymentProcessSupervisor(
+        sync_supervisor = DeploymentProcessSupervisor(
             dataset_storage_root_dir=str(dataset_storage.root_dir),
             runtime_mode="sync",
             settings=settings.deployment_process_supervisor,
             local_buffer_broker_event_channel=local_buffer_reader.channel if local_buffer_reader is not None else None,
         )
-        async_supervisor = YoloXDeploymentProcessSupervisor(
+        async_supervisor = DeploymentProcessSupervisor(
             dataset_storage_root_dir=str(dataset_storage.root_dir),
             runtime_mode="async",
             settings=settings.deployment_process_supervisor,
@@ -601,8 +619,17 @@ def run_workflow_snapshot_process_worker(
             session_factory=session_factory,
             dataset_storage=dataset_storage,
             queue_backend=queue_backend,
-            yolox_sync_deployment_process_supervisor=sync_supervisor,
-            yolox_async_deployment_process_supervisor=async_supervisor,
+            detection_sync_deployment_process_supervisor=sync_supervisor,
+            detection_async_deployment_process_supervisor=async_supervisor,
+            classification_sync_deployment_process_supervisor=sync_supervisor,
+            classification_async_deployment_process_supervisor=async_supervisor,
+            segmentation_sync_deployment_process_supervisor=sync_supervisor,
+            segmentation_async_deployment_process_supervisor=async_supervisor,
+            pose_sync_deployment_process_supervisor=sync_supervisor,
+            pose_async_deployment_process_supervisor=async_supervisor,
+            obb_sync_deployment_process_supervisor=sync_supervisor,
+            obb_async_deployment_process_supervisor=async_supervisor,
+            async_inference_service_id="workflow-local",
             local_buffer_reader=local_buffer_reader,
             published_inference_gateway=published_inference_gateway,
         )

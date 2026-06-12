@@ -11,7 +11,7 @@ NODE_TYPE_ID = "custom.opencv.payload-to-value"
 
 
 def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
-    """把 contours 或 measurements 包装成 value.v1。
+    """把 OpenCV 结构化 payload 包装成 value.v1。
 
     参数：
     - request：当前 workflow 节点执行请求。
@@ -21,7 +21,7 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
     """
 
     candidate_values: list[tuple[str, dict[str, object]]] = []
-    for port_name in ("contours", "measurements"):
+    for port_name in ("contours", "measurements", "rotated_rects", "lines", "circles", "ellipses"):
         raw_payload = request.input_values.get(port_name)
         if raw_payload is None:
             continue
@@ -34,7 +34,7 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
 
     if not candidate_values:
         raise InvalidRequestError(
-            "opencv payload-to-value 节点至少需要连接 contours 或 measurements 输入",
+            "opencv payload-to-value 节点至少需要连接 contours、measurements、rotated_rects、lines、circles 或 ellipses 输入",
             details={"node_id": request.node_id},
         )
     if len(candidate_values) > 1:

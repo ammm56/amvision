@@ -1,4 +1,4 @@
-"""LocalBufferBroker 第 0 阶段合同与 mmap pool 测试。"""
+"""LocalBufferBroker 第 0 阶段规则与 mmap pool 测试。"""
 
 from __future__ import annotations
 
@@ -217,6 +217,7 @@ def test_resolve_image_reference_and_load_image_bytes_support_buffer_ref(tmp_pat
         resolved_image = resolve_image_reference(request)
         loaded_payload, loaded_bytes = load_image_bytes(request)
         inference_request = PublishedInferenceRequest(
+            task_type="detection",
             deployment_instance_id="deployment-1",
             image_payload=normalized_payload,
             trace_id="trace-1",

@@ -12,17 +12,19 @@ import pytest
 
 from backend.queue import LocalFileQueueBackend, LocalFileQueueSettings
 from backend.service.api.app import create_app
-from backend.service.application.models.yolox_model_service import (
-    SqlAlchemyYoloXModelService,
-    YoloXBuildRegistration,
-    YoloXTrainingOutputRegistration,
+from backend.service.application.models.model_service import (
+    ModelBuildRegistration,
+    SqlAlchemyModelService,
+    TrainingOutputRegistration,
 )
 from backend.service.application.tasks.task_service import SqlAlchemyTaskService
 from backend.service.infrastructure.db.session import DatabaseSettings, SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import DatasetStorageSettings, LocalDatasetStorage
 from backend.service.infrastructure.persistence.base import Base
 from backend.service.settings import BackendServiceSettings, BackendServiceTaskManagerConfig
-from backend.workers.inference.yolox_inference_queue_worker import YoloXInferenceQueueWorker
+from backend.workers.inference.detection_inference_queue_worker import (
+    DetectionInferenceQueueWorker,
+)
 from tests.api_test_support import build_test_headers
 
 
@@ -59,20 +61,21 @@ def test_tensorrt_inference_task_runs_through_real_async_deployment_process(
         runtime_precision=runtime_precision,
     )
     dataset_storage.write_bytes("runtime-inputs/inference-image.png", _build_valid_test_image_bytes())
-    worker = YoloXInferenceQueueWorker(
+    worker = DetectionInferenceQueueWorker(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
         queue_backend=queue_backend,
-        worker_id=f"test-yolox-tensorrt-inference-worker-{runtime_precision}",
+        worker_id=f"test-detection-tensorrt-inference-worker-{runtime_precision}",
     )
 
     try:
         with client:
             deployment_response = client.post(
-                "/api/v1/models/yolox/deployment-instances",
+                "/api/v1/models/detection/deployment-instances",
                 headers=_build_model_headers(),
                 json={
                     "project_id": "project-1",
+                    "model_type": "yolox",
                     "model_build_id": model_build_id,
                     "runtime_backend": "tensorrt",
                     "runtime_precision": runtime_precision,
@@ -91,17 +94,18 @@ def test_tensorrt_inference_task_runs_through_real_async_deployment_process(
             assert deployment_payload["runtime_execution_mode"] == f"tensorrt:{runtime_precision}:cuda:0"
 
             async_start_response = client.post(
-                f"/api/v1/models/yolox/deployment-instances/{deployment_instance_id}/async/start",
+                f"/api/v1/models/detection/deployment-instances/{deployment_instance_id}/async/start",
                 headers=_build_model_headers(),
             )
             assert async_start_response.status_code == 200
             assert async_start_response.json()["process_state"] == "running"
 
             create_response = client.post(
-                "/api/v1/models/yolox/inference-tasks",
+                "/api/v1/models/detection/inference-tasks",
                 headers=_build_inference_headers(),
                 json={
                     "project_id": "project-1",
+                    "model_type": "yolox",
                     "deployment_instance_id": deployment_instance_id,
                     "input_uri": "runtime-inputs/inference-image.png",
                     "score_threshold": 0.1,
@@ -125,7 +129,7 @@ def test_tensorrt_inference_task_runs_through_real_async_deployment_process(
             assert runtime_target_snapshot["runtime_artifact_storage_uri"].endswith("constant-model.engine")
 
             pending_result_response = client.get(
-                f"/api/v1/models/yolox/inference-tasks/{task_id}/result",
+                f"/api/v1/models/detection/inference-tasks/{task_id}/result",
                 headers=_build_task_headers(),
             )
             assert pending_result_response.status_code == 200
@@ -134,7 +138,7 @@ def test_tensorrt_inference_task_runs_through_real_async_deployment_process(
             assert worker.run_once() is True
 
             detail_response = client.get(
-                f"/api/v1/models/yolox/inference-tasks/{task_id}",
+                f"/api/v1/models/detection/inference-tasks/{task_id}",
                 headers=_build_task_headers(),
             )
             assert detail_response.status_code == 200
@@ -147,7 +151,7 @@ def test_tensorrt_inference_task_runs_through_real_async_deployment_process(
             assert detail_payload["latency_ms"] is not None
 
             result_response = client.get(
-                f"/api/v1/models/yolox/inference-tasks/{task_id}/result",
+                f"/api/v1/models/detection/inference-tasks/{task_id}/result",
                 headers=_build_task_headers(),
             )
             assert result_response.status_code == 200
@@ -172,7 +176,7 @@ def test_tensorrt_inference_task_runs_through_real_async_deployment_process(
             assert payload["runtime_session_info"]["metadata"]["compiled_runtime_precision"] == runtime_precision
 
         task_detail = SqlAlchemyTaskService(session_factory).get_task(task_id, include_events=True)
-        assert any(event.message == "yolox inference completed" for event in task_detail.events)
+        assert any(event.message == "detection inference completed" for event in task_detail.events)
     finally:
         session_factory.engine.dispose()
 
@@ -235,9 +239,9 @@ def _seed_model_version(
     dataset_storage.write_bytes(checkpoint_uri, b"placeholder-checkpoint")
     dataset_storage.write_text(labels_uri, "bolt\n")
 
-    service = SqlAlchemyYoloXModelService(session_factory=session_factory)
+    service = SqlAlchemyModelService(session_factory=session_factory)
     return service.register_training_output(
-        YoloXTrainingOutputRegistration(
+        TrainingOutputRegistration(
             project_id="project-1",
             training_task_id="training-tensorrt-inference-source-1",
             model_name="yolox-nano-tensorrt-inference",
@@ -289,9 +293,9 @@ def _seed_tensorrt_model_build(
         runtime_precision=runtime_precision,
     )
 
-    service = SqlAlchemyYoloXModelService(session_factory=session_factory)
+    service = SqlAlchemyModelService(session_factory=session_factory)
     return service.register_build(
-        YoloXBuildRegistration(
+        ModelBuildRegistration(
             project_id="project-1",
             source_model_version_id=model_version_id,
             build_format="tensorrt-engine",
@@ -501,3 +505,4 @@ def _build_task_headers() -> dict[str, str]:
     """
 
     return build_test_headers(scopes="tasks:read")
+

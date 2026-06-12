@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import time
 from dataclasses import dataclass
+from pathlib import Path
 from types import SimpleNamespace
 from uuid import uuid4
 
@@ -31,6 +32,14 @@ from backend.service.application.workflows.trigger_sources.workflow_submitter im
 from backend.service.domain.workflows.workflow_runtime_records import WorkflowRun
 from backend.service.domain.workflows.workflow_trigger_source_records import (
     WorkflowTriggerSource,
+)
+from backend.service.infrastructure.integrations.modbus import (
+    ModbusBitsReadResponse,
+    PlcRegisterTriggerAdapter,
+)
+from backend.service.infrastructure.integrations.directory import (
+    DirectoryPollTriggerAdapter,
+    DirectoryWatchTriggerAdapter,
 )
 from backend.service.infrastructure.integrations.zeromq import ZeroMqTriggerAdapter
 
@@ -314,12 +323,429 @@ def test_zeromq_trigger_adapter_serves_req_rep_message() -> None:
     assert adapter_health["submitted_count"] == 1
 
 
+def test_plc_register_trigger_adapter_polls_and_submits_event(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """验证 PLC trigger adapter 可以轮询寄存器并提交标准化事件。"""
+
+    class _MatchedCoilClient:
+        """测试用匹配成功的 Modbus client。"""
+
+        def __init__(self, host: str, *, port: int, timeout: float, retries: int) -> None:
+            """记录连接参数。"""
+
+            self.host = host
+            self.port = port
+            self.timeout = timeout
+            self.retries = retries
+
+        def close(self) -> None:
+            """关闭测试 client。"""
+
+        def read_coils(
+            self,
+            address: int,
+            *,
+            count: int,
+            device_id: int,
+        ) -> ModbusBitsReadResponse:
+            """返回固定命中的 coil 响应。"""
+
+            return ModbusBitsReadResponse(
+                bits=[True],
+                address=address,
+                count=count,
+                dev_id=device_id,
+                transaction_id=1,
+                function_code=1,
+                retries=0,
+            )
+
+    monkeypatch.setattr(
+        "backend.service.infrastructure.integrations.modbus.plc_register_trigger_adapter.ProjectModbusTcpClient",
+        _MatchedCoilClient,
+    )
+
+    trigger_source = _build_trigger_source(
+        trigger_kind="plc-register",
+        input_binding_mapping={"request_signal": {"source": "payload.observed_value"}},
+        transport_config={
+            "driver": "modbus-tcp",
+            "host": "127.0.0.1",
+            "port": 502,
+            "unit_id": 1,
+            "register_address": "00001",
+            "data_type": "bool",
+            "poll_interval_ms": 20,
+            "reconnect_interval_ms": 20,
+        },
+        match_rule={
+            "operator": "eq",
+            "expected_value": True,
+            "stable_match_count": 1,
+            "trigger_mode": "enter-match",
+            "emit_initial_match": True,
+        },
+    )
+    adapter = PlcRegisterTriggerAdapter()
+    submitter = _FakeWorkflowSubmitter()
+    supervisor = TriggerSourceSupervisor(
+        adapters={"plc-register": _FakeProtocolAdapter(adapter_kind="plc-register")},
+        workflow_submitter=submitter,
+    )
+
+    adapter.start(trigger_source=trigger_source, event_handler=supervisor)
+    try:
+        deadline = time.monotonic() + 2.0
+        while time.monotonic() < deadline and submitter.last_request is None:
+            time.sleep(0.01)
+        health = adapter.get_health(trigger_source_id="trigger-source-1")
+    finally:
+        adapter.stop(trigger_source_id="trigger-source-1")
+
+    assert submitter.last_request is not None
+    assert submitter.last_request.trigger_event.payload["observed_value"] is True
+    assert submitter.last_request.trigger_event.payload["register_address"] == "00001"
+    assert submitter.last_request.trigger_event.payload["sequence_id"] == 1
+    assert health["running"] is True
+    assert health["match_count"] == 1
+    assert health["submitted_count"] == 1
+
+
+def test_plc_register_trigger_adapter_rejects_sync_submit_mode() -> None:
+    """验证 PLC trigger adapter 当前拒绝 sync submit_mode。"""
+
+    trigger_source = _build_trigger_source(
+        trigger_kind="plc-register",
+        submit_mode="sync",
+        transport_config={
+            "driver": "modbus-tcp",
+            "host": "127.0.0.1",
+            "register_address": "00001",
+            "data_type": "bool",
+        },
+        match_rule={"operator": "eq", "expected_value": True},
+    )
+    adapter = PlcRegisterTriggerAdapter()
+
+    with pytest.raises(InvalidRequestError) as error_info:
+        adapter.start(
+            trigger_source=trigger_source,
+            event_handler=TriggerSourceSupervisor(
+                adapters={
+                    "plc-register": _FakeProtocolAdapter(adapter_kind="plc-register")
+                },
+                workflow_submitter=_FakeWorkflowSubmitter(),
+            ),
+        )
+
+    assert error_info.value.details["submit_mode"] == "sync"
+
+
+def test_directory_poll_trigger_adapter_polls_new_files_and_writes_checkpoint(
+    tmp_path: Path,
+) -> None:
+    """验证 directory-poll adapter 会扫描新文件、提交事件并落 checkpoint。"""
+
+    incoming_dir = tmp_path / "incoming"
+    incoming_dir.mkdir()
+    first_file = incoming_dir / "sample-a.png"
+    first_file.write_bytes(b"image-a")
+
+    trigger_source = _build_trigger_source(
+        trigger_kind="directory-poll",
+        input_binding_mapping={"request_batch": {"source": "payload.files"}},
+        transport_config={
+            "directory_path": str(incoming_dir),
+            "scan_interval_seconds": 0.05,
+            "batch_size": 2,
+            "min_stable_age_seconds": 0.0,
+            "extensions": ["png"],
+        },
+    )
+    adapter = DirectoryPollTriggerAdapter(dataset_storage_root_dir=str(tmp_path / "data"))
+    submitter = _FakeWorkflowSubmitter()
+    supervisor = TriggerSourceSupervisor(
+        adapters={
+            "directory-poll": _FakeProtocolAdapter(adapter_kind="directory-poll")
+        },
+        workflow_submitter=submitter,
+    )
+
+    adapter.start(trigger_source=trigger_source, event_handler=supervisor)
+    try:
+        deadline = time.monotonic() + 2.0
+        while time.monotonic() < deadline and submitter.last_request is None:
+            time.sleep(0.01)
+        time.sleep(0.15)
+        health = adapter.get_health(trigger_source_id="trigger-source-1")
+    finally:
+        adapter.stop(trigger_source_id="trigger-source-1")
+
+    assert submitter.last_request is not None
+    payload = submitter.last_request.trigger_event.payload
+    assert payload["file_count"] == 1
+    assert payload["files"][0]["file_name"] == "sample-a.png"
+    assert payload["primary_file_path"] == str(first_file.resolve())
+    assert health["running"] is True
+    assert health["submitted_count"] == 1
+    assert Path(health["checkpoint_path"]).is_file()
+
+
+def test_directory_poll_trigger_adapter_uses_checkpoint_to_avoid_reprocessing(
+    tmp_path: Path,
+) -> None:
+    """验证 directory-poll adapter 重启后不会重复处理已记录文件。"""
+
+    incoming_dir = tmp_path / "incoming"
+    incoming_dir.mkdir()
+    first_file = incoming_dir / "sample-a.png"
+    first_file.write_bytes(b"image-a")
+
+    trigger_source = _build_trigger_source(
+        trigger_kind="directory-poll",
+        input_binding_mapping={"request_batch": {"source": "payload.files"}},
+        transport_config={
+            "directory_path": str(incoming_dir),
+            "scan_interval_seconds": 0.05,
+            "batch_size": 1,
+            "min_stable_age_seconds": 0.0,
+            "extensions": ["png"],
+        },
+    )
+    first_adapter = DirectoryPollTriggerAdapter(
+        dataset_storage_root_dir=str(tmp_path / "data")
+    )
+    first_submitter = _FakeWorkflowSubmitter()
+    first_supervisor = TriggerSourceSupervisor(
+        adapters={
+            "directory-poll": _FakeProtocolAdapter(adapter_kind="directory-poll")
+        },
+        workflow_submitter=first_submitter,
+    )
+
+    first_adapter.start(trigger_source=trigger_source, event_handler=first_supervisor)
+    try:
+        deadline = time.monotonic() + 2.0
+        while time.monotonic() < deadline and first_submitter.last_request is None:
+            time.sleep(0.01)
+    finally:
+        first_adapter.stop(trigger_source_id="trigger-source-1")
+
+    assert first_submitter.last_request is not None
+
+    second_adapter = DirectoryPollTriggerAdapter(
+        dataset_storage_root_dir=str(tmp_path / "data")
+    )
+    second_submitter = _FakeWorkflowSubmitter()
+    second_supervisor = TriggerSourceSupervisor(
+        adapters={
+            "directory-poll": _FakeProtocolAdapter(adapter_kind="directory-poll")
+        },
+        workflow_submitter=second_submitter,
+    )
+
+    second_adapter.start(trigger_source=trigger_source, event_handler=second_supervisor)
+    try:
+        time.sleep(0.2)
+        health = second_adapter.get_health(trigger_source_id="trigger-source-1")
+    finally:
+        second_adapter.stop(trigger_source_id="trigger-source-1")
+
+    assert second_submitter.last_request is None
+    assert health["known_identity_count"] == 1
+    assert health["submitted_count"] == 0
+
+
+def test_directory_poll_trigger_adapter_rejects_sync_submit_mode(
+    tmp_path: Path,
+) -> None:
+    """验证 directory-poll adapter 当前拒绝 sync submit_mode。"""
+
+    incoming_dir = tmp_path / "incoming"
+    incoming_dir.mkdir()
+    trigger_source = _build_trigger_source(
+        trigger_kind="directory-poll",
+        submit_mode="sync",
+        transport_config={"directory_path": str(incoming_dir)},
+    )
+    adapter = DirectoryPollTriggerAdapter(dataset_storage_root_dir=str(tmp_path / "data"))
+
+    with pytest.raises(InvalidRequestError) as error_info:
+        adapter.start(
+            trigger_source=trigger_source,
+            event_handler=TriggerSourceSupervisor(
+                adapters={
+                    "directory-poll": _FakeProtocolAdapter(adapter_kind="directory-poll")
+                },
+                workflow_submitter=_FakeWorkflowSubmitter(),
+            ),
+        )
+
+    assert error_info.value.details["submit_mode"] == "sync"
+
+
+def test_directory_watch_trigger_adapter_watches_new_files_and_writes_checkpoint(
+    tmp_path: Path,
+) -> None:
+    """验证 directory-watch adapter 会监听新文件、提交事件并落 checkpoint。"""
+
+    incoming_dir = tmp_path / "incoming"
+    incoming_dir.mkdir()
+
+    trigger_source = _build_trigger_source(
+        trigger_kind="directory-watch",
+        input_binding_mapping={"request_batch": {"source": "payload.files"}},
+        transport_config={
+            "directory_path": str(incoming_dir),
+            "batch_size": 2,
+            "min_stable_age_seconds": 0.0,
+            "extensions": ["png"],
+            "force_polling": True,
+            "poll_delay_ms": 20,
+            "watch_timeout_ms": 100,
+        },
+    )
+    adapter = DirectoryWatchTriggerAdapter(dataset_storage_root_dir=str(tmp_path / "data"))
+    submitter = _FakeWorkflowSubmitter()
+    supervisor = TriggerSourceSupervisor(
+        adapters={
+            "directory-watch": _FakeProtocolAdapter(adapter_kind="directory-watch")
+        },
+        workflow_submitter=submitter,
+    )
+
+    adapter.start(trigger_source=trigger_source, event_handler=supervisor)
+    try:
+        _wait_for_directory_watch_adapter_running(adapter, "trigger-source-1")
+        first_file = incoming_dir / "sample-a.png"
+        first_file.write_bytes(b"image-a")
+        deadline = time.monotonic() + 2.0
+        while time.monotonic() < deadline and submitter.last_request is None:
+            time.sleep(0.01)
+        health = adapter.get_health(trigger_source_id="trigger-source-1")
+    finally:
+        adapter.stop(trigger_source_id="trigger-source-1")
+
+    assert submitter.last_request is not None
+    payload = submitter.last_request.trigger_event.payload
+    assert payload["file_count"] == 1
+    assert payload["files"][0]["file_name"] == "sample-a.png"
+    assert payload["primary_file_path"] == str(first_file.resolve())
+    assert health["running"] is True
+    assert health["submitted_count"] == 1
+    assert Path(health["checkpoint_path"]).is_file()
+
+
+def test_directory_watch_trigger_adapter_uses_checkpoint_to_avoid_reprocessing(
+    tmp_path: Path,
+) -> None:
+    """验证 directory-watch adapter 重启后不会重复处理同一路径文件。"""
+
+    incoming_dir = tmp_path / "incoming"
+    incoming_dir.mkdir()
+    first_file = incoming_dir / "sample-a.png"
+
+    trigger_source = _build_trigger_source(
+        trigger_kind="directory-watch",
+        input_binding_mapping={"request_batch": {"source": "payload.files"}},
+        transport_config={
+            "directory_path": str(incoming_dir),
+            "batch_size": 1,
+            "min_stable_age_seconds": 0.0,
+            "extensions": ["png"],
+            "force_polling": True,
+            "poll_delay_ms": 20,
+            "watch_timeout_ms": 100,
+        },
+    )
+    first_adapter = DirectoryWatchTriggerAdapter(
+        dataset_storage_root_dir=str(tmp_path / "data")
+    )
+    first_submitter = _FakeWorkflowSubmitter()
+    first_supervisor = TriggerSourceSupervisor(
+        adapters={
+            "directory-watch": _FakeProtocolAdapter(adapter_kind="directory-watch")
+        },
+        workflow_submitter=first_submitter,
+    )
+
+    first_adapter.start(trigger_source=trigger_source, event_handler=first_supervisor)
+    try:
+        _wait_for_directory_watch_adapter_running(first_adapter, "trigger-source-1")
+        first_file.write_bytes(b"image-a")
+        deadline = time.monotonic() + 2.0
+        while time.monotonic() < deadline and first_submitter.last_request is None:
+            time.sleep(0.01)
+    finally:
+        first_adapter.stop(trigger_source_id="trigger-source-1")
+
+    assert first_submitter.last_request is not None
+
+    second_adapter = DirectoryWatchTriggerAdapter(
+        dataset_storage_root_dir=str(tmp_path / "data")
+    )
+    second_submitter = _FakeWorkflowSubmitter()
+    second_supervisor = TriggerSourceSupervisor(
+        adapters={
+            "directory-watch": _FakeProtocolAdapter(adapter_kind="directory-watch")
+        },
+        workflow_submitter=second_submitter,
+    )
+
+    second_adapter.start(trigger_source=trigger_source, event_handler=second_supervisor)
+    try:
+        _wait_for_directory_watch_adapter_running(second_adapter, "trigger-source-1")
+        time.sleep(0.1)
+        first_file.write_bytes(b"image-a-updated")
+        time.sleep(0.4)
+        health = second_adapter.get_health(trigger_source_id="trigger-source-1")
+    finally:
+        second_adapter.stop(trigger_source_id="trigger-source-1")
+
+    assert second_submitter.last_request is None
+    assert health["known_identity_count"] == 1
+    assert health["pending_path_count"] == 0
+    assert health["submitted_count"] == 0
+
+
+def test_directory_watch_trigger_adapter_rejects_sync_submit_mode(
+    tmp_path: Path,
+) -> None:
+    """验证 directory-watch adapter 当前拒绝 sync submit_mode。"""
+
+    incoming_dir = tmp_path / "incoming"
+    incoming_dir.mkdir()
+    trigger_source = _build_trigger_source(
+        trigger_kind="directory-watch",
+        submit_mode="sync",
+        transport_config={"directory_path": str(incoming_dir)},
+    )
+    adapter = DirectoryWatchTriggerAdapter(dataset_storage_root_dir=str(tmp_path / "data"))
+
+    with pytest.raises(InvalidRequestError) as error_info:
+        adapter.start(
+            trigger_source=trigger_source,
+            event_handler=TriggerSourceSupervisor(
+                adapters={
+                    "directory-watch": _FakeProtocolAdapter(
+                        adapter_kind="directory-watch"
+                    )
+                },
+                workflow_submitter=_FakeWorkflowSubmitter(),
+            ),
+        )
+
+    assert error_info.value.details["submit_mode"] == "sync"
+
+
 def _build_trigger_source(
     *,
     trigger_kind: str = "http-api",
     submit_mode: str = "async",
     input_binding_mapping: dict[str, object] | None = None,
     transport_config: dict[str, object] | None = None,
+    match_rule: dict[str, object] | None = None,
 ) -> WorkflowTriggerSource:
     """构建测试使用的 WorkflowTriggerSource。"""
 
@@ -331,6 +757,7 @@ def _build_trigger_source(
         workflow_runtime_id="workflow-runtime-1",
         submit_mode=submit_mode,
         transport_config=dict(transport_config or {}),
+        match_rule=dict(match_rule or {}),
         input_binding_mapping=input_binding_mapping
         or {
             "request_image": {"source": "payload.request.image"},
@@ -348,6 +775,21 @@ def _wait_for_zeromq_adapter_running(
     trigger_source_id: str,
 ) -> None:
     """等待 ZeroMQ adapter 进入 running 状态。"""
+
+    deadline = time.monotonic() + 2.0
+    while time.monotonic() < deadline:
+        health = adapter.get_health(trigger_source_id=trigger_source_id)
+        if health.get("running") is True:
+            return
+        time.sleep(0.01)
+    raise AssertionError(adapter.get_health(trigger_source_id=trigger_source_id))
+
+
+def _wait_for_directory_watch_adapter_running(
+    adapter: DirectoryWatchTriggerAdapter,
+    trigger_source_id: str,
+) -> None:
+    """等待 Directory Watch adapter 进入 running 状态。"""
 
     deadline = time.monotonic() + 2.0
     while time.monotonic() < deadline:

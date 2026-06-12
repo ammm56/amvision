@@ -5,8 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Protocol
 
-from backend.service.application.conversions.yolox_conversion_planner import YoloXConversionStep
-from backend.service.application.runtime.yolox_runtime_target import RuntimeTargetSnapshot
+from backend.service.application.runtime.runtime_target import RuntimeTargetSnapshot
 
 
 @dataclass(frozen=True)
@@ -15,10 +14,14 @@ class TrainingBackendRunRequest:
 
     字段：
     - training_task_id：训练任务 id。
+    - model_type：模型分类名称；当前 detection 主线用于对齐后端注册层。
+    - task_type：任务分类名称；当前 detection 主线默认使用 detection。
     - metadata：附加元数据。
     """
 
     training_task_id: str
+    model_type: str | None = None
+    task_type: str | None = None
     metadata: dict[str, object] = field(default_factory=dict)
 
 
@@ -80,11 +83,32 @@ class TrainingBackend(Protocol):
 
 
 @dataclass(frozen=True)
+class DetectionConversionPlanStep:
+    """描述 detection 转换计划中的单个通用步骤。
+
+    字段：
+    - kind：步骤类型。
+    - source_format：来源格式。
+    - target_format：目标格式。
+    - required_file_type：执行该步骤需要的输入文件类型。
+    - produced_file_type：该步骤产出的输出文件类型；纯校验步骤可为空。
+    """
+
+    kind: str
+    source_format: str
+    target_format: str
+    required_file_type: str
+    produced_file_type: str | None = None
+
+
+@dataclass(frozen=True)
 class ConversionBackendRunRequest:
     """描述一次转换 backend 执行请求。
 
     字段：
     - conversion_task_id：转换任务 id。
+    - model_type：模型分类名称；当前 detection 主线用于对齐后端注册层。
+    - task_type：任务分类名称；当前 detection 主线默认使用 detection。
     - source_runtime_target：来源 ModelVersion 解析得到的 runtime 快照。
     - target_formats：目标输出格式列表。
     - plan_steps：已经固化的转换步骤图谱。
@@ -95,8 +119,10 @@ class ConversionBackendRunRequest:
     conversion_task_id: str
     source_runtime_target: RuntimeTargetSnapshot
     target_formats: tuple[str, ...]
-    plan_steps: tuple[YoloXConversionStep, ...]
+    plan_steps: tuple[DetectionConversionPlanStep, ...]
     output_object_prefix: str
+    model_type: str | None = None
+    task_type: str | None = None
     metadata: dict[str, object] = field(default_factory=dict)
 
 

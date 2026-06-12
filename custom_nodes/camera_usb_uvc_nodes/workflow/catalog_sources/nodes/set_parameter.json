@@ -1,0 +1,74 @@
+{
+  "format_id": "amvision.node-definition.v1",
+  "node_type_id": "custom.camera.usb.set-parameter",
+  "display_name": "Set USB/UVC Parameter",
+  "category": "camera.usb",
+  "description": "写入当前 USB / UVC 相机会话的常用参数，适合现场分辨率、帧率和曝光类调参。",
+  "implementation_kind": "custom-node",
+  "runtime_kind": "python-callable",
+  "input_ports": [
+    {
+      "name": "session",
+      "display_name": "Session",
+      "payload_type_id": "camera-session.v1"
+    },
+    {
+      "name": "request",
+      "display_name": "Request",
+      "payload_type_id": "value.v1",
+      "required": false
+    }
+  ],
+  "output_ports": [
+    {
+      "name": "session",
+      "display_name": "Session",
+      "payload_type_id": "camera-session.v1"
+    },
+    {
+      "name": "result",
+      "display_name": "Result",
+      "payload_type_id": "value.v1"
+    }
+  ],
+  "parameter_schema": {
+    "type": "object",
+    "properties": {
+      "parameter_values": {
+        "type": "object",
+        "title": "Parameter Values",
+        "additionalProperties": {
+          "oneOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "boolean"
+            }
+          ]
+        }
+      },
+      "verify_after_set": {
+        "type": "boolean",
+        "title": "Verify After Set",
+        "default": true
+      }
+    }
+  },
+  "capability_tags": [
+    "integration.camera",
+    "integration.camera.usb-uvc",
+    "vision.device.parameters"
+  ],
+  "runtime_requirements": {
+    "python_packages": [
+      "opencv-python",
+      "numpy"
+    ]
+  },
+  "node_pack_id": "camera.usb-uvc-nodes",
+  "node_pack_version": "0.1.0",
+  "metadata": {
+    "phase": "implemented"
+  }
+}

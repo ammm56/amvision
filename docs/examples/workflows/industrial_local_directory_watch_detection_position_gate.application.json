@@ -1,0 +1,169 @@
+{
+  "format_id": "amvision.flow-application.v1",
+  "application_id": "industrial-local-directory-watch-detection-position-gate-app",
+  "display_name": "Industrial Local Directory Watch Detection Position Gate App",
+  "description": "用于工业本地目录事件触发检测判定的正式样例 app。输入 directory-watch TriggerSource 标准化后的 payload 与 event、deployment 请求和可选 ROI；输出触发批次文件、逐图判定结果列表、批次归档对象、批次摘要，以及 JSON 归档摘要和 HTTP 回传摘要。",
+  "template_ref": {
+    "template_id": "industrial-local-directory-watch-detection-position-gate-template",
+    "template_version": "1.0.0",
+    "source_kind": "json-file",
+    "source_uri": "docs/examples/workflows/industrial_local_directory_watch_detection_position_gate.template.json"
+  },
+  "runtime_mode": "python-json-workflow",
+  "bindings": [
+    {
+      "binding_id": "request_trigger_payload",
+      "direction": "input",
+      "template_port_id": "request_trigger_payload",
+      "binding_kind": "trigger-source-input",
+      "config": {
+        "payload_type_id": "response-body.v1",
+        "content_type": "application/json"
+      },
+      "metadata": {
+        "payload_type_id": "response-body.v1",
+        "trigger_kind": "directory-watch",
+        "source_path": "payload"
+      }
+    },
+    {
+      "binding_id": "request_trigger_event",
+      "direction": "input",
+      "template_port_id": "request_trigger_event",
+      "binding_kind": "trigger-source-input",
+      "config": {
+        "payload_type_id": "response-body.v1",
+        "content_type": "application/json"
+      },
+      "metadata": {
+        "payload_type_id": "response-body.v1",
+        "trigger_kind": "directory-watch",
+        "source_path": "event"
+      }
+    },
+    {
+      "binding_id": "deployment_request",
+      "direction": "input",
+      "template_port_id": "deployment_request",
+      "binding_kind": "workflow-execute-input",
+      "config": {
+        "payload_type_id": "value.v1",
+        "content_type": "application/json"
+      },
+      "metadata": {
+        "payload_type_id": "value.v1"
+      }
+    },
+    {
+      "binding_id": "request_roi",
+      "direction": "input",
+      "template_port_id": "request_roi",
+      "binding_kind": "workflow-execute-input",
+      "required": false,
+      "config": {
+        "payload_type_id": "value.v1",
+        "content_type": "application/json"
+      },
+      "metadata": {
+        "payload_type_id": "value.v1"
+      }
+    },
+    {
+      "binding_id": "batch_files",
+      "direction": "output",
+      "template_port_id": "batch_files",
+      "binding_kind": "workflow-execute-output",
+      "config": {
+        "payload_type_id": "value.v1"
+      },
+      "metadata": {}
+    },
+    {
+      "binding_id": "inspection_results",
+      "direction": "output",
+      "template_port_id": "inspection_results",
+      "binding_kind": "workflow-execute-output",
+      "config": {
+        "payload_type_id": "value.v1"
+      },
+      "metadata": {}
+    },
+    {
+      "binding_id": "inspection_result_count",
+      "direction": "output",
+      "template_port_id": "inspection_result_count",
+      "binding_kind": "workflow-execute-output",
+      "config": {
+        "payload_type_id": "value.v1"
+      },
+      "metadata": {}
+    },
+    {
+      "binding_id": "terminated_early",
+      "direction": "output",
+      "template_port_id": "terminated_early",
+      "binding_kind": "workflow-execute-output",
+      "config": {
+        "payload_type_id": "boolean.v1"
+      },
+      "metadata": {}
+    },
+    {
+      "binding_id": "termination_reason",
+      "direction": "output",
+      "template_port_id": "termination_reason",
+      "binding_kind": "workflow-execute-output",
+      "config": {
+        "payload_type_id": "value.v1"
+      },
+      "metadata": {}
+    },
+    {
+      "binding_id": "batch_record",
+      "direction": "output",
+      "template_port_id": "batch_record",
+      "binding_kind": "workflow-execute-output",
+      "config": {
+        "payload_type_id": "value.v1"
+      },
+      "metadata": {}
+    },
+    {
+      "binding_id": "batch_result_summary",
+      "direction": "output",
+      "template_port_id": "batch_result_summary",
+      "binding_kind": "workflow-execute-output",
+      "config": {
+        "payload_type_id": "value.v1"
+      },
+      "metadata": {}
+    },
+    {
+      "binding_id": "json_summary",
+      "direction": "output",
+      "template_port_id": "json_summary",
+      "binding_kind": "workflow-execute-output",
+      "config": {
+        "payload_type_id": "value.v1"
+      },
+      "metadata": {}
+    },
+    {
+      "binding_id": "callback_response",
+      "direction": "output",
+      "template_port_id": "callback_response",
+      "binding_kind": "workflow-execute-output",
+      "config": {
+        "payload_type_id": "value.v1"
+      },
+      "metadata": {}
+    }
+  ],
+  "metadata": {
+    "example_kind": "industrial-local-directory-watch-detection-position-gate",
+    "intended_saved_object_key": "workflows/projects/{project_id}/applications/industrial-local-directory-watch-detection-position-gate-app/application.json",
+    "trigger_source_input": "directory-watch",
+    "trigger_payload_binding": "request_trigger_payload",
+    "trigger_event_binding": "request_trigger_event"
+  }
+}

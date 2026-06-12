@@ -6,10 +6,16 @@
         <h1>{{ t('inferenceOps.title') }}</h1>
         <p class="page-description">{{ t('inferenceOps.description') }}</p>
       </div>
-      <Button variant="secondary" :disabled="loading" @click="refreshPage">
-        <RefreshCw :size="16" />
-        {{ t('common.refresh') }}
-      </Button>
+      <div class="page-actions">
+        <label class="segmented-field">
+          <span>task_type</span>
+          <SelectField :model-value="selectedTaskType" :options="taskTypeOptions" @update:model-value="setTaskType" />
+        </label>
+        <Button variant="secondary" :disabled="loading" @click="refreshPage">
+          <RefreshCw :size="16" />
+          {{ t('common.refresh') }}
+        </Button>
+      </div>
     </header>
 
     <InlineError :message="errorMessage" />
@@ -231,16 +237,20 @@ import { RouterLink } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 
 import {
-  createYoloXInferenceTask,
-  getYoloXInferenceTaskResult,
-  inferYoloXDeployment,
-  listYoloXInferenceTasks,
-  type YoloXInferencePayload,
-  type YoloXInferenceTaskResult,
-  type YoloXInferenceTaskSubmission,
-  type YoloXInferenceTaskSummary,
+  createDetectionInferenceTask,
+  getDetectionInferenceTaskResult,
+  inferDetectionDeployment,
+  listDetectionInferenceTasks,
+  type DetectionInferencePayload,
+  type DetectionInferenceTaskResult,
+  type DetectionInferenceTaskSubmission,
+  type DetectionInferenceTaskSummary,
 } from '../services/inference.service'
-import { listYoloXDeployments, type YoloXDeploymentInstance } from '@/modules/deployments/services/deployment.service'
+import {
+  listTaskDeployments,
+  type DetectionDeploymentInstance,
+  type ModelTaskType,
+} from '@/modules/deployments/services/deployment.service'
 import { useProjectStore } from '@/app/stores/project.store'
 import { useSessionStore } from '@/app/stores/session.store'
 import { formatSystemDateTime } from '@/shared/formatters/date-time'
@@ -257,8 +267,17 @@ const { t } = useI18n()
 
 type SelectValue = string | number | boolean | null
 
-const deployments = ref<YoloXDeploymentInstance[]>([])
+const taskTypeOptions = [
+  { label: 'detection', value: 'detection' },
+  { label: 'classification', value: 'classification' },
+  { label: 'segmentation', value: 'segmentation' },
+  { label: 'pose', value: 'pose' },
+  { label: 'obb', value: 'obb' },
+]
+
+const deployments = ref<DetectionDeploymentInstance[]>([])
 const selectedDeploymentId = ref('')
+const selectedTaskType = ref<ModelTaskType>('detection')
 const loading = ref(false)
 const inferenceRunning = ref(false)
 const inferenceTasksLoading = ref(false)
@@ -275,10 +294,10 @@ const saveResultImage = ref(true)
 const returnPreviewBase64 = ref(true)
 const displayName = ref('')
 
-const directInferenceResult = ref<YoloXInferencePayload | null>(null)
-const asyncInferenceSubmission = ref<YoloXInferenceTaskSubmission | null>(null)
-const inferenceTasks = ref<YoloXInferenceTaskSummary[]>([])
-const selectedInferenceTaskResult = ref<YoloXInferenceTaskResult | null>(null)
+const directInferenceResult = ref<DetectionInferencePayload | null>(null)
+const asyncInferenceSubmission = ref<DetectionInferenceTaskSubmission | null>(null)
+const inferenceTasks = ref<DetectionInferenceTaskSummary[]>([])
+const selectedInferenceTaskResult = ref<DetectionInferenceTaskResult | null>(null)
 const expandedInferenceTaskId = ref<string | null>(null)
 
 const selectedProjectId = computed(() => projectStore.selectedProjectId)
@@ -320,6 +339,7 @@ function hasInferenceInput(): boolean {
 
 function buildInferenceInput() {
   return {
+    taskType: selectedTaskType.value,
     projectId: selectedProjectId.value,
     deploymentInstanceId: selectedDeploymentId.value,
     inputFileId: inputFileId.value.trim(),
@@ -342,11 +362,23 @@ function buildPreviewImageSrc(value: unknown): string | null {
   return `data:image/jpeg;base64,${trimmed}`
 }
 
+async function setTaskType(value: SelectValue): Promise<void> {
+  const normalized = typeof value === 'string' ? value : String(value ?? '')
+  if (!['detection', 'classification', 'segmentation', 'pose', 'obb'].includes(normalized)) return
+  selectedTaskType.value = normalized as ModelTaskType
+  selectedDeploymentId.value = ''
+  directInferenceResult.value = null
+  asyncInferenceSubmission.value = null
+  selectedInferenceTaskResult.value = null
+  expandedInferenceTaskId.value = null
+  await refreshPage()
+}
+
 async function refreshPage(): Promise<void> {
   loading.value = true
   errorMessage.value = null
   try {
-    deployments.value = await listYoloXDeployments(selectedProjectId.value)
+    deployments.value = await listTaskDeployments(selectedTaskType.value, selectedProjectId.value)
     if (!deployments.value.some((item) => item.deployment_instance_id === selectedDeploymentId.value)) {
       selectedDeploymentId.value = deployments.value[0]?.deployment_instance_id ?? ''
     }
@@ -384,7 +416,8 @@ async function loadInferenceTasks(): Promise<void> {
   inferenceTasksLoading.value = true
   errorMessage.value = null
   try {
-    inferenceTasks.value = await listYoloXInferenceTasks({
+    inferenceTasks.value = await listDetectionInferenceTasks({
+      taskType: selectedTaskType.value,
       projectId: selectedProjectId.value,
       deploymentInstanceId: selectedDeploymentId.value,
       limit: 20,
@@ -405,7 +438,7 @@ async function runDirectInference(): Promise<void> {
   errorMessage.value = null
   try {
     directInferenceResult.value = null
-    directInferenceResult.value = await inferYoloXDeployment(buildInferenceInput())
+    directInferenceResult.value = await inferDetectionDeployment(buildInferenceInput())
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : t('inferenceOps.messages.inferenceFailed')
   } finally {
@@ -421,7 +454,7 @@ async function submitAsyncInferenceTask(): Promise<void> {
   inferenceRunning.value = true
   errorMessage.value = null
   try {
-    asyncInferenceSubmission.value = await createYoloXInferenceTask(buildInferenceInput())
+    asyncInferenceSubmission.value = await createDetectionInferenceTask(buildInferenceInput())
     await loadInferenceTasks()
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : t('inferenceOps.messages.inferenceFailed')
@@ -434,7 +467,7 @@ async function readInferenceTaskResult(taskId: string): Promise<void> {
   inferenceResultLoading.value = taskId
   errorMessage.value = null
   try {
-    selectedInferenceTaskResult.value = await getYoloXInferenceTaskResult(taskId)
+    selectedInferenceTaskResult.value = await getDetectionInferenceTaskResult(selectedTaskType.value, taskId)
     expandedInferenceTaskId.value = taskId
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : t('inferenceOps.messages.resultFailed')

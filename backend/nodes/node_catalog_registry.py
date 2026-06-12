@@ -43,7 +43,7 @@ class NodeCatalogRegistry:
         return self.get_catalog_snapshot().node_pack_manifests
 
     def get_workflow_payload_contracts(self) -> tuple[WorkflowPayloadContract, ...]:
-        """返回统一目录中的 workflow payload contract 列表。"""
+        """返回统一目录中的 workflow payload 规则 列表。"""
 
         return self.get_catalog_snapshot().payload_contracts
 

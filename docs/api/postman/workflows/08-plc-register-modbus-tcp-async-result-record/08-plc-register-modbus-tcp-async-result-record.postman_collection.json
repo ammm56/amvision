@@ -1,0 +1,638 @@
+{
+  "info": {
+    "_postman_id": "amvision-workflow-08",
+    "name": "amvision workflow 08 plc register modbus tcp async result record",
+    "description": "第八类 PLC TriggerSource 调试 collection。plc-register 负责 Modbus TCP polling 和 match_rule；workflow app 只接收标准化事件并回传 result-record。直接 Invoke 的请求体使用 synthetic trigger event payload，用于本地调试同一条业务链。",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://127.0.0.1:8000"
+    },
+    {
+      "key": "projectId",
+      "value": "project-1"
+    },
+    {
+      "key": "previewRunId",
+      "value": ""
+    },
+    {
+      "key": "workflowRuntimeId",
+      "value": ""
+    },
+    {
+      "key": "workflowRunId",
+      "value": ""
+    },
+    {
+      "key": "triggerSourceId",
+      "value": "plc-trigger-source-08"
+    },
+    {
+      "key": "accessToken",
+      "value": "amvision-default-user-token"
+    }
+  ],
+  "item": [
+    {
+      "name": "Save Template",
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/projects/{{projectId}}/templates/plc-register-modbus-tcp-async-result-record-template/versions/1.0.0",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "workflows",
+            "projects",
+            "{{projectId}}",
+            "templates",
+            "plc-register-modbus-tcp-async-result-record-template",
+            "versions",
+            "1.0.0"
+          ]
+        },
+        "description": "保存 plc_register_modbus_tcp_async_result_record 的 workflow template。",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"template\": {\n    \"format_id\": \"amvision.workflow-graph-template.v1\",\n    \"template_id\": \"plc-register-modbus-tcp-async-result-record-template\",\n    \"template_version\": \"1.0.0\",\n    \"display_name\": \"PLC Register Modbus TCP Async Result Record\",\n    \"description\": \"面向 plc-register TriggerSource 的现场回传样例。TriggerSource 负责常驻轮询与匹配，workflow app 只接收标准化后的寄存器事件，收成统一 result-record，再回传到 HTTP 接口。\",\n    \"nodes\": [\n      {\n        \"node_id\": \"wrap_trigger_payload\",\n        \"node_type_id\": \"core.logic.payload-to-value\",\n        \"parameters\": {}\n      },\n      {\n        \"node_id\": \"wrap_trigger_event\",\n        \"node_type_id\": \"core.logic.payload-to-value\",\n        \"parameters\": {}\n      },\n      {\n        \"node_id\": \"extract_event_matched\",\n        \"node_type_id\": \"core.logic.value-field-extract\",\n        \"parameters\": {\n          \"path\": \"matched\"\n        }\n      },\n      {\n        \"node_id\": \"compare_event_matched\",\n        \"node_type_id\": \"core.logic.compare\",\n        \"parameters\": {\n          \"operator\": \"eq\",\n          \"right_value\": true\n        }\n      },\n      {\n        \"node_id\": \"extract_observed_value\",\n        \"node_type_id\": \"core.logic.value-field-extract\",\n        \"parameters\": {\n          \"path\": \"observed_value\"\n        }\n      },\n      {\n        \"node_id\": \"extract_previous_observed_value\",\n        \"node_type_id\": \"core.logic.value-field-extract\",\n        \"parameters\": {\n          \"path\": \"previous_observed_value\"\n        }\n      },\n      {\n        \"node_id\": \"extract_sequence_id\",\n        \"node_type_id\": \"core.logic.value-field-extract\",\n        \"parameters\": {\n          \"path\": \"sequence_id\"\n        }\n      },\n      {\n        \"node_id\": \"decide_result\",\n        \"node_type_id\": \"core.rule.ok-ng-decision\",\n        \"parameters\": {\n          \"mode\": \"all\"\n        }\n      },\n      {\n        \"node_id\": \"build_result_metrics\",\n        \"node_type_id\": \"core.logic.object-create\",\n        \"parameters\": {\n          \"keys\": [\n            \"observed_value\",\n            \"previous_observed_value\",\n            \"sequence_id\",\n            \"matched\"\n          ],\n          \"fields\": {\n            \"example_kind\": \"plc-register-modbus-tcp-async-result-record\",\n            \"evaluation_source\": \"plc-register-trigger-source\"\n          }\n        }\n      },\n      {\n        \"node_id\": \"build_result_metadata\",\n        \"node_type_id\": \"core.logic.object-create\",\n        \"parameters\": {\n          \"keys\": [\n            \"trigger_payload\",\n            \"trigger_event\"\n          ],\n          \"fields\": {\n            \"example_kind\": \"plc-register-modbus-tcp-async-result-record\",\n            \"station_id\": \"line-a-01\",\n            \"line_id\": \"line-a\",\n            \"trigger_kind\": \"plc-register\",\n            \"callback_url\": \"http://127.0.0.1:18080/plc/register/result\"\n          }\n        }\n      },\n      {\n        \"node_id\": \"inspection_alarm\",\n        \"node_type_id\": \"core.rule.alarm-condition\",\n        \"parameters\": {\n          \"trigger_when\": \"condition-false\",\n          \"alarm_level\": \"error\",\n          \"alarm_code\": \"PLC-REGISTER-NG\",\n          \"alarm_message\": \"plc register trigger event validation failed\",\n          \"clear_message\": \"plc register trigger event accepted\"\n        }\n      },\n      {\n        \"node_id\": \"inspection_result\",\n        \"node_type_id\": \"core.output.result-record\",\n        \"parameters\": {}\n      },\n      {\n        \"node_id\": \"callback_result\",\n        \"node_type_id\": \"core.output.http-post\",\n        \"parameters\": {\n          \"url\": \"http://127.0.0.1:18080/plc/register/result\",\n          \"method\": \"POST\",\n          \"timeout_seconds\": 3.0,\n          \"require_success\": false,\n          \"headers\": {\n            \"X-Amvision-Example\": \"plc-register-modbus-tcp-async-result-record\"\n          }\n        }\n      }\n    ],\n    \"edges\": [\n      {\n        \"edge_id\": \"edge-wrap-trigger-payload-extract-matched\",\n        \"source_node_id\": \"wrap_trigger_payload\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"extract_event_matched\",\n        \"target_port\": \"value\"\n      },\n      {\n        \"edge_id\": \"edge-wrap-trigger-payload-extract-observed\",\n        \"source_node_id\": \"wrap_trigger_payload\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"extract_observed_value\",\n        \"target_port\": \"value\"\n      },\n      {\n        \"edge_id\": \"edge-wrap-trigger-payload-extract-previous-observed\",\n        \"source_node_id\": \"wrap_trigger_payload\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"extract_previous_observed_value\",\n        \"target_port\": \"value\"\n      },\n      {\n        \"edge_id\": \"edge-wrap-trigger-payload-extract-sequence\",\n        \"source_node_id\": \"wrap_trigger_payload\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"extract_sequence_id\",\n        \"target_port\": \"value\"\n      },\n      {\n        \"edge_id\": \"edge-extract-matched-compare\",\n        \"source_node_id\": \"extract_event_matched\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"compare_event_matched\",\n        \"target_port\": \"left\"\n      },\n      {\n        \"edge_id\": \"edge-compare-matched-decide-result\",\n        \"source_node_id\": \"compare_event_matched\",\n        \"source_port\": \"result\",\n        \"target_node_id\": \"decide_result\",\n        \"target_port\": \"conditions\"\n      },\n      {\n        \"edge_id\": \"edge-observed-value-build-metrics\",\n        \"source_node_id\": \"extract_observed_value\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"build_result_metrics\",\n        \"target_port\": \"values\"\n      },\n      {\n        \"edge_id\": \"edge-previous-observed-build-metrics\",\n        \"source_node_id\": \"extract_previous_observed_value\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"build_result_metrics\",\n        \"target_port\": \"values\"\n      },\n      {\n        \"edge_id\": \"edge-sequence-build-metrics\",\n        \"source_node_id\": \"extract_sequence_id\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"build_result_metrics\",\n        \"target_port\": \"values\"\n      },\n      {\n        \"edge_id\": \"edge-matched-build-metrics\",\n        \"source_node_id\": \"extract_event_matched\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"build_result_metrics\",\n        \"target_port\": \"values\"\n      },\n      {\n        \"edge_id\": \"edge-wrap-trigger-payload-build-metadata\",\n        \"source_node_id\": \"wrap_trigger_payload\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"build_result_metadata\",\n        \"target_port\": \"values\"\n      },\n      {\n        \"edge_id\": \"edge-wrap-trigger-event-build-metadata\",\n        \"source_node_id\": \"wrap_trigger_event\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"build_result_metadata\",\n        \"target_port\": \"values\"\n      },\n      {\n        \"edge_id\": \"edge-compare-matched-alarm\",\n        \"source_node_id\": \"compare_event_matched\",\n        \"source_port\": \"result\",\n        \"target_node_id\": \"inspection_alarm\",\n        \"target_port\": \"condition\"\n      },\n      {\n        \"edge_id\": \"edge-build-metrics-alarm\",\n        \"source_node_id\": \"build_result_metrics\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"inspection_alarm\",\n        \"target_port\": \"metrics\"\n      },\n      {\n        \"edge_id\": \"edge-build-metadata-alarm\",\n        \"source_node_id\": \"build_result_metadata\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"inspection_alarm\",\n        \"target_port\": \"metadata\"\n      },\n      {\n        \"edge_id\": \"edge-decide-result-inspection-decision\",\n        \"source_node_id\": \"decide_result\",\n        \"source_port\": \"decision\",\n        \"target_node_id\": \"inspection_result\",\n        \"target_port\": \"decision\"\n      },\n      {\n        \"edge_id\": \"edge-decide-summary-inspection-conditions\",\n        \"source_node_id\": \"decide_result\",\n        \"source_port\": \"summary\",\n        \"target_node_id\": \"inspection_result\",\n        \"target_port\": \"conditions\"\n      },\n      {\n        \"edge_id\": \"edge-build-metrics-inspection-metrics\",\n        \"source_node_id\": \"build_result_metrics\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"inspection_result\",\n        \"target_port\": \"metrics\"\n      },\n      {\n        \"edge_id\": \"edge-build-metadata-inspection-metadata\",\n        \"source_node_id\": \"build_result_metadata\",\n        \"source_port\": \"value\",\n        \"target_node_id\": \"inspection_result\",\n        \"target_port\": \"metadata\"\n      },\n      {\n        \"edge_id\": \"edge-inspection-alarm-inspection-result\",\n        \"source_node_id\": \"inspection_alarm\",\n        \"source_port\": \"alarm\",\n        \"target_node_id\": \"inspection_result\",\n        \"target_port\": \"alarm\"\n      },\n      {\n        \"edge_id\": \"edge-inspection-result-callback\",\n        \"source_node_id\": \"inspection_result\",\n        \"source_port\": \"result\",\n        \"target_node_id\": \"callback_result\",\n        \"target_port\": \"result\"\n      }\n    ],\n    \"template_inputs\": [\n      {\n        \"input_id\": \"request_trigger_payload\",\n        \"display_name\": \"Request Trigger Payload\",\n        \"payload_type_id\": \"response-body.v1\",\n        \"target_node_id\": \"wrap_trigger_payload\",\n        \"target_port\": \"body\"\n      },\n      {\n        \"input_id\": \"request_trigger_event\",\n        \"display_name\": \"Request Trigger Event\",\n        \"payload_type_id\": \"response-body.v1\",\n        \"target_node_id\": \"wrap_trigger_event\",\n        \"target_port\": \"body\"\n      }\n    ],\n    \"template_outputs\": [\n      {\n        \"output_id\": \"inspection_result\",\n        \"display_name\": \"Inspection Result\",\n        \"payload_type_id\": \"result-record.v1\",\n        \"source_node_id\": \"inspection_result\",\n        \"source_port\": \"result\"\n      },\n      {\n        \"output_id\": \"inspection_alarm\",\n        \"display_name\": \"Inspection Alarm\",\n        \"payload_type_id\": \"alarm-record.v1\",\n        \"source_node_id\": \"inspection_alarm\",\n        \"source_port\": \"alarm\"\n      },\n      {\n        \"output_id\": \"decision_summary\",\n        \"display_name\": \"Decision Summary\",\n        \"payload_type_id\": \"value.v1\",\n        \"source_node_id\": \"decide_result\",\n        \"source_port\": \"summary\"\n      },\n      {\n        \"output_id\": \"callback_response\",\n        \"display_name\": \"Callback Response\",\n        \"payload_type_id\": \"value.v1\",\n        \"source_node_id\": \"callback_result\",\n        \"source_port\": \"response\"\n      }\n    ],\n    \"metadata\": {\n      \"example_kind\": \"plc-register-modbus-tcp-async-result-record\",\n      \"focus\": \"plc-register-trigger-result-callback\",\n      \"trigger_source_kind\": \"plc-register\",\n      \"callback_url_edit_required\": true,\n      \"input_boundary_note\": \"TriggerSource 当前只负责映射原始 payload/event 对象；workflow 内使用 payload-to-value 显式桥接为 value.v1。\",\n      \"node_groups\": {\n        \"input\": [\n          \"wrap_trigger_payload\",\n          \"wrap_trigger_event\"\n        ],\n        \"evaluation\": [\n          \"extract_event_matched\",\n          \"compare_event_matched\",\n          \"extract_observed_value\",\n          \"extract_previous_observed_value\",\n          \"extract_sequence_id\",\n          \"decide_result\",\n          \"build_result_metrics\",\n          \"build_result_metadata\",\n          \"inspection_alarm\",\n          \"inspection_result\"\n        ],\n        \"output\": [\n          \"callback_result\"\n        ]\n      }\n    }\n  }\n}\n",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Save Application",
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/projects/{{projectId}}/applications/plc-register-modbus-tcp-async-result-record-app",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "workflows",
+            "projects",
+            "{{projectId}}",
+            "applications",
+            "plc-register-modbus-tcp-async-result-record-app"
+          ]
+        },
+        "description": "保存 plc_register_modbus_tcp_async_result_record 的 FlowApplication。",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"application\": {\n    \"format_id\": \"amvision.flow-application.v1\",\n    \"application_id\": \"plc-register-modbus-tcp-async-result-record-app\",\n    \"display_name\": \"PLC Register Modbus TCP Async Result Record App\",\n    \"description\": \"用于 plc-register TriggerSource 现场回传的 workflow app。输入标准化寄存器 payload 与事件上下文，输出统一 result-record、报警对象、判定摘要和 HTTP 回传摘要。\",\n    \"template_ref\": {\n      \"template_id\": \"plc-register-modbus-tcp-async-result-record-template\",\n      \"template_version\": \"1.0.0\",\n      \"source_kind\": \"json-file\",\n      \"source_uri\": \"docs/examples/workflows/plc_register_modbus_tcp_async_result_record.template.json\"\n    },\n    \"runtime_mode\": \"python-json-workflow\",\n    \"bindings\": [\n      {\n        \"binding_id\": \"request_trigger_payload\",\n        \"direction\": \"input\",\n        \"template_port_id\": \"request_trigger_payload\",\n        \"binding_kind\": \"trigger-source-input\",\n        \"config\": {\n          \"payload_type_id\": \"response-body.v1\",\n          \"content_type\": \"application/json\"\n        },\n        \"metadata\": {\n          \"payload_type_id\": \"response-body.v1\",\n          \"trigger_kind\": \"plc-register\",\n          \"source_path\": \"payload\"\n        }\n      },\n      {\n        \"binding_id\": \"request_trigger_event\",\n        \"direction\": \"input\",\n        \"template_port_id\": \"request_trigger_event\",\n        \"binding_kind\": \"trigger-source-input\",\n        \"config\": {\n          \"payload_type_id\": \"response-body.v1\",\n          \"content_type\": \"application/json\"\n        },\n        \"metadata\": {\n          \"payload_type_id\": \"response-body.v1\",\n          \"trigger_kind\": \"plc-register\",\n          \"source_path\": \"event\"\n        }\n      },\n      {\n        \"binding_id\": \"inspection_result\",\n        \"direction\": \"output\",\n        \"template_port_id\": \"inspection_result\",\n        \"binding_kind\": \"workflow-execute-output\",\n        \"config\": {\n          \"payload_type_id\": \"result-record.v1\"\n        },\n        \"metadata\": {}\n      },\n      {\n        \"binding_id\": \"inspection_alarm\",\n        \"direction\": \"output\",\n        \"template_port_id\": \"inspection_alarm\",\n        \"binding_kind\": \"workflow-execute-output\",\n        \"config\": {\n          \"payload_type_id\": \"alarm-record.v1\"\n        },\n        \"metadata\": {}\n      },\n      {\n        \"binding_id\": \"decision_summary\",\n        \"direction\": \"output\",\n        \"template_port_id\": \"decision_summary\",\n        \"binding_kind\": \"workflow-execute-output\",\n        \"config\": {\n          \"payload_type_id\": \"value.v1\"\n        },\n        \"metadata\": {}\n      },\n      {\n        \"binding_id\": \"callback_response\",\n        \"direction\": \"output\",\n        \"template_port_id\": \"callback_response\",\n        \"binding_kind\": \"workflow-execute-output\",\n        \"config\": {\n          \"payload_type_id\": \"value.v1\"\n        },\n        \"metadata\": {}\n      }\n    ],\n    \"metadata\": {\n      \"example_kind\": \"plc-register-modbus-tcp-async-result-record\",\n      \"intended_saved_object_key\": \"workflows/projects/{project_id}/applications/plc-register-modbus-tcp-async-result-record-app/application.json\",\n      \"trigger_source_input\": \"plc-register\",\n      \"trigger_payload_binding\": \"request_trigger_payload\",\n      \"trigger_event_binding\": \"request_trigger_event\"\n    }\n  }\n}\n",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Create Preview Run",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/preview-runs",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "workflows",
+            "preview-runs"
+          ]
+        },
+        "description": "创建 plc_register_modbus_tcp_async_result_record 的编辑态 preview run。这里直接用 synthetic trigger payload 和 event 做本地调试，不需要真实 PLC 常驻监听。",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"project_id\": \"project-1\",\n  \"application_ref\": {\n    \"application_id\": \"plc-register-modbus-tcp-async-result-record-app\"\n  },\n  \"input_bindings\": {\n    \"request_trigger_payload\": {\n      \"matched\": true,\n      \"observed_value\": 5,\n      \"previous_observed_value\": 1,\n      \"register_address\": \"400101\",\n      \"register_area\": \"holding_register\",\n      \"data_type\": \"uint16\",\n      \"host\": \"192.168.10.20\",\n      \"port\": 502,\n      \"unit_id\": 1,\n      \"sequence_id\": 12,\n      \"response_meta\": {\n        \"function_code\": 3,\n        \"register_count\": 1\n      }\n    },\n    \"request_trigger_event\": {\n      \"trigger_source_id\": \"plc-trigger-source-08\",\n      \"trigger_kind\": \"plc-register\",\n      \"event_id\": \"plc-line-a-event-000012\",\n      \"occurred_at\": \"2026-06-09T09:00:00Z\",\n      \"idempotency_key\": \"12\"\n    }\n  },\n  \"execution_metadata\": {\n    \"marker\": \"postman-workflow-example-documents-preview\",\n    \"example_name\": \"plc_register_modbus_tcp_async_result_record\",\n    \"scenario\": \"plc-register-modbus-tcp-async-result-record\",\n    \"trigger_source\": \"editor-preview\"\n  },\n  \"timeout_seconds\": 30\n}\n",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "response": [],
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(201);",
+              "const body = pm.response.json();",
+              "if (body.preview_run_id) {",
+              "  pm.collectionVariables.set('previewRunId', body.preview_run_id);",
+              "}"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Get Preview Run",
+      "request": {
+        "method": "GET",
+        "header": {
+          "key": "Authorization",
+          "value": "Bearer {{accessToken}}",
+          "type": "text"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/preview-runs/{{previewRunId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "workflows",
+            "preview-runs",
+            "{{previewRunId}}"
+          ]
+        },
+        "description": "读取上一步 preview run 的 outputs 和 node_records。"
+      },
+      "response": []
+    },
+    {
+      "name": "Create App Runtime",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/app-runtimes",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "workflows",
+            "app-runtimes"
+          ]
+        },
+        "description": "创建 plc-register TriggerSource 使用的正式 runtime。",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"project_id\": \"project-1\",\n  \"application_id\": \"plc-register-modbus-tcp-async-result-record-app\",\n  \"display_name\": \"PLC Register Modbus TCP Async Result Record Runtime\",\n  \"metadata\": {\n    \"example_kind\": \"plc-register-modbus-tcp-async-result-record\",\n    \"trigger_source_input\": \"plc-register\"\n  }\n}\n",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "response": [],
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(201);",
+              "const body = pm.response.json();",
+              "if (body.workflow_runtime_id) {",
+              "  pm.collectionVariables.set('workflowRuntimeId', body.workflow_runtime_id);",
+              "}"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Start App Runtime",
+      "request": {
+        "method": "POST",
+        "header": {
+          "key": "Authorization",
+          "value": "Bearer {{accessToken}}",
+          "type": "text"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/app-runtimes/{{workflowRuntimeId}}/start",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "workflows",
+            "app-runtimes",
+            "{{workflowRuntimeId}}",
+            "start"
+          ]
+        },
+        "description": "启动正式 runtime。"
+      },
+      "response": []
+    },
+    {
+      "name": "Get App Runtime Health",
+      "request": {
+        "method": "GET",
+        "header": {
+          "key": "Authorization",
+          "value": "Bearer {{accessToken}}",
+          "type": "text"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/app-runtimes/{{workflowRuntimeId}}/health",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "workflows",
+            "app-runtimes",
+            "{{workflowRuntimeId}}",
+            "health"
+          ]
+        },
+        "description": "确认 runtime 已经处于 running。"
+      },
+      "response": []
+    },
+    {
+      "name": "Invoke App Runtime (Synthetic Event)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/app-runtimes/{{workflowRuntimeId}}/invoke",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "workflows",
+            "app-runtimes",
+            "{{workflowRuntimeId}}",
+            "invoke"
+          ]
+        },
+        "description": "直接用 synthetic PLC trigger event 调用同一个 runtime，验证业务处理链本身。",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"input_bindings\": {\n    \"request_trigger_payload\": {\n      \"matched\": true,\n      \"observed_value\": 5,\n      \"previous_observed_value\": 1,\n      \"register_address\": \"400101\",\n      \"register_area\": \"holding_register\",\n      \"data_type\": \"uint16\",\n      \"host\": \"192.168.10.20\",\n      \"port\": 502,\n      \"unit_id\": 1,\n      \"sequence_id\": 12,\n      \"response_meta\": {\n        \"function_code\": 3,\n        \"register_count\": 1\n      }\n    },\n    \"request_trigger_event\": {\n      \"trigger_source_id\": \"plc-trigger-source-08\",\n      \"trigger_kind\": \"plc-register\",\n      \"event_id\": \"plc-line-a-event-000012\",\n      \"occurred_at\": \"2026-06-09T09:00:00Z\",\n      \"idempotency_key\": \"12\"\n    }\n  },\n  \"execution_metadata\": {\n    \"scenario\": \"plc-register-modbus-tcp-async-result-record\",\n    \"trigger_source\": \"sync-api\"\n  }\n}\n",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "response": [],
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const body = pm.response.json();",
+              "if (body.workflow_run_id) {",
+              "  pm.collectionVariables.set('workflowRunId', body.workflow_run_id);",
+              "}"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Create Workflow Run",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/app-runtimes/{{workflowRuntimeId}}/runs",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "workflows",
+            "app-runtimes",
+            "{{workflowRuntimeId}}",
+            "runs"
+          ]
+        },
+        "description": "创建同一条 plc-register 事件处理链的正式 async workflow run。",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"input_bindings\": {\n    \"request_trigger_payload\": {\n      \"matched\": true,\n      \"observed_value\": 5,\n      \"previous_observed_value\": 1,\n      \"register_address\": \"400101\",\n      \"register_area\": \"holding_register\",\n      \"data_type\": \"uint16\",\n      \"host\": \"192.168.10.20\",\n      \"port\": 502,\n      \"unit_id\": 1,\n      \"sequence_id\": 12,\n      \"response_meta\": {\n        \"function_code\": 3,\n        \"register_count\": 1\n      }\n    },\n    \"request_trigger_event\": {\n      \"trigger_source_id\": \"plc-trigger-source-08\",\n      \"trigger_kind\": \"plc-register\",\n      \"event_id\": \"plc-line-a-event-000012\",\n      \"occurred_at\": \"2026-06-09T09:00:00Z\",\n      \"idempotency_key\": \"12\"\n    }\n  },\n  \"execution_metadata\": {\n    \"scenario\": \"plc-register-modbus-tcp-async-result-record\",\n    \"trigger_source\": \"async-api\"\n  }\n}\n",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "response": [],
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(201);",
+              "const body = pm.response.json();",
+              "if (body.workflow_run_id) {",
+              "  pm.collectionVariables.set('workflowRunId', body.workflow_run_id);",
+              "}"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Get Workflow Run",
+      "request": {
+        "method": "GET",
+        "header": {
+          "key": "Authorization",
+          "value": "Bearer {{accessToken}}",
+          "type": "text"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/runs/{{workflowRunId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "workflows",
+            "runs",
+            "{{workflowRunId}}"
+          ]
+        },
+        "description": "读取 invoke 或 async run 返回的 workflow_run_id。"
+      },
+      "response": []
+    },
+    {
+      "name": "Create TriggerSource",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/trigger-sources",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "workflows",
+            "trigger-sources"
+          ]
+        },
+        "description": "创建 plc-register TriggerSource；真实现场由 adapter 轮询 Modbus TCP 并提交标准化事件。",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"trigger_source_id\": \"plc-trigger-source-08\",\n  \"project_id\": \"project-1\",\n  \"display_name\": \"PLC TriggerSource 08 Modbus TCP Async Result Record\",\n  \"trigger_kind\": \"plc-register\",\n  \"workflow_runtime_id\": \"{{workflowRuntimeId}}\",\n  \"submit_mode\": \"async\",\n  \"enabled\": false,\n  \"transport_config\": {\n    \"driver\": \"modbus-tcp\",\n    \"host\": \"192.168.1.10\",\n    \"port\": 502,\n    \"unit_id\": 1,\n    \"register_address\": \"400101\",\n    \"data_type\": \"uint16\",\n    \"word_order\": \"big\",\n    \"byte_position\": \"low\",\n    \"timeout_seconds\": 1.0,\n    \"retries\": 1,\n    \"poll_interval_ms\": 200,\n    \"reconnect_interval_ms\": 1000\n  },\n  \"match_rule\": {\n    \"operator\": \"bitmask_all_set\",\n    \"expected_value\": 5,\n    \"stable_match_count\": 2,\n    \"trigger_mode\": \"enter-match\",\n    \"cooldown_ms\": 200,\n    \"emit_initial_match\": false\n  },\n  \"input_binding_mapping\": {\n    \"request_trigger_payload\": {\n      \"source\": \"payload\",\n      \"payload_type_id\": \"response-body.v1\"\n    },\n    \"request_trigger_event\": {\n      \"source\": \"event\",\n      \"payload_type_id\": \"response-body.v1\"\n    }\n  },\n  \"result_mapping\": {\n    \"result_binding\": \"inspection_result\",\n    \"result_mode\": \"accepted-then-query\"\n  },\n  \"default_execution_metadata\": {\n    \"scenario\": \"plc-register-modbus-tcp-async-result-record\",\n    \"trigger_source\": \"plc-register\",\n    \"trace_level\": \"none\",\n    \"retain_trace_enabled\": false,\n    \"retain_node_records_enabled\": false\n  },\n  \"ack_policy\": \"ack-after-run-created\",\n  \"result_mode\": \"accepted-then-query\",\n  \"debounce_window_ms\": 0,\n  \"idempotency_key_path\": \"payload.sequence_id\",\n  \"metadata\": {\n    \"example_kind\": \"plc-register-modbus-tcp-async-result-record\",\n    \"line_id\": \"line-a\"\n  }\n}\n",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Enable TriggerSource",
+      "request": {
+        "method": "POST",
+        "header": {
+          "key": "Authorization",
+          "value": "Bearer {{accessToken}}",
+          "type": "text"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/trigger-sources/{{triggerSourceId}}/enable",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "workflows",
+            "trigger-sources",
+            "{{triggerSourceId}}",
+            "enable"
+          ]
+        },
+        "description": "启动 plc-register adapter。"
+      },
+      "response": []
+    },
+    {
+      "name": "Get TriggerSource Health",
+      "request": {
+        "method": "GET",
+        "header": {
+          "key": "Authorization",
+          "value": "Bearer {{accessToken}}",
+          "type": "text"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/trigger-sources/{{triggerSourceId}}/health",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "workflows",
+            "trigger-sources",
+            "{{triggerSourceId}}",
+            "health"
+          ]
+        },
+        "description": "确认 adapter_running=true，并查看当前 poll/match/submit 计数。"
+      },
+      "response": []
+    },
+    {
+      "name": "Disable TriggerSource",
+      "request": {
+        "method": "POST",
+        "header": {
+          "key": "Authorization",
+          "value": "Bearer {{accessToken}}",
+          "type": "text"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/trigger-sources/{{triggerSourceId}}/disable",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "workflows",
+            "trigger-sources",
+            "{{triggerSourceId}}",
+            "disable"
+          ]
+        },
+        "description": "停止 plc-register adapter。"
+      },
+      "response": []
+    },
+    {
+      "name": "Delete TriggerSource",
+      "request": {
+        "method": "DELETE",
+        "header": {
+          "key": "Authorization",
+          "value": "Bearer {{accessToken}}",
+          "type": "text"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/trigger-sources/{{triggerSourceId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "workflows",
+            "trigger-sources",
+            "{{triggerSourceId}}"
+          ]
+        },
+        "description": "删除当前 TriggerSource；如果需要重新绑定新的 runtime 或 PLC 地址，可在这一步后重新执行 Create TriggerSource。"
+      },
+      "response": []
+    },
+    {
+      "name": "Stop App Runtime",
+      "request": {
+        "method": "POST",
+        "header": {
+          "key": "Authorization",
+          "value": "Bearer {{accessToken}}",
+          "type": "text"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/app-runtimes/{{workflowRuntimeId}}/stop",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "workflows",
+            "app-runtimes",
+            "{{workflowRuntimeId}}",
+            "stop"
+          ]
+        },
+        "description": "结束本次 08 plc-register runtime 调试。"
+      },
+      "response": []
+    }
+  ]
+}

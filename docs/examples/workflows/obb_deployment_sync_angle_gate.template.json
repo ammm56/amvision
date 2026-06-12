@@ -1,0 +1,300 @@
+{
+  "format_id": "amvision.workflow-graph-template.v1",
+  "template_id": "obb-deployment-sync-angle-gate-template",
+  "template_version": "1.0.0",
+  "display_name": "OBB Deployment Sync Angle Gate",
+  "description": "接收 base64 图片和已有 deployment 请求，直接执行 OBB 推理，再基于 count 与 angle 范围完成最小角度工艺判定。",
+  "nodes": [
+    {
+      "node_id": "decode_request_image",
+      "node_type_id": "core.io.image-base64-decode",
+      "parameters": {}
+    },
+    {
+      "node_id": "deployment_request_input",
+      "node_type_id": "core.io.template-input.object",
+      "parameters": {}
+    },
+    {
+      "node_id": "detect_obb",
+      "node_type_id": "core.model.obb",
+      "parameters": {
+        "auto_start_process": false,
+        "score_threshold": 0.4,
+        "save_result_image": false,
+        "return_preview_image_base64": false
+      }
+    },
+    {
+      "node_id": "obbs_value",
+      "node_type_id": "core.logic.payload-to-value",
+      "parameters": {}
+    },
+    {
+      "node_id": "extract_count",
+      "node_type_id": "core.logic.value-field-extract",
+      "parameters": {
+        "path": "count"
+      }
+    },
+    {
+      "node_id": "extract_top_angle",
+      "node_type_id": "core.logic.value-field-extract",
+      "parameters": {
+        "path": "items.0.angle"
+      }
+    },
+    {
+      "node_id": "extract_top_class_name",
+      "node_type_id": "core.logic.value-field-extract",
+      "parameters": {
+        "path": "items.0.class_name"
+      }
+    },
+    {
+      "node_id": "presence_check",
+      "node_type_id": "core.rule.presence-check",
+      "parameters": {
+        "min_count": 1
+      }
+    },
+    {
+      "node_id": "angle_ok",
+      "node_type_id": "core.rule.range-check",
+      "parameters": {
+        "min_value": -15.0,
+        "max_value": 15.0
+      }
+    },
+    {
+      "node_id": "metadata_object",
+      "node_type_id": "core.logic.object-create",
+      "parameters": {
+        "keys": [
+          "deployment_request"
+        ],
+        "fields": {
+          "inspection_kind": "obb-angle-gate",
+          "station_id": "line-obb-01"
+        }
+      }
+    },
+    {
+      "node_id": "metrics_object",
+      "node_type_id": "core.logic.object-create",
+      "parameters": {
+        "keys": [
+          "obbs",
+          "count",
+          "top_angle",
+          "top_class_name"
+        ]
+      }
+    },
+    {
+      "node_id": "process_decision",
+      "node_type_id": "core.rule.process-decision",
+      "parameters": {
+        "mode": "all",
+        "condition_names": [
+          "presence",
+          "angle"
+        ],
+        "ok_reason": "obb angle gate passed",
+        "ng_reason": "obb angle gate failed"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "edge_id": "edge-decode-obb-image",
+      "source_node_id": "decode_request_image",
+      "source_port": "image",
+      "target_node_id": "detect_obb",
+      "target_port": "image"
+    },
+    {
+      "edge_id": "edge-deployment-request-obb",
+      "source_node_id": "deployment_request_input",
+      "source_port": "value",
+      "target_node_id": "detect_obb",
+      "target_port": "request"
+    },
+    {
+      "edge_id": "edge-obb-obbs-value",
+      "source_node_id": "detect_obb",
+      "source_port": "obbs",
+      "target_node_id": "obbs_value",
+      "target_port": "obbs"
+    },
+    {
+      "edge_id": "edge-obbs-value-count",
+      "source_node_id": "obbs_value",
+      "source_port": "value",
+      "target_node_id": "extract_count",
+      "target_port": "value"
+    },
+    {
+      "edge_id": "edge-obbs-value-top-angle",
+      "source_node_id": "obbs_value",
+      "source_port": "value",
+      "target_node_id": "extract_top_angle",
+      "target_port": "value"
+    },
+    {
+      "edge_id": "edge-obbs-value-top-class",
+      "source_node_id": "obbs_value",
+      "source_port": "value",
+      "target_node_id": "extract_top_class_name",
+      "target_port": "value"
+    },
+    {
+      "edge_id": "edge-count-presence",
+      "source_node_id": "extract_count",
+      "source_port": "value",
+      "target_node_id": "presence_check",
+      "target_port": "value"
+    },
+    {
+      "edge_id": "edge-top-angle-range",
+      "source_node_id": "extract_top_angle",
+      "source_port": "value",
+      "target_node_id": "angle_ok",
+      "target_port": "value"
+    },
+    {
+      "edge_id": "edge-deployment-request-metadata",
+      "source_node_id": "deployment_request_input",
+      "source_port": "value",
+      "target_node_id": "metadata_object",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-obbs-value-metrics",
+      "source_node_id": "obbs_value",
+      "source_port": "value",
+      "target_node_id": "metrics_object",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-count-metrics",
+      "source_node_id": "extract_count",
+      "source_port": "value",
+      "target_node_id": "metrics_object",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-top-angle-metrics",
+      "source_node_id": "extract_top_angle",
+      "source_port": "value",
+      "target_node_id": "metrics_object",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-top-class-metrics",
+      "source_node_id": "extract_top_class_name",
+      "source_port": "value",
+      "target_node_id": "metrics_object",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-presence-process",
+      "source_node_id": "presence_check",
+      "source_port": "result",
+      "target_node_id": "process_decision",
+      "target_port": "conditions"
+    },
+    {
+      "edge_id": "edge-angle-process",
+      "source_node_id": "angle_ok",
+      "source_port": "result",
+      "target_node_id": "process_decision",
+      "target_port": "conditions"
+    },
+    {
+      "edge_id": "edge-metrics-process",
+      "source_node_id": "metrics_object",
+      "source_port": "value",
+      "target_node_id": "process_decision",
+      "target_port": "metrics"
+    },
+    {
+      "edge_id": "edge-metadata-process",
+      "source_node_id": "metadata_object",
+      "source_port": "value",
+      "target_node_id": "process_decision",
+      "target_port": "metadata"
+    },
+    {
+      "edge_id": "edge-image-process",
+      "source_node_id": "decode_request_image",
+      "source_port": "image",
+      "target_node_id": "process_decision",
+      "target_port": "image"
+    }
+  ],
+  "template_inputs": [
+    {
+      "input_id": "request_image",
+      "display_name": "Request Image",
+      "payload_type_id": "image-base64.v1",
+      "target_node_id": "decode_request_image",
+      "target_port": "payload"
+    },
+    {
+      "input_id": "deployment_request",
+      "display_name": "Deployment Request",
+      "payload_type_id": "value.v1",
+      "target_node_id": "deployment_request_input",
+      "target_port": "payload"
+    }
+  ],
+  "template_outputs": [
+    {
+      "output_id": "model_obbs",
+      "display_name": "Model OBBs",
+      "payload_type_id": "obbs.v1",
+      "source_node_id": "detect_obb",
+      "source_port": "obbs"
+    },
+    {
+      "output_id": "inspection_result",
+      "display_name": "Inspection Result",
+      "payload_type_id": "result-record.v1",
+      "source_node_id": "process_decision",
+      "source_port": "result"
+    },
+    {
+      "output_id": "decision_summary",
+      "display_name": "Decision Summary",
+      "payload_type_id": "value.v1",
+      "source_node_id": "process_decision",
+      "source_port": "summary"
+    }
+  ],
+  "metadata": {
+    "example_kind": "obb-deployment-sync-angle-gate",
+    "uses_existing_deployment_instance": true,
+    "deployment_instance_id_binding": "deployment_request",
+    "node_groups": {
+      "input": [
+        "decode_request_image",
+        "deployment_request_input"
+      ],
+      "model_and_bridge": [
+        "detect_obb",
+        "obbs_value",
+        "extract_count",
+        "extract_top_angle",
+        "extract_top_class_name"
+      ],
+      "rules": [
+        "presence_check",
+        "angle_ok",
+        "metadata_object",
+        "metrics_object",
+        "process_decision"
+      ]
+    }
+  }
+}

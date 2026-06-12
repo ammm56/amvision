@@ -33,7 +33,7 @@
 - 版本前缀：/api/v1
 - 资源分组：/workflows
 - 资源路径：/api/v1/workflows/app-runtimes
-- 稳定合同：amvision.workflow-app-runtime.v1
+- 稳定规则：amvision.workflow-app-runtime.v1
 
 ## 鉴权规则
 
@@ -95,7 +95,7 @@
 
 - Content-Type：application/json
 - 成功状态码：201 Created
-- 返回完整 WorkflowAppRuntime 合同
+- 返回完整 WorkflowAppRuntime 规则
 
 ### 请求体字段
 
@@ -193,7 +193,7 @@
 
 - 需要显式提供查询参数 project_id
 - 返回当前 Project 下的 WorkflowAppRuntime 列表
-- 第一阶段列表项返回完整 WorkflowAppRuntime 合同，不只返回摘要字段；其中包含 application_summary 和 template_summary 两个一跳摘要
+- 第一阶段列表项返回完整 WorkflowAppRuntime 规则，不只返回摘要字段；其中包含 application_summary 和 template_summary 两个一跳摘要
 
 ## GET /api/v1/workflows/app-runtimes/{workflow_runtime_id}
 
@@ -239,26 +239,26 @@
 ## POST /api/v1/workflows/app-runtimes/{workflow_runtime_id}/start
 
 - 成功状态码：200 OK
-- 返回更新后的 WorkflowAppRuntime 合同
+- 返回更新后的 WorkflowAppRuntime 规则
 - 接口返回时通常已经落到 observed_state=running 或 observed_state=failed
 
 ## POST /api/v1/workflows/app-runtimes/{workflow_runtime_id}/stop
 
 - 成功状态码：200 OK
-- 返回更新后的 WorkflowAppRuntime 合同
+- 返回更新后的 WorkflowAppRuntime 规则
 - stop 成功后通常会把 worker_process_id 清空，并把 observed_state 落到 stopped
 
 ## POST /api/v1/workflows/app-runtimes/{workflow_runtime_id}/restart
 
 - 成功状态码：200 OK
-- 返回更新后的 WorkflowAppRuntime 合同
+- 返回更新后的 WorkflowAppRuntime 规则
 - 当前语义固定为先停止当前单实例 worker，再重新加载同一组固定 snapshot
 - restart 后通常会刷新 last_started_at、last_stopped_at、heartbeat_at、worker_process_id 和 loaded_snapshot_fingerprint
 
 ## GET /api/v1/workflows/app-runtimes/{workflow_runtime_id}/health
 
 - 成功状态码：200 OK
-- 返回刷新后的 WorkflowAppRuntime 合同
+- 返回刷新后的 WorkflowAppRuntime 规则
 - 当前重点字段：observed_state、heartbeat_at、worker_process_id、loaded_snapshot_fingerprint、last_error、health_summary
 
 ## GET /api/v1/workflows/app-runtimes/{workflow_runtime_id}/instances
@@ -266,7 +266,7 @@
 - 成功状态码：200 OK
 - 返回当前 runtime 下面可观测的 instance 列表
 - 当前单实例模型下，running 或 failed 且 worker 仍存活时通常返回 1 条；stopped 或已经被清理的 worker 返回空列表
-- 当前稳定合同：amvision.workflow-app-runtime-instance.v1
+- 当前稳定规则：amvision.workflow-app-runtime-instance.v1
 
 ### instances 稳定字段
 
@@ -291,7 +291,7 @@
 - after_cursor 当前直接使用 WorkflowAppRuntime 事件的 sequence
 - 连接成功后先返回 workflows.app-runtimes.connected，再持续推送 runtime 增量事件
 - 实时推送走 service_event_bus，历史回放与 REST 事件接口共用同一份 `events.json`
-- replay 与 live 事件 payload 与 REST 事件合同保持同层字段结构，不再把业务字段包装到 `payload.data`
+- replay 与 live 事件 payload 与 REST 事件规则保持同层字段结构，不再把业务字段包装到 `payload.data`
 - worker 子进程会按 heartbeat_interval_seconds 主动上报 `runtime.heartbeat`；控制面在连续超时后会追加 `runtime.heartbeat_timed_out`，恢复后会追加 `runtime.heartbeat_recovered`
 - 为避免长期运行把 `events.json` 无限写大，heartbeat 历史会裁剪为最近窗口，生命周期与异常事件不受影响
 
@@ -325,7 +325,7 @@
 - [docs/api/workflow-runs.md](workflow-runs.md)
 - [docs/api/workflows.md](workflows.md)
 - [docs/api/postman/workflows/README.md](postman/workflows/README.md)
-- [docs/api/examples/workflows/00-short-dev-examples/yolox_deployment_detection_lifecycle_real_path/app-runtime.create.request.json](examples/workflows/00-short-dev-examples/yolox_deployment_detection_lifecycle_real_path/app-runtime.create.request.json)
+- [docs/api/examples/workflows/00-short-dev-examples/detection_deployment_lifecycle_real_path/app-runtime.create.request.json](examples/workflows/00-short-dev-examples/detection_deployment_lifecycle_real_path/app-runtime.create.request.json)
 - [docs/api/postman/workflow-runtime.postman_collection.json](postman/workflow-runtime.postman_collection.json)
 - [docs/architecture/workflow-runtime-phase1.md](../architecture/workflow-runtime-phase1.md)
 - [docs/architecture/workflow-runtime-phase2.md](../architecture/workflow-runtime-phase2.md)

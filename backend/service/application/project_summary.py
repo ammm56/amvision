@@ -22,10 +22,32 @@ PROJECT_SUMMARY_TOPIC_WORKFLOW_APP_RUNTIMES = "workflows.app-runtimes"
 PROJECT_SUMMARY_TOPIC_DEPLOYMENTS = "deployments"
 
 _DATASET_IMPORT_TASK_KIND = "dataset-import"
-_YOLOX_TRAINING_TASK_KIND = "yolox-training"
-_YOLOX_EVALUATION_TASK_KIND = "yolox-evaluation"
-_YOLOX_CONVERSION_TASK_KIND = "yolox-conversion"
-_YOLOX_INFERENCE_TASK_KIND = "yolox-inference"
+_DETECTION_INFERENCE_TASK_KIND = "detection-inference"
+_TRAINING_TASK_KINDS = (
+    "yolox-training",
+    "yolov8-training",
+    "yolo11-training",
+    "yolo26-training",
+    "rfdetr-training",
+    "yolo-primary-classification-training",
+    "yolo-primary-segmentation-training",
+    "yolo-primary-pose-training",
+    "obb-training",
+)
+_EVALUATION_TASK_KINDS = (
+    "detection-evaluation",
+    "classification-evaluation",
+    "segmentation-evaluation",
+    "pose-evaluation",
+    "obb-evaluation",
+)
+_CONVERSION_TASK_KINDS = (
+    "yolox-conversion",
+    "yolov8-conversion",
+    "yolo11-conversion",
+    "yolo26-conversion",
+    "rfdetr-conversion",
+)
 
 _SUPPORTED_PROJECT_SUMMARY_TOPICS = (
     PROJECT_SUMMARY_TOPIC_WORKFLOW_PREVIEW_RUNS,
@@ -207,14 +229,14 @@ class ProjectSummaryService:
                 total=len(dataset_exports),
                 status_counts=_build_counter(item.status for item in dataset_exports),
             ),
-            training=_build_task_status_summary(tasks, _YOLOX_TRAINING_TASK_KIND),
+            training=_build_task_status_summary(tasks, _TRAINING_TASK_KINDS),
             validation=ProjectStatusSummarySnapshot(
                 total=len(validation_statuses),
                 status_counts=_build_counter(validation_statuses),
             ),
-            evaluation=_build_task_status_summary(tasks, _YOLOX_EVALUATION_TASK_KIND),
-            conversion=_build_task_status_summary(tasks, _YOLOX_CONVERSION_TASK_KIND),
-            inference=_build_task_status_summary(tasks, _YOLOX_INFERENCE_TASK_KIND),
+            evaluation=_build_task_status_summary(tasks, _EVALUATION_TASK_KINDS),
+            conversion=_build_task_status_summary(tasks, _CONVERSION_TASK_KINDS),
+            inference=_build_task_status_summary(tasks, _DETECTION_INFERENCE_TASK_KIND),
             workflows=ProjectWorkflowSummarySnapshot(
                 template_total=len(templates),
                 application_total=len(applications),
@@ -400,12 +422,21 @@ def _build_counter(values: object) -> dict[str, int]:
     return {key: counter[key] for key in sorted(counter)}
 
 
-def _build_task_status_summary(tasks: tuple[object, ...], task_kind: str) -> ProjectStatusSummarySnapshot:
-    """按 task_kind 聚合任务总数和状态分布。"""
+def _build_task_status_summary(
+    tasks: tuple[object, ...],
+    task_kinds: str | tuple[str, ...],
+) -> ProjectStatusSummarySnapshot:
+    """按一个或多个 task_kind 聚合任务总数和状态分布。"""
+
+    normalized_task_kinds = (
+        (task_kinds,)
+        if isinstance(task_kinds, str)
+        else tuple(task_kind for task_kind in task_kinds if isinstance(task_kind, str) and task_kind.strip())
+    )
 
     matched_tasks = tuple(
         task_record for task_record in tasks
-        if getattr(task_record, "task_kind", None) == task_kind
+        if getattr(task_record, "task_kind", None) in normalized_task_kinds
     )
     return ProjectStatusSummarySnapshot(
         total=len(matched_tasks),

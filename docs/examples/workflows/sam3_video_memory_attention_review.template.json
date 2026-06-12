@@ -1,0 +1,183 @@
+{
+  "format_id": "amvision.workflow-graph-template.v1",
+  "template_id": "sam3-video-memory-attention-review-template",
+  "template_version": "1.0.0",
+  "display_name": "SAM3 Video Memory Attention Review Template",
+  "description": "从本地磁盘载入视频，解码为帧窗口后执行 SAM3 video-interactive memory-attention 跟踪，叠加结果并返回可播放视频，同时暴露 tracks 与 summary 便于现场调试。",
+  "nodes": [
+    {
+      "node_id": "video_load_local",
+      "node_type_id": "core.io.video-load-local",
+      "parameters": {}
+    },
+    {
+      "node_id": "decode_frames",
+      "node_type_id": "core.io.video-decode-frames",
+      "parameters": {
+        "start_frame": 0,
+        "end_frame": 15,
+        "step": 1,
+        "max_frames": 16,
+        "encode_format": "png"
+      }
+    },
+    {
+      "node_id": "segment_video",
+      "node_type_id": "custom.sam3.video-interactive-segment",
+      "parameters": {
+        "model_scale": "l",
+        "tracking_mode": "memory-attention-tracker",
+        "history_limit": 6,
+        "prototype_momentum": 0.72,
+        "attention_temperature": 0.12,
+        "prototype_blend_weight": 0.35,
+        "max_memory_tokens_per_entry": 256
+      }
+    },
+    {
+      "node_id": "filter_tracks",
+      "node_type_id": "core.vision.tracks-filter",
+      "parameters": {
+        "min_score": 0.45
+      }
+    },
+    {
+      "node_id": "render_overlay",
+      "node_type_id": "core.io.video-overlay-render",
+      "parameters": {
+        "draw_boxes": true,
+        "draw_polygons": true,
+        "draw_masks": true,
+        "draw_labels": true,
+        "output_format": "png",
+        "mask_alpha": 0.35
+      }
+    },
+    {
+      "node_id": "save_video",
+      "node_type_id": "core.io.video-save",
+      "parameters": {
+        "output_transport_kind": "storage",
+        "container": "mp4",
+        "overwrite": true
+      }
+    },
+    {
+      "node_id": "video_body",
+      "node_type_id": "core.output.video-body",
+      "parameters": {
+        "title": "SAM3 Memory Attention Review"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "edge_id": "edge-video-load-decode",
+      "source_node_id": "video_load_local",
+      "source_port": "video",
+      "target_node_id": "decode_frames",
+      "target_port": "video"
+    },
+    {
+      "edge_id": "edge-decode-segment-frames",
+      "source_node_id": "decode_frames",
+      "source_port": "frames",
+      "target_node_id": "segment_video",
+      "target_port": "frames"
+    },
+    {
+      "edge_id": "edge-segment-filter-tracks",
+      "source_node_id": "segment_video",
+      "source_port": "tracks",
+      "target_node_id": "filter_tracks",
+      "target_port": "tracks"
+    },
+    {
+      "edge_id": "edge-decode-render-frames",
+      "source_node_id": "decode_frames",
+      "source_port": "frames",
+      "target_node_id": "render_overlay",
+      "target_port": "frames"
+    },
+    {
+      "edge_id": "edge-filter-render-tracks",
+      "source_node_id": "filter_tracks",
+      "source_port": "tracks",
+      "target_node_id": "render_overlay",
+      "target_port": "tracks"
+    },
+    {
+      "edge_id": "edge-render-save",
+      "source_node_id": "render_overlay",
+      "source_port": "frames",
+      "target_node_id": "save_video",
+      "target_port": "frames"
+    },
+    {
+      "edge_id": "edge-save-video-body",
+      "source_node_id": "save_video",
+      "source_port": "video",
+      "target_node_id": "video_body",
+      "target_port": "video"
+    }
+  ],
+  "template_inputs": [
+    {
+      "input_id": "request_video_path",
+      "display_name": "Request Video Path",
+      "payload_type_id": "value.v1",
+      "target_node_id": "video_load_local",
+      "target_port": "path"
+    },
+    {
+      "input_id": "request_prompts",
+      "display_name": "Request Prompts",
+      "payload_type_id": "prompt-regions.v1",
+      "target_node_id": "segment_video",
+      "target_port": "prompts"
+    }
+  ],
+  "template_outputs": [
+    {
+      "output_id": "preview_body",
+      "display_name": "Preview Body",
+      "payload_type_id": "response-body.v1",
+      "source_node_id": "video_body",
+      "source_port": "body"
+    },
+    {
+      "output_id": "tracks",
+      "display_name": "Tracks",
+      "payload_type_id": "tracks.v1",
+      "source_node_id": "filter_tracks",
+      "source_port": "tracks"
+    },
+    {
+      "output_id": "summary",
+      "display_name": "Summary",
+      "payload_type_id": "value.v1",
+      "source_node_id": "segment_video",
+      "source_port": "summary"
+    }
+  ],
+  "metadata": {
+    "example_kind": "sam3-video-memory-attention-review",
+    "tracking_mode": "memory-attention-tracker",
+    "intended_scene": "现场本地视频复盘与复杂目标跟踪调试",
+    "node_groups": {
+      "input": [
+        "video_load_local",
+        "decode_frames"
+      ],
+      "tracking": [
+        "segment_video",
+        "filter_tracks"
+      ],
+      "output": [
+        "render_overlay",
+        "save_video",
+        "video_body"
+      ]
+    }
+  }
+}

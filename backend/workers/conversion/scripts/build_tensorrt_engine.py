@@ -50,11 +50,34 @@ def build_tensorrt_engine(
     if input_tensor is None:
         raise RuntimeError("parsed TensorRT network missing input tensor")
     input_shape = tuple(int(dim) for dim in input_tensor.shape)
-    if any(dim <= 0 for dim in input_shape):
-        raise RuntimeError(f"dynamic input shape is not supported: {input_shape}")
 
     config = builder.create_builder_config()
     config.set_memory_pool_limit(trt.MemoryPoolType.WORKSPACE, 1 << 30)
+    optimization_profile_shapes: dict[str, list[int]] | None = None
+    if any(dim <= 0 for dim in input_shape):
+        if len(input_shape) != 4:
+            raise RuntimeError(f"dynamic input shape is not supported: {input_shape}")
+        if any(dim <= 0 for dim in input_shape[1:]):
+            raise RuntimeError(
+                "TensorRT build 目前只支持 batch 维动态，空间维度必须固定",
+            )
+        fixed_input_shape = tuple(1 if dim <= 0 else dim for dim in input_shape)
+        profile = builder.create_optimization_profile()
+        if not profile.set_shape(
+            input_tensor.name,
+            fixed_input_shape,
+            fixed_input_shape,
+            fixed_input_shape,
+        ):
+            raise RuntimeError(
+                f"failed to create optimization profile for dynamic input shape: {input_shape}"
+            )
+        config.add_optimization_profile(profile)
+        optimization_profile_shapes = {
+            "min": list(fixed_input_shape),
+            "opt": list(fixed_input_shape),
+            "max": list(fixed_input_shape),
+        }
     if normalized_precision == "fp16":
         if not builder.platform_has_fast_fp16:
             raise RuntimeError("current TensorRT platform does not support fast fp16")
@@ -72,6 +95,7 @@ def build_tensorrt_engine(
         "platform": platform.system().lower(),
         "input_name": input_tensor.name,
         "input_shape": list(input_shape),
+        "optimization_profile_shapes": optimization_profile_shapes,
         "workspace_bytes": 1 << 30,
         "engine_file_bytes": resolved_output_path.stat().st_size,
     }

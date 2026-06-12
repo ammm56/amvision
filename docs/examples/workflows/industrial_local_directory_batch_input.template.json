@@ -1,0 +1,209 @@
+{
+  "format_id": "amvision.workflow-graph-template.v1",
+  "template_id": "industrial-local-directory-batch-input-template",
+  "template_version": "1.0.0",
+  "display_name": "Industrial Local Directory Batch Input",
+  "description": "面向工业现场本地文件夹输入的样例。输入目录路径，以及可选的批次起始索引、批次大小和批次 cursor；扫描目录、切出批次窗口并载入图片列表，供后续检测或分割规则链继续复用。",
+  "nodes": [
+    {
+      "node_id": "request_directory_path_input",
+      "node_type_id": "core.io.template-input.value",
+      "parameters": {}
+    },
+    {
+      "node_id": "scan_directory",
+      "node_type_id": "core.io.directory-scan",
+      "parameters": {
+        "recursive": false,
+        "include_hidden": false,
+        "extensions": [
+          "png",
+          "jpg",
+          "jpeg",
+          "bmp"
+        ],
+        "sort_by": "modified_time",
+        "descending": true,
+        "limit": 128,
+        "min_stable_age_seconds": 1.0
+      }
+    },
+    {
+      "node_id": "batch_window",
+      "node_type_id": "core.io.directory-batch-window",
+      "parameters": {
+        "start_index": 0,
+        "batch_size": 8
+      }
+    },
+    {
+      "node_id": "load_images",
+      "node_type_id": "core.io.image-list-local",
+      "parameters": {}
+    },
+    {
+      "node_id": "summary_object",
+      "node_type_id": "core.logic.object-create",
+      "parameters": {
+        "keys": [
+          "directory_path",
+          "scan_summary",
+          "window_summary",
+          "window_cursor",
+          "load_summary"
+        ],
+        "fields": {
+          "example_kind": "industrial-local-directory-batch-input"
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "edge_id": "edge-request-directory-path-scan",
+      "source_node_id": "request_directory_path_input",
+      "source_port": "value",
+      "target_node_id": "scan_directory",
+      "target_port": "path"
+    },
+    {
+      "edge_id": "edge-request-directory-path-summary",
+      "source_node_id": "request_directory_path_input",
+      "source_port": "value",
+      "target_node_id": "summary_object",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-scan-directory-batch-window",
+      "source_node_id": "scan_directory",
+      "source_port": "files",
+      "target_node_id": "batch_window",
+      "target_port": "files"
+    },
+    {
+      "edge_id": "edge-batch-window-load-images",
+      "source_node_id": "batch_window",
+      "source_port": "files",
+      "target_node_id": "load_images",
+      "target_port": "files"
+    },
+    {
+      "edge_id": "edge-scan-summary-summary-object",
+      "source_node_id": "scan_directory",
+      "source_port": "summary",
+      "target_node_id": "summary_object",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-window-summary-summary-object",
+      "source_node_id": "batch_window",
+      "source_port": "summary",
+      "target_node_id": "summary_object",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-window-cursor-summary-object",
+      "source_node_id": "batch_window",
+      "source_port": "cursor",
+      "target_node_id": "summary_object",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-load-summary-summary-object",
+      "source_node_id": "load_images",
+      "source_port": "summary",
+      "target_node_id": "summary_object",
+      "target_port": "values"
+    }
+  ],
+  "template_inputs": [
+    {
+      "input_id": "request_directory_path",
+      "display_name": "Request Directory Path",
+      "payload_type_id": "value.v1",
+      "target_node_id": "request_directory_path_input",
+      "target_port": "payload"
+    },
+    {
+      "input_id": "request_batch_start_index",
+      "display_name": "Request Batch Start Index",
+      "payload_type_id": "value.v1",
+      "target_node_id": "batch_window",
+      "target_port": "start_index",
+      "required": false
+    },
+    {
+      "input_id": "request_batch_size",
+      "display_name": "Request Batch Size",
+      "payload_type_id": "value.v1",
+      "target_node_id": "batch_window",
+      "target_port": "batch_size",
+      "required": false
+    },
+    {
+      "input_id": "request_batch_cursor",
+      "display_name": "Request Batch Cursor",
+      "payload_type_id": "value.v1",
+      "target_node_id": "batch_window",
+      "target_port": "cursor",
+      "required": false
+    }
+  ],
+  "template_outputs": [
+    {
+      "output_id": "batch_files",
+      "display_name": "Batch Files",
+      "payload_type_id": "value.v1",
+      "source_node_id": "batch_window",
+      "source_port": "files"
+    },
+    {
+      "output_id": "batch_images",
+      "display_name": "Batch Images",
+      "payload_type_id": "image-refs.v1",
+      "source_node_id": "load_images",
+      "source_port": "images"
+    },
+    {
+      "output_id": "scan_summary",
+      "display_name": "Scan Summary",
+      "payload_type_id": "value.v1",
+      "source_node_id": "scan_directory",
+      "source_port": "summary"
+    },
+    {
+      "output_id": "batch_cursor",
+      "display_name": "Batch Cursor",
+      "payload_type_id": "value.v1",
+      "source_node_id": "batch_window",
+      "source_port": "cursor"
+    },
+    {
+      "output_id": "batch_summary",
+      "display_name": "Batch Summary",
+      "payload_type_id": "value.v1",
+      "source_node_id": "summary_object",
+      "source_port": "value"
+    }
+  ],
+  "metadata": {
+    "example_kind": "industrial-local-directory-batch-input",
+    "focus": "local-batch-industrial-input-prep",
+    "dynamic_batch_start_binding": "request_batch_start_index",
+    "dynamic_batch_size_binding": "request_batch_size",
+    "dynamic_batch_cursor_binding": "request_batch_cursor",
+    "node_groups": {
+      "input": [
+        "request_directory_path_input"
+      ],
+      "scan_and_window": [
+        "scan_directory",
+        "batch_window"
+      ],
+      "load_and_summary": [
+        "load_images",
+        "summary_object"
+      ]
+    }
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "project_id": "project-1",
+  "application_id": "obb-deployment-sync-angle-gate-app",
+  "display_name": "OBB Deployment Sync Angle Gate Runtime",
+  "metadata": {
+    "example_kind": "obb-deployment-sync-angle-gate",
+    "uses_existing_deployment_instance": true
+  }
+}

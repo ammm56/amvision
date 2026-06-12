@@ -9,14 +9,15 @@ import zipfile
 
 from fastapi.testclient import TestClient
 
-import backend.service.application.models.yolox_evaluation_task_service as yolox_evaluation_task_service_module
+import backend.service.application.models.detection_evaluation_task_service as detection_evaluation_task_service_module
+from backend.service.application.models.detection_evaluation import DetectionEvaluationResult
 from backend.contracts.datasets.exports.coco_detection_export import COCO_DETECTION_DATASET_FORMAT
 from backend.service.application.tasks.task_service import SqlAlchemyTaskService
 from backend.service.domain.datasets.dataset_export import DatasetExport
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
-from backend.workers.evaluation.yolox_evaluation_queue_worker import YoloXEvaluationQueueWorker
+from backend.workers.evaluation.yolo_primary_evaluation_queue_worker import DetectionEvaluationQueueWorker
 from tests.api_test_support import build_test_headers, build_test_jpeg_bytes
 from tests.yolox_test_support import (
     create_yolox_api_test_context,
@@ -43,15 +44,15 @@ def test_create_yolox_evaluation_task_and_read_report_after_worker(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
     )
-    worker = YoloXEvaluationQueueWorker(
+    worker = DetectionEvaluationQueueWorker(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
         queue_backend=queue_backend,
-        worker_id="test-yolox-evaluation-worker",
+        worker_id="test-detection-evaluation-worker",
     )
 
     def fake_run(_request):
-        return yolox_evaluation_task_service_module.YoloXDetectionEvaluationResult(
+        return DetectionEvaluationResult(
             split_name="val",
             sample_count=1,
             duration_seconds=0.123,
@@ -66,14 +67,6 @@ def test_create_yolox_evaluation_task_and_read_report_after_worker(
                     "detection_count": 1,
                     "ap50": 0.88,
                     "ap50_95": 0.71,
-                },
-            ),
-            detections=(
-                {
-                    "image_id": 2,
-                    "category_id": 0,
-                    "bbox": [12.0, 12.0, 20.0, 20.0],
-                    "score": 0.91,
                 },
             ),
             report_payload={
@@ -98,34 +91,30 @@ def test_create_yolox_evaluation_task_and_read_report_after_worker(
                     }
                 ],
             },
-            detections_payload={
-                "split_name": "val",
-                "sample_count": 1,
-                "detection_count": 1,
-                "detections": [
-                    {
-                        "image_id": 2,
-                        "category_id": 0,
-                        "bbox": [12.0, 12.0, 20.0, 20.0],
-                        "score": 0.91,
-                    }
-                ],
-            },
+            detections_payload=[
+                {
+                    "image_id": 2,
+                    "category_id": 0,
+                    "bbox": [12.0, 12.0, 20.0, 20.0],
+                    "score": 0.91,
+                }
+            ],
         )
 
     monkeypatch.setattr(
-        yolox_evaluation_task_service_module,
-        "run_yolox_detection_evaluation",
+        detection_evaluation_task_service_module,
+        "run_detection_evaluation",
         fake_run,
     )
 
     try:
         with client:
             create_response = client.post(
-                "/api/v1/models/yolox/evaluation-tasks",
+                "/api/v1/models/detection/evaluation-tasks",
                 headers=_build_headers(),
                 json={
                     "project_id": "project-1",
+                    "model_type": "yolox",
                     "model_version_id": model_version_id,
                     "dataset_export_id": dataset_export.dataset_export_id,
                     "score_threshold": 0.2,
@@ -138,7 +127,7 @@ def test_create_yolox_evaluation_task_and_read_report_after_worker(
             task_id = submission["task_id"]
 
             pending_report_response = client.get(
-                f"/api/v1/models/yolox/evaluation-tasks/{task_id}/report",
+                f"/api/v1/models/detection/evaluation-tasks/{task_id}/report",
                 headers=_build_headers(),
             )
             assert pending_report_response.status_code == 200
@@ -147,7 +136,7 @@ def test_create_yolox_evaluation_task_and_read_report_after_worker(
             assert worker.run_once() is True
 
             detail_response = client.get(
-                f"/api/v1/models/yolox/evaluation-tasks/{task_id}",
+                f"/api/v1/models/detection/evaluation-tasks/{task_id}",
                 headers=_build_headers(),
             )
             assert detail_response.status_code == 200
@@ -158,7 +147,7 @@ def test_create_yolox_evaluation_task_and_read_report_after_worker(
             assert detail_payload["report_summary"]["per_class_metrics"][0]["class_name"] == "bolt"
 
             report_response = client.get(
-                f"/api/v1/models/yolox/evaluation-tasks/{task_id}/report",
+                f"/api/v1/models/detection/evaluation-tasks/{task_id}/report",
                 headers=_build_headers(),
             )
             assert report_response.status_code == 200
@@ -168,7 +157,7 @@ def test_create_yolox_evaluation_task_and_read_report_after_worker(
             assert report_payload["payload"]["per_class_metrics"][0]["ap50"] == 0.88
 
             output_files_response = client.get(
-                f"/api/v1/models/yolox/evaluation-tasks/{task_id}/output-files",
+                f"/api/v1/models/detection/evaluation-tasks/{task_id}/output-files",
                 headers=_build_headers(),
             )
             assert output_files_response.status_code == 200
@@ -181,7 +170,7 @@ def test_create_yolox_evaluation_task_and_read_report_after_worker(
             assert all(item["file_status"] == "ready" for item in output_files_payload)
 
             list_response = client.get(
-                f"/api/v1/models/yolox/evaluation-tasks?project_id=project-1&model_version_id={model_version_id}",
+                f"/api/v1/models/detection/evaluation-tasks?project_id=project-1&model_version_id={model_version_id}",
                 headers=_build_headers(),
             )
             assert list_response.status_code == 200
@@ -191,8 +180,8 @@ def test_create_yolox_evaluation_task_and_read_report_after_worker(
             assert list_payload[0]["report_object_key"].endswith("evaluation-report.json")
 
         task_detail = SqlAlchemyTaskService(session_factory).get_task(task_id, include_events=True)
-        assert any(event.message == "yolox evaluation started" for event in task_detail.events)
-        assert any(event.message == "yolox evaluation completed" for event in task_detail.events)
+        assert any(event.message == "detection evaluation started" for event in task_detail.events)
+        assert any(event.message == "detection evaluation completed" for event in task_detail.events)
         assert dataset_storage.resolve(detail_payload["report_object_key"]).is_file()
         assert dataset_storage.resolve(detail_payload["detections_object_key"]).is_file()
         assert dataset_storage.resolve(detail_payload["result_package_object_key"]).is_file()
@@ -219,15 +208,15 @@ def test_package_yolox_evaluation_result_to_temporary_object_without_changing_ta
         session_factory=session_factory,
         dataset_storage=dataset_storage,
     )
-    worker = YoloXEvaluationQueueWorker(
+    worker = DetectionEvaluationQueueWorker(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
         queue_backend=queue_backend,
-        worker_id="test-yolox-evaluation-package-worker",
+        worker_id="test-detection-evaluation-package-worker",
     )
 
     def fake_run(_request):
-        return yolox_evaluation_task_service_module.YoloXDetectionEvaluationResult(
+        return DetectionEvaluationResult(
             split_name="val",
             sample_count=1,
             duration_seconds=0.123,
@@ -242,14 +231,6 @@ def test_package_yolox_evaluation_result_to_temporary_object_without_changing_ta
                     "detection_count": 1,
                     "ap50": 0.88,
                     "ap50_95": 0.71,
-                },
-            ),
-            detections=(
-                {
-                    "image_id": 2,
-                    "category_id": 0,
-                    "bbox": [12.0, 12.0, 20.0, 20.0],
-                    "score": 0.91,
                 },
             ),
             report_payload={
@@ -274,28 +255,23 @@ def test_package_yolox_evaluation_result_to_temporary_object_without_changing_ta
                     }
                 ],
             },
-            detections_payload={
-                "split_name": "val",
-                "sample_count": 1,
-                "detection_count": 1,
-                "detections": [
-                    {
-                        "image_id": 2,
-                        "category_id": 0,
-                        "bbox": [12.0, 12.0, 20.0, 20.0],
-                        "score": 0.91,
-                    }
-                ],
-            },
+            detections_payload=[
+                {
+                    "image_id": 2,
+                    "category_id": 0,
+                    "bbox": [12.0, 12.0, 20.0, 20.0],
+                    "score": 0.91,
+                }
+            ],
         )
 
     monkeypatch.setattr(
-        yolox_evaluation_task_service_module,
-        "run_yolox_detection_evaluation",
+        detection_evaluation_task_service_module,
+        "run_detection_evaluation",
         fake_run,
     )
 
-    service = yolox_evaluation_task_service_module.SqlAlchemyYoloXEvaluationTaskService(
+    service = detection_evaluation_task_service_module.SqlAlchemyDetectionEvaluationTaskService(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
         queue_backend=queue_backend,
@@ -303,8 +279,9 @@ def test_package_yolox_evaluation_result_to_temporary_object_without_changing_ta
 
     try:
         submission = service.submit_evaluation_task(
-            yolox_evaluation_task_service_module.YoloXEvaluationTaskRequest(
+            detection_evaluation_task_service_module.DetectionEvaluationTaskRequest(
                 project_id="project-1",
+                model_type="yolox",
                 model_version_id=model_version_id,
                 dataset_export_id=dataset_export.dataset_export_id,
                 save_result_package=False,
@@ -316,7 +293,7 @@ def test_package_yolox_evaluation_result_to_temporary_object_without_changing_ta
 
         package = service.package_evaluation_result(
             submission.task_id,
-            package_object_key="workflows/runtime/run-1/package/yolox-evaluation-package.zip",
+            package_object_key="workflows/runtime/run-1/package/detection-evaluation-package.zip",
         )
 
         package_path = dataset_storage.resolve(package.package_object_key)
@@ -473,3 +450,4 @@ def _build_headers() -> dict[str, str]:
     """构建具备评估任务所需 scope 的测试请求头。"""
 
     return build_test_headers(scopes="datasets:read,models:read,tasks:read,tasks:write")
+

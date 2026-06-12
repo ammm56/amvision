@@ -15,6 +15,8 @@ from backend.maintenance.settings import (
 from backend.workers.bootstrap import BackendWorkerBootstrap
 from backend.workers.main import build_background_task_manager
 from backend.workers.settings import (
+    BACKEND_WORKER_CONSUMER_DETECTION_EVALUATION,
+    BACKEND_WORKER_CONSUMER_DETECTION_INFERENCE,
     BackendWorkerAppSettings,
     BackendWorkerDatasetStorageConfig,
     BackendWorkerDatabaseConfig,
@@ -22,8 +24,6 @@ from backend.workers.settings import (
     BackendWorkerTaskManagerConfig,
     BackendWorkerSettings,
     BackendWorkerWorkspaceConfig,
-    BACKEND_WORKER_CONSUMER_YOLOX_EVALUATION,
-    BACKEND_WORKER_CONSUMER_YOLOX_INFERENCE,
     get_backend_worker_settings,
 )
 
@@ -52,8 +52,8 @@ def test_get_backend_worker_settings_reads_json_files_and_environment_overrides(
                 "task_manager": {
                     "enabled_consumer_kinds": [
                         "dataset-import",
-                        "yolox-evaluation",
-                        "yolox-inference"
+                        "detection-evaluation",
+                        "detection-inference"
                     ],
                     "max_concurrent_tasks": 3,
                     "poll_interval_seconds": 2.5
@@ -88,8 +88,8 @@ def test_get_backend_worker_settings_reads_json_files_and_environment_overrides(
     assert settings.queue.root_dir == "./data/from-worker-queue-env"
     assert settings.task_manager.enabled_consumer_kinds == (
         "dataset-import",
-        "yolox-evaluation",
-        "yolox-inference",
+        "detection-evaluation",
+        "detection-inference",
     )
     assert settings.task_manager.max_concurrent_tasks == 4
     assert settings.task_manager.poll_interval_seconds == 2.5
@@ -145,8 +145,8 @@ def test_build_background_task_manager_respects_enabled_consumer_kinds(
         queue=BackendWorkerQueueConfig(root_dir=str(tmp_path / "queue-root")),
         task_manager=BackendWorkerTaskManagerConfig(
             enabled_consumer_kinds=(
-                BACKEND_WORKER_CONSUMER_YOLOX_EVALUATION,
-                BACKEND_WORKER_CONSUMER_YOLOX_INFERENCE,
+                BACKEND_WORKER_CONSUMER_DETECTION_EVALUATION,
+                BACKEND_WORKER_CONSUMER_DETECTION_INFERENCE,
             )
         ),
     )
@@ -157,8 +157,8 @@ def test_build_background_task_manager_respects_enabled_consumer_kinds(
         manager = build_background_task_manager(runtime)
 
         assert [type(consumer).__name__ for consumer in manager.consumers] == [
-            "YoloXEvaluationQueueWorker",
-            "YoloXInferenceQueueWorker",
+            "DetectionEvaluationQueueWorker",
+            "InferenceQueueWorker",
         ]
     finally:
         runtime.session_factory.engine.dispose()
@@ -182,6 +182,12 @@ def test_get_backend_maintenance_settings_reads_json_files_and_environment_overr
                 "workspace": {
                     "root_dir": "./data/from-maintenance-config",
                 },
+                "release": {
+                    "frontend": {
+                        "dist_dir": "./frontend/dist",
+                        "runtime_config_template_file": "./frontend/runtime-config.template.json"
+                    }
+                },
             }
         ),
         encoding="utf-8",
@@ -203,12 +209,23 @@ def test_get_backend_maintenance_settings_reads_json_files_and_environment_overr
         "AMVISION_MAINTENANCE_WORKSPACE__ROOT_DIR",
         "./data/from-maintenance-env",
     )
+    monkeypatch.setenv(
+        "AMVISION_MAINTENANCE_RELEASE__FRONTEND__RUNTIME_CONFIG_SOURCE_FILE",
+        "./frontend/runtime-config.local.json",
+    )
 
     settings = get_backend_maintenance_settings()
 
     assert settings.app.app_name == "amvision config-maintenance"
     assert settings.app.app_version == "0.4.1-local"
     assert settings.workspace.root_dir == "./data/from-maintenance-env"
+    assert settings.release.bundled_python.source_dir is None
+    assert settings.release.frontend.dist_dir == "./frontend/dist"
+    assert settings.release.frontend.runtime_config_template_file == "./frontend/runtime-config.template.json"
+    assert (
+        settings.release.frontend.runtime_config_source_file
+        == "./frontend/runtime-config.local.json"
+    )
 
     get_backend_maintenance_settings.cache_clear()
 

@@ -1,0 +1,165 @@
+{
+  "format_id": "amvision.flow-application.v1",
+  "application_id": "industrial-single-frame-calibrated-template-edge-gate-app",
+  "display_name": "Industrial Single Frame Calibrated Template Edge Gate App",
+  "description": "用于工业单帧本地标定定位的样例 app。输入本地图像路径、模板图路径、本地畸变 JSON 路径、本地 remap JSON 路径，以及可选运行时 ROI；输出校正图、匹配结果、caliper 边线、结果对象、报警对象和本地归档摘要。",
+  "template_ref": {
+    "template_id": "industrial-single-frame-calibrated-template-edge-gate-template",
+    "template_version": "1.0.0",
+    "source_kind": "json-file",
+    "source_uri": "docs/examples/workflows/industrial_single_frame_calibrated_template_edge_gate.template.json"
+  },
+  "runtime_mode": "python-json-workflow",
+  "bindings": [
+    {
+      "binding_id": "request_image_path",
+      "direction": "input",
+      "template_port_id": "request_image_path",
+      "binding_kind": "workflow-execute-input",
+      "config": {
+        "payload_type_id": "value.v1",
+        "content_type": "application/json"
+      },
+      "metadata": {
+        "payload_type_id": "value.v1"
+      }
+    },
+    {
+      "binding_id": "request_template_image_path",
+      "direction": "input",
+      "template_port_id": "request_template_image_path",
+      "binding_kind": "workflow-execute-input",
+      "config": {
+        "payload_type_id": "value.v1",
+        "content_type": "application/json"
+      },
+      "metadata": {
+        "payload_type_id": "value.v1"
+      }
+    },
+    {
+      "binding_id": "request_undistort_config_path",
+      "direction": "input",
+      "template_port_id": "request_undistort_config_path",
+      "binding_kind": "workflow-execute-input",
+      "config": {
+        "payload_type_id": "value.v1",
+        "content_type": "application/json"
+      },
+      "metadata": {
+        "payload_type_id": "value.v1"
+      }
+    },
+    {
+      "binding_id": "request_remap_mapping_path",
+      "direction": "input",
+      "template_port_id": "request_remap_mapping_path",
+      "binding_kind": "workflow-execute-input",
+      "config": {
+        "payload_type_id": "value.v1",
+        "content_type": "application/json"
+      },
+      "metadata": {
+        "payload_type_id": "value.v1"
+      }
+    },
+    {
+      "binding_id": "request_roi",
+      "direction": "input",
+      "template_port_id": "request_roi",
+      "binding_kind": "workflow-execute-input",
+      "required": false,
+      "config": {
+        "payload_type_id": "value.v1",
+        "content_type": "application/json"
+      },
+      "metadata": {
+        "payload_type_id": "value.v1"
+      }
+    },
+    {
+      "binding_id": "aligned_image",
+      "direction": "output",
+      "template_port_id": "aligned_image",
+      "binding_kind": "workflow-execute-output",
+      "config": {
+        "payload_type_id": "image-ref.v1"
+      },
+      "metadata": {}
+    },
+    {
+      "binding_id": "matched_regions",
+      "direction": "output",
+      "template_port_id": "matched_regions",
+      "binding_kind": "workflow-execute-output",
+      "config": {
+        "payload_type_id": "regions.v1"
+      },
+      "metadata": {}
+    },
+    {
+      "binding_id": "caliper_lines",
+      "direction": "output",
+      "template_port_id": "caliper_lines",
+      "binding_kind": "workflow-execute-output",
+      "config": {
+        "payload_type_id": "lines.v1"
+      },
+      "metadata": {}
+    },
+    {
+      "binding_id": "inspection_result",
+      "direction": "output",
+      "template_port_id": "inspection_result",
+      "binding_kind": "workflow-execute-output",
+      "config": {
+        "payload_type_id": "result-record.v1"
+      },
+      "metadata": {}
+    },
+    {
+      "binding_id": "inspection_alarm",
+      "direction": "output",
+      "template_port_id": "inspection_alarm",
+      "binding_kind": "workflow-execute-output",
+      "config": {
+        "payload_type_id": "alarm-record.v1"
+      },
+      "metadata": {}
+    },
+    {
+      "binding_id": "decision_summary",
+      "direction": "output",
+      "template_port_id": "decision_summary",
+      "binding_kind": "workflow-execute-output",
+      "config": {
+        "payload_type_id": "value.v1"
+      },
+      "metadata": {}
+    },
+    {
+      "binding_id": "json_summary",
+      "direction": "output",
+      "template_port_id": "json_summary",
+      "binding_kind": "workflow-execute-output",
+      "config": {
+        "payload_type_id": "value.v1"
+      },
+      "metadata": {}
+    },
+    {
+      "binding_id": "csv_summary",
+      "direction": "output",
+      "template_port_id": "csv_summary",
+      "binding_kind": "workflow-execute-output",
+      "config": {
+        "payload_type_id": "value.v1"
+      },
+      "metadata": {}
+    }
+  ],
+  "metadata": {
+    "example_kind": "industrial-single-frame-calibrated-template-edge-gate",
+    "intended_saved_object_key": "workflows/projects/{project_id}/applications/industrial-single-frame-calibrated-template-edge-gate-app/application.json"
+  }
+}

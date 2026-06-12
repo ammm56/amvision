@@ -520,7 +520,7 @@ def test_workflow_node_pack_status_and_control_endpoints(tmp_path: Path) -> None
 
 
 def test_workflow_node_catalog_returns_effective_parameter_ui_schema(tmp_path: Path) -> None:
-    """验证节点目录接口会返回可直接渲染的参数 UI 合同。"""
+    """验证节点目录接口会返回可直接渲染的参数 UI 规则。"""
 
     client, session_factory, _ = _create_test_client(tmp_path)
 
@@ -630,7 +630,7 @@ def _build_template_payload() -> dict[str, object]:
             },
             {
                 "node_id": "detect",
-                "node_type_id": "core.model.yolox-detection",
+                "node_type_id": "core.model.detection",
                 "parameters": {"score_threshold": 0.3},
                 "ui_state": {"position": {"x": 280, "y": 60}},
                 "metadata": {},
@@ -822,3 +822,4 @@ def register(context):
         encoding="utf-8",
     )
     return tmp_path / "custom_nodes"
+

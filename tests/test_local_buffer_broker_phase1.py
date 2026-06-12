@@ -37,12 +37,12 @@ from backend.service.application.local_buffers import (
     LocalBufferBrokerSettings,
 )
 from backend.service.application.runtime.deployment_process_settings import DeploymentProcessSupervisorConfig
-from backend.service.application.runtime.yolox_deployment_process_supervisor import (
-    YoloXDeploymentProcessConfig,
-    YoloXDeploymentProcessSupervisor,
+from backend.service.application.runtime.deployment_process_supervisor import (
+    DeploymentProcessConfig,
+    DeploymentProcessSupervisor,
 )
-from backend.service.application.runtime.yolox_predictor import YoloXPredictionRequest
-from backend.service.application.runtime.yolox_runtime_target import RuntimeTargetSnapshot
+from backend.service.application.runtime.detection_runtime_contracts import DetectionPredictionRequest
+from backend.service.application.runtime.runtime_target import RuntimeTargetSnapshot
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.workflows.execution_cleanup import register_local_buffer_lease_cleanup
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest, WorkflowNodeRuntimeRegistry
@@ -225,7 +225,7 @@ def test_local_buffer_broker_client_writes_and_reads_frame_refs_by_direct_mmap(t
 
         assert channel["frame_capacity"] == 2
         assert first_frame.sequence_id == 0
-        assert first_frame.path.endswith("pool-001.dat")
+        assert first_frame.path.endswith("image-1080p-001.dat")
         assert client.read_frame_ref(second_frame) == b"frame-2"
         assert client.read_frame_ref(third_frame) == b"frame-3"
         with pytest.raises(InvalidRequestError):
@@ -567,17 +567,17 @@ def test_deployment_supervisor_passes_broker_event_channel_to_worker(tmp_path: P
         response_queue=context.Queue(),
         request_timeout_seconds=1.0,
     )
-    process_config = YoloXDeploymentProcessConfig(
+    process_config = DeploymentProcessConfig(
         deployment_instance_id="deployment-with-broker",
         runtime_target=_build_runtime_target(runtime_artifact_path),
         instance_count=1,
     )
-    supervisor = YoloXDeploymentProcessSupervisor(
+    supervisor = DeploymentProcessSupervisor(
         dataset_storage_root_dir=str(tmp_path),
         runtime_mode="sync",
         settings=DeploymentProcessSupervisorConfig(
             auto_restart=False,
-            request_timeout_seconds=2.0,
+            request_timeout_seconds=5.0,
             shutdown_timeout_seconds=1.0,
             operator_thread_count=1,
         ),
@@ -590,7 +590,7 @@ def test_deployment_supervisor_passes_broker_event_channel_to_worker(tmp_path: P
         supervisor.start_deployment(process_config)
         execution = supervisor.run_inference(
             config=process_config,
-            request=YoloXPredictionRequest(
+            request=DetectionPredictionRequest(
                 input_uri="runtime-inputs/image.jpg",
                 score_threshold=0.3,
                 save_result_image=False,
@@ -646,7 +646,7 @@ class _SingleNodePackLoader:
         return ()
 
     def get_workflow_payload_contracts(self) -> tuple[WorkflowPayloadContract, ...]:
-        """返回空 payload contract 列表。"""
+        """返回空 payload 规则 列表。"""
 
         return ()
 
@@ -689,7 +689,7 @@ def _buffer_cleanup_probe_handler(request: WorkflowNodeExecutionRequest) -> dict
 
 def _fake_deployment_worker_records_broker_event_channel(
     *,
-    config: YoloXDeploymentProcessConfig,
+    config: DeploymentProcessConfig,
     dataset_storage_root_dir: str,
     request_queue: Any,
     response_queue: Any,

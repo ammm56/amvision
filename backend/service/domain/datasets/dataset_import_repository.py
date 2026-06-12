@@ -54,3 +54,12 @@ class DatasetImportRepository(Protocol):
         """
 
         ...
+
+    def delete_dataset_import(self, dataset_import_id: str) -> None:
+        """删除一个 DatasetImport。
+
+        参数：
+        - dataset_import_id：要删除的 DatasetImport id。
+        """
+
+        ...

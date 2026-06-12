@@ -23,7 +23,7 @@ from backend.service.application.models.yolox_detection_training import (
     _build_checkpoint_state,
     _load_resume_checkpoint,
 )
-from backend.service.application.models.yolox_model_service import SqlAlchemyYoloXModelService
+from backend.service.application.models.model_service import SqlAlchemyModelService
 from backend.service.application.models.yolox_training_service import YOLOX_TRAINING_QUEUE_NAME
 from backend.service.application.tasks.task_service import AppendTaskEventRequest, SqlAlchemyTaskService
 from backend.service.domain.datasets.dataset_export import DatasetExport
@@ -54,10 +54,11 @@ def test_create_yolox_training_task_accepts_dataset_export_id(tmp_path: Path) ->
     try:
         with client:
             response = client.post(
-                "/api/v1/models/yolox/training-tasks",
+                "/api/v1/models/detection/training-tasks",
                 headers=_build_training_headers(),
                 json={
                     "project_id": "project-1",
+                    "model_type": "yolox",
                     "dataset_export_id": dataset_export.dataset_export_id,
                     "recipe_id": "yolox-default",
                     "model_scale": "s",
@@ -111,10 +112,11 @@ def test_create_yolox_training_task_accepts_manifest_key(tmp_path: Path) -> None
     try:
         with client:
             response = client.post(
-                "/api/v1/models/yolox/training-tasks",
+                "/api/v1/models/detection/training-tasks",
                 headers=_build_training_headers(),
                 json={
                     "project_id": "project-1",
+                    "model_type": "yolox",
                     "dataset_export_manifest_key": dataset_export.manifest_object_key,
                     "recipe_id": "yolox-default",
                     "model_scale": "m",
@@ -134,8 +136,8 @@ def test_create_yolox_training_task_accepts_manifest_key(tmp_path: Path) -> None
         session_factory.engine.dispose()
 
 
-def test_training_create_openapi_exposes_documented_extra_options(tmp_path: Path) -> None:
-    """验证训练创建接口的 OpenAPI schema 会展开公开 extra_options 字段。"""
+def test_detection_training_create_openapi_exposes_documented_extra_options(tmp_path: Path) -> None:
+    """验证 detection 训练创建接口会展开统一公开 extra_options 字段。"""
 
     client, session_factory, _dataset_storage, _queue_backend = _create_test_client(tmp_path)
     try:
@@ -146,21 +148,20 @@ def test_training_create_openapi_exposes_documented_extra_options(tmp_path: Path
         payload = response.json()
         components = payload.get("components", {})
         schemas = components.get("schemas", {})
-        extra_options_schema = schemas.get("YoloXTrainingExtraOptionsRequest")
+        extra_options_schema = schemas.get("DetectionTrainingExtraOptionsRequest")
         assert isinstance(extra_options_schema, dict)
 
         properties = extra_options_schema.get("properties", {})
-        assert "seed" in properties
+        assert "learning_rate" in properties
+        assert "weight_decay" in properties
         assert "flip_prob" in properties
         assert "mosaic_prob" in properties
-        assert "enable_mixup" in properties
-        assert "multiscale_range" in properties
-        assert "ema" in properties
-        assert "warmup_epochs" in properties
-        assert "evaluation_confidence_threshold" in properties
+        assert "mixup_scale" in properties
+        assert "assign_topk" in properties
         assert "evaluation_nms_threshold" in properties
+        assert "默认 1e-3" in properties["learning_rate"]["description"]
         assert "默认 0.0" in properties["flip_prob"]["description"]
-        assert "默认 true" in properties["ema"]["description"]
+        assert "top-k 语义" in properties["evaluation_nms_threshold"]["description"]
     finally:
         session_factory.engine.dispose()
 
@@ -180,10 +181,11 @@ def test_create_yolox_training_task_accepts_gpu_count_above_three(tmp_path: Path
     try:
         with client:
             response = client.post(
-                "/api/v1/models/yolox/training-tasks",
+                "/api/v1/models/detection/training-tasks",
                 headers=_build_training_headers(),
                 json={
                     "project_id": "project-1",
+                    "model_type": "yolox",
                     "dataset_export_id": dataset_export.dataset_export_id,
                     "recipe_id": "yolox-default",
                     "model_scale": "s",
@@ -217,10 +219,11 @@ def test_create_yolox_training_task_rejects_fp8_precision(tmp_path: Path) -> Non
     try:
         with client:
             response = client.post(
-                "/api/v1/models/yolox/training-tasks",
+                "/api/v1/models/detection/training-tasks",
                 headers=_build_training_headers(),
                 json={
                     "project_id": "project-1",
+                    "model_type": "yolox",
                     "dataset_export_id": dataset_export.dataset_export_id,
                     "recipe_id": "yolox-default",
                     "model_scale": "s",
@@ -253,10 +256,11 @@ def test_create_yolox_training_task_rejects_non_positive_input_size(tmp_path: Pa
     try:
         with client:
             response = client.post(
-                "/api/v1/models/yolox/training-tasks",
+                "/api/v1/models/detection/training-tasks",
                 headers=_build_training_headers(),
                 json={
                     "project_id": "project-1",
+                    "model_type": "yolox",
                     "dataset_export_id": dataset_export.dataset_export_id,
                     "recipe_id": "yolox-default",
                     "model_scale": "s",
@@ -298,10 +302,11 @@ def test_create_yolox_training_task_rejects_mismatched_export_id_and_manifest_ke
     try:
         with client:
             response = client.post(
-                "/api/v1/models/yolox/training-tasks",
+                "/api/v1/models/detection/training-tasks",
                 headers=_build_training_headers(),
                 json={
                     "project_id": "project-1",
+                    "model_type": "yolox",
                     "dataset_export_id": dataset_export_a.dataset_export_id,
                     "dataset_export_manifest_key": dataset_export_b.manifest_object_key,
                     "recipe_id": "yolox-default",
@@ -341,10 +346,11 @@ def test_list_yolox_training_tasks_filters_by_dataset_export_id(tmp_path: Path) 
     try:
         with client:
             create_a = client.post(
-                "/api/v1/models/yolox/training-tasks",
+                "/api/v1/models/detection/training-tasks",
                 headers=_build_training_headers(),
                 json={
                     "project_id": "project-1",
+                    "model_type": "yolox",
                     "dataset_export_id": dataset_export_a.dataset_export_id,
                     "recipe_id": "yolox-default",
                     "model_scale": "s",
@@ -354,10 +360,11 @@ def test_list_yolox_training_tasks_filters_by_dataset_export_id(tmp_path: Path) 
                 },
             )
             create_b = client.post(
-                "/api/v1/models/yolox/training-tasks",
+                "/api/v1/models/detection/training-tasks",
                 headers=_build_training_headers(),
                 json={
                     "project_id": "project-1",
+                    "model_type": "yolox",
                     "dataset_export_id": dataset_export_b.dataset_export_id,
                     "recipe_id": "yolox-default",
                     "model_scale": "m",
@@ -365,10 +372,11 @@ def test_list_yolox_training_tasks_filters_by_dataset_export_id(tmp_path: Path) 
                 },
             )
             response = client.get(
-                "/api/v1/models/yolox/training-tasks",
+                "/api/v1/models/detection/training-tasks",
                 headers=_build_training_headers(),
                 params={
                     "project_id": "project-1",
+                    "model_type": "yolox",
                     "dataset_export_id": dataset_export_a.dataset_export_id,
                 },
             )
@@ -407,10 +415,11 @@ def test_list_yolox_training_tasks_returns_top_level_model_version_id_when_compl
     try:
         with client:
             create_response = client.post(
-                "/api/v1/models/yolox/training-tasks",
+                "/api/v1/models/detection/training-tasks",
                 headers=_build_training_headers(),
                 json={
                     "project_id": "project-1",
+                    "model_type": "yolox",
                     "dataset_export_id": dataset_export.dataset_export_id,
                     "recipe_id": "yolox-default",
                     "model_scale": "nano",
@@ -431,10 +440,11 @@ def test_list_yolox_training_tasks_returns_top_level_model_version_id_when_compl
 
         with client:
             list_response = client.get(
-                "/api/v1/models/yolox/training-tasks",
+                "/api/v1/models/detection/training-tasks",
                 headers=_build_training_headers(),
                 params={
                     "project_id": "project-1",
+                    "model_type": "yolox",
                     "dataset_export_id": dataset_export.dataset_export_id,
                 },
             )
@@ -467,10 +477,11 @@ def test_get_yolox_training_task_detail_returns_completed_result(tmp_path: Path)
     try:
         with client:
             create_response = client.post(
-                "/api/v1/models/yolox/training-tasks",
+                "/api/v1/models/detection/training-tasks",
                 headers=_build_training_headers(),
                 json={
                     "project_id": "project-1",
+                    "model_type": "yolox",
                     "dataset_export_id": dataset_export.dataset_export_id,
                     "recipe_id": "yolox-default",
                     "model_scale": "nano",
@@ -492,7 +503,7 @@ def test_get_yolox_training_task_detail_returns_completed_result(tmp_path: Path)
 
         with client:
             detail_response = client.get(
-                f"/api/v1/models/yolox/training-tasks/{task_id}",
+                f"/api/v1/models/detection/training-tasks/{task_id}",
                 headers=_build_training_headers(),
                 params={"include_events": True},
             )
@@ -544,10 +555,11 @@ def test_get_yolox_training_validation_metrics_returns_completed_snapshot(tmp_pa
     try:
         with client:
             create_response = client.post(
-                "/api/v1/models/yolox/training-tasks",
+                "/api/v1/models/detection/training-tasks",
                 headers=_build_training_headers(),
                 json={
                     "project_id": "project-1",
+                    "model_type": "yolox",
                     "dataset_export_id": dataset_export.dataset_export_id,
                     "recipe_id": "yolox-default",
                     "model_scale": "nano",
@@ -569,7 +581,7 @@ def test_get_yolox_training_validation_metrics_returns_completed_snapshot(tmp_pa
 
         with client:
             validation_metrics_response = client.get(
-                f"/api/v1/models/yolox/training-tasks/{task_id}/validation-metrics",
+                f"/api/v1/models/detection/training-tasks/{task_id}/validation-metrics",
                 headers=_build_training_headers(),
             )
 
@@ -605,10 +617,11 @@ def test_get_yolox_training_train_metrics_returns_completed_snapshot(tmp_path: P
     try:
         with client:
             create_response = client.post(
-                "/api/v1/models/yolox/training-tasks",
+                "/api/v1/models/detection/training-tasks",
                 headers=_build_training_headers(),
                 json={
                     "project_id": "project-1",
+                    "model_type": "yolox",
                     "dataset_export_id": dataset_export.dataset_export_id,
                     "recipe_id": "yolox-default",
                     "model_scale": "nano",
@@ -630,7 +643,7 @@ def test_get_yolox_training_train_metrics_returns_completed_snapshot(tmp_path: P
 
         with client:
             train_metrics_response = client.get(
-                f"/api/v1/models/yolox/training-tasks/{task_id}/train-metrics",
+                f"/api/v1/models/detection/training-tasks/{task_id}/train-metrics",
                 headers=_build_training_headers(),
             )
 
@@ -664,10 +677,11 @@ def test_get_yolox_training_validation_metrics_returns_pending_before_snapshot_e
     try:
         with client:
             create_response = client.post(
-                "/api/v1/models/yolox/training-tasks",
+                "/api/v1/models/detection/training-tasks",
                 headers=_build_training_headers(),
                 json={
                     "project_id": "project-1",
+                    "model_type": "yolox",
                     "dataset_export_id": dataset_export.dataset_export_id,
                     "recipe_id": "yolox-default",
                     "model_scale": "nano",
@@ -680,7 +694,7 @@ def test_get_yolox_training_validation_metrics_returns_pending_before_snapshot_e
 
         with client:
             validation_metrics_response = client.get(
-                f"/api/v1/models/yolox/training-tasks/{task_id}/validation-metrics",
+                f"/api/v1/models/detection/training-tasks/{task_id}/validation-metrics",
                 headers=_build_training_headers(),
             )
 
@@ -710,10 +724,11 @@ def test_get_yolox_training_task_detail_exposes_output_prefix_while_running(tmp_
     try:
         with client:
             create_response = client.post(
-                "/api/v1/models/yolox/training-tasks",
+                "/api/v1/models/detection/training-tasks",
                 headers=_build_training_headers(),
                 json={
                     "project_id": "project-1",
+                    "model_type": "yolox",
                     "dataset_export_id": dataset_export.dataset_export_id,
                     "recipe_id": "yolox-default",
                     "model_scale": "nano",
@@ -788,7 +803,7 @@ def test_get_yolox_training_task_detail_exposes_output_prefix_while_running(tmp_
 
         with client:
             detail_response = client.get(
-                f"/api/v1/models/yolox/training-tasks/{task_id}",
+                f"/api/v1/models/detection/training-tasks/{task_id}",
                 headers=_build_training_headers(),
                 params={"include_events": True},
             )
@@ -806,7 +821,7 @@ def test_get_yolox_training_task_detail_exposes_output_prefix_while_running(tmp_
 
         with client:
             validation_metrics_response = client.get(
-                f"/api/v1/models/yolox/training-tasks/{task_id}/validation-metrics",
+                f"/api/v1/models/detection/training-tasks/{task_id}/validation-metrics",
                 headers=_build_training_headers(),
             )
 
@@ -821,7 +836,7 @@ def test_get_yolox_training_task_detail_exposes_output_prefix_while_running(tmp_
 
         with client:
             train_metrics_response = client.get(
-                f"/api/v1/models/yolox/training-tasks/{task_id}/train-metrics",
+                f"/api/v1/models/detection/training-tasks/{task_id}/train-metrics",
                 headers=_build_training_headers(),
             )
 
@@ -851,10 +866,11 @@ def test_get_yolox_training_output_files_returns_completed_entries(tmp_path: Pat
     try:
         with client:
             create_response = client.post(
-                "/api/v1/models/yolox/training-tasks",
+                "/api/v1/models/detection/training-tasks",
                 headers=_build_training_headers(),
                 json={
                     "project_id": "project-1",
+                    "model_type": "yolox",
                     "dataset_export_id": dataset_export.dataset_export_id,
                     "recipe_id": "yolox-default",
                     "model_scale": "nano",
@@ -876,7 +892,7 @@ def test_get_yolox_training_output_files_returns_completed_entries(tmp_path: Pat
 
         with client:
             output_files_response = client.get(
-                f"/api/v1/models/yolox/training-tasks/{task_id}/output-files",
+                f"/api/v1/models/detection/training-tasks/{task_id}/output-files",
                 headers=_build_training_headers(),
             )
 
@@ -894,15 +910,15 @@ def test_get_yolox_training_output_files_returns_completed_entries(tmp_path: Pat
 
         with client:
             summary_response = client.get(
-                f"/api/v1/models/yolox/training-tasks/{task_id}/output-files/summary",
+                f"/api/v1/models/detection/training-tasks/{task_id}/output-files/summary",
                 headers=_build_training_headers(),
             )
             labels_response = client.get(
-                f"/api/v1/models/yolox/training-tasks/{task_id}/output-files/labels",
+                f"/api/v1/models/detection/training-tasks/{task_id}/output-files/labels",
                 headers=_build_training_headers(),
             )
             checkpoint_response = client.get(
-                f"/api/v1/models/yolox/training-tasks/{task_id}/output-files/best-checkpoint",
+                f"/api/v1/models/detection/training-tasks/{task_id}/output-files/best-checkpoint",
                 headers=_build_training_headers(),
             )
 
@@ -956,7 +972,7 @@ def test_pause_and_resume_yolox_training_task_reuses_latest_checkpoint(
             assert first_control is not None
             assert first_control.save_checkpoint is False
             running_train_metrics_response = client.get(
-                f"/api/v1/models/yolox/training-tasks/{task_id}/train-metrics",
+                f"/api/v1/models/detection/training-tasks/{task_id}/train-metrics",
                 headers=_build_training_headers(),
             )
             assert running_train_metrics_response.status_code == 200
@@ -965,7 +981,7 @@ def test_pause_and_resume_yolox_training_task_reuses_latest_checkpoint(
             assert running_train_metrics_payload["task_state"] == "running"
             assert running_train_metrics_payload["payload"]["final_metrics"]["epoch"] == 1
             running_validation_metrics_response = client.get(
-                f"/api/v1/models/yolox/training-tasks/{task_id}/validation-metrics",
+                f"/api/v1/models/detection/training-tasks/{task_id}/validation-metrics",
                 headers=_build_training_headers(),
             )
             assert running_validation_metrics_response.status_code == 200
@@ -974,7 +990,7 @@ def test_pause_and_resume_yolox_training_task_reuses_latest_checkpoint(
             assert running_validation_metrics_payload["task_state"] == "running"
             assert running_validation_metrics_payload["payload"]["final_metrics"]["epoch"] == 1
             pause_response = client.post(
-                f"/api/v1/models/yolox/training-tasks/{task_id}/pause",
+                f"/api/v1/models/detection/training-tasks/{task_id}/pause",
                 headers=_build_training_headers(),
             )
             assert pause_response.status_code == 200
@@ -998,10 +1014,11 @@ def test_pause_and_resume_yolox_training_task_reuses_latest_checkpoint(
     try:
         with client:
             create_response = client.post(
-                "/api/v1/models/yolox/training-tasks",
+                "/api/v1/models/detection/training-tasks",
                 headers=_build_training_headers(),
                 json={
                     "project_id": "project-1",
+                    "model_type": "yolox",
                     "dataset_export_id": dataset_export.dataset_export_id,
                     "recipe_id": "yolox-default",
                     "model_scale": "nano",
@@ -1022,7 +1039,7 @@ def test_pause_and_resume_yolox_training_task_reuses_latest_checkpoint(
             ) is True
 
             paused_detail_response = client.get(
-                f"/api/v1/models/yolox/training-tasks/{task_id}",
+                f"/api/v1/models/detection/training-tasks/{task_id}",
                 headers=_build_training_headers(),
                 params={"include_events": True},
             )
@@ -1039,10 +1056,11 @@ def test_pause_and_resume_yolox_training_task_reuses_latest_checkpoint(
             assert dataset_storage.resolve(paused_payload["labels_object_key"]).is_file()
             assert dataset_storage.resolve(paused_payload["labels_object_key"]).read_text(encoding="utf-8") == "bolt\n"
             paused_validation_session_response = client.post(
-                "/api/v1/models/yolox/validation-sessions",
+                "/api/v1/models/detection/validation-sessions",
                 headers=build_test_headers(scopes="models:read"),
                 json={
                     "project_id": "project-1",
+                    "model_type": "yolox",
                     "model_version_id": paused_payload["model_version_id"],
                     "runtime_backend": "pytorch",
                     "device_name": "cpu",
@@ -1053,7 +1071,7 @@ def test_pause_and_resume_yolox_training_task_reuses_latest_checkpoint(
             assert paused_validation_session_response.status_code == 201
             assert paused_validation_session_response.json()["labels"] == ["bolt"]
             paused_train_metrics_response = client.get(
-                f"/api/v1/models/yolox/training-tasks/{task_id}/train-metrics",
+                f"/api/v1/models/detection/training-tasks/{task_id}/train-metrics",
                 headers=_build_training_headers(),
             )
             assert paused_train_metrics_response.status_code == 200
@@ -1062,7 +1080,7 @@ def test_pause_and_resume_yolox_training_task_reuses_latest_checkpoint(
             assert paused_train_metrics_payload["task_state"] == "paused"
             assert paused_train_metrics_payload["payload"]["final_metrics"]["epoch"] == 2
             paused_validation_metrics_response = client.get(
-                f"/api/v1/models/yolox/training-tasks/{task_id}/validation-metrics",
+                f"/api/v1/models/detection/training-tasks/{task_id}/validation-metrics",
                 headers=_build_training_headers(),
             )
             assert paused_validation_metrics_response.status_code == 200
@@ -1077,7 +1095,7 @@ def test_pause_and_resume_yolox_training_task_reuses_latest_checkpoint(
             assert any(event["message"] == "yolox training paused" for event in paused_payload["events"])
 
             resume_response = client.post(
-                f"/api/v1/models/yolox/training-tasks/{task_id}/resume",
+                f"/api/v1/models/detection/training-tasks/{task_id}/resume",
                 headers=_build_training_headers(),
             )
             assert resume_response.status_code == 200
@@ -1090,7 +1108,7 @@ def test_pause_and_resume_yolox_training_task_reuses_latest_checkpoint(
             ) is True
 
             final_detail_response = client.get(
-                f"/api/v1/models/yolox/training-tasks/{task_id}",
+                f"/api/v1/models/detection/training-tasks/{task_id}",
                 headers=_build_training_headers(),
                 params={"include_events": True},
             )
@@ -1139,10 +1157,11 @@ def test_register_latest_checkpoint_model_version_for_paused_task(
     try:
         with client:
             create_response = client.post(
-                "/api/v1/models/yolox/training-tasks",
+                "/api/v1/models/detection/training-tasks",
                 headers=_build_training_headers(),
                 json={
                     "project_id": "project-1",
+                    "model_type": "yolox",
                     "dataset_export_id": dataset_export.dataset_export_id,
                     "recipe_id": "yolox-default",
                     "model_scale": "nano",
@@ -1163,7 +1182,7 @@ def test_register_latest_checkpoint_model_version_for_paused_task(
             ) is True
 
             paused_detail_response = client.get(
-                f"/api/v1/models/yolox/training-tasks/{task_id}",
+                f"/api/v1/models/detection/training-tasks/{task_id}",
                 headers=_build_training_headers(),
             )
             assert paused_detail_response.status_code == 200
@@ -1178,11 +1197,11 @@ def test_register_latest_checkpoint_model_version_for_paused_task(
             assert labels_path.is_file() is False
 
             first_register_response = client.post(
-                f"/api/v1/models/yolox/training-tasks/{task_id}/register-model-version",
+                f"/api/v1/models/detection/training-tasks/{task_id}/register-model-version",
                 headers=_build_training_model_write_headers(),
             )
             second_register_response = client.post(
-                f"/api/v1/models/yolox/training-tasks/{task_id}/register-model-version",
+                f"/api/v1/models/detection/training-tasks/{task_id}/register-model-version",
                 headers=_build_training_model_write_headers(),
             )
 
@@ -1211,10 +1230,11 @@ def test_register_latest_checkpoint_model_version_for_paused_task(
         )
         with client:
             validation_session_response = client.post(
-                "/api/v1/models/yolox/validation-sessions",
+                "/api/v1/models/detection/validation-sessions",
                 headers=build_test_headers(scopes="models:read"),
                 json={
                     "project_id": "project-1",
+                    "model_type": "yolox",
                     "model_version_id": payload["model_version_id"],
                     "runtime_backend": "pytorch",
                     "device_name": "cpu",
@@ -1225,7 +1245,7 @@ def test_register_latest_checkpoint_model_version_for_paused_task(
         assert validation_session_response.status_code == 201
         assert validation_session_response.json()["labels"] == ["bolt"]
 
-        model_service = SqlAlchemyYoloXModelService(session_factory=session_factory)
+        model_service = SqlAlchemyModelService(session_factory=session_factory)
         model_version = model_service.get_model_version(payload["model_version_id"])
         assert model_version is not None
         assert model_version.training_task_id == task_id
@@ -1281,10 +1301,11 @@ def test_register_latest_checkpoint_model_version_rejects_missing_latest_checkpo
     try:
         with client:
             create_response = client.post(
-                "/api/v1/models/yolox/training-tasks",
+                "/api/v1/models/detection/training-tasks",
                 headers=_build_training_headers(),
                 json={
                     "project_id": "project-1",
+                    "model_type": "yolox",
                     "dataset_export_id": dataset_export.dataset_export_id,
                     "recipe_id": "yolox-default",
                     "model_scale": "nano",
@@ -1305,7 +1326,7 @@ def test_register_latest_checkpoint_model_version_rejects_missing_latest_checkpo
             ) is True
 
             paused_detail_response = client.get(
-                f"/api/v1/models/yolox/training-tasks/{task_id}",
+                f"/api/v1/models/detection/training-tasks/{task_id}",
                 headers=_build_training_headers(),
             )
             assert paused_detail_response.status_code == 200
@@ -1317,7 +1338,7 @@ def test_register_latest_checkpoint_model_version_rejects_missing_latest_checkpo
             latest_checkpoint_path.unlink()
 
             register_response = client.post(
-                f"/api/v1/models/yolox/training-tasks/{task_id}/register-model-version",
+                f"/api/v1/models/detection/training-tasks/{task_id}/register-model-version",
                 headers=_build_training_model_write_headers(),
             )
 
@@ -1371,10 +1392,11 @@ def test_completed_training_keeps_best_model_version_distinct_from_auto_latest_c
     try:
         with client:
             create_response = client.post(
-                "/api/v1/models/yolox/training-tasks",
+                "/api/v1/models/detection/training-tasks",
                 headers=_build_training_headers(),
                 json={
                     "project_id": "project-1",
+                    "model_type": "yolox",
                     "dataset_export_id": dataset_export.dataset_export_id,
                     "recipe_id": "yolox-default",
                     "model_scale": "nano",
@@ -1395,7 +1417,7 @@ def test_completed_training_keeps_best_model_version_distinct_from_auto_latest_c
             ) is True
 
             paused_detail_response = client.get(
-                f"/api/v1/models/yolox/training-tasks/{task_id}",
+                f"/api/v1/models/detection/training-tasks/{task_id}",
                 headers=_build_training_headers(),
             )
             assert paused_detail_response.status_code == 200
@@ -1404,7 +1426,7 @@ def test_completed_training_keeps_best_model_version_distinct_from_auto_latest_c
             assert manual_model_version_id == paused_payload["model_version_id"]
 
             resume_response = client.post(
-                f"/api/v1/models/yolox/training-tasks/{task_id}/resume",
+                f"/api/v1/models/detection/training-tasks/{task_id}/resume",
                 headers=_build_training_headers(),
             )
             assert resume_response.status_code == 200
@@ -1417,7 +1439,7 @@ def test_completed_training_keeps_best_model_version_distinct_from_auto_latest_c
             ) is True
 
             detail_response = client.get(
-                f"/api/v1/models/yolox/training-tasks/{task_id}",
+                f"/api/v1/models/detection/training-tasks/{task_id}",
                 headers=_build_training_headers(),
                 params={"include_events": True},
             )
@@ -1478,10 +1500,11 @@ def test_resume_yolox_training_task_rejects_missing_latest_checkpoint_file(
     try:
         with client:
             create_response = client.post(
-                "/api/v1/models/yolox/training-tasks",
+                "/api/v1/models/detection/training-tasks",
                 headers=_build_training_headers(),
                 json={
                     "project_id": "project-1",
+                    "model_type": "yolox",
                     "dataset_export_id": dataset_export.dataset_export_id,
                     "recipe_id": "yolox-default",
                     "model_scale": "nano",
@@ -1502,15 +1525,15 @@ def test_resume_yolox_training_task_rejects_missing_latest_checkpoint_file(
             ) is True
 
             first_resume_response = client.post(
-                f"/api/v1/models/yolox/training-tasks/{task_id}/resume",
+                f"/api/v1/models/detection/training-tasks/{task_id}/resume",
                 headers=_build_training_headers(),
             )
             second_resume_response = client.post(
-                f"/api/v1/models/yolox/training-tasks/{task_id}/resume",
+                f"/api/v1/models/detection/training-tasks/{task_id}/resume",
                 headers=_build_training_headers(),
             )
             detail_response = client.get(
-                f"/api/v1/models/yolox/training-tasks/{task_id}",
+                f"/api/v1/models/detection/training-tasks/{task_id}",
                 headers=_build_training_headers(),
                 params={"include_events": True},
             )
@@ -1573,10 +1596,11 @@ def test_terminate_and_delete_yolox_training_task(
     try:
         with client:
             create_response = client.post(
-                "/api/v1/models/yolox/training-tasks",
+                "/api/v1/models/detection/training-tasks",
                 headers=_build_training_headers(),
                 json={
                     "project_id": "project-1",
+                    "model_type": "yolox",
                     "dataset_export_id": dataset_export.dataset_export_id,
                     "recipe_id": "yolox-default",
                     "model_scale": "nano",
@@ -1605,7 +1629,7 @@ def test_terminate_and_delete_yolox_training_task(
             assert training_started.wait(timeout=5)
 
             terminate_response = client.post(
-                f"/api/v1/models/yolox/training-tasks/{task_id}/terminate",
+                f"/api/v1/models/detection/training-tasks/{task_id}/terminate",
                 headers=_build_training_headers(),
             )
             assert terminate_response.status_code == 200
@@ -1623,7 +1647,7 @@ def test_terminate_and_delete_yolox_training_task(
             assert worker_result.get("value") is True
 
             terminated_detail_response = client.get(
-                f"/api/v1/models/yolox/training-tasks/{task_id}",
+                f"/api/v1/models/detection/training-tasks/{task_id}",
                 headers=_build_training_headers(),
                 params={"include_events": True},
             )
@@ -1638,13 +1662,13 @@ def test_terminate_and_delete_yolox_training_task(
             )
 
             delete_response = client.delete(
-                f"/api/v1/models/yolox/training-tasks/{task_id}",
+                f"/api/v1/models/detection/training-tasks/{task_id}",
                 headers=_build_training_headers(),
             )
             assert delete_response.status_code == 204
 
             deleted_detail_response = client.get(
-                f"/api/v1/models/yolox/training-tasks/{task_id}",
+                f"/api/v1/models/detection/training-tasks/{task_id}",
                 headers=_build_training_headers(),
             )
             assert deleted_detail_response.status_code == 404
@@ -1719,10 +1743,11 @@ def test_resume_yolox_training_task_fails_when_latest_checkpoint_is_corrupted(
     try:
         with client:
             create_response = client.post(
-                "/api/v1/models/yolox/training-tasks",
+                "/api/v1/models/detection/training-tasks",
                 headers=_build_training_headers(),
                 json={
                     "project_id": "project-1",
+                    "model_type": "yolox",
                     "dataset_export_id": dataset_export.dataset_export_id,
                     "recipe_id": "yolox-default",
                     "model_scale": "nano",
@@ -1744,7 +1769,7 @@ def test_resume_yolox_training_task_fails_when_latest_checkpoint_is_corrupted(
             ) is True
 
             paused_detail_response = client.get(
-                f"/api/v1/models/yolox/training-tasks/{task_id}",
+                f"/api/v1/models/detection/training-tasks/{task_id}",
                 headers=_build_training_headers(),
             )
             assert paused_detail_response.status_code == 200
@@ -1755,7 +1780,7 @@ def test_resume_yolox_training_task_fails_when_latest_checkpoint_is_corrupted(
             )
 
             resume_response = client.post(
-                f"/api/v1/models/yolox/training-tasks/{task_id}/resume",
+                f"/api/v1/models/detection/training-tasks/{task_id}/resume",
                 headers=_build_training_headers(),
             )
             assert resume_response.status_code == 200
@@ -1768,7 +1793,7 @@ def test_resume_yolox_training_task_fails_when_latest_checkpoint_is_corrupted(
             ) is True
 
             detail_response = client.get(
-                f"/api/v1/models/yolox/training-tasks/{task_id}",
+                f"/api/v1/models/detection/training-tasks/{task_id}",
                 headers=_build_training_headers(),
                 params={"include_events": True},
             )
@@ -1851,10 +1876,11 @@ def test_resume_yolox_training_task_fails_when_validation_configuration_mismatch
     try:
         with client:
             create_response = client.post(
-                "/api/v1/models/yolox/training-tasks",
+                "/api/v1/models/detection/training-tasks",
                 headers=_build_training_headers(),
                 json={
                     "project_id": "project-1",
+                    "model_type": "yolox",
                     "dataset_export_id": dataset_export.dataset_export_id,
                     "recipe_id": "yolox-default",
                     "model_scale": "nano",
@@ -1876,7 +1902,7 @@ def test_resume_yolox_training_task_fails_when_validation_configuration_mismatch
             ) is True
 
             resume_response = client.post(
-                f"/api/v1/models/yolox/training-tasks/{task_id}/resume",
+                f"/api/v1/models/detection/training-tasks/{task_id}/resume",
                 headers=_build_training_headers(),
             )
             assert resume_response.status_code == 200
@@ -1889,7 +1915,7 @@ def test_resume_yolox_training_task_fails_when_validation_configuration_mismatch
             ) is True
 
             detail_response = client.get(
-                f"/api/v1/models/yolox/training-tasks/{task_id}",
+                f"/api/v1/models/detection/training-tasks/{task_id}",
                 headers=_build_training_headers(),
                 params={"include_events": True},
             )
@@ -1931,7 +1957,7 @@ def test_request_yolox_training_save_creates_manual_checkpoint_event(
         assert first_control.save_checkpoint is False
 
         save_response = client.post(
-            f"/api/v1/models/yolox/training-tasks/{task_id}/save",
+            f"/api/v1/models/detection/training-tasks/{task_id}/save",
             headers=_build_training_headers(),
         )
         assert save_response.status_code == 200
@@ -1948,7 +1974,7 @@ def test_request_yolox_training_save_creates_manual_checkpoint_event(
         assert request.savepoint_callback is not None
         request.savepoint_callback(_build_fake_savepoint(epoch=2, best_metric_value=0.28))
         running_detail_response = client.get(
-            f"/api/v1/models/yolox/training-tasks/{task_id}",
+            f"/api/v1/models/detection/training-tasks/{task_id}",
             headers=_build_training_headers(),
         )
         assert running_detail_response.status_code == 200
@@ -1961,10 +1987,11 @@ def test_request_yolox_training_save_creates_manual_checkpoint_event(
         assert dataset_storage.resolve(running_payload["labels_object_key"]).is_file()
         assert dataset_storage.resolve(running_payload["labels_object_key"]).read_text(encoding="utf-8") == "bolt\n"
         running_validation_session_response = client.post(
-            "/api/v1/models/yolox/validation-sessions",
+            "/api/v1/models/detection/validation-sessions",
             headers=build_test_headers(scopes="models:read"),
             json={
                 "project_id": "project-1",
+                "model_type": "yolox",
                 "model_version_id": running_payload["model_version_id"],
                 "runtime_backend": "pytorch",
                 "device_name": "cpu",
@@ -1987,10 +2014,11 @@ def test_request_yolox_training_save_creates_manual_checkpoint_event(
     try:
         with client:
             create_response = client.post(
-                "/api/v1/models/yolox/training-tasks",
+                "/api/v1/models/detection/training-tasks",
                 headers=_build_training_headers(),
                 json={
                     "project_id": "project-1",
+                    "model_type": "yolox",
                     "dataset_export_id": dataset_export.dataset_export_id,
                     "recipe_id": "yolox-default",
                     "model_scale": "nano",
@@ -2011,7 +2039,7 @@ def test_request_yolox_training_save_creates_manual_checkpoint_event(
             ) is True
 
             detail_response = client.get(
-                f"/api/v1/models/yolox/training-tasks/{task_id}",
+                f"/api/v1/models/detection/training-tasks/{task_id}",
                 headers=_build_training_headers(),
                     params={"include_events": True},
             )
@@ -2155,7 +2183,7 @@ def _pause_training_from_fake_run(
     assert first_control.save_checkpoint is False
 
     pause_response = client.post(
-        f"/api/v1/models/yolox/training-tasks/{task_id}/pause",
+        f"/api/v1/models/detection/training-tasks/{task_id}/pause",
         headers=_build_training_headers(),
     )
     assert pause_response.status_code == 200
@@ -2493,3 +2521,5 @@ def _run_yolox_training_worker_once(
         worker_id="test-yolox-training-worker",
     )
     return worker.run_once()
+
+

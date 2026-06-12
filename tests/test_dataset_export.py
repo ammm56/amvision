@@ -9,6 +9,10 @@ import pytest
 
 from backend.queue import LocalFileQueueBackend, LocalFileQueueSettings
 from backend.contracts.datasets.exports.coco_detection_export import COCO_DETECTION_DATASET_FORMAT
+from backend.contracts.datasets.exports.dataset_formats import (
+    DOTA_OBB_DATASET_FORMAT,
+    IMAGENET_CLASSIFICATION_DATASET_FORMAT,
+)
 from backend.contracts.datasets.exports.voc_detection_export import VOC_DETECTION_DATASET_FORMAT
 from backend.service.application.auth.default_local_auth_seeder import DEFAULT_LOCAL_AUTH_USERNAME
 from backend.service.application.datasets.dataset_export import (
@@ -19,10 +23,12 @@ from backend.service.application.datasets.dataset_export import (
 )
 from backend.service.application.tasks.task_service import SqlAlchemyTaskService
 from backend.service.domain.datasets.dataset_version import (
+    ClassificationAnnotation,
     DatasetCategory,
     DatasetSample,
     DatasetVersion,
     DetectionAnnotation,
+    ObbAnnotation,
 )
 from backend.service.domain.tasks.yolox_task_specs import YoloXTrainingTaskSpec
 from backend.service.infrastructure.db.session import DatabaseSettings, SessionFactory
@@ -42,6 +48,7 @@ def test_export_dataset_generates_minimal_coco_detection_payload(tmp_path: Path)
         dataset_version_id="dataset-version-1",
         dataset_id="dataset-1",
         project_id="project-1",
+        task_type="detection",
         categories=(
             DatasetCategory(category_id=0, name="bolt"),
             DatasetCategory(category_id=1, name="nut"),
@@ -127,6 +134,7 @@ def test_export_dataset_supports_custom_prefix_and_test_split(tmp_path: Path) ->
         dataset_version_id="dataset-version-2",
         dataset_id="dataset-2",
         project_id="project-1",
+        task_type="detection",
         categories=(DatasetCategory(category_id=0, name="gear"),),
         samples=(
             DatasetSample(
@@ -169,6 +177,7 @@ def test_export_dataset_generates_pascal_voc_layout_and_xml(tmp_path: Path) -> N
         dataset_version_id="dataset-version-voc-1",
         dataset_id="dataset-voc-1",
         project_id="project-1",
+        task_type="detection",
         categories=(DatasetCategory(category_id=0, name="bolt"),),
         samples=(
             DatasetSample(
@@ -230,6 +239,138 @@ def test_export_dataset_generates_pascal_voc_layout_and_xml(tmp_path: Path) -> N
     assert dataset_storage.resolve(f"{export_result.export_path}/JPEGImages/sample-1.jpg").is_file()
 
 
+def test_export_dataset_generates_imagenet_classification_layout(tmp_path: Path) -> None:
+    """验证导出支持 ImageNet 风格 classification 目录与标注文件。"""
+
+    dataset_version = DatasetVersion(
+        dataset_version_id="dataset-version-imagenet-1",
+        dataset_id="dataset-imagenet-1",
+        project_id="project-1",
+        task_type="classification",
+        categories=(
+            DatasetCategory(category_id=0, name="ok"),
+            DatasetCategory(category_id=1, name="ng"),
+        ),
+        samples=(
+            DatasetSample(
+                sample_id="sample-1",
+                image_id=1,
+                file_name="ok-1.jpg",
+                width=224,
+                height=224,
+                split="train",
+                annotations=(
+                    ClassificationAnnotation(
+                        annotation_id="ann-1",
+                        category_id=0,
+                    ),
+                ),
+            ),
+            DatasetSample(
+                sample_id="sample-2",
+                image_id=2,
+                file_name="ng-1.jpg",
+                width=224,
+                height=224,
+                split="val",
+                annotations=(
+                    ClassificationAnnotation(
+                        annotation_id="ann-2",
+                        category_id=1,
+                    ),
+                ),
+            ),
+        ),
+    )
+    exporter, dataset_storage = _create_exporter_with_storage(tmp_path, dataset_version)
+
+    export_result = exporter.export_dataset(
+        DatasetExportRequest(
+            project_id="project-1",
+            dataset_id="dataset-imagenet-1",
+            dataset_version_id="dataset-version-imagenet-1",
+            format_id=IMAGENET_CLASSIFICATION_DATASET_FORMAT,
+            include_test_split=False,
+        )
+    )
+
+    assert export_result.format_id == IMAGENET_CLASSIFICATION_DATASET_FORMAT
+    assert export_result.split_names == ("train", "val")
+    manifest_payload = json.loads(
+        dataset_storage.resolve(export_result.manifest_object_key).read_text(encoding="utf-8")
+    )
+    train_annotation_payload = json.loads(
+        dataset_storage.resolve(
+            f"{export_result.export_path}/annotations/train.json"
+        ).read_text(encoding="utf-8")
+    )
+    assert manifest_payload["format_id"] == IMAGENET_CLASSIFICATION_DATASET_FORMAT
+    assert manifest_payload["splits"][0]["image_root"].endswith("/train")
+    assert train_annotation_payload["annotations"][0]["category_id"] == 0
+    assert dataset_storage.resolve(f"{export_result.export_path}/train/ok/ok-1.jpg").is_file()
+    assert dataset_storage.resolve(f"{export_result.export_path}/val/ng/ng-1.jpg").is_file()
+
+
+def test_export_dataset_generates_dota_obb_layout(tmp_path: Path) -> None:
+    """验证导出支持 DOTA 风格 OBB 标注文件。"""
+
+    dataset_version = DatasetVersion(
+        dataset_version_id="dataset-version-dota-1",
+        dataset_id="dataset-dota-1",
+        project_id="project-1",
+        task_type="obb",
+        categories=(DatasetCategory(category_id=0, name="ship"),),
+        samples=(
+            DatasetSample(
+                sample_id="sample-1",
+                image_id=1,
+                file_name="ship-1.png",
+                width=256,
+                height=256,
+                split="train",
+                annotations=(
+                    ObbAnnotation(
+                        annotation_id="ann-1",
+                        category_id=0,
+                        bbox_xywh=(10.0, 20.0, 110.0, 80.0),
+                        polygon_xy=(10.0, 20.0, 120.0, 20.0, 120.0, 100.0, 10.0, 100.0),
+                        area=8800.0,
+                    ),
+                ),
+            ),
+        ),
+    )
+    exporter, dataset_storage = _create_exporter_with_storage(tmp_path, dataset_version)
+
+    export_result = exporter.export_dataset(
+        DatasetExportRequest(
+            project_id="project-1",
+            dataset_id="dataset-dota-1",
+            dataset_version_id="dataset-version-dota-1",
+            format_id=DOTA_OBB_DATASET_FORMAT,
+            include_test_split=False,
+        )
+    )
+
+    assert export_result.format_id == DOTA_OBB_DATASET_FORMAT
+    annotation_payload = json.loads(
+        dataset_storage.resolve(
+            f"{export_result.export_path}/annotations/train.json"
+        ).read_text(encoding="utf-8")
+    )
+    assert annotation_payload["annotations"][0]["poly"] == [
+        10.0,
+        20.0,
+        120.0,
+        20.0,
+        120.0,
+        100.0,
+        10.0,
+        100.0,
+    ]
+    assert dataset_storage.resolve(f"{export_result.export_path}/images/train/ship-1.png").is_file()
+
+
 def test_export_dataset_rejects_supported_but_unimplemented_format() -> None:
     """验证导出器会明确拒绝当前未落地的支持格式。"""
 
@@ -237,6 +378,7 @@ def test_export_dataset_rejects_supported_but_unimplemented_format() -> None:
         dataset_version_id="dataset-version-3",
         dataset_id="dataset-3",
         project_id="project-1",
+        task_type="detection",
         categories=(DatasetCategory(category_id=0, name="gear"),),
         samples=(),
     )
@@ -248,7 +390,7 @@ def test_export_dataset_rejects_supported_but_unimplemented_format() -> None:
                 project_id="project-1",
                 dataset_id="dataset-3",
                 dataset_version_id="dataset-version-3",
-                format_id="yolo-detection-v1",
+                format_id="semantic-mask-dir-v1",
             )
         )
 
@@ -264,6 +406,7 @@ def test_export_task_worker_persists_export_artifact_for_training_input_boundary
         dataset_version_id="dataset-version-task-1",
         dataset_id="dataset-9",
         project_id="project-1",
+        task_type="detection",
         categories=(DatasetCategory(category_id=0, name="bolt"),),
         samples=(
             DatasetSample(

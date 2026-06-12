@@ -1,4 +1,4 @@
-"""workflow trigger source 资源合同。"""
+"""workflow trigger source 资源规则。"""
 
 from __future__ import annotations
 
@@ -102,7 +102,7 @@ class ResultMappingContract(BaseModel):
 
 
 class WorkflowTriggerSourceContract(BaseModel):
-    """描述 WorkflowTriggerSource 的稳定 JSON 合同。
+    """描述 WorkflowTriggerSource 的稳定 JSON 规则。
 
     字段：
     - format_id：当前资源格式版本。
@@ -174,7 +174,7 @@ class WorkflowTriggerSourceContract(BaseModel):
 
     @model_validator(mode="after")
     def validate_contract(self) -> WorkflowTriggerSourceContract:
-        """校验 WorkflowTriggerSource 合同的关键字段。"""
+        """校验 WorkflowTriggerSource 规则的关键字段。"""
 
         _require_stripped_text(self.trigger_source_id, "trigger_source_id")
         _require_stripped_text(self.project_id, "project_id")
@@ -192,7 +192,7 @@ class WorkflowTriggerSourceContract(BaseModel):
 
 
 class TriggerEventContract(BaseModel):
-    """描述外部协议事件进入平台后的统一事件合同。
+    """描述外部协议事件进入平台后的统一事件规则。
 
     字段：
     - format_id：当前事件格式版本。
@@ -220,7 +220,7 @@ class TriggerEventContract(BaseModel):
 
     @model_validator(mode="after")
     def validate_contract(self) -> TriggerEventContract:
-        """校验 TriggerEvent 合同的关键字段。"""
+        """校验 TriggerEvent 规则的关键字段。"""
 
         _require_stripped_text(self.trigger_source_id, "trigger_source_id")
         _require_stripped_text(self.event_id, "event_id")
@@ -255,7 +255,7 @@ class TriggerResultContract(BaseModel):
 
     @model_validator(mode="after")
     def validate_contract(self) -> TriggerResultContract:
-        """校验 TriggerResult 合同的关键字段。"""
+        """校验 TriggerResult 规则的关键字段。"""
 
         _require_stripped_text(self.trigger_source_id, "trigger_source_id")
         _require_stripped_text(self.event_id, "event_id")

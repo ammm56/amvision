@@ -1,4 +1,4 @@
-"""LocalBufferBroker 普通 buffer 引用合同。"""
+"""LocalBufferBroker 普通 buffer 引用规则。"""
 
 from __future__ import annotations
 

@@ -1,0 +1,644 @@
+{
+  "format_id": "amvision.custom-node-catalog.v1",
+  "payload_contracts": [
+    {
+      "format_id": "amvision.workflow-payload-contract.v1",
+      "payload_type_id": "text-prompts.v1",
+      "display_name": "Text Prompts",
+      "transport_kind": "inline-json",
+      "json_schema": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "prompt_id": {
+                  "type": "string"
+                },
+                "text": {
+                  "type": "string"
+                },
+                "display_name": {
+                  "type": "string"
+                },
+                "language": {
+                  "type": "string"
+                },
+                "negative": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "prompt_id",
+                "text"
+              ]
+            }
+          }
+        },
+        "required": [
+          "items"
+        ]
+      },
+      "artifact_kinds": [],
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.workflow-payload-contract.v1",
+      "payload_type_id": "prompt-regions.v1",
+      "display_name": "Prompt Regions",
+      "transport_kind": "inline-json",
+      "json_schema": {
+        "type": "object",
+        "properties": {
+          "source_image": {
+            "type": "object"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "prompt_id": {
+                  "type": "string"
+                },
+                "display_name": {
+                  "type": "string"
+                },
+                "prompt_kind": {
+                  "type": "string",
+                  "enum": [
+                    "point",
+                    "box",
+                    "polygon",
+                    "mask"
+                  ]
+                },
+                "point_xy": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 2,
+                  "maxItems": 2
+                },
+                "point_label": {
+                  "type": "string",
+                  "enum": [
+                    "positive",
+                    "negative"
+                  ]
+                },
+                "bbox_xyxy": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 4,
+                  "maxItems": 4
+                },
+                "polygon_xy": {
+                  "type": "array",
+                  "items": {
+                    "type": "array",
+                    "items": {
+                      "type": "number"
+                    },
+                    "minItems": 2,
+                    "maxItems": 2
+                  }
+                },
+                "mask_image": {
+                  "type": "object"
+                }
+              },
+              "required": [
+                "prompt_id",
+                "prompt_kind"
+              ]
+            }
+          }
+        },
+        "required": [
+          "items"
+        ]
+      },
+      "artifact_kinds": [],
+      "metadata": {}
+    }
+  ],
+  "node_definitions": [
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.sam3.interactive-segment",
+      "display_name": "SAM3 Interactive Segment",
+      "category": "sam3.segmentation",
+      "description": "通过 SAM3 和几何提示执行交互分割。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "prompts",
+          "display_name": "Prompts",
+          "payload_type_id": "prompt-regions.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "regions",
+          "display_name": "Regions",
+          "payload_type_id": "regions.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "summary",
+          "display_name": "Summary",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "model_scale": {
+            "type": "string",
+            "enum": [
+              "nano",
+              "tiny",
+              "s",
+              "m",
+              "l",
+              "x",
+              "xx"
+            ]
+          },
+          "device": {
+            "type": "string"
+          },
+          "precision": {
+            "type": "string",
+            "enum": [
+              "fp32",
+              "fp16",
+              "bf16"
+            ]
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "vision.segmentation",
+        "prompt.visual"
+      ],
+      "runtime_requirements": {
+        "python_packages": []
+      },
+      "node_pack_id": "sam3.segment-nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {
+        "phase": "implemented",
+        "supported_prompt_kinds": [
+          "box",
+          "point",
+          "polygon",
+          "mask"
+        ]
+      }
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.sam3.semantic-segment",
+      "display_name": "SAM3 Semantic Segment",
+      "category": "sam3.segmentation",
+      "description": "通过 SAM3 和文本提示执行语义分割。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "prompts",
+          "display_name": "Prompts",
+          "payload_type_id": "text-prompts.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "regions",
+          "display_name": "Regions",
+          "payload_type_id": "regions.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "summary",
+          "display_name": "Summary",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "model_scale": {
+            "type": "string",
+            "enum": [
+              "nano",
+              "tiny",
+              "s",
+              "m",
+              "l",
+              "x",
+              "xx"
+            ]
+          },
+          "device": {
+            "type": "string"
+          },
+          "precision": {
+            "type": "string",
+            "enum": [
+              "fp32",
+              "fp16",
+              "bf16"
+            ]
+          },
+          "tracking_mode": {
+            "type": "string",
+            "title": "视频跟踪模式",
+            "description": "shared 适合短窗口重复提示，stateful 适合上一帧 mask 延续，memory-prototype-state 适合作为默认中高强度模式，memory-attention-tracker 适合更长窗口、更大位移和复杂遮挡。",
+            "enum": [
+              "memory-prototype-state",
+              "memory-attention-tracker",
+              "stateful-mask-propagation",
+              "shared-prompts-across-window"
+            ],
+            "default": "memory-prototype-state"
+          },
+          "history_limit": {
+            "type": "integer",
+            "title": "历史长度",
+            "description": "memory-prototype-state 和 memory-attention-tracker 共用的跨帧历史长度。留空时默认按模式选择：memory-prototype-state=4，memory-attention-tracker=6。",
+            "minimum": 1
+          },
+          "prototype_momentum": {
+            "type": "number",
+            "title": "原型动量",
+            "description": "控制对象 prototype 的历史平滑程度。越大越稳定，越小越快跟随外观变化。",
+            "minimum": 0,
+            "maximum": 1,
+            "default": 0.7
+          },
+          "attention_temperature": {
+            "type": "number",
+            "title": "注意力温度",
+            "description": "仅 memory-attention-tracker 生效。越小越强调尖锐匹配，越大越平滑。",
+            "exclusiveMinimum": 0,
+            "default": 0.12
+          },
+          "prototype_blend_weight": {
+            "type": "number",
+            "title": "原型混合权重",
+            "description": "仅 memory-attention-tracker 生效。控制 prototype 相似图对最终 memory prompt 的影响强度。",
+            "minimum": 0,
+            "maximum": 1,
+            "default": 0.35
+          },
+          "max_memory_tokens_per_entry": {
+            "type": "integer",
+            "title": "单帧记忆 token 上限",
+            "description": "仅 memory-attention-tracker 生效。单帧目标区域可保留的 memory token 数量上限。",
+            "minimum": 1,
+            "default": 256
+          }
+        }
+      },
+      "parameter_ui_schema": {
+        "groups": [
+          {
+            "group_id": "runtime",
+            "display_name": "运行时",
+            "order": 0
+          },
+          {
+            "group_id": "tracking_basic",
+            "display_name": "跟踪基础",
+            "order": 1
+          },
+          {
+            "group_id": "tracking_advanced",
+            "display_name": "跟踪高级",
+            "order": 2
+          }
+        ],
+        "fields": [
+          {
+            "parameter_name": "model_scale",
+            "display_name": "模型 Scale",
+            "group_id": "runtime",
+            "order": 0
+          },
+          {
+            "parameter_name": "device",
+            "display_name": "运行设备",
+            "group_id": "runtime",
+            "order": 1
+          },
+          {
+            "parameter_name": "precision",
+            "display_name": "运行精度",
+            "group_id": "runtime",
+            "order": 2
+          },
+          {
+            "parameter_name": "tracking_mode",
+            "display_name": "视频跟踪模式",
+            "group_id": "tracking_basic",
+            "order": 10
+          },
+          {
+            "parameter_name": "history_limit",
+            "display_name": "历史长度",
+            "group_id": "tracking_basic",
+            "order": 11
+          },
+          {
+            "parameter_name": "prototype_momentum",
+            "display_name": "原型动量",
+            "group_id": "tracking_basic",
+            "order": 12
+          },
+          {
+            "parameter_name": "attention_temperature",
+            "display_name": "注意力温度",
+            "group_id": "tracking_advanced",
+            "order": 20
+          },
+          {
+            "parameter_name": "prototype_blend_weight",
+            "display_name": "原型混合权重",
+            "group_id": "tracking_advanced",
+            "order": 21
+          },
+          {
+            "parameter_name": "max_memory_tokens_per_entry",
+            "display_name": "单帧记忆 Token 上限",
+            "group_id": "tracking_advanced",
+            "order": 22
+          }
+        ]
+      },
+      "capability_tags": [
+        "vision.segmentation",
+        "prompt.text"
+      ],
+      "runtime_requirements": {
+        "python_packages": []
+      },
+      "node_pack_id": "sam3.segment-nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {
+        "phase": "implemented"
+      }
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.sam3.video-semantic-segment",
+      "display_name": "SAM3 Video Semantic Segment",
+      "category": "sam3.video",
+      "description": "通过 SAM3 和文本提示对 frame-window.v1 执行多帧语义分割，并输出 tracks.v1。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "input_ports": [
+        {
+          "name": "frames",
+          "display_name": "Frames",
+          "payload_type_id": "frame-window.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "prompts",
+          "display_name": "Prompts",
+          "payload_type_id": "text-prompts.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "tracks",
+          "display_name": "Tracks",
+          "payload_type_id": "tracks.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "summary",
+          "display_name": "Summary",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "model_scale": {
+            "type": "string",
+            "enum": [
+              "nano",
+              "tiny",
+              "s",
+              "m",
+              "l",
+              "x",
+              "xx"
+            ]
+          },
+          "device": {
+            "type": "string"
+          },
+          "precision": {
+            "type": "string",
+            "enum": [
+              "fp32",
+              "fp16",
+              "bf16"
+            ]
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "vision.segmentation",
+        "vision.tracking",
+        "prompt.text",
+        "video.processing"
+      ],
+      "runtime_requirements": {
+        "python_packages": []
+      },
+      "node_pack_id": "sam3.segment-nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {
+        "phase": "implemented",
+        "default_tracking_mode": "shared-text-prompts-across-window",
+        "track_strategy": "prompt-id-shared-text-prompts"
+      }
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.sam3.video-interactive-segment",
+      "display_name": "SAM3 Video Interactive Segment",
+      "category": "sam3.video",
+      "description": "通过 SAM3 和几何提示对 frame-window.v1 执行多帧交互分割，并输出 tracks.v1。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "input_ports": [
+        {
+          "name": "frames",
+          "display_name": "Frames",
+          "payload_type_id": "frame-window.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "prompts",
+          "display_name": "Prompts",
+          "payload_type_id": "prompt-regions.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "tracks",
+          "display_name": "Tracks",
+          "payload_type_id": "tracks.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "summary",
+          "display_name": "Summary",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "model_scale": {
+            "type": "string",
+            "enum": [
+              "nano",
+              "tiny",
+              "s",
+              "m",
+              "l",
+              "x",
+              "xx"
+            ]
+          },
+          "device": {
+            "type": "string"
+          },
+          "precision": {
+            "type": "string",
+            "enum": [
+              "fp32",
+              "fp16",
+              "bf16"
+            ]
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "vision.segmentation",
+        "vision.tracking",
+        "prompt.visual",
+        "video.processing"
+      ],
+      "runtime_requirements": {
+        "python_packages": []
+      },
+      "node_pack_id": "sam3.segment-nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {
+        "phase": "implemented",
+        "supported_prompt_kinds": [
+          "box",
+          "point",
+          "polygon",
+          "mask"
+        ],
+        "default_tracking_mode": "memory-prototype-state",
+        "tracking_modes": [
+          "memory-prototype-state",
+          "memory-attention-tracker",
+          "stateful-mask-propagation",
+          "shared-prompts-across-window"
+        ],
+        "track_strategy": "prompt-id-memory-capable-tracking",
+        "recommended_scene": "本地视频复盘、长窗口、多目标与复杂遮挡跟踪",
+        "example_template_source_uri": "docs/examples/workflows/sam3_video_memory_attention_review.template.json"
+      }
+    }
+  ],
+  "metadata": {}
+}

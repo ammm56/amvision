@@ -315,7 +315,7 @@ DatasetImport
 
 1. 选择 DatasetExport。
 2. 选择基础模型、训练配置、设备和输出选项。
-3. 调用 YOLOX training task 创建接口。
+3. 调用 detection training task 创建接口。
 4. 跳转 TrainingTaskDetailPage。
 5. 详情页展示 stage、percent、epoch、best metric、train metrics、validation metrics 和输出文件状态。
 6. 操作按钮只依据 `available_actions` 和 `control_status` 显示 save、pause、resume、terminate。
@@ -490,7 +490,7 @@ Bottom: events / logs / diagnostics
 2. Project 上下文、后端连接状态、错误处理和全局事件面板。
 3. Tasks 列表和详情，用它验证 REST 快照 + WebSocket 增量模式。
 4. Datasets 导入、导出和 DatasetVersion 详情。
-5. YOLOX training 任务创建、详情、控制按钮、指标和输出文件。
+5. detection training 任务创建、详情、控制按钮、指标和输出文件。
 6. Validation session、evaluation task、conversion task 和 ModelBuild 详情。
 7. DeploymentInstance 列表、详情、控制、事件和 inference task 调试。
 8. Custom Nodes 只读目录、node pack 来源、节点定义详情和 schema 预览。
@@ -535,4 +535,4 @@ Bottom: events / logs / diagnostics
 - [../api/workflows.md](../api/workflows.md)
 - [../api/datasets-imports.md](../api/datasets-imports.md)
 - [../api/datasets-exports.md](../api/datasets-exports.md)
-- [../api/yolox-training.md](../api/yolox-training.md)
+- [../api/detection-training.md](../api/detection-training.md)

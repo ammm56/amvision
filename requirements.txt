@@ -3,21 +3,31 @@
 # 基础依赖
 fastapi[standard]>=0.136
 SQLAlchemy>=2.0
+pydantic>=2.13.2
 pydantic-settings>=2.0
+PyYAML>=6.0.3,<7
 packaging>=24,<26
 chardet>=5.2,<6
 numpy>=2.2,<3
 opencv-python>=4.11,<5
+Pillow>=12.2.0,<13
+regex>=2026.5.0,<2027
 tensorboard>=2.19,<3
 torch==2.8.0
 torchvision==0.23.0
+transformers>=5.9.0,<6
+httpx2>=2.3,<3
 
 # 开发工具依赖
 pytest>=8.3,<9
 ruff>=0.15.12,<0.20
 
+# 数据库迁移
+alembic>=1.18,<2
+
 # COCO 数据集与评估
 pycocotools>=2.0.8,<3
+scipy>=1.17,<2
 
 # ONNX 导出与简化
 onnx>=1.18,<2
@@ -39,6 +49,10 @@ zxing-cpp>=3.0,<4
 
 # 图触发调用层依赖
 pyzmq>=27.1.0,<30
+watchfiles>=1.2,<2
+
+# 可选
+psutil>=7.2.2,<8
 
 # 如需通过 PyTorch 官方 CUDA 12.8 源安装：
 # pip install torch==2.8.0 torchvision==0.23.0 torchaudio==2.8.0 --index-url https://download.pytorch.org/whl/cu128

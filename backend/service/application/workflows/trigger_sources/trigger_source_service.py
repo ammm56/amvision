@@ -27,6 +27,8 @@ if TYPE_CHECKING:
 
 
 _TRIGGER_KINDS = {
+    "directory-poll",
+    "directory-watch",
     "plc-register",
     "mqtt-topic",
     "zeromq-topic",
@@ -376,7 +378,7 @@ class WorkflowTriggerSourceService:
         skipped_count = 0
         failed_count = 0
         for trigger_source in trigger_sources:
-            if not self._is_adapter_supported(trigger_source):
+            if self.trigger_source_supervisor is None:
                 skipped_count += 1
                 continue
             updated_source = self._start_trigger_source_if_supported(
@@ -465,8 +467,30 @@ class WorkflowTriggerSourceService:
         """在已配置 adapter 时启动 TriggerSource。"""
 
         supervisor = self.trigger_source_supervisor
-        if supervisor is None or not supervisor.supports_trigger_source(trigger_source):
+        if supervisor is None:
             return trigger_source
+        if not supervisor.supports_trigger_source(trigger_source):
+            error = InvalidRequestError(
+                "当前 TriggerSource 类型尚未接入可用 adapter，无法启用",
+                details={
+                    "trigger_source_id": trigger_source.trigger_source_id,
+                    "trigger_kind": trigger_source.trigger_kind,
+                    "available_adapters": _list_available_adapter_keys(supervisor),
+                },
+            )
+            failed_source = self._mark_trigger_source_failed(
+                trigger_source,
+                error_message=error.message,
+                error_details={
+                    "error_code": error.code,
+                    "trigger_kind": trigger_source.trigger_kind,
+                    "available_adapters": _list_available_adapter_keys(supervisor),
+                },
+                adapter_configured=False,
+            )
+            if raise_on_error:
+                raise error
+            return failed_source
         try:
             if not supervisor.is_trigger_source_managed(
                 trigger_source.trigger_source_id
@@ -578,6 +602,7 @@ class WorkflowTriggerSourceService:
         *,
         error_message: str,
         error_details: dict[str, object],
+        adapter_configured: bool = True,
     ) -> WorkflowTriggerSource:
         """把 TriggerSource 标记为 adapter 启动失败。"""
 
@@ -585,7 +610,10 @@ class WorkflowTriggerSourceService:
             trigger_source,
             observed_state="failed",
             last_error=error_message,
-            health_summary=_build_adapter_failed_health_summary(error_details),
+            health_summary=_build_adapter_failed_health_summary(
+                error_details,
+                adapter_configured=adapter_configured,
+            ),
             updated_at=_now_isoformat(),
         )
         self._save_trigger_source(updated_source)
@@ -667,11 +695,13 @@ def _build_supervisor_health_summary(
 
 def _build_adapter_failed_health_summary(
     error_details: dict[str, object],
+    *,
+    adapter_configured: bool,
 ) -> dict[str, object]:
     """构造 adapter 启动失败时的 health_summary。"""
 
     return {
-        "adapter_configured": True,
+        "adapter_configured": adapter_configured,
         "adapter_running": False,
         "request_count": 0,
         "request_count_rollover_count": 0,
@@ -683,6 +713,15 @@ def _build_adapter_failed_health_summary(
         "timeout_count_rollover_count": 0,
         "recent_error": dict(error_details),
     }
+
+
+def _list_available_adapter_keys(supervisor: object) -> list[str]:
+    """读取当前 supervisor 已注册的 adapter key 列表。"""
+
+    adapters = getattr(supervisor, "adapters", {})
+    if not isinstance(adapters, dict):
+        return []
+    return sorted(str(key) for key in adapters.keys())
 
 
 def _as_int(value: object) -> int:

@@ -18,7 +18,7 @@ LAUNCHERS_ROOT = Path(__file__).resolve().parent / "launchers"
 if str(LAUNCHERS_ROOT) not in sys.path:
     sys.path.insert(0, str(LAUNCHERS_ROOT))
 
-from common import load_json_file, resolve_app_root, resolve_path
+from common import is_pid_alive, load_json_file, resolve_app_root, resolve_path
 
 
 def build_argument_parser() -> argparse.ArgumentParser:
@@ -130,17 +130,7 @@ def _pid_is_alive(pid: int) -> bool:
     - bool：进程仍然存活时返回 True，否则返回 False。
     """
 
-    if pid <= 0:
-        return False
-    try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        return True
-    except OSError:
-        return False
-    return True
+    return is_pid_alive(pid)
 
 
 def _ensure_stack_not_running(state_file_path: Path) -> None:

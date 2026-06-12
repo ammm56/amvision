@@ -5,19 +5,19 @@ from __future__ import annotations
 from pathlib import Path
 from threading import Thread
 
-from backend.service.application.deployments.yolox_deployment_service import (
+from backend.service.application.deployments.deployment_instance_service import (
     _resolve_process_runtime_behavior,
 )
-from backend.service.application.runtime.yolox_deployment_process_supervisor import (
-    YoloXDeploymentProcessConfig,
-    YoloXDeploymentProcessRuntimeBehavior,
+from backend.service.application.runtime.deployment_process_supervisor import (
+    DeploymentProcessConfig,
+    DeploymentProcessRuntimeBehavior,
 )
 from backend.service.application.runtime.safe_counter import (
     JSON_SAFE_INTEGER_MAX,
     SafeCounterState,
     increment_safe_counter,
 )
-from backend.service.application.runtime.yolox_deployment_process_worker import (
+from backend.service.application.runtime.deployment_process_worker import (
     _DeploymentWarmupBehavior,
     _KeepWarmState,
     _LocalBufferBrokerRuntimeHealth,
@@ -27,11 +27,11 @@ from backend.service.application.runtime.yolox_deployment_process_worker import 
     _snapshot_local_buffer_health,
     _snapshot_keep_warm_state,
 )
-from backend.service.application.runtime.yolox_inference_runtime_pool import (
-    YoloXDeploymentRuntimePoolConfig,
+from backend.service.application.runtime.deployment_runtime_pool import (
+    DeploymentRuntimePoolConfig,
 )
-from backend.service.application.runtime.yolox_predictor import YoloXPredictionRequest
-from backend.service.application.runtime.yolox_runtime_target import RuntimeTargetSnapshot
+from backend.service.application.runtime.detection_runtime_contracts import DetectionPredictionRequest
+from backend.service.application.runtime.runtime_target import RuntimeTargetSnapshot
 from backend.service.settings import BackendServiceDeploymentProcessSupervisorConfig
 
 
@@ -54,13 +54,13 @@ class _FakeRuntimePool:
         self.stop_state = stop_state
         self.error_message = error_message
         self.call_count = 0
-        self.requests: list[YoloXPredictionRequest] = []
+        self.requests: list[DetectionPredictionRequest] = []
 
     def run_inference(
         self,
         *,
-        config: YoloXDeploymentRuntimePoolConfig,
-        request: YoloXPredictionRequest,
+        config: DeploymentRuntimePoolConfig,
+        request: DetectionPredictionRequest,
     ) -> None:
         """记录一次 fake 推理调用。
 
@@ -110,7 +110,7 @@ def test_resolve_process_runtime_behavior_reads_deployment_metadata_namespace() 
         }
     )
 
-    assert behavior == YoloXDeploymentProcessRuntimeBehavior(
+    assert behavior == DeploymentProcessRuntimeBehavior(
         warmup_dummy_inference_count=12,
         warmup_dummy_image_size=(80, 48),
         keep_warm_enabled=True,
@@ -123,11 +123,11 @@ def test_resolve_process_runtime_behavior_reads_deployment_metadata_namespace() 
 def test_resolve_warmup_behavior_merges_supervisor_defaults_and_deployment_overrides(tmp_path: Path) -> None:
     """验证 worker 会优先使用 deployment 覆盖值，并保留 supervisor 默认值。"""
 
-    config = YoloXDeploymentProcessConfig(
+    config = DeploymentProcessConfig(
         deployment_instance_id="deployment-instance-keep-warm-1",
         runtime_target=_build_runtime_target(tmp_path),
         instance_count=1,
-        runtime_behavior=YoloXDeploymentProcessRuntimeBehavior(
+        runtime_behavior=DeploymentProcessRuntimeBehavior(
             warmup_dummy_inference_count=9,
             keep_warm_enabled=True,
         ),
@@ -156,12 +156,12 @@ def test_run_dummy_warmup_passes_executes_requested_count(tmp_path: Path) -> Non
     """验证真实 warmup 会按指定次数执行 dummy infer。"""
 
     runtime_pool = _FakeRuntimePool()
-    runtime_pool_config = YoloXDeploymentRuntimePoolConfig(
+    runtime_pool_config = DeploymentRuntimePoolConfig(
         deployment_instance_id="deployment-instance-warmup-1",
         runtime_target=_build_runtime_target(tmp_path),
         instance_count=1,
     )
-    dummy_request = YoloXPredictionRequest(
+    dummy_request = DetectionPredictionRequest(
         input_image_bytes=b"dummy-image-bytes",
         score_threshold=0.3,
         save_result_image=False,
@@ -183,7 +183,7 @@ def test_keep_warm_loop_runs_after_activation_and_stops_cleanly(tmp_path: Path) 
     """验证 keep-warm 线程激活后会执行 dummy infer，并能及时退出。"""
 
     keep_warm_state = _KeepWarmState(
-        dummy_request=YoloXPredictionRequest(
+        dummy_request=DetectionPredictionRequest(
             input_image_bytes=b"dummy-image-bytes",
             score_threshold=0.3,
             save_result_image=False,
@@ -192,7 +192,7 @@ def test_keep_warm_loop_runs_after_activation_and_stops_cleanly(tmp_path: Path) 
     )
     keep_warm_state.activated_event.set()
     runtime_pool = _FakeRuntimePool(stop_state=keep_warm_state)
-    runtime_pool_config = YoloXDeploymentRuntimePoolConfig(
+    runtime_pool_config = DeploymentRuntimePoolConfig(
         deployment_instance_id="deployment-instance-keep-warm-2",
         runtime_target=_build_runtime_target(tmp_path),
         instance_count=1,
@@ -231,7 +231,7 @@ def test_keep_warm_loop_rolls_success_counter_and_exposes_rollover_count(tmp_pat
     """验证 keep-warm 成功计数到达安全上限后会 rollover，并继续通过快照对外可观测。"""
 
     keep_warm_state = _KeepWarmState(
-        dummy_request=YoloXPredictionRequest(
+        dummy_request=DetectionPredictionRequest(
             input_image_bytes=b"dummy-image-bytes",
             score_threshold=0.3,
             save_result_image=False,
@@ -241,7 +241,7 @@ def test_keep_warm_loop_rolls_success_counter_and_exposes_rollover_count(tmp_pat
     )
     keep_warm_state.activated_event.set()
     runtime_pool = _FakeRuntimePool(stop_state=keep_warm_state)
-    runtime_pool_config = YoloXDeploymentRuntimePoolConfig(
+    runtime_pool_config = DeploymentRuntimePoolConfig(
         deployment_instance_id="deployment-instance-keep-warm-rollover-1",
         runtime_target=_build_runtime_target(tmp_path),
         instance_count=1,
@@ -283,7 +283,7 @@ def test_snapshot_keep_warm_state_exposes_last_error(tmp_path: Path) -> None:
     """验证 keep-warm 状态快照会暴露最近一次失败错误。"""
 
     keep_warm_state = _KeepWarmState(
-        dummy_request=YoloXPredictionRequest(
+        dummy_request=DetectionPredictionRequest(
             input_image_bytes=b"dummy-image-bytes",
             score_threshold=0.3,
             save_result_image=False,
@@ -296,7 +296,7 @@ def test_snapshot_keep_warm_state_exposes_last_error(tmp_path: Path) -> None:
         stop_state=keep_warm_state,
         error_message="keep warm infer failed",
     )
-    runtime_pool_config = YoloXDeploymentRuntimePoolConfig(
+    runtime_pool_config = DeploymentRuntimePoolConfig(
         deployment_instance_id="deployment-instance-keep-warm-3",
         runtime_target=_build_runtime_target(tmp_path),
         instance_count=1,

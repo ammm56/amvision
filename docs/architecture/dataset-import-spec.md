@@ -11,7 +11,7 @@
 - 数据集导入对象链与生命周期
 - 外部数据集格式识别、显式声明和导入校验规则
 - 通用数据格式的字段定义和任务类型拆分
-- detection、instance segmentation、semantic segmentation、pose 的导入格式与导出格式矩阵
+- detection、segmentation、semantic segmentation、pose 的导入格式与导出格式矩阵
 - DatasetVersion 与数据集导出的关系
 
 ## 非目标
@@ -102,7 +102,7 @@ Project
 ### 最小导入声明
 
 - format type：如 yolo, coco, voc, masks, custom-json
-- task type：如 detection, instance-segmentation, semantic-segmentation, pose
+- task type：如 detection, segmentation, semantic-segmentation, pose
 - image root
 - annotation root 或 manifest file
 - split strategy：显式 train/val/test 或导入后切分
@@ -417,7 +417,7 @@ versions/{dataset_version_id}/
 
 - 统一平台内部对样本、类别和标注的管理方式
 - 支撑多种外部格式导入和多种数据集导出格式
-- 把 detection、instance segmentation、semantic segmentation、pose 区分为不同任务类型，但共享统一的样本与版本管理边界
+- 把 detection、segmentation、semantic segmentation、pose 区分为不同任务类型，但共享统一的样本与版本管理边界
 
 ### 公共结构
 
@@ -475,7 +475,7 @@ versions/{dataset_version_id}/
 - area
 - optional rotation
 
-### instance segmentation 载荷
+### segmentation 载荷
 
 - polygon list 或 mask_ref
 - optional bbox_xywh_abs
@@ -530,7 +530,7 @@ versions/{dataset_version_id}/
          "type": "string",
          "enum": [
             "detection",
-            "instance-segmentation",
+            "segmentation",
             "semantic-segmentation",
             "pose"
          ]
@@ -1008,7 +1008,7 @@ versions/{dataset_version_id}/
                ],
                "properties": {
                   "task_type": {
-                     "const": "instance-segmentation"
+                     "const": "segmentation"
                   },
                   "payload": {
                      "$ref": "#/$defs/instance_segmentation_payload"
@@ -1110,11 +1110,11 @@ versions/{dataset_version_id}/
 | 常见模型/后端 | YOLOX, YOLOv8 detection, YOLOv11 detection, RT-DETR |
 | 说明 | RT-DETR 与 YOLO 可以共用 detection 通用格式，但导出格式通常不同 |
 
-### instance segmentation
+### segmentation
 
 | 项目 | 内容 |
 | --- | --- |
-| 任务类型 | instance-segmentation |
+| 任务类型 | segmentation |
 | 第一阶段导入格式 | COCO instance segmentation, YOLO segmentation |
 | 扩展导入格式 | LabelMe polygon json, CVAT polygon export, Supervisely instance export |
 | 第一阶段导出格式 | COCO instance segmentation, YOLO segmentation |
@@ -1146,11 +1146,35 @@ versions/{dataset_version_id}/
 | 常见模型/后端 | YOLO pose, keypoint estimation pipelines |
 | 说明 | pose 除类别外还需要 keypoint schema 与 skeleton 定义，不能只靠 bbox 或类别表描述 |
 
+### classification
+
+| 项目 | 内容 |
+| --- | --- |
+| 任务类型 | classification |
+| 第一阶段导入格式 | ImageNet 风格 class directory |
+| 扩展导入格式 | custom classification manifest, CSV label list |
+| 第一阶段导出格式 | imagenet-classification-v1 |
+| 扩展导出格式 | backend-specific classification manifest |
+| 常见模型/后端 | YOLOv8/11/26 classification |
+| 说明 | 当前导出会同时保留 ImageNet 风格目录和 split annotation json，便于项目内训练/评估直接消费 |
+
+### obb
+
+| 项目 | 内容 |
+| --- | --- |
+| 任务类型 | obb |
+| 第一阶段导入格式 | DOTA OBB |
+| 扩展导入格式 | COCO + angle, YOLO OBB label |
+| 第一阶段导出格式 | dota-obb-v1 |
+| 扩展导出格式 | backend-specific obb manifest |
+| 常见模型/后端 | YOLOv8/11/26 obb |
+| 说明 | 当前统一内部表示会保留 axis-aligned bbox 和 polygon 四角点，不再把旋转框继续塞进 detection 专用结构 |
+
 ## 模型与数据集导出格式的关系
 
 - YOLO 系列通常直接消费 YOLO detection、YOLO segmentation、YOLO pose 数据集导出格式
 - RT-DETR 更适合消费 COCO detection 风格数据集导出格式
-- SAM 相关流程更适合消费 instance segmentation 或 semantic segmentation 的通用数据格式，再按具体训练或微调工具导出成对应格式
+- SAM 相关流程更适合消费 segmentation 或 semantic segmentation 的通用数据格式，再按具体训练或微调工具导出成对应格式
 - 同一 DatasetVersion 可以对应多个数据集导出结果，但这些结果都应追溯到同一个固定版本
 
 更细的格式命名、目录结构和模型默认格式映射见 [docs/architecture/dataset-export-formats.md](dataset-export-formats.md)。

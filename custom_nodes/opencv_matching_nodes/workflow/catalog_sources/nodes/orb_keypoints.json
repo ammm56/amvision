@@ -1,0 +1,112 @@
+{
+  "format_id": "amvision.node-definition.v1",
+  "node_type_id": "custom.opencv.orb-keypoints",
+  "display_name": "ORB Keypoints",
+  "category": "opencv.matching",
+  "description": "对输入图片提取 ORB 局部特征点与二进制描述，适合在模板匹配不稳、存在旋转缩放或局部视角变化时做参考对位前处理。",
+  "implementation_kind": "custom-node",
+  "runtime_kind": "python-callable",
+  "input_ports": [
+    {
+      "name": "image",
+      "display_name": "Image",
+      "payload_type_id": "image-ref.v1"
+    },
+    {
+      "name": "roi",
+      "display_name": "ROI",
+      "payload_type_id": "roi.v1",
+      "required": false
+    }
+  ],
+  "output_ports": [
+    {
+      "name": "features",
+      "display_name": "Features",
+      "payload_type_id": "local-features.v1"
+    },
+    {
+      "name": "summary",
+      "display_name": "Summary",
+      "payload_type_id": "value.v1"
+    }
+  ],
+  "parameter_schema": {
+    "type": "object",
+    "properties": {
+      "max_features": {
+        "type": "integer",
+        "minimum": 1,
+        "default": 500
+      },
+      "scale_factor": {
+        "type": "number",
+        "exclusiveMinimum": 1.0,
+        "default": 1.2
+      },
+      "level_count": {
+        "type": "integer",
+        "minimum": 1,
+        "default": 8
+      },
+      "edge_threshold": {
+        "type": "integer",
+        "minimum": 1,
+        "default": 31
+      },
+      "first_level": {
+        "type": "integer",
+        "minimum": 0,
+        "default": 0
+      },
+      "wta_k": {
+        "type": "integer",
+        "enum": [
+          2,
+          3,
+          4
+        ],
+        "default": 2
+      },
+      "score_type": {
+        "type": "string",
+        "enum": [
+          "harris",
+          "fast"
+        ],
+        "default": "harris"
+      },
+      "patch_size": {
+        "type": "integer",
+        "minimum": 1,
+        "default": 31
+      },
+      "fast_threshold": {
+        "type": "integer",
+        "minimum": 0,
+        "default": 20
+      },
+      "use_roi_mask": {
+        "type": "boolean",
+        "default": true
+      },
+      "feature_id_prefix": {
+        "type": "string",
+        "default": "orb"
+      }
+    }
+  },
+  "capability_tags": [
+    "opencv.orb-keypoints",
+    "vision.matching",
+    "vision.feature"
+  ],
+  "runtime_requirements": {
+    "python_packages": [
+      "opencv-python",
+      "numpy"
+    ]
+  },
+  "node_pack_id": "opencv.matching-nodes",
+  "node_pack_version": "0.1.0"
+}

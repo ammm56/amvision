@@ -42,42 +42,42 @@ import pytest
     ),
     [
         (
-            "/api/v1/models/yolox/conversion-tasks/onnx",
+            "/api/v1/models/detection/conversion-tasks/onnx",
             ["onnx"],
             ["onnx"],
             "phase-1-onnx",
             {},
         ),
         (
-            "/api/v1/models/yolox/conversion-tasks/onnx-optimized",
+            "/api/v1/models/detection/conversion-tasks/onnx-optimized",
             ["onnx-optimized"],
             ["onnx", "onnx-optimized"],
             "phase-1-onnx",
             {},
         ),
         (
-            "/api/v1/models/yolox/conversion-tasks/openvino-ir-fp32",
+            "/api/v1/models/detection/conversion-tasks/openvino-ir-fp32",
             ["openvino-ir"],
             ["onnx", "onnx-optimized", "openvino-ir"],
             "phase-2-openvino-ir",
             {"openvino_ir_precision": "fp32"},
         ),
         (
-            "/api/v1/models/yolox/conversion-tasks/openvino-ir-fp16",
+            "/api/v1/models/detection/conversion-tasks/openvino-ir-fp16",
             ["openvino-ir"],
             ["onnx", "onnx-optimized", "openvino-ir"],
             "phase-2-openvino-ir",
             {"openvino_ir_precision": "fp16"},
         ),
         (
-            "/api/v1/models/yolox/conversion-tasks/tensorrt-engine-fp32",
+            "/api/v1/models/detection/conversion-tasks/tensorrt-engine-fp32",
             ["tensorrt-engine"],
             ["onnx", "onnx-optimized", "tensorrt-engine"],
             "phase-2-tensorrt-engine",
             {"tensorrt_engine_precision": "fp32"},
         ),
         (
-            "/api/v1/models/yolox/conversion-tasks/tensorrt-engine-fp16",
+            "/api/v1/models/detection/conversion-tasks/tensorrt-engine-fp16",
             ["tensorrt-engine"],
             ["onnx", "onnx-optimized", "tensorrt-engine"],
             "phase-2-tensorrt-engine",
@@ -115,6 +115,7 @@ def test_create_yolox_conversion_task_and_read_result_after_worker(
                 headers=_build_headers(),
                 json={
                     "project_id": "project-1",
+                    "model_type": "yolox",
                     "source_model_version_id": source_model_version_id,
                     "runtime_profile_id": None,
                     "extra_options": {},
@@ -127,14 +128,14 @@ def test_create_yolox_conversion_task_and_read_result_after_worker(
             assert submission["target_formats"] == expected_target_formats
 
             pending_result_response = client.get(
-                f"/api/v1/models/yolox/conversion-tasks/{task_id}/result",
+                f"/api/v1/models/detection/conversion-tasks/{task_id}/result",
                 headers=_build_headers(),
             )
             assert pending_result_response.status_code == 200
             assert pending_result_response.json()["file_status"] == "pending"
 
             pending_detail_response = client.get(
-                f"/api/v1/models/yolox/conversion-tasks/{task_id}",
+                f"/api/v1/models/detection/conversion-tasks/{task_id}",
                 headers=_build_headers(),
             )
             assert pending_detail_response.status_code == 200
@@ -143,7 +144,7 @@ def test_create_yolox_conversion_task_and_read_result_after_worker(
             assert worker.run_once() is True
 
             detail_response = client.get(
-                f"/api/v1/models/yolox/conversion-tasks/{task_id}",
+                f"/api/v1/models/detection/conversion-tasks/{task_id}",
                 headers=_build_headers(),
             )
             assert detail_response.status_code == 200
@@ -177,7 +178,7 @@ def test_create_yolox_conversion_task_and_read_result_after_worker(
                 ]
 
             result_response = client.get(
-                f"/api/v1/models/yolox/conversion-tasks/{task_id}/result",
+                f"/api/v1/models/detection/conversion-tasks/{task_id}/result",
                 headers=_build_headers(),
             )
             assert result_response.status_code == 200
@@ -189,7 +190,7 @@ def test_create_yolox_conversion_task_and_read_result_after_worker(
             assert result_payload["payload"]["conversion_options"] == expected_conversion_options
 
             list_response = client.get(
-                f"/api/v1/models/yolox/conversion-tasks?project_id=project-1&source_model_version_id={source_model_version_id}",
+                f"/api/v1/models/detection/conversion-tasks?project_id=project-1&source_model_version_id={source_model_version_id}",
                 headers=_build_headers(),
             )
             assert list_response.status_code == 200
@@ -413,3 +414,4 @@ def _build_expected_conversion_options(request: YoloXConversionRunRequest) -> di
             request.metadata.get("tensorrt_engine_precision") or "fp32"
         )
     return options
+

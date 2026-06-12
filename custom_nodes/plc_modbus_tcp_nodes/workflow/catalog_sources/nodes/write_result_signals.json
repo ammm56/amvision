@@ -1,0 +1,216 @@
+{
+  "format_id": "amvision.node-definition.v1",
+  "node_type_id": "custom.plc.modbus.write-result-signals",
+  "display_name": "Write Modbus Result Signals",
+  "category": "integration.plc",
+  "description": "把 result-record/alarm-record 中的 OK/NG、报警位和结果码映射到 Modbus TCP coils 或 holding registers，适合现场结果回写。",
+  "implementation_kind": "custom-node",
+  "runtime_kind": "python-callable",
+  "input_ports": [
+    {
+      "name": "result",
+      "display_name": "Result",
+      "payload_type_id": "result-record.v1"
+    },
+    {
+      "name": "alarm",
+      "display_name": "Alarm",
+      "payload_type_id": "alarm-record.v1",
+      "required": false
+    },
+    {
+      "name": "request",
+      "display_name": "Request",
+      "payload_type_id": "value.v1",
+      "required": false
+    }
+  ],
+  "output_ports": [
+    {
+      "name": "result",
+      "display_name": "Result",
+      "payload_type_id": "value.v1"
+    }
+  ],
+  "parameter_schema": {
+    "type": "object",
+    "properties": {
+      "host": {
+        "type": "string",
+        "title": "Host"
+      },
+      "port": {
+        "type": "integer",
+        "title": "Port",
+        "default": 502,
+        "minimum": 1,
+        "maximum": 65535
+      },
+      "unit_id": {
+        "type": "integer",
+        "title": "Unit ID",
+        "default": 1,
+        "minimum": 1,
+        "maximum": 255
+      },
+      "timeout_seconds": {
+        "type": "number",
+        "title": "Timeout Seconds",
+        "default": 3.0,
+        "exclusiveMinimum": 0
+      },
+      "retries": {
+        "type": "integer",
+        "title": "Retries",
+        "default": 1,
+        "minimum": 0
+      },
+      "continue_on_error": {
+        "type": "boolean",
+        "title": "Continue On Error",
+        "default": false
+      },
+      "default_word_order": {
+        "type": "string",
+        "title": "Default Word Order",
+        "default": "big",
+        "enum": [
+          "big",
+          "little"
+        ]
+      },
+      "default_byte_position": {
+        "type": "string",
+        "title": "Default Byte Position",
+        "default": "low",
+        "enum": [
+          "low",
+          "high"
+        ]
+      },
+      "default_string_encoding": {
+        "type": "string",
+        "title": "Default String Encoding",
+        "default": "utf-8"
+      },
+      "signal_mappings": {
+        "type": "array",
+        "title": "Signal Mappings",
+        "minItems": 1,
+        "items": {
+          "type": "object",
+          "properties": {
+            "signal_name": {
+              "type": "string",
+              "title": "Signal Name"
+            },
+            "enabled": {
+              "type": "boolean",
+              "title": "Enabled",
+              "default": true
+            },
+            "source_scope": {
+              "type": "string",
+              "title": "Source Scope",
+              "enum": [
+                "result",
+                "alarm",
+                "request",
+                "literal"
+              ]
+            },
+            "source_path": {
+              "type": "string",
+              "title": "Source Path"
+            },
+            "register_address": {
+              "type": "string",
+              "title": "Register Address",
+              "examples": [
+                "00001",
+                "400001"
+              ]
+            },
+            "data_type": {
+              "type": "string",
+              "title": "Data Type",
+              "enum": [
+                "bool",
+                "uint8",
+                "int8",
+                "uint16",
+                "int16",
+                "uint32",
+                "int32",
+                "uint64",
+                "int64",
+                "float",
+                "double",
+                "string"
+              ]
+            },
+            "literal_value": {
+              "title": "Literal Value"
+            },
+            "true_value": {
+              "title": "True Value"
+            },
+            "false_value": {
+              "title": "False Value"
+            },
+            "word_order": {
+              "type": "string",
+              "title": "Word Order",
+              "enum": [
+                "big",
+                "little"
+              ]
+            },
+            "byte_position": {
+              "type": "string",
+              "title": "Byte Position",
+              "enum": [
+                "low",
+                "high"
+              ]
+            },
+            "string_length": {
+              "type": "integer",
+              "title": "String Length(Bytes)",
+              "minimum": 1
+            },
+            "string_encoding": {
+              "type": "string",
+              "title": "String Encoding"
+            },
+            "skip_when_missing": {
+              "type": "boolean",
+              "title": "Skip When Missing",
+              "default": true
+            }
+          },
+          "required": [
+            "signal_name",
+            "source_scope",
+            "register_address",
+            "data_type"
+          ]
+        }
+      }
+    },
+    "required": [
+      "host",
+      "signal_mappings"
+    ]
+  },
+  "capability_tags": [
+    "integration.plc",
+    "integration.modbus.write",
+    "integration.modbus.result-write"
+  ],
+  "runtime_requirements": {
+    "python_packages": []
+  },
+  "node_pack_id": "plc.modbus-tcp-nodes",
+  "node_pack_version": "0.1.0"
+}

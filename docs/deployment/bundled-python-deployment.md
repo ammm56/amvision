@@ -55,9 +55,12 @@
 
 当前 `assemble-release` 的 bundled Python 处理规则如下：
 
-- 组装阶段不会复制仓库内的 Python 运行时；发布包里的 `python/` 继续按人工复制处理。
-- 如果覆盖已有发布目录，组装阶段会先把旧的 `python/` 目录临时移动到旁路目录，完成发布目录重建后再移动回来，不做目录覆盖。
-- 如果当前发布目录原本没有 `python/`，组装阶段会创建空的 `python/` 目录，并在 release manifest 中把 bundled Python 状态标记为 `placeholder-empty`，用于明确提示这一步仍需手工补齐。
+- 仓库默认不写任何系统绝对路径；bundled Python 是否重建，应由现场目录内容或显式本地配置决定。
+- 如果覆盖已有发布目录，组装阶段会先把旧的 `python/` 目录临时移动到旁路目录，完成发布目录重建后再移动回来。
+- 如果 release 组装失败，暂存的 `python/` 目录会恢复回发布目录，避免失败时丢失原有运行时。
+- 只有在显式提供 bundled Python 来源目录时，才会重建发布目录里的 `python/`。
+- 如需一次性重建 bundled Python，可通过 `python -m backend.maintenance.main assemble-release --bundled-python-source-dir <目录>` 显式指定来源。
+- 如果当前发布目录原本没有 `python/`，且这次也没有显式提供 bundled Python 来源目录，组装阶段才会创建空的 `python/` 目录，并在 release manifest 中把 bundled Python 状态标记为 `placeholder-empty`。
 
 ### 4. 启动 backend-service
 

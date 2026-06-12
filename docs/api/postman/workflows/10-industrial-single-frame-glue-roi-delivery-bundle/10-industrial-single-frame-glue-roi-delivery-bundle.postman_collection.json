@@ -1,0 +1,516 @@
+{
+  "info": {
+    "_postman_id": "amvision-workflow-10",
+    "name": "amvision workflow 10 industrial single frame glue roi delivery bundle",
+    "description": "第十类工业单帧 ROI 规则与结果交付全链 workflow app 调试 collection，覆盖 PLC 回写、JSON/CSV 归档、MES HTTP 与 Local DB 归档。",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://127.0.0.1:8000"
+    },
+    {
+      "key": "projectId",
+      "value": "project-1"
+    },
+    {
+      "key": "previewRunId",
+      "value": ""
+    },
+    {
+      "key": "workflowRuntimeId",
+      "value": ""
+    },
+    {
+      "key": "workflowRunId",
+      "value": ""
+    },
+    {
+      "key": "deploymentInstanceId",
+      "value": "replace-with-existing-deployment-instance-id"
+    },
+    {
+      "key": "datasetId",
+      "value": "dataset-1"
+    },
+    {
+      "key": "datasetVersionId",
+      "value": "dataset-version-1"
+    },
+    {
+      "key": "datasetExportId",
+      "value": "dataset-export-1"
+    },
+    {
+      "key": "modelVersionId",
+      "value": "model-version-1"
+    },
+    {
+      "key": "accessToken",
+      "value": "amvision-default-user-token"
+    }
+  ],
+  "item": [
+    {
+      "name": "Save Template",
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/projects/{{projectId}}/templates/industrial-single-frame-glue-roi-delivery-bundle-template/versions/1.0.0",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "workflows",
+            "projects",
+            "{{projectId}}",
+            "templates",
+            "industrial-single-frame-glue-roi-delivery-bundle-template",
+            "versions",
+            "1.0.0"
+          ]
+        },
+        "description": "保存 industrial_single_frame_glue_roi_delivery_bundle 的 workflow template。",
+        "body": {
+          "mode": "raw",
+          "raw": "{\r\n  \"template\": {\r\n    \"format_id\": \"amvision.workflow-graph-template.v1\",\r\n    \"template_id\": \"industrial-single-frame-glue-roi-delivery-bundle-template\",\r\n    \"template_version\": \"1.0.0\",\r\n    \"display_name\": \"Industrial Single Frame Glue ROI Delivery Bundle\",\r\n    \"description\": \"面向工业单帧现场的 ROI 规则与结果交付全链样例。输入本地图像路径、上游 regions.v1，以及运行时交付上下文；执行覆盖率和偏移检查，把结果先写入 Modbus 点位，再完成本地 JSON/CSV 归档，最后把同一份 result-record 继续送到 MES HTTP 和本地数据库归档节点。\",\r\n    \"nodes\": [\r\n      {\r\n        \"node_id\": \"request_image_path_input\",\r\n        \"node_type_id\": \"core.io.template-input.value\",\r\n        \"parameters\": {}\r\n      },\r\n      {\r\n        \"node_id\": \"request_delivery_context_input\",\r\n        \"node_type_id\": \"core.io.template-input.value\",\r\n        \"parameters\": {}\r\n      },\r\n      {\r\n        \"node_id\": \"load_image\",\r\n        \"node_type_id\": \"core.io.image-load-local\",\r\n        \"parameters\": {}\r\n      },\r\n      {\r\n        \"node_id\": \"filter_regions\",\r\n        \"node_type_id\": \"core.vision.regions-filter\",\r\n        \"parameters\": {\r\n          \"class_names\": [\r\n            \"glue\"\r\n          ],\r\n          \"min_score\": 0.6\r\n        }\r\n      },\r\n      {\r\n        \"node_id\": \"create_roi\",\r\n        \"node_type_id\": \"core.vision.roi-create\",\r\n        \"parameters\": {\r\n          \"roi_kind\": \"bbox\",\r\n          \"roi_id\": \"glue-roi\",\r\n          \"display_name\": \"Glue ROI\",\r\n          \"bbox_xyxy\": [\r\n            200,\r\n            150,\r\n            1080,\r\n            620\r\n          ]\r\n        }\r\n      },\r\n      {\r\n        \"node_id\": \"coverage_check\",\r\n        \"node_type_id\": \"core.vision.regions-coverage-check\",\r\n        \"parameters\": {\r\n          \"min_ratio\": 0.9\r\n        }\r\n      },\r\n      {\r\n        \"node_id\": \"offset_check\",\r\n        \"node_type_id\": \"core.vision.regions-offset-check\",\r\n        \"parameters\": {\r\n          \"strategy\": \"largest-area\",\r\n          \"max_distance_pixels\": 18.0\r\n        }\r\n      },\r\n      {\r\n        \"node_id\": \"intersection_metrics\",\r\n        \"node_type_id\": \"core.vision.regions-intersection-metrics\",\r\n        \"parameters\": {}\r\n      },\r\n      {\r\n        \"node_id\": \"metadata_object\",\r\n        \"node_type_id\": \"core.logic.object-create\",\r\n        \"parameters\": {\r\n          \"keys\": [\r\n            \"image_path\"\r\n          ],\r\n          \"fields\": {\r\n            \"inspection_kind\": \"glue-roi-delivery-bundle\",\r\n            \"station_id\": \"line-b-02\",\r\n            \"result_signal_transport\": \"modbus-tcp\",\r\n            \"delivery_mode\": \"plc-json-csv-mes-local-db\",\r\n            \"mes_url\": \"http://127.0.0.1:18080/mes/inspection-result\",\r\n            \"database_target\": \"sqlite:///./data/workflow-results/glue-roi-delivery/inspection-results.sqlite3\"\r\n          }\r\n        }\r\n      },\r\n      {\r\n        \"node_id\": \"metrics_object\",\r\n        \"node_type_id\": \"core.logic.object-create\",\r\n        \"parameters\": {\r\n          \"keys\": [\r\n            \"intersection_metrics\",\r\n            \"offset_metrics\",\r\n            \"filter_summary\"\r\n          ]\r\n        }\r\n      },\r\n      {\r\n        \"node_id\": \"process_decision\",\r\n        \"node_type_id\": \"core.rule.process-decision\",\r\n        \"parameters\": {\r\n          \"mode\": \"all\",\r\n          \"condition_names\": [\r\n            \"coverage\",\r\n            \"offset\"\r\n          ],\r\n          \"ok_reason\": \"glue roi process gate passed\",\r\n          \"ng_reason\": \"glue roi process gate failed\"\r\n        }\r\n      },\r\n      {\r\n        \"node_id\": \"alarm_condition\",\r\n        \"node_type_id\": \"core.rule.alarm-condition\",\r\n        \"parameters\": {\r\n          \"trigger_when\": \"condition-false\",\r\n          \"alarm_level\": \"error\",\r\n          \"alarm_code\": \"GLUE-ROI-NG\",\r\n          \"alarm_message\": \"glue roi process gate failed\",\r\n          \"clear_message\": \"glue roi process gate passed\"\r\n        }\r\n      },\r\n      {\r\n        \"node_id\": \"write_result_signals\",\r\n        \"node_type_id\": \"custom.plc.modbus.write-result-signals\",\r\n        \"parameters\": {\r\n          \"host\": \"127.0.0.1\",\r\n          \"port\": 502,\r\n          \"unit_id\": 1,\r\n          \"timeout_seconds\": 1.0,\r\n          \"retries\": 1,\r\n          \"continue_on_error\": false,\r\n          \"default_word_order\": \"big\",\r\n          \"default_byte_position\": \"low\",\r\n          \"default_string_encoding\": \"utf-8\",\r\n          \"signal_mappings\": [\r\n            {\r\n              \"signal_name\": \"ok\",\r\n              \"source_scope\": \"result\",\r\n              \"source_path\": \"ok\",\r\n              \"register_address\": \"00031\",\r\n              \"data_type\": \"bool\"\r\n            },\r\n            {\r\n              \"signal_name\": \"ng\",\r\n              \"source_scope\": \"result\",\r\n              \"source_path\": \"ok\",\r\n              \"register_address\": \"00032\",\r\n              \"data_type\": \"bool\",\r\n              \"true_value\": false,\r\n              \"false_value\": true\r\n            },\r\n            {\r\n              \"signal_name\": \"alarm_active\",\r\n              \"source_scope\": \"alarm\",\r\n              \"source_path\": \"active\",\r\n              \"register_address\": \"00033\",\r\n              \"data_type\": \"bool\",\r\n              \"skip_when_missing\": true\r\n            },\r\n            {\r\n              \"signal_name\": \"result_code\",\r\n              \"source_scope\": \"request\",\r\n              \"source_path\": \"signal_values.result_code\",\r\n              \"register_address\": \"400121\",\r\n              \"data_type\": \"uint16\",\r\n              \"skip_when_missing\": true\r\n            }\r\n          ]\r\n        }\r\n      },\r\n      {\r\n        \"node_id\": \"save_result_json\",\r\n        \"node_type_id\": \"core.output.json-save-local\",\r\n        \"parameters\": {\r\n          \"local_path\": \"{workflow_app_result_dir}/glue-roi-delivery-bundle/result-{timestamp}.json\",\r\n          \"overwrite\": true,\r\n          \"indent\": 2\r\n        }\r\n      },\r\n      {\r\n        \"node_id\": \"append_result_csv\",\r\n        \"node_type_id\": \"core.output.csv-append-local\",\r\n        \"parameters\": {\r\n          \"local_path\": \"{workflow_app_result_dir}/glue-roi-delivery-bundle/history.csv\"\r\n        }\r\n      },\r\n      {\r\n        \"node_id\": \"build_delivery_context\",\r\n        \"node_type_id\": \"core.logic.object-create\",\r\n        \"parameters\": {\r\n          \"keys\": [\r\n            \"delivery_request\",\r\n            \"decision_summary\",\r\n            \"alarm_summary\",\r\n            \"signal_write_summary\",\r\n            \"json_summary\",\r\n            \"csv_summary\",\r\n            \"metadata\"\r\n          ],\r\n          \"fields\": {\r\n            \"example_kind\": \"industrial-single-frame-glue-roi-delivery-bundle\",\r\n            \"delivery_order\": [\r\n              \"plc-modbus-write-result-signals\",\r\n              \"json-save-local\",\r\n              \"csv-append-local\",\r\n              \"build-delivery-context\",\r\n              \"mes-http-post\",\r\n              \"local-db-upsert\"\r\n            ],\r\n            \"local_db_schema_sql\": \"docs/examples/workflows/industrial_single_frame_glue_roi_delivery_bundle.sqlite.sql\"\r\n          }\r\n        }\r\n      },\r\n      {\r\n        \"node_id\": \"mes_result_callback\",\r\n        \"node_type_id\": \"custom.output.mes-http-post\",\r\n        \"parameters\": {\r\n          \"url\": \"http://127.0.0.1:18080/mes/inspection-result\",\r\n          \"method\": \"POST\",\r\n          \"timeout_seconds\": 3.0,\r\n          \"require_success\": false,\r\n          \"headers\": {\r\n            \"X-Amvision-Example\": \"industrial-single-frame-glue-roi-delivery-bundle\"\r\n          },\r\n          \"query_template\": {\r\n            \"source\": \"workflow-example\"\r\n          },\r\n          \"query_mappings\": [\r\n            {\r\n              \"target_name\": \"record_id\",\r\n              \"source_kind\": \"request\",\r\n              \"source_path\": \"delivery_request.record_id\"\r\n            },\r\n            {\r\n              \"target_name\": \"station_id\",\r\n              \"source_kind\": \"request\",\r\n              \"source_path\": \"delivery_request.station_id\",\r\n              \"on_missing\": \"skip\"\r\n            }\r\n          ],\r\n          \"body_mode\": \"json_envelope\",\r\n          \"body_template\": {\r\n            \"payload\": {}\r\n          },\r\n          \"static_fields\": {\r\n            \"payload\": {\r\n              \"schema\": \"inspection-result.v1\",\r\n              \"source\": \"amvision-workflow\"\r\n            }\r\n          },\r\n          \"field_mappings\": [\r\n            {\r\n              \"target_path\": \"payload.record_id\",\r\n              \"source_kind\": \"request\",\r\n              \"source_path\": \"delivery_request.record_id\"\r\n            },\r\n            {\r\n              \"target_path\": \"payload.work_order_id\",\r\n              \"source_kind\": \"request\",\r\n              \"source_path\": \"delivery_request.work_order_id\",\r\n              \"on_missing\": \"null\"\r\n            },\r\n            {\r\n              \"target_path\": \"payload.station_id\",\r\n              \"source_kind\": \"request\",\r\n              \"source_path\": \"delivery_request.station_id\",\r\n              \"on_missing\": \"null\"\r\n            },\r\n            {\r\n              \"target_path\": \"payload.line_id\",\r\n              \"source_kind\": \"request\",\r\n              \"source_path\": \"delivery_request.line_id\",\r\n              \"on_missing\": \"null\"\r\n            },\r\n            {\r\n              \"target_path\": \"payload.trace_id\",\r\n              \"source_kind\": \"request\",\r\n              \"source_path\": \"delivery_request.trace_id\",\r\n              \"on_missing\": \"null\"\r\n            },\r\n            {\r\n              \"target_path\": \"payload.ok_ng\",\r\n              \"source_kind\": \"result\",\r\n              \"source_path\": \"ok_ng\"\r\n            },\r\n            {\r\n              \"target_path\": \"payload.reason\",\r\n              \"source_kind\": \"result\",\r\n              \"source_path\": \"reason\",\r\n              \"on_missing\": \"null\"\r\n            },\r\n            {\r\n              \"target_path\": \"payload.coverage_ratio\",\r\n              \"source_kind\": \"result\",\r\n              \"source_path\": \"metrics.intersection_metrics.roi_coverage_ratio\",\r\n              \"on_missing\": \"null\"\r\n            },\r\n            {\r\n              \"target_path\": \"payload.offset_distance_pixels\",\r\n              \"source_kind\": \"result\",\r\n              \"source_path\": \"metrics.offset_metrics.distance_pixels\",\r\n              \"on_missing\": \"null\"\r\n            },\r\n            {\r\n              \"target_path\": \"payload.alarm_active\",\r\n              \"source_kind\": \"request\",\r\n              \"source_path\": \"alarm_summary.alarm_active\",\r\n              \"on_missing\": \"null\"\r\n            },\r\n            {\r\n              \"target_path\": \"payload.signal_write_failed_count\",\r\n              \"source_kind\": \"request\",\r\n              \"source_path\": \"signal_write_summary.failed_count\",\r\n              \"on_missing\": \"null\"\r\n            },\r\n            {\r\n              \"target_path\": \"payload.json_result_path\",\r\n              \"source_kind\": \"request\",\r\n              \"source_path\": \"json_summary.local_path\",\r\n              \"on_missing\": \"null\"\r\n            },\r\n            {\r\n              \"target_path\": \"payload.csv_result_path\",\r\n              \"source_kind\": \"request\",\r\n              \"source_path\": \"csv_summary.local_path\",\r\n              \"on_missing\": \"null\"\r\n            }\r\n          ]\r\n        }\r\n      },\r\n      {\r\n        \"node_id\": \"archive_local_db\",\r\n        \"node_type_id\": \"custom.output.local-db-upsert\",\r\n        \"parameters\": {\r\n          \"database_url\": \"sqlite:///./data/workflow-results/glue-roi-delivery/inspection-results.sqlite3\",\r\n          \"table_name\": \"inspection_results\",\r\n          \"key_columns\": [\r\n            \"record_id\"\r\n          ],\r\n          \"column_mappings\": [\r\n            {\r\n              \"column_name\": \"record_id\",\r\n              \"source_kind\": \"request\",\r\n              \"source_path\": \"delivery_request.record_id\"\r\n            },\r\n            {\r\n              \"column_name\": \"work_order_id\",\r\n              \"source_kind\": \"request\",\r\n              \"source_path\": \"delivery_request.work_order_id\",\r\n              \"on_missing\": \"null\"\r\n            },\r\n            {\r\n              \"column_name\": \"station_id\",\r\n              \"source_kind\": \"request\",\r\n              \"source_path\": \"delivery_request.station_id\",\r\n              \"on_missing\": \"null\"\r\n            },\r\n            {\r\n              \"column_name\": \"line_id\",\r\n              \"source_kind\": \"request\",\r\n              \"source_path\": \"delivery_request.line_id\",\r\n              \"on_missing\": \"null\"\r\n            },\r\n            {\r\n              \"column_name\": \"trace_id\",\r\n              \"source_kind\": \"request\",\r\n              \"source_path\": \"delivery_request.trace_id\",\r\n              \"on_missing\": \"null\"\r\n            },\r\n            {\r\n              \"column_name\": \"ok_ng\",\r\n              \"source_kind\": \"result\",\r\n              \"source_path\": \"ok_ng\"\r\n            },\r\n            {\r\n              \"column_name\": \"ok\",\r\n              \"source_kind\": \"result\",\r\n              \"source_path\": \"ok\"\r\n            },\r\n            {\r\n              \"column_name\": \"reason\",\r\n              \"source_kind\": \"result\",\r\n              \"source_path\": \"reason\",\r\n              \"on_missing\": \"null\"\r\n            },\r\n            {\r\n              \"column_name\": \"coverage_ratio\",\r\n              \"source_kind\": \"result\",\r\n              \"source_path\": \"metrics.intersection_metrics.roi_coverage_ratio\",\r\n              \"on_missing\": \"null\"\r\n            },\r\n            {\r\n              \"column_name\": \"offset_distance_pixels\",\r\n              \"source_kind\": \"result\",\r\n              \"source_path\": \"metrics.offset_metrics.distance_pixels\",\r\n              \"on_missing\": \"null\"\r\n            },\r\n            {\r\n              \"column_name\": \"alarm_active\",\r\n              \"source_kind\": \"request\",\r\n              \"source_path\": \"alarm_summary.alarm_active\",\r\n              \"on_missing\": \"null\"\r\n            },\r\n            {\r\n              \"column_name\": \"signal_write_failed_count\",\r\n              \"source_kind\": \"request\",\r\n              \"source_path\": \"signal_write_summary.failed_count\",\r\n              \"on_missing\": \"null\"\r\n            },\r\n            {\r\n              \"column_name\": \"json_result_path\",\r\n              \"source_kind\": \"request\",\r\n              \"source_path\": \"json_summary.local_path\",\r\n              \"on_missing\": \"null\"\r\n            },\r\n            {\r\n              \"column_name\": \"csv_result_path\",\r\n              \"source_kind\": \"request\",\r\n              \"source_path\": \"csv_summary.local_path\",\r\n              \"on_missing\": \"null\"\r\n            }\r\n          ],\r\n          \"update_columns\": [\r\n            \"work_order_id\",\r\n            \"station_id\",\r\n            \"line_id\",\r\n            \"trace_id\",\r\n            \"ok_ng\",\r\n            \"ok\",\r\n            \"reason\",\r\n            \"coverage_ratio\",\r\n            \"offset_distance_pixels\",\r\n            \"alarm_active\",\r\n            \"signal_write_failed_count\",\r\n            \"json_result_path\",\r\n            \"csv_result_path\"\r\n          ],\r\n          \"connect_timeout_seconds\": 3.0\r\n        }\r\n      }\r\n    ],\r\n    \"edges\": [\r\n      {\r\n        \"edge_id\": \"edge-request-image-path-load-image\",\r\n        \"source_node_id\": \"request_image_path_input\",\r\n        \"source_port\": \"value\",\r\n        \"target_node_id\": \"load_image\",\r\n        \"target_port\": \"path\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-request-image-path-metadata\",\r\n        \"source_node_id\": \"request_image_path_input\",\r\n        \"source_port\": \"value\",\r\n        \"target_node_id\": \"metadata_object\",\r\n        \"target_port\": \"values\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-load-image-create-roi\",\r\n        \"source_node_id\": \"load_image\",\r\n        \"source_port\": \"image\",\r\n        \"target_node_id\": \"create_roi\",\r\n        \"target_port\": \"image\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-filter-coverage-regions\",\r\n        \"source_node_id\": \"filter_regions\",\r\n        \"source_port\": \"regions\",\r\n        \"target_node_id\": \"coverage_check\",\r\n        \"target_port\": \"regions\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-create-roi-coverage-roi\",\r\n        \"source_node_id\": \"create_roi\",\r\n        \"source_port\": \"roi\",\r\n        \"target_node_id\": \"coverage_check\",\r\n        \"target_port\": \"roi\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-filter-offset-regions\",\r\n        \"source_node_id\": \"filter_regions\",\r\n        \"source_port\": \"regions\",\r\n        \"target_node_id\": \"offset_check\",\r\n        \"target_port\": \"regions\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-create-roi-offset-roi\",\r\n        \"source_node_id\": \"create_roi\",\r\n        \"source_port\": \"roi\",\r\n        \"target_node_id\": \"offset_check\",\r\n        \"target_port\": \"roi\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-filter-intersection-regions\",\r\n        \"source_node_id\": \"filter_regions\",\r\n        \"source_port\": \"regions\",\r\n        \"target_node_id\": \"intersection_metrics\",\r\n        \"target_port\": \"regions\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-create-roi-intersection-roi\",\r\n        \"source_node_id\": \"create_roi\",\r\n        \"source_port\": \"roi\",\r\n        \"target_node_id\": \"intersection_metrics\",\r\n        \"target_port\": \"roi\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-intersection-metrics-object\",\r\n        \"source_node_id\": \"intersection_metrics\",\r\n        \"source_port\": \"value\",\r\n        \"target_node_id\": \"metrics_object\",\r\n        \"target_port\": \"values\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-offset-metrics-object\",\r\n        \"source_node_id\": \"offset_check\",\r\n        \"source_port\": \"metrics\",\r\n        \"target_node_id\": \"metrics_object\",\r\n        \"target_port\": \"values\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-filter-summary-metrics-object\",\r\n        \"source_node_id\": \"filter_regions\",\r\n        \"source_port\": \"summary\",\r\n        \"target_node_id\": \"metrics_object\",\r\n        \"target_port\": \"values\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-coverage-process\",\r\n        \"source_node_id\": \"coverage_check\",\r\n        \"source_port\": \"result\",\r\n        \"target_node_id\": \"process_decision\",\r\n        \"target_port\": \"conditions\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-offset-process\",\r\n        \"source_node_id\": \"offset_check\",\r\n        \"source_port\": \"result\",\r\n        \"target_node_id\": \"process_decision\",\r\n        \"target_port\": \"conditions\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-metrics-process\",\r\n        \"source_node_id\": \"metrics_object\",\r\n        \"source_port\": \"value\",\r\n        \"target_node_id\": \"process_decision\",\r\n        \"target_port\": \"metrics\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-metadata-process\",\r\n        \"source_node_id\": \"metadata_object\",\r\n        \"source_port\": \"value\",\r\n        \"target_node_id\": \"process_decision\",\r\n        \"target_port\": \"metadata\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-process-ok-alarm\",\r\n        \"source_node_id\": \"process_decision\",\r\n        \"source_port\": \"ok\",\r\n        \"target_node_id\": \"alarm_condition\",\r\n        \"target_port\": \"condition\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-metrics-alarm\",\r\n        \"source_node_id\": \"metrics_object\",\r\n        \"source_port\": \"value\",\r\n        \"target_node_id\": \"alarm_condition\",\r\n        \"target_port\": \"metrics\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-metadata-alarm\",\r\n        \"source_node_id\": \"metadata_object\",\r\n        \"source_port\": \"value\",\r\n        \"target_node_id\": \"alarm_condition\",\r\n        \"target_port\": \"metadata\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-process-write-result-signals\",\r\n        \"source_node_id\": \"process_decision\",\r\n        \"source_port\": \"result\",\r\n        \"target_node_id\": \"write_result_signals\",\r\n        \"target_port\": \"result\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-alarm-write-result-signals\",\r\n        \"source_node_id\": \"alarm_condition\",\r\n        \"source_port\": \"alarm\",\r\n        \"target_node_id\": \"write_result_signals\",\r\n        \"target_port\": \"alarm\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-process-save-json\",\r\n        \"source_node_id\": \"process_decision\",\r\n        \"source_port\": \"result\",\r\n        \"target_node_id\": \"save_result_json\",\r\n        \"target_port\": \"result\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-process-append-csv\",\r\n        \"source_node_id\": \"process_decision\",\r\n        \"source_port\": \"result\",\r\n        \"target_node_id\": \"append_result_csv\",\r\n        \"target_port\": \"result\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-request-delivery-context-build\",\r\n        \"source_node_id\": \"request_delivery_context_input\",\r\n        \"source_port\": \"value\",\r\n        \"target_node_id\": \"build_delivery_context\",\r\n        \"target_port\": \"values\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-process-summary-build-delivery-context\",\r\n        \"source_node_id\": \"process_decision\",\r\n        \"source_port\": \"summary\",\r\n        \"target_node_id\": \"build_delivery_context\",\r\n        \"target_port\": \"values\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-alarm-summary-build-delivery-context\",\r\n        \"source_node_id\": \"alarm_condition\",\r\n        \"source_port\": \"summary\",\r\n        \"target_node_id\": \"build_delivery_context\",\r\n        \"target_port\": \"values\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-signal-write-summary-build-delivery-context\",\r\n        \"source_node_id\": \"write_result_signals\",\r\n        \"source_port\": \"result\",\r\n        \"target_node_id\": \"build_delivery_context\",\r\n        \"target_port\": \"values\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-json-summary-build-delivery-context\",\r\n        \"source_node_id\": \"save_result_json\",\r\n        \"source_port\": \"summary\",\r\n        \"target_node_id\": \"build_delivery_context\",\r\n        \"target_port\": \"values\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-csv-summary-build-delivery-context\",\r\n        \"source_node_id\": \"append_result_csv\",\r\n        \"source_port\": \"summary\",\r\n        \"target_node_id\": \"build_delivery_context\",\r\n        \"target_port\": \"values\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-metadata-build-delivery-context\",\r\n        \"source_node_id\": \"metadata_object\",\r\n        \"source_port\": \"value\",\r\n        \"target_node_id\": \"build_delivery_context\",\r\n        \"target_port\": \"values\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-process-mes-result\",\r\n        \"source_node_id\": \"process_decision\",\r\n        \"source_port\": \"result\",\r\n        \"target_node_id\": \"mes_result_callback\",\r\n        \"target_port\": \"result\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-delivery-context-mes-request\",\r\n        \"source_node_id\": \"build_delivery_context\",\r\n        \"source_port\": \"value\",\r\n        \"target_node_id\": \"mes_result_callback\",\r\n        \"target_port\": \"request\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-process-local-db-result\",\r\n        \"source_node_id\": \"process_decision\",\r\n        \"source_port\": \"result\",\r\n        \"target_node_id\": \"archive_local_db\",\r\n        \"target_port\": \"result\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-delivery-context-local-db-request\",\r\n        \"source_node_id\": \"build_delivery_context\",\r\n        \"source_port\": \"value\",\r\n        \"target_node_id\": \"archive_local_db\",\r\n        \"target_port\": \"request\"\r\n      }\r\n    ],\r\n    \"template_inputs\": [\r\n      {\r\n        \"input_id\": \"request_image_path\",\r\n        \"display_name\": \"Request Image Path\",\r\n        \"payload_type_id\": \"value.v1\",\r\n        \"target_node_id\": \"request_image_path_input\",\r\n        \"target_port\": \"payload\"\r\n      },\r\n      {\r\n        \"input_id\": \"request_regions\",\r\n        \"display_name\": \"Request Regions\",\r\n        \"payload_type_id\": \"regions.v1\",\r\n        \"target_node_id\": \"filter_regions\",\r\n        \"target_port\": \"regions\"\r\n      },\r\n      {\r\n        \"input_id\": \"request_roi\",\r\n        \"display_name\": \"Request ROI\",\r\n        \"payload_type_id\": \"value.v1\",\r\n        \"target_node_id\": \"create_roi\",\r\n        \"target_port\": \"value\",\r\n        \"required\": false\r\n      },\r\n      {\r\n        \"input_id\": \"request_delivery_context\",\r\n        \"display_name\": \"Request Delivery Context\",\r\n        \"payload_type_id\": \"value.v1\",\r\n        \"target_node_id\": \"request_delivery_context_input\",\r\n        \"target_port\": \"payload\"\r\n      },\r\n      {\r\n        \"input_id\": \"request_signal_write\",\r\n        \"display_name\": \"Request Signal Write\",\r\n        \"payload_type_id\": \"value.v1\",\r\n        \"target_node_id\": \"write_result_signals\",\r\n        \"target_port\": \"request\",\r\n        \"required\": false\r\n      }\r\n    ],\r\n    \"template_outputs\": [\r\n      {\r\n        \"output_id\": \"inspection_result\",\r\n        \"display_name\": \"Inspection Result\",\r\n        \"payload_type_id\": \"result-record.v1\",\r\n        \"source_node_id\": \"process_decision\",\r\n        \"source_port\": \"result\"\r\n      },\r\n      {\r\n        \"output_id\": \"inspection_alarm\",\r\n        \"display_name\": \"Inspection Alarm\",\r\n        \"payload_type_id\": \"alarm-record.v1\",\r\n        \"source_node_id\": \"alarm_condition\",\r\n        \"source_port\": \"alarm\"\r\n      },\r\n      {\r\n        \"output_id\": \"signal_write_summary\",\r\n        \"display_name\": \"Signal Write Summary\",\r\n        \"payload_type_id\": \"value.v1\",\r\n        \"source_node_id\": \"write_result_signals\",\r\n        \"source_port\": \"result\"\r\n      },\r\n      {\r\n        \"output_id\": \"delivery_context\",\r\n        \"display_name\": \"Delivery Context\",\r\n        \"payload_type_id\": \"value.v1\",\r\n        \"source_node_id\": \"build_delivery_context\",\r\n        \"source_port\": \"value\"\r\n      },\r\n      {\r\n        \"output_id\": \"mes_prepared_request\",\r\n        \"display_name\": \"MES Prepared Request\",\r\n        \"payload_type_id\": \"value.v1\",\r\n        \"source_node_id\": \"mes_result_callback\",\r\n        \"source_port\": \"prepared_request\"\r\n      },\r\n      {\r\n        \"output_id\": \"mes_response\",\r\n        \"display_name\": \"MES Response\",\r\n        \"payload_type_id\": \"value.v1\",\r\n        \"source_node_id\": \"mes_result_callback\",\r\n        \"source_port\": \"response\"\r\n      },\r\n      {\r\n        \"output_id\": \"local_db_prepared_row\",\r\n        \"display_name\": \"Local DB Prepared Row\",\r\n        \"payload_type_id\": \"value.v1\",\r\n        \"source_node_id\": \"archive_local_db\",\r\n        \"source_port\": \"prepared_row\"\r\n      },\r\n      {\r\n        \"output_id\": \"local_db_result\",\r\n        \"display_name\": \"Local DB Result\",\r\n        \"payload_type_id\": \"value.v1\",\r\n        \"source_node_id\": \"archive_local_db\",\r\n        \"source_port\": \"result\"\r\n      },\r\n      {\r\n        \"output_id\": \"decision_summary\",\r\n        \"display_name\": \"Decision Summary\",\r\n        \"payload_type_id\": \"value.v1\",\r\n        \"source_node_id\": \"process_decision\",\r\n        \"source_port\": \"summary\"\r\n      },\r\n      {\r\n        \"output_id\": \"json_summary\",\r\n        \"display_name\": \"JSON Save Summary\",\r\n        \"payload_type_id\": \"value.v1\",\r\n        \"source_node_id\": \"save_result_json\",\r\n        \"source_port\": \"summary\"\r\n      },\r\n      {\r\n        \"output_id\": \"csv_summary\",\r\n        \"display_name\": \"CSV Append Summary\",\r\n        \"payload_type_id\": \"value.v1\",\r\n        \"source_node_id\": \"append_result_csv\",\r\n        \"source_port\": \"summary\"\r\n      }\r\n    ],\r\n    \"metadata\": {\r\n      \"example_kind\": \"industrial-single-frame-glue-roi-delivery-bundle\",\r\n      \"focus\": \"single-frame-industrial-result-delivery\",\r\n      \"dynamic_roi_input_binding\": \"request_roi\",\r\n      \"signal_write_input_binding\": \"request_signal_write\",\r\n      \"delivery_context_input_binding\": \"request_delivery_context\",\r\n      \"result_signal_transport\": \"modbus-tcp\",\r\n      \"local_db_schema_sql\": \"docs/examples/workflows/industrial_single_frame_glue_roi_delivery_bundle.sqlite.sql\",\r\n      \"delivery_order\": [\r\n        \"plc-modbus-write-result-signals\",\r\n        \"json-save-local\",\r\n        \"csv-append-local\",\r\n        \"build-delivery-context\",\r\n        \"mes-http-post\",\r\n        \"local-db-upsert\"\r\n      ],\r\n      \"node_groups\": {\r\n        \"input\": [\r\n          \"request_image_path_input\",\r\n          \"request_delivery_context_input\",\r\n          \"load_image\",\r\n          \"filter_regions\"\r\n        ],\r\n        \"roi_and_rules\": [\r\n          \"create_roi\",\r\n          \"coverage_check\",\r\n          \"offset_check\",\r\n          \"intersection_metrics\"\r\n        ],\r\n        \"decision_and_alarm\": [\r\n          \"metadata_object\",\r\n          \"metrics_object\",\r\n          \"process_decision\",\r\n          \"alarm_condition\"\r\n        ],\r\n        \"archive_and_signal\": [\r\n          \"write_result_signals\",\r\n          \"save_result_json\",\r\n          \"append_result_csv\"\r\n        ],\r\n        \"delivery\": [\r\n          \"build_delivery_context\",\r\n          \"mes_result_callback\",\r\n          \"archive_local_db\"\r\n        ]\r\n      }\r\n    }\r\n  }\r\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Save Application",
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/projects/{{projectId}}/applications/industrial-single-frame-glue-roi-delivery-bundle-app",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "workflows",
+            "projects",
+            "{{projectId}}",
+            "applications",
+            "industrial-single-frame-glue-roi-delivery-bundle-app"
+          ]
+        },
+        "description": "保存 industrial_single_frame_glue_roi_delivery_bundle 的 FlowApplication。",
+        "body": {
+          "mode": "raw",
+          "raw": "{\r\n  \"application\": {\r\n    \"format_id\": \"amvision.flow-application.v1\",\r\n    \"application_id\": \"industrial-single-frame-glue-roi-delivery-bundle-app\",\r\n    \"display_name\": \"Industrial Single Frame Glue ROI Delivery Bundle App\",\r\n    \"description\": \"用于工业单帧现场结果交付全链的 workflow app。输入本地图像路径、regions.v1、运行时交付上下文，以及可选 ROI 与 Modbus 覆盖配置；输出统一 result-record、Modbus 回写摘要、MES 请求/响应摘要，以及本地数据库归档预览与执行结果。\",\r\n    \"template_ref\": {\r\n      \"template_id\": \"industrial-single-frame-glue-roi-delivery-bundle-template\",\r\n      \"template_version\": \"1.0.0\",\r\n      \"source_kind\": \"json-file\",\r\n      \"source_uri\": \"docs/examples/workflows/industrial_single_frame_glue_roi_delivery_bundle.template.json\"\r\n    },\r\n    \"runtime_mode\": \"python-json-workflow\",\r\n    \"bindings\": [\r\n      {\r\n        \"binding_id\": \"request_image_path\",\r\n        \"direction\": \"input\",\r\n        \"template_port_id\": \"request_image_path\",\r\n        \"binding_kind\": \"workflow-execute-input\",\r\n        \"config\": {\r\n          \"payload_type_id\": \"value.v1\",\r\n          \"content_type\": \"application/json\"\r\n        },\r\n        \"metadata\": {\r\n          \"payload_type_id\": \"value.v1\"\r\n        }\r\n      },\r\n      {\r\n        \"binding_id\": \"request_regions\",\r\n        \"direction\": \"input\",\r\n        \"template_port_id\": \"request_regions\",\r\n        \"binding_kind\": \"workflow-execute-input\",\r\n        \"config\": {\r\n          \"payload_type_id\": \"regions.v1\",\r\n          \"content_type\": \"application/json\"\r\n        },\r\n        \"metadata\": {\r\n          \"payload_type_id\": \"regions.v1\"\r\n        }\r\n      },\r\n      {\r\n        \"binding_id\": \"request_roi\",\r\n        \"direction\": \"input\",\r\n        \"template_port_id\": \"request_roi\",\r\n        \"binding_kind\": \"workflow-execute-input\",\r\n        \"required\": false,\r\n        \"config\": {\r\n          \"payload_type_id\": \"value.v1\",\r\n          \"content_type\": \"application/json\"\r\n        },\r\n        \"metadata\": {\r\n          \"payload_type_id\": \"value.v1\"\r\n        }\r\n      },\r\n      {\r\n        \"binding_id\": \"request_delivery_context\",\r\n        \"direction\": \"input\",\r\n        \"template_port_id\": \"request_delivery_context\",\r\n        \"binding_kind\": \"workflow-execute-input\",\r\n        \"config\": {\r\n          \"payload_type_id\": \"value.v1\",\r\n          \"content_type\": \"application/json\"\r\n        },\r\n        \"metadata\": {\r\n          \"payload_type_id\": \"value.v1\"\r\n        }\r\n      },\r\n      {\r\n        \"binding_id\": \"request_signal_write\",\r\n        \"direction\": \"input\",\r\n        \"template_port_id\": \"request_signal_write\",\r\n        \"binding_kind\": \"workflow-execute-input\",\r\n        \"required\": false,\r\n        \"config\": {\r\n          \"payload_type_id\": \"value.v1\",\r\n          \"content_type\": \"application/json\"\r\n        },\r\n        \"metadata\": {\r\n          \"payload_type_id\": \"value.v1\"\r\n        }\r\n      },\r\n      {\r\n        \"binding_id\": \"inspection_result\",\r\n        \"direction\": \"output\",\r\n        \"template_port_id\": \"inspection_result\",\r\n        \"binding_kind\": \"workflow-execute-output\",\r\n        \"config\": {\r\n          \"payload_type_id\": \"result-record.v1\"\r\n        },\r\n        \"metadata\": {}\r\n      },\r\n      {\r\n        \"binding_id\": \"inspection_alarm\",\r\n        \"direction\": \"output\",\r\n        \"template_port_id\": \"inspection_alarm\",\r\n        \"binding_kind\": \"workflow-execute-output\",\r\n        \"config\": {\r\n          \"payload_type_id\": \"alarm-record.v1\"\r\n        },\r\n        \"metadata\": {}\r\n      },\r\n      {\r\n        \"binding_id\": \"signal_write_summary\",\r\n        \"direction\": \"output\",\r\n        \"template_port_id\": \"signal_write_summary\",\r\n        \"binding_kind\": \"workflow-execute-output\",\r\n        \"config\": {\r\n          \"payload_type_id\": \"value.v1\"\r\n        },\r\n        \"metadata\": {}\r\n      },\r\n      {\r\n        \"binding_id\": \"delivery_context\",\r\n        \"direction\": \"output\",\r\n        \"template_port_id\": \"delivery_context\",\r\n        \"binding_kind\": \"workflow-execute-output\",\r\n        \"config\": {\r\n          \"payload_type_id\": \"value.v1\"\r\n        },\r\n        \"metadata\": {}\r\n      },\r\n      {\r\n        \"binding_id\": \"mes_prepared_request\",\r\n        \"direction\": \"output\",\r\n        \"template_port_id\": \"mes_prepared_request\",\r\n        \"binding_kind\": \"workflow-execute-output\",\r\n        \"config\": {\r\n          \"payload_type_id\": \"value.v1\"\r\n        },\r\n        \"metadata\": {}\r\n      },\r\n      {\r\n        \"binding_id\": \"mes_response\",\r\n        \"direction\": \"output\",\r\n        \"template_port_id\": \"mes_response\",\r\n        \"binding_kind\": \"workflow-execute-output\",\r\n        \"config\": {\r\n          \"payload_type_id\": \"value.v1\"\r\n        },\r\n        \"metadata\": {}\r\n      },\r\n      {\r\n        \"binding_id\": \"local_db_prepared_row\",\r\n        \"direction\": \"output\",\r\n        \"template_port_id\": \"local_db_prepared_row\",\r\n        \"binding_kind\": \"workflow-execute-output\",\r\n        \"config\": {\r\n          \"payload_type_id\": \"value.v1\"\r\n        },\r\n        \"metadata\": {}\r\n      },\r\n      {\r\n        \"binding_id\": \"local_db_result\",\r\n        \"direction\": \"output\",\r\n        \"template_port_id\": \"local_db_result\",\r\n        \"binding_kind\": \"workflow-execute-output\",\r\n        \"config\": {\r\n          \"payload_type_id\": \"value.v1\"\r\n        },\r\n        \"metadata\": {}\r\n      },\r\n      {\r\n        \"binding_id\": \"decision_summary\",\r\n        \"direction\": \"output\",\r\n        \"template_port_id\": \"decision_summary\",\r\n        \"binding_kind\": \"workflow-execute-output\",\r\n        \"config\": {\r\n          \"payload_type_id\": \"value.v1\"\r\n        },\r\n        \"metadata\": {}\r\n      },\r\n      {\r\n        \"binding_id\": \"json_summary\",\r\n        \"direction\": \"output\",\r\n        \"template_port_id\": \"json_summary\",\r\n        \"binding_kind\": \"workflow-execute-output\",\r\n        \"config\": {\r\n          \"payload_type_id\": \"value.v1\"\r\n        },\r\n        \"metadata\": {}\r\n      },\r\n      {\r\n        \"binding_id\": \"csv_summary\",\r\n        \"direction\": \"output\",\r\n        \"template_port_id\": \"csv_summary\",\r\n        \"binding_kind\": \"workflow-execute-output\",\r\n        \"config\": {\r\n          \"payload_type_id\": \"value.v1\"\r\n        },\r\n        \"metadata\": {}\r\n      }\r\n    ],\r\n    \"metadata\": {\r\n      \"example_kind\": \"industrial-single-frame-glue-roi-delivery-bundle\",\r\n      \"intended_saved_object_key\": \"workflows/projects/{project_id}/applications/industrial-single-frame-glue-roi-delivery-bundle-app/application.json\"\r\n    }\r\n  }\r\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Create Preview Run",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/preview-runs",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "workflows",
+            "preview-runs"
+          ]
+        },
+        "description": "创建 industrial_single_frame_glue_roi_delivery_bundle 的编辑态 preview run。适合先核对 request_image_path、regions.v1、delivery_context 和 signal_write 覆盖输入形状。",
+        "body": {
+          "mode": "raw",
+          "raw": "{\r\n  \"project_id\": \"project-1\",\r\n  \"application_ref\": {\r\n    \"application_id\": \"industrial-single-frame-glue-roi-delivery-bundle-app\"\r\n  },\r\n  \"input_bindings\": {\r\n    \"request_image_path\": {\r\n      \"value\": \"D:/cases/line-b/frame-021.png\"\r\n    },\r\n    \"request_regions\": {\r\n      \"count\": 1,\r\n      \"items\": [\r\n        {\r\n          \"region_id\": \"glue-001\",\r\n          \"score\": 0.97,\r\n          \"class_id\": 1,\r\n          \"class_name\": \"glue\",\r\n          \"bbox_xyxy\": [\r\n            240,\r\n            180,\r\n            1010,\r\n            610\r\n          ],\r\n          \"polygon_xy\": [\r\n            [\r\n              240,\r\n              180\r\n            ],\r\n            [\r\n              1010,\r\n              180\r\n            ],\r\n            [\r\n              1010,\r\n              610\r\n            ],\r\n            [\r\n              240,\r\n              610\r\n            ]\r\n          ],\r\n          \"area\": 331100\r\n        }\r\n      ]\r\n    },\r\n    \"request_roi\": {\r\n      \"value\": {\r\n        \"roi_id\": \"line-b-roi\",\r\n        \"roi_kind\": \"bbox\",\r\n        \"display_name\": \"Line B ROI\",\r\n        \"bbox_xyxy\": [\r\n          220,\r\n          160,\r\n          1040,\r\n          640\r\n        ]\r\n      }\r\n    },\r\n    \"request_delivery_context\": {\r\n      \"value\": {\r\n        \"record_id\": \"line-b-20260610-0001\",\r\n        \"work_order_id\": \"WO-1001\",\r\n        \"station_id\": \"line-b-02\",\r\n        \"line_id\": \"line-b\",\r\n        \"trace_id\": \"trace-0001\"\r\n      }\r\n    },\r\n    \"request_signal_write\": {\r\n      \"value\": {\r\n        \"host\": \"192.168.10.20\",\r\n        \"unit_id\": 1,\r\n        \"signal_values\": {\r\n          \"result_code\": 17\r\n        },\r\n        \"disabled_signals\": [\r\n          \"alarm_active\"\r\n        ]\r\n      }\r\n    }\r\n  },\r\n  \"execution_metadata\": {\r\n    \"marker\": \"postman-workflow-example-documents-preview\",\r\n    \"example_name\": \"industrial_single_frame_glue_roi_delivery_bundle\",\r\n    \"scenario\": \"industrial-single-frame-glue-roi-delivery-bundle\",\r\n    \"trigger_source\": \"editor-preview\"\r\n  },\r\n  \"timeout_seconds\": 30\r\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "response": [],
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(201);",
+              "const body = pm.response.json();",
+              "if (body.preview_run_id) {",
+              "  pm.collectionVariables.set('previewRunId', body.preview_run_id);",
+              "}"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Get Preview Run",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/preview-runs/{{previewRunId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "workflows",
+            "preview-runs",
+            "{{previewRunId}}"
+          ]
+        },
+        "description": "读取上一步 preview run 的 outputs 和 node_records。"
+      },
+      "response": []
+    },
+    {
+      "name": "Create App Runtime",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/app-runtimes",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "workflows",
+            "app-runtimes"
+          ]
+        },
+        "description": "创建保存后 app 的正式 runtime。",
+        "body": {
+          "mode": "raw",
+          "raw": "{\r\n  \"project_id\": \"project-1\",\r\n  \"application_id\": \"industrial-single-frame-glue-roi-delivery-bundle-app\",\r\n  \"display_name\": \"Industrial Single Frame Glue ROI Delivery Bundle Runtime\",\r\n  \"metadata\": {\r\n    \"example_kind\": \"industrial-single-frame-glue-roi-delivery-bundle\",\r\n    \"delivery_mode\": \"plc-json-csv-mes-local-db\"\r\n  }\r\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "response": [],
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(201);",
+              "const body = pm.response.json();",
+              "if (body.workflow_runtime_id) {",
+              "  pm.collectionVariables.set('workflowRuntimeId', body.workflow_runtime_id);",
+              "}"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Start App Runtime",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/app-runtimes/{{workflowRuntimeId}}/start",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "workflows",
+            "app-runtimes",
+            "{{workflowRuntimeId}}",
+            "start"
+          ]
+        },
+        "description": "启动正式 app runtime。"
+      },
+      "response": []
+    },
+    {
+      "name": "Get App Runtime Health",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/app-runtimes/{{workflowRuntimeId}}/health",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "workflows",
+            "app-runtimes",
+            "{{workflowRuntimeId}}",
+            "health"
+          ]
+        },
+        "description": "读取正式 app runtime health。"
+      },
+      "response": []
+    },
+    {
+      "name": "Invoke App Runtime",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/app-runtimes/{{workflowRuntimeId}}/invoke",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "workflows",
+            "app-runtimes",
+            "{{workflowRuntimeId}}",
+            "invoke"
+          ]
+        },
+        "description": "同步调用正式 app runtime。",
+        "body": {
+          "mode": "raw",
+          "raw": "{\r\n  \"input_bindings\": {\r\n    \"request_image_path\": {\r\n      \"value\": \"D:/cases/line-b/frame-021.png\"\r\n    },\r\n    \"request_regions\": {\r\n      \"count\": 1,\r\n      \"items\": [\r\n        {\r\n          \"region_id\": \"glue-001\",\r\n          \"score\": 0.97,\r\n          \"class_id\": 1,\r\n          \"class_name\": \"glue\",\r\n          \"bbox_xyxy\": [\r\n            240,\r\n            180,\r\n            1010,\r\n            610\r\n          ],\r\n          \"polygon_xy\": [\r\n            [\r\n              240,\r\n              180\r\n            ],\r\n            [\r\n              1010,\r\n              180\r\n            ],\r\n            [\r\n              1010,\r\n              610\r\n            ],\r\n            [\r\n              240,\r\n              610\r\n            ]\r\n          ],\r\n          \"area\": 331100\r\n        }\r\n      ]\r\n    },\r\n    \"request_roi\": {\r\n      \"value\": {\r\n        \"roi_id\": \"line-b-roi\",\r\n        \"roi_kind\": \"bbox\",\r\n        \"display_name\": \"Line B ROI\",\r\n        \"bbox_xyxy\": [\r\n          220,\r\n          160,\r\n          1040,\r\n          640\r\n        ]\r\n      }\r\n    },\r\n    \"request_delivery_context\": {\r\n      \"value\": {\r\n        \"record_id\": \"line-b-20260610-0001\",\r\n        \"work_order_id\": \"WO-1001\",\r\n        \"station_id\": \"line-b-02\",\r\n        \"line_id\": \"line-b\",\r\n        \"trace_id\": \"trace-0001\"\r\n      }\r\n    },\r\n    \"request_signal_write\": {\r\n      \"value\": {\r\n        \"host\": \"192.168.10.20\",\r\n        \"unit_id\": 1,\r\n        \"signal_values\": {\r\n          \"result_code\": 17\r\n        },\r\n        \"disabled_signals\": [\r\n          \"alarm_active\"\r\n        ]\r\n      }\r\n    }\r\n  },\r\n  \"execution_metadata\": {\r\n    \"scenario\": \"industrial-single-frame-glue-roi-delivery-bundle\",\r\n    \"trigger_source\": \"sync-api\"\r\n  }\r\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "response": [],
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const body = pm.response.json();",
+              "if (body.workflow_run_id) {",
+              "  pm.collectionVariables.set('workflowRunId', body.workflow_run_id);",
+              "}"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Create Workflow Run",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/app-runtimes/{{workflowRuntimeId}}/runs",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "workflows",
+            "app-runtimes",
+            "{{workflowRuntimeId}}",
+            "runs"
+          ]
+        },
+        "description": "创建正式 async workflow run。",
+        "body": {
+          "mode": "raw",
+          "raw": "{\r\n  \"input_bindings\": {\r\n    \"request_image_path\": {\r\n      \"value\": \"D:/cases/line-b/frame-021.png\"\r\n    },\r\n    \"request_regions\": {\r\n      \"count\": 1,\r\n      \"items\": [\r\n        {\r\n          \"region_id\": \"glue-001\",\r\n          \"score\": 0.97,\r\n          \"class_id\": 1,\r\n          \"class_name\": \"glue\",\r\n          \"bbox_xyxy\": [\r\n            240,\r\n            180,\r\n            1010,\r\n            610\r\n          ],\r\n          \"polygon_xy\": [\r\n            [\r\n              240,\r\n              180\r\n            ],\r\n            [\r\n              1010,\r\n              180\r\n            ],\r\n            [\r\n              1010,\r\n              610\r\n            ],\r\n            [\r\n              240,\r\n              610\r\n            ]\r\n          ],\r\n          \"area\": 331100\r\n        }\r\n      ]\r\n    },\r\n    \"request_roi\": {\r\n      \"value\": {\r\n        \"roi_id\": \"line-b-roi\",\r\n        \"roi_kind\": \"bbox\",\r\n        \"display_name\": \"Line B ROI\",\r\n        \"bbox_xyxy\": [\r\n          220,\r\n          160,\r\n          1040,\r\n          640\r\n        ]\r\n      }\r\n    },\r\n    \"request_delivery_context\": {\r\n      \"value\": {\r\n        \"record_id\": \"line-b-20260610-0001\",\r\n        \"work_order_id\": \"WO-1001\",\r\n        \"station_id\": \"line-b-02\",\r\n        \"line_id\": \"line-b\",\r\n        \"trace_id\": \"trace-0001\"\r\n      }\r\n    },\r\n    \"request_signal_write\": {\r\n      \"value\": {\r\n        \"host\": \"192.168.10.20\",\r\n        \"unit_id\": 1,\r\n        \"signal_values\": {\r\n          \"result_code\": 17\r\n        },\r\n        \"disabled_signals\": [\r\n          \"alarm_active\"\r\n        ]\r\n      }\r\n    }\r\n  },\r\n  \"execution_metadata\": {\r\n    \"scenario\": \"industrial-single-frame-glue-roi-delivery-bundle\",\r\n    \"trigger_source\": \"async-api\"\r\n  }\r\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "response": [],
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(201);",
+              "const body = pm.response.json();",
+              "if (body.workflow_run_id) {",
+              "  pm.collectionVariables.set('workflowRunId', body.workflow_run_id);",
+              "}"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Get Workflow Run",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/runs/{{workflowRunId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "workflows",
+            "runs",
+            "{{workflowRunId}}"
+          ]
+        },
+        "description": "读取 invoke 或 async run 返回的 workflow_run_id。"
+      },
+      "response": []
+    },
+    {
+      "name": "Stop App Runtime",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/workflows/app-runtimes/{{workflowRuntimeId}}/stop",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "workflows",
+            "app-runtimes",
+            "{{workflowRuntimeId}}",
+            "stop"
+          ]
+        },
+        "description": "停止正式 app runtime。"
+      },
+      "response": []
+    }
+  ]
+}

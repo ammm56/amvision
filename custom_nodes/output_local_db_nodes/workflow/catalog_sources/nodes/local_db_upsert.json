@@ -1,0 +1,180 @@
+{
+  "format_id": "amvision.node-definition.v1",
+  "node_type_id": "custom.output.local-db-upsert",
+  "display_name": "Local DB Upsert",
+  "category": "integration.output",
+  "description": "把 result-record、workflow-result 或批次摘要按受限列映射规则写入本地数据库单表，适合第一阶段现场结果归档与追溯。",
+  "implementation_kind": "custom-node",
+  "runtime_kind": "python-callable",
+  "input_ports": [
+    {
+      "name": "result",
+      "display_name": "Result",
+      "payload_type_id": "result-record.v1",
+      "required": false
+    },
+    {
+      "name": "workflow_result",
+      "display_name": "Workflow Result",
+      "payload_type_id": "workflow-result.v1",
+      "required": false
+    },
+    {
+      "name": "summary",
+      "display_name": "Summary",
+      "payload_type_id": "value.v1",
+      "required": false
+    },
+    {
+      "name": "request",
+      "display_name": "Request",
+      "payload_type_id": "value.v1",
+      "required": false
+    }
+  ],
+  "output_ports": [
+    {
+      "name": "result",
+      "display_name": "Result",
+      "payload_type_id": "value.v1"
+    },
+    {
+      "name": "prepared_row",
+      "display_name": "Prepared Row",
+      "payload_type_id": "value.v1"
+    }
+  ],
+  "parameter_schema": {
+    "type": "object",
+    "properties": {
+      "database_url": {
+        "type": "string",
+        "title": "Database URL"
+      },
+      "table_name": {
+        "type": "string",
+        "title": "Table Name"
+      },
+      "schema_name": {
+        "type": "string",
+        "title": "Schema Name"
+      },
+      "key_columns": {
+        "type": "array",
+        "title": "Key Columns",
+        "minItems": 1,
+        "items": {
+          "type": "string"
+        }
+      },
+      "row_template": {
+        "type": "object",
+        "title": "Row Template",
+        "additionalProperties": true
+      },
+      "column_mappings": {
+        "type": "array",
+        "title": "Column Mappings",
+        "minItems": 1,
+        "items": {
+          "type": "object",
+          "properties": {
+            "column_name": {
+              "type": "string",
+              "title": "Column Name"
+            },
+            "source_kind": {
+              "type": "string",
+              "title": "Source Kind",
+              "enum": [
+                "result",
+                "workflow_result",
+                "summary",
+                "request",
+                "literal"
+              ]
+            },
+            "source_path": {
+              "type": "string",
+              "title": "Source Path"
+            },
+            "literal_value": {
+              "title": "Literal Value"
+            },
+            "on_missing": {
+              "type": "string",
+              "title": "On Missing",
+              "enum": [
+                "error",
+                "skip",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "column_name",
+            "source_kind"
+          ]
+        }
+      },
+      "static_fields": {
+        "type": "object",
+        "title": "Static Fields",
+        "additionalProperties": true
+      },
+      "on_missing": {
+        "type": "string",
+        "title": "On Missing",
+        "enum": [
+          "error",
+          "skip",
+          "null"
+        ],
+        "default": "error"
+      },
+      "update_columns": {
+        "type": "array",
+        "title": "Update Columns",
+        "items": {
+          "type": "string"
+        }
+      },
+      "skip_if_no_update_columns": {
+        "type": "boolean",
+        "title": "Skip If No Update Columns",
+        "default": false
+      },
+      "connect_timeout_seconds": {
+        "type": "number",
+        "title": "Connect Timeout Seconds",
+        "exclusiveMinimum": 0
+      },
+      "statement_timeout_seconds": {
+        "type": "number",
+        "title": "Statement Timeout Seconds",
+        "exclusiveMinimum": 0
+      }
+    },
+    "required": [
+      "database_url",
+      "table_name",
+      "key_columns",
+      "column_mappings"
+    ]
+  },
+  "capability_tags": [
+    "integration.output",
+    "integration.database",
+    "integration.database.local-upsert"
+  ],
+  "runtime_requirements": {
+    "python_packages": [
+      "SQLAlchemy"
+    ]
+  },
+  "node_pack_id": "output.local-db-nodes",
+  "node_pack_version": "0.1.0",
+  "metadata": {
+    "phase": "implemented"
+  }
+}

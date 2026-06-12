@@ -28,15 +28,7 @@ class YoloXConversionQueueWorker:
         conversion_runner: ConversionBackend | None = None,
         worker_id: str = "yolox-conversion-worker",
     ) -> None:
-        """初始化 YOLOX 转换队列 worker。
-
-        参数：
-        - session_factory：数据库会话工厂。
-        - dataset_storage：本地文件存储服务。
-        - queue_backend：队列后端。
-        - conversion_runner：可选转换执行器；测试场景可注入轻量 stub。
-        - worker_id：worker 标识。
-        """
+        """初始化 YOLOX 转换队列 worker。"""
 
         self.session_factory = session_factory
         self.dataset_storage = dataset_storage
@@ -111,3 +103,4 @@ class YoloXConversionQueueWorker:
                 details={"queue_task_id": queue_task.task_id},
             )
         return task_id
+

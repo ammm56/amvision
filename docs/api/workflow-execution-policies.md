@@ -28,7 +28,7 @@
 - 版本前缀：/api/v1
 - 资源分组：/workflows
 - 资源路径：/api/v1/workflows/execution-policies
-- 稳定合同：amvision.workflow-execution-policy.v1
+- 稳定规则：amvision.workflow-execution-policy.v1
 
 ## 鉴权规则
 
@@ -176,8 +176,8 @@
 
 ## 联调示例
 
-- [docs/api/examples/workflows/00-short-dev-examples/yolox_deployment_detection_lifecycle_real_path/preview-execution-policy.create.request.json](examples/workflows/00-short-dev-examples/yolox_deployment_detection_lifecycle_real_path/preview-execution-policy.create.request.json)
-- [docs/api/examples/workflows/00-short-dev-examples/yolox_deployment_detection_lifecycle_real_path/runtime-execution-policy.create.request.json](examples/workflows/00-short-dev-examples/yolox_deployment_detection_lifecycle_real_path/runtime-execution-policy.create.request.json)
+- [docs/api/examples/workflows/00-short-dev-examples/detection_deployment_lifecycle_real_path/preview-execution-policy.create.request.json](examples/workflows/00-short-dev-examples/detection_deployment_lifecycle_real_path/preview-execution-policy.create.request.json)
+- [docs/api/examples/workflows/00-short-dev-examples/detection_deployment_lifecycle_real_path/runtime-execution-policy.create.request.json](examples/workflows/00-short-dev-examples/detection_deployment_lifecycle_real_path/runtime-execution-policy.create.request.json)
 - [docs/api/postman/workflow-runtime.postman_collection.json](postman/workflow-runtime.postman_collection.json)
 
 ## 与其他资源的关系

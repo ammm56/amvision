@@ -25,9 +25,15 @@
       "dataset-import",
       "dataset-export",
       "yolox-training",
+      "yolov8-training",
+      "yolo11-training",
+      "yolo26-training",
       "yolox-conversion",
-      "yolox-evaluation",
-      "yolox-inference"
+      "yolov8-conversion",
+      "yolo11-conversion",
+      "yolo26-conversion",
+      "detection-evaluation",
+      "detection-inference"
     ],
     "max_concurrent_tasks": 2,
     "poll_interval_seconds": 1.0

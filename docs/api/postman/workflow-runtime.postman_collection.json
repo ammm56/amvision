@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "cb7a8a14-cd66-4c4a-b4a8-6382f87bf7f1",
     "name": "amvision workflow runtime api",
-    "description": "workflow runtime 当前联调 collection，覆盖 system/bootstrap、projects/bootstrap、projects 目录与公开文件读取、template/application validate/save/get/list/copy/delete、execution-policies、preview-runs、app-runtimes、sync invoke、async runs、trigger-sources list/detail/health 和 cancel 的最小公开接口。主要列表请求已补 offset/limit 示例，响应体仍保持数组，分页信息通过 x-offset、x-limit、x-total-count、x-has-more 和 x-next-offset 返回。当前 FastAPI 默认使用通用触发入口 /api/v1/workflows/app-runtimes/{workflow_runtime_id}/invoke，FlowApplication.bindings.config.route 在现阶段仅作为绑定声明，不自动生成专用 HTTP 路由。YOLOX detection 这类模型节点当前通过 PublishedInferenceGateway 命中 backend-service 持有的 sync deployment，不走公开 inference-tasks 或 async deployment 通道。第一到第五类正式 workflow 的分拆调试 collection 已移动到 docs/api/postman/workflows/ 目录。",
+    "description": "workflow runtime 当前联调 collection，覆盖 system/bootstrap、projects/bootstrap、projects 目录与公开文件读取、template/application validate/save/get/list/copy/delete、execution-policies、preview-runs、app-runtimes、sync invoke、async runs、trigger-sources list/detail/health 和 cancel 的最小公开接口。主要列表请求已补 offset/limit 示例，响应体仍保持数组，分页信息通过 x-offset、x-limit、x-total-count、x-has-more 和 x-next-offset 返回。当前 FastAPI 默认使用通用触发入口 /api/v1/workflows/app-runtimes/{workflow_runtime_id}/invoke，FlowApplication.bindings.config.route 在现阶段仅作为绑定声明，不自动生成专用 HTTP 路由。detection 模型节点当前通过 PublishedInferenceGateway 命中 backend-service 持有的 sync deployment，不走公开 inference-tasks 或 async deployment 通道。模型生命周期联调请改用根目录 `*-full-chain.postman_collection.json`；正式 workflow 的分拆调试 collection 已统一移动到 docs/api/postman/workflows/ 目录，当前覆盖 01-15 号场景链。",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -24,7 +24,7 @@
     },
     {
       "key": "templateId",
-      "value": "yolox-deployment-detection-lifecycle-real-path"
+      "value": "detection-deployment-lifecycle-real-path"
     },
     {
       "key": "templateVersion",
@@ -32,11 +32,11 @@
     },
     {
       "key": "applicationId",
-      "value": "yolox-deployment-detection-lifecycle-real-path-app"
+      "value": "detection-deployment-lifecycle-real-path-app"
     },
     {
       "key": "copiedTemplateId",
-      "value": "yolox-deployment-detection-lifecycle-real-path-copy"
+      "value": "detection-deployment-lifecycle-real-path-copy"
     },
     {
       "key": "copiedTemplateVersion",
@@ -44,7 +44,7 @@
     },
     {
       "key": "copiedApplicationId",
-      "value": "yolox-deployment-detection-lifecycle-real-path-app-copy"
+      "value": "detection-deployment-lifecycle-real-path-app-copy"
     },
     {
       "key": "deploymentInstanceId",
@@ -103,19 +103,19 @@
       "value": ""
     },
     {
-      "key": "yoloxTrainingWorkflowRuntimeId",
+      "key": "detectionTrainingWorkflowRuntimeId",
       "value": ""
     },
     {
-      "key": "yoloxEvaluationWorkflowRuntimeId",
+      "key": "detectionEvaluationWorkflowRuntimeId",
       "value": ""
     },
     {
-      "key": "yoloxEvaluationPackageWorkflowRuntimeId",
+      "key": "detectionEvaluationPackageWorkflowRuntimeId",
       "value": ""
     },
     {
-      "key": "yoloxConversionWorkflowRuntimeId",
+      "key": "detectionConversionWorkflowRuntimeId",
       "value": ""
     },
     {
@@ -193,7 +193,7 @@
       "name": "Workflow Prerequisites",
       "item": [
         {
-          "name": "List YOLOX Deployment Instances",
+          "name": "List Detection Deployment Instances",
           "event": [
             {
               "listen": "test",
@@ -220,7 +220,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/v1/models/yolox/deployment-instances?project_id={{projectId}}&limit=20",
+              "raw": "{{baseUrl}}/api/v1/models/detection/deployment-instances?project_id={{projectId}}&limit=20",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -228,7 +228,7 @@
                 "api",
                 "v1",
                 "models",
-                "yolox",
+                "detection",
                 "deployment-instances"
               ],
               "query": [
@@ -585,7 +585,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\r\n  \"template\": {\r\n    \"format_id\": \"amvision.workflow-graph-template.v1\",\r\n    \"template_id\": \"{{templateId}}\",\r\n    \"template_version\": \"{{templateVersion}}\",\r\n    \"display_name\": \"YOLOX Deployment Detection Lifecycle Real Path\",\r\n    \"description\": \"控制一个已有 sync deployment 资源，并在 backend-service 当前 deployment control plane 上按顺序执行 start、warmup、detection、health、stop。\",\r\n    \"nodes\": [\r\n      {\r\n        \"node_id\": \"start\",\r\n        \"node_type_id\": \"core.service.yolox-deployment.start\",\r\n        \"parameters\": {\r\n          \"deployment_instance_id\": \"{{deploymentInstanceId}}\",\r\n          \"runtime_mode\": \"sync\"\r\n        },\r\n        \"metadata\": {\r\n          \"sequence_index\": 1\r\n        }\r\n      },\r\n      {\r\n        \"node_id\": \"warmup\",\r\n        \"node_type_id\": \"core.service.yolox-deployment.warmup\",\r\n        \"parameters\": {\r\n          \"deployment_instance_id\": \"{{deploymentInstanceId}}\",\r\n          \"runtime_mode\": \"sync\"\r\n        },\r\n        \"metadata\": {\r\n          \"sequence_index\": 2\r\n        }\r\n      },\r\n      {\r\n        \"node_id\": \"detect\",\r\n        \"node_type_id\": \"core.model.yolox-detection\",\r\n        \"parameters\": {\r\n          \"deployment_instance_id\": \"{{deploymentInstanceId}}\",\r\n          \"auto_start_process\": false,\r\n          \"score_threshold\": 0.3,\r\n          \"save_result_image\": false,\r\n          \"return_preview_image_base64\": false\r\n        },\r\n        \"metadata\": {\r\n          \"sequence_index\": 3\r\n        }\r\n      },\r\n      {\r\n        \"node_id\": \"health\",\r\n        \"node_type_id\": \"core.service.yolox-deployment.health\",\r\n        \"parameters\": {\r\n          \"deployment_instance_id\": \"{{deploymentInstanceId}}\",\r\n          \"runtime_mode\": \"sync\"\r\n        },\r\n        \"metadata\": {\r\n          \"sequence_index\": 4\r\n        }\r\n      },\r\n      {\r\n        \"node_id\": \"stop\",\r\n        \"node_type_id\": \"core.service.yolox-deployment.stop\",\r\n        \"parameters\": {\r\n          \"deployment_instance_id\": \"{{deploymentInstanceId}}\",\r\n          \"runtime_mode\": \"sync\"\r\n        },\r\n        \"metadata\": {\r\n          \"sequence_index\": 5\r\n        }\r\n      }\r\n    ],\r\n    \"edges\": [\r\n      {\r\n        \"edge_id\": \"edge-start-warmup-dependency\",\r\n        \"source_node_id\": \"start\",\r\n        \"source_port\": \"body\",\r\n        \"target_node_id\": \"warmup\",\r\n        \"target_port\": \"dependency\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-warmup-detect-dependency\",\r\n        \"source_node_id\": \"warmup\",\r\n        \"source_port\": \"body\",\r\n        \"target_node_id\": \"detect\",\r\n        \"target_port\": \"dependency\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-detect-health-dependency\",\r\n        \"source_node_id\": \"detect\",\r\n        \"source_port\": \"detections\",\r\n        \"target_node_id\": \"health\",\r\n        \"target_port\": \"dependency\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-health-stop-dependency\",\r\n        \"source_node_id\": \"health\",\r\n        \"source_port\": \"body\",\r\n        \"target_node_id\": \"stop\",\r\n        \"target_port\": \"dependency\"\r\n      }\r\n    ],\r\n    \"template_inputs\": [\r\n      {\r\n        \"input_id\": \"request_image\",\r\n        \"display_name\": \"Request Image\",\r\n        \"payload_type_id\": \"image-ref.v1\",\r\n        \"target_node_id\": \"detect\",\r\n        \"target_port\": \"image\"\r\n      }\r\n    ],\r\n    \"template_outputs\": [\r\n      {\r\n        \"output_id\": \"start_body\",\r\n        \"display_name\": \"Start Body\",\r\n        \"payload_type_id\": \"response-body.v1\",\r\n        \"source_node_id\": \"start\",\r\n        \"source_port\": \"body\"\r\n      },\r\n      {\r\n        \"output_id\": \"warmup_body\",\r\n        \"display_name\": \"Warmup Body\",\r\n        \"payload_type_id\": \"response-body.v1\",\r\n        \"source_node_id\": \"warmup\",\r\n        \"source_port\": \"body\"\r\n      },\r\n      {\r\n        \"output_id\": \"detections\",\r\n        \"display_name\": \"Detections\",\r\n        \"payload_type_id\": \"detections.v1\",\r\n        \"source_node_id\": \"detect\",\r\n        \"source_port\": \"detections\"\r\n      },\r\n      {\r\n        \"output_id\": \"health_body\",\r\n        \"display_name\": \"Health Body\",\r\n        \"payload_type_id\": \"response-body.v1\",\r\n        \"source_node_id\": \"health\",\r\n        \"source_port\": \"body\"\r\n      },\r\n      {\r\n        \"output_id\": \"stop_body\",\r\n        \"display_name\": \"Stop Body\",\r\n        \"payload_type_id\": \"response-body.v1\",\r\n        \"source_node_id\": \"stop\",\r\n        \"source_port\": \"body\"\r\n      }\r\n    ],\r\n    \"metadata\": {\r\n      \"intended_saved_object_key\": \"workflows/projects/{{projectId}}/templates/{{templateId}}/versions/{{templateVersion}}/template.json\",\r\n      \"example_kind\": \"deployment-control-detection-lifecycle-real-path\",\r\n      \"deployment_instance_id_placeholder\": \"replace-with-existing-deployment-instance-id\",\r\n      \"uses_existing_deployment_instance\": true,\r\n      \"deployment_runtime_owner\": \"backend-service\",\r\n      \"node_groups\": {\r\n        \"deployment_control\": [\r\n          \"start\",\r\n          \"warmup\",\r\n          \"health\",\r\n          \"stop\"\r\n        ],\r\n        \"model_node\": [\r\n          \"detect\"\r\n        ]\r\n      },\r\n      \"execution_order_note\": \"当前最小执行器按图边做稳定拓扑排序；该示例通过显式 dependency 边表达 start -> warmup -> detection -> health -> stop。\"\r\n    }\r\n  }\r\n}",
+              "raw": "{\r\n  \"template\": {\r\n    \"format_id\": \"amvision.workflow-graph-template.v1\",\r\n    \"template_id\": \"{{templateId}}\",\r\n    \"template_version\": \"{{templateVersion}}\",\r\n    \"display_name\": \"Detection Deployment Lifecycle Real Path\",\r\n    \"description\": \"控制一个已有 sync deployment 资源，并在 backend-service 当前 deployment control plane 上按顺序执行 start、warmup、detection、health、stop。\",\r\n    \"nodes\": [\r\n      {\r\n        \"node_id\": \"start\",\r\n        \"node_type_id\": \"core.service.model-deployment.start\",\r\n        \"parameters\": {\r\n          \"deployment_instance_id\": \"{{deploymentInstanceId}}\",\r\n          \"runtime_mode\": \"sync\"\r\n        },\r\n        \"metadata\": {\r\n          \"sequence_index\": 1\r\n        }\r\n      },\r\n      {\r\n        \"node_id\": \"warmup\",\r\n        \"node_type_id\": \"core.service.model-deployment.warmup\",\r\n        \"parameters\": {\r\n          \"deployment_instance_id\": \"{{deploymentInstanceId}}\",\r\n          \"runtime_mode\": \"sync\"\r\n        },\r\n        \"metadata\": {\r\n          \"sequence_index\": 2\r\n        }\r\n      },\r\n      {\r\n        \"node_id\": \"detect\",\r\n        \"node_type_id\": \"core.model.detection\",\r\n        \"parameters\": {\r\n          \"deployment_instance_id\": \"{{deploymentInstanceId}}\",\r\n          \"auto_start_process\": false,\r\n          \"score_threshold\": 0.3,\r\n          \"save_result_image\": false,\r\n          \"return_preview_image_base64\": false\r\n        },\r\n        \"metadata\": {\r\n          \"sequence_index\": 3\r\n        }\r\n      },\r\n      {\r\n        \"node_id\": \"health\",\r\n        \"node_type_id\": \"core.service.model-deployment.health\",\r\n        \"parameters\": {\r\n          \"deployment_instance_id\": \"{{deploymentInstanceId}}\",\r\n          \"runtime_mode\": \"sync\"\r\n        },\r\n        \"metadata\": {\r\n          \"sequence_index\": 4\r\n        }\r\n      },\r\n      {\r\n        \"node_id\": \"stop\",\r\n        \"node_type_id\": \"core.service.model-deployment.stop\",\r\n        \"parameters\": {\r\n          \"deployment_instance_id\": \"{{deploymentInstanceId}}\",\r\n          \"runtime_mode\": \"sync\"\r\n        },\r\n        \"metadata\": {\r\n          \"sequence_index\": 5\r\n        }\r\n      }\r\n    ],\r\n    \"edges\": [\r\n      {\r\n        \"edge_id\": \"edge-start-warmup-dependency\",\r\n        \"source_node_id\": \"start\",\r\n        \"source_port\": \"body\",\r\n        \"target_node_id\": \"warmup\",\r\n        \"target_port\": \"dependency\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-warmup-detect-dependency\",\r\n        \"source_node_id\": \"warmup\",\r\n        \"source_port\": \"body\",\r\n        \"target_node_id\": \"detect\",\r\n        \"target_port\": \"dependency\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-detect-health-dependency\",\r\n        \"source_node_id\": \"detect\",\r\n        \"source_port\": \"detections\",\r\n        \"target_node_id\": \"health\",\r\n        \"target_port\": \"dependency\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-health-stop-dependency\",\r\n        \"source_node_id\": \"health\",\r\n        \"source_port\": \"body\",\r\n        \"target_node_id\": \"stop\",\r\n        \"target_port\": \"dependency\"\r\n      }\r\n    ],\r\n    \"template_inputs\": [\r\n      {\r\n        \"input_id\": \"request_image\",\r\n        \"display_name\": \"Request Image\",\r\n        \"payload_type_id\": \"image-ref.v1\",\r\n        \"target_node_id\": \"detect\",\r\n        \"target_port\": \"image\"\r\n      }\r\n    ],\r\n    \"template_outputs\": [\r\n      {\r\n        \"output_id\": \"start_body\",\r\n        \"display_name\": \"Start Body\",\r\n        \"payload_type_id\": \"response-body.v1\",\r\n        \"source_node_id\": \"start\",\r\n        \"source_port\": \"body\"\r\n      },\r\n      {\r\n        \"output_id\": \"warmup_body\",\r\n        \"display_name\": \"Warmup Body\",\r\n        \"payload_type_id\": \"response-body.v1\",\r\n        \"source_node_id\": \"warmup\",\r\n        \"source_port\": \"body\"\r\n      },\r\n      {\r\n        \"output_id\": \"detections\",\r\n        \"display_name\": \"Detections\",\r\n        \"payload_type_id\": \"detections.v1\",\r\n        \"source_node_id\": \"detect\",\r\n        \"source_port\": \"detections\"\r\n      },\r\n      {\r\n        \"output_id\": \"health_body\",\r\n        \"display_name\": \"Health Body\",\r\n        \"payload_type_id\": \"response-body.v1\",\r\n        \"source_node_id\": \"health\",\r\n        \"source_port\": \"body\"\r\n      },\r\n      {\r\n        \"output_id\": \"stop_body\",\r\n        \"display_name\": \"Stop Body\",\r\n        \"payload_type_id\": \"response-body.v1\",\r\n        \"source_node_id\": \"stop\",\r\n        \"source_port\": \"body\"\r\n      }\r\n    ],\r\n    \"metadata\": {\r\n      \"intended_saved_object_key\": \"workflows/projects/{{projectId}}/templates/{{templateId}}/versions/{{templateVersion}}/template.json\",\r\n      \"example_kind\": \"deployment-control-detection-lifecycle-real-path\",\r\n      \"deployment_instance_id_placeholder\": \"replace-with-existing-deployment-instance-id\",\r\n      \"uses_existing_deployment_instance\": true,\r\n      \"deployment_runtime_owner\": \"backend-service\",\r\n      \"node_groups\": {\r\n        \"deployment_control\": [\r\n          \"start\",\r\n          \"warmup\",\r\n          \"health\",\r\n          \"stop\"\r\n        ],\r\n        \"model_node\": [\r\n          \"detect\"\r\n        ]\r\n      },\r\n      \"execution_order_note\": \"当前最小执行器按图边做稳定拓扑排序；该示例通过显式 dependency 边表达 start -> warmup -> detection -> health -> stop。\"\r\n    }\r\n  }\r\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -605,7 +605,7 @@
                 "validate"
               ]
             },
-            "description": "校验 workflow template 合同，复用 Save Workflow Template 的同一份请求体。"
+            "description": "校验 workflow template 规则，复用 Save Workflow Template 的同一份请求体。"
           },
           "response": []
         },
@@ -627,7 +627,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\r\n  \"template\": {\r\n    \"format_id\": \"amvision.workflow-graph-template.v1\",\r\n    \"template_id\": \"{{templateId}}\",\r\n    \"template_version\": \"{{templateVersion}}\",\r\n    \"display_name\": \"YOLOX Deployment Detection Lifecycle Real Path\",\r\n    \"description\": \"控制一个已有 sync deployment 资源，并在 backend-service 当前 deployment control plane 上按顺序执行 start、warmup、detection、health、stop。\",\r\n    \"nodes\": [\r\n      {\r\n        \"node_id\": \"start\",\r\n        \"node_type_id\": \"core.service.yolox-deployment.start\",\r\n        \"parameters\": {\r\n          \"deployment_instance_id\": \"{{deploymentInstanceId}}\",\r\n          \"runtime_mode\": \"sync\"\r\n        },\r\n        \"metadata\": {\r\n          \"sequence_index\": 1\r\n        }\r\n      },\r\n      {\r\n        \"node_id\": \"warmup\",\r\n        \"node_type_id\": \"core.service.yolox-deployment.warmup\",\r\n        \"parameters\": {\r\n          \"deployment_instance_id\": \"{{deploymentInstanceId}}\",\r\n          \"runtime_mode\": \"sync\"\r\n        },\r\n        \"metadata\": {\r\n          \"sequence_index\": 2\r\n        }\r\n      },\r\n      {\r\n        \"node_id\": \"detect\",\r\n        \"node_type_id\": \"core.model.yolox-detection\",\r\n        \"parameters\": {\r\n          \"deployment_instance_id\": \"{{deploymentInstanceId}}\",\r\n          \"auto_start_process\": false,\r\n          \"score_threshold\": 0.3,\r\n          \"save_result_image\": false,\r\n          \"return_preview_image_base64\": false\r\n        },\r\n        \"metadata\": {\r\n          \"sequence_index\": 3\r\n        }\r\n      },\r\n      {\r\n        \"node_id\": \"health\",\r\n        \"node_type_id\": \"core.service.yolox-deployment.health\",\r\n        \"parameters\": {\r\n          \"deployment_instance_id\": \"{{deploymentInstanceId}}\",\r\n          \"runtime_mode\": \"sync\"\r\n        },\r\n        \"metadata\": {\r\n          \"sequence_index\": 4\r\n        }\r\n      },\r\n      {\r\n        \"node_id\": \"stop\",\r\n        \"node_type_id\": \"core.service.yolox-deployment.stop\",\r\n        \"parameters\": {\r\n          \"deployment_instance_id\": \"{{deploymentInstanceId}}\",\r\n          \"runtime_mode\": \"sync\"\r\n        },\r\n        \"metadata\": {\r\n          \"sequence_index\": 5\r\n        }\r\n      }\r\n    ],\r\n    \"edges\": [\r\n      {\r\n        \"edge_id\": \"edge-start-warmup-dependency\",\r\n        \"source_node_id\": \"start\",\r\n        \"source_port\": \"body\",\r\n        \"target_node_id\": \"warmup\",\r\n        \"target_port\": \"dependency\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-warmup-detect-dependency\",\r\n        \"source_node_id\": \"warmup\",\r\n        \"source_port\": \"body\",\r\n        \"target_node_id\": \"detect\",\r\n        \"target_port\": \"dependency\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-detect-health-dependency\",\r\n        \"source_node_id\": \"detect\",\r\n        \"source_port\": \"detections\",\r\n        \"target_node_id\": \"health\",\r\n        \"target_port\": \"dependency\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-health-stop-dependency\",\r\n        \"source_node_id\": \"health\",\r\n        \"source_port\": \"body\",\r\n        \"target_node_id\": \"stop\",\r\n        \"target_port\": \"dependency\"\r\n      }\r\n    ],\r\n    \"template_inputs\": [\r\n      {\r\n        \"input_id\": \"request_image\",\r\n        \"display_name\": \"Request Image\",\r\n        \"payload_type_id\": \"image-ref.v1\",\r\n        \"target_node_id\": \"detect\",\r\n        \"target_port\": \"image\"\r\n      }\r\n    ],\r\n    \"template_outputs\": [\r\n      {\r\n        \"output_id\": \"start_body\",\r\n        \"display_name\": \"Start Body\",\r\n        \"payload_type_id\": \"response-body.v1\",\r\n        \"source_node_id\": \"start\",\r\n        \"source_port\": \"body\"\r\n      },\r\n      {\r\n        \"output_id\": \"warmup_body\",\r\n        \"display_name\": \"Warmup Body\",\r\n        \"payload_type_id\": \"response-body.v1\",\r\n        \"source_node_id\": \"warmup\",\r\n        \"source_port\": \"body\"\r\n      },\r\n      {\r\n        \"output_id\": \"detections\",\r\n        \"display_name\": \"Detections\",\r\n        \"payload_type_id\": \"detections.v1\",\r\n        \"source_node_id\": \"detect\",\r\n        \"source_port\": \"detections\"\r\n      },\r\n      {\r\n        \"output_id\": \"health_body\",\r\n        \"display_name\": \"Health Body\",\r\n        \"payload_type_id\": \"response-body.v1\",\r\n        \"source_node_id\": \"health\",\r\n        \"source_port\": \"body\"\r\n      },\r\n      {\r\n        \"output_id\": \"stop_body\",\r\n        \"display_name\": \"Stop Body\",\r\n        \"payload_type_id\": \"response-body.v1\",\r\n        \"source_node_id\": \"stop\",\r\n        \"source_port\": \"body\"\r\n      }\r\n    ],\r\n    \"metadata\": {\r\n      \"intended_saved_object_key\": \"workflows/projects/{{projectId}}/templates/{{templateId}}/versions/{{templateVersion}}/template.json\",\r\n      \"example_kind\": \"deployment-control-detection-lifecycle-real-path\",\r\n      \"deployment_instance_id_placeholder\": \"replace-with-existing-deployment-instance-id\",\r\n      \"uses_existing_deployment_instance\": true,\r\n      \"deployment_runtime_owner\": \"backend-service\",\r\n      \"node_groups\": {\r\n        \"deployment_control\": [\r\n          \"start\",\r\n          \"warmup\",\r\n          \"health\",\r\n          \"stop\"\r\n        ],\r\n        \"model_node\": [\r\n          \"detect\"\r\n        ]\r\n      },\r\n      \"execution_order_note\": \"当前最小执行器按图边做稳定拓扑排序；该示例通过显式 dependency 边表达 start -> warmup -> detection -> health -> stop。\"\r\n    }\r\n  }\r\n}",
+              "raw": "{\r\n  \"template\": {\r\n    \"format_id\": \"amvision.workflow-graph-template.v1\",\r\n    \"template_id\": \"{{templateId}}\",\r\n    \"template_version\": \"{{templateVersion}}\",\r\n    \"display_name\": \"Detection Deployment Lifecycle Real Path\",\r\n    \"description\": \"控制一个已有 sync deployment 资源，并在 backend-service 当前 deployment control plane 上按顺序执行 start、warmup、detection、health、stop。\",\r\n    \"nodes\": [\r\n      {\r\n        \"node_id\": \"start\",\r\n        \"node_type_id\": \"core.service.model-deployment.start\",\r\n        \"parameters\": {\r\n          \"deployment_instance_id\": \"{{deploymentInstanceId}}\",\r\n          \"runtime_mode\": \"sync\"\r\n        },\r\n        \"metadata\": {\r\n          \"sequence_index\": 1\r\n        }\r\n      },\r\n      {\r\n        \"node_id\": \"warmup\",\r\n        \"node_type_id\": \"core.service.model-deployment.warmup\",\r\n        \"parameters\": {\r\n          \"deployment_instance_id\": \"{{deploymentInstanceId}}\",\r\n          \"runtime_mode\": \"sync\"\r\n        },\r\n        \"metadata\": {\r\n          \"sequence_index\": 2\r\n        }\r\n      },\r\n      {\r\n        \"node_id\": \"detect\",\r\n        \"node_type_id\": \"core.model.detection\",\r\n        \"parameters\": {\r\n          \"deployment_instance_id\": \"{{deploymentInstanceId}}\",\r\n          \"auto_start_process\": false,\r\n          \"score_threshold\": 0.3,\r\n          \"save_result_image\": false,\r\n          \"return_preview_image_base64\": false\r\n        },\r\n        \"metadata\": {\r\n          \"sequence_index\": 3\r\n        }\r\n      },\r\n      {\r\n        \"node_id\": \"health\",\r\n        \"node_type_id\": \"core.service.model-deployment.health\",\r\n        \"parameters\": {\r\n          \"deployment_instance_id\": \"{{deploymentInstanceId}}\",\r\n          \"runtime_mode\": \"sync\"\r\n        },\r\n        \"metadata\": {\r\n          \"sequence_index\": 4\r\n        }\r\n      },\r\n      {\r\n        \"node_id\": \"stop\",\r\n        \"node_type_id\": \"core.service.model-deployment.stop\",\r\n        \"parameters\": {\r\n          \"deployment_instance_id\": \"{{deploymentInstanceId}}\",\r\n          \"runtime_mode\": \"sync\"\r\n        },\r\n        \"metadata\": {\r\n          \"sequence_index\": 5\r\n        }\r\n      }\r\n    ],\r\n    \"edges\": [\r\n      {\r\n        \"edge_id\": \"edge-start-warmup-dependency\",\r\n        \"source_node_id\": \"start\",\r\n        \"source_port\": \"body\",\r\n        \"target_node_id\": \"warmup\",\r\n        \"target_port\": \"dependency\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-warmup-detect-dependency\",\r\n        \"source_node_id\": \"warmup\",\r\n        \"source_port\": \"body\",\r\n        \"target_node_id\": \"detect\",\r\n        \"target_port\": \"dependency\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-detect-health-dependency\",\r\n        \"source_node_id\": \"detect\",\r\n        \"source_port\": \"detections\",\r\n        \"target_node_id\": \"health\",\r\n        \"target_port\": \"dependency\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-health-stop-dependency\",\r\n        \"source_node_id\": \"health\",\r\n        \"source_port\": \"body\",\r\n        \"target_node_id\": \"stop\",\r\n        \"target_port\": \"dependency\"\r\n      }\r\n    ],\r\n    \"template_inputs\": [\r\n      {\r\n        \"input_id\": \"request_image\",\r\n        \"display_name\": \"Request Image\",\r\n        \"payload_type_id\": \"image-ref.v1\",\r\n        \"target_node_id\": \"detect\",\r\n        \"target_port\": \"image\"\r\n      }\r\n    ],\r\n    \"template_outputs\": [\r\n      {\r\n        \"output_id\": \"start_body\",\r\n        \"display_name\": \"Start Body\",\r\n        \"payload_type_id\": \"response-body.v1\",\r\n        \"source_node_id\": \"start\",\r\n        \"source_port\": \"body\"\r\n      },\r\n      {\r\n        \"output_id\": \"warmup_body\",\r\n        \"display_name\": \"Warmup Body\",\r\n        \"payload_type_id\": \"response-body.v1\",\r\n        \"source_node_id\": \"warmup\",\r\n        \"source_port\": \"body\"\r\n      },\r\n      {\r\n        \"output_id\": \"detections\",\r\n        \"display_name\": \"Detections\",\r\n        \"payload_type_id\": \"detections.v1\",\r\n        \"source_node_id\": \"detect\",\r\n        \"source_port\": \"detections\"\r\n      },\r\n      {\r\n        \"output_id\": \"health_body\",\r\n        \"display_name\": \"Health Body\",\r\n        \"payload_type_id\": \"response-body.v1\",\r\n        \"source_node_id\": \"health\",\r\n        \"source_port\": \"body\"\r\n      },\r\n      {\r\n        \"output_id\": \"stop_body\",\r\n        \"display_name\": \"Stop Body\",\r\n        \"payload_type_id\": \"response-body.v1\",\r\n        \"source_node_id\": \"stop\",\r\n        \"source_port\": \"body\"\r\n      }\r\n    ],\r\n    \"metadata\": {\r\n      \"intended_saved_object_key\": \"workflows/projects/{{projectId}}/templates/{{templateId}}/versions/{{templateVersion}}/template.json\",\r\n      \"example_kind\": \"deployment-control-detection-lifecycle-real-path\",\r\n      \"deployment_instance_id_placeholder\": \"replace-with-existing-deployment-instance-id\",\r\n      \"uses_existing_deployment_instance\": true,\r\n      \"deployment_runtime_owner\": \"backend-service\",\r\n      \"node_groups\": {\r\n        \"deployment_control\": [\r\n          \"start\",\r\n          \"warmup\",\r\n          \"health\",\r\n          \"stop\"\r\n        ],\r\n        \"model_node\": [\r\n          \"detect\"\r\n        ]\r\n      },\r\n      \"execution_order_note\": \"当前最小执行器按图边做稳定拓扑排序；该示例通过显式 dependency 边表达 start -> warmup -> detection -> health -> stop。\"\r\n    }\r\n  }\r\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -651,7 +651,7 @@
                 "{{templateVersion}}"
               ]
             },
-            "description": "保存 workflow template。请求体与 docs/api/examples/workflows/00-short-dev-examples/yolox_deployment_detection_lifecycle_real_path/save-template.request.json 对齐。"
+            "description": "保存 workflow template。请求体与 docs/api/examples/workflows/00-short-dev-examples/detection_deployment_lifecycle_real_path/save-template.request.json 对齐。"
           },
           "response": []
         },
@@ -816,7 +816,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"target_template_id\": \"{{copiedTemplateId}}\",\n  \"target_template_version\": \"{{copiedTemplateVersion}}\",\n  \"display_name\": \"YOLOX Deployment Detection Lifecycle Real Path Copy\",\n  \"description\": \"Copied from {{templateId}} {{templateVersion}} for Postman validation.\"\n}",
+              "raw": "{\n  \"target_template_id\": \"{{copiedTemplateId}}\",\n  \"target_template_version\": \"{{copiedTemplateVersion}}\",\n  \"display_name\": \"Detection Deployment Lifecycle Real Path Copy\",\n  \"description\": \"Copied from {{templateId}} {{templateVersion}} for Postman validation.\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -895,7 +895,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"application\": {\n    \"format_id\": \"amvision.flow-application.v1\",\n    \"application_id\": \"{{applicationId}}\",\n    \"display_name\": \"YOLOX Deployment Detection Lifecycle Real Path App\",\n    \"template_ref\": {\n      \"template_id\": \"{{templateId}}\",\n      \"template_version\": \"{{templateVersion}}\",\n      \"source_kind\": \"json-file\",\n      \"source_uri\": \"workflows/projects/{{projectId}}/templates/{{templateId}}/versions/{{templateVersion}}/template.json\",\n      \"metadata\": {}\n    },\n    \"runtime_mode\": \"python-json-workflow\",\n    \"description\": \"面向 Postman 手工调试的最小 FlowApplication 示例，控制并使用一个已有 deployment 资源，使用真实 workflow object key 路径。\",\n    \"bindings\": [\n      {\n        \"binding_id\": \"request_image\",\n        \"direction\": \"input\",\n        \"template_port_id\": \"request_image\",\n        \"binding_kind\": \"workflow-execute-input\",\n        \"config\": {\n          \"payload_type_id\": \"image-ref.v1\",\n          \"content_type\": \"image/*\"\n        },\n        \"metadata\": {}\n      },\n      {\n        \"binding_id\": \"start_body\",\n        \"direction\": \"output\",\n        \"template_port_id\": \"start_body\",\n        \"binding_kind\": \"workflow-execute-output\",\n        \"config\": {\n          \"payload_type_id\": \"response-body.v1\"\n        },\n        \"metadata\": {}\n      },\n      {\n        \"binding_id\": \"warmup_body\",\n        \"direction\": \"output\",\n        \"template_port_id\": \"warmup_body\",\n        \"binding_kind\": \"workflow-execute-output\",\n        \"config\": {\n          \"payload_type_id\": \"response-body.v1\"\n        },\n        \"metadata\": {}\n      },\n      {\n        \"binding_id\": \"detections\",\n        \"direction\": \"output\",\n        \"template_port_id\": \"detections\",\n        \"binding_kind\": \"workflow-execute-output\",\n        \"config\": {\n          \"payload_type_id\": \"detections.v1\"\n        },\n        \"metadata\": {}\n      },\n      {\n        \"binding_id\": \"health_body\",\n        \"direction\": \"output\",\n        \"template_port_id\": \"health_body\",\n        \"binding_kind\": \"workflow-execute-output\",\n        \"config\": {\n          \"payload_type_id\": \"response-body.v1\"\n        },\n        \"metadata\": {}\n      },\n      {\n        \"binding_id\": \"stop_body\",\n        \"direction\": \"output\",\n        \"template_port_id\": \"stop_body\",\n        \"binding_kind\": \"workflow-execute-output\",\n        \"config\": {\n          \"payload_type_id\": \"response-body.v1\"\n        },\n        \"metadata\": {}\n      }\n    ],\n    \"metadata\": {\n      \"intended_saved_object_key\": \"workflows/projects/{{projectId}}/applications/{{applicationId}}/application.json\",\n      \"example_kind\": \"deployment-control-detection-lifecycle-real-path\",\n      \"uses_existing_deployment_instance\": true,\n      \"deployment_instance_id_placeholder\": \"replace-with-existing-deployment-instance-id\"\n    }\n  }\n}",
+              "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"application\": {\n    \"format_id\": \"amvision.flow-application.v1\",\n    \"application_id\": \"{{applicationId}}\",\n    \"display_name\": \"Detection Deployment Lifecycle Real Path App\",\n    \"template_ref\": {\n      \"template_id\": \"{{templateId}}\",\n      \"template_version\": \"{{templateVersion}}\",\n      \"source_kind\": \"json-file\",\n      \"source_uri\": \"workflows/projects/{{projectId}}/templates/{{templateId}}/versions/{{templateVersion}}/template.json\",\n      \"metadata\": {}\n    },\n    \"runtime_mode\": \"python-json-workflow\",\n    \"description\": \"面向 Postman 手工调试的最小 FlowApplication 示例，控制并使用一个已有 deployment 资源，使用真实 workflow object key 路径。\",\n    \"bindings\": [\n      {\n        \"binding_id\": \"request_image\",\n        \"direction\": \"input\",\n        \"template_port_id\": \"request_image\",\n        \"binding_kind\": \"workflow-execute-input\",\n        \"config\": {\n          \"payload_type_id\": \"image-ref.v1\",\n          \"content_type\": \"image/*\"\n        },\n        \"metadata\": {}\n      },\n      {\n        \"binding_id\": \"start_body\",\n        \"direction\": \"output\",\n        \"template_port_id\": \"start_body\",\n        \"binding_kind\": \"workflow-execute-output\",\n        \"config\": {\n          \"payload_type_id\": \"response-body.v1\"\n        },\n        \"metadata\": {}\n      },\n      {\n        \"binding_id\": \"warmup_body\",\n        \"direction\": \"output\",\n        \"template_port_id\": \"warmup_body\",\n        \"binding_kind\": \"workflow-execute-output\",\n        \"config\": {\n          \"payload_type_id\": \"response-body.v1\"\n        },\n        \"metadata\": {}\n      },\n      {\n        \"binding_id\": \"detections\",\n        \"direction\": \"output\",\n        \"template_port_id\": \"detections\",\n        \"binding_kind\": \"workflow-execute-output\",\n        \"config\": {\n          \"payload_type_id\": \"detections.v1\"\n        },\n        \"metadata\": {}\n      },\n      {\n        \"binding_id\": \"health_body\",\n        \"direction\": \"output\",\n        \"template_port_id\": \"health_body\",\n        \"binding_kind\": \"workflow-execute-output\",\n        \"config\": {\n          \"payload_type_id\": \"response-body.v1\"\n        },\n        \"metadata\": {}\n      },\n      {\n        \"binding_id\": \"stop_body\",\n        \"direction\": \"output\",\n        \"template_port_id\": \"stop_body\",\n        \"binding_kind\": \"workflow-execute-output\",\n        \"config\": {\n          \"payload_type_id\": \"response-body.v1\"\n        },\n        \"metadata\": {}\n      }\n    ],\n    \"metadata\": {\n      \"intended_saved_object_key\": \"workflows/projects/{{projectId}}/applications/{{applicationId}}/application.json\",\n      \"example_kind\": \"deployment-control-detection-lifecycle-real-path\",\n      \"uses_existing_deployment_instance\": true,\n      \"deployment_instance_id_placeholder\": \"replace-with-existing-deployment-instance-id\"\n    }\n  }\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -937,7 +937,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"application\": {\n    \"format_id\": \"amvision.flow-application.v1\",\n    \"application_id\": \"{{applicationId}}\",\n    \"display_name\": \"YOLOX Deployment Detection Lifecycle Real Path App\",\n    \"template_ref\": {\n      \"template_id\": \"{{templateId}}\",\n      \"template_version\": \"{{templateVersion}}\",\n      \"source_kind\": \"json-file\",\n      \"source_uri\": \"workflows/projects/{{projectId}}/templates/{{templateId}}/versions/{{templateVersion}}/template.json\",\n      \"metadata\": {}\n    },\n    \"runtime_mode\": \"python-json-workflow\",\n    \"description\": \"面向 Postman 手工调试的最小 FlowApplication 示例，控制并使用一个已有 deployment 资源，使用真实 workflow object key 路径。\",\n    \"bindings\": [\n      {\n        \"binding_id\": \"request_image\",\n        \"direction\": \"input\",\n        \"template_port_id\": \"request_image\",\n        \"binding_kind\": \"workflow-execute-input\",\n        \"config\": {\n          \"payload_type_id\": \"image-ref.v1\",\n          \"content_type\": \"image/*\"\n        },\n        \"metadata\": {}\n      },\n      {\n        \"binding_id\": \"start_body\",\n        \"direction\": \"output\",\n        \"template_port_id\": \"start_body\",\n        \"binding_kind\": \"workflow-execute-output\",\n        \"config\": {\n          \"payload_type_id\": \"response-body.v1\"\n        },\n        \"metadata\": {}\n      },\n      {\n        \"binding_id\": \"warmup_body\",\n        \"direction\": \"output\",\n        \"template_port_id\": \"warmup_body\",\n        \"binding_kind\": \"workflow-execute-output\",\n        \"config\": {\n          \"payload_type_id\": \"response-body.v1\"\n        },\n        \"metadata\": {}\n      },\n      {\n        \"binding_id\": \"detections\",\n        \"direction\": \"output\",\n        \"template_port_id\": \"detections\",\n        \"binding_kind\": \"workflow-execute-output\",\n        \"config\": {\n          \"payload_type_id\": \"detections.v1\"\n        },\n        \"metadata\": {}\n      },\n      {\n        \"binding_id\": \"health_body\",\n        \"direction\": \"output\",\n        \"template_port_id\": \"health_body\",\n        \"binding_kind\": \"workflow-execute-output\",\n        \"config\": {\n          \"payload_type_id\": \"response-body.v1\"\n        },\n        \"metadata\": {}\n      },\n      {\n        \"binding_id\": \"stop_body\",\n        \"direction\": \"output\",\n        \"template_port_id\": \"stop_body\",\n        \"binding_kind\": \"workflow-execute-output\",\n        \"config\": {\n          \"payload_type_id\": \"response-body.v1\"\n        },\n        \"metadata\": {}\n      }\n    ],\n    \"metadata\": {\n      \"intended_saved_object_key\": \"workflows/projects/{{projectId}}/applications/{{applicationId}}/application.json\",\n      \"example_kind\": \"deployment-control-detection-lifecycle-real-path\",\n      \"uses_existing_deployment_instance\": true,\n      \"deployment_instance_id_placeholder\": \"replace-with-existing-deployment-instance-id\"\n    }\n  }\n}",
+              "raw": "{\n  \"application\": {\n    \"format_id\": \"amvision.flow-application.v1\",\n    \"application_id\": \"{{applicationId}}\",\n    \"display_name\": \"Detection Deployment Lifecycle Real Path App\",\n    \"template_ref\": {\n      \"template_id\": \"{{templateId}}\",\n      \"template_version\": \"{{templateVersion}}\",\n      \"source_kind\": \"json-file\",\n      \"source_uri\": \"workflows/projects/{{projectId}}/templates/{{templateId}}/versions/{{templateVersion}}/template.json\",\n      \"metadata\": {}\n    },\n    \"runtime_mode\": \"python-json-workflow\",\n    \"description\": \"面向 Postman 手工调试的最小 FlowApplication 示例，控制并使用一个已有 deployment 资源，使用真实 workflow object key 路径。\",\n    \"bindings\": [\n      {\n        \"binding_id\": \"request_image\",\n        \"direction\": \"input\",\n        \"template_port_id\": \"request_image\",\n        \"binding_kind\": \"workflow-execute-input\",\n        \"config\": {\n          \"payload_type_id\": \"image-ref.v1\",\n          \"content_type\": \"image/*\"\n        },\n        \"metadata\": {}\n      },\n      {\n        \"binding_id\": \"start_body\",\n        \"direction\": \"output\",\n        \"template_port_id\": \"start_body\",\n        \"binding_kind\": \"workflow-execute-output\",\n        \"config\": {\n          \"payload_type_id\": \"response-body.v1\"\n        },\n        \"metadata\": {}\n      },\n      {\n        \"binding_id\": \"warmup_body\",\n        \"direction\": \"output\",\n        \"template_port_id\": \"warmup_body\",\n        \"binding_kind\": \"workflow-execute-output\",\n        \"config\": {\n          \"payload_type_id\": \"response-body.v1\"\n        },\n        \"metadata\": {}\n      },\n      {\n        \"binding_id\": \"detections\",\n        \"direction\": \"output\",\n        \"template_port_id\": \"detections\",\n        \"binding_kind\": \"workflow-execute-output\",\n        \"config\": {\n          \"payload_type_id\": \"detections.v1\"\n        },\n        \"metadata\": {}\n      },\n      {\n        \"binding_id\": \"health_body\",\n        \"direction\": \"output\",\n        \"template_port_id\": \"health_body\",\n        \"binding_kind\": \"workflow-execute-output\",\n        \"config\": {\n          \"payload_type_id\": \"response-body.v1\"\n        },\n        \"metadata\": {}\n      },\n      {\n        \"binding_id\": \"stop_body\",\n        \"direction\": \"output\",\n        \"template_port_id\": \"stop_body\",\n        \"binding_kind\": \"workflow-execute-output\",\n        \"config\": {\n          \"payload_type_id\": \"response-body.v1\"\n        },\n        \"metadata\": {}\n      }\n    ],\n    \"metadata\": {\n      \"intended_saved_object_key\": \"workflows/projects/{{projectId}}/applications/{{applicationId}}/application.json\",\n      \"example_kind\": \"deployment-control-detection-lifecycle-real-path\",\n      \"uses_existing_deployment_instance\": true,\n      \"deployment_instance_id_placeholder\": \"replace-with-existing-deployment-instance-id\"\n    }\n  }\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -959,7 +959,7 @@
                 "{{applicationId}}"
               ]
             },
-            "description": "保存 FlowApplication。请求体与 docs/api/examples/workflows/00-short-dev-examples/yolox_deployment_detection_lifecycle_real_path/save-application.request.json 对齐。"
+            "description": "保存 FlowApplication。请求体与 docs/api/examples/workflows/00-short-dev-examples/detection_deployment_lifecycle_real_path/save-application.request.json 对齐。"
           },
           "response": []
         },
@@ -1050,7 +1050,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"target_application_id\": \"{{copiedApplicationId}}\",\n  \"display_name\": \"YOLOX Deployment Detection Lifecycle Real Path App Copy\",\n  \"description\": \"Copied from {{applicationId}} for Postman validation.\"\n}",
+              "raw": "{\n  \"target_application_id\": \"{{copiedApplicationId}}\",\n  \"display_name\": \"Detection Deployment Lifecycle Real Path App Copy\",\n  \"description\": \"Copied from {{applicationId}} for Postman validation.\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1152,7 +1152,7 @@
                     "execution-policies"
                   ]
                 },
-                "description": "创建 preview 默认 execution policy。请求体与 docs/api/examples/workflows/00-short-dev-examples/yolox_deployment_detection_lifecycle_real_path/preview-execution-policy.create.request.json 对齐。"
+                "description": "创建 preview 默认 execution policy。请求体与 docs/api/examples/workflows/00-short-dev-examples/detection_deployment_lifecycle_real_path/preview-execution-policy.create.request.json 对齐。"
               },
               "response": []
             },
@@ -1193,7 +1193,7 @@
                     "execution-policies"
                   ]
                 },
-                "description": "创建 runtime 默认 execution policy。请求体与 docs/api/examples/workflows/00-short-dev-examples/yolox_deployment_detection_lifecycle_real_path/runtime-execution-policy.create.request.json 对齐。"
+                "description": "创建 runtime 默认 execution policy。请求体与 docs/api/examples/workflows/00-short-dev-examples/detection_deployment_lifecycle_real_path/runtime-execution-policy.create.request.json 对齐。"
               },
               "response": []
             },
@@ -1324,7 +1324,7 @@
                     "preview-runs"
                   ]
                 },
-                "description": "创建一次 preview run。请求体与 docs/api/examples/workflows/00-short-dev-examples/yolox_deployment_detection_lifecycle_real_path/preview-run.request.json 对齐。"
+                "description": "创建一次 preview run。请求体与 docs/api/examples/workflows/00-short-dev-examples/detection_deployment_lifecycle_real_path/preview-run.request.json 对齐。"
               },
               "response": []
             },
@@ -1503,7 +1503,7 @@
                 ],
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"application_id\": \"{{applicationId}}\",\n  \"execution_policy_id\": \"{{runtimeExecutionPolicyId}}\",\n  \"display_name\": \"YOLOX Deployment Detection Lifecycle Runtime\",\n  \"metadata\": {\n    \"example_kind\": \"deployment-control-detection-lifecycle-real-path\",\n    \"uses_existing_deployment_instance\": true\n  }\n}",
+                  "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"application_id\": \"{{applicationId}}\",\n  \"execution_policy_id\": \"{{runtimeExecutionPolicyId}}\",\n  \"display_name\": \"Detection Deployment Lifecycle Runtime\",\n  \"metadata\": {\n    \"example_kind\": \"deployment-control-detection-lifecycle-real-path\",\n    \"uses_existing_deployment_instance\": true\n  }\n}",
                   "options": {
                     "raw": {
                       "language": "json"
@@ -1522,7 +1522,7 @@
                     "app-runtimes"
                   ]
                 },
-                "description": "创建一条 WorkflowAppRuntime。请求体与 docs/api/examples/workflows/00-short-dev-examples/yolox_deployment_detection_lifecycle_real_path/app-runtime.create.request.json 对齐。"
+                "description": "创建一条 WorkflowAppRuntime。请求体与 docs/api/examples/workflows/00-short-dev-examples/detection_deployment_lifecycle_real_path/app-runtime.create.request.json 对齐。"
               },
               "response": []
             },
@@ -1872,7 +1872,7 @@
                     "invoke"
                   ]
                 },
-                "description": "发起一次同步 invoke。当前示例省略 timeout_seconds，默认沿用 runtime execution policy。请求体与 docs/api/examples/workflows/00-short-dev-examples/yolox_deployment_detection_lifecycle_real_path/app-runtime.invoke.request.json 对齐。"
+                "description": "发起一次同步 invoke。当前示例省略 timeout_seconds，默认沿用 runtime execution policy。请求体与 docs/api/examples/workflows/00-short-dev-examples/detection_deployment_lifecycle_real_path/app-runtime.invoke.request.json 对齐。"
               },
               "response": []
             }
@@ -2255,7 +2255,7 @@
               "response": []
             },
             {
-              "name": "Create YOLOX Training Submit App Runtime",
+              "name": "Create Detection Training Submit App Runtime",
               "event": [
                 {
                   "listen": "test",
@@ -2265,7 +2265,7 @@
                       "if (pm.response.code === 201) {",
                       "  var payload = pm.response.json();",
                       "  if (payload.workflow_runtime_id) {",
-                      "    pm.collectionVariables.set('yoloxTrainingWorkflowRuntimeId', payload.workflow_runtime_id);",
+                      "    pm.collectionVariables.set('detectionTrainingWorkflowRuntimeId', payload.workflow_runtime_id);",
                       "  }",
                       "}"
                     ]
@@ -2288,7 +2288,7 @@
                 ],
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"application_id\": \"yolox-training-submit-app\",\n  \"execution_policy_id\": \"{{runtimeExecutionPolicyId}}\",\n  \"display_name\": \"YOLOX Training Submit Runtime\",\n  \"metadata\": {\n    \"example_kind\": \"yolox-training-submit\"\n  }\n}",
+                  "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"application_id\": \"detection-training-submit-app\",\n  \"execution_policy_id\": \"{{runtimeExecutionPolicyId}}\",\n  \"display_name\": \"Detection Training Submit Runtime\",\n  \"metadata\": {\n    \"example_kind\": \"detection-training-submit\"\n  }\n}",
                   "options": {
                     "raw": {
                       "language": "json"
@@ -2307,12 +2307,12 @@
                     "app-runtimes"
                   ]
                 },
-                "description": "创建 YOLOX training submit 标准 app runtime。请求体与 docs/api/examples/workflows/00-short-dev-examples/yolox_training_submit/app-runtime.create.request.json 对齐。"
+                "description": "创建 detection training submit 标准 app runtime。请求体与 docs/api/examples/workflows/00-short-dev-examples/detection_training_submit/app-runtime.create.request.json 对齐。"
               },
               "response": []
             },
             {
-              "name": "Invoke YOLOX Training Submit App Runtime",
+              "name": "Invoke Detection Training Submit App Runtime",
               "request": {
                 "method": "POST",
                 "header": [
@@ -2329,7 +2329,7 @@
                 ],
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"input_bindings\": {\n    \"request_payload\": {\n      \"value\": {\n        \"project_id\": \"{{projectId}}\",\n        \"dataset_export_id\": \"dataset-export-1\",\n        \"recipe_id\": \"recipe-1\",\n        \"model_scale\": \"s\",\n        \"output_model_name\": \"demo-model\",\n        \"max_epochs\": 3\n      }\n    }\n  },\n  \"execution_metadata\": {\n    \"scenario\": \"yolox-training-submit\",\n    \"trigger_source\": \"sync-api\"\n  }\n}",
+                  "raw": "{\n  \"input_bindings\": {\n    \"request_payload\": {\n      \"value\": {\n        \"project_id\": \"{{projectId}}\",\n        \"dataset_export_id\": \"dataset-export-1\",\n        \"recipe_id\": \"recipe-1\",\n        \"model_scale\": \"s\",\n        \"output_model_name\": \"demo-model\",\n        \"max_epochs\": 3\n      }\n    }\n  },\n  \"execution_metadata\": {\n    \"scenario\": \"detection-training-submit\",\n    \"trigger_source\": \"sync-api\"\n  }\n}",
                   "options": {
                     "raw": {
                       "language": "json"
@@ -2337,7 +2337,7 @@
                   }
                 },
                 "url": {
-                  "raw": "{{baseUrl}}/api/v1/workflows/app-runtimes/{{yoloxTrainingWorkflowRuntimeId}}/invoke",
+                  "raw": "{{baseUrl}}/api/v1/workflows/app-runtimes/{{detectionTrainingWorkflowRuntimeId}}/invoke",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -2346,16 +2346,16 @@
                     "v1",
                     "workflows",
                     "app-runtimes",
-                    "{{yoloxTrainingWorkflowRuntimeId}}",
+                    "{{detectionTrainingWorkflowRuntimeId}}",
                     "invoke"
                   ]
                 },
-                "description": "发起 YOLOX training submit runtime invoke。请求体与 docs/api/examples/workflows/00-short-dev-examples/yolox_training_submit/app-runtime.invoke.request.json 对齐。"
+                "description": "发起 detection training submit runtime invoke。请求体与 docs/api/examples/workflows/00-short-dev-examples/detection_training_submit/app-runtime.invoke.request.json 对齐。"
               },
               "response": []
             },
             {
-              "name": "Create YOLOX Evaluation Submit App Runtime",
+              "name": "Create Detection Evaluation Submit App Runtime",
               "event": [
                 {
                   "listen": "test",
@@ -2365,7 +2365,7 @@
                       "if (pm.response.code === 201) {",
                       "  var payload = pm.response.json();",
                       "  if (payload.workflow_runtime_id) {",
-                      "    pm.collectionVariables.set('yoloxEvaluationWorkflowRuntimeId', payload.workflow_runtime_id);",
+                      "    pm.collectionVariables.set('detectionEvaluationWorkflowRuntimeId', payload.workflow_runtime_id);",
                       "  }",
                       "}"
                     ]
@@ -2388,7 +2388,7 @@
                 ],
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"application_id\": \"yolox-evaluation-submit-app\",\n  \"execution_policy_id\": \"{{runtimeExecutionPolicyId}}\",\n  \"display_name\": \"YOLOX Evaluation Submit Runtime\",\n  \"metadata\": {\n    \"example_kind\": \"yolox-evaluation-submit\"\n  }\n}",
+                  "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"application_id\": \"detection-evaluation-submit-app\",\n  \"execution_policy_id\": \"{{runtimeExecutionPolicyId}}\",\n  \"display_name\": \"Detection Evaluation Submit Runtime\",\n  \"metadata\": {\n    \"example_kind\": \"detection-evaluation-submit\"\n  }\n}",
                   "options": {
                     "raw": {
                       "language": "json"
@@ -2407,12 +2407,12 @@
                     "app-runtimes"
                   ]
                 },
-                "description": "创建 YOLOX evaluation submit 标准 app runtime。请求体与 docs/api/examples/workflows/00-short-dev-examples/yolox_evaluation_submit/app-runtime.create.request.json 对齐。"
+                "description": "创建 detection evaluation submit 标准 app runtime。请求体与 docs/api/examples/workflows/00-short-dev-examples/detection_evaluation_submit/app-runtime.create.request.json 对齐。"
               },
               "response": []
             },
             {
-              "name": "Invoke YOLOX Evaluation Submit App Runtime",
+              "name": "Invoke Detection Evaluation Submit App Runtime",
               "request": {
                 "method": "POST",
                 "header": [
@@ -2429,7 +2429,7 @@
                 ],
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"input_bindings\": {\n    \"request_payload\": {\n      \"value\": {\n        \"project_id\": \"{{projectId}}\",\n        \"model_version_id\": \"model-version-1\",\n        \"dataset_export_id\": \"dataset-export-1\",\n        \"score_threshold\": 0.25,\n        \"nms_threshold\": 0.65\n      }\n    }\n  },\n  \"execution_metadata\": {\n    \"scenario\": \"yolox-evaluation-submit\",\n    \"trigger_source\": \"sync-api\"\n  }\n}",
+                  "raw": "{\n  \"input_bindings\": {\n    \"request_payload\": {\n      \"value\": {\n        \"project_id\": \"{{projectId}}\",\n        \"model_version_id\": \"model-version-1\",\n        \"dataset_export_id\": \"dataset-export-1\",\n        \"score_threshold\": 0.25,\n        \"nms_threshold\": 0.65\n      }\n    }\n  },\n  \"execution_metadata\": {\n    \"scenario\": \"detection-evaluation-submit\",\n    \"trigger_source\": \"sync-api\"\n  }\n}",
                   "options": {
                     "raw": {
                       "language": "json"
@@ -2437,7 +2437,7 @@
                   }
                 },
                 "url": {
-                  "raw": "{{baseUrl}}/api/v1/workflows/app-runtimes/{{yoloxEvaluationWorkflowRuntimeId}}/invoke",
+                  "raw": "{{baseUrl}}/api/v1/workflows/app-runtimes/{{detectionEvaluationWorkflowRuntimeId}}/invoke",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -2446,16 +2446,16 @@
                     "v1",
                     "workflows",
                     "app-runtimes",
-                    "{{yoloxEvaluationWorkflowRuntimeId}}",
+                    "{{detectionEvaluationWorkflowRuntimeId}}",
                     "invoke"
                   ]
                 },
-                "description": "发起 YOLOX evaluation submit runtime invoke。请求体与 docs/api/examples/workflows/00-short-dev-examples/yolox_evaluation_submit/app-runtime.invoke.request.json 对齐。"
+                "description": "发起 detection evaluation submit runtime invoke。请求体与 docs/api/examples/workflows/00-short-dev-examples/detection_evaluation_submit/app-runtime.invoke.request.json 对齐。"
               },
               "response": []
             },
             {
-              "name": "Create YOLOX Evaluation Package App Runtime",
+              "name": "Create Detection Evaluation Package App Runtime",
               "event": [
                 {
                   "listen": "test",
@@ -2465,7 +2465,7 @@
                       "if (pm.response.code === 201) {",
                       "  var payload = pm.response.json();",
                       "  if (payload.workflow_runtime_id) {",
-                      "    pm.collectionVariables.set('yoloxEvaluationPackageWorkflowRuntimeId', payload.workflow_runtime_id);",
+                      "    pm.collectionVariables.set('detectionEvaluationPackageWorkflowRuntimeId', payload.workflow_runtime_id);",
                       "  }",
                       "}"
                     ]
@@ -2488,7 +2488,7 @@
                 ],
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"application_id\": \"yolox-evaluation-package-app\",\n  \"execution_policy_id\": \"{{runtimeExecutionPolicyId}}\",\n  \"display_name\": \"YOLOX Evaluation Package Runtime\",\n  \"metadata\": {\n    \"example_kind\": \"yolox-evaluation-package\"\n  }\n}",
+                  "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"application_id\": \"detection-evaluation-package-app\",\n  \"execution_policy_id\": \"{{runtimeExecutionPolicyId}}\",\n  \"display_name\": \"Detection Evaluation Package Runtime\",\n  \"metadata\": {\n    \"example_kind\": \"detection-evaluation-package\"\n  }\n}",
                   "options": {
                     "raw": {
                       "language": "json"
@@ -2507,12 +2507,12 @@
                     "app-runtimes"
                   ]
                 },
-                "description": "创建 YOLOX evaluation package 标准 app runtime。请求体与 docs/api/examples/workflows/00-short-dev-examples/yolox_evaluation_package/app-runtime.create.request.json 对齐。"
+                "description": "创建 detection evaluation package 标准 app runtime。请求体与 docs/api/examples/workflows/00-short-dev-examples/detection_evaluation_package/app-runtime.create.request.json 对齐。"
               },
               "response": []
             },
             {
-              "name": "Invoke YOLOX Evaluation Package App Runtime",
+              "name": "Invoke Detection Evaluation Package App Runtime",
               "request": {
                 "method": "POST",
                 "header": [
@@ -2529,7 +2529,7 @@
                 ],
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"input_bindings\": {\n    \"request_payload\": {\n      \"value\": {\n        \"project_id\": \"{{projectId}}\",\n        \"model_version_id\": \"model-version-1\",\n        \"dataset_export_id\": \"dataset-export-1\",\n        \"score_threshold\": 0.25,\n        \"nms_threshold\": 0.65\n      }\n    }\n  },\n  \"execution_metadata\": {\n    \"scenario\": \"yolox-evaluation-package\",\n    \"trigger_source\": \"sync-api\"\n  }\n}",
+                  "raw": "{\n  \"input_bindings\": {\n    \"request_payload\": {\n      \"value\": {\n        \"project_id\": \"{{projectId}}\",\n        \"model_version_id\": \"model-version-1\",\n        \"dataset_export_id\": \"dataset-export-1\",\n        \"score_threshold\": 0.25,\n        \"nms_threshold\": 0.65\n      }\n    }\n  },\n  \"execution_metadata\": {\n    \"scenario\": \"detection-evaluation-package\",\n    \"trigger_source\": \"sync-api\"\n  }\n}",
                   "options": {
                     "raw": {
                       "language": "json"
@@ -2537,7 +2537,7 @@
                   }
                 },
                 "url": {
-                  "raw": "{{baseUrl}}/api/v1/workflows/app-runtimes/{{yoloxEvaluationPackageWorkflowRuntimeId}}/invoke",
+                  "raw": "{{baseUrl}}/api/v1/workflows/app-runtimes/{{detectionEvaluationPackageWorkflowRuntimeId}}/invoke",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -2546,16 +2546,16 @@
                     "v1",
                     "workflows",
                     "app-runtimes",
-                    "{{yoloxEvaluationPackageWorkflowRuntimeId}}",
+                    "{{detectionEvaluationPackageWorkflowRuntimeId}}",
                     "invoke"
                   ]
                 },
-                "description": "发起 YOLOX evaluation package runtime invoke。请求体与 docs/api/examples/workflows/00-short-dev-examples/yolox_evaluation_package/app-runtime.invoke.request.json 对齐。"
+                "description": "发起 detection evaluation package runtime invoke。请求体与 docs/api/examples/workflows/00-short-dev-examples/detection_evaluation_package/app-runtime.invoke.request.json 对齐。"
               },
               "response": []
             },
             {
-              "name": "Create YOLOX Conversion Submit App Runtime",
+              "name": "Create Detection Conversion Submit App Runtime",
               "event": [
                 {
                   "listen": "test",
@@ -2565,7 +2565,7 @@
                       "if (pm.response.code === 201) {",
                       "  var payload = pm.response.json();",
                       "  if (payload.workflow_runtime_id) {",
-                      "    pm.collectionVariables.set('yoloxConversionWorkflowRuntimeId', payload.workflow_runtime_id);",
+                      "    pm.collectionVariables.set('detectionConversionWorkflowRuntimeId', payload.workflow_runtime_id);",
                       "  }",
                       "}"
                     ]
@@ -2588,7 +2588,7 @@
                 ],
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"application_id\": \"yolox-conversion-submit-app\",\n  \"execution_policy_id\": \"{{runtimeExecutionPolicyId}}\",\n  \"display_name\": \"YOLOX Conversion Submit Runtime\",\n  \"metadata\": {\n    \"example_kind\": \"yolox-conversion-submit\"\n  }\n}",
+                  "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"application_id\": \"detection-conversion-submit-app\",\n  \"execution_policy_id\": \"{{runtimeExecutionPolicyId}}\",\n  \"display_name\": \"Detection Conversion Submit Runtime\",\n  \"metadata\": {\n    \"example_kind\": \"detection-conversion-submit\"\n  }\n}",
                   "options": {
                     "raw": {
                       "language": "json"
@@ -2607,12 +2607,12 @@
                     "app-runtimes"
                   ]
                 },
-                "description": "创建 YOLOX conversion submit 标准 app runtime。请求体与 docs/api/examples/workflows/00-short-dev-examples/yolox_conversion_submit/app-runtime.create.request.json 对齐。"
+                "description": "创建 detection conversion submit 标准 app runtime。请求体与 docs/api/examples/workflows/00-short-dev-examples/detection_conversion_submit/app-runtime.create.request.json 对齐。"
               },
               "response": []
             },
             {
-              "name": "Invoke YOLOX Conversion Submit App Runtime",
+              "name": "Invoke Detection Conversion Submit App Runtime",
               "request": {
                 "method": "POST",
                 "header": [
@@ -2629,7 +2629,7 @@
                 ],
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"input_bindings\": {\n    \"request_payload\": {\n      \"value\": {\n        \"project_id\": \"{{projectId}}\",\n        \"source_model_version_id\": \"model-version-1\",\n        \"target_formats\": [\n          \"onnx\",\n          \"openvino-ir\"\n        ]\n      }\n    }\n  },\n  \"execution_metadata\": {\n    \"scenario\": \"yolox-conversion-submit\",\n    \"trigger_source\": \"sync-api\"\n  }\n}",
+                  "raw": "{\n  \"input_bindings\": {\n    \"request_payload\": {\n      \"value\": {\n        \"project_id\": \"{{projectId}}\",\n        \"source_model_version_id\": \"model-version-1\",\n        \"target_formats\": [\n          \"onnx\",\n          \"openvino-ir\"\n        ]\n      }\n    }\n  },\n  \"execution_metadata\": {\n    \"scenario\": \"detection-conversion-submit\",\n    \"trigger_source\": \"sync-api\"\n  }\n}",
                   "options": {
                     "raw": {
                       "language": "json"
@@ -2637,7 +2637,7 @@
                   }
                 },
                 "url": {
-                  "raw": "{{baseUrl}}/api/v1/workflows/app-runtimes/{{yoloxConversionWorkflowRuntimeId}}/invoke",
+                  "raw": "{{baseUrl}}/api/v1/workflows/app-runtimes/{{detectionConversionWorkflowRuntimeId}}/invoke",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -2646,11 +2646,11 @@
                     "v1",
                     "workflows",
                     "app-runtimes",
-                    "{{yoloxConversionWorkflowRuntimeId}}",
+                    "{{detectionConversionWorkflowRuntimeId}}",
                     "invoke"
                   ]
                 },
-                "description": "发起 YOLOX conversion submit runtime invoke。请求体与 docs/api/examples/workflows/00-short-dev-examples/yolox_conversion_submit/app-runtime.invoke.request.json 对齐。"
+                "description": "发起 detection conversion submit runtime invoke。请求体与 docs/api/examples/workflows/00-short-dev-examples/detection_conversion_submit/app-runtime.invoke.request.json 对齐。"
               },
               "response": []
             }

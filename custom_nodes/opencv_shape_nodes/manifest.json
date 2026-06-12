@@ -1,0 +1,30 @@
+{
+  "format_id": "amvision.node-pack-manifest.v1",
+  "id": "opencv.shape-nodes",
+  "version": "0.1.0",
+  "displayName": "OpenCV Shape Nodes",
+  "description": "提供一组 OpenCV 轮廓、线圆、拟合与结构化形状节点。",
+  "category": "custom-node-pack",
+  "capabilities": [
+    "pipeline.node",
+    "vision.analysis",
+    "vision.shape"
+  ],
+  "permissionScopes": [
+    "objectstore.read.ref",
+    "objectstore.write.ref"
+  ],
+  "entrypoints": {
+    "backend": "custom_nodes.opencv_shape_nodes.backend.entry:register"
+  },
+  "compatibility": {
+    "api": ">=0.1 <1.0",
+    "runtime": ">=3.12"
+  },
+  "timeout": {
+    "defaultSeconds": 30
+  },
+  "enabledByDefault": true,
+  "customNodeCatalogPath": "workflow/catalog.json"
+}
+

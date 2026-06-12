@@ -1,0 +1,95 @@
+{
+  "format_id": "amvision.flow-application.v1",
+  "application_id": "plc-modbus-wait-ready-ack-callback-app",
+  "display_name": "PLC Modbus Wait Ready Ack Callback App",
+  "description": "用于工业现场 PLC ready -> ack -> result callback 闭环的 Modbus 样例 app。输入等待配置与确认写入配置，输出等待结果、写入结果、统一 result-record 和 HTTP 回传摘要。",
+  "template_ref": {
+    "template_id": "plc-modbus-wait-ready-ack-callback-template",
+    "template_version": "1.0.0",
+    "source_kind": "json-file",
+    "source_uri": "docs/examples/workflows/plc_modbus_wait_ready_ack_callback.template.json"
+  },
+  "runtime_mode": "python-json-workflow",
+  "bindings": [
+    {
+      "binding_id": "request_wait_config",
+      "direction": "input",
+      "template_port_id": "request_wait_config",
+      "binding_kind": "workflow-execute-input",
+      "config": {
+        "payload_type_id": "value.v1",
+        "content_type": "application/json"
+      },
+      "metadata": {
+        "payload_type_id": "value.v1"
+      }
+    },
+    {
+      "binding_id": "request_ack_write_config",
+      "direction": "input",
+      "template_port_id": "request_ack_write_config",
+      "binding_kind": "workflow-execute-input",
+      "config": {
+        "payload_type_id": "value.v1",
+        "content_type": "application/json"
+      },
+      "metadata": {
+        "payload_type_id": "value.v1"
+      }
+    },
+    {
+      "binding_id": "wait_result",
+      "direction": "output",
+      "template_port_id": "wait_result",
+      "binding_kind": "workflow-execute-output",
+      "config": {
+        "payload_type_id": "value.v1"
+      },
+      "metadata": {}
+    },
+    {
+      "binding_id": "ack_write_result",
+      "direction": "output",
+      "template_port_id": "ack_write_result",
+      "binding_kind": "workflow-execute-output",
+      "config": {
+        "payload_type_id": "value.v1"
+      },
+      "metadata": {}
+    },
+    {
+      "binding_id": "inspection_result",
+      "direction": "output",
+      "template_port_id": "inspection_result",
+      "binding_kind": "workflow-execute-output",
+      "config": {
+        "payload_type_id": "result-record.v1"
+      },
+      "metadata": {}
+    },
+    {
+      "binding_id": "decision_summary",
+      "direction": "output",
+      "template_port_id": "decision_summary",
+      "binding_kind": "workflow-execute-output",
+      "config": {
+        "payload_type_id": "value.v1"
+      },
+      "metadata": {}
+    },
+    {
+      "binding_id": "callback_response",
+      "direction": "output",
+      "template_port_id": "callback_response",
+      "binding_kind": "workflow-execute-output",
+      "config": {
+        "payload_type_id": "value.v1"
+      },
+      "metadata": {}
+    }
+  ],
+  "metadata": {
+    "example_kind": "plc-modbus-wait-ready-ack-callback",
+    "intended_saved_object_key": "workflows/projects/{project_id}/applications/plc-modbus-wait-ready-ack-callback-app/application.json"
+  }
+}

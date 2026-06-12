@@ -27,6 +27,9 @@ share/python-wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+*.tmp
+*.tmp*
+.pytest_tmp/
 MANIFEST
 *.lscache
 
@@ -239,3 +242,15 @@ frontend/web-ui/public/runtime-config.json
 frontend/web-ui/public/runtime-config.local.json
 frontend/web-ui/playwright-report/
 frontend/web-ui/test-results/
+
+# Alembic
+backend/alembic/versions/__pycache__/
+
+# .qwen
+.qwen/
+
+# third_party
+runtimes/third_party/
+
+# local Postman debug dataset packages should not live under docs git paths
+docs/api/postman/assets/*.zip

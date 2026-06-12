@@ -1,0 +1,1942 @@
+{
+  "info": {
+    "_postman_id": "amvision-pose-full-chain",
+    "name": "amvision pose-full-chain",
+    "description": "Pose 全链路 Postman 调试集合。覆盖 dataset import -> dataset export -> training -> validation -> evaluation -> conversion -> deployment -> infer -> workflow invoke。默认变量 datasetZipPath 指向本地调试数据包 data/files/postman-assets/pose-coco-keypoints-min.zip；该目录不纳入 git。默认同时预置 modelType=yolo11、targetFormat=onnx、deploymentRuntimeBackend=onnxruntime。当前支持 modelType: yolov8, yolo11, yolo26。注意：docs/api/postman/workflows/12-15 仍然是 workflow/runtime 最小链，不替代这里的全生命周期调试集合。",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://127.0.0.1:8000"
+    },
+    {
+      "key": "accessToken",
+      "value": "amvision-default-user-token"
+    },
+    {
+      "key": "collectionSlug",
+      "value": "pose-full-chain"
+    },
+    {
+      "key": "projectId",
+      "value": "project-pose-demo"
+    },
+    {
+      "key": "projectDisplayName",
+      "value": "Pose Full Chain Demo"
+    },
+    {
+      "key": "projectDescription",
+      "value": "Pose full-chain debug with local minimal COCO keypoints zip"
+    },
+    {
+      "key": "datasetId",
+      "value": "dataset-pose-demo"
+    },
+    {
+      "key": "datasetImportId",
+      "value": ""
+    },
+    {
+      "key": "importTaskId",
+      "value": ""
+    },
+    {
+      "key": "datasetVersionId",
+      "value": ""
+    },
+    {
+      "key": "datasetExportId",
+      "value": ""
+    },
+    {
+      "key": "datasetExportManifestKey",
+      "value": ""
+    },
+    {
+      "key": "exportTaskId",
+      "value": ""
+    },
+    {
+      "key": "datasetZipPath",
+      "value": "data/files/postman-assets/pose-coco-keypoints-min.zip"
+    },
+    {
+      "key": "exportFormatId",
+      "value": "coco-keypoints-v1"
+    },
+    {
+      "key": "datasetExportDisplayName",
+      "value": "Pose Dataset Export"
+    },
+    {
+      "key": "modelType",
+      "value": "yolo11"
+    },
+    {
+      "key": "modelScale",
+      "value": "nano"
+    },
+    {
+      "key": "recipeId",
+      "value": "default"
+    },
+    {
+      "key": "outputModelName",
+      "value": "pose-yolo11n-demo"
+    },
+    {
+      "key": "trainingDisplayName",
+      "value": "Pose Demo Training"
+    },
+    {
+      "key": "trainingTaskId",
+      "value": ""
+    },
+    {
+      "key": "trainingPrecision",
+      "value": "fp32"
+    },
+    {
+      "key": "modelVersionId",
+      "value": ""
+    },
+    {
+      "key": "validationSessionId",
+      "value": ""
+    },
+    {
+      "key": "validationRuntimeBackend",
+      "value": "pytorch"
+    },
+    {
+      "key": "validationInputUri",
+      "value": "__SET_BY_GET_DATASET_EXPORT_DETAIL__"
+    },
+    {
+      "key": "evaluationDisplayName",
+      "value": "Pose Demo Evaluation"
+    },
+    {
+      "key": "evaluationTaskId",
+      "value": ""
+    },
+    {
+      "key": "conversionTaskId",
+      "value": ""
+    },
+    {
+      "key": "targetFormat",
+      "value": "onnx"
+    },
+    {
+      "key": "modelBuildId",
+      "value": ""
+    },
+    {
+      "key": "deploymentDisplayName",
+      "value": "Pose Demo Deployment"
+    },
+    {
+      "key": "deploymentRuntimeBackend",
+      "value": "onnxruntime"
+    },
+    {
+      "key": "runtimePrecision",
+      "value": "fp32"
+    },
+    {
+      "key": "deploymentInstanceId",
+      "value": ""
+    },
+    {
+      "key": "inputImageBase64",
+      "value": "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/2wBDAQgJCQwLDBgNDRgyIRwhMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjL/wAARCABgAGADASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwDrf+JX8V9D/wCWVl4ks4/wYfzMZJ9yhPfPzeU31jdaZfTWV7A0NzC21426g/1HcEcEc0WN9daZfQ3tlO0NzC25JF6g/wBR2IPBHFerf8Sv4r6H/wAsrLxJZx/gw/mYyT7lCe+fm9D+H6fkM8hoqxfWN1pl9NZXsDQ3MLbXjbqD/UdwRwRzVetwCiiigAooooAKKKKACiiigAqxY311pl9De2U7Q3MLbkkXqD/UdiDwRxVeigD17/iV/FfQ/wDllZeJLOP8GH8zGSfcoT3z83lN9Y3WmX01lewNDcwtteNuoP8AUdwRwRzRY311pl9De2U7Q3MLbkkXqD/UdiDwRxX058l5H2WVR/n8K52/ZegHy3RX0wylGKsMEdqSj23kOx80UV9L0U/beQWPmiivpevnvxH/AMjPq3/X7N/6GauE+YDMooorQQUUUUAFfTCsUYMpwR3r5nr6XrnrdBou/JeR9llUf5/CqbKUYqwwR2oVijBlOCO9XPkvI+yyqP8AP4VzbegbFKilZSjFWGCO1JVDCvnvxH/yM+rf9fs3/oZr6Er578R/8jPq3/X7N/6Ga3o7sTMyiiiugQUUUUAFfS9fNFfS9YVug0FKrFGDKcEd6SiucZd+S8j7LKo/z+FU2UoxVhgjtQrFGDKcEd6ufJeR9llUf5/Cp29BbFKvnvxH/wAjPq3/AF+zf+hmvoVlKMVYYI7V89eI/wDkZ9W/6/Zv/QzXRR3YMzKKKK6RBRRRQAV9L180Vp/8JHrn/QZ1H/wKf/Gs5w5hn0JRXz3/AMJHrn/QZ1H/AMCn/wAaP+Ej1z/oM6j/AOBT/wCNZ+xfcLn0JSqxRgynBHevnr/hI9c/6DOo/wDgU/8AjR/wkeuf9BnUf/Ap/wDGl7F9wufSPyXkfZZVH+fwr5x8Uwy2/ivVo5o2jf7XK21hg4LEg/Qggj2NEPinX7eeOaPWr/ejBhuuGYZHqCcEex4r0j/iV/FfQ/8AllZeJLOP8GH8zGSfcoT3z8xGLpO72EeQ0VYvrG60y+msr2BobmFtrxt1B/qO4I4I5qvXSAUUUUAFFFFABRRRQAUUUUAFWLG+utMvob2ynaG5hbcki9Qf6jsQeCOKr0UAevf8Sv4r6H/yysvElnH+DD+ZjJPuUJ75+bym+sbrTL6ayvYGhuYW2vG3UH+o7gjgjmixvrrTL6G9sp2huYW3JIvUH+o7EHgjivVv+JX8V9D/AOWVl4ks4/wYfzMZJ9yhPfPzYfw/T8gP/9k="
+    },
+    {
+      "key": "inferenceTaskId",
+      "value": ""
+    },
+    {
+      "key": "previewRunId",
+      "value": ""
+    },
+    {
+      "key": "workflowRuntimeId",
+      "value": ""
+    },
+    {
+      "key": "workflowRunId",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "Preparation",
+      "item": [
+        {
+          "name": "Bootstrap Project",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/projects/bootstrap",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "projects",
+                "bootstrap"
+              ]
+            },
+            "description": "Pose 全链路调试先准备 Project。已存在同名 Project 时，直接把 projectId 改成目标值后重新调用即可。",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"display_name\": \"{{projectDisplayName}}\",\n  \"description\": \"{{projectDescription}}\",\n  \"metadata\": {\n    \"source\": \"{{collectionSlug}}\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200 || pm.response.code === 201) {",
+                  "  const payload = pm.response.json();",
+                  "  if (payload.project_id) {",
+                  "    pm.collectionVariables.set('projectId', payload.project_id);",
+                  "  }",
+                  "}"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Dataset Import",
+      "item": [
+        {
+          "name": "Create Pose Dataset Import",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/datasets/imports",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "datasets",
+                "imports"
+              ]
+            },
+            "description": "Pose 正式导入入口。默认 file src 已指向本地调试包 data/files/postman-assets/pose-coco-keypoints-min.zip，格式使用 coco + task_type=pose，内置 17 keypoints person 最小样本。",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "project_id",
+                  "value": "{{projectId}}",
+                  "type": "text"
+                },
+                {
+                  "key": "dataset_id",
+                  "value": "{{datasetId}}",
+                  "type": "text"
+                },
+                {
+                  "key": "format_type",
+                  "value": "coco",
+                  "type": "text"
+                },
+                {
+                  "key": "task_type",
+                  "value": "pose",
+                  "type": "text"
+                },
+                {
+                  "key": "package",
+                  "type": "file",
+                  "src": "{{datasetZipPath}}"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 202) {",
+                  "  const payload = pm.response.json();",
+                  "  if (payload.dataset_import_id) {",
+                  "    pm.collectionVariables.set('datasetImportId', payload.dataset_import_id);",
+                  "  }",
+                  "  if (payload.task_id) {",
+                  "    pm.collectionVariables.set('importTaskId', payload.task_id);",
+                  "  }",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Pose Dataset Import Detail",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/datasets/imports/{{datasetImportId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "datasets",
+                "imports",
+                "{{datasetImportId}}"
+              ]
+            },
+            "description": "读取导入详情和结构化校验结果。任务完成后，这条响应会自动回填 datasetVersionId。"
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  const payload = pm.response.json();",
+                  "  if (payload.dataset_version_id) {",
+                  "    pm.collectionVariables.set('datasetVersionId', payload.dataset_version_id);",
+                  "  }",
+                  "  if (payload.dataset_id) {",
+                  "    pm.collectionVariables.set('datasetId', payload.dataset_id);",
+                  "  }",
+                  "}"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Dataset Export",
+      "item": [
+        {
+          "name": "Create Pose Dataset Export",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/datasets/exports",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "datasets",
+                "exports"
+              ]
+            },
+            "description": "Pose 正式导出入口。默认格式是 coco-keypoints-v1，如需换模型侧格式，可直接改 exportFormatId。",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"dataset_id\": \"{{datasetId}}\",\n  \"dataset_version_id\": \"{{datasetVersionId}}\",\n  \"format_id\": \"{{exportFormatId}}\",\n  \"display_name\": \"{{datasetExportDisplayName}}\",\n  \"include_test_split\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 202) {",
+                  "  const payload = pm.response.json();",
+                  "  if (payload.dataset_export_id) {",
+                  "    pm.collectionVariables.set('datasetExportId', payload.dataset_export_id);",
+                  "  }",
+                  "  if (payload.task_id) {",
+                  "    pm.collectionVariables.set('exportTaskId', payload.task_id);",
+                  "  }",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Pose Dataset Export Detail",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/datasets/exports/{{datasetExportId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "datasets",
+                "exports",
+                "{{datasetExportId}}"
+              ]
+            },
+            "description": "读取导出详情。任务完成后，这条响应会自动回填 datasetExportManifestKey。"
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  const payload = pm.response.json();",
+                  "  if (payload.manifest_object_key) {",
+                  "    pm.collectionVariables.set('datasetExportManifestKey', payload.manifest_object_key);",
+                  "  }",
+                  "  if (payload.dataset_version_id) {",
+                  "    pm.collectionVariables.set('datasetVersionId', payload.dataset_version_id);",
+                  "  }",
+                  "  if (payload.export_path) {",
+                  "    pm.collectionVariables.set('validationInputUri', payload.export_path + '/images/val/val-1.jpg');",
+                  "  }",
+                  "}"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Training",
+      "item": [
+        {
+          "name": "Create Pose Training Task",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/models/pose/training-tasks",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "models",
+                "pose",
+                "training-tasks"
+              ]
+            },
+            "description": "Pose 训练入口。默认预置 modelType=yolo11、modelScale=nano、batch_size=2、input_size=640x640、precision=fp32，用于当前仓库内最小联调样本。",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"model_type\": \"{{modelType}}\",\n  \"dataset_export_id\": \"{{datasetExportId}}\",\n  \"dataset_export_manifest_key\": \"{{datasetExportManifestKey}}\",\n  \"recipe_id\": \"{{recipeId}}\",\n  \"model_scale\": \"{{modelScale}}\",\n  \"output_model_name\": \"{{outputModelName}}\",\n  \"max_epochs\": 1,\n  \"batch_size\": 2,\n  \"input_size\": [\n    640,\n    640\n  ],\n  \"precision\": \"{{trainingPrecision}}\",\n  \"extra_options\": {},\n  \"display_name\": \"{{trainingDisplayName}}\",\n  \"evaluation_interval\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 202) {",
+                  "  const payload = pm.response.json();",
+                  "  if (payload.task_id) {",
+                  "    pm.collectionVariables.set('trainingTaskId', payload.task_id);",
+                  "  }",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Pose Training Task Detail",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/models/pose/training-tasks/{{trainingTaskId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "models",
+                "pose",
+                "training-tasks",
+                "{{trainingTaskId}}"
+              ]
+            },
+            "description": "读取训练任务详情。训练完成后，这条响应会自动回填 modelVersionId，用于后续 validation / evaluation / conversion。"
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  const payload = pm.response.json();",
+                  "  const result = payload.result || {};",
+                  "  const metadata = payload.metadata || {};",
+                  "  const modelVersionId = result.model_version_id || metadata.model_version_id || null;",
+                  "  if (modelVersionId) {",
+                  "    pm.collectionVariables.set('modelVersionId', modelVersionId);",
+                  "  }",
+                  "}"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Validation",
+      "item": [
+        {
+          "name": "Create Pose Validation Session",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/models/pose/validation-sessions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "models",
+                "pose",
+                "validation-sessions"
+              ]
+            },
+            "description": "Pose validation session 走 model_version_id，不依赖 conversion 产物。这里默认 validationRuntimeBackend 用 pytorch，避免和 deployment build 链耦合。",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"model_type\": \"{{modelType}}\",\n  \"model_version_id\": \"{{modelVersionId}}\",\n  \"runtime_profile_id\": null,\n  \"runtime_backend\": \"{{validationRuntimeBackend}}\",\n  \"device_name\": null,\n  \"score_threshold\": 0.25,\n  \"keypoint_confidence_threshold\": 0.3,\n  \"save_result_image\": true,\n  \"extra_options\": {}\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  const payload = pm.response.json();",
+                  "  if (payload.session_id) {",
+                  "    pm.collectionVariables.set('validationSessionId', payload.session_id);",
+                  "  }",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Pose Validation Session Detail",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/models/pose/validation-sessions/{{validationSessionId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "models",
+                "pose",
+                "validation-sessions",
+                "{{validationSessionId}}"
+              ]
+            },
+            "description": "读取 validation session 详情，确认当前 runtime_backend、artifact 和默认阈值。"
+          },
+          "response": []
+        },
+        {
+          "name": "Predict Pose Validation Session",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/models/pose/validation-sessions/{{validationSessionId}}/predict",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "models",
+                "pose",
+                "validation-sessions",
+                "{{validationSessionId}}",
+                "predict"
+              ]
+            },
+            "description": "执行单张 validation 预测。默认值会在 Get Dataset Export Detail 成功后，自动把 validationInputUri 回填到当前导出结果里的 val 样本图片。",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"input_uri\": \"{{validationInputUri}}\",\n  \"input_file_id\": null,\n  \"score_threshold\": 0.25,\n  \"keypoint_confidence_threshold\": 0.3,\n  \"save_result_image\": true,\n  \"extra_options\": {}\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Evaluation",
+      "item": [
+        {
+          "name": "Create Pose Evaluation Task",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/models/pose/evaluation-tasks",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "models",
+                "pose",
+                "evaluation-tasks"
+              ]
+            },
+            "description": "Pose 评估任务入口，默认复用当前 collection 的 datasetExportId 和 modelVersionId。",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"model_version_id\": \"{{modelVersionId}}\",\n  \"dataset_export_id\": \"{{datasetExportId}}\",\n  \"dataset_export_manifest_key\": \"{{datasetExportManifestKey}}\",\n  \"score_threshold\": 0.25,\n  \"save_result_package\": true,\n  \"extra_options\": {},\n  \"display_name\": \"{{evaluationDisplayName}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 202) {",
+                  "  const payload = pm.response.json();",
+                  "  if (payload.task_id) {",
+                  "    pm.collectionVariables.set('evaluationTaskId', payload.task_id);",
+                  "  }",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Pose Evaluation Task Detail",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/models/pose/evaluation-tasks/{{evaluationTaskId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "models",
+                "pose",
+                "evaluation-tasks",
+                "{{evaluationTaskId}}"
+              ]
+            },
+            "description": "读取评估任务详情。评估完成后可在 result 中直接看当前 task 对应的指标摘要。"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Conversion",
+      "item": [
+        {
+          "name": "Create Pose Conversion Task",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/models/pose/conversion-tasks",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "models",
+                "pose",
+                "conversion-tasks"
+              ]
+            },
+            "description": "Pose conversion 创建入口。请求必须显式传 source_model_version_id、model_type 和 target_formats，完成后可从 result 中回填 modelBuildId 给 deployment。",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"model_type\": \"{{modelType}}\",\n  \"source_model_version_id\": \"{{modelVersionId}}\",\n  \"target_formats\": [\n    \"{{targetFormat}}\"\n  ],\n  \"runtime_profile_id\": null,\n  \"extra_options\": {},\n  \"display_name\": \"Pose conversion full-chain debug\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 202) {",
+                  "  const payload = pm.response.json();",
+                  "  if (payload.task_id) {",
+                  "    pm.collectionVariables.set('conversionTaskId', payload.task_id);",
+                  "  }",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List Pose Conversion Tasks",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/models/pose/conversion-tasks?project_id={{projectId}}&model_type={{modelType}}&source_model_version_id={{modelVersionId}}&limit={{conversionLimit}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "models",
+                "pose",
+                "conversion-tasks"
+              ],
+              "query": [
+                {
+                  "key": "project_id",
+                  "value": "{{projectId}}"
+                },
+                {
+                  "key": "model_type",
+                  "value": "{{modelType}}"
+                },
+                {
+                  "key": "source_model_version_id",
+                  "value": "{{modelVersionId}}"
+                },
+                {
+                  "key": "limit",
+                  "value": "{{conversionLimit}}"
+                }
+              ]
+            },
+            "description": "列出 Pose conversion 任务。后端会按 task_type=pose 过滤，避免和其他任务类型共享 task_kind 时串单。"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Pose Conversion Task Detail",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/models/pose/conversion-tasks/{{conversionTaskId}}?include_events=true",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "models",
+                "pose",
+                "conversion-tasks",
+                "{{conversionTaskId}}"
+              ],
+              "query": [
+                {
+                  "key": "include_events",
+                  "value": "true"
+                }
+              ]
+            },
+            "description": "读取 Pose conversion 任务详情和事件。转换完成后，可从 result.model_build_id 或 result.builds[0].model_build_id 回填 modelBuildId。"
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  const payload = pm.response.json();",
+                  "  const result = payload.result || {};",
+                  "  let modelBuildId = result.model_build_id || null;",
+                  "  if (!modelBuildId && Array.isArray(result.builds) && result.builds.length > 0) {",
+                  "    modelBuildId = result.builds[0].model_build_id || null;",
+                  "  }",
+                  "  if (modelBuildId) {",
+                  "    pm.collectionVariables.set('modelBuildId', modelBuildId);",
+                  "  }",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Pose Conversion Task Result",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/models/pose/conversion-tasks/{{conversionTaskId}}/result",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "models",
+                "pose",
+                "conversion-tasks",
+                "{{conversionTaskId}}",
+                "result"
+              ]
+            },
+            "description": "读取 Pose conversion 结果文件状态。queued/running 时 file_status=pending，完成后 payload 为转换报告 JSON。"
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  const payload = pm.response.json();",
+                  "  const report = payload.payload || {};",
+                  "  let modelBuildId = report.model_build_id || null;",
+                  "  if (!modelBuildId && Array.isArray(report.builds) && report.builds.length > 0) {",
+                  "    modelBuildId = report.builds[0].model_build_id || null;",
+                  "  }",
+                  "  if (modelBuildId) {",
+                  "    pm.collectionVariables.set('modelBuildId', modelBuildId);",
+                  "  }",
+                  "}"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Deployment",
+      "item": [
+        {
+          "name": "Create Pose Deployment Instance",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/models/pose/deployment-instances",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "models",
+                "pose",
+                "deployment-instances"
+              ]
+            },
+            "description": "Pose deployment 默认绑定 conversion 产出的 modelBuildId，并使用 onnxruntime + fp32 作为默认本地联调后端。",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"model_type\": \"{{modelType}}\",\n  \"model_version_id\": null,\n  \"model_build_id\": \"{{modelBuildId}}\",\n  \"runtime_profile_id\": null,\n  \"runtime_backend\": \"{{deploymentRuntimeBackend}}\",\n  \"runtime_precision\": \"{{runtimePrecision}}\",\n  \"device_name\": null,\n  \"instance_count\": 1,\n  \"display_name\": \"{{deploymentDisplayName}}\",\n  \"metadata\": {\n    \"source\": \"{{collectionSlug}}\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  const payload = pm.response.json();",
+                  "  if (payload.deployment_instance_id) {",
+                  "    pm.collectionVariables.set('deploymentInstanceId', payload.deployment_instance_id);",
+                  "  }",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Pose Deployment Instance",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/models/pose/deployment-instances/{{deploymentInstanceId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "models",
+                "pose",
+                "deployment-instances",
+                "{{deploymentInstanceId}}"
+              ]
+            },
+            "description": "读取 deployment 实例详情，确认绑定的是预期的 modelBuildId 与 runtime_backend。"
+          },
+          "response": []
+        },
+        {
+          "name": "Start Pose Sync Deployment",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/models/pose/deployment-instances/{{deploymentInstanceId}}/sync/start",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "models",
+                "pose",
+                "deployment-instances",
+                "{{deploymentInstanceId}}",
+                "sync",
+                "start"
+              ]
+            },
+            "description": "启动 sync deployment 进程。后续 sync infer / workflow invoke 依赖这一层常驻。"
+          },
+          "response": []
+        },
+        {
+          "name": "Warmup Pose Sync Deployment",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/models/pose/deployment-instances/{{deploymentInstanceId}}/sync/warmup",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "models",
+                "pose",
+                "deployment-instances",
+                "{{deploymentInstanceId}}",
+                "sync",
+                "warmup"
+              ]
+            },
+            "description": "执行一次 sync warmup，尽量把首次延迟前置掉。"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Pose Sync Deployment Status",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/models/pose/deployment-instances/{{deploymentInstanceId}}/sync/status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "models",
+                "pose",
+                "deployment-instances",
+                "{{deploymentInstanceId}}",
+                "sync",
+                "status"
+              ]
+            },
+            "description": "读取 sync deployment 进程状态。"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Pose Sync Deployment Health",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/models/pose/deployment-instances/{{deploymentInstanceId}}/sync/health",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "models",
+                "pose",
+                "deployment-instances",
+                "{{deploymentInstanceId}}",
+                "sync",
+                "health"
+              ]
+            },
+            "description": "读取 sync deployment 健康摘要。"
+          },
+          "response": []
+        },
+        {
+          "name": "Start Pose Async Deployment",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/models/pose/deployment-instances/{{deploymentInstanceId}}/async/start",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "models",
+                "pose",
+                "deployment-instances",
+                "{{deploymentInstanceId}}",
+                "async",
+                "start"
+              ]
+            },
+            "description": "启动 async deployment 进程。后续 async inference task 依赖这一层常驻。"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Pose Async Deployment Status",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/models/pose/deployment-instances/{{deploymentInstanceId}}/async/status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "models",
+                "pose",
+                "deployment-instances",
+                "{{deploymentInstanceId}}",
+                "async",
+                "status"
+              ]
+            },
+            "description": "读取 async deployment 进程状态。"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Pose Async Deployment Health",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/models/pose/deployment-instances/{{deploymentInstanceId}}/async/health",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "models",
+                "pose",
+                "deployment-instances",
+                "{{deploymentInstanceId}}",
+                "async",
+                "health"
+              ]
+            },
+            "description": "读取 async deployment 健康摘要。"
+          },
+          "response": []
+        },
+        {
+          "name": "Sync Infer Pose Deployment",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/models/pose/deployment-instances/{{deploymentInstanceId}}/infer",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "models",
+                "pose",
+                "deployment-instances",
+                "{{deploymentInstanceId}}",
+                "infer"
+              ]
+            },
+            "description": "执行一次同步直返推理。这里统一用 image_base64 + input_transport_mode=memory，方便现场快速验证。",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model_type\": \"{{modelType}}\",\n  \"image_base64\": \"{{inputImageBase64}}\",\n  \"input_transport_mode\": \"memory\",\n  \"score_threshold\": 0.25,\n  \"keypoint_confidence_threshold\": 0.3,\n  \"save_result_image\": false,\n  \"return_preview_image_base64\": false,\n  \"extra_options\": {}\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Create Pose Async Inference Task",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/models/pose/inference-tasks",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "models",
+                "pose",
+                "inference-tasks"
+              ]
+            },
+            "description": "创建一条异步推理任务。调用前先确保 async deployment 已 start。",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"deployment_instance_id\": \"{{deploymentInstanceId}}\",\n  \"model_type\": \"{{modelType}}\",\n  \"image_base64\": \"{{inputImageBase64}}\",\n  \"input_transport_mode\": \"memory\",\n  \"score_threshold\": 0.25,\n  \"keypoint_confidence_threshold\": 0.3,\n  \"save_result_image\": false,\n  \"return_preview_image_base64\": false,\n  \"extra_options\": {},\n  \"display_name\": \"pose async infer\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 202) {",
+                  "  const payload = pm.response.json();",
+                  "  if (payload.task_id) {",
+                  "    pm.collectionVariables.set('inferenceTaskId', payload.task_id);",
+                  "  }",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Pose Async Inference Result",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/models/pose/inference-tasks/{{inferenceTaskId}}/result",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "models",
+                "pose",
+                "inference-tasks",
+                "{{inferenceTaskId}}",
+                "result"
+              ]
+            },
+            "description": "读取异步推理结果。running 阶段可能返回尚未就绪的状态，完成后再读最终结果。"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Workflow App",
+      "item": [
+        {
+          "name": "Save Template",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workflows/projects/{{projectId}}/templates/pose-deployment-sync-presence-gate-template/versions/1.0.0",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workflows",
+                "projects",
+                "{{projectId}}",
+                "templates",
+                "pose-deployment-sync-presence-gate-template",
+                "versions",
+                "1.0.0"
+              ]
+            },
+            "description": "保存 pose_deployment_sync_presence_gate 的 workflow template。",
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n  \"template\": {\r\n    \"format_id\": \"amvision.workflow-graph-template.v1\",\r\n    \"template_id\": \"pose-deployment-sync-presence-gate-template\",\r\n    \"template_version\": \"1.0.0\",\r\n    \"display_name\": \"Pose Deployment Sync Presence Gate\",\r\n    \"description\": \"接收 base64 图片和已有 deployment 请求，直接执行 pose 推理，再基于 count 与 top score 完成最小 presence 工业判定。\",\r\n    \"nodes\": [\r\n      {\r\n        \"node_id\": \"decode_request_image\",\r\n        \"node_type_id\": \"core.io.image-base64-decode\",\r\n        \"parameters\": {}\r\n      },\r\n      {\r\n        \"node_id\": \"deployment_request_input\",\r\n        \"node_type_id\": \"core.io.template-input.object\",\r\n        \"parameters\": {}\r\n      },\r\n      {\r\n        \"node_id\": \"pose\",\r\n        \"node_type_id\": \"core.model.pose\",\r\n        \"parameters\": {\r\n          \"auto_start_process\": false,\r\n          \"score_threshold\": 0.4,\r\n          \"keypoint_confidence_threshold\": 0.25,\r\n          \"save_result_image\": false,\r\n          \"return_preview_image_base64\": false\r\n        }\r\n      },\r\n      {\r\n        \"node_id\": \"poses_value\",\r\n        \"node_type_id\": \"core.logic.payload-to-value\",\r\n        \"parameters\": {}\r\n      },\r\n      {\r\n        \"node_id\": \"extract_count\",\r\n        \"node_type_id\": \"core.logic.value-field-extract\",\r\n        \"parameters\": {\r\n          \"path\": \"count\"\r\n        }\r\n      },\r\n      {\r\n        \"node_id\": \"extract_top_score\",\r\n        \"node_type_id\": \"core.logic.value-field-extract\",\r\n        \"parameters\": {\r\n          \"path\": \"items.0.score\"\r\n        }\r\n      },\r\n      {\r\n        \"node_id\": \"extract_top_class_name\",\r\n        \"node_type_id\": \"core.logic.value-field-extract\",\r\n        \"parameters\": {\r\n          \"path\": \"items.0.class_name\"\r\n        }\r\n      },\r\n      {\r\n        \"node_id\": \"presence_check\",\r\n        \"node_type_id\": \"core.rule.presence-check\",\r\n        \"parameters\": {\r\n          \"min_count\": 1\r\n        }\r\n      },\r\n      {\r\n        \"node_id\": \"score_ok\",\r\n        \"node_type_id\": \"core.rule.threshold-check\",\r\n        \"parameters\": {\r\n          \"operator\": \"ge\",\r\n          \"threshold\": 0.6\r\n        }\r\n      },\r\n      {\r\n        \"node_id\": \"metadata_object\",\r\n        \"node_type_id\": \"core.logic.object-create\",\r\n        \"parameters\": {\r\n          \"keys\": [\r\n            \"deployment_request\"\r\n          ],\r\n          \"fields\": {\r\n            \"inspection_kind\": \"pose-presence-gate\",\r\n            \"station_id\": \"line-pose-01\"\r\n          }\r\n        }\r\n      },\r\n      {\r\n        \"node_id\": \"metrics_object\",\r\n        \"node_type_id\": \"core.logic.object-create\",\r\n        \"parameters\": {\r\n          \"keys\": [\r\n            \"poses\",\r\n            \"count\",\r\n            \"top_score\",\r\n            \"top_class_name\"\r\n          ]\r\n        }\r\n      },\r\n      {\r\n        \"node_id\": \"process_decision\",\r\n        \"node_type_id\": \"core.rule.process-decision\",\r\n        \"parameters\": {\r\n          \"mode\": \"all\",\r\n          \"condition_names\": [\r\n            \"presence\",\r\n            \"score\"\r\n          ],\r\n          \"ok_reason\": \"pose presence gate passed\",\r\n          \"ng_reason\": \"pose presence gate failed\"\r\n        }\r\n      }\r\n    ],\r\n    \"edges\": [\r\n      {\r\n        \"edge_id\": \"edge-decode-pose-image\",\r\n        \"source_node_id\": \"decode_request_image\",\r\n        \"source_port\": \"image\",\r\n        \"target_node_id\": \"pose\",\r\n        \"target_port\": \"image\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-deployment-request-pose\",\r\n        \"source_node_id\": \"deployment_request_input\",\r\n        \"source_port\": \"value\",\r\n        \"target_node_id\": \"pose\",\r\n        \"target_port\": \"request\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-pose-poses-value\",\r\n        \"source_node_id\": \"pose\",\r\n        \"source_port\": \"poses\",\r\n        \"target_node_id\": \"poses_value\",\r\n        \"target_port\": \"poses\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-poses-value-count\",\r\n        \"source_node_id\": \"poses_value\",\r\n        \"source_port\": \"value\",\r\n        \"target_node_id\": \"extract_count\",\r\n        \"target_port\": \"value\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-poses-value-top-score\",\r\n        \"source_node_id\": \"poses_value\",\r\n        \"source_port\": \"value\",\r\n        \"target_node_id\": \"extract_top_score\",\r\n        \"target_port\": \"value\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-poses-value-top-class\",\r\n        \"source_node_id\": \"poses_value\",\r\n        \"source_port\": \"value\",\r\n        \"target_node_id\": \"extract_top_class_name\",\r\n        \"target_port\": \"value\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-count-presence\",\r\n        \"source_node_id\": \"extract_count\",\r\n        \"source_port\": \"value\",\r\n        \"target_node_id\": \"presence_check\",\r\n        \"target_port\": \"value\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-top-score-threshold\",\r\n        \"source_node_id\": \"extract_top_score\",\r\n        \"source_port\": \"value\",\r\n        \"target_node_id\": \"score_ok\",\r\n        \"target_port\": \"value\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-deployment-request-metadata\",\r\n        \"source_node_id\": \"deployment_request_input\",\r\n        \"source_port\": \"value\",\r\n        \"target_node_id\": \"metadata_object\",\r\n        \"target_port\": \"values\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-poses-value-metrics\",\r\n        \"source_node_id\": \"poses_value\",\r\n        \"source_port\": \"value\",\r\n        \"target_node_id\": \"metrics_object\",\r\n        \"target_port\": \"values\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-count-metrics\",\r\n        \"source_node_id\": \"extract_count\",\r\n        \"source_port\": \"value\",\r\n        \"target_node_id\": \"metrics_object\",\r\n        \"target_port\": \"values\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-top-score-metrics\",\r\n        \"source_node_id\": \"extract_top_score\",\r\n        \"source_port\": \"value\",\r\n        \"target_node_id\": \"metrics_object\",\r\n        \"target_port\": \"values\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-top-class-metrics\",\r\n        \"source_node_id\": \"extract_top_class_name\",\r\n        \"source_port\": \"value\",\r\n        \"target_node_id\": \"metrics_object\",\r\n        \"target_port\": \"values\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-presence-process\",\r\n        \"source_node_id\": \"presence_check\",\r\n        \"source_port\": \"result\",\r\n        \"target_node_id\": \"process_decision\",\r\n        \"target_port\": \"conditions\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-score-process\",\r\n        \"source_node_id\": \"score_ok\",\r\n        \"source_port\": \"result\",\r\n        \"target_node_id\": \"process_decision\",\r\n        \"target_port\": \"conditions\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-metrics-process\",\r\n        \"source_node_id\": \"metrics_object\",\r\n        \"source_port\": \"value\",\r\n        \"target_node_id\": \"process_decision\",\r\n        \"target_port\": \"metrics\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-metadata-process\",\r\n        \"source_node_id\": \"metadata_object\",\r\n        \"source_port\": \"value\",\r\n        \"target_node_id\": \"process_decision\",\r\n        \"target_port\": \"metadata\"\r\n      },\r\n      {\r\n        \"edge_id\": \"edge-image-process\",\r\n        \"source_node_id\": \"decode_request_image\",\r\n        \"source_port\": \"image\",\r\n        \"target_node_id\": \"process_decision\",\r\n        \"target_port\": \"image\"\r\n      }\r\n    ],\r\n    \"template_inputs\": [\r\n      {\r\n        \"input_id\": \"request_image\",\r\n        \"display_name\": \"Request Image\",\r\n        \"payload_type_id\": \"image-base64.v1\",\r\n        \"target_node_id\": \"decode_request_image\",\r\n        \"target_port\": \"payload\"\r\n      },\r\n      {\r\n        \"input_id\": \"deployment_request\",\r\n        \"display_name\": \"Deployment Request\",\r\n        \"payload_type_id\": \"value.v1\",\r\n        \"target_node_id\": \"deployment_request_input\",\r\n        \"target_port\": \"payload\"\r\n      }\r\n    ],\r\n    \"template_outputs\": [\r\n      {\r\n        \"output_id\": \"model_poses\",\r\n        \"display_name\": \"Model Poses\",\r\n        \"payload_type_id\": \"poses.v1\",\r\n        \"source_node_id\": \"pose\",\r\n        \"source_port\": \"poses\"\r\n      },\r\n      {\r\n        \"output_id\": \"inspection_result\",\r\n        \"display_name\": \"Inspection Result\",\r\n        \"payload_type_id\": \"result-record.v1\",\r\n        \"source_node_id\": \"process_decision\",\r\n        \"source_port\": \"result\"\r\n      },\r\n      {\r\n        \"output_id\": \"decision_summary\",\r\n        \"display_name\": \"Decision Summary\",\r\n        \"payload_type_id\": \"value.v1\",\r\n        \"source_node_id\": \"process_decision\",\r\n        \"source_port\": \"summary\"\r\n      }\r\n    ],\r\n    \"metadata\": {\r\n      \"example_kind\": \"pose-deployment-sync-presence-gate\",\r\n      \"uses_existing_deployment_instance\": true,\r\n      \"deployment_instance_id_binding\": \"deployment_request\",\r\n      \"node_groups\": {\r\n        \"input\": [\r\n          \"decode_request_image\",\r\n          \"deployment_request_input\"\r\n        ],\r\n        \"model_and_bridge\": [\r\n          \"pose\",\r\n          \"poses_value\",\r\n          \"extract_count\",\r\n          \"extract_top_score\",\r\n          \"extract_top_class_name\"\r\n        ],\r\n        \"rules\": [\r\n          \"presence_check\",\r\n          \"score_ok\",\r\n          \"metadata_object\",\r\n          \"metrics_object\",\r\n          \"process_decision\"\r\n        ]\r\n      }\r\n    }\r\n  }\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Save Application",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workflows/projects/{{projectId}}/applications/pose-deployment-sync-presence-gate-app",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workflows",
+                "projects",
+                "{{projectId}}",
+                "applications",
+                "pose-deployment-sync-presence-gate-app"
+              ]
+            },
+            "description": "保存 pose_deployment_sync_presence_gate 的 FlowApplication。",
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n  \"application\": {\r\n    \"format_id\": \"amvision.flow-application.v1\",\r\n    \"application_id\": \"pose-deployment-sync-presence-gate-app\",\r\n    \"display_name\": \"Pose Deployment Sync Presence Gate App\",\r\n    \"template_ref\": {\r\n      \"template_id\": \"pose-deployment-sync-presence-gate-template\",\r\n      \"template_version\": \"1.0.0\",\r\n      \"source_kind\": \"json-file\",\r\n      \"source_uri\": \"docs/examples/workflows/pose_deployment_sync_presence_gate.template.json\",\r\n      \"metadata\": {}\r\n    },\r\n    \"runtime_mode\": \"python-json-workflow\",\r\n    \"description\": \"最小 FlowApplication 示例，使用 base64 图片驱动已有 pose deployment，并直接输出 presence 判定结果。\",\r\n    \"bindings\": [\r\n      {\r\n        \"binding_id\": \"request_image\",\r\n        \"direction\": \"input\",\r\n        \"template_port_id\": \"request_image\",\r\n        \"binding_kind\": \"workflow-execute-input\",\r\n        \"config\": {\r\n          \"payload_type_id\": \"image-base64.v1\",\r\n          \"content_type\": \"application/json\"\r\n        },\r\n        \"metadata\": {}\r\n      },\r\n      {\r\n        \"binding_id\": \"deployment_request\",\r\n        \"direction\": \"input\",\r\n        \"template_port_id\": \"deployment_request\",\r\n        \"binding_kind\": \"workflow-execute-input\",\r\n        \"config\": {\r\n          \"payload_type_id\": \"value.v1\",\r\n          \"content_type\": \"application/json\"\r\n        },\r\n        \"metadata\": {}\r\n      },\r\n      {\r\n        \"binding_id\": \"model_poses\",\r\n        \"direction\": \"output\",\r\n        \"template_port_id\": \"model_poses\",\r\n        \"binding_kind\": \"workflow-execute-output\",\r\n        \"config\": {\r\n          \"payload_type_id\": \"poses.v1\"\r\n        },\r\n        \"metadata\": {}\r\n      },\r\n      {\r\n        \"binding_id\": \"inspection_result\",\r\n        \"direction\": \"output\",\r\n        \"template_port_id\": \"inspection_result\",\r\n        \"binding_kind\": \"workflow-execute-output\",\r\n        \"config\": {\r\n          \"payload_type_id\": \"result-record.v1\"\r\n        },\r\n        \"metadata\": {}\r\n      },\r\n      {\r\n        \"binding_id\": \"decision_summary\",\r\n        \"direction\": \"output\",\r\n        \"template_port_id\": \"decision_summary\",\r\n        \"binding_kind\": \"workflow-execute-output\",\r\n        \"config\": {\r\n          \"payload_type_id\": \"value.v1\"\r\n        },\r\n        \"metadata\": {}\r\n      }\r\n    ],\r\n    \"metadata\": {\r\n      \"example_kind\": \"pose-deployment-sync-presence-gate\",\r\n      \"uses_existing_deployment_instance\": true,\r\n      \"deployment_instance_id_binding\": \"deployment_request\"\r\n    }\r\n  }\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Create Preview Run",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workflows/preview-runs",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workflows",
+                "preview-runs"
+              ]
+            },
+            "description": "创建 pose_deployment_sync_presence_gate 的编辑态 preview run。",
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n  \"project_id\": \"{{projectId}}\",\r\n  \"application_ref\": {\r\n    \"application_id\": \"pose-deployment-sync-presence-gate-app\"\r\n  },\r\n  \"input_bindings\": {\r\n    \"request_image\": {\r\n      \"image_base64\": \"{{inputImageBase64}}\",\r\n      \"media_type\": \"image/png\"\r\n    },\r\n    \"deployment_request\": {\r\n      \"value\": {\r\n        \"deployment_instance_id\": \"{{deploymentInstanceId}}\"\r\n      }\r\n    }\r\n  },\r\n  \"execution_metadata\": {\r\n    \"marker\": \"postman-workflow-example-documents-preview\",\r\n    \"example_name\": \"pose_deployment_sync_presence_gate\",\r\n    \"scenario\": \"pose-deployment-sync-presence-gate\",\r\n    \"trigger_source\": \"editor-preview\"\r\n  },\r\n  \"timeout_seconds\": 30\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.response.to.have.status(201);",
+                  "const body = pm.response.json();",
+                  "if (body.preview_run_id) {",
+                  "  pm.collectionVariables.set('previewRunId', body.preview_run_id);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Preview Run",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workflows/preview-runs/{{previewRunId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workflows",
+                "preview-runs",
+                "{{previewRunId}}"
+              ]
+            },
+            "description": "读取上一步 preview run 的 outputs 和 node_records。"
+          },
+          "response": []
+        },
+        {
+          "name": "Create App Runtime",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workflows/app-runtimes",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workflows",
+                "app-runtimes"
+              ]
+            },
+            "description": "创建保存后 app 的正式 runtime。",
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n  \"project_id\": \"{{projectId}}\",\r\n  \"application_id\": \"pose-deployment-sync-presence-gate-app\",\r\n  \"display_name\": \"Pose Deployment Sync Presence Gate Runtime\",\r\n  \"metadata\": {\r\n    \"example_kind\": \"pose-deployment-sync-presence-gate\",\r\n    \"uses_existing_deployment_instance\": true\r\n  }\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.response.to.have.status(201);",
+                  "const body = pm.response.json();",
+                  "if (body.workflow_runtime_id) {",
+                  "  pm.collectionVariables.set('workflowRuntimeId', body.workflow_runtime_id);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Start App Runtime",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workflows/app-runtimes/{{workflowRuntimeId}}/start",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workflows",
+                "app-runtimes",
+                "{{workflowRuntimeId}}",
+                "start"
+              ]
+            },
+            "description": "启动正式 app runtime。"
+          },
+          "response": []
+        },
+        {
+          "name": "Get App Runtime Health",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workflows/app-runtimes/{{workflowRuntimeId}}/health",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workflows",
+                "app-runtimes",
+                "{{workflowRuntimeId}}",
+                "health"
+              ]
+            },
+            "description": "读取正式 app runtime health。"
+          },
+          "response": []
+        },
+        {
+          "name": "Invoke App Runtime",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workflows/app-runtimes/{{workflowRuntimeId}}/invoke",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workflows",
+                "app-runtimes",
+                "{{workflowRuntimeId}}",
+                "invoke"
+              ]
+            },
+            "description": "同步调用正式 app runtime。",
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n  \"input_bindings\": {\r\n    \"request_image\": {\r\n      \"image_base64\": \"{{inputImageBase64}}\",\r\n      \"media_type\": \"image/png\"\r\n    },\r\n    \"deployment_request\": {\r\n      \"value\": {\r\n        \"deployment_instance_id\": \"{{deploymentInstanceId}}\"\r\n      }\r\n    }\r\n  },\r\n  \"execution_metadata\": {\r\n    \"scenario\": \"pose-deployment-sync-presence-gate\",\r\n    \"trigger_source\": \"sync-api\"\r\n  }\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "if (body.workflow_run_id) {",
+                  "  pm.collectionVariables.set('workflowRunId', body.workflow_run_id);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create Workflow Run",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workflows/app-runtimes/{{workflowRuntimeId}}/runs",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workflows",
+                "app-runtimes",
+                "{{workflowRuntimeId}}",
+                "runs"
+              ]
+            },
+            "description": "创建正式 async workflow run。",
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n  \"input_bindings\": {\r\n    \"request_image\": {\r\n      \"image_base64\": \"{{inputImageBase64}}\",\r\n      \"media_type\": \"image/png\"\r\n    },\r\n    \"deployment_request\": {\r\n      \"value\": {\r\n        \"deployment_instance_id\": \"{{deploymentInstanceId}}\"\r\n      }\r\n    }\r\n  },\r\n  \"execution_metadata\": {\r\n    \"scenario\": \"pose-deployment-sync-presence-gate\",\r\n    \"trigger_source\": \"async-api\"\r\n  }\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.response.to.have.status(201);",
+                  "const body = pm.response.json();",
+                  "if (body.workflow_run_id) {",
+                  "  pm.collectionVariables.set('workflowRunId', body.workflow_run_id);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Workflow Run",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workflows/runs/{{workflowRunId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workflows",
+                "runs",
+                "{{workflowRunId}}"
+              ]
+            },
+            "description": "读取 invoke 或 async run 返回的 workflow_run_id。"
+          },
+          "response": []
+        },
+        {
+          "name": "Stop App Runtime",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workflows/app-runtimes/{{workflowRuntimeId}}/stop",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workflows",
+                "app-runtimes",
+                "{{workflowRuntimeId}}",
+                "stop"
+              ]
+            },
+            "description": "停止正式 app runtime。"
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}

@@ -1,4 +1,4 @@
-"""LocalBufferBroker ring buffer 帧引用合同。"""
+"""LocalBufferBroker ring buffer 帧引用规则。"""
 
 from __future__ import annotations
 

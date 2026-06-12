@@ -1,4 +1,4 @@
-# LocalBufferBroker 规划
+# LocalBufferBroker 设计与实现状态
 
 ## 文档目的
 
@@ -77,7 +77,7 @@ LocalBufferBroker
 
 LocalBufferBroker 在目标运行形态中是本机独立 companion process，由 backend-service 或本地启动器负责启动、健康检查和停止。它不是对外公开服务，也不是新的远程微服务；它只服务同一台机器上的 backend-service、workflow preview 子进程、WorkflowAppRuntime worker、DeploymentInstance 推理 worker 和受控本地 adapter。
 
-第 0 阶段已经在项目内实现合同模型、mmap pool 基础设施和本地 reader 接口，并稳定 BufferRef、FrameRef、BufferLease、槽位复用、generation 校验和 image-ref 解析规则。第 1 阶段已经把同一套 mmap pool 和 lease registry 包到 broker companion process 中，并把 workflow preview、WorkflowAppRuntime 和 deployment worker 接到 broker client。
+第 0 阶段已经在项目内实现规则模型、mmap pool 基础设施和本地 reader 接口，并稳定 BufferRef、FrameRef、BufferLease、槽位复用、generation 校验和 image-ref 解析规则。第 1 阶段已经把同一套 mmap pool 和 lease registry 包到 broker companion process 中，并把 workflow preview、WorkflowAppRuntime 和 deployment worker 接到 broker client。
 
 建议运行形态如下：
 
@@ -104,12 +104,12 @@ workflow preview process / workflow runtime worker / deployment worker / local a
 
 当前 broker + mmap 主链路已经可以在本机 backend-service 运行时使用，已完成的能力包括：
 
-- BufferRef、FrameRef、BufferLease 合同和 image-ref 解析规则。
+- BufferRef、FrameRef、BufferLease 规则和 image-ref 解析规则。
 - 固定槽位 file-backed mmap pool、两阶段写入、读取校验、release、release-owner 和 expire_leases。
 - LocalBufferBroker companion process、supervisor、client、父进程 response router 和周期性 expire loop。
 - 普通 BufferRef direct mmap 写读，以及最小 ring channel 的 FrameRef direct mmap 写读。
 - preview run、WorkflowAppRuntime worker 和 deployment worker 的 broker client 注入。
-- YOLOX detection 节点通过 PublishedInferenceGateway 调用 backend-service 持有的长期 deployment worker。
+- detection deployment 节点通过 PublishedInferenceGateway 调用 backend-service 持有的长期 deployment worker。
 - backend-service health、workflow runtime health 和 deployment health 中的 broker 摘要、输入计数和最近错误。
 - OpenCV 与 Barcode/QR 自定义节点通过公共 `load_image_bytes` 读取图片，已经具备 memory、storage、buffer 和 frame 输入兼容能力。
 
@@ -336,7 +336,7 @@ WorkflowRun input
 
 - image-ref / image-base64 解析层：增加 buffer-ref 和 frame-ref 分支。
 - runtime input binding：允许图像输入携带 BufferRef 或 FrameRef。
-- YOLOX detection 节点：通过 PublishedInferenceGateway 调用已发布 deployment。
+- detection deployment 节点：通过 PublishedInferenceGateway 调用已发布 deployment。
 - image-preview 节点：支持把 BufferRef 转为短期预览或保存到 ObjectStore。
 - cleanup 机制：run 结束后释放自动创建的 buffer lease。
 
@@ -401,7 +401,7 @@ backend/broker/
 - 实现固定容量 mmap pool。
 - 实现 allocate、write、read、release、expire。
 - 支持 preview run 和 workflow runtime 读取 BufferRef。
-- YOLOX detection 节点通过 PublishedInferenceGateway 调用已发布推理服务。
+- detection deployment 节点通过 PublishedInferenceGateway 调用已发布推理服务。
 - 保留 HTTP/base64/object_key 输入，进入内部执行前可转换为 BufferRef。
 
 当前主干已完成上述基础能力。memory image-ref 在存在 broker writer 时会先写入 LocalBufferBroker direct mmap 数据面，再以 BufferRef 调用 PublishedInferenceGateway；storage、buffer 和 frame image-ref 会按引用传递给长期运行的 deployment worker。

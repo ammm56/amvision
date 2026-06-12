@@ -1,0 +1,55 @@
+{
+  "format_id": "amvision.node-definition.v1",
+  "node_type_id": "custom.opencv.normalize",
+  "display_name": "Normalize",
+  "category": "opencv.filter",
+  "description": "对输入图片执行 min-max 强度归一化，适合把不同亮度区间先规整到稳定范围，再进入阈值、差异和轮廓流程。",
+  "implementation_kind": "custom-node",
+  "runtime_kind": "python-callable",
+  "input_ports": [
+    {
+      "name": "image",
+      "display_name": "Image",
+      "payload_type_id": "image-ref.v1"
+    }
+  ],
+  "output_ports": [
+    {
+      "name": "image",
+      "display_name": "Image",
+      "payload_type_id": "image-ref.v1"
+    }
+  ],
+  "parameter_schema": {
+    "type": "object",
+    "properties": {
+      "alpha": {
+        "type": "number",
+        "default": 0.0
+      },
+      "beta": {
+        "type": "number",
+        "default": 255.0
+      },
+      "per_channel": {
+        "type": "boolean",
+        "default": false
+      },
+      "output_object_key": {
+        "type": "string"
+      }
+    }
+  },
+  "capability_tags": [
+    "opencv.normalize",
+    "vision.preprocess"
+  ],
+  "runtime_requirements": {
+    "python_packages": [
+      "opencv-python",
+      "numpy"
+    ]
+  },
+  "node_pack_id": "opencv.basic-nodes",
+  "node_pack_version": "0.1.0"
+}

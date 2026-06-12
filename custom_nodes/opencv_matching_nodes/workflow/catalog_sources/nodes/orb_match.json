@@ -1,0 +1,77 @@
+{
+  "format_id": "amvision.node-definition.v1",
+  "node_type_id": "custom.opencv.orb-match",
+  "display_name": "ORB Match",
+  "category": "opencv.matching",
+  "description": "对两组 ORB 描述执行暴力匹配与过滤，并输出显式 feature-matches.v1，便于人工查看匹配密度、距离分布和误匹配情况。",
+  "implementation_kind": "custom-node",
+  "runtime_kind": "python-callable",
+  "input_ports": [
+    {
+      "name": "features_a",
+      "display_name": "Features A",
+      "payload_type_id": "local-features.v1"
+    },
+    {
+      "name": "features_b",
+      "display_name": "Features B",
+      "payload_type_id": "local-features.v1"
+    }
+  ],
+  "output_ports": [
+    {
+      "name": "matches",
+      "display_name": "Matches",
+      "payload_type_id": "feature-matches.v1"
+    },
+    {
+      "name": "summary",
+      "display_name": "Summary",
+      "payload_type_id": "value.v1"
+    }
+  ],
+  "parameter_schema": {
+    "type": "object",
+    "properties": {
+      "matcher_kind": {
+        "type": "string",
+        "enum": [
+          "bf-hamming",
+          "bf-hamming2"
+        ]
+      },
+      "cross_check": {
+        "type": "boolean",
+        "default": false
+      },
+      "ratio_test_threshold": {
+        "type": "number",
+        "exclusiveMinimum": 0,
+        "exclusiveMaximum": 1,
+        "default": 0.75
+      },
+      "max_matches": {
+        "type": "integer",
+        "minimum": 1,
+        "default": 100
+      },
+      "max_distance": {
+        "type": "number",
+        "minimum": 0
+      }
+    }
+  },
+  "capability_tags": [
+    "opencv.orb-match",
+    "vision.matching",
+    "vision.feature"
+  ],
+  "runtime_requirements": {
+    "python_packages": [
+      "opencv-python",
+      "numpy"
+    ]
+  },
+  "node_pack_id": "opencv.matching-nodes",
+  "node_pack_version": "0.1.0"
+}

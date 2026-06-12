@@ -1,0 +1,370 @@
+{
+  "format_id": "amvision.workflow-graph-template.v1",
+  "template_id": "industrial-single-frame-sealant-quality-gate-template",
+  "template_version": "1.0.0",
+  "display_name": "Industrial Single Frame Sealant Quality Gate",
+  "description": "面向工业单帧现场的样例。输入本地图像路径和上游 regions.v1，执行区域过滤、面积占比、连续性检查，最后输出 OK/NG、报警对象和本地归档摘要。",
+  "nodes": [
+    {
+      "node_id": "request_image_path_input",
+      "node_type_id": "core.io.template-input.value",
+      "parameters": {}
+    },
+    {
+      "node_id": "load_image",
+      "node_type_id": "core.io.image-load-local",
+      "parameters": {}
+    },
+    {
+      "node_id": "filter_regions",
+      "node_type_id": "core.vision.regions-filter",
+      "parameters": {
+        "class_names": [
+          "sealant"
+        ],
+        "min_score": 0.6
+      }
+    },
+    {
+      "node_id": "area_ratio",
+      "node_type_id": "core.vision.regions-area-ratio",
+      "parameters": {}
+    },
+    {
+      "node_id": "continuity_score",
+      "node_type_id": "core.vision.region-continuity-score",
+      "parameters": {}
+    },
+    {
+      "node_id": "gap_check",
+      "node_type_id": "core.vision.region-gap-check",
+      "parameters": {
+        "match_mode": "all",
+        "max_component_count": 1,
+        "max_hole_count": 0,
+        "min_largest_component_ratio": 0.75
+      }
+    },
+    {
+      "node_id": "presence_check",
+      "node_type_id": "core.rule.presence-check",
+      "parameters": {
+        "min_count": 1,
+        "max_count": 1
+      }
+    },
+    {
+      "node_id": "area_ratio_check",
+      "node_type_id": "core.rule.range-check",
+      "parameters": {
+        "min_value": 0.02,
+        "max_value": 0.18,
+        "min_inclusive": true,
+        "max_inclusive": true
+      }
+    },
+    {
+      "node_id": "metadata_object",
+      "node_type_id": "core.logic.object-create",
+      "parameters": {
+        "keys": [
+          "image_path"
+        ],
+        "fields": {
+          "inspection_kind": "sealant-quality-gate",
+          "station_id": "line-a-01"
+        }
+      }
+    },
+    {
+      "node_id": "metrics_object",
+      "node_type_id": "core.logic.object-create",
+      "parameters": {
+        "keys": [
+          "area_ratio",
+          "filter_summary",
+          "continuity_breakdown",
+          "gap_metrics"
+        ]
+      }
+    },
+    {
+      "node_id": "process_decision",
+      "node_type_id": "core.rule.process-decision",
+      "parameters": {
+        "mode": "all",
+        "condition_names": [
+          "presence",
+          "area_ratio",
+          "continuity"
+        ],
+        "ok_reason": "sealant quality gate passed",
+        "ng_reason": "sealant quality gate failed"
+      }
+    },
+    {
+      "node_id": "alarm_condition",
+      "node_type_id": "core.rule.alarm-condition",
+      "parameters": {
+        "trigger_when": "condition-false",
+        "alarm_level": "warning",
+        "alarm_code": "SEALANT-QUALITY-NG",
+        "alarm_message": "sealant quality gate failed",
+        "clear_message": "sealant quality gate passed"
+      }
+    },
+    {
+      "node_id": "save_result_json",
+      "node_type_id": "core.output.json-save-local",
+      "parameters": {
+        "local_path": "{workflow_app_result_dir}/sealant-quality/result-{timestamp}.json",
+        "overwrite": true,
+        "indent": 2
+      }
+    },
+    {
+      "node_id": "append_result_csv",
+      "node_type_id": "core.output.csv-append-local",
+      "parameters": {
+        "local_path": "{workflow_app_result_dir}/sealant-quality/history.csv"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "edge_id": "edge-request-image-path-load-image",
+      "source_node_id": "request_image_path_input",
+      "source_port": "value",
+      "target_node_id": "load_image",
+      "target_port": "path"
+    },
+    {
+      "edge_id": "edge-request-image-path-metadata",
+      "source_node_id": "request_image_path_input",
+      "source_port": "value",
+      "target_node_id": "metadata_object",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-filter-area-ratio-regions",
+      "source_node_id": "filter_regions",
+      "source_port": "regions",
+      "target_node_id": "area_ratio",
+      "target_port": "regions"
+    },
+    {
+      "edge_id": "edge-load-image-area-ratio-image",
+      "source_node_id": "load_image",
+      "source_port": "image",
+      "target_node_id": "area_ratio",
+      "target_port": "image"
+    },
+    {
+      "edge_id": "edge-filter-continuity-score",
+      "source_node_id": "filter_regions",
+      "source_port": "regions",
+      "target_node_id": "continuity_score",
+      "target_port": "regions"
+    },
+    {
+      "edge_id": "edge-filter-gap-check",
+      "source_node_id": "filter_regions",
+      "source_port": "regions",
+      "target_node_id": "gap_check",
+      "target_port": "regions"
+    },
+    {
+      "edge_id": "edge-filter-presence-check",
+      "source_node_id": "filter_regions",
+      "source_port": "regions",
+      "target_node_id": "presence_check",
+      "target_port": "regions"
+    },
+    {
+      "edge_id": "edge-area-ratio-area-ratio-check",
+      "source_node_id": "area_ratio",
+      "source_port": "value",
+      "target_node_id": "area_ratio_check",
+      "target_port": "value"
+    },
+    {
+      "edge_id": "edge-area-ratio-metrics",
+      "source_node_id": "area_ratio",
+      "source_port": "value",
+      "target_node_id": "metrics_object",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-filter-summary-metrics",
+      "source_node_id": "filter_regions",
+      "source_port": "summary",
+      "target_node_id": "metrics_object",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-continuity-score-metrics",
+      "source_node_id": "continuity_score",
+      "source_port": "value",
+      "target_node_id": "metrics_object",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-gap-check-metrics",
+      "source_node_id": "gap_check",
+      "source_port": "metrics",
+      "target_node_id": "metrics_object",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-presence-process",
+      "source_node_id": "presence_check",
+      "source_port": "result",
+      "target_node_id": "process_decision",
+      "target_port": "conditions"
+    },
+    {
+      "edge_id": "edge-area-ratio-check-process",
+      "source_node_id": "area_ratio_check",
+      "source_port": "result",
+      "target_node_id": "process_decision",
+      "target_port": "conditions"
+    },
+    {
+      "edge_id": "edge-gap-check-process",
+      "source_node_id": "gap_check",
+      "source_port": "result",
+      "target_node_id": "process_decision",
+      "target_port": "conditions"
+    },
+    {
+      "edge_id": "edge-metrics-process",
+      "source_node_id": "metrics_object",
+      "source_port": "value",
+      "target_node_id": "process_decision",
+      "target_port": "metrics"
+    },
+    {
+      "edge_id": "edge-metadata-process",
+      "source_node_id": "metadata_object",
+      "source_port": "value",
+      "target_node_id": "process_decision",
+      "target_port": "metadata"
+    },
+    {
+      "edge_id": "edge-process-ok-alarm",
+      "source_node_id": "process_decision",
+      "source_port": "ok",
+      "target_node_id": "alarm_condition",
+      "target_port": "condition"
+    },
+    {
+      "edge_id": "edge-metrics-alarm",
+      "source_node_id": "metrics_object",
+      "source_port": "value",
+      "target_node_id": "alarm_condition",
+      "target_port": "metrics"
+    },
+    {
+      "edge_id": "edge-metadata-alarm",
+      "source_node_id": "metadata_object",
+      "source_port": "value",
+      "target_node_id": "alarm_condition",
+      "target_port": "metadata"
+    },
+    {
+      "edge_id": "edge-process-save-json",
+      "source_node_id": "process_decision",
+      "source_port": "result",
+      "target_node_id": "save_result_json",
+      "target_port": "result"
+    },
+    {
+      "edge_id": "edge-process-append-csv",
+      "source_node_id": "process_decision",
+      "source_port": "result",
+      "target_node_id": "append_result_csv",
+      "target_port": "result"
+    }
+  ],
+  "template_inputs": [
+    {
+      "input_id": "request_image_path",
+      "display_name": "Request Image Path",
+      "payload_type_id": "value.v1",
+      "target_node_id": "request_image_path_input",
+      "target_port": "payload"
+    },
+    {
+      "input_id": "request_regions",
+      "display_name": "Request Regions",
+      "payload_type_id": "regions.v1",
+      "target_node_id": "filter_regions",
+      "target_port": "regions"
+    }
+  ],
+  "template_outputs": [
+    {
+      "output_id": "inspection_result",
+      "display_name": "Inspection Result",
+      "payload_type_id": "result-record.v1",
+      "source_node_id": "process_decision",
+      "source_port": "result"
+    },
+    {
+      "output_id": "inspection_alarm",
+      "display_name": "Inspection Alarm",
+      "payload_type_id": "alarm-record.v1",
+      "source_node_id": "alarm_condition",
+      "source_port": "alarm"
+    },
+    {
+      "output_id": "decision_summary",
+      "display_name": "Decision Summary",
+      "payload_type_id": "value.v1",
+      "source_node_id": "process_decision",
+      "source_port": "summary"
+    },
+    {
+      "output_id": "json_summary",
+      "display_name": "JSON Save Summary",
+      "payload_type_id": "value.v1",
+      "source_node_id": "save_result_json",
+      "source_port": "summary"
+    },
+    {
+      "output_id": "csv_summary",
+      "display_name": "CSV Append Summary",
+      "payload_type_id": "value.v1",
+      "source_node_id": "append_result_csv",
+      "source_port": "summary"
+    }
+  ],
+  "metadata": {
+    "example_kind": "industrial-single-frame-sealant-quality-gate",
+    "focus": "single-frame-industrial-rule-chain",
+    "node_groups": {
+      "input": [
+        "request_image_path_input",
+        "load_image",
+        "filter_regions"
+      ],
+      "inspection_rules": [
+        "area_ratio",
+        "continuity_score",
+        "gap_check",
+        "presence_check",
+        "area_ratio_check"
+      ],
+      "decision_and_alarm": [
+        "metadata_object",
+        "metrics_object",
+        "process_decision",
+        "alarm_condition"
+      ],
+      "output": [
+        "save_result_json",
+        "append_result_csv"
+      ]
+    }
+  }
+}

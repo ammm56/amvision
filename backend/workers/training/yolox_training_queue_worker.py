@@ -23,14 +23,7 @@ class YoloXTrainingQueueWorker:
         training_backend: TrainingBackend | None = None,
         worker_id: str = "yolox-training-worker",
     ) -> None:
-        """初始化 YOLOX 训练队列 worker。
-
-        参数：
-        - session_factory：数据库会话工厂。
-        - dataset_storage：本地数据集文件存储服务。
-        - queue_backend：任务队列后端。
-        - worker_id：当前 worker 的稳定标识。
-        """
+        """初始化 YOLOX 训练队列 worker。"""
 
         self.session_factory = session_factory
         self.dataset_storage = dataset_storage
@@ -39,11 +32,7 @@ class YoloXTrainingQueueWorker:
         self.worker_id = worker_id
 
     def run_once(self) -> bool:
-        """消费并执行一条 YOLOX 训练队列任务。
-
-        返回：
-        - 当成功领取并处理了一条任务时返回 True；没有可处理任务时返回 False。
-        """
+        """消费并执行一条 YOLOX 训练队列任务。"""
 
         queue_task = self.queue_backend.claim_next(
             queue_name=YOLOX_TRAINING_QUEUE_NAME,
@@ -61,6 +50,8 @@ class YoloXTrainingQueueWorker:
             run_result = training_backend.run_training(
                 TrainingBackendRunRequest(
                     training_task_id=task_id,
+                    model_type="yolox",
+                    task_type="detection",
                     metadata={
                         "queue_task_id": queue_task.task_id,
                     },
@@ -120,17 +111,7 @@ class YoloXTrainingQueueWorker:
         return True
 
     def _read_task_id(self, queue_task: QueueMessage) -> str:
-        """从队列负载中读取训练任务 id。
-
-        参数：
-        - queue_task：当前领取到的队列任务。
-
-        返回：
-        - 要执行的训练任务 id。
-
-        异常：
-        - 当负载缺少 task_id 时抛出请求错误。
-        """
+        """从队列负载中读取训练任务 id。"""
 
         task_id = queue_task.payload.get("task_id")
         if not isinstance(task_id, str) or not task_id.strip():
@@ -140,3 +121,4 @@ class YoloXTrainingQueueWorker:
             )
 
         return task_id
+

@@ -1,0 +1,87 @@
+{
+  "format_id": "amvision.node-definition.v1",
+  "node_type_id": "custom.opencv.watershed",
+  "display_name": "Watershed",
+  "category": "opencv.filter",
+  "description": "把粘连前景通过 watershed 拆成带边界隔离的二值结果，适合相邻颗粒、连在一起的缺陷块或胶点分离前处理。",
+  "implementation_kind": "custom-node",
+  "runtime_kind": "python-callable",
+  "input_ports": [
+    {
+      "name": "image",
+      "display_name": "Image",
+      "payload_type_id": "image-ref.v1"
+    },
+    {
+      "name": "source_image",
+      "display_name": "Source Image",
+      "payload_type_id": "image-ref.v1",
+      "required": false
+    }
+  ],
+  "output_ports": [
+    {
+      "name": "image",
+      "display_name": "Image",
+      "payload_type_id": "image-ref.v1"
+    },
+    {
+      "name": "summary",
+      "display_name": "Summary",
+      "payload_type_id": "value.v1"
+    }
+  ],
+  "parameter_schema": {
+    "type": "object",
+    "properties": {
+      "foreground_threshold": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 255,
+        "default": 1
+      },
+      "opening_kernel_size": {
+        "type": "integer",
+        "minimum": 1,
+        "default": 3
+      },
+      "opening_iterations": {
+        "type": "integer",
+        "minimum": 0,
+        "default": 1
+      },
+      "background_dilate_iterations": {
+        "type": "integer",
+        "minimum": 0,
+        "default": 1
+      },
+      "boundary_gap_iterations": {
+        "type": "integer",
+        "minimum": 0,
+        "default": 1
+      },
+      "distance_threshold_ratio": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 1,
+        "default": 0.35
+      },
+      "output_object_key": {
+        "type": "string"
+      }
+    }
+  },
+  "capability_tags": [
+    "opencv.watershed",
+    "vision.morphology",
+    "inspection.defect.separate"
+  ],
+  "runtime_requirements": {
+    "python_packages": [
+      "opencv-python",
+      "numpy"
+    ]
+  },
+  "node_pack_id": "opencv.defect-nodes",
+  "node_pack_version": "0.1.0"
+}

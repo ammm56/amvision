@@ -32,8 +32,8 @@ from backend.service.application.deployments import (
     PublishedInferenceGatewayEventChannel,
 )
 from backend.service.application.local_buffers import LocalBufferBrokerClient, LocalBufferBrokerEventChannel
-from backend.service.application.runtime.yolox_deployment_process_supervisor import (
-    YoloXDeploymentProcessSupervisor,
+from backend.service.application.runtime.deployment_process_supervisor import (
+    DeploymentProcessSupervisor,
 )
 from backend.service.application.workflows.runtime_app_events import append_workflow_app_runtime_event
 from backend.service.application.workflows.snapshot_execution import (
@@ -993,8 +993,8 @@ def run_workflow_runtime_worker_process(
     """workflow runtime worker 子进程入口。"""
 
     session_factory: SessionFactory | None = None
-    sync_supervisor: YoloXDeploymentProcessSupervisor | None = None
-    async_supervisor: YoloXDeploymentProcessSupervisor | None = None
+    sync_supervisor: DeploymentProcessSupervisor | None = None
+    async_supervisor: DeploymentProcessSupervisor | None = None
     try:
         settings = BackendServiceSettings.model_validate(settings_payload)
         session_factory = SessionFactory(settings.to_database_settings())
@@ -1010,13 +1010,13 @@ def run_workflow_runtime_worker_process(
             node_pack_loader=node_pack_loader,
         )
         runtime_registry_loader.refresh()
-        sync_supervisor = YoloXDeploymentProcessSupervisor(
+        sync_supervisor = DeploymentProcessSupervisor(
             dataset_storage_root_dir=str(dataset_storage.root_dir),
             runtime_mode="sync",
             settings=settings.deployment_process_supervisor,
             local_buffer_broker_event_channel=local_buffer_reader.channel if local_buffer_reader is not None else None,
         )
-        async_supervisor = YoloXDeploymentProcessSupervisor(
+        async_supervisor = DeploymentProcessSupervisor(
             dataset_storage_root_dir=str(dataset_storage.root_dir),
             runtime_mode="async",
             settings=settings.deployment_process_supervisor,
@@ -1028,8 +1028,17 @@ def run_workflow_runtime_worker_process(
             session_factory=session_factory,
             dataset_storage=dataset_storage,
             queue_backend=queue_backend,
-            yolox_sync_deployment_process_supervisor=sync_supervisor,
-            yolox_async_deployment_process_supervisor=async_supervisor,
+            detection_sync_deployment_process_supervisor=sync_supervisor,
+            detection_async_deployment_process_supervisor=async_supervisor,
+            classification_sync_deployment_process_supervisor=sync_supervisor,
+            classification_async_deployment_process_supervisor=async_supervisor,
+            segmentation_sync_deployment_process_supervisor=sync_supervisor,
+            segmentation_async_deployment_process_supervisor=async_supervisor,
+            pose_sync_deployment_process_supervisor=sync_supervisor,
+            pose_async_deployment_process_supervisor=async_supervisor,
+            obb_sync_deployment_process_supervisor=sync_supervisor,
+            obb_async_deployment_process_supervisor=async_supervisor,
+            async_inference_service_id="workflow-local",
             local_buffer_reader=local_buffer_reader,
             published_inference_gateway=published_inference_gateway,
         )

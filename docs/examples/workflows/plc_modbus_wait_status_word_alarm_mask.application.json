@@ -1,0 +1,62 @@
+{
+  "format_id": "amvision.flow-application.v1",
+  "application_id": "plc-modbus-wait-status-word-alarm-mask-app",
+  "display_name": "PLC Modbus Wait Status Word Alarm Mask App",
+  "description": "用于工业现场状态字报警位观察的 Modbus wait-condition 样例 app。输入运行时连接与点位配置，输出等待结果、归档对象和本地 JSON 保存摘要。",
+  "template_ref": {
+    "template_id": "plc-modbus-wait-status-word-alarm-mask-template",
+    "template_version": "1.0.0",
+    "source_kind": "json-file",
+    "source_uri": "docs/examples/workflows/plc_modbus_wait_status_word_alarm_mask.template.json"
+  },
+  "runtime_mode": "python-json-workflow",
+  "bindings": [
+    {
+      "binding_id": "request_wait_config",
+      "direction": "input",
+      "template_port_id": "request_wait_config",
+      "binding_kind": "workflow-execute-input",
+      "config": {
+        "payload_type_id": "value.v1",
+        "content_type": "application/json"
+      },
+      "metadata": {
+        "payload_type_id": "value.v1"
+      }
+    },
+    {
+      "binding_id": "wait_result",
+      "direction": "output",
+      "template_port_id": "wait_result",
+      "binding_kind": "workflow-execute-output",
+      "config": {
+        "payload_type_id": "value.v1"
+      },
+      "metadata": {}
+    },
+    {
+      "binding_id": "archive",
+      "direction": "output",
+      "template_port_id": "archive",
+      "binding_kind": "workflow-execute-output",
+      "config": {
+        "payload_type_id": "value.v1"
+      },
+      "metadata": {}
+    },
+    {
+      "binding_id": "json_summary",
+      "direction": "output",
+      "template_port_id": "json_summary",
+      "binding_kind": "workflow-execute-output",
+      "config": {
+        "payload_type_id": "value.v1"
+      },
+      "metadata": {}
+    }
+  ],
+  "metadata": {
+    "example_kind": "plc-modbus-wait-status-word-alarm-mask",
+    "intended_saved_object_key": "workflows/projects/{project_id}/applications/plc-modbus-wait-status-word-alarm-mask-app/application.json"
+  }
+}

@@ -1,0 +1,320 @@
+{
+  "template": {
+    "format_id": "amvision.workflow-graph-template.v1",
+    "template_id": "segmentation-deployment-sync-regions-gate-template",
+    "template_version": "1.0.0",
+    "display_name": "Segmentation Deployment Sync Regions Gate",
+    "description": "接收 base64 图片和已有 deployment 请求，直接执行 segmentation 推理，再把 segments.v1 统一转成 regions.v1，完成最小 presence 和 area-ratio 工业判定。",
+    "nodes": [
+      {
+        "node_id": "decode_request_image",
+        "node_type_id": "core.io.image-base64-decode",
+        "parameters": {}
+      },
+      {
+        "node_id": "deployment_request_input",
+        "node_type_id": "core.io.template-input.object",
+        "parameters": {}
+      },
+      {
+        "node_id": "segment",
+        "node_type_id": "core.model.segmentation",
+        "parameters": {
+          "auto_start_process": false,
+          "score_threshold": 0.4,
+          "mask_threshold": 0.5,
+          "save_result_image": false,
+          "return_preview_image_base64": false
+        }
+      },
+      {
+        "node_id": "segments_to_regions",
+        "node_type_id": "core.vision.segments-to-regions",
+        "parameters": {
+          "region_id_prefix": "seg",
+          "class_id_default": -1
+        }
+      },
+      {
+        "node_id": "filter_regions",
+        "node_type_id": "core.vision.regions-filter",
+        "parameters": {
+          "class_names": [
+            "sealant"
+          ],
+          "min_score": 0.55
+        }
+      },
+      {
+        "node_id": "presence_check",
+        "node_type_id": "core.rule.presence-check",
+        "parameters": {
+          "min_count": 1
+        }
+      },
+      {
+        "node_id": "area_ratio",
+        "node_type_id": "core.vision.regions-area-ratio",
+        "parameters": {}
+      },
+      {
+        "node_id": "area_ratio_ok",
+        "node_type_id": "core.rule.threshold-check",
+        "parameters": {
+          "operator": "ge",
+          "threshold": 0.01
+        }
+      },
+      {
+        "node_id": "segments_value",
+        "node_type_id": "core.logic.payload-to-value",
+        "parameters": {}
+      },
+      {
+        "node_id": "metadata_object",
+        "node_type_id": "core.logic.object-create",
+        "parameters": {
+          "keys": [
+            "deployment_request"
+          ],
+          "fields": {
+            "inspection_kind": "segmentation-regions-gate",
+            "station_id": "line-seg-01"
+          }
+        }
+      },
+      {
+        "node_id": "metrics_object",
+        "node_type_id": "core.logic.object-create",
+        "parameters": {
+          "keys": [
+            "segments",
+            "convert_summary",
+            "filter_summary",
+            "presence_metrics",
+            "area_ratio"
+          ]
+        }
+      },
+      {
+        "node_id": "process_decision",
+        "node_type_id": "core.rule.process-decision",
+        "parameters": {
+          "mode": "all",
+          "condition_names": [
+            "presence",
+            "area_ratio"
+          ],
+          "ok_reason": "segmentation regions gate passed",
+          "ng_reason": "segmentation regions gate failed"
+        }
+      }
+    ],
+    "edges": [
+      {
+        "edge_id": "edge-decode-segment-image",
+        "source_node_id": "decode_request_image",
+        "source_port": "image",
+        "target_node_id": "segment",
+        "target_port": "image"
+      },
+      {
+        "edge_id": "edge-deployment-request-segment",
+        "source_node_id": "deployment_request_input",
+        "source_port": "value",
+        "target_node_id": "segment",
+        "target_port": "request"
+      },
+      {
+        "edge_id": "edge-segment-segments-to-regions",
+        "source_node_id": "segment",
+        "source_port": "segments",
+        "target_node_id": "segments_to_regions",
+        "target_port": "segments"
+      },
+      {
+        "edge_id": "edge-segment-segments-value",
+        "source_node_id": "segment",
+        "source_port": "segments",
+        "target_node_id": "segments_value",
+        "target_port": "segments"
+      },
+      {
+        "edge_id": "edge-segments-to-regions-filter",
+        "source_node_id": "segments_to_regions",
+        "source_port": "regions",
+        "target_node_id": "filter_regions",
+        "target_port": "regions"
+      },
+      {
+        "edge_id": "edge-filter-presence",
+        "source_node_id": "filter_regions",
+        "source_port": "regions",
+        "target_node_id": "presence_check",
+        "target_port": "regions"
+      },
+      {
+        "edge_id": "edge-filter-area-ratio",
+        "source_node_id": "filter_regions",
+        "source_port": "regions",
+        "target_node_id": "area_ratio",
+        "target_port": "regions"
+      },
+      {
+        "edge_id": "edge-area-ratio-threshold",
+        "source_node_id": "area_ratio",
+        "source_port": "value",
+        "target_node_id": "area_ratio_ok",
+        "target_port": "value"
+      },
+      {
+        "edge_id": "edge-deployment-request-metadata",
+        "source_node_id": "deployment_request_input",
+        "source_port": "value",
+        "target_node_id": "metadata_object",
+        "target_port": "values"
+      },
+      {
+        "edge_id": "edge-segments-value-metrics",
+        "source_node_id": "segments_value",
+        "source_port": "value",
+        "target_node_id": "metrics_object",
+        "target_port": "values"
+      },
+      {
+        "edge_id": "edge-convert-summary-metrics",
+        "source_node_id": "segments_to_regions",
+        "source_port": "summary",
+        "target_node_id": "metrics_object",
+        "target_port": "values"
+      },
+      {
+        "edge_id": "edge-filter-summary-metrics",
+        "source_node_id": "filter_regions",
+        "source_port": "summary",
+        "target_node_id": "metrics_object",
+        "target_port": "values"
+      },
+      {
+        "edge_id": "edge-presence-metrics-object",
+        "source_node_id": "presence_check",
+        "source_port": "metrics",
+        "target_node_id": "metrics_object",
+        "target_port": "values"
+      },
+      {
+        "edge_id": "edge-area-ratio-metrics-object",
+        "source_node_id": "area_ratio",
+        "source_port": "value",
+        "target_node_id": "metrics_object",
+        "target_port": "values"
+      },
+      {
+        "edge_id": "edge-presence-process",
+        "source_node_id": "presence_check",
+        "source_port": "result",
+        "target_node_id": "process_decision",
+        "target_port": "conditions"
+      },
+      {
+        "edge_id": "edge-area-ratio-process",
+        "source_node_id": "area_ratio_ok",
+        "source_port": "result",
+        "target_node_id": "process_decision",
+        "target_port": "conditions"
+      },
+      {
+        "edge_id": "edge-metrics-process",
+        "source_node_id": "metrics_object",
+        "source_port": "value",
+        "target_node_id": "process_decision",
+        "target_port": "metrics"
+      },
+      {
+        "edge_id": "edge-metadata-process",
+        "source_node_id": "metadata_object",
+        "source_port": "value",
+        "target_node_id": "process_decision",
+        "target_port": "metadata"
+      },
+      {
+        "edge_id": "edge-image-process",
+        "source_node_id": "decode_request_image",
+        "source_port": "image",
+        "target_node_id": "process_decision",
+        "target_port": "image"
+      }
+    ],
+    "template_inputs": [
+      {
+        "input_id": "request_image",
+        "display_name": "Request Image",
+        "payload_type_id": "image-base64.v1",
+        "target_node_id": "decode_request_image",
+        "target_port": "payload"
+      },
+      {
+        "input_id": "deployment_request",
+        "display_name": "Deployment Request",
+        "payload_type_id": "value.v1",
+        "target_node_id": "deployment_request_input",
+        "target_port": "payload"
+      }
+    ],
+    "template_outputs": [
+      {
+        "output_id": "model_segments",
+        "display_name": "Model Segments",
+        "payload_type_id": "segments.v1",
+        "source_node_id": "segment",
+        "source_port": "segments"
+      },
+      {
+        "output_id": "model_regions",
+        "display_name": "Model Regions",
+        "payload_type_id": "regions.v1",
+        "source_node_id": "segments_to_regions",
+        "source_port": "regions"
+      },
+      {
+        "output_id": "inspection_result",
+        "display_name": "Inspection Result",
+        "payload_type_id": "result-record.v1",
+        "source_node_id": "process_decision",
+        "source_port": "result"
+      },
+      {
+        "output_id": "decision_summary",
+        "display_name": "Decision Summary",
+        "payload_type_id": "value.v1",
+        "source_node_id": "process_decision",
+        "source_port": "summary"
+      }
+    ],
+    "metadata": {
+      "example_kind": "segmentation-deployment-sync-regions-gate",
+      "uses_existing_deployment_instance": true,
+      "deployment_instance_id_binding": "deployment_request",
+      "node_groups": {
+        "input": [
+          "decode_request_image",
+          "deployment_request_input"
+        ],
+        "model_and_bridge": [
+          "segment",
+          "segments_to_regions",
+          "segments_value"
+        ],
+        "rules": [
+          "filter_regions",
+          "presence_check",
+          "area_ratio",
+          "area_ratio_ok",
+          "metadata_object",
+          "metrics_object",
+          "process_decision"
+        ]
+      }
+    }
+  }
+}

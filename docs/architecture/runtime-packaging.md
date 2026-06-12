@@ -61,7 +61,7 @@ release/
 
 ## runtimes 目录在仓库中的职责
 
-- 当前仓库里的 runtimes 目录主要包含 launchers 和 manifests 两部分；`python/` 目录在发行时只创建空目录，不在仓库里预置 bundled Python 内容。
+- 当前仓库里的 runtimes 目录主要包含 launchers 和 manifests 两部分；bundled Python 本体不放在仓库里预置，release 组装阶段默认保留现有发布目录里的 `python/`。
 - runtimes/launchers：统一服务、worker 和维护命令入口；当前仓库已经提供 Python 主逻辑 launcher，以及 bat/sh wrapper。
 - runtimes/manifests：发布目录和 worker 职责拆分的清单；当前仓库已经提供 `full` release profile 与 worker profile。
 
@@ -69,8 +69,8 @@ release/
 
 - 当前后端功能面已经可用，开发环境仍以 `python -m uvicorn backend.service.api.app:app --host 127.0.0.1 --port 8000` 这类直接启动方式为主。
 - `backend.maintenance.main assemble-release` 当前会生成 `release/full/` 目录，复制完整 backend 代码、配置、launcher、manifest，并把仓库根目录的 `requirements.txt` 复制到发行目录。
-- 当前 `python/` 目录只会被创建为空目录，后续 bundled Python 需要手工复制进去。
-- 因此，当前 runtimes 已经具备“完整代码不裁剪、直接得到一个完整发布目录”的装配骨架，但 Python 运行时本体仍由后续手工落盘。
+- 当前 release 组装会保留并回迁现有发行目录里的 `python/`，也会把 `frontend/web-ui/dist/` 复制到发行目录里的 `frontend/`，补齐 `runtime-config.json`，并把 `runtimes/third_party/ffmpeg/` 复制到发行目录里的 `tools/ffmpeg/`。
+- 只有显式提供 bundled Python 来源目录时，当前才会重建 `python/`；如果发行目录原本没有 `python/`，则会退回空目录占位模式。
 
 ## 启动器设计
 
@@ -100,6 +100,7 @@ release/
 - 默认配置模板与运行时 manifest
 - 默认 custom_nodes 目录与可选节点包资产
 - 启动器与维护工具
+- 当前 full 发布目录已经包含 `tools/ffmpeg/`；如后续继续细化发布形态，再按目标平台裁剪 `ffmpeg/ffprobe` 工具目录
 
 ## 发布包不默认包含的内容
 
@@ -108,19 +109,83 @@ release/
 - 操作系统级通信中间件
 - 现场专有证书、密钥和客户定制配置
 
+## 视频工具运行时约定
+
+### 工具归属
+
+- `ffmpeg/ffprobe` 属于应用运行时工具链，不属于模型资产目录，也不属于业务数据目录。
+- 因此它们不应放在 `data/` 下，不应与 `models/`、`datasets/` 或 `maintenance` 数据目录混放。
+
+### 仓库侧目录约定
+
+建议在仓库中按平台维护运行时来源目录：
+
+```text
+runtimes/
+└─ third_party/
+   └─ ffmpeg/
+      ├─ windows-x64/
+      │  └─ bin/
+      │     ├─ ffmpeg.exe
+      │     ├─ ffprobe.exe
+      │     └─ *.dll
+      └─ linux-x64/
+         └─ bin/
+            ├─ ffmpeg
+            └─ ffprobe
+```
+
+说明：
+
+- Windows 下项目正式调用入口应是 `ffmpeg.exe` 和 `ffprobe.exe`。
+- `.dll` 只是这些可执行文件的运行时依赖，应与 `exe` 放在同目录，不直接作为项目调用入口。
+- Linux 下使用对应可执行文件，不单独暴露 `.so` 作为 workflow 级概念。
+
+### 发布包目录约定
+
+面向目标平台的发布目录建议包含：
+
+```text
+release/
+└─ full/
+   └─ tools/
+      └─ ffmpeg/
+         └─ bin/
+            ├─ ffmpeg.exe / ffmpeg
+            ├─ ffprobe.exe / ffprobe
+            └─ 相关 dll（Windows）
+```
+
+说明：
+
+- 当前仓库的 `assemble-release` 会先复制整个 `runtimes/third_party/ffmpeg/` 目录到 `release/full/tools/ffmpeg/`，确保开发和验收阶段可以直接闭环。
+- 后续如需更严格的平台裁剪，再按目标平台只保留一套 `ffmpeg` 工具。
+
+### 查找优先级
+
+后续运行时代码查找 `ffmpeg/ffprobe` 时，建议按如下顺序：
+
+1. 显式配置路径
+2. 发布目录 `tools/ffmpeg/bin/`
+3. 仓库 `runtimes/third_party/ffmpeg/<platform>/bin/`
+4. 系统 `PATH` 中的可执行文件（仅 fallback）
+
+系统 `PATH` 不应成为默认部署前提，只能作为诊断或临时兼容路径。
+
 ## 打包流水线建议
 
 1. 从 conda 开发环境导出可审核的依赖基线
 2. 生成面向 bundled Python 的依赖集合和兼容性 manifest
 3. 收敛 backend、frontend、custom_nodes 和默认配置
-4. 生成服务、worker 和维护脚本的统一入口
-5. 通过 `assemble-release` 生成 `full` 发布目录
-6. 执行最小启动验证、节点目录扫描和接口健康检查
+4. 收敛目标平台的 `ffmpeg/ffprobe` 等运行时工具目录
+5. 生成服务、worker 和维护脚本的统一入口
+6. 通过 `assemble-release` 生成 `full` 发布目录
+7. 执行最小启动验证、节点目录扫描和接口健康检查
 
 ## 当前装配结果
 
 - 当前对应 manifest：`runtimes/manifests/release-profiles/full.json`
-- 发布目录默认包含 backend-service、全部 worker profile、前端目录、custom_nodes 目录、配置目录、数据目录、日志目录和空的 `python/` 目录
+- 发布目录默认包含 backend-service、全部 worker profile、前端目录、custom_nodes 目录、配置目录、数据目录、日志目录，以及保留或占位的 `python/` 目录
 - 如果后续需要推理专用目录，建议从 `release/full/` 复制一份后再手工调整 `requirements.txt`、`python/` 和不需要的 worker launcher
 
 ## 兼容性管理

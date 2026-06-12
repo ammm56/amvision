@@ -1,0 +1,37 @@
+{
+  "format_id": "amvision.node-pack-manifest.v1",
+  "id": "output.mes-http-nodes",
+  "version": "0.1.0",
+  "displayName": "MES HTTP Output Nodes",
+  "description": "提供面向 MES / 上位机常见 HTTP 回传场景的第一阶段受限输出节点，统一承接 result-record、workflow-result 和批次摘要对象。",
+  "category": "custom-node-pack",
+  "capabilities": [
+    "pipeline.node",
+    "integration.output",
+    "integration.http",
+    "integration.mes"
+  ],
+  "permissionScopes": [
+    "integration.endpoint.invoke"
+  ],
+  "entrypoints": {
+    "backend": "custom_nodes.output_mes_http_nodes.backend.entry:register"
+  },
+  "compatibility": {
+    "api": ">=0.1 <1.0",
+    "runtime": ">=3.12"
+  },
+  "timeout": {
+    "defaultSeconds": 30
+  },
+  "enabledByDefault": true,
+  "customNodeCatalogPath": "workflow/catalog.json",
+  "metadata": {
+    "phase": "implemented",
+    "notes": [
+      "当前 pack 只做第一阶段受限 MES HTTP 输出层，不做项目专有万能接口适配。",
+      "对外节点面当前仅收口为 custom.output.mes-http-post，直接承接 result-record、workflow-result 和 batch-result-summary 的 summary(value)。",
+      "厂商专有协议、复杂签名、多步登录、数据库写入和文件上传继续保留给后续 custom pack。"
+    ]
+  }
+}

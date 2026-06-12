@@ -6,10 +6,10 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from backend.service.application.models.yolox_model_service import (
-    SqlAlchemyYoloXModelService,
-    YoloXPretrainedRegistrationRequest,
-    YoloXTrainingOutputRegistration,
+from backend.service.application.models.model_service import (
+    PretrainedRegistrationRequest,
+    SqlAlchemyModelService,
+    TrainingOutputRegistration,
 )
 from backend.service.infrastructure.db.session import SessionFactory
 from tests.api_test_support import (
@@ -39,7 +39,7 @@ def test_list_platform_base_models_returns_only_platform_models(tmp_path: Path) 
         assert all(item["project_id"] is None for item in payload)
         assert payload[0]["available_versions"][0]["model_version_id"] == "model-version-pretrained-yolox-nano"
         assert payload[1]["available_versions"][0]["checkpoint_storage_uri"] == (
-            "models/pretrained/yolox/s/default/checkpoints/yolox_s.pth"
+            "models/pretrained/yolox/detection/s/default/checkpoints/yolox_s.pth"
         )
     finally:
         session_factory.engine.dispose()
@@ -65,7 +65,7 @@ def test_get_platform_base_model_detail_returns_versions_and_files(tmp_path: Pat
         assert payload["build_count"] == 0
         assert payload["versions"][0]["model_version_id"] == "model-version-pretrained-yolox-nano"
         assert payload["versions"][0]["catalog_manifest_object_key"] == (
-            "models/pretrained/yolox/nano/default/manifest.json"
+            "models/pretrained/yolox/detection/nano/default/manifest.json"
         )
         assert payload["versions"][0]["files"][0]["project_id"] is None
         assert payload["versions"][0]["files"][0]["file_type"] == "yolox-checkpoint"
@@ -132,29 +132,29 @@ def _seed_platform_and_project_models(
     - 平台基础模型 id 列表；当 include_project_model 为 True 时额外返回 Project 模型 id。
     """
 
-    service = SqlAlchemyYoloXModelService(session_factory=session_factory)
+    service = SqlAlchemyModelService(session_factory=session_factory)
     nano_version_id = service.register_pretrained(
-        YoloXPretrainedRegistrationRequest(
+        PretrainedRegistrationRequest(
             model_name="yolox",
-            storage_uri="models/pretrained/yolox/nano/default/checkpoints/yolox_nano.pth",
+            storage_uri="models/pretrained/yolox/detection/nano/default/checkpoints/yolox_nano.pth",
             model_scale="nano",
             model_version_id="model-version-pretrained-yolox-nano",
             checkpoint_file_id="model-file-pretrained-yolox-nano-checkpoint",
             metadata={
-                "catalog_manifest_object_key": "models/pretrained/yolox/nano/default/manifest.json",
+                "catalog_manifest_object_key": "models/pretrained/yolox/detection/nano/default/manifest.json",
                 "catalog_name": "default",
             },
         )
     )
     s_version_id = service.register_pretrained(
-        YoloXPretrainedRegistrationRequest(
+        PretrainedRegistrationRequest(
             model_name="yolox",
-            storage_uri="models/pretrained/yolox/s/default/checkpoints/yolox_s.pth",
+            storage_uri="models/pretrained/yolox/detection/s/default/checkpoints/yolox_s.pth",
             model_scale="s",
             model_version_id="model-version-pretrained-yolox-s",
             checkpoint_file_id="model-file-pretrained-yolox-s-checkpoint",
             metadata={
-                "catalog_manifest_object_key": "models/pretrained/yolox/s/default/manifest.json",
+                "catalog_manifest_object_key": "models/pretrained/yolox/detection/s/default/manifest.json",
                 "catalog_name": "default",
             },
         )
@@ -168,7 +168,7 @@ def _seed_platform_and_project_models(
         return platform_model_ids
 
     project_version_id = service.register_training_output(
-        YoloXTrainingOutputRegistration(
+        TrainingOutputRegistration(
             project_id="project-1",
             training_task_id="training-task-1",
             model_name="yolox",

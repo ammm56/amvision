@@ -1,0 +1,30 @@
+{
+  "format_id": "amvision.node-pack-manifest.v1",
+  "id": "opencv.measurement-nodes",
+  "version": "0.1.0",
+  "displayName": "OpenCV Measurement Nodes",
+  "description": "提供一组 OpenCV 工业量测与几何判定前置节点。",
+  "category": "custom-node-pack",
+  "capabilities": [
+    "pipeline.node",
+    "vision.measurement",
+    "vision.analysis"
+  ],
+  "permissionScopes": [
+    "objectstore.read.ref",
+    "objectstore.write.ref"
+  ],
+  "entrypoints": {
+    "backend": "custom_nodes.opencv_measurement_nodes.backend.entry:register"
+  },
+  "compatibility": {
+    "api": ">=0.1 <1.0",
+    "runtime": ">=3.12"
+  },
+  "timeout": {
+    "defaultSeconds": 30
+  },
+  "enabledByDefault": true,
+  "customNodeCatalogPath": "workflow/catalog.json"
+}
+

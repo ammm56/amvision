@@ -147,7 +147,7 @@ def test_create_dataset_export_supports_voc_format(tmp_path: Path) -> None:
 
 
 def test_dataset_export_format_catalog_only_exposes_implemented_formats(tmp_path: Path) -> None:
-    """验证导出格式合同接口只公开已实现格式。"""
+    """验证导出格式规则接口只公开已实现格式。"""
 
     client, session_factory, _, _ = _create_test_client(tmp_path)
     try:
@@ -259,6 +259,7 @@ def _build_dataset_version(*, dataset_version_id: str) -> DatasetVersion:
         dataset_version_id=dataset_version_id,
         dataset_id="dataset-1",
         project_id="project-1",
+        task_type="detection",
         categories=(DatasetCategory(category_id=0, name="bolt"),),
         samples=(
             DatasetSample(

@@ -1,4 +1,4 @@
-"""工作流节点、payload contract 和流程应用 JSON 合同。"""
+"""工作流节点、payload 规则和流程应用 JSON 规则。"""
 
 from __future__ import annotations
 
@@ -78,10 +78,10 @@ def _build_port_index(
 
 
 class WorkflowPayloadContract(BaseModel):
-    """描述节点之间传递的一类稳定 payload 合同。
+    """描述节点之间传递的一类稳定 payload 规则。
 
     字段：
-    - format_id：当前 payload contract 的 JSON 格式版本。
+    - format_id：当前 payload 规则的 JSON 格式版本。
     - payload_type_id：稳定 payload 类型 id。
     - display_name：显示名称。
     - transport_kind：传输方式，例如 inline-json、artifact-ref 或 hybrid。
@@ -102,7 +102,7 @@ class WorkflowPayloadContract(BaseModel):
 
     @model_validator(mode="after")
     def validate_contract(self) -> WorkflowPayloadContract:
-        """校验 payload contract 的关键字段。"""
+        """校验 payload 规则的关键字段。"""
 
         _require_stripped_text(self.payload_type_id, "payload_type_id")
         _require_stripped_text(self.display_name, "display_name")
@@ -206,7 +206,7 @@ class NodeParameterUiField(BaseModel):
 
 
 class NodeParameterUiSchema(BaseModel):
-    """描述节点参数编辑器可以直接消费的稳定 UI 合同。"""
+    """描述节点参数编辑器可以直接消费的稳定 UI 规则。"""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -215,7 +215,7 @@ class NodeParameterUiSchema(BaseModel):
 
     @model_validator(mode="after")
     def validate_schema(self) -> NodeParameterUiSchema:
-        """校验参数 UI 合同内部唯一性。"""
+        """校验参数 UI 规则内部唯一性。"""
 
         _ensure_unique_names(tuple(item.group_id for item in self.groups), "节点参数分组")
         _ensure_unique_names(tuple(item.parameter_name for item in self.fields), "节点参数字段")
@@ -236,7 +236,7 @@ class NodeDefinition(BaseModel):
     - input_ports：输入端口列表。
     - output_ports：输出端口列表。
     - parameter_schema：参数 schema。
-    - parameter_ui_schema：参数编辑器稳定 UI 合同。
+    - parameter_ui_schema：参数编辑器稳定 UI 规则。
     - capability_tags：能力标签列表。
     - runtime_requirements：运行依赖，例如 opencv-python、numpy 或特定 worker profile。
     - node_pack_id：当节点来自节点包时，对应节点包 id。
@@ -589,16 +589,16 @@ def validate_node_definition_catalog(
     node_definitions: tuple[NodeDefinition, ...],
     payload_contracts: tuple[WorkflowPayloadContract, ...],
 ) -> None:
-    """校验节点目录与 payload contract 目录之间的引用关系。
+    """校验节点目录与 payload 规则 目录之间的引用关系。
 
     参数：
     - node_definitions：待校验的节点定义列表。
-    - payload_contracts：待校验的 payload contract 列表。
+    - payload_contracts：待校验的 payload 规则 列表。
     """
 
     _ensure_unique_names(
         tuple(contract.payload_type_id for contract in payload_contracts),
-        "payload contract",
+        "payload 规则",
     )
     _ensure_unique_names(
         tuple(definition.node_type_id for definition in node_definitions),

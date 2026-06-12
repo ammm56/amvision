@@ -13,7 +13,9 @@
     {
       "node_id": "submit_import",
       "node_type_id": "core.service.dataset-import.submit",
-      "parameters": {}
+      "parameters": {
+        "task_type": "detection"
+      }
     }
   ],
   "edges": [

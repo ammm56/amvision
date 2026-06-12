@@ -29,7 +29,7 @@ def test_workflow_preview_run_storage_helpers_build_consistent_paths() -> None:
 
 
 def test_workflow_preview_run_contract_rejects_unknown_state() -> None:
-    """验证 preview run 合同只接受共享语义中声明的状态值。"""
+    """验证 preview run 规则只接受共享语义中声明的状态值。"""
 
     with pytest.raises(ValidationError):
         WorkflowPreviewRunContract(

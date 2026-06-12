@@ -1,0 +1,77 @@
+{
+  "format_id": "amvision.node-definition.v1",
+  "node_type_id": "custom.camera.usb.start-stream",
+  "display_name": "Start USB/UVC Stream",
+  "category": "camera.usb",
+  "description": "为已打开的 USB / UVC 相机会话启动后台采流线程，并把帧缓冲为后续视频窗口读取做准备。",
+  "implementation_kind": "custom-node",
+  "runtime_kind": "python-callable",
+  "input_ports": [
+    {
+      "name": "session",
+      "display_name": "Session",
+      "payload_type_id": "camera-session.v1"
+    },
+    {
+      "name": "request",
+      "display_name": "Request",
+      "payload_type_id": "value.v1",
+      "required": false
+    }
+  ],
+  "output_ports": [
+    {
+      "name": "session",
+      "display_name": "Session",
+      "payload_type_id": "camera-session.v1"
+    },
+    {
+      "name": "summary",
+      "display_name": "Summary",
+      "payload_type_id": "value.v1"
+    }
+  ],
+  "parameter_schema": {
+    "type": "object",
+    "properties": {
+      "buffer_capacity": {
+        "type": "integer",
+        "title": "Buffer Capacity",
+        "default": 16,
+        "minimum": 1
+      },
+      "target_fps": {
+        "type": "number",
+        "title": "Target FPS",
+        "exclusiveMinimum": 0
+      },
+      "failure_retry_delay_ms": {
+        "type": "integer",
+        "title": "Failure Retry Delay (ms)",
+        "default": 50,
+        "minimum": 0
+      },
+      "restart_if_active": {
+        "type": "boolean",
+        "title": "Restart If Active",
+        "default": false
+      }
+    }
+  },
+  "capability_tags": [
+    "integration.camera",
+    "integration.camera.usb-uvc",
+    "vision.video.stream"
+  ],
+  "runtime_requirements": {
+    "python_packages": [
+      "opencv-python",
+      "numpy"
+    ]
+  },
+  "node_pack_id": "camera.usb-uvc-nodes",
+  "node_pack_version": "0.1.0",
+  "metadata": {
+    "phase": "implemented"
+  }
+}

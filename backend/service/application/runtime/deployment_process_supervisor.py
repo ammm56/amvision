@@ -1,0 +1,1118 @@
+"""deployment 进程监督器。"""
+
+from __future__ import annotations
+
+import multiprocessing
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from threading import Event, Lock, Thread
+from time import monotonic
+from typing import Any, Callable
+from uuid import uuid4
+
+from backend.service.application.events import InMemoryServiceEventBus
+from backend.service.application.errors import InvalidRequestError, ServiceConfigurationError
+from backend.service.application.local_buffers import LocalBufferBrokerClient, LocalBufferBrokerEventChannel
+from backend.service.application.project_summary import (
+    PROJECT_SUMMARY_TOPIC_DEPLOYMENTS,
+    publish_project_summary_event,
+    should_publish_project_summary_for_deployment_event,
+)
+from backend.service.application.runtime.deployment_process_settings import (
+    DeploymentProcessSupervisorConfig,
+)
+from backend.service.application.runtime.deployment_events import (
+    DetectionDeploymentProcessEvent,
+    build_deployment_process_service_event,
+    read_deployment_process_events,
+    resolve_deployment_event_lock,
+    write_deployment_process_events,
+)
+from backend.service.application.runtime.safe_counter import (
+    SafeCounterState,
+    increment_safe_counter,
+    normalize_safe_counter_value,
+)
+from backend.service.application.runtime.deployment_process_worker import (
+    run_deployment_process_worker,
+)
+from backend.service.application.runtime.task_prediction_runtime import (
+    PredictionExecutionResult,
+    PredictionRequest,
+    deserialize_prediction_execution_result,
+    serialize_prediction_request,
+)
+from backend.service.application.runtime.runtime_target import RuntimeTargetSnapshot
+from backend.service.infrastructure.db.session import SessionFactory
+from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
+
+
+@dataclass(frozen=True)
+class DeploymentProcessRuntimeBehavior:
+    """描述 deployment 预热与 keep-warm 的覆盖配置。
+
+    字段：
+    - warmup_dummy_inference_count：显式 warmup 时追加执行的 dummy infer 次数；None 表示使用 supervisor 默认值。
+    - warmup_dummy_image_size：dummy infer 使用的最小图片尺寸；None 表示使用 supervisor 默认值。
+    - keep_warm_enabled：是否启用 keep-warm 后台线程；None 表示使用 supervisor 默认值。
+    - keep_warm_interval_seconds：keep-warm dummy infer 的最小间隔秒数；None 表示使用 supervisor 默认值。
+    - tensorrt_pinned_output_buffer_enabled：TensorRT 输出 host buffer 是否启用 pinned memory；None 表示使用 supervisor 默认值。
+    - tensorrt_pinned_output_buffer_max_bytes：TensorRT 输出 host buffer 允许使用 pinned memory 的最大字节数；None 表示使用 supervisor 默认值。
+    """
+
+    warmup_dummy_inference_count: int | None = None
+    warmup_dummy_image_size: tuple[int, int] | None = None
+    keep_warm_enabled: bool | None = None
+    keep_warm_interval_seconds: float | None = None
+    tensorrt_pinned_output_buffer_enabled: bool | None = None
+    tensorrt_pinned_output_buffer_max_bytes: int | None = None
+
+
+@dataclass(frozen=True)
+class DeploymentProcessConfig:
+    """描述一个 deployment 进程的稳定配置。
+
+    字段：
+    - deployment_instance_id：DeploymentInstance id。
+    - runtime_target：当前 deployment 绑定的运行时快照。
+    - project_id：所属 Project id；为空时表示当前调用方不关心项目级聚合事件。
+    - instance_count：实例化数量；每个实例对应一个独立推理线程和模型会话。
+    - runtime_behavior：当前 deployment 的预热与 keep-warm 覆盖配置。
+    """
+
+    deployment_instance_id: str
+    runtime_target: RuntimeTargetSnapshot
+    project_id: str = ""
+    instance_count: int = 1
+    runtime_behavior: DeploymentProcessRuntimeBehavior = field(
+        default_factory=DeploymentProcessRuntimeBehavior
+    )
+
+
+@dataclass(frozen=True)
+class DeploymentProcessStatus:
+    """描述 deployment 进程的当前监督状态。
+
+    字段：
+    - deployment_instance_id：DeploymentInstance id。
+    - runtime_mode：当前进程所属通道；sync 或 async。
+    - instance_count：实例数量。
+    - desired_state：监督器期望状态；running 或 stopped。
+    - process_state：当前进程状态；running、stopped 或 crashed。
+    - process_id：当前子进程 pid。
+    - auto_restart：是否启用崩溃自动拉起。
+    - restart_count：已发生的自动拉起次数。
+    - restart_count_rollover_count：restart_count 已发生的 rollover 次数。
+    - last_exit_code：最近一次退出码。
+    - last_error：最近一次监督错误。
+    """
+
+    deployment_instance_id: str
+    runtime_mode: str
+    instance_count: int
+    desired_state: str
+    process_state: str
+    process_id: int | None
+    auto_restart: bool
+    restart_count: int
+    restart_count_rollover_count: int = 0
+    last_exit_code: int | None = None
+    last_error: str | None = None
+
+
+@dataclass(frozen=True)
+class DeploymentProcessInstanceHealth:
+    """描述 deployment 子进程内单个推理实例的健康状态。"""
+
+    instance_id: str
+    healthy: bool
+    warmed: bool
+    busy: bool
+    last_error: str | None = None
+
+
+@dataclass(frozen=True)
+class DeploymentProcessKeepWarmStatus:
+    """描述 deployment 子进程内 keep-warm 的当前状态。
+
+    字段：
+    - enabled：当前 deployment 是否启用了 keep-warm。
+    - activated：keep-warm 是否已经被 warmup 或真实推理激活。
+    - paused：当前是否因为控制面动作或真实请求而暂停。
+    - idle：当前是否没有 keep-warm dummy infer 正在执行。
+    - interval_seconds：keep-warm 连续 dummy infer 的最小间隔秒数。
+    - yield_timeout_seconds：真实请求等待 keep-warm 让出的最长秒数。
+    - success_count：keep-warm 成功完成的 dummy infer 次数。
+    - success_count_rollover_count：success_count 已发生的 rollover 次数。
+    - error_count：keep-warm 执行失败次数。
+    - error_count_rollover_count：error_count 已发生的 rollover 次数。
+    - last_error：最近一次 keep-warm 失败错误。
+    """
+
+    enabled: bool
+    activated: bool
+    paused: bool
+    idle: bool
+    interval_seconds: float
+    yield_timeout_seconds: float
+    success_count: int = 0
+    success_count_rollover_count: int = 0
+    error_count: int = 0
+    error_count_rollover_count: int = 0
+    last_error: str | None = None
+
+
+@dataclass(frozen=True)
+class DeploymentProcessHealth:
+    """描述 deployment 进程与实例池的详细健康视图。
+
+    字段：
+    - deployment_instance_id：DeploymentInstance id。
+    - runtime_mode：当前进程所属通道；sync 或 async。
+    - instance_count：实例数量。
+    - desired_state：监督器期望状态。
+    - process_state：当前进程状态。
+    - process_id：当前子进程 pid。
+    - auto_restart：是否启用崩溃自动拉起。
+    - restart_count：已发生的自动拉起次数。
+    - restart_count_rollover_count：restart_count 已发生的 rollover 次数。
+    - last_exit_code：最近一次退出码。
+    - last_error：最近一次监督错误。
+    - healthy_instance_count：健康实例数量。
+    - warmed_instance_count：已预热实例数量。
+    - pinned_output_total_bytes：当前所有已加载 session 的 pinned output host buffer 总字节数。
+    - instances：实例级健康状态列表。
+    - keep_warm：当前 keep-warm 运行状态。
+    - local_buffer_broker：deployment worker 内 LocalBufferBroker 接入与输入计数摘要。
+    """
+
+    deployment_instance_id: str
+    runtime_mode: str
+    instance_count: int
+    desired_state: str
+    process_state: str
+    process_id: int | None
+    auto_restart: bool
+    restart_count: int
+    restart_count_rollover_count: int = 0
+    last_exit_code: int | None = None
+    last_error: str | None = None
+    healthy_instance_count: int = 0
+    warmed_instance_count: int = 0
+    pinned_output_total_bytes: int = 0
+    instances: tuple[DeploymentProcessInstanceHealth, ...] = ()
+    keep_warm: DeploymentProcessKeepWarmStatus | None = None
+    local_buffer_broker: dict[str, object] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class DeploymentProcessExecution:
+    """描述一次通过 deployment 子进程执行的推理结果。"""
+
+    deployment_instance_id: str
+    instance_id: str
+    execution_result: PredictionExecutionResult
+
+
+@dataclass
+class _PendingResponse:
+    """描述一次正在等待中的跨进程响应。"""
+
+    event: Event = field(default_factory=Event)
+    response: dict[str, object] | None = None
+    error_message: str | None = None
+
+
+@dataclass
+class _DeploymentProcessState:
+    """描述单个 deployment 在父进程中的监督状态。"""
+
+    config: DeploymentProcessConfig
+    desired_running: bool = False
+    process: Any | None = None
+    request_queue: Any | None = None
+    response_queue: Any | None = None
+    local_buffer_broker_event_channel: LocalBufferBrokerEventChannel | None = None
+    response_thread: Thread | None = None
+    response_stop_event: Event = field(default_factory=Event, repr=False)
+    pending_responses: dict[str, _PendingResponse] = field(default_factory=dict)
+    restart_counter: SafeCounterState = field(default_factory=SafeCounterState)
+    last_exit_code: int | None = None
+    last_error: str | None = None
+    started_at_monotonic: float | None = None
+    lock: Lock = field(default_factory=Lock, repr=False)
+
+
+class DeploymentProcessSupervisor:
+    """按 deployment 管理独立子进程，并负责崩溃自动拉起。"""
+
+    def __init__(
+        self,
+        *,
+        dataset_storage_root_dir: str,
+        runtime_mode: str,
+        settings: DeploymentProcessSupervisorConfig,
+        service_event_bus: InMemoryServiceEventBus | None = None,
+        session_factory: SessionFactory | None = None,
+        dataset_storage: LocalDatasetStorage | None = None,
+        local_buffer_broker_event_channel: LocalBufferBrokerEventChannel | None = None,
+        local_buffer_broker_event_channel_provider: Callable[[], LocalBufferBrokerEventChannel | None] | None = None,
+        worker_target: Callable[..., None] = run_deployment_process_worker,
+    ) -> None:
+        """初始化 deployment 进程监督器。
+
+        参数：
+        - dataset_storage_root_dir：本地文件存储根目录。
+        - runtime_mode：监督器所属通道；sync 或 async。
+        - settings：监督器运行配置。
+        - service_event_bus：统一服务内事件总线；为空时只保留本地回放文件。
+        - session_factory：可选数据库会话工厂；提供后可发布项目级聚合事件。
+        - dataset_storage：可选本地文件存储；提供后可发布项目级聚合事件。
+        - local_buffer_broker_event_channel：固定的 broker 事件通道。
+        - local_buffer_broker_event_channel_provider：启动子进程时读取 broker 事件通道的函数。
+        - worker_target：子进程入口函数；测试时可替换为 fake worker。
+        """
+
+        self.dataset_storage_root_dir = dataset_storage_root_dir
+        self.runtime_mode = runtime_mode
+        self.settings = settings
+        self.service_event_bus = service_event_bus
+        self.session_factory = session_factory
+        self.dataset_storage = dataset_storage
+        self.local_buffer_broker_event_channel = local_buffer_broker_event_channel
+        self.local_buffer_broker_event_channel_provider = local_buffer_broker_event_channel_provider
+        self.worker_target = worker_target
+        self._context = multiprocessing.get_context("spawn")
+        self._deployments: dict[str, _DeploymentProcessState] = {}
+        self._lock = Lock()
+        self._monitor_stop_event = Event()
+        self._monitor_thread: Thread | None = None
+
+    @property
+    def is_running(self) -> bool:
+        """返回监督线程是否已经启动。"""
+
+        return self._monitor_thread is not None and self._monitor_thread.is_alive()
+
+    def start(self) -> None:
+        """启动监督线程。"""
+
+        if self.is_running:
+            return
+        self._monitor_stop_event.clear()
+        self._monitor_thread = Thread(
+            target=self._run_monitor_loop,
+            name=f"deployment-process-supervisor-{self.runtime_mode}",
+            daemon=True,
+        )
+        self._monitor_thread.start()
+
+    def stop(self) -> None:
+        """停止监督线程并关闭全部 deployment 子进程。"""
+
+        self._monitor_stop_event.set()
+        monitor_thread = self._monitor_thread
+        if monitor_thread is not None:
+            monitor_thread.join(timeout=max(0.1, self.settings.shutdown_timeout_seconds))
+            if not monitor_thread.is_alive():
+                self._monitor_thread = None
+        with self._lock:
+            states = tuple(self._deployments.values())
+        for state in states:
+            with state.lock:
+                state.desired_running = False
+                self._stop_process_locked(state)
+
+    def ensure_deployment(self, config: DeploymentProcessConfig) -> DeploymentProcessStatus:
+        """登记 deployment 配置但不主动启动子进程。"""
+
+        state = self._ensure_state(config)
+        return self._build_status(state)
+
+    def start_deployment(self, config: DeploymentProcessConfig) -> DeploymentProcessStatus:
+        """显式启动指定 deployment 的子进程。"""
+
+        state = self._ensure_state(config)
+        with state.lock:
+            previous_status = self._build_status_from_locked_state(state)
+            state.desired_running = True
+            self._start_process_locked(state)
+            current_status = self._build_status_from_locked_state(state)
+        if self._status_changed(previous_status, current_status):
+            self._record_deployment_status_event(
+                current_status,
+                event_type="deployment.started",
+                message="deployment 进程已启动",
+            )
+        return current_status
+
+    def stop_deployment(self, config: DeploymentProcessConfig) -> DeploymentProcessStatus:
+        """显式停止指定 deployment 的子进程。"""
+
+        state = self._ensure_state(config)
+        with state.lock:
+            previous_status = self._build_status_from_locked_state(state)
+            state.desired_running = False
+            self._stop_process_locked(state)
+            current_status = self._build_status_from_locked_state(state)
+        if self._status_changed(previous_status, current_status):
+            self._record_deployment_status_event(
+                current_status,
+                event_type="deployment.stopped",
+                message="deployment 进程已停止",
+            )
+        return current_status
+
+    def warmup_deployment(self, config: DeploymentProcessConfig) -> DeploymentProcessHealth:
+        """显式启动并预热指定 deployment 子进程。"""
+
+        state = self._ensure_state(config)
+        with state.lock:
+            state.desired_running = True
+            self._start_process_locked(state)
+        payload = self._send_request(state=state, action="warmup")
+        health = self._build_health(state, payload)
+        self._record_deployment_health_event(
+            health,
+            event_type="deployment.warmup.completed",
+            message="deployment 预热已完成",
+        )
+        return health
+
+    def get_status(self, config: DeploymentProcessConfig) -> DeploymentProcessStatus:
+        """返回指定 deployment 当前监督状态。"""
+
+        state = self._ensure_state(config)
+        return self._build_status(state)
+
+    def get_health(self, config: DeploymentProcessConfig) -> DeploymentProcessHealth:
+        """返回指定 deployment 当前进程与实例健康视图。"""
+
+        state = self._ensure_state(config)
+        if not self._is_process_running(state):
+            return self._build_health(state, None)
+        payload = self._send_request(state=state, action="health")
+        return self._build_health(state, payload)
+
+    def reset_deployment(self, config: DeploymentProcessConfig) -> DeploymentProcessHealth:
+        """重置指定 deployment 子进程内的实例池。"""
+
+        state = self._ensure_state(config)
+        self._require_running_process(state)
+        payload = self._send_request(state=state, action="reset")
+        health = self._build_health(state, payload)
+        self._record_deployment_health_event(
+            health,
+            event_type="deployment.reset.completed",
+            message="deployment 实例池已重置",
+        )
+        return health
+
+    def list_events(
+        self,
+        deployment_instance_id: str,
+        *,
+        after_sequence: int | None = None,
+        runtime_mode: str | None = None,
+    ) -> tuple[DetectionDeploymentProcessEvent, ...]:
+        """读取一个 deployment 的事件列表。"""
+
+        return read_deployment_process_events(
+            dataset_storage_root_dir=self.dataset_storage_root_dir,
+            deployment_instance_id=deployment_instance_id,
+            after_sequence=after_sequence,
+            runtime_mode=runtime_mode,
+        )
+
+    def run_inference(
+        self,
+        *,
+        config: DeploymentProcessConfig,
+        request: PredictionRequest,
+    ) -> DeploymentProcessExecution:
+        """通过 deployment 子进程执行一次推理请求。"""
+
+        state = self._ensure_state(config)
+        self._require_running_process(state)
+        payload = self._send_request(
+            state=state,
+            action="infer",
+            payload={
+                "task_type": config.runtime_target.task_type,
+                "prediction_request": serialize_prediction_request(
+                    task_type=config.runtime_target.task_type,
+                    request=request,
+                ),
+            },
+        )
+        instance_id = _require_response_str(payload, "instance_id")
+        return DeploymentProcessExecution(
+            deployment_instance_id=config.deployment_instance_id,
+            instance_id=instance_id,
+            execution_result=deserialize_prediction_execution_result(
+                task_type=config.runtime_target.task_type,
+                payload=payload.get("execution_result"),
+            ),
+        )
+
+    def _ensure_state(self, config: DeploymentProcessConfig) -> _DeploymentProcessState:
+        """读取或初始化指定 deployment 的监督状态。"""
+
+        self._validate_config(config)
+        with self._lock:
+            state = self._deployments.get(config.deployment_instance_id)
+            if state is None or _build_config_signature(state.config) != _build_config_signature(config):
+                state = _DeploymentProcessState(config=config)
+                self._deployments[config.deployment_instance_id] = state
+            return state
+
+    def _require_running_process(self, state: _DeploymentProcessState) -> None:
+        """校验指定 deployment 子进程当前处于运行状态。"""
+
+        if not self._is_process_running(state):
+            raise InvalidRequestError(
+                "当前 deployment 进程尚未启动",
+                details={
+                    "deployment_instance_id": state.config.deployment_instance_id,
+                    "runtime_mode": self.runtime_mode,
+                },
+            )
+
+    def _send_request(
+        self,
+        *,
+        state: _DeploymentProcessState,
+        action: str,
+        payload: dict[str, object] | None = None,
+    ) -> dict[str, object]:
+        """向指定 deployment 子进程发送一条命令并等待响应。"""
+
+        request_id = uuid4().hex
+        pending = _PendingResponse()
+        with state.lock:
+            process = state.process
+            request_queue = state.request_queue
+            if process is None or request_queue is None or not process.is_alive():
+                raise InvalidRequestError(
+                    "当前 deployment 进程尚未启动",
+                    details={
+                        "deployment_instance_id": state.config.deployment_instance_id,
+                        "runtime_mode": self.runtime_mode,
+                    },
+                )
+            state.pending_responses[request_id] = pending
+            request_queue.put(
+                {
+                    "request_id": request_id,
+                    "action": action,
+                    "payload": dict(payload or {}),
+                }
+            )
+        completed = pending.event.wait(timeout=max(0.1, self.settings.request_timeout_seconds))
+        if not completed:
+            with state.lock:
+                state.pending_responses.pop(request_id, None)
+            raise ServiceConfigurationError(
+                "等待 deployment 子进程响应超时",
+                details={
+                    "deployment_instance_id": state.config.deployment_instance_id,
+                    "runtime_mode": self.runtime_mode,
+                    "action": action,
+                },
+            )
+        if pending.error_message is not None:
+            raise ServiceConfigurationError(
+                pending.error_message,
+                details={
+                    "deployment_instance_id": state.config.deployment_instance_id,
+                    "runtime_mode": self.runtime_mode,
+                    "action": action,
+                },
+            )
+        response = pending.response or {}
+        if response.get("ok") is True:
+            payload_value = response.get("payload")
+            if isinstance(payload_value, dict):
+                return payload_value
+            return {}
+        error_payload = response.get("error") if isinstance(response.get("error"), dict) else {}
+        error_code = str(error_payload.get("code") or "service_configuration_error")
+        error_message = str(error_payload.get("message") or "deployment 子进程执行失败")
+        error_details = error_payload.get("details") if isinstance(error_payload.get("details"), dict) else {}
+        if error_code == "invalid_request":
+            raise InvalidRequestError(error_message, details=error_details)
+        raise ServiceConfigurationError(error_message, details=error_details)
+
+    def _start_process_locked(self, state: _DeploymentProcessState) -> None:
+        """在持有状态锁时启动 deployment 子进程。"""
+
+        if state.process is not None and state.process.is_alive():
+            return
+        request_queue = self._context.Queue()
+        response_queue = self._context.Queue()
+        state.response_stop_event.clear()
+        worker_kwargs: dict[str, object] = {
+            "config": state.config,
+            "dataset_storage_root_dir": self.dataset_storage_root_dir,
+            "request_queue": request_queue,
+            "response_queue": response_queue,
+            "operator_thread_count": self.settings.operator_thread_count,
+            "supervisor_settings": self.settings.model_dump(mode="python"),
+        }
+        local_buffer_broker_event_channel = self._resolve_local_buffer_broker_event_channel()
+        if local_buffer_broker_event_channel is not None:
+            worker_kwargs["local_buffer_broker_event_channel"] = local_buffer_broker_event_channel
+        process = self._context.Process(
+            target=self.worker_target,
+            kwargs=worker_kwargs,
+            name=f"{self.runtime_mode}-{state.config.deployment_instance_id}",
+            daemon=True,
+        )
+        process.start()
+        state.process = process
+        state.request_queue = request_queue
+        state.response_queue = response_queue
+        state.local_buffer_broker_event_channel = local_buffer_broker_event_channel
+        state.started_at_monotonic = monotonic()
+        state.last_exit_code = None
+        state.response_thread = Thread(
+            target=self._run_response_loop,
+            args=(state,),
+            daemon=True,
+            name=f"deployment-response-{self.runtime_mode}-{state.config.deployment_instance_id}",
+        )
+        state.response_thread.start()
+
+    def _stop_process_locked(self, state: _DeploymentProcessState) -> None:
+        """在持有状态锁时停止 deployment 子进程。"""
+
+        process = state.process
+        request_queue = state.request_queue
+        if process is None:
+            self._cleanup_process_locked(state)
+            return
+        if process.is_alive() and request_queue is not None:
+            try:
+                request_queue.put(
+                    {
+                        "request_id": uuid4().hex,
+                        "action": "shutdown",
+                        "payload": {},
+                    }
+                )
+                process.join(timeout=max(0.1, self.settings.shutdown_timeout_seconds))
+            except Exception:
+                pass
+        if process.is_alive():
+            process.terminate()
+            process.join(timeout=max(0.1, self.settings.shutdown_timeout_seconds))
+        self._cleanup_process_locked(state)
+
+    def _cleanup_process_locked(self, state: _DeploymentProcessState) -> None:
+        """在持有状态锁时清理已退出 deployment 子进程资源。"""
+
+        process = state.process
+        if process is not None and process.exitcode is not None:
+            state.last_exit_code = process.exitcode
+        state.response_stop_event.set()
+        state.process = None
+        state.request_queue = None
+        state.response_queue = None
+        _close_local_buffer_broker_event_channel(state.local_buffer_broker_event_channel)
+        state.local_buffer_broker_event_channel = None
+        state.response_thread = None
+        state.started_at_monotonic = None
+        for pending in state.pending_responses.values():
+            pending.error_message = "deployment 子进程已经退出"
+            pending.event.set()
+        state.pending_responses.clear()
+
+    def _run_response_loop(self, state: _DeploymentProcessState) -> None:
+        """持续消费指定 deployment 的子进程响应队列。"""
+
+        while not state.response_stop_event.is_set():
+            response_queue = state.response_queue
+            if response_queue is None:
+                return
+            try:
+                message = response_queue.get(timeout=0.2)
+            except Exception:
+                continue
+            if not isinstance(message, dict):
+                continue
+            request_id = str(message.get("request_id") or "")
+            with state.lock:
+                pending = state.pending_responses.pop(request_id, None)
+            if pending is None:
+                continue
+            pending.response = message
+            pending.event.set()
+
+    def _run_monitor_loop(self) -> None:
+        """持续巡检全部 deployment 子进程，并在需要时执行崩溃拉起。"""
+
+        while not self._monitor_stop_event.is_set():
+            with self._lock:
+                states = tuple(self._deployments.values())
+            for state in states:
+                crashed_status: DeploymentProcessStatus | None = None
+                restarted_status: DeploymentProcessStatus | None = None
+                with state.lock:
+                    process = state.process
+                    if process is None:
+                        continue
+                    if process.is_alive():
+                        continue
+                    state.last_exit_code = process.exitcode
+                    crashed_status = self._build_status_from_locked_state(state)
+                    self._cleanup_process_locked(state)
+                    if state.desired_running and self.settings.auto_restart:
+                        increment_safe_counter(state.restart_counter)
+                        self._start_process_locked(state)
+                        restarted_status = self._build_status_from_locked_state(state)
+                if crashed_status is not None:
+                    self._record_deployment_status_event(
+                        crashed_status,
+                        event_type="deployment.crashed",
+                        message="deployment 进程异常退出",
+                    )
+                if restarted_status is not None:
+                    self._record_deployment_status_event(
+                        restarted_status,
+                        event_type="deployment.restarted",
+                        message="deployment 进程已自动拉起",
+                        payload={"restart_trigger": "process_exit"},
+                    )
+            self._monitor_stop_event.wait(max(0.1, self.settings.monitor_interval_seconds))
+
+    def _is_process_running(self, state: _DeploymentProcessState) -> bool:
+        """返回指定 deployment 子进程当前是否存活。"""
+
+        with state.lock:
+            process = state.process
+            return process is not None and process.is_alive()
+
+    def _resolve_local_buffer_broker_event_channel(self) -> LocalBufferBrokerEventChannel | None:
+        """返回当前应传给 deployment worker 的 broker 事件通道。"""
+
+        if self.local_buffer_broker_event_channel_provider is not None:
+            return self.local_buffer_broker_event_channel_provider()
+        return self.local_buffer_broker_event_channel
+
+    def _build_status(self, state: _DeploymentProcessState) -> DeploymentProcessStatus:
+        """根据内部监督状态构建公开 status 响应。"""
+
+        with state.lock:
+            return self._build_status_from_locked_state(state)
+
+    def _build_status_from_locked_state(
+        self,
+        state: _DeploymentProcessState,
+    ) -> DeploymentProcessStatus:
+        """在持有状态锁时构建公开 status 响应。"""
+
+        process = state.process
+        process_id = process.pid if process is not None and process.is_alive() else None
+        desired_state = "running" if state.desired_running else "stopped"
+        if process is not None and process.is_alive():
+            process_state = "running"
+        elif state.desired_running and state.last_exit_code is not None:
+            process_state = "crashed"
+        else:
+            process_state = "stopped"
+        return DeploymentProcessStatus(
+            deployment_instance_id=state.config.deployment_instance_id,
+            runtime_mode=self.runtime_mode,
+            instance_count=state.config.instance_count,
+            desired_state=desired_state,
+            process_state=process_state,
+            process_id=process_id,
+            auto_restart=self.settings.auto_restart,
+            restart_count=normalize_safe_counter_value(state.restart_counter.value),
+            restart_count_rollover_count=normalize_safe_counter_value(
+                state.restart_counter.rollover_count
+            ),
+            last_exit_code=state.last_exit_code,
+            last_error=state.last_error,
+        )
+
+    def _build_health(
+        self,
+        state: _DeploymentProcessState,
+        payload: dict[str, object] | None,
+    ) -> DeploymentProcessHealth:
+        """根据监督状态和子进程返回构建健康视图。"""
+
+        status = self._build_status(state)
+        if payload is None:
+            return DeploymentProcessHealth(
+                deployment_instance_id=status.deployment_instance_id,
+                runtime_mode=status.runtime_mode,
+                instance_count=status.instance_count,
+                desired_state=status.desired_state,
+                process_state=status.process_state,
+                process_id=status.process_id,
+                auto_restart=status.auto_restart,
+                restart_count=status.restart_count,
+                restart_count_rollover_count=status.restart_count_rollover_count,
+                last_exit_code=status.last_exit_code,
+                last_error=status.last_error,
+            )
+        keep_warm_payload = payload.get("keep_warm") if isinstance(payload.get("keep_warm"), dict) else None
+        local_buffer_broker_payload = (
+            payload.get("local_buffer_broker") if isinstance(payload.get("local_buffer_broker"), dict) else {}
+        )
+        instances_payload = payload.get("instances") if isinstance(payload.get("instances"), list) else []
+        instances = tuple(
+            DeploymentProcessInstanceHealth(
+                instance_id=str(item.get("instance_id") or ""),
+                healthy=bool(item.get("healthy") is True),
+                warmed=bool(item.get("warmed") is True),
+                busy=bool(item.get("busy") is True),
+                last_error=str(item.get("last_error")) if item.get("last_error") is not None else None,
+            )
+            for item in instances_payload
+            if isinstance(item, dict)
+        )
+        process_id = _read_response_optional_int(payload, "process_id") or status.process_id
+        return DeploymentProcessHealth(
+            deployment_instance_id=status.deployment_instance_id,
+            runtime_mode=status.runtime_mode,
+            instance_count=status.instance_count,
+            desired_state=status.desired_state,
+            process_state=status.process_state,
+            process_id=process_id,
+            auto_restart=status.auto_restart,
+            restart_count=status.restart_count,
+            restart_count_rollover_count=status.restart_count_rollover_count,
+            last_exit_code=status.last_exit_code,
+            last_error=status.last_error,
+            healthy_instance_count=_read_response_optional_int(payload, "healthy_instance_count") or 0,
+            warmed_instance_count=_read_response_optional_int(payload, "warmed_instance_count") or 0,
+            pinned_output_total_bytes=_read_response_optional_int(payload, "pinned_output_total_bytes") or 0,
+            instances=instances,
+            keep_warm=_deserialize_keep_warm_status(keep_warm_payload),
+            local_buffer_broker=dict(local_buffer_broker_payload),
+        )
+
+    @staticmethod
+    def _validate_config(config: DeploymentProcessConfig) -> None:
+        """校验 deployment 进程配置。"""
+
+        if not config.deployment_instance_id.strip():
+            raise InvalidRequestError("deployment_instance_id 不能为空")
+        if config.instance_count <= 0:
+            raise InvalidRequestError(
+                "instance_count 必须大于 0",
+                details={"instance_count": config.instance_count},
+            )
+
+    @staticmethod
+    def _status_changed(
+        previous_status: DeploymentProcessStatus,
+        current_status: DeploymentProcessStatus,
+    ) -> bool:
+        """判断 deployment 状态是否发生了需要记录的变化。"""
+
+        return (
+            previous_status.desired_state != current_status.desired_state
+            or previous_status.process_state != current_status.process_state
+            or previous_status.process_id != current_status.process_id
+            or previous_status.restart_count != current_status.restart_count
+            or previous_status.last_exit_code != current_status.last_exit_code
+            or previous_status.last_error != current_status.last_error
+        )
+
+    def _record_deployment_status_event(
+        self,
+        status: DeploymentProcessStatus,
+        *,
+        event_type: str,
+        message: str,
+        payload: dict[str, object] | None = None,
+    ) -> DetectionDeploymentProcessEvent:
+        """把 deployment status 变化写入事件回放并同步发布。"""
+
+        return self._append_deployment_event(
+            deployment_instance_id=status.deployment_instance_id,
+            event_type=event_type,
+            message=message,
+            payload={
+                **_build_status_event_payload(status),
+                **dict(payload or {}),
+            },
+        )
+
+    def _record_deployment_health_event(
+        self,
+        health: DeploymentProcessHealth,
+        *,
+        event_type: str,
+        message: str,
+        payload: dict[str, object] | None = None,
+    ) -> DetectionDeploymentProcessEvent:
+        """把 deployment health 快照写入事件回放并同步发布。"""
+
+        return self._append_deployment_event(
+            deployment_instance_id=health.deployment_instance_id,
+            event_type=event_type,
+            message=message,
+            payload={
+                **_build_health_event_payload(health),
+                **dict(payload or {}),
+            },
+        )
+
+    def _append_deployment_event(
+        self,
+        *,
+        deployment_instance_id: str,
+        event_type: str,
+        message: str,
+        payload: dict[str, object] | None = None,
+    ) -> DetectionDeploymentProcessEvent:
+        """向 deployment 事件文件追加一条事件并发布到事件总线。"""
+
+        event_lock = resolve_deployment_event_lock(deployment_instance_id)
+        with event_lock:
+            existing_events = list(
+                read_deployment_process_events(
+                    dataset_storage_root_dir=self.dataset_storage_root_dir,
+                    deployment_instance_id=deployment_instance_id,
+                )
+            )
+            event = DetectionDeploymentProcessEvent(
+                deployment_instance_id=deployment_instance_id,
+                runtime_mode=self.runtime_mode,
+                sequence=len(existing_events) + 1,
+                event_type=event_type.strip() or "deployment.updated",
+                created_at=_now_isoformat(),
+                message=message.strip() or "deployment 事件",
+                payload=dict(payload or {}),
+            )
+            existing_events.append(event)
+            write_deployment_process_events(
+                dataset_storage_root_dir=self.dataset_storage_root_dir,
+                deployment_instance_id=deployment_instance_id,
+                events=tuple(existing_events),
+            )
+        if self.service_event_bus is not None:
+            self.service_event_bus.publish(build_deployment_process_service_event(event))
+        self._publish_project_summary_event(event)
+        return event
+
+    def _publish_project_summary_event(self, event: DetectionDeploymentProcessEvent) -> None:
+        """按需为 deployment 生命周期事件发布项目级聚合更新。"""
+
+        if not should_publish_project_summary_for_deployment_event(event.event_type):
+            return
+        session_factory = getattr(self, "session_factory", None)
+        dataset_storage = getattr(self, "dataset_storage", None)
+        if session_factory is None or dataset_storage is None:
+            return
+        state = self._resolve_project_summary_state(event.deployment_instance_id)
+        if state is None:
+            return
+        project_id = state.config.project_id.strip()
+        if not project_id:
+            return
+        publish_project_summary_event(
+            session_factory=session_factory,
+            dataset_storage=dataset_storage,
+            service_event_bus=self.service_event_bus,
+            project_id=project_id,
+            topic=PROJECT_SUMMARY_TOPIC_DEPLOYMENTS,
+            source_stream="deployments.events",
+            source_resource_kind="deployment_instance",
+            source_resource_id=event.deployment_instance_id,
+        )
+
+    def _resolve_project_summary_state(self, deployment_instance_id: str) -> object | None:
+        """按 deployment id 读取当前监督器内部的状态对象。"""
+
+        deployments = getattr(self, "_deployments", None)
+        if isinstance(deployments, dict):
+            state = deployments.get(deployment_instance_id)
+            if state is not None:
+                return state
+        states = getattr(self, "_states", None)
+        if isinstance(states, dict):
+            return states.get(deployment_instance_id)
+        return None
+
+
+def _close_local_buffer_broker_event_channel(channel: LocalBufferBrokerEventChannel | None) -> None:
+    """关闭 deployment worker 对应的 broker client channel。"""
+
+    if channel is None:
+        return
+    LocalBufferBrokerClient(channel).close()
+
+
+def _build_config_signature(config: DeploymentProcessConfig) -> tuple[object, ...]:
+    """把 deployment 进程配置转换为稳定比较签名。"""
+
+    runtime_target = config.runtime_target
+    runtime_behavior = config.runtime_behavior
+    return (
+        config.deployment_instance_id,
+        config.instance_count,
+        runtime_target.runtime_backend,
+        runtime_target.runtime_artifact_storage_uri,
+        runtime_target.runtime_artifact_file_type,
+        runtime_target.model_version_id,
+        runtime_target.model_build_id,
+        runtime_target.device_name,
+        runtime_target.input_size,
+        runtime_target.labels,
+        runtime_behavior.warmup_dummy_inference_count,
+        runtime_behavior.warmup_dummy_image_size,
+        runtime_behavior.keep_warm_enabled,
+        runtime_behavior.keep_warm_interval_seconds,
+        runtime_behavior.tensorrt_pinned_output_buffer_enabled,
+        runtime_behavior.tensorrt_pinned_output_buffer_max_bytes,
+    )
+
+
+def _now_isoformat() -> str:
+    """返回当前 UTC 时间的 ISO8601 字符串。"""
+
+    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def _build_status_event_payload(status: DeploymentProcessStatus) -> dict[str, object]:
+    """构造 deployment status 事件的标准 payload。"""
+
+    payload: dict[str, object] = {
+        "runtime_mode": status.runtime_mode,
+        "desired_state": status.desired_state,
+        "process_state": status.process_state,
+        "instance_count": status.instance_count,
+        "auto_restart": status.auto_restart,
+        "restart_count": status.restart_count,
+        "restart_count_rollover_count": status.restart_count_rollover_count,
+    }
+    if status.process_id is not None:
+        payload["process_id"] = status.process_id
+    if status.last_exit_code is not None:
+        payload["last_exit_code"] = status.last_exit_code
+    if status.last_error is not None:
+        payload["last_error"] = status.last_error
+    return payload
+
+
+def _build_health_event_payload(health: DeploymentProcessHealth) -> dict[str, object]:
+    """构造 deployment health 事件的标准 payload。"""
+
+    payload = {
+        **_build_status_event_payload(
+            DeploymentProcessStatus(
+                deployment_instance_id=health.deployment_instance_id,
+                runtime_mode=health.runtime_mode,
+                instance_count=health.instance_count,
+                desired_state=health.desired_state,
+                process_state=health.process_state,
+                process_id=health.process_id,
+                auto_restart=health.auto_restart,
+                restart_count=health.restart_count,
+                restart_count_rollover_count=health.restart_count_rollover_count,
+                last_exit_code=health.last_exit_code,
+                last_error=health.last_error,
+            )
+        ),
+        "healthy_instance_count": health.healthy_instance_count,
+        "warmed_instance_count": health.warmed_instance_count,
+        "pinned_output_total_bytes": health.pinned_output_total_bytes,
+        "instances": [
+            {
+                "instance_id": item.instance_id,
+                "healthy": item.healthy,
+                "warmed": item.warmed,
+                "busy": item.busy,
+                "last_error": item.last_error,
+            }
+            for item in health.instances
+        ],
+        "local_buffer_broker": dict(health.local_buffer_broker),
+    }
+    if health.keep_warm is not None:
+        payload["keep_warm"] = {
+            "enabled": health.keep_warm.enabled,
+            "activated": health.keep_warm.activated,
+            "paused": health.keep_warm.paused,
+            "idle": health.keep_warm.idle,
+            "interval_seconds": health.keep_warm.interval_seconds,
+            "yield_timeout_seconds": health.keep_warm.yield_timeout_seconds,
+            "success_count": health.keep_warm.success_count,
+            "success_count_rollover_count": health.keep_warm.success_count_rollover_count,
+            "error_count": health.keep_warm.error_count,
+            "error_count_rollover_count": health.keep_warm.error_count_rollover_count,
+            "last_error": health.keep_warm.last_error,
+        }
+    return payload
+
+
+def _deserialize_keep_warm_status(
+    payload: dict[str, object] | None,
+) -> DeploymentProcessKeepWarmStatus | None:
+    """从子进程返回中反序列化 keep-warm 状态。"""
+
+    if payload is None:
+        return None
+    return DeploymentProcessKeepWarmStatus(
+        enabled=bool(payload.get("enabled") is True),
+        activated=bool(payload.get("activated") is True),
+        paused=bool(payload.get("paused") is True),
+        idle=bool(payload.get("idle") is True),
+        interval_seconds=float(payload.get("interval_seconds") or 0.0),
+        yield_timeout_seconds=float(payload.get("yield_timeout_seconds") or 0.0),
+        success_count=int(payload.get("success_count") or 0),
+        success_count_rollover_count=int(payload.get("success_count_rollover_count") or 0),
+        error_count=int(payload.get("error_count") or 0),
+        error_count_rollover_count=int(payload.get("error_count_rollover_count") or 0),
+        last_error=str(payload.get("last_error")) if payload.get("last_error") is not None else None,
+    )
+
+def _require_response_str(payload: dict[str, object], key: str) -> str:
+    """从子进程响应中读取必填字符串字段。"""
+
+    value = payload.get(key)
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    raise ServiceConfigurationError("deployment 子进程返回缺少必要字符串字段", details={"field": key})
+
+
+def _require_response_int(payload: dict[str, object], key: str) -> int:
+    """从子进程响应中读取必填整数。"""
+
+    value = payload.get(key)
+    if isinstance(value, int):
+        return value
+    raise ServiceConfigurationError("deployment 子进程返回缺少必要整数字段", details={"field": key})
+
+
+def _read_response_optional_int(payload: dict[str, object], key: str) -> int | None:
+    """从子进程响应中读取可选整数。"""
+
+    value = payload.get(key)
+    if isinstance(value, int):
+        return value
+    return None
+
+
+def _read_response_optional_float(payload: dict[str, object], key: str) -> float | None:
+    """从子进程响应中读取可选浮点数。"""
+
+    value = payload.get(key)
+    if isinstance(value, int | float):
+        return float(value)
+    return None
+
+
+def _read_response_optional_bytes(payload: dict[str, object], key: str) -> bytes | None:
+    """从子进程响应中读取可选字节串。"""
+
+    value = payload.get(key)
+    if isinstance(value, bytes):
+        return value
+    return None

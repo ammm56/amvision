@@ -1,0 +1,9 @@
+{
+  "project_id": "project-1",
+  "application_id": "plc-register-modbus-tcp-async-result-record-app",
+  "display_name": "PLC Register Modbus TCP Async Result Record Runtime",
+  "metadata": {
+    "example_kind": "plc-register-modbus-tcp-async-result-record",
+    "trigger_source_input": "plc-register"
+  }
+}

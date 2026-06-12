@@ -7,19 +7,23 @@ from types import SimpleNamespace
 
 from backend.contracts.buffers import BufferRef
 from backend.nodes import ExecutionImageRegistry, build_memory_image_payload
-from backend.nodes.core_nodes.yolox_detection import _yolox_detection_handler
+from backend.nodes.core_nodes.deployment_detection import _deployment_detection_handler
 from backend.service.application.deployments import (
+    DetectionDeploymentPublishedInferenceGateway,
     PublishedInferenceGatewayClient,
     PublishedInferenceGatewayDispatcher,
     PublishedInferenceGatewayEventChannel,
     PublishedInferenceRequest,
-    YoloXDeploymentPublishedInferenceGateway,
 )
-from backend.service.application.models.yolox_inference_task_service import run_yolox_inference_task
-from backend.service.application.runtime.yolox_deployment_process_supervisor import YoloXDeploymentProcessExecution
-from backend.service.application.runtime.yolox_predictor import (
-    YoloXPredictionDetection,
-    YoloXPredictionExecutionResult,
+from backend.service.application.models.detection_inference_task_service import (
+    run_detection_inference_task,
+)
+from backend.service.application.runtime.deployment_process_supervisor import DeploymentProcessExecution
+from backend.service.application.runtime.detection_runtime_contracts import (
+    DetectionPredictionDetection,
+    DetectionPredictionExecutionResult,
+    DetectionRuntimeSessionInfo,
+    DetectionRuntimeTensorSpec,
 )
 from backend.service.application.workflows.execution_cleanup import (
     WORKFLOW_EXECUTION_CLEANUP_KIND_LOCAL_BUFFER_LEASE,
@@ -27,7 +31,6 @@ from backend.service.application.workflows.execution_cleanup import (
 )
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 from backend.service.application.workflows.service_node_runtime import WorkflowServiceNodeRuntimeContext
-from backend.workers.shared.yolox_runtime_contracts import RuntimeTensorSpec, YoloXRuntimeSessionInfo
 from tests.api_test_support import build_test_jpeg_bytes
 
 
@@ -36,7 +39,7 @@ def test_published_inference_gateway_client_calls_parent_supervisor_with_event_d
 
     context = multiprocessing.get_context("spawn")
     fake_supervisor = _FakeDeploymentSupervisor()
-    gateway = YoloXDeploymentPublishedInferenceGateway(
+    gateway = DetectionDeploymentPublishedInferenceGateway(
         deployment_service=_FakeDeploymentService(),
         deployment_process_supervisor=fake_supervisor,
     )
@@ -56,6 +59,7 @@ def test_published_inference_gateway_client_calls_parent_supervisor_with_event_d
 
         result = client.infer(
             PublishedInferenceRequest(
+                task_type="detection",
                 deployment_instance_id="deployment-1",
                 image_payload={
                     "transport_kind": "buffer",
@@ -70,6 +74,7 @@ def test_published_inference_gateway_client_calls_parent_supervisor_with_event_d
         )
 
         assert result.detections[0]["class_name"] == "defect"
+        assert result.task_type == "detection"
         assert fake_supervisor.start_calls == ["deployment-1"]
         assert fake_supervisor.last_prediction_request is not None
         assert fake_supervisor.last_prediction_request.input_image_bytes is None
@@ -106,7 +111,7 @@ def test_yolox_detection_node_writes_memory_image_to_local_buffer_before_gateway
         published_inference_gateway=fake_gateway,
     )
 
-    output = _yolox_detection_handler(
+    output = _deployment_detection_handler(
         WorkflowNodeExecutionRequest(
             node_id="detect",
             node_definition=object(),
@@ -158,7 +163,7 @@ def test_yolox_detection_node_registers_local_buffer_lease_cleanup() -> None:
         "workflow_run_id": "run-1",
     }
 
-    _yolox_detection_handler(
+    _deployment_detection_handler(
         WorkflowNodeExecutionRequest(
             node_id="detect",
             node_definition=object(),
@@ -188,12 +193,12 @@ def test_yolox_detection_node_registers_local_buffer_lease_cleanup() -> None:
     assert cleanup_items[0].metadata == {"pool_name": "image-small"}
 
 
-def test_run_yolox_inference_task_preserves_input_image_payload() -> None:
+def test_run_detection_inference_task_preserves_input_image_payload() -> None:
     """验证统一推理执行入口不会丢掉跨进程图片载荷。"""
 
     fake_supervisor = _FakeDeploymentSupervisor()
 
-    run_yolox_inference_task(
+    run_detection_inference_task(
         deployment_process_supervisor=fake_supervisor,
         process_config=SimpleNamespace(deployment_instance_id="deployment-1"),
         input_uri=None,
@@ -255,16 +260,16 @@ class _FakeDeploymentSupervisor:
         self.start_calls.append(config.deployment_instance_id)
         return self.get_status(config)
 
-    def run_inference(self, *, config: SimpleNamespace, request) -> YoloXDeploymentProcessExecution:
+    def run_inference(self, *, config: SimpleNamespace, request) -> DeploymentProcessExecution:
         """记录推理请求并返回固定结果。"""
 
         self.last_prediction_request = request
-        return YoloXDeploymentProcessExecution(
+        return DeploymentProcessExecution(
             deployment_instance_id=config.deployment_instance_id,
             instance_id="deployment-1:instance-0",
-            execution_result=YoloXPredictionExecutionResult(
+            execution_result=DetectionPredictionExecutionResult(
                 detections=(
-                    YoloXPredictionDetection(
+                    DetectionPredictionDetection(
                         bbox_xyxy=(4.0, 4.0, 24.0, 24.0),
                         score=0.97,
                         class_id=0,
@@ -322,7 +327,8 @@ class _FakePublishedInferenceGateway:
                     "class_id": 0,
                     "class_name": "defect",
                 },
-            )
+            ),
+            task_type="detection",
         )
 
 
@@ -341,13 +347,13 @@ def _build_buffer_ref(*, lease_id: str = "lease-1", media_type: str = "image/jpe
     )
 
 
-def _build_runtime_session_info() -> YoloXRuntimeSessionInfo:
+def _build_runtime_session_info() -> DetectionRuntimeSessionInfo:
     """构造测试 runtime session info。"""
 
-    return YoloXRuntimeSessionInfo(
+    return DetectionRuntimeSessionInfo(
         backend_name="fake",
         model_uri="models/model.onnx",
         device_name="cpu",
-        input_spec=RuntimeTensorSpec(name="images", shape=(1, 3, 64, 64), dtype="float32"),
-        output_spec=RuntimeTensorSpec(name="detections", shape=(1, 7), dtype="float32"),
+        input_spec=DetectionRuntimeTensorSpec(name="images", shape=(1, 3, 64, 64), dtype="float32"),
+        output_spec=DetectionRuntimeTensorSpec(name="detections", shape=(1, 7), dtype="float32"),
     )

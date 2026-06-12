@@ -1,4 +1,4 @@
-"""workflow graph 合同测试。"""
+"""workflow graph 规则测试。"""
 
 from __future__ import annotations
 
@@ -28,7 +28,7 @@ from backend.contracts.workflows.workflow_graph import (
 
 
 def _build_payload_contracts() -> tuple[WorkflowPayloadContract, ...]:
-    """构造测试使用的最小 payload contract 集合。"""
+    """构造测试使用的最小 payload 规则 集合。"""
 
     return (
         WorkflowPayloadContract(
@@ -113,8 +113,8 @@ def _build_node_definitions() -> tuple[NodeDefinition, ...]:
             parameter_schema={"type": "object", "properties": {}},
         ),
         NodeDefinition(
-            node_type_id="core.model.yolox-detection",
-            display_name="YOLOX Detection",
+            node_type_id="core.model.detection",
+            display_name="Detection",
             category="model.inference",
             description="调用独立推理 worker 产出标准 detection 结果。",
             implementation_kind=NODE_IMPLEMENTATION_CORE,
@@ -139,8 +139,8 @@ def _build_node_definitions() -> tuple[NodeDefinition, ...]:
                     "score_threshold": {"type": "number", "minimum": 0, "maximum": 1}
                 },
             },
-            capability_tags=("model.inference", "yolox.detection"),
-            runtime_requirements={"worker_pool": "yolox-inference"},
+            capability_tags=("model.inference", "detection"),
+            runtime_requirements={"worker_pool": "detection-inference"},
         ),
         NodeDefinition(
             node_type_id="custom.opencv.draw-detections",
@@ -199,7 +199,7 @@ def _build_graph_template() -> WorkflowGraphTemplate:
             ),
             WorkflowGraphNode(
                 node_id="detect",
-                node_type_id="core.model.yolox-detection",
+                node_type_id="core.model.detection",
                 parameters={"score_threshold": 0.3},
                 ui_state={"position": {"x": 280, "y": 60}},
             ),
@@ -255,7 +255,7 @@ def _build_graph_template() -> WorkflowGraphTemplate:
 
 
 def test_workflow_contracts_roundtrip_and_binding_validation() -> None:
-    """验证 payload contract、节点目录、图模板和流程应用可以稳定保存与加载。"""
+    """验证 payload 规则、节点目录、图模板和流程应用可以稳定保存与加载。"""
 
     payload_contracts = _build_payload_contracts()
     node_definitions = _build_node_definitions()
@@ -374,3 +374,4 @@ def test_workflow_graph_template_rejects_cycles() -> None:
             template=cyclic_template,
             node_definitions=node_definitions,
         )
+

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import zipfile
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -11,10 +12,11 @@ import pytest
 from backend.contracts.workflows.workflow_graph import FlowApplication, WorkflowGraphTemplate
 from backend.nodes.local_node_pack_loader import LocalNodePackLoader
 from backend.nodes.node_catalog_registry import NodeCatalogRegistry
-from backend.service.application.conversions.yolox_conversion_task_service import YoloXConversionTaskSubmission
+from backend.service.application.conversions.yolox_conversion_task_service import (
+    YoloXConversionTaskSubmission,
+)
 from backend.service.application.datasets.dataset_export import DatasetExportTaskSubmission
 from backend.service.application.models.yolox_evaluation_task_service import (
-    YoloXEvaluationTaskPackage,
     YoloXEvaluationTaskSubmission,
 )
 from backend.service.application.models.yolox_training_service import YoloXTrainingTaskSubmission
@@ -63,7 +65,7 @@ from backend.service.infrastructure.object_store.local_dataset_storage import Da
             id="dataset-export",
         ),
         pytest.param(
-            "yolox_training_submit",
+            "detection_training_submit",
             "build_training_task_service",
             "submit_training_task",
             YoloXTrainingTaskSubmission(
@@ -93,13 +95,13 @@ from backend.service.infrastructure.object_store.local_dataset_storage import Da
             id="training",
         ),
         pytest.param(
-            "yolox_evaluation_submit",
+            "detection_evaluation_submit",
             "build_evaluation_task_service",
             "submit_evaluation_task",
             YoloXEvaluationTaskSubmission(
                 task_id="task-evaluation-1",
                 status="queued",
-                queue_name="yolox-evaluations",
+                queue_name="detection-evaluations",
                 queue_task_id="queue-evaluation-1",
                 dataset_export_id="replace-with-dataset-export-id",
                 dataset_export_manifest_key="exports/manifest.json",
@@ -120,7 +122,7 @@ from backend.service.infrastructure.object_store.local_dataset_storage import Da
             id="evaluation",
         ),
         pytest.param(
-            "yolox_conversion_submit",
+            "detection_conversion_submit",
             "build_conversion_task_service",
             "submit_conversion_task",
             YoloXConversionTaskSubmission(
@@ -205,9 +207,16 @@ def test_submit_family_example_preview_runs_return_submission_body(
             continue
         assert actual_value == expected_value
     assert captured["created_by"] == "workflow-user"
+    expected_build_kwargs = {
+        "build_dataset_export_task_service": {},
+        "build_training_task_service": {"task_type": "detection", "model_type": "yolox"},
+        "build_evaluation_task_service": {"task_type": "detection"},
+        "build_conversion_task_service": {"task_type": "detection", "model_type": "yolox"},
+    }
+    assert captured["build_kwargs"] == expected_build_kwargs[build_method_name]
 
 
-def test_yolox_evaluation_package_example_preview_run_waits_and_returns_package_body(
+def test_detection_evaluation_package_example_preview_run_waits_and_returns_package_body(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -226,7 +235,7 @@ def test_yolox_evaluation_package_example_preview_run_waits_and_returns_package_
     captured: dict[str, object] = {}
 
     class _FakeEvaluationService:
-        """记录 submit 和 package 调用的假 evaluation service。"""
+        """记录 submit 调用的假 evaluation service。"""
 
         def submit_evaluation_task(self, request: object, *, created_by: str | None = None, display_name: str = ""):
             captured["submit_request"] = request
@@ -235,31 +244,13 @@ def test_yolox_evaluation_package_example_preview_run_waits_and_returns_package_
             return YoloXEvaluationTaskSubmission(
                 task_id="task-evaluation-1",
                 status="queued",
-                queue_name="yolox-evaluations",
+                queue_name="detection-evaluations",
                 queue_task_id="queue-evaluation-1",
                 dataset_export_id="dataset-export-1",
                 dataset_export_manifest_key="exports/manifest.json",
                 dataset_version_id="dataset-version-1",
                 format_id="coco-detection-v1",
                 model_version_id="model-version-1",
-            )
-
-        def package_evaluation_result(
-            self,
-            task_id: str,
-            *,
-            rebuild: bool = False,
-            package_object_key: str | None = None,
-        ) -> YoloXEvaluationTaskPackage:
-            captured["package_task_id"] = task_id
-            captured["package_rebuild"] = rebuild
-            captured["package_object_key"] = package_object_key
-            return YoloXEvaluationTaskPackage(
-                task_id=task_id,
-                package_object_key=str(package_object_key),
-                package_file_name="yolox-evaluation-task-evaluation-1-result-package.zip",
-                package_size=512,
-                packaged_at="2026-05-09T00:00:00+00:00",
             )
 
     class _FakeTaskService:
@@ -271,14 +262,14 @@ def test_yolox_evaluation_package_example_preview_run_waits_and_returns_package_
             return TaskDetail(
                 task=SimpleNamespace(
                     task_id=task_id,
-                    task_kind="yolox-evaluation",
+                        task_kind="detection-evaluation",
                     display_name="evaluation package",
                     project_id="project-1",
                     created_by="workflow-user",
                     created_at="2026-05-09T00:00:00+00:00",
                     parent_task_id=None,
                     resource_profile_id=None,
-                    worker_pool="yolox-evaluation",
+                        worker_pool="detection-evaluation",
                     state="succeeded",
                     current_attempt_no=1,
                     started_at="2026-05-09T00:00:01+00:00",
@@ -299,10 +290,17 @@ def test_yolox_evaluation_package_example_preview_run_waits_and_returns_package_
 
     fake_evaluation_service = _FakeEvaluationService()
     fake_task_service = _FakeTaskService()
+    def _build_evaluation_task_service(self, *args, **kwargs):
+        """记录 evaluation service builder 参数，并返回假 service。"""
+
+        captured["build_args"] = args
+        captured["build_kwargs"] = kwargs
+        return fake_evaluation_service
+
     monkeypatch.setattr(
         WorkflowServiceNodeRuntimeContext,
         "build_evaluation_task_service",
-        lambda self: fake_evaluation_service,
+        _build_evaluation_task_service,
     )
     monkeypatch.setattr(
         WorkflowServiceNodeRuntimeContext,
@@ -310,11 +308,22 @@ def test_yolox_evaluation_package_example_preview_run_waits_and_returns_package_
         lambda self: fake_task_service,
     )
 
-    template, application = _load_workflow_example_documents("yolox_evaluation_package")
+    template, application = _load_workflow_example_documents("detection_evaluation_package")
     executor = WorkflowGraphExecutor(registry=runtime_registry_loader.get_runtime_registry())
+    dataset_storage = _create_dataset_storage(tmp_path)
+    _write_dataset_storage_text(
+        dataset_storage,
+        "task-runs/evaluation/task-evaluation-1/artifacts/reports/evaluation-report.json",
+        "{\"map50\": 0.88, \"map50_95\": 0.71}",
+    )
+    _write_dataset_storage_text(
+        dataset_storage,
+        "task-runs/evaluation/task-evaluation-1/artifacts/reports/detections.json",
+        "{\"detections\": []}",
+    )
     runtime_context = WorkflowServiceNodeRuntimeContext(
         session_factory=object(),
-        dataset_storage=_create_dataset_storage(tmp_path),
+        dataset_storage=dataset_storage,
     )
 
     execution_result = executor.execute(
@@ -347,8 +356,12 @@ def test_yolox_evaluation_package_example_preview_run_waits_and_returns_package_
     package_body = execution_result.outputs["package_body"]
     assert package_body["task_id"] == "task-evaluation-1"
     assert package_body["package_object_key"] == (
-        "workflows/runtime/run-1/package_result/yolox-evaluation-task-evaluation-1-result-package.zip"
+        "workflows/runtime/run-1/package_result/model-evaluation-task-evaluation-1-result-package.zip"
     )
+    package_path = dataset_storage.resolve(package_body["package_object_key"])
+    assert package_path.is_file() is True
+    with zipfile.ZipFile(package_path) as archive:
+        assert sorted(archive.namelist()) == ["detections.json", "report.json"]
 
     submit_request = captured["submit_request"]
     assert submit_request.project_id == "project-1"
@@ -357,8 +370,7 @@ def test_yolox_evaluation_package_example_preview_run_waits_and_returns_package_
     assert submit_request.save_result_package is False
     assert captured["wait_task_id"] == "task-evaluation-1"
     assert captured["wait_include_events"] is False
-    assert captured["package_task_id"] == "task-evaluation-1"
-    assert captured["package_rebuild"] is False
+    assert captured["build_kwargs"] == {"task_type": "detection"}
 
 
 def _install_fake_submit_service(
@@ -387,7 +399,14 @@ def _install_fake_submit_service(
         return submission
 
     setattr(fake_service, submit_method_name, _submit)
-    monkeypatch.setattr(WorkflowServiceNodeRuntimeContext, build_method_name, lambda self: fake_service)
+    def _build_service(self, *args, **kwargs):
+        """记录 builder 调用参数，并返回假 service。"""
+
+        captured["build_args"] = args
+        captured["build_kwargs"] = kwargs
+        return fake_service
+
+    monkeypatch.setattr(WorkflowServiceNodeRuntimeContext, build_method_name, _build_service)
 
 
 def _load_workflow_example_documents(example_name: str) -> tuple[WorkflowGraphTemplate, FlowApplication]:
@@ -407,3 +426,11 @@ def _create_dataset_storage(tmp_path: Path) -> LocalDatasetStorage:
     """创建 submit family 运行测试使用的本地数据集存储。"""
 
     return LocalDatasetStorage(DatasetStorageSettings(root_dir=str(tmp_path / "dataset-files")))
+
+
+def _write_dataset_storage_text(dataset_storage: LocalDatasetStorage, object_key: str, content: str) -> None:
+    """向本地数据集存储写入测试文件。"""
+
+    file_path = dataset_storage.resolve(object_key)
+    file_path.parent.mkdir(parents=True, exist_ok=True)
+    file_path.write_text(content, encoding="utf-8")

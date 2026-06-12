@@ -7,7 +7,7 @@ from types import SimpleNamespace
 
 import numpy as np
 
-from backend.service.application.runtime.yolox_predictor import TensorRTYoloXRuntimeSession
+from backend.service.application.runtime.yolox_detection_runtime import TensorRTYoloXRuntimeSession
 from backend.service.domain.files.yolox_file_types import YOLOX_TENSORRT_ENGINE_FILE
 from tests.runtime_pool_test_support import build_test_runtime_target, create_test_dataset_storage
 

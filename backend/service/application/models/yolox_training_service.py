@@ -8,7 +8,6 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from backend.queue import QueueBackend
-from backend.contracts.datasets.exports.coco_detection_export import COCO_DETECTION_DATASET_FORMAT
 from backend.service.application.errors import (
     InvalidRequestError,
     OperationCancelledError,
@@ -24,13 +23,23 @@ from backend.service.application.models.yolox_detection_training import (
     YoloXTrainingSavePoint,
     YoloXTrainingTerminatedError,
     YOLOX_MINIMAL_DEFAULT_EVALUATION_INTERVAL,
-    YOLOX_SUPPORTED_MODEL_SCALES,
     YoloXDetectionTrainingExecutionRequest,
 )
-from backend.service.application.models.yolox_model_service import (
-    SqlAlchemyYoloXModelService,
-    YoloXTrainingOutputRegistration,
+from backend.service.application.models.detection_training_rules import (
+    DetectionTrainingOutputFiles,
+    build_detection_metrics_summary_payload,
+    build_detection_runtime_summary_payload,
+    build_detection_training_config_payload,
+    build_detection_training_model_version_metadata,
+    build_detection_training_summary_base,
+    build_detection_validation_summary_payload,
 )
+from backend.service.application.models.model_service import (
+    SqlAlchemyModelService,
+    TrainingOutputRegistration,
+)
+from backend.service.domain.models.model_task_types import DETECTION_TASK_TYPE
+from backend.service.domain.models.yolox_model_spec import DEFAULT_YOLOX_MODEL_SPEC, YoloXModelSpec
 from backend.service.domain.files.model_file import ModelFile
 from backend.service.domain.files.yolox_file_types import YOLOX_CHECKPOINT_FILE
 from backend.service.domain.models.model_records import (
@@ -186,6 +195,7 @@ class SqlAlchemyYoloXTrainingTaskService:
         session_factory: SessionFactory,
         dataset_storage: LocalDatasetStorage | None = None,
         queue_backend: QueueBackend | None = None,
+        spec: YoloXModelSpec = DEFAULT_YOLOX_MODEL_SPEC,
     ) -> None:
         """初始化 YOLOX 训练任务创建服务。
 
@@ -193,11 +203,13 @@ class SqlAlchemyYoloXTrainingTaskService:
         - session_factory：数据库会话工厂。
         - dataset_storage：可选的本地数据集文件存储服务；处理训练任务时必填。
         - queue_backend：可选的任务队列后端；提交训练任务时必填。
+        - spec：当前使用的 YOLOX 模型规格。
         """
 
         self.session_factory = session_factory
         self.dataset_storage = dataset_storage
         self.queue_backend = queue_backend
+        self.spec = spec
         self.task_service = SqlAlchemyTaskService(session_factory)
 
     def submit_training_task(
@@ -985,7 +997,7 @@ class SqlAlchemyYoloXTrainingTaskService:
             raise InvalidRequestError("recipe_id 不能为空")
         if not request.model_scale.strip():
             raise InvalidRequestError("model_scale 不能为空")
-        if request.model_scale not in YOLOX_SUPPORTED_MODEL_SCALES:
+        if not self.spec.supports_model_scale(request.model_scale):
             raise InvalidRequestError(
                 "当前不支持指定的 YOLOX model_scale",
                 details={"model_scale": request.model_scale},
@@ -1307,10 +1319,16 @@ class SqlAlchemyYoloXTrainingTaskService:
         """执行当前阶段的最小真实 YOLOX detection 训练流程。"""
 
         dataset_storage = self._require_dataset_storage()
-        if dataset_export.format_id != COCO_DETECTION_DATASET_FORMAT:
+        expected_dataset_format = self.spec.resolve_default_dataset_format(DETECTION_TASK_TYPE)
+        if expected_dataset_format is None:
+            raise ServiceConfigurationError("当前 YOLOX 规格缺少 detection 默认导出格式配置")
+        if dataset_export.format_id != expected_dataset_format:
             raise InvalidRequestError(
-                "当前最小真实训练只支持 coco-detection-v1 输入",
-                details={"format_id": dataset_export.format_id},
+                "当前最小真实训练只支持当前 YOLOX 默认 detection 导出格式输入",
+                details={
+                    "format_id": dataset_export.format_id,
+                    "expected_format_id": expected_dataset_format,
+                },
             )
 
         category_names = self._read_str_tuple(manifest_payload.get("category_names"))
@@ -1653,64 +1671,88 @@ class SqlAlchemyYoloXTrainingTaskService:
             execution_result.validation_metrics_payload,
         )
 
-        summary = {
-            "task_id": task_record.task_id,
-            "dataset_export_id": dataset_export.dataset_export_id,
-            "dataset_export_manifest_key": dataset_export.manifest_object_key,
-            "manifest_object_key": dataset_export.manifest_object_key,
-            "dataset_version_id": dataset_version_id or dataset_export.dataset_version_id,
-            "format_id": format_id or dataset_export.format_id,
-            "recipe_id": request.recipe_id,
-            "model_scale": request.model_scale,
-            "output_model_name": request.output_model_name,
-            "sample_count": sample_count,
-            "training_sample_count": execution_result.train_sample_count,
-            "split_names": list(split_names),
-            "category_names": list(category_names),
-            "implementation_mode": execution_result.implementation_mode,
-            "device": execution_result.device,
-            "gpu_count": execution_result.gpu_count,
-            "device_ids": list(execution_result.device_ids),
-            "distributed_mode": execution_result.distributed_mode,
-            "requested_gpu_count": request.gpu_count,
-            "precision": execution_result.precision,
-            "requested_precision": request.precision or execution_result.precision,
-            "input_size": list(execution_result.input_size),
-            "batch_size": execution_result.batch_size,
-            "max_epochs": execution_result.max_epochs,
-            "evaluation_interval": execution_result.evaluation_interval,
-            "parameter_count": execution_result.parameter_count,
-            "best_metric_name": execution_result.best_metric_name,
-            "best_metric_value": execution_result.best_metric_value,
-            "output_object_prefix": output_object_prefix,
-            "checkpoint_object_key": checkpoint_object_key,
-            "latest_checkpoint_object_key": latest_checkpoint_object_key,
-            "metrics_object_key": metrics_object_key,
-            "validation_metrics_object_key": validation_metrics_object_key,
-            "labels_object_key": labels_object_key,
-            "summary_object_key": summary_object_key,
-            "output_files": {
-                "output_object_prefix": output_object_prefix,
-                "checkpoint_object_key": checkpoint_object_key,
-                "latest_checkpoint_object_key": latest_checkpoint_object_key,
-                "labels_object_key": labels_object_key,
-                "metrics_object_key": metrics_object_key,
-                "validation_metrics_object_key": validation_metrics_object_key,
-                "summary_object_key": summary_object_key,
-            },
-            "validation": {
-                "enabled": execution_result.validation_sample_count > 0,
-                "split_name": execution_result.validation_split_name,
-                "sample_count": execution_result.validation_sample_count,
-                "evaluation_interval": execution_result.evaluation_interval,
-                "best_metric_name": execution_result.validation_metrics_payload.get("best_metric_name"),
-                "best_metric_value": execution_result.validation_metrics_payload.get("best_metric_value"),
-                "final_metrics": execution_result.validation_metrics_payload.get("final_metrics"),
-                "evaluated_epochs": execution_result.validation_metrics_payload.get("evaluated_epochs"),
-                "metrics_object_key": validation_metrics_object_key,
-            },
-            "warm_start": dict(execution_result.warm_start_summary),
-        }
+        output_files = DetectionTrainingOutputFiles(
+            output_object_prefix=output_object_prefix,
+            checkpoint_object_key=checkpoint_object_key,
+            latest_checkpoint_object_key=latest_checkpoint_object_key,
+            labels_object_key=labels_object_key,
+            metrics_object_key=metrics_object_key,
+            validation_metrics_object_key=validation_metrics_object_key,
+            summary_object_key=summary_object_key,
+        )
+        training_config = build_detection_training_config_payload(
+            recipe_id=request.recipe_id,
+            model_scale=request.model_scale,
+            output_model_name=request.output_model_name,
+            warm_start_model_version_id=request.warm_start_model_version_id,
+            evaluation_interval=request.evaluation_interval,
+            max_epochs=request.max_epochs,
+            batch_size=request.batch_size,
+            gpu_count=request.gpu_count,
+            precision=request.precision,
+            input_size=request.input_size,
+            extra_options=request.extra_options,
+        )
+        validation_summary = build_detection_validation_summary_payload(
+            enabled=execution_result.validation_sample_count > 0,
+            split_name=execution_result.validation_split_name,
+            sample_count=execution_result.validation_sample_count,
+            evaluation_interval=execution_result.evaluation_interval,
+            final_metrics=(
+                execution_result.validation_metrics_payload.get("final_metrics")
+                if isinstance(execution_result.validation_metrics_payload, dict)
+                else None
+            ),
+            best_metric_name=(
+                execution_result.validation_metrics_payload.get("best_metric_name")
+                if isinstance(execution_result.validation_metrics_payload, dict)
+                else None
+            ),
+            best_metric_value=(
+                execution_result.validation_metrics_payload.get("best_metric_value")
+                if isinstance(execution_result.validation_metrics_payload, dict)
+                else None
+            ),
+            evaluated_epochs=(
+                execution_result.validation_metrics_payload.get("evaluated_epochs")
+                if isinstance(execution_result.validation_metrics_payload, dict)
+                else None
+            ),
+            metrics_object_key=validation_metrics_object_key,
+        )
+        summary = build_detection_training_summary_base(
+            task_id=task_record.task_id,
+            dataset_export_id=dataset_export.dataset_export_id,
+            dataset_export_manifest_key=dataset_export.manifest_object_key,
+            dataset_version_id=dataset_version_id or dataset_export.dataset_version_id,
+            format_id=format_id or dataset_export.format_id,
+            recipe_id=request.recipe_id,
+            model_scale=request.model_scale,
+            output_model_name=request.output_model_name,
+            implementation_mode=execution_result.implementation_mode,
+            sample_count=sample_count,
+            train_sample_count=execution_result.train_sample_count,
+            split_names=split_names,
+            category_names=category_names,
+            input_size=execution_result.input_size,
+            batch_size=execution_result.batch_size,
+            max_epochs=execution_result.max_epochs,
+            device=execution_result.device,
+            gpu_count=execution_result.gpu_count,
+            device_ids=execution_result.device_ids,
+            distributed_mode=execution_result.distributed_mode,
+            requested_gpu_count=request.gpu_count,
+            precision=execution_result.precision,
+            requested_precision=request.precision or execution_result.precision,
+            evaluation_interval=execution_result.evaluation_interval,
+            parameter_count=execution_result.parameter_count,
+            best_metric_name=execution_result.best_metric_name,
+            best_metric_value=execution_result.best_metric_value,
+            output_files=output_files,
+            training_config=training_config,
+            validation_summary=validation_summary,
+            warm_start_summary=dict(execution_result.warm_start_summary),
+        )
 
         return YoloXTrainingTaskResult(
             task_id=task_record.task_id,
@@ -2071,9 +2113,9 @@ class SqlAlchemyYoloXTrainingTaskService:
         - 新登记的 ModelVersion id。
         """
 
-        model_service = SqlAlchemyYoloXModelService(session_factory=self.session_factory)
+        model_service = SqlAlchemyModelService(session_factory=self.session_factory)
         return model_service.register_training_output(
-            YoloXTrainingOutputRegistration(
+            TrainingOutputRegistration(
                 project_id=request.project_id,
                 training_task_id=task_record.task_id,
                 model_version_id=model_version_id,
@@ -2136,52 +2178,62 @@ class SqlAlchemyYoloXTrainingTaskService:
         - 可直接保存到 ModelVersion.metadata 的字典。
         """
 
-        training_config: dict[str, object] = {
-            "recipe_id": request.recipe_id,
-            "model_scale": request.model_scale,
-            "output_model_name": request.output_model_name,
-            "warm_start_model_version_id": request.warm_start_model_version_id,
-            "max_epochs": request.max_epochs,
-            "batch_size": request.batch_size,
-            "gpu_count": request.gpu_count,
-            "precision": request.precision,
-            "input_size": list(request.input_size) if request.input_size is not None else None,
-            "extra_options": dict(request.extra_options),
-        }
+        training_config = build_detection_training_config_payload(
+            recipe_id=request.recipe_id,
+            model_scale=request.model_scale,
+            output_model_name=request.output_model_name,
+            warm_start_model_version_id=request.warm_start_model_version_id,
+            evaluation_interval=request.evaluation_interval,
+            max_epochs=request.max_epochs,
+            batch_size=request.batch_size,
+            gpu_count=request.gpu_count,
+            precision=request.precision,
+            input_size=request.input_size,
+            extra_options=request.extra_options,
+        )
         effective_input_size = task_result.summary.get("input_size")
-        runtime_device_ids = task_result.summary.get("device_ids")
-        return {
-            "dataset_export_id": dataset_export.dataset_export_id,
-            "manifest_object_key": dataset_export.manifest_object_key,
-            "category_names": list(self._read_str_tuple(task_result.summary.get("category_names"))),
-            "input_size": (
-                list(effective_input_size)
-                if isinstance(effective_input_size, list)
+        runtime_summary = build_detection_runtime_summary_payload(
+            device=self._read_optional_str(task_result.summary, "device"),
+            gpu_count=self._read_optional_int(task_result.summary, "gpu_count"),
+            device_ids=task_result.summary.get("device_ids")
+            if isinstance(task_result.summary.get("device_ids"), list | tuple)
+            else None,
+            precision=self._read_optional_str(task_result.summary, "precision"),
+            distributed_mode=(
+                task_result.summary.get("distributed_mode")
+                if isinstance(task_result.summary.get("distributed_mode"), bool)
+                else None
+            ),
+        )
+        output_files = DetectionTrainingOutputFiles(
+            output_object_prefix=task_result.output_object_prefix,
+            checkpoint_object_key=task_result.checkpoint_object_key,
+            latest_checkpoint_object_key=task_result.latest_checkpoint_object_key,
+            labels_object_key=task_result.labels_object_key,
+            metrics_object_key=task_result.metrics_object_key,
+            validation_metrics_object_key=task_result.validation_metrics_object_key,
+            summary_object_key=task_result.summary_object_key,
+        )
+        metrics_summary = build_detection_metrics_summary_payload(
+            best_metric_name=task_result.best_metric_name,
+            best_metric_value=task_result.best_metric_value,
+        )
+        return build_detection_training_model_version_metadata(
+            dataset_export_id=dataset_export.dataset_export_id,
+            manifest_object_key=dataset_export.manifest_object_key,
+            category_names=self._read_str_tuple(task_result.summary.get("category_names")),
+            input_size=(
+                effective_input_size
+                if isinstance(effective_input_size, list | tuple)
                 else training_config["input_size"]
             ),
-            "training_config": training_config,
-            "runtime_summary": {
-                "device": task_result.summary.get("device"),
-                "gpu_count": task_result.summary.get("gpu_count"),
-                "device_ids": list(runtime_device_ids) if isinstance(runtime_device_ids, list) else [],
-                "precision": task_result.summary.get("precision"),
-                "distributed_mode": task_result.summary.get("distributed_mode"),
-            },
-            "warm_start": dict(task_result.summary.get("warm_start") or {}),
-            "registration_kind": registration_kind,
-            "output_files": {
-                "output_object_prefix": task_result.output_object_prefix,
-                "checkpoint_object_key": task_result.checkpoint_object_key,
-                "latest_checkpoint_object_key": task_result.latest_checkpoint_object_key,
-                "metrics_object_key": task_result.metrics_object_key,
-                "validation_metrics_object_key": task_result.validation_metrics_object_key,
-                "summary_object_key": task_result.summary_object_key,
-            },
-            "metrics_summary": {
-                "best_metric_name": task_result.best_metric_name,
-                "best_metric_value": task_result.best_metric_value,
-            },
-        }
+            training_config=training_config,
+            runtime_summary=runtime_summary,
+            warm_start_summary=dict(task_result.summary.get("warm_start") or {}),
+            registration_kind=registration_kind,
+            output_files=output_files,
+            metrics_summary=metrics_summary,
+        )
 
     def _build_training_output_file_id(
         self,
@@ -2220,7 +2272,7 @@ class SqlAlchemyYoloXTrainingTaskService:
             return None
 
         dataset_storage = self._require_dataset_storage()
-        model_service = SqlAlchemyYoloXModelService(session_factory=self.session_factory)
+        model_service = SqlAlchemyModelService(session_factory=self.session_factory)
         model_version = model_service.get_model_version(request.warm_start_model_version_id)
         if model_version is None:
             raise ResourceNotFoundError(

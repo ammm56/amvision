@@ -167,8 +167,8 @@ async def import_dataset_zip(
 	project_id: Annotated[str, Form()],
 	dataset_id: Annotated[str, Form()],
 	package: Annotated[UploadFile, File()],
+	task_type: Annotated[DatasetTaskType, Form()],
 	format_type: Annotated[DatasetFormatType | None, Form()] = None,
-	task_type: Annotated[DatasetTaskType, Form()] = "detection",
 	split_strategy: Annotated[DatasetImportRequestedSplitStrategy | None, Form()] = None,
 	class_map_json: Annotated[str | None, Form()] = None,
 ) -> DatasetImportSubmissionResponse:
@@ -312,6 +312,54 @@ def get_dataset_import_detail(
 		dataset_import=dataset_import,
 		dataset_version=dataset_version,
 	)
+
+
+@datasets_router.delete(
+	"/imports/{dataset_import_id}",
+	status_code=204,
+)
+def delete_dataset_import(
+	dataset_import_id: str,
+	principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("datasets:write"))],
+	unit_of_work: Annotated[UnitOfWork, Depends(get_unit_of_work)],
+	dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
+) -> None:
+	"""删除一个已完成的 DatasetImport 记录。
+
+	只有 completed 或 failed 状态的导入记录可以删除。
+
+	参数：
+	- dataset_import_id：要删除的 DatasetImport id。
+	- principal：具备 datasets:write scope 的调用主体。
+	- unit_of_work：当前请求级 Unit of Work。
+	- dataset_storage：本地文件存储服务。
+	"""
+
+	dataset_import = unit_of_work.dataset_imports.get_dataset_import(dataset_import_id)
+	if dataset_import is None:
+		raise ResourceNotFoundError(
+			"找不到指定的 DatasetImport",
+			details={"dataset_import_id": dataset_import_id},
+		)
+	if not _project_visible(principal=principal, project_id=dataset_import.project_id):
+		raise ResourceNotFoundError(
+			"找不到指定的 DatasetImport",
+			details={"dataset_import_id": dataset_import_id},
+		)
+	if dataset_import.status not in ("completed", "failed"):
+		raise InvalidRequestError(
+			"只能删除已完成或已失败的导入记录",
+			details={"dataset_import_id": dataset_import_id, "status": dataset_import.status},
+		)
+
+	# 清理关联的文件目录
+	if dataset_import.package_path:
+		dataset_storage.delete_tree(dataset_import.package_path)
+	if dataset_import.staging_path:
+		dataset_storage.delete_tree(dataset_import.staging_path)
+
+	unit_of_work.dataset_imports.delete_dataset_import(dataset_import_id)
+	unit_of_work.commit()
 
 
 def _parse_class_map_json(class_map_json: str | None) -> dict[str, str]:

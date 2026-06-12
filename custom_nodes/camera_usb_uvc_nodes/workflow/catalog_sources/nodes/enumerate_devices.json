@@ -1,0 +1,81 @@
+{
+  "format_id": "amvision.node-definition.v1",
+  "node_type_id": "custom.camera.usb.enumerate-devices",
+  "display_name": "Enumerate USB/UVC Devices",
+  "category": "camera.usb",
+  "description": "按设备索引范围探测当前机器上可打开的 USB / UVC 相机，并输出适合 workflow 继续处理的设备摘要。",
+  "implementation_kind": "custom-node",
+  "runtime_kind": "python-callable",
+  "input_ports": [
+    {
+      "name": "request",
+      "display_name": "Request",
+      "payload_type_id": "value.v1",
+      "required": false
+    }
+  ],
+  "output_ports": [
+    {
+      "name": "result",
+      "display_name": "Result",
+      "payload_type_id": "value.v1"
+    }
+  ],
+  "parameter_schema": {
+    "type": "object",
+    "properties": {
+      "start_index": {
+        "type": "integer",
+        "title": "Start Index",
+        "default": 0,
+        "minimum": 0
+      },
+      "device_count": {
+        "type": "integer",
+        "title": "Device Count",
+        "default": 8,
+        "minimum": 1
+      },
+      "backend_preference": {
+        "type": "string",
+        "title": "Backend Preference",
+        "default": "any",
+        "enum": [
+          "any",
+          "dshow",
+          "msmf",
+          "v4l2",
+          "gstreamer"
+        ]
+      },
+      "probe_frame": {
+        "type": "boolean",
+        "title": "Probe Frame",
+        "default": true
+      },
+      "warmup_frame_count": {
+        "type": "integer",
+        "title": "Warmup Frame Count",
+        "default": 1,
+        "minimum": 0
+      }
+    }
+  },
+  "capability_tags": [
+    "integration.camera",
+    "integration.camera.usb-uvc",
+    "vision.device.enumerate"
+  ],
+  "runtime_requirements": {
+    "python_packages": [
+      "opencv-python",
+      "numpy"
+    ]
+  },
+  "node_pack_id": "camera.usb-uvc-nodes",
+  "node_pack_version": "0.1.0",
+  "metadata": {
+    "phase": "implemented"
+  }
+}
+

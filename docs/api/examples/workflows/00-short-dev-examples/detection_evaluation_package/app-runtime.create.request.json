@@ -1,0 +1,8 @@
+{
+  "project_id": "project-1",
+  "application_id": "detection-evaluation-package-app",
+  "display_name": "Detection Evaluation Package Runtime",
+  "metadata": {
+    "example_kind": "detection-evaluation-package"
+  }
+}

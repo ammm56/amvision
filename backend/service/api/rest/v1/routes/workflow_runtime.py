@@ -1059,7 +1059,7 @@ def _read_optional_int_text(value: object, *, field_name: str) -> int | None:
 
 
 def _build_preview_run_contract(preview_run: WorkflowPreviewRun) -> WorkflowPreviewRunContract:
-    """把 WorkflowPreviewRun 领域对象转换为公开合同。"""
+    """把 WorkflowPreviewRun 领域对象转换为公开规则。"""
 
     return WorkflowPreviewRunContract(
         preview_run_id=preview_run.preview_run_id,
@@ -1086,7 +1086,7 @@ def _build_preview_run_contract(preview_run: WorkflowPreviewRun) -> WorkflowPrev
 def _build_preview_run_summary_contract(
     preview_run: WorkflowPreviewRun,
 ) -> WorkflowPreviewRunSummaryContract:
-    """把 WorkflowPreviewRun 领域对象转换为摘要合同。"""
+    """把 WorkflowPreviewRun 领域对象转换为摘要规则。"""
 
     return WorkflowPreviewRunSummaryContract(
         preview_run_id=preview_run.preview_run_id,
@@ -1107,7 +1107,7 @@ def _build_preview_run_summary_contract(
 def _build_preview_run_event_contract(
     preview_run_event: WorkflowPreviewRunEvent,
 ) -> WorkflowPreviewRunEventContract:
-    """把 preview run 事件转换为公开合同。"""
+    """把 preview run 事件转换为公开规则。"""
 
     return WorkflowPreviewRunEventContract(
         preview_run_id=preview_run_event.preview_run_id,
@@ -1124,7 +1124,7 @@ def _build_workflow_app_runtime_contract(
     *,
     workflow_service: LocalWorkflowJsonService | None = None,
 ) -> WorkflowAppRuntimeContract:
-    """把 WorkflowAppRuntime 领域对象转换为公开合同。"""
+    """把 WorkflowAppRuntime 领域对象转换为公开规则。"""
 
     application_summary = None
     template_summary = None
@@ -1175,7 +1175,7 @@ def _build_workflow_app_runtime_contract(
 def _build_workflow_app_runtime_event_contract(
     workflow_app_runtime_event: WorkflowAppRuntimeEvent,
 ) -> WorkflowAppRuntimeEventContract:
-    """把 app runtime 事件转换为公开合同。"""
+    """把 app runtime 事件转换为公开规则。"""
 
     return WorkflowAppRuntimeEventContract(
         workflow_runtime_id=workflow_app_runtime_event.workflow_runtime_id,
@@ -1257,7 +1257,7 @@ def _read_resource_updated_by(metadata: dict[str, object]) -> str | None:
 
 
 def _build_execution_policy_contract(execution_policy: WorkflowExecutionPolicy) -> WorkflowExecutionPolicyContract:
-    """把 WorkflowExecutionPolicy 领域对象转换为公开合同。"""
+    """把 WorkflowExecutionPolicy 领域对象转换为公开规则。"""
 
     return WorkflowExecutionPolicyContract(
         execution_policy_id=execution_policy.execution_policy_id,
@@ -1283,7 +1283,7 @@ def _build_workflow_run_contract(
     template_outputs: dict[str, object] | None = None,
     node_records: tuple[dict[str, object], ...] | list[dict[str, object]] | None = None,
 ) -> WorkflowRunContract:
-    """把 WorkflowRun 领域对象转换为公开合同。
+    """把 WorkflowRun 领域对象转换为公开规则。
 
     参数：
     - workflow_run：持久化后的 WorkflowRun 领域对象。
@@ -1292,7 +1292,7 @@ def _build_workflow_run_contract(
     - node_records：可选同步响应 node_records 覆盖值。
 
     返回：
-    - WorkflowRunContract：公开合同对象。
+    - WorkflowRunContract：公开规则对象。
     """
 
     return WorkflowRunContract(
@@ -1321,7 +1321,7 @@ def _build_workflow_run_contract(
 
 
 def _build_workflow_run_event_contract(workflow_run_event: WorkflowRunEvent) -> WorkflowRunEventContract:
-    """把 WorkflowRun 事件转换为公开合同。"""
+    """把 WorkflowRun 事件转换为公开规则。"""
 
     return WorkflowRunEventContract(
         workflow_run_id=workflow_run_event.workflow_run_id,
@@ -1337,7 +1337,7 @@ def _build_workflow_run_event_contract(workflow_run_event: WorkflowRunEvent) -> 
 def _build_workflow_app_runtime_instance_contract(
     runtime_instance: object,
 ) -> WorkflowAppRuntimeInstanceContract:
-    """把 runtime instance 摘要转换为公开合同。"""
+    """把 runtime instance 摘要转换为公开规则。"""
 
     return WorkflowAppRuntimeInstanceContract(
         instance_id=str(getattr(runtime_instance, "instance_id", "")),

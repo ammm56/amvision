@@ -1,0 +1,72 @@
+{
+  "format_id": "amvision.node-definition.v1",
+  "node_type_id": "custom.opencv.laplacian",
+  "display_name": "Laplacian",
+  "category": "opencv.filter",
+  "description": "对输入图片执行二阶 Laplacian 边缘增强，适合在缺口、毛刺和细小轮廓前处理时强化边界变化。",
+  "implementation_kind": "custom-node",
+  "runtime_kind": "python-callable",
+  "input_ports": [
+    {
+      "name": "image",
+      "display_name": "Image",
+      "payload_type_id": "image-ref.v1"
+    }
+  ],
+  "output_ports": [
+    {
+      "name": "image",
+      "display_name": "Image",
+      "payload_type_id": "image-ref.v1"
+    },
+    {
+      "name": "summary",
+      "display_name": "Summary",
+      "payload_type_id": "value.v1"
+    }
+  ],
+  "parameter_schema": {
+    "type": "object",
+    "properties": {
+      "kernel_size": {
+        "type": "integer",
+        "enum": [
+          1,
+          3,
+          5,
+          7
+        ],
+        "default": 3
+      },
+      "scale": {
+        "type": "number",
+        "minimum": 0,
+        "default": 1.0
+      },
+      "delta": {
+        "type": "number",
+        "default": 0.0
+      },
+      "convert_to_grayscale": {
+        "type": "boolean",
+        "default": true
+      },
+      "output_object_key": {
+        "type": "string"
+      }
+    }
+  },
+  "capability_tags": [
+    "opencv.laplacian",
+    "vision.edge-enhance",
+    "vision.preprocess"
+  ],
+  "runtime_requirements": {
+    "python_packages": [
+      "opencv-python",
+      "numpy"
+    ]
+  },
+  "node_pack_id": "opencv.basic-nodes",
+  "node_pack_version": "0.1.0"
+}

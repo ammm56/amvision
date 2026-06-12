@@ -14,7 +14,9 @@ from backend.service.application.auth.auth_events import (
     AUTH_EVENTS_STREAM,
 )
 from backend.service.api.deps.auth import AuthenticatedPrincipal, resolve_socket_principal
-from backend.service.application.deployments.yolox_deployment_service import SqlAlchemyYoloXDeploymentService
+from backend.service.application.deployments.deployment_instance_service import (
+    SqlAlchemyDeploymentInstanceService,
+)
 from backend.service.application.events import InMemoryServiceEventBus, ServiceEvent
 from backend.service.application.project_summary import (
     PROJECT_SUMMARY_SNAPSHOT_EVENT_TYPE,
@@ -24,9 +26,9 @@ from backend.service.application.project_summary import (
     get_supported_project_summary_topics,
     normalize_project_summary_topic,
 )
-from backend.service.application.runtime.deployment_event_source import YoloXDeploymentEventSource
+from backend.service.application.runtime.deployment_event_source import DetectionDeploymentEventSource
 from backend.service.application.runtime.deployment_events import (
-    YoloXDeploymentProcessEvent,
+    DetectionDeploymentProcessEvent,
 )
 from backend.service.application.tasks.task_service import SqlAlchemyTaskService, TaskEventQueryFilters
 from backend.service.application.workflows.preview_run_manager import WorkflowPreviewRunManager
@@ -901,7 +903,7 @@ def _build_workflow_app_runtime_event_message(event: WorkflowAppRuntimeEvent) ->
     }
 
 
-def _build_deployment_process_event_message(event: YoloXDeploymentProcessEvent) -> dict[str, object]:
+def _build_deployment_process_event_message(event: DetectionDeploymentProcessEvent) -> dict[str, object]:
     """把 deployment 事件构造成 WebSocket v1 消息。"""
 
     return {
@@ -1415,26 +1417,26 @@ def _build_socket_workflow_runtime_service(socket: WebSocket) -> WorkflowRuntime
     )
 
 
-def _build_socket_deployment_service(socket: WebSocket) -> SqlAlchemyYoloXDeploymentService | None:
+def _build_socket_deployment_service(socket: WebSocket) -> SqlAlchemyDeploymentInstanceService | None:
     """基于 WebSocket application.state 构建 deployment 服务。"""
 
     session_factory = _get_socket_session_factory(socket)
     dataset_storage = _get_socket_dataset_storage(socket)
     if session_factory is None or dataset_storage is None:
         return None
-    return SqlAlchemyYoloXDeploymentService(
+    return SqlAlchemyDeploymentInstanceService(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
     )
 
 
-def _build_socket_deployment_event_source(socket: WebSocket) -> YoloXDeploymentEventSource | None:
+def _build_socket_deployment_event_source(socket: WebSocket) -> DetectionDeploymentEventSource | None:
     """基于 WebSocket application.state 构建 deployment 历史事件读取 helper。"""
 
     dataset_storage = _get_socket_dataset_storage(socket)
     if dataset_storage is None:
         return None
-    return YoloXDeploymentEventSource(
+    return DetectionDeploymentEventSource(
         dataset_storage_root_dir=str(dataset_storage.root_dir),
     )
 

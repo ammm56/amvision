@@ -1,0 +1,81 @@
+{
+  "format_id": "amvision.node-definition.v1",
+  "node_type_id": "custom.opencv.slot-width",
+  "display_name": "Slot Width",
+  "category": "opencv.measurement",
+  "description": "计算两条边线之间的槽宽，适合卡槽、导轨间隙和双边距量测。",
+  "implementation_kind": "custom-node",
+  "runtime_kind": "python-callable",
+  "input_ports": [
+    {
+      "name": "lines",
+      "display_name": "Lines",
+      "payload_type_id": "lines.v1"
+    }
+  ],
+  "output_ports": [
+    {
+      "name": "value",
+      "display_name": "Value",
+      "payload_type_id": "value.v1"
+    },
+    {
+      "name": "summary",
+      "display_name": "Summary",
+      "payload_type_id": "value.v1"
+    }
+  ],
+  "parameter_schema": {
+    "type": "object",
+    "properties": {
+      "line_a_strategy": {
+        "type": "string",
+        "enum": [
+          "first",
+          "longest",
+          "shortest",
+          "line-index"
+        ]
+      },
+      "line_a_index": {
+        "type": "integer",
+        "minimum": 1
+      },
+      "line_b_strategy": {
+        "type": "string",
+        "enum": [
+          "first",
+          "longest",
+          "shortest",
+          "line-index"
+        ]
+      },
+      "line_b_index": {
+        "type": "integer",
+        "minimum": 1
+      },
+      "output_metric": {
+        "type": "string",
+        "enum": [
+          "mean_width_pixels",
+          "min_width_pixels",
+          "max_width_pixels",
+          "midpoint_width_pixels"
+        ]
+      }
+    }
+  },
+  "capability_tags": [
+    "opencv.measurement",
+    "vision.geometry",
+    "inspection.slot-width"
+  ],
+  "runtime_requirements": {
+    "python_packages": [
+      "opencv-python",
+      "numpy"
+    ]
+  },
+  "node_pack_id": "opencv.measurement-nodes",
+  "node_pack_version": "0.1.0"
+}

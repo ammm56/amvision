@@ -48,7 +48,7 @@ class TriggerEventNormalizer:
         - raw_event：协议 adapter 传入的原始事件。
 
         返回：
-        - TriggerEventContract：协议中立的触发事件合同。
+        - TriggerEventContract：协议中立的触发事件规则。
         """
 
         metadata = dict(raw_event.metadata or {})

@@ -1,0 +1,19 @@
+{
+  "phase": "partial-implementation",
+  "families": [
+    "camera",
+    "usb",
+    "uvc"
+  ],
+  "features": [
+    "enumerate-devices",
+    "capture-frame",
+    "open-device",
+    "start-stream",
+    "read-window",
+    "read-latest-frame",
+    "get-parameter",
+    "set-parameter",
+    "close-device"
+  ]
+}

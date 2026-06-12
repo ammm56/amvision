@@ -1,0 +1,95 @@
+{
+  "format_id": "amvision.node-definition.v1",
+  "node_type_id": "custom.opencv.remap",
+  "display_name": "Remap",
+  "category": "opencv.geometry",
+  "description": "按显式映射表执行像素级重映射，支持 map_xy 或 map_x/map_y，适合配合本地标定映射文件做展开、对位和固定几何校正。",
+  "implementation_kind": "custom-node",
+  "runtime_kind": "python-callable",
+  "input_ports": [
+    {
+      "name": "image",
+      "display_name": "Image",
+      "payload_type_id": "image-ref.v1"
+    },
+    {
+      "name": "mapping",
+      "display_name": "Mapping",
+      "payload_type_id": "value.v1",
+      "required": false
+    }
+  ],
+  "output_ports": [
+    {
+      "name": "image",
+      "display_name": "Image",
+      "payload_type_id": "image-ref.v1"
+    },
+    {
+      "name": "summary",
+      "display_name": "Summary",
+      "payload_type_id": "value.v1"
+    }
+  ],
+  "parameter_schema": {
+    "type": "object",
+    "properties": {
+      "mapping_path": {
+        "type": "string"
+      },
+      "map_xy": {
+        "type": "array"
+      },
+      "map_x": {
+        "type": "array"
+      },
+      "map_y": {
+        "type": "array"
+      },
+      "interpolation": {
+        "type": "string",
+        "enum": [
+          "nearest",
+          "linear",
+          "area",
+          "cubic",
+          "lanczos4"
+        ],
+        "default": "linear"
+      },
+      "border_mode": {
+        "type": "string",
+        "enum": [
+          "constant",
+          "replicate",
+          "reflect",
+          "reflect101",
+          "wrap"
+        ],
+        "default": "constant"
+      },
+      "border_value": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 255,
+        "default": 0
+      },
+      "output_object_key": {
+        "type": "string"
+      }
+    }
+  },
+  "capability_tags": [
+    "opencv.remap",
+    "vision.alignment",
+    "inspection.calibration"
+  ],
+  "runtime_requirements": {
+    "python_packages": [
+      "opencv-python",
+      "numpy"
+    ]
+  },
+  "node_pack_id": "opencv.geometry-nodes",
+  "node_pack_version": "0.1.0"
+}

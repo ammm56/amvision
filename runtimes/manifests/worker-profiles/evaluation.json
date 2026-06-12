@@ -1,9 +1,13 @@
 {
   "profile_id": "evaluation",
   "display_name": "amvision evaluation worker",
-  "description": "独立消费 YOLOX evaluation 队列，负责评估执行、指标汇总和结果回写。",
+  "description": "独立消费当前已接通的 detection、classification、segmentation、pose 与 obb 评估队列，负责评估执行、指标汇总和结果回写。",
   "enabled_consumer_kinds": [
-    "yolox-evaluation"
+    "detection-evaluation",
+    "classification-evaluation",
+    "segmentation-evaluation",
+    "pose-evaluation",
+    "obb-evaluation"
   ],
   "max_concurrent_tasks": 1,
   "poll_interval_seconds": 1.0

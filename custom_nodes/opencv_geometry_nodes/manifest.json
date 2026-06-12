@@ -1,0 +1,29 @@
+{
+  "format_id": "amvision.node-pack-manifest.v1",
+  "id": "opencv.geometry-nodes",
+  "version": "0.1.0",
+  "displayName": "OpenCV Geometry Nodes",
+  "description": "提供一组 OpenCV 姿态矫正、标定与几何变换节点。",
+  "category": "custom-node-pack",
+  "capabilities": [
+    "pipeline.node",
+    "vision.analysis",
+    "vision.alignment"
+  ],
+  "permissionScopes": [
+    "objectstore.read.ref",
+    "objectstore.write.ref"
+  ],
+  "entrypoints": {
+    "backend": "custom_nodes.opencv_geometry_nodes.backend.entry:register"
+  },
+  "compatibility": {
+    "api": ">=0.1 <1.0",
+    "runtime": ">=3.12"
+  },
+  "timeout": {
+    "defaultSeconds": 30
+  },
+  "enabledByDefault": true,
+  "customNodeCatalogPath": "workflow/catalog.json"
+}

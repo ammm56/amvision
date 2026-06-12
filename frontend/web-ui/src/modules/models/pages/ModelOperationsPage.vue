@@ -7,6 +7,10 @@
         <p class="page-description">{{ t('modelOps.description') }}</p>
       </div>
       <div class="page-actions">
+        <label class="segmented-field">
+          <span>task_type</span>
+          <SelectField :model-value="selectedTaskType" :options="taskTypeOptions" @update:model-value="setTaskType" />
+        </label>
         <Button variant="secondary" :disabled="loading" @click="refreshPage">
           <RefreshCw :size="16" />
           {{ t('common.refresh') }}
@@ -102,6 +106,10 @@
             <input v-model="trainingManifestKey" placeholder="project/.../manifest.json" />
           </label>
           <label class="field">
+            <span>model_type</span>
+            <input v-model="modelType" placeholder="yolox / yolov8 / yolo11 / yolo26 / rfdetr" required />
+          </label>
+          <label class="field">
             <span>{{ t('modelOps.fields.recipeId') }}</span>
             <input v-model="recipeId" required />
           </label>
@@ -164,6 +172,10 @@
           <h2>{{ t('modelOps.conversionTitle') }}</h2>
         </div>
         <div class="form-grid">
+          <label class="field">
+            <span>model_type</span>
+            <input v-model="modelType" placeholder="yolox / yolov8 / yolo11 / yolo26 / rfdetr" required />
+          </label>
           <label class="field field--wide">
             <span>{{ t('modelOps.fields.sourceModelVersionId') }}</span>
             <input v-model="conversionSourceModelVersionId" required />
@@ -215,7 +227,7 @@
           <tbody>
             <tr v-for="task in trainingTasks" :key="task.task_id">
               <td>
-                <RouterLink :to="`/models/training-tasks/${task.task_id}`"><strong>{{ task.display_name || task.task_id }}</strong></RouterLink>
+                <RouterLink :to="`/models/${selectedTaskType}/training-tasks/${task.task_id}`"><strong>{{ task.display_name || task.task_id }}</strong></RouterLink>
                 <span>{{ task.dataset_export_id || task.dataset_export_manifest_key }}</span>
               </td>
               <td><StatusBadge :tone="statusTone(task.state)">{{ task.state }}</StatusBadge></td>
@@ -273,19 +285,20 @@ import { RouterLink } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 
 import {
-  createYoloXConversionTask,
-  createYoloXTrainingTask,
+  createDetectionConversionTask,
+  createDetectionTrainingTask,
   getPlatformBaseModelDetail,
   listPlatformBaseModels,
-  listYoloXConversionTasks,
-  listYoloXTrainingTasks,
+  listDetectionConversionTasks,
+  listDetectionTrainingTasks,
   type ConversionTargetKey,
   type PlatformBaseModelDetail,
   type PlatformBaseModelSummary,
-  type YoloXConversionTaskSummary,
-  type YoloXTrainingTaskSubmissionResponse,
-  type YoloXTrainingTaskSummary,
-  type YoloXConversionTaskSubmissionResponse,
+  type DetectionConversionTaskSummary,
+  type DetectionTrainingTaskSubmissionResponse,
+  type DetectionTrainingTaskSummary,
+  type DetectionConversionTaskSubmissionResponse,
+  type ModelTaskType,
 } from '../services/model.service'
 import { useProjectStore } from '@/app/stores/project.store'
 import { useSessionStore } from '@/app/stores/session.store'
@@ -316,6 +329,14 @@ const precisionOptions = [
   { label: 'fp16', value: 'fp16' },
 ]
 
+const taskTypeOptions = [
+  { label: 'detection', value: 'detection' },
+  { label: 'classification', value: 'classification' },
+  { label: 'segmentation', value: 'segmentation' },
+  { label: 'pose', value: 'pose' },
+  { label: 'obb', value: 'obb' },
+]
+
 const conversionTargetOptions = [
   { label: 'ONNX', value: 'onnx' },
   { label: 'ONNX optimized', value: 'onnx-optimized' },
@@ -327,20 +348,22 @@ const conversionTargetOptions = [
 
 const baseModels = ref<PlatformBaseModelSummary[]>([])
 const selectedModelDetail = ref<PlatformBaseModelDetail | null>(null)
-const trainingTasks = ref<YoloXTrainingTaskSummary[]>([])
-const conversionTasks = ref<YoloXConversionTaskSummary[]>([])
+const trainingTasks = ref<DetectionTrainingTaskSummary[]>([])
+const conversionTasks = ref<DetectionConversionTaskSummary[]>([])
 const loading = ref(false)
 const trainingSubmitting = ref(false)
 const conversionSubmitting = ref(false)
 const errorMessage = ref<string | null>(null)
-const lastTrainingSubmission = ref<YoloXTrainingTaskSubmissionResponse | null>(null)
-const lastConversionSubmission = ref<YoloXConversionTaskSubmissionResponse | null>(null)
+const lastTrainingSubmission = ref<DetectionTrainingTaskSubmissionResponse | null>(null)
+const lastConversionSubmission = ref<DetectionConversionTaskSubmissionResponse | null>(null)
 
+const selectedTaskType = ref<ModelTaskType>('detection')
+const modelType = ref('')
 const trainingDatasetExportId = ref('')
 const trainingManifestKey = ref('')
-const recipeId = ref('yolox-default')
-const modelScale = ref('tiny')
-const outputModelName = ref('yolox-custom')
+const recipeId = ref('default')
+const modelScale = ref('nano')
+const outputModelName = ref('model-custom')
 const warmStartModelVersionId = ref('')
 const maxEpochs = ref(1)
 const batchSize = ref(1)
@@ -365,11 +388,19 @@ function selectValueToString(value: SelectValue): string {
 }
 
 function setModelScale(value: SelectValue): void {
-  modelScale.value = selectValueToString(value) || 'tiny'
+  modelScale.value = selectValueToString(value) || 'nano'
 }
 
 function setPrecision(value: SelectValue): void {
   precision.value = selectValueToString(value) === 'fp16' ? 'fp16' : 'fp32'
+}
+
+function setTaskType(value: SelectValue): void {
+  const nextValue = selectValueToString(value)
+  if (['detection', 'classification', 'segmentation', 'pose', 'obb'].includes(nextValue)) {
+    selectedTaskType.value = nextValue as ModelTaskType
+    void refreshPage()
+  }
 }
 
 function setConversionTarget(value: SelectValue): void {
@@ -404,8 +435,8 @@ async function refreshPage(): Promise<void> {
   try {
     const [models, training, conversion] = await Promise.all([
       listPlatformBaseModels(),
-      listYoloXTrainingTasks(selectedProjectId.value),
-      listYoloXConversionTasks(selectedProjectId.value),
+      listDetectionTrainingTasks(selectedTaskType.value, selectedProjectId.value, modelType.value.trim()),
+      listDetectionConversionTasks(selectedTaskType.value, selectedProjectId.value, modelType.value.trim()),
     ])
     baseModels.value = models
     trainingTasks.value = training
@@ -422,7 +453,12 @@ async function refreshPage(): Promise<void> {
 
 async function selectBaseModel(modelId: string): Promise<void> {
   try {
-    selectedModelDetail.value = await getPlatformBaseModelDetail(modelId)
+    const detail = await getPlatformBaseModelDetail(modelId)
+    selectedModelDetail.value = detail
+    if (['detection', 'classification', 'segmentation', 'pose', 'obb'].includes(detail.task_type)) {
+      selectedTaskType.value = detail.task_type as ModelTaskType
+    }
+    modelType.value = detail.model_type
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : t('modelOps.messages.detailFailed')
   }
@@ -437,6 +473,10 @@ function useVersionForConversion(modelVersionId: string): void {
 }
 
 async function submitTraining(): Promise<void> {
+  if (!modelType.value.trim()) {
+    errorMessage.value = 'model_type 不能为空'
+    return
+  }
   if (!trainingDatasetExportId.value.trim() && !trainingManifestKey.value.trim()) {
     errorMessage.value = t('modelOps.messages.trainingInputRequired')
     return
@@ -444,8 +484,10 @@ async function submitTraining(): Promise<void> {
   trainingSubmitting.value = true
   errorMessage.value = null
   try {
-    lastTrainingSubmission.value = await createYoloXTrainingTask({
+    lastTrainingSubmission.value = await createDetectionTrainingTask({
+      taskType: selectedTaskType.value,
       projectId: selectedProjectId.value,
+      modelType: modelType.value.trim(),
       datasetExportId: trainingDatasetExportId.value.trim(),
       datasetExportManifestKey: trainingManifestKey.value.trim(),
       recipeId: recipeId.value,
@@ -460,7 +502,7 @@ async function submitTraining(): Promise<void> {
       inputHeight: inputHeight.value,
       displayName: trainingDisplayName.value,
     })
-    trainingTasks.value = await listYoloXTrainingTasks(selectedProjectId.value)
+    trainingTasks.value = await listDetectionTrainingTasks(selectedTaskType.value, selectedProjectId.value, modelType.value.trim())
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : t('modelOps.messages.submitTrainingFailed')
   } finally {
@@ -469,17 +511,23 @@ async function submitTraining(): Promise<void> {
 }
 
 async function submitConversion(): Promise<void> {
+  if (!modelType.value.trim()) {
+    errorMessage.value = 'model_type 不能为空'
+    return
+  }
   conversionSubmitting.value = true
   errorMessage.value = null
   try {
-    lastConversionSubmission.value = await createYoloXConversionTask({
+    lastConversionSubmission.value = await createDetectionConversionTask({
+      taskType: selectedTaskType.value,
       projectId: selectedProjectId.value,
+      modelType: modelType.value.trim(),
       sourceModelVersionId: conversionSourceModelVersionId.value.trim(),
       target: conversionTarget.value,
       runtimeProfileId: conversionRuntimeProfileId.value.trim(),
       displayName: conversionDisplayName.value,
     })
-    conversionTasks.value = await listYoloXConversionTasks(selectedProjectId.value)
+    conversionTasks.value = await listDetectionConversionTasks(selectedTaskType.value, selectedProjectId.value, modelType.value.trim())
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : t('modelOps.messages.submitConversionFailed')
   } finally {

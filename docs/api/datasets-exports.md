@@ -11,7 +11,7 @@
 ## 适用范围
 
 - DatasetExport 创建接口
-- DatasetExport 格式合同接口
+- DatasetExport 格式规则接口
 - DatasetExport 详情查询接口
 - DatasetVersion 下的导出记录列表接口
 - DatasetExport 打包与下载接口
@@ -42,11 +42,18 @@
 
 ## 当前实现边界
 
-- 当前只支持 detection 类型 DatasetVersion
-- 当前已经公开独立的格式合同接口 `GET /api/v1/datasets/export-formats`，用于先读取 implemented_formats 和 default_format，再决定是否创建导出任务
+- 当前已经支持 detection、segmentation、pose、classification、obb 五类 DatasetVersion 导出
+- 当前已经公开独立的格式规则接口 `GET /api/v1/datasets/export-formats`，用于先读取 implemented_formats 和 default_format，再决定是否创建导出任务
 - 当前已经正式实现并对外开放的 format_id：
   - coco-detection-v1
   - voc-detection-v1
+  - yolo-detection-v1
+  - coco-instance-seg-v1
+  - yolo-instance-seg-v1
+  - coco-keypoints-v1
+  - yolo-pose-v1
+  - imagenet-classification-v1
+  - dota-obb-v1
 - DatasetImport 可以兼容多种外部目录结构与命名方式，但 DatasetExport 不保留原始导入包的目录结构；导出阶段始终按 format_id 收口为单一标准格式
 - 当前如果 format_id=coco-detection-v1，则目录结构固定为 images/{split}/ 和 annotations/instances_{split}.json，不再区分传统 annotations 目录、年份后缀命名或 Roboflow split-local manifest 这类导入变体
 - training 前置步骤应消费 manifest_object_key，而不是直接读取 DatasetVersion 内部目录结构
@@ -55,7 +62,7 @@
 
 ### GET /api/v1/datasets/export-formats
 
-返回当前公开的数据集导出格式合同，用于前端、工作站或脚本在提交导出任务前先读取能力范围。
+返回当前公开的数据集导出格式规则，用于前端、工作站或脚本在提交导出任务前先读取能力范围。
 
 #### 成功响应要点
 
@@ -86,7 +93,7 @@
 | project_id | string | 是 | 所属 Project id。接口会用它做权限可见性校验。 |
 | dataset_id | string | 是 | 所属 Dataset id。接口会校验该 DatasetVersion 是否属于这个 Dataset。 |
 | dataset_version_id | string | 是 | 导出来源的 DatasetVersion id。 |
-| format_id | string | 是 | 目标导出格式 id。当前允许值为 coco-detection-v1、voc-detection-v1。 |
+| format_id | string | 是 | 目标导出格式 id。当前允许值见 `GET /api/v1/datasets/export-formats` 返回的 `implemented_formats`。 |
 | display_name | string | 否 | 可选的 TaskRecord 展示名称。 |
 | output_object_prefix | string | 否 | 可选的导出目录前缀。为空时默认落到 projects/{project_id}/datasets/{dataset_id}/exports/{dataset_export_id}。 |
 | category_names | array[string] | 否 | 可选的导出类别名列表。为空时使用 DatasetVersion 中的类别定义。 |
@@ -97,7 +104,9 @@
 - format_id 控制的是导出目标标准格式，不是导入阶段识别到的原始目录变体
 - 当前若请求 coco-detection-v1，服务会统一生成 COCO 标准导出目录：images/{split}/、annotations/instances_{split}.json、manifest.json
 - 当前若请求 voc-detection-v1，服务会统一生成 Pascal VOC 标准导出目录：Annotations/、JPEGImages/、ImageSets/Main/、manifest.json
-- 当前接口没有再提供“导出成哪一种 COCO 原始目录变体”的额外参数；如果后续需要新的 COCO 导出布局，应新增独立 format_id，而不是复用 coco-detection-v1
+- 当前若请求 imagenet-classification-v1，服务会统一生成 `{split}/{class_name}/` 图片目录、`annotations/{split}.json` 和 `manifest.json`
+- 当前若请求 dota-obb-v1，服务会统一生成 `images/{split}/`、`annotations/{split}.json` 和 `manifest.json`，annotation 使用 DOTA polygon 风格字段
+- 当前接口没有再提供“导出成哪一种 COCO 原始目录变体”的额外参数；如果后续需要新的导出布局，应新增独立 format_id，而不是复用已有 format_id
 
 #### curl 示例
 
@@ -148,7 +157,7 @@ curl -X POST "http://127.0.0.1:8000/api/v1/datasets/exports" \
 - 401：缺少主体信息
 - 403：主体没有 datasets:write scope，或 project_id 不在可访问范围内
 - 404：dataset_version_id 不存在
-- 422：当前导出格式不支持，或当前 DatasetVersion 任务类型不支持
+- 422：当前导出格式不支持，或当前 DatasetVersion 任务类型与 format_id 不匹配
 - 503：持久化或数据库操作失败
 
 ### GET /api/v1/datasets/exports/{dataset_export_id}

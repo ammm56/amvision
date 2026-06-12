@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import io
 import json
-import time
 import zipfile
 from pathlib import Path
 
 from fastapi.testclient import TestClient
+from PIL import Image
 
 from backend.queue import LocalFileQueueBackend
 from backend.service.application.tasks.task_service import SqlAlchemyTaskService
@@ -254,6 +254,98 @@ def test_import_dataset_zip_accepts_roboflow_coco_split_layout(tmp_path: Path) -
         assert dataset_version is not None
         assert len(dataset_version.samples) == 3
         assert {sample.split for sample in dataset_version.samples} == {"train", "val", "test"}
+    finally:
+        session_factory.engine.dispose()
+
+
+def test_import_dataset_zip_creates_imagenet_classification_dataset_version(tmp_path: Path) -> None:
+    """验证导入 ImageNet 风格 zip 会创建 classification DatasetVersion。"""
+
+    client, session_factory, dataset_storage, queue_backend = _create_test_client(tmp_path)
+    try:
+        with client:
+            response = client.post(
+                "/api/v1/datasets/imports",
+                headers=_build_dataset_write_headers(),
+                data={
+                    "project_id": "project-1",
+                    "dataset_id": "dataset-imagenet-1",
+                    "format_type": "imagenet",
+                    "task_type": "classification",
+                },
+                files={
+                    "package": (
+                        "imagenet-dataset.zip",
+                        _build_imagenet_zip_bytes(),
+                        "application/zip",
+                    ),
+                },
+            )
+
+        assert response.status_code == 202
+        assert _run_import_worker_once(
+            session_factory=session_factory,
+            dataset_storage=dataset_storage,
+            queue_backend=queue_backend,
+        ) is True
+
+        payload = response.json()
+        dataset_import, dataset_version = _load_dataset_objects(
+            session_factory=session_factory,
+            dataset_import_id=payload["dataset_import_id"],
+        )
+        assert dataset_import is not None
+        assert dataset_import.format_type == "imagenet"
+        assert dataset_version is not None
+        assert dataset_version.task_type == "classification"
+        assert dataset_version.samples[0].annotations[0].category_id in {0, 1}
+        assert dataset_import.validation_report["task_type"] == "classification"
+    finally:
+        session_factory.engine.dispose()
+
+
+def test_import_dataset_zip_creates_dota_obb_dataset_version(tmp_path: Path) -> None:
+    """验证导入 DOTA 风格 zip 会创建 obb DatasetVersion。"""
+
+    client, session_factory, dataset_storage, queue_backend = _create_test_client(tmp_path)
+    try:
+        with client:
+            response = client.post(
+                "/api/v1/datasets/imports",
+                headers=_build_dataset_write_headers(),
+                data={
+                    "project_id": "project-1",
+                    "dataset_id": "dataset-dota-1",
+                    "format_type": "dota",
+                    "task_type": "obb",
+                },
+                files={
+                    "package": (
+                        "dota-dataset.zip",
+                        _build_dota_zip_bytes(),
+                        "application/zip",
+                    ),
+                },
+            )
+
+        assert response.status_code == 202
+        assert _run_import_worker_once(
+            session_factory=session_factory,
+            dataset_storage=dataset_storage,
+            queue_backend=queue_backend,
+        ) is True
+
+        payload = response.json()
+        dataset_import, dataset_version = _load_dataset_objects(
+            session_factory=session_factory,
+            dataset_import_id=payload["dataset_import_id"],
+        )
+        assert dataset_import is not None
+        assert dataset_import.format_type == "dota"
+        assert dataset_version is not None
+        assert dataset_version.task_type == "obb"
+        assert dataset_version.samples[0].annotations[0].metadata["source_class_name"] == "ship"
+        assert dataset_import.validation_report["task_type"] == "obb"
     finally:
         session_factory.engine.dispose()
 
@@ -956,3 +1048,46 @@ def _build_voc_zip_bytes(
                 zip_file.writestr(f"{prefix}ImageSets/Main/train.txt", "voc-1\n")
 
         return buffer.getvalue()
+
+
+def _build_imagenet_zip_bytes() -> bytes:
+    """构建一个最小 ImageNet 风格 classification zip 数据集。"""
+
+    buffer = io.BytesIO()
+    image_bytes = _build_test_image_bytes(image_format="JPEG", size=(32, 24))
+    with zipfile.ZipFile(buffer, mode="w") as zip_file:
+        zip_file.writestr("dataset-root/train/ok/ok-1.jpg", image_bytes)
+        zip_file.writestr("dataset-root/val/ng/ng-1.jpg", image_bytes)
+    return buffer.getvalue()
+
+
+def _build_dota_zip_bytes() -> bytes:
+    """构建一个最小 DOTA 风格 OBB zip 数据集。"""
+
+    buffer = io.BytesIO()
+    image_bytes = _build_test_image_bytes(image_format="PNG", size=(64, 64))
+    with zipfile.ZipFile(buffer, mode="w") as zip_file:
+        zip_file.writestr("dataset-root/images/train/train-1.png", image_bytes)
+        zip_file.writestr(
+            "dataset-root/labels/train_original/train-1.txt",
+            "10 10 30 10 30 30 10 30 ship 0\n",
+        )
+        zip_file.writestr("dataset-root/images/val/val-1.png", image_bytes)
+        zip_file.writestr(
+            "dataset-root/labels/val_original/val-1.txt",
+            "12 12 28 12 28 28 12 28 ship 0\n",
+        )
+    return buffer.getvalue()
+
+
+def _build_test_image_bytes(
+    *,
+    image_format: str,
+    size: tuple[int, int],
+) -> bytes:
+    """构建一张测试图片的二进制内容。"""
+
+    image = Image.new("RGB", size, color=(120, 180, 200))
+    buffer = io.BytesIO()
+    image.save(buffer, format=image_format)
+    return buffer.getvalue()

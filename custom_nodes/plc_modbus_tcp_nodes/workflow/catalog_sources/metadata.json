@@ -1,0 +1,13 @@
+{
+  "phase": "implemented",
+  "families": [
+    "plc",
+    "modbus-tcp"
+  ],
+  "features": [
+    "read",
+    "write",
+    "wait-condition",
+    "write-result-signals"
+  ]
+}

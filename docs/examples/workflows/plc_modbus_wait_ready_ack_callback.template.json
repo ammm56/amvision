@@ -1,0 +1,327 @@
+{
+  "format_id": "amvision.workflow-graph-template.v1",
+  "template_id": "plc-modbus-wait-ready-ack-callback-template",
+  "template_version": "1.0.0",
+  "display_name": "PLC Modbus Wait Ready Ack Callback",
+  "description": "面向工业现场握手闭环的 Modbus TCP 样例。先等待状态字 ready 掩码命中，再写入确认位，最后把统一 result-record 回传到 HTTP 接口。",
+  "nodes": [
+    {
+      "node_id": "request_wait_config_input",
+      "node_type_id": "core.io.template-input.value",
+      "parameters": {}
+    },
+    {
+      "node_id": "request_ack_write_config_input",
+      "node_type_id": "core.io.template-input.value",
+      "parameters": {}
+    },
+    {
+      "node_id": "wait_status_word_ready",
+      "node_type_id": "custom.plc.modbus.wait-condition",
+      "parameters": {
+        "host": "127.0.0.1",
+        "port": 502,
+        "unit_id": 1,
+        "timeout_seconds": 1.0,
+        "register_address": "400101",
+        "data_type": "uint16",
+        "operator": "bitmask_all_set",
+        "expected_value": 5,
+        "poll_interval_ms": 100,
+        "wait_timeout_seconds": 60.0,
+        "stable_match_count": 2
+      }
+    },
+    {
+      "node_id": "build_ack_write_request",
+      "node_type_id": "core.logic.object-update",
+      "parameters": {
+        "paths": [
+          "wait_context"
+        ]
+      }
+    },
+    {
+      "node_id": "write_ack_signal",
+      "node_type_id": "custom.plc.modbus.write-value",
+      "parameters": {
+        "host": "127.0.0.1",
+        "port": 502,
+        "unit_id": 1,
+        "timeout_seconds": 1.0,
+        "register_address": "00021",
+        "data_type": "bool",
+        "value": true
+      }
+    },
+    {
+      "node_id": "extract_wait_matched",
+      "node_type_id": "core.logic.value-field-extract",
+      "parameters": {
+        "path": "matched"
+      }
+    },
+    {
+      "node_id": "compare_wait_matched",
+      "node_type_id": "core.logic.compare",
+      "parameters": {
+        "operator": "eq",
+        "right_value": true
+      }
+    },
+    {
+      "node_id": "decide_result",
+      "node_type_id": "core.rule.ok-ng-decision",
+      "parameters": {
+        "mode": "all"
+      }
+    },
+    {
+      "node_id": "build_result_metrics",
+      "node_type_id": "core.logic.object-create",
+      "parameters": {
+        "keys": [
+          "wait_result",
+          "ack_write_result"
+        ],
+        "fields": {
+          "example_kind": "plc-modbus-wait-ready-ack-callback",
+          "handshake_stage": "ready-to-ack"
+        }
+      }
+    },
+    {
+      "node_id": "build_result_metadata",
+      "node_type_id": "core.logic.object-create",
+      "parameters": {
+        "keys": [
+          "wait_config",
+          "ack_write_config"
+        ],
+        "fields": {
+          "example_kind": "plc-modbus-wait-ready-ack-callback",
+          "description": "wait ready status word, write ack signal, then callback result-record",
+          "callback_url": "http://127.0.0.1:18080/plc/modbus/handshake-result",
+          "wait_timeout_mode": "finite-seconds"
+        }
+      }
+    },
+    {
+      "node_id": "inspection_result",
+      "node_type_id": "core.output.result-record",
+      "parameters": {}
+    },
+    {
+      "node_id": "callback_result",
+      "node_type_id": "core.output.http-post",
+      "parameters": {
+        "url": "http://127.0.0.1:18080/plc/modbus/handshake-result",
+        "method": "POST",
+        "timeout_seconds": 3.0,
+        "require_success": false,
+        "headers": {
+          "X-Amvision-Example": "plc-modbus-ready-ack-callback"
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "edge_id": "edge-request-wait-config",
+      "source_node_id": "request_wait_config_input",
+      "source_port": "value",
+      "target_node_id": "wait_status_word_ready",
+      "target_port": "request"
+    },
+    {
+      "edge_id": "edge-request-ack-config-build-write-request",
+      "source_node_id": "request_ack_write_config_input",
+      "source_port": "value",
+      "target_node_id": "build_ack_write_request",
+      "target_port": "object"
+    },
+    {
+      "edge_id": "edge-wait-result-build-write-request",
+      "source_node_id": "wait_status_word_ready",
+      "source_port": "result",
+      "target_node_id": "build_ack_write_request",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-build-write-request-write-ack",
+      "source_node_id": "build_ack_write_request",
+      "source_port": "value",
+      "target_node_id": "write_ack_signal",
+      "target_port": "request"
+    },
+    {
+      "edge_id": "edge-wait-result-extract-matched",
+      "source_node_id": "wait_status_word_ready",
+      "source_port": "result",
+      "target_node_id": "extract_wait_matched",
+      "target_port": "value"
+    },
+    {
+      "edge_id": "edge-extract-matched-compare",
+      "source_node_id": "extract_wait_matched",
+      "source_port": "value",
+      "target_node_id": "compare_wait_matched",
+      "target_port": "left"
+    },
+    {
+      "edge_id": "edge-compare-matched-decide-result",
+      "source_node_id": "compare_wait_matched",
+      "source_port": "result",
+      "target_node_id": "decide_result",
+      "target_port": "conditions"
+    },
+    {
+      "edge_id": "edge-wait-result-build-metrics",
+      "source_node_id": "wait_status_word_ready",
+      "source_port": "result",
+      "target_node_id": "build_result_metrics",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-write-ack-build-metrics",
+      "source_node_id": "write_ack_signal",
+      "source_port": "result",
+      "target_node_id": "build_result_metrics",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-request-wait-config-build-metadata",
+      "source_node_id": "request_wait_config_input",
+      "source_port": "value",
+      "target_node_id": "build_result_metadata",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-request-ack-config-build-metadata",
+      "source_node_id": "request_ack_write_config_input",
+      "source_port": "value",
+      "target_node_id": "build_result_metadata",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-decide-result-inspection-decision",
+      "source_node_id": "decide_result",
+      "source_port": "decision",
+      "target_node_id": "inspection_result",
+      "target_port": "decision"
+    },
+    {
+      "edge_id": "edge-decide-summary-inspection-conditions",
+      "source_node_id": "decide_result",
+      "source_port": "summary",
+      "target_node_id": "inspection_result",
+      "target_port": "conditions"
+    },
+    {
+      "edge_id": "edge-build-metrics-inspection-metrics",
+      "source_node_id": "build_result_metrics",
+      "source_port": "value",
+      "target_node_id": "inspection_result",
+      "target_port": "metrics"
+    },
+    {
+      "edge_id": "edge-build-metadata-inspection-metadata",
+      "source_node_id": "build_result_metadata",
+      "source_port": "value",
+      "target_node_id": "inspection_result",
+      "target_port": "metadata"
+    },
+    {
+      "edge_id": "edge-inspection-result-callback",
+      "source_node_id": "inspection_result",
+      "source_port": "result",
+      "target_node_id": "callback_result",
+      "target_port": "result"
+    }
+  ],
+  "template_inputs": [
+    {
+      "input_id": "request_wait_config",
+      "display_name": "Request Wait Config",
+      "payload_type_id": "value.v1",
+      "target_node_id": "request_wait_config_input",
+      "target_port": "payload"
+    },
+    {
+      "input_id": "request_ack_write_config",
+      "display_name": "Request Ack Write Config",
+      "payload_type_id": "value.v1",
+      "target_node_id": "request_ack_write_config_input",
+      "target_port": "payload"
+    }
+  ],
+  "template_outputs": [
+    {
+      "output_id": "wait_result",
+      "display_name": "Wait Result",
+      "payload_type_id": "value.v1",
+      "source_node_id": "wait_status_word_ready",
+      "source_port": "result"
+    },
+    {
+      "output_id": "ack_write_result",
+      "display_name": "Ack Write Result",
+      "payload_type_id": "value.v1",
+      "source_node_id": "write_ack_signal",
+      "source_port": "result"
+    },
+    {
+      "output_id": "inspection_result",
+      "display_name": "Inspection Result",
+      "payload_type_id": "result-record.v1",
+      "source_node_id": "inspection_result",
+      "source_port": "result"
+    },
+    {
+      "output_id": "decision_summary",
+      "display_name": "Decision Summary",
+      "payload_type_id": "value.v1",
+      "source_node_id": "decide_result",
+      "source_port": "summary"
+    },
+    {
+      "output_id": "callback_response",
+      "display_name": "Callback Response",
+      "payload_type_id": "value.v1",
+      "source_node_id": "callback_result",
+      "source_port": "response"
+    }
+  ],
+  "metadata": {
+    "example_kind": "plc-modbus-wait-ready-ack-callback",
+    "focus": "plc-modbus-handshake-callback",
+    "default_mask_decimal": 5,
+    "default_mask_hex": "0x0005",
+    "default_ack_register_address": "00021",
+    "default_ack_value": true,
+    "node_groups": {
+      "input": [
+        "request_wait_config_input",
+        "request_ack_write_config_input"
+      ],
+      "wait": [
+        "wait_status_word_ready"
+      ],
+      "ack": [
+        "build_ack_write_request",
+        "write_ack_signal"
+      ],
+      "result": [
+        "extract_wait_matched",
+        "compare_wait_matched",
+        "decide_result",
+        "build_result_metrics",
+        "build_result_metadata",
+        "inspection_result"
+      ],
+      "callback": [
+        "callback_result"
+      ]
+    }
+  }
+}

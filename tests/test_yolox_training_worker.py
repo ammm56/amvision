@@ -29,9 +29,9 @@ from backend.service.application.models.yolox_detection_training import (
     run_yolox_detection_training,
 )
 import backend.service.application.models.yolox_training_service as yolox_training_service_module
-from backend.service.application.models.yolox_model_service import (
-    SqlAlchemyYoloXModelService,
-    YoloXPretrainedRegistrationRequest,
+from backend.service.application.models.model_service import (
+    PretrainedRegistrationRequest,
+    SqlAlchemyModelService,
 )
 from backend.service.application.models.yolox_training_service import SqlAlchemyYoloXTrainingTaskService, YoloXTrainingTaskRequest
 from backend.service.application.tasks.task_service import SqlAlchemyTaskService
@@ -66,7 +66,13 @@ def test_local_pretrained_yolox_checkpoints_match_internal_model_structure() -> 
 
     imports = yolox_detection_training_module._require_training_imports()
     pretrained_root = (
-        Path(__file__).resolve().parents[1] / "data" / "files" / "models" / "pretrained" / "yolox"
+        Path(__file__).resolve().parents[1]
+        / "data"
+        / "files"
+        / "models"
+        / "pretrained"
+        / "yolox"
+        / "detection"
     )
     failures: list[str] = []
 
@@ -249,7 +255,7 @@ def test_yolox_training_worker_advances_task_from_queued_to_succeeded(tmp_path: 
         assert "map50" in validation_metrics_payload["final_metrics"]
         assert "map50_95" in validation_metrics_payload["final_metrics"]
 
-        model_service = SqlAlchemyYoloXModelService(session_factory=session_factory)
+        model_service = SqlAlchemyModelService(session_factory=session_factory)
         model_version = model_service.get_model_version(
             completed_task.task.result["summary"]["model_version_id"]
         )
@@ -400,9 +406,9 @@ def test_yolox_training_worker_can_warm_start_from_existing_model_version(tmp_pa
             first_submission.task_id,
             include_events=True,
         )
-        model_service = SqlAlchemyYoloXModelService(session_factory=session_factory)
+        model_service = SqlAlchemyModelService(session_factory=session_factory)
         warm_start_model_version_id = model_service.register_pretrained(
-            YoloXPretrainedRegistrationRequest(
+            PretrainedRegistrationRequest(
                 model_name="yolox",
                 storage_uri=first_completed_task.task.result["checkpoint_object_key"],
                 model_scale="nano",

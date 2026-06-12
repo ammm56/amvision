@@ -13,7 +13,7 @@
 - [custom_nodes/_scaffold/README.md](../../custom_nodes/_scaffold/README.md)：custom_nodes 初始化模板目录，包含 simple 和 dependent 两种骨架
 - [custom_nodes/hello_world_nodes/manifest.json](../../custom_nodes/hello_world_nodes/manifest.json)：最小 hello-world 自定义节点包示例
 - [custom_nodes/barcode_display_nodes/manifest.json](../../custom_nodes/barcode_display_nodes/manifest.json)：真实的 pack 级依赖节点包示例
-- [docs/architecture/workflow-json-contracts.md](../architecture/workflow-json-contracts.md)：workflow 节点目录 JSON 合同，以及 barcode.protocol-nodes 的 catalog.json 手动生成流程
+- [docs/architecture/workflow-json-contracts.md](../architecture/workflow-json-contracts.md)：workflow 节点目录 JSON 规则，以及 barcode.protocol-nodes 的 catalog.json 手动生成流程
 
 ## 建议内容
 

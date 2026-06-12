@@ -1,0 +1,97 @@
+{
+  "format_id": "amvision.node-definition.v1",
+  "node_type_id": "custom.camera.usb.read-latest-frame",
+  "display_name": "Read Latest USB/UVC Frame",
+  "category": "camera.usb",
+  "description": "从已打开的 USB / UVC 相机会话读取最新单帧，适合单次 workflow invoke 内重复采图。",
+  "implementation_kind": "custom-node",
+  "runtime_kind": "python-callable",
+  "input_ports": [
+    {
+      "name": "session",
+      "display_name": "Session",
+      "payload_type_id": "camera-session.v1"
+    },
+    {
+      "name": "request",
+      "display_name": "Request",
+      "payload_type_id": "value.v1",
+      "required": false
+    }
+  ],
+  "output_ports": [
+    {
+      "name": "session",
+      "display_name": "Session",
+      "payload_type_id": "camera-session.v1"
+    },
+    {
+      "name": "image",
+      "display_name": "Image",
+      "payload_type_id": "image-ref.v1"
+    },
+    {
+      "name": "summary",
+      "display_name": "Summary",
+      "payload_type_id": "value.v1"
+    }
+  ],
+  "parameter_schema": {
+    "type": "object",
+    "properties": {
+      "warmup_frame_count": {
+        "type": "integer",
+        "title": "Warmup Frame Count",
+        "default": 0,
+        "minimum": 0
+      },
+      "retry_read_count": {
+        "type": "integer",
+        "title": "Retry Read Count",
+        "default": 3,
+        "minimum": 1
+      },
+      "output_format": {
+        "type": "string",
+        "title": "Output Format",
+        "default": "png",
+        "enum": [
+          "png",
+          "jpeg"
+        ]
+      },
+      "jpeg_quality": {
+        "type": "integer",
+        "title": "JPEG Quality",
+        "default": 95,
+        "minimum": 1,
+        "maximum": 100
+      },
+      "output_object_key": {
+        "type": "string",
+        "title": "Output Object Key"
+      },
+      "overwrite": {
+        "type": "boolean",
+        "title": "Overwrite",
+        "default": true
+      }
+    }
+  },
+  "capability_tags": [
+    "integration.camera",
+    "integration.camera.usb-uvc",
+    "vision.image.capture"
+  ],
+  "runtime_requirements": {
+    "python_packages": [
+      "opencv-python",
+      "numpy"
+    ]
+  },
+  "node_pack_id": "camera.usb-uvc-nodes",
+  "node_pack_version": "0.1.0",
+  "metadata": {
+    "phase": "implemented"
+  }
+}

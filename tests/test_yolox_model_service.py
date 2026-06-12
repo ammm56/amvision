@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
-from backend.service.application.models.yolox_model_service import (
-    SqlAlchemyYoloXModelService,
-    YoloXBuildRegistration,
-    YoloXPretrainedRegistrationRequest,
-    YoloXTrainingOutputRegistration,
+import pytest
+
+from backend.service.application.models.model_service import (
+    ModelBuildRegistration,
+    PretrainedRegistrationRequest,
+    SqlAlchemyModelService,
+    TrainingOutputRegistration,
 )
 from backend.service.domain.files.yolox_file_types import YOLOX_CHECKPOINT_FILE, YOLOX_ONNX_FILE
 from backend.service.domain.models.model_records import PLATFORM_BASE_MODEL_SCOPE, PROJECT_MODEL_SCOPE
@@ -20,7 +22,7 @@ def test_register_pretrained_registers_model_version_and_checkpoint_file() -> No
     service = _create_model_service()
 
     model_version_id = service.register_pretrained(
-        YoloXPretrainedRegistrationRequest(
+        PretrainedRegistrationRequest(
             model_name="yolox",
             storage_uri="memory://weights/yolox_s.pth",
             model_version_id="model-version-pretrained-1",
@@ -56,7 +58,7 @@ def test_register_training_output_and_build_creates_linked_records() -> None:
     service = _create_model_service()
 
     model_version_id = service.register_training_output(
-        YoloXTrainingOutputRegistration(
+        TrainingOutputRegistration(
             project_id="project-1",
             training_task_id="training-1",
             model_name="yolox",
@@ -76,7 +78,7 @@ def test_register_training_output_and_build_creates_linked_records() -> None:
         )
     )
     model_build_id = service.register_build(
-        YoloXBuildRegistration(
+        ModelBuildRegistration(
             project_id="project-1",
             source_model_version_id=model_version_id,
             build_format="onnx",
@@ -111,14 +113,55 @@ def test_register_training_output_and_build_creates_linked_records() -> None:
     assert build_file.model_build_id == model_build_id
 
 
-def _create_model_service() -> SqlAlchemyYoloXModelService:
+def test_register_pretrained_rejects_unsupported_model_scale() -> None:
+    """验证预训练模型登记会拒绝不受支持的 model_scale。"""
+
+    service = _create_model_service()
+
+    with pytest.raises(ValueError, match="model_scale"):
+        service.register_pretrained(
+            PretrainedRegistrationRequest(
+                model_name="yolox",
+                storage_uri="memory://weights/yolox_unknown.pth",
+                model_scale="unknown",
+            )
+        )
+
+
+def test_register_build_rejects_unsupported_build_format() -> None:
+    """验证 build 登记会拒绝不受支持的 build 格式。"""
+
+    service = _create_model_service()
+    model_version_id = service.register_training_output(
+        TrainingOutputRegistration(
+            project_id="project-1",
+            training_task_id="training-1",
+            model_name="yolox",
+            model_scale="s",
+            dataset_version_id="dataset-version-1",
+            checkpoint_file_id="checkpoint-file-1",
+        )
+    )
+
+    with pytest.raises(ValueError, match="build"):
+        service.register_build(
+        ModelBuildRegistration(
+                project_id="project-1",
+                source_model_version_id=model_version_id,
+                build_format="unsupported-build",
+                build_file_id="build-file-1",
+            )
+        )
+
+
+def _create_model_service() -> SqlAlchemyModelService:
     """创建绑定测试数据库的模型登记服务。
 
     返回：
-    - 已完成测试 schema 初始化的 SqlAlchemyYoloXModelService。
+    - 已完成测试 schema 初始化的 SqlAlchemyModelService。
     """
 
     session_factory = SessionFactory(DatabaseSettings(url="sqlite+pysqlite:///:memory:"))
     Base.metadata.create_all(session_factory.engine)
 
-    return SqlAlchemyYoloXModelService(session_factory=session_factory)
+    return SqlAlchemyModelService(session_factory=session_factory)

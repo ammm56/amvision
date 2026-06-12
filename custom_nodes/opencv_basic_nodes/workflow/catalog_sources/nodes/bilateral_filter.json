@@ -1,0 +1,59 @@
+{
+  "format_id": "amvision.node-definition.v1",
+  "node_type_id": "custom.opencv.bilateral-filter",
+  "display_name": "Bilateral Filter",
+  "category": "opencv.filter",
+  "description": "对输入图片执行双边滤波，在平滑噪声的同时尽量保留边缘，适合纹理较弱但轮廓边界仍需保真的场景。",
+  "implementation_kind": "custom-node",
+  "runtime_kind": "python-callable",
+  "input_ports": [
+    {
+      "name": "image",
+      "display_name": "Image",
+      "payload_type_id": "image-ref.v1"
+    }
+  ],
+  "output_ports": [
+    {
+      "name": "image",
+      "display_name": "Image",
+      "payload_type_id": "image-ref.v1"
+    }
+  ],
+  "parameter_schema": {
+    "type": "object",
+    "properties": {
+      "diameter": {
+        "type": "integer",
+        "minimum": 1,
+        "default": 9
+      },
+      "sigma_color": {
+        "type": "number",
+        "minimum": 0,
+        "default": 75.0
+      },
+      "sigma_space": {
+        "type": "number",
+        "minimum": 0,
+        "default": 75.0
+      },
+      "output_object_key": {
+        "type": "string"
+      }
+    }
+  },
+  "capability_tags": [
+    "opencv.bilateral-filter",
+    "vision.preprocess",
+    "inspection.edge-preserve"
+  ],
+  "runtime_requirements": {
+    "python_packages": [
+      "opencv-python",
+      "numpy"
+    ]
+  },
+  "node_pack_id": "opencv.basic-nodes",
+  "node_pack_version": "0.1.0"
+}

@@ -1,0 +1,2473 @@
+{
+  "format_id": "amvision.custom-node-catalog.v1",
+  "payload_contracts": [
+    {
+      "format_id": "amvision.workflow-payload-contract.v1",
+      "payload_type_id": "contours.v1",
+      "display_name": "Contour Result",
+      "transport_kind": "inline-json",
+      "json_schema": {
+        "type": "object",
+        "properties": {
+          "source_image": {
+            "type": "object",
+            "properties": {
+              "transport_kind": {
+                "type": "string",
+                "enum": [
+                  "memory",
+                  "storage",
+                  "buffer",
+                  "frame"
+                ]
+              },
+              "object_key": {
+                "type": "string"
+              },
+              "image_handle": {
+                "type": "string"
+              },
+              "buffer_ref": {
+                "type": "object"
+              },
+              "frame_ref": {
+                "type": "object"
+              },
+              "width": {
+                "type": "integer"
+              },
+              "height": {
+                "type": "integer"
+              },
+              "media_type": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "transport_kind",
+              "media_type"
+            ],
+            "oneOf": [
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "storage"
+                  }
+                },
+                "required": [
+                  "object_key"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "memory"
+                  }
+                },
+                "required": [
+                  "image_handle"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "buffer"
+                  }
+                },
+                "required": [
+                  "buffer_ref"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "frame"
+                  }
+                },
+                "required": [
+                  "frame_ref"
+                ]
+              }
+            ]
+          },
+          "source_object_key": {
+            "type": "string"
+          },
+          "count": {
+            "type": "integer"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "contour_index": {
+                  "type": "integer"
+                },
+                "point_count": {
+                  "type": "integer"
+                },
+                "bbox_xyxy": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer"
+                  },
+                  "minItems": 4,
+                  "maxItems": 4
+                },
+                "points": {
+                  "type": "array",
+                  "items": {
+                    "type": "array",
+                    "items": {
+                      "type": "integer"
+                    },
+                    "minItems": 2,
+                    "maxItems": 2
+                  }
+                }
+              },
+              "required": [
+                "contour_index",
+                "bbox_xyxy",
+                "points"
+              ]
+            }
+          }
+        },
+        "required": [
+          "items"
+        ]
+      },
+      "artifact_kinds": [],
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.workflow-payload-contract.v1",
+      "payload_type_id": "measurements.v1",
+      "display_name": "Measurement Result",
+      "transport_kind": "inline-json",
+      "json_schema": {
+        "type": "object",
+        "properties": {
+          "source_image": {
+            "type": "object",
+            "properties": {
+              "transport_kind": {
+                "type": "string",
+                "enum": [
+                  "memory",
+                  "storage",
+                  "buffer",
+                  "frame"
+                ]
+              },
+              "object_key": {
+                "type": "string"
+              },
+              "image_handle": {
+                "type": "string"
+              },
+              "buffer_ref": {
+                "type": "object"
+              },
+              "frame_ref": {
+                "type": "object"
+              },
+              "width": {
+                "type": "integer"
+              },
+              "height": {
+                "type": "integer"
+              },
+              "media_type": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "transport_kind",
+              "media_type"
+            ],
+            "oneOf": [
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "storage"
+                  }
+                },
+                "required": [
+                  "object_key"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "memory"
+                  }
+                },
+                "required": [
+                  "image_handle"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "buffer"
+                  }
+                },
+                "required": [
+                  "buffer_ref"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "frame"
+                  }
+                },
+                "required": [
+                  "frame_ref"
+                ]
+              }
+            ]
+          },
+          "source_object_key": {
+            "type": "string"
+          },
+          "count": {
+            "type": "integer"
+          },
+          "summary": {
+            "type": "object",
+            "properties": {
+              "total_area": {
+                "type": "number"
+              },
+              "mean_area": {
+                "type": "number"
+              },
+              "max_area": {
+                "type": "number"
+              },
+              "min_area": {
+                "type": "number"
+              }
+            }
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "contour_index": {
+                  "type": "integer"
+                },
+                "point_count": {
+                  "type": "integer"
+                },
+                "bbox_xyxy": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer"
+                  },
+                  "minItems": 4,
+                  "maxItems": 4
+                },
+                "width": {
+                  "type": "integer"
+                },
+                "height": {
+                  "type": "integer"
+                },
+                "area": {
+                  "type": "number"
+                },
+                "perimeter": {
+                  "type": "number"
+                },
+                "center_xy": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 2,
+                  "maxItems": 2
+                },
+                "aspect_ratio": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "contour_index",
+                "bbox_xyxy",
+                "area",
+                "perimeter"
+              ]
+            }
+          }
+        },
+        "required": [
+          "items"
+        ]
+      },
+      "artifact_kinds": [],
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.workflow-payload-contract.v1",
+      "payload_type_id": "rotated-rects.v1",
+      "display_name": "Rotated Rect Result",
+      "transport_kind": "inline-json",
+      "json_schema": {
+        "type": "object",
+        "properties": {
+          "source_image": {
+            "type": "object",
+            "properties": {
+              "transport_kind": {
+                "type": "string",
+                "enum": [
+                  "memory",
+                  "storage",
+                  "buffer",
+                  "frame"
+                ]
+              },
+              "object_key": {
+                "type": "string"
+              },
+              "image_handle": {
+                "type": "string"
+              },
+              "buffer_ref": {
+                "type": "object"
+              },
+              "frame_ref": {
+                "type": "object"
+              },
+              "width": {
+                "type": "integer"
+              },
+              "height": {
+                "type": "integer"
+              },
+              "media_type": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "transport_kind",
+              "media_type"
+            ],
+            "oneOf": [
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "storage"
+                  }
+                },
+                "required": [
+                  "object_key"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "memory"
+                  }
+                },
+                "required": [
+                  "image_handle"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "buffer"
+                  }
+                },
+                "required": [
+                  "buffer_ref"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "frame"
+                  }
+                },
+                "required": [
+                  "frame_ref"
+                ]
+              }
+            ]
+          },
+          "source_object_key": {
+            "type": "string"
+          },
+          "count": {
+            "type": "integer"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "contour_index": {
+                  "type": "integer"
+                },
+                "point_count": {
+                  "type": "integer"
+                },
+                "center_xy": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 2,
+                  "maxItems": 2
+                },
+                "size_wh": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 2,
+                  "maxItems": 2
+                },
+                "width": {
+                  "type": "number"
+                },
+                "height": {
+                  "type": "number"
+                },
+                "long_side": {
+                  "type": "number"
+                },
+                "short_side": {
+                  "type": "number"
+                },
+                "angle_deg": {
+                  "type": "number"
+                },
+                "bbox_xyxy": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 4,
+                  "maxItems": 4
+                },
+                "box_points": {
+                  "type": "array",
+                  "items": {
+                    "type": "array",
+                    "items": {
+                      "type": "number"
+                    },
+                    "minItems": 2,
+                    "maxItems": 2
+                  },
+                  "minItems": 4,
+                  "maxItems": 4
+                },
+                "contour_area": {
+                  "type": "number"
+                },
+                "rect_area": {
+                  "type": "number"
+                },
+                "fill_ratio": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "contour_index",
+                "center_xy",
+                "size_wh",
+                "long_side",
+                "short_side",
+                "angle_deg",
+                "box_points",
+                "contour_area",
+                "rect_area"
+              ]
+            }
+          }
+        },
+        "required": [
+          "items"
+        ]
+      },
+      "artifact_kinds": [],
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.workflow-payload-contract.v1",
+      "payload_type_id": "lines.v1",
+      "display_name": "Line Result",
+      "transport_kind": "inline-json",
+      "json_schema": {
+        "type": "object",
+        "properties": {
+          "source_image": {
+            "type": "object",
+            "properties": {
+              "transport_kind": {
+                "type": "string",
+                "enum": [
+                  "memory",
+                  "storage",
+                  "buffer",
+                  "frame"
+                ]
+              },
+              "object_key": {
+                "type": "string"
+              },
+              "image_handle": {
+                "type": "string"
+              },
+              "buffer_ref": {
+                "type": "object"
+              },
+              "frame_ref": {
+                "type": "object"
+              },
+              "width": {
+                "type": "integer"
+              },
+              "height": {
+                "type": "integer"
+              },
+              "media_type": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "transport_kind",
+              "media_type"
+            ],
+            "oneOf": [
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "storage"
+                  }
+                },
+                "required": [
+                  "object_key"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "memory"
+                  }
+                },
+                "required": [
+                  "image_handle"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "buffer"
+                  }
+                },
+                "required": [
+                  "buffer_ref"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "frame"
+                  }
+                },
+                "required": [
+                  "frame_ref"
+                ]
+              }
+            ]
+          },
+          "source_object_key": {
+            "type": "string"
+          },
+          "count": {
+            "type": "integer"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "line_index": {
+                  "type": "integer"
+                },
+                "start_xy": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 2,
+                  "maxItems": 2
+                },
+                "end_xy": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 2,
+                  "maxItems": 2
+                },
+                "dx_pixels": {
+                  "type": "number"
+                },
+                "dy_pixels": {
+                  "type": "number"
+                },
+                "length_pixels": {
+                  "type": "number"
+                },
+                "angle_deg": {
+                  "type": "number"
+                },
+                "midpoint_xy": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 2,
+                  "maxItems": 2
+                },
+                "midpoint_x": {
+                  "type": "number"
+                },
+                "midpoint_y": {
+                  "type": "number"
+                },
+                "bbox_xyxy": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 4,
+                  "maxItems": 4
+                },
+                "contour_index": {
+                  "type": "integer"
+                },
+                "point_count": {
+                  "type": "integer"
+                },
+                "origin_xy": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 2,
+                  "maxItems": 2
+                },
+                "direction_xy": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 2,
+                  "maxItems": 2
+                }
+              },
+              "required": [
+                "line_index",
+                "start_xy",
+                "end_xy",
+                "length_pixels",
+                "angle_deg"
+              ]
+            }
+          }
+        },
+        "required": [
+          "items"
+        ]
+      },
+      "artifact_kinds": [],
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.workflow-payload-contract.v1",
+      "payload_type_id": "circles.v1",
+      "display_name": "Circle Result",
+      "transport_kind": "inline-json",
+      "json_schema": {
+        "type": "object",
+        "properties": {
+          "source_image": {
+            "type": "object",
+            "properties": {
+              "transport_kind": {
+                "type": "string",
+                "enum": [
+                  "memory",
+                  "storage",
+                  "buffer",
+                  "frame"
+                ]
+              },
+              "object_key": {
+                "type": "string"
+              },
+              "image_handle": {
+                "type": "string"
+              },
+              "buffer_ref": {
+                "type": "object"
+              },
+              "frame_ref": {
+                "type": "object"
+              },
+              "width": {
+                "type": "integer"
+              },
+              "height": {
+                "type": "integer"
+              },
+              "media_type": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "transport_kind",
+              "media_type"
+            ],
+            "oneOf": [
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "storage"
+                  }
+                },
+                "required": [
+                  "object_key"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "memory"
+                  }
+                },
+                "required": [
+                  "image_handle"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "buffer"
+                  }
+                },
+                "required": [
+                  "buffer_ref"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "frame"
+                  }
+                },
+                "required": [
+                  "frame_ref"
+                ]
+              }
+            ]
+          },
+          "source_object_key": {
+            "type": "string"
+          },
+          "count": {
+            "type": "integer"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "circle_index": {
+                  "type": "integer"
+                },
+                "center_xy": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 2,
+                  "maxItems": 2
+                },
+                "center_x": {
+                  "type": "number"
+                },
+                "center_y": {
+                  "type": "number"
+                },
+                "radius": {
+                  "type": "number"
+                },
+                "diameter": {
+                  "type": "number"
+                },
+                "area": {
+                  "type": "number"
+                },
+                "circumference": {
+                  "type": "number"
+                },
+                "bbox_xyxy": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 4,
+                  "maxItems": 4
+                },
+                "contour_index": {
+                  "type": "integer"
+                },
+                "point_count": {
+                  "type": "integer"
+                },
+                "contour_area": {
+                  "type": "number"
+                },
+                "fill_ratio": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "circle_index",
+                "center_xy",
+                "radius",
+                "diameter",
+                "area"
+              ]
+            }
+          }
+        },
+        "required": [
+          "items"
+        ]
+      },
+      "artifact_kinds": [],
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.workflow-payload-contract.v1",
+      "payload_type_id": "ellipses.v1",
+      "display_name": "Ellipse Result",
+      "transport_kind": "inline-json",
+      "json_schema": {
+        "type": "object",
+        "properties": {
+          "source_image": {
+            "type": "object",
+            "properties": {
+              "transport_kind": {
+                "type": "string",
+                "enum": [
+                  "memory",
+                  "storage",
+                  "buffer",
+                  "frame"
+                ]
+              },
+              "object_key": {
+                "type": "string"
+              },
+              "image_handle": {
+                "type": "string"
+              },
+              "buffer_ref": {
+                "type": "object"
+              },
+              "frame_ref": {
+                "type": "object"
+              },
+              "width": {
+                "type": "integer"
+              },
+              "height": {
+                "type": "integer"
+              },
+              "media_type": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "transport_kind",
+              "media_type"
+            ],
+            "oneOf": [
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "storage"
+                  }
+                },
+                "required": [
+                  "object_key"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "memory"
+                  }
+                },
+                "required": [
+                  "image_handle"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "buffer"
+                  }
+                },
+                "required": [
+                  "buffer_ref"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "frame"
+                  }
+                },
+                "required": [
+                  "frame_ref"
+                ]
+              }
+            ]
+          },
+          "source_object_key": {
+            "type": "string"
+          },
+          "count": {
+            "type": "integer"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "ellipse_index": {
+                  "type": "integer"
+                },
+                "contour_index": {
+                  "type": "integer"
+                },
+                "point_count": {
+                  "type": "integer"
+                },
+                "center_xy": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 2,
+                  "maxItems": 2
+                },
+                "center_x": {
+                  "type": "number"
+                },
+                "center_y": {
+                  "type": "number"
+                },
+                "size_wh": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 2,
+                  "maxItems": 2
+                },
+                "width": {
+                  "type": "number"
+                },
+                "height": {
+                  "type": "number"
+                },
+                "major_axis": {
+                  "type": "number"
+                },
+                "minor_axis": {
+                  "type": "number"
+                },
+                "angle_deg": {
+                  "type": "number"
+                },
+                "bbox_xyxy": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 4,
+                  "maxItems": 4
+                },
+                "box_points": {
+                  "type": "array",
+                  "items": {
+                    "type": "array",
+                    "items": {
+                      "type": "number"
+                    },
+                    "minItems": 2,
+                    "maxItems": 2
+                  },
+                  "minItems": 4,
+                  "maxItems": 4
+                },
+                "area": {
+                  "type": "number"
+                },
+                "perimeter": {
+                  "type": "number"
+                },
+                "contour_area": {
+                  "type": "number"
+                },
+                "fill_ratio": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "ellipse_index",
+                "center_xy",
+                "major_axis",
+                "minor_axis",
+                "angle_deg",
+                "area"
+              ]
+            }
+          }
+        },
+        "required": [
+          "items"
+        ]
+      },
+      "artifact_kinds": [],
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.workflow-payload-contract.v1",
+      "payload_type_id": "local-features.v1",
+      "display_name": "Local Feature Result",
+      "transport_kind": "inline-json",
+      "json_schema": {
+        "type": "object",
+        "properties": {
+          "source_image": {
+            "type": "object",
+            "properties": {
+              "transport_kind": {
+                "type": "string",
+                "enum": [
+                  "memory",
+                  "storage",
+                  "buffer",
+                  "frame"
+                ]
+              },
+              "object_key": {
+                "type": "string"
+              },
+              "image_handle": {
+                "type": "string"
+              },
+              "buffer_ref": {
+                "type": "object"
+              },
+              "frame_ref": {
+                "type": "object"
+              },
+              "width": {
+                "type": "integer"
+              },
+              "height": {
+                "type": "integer"
+              },
+              "media_type": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "transport_kind",
+              "media_type"
+            ],
+            "oneOf": [
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "storage"
+                  }
+                },
+                "required": [
+                  "object_key"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "memory"
+                  }
+                },
+                "required": [
+                  "image_handle"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "buffer"
+                  }
+                },
+                "required": [
+                  "buffer_ref"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "frame"
+                  }
+                },
+                "required": [
+                  "frame_ref"
+                ]
+              }
+            ]
+          },
+          "source_object_key": {
+            "type": "string"
+          },
+          "feature_extractor": {
+            "type": "string"
+          },
+          "descriptor_kind": {
+            "type": "string"
+          },
+          "descriptor_dtype": {
+            "type": "string"
+          },
+          "descriptor_norm": {
+            "type": "string"
+          },
+          "descriptor_length": {
+            "type": "integer"
+          },
+          "wta_k": {
+            "type": "integer"
+          },
+          "roi_id": {
+            "type": "string"
+          },
+          "roi_kind": {
+            "type": "string"
+          },
+          "roi_bbox_xyxy": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "minItems": 4,
+            "maxItems": 4
+          },
+          "count": {
+            "type": "integer"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "feature_id": {
+                  "type": "string"
+                },
+                "feature_index": {
+                  "type": "integer"
+                },
+                "x": {
+                  "type": "number"
+                },
+                "y": {
+                  "type": "number"
+                },
+                "point_xy": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 2,
+                  "maxItems": 2
+                },
+                "size": {
+                  "type": "number"
+                },
+                "angle_deg": {
+                  "type": "number"
+                },
+                "response": {
+                  "type": "number"
+                },
+                "octave": {
+                  "type": "integer"
+                },
+                "class_id": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "feature_id",
+                "feature_index",
+                "x",
+                "y",
+                "point_xy",
+                "size",
+                "angle_deg",
+                "response",
+                "octave",
+                "class_id"
+              ]
+            }
+          },
+          "descriptors": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "integer"
+              }
+            }
+          }
+        },
+        "required": [
+          "feature_extractor",
+          "descriptor_kind",
+          "descriptor_dtype",
+          "descriptor_length",
+          "items",
+          "descriptors"
+        ]
+      },
+      "artifact_kinds": [],
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.workflow-payload-contract.v1",
+      "payload_type_id": "feature-matches.v1",
+      "display_name": "Feature Match Result",
+      "transport_kind": "inline-json",
+      "json_schema": {
+        "type": "object",
+        "properties": {
+          "source_a_image": {
+            "type": "object",
+            "properties": {
+              "transport_kind": {
+                "type": "string",
+                "enum": [
+                  "memory",
+                  "storage",
+                  "buffer",
+                  "frame"
+                ]
+              },
+              "object_key": {
+                "type": "string"
+              },
+              "image_handle": {
+                "type": "string"
+              },
+              "buffer_ref": {
+                "type": "object"
+              },
+              "frame_ref": {
+                "type": "object"
+              },
+              "width": {
+                "type": "integer"
+              },
+              "height": {
+                "type": "integer"
+              },
+              "media_type": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "transport_kind",
+              "media_type"
+            ],
+            "oneOf": [
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "storage"
+                  }
+                },
+                "required": [
+                  "object_key"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "memory"
+                  }
+                },
+                "required": [
+                  "image_handle"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "buffer"
+                  }
+                },
+                "required": [
+                  "buffer_ref"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "frame"
+                  }
+                },
+                "required": [
+                  "frame_ref"
+                ]
+              }
+            ]
+          },
+          "source_b_image": {
+            "type": "object",
+            "properties": {
+              "transport_kind": {
+                "type": "string",
+                "enum": [
+                  "memory",
+                  "storage",
+                  "buffer",
+                  "frame"
+                ]
+              },
+              "object_key": {
+                "type": "string"
+              },
+              "image_handle": {
+                "type": "string"
+              },
+              "buffer_ref": {
+                "type": "object"
+              },
+              "frame_ref": {
+                "type": "object"
+              },
+              "width": {
+                "type": "integer"
+              },
+              "height": {
+                "type": "integer"
+              },
+              "media_type": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "transport_kind",
+              "media_type"
+            ],
+            "oneOf": [
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "storage"
+                  }
+                },
+                "required": [
+                  "object_key"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "memory"
+                  }
+                },
+                "required": [
+                  "image_handle"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "buffer"
+                  }
+                },
+                "required": [
+                  "buffer_ref"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "frame"
+                  }
+                },
+                "required": [
+                  "frame_ref"
+                ]
+              }
+            ]
+          },
+          "source_a_object_key": {
+            "type": "string"
+          },
+          "source_b_object_key": {
+            "type": "string"
+          },
+          "matcher_kind": {
+            "type": "string"
+          },
+          "cross_check": {
+            "type": "boolean"
+          },
+          "ratio_test_threshold": {
+            "type": "number"
+          },
+          "count": {
+            "type": "integer"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "match_id": {
+                  "type": "string"
+                },
+                "query_feature_id": {
+                  "type": "string"
+                },
+                "train_feature_id": {
+                  "type": "string"
+                },
+                "query_index": {
+                  "type": "integer"
+                },
+                "train_index": {
+                  "type": "integer"
+                },
+                "distance": {
+                  "type": "number"
+                },
+                "query_xy": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 2,
+                  "maxItems": 2
+                },
+                "train_xy": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 2,
+                  "maxItems": 2
+                }
+              },
+              "required": [
+                "match_id",
+                "query_feature_id",
+                "train_feature_id",
+                "query_index",
+                "train_index",
+                "distance",
+                "query_xy",
+                "train_xy"
+              ]
+            }
+          }
+        },
+        "required": [
+          "matcher_kind",
+          "cross_check",
+          "items"
+        ]
+      },
+      "artifact_kinds": [],
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.workflow-payload-contract.v1",
+      "payload_type_id": "planar-transform.v1",
+      "display_name": "Planar Transform Result",
+      "transport_kind": "inline-json",
+      "json_schema": {
+        "type": "object",
+        "properties": {
+          "source_a_image": {
+            "type": "object",
+            "properties": {
+              "transport_kind": {
+                "type": "string",
+                "enum": [
+                  "memory",
+                  "storage",
+                  "buffer",
+                  "frame"
+                ]
+              },
+              "object_key": {
+                "type": "string"
+              },
+              "image_handle": {
+                "type": "string"
+              },
+              "buffer_ref": {
+                "type": "object"
+              },
+              "frame_ref": {
+                "type": "object"
+              },
+              "width": {
+                "type": "integer"
+              },
+              "height": {
+                "type": "integer"
+              },
+              "media_type": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "transport_kind",
+              "media_type"
+            ],
+            "oneOf": [
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "storage"
+                  }
+                },
+                "required": [
+                  "object_key"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "memory"
+                  }
+                },
+                "required": [
+                  "image_handle"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "buffer"
+                  }
+                },
+                "required": [
+                  "buffer_ref"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "frame"
+                  }
+                },
+                "required": [
+                  "frame_ref"
+                ]
+              }
+            ]
+          },
+          "source_b_image": {
+            "type": "object",
+            "properties": {
+              "transport_kind": {
+                "type": "string",
+                "enum": [
+                  "memory",
+                  "storage",
+                  "buffer",
+                  "frame"
+                ]
+              },
+              "object_key": {
+                "type": "string"
+              },
+              "image_handle": {
+                "type": "string"
+              },
+              "buffer_ref": {
+                "type": "object"
+              },
+              "frame_ref": {
+                "type": "object"
+              },
+              "width": {
+                "type": "integer"
+              },
+              "height": {
+                "type": "integer"
+              },
+              "media_type": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "transport_kind",
+              "media_type"
+            ],
+            "oneOf": [
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "storage"
+                  }
+                },
+                "required": [
+                  "object_key"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "memory"
+                  }
+                },
+                "required": [
+                  "image_handle"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "buffer"
+                  }
+                },
+                "required": [
+                  "buffer_ref"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "frame"
+                  }
+                },
+                "required": [
+                  "frame_ref"
+                ]
+              }
+            ]
+          },
+          "source_a_object_key": {
+            "type": "string"
+          },
+          "source_b_object_key": {
+            "type": "string"
+          },
+          "transform_kind": {
+            "type": "string"
+          },
+          "matrix_3x3": {
+            "type": "array",
+            "minItems": 3,
+            "maxItems": 3,
+            "items": {
+              "type": "array",
+              "minItems": 3,
+              "maxItems": 3,
+              "items": {
+                "type": "number"
+              }
+            }
+          },
+          "inverse_matrix_3x3": {
+            "type": "array",
+            "minItems": 3,
+            "maxItems": 3,
+            "items": {
+              "type": "array",
+              "minItems": 3,
+              "maxItems": 3,
+              "items": {
+                "type": "number"
+              }
+            }
+          },
+          "match_count": {
+            "type": "integer"
+          },
+          "inlier_count": {
+            "type": "integer"
+          },
+          "inlier_match_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "reprojection_error": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "transform_kind",
+          "matrix_3x3",
+          "match_count",
+          "inlier_count",
+          "inlier_match_ids"
+        ]
+      },
+      "artifact_kinds": [],
+      "metadata": {}
+    }
+  ],
+  "node_definitions": [
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.absdiff-threshold",
+      "display_name": "Absdiff Threshold",
+      "category": "opencv.filter",
+      "description": "把差分图通过阈值化收成前景变化区域二值图。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "summary",
+          "display_name": "Summary",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "threshold": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 255
+          },
+          "max_value": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 255
+          },
+          "threshold_type": {
+            "type": "string",
+            "enum": [
+              "binary",
+              "binary-inv"
+            ]
+          },
+          "output_object_key": {
+            "type": "string"
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.absdiff-threshold",
+        "vision.filter",
+        "vision.diff"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.defect-nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.connected-components",
+      "display_name": "Connected Components",
+      "category": "opencv.analysis",
+      "description": "把二值前景图分解成连通区域，并输出标准 regions.v1 与摘要。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "source_image",
+          "display_name": "Source Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": false,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "regions",
+          "display_name": "Regions",
+          "payload_type_id": "regions.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "summary",
+          "display_name": "Summary",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "foreground_threshold": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 255
+          },
+          "connectivity": {
+            "type": "integer",
+            "enum": [
+              4,
+              8
+            ]
+          },
+          "min_area": {
+            "type": "number",
+            "minimum": 0
+          },
+          "max_area": {
+            "type": "number",
+            "minimum": 0
+          },
+          "max_components": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "region_id_prefix": {
+            "type": "string",
+            "default": "cc"
+          },
+          "class_id_default": {
+            "type": "integer",
+            "default": -1
+          },
+          "class_name_default": {
+            "type": "string",
+            "default": "component"
+          },
+          "score_default": {
+            "type": "number",
+            "minimum": 0,
+            "default": 1.0
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.connected-components",
+        "vision.analysis",
+        "vision.region",
+        "vision.diff"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.defect-nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.distance-transform",
+      "display_name": "Distance Transform",
+      "category": "opencv.filter",
+      "description": "对二值前景执行距离变换，并输出灰度预览图和距离摘要，适合胶线厚度趋势、孔腔中心性或骨架前置分析。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "summary",
+          "display_name": "Summary",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "foreground_threshold": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 255,
+            "default": 1
+          },
+          "distance_type": {
+            "type": "string",
+            "enum": [
+              "l1",
+              "l2",
+              "c"
+            ],
+            "default": "l2"
+          },
+          "mask_size": {
+            "oneOf": [
+              {
+                "type": "integer",
+                "enum": [
+                  3,
+                  5
+                ]
+              },
+              {
+                "type": "string",
+                "enum": [
+                  "precise"
+                ]
+              }
+            ],
+            "default": 3
+          },
+          "normalize_output": {
+            "type": "boolean",
+            "default": true
+          },
+          "output_scale": {
+            "type": "number",
+            "minimum": 0,
+            "default": 1.0
+          },
+          "output_object_key": {
+            "type": "string"
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.distance-transform",
+        "vision.morphology",
+        "inspection.distance-map"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.defect-nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.fill-holes",
+      "display_name": "Fill Holes",
+      "category": "opencv.filter",
+      "description": "填充白色前景内部孔洞，适合胶线、涂布、闭合区域和空腔缺口的前置规整。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "summary",
+          "display_name": "Summary",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "foreground_threshold": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 255,
+            "default": 1
+          },
+          "output_object_key": {
+            "type": "string"
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.fill-holes",
+        "vision.morphology",
+        "inspection.completeness"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.defect-nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.heatmap-preview",
+      "display_name": "Heatmap Preview",
+      "category": "opencv.render",
+      "description": "把差异图、距离图或边缘强度图映射为伪彩色热力图，支持可选底图叠加，适合现场调试异常强度分布。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "base_image",
+          "display_name": "Base Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": false,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "summary",
+          "display_name": "Summary",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "colormap": {
+            "type": "string",
+            "enum": [
+              "turbo",
+              "jet",
+              "hot",
+              "inferno",
+              "viridis",
+              "magma",
+              "plasma"
+            ],
+            "default": "turbo"
+          },
+          "normalize_mode": {
+            "type": "string",
+            "enum": [
+              "minmax",
+              "none"
+            ],
+            "default": "minmax"
+          },
+          "blend_alpha": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "default": 0.55
+          },
+          "output_object_key": {
+            "type": "string"
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.heatmap",
+        "vision.render",
+        "inspection.defect.visualize"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.defect-nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.image-diff",
+      "display_name": "Image Diff",
+      "category": "opencv.analysis",
+      "description": "对当前图片和参考图片执行绝对差分，生成差异图和差异摘要。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "reference_image",
+          "display_name": "Reference Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "summary",
+          "display_name": "Summary",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "diff_mode": {
+            "type": "string",
+            "enum": [
+              "grayscale",
+              "color"
+            ]
+          },
+          "output_object_key": {
+            "type": "string"
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.image-diff",
+        "vision.analysis",
+        "vision.diff"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.defect-nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.skeletonize",
+      "display_name": "Skeletonize",
+      "category": "opencv.filter",
+      "description": "把二值前景规整成近似单像素骨架，适合细线、焊缝、胶线中心线和跨度趋势分析。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "summary",
+          "display_name": "Summary",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "foreground_threshold": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 255,
+            "default": 1
+          },
+          "max_iterations": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "output_object_key": {
+            "type": "string"
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.skeletonize",
+        "vision.morphology",
+        "inspection.line.centerline"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.defect-nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.watershed",
+      "display_name": "Watershed",
+      "category": "opencv.filter",
+      "description": "把粘连前景通过 watershed 拆成带边界隔离的二值结果，适合相邻颗粒、连在一起的缺陷块或胶点分离前处理。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "source_image",
+          "display_name": "Source Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": false,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "summary",
+          "display_name": "Summary",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "foreground_threshold": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 255,
+            "default": 1
+          },
+          "opening_kernel_size": {
+            "type": "integer",
+            "minimum": 1,
+            "default": 3
+          },
+          "opening_iterations": {
+            "type": "integer",
+            "minimum": 0,
+            "default": 1
+          },
+          "background_dilate_iterations": {
+            "type": "integer",
+            "minimum": 0,
+            "default": 1
+          },
+          "boundary_gap_iterations": {
+            "type": "integer",
+            "minimum": 0,
+            "default": 1
+          },
+          "distance_threshold_ratio": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "default": 0.35
+          },
+          "output_object_key": {
+            "type": "string"
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.watershed",
+        "vision.morphology",
+        "inspection.defect.separate"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.defect-nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {}
+    }
+  ],
+  "metadata": {}
+}

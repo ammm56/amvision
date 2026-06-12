@@ -2,27 +2,95 @@
 
 ## 文档目的
 
-本文档用于同步当前主干已经落地的整体框架、主要代码落点、YOLOX 端到端能力范围和下一步收敛重点。
+本文档用于同步当前主干已经落地的整体框架、主要代码落点、多模型平台能力、工业节点体系、`YOLOE / SAM3` custom node 现状，以及下一步收敛重点。
 
 本文档补充 [system-overview.md](system-overview.md) 的长期架构视角，重点回答“当前代码已经做到哪里”。
 
+更细的 `model_type × task_type × 导入/导出/训练/验证/评估/转换/部署/推理/workflow/前端` 正式矩阵，现单独整理在 [model-support-matrix.md](model-support-matrix.md)。
+
 ## 适用范围
 
-- backend-service、BackgroundTaskManager、deployment process supervisor 的当前装配方式
-- YOLOX 训练、人工验证、评估、转换、部署和推理的已落地链路
+- backend-service、workflow runtime、TriggerSourceSupervisor、deployment process supervisor 的当前装配方式
+- YOLOX、YOLOv8/YOLO11/YOLO26、RF-DETR、YOLOE / SAM3 与工业节点体系的已落地链路
+- `YOLOE / SAM3` project-native custom node 的当前能力边界
 - 当前公开 REST / WebSocket 资源面与主要运行时矩阵
 - 下一步优先补强事项
 
 ## 当前结论
 
-- 以 YOLOX 为中心的训练 -> 人工验证 -> 数据集级评估 -> 转换 -> DeploymentInstance 发布 -> 同步 / 异步推理接口闭环已经打通。
+- 以 YOLOX detection 为第一套参考实现的训练 -> 人工验证 -> 数据集级评估 -> 转换 -> DeploymentInstance 发布 -> 同步 / 异步推理接口闭环已经打通；YOLOv8/YOLO11/YOLO26 与 RF-DETR 也已经并入统一模型平台主链。
+- 当前模型平台已经不仅覆盖 detection：YOLOv8/YOLO11/YOLO26 已覆盖 detection/classification/segmentation/pose/obb 五类任务，RF-DETR 已覆盖 detection 与 segmentation，平台基础模型目录 seeder 也已覆盖 `yolox / yolov8 / yolo11 / yolo26 / rfdetr`。
+- 数据集导入导出矩阵当前也已从 detection-only 收平到多任务：导入已覆盖 `COCO / VOC / ImageNet classification / DOTA OBB`，导出已覆盖 `coco/voc/yolo detection`、`coco/yolo segmentation`、`coco/yolo pose`、`imagenet-classification-v1` 和 `dota-obb-v1`；`DatasetVersion` 注解与持久化当前统一使用 `segmentation`。
 - backend-service 当前承担 REST / WebSocket 控制面和 deployment process supervisor，全部队列消费者已经收敛到独立 worker profile。
-- 当前公开 REST v1 已覆盖 auth、本地用户与权限管理、datasets、dataset-exports、models、yolox training tasks、validation-sessions、conversion-tasks、evaluation-tasks、deployment-instances、inference-tasks、projects 目录与对象读取、workflow runtime 资源和 tasks。
+- 当前公开 REST v1 已覆盖 auth、本地用户与权限管理、datasets、dataset-exports、models、五类 training tasks、五类 validation sessions、deployment-instances、inference-tasks、conversion-tasks、evaluation-tasks、projects 目录与对象读取、workflow runtime 资源和 tasks；公开主链当前已经统一收口到 `/api/v1/models/{task_type}/...`。
 - workflow 公开资源面已经拆成 preview-runs、execution-policies、app-runtimes、runs 和 trigger-sources；当前开始把状态集合、snapshot 路径和 preview cleanup 规则收敛到共享 contracts 语义，避免 route、service、maintenance 和文档继续各写一份。
 - 当前公开 WebSocket 已覆盖 auth、system、tasks、workflows.preview-runs、workflows.runs、workflows.app-runtimes、deployments 和 projects 八类资源流；统一的路由分层、重连规则和项目级聚合流边界已整理到 [websocket-architecture.md](websocket-architecture.md)。
 - backend-service 当前已经补齐本地前端接入所需的 CORS、hybrid auth、Project 目录接口和 Project 内对象读取接口；主要工作台列表接口已经统一到 offset/limit + 响应头分页规则。
 - backend-service 当前已经补齐本地用户、权限范围、session/refresh token、长期调用 user token 和 auth.events 审计流；在线 provider 只保留目录发现与后续扩展边界。
+- `YOLOE / SAM3` 当前已经不是骨架：两者都已接通 project-native custom node runtime，不依赖 `projectsrc/` 或已安装官方包执行推理；其中 `YOLOE` 已覆盖 `prompt-free / text-prompt / visual-prompt` 三条节点链，`SAM3` 已覆盖 `interactive-segment / semantic-segment / video-interactive-segment / video-semantic-segment` 四条节点链。
+- `YOLOE text-prompt` 当前支持同一 `prompt_id` 下 positive / negative 文本组合；`YOLOE visual-prompt` 当前支持 `box / point / polygon / mask` 四类提示及同一 `prompt_id` 下混合提示聚合。`SAM3 interactive-segment` 当前支持 `box / point / polygon / mask`；`SAM3 semantic-segment` 当前支持同一 `prompt_id` 下 grouped positive / negative 文本提示；`SAM3 video-interactive-segment` 当前支持 `frame-window.v1 + prompt-regions.v1 -> tracks.v1` 的 `memory-prototype-state` 多帧链，也已提供更重的 `memory-attention-tracker` 可选模式，并继续保留 `stateful-mask-propagation` 与 shared prompt 兼容模式；`SAM3 video-semantic-segment` 当前支持 `frame-window.v1 + text-prompts.v1 -> tracks.v1` 的共享文本多帧语义分割链。`stateful-semantic-propagation` 与后续 `memory-prototype` 风格 semantic 视频模式当前仍处于预留规划，不是当前阶段的硬阻塞缺口。
+- `SAM3` 当前的实际使用也已经分层明确：简单任务可直接使用单帧 `interactive-segment`；短窗口或变化小的视频可使用 `shared-prompts-across-window`；中等复杂度视频可使用 `stateful-mask-propagation`；更复杂的多帧跟踪当前默认推荐 `memory-prototype-state`；更长窗口、更大位移或更复杂遮挡场景可按需切到 `memory-attention-tracker`。`video-semantic-segment` 当前则保持更克制的 shared-text 路线，适合当前以单帧判定和视频复盘为主的工业现场；只有在明确需要跨帧语义区域稳定性、面积统计或连续工艺区域趋势分析时，才值得继续推进 `stateful-semantic-propagation`。
+- `YOLOE / SAM3` 当前不仅有单图 smoke、soak 和 `WorkflowAppRuntime` 受控接入验证；`SAM3 video-semantic-segment` 当前也已经补了 `WorkflowAppRuntime` 受控接入 smoke，以及“本地视频 -> decode -> video-semantic/video-interactive -> overlay -> save -> video-body” 两条显式 integration 闭环。
+- 视频 workflow 的使用面当前也已经补到可直接预览和调试：`core.io.frame-window-preview` 会把 `frame-window.v1` 转成 `gallery-preview`；`core.logic.payload-to-value + core.logic.value-field-extract` 可以把 `tracks.v1 / regions.v1 / frame-window.v1 / video-ref.v1` 顺畅桥接到现有 `table-preview / value-preview`；`core.output.video-body` 则负责把最终 `video-ref.v1` 转成正式可播放 `response-body.v1`。
+- `SAM3 video-interactive-segment(memory-attention-tracker)` 当前已经把 `history_limit / prototype_momentum / attention_temperature / prototype_blend_weight / max_memory_tokens_per_entry` 正式开放到节点参数面，并提供现场样例 workflow：`docs/examples/workflows/sam3_video_memory_attention_review.template.json`。
+- 从工业场景角度看，当前视频能力已经覆盖“单帧判定、视频复盘、交互跟踪、语义区域观察”的主线；后续更值得继续补的是现场明确需要的稳定性增强、规则判定和协议回传，而不是默认把所有视频链都推到最重模式。
+- 对当前以单帧判定为主的工业现场，下一批最值得补的是 `core.vision.regions-*`、ROI/coverage、`core.rule.*`、`result-record` 和本地单图/目录输入节点；分批清单已整理到 [industrial-rule-node-plan.md](industrial-rule-node-plan.md)。
+- 当前工业规则节点已经开始进入实现：第 1 批 `core.vision.regions-filter / regions-select-best / regions-count / regions-area-sum / regions-area-ratio / regions-bbox-metrics / regions-score-summary` 已接通；第 2 批 `core.vision.roi-create / regions-intersection-metrics / regions-coverage-check / regions-inside-check / regions-offset-check` 也已接通，其中 `roi-create` 当前既支持固定参数，也支持 `value.v1` 动态 ROI 输入，已经可以先完成单帧面积、占比、覆盖率、落位和越界这条工业判定前置链。
+- 工业检测/分割主链到规则链之间当前也已补了标准桥接：`core.vision.detections-to-regions` 已接通，当前 deployment detection 或其他输出 `detections.v1` 的模型节点，已经可以先把 bbox 检测结果规整成 `regions.v1`；`core.vision.segments-to-regions` 当前也已接通，外部系统或中间节点如果输出 `segments.v1(mask / polygon / bbox)`，现在也可以统一规整成 `regions.v1` 再进入现有工业规则节点。针对目录批处理或列表迭代这类 `value.v1` 场景，当前也已补 `core.logic.value-to-segments / value-to-regions`，用于把逐项 value 恢复回正式 `segments.v1 / regions.v1` 再接回同一套规则链。`YOLOE / SAM3` 当前仍然直接输出 `regions.v1`，不需要再额外桥接。
+- 第 4 批工业判定最小闭环当前也已开始进入实现：`core.rule.threshold-check / presence-check / ok-ng-decision` 与 `core.output.result-record` 已接通，当前已经可以把面积、覆盖率、落位、越界这类前置指标进一步收成 `OK / NG` 和统一结果对象。
+- 第 4 批工业语义判定当前也继续往前收了一层：`core.rule.alarm-condition / process-decision` 已接通，`result-record` 也已补齐可选 `alarm` 输入，当前已经可以把多路规则条件直接收成 `OK / NG + reason + conditions + alarm` 的现场结果对象，不必在 workflow 里手工再拼一层。
+- 本地单帧工业输入输出闭环当前也已开始接通：`core.io.image-load-local / directory-scan` 与 `core.output.json-save-local / http-post` 已补齐，当前已经可以把“本地图像输入 -> 区域规则 -> OK/NG -> 本地 JSON 落盘或 HTTP 回传”这条现场最常见单帧判定链先闭起来。
+- 第 4 批工业规则节点当前又往前收了一层：`core.rule.range-check`、`core.output.alarm-record`、`core.output.csv-append-local`、`core.io.image-list-local`、`core.io.directory-batch-window` 已补齐，当前已经可以把“目录扫描 -> 批次切片 -> 本地图像批量载入 -> 规则判定 -> OK/NG / 报警对象 -> JSON / CSV / HTTP 回传”这条更贴现场的小批量单帧链先收起来。
+- `core.io.directory-scan` 当前也已补齐更贴现场的目录输入语义：支持 `min_stable_age_seconds` 文件稳定期过滤、`dedupe_by` 去重策略和更完整的扫描摘要；`core.io.directory-batch-window` 已支持运行时 `start_index / batch_size / cursor` 输入，用于表达“当前批次窗口 + 下一步 cursor”这类推进语义，并继续沿用严格报错边界；`core.io.directory-poll-window` 与 `core.io.json-load-local` 当前也已接通，用于“本地 JSON cursor 恢复 + 当前无新文件时返回 has_work=false”的目录轮询守护语义。
+- 目录批处理这条主线当前又收了一层：`core.io.directory-cursor-normalize / directory-cursor-advance / core.output.batch-record / core.io.batch-files-relocate` 已接通，当前已经可以把“本地 JSON cursor 恢复 -> window 输出推进 -> 批次归档对象 -> processed/archive/failed/quarantine 文件归档”这层正式从手工字段约定里抽出来；其中 `batch-files-relocate` 首版默认使用更保守的 `copy + rename`，同时也已支持 `move / overwrite / skip / preserve_subdirectories / dry_run`。
+- 输出收口这条线也继续往前走了一步：`core.output.workflow-result / core.output.batch-result-summary` 已接通，当前已经可以把 `result-record / batch-record / metrics / files / trace_id / event_id` 收成统一 `workflow-result.v1`，并把一批 `result-record.v1` 收成独立批次摘要对象；后续 trigger-source、结果回传和目录批次归档不再需要继续手工拼这些中间字段。
+- TriggerSource 侧也开始把目录输入真正收成正式入口：`directory-poll` 与 `directory-watch` 当前都已接入 backend-service。前者负责本地目录周期扫描、文件稳定期过滤、扩展名筛选、batch 提交以及本地 checkpoint 恢复；后者负责本地目录事件监听、稳定期过滤、batch 提交以及本地 checkpoint 去重恢复，并支持 `force_polling=true` 的受控事件探测模式。目录触发这一层当前已经从“规划阶段”进入“已实现，并已补到 `09 directory-watch + 11 directory-poll` 两条正式 API/Postman 调试样例”的阶段。
+- 第 3 批可解释完整性指标当前已接通完整首轮：`core.vision.region-component-count / region-largest-component-ratio / region-hole-count / region-gap-check / region-span-metrics / region-continuity-score` 已接通，当前已经可以把分割或检测得到的 `regions.v1` 进一步收成“碎片数量 / 主体完整度 / 空洞数量 / 是否明显断裂 / 长轴短轴跨度 / 连续性分数”这类更贴工艺解释和量测的原子指标。围绕工业边缘缺陷的第二层语义检查也开始补进来：`core.vision.edge-break-check` 当前已接通，会沿区域主方向投影后检查内部空段数量与长度，用来表达“断边 / 崩边 / 裂纹式断段”这类比一般连通域断裂更贴边缘语义的检查。
+- 工业 workflow 示例当前也已经补到更贴现场的使用说明：`industrial_single_frame_sealant_quality_gate.*`、`industrial_single_frame_segments_continuity_gate.*`、`industrial_single_frame_glue_roi_callback.*`、`industrial_single_frame_glue_roi_modbus_callback.*`、`industrial_single_frame_glue_roi_modbus_callback_strict.*`、`industrial_single_frame_glue_polygon_roi_changeover.*`、`industrial_single_frame_regions_overlay_review.*`、`industrial_single_frame_segments_overlay_review.*`、`industrial_single_frame_yoloe_text_overlay_review.*`、`industrial_single_frame_yoloe_visual_overlay_review.*`、`industrial_single_frame_sam3_semantic_overlay_review.*`、`industrial_single_frame_sam3_interactive_overlay_review.*`、`industrial_single_frame_detection_position_gate.*`、`industrial_single_frame_line_pair_measure_gate.*`、`industrial_single_frame_circle_concentricity_gate.*`、`industrial_local_directory_batch_input.*`、`industrial_local_directory_batch_segments_continuity_gate.*`、`industrial_local_directory_batch_regions_continuity_gate.*`、`industrial_local_directory_batch_detection_position_gate.*`、`industrial_local_directory_poll_detection_position_gate.*` 与 `industrial_local_directory_polling_cursor_guard.*` 已接通文档测试；其中 `segments_continuity_gate` 当前把“分割输出 `segments.v1` -> `segments-to-regions` -> 连续性规则链”这条正式闭环补通，`glue_roi_modbus_callback` 当前把“固定或动态 ROI 规则判定 -> `write-result-signals` -> JSON/CSV/HTTP fan-out”这条更贴现场结果交付的链路收成 checked-in 模板，`glue_roi_modbus_callback_strict` 则进一步把“`write-result-signals` 成功完成 -> `build_callback_payload` -> `http-post`”这条严格顺序交付链显式写到图结构里，`glue_polygon_roi_changeover` 当前把多边形 ROI 换型这层 checked-in，`regions_overlay_review` 与 `segments_overlay_review` 则把 `draw-roi / mask-overlay` 这层 checked-in 到“复核图 + result-record”主线上，分别覆盖“上游已是标准 `regions.v1`”和“上游仍是 `segments.v1` 需要先桥接”的两种现场入口，`yoloe_text_overlay_review`、`yoloe_visual_overlay_review`、`sam3_semantic_overlay_review` 与 `sam3_interactive_overlay_review` 则继续把这条复核主线直接前移到本项目自带的 YOLOE / SAM3 节点本身，分别覆盖“文本开放词汇检测”“视觉提示检测”“文本语义分割”和“交互分割”四种单帧直连使用面，`detection_position_gate` 则把“已发布 detection deployment -> detections.v1 -> regions.v1 -> presence / inside / offset 工业规则链”这条正式闭环补通，`line_pair_measure_gate` 当前把“双边线 -> 槽宽 / 平行度 / 中点距 -> OK/NG”这条传统几何量测链补成正式模板，`circle_concentricity_gate` 当前把“双圆 -> 孔径 / 同心度 / 圆度 -> OK/NG”这条圆形量测链补成正式模板，`industrial_local_directory_batch_input` 把“目录扫描 -> 批次窗口 -> 图片载入”的现场小批量输入准备样例单独收成模板，`industrial_local_directory_batch_segments_continuity_gate` 与 `industrial_local_directory_batch_regions_continuity_gate` 则把“目录批次 -> segments.v1 / regions.v1 -> 连续性规则链 -> CSV / JSON 归档”两类分割上游入口正式接到同一套批处理骨架，`industrial_local_directory_batch_detection_position_gate` 把目录批次主线正式接到“逐图检测 -> 规则判定 -> CSV 持续归档 -> 批次 JSON 汇总”的闭环，`industrial_local_directory_poll_detection_position_gate` 则把 `directory-poll` TriggerSource 标准化后的 `payload / event` 直接接进同一条检测与规则批次骨架，覆盖“固定周期目录轮询 -> 批次检测 -> batch-record / JSON / HTTP 回传”这类守护式接入，而 `industrial_local_directory_polling_cursor_guard` 则把“目录轮询守护 / cursor 落盘恢复 / 批次归档 JSON”这层独立收口。
+- 新补的 checked-in 样例 `industrial_single_frame_reference_diff_watershed_surface_gate.*` 当前也已接通文档规则校验，专门覆盖“`image-diff -> heatmap-preview -> absdiff-threshold -> watershed -> connected-components -> foreground-change-ratio / surface-uniformity-metrics -> process-decision`”这条更贴脏污、残留和连片异常的表面缺陷主线。
+- 当前仍未实现、但已经明确值得继续补的待办，现已按 `core / custom / trigger-source / output-integration` 四层收口到 [industrial-rule-node-plan.md](industrial-rule-node-plan.md) 的“未实现正式待办”一节，便于后续按层次推进，而不是继续把工业需求混成一个大列表。
+- 对更广义的工业扩展面，当前也已单独补出 [industrial-extension-node-plan.md](industrial-extension-node-plan.md)，把相机连接方式分层、PLC 协议分层、工业缺陷核心节点和 OpenCV 常用算子路线单独收口，避免继续把这些需求都挤进单帧规则文档里。
+- 该扩展规划当前也已进一步收口到更贴近实际落地的阶段边界：相机先默认实现 `USB / UVC` 一层，PLC 先默认实现 `Modbus TCP` 一层；工业缺陷 / 异常能力则拆成 `core 原子指标`、`custom.opencv 传统流程` 和后续 `custom.anomaly 深度学习模型` 三层推进，避免把完整缺陷流程直接塞进 core。
+- 相机接入这条线当前也已经从“只有规划”进入前三批正式实现：`custom_nodes/camera_usb_uvc_nodes/` 已默认启用，当前不仅有首批 `enumerate-devices / capture-frame`、第二批 `open-device / read-latest-frame / get-parameter / set-parameter / close-device`，也已补齐第三批 `start-stream / read-window`。现在已经可以把“本机 USB / UVC 相机枚举 -> 打开会话 -> 重复单帧采图 / 参数调整”以及“打开会话 -> start-stream -> read-window -> 标准 `frame-window.v1` -> 视频预览 / 时序分割链”这两条更贴现场调试的相机主线跑起来。
+- USB / UVC 相机这条线当前也已补出第一批 checked-in workflow 样例：`camera_usb_uvc_enumerate_capture_preview.*`、`camera_usb_uvc_session_single_frame_review.*` 与 `camera_usb_uvc_stream_window_preview.*` 已接通文档规则校验，分别覆盖“枚举 -> 直采预览”“open -> set/get -> 单帧采图 -> close”和“open -> start-stream -> read-window -> frame-window-preview -> close”三类最常见的现场联调入口。
+- USB / UVC 相机这条线当前也已继续前移到工业单帧主线：`industrial_single_frame_usb_uvc_detection_position_gate.*` 与 `industrial_single_frame_usb_uvc_sam3_semantic_continuity_gate.*` 已接通文档规则校验，分别覆盖“相机直采 -> 检测 -> 位置门判定 -> result-record”和“相机直采 -> SAM3 语义分割 -> 覆盖率/面积/连续性判定 -> result-record”两条现场常用闭环。
+- OpenCV pack 拆分这条线当前已完成前五轮试点：共享底座已从 `custom_nodes/opencv_basic_nodes/backend/support.py` 抽到 `custom_nodes/_opencv_shared/backend/support.py`，OpenCV custom payload 规则 也已统一收进 `custom_nodes/_opencv_shared/workflow/payload_contracts.json`；`rotation-correct / perspective-transform / affine-transform / undistort / remap / planar-transform-bridge` 已正式迁入新 pack `opencv.geometry-nodes`，`measure / caliper-edge / point-distance / point-to-line-distance / line-angle / circle-diameter / slot-width / parallelism-metrics / concentricity-metrics` 已正式迁入新 pack `opencv.measurement-nodes`，`contour / contour-filter / contour-approx / convex-hull / min-area-rect / fit-ellipse / contours-to-regions / hough-lines / hough-circles / fit-line / min-enclosing-circle` 已正式迁入新 pack `opencv.shape-nodes`，`image-diff / absdiff-threshold / connected-components / fill-holes / distance-transform / heatmap-preview / watershed / skeletonize` 已正式迁入新 pack `opencv.defect-nodes`，`template-match / orb-keypoints / orb-match / homography-estimate` 也已正式迁入新 pack `opencv.matching-nodes`。当前 `opencv_basic_nodes` 则保留预处理、渲染与桥接主线，不再继续承载几何矫正、工业量测、轮廓抽取、差异缺陷后处理或参考对位实现。`opencv_basic_nodes` 当前已覆盖 `crop / normalize / clahe / median-blur / bilateral-filter / invert / grayscale / resize / adaptive-threshold / otsu-threshold / sobel / laplacian` 这组前置预处理与边缘增强，以及 `draw-* / mask-overlay / crop-export / gallery-preview / payload-to-value` 这组调试渲染和桥接节点；`opencv.matching-nodes` 当前专门承载模板匹配、ORB 局部特征、描述子匹配和 homography 估计，并新增 `local-features.v1 / feature-matches.v1 / planar-transform.v1` 三类共享 payload 规则；`opencv.geometry-nodes` 现在则继续补齐 `planar-transform.v1 -> image-ref.v1 / roi.v1` 这层受控桥接；`opencv.defect-nodes` 当前则已开始把“差异强度图 -> 伪彩热力图调试预览”“粘连缺陷块的 watershed 拆分”和“不依赖额外第三方包的骨架化”一并收进同一包边界。使用面当前已由 checked-in 样例 `industrial_single_frame_calibrated_template_edge_gate.*` 收口模板匹配定位链，也已由 checked-in 样例 `industrial_single_frame_calibrated_orb_homography_gate.*` 收口“本地 JSON 标定矫正 -> ORB 特征提取 -> 描述子匹配 -> homography 估计 -> bridge warp / ROI 对位 -> 工业规则判定”这条参考对位链；新补的 checked-in 样例 `industrial_single_frame_calibrated_orb_bridged_template_edge_gate.*` 则继续把这层 bridge 能力真正接到 `template-match / caliper-edge / ROI 规则链 / process-decision` 的下游工业判定主线；同时保留定向运行时回归覆盖 ORB ROI 提取和 `orb-keypoints -> orb-match -> homography-estimate` 的节点级行为，继续验证新 pack 拆分后不破坏既有工业主线。
+- 传统几何结果往工业量测和规则层也继续收了一层：`custom.opencv.measure / caliper-edge / point-distance / point-to-line-distance / line-angle / circle-diameter / parallelism-metrics / concentricity-metrics / slot-width` 当前已接通，并且现在统一归口到 `opencv.measurement-nodes`；这些节点会分别把 `contours.v1 / lines.v1 / value.v1 / circles.v1` 直接收成可继续进入 `threshold-check / range-check / process-decision` 的结构化几何量测结果。`core.vision.edge-break-check / linearity-check / circularity-check / multi-part-presence-check / pair-offset-check / reference-mark-align-check / spacing-check / sequence-order-check` 当前也已接通，并保持只依赖标准 `regions.v1`，用于把分割、轮廓、连通域、边缘型区域或多部件检测结果统一收成“是否存在明显断边 / 是否足够直 / 是否足够圆 / 是否满足多零件装配存在性 / 是否满足双零件相对装配偏移 / 是否满足参考标记对位 / 是否满足孔距、销距或边间距 / 是否满足左右或上下方向排列顺序”的工业语义判定。当前这一组装配节点的 selector 也已支持 `leftmost / rightmost / topmost / bottommost` 这类空间排序策略，`sequence-order-check` 还能按顺序逐项排除已选目标，便于直接处理同类多目标的顺序检查。
+- 缺陷语义层当前也继续往前补了一层：`core.vision.defect-cluster-count / defect-largest-cluster-ratio / defect-density / edge-profile-gap-check / hole-pattern-check / corner-missing-check` 已接通。其中前三者统一复用 `regions.v1 + 可选 roi.v1`，把差异或缺陷区域进一步收成“聚类数量 / 最大聚类占总缺陷面积比例 / 数量密度与面积密度”这类更贴现场的表面异常指标；`edge-profile-gap-check` 则在 `edge-break-check` 之外补了显式 `horizontal / vertical` 方向 profile 缺口语义，更适合工位方向固定的边线、胶线和焊缝检查；`hole-pattern-check` 当前可直接检查孔列数量、节距和离轴偏差；`corner-missing-check` 当前则把轴对齐零件的局部缺角检查收成了更直白的角点填充率判定。
+- 几何量测与区域调试面当前也已补到第一轮完整可用：`custom.opencv.draw-contours / draw-lines / draw-circles / draw-roi / draw-measurements / mask-overlay` 已接通，当前已经可以把 `contours.v1 / lines.v1 / circles.v1 / roi.v1 / regions.v1` 以及量测 summary 直接画回原图，便于现场复核槽宽、平行度、孔径、同心度、检测范围和分割缺陷覆盖层，而不需要只看数值结果猜测哪里出了问题。
+- workflow 与 trigger-source 直接依赖这层当前也已经收稳：`requirements.txt` 已显式纳入 `httpx2` 与 `watchfiles`，`fastapi.testclient / starlette.testclient` 的已知弃用 warning 已按当前环境确认消失，不再依赖隐式安装状态。
+- `core.vision.reference-diff-metrics / foreground-change-ratio / surface-uniformity-metrics / foreign-object-check / surface-uniformity-check` 当前也已接通：现在已经可以把参考图差异前景按 `image` 或 `ROI` 作用域汇总成 `总差异面积 / 占比 / 最大异常块 / 平均异常块 / 有效区域数量`，其中 `foreground-change-ratio` 可直接把前景变化占比收成单值输出，便于继续接 `threshold-check / range-check`，`surface-uniformity-metrics` 则会把覆盖率、聚类密度、聚集度和重叠度收成更贴表面异常场景的指标对象，而 `foreign-object-check` 与 `surface-uniformity-check` 则进一步把这些统计收成更贴工业现场语义的 OK/NG 判定。
 - 当前代码形态仍然是“模块化单体 + 本地队列 + 本地对象存储 + 独立 deployment 子进程”。下一步重点应转向拓扑收敛、运行时硬化和平台泛化，而不是继续补 YOLOX 基础闭环缺口。
+
+## 本轮更新（P0 + P1-8 + P3-14 + P3-15）已落地事项
+
+### P0 修复
+
+- RF-DETR detection 已并入统一 detection 训练/转换控制面；`/models/detection/...` 正式主链现在覆盖 `yolox / yolov8 / yolo11 / yolo26 / rfdetr`。
+- RF-DETR segmentation 已接通 project-native 模型、训练、`onnx / onnx-optimized / openvino-ir / tensorrt-engine` 转换、DeploymentInstance 主链与端到端 smoke；当前正式任务链已验证 `training -> conversion -> deployment -> onnxruntime infer`，并已在真实工具链环境下补通 `training -> conversion(openvino-ir) -> deployment(openvino) -> infer` 与 `training -> conversion(tensorrt-engine) -> deployment(tensorrt) -> infer` 两条 smoke，运行时已补到 `pytorch / onnxruntime / openvino / tensorrt` 四后端 session。
+- 非 Detection 训练管理 API 已补齐：classification/segmentation/pose/obb 各有 list/detail/save/pause/terminate/resume/delete 7 个端点。
+- OBB 训练损失已从占位 MSE 替换为完整实现：probiou + 旋转框 TAL + DFL + 角度损失（`backend/service/application/models/obb_loss.py`）。
+- Pose 训练损失已从占位 MSE 替换为完整实现：detection 损失 + 关键点位置损失 + 可见性 mask（`backend/service/application/models/pose_loss.py`）。
+- model_scale 命名统一：全部 YOLO11/YOLO26 配置和默认值从 `"n"` 改为 `"nano"`。
+- workflow core nodes 已新增 SAHI 大图切片推理节点 `core.model.sahi-inference`；当前节点复用已发布 detection deployment 主链完成切片推理、坐标回映射和 `nms / nmm / none` 三种重叠合并，不绕开 DeploymentInstance 与 PublishedInferenceGateway 正式边界。
+- `YOLOE` custom node 当前已接通 project-native runtime：`prompt-free-detect`、`text-prompt-detect`、`visual-prompt-detect` 都直接读取本地 `yoloe` 预训练权重，输出 `detections.v1 + regions.v1`；`text-prompt` 支持按 `prompt_id` 聚合 positive/negative 文本，`visual-prompt` 支持 `box / point / polygon / mask` 以及同一 `prompt_id` 下混合视觉提示。
+- `SAM3` custom node 当前已接通 project-native runtime：`interactive-segment` 直接读取本地 `sam3.pt`，支持 `box / point / polygon / mask` 四类几何提示；`semantic-segment` 直接读取本地 `sam3.pt` 的 detector 分支，支持按 `prompt_id` 聚合 positive/negative 文本提示并输出 `regions.v1`；`video-interactive-segment` 当前直接复用 `frame-window.v1` 与单图 interactive runtime，按 `prompt_id` 稳定映射 `track_id`，默认走 `memory-prototype-state` 并输出 `tracks.v1`，也已提供基于跨帧 token memory 的 `memory-attention-tracker` 可选模式；`video-semantic-segment` 当前会把共享 `text-prompts.v1` 跨帧执行在 `frame-window.v1` 上，并继续以 `prompt_id` 作为稳定 `track_id` 输出 `tracks.v1`。更强的 `stateful-semantic-propagation` 与后续 semantic memory 模式目前仍保留为现场明确需要时再实现的预留能力。
+- `SAM3 video-interactive-segment` 当前已经补了三类定向回归：更长窗口、更大位移和更多对象数；同时也已补 `memory-attention-tracker` 的常规回归、真实本地 smoke、显式视频闭环 integration，以及长窗口/多对象复合场景 benchmark。轻量逻辑回归放在 `tests/`，真实本地 `sam3.pt` 的视频链 smoke 与 benchmark 放在 `tests/integration/`，继续保持显式执行。
+- 视频 workflow 的通用结果节点当前已补到 `core.vision.tracks-filter`、`core.vision.tracks-to-regions`、`core.io.video-overlay-render` 和 `core.io.video-save`，已经可以先在通用层完成时序结果筛选、按帧拆分、结果渲染和重新编码保存。
+- 视频 workflow 的通用预览与交互辅助节点当前已补到 `core.io.frame-window-preview`、`core.output.video-body` 与 `core.logic.value-field-extract`；配合既有 `core.logic.payload-to-value`、`core.io.table-preview`、`core.io.value-preview`，当前已经能把视频帧窗口、跟踪结果、分帧 regions 和最终保存视频分别接到 workflow editor 的缩略预览、调试表格和正式响应播放器。
+
+### P1-8 Bootstrap 重构
+
+- `build_runtime` 中 5 种 task_type 的 deployment supervisor 构建从 ~150 行重复代码重构为参数化工厂函数。
+- `start_runtime`/`stop_runtime` 从逐字段 if-else 改为 `iter_all_deployment_supervisors()` 迭代。
+
+### P3-14 非 Detection 转换路由修复
+
+- classification/segmentation/pose/obb 转换路由从使用缺少 planner 的基类改为使用正确的模型专属服务类（`SqlAlchemyYoloV8/11/26ConversionTaskService`）。
+
+### P3-15 数据集导入删除 API
+
+- 新增 `DELETE /api/v1/datasets/imports/{dataset_import_id}` 端点，支持删除 completed/failed 状态的导入记录并清理关联文件。
 
 ## 当前整体框架
 
@@ -31,21 +99,44 @@
 - FastAPI 应用入口位于 `backend/service/api/app.py`，负责装配 settings、数据库会话、本地对象存储、本地队列、中间件、异常处理、REST 路由和 WebSocket 路由。
 - backend-service settings 位于 `backend/service/settings.py`，当前已经统一管理 CORS、auth mode、本地 auth TTL、auth provider 目录、静态 token 和 Project 目录配置。
 - 启动编排位于 `backend/service/api/bootstrap.py`，负责在应用生命周期内初始化 SessionFactory、LocalDatasetStorage、LocalFileQueueBackend 和 deployment process supervisor。
-- REST v1 路由汇总位于 `backend/service/api/rest/v1/router.py`，当前已经挂载 auth、system、projects、workflows、workflow runtime、datasets、dataset-exports、models、yolox-training-tasks、validation-sessions、conversion-tasks、evaluation-tasks、deployment-instances、inference-tasks 和 tasks。
+- REST v1 路由汇总位于 `backend/service/api/rest/v1/router.py`，当前已经挂载 auth、system、projects、workflows、workflow runtime、datasets、dataset-exports、models、五类训练任务控制面、五类 validation session 控制面、五类 conversion 控制面、统一 deployment 与 inference 控制面、evaluation 和 tasks；公开入口当前已经统一收口到 `/api/v1/models/{task_type}/...` 这条主线，不再把历史 `yolox-*` 路由名当成平台总览描述。
+- conversion 公开接口当前已经补齐 detection 与 non-detection 的 create/list/detail/result：detection 仍保留按目标格式拆分的创建入口，classification / segmentation / pose / obb 则统一使用 `source_model_version_id + target_formats` 创建，并在 list/detail/result 中按显式 `task_type` 过滤，避免 YOLOv8 / YOLO11 / YOLO26 共享 task_kind 时串单。
 - REST v1 列表分页辅助函数位于 `backend/service/api/rest/v1/pagination.py`，当前用于 projects、workflow templates、template versions、applications、execution-policies、preview-runs、app-runtimes 和 trigger-sources。
 - WebSocket 路由位于 `backend/service/api/ws/router.py`，当前已经公开 auth、system、tasks、workflow preview-runs、workflow runs、workflow app-runtimes、deployments 和 projects 聚合流入口。
+
+### custom node 扩展面
+
+- `custom_nodes/yoloe_open_vocab_nodes/` 当前已经具备完整 pack 骨架、catalog、project-native runtime、真实本地资产 smoke 和 grouped prompt summary；pack `metadata.phase` 已收口到 `implemented`，并默认启用。
+- `custom_nodes/sam3_segment_nodes/` 当前已经具备完整 pack 骨架、catalog、project-native runtime、真实本地资产 smoke、共享后处理增强和第一阶段视频多帧节点；pack 与节点定义的 `metadata.phase` 都已收口到 `implemented`，并默认启用。
+- `custom_nodes/camera_usb_uvc_nodes/` 当前已经作为第一层相机 custom node pack 落地，默认启用；对外节点面当前已收口为 `enumerate-devices / capture-frame / open-device / start-stream / read-window / read-latest-frame / get-parameter / set-parameter / close-device`，其中 `open-device -> read-latest-frame -> close-device` 负责会话型重复采图，`start-stream -> read-window` 负责后台采流缓冲与标准 `frame-window.v1` 输出，`get-parameter / set-parameter` 负责基础分辨率、帧率和常用 UVC 参数调试。当前实现基于项目内 `OpenCV VideoCapture` 适配层，节点已支持运行时 request 覆盖、标准 `image-ref.v1` / `frame-window.v1` 输出、`camera-session.v1` 会话 payload、流状态摘要以及会话内存缓冲复用。
+- `custom_nodes/plc_modbus_tcp_nodes/` 当前已经作为第一层 PLC custom node pack 落地，默认启用；对外节点面已收口为 `read-value / write-value / wait-condition / write-result-signals` 四个通用节点，直接按 `0xxxx / 1xxxx / 3xxxx / 4xxxx` 地址语义覆盖工业现场最基础的 Modbus TCP 主动读写、等待条件与结果回写主线。当前 `data_type` 已覆盖 `bool / uint8 / int8 / uint16 / int16 / uint32 / int32 / uint64 / int64 / float / double / string`，`wait-condition` 还已支持 `wait_timeout_seconds = null` 表示无限等待。
+- `write-result-signals` 当前已经接通 `result-record.v1 / alarm-record.v1 / request(value.v1)` 三路输入，第一阶段支持把 `OK / NG / alarm_active / result_code` 这类结果通过 `signal_mappings` 显式映射到 Modbus TCP 的 coils 或 holding registers，并支持 `request.signal_values` 运行时覆盖、`disabled_signals` 临时禁用、`skip_when_missing` 缺失跳过和 `continue_on_error` 受控继续。
+- `custom_nodes/output_mes_http_nodes/` 当前也已作为第一层结果交付 custom node pack 落地，默认启用；对外节点面当前先收口为 `custom.output.mes-http-post` 一个受限节点，不把这层继续塞回 `core.output.*`。当前第一阶段已支持 `result-record.v1 / workflow-result.v1 / summary(value.v1)` 三选一主业务输入，外加 `request(value.v1)` 站点上下文补充；参数面当前收口为 `POST / PUT`、`auth_kind(none / bearer_token / header_static)`、`query_template / query_mappings`、`body_template / field_mappings`、`on_missing(error / skip / null)` 和 `prepared_request` 调试摘要，不做任意模板执行、复杂签名、多步登录或项目专有接口猜测。
+- `custom_nodes/output_local_db_nodes/` 当前也已作为第一层结果归档 custom node pack 落地，默认启用；对外节点面当前先收口为 `custom.output.local-db-upsert` 一个受限节点，不把这层做成可执行 SQL 入口。当前第一阶段已支持 `result-record.v1 / workflow-result.v1 / summary(value.v1)` 三选一主业务输入，外加 `request(value.v1)` 站点上下文补充；参数面当前收口为 `database_url / table_name / key_columns / row_template / column_mappings / static_fields / update_columns / on_missing` 和 `prepared_row` 调试输出，运行时按 `SQLAlchemy 2 + MetaData/Table 受控 reflection + 单表单行 upsert` 实现。当前定向测试已覆盖 pack loader、checked-in catalog 和 SQLite 单表单行 upsert；MySQL / PostgreSQL 路径已在 runtime 中预留，但现场启用前仍需要对应 DBAPI 驱动显式安装。
+- `backend/service/infrastructure/integrations/modbus/` 当前已经补出共享 Modbus TCP transport，并已接入第一阶段 `plc-register` TriggerSource adapter；实现上不再把低层 client 只锁死在 custom node pack 内部。当前 TriggerSource 只支持 `modbus-tcp + polling + async submit`，`enable` 在没有可用 adapter 时也会显式失败并写回 `observed_state = failed`，避免停留在“已启用但未运行”的模糊状态。
+- `plc-register` 当前还已经补出一条 checked-in 的正式样例链：`docs/examples/workflows/plc_register_modbus_tcp_async_result_record.*` 与 `docs/api/examples/workflows/08-plc-register-modbus-tcp-async-result-record/` 把 `plc-register -> workflow app runtime -> result-record -> http-post` 串成了完整示例，并把当前 `payload / event -> response-body.v1 -> payload-to-value` 的输入边界一并写入文档。
+- PLC 这条线当前还已单独整理出一份更短的现场清单：[plc-modbus-field-debug-checklist.md](plc-modbus-field-debug-checklist.md)。这份文档只回答三件事：当前已经实现了什么、当前还没实现什么、现场联调建议先按什么顺序跑。
+- `YOLOE / SAM3` 在 workflow app 侧的接入顺序、`metadata.phase` / `enabledByDefault` 解释和现场排障路径，当前已经单独整理到 [yoloe-sam3-workflow-app-operations.md](yoloe-sam3-workflow-app-operations.md)。
+- `YOLOE / SAM3` 预训练资产统一从 `data/files/models/pretrained/` 读取：`YOLOE` 使用本地 segmentation 权重与 `text-encoders` 资产，`SAM3` 使用本地 `sam3.pt`。
+- 当前 `YOLOE / SAM3` 都已经补了定向稳定性回归：多 prompt 组合、本地资产 smoke、异常预训练目录、空提示/非法提示、CPU 会话缓存复用。
+- 当前 `YOLOE / SAM3` 已在目标机器上补了显式 CPU/GPU soak / benchmark 基线与 1 轮更长时长/更大图尺寸扩展 soak；`SAM3 video-interactive memory-attention` 也已补 1 轮长窗口/多对象复合场景 benchmark。结果记录见 [yoloe-sam3-soak-baseline.md](yoloe-sam3-soak-baseline.md)；相关测试文件位于 `tests/integration/`，默认不参与常规收集。
+- 当前 `YOLOE / SAM3` 已补显式 `WorkflowAppRuntime` 接入 smoke：测试会临时把 pack 置为 `enabledByDefault = false`，再覆盖 `disable -> enable -> create -> start -> invoke -> stop` 最小 runtime 闭环；相关测试文件位于 `tests/integration/test_yoloe_sam3_workflow_app_runtime_smoke.py`。
+- `custom_nodes/plc_modbus_tcp_nodes/` 当前 pack 已切到项目内最小 Modbus TCP runtime，不依赖 `projectsrc/` 目录或额外第三方 Python 包直接运行；当前还没有继续扩到 S7 / MC / OPC UA，也没有把 PLC 轮询守护混进普通 workflow 节点。
+- `docs/examples/workflows/` 当前也已补五条更贴现场的 Modbus 样例：`plc_modbus_wait_status_word_ready_mask.*` 用 `bitmask_all_set` 等待 ready 状态字全部置位，`plc_modbus_wait_status_word_alarm_mask.*` 用 `bitmask_any_set` 等待任一报警位命中，`plc_modbus_wait_ready_ack_callback.*` 把 `wait-condition -> write-value -> result-record -> http-post` 串成一条更贴现场的握手回传闭环，`industrial_single_frame_glue_roi_modbus_callback.*` 把工业单帧规则判定直接前移到 `write-result-signals`，收成“规则链 -> PLC 回写 -> JSON/CSV/HTTP”这条结果交付模板，而 `industrial_single_frame_glue_roi_modbus_callback_strict.*` 则进一步提供“PLC 回写先完成，再组装 callback payload，再发 HTTP”的严格顺序版模板。
 
 ### 后台执行与 runtime 面
 
 - 队列消费者分别落在 `backend/workers/datasets/`、`backend/workers/training/`、`backend/workers/conversion/`、`backend/workers/evaluation/` 和 `backend/workers/inference/`。
 - 当前独立 worker 已经支持通过 `config/backend-worker.json` 的 `task_manager.enabled_consumer_kinds` 统一装配六类消费者，也支持通过 `runtimes/manifests/worker-profiles/*.json` 以单一职责 profile 启动独立 worker。
-- deployment 运行时位于 `backend/service/application/runtime/`，当前由 `yolox_deployment_process_supervisor.py` 管理父进程监督、由 `yolox_deployment_process_worker.py` 管理子进程内模型会话、warmup、keep_warm 和健康状态。
-- runtime 适配与统一预测入口位于 `yolox_predictor.py`、`model_runtime.py`、`yolox_inference_runtime_pool.py` 和 `yolox_runtime_target.py`，用于把 pytorch、onnxruntime、openvino、tensorrt 收敛为统一推理契约。
+- 当前 `worker-profiles` 也已经按真实能力收平：`training` 覆盖 `yolox / yolov8 / yolo11 / yolo26 / rfdetr` detection 训练以及 `classification / segmentation / pose / obb` 训练；`conversion` 覆盖 `yolox / yolov8 / yolo11 / yolo26 / rfdetr`；`evaluation` 与 `inference` 都已经覆盖 `detection / classification / segmentation / pose / obb` 五类 task，不再停留在 detection-only 描述。
+- deployment 运行时位于 `backend/service/application/runtime/`；当前通用外壳已经收口到 `deployment_process_supervisor.py`、`deployment_process_worker.py`、`deployment_runtime_pool.py` 与 `runtime_target.py`，职责是平台级 deployment process supervisor / worker，而不是只服务 YOLOX。
+- runtime 适配与统一预测入口当前已按任务类型拆开：`detection_model_runtime.py`、`classification_model_runtime.py`、`segmentation_model_runtime.py`、`pose_model_runtime.py` 和 `obb_model_runtime.py` 负责统一 runtime loader 注册；`yolox / yolov8 / yolo11 / yolo26 / rfdetr` 各自的 `*_predictor.py` 与 `*_runtime_target.py` 负责模型差异；`deployment_runtime_pool.py` 负责 deployment 子进程内会话池与健康状态汇总。
 
 ### 关键对象与执行边界
 
 - DatasetExport 是训练和评估的正式执行边界，不直接让训练或评估逻辑读取原始 DatasetVersion 目录结构。
 - TrainingTask 负责把训练结果登记为 ModelVersion，并关联 checkpoint、summary、metrics、labels 等输出文件。
+- `/models/detection/training-tasks` 当前已经成为 detection 训练的正式公开主链，统一覆盖 `yolox / yolov8 / yolo11 / yolo26 / rfdetr` 五类模型的创建、查询、save、pause、resume、terminate 和输出文件读取。
 - ValidationSession 用于训练后的单图人工验证，解决“模型看起来是否正确”的快速抽样检查。
 - EvaluationTask 负责基于 DatasetExport 做数据集级回归评估，输出 report、detections 和可选 result-package。
 - ConversionTask 负责把 ModelVersion 转成一个或多个 ModelBuild，形成正式部署输入。
@@ -57,7 +148,7 @@
 ### 训练、验证与评估
 
 - 当前真实训练链路基于 PyTorch checkpoint，训练期 validation 已在训练任务内部接通。
-- 当前 `validation-sessions` 用于训练后的人工单图验证，沿用 PyTorch 模型版本和统一预测结果结构。
+- 当前正式 `/models/{task_type}/validation-sessions` 已覆盖 `detection / classification / segmentation / pose / obb` 五类任务，并统一支持 `pytorch / onnxruntime / openvino / tensorrt` 四类 runtime backend；session 持久化已显式保存 `model_build_id` 与 `runtime_artifact_*` 字段，旧 session 数据仍可回退到 checkpoint 语义读取。
 - 当前 `evaluation-tasks` 用于数据集级回归评估，最小执行边界为 `coco-detection-v1` DatasetExport。
 
 ### 转换输出
@@ -65,6 +156,7 @@
 - 当前 conversion 已真实接通 `onnx`、`onnx-optimized`、`openvino-ir` 和 `tensorrt-engine` 四类目标。
 - 当前 OpenVINO IR 创建接口按 `fp32` / `fp16` 拆分。
 - 当前 TensorRT engine 创建接口按 `fp32` / `fp16` 拆分，并把 build precision 与 TensorRT 版本回写到 `ModelBuild.metadata`。
+- 当前 classification / segmentation / pose / obb 的 conversion API 已补齐 list/detail/result 和 pending result 读取；segmentation conversion 额外支持 RF-DETR，其余 non-detection conversion 支持 YOLOv8 / YOLO11 / YOLO26。
 
 ### 部署运行时
 
@@ -73,6 +165,21 @@
 - 当前 deployment 已真实接通 `openvino fp32 auto/cpu/gpu/npu + fp16 gpu/npu`。
 - 当前 deployment 已真实接通 `tensorrt fp32/fp16 cuda`。
 - 当前每个 DeploymentInstance 在 sync 和 async 两个通道上各自拥有独立的 deployment 子进程监督单元，不共享会话池。
+
+### 本轮轻量 smoke matrix
+
+- 当前已经显式复跑一轮按 `model_type × task_type` 收口的轻量 smoke matrix：`tests/test_model_profiles.py`、`tests/test_yolov8_detection_model.py`、`tests/test_yolox_inference_tasks_api.py`、`tests/test_yolo_primary_classification_chain.py`、`tests/test_yolo_primary_segmentation_chain.py`、`tests/test_yolo_primary_pose_chain.py`、`tests/test_yolo_primary_obb_chain.py`、`tests/test_rfdetr_chain.py`、`tests/test_non_detection_training_result_registration.py`、`tests/test_non_detection_inference_api.py`、`tests/test_validation_runtime_backend_support.py`。
+- 这轮矩阵结果当前为 `78 passed`，覆盖了 detection、classification、segmentation、pose、obb 五类任务，以及 `yolox / yolov8 / yolo11 / yolo26 / rfdetr` 的当前主链组合。
+- 这轮回归同时确认了 `/models/{task_type}` 已经在控制面收平：non-detection 当前已经具备 task-native 的同步 `/infer`、异步任务创建/详情/结果读取，以及 deployment `sync/async` 的 `start / status / stop / warmup / reset` 最小动作；`tests/test_non_detection_inference_api.py` 当前已经显式覆盖 `classification / segmentation / pose / obb` 四类任务的 async 前检查、sync `/infer`、async result round-trip 和 deployment 控制基础链。
+- 在这轮基础回归之外，当前还已经补了一条显式 non-detection runtime backend matrix：`tests/integration/test_non_detection_runtime_backend_smoke_matrix.py`。这条 integration 已在 2026-06-12 真实跑通 `classification+yolo11`、`segmentation+yolo26`、`pose+yolov8`、`obb+yolo26` 在 `onnxruntime / openvino / tensorrt` 三类 runtime backend 下的 `conversion -> runtime predict` 闭环，结果为 `12 passed`。
+- 浏览器前端当前也已把 models / deployments / inference 三个调试页从 detection-only 路径改为显式 `task_type` 选择，并要求相关创建表单显式填写 `model_type`；训练任务详情页也已切到 `/models/{task_type}/training-tasks/{task_id}` 前端路由。当前 `output-files` 和 `register-model-version` 仍只在 detection 训练详情中显示，因为这两个调试端点当前只在 detection 训练控制面公开。本轮已通过 `frontend/web-ui` 的 `npm run build`。
+
+### custom node 运行时
+
+- `YOLOE` 和 `SAM3` 当前都不走 `DeploymentInstance` 主链，而是在 `WorkflowAppRuntime` 进程内按需首次加载并缓存；当前缓存 key 已稳定覆盖 checkpoint、device 和 precision。
+- `YOLOE` 文本提示默认复用本地 `mobileclip_blt.ts + bpe_simple_vocab_16e6.txt.gz`；`SAM3 semantic` 复用项目内 tokenizer 代码与 checkpoint 自带语言骨干，不依赖在线下载或 Hugging Face snapshot。
+- 当前 `YOLOE / SAM3` 的 smoke 已覆盖本地 project-native 推理链、输出 contract、缓存复用，以及 `WorkflowAppRuntime` 的 `disable -> enable -> invoke` 最小闭环；当前已经进入默认启用，但仍未进入长期发布服务或多机部署形态收口。
+- 文档、示例和 Postman 当前也已和代码主线同步校验：`tests/test_workflow_example_documents.py` 负责 checked-in workflow 源 JSON 规则，`tests/test_workflow_api_document_examples.py` 负责 API 请求体与 Postman 目录顺序规则；工业规则、OpenCV、Modbus、YOLOE 和 SAM3 的节点行为则分别由对应 `tests/test_*` 定向回归覆盖。
 
 ## 当前实现细节中需要明确的事实
 
@@ -84,7 +191,8 @@
 - 当前 app runtime snapshot 根目录已经稳定到 `workflows/runtime/app-runtimes/{workflow_runtime_id}/`；application、template 和 execution-policy snapshot 都按这个根目录组织，供 runtime worker 和后续发布形态复用。
 - 当前仓库已经提供 `backend.maintenance.main`、Python launchers、bat/sh wrapper、worker profile manifest，以及 `assemble-release` 命令来生成单一 `full` 发行目录。
 - 当前 release 组装会复制完整项目代码和仓库根目录的 `requirements.txt`，不做源码裁剪，也不再维护多套运行时依赖配置。
-- 当前真正还未落地的是 bundled Python 二进制和 site-packages 本体；发行目录里的 `python/` 只会被创建为空目录，后续由手工复制填充。
+- 当前标准 maintenance 配置已经接通前端 dist 目录；`assemble-release` 会复制 `frontend/web-ui/dist/` 到发行目录里的 `frontend/`，补齐 `runtime-config.json`，并在覆盖发布时保留现有 `python/` 目录。
+- 当前 `assemble-release` 也已把 `runtimes/third_party/ffmpeg/` 复制到发行目录里的 `tools/ffmpeg/`，`validate-layout` 现已把这层一并纳入发布目录检查。
 
 ## 下一步建议
 
@@ -95,15 +203,16 @@
 
 ### 2. 补强运行时回归与 benchmark
 
-- 为 pytorch、onnxruntime、openvino、tensorrt 的已支持组合补齐最小 smoke test、精度回归和时延基线。
+- 在当前 non-detection runtime backend matrix 已跑通后，下一步更值得继续补的是长期 soak、显存/内存基线和更贴现场组合的 benchmark，而不是再回到最小链路可用性验证。
 - 把 conversion report、evaluation report 与 deployment benchmark 的字段进一步收敛成可比较、可回滚的统一结构。
 
-### 3. 从 YOLOX 闭环走向平台能力
+### 3. 继续压缩遗留 YOLOX 命名与平台外壳
 
-- 以现有 YOLOX 链路为样板，继续抽象 `ModelRuntime`、`TrainingBackend`、`ConversionBackend` 和节点扩展边界，让 YOLOX 成为平台里的第一个完整实现，而不是唯一实现。
-- 把更多 runtime 相关差异从具体路由和 YOLOX 细节里继续抽离到稳定接口。
+- 当前平台已经不是“YOLOX 之外都未接入”的阶段，后续重点应转向继续压缩遗留 `yolox_*` 文件名、helper 名和 专用路由带来的理解噪声。
+- 把更多 runtime、deployment 与 workflow service node 差异继续抽离到稳定接口，让现有多模型主链在命名、目录和文档上也与真实实现一致。
 
-### 4. 完成工程化交付面
+### 4. 继续硬化工程化交付面
 
-- 把同目录 Python 运行时、前端构建产物和 `custom_nodes` 资产真正纳入 `assemble-release`，让 `release/full/` 能直接成为完整可交付目录。
-- 补充运行日志、指标、排障和部署手册，让已完成的链路能够稳定交付给 `full` 发布目录及其后续手工派生变体。
+- 当前 `assemble-release` 已把同目录 Python 运行时占位/回迁、前端构建产物、`custom_nodes` 资产和 `ffmpeg/ffprobe` 工具目录纳入 `release/full/`。
+- 2026-06-12 已完成一轮 `release/full` 基础目标机验收：重新执行 `assemble-release --profile-id full --release-root .\release --force` 后，发布目录保留现有 `python/`，`validate-layout` 通过，发布目录 Python 可正常 import `torch / onnxruntime / openvino / tensorrt / cuda`，`start_amvision_full.py` 一键启动可拉起 `backend-service` 和 6 个 worker profile，`/api/v1/system/health`、`/docs` 与 OpenAPI 新增 non-detection conversion result 路由均可访问，`stop-amvision-full.bat` 可清理运行状态文件。
+- 下一步重点应转向发布目录的更长时间 soak、资源占用记录、日志/指标/排障补充，以及 `full` 目录向现场派生变体时的裁剪规范。

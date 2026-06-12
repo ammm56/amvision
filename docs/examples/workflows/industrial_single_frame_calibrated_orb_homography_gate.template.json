@@ -1,0 +1,875 @@
+{
+  "format_id": "amvision.workflow-graph-template.v1",
+  "template_id": "industrial-single-frame-calibrated-orb-homography-gate-template",
+  "template_version": "1.0.0",
+  "display_name": "Industrial Single Frame Calibrated ORB Homography Gate",
+  "description": "面向工业单帧现场的本地标定 ORB 参考对位样例。输入本地图像路径、参考图路径、本地畸变 JSON 路径和本地 remap JSON 路径；先对当前图和参考图执行 undistort/remap，再在同一 ROI 内提取 ORB 特征、执行描述子匹配和 homography 估计，最后按 inlier 数、inlier ratio 和 reprojection error 收成 OK/NG、报警对象和本地归档摘要。",
+  "nodes": [
+    {
+      "node_id": "request_image_path_input",
+      "node_type_id": "core.io.template-input.value",
+      "parameters": {}
+    },
+    {
+      "node_id": "request_reference_image_path_input",
+      "node_type_id": "core.io.template-input.value",
+      "parameters": {}
+    },
+    {
+      "node_id": "request_undistort_config_path_input",
+      "node_type_id": "core.io.template-input.value",
+      "parameters": {}
+    },
+    {
+      "node_id": "request_remap_mapping_path_input",
+      "node_type_id": "core.io.template-input.value",
+      "parameters": {}
+    },
+    {
+      "node_id": "load_image",
+      "node_type_id": "core.io.image-load-local",
+      "parameters": {}
+    },
+    {
+      "node_id": "load_reference_image",
+      "node_type_id": "core.io.image-load-local",
+      "parameters": {}
+    },
+    {
+      "node_id": "load_undistort_config",
+      "node_type_id": "core.io.json-load-local",
+      "parameters": {}
+    },
+    {
+      "node_id": "load_remap_mapping",
+      "node_type_id": "core.io.json-load-local",
+      "parameters": {}
+    },
+    {
+      "node_id": "undistort_current",
+      "node_type_id": "custom.opencv.undistort",
+      "parameters": {
+        "use_optimal_new_camera_matrix": true,
+        "alpha": 0.0,
+        "crop_to_valid_roi": false
+      }
+    },
+    {
+      "node_id": "undistort_reference",
+      "node_type_id": "custom.opencv.undistort",
+      "parameters": {
+        "use_optimal_new_camera_matrix": true,
+        "alpha": 0.0,
+        "crop_to_valid_roi": false
+      }
+    },
+    {
+      "node_id": "remap_current",
+      "node_type_id": "custom.opencv.remap",
+      "parameters": {
+        "interpolation": "linear",
+        "border_mode": "constant",
+        "border_value": 0
+      }
+    },
+    {
+      "node_id": "remap_reference",
+      "node_type_id": "custom.opencv.remap",
+      "parameters": {
+        "interpolation": "linear",
+        "border_mode": "constant",
+        "border_value": 0
+      }
+    },
+    {
+      "node_id": "create_roi",
+      "node_type_id": "core.vision.roi-create",
+      "parameters": {
+        "roi_kind": "bbox",
+        "roi_id": "alignment-roi",
+        "display_name": "Alignment ROI",
+        "bbox_xyxy": [
+          220,
+          140,
+          1060,
+          660
+        ]
+      }
+    },
+    {
+      "node_id": "orb_current",
+      "node_type_id": "custom.opencv.orb-keypoints",
+      "parameters": {
+        "max_features": 700,
+        "scale_factor": 1.2,
+        "level_count": 8,
+        "edge_threshold": 31,
+        "patch_size": 31,
+        "fast_threshold": 20,
+        "use_roi_mask": true,
+        "feature_id_prefix": "cur"
+      }
+    },
+    {
+      "node_id": "orb_reference",
+      "node_type_id": "custom.opencv.orb-keypoints",
+      "parameters": {
+        "max_features": 700,
+        "scale_factor": 1.2,
+        "level_count": 8,
+        "edge_threshold": 31,
+        "patch_size": 31,
+        "fast_threshold": 20,
+        "use_roi_mask": true,
+        "feature_id_prefix": "ref"
+      }
+    },
+    {
+      "node_id": "orb_match",
+      "node_type_id": "custom.opencv.orb-match",
+      "parameters": {
+        "cross_check": false,
+        "ratio_test_threshold": 0.82,
+        "max_matches": 120
+      }
+    },
+    {
+      "node_id": "homography_estimate",
+      "node_type_id": "custom.opencv.homography-estimate",
+      "parameters": {
+        "method": "ransac",
+        "ransac_reprojection_threshold": 4.0,
+        "confidence": 0.995,
+        "max_iters": 2000,
+        "min_match_count": 12,
+        "include_inverse_matrix": true
+      }
+    },
+    {
+      "node_id": "bridge_current_to_reference",
+      "node_type_id": "custom.opencv.planar-transform-bridge",
+      "parameters": {
+        "direction": "source-a-to-source-b",
+        "border_mode": "constant",
+        "border_value": 0,
+        "output_roi_id": "reference-frame-alignment-roi",
+        "output_display_name": "Reference Frame Alignment ROI"
+      }
+    },
+    {
+      "node_id": "extract_inlier_count",
+      "node_type_id": "core.logic.value-field-extract",
+      "parameters": {
+        "path": "inlier_count"
+      }
+    },
+    {
+      "node_id": "extract_inlier_ratio",
+      "node_type_id": "core.logic.value-field-extract",
+      "parameters": {
+        "path": "inlier_ratio"
+      }
+    },
+    {
+      "node_id": "extract_reprojection_error",
+      "node_type_id": "core.logic.value-field-extract",
+      "parameters": {
+        "path": "reprojection_error"
+      }
+    },
+    {
+      "node_id": "inlier_count_check",
+      "node_type_id": "core.rule.threshold-check",
+      "parameters": {
+        "operator": "ge",
+        "threshold": 24.0
+      }
+    },
+    {
+      "node_id": "inlier_ratio_check",
+      "node_type_id": "core.rule.threshold-check",
+      "parameters": {
+        "operator": "ge",
+        "threshold": 0.45
+      }
+    },
+    {
+      "node_id": "reprojection_error_check",
+      "node_type_id": "core.rule.range-check",
+      "parameters": {
+        "max_value": 4.0,
+        "max_inclusive": true
+      }
+    },
+    {
+      "node_id": "metadata_object",
+      "node_type_id": "core.logic.object-create",
+      "parameters": {
+        "keys": [
+          "image_path",
+          "reference_image_path",
+          "undistort_config_path",
+          "remap_mapping_path"
+        ],
+        "fields": {
+          "inspection_kind": "calibrated-orb-homography-gate",
+          "station_id": "alignment-02"
+        }
+      }
+    },
+    {
+      "node_id": "metrics_object",
+      "node_type_id": "core.logic.object-create",
+      "parameters": {
+        "keys": [
+          "current_undistort_summary",
+          "current_remap_summary",
+          "reference_undistort_summary",
+          "reference_remap_summary",
+          "current_orb_summary",
+          "reference_orb_summary",
+          "match_summary",
+          "homography_summary",
+          "bridge_summary",
+          "inlier_count_metrics",
+          "inlier_ratio_metrics",
+          "reprojection_error_metrics"
+        ]
+      }
+    },
+    {
+      "node_id": "process_decision",
+      "node_type_id": "core.rule.process-decision",
+      "parameters": {
+        "mode": "all",
+        "condition_names": [
+          "inlier_count",
+          "inlier_ratio",
+          "reprojection_error"
+        ],
+        "ok_reason": "calibrated orb homography gate passed",
+        "ng_reason": "calibrated orb homography gate failed"
+      }
+    },
+    {
+      "node_id": "alarm_condition",
+      "node_type_id": "core.rule.alarm-condition",
+      "parameters": {
+        "trigger_when": "condition-false",
+        "alarm_level": "error",
+        "alarm_code": "ALIGN-ORB-HOMOGRAPHY-NG",
+        "alarm_message": "calibrated orb homography gate failed",
+        "clear_message": "calibrated orb homography gate passed"
+      }
+    },
+    {
+      "node_id": "save_result_json",
+      "node_type_id": "core.output.json-save-local",
+      "parameters": {
+        "local_path": "{workflow_app_result_dir}/calibrated-orb-homography/result-{timestamp}.json",
+        "overwrite": true,
+        "indent": 2
+      }
+    },
+    {
+      "node_id": "append_result_csv",
+      "node_type_id": "core.output.csv-append-local",
+      "parameters": {
+        "local_path": "{workflow_app_result_dir}/calibrated-orb-homography/history.csv"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "edge_id": "edge-request-image-path-load-image",
+      "source_node_id": "request_image_path_input",
+      "source_port": "value",
+      "target_node_id": "load_image",
+      "target_port": "path"
+    },
+    {
+      "edge_id": "edge-request-image-path-metadata",
+      "source_node_id": "request_image_path_input",
+      "source_port": "value",
+      "target_node_id": "metadata_object",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-request-reference-image-load-reference",
+      "source_node_id": "request_reference_image_path_input",
+      "source_port": "value",
+      "target_node_id": "load_reference_image",
+      "target_port": "path"
+    },
+    {
+      "edge_id": "edge-request-reference-image-metadata",
+      "source_node_id": "request_reference_image_path_input",
+      "source_port": "value",
+      "target_node_id": "metadata_object",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-request-undistort-config-load-json",
+      "source_node_id": "request_undistort_config_path_input",
+      "source_port": "value",
+      "target_node_id": "load_undistort_config",
+      "target_port": "path"
+    },
+    {
+      "edge_id": "edge-request-undistort-config-metadata",
+      "source_node_id": "request_undistort_config_path_input",
+      "source_port": "value",
+      "target_node_id": "metadata_object",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-request-remap-mapping-load-json",
+      "source_node_id": "request_remap_mapping_path_input",
+      "source_port": "value",
+      "target_node_id": "load_remap_mapping",
+      "target_port": "path"
+    },
+    {
+      "edge_id": "edge-request-remap-mapping-metadata",
+      "source_node_id": "request_remap_mapping_path_input",
+      "source_port": "value",
+      "target_node_id": "metadata_object",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-load-image-undistort-current",
+      "source_node_id": "load_image",
+      "source_port": "image",
+      "target_node_id": "undistort_current",
+      "target_port": "image"
+    },
+    {
+      "edge_id": "edge-load-reference-undistort-reference",
+      "source_node_id": "load_reference_image",
+      "source_port": "image",
+      "target_node_id": "undistort_reference",
+      "target_port": "image"
+    },
+    {
+      "edge_id": "edge-load-undistort-config-current",
+      "source_node_id": "load_undistort_config",
+      "source_port": "value",
+      "target_node_id": "undistort_current",
+      "target_port": "config"
+    },
+    {
+      "edge_id": "edge-load-undistort-config-reference",
+      "source_node_id": "load_undistort_config",
+      "source_port": "value",
+      "target_node_id": "undistort_reference",
+      "target_port": "config"
+    },
+    {
+      "edge_id": "edge-undistort-current-remap-current",
+      "source_node_id": "undistort_current",
+      "source_port": "image",
+      "target_node_id": "remap_current",
+      "target_port": "image"
+    },
+    {
+      "edge_id": "edge-undistort-reference-remap-reference",
+      "source_node_id": "undistort_reference",
+      "source_port": "image",
+      "target_node_id": "remap_reference",
+      "target_port": "image"
+    },
+    {
+      "edge_id": "edge-load-remap-mapping-current",
+      "source_node_id": "load_remap_mapping",
+      "source_port": "value",
+      "target_node_id": "remap_current",
+      "target_port": "mapping"
+    },
+    {
+      "edge_id": "edge-load-remap-mapping-reference",
+      "source_node_id": "load_remap_mapping",
+      "source_port": "value",
+      "target_node_id": "remap_reference",
+      "target_port": "mapping"
+    },
+    {
+      "edge_id": "edge-remap-current-create-roi-image",
+      "source_node_id": "remap_current",
+      "source_port": "image",
+      "target_node_id": "create_roi",
+      "target_port": "image"
+    },
+    {
+      "edge_id": "edge-remap-current-orb-current-image",
+      "source_node_id": "remap_current",
+      "source_port": "image",
+      "target_node_id": "orb_current",
+      "target_port": "image"
+    },
+    {
+      "edge_id": "edge-remap-reference-orb-reference-image",
+      "source_node_id": "remap_reference",
+      "source_port": "image",
+      "target_node_id": "orb_reference",
+      "target_port": "image"
+    },
+    {
+      "edge_id": "edge-create-roi-orb-current",
+      "source_node_id": "create_roi",
+      "source_port": "roi",
+      "target_node_id": "orb_current",
+      "target_port": "roi"
+    },
+    {
+      "edge_id": "edge-create-roi-orb-reference",
+      "source_node_id": "create_roi",
+      "source_port": "roi",
+      "target_node_id": "orb_reference",
+      "target_port": "roi"
+    },
+    {
+      "edge_id": "edge-orb-current-match-features-a",
+      "source_node_id": "orb_current",
+      "source_port": "features",
+      "target_node_id": "orb_match",
+      "target_port": "features_a"
+    },
+    {
+      "edge_id": "edge-orb-reference-match-features-b",
+      "source_node_id": "orb_reference",
+      "source_port": "features",
+      "target_node_id": "orb_match",
+      "target_port": "features_b"
+    },
+    {
+      "edge_id": "edge-orb-match-homography-matches",
+      "source_node_id": "orb_match",
+      "source_port": "matches",
+      "target_node_id": "homography_estimate",
+      "target_port": "matches"
+    },
+    {
+      "edge_id": "edge-orb-current-homography-features-a",
+      "source_node_id": "orb_current",
+      "source_port": "features",
+      "target_node_id": "homography_estimate",
+      "target_port": "features_a"
+    },
+    {
+      "edge_id": "edge-orb-reference-homography-features-b",
+      "source_node_id": "orb_reference",
+      "source_port": "features",
+      "target_node_id": "homography_estimate",
+      "target_port": "features_b"
+    },
+    {
+      "edge_id": "edge-remap-current-bridge-image",
+      "source_node_id": "remap_current",
+      "source_port": "image",
+      "target_node_id": "bridge_current_to_reference",
+      "target_port": "image"
+    },
+    {
+      "edge_id": "edge-create-roi-bridge-roi",
+      "source_node_id": "create_roi",
+      "source_port": "roi",
+      "target_node_id": "bridge_current_to_reference",
+      "target_port": "roi"
+    },
+    {
+      "edge_id": "edge-homography-transform-bridge",
+      "source_node_id": "homography_estimate",
+      "source_port": "transform",
+      "target_node_id": "bridge_current_to_reference",
+      "target_port": "transform"
+    },
+    {
+      "edge_id": "edge-homography-summary-extract-inlier-count",
+      "source_node_id": "homography_estimate",
+      "source_port": "summary",
+      "target_node_id": "extract_inlier_count",
+      "target_port": "value"
+    },
+    {
+      "edge_id": "edge-homography-summary-extract-inlier-ratio",
+      "source_node_id": "homography_estimate",
+      "source_port": "summary",
+      "target_node_id": "extract_inlier_ratio",
+      "target_port": "value"
+    },
+    {
+      "edge_id": "edge-homography-summary-extract-reprojection-error",
+      "source_node_id": "homography_estimate",
+      "source_port": "summary",
+      "target_node_id": "extract_reprojection_error",
+      "target_port": "value"
+    },
+    {
+      "edge_id": "edge-extract-inlier-count-check",
+      "source_node_id": "extract_inlier_count",
+      "source_port": "value",
+      "target_node_id": "inlier_count_check",
+      "target_port": "value"
+    },
+    {
+      "edge_id": "edge-extract-inlier-ratio-check",
+      "source_node_id": "extract_inlier_ratio",
+      "source_port": "value",
+      "target_node_id": "inlier_ratio_check",
+      "target_port": "value"
+    },
+    {
+      "edge_id": "edge-extract-reprojection-error-check",
+      "source_node_id": "extract_reprojection_error",
+      "source_port": "value",
+      "target_node_id": "reprojection_error_check",
+      "target_port": "value"
+    },
+    {
+      "edge_id": "edge-undistort-current-summary-metrics",
+      "source_node_id": "undistort_current",
+      "source_port": "summary",
+      "target_node_id": "metrics_object",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-remap-current-summary-metrics",
+      "source_node_id": "remap_current",
+      "source_port": "summary",
+      "target_node_id": "metrics_object",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-undistort-reference-summary-metrics",
+      "source_node_id": "undistort_reference",
+      "source_port": "summary",
+      "target_node_id": "metrics_object",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-remap-reference-summary-metrics",
+      "source_node_id": "remap_reference",
+      "source_port": "summary",
+      "target_node_id": "metrics_object",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-orb-current-summary-metrics",
+      "source_node_id": "orb_current",
+      "source_port": "summary",
+      "target_node_id": "metrics_object",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-orb-reference-summary-metrics",
+      "source_node_id": "orb_reference",
+      "source_port": "summary",
+      "target_node_id": "metrics_object",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-match-summary-metrics",
+      "source_node_id": "orb_match",
+      "source_port": "summary",
+      "target_node_id": "metrics_object",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-homography-summary-metrics",
+      "source_node_id": "homography_estimate",
+      "source_port": "summary",
+      "target_node_id": "metrics_object",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-bridge-summary-metrics",
+      "source_node_id": "bridge_current_to_reference",
+      "source_port": "summary",
+      "target_node_id": "metrics_object",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-inlier-count-metrics-object",
+      "source_node_id": "inlier_count_check",
+      "source_port": "metrics",
+      "target_node_id": "metrics_object",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-inlier-ratio-metrics-object",
+      "source_node_id": "inlier_ratio_check",
+      "source_port": "metrics",
+      "target_node_id": "metrics_object",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-reprojection-error-metrics-object",
+      "source_node_id": "reprojection_error_check",
+      "source_port": "metrics",
+      "target_node_id": "metrics_object",
+      "target_port": "values"
+    },
+    {
+      "edge_id": "edge-inlier-count-process",
+      "source_node_id": "inlier_count_check",
+      "source_port": "result",
+      "target_node_id": "process_decision",
+      "target_port": "conditions"
+    },
+    {
+      "edge_id": "edge-inlier-ratio-process",
+      "source_node_id": "inlier_ratio_check",
+      "source_port": "result",
+      "target_node_id": "process_decision",
+      "target_port": "conditions"
+    },
+    {
+      "edge_id": "edge-reprojection-error-process",
+      "source_node_id": "reprojection_error_check",
+      "source_port": "result",
+      "target_node_id": "process_decision",
+      "target_port": "conditions"
+    },
+    {
+      "edge_id": "edge-metrics-process",
+      "source_node_id": "metrics_object",
+      "source_port": "value",
+      "target_node_id": "process_decision",
+      "target_port": "metrics"
+    },
+    {
+      "edge_id": "edge-metadata-process",
+      "source_node_id": "metadata_object",
+      "source_port": "value",
+      "target_node_id": "process_decision",
+      "target_port": "metadata"
+    },
+    {
+      "edge_id": "edge-bridge-process-image",
+      "source_node_id": "bridge_current_to_reference",
+      "source_port": "image",
+      "target_node_id": "process_decision",
+      "target_port": "image"
+    },
+    {
+      "edge_id": "edge-process-ok-alarm",
+      "source_node_id": "process_decision",
+      "source_port": "ok",
+      "target_node_id": "alarm_condition",
+      "target_port": "condition"
+    },
+    {
+      "edge_id": "edge-metrics-alarm",
+      "source_node_id": "metrics_object",
+      "source_port": "value",
+      "target_node_id": "alarm_condition",
+      "target_port": "metrics"
+    },
+    {
+      "edge_id": "edge-metadata-alarm",
+      "source_node_id": "metadata_object",
+      "source_port": "value",
+      "target_node_id": "alarm_condition",
+      "target_port": "metadata"
+    },
+    {
+      "edge_id": "edge-process-save-json",
+      "source_node_id": "process_decision",
+      "source_port": "result",
+      "target_node_id": "save_result_json",
+      "target_port": "result"
+    },
+    {
+      "edge_id": "edge-process-append-csv",
+      "source_node_id": "process_decision",
+      "source_port": "result",
+      "target_node_id": "append_result_csv",
+      "target_port": "result"
+    }
+  ],
+  "template_inputs": [
+    {
+      "input_id": "request_image_path",
+      "display_name": "Request Image Path",
+      "payload_type_id": "value.v1",
+      "target_node_id": "request_image_path_input",
+      "target_port": "payload"
+    },
+    {
+      "input_id": "request_reference_image_path",
+      "display_name": "Request Reference Image Path",
+      "payload_type_id": "value.v1",
+      "target_node_id": "request_reference_image_path_input",
+      "target_port": "payload"
+    },
+    {
+      "input_id": "request_undistort_config_path",
+      "display_name": "Request Undistort Config Path",
+      "payload_type_id": "value.v1",
+      "target_node_id": "request_undistort_config_path_input",
+      "target_port": "payload"
+    },
+    {
+      "input_id": "request_remap_mapping_path",
+      "display_name": "Request Remap Mapping Path",
+      "payload_type_id": "value.v1",
+      "target_node_id": "request_remap_mapping_path_input",
+      "target_port": "payload"
+    },
+    {
+      "input_id": "request_roi",
+      "display_name": "Request ROI",
+      "payload_type_id": "value.v1",
+      "target_node_id": "create_roi",
+      "target_port": "value",
+      "required": false
+    }
+  ],
+  "template_outputs": [
+    {
+      "output_id": "current_aligned_image",
+      "display_name": "Current Aligned Image",
+      "payload_type_id": "image-ref.v1",
+      "source_node_id": "remap_current",
+      "source_port": "image"
+    },
+    {
+      "output_id": "reference_aligned_image",
+      "display_name": "Reference Aligned Image",
+      "payload_type_id": "image-ref.v1",
+      "source_node_id": "remap_reference",
+      "source_port": "image"
+    },
+    {
+      "output_id": "current_features",
+      "display_name": "Current Features",
+      "payload_type_id": "local-features.v1",
+      "source_node_id": "orb_current",
+      "source_port": "features"
+    },
+    {
+      "output_id": "reference_features",
+      "display_name": "Reference Features",
+      "payload_type_id": "local-features.v1",
+      "source_node_id": "orb_reference",
+      "source_port": "features"
+    },
+    {
+      "output_id": "feature_matches",
+      "display_name": "Feature Matches",
+      "payload_type_id": "feature-matches.v1",
+      "source_node_id": "orb_match",
+      "source_port": "matches"
+    },
+    {
+      "output_id": "planar_transform",
+      "display_name": "Planar Transform",
+      "payload_type_id": "planar-transform.v1",
+      "source_node_id": "homography_estimate",
+      "source_port": "transform"
+    },
+    {
+      "output_id": "reference_frame_current_image",
+      "display_name": "Reference Frame Current Image",
+      "payload_type_id": "image-ref.v1",
+      "source_node_id": "bridge_current_to_reference",
+      "source_port": "image"
+    },
+    {
+      "output_id": "reference_frame_alignment_roi",
+      "display_name": "Reference Frame Alignment ROI",
+      "payload_type_id": "roi.v1",
+      "source_node_id": "bridge_current_to_reference",
+      "source_port": "roi"
+    },
+    {
+      "output_id": "inspection_result",
+      "display_name": "Inspection Result",
+      "payload_type_id": "result-record.v1",
+      "source_node_id": "process_decision",
+      "source_port": "result"
+    },
+    {
+      "output_id": "inspection_alarm",
+      "display_name": "Inspection Alarm",
+      "payload_type_id": "alarm-record.v1",
+      "source_node_id": "alarm_condition",
+      "source_port": "alarm"
+    },
+    {
+      "output_id": "decision_summary",
+      "display_name": "Decision Summary",
+      "payload_type_id": "value.v1",
+      "source_node_id": "process_decision",
+      "source_port": "summary"
+    },
+    {
+      "output_id": "json_summary",
+      "display_name": "JSON Save Summary",
+      "payload_type_id": "value.v1",
+      "source_node_id": "save_result_json",
+      "source_port": "summary"
+    },
+    {
+      "output_id": "csv_summary",
+      "display_name": "CSV Append Summary",
+      "payload_type_id": "value.v1",
+      "source_node_id": "append_result_csv",
+      "source_port": "summary"
+    }
+  ],
+  "metadata": {
+    "example_kind": "industrial-single-frame-calibrated-orb-homography-gate",
+    "focus": "single-frame-industrial-opencv-orb-alignment-rule-chain",
+    "dynamic_roi_input_binding": "request_roi",
+    "local_json_input_bindings": [
+      "request_undistort_config_path",
+      "request_remap_mapping_path"
+    ],
+    "planar_transform_bridge_applied": true,
+    "node_groups": {
+      "input": [
+        "request_image_path_input",
+        "request_reference_image_path_input",
+        "request_undistort_config_path_input",
+        "request_remap_mapping_path_input",
+        "load_image",
+        "load_reference_image",
+        "load_undistort_config",
+        "load_remap_mapping"
+      ],
+      "alignment": [
+        "undistort_current",
+        "undistort_reference",
+        "remap_current",
+        "remap_reference",
+        "create_roi"
+      ],
+      "matching": [
+        "orb_current",
+        "orb_reference",
+        "orb_match",
+        "homography_estimate",
+        "bridge_current_to_reference",
+        "extract_inlier_count",
+        "extract_inlier_ratio",
+        "extract_reprojection_error"
+      ],
+      "inspection_rules": [
+        "inlier_count_check",
+        "inlier_ratio_check",
+        "reprojection_error_check"
+      ],
+      "decision_and_alarm": [
+        "metadata_object",
+        "metrics_object",
+        "process_decision",
+        "alarm_condition"
+      ],
+      "output": [
+        "save_result_json",
+        "append_result_csv"
+      ]
+    }
+  }
+}

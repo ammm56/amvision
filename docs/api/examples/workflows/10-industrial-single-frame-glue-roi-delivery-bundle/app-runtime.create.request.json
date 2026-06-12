@@ -1,0 +1,9 @@
+{
+  "project_id": "project-1",
+  "application_id": "industrial-single-frame-glue-roi-delivery-bundle-app",
+  "display_name": "Industrial Single Frame Glue ROI Delivery Bundle Runtime",
+  "metadata": {
+    "example_kind": "industrial-single-frame-glue-roi-delivery-bundle",
+    "delivery_mode": "plc-json-csv-mes-local-db"
+  }
+}

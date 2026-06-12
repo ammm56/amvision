@@ -1,4 +1,4 @@
-"""workflow runtime 资源合同。"""
+"""workflow runtime 资源规则。"""
 
 from __future__ import annotations
 
@@ -43,7 +43,7 @@ def _require_stripped_text(value: str, field_name: str) -> str:
 
 
 class WorkflowPreviewRunContract(BaseModel):
-    """描述 WorkflowPreviewRun 的稳定 JSON 合同。"""
+    """描述 WorkflowPreviewRun 的稳定 JSON 规则。"""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -69,7 +69,7 @@ class WorkflowPreviewRunContract(BaseModel):
 
     @model_validator(mode="after")
     def validate_contract(self) -> WorkflowPreviewRunContract:
-        """校验 WorkflowPreviewRun 合同的关键字段。"""
+        """校验 WorkflowPreviewRun 规则的关键字段。"""
 
         _require_stripped_text(self.preview_run_id, "preview_run_id")
         _require_stripped_text(self.project_id, "project_id")
@@ -83,10 +83,10 @@ class WorkflowPreviewRunContract(BaseModel):
 
 
 class WorkflowPreviewRunSummaryContract(BaseModel):
-    """描述 WorkflowPreviewRun 列表摘要合同。
+    """描述 WorkflowPreviewRun 列表摘要规则。
 
     字段：
-    - format_id：合同格式 id。
+    - format_id：规则格式 id。
     - preview_run_id：preview run id。
     - project_id：所属 Project id。
     - application_id：应用 id。
@@ -119,7 +119,7 @@ class WorkflowPreviewRunSummaryContract(BaseModel):
 
     @model_validator(mode="after")
     def validate_contract(self) -> WorkflowPreviewRunSummaryContract:
-        """校验 WorkflowPreviewRun 摘要合同的关键字段。"""
+        """校验 WorkflowPreviewRun 摘要规则的关键字段。"""
 
         _require_stripped_text(self.preview_run_id, "preview_run_id")
         _require_stripped_text(self.project_id, "project_id")
@@ -131,7 +131,7 @@ class WorkflowPreviewRunSummaryContract(BaseModel):
 
 
 class WorkflowPreviewRunEventContract(BaseModel):
-    """描述 WorkflowPreviewRun 执行事件的稳定 JSON 合同。"""
+    """描述 WorkflowPreviewRun 执行事件的稳定 JSON 规则。"""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -145,7 +145,7 @@ class WorkflowPreviewRunEventContract(BaseModel):
 
     @model_validator(mode="after")
     def validate_contract(self) -> WorkflowPreviewRunEventContract:
-        """校验 WorkflowPreviewRun 事件合同的关键字段。"""
+        """校验 WorkflowPreviewRun 事件规则的关键字段。"""
 
         _require_stripped_text(self.preview_run_id, "preview_run_id")
         _require_stripped_text(self.event_type, "event_type")
@@ -155,7 +155,7 @@ class WorkflowPreviewRunEventContract(BaseModel):
 
 
 class WorkflowAppRuntimeEventContract(BaseModel):
-    """描述 WorkflowAppRuntime 事件的稳定 JSON 合同。"""
+    """描述 WorkflowAppRuntime 事件的稳定 JSON 规则。"""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -169,7 +169,7 @@ class WorkflowAppRuntimeEventContract(BaseModel):
 
     @model_validator(mode="after")
     def validate_contract(self) -> WorkflowAppRuntimeEventContract:
-        """校验 WorkflowAppRuntime 事件合同的关键字段。"""
+        """校验 WorkflowAppRuntime 事件规则的关键字段。"""
 
         _require_stripped_text(self.workflow_runtime_id, "workflow_runtime_id")
         _require_stripped_text(self.event_type, "event_type")
@@ -265,7 +265,7 @@ class WorkflowRuntimeReferenceSummaryContract(BaseModel):
 
 
 class WorkflowAppRuntimeContract(BaseModel):
-    """描述 WorkflowAppRuntime 的稳定 JSON 合同。"""
+    """描述 WorkflowAppRuntime 的稳定 JSON 规则。"""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -299,7 +299,7 @@ class WorkflowAppRuntimeContract(BaseModel):
 
     @model_validator(mode="after")
     def validate_contract(self) -> WorkflowAppRuntimeContract:
-        """校验 WorkflowAppRuntime 合同的关键字段。"""
+        """校验 WorkflowAppRuntime 规则的关键字段。"""
 
         _require_stripped_text(self.workflow_runtime_id, "workflow_runtime_id")
         _require_stripped_text(self.project_id, "project_id")
@@ -318,7 +318,7 @@ class WorkflowAppRuntimeContract(BaseModel):
 
 
 class WorkflowAppRuntimeInstanceContract(BaseModel):
-    """描述 WorkflowAppRuntime 单实例观测结果的稳定 JSON 合同。"""
+    """描述 WorkflowAppRuntime 单实例观测结果的稳定 JSON 规则。"""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -336,7 +336,7 @@ class WorkflowAppRuntimeInstanceContract(BaseModel):
 
     @model_validator(mode="after")
     def validate_contract(self) -> WorkflowAppRuntimeInstanceContract:
-        """校验 WorkflowAppRuntime instance 合同的关键字段。"""
+        """校验 WorkflowAppRuntime instance 规则的关键字段。"""
 
         _require_stripped_text(self.instance_id, "instance_id")
         _require_stripped_text(self.workflow_runtime_id, "workflow_runtime_id")
@@ -345,7 +345,7 @@ class WorkflowAppRuntimeInstanceContract(BaseModel):
 
 
 class WorkflowRunContract(BaseModel):
-    """描述 WorkflowRun 的稳定 JSON 合同。"""
+    """描述 WorkflowRun 的稳定 JSON 规则。"""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -370,7 +370,7 @@ class WorkflowRunContract(BaseModel):
 
     @model_validator(mode="after")
     def validate_contract(self) -> WorkflowRunContract:
-        """校验 WorkflowRun 合同的关键字段。"""
+        """校验 WorkflowRun 规则的关键字段。"""
 
         _require_stripped_text(self.workflow_run_id, "workflow_run_id")
         _require_stripped_text(self.workflow_runtime_id, "workflow_runtime_id")
@@ -382,7 +382,7 @@ class WorkflowRunContract(BaseModel):
 
 
 class WorkflowRunEventContract(BaseModel):
-    """描述 WorkflowRun 事件的稳定 JSON 合同。"""
+    """描述 WorkflowRun 事件的稳定 JSON 规则。"""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -397,7 +397,7 @@ class WorkflowRunEventContract(BaseModel):
 
     @model_validator(mode="after")
     def validate_contract(self) -> WorkflowRunEventContract:
-        """校验 WorkflowRun 事件合同的关键字段。"""
+        """校验 WorkflowRun 事件规则的关键字段。"""
 
         _require_stripped_text(self.workflow_run_id, "workflow_run_id")
         _require_stripped_text(self.workflow_runtime_id, "workflow_runtime_id")
@@ -408,7 +408,7 @@ class WorkflowRunEventContract(BaseModel):
 
 
 class WorkflowExecutionPolicyContract(BaseModel):
-    """描述 WorkflowExecutionPolicy 的稳定 JSON 合同。"""
+    """描述 WorkflowExecutionPolicy 的稳定 JSON 规则。"""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -429,7 +429,7 @@ class WorkflowExecutionPolicyContract(BaseModel):
 
     @model_validator(mode="after")
     def validate_contract(self) -> WorkflowExecutionPolicyContract:
-        """校验 WorkflowExecutionPolicy 合同的关键字段。"""
+        """校验 WorkflowExecutionPolicy 规则的关键字段。"""
 
         _require_stripped_text(self.execution_policy_id, "execution_policy_id")
         _require_stripped_text(self.project_id, "project_id")

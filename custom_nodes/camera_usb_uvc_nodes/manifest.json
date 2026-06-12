@@ -1,0 +1,37 @@
+{
+  "format_id": "amvision.node-pack-manifest.v1",
+  "id": "camera.usb-uvc-nodes",
+  "version": "0.1.0",
+  "displayName": "USB UVC Camera Nodes",
+  "description": "提供面向 USB / UVC 相机的枚举、会话采图与流式窗口节点，作为工业现场相机接入的第一层正式 custom node 实现。",
+  "category": "custom-node-pack",
+  "capabilities": [
+    "pipeline.node",
+    "integration.camera",
+    "integration.camera.usb-uvc",
+    "vision.image-input"
+  ],
+  "permissionScopes": [
+    "objectstore.write.ref"
+  ],
+  "entrypoints": {
+    "backend": "custom_nodes.camera_usb_uvc_nodes.backend.entry:register"
+  },
+  "compatibility": {
+    "api": ">=0.1 <1.0",
+    "runtime": ">=3.12"
+  },
+  "timeout": {
+    "defaultSeconds": 30
+  },
+  "enabledByDefault": true,
+  "customNodeCatalogPath": "workflow/catalog.json",
+  "metadata": {
+    "phase": "partial-implementation",
+    "notes": [
+      "当前 pack 已落到三批 USB / UVC 主线：第一批 enumerate-devices / capture-frame，第二批 open-device / read-latest-frame / get-parameter / set-parameter / close-device，第三批 start-stream / read-window。",
+      "实现边界保持在项目内 OpenCV VideoCapture 适配层，不依赖厂商 SDK 或 projectsrc 目录。",
+      "当前已支持会话型单帧重复采图、基础参数调整与后台采流窗口读取；后续更细参数族、目录/触发源接入与非 UVC 相机层继续在同一路线扩展。"
+    ]
+  }
+}

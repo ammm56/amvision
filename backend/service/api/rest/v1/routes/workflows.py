@@ -174,7 +174,7 @@ class WorkflowNodeCatalogResponse(BaseModel):
 
     字段：
     - node_pack_manifests：当前已发现的节点包 manifest 列表。
-    - payload_contracts：当前已注册的 payload contract 列表。
+    - payload_contracts：当前已注册的 payload 规则 列表。
     - node_definitions：当前已注册的节点定义列表。
     - palette_groups：按节点分类整理后的 palette 分组结果。
     """
@@ -182,7 +182,7 @@ class WorkflowNodeCatalogResponse(BaseModel):
     node_pack_manifests: list[NodePackManifest] = Field(default_factory=list, description="节点包 manifest 列表")
     payload_contracts: list[WorkflowPayloadContract] = Field(
         default_factory=list,
-        description="payload contract 列表",
+        description="payload 规则 列表",
     )
     node_definitions: list[NodeDefinition] = Field(default_factory=list, description="节点定义列表")
     palette_groups: list["WorkflowNodePaletteGroupResponse"] = Field(
@@ -1219,7 +1219,7 @@ def _merge_parameter_ui_schema(
     parameter_schema: dict[str, object],
     explicit_parameter_ui_schema: NodeParameterUiSchema | None,
 ) -> NodeParameterUiSchema:
-    """把原始 parameter_schema 和显式 parameter_ui_schema 合并为稳定合同。"""
+    """把原始 parameter_schema 和显式 parameter_ui_schema 合并为稳定规则。"""
 
     derived_parameter_ui_schema = _derive_parameter_ui_schema_from_parameter_schema(parameter_schema)
     if explicit_parameter_ui_schema is None:
@@ -1259,7 +1259,7 @@ def _merge_parameter_ui_schema(
 def _derive_parameter_ui_schema_from_parameter_schema(
     parameter_schema: dict[str, object],
 ) -> NodeParameterUiSchema:
-    """从 parameter_schema 推导稳定的参数 UI 合同。"""
+    """从 parameter_schema 推导稳定的参数 UI 规则。"""
 
     if not isinstance(parameter_schema, dict):
         return NodeParameterUiSchema()
@@ -1555,16 +1555,16 @@ def _filter_workflow_payload_contracts(
     payload_type_id: str | None,
     filters_active: bool,
 ) -> list[WorkflowPayloadContract]:
-    """按节点过滤结果裁剪 payload contract 列表。
+    """按节点过滤结果裁剪 payload 规则 列表。
 
     参数：
-    - payload_contracts：待过滤的 payload contract 列表。
+    - payload_contracts：待过滤的 payload 规则 列表。
     - node_definitions：已经过滤后的节点定义列表。
     - payload_type_id：可选显式 payload 类型过滤条件。
     - filters_active：当前是否存在任何过滤条件。
 
     返回：
-    - list[WorkflowPayloadContract]：过滤后的 payload contract 列表。
+    - list[WorkflowPayloadContract]：过滤后的 payload 规则 列表。
     """
 
     if not filters_active:

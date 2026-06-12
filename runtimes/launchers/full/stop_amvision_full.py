@@ -17,7 +17,9 @@ LAUNCHERS_ROOT = Path(__file__).resolve().parent / "launchers"
 if str(LAUNCHERS_ROOT) not in sys.path:
     sys.path.insert(0, str(LAUNCHERS_ROOT))
 
-from common import resolve_app_root, resolve_path
+from common import is_pid_alive, resolve_app_root, resolve_path
+
+_ROOT_PROCESS_MIN_EXIT_WAIT_SECONDS = 15.0
 
 
 def build_argument_parser() -> argparse.ArgumentParser:
@@ -94,17 +96,7 @@ def _pid_is_alive(pid: int) -> bool:
     - bool：进程仍然存活时返回 True，否则返回 False。
     """
 
-    if pid <= 0:
-        return False
-    try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        return True
-    except OSError:
-        return False
-    return True
+    return is_pid_alive(pid)
 
 
 def _wait_pid_exit(pid: int, timeout_seconds: float) -> bool:
@@ -168,6 +160,23 @@ def _stop_recorded_process(pid: int, *, stop_mode: str, graceful_timeout_seconds
     return _wait_pid_exit(pid, 1.0)
 
 
+def _wait_root_process_exit(pid: int, *, graceful_timeout_seconds: float) -> bool:
+    """等待 full-stack root 在停掉子组件后自行收尾退出。
+
+    参数：
+    - pid：root 进程 id。
+    - graceful_timeout_seconds：命令行传入的基础等待秒数。
+
+    返回：
+    - bool：等待窗口内 root 已退出时返回 True，否则返回 False。
+    """
+
+    return _wait_pid_exit(
+        pid,
+        max(graceful_timeout_seconds, _ROOT_PROCESS_MIN_EXIT_WAIT_SECONDS),
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     """执行 full 发布目录一键停止入口。
 
@@ -193,6 +202,7 @@ def main(argv: list[str] | None = None) -> int:
 
     stop_targets: list[tuple[str, int, str]] = []
     seen_pids: set[int] = set()
+    root_pid: int | None = None
 
     components_raw = stack_state.get("components")
     if isinstance(components_raw, list):
@@ -213,9 +223,9 @@ def main(argv: list[str] | None = None) -> int:
 
     root_pid_raw = stack_state.get("root_pid")
     if isinstance(root_pid_raw, int) and root_pid_raw not in seen_pids:
-        stop_targets.append(("full-stack-root", root_pid_raw, "process"))
+        root_pid = root_pid_raw
 
-    if not stop_targets:
+    if not stop_targets and root_pid is None:
         with contextlib.suppress(FileNotFoundError):
             state_file_path.unlink()
         print(f"运行状态文件中没有可停止的进程，已清理：{state_file_path}", flush=True)
@@ -235,6 +245,39 @@ def main(argv: list[str] | None = None) -> int:
             print(f"已停止 {component_name}，pid={pid}", flush=True)
             continue
         print(f"停止 {component_name} 超时，pid={pid}", flush=True)
+
+    if isinstance(root_pid, int):
+        if not _pid_is_alive(root_pid):
+            print(f"full-stack-root 已经退出，pid={root_pid}", flush=True)
+        elif stop_targets:
+            print(f"等待 full-stack-root 自行退出，pid={root_pid}", flush=True)
+            if _wait_root_process_exit(
+                root_pid,
+                graceful_timeout_seconds=args.graceful_timeout_seconds,
+            ):
+                print(f"已停止 full-stack-root，pid={root_pid}", flush=True)
+            else:
+                print(f"full-stack-root 未在等待窗口内退出，转入强制停止，pid={root_pid}", flush=True)
+                stopped = _stop_recorded_process(
+                    root_pid,
+                    stop_mode="process",
+                    graceful_timeout_seconds=args.graceful_timeout_seconds,
+                )
+                if stopped:
+                    print(f"已停止 full-stack-root，pid={root_pid}", flush=True)
+                else:
+                    print(f"停止 full-stack-root 超时，pid={root_pid}", flush=True)
+        else:
+            print(f"正在停止 full-stack-root，pid={root_pid}", flush=True)
+            stopped = _stop_recorded_process(
+                root_pid,
+                stop_mode="process",
+                graceful_timeout_seconds=args.graceful_timeout_seconds,
+            )
+            if stopped:
+                print(f"已停止 full-stack-root，pid={root_pid}", flush=True)
+            else:
+                print(f"停止 full-stack-root 超时，pid={root_pid}", flush=True)
 
     with contextlib.suppress(FileNotFoundError):
         state_file_path.unlink()

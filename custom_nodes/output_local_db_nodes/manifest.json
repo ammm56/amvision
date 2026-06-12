@@ -1,0 +1,35 @@
+{
+  "format_id": "amvision.node-pack-manifest.v1",
+  "id": "output.local-db-nodes",
+  "version": "0.1.0",
+  "displayName": "Local DB Output Nodes",
+  "description": "提供面向现场结果归档的第一阶段本地数据库输出节点，统一承接 result-record、workflow-result 和批次摘要对象。",
+  "category": "custom-node-pack",
+  "capabilities": [
+    "pipeline.node",
+    "integration.output",
+    "integration.database",
+    "integration.database.upsert"
+  ],
+  "permissionScopes": [],
+  "entrypoints": {
+    "backend": "custom_nodes.output_local_db_nodes.backend.entry:register"
+  },
+  "compatibility": {
+    "api": ">=0.1 <1.0",
+    "runtime": ">=3.12"
+  },
+  "timeout": {
+    "defaultSeconds": 30
+  },
+  "enabledByDefault": true,
+  "customNodeCatalogPath": "workflow/catalog.json",
+  "metadata": {
+    "phase": "implemented",
+    "notes": [
+      "当前 pack 只做第一阶段受限数据库输出层，不做可执行 SQL 节点。",
+      "对外节点面当前仅收口为 custom.output.local-db-upsert，直接承接 result-record、workflow-result 和 batch-result-summary 的 summary(value)。",
+      "运行时当前按 SQLAlchemy 2 受限实现单表单行 upsert，不做平台主库聚合写入口、多表联动或任意 DDL。"
+    ]
+  }
+}

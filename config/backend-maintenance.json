@@ -5,5 +5,12 @@
   },
   "workspace": {
     "root_dir": "./data/maintenance"
+  },
+  "release": {
+    "frontend": {
+      "dist_dir": "./frontend/web-ui/dist",
+      "runtime_config_source_file": "./frontend/web-ui/public/runtime-config.local.json",
+      "runtime_config_template_file": "./frontend/web-ui/public/runtime-config.template.json"
+    }
   }
 }

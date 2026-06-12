@@ -49,7 +49,7 @@
   - /api/v1/workflows/runs/{workflow_run_id}/events
   - /api/v1/workflows/runs/{workflow_run_id}/cancel
 - 实时资源流：/ws/v1/workflows/runs/events
-- 稳定合同：amvision.workflow-run.v1
+- 稳定规则：amvision.workflow-run.v1
 
 ## 鉴权规则
 
@@ -117,7 +117,7 @@
 - 成功状态码：201 Created
 - 仅支持已经处于 running 的 WorkflowAppRuntime
 - 当前仍采用单实例串行执行；如果前一条 run 仍在执行，新建 run 会先进入 queued
-- 返回完整 WorkflowRun 合同
+- 返回完整 WorkflowRun 规则
 
 ### 请求体字段
 
@@ -151,7 +151,7 @@
   - timeout_seconds，可选
 - 其他文件字段名必须等于 application 的 input binding_id
 - 当前 multipart 文件上传只支持 `dataset-package.v1` 输入绑定，不支持把图片文件直接作为 `request_image` 上传
-- 返回完整 WorkflowRun 合同
+- 返回完整 WorkflowRun 规则
 
 ### 最小响应 JSON
 
@@ -201,7 +201,7 @@
 - Content-Type：application/json
 - 成功状态码：200 OK
 - 仅支持 observed_state=running 的 WorkflowAppRuntime
-- 返回完整 WorkflowRun 合同；同步响应中的 `outputs`、`template_outputs` 和 `node_records` 直接带当前这次执行的原始结果
+- 返回完整 WorkflowRun 规则；同步响应中的 `outputs`、`template_outputs` 和 `node_records` 直接带当前这次执行的原始结果
 
 ### 请求体字段
 
@@ -235,7 +235,7 @@
   - timeout_seconds，可选
 - 其他文件字段名必须等于 application 的 input binding_id
 - 当前 multipart 文件上传只支持 `dataset-package.v1` 输入绑定，不支持把图片文件直接作为 `request_image` 上传
-- 返回完整 WorkflowRun 合同；同步响应中的 `outputs`、`template_outputs` 和 `node_records` 直接带当前这次执行的原始结果
+- 返回完整 WorkflowRun 规则；同步响应中的 `outputs`、`template_outputs` 和 `node_records` 直接带当前这次执行的原始结果
 
 ### 最小响应 JSON
 
@@ -372,6 +372,6 @@
 - [docs/api/workflow-app-runtimes.md](workflow-app-runtimes.md)
 - [docs/api/workflow-preview-runs.md](workflow-preview-runs.md)
 - [docs/api/workflows.md](workflows.md)
-- [docs/api/examples/workflows/00-short-dev-examples/yolox_deployment_detection_lifecycle_real_path/app-runtime.invoke.request.json](examples/workflows/00-short-dev-examples/yolox_deployment_detection_lifecycle_real_path/app-runtime.invoke.request.json)
+- [docs/api/examples/workflows/00-short-dev-examples/detection_deployment_lifecycle_real_path/app-runtime.invoke.request.json](examples/workflows/00-short-dev-examples/detection_deployment_lifecycle_real_path/app-runtime.invoke.request.json)
 - [docs/api/postman/workflow-runtime.postman_collection.json](postman/workflow-runtime.postman_collection.json)
 - [docs/architecture/workflow-runtime-phase1.md](../architecture/workflow-runtime-phase1.md)

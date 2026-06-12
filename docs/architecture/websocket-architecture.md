@@ -197,7 +197,7 @@
 | `workflows.preview-runs.events` | `GET /api/v1/workflows/preview-runs/{preview_run_id}`、`GET /api/v1/workflows/preview-runs/{preview_run_id}/events` | `service_event_bus` + `events.json` + `WorkflowPreviewRunManager` | 已接入统一 WebSocket；实时分发走 service_event_bus，历史回放继续走 events.json |
 | `workflows.runs.events` | `GET /api/v1/workflows/runs/{workflow_run_id}`、`GET /api/v1/workflows/runs/{workflow_run_id}/events` | `service_event_bus` + `events.json` + `WorkflowRuntimeService` | 已接入统一 WebSocket；run 生命周期事件由 WorkflowRuntimeService 统一追加和分发 |
 | `workflows.app-runtimes.events` | `GET /api/v1/workflows/app-runtimes/{workflow_runtime_id}`、`GET /api/v1/workflows/app-runtimes/{workflow_runtime_id}/events` | `service_event_bus` + `events.json` + `WorkflowRuntimeService` + `WorkflowRuntimeWorkerManager` | 已接入统一 WebSocket；worker 主动 heartbeat 走统一事件总线，heartbeat 历史按窗口裁剪 |
-| `deployments.events` | `GET /api/v1/models/yolox/deployment-instances/{deployment_instance_id}`、`GET /api/v1/models/yolox/deployment-instances/{deployment_instance_id}/events` | `service_event_bus` + `events.json` + deployment supervisor | 已接入统一 WebSocket；适合部署健康、重启和回滚通知 |
+| `deployments.events` | `GET /api/v1/models/detection/deployment-instances/{deployment_instance_id}`、`GET /api/v1/models/detection/deployment-instances/{deployment_instance_id}/events` | `service_event_bus` + `events.json` + deployment supervisor | 已接入统一 WebSocket；适合部署健康、重启和回滚通知 |
 | `projects.events` | `GET /api/v1/projects/{project_id}/summary` | `service_event_bus` + `ProjectSummaryService` | 已接入统一 WebSocket；连接时先返回 summary 快照，后续推送项目级聚合更新 |
 | `system.events` | `GET /api/v1/system/...` | service_event_bus + backend-service 低频系统通知源 | 只承担全局低频状态，不做大而全聚合 |
 

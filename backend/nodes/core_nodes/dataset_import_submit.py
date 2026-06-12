@@ -12,14 +12,17 @@ from backend.contracts.workflows.workflow_graph import (
     NodePortDefinition,
 )
 from backend.nodes.core_nodes._base import CoreNodeSpec
+from backend.nodes.core_nodes._platform_service_node_support import (
+    require_platform_task_type,
+)
 from backend.nodes.core_nodes._service_node_support import (
     build_response_body_output,
     get_optional_dict_parameter,
-    get_optional_str_parameter,
     overlay_parameters_from_object_input,
     require_str_parameter,
     require_workflow_service_node_runtime,
     resolve_created_by,
+    get_optional_str_parameter,
 )
 from backend.service.application.datasets.dataset_import import DatasetImportRequest
 from backend.service.application.errors import InvalidRequestError
@@ -48,7 +51,7 @@ def _dataset_import_submit_handler(request: WorkflowNodeExecutionRequest) -> dic
             package_file_name=package_payload["package_file_name"],
             package_bytes=package_payload["package_bytes"],
             format_type=get_optional_str_parameter(request, "format_type"),
-            task_type=get_optional_str_parameter(request, "task_type") or "detection",
+            task_type=require_platform_task_type(request),
             split_strategy=get_optional_str_parameter(request, "split_strategy"),
             class_map=_read_class_map_parameter(request),
             metadata=metadata,
@@ -219,7 +222,7 @@ CORE_NODE_SPEC = CoreNodeSpec(
                 "metadata": {"type": "object"},
                 "created_by": {"type": "string"},
             },
-            "required": ["project_id", "dataset_id"],
+            "required": ["project_id", "dataset_id", "task_type"],
         },
         capability_tags=("service.dataset.import", "task.submit", "multipart.upload"),
     ),

@@ -5,34 +5,60 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
-import backend.service.application.models.yolox_inference_task_service as yolox_inference_task_service_module
+import backend.service.application.models.detection_inference_task_service as detection_inference_task_service_module
 
 from backend.queue import LocalFileQueueBackend
 from backend.service.application.events import InMemoryServiceEventBus
 from backend.service.application.errors import InvalidRequestError
-from backend.service.application.models.yolox_async_inference_gateway import (
-    serialize_yolox_async_inference_execution_result,
+from backend.service.application.models.detection_async_inference_gateway import (
+    serialize_detection_async_inference_execution_result,
 )
-from backend.service.application.models.yolox_model_service import (
-    SqlAlchemyYoloXModelService,
-    YoloXBuildRegistration,
-    YoloXTrainingOutputRegistration,
+from backend.service.application.models.model_service import (
+    ModelBuildRegistration,
+    SqlAlchemyModelService,
+    TrainingOutputRegistration,
 )
-from backend.service.application.runtime.yolox_deployment_process_supervisor import (
-    YoloXDeploymentProcessConfig,
-    YoloXDeploymentProcessExecution,
-    YoloXDeploymentProcessHealth,
-    YoloXDeploymentProcessInstanceHealth,
-    YoloXDeploymentProcessStatus,
-    YoloXDeploymentProcessSupervisor,
+from backend.service.application.runtime.deployment_process_supervisor import (
+    DeploymentProcessConfig,
+    DeploymentProcessExecution,
+    DeploymentProcessHealth,
+    DeploymentProcessInstanceHealth,
+    DeploymentProcessStatus,
+    DeploymentProcessSupervisor,
 )
-from backend.service.application.runtime.yolox_predictor import (
-    YoloXPredictionDetection,
-    YoloXPredictionExecutionResult,
+from backend.service.application.runtime.classification_runtime_contracts import (
+    ClassificationPredictionCategory,
+    ClassificationPredictionExecutionResult,
+    ClassificationRuntimeSessionInfo,
+    ClassificationRuntimeTensorSpec,
+)
+from backend.service.application.runtime.obb_runtime_contracts import (
+    ObbPredictionExecutionResult,
+    ObbPredictionInstance,
+    ObbRuntimeSessionInfo,
+    ObbRuntimeTensorSpec,
+)
+from backend.service.application.runtime.pose_runtime_contracts import (
+    PosePredictionExecutionResult,
+    PosePredictionInstance,
+    PosePredictionKeypoint,
+    PoseRuntimeSessionInfo,
+    PoseRuntimeTensorSpec,
+)
+from backend.service.application.runtime.detection_runtime_contracts import (
+    DetectionPredictionDetection,
+    DetectionPredictionExecutionResult,
+    DetectionRuntimeSessionInfo,
+    DetectionRuntimeTensorSpec,
+)
+from backend.service.application.runtime.segmentation_runtime_contracts import (
+    SegmentationPredictionExecutionResult,
+    SegmentationPredictionInstance,
+    SegmentationRuntimeSessionInfo,
+    SegmentationRuntimeTensorSpec,
 )
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
-from backend.workers.shared.yolox_runtime_contracts import RuntimeTensorSpec, YoloXRuntimeSessionInfo
 from tests.api_test_support import ApiTestContext, create_api_test_context, create_test_runtime
 
 
@@ -114,11 +140,11 @@ def create_yolox_api_test_context(
             dataset_storage_root_dir=str(context.dataset_storage.root_dir),
             service_event_bus=service_event_bus if isinstance(service_event_bus, InMemoryServiceEventBus) else None,
         )
-        context.client.app.state.yolox_sync_deployment_process_supervisor = sync_supervisor
-        context.client.app.state.yolox_async_deployment_process_supervisor = async_supervisor
+        context.client.app.state.detection_sync_deployment_process_supervisor = sync_supervisor
+        context.client.app.state.detection_async_deployment_process_supervisor = async_supervisor
         gateway_dispatcher_registry = getattr(
             context.client.app.state,
-            "yolox_async_inference_gateway_dispatcher_registry",
+            "detection_async_inference_gateway_dispatcher_registry",
             None,
         )
         if gateway_dispatcher_registry is not None:
@@ -179,9 +205,9 @@ def seed_yolox_model_version(
     dataset_storage.write_bytes(checkpoint_uri, checkpoint_bytes)
     dataset_storage.write_text(labels_uri, "\n".join(labels) + "\n")
 
-    service = SqlAlchemyYoloXModelService(session_factory=session_factory)
+    service = SqlAlchemyModelService(session_factory=session_factory)
     return service.register_training_output(
-        YoloXTrainingOutputRegistration(
+        TrainingOutputRegistration(
             project_id=project_id,
             training_task_id=training_task_id,
             model_name=model_name,
@@ -236,9 +262,9 @@ def seed_yolox_model_build(
             resolved_build_uri = "projects/project-1/models/builds/build-1/yolox.tensorrt.engine"
     dataset_storage.write_bytes(resolved_build_uri, build_bytes)
 
-    service = SqlAlchemyYoloXModelService(session_factory=session_factory)
+    service = SqlAlchemyModelService(session_factory=session_factory)
     return service.register_build(
-        YoloXBuildRegistration(
+        ModelBuildRegistration(
             project_id=project_id,
             source_model_version_id=model_version_id,
             build_format=build_format,
@@ -254,7 +280,7 @@ def seed_yolox_model_build(
 class _FakeDeploymentProcessState:
     """描述 fake deployment 进程监督状态。"""
 
-    config: YoloXDeploymentProcessConfig
+    config: DeploymentProcessConfig
     desired_running: bool = False
     process_state: str = "stopped"
     process_id: int | None = None
@@ -265,7 +291,7 @@ class _FakeDeploymentProcessState:
     next_instance_index: int = 0
 
 
-class FakeDeploymentProcessSupervisor(YoloXDeploymentProcessSupervisor):
+class FakeDeploymentProcessSupervisor(DeploymentProcessSupervisor):
     """用于 API 测试的最小 fake deployment 进程监督器。"""
 
     def __init__(
@@ -293,13 +319,13 @@ class FakeDeploymentProcessSupervisor(YoloXDeploymentProcessSupervisor):
         self.load_calls: list[str] = []
         self.inference_requests: list[object] = []
 
-    def ensure_deployment(self, config: YoloXDeploymentProcessConfig) -> YoloXDeploymentProcessStatus:
+    def ensure_deployment(self, config: DeploymentProcessConfig) -> DeploymentProcessStatus:
         """确保指定 deployment 已经初始化到 fake 状态机中。"""
 
         state = self._ensure_state(config)
         return self._build_status(state)
 
-    def start_deployment(self, config: YoloXDeploymentProcessConfig) -> YoloXDeploymentProcessStatus:
+    def start_deployment(self, config: DeploymentProcessConfig) -> DeploymentProcessStatus:
         """把指定 deployment 标记为 running。"""
 
         state = self._ensure_state(config)
@@ -317,7 +343,7 @@ class FakeDeploymentProcessSupervisor(YoloXDeploymentProcessSupervisor):
             )
         return current_status
 
-    def stop_deployment(self, config: YoloXDeploymentProcessConfig) -> YoloXDeploymentProcessStatus:
+    def stop_deployment(self, config: DeploymentProcessConfig) -> DeploymentProcessStatus:
         """把指定 deployment 标记为 stopped。"""
 
         state = self._ensure_state(config)
@@ -334,7 +360,7 @@ class FakeDeploymentProcessSupervisor(YoloXDeploymentProcessSupervisor):
             )
         return current_status
 
-    def warmup_deployment(self, config: YoloXDeploymentProcessConfig) -> YoloXDeploymentProcessHealth:
+    def warmup_deployment(self, config: DeploymentProcessConfig) -> DeploymentProcessHealth:
         """把所有实例标记为 warmed。"""
 
         state = self._ensure_state(config)
@@ -349,17 +375,17 @@ class FakeDeploymentProcessSupervisor(YoloXDeploymentProcessSupervisor):
         )
         return health
 
-    def get_status(self, config: YoloXDeploymentProcessConfig) -> YoloXDeploymentProcessStatus:
+    def get_status(self, config: DeploymentProcessConfig) -> DeploymentProcessStatus:
         """返回指定 deployment 的 fake 进程状态。"""
 
         return self._build_status(self._ensure_state(config))
 
-    def get_health(self, config: YoloXDeploymentProcessConfig) -> YoloXDeploymentProcessHealth:
+    def get_health(self, config: DeploymentProcessConfig) -> DeploymentProcessHealth:
         """返回指定 deployment 的 fake 健康状态。"""
 
         return self._build_health(self._ensure_state(config))
 
-    def reset_deployment(self, config: YoloXDeploymentProcessConfig) -> YoloXDeploymentProcessHealth:
+    def reset_deployment(self, config: DeploymentProcessConfig) -> DeploymentProcessHealth:
         """清空 warmed 标记，模拟 reset。"""
 
         state = self._ensure_state(config)
@@ -374,7 +400,7 @@ class FakeDeploymentProcessSupervisor(YoloXDeploymentProcessSupervisor):
         )
         return health
 
-    def run_inference(self, *, config: YoloXDeploymentProcessConfig, request: object) -> YoloXDeploymentProcessExecution:
+    def run_inference(self, *, config: DeploymentProcessConfig, request: object) -> DeploymentProcessExecution:
         """执行一次 fake 推理，并返回固定结果。
 
         参数：
@@ -382,7 +408,7 @@ class FakeDeploymentProcessSupervisor(YoloXDeploymentProcessSupervisor):
         - request：推理请求对象。
 
         返回：
-        - YoloXDeploymentProcessExecution：固定 fake 推理结果。
+        - DeploymentProcessExecution：固定 fake 推理结果。
         """
 
         state = self._ensure_state(config)
@@ -396,43 +422,255 @@ class FakeDeploymentProcessSupervisor(YoloXDeploymentProcessSupervisor):
         request_input_uri = getattr(request, "input_uri", None)
         request_has_input_image_bytes = getattr(request, "input_image_bytes", None) is not None
         request_save_result_image = bool(getattr(request, "save_result_image", False))
-        return YoloXDeploymentProcessExecution(
+        return DeploymentProcessExecution(
             deployment_instance_id=config.deployment_instance_id,
             instance_id=instance_id,
-            execution_result=YoloXPredictionExecutionResult(
-                detections=(
-                    YoloXPredictionDetection(
+            execution_result=self._build_execution_result(
+                config=config,
+                input_uri=request_input_uri,
+                has_input_image_bytes=request_has_input_image_bytes,
+                save_result_image=request_save_result_image,
+            ),
+        )
+
+    def _build_execution_result(
+        self,
+        *,
+        config: DeploymentProcessConfig,
+        input_uri: str | None,
+        has_input_image_bytes: bool,
+        save_result_image: bool,
+    ) -> object:
+        """按 task_type 构造对应的 fake 推理结果。"""
+
+        task_type = str(config.runtime_target.task_type or "").strip().lower()
+        metadata = {
+            "model_version_id": config.runtime_target.model_version_id,
+            "input_uri": input_uri,
+            "has_input_image_bytes": has_input_image_bytes,
+            "decode_ms": 0.8,
+            "preprocess_ms": 1.2,
+            "infer_ms": 6.1,
+            "postprocess_ms": 1.6,
+            "runtime_mode": self.runtime_mode,
+        }
+        preview_image_bytes = b"preview-jpg" if save_result_image else None
+        primary_label = self._resolve_label(config, 0, default="bolt")
+        secondary_label = self._resolve_label(config, 1, default="nut")
+
+        if task_type == "classification":
+            top_category = ClassificationPredictionCategory(
+                class_id=0,
+                probability=0.91,
+                class_name=primary_label,
+                logit=3.2,
+            )
+            return ClassificationPredictionExecutionResult(
+                categories=(
+                    top_category,
+                    ClassificationPredictionCategory(
+                        class_id=1,
+                        probability=0.09,
+                        class_name=secondary_label,
+                        logit=1.1,
+                    ),
+                ),
+                top_category=top_category,
+                latency_ms=9.7,
+                image_width=64,
+                image_height=64,
+                preview_image_bytes=preview_image_bytes,
+                runtime_session_info=ClassificationRuntimeSessionInfo(
+                    backend_name=config.runtime_target.runtime_backend,
+                    model_uri=config.runtime_target.runtime_artifact_storage_uri,
+                    device_name=config.runtime_target.device_name,
+                    input_spec=ClassificationRuntimeTensorSpec(
+                        name="images",
+                        shape=(1, 3, 64, 64),
+                        dtype="float32",
+                    ),
+                    output_spec=ClassificationRuntimeTensorSpec(
+                        name="probabilities",
+                        shape=(1, max(2, len(config.runtime_target.labels))),
+                        dtype="float32",
+                    ),
+                    metadata=metadata,
+                ),
+            )
+
+        if task_type == "segmentation":
+            return SegmentationPredictionExecutionResult(
+                instances=(
+                    SegmentationPredictionInstance(
                         bbox_xyxy=(6.0, 6.0, 24.0, 24.0),
                         score=0.88,
                         class_id=0,
-                        class_name="bolt",
+                        class_name=primary_label,
+                        segments=(
+                            (
+                                (6.0, 6.0),
+                                (24.0, 6.0),
+                                (24.0, 24.0),
+                                (6.0, 24.0),
+                            ),
+                        ),
+                        mask_area=324.0,
                     ),
                 ),
                 latency_ms=9.7,
                 image_width=64,
                 image_height=64,
-                preview_image_bytes=b"preview-jpg" if request_save_result_image else None,
-                runtime_session_info=YoloXRuntimeSessionInfo(
+                preview_image_bytes=preview_image_bytes,
+                runtime_session_info=SegmentationRuntimeSessionInfo(
                     backend_name=config.runtime_target.runtime_backend,
                     model_uri=config.runtime_target.runtime_artifact_storage_uri,
                     device_name=config.runtime_target.device_name,
-                    input_spec=RuntimeTensorSpec(name="images", shape=(1, 3, 64, 64), dtype="float32"),
-                    output_spec=RuntimeTensorSpec(name="detections", shape=(-1, 7), dtype="float32"),
-                    metadata={
-                        "model_version_id": config.runtime_target.model_version_id,
-                        "input_uri": request_input_uri,
-                        "has_input_image_bytes": request_has_input_image_bytes,
-                        "decode_ms": 0.8,
-                        "preprocess_ms": 1.2,
-                        "infer_ms": 6.1,
-                        "postprocess_ms": 1.6,
-                        "runtime_mode": self.runtime_mode,
-                    },
+                    input_spec=SegmentationRuntimeTensorSpec(
+                        name="images",
+                        shape=(1, 3, 64, 64),
+                        dtype="float32",
+                    ),
+                    output_specs=(
+                        SegmentationRuntimeTensorSpec(
+                            name="detections",
+                            shape=(-1, 6),
+                            dtype="float32",
+                        ),
+                        SegmentationRuntimeTensorSpec(
+                            name="masks",
+                            shape=(-1, 64, 64),
+                            dtype="float32",
+                        ),
+                    ),
+                    metadata=metadata,
                 ),
+            )
+
+        if task_type == "pose":
+            return PosePredictionExecutionResult(
+                instances=(
+                    PosePredictionInstance(
+                        bbox_xyxy=(6.0, 6.0, 24.0, 24.0),
+                        score=0.88,
+                        class_id=0,
+                        class_name=primary_label,
+                        keypoints=(
+                            PosePredictionKeypoint(x=10.0, y=12.0, confidence=0.95),
+                            PosePredictionKeypoint(x=18.0, y=20.0, confidence=0.9),
+                        ),
+                        kpt_shape=(17, 3),
+                    ),
+                ),
+                latency_ms=9.7,
+                image_width=64,
+                image_height=64,
+                preview_image_bytes=preview_image_bytes,
+                runtime_session_info=PoseRuntimeSessionInfo(
+                    backend_name=config.runtime_target.runtime_backend,
+                    model_uri=config.runtime_target.runtime_artifact_storage_uri,
+                    device_name=config.runtime_target.device_name,
+                    input_spec=PoseRuntimeTensorSpec(
+                        name="images",
+                        shape=(1, 3, 64, 64),
+                        dtype="float32",
+                    ),
+                    output_specs=(
+                        PoseRuntimeTensorSpec(
+                            name="detections",
+                            shape=(-1, 6),
+                            dtype="float32",
+                        ),
+                        PoseRuntimeTensorSpec(
+                            name="keypoints",
+                            shape=(-1, 17, 3),
+                            dtype="float32",
+                        ),
+                    ),
+                    metadata=metadata,
+                ),
+            )
+
+        if task_type == "obb":
+            return ObbPredictionExecutionResult(
+                instances=(
+                    ObbPredictionInstance(
+                        bbox_xyxy=(6.0, 6.0, 24.0, 24.0),
+                        score=0.88,
+                        class_id=0,
+                        class_name=primary_label,
+                        angle=12.5,
+                    ),
+                ),
+                latency_ms=9.7,
+                image_width=64,
+                image_height=64,
+                preview_image_bytes=preview_image_bytes,
+                runtime_session_info=ObbRuntimeSessionInfo(
+                    backend_name=config.runtime_target.runtime_backend,
+                    model_uri=config.runtime_target.runtime_artifact_storage_uri,
+                    device_name=config.runtime_target.device_name,
+                    input_spec=ObbRuntimeTensorSpec(
+                        name="images",
+                        shape=(1, 3, 64, 64),
+                        dtype="float32",
+                    ),
+                    output_specs=(
+                        ObbRuntimeTensorSpec(
+                            name="obb",
+                            shape=(-1, 7),
+                            dtype="float32",
+                        ),
+                    ),
+                    metadata=metadata,
+                ),
+            )
+
+        return DetectionPredictionExecutionResult(
+            detections=(
+                DetectionPredictionDetection(
+                    bbox_xyxy=(6.0, 6.0, 24.0, 24.0),
+                    score=0.88,
+                    class_id=0,
+                    class_name=primary_label,
+                ),
+            ),
+            latency_ms=9.7,
+            image_width=64,
+            image_height=64,
+            preview_image_bytes=preview_image_bytes,
+            runtime_session_info=DetectionRuntimeSessionInfo(
+                backend_name=config.runtime_target.runtime_backend,
+                model_uri=config.runtime_target.runtime_artifact_storage_uri,
+                device_name=config.runtime_target.device_name,
+                input_spec=DetectionRuntimeTensorSpec(
+                    name="images",
+                    shape=(1, 3, 64, 64),
+                    dtype="float32",
+                ),
+                output_spec=DetectionRuntimeTensorSpec(
+                    name="detections",
+                    shape=(-1, 7),
+                    dtype="float32",
+                ),
+                metadata=metadata,
             ),
         )
 
-    def _ensure_state(self, config: YoloXDeploymentProcessConfig) -> _FakeDeploymentProcessState:
+    def _resolve_label(
+        self,
+        config: DeploymentProcessConfig,
+        index: int,
+        *,
+        default: str,
+    ) -> str:
+        """按索引读取 runtime target labels。"""
+
+        labels = tuple(config.runtime_target.labels)
+        if 0 <= index < len(labels) and isinstance(labels[index], str) and labels[index].strip():
+            return labels[index]
+        return default
+
+    def _ensure_state(self, config: DeploymentProcessConfig) -> _FakeDeploymentProcessState:
         """返回 deployment 对应的 fake 状态对象。"""
 
         state = self._states.get(config.deployment_instance_id)
@@ -443,10 +681,10 @@ class FakeDeploymentProcessSupervisor(YoloXDeploymentProcessSupervisor):
             state.config = config
         return state
 
-    def _build_status(self, state: _FakeDeploymentProcessState) -> YoloXDeploymentProcessStatus:
+    def _build_status(self, state: _FakeDeploymentProcessState) -> DeploymentProcessStatus:
         """根据 fake 状态构建公开状态响应。"""
 
-        return YoloXDeploymentProcessStatus(
+        return DeploymentProcessStatus(
             deployment_instance_id=state.config.deployment_instance_id,
             runtime_mode=self.runtime_mode,
             instance_count=state.config.instance_count,
@@ -459,7 +697,7 @@ class FakeDeploymentProcessSupervisor(YoloXDeploymentProcessSupervisor):
             last_error=state.last_error,
         )
 
-    def _build_health(self, state: _FakeDeploymentProcessState) -> YoloXDeploymentProcessHealth:
+    def _build_health(self, state: _FakeDeploymentProcessState) -> DeploymentProcessHealth:
         """根据 fake 状态构建公开健康响应。"""
 
         instances = []
@@ -473,7 +711,7 @@ class FakeDeploymentProcessSupervisor(YoloXDeploymentProcessSupervisor):
             if warmed:
                 warmed_instance_count += 1
             instances.append(
-                YoloXDeploymentProcessInstanceHealth(
+                DeploymentProcessInstanceHealth(
                     instance_id=f"{state.config.deployment_instance_id}:instance-{instance_index}",
                     healthy=healthy,
                     warmed=warmed,
@@ -482,7 +720,7 @@ class FakeDeploymentProcessSupervisor(YoloXDeploymentProcessSupervisor):
                 )
             )
         status = self._build_status(state)
-        return YoloXDeploymentProcessHealth(
+        return DeploymentProcessHealth(
             deployment_instance_id=status.deployment_instance_id,
             runtime_mode=status.runtime_mode,
             instance_count=status.instance_count,
@@ -522,7 +760,7 @@ def _build_fake_async_inference_gateway_handler(
     def _execute(*, process_config, request):
         """通过 fake async supervisor 执行一次 queue-backed 推理请求。"""
 
-        execution_result = yolox_inference_task_service_module.run_yolox_inference_task(
+        execution_result = detection_inference_task_service_module.run_detection_inference_task(
             deployment_process_supervisor=async_supervisor,
             process_config=process_config,
             input_uri=request.input_uri,
@@ -532,6 +770,6 @@ def _build_fake_async_inference_gateway_handler(
             return_preview_image_base64=False,
             extra_options=dict(request.extra_options),
         )
-        return serialize_yolox_async_inference_execution_result(execution_result)
+        return serialize_detection_async_inference_execution_result(execution_result)
 
     return _execute
