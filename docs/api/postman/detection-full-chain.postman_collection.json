@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "amvision-detection-full-chain",
     "name": "amvision detection-full-chain",
-    "description": "Detection 全链路 Postman 调试集合。覆盖 dataset import -> dataset export -> training -> validation -> evaluation -> conversion -> deployment -> infer -> workflow invoke。默认变量 datasetZipPath 指向本地调试数据包 data/files/postman-assets/detection-coco-min.zip；该目录不纳入 git。默认同时预置 modelType=yolo11、targetFormat=onnx、deploymentRuntimeBackend=onnxruntime。当前支持 modelType: yolox, yolov8, yolo11, yolo26, rfdetr。注意：docs/api/postman/workflows/01-15 仍然是 workflow/runtime 场景链，不替代这里的全生命周期调试集合。",
+    "description": "Detection 全链路 Postman 调试集合。覆盖 dataset import -> dataset export -> training -> validation -> evaluation -> conversion -> deployment -> infer -> workflow invoke。默认变量 datasetZipPath 指向本地调试数据包 data/files/postman-assets/detection-coco-min.zip；如需切到 YOLO 数据集，直接把 datasetZipPath 改成对应 zip。导入请求默认 format_type 保持关闭，等同前端 auto；需要显式格式时再启用并填写 coco 或 yolo。默认同时预置 modelType=yolo11、targetFormat=onnx、deploymentRuntimeBackend=onnxruntime。当前支持 modelType: yolox, yolov8, yolo11, yolo26, rfdetr。注意：docs/api/postman/workflows/01-15 仍然是 workflow/runtime 场景链，不替代这里的全生命周期调试集合。",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -69,10 +69,6 @@
     {
       "key": "datasetZipPath",
       "value": "data/files/postman-assets/detection-coco-min.zip"
-    },
-    {
-      "key": "datasetYoloZipPath",
-      "value": "data/files/postman-assets/detection-yolo-min.zip"
     },
     {
       "key": "exportFormatId",
@@ -605,6 +601,10 @@
     {
       "key": "formatId",
       "value": "coco-detection-v1"
+    },
+    {
+      "key": "formatType",
+      "value": ""
     }
   ],
   "item": [
@@ -783,7 +783,7 @@
       "name": "Dataset Import",
       "item": [
         {
-          "name": "Create Detection Dataset Import (COCO)",
+          "name": "Create Detection Dataset Import",
           "request": {
             "method": "POST",
             "header": [
@@ -805,7 +805,7 @@
                 "imports"
               ]
             },
-            "description": "Detection 正式导入入口。默认 file src 已指向本地调试包 data/files/postman-assets/detection-coco-min.zip，格式使用 coco + task_type=detection，导入后可直接接后续 export/train/eval/deploy 联调。",
+            "description": "Detection 正式导入入口。默认 file src 已指向本地调试包 data/files/postman-assets/detection-coco-min.zip；如需切到 YOLO 数据集，直接改 datasetZipPath。默认 format_type 保持关闭，等同前端 auto；需要显式格式时再启用并填写 coco 或 yolo。",
             "body": {
               "mode": "formdata",
               "formdata": [
@@ -821,8 +821,9 @@
                 },
                 {
                   "key": "format_type",
-                  "value": "coco",
-                  "type": "text"
+                  "value": "{{formatType}}",
+                  "type": "text",
+                  "disabled": true
                 },
                 {
                   "key": "task_type",
@@ -833,82 +834,6 @@
                   "key": "package",
                   "type": "file",
                   "src": "{{datasetZipPath}}"
-                }
-              ]
-            }
-          },
-          "response": [],
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "if (pm.response.code === 202) {",
-                  "  const payload = pm.response.json();",
-                  "  if (payload.dataset_import_id) {",
-                  "    pm.collectionVariables.set('datasetImportId', payload.dataset_import_id);",
-                  "  }",
-                  "  if (payload.task_id) {",
-                  "    pm.collectionVariables.set('importTaskId', payload.task_id);",
-                  "  }",
-                  "}"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "Create Detection Dataset Import (YOLO)",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Authorization",
-                "value": "Bearer {{accessToken}}",
-                "type": "text"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/api/v1/datasets/imports",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "datasets",
-                "imports"
-              ]
-            },
-            "description": "Detection 的 YOLO 导入调试样例。默认 file src 已指向本地调试包 data/files/postman-assets/detection-yolo-min.zip，格式使用 yolo + task_type=detection。",
-            "body": {
-              "mode": "formdata",
-              "formdata": [
-                {
-                  "key": "project_id",
-                  "value": "{{projectId}}",
-                  "type": "text"
-                },
-                {
-                  "key": "dataset_id",
-                  "value": "{{datasetId}}",
-                  "type": "text"
-                },
-                {
-                  "key": "format_type",
-                  "value": "yolo",
-                  "type": "text"
-                },
-                {
-                  "key": "task_type",
-                  "value": "detection",
-                  "type": "text"
-                },
-                {
-                  "key": "package",
-                  "type": "file",
-                  "src": "{{datasetYoloZipPath}}"
                 }
               ]
             }

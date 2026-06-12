@@ -49,7 +49,7 @@
             icon="archive"
             accept=".zip,application/zip"
             :label="t('datasetOps.fields.package')"
-            :description="importFilePickerDescription"
+            :description="t('datasetOps.filePickerDescription')"
             :disabled="submittingImport"
           />
           <label class="field field--wide">
@@ -309,13 +309,6 @@ const formatTypeOptions = computed(() => [
   })),
 ])
 const exportFormatSelectOptions = computed(() => exportFormatOptions.value.map((item) => ({ label: item, value: item })))
-const importFilePickerDescription = computed(() => {
-  const examplePath = resolveImportDebugExamplePath(taskType.value, formatType.value)
-  if (!examplePath) {
-    return t('datasetOps.filePickerDescription')
-  }
-  return t('datasetOps.filePickerDescriptionWithExample', { examplePath })
-})
 
 function selectValueToString(value: SelectValue): string {
   return typeof value === 'string' ? value : String(value ?? '')
@@ -504,22 +497,5 @@ function resolveImportFormatDisplayName(formatTypeValue: string): string {
   if (normalizedFormatType === 'imagenet') return 'ImageNet'
   if (normalizedFormatType === 'dota') return 'DOTA'
   return formatTypeValue
-}
-
-function resolveImportDebugExamplePath(taskTypeValue: string, formatTypeValue: string): string | null {
-  const normalizedTaskType = taskTypeValue.trim().toLowerCase()
-  const normalizedFormatType = formatTypeValue.trim().toLowerCase()
-  const examplePathByTaskAndFormat: Record<string, string> = {
-    'classification:imagenet': 'data/files/postman-assets/classification-imagenet-min.zip',
-    'detection:coco': 'data/files/postman-assets/detection-coco-min.zip',
-    'detection:yolo': 'data/files/postman-assets/detection-yolo-min.zip',
-    'obb:dota': 'data/files/postman-assets/obb-dota-min.zip',
-    'obb:yolo': 'data/files/postman-assets/obb-yolo-min.zip',
-    'pose:coco': 'data/files/postman-assets/pose-coco-keypoints-min.zip',
-    'pose:yolo': 'data/files/postman-assets/pose-yolo-min.zip',
-    'segmentation:coco': 'data/files/postman-assets/segmentation-coco-min.zip',
-    'segmentation:yolo': 'data/files/postman-assets/segmentation-yolo-min.zip',
-  }
-  return examplePathByTaskAndFormat[`${normalizedTaskType}:${normalizedFormatType}`] ?? null
 }
 </script>

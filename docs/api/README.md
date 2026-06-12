@@ -69,6 +69,7 @@
 
 #### 根目录全链路与模型入口
 
+- [docs/api/postman/README.md](postman/README.md)：Postman 简明使用说明，重点说明数据集导入时需要改哪些变量
 - [docs/api/postman/datasets-imports.postman_collection.json](postman/datasets-imports.postman_collection.json)：当前公开的 system/bootstrap、projects/bootstrap、Project 目录、DatasetImport、tasks 接口 Postman collection
 - [docs/api/postman/datasets-exports.postman_collection.json](postman/datasets-exports.postman_collection.json)：当前公开的 DatasetExport 格式规则、导出创建、详情、打包和下载接口 Postman collection
 - [docs/api/postman/platform-base-models.postman_collection.json](postman/platform-base-models.postman_collection.json)：当前公开的平台基础模型 list/detail 接口 Postman collection

@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "amvision-pose-full-chain",
     "name": "amvision pose-full-chain",
-    "description": "Pose 全链路 Postman 调试集合。覆盖 dataset import -> dataset export -> training -> validation -> evaluation -> conversion -> deployment -> infer -> workflow invoke。默认变量 datasetZipPath 指向本地调试数据包 data/files/postman-assets/pose-coco-keypoints-min.zip；该目录不纳入 git。默认同时预置 modelType=yolo11、targetFormat=onnx、deploymentRuntimeBackend=onnxruntime。当前支持 modelType: yolov8, yolo11, yolo26。注意：docs/api/postman/workflows/12-15 仍然是 workflow/runtime 最小链，不替代这里的全生命周期调试集合。",
+    "description": "Pose 全链路 Postman 调试集合。覆盖 dataset import -> dataset export -> training -> validation -> evaluation -> conversion -> deployment -> infer -> workflow invoke。默认变量 datasetZipPath 指向本地调试数据包 data/files/postman-assets/pose-coco-keypoints-min.zip；如需切到 YOLO pose 数据集，直接把 datasetZipPath 改成对应 zip。导入请求默认 format_type 保持关闭，等同前端 auto；需要显式格式时再启用并填写 coco 或 yolo。默认同时预置 modelType=yolo11、targetFormat=onnx、deploymentRuntimeBackend=onnxruntime。当前支持 modelType: yolov8, yolo11, yolo26。注意：docs/api/postman/workflows/12-15 仍然是 workflow/runtime 最小链，不替代这里的全生命周期调试集合。",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -61,10 +61,6 @@
     {
       "key": "datasetZipPath",
       "value": "data/files/postman-assets/pose-coco-keypoints-min.zip"
-    },
-    {
-      "key": "datasetYoloZipPath",
-      "value": "data/files/postman-assets/pose-yolo-min.zip"
     },
     {
       "key": "exportFormatId",
@@ -173,6 +169,10 @@
     {
       "key": "workflowRunId",
       "value": ""
+    },
+    {
+      "key": "formatType",
+      "value": ""
     }
   ],
   "item": [
@@ -242,7 +242,7 @@
       "name": "Dataset Import",
       "item": [
         {
-          "name": "Create Pose Dataset Import (COCO)",
+          "name": "Create Pose Dataset Import",
           "request": {
             "method": "POST",
             "header": [
@@ -264,7 +264,7 @@
                 "imports"
               ]
             },
-            "description": "Pose 正式导入入口。默认 file src 已指向本地调试包 data/files/postman-assets/pose-coco-keypoints-min.zip，格式使用 coco + task_type=pose，内置 17 keypoints person 最小样本。",
+            "description": "Pose 正式导入入口。默认 file src 已指向本地调试包 data/files/postman-assets/pose-coco-keypoints-min.zip；如需切到 YOLO pose 数据集，直接改 datasetZipPath。默认 format_type 保持关闭，等同前端 auto；需要显式格式时再启用并填写 coco 或 yolo。",
             "body": {
               "mode": "formdata",
               "formdata": [
@@ -280,8 +280,9 @@
                 },
                 {
                   "key": "format_type",
-                  "value": "coco",
-                  "type": "text"
+                  "value": "{{formatType}}",
+                  "type": "text",
+                  "disabled": true
                 },
                 {
                   "key": "task_type",
@@ -292,82 +293,6 @@
                   "key": "package",
                   "type": "file",
                   "src": "{{datasetZipPath}}"
-                }
-              ]
-            }
-          },
-          "response": [],
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "if (pm.response.code === 202) {",
-                  "  const payload = pm.response.json();",
-                  "  if (payload.dataset_import_id) {",
-                  "    pm.collectionVariables.set('datasetImportId', payload.dataset_import_id);",
-                  "  }",
-                  "  if (payload.task_id) {",
-                  "    pm.collectionVariables.set('importTaskId', payload.task_id);",
-                  "  }",
-                  "}"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "Create Pose Dataset Import (YOLO)",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Authorization",
-                "value": "Bearer {{accessToken}}",
-                "type": "text"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/api/v1/datasets/imports",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "datasets",
-                "imports"
-              ]
-            },
-            "description": "Pose 的 YOLO 导入调试样例。默认 file src 已指向本地调试包 data/files/postman-assets/pose-yolo-min.zip，格式使用 yolo + task_type=pose。",
-            "body": {
-              "mode": "formdata",
-              "formdata": [
-                {
-                  "key": "project_id",
-                  "value": "{{projectId}}",
-                  "type": "text"
-                },
-                {
-                  "key": "dataset_id",
-                  "value": "{{datasetId}}",
-                  "type": "text"
-                },
-                {
-                  "key": "format_type",
-                  "value": "yolo",
-                  "type": "text"
-                },
-                {
-                  "key": "task_type",
-                  "value": "pose",
-                  "type": "text"
-                },
-                {
-                  "key": "package",
-                  "type": "file",
-                  "src": "{{datasetYoloZipPath}}"
                 }
               ]
             }

@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "amvision-classification-full-chain",
     "name": "amvision classification-full-chain",
-    "description": "Classification 全链路 Postman 调试集合。覆盖 dataset import -> dataset export -> training -> validation -> evaluation -> conversion -> deployment -> infer -> workflow invoke。默认变量 datasetZipPath 指向本地调试数据包 data/files/postman-assets/classification-imagenet-min.zip；该目录不纳入 git。默认同时预置 modelType=yolo11、targetFormat=onnx、deploymentRuntimeBackend=onnxruntime。当前支持 modelType: yolov8, yolo11, yolo26。注意：docs/api/postman/workflows/12-15 仍然是 workflow/runtime 最小链，不替代这里的全生命周期调试集合。",
+    "description": "Classification 全链路 Postman 调试集合。覆盖 dataset import -> dataset export -> training -> validation -> evaluation -> conversion -> deployment -> infer -> workflow invoke。默认变量 datasetZipPath 指向本地调试数据包 data/files/postman-assets/classification-imagenet-min.zip。导入请求默认 format_type 保持关闭，等同前端 auto；需要显式格式时再启用并填写 imagenet。默认同时预置 modelType=yolo11、targetFormat=onnx、deploymentRuntimeBackend=onnxruntime。当前支持 modelType: yolov8, yolo11, yolo26。注意：docs/api/postman/workflows/12-15 仍然是 workflow/runtime 最小链，不替代这里的全生命周期调试集合。",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -169,6 +169,10 @@
     {
       "key": "workflowRunId",
       "value": ""
+    },
+    {
+      "key": "formatType",
+      "value": ""
     }
   ],
   "item": [
@@ -260,7 +264,7 @@
                 "imports"
               ]
             },
-            "description": "Classification 正式导入入口。默认 file src 已指向本地调试包 data/files/postman-assets/classification-imagenet-min.zip，格式使用 imagenet + task_type=classification，适合直接验证 ImageNet 风格最小链。",
+            "description": "Classification 正式导入入口。默认 file src 已指向本地调试包 data/files/postman-assets/classification-imagenet-min.zip。默认 format_type 保持关闭，等同前端 auto；需要显式格式时再启用并填写 imagenet。",
             "body": {
               "mode": "formdata",
               "formdata": [
@@ -276,8 +280,9 @@
                 },
                 {
                   "key": "format_type",
-                  "value": "imagenet",
-                  "type": "text"
+                  "value": "{{formatType}}",
+                  "type": "text",
+                  "disabled": true
                 },
                 {
                   "key": "task_type",

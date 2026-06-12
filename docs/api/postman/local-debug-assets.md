@@ -1,6 +1,6 @@
 # Postman 本地调试数据包
 
-full-chain Postman collection 默认把 `datasetZipPath` 指到本地目录 `data/files/postman-assets/`。
+各个 Postman collection 默认都把 `datasetZipPath` 指到本地目录 `data/files/postman-assets/`。
 
 这个目录用于放最小联调数据包，不放在 `docs/` 下，也不纳入 git。
 
@@ -18,8 +18,6 @@ full-chain Postman collection 默认把 `datasetZipPath` 指到本地目录 `dat
 
 这些 zip 只用于接口联调、参数验证和最小回归，不代表真实训练质量。
 
-`detection-coco-min.zip` 同时被 `detection-full-chain.postman_collection.json` 和 `docs/api/postman/workflows/01-detection-end-to-end-qr-crop-remap/` 复用。
-
-`detection-yolo-min.zip`、`segmentation-yolo-min.zip`、`pose-yolo-min.zip`、`obb-yolo-min.zip` 分别被对应 task 的 full-chain collection 和 `datasets-imports.postman_collection.json` 里的 YOLO 导入样例复用。
+这些 zip 只是建议文件名，不是固定规则。真实联调时，直接把 `datasetZipPath` 改成当前要传的本地 zip 路径即可。
 
 这些文件都按本地联调资产处理，需要手动放到 `data/files/postman-assets/`，不纳入 git。

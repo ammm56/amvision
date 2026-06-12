@@ -166,7 +166,6 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
       emptyExportsTitle: '暂无导出记录',
       emptyExportsDescription: '填入 DatasetVersion id 并创建导出后，导出记录会显示在这里。',
       filePickerDescription: '支持 zip 数据集包，可点击选择或拖拽到此处。',
-      filePickerDescriptionWithExample: '支持 zip 数据集包，可点击选择或拖拽到此处。示例：{examplePath}',
       fields: {
         projectId: 'Project id',
         datasetId: 'Dataset id',
@@ -1148,7 +1147,6 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
       emptyExportsTitle: 'No export records',
       emptyExportsDescription: 'Export records will appear here after a DatasetVersion id is submitted.',
       filePickerDescription: 'Supports zip dataset packages. Click to choose or drag one here.',
-      filePickerDescriptionWithExample: 'Supports zip dataset packages. Click to choose or drag one here. Example: {examplePath}',
       fields: {
         projectId: 'Project id',
         datasetId: 'Dataset id',
@@ -2124,7 +2122,6 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
       emptyExportsTitle: 'エクスポート記録はありません',
       emptyExportsDescription: 'DatasetVersion id を送信すると、エクスポート記録がここに表示されます。',
       filePickerDescription: 'zip データセットパッケージに対応します。クリックして選択するか、ここへドラッグしてください。',
-      filePickerDescriptionWithExample: 'zip データセットパッケージに対応します。クリックして選択するか、ここへドラッグしてください。例: {examplePath}',
       fields: {
         projectId: 'Project id',
         datasetId: 'Dataset id',
@@ -3100,7 +3097,6 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
       emptyExportsTitle: '내보내기 기록 없음',
       emptyExportsDescription: 'DatasetVersion id 를 제출하면 내보내기 기록이 여기에 표시됩니다.',
       filePickerDescription: 'zip 데이터셋 패키지를 지원합니다. 클릭해서 선택하거나 여기로 드래그하세요.',
-      filePickerDescriptionWithExample: 'zip 데이터셋 패키지를 지원합니다. 클릭해서 선택하거나 여기로 드래그하세요. 예: {examplePath}',
       fields: {
         projectId: 'Project id',
         datasetId: 'Dataset id',
