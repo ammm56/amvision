@@ -333,6 +333,7 @@ def test_evaluation_service_node_routes_to_platform_evaluation_service(
         node_definition=evaluation_node.CORE_NODE_SPEC.node_definition,
         parameters={
             "task_type": "classification",
+            "model_type": "yolov8",
             "project_id": "project-1",
             "model_version_id": "model-version-1",
             "top_k": 3,
@@ -453,12 +454,12 @@ def test_inference_submit_node_uses_task_native_request(
             "input_uri": "inputs/source.jpg",
             "mask_threshold": 0.45,
         },
-        runtime_context=WorkflowServiceNodeRuntimeContext(
-            session_factory=object(),
-            dataset_storage=object(),
-            detection_async_deployment_process_supervisor=_FakeAsyncSupervisor(),
-            async_inference_service_id="workflow-service",
-        ),
+            runtime_context=WorkflowServiceNodeRuntimeContext(
+                session_factory=object(),
+                dataset_storage=object(),
+                segmentation_async_deployment_process_supervisor=_FakeAsyncSupervisor(),
+                async_inference_service_id="workflow-service",
+            ),
     )
 
     result = inference_node._model_inference_submit_handler(request)

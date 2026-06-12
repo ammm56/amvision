@@ -75,9 +75,9 @@ class DatasetImportRequest:
     project_id: str
     dataset_id: str
     package_file_name: str
+    task_type: DatasetTaskType
     package_bytes: bytes | None = None
     format_type: DatasetFormatType | None = None
-    task_type: DatasetTaskType = "detection"
     split_strategy: DatasetImportRequestedSplitStrategy | None = None
     class_map: dict[str, str] = field(default_factory=dict)
     metadata: dict[str, object] = field(default_factory=dict)

@@ -381,6 +381,7 @@ def test_core_training_service_node_uses_runtime_context(
                 node_type_id="core.service.model-training.submit",
                 parameters={
                     "task_type": "detection",
+                    "model_type": "yolox",
                     "project_id": "project-1",
                     "dataset_export_id": "dataset-export-1",
                     "recipe_id": "recipe-1",
@@ -1533,6 +1534,7 @@ def test_core_model_inference_submit_node_auto_starts_async_process(
                 node_type_id="core.service.model-inference.submit",
                 parameters={
                     "task_type": "detection",
+                    "model_type": "yolox",
                     "project_id": "project-1",
                     "deployment_instance_id": "deployment-instance-1",
                     "display_name": "workflow inference",
@@ -1671,9 +1673,10 @@ def test_core_detection_deployment_create_node_accepts_dynamic_request_payload(
         input_values={
             "request_payload": {
                 "value": {
-                    "project_id": "project-1",
-                    "task_type": "detection",
-                    "model_build_id": "model-build-dynamic-1",
+                        "project_id": "project-1",
+                        "task_type": "detection",
+                        "model_type": "yolox",
+                        "model_build_id": "model-build-dynamic-1",
                     "runtime_backend": "tensorrt",
                     "runtime_precision": "fp16",
                     "instance_count": 3,

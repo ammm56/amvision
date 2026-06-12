@@ -53,7 +53,7 @@ class YoloPrimaryPretrainedCatalogEntry:
     model_version_id: str
     checkpoint_file_id: str
     checkpoint_storage_uri: str
-    task_type: str = "detection"
+    task_type: str
     metadata: dict[str, object] = field(default_factory=dict)
 
 
@@ -131,7 +131,7 @@ def _load_yolo_primary_catalog_entry(
         model_version_id=_require_str(payload, "model_version_id"),
         checkpoint_file_id=_require_str(payload, "checkpoint_file_id"),
         checkpoint_storage_uri=checkpoint_key,
-        task_type=str(payload.get("task_type", "detection")),
+        task_type=_require_str(payload, "task_type"),
         metadata=metadata,
     )
 

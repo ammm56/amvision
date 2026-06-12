@@ -103,20 +103,26 @@ def get_optional_platform_model_type(
     return model_type
 
 
-def resolve_platform_model_type(
-    model_type: str | None,
+def require_platform_model_type(
+    request: WorkflowNodeExecutionRequest,
     *,
-    task_type: str,
-    default_detection_model_type: str = "yolox",
-    default_yolo_primary_model_type: str = "yolov8",
+    supported_model_types: tuple[str, ...] = WORKFLOW_SERVICE_MODEL_TYPES,
 ) -> str:
-    """按任务分类补齐默认 model_type。"""
+    """读取并校验必填 model_type。"""
 
+    model_type = get_optional_platform_model_type(
+        request,
+        supported_model_types=supported_model_types,
+    )
     if model_type is not None:
         return model_type
-    if task_type == DETECTION_TASK_TYPE:
-        return default_detection_model_type
-    return default_yolo_primary_model_type
+    raise InvalidRequestError(
+        "model_type 不能为空，workflow service node 必须显式声明模型分类",
+        details={
+            "node_id": request.node_id,
+            "supported": list(supported_model_types),
+        },
+    )
 
 
 def get_supported_platform_model_types(task_type: str) -> tuple[str, ...]:

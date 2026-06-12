@@ -48,6 +48,7 @@ def test_export_dataset_generates_minimal_coco_detection_payload(tmp_path: Path)
         dataset_version_id="dataset-version-1",
         dataset_id="dataset-1",
         project_id="project-1",
+        task_type="detection",
         categories=(
             DatasetCategory(category_id=0, name="bolt"),
             DatasetCategory(category_id=1, name="nut"),
@@ -133,6 +134,7 @@ def test_export_dataset_supports_custom_prefix_and_test_split(tmp_path: Path) ->
         dataset_version_id="dataset-version-2",
         dataset_id="dataset-2",
         project_id="project-1",
+        task_type="detection",
         categories=(DatasetCategory(category_id=0, name="gear"),),
         samples=(
             DatasetSample(
@@ -175,6 +177,7 @@ def test_export_dataset_generates_pascal_voc_layout_and_xml(tmp_path: Path) -> N
         dataset_version_id="dataset-version-voc-1",
         dataset_id="dataset-voc-1",
         project_id="project-1",
+        task_type="detection",
         categories=(DatasetCategory(category_id=0, name="bolt"),),
         samples=(
             DatasetSample(
@@ -375,6 +378,7 @@ def test_export_dataset_rejects_supported_but_unimplemented_format() -> None:
         dataset_version_id="dataset-version-3",
         dataset_id="dataset-3",
         project_id="project-1",
+        task_type="detection",
         categories=(DatasetCategory(category_id=0, name="gear"),),
         samples=(),
     )
@@ -402,6 +406,7 @@ def test_export_task_worker_persists_export_artifact_for_training_input_boundary
         dataset_version_id="dataset-version-task-1",
         dataset_id="dataset-9",
         project_id="project-1",
+        task_type="detection",
         categories=(DatasetCategory(category_id=0, name="bolt"),),
         samples=(
             DatasetSample(

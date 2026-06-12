@@ -43,9 +43,9 @@
 
 ### POST /api/v1/models/detection/training-tasks
 
-创建一个以 DatasetExport 为唯一输入边界的 detection 训练任务，并提交到 detection 训练队列。
+创建一个以 DatasetExport 为唯一输入边界的 detection 训练任务，并按 `model_type` 提交到对应模型训练队列。
 
-当前响应里的 `queue_name` 字段仍会返回历史内部名 `yolox-trainings`，这是内部 worker kind 的保留值，不影响公开路由和调用方式。
+当前公开入口统一是 `/api/v1/models/detection/training-tasks`，但内部 worker kind、队列和 runner 仍按模型隔离。YOLOX 示例会返回 `yolox-training` / `yolox-trainings` 这类模型专属名字；YOLOv8、YOLO11、YOLO26、RF-DETR 会返回各自的训练队列名字。
 
 训练链顺序图与常见失败分支见 [docs/architecture/execution-sequences.md](../architecture/execution-sequences.md)。
 

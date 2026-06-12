@@ -240,7 +240,7 @@ class WorkflowServiceNodeRuntimeContext:
         self,
         *,
         task_type: str,
-        model_type: str = "yolox",
+        model_type: str,
     ) -> Any:
         """构造训练任务 service。
 
@@ -268,7 +268,7 @@ class WorkflowServiceNodeRuntimeContext:
         self,
         *,
         task_type: str,
-        model_type: str = "yolox",
+        model_type: str,
     ) -> Any:
         """构造转换任务 service。
 

@@ -1,4 +1,5 @@
 import { apiRequest } from '@/shared/api/http-client'
+import type { ModelTaskType } from '@/modules/deployments/services/deployment.service'
 
 export interface DetectionInferenceDetection {
   bbox_xyxy: [number, number, number, number]
@@ -87,6 +88,7 @@ export interface DetectionInferenceTaskResult {
 }
 
 export interface DetectionInferenceDebugInput {
+  taskType: ModelTaskType
   projectId: string
   deploymentInstanceId: string
   inputFileId?: string
@@ -101,9 +103,18 @@ export interface DetectionInferenceDebugInput {
 }
 
 export interface DetectionInferenceTaskListInput {
+  taskType: ModelTaskType
   projectId: string
   deploymentInstanceId?: string
   limit?: number
+}
+
+function buildInferenceTaskPath(taskType: ModelTaskType, suffix = ''): string {
+  return `/models/${taskType}/inference-tasks${suffix}`
+}
+
+function buildDeploymentInferencePath(taskType: ModelTaskType, deploymentInstanceId: string): string {
+  return `/models/${taskType}/deployment-instances/${encodeURIComponent(deploymentInstanceId)}/infer`
 }
 
 function buildInferenceFormData(input: DetectionInferenceDebugInput, includeTaskFields: boolean): FormData {
@@ -127,20 +138,20 @@ function buildInferenceFormData(input: DetectionInferenceDebugInput, includeTask
 
 export async function inferDetectionDeployment(input: DetectionInferenceDebugInput): Promise<DetectionInferencePayload> {
   return apiRequest<DetectionInferencePayload>(
-    `/models/detection/deployment-instances/${encodeURIComponent(input.deploymentInstanceId)}/infer`,
+    buildDeploymentInferencePath(input.taskType, input.deploymentInstanceId),
     { method: 'POST', body: buildInferenceFormData(input, false) },
   )
 }
 
 export async function createDetectionInferenceTask(input: DetectionInferenceDebugInput): Promise<DetectionInferenceTaskSubmission> {
-  return apiRequest<DetectionInferenceTaskSubmission>('/models/detection/inference-tasks', {
+  return apiRequest<DetectionInferenceTaskSubmission>(buildInferenceTaskPath(input.taskType), {
     method: 'POST',
     body: buildInferenceFormData(input, true),
   })
 }
 
 export async function listDetectionInferenceTasks(input: DetectionInferenceTaskListInput): Promise<DetectionInferenceTaskSummary[]> {
-  return apiRequest<DetectionInferenceTaskSummary[]>('/models/detection/inference-tasks', {
+  return apiRequest<DetectionInferenceTaskSummary[]>(buildInferenceTaskPath(input.taskType), {
     query: {
       project_id: input.projectId,
       deployment_instance_id: input.deploymentInstanceId,
@@ -149,7 +160,7 @@ export async function listDetectionInferenceTasks(input: DetectionInferenceTaskL
   })
 }
 
-export async function getDetectionInferenceTaskResult(taskId: string): Promise<DetectionInferenceTaskResult> {
-  return apiRequest<DetectionInferenceTaskResult>(`/models/detection/inference-tasks/${encodeURIComponent(taskId)}/result`)
+export async function getDetectionInferenceTaskResult(taskType: ModelTaskType, taskId: string): Promise<DetectionInferenceTaskResult> {
+  return apiRequest<DetectionInferenceTaskResult>(buildInferenceTaskPath(taskType, `/${encodeURIComponent(taskId)}/result`))
 }
 

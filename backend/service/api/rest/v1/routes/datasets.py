@@ -167,8 +167,8 @@ async def import_dataset_zip(
 	project_id: Annotated[str, Form()],
 	dataset_id: Annotated[str, Form()],
 	package: Annotated[UploadFile, File()],
+	task_type: Annotated[DatasetTaskType, Form()],
 	format_type: Annotated[DatasetFormatType | None, Form()] = None,
-	task_type: Annotated[DatasetTaskType, Form()] = "detection",
 	split_strategy: Annotated[DatasetImportRequestedSplitStrategy | None, Form()] = None,
 	class_map_json: Annotated[str | None, Form()] = None,
 ) -> DatasetImportSubmissionResponse:

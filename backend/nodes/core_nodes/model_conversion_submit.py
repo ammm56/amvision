@@ -11,9 +11,8 @@ from backend.contracts.workflows.workflow_graph import (
 from backend.nodes.core_nodes._base import CoreNodeSpec
 from backend.nodes.core_nodes._platform_service_node_support import (
     WORKFLOW_SERVICE_TASK_TYPES,
-    get_optional_platform_model_type,
+    require_platform_model_type,
     require_platform_task_type,
-    resolve_platform_model_type,
 )
 from backend.service.application.conversions.yolox_conversion_task_service import (
     YoloXConversionTaskRequest,
@@ -53,13 +52,9 @@ def _model_conversion_submit_handler(request: WorkflowNodeExecutionRequest) -> d
         )
 
     task_type = require_platform_task_type(request)
-    requested_model_type = get_optional_platform_model_type(
+    model_type = require_platform_model_type(
         request,
         supported_model_types=("yolox", "yolov8", "yolo11", "yolo26", "rfdetr"),
-    )
-    model_type = resolve_platform_model_type(
-        requested_model_type,
-        task_type=task_type,
     )
     if task_type == DETECTION_TASK_TYPE and model_type == "yolox":
         request_cls = YoloXConversionTaskRequest
@@ -67,17 +62,20 @@ def _model_conversion_submit_handler(request: WorkflowNodeExecutionRequest) -> d
         request_cls = RfdetrConversionTaskRequest
     else:
         request_cls = YoloPrimaryConversionTaskRequest
+    request_kwargs = {
+        "project_id": require_str_parameter(request, "project_id"),
+        "source_model_version_id": require_str_parameter(request, "source_model_version_id"),
+        "target_formats": target_formats,
+        "runtime_profile_id": get_optional_str_parameter(request, "runtime_profile_id"),
+        "extra_options": get_optional_dict_parameter(request, "extra_options"),
+    }
+    if request_cls is RfdetrConversionTaskRequest:
+        request_kwargs["task_type"] = task_type
     submission = runtime_context.build_conversion_task_service(
         task_type=task_type,
         model_type=model_type,
     ).submit_conversion_task(
-        request_cls(
-            project_id=require_str_parameter(request, "project_id"),
-            source_model_version_id=require_str_parameter(request, "source_model_version_id"),
-            target_formats=target_formats,
-            runtime_profile_id=get_optional_str_parameter(request, "runtime_profile_id"),
-            extra_options=get_optional_dict_parameter(request, "extra_options"),
-        ),
+        request_cls(**request_kwargs),
         created_by=resolve_created_by(request),
         display_name=resolve_display_name(request),
     )
@@ -129,7 +127,7 @@ CORE_NODE_SPEC = CoreNodeSpec(
                 "display_name": {"type": "string"},
                 "created_by": {"type": "string"},
             },
-            "required": ["task_type", "project_id", "source_model_version_id", "target_formats"],
+            "required": ["task_type", "model_type", "project_id", "source_model_version_id", "target_formats"],
         },
         capability_tags=("service.model.conversion", "task.submit"),
     ),

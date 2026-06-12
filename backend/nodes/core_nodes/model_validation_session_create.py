@@ -11,9 +11,8 @@ from backend.contracts.workflows.workflow_graph import (
 from backend.nodes.core_nodes._base import CoreNodeSpec
 from backend.nodes.core_nodes._platform_service_node_support import (
     WORKFLOW_SERVICE_TASK_TYPES,
-    get_optional_platform_model_type,
+    require_platform_model_type,
     require_platform_task_type,
-    resolve_platform_model_type,
 )
 from backend.nodes.core_nodes._service_node_support import (
     build_response_body_output,
@@ -56,12 +55,8 @@ def _model_validation_session_create_handler(
     """调用统一 validation session 创建服务。"""
 
     runtime_context = require_workflow_service_node_runtime(request)
-    requested_model_type = get_optional_platform_model_type(request)
     task_type = require_platform_task_type(request)
-    model_type = resolve_platform_model_type(
-        requested_model_type,
-        task_type=task_type,
-    )
+    model_type = require_platform_model_type(request)
     session_view = runtime_context.build_validation_session_service(
         task_type=task_type,
     ).create_session(
@@ -166,7 +161,7 @@ CORE_NODE_SPEC = CoreNodeSpec(
                 "extra_options": {"type": "object"},
                 "created_by": {"type": "string"},
             },
-            "required": ["task_type", "project_id", "model_version_id"],
+            "required": ["task_type", "model_type", "project_id", "model_version_id"],
         },
         capability_tags=("service.model.validation", "resource.create"),
     ),

@@ -96,6 +96,7 @@ class RuntimeTargetSnapshot:
 
     project_id: str
     model_id: str
+    model_type: str
     model_version_id: str
     model_build_id: str | None
     model_name: str
@@ -116,7 +117,6 @@ class RuntimeTargetSnapshot:
     checkpoint_storage_uri: str | None = None
     checkpoint_path: Path | None = None
     labels_storage_uri: str | None = None
-    model_type: str = "yolox"
 
 
 def serialize_runtime_target_snapshot(snapshot: RuntimeTargetSnapshot) -> dict[str, object]:
@@ -197,7 +197,7 @@ def deserialize_runtime_target_snapshot(
     return RuntimeTargetSnapshot(
         project_id=_require_payload_str(payload, "project_id"),
         model_id=_require_payload_str(payload, "model_id"),
-        model_type=_read_payload_optional_str(payload, "model_type") or "yolox",
+        model_type=_require_payload_str(payload, "model_type"),
         model_version_id=_require_payload_str(payload, "model_version_id"),
         model_build_id=_read_payload_optional_str(payload, "model_build_id"),
         model_name=_require_payload_str(payload, "model_name"),

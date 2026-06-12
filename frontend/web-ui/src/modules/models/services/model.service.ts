@@ -1,5 +1,7 @@
 import { apiRequest } from '@/shared/api/http-client'
 
+export type ModelTaskType = 'detection' | 'classification' | 'segmentation' | 'pose' | 'obb'
+
 export interface PlatformBaseModelFile {
   file_id: string
   project_id?: string | null
@@ -66,10 +68,10 @@ export interface DetectionTrainingTaskSubmissionResponse {
   status: string
   queue_name: string
   queue_task_id: string
-  dataset_export_id: string
-  dataset_export_manifest_key: string
-  dataset_version_id: string
-  format_id: string
+  dataset_export_id?: string | null
+  dataset_export_manifest_key?: string | null
+  dataset_version_id?: string | null
+  format_id?: string | null
 }
 
 export interface DetectionTrainingTaskSummary {
@@ -158,7 +160,9 @@ export interface DetectionTrainingOutputFileDetail extends DetectionTrainingOutp
 }
 
 export interface DetectionTrainingTaskCreateInput {
+  taskType: ModelTaskType
   projectId: string
+  modelType: string
   datasetExportId?: string
   datasetExportManifestKey?: string
   recipeId: string
@@ -188,6 +192,8 @@ export interface DetectionConversionTaskSubmissionResponse {
   status: string
   queue_name: string
   queue_task_id: string
+  task_type?: string
+  model_type?: string
   source_model_version_id: string
   target_formats: string[]
 }
@@ -207,6 +213,8 @@ export interface DetectionConversionTaskSummary {
   result: Record<string, unknown>
   error_message?: string | null
   metadata: Record<string, unknown>
+  task_type?: string
+  model_type?: string
   source_model_version_id: string
   target_formats: string[]
   runtime_profile_id?: string | null
@@ -226,20 +234,38 @@ export type ConversionTargetKey =
   | 'tensorrt-engine-fp16'
 
 export interface DetectionConversionTaskCreateInput {
+  taskType: ModelTaskType
   projectId: string
+  modelType: string
   sourceModelVersionId: string
   target: ConversionTargetKey
   runtimeProfileId?: string
   displayName?: string
 }
 
-const conversionTargetPath: Record<ConversionTargetKey, string> = {
+const detectionConversionTargetPath: Record<ConversionTargetKey, string> = {
   onnx: '/models/detection/conversion-tasks/onnx',
   'onnx-optimized': '/models/detection/conversion-tasks/onnx-optimized',
   'openvino-ir-fp32': '/models/detection/conversion-tasks/openvino-ir-fp32',
   'openvino-ir-fp16': '/models/detection/conversion-tasks/openvino-ir-fp16',
   'tensorrt-engine-fp32': '/models/detection/conversion-tasks/tensorrt-engine-fp32',
   'tensorrt-engine-fp16': '/models/detection/conversion-tasks/tensorrt-engine-fp16',
+}
+
+function buildTrainingTaskPath(taskType: ModelTaskType, suffix = ''): string {
+  return `/models/${taskType}/training-tasks${suffix}`
+}
+
+function buildConversionTaskPath(taskType: ModelTaskType, suffix = ''): string {
+  return `/models/${taskType}/conversion-tasks${suffix}`
+}
+
+function buildConversionRequestTarget(target: ConversionTargetKey): { targetFormats: string[]; extraOptions: Record<string, unknown> } {
+  if (target === 'openvino-ir-fp32') return { targetFormats: ['openvino-ir'], extraOptions: { openvino_ir_precision: 'fp32' } }
+  if (target === 'openvino-ir-fp16') return { targetFormats: ['openvino-ir'], extraOptions: { openvino_ir_precision: 'fp16' } }
+  if (target === 'tensorrt-engine-fp32') return { targetFormats: ['tensorrt-engine'], extraOptions: { tensorrt_engine_precision: 'fp32' } }
+  if (target === 'tensorrt-engine-fp16') return { targetFormats: ['tensorrt-engine'], extraOptions: { tensorrt_engine_precision: 'fp16' } }
+  return { targetFormats: [target], extraOptions: {} }
 }
 
 export async function listPlatformBaseModels(): Promise<PlatformBaseModelSummary[]> {
@@ -251,10 +277,11 @@ export async function getPlatformBaseModelDetail(modelId: string): Promise<Platf
 }
 
 export async function createDetectionTrainingTask(input: DetectionTrainingTaskCreateInput): Promise<DetectionTrainingTaskSubmissionResponse> {
-  return apiRequest<DetectionTrainingTaskSubmissionResponse>('/models/detection/training-tasks', {
+  return apiRequest<DetectionTrainingTaskSubmissionResponse>(buildTrainingTaskPath(input.taskType), {
     method: 'POST',
     body: {
       project_id: input.projectId,
+      model_type: input.modelType,
       dataset_export_id: input.datasetExportId || null,
       dataset_export_manifest_key: input.datasetExportManifestKey || null,
       recipe_id: input.recipeId,
@@ -273,73 +300,89 @@ export async function createDetectionTrainingTask(input: DetectionTrainingTaskCr
   })
 }
 
-export async function listDetectionTrainingTasks(projectId: string): Promise<DetectionTrainingTaskSummary[]> {
-  return apiRequest<DetectionTrainingTaskSummary[]>('/models/detection/training-tasks', {
-    query: { project_id: projectId, limit: 100 },
+export async function listDetectionTrainingTasks(
+  taskType: ModelTaskType,
+  projectId: string,
+  modelType?: string,
+): Promise<DetectionTrainingTaskSummary[]> {
+  return apiRequest<DetectionTrainingTaskSummary[]>(buildTrainingTaskPath(taskType), {
+    query: { project_id: projectId, model_type: modelType || undefined, limit: 100 },
   })
 }
 
-export async function getDetectionTrainingTaskDetail(taskId: string): Promise<DetectionTrainingTaskDetail> {
-  return apiRequest<DetectionTrainingTaskDetail>(`/models/detection/training-tasks/${encodeURIComponent(taskId)}`, {
+export async function getDetectionTrainingTaskDetail(taskType: ModelTaskType, taskId: string): Promise<DetectionTrainingTaskDetail> {
+  return apiRequest<DetectionTrainingTaskDetail>(buildTrainingTaskPath(taskType, `/${encodeURIComponent(taskId)}`), {
     query: { include_events: true },
   })
 }
 
 export async function requestDetectionTrainingTaskAction(
+  taskType: ModelTaskType,
   taskId: string,
   action: Exclude<DetectionTrainingTaskActionName, 'delete'>,
 ): Promise<DetectionTrainingTaskDetail | DetectionTrainingTaskSubmissionResponse> {
   return apiRequest<DetectionTrainingTaskDetail | DetectionTrainingTaskSubmissionResponse>(
-    `/models/detection/training-tasks/${encodeURIComponent(taskId)}/${action}`,
+    buildTrainingTaskPath(taskType, `/${encodeURIComponent(taskId)}/${action}`),
     { method: 'POST' },
   )
 }
 
-export async function deleteDetectionTrainingTask(taskId: string): Promise<void> {
-  return apiRequest<void>(`/models/detection/training-tasks/${encodeURIComponent(taskId)}`, {
+export async function deleteDetectionTrainingTask(taskType: ModelTaskType, taskId: string): Promise<void> {
+  return apiRequest<void>(buildTrainingTaskPath(taskType, `/${encodeURIComponent(taskId)}`), {
     method: 'DELETE',
     responseType: 'void',
   })
 }
 
-export async function registerDetectionTrainingLatestCheckpoint(taskId: string): Promise<DetectionTrainingTaskDetail> {
+export async function registerDetectionTrainingLatestCheckpoint(taskType: ModelTaskType, taskId: string): Promise<DetectionTrainingTaskDetail> {
   return apiRequest<DetectionTrainingTaskDetail>(
-    `/models/detection/training-tasks/${encodeURIComponent(taskId)}/register-model-version`,
+    buildTrainingTaskPath(taskType, `/${encodeURIComponent(taskId)}/register-model-version`),
     { method: 'POST' },
   )
 }
 
-export async function listDetectionTrainingOutputFiles(taskId: string): Promise<DetectionTrainingOutputFileSummary[]> {
+export async function listDetectionTrainingOutputFiles(taskType: ModelTaskType, taskId: string): Promise<DetectionTrainingOutputFileSummary[]> {
   return apiRequest<DetectionTrainingOutputFileSummary[]>(
-    `/models/detection/training-tasks/${encodeURIComponent(taskId)}/output-files`,
+    buildTrainingTaskPath(taskType, `/${encodeURIComponent(taskId)}/output-files`),
   )
 }
 
 export async function getDetectionTrainingOutputFileDetail(
+  taskType: ModelTaskType,
   taskId: string,
   fileName: string,
 ): Promise<DetectionTrainingOutputFileDetail> {
   return apiRequest<DetectionTrainingOutputFileDetail>(
-    `/models/detection/training-tasks/${encodeURIComponent(taskId)}/output-files/${encodeURIComponent(fileName)}`,
+    buildTrainingTaskPath(taskType, `/${encodeURIComponent(taskId)}/output-files/${encodeURIComponent(fileName)}`),
   )
 }
 
 export async function createDetectionConversionTask(input: DetectionConversionTaskCreateInput): Promise<DetectionConversionTaskSubmissionResponse> {
-  return apiRequest<DetectionConversionTaskSubmissionResponse>(conversionTargetPath[input.target], {
+  const targetRequest = buildConversionRequestTarget(input.target)
+  const path = input.taskType === 'detection'
+    ? detectionConversionTargetPath[input.target]
+    : buildConversionTaskPath(input.taskType)
+  return apiRequest<DetectionConversionTaskSubmissionResponse>(path, {
     method: 'POST',
     body: {
       project_id: input.projectId,
+      model_type: input.modelType,
       source_model_version_id: input.sourceModelVersionId,
+      target_formats: input.taskType === 'detection' ? undefined : targetRequest.targetFormats,
       runtime_profile_id: input.runtimeProfileId || null,
-      extra_options: {},
+      extra_options: targetRequest.extraOptions,
       display_name: input.displayName ?? '',
     },
   })
 }
 
-export async function listDetectionConversionTasks(projectId: string): Promise<DetectionConversionTaskSummary[]> {
-  return apiRequest<DetectionConversionTaskSummary[]>('/models/detection/conversion-tasks', {
-    query: { project_id: projectId, limit: 100 },
+export async function listDetectionConversionTasks(
+  taskType: ModelTaskType,
+  projectId: string,
+  modelType?: string,
+): Promise<DetectionConversionTaskSummary[]> {
+  return apiRequest<DetectionConversionTaskSummary[]>(buildConversionTaskPath(taskType), {
+    query: { project_id: projectId, model_type: modelType || undefined, limit: 100 },
   })
 }
 

@@ -62,8 +62,8 @@ class DatasetImport:
     dataset_import_id: str
     dataset_id: str
     project_id: str
+    task_type: DatasetTaskType
     format_type: DatasetFormatType | None = None
-    task_type: DatasetTaskType = "detection"
     status: DatasetImportStatus = "received"
     created_at: str = ""
     dataset_version_id: str | None = None

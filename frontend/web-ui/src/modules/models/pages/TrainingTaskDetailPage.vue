@@ -55,14 +55,14 @@
           <component :is="actionIcon(action)" :size="14" />
           {{ t(`trainingDetail.actions.${action}`) }}
         </Button>
-        <Button size="sm" variant="ghost" :disabled="!canRegisterCheckpoint || actionRunning !== null" @click="registerCheckpoint">
+        <Button v-if="taskType === 'detection'" size="sm" variant="ghost" :disabled="!canRegisterCheckpoint || actionRunning !== null" @click="registerCheckpoint">
           <UploadCloud :size="14" />
           {{ t('trainingDetail.actions.registerModelVersion') }}
         </Button>
       </div>
     </section>
 
-    <section class="resource-section">
+    <section v-if="taskType === 'detection'" class="resource-section">
       <div>
         <p class="page-kicker">{{ t('trainingDetail.outputsKicker') }}</p>
         <h2>{{ t('trainingDetail.outputsTitle') }}</h2>
@@ -138,6 +138,7 @@ import {
   type DetectionTrainingOutputFileSummary,
   type DetectionTrainingTaskActionName,
   type DetectionTrainingTaskDetail,
+  type ModelTaskType,
 } from '../services/model.service'
 import Button from '@/shared/ui/components/Button.vue'
 import EmptyState from '@/shared/ui/feedback/EmptyState.vue'
@@ -157,6 +158,12 @@ const actionRunning = ref<string | null>(null)
 const errorMessage = ref<string | null>(null)
 
 const taskId = computed(() => String(route.params.taskId ?? ''))
+const taskType = computed<ModelTaskType | null>(() => {
+  const value = String(route.params.taskType ?? '')
+  return ['detection', 'classification', 'segmentation', 'pose', 'obb'].includes(value)
+    ? value as ModelTaskType
+    : null
+})
 const canRegisterCheckpoint = computed(() => Boolean(task.value?.latest_checkpoint_object_key || task.value?.control_status.resume_checkpoint_object_key))
 const selectedOutputContent = computed(() => {
   const outputFile = selectedOutputFile.value
@@ -188,12 +195,17 @@ function actionIcon(action: DetectionTrainingTaskActionName) {
 }
 
 async function refreshPage(): Promise<void> {
+  if (!taskType.value) {
+    errorMessage.value = 'task_type 不能为空'
+    return
+  }
+  const currentTaskType = taskType.value
   loading.value = true
   errorMessage.value = null
   try {
     const [taskDetail, files] = await Promise.all([
-      getDetectionTrainingTaskDetail(taskId.value),
-      listDetectionTrainingOutputFiles(taskId.value),
+      getDetectionTrainingTaskDetail(currentTaskType, taskId.value),
+      currentTaskType === 'detection' ? listDetectionTrainingOutputFiles(currentTaskType, taskId.value) : Promise.resolve([]),
     ])
     task.value = taskDetail
     outputFiles.value = files
@@ -208,16 +220,21 @@ async function refreshPage(): Promise<void> {
 }
 
 async function runAction(action: DetectionTrainingTaskActionName): Promise<void> {
+  if (!taskType.value) {
+    errorMessage.value = 'task_type 不能为空'
+    return
+  }
+  const currentTaskType = taskType.value
   if (action === 'delete' && !window.confirm(t('trainingDetail.messages.confirmDelete'))) return
   actionRunning.value = action
   errorMessage.value = null
   try {
     if (action === 'delete') {
-      await deleteDetectionTrainingTask(taskId.value)
+      await deleteDetectionTrainingTask(currentTaskType, taskId.value)
       await router.push('/models')
       return
     }
-    await requestDetectionTrainingTaskAction(taskId.value, action)
+    await requestDetectionTrainingTaskAction(currentTaskType, taskId.value, action)
     await refreshPage()
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : t('trainingDetail.messages.actionFailed')
@@ -227,10 +244,19 @@ async function runAction(action: DetectionTrainingTaskActionName): Promise<void>
 }
 
 async function registerCheckpoint(): Promise<void> {
+  if (!taskType.value) {
+    errorMessage.value = 'task_type 不能为空'
+    return
+  }
+  if (taskType.value !== 'detection') {
+    errorMessage.value = 'register-model-version 当前只用于 detection 训练任务'
+    return
+  }
+  const currentTaskType = taskType.value
   actionRunning.value = 'register-model-version'
   errorMessage.value = null
   try {
-    task.value = await registerDetectionTrainingLatestCheckpoint(taskId.value)
+    task.value = await registerDetectionTrainingLatestCheckpoint(currentTaskType, taskId.value)
     await refreshPage()
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : t('trainingDetail.messages.registerFailed')
@@ -240,9 +266,17 @@ async function registerCheckpoint(): Promise<void> {
 }
 
 async function selectOutputFile(fileName: string): Promise<void> {
+  if (!taskType.value) {
+    errorMessage.value = 'task_type 不能为空'
+    return
+  }
+  if (taskType.value !== 'detection') {
+    return
+  }
+  const currentTaskType = taskType.value
   errorMessage.value = null
   try {
-    selectedOutputFile.value = await getDetectionTrainingOutputFileDetail(taskId.value, fileName)
+    selectedOutputFile.value = await getDetectionTrainingOutputFileDetail(currentTaskType, taskId.value, fileName)
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : t('trainingDetail.messages.outputFailed')
   }

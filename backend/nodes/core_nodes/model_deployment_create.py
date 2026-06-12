@@ -10,10 +10,9 @@ from backend.contracts.workflows.workflow_graph import (
 )
 from backend.nodes.core_nodes._base import CoreNodeSpec
 from backend.nodes.core_nodes._platform_service_node_support import (
-    get_optional_platform_model_type,
+    require_platform_model_type,
     require_platform_task_type,
     get_supported_platform_model_types,
-    resolve_platform_model_type,
 )
 from backend.nodes.core_nodes._service_node_support import (
     build_service_node_deployment_service,
@@ -60,15 +59,10 @@ def _model_deployment_create_handler(request: WorkflowNodeExecutionRequest) -> d
     request = overlay_parameters_from_object_input(request)
     runtime_context = require_workflow_service_node_runtime(request)
     task_type = require_platform_task_type(request)
-    request_cls, default_model_type = _resolve_deployment_create_request_class(task_type)
-    model_type = resolve_platform_model_type(
-        get_optional_platform_model_type(
-            request,
-            supported_model_types=get_supported_platform_model_types(task_type),
-        ),
-        task_type=task_type,
-        default_detection_model_type=default_model_type,
-        default_yolo_primary_model_type=default_model_type,
+    request_cls = _resolve_deployment_create_request_class(task_type)
+    model_type = require_platform_model_type(
+        request,
+        supported_model_types=get_supported_platform_model_types(task_type),
     )
     view = build_service_node_deployment_service(
         runtime_context,
@@ -150,19 +144,19 @@ def _register_created_deployment_for_cleanup(
 
 def _resolve_deployment_create_request_class(
     task_type: str,
-) -> tuple[type, str]:
-    """按 task_type 返回 deployment create request 类型与默认 model_type。"""
+) -> type:
+    """按 task_type 返回 deployment create request 类型。"""
 
     if task_type == DETECTION_TASK_TYPE:
-        return DetectionDeploymentInstanceCreateRequest, "yolox"
+        return DetectionDeploymentInstanceCreateRequest
     if task_type == "classification":
-        return ClassificationDeploymentInstanceCreateRequest, "yolov8"
+        return ClassificationDeploymentInstanceCreateRequest
     if task_type == "segmentation":
-        return SegmentationDeploymentInstanceCreateRequest, "yolov8"
+        return SegmentationDeploymentInstanceCreateRequest
     if task_type == "pose":
-        return PoseDeploymentInstanceCreateRequest, "yolov8"
+        return PoseDeploymentInstanceCreateRequest
     if task_type == "obb":
-        return ObbDeploymentInstanceCreateRequest, "yolov8"
+        return ObbDeploymentInstanceCreateRequest
     raise ValueError(f"unsupported task_type: {task_type}")
 
 
@@ -214,7 +208,7 @@ CORE_NODE_SPEC = CoreNodeSpec(
                 "cleanup_on_completion": {"type": "boolean"},
                 "created_by": {"type": "string"},
             },
-            "required": ["task_type", "project_id"],
+            "required": ["task_type", "model_type", "project_id"],
             "anyOf": [
                 {"required": ["model_version_id"]},
                 {"required": ["model_build_id"]}

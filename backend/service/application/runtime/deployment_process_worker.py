@@ -169,7 +169,7 @@ def run_deployment_process_worker(
     runtime_pool.ensure_deployment(runtime_pool_config)
     infer_slots = BoundedSemaphore(max(1, config.instance_count))
     behavior = _resolve_warmup_behavior(config=config, supervisor_settings=supervisor_settings)
-    task_type = getattr(config.runtime_target, "task_type", "detection")
+    task_type = config.runtime_target.task_type
     dummy_request: PredictionRequest | None = None
     if behavior.warmup_dummy_inference_count > 0 or behavior.keep_warm_enabled:
         dummy_request = _build_dummy_inference_request(
@@ -387,7 +387,7 @@ def _run_inference_request(
             request=prediction_request,
         )
         inference_succeeded = True
-        task_type = getattr(runtime_pool_config.runtime_target, "task_type", "detection")
+        task_type = runtime_pool_config.runtime_target.task_type
         _put_ok_response(
             response_queue=response_queue,
             request_id=request_id,
@@ -414,7 +414,7 @@ def _build_prediction_request(
 ) -> PredictionRequest:
     """把 deployment worker 控制 payload 转换为预测请求。"""
 
-    task_type = _read_payload_optional_str(payload, "task_type") or "detection"
+    task_type = _require_payload_str(payload, "task_type")
     prediction_request = build_prediction_request_from_payload(
         task_type=task_type,
         payload=_read_payload_dict(payload, "prediction_request"),

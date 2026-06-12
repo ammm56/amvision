@@ -73,8 +73,9 @@
 | `yolov8 + pose` | `tests/test_non_detection_inference_api.py`、`tests/test_non_detection_training_result_registration.py` |
 | `yolo26 + obb` | `tests/test_non_detection_inference_api.py`、`tests/test_non_detection_training_result_registration.py` |
 | `task-family workflow 12-15` | `docs/api/postman/workflows/12-*` 到 `15-*`、四套 non-detection root full-chain Postman collection |
-| `non-detection runtime backend matrix` | `tests/integration/test_non_detection_runtime_backend_smoke_matrix.py`，当前已显式覆盖 `classification+yolo11`、`segmentation+yolo26`、`pose+yolov8`、`obb+yolo26` 在 `onnxruntime / openvino / tensorrt` 三类 runtime backend 下的真实 conversion -> runtime predict |
-| `前端控制面` | `frontend/web-ui` 真实模块页、真实路由；2026-06-12 本地 `npm run build` 已通过 |
+| `non-detection runtime backend matrix` | `tests/integration/test_non_detection_runtime_backend_smoke_matrix.py`，2026-06-12 已显式跑通 `classification+yolo11`、`segmentation+yolo26`、`pose+yolov8`、`obb+yolo26` 在 `onnxruntime / openvino / tensorrt` 三类 runtime backend 下的真实 conversion -> runtime predict，结果为 `12 passed` |
+| `前端控制面` | `frontend/web-ui` 真实模块页、真实路由；models / deployments / inference 调试页已从 detection-only 改为显式 task_type 选择；2026-06-12 本地 `npm run build` 已通过 |
+| `release/full 基础验收` | 2026-06-12 已执行 `assemble-release --profile-id full --force`，发布目录使用 `bundled_python_mode=preserved-existing`；`validate-layout`、发布目录 Python runtime import、`start_amvision_full.py` 一键启动、health、docs、OpenAPI 新 conversion 路由可见性和 stop 清理均已通过 |
 
 ## 数据集导入导出当前事实
 
@@ -134,14 +135,14 @@
 ## 当前还没完全收口的点
 
 - `semantic-mask-dir-v1`、`sam-promptable-seg-v1` 还没有正式导出实现。
-- `frontend` 真实代码已经明显领先于部分旧文档，前端专题文档还需要再同步一轮。
-- `release/full`、worker profile、资源占用、日志、指标和排障还需要单独继续收工程化交付面。
+- `frontend` 真实代码已经明显领先于部分旧文档，本轮已先同步 models / deployments / inference 的 task-aware 调试入口，前端专题文档后续还需要继续细化 workflow template/version 使用面。
+- `release/full` 基础装配和一键启动验收已经通过；worker profile 也已短时启动确认可装配。后续还需要继续补更长时间的发布目录 soak、资源占用、日志指标和现场排障样例。
 - `workflow template/version` 的前端使用面已经可走主线，但还没有细化成更完整的独立使用说明。
 
 ## 建议下一步
 
 最合适的下一步不是继续扩新模型，而是按这份矩阵继续做三件事：
 
-1. 把 `release/full`、独立 worker profile、日志和排障手册收成部署专题文档。
+1. 补发布目录更长时间 soak、资源占用记录、日志指标和现场排障样例。
 2. 再回头补剩余导出格式和前端文档同步，不要让“代码已实现”和“文档还停在旧状态”继续分叉。
-3. 后续按真实现场组合继续加更细的长期 soak / benchmark，而不是再回到“先怀疑主链是否能跑”的阶段。
+3. 后续按真实现场组合继续加更细的长期 benchmark，而不是再回到“先怀疑主链是否能跑”的阶段。

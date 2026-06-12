@@ -848,10 +848,10 @@
                 "conversion-tasks"
               ]
             },
-            "description": "Segmentation 转换任务入口。默认 targetFormat=onnx，完成后会自动回填 modelBuildId 给 deployment。",
+            "description": "Segmentation conversion 创建入口。请求必须显式传 source_model_version_id、model_type 和 target_formats，完成后可从 result 中回填 modelBuildId 给 deployment。",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"model_type\": \"{{modelType}}\",\n  \"model_version_id\": \"{{modelVersionId}}\",\n  \"model_build_id\": null,\n  \"target_format\": \"{{targetFormat}}\",\n  \"extra_options\": {}\n}",
+              "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"model_type\": \"{{modelType}}\",\n  \"source_model_version_id\": \"{{modelVersionId}}\",\n  \"target_formats\": [\n    \"{{targetFormat}}\"\n  ],\n  \"runtime_profile_id\": null,\n  \"extra_options\": {},\n  \"display_name\": \"Segmentation conversion full-chain debug\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -878,6 +878,52 @@
           ]
         },
         {
+          "name": "List Segmentation Conversion Tasks",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/models/segmentation/conversion-tasks?project_id={{projectId}}&model_type={{modelType}}&source_model_version_id={{modelVersionId}}&limit={{conversionLimit}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "models",
+                "segmentation",
+                "conversion-tasks"
+              ],
+              "query": [
+                {
+                  "key": "project_id",
+                  "value": "{{projectId}}"
+                },
+                {
+                  "key": "model_type",
+                  "value": "{{modelType}}"
+                },
+                {
+                  "key": "source_model_version_id",
+                  "value": "{{modelVersionId}}"
+                },
+                {
+                  "key": "limit",
+                  "value": "{{conversionLimit}}"
+                }
+              ]
+            },
+            "description": "列出 Segmentation conversion 任务。后端会按 task_type=segmentation 过滤，避免和其他任务类型共享 task_kind 时串单。"
+          },
+          "response": []
+        },
+        {
           "name": "Get Segmentation Conversion Task Detail",
           "request": {
             "method": "GET",
@@ -889,14 +935,16 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/v1/tasks/{{conversionTaskId}}?include_events=true",
+              "raw": "{{baseUrl}}/api/v1/models/segmentation/conversion-tasks/{{conversionTaskId}}?include_events=true",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "api",
                 "v1",
-                "tasks",
+                "models",
+                "segmentation",
+                "conversion-tasks",
                 "{{conversionTaskId}}"
               ],
               "query": [
@@ -906,7 +954,7 @@
                 }
               ]
             },
-            "description": "当前非 detection conversion detail 统一走通用 /tasks 查询。转换完成后，会优先从 result.model_build_id 或 result.builds[0].model_build_id 回填 modelBuildId。"
+            "description": "读取 Segmentation conversion 任务详情和事件。转换完成后，可从 result.model_build_id 或 result.builds[0].model_build_id 回填 modelBuildId。"
           },
           "response": [],
           "event": [
@@ -921,6 +969,57 @@
                   "  let modelBuildId = result.model_build_id || null;",
                   "  if (!modelBuildId && Array.isArray(result.builds) && result.builds.length > 0) {",
                   "    modelBuildId = result.builds[0].model_build_id || null;",
+                  "  }",
+                  "  if (modelBuildId) {",
+                  "    pm.collectionVariables.set('modelBuildId', modelBuildId);",
+                  "  }",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Segmentation Conversion Task Result",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/models/segmentation/conversion-tasks/{{conversionTaskId}}/result",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "models",
+                "segmentation",
+                "conversion-tasks",
+                "{{conversionTaskId}}",
+                "result"
+              ]
+            },
+            "description": "读取 Segmentation conversion 结果文件状态。queued/running 时 file_status=pending，完成后 payload 为转换报告 JSON。"
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  const payload = pm.response.json();",
+                  "  const report = payload.payload || {};",
+                  "  let modelBuildId = report.model_build_id || null;",
+                  "  if (!modelBuildId && Array.isArray(report.builds) && report.builds.length > 0) {",
+                  "    modelBuildId = report.builds[0].model_build_id || null;",
                   "  }",
                   "  if (modelBuildId) {",
                   "    pm.collectionVariables.set('modelBuildId', modelBuildId);",

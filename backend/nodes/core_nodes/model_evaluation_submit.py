@@ -11,9 +11,8 @@ from backend.contracts.workflows.workflow_graph import (
 from backend.nodes.core_nodes._base import CoreNodeSpec
 from backend.nodes.core_nodes._platform_service_node_support import (
     WORKFLOW_SERVICE_TASK_TYPES,
-    get_optional_platform_model_type,
+    require_platform_model_type,
     require_platform_task_type,
-    resolve_platform_model_type,
 )
 from backend.nodes.core_nodes._service_node_support import (
     build_response_body_output,
@@ -58,17 +57,14 @@ def _model_evaluation_submit_handler(request: WorkflowNodeExecutionRequest) -> d
     request = overlay_parameters_from_object_input(request)
     runtime_context = require_workflow_service_node_runtime(request)
     task_type = require_platform_task_type(request)
-    requested_model_type = get_optional_platform_model_type(request)
+    model_type = require_platform_model_type(request)
     submission = runtime_context.build_evaluation_task_service(
         task_type=task_type,
     ).submit_evaluation_task(
         _build_platform_evaluation_request(
             request,
             task_type=task_type,
-            model_type=resolve_platform_model_type(
-                requested_model_type,
-                task_type=task_type,
-            ),
+            model_type=model_type,
         ),
         created_by=resolve_created_by(request),
         display_name=resolve_display_name(request),
@@ -164,7 +160,7 @@ CORE_NODE_SPEC = CoreNodeSpec(
                 "display_name": {"type": "string"},
                 "created_by": {"type": "string"},
             },
-            "required": ["task_type", "project_id", "model_version_id"],
+            "required": ["task_type", "model_type", "project_id", "model_version_id"],
         },
         capability_tags=("service.model.evaluation", "task.submit"),
     ),

@@ -10,7 +10,7 @@ from backend.contracts.workflows.workflow_graph import (
 )
 from backend.nodes.core_nodes._base import CoreNodeSpec
 from backend.nodes.core_nodes._platform_service_node_support import (
-    get_optional_platform_model_type,
+    require_platform_model_type,
     require_platform_task_type,
     get_supported_platform_model_types,
 )
@@ -134,7 +134,7 @@ def _build_inference_task_request(
 ):
     """按 task_type 构造对应的 inference task request。"""
 
-    model_type = get_optional_platform_model_type(
+    model_type = require_platform_model_type(
         request,
         supported_model_types=get_supported_platform_model_types(task_type),
     )
@@ -234,7 +234,7 @@ CORE_NODE_SPEC = CoreNodeSpec(
                 "display_name": {"type": "string"},
                 "created_by": {"type": "string"},
             },
-            "required": ["task_type", "project_id", "deployment_instance_id"],
+            "required": ["task_type", "model_type", "project_id", "deployment_instance_id"],
         },
         capability_tags=("service.model.inference", "task.submit"),
         runtime_requirements={"deployment_process": "async"},

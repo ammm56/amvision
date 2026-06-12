@@ -13,7 +13,7 @@
 - [docs/architecture/next-stage-roadmap.md](next-stage-roadmap.md)：当前阶段判断、本轮已收口事项、固定开发环境与下一阶段五条主线
 - [docs/architecture/model-platform-plan.md](model-platform-plan.md)：多模型平台化路线，说明通用层、任务分类层、模型分类适配层和各模型分类的最小接入范围
 - [docs/architecture/model-support-matrix.md](model-support-matrix.md)：当前主干代码里 `model_type × task_type × 导入/导出/训练/验证/评估/转换/部署/推理/workflow/前端` 的真实支持矩阵
-- [docs/architecture/model-task-naming-boundaries.md](model-task-naming-boundaries.md)：固定公开入口、模型实现层、家族共享层和通用值对象的命名边界
+- [docs/architecture/model-task-naming-boundaries.md](model-task-naming-boundaries.md)：固定公开入口、模型实现层、模型系列共享层和通用值对象的命名边界
 - [docs/architecture/yolo-model-plan.md](yolo-model-plan.md)：YOLO 系列模型的参考源码边界、层级关系、任务分类拆分、模型分类适配和进入顺序
 - [docs/architecture/model-workflow-boundaries.md](model-workflow-boundaries.md)：模型接入、数据集、部署长期运行服务、workflow app 和 TriggerSource 之间的正式边界
 - [docs/architecture/yoloe-sam3-node-assets.md](yoloe-sam3-node-assets.md)：YOLOE 与 SAM3 作为 custom node 扩展时的磁盘资产规则、manifest.json 字段和 payload 规则 约定

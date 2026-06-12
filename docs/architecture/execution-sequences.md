@@ -8,8 +8,8 @@
 
 ## 适用范围
 
-- YOLOX training task 提交与执行
-- YOLOX conversion task 提交与执行
+- detection training task 提交与执行，并说明 `model_type` 如何分发到各模型专属实现
+- detection conversion task 提交与执行，并说明 `model_type` 如何分发到各模型专属实现
 - DeploymentInstance 同步直返推理
 - WorkflowPreviewRun 编辑态试跑
 - WorkflowAppRuntime 同步调用
@@ -24,29 +24,29 @@
 ## 训练链
 
 - REST 入口：[backend/service/api/rest/v1/routes/detection_training_tasks.py](../../backend/service/api/rest/v1/routes/detection_training_tasks.py)
-- 任务服务：[backend/service/application/models/yolox_training_service.py](../../backend/service/application/models/yolox_training_service.py)
-- worker 入口：[backend/workers/training/yolox_training_queue_worker.py](../../backend/workers/training/yolox_training_queue_worker.py)
+- 任务服务：REST 层按 `model_type` 分发到 `SqlAlchemyYoloXTrainingTaskService`、`SqlAlchemyYoloV8TrainingTaskService`、`SqlAlchemyYolo11TrainingTaskService`、`SqlAlchemyYolo26TrainingTaskService` 或 `SqlAlchemyRfdetrTrainingTaskService`
+- worker 入口：`backend/workers/training/*_training_queue_worker.py` 中的模型专属 worker；YOLOv8 / YOLO11 / YOLO26 的 classification、segmentation、pose、obb 训练另由 `yolo_primary_training_queue_worker.py` 按 `task_type` 消费
 
 ```mermaid
 sequenceDiagram
     autonumber
     actor Client as 调用方
     participant API as detection_training_tasks.create_detection_training_task
-    participant TrainSvc as SqlAlchemyYoloXTrainingTaskService
+    participant TrainSvc as model_type 对应 TrainingTaskService
     participant TaskSvc as SqlAlchemyTaskService
     participant DB as TaskRecord / TaskEvent
-    participant Queue as LocalFileQueueBackend<br/>yolox-trainings
-    participant Worker as YoloXTrainingQueueWorker
-    participant Runner as SqlAlchemyYoloXTrainerRunner
+    participant Queue as LocalFileQueueBackend<br/>model-specific training queue
+    participant Worker as model_type 对应 TrainingQueueWorker
+    participant Runner as model_type 对应 TrainerRunner
     participant TrainProc as process_training_task
     participant Storage as LocalDatasetStorage
     participant ModelReg as ModelVersion 登记
 
     Client->>API: POST /api/v1/models/detection/training-tasks
-    API->>API: 校验 project scope 与请求体
+    API->>API: 校验 project scope、task_type=detection 与 model_type
     API->>TrainSvc: submit_training_task(request)
     TrainSvc->>TrainSvc: 解析 DatasetExport\n构建 task_spec
-    TrainSvc->>TaskSvc: create_task(..., worker_pool=yolox-training)
+    TrainSvc->>TaskSvc: create_task(..., worker_pool=model-specific training kind)
     TaskSvc->>DB: 写入 TaskRecord
     DB-->>TaskSvc: created_task
     TaskSvc-->>TrainSvc: created_task
@@ -58,7 +58,7 @@ sequenceDiagram
     API-->>Client: 202 Accepted(task_id, queue_task_id)
 
     loop worker 轮询
-        Worker->>Queue: claim_next(yolox-trainings)
+        Worker->>Queue: claim_next(model-specific training queue)
         Queue-->>Worker: queue_task
     end
     Worker->>Runner: run_training(training_task_id)
@@ -67,19 +67,21 @@ sequenceDiagram
     TrainProc->>Storage: 读取 DatasetExport manifest
     TrainProc->>TaskSvc: append_task_event(state=running)
     TaskSvc->>DB: 写入 running 事件
-    TrainProc->>TrainProc: _run_yolox_detection_training(...)
+    TrainProc->>TrainProc: 执行当前 model_type 的 detection training runner
     TrainProc->>Storage: 写 best_ckpt/latest_ckpt/metrics/summary/labels
     TrainProc->>ModelReg: _register_training_output_model_version(best checkpoint)
     ModelReg->>DB: 写 ModelVersion / ModelFile 关联
     TrainProc->>TaskSvc: append_task_event(state=succeeded, result=...)
     TaskSvc->>DB: 写 succeeded 事件并回写状态
-    TrainProc-->>Runner: YoloXTrainingTaskResult
-    Runner-->>Worker: YoloXTrainingRunResult
+    TrainProc-->>Runner: TrainingTaskResult
+    Runner-->>Worker: TrainingRunResult
     Worker->>Queue: complete(queue_task, metadata=...)
     Queue-->>Worker: completed
 ```
 
 训练链的关键点是 REST 层只负责创建任务和入队，真正的训练、训练输出文件写入和 ModelVersion 登记都在 worker 消费阶段完成。
+
+当前公开入口按 `task_type` 组织，detection 训练统一走 `/api/v1/models/detection/training-tasks`；模型内部执行仍按 `model_type` 隔离，`yolox-training`、`yolov8-training`、`yolo11-training`、`yolo26-training`、`rfdetr-training` 这些 worker kind 不应改成一个模糊的 `detection-training`。这种边界能同时保证公开入口统一、模型实现不混线。
 
 ### 训练链异常分支
 
@@ -87,12 +89,12 @@ sequenceDiagram
 sequenceDiagram
     autonumber
     actor Client as 调用方
-    participant API as create_yolox_training_task
-    participant TrainSvc as SqlAlchemyYoloXTrainingTaskService
+    participant API as create_detection_training_task
+    participant TrainSvc as model_type 对应 TrainingTaskService
     participant TaskSvc as SqlAlchemyTaskService
     participant DB as TaskRecord / TaskEvent
     participant Queue as LocalFileQueueBackend
-    participant Worker as YoloXTrainingQueueWorker
+    participant Worker as model_type 对应 TrainingQueueWorker
     participant Proc as process_training_task
 
     Client->>API: POST /api/v1/models/detection/training-tasks
@@ -113,12 +115,12 @@ sequenceDiagram
         API-->>Client: failed + error_message
         Note over Client: 修复队列或配置后重新创建 training task
     else worker 执行阶段失败
-        Worker->>Queue: claim_next(yolox-trainings)
+        Worker->>Queue: claim_next(model-specific training queue)
         Queue-->>Worker: queue_task
         Worker->>Proc: process_training_task(task_id)
         Proc->>TaskSvc: append_task_event(state=running)
         TaskSvc->>DB: 写 running 事件
-        Proc->>Proc: _run_yolox_detection_training(...)
+        Proc->>Proc: 执行当前 model_type 的 detection training runner
         Proc-->>Proc: exception
         Proc->>TaskSvc: append_task_event(state=failed, result=partial outputs)
         TaskSvc->>DB: 写 failed 事件并回写状态
@@ -133,33 +135,33 @@ sequenceDiagram
 ## 转换链
 
 - REST 入口：[backend/service/api/rest/v1/routes/detection_conversion_tasks.py](../../backend/service/api/rest/v1/routes/detection_conversion_tasks.py)
-- 任务服务：[backend/service/application/conversions/yolox_conversion_task_service.py](../../backend/service/application/conversions/yolox_conversion_task_service.py)
-- worker 入口：[backend/workers/conversion/yolox_conversion_queue_worker.py](../../backend/workers/conversion/yolox_conversion_queue_worker.py)
-- 转换 runner：[backend/workers/conversion/yolox_conversion_runner.py](../../backend/workers/conversion/yolox_conversion_runner.py)
+- 任务服务：REST 层按 `model_type` 分发到 `SqlAlchemyYoloXConversionTaskService`、`SqlAlchemyYoloV8ConversionTaskService`、`SqlAlchemyYolo11ConversionTaskService`、`SqlAlchemyYolo26ConversionTaskService` 或 `SqlAlchemyRfdetrConversionTaskService`
+- worker 入口：`backend/workers/conversion/*_conversion_queue_worker.py` 中的模型专属 worker
+- 转换 runner：YOLOX 走 `LocalYoloXConversionRunner`；YOLOv8 / YOLO11 / YOLO26 走 `LocalYoloPrimaryConversionRunner` 派生 runner；RF-DETR 走 `LocalRfdetrConversionRunner`
 
 ```mermaid
 sequenceDiagram
     autonumber
     actor Client as 调用方
     participant API as detection_conversion_tasks._submit_detection_conversion_task
-    participant ConvSvc as SqlAlchemyYoloXConversionTaskService
-    participant Planner as DefaultYoloXConversionPlanner
+    participant ConvSvc as model_type 对应 ConversionTaskService
+    participant Planner as model_type 对应 ConversionPlanner
     participant TaskSvc as SqlAlchemyTaskService
     participant DB as TaskRecord / TaskEvent / ModelBuild
-    participant Queue as LocalFileQueueBackend<br/>yolox-conversions
-    participant Worker as YoloXConversionQueueWorker
+    participant Queue as LocalFileQueueBackend<br/>model-specific conversion queue
+    participant Worker as model_type 对应 ConversionQueueWorker
     participant Proc as process_conversion_task
-    participant Runner as LocalYoloXConversionRunner
+    participant Runner as model_type 对应 ConversionRunner
     participant Storage as LocalDatasetStorage
     participant Script as OpenVINO/TensorRT 子进程脚本
 
     Client->>API: POST /api/v1/models/detection/conversion-tasks/*
-    API->>API: 校验 project scope
+    API->>API: 校验 project scope、task_type=detection 与 model_type
     API->>ConvSvc: submit_conversion_task(request)
     ConvSvc->>Planner: build_plan(source_model_version_id, target_formats)
-    Planner-->>ConvSvc: YoloXConversionPlan
+    Planner-->>ConvSvc: ConversionPlan
     ConvSvc->>ConvSvc: 校验目标格式\n解析 source runtime target
-    ConvSvc->>TaskSvc: create_task(..., worker_pool=yolox-conversion)
+    ConvSvc->>TaskSvc: create_task(..., worker_pool=model-specific conversion kind)
     TaskSvc->>DB: 写入 TaskRecord
     ConvSvc->>Queue: enqueue(task_id)
     Queue-->>ConvSvc: queue_task
@@ -169,7 +171,7 @@ sequenceDiagram
     API-->>Client: 202 Accepted(task_id, target_formats)
 
     loop worker 轮询
-        Worker->>Queue: claim_next(yolox-conversions)
+        Worker->>Queue: claim_next(model-specific conversion queue)
         Queue-->>Worker: queue_task
     end
     Worker->>Proc: process_conversion_task(task_id)
@@ -195,12 +197,14 @@ sequenceDiagram
     Proc->>Storage: write conversion-report.json
     Proc->>TaskSvc: append_task_event(state=succeeded, result=...)
     TaskSvc->>DB: 写入 succeeded 事件
-    Proc-->>Worker: YoloXConversionTaskResult
+    Proc-->>Worker: ConversionTaskResult
     Worker->>Queue: complete(queue_task, metadata=...)
     Queue-->>Worker: completed
 ```
 
 转换链的关键点是规划阶段先在 service 层固化，真正的 ONNX、OpenVINO、TensorRT 构建发生在 worker 侧；其中 OpenVINO 和 TensorRT 进一步通过独立脚本子进程执行。
+
+当前公开入口按 `task_type` 组织，detection 转换统一走 `/api/v1/models/detection/conversion-tasks/*`；具体转换仍按 `model_type` 进入 `yolox-conversion`、`yolov8-conversion`、`yolo11-conversion`、`yolo26-conversion` 或 `rfdetr-conversion`。这里的队列和 runner 是模型实现边界，不应被重命名成单一 `detection-conversion`。
 
 ### 转换链异常分支
 
@@ -209,14 +213,14 @@ sequenceDiagram
     autonumber
     actor Client as 调用方
     participant API as _submit_detection_conversion_task
-    participant ConvSvc as SqlAlchemyYoloXConversionTaskService
-    participant Planner as DefaultYoloXConversionPlanner
+    participant ConvSvc as model_type 对应 ConversionTaskService
+    participant Planner as model_type 对应 ConversionPlanner
     participant TaskSvc as SqlAlchemyTaskService
     participant DB as TaskRecord / TaskEvent
     participant Queue as LocalFileQueueBackend
-    participant Worker as YoloXConversionQueueWorker
+    participant Worker as model_type 对应 ConversionQueueWorker
     participant Proc as process_conversion_task
-    participant Runner as LocalYoloXConversionRunner
+    participant Runner as model_type 对应 ConversionRunner
     participant Script as OpenVINO/TensorRT 子进程脚本
 
     Client->>API: POST /api/v1/models/detection/conversion-tasks/*
@@ -238,7 +242,7 @@ sequenceDiagram
         API-->>Client: failed + error_message
         Note over Client: 修复队列或配置后重新创建 conversion task
     else worker 构建阶段失败
-        Worker->>Queue: claim_next(yolox-conversions)
+        Worker->>Queue: claim_next(model-specific conversion queue)
         Queue-->>Worker: queue_task
         Worker->>Proc: process_conversion_task(task_id)
         Proc->>TaskSvc: append_task_event(state=running, stage=planning)
@@ -261,7 +265,7 @@ sequenceDiagram
 
 ## 部署推理链
 
-- REST 入口：[backend/service/api/rest/v1/routes/yolox_inference_tasks.py](../../backend/service/api/rest/v1/routes/yolox_inference_tasks.py)
+- REST 入口：[backend/service/api/rest/v1/routes/detection_inference_tasks.py](../../backend/service/api/rest/v1/routes/detection_inference_tasks.py)
 - Deployment 服务：[backend/service/application/deployments/deployment_instance_service.py](../../backend/service/application/deployments/deployment_instance_service.py)
 - 推理监督器：[backend/service/application/runtime/deployment_process_supervisor.py](../../backend/service/application/runtime/deployment_process_supervisor.py)
 
@@ -275,7 +279,7 @@ sequenceDiagram
     participant SyncSup as DeploymentProcessSupervisor(sync)
     participant Child as deployment process worker
     participant Storage as LocalDatasetStorage
-    participant Pred as run_yolox_inference_task
+    participant Pred as PublishedInferenceGateway
 
     Client->>API: POST /api/v1/models/detection/deployment-instances/{id}/infer
     API->>API: 读取 JSON/multipart\n校验主体可见性
@@ -292,8 +296,8 @@ sequenceDiagram
         SyncSup-->>API: process_state != running
         API-->>Client: 400 请先调用 sync/start 或 sync/warmup
     else 进程已 running
-        API->>API: normalize_yolox_inference_input(...)
-        API->>Pred: run_yolox_inference_task(...)
+        API->>API: normalize detection inference input
+        API->>Pred: run inference by task_type/model_type
         Pred->>SyncSup: run_inference(process_config, prediction_request)
         SyncSup->>Child: 通过 request_queue 发送 infer 命令
         Child->>Child: 选择实例 / decode / preprocess / infer / postprocess
@@ -306,7 +310,7 @@ sequenceDiagram
         opt 输入传输模式为 storage
             API->>Storage: write raw-result.json
         end
-        API->>API: build_yolox_inference_payload\nserialize payload
+        API->>API: build detection inference payload\nserialize payload
         API-->>Client: 200 payload(detections, latency, preview/result uri)
     end
 ```
@@ -339,7 +343,7 @@ sequenceDiagram
         API-->>Client: process_state=running
         Client->>API: 再次 POST /infer
     else 输入归一化失败
-        API->>API: normalize_yolox_inference_input(...)
+        API->>API: normalize detection inference input
         API-->>Client: 400 invalid_request
         Note over Client: 修复 one-of 输入或图片内容后重试
     else 子进程推理失败或超时

@@ -8,6 +8,10 @@
       </div>
       <div class="page-actions">
         <label class="segmented-field">
+          <span>task_type</span>
+          <SelectField :model-value="selectedTaskType" :options="taskTypeOptions" @update:model-value="setTaskType" />
+        </label>
+        <label class="segmented-field">
           <span>{{ t('deploymentOps.fields.runtimeMode') }}</span>
           <SelectField :model-value="runtimeMode" :options="runtimeModeOptions" @update:model-value="setRuntimeMode" />
         </label>
@@ -29,6 +33,10 @@
         <label class="field">
           <span>{{ t('deploymentOps.fields.projectId') }}</span>
           <input :value="selectedProjectId" disabled />
+        </label>
+        <label class="field">
+          <span>model_type</span>
+          <input v-model="modelType" placeholder="yolox / yolov8 / yolo11 / yolo26 / rfdetr" />
         </label>
         <label class="field">
           <span>{{ t('deploymentOps.fields.modelVersionId') }}</span>
@@ -213,11 +221,11 @@ import { HeartPulse, ListChecks, Play, RefreshCw, RotateCcw, Square, Zap } from 
 import { useI18n } from 'vue-i18n'
 
 import {
-  createDetectionDeployment,
-  listDetectionDeploymentEvents,
-  listDetectionDeployments,
-  runDetectionDeploymentHealthAction,
-  runDetectionDeploymentStatusAction,
+  createTaskDeployment,
+  listTaskDeploymentEvents,
+  listTaskDeployments,
+  runTaskDeploymentHealthAction,
+  runTaskDeploymentStatusAction,
   type DeploymentHealthAction,
   type DeploymentRuntimeMode,
   type DeploymentStatusAction,
@@ -225,6 +233,7 @@ import {
   type DetectionDeploymentProcessEvent,
   type DetectionDeploymentProcessStatus,
   type DetectionDeploymentRuntimeHealth,
+  type ModelTaskType,
 } from '../services/deployment.service'
 import { useProjectStore } from '@/app/stores/project.store'
 import { useSessionStore } from '@/app/stores/session.store'
@@ -246,6 +255,14 @@ const runtimeModeOptions = [
   { label: 'async', value: 'async' },
 ]
 
+const taskTypeOptions = [
+  { label: 'detection', value: 'detection' },
+  { label: 'classification', value: 'classification' },
+  { label: 'segmentation', value: 'segmentation' },
+  { label: 'pose', value: 'pose' },
+  { label: 'obb', value: 'obb' },
+]
+
 const runtimePrecisionOptions = [
   { label: 'fp32', value: 'fp32' },
   { label: 'fp16', value: 'fp16' },
@@ -262,7 +279,9 @@ const lastCreatedDeployment = ref<DetectionDeploymentInstance | null>(null)
 const lastRuntimeStatus = ref<DetectionDeploymentProcessStatus | null>(null)
 const lastRuntimeHealth = ref<DetectionDeploymentRuntimeHealth | null>(null)
 const selectedDeploymentId = ref('')
+const selectedTaskType = ref<ModelTaskType>('detection')
 
+const modelType = ref('')
 const modelVersionId = ref('')
 const modelBuildId = ref('')
 const runtimeProfileId = ref('')
@@ -295,12 +314,28 @@ watch(runtimeMode, () => {
   void loadDeploymentEvents()
 })
 
+watch(selectedTaskType, () => {
+  selectedDeploymentId.value = ''
+  deploymentEvents.value = []
+  lastCreatedDeployment.value = null
+  lastRuntimeStatus.value = null
+  lastRuntimeHealth.value = null
+  void refreshPage()
+})
+
 function selectValueToString(value: SelectValue): string {
   return typeof value === 'string' ? value : String(value ?? '')
 }
 
 function setRuntimeMode(value: SelectValue): void {
   runtimeMode.value = selectValueToString(value) === 'async' ? 'async' : 'sync'
+}
+
+function setTaskType(value: SelectValue): void {
+  const normalized = selectValueToString(value)
+  if (['detection', 'classification', 'segmentation', 'pose', 'obb'].includes(normalized)) {
+    selectedTaskType.value = normalized as ModelTaskType
+  }
 }
 
 function setRuntimeBackend(value: SelectValue): void {
@@ -323,7 +358,7 @@ async function refreshPage(): Promise<void> {
   loading.value = true
   errorMessage.value = null
   try {
-    deployments.value = await listDetectionDeployments(selectedProjectId.value)
+    deployments.value = await listTaskDeployments(selectedTaskType.value, selectedProjectId.value)
     if (!deployments.value.some((item) => item.deployment_instance_id === selectedDeploymentId.value)) {
       selectedDeploymentId.value = deployments.value[0]?.deployment_instance_id ?? ''
     }
@@ -348,7 +383,7 @@ async function loadDeploymentEvents(): Promise<void> {
   eventsLoading.value = true
   errorMessage.value = null
   try {
-    deploymentEvents.value = await listDetectionDeploymentEvents(selectedDeploymentId.value, runtimeMode.value)
+    deploymentEvents.value = await listTaskDeploymentEvents(selectedTaskType.value, selectedDeploymentId.value, runtimeMode.value)
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : t('deploymentOps.messages.eventsFailed')
   } finally {
@@ -357,6 +392,10 @@ async function loadDeploymentEvents(): Promise<void> {
 }
 
 async function submitDeployment(): Promise<void> {
+  if (!modelType.value.trim()) {
+    errorMessage.value = 'model_type 不能为空'
+    return
+  }
   if (!modelVersionId.value.trim() && !modelBuildId.value.trim()) {
     errorMessage.value = t('deploymentOps.messages.modelInputRequired')
     return
@@ -364,8 +403,10 @@ async function submitDeployment(): Promise<void> {
   creating.value = true
   errorMessage.value = null
   try {
-    lastCreatedDeployment.value = await createDetectionDeployment({
+    lastCreatedDeployment.value = await createTaskDeployment({
+      taskType: selectedTaskType.value,
       projectId: selectedProjectId.value,
+      modelType: modelType.value.trim(),
       modelVersionId: modelVersionId.value.trim(),
       modelBuildId: modelBuildId.value.trim(),
       runtimeProfileId: runtimeProfileId.value.trim(),
@@ -389,7 +430,7 @@ async function runStatusAction(deploymentId: string, action: DeploymentStatusAct
   runningAction.value = `${deploymentId}:${runtimeMode.value}:${action}`
   errorMessage.value = null
   try {
-    lastRuntimeStatus.value = await runDetectionDeploymentStatusAction(deploymentId, runtimeMode.value, action)
+    lastRuntimeStatus.value = await runTaskDeploymentStatusAction(selectedTaskType.value, deploymentId, runtimeMode.value, action)
     if (action !== 'status') {
       await refreshPage()
       return
@@ -407,7 +448,7 @@ async function runHealthAction(deploymentId: string, action: DeploymentHealthAct
   runningAction.value = `${deploymentId}:${runtimeMode.value}:${action}`
   errorMessage.value = null
   try {
-    lastRuntimeHealth.value = await runDetectionDeploymentHealthAction(deploymentId, runtimeMode.value, action)
+    lastRuntimeHealth.value = await runTaskDeploymentHealthAction(selectedTaskType.value, deploymentId, runtimeMode.value, action)
     lastRuntimeStatus.value = lastRuntimeHealth.value
     await loadDeploymentEvents()
   } catch (error) {

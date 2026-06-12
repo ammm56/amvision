@@ -42,7 +42,7 @@ class DatasetExport:
     project_id: str
     dataset_version_id: str
     format_id: DatasetExportFormatId
-    task_type: DatasetTaskType = "detection"
+    task_type: DatasetTaskType
     status: DatasetExportStatus = "queued"
     created_at: str = ""
     task_id: str | None = None

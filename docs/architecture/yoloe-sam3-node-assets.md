@@ -240,7 +240,7 @@ data/files/models/pretrained/
 
 | 字段 | 说明 |
 | --- | --- |
-| `model_name` | 预训练模型家族名，例如 `yoloe-v8`、`yoloe-11`、`yoloe-26`、`sam3` |
+| `model_name` | 预训练模型系列名，例如 `yoloe-v8`、`yoloe-11`、`yoloe-26`、`sam3` |
 | `model_scale` | 项目统一 scale，例如 `nano`、`s`、`l` |
 | `task_type` | `YOLOE` 与 `SAM3` 第一阶段都固定写 `segmentation` |
 | `model_version_id` | 预训练目录的稳定 `ModelVersion` id |

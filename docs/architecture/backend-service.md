@@ -182,7 +182,6 @@ backend/service/
   - datasets imports / exports
   - models/platform-base
   - detection / classification / segmentation / pose / obb 五类任务的 training、validation、conversion、deployment、inference、evaluation
-  - legacy YOLOX 专项 training / validation / conversion / evaluation / deployment / inference
   - workflows、preview-runs、execution-policies、app-runtimes、runs、trigger-sources
   - tasks 通用资源
 - 上传 zip 数据集压缩包属于 REST API，因为它是明确的请求响应与资源创建动作

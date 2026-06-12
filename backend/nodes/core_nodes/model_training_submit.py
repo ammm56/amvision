@@ -12,9 +12,8 @@ from backend.nodes.core_nodes._base import CoreNodeSpec
 from backend.nodes.core_nodes._platform_service_node_support import (
     WORKFLOW_SERVICE_MODEL_SCALES,
     WORKFLOW_SERVICE_TASK_TYPES,
-    get_optional_platform_model_type,
+    require_platform_model_type,
     require_platform_task_type,
-    resolve_platform_model_type,
 )
 from backend.nodes.core_nodes._service_node_support import (
     build_response_body_output,
@@ -67,13 +66,9 @@ def _model_training_submit_handler(request: WorkflowNodeExecutionRequest) -> dic
     request = overlay_parameters_from_object_input(request)
     runtime_context = require_workflow_service_node_runtime(request)
     task_type = require_platform_task_type(request)
-    requested_model_type = get_optional_platform_model_type(
+    model_type = require_platform_model_type(
         request,
         supported_model_types=("yolox", "yolov8", "yolo11", "yolo26", "rfdetr"),
-    )
-    model_type = resolve_platform_model_type(
-        requested_model_type,
-        task_type=task_type,
     )
     service = runtime_context.build_training_task_service(
         task_type=task_type,
@@ -195,7 +190,7 @@ CORE_NODE_SPEC = CoreNodeSpec(
                 "display_name": {"type": "string"},
                 "created_by": {"type": "string"},
             },
-            "required": ["task_type", "project_id", "recipe_id", "model_scale", "output_model_name"],
+            "required": ["task_type", "model_type", "project_id", "recipe_id", "model_scale", "output_model_name"],
         },
         capability_tags=("service.model.training", "task.submit"),
     ),

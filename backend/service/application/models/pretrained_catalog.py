@@ -41,7 +41,7 @@ class YoloXPretrainedCatalogEntry:
     model_version_id: str
     checkpoint_file_id: str
     checkpoint_storage_uri: str
-    task_type: str = "detection"
+    task_type: str
     metadata: dict[str, object] = field(default_factory=dict)
 
 
@@ -142,7 +142,7 @@ def _load_pretrained_catalog_entry(
             dataset_storage=dataset_storage,
             file_path=checkpoint_path,
         ),
-        task_type=_read_manifest_str(payload, "task_type") or "detection",
+        task_type=_require_manifest_str(payload, "task_type"),
         metadata=metadata,
     )
 

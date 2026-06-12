@@ -99,7 +99,8 @@
 - FastAPI 应用入口位于 `backend/service/api/app.py`，负责装配 settings、数据库会话、本地对象存储、本地队列、中间件、异常处理、REST 路由和 WebSocket 路由。
 - backend-service settings 位于 `backend/service/settings.py`，当前已经统一管理 CORS、auth mode、本地 auth TTL、auth provider 目录、静态 token 和 Project 目录配置。
 - 启动编排位于 `backend/service/api/bootstrap.py`，负责在应用生命周期内初始化 SessionFactory、LocalDatasetStorage、LocalFileQueueBackend 和 deployment process supervisor。
-- REST v1 路由汇总位于 `backend/service/api/rest/v1/router.py`，当前已经挂载 auth、system、projects、workflows、workflow runtime、datasets、dataset-exports、models、五类训练任务控制面、五类 validation session 控制面、统一 deployment 与 inference 控制面、conversion、evaluation 和 tasks；公开入口当前已经统一收口到 `/api/v1/models/{task_type}/...` 这条主线，不再把历史 `yolox-*` 路由名当成平台总览描述。
+- REST v1 路由汇总位于 `backend/service/api/rest/v1/router.py`，当前已经挂载 auth、system、projects、workflows、workflow runtime、datasets、dataset-exports、models、五类训练任务控制面、五类 validation session 控制面、五类 conversion 控制面、统一 deployment 与 inference 控制面、evaluation 和 tasks；公开入口当前已经统一收口到 `/api/v1/models/{task_type}/...` 这条主线，不再把历史 `yolox-*` 路由名当成平台总览描述。
+- conversion 公开接口当前已经补齐 detection 与 non-detection 的 create/list/detail/result：detection 仍保留按目标格式拆分的创建入口，classification / segmentation / pose / obb 则统一使用 `source_model_version_id + target_formats` 创建，并在 list/detail/result 中按显式 `task_type` 过滤，避免 YOLOv8 / YOLO11 / YOLO26 共享 task_kind 时串单。
 - REST v1 列表分页辅助函数位于 `backend/service/api/rest/v1/pagination.py`，当前用于 projects、workflow templates、template versions、applications、execution-policies、preview-runs、app-runtimes 和 trigger-sources。
 - WebSocket 路由位于 `backend/service/api/ws/router.py`，当前已经公开 auth、system、tasks、workflow preview-runs、workflow runs、workflow app-runtimes、deployments 和 projects 聚合流入口。
 
@@ -155,6 +156,7 @@
 - 当前 conversion 已真实接通 `onnx`、`onnx-optimized`、`openvino-ir` 和 `tensorrt-engine` 四类目标。
 - 当前 OpenVINO IR 创建接口按 `fp32` / `fp16` 拆分。
 - 当前 TensorRT engine 创建接口按 `fp32` / `fp16` 拆分，并把 build precision 与 TensorRT 版本回写到 `ModelBuild.metadata`。
+- 当前 classification / segmentation / pose / obb 的 conversion API 已补齐 list/detail/result 和 pending result 读取；segmentation conversion 额外支持 RF-DETR，其余 non-detection conversion 支持 YOLOv8 / YOLO11 / YOLO26。
 
 ### 部署运行时
 
@@ -169,7 +171,8 @@
 - 当前已经显式复跑一轮按 `model_type × task_type` 收口的轻量 smoke matrix：`tests/test_model_profiles.py`、`tests/test_yolov8_detection_model.py`、`tests/test_yolox_inference_tasks_api.py`、`tests/test_yolo_primary_classification_chain.py`、`tests/test_yolo_primary_segmentation_chain.py`、`tests/test_yolo_primary_pose_chain.py`、`tests/test_yolo_primary_obb_chain.py`、`tests/test_rfdetr_chain.py`、`tests/test_non_detection_training_result_registration.py`、`tests/test_non_detection_inference_api.py`、`tests/test_validation_runtime_backend_support.py`。
 - 这轮矩阵结果当前为 `78 passed`，覆盖了 detection、classification、segmentation、pose、obb 五类任务，以及 `yolox / yolov8 / yolo11 / yolo26 / rfdetr` 的当前主链组合。
 - 这轮回归同时确认了 `/models/{task_type}` 已经在控制面收平：non-detection 当前已经具备 task-native 的同步 `/infer`、异步任务创建/详情/结果读取，以及 deployment `sync/async` 的 `start / status / stop / warmup / reset` 最小动作；`tests/test_non_detection_inference_api.py` 当前已经显式覆盖 `classification / segmentation / pose / obb` 四类任务的 async 前检查、sync `/infer`、async result round-trip 和 deployment 控制基础链。
-- 在这轮基础回归之外，当前还已经补了一条显式 non-detection runtime backend matrix：`tests/integration/test_non_detection_runtime_backend_smoke_matrix.py`。这条 integration 当前已真实跑通 `classification+yolo11`、`segmentation+yolo26`、`pose+yolov8`、`obb+yolo26` 在 `onnxruntime / openvino / tensorrt` 三类 runtime backend 下的 `conversion -> runtime predict` 闭环。
+- 在这轮基础回归之外，当前还已经补了一条显式 non-detection runtime backend matrix：`tests/integration/test_non_detection_runtime_backend_smoke_matrix.py`。这条 integration 已在 2026-06-12 真实跑通 `classification+yolo11`、`segmentation+yolo26`、`pose+yolov8`、`obb+yolo26` 在 `onnxruntime / openvino / tensorrt` 三类 runtime backend 下的 `conversion -> runtime predict` 闭环，结果为 `12 passed`。
+- 浏览器前端当前也已把 models / deployments / inference 三个调试页从 detection-only 路径改为显式 `task_type` 选择，并要求相关创建表单显式填写 `model_type`；训练任务详情页也已切到 `/models/{task_type}/training-tasks/{task_id}` 前端路由。当前 `output-files` 和 `register-model-version` 仍只在 detection 训练详情中显示，因为这两个调试端点当前只在 detection 训练控制面公开。本轮已通过 `frontend/web-ui` 的 `npm run build`。
 
 ### custom node 运行时
 
@@ -211,4 +214,5 @@
 ### 4. 继续硬化工程化交付面
 
 - 当前 `assemble-release` 已把同目录 Python 运行时占位/回迁、前端构建产物、`custom_nodes` 资产和 `ffmpeg/ffprobe` 工具目录纳入 `release/full/`。
-- 下一步重点应转向发布目录的更细粒度验收、日志/指标/排障补充，以及 `full` 目录向现场派生变体时的裁剪规范。
+- 2026-06-12 已完成一轮 `release/full` 基础目标机验收：重新执行 `assemble-release --profile-id full --release-root .\release --force` 后，发布目录保留现有 `python/`，`validate-layout` 通过，发布目录 Python 可正常 import `torch / onnxruntime / openvino / tensorrt / cuda`，`start_amvision_full.py` 一键启动可拉起 `backend-service` 和 6 个 worker profile，`/api/v1/system/health`、`/docs` 与 OpenAPI 新增 non-detection conversion result 路由均可访问，`stop-amvision-full.bat` 可清理运行状态文件。
+- 下一步重点应转向发布目录的更长时间 soak、资源占用记录、日志/指标/排障补充，以及 `full` 目录向现场派生变体时的裁剪规范。

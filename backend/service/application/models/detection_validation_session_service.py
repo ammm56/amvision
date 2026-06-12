@@ -612,7 +612,7 @@ def _build_session_from_payload(payload: dict[str, object]) -> DetectionValidati
 
     runtime_backend = _require_payload_str(payload, "runtime_backend")
     device_name = _require_payload_str(payload, "device_name")
-    model_type = _read_payload_optional_str(payload, "model_type") or "yolox"
+    model_type = _require_payload_str(payload, "model_type")
     checkpoint_file_id = _read_payload_optional_str(payload, "checkpoint_file_id")
     checkpoint_storage_uri = _read_payload_optional_str(payload, "checkpoint_storage_uri")
     runtime_artifact_file_id = _read_payload_optional_str(payload, "runtime_artifact_file_id") or checkpoint_file_id

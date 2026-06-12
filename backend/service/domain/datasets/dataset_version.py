@@ -253,5 +253,5 @@ class DatasetVersion:
     project_id: str
     categories: tuple[DatasetCategory, ...]
     samples: tuple[DatasetSample, ...]
-    task_type: DatasetTaskType = "detection"
+    task_type: DatasetTaskType
     metadata: dict[str, object] = field(default_factory=dict)

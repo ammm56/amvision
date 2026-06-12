@@ -97,6 +97,16 @@
 - /custom-nodes
 - /settings
 
+## 当前已实现页面状态
+
+- `frontend/web-ui/src/modules/models/` 当前已经提供平台基础模型列表、训练任务提交、转换任务提交、训练历史和转换历史调试面。
+- `models` 页面当前不再只写死 detection 路径；训练与转换表单会显式选择 `task_type`，并要求填写 `model_type`，再调用 `/models/{task_type}/training-tasks` 和 `/models/{task_type}/conversion-tasks`。
+- 训练任务详情页当前使用 `/models/{task_type}/training-tasks/{task_id}` 前端路由，并按路由里的 `task_type` 调用对应后端接口；`output-files` 和 `register-model-version` 仍只在 detection 任务详情中显示，因为这两个调试端点当前只在 detection 训练控制面公开。
+- `frontend/web-ui/src/modules/deployments/` 当前已经提供 DeploymentInstance 创建、列表、sync/async start/status/stop/warmup/health/reset 和事件读取调试面。
+- `deployments` 页面当前不再只写死 detection 路径；页面顶部会显式选择 `task_type`，创建表单会显式填写 `model_type`，后续运行时动作统一调用 `/models/{task_type}/deployment-instances/...`。
+- `frontend/web-ui/src/modules/inference/` 当前已经提供 DeploymentInstance 选择、同步 `/infer`、异步 inference task 提交、任务列表和结果读取调试面。
+- `inference` 页面当前不再只写死 detection 路径；页面顶部会显式选择 `task_type`，并用同一选择调用 `/models/{task_type}/deployment-instances/{id}/infer`、`/models/{task_type}/inference-tasks` 和结果读取接口。
+
 ## 图编辑器和 UI 组件方向
 
 - workflow 图编辑器底层采用 LiteGraph 方向，通过本项目自己的 adapter 接入，正式保存格式仍以 `WorkflowGraphTemplate` 和 `FlowApplication` 为准。

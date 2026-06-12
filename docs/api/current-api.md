@@ -162,6 +162,22 @@ WebSocket 资源流的统一消息结构、控制事件和重连规则见 [docs/
 | GET | /api/v1/models/detection/conversion-tasks | tasks:read | 按 Project、来源版本和状态列出 detection conversion 任务。 |
 | GET | /api/v1/models/detection/conversion-tasks/{task_id} | tasks:read | 查询单条 detection conversion 任务详情和事件流。 |
 | GET | /api/v1/models/detection/conversion-tasks/{task_id}/result | tasks:read | 查询 detection conversion 结果文件状态与当前转换摘要。 |
+| POST | /api/v1/models/classification/conversion-tasks | models:read + tasks:write | 创建 classification conversion 任务；支持 YOLOv8、YOLO11、YOLO26。 |
+| GET | /api/v1/models/classification/conversion-tasks | tasks:read | 按 Project、模型分类、来源版本和状态列出 classification conversion 任务。 |
+| GET | /api/v1/models/classification/conversion-tasks/{task_id} | tasks:read | 查询单条 classification conversion 任务详情和事件流。 |
+| GET | /api/v1/models/classification/conversion-tasks/{task_id}/result | tasks:read | 查询 classification conversion 结果文件状态与当前转换摘要。 |
+| POST | /api/v1/models/segmentation/conversion-tasks | models:read + tasks:write | 创建 segmentation conversion 任务；支持 YOLOv8、YOLO11、YOLO26、RF-DETR。 |
+| GET | /api/v1/models/segmentation/conversion-tasks | tasks:read | 按 Project、模型分类、来源版本和状态列出 segmentation conversion 任务。 |
+| GET | /api/v1/models/segmentation/conversion-tasks/{task_id} | tasks:read | 查询单条 segmentation conversion 任务详情和事件流。 |
+| GET | /api/v1/models/segmentation/conversion-tasks/{task_id}/result | tasks:read | 查询 segmentation conversion 结果文件状态与当前转换摘要。 |
+| POST | /api/v1/models/pose/conversion-tasks | models:read + tasks:write | 创建 pose conversion 任务；支持 YOLOv8、YOLO11、YOLO26。 |
+| GET | /api/v1/models/pose/conversion-tasks | tasks:read | 按 Project、模型分类、来源版本和状态列出 pose conversion 任务。 |
+| GET | /api/v1/models/pose/conversion-tasks/{task_id} | tasks:read | 查询单条 pose conversion 任务详情和事件流。 |
+| GET | /api/v1/models/pose/conversion-tasks/{task_id}/result | tasks:read | 查询 pose conversion 结果文件状态与当前转换摘要。 |
+| POST | /api/v1/models/obb/conversion-tasks | models:read + tasks:write | 创建 OBB conversion 任务；支持 YOLOv8、YOLO11、YOLO26。 |
+| GET | /api/v1/models/obb/conversion-tasks | tasks:read | 按 Project、模型分类、来源版本和状态列出 OBB conversion 任务。 |
+| GET | /api/v1/models/obb/conversion-tasks/{task_id} | tasks:read | 查询单条 OBB conversion 任务详情和事件流。 |
+| GET | /api/v1/models/obb/conversion-tasks/{task_id}/result | tasks:read | 查询 OBB conversion 结果文件状态与当前转换摘要。 |
 | POST | /api/v1/models/detection/validation-sessions | models:read | 为指定 detection 模型分类与 ModelVersion 创建一个训练后单图人工验证 session；支持 pytorch、onnxruntime、openvino、tensorrt。 |
 | GET | /api/v1/models/detection/validation-sessions/{session_id} | models:read | 读取单条 detection validation session 当前详情。 |
 | POST | /api/v1/models/detection/validation-sessions/{session_id}/predict | models:read | 对 detection validation session 执行一次单图预测，并返回 raw-result 与 preview 引用。 |
@@ -704,12 +720,13 @@ WebSocket 资源流的统一消息结构、控制事件和重连规则见 [docs/
 - 转换链顺序图与常见失败分支见 [docs/architecture/execution-sequences.md](../architecture/execution-sequences.md)。
 - 当前请求体允许显式指定：
   - project_id
+  - model_type
   - source_model_version_id
   - runtime_profile_id
   - extra_options
   - display_name
 - 当前接口固定创建 `onnx` 目标的 conversion task，不再通过同一个创建接口混合多种输出格式
-- 当前实现会先解析来源 ModelVersion 的 checkpoint、labels 和 input_size，再按 conversion planner 固化步骤图谱并提交到 `yolox-conversions` 队列
+- 当前实现会先解析来源 ModelVersion 的 checkpoint、labels 和 input_size，再按 `model_type` 选择 conversion planner、runner 和模型专属队列；YOLOX 会进入 `yolox-conversion`，YOLOv8 / YOLO11 / YOLO26 / RF-DETR 会进入各自的 conversion 队列
 - 当前已真实可执行目标支持：
   - onnx
   - onnx-optimized
@@ -764,6 +781,7 @@ WebSocket 资源流的统一消息结构、控制事件和重连规则见 [docs/
 - 需要 tasks:read
 - 当前支持的查询参数：
   - project_id
+  - model_type
   - state
   - created_by
   - source_model_version_id
@@ -798,6 +816,47 @@ WebSocket 资源流的统一消息结构、控制事件和重连规则见 [docs/
 - 当前响应统一为 `file_status`、`task_state`、`object_key` 和 `payload`
 - 当结果文件尚未生成时，接口返回 `file_status=pending` 和空 `payload`
 - 当任务已经结束但结果文件缺失时，接口返回 404
+
+### 非 Detection 转换任务端点说明
+
+classification、segmentation、pose 和 obb 四种任务类型也提供 task-native conversion 端点。它们不再绕通用 `/tasks` 查询，而是直接使用各自路径下的 create、list、detail 和 result 接口。下面以 classification 为例说明，其他任务类型只需把路径里的 `classification` 替换成 `segmentation`、`pose` 或 `obb`。
+
+### POST /api/v1/models/classification/conversion-tasks
+
+- 需要同时具备 models:read 和 tasks:write
+- 当前 classification、pose、obb 支持 `yolov8`、`yolo11`、`yolo26`
+- 当前 segmentation 支持 `yolov8`、`yolo11`、`yolo26`、`rfdetr`
+- 请求体必须显式指定：
+  - project_id
+  - model_type
+  - source_model_version_id
+  - target_formats
+  - runtime_profile_id
+  - extra_options
+  - display_name
+- 当前不再接受隐藏的 `model_version_id` / `target_format` 简写，Postman 示例统一使用 `source_model_version_id` 和 `target_formats`
+- YOLOv8、YOLO11、YOLO26 会进入各自模型分类的 conversion 队列；RF-DETR segmentation 会进入 `rfdetr-conversions`
+- 响应字段：task_id、status、queue_name、queue_task_id、task_type、model_type、source_model_version_id、target_formats
+
+### GET /api/v1/models/classification/conversion-tasks
+
+- 需要 tasks:read
+- 支持查询参数：project_id、model_type、state、created_by、source_model_version_id、target_format、limit
+- 列表接口会强制按当前路径对应的 task_type 过滤，避免 YOLOv8 / YOLO11 / YOLO26 共享模型分类 conversion task_kind 时把其他任务类型混入当前列表
+
+### GET /api/v1/models/classification/conversion-tasks/{task_id}
+
+- 需要 tasks:read
+- 默认 include_events=false
+- include_events=true 时返回任务事件列表
+- 如果 task_id 对应的任务不是当前路径的 task_type，返回 404
+
+### GET /api/v1/models/classification/conversion-tasks/{task_id}/result
+
+- 需要 tasks:read
+- 返回当前转换任务最新的 conversion-report.json 内容
+- 当前响应统一为 `file_status`、`task_state`、`object_key` 和 `payload`
+- 当结果文件尚未生成时，接口返回 `file_status=pending` 和空 `payload`
 
 ### POST /api/v1/models/detection/evaluation-tasks
 

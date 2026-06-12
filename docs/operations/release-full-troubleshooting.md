@@ -27,6 +27,17 @@
 | `http://127.0.0.1:8000/api/v1/system/health` | 看 service 是否已对外可用 |
 | `http://127.0.0.1:8000/docs` | 看 OpenAPI 和前端静态资源是否至少能正常返回 |
 
+## 当前基础验收结果
+
+2026-06-12 已完成一轮 `release/full` 基础验收：
+
+- `assemble-release --profile-id full --release-root .\release --force --output text` 通过，`bundled_python_mode=preserved-existing`。
+- `validate-layout` 通过，`frontend/`、`custom_nodes/`、`tools/ffmpeg/`、`python/python.exe` 和 worker profile 目录均存在。
+- `release/full/python/python.exe` 可正常 import `torch / onnxruntime / openvino / tensorrt / cuda`。
+- `start_amvision_full.py` 可拉起 `backend-service` 与 `dataset-import / dataset-export / training / conversion / evaluation / inference` 六个 worker profile。
+- `/api/v1/system/health`、`/docs` 和 `/openapi.json` 均可访问；OpenAPI 中可见 `classification/conversion-tasks/{task_id}/result` 这类 non-detection conversion result 路由。
+- `stop-amvision-full.bat` 可清理 `logs/full-stack/runtime-state.json`。
+
 ## 常见问题
 
 ### 1. `start-amvision-full` 提示已有实例在运行

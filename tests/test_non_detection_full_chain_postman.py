@@ -171,6 +171,11 @@ def test_non_detection_full_chain_collections_cover_expected_stages() -> None:
         assert f"{{{{baseUrl}}}}/api/v1/models/{task_segment}/validation-sessions" in urls
         assert f"{{{{baseUrl}}}}/api/v1/models/{task_segment}/evaluation-tasks" in urls
         assert f"{{{{baseUrl}}}}/api/v1/models/{task_segment}/conversion-tasks" in urls
+        assert any(
+            url.startswith(f"{{{{baseUrl}}}}/api/v1/models/{task_segment}/conversion-tasks/{{{{conversionTaskId}}}}")
+            for url in urls
+        )
+        assert f"{{{{baseUrl}}}}/api/v1/models/{task_segment}/conversion-tasks/{{{{conversionTaskId}}}}/result" in urls
         assert f"{{{{baseUrl}}}}/api/v1/models/{task_segment}/deployment-instances" in urls
         assert f"{{{{baseUrl}}}}/api/v1/models/{task_segment}/deployment-instances/{{{{deploymentInstanceId}}}}/infer" in urls
         assert f"{{{{baseUrl}}}}/api/v1/models/{task_segment}/inference-tasks" in urls
@@ -205,6 +210,13 @@ def test_non_detection_full_chain_collections_cover_expected_stages() -> None:
         assert training_body["batch_size"] == spec["training_batch_size"]
         assert training_body["input_size"] == spec["training_input_size"]
         assert training_body["precision"] == "{{trainingPrecision}}"
+
+        conversion_request = _find_request(collection_payload, f"Create {task_label} Conversion Task")
+        conversion_body = json.loads(conversion_request["body"]["raw"])
+        assert conversion_body["source_model_version_id"] == "{{modelVersionId}}"
+        assert conversion_body["target_formats"] == ["{{targetFormat}}"]
+        assert "model_version_id" not in conversion_body
+        assert "target_format" not in conversion_body
 
         export_detail_item = _find_item(collection_payload["item"], f"Get {task_label} Dataset Export Detail")
         export_detail_event = export_detail_item["event"][0]["script"]["exec"]

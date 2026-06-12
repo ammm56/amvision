@@ -86,11 +86,11 @@ def test_workflow_runtime_can_build_platform_services_by_task_type(tmp_path: Pat
     )
 
     assert isinstance(
-        runtime_context.build_training_task_service(task_type="classification"),
+        runtime_context.build_training_task_service(task_type="classification", model_type="yolov8"),
         SqlAlchemyYoloPrimaryClassificationTrainingTaskService,
     )
     assert isinstance(
-        runtime_context.build_training_task_service(task_type="pose"),
+        runtime_context.build_training_task_service(task_type="pose", model_type="yolov8"),
         SqlAlchemyYoloPrimaryPoseTrainingTaskService,
     )
     assert isinstance(
@@ -162,7 +162,7 @@ def test_workflow_runtime_can_build_detection_platform_services(tmp_path: Path) 
     )
 
     assert isinstance(
-        runtime_context.build_training_task_service(task_type="detection"),
+        runtime_context.build_training_task_service(task_type="detection", model_type="yolox"),
         SqlAlchemyYoloXTrainingTaskService,
     )
     assert isinstance(

@@ -10,7 +10,7 @@ export const modelRoutes: RouteRecordRaw[] = [
     meta: { requiredScopes: ['models:read', 'tasks:read'] },
   },
   {
-    path: '/models/training-tasks/:taskId',
+    path: '/models/:taskType/training-tasks/:taskId',
     component: TrainingTaskDetailPage,
     meta: { requiredScopes: ['tasks:read'] },
   },

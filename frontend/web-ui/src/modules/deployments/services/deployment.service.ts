@@ -1,5 +1,7 @@
 import { apiRequest } from '@/shared/api/http-client'
 
+export type ModelTaskType = 'detection' | 'classification' | 'segmentation' | 'pose' | 'obb'
+
 export interface DetectionDeploymentInstance {
   deployment_instance_id: string
   project_id: string
@@ -27,7 +29,9 @@ export interface DetectionDeploymentInstance {
 }
 
 export interface DetectionDeploymentCreateInput {
+  taskType: ModelTaskType
   projectId: string
+  modelType: string
   modelVersionId?: string
   modelBuildId?: string
   runtimeProfileId?: string
@@ -76,17 +80,22 @@ export type DeploymentRuntimeMode = 'sync' | 'async'
 export type DeploymentStatusAction = 'start' | 'status' | 'stop'
 export type DeploymentHealthAction = 'warmup' | 'health' | 'reset'
 
-export async function listDetectionDeployments(projectId: string): Promise<DetectionDeploymentInstance[]> {
-  return apiRequest<DetectionDeploymentInstance[]>('/models/detection/deployment-instances', {
+function buildDeploymentPath(taskType: ModelTaskType, suffix = ''): string {
+  return `/models/${taskType}/deployment-instances${suffix}`
+}
+
+export async function listTaskDeployments(taskType: ModelTaskType, projectId: string): Promise<DetectionDeploymentInstance[]> {
+  return apiRequest<DetectionDeploymentInstance[]>(buildDeploymentPath(taskType), {
     query: { project_id: projectId, limit: 100 },
   })
 }
 
-export async function createDetectionDeployment(input: DetectionDeploymentCreateInput): Promise<DetectionDeploymentInstance> {
-  return apiRequest<DetectionDeploymentInstance>('/models/detection/deployment-instances', {
+export async function createTaskDeployment(input: DetectionDeploymentCreateInput): Promise<DetectionDeploymentInstance> {
+  return apiRequest<DetectionDeploymentInstance>(buildDeploymentPath(input.taskType), {
     method: 'POST',
     body: {
       project_id: input.projectId,
+      model_type: input.modelType,
       model_version_id: input.modelVersionId || null,
       model_build_id: input.modelBuildId || null,
       runtime_profile_id: input.runtimeProfileId || null,
@@ -100,34 +109,37 @@ export async function createDetectionDeployment(input: DetectionDeploymentCreate
   })
 }
 
-export async function runDetectionDeploymentStatusAction(
+export async function runTaskDeploymentStatusAction(
+  taskType: ModelTaskType,
   deploymentInstanceId: string,
   mode: DeploymentRuntimeMode,
   action: DeploymentStatusAction,
 ): Promise<DetectionDeploymentProcessStatus> {
   return apiRequest<DetectionDeploymentProcessStatus>(
-    `/models/detection/deployment-instances/${encodeURIComponent(deploymentInstanceId)}/${mode}/${action}`,
+    buildDeploymentPath(taskType, `/${encodeURIComponent(deploymentInstanceId)}/${mode}/${action}`),
     { method: action === 'status' ? 'GET' : 'POST' },
   )
 }
 
-export async function runDetectionDeploymentHealthAction(
+export async function runTaskDeploymentHealthAction(
+  taskType: ModelTaskType,
   deploymentInstanceId: string,
   mode: DeploymentRuntimeMode,
   action: DeploymentHealthAction,
 ): Promise<DetectionDeploymentRuntimeHealth> {
   return apiRequest<DetectionDeploymentRuntimeHealth>(
-    `/models/detection/deployment-instances/${encodeURIComponent(deploymentInstanceId)}/${mode}/${action}`,
+    buildDeploymentPath(taskType, `/${encodeURIComponent(deploymentInstanceId)}/${mode}/${action}`),
     { method: action === 'health' ? 'GET' : 'POST' },
   )
 }
 
-export async function listDetectionDeploymentEvents(
+export async function listTaskDeploymentEvents(
+  taskType: ModelTaskType,
   deploymentInstanceId: string,
   mode: DeploymentRuntimeMode,
 ): Promise<DetectionDeploymentProcessEvent[]> {
   return apiRequest<DetectionDeploymentProcessEvent[]>(
-    `/models/detection/deployment-instances/${encodeURIComponent(deploymentInstanceId)}/events`,
+    buildDeploymentPath(taskType, `/${encodeURIComponent(deploymentInstanceId)}/events`),
     { query: { runtime_mode: mode, limit: 100 } },
   )
 }

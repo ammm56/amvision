@@ -76,12 +76,12 @@ class RfdetrConversionTaskRequest:
     """描述一次 RF-DETR 转换任务创建请求。"""
 
     project_id: str
+    task_type: str
     source_model_version_id: str | None = None
     target_formats: tuple[str, ...] = ()
     runtime_profile_id: str | None = None
     extra_options: dict[str, object] = field(default_factory=dict)
     model_type: str = "rfdetr"
-    task_type: str = "detection"
     model_version_id: str | None = None
     model_build_id: str | None = None
     target_format: str | None = None
@@ -573,7 +573,9 @@ class SqlAlchemyRfdetrConversionTaskService:
         return target_formats
 
     def _normalize_task_type(self, task_type: object) -> str:
-        normalized_task_type = str(task_type or "detection").strip().lower()
+        if not isinstance(task_type, str) or not task_type.strip():
+            raise InvalidRequestError("RF-DETR conversion task_type 不能为空")
+        normalized_task_type = task_type.strip().lower()
         if normalized_task_type not in _RFDETR_SUPPORTED_TASK_TYPES:
             raise InvalidRequestError(
                 "RF-DETR 当前不支持指定任务分类",

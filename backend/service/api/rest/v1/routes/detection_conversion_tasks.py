@@ -303,7 +303,8 @@ def list_detection_conversion_tasks(
     visible_tasks = [
         task
         for task in matched_tasks
-        if _matches_detection_conversion_filters(
+        if _matches_detection_conversion_task_type(task)
+        and _matches_detection_conversion_filters(
             task=task,
             source_model_version_id=source_model_version_id,
             target_format=target_format,
@@ -532,7 +533,23 @@ def _require_visible_detection_conversion_task(
             "找不到指定的 detection conversion 任务",
             details={"task_id": task_id},
         )
+    if not _matches_detection_conversion_task_type(task_detail.task):
+        raise ResourceNotFoundError(
+            "找不到指定的 detection conversion 任务",
+            details={"task_id": task_id},
+        )
     return task_detail
+
+
+def _matches_detection_conversion_task_type(task: object) -> bool:
+    """判断转换任务是否属于 detection task_type。"""
+
+    for payload_name in ("metadata", "result", "task_spec"):
+        payload = dict(getattr(task, payload_name, {}) or {})
+        value = payload.get("task_type")
+        if isinstance(value, str) and value.strip():
+            return value.strip().lower() == "detection"
+    return False
 
 
 def _matches_detection_conversion_filters(

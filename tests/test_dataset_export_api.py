@@ -259,6 +259,7 @@ def _build_dataset_version(*, dataset_version_id: str) -> DatasetVersion:
         dataset_version_id=dataset_version_id,
         dataset_id="dataset-1",
         project_id="project-1",
+        task_type="detection",
         categories=(DatasetCategory(category_id=0, name="bolt"),),
         samples=(
             DatasetSample(

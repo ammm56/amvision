@@ -345,6 +345,7 @@ def test_project_detail_summary_aggregates_dataset_io_and_model_runtime_slices(t
                 project_id="project-1",
                 dataset_version_id="dataset-version-1",
                 format_id="coco-detection-v1",
+                task_type="detection",
                 status="running",
                 created_at=_now_isoformat(),
                 task_id="task-export-1",
