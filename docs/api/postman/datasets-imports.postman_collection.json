@@ -360,6 +360,306 @@
           "response": []
         },
         {
+          "name": "Create Detection YOLO Dataset Import",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 202) {",
+                  "  var payload = pm.response.json();",
+                  "  pm.collectionVariables.set('datasetImportId', payload.dataset_import_id);",
+                  "  pm.collectionVariables.set('sourceImportId', payload.dataset_import_id);",
+                  "  if (payload.task_id) {",
+                  "    pm.collectionVariables.set('taskId', payload.task_id);",
+                  "  }",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "project_id",
+                  "value": "{{projectId}}",
+                  "type": "text"
+                },
+                {
+                  "key": "dataset_id",
+                  "value": "{{datasetId}}",
+                  "type": "text"
+                },
+                {
+                  "key": "format_type",
+                  "value": "yolo",
+                  "type": "text"
+                },
+                {
+                  "key": "task_type",
+                  "value": "detection",
+                  "type": "text"
+                },
+                {
+                  "key": "package",
+                  "type": "file",
+                  "src": "{{detectionYoloZipPath}}"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/datasets/imports",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "datasets",
+                "imports"
+              ]
+            },
+            "description": "Detection 的 YOLO zip 导入调试样例。默认 file src 指向 data/files/postman-assets/detection-yolo-min.zip。"
+          },
+          "response": []
+        },
+        {
+          "name": "Create Segmentation YOLO Dataset Import",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 202) {",
+                  "  var payload = pm.response.json();",
+                  "  pm.collectionVariables.set('datasetImportId', payload.dataset_import_id);",
+                  "  pm.collectionVariables.set('sourceImportId', payload.dataset_import_id);",
+                  "  if (payload.task_id) {",
+                  "    pm.collectionVariables.set('taskId', payload.task_id);",
+                  "  }",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "project_id",
+                  "value": "{{projectId}}",
+                  "type": "text"
+                },
+                {
+                  "key": "dataset_id",
+                  "value": "{{datasetId}}",
+                  "type": "text"
+                },
+                {
+                  "key": "format_type",
+                  "value": "yolo",
+                  "type": "text"
+                },
+                {
+                  "key": "task_type",
+                  "value": "segmentation",
+                  "type": "text"
+                },
+                {
+                  "key": "package",
+                  "type": "file",
+                  "src": "{{segmentationYoloZipPath}}"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/datasets/imports",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "datasets",
+                "imports"
+              ]
+            },
+            "description": "Segmentation 的 YOLO instance-seg zip 导入调试样例。默认 file src 指向 data/files/postman-assets/segmentation-yolo-min.zip。"
+          },
+          "response": []
+        },
+        {
+          "name": "Create Pose YOLO Dataset Import",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 202) {",
+                  "  var payload = pm.response.json();",
+                  "  pm.collectionVariables.set('datasetImportId', payload.dataset_import_id);",
+                  "  pm.collectionVariables.set('sourceImportId', payload.dataset_import_id);",
+                  "  if (payload.task_id) {",
+                  "    pm.collectionVariables.set('taskId', payload.task_id);",
+                  "  }",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "project_id",
+                  "value": "{{projectId}}",
+                  "type": "text"
+                },
+                {
+                  "key": "dataset_id",
+                  "value": "{{datasetId}}",
+                  "type": "text"
+                },
+                {
+                  "key": "format_type",
+                  "value": "yolo",
+                  "type": "text"
+                },
+                {
+                  "key": "task_type",
+                  "value": "pose",
+                  "type": "text"
+                },
+                {
+                  "key": "package",
+                  "type": "file",
+                  "src": "{{poseYoloZipPath}}"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/datasets/imports",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "datasets",
+                "imports"
+              ]
+            },
+            "description": "Pose 的 YOLO zip 导入调试样例。默认 file src 指向 data/files/postman-assets/pose-yolo-min.zip。"
+          },
+          "response": []
+        },
+        {
+          "name": "Create OBB YOLO Dataset Import",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 202) {",
+                  "  var payload = pm.response.json();",
+                  "  pm.collectionVariables.set('datasetImportId', payload.dataset_import_id);",
+                  "  pm.collectionVariables.set('sourceImportId', payload.dataset_import_id);",
+                  "  if (payload.task_id) {",
+                  "    pm.collectionVariables.set('taskId', payload.task_id);",
+                  "  }",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "project_id",
+                  "value": "{{projectId}}",
+                  "type": "text"
+                },
+                {
+                  "key": "dataset_id",
+                  "value": "{{datasetId}}",
+                  "type": "text"
+                },
+                {
+                  "key": "format_type",
+                  "value": "yolo",
+                  "type": "text"
+                },
+                {
+                  "key": "task_type",
+                  "value": "obb",
+                  "type": "text"
+                },
+                {
+                  "key": "package",
+                  "type": "file",
+                  "src": "{{obbYoloZipPath}}"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/datasets/imports",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "datasets",
+                "imports"
+              ]
+            },
+            "description": "OBB 的 YOLO zip 导入调试样例。默认 file src 指向 data/files/postman-assets/obb-yolo-min.zip。"
+          },
+          "response": []
+        },
+        {
           "name": "Get Dataset Import Detail",
           "request": {
             "method": "GET",
@@ -679,6 +979,22 @@
     {
       "key": "datasetZipPath",
       "value": ""
+    },
+    {
+      "key": "detectionYoloZipPath",
+      "value": "data/files/postman-assets/detection-yolo-min.zip"
+    },
+    {
+      "key": "segmentationYoloZipPath",
+      "value": "data/files/postman-assets/segmentation-yolo-min.zip"
+    },
+    {
+      "key": "poseYoloZipPath",
+      "value": "data/files/postman-assets/pose-yolo-min.zip"
+    },
+    {
+      "key": "obbYoloZipPath",
+      "value": "data/files/postman-assets/obb-yolo-min.zip"
     },
     {
       "key": "formatType",

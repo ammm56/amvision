@@ -63,6 +63,10 @@
       "value": "data/files/postman-assets/segmentation-coco-min.zip"
     },
     {
+      "key": "datasetYoloZipPath",
+      "value": "data/files/postman-assets/segmentation-yolo-min.zip"
+    },
+    {
       "key": "exportFormatId",
       "value": "coco-instance-seg-v1"
     },
@@ -238,7 +242,7 @@
       "name": "Dataset Import",
       "item": [
         {
-          "name": "Create Segmentation Dataset Import",
+          "name": "Create Segmentation Dataset Import (COCO)",
           "request": {
             "method": "POST",
             "header": [
@@ -288,6 +292,82 @@
                   "key": "package",
                   "type": "file",
                   "src": "{{datasetZipPath}}"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 202) {",
+                  "  const payload = pm.response.json();",
+                  "  if (payload.dataset_import_id) {",
+                  "    pm.collectionVariables.set('datasetImportId', payload.dataset_import_id);",
+                  "  }",
+                  "  if (payload.task_id) {",
+                  "    pm.collectionVariables.set('importTaskId', payload.task_id);",
+                  "  }",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create Segmentation Dataset Import (YOLO)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/datasets/imports",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "datasets",
+                "imports"
+              ]
+            },
+            "description": "Segmentation 的 YOLO instance-seg 导入调试样例。默认 file src 已指向本地调试包 data/files/postman-assets/segmentation-yolo-min.zip，格式使用 yolo + task_type=segmentation。",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "project_id",
+                  "value": "{{projectId}}",
+                  "type": "text"
+                },
+                {
+                  "key": "dataset_id",
+                  "value": "{{datasetId}}",
+                  "type": "text"
+                },
+                {
+                  "key": "format_type",
+                  "value": "yolo",
+                  "type": "text"
+                },
+                {
+                  "key": "task_type",
+                  "value": "segmentation",
+                  "type": "text"
+                },
+                {
+                  "key": "package",
+                  "type": "file",
+                  "src": "{{datasetYoloZipPath}}"
                 }
               ]
             }

@@ -7,13 +7,19 @@ full-chain Postman collection 默认把 `datasetZipPath` 指到本地目录 `dat
 当前约定文件名：
 
 - `detection-coco-min.zip`
+- `detection-yolo-min.zip`
 - `segmentation-coco-min.zip`
+- `segmentation-yolo-min.zip`
 - `classification-imagenet-min.zip`
 - `pose-coco-keypoints-min.zip`
+- `pose-yolo-min.zip`
 - `obb-dota-min.zip`
+- `obb-yolo-min.zip`
 
 这些 zip 只用于接口联调、参数验证和最小回归，不代表真实训练质量。
 
 `detection-coco-min.zip` 同时被 `detection-full-chain.postman_collection.json` 和 `docs/api/postman/workflows/01-detection-end-to-end-qr-crop-remap/` 复用。
+
+`detection-yolo-min.zip`、`segmentation-yolo-min.zip`、`pose-yolo-min.zip`、`obb-yolo-min.zip` 分别被对应 task 的 full-chain collection 和 `datasets-imports.postman_collection.json` 里的 YOLO 导入样例复用。
 
 这些文件都按本地联调资产处理，需要手动放到 `data/files/postman-assets/`，不纳入 git。
